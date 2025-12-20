@@ -154,6 +154,7 @@ async def capture_screener(
     url: str,
     screen: str | None,
     profile_dir: Path,
+    chrome_profile: str | None,
     headless: bool,
     max_rows: int,
     wait_for_manual_login: bool,
@@ -161,11 +162,17 @@ async def capture_screener(
     screenshot: bool,
 ) -> CaptureResult:
     async with async_playwright() as p:
+        args: list[str] = []
+        if chrome_profile:
+            # Works with Chrome user data dir; must match an existing profile directory name.
+            args.append(f"--profile-directory={chrome_profile}")
+
         context = await p.chromium.launch_persistent_context(
             user_data_dir=str(profile_dir),
             headless=headless,
             channel="chrome",
             viewport={"width": 1280, "height": 820},
+            args=args,
         )
         page = context.pages[0] if context.pages else await context.new_page()
 
@@ -277,6 +284,22 @@ def parse_args() -> argparse.Namespace:
         help="Persistent profile directory for Playwright (stores cookies/localStorage).",
     )
     parser.add_argument(
+        "--chrome-user-data-dir",
+        default=os.getenv("CHROME_USER_DATA_DIR", "").strip(),
+        help=(
+            "Optional: use an existing Chrome user data dir (to reuse your real login session). "
+            "Tip: open chrome://version and copy 'Profile Path' parent directory."
+        ),
+    )
+    parser.add_argument(
+        "--chrome-profile",
+        default=os.getenv("CHROME_PROFILE", "").strip(),
+        help=(
+            "Optional: Chrome profile directory name (e.g. 'Default' or 'Profile 1'). "
+            "Requires --chrome-user-data-dir."
+        ),
+    )
+    parser.add_argument(
         "--output-dir",
         default=str(Path(__file__).resolve().parent.parent / "data"),
         help="Where to write capture artifacts (json/csv/png).",
@@ -311,6 +334,9 @@ def main() -> None:
     if not args.url:
         raise SystemExit("Missing --url (or TV_SCREENER_URL).")
 
+    if args.chrome_profile and not args.chrome_user_data_dir:
+        raise SystemExit("Missing --chrome-user-data-dir (required when --chrome-profile is set).")
+
     screens = [s.strip() for s in str(args.screens).split(",") if s.strip()]
     if not screens:
         screens = [""]
@@ -320,7 +346,8 @@ def main() -> None:
             capture_screener(
                 url=args.url,
                 screen=screen or None,
-                profile_dir=Path(args.profile_dir),
+                profile_dir=Path(args.chrome_user_data_dir or args.profile_dir),
+                chrome_profile=(args.chrome_profile or None),
                 headless=bool(args.headless),
                 max_rows=int(args.max_rows),
                 wait_for_manual_login=bool(args.wait_login),
