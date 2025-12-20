@@ -24,10 +24,11 @@ export function AgentPanel() {
         <div className="min-w-0 pr-2 text-sm font-medium" title={headerTitle}>
           <div className="truncate">{headerTitle}</div>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-0.5">
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
+            className="h-8 w-8"
             onClick={() => setAgent((prev) => ({ ...prev, historyOpen: !prev.historyOpen }))}
             title="History"
           >
@@ -35,7 +36,8 @@ export function AgentPanel() {
           </Button>
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
+            className="h-8 w-8"
             onClick={() => {
               createEmptySession();
               setAgent((prev) => ({ ...prev, historyOpen: false }));
@@ -46,7 +48,8 @@ export function AgentPanel() {
           </Button>
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
+            className="h-8 w-8"
             onClick={() =>
               setAgent((prev) => ({ ...prev, mode: prev.mode === 'docked' ? 'maximized' : 'docked' }))
             }
@@ -60,7 +63,8 @@ export function AgentPanel() {
           </Button>
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
+            className="h-8 w-8"
             onClick={() => setAgent((prev) => ({ ...prev, visible: false, mode: 'docked' }))}
             title="Hide"
           >
