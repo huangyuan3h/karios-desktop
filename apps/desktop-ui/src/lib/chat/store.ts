@@ -25,9 +25,14 @@ function nowIso() {
 }
 
 export function useChatStore() {
-  const [state, setState] = React.useState<PersistedState>(() =>
-    loadJson<PersistedState>(STORAGE_KEY, defaultState),
-  );
+  // IMPORTANT: Do not read localStorage during the initial render.
+  // This prevents SSR/CSR mismatches (hydration errors). We load persisted state after mount.
+  const [state, setState] = React.useState<PersistedState>(defaultState);
+
+  React.useEffect(() => {
+    const loaded = loadJson<PersistedState>(STORAGE_KEY, defaultState);
+    setState(loaded);
+  }, []);
 
   React.useEffect(() => {
     saveJson(STORAGE_KEY, state);
