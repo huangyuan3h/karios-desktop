@@ -9,19 +9,6 @@ import { newId } from '@/lib/id';
 import { useChatStore } from '@/lib/chat/store';
 import type { ChatAttachment, ChatMessage } from '@/lib/chat/types';
 
-type ModelMessage = { role: 'system' | 'user' | 'assistant'; content: string };
-
-function toModelMessages(messages: ChatMessage[], systemPrompt: string): ModelMessage[] {
-  const out: ModelMessage[] = [];
-  const sp = systemPrompt.trim();
-  if (sp) out.push({ role: 'system', content: sp });
-  for (const m of messages) {
-    if (m.role === 'system') continue;
-    out.push({ role: m.role, content: m.content });
-  }
-  return out;
-}
-
 export function ChatPanel() {
   const { activeSession, createSession, appendMessages, updateMessageContent, state, renameSession } =
     useChatStore();
@@ -84,9 +71,18 @@ export function ChatPanel() {
 
           appendMessages(activeSession.id, [userMessage, assistantMessage]);
 
-          // v0: send text-only messages; attachments are stored locally for now.
+          const sp = state.settings.systemPrompt.trim();
           const payload = {
-            messages: toModelMessages([...messages, userMessage], state.settings.systemPrompt),
+            messages: [
+              ...(sp ? [{ role: 'system' as const, content: sp }] : []),
+              ...[...messages, userMessage]
+                .filter((m) => m.role !== 'system')
+                .map((m) => ({
+                  role: m.role,
+                  content: m.content,
+                  attachments: m.attachments,
+                })),
+            ],
           };
 
           (async () => {

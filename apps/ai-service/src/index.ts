@@ -3,19 +3,12 @@ import 'dotenv/config';
 import { serve } from '@hono/node-server';
 import { cors } from 'hono/cors';
 import { Hono } from 'hono';
-import { generateText, streamText, type ModelMessage } from 'ai';
+import { generateText, streamText } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 
-const ChatRequestSchema = z.object({
-  messages: z.array(
-    z.object({
-      role: z.enum(['system', 'user', 'assistant']),
-      content: z.string(),
-    }),
-  ),
-});
+import { ChatRequestSchema, toModelMessagesFromChatRequest } from './chat';
 
 const TitleRequestSchema = z.object({
   text: z.string().min(1).max(8000),
@@ -49,7 +42,7 @@ app.post('/chat', async (c) => {
     return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
   }
 
-  const messages = parsed.data.messages as ModelMessage[];
+  const messages = toModelMessagesFromChatRequest(parsed.data);
 
   let model;
   try {
