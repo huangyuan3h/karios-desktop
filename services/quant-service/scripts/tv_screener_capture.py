@@ -292,6 +292,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--screenshot", action="store_true", help="Save a full-page screenshot.")
     parser.add_argument("--max-rows", type=int, default=200, help="Max rows to capture.")
+    parser.add_argument(
+        "--print",
+        action="store_true",
+        help="Print captured headers and rows to stdout (best-effort).",
+    )
+    parser.add_argument(
+        "--print-rows",
+        type=int,
+        default=10,
+        help="How many rows to print per screen when --print is enabled.",
+    )
     return parser.parse_args()
 
 
@@ -320,6 +331,12 @@ def main() -> None:
         name = result.screen or "(current)"
         print(f"\nScreen: {name}")
         print(f"Captured rows: {len(result.rows)}")
+        if args.print:
+            print("Headers:", ", ".join(result.headers))
+            n = max(0, int(args.print_rows))
+            sample = result.rows[:n]
+            print(f"Rows (first {len(sample)}):")
+            print(json.dumps(sample, ensure_ascii=False, indent=2))
         if result.rows:
             first = result.rows[0]
             print("Sample row keys:", ", ".join(list(first.keys())[:8]))
