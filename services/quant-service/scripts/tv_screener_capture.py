@@ -483,6 +483,18 @@ def main() -> None:
         bool(args.chrome_user_data_dir) and not bool(args.mock_keychain)
     )
 
+    # IMPORTANT: Reusing a real Chrome profile requires running the system Chrome channel.
+    # Playwright's bundled Chromium/Chrome-for-Testing may fail to decrypt tokens/cookies from
+    # the real Chrome profile on macOS (and can crash early with SIGTRAP).
+    if args.chrome_user_data_dir and str(args.browser) != "chrome":
+        raise SystemExit(
+            "When using --chrome-user-data-dir, you must use --browser chrome.\n"
+            "Reason: bundled Chromium/Chrome-for-Testing cannot reliably decrypt the real Chrome "
+            "profile tokens/cookies on macOS.\n"
+            "Fix: re-run with --browser chrome, or omit --chrome-user-data-dir and use a dedicated "
+            "playwright profile directory."
+        )
+
     targets = [t.strip() for t in str(args.targets).split(",") if t.strip()]
     plan: list[tuple[str, str | None]]
     if targets:
