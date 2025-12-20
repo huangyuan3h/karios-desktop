@@ -11,14 +11,14 @@ export function ChatSessionList({ onSelected }: { onSelected?: () => void }) {
   const { state, activeSession, setActiveSession, deleteSession } = useChatStore();
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between px-3 py-2">
         <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           Chats
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto px-2 pb-2">
+      <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
         <div className="flex flex-col gap-1">
           {state.sessions.map((s) => {
             const isActive = activeSession?.id === s.id;

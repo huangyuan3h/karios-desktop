@@ -25,6 +25,8 @@ function toModelMessages(messages: ChatMessage[], systemPrompt: string): ModelMe
 export function ChatPanel() {
   const { activeSession, createSession, appendMessages, updateMessageContent, state, renameSession } =
     useChatStore();
+  const scrollerRef = React.useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = React.useRef(true);
 
   React.useEffect(() => {
     if (!activeSession) {
@@ -34,10 +36,28 @@ export function ChatPanel() {
   }, []);
 
   const messages: ChatMessage[] = activeSession?.messages ?? [];
+  const lastMessageId = messages[messages.length - 1]?.id ?? '';
+  const lastMessageLen = messages[messages.length - 1]?.content?.length ?? 0;
+
+  React.useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    if (!stickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages.length, lastMessageId, lastMessageLen]);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-auto">
+    <div className="flex h-full min-h-0 flex-col">
+      <div
+        ref={scrollerRef}
+        className="min-h-0 flex-1 overflow-auto"
+        onScroll={() => {
+          const el = scrollerRef.current;
+          if (!el) return;
+          const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+          stickToBottomRef.current = distanceToBottom < 80;
+        }}
+      >
         <ChatMessageList messages={messages} />
       </div>
 
