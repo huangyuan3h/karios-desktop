@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { PanelRightClose, PanelRightOpen, Search } from 'lucide-react';
+import { Bot, Search } from 'lucide-react';
 
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
@@ -101,11 +101,7 @@ export function AppShell() {
               onClick={() => setAgent((prev) => ({ ...prev, visible: !prev.visible, mode: 'docked' }))}
               title={agentVisible ? 'Hide agent' : 'Show agent'}
             >
-              {agentVisible ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRightOpen className="h-4 w-4" />
-              )}
+              <Bot className="h-4 w-4" />
             </Button>
             <div className="grid h-9 w-9 place-items-center rounded-full bg-[var(--k-accent)] text-sm font-semibold text-white">
               U
