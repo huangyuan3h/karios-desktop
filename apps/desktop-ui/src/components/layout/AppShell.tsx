@@ -18,13 +18,27 @@ export function AppShell() {
 
   const [activePage, setActivePage] = React.useState('dashboard');
   const draggingRef = React.useRef(false);
+  const agentVisibleRef = React.useRef(agentVisible);
+  const agentModeRef = React.useRef(agentMode);
+
+  React.useEffect(() => {
+    agentVisibleRef.current = agentVisible;
+    agentModeRef.current = agentMode;
+    if (!agentVisible) {
+      // If the agent panel is hidden while dragging, stop resizing immediately.
+      draggingRef.current = false;
+    }
+  }, [agentVisible, agentMode]);
 
   React.useEffect(() => {
     function onMove(e: MouseEvent) {
       if (!draggingRef.current) return;
+      // Only allow resizing when the agent panel is visible and docked.
+      if (!agentVisibleRef.current) return;
+      if (agentModeRef.current !== 'docked') return;
       const vw = window.innerWidth;
       const next = Math.min(720, Math.max(320, vw - e.clientX));
-      setAgent((prev) => ({ ...prev, width: next, visible: true, mode: 'docked' }));
+      setAgent((prev) => ({ ...prev, width: next }));
     }
     function onUp() {
       draggingRef.current = false;
@@ -86,6 +100,8 @@ export function AppShell() {
             <div
               className="w-1 cursor-col-resize bg-transparent hover:bg-[var(--k-border)]"
               onMouseDown={() => {
+                if (!agentVisible) return;
+                if (agentMode !== 'docked') return;
                 draggingRef.current = true;
               }}
               role="separator"
