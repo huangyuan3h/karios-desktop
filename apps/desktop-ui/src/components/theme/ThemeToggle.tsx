@@ -1,9 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { Moon, Sun } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 
 const STORAGE_KEY = 'karios.theme';
 
@@ -32,20 +31,16 @@ export function ThemeToggle() {
   }, []);
 
   return (
-    <Button
-      variant="secondary"
-      size="sm"
-      className="h-9 w-9 rounded-full p-0"
-      onClick={() => {
-        const next: Theme = theme === 'dark' ? 'light' : 'dark';
+    <Switch
+      checked={theme === 'dark'}
+      onCheckedChange={(checked) => {
+        const next: Theme = checked ? 'dark' : 'light';
         setTheme(next);
         setThemeState(next);
       }}
       title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
       aria-label="Toggle theme"
-    >
-      {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-    </Button>
+    />
   );
 }
 
