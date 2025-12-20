@@ -26,6 +26,8 @@ Family investment analyzer desktop app (AI-first).
 pnpm dev
 ```
 
+This will auto-kill any processes listening on ports 3000/3001/4310/4320 before starting.
+
 ### Install all dependencies (Node + Python)
 
 ```bash
