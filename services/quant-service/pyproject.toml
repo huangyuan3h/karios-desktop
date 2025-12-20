@@ -28,6 +28,7 @@ pythonpath = ["."]
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "playwright>=1.55.0",
     "pyright>=1.1.407",
     "pytest>=9.0.2",
     "ruff>=0.14.10",
