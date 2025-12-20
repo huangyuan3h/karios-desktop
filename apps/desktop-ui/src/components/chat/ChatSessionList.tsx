@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Trash2 } from 'lucide-react';
+import { X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
@@ -52,16 +52,15 @@ export function ChatSessionList({ onSelected }: { onSelected?: () => void }) {
                     'opacity-0 transition-opacity group-hover:opacity-100',
                     isActive ? 'opacity-100' : '',
                   )}
-                  title="Delete chat"
-                  aria-label="Delete chat"
+                  title="Delete thread"
+                  aria-label="Delete thread"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (!confirm('Delete this thread?')) return;
                     deleteSession(s.id);
                   }}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <X className="h-4 w-4" />
                 </Button>
               </div>
             );
