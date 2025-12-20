@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* Make Tailwind's `dark:` variant follow our in-app theme switch instead of OS media query. */
+@custom-variant dark (&:where(html[data-theme="dark"], html[data-theme="dark"] *));
+
 /* App theme tokens (v0).
    We use CSS variables so theme switching is instant and consistent across the UI. */
 :root {
