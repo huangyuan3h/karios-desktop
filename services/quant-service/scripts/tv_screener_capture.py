@@ -160,15 +160,12 @@ async def capture_screener(
     wait_for_manual_login: bool,
     output_dir: Path,
     screenshot: bool,
-    verbose: bool,
 ) -> CaptureResult:
     async with async_playwright() as p:
         args: list[str] = []
         if chrome_profile:
             # Works with Chrome user data dir; must match an existing profile directory name.
             args.append(f"--profile-directory={chrome_profile}")
-        # Reduce first-run interruptions when using a fresh profile directory.
-        args.extend(["--no-first-run", "--no-default-browser-check"])
 
         context = await p.chromium.launch_persistent_context(
             user_data_dir=str(profile_dir),
@@ -177,37 +174,10 @@ async def capture_screener(
             viewport={"width": 1280, "height": 820},
             args=args,
         )
-        # Always navigate using a fresh tab to avoid restored tabs / extension pages.
-        try:
-            for existing in context.pages:
-                await existing.close()
-        except Exception:
-            # Best-effort cleanup.
-            pass
-        page = await context.new_page()
-        context.set_default_timeout(30_000)
+        page = context.pages[0] if context.pages else await context.new_page()
 
-        if verbose:
-            profile_name = chrome_profile or "(auto)"
-            print(f"[tv] Launch ok. user_data_dir={profile_dir}")
-            print(f"[tv] Using profile: {profile_name}")
-            print(f"[tv] Navigating to: {url}")
-
-        try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-        except Exception as e:
-            if verbose:
-                print(f"[tv] goto failed: {e!r}")
-                print(f"[tv] current url: {page.url}")
-            await context.close()
-            raise
-
+        await page.goto(url, wait_until="domcontentloaded")
         await page.wait_for_timeout(1200)
-        if verbose:
-            try:
-                print(f"[tv] Loaded. title={await page.title()!r} url={page.url}")
-            except Exception:
-                print(f"[tv] Loaded. url={page.url}")
 
         if wait_for_manual_login:
             print("\n[Manual step] Login / confirm the screener is visible.")
@@ -215,8 +185,6 @@ async def capture_screener(
             await asyncio.to_thread(input)
 
         if screen:
-            if verbose:
-                print(f"[tv] Selecting screen: {screen}")
             await select_saved_screen(page, screen)
             await page.wait_for_timeout(800)
 
@@ -358,7 +326,6 @@ def parse_args() -> argparse.Namespace:
         default=10,
         help="How many rows to print per screen when --print is enabled.",
     )
-    parser.add_argument("--verbose", action="store_true", help="Print verbose progress logs.")
     return parser.parse_args()
 
 
@@ -386,7 +353,6 @@ def main() -> None:
                 wait_for_manual_login=bool(args.wait_login),
                 output_dir=Path(args.output_dir),
                 screenshot=bool(args.screenshot),
-                verbose=bool(args.verbose),
             ),
         )
         name = result.screen or "(current)"
