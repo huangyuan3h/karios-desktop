@@ -9,17 +9,21 @@ import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
 
 export function AgentPanel() {
-  const { state, setAgent, createEmptySession } = useChatStore();
+  const { state, setAgent, createEmptySession, activeSession } = useChatStore();
   const { visible, mode, historyOpen } = state.agent;
 
   if (!visible) {
     return null;
   }
 
+  const headerTitle = activeSession?.title?.trim() ? activeSession.title.trim() : 'Kairos AI';
+
   return (
     <div className="flex h-full flex-col bg-[var(--k-surface)]">
       <div className="flex items-center justify-between border-b border-[var(--k-border)] px-3 py-2">
-        <div className="text-sm font-medium">Kairos AI</div>
+        <div className="min-w-0 pr-2 text-sm font-medium" title={headerTitle}>
+          <div className="truncate">{headerTitle}</div>
+        </div>
         <div className="flex gap-2">
           <Button
             variant="ghost"
