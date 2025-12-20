@@ -26,6 +26,8 @@ export type ChatSession = {
 
 export type AppSettings = {
   systemPrompt: string;
+  systemPromptId: string | null;
+  systemPromptTitle: string;
 };
 
 export type AgentPanelState = {

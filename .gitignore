@@ -20,6 +20,11 @@ __pycache__/
 *.pyc
 .venv/
 
+# Local databases
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
 # Tauri / Rust
 target/
 src-tauri/target/

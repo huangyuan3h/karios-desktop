@@ -20,7 +20,7 @@ const defaultState: PersistedState = {
   sessions: [],
   activeSessionId: null,
   agent: { visible: true, mode: 'docked', width: 420, historyOpen: false },
-  settings: { systemPrompt: '' },
+  settings: { systemPrompt: '', systemPromptId: null, systemPromptTitle: 'Legacy' },
 };
 
 function nowIso() {
@@ -46,6 +46,7 @@ export type ChatStoreApi = {
   updateMessageContent: (sessionId: string, messageId: string, content: string) => void;
   setAgent: (updater: (prev: AgentPanelState) => AgentPanelState) => void;
   setSystemPrompt: (value: string) => Promise<void>;
+  setSystemPromptLocal: (next: { id: string | null; title: string; content: string }) => void;
 };
 
 const ChatStoreContext = React.createContext<ChatStoreApi | null>(null);
@@ -155,7 +156,10 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
         setState((prev) => ({ ...prev, agent: updater(prev.agent) }));
       },
       setSystemPrompt: async (value: string) => {
-        setState((prev) => ({ ...prev, settings: { ...prev.settings, systemPrompt: value } }));
+        setState((prev) => ({
+          ...prev,
+          settings: { ...prev.settings, systemPrompt: value },
+        }));
         try {
           await fetch(`${QUANT_BASE_URL}/settings/system-prompt`, {
             method: 'PUT',
@@ -166,6 +170,17 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
           // Best-effort for v0 (backend may be offline).
         }
       },
+      setSystemPromptLocal: (next: { id: string | null; title: string; content: string }) => {
+        setState((prev) => ({
+          ...prev,
+          settings: {
+            ...prev.settings,
+            systemPromptId: next.id,
+            systemPromptTitle: next.title,
+            systemPrompt: next.content,
+          },
+        }));
+      },
     };
   }, [state, activeSession]);
 
@@ -174,12 +189,30 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     async function loadFromBackend() {
       try {
-        const resp = await fetch(`${QUANT_BASE_URL}/settings/system-prompt`);
-        if (!resp.ok) return;
-        const data = (await resp.json()) as { value?: string };
-        const value = typeof data.value === 'string' ? data.value : '';
+        // Prefer presets API (v0.2+). Fall back to legacy single-value API.
+        const resp = await fetch(`${QUANT_BASE_URL}/system-prompts/active`);
+        if (resp.ok) {
+          const data = (await resp.json()) as { id?: string | null; title?: string; content?: string };
+          const content = typeof data.content === 'string' ? data.content : '';
+          const title = typeof data.title === 'string' ? data.title : 'Legacy';
+          const id = data.id === null || typeof data.id === 'string' ? (data.id ?? null) : null;
+          if (cancelled) return;
+          setState((prev) => ({
+            ...prev,
+            settings: { ...prev.settings, systemPromptId: id, systemPromptTitle: title, systemPrompt: content },
+          }));
+          return;
+        }
+
+        const legacy = await fetch(`${QUANT_BASE_URL}/settings/system-prompt`);
+        if (!legacy.ok) return;
+        const legacyData = (await legacy.json()) as { value?: string };
+        const value = typeof legacyData.value === 'string' ? legacyData.value : '';
         if (cancelled) return;
-        setState((prev) => ({ ...prev, settings: { ...prev.settings, systemPrompt: value } }));
+        setState((prev) => ({
+          ...prev,
+          settings: { ...prev.settings, systemPromptId: null, systemPromptTitle: 'Legacy', systemPrompt: value },
+        }));
       } catch {
         // ignore
       }
