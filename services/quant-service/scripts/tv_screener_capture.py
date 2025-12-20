@@ -88,6 +88,12 @@ async def detect_screen_title(page) -> str | None:
                 return text
         except Exception:
             continue
+    try:
+        title = (await page.title()).strip()
+        if title and len(title) <= 200:
+            return title
+    except Exception:
+        pass
     return None
 
 
@@ -96,18 +102,51 @@ async def find_screener_grid(page) -> Any | None:
     Best-effort: find a visible ARIA grid that looks like a screener table.
     TradingView UI may change. We use heuristics rather than brittle selectors.
     """
-    grids = page.locator("[role=grid]")
-    count = await grids.count()
+    # Column header keywords (English + Chinese). Expand if needed.
+    keywords = [
+        "symbol",
+        "ticker",
+        "code",
+        "代码",
+        "名称",
+        "股票",
+    ]
+
+    async def headers_match(container) -> bool:
+        # ARIA grids
+        cols = container.locator("[role=columnheader]")
+        if await cols.count() > 0:
+            texts: list[str] = []
+            for i in range(await cols.count()):
+                t = (await cols.nth(i).inner_text()).strip()
+                if t:
+                    texts.append(t)
+            joined = " | ".join(texts).lower()
+            return any(k in joined for k in keywords)
+
+        # Plain table fallback
+        th = container.locator("th")
+        if await th.count() > 0:
+            texts = []
+            for i in range(await th.count()):
+                t = (await th.nth(i).inner_text()).strip()
+                if t:
+                    texts.append(t)
+            joined = " | ".join(texts).lower()
+            return any(k in joined for k in keywords)
+
+        return False
+
+    candidates = page.locator('[role="grid"], [role="treegrid"], table')
+    count = await candidates.count()
     for i in range(count):
-        g = grids.nth(i)
+        c = candidates.nth(i)
         try:
-            if not await g.is_visible():
+            if not await c.is_visible():
                 continue
-            # Heuristic: the screener grid usually has a "Symbol" column header.
-            if await g.get_by_text("Symbol", exact=True).count() > 0:
-                return g
+            if await headers_match(c):
+                return c
         except Exception:
-            # Ignore a single grid that fails and continue.
             continue
     return None
 
@@ -314,6 +353,14 @@ async def capture_screener(
 
         grid = await find_screener_grid(page)
         if grid is None:
+            if screenshot:
+                output_dir.mkdir(parents=True, exist_ok=True)
+                ts = now_utc_compact()
+                png_path = output_dir / f"tv-screener-fail-grid-{ts}.png"
+                try:
+                    await page.screenshot(path=str(png_path), full_page=True)
+                except Exception:
+                    pass
             raise RuntimeError(
                 "Cannot locate screener grid. "
                 "Try using a direct screener URL and ensure the table is visible."
