@@ -39,6 +39,7 @@ export type ChatStoreApi = {
   state: PersistedState;
   activeSession: ChatSession | null;
   createSession: () => void;
+  createEmptySession: () => void;
   setActiveSession: (id: string) => void;
   renameSession: (id: string, title: string) => void;
   appendMessages: (sessionId: string, messages: ChatMessage[]) => void;
@@ -93,6 +94,21 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
               createdAt: nowIso(),
             },
           ],
+        };
+        setState((prev) => ({
+          ...prev,
+          sessions: [session, ...prev.sessions],
+          activeSessionId: id,
+        }));
+      },
+      createEmptySession: () => {
+        const id = newId();
+        const session: ChatSession = {
+          id,
+          title: 'New chat',
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+          messages: [],
         };
         setState((prev) => ({
           ...prev,

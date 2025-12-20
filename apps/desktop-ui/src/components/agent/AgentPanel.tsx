@@ -1,6 +1,6 @@
 'use client';
 
-import { History, Maximize2, Minimize2, PanelRightClose } from 'lucide-react';
+import { History, Maximize2, Minimize2, PanelRightClose, Plus } from 'lucide-react';
 
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { ChatSessionList } from '@/components/chat/ChatSessionList';
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
 
 export function AgentPanel() {
-  const { state, setAgent } = useChatStore();
+  const { state, setAgent, createEmptySession } = useChatStore();
   const { visible, mode, historyOpen } = state.agent;
 
   if (!visible) {
@@ -28,6 +28,17 @@ export function AgentPanel() {
             title="History"
           >
             <History className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              createEmptySession();
+              setAgent((prev) => ({ ...prev, historyOpen: false }));
+            }}
+            title="New thread"
+          >
+            <Plus className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"

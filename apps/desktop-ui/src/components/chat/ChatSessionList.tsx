@@ -8,7 +8,7 @@ import { useChatStore } from '@/lib/chat/store';
 import { cn } from '@/lib/utils';
 
 export function ChatSessionList({ onSelected }: { onSelected?: () => void }) {
-  const { state, activeSession, createSession, setActiveSession } = useChatStore();
+  const { state, activeSession, createEmptySession, setActiveSession } = useChatStore();
 
   return (
     <div className="flex h-full flex-col">
@@ -19,7 +19,7 @@ export function ChatSessionList({ onSelected }: { onSelected?: () => void }) {
         <Button
           variant="secondary"
           size="sm"
-          onClick={createSession}
+          onClick={createEmptySession}
           className="h-7 px-2"
           title="New chat"
         >
