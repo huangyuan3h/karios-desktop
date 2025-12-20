@@ -24,7 +24,7 @@ export function AgentPanel() {
         <div className="min-w-0 pr-2 text-sm font-medium" title={headerTitle}>
           <div className="truncate">{headerTitle}</div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1">
           <Button
             variant="ghost"
             size="sm"
