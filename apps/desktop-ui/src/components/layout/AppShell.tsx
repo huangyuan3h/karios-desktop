@@ -9,17 +9,21 @@ import { DashboardPage } from '@/components/pages/DashboardPage';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
+import { cn } from '@/lib/utils';
 
 export function AppShell() {
   const { state, setAgent } = useChatStore();
   const agentVisible = state.agent.visible;
   const agentMode = state.agent.mode;
   const agentWidth = state.agent.width;
+  const agentMaximized = agentVisible && agentMode === 'maximized';
 
   const [activePage, setActivePage] = React.useState('dashboard');
   const draggingRef = React.useRef(false);
   const agentVisibleRef = React.useRef(agentVisible);
   const agentModeRef = React.useRef(agentMode);
+  const [overlayMounted, setOverlayMounted] = React.useState(false);
+  const [overlayEntered, setOverlayEntered] = React.useState(false);
 
   React.useEffect(() => {
     agentVisibleRef.current = agentVisible;
@@ -50,6 +54,24 @@ export function AppShell() {
       window.removeEventListener('mouseup', onUp);
     };
   }, [setAgent]);
+
+  React.useEffect(() => {
+    let raf = 0;
+    let t: number | null = null;
+    if (agentMaximized) {
+      setOverlayMounted(true);
+      raf = window.requestAnimationFrame(() => setOverlayEntered(true));
+    } else {
+      setOverlayEntered(false);
+      if (overlayMounted) {
+        t = window.setTimeout(() => setOverlayMounted(false), 180);
+      }
+    }
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      if (t) window.clearTimeout(t);
+    };
+  }, [agentMaximized, overlayMounted]);
 
   return (
     <div className="flex h-screen w-screen bg-[var(--k-bg)] text-[var(--k-text)]">
@@ -110,10 +132,10 @@ export function AppShell() {
             />
           ) : null}
 
-          {agentVisible ? (
+          {agentVisible && agentMode !== 'maximized' ? (
             <div
-              className={agentMode === 'maximized' ? 'w-full' : 'shrink-0'}
-              style={agentMode === 'maximized' ? undefined : { width: agentWidth }}
+              className="shrink-0"
+              style={{ width: agentWidth }}
             >
               <div className="h-full border-l border-[var(--k-border)]">
                 <AgentPanel />
@@ -122,6 +144,30 @@ export function AppShell() {
           ) : null}
         </div>
       </main>
+
+      {overlayMounted ? (
+        <div
+          className={cn(
+            'fixed inset-0 z-50',
+            'bg-black/20 backdrop-blur-[2px]',
+            'transition-opacity duration-200',
+            overlayEntered ? 'opacity-100' : 'opacity-0',
+          )}
+          aria-hidden={!overlayEntered}
+        >
+          <div
+            className={cn(
+              'absolute inset-0',
+              'transition-transform duration-200 will-change-transform',
+              overlayEntered ? 'translate-y-0 scale-100' : 'translate-y-2 scale-[0.985]',
+            )}
+          >
+            <div className="h-full w-full bg-[var(--k-bg)]">
+              <AgentPanel />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
