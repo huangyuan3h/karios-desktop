@@ -25,6 +25,26 @@ function nowIso() {
 }
 
 export function useChatStore() {
+  const ctx = React.useContext(ChatStoreContext);
+  if (!ctx) {
+    throw new Error('useChatStore must be used within <ChatStoreProvider>.');
+  }
+  return ctx;
+}
+
+export type ChatStoreApi = {
+  state: PersistedState;
+  activeSession: ChatSession | null;
+  createSession: () => void;
+  setActiveSession: (id: string) => void;
+  renameSession: (id: string, title: string) => void;
+  appendMessages: (sessionId: string, messages: ChatMessage[]) => void;
+  setAgent: (updater: (prev: AgentPanelState) => AgentPanelState) => void;
+};
+
+const ChatStoreContext = React.createContext<ChatStoreApi | null>(null);
+
+export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
   // IMPORTANT: Do not read localStorage during the initial render.
   // This prevents SSR/CSR mismatches (hydration errors). We load persisted state after mount.
   const [state, setState] = React.useState<PersistedState>(defaultState);
@@ -42,7 +62,13 @@ export function useChatStore() {
     state.sessions.find((s) => s.id === state.activeSessionId) ??
     (state.sessions[0] ?? null);
 
-  const api = React.useMemo(() => {
+  React.useEffect(() => {
+    if (!state.activeSessionId && state.sessions.length > 0) {
+      setState((prev) => ({ ...prev, activeSessionId: prev.sessions[0]?.id ?? null }));
+    }
+  }, [state.activeSessionId, state.sessions.length]);
+
+  const api = React.useMemo<ChatStoreApi>(() => {
     return {
       state,
       activeSession,
@@ -97,13 +123,6 @@ export function useChatStore() {
     };
   }, [state, activeSession]);
 
-  React.useEffect(() => {
-    if (!state.activeSessionId && state.sessions.length > 0) {
-      setState((prev) => ({ ...prev, activeSessionId: prev.sessions[0]?.id ?? null }));
-    }
-  }, [state.activeSessionId, state.sessions.length]);
-
-  return api;
+  return React.createElement(ChatStoreContext.Provider, { value: api }, children);
 }
-
 
