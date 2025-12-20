@@ -1,3 +1,5 @@
+import { Button } from '@/components/ui/button';
+
 export function DashboardPage() {
   return (
     <div className="p-6">
@@ -12,9 +14,9 @@ export function DashboardPage() {
         <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-medium">Recent Reports</div>
-            <button className="text-xs text-[var(--k-muted)] hover:text-[var(--k-text)]">
+            <Button variant="link" size="sm" className="h-auto px-0 py-0 text-xs">
               View all
-            </button>
+            </Button>
           </div>
           <div className="space-y-2">
             {[

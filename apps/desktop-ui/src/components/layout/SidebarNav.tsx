@@ -8,6 +8,7 @@ import {
   Settings,
 } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const items = [
@@ -39,20 +40,18 @@ export function SidebarNav({
           const Icon = it.icon;
           const active = it.id === activeId;
           return (
-            <button
+            <Button
               key={it.id}
-              type="button"
               onClick={() => onSelect(it.id)}
+              variant="ghost"
               className={cn(
-                'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
-                active
-                  ? 'bg-[var(--k-surface-2)] text-[var(--k-text)]'
-                  : 'text-[var(--k-muted)] hover:bg-[var(--k-surface-2)]',
+                'h-auto w-full justify-start gap-3 px-3 py-2 text-sm',
+                active ? 'bg-[var(--k-surface-2)]' : 'text-[var(--k-muted)]',
               )}
             >
               <Icon className="h-4 w-4" />
               {it.label}
-            </button>
+            </Button>
           );
         })}
       </nav>

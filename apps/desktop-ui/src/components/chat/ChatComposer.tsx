@@ -130,14 +130,15 @@ export function ChatComposer({
                 className="h-16 w-16 rounded-md border border-[var(--k-border)] object-cover"
                 unoptimized
               />
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="icon"
                 className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] text-[var(--k-muted)] shadow-sm hover:text-[var(--k-text)]"
                 onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
                 aria-label="Remove image context"
               >
                 <X className="h-4 w-4" />
-              </button>
+              </Button>
             </div>
           ))}
         </div>

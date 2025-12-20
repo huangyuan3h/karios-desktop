@@ -86,9 +86,10 @@ export function SystemPromptEditor() {
 
   return (
     <div className="border-b border-[var(--k-border)]">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between px-3 py-2 text-left"
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-auto w-full justify-between px-3 py-2"
         onClick={() => setOpen((v) => !v)}
       >
         <div className="min-w-0">
@@ -98,7 +99,7 @@ export function SystemPromptEditor() {
           <div className="truncate text-xs text-[var(--k-text)]">{state.settings.systemPromptTitle}</div>
         </div>
         <ChevronDown className={`h-4 w-4 text-[var(--k-muted)] transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
+      </Button>
 
       {open ? (
         <div className="space-y-2 px-3 pb-3">

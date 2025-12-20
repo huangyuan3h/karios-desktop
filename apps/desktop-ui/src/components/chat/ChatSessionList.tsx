@@ -30,26 +30,26 @@ export function ChatSessionList({ onSelected }: { onSelected?: () => void }) {
       <div className="flex-1 overflow-auto px-2 pb-2">
         <div className="flex flex-col gap-1">
           {state.sessions.map((s) => (
-            <button
+            <Button
               key={s.id}
-              type="button"
               onClick={() => {
                 setActiveSession(s.id);
                 onSelected?.();
               }}
+              variant="ghost"
+              size="sm"
               className={cn(
-                'w-full rounded-md px-3 py-2 text-left text-sm',
-                'hover:bg-zinc-100 dark:hover:bg-zinc-900',
+                'h-auto w-full justify-start px-3 py-2 text-left text-sm',
                 activeSession?.id === s.id
-                  ? 'bg-zinc-100 text-zinc-950 dark:bg-zinc-900 dark:text-zinc-50'
-                  : 'text-zinc-700 dark:text-zinc-300',
+                  ? 'bg-[var(--k-surface-2)] text-[var(--k-text)]'
+                  : 'text-[var(--k-muted)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]',
               )}
             >
               <div className="truncate">{s.title}</div>
               <div className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
                 {new Date(s.updatedAt).toLocaleString()}
               </div>
-            </button>
+            </Button>
           ))}
 
           {state.sessions.length === 0 ? (
