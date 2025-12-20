@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { X } from 'lucide-react';
+import { ArrowUp, X } from 'lucide-react';
 import Image from 'next/image';
 
 import { Button } from '@/components/ui/button';
@@ -102,15 +102,17 @@ export function ChatComposer({
               void addImageFiles(files);
             }
           }}
-          className="min-h-[64px] pr-16"
+          className="min-h-[64px] pr-12"
           disabled={disabled}
         />
         <Button
           onClick={submit}
           disabled={disabled || (!text.trim() && attachments.length === 0)}
-          className="absolute bottom-3 right-3 h-9 rounded-full px-4"
+          size="icon"
+          className="absolute bottom-3 right-3 h-9 w-9 rounded-full"
+          aria-label="Send"
         >
-          Send
+          <ArrowUp className="h-4 w-4" />
         </Button>
 
         {isDragging && !disabled ? (
