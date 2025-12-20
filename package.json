@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "turbo dev",
     "dev:tauri": "concurrently -k -n BE,TAURI -c auto \"turbo dev --filter=ai-service --filter=quant-service\" \"pnpm -C apps/desktop-ui tauri dev\"",
+    "install:all": "pnpm install && uv sync --project services/quant-service",
     "build": "turbo build",
     "test": "turbo test",
     "lint": "turbo lint",
@@ -20,5 +21,3 @@
     "turbo": "^2.5.6"
   }
 }
-
-

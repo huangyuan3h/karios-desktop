@@ -26,6 +26,12 @@ Family investment analyzer desktop app (AI-first).
 pnpm dev
 ```
 
+### Install all dependencies (Node + Python)
+
+```bash
+pnpm install:all
+```
+
 ## Docs
 
 See `docs/architecture-and-requirements.md`.
