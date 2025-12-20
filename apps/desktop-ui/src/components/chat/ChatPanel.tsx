@@ -4,12 +4,27 @@ import * as React from 'react';
 
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { ChatMessageList } from '@/components/chat/ChatMessageList';
+import { AI_BASE_URL } from '@/lib/endpoints';
 import { newId } from '@/lib/id';
 import { useChatStore } from '@/lib/chat/store';
 import type { ChatAttachment, ChatMessage } from '@/lib/chat/types';
 
+type ModelMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+
+function toModelMessages(messages: ChatMessage[], systemPrompt: string): ModelMessage[] {
+  const out: ModelMessage[] = [];
+  const sp = systemPrompt.trim();
+  if (sp) out.push({ role: 'system', content: sp });
+  for (const m of messages) {
+    if (m.role === 'system') continue;
+    out.push({ role: m.role, content: m.content });
+  }
+  return out;
+}
+
 export function ChatPanel() {
-  const { activeSession, createSession, appendMessages } = useChatStore();
+  const { activeSession, createSession, appendMessages, updateMessageContent, state } =
+    useChatStore();
 
   React.useEffect(() => {
     if (!activeSession) {
@@ -34,15 +49,61 @@ export function ChatPanel() {
       <ChatComposer
         onSend={(text: string, attachments: ChatAttachment[]) => {
           if (!activeSession) return;
-          appendMessages(activeSession.id, [
-            { id: newId(), role: 'user', content: text, createdAt: new Date().toISOString(), attachments },
-            {
-              id: newId(),
-              role: 'assistant',
-              content: 'AI service not connected yet. This is a UI placeholder.\n\n- Markdown supported\n- Images stored locally (v0)\n',
-              createdAt: new Date().toISOString(),
-            },
-          ]);
+          const now = new Date().toISOString();
+          const userMessage: ChatMessage = {
+            id: newId(),
+            role: 'user',
+            content: text,
+            createdAt: now,
+            attachments,
+          };
+          const assistantId = newId();
+          const assistantMessage: ChatMessage = {
+            id: assistantId,
+            role: 'assistant',
+            content: '',
+            createdAt: now,
+          };
+
+          appendMessages(activeSession.id, [userMessage, assistantMessage]);
+
+          // v0: send text-only messages; attachments are stored locally for now.
+          const payload = {
+            messages: toModelMessages([...messages, userMessage], state.settings.systemPrompt),
+          };
+
+          (async () => {
+            try {
+              const resp = await fetch(`${AI_BASE_URL}/chat`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(payload),
+              });
+
+              if (!resp.ok || !resp.body) {
+                const msg = await resp.text().catch(() => '');
+                updateMessageContent(
+                  activeSession.id,
+                  assistantId,
+                  `**Error**: AI service failed (${resp.status}).\n\n${msg}`,
+                );
+                return;
+              }
+
+              const reader = resp.body.getReader();
+              const decoder = new TextDecoder();
+              let acc = '';
+              while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                acc += decoder.decode(value, { stream: true });
+                updateMessageContent(activeSession.id, assistantId, acc);
+              }
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              updateMessageContent(activeSession.id, assistantId, `**Error**: ${message}`);
+            }
+          })();
         }}
       />
     </div>

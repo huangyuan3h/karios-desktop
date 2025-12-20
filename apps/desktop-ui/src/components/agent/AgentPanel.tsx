@@ -4,6 +4,7 @@ import { Maximize2, Minimize2, PanelRightClose } from 'lucide-react';
 
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { ChatSessionList } from '@/components/chat/ChatSessionList';
+import { SystemPromptEditor } from '@/components/agent/SystemPromptEditor';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
 
@@ -52,6 +53,7 @@ export function AgentPanel() {
               <div className="h-full">
                 <div className="grid h-full grid-rows-[auto_1fr]">
                   <div className="border-b border-zinc-200 dark:border-zinc-800">
+                    <SystemPromptEditor />
                     <ChatSessionList />
                   </div>
                   <ChatPanel />

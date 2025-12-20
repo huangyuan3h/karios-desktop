@@ -24,6 +24,10 @@ export type ChatSession = {
   messages: ChatMessage[];
 };
 
+export type AppSettings = {
+  systemPrompt: string;
+};
+
 export type AgentPanelState = {
   visible: boolean;
   mode: 'docked' | 'maximized';
