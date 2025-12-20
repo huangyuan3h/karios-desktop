@@ -178,6 +178,8 @@ async def capture_screener(
     screen: str | None,
     profile_dir: Path,
     chrome_profile: str | None,
+    browser: str,
+    launch_timeout_ms: int,
     headless: bool,
     max_rows: int,
     wait_for_manual_login: bool,
@@ -186,27 +188,49 @@ async def capture_screener(
     verbose: bool,
 ) -> CaptureResult:
     async with async_playwright() as p:
-        args: list[str] = []
-        if chrome_profile:
+        args: list[str] = ["--no-first-run", "--no-default-browser-check"]
+        if chrome_profile and browser in {"chrome", "chromium"}:
             # Works with Chrome user data dir; must match an existing profile directory name.
             args.append(f"--profile-directory={chrome_profile}")
-        # Reduce first-run interruptions when using a fresh profile directory.
-        args.extend(["--no-first-run", "--no-default-browser-check"])
 
         if verbose:
             profile_name = chrome_profile or "(auto)"
-            print("[tv] Launching Chrome (persistent context)…")
+            print("[tv] Launching browser (persistent context)…")
             print(f"[tv] user_data_dir={profile_dir}")
             print(f"[tv] profile={profile_name}")
+            print(f"[tv] browser={browser} headless={headless}")
 
-        context = await p.chromium.launch_persistent_context(
-            user_data_dir=str(profile_dir),
-            headless=headless,
-            channel="chrome",
-            viewport={"width": 1280, "height": 820},
-            args=args,
-            timeout=120_000,
-        )
+        # Wrap launch in asyncio.wait_for because in some cases the internal timeout
+        # doesn't surface promptly if the browser process hangs during startup.
+        if browser == "webkit":
+            launch_coro = p.webkit.launch_persistent_context(
+                user_data_dir=str(profile_dir),
+                headless=headless,
+                viewport={"width": 1280, "height": 820},
+                args=args,
+                timeout=launch_timeout_ms,
+            )
+        else:
+            launch_coro = p.chromium.launch_persistent_context(
+                user_data_dir=str(profile_dir),
+                headless=headless,
+                channel="chrome" if browser == "chrome" else None,
+                viewport={"width": 1280, "height": 820},
+                args=args,
+                timeout=launch_timeout_ms,
+            )
+
+        try:
+            context = await asyncio.wait_for(launch_coro, timeout=launch_timeout_ms / 1000)
+        except TimeoutError as e:
+            raise RuntimeError(
+                "Browser launch timed out. Most common causes:\n"
+                "- The Chrome user-data-dir is still locked (SingletonLock).\n"
+                "- Chrome background processes are still running.\n"
+                "- The profile is corrupted or prompts a modal dialog on startup.\n"
+                "Try: close Chrome completely, delete Singleton* files, or use --browser chromium."
+            ) from e
+
         # Navigate using a fresh tab to avoid restored tabs / extension pages.
         # Do NOT close existing tabs: closing the last tab can be flaky in persistent contexts.
         page = await context.new_page()
@@ -374,6 +398,22 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--browser",
+        default=os.getenv("TV_BROWSER", "chrome").strip().lower(),
+        choices=["chrome", "chromium", "webkit"],
+        help=(
+            "Browser engine to use. "
+            "chrome=system Chrome via Playwright channel (default); "
+            "chromium=Playwright bundled Chromium; webkit=Playwright WebKit."
+        ),
+    )
+    parser.add_argument(
+        "--launch-timeout-ms",
+        type=int,
+        default=120_000,
+        help="Browser launch timeout in milliseconds.",
+    )
+    parser.add_argument(
         "--output-dir",
         default=str(Path(__file__).resolve().parent.parent / "data"),
         help="Where to write capture artifacts (json/csv/png).",
@@ -430,6 +470,8 @@ def main() -> None:
                 screen=screen,
                 profile_dir=Path(args.chrome_user_data_dir or args.profile_dir),
                 chrome_profile=(args.chrome_profile or None),
+                browser=str(args.browser),
+                launch_timeout_ms=int(args.launch_timeout_ms),
                 headless=bool(args.headless),
                 max_rows=int(args.max_rows),
                 wait_for_manual_login=bool(args.wait_login),
