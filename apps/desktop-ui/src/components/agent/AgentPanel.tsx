@@ -1,6 +1,6 @@
 'use client';
 
-import { History, Maximize2, Minimize2, PanelRightClose, Plus } from 'lucide-react';
+import { History, Maximize2, Minimize2, Plus, X } from 'lucide-react';
 
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { ChatSessionList } from '@/components/chat/ChatSessionList';
@@ -64,7 +64,7 @@ export function AgentPanel() {
             onClick={() => setAgent((prev) => ({ ...prev, visible: false, mode: 'docked' }))}
             title="Hide"
           >
-            <PanelRightClose className="h-4 w-4" />
+            <X className="h-4 w-4" />
           </Button>
         </div>
       </div>
