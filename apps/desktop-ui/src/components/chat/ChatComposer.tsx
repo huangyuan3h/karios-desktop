@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { ImagePlus, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import Image from 'next/image';
 
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,32 @@ export function ChatComposer({
 }) {
   const [text, setText] = React.useState('');
   const [attachments, setAttachments] = React.useState<ChatAttachment[]>([]);
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [isDragging, setIsDragging] = React.useState(false);
+
+  const addImageFiles = React.useCallback(async (files: File[]) => {
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      if (file.size > 2 * 1024 * 1024) continue; // 2MB soft limit for v0 localStorage-friendly attachments
+
+      const dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ''));
+        reader.readAsDataURL(file);
+      });
+
+      setAttachments((prev) => [
+        ...prev,
+        {
+          id: newId(),
+          kind: 'image',
+          name: file.name || 'pasted-image',
+          mediaType: file.type || 'image/*',
+          dataUrl,
+          size: file.size,
+        },
+      ]);
+    }
+  }, []);
 
   function submit() {
     const trimmed = text.trim();
@@ -30,27 +55,86 @@ export function ChatComposer({
 
   return (
     <div className="border-t border-zinc-200 p-3 dark:border-zinc-800">
+      <div
+        className="relative"
+        onDragEnter={(e) => {
+          e.preventDefault();
+          if (disabled) return;
+          setIsDragging(true);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (disabled) return;
+          setIsDragging(true);
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+          if (disabled) return;
+          const files = Array.from(e.dataTransfer.files ?? []);
+          void addImageFiles(files);
+        }}
+      >
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Ask about your portfolio, imports, risk, or actions..."
+          onKeyDown={(e) => {
+            // Enter sends; Shift+Enter inserts newline.
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          onPaste={(e) => {
+            if (disabled) return;
+            const items = Array.from(e.clipboardData?.items ?? []);
+            const files: File[] = [];
+            for (const it of items) {
+              if (it.kind === 'file') {
+                const f = it.getAsFile();
+                if (f) files.push(f);
+              }
+            }
+            if (files.length > 0) {
+              e.preventDefault();
+              void addImageFiles(files);
+            }
+          }}
+          className="min-h-[64px] pr-16"
+          disabled={disabled}
+        />
+        <Button
+          onClick={submit}
+          disabled={disabled || (!text.trim() && attachments.length === 0)}
+          className="absolute bottom-3 right-3 h-9 rounded-full px-4"
+        >
+          Send
+        </Button>
+
+        {isDragging && !disabled ? (
+          <div className="pointer-events-none absolute inset-0 rounded-md border-2 border-dashed border-[var(--k-accent)] bg-[var(--k-accent)]/5" />
+        ) : null}
+      </div>
+
       {attachments.length > 0 ? (
-        <div className="mb-2 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           {attachments.map((a) => (
-            <div
-              key={a.id}
-              className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200"
-            >
+            <div key={a.id} className="group relative">
               <Image
                 src={a.dataUrl}
                 alt={a.name}
-                width={24}
-                height={24}
-                className="h-6 w-6 rounded object-cover"
+                width={64}
+                height={64}
+                className="h-16 w-16 rounded-md border border-[var(--k-border)] object-cover"
                 unoptimized
               />
-              <div className="max-w-[240px] truncate">{a.name}</div>
               <button
                 type="button"
-                className="text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+                className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] text-[var(--k-muted)] shadow-sm hover:text-[var(--k-text)]"
                 onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
-                aria-label="Remove attachment"
+                aria-label="Remove image context"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -58,76 +142,6 @@ export function ChatComposer({
           ))}
         </div>
       ) : null}
-
-      <div className="flex gap-2">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            if (file.size > 2 * 1024 * 1024) {
-              // 2MB soft limit for v0 localStorage-friendly attachments.
-              e.currentTarget.value = '';
-              return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = () => {
-              const dataUrl = String(reader.result ?? '');
-              setAttachments((prev) => [
-                ...prev,
-                {
-                  id: newId(),
-                  kind: 'image',
-                  name: file.name,
-                  mediaType: file.type || 'image/*',
-                  dataUrl,
-                  size: file.size,
-                },
-              ]);
-            };
-            reader.readAsDataURL(file);
-            e.currentTarget.value = '';
-          }}
-        />
-
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="shrink-0"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled}
-          title="Attach image"
-        >
-          <ImagePlus className="mr-2 h-4 w-4" />
-          Attach
-        </Button>
-
-        <Textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Ask about your portfolio, imports, risk, or actions..."
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          className="min-h-[44px]"
-          disabled={disabled}
-        />
-        <Button
-          onClick={submit}
-          disabled={disabled || (!text.trim() && attachments.length === 0)}
-          className="shrink-0"
-        >
-          Send
-        </Button>
-      </div>
     </div>
   );
 }
