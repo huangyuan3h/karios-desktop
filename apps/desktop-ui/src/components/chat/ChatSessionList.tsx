@@ -32,14 +32,14 @@ export function ChatSessionList({ onSelected }: { onSelected?: () => void }) {
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    'h-auto w-full justify-start px-3 py-2 pr-10 text-left text-sm',
+                    'h-auto w-full flex-col items-start justify-start gap-0.5 px-3 py-2 pr-10 text-left text-sm',
                     isActive
                       ? 'bg-[var(--k-surface-2)] text-[var(--k-text)]'
                       : 'text-[var(--k-muted)] hover:bg-[var(--k-surface-2)] hover:text-[var(--k-text)]',
                   )}
                 >
-                  <div className="truncate">{s.title}</div>
-                  <div className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-400">
+                  <div className="w-full truncate">{s.title}</div>
+                  <div className="w-full truncate text-xs text-zinc-500 dark:text-zinc-400">
                     {new Date(s.updatedAt).toLocaleString()}
                   </div>
                 </Button>
@@ -48,7 +48,7 @@ export function ChatSessionList({ onSelected }: { onSelected?: () => void }) {
                   variant="ghost"
                   size="icon"
                   className={cn(
-                    'absolute right-1 top-1 h-8 w-8 text-[var(--k-muted)]',
+                    'absolute right-1 top-1/2 z-10 h-8 w-8 -translate-y-1/2 text-[var(--k-muted)]',
                     'opacity-0 transition-opacity group-hover:opacity-100',
                     isActive ? 'opacity-100' : '',
                   )}
