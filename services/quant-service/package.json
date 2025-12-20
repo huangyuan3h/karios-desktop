@@ -1,0 +1,13 @@
+{
+  "name": "quant-service",
+  "private": true,
+  "scripts": {
+    "dev": "uv run uvicorn main:app --reload --host 127.0.0.1 --port 4320",
+    "lint": "uv run ruff check .",
+    "format": "uv run ruff format .",
+    "typecheck": "uv run pyright",
+    "test": "uv run pytest -q"
+  }
+}
+
+

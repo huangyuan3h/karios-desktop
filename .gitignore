@@ -1,0 +1,29 @@
+# Node / pnpm
+node_modules/
+.pnpm-store/
+.turbo/
+
+# Next.js
+.next/
+out/
+
+# Logs
+*.log
+
+# Env
+.env
+.env.*.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Tauri / Rust
+target/
+src-tauri/target/
+
+# OS
+.DS_Store
+
+
