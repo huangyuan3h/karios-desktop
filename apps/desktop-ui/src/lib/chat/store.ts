@@ -42,6 +42,7 @@ export type ChatStoreApi = {
   createEmptySession: () => void;
   setActiveSession: (id: string) => void;
   renameSession: (id: string, title: string) => void;
+  deleteSession: (id: string) => void;
   appendMessages: (sessionId: string, messages: ChatMessage[]) => void;
   updateMessageContent: (sessionId: string, messageId: string, content: string) => void;
   setAgent: (updater: (prev: AgentPanelState) => AgentPanelState) => void;
@@ -125,6 +126,14 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           sessions: prev.sessions.map((s) => (s.id === id ? { ...s, title } : s)),
         }));
+      },
+      deleteSession: (id: string) => {
+        setState((prev) => {
+          const nextSessions = prev.sessions.filter((s) => s.id !== id);
+          const nextActive =
+            prev.activeSessionId === id ? (nextSessions[0]?.id ?? null) : prev.activeSessionId;
+          return { ...prev, sessions: nextSessions, activeSessionId: nextActive };
+        });
       },
       appendMessages: (sessionId: string, messages: ChatMessage[]) => {
         setState((prev) => ({
