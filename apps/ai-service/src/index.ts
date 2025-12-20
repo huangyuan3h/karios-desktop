@@ -39,10 +39,7 @@ app.post('/chat', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = ChatRequestSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json(
-      { error: 'Invalid request body', issues: parsed.error.issues },
-      400,
-    );
+    return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
   }
 
   const messages = parsed.data.messages as Message[];
@@ -68,5 +65,3 @@ const port = Number(process.env.PORT ?? 4310);
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`AI service listening on http://127.0.0.1:${info.port}`);
 });
-
-
