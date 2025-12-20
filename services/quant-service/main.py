@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import os
+import signal
 import sqlite3
+import subprocess
+import time
+import urllib.request
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -199,6 +203,246 @@ def put_system_prompt(req: SystemPromptRequest) -> dict[str, bool]:
 def now_iso() -> str:
     # Use ISO 8601 for cross-language compatibility.
     return datetime.now(tz=UTC).isoformat()
+
+
+def _home_path(path: str) -> str:
+    return str(Path(path).expanduser())
+
+
+def _pid_is_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _tcp_is_listening(host: str, port: int) -> bool:
+    import socket
+
+    try:
+        with socket.create_connection((host, port), timeout=0.25):
+            return True
+    except OSError:
+        return False
+
+
+def _cdp_version(host: str, port: int) -> dict[str, str] | None:
+    url = f"http://{host}:{port}/json/version"
+    try:
+        with urllib.request.urlopen(url, timeout=0.8) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None
+
+    try:
+        import json
+
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            return {k: str(v) for k, v in data.items()}
+    except Exception:
+        return None
+    return None
+
+
+TV_CDP_HOST = "127.0.0.1"
+TV_CDP_PORT_DEFAULT = 9222
+TV_USER_DATA_DIR_DEFAULT = "~/.karios/chrome-tv-cdp"
+TV_PROFILE_DIR_DEFAULT = "Default"
+TV_CHROME_BIN_DEFAULT = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+
+class TvChromeStartRequest(BaseModel):
+    port: int = TV_CDP_PORT_DEFAULT
+    userDataDir: str = TV_USER_DATA_DIR_DEFAULT
+    profileDirectory: str = TV_PROFILE_DIR_DEFAULT
+    chromeBin: str = TV_CHROME_BIN_DEFAULT
+
+
+class TvChromeStatusResponse(BaseModel):
+    running: bool
+    pid: int | None
+    host: str
+    port: int
+    cdpOk: bool
+    cdpVersion: dict[str, str] | None
+    userDataDir: str
+    profileDirectory: str
+
+
+def _get_tv_chrome_pid() -> int | None:
+    raw = (get_setting("tv_chrome_pid") or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _set_tv_chrome_pid(pid: int | None) -> None:
+    set_setting("tv_chrome_pid", "" if pid is None else str(pid))
+
+
+def _get_tv_cdp_port() -> int:
+    raw = (get_setting("tv_cdp_port") or "").strip()
+    if not raw:
+        return TV_CDP_PORT_DEFAULT
+    try:
+        return int(raw)
+    except ValueError:
+        return TV_CDP_PORT_DEFAULT
+
+
+def _set_tv_cdp_port(port: int) -> None:
+    set_setting("tv_cdp_port", str(port))
+
+
+def _get_tv_user_data_dir() -> str:
+    return (get_setting("tv_user_data_dir") or TV_USER_DATA_DIR_DEFAULT).strip()
+
+
+def _set_tv_user_data_dir(path: str) -> None:
+    set_setting("tv_user_data_dir", path)
+
+
+def _get_tv_profile_dir() -> str:
+    return (get_setting("tv_profile_dir") or TV_PROFILE_DIR_DEFAULT).strip()
+
+
+def _set_tv_profile_dir(profile_dir: str) -> None:
+    set_setting("tv_profile_dir", profile_dir)
+
+
+def _get_tv_chrome_bin() -> str:
+    return (get_setting("tv_chrome_bin") or TV_CHROME_BIN_DEFAULT).strip()
+
+
+def _set_tv_chrome_bin(chrome_bin: str) -> None:
+    set_setting("tv_chrome_bin", chrome_bin)
+
+
+@app.get("/integrations/tradingview/status", response_model=TvChromeStatusResponse)
+def tradingview_status() -> TvChromeStatusResponse:
+    pid = _get_tv_chrome_pid()
+    running = bool(pid and _pid_is_running(pid))
+    port = _get_tv_cdp_port()
+    user_data_dir = _get_tv_user_data_dir()
+    profile_dir = _get_tv_profile_dir()
+    cdp = _cdp_version(TV_CDP_HOST, port) if running else None
+    cdp_ok = cdp is not None
+    return TvChromeStatusResponse(
+        running=running,
+        pid=pid if running else None,
+        host=TV_CDP_HOST,
+        port=port,
+        cdpOk=cdp_ok,
+        cdpVersion=cdp,
+        userDataDir=user_data_dir,
+        profileDirectory=profile_dir,
+    )
+
+
+@app.post("/integrations/tradingview/chrome/start", response_model=TvChromeStatusResponse)
+def tradingview_chrome_start(req: TvChromeStartRequest) -> TvChromeStatusResponse:
+    # If a previous PID is stored but dead, clear it.
+    pid = _get_tv_chrome_pid()
+    if pid and not _pid_is_running(pid):
+        _set_tv_chrome_pid(None)
+        pid = None
+
+    # Persist desired config.
+    port = int(req.port)
+    user_data_dir = _home_path(req.userDataDir)
+    profile_dir = req.profileDirectory.strip() or TV_PROFILE_DIR_DEFAULT
+    chrome_bin = req.chromeBin.strip() or TV_CHROME_BIN_DEFAULT
+    _set_tv_cdp_port(port)
+    _set_tv_user_data_dir(user_data_dir)
+    _set_tv_profile_dir(profile_dir)
+    _set_tv_chrome_bin(chrome_bin)
+
+    if pid and _pid_is_running(pid):
+        return tradingview_status()
+
+    # Fail fast if port is already taken.
+    if _tcp_is_listening(TV_CDP_HOST, port):
+        raise HTTPException(status_code=409, detail=f"Port {port} is already in use.")
+
+    if not Path(chrome_bin).exists():
+        raise HTTPException(status_code=400, detail=f"Chrome binary not found: {chrome_bin}")
+
+    Path(user_data_dir).mkdir(parents=True, exist_ok=True)
+
+    # Chrome requires a non-default user-data-dir for remote debugging.
+    # We always use a dedicated directory to avoid interfering with the user's daily profile.
+    args = [
+        chrome_bin,
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={user_data_dir}",
+        f"--profile-directory={profile_dir}",
+        "--no-first-run",
+        "--no-default-browser-check",
+    ]
+
+    try:
+        proc = subprocess.Popen(
+            args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start Chrome: {e}") from e
+
+    _set_tv_chrome_pid(proc.pid)
+
+    # Best-effort: wait briefly for CDP to be ready.
+    for _ in range(60):
+        if _cdp_version(TV_CDP_HOST, port) is not None:
+            break
+        time.sleep(0.2)
+
+    return tradingview_status()
+
+
+@app.post("/integrations/tradingview/chrome/stop", response_model=TvChromeStatusResponse)
+def tradingview_chrome_stop() -> TvChromeStatusResponse:
+    pid = _get_tv_chrome_pid()
+    port = _get_tv_cdp_port()
+    if not pid:
+        return tradingview_status()
+
+    if not _pid_is_running(pid):
+        _set_tv_chrome_pid(None)
+        return tradingview_status()
+
+    # Terminate the process group (Chrome spawns children).
+    try:
+        os.killpg(pid, signal.SIGTERM)
+    except OSError:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            _set_tv_chrome_pid(None)
+            return tradingview_status()
+
+    for _ in range(40):
+        if not _pid_is_running(pid) and not _tcp_is_listening(TV_CDP_HOST, port):
+            break
+        time.sleep(0.2)
+
+    if _pid_is_running(pid):
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except OSError:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+
+    _set_tv_chrome_pid(None)
+    return tradingview_status()
 
 
 def _seed_default_tv_screeners() -> None:
