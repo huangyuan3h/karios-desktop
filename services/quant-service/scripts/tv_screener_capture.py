@@ -180,6 +180,7 @@ async def capture_screener(
     chrome_profile: str | None,
     browser: str,
     launch_timeout_ms: int,
+    use_real_keychain: bool,
     headless: bool,
     max_rows: int,
     wait_for_manual_login: bool,
@@ -193,12 +194,21 @@ async def capture_screener(
             # Works with Chrome user data dir; must match an existing profile directory name.
             args.append(f"--profile-directory={chrome_profile}")
 
+        ignore_default_args: list[str] = []
+        if use_real_keychain and browser in {"chrome", "chromium"}:
+            # Playwright adds '--use-mock-keychain' (macOS) and '--password-store=basic' by default.
+            # When reusing a real Chrome profile, these flags can prevent decrypting cookies/tokens
+            # and may even cause Chromium to crash early (SIGTRAP).
+            ignore_default_args = ["--use-mock-keychain", "--password-store=basic"]
+
         if verbose:
             profile_name = chrome_profile or "(auto)"
             print("[tv] Launching browser (persistent context)…")
             print(f"[tv] user_data_dir={profile_dir}")
             print(f"[tv] profile={profile_name}")
             print(f"[tv] browser={browser} headless={headless}")
+            if ignore_default_args:
+                print(f"[tv] ignore_default_args={ignore_default_args}")
 
         # Wrap launch in asyncio.wait_for because in some cases the internal timeout
         # doesn't surface promptly if the browser process hangs during startup.
@@ -217,6 +227,7 @@ async def capture_screener(
                 channel="chrome" if browser == "chrome" else None,
                 viewport={"width": 1280, "height": 820},
                 args=args,
+                ignore_default_args=ignore_default_args or None,
                 timeout=launch_timeout_ms,
             )
 
@@ -408,6 +419,19 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--real-keychain",
+        action="store_true",
+        help=(
+            "Use macOS Keychain for decrypting an existing Chrome profile (recommended when using "
+            "--chrome-user-data-dir). This removes Playwright default args that mock the keychain."
+        ),
+    )
+    parser.add_argument(
+        "--mock-keychain",
+        action="store_true",
+        help="Force Playwright default mock keychain behavior (debug option).",
+    )
+    parser.add_argument(
         "--launch-timeout-ms",
         type=int,
         default=120_000,
@@ -452,6 +476,13 @@ def main() -> None:
     if args.chrome_profile and not args.chrome_user_data_dir:
         raise SystemExit("Missing --chrome-user-data-dir (required when --chrome-profile is set).")
 
+    if args.real_keychain and args.mock_keychain:
+        raise SystemExit("Only one of --real-keychain / --mock-keychain can be set.")
+
+    use_real_keychain = bool(args.real_keychain) or (
+        bool(args.chrome_user_data_dir) and not bool(args.mock_keychain)
+    )
+
     targets = [t.strip() for t in str(args.targets).split(",") if t.strip()]
     plan: list[tuple[str, str | None]]
     if targets:
@@ -472,6 +503,7 @@ def main() -> None:
                 chrome_profile=(args.chrome_profile or None),
                 browser=str(args.browser),
                 launch_timeout_ms=int(args.launch_timeout_ms),
+                use_real_keychain=use_real_keychain,
                 headless=bool(args.headless),
                 max_rows=int(args.max_rows),
                 wait_for_manual_login=bool(args.wait_login),
