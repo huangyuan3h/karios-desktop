@@ -65,6 +65,31 @@ def _connect() -> sqlite3.Connection:
         )
         """,
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tv_screeners (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          url TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+        """,
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tv_screener_snapshots (
+          id TEXT PRIMARY KEY,
+          screener_id TEXT NOT NULL,
+          captured_at TEXT NOT NULL,
+          row_count INTEGER NOT NULL,
+          headers_json TEXT NOT NULL,
+          rows_json TEXT NOT NULL,
+          FOREIGN KEY(screener_id) REFERENCES tv_screeners(id)
+        )
+        """,
+    )
     conn.commit()
     return conn
 
@@ -174,6 +199,160 @@ def put_system_prompt(req: SystemPromptRequest) -> dict[str, bool]:
 def now_iso() -> str:
     # Use ISO 8601 for cross-language compatibility.
     return datetime.now(tz=UTC).isoformat()
+
+
+def _seed_default_tv_screeners() -> None:
+    """
+    Seed default TradingView screeners if the table is empty.
+    URLs are configurable later via Settings UI.
+    """
+    with _connect() as conn:
+        row = conn.execute("SELECT COUNT(1) FROM tv_screeners").fetchone()
+        count = int(row[0]) if row else 0
+        if count > 0:
+            return
+        ts = now_iso()
+        conn.execute(
+            """
+            INSERT INTO tv_screeners(id, name, url, enabled, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "falcon",
+                "Swing Falcon Filter",
+                "https://www.tradingview.com/screener/TMcms1mM/",
+                1,
+                ts,
+                ts,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO tv_screeners(id, name, url, enabled, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "blackhorse",
+                "Black Horse Filter",
+                "https://www.tradingview.com/screener/kBuKODpK/",
+                1,
+                ts,
+                ts,
+            ),
+        )
+        conn.commit()
+
+
+class TvScreener(BaseModel):
+    id: str
+    name: str
+    url: str
+    enabled: bool
+    updatedAt: str
+
+
+class ListTvScreenersResponse(BaseModel):
+    items: list[TvScreener]
+
+
+class CreateTvScreenerRequest(BaseModel):
+    name: str
+    url: str
+    enabled: bool = True
+
+
+class CreateTvScreenerResponse(BaseModel):
+    id: str
+
+
+class UpdateTvScreenerRequest(BaseModel):
+    name: str
+    url: str
+    enabled: bool
+
+
+@app.get("/integrations/tradingview/screeners", response_model=ListTvScreenersResponse)
+def list_tv_screeners() -> ListTvScreenersResponse:
+    _seed_default_tv_screeners()
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, name, url, enabled, updated_at
+            FROM tv_screeners
+            ORDER BY updated_at DESC
+            """,
+        ).fetchall()
+        items = [
+            TvScreener(
+                id=str(r[0]),
+                name=str(r[1]),
+                url=str(r[2]),
+                enabled=bool(int(r[3])),
+                updatedAt=str(r[4]),
+            )
+            for r in rows
+        ]
+        return ListTvScreenersResponse(items=items)
+
+
+@app.post("/integrations/tradingview/screeners", response_model=CreateTvScreenerResponse)
+def create_tv_screener(req: CreateTvScreenerRequest) -> CreateTvScreenerResponse:
+    _seed_default_tv_screeners()
+    screener_id = str(uuid.uuid4())
+    ts = now_iso()
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO tv_screeners(id, name, url, enabled, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (
+                screener_id,
+                req.name.strip() or "Untitled",
+                req.url.strip(),
+                1 if req.enabled else 0,
+                ts,
+                ts,
+            ),
+        )
+        conn.commit()
+    return CreateTvScreenerResponse(id=screener_id)
+
+
+@app.put("/integrations/tradingview/screeners/{screener_id}")
+def update_tv_screener(screener_id: str, req: UpdateTvScreenerRequest) -> JSONResponse:
+    _seed_default_tv_screeners()
+    ts = now_iso()
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE tv_screeners
+            SET name = ?, url = ?, enabled = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                req.name.strip() or "Untitled",
+                req.url.strip(),
+                1 if req.enabled else 0,
+                ts,
+                screener_id,
+            ),
+        )
+        conn.commit()
+        if (cur.rowcount or 0) == 0:
+            return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.delete("/integrations/tradingview/screeners/{screener_id}")
+def delete_tv_screener(screener_id: str) -> JSONResponse:
+    _seed_default_tv_screeners()
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM tv_screeners WHERE id = ?", (screener_id,))
+        conn.commit()
+        if (cur.rowcount or 0) == 0:
+            return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
+    return JSONResponse({"ok": True})
 
 
 def list_system_prompt_presets() -> list[SystemPromptPresetSummary]:

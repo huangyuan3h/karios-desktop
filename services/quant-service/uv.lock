@@ -333,6 +333,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "playwright" },
     { name = "pydantic" },
     { name = "uvicorn" },
 ]
@@ -340,7 +341,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "httpx" },
-    { name = "playwright" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "ruff" },
@@ -349,6 +349,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.125.0" },
+    { name = "playwright", specifier = ">=1.55.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "uvicorn", specifier = ">=0.38.0" },
 ]
@@ -356,7 +357,6 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "playwright", specifier = ">=1.55.0" },
     { name = "pyright", specifier = ">=1.1.407" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.14.10" },
