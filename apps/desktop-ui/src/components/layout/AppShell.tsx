@@ -6,6 +6,7 @@ import { PanelRightClose, PanelRightOpen, Search } from 'lucide-react';
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
 
@@ -37,25 +38,26 @@ export function AppShell() {
   }, [setAgent]);
 
   return (
-    <div className="flex h-screen w-screen bg-zinc-50 text-zinc-950 dark:bg-black dark:text-zinc-50">
+    <div className="flex h-screen w-screen bg-[var(--k-bg)] text-[var(--k-text)]">
       <SidebarNav activeId={activePage} onSelect={setActivePage} />
 
       <main className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
+        <header className="flex items-center justify-between border-b border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
           <div className="flex items-center gap-3">
             <div className="text-sm font-semibold">
               {activePage === 'dashboard' ? 'Dashboard' : activePage}
             </div>
             <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--k-muted)]" />
               <input
-                className="h-9 w-[360px] rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-zinc-950/10 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:ring-zinc-50/10"
+                className="h-9 w-[360px] rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
                 placeholder="Search stocks / indices..."
               />
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Button
               variant="secondary"
               size="sm"
@@ -69,7 +71,7 @@ export function AppShell() {
                 <PanelRightOpen className="h-4 w-4" />
               )}
             </Button>
-            <div className="h-9 w-9 rounded-full bg-indigo-600 text-white grid place-items-center text-sm font-semibold">
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-[var(--k-accent)] text-sm font-semibold text-white">
               U
             </div>
           </div>
@@ -82,7 +84,7 @@ export function AppShell() {
 
           {agentVisible && agentMode !== 'maximized' ? (
             <div
-              className="w-1 cursor-col-resize bg-transparent hover:bg-zinc-200 dark:hover:bg-zinc-800"
+              className="w-1 cursor-col-resize bg-transparent hover:bg-[var(--k-border)]"
               onMouseDown={() => {
                 draggingRef.current = true;
               }}
@@ -97,7 +99,7 @@ export function AppShell() {
               className={agentMode === 'maximized' ? 'w-full' : 'shrink-0'}
               style={agentMode === 'maximized' ? undefined : { width: agentWidth }}
             >
-              <div className="h-full border-l border-zinc-200 dark:border-zinc-800">
+              <div className="h-full border-l border-[var(--k-border)]">
                 <AgentPanel />
               </div>
             </div>

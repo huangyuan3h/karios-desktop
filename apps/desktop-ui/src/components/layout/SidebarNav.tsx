@@ -26,9 +26,9 @@ export function SidebarNav({
   onSelect: (id: string) => void;
 }) {
   return (
-    <aside className="flex w-[240px] flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+    <aside className="flex w-[240px] flex-col border-r border-[var(--k-border)] bg-[var(--k-surface)]">
       <div className="flex items-center gap-2 px-4 py-3">
-        <div className="grid h-8 w-8 place-items-center rounded-lg bg-zinc-950 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-950">
+        <div className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--k-text)] text-[var(--k-surface)]">
           K
         </div>
         <div className="text-sm font-semibold">Kairos</div>
@@ -46,8 +46,8 @@ export function SidebarNav({
               className={cn(
                 'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
                 active
-                  ? 'bg-zinc-100 text-zinc-950 dark:bg-zinc-900 dark:text-zinc-50'
-                  : 'text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900',
+                  ? 'bg-[var(--k-surface-2)] text-[var(--k-text)]'
+                  : 'text-[var(--k-muted)] hover:bg-[var(--k-surface-2)]',
               )}
             >
               <Icon className="h-4 w-4" />
@@ -57,7 +57,7 @@ export function SidebarNav({
         })}
       </nav>
 
-      <div className="mt-auto border-t border-zinc-200 px-4 py-3 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+      <div className="mt-auto border-t border-[var(--k-border)] px-4 py-3 text-xs text-[var(--k-muted)]">
         Local-first • SQLite-only (v0)
       </div>
     </aside>

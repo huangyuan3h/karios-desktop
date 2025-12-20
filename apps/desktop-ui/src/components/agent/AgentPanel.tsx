@@ -16,9 +16,9 @@ export function AgentPanel() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-white dark:bg-zinc-950">
-      <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
-        <div className="text-sm font-medium text-zinc-950 dark:text-zinc-50">Kairos AI</div>
+    <div className="flex h-full flex-col bg-[var(--k-surface)]">
+      <div className="flex items-center justify-between border-b border-[var(--k-border)] px-3 py-2">
+        <div className="text-sm font-medium">Kairos AI</div>
         <div className="flex gap-2">
           <Button
             variant="ghost"
