@@ -73,6 +73,14 @@ async def detect_screen_title(page) -> str | None:
     Best-effort: detect the screen title shown in the UI.
     Useful when capturing shared screener URLs directly (no screen name selection step).
     """
+    # Prefer the document title first; it typically includes the saved screen name.
+    try:
+        t = (await page.title()).strip()
+        if t and len(t) <= 200 and t.lower() not in {"tradingview", "stock screener"}:
+            return t
+    except Exception:
+        pass
+
     try_selectors = [
         "h1",
         "[data-name=header] h1",
@@ -88,12 +96,6 @@ async def detect_screen_title(page) -> str | None:
                 return text
         except Exception:
             continue
-    try:
-        title = (await page.title()).strip()
-        if title and len(title) <= 200:
-            return title
-    except Exception:
-        pass
     return None
 
 
@@ -139,16 +141,70 @@ async def find_screener_grid(page) -> Any | None:
 
     candidates = page.locator('[role="grid"], [role="treegrid"], table')
     count = await candidates.count()
+    best = None
+    best_area = 0.0
+
     for i in range(count):
         c = candidates.nth(i)
         try:
             if not await c.is_visible():
                 continue
-            if await headers_match(c):
-                return c
+            if not await headers_match(c):
+                continue
+            box = await c.bounding_box()
+            if not box:
+                continue
+            area = float(box["width"] * box["height"])
+            if area > best_area:
+                best_area = area
+                best = c
         except Exception:
             continue
-    return None
+
+    return best
+
+
+async def _element_tag(locator) -> str:
+    try:
+        return str(await locator.evaluate("el => el.tagName")).upper()
+    except Exception:
+        return ""
+
+
+async def read_table_headers(table) -> list[str]:
+    headers: list[str] = []
+    th = table.locator("thead th")
+    if await th.count() == 0:
+        th = table.locator("th")
+    for i in range(await th.count()):
+        t = (await th.nth(i).inner_text()).strip()
+        if t:
+            headers.append(t)
+    return headers
+
+
+async def read_visible_table_rows(table, headers: list[str]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    rows = table.locator("tbody tr")
+    if await rows.count() == 0:
+        rows = table.locator("tr")
+
+    for i in range(await rows.count()):
+        row = rows.nth(i)
+        cells = row.locator("td")
+        if await cells.count() == 0:
+            continue
+        values: list[str] = []
+        for j in range(await cells.count()):
+            values.append((await cells.nth(j).inner_text()).strip())
+        if not any(values):
+            continue
+        row_dict: dict[str, str] = {}
+        for k, v in enumerate(values):
+            key = headers[k] if k < len(headers) else f"col_{k}"
+            row_dict[key] = v
+        out.append(row_dict)
+    return out
 
 
 async def read_grid_headers(grid) -> list[str]:
@@ -366,7 +422,14 @@ async def capture_screener(
                 "Try using a direct screener URL and ensure the table is visible."
             )
 
-        headers = await read_grid_headers(grid)
+        tag = await _element_tag(grid)
+        if verbose:
+            print(f"[tv] Selected grid candidate tag={tag} url={page.url}")
+
+        if tag == "TABLE":
+            headers = await read_table_headers(grid)
+        else:
+            headers = await read_grid_headers(grid)
         if not headers:
             # Fallback: still capture but with generic column names.
             headers = ["Symbol"]
@@ -377,7 +440,10 @@ async def capture_screener(
 
         # Cap scroll loops so we don't get stuck on infinite lists.
         for _ in range(200):
-            visible = await read_visible_rows(grid, headers)
+            if tag == "TABLE":
+                visible = await read_visible_table_rows(grid, headers)
+            else:
+                visible = await read_visible_rows(grid, headers)
             added = 0
             for r in visible:
                 symbol = (r.get(headers[0]) or "").strip()
@@ -394,7 +460,10 @@ async def capture_screener(
 
             # If nothing new appeared after a scroll, we likely reached the end.
             await scroll_grid(page, grid, steps=1)
-            after = await read_visible_rows(grid, headers)
+            if tag == "TABLE":
+                after = await read_visible_table_rows(grid, headers)
+            else:
+                after = await read_visible_rows(grid, headers)
             any_new = False
             for r in after:
                 symbol = (r.get(headers[0]) or "").strip()
@@ -431,9 +500,16 @@ async def capture_screener(
             png_path = output_dir / f"tv-screener{suffix}-{ts}.png"
             await page.screenshot(path=str(png_path), full_page=True)
 
-        await context.close()
-        if connected_browser and not cdp_keep_open:
-            await connected_browser.close()
+        # In CDP mode, do not close the shared context (it belongs to the running Chrome).
+        try:
+            await page.close()
+        except Exception:
+            pass
+        if connected_browser:
+            if not cdp_keep_open:
+                await connected_browser.close()
+        else:
+            await context.close()
         return result
 
 
