@@ -181,6 +181,8 @@ async def capture_screener(
     browser: str,
     launch_timeout_ms: int,
     use_real_keychain: bool,
+    cdp_url: str | None,
+    cdp_keep_open: bool,
     headless: bool,
     max_rows: int,
     wait_for_manual_login: bool,
@@ -209,41 +211,62 @@ async def capture_screener(
             print(f"[tv] browser={browser} headless={headless}")
             if ignore_default_args:
                 print(f"[tv] ignore_default_args={ignore_default_args}")
+            if cdp_url:
+                print(f"[tv] cdp_url={cdp_url}")
 
-        # Wrap launch in asyncio.wait_for because in some cases the internal timeout
-        # doesn't surface promptly if the browser process hangs during startup.
-        if browser == "webkit":
-            launch_coro = p.webkit.launch_persistent_context(
-                user_data_dir=str(profile_dir),
-                headless=headless,
-                viewport={"width": 1280, "height": 820},
-                args=args,
-                timeout=launch_timeout_ms,
-            )
+        connected_browser = None
+        context = None
+        if cdp_url:
+            # Attach to an already running Chrome via CDP.
+            connected_browser = await p.chromium.connect_over_cdp(cdp_url)
+            if connected_browser.contexts:
+                context = connected_browser.contexts[0]
+            else:
+                # If no contexts are exposed, a new context won't include your profile cookies.
+                raise RuntimeError(
+                    "CDP connected but no browser contexts were found. "
+                    "Make sure you started Chrome with --remote-debugging-port "
+                    "and a regular (non-incognito) profile."
+                )
         else:
-            launch_coro = p.chromium.launch_persistent_context(
-                user_data_dir=str(profile_dir),
-                headless=headless,
-                channel="chrome" if browser == "chrome" else None,
-                viewport={"width": 1280, "height": 820},
-                args=args,
-                ignore_default_args=ignore_default_args or None,
-                timeout=launch_timeout_ms,
-            )
+            # Wrap launch in asyncio.wait_for because in some cases the internal timeout
+            # doesn't surface promptly if the browser process hangs during startup.
+            if browser == "webkit":
+                launch_coro = p.webkit.launch_persistent_context(
+                    user_data_dir=str(profile_dir),
+                    headless=headless,
+                    viewport={"width": 1280, "height": 820},
+                    args=args,
+                    timeout=launch_timeout_ms,
+                )
+            else:
+                launch_coro = p.chromium.launch_persistent_context(
+                    user_data_dir=str(profile_dir),
+                    headless=headless,
+                    channel="chrome" if browser == "chrome" else None,
+                    viewport={"width": 1280, "height": 820},
+                    args=args,
+                    ignore_default_args=ignore_default_args or None,
+                    timeout=launch_timeout_ms,
+                )
 
-        try:
-            context = await asyncio.wait_for(launch_coro, timeout=launch_timeout_ms / 1000)
-        except TimeoutError as e:
-            raise RuntimeError(
-                "Browser launch timed out. Most common causes:\n"
-                "- The Chrome user-data-dir is still locked (SingletonLock).\n"
-                "- Chrome background processes are still running.\n"
-                "- The profile is corrupted or prompts a modal dialog on startup.\n"
-                "Try: close Chrome completely, delete Singleton* files, or use --browser chromium."
-            ) from e
+            try:
+                context = await asyncio.wait_for(launch_coro, timeout=launch_timeout_ms / 1000)
+            except TimeoutError as e:
+                raise RuntimeError(
+                    "Browser launch timed out. Most common causes:\n"
+                    "- The Chrome user-data-dir is still locked (SingletonLock).\n"
+                    "- Chrome background processes are still running.\n"
+                    "- The profile is corrupted or prompts a modal dialog on startup.\n"
+                    "Try: close Chrome completely, delete Singleton* files, "
+                    "or use --cdp-url to attach."
+                ) from e
 
         # Navigate using a fresh tab to avoid restored tabs / extension pages.
         # Do NOT close existing tabs: closing the last tab can be flaky in persistent contexts.
+        if context is None:
+            raise RuntimeError("Internal error: missing browser context")
+
         page = await context.new_page()
         try:
             await page.bring_to_front()
@@ -362,6 +385,8 @@ async def capture_screener(
             await page.screenshot(path=str(png_path), full_page=True)
 
         await context.close()
+        if connected_browser and not cdp_keep_open:
+            await connected_browser.close()
         return result
 
 
@@ -438,6 +463,19 @@ def parse_args() -> argparse.Namespace:
         help="Browser launch timeout in milliseconds.",
     )
     parser.add_argument(
+        "--cdp-url",
+        default=os.getenv("TV_CDP_URL", "").strip(),
+        help=(
+            "Attach to an already-running Chrome via CDP (recommended when launch hangs). "
+            "Example: http://127.0.0.1:9222"
+        ),
+    )
+    parser.add_argument(
+        "--cdp-keep-open",
+        action="store_true",
+        help="Do not close the attached Chrome when using --cdp-url.",
+    )
+    parser.add_argument(
         "--output-dir",
         default=str(Path(__file__).resolve().parent.parent / "data"),
         help="Where to write capture artifacts (json/csv/png).",
@@ -495,6 +533,8 @@ def main() -> None:
             "playwright profile directory."
         )
 
+    cdp_url = str(args.cdp_url).strip() or None
+
     targets = [t.strip() for t in str(args.targets).split(",") if t.strip()]
     plan: list[tuple[str, str | None]]
     if targets:
@@ -516,6 +556,8 @@ def main() -> None:
                 browser=str(args.browser),
                 launch_timeout_ms=int(args.launch_timeout_ms),
                 use_real_keychain=use_real_keychain,
+                cdp_url=cdp_url,
+                cdp_keep_open=bool(args.cdp_keep_open),
                 headless=bool(args.headless),
                 max_rows=int(args.max_rows),
                 wait_for_manual_login=bool(args.wait_login),
