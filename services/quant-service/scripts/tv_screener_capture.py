@@ -193,27 +193,32 @@ async def capture_screener(
         # Reduce first-run interruptions when using a fresh profile directory.
         args.extend(["--no-first-run", "--no-default-browser-check"])
 
+        if verbose:
+            profile_name = chrome_profile or "(auto)"
+            print("[tv] Launching Chrome (persistent context)…")
+            print(f"[tv] user_data_dir={profile_dir}")
+            print(f"[tv] profile={profile_name}")
+
         context = await p.chromium.launch_persistent_context(
             user_data_dir=str(profile_dir),
             headless=headless,
             channel="chrome",
             viewport={"width": 1280, "height": 820},
             args=args,
+            timeout=120_000,
         )
-        # Always navigate using a fresh tab to avoid restored tabs / extension pages.
-        try:
-            for existing in context.pages:
-                await existing.close()
-        except Exception:
-            # Best-effort cleanup.
-            pass
+        # Navigate using a fresh tab to avoid restored tabs / extension pages.
+        # Do NOT close existing tabs: closing the last tab can be flaky in persistent contexts.
         page = await context.new_page()
+        try:
+            await page.bring_to_front()
+        except Exception:
+            # Best-effort: some environments may not support focusing.
+            pass
         context.set_default_timeout(30_000)
 
         if verbose:
-            profile_name = chrome_profile or "(auto)"
-            print(f"[tv] Launch ok. user_data_dir={profile_dir}")
-            print(f"[tv] Using profile: {profile_name}")
+            print("[tv] Launch ok.")
             print(f"[tv] Navigating to: {url}")
 
         try:
