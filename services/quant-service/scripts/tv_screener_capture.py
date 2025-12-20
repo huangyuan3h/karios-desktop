@@ -16,7 +16,6 @@ import asyncio
 import csv
 import json
 import os
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,32 +39,8 @@ def default_profile_dir() -> Path:
 class CaptureResult:
     url: str
     captured_at: str
-    screen: str | None
     headers: list[str]
     rows: list[dict[str, str]]
-
-
-def slugify(value: str) -> str:
-    value = value.strip().lower()
-    value = re.sub(r"\s+", "-", value)
-    value = re.sub(r"[^a-z0-9\-_.]+", "", value)
-    return value or "screen"
-
-
-async def select_saved_screen(page, screen_name: str) -> None:
-    """
-    Best-effort: open the screener dropdown and pick a saved screen by name.
-
-    TradingView UI may change. If this fails, use --wait-login and select the screen manually.
-    """
-    trigger = page.get_by_text("Stock Screener").first
-    await trigger.click(timeout=10_000)
-
-    item = page.get_by_text(screen_name, exact=True).first
-    await item.click(timeout=10_000)
-
-    # Wait for the page header to reflect the selection.
-    await page.get_by_text(screen_name, exact=False).first.wait_for(timeout=20_000)
 
 
 async def find_screener_grid(page) -> Any | None:
@@ -152,7 +127,6 @@ async def scroll_grid(page, grid, *, steps: int = 1) -> None:
 async def capture_screener(
     *,
     url: str,
-    screen: str | None,
     profile_dir: Path,
     headless: bool,
     max_rows: int,
@@ -176,10 +150,6 @@ async def capture_screener(
             print("\n[Manual step] Login / confirm the screener is visible.")
             print("Then press Enter here to continue capture...\n")
             await asyncio.to_thread(input)
-
-        if screen:
-            await select_saved_screen(page, screen)
-            await page.wait_for_timeout(800)
 
         grid = await find_screener_grid(page)
         if grid is None:
@@ -227,19 +197,12 @@ async def capture_screener(
                 break
 
         captured_at = datetime.now(tz=UTC).isoformat()
-        result = CaptureResult(
-            url=url,
-            captured_at=captured_at,
-            screen=screen,
-            headers=headers,
-            rows=rows,
-        )
+        result = CaptureResult(url=url, captured_at=captured_at, headers=headers, rows=rows)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         ts = now_utc_compact()
-        suffix = f"-{slugify(screen)}" if screen else ""
-        json_path = output_dir / f"tv-screener{suffix}-{ts}.json"
-        csv_path = output_dir / f"tv-screener{suffix}-{ts}.csv"
+        json_path = output_dir / f"tv-screener-{ts}.json"
+        csv_path = output_dir / f"tv-screener-{ts}.csv"
 
         json_payload = json.dumps(result.__dict__, ensure_ascii=False, indent=2)
         json_path.write_text(json_payload, encoding="utf-8")
@@ -250,7 +213,7 @@ async def capture_screener(
                 writer.writerow(r)
 
         if screenshot:
-            png_path = output_dir / f"tv-screener{suffix}-{ts}.png"
+            png_path = output_dir / f"tv-screener-{ts}.png"
             await page.screenshot(path=str(png_path), full_page=True)
 
         await context.close()
@@ -265,11 +228,6 @@ def parse_args() -> argparse.Namespace:
         "--url",
         default=os.getenv("TV_SCREENER_URL", "").strip(),
         help="TradingView screener URL (or set TV_SCREENER_URL env var).",
-    )
-    parser.add_argument(
-        "--screens",
-        default=os.getenv("TV_SCREENS", "").strip(),
-        help="Comma-separated saved screen names to capture (or set TV_SCREENS).",
     )
     parser.add_argument(
         "--profile-dir",
@@ -300,30 +258,22 @@ def main() -> None:
     if not args.url:
         raise SystemExit("Missing --url (or TV_SCREENER_URL).")
 
-    screens = [s.strip() for s in str(args.screens).split(",") if s.strip()]
-    if not screens:
-        screens = [""]
-
-    for screen in screens:
-        result = asyncio.run(
-            capture_screener(
-                url=args.url,
-                screen=screen or None,
-                profile_dir=Path(args.profile_dir),
-                headless=bool(args.headless),
-                max_rows=int(args.max_rows),
-                wait_for_manual_login=bool(args.wait_login),
-                output_dir=Path(args.output_dir),
-                screenshot=bool(args.screenshot),
-            ),
-        )
-        name = result.screen or "(current)"
-        print(f"\nScreen: {name}")
-        print(f"Captured rows: {len(result.rows)}")
-        if result.rows:
-            first = result.rows[0]
-            print("Sample row keys:", ", ".join(list(first.keys())[:8]))
-            print("Sample row:", {k: first[k] for k in list(first.keys())[:8]})
+    result = asyncio.run(
+        capture_screener(
+            url=args.url,
+            profile_dir=Path(args.profile_dir),
+            headless=bool(args.headless),
+            max_rows=int(args.max_rows),
+            wait_for_manual_login=bool(args.wait_login),
+            output_dir=Path(args.output_dir),
+            screenshot=bool(args.screenshot),
+        ),
+    )
+    print(f"\nCaptured rows: {len(result.rows)}")
+    if result.rows:
+        first = result.rows[0]
+        print("Sample row keys:", ", ".join(list(first.keys())[:8]))
+        print("Sample row:", {k: first[k] for k in list(first.keys())[:8]})
 
 
 if __name__ == "__main__":
