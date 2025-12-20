@@ -32,6 +32,7 @@ export type AgentPanelState = {
   visible: boolean;
   mode: 'docked' | 'maximized';
   width: number;
+  historyOpen: boolean;
 };
 
 

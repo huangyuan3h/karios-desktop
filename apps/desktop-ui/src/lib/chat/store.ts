@@ -19,7 +19,7 @@ type PersistedState = {
 const defaultState: PersistedState = {
   sessions: [],
   activeSessionId: null,
-  agent: { visible: true, mode: 'docked', width: 420 },
+  agent: { visible: true, mode: 'docked', width: 420, historyOpen: false },
   settings: { systemPrompt: '' },
 };
 

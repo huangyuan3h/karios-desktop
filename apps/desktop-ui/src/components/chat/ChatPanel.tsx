@@ -23,7 +23,7 @@ function toModelMessages(messages: ChatMessage[], systemPrompt: string): ModelMe
 }
 
 export function ChatPanel() {
-  const { activeSession, createSession, appendMessages, updateMessageContent, state } =
+  const { activeSession, createSession, appendMessages, updateMessageContent, state, renameSession } =
     useChatStore();
 
   React.useEffect(() => {
@@ -49,6 +49,8 @@ export function ChatPanel() {
       <ChatComposer
         onSend={(text: string, attachments: ChatAttachment[]) => {
           if (!activeSession) return;
+          const shouldInferTitle =
+            activeSession.title === 'New chat' && messages.every((m) => m.role !== 'user');
           const now = new Date().toISOString();
           const userMessage: ChatMessage = {
             id: newId(),
@@ -74,6 +76,28 @@ export function ChatPanel() {
 
           (async () => {
             try {
+              if (shouldInferTitle) {
+                try {
+                  const t = await fetch(`${AI_BASE_URL}/title`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      text,
+                      systemPrompt: state.settings.systemPrompt,
+                    }),
+                  });
+                  if (t.ok) {
+                    const data = (await t.json()) as { title?: string };
+                    const title = typeof data.title === 'string' ? data.title.trim() : '';
+                    if (title) {
+                      renameSession(activeSession.id, title);
+                    }
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+
               const resp = await fetch(`${AI_BASE_URL}/chat`, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },

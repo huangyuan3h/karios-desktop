@@ -1,6 +1,6 @@
 'use client';
 
-import { Maximize2, Minimize2, PanelRightClose } from 'lucide-react';
+import { History, Maximize2, Minimize2, PanelRightClose } from 'lucide-react';
 
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { ChatSessionList } from '@/components/chat/ChatSessionList';
@@ -10,7 +10,7 @@ import { useChatStore } from '@/lib/chat/store';
 
 export function AgentPanel() {
   const { state, setAgent } = useChatStore();
-  const { visible, mode } = state.agent;
+  const { visible, mode, historyOpen } = state.agent;
 
   if (!visible) {
     return null;
@@ -21,6 +21,14 @@ export function AgentPanel() {
       <div className="flex items-center justify-between border-b border-[var(--k-border)] px-3 py-2">
         <div className="text-sm font-medium">Kairos AI</div>
         <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setAgent((prev) => ({ ...prev, historyOpen: !prev.historyOpen }))}
+            title="History"
+          >
+            <History className="h-4 w-4" />
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -52,11 +60,16 @@ export function AgentPanel() {
             <div className="h-full">
               <div className="h-full">
                 <div className="grid h-full grid-rows-[auto_1fr]">
-                  <div className="border-b border-zinc-200 dark:border-zinc-800">
-                    <SystemPromptEditor />
-                    <ChatSessionList />
-                  </div>
-                  <ChatPanel />
+                  <SystemPromptEditor />
+                  {historyOpen ? (
+                    <div className="min-h-0 flex-1">
+                      <ChatSessionList
+                        onSelected={() => setAgent((prev) => ({ ...prev, historyOpen: false }))}
+                      />
+                    </div>
+                  ) : (
+                    <ChatPanel />
+                  )}
                 </div>
               </div>
             </div>
