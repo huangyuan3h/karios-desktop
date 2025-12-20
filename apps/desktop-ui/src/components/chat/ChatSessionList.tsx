@@ -1,14 +1,14 @@
 'use client';
 
 import * as React from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
 import { cn } from '@/lib/utils';
 
 export function ChatSessionList({ onSelected }: { onSelected?: () => void }) {
-  const { state, activeSession, createEmptySession, setActiveSession, deleteSession } = useChatStore();
+  const { state, activeSession, setActiveSession, deleteSession } = useChatStore();
 
   return (
     <div className="flex h-full flex-col">
@@ -16,15 +16,6 @@ export function ChatSessionList({ onSelected }: { onSelected?: () => void }) {
         <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           Chats
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={createEmptySession}
-          className="h-7 px-2"
-          title="New chat"
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
       </div>
 
       <div className="flex-1 overflow-auto px-2 pb-2">
