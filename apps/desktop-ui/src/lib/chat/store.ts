@@ -17,7 +17,7 @@ type PersistedState = {
 const defaultState: PersistedState = {
   sessions: [],
   activeSessionId: null,
-  agent: { visible: true, mode: 'docked' },
+  agent: { visible: true, mode: 'docked', width: 420 },
 };
 
 function nowIso() {

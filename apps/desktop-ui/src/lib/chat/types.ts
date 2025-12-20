@@ -27,6 +27,7 @@ export type ChatSession = {
 export type AgentPanelState = {
   visible: boolean;
   mode: 'docked' | 'maximized';
+  width: number;
 };
 
 

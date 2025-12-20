@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { ImagePlus, X } from 'lucide-react';
+import Image from 'next/image';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -36,10 +37,13 @@ export function ChatComposer({
               key={a.id}
               className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200"
             >
-              <img
+              <Image
                 src={a.dataUrl}
                 alt={a.name}
+                width={24}
+                height={24}
                 className="h-6 w-6 rounded object-cover"
+                unoptimized
               />
               <div className="max-w-[240px] truncate">{a.name}</div>
               <button

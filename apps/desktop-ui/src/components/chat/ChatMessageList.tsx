@@ -1,6 +1,7 @@
 import { MarkdownMessage } from '@/components/chat/MarkdownMessage';
 import type { ChatMessage } from '@/lib/chat/types';
 import { cn } from '@/lib/utils';
+import Image from 'next/image';
 
 export function ChatMessageList({ messages }: { messages: ChatMessage[] }) {
   return (
@@ -27,10 +28,13 @@ export function ChatMessageList({ messages }: { messages: ChatMessage[] }) {
           {m.attachments?.length ? (
             <div className="mt-2 flex flex-wrap gap-2">
               {m.attachments.map((a) => (
-                <img
+                <Image
                   key={a.id}
                   src={a.dataUrl}
                   alt={a.name}
+                  width={80}
+                  height={80}
+                  unoptimized
                   className={cn(
                     'h-20 w-20 rounded-md border object-cover',
                     'border-zinc-200 dark:border-zinc-800',
