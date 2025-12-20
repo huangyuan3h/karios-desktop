@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { cors } from 'hono/cors';
 import { Hono } from 'hono';
-import { streamText, convertToCoreMessages, type Message } from 'ai';
+import { streamText, type ModelMessage } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
 import { z } from 'zod';
@@ -42,9 +42,9 @@ app.post('/chat', async (c) => {
     return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
   }
 
-  const messages = parsed.data.messages as Message[];
+  const messages = parsed.data.messages as ModelMessage[];
 
-  let model: any;
+  let model;
   try {
     model = getModel();
   } catch (err) {
@@ -54,10 +54,10 @@ app.post('/chat', async (c) => {
 
   const result = await streamText({
     model,
-    messages: convertToCoreMessages(messages),
+    messages,
   });
 
-  return result.toDataStreamResponse();
+  return result.toTextStreamResponse();
 });
 
 const port = Number(process.env.PORT ?? 4310);
