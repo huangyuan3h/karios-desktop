@@ -4,11 +4,15 @@ import * as React from 'react';
 import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 
 type PresetSummary = { id: string; title: string; updatedAt: string };
+
+const NEW_VALUE = '__new__';
+const LEGACY_VALUE = '__legacy__';
 
 export function SystemPromptEditor() {
   const { state, setSystemPromptLocal } = useChatStore();
@@ -18,15 +22,25 @@ export function SystemPromptEditor() {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const [selectedId, setSelectedId] = React.useState<string | null>(state.settings.systemPromptId);
+  const [selectedValue, setSelectedValue] = React.useState<string>(
+    state.settings.systemPromptId ?? LEGACY_VALUE,
+  );
   const [title, setTitle] = React.useState(state.settings.systemPromptTitle);
   const [draft, setDraft] = React.useState(state.settings.systemPrompt);
 
   React.useEffect(() => {
-    setSelectedId(state.settings.systemPromptId);
+    // Do not override local "New preset" drafting state.
+    if (selectedValue === NEW_VALUE) return;
+
+    setSelectedValue(state.settings.systemPromptId ?? LEGACY_VALUE);
     setTitle(state.settings.systemPromptTitle);
     setDraft(state.settings.systemPrompt);
-  }, [state.settings.systemPrompt, state.settings.systemPromptId, state.settings.systemPromptTitle]);
+  }, [
+    selectedValue,
+    state.settings.systemPrompt,
+    state.settings.systemPromptId,
+    state.settings.systemPromptTitle,
+  ]);
 
   async function refreshList() {
     setLoading(true);
@@ -66,6 +80,10 @@ export function SystemPromptEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const selectedId =
+    selectedValue !== NEW_VALUE && selectedValue !== LEGACY_VALUE ? selectedValue : null;
+  const isLegacy = selectedValue === LEGACY_VALUE;
+
   return (
     <div className="border-b border-[var(--k-border)]">
       <button
@@ -87,12 +105,17 @@ export function SystemPromptEditor() {
           <div className="grid grid-cols-[1fr_auto] gap-2">
             <label className="min-w-0">
               <div className="mb-1 text-xs text-[var(--k-muted)]">Preset</div>
-              <select
-                className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-2 text-sm text-[var(--k-text)]"
-                value={selectedId ?? ''}
-                onChange={async (e) => {
-                  const id = e.currentTarget.value || null;
-                  setSelectedId(id);
+              <Select
+                value={selectedValue}
+                onValueChange={async (value) => {
+                  setSelectedValue(value);
+
+                  if (value === NEW_VALUE) {
+                    setTitle('New prompt');
+                    return;
+                  }
+
+                  const id = value === LEGACY_VALUE ? null : value;
                   setSaving(true);
                   setError(null);
                   try {
@@ -111,13 +134,19 @@ export function SystemPromptEditor() {
                 }}
                 disabled={saving}
               >
-                <option value="">Legacy</option>
-                {items.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a preset" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NEW_VALUE}>New preset…</SelectItem>
+                  <SelectItem value={LEGACY_VALUE}>Legacy</SelectItem>
+                  {items.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
 
             <div className="flex items-end gap-2">
@@ -196,7 +225,7 @@ export function SystemPromptEditor() {
             <input
               value={title}
               onChange={(e) => setTitle(e.currentTarget.value)}
-              disabled={!selectedId}
+              disabled={isLegacy}
               className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-2 text-sm text-[var(--k-text)] disabled:opacity-60"
               placeholder="e.g., Default"
             />
@@ -224,6 +253,24 @@ export function SystemPromptEditor() {
                 setSaving(true);
                 setError(null);
                 try {
+                  if (selectedValue === NEW_VALUE) {
+                    const resp = await fetch(`${QUANT_BASE_URL}/system-prompts`, {
+                      method: 'POST',
+                      headers: { 'content-type': 'application/json' },
+                      body: JSON.stringify({ title: title.trim() || 'Untitled', content: draft }),
+                    });
+                    if (!resp.ok) {
+                      setError(await resp.text().catch(() => 'Failed to create preset.'));
+                      return;
+                    }
+                    const data = (await resp.json()) as { id?: string };
+                    const id = typeof data.id === 'string' ? data.id : null;
+                    if (id) setSelectedValue(id);
+                    await refreshList();
+                    await refreshActive();
+                    return;
+                  }
+
                   if (selectedId) {
                     const resp = await fetch(`${QUANT_BASE_URL}/system-prompts/${selectedId}`, {
                       method: 'PUT',
