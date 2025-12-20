@@ -1,38 +1,169 @@
-import { ChatPanel } from '@/components/chat/ChatPanel';
+'use client';
+
+import * as React from 'react';
+import { Bot, Search } from 'lucide-react';
+
+import { AgentPanel } from '@/components/agent/AgentPanel';
+import { SidebarNav } from '@/components/layout/SidebarNav';
+import { DashboardPage } from '@/components/pages/DashboardPage';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
+import { Button } from '@/components/ui/button';
+import { useChatStore } from '@/lib/chat/store';
+import { cn } from '@/lib/utils';
 
 export function AppShell() {
+  const { state, setAgent } = useChatStore();
+  const agentVisible = state.agent.visible;
+  const agentMode = state.agent.mode;
+  const agentWidth = state.agent.width;
+  const agentMaximized = agentVisible && agentMode === 'maximized';
+
+  const [activePage, setActivePage] = React.useState('dashboard');
+  const draggingRef = React.useRef(false);
+  const agentVisibleRef = React.useRef(agentVisible);
+  const agentModeRef = React.useRef(agentMode);
+  const [overlayMounted, setOverlayMounted] = React.useState(false);
+  const [overlayEntered, setOverlayEntered] = React.useState(false);
+
+  React.useEffect(() => {
+    agentVisibleRef.current = agentVisible;
+    agentModeRef.current = agentMode;
+    if (!agentVisible) {
+      // If the agent panel is hidden while dragging, stop resizing immediately.
+      draggingRef.current = false;
+    }
+  }, [agentVisible, agentMode]);
+
+  React.useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!draggingRef.current) return;
+      // Only allow resizing when the agent panel is visible and docked.
+      if (!agentVisibleRef.current) return;
+      if (agentModeRef.current !== 'docked') return;
+      const vw = window.innerWidth;
+      const next = Math.min(720, Math.max(320, vw - e.clientX));
+      setAgent((prev) => ({ ...prev, width: next }));
+    }
+    function onUp() {
+      draggingRef.current = false;
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [setAgent]);
+
+  React.useEffect(() => {
+    let raf = 0;
+    let t: number | null = null;
+    if (agentMaximized) {
+      setOverlayMounted(true);
+      raf = window.requestAnimationFrame(() => setOverlayEntered(true));
+    } else {
+      setOverlayEntered(false);
+      if (overlayMounted) {
+        t = window.setTimeout(() => setOverlayMounted(false), 180);
+      }
+    }
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      if (t) window.clearTimeout(t);
+    };
+  }, [agentMaximized, overlayMounted]);
+
   return (
-    <div className="flex h-screen w-screen bg-zinc-50 text-zinc-950 dark:bg-black dark:text-zinc-50">
-      <aside className="flex w-[260px] flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="flex items-center gap-2 px-4 py-3">
-          <div className="h-6 w-6 rounded-md bg-zinc-950/10 dark:bg-zinc-50/10" />
-          <div className="text-sm font-semibold">Karios</div>
-        </div>
-        <nav className="flex-1 px-2 py-2 text-sm text-zinc-700 dark:text-zinc-300">
-          <div className="rounded-md px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-900">
-            Dashboard (placeholder)
-          </div>
-          <div className="rounded-md px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-900">
-            Imports (placeholder)
-          </div>
-          <div className="rounded-md px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-900">
-            Portfolio (placeholder)
-          </div>
-          <div className="rounded-md px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-900">
-            Context Collector (placeholder)
-          </div>
-          <div className="rounded-md px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-900">
-            Settings (placeholder)
-          </div>
-        </nav>
-        <div className="border-t border-zinc-200 px-4 py-3 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-          Local-first • SQLite-only (v0)
-        </div>
-      </aside>
+    <div className="flex h-screen w-screen bg-[var(--k-bg)] text-[var(--k-text)]">
+      <SidebarNav activeId={activePage} onSelect={setActivePage} />
 
       <main className="flex flex-1 flex-col">
-        <ChatPanel />
+        <header className="flex items-center border-b border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
+          <div className="text-sm font-semibold">
+            {activePage === 'dashboard' ? 'Dashboard' : activePage}
+          </div>
+
+          <div className="flex-1" />
+
+          <div className="flex items-center gap-2">
+            <div className="relative hidden md:block">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--k-muted)]" />
+              <input
+                className="h-9 w-[360px] rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                placeholder="Search stocks / indices..."
+              />
+            </div>
+            <ThemeToggle />
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-9 w-9 rounded-full p-0"
+              onClick={() => setAgent((prev) => ({ ...prev, visible: !prev.visible, mode: 'docked' }))}
+              title={agentVisible ? 'Hide agent' : 'Show agent'}
+            >
+              <Bot className="h-4 w-4" />
+            </Button>
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-[var(--k-accent)] text-sm font-semibold text-white">
+              U
+            </div>
+          </div>
+        </header>
+
+        <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-1 overflow-auto">
+            {activePage === 'dashboard' ? <DashboardPage /> : <DashboardPage />}
+          </div>
+
+          {agentVisible && agentMode !== 'maximized' ? (
+            <div
+              className="w-1 cursor-col-resize bg-transparent hover:bg-[var(--k-border)]"
+              onMouseDown={() => {
+                if (!agentVisible) return;
+                if (agentMode !== 'docked') return;
+                draggingRef.current = true;
+              }}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize agent panel"
+            />
+          ) : null}
+
+          {agentVisible && agentMode !== 'maximized' ? (
+            <div
+              className="shrink-0"
+              style={{ width: agentWidth }}
+            >
+              <div className="h-full border-l border-[var(--k-border)]">
+                <AgentPanel />
+              </div>
+            </div>
+          ) : null}
+        </div>
       </main>
+
+      {overlayMounted ? (
+        <div
+          className={cn(
+            'fixed inset-0 z-50',
+            'bg-black/20 backdrop-blur-[2px]',
+            'transition-opacity duration-200',
+            overlayEntered ? 'opacity-100' : 'opacity-0',
+          )}
+          aria-hidden={!overlayEntered}
+        >
+          <div
+            className={cn(
+              'absolute inset-0',
+              'transition-transform duration-200 will-change-transform',
+              overlayEntered ? 'translate-y-0 scale-100' : 'translate-y-2 scale-[0.985]',
+            )}
+          >
+            <div className="h-full w-full bg-[var(--k-bg)]">
+              <AgentPanel />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

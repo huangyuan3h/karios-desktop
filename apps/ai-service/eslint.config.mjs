@@ -5,6 +5,9 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    ignores: ['dist/**'],
+  },
+  {
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',

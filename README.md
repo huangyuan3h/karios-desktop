@@ -18,12 +18,20 @@ Family investment analyzer desktop app (AI-first).
 - pnpm
 - Python 3.13+
 - uv
-- Rust toolchain (for Tauri)
+- Rust toolchain (for Tauri). Rust >= 1.83 is required.
 
 ### Run everything (dev)
 
 ```bash
 pnpm dev
+```
+
+This will auto-kill any processes listening on ports 3000/3001/4310/4320 before starting.
+
+### Install all dependencies (Node + Python)
+
+```bash
+pnpm install:all
 ```
 
 ## Docs

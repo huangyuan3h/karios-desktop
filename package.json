@@ -6,7 +6,12 @@
     "node": ">=22"
   },
   "scripts": {
+    "ensure-ports": "node scripts/ensure-ports.mjs",
+    "predev": "pnpm ensure-ports",
     "dev": "turbo dev",
+    "predev:tauri": "pnpm ensure-ports",
+    "dev:tauri": "concurrently -k -n BE,TAURI -c auto \"turbo dev --filter=ai-service --filter=quant-service\" \"pnpm -C apps/desktop-ui tauri dev\"",
+    "install:all": "pnpm install && uv sync --project services/quant-service",
     "build": "turbo build",
     "test": "turbo test",
     "lint": "turbo lint",
@@ -14,9 +19,8 @@
     "format": "prettier -w ."
   },
   "devDependencies": {
+    "concurrently": "^9.1.2",
     "prettier": "^3.6.2",
     "turbo": "^2.5.6"
   }
 }
-
-

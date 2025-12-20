@@ -5,8 +5,8 @@
   "identifier": "com.huangyuan3h.kariosdesktop",
   "build": {
     "frontendDist": "../.next",
-    "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "pnpm dev --port 3000",
+    "devUrl": "http://localhost:3001",
+    "beforeDevCommand": "pnpm dev --port 3001",
     "beforeBuildCommand": "pnpm build"
   },
   "app": {
