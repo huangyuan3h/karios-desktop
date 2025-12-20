@@ -3,21 +3,22 @@
 import * as React from 'react';
 
 import { ChatComposer } from '@/components/chat/ChatComposer';
-import { ChatMessageList, type ChatMessage } from '@/components/chat/ChatMessageList';
-
-function nowId() {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+import { ChatMessageList } from '@/components/chat/ChatMessageList';
+import { newId } from '@/lib/id';
+import { useChatStore } from '@/lib/chat/store';
+import type { ChatAttachment, ChatMessage } from '@/lib/chat/types';
 
 export function ChatPanel() {
-  const [messages, setMessages] = React.useState<ChatMessage[]>([
-    {
-      id: nowId(),
-      role: 'assistant',
-      content:
-        'Welcome to Karios Desktop. Start by pasting context (links/text) or asking a question about your portfolio.',
-    },
-  ]);
+  const { activeSession, createSession, appendMessages } = useChatStore();
+
+  React.useEffect(() => {
+    if (!activeSession) {
+      createSession();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const messages: ChatMessage[] = activeSession?.messages ?? [];
 
   return (
     <div className="flex h-full flex-col">
@@ -31,14 +32,15 @@ export function ChatPanel() {
       </div>
 
       <ChatComposer
-        onSend={(text) => {
-          setMessages((prev) => [
-            ...prev,
-            { id: nowId(), role: 'user', content: text },
+        onSend={(text: string, attachments: ChatAttachment[]) => {
+          if (!activeSession) return;
+          appendMessages(activeSession.id, [
+            { id: newId(), role: 'user', content: text, createdAt: new Date().toISOString(), attachments },
             {
-              id: nowId(),
+              id: newId(),
               role: 'assistant',
-              content: 'AI service not connected yet. This is a UI placeholder.',
+              content: 'AI service not connected yet. This is a UI placeholder.\n\n- Markdown supported\n- Images stored locally (v0)\n',
+              createdAt: new Date().toISOString(),
             },
           ]);
         }}

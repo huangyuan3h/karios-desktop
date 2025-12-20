@@ -1,10 +1,6 @@
+import { MarkdownMessage } from '@/components/chat/MarkdownMessage';
+import type { ChatMessage } from '@/lib/chat/types';
 import { cn } from '@/lib/utils';
-
-export type ChatMessage = {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-};
 
 export function ChatMessageList({ messages }: { messages: ChatMessage[] }) {
   return (
@@ -22,7 +18,27 @@ export function ChatMessageList({ messages }: { messages: ChatMessage[] }) {
               'mx-auto border-transparent bg-transparent text-zinc-500 dark:text-zinc-400',
           )}
         >
-          {m.content}
+          {m.role === 'assistant' ? (
+            <MarkdownMessage content={m.content} className="prose-sm" />
+          ) : (
+            <div className="whitespace-pre-wrap">{m.content}</div>
+          )}
+
+          {m.attachments?.length ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {m.attachments.map((a) => (
+                <img
+                  key={a.id}
+                  src={a.dataUrl}
+                  alt={a.name}
+                  className={cn(
+                    'h-20 w-20 rounded-md border object-cover',
+                    'border-zinc-200 dark:border-zinc-800',
+                  )}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
       ))}
     </div>
