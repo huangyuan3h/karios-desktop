@@ -68,29 +68,6 @@ async def select_saved_screen(page, screen_name: str) -> None:
     await page.get_by_text(screen_name, exact=False).first.wait_for(timeout=20_000)
 
 
-async def detect_screen_title(page) -> str | None:
-    """
-    Best-effort: detect the screen title shown in the UI.
-    Useful when capturing shared screener URLs directly (no screen name selection step).
-    """
-    try_selectors = [
-        "h1",
-        "[data-name=header] h1",
-        "[class*=title] h1",
-    ]
-    for selector in try_selectors:
-        try:
-            loc = page.locator(selector).first
-            if await loc.count() == 0:
-                continue
-            text = (await loc.inner_text()).strip()
-            if text and len(text) <= 200:
-                return text
-        except Exception:
-            continue
-    return None
-
-
 async def find_screener_grid(page) -> Any | None:
     """
     Best-effort: find a visible ARIA grid that looks like a screener table.
@@ -242,12 +219,6 @@ async def capture_screener(
                 print(f"[tv] Selecting screen: {screen}")
             await select_saved_screen(page, screen)
             await page.wait_for_timeout(800)
-        else:
-            detected = await detect_screen_title(page)
-            if detected:
-                screen = detected
-                if verbose:
-                    print(f"[tv] Detected screen title: {screen}")
 
         grid = await find_screener_grid(page)
         if grid is None:
@@ -335,14 +306,6 @@ def parse_args() -> argparse.Namespace:
         help="TradingView screener URL (or set TV_SCREENER_URL env var).",
     )
     parser.add_argument(
-        "--targets",
-        default=os.getenv("TV_TARGETS", "").strip(),
-        help=(
-            "Comma-separated TradingView screener URLs to capture. "
-            "When provided, this overrides --screens and captures each URL directly."
-        ),
-    )
-    parser.add_argument(
         "--screens",
         default=os.getenv("TV_SCREENS", "").strip(),
         help="Comma-separated saved screen names to capture (or set TV_SCREENS).",
@@ -401,28 +364,21 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    if not args.url and not args.targets:
-        raise SystemExit("Missing --url (or TV_SCREENER_URL) or --targets (TV_TARGETS).")
+    if not args.url:
+        raise SystemExit("Missing --url (or TV_SCREENER_URL).")
 
     if args.chrome_profile and not args.chrome_user_data_dir:
         raise SystemExit("Missing --chrome-user-data-dir (required when --chrome-profile is set).")
 
-    targets = [t.strip() for t in str(args.targets).split(",") if t.strip()]
-    plan: list[tuple[str, str | None]]
-    if targets:
-        plan = [(t, None) for t in targets]
-    else:
-        base_url = args.url
-        screens = [s.strip() for s in str(args.screens).split(",") if s.strip()]
-        if not screens:
-            screens = [""]
-        plan = [(base_url, s or None) for s in screens]
+    screens = [s.strip() for s in str(args.screens).split(",") if s.strip()]
+    if not screens:
+        screens = [""]
 
-    for url, screen in plan:
+    for screen in screens:
         result = asyncio.run(
             capture_screener(
-                url=url,
-                screen=screen,
+                url=args.url,
+                screen=screen or None,
                 profile_dir=Path(args.chrome_user_data_dir or args.profile_dir),
                 chrome_profile=(args.chrome_profile or None),
                 headless=bool(args.headless),
