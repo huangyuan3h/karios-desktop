@@ -281,9 +281,9 @@ export function SettingsPage() {
           <div className="mt-2 overflow-hidden rounded-lg border border-[var(--k-border)]">
             <div className="grid grid-cols-12 gap-2 bg-[var(--k-surface-2)] px-3 py-2 text-xs text-[var(--k-muted)]">
               <div className="col-span-3">Name</div>
-              <div className="col-span-7">URL</div>
-              <div className="col-span-1 text-center">On</div>
-              <div className="col-span-1 text-right">Actions</div>
+              <div className="col-span-5">URL</div>
+              <div className="col-span-2 text-center">On</div>
+              <div className="col-span-2 text-right">Actions</div>
             </div>
             <div className="divide-y divide-[var(--k-border)]">
               {screeners.map((it) => {
@@ -301,7 +301,7 @@ export function SettingsPage() {
                         <div className="truncate pt-2 text-sm">{it.name}</div>
                       )}
                     </div>
-                    <div className="col-span-7">
+                    <div className="col-span-5">
                       {editing ? (
                         <input
                           className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
@@ -314,14 +314,14 @@ export function SettingsPage() {
                         </div>
                       )}
                     </div>
-                    <div className="col-span-1 grid place-items-center">
+                    <div className="col-span-2 grid place-items-center">
                       <Switch
                         checked={it.enabled}
                         onCheckedChange={(v) => void saveScreener(it, { enabled: v })}
                         disabled={busy}
                       />
                     </div>
-                    <div className="col-span-1 flex items-center justify-end gap-1">
+                    <div className="col-span-2 flex items-center justify-end gap-1">
                       {editing ? (
                         <>
                           <Button
