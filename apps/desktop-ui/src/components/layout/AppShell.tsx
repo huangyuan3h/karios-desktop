@@ -21,6 +21,7 @@ export function AppShell() {
   const agentMaximized = agentVisible && agentMode === 'maximized';
 
   const [activePage, setActivePage] = React.useState('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const draggingRef = React.useRef(false);
   const agentVisibleRef = React.useRef(agentVisible);
   const agentModeRef = React.useRef(agentMode);
@@ -77,7 +78,12 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen w-screen bg-[var(--k-bg)] text-[var(--k-text)]">
-      <SidebarNav activeId={activePage} onSelect={setActivePage} />
+      <SidebarNav
+        activeId={activePage}
+        onSelect={setActivePage}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
+      />
 
       <main className="flex flex-1 flex-col">
         <header className="flex items-center border-b border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">

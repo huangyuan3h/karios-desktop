@@ -3,6 +3,8 @@
 import {
   BarChart3,
   BookOpen,
+  ChevronsLeft,
+  ChevronsRight,
   LayoutDashboard,
   PieChart,
   Settings,
@@ -24,17 +26,60 @@ const items = [
 export function SidebarNav({
   activeId,
   onSelect,
+  collapsed,
+  onToggleCollapsed,
 }: {
   activeId: string;
   onSelect: (id: string) => void;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }) {
+  const isCollapsed = Boolean(collapsed);
   return (
-    <aside className="flex w-[240px] flex-col border-r border-[var(--k-border)] bg-[var(--k-surface)]">
-      <div className="flex items-center gap-2 px-4 py-3">
-        <div className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--k-text)] text-[var(--k-surface)]">
+    <aside
+      className={cn(
+        'flex flex-col border-r border-[var(--k-border)] bg-[var(--k-surface)]',
+        'transition-[width] duration-200 ease-out',
+        isCollapsed ? 'w-[72px]' : 'w-[240px]',
+      )}
+    >
+      <div
+        className={cn(
+          'flex items-center px-4 py-3',
+          isCollapsed ? 'justify-between' : 'gap-2',
+        )}
+      >
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--k-text)] text-[var(--k-surface)]">
           K
         </div>
-        <div className="text-sm font-semibold">Kairos</div>
+        {!isCollapsed ? <div className="text-sm font-semibold">Kairos</div> : null}
+        {!isCollapsed ? <div className="flex-1" /> : null}
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            'h-8 w-8 shrink-0',
+            'text-[var(--k-muted)] hover:text-[var(--k-text)]',
+            isCollapsed ? 'hidden' : '',
+          )}
+          onClick={() => onToggleCollapsed?.()}
+          aria-label="Collapse sidebar"
+          title="Collapse sidebar"
+        >
+          <ChevronsLeft className="h-4 w-4" />
+        </Button>
+        {isCollapsed ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-[var(--k-muted)] hover:text-[var(--k-text)]"
+            onClick={() => onToggleCollapsed?.()}
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+          >
+            <ChevronsRight className="h-4 w-4" />
+          </Button>
+        ) : null}
       </div>
 
       <nav className="px-2 py-2">
@@ -47,19 +92,26 @@ export function SidebarNav({
               onClick={() => onSelect(it.id)}
               variant="ghost"
               className={cn(
-                'h-auto w-full justify-start gap-3 px-3 py-2 text-sm',
+                'h-auto w-full px-3 py-2 text-sm',
+                isCollapsed ? 'justify-center' : 'justify-start gap-3',
                 active ? 'bg-[var(--k-surface-2)]' : 'text-[var(--k-muted)]',
               )}
+              title={isCollapsed ? it.label : undefined}
             >
               <Icon className="h-4 w-4" />
-              {it.label}
+              {!isCollapsed ? it.label : null}
             </Button>
           );
         })}
       </nav>
 
-      <div className="mt-auto border-t border-[var(--k-border)] px-4 py-3 text-xs text-[var(--k-muted)]">
-        Local-first • SQLite-only (v0)
+      <div
+        className={cn(
+          'mt-auto border-t border-[var(--k-border)] px-4 py-3 text-xs text-[var(--k-muted)]',
+          isCollapsed ? 'px-2 text-center' : '',
+        )}
+      >
+        {!isCollapsed ? 'Local-first • SQLite-only (v0)' : 'v0'}
       </div>
     </aside>
   );
