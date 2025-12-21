@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import signal
 import sqlite3
 import subprocess
@@ -255,6 +256,7 @@ TV_CDP_PORT_DEFAULT = 9222
 TV_USER_DATA_DIR_DEFAULT = "~/.karios/chrome-tv-cdp"
 TV_PROFILE_DIR_DEFAULT = "Default"
 TV_CHROME_BIN_DEFAULT = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+TV_CHROME_USER_DATA_DIR_DEFAULT = "~/Library/Application Support/Google/Chrome"
 
 
 class TvChromeStartRequest(BaseModel):
@@ -262,6 +264,10 @@ class TvChromeStartRequest(BaseModel):
     userDataDir: str = TV_USER_DATA_DIR_DEFAULT
     profileDirectory: str = TV_PROFILE_DIR_DEFAULT
     chromeBin: str = TV_CHROME_BIN_DEFAULT
+    headless: bool = False
+    bootstrapFromChromeUserDataDir: str | None = None
+    bootstrapFromProfileDirectory: str | None = None
+    forceBootstrap: bool = False
 
 
 class TvChromeStatusResponse(BaseModel):
@@ -273,6 +279,7 @@ class TvChromeStatusResponse(BaseModel):
     cdpVersion: dict[str, str] | None
     userDataDir: str
     profileDirectory: str
+    headless: bool
 
 
 def _get_tv_chrome_pid() -> int | None:
@@ -319,6 +326,68 @@ def _set_tv_profile_dir(profile_dir: str) -> None:
     set_setting("tv_profile_dir", profile_dir)
 
 
+def _get_tv_headless() -> bool:
+    raw = (get_setting("tv_headless") or "").strip().lower()
+    return raw in {"1", "true", "yes", "y", "on"}
+
+
+def _set_tv_headless(value: bool) -> None:
+    set_setting("tv_headless", "1" if value else "0")
+
+
+def _copy_chrome_profile(
+    *,
+    src_user_data_dir: str,
+    src_profile_dir: str,
+    dst_user_data_dir: str,
+    dst_profile_dir: str,
+    force: bool,
+) -> None:
+    """
+    Copy an existing Chrome profile into a dedicated user-data-dir so that we can run
+    Chrome with --remote-debugging-port (Chrome disallows remote debugging on the default dir).
+
+    We intentionally skip heavy cache directories.
+    """
+    src_ud = Path(_home_path(src_user_data_dir))
+    dst_ud = Path(_home_path(dst_user_data_dir))
+    src_profile = src_ud / src_profile_dir
+    dst_profile = dst_ud / dst_profile_dir
+
+    if not src_ud.exists():
+        raise HTTPException(status_code=400, detail=f"Source user-data-dir not found: {src_ud}")
+    if not src_profile.exists():
+        raise HTTPException(status_code=400, detail=f"Source profile not found: {src_profile}")
+
+    dst_ud.mkdir(parents=True, exist_ok=True)
+
+    # Copy Local State (contains encryption keys metadata for cookies).
+    src_local_state = src_ud / "Local State"
+    dst_local_state = dst_ud / "Local State"
+    if src_local_state.exists() and (force or not dst_local_state.exists()):
+        shutil.copy2(src_local_state, dst_local_state)
+
+    if dst_profile.exists():
+        if not force:
+            return
+        shutil.rmtree(dst_profile)
+
+    def ignore(_dir: str, names: list[str]) -> set[str]:
+        skip = {
+            "Cache",
+            "Code Cache",
+            "GPUCache",
+            "ShaderCache",
+            "Media Cache",
+            "GrShaderCache",
+            "Crashpad",
+            "SwReporter",
+        }
+        return {n for n in names if n in skip}
+
+    shutil.copytree(src_profile, dst_profile, ignore=ignore)
+
+
 def _get_tv_chrome_bin() -> str:
     return (get_setting("tv_chrome_bin") or TV_CHROME_BIN_DEFAULT).strip()
 
@@ -334,6 +403,7 @@ def tradingview_status() -> TvChromeStatusResponse:
     port = _get_tv_cdp_port()
     user_data_dir = _get_tv_user_data_dir()
     profile_dir = _get_tv_profile_dir()
+    headless = _get_tv_headless()
     cdp = _cdp_version(TV_CDP_HOST, port) if running else None
     cdp_ok = cdp is not None
     return TvChromeStatusResponse(
@@ -345,6 +415,7 @@ def tradingview_status() -> TvChromeStatusResponse:
         cdpVersion=cdp,
         userDataDir=user_data_dir,
         profileDirectory=profile_dir,
+        headless=headless,
     )
 
 
@@ -361,10 +432,12 @@ def tradingview_chrome_start(req: TvChromeStartRequest) -> TvChromeStatusRespons
     user_data_dir = _home_path(req.userDataDir)
     profile_dir = req.profileDirectory.strip() or TV_PROFILE_DIR_DEFAULT
     chrome_bin = req.chromeBin.strip() or TV_CHROME_BIN_DEFAULT
+    headless = bool(req.headless)
     _set_tv_cdp_port(port)
     _set_tv_user_data_dir(user_data_dir)
     _set_tv_profile_dir(profile_dir)
     _set_tv_chrome_bin(chrome_bin)
+    _set_tv_headless(headless)
 
     if pid and _pid_is_running(pid):
         return tradingview_status()
@@ -378,6 +451,17 @@ def tradingview_chrome_start(req: TvChromeStartRequest) -> TvChromeStatusRespons
 
     Path(user_data_dir).mkdir(parents=True, exist_ok=True)
 
+    # Optional: bootstrap from an existing Chrome profile into the dedicated user-data-dir.
+    # This enables "silent" headless syncing using the user's logged-in session.
+    if req.bootstrapFromChromeUserDataDir and req.bootstrapFromProfileDirectory:
+        _copy_chrome_profile(
+            src_user_data_dir=req.bootstrapFromChromeUserDataDir,
+            src_profile_dir=req.bootstrapFromProfileDirectory,
+            dst_user_data_dir=user_data_dir,
+            dst_profile_dir=profile_dir,
+            force=bool(req.forceBootstrap),
+        )
+
     # Chrome requires a non-default user-data-dir for remote debugging.
     # We always use a dedicated directory to avoid interfering with the user's daily profile.
     args = [
@@ -385,6 +469,7 @@ def tradingview_chrome_start(req: TvChromeStartRequest) -> TvChromeStatusRespons
         f"--remote-debugging-port={port}",
         f"--user-data-dir={user_data_dir}",
         f"--profile-directory={profile_dir}",
+        *(["--headless=new", "--disable-gpu", "--window-size=1280,820"] if headless else []),
         "--no-first-run",
         "--no-default-browser-check",
     ]
@@ -738,7 +823,10 @@ def sync_tv_screener(screener_id: str) -> TvScreenerSyncResponse:
     try:
         result = capture_screener_over_cdp_sync(cdp_url=cdp_url, url=str(screener["url"]))
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        msg = str(e)
+        if "Cannot locate screener grid/table" in msg:
+            raise HTTPException(status_code=409, detail=msg) from e
+        raise HTTPException(status_code=500, detail=msg) from e
 
     snapshot_id = _insert_tv_snapshot(
         screener_id=screener_id,

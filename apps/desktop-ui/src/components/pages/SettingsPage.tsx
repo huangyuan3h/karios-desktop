@@ -24,6 +24,7 @@ type TvChromeStatus = {
   cdpVersion: Record<string, string> | null;
   userDataDir: string;
   profileDirectory: string;
+  headless: boolean;
 };
 
 async function apiGetJson<T>(path: string): Promise<T> {
@@ -54,6 +55,12 @@ export function SettingsPage() {
   const [status, setStatus] = React.useState<TvChromeStatus | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+
+  const [headless, setHeadless] = React.useState(true);
+  const [sourceUserDataDir, setSourceUserDataDir] = React.useState(
+    '~/Library/Application Support/Google/Chrome',
+  );
+  const [sourceProfileDir, setSourceProfileDir] = React.useState('Profile 1');
 
   const [newName, setNewName] = React.useState('');
   const [newUrl, setNewUrl] = React.useState('');
@@ -87,7 +94,15 @@ export function SettingsPage() {
       const st = await apiSendJson<TvChromeStatus>(
         '/integrations/tradingview/chrome/start',
         'POST',
-        {},
+        {
+          headless,
+          // Use a dedicated user-data-dir for CDP. Keep it stable so cookies persist.
+          userDataDir: status?.userDataDir ?? '~/.karios/chrome-tv-cdp',
+          // Use the same profile directory name as the source, so we can copy Profile 1.
+          profileDirectory: sourceProfileDir,
+          bootstrapFromChromeUserDataDir: sourceUserDataDir,
+          bootstrapFromProfileDirectory: sourceProfileDir,
+        },
       );
       setStatus(st);
     } catch (e) {
@@ -187,7 +202,7 @@ export function SettingsPage() {
           <div>
             <div className="font-medium">Dedicated Chrome (CDP)</div>
             <div className="text-sm text-[var(--k-muted)]">
-              Start Chrome once, login to TradingView, then sync screeners without re-auth.
+              Start a headless Chrome and reuse your existing Chrome profile login state.
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -207,6 +222,44 @@ export function SettingsPage() {
         </div>
 
         <div className="mt-4 grid gap-3 text-sm">
+          <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-medium">Silent mode</div>
+                <div className="text-xs text-[var(--k-muted)]">
+                  Headless Chrome will not open a window. If login is required, temporarily turn it off.
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-[var(--k-muted)]">Headless</div>
+                <Switch checked={headless} onCheckedChange={setHeadless} disabled={busy} />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
+            <div className="text-[var(--k-muted)]">Bootstrap from existing Chrome profile</div>
+            <div className="mt-2 grid grid-cols-12 gap-2">
+              <input
+                className="col-span-8 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                placeholder="~/Library/Application Support/Google/Chrome"
+                value={sourceUserDataDir}
+                onChange={(e) => setSourceUserDataDir(e.target.value)}
+                disabled={busy}
+              />
+              <input
+                className="col-span-4 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                placeholder="Profile 1"
+                value={sourceProfileDir}
+                onChange={(e) => setSourceProfileDir(e.target.value)}
+                disabled={busy}
+              />
+            </div>
+            <div className="mt-2 text-xs text-[var(--k-muted)]">
+              We copy "Local State" and the selected profile into the dedicated user-data-dir, so CDP works.
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
               <div className="text-[var(--k-muted)]">Status</div>
