@@ -24,6 +24,13 @@ export type ChatSession = {
   messages: ChatMessage[];
 };
 
+export type ChatReference = {
+  snapshotId: string;
+  screenerId: string;
+  screenerName: string;
+  capturedAt: string;
+};
+
 export type AppSettings = {
   systemPrompt: string;
   systemPromptId: string | null;

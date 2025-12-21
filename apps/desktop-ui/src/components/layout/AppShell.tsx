@@ -6,6 +6,8 @@ import { Bot, Search } from 'lucide-react';
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
+import { ScreenerPage } from '@/components/pages/ScreenerPage';
+import { SettingsPage } from '@/components/pages/SettingsPage';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
@@ -19,6 +21,7 @@ export function AppShell() {
   const agentMaximized = agentVisible && agentMode === 'maximized';
 
   const [activePage, setActivePage] = React.useState('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const draggingRef = React.useRef(false);
   const agentVisibleRef = React.useRef(agentVisible);
   const agentModeRef = React.useRef(agentMode);
@@ -75,12 +78,23 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen w-screen bg-[var(--k-bg)] text-[var(--k-text)]">
-      <SidebarNav activeId={activePage} onSelect={setActivePage} />
+      <SidebarNav
+        activeId={activePage}
+        onSelect={setActivePage}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
+      />
 
       <main className="flex flex-1 flex-col">
         <header className="flex items-center border-b border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
           <div className="text-sm font-semibold">
-            {activePage === 'dashboard' ? 'Dashboard' : activePage}
+            {activePage === 'dashboard'
+              ? 'Dashboard'
+              : activePage === 'screener'
+                ? 'Screener'
+              : activePage === 'settings'
+                ? 'Settings'
+                : activePage}
           </div>
 
           <div className="flex-1" />
@@ -111,7 +125,13 @@ export function AppShell() {
 
         <div className="flex min-h-0 flex-1">
           <div className="min-w-0 flex-1 overflow-auto">
-            {activePage === 'dashboard' ? <DashboardPage /> : <DashboardPage />}
+            {activePage === 'settings' ? (
+              <SettingsPage />
+            ) : activePage === 'screener' ? (
+              <ScreenerPage />
+            ) : (
+              <DashboardPage />
+            )}
           </div>
 
           {agentVisible && agentMode !== 'maximized' ? (

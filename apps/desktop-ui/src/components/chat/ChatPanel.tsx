@@ -4,14 +4,95 @@ import * as React from 'react';
 
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { ChatMessageList } from '@/components/chat/ChatMessageList';
-import { AI_BASE_URL } from '@/lib/endpoints';
+import { AI_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
 import { newId } from '@/lib/id';
 import { useChatStore } from '@/lib/chat/store';
-import type { ChatAttachment, ChatMessage } from '@/lib/chat/types';
+import type { ChatAttachment, ChatMessage, ChatReference } from '@/lib/chat/types';
+
+type TvSnapshotDetail = {
+  id: string;
+  screenerId: string;
+  capturedAt: string;
+  rowCount: number;
+  screenTitle: string | null;
+  url: string;
+  headers: string[];
+  rows: Record<string, string>[];
+};
+
+function pickColumns(headers: string[]) {
+  const preferred = [
+    'Ticker',
+    'Name',
+    'Symbol',
+    'Price',
+    'Change %',
+    'Rel Volume',
+    'Rel Volume 1W',
+    'Market cap',
+    'Sector',
+    'Analyst Rating',
+    'RSI (14)',
+  ];
+  const set = new Set(headers);
+  const picked = preferred.filter((h) => set.has(h));
+  const rest = headers.filter((h) => !picked.includes(h));
+  return [...picked, ...rest].slice(0, 8);
+}
+
+async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
+  const items: Array<{ ref: ChatReference; snap: TvSnapshotDetail | null }> = [];
+  for (const ref of refs) {
+    try {
+      const resp = await fetch(
+        `${QUANT_BASE_URL}/integrations/tradingview/snapshots/${encodeURIComponent(ref.snapshotId)}`,
+        { cache: 'no-store' },
+      );
+      if (!resp.ok) {
+        items.push({ ref, snap: null });
+        continue;
+      }
+      items.push({ ref, snap: (await resp.json()) as TvSnapshotDetail });
+    } catch {
+      items.push({ ref, snap: null });
+    }
+  }
+
+  let out = '# Reference Context: TradingView Screener Snapshots\n\n';
+  for (const { ref, snap } of items) {
+    out += `## ${ref.screenerName}\n`;
+    out += `- snapshotId: ${ref.snapshotId}\n`;
+    out += `- capturedAt: ${ref.capturedAt}\n`;
+    if (!snap) {
+      out += `- status: failed to load snapshot from quant-service\n\n`;
+      continue;
+    }
+    out += `- url: ${snap.url}\n`;
+    if (snap.screenTitle) out += `- screenTitle: ${snap.screenTitle}\n`;
+    const cols = pickColumns(snap.headers);
+    out += `- columns: ${cols.join(', ')}\n`;
+    const rows = snap.rows.slice(0, 20);
+    out += `\nRows (first ${rows.length}):\n`;
+    for (const r of rows) {
+      const line = cols.map((c) => `${c}=${(r[c] ?? '').replaceAll('\n', ' ')}`).join(' ; ');
+      out += `- ${line}\n`;
+    }
+    out += `\n`;
+  }
+  return out;
+}
 
 export function ChatPanel() {
-  const { activeSession, createSession, appendMessages, updateMessageContent, state, renameSession } =
-    useChatStore();
+  const {
+    activeSession,
+    createSession,
+    appendMessages,
+    updateMessageContent,
+    state,
+    renameSession,
+    removeReference,
+    clearReferences,
+  } = useChatStore();
   const scrollerRef = React.useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = React.useRef(true);
 
@@ -49,6 +130,9 @@ export function ChatPanel() {
       </div>
 
       <ChatComposer
+        references={state.references}
+        onRemoveReference={removeReference}
+        onClearReferences={clearReferences}
         onSend={(text: string, attachments: ChatAttachment[]) => {
           if (!activeSession) return;
           const shouldInferTitle =
@@ -72,18 +156,14 @@ export function ChatPanel() {
           appendMessages(activeSession.id, [userMessage, assistantMessage]);
 
           const sp = state.settings.systemPrompt.trim();
-          const payload = {
-            messages: [
-              ...(sp ? [{ role: 'system' as const, content: sp }] : []),
-              ...[...messages, userMessage]
-                .filter((m) => m.role !== 'system')
-                .map((m) => ({
-                  role: m.role,
-                  content: m.content,
-                  attachments: m.attachments,
-                })),
-            ],
-          };
+          const baseMessages = [...messages, userMessage]
+            .filter((m) => m.role !== 'system')
+            .map((m) => ({
+              role: m.role,
+              content: m.content,
+              attachments: m.attachments,
+            }));
+          const refs = state.references;
 
           (async () => {
             try {
@@ -108,6 +188,18 @@ export function ChatPanel() {
                   // ignore
                 }
               }
+
+              const referenceText =
+                refs.length > 0 ? await buildReferenceBlock(refs) : '';
+              const payload = {
+                messages: [
+                  ...(sp ? [{ role: 'system' as const, content: sp }] : []),
+                  ...(referenceText
+                    ? [{ role: 'system' as const, content: referenceText }]
+                    : []),
+                  ...baseMessages,
+                ],
+              };
 
               const resp = await fetch(`${AI_BASE_URL}/chat`, {
                 method: 'POST',
