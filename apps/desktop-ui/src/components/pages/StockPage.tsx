@@ -26,6 +26,25 @@ type BarsResp = {
   }>;
 };
 
+type ChipsResp = {
+  symbol: string;
+  market: string;
+  ticker: string;
+  name: string;
+  currency: string;
+  items: Array<{
+    date: string;
+    profitRatio: string;
+    avgCost: string;
+    cost90Low: string;
+    cost90High: string;
+    cost90Conc: string;
+    cost70Low: string;
+    cost70High: string;
+    cost70Conc: string;
+  }>;
+};
+
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
@@ -51,6 +70,7 @@ export function StockPage({
 }) {
   const { addReference } = useChatStore();
   const [data, setData] = React.useState<BarsResp | null>(null);
+  const [chips, setChips] = React.useState<ChipsResp | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const chartData: OHLCV[] = React.useMemo(() => {
@@ -81,10 +101,14 @@ export function StockPage({
     setError(null);
     setBusy(true);
     try {
-      const d = await apiGetJson<BarsResp>(
-        `/market/stocks/${encodeURIComponent(symbol)}/bars?days=60`,
-      );
+      const [d, c] = await Promise.all([
+        apiGetJson<BarsResp>(`/market/stocks/${encodeURIComponent(symbol)}/bars?days=60`),
+        apiGetJson<ChipsResp>(`/market/stocks/${encodeURIComponent(symbol)}/chips?days=60`).catch(
+          () => null,
+        ),
+      ]);
       setData(d);
+      setChips(c);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -160,10 +184,54 @@ export function StockPage({
       </section>
 
       <section className="mt-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-        <div className="font-medium">Chip distribution / Fund flow</div>
-        <div className="mt-2 text-sm text-[var(--k-muted)]">
-          Coming soon. We will add AkShare/Eastmoney-based data adapters here (cyq/fund flow).
+        <div className="flex items-center justify-between">
+          <div className="font-medium">Chip distribution (筹码分布)</div>
+          <div className="text-xs text-[var(--k-muted)]">
+            {chips?.items?.length ? `${chips.items.length} rows` : '—'}
+          </div>
         </div>
+        {chips?.items?.length ? (
+          <>
+            <div className="mt-2 text-sm text-[var(--k-muted)]">
+              Latest: profitRatio={chips.items[chips.items.length - 1]?.profitRatio} • avgCost=
+              {chips.items[chips.items.length - 1]?.avgCost} • 70%[{chips.items[chips.items.length - 1]?.cost70Low},{' '}
+              {chips.items[chips.items.length - 1]?.cost70High}] • 90%[{chips.items[chips.items.length - 1]?.cost90Low},{' '}
+              {chips.items[chips.items.length - 1]?.cost90High}]
+            </div>
+            <div className="mt-3 overflow-hidden rounded-lg border border-[var(--k-border)]">
+              <div className="max-h-[320px] overflow-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="sticky top-0 bg-[var(--k-surface-2)]">
+                    <tr className="text-left text-xs text-[var(--k-muted)]">
+                      {['Date', 'Profit', 'Avg', '70% Low', '70% High', '90% Low', '90% High'].map((h) => (
+                        <th key={h} className="whitespace-nowrap px-3 py-2">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {chips.items.map((it) => (
+                      <tr key={it.date} className="border-t border-[var(--k-border)]">
+                        <td className="px-3 py-2 font-mono text-xs">{it.date}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{it.profitRatio}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{it.avgCost}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{it.cost70Low}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{it.cost70High}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{it.cost90Low}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{it.cost90High}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="mt-2 text-sm text-[var(--k-muted)]">
+            Not available yet for this market (v0 supports CN A-shares only), or data source failed.
+          </div>
+        )}
       </section>
     </div>
   );

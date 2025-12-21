@@ -178,3 +178,39 @@ def fetch_hk_daily_bars(ticker: str, *, days: int = 60) -> list[BarRow]:
     raise RuntimeError("AkShare missing stock_hk_hist. Please upgrade AkShare.")
 
 
+def fetch_cn_a_chip_summary(
+    ticker: str,
+    *,
+    days: int = 60,
+    adjust: str = "",
+) -> list[dict[str, str]]:
+    """
+    Eastmoney chip/cost distribution summary time series.
+
+    Returns rows with:
+    日期, 获利比例, 平均成本, 90成本-低/高/集中度, 70成本-低/高/集中度
+    """
+    ak = _akshare()
+    df = ak.stock_cyq_em(symbol=ticker, adjust=adjust)
+    rows = _to_records(df)
+    out: list[dict[str, str]] = []
+    for r in rows:
+        d = str(r.get("日期") or "").strip()
+        if not d:
+            continue
+        out.append(
+            {
+                "date": d,
+                "profitRatio": str(r.get("获利比例") or ""),
+                "avgCost": str(r.get("平均成本") or ""),
+                "cost90Low": str(r.get("90成本-低") or ""),
+                "cost90High": str(r.get("90成本-高") or ""),
+                "cost90Conc": str(r.get("90集中度") or ""),
+                "cost70Low": str(r.get("70成本-低") or ""),
+                "cost70High": str(r.get("70成本-高") or ""),
+                "cost70Conc": str(r.get("70集中度") or ""),
+            },
+        )
+    return out[-max(1, int(days)) :]
+
+

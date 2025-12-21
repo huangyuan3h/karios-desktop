@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from market.akshare_provider import (
     BarRow,
     StockRow,
+    fetch_cn_a_chip_summary,
     fetch_cn_a_daily_bars,
     fetch_cn_a_spot,
     fetch_hk_daily_bars,
@@ -146,6 +147,26 @@ def _connect() -> sqlite3.Connection:
           volume TEXT,
           amount TEXT,
           updated_at TEXT NOT NULL,
+          PRIMARY KEY(symbol, date),
+          FOREIGN KEY(symbol) REFERENCES market_stocks(symbol)
+        )
+        """,
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS market_chips (
+          symbol TEXT NOT NULL,
+          date TEXT NOT NULL,
+          profit_ratio TEXT,
+          avg_cost TEXT,
+          cost90_low TEXT,
+          cost90_high TEXT,
+          cost90_conc TEXT,
+          cost70_low TEXT,
+          cost70_high TEXT,
+          cost70_conc TEXT,
+          updated_at TEXT NOT NULL,
+          raw_json TEXT NOT NULL,
           PRIMARY KEY(symbol, date),
           FOREIGN KEY(symbol) REFERENCES market_stocks(symbol)
         )
@@ -744,6 +765,15 @@ class MarketBarsResponse(BaseModel):
     bars: list[dict[str, str]]
 
 
+class MarketChipsResponse(BaseModel):
+    symbol: str
+    market: str
+    ticker: str
+    name: str
+    currency: str
+    items: list[dict[str, str]]
+
+
 @app.get("/integrations/tradingview/screeners", response_model=ListTvScreenersResponse)
 def list_tv_screeners() -> ListTvScreenersResponse:
     _seed_default_tv_screeners()
@@ -901,6 +931,53 @@ def _upsert_market_bars(conn: sqlite3.Connection, symbol: str, bars: list[BarRow
                 b.volume,
                 b.amount,
                 ts,
+            ),
+        )
+
+
+def _upsert_market_chips(
+    conn: sqlite3.Connection,
+    symbol: str,
+    items: list[dict[str, str]],
+    ts: str,
+) -> None:
+    for it in items:
+        raw = json.dumps(it, ensure_ascii=False)
+        conn.execute(
+            """
+            INSERT INTO market_chips(
+              symbol, date,
+              profit_ratio, avg_cost,
+              cost90_low, cost90_high, cost90_conc,
+              cost70_low, cost70_high, cost70_conc,
+              updated_at, raw_json
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(symbol, date) DO UPDATE SET
+              profit_ratio = excluded.profit_ratio,
+              avg_cost = excluded.avg_cost,
+              cost90_low = excluded.cost90_low,
+              cost90_high = excluded.cost90_high,
+              cost90_conc = excluded.cost90_conc,
+              cost70_low = excluded.cost70_low,
+              cost70_high = excluded.cost70_high,
+              cost70_conc = excluded.cost70_conc,
+              updated_at = excluded.updated_at,
+              raw_json = excluded.raw_json
+            """,
+            (
+                symbol,
+                str(it.get("date") or ""),
+                str(it.get("profitRatio") or ""),
+                str(it.get("avgCost") or ""),
+                str(it.get("cost90Low") or ""),
+                str(it.get("cost90High") or ""),
+                str(it.get("cost90Conc") or ""),
+                str(it.get("cost70Low") or ""),
+                str(it.get("cost70High") or ""),
+                str(it.get("cost70Conc") or ""),
+                ts,
+                raw,
             ),
         )
 
@@ -1075,6 +1152,65 @@ def market_stock_bars(symbol: str, days: int = 60) -> MarketBarsResponse:
         name=name,
         currency=currency,
         bars=out2,
+    )
+
+
+@app.get("/market/stocks/{symbol}/chips", response_model=MarketChipsResponse)
+def market_stock_chips(symbol: str, days: int = 60) -> MarketChipsResponse:
+    days2 = max(10, min(int(days), 200))
+    sym = symbol.strip()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT symbol, market, ticker, name, currency FROM market_stocks WHERE symbol = ?",
+            (sym,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        market = str(row[1])
+        ticker = str(row[2])
+        name = str(row[3])
+        currency = str(row[4])
+
+    if market != "CN":
+        raise HTTPException(
+            status_code=400,
+            detail="Chip distribution is only supported for CN A-shares (v0).",
+        )
+
+    with _connect() as conn:
+        cached = conn.execute(
+            """
+            SELECT raw_json
+            FROM market_chips
+            WHERE symbol = ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (sym, days2),
+        ).fetchall()
+    if len(cached) >= min(days2, 30):
+        items = [json.loads(str(r[0])) for r in reversed(cached)]
+        return MarketChipsResponse(
+            symbol=sym,
+            market=market,
+            ticker=ticker,
+            name=name,
+            currency=currency,
+            items=items,
+        )
+
+    ts = now_iso()
+    items2 = fetch_cn_a_chip_summary(ticker, days=days2)
+    with _connect() as conn:
+        _upsert_market_chips(conn, sym, items2, ts)
+        conn.commit()
+    return MarketChipsResponse(
+        symbol=sym,
+        market=market,
+        ticker=ticker,
+        name=name,
+        currency=currency,
+        items=items2,
     )
 
 

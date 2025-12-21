@@ -69,3 +69,70 @@ def test_market_sync_and_list(tmp_path, monkeypatch) -> None:
     assert resp.json()["items"][0]["symbol"] == "HK:00005"
 
 
+def test_market_chips_cn_only(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    # Seed one CN stock.
+    client = TestClient(main.app)
+    client.post("/market/sync")  # may fail if not patched, so patch providers below
+
+    # Patch spot providers to insert CN/HK quickly.
+    monkeypatch.setattr(
+        main,
+        "fetch_cn_a_spot",
+        lambda: [
+            main.StockRow(
+                symbol="CN:000001",
+                market="CN",
+                ticker="000001",
+                name="Ping An Bank",
+                currency="CNY",
+                quote={},
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        main,
+        "fetch_hk_spot",
+        lambda: [
+            main.StockRow(
+                symbol="HK:00005",
+                market="HK",
+                ticker="00005",
+                name="HSBC",
+                currency="HKD",
+                quote={},
+            )
+        ],
+    )
+    client.post("/market/sync")
+
+    # Patch chip provider.
+    monkeypatch.setattr(
+        main,
+        "fetch_cn_a_chip_summary",
+        lambda ticker, days=60: [
+            {
+                "date": "2025-12-20",
+                "profitRatio": "0.5",
+                "avgCost": "10.0",
+                "cost90Low": "9.0",
+                "cost90High": "11.0",
+                "cost90Conc": "0.2",
+                "cost70Low": "9.5",
+                "cost70High": "10.5",
+                "cost70Conc": "0.1",
+            }
+        ],
+    )
+
+    resp = client.get("/market/stocks/CN:000001/chips?days=60")
+    assert resp.status_code == 200
+    assert resp.json()["symbol"] == "CN:000001"
+    assert resp.json()["items"][0]["avgCost"] == "10.0"
+
+    resp = client.get("/market/stocks/HK:00005/chips?days=60")
+    assert resp.status_code == 400
+
+
