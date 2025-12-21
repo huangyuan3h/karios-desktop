@@ -40,7 +40,9 @@ export type ChatReference =
       market: string;
       ticker: string;
       name: string;
-      days: number;
+      barsDays: number;
+      chipsDays: number;
+      fundFlowDays: number;
       capturedAt: string;
     };
 

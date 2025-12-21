@@ -127,12 +127,12 @@ export function StockPage({
     try {
       const [d, c] = await Promise.all([
         apiGetJson<BarsResp>(`/market/stocks/${encodeURIComponent(symbol)}/bars?days=60`),
-        apiGetJson<ChipsResp>(`/market/stocks/${encodeURIComponent(symbol)}/chips?days=60`).catch(
+        apiGetJson<ChipsResp>(`/market/stocks/${encodeURIComponent(symbol)}/chips?days=30`).catch(
           () => null,
         ),
       ]);
       const ff = await apiGetJson<FundFlowResp>(
-        `/market/stocks/${encodeURIComponent(symbol)}/fund-flow?days=60`,
+        `/market/stocks/${encodeURIComponent(symbol)}/fund-flow?days=30`,
       ).catch(() => null);
       setData(d);
       setChips(c);
@@ -179,7 +179,9 @@ export function StockPage({
                 market: data.market,
                 ticker: data.ticker,
                 name: data.name,
-                days: 60,
+                barsDays: 60,
+                chipsDays: 30,
+                fundFlowDays: 30,
                 capturedAt: new Date().toISOString(),
               });
             }}

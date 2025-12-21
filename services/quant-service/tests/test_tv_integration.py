@@ -73,6 +73,7 @@ def test_tv_sync_persists_snapshot(tmp_path, monkeypatch) -> None:
         url="https://www.tradingview.com/screener/TMcms1mM/",
         captured_at="2025-12-21T00:00:00+00:00",
         screen_title="Swing Falcon Filter",
+        filters=["Market 2", "Price > EMA (50)", "RSI (14) 50 to 80"],
         headers=["Symbol", "Price"],
         rows=[{"Symbol": "000001", "Price": "10.00 CNY"}],
     )
@@ -104,6 +105,7 @@ def test_tv_sync_persists_snapshot(tmp_path, monkeypatch) -> None:
     assert data["id"] == snapshot_id
     assert data["screenerId"] == "falcon"
     assert data["rowCount"] == 1
+    assert "filters" in data and isinstance(data["filters"], list)
     assert data["headers"] == ["Symbol", "Price"]
     assert data["rows"][0]["Symbol"] == "000001"
 

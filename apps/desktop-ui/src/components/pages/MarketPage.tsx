@@ -236,7 +236,9 @@ export function MarketPage({
                     market: it.market,
                     ticker: it.ticker,
                     name: it.name,
-                    days: 60,
+                    barsDays: 60,
+                    chipsDays: 30,
+                    fundFlowDays: 30,
                     capturedAt: new Date().toISOString(),
                   });
                 }}

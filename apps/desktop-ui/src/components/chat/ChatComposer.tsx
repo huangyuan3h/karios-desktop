@@ -137,7 +137,7 @@ export function ChatComposer({
               <span className="max-w-[220px] truncate">
                 {r.kind === 'tv'
                   ? `${r.screenerName} @ ${new Date(r.capturedAt).toLocaleString()}`
-                  : `${r.ticker} ${r.name} (60D) @ ${new Date(r.capturedAt).toLocaleString()}`}
+                  : `${r.ticker} ${r.name} (${r.barsDays}D) @ ${new Date(r.capturedAt).toLocaleString()}`}
               </span>
               <Button
                 variant="ghost"

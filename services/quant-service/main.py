@@ -744,6 +744,7 @@ class TvScreenerSnapshotDetail(BaseModel):
     capturedAt: str
     rowCount: int
     screenTitle: str | None
+    filters: list[str]
     url: str
     headers: list[str]
     rows: list[dict[str, str]]
@@ -1391,12 +1392,14 @@ def _insert_tv_snapshot(
     captured_at: str,
     url: str,
     screen_title: str | None,
+    filters: list[str],
     headers: list[str],
     rows: list[dict[str, str]],
 ) -> str:
     snapshot_id = str(uuid.uuid4())
     payload = {
         "screenTitle": screen_title,
+        "filters": [str(x) for x in (filters or []) if str(x).strip()],
         "url": url,
         "headers": headers,
         "rows": rows,
@@ -1436,6 +1439,7 @@ def _get_tv_snapshot(snapshot_id: str) -> TvScreenerSnapshotDetail | None:
             capturedAt=str(row[2]),
             rowCount=int(row[3]),
             screenTitle=str(payload.get("screenTitle") or "") or None,
+            filters=[str(x) for x in (payload.get("filters") or []) if str(x).strip()],
             url=str(payload.get("url") or ""),
             headers=[str(x) for x in payload.get("headers") or []],
             rows=[
@@ -1510,6 +1514,7 @@ def sync_tv_screener(screener_id: str) -> TvScreenerSyncResponse:
         captured_at=result.captured_at,
         url=result.url,
         screen_title=result.screen_title,
+        filters=result.filters,
         headers=result.headers,
         rows=result.rows,
     )

@@ -15,6 +15,7 @@ type TvSnapshotDetail = {
   capturedAt: string;
   rowCount: number;
   screenTitle: string | null;
+  filters: string[];
   url: string;
   headers: string[];
   rows: Record<string, string>[];
@@ -37,6 +38,47 @@ type StockBarsDetail = {
   }>;
 };
 
+type StockChipsDetail = {
+  symbol: string;
+  market: string;
+  ticker: string;
+  name: string;
+  currency: string;
+  items: Array<{
+    date: string;
+    profitRatio: string;
+    avgCost: string;
+    cost90Low: string;
+    cost90High: string;
+    cost90Conc: string;
+    cost70Low: string;
+    cost70High: string;
+    cost70Conc: string;
+  }>;
+};
+
+type StockFundFlowDetail = {
+  symbol: string;
+  market: string;
+  ticker: string;
+  name: string;
+  currency: string;
+  items: Array<{
+    date: string;
+    close: string;
+    changePct: string;
+    mainNetAmount: string;
+    mainNetRatio: string;
+    superNetAmount: string;
+    superNetRatio: string;
+    largeNetAmount: string;
+    largeNetRatio: string;
+    mediumNetAmount: string;
+    mediumNetRatio: string;
+    smallNetAmount: string;
+    smallNetRatio: string;
+  }>;
+};
 function pickColumns(headers: string[]) {
   const preferred = [
     'Ticker',
@@ -73,6 +115,9 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         out += `- capturedAt: ${ref.capturedAt}\n`;
         out += `- url: ${snap.url}\n`;
         if (snap.screenTitle) out += `- screenTitle: ${snap.screenTitle}\n`;
+        if (Array.isArray(snap.filters) && snap.filters.length) {
+          out += `- filters: ${snap.filters.join(' | ')}\n`;
+        }
         const cols = pickColumns(snap.headers);
         out += `- columns: ${cols.join(', ')}\n`;
         const rows = snap.rows.slice(0, 20);
@@ -93,22 +138,64 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 
     // Stock reference
     try {
-      const resp = await fetch(
-        `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/bars?days=${ref.days}`,
-        { cache: 'no-store' },
-      );
-      if (!resp.ok) throw new Error('failed to load stock bars');
-      const snap = (await resp.json()) as StockBarsDetail;
+      const [barsResp, chipsResp, ffResp] = await Promise.all([
+        fetch(
+          `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/bars?days=${ref.barsDays}`,
+          { cache: 'no-store' },
+        ),
+        fetch(
+          `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/chips?days=${ref.chipsDays}`,
+          { cache: 'no-store' },
+        ).catch(() => null as any),
+        fetch(
+          `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/fund-flow?days=${ref.fundFlowDays}`,
+          { cache: 'no-store' },
+        ).catch(() => null as any),
+      ]);
+
+      if (!barsResp.ok) throw new Error('failed to load stock bars');
+      const snap = (await barsResp.json()) as StockBarsDetail;
       out += `## Stock: ${snap.ticker} ${snap.name}\n`;
       out += `- symbol: ${snap.symbol}\n`;
       out += `- market: ${snap.market}\n`;
       out += `- currency: ${snap.currency}\n`;
       out += `- capturedAt: ${ref.capturedAt}\n`;
-      const rows = snap.bars.slice(-50);
-      out += `\nBars (last ${rows.length}):\n`;
-      for (const b of rows) {
+
+      const bars = snap.bars.slice(-ref.barsDays);
+      out += `\nBars (last ${bars.length}):\n`;
+      for (const b of bars) {
         out += `- ${b.date} O=${b.open} H=${b.high} L=${b.low} C=${b.close} V=${b.volume} A=${b.amount}\n`;
       }
+
+      if (chipsResp && chipsResp.ok) {
+        const chips = (await chipsResp.json()) as StockChipsDetail;
+        const items = (chips.items || []).slice(-ref.chipsDays);
+        if (items.length) {
+          out += `\nChips (last ${items.length}):\n`;
+          for (const it of items) {
+            out += `- ${it.date} profitRatio=${it.profitRatio} avgCost=${it.avgCost} `
+              + `70%=[${it.cost70Low},${it.cost70High}] conc70=${it.cost70Conc} `
+              + `90%=[${it.cost90Low},${it.cost90High}] conc90=${it.cost90Conc}\n`;
+          }
+        }
+      }
+
+      if (ffResp && ffResp.ok) {
+        const ff = (await ffResp.json()) as StockFundFlowDetail;
+        const items = (ff.items || []).slice(-ref.fundFlowDays);
+        if (items.length) {
+          out += `\nFund flow (last ${items.length}):\n`;
+          for (const it of items) {
+            out += `- ${it.date} close=${it.close} chg=${it.changePct}% `
+              + `main=${it.mainNetAmount}(${it.mainNetRatio}%) `
+              + `super=${it.superNetAmount}(${it.superNetRatio}%) `
+              + `large=${it.largeNetAmount}(${it.largeNetRatio}%) `
+              + `medium=${it.mediumNetAmount}(${it.mediumNetRatio}%) `
+              + `small=${it.smallNetAmount}(${it.smallNetRatio}%)\n`;
+          }
+        }
+      }
+
       out += `\n`;
     } catch {
       out += `## Stock: ${ref.ticker} ${ref.name}\n`;

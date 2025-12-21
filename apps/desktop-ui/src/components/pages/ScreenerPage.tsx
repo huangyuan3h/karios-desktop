@@ -28,6 +28,7 @@ type TvSnapshotDetail = {
   capturedAt: string;
   rowCount: number;
   screenTitle: string | null;
+  filters: string[];
   url: string;
   headers: string[];
   rows: Record<string, string>[];
@@ -220,6 +221,21 @@ export function ScreenerPage() {
 
               {snap ? (
                 <div className="mt-4 overflow-hidden rounded-lg border border-[var(--k-border)]">
+                  {snap.filters?.length ? (
+                    <div className="border-b border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
+                      <div className="flex flex-wrap gap-2">
+                        {snap.filters.map((f) => (
+                          <span
+                            key={f}
+                            className="max-w-full truncate rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5 text-xs text-[var(--k-muted)]"
+                            title={f}
+                          >
+                            {f}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="max-h-[420px] overflow-auto">
                     <table className="w-full border-collapse text-sm">
                       <thead className="sticky top-0 bg-[var(--k-surface-2)]">

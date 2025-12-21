@@ -15,6 +15,7 @@ class CaptureResult:
     url: str
     captured_at: str
     screen_title: str | None
+    filters: list[str]
     headers: list[str]
     rows: list[dict[str, str]]
 
@@ -163,6 +164,157 @@ async def _scroll_grid(page, grid, *, steps: int = 1) -> None:
         await page.wait_for_timeout(200)
 
 
+async def _read_filter_pills(page, grid) -> list[str]:
+    """
+    Best-effort extraction of screener filter pills shown above the result table.
+    TradingView UI can change frequently, so we use a heuristic based on position:
+    visible buttons above the grid, excluding tab list buttons and trivial controls.
+    """
+    grid_box = await grid.bounding_box()
+    if not grid_box:
+        return []
+
+    grid_top = float(grid_box["y"])
+    candidates = page.locator("button, [role=button]")
+    count = min(await candidates.count(), 260)
+
+    exclude_exact = {
+        "+",
+        "…",
+        "...",
+        "Custom",
+        "Overview",
+        "Performance",
+        "Extended Hours",
+        "Valuation",
+        "Dividends",
+        "Profitability",
+        "Income Statement",
+        "More",
+    }
+
+    def _parse_rgb(s: str) -> tuple[int, int, int, float] | None:
+        # Examples:
+        # - rgb(0, 0, 0)
+        # - rgba(0, 0, 0, 0.8)
+        # - rgba(0,0,0,0)
+        s2 = (s or "").strip().lower()
+        if not (s2.startswith("rgb(") or s2.startswith("rgba(")):
+            return None
+        try:
+            inner = s2[s2.find("(") + 1 : s2.rfind(")")]
+            parts = [p.strip() for p in inner.split(",")]
+            if len(parts) < 3:
+                return None
+            r = int(float(parts[0]))
+            g = int(float(parts[1]))
+            b = int(float(parts[2]))
+            a = float(parts[3]) if len(parts) >= 4 else 1.0
+            return r, g, b, a
+        except Exception:
+            return None
+
+    def _is_dark_background(bg: str) -> bool:
+        parsed = _parse_rgb(bg)
+        if not parsed:
+            return False
+        r, g, b, a = parsed
+        if a <= 0.05:
+            return False
+        # Relative luminance approximation (0..1). Threshold tuned to keep "black pills".
+        lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
+        return lum < 0.42
+
+    out: list[tuple[float, float, str, bool]] = []
+    for i in range(count):
+        el = candidates.nth(i)
+        try:
+            if not await el.is_visible():
+                continue
+            box = await el.bounding_box()
+            if not box:
+                continue
+            top = float(box["y"])
+            height = float(box["height"])
+            # Filter pills are usually small buttons above the grid.
+            if top + height > grid_top - 6:
+                continue
+            # Ignore global toolbar / header pills far above the grid.
+            if top < grid_top - 320:
+                continue
+            if height < 18 or height > 60:
+                continue
+
+            is_in_tablist = await el.evaluate("el => !!el.closest('[role=tablist]')")
+            if is_in_tablist:
+                continue
+
+            text = (await el.inner_text()).strip()
+            if not text:
+                continue
+            text2 = " ".join(text.replace("\n", " ").split())
+            if not text2 or len(text2) > 120:
+                continue
+            if text2 in exclude_exact:
+                continue
+
+            # Only include "active" pills (the black ones) when we can detect them.
+            meta = await el.evaluate(
+                """
+                (el) => {
+                  const cs = getComputedStyle(el);
+                  return {
+                    bg: cs.backgroundColor,
+                    ariaPressed: el.getAttribute('aria-pressed'),
+                    dataState: el.getAttribute('data-state'),
+                    className: el.className ? String(el.className) : '',
+                  };
+                }
+                """,
+            )
+            aria_pressed = str(meta.get("ariaPressed") or "").lower()
+            data_state = str(meta.get("dataState") or "").lower()
+            class_name = str(meta.get("className") or "").lower()
+            bg = str(meta.get("bg") or "")
+
+            is_selected = False
+            if aria_pressed in {"true", "mixed"}:
+                is_selected = True
+            if data_state in {"on", "checked", "active", "selected"}:
+                is_selected = True
+            if "active" in class_name or "selected" in class_name or "is-active" in class_name:
+                is_selected = True
+            if _is_dark_background(bg):
+                is_selected = True
+
+            out.append((top, float(box["x"]), text2, is_selected))
+        except Exception:
+            continue
+
+    # Order by y then x to match visual layout, then dedupe preserving order.
+    out.sort(key=lambda t: (t[0], t[1]))
+
+    def _dedupe(items: list[tuple[float, float, str, bool]], *, only_selected: bool) -> list[str]:
+        seen: set[str] = set()
+        pills: list[str] = []
+        for _, _, t, sel in items:
+            if only_selected and not sel:
+                continue
+            if t in seen:
+                continue
+            seen.add(t)
+            pills.append(t)
+            if len(pills) >= 40:
+                break
+        return pills
+
+    selected = _dedupe(out, only_selected=True)
+    if selected:
+        return selected
+    # Fallback: if we cannot detect selected pills (UI change), return all pills.
+    return _dedupe(out, only_selected=False)
+
+
 async def capture_screener_over_cdp(
     *,
     cdp_url: str,
@@ -194,6 +346,7 @@ async def capture_screener_over_cdp(
                     "Cannot locate screener grid/table. Please ensure you are logged in.",
                 )
 
+            filters = await _read_filter_pills(page, grid)
             tag = await _element_tag(grid)
             raw_headers = await (
                 _read_table_headers(grid) if tag == "TABLE" else _read_grid_headers(grid)
@@ -250,6 +403,7 @@ async def capture_screener_over_cdp(
                 url=url,
                 captured_at=captured_at,
                 screen_title=await _detect_screen_title(page),
+                filters=filters,
                 headers=[str(h) for h in headers3],
                 rows=out_rows,
             )
