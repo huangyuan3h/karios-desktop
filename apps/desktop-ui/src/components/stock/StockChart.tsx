@@ -2,7 +2,13 @@
 
 import * as React from 'react';
 import type { IChartApi, Time } from 'lightweight-charts';
-import { ColorType, createChart } from 'lightweight-charts';
+import {
+  CandlestickSeries,
+  ColorType,
+  HistogramSeries,
+  LineSeries,
+  createChart,
+} from 'lightweight-charts';
 
 import type { OHLCV } from '@/lib/indicators';
 import { computeKdj, computeMacd } from '@/lib/indicators';
@@ -65,7 +71,7 @@ export function StockChart({ data }: Props) {
     const charts: IChartApi[] = [priceChart, volChart, macdChart, kdjChart];
 
     // Series: candles + volume histogram.
-    const candle = priceChart.addCandlestickSeries({
+    const candle = priceChart.addSeries(CandlestickSeries, {
       upColor: '#16a34a',
       downColor: '#dc2626',
       borderUpColor: '#16a34a',
@@ -74,7 +80,7 @@ export function StockChart({ data }: Props) {
       wickDownColor: '#dc2626',
     });
 
-    const vol = volChart.addHistogramSeries({
+    const vol = volChart.addSeries(HistogramSeries, {
       priceFormat: { type: 'volume' },
       priceScaleId: 'right',
       color: muted,
@@ -82,24 +88,24 @@ export function StockChart({ data }: Props) {
 
     // MACD: dif/dea lines + histogram.
     const { dif, dea, hist } = computeMacd(data);
-    const macdHist = macdChart.addHistogramSeries({
+    const macdHist = macdChart.addSeries(HistogramSeries, {
       priceScaleId: 'right',
       priceFormat: { type: 'price', precision: 4, minMove: 0.0001 },
     });
-    const difLine = macdChart.addLineSeries({
+    const difLine = macdChart.addSeries(LineSeries, {
       color: '#2563eb',
       lineWidth: 2,
     });
-    const deaLine = macdChart.addLineSeries({
+    const deaLine = macdChart.addSeries(LineSeries, {
       color: '#f59e0b',
       lineWidth: 2,
     });
 
     // KDJ: K/D/J lines.
     const { k, d, j } = computeKdj(data);
-    const kLine = kdjChart.addLineSeries({ color: '#2563eb', lineWidth: 2 });
-    const dLine = kdjChart.addLineSeries({ color: '#f59e0b', lineWidth: 2 });
-    const jLine = kdjChart.addLineSeries({ color: '#ef4444', lineWidth: 2 });
+    const kLine = kdjChart.addSeries(LineSeries, { color: '#2563eb', lineWidth: 2 });
+    const dLine = kdjChart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 2 });
+    const jLine = kdjChart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 2 });
 
     // Data mapping
     candle.setData(
@@ -150,12 +156,13 @@ export function StockChart({ data }: Props) {
     kdjChart.timeScale().fitContent();
 
     // Sync visible range from the main (price) chart.
-    const sub = priceChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+    const onRangeChange = (range: any) => {
       if (!range) return;
       for (const c of [volChart, macdChart, kdjChart]) {
         c.timeScale().setVisibleLogicalRange(range);
       }
-    });
+    };
+    priceChart.timeScale().subscribeVisibleLogicalRangeChange(onRangeChange);
 
     // ResizeObserver to keep charts responsive.
     const ro = new ResizeObserver(() => {
@@ -177,7 +184,7 @@ export function StockChart({ data }: Props) {
     return () => {
       ro.disconnect();
       // Unsubscribe and clean up charts.
-      priceChart.timeScale().unsubscribeVisibleLogicalRangeChange(sub);
+      priceChart.timeScale().unsubscribeVisibleLogicalRangeChange(onRangeChange);
       for (const c of charts) c.remove();
     };
   }, [data]);
