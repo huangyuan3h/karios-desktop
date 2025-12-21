@@ -20,7 +20,7 @@ const BrokerExtractRequestSchema = z.object({
 });
 
 const BrokerExtractResponseSchema = z.object({
-  kind: z.enum(['account_overview', 'positions', 'conditional_orders', 'unknown']),
+  kind: z.enum(['account_overview', 'positions', 'conditional_orders', 'trades', 'settlement_statement', 'unknown']),
   broker: z.literal('pingan'),
   extractedAt: z.string(),
   data: z.record(z.any()).optional(),
@@ -144,13 +144,15 @@ app.post('/extract/broker/pingan', async (c) => {
 
   const instruction =
     'Classify the screenshot kind and extract fields when possible.\n' +
-    '- kind: one of account_overview | positions | conditional_orders | unknown\n' +
+    '- kind: one of account_overview | positions | conditional_orders | trades | settlement_statement | unknown\n' +
     '- broker: "pingan"\n' +
     '- extractedAt: ISO timestamp\n' +
     '- data: object with extracted fields\n\n' +
     'For account_overview, data may include: currency, totalAssets, securitiesValue, cashAvailable, withdrawable, pnlTotal, pnlToday, accountIdMasked.\n' +
     'For positions, data may include: currency, accountIdMasked, positions: [{ ticker, name, qtyHeld, qtyAvailable, price, cost, pnl, pnlPct, marketValue }].\n' +
     'For conditional_orders, data may include: orders: [{ ticker, name, side, triggerCondition, triggerValue, qty, status, validUntil }].\n\n' +
+    'For trades, data may include: trades: [{ time, ticker, name, side, price, qty, amount, fee }].\n' +
+    'For settlement_statement, data may include: date, lines: [{ time, ticker, name, side, price, qty, amount, fee, tax, remark }].\n\n' +
     'Output example:\n' +
     '{"kind":"positions","broker":"pingan","extractedAt":"2025-01-01T00:00:00Z","data":{"currency":"CNY","positions":[...]}}';
 

@@ -44,6 +44,24 @@ export type ChatReference =
       chipsDays: number;
       fundFlowDays: number;
       capturedAt: string;
+    }
+  | {
+      kind: 'broker';
+      refId: string; // snapshotId
+      snapshotId: string;
+      broker: 'pingan' | 'xueqiu' | 'unknown';
+      accountId: string | null;
+      accountTitle: string;
+      snapshotKind: string; // positions | account_overview | conditional_orders | ...
+      capturedAt: string;
+    }
+  | {
+      kind: 'brokerState';
+      refId: string; // accountId
+      broker: 'pingan' | 'xueqiu' | 'unknown';
+      accountId: string;
+      accountTitle: string;
+      capturedAt: string;
     };
 
 export type AppSettings = {

@@ -5,8 +5,10 @@ import Image from 'next/image';
 import { RefreshCw, UploadCloud, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { newId } from '@/lib/id';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { useChatStore } from '@/lib/chat/store';
 
 type ImportImage = {
   id: string;
@@ -15,18 +17,49 @@ type ImportImage = {
   dataUrl: string;
 };
 
-type BrokerSnapshotSummary = {
-  id: string;
+type BrokerAccountState = {
+  accountId: string;
   broker: string;
-  capturedAt: string;
-  kind: string;
-  createdAt: string;
+  updatedAt: string;
+  overview: Record<string, unknown>;
+  positions: Array<Record<string, unknown>>;
+  conditionalOrders: Array<Record<string, unknown>>;
+  trades: Array<Record<string, unknown>>;
+  counts: Record<string, number>;
 };
 
-type BrokerSnapshotDetail = BrokerSnapshotSummary & {
-  imagePath: string;
-  extracted: Record<string, unknown>;
+type BrokerAccount = {
+  id: string;
+  broker: string;
+  title: string;
+  accountMasked: string | null;
+  updatedAt: string;
 };
+
+function toNum(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v !== 'string') return null;
+  const s = v.trim().replaceAll(',', '');
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatWan(v: unknown): string {
+  const n = toNum(v);
+  if (n == null) return v != null ? String(v) : '-';
+  return `${(n / 10000).toFixed(2)} 万`;
+}
+
+function pickStr(obj: Record<string, unknown>, keys: string[]): string {
+  for (const k of keys) {
+    const v = obj[k];
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s) return s;
+  }
+  return '';
+}
 
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
@@ -47,21 +80,36 @@ async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 export function BrokerPage() {
+  const { addReference } = useChatStore();
   const [images, setImages] = React.useState<ImportImage[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [snapshots, setSnapshots] = React.useState<BrokerSnapshotSummary[]>([]);
-  const [selected, setSelected] = React.useState<BrokerSnapshotDetail | null>(null);
+  const [state, setState] = React.useState<BrokerAccountState | null>(null);
+  const [accounts, setAccounts] = React.useState<BrokerAccount[]>([]);
+  const [accountId, setAccountId] = React.useState<string>('');
+  const [showNewAccount, setShowNewAccount] = React.useState(false);
+  const [newAccountTitle, setNewAccountTitle] = React.useState('');
+  const [newAccountMasked, setNewAccountMasked] = React.useState('');
 
   const refresh = React.useCallback(async () => {
     setError(null);
     try {
-      const items = await apiGetJson<BrokerSnapshotSummary[]>('/broker/pingan/snapshots?limit=30');
-      setSnapshots(items);
+      const acc = await apiGetJson<BrokerAccount[]>('/broker/accounts?broker=pingan');
+      setAccounts(acc);
+      const effectiveAccountId = accountId || acc[0]?.id || '';
+      if (!accountId && effectiveAccountId) setAccountId(effectiveAccountId);
+      if (effectiveAccountId) {
+        const st = await apiGetJson<BrokerAccountState>(
+          `/broker/pingan/accounts/${encodeURIComponent(effectiveAccountId)}/state`,
+        );
+        setState(st);
+      } else {
+        setState(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [accountId]);
 
   React.useEffect(() => {
     void refresh();
@@ -92,11 +140,38 @@ export function BrokerPage() {
     setBusy(true);
     setError(null);
     try {
-      await apiPostJson<{ ok: boolean; items: BrokerSnapshotSummary[] }>('/broker/pingan/import', {
+      if (!accountId) throw new Error('Select an account first');
+      const st = await apiPostJson<BrokerAccountState>(
+        `/broker/pingan/accounts/${encodeURIComponent(accountId)}/sync`,
+        {
         capturedAt: new Date().toISOString(),
         images,
-      });
+        },
+      );
       setImages([]);
+      setState(st);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onCreateAccount() {
+    const title = newAccountTitle.trim();
+    if (!title) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await apiPostJson<BrokerAccount>('/broker/accounts', {
+        broker: 'pingan',
+        title,
+        accountMasked: newAccountMasked.trim() || null,
+      });
+      setNewAccountTitle('');
+      setNewAccountMasked('');
+      setShowNewAccount(false);
+      setAccountId(created.id);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -114,11 +189,62 @@ export function BrokerPage() {
             Paste or drop screenshots, extract with AI, and save into SQLite.
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => void refresh()} className="gap-2">
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select value={accountId} onValueChange={(v) => setAccountId(v)}>
+            <SelectTrigger className="h-9 w-[220px]">
+              <SelectValue placeholder="Select account" />
+            </SelectTrigger>
+            <SelectContent>
+              {accounts.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.title}
+                  {a.accountMasked ? ` (${a.accountMasked})` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowNewAccount((v) => !v)}
+            disabled={busy}
+          >
+            New account
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => void refresh()} className="gap-2">
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      {showNewAccount ? (
+        <div className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+          <div className="mb-2 text-sm font-medium">Create account</div>
+          <div className="grid gap-2 md:grid-cols-3">
+            <input
+              className="h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 text-sm outline-none"
+              placeholder="Title (e.g. PingAn Main)"
+              value={newAccountTitle}
+              onChange={(e) => setNewAccountTitle(e.target.value)}
+            />
+            <input
+              className="h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 text-sm outline-none"
+              placeholder="Account masked (optional, e.g. 3260****7775)"
+              value={newAccountMasked}
+              onChange={(e) => setNewAccountMasked(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => void onCreateAccount()} disabled={busy || !newAccountTitle.trim()}>
+                Create
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setShowNewAccount(false)} disabled={busy}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
@@ -126,7 +252,149 @@ export function BrokerPage() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {state ? (
+        <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="font-medium">Account state</div>
+              <div className="mt-1 text-xs text-[var(--k-muted)]">
+                Updated: {new Date(state.updatedAt).toLocaleString()} • positions{' '}
+                {Number((state.counts as any).positions ?? state.positions.length)} • orders{' '}
+                {Number((state.counts as any).conditionalOrders ?? state.conditionalOrders.length)} • trades{' '}
+                {Number((state.counts as any).trades ?? state.trades.length)}
+              </div>
+            </div>
+            <Button
+              size="sm"
+              disabled={!accountId}
+              onClick={() => {
+                const acct = accounts.find((a) => a.id === accountId);
+                addReference({
+                  kind: 'brokerState',
+                  refId: accountId,
+                  broker: 'pingan',
+                  accountId,
+                  accountTitle: acct ? `${acct.title}${acct.accountMasked ? ` (${acct.accountMasked})` : ''}` : 'PingAn',
+                  capturedAt: new Date().toISOString(),
+                });
+              }}
+            >
+              Reference account to chat
+            </Button>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+              <div className="mb-2 text-sm font-medium">Overview</div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {(() => {
+                  const ov = state.overview || {};
+                  return [
+                    ['totalAssets', 'Total assets', formatWan((ov as any).totalAssets)],
+                    ['securitiesValue', 'Securities', formatWan((ov as any).securitiesValue)],
+                    ['cashAvailable', 'Cash available', formatWan((ov as any).cashAvailable)],
+                    ['withdrawable', 'Withdrawable', formatWan((ov as any).withdrawable)],
+                    ['pnlTotal', 'PnL total', formatWan((ov as any).pnlTotal)],
+                    ['pnlToday', 'PnL today', formatWan((ov as any).pnlToday)],
+                  ].map(([k, label, value]) => (
+                    <div key={String(k)} className="flex items-center justify-between gap-2">
+                      <div className="text-[var(--k-muted)]">{String(label)}</div>
+                      <div className="truncate font-mono">{String(value)}</div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+              <div className="mb-2 text-sm font-medium">Positions</div>
+              {state.positions.length ? (
+                <div className="overflow-hidden rounded border border-[var(--k-border)]">
+                  <table className="w-full border-collapse text-xs">
+                    <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                      <tr className="text-left">
+                        <th className="px-2 py-1">Ticker</th>
+                        <th className="px-2 py-1">Name</th>
+                        <th className="px-2 py-1">Qty</th>
+                        <th className="px-2 py-1">Price</th>
+                        <th className="px-2 py-1">PnL%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {state.positions.slice(0, 12).map((p, idx) => {
+                        const ticker = pickStr(p, ['ticker', 'Ticker', 'symbol', 'Symbol']);
+                        const name = pickStr(p, ['name', 'Name']);
+                        const qty = pickStr(p, ['qtyHeld', 'qty', 'quantity', '持仓', '持仓/可用']);
+                        const price = pickStr(p, ['price', '现价', 'last']);
+                        const pnlPct = pickStr(p, ['pnlPct', 'pnl%', '盈亏%', 'PnlPct']);
+                        return (
+                          <tr key={idx} className="border-t border-[var(--k-border)]">
+                            <td className="px-2 py-1 font-mono">{ticker}</td>
+                            <td className="px-2 py-1">{name}</td>
+                            <td className="px-2 py-1 font-mono">{qty}</td>
+                            <td className="px-2 py-1 font-mono">{price}</td>
+                            <td className="px-2 py-1 font-mono">{pnlPct}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-xs text-[var(--k-muted)]">No positions in current state.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+            <div className="mb-2 text-sm font-medium">Conditional orders</div>
+            {state.conditionalOrders.length ? (
+              <div className="overflow-hidden rounded border border-[var(--k-border)]">
+                <table className="w-full border-collapse text-xs">
+                  <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                    <tr className="text-left">
+                      <th className="px-2 py-1">Ticker</th>
+                      <th className="px-2 py-1">Name</th>
+                      <th className="px-2 py-1">Side</th>
+                      <th className="px-2 py-1">Trigger</th>
+                      <th className="px-2 py-1">Qty</th>
+                      <th className="px-2 py-1">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {state.conditionalOrders.slice(0, 12).map((o, idx) => {
+                      const ticker = pickStr(o, ['ticker', 'Ticker', 'symbol', 'Symbol']);
+                      const name = pickStr(o, ['name', 'Name']);
+                      const side = pickStr(o, ['side', 'Side', '方向']);
+                      const trigger = `${pickStr(o, ['triggerCondition', 'condition', '触发条件'])} ${pickStr(o, [
+                        'triggerValue',
+                        'value',
+                        '触发价',
+                      ])}`.trim();
+                      const qty = pickStr(o, ['qty', 'quantity', '委托数量', '数量']);
+                      const status = pickStr(o, ['status', 'Status', '状态']);
+                      return (
+                        <tr key={idx} className="border-t border-[var(--k-border)]">
+                          <td className="px-2 py-1 font-mono">{ticker}</td>
+                          <td className="px-2 py-1">{name}</td>
+                          <td className="px-2 py-1 font-mono">{side}</td>
+                          <td className="px-2 py-1 font-mono">{trigger}</td>
+                          <td className="px-2 py-1 font-mono">{qty}</td>
+                          <td className="px-2 py-1 font-mono">{status}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-xs text-[var(--k-muted)]">No conditional orders in current state.</div>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-4">
         <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="mb-3 flex items-center justify-between">
             <div className="font-medium">Import screenshots</div>
@@ -163,6 +431,7 @@ export function BrokerPage() {
                       width={220}
                       height={220}
                       className="h-20 w-full object-cover"
+                      unoptimized
                     />
                     <button
                       type="button"
@@ -178,73 +447,7 @@ export function BrokerPage() {
             ) : null}
           </div>
         </section>
-
-        <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-          <div className="mb-3 font-medium">Recent imports</div>
-          <div className="max-h-[420px] overflow-auto rounded-lg border border-[var(--k-border)]">
-            {snapshots.length ? (
-              <div className="divide-y divide-[var(--k-border)]">
-                {snapshots.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    className="w-full px-3 py-2 text-left hover:bg-[var(--k-surface-2)]"
-                    onClick={() => {
-                      void (async () => {
-                        const d = await apiGetJson<BrokerSnapshotDetail>(
-                          `/broker/pingan/snapshots/${encodeURIComponent(s.id)}`,
-                        );
-                        setSelected(d);
-                      })();
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">{s.kind}</div>
-                        <div className="truncate text-xs text-[var(--k-muted)]">
-                          {new Date(s.capturedAt).toLocaleString()}
-                        </div>
-                      </div>
-                      <div className="text-xs text-[var(--k-muted)]">{s.broker}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="px-3 py-6 text-center text-sm text-[var(--k-muted)]">No imports yet.</div>
-            )}
-          </div>
-        </section>
       </div>
-
-      {selected ? (
-        <section className="mt-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="truncate font-medium">Snapshot detail</div>
-              <div className="truncate text-xs text-[var(--k-muted)]">{selected.id}</div>
-            </div>
-            <Button variant="secondary" size="sm" onClick={() => setSelected(null)}>
-              Close
-            </Button>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="overflow-hidden rounded-lg border border-[var(--k-border)]">
-              <Image
-                src={`${QUANT_BASE_URL}/broker/pingan/snapshots/${encodeURIComponent(selected.id)}/image`}
-                alt="screenshot"
-                width={640}
-                height={1280}
-                className="h-auto w-full object-contain"
-              />
-            </div>
-            <pre className="max-h-[520px] overflow-auto rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3 text-xs">
-{JSON.stringify(selected.extracted, null, 2)}
-            </pre>
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }

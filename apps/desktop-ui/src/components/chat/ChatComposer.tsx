@@ -137,7 +137,11 @@ export function ChatComposer({
               <span className="max-w-[220px] truncate">
                 {r.kind === 'tv'
                   ? `${r.screenerName} @ ${new Date(r.capturedAt).toLocaleString()}`
-                  : `${r.ticker} ${r.name} (${r.barsDays}D) @ ${new Date(r.capturedAt).toLocaleString()}`}
+                  : r.kind === 'stock'
+                    ? `${r.ticker} ${r.name} (${r.barsDays}D) @ ${new Date(r.capturedAt).toLocaleString()}`
+                    : r.kind === 'broker'
+                      ? `${r.accountTitle} · ${r.snapshotKind} @ ${new Date(r.capturedAt).toLocaleString()}`
+                      : `${r.accountTitle} · account state @ ${new Date(r.capturedAt).toLocaleString()}`}
               </span>
               <Button
                 variant="ghost"

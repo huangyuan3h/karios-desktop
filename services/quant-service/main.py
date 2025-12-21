@@ -204,6 +204,41 @@ def _connect() -> sqlite3.Connection:
     # --- Broker snapshots (v0) ---
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS broker_accounts (
+          id TEXT PRIMARY KEY,
+          broker TEXT NOT NULL,
+          title TEXT NOT NULL,
+          account_masked TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+        """,
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_broker_accounts_broker_updated ON broker_accounts(broker, updated_at DESC)",
+    )
+
+    # Consolidated broker account state (v0): keep a single up-to-date view per account.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS broker_account_state (
+          account_id TEXT PRIMARY KEY,
+          broker TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          overview_json TEXT NOT NULL,
+          positions_json TEXT NOT NULL,
+          conditional_orders_json TEXT NOT NULL,
+          trades_json TEXT NOT NULL,
+          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+        )
+        """,
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_broker_account_state_broker_updated ON broker_account_state(broker, updated_at DESC)",
+    )
+
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS broker_snapshots (
           id TEXT PRIMARY KEY,
           broker TEXT NOT NULL,
@@ -216,11 +251,19 @@ def _connect() -> sqlite3.Connection:
         )
         """,
     )
+    # Add account_id column to existing DBs (SQLite has limited ALTER TABLE).
+    cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(broker_snapshots)").fetchall()}
+    if "account_id" not in cols:
+        conn.execute("ALTER TABLE broker_snapshots ADD COLUMN account_id TEXT;")
+
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_broker_snapshots_broker_captured ON broker_snapshots(broker, captured_at DESC)",
     )
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_broker_snapshots_broker_sha256 ON broker_snapshots(broker, sha256)",
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_broker_snapshots_broker_account_sha256 ON broker_snapshots(broker, account_id, sha256)",
     )
     conn.commit()
     return conn
@@ -394,6 +437,166 @@ def _ai_extract_pingan_screenshot(*, image_data_url: str) -> dict[str, Any]:
     with urllib.request.urlopen(req, timeout=60) as resp:
         body = resp.read().decode("utf-8")
         return json.loads(body)
+
+
+def _seed_default_broker_account(broker: str) -> str:
+    """
+    Ensure a default account exists for the given broker and return its id.
+    Backward compatible with older clients that didn't provide accountId.
+    """
+    b = (broker or "").strip().lower()
+    if not b:
+        b = "unknown"
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id FROM broker_accounts WHERE broker = ? ORDER BY updated_at DESC LIMIT 1",
+            (b,),
+        ).fetchone()
+        if row is not None:
+            return str(row[0])
+        aid = str(uuid.uuid4())
+        ts = now_iso()
+        conn.execute(
+            """
+            INSERT INTO broker_accounts(id, broker, title, account_masked, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (aid, b, "Default", None, ts, ts),
+        )
+        conn.commit()
+        return aid
+
+
+def _get_account_state_row(account_id: str) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT account_id, broker, updated_at, overview_json, positions_json, conditional_orders_json, trades_json
+            FROM broker_account_state
+            WHERE account_id = ?
+            """,
+            (account_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "accountId": str(row[0]),
+            "broker": str(row[1]),
+            "updatedAt": str(row[2]),
+            "overview": json.loads(str(row[3]) or "{}"),
+            "positions": json.loads(str(row[4]) or "[]"),
+            "conditionalOrders": json.loads(str(row[5]) or "[]"),
+            "trades": json.loads(str(row[6]) or "[]"),
+        }
+
+
+def _ensure_account_state(account_id: str, broker: str) -> None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT account_id FROM broker_account_state WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+        if row is not None:
+            return
+        ts = now_iso()
+        conn.execute(
+            """
+            INSERT INTO broker_account_state(
+              account_id, broker, updated_at, overview_json, positions_json, conditional_orders_json, trades_json
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                account_id,
+                broker,
+                ts,
+                json.dumps({}, ensure_ascii=False),
+                json.dumps([], ensure_ascii=False),
+                json.dumps([], ensure_ascii=False),
+                json.dumps([], ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+
+
+def _upsert_account_state(
+    *,
+    account_id: str,
+    broker: str,
+    updated_at: str,
+    overview: dict[str, Any] | None = None,
+    positions: list[dict[str, Any]] | None = None,
+    conditional_orders: list[dict[str, Any]] | None = None,
+    trades: list[dict[str, Any]] | None = None,
+) -> None:
+    _ensure_account_state(account_id, broker)
+    with _connect() as conn:
+        current = _get_account_state_row(account_id) or {
+            "overview": {},
+            "positions": [],
+            "conditionalOrders": [],
+            "trades": [],
+        }
+        next_overview = overview if overview is not None else (current.get("overview") or {})
+        next_positions = positions if positions is not None else (current.get("positions") or [])
+        next_orders = (
+            conditional_orders
+            if conditional_orders is not None
+            else (current.get("conditionalOrders") or [])
+        )
+        next_trades = trades if trades is not None else (current.get("trades") or [])
+        conn.execute(
+            """
+            UPDATE broker_account_state
+            SET updated_at = ?, overview_json = ?, positions_json = ?, conditional_orders_json = ?, trades_json = ?
+            WHERE account_id = ?
+            """,
+            (
+                updated_at,
+                json.dumps(next_overview, ensure_ascii=False),
+                json.dumps(next_positions, ensure_ascii=False),
+                json.dumps(next_orders, ensure_ascii=False),
+                json.dumps(next_trades, ensure_ascii=False),
+                account_id,
+            ),
+        )
+        # Also bump broker_accounts.updated_at (for UX sorting).
+        conn.execute("UPDATE broker_accounts SET updated_at = ? WHERE id = ?", (updated_at, account_id))
+        conn.commit()
+
+
+def _account_state_response(account_id: str) -> BrokerAccountStateResponse:
+    row = _get_account_state_row(account_id)
+    if row is None:
+        # Best-effort init with empty state
+        _ensure_account_state(account_id, "pingan")
+        row = _get_account_state_row(account_id) or {
+            "accountId": account_id,
+            "broker": "pingan",
+            "updatedAt": now_iso(),
+            "overview": {},
+            "positions": [],
+            "conditionalOrders": [],
+            "trades": [],
+        }
+    raw_positions = row.get("positions")
+    positions: list[Any] = raw_positions if isinstance(raw_positions, list) else []
+
+    raw_orders = row.get("conditionalOrders")
+    orders: list[Any] = raw_orders if isinstance(raw_orders, list) else []
+
+    raw_trades = row.get("trades")
+    trades: list[Any] = raw_trades if isinstance(raw_trades, list) else []
+    return BrokerAccountStateResponse(
+        accountId=str(row["accountId"]),
+        broker=str(row["broker"]),
+        updatedAt=str(row["updatedAt"]),
+        overview=row.get("overview") if isinstance(row.get("overview"), dict) else {},
+        positions=[x if isinstance(x, dict) else {"raw": x} for x in positions],
+        conditionalOrders=[x if isinstance(x, dict) else {"raw": x} for x in orders],
+        trades=[x if isinstance(x, dict) else {"raw": x} for x in trades],
+        counts={"positions": len(positions), "conditionalOrders": len(orders), "trades": len(trades)},
+    )
 
 
 def _home_path(path: str) -> str:
@@ -857,12 +1060,14 @@ class BrokerImportImage(BaseModel):
 
 class BrokerImportRequest(BaseModel):
     capturedAt: str | None = None
+    accountId: str | None = None
     images: list[BrokerImportImage]
 
 
 class BrokerSnapshotSummary(BaseModel):
     id: str
     broker: str
+    accountId: str | None
     capturedAt: str
     kind: str
     createdAt: str
@@ -876,6 +1081,41 @@ class BrokerSnapshotDetail(BrokerSnapshotSummary):
 class BrokerImportResponse(BaseModel):
     ok: bool
     items: list[BrokerSnapshotSummary]
+
+
+class BrokerAccountStateResponse(BaseModel):
+    accountId: str
+    broker: str
+    updatedAt: str
+    overview: dict[str, Any]
+    positions: list[dict[str, Any]]
+    conditionalOrders: list[dict[str, Any]]
+    trades: list[dict[str, Any]]
+    counts: dict[str, int]
+
+
+class BrokerSyncRequest(BaseModel):
+    capturedAt: str | None = None
+    images: list[BrokerImportImage]
+
+
+class BrokerAccountSummary(BaseModel):
+    id: str
+    broker: str
+    title: str
+    accountMasked: str | None
+    updatedAt: str
+
+
+class CreateBrokerAccountRequest(BaseModel):
+    broker: str
+    title: str
+    accountMasked: str | None = None
+
+
+class UpdateBrokerAccountRequest(BaseModel):
+    title: str | None = None
+    accountMasked: str | None = None
 
 
 class MarketStatusResponse(BaseModel):
@@ -1696,11 +1936,12 @@ def get_tv_screener_snapshot(snapshot_id: str) -> TvScreenerSnapshotDetail:
 
 
 @app.get("/broker/pingan/snapshots", response_model=list[BrokerSnapshotSummary])
-def list_pingan_broker_snapshots(limit: int = 20) -> list[BrokerSnapshotSummary]:
+def list_pingan_broker_snapshots(limit: int = 20, accountId: str | None = None) -> list[BrokerSnapshotSummary]:
     """
     List imported Ping An Securities account screenshots.
     """
-    return _list_broker_snapshots(broker="pingan", limit=limit)
+    account_id = (accountId or "").strip() or _seed_default_broker_account("pingan")
+    return _list_broker_snapshots(broker="pingan", account_id=account_id, limit=limit)
 
 
 @app.get("/broker/pingan/snapshots/{snapshot_id}", response_model=BrokerSnapshotDetail)
@@ -1709,6 +1950,106 @@ def get_pingan_broker_snapshot(snapshot_id: str) -> BrokerSnapshotDetail:
     if snap is None:
         raise HTTPException(status_code=404, detail="Not found")
     return snap
+
+
+@app.get("/broker/accounts", response_model=list[BrokerAccountSummary])
+def list_broker_accounts(broker: str | None = None) -> list[BrokerAccountSummary]:
+    b = (broker or "").strip().lower()
+    with _connect() as conn:
+        if b:
+            rows = conn.execute(
+                """
+                SELECT id, broker, title, account_masked, updated_at
+                FROM broker_accounts
+                WHERE broker = ?
+                ORDER BY updated_at DESC
+                """,
+                (b,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, broker, title, account_masked, updated_at
+                FROM broker_accounts
+                ORDER BY updated_at DESC
+                """,
+            ).fetchall()
+        return [
+            BrokerAccountSummary(
+                id=str(r[0]),
+                broker=str(r[1]),
+                title=str(r[2]),
+                accountMasked=str(r[3]) if r[3] is not None else None,
+                updatedAt=str(r[4]),
+            )
+            for r in rows
+        ]
+
+
+@app.post("/broker/accounts", response_model=BrokerAccountSummary)
+def create_broker_account(req: CreateBrokerAccountRequest) -> BrokerAccountSummary:
+    b = (req.broker or "").strip().lower()
+    if not b:
+        raise HTTPException(status_code=400, detail="broker is required")
+    title = (req.title or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+    aid = str(uuid.uuid4())
+    ts = now_iso()
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO broker_accounts(id, broker, title, account_masked, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (aid, b, title, (req.accountMasked or None), ts, ts),
+        )
+        conn.commit()
+    return BrokerAccountSummary(
+        id=aid,
+        broker=b,
+        title=title,
+        accountMasked=req.accountMasked,
+        updatedAt=ts,
+    )
+
+
+@app.put("/broker/accounts/{account_id}", response_model=dict[str, bool])
+def update_broker_account(account_id: str, req: UpdateBrokerAccountRequest) -> dict[str, bool]:
+    aid = (account_id or "").strip()
+    if not aid:
+        raise HTTPException(status_code=400, detail="account_id is required")
+    ts = now_iso()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id FROM broker_accounts WHERE id = ?",
+            (aid,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        if req.title is not None:
+            conn.execute("UPDATE broker_accounts SET title = ?, updated_at = ? WHERE id = ?", (req.title, ts, aid))
+        if req.accountMasked is not None:
+            conn.execute(
+                "UPDATE broker_accounts SET account_masked = ?, updated_at = ? WHERE id = ?",
+                (req.accountMasked, ts, aid),
+            )
+        conn.commit()
+    return {"ok": True}
+
+
+@app.delete("/broker/accounts/{account_id}", response_model=dict[str, bool])
+def delete_broker_account(account_id: str) -> dict[str, bool]:
+    aid = (account_id or "").strip()
+    if not aid:
+        raise HTTPException(status_code=400, detail="account_id is required")
+    with _connect() as conn:
+        row = conn.execute("SELECT id FROM broker_accounts WHERE id = ?", (aid,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        conn.execute("DELETE FROM broker_accounts WHERE id = ?", (aid,))
+        conn.commit()
+    return {"ok": True}
 
 
 @app.get("/broker/pingan/snapshots/{snapshot_id}/image")
@@ -1737,6 +2078,7 @@ def import_pingan_broker_screenshots(req: BrokerImportRequest) -> BrokerImportRe
     - Persist the extracted JSON into SQLite
     """
     captured_at = (req.capturedAt or now_iso()).strip() or now_iso()
+    account_id = (req.accountId or "").strip() or _seed_default_broker_account("pingan")
     out: list[BrokerSnapshotSummary] = []
 
     for img in req.images:
@@ -1746,17 +2088,22 @@ def import_pingan_broker_screenshots(req: BrokerImportRequest) -> BrokerImportRe
         # Dedupe first (by sha256) before writing duplicates to disk.
         with _connect() as conn:
             existing = conn.execute(
-                "SELECT id, broker, captured_at, kind, created_at FROM broker_snapshots WHERE broker = ? AND sha256 = ?",
-                ("pingan", sha),
+                """
+                SELECT id, broker, account_id, captured_at, kind, created_at
+                FROM broker_snapshots
+                WHERE broker = ? AND account_id IS ? AND sha256 = ?
+                """,
+                ("pingan", account_id, sha),
             ).fetchone()
             if existing is not None:
                 out.append(
                     BrokerSnapshotSummary(
                         id=str(existing[0]),
                         broker=str(existing[1]),
-                        capturedAt=str(existing[2]),
-                        kind=str(existing[3]),
-                        createdAt=str(existing[4]),
+                        accountId=str(existing[2]) if existing[2] is not None else None,
+                        capturedAt=str(existing[3]),
+                        kind=str(existing[4]),
+                        createdAt=str(existing[5]),
                     ),
                 )
                 continue
@@ -1772,6 +2119,7 @@ def import_pingan_broker_screenshots(req: BrokerImportRequest) -> BrokerImportRe
         kind = str((extracted or {}).get("kind") or "unknown")
         snapshot_id = _insert_broker_snapshot(
             broker="pingan",
+            account_id=account_id,
             captured_at=captured_at,
             kind=kind,
             sha256=sha,
@@ -1784,6 +2132,7 @@ def import_pingan_broker_screenshots(req: BrokerImportRequest) -> BrokerImportRe
                 BrokerSnapshotSummary(
                     id=snap.id,
                     broker=snap.broker,
+                    accountId=snap.accountId,
                     capturedAt=snap.capturedAt,
                     kind=snap.kind,
                     createdAt=snap.createdAt,
@@ -1791,6 +2140,73 @@ def import_pingan_broker_screenshots(req: BrokerImportRequest) -> BrokerImportRe
             )
 
     return BrokerImportResponse(ok=True, items=out)
+
+
+@app.get("/broker/pingan/accounts/{account_id}/state", response_model=BrokerAccountStateResponse)
+def get_pingan_account_state(account_id: str) -> BrokerAccountStateResponse:
+    """
+    Get consolidated account state (overview/positions/conditional_orders/trades).
+    This is the primary API for the UI and agent references.
+    """
+    aid = (account_id or "").strip()
+    if not aid:
+        raise HTTPException(status_code=400, detail="account_id is required")
+    return _account_state_response(aid)
+
+
+@app.post("/broker/pingan/accounts/{account_id}/sync", response_model=BrokerAccountStateResponse)
+def sync_pingan_account_from_screenshots(
+    account_id: str,
+    req: BrokerSyncRequest,
+) -> BrokerAccountStateResponse:
+    """
+    Sync the account state by analyzing screenshots. This does NOT persist per-import records
+    (screenshots), it only updates the consolidated state and its updatedAt timestamp.
+    """
+    aid = (account_id or "").strip()
+    if not aid:
+        raise HTTPException(status_code=400, detail="account_id is required")
+    captured_at = (req.capturedAt or now_iso()).strip() or now_iso()
+
+    overview: dict[str, Any] | None = None
+    positions: list[dict[str, Any]] | None = None
+    orders: list[dict[str, Any]] | None = None
+    trades: list[dict[str, Any]] | None = None
+
+    for img in req.images:
+        # We intentionally do NOT write images to disk in the state-first design.
+        extracted = _ai_extract_pingan_screenshot(image_data_url=img.dataUrl)
+        if not isinstance(extracted, dict):
+            continue
+        kind = str(extracted.get("kind") or "unknown")
+        data = extracted.get("data")
+        data2 = data if isinstance(data, dict) else {}
+
+        if kind == "account_overview":
+            overview = data2
+        elif kind == "positions":
+            ps = data2.get("positions")
+            if isinstance(ps, list):
+                positions = [p if isinstance(p, dict) else {"raw": p} for p in ps]
+        elif kind == "conditional_orders":
+            os_ = data2.get("orders")
+            if isinstance(os_, list):
+                orders = [o if isinstance(o, dict) else {"raw": o} for o in os_]
+        elif kind == "trades":
+            ts = data2.get("trades")
+            if isinstance(ts, list):
+                trades = [t if isinstance(t, dict) else {"raw": t} for t in ts]
+
+    _upsert_account_state(
+        account_id=aid,
+        broker="pingan",
+        updated_at=captured_at,
+        overview=overview,
+        positions=positions,
+        conditional_orders=orders,
+        trades=trades,
+    )
+    return _account_state_response(aid)
 
 
 def list_system_prompt_presets() -> list[SystemPromptPresetSummary]:
@@ -1833,6 +2249,7 @@ def create_system_prompt_preset(title: str, content: str) -> str:
 def _insert_broker_snapshot(
     *,
     broker: str,
+    account_id: str | None,
     captured_at: str,
     kind: str,
     sha256: str,
@@ -1844,8 +2261,8 @@ def _insert_broker_snapshot(
     """
     with _connect() as conn:
         existing = conn.execute(
-            "SELECT id FROM broker_snapshots WHERE broker = ? AND sha256 = ?",
-            (broker, sha256),
+            "SELECT id FROM broker_snapshots WHERE broker = ? AND account_id IS ? AND sha256 = ?",
+            (broker, account_id, sha256),
         ).fetchone()
         if existing is not None:
             return str(existing[0])
@@ -1855,13 +2272,14 @@ def _insert_broker_snapshot(
         conn.execute(
             """
             INSERT INTO broker_snapshots(
-              id, broker, captured_at, kind, sha256, image_path, extracted_json, created_at
+              id, broker, account_id, captured_at, kind, sha256, image_path, extracted_json, created_at
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snapshot_id,
                 broker,
+                account_id,
                 captured_at,
                 kind,
                 sha256,
@@ -1878,7 +2296,7 @@ def _get_broker_snapshot(snapshot_id: str) -> BrokerSnapshotDetail | None:
     with _connect() as conn:
         row = conn.execute(
             """
-            SELECT id, broker, captured_at, kind, image_path, extracted_json, created_at
+            SELECT id, broker, account_id, captured_at, kind, image_path, extracted_json, created_at
             FROM broker_snapshots
             WHERE id = ?
             """,
@@ -1886,38 +2304,45 @@ def _get_broker_snapshot(snapshot_id: str) -> BrokerSnapshotDetail | None:
         ).fetchone()
         if row is None:
             return None
-        extracted = json.loads(str(row[5]) or "{}")
+        extracted = json.loads(str(row[6]) or "{}")
         return BrokerSnapshotDetail(
             id=str(row[0]),
             broker=str(row[1]),
-            capturedAt=str(row[2]),
-            kind=str(row[3]),
-            imagePath=str(row[4]),
+            accountId=str(row[2]) if row[2] is not None else None,
+            capturedAt=str(row[3]),
+            kind=str(row[4]),
+            imagePath=str(row[5]),
             extracted=extracted if isinstance(extracted, dict) else {"raw": extracted},
-            createdAt=str(row[6]),
+            createdAt=str(row[7]),
         )
 
 
-def _list_broker_snapshots(*, broker: str, limit: int = 20) -> list[BrokerSnapshotSummary]:
+def _list_broker_snapshots(
+    *,
+    broker: str,
+    account_id: str | None,
+    limit: int = 20,
+) -> list[BrokerSnapshotSummary]:
     limit2 = max(1, min(int(limit), 100))
     with _connect() as conn:
         rows = conn.execute(
             """
-            SELECT id, broker, captured_at, kind, created_at
+            SELECT id, broker, account_id, captured_at, kind, created_at
             FROM broker_snapshots
-            WHERE broker = ?
+            WHERE broker = ? AND account_id IS ?
             ORDER BY captured_at DESC
             LIMIT ?
             """,
-            (broker, limit2),
+            (broker, account_id, limit2),
         ).fetchall()
         return [
             BrokerSnapshotSummary(
                 id=str(r[0]),
                 broker=str(r[1]),
-                capturedAt=str(r[2]),
-                kind=str(r[3]),
-                createdAt=str(r[4]),
+                accountId=str(r[2]) if r[2] is not None else None,
+                capturedAt=str(r[3]),
+                kind=str(r[4]),
+                createdAt=str(r[5]),
             )
             for r in rows
         ]

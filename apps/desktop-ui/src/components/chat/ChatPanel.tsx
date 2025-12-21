@@ -21,6 +21,28 @@ type TvSnapshotDetail = {
   rows: Record<string, string>[];
 };
 
+type BrokerSnapshotDetail = {
+  id: string;
+  broker: string;
+  accountId: string | null;
+  capturedAt: string;
+  kind: string;
+  createdAt: string;
+  imagePath: string;
+  extracted: Record<string, unknown>;
+};
+
+type BrokerAccountState = {
+  accountId: string;
+  broker: string;
+  updatedAt: string;
+  overview: Record<string, unknown>;
+  positions: Array<Record<string, unknown>>;
+  conditionalOrders: Array<Record<string, unknown>>;
+  trades: Array<Record<string, unknown>>;
+  counts: Record<string, number>;
+};
+
 type StockBarsDetail = {
   symbol: string;
   market: string;
@@ -100,7 +122,7 @@ function pickColumns(headers: string[]) {
 }
 
 async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
-  let out = '# Reference Context: TradingView Screener Snapshots\n\n';
+  let out = '# Reference Context\n\n';
   for (const ref of refs) {
     if (ref.kind === 'tv') {
       try {
@@ -132,6 +154,132 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         out += `- snapshotId: ${ref.snapshotId}\n`;
         out += `- capturedAt: ${ref.capturedAt}\n`;
         out += `- status: failed to load snapshot\n\n`;
+      }
+      continue;
+    }
+
+    if (ref.kind === 'broker') {
+      try {
+        const resp = await fetch(
+          `${QUANT_BASE_URL}/broker/${encodeURIComponent(ref.broker)}/snapshots/${encodeURIComponent(ref.snapshotId)}`,
+          { cache: 'no-store' },
+        );
+        if (!resp.ok) throw new Error('failed to load broker snapshot');
+        const snap = (await resp.json()) as BrokerSnapshotDetail;
+
+        out += `## Broker: ${ref.accountTitle}\n`;
+        out += `- broker: ${snap.broker}\n`;
+        if (snap.accountId) out += `- accountId: ${snap.accountId}\n`;
+        out += `- kind: ${snap.kind}\n`;
+        out += `- capturedAt: ${snap.capturedAt}\n`;
+        out += `- snapshotId: ${ref.snapshotId}\n`;
+        const extracted = snap.extracted || {};
+        const kind = String((extracted as any).kind || snap.kind || 'unknown');
+        const data = (extracted as any).data || {};
+
+        if (kind === 'account_overview') {
+          out += `\nAccount overview:\n`;
+          for (const k of [
+            'currency',
+            'totalAssets',
+            'securitiesValue',
+            'cashAvailable',
+            'withdrawable',
+            'pnlTotal',
+            'pnlToday',
+            'accountIdMasked',
+          ]) {
+            if (data && typeof data === 'object' && (data as any)[k] != null) {
+              out += `- ${k}: ${(data as any)[k]}\n`;
+            }
+          }
+          out += `\n`;
+        } else if (kind === 'positions' && Array.isArray((data as any).positions)) {
+          const rows = ((data as any).positions as any[]).slice(0, 30);
+          out += `\nPositions (first ${rows.length}):\n`;
+          for (const p of rows) {
+            const ticker = String(p.ticker ?? '');
+            const name = String(p.name ?? '');
+            const qty = String(p.qtyHeld ?? p.qty ?? '');
+            const price = String(p.price ?? '');
+            const cost = String(p.cost ?? '');
+            const pnl = String(p.pnl ?? '');
+            const pnlPct = String(p.pnlPct ?? '');
+            out += `- ${ticker} ${name} qty=${qty} price=${price} cost=${cost} pnl=${pnl} pnlPct=${pnlPct}\n`;
+          }
+          out += `\n`;
+        } else if (kind === 'conditional_orders' && Array.isArray((data as any).orders)) {
+          const rows = ((data as any).orders as any[]).slice(0, 30);
+          out += `\nConditional orders (first ${rows.length}):\n`;
+          for (const o of rows) {
+            out += `- ${String(o.ticker ?? '')} ${String(o.name ?? '')} side=${String(o.side ?? '')} `
+              + `trigger=${String(o.triggerCondition ?? '')} ${String(o.triggerValue ?? '')} `
+              + `qty=${String(o.qty ?? '')} status=${String(o.status ?? '')} validUntil=${String(o.validUntil ?? '')}\n`;
+          }
+          out += `\n`;
+        } else {
+          out += `\nExtracted JSON:\n`;
+          out += `${JSON.stringify(extracted, null, 2)}\n\n`;
+        }
+      } catch {
+        out += `## Broker: ${ref.accountTitle}\n`;
+        out += `- snapshotId: ${ref.snapshotId}\n`;
+        out += `- status: failed to load snapshot\n\n`;
+      }
+      continue;
+    }
+
+    if (ref.kind === 'brokerState') {
+      try {
+        const resp = await fetch(
+          `${QUANT_BASE_URL}/broker/${encodeURIComponent(ref.broker)}/accounts/${encodeURIComponent(ref.accountId)}/state`,
+          { cache: 'no-store' },
+        );
+        if (!resp.ok) throw new Error('failed to load broker account state');
+        const st = (await resp.json()) as BrokerAccountState;
+        out += `## Broker account state: ${ref.accountTitle}\n`;
+        out += `- broker: ${st.broker}\n`;
+        out += `- accountId: ${st.accountId}\n`;
+        out += `- updatedAt: ${st.updatedAt}\n`;
+        const counts = st.counts || {};
+        out += `- counts: positions=${counts.positions ?? st.positions?.length ?? 0}, conditionalOrders=${counts.conditionalOrders ?? st.conditionalOrders?.length ?? 0}, trades=${counts.trades ?? st.trades?.length ?? 0}\n`;
+
+        const ov = st.overview || {};
+        if (Object.keys(ov).length) {
+          out += `\nAccount overview:\n`;
+          for (const k of Object.keys(ov)) {
+            out += `- ${k}: ${String((ov as any)[k])}\n`;
+          }
+        }
+
+        const ps = (st.positions || []).slice(0, 40);
+        if (ps.length) {
+          out += `\nPositions (first ${ps.length}):\n`;
+          for (const p of ps) {
+            out += `- ${String((p as any).ticker ?? '')} ${String((p as any).name ?? '')} qty=${String((p as any).qtyHeld ?? (p as any).qty ?? '')} price=${String((p as any).price ?? '')} cost=${String((p as any).cost ?? '')} pnl=${String((p as any).pnl ?? '')} pnlPct=${String((p as any).pnlPct ?? '')}\n`;
+          }
+        }
+
+        const os = (st.conditionalOrders || []).slice(0, 40);
+        if (os.length) {
+          out += `\nConditional orders (first ${os.length}):\n`;
+          for (const o of os) {
+            out += `- ${String((o as any).ticker ?? '')} ${String((o as any).name ?? '')} side=${String((o as any).side ?? '')} trigger=${String((o as any).triggerCondition ?? '')} ${String((o as any).triggerValue ?? '')} qty=${String((o as any).qty ?? '')} status=${String((o as any).status ?? '')} validUntil=${String((o as any).validUntil ?? '')}\n`;
+          }
+        }
+
+        const ts = (st.trades || []).slice(0, 60);
+        if (ts.length) {
+          out += `\nTrades (first ${ts.length}):\n`;
+          for (const t of ts) {
+            out += `- ${String((t as any).time ?? (t as any).date ?? '')} ${String((t as any).side ?? '')} ${String((t as any).ticker ?? '')} ${String((t as any).name ?? '')} qty=${String((t as any).qty ?? '')} price=${String((t as any).price ?? '')}\n`;
+          }
+        }
+
+        out += `\n`;
+      } catch {
+        out += `## Broker account state: ${ref.accountTitle}\n`;
+        out += `- status: failed to load state\n\n`;
       }
       continue;
     }
