@@ -6,6 +6,7 @@ import { Bot, Search } from 'lucide-react';
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
+import { SettingsPage } from '@/components/pages/SettingsPage';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
@@ -80,7 +81,11 @@ export function AppShell() {
       <main className="flex flex-1 flex-col">
         <header className="flex items-center border-b border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
           <div className="text-sm font-semibold">
-            {activePage === 'dashboard' ? 'Dashboard' : activePage}
+            {activePage === 'dashboard'
+              ? 'Dashboard'
+              : activePage === 'settings'
+                ? 'Settings'
+                : activePage}
           </div>
 
           <div className="flex-1" />
@@ -111,7 +116,7 @@ export function AppShell() {
 
         <div className="flex min-h-0 flex-1">
           <div className="min-w-0 flex-1 overflow-auto">
-            {activePage === 'dashboard' ? <DashboardPage /> : <DashboardPage />}
+            {activePage === 'settings' ? <SettingsPage /> : <DashboardPage />}
           </div>
 
           {agentVisible && agentMode !== 'maximized' ? (
