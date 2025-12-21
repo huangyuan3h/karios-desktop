@@ -19,6 +19,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from market.akshare_provider import (
+    BarRow,
+    StockRow,
+    fetch_cn_a_daily_bars,
+    fetch_cn_a_spot,
+    fetch_hk_daily_bars,
+    fetch_hk_spot,
+)
 from tv.capture import capture_screener_over_cdp_sync
 
 
@@ -96,6 +104,50 @@ def _connect() -> sqlite3.Connection:
           headers_json TEXT NOT NULL,
           rows_json TEXT NOT NULL,
           FOREIGN KEY(screener_id) REFERENCES tv_screeners(id)
+        )
+        """,
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS market_stocks (
+          symbol TEXT PRIMARY KEY,
+          market TEXT NOT NULL,
+          ticker TEXT NOT NULL,
+          name TEXT NOT NULL,
+          currency TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+        """,
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS market_quotes (
+          symbol TEXT PRIMARY KEY,
+          price TEXT,
+          change_pct TEXT,
+          volume TEXT,
+          turnover TEXT,
+          market_cap TEXT,
+          updated_at TEXT NOT NULL,
+          raw_json TEXT NOT NULL,
+          FOREIGN KEY(symbol) REFERENCES market_stocks(symbol)
+        )
+        """,
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS market_bars (
+          symbol TEXT NOT NULL,
+          date TEXT NOT NULL,
+          open TEXT,
+          high TEXT,
+          low TEXT,
+          close TEXT,
+          volume TEXT,
+          amount TEXT,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY(symbol, date),
+          FOREIGN KEY(symbol) REFERENCES market_stocks(symbol)
         )
         """,
     )
@@ -657,6 +709,41 @@ class TvScreenerSyncResponse(BaseModel):
     rowCount: int
 
 
+class MarketStatusResponse(BaseModel):
+    stocks: int
+    lastSyncAt: str | None
+
+
+class MarketStockRow(BaseModel):
+    symbol: str
+    market: str
+    ticker: str
+    name: str
+    currency: str
+    price: str | None = None
+    changePct: str | None = None
+    volume: str | None = None
+    turnover: str | None = None
+    marketCap: str | None = None
+    updatedAt: str
+
+
+class MarketStocksResponse(BaseModel):
+    items: list[MarketStockRow]
+    total: int
+    offset: int
+    limit: int
+
+
+class MarketBarsResponse(BaseModel):
+    symbol: str
+    market: str
+    ticker: str
+    name: str
+    currency: str
+    bars: list[dict[str, str]]
+
+
 @app.get("/integrations/tradingview/screeners", response_model=ListTvScreenersResponse)
 def list_tv_screeners() -> ListTvScreenersResponse:
     _seed_default_tv_screeners()
@@ -739,6 +826,256 @@ def delete_tv_screener(screener_id: str) -> JSONResponse:
         if (cur.rowcount or 0) == 0:
             return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
     return JSONResponse({"ok": True})
+
+
+def _upsert_market_stock(conn: sqlite3.Connection, s: StockRow, ts: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO market_stocks(symbol, market, ticker, name, currency, updated_at)
+        VALUES(?, ?, ?, ?, ?, ?)
+        ON CONFLICT(symbol) DO UPDATE SET
+          market = excluded.market,
+          ticker = excluded.ticker,
+          name = excluded.name,
+          currency = excluded.currency,
+          updated_at = excluded.updated_at
+        """,
+        (s.symbol, s.market, s.ticker, s.name, s.currency, ts),
+    )
+
+
+def _upsert_market_quote(conn: sqlite3.Connection, s: StockRow, ts: str) -> None:
+    raw_json = json.dumps(s.quote, ensure_ascii=False)
+    conn.execute(
+        """
+        INSERT INTO market_quotes(
+          symbol, price, change_pct, volume, turnover, market_cap, updated_at, raw_json
+        )
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(symbol) DO UPDATE SET
+          price = excluded.price,
+          change_pct = excluded.change_pct,
+          volume = excluded.volume,
+          turnover = excluded.turnover,
+          market_cap = excluded.market_cap,
+          updated_at = excluded.updated_at,
+          raw_json = excluded.raw_json
+        """,
+        (
+            s.symbol,
+            s.quote.get("price"),
+            s.quote.get("change_pct"),
+            s.quote.get("volume"),
+            s.quote.get("turnover"),
+            s.quote.get("market_cap"),
+            ts,
+            raw_json,
+        ),
+    )
+
+
+def _upsert_market_bars(conn: sqlite3.Connection, symbol: str, bars: list[BarRow], ts: str) -> None:
+    for b in bars:
+        conn.execute(
+            """
+            INSERT INTO market_bars(
+              symbol, date, open, high, low, close, volume, amount, updated_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(symbol, date) DO UPDATE SET
+              open = excluded.open,
+              high = excluded.high,
+              low = excluded.low,
+              close = excluded.close,
+              volume = excluded.volume,
+              amount = excluded.amount,
+              updated_at = excluded.updated_at
+            """,
+            (
+                symbol,
+                b.date,
+                b.open,
+                b.high,
+                b.low,
+                b.close,
+                b.volume,
+                b.amount,
+                ts,
+            ),
+        )
+
+
+@app.get("/market/status", response_model=MarketStatusResponse)
+def market_status() -> MarketStatusResponse:
+    with _connect() as conn:
+        row = conn.execute("SELECT COUNT(1) FROM market_stocks").fetchone()
+        total = int(row[0]) if row else 0
+    last = (get_setting("market_last_sync_at") or "").strip() or None
+    return MarketStatusResponse(stocks=total, lastSyncAt=last)
+
+
+@app.post("/market/sync")
+def market_sync() -> JSONResponse:
+    ts = now_iso()
+    try:
+        cn = fetch_cn_a_spot()
+        hk = fetch_hk_spot()
+    except RuntimeError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+    with _connect() as conn:
+        for s in cn + hk:
+            _upsert_market_stock(conn, s, ts)
+            _upsert_market_quote(conn, s, ts)
+        conn.commit()
+
+    set_setting("market_last_sync_at", ts)
+    return JSONResponse({"ok": True, "stocks": len(cn) + len(hk), "syncedAt": ts})
+
+
+@app.get("/market/stocks", response_model=MarketStocksResponse)
+def market_list_stocks(
+    market: str | None = None,
+    q: str | None = None,
+    offset: int = 0,
+    limit: int = 50,
+) -> MarketStocksResponse:
+    market2 = (market or "").strip().upper()
+    q2 = (q or "").strip()
+    offset2 = max(0, int(offset))
+    limit2 = max(1, min(int(limit), 200))
+
+    where: list[str] = []
+    params: list[Any] = []
+    if market2 in {"CN", "HK"}:
+        where.append("s.market = ?")
+        params.append(market2)
+    if q2:
+        where.append("(s.ticker LIKE ? OR s.name LIKE ?)")
+        params.extend([f"%{q2}%", f"%{q2}%"])
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    with _connect() as conn:
+        total_row = conn.execute(
+            f"SELECT COUNT(1) FROM market_stocks s {where_sql}",
+            tuple(params),
+        ).fetchone()
+        total = int(total_row[0]) if total_row else 0
+
+        rows = conn.execute(
+            f"""
+            SELECT
+              s.symbol, s.market, s.ticker, s.name, s.currency, s.updated_at,
+              q.price, q.change_pct, q.volume, q.turnover, q.market_cap
+            FROM market_stocks s
+            LEFT JOIN market_quotes q ON q.symbol = s.symbol
+            {where_sql}
+            ORDER BY s.market ASC, s.ticker ASC
+            LIMIT ? OFFSET ?
+            """,
+            tuple(params + [limit2, offset2]),
+        ).fetchall()
+
+    items = [
+        MarketStockRow(
+            symbol=str(r[0]),
+            market=str(r[1]),
+            ticker=str(r[2]),
+            name=str(r[3]),
+            currency=str(r[4]),
+            updatedAt=str(r[5]),
+            price=str(r[6]) if r[6] is not None else None,
+            changePct=str(r[7]) if r[7] is not None else None,
+            volume=str(r[8]) if r[8] is not None else None,
+            turnover=str(r[9]) if r[9] is not None else None,
+            marketCap=str(r[10]) if r[10] is not None else None,
+        )
+        for r in rows
+    ]
+    return MarketStocksResponse(items=items, total=total, offset=offset2, limit=limit2)
+
+
+@app.get("/market/stocks/{symbol}/bars", response_model=MarketBarsResponse)
+def market_stock_bars(symbol: str, days: int = 60) -> MarketBarsResponse:
+    days2 = max(10, min(int(days), 200))
+    sym = symbol.strip()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT symbol, market, ticker, name, currency FROM market_stocks WHERE symbol = ?",
+            (sym,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        market = str(row[1])
+        ticker = str(row[2])
+        name = str(row[3])
+        currency = str(row[4])
+
+    # Load cached bars first.
+    with _connect() as conn:
+        cached = conn.execute(
+            """
+            SELECT date, open, high, low, close, volume, amount
+            FROM market_bars
+            WHERE symbol = ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (sym, days2),
+        ).fetchall()
+
+    if len(cached) < days2:
+        ts = now_iso()
+        if market == "CN":
+            bars = fetch_cn_a_daily_bars(ticker, days=days2)
+        elif market == "HK":
+            bars = fetch_hk_daily_bars(ticker, days=days2)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported market")
+        with _connect() as conn:
+            _upsert_market_bars(conn, sym, bars, ts)
+            conn.commit()
+        out = [
+            {
+                "date": b.date,
+                "open": b.open,
+                "high": b.high,
+                "low": b.low,
+                "close": b.close,
+                "volume": b.volume,
+                "amount": b.amount,
+            }
+            for b in bars
+        ]
+        return MarketBarsResponse(
+            symbol=sym,
+            market=market,
+            ticker=ticker,
+            name=name,
+            currency=currency,
+            bars=out,
+        )
+
+    out2 = [
+        {
+            "date": str(r[0]),
+            "open": str(r[1] or ""),
+            "high": str(r[2] or ""),
+            "low": str(r[3] or ""),
+            "close": str(r[4] or ""),
+            "volume": str(r[5] or ""),
+            "amount": str(r[6] or ""),
+        }
+        for r in reversed(cached)
+    ]
+    return MarketBarsResponse(
+        symbol=sym,
+        market=market,
+        ticker=ticker,
+        name=name,
+        currency=currency,
+        bars=out2,
+    )
 
 
 def _get_tv_screener_row(screener_id: str) -> dict[str, Any] | None:
