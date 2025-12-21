@@ -225,6 +225,27 @@ async def _read_filter_pills(page, grid) -> list[str]:
         lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
         return lum < 0.42
 
+    # Filters bar is typically directly above the grid; keep a narrow window to avoid
+    # capturing unrelated navigation/toolbar pills.
+    min_top = grid_top - 180
+    max_bottom = grid_top - 6
+
+    def _looks_like_condition(text: str) -> bool:
+        t = (text or "").strip()
+        if not t:
+            return False
+        tl = t.lower()
+        # Keep if it contains numeric thresholds, operators, or explicit rating/value.
+        if any(ch.isdigit() for ch in t):
+            return True
+        if any(op in t for op in (">", "<", "≥", "≤", "=")):
+            return True
+        if " to " in tl:
+            return True
+        if any(k in tl for k in ("strong buy", "buy", "sell", "neutral")):
+            return True
+        return False
+
     out: list[tuple[float, float, str, bool]] = []
     for i in range(count):
         el = candidates.nth(i)
@@ -237,10 +258,9 @@ async def _read_filter_pills(page, grid) -> list[str]:
             top = float(box["y"])
             height = float(box["height"])
             # Filter pills are usually small buttons above the grid.
-            if top + height > grid_top - 6:
+            if top + height > max_bottom:
                 continue
-            # Ignore global toolbar / header pills far above the grid.
-            if top < grid_top - 320:
+            if top < min_top:
                 continue
             if height < 18 or height > 60:
                 continue
@@ -257,14 +277,19 @@ async def _read_filter_pills(page, grid) -> list[str]:
                 continue
             if text2 in exclude_exact:
                 continue
+            if not _looks_like_condition(text2):
+                continue
 
             # Only include "active" pills (the black ones) when we can detect them.
             meta = await el.evaluate(
                 """
                 (el) => {
                   const cs = getComputedStyle(el);
+                  const child = el.firstElementChild;
+                  const cs2 = child ? getComputedStyle(child) : null;
                   return {
                     bg: cs.backgroundColor,
+                    bg2: cs2 ? cs2.backgroundColor : null,
                     ariaPressed: el.getAttribute('aria-pressed'),
                     dataState: el.getAttribute('data-state'),
                     className: el.className ? String(el.className) : '',
@@ -276,6 +301,7 @@ async def _read_filter_pills(page, grid) -> list[str]:
             data_state = str(meta.get("dataState") or "").lower()
             class_name = str(meta.get("className") or "").lower()
             bg = str(meta.get("bg") or "")
+            bg2 = str(meta.get("bg2") or "")
 
             is_selected = False
             if aria_pressed in {"true", "mixed"}:
@@ -284,7 +310,7 @@ async def _read_filter_pills(page, grid) -> list[str]:
                 is_selected = True
             if "active" in class_name or "selected" in class_name or "is-active" in class_name:
                 is_selected = True
-            if _is_dark_background(bg):
+            if _is_dark_background(bg) or _is_dark_background(bg2):
                 is_selected = True
 
             out.append((top, float(box["x"]), text2, is_selected))
@@ -315,6 +341,27 @@ async def _read_filter_pills(page, grid) -> list[str]:
     return _dedupe(out, only_selected=False)
 
 
+async def _wait_for_grid_data(page, grid, *, tag: str, headers: list[str], key: str) -> None:
+    """
+    Best-effort wait for the first non-empty row to appear. This reduces flakiness
+    where TradingView loads the grid asynchronously and an immediate read returns 0 rows.
+    """
+    for _ in range(32):  # ~8s (32 * 250ms)
+        try:
+            visible = (
+                await _read_visible_table_rows(grid, headers)
+                if tag == "TABLE"
+                else await _read_visible_grid_rows(grid, headers)
+            )
+            for r in visible:
+                sym = str(r.get(key, "") or "").strip()
+                if sym:
+                    return
+        except Exception:
+            pass
+        await page.wait_for_timeout(250)
+
+
 async def capture_screener_over_cdp(
     *,
     cdp_url: str,
@@ -337,75 +384,89 @@ async def capture_screener_over_cdp(
         context.set_default_timeout(timeout_ms)
         page = await context.new_page()
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-            await page.wait_for_timeout(1200)
+            async def _capture_once() -> tuple[list[str], list[str], list[dict[str, str]], str | None]:
+                grid = await _find_screener_grid(page)
+                if grid is None:
+                    raise RuntimeError(
+                        "Cannot locate screener grid/table. Please ensure you are logged in.",
+                    )
 
-            grid = await _find_screener_grid(page)
-            if grid is None:
-                raise RuntimeError(
-                    "Cannot locate screener grid/table. Please ensure you are logged in.",
+                filters = await _read_filter_pills(page, grid)
+                tag = await _element_tag(grid)
+                raw_headers = await (
+                    _read_table_headers(grid) if tag == "TABLE" else _read_grid_headers(grid)
                 )
+                headers = normalize_headers(raw_headers or ["Symbol"])
 
-            filters = await _read_filter_pills(page, grid)
-            tag = await _element_tag(grid)
-            raw_headers = await (
-                _read_table_headers(grid) if tag == "TABLE" else _read_grid_headers(grid)
-            )
-            headers = normalize_headers(raw_headers or ["Symbol"])
+                # Use a stable primary key column. TradingView may have a leading empty selection
+                # column; relying on headers[0] can cause every row to be treated as empty.
+                key = next((k for k in ("Symbol", "Ticker", "代码") if k in headers), headers[0])
+                await _wait_for_grid_data(page, grid, tag=tag, headers=headers, key=key)
 
-            seen: set[str] = set()
-            rows: list[dict[str, str]] = []
-            for _ in range(200):
-                visible = (
-                    await _read_visible_table_rows(grid, headers)
-                    if tag == "TABLE"
-                    else await _read_visible_grid_rows(grid, headers)
-                )
-                added = 0
-                for r in visible:
-                    sym = str(r.get(headers[0], "") or "").strip()
-                    if not sym or sym in seen:
-                        continue
-                    seen.add(sym)
-                    rows.append(r)
-                    added += 1
+                seen: set[str] = set()
+                rows: list[dict[str, str]] = []
+                for _ in range(200):
+                    visible = (
+                        await _read_visible_table_rows(grid, headers)
+                        if tag == "TABLE"
+                        else await _read_visible_grid_rows(grid, headers)
+                    )
+                    added = 0
+                    for r in visible:
+                        sym = str(r.get(key, "") or "").strip()
+                        if not sym or sym in seen:
+                            continue
+                        seen.add(sym)
+                        rows.append(r)
+                        added += 1
+                        if len(rows) >= max_rows:
+                            break
                     if len(rows) >= max_rows:
                         break
-                if len(rows) >= max_rows:
-                    break
 
-                await _scroll_grid(page, grid, steps=1)
-                after = (
-                    await _read_visible_table_rows(grid, headers)
-                    if tag == "TABLE"
-                    else await _read_visible_grid_rows(grid, headers)
-                )
-                any_new = False
-                for r in after:
-                    sym = str(r.get(headers[0], "") or "").strip()
-                    if sym and sym not in seen:
-                        any_new = True
+                    await _scroll_grid(page, grid, steps=1)
+                    after = (
+                        await _read_visible_table_rows(grid, headers)
+                        if tag == "TABLE"
+                        else await _read_visible_grid_rows(grid, headers)
+                    )
+                    any_new = False
+                    for r in after:
+                        sym = str(r.get(key, "") or "").strip()
+                        if sym and sym not in seen:
+                            any_new = True
+                            break
+                    if added == 0 and not any_new:
                         break
-                if added == 0 and not any_new:
-                    break
 
-            # Normalize + enrich
-            headers2, rows2 = enrich_symbol_columns(headers, rows)
-            headers3, rows3 = drop_empty_columns(headers2, rows2)
+                # Normalize + enrich
+                headers2, rows2 = enrich_symbol_columns(headers, rows)
+                headers3, rows3 = drop_empty_columns(headers2, rows2)
 
-            # Ensure rows values are strings (JSON-friendly).
-            out_rows: list[dict[str, str]] = []
-            for r in rows3:
-                out_rows.append({str(k): str(v) for k, v in r.items()})
+                # Ensure rows values are strings (JSON-friendly).
+                out_rows: list[dict[str, str]] = []
+                for r in rows3:
+                    out_rows.append({str(k): str(v) for k, v in r.items()})
+
+                return filters, [str(h) for h in headers3], out_rows, await _detect_screen_title(page)
+
+            await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            await page.wait_for_timeout(1200)
+            filters, headers_out, rows_out, screen_title = await _capture_once()
+            if not rows_out:
+                # Retry once; TradingView sometimes returns an empty grid on first paint.
+                await page.reload(wait_until="domcontentloaded", timeout=timeout_ms)
+                await page.wait_for_timeout(1200)
+                filters, headers_out, rows_out, screen_title = await _capture_once()
 
             captured_at = datetime.now(tz=UTC).isoformat()
             return CaptureResult(
                 url=url,
                 captured_at=captured_at,
-                screen_title=await _detect_screen_title(page),
+                screen_title=screen_title,
                 filters=filters,
-                headers=[str(h) for h in headers3],
-                rows=out_rows,
+                headers=headers_out,
+                rows=rows_out,
             )
         finally:
             try:
