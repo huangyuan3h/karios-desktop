@@ -5,7 +5,13 @@ import * as React from 'react';
 import { newId } from '@/lib/id';
 import { loadJson, saveJson } from '@/lib/storage';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
-import type { AgentPanelState, AppSettings, ChatMessage, ChatSession } from '@/lib/chat/types';
+import type {
+  AgentPanelState,
+  AppSettings,
+  ChatMessage,
+  ChatReference,
+  ChatSession,
+} from '@/lib/chat/types';
 
 const STORAGE_KEY = 'karios.chat.v0';
 
@@ -14,6 +20,7 @@ type PersistedState = {
   activeSessionId: string | null;
   agent: AgentPanelState;
   settings: AppSettings;
+  references: ChatReference[];
 };
 
 const defaultState: PersistedState = {
@@ -21,6 +28,7 @@ const defaultState: PersistedState = {
   activeSessionId: null,
   agent: { visible: true, mode: 'docked', width: 420, historyOpen: false },
   settings: { systemPrompt: '', systemPromptId: null, systemPromptTitle: 'Legacy' },
+  references: [],
 };
 
 function nowIso() {
@@ -48,6 +56,9 @@ export type ChatStoreApi = {
   setAgent: (updater: (prev: AgentPanelState) => AgentPanelState) => void;
   setSystemPrompt: (value: string) => Promise<void>;
   setSystemPromptLocal: (next: { id: string | null; title: string; content: string }) => void;
+  addReference: (ref: ChatReference) => void;
+  removeReference: (snapshotId: string) => void;
+  clearReferences: () => void;
 };
 
 const ChatStoreContext = React.createContext<ChatStoreApi | null>(null);
@@ -59,7 +70,13 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     const loaded = loadJson<PersistedState>(STORAGE_KEY, defaultState);
-    setState(loaded);
+    setState({
+      ...defaultState,
+      ...loaded,
+      references: Array.isArray((loaded as Partial<PersistedState>).references)
+        ? (loaded as Partial<PersistedState>).references!
+        : [],
+    });
   }, []);
 
   React.useEffect(() => {
@@ -189,6 +206,21 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
             systemPrompt: next.content,
           },
         }));
+      },
+      addReference: (ref: ChatReference) => {
+        setState((prev) => {
+          if (prev.references.some((r) => r.snapshotId === ref.snapshotId)) return prev;
+          return { ...prev, references: [ref, ...prev.references] };
+        });
+      },
+      removeReference: (snapshotId: string) => {
+        setState((prev) => ({
+          ...prev,
+          references: prev.references.filter((r) => r.snapshotId !== snapshotId),
+        }));
+      },
+      clearReferences: () => {
+        setState((prev) => ({ ...prev, references: [] }));
       },
     };
   }, [state, activeSession]);

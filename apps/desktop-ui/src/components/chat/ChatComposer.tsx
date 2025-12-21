@@ -7,14 +7,20 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { newId } from '@/lib/id';
-import type { ChatAttachment } from '@/lib/chat/types';
+import type { ChatAttachment, ChatReference } from '@/lib/chat/types';
 
 export function ChatComposer({
   onSend,
   disabled,
+  references,
+  onRemoveReference,
+  onClearReferences,
 }: {
   onSend: (text: string, attachments: ChatAttachment[]) => void;
   disabled?: boolean;
+  references?: ChatReference[];
+  onRemoveReference?: (snapshotId: string) => void;
+  onClearReferences?: () => void;
 }) {
   const [text, setText] = React.useState('');
   const [attachments, setAttachments] = React.useState<ChatAttachment[]>([]);
@@ -119,6 +125,42 @@ export function ChatComposer({
           <div className="pointer-events-none absolute inset-0 rounded-md border-2 border-dashed border-[var(--k-accent)] bg-[var(--k-accent)]/5" />
         ) : null}
       </div>
+
+      {references && references.length > 0 ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="text-xs text-[var(--k-muted)]">Referenced:</div>
+          {references.map((r) => (
+            <div
+              key={r.snapshotId}
+              className="flex items-center gap-1 rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-1 text-xs text-[var(--k-muted)]"
+            >
+              <span className="max-w-[220px] truncate">
+                {r.screenerName} @ {new Date(r.capturedAt).toLocaleString()}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 rounded-full p-0"
+                onClick={() => onRemoveReference?.(r.snapshotId)}
+                aria-label="Remove reference"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+          {references.length > 1 ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-[var(--k-muted)]"
+              onClick={() => onClearReferences?.()}
+              disabled={disabled}
+            >
+              Clear
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {attachments.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-2">

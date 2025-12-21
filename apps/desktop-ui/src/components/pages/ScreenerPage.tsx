@@ -4,6 +4,7 @@ import * as React from 'react';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { useChatStore } from '@/lib/chat/store';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
 
 type TvScreener = {
@@ -72,6 +73,7 @@ function pickColumns(headers: string[]) {
 }
 
 export function ScreenerPage() {
+  const { addReference } = useChatStore();
   const [screeners, setScreeners] = React.useState<TvScreener[]>([]);
   const [snapshots, setSnapshots] = React.useState<Record<string, TvSnapshotDetail | null>>({});
   const [busyId, setBusyId] = React.useState<string | null>(null);
@@ -186,7 +188,20 @@ export function ScreenerPage() {
                     <RefreshCw className="h-4 w-4" />
                     Sync
                   </Button>
-                  <Button size="sm" variant="secondary" disabled={!snap}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!snap}
+                    onClick={() => {
+                      if (!snap) return;
+                      addReference({
+                        snapshotId: snap.id,
+                        screenerId: it.id,
+                        screenerName: it.name,
+                        capturedAt: snap.capturedAt,
+                      });
+                    }}
+                  >
                     Reference to chat
                   </Button>
                 </div>
