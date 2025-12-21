@@ -4,8 +4,10 @@ import * as React from 'react';
 import { ArrowLeft } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { StockChart } from '@/components/stock/StockChart';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
+import type { OHLCV } from '@/lib/indicators';
 
 type BarsResp = {
   symbol: string;
@@ -51,6 +53,29 @@ export function StockPage({
   const [data, setData] = React.useState<BarsResp | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const chartData: OHLCV[] = React.useMemo(() => {
+    const bars = data?.bars ?? [];
+    return bars
+      .map((b) => {
+        const open = Number(b.open);
+        const high = Number(b.high);
+        const low = Number(b.low);
+        const close = Number(b.close);
+        const volume = Number(String(b.volume).replaceAll(',', ''));
+        if (!b.date || !Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
+          return null;
+        }
+        return {
+          time: b.date,
+          open,
+          high,
+          low,
+          close,
+          volume: Number.isFinite(volume) ? volume : 0,
+        };
+      })
+      .filter(Boolean) as OHLCV[];
+  }, [data]);
 
   const refresh = React.useCallback(async () => {
     setError(null);
@@ -119,41 +144,18 @@ export function StockPage({
       ) : null}
 
       <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-        <div className="font-medium">Price & Volume (last {data?.bars?.length ?? 0} days)</div>
-        <div className="mt-3 overflow-hidden rounded-lg border border-[var(--k-border)]">
-          <div className="max-h-[520px] overflow-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead className="sticky top-0 bg-[var(--k-surface-2)]">
-                <tr className="text-left text-xs text-[var(--k-muted)]">
-                  {['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Amount'].map((h) => (
-                    <th key={h} className="whitespace-nowrap px-3 py-2">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(data?.bars ?? []).map((b) => (
-                  <tr key={b.date} className="border-t border-[var(--k-border)]">
-                    <td className="px-3 py-2 font-mono text-xs">{b.date}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{b.open}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{b.high}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{b.low}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{b.close}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{b.volume}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{b.amount}</td>
-                  </tr>
-                ))}
-                {(data?.bars?.length ?? 0) === 0 ? (
-                  <tr>
-                    <td className="px-3 py-8 text-center text-sm text-[var(--k-muted)]" colSpan={7}>
-                      No bars yet. Try Refresh.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+        <div className="flex items-center justify-between">
+          <div className="font-medium">Candles / Volume / MACD / KDJ</div>
+          <div className="text-xs text-[var(--k-muted)]">{data?.bars?.length ?? 0} bars</div>
+        </div>
+        <div className="mt-3">
+          {chartData.length > 0 ? (
+            <StockChart data={chartData} />
+          ) : (
+            <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-bg)] px-3 py-10 text-center text-sm text-[var(--k-muted)]">
+              No bars yet. Try Refresh.
+            </div>
+          )}
         </div>
       </section>
 
