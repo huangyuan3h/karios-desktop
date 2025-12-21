@@ -24,6 +24,7 @@ from market.akshare_provider import (
     StockRow,
     fetch_cn_a_chip_summary,
     fetch_cn_a_daily_bars,
+    fetch_cn_a_fund_flow,
     fetch_cn_a_spot,
     fetch_hk_daily_bars,
     fetch_hk_spot,
@@ -165,6 +166,30 @@ def _connect() -> sqlite3.Connection:
           cost70_low TEXT,
           cost70_high TEXT,
           cost70_conc TEXT,
+          updated_at TEXT NOT NULL,
+          raw_json TEXT NOT NULL,
+          PRIMARY KEY(symbol, date),
+          FOREIGN KEY(symbol) REFERENCES market_stocks(symbol)
+        )
+        """,
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS market_fund_flow (
+          symbol TEXT NOT NULL,
+          date TEXT NOT NULL,
+          close TEXT,
+          change_pct TEXT,
+          main_net_amount TEXT,
+          main_net_ratio TEXT,
+          super_net_amount TEXT,
+          super_net_ratio TEXT,
+          large_net_amount TEXT,
+          large_net_ratio TEXT,
+          medium_net_amount TEXT,
+          medium_net_ratio TEXT,
+          small_net_amount TEXT,
+          small_net_ratio TEXT,
           updated_at TEXT NOT NULL,
           raw_json TEXT NOT NULL,
           PRIMARY KEY(symbol, date),
@@ -774,6 +799,15 @@ class MarketChipsResponse(BaseModel):
     items: list[dict[str, str]]
 
 
+class MarketFundFlowResponse(BaseModel):
+    symbol: str
+    market: str
+    ticker: str
+    name: str
+    currency: str
+    items: list[dict[str, str]]
+
+
 @app.get("/integrations/tradingview/screeners", response_model=ListTvScreenersResponse)
 def list_tv_screeners() -> ListTvScreenersResponse:
     _seed_default_tv_screeners()
@@ -976,6 +1010,64 @@ def _upsert_market_chips(
                 str(it.get("cost70Low") or ""),
                 str(it.get("cost70High") or ""),
                 str(it.get("cost70Conc") or ""),
+                ts,
+                raw,
+            ),
+        )
+
+
+def _upsert_market_fund_flow(
+    conn: sqlite3.Connection,
+    symbol: str,
+    items: list[dict[str, str]],
+    ts: str,
+) -> None:
+    for it in items:
+        raw = json.dumps(it, ensure_ascii=False)
+        conn.execute(
+            """
+            INSERT INTO market_fund_flow(
+              symbol, date,
+              close, change_pct,
+              main_net_amount, main_net_ratio,
+              super_net_amount, super_net_ratio,
+              large_net_amount, large_net_ratio,
+              medium_net_amount, medium_net_ratio,
+              small_net_amount, small_net_ratio,
+              updated_at, raw_json
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(symbol, date) DO UPDATE SET
+              close = excluded.close,
+              change_pct = excluded.change_pct,
+              main_net_amount = excluded.main_net_amount,
+              main_net_ratio = excluded.main_net_ratio,
+              super_net_amount = excluded.super_net_amount,
+              super_net_ratio = excluded.super_net_ratio,
+              large_net_amount = excluded.large_net_amount,
+              large_net_ratio = excluded.large_net_ratio,
+              medium_net_amount = excluded.medium_net_amount,
+              medium_net_ratio = excluded.medium_net_ratio,
+              small_net_amount = excluded.small_net_amount,
+              small_net_ratio = excluded.small_net_ratio,
+              updated_at = excluded.updated_at,
+              raw_json = excluded.raw_json
+            """,
+            (
+                symbol,
+                str(it.get("date") or ""),
+                str(it.get("close") or ""),
+                str(it.get("changePct") or ""),
+                str(it.get("mainNetAmount") or ""),
+                str(it.get("mainNetRatio") or ""),
+                str(it.get("superNetAmount") or ""),
+                str(it.get("superNetRatio") or ""),
+                str(it.get("largeNetAmount") or ""),
+                str(it.get("largeNetRatio") or ""),
+                str(it.get("mediumNetAmount") or ""),
+                str(it.get("mediumNetRatio") or ""),
+                str(it.get("smallNetAmount") or ""),
+                str(it.get("smallNetRatio") or ""),
                 ts,
                 raw,
             ),
@@ -1205,6 +1297,65 @@ def market_stock_chips(symbol: str, days: int = 60) -> MarketChipsResponse:
         _upsert_market_chips(conn, sym, items2, ts)
         conn.commit()
     return MarketChipsResponse(
+        symbol=sym,
+        market=market,
+        ticker=ticker,
+        name=name,
+        currency=currency,
+        items=items2,
+    )
+
+
+@app.get("/market/stocks/{symbol}/fund-flow", response_model=MarketFundFlowResponse)
+def market_stock_fund_flow(symbol: str, days: int = 60) -> MarketFundFlowResponse:
+    days2 = max(10, min(int(days), 200))
+    sym = symbol.strip()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT symbol, market, ticker, name, currency FROM market_stocks WHERE symbol = ?",
+            (sym,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        market = str(row[1])
+        ticker = str(row[2])
+        name = str(row[3])
+        currency = str(row[4])
+
+    if market != "CN":
+        raise HTTPException(
+            status_code=400,
+            detail="Fund flow distribution is only supported for CN A-shares (v0).",
+        )
+
+    with _connect() as conn:
+        cached = conn.execute(
+            """
+            SELECT raw_json
+            FROM market_fund_flow
+            WHERE symbol = ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (sym, days2),
+        ).fetchall()
+    if len(cached) >= min(days2, 30):
+        items = [json.loads(str(r[0])) for r in reversed(cached)]
+        return MarketFundFlowResponse(
+            symbol=sym,
+            market=market,
+            ticker=ticker,
+            name=name,
+            currency=currency,
+            items=items,
+        )
+
+    ts = now_iso()
+    items2 = fetch_cn_a_fund_flow(ticker, days=days2)
+    with _connect() as conn:
+        _upsert_market_fund_flow(conn, sym, items2, ts)
+        conn.commit()
+    return MarketFundFlowResponse(
         symbol=sym,
         market=market,
         ticker=ticker,

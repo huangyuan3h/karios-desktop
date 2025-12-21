@@ -214,3 +214,45 @@ def fetch_cn_a_chip_summary(
     return out[-max(1, int(days)) :]
 
 
+def fetch_cn_a_fund_flow(ticker: str, *, days: int = 60) -> list[dict[str, str]]:
+    """
+    Eastmoney individual stock fund flow breakdown.
+
+    Columns (AkShare):
+    日期, 收盘价, 涨跌幅,
+    主力净流入-净额/净占比,
+    超大单净流入-净额/净占比,
+    大单净流入-净额/净占比,
+    中单净流入-净额/净占比,
+    小单净流入-净额/净占比
+    """
+    ak = _akshare()
+    # Best-effort market inference for A shares.
+    market = "sh" if ticker.startswith("6") else "sz"
+    df = ak.stock_individual_fund_flow(stock=ticker, market=market)
+    rows = _to_records(df)
+    out: list[dict[str, str]] = []
+    for r in rows:
+        d = str(r.get("日期") or "").strip()
+        if not d:
+            continue
+        out.append(
+            {
+                "date": d,
+                "close": str(r.get("收盘价") or ""),
+                "changePct": str(r.get("涨跌幅") or ""),
+                "mainNetAmount": str(r.get("主力净流入-净额") or ""),
+                "mainNetRatio": str(r.get("主力净流入-净占比") or ""),
+                "superNetAmount": str(r.get("超大单净流入-净额") or ""),
+                "superNetRatio": str(r.get("超大单净流入-净占比") or ""),
+                "largeNetAmount": str(r.get("大单净流入-净额") or ""),
+                "largeNetRatio": str(r.get("大单净流入-净占比") or ""),
+                "mediumNetAmount": str(r.get("中单净流入-净额") or ""),
+                "mediumNetRatio": str(r.get("中单净流入-净占比") or ""),
+                "smallNetAmount": str(r.get("小单净流入-净额") or ""),
+                "smallNetRatio": str(r.get("小单净流入-净占比") or ""),
+            },
+        )
+    return out[-max(1, int(days)) :]
+
+

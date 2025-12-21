@@ -45,6 +45,29 @@ type ChipsResp = {
   }>;
 };
 
+type FundFlowResp = {
+  symbol: string;
+  market: string;
+  ticker: string;
+  name: string;
+  currency: string;
+  items: Array<{
+    date: string;
+    close: string;
+    changePct: string;
+    mainNetAmount: string;
+    mainNetRatio: string;
+    superNetAmount: string;
+    superNetRatio: string;
+    largeNetAmount: string;
+    largeNetRatio: string;
+    mediumNetAmount: string;
+    mediumNetRatio: string;
+    smallNetAmount: string;
+    smallNetRatio: string;
+  }>;
+};
+
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
@@ -71,6 +94,7 @@ export function StockPage({
   const { addReference } = useChatStore();
   const [data, setData] = React.useState<BarsResp | null>(null);
   const [chips, setChips] = React.useState<ChipsResp | null>(null);
+  const [fundFlow, setFundFlow] = React.useState<FundFlowResp | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const chartData: OHLCV[] = React.useMemo(() => {
@@ -107,8 +131,12 @@ export function StockPage({
           () => null,
         ),
       ]);
+      const ff = await apiGetJson<FundFlowResp>(
+        `/market/stocks/${encodeURIComponent(symbol)}/fund-flow?days=60`,
+      ).catch(() => null);
       setData(d);
       setChips(c);
+      setFundFlow(ff);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -220,6 +248,68 @@ export function StockPage({
                         <td className="px-3 py-2 font-mono text-xs">{it.cost70High}</td>
                         <td className="px-3 py-2 font-mono text-xs">{it.cost90Low}</td>
                         <td className="px-3 py-2 font-mono text-xs">{it.cost90High}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="mt-2 text-sm text-[var(--k-muted)]">
+            Not available yet for this market (v0 supports CN A-shares only), or data source failed.
+          </div>
+        )}
+      </section>
+
+      <section className="mt-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+        <div className="flex items-center justify-between">
+          <div className="font-medium">Fund flow distribution (资金成交分布)</div>
+          <div className="text-xs text-[var(--k-muted)]">
+            {fundFlow?.items?.length ? `${fundFlow.items.length} rows` : '—'}
+          </div>
+        </div>
+        {fundFlow?.items?.length ? (
+          <>
+            <div className="mt-2 text-sm text-[var(--k-muted)]">
+              Latest: main={fundFlow.items[fundFlow.items.length - 1]?.mainNetAmount} (
+              {fundFlow.items[fundFlow.items.length - 1]?.mainNetRatio}
+              %) • super={fundFlow.items[fundFlow.items.length - 1]?.superNetAmount} • large=
+              {fundFlow.items[fundFlow.items.length - 1]?.largeNetAmount} • medium=
+              {fundFlow.items[fundFlow.items.length - 1]?.mediumNetAmount} • small=
+              {fundFlow.items[fundFlow.items.length - 1]?.smallNetAmount}
+            </div>
+            <div className="mt-3 overflow-hidden rounded-lg border border-[var(--k-border)]">
+              <div className="max-h-[320px] overflow-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="sticky top-0 bg-[var(--k-surface-2)]">
+                    <tr className="text-left text-xs text-[var(--k-muted)]">
+                      {['Date', 'Main', 'Super', 'Large', 'Medium', 'Small'].map((h) => (
+                        <th key={h} className="whitespace-nowrap px-3 py-2">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fundFlow.items.map((it) => (
+                      <tr key={it.date} className="border-t border-[var(--k-border)]">
+                        <td className="px-3 py-2 font-mono text-xs">{it.date}</td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {it.mainNetAmount} ({it.mainNetRatio}%)
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {it.superNetAmount} ({it.superNetRatio}%)
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {it.largeNetAmount} ({it.largeNetRatio}%)
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {it.mediumNetAmount} ({it.mediumNetRatio}%)
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {it.smallNetAmount} ({it.smallNetRatio}%)
+                        </td>
                       </tr>
                     ))}
                   </tbody>

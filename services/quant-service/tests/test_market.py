@@ -136,3 +136,68 @@ def test_market_chips_cn_only(tmp_path, monkeypatch) -> None:
     assert resp.status_code == 400
 
 
+def test_market_fund_flow_cn_only(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    monkeypatch.setattr(
+        main,
+        "fetch_cn_a_spot",
+        lambda: [
+            main.StockRow(
+                symbol="CN:000001",
+                market="CN",
+                ticker="000001",
+                name="Ping An Bank",
+                currency="CNY",
+                quote={},
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        main,
+        "fetch_hk_spot",
+        lambda: [
+            main.StockRow(
+                symbol="HK:00005",
+                market="HK",
+                ticker="00005",
+                name="HSBC",
+                currency="HKD",
+                quote={},
+            )
+        ],
+    )
+    client = TestClient(main.app)
+    client.post("/market/sync")
+
+    monkeypatch.setattr(
+        main,
+        "fetch_cn_a_fund_flow",
+        lambda ticker, days=60: [
+            {
+                "date": "2025-12-20",
+                "close": "10.0",
+                "changePct": "1.0",
+                "mainNetAmount": "100",
+                "mainNetRatio": "2.0",
+                "superNetAmount": "40",
+                "superNetRatio": "1.0",
+                "largeNetAmount": "30",
+                "largeNetRatio": "0.8",
+                "mediumNetAmount": "20",
+                "mediumNetRatio": "0.5",
+                "smallNetAmount": "10",
+                "smallNetRatio": "0.2",
+            }
+        ],
+    )
+
+    resp = client.get("/market/stocks/CN:000001/fund-flow?days=60")
+    assert resp.status_code == 200
+    assert resp.json()["items"][0]["mainNetAmount"] == "100"
+
+    resp = client.get("/market/stocks/HK:00005/fund-flow?days=60")
+    assert resp.status_code == 400
+
+
