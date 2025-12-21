@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import sqlite3
@@ -16,7 +19,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from market.akshare_provider import (
@@ -197,6 +200,28 @@ def _connect() -> sqlite3.Connection:
         )
         """,
     )
+
+    # --- Broker snapshots (v0) ---
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS broker_snapshots (
+          id TEXT PRIMARY KEY,
+          broker TEXT NOT NULL,
+          captured_at TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          sha256 TEXT NOT NULL,
+          image_path TEXT NOT NULL,
+          extracted_json TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+        """,
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_broker_snapshots_broker_captured ON broker_snapshots(broker, captured_at DESC)",
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_broker_snapshots_broker_sha256 ON broker_snapshots(broker, sha256)",
+    )
     conn.commit()
     return conn
 
@@ -306,6 +331,69 @@ def put_system_prompt(req: SystemPromptRequest) -> dict[str, bool]:
 def now_iso() -> str:
     # Use ISO 8601 for cross-language compatibility.
     return datetime.now(tz=UTC).isoformat()
+
+
+def _parse_data_url(data_url: str) -> tuple[str, bytes]:
+    """
+    Parse a data URL like 'data:image/png;base64,...' and return (mediaType, bytes).
+    """
+    m = re.match(r"^data:([^;]+);base64,(.+)$", (data_url or "").strip(), flags=re.IGNORECASE)
+    if not m:
+        raise ValueError("Invalid dataUrl")
+    media_type = str(m.group(1)).strip().lower()
+    b64 = m.group(2)
+    try:
+        raw = base64.b64decode(b64, validate=False)
+    except Exception as e:
+        raise ValueError("Invalid base64 dataUrl") from e
+    return media_type, raw
+
+
+def _sha256_hex(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _broker_data_dir() -> Path:
+    # Store screenshots locally (not committed) for v0.
+    d = Path(__file__).with_name("data").joinpath("broker")
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _write_broker_image(*, broker: str, raw: bytes, media_type: str) -> str:
+    ext = "png"
+    if "jpeg" in media_type or "jpg" in media_type:
+        ext = "jpg"
+    elif "webp" in media_type:
+        ext = "webp"
+    elif "png" in media_type:
+        ext = "png"
+
+    sub = _broker_data_dir().joinpath(broker)
+    sub.mkdir(parents=True, exist_ok=True)
+    p = sub.joinpath(f"{uuid.uuid4()}.{ext}")
+    p.write_bytes(raw)
+    return str(p)
+
+
+def _ai_service_base_url() -> str:
+    return (os.getenv("AI_SERVICE_BASE_URL") or "http://127.0.0.1:4310").rstrip("/")
+
+
+def _ai_extract_pingan_screenshot(*, image_data_url: str) -> dict[str, Any]:
+    """
+    Call ai-service to extract structured broker data from a Ping An Securities screenshot.
+    """
+    payload = json.dumps({"imageDataUrl": image_data_url}, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        f"{_ai_service_base_url()}/extract/broker/pingan",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        body = resp.read().decode("utf-8")
+        return json.loads(body)
 
 
 def _home_path(path: str) -> str:
@@ -754,6 +842,40 @@ class TvScreenerSyncResponse(BaseModel):
     snapshotId: str
     capturedAt: str
     rowCount: int
+
+
+class BrokerImportImage(BaseModel):
+    """
+    Screenshot payload from the desktop UI. We use dataUrl to keep v0 simple.
+    """
+
+    id: str
+    name: str
+    mediaType: str
+    dataUrl: str
+
+
+class BrokerImportRequest(BaseModel):
+    capturedAt: str | None = None
+    images: list[BrokerImportImage]
+
+
+class BrokerSnapshotSummary(BaseModel):
+    id: str
+    broker: str
+    capturedAt: str
+    kind: str
+    createdAt: str
+
+
+class BrokerSnapshotDetail(BrokerSnapshotSummary):
+    imagePath: str
+    extracted: dict[str, Any]
+
+
+class BrokerImportResponse(BaseModel):
+    ok: bool
+    items: list[BrokerSnapshotSummary]
 
 
 class MarketStatusResponse(BaseModel):
@@ -1573,6 +1695,104 @@ def get_tv_screener_snapshot(snapshot_id: str) -> TvScreenerSnapshotDetail:
     return snap
 
 
+@app.get("/broker/pingan/snapshots", response_model=list[BrokerSnapshotSummary])
+def list_pingan_broker_snapshots(limit: int = 20) -> list[BrokerSnapshotSummary]:
+    """
+    List imported Ping An Securities account screenshots.
+    """
+    return _list_broker_snapshots(broker="pingan", limit=limit)
+
+
+@app.get("/broker/pingan/snapshots/{snapshot_id}", response_model=BrokerSnapshotDetail)
+def get_pingan_broker_snapshot(snapshot_id: str) -> BrokerSnapshotDetail:
+    snap = _get_broker_snapshot(snapshot_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return snap
+
+
+@app.get("/broker/pingan/snapshots/{snapshot_id}/image")
+def get_pingan_broker_snapshot_image(snapshot_id: str) -> Response:
+    snap = _get_broker_snapshot(snapshot_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    p = Path(snap.imagePath)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+    ext = p.suffix.lower()
+    media = "image/png"
+    if ext in {".jpg", ".jpeg"}:
+        media = "image/jpeg"
+    elif ext == ".webp":
+        media = "image/webp"
+    return Response(content=p.read_bytes(), media_type=media)
+
+
+@app.post("/broker/pingan/import", response_model=BrokerImportResponse)
+def import_pingan_broker_screenshots(req: BrokerImportRequest) -> BrokerImportResponse:
+    """
+    Import one or more Ping An Securities screenshots.
+    - Store the original image on disk
+    - Run AI extraction (vision) to classify + parse content
+    - Persist the extracted JSON into SQLite
+    """
+    captured_at = (req.capturedAt or now_iso()).strip() or now_iso()
+    out: list[BrokerSnapshotSummary] = []
+
+    for img in req.images:
+        media_type, raw = _parse_data_url(img.dataUrl)
+        sha = _sha256_hex(raw)
+
+        # Dedupe first (by sha256) before writing duplicates to disk.
+        with _connect() as conn:
+            existing = conn.execute(
+                "SELECT id, broker, captured_at, kind, created_at FROM broker_snapshots WHERE broker = ? AND sha256 = ?",
+                ("pingan", sha),
+            ).fetchone()
+            if existing is not None:
+                out.append(
+                    BrokerSnapshotSummary(
+                        id=str(existing[0]),
+                        broker=str(existing[1]),
+                        capturedAt=str(existing[2]),
+                        kind=str(existing[3]),
+                        createdAt=str(existing[4]),
+                    ),
+                )
+                continue
+
+        image_path = _write_broker_image(broker="pingan", raw=raw, media_type=media_type)
+        extracted = _ai_extract_pingan_screenshot(image_data_url=img.dataUrl)
+        # Attach minimal metadata for debugging and UI display.
+        if isinstance(extracted, dict):
+            meta = extracted.get("__meta")
+            meta2 = meta if isinstance(meta, dict) else {}
+            meta2.update({"originalName": img.name, "mediaType": media_type})
+            extracted["__meta"] = meta2
+        kind = str((extracted or {}).get("kind") or "unknown")
+        snapshot_id = _insert_broker_snapshot(
+            broker="pingan",
+            captured_at=captured_at,
+            kind=kind,
+            sha256=sha,
+            image_path=image_path,
+            extracted=extracted if isinstance(extracted, dict) else {"raw": extracted},
+        )
+        snap = _get_broker_snapshot(snapshot_id)
+        if snap:
+            out.append(
+                BrokerSnapshotSummary(
+                    id=snap.id,
+                    broker=snap.broker,
+                    capturedAt=snap.capturedAt,
+                    kind=snap.kind,
+                    createdAt=snap.createdAt,
+                ),
+            )
+
+    return BrokerImportResponse(ok=True, items=out)
+
+
 def list_system_prompt_presets() -> list[SystemPromptPresetSummary]:
     with _connect() as conn:
         rows = conn.execute(
@@ -1608,6 +1828,99 @@ def create_system_prompt_preset(title: str, content: str) -> str:
         )
         conn.commit()
     return preset_id
+
+
+def _insert_broker_snapshot(
+    *,
+    broker: str,
+    captured_at: str,
+    kind: str,
+    sha256: str,
+    image_path: str,
+    extracted: dict[str, Any],
+) -> str:
+    """
+    Insert a broker snapshot; dedupe by (broker, sha256).
+    """
+    with _connect() as conn:
+        existing = conn.execute(
+            "SELECT id FROM broker_snapshots WHERE broker = ? AND sha256 = ?",
+            (broker, sha256),
+        ).fetchone()
+        if existing is not None:
+            return str(existing[0])
+
+        snapshot_id = str(uuid.uuid4())
+        ts = now_iso()
+        conn.execute(
+            """
+            INSERT INTO broker_snapshots(
+              id, broker, captured_at, kind, sha256, image_path, extracted_json, created_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                snapshot_id,
+                broker,
+                captured_at,
+                kind,
+                sha256,
+                image_path,
+                json.dumps(extracted, ensure_ascii=False),
+                ts,
+            ),
+        )
+        conn.commit()
+        return snapshot_id
+
+
+def _get_broker_snapshot(snapshot_id: str) -> BrokerSnapshotDetail | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, broker, captured_at, kind, image_path, extracted_json, created_at
+            FROM broker_snapshots
+            WHERE id = ?
+            """,
+            (snapshot_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        extracted = json.loads(str(row[5]) or "{}")
+        return BrokerSnapshotDetail(
+            id=str(row[0]),
+            broker=str(row[1]),
+            capturedAt=str(row[2]),
+            kind=str(row[3]),
+            imagePath=str(row[4]),
+            extracted=extracted if isinstance(extracted, dict) else {"raw": extracted},
+            createdAt=str(row[6]),
+        )
+
+
+def _list_broker_snapshots(*, broker: str, limit: int = 20) -> list[BrokerSnapshotSummary]:
+    limit2 = max(1, min(int(limit), 100))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, broker, captured_at, kind, created_at
+            FROM broker_snapshots
+            WHERE broker = ?
+            ORDER BY captured_at DESC
+            LIMIT ?
+            """,
+            (broker, limit2),
+        ).fetchall()
+        return [
+            BrokerSnapshotSummary(
+                id=str(r[0]),
+                broker=str(r[1]),
+                capturedAt=str(r[2]),
+                kind=str(r[3]),
+                createdAt=str(r[4]),
+            )
+            for r in rows
+        ]
 
 
 def update_system_prompt_preset(

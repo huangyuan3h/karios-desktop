@@ -25,6 +25,9 @@ __pycache__/
 *.sqlite3-wal
 *.sqlite3-shm
 
+# Local captured data (screenshots/snapshots)
+services/quant-service/data/
+
 # Tauri / Rust
 target/
 src-tauri/target/

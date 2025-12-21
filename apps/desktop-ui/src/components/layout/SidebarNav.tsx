@@ -5,6 +5,7 @@ import {
   BookOpen,
   ChevronsLeft,
   ChevronsRight,
+  CreditCard,
   LayoutDashboard,
   PieChart,
   Settings,
@@ -17,6 +18,7 @@ import { cn } from '@/lib/utils';
 const items = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'market', label: 'Market', icon: Table2 },
+  { id: 'broker', label: 'Broker', icon: CreditCard },
   { id: 'resources', label: 'Resources', icon: BookOpen },
   { id: 'portfolio', label: 'Portfolio', icon: PieChart },
   { id: 'analysis', label: 'Analysis', icon: BarChart3 },
