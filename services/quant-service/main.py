@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import signal
 import sqlite3
@@ -10,11 +11,14 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+from tv.capture import capture_screener_over_cdp_sync
 
 
 @dataclass(frozen=True)
@@ -515,6 +519,34 @@ class UpdateTvScreenerRequest(BaseModel):
     enabled: bool
 
 
+class TvScreenerSnapshotSummary(BaseModel):
+    id: str
+    screenerId: str
+    capturedAt: str
+    rowCount: int
+
+
+class ListTvScreenerSnapshotsResponse(BaseModel):
+    items: list[TvScreenerSnapshotSummary]
+
+
+class TvScreenerSnapshotDetail(BaseModel):
+    id: str
+    screenerId: str
+    capturedAt: str
+    rowCount: int
+    screenTitle: str | None
+    url: str
+    headers: list[str]
+    rows: list[dict[str, str]]
+
+
+class TvScreenerSyncResponse(BaseModel):
+    snapshotId: str
+    capturedAt: str
+    rowCount: int
+
+
 @app.get("/integrations/tradingview/screeners", response_model=ListTvScreenersResponse)
 def list_tv_screeners() -> ListTvScreenersResponse:
     _seed_default_tv_screeners()
@@ -597,6 +629,178 @@ def delete_tv_screener(screener_id: str) -> JSONResponse:
         if (cur.rowcount or 0) == 0:
             return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
     return JSONResponse({"ok": True})
+
+
+def _get_tv_screener_row(screener_id: str) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, name, url, enabled
+            FROM tv_screeners
+            WHERE id = ?
+            """,
+            (screener_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": str(row[0]),
+            "name": str(row[1]),
+            "url": str(row[2]),
+            "enabled": bool(int(row[3])),
+        }
+
+
+def _insert_tv_snapshot(
+    *,
+    screener_id: str,
+    captured_at: str,
+    url: str,
+    screen_title: str | None,
+    headers: list[str],
+    rows: list[dict[str, str]],
+) -> str:
+    snapshot_id = str(uuid.uuid4())
+    payload = {
+        "screenTitle": screen_title,
+        "url": url,
+        "headers": headers,
+        "rows": rows,
+    }
+    headers_json = json.dumps(headers, ensure_ascii=False)
+    rows_json = json.dumps(payload, ensure_ascii=False)
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO tv_screener_snapshots(
+              id, screener_id, captured_at, row_count, headers_json, rows_json
+            )
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (snapshot_id, screener_id, captured_at, len(rows), headers_json, rows_json),
+        )
+        conn.commit()
+    return snapshot_id
+
+
+def _get_tv_snapshot(snapshot_id: str) -> TvScreenerSnapshotDetail | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, screener_id, captured_at, row_count, rows_json
+            FROM tv_screener_snapshots
+            WHERE id = ?
+            """,
+            (snapshot_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        payload = json.loads(str(row[4]))
+        return TvScreenerSnapshotDetail(
+            id=str(row[0]),
+            screenerId=str(row[1]),
+            capturedAt=str(row[2]),
+            rowCount=int(row[3]),
+            screenTitle=str(payload.get("screenTitle") or "") or None,
+            url=str(payload.get("url") or ""),
+            headers=[str(x) for x in payload.get("headers") or []],
+            rows=[
+                {str(k): str(v) for k, v in (r or {}).items()}
+                for r in (payload.get("rows") or [])
+            ],
+        )
+
+
+@app.post(
+    "/integrations/tradingview/screeners/{screener_id}/sync",
+    response_model=TvScreenerSyncResponse,
+)
+def sync_tv_screener(screener_id: str) -> TvScreenerSyncResponse:
+    _seed_default_tv_screeners()
+    screener = _get_tv_screener_row(screener_id)
+    if screener is None:
+        raise HTTPException(status_code=404, detail="Screener not found")
+    if not screener["enabled"]:
+        raise HTTPException(status_code=409, detail="Screener is disabled")
+
+    port = _get_tv_cdp_port()
+    cdp = _cdp_version(TV_CDP_HOST, port)
+    if cdp is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "CDP is not available. "
+                "Start the dedicated Chrome and login to TradingView first."
+            ),
+        )
+
+    cdp_url = f"http://{TV_CDP_HOST}:{port}"
+    try:
+        result = capture_screener_over_cdp_sync(cdp_url=cdp_url, url=str(screener["url"]))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    snapshot_id = _insert_tv_snapshot(
+        screener_id=screener_id,
+        captured_at=result.captured_at,
+        url=result.url,
+        screen_title=result.screen_title,
+        headers=result.headers,
+        rows=result.rows,
+    )
+    set_setting("tv_last_sync_at", result.captured_at)
+    set_setting("tv_last_sync_screener_id", screener_id)
+    return TvScreenerSyncResponse(
+        snapshotId=snapshot_id,
+        capturedAt=result.captured_at,
+        rowCount=len(result.rows),
+    )
+
+
+@app.get(
+    "/integrations/tradingview/screeners/{screener_id}/snapshots",
+    response_model=ListTvScreenerSnapshotsResponse,
+)
+def list_tv_screener_snapshots(
+    screener_id: str,
+    limit: int = 10,
+) -> ListTvScreenerSnapshotsResponse:
+    _seed_default_tv_screeners()
+    if _get_tv_screener_row(screener_id) is None:
+        raise HTTPException(status_code=404, detail="Screener not found")
+    limit2 = max(1, min(int(limit), 50))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, screener_id, captured_at, row_count
+            FROM tv_screener_snapshots
+            WHERE screener_id = ?
+            ORDER BY captured_at DESC
+            LIMIT ?
+            """,
+            (screener_id, limit2),
+        ).fetchall()
+        items = [
+            TvScreenerSnapshotSummary(
+                id=str(r[0]),
+                screenerId=str(r[1]),
+                capturedAt=str(r[2]),
+                rowCount=int(r[3]),
+            )
+            for r in rows
+        ]
+        return ListTvScreenerSnapshotsResponse(items=items)
+
+
+@app.get(
+    "/integrations/tradingview/snapshots/{snapshot_id}",
+    response_model=TvScreenerSnapshotDetail,
+)
+def get_tv_screener_snapshot(snapshot_id: str) -> TvScreenerSnapshotDetail:
+    snap = _get_tv_snapshot(snapshot_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return snap
 
 
 def list_system_prompt_presets() -> list[SystemPromptPresetSummary]:
