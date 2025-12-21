@@ -204,6 +204,8 @@ export function ScreenerPage() {
                     onClick={() => {
                       if (!snap) return;
                       addReference({
+                        kind: 'tv',
+                        refId: snap.id,
                         snapshotId: snap.id,
                         screenerId: it.id,
                         screenerName: it.name,

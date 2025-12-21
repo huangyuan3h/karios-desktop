@@ -24,12 +24,25 @@ export type ChatSession = {
   messages: ChatMessage[];
 };
 
-export type ChatReference = {
-  snapshotId: string;
-  screenerId: string;
-  screenerName: string;
-  capturedAt: string;
-};
+export type ChatReference =
+  | {
+      kind: 'tv';
+      refId: string; // snapshotId
+      snapshotId: string;
+      screenerId: string;
+      screenerName: string;
+      capturedAt: string;
+    }
+  | {
+      kind: 'stock';
+      refId: string; // symbol
+      symbol: string;
+      market: string;
+      ticker: string;
+      name: string;
+      days: number;
+      capturedAt: string;
+    };
 
 export type AppSettings = {
   systemPrompt: string;

@@ -20,6 +20,23 @@ type TvSnapshotDetail = {
   rows: Record<string, string>[];
 };
 
+type StockBarsDetail = {
+  symbol: string;
+  market: string;
+  ticker: string;
+  name: string;
+  currency: string;
+  bars: Array<{
+    date: string;
+    open: string;
+    high: string;
+    low: string;
+    close: string;
+    volume: string;
+    amount: string;
+  }>;
+};
+
 function pickColumns(headers: string[]) {
   const preferred = [
     'Ticker',
@@ -41,43 +58,64 @@ function pickColumns(headers: string[]) {
 }
 
 async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
-  const items: Array<{ ref: ChatReference; snap: TvSnapshotDetail | null }> = [];
-  for (const ref of refs) {
-    try {
-      const resp = await fetch(
-        `${QUANT_BASE_URL}/integrations/tradingview/snapshots/${encodeURIComponent(ref.snapshotId)}`,
-        { cache: 'no-store' },
-      );
-      if (!resp.ok) {
-        items.push({ ref, snap: null });
-        continue;
-      }
-      items.push({ ref, snap: (await resp.json()) as TvSnapshotDetail });
-    } catch {
-      items.push({ ref, snap: null });
-    }
-  }
-
   let out = '# Reference Context: TradingView Screener Snapshots\n\n';
-  for (const { ref, snap } of items) {
-    out += `## ${ref.screenerName}\n`;
-    out += `- snapshotId: ${ref.snapshotId}\n`;
-    out += `- capturedAt: ${ref.capturedAt}\n`;
-    if (!snap) {
-      out += `- status: failed to load snapshot from quant-service\n\n`;
+  for (const ref of refs) {
+    if (ref.kind === 'tv') {
+      try {
+        const resp = await fetch(
+          `${QUANT_BASE_URL}/integrations/tradingview/snapshots/${encodeURIComponent(ref.snapshotId)}`,
+          { cache: 'no-store' },
+        );
+        if (!resp.ok) throw new Error('failed to load snapshot');
+        const snap = (await resp.json()) as TvSnapshotDetail;
+        out += `## TradingView: ${ref.screenerName}\n`;
+        out += `- snapshotId: ${ref.snapshotId}\n`;
+        out += `- capturedAt: ${ref.capturedAt}\n`;
+        out += `- url: ${snap.url}\n`;
+        if (snap.screenTitle) out += `- screenTitle: ${snap.screenTitle}\n`;
+        const cols = pickColumns(snap.headers);
+        out += `- columns: ${cols.join(', ')}\n`;
+        const rows = snap.rows.slice(0, 20);
+        out += `\nRows (first ${rows.length}):\n`;
+        for (const r of rows) {
+          const line = cols.map((c) => `${c}=${(r[c] ?? '').replaceAll('\n', ' ')}`).join(' ; ');
+          out += `- ${line}\n`;
+        }
+        out += `\n`;
+      } catch (e) {
+        out += `## TradingView: ${ref.screenerName}\n`;
+        out += `- snapshotId: ${ref.snapshotId}\n`;
+        out += `- capturedAt: ${ref.capturedAt}\n`;
+        out += `- status: failed to load snapshot\n\n`;
+      }
       continue;
     }
-    out += `- url: ${snap.url}\n`;
-    if (snap.screenTitle) out += `- screenTitle: ${snap.screenTitle}\n`;
-    const cols = pickColumns(snap.headers);
-    out += `- columns: ${cols.join(', ')}\n`;
-    const rows = snap.rows.slice(0, 20);
-    out += `\nRows (first ${rows.length}):\n`;
-    for (const r of rows) {
-      const line = cols.map((c) => `${c}=${(r[c] ?? '').replaceAll('\n', ' ')}`).join(' ; ');
-      out += `- ${line}\n`;
+
+    // Stock reference
+    try {
+      const resp = await fetch(
+        `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/bars?days=${ref.days}`,
+        { cache: 'no-store' },
+      );
+      if (!resp.ok) throw new Error('failed to load stock bars');
+      const snap = (await resp.json()) as StockBarsDetail;
+      out += `## Stock: ${snap.ticker} ${snap.name}\n`;
+      out += `- symbol: ${snap.symbol}\n`;
+      out += `- market: ${snap.market}\n`;
+      out += `- currency: ${snap.currency}\n`;
+      out += `- capturedAt: ${ref.capturedAt}\n`;
+      const rows = snap.bars.slice(-50);
+      out += `\nBars (last ${rows.length}):\n`;
+      for (const b of rows) {
+        out += `- ${b.date} O=${b.open} H=${b.high} L=${b.low} C=${b.close} V=${b.volume} A=${b.amount}\n`;
+      }
+      out += `\n`;
+    } catch {
+      out += `## Stock: ${ref.ticker} ${ref.name}\n`;
+      out += `- symbol: ${ref.symbol}\n`;
+      out += `- capturedAt: ${ref.capturedAt}\n`;
+      out += `- status: failed to load bars\n\n`;
     }
-    out += `\n`;
   }
   return out;
 }

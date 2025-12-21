@@ -6,8 +6,10 @@ import { Bot, Search } from 'lucide-react';
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
+import { MarketPage } from '@/components/pages/MarketPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
+import { StockPage } from '@/components/pages/StockPage';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
@@ -22,6 +24,7 @@ export function AppShell() {
 
   const [activePage, setActivePage] = React.useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [activeStockSymbol, setActiveStockSymbol] = React.useState<string | null>(null);
   const draggingRef = React.useRef(false);
   const agentVisibleRef = React.useRef(agentVisible);
   const agentModeRef = React.useRef(agentMode);
@@ -90,6 +93,10 @@ export function AppShell() {
           <div className="text-sm font-semibold">
             {activePage === 'dashboard'
               ? 'Dashboard'
+              : activePage === 'market'
+                ? 'Market'
+              : activePage === 'stock'
+                ? activeStockSymbol ?? 'Stock'
               : activePage === 'screener'
                 ? 'Screener'
               : activePage === 'settings'
@@ -127,6 +134,18 @@ export function AppShell() {
           <div className="min-w-0 flex-1 overflow-auto">
             {activePage === 'settings' ? (
               <SettingsPage />
+            ) : activePage === 'market' ? (
+              <MarketPage
+                onOpenStock={(symbol) => {
+                  setActiveStockSymbol(symbol);
+                  setActivePage('stock');
+                }}
+              />
+            ) : activePage === 'stock' && activeStockSymbol ? (
+              <StockPage
+                symbol={activeStockSymbol}
+                onBack={() => setActivePage('market')}
+              />
             ) : activePage === 'screener' ? (
               <ScreenerPage />
             ) : (

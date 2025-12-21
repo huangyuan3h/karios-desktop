@@ -74,7 +74,24 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
       ...defaultState,
       ...loaded,
       references: Array.isArray((loaded as Partial<PersistedState>).references)
-        ? (loaded as Partial<PersistedState>).references!
+        ? ((loaded as Partial<PersistedState>).references as any[]).map((r) => {
+            // Backward-compatible migration:
+            // - old TV reference shape: { snapshotId, screenerId, screenerName, capturedAt }
+            if (r && typeof r === 'object' && typeof r.kind === 'string' && typeof r.refId === 'string') {
+              return r;
+            }
+            if (r && typeof r === 'object' && typeof r.snapshotId === 'string') {
+              return {
+                kind: 'tv',
+                refId: r.snapshotId,
+                snapshotId: r.snapshotId,
+                screenerId: String(r.screenerId ?? ''),
+                screenerName: String(r.screenerName ?? 'TradingView'),
+                capturedAt: String(r.capturedAt ?? new Date().toISOString()),
+              };
+            }
+            return null;
+          }).filter(Boolean)
         : [],
     });
   }, []);
@@ -209,14 +226,14 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
       },
       addReference: (ref: ChatReference) => {
         setState((prev) => {
-          if (prev.references.some((r) => r.snapshotId === ref.snapshotId)) return prev;
+          if (prev.references.some((r) => r.refId === ref.refId && r.kind === ref.kind)) return prev;
           return { ...prev, references: [ref, ...prev.references] };
         });
       },
-      removeReference: (snapshotId: string) => {
+      removeReference: (refId: string) => {
         setState((prev) => ({
           ...prev,
-          references: prev.references.filter((r) => r.snapshotId !== snapshotId),
+          references: prev.references.filter((r) => r.refId !== refId),
         }));
       },
       clearReferences: () => {
