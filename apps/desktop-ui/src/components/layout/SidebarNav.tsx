@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   PieChart,
   Settings,
+  Table2,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ const items = [
   { id: 'resources', label: 'Resources', icon: BookOpen },
   { id: 'portfolio', label: 'Portfolio', icon: PieChart },
   { id: 'analysis', label: 'Analysis', icon: BarChart3 },
+  { id: 'screener', label: 'Screener', icon: Table2 },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

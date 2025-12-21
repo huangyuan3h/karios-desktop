@@ -6,6 +6,7 @@ import { Bot, Search } from 'lucide-react';
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
+import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
@@ -83,6 +84,8 @@ export function AppShell() {
           <div className="text-sm font-semibold">
             {activePage === 'dashboard'
               ? 'Dashboard'
+              : activePage === 'screener'
+                ? 'Screener'
               : activePage === 'settings'
                 ? 'Settings'
                 : activePage}
@@ -116,7 +119,13 @@ export function AppShell() {
 
         <div className="flex min-h-0 flex-1">
           <div className="min-w-0 flex-1 overflow-auto">
-            {activePage === 'settings' ? <SettingsPage /> : <DashboardPage />}
+            {activePage === 'settings' ? (
+              <SettingsPage />
+            ) : activePage === 'screener' ? (
+              <ScreenerPage />
+            ) : (
+              <DashboardPage />
+            )}
           </div>
 
           {agentVisible && agentMode !== 'maximized' ? (
