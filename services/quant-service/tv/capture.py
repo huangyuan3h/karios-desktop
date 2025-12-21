@@ -63,9 +63,41 @@ async def _find_screener_grid(page) -> Any | None:
 
         return False
 
+    async def estimate_data_rows(container) -> int:
+        """
+        Estimate number of data rows for scoring. We intentionally keep this cheap and robust.
+        """
+        try:
+            tag = await _element_tag(container)
+            if tag == "TABLE":
+                # Prefer tbody rows with td cells.
+                rows = container.locator("tbody tr")
+                if await rows.count() == 0:
+                    rows = container.locator("tr")
+                cnt = 0
+                n = min(await rows.count(), 60)
+                for i in range(n):
+                    r = rows.nth(i)
+                    if await r.locator("td").count() > 0:
+                        cnt += 1
+                return cnt
+            # Grid/treegrid
+            rows = container.locator("[role=row]")
+            cnt = 0
+            n = min(await rows.count(), 120)
+            for i in range(n):
+                r = rows.nth(i)
+                if await r.locator("[role=columnheader]").count() > 0:
+                    continue
+                if await r.locator("[role=gridcell]").count() > 0:
+                    cnt += 1
+            return cnt
+        except Exception:
+            return 0
+
     candidates = page.locator('[role="grid"], [role="treegrid"], table')
     best = None
-    best_area = 0.0
+    best_score = -1.0
     for i in range(await candidates.count()):
         c = candidates.nth(i)
         try:
@@ -77,8 +109,11 @@ async def _find_screener_grid(page) -> Any | None:
             if not box:
                 continue
             area = float(box["width"] * box["height"])
-            if area > best_area:
-                best_area = area
+            rows = await estimate_data_rows(c)
+            # Prefer containers that already have visible data rows; area is a tie-breaker.
+            score = float(rows) * 1000.0 + area
+            if score > best_score:
+                best_score = score
                 best = c
         except Exception:
             continue
@@ -143,8 +178,9 @@ async def _read_visible_grid_rows(grid, headers: list[str]) -> list[dict[str, st
         values: list[str] = []
         for j in range(await cells.count()):
             values.append((await cells.nth(j).inner_text()).strip())
-        first = values[0].strip() if values else ""
-        if not first:
+        # TradingView often has a leading selection/checkbox column that is empty.
+        # Do NOT require the first cell to be non-empty; only skip fully empty rows.
+        if not any(v.strip() for v in values):
             continue
         row_dict: dict[str, str] = {}
         for k, v in enumerate(values):
@@ -452,11 +488,20 @@ async def capture_screener_over_cdp(
 
             await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
             await page.wait_for_timeout(1200)
+            # Best-effort: give the app a chance to finish async data hydration.
+            try:
+                await page.wait_for_load_state("networkidle", timeout=4_000)
+            except Exception:
+                pass
             filters, headers_out, rows_out, screen_title = await _capture_once()
             if not rows_out:
                 # Retry once; TradingView sometimes returns an empty grid on first paint.
                 await page.reload(wait_until="domcontentloaded", timeout=timeout_ms)
                 await page.wait_for_timeout(1200)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=4_000)
+                except Exception:
+                    pass
                 filters, headers_out, rows_out, screen_title = await _capture_once()
 
             captured_at = datetime.now(tz=UTC).isoformat()
