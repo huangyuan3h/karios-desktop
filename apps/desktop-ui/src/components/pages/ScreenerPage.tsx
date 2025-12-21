@@ -47,14 +47,15 @@ async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
-    try {
-      const j = JSON.parse(txt) as { detail?: string };
-      if (j && typeof j.detail === 'string' && j.detail) {
-        throw new Error(j.detail);
+    const maybeDetail = (() => {
+      try {
+        const j = JSON.parse(txt) as { detail?: string };
+        return j && typeof j.detail === "string" ? j.detail : null;
+      } catch {
+        return null;
       }
-    } catch {
-      // ignore
-    }
+    })();
+    if (maybeDetail) throw new Error(maybeDetail);
     throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
   }
   return (await res.json()) as T;

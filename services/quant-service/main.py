@@ -257,6 +257,7 @@ TV_USER_DATA_DIR_DEFAULT = "~/.karios/chrome-tv-cdp"
 TV_PROFILE_DIR_DEFAULT = "Default"
 TV_CHROME_BIN_DEFAULT = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 TV_CHROME_USER_DATA_DIR_DEFAULT = "~/Library/Application Support/Google/Chrome"
+TV_BOOTSTRAP_PROFILE_DIR_DEFAULT = "Profile 1"
 
 
 class TvChromeStartRequest(BaseModel):
@@ -328,6 +329,9 @@ def _set_tv_profile_dir(profile_dir: str) -> None:
 
 def _get_tv_headless() -> bool:
     raw = (get_setting("tv_headless") or "").strip().lower()
+    if raw == "":
+        # Default to silent background sync.
+        return True
     return raw in {"1", "true", "yes", "y", "on"}
 
 
@@ -472,6 +476,9 @@ def tradingview_chrome_start(req: TvChromeStartRequest) -> TvChromeStatusRespons
     # Optional: bootstrap from an existing Chrome profile into the dedicated user-data-dir.
     # This enables "silent" headless syncing using the user's logged-in session.
     if req.bootstrapFromChromeUserDataDir and req.bootstrapFromProfileDirectory:
+        # Persist bootstrap source for future auto-sync runs.
+        set_setting("tv_bootstrap_src_user_data_dir", req.bootstrapFromChromeUserDataDir)
+        set_setting("tv_bootstrap_src_profile_dir", req.bootstrapFromProfileDirectory)
         _copy_chrome_profile(
             src_user_data_dir=req.bootstrapFromChromeUserDataDir,
             src_profile_dir=req.bootstrapFromProfileDirectory,
@@ -829,13 +836,41 @@ def sync_tv_screener(screener_id: str) -> TvScreenerSyncResponse:
     port = _get_tv_cdp_port()
     cdp = _cdp_version(TV_CDP_HOST, port)
     if cdp is None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "CDP is not available. "
-                "Start the dedicated Chrome and login to TradingView first."
+        # Auto-start a headless Chrome for silent sync. Settings is optional (for debugging).
+        src_ud = (
+            (get_setting("tv_bootstrap_src_user_data_dir") or "").strip()
+            or os.getenv("TV_BOOTSTRAP_CHROME_USER_DATA_DIR", "").strip()
+            or TV_CHROME_USER_DATA_DIR_DEFAULT
+        )
+        src_profile = (
+            (get_setting("tv_bootstrap_src_profile_dir") or "").strip()
+            or os.getenv("TV_BOOTSTRAP_PROFILE_DIR", "").strip()
+            or TV_BOOTSTRAP_PROFILE_DIR_DEFAULT
+        )
+        # Use "Profile 1" naming by default, so bootstrap works out of the box for the user.
+        desired_profile_dir = src_profile or TV_BOOTSTRAP_PROFILE_DIR_DEFAULT
+        tradingview_chrome_start(
+            TvChromeStartRequest(
+                port=port,
+                userDataDir=_get_tv_user_data_dir(),
+                profileDirectory=desired_profile_dir,
+                chromeBin=_get_tv_chrome_bin(),
+                headless=True,
+                bootstrapFromChromeUserDataDir=src_ud,
+                bootstrapFromProfileDirectory=src_profile,
+                forceBootstrap=False,
             ),
         )
+        cdp = _cdp_version(TV_CDP_HOST, port)
+        if cdp is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "CDP is not available. Auto-start failed. "
+                    "Please ensure Chrome Profile 1 is logged in to TradingView, "
+                    "or configure the bootstrap paths in Settings."
+                ),
+            )
 
     cdp_url = f"http://{TV_CDP_HOST}:{port}"
     try:
