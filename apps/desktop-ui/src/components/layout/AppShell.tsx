@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Bot, Search } from 'lucide-react';
+import { Bot } from 'lucide-react';
 
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
@@ -10,6 +10,7 @@ import { MarketPage } from '@/components/pages/MarketPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
 import { StockPage } from '@/components/pages/StockPage';
+import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
@@ -107,13 +108,12 @@ export function AppShell() {
           <div className="flex-1" />
 
           <div className="flex items-center gap-2">
-            <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--k-muted)]" />
-              <input
-                className="h-9 w-[360px] rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
-                placeholder="Search stocks / indices..."
-              />
-            </div>
+            <GlobalStockSearch
+              onSelectSymbol={(symbol) => {
+                setActiveStockSymbol(symbol);
+                setActivePage('stock');
+              }}
+            />
             <ThemeToggle />
             <Button
               variant="secondary"
