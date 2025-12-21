@@ -427,6 +427,13 @@ def tradingview_chrome_start(req: TvChromeStartRequest) -> TvChromeStatusRespons
         _set_tv_chrome_pid(None)
         pid = None
 
+    # Determine current stored config (if any) for restart decisions.
+    current_port = _get_tv_cdp_port()
+    current_user_data_dir = _home_path(_get_tv_user_data_dir())
+    current_profile_dir = _get_tv_profile_dir()
+    current_chrome_bin = _get_tv_chrome_bin()
+    current_headless = _get_tv_headless()
+
     # Persist desired config.
     port = int(req.port)
     user_data_dir = _home_path(req.userDataDir)
@@ -439,8 +446,19 @@ def tradingview_chrome_start(req: TvChromeStartRequest) -> TvChromeStatusRespons
     _set_tv_chrome_bin(chrome_bin)
     _set_tv_headless(headless)
 
+    # If already running but config differs, restart so the new config takes effect.
     if pid and _pid_is_running(pid):
-        return tradingview_status()
+        changed = (
+            current_port != port
+            or current_user_data_dir != user_data_dir
+            or current_profile_dir != profile_dir
+            or current_chrome_bin != chrome_bin
+            or current_headless != headless
+        )
+        if changed or req.forceBootstrap:
+            tradingview_chrome_stop()
+        else:
+            return tradingview_status()
 
     # Fail fast if port is already taken.
     if _tcp_is_listening(TV_CDP_HOST, port):

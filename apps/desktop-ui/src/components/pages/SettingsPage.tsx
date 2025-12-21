@@ -61,6 +61,7 @@ export function SettingsPage() {
     '~/Library/Application Support/Google/Chrome',
   );
   const [sourceProfileDir, setSourceProfileDir] = React.useState('Profile 1');
+  const [forceBootstrap, setForceBootstrap] = React.useState(false);
 
   const [newName, setNewName] = React.useState('');
   const [newUrl, setNewUrl] = React.useState('');
@@ -91,6 +92,7 @@ export function SettingsPage() {
     setBusy(true);
     setError(null);
     try {
+      const needsForce = !!status && status.profileDirectory !== sourceProfileDir;
       const st = await apiSendJson<TvChromeStatus>(
         '/integrations/tradingview/chrome/start',
         'POST',
@@ -102,6 +104,7 @@ export function SettingsPage() {
           profileDirectory: sourceProfileDir,
           bootstrapFromChromeUserDataDir: sourceUserDataDir,
           bootstrapFromProfileDirectory: sourceProfileDir,
+          forceBootstrap: forceBootstrap || needsForce,
         },
       );
       setStatus(st);
@@ -257,6 +260,15 @@ export function SettingsPage() {
             </div>
             <div className="mt-2 text-xs text-[var(--k-muted)]">
               We copy "Local State" and the selected profile into the dedicated user-data-dir, so CDP works.
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="text-xs text-[var(--k-muted)]">
+                Force bootstrap will recopy the profile and restart Chrome if needed.
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-[var(--k-muted)]">Force</div>
+                <Switch checked={forceBootstrap} onCheckedChange={setForceBootstrap} disabled={busy} />
+              </div>
             </div>
           </div>
 
