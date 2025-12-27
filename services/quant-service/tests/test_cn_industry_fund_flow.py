@@ -170,15 +170,12 @@ def test_strategy_injects_industry_fund_flow(tmp_path, monkeypatch) -> None:
     # Avoid AI call.
     monkeypatch.setattr(
         main,
-        "_ai_strategy_daily",
+        "_ai_strategy_daily_markdown",
         lambda *, payload: {
             "date": "2025-12-26",
             "accountId": account_id,
             "accountTitle": "Main",
-            "candidates": [],
-            "leader": {"symbol": "", "reason": ""},
-            "recommendations": [],
-            "riskNotes": [],
+            "markdown": "# Main 日度交易报告（2025-12-26）\n\n## 1）资金流向板块\n- Power\n",
             "model": "test-model",
         },
     )

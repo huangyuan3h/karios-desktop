@@ -514,6 +514,11 @@ app.post('/strategy/daily-markdown', async (c) => {
     '  - Each heading MUST be on its own line.\n' +
     '  - Insert a blank line between sections.\n' +
     '  - NEVER put "# ..." and "## ..." on the same line.\n' +
+    '- IMPORTANT output style:\n' +
+    '  - Prefer TABLES over long paragraphs. Keep narrative short; put decisions into tables.\n' +
+    '  - Section 2 (candidates) MUST be a markdown table.\n' +
+    '  - Section 3 (holdings) MUST be a markdown table.\n' +
+    '  - Section 5 MUST be a markdown table (the final action table).\n' +
     '- The report MUST contain the following sections IN THIS ORDER:\n' +
     '  1) Market/Industry fund flow (资金流向板块)\n' +
     "  2) Today's Top candidates (<= 3)\n" +
@@ -523,10 +528,22 @@ app.post('/strategy/daily-markdown', async (c) => {
     '\n' +
     'You MUST follow this template (fill with real content, keep headings exactly):\n' +
     `# ${accountTitle} 日度交易报告（${date}）\n\n` +
+    '## 0）结果摘要（只要结论，用表格）\n\n' +
+    '| Focus themes | Leader | Risk budget | Max positions | Notes |\n' +
+    '|---|---|---|---|---|\n' +
+    '| TBD | TBD | 单笔≤1% 净值 | ≤3 | 右侧交易/条件单 |\n\n' +
     '## 1）资金流向板块（行业资金流与轮动判断）\n\n' +
+    '（用 3-6 条 bullet，总结：Top流入/Top流出/持续性/对持仓威胁/今日聚焦主题）\n\n' +
     '## 2）Top candidates（≤ 3）\n\n' +
+    '| Rank | Symbol | Name | Current | Why now | Key levels (S/R/Invalid) | Plan A (breakout trigger) | Plan B (pullback trigger) | Risk |\n' +
+    '|---:|---|---|---:|---|---|---|---|---|\n' +
+    '| 1 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |\n\n' +
     '## 3）现有持仓：止损 / 持有 / 减仓 / 清仓\n\n' +
+    '| Symbol | Name | Qty | Cost | Current | PnL% | Action | StopLoss trigger | Reduce/Exit trigger | Conditional orders (keep/adjust/cancel) | Notes |\n' +
+    '|---|---|---:|---:|---:|---:|---|---|---|---|---|\n' +
+    '| TBD | TBD | TBD | TBD | TBD | TBD | Hold/Reduce/Exit | TBD | TBD | TBD | TBD |\n\n' +
     '## 4）盘中执行要点\n\n' +
+    '- 只写 5-8 条“可执行规则”（例如：触发后必须补止损单；未触发不交易；午后复核；收盘撤销等）\n\n' +
     '## 5）平安证券条件单风格（总表）\n\n' +
     '- Section 1 MUST analyze capital rotation using context.industryFundFlow:\n' +
     '  - Identify top inflow industries (1D and 10D sum) and whether inflow is sustained or one-off.\n' +

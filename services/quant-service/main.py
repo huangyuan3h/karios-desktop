@@ -3550,8 +3550,9 @@ def _normalize_strategy_markdown(md: str) -> str:
 
     parts = s.split("```")
     for i in range(0, len(parts), 2):  # outside code fences
-        # If a model puts '... ## Heading' on the same line, split it.
-        parts[i] = re.sub(r"([^\n])\s+(#{2,6}\s)", r"\1\n\n\2", parts[i])
+        # If a model puts '...## Heading' on the same line, split it.
+        # Note: use lookahead so it also fixes cases without spaces (e.g. ')...## 1）').
+        parts[i] = re.sub(r"([^\n])(?=#{2,6}\s)", r"\1\n\n", parts[i])
     out = "```".join(parts)
     return out.strip() + "\n"
 
