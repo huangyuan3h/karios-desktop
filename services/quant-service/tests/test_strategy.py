@@ -135,7 +135,15 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     # Generate report
     resp = client.post(
         f"/strategy/accounts/{account_id}/daily",
-        json={"date": "2025-12-21", "force": False, "maxCandidates": 10},
+        json={
+            "date": "2025-12-21",
+            "force": False,
+            "maxCandidates": 10,
+            "includeAccountState": True,
+            "includeTradingView": False,
+            "includeIndustryFundFlow": False,
+            "includeStocks": False,
+        },
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -143,6 +151,11 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     assert data["accountId"] == account_id
     assert data["candidates"][0]["ticker"] == "300502"
     assert data["leader"]["symbol"] == "CN:300502"
+    snap = data.get("inputSnapshot") or {}
+    assert isinstance(snap, dict)
+    assert snap.get("tradingView") == {}
+    assert snap.get("industryFundFlow") == {}
+    assert snap.get("stocks") == []
 
     # Reuse report (should not generate a new id when force=false)
     resp2 = client.post(

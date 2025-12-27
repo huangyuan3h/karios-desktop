@@ -1303,6 +1303,12 @@ class StrategyDailyGenerateRequest(BaseModel):
     date: str | None = None  # YYYY-MM-DD, optional
     force: bool = False
     maxCandidates: int = 10
+    # Context toggles (default ON). When OFF, the corresponding section is excluded or minimized
+    # from the AI context to save tokens and isolate reasoning.
+    includeAccountState: bool = True
+    includeTradingView: bool = True
+    includeIndustryFundFlow: bool = True
+    includeStocks: bool = True
 
 
 class StrategyCandidate(BaseModel):
@@ -3544,45 +3550,48 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
     # Latest TradingView snapshots (default 2 screeners).
     _seed_default_tv_screeners()
     snaps: list[TvScreenerSnapshotDetail] = []
-    for sid in ("falcon", "blackhorse"):
-        s = _latest_tv_snapshot_for_screener(sid)
-        if s is not None:
-            snaps.append(s)
+    if req.includeTradingView:
+        for sid in ("falcon", "blackhorse"):
+            s = _latest_tv_snapshot_for_screener(sid)
+            if s is not None:
+                snaps.append(s)
 
     # Candidate pool = union of TV rows, capped.
     pool: list[dict[str, str]] = []
     seen_sym: set[str] = set()
-    for s in snaps:
-        for c in _extract_tv_candidates(s):
-            sym = c["symbol"]
+    if req.includeTradingView:
+        for s in snaps:
+            for c in _extract_tv_candidates(s):
+                sym = c["symbol"]
+                if sym in seen_sym:
+                    continue
+                seen_sym.add(sym)
+                pool.append(c)
+                if len(pool) >= max(1, min(int(req.maxCandidates), 20)):
+                    break
+            if len(pool) >= max(1, min(int(req.maxCandidates), 20)):
+                break
+
+    # Fallback candidate pool: include current holdings to ensure we can always generate a report.
+    if req.includeAccountState:
+        raw_positions = state_row.get("positions")
+        pos_list: list[Any] = raw_positions if isinstance(raw_positions, list) else []
+        for p in pos_list:
+            if not isinstance(p, dict):
+                continue
+            ticker = _norm_str(p.get("ticker") or p.get("Ticker") or p.get("symbol") or p.get("Symbol") or "")
+            if not ticker:
+                continue
+            name = _norm_str(p.get("name") or p.get("Name") or "")
+            market = "HK" if (len(ticker) in (4, 5)) else "CN"
+            currency = "HKD" if market == "HK" else "CNY"
+            sym = f"{market}:{ticker}"
             if sym in seen_sym:
                 continue
             seen_sym.add(sym)
-            pool.append(c)
+            pool.append({"symbol": sym, "market": market, "currency": currency, "ticker": ticker, "name": name})
             if len(pool) >= max(1, min(int(req.maxCandidates), 20)):
                 break
-        if len(pool) >= max(1, min(int(req.maxCandidates), 20)):
-            break
-
-    # Fallback candidate pool: include current holdings to ensure we can always generate a report.
-    raw_positions = state_row.get("positions")
-    pos_list: list[Any] = raw_positions if isinstance(raw_positions, list) else []
-    for p in pos_list:
-        if not isinstance(p, dict):
-            continue
-        ticker = _norm_str(p.get("ticker") or p.get("Ticker") or p.get("symbol") or p.get("Symbol") or "")
-        if not ticker:
-            continue
-        name = _norm_str(p.get("name") or p.get("Name") or "")
-        market = "HK" if (len(ticker) in (4, 5)) else "CN"
-        currency = "HKD" if market == "HK" else "CNY"
-        sym = f"{market}:{ticker}"
-        if sym in seen_sym:
-            continue
-        seen_sym.add(sym)
-        pool.append({"symbol": sym, "market": market, "currency": currency, "ticker": ticker, "name": name})
-        if len(pool) >= max(1, min(int(req.maxCandidates), 20)):
-            break
 
     # Ensure market universe has these symbols so we can fetch bars/chips/fund-flow.
     for c in pool:
@@ -3596,121 +3605,124 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
 
     # Fetch deep data for candidates (bounded).
     stock_context: list[dict[str, Any]] = []
-    for c in pool:
-        sym = c["symbol"]
-        # DB-first: prefer cached bars; only fetch if cache is empty.
-        bars = _load_cached_bars(sym, days=60)
-        bars_error: str | None = None
-        if not bars:
-            try:
-                bars_resp = market_stock_bars(sym, days=60)
-                bars = bars_resp.bars
-            except Exception as e:
-                # v0: allow missing bars to avoid crashing daily report.
-                bars = []
-                bars_error = str(e)
-        feats = _bars_features(bars)
-        # DB-first: prefer cached chips/fund-flow. Only sync when missing.
-        chips = _load_cached_chips(sym, days=30)
-        fund_flow = _load_cached_fund_flow(sym, days=30)
-        if not chips:
-            try:
-                chips = market_stock_chips(sym, days=30).items
-            except Exception:
-                chips = []
-        if not fund_flow:
-            try:
-                fund_flow = market_stock_fund_flow(sym, days=30).items
-            except Exception:
-                fund_flow = []
-        stock_context.append(
-            {
-                "symbol": sym,
-                "market": c["market"],
-                "ticker": c["ticker"],
-                "name": c.get("name") or "",
-                "currency": c["currency"],
-                "barsDays": 60,
-                "chipsDays": 30,
-                "fundFlowDays": 30,
-                "availability": {
-                    "barsCached": True if bars else False,
-                    "chipsCached": True if chips else False,
-                    "fundFlowCached": True if fund_flow else False,
-                    "barsError": bars_error,
+    if req.includeStocks:
+        for c in pool:
+            sym = c["symbol"]
+            # DB-first: prefer cached bars; only fetch if cache is empty.
+            bars = _load_cached_bars(sym, days=60)
+            bars_error: str | None = None
+            if not bars:
+                try:
+                    bars_resp = market_stock_bars(sym, days=60)
+                    bars = bars_resp.bars
+                except Exception as e:
+                    # v0: allow missing bars to avoid crashing daily report.
+                    bars = []
+                    bars_error = str(e)
+            feats = _bars_features(bars)
+            # DB-first: prefer cached chips/fund-flow. Only sync when missing.
+            chips = _load_cached_chips(sym, days=30)
+            fund_flow = _load_cached_fund_flow(sym, days=30)
+            if not chips:
+                try:
+                    chips = market_stock_chips(sym, days=30).items
+                except Exception:
+                    chips = []
+            if not fund_flow:
+                try:
+                    fund_flow = market_stock_fund_flow(sym, days=30).items
+                except Exception:
+                    fund_flow = []
+            stock_context.append(
+                {
+                    "symbol": sym,
+                    "market": c["market"],
+                    "ticker": c["ticker"],
+                    "name": c.get("name") or "",
+                    "currency": c["currency"],
+                    "barsDays": 60,
+                    "chipsDays": 30,
+                    "fundFlowDays": 30,
+                    "availability": {
+                        "barsCached": True if bars else False,
+                        "chipsCached": True if chips else False,
+                        "fundFlowCached": True if fund_flow else False,
+                        "barsError": bars_error,
+                    },
+                    "features": feats,
+                    "bars": bars,
+                    "chips": chips,
+                    "fundFlow": fund_flow,
                 },
-                "features": feats,
-                "bars": bars,
-                "chips": chips,
-                "fundFlow": fund_flow,
-            },
-        )
+            )
 
     # TradingView context: last 5 days history (AM/PM) for each screener.
     tv_history: list[dict[str, Any]] = []
-    for sid in ("falcon", "blackhorse"):
-        srow = _get_tv_screener_row(sid)
-        if srow is None:
-            continue
-        hist = tv_screener_history(sid, days=5)
-        # Expand cells into compact snapshot briefs; keep time markers.
-        expanded: list[dict[str, Any]] = []
-        for day in hist.rows:
-            for slot in ("am", "pm"):
-                cell = getattr(day, slot)
-                if cell is None:
-                    continue
-                brief = _tv_snapshot_brief(cell.snapshotId, max_rows=20)
-                expanded.append(
-                    {
-                        "date": day.date,
-                        "slot": slot,
-                        "capturedAt": cell.capturedAt,
-                        "rowCount": cell.rowCount,
-                        "snapshot": brief,
-                    },
-                )
-        tv_history.append(
-            {
-                "screenerId": sid,
-                "screenerName": str(srow.get("name") or sid),
-                "days": 5,
-                "rows": expanded,
-            },
-        )
+    if req.includeTradingView:
+        for sid in ("falcon", "blackhorse"):
+            srow = _get_tv_screener_row(sid)
+            if srow is None:
+                continue
+            hist = tv_screener_history(sid, days=5)
+            # Expand cells into compact snapshot briefs; keep time markers.
+            expanded: list[dict[str, Any]] = []
+            for day in hist.rows:
+                for slot in ("am", "pm"):
+                    cell = getattr(day, slot)
+                    if cell is None:
+                        continue
+                    brief = _tv_snapshot_brief(cell.snapshotId, max_rows=20)
+                    expanded.append(
+                        {
+                            "date": day.date,
+                            "slot": slot,
+                            "capturedAt": cell.capturedAt,
+                            "rowCount": cell.rowCount,
+                            "snapshot": brief,
+                        },
+                    )
+            tv_history.append(
+                {
+                    "screenerId": sid,
+                    "screenerName": str(srow.get("name") or sid),
+                    "days": 5,
+                    "rows": expanded,
+                },
+            )
 
     # CN industry fund flow context (Top10 + 10d series), DB-first with best-effort sync.
     industry_flow_top: list[dict[str, Any]] = []
     industry_flow_meta: dict[str, Any] = {"asOfDate": d, "days": 10, "topN": 10, "metric": "netInflowEod"}
     industry_flow_error: str | None = None
-    try:
-        flow = market_cn_industry_fund_flow(days=10, topN=10, asOfDate=d)
-        if not flow.top:
-            try:
-                market_cn_industry_fund_flow_sync(
-                    MarketCnIndustryFundFlowSyncRequest(date=d, days=10, topN=10, force=False)
-                )
-            except Exception:
-                pass
+    if req.includeIndustryFundFlow:
+        try:
             flow = market_cn_industry_fund_flow(days=10, topN=10, asOfDate=d)
-        industry_flow_meta = {
-            "asOfDate": flow.asOfDate,
-            "days": flow.days,
-            "topN": flow.topN,
-            "metric": "netInflowEod",
-        }
-        for r in flow.top:
-            industry_flow_top.append(
-                {
-                    "industryCode": r.industryCode,
-                    "industryName": r.industryName,
-                    "netInflow": r.netInflow,
-                    "sum10d": r.sum10d,
-                    "series10d": [{"date": p.date, "netInflow": p.netInflow} for p in r.series10d],
-                }
-            )
-    except Exception as e:
-        industry_flow_error = str(e)
+            if not flow.top:
+                try:
+                    market_cn_industry_fund_flow_sync(
+                        MarketCnIndustryFundFlowSyncRequest(date=d, days=10, topN=10, force=False)
+                    )
+                except Exception:
+                    pass
+                flow = market_cn_industry_fund_flow(days=10, topN=10, asOfDate=d)
+            industry_flow_meta = {
+                "asOfDate": flow.asOfDate,
+                "days": flow.days,
+                "topN": flow.topN,
+                "metric": "netInflowEod",
+            }
+            for r in flow.top:
+                industry_flow_top.append(
+                    {
+                        "industryCode": r.industryCode,
+                        "industryName": r.industryName,
+                        "netInflow": r.netInflow,
+                        "sum10d": r.sum10d,
+                        "series10d": [{"date": p.date, "netInflow": p.netInflow} for p in r.series10d],
+                    }
+                )
+        except Exception as e:
+            industry_flow_error = str(e)
 
     input_snapshot: dict[str, Any] = {
         "date": d,
@@ -3721,7 +3733,9 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             "accountMasked": acct.get("accountMasked") or "",
         },
         "accountPrompt": strategy_prompt,
-        "accountState": {
+        "accountState": {}
+        if not req.includeAccountState
+        else {
             "overview": state_row.get("overview") if isinstance(state_row.get("overview"), dict) else {},
             "positions": state_row.get("positions") if isinstance(state_row.get("positions"), list) else [],
             "conditionalOrders": state_row.get("conditionalOrders")
@@ -3729,7 +3743,9 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             else [],
             "trades": state_row.get("trades") if isinstance(state_row.get("trades"), list) else [],
         },
-        "tradingView": {
+        "tradingView": {}
+        if not req.includeTradingView
+        else {
             "latest": [
                 {
                     "snapshotId": s.id,
@@ -3744,12 +3760,14 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             ],
             "history": tv_history,
         },
-        "industryFundFlow": {
+        "industryFundFlow": {}
+        if not req.includeIndustryFundFlow
+        else {
             "meta": industry_flow_meta,
             "top": industry_flow_top,
             "error": industry_flow_error,
         },
-        "stocks": stock_context,
+        "stocks": [] if not req.includeStocks else stock_context,
     }
 
     # Call ai-service

@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
 
+import { MarkdownMessage } from '@/components/chat/MarkdownMessage';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -107,6 +108,94 @@ async function apiPutJson<T>(path: string, body: unknown): Promise<T> {
   return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
+function mdEscapeCell(v: unknown): string {
+  return String(v ?? '')
+    .replaceAll('|', '\\|')
+    .replaceAll('\n', ' ')
+    .trim();
+}
+
+function buildStrategyMarkdown(report: StrategyReport): string {
+  const lines: string[] = [];
+  lines.push(`# Daily Strategy Report`);
+  lines.push(``);
+  lines.push(`- Date: ${report.date}`);
+  lines.push(`- Account: ${report.accountTitle} (${report.accountId})`);
+  lines.push(`- Model: ${report.model}`);
+  lines.push(`- CreatedAt: ${new Date(report.createdAt).toLocaleString()}`);
+  lines.push(``);
+
+  lines.push(`## Top candidates (≤ 5)`);
+  if (report.candidates?.length) {
+    lines.push(`| Rank | Ticker | Name | Score | Why |`);
+    lines.push(`| --- | --- | --- | --- | --- |`);
+    for (const c of report.candidates.slice(0, 5)) {
+      lines.push(
+        `| ${mdEscapeCell(c.rank)} | ${mdEscapeCell(c.ticker)} | ${mdEscapeCell(c.name)} | ${mdEscapeCell(
+          Math.round(Number(c.score ?? 0)),
+        )} | ${mdEscapeCell(c.why)} |`,
+      );
+    }
+  } else {
+    lines.push(`_No candidates returned._`);
+  }
+  lines.push(``);
+
+  lines.push(`## Leader`);
+  lines.push(`- Symbol: ${report.leader?.symbol || 'N/A'}`);
+  lines.push(`- Reason: ${report.leader?.reason || '—'}`);
+  lines.push(``);
+
+  lines.push(`## Recommendations (≤ 3)`);
+  if (report.recommendations?.length) {
+    for (const [idx, r] of report.recommendations.slice(0, 3).entries()) {
+      lines.push(`### ${idx + 1}. ${mdEscapeCell(r.ticker)} ${mdEscapeCell(r.name)}`);
+      lines.push(`- Symbol: ${mdEscapeCell(r.symbol)}`);
+      lines.push(`- Thesis: ${mdEscapeCell(r.thesis)}`);
+      lines.push(`- Position sizing: ${mdEscapeCell(r.positionSizing || '—')}`);
+      lines.push(``);
+      lines.push(`**Levels**`);
+      lines.push(`- Support: ${(r.levels?.support ?? []).join(' / ') || '—'}`);
+      lines.push(`- Resistance: ${(r.levels?.resistance ?? []).join(' / ') || '—'}`);
+      lines.push(`- Invalidations: ${(r.levels?.invalidations ?? []).join(' / ') || '—'}`);
+      lines.push(``);
+      lines.push(`**Orders**`);
+      if (r.orders?.length) {
+        lines.push(`| Kind | Side | Trigger | Qty | TIF | Notes |`);
+        lines.push(`| --- | --- | --- | --- | --- | --- |`);
+        for (const o of r.orders.slice(0, 12)) {
+          lines.push(
+            `| ${mdEscapeCell(o.kind)} | ${mdEscapeCell(o.side)} | ${mdEscapeCell(o.trigger)} | ${mdEscapeCell(
+              o.qty,
+            )} | ${mdEscapeCell(o.timeInForce || '')} | ${mdEscapeCell(o.notes || '')} |`,
+          );
+        }
+      } else {
+        lines.push(`- (none)`);
+      }
+      lines.push(``);
+      if (r.riskNotes?.length) {
+        lines.push(`**Risk notes**`);
+        for (const x of r.riskNotes) lines.push(`- ${mdEscapeCell(x)}`);
+        lines.push(``);
+      }
+    }
+  } else {
+    lines.push(`_No recommendations returned._`);
+    lines.push(``);
+  }
+
+  lines.push(`## Account-level risk notes`);
+  if (report.riskNotes?.length) {
+    for (const x of report.riskNotes) lines.push(`- ${mdEscapeCell(x)}`);
+  } else {
+    lines.push(`- None`);
+  }
+  lines.push(``);
+
+  return lines.join('\n');
+}
+
 export function StrategyPage() {
   const { addReference } = useChatStore();
   const [accounts, setAccounts] = React.useState<BrokerAccount[]>([]);
@@ -116,6 +205,12 @@ export function StrategyPage() {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [debugOpen, setDebugOpen] = React.useState(false);
+  const [ctxAccount, setCtxAccount] = React.useState(true);
+  const [ctxScreener, setCtxScreener] = React.useState(true);
+  const [ctxIndustryFlow, setCtxIndustryFlow] = React.useState(true);
+  const [ctxStocks, setCtxStocks] = React.useState(true);
+
+  const reportMd = React.useMemo(() => (report ? buildStrategyMarkdown(report) : ''), [report]);
 
   const refresh = React.useCallback(async () => {
     setError(null);
@@ -173,7 +268,13 @@ export function StrategyPage() {
     try {
       const r = await apiPostJson<StrategyReport>(
         `/strategy/accounts/${encodeURIComponent(accountId)}/daily`,
-        { force: true },
+        {
+          force: true,
+          includeAccountState: ctxAccount,
+          includeTradingView: ctxScreener,
+          includeIndustryFundFlow: ctxIndustryFlow,
+          includeStocks: ctxStocks,
+        },
       );
       setReport(r);
     } catch (e) {
@@ -190,7 +291,13 @@ export function StrategyPage() {
     try {
       const r = await apiPostJson<StrategyReport>(
         `/strategy/accounts/${encodeURIComponent(accountId)}/daily`,
-        { force: false },
+        {
+          force: false,
+          includeAccountState: ctxAccount,
+          includeTradingView: ctxScreener,
+          includeIndustryFundFlow: ctxIndustryFlow,
+          includeStocks: ctxStocks,
+        },
       );
       setReport(r);
     } catch (e) {
@@ -268,6 +375,35 @@ export function StrategyPage() {
         </div>
       </section>
 
+      <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+        <div className="mb-2 text-sm font-medium">Context toggles (sent to Strategy LLM)</div>
+        <div className="grid gap-2 text-sm md:grid-cols-2">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={ctxAccount} onChange={(e) => setCtxAccount(e.target.checked)} />
+            <span>Account state (overview/positions/orders/trades)</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={ctxScreener} onChange={(e) => setCtxScreener(e.target.checked)} />
+            <span>TradingView screeners (latest + history)</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={ctxIndustryFlow}
+              onChange={(e) => setCtxIndustryFlow(e.target.checked)}
+            />
+            <span>Industry fund flow (Top10 + 10D)</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={ctxStocks} onChange={(e) => setCtxStocks(e.target.checked)} />
+            <span>Per-stock deep context (bars/chips/fund-flow)</span>
+          </label>
+        </div>
+        <div className="mt-2 text-xs text-[var(--k-muted)]">
+          Note: “Generate today” uses these toggles immediately. “Use cached” may return a report generated with different toggles.
+        </div>
+      </section>
+
       {report ? (
         <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -278,158 +414,38 @@ export function StrategyPage() {
                 {new Date(report.createdAt).toLocaleString()}
               </div>
             </div>
-            <Button
-              size="sm"
-              disabled={!accountId}
-              onClick={() => {
-                addReference({
-                  kind: 'strategyReport',
-                  refId: report.id,
-                  reportId: report.id,
-                  accountId: report.accountId,
-                  accountTitle: report.accountTitle,
-                  date: report.date,
-                  createdAt: report.createdAt,
-                });
-              }}
-            >
-              Reference report to chat
-            </Button>
-          </div>
-
-          <div className="mt-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-            <div className="mb-2 text-sm font-medium">Top candidates (≤ 5)</div>
-            {report.candidates.length ? (
-              <div className="overflow-auto rounded border border-[var(--k-border)]">
-                <table className="w-full border-collapse text-xs">
-                  <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
-                    <tr className="text-left">
-                      <th className="px-2 py-1">Rank</th>
-                      <th className="px-2 py-1">Ticker</th>
-                      <th className="px-2 py-1">Name</th>
-                      <th className="px-2 py-1">Score</th>
-                      <th className="px-2 py-1">Why</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.candidates.map((c) => (
-                      <tr key={c.symbol} className="border-t border-[var(--k-border)]">
-                        <td className="px-2 py-1 font-mono">{c.rank}</td>
-                        <td className="px-2 py-1 font-mono">{c.ticker}</td>
-                        <td className="px-2 py-1">{c.name}</td>
-                        <td className="px-2 py-1 font-mono">{Math.round(c.score)}</td>
-                        <td className="px-2 py-1">{c.why}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-xs text-[var(--k-muted)]">
-                No candidates returned. Ensure TradingView snapshots exist (Screener → Sync / History), or import holdings.
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-              <div className="mb-2 text-sm font-medium">Leader</div>
-              <div className="text-xs text-[var(--k-muted)]">
-                {report.leader.symbol ? `${report.leader.symbol}` : 'N/A'}
-              </div>
-              <div className="mt-2 text-xs">{report.leader.reason || '—'}</div>
-            </div>
-            <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-              <div className="mb-2 text-sm font-medium">Account-level risk notes</div>
-              {report.riskNotes.length ? (
-                <ul className="list-inside list-disc text-xs">
-                  {report.riskNotes.map((x, i) => (
-                    <li key={i}>{x}</li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="text-xs text-[var(--k-muted)]">None</div>
-              )}
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(reportMd);
+                }}
+              >
+                Copy markdown
+              </Button>
+              <Button
+                size="sm"
+                disabled={!accountId}
+                onClick={() => {
+                  addReference({
+                    kind: 'strategyReport',
+                    refId: report.id,
+                    reportId: report.id,
+                    accountId: report.accountId,
+                    accountTitle: report.accountTitle,
+                    date: report.date,
+                    createdAt: report.createdAt,
+                  });
+                }}
+              >
+                Reference report to chat
+              </Button>
             </div>
           </div>
 
-          <div className="mt-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-            <div className="mb-2 text-sm font-medium">Recommendations (≤ 3)</div>
-            {report.recommendations.length ? (
-              <div className="grid gap-3">
-                {report.recommendations.map((r) => (
-                  <div key={r.symbol} className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-sm font-medium">
-                        {r.ticker} {r.name}
-                      </div>
-                      <div className="text-xs text-[var(--k-muted)]">{r.symbol}</div>
-                    </div>
-                    <div className="mt-2 text-xs">
-                      <div className="font-medium">Thesis</div>
-                      <div className="mt-1 text-[var(--k-muted)]">{r.thesis}</div>
-                    </div>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <div className="text-xs">
-                        <div className="font-medium">Levels</div>
-                        <div className="mt-1 text-[var(--k-muted)]">
-                          <div>Support: {r.levels.support.join(' / ') || '—'}</div>
-                          <div>Resistance: {r.levels.resistance.join(' / ') || '—'}</div>
-                          <div>Invalidations: {r.levels.invalidations.join(' / ') || '—'}</div>
-                        </div>
-                      </div>
-                      <div className="text-xs">
-                        <div className="font-medium">Position sizing</div>
-                        <div className="mt-1 text-[var(--k-muted)]">{r.positionSizing || '—'}</div>
-                      </div>
-                    </div>
-                    <div className="mt-3 text-xs">
-                      <div className="font-medium">Orders</div>
-                      {r.orders.length ? (
-                        <div className="mt-1 overflow-auto rounded border border-[var(--k-border)]">
-                          <table className="w-full border-collapse text-xs">
-                            <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                              <tr className="text-left">
-                                <th className="px-2 py-1">Kind</th>
-                                <th className="px-2 py-1">Side</th>
-                                <th className="px-2 py-1">Trigger</th>
-                                <th className="px-2 py-1">Qty</th>
-                                <th className="px-2 py-1">TIF</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {r.orders.map((o, idx) => (
-                                <tr key={idx} className="border-t border-[var(--k-border)]">
-                                  <td className="px-2 py-1 font-mono">{o.kind}</td>
-                                  <td className="px-2 py-1 font-mono">{o.side}</td>
-                                  <td className="px-2 py-1 font-mono">{o.trigger}</td>
-                                  <td className="px-2 py-1 font-mono">{o.qty}</td>
-                                  <td className="px-2 py-1 font-mono">{o.timeInForce || ''}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="mt-1 text-[var(--k-muted)]">No orders returned.</div>
-                      )}
-                    </div>
-                    {r.riskNotes?.length ? (
-                      <div className="mt-3 text-xs">
-                        <div className="font-medium">Risk notes</div>
-                        <ul className="mt-1 list-inside list-disc text-[var(--k-muted)]">
-                          {r.riskNotes.map((x, i) => (
-                            <li key={i}>{x}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-xs text-[var(--k-muted)]">No recommendations returned.</div>
-            )}
+          <div className="mt-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4">
+            <MarkdownMessage content={reportMd} className="text-sm" />
           </div>
 
           <div className="mt-4">
@@ -443,7 +459,26 @@ export function StrategyPage() {
             </Button>
             {debugOpen ? (
               <div className="mt-2 overflow-auto rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                <div className="mb-2 text-xs font-medium">Raw report JSON</div>
+                <div className="mb-2 text-xs font-medium">LLM interaction debug</div>
+                <div className="mb-2 text-xs text-[var(--k-muted)]">
+                  Request = payload sent to ai-service. Response = JSON returned by ai-service.
+                </div>
+                <div className="mb-2 text-xs font-medium">Markdown (rendered)</div>
+                <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">{reportMd}</pre>
+                <div className="mb-2 text-xs font-medium">Request (to ai-service)</div>
+                <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                  {JSON.stringify(
+                    {
+                      date: report.date,
+                      accountId: report.accountId,
+                      accountTitle: report.accountTitle,
+                      context: report.inputSnapshot ?? null,
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+                <div className="mb-2 text-xs font-medium">Response (from ai-service)</div>
                 <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
                   {JSON.stringify(report.raw ?? report, null, 2)}
                 </pre>
