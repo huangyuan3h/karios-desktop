@@ -11,6 +11,18 @@ import { z } from 'zod';
 import { ChatRequestSchema, toModelMessagesFromChatRequest } from './chat';
 import { tryParseJsonObject } from './json_parse';
 
+type AiModel = Parameters<typeof generateText>[0]['model'];
+
+process.on('unhandledRejection', (reason) => {
+  // Prevent process crash / hard connection close; log for debugging.
+  console.error('unhandledRejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  // Prevent hard close without response; keep process alive for local dev.
+  console.error('uncaughtException:', err);
+});
+
 const TitleRequestSchema = z.object({
   text: z.string().min(1).max(8000),
   systemPrompt: z.string().optional(),
@@ -111,7 +123,7 @@ async function tryRepairStrategyJson({
   instruction,
   badText,
 }: {
-  model: any;
+  model: AiModel;
   system: string;
   instruction: string;
   badText: string;
@@ -136,7 +148,7 @@ async function tryRepairStrategyJson({
   return tryParseJsonObject(text);
 }
 
-function getModel(modelOverride?: string) {
+function getModel(modelOverride?: string): AiModel {
   const provider = (process.env.AI_PROVIDER ?? 'openai').toLowerCase();
   const modelId = modelOverride ?? process.env.AI_MODEL;
 
@@ -153,6 +165,14 @@ function getModel(modelOverride?: string) {
 
 const app = new Hono();
 app.use('*', cors());
+
+app.onError((err, c) => {
+  console.error('AI service error:', err);
+  const message = err instanceof Error ? err.message : String(err);
+  const stack =
+    process.env.NODE_ENV !== 'production' && err instanceof Error ? (err.stack ?? null) : null;
+  return c.json({ error: 'Internal server error', message, stack }, 500);
+});
 
 app.get('/healthz', (c) => c.json({ ok: true }));
 
@@ -302,8 +322,8 @@ app.post('/strategy/daily', async (c) => {
     return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
   }
 
-  let model;
-  let fallbackModel: any | null = null;
+  let model: AiModel;
+  let fallbackModel: AiModel | null = null;
   try {
     model = getModel(process.env.AI_STRATEGY_MODEL);
     const fb = getStrategyFallbackModelId();
@@ -351,7 +371,7 @@ app.post('/strategy/daily', async (c) => {
     `"model":"${modelId || 'unknown'}"` +
     '}';
 
-  async function runGenerateObject(m: any): Promise<unknown> {
+  async function runGenerateObject(m: AiModel): Promise<unknown> {
     const { object } = await generateObject({
       model: m,
       schema: StrategyDailyResponseSchema,
@@ -363,7 +383,7 @@ app.post('/strategy/daily', async (c) => {
     return object;
   }
 
-  async function runGenerateTextJson(m: any): Promise<string> {
+  async function runGenerateTextJson(m: AiModel): Promise<string> {
     const { text } = await generateText({
       model: m,
       system,
@@ -380,7 +400,7 @@ app.post('/strategy/daily', async (c) => {
     return text;
   }
 
-  const attempts: Array<{ kind: 'object' | 'text'; model: any; modelName: string }> = [
+  const attempts: Array<{ kind: 'object' | 'text'; model: AiModel; modelName: string }> = [
     { kind: 'object', model, modelName: modelId || 'primary' },
   ];
   if (fallbackModel)
@@ -461,8 +481,8 @@ app.post('/strategy/daily-markdown', async (c) => {
     return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
   }
 
-  let model;
-  let fallbackModel: any | null = null;
+  let model: AiModel;
+  let fallbackModel: AiModel | null = null;
   try {
     model = getModel(process.env.AI_STRATEGY_MODEL);
     const fb = getStrategyFallbackModelId();
@@ -489,26 +509,62 @@ app.post('/strategy/daily-markdown', async (c) => {
     'Output requirements:\n' +
     '- Return a SINGLE Markdown document.\n' +
     '- Use clear headings and bullet points.\n' +
-    '- MUST include an "Industry fund flow" section analyzing capital rotation using context.industryFundFlow.\n' +
-    '- Top candidates: pick <= 3 (not 5).\n' +
-    '- MUST include: (1) new opportunities, (2) existing holdings actions (hold/stop/reduce/exit).\n' +
-    '- Provide concrete analysis: why, key levels, risk boundaries.\n' +
-    '- Provide a single consolidated action table in Ping An Securities style (平安证券条件单风格).\n' +
-    '  The table should include BOTH new opportunities and existing holdings.\n' +
-    '  Columns: Symbol | Name | Current | Action | OrderType | Trigger | Qty | ValidUntil | StopLoss | TakeProfit | Notes.\n' +
-    '- Use conditional-order phrasing (examples: 到价买入/到价卖出/价格上穿/价格下穿/回落卖出/反弹买入).\n' +
+    '- STRICT Markdown formatting rules:\n' +
+    '  - Every heading must start at the beginning of a line (column 0).\n' +
+    '  - Each heading MUST be on its own line.\n' +
+    '  - Insert a blank line between sections.\n' +
+    '  - NEVER put "# ..." and "## ..." on the same line.\n' +
+    '- The report MUST contain the following sections IN THIS ORDER:\n' +
+    '  1) Market/Industry fund flow (资金流向板块)\n' +
+    "  2) Today's Top candidates (<= 3)\n" +
+    '  3) Holdings plan (现有持仓：哪些止损/持有/减仓/清仓)\n' +
+    '  4) Overall execution plan (盘中执行要点)\n' +
+    '  5) Ping An conditional-order action table (平安证券条件单风格 总表)\n' +
+    '\n' +
+    'You MUST follow this template (fill with real content, keep headings exactly):\n' +
+    `# ${accountTitle} 日度交易报告（${date}）\n\n` +
+    '## 1）资金流向板块（行业资金流与轮动判断）\n\n' +
+    '## 2）Top candidates（≤ 3）\n\n' +
+    '## 3）现有持仓：止损 / 持有 / 减仓 / 清仓\n\n' +
+    '## 4）盘中执行要点\n\n' +
+    '## 5）平安证券条件单风格（总表）\n\n' +
+    '- Section 1 MUST analyze capital rotation using context.industryFundFlow:\n' +
+    '  - Identify top inflow industries (1D and 10D sum) and whether inflow is sustained or one-off.\n' +
+    '  - Identify top outflow industries and whether it threatens current holdings.\n' +
+    '  - Conclude a single "focus industry theme" for today (1-2 themes).\n' +
+    '- Section 2: Top candidates <= 3. For each candidate provide concrete analysis:\n' +
+    '  - Why now (trend/relative strength/industry flow)\n' +
+    '  - Key levels (support/resistance/invalidation)\n' +
+    '  - Plan A (breakout) + Plan B (pullback) triggers\n' +
+    '  - Risk points\n' +
+    '  Use available fields from context.stocks[*]: features, barsTail, chipsTail, fundFlowTail.\n' +
+    '- Section 3 MUST cover EACH current position in context.accountState.positions:\n' +
+    '  - Decide: Hold / Add / Reduce / Exit\n' +
+    '  - Provide a stop-loss trigger (price下穿/到价卖出)\n' +
+    '  - If there are existing conditional orders in context.accountState.conditionalOrders, say whether to keep/adjust/cancel.\n' +
+    '- Section 5: Provide ONE consolidated action table (merge new opportunities + existing holdings) in Ping An style.\n' +
+    '  - Use these columns exactly:\n' +
+    '    Symbol | Name | Current | Action | OrderType | TriggerCondition | TriggerValue | Qty | ValidUntil | Rationale | Risk | Exit\n' +
+    '  - OrderType should match Ping An wording (examples): 到价买入/到价卖出/反弹买入/回落卖出\n' +
+    '  - TriggerCondition examples: 价格上穿/价格下穿/到价/回落/反弹\n' +
+    '  - TriggerValue should be specific if possible; otherwise write TBD.\n' +
+    '  - ValidUntil should be a concrete date (e.g. within 3-10 trading days).\n' +
+    '- IMPORTANT:\n' +
+    '  - If you lack a field (e.g. Current price), write TBD and explain what data is missing.\n' +
+    '  - Do NOT exceed 3 candidates.\n' +
+    '  - Prefer actionable triggers over vague advice.\n' +
     '- Use the SAME language as the user/account prompt (Chinese is expected).\n\n' +
     (accountPrompt ? `Account prompt:\n${accountPrompt}\n\n` : '') +
     'Context JSON:\n' +
     JSON.stringify(parsed.data.context);
 
-  async function run(m: any): Promise<string> {
+  async function run(m: AiModel): Promise<string> {
     const { text } = await generateText({
       model: m,
       system,
       prompt: instruction,
-      temperature: 0.2,
-      maxOutputTokens: 2200,
+      temperature: 0,
+      maxOutputTokens: 3200,
     });
     return text.trim();
   }

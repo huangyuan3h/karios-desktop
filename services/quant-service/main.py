@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -10,6 +11,7 @@ import signal
 import sqlite3
 import subprocess
 import time
+import urllib.error
 import urllib.request
 import uuid
 from dataclasses import dataclass
@@ -3496,16 +3498,62 @@ def _ai_strategy_daily(*, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _ai_strategy_daily_markdown(*, payload: dict[str, Any]) -> dict[str, Any]:
+    url = f"{_ai_service_base_url()}/strategy/daily-markdown"
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
-        f"{_ai_service_base_url()}/strategy/daily-markdown",
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        raw = resp.read().decode("utf-8", errors="replace")
-        return json.loads(raw)
+
+    def _do() -> dict[str, Any]:
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                raw = resp.read().decode("utf-8")
+                return json.loads(raw)
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                err_body = ""
+            raise OSError(
+                f"ai-service HTTP {getattr(e, 'code', '?')} {getattr(e, 'reason', '')} while calling {url}: {err_body}"
+            ) from e
+        except http.client.RemoteDisconnected as e:
+            raise OSError(f"ai-service disconnected while calling {url}: {e}") from e
+        except urllib.error.URLError as e:
+            raise OSError(f"ai-service URL error while calling {url}: {e}") from e
+        except TimeoutError as e:
+            raise OSError(f"ai-service timeout while calling {url}: {e}") from e
+
+    # Retry once for transient disconnects (e.g. ai-service hot reload).
+    try:
+        return _do()
+    except OSError as e:
+        msg = str(e)
+        if ("disconnected" in msg) or ("Connection reset" in msg) or ("timeout" in msg):
+            time.sleep(0.25)
+            return _do()
+        raise
+
+
+def _normalize_strategy_markdown(md: str) -> str:
+    """
+    Defensive Markdown normalization for LLM outputs:
+    - Ensure headings (## ... etc) start on their own line.
+    - Avoid touching fenced code blocks.
+    """
+    s = (md or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not s.strip():
+        return ""
+
+    parts = s.split("```")
+    for i in range(0, len(parts), 2):  # outside code fences
+        # If a model puts '... ## Heading' on the same line, split it.
+        parts[i] = re.sub(r"([^\n])\s+(#{2,6}\s)", r"\1\n\n\2", parts[i])
+    out = "```".join(parts)
+    return out.strip() + "\n"
 
 
 @app.get("/strategy/accounts/{account_id}/daily", response_model=StrategyReportResponse)
@@ -3829,6 +3877,11 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         raise HTTPException(status_code=500, detail=f"ai-service request failed: {e}") from e
 
     output = out if isinstance(out, dict) else {"error": "Invalid strategy output", "raw": out}
+    # Normalize markdown for UI rendering (avoid headings on same line).
+    if isinstance(output.get("markdown"), str):
+        raw_md = output.get("markdown") or ""
+        output.setdefault("markdownRaw", raw_md)
+        output["markdown"] = _normalize_strategy_markdown(raw_md)
     model = _norm_str(output.get("model") or os.getenv("AI_MODEL") or "ai-service")
 
     report_id = str(uuid.uuid4())
