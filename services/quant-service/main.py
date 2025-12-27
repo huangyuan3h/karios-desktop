@@ -1364,6 +1364,7 @@ class StrategyReportResponse(BaseModel):
     accountTitle: str
     createdAt: str
     model: str
+    markdown: str | None = None
     candidates: list[StrategyCandidate]
     leader: StrategyLeader
     recommendations: list[StrategyRecommendation]
@@ -3148,6 +3149,8 @@ def _strategy_report_response(
     output: dict[str, Any],
     input_snapshot: dict[str, Any] | None,
 ) -> StrategyReportResponse:
+    markdown = _norm_str(output.get("markdown") or "") or None
+
     # Candidates
     raw_candidates = output.get("candidates")
     candidates_in: list[Any] = raw_candidates if isinstance(raw_candidates, list) else []
@@ -3229,6 +3232,7 @@ def _strategy_report_response(
         accountTitle=account_title,
         createdAt=created_at,
         model=model,
+        markdown=markdown,
         candidates=candidates,
         leader=leader,
         recommendations=recs,
@@ -3491,6 +3495,19 @@ def _ai_strategy_daily(*, payload: dict[str, Any]) -> dict[str, Any]:
         return json.loads(raw)
 
 
+def _ai_strategy_daily_markdown(*, payload: dict[str, Any]) -> dict[str, Any]:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        f"{_ai_service_base_url()}/strategy/daily-markdown",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+        return json.loads(raw)
+
+
 @app.get("/strategy/accounts/{account_id}/daily", response_model=StrategyReportResponse)
 def get_strategy_daily_report(account_id: str, date: str | None = None) -> StrategyReportResponse:
     aid = (account_id or "").strip()
@@ -3603,36 +3620,66 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             currency=c["currency"],
         )
 
-    # Fetch deep data for candidates (bounded).
+    # Fetch deep data for candidates (bounded). IMPORTANT: keep context compact.
     stock_context: list[dict[str, Any]] = []
     if req.includeStocks:
+        # Provide deep context only for a small subset: holdings + first TV candidates.
+        deep_syms: list[str] = []
+        if req.includeAccountState:
+            raw_positions2 = state_row.get("positions")
+            pos_list2: list[Any] = raw_positions2 if isinstance(raw_positions2, list) else []
+            for p in pos_list2:
+                if not isinstance(p, dict):
+                    continue
+                ticker2 = _norm_str(p.get("ticker") or p.get("Ticker") or p.get("symbol") or p.get("Symbol") or "")
+                if not ticker2:
+                    continue
+                market2 = "HK" if (len(ticker2) in (4, 5)) else "CN"
+                sym2 = f"{market2}:{ticker2}"
+                if sym2 not in deep_syms:
+                    deep_syms.append(sym2)
+                if len(deep_syms) >= 5:
+                    break
+        for c in pool[:5]:
+            sym2 = c["symbol"]
+            if sym2 not in deep_syms:
+                deep_syms.append(sym2)
+            if len(deep_syms) >= 8:
+                break
+        deep_set = set(deep_syms)
+
         for c in pool:
             sym = c["symbol"]
-            # DB-first: prefer cached bars; only fetch if cache is empty.
-            bars = _load_cached_bars(sym, days=60)
+            include_deep = sym in deep_set
+            bars = _load_cached_bars(sym, days=60) if include_deep else []
             bars_error: str | None = None
-            if not bars:
+            if include_deep and not bars:
                 try:
                     bars_resp = market_stock_bars(sym, days=60)
                     bars = bars_resp.bars
                 except Exception as e:
-                    # v0: allow missing bars to avoid crashing daily report.
                     bars = []
                     bars_error = str(e)
-            feats = _bars_features(bars)
-            # DB-first: prefer cached chips/fund-flow. Only sync when missing.
-            chips = _load_cached_chips(sym, days=30)
-            fund_flow = _load_cached_fund_flow(sym, days=30)
-            if not chips:
+            feats = _bars_features(bars) if include_deep else {}
+
+            chips = _load_cached_chips(sym, days=30) if include_deep else []
+            fund_flow = _load_cached_fund_flow(sym, days=30) if include_deep else []
+            if include_deep and not chips:
                 try:
                     chips = market_stock_chips(sym, days=30).items
                 except Exception:
                     chips = []
-            if not fund_flow:
+            if include_deep and not fund_flow:
                 try:
                     fund_flow = market_stock_fund_flow(sym, days=30).items
                 except Exception:
                     fund_flow = []
+
+            # Compact tails only (avoid sending full arrays).
+            bars_tail = bars[-6:] if bars else []
+            chips_tail = chips[-3:] if chips else []
+            ff_tail = fund_flow[-5:] if fund_flow else []
+
             stock_context.append(
                 {
                     "symbol": sym,
@@ -3640,9 +3687,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                     "ticker": c["ticker"],
                     "name": c.get("name") or "",
                     "currency": c["currency"],
-                    "barsDays": 60,
-                    "chipsDays": 30,
-                    "fundFlowDays": 30,
+                    "deep": include_deep,
                     "availability": {
                         "barsCached": True if bars else False,
                         "chipsCached": True if chips else False,
@@ -3650,9 +3695,9 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                         "barsError": bars_error,
                     },
                     "features": feats,
-                    "bars": bars,
-                    "chips": chips,
-                    "fundFlow": fund_flow,
+                    "barsTail": bars_tail,
+                    "chipsTail": chips_tail,
+                    "fundFlowTail": ff_tail,
                 },
             )
 
@@ -3779,7 +3824,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         "context": input_snapshot,
     }
     try:
-        out = _ai_strategy_daily(payload=ai_payload)
+        out = _ai_strategy_daily_markdown(payload=ai_payload)
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"ai-service request failed: {e}") from e
 

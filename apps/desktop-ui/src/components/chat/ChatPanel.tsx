@@ -296,6 +296,11 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         out += `- date: ${String(rep.date ?? ref.date)}\n`;
         out += `- model: ${String(rep.model ?? '')}\n`;
         out += `- createdAt: ${String(rep.createdAt ?? ref.createdAt)}\n`;
+        if (rep.markdown) {
+          out += `\nMarkdown report:\n`;
+          out += `${String(rep.markdown).trim()}\n\n`;
+          continue;
+        }
         if (rep.leader && typeof rep.leader === 'object') {
           out += `\nLeader:\n`;
           out += `- symbol: ${String(rep.leader.symbol ?? '')}\n`;

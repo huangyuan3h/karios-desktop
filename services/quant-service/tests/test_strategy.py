@@ -94,43 +94,17 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(main, "market_stock_chips", fake_chips)
     monkeypatch.setattr(main, "market_stock_fund_flow", fake_flow)
 
-    def fake_ai_strategy_daily(*, payload):
+    def fake_ai_strategy_daily_markdown(*, payload):
         _ = payload
         return {
             "date": "2025-12-21",
             "accountId": account_id,
             "accountTitle": "Main",
-            "candidates": [
-                {
-                    "symbol": "CN:300502",
-                    "market": "CN",
-                    "ticker": "300502",
-                    "name": "Xin Yi Sheng",
-                    "score": 88,
-                    "rank": 1,
-                    "why": "Strong momentum",
-                }
-            ],
-            "leader": {"symbol": "CN:300502", "reason": "Leader by volume and trend"},
-            "recommendations": [
-                {
-                    "symbol": "CN:300502",
-                    "ticker": "300502",
-                    "name": "Xin Yi Sheng",
-                    "thesis": "Breakout continuation",
-                    "levels": {"support": ["420"], "resistance": ["445"], "invalidations": ["< 410"]},
-                    "orders": [
-                        {"kind": "breakout_buy", "side": "buy", "trigger": "price >= 445", "qty": "10% equity", "timeInForce": "day"}
-                    ],
-                    "positionSizing": "Max 20% for leader",
-                    "riskNotes": ["Hard stop below 410"],
-                }
-            ],
-            "riskNotes": ["Do not exceed 3 positions"],
+            "markdown": "# Daily Strategy Report\n\n- ok\n",
             "model": "test-model",
         }
 
-    monkeypatch.setattr(main, "_ai_strategy_daily", fake_ai_strategy_daily)
+    monkeypatch.setattr(main, "_ai_strategy_daily_markdown", fake_ai_strategy_daily_markdown)
 
     # Generate report
     resp = client.post(
@@ -149,8 +123,8 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     data = resp.json()
     assert data["date"] == "2025-12-21"
     assert data["accountId"] == account_id
-    assert data["candidates"][0]["ticker"] == "300502"
-    assert data["leader"]["symbol"] == "CN:300502"
+    assert "markdown" in data
+    assert "Daily Strategy Report" in (data.get("markdown") or "")
     snap = data.get("inputSnapshot") or {}
     assert isinstance(snap, dict)
     assert snap.get("tradingView") == {}

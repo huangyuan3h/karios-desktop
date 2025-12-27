@@ -65,6 +65,7 @@ type StrategyReport = {
   accountTitle: string;
   createdAt: string;
   model: string;
+  markdown?: string | null;
   candidates: StrategyCandidate[];
   leader: { symbol: string; reason: string };
   recommendations: StrategyRecommendation[];
@@ -210,7 +211,11 @@ export function StrategyPage() {
   const [ctxIndustryFlow, setCtxIndustryFlow] = React.useState(true);
   const [ctxStocks, setCtxStocks] = React.useState(true);
 
-  const reportMd = React.useMemo(() => (report ? buildStrategyMarkdown(report) : ''), [report]);
+  const reportMd = React.useMemo(() => {
+    if (!report) return '';
+    const md = (report.markdown ?? '').trim();
+    return md || buildStrategyMarkdown(report);
+  }, [report]);
 
   const refresh = React.useCallback(async () => {
     setError(null);
