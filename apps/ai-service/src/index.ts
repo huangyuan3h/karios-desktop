@@ -21,7 +21,14 @@ const BrokerExtractRequestSchema = z.object({
 });
 
 const BrokerExtractResponseSchema = z.object({
-  kind: z.enum(['account_overview', 'positions', 'conditional_orders', 'trades', 'settlement_statement', 'unknown']),
+  kind: z.enum([
+    'account_overview',
+    'positions',
+    'conditional_orders',
+    'trades',
+    'settlement_statement',
+    'unknown',
+  ]),
   broker: z.literal('pingan'),
   extractedAt: z.string(),
   data: z.record(z.any()).optional(),
@@ -376,9 +383,15 @@ app.post('/strategy/daily', async (c) => {
   const attempts: Array<{ kind: 'object' | 'text'; model: any; modelName: string }> = [
     { kind: 'object', model, modelName: modelId || 'primary' },
   ];
-  if (fallbackModel) attempts.push({ kind: 'object', model: fallbackModel, modelName: fallbackModelId || 'fallback' });
+  if (fallbackModel)
+    attempts.push({
+      kind: 'object',
+      model: fallbackModel,
+      modelName: fallbackModelId || 'fallback',
+    });
   attempts.push({ kind: 'text', model, modelName: modelId || 'primary' });
-  if (fallbackModel) attempts.push({ kind: 'text', model: fallbackModel, modelName: fallbackModelId || 'fallback' });
+  if (fallbackModel)
+    attempts.push({ kind: 'text', model: fallbackModel, modelName: fallbackModelId || 'fallback' });
 
   const failures: string[] = [];
 
