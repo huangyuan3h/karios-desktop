@@ -53,6 +53,14 @@ function fmtCny(x: number): string {
   return `${v.toFixed(0)}`;
 }
 
+function sumLastN(series: IndustryFundFlowPoint[], n: number): number {
+  const xs = Array.isArray(series) ? series : [];
+  const tail = xs.slice(-Math.max(1, n));
+  let s = 0;
+  for (const p of tail) s += Number.isFinite(p.netInflow) ? p.netInflow : 0;
+  return s;
+}
+
 function Sparkline({ series }: { series: IndustryFundFlowPoint[] }) {
   const vals = series.map((p) => (Number.isFinite(p.netInflow) ? p.netInflow : 0));
   const maxAbs = Math.max(1, ...vals.map((v) => Math.abs(v)));
@@ -75,12 +83,68 @@ function Sparkline({ series }: { series: IndustryFundFlowPoint[] }) {
   );
 }
 
+function MiniTable({
+  title,
+  rows,
+  valueLabel,
+  onReference,
+}: {
+  title: string;
+  rows: Array<{ industryCode: string; industryName: string; value: number; series10d?: IndustryFundFlowPoint[] }>;
+  valueLabel: string;
+  onReference: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="text-sm font-medium">{title}</div>
+        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
+          Reference
+        </Button>
+      </div>
+      <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+        <table className="w-full border-collapse text-xs">
+          <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+            <tr className="text-left">
+              <th className="px-2 py-1">#</th>
+              <th className="px-2 py-1">Industry</th>
+              <th className="px-2 py-1">{valueLabel}</th>
+              <th className="px-2 py-1">Trend</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length ? (
+              rows.map((r, idx) => (
+                <tr key={r.industryCode} className="border-t border-[var(--k-border)]">
+                  <td className="px-2 py-1 font-mono">{idx + 1}</td>
+                  <td className="px-2 py-1">{r.industryName}</td>
+                  <td className="px-2 py-1 font-mono">{fmtCny(r.value)}</td>
+                  <td className="px-2 py-1">
+                    <Sparkline series={r.series10d ?? []} />
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={4} className="px-2 py-6 text-center text-[var(--k-muted)]">
+                  No data
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export function IndustryFlowPage() {
   const { addReference } = useChatStore();
   const [resp, setResp] = React.useState<IndustryFundFlowResp | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [topN, setTopN] = React.useState(30);
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
     setError(null);
@@ -137,21 +201,9 @@ export function IndustryFlowPage() {
               size="sm"
               variant="secondary"
               disabled={busy}
-              onClick={() => {
-                const asOfDate = resp.asOfDate || new Date().toISOString().slice(0, 10);
-                const days = resp.days || 10;
-                const top = Math.min(10, resp.topN || 10);
-                addReference({
-                  kind: 'industryFundFlow',
-                  refId: `${asOfDate}:${days}:${top}`,
-                  asOfDate,
-                  days,
-                  topN: top,
-                  createdAt: new Date().toISOString(),
-                });
-              }}
+              onClick={() => setDetailsOpen((v) => !v)}
             >
-              Reference to chat
+              {detailsOpen ? 'Hide details' : 'Show details'}
             </Button>
           ) : null}
         </div>
@@ -184,20 +236,136 @@ export function IndustryFlowPage() {
         </div>
       </div>
 
-      <div className="overflow-auto rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]">
-        <table className="w-full border-collapse text-xs">
-          <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
-            <tr className="text-left">
-              <th className="px-3 py-2">Rank</th>
-              <th className="px-3 py-2">Industry</th>
-              <th className="px-3 py-2">Net inflow</th>
-              <th className="px-3 py-2">Sum 10D</th>
-              <th className="px-3 py-2">Trend (10D)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(resp?.top ?? []).length ? (
-              resp!.top.map((r, idx) => (
+      {resp?.top?.length ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {(() => {
+            const rows = resp.top.slice(0, 100);
+            const asOfDate = resp.asOfDate || new Date().toISOString().slice(0, 10);
+            const baseDays = resp.days || 10;
+            const top = 10;
+
+            const in1d = rows
+              .filter((r) => r.netInflow > 0)
+              .sort((a, b) => b.netInflow - a.netInflow)
+              .slice(0, top)
+              .map((r) => ({ ...r, value: r.netInflow }));
+            const out1d = rows
+              .filter((r) => r.netInflow < 0)
+              .sort((a, b) => a.netInflow - b.netInflow)
+              .slice(0, top)
+              .map((r) => ({ ...r, value: r.netInflow }));
+
+            const in5d = rows
+              .map((r) => ({ ...r, value: sumLastN(r.series10d ?? [], 5) }))
+              .sort((a, b) => b.value - a.value)
+              .slice(0, top);
+            const in10d = rows
+              .map((r) => ({ ...r, value: r.sum10d }))
+              .sort((a, b) => b.value - a.value)
+              .slice(0, top);
+
+            return (
+              <>
+                <MiniTable
+                  title="Top inflow (1D)"
+                  valueLabel="Net inflow"
+                  rows={in1d}
+                  onReference={() =>
+                    addReference({
+                      kind: 'industryFundFlow',
+                      refId: `${asOfDate}:${baseDays}:in1d:${top}`,
+                      asOfDate,
+                      days: baseDays,
+                      topN: top,
+                      metric: 'netInflow',
+                      windowDays: 1,
+                      direction: 'in',
+                      title: 'Top inflow (1D)',
+                      createdAt: new Date().toISOString(),
+                    })
+                  }
+                />
+                <MiniTable
+                  title="Top outflow (1D)"
+                  valueLabel="Net inflow"
+                  rows={out1d}
+                  onReference={() =>
+                    addReference({
+                      kind: 'industryFundFlow',
+                      refId: `${asOfDate}:${baseDays}:out1d:${top}`,
+                      asOfDate,
+                      days: baseDays,
+                      topN: top,
+                      metric: 'netInflow',
+                      windowDays: 1,
+                      direction: 'out',
+                      title: 'Top outflow (1D)',
+                      createdAt: new Date().toISOString(),
+                    })
+                  }
+                />
+                <MiniTable
+                  title="Top inflow (5D sum)"
+                  valueLabel="Sum 5D"
+                  rows={in5d}
+                  onReference={() =>
+                    addReference({
+                      kind: 'industryFundFlow',
+                      refId: `${asOfDate}:${baseDays}:in5d:${top}`,
+                      asOfDate,
+                      days: baseDays,
+                      topN: top,
+                      metric: 'sum',
+                      windowDays: 5,
+                      direction: 'in',
+                      title: 'Top inflow (5D sum)',
+                      createdAt: new Date().toISOString(),
+                    })
+                  }
+                />
+                <MiniTable
+                  title="Top inflow (10D sum)"
+                  valueLabel="Sum 10D"
+                  rows={in10d}
+                  onReference={() =>
+                    addReference({
+                      kind: 'industryFundFlow',
+                      refId: `${asOfDate}:${baseDays}:in10d:${top}`,
+                      asOfDate,
+                      days: baseDays,
+                      topN: top,
+                      metric: 'sum',
+                      windowDays: 10,
+                      direction: 'in',
+                      title: 'Top inflow (10D sum)',
+                      createdAt: new Date().toISOString(),
+                    })
+                  }
+                />
+              </>
+            );
+          })()}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-6 text-center text-sm text-[var(--k-muted)]">
+          No cached data. Click “Sync latest” after market close.
+        </div>
+      )}
+
+      {detailsOpen && resp?.top?.length ? (
+        <div className="mt-4 overflow-auto rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]">
+          <table className="w-full border-collapse text-xs">
+            <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+              <tr className="text-left">
+                <th className="px-3 py-2">Rank</th>
+                <th className="px-3 py-2">Industry</th>
+                <th className="px-3 py-2">Net inflow</th>
+                <th className="px-3 py-2">Sum 10D</th>
+                <th className="px-3 py-2">Trend (10D)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {resp.top.map((r, idx) => (
                 <tr key={r.industryCode} className="border-t border-[var(--k-border)]">
                   <td className="px-3 py-2 font-mono">{idx + 1}</td>
                   <td className="px-3 py-2">{r.industryName}</td>
@@ -207,17 +375,11 @@ export function IndustryFlowPage() {
                     <Sparkline series={r.series10d ?? []} />
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-[var(--k-muted)]">
-                  No cached data. Click “Sync latest” after market close.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </div>
   );
 }

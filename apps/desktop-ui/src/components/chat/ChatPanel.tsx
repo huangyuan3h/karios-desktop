@@ -339,12 +339,36 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         );
         if (!resp.ok) throw new Error('failed to load industry fund flow');
         const ff = (await resp.json()) as any;
-        out += `## CN industry fund flow\n`;
+        const title = String(ref.title ?? 'CN industry fund flow');
+        out += `## ${title}\n`;
         out += `- asOfDate: ${String(ff.asOfDate ?? ref.asOfDate)}\n`;
         out += `- days: ${String(ff.days ?? ref.days)}\n`;
         out += `- topN: ${String(ref.topN)}\n`;
+        if (ref.metric) out += `- metric: ${ref.metric}\n`;
+        if (ref.windowDays) out += `- windowDays: ${ref.windowDays}\n`;
+        if (ref.direction) out += `- direction: ${ref.direction}\n`;
 
-        const top = Array.isArray(ff.top) ? ff.top.slice(0, ref.topN) : [];
+        const items = Array.isArray(ff.top) ? ff.top : [];
+        const windowDays = Math.max(1, Math.min(Number(ref.windowDays ?? ref.days ?? 10), 30));
+        const metric = ref.metric ?? 'netInflow';
+        function sumLastN(series: any[], n: number): number {
+          const xs = Array.isArray(series) ? series : [];
+          const tail = xs.slice(-n);
+          let s = 0;
+          for (const p of tail) s += Number(p?.netInflow ?? 0) || 0;
+          return s;
+        }
+        type ScoredIndustry = { r: any; score: number; net: number };
+        const scored: ScoredIndustry[] = items.map((r: any) => {
+          const net = Number(r?.netInflow ?? 0) || 0;
+          const sum = metric === 'sum' ? sumLastN(r?.series10d, windowDays) : net;
+          return { r, score: sum, net };
+        });
+        const dir = ref.direction ?? 'in';
+        scored.sort((a: ScoredIndustry, b: ScoredIndustry) =>
+          dir === 'out' ? a.score - b.score : b.score - a.score,
+        );
+        const top = scored.slice(0, ref.topN).map((x: ScoredIndustry) => x.r);
         if (top.length) {
           out += `\nTop industries:\n`;
           for (const r of top) {
@@ -360,7 +384,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         }
         out += `\n`;
       } catch {
-        out += `## CN industry fund flow\n`;
+        out += `## ${ref.title || 'CN industry fund flow'}\n`;
         out += `- asOfDate: ${ref.asOfDate}\n`;
         out += `- status: failed to load\n\n`;
       }

@@ -372,12 +372,14 @@ def fetch_cn_industry_fund_flow_eod(as_of: date) -> list[dict[str, Any]]:
             code = _stable_industry_code(name)
 
         # Net inflow: best-effort mapping.
+        # Eastmoney sector fund flow rank uses fields like "今日主力净流入-净额" (CNY).
         net = (
-            r.get("净流入")
-            or r.get("资金净流入")
-            or r.get("主力净流入")
-            or r.get("主力净流入-净额")
+            r.get("今日主力净流入-净额")
             or r.get("今日主力净流入")
+            or r.get("主力净流入-净额")
+            or r.get("主力净流入")
+            or r.get("资金净流入")
+            or r.get("净流入")
             or r.get("今日净流入")
             or r.get("净额")
             or r.get("净流入额")
@@ -420,10 +422,10 @@ def fetch_cn_industry_fund_flow_hist(industry_name: str, *, days: int = 10) -> l
         if not d:
             continue
         net = (
-            r.get("净流入")
-            or r.get("资金净流入")
+            r.get("主力净流入-净额")
             or r.get("主力净流入")
-            or r.get("主力净流入-净额")
+            or r.get("资金净流入")
+            or r.get("净流入")
             or r.get("净额")
             or r.get("净流入额")
         )

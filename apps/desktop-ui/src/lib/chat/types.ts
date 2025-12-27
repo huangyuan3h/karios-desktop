@@ -78,6 +78,11 @@ export type ChatReference =
       asOfDate: string; // YYYY-MM-DD
       days: number; // typically 10
       topN: number; // typically 10
+      // Optional view configuration for referencing a specific widget/card.
+      metric?: 'netInflow' | 'sum';
+      windowDays?: number; // e.g. 1/5/10 (used with metric='sum' or for labeling)
+      direction?: 'in' | 'out'; // in=top positive, out=top negative
+      title?: string;
       createdAt: string;
     };
 

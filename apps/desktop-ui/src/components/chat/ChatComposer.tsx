@@ -146,7 +146,7 @@ export function ChatComposer({
                         : r.kind === 'strategyReport'
                           ? `${r.accountTitle} · strategy ${r.date}`
                           : r.kind === 'industryFundFlow'
-                            ? `CN industry fund flow · ${r.asOfDate} (${r.days}D)`
+                            ? `${r.title || 'CN industry fund flow'} · ${r.asOfDate}`
                           : 'Unknown reference'}
               </span>
               <Button
