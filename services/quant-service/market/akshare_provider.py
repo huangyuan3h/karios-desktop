@@ -152,11 +152,14 @@ def fetch_hk_daily_bars(ticker: str, *, days: int = 60) -> list[BarRow]:
     if hasattr(ak, "stock_hk_hist"):
         end = date.today()
         start = end - timedelta(days=max(120, days * 2))
-        df = ak.stock_hk_hist(
-            symbol=ticker,
-            start_date=start.strftime("%Y%m%d"),
-            end_date=end.strftime("%Y%m%d"),
-        )
+        try:
+            df = ak.stock_hk_hist(
+                symbol=ticker,
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+            )
+        except Exception as e:
+            raise RuntimeError(f"AkShare stock_hk_hist failed for {ticker}: {e}") from e
         rows = _to_records(df)
         out: list[BarRow] = []
         for r in rows:
@@ -191,7 +194,16 @@ def fetch_cn_a_chip_summary(
     日期, 获利比例, 平均成本, 90成本-低/高/集中度, 70成本-低/高/集中度
     """
     ak = _akshare()
-    df = ak.stock_cyq_em(symbol=ticker, adjust=adjust)
+    # AkShare APIs can change across versions; keep best-effort compatibility.
+    try:
+        df = ak.stock_cyq_em(symbol=ticker, adjust=adjust)
+    except TypeError:
+        try:
+            df = ak.stock_cyq_em(symbol=ticker)
+        except TypeError:
+            df = ak.stock_cyq_em(ticker)
+    except Exception as e:
+        raise RuntimeError(f"AkShare stock_cyq_em failed for {ticker}: {e}") from e
     rows = _to_records(df)
     out: list[dict[str, str]] = []
     for r in rows:
@@ -229,7 +241,15 @@ def fetch_cn_a_fund_flow(ticker: str, *, days: int = 60) -> list[dict[str, str]]
     ak = _akshare()
     # Best-effort market inference for A shares.
     market = "sh" if ticker.startswith("6") else "sz"
-    df = ak.stock_individual_fund_flow(stock=ticker, market=market)
+    try:
+        df = ak.stock_individual_fund_flow(stock=ticker, market=market)
+    except TypeError:
+        try:
+            df = ak.stock_individual_fund_flow(symbol=ticker, market=market)
+        except TypeError:
+            df = ak.stock_individual_fund_flow(ticker, market=market)
+    except Exception as e:
+        raise RuntimeError(f"AkShare stock_individual_fund_flow failed for {ticker}: {e}") from e
     rows = _to_records(df)
     out: list[dict[str, str]] = []
     for r in rows:

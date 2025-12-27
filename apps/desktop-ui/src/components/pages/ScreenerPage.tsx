@@ -34,6 +34,27 @@ type TvSnapshotDetail = {
   rows: Record<string, string>[];
 };
 
+type TvHistoryCell = {
+  snapshotId: string;
+  capturedAt: string;
+  rowCount: number;
+  screenTitle: string | null;
+  filters: string[];
+};
+
+type TvHistoryDayRow = {
+  date: string;
+  am: TvHistoryCell | null;
+  pm: TvHistoryCell | null;
+};
+
+type TvHistoryResponse = {
+  screenerId: string;
+  screenerName: string;
+  days: number;
+  rows: TvHistoryDayRow[];
+};
+
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -86,6 +107,8 @@ export function ScreenerPage() {
   const { addReference } = useChatStore();
   const [screeners, setScreeners] = React.useState<TvScreener[]>([]);
   const [snapshots, setSnapshots] = React.useState<Record<string, TvSnapshotDetail | null>>({});
+  const [history, setHistory] = React.useState<Record<string, TvHistoryResponse | null>>({});
+  const [historyOpen, setHistoryOpen] = React.useState<Record<string, boolean>>({});
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -111,6 +134,7 @@ export function ScreenerPage() {
         );
       }
       setSnapshots(next);
+      // Keep history cache; user can open on demand.
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -132,6 +156,19 @@ export function ScreenerPage() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function ensureHistoryLoaded(screenerId: string) {
+    if (history[screenerId] !== undefined) return;
+    try {
+      const h = await apiGetJson<TvHistoryResponse>(
+        `/integrations/tradingview/screeners/${encodeURIComponent(screenerId)}/history?days=10`,
+      );
+      setHistory((prev) => ({ ...prev, [screenerId]: h }));
+    } catch (e) {
+      setHistory((prev) => ({ ...prev, [screenerId]: null }));
+      setError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -160,6 +197,8 @@ export function ScreenerPage() {
           const snap = snapshots[it.id] ?? null;
           const cols = snap ? pickColumns(snap.headers) : [];
           const busy = busyId === it.id;
+          const showHist = Boolean(historyOpen[it.id]);
+          const hist = history[it.id] ?? undefined;
           return (
             <section
               key={it.id}
@@ -197,6 +236,16 @@ export function ScreenerPage() {
                   >
                     <RefreshCw className="h-4 w-4" />
                     Sync
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setHistoryOpen((prev) => ({ ...prev, [it.id]: !prev[it.id] }));
+                      void ensureHistoryLoaded(it.id);
+                    }}
+                  >
+                    {showHist ? 'Hide history' : 'History'}
                   </Button>
                   <Button
                     size="sm"
@@ -274,6 +323,78 @@ export function ScreenerPage() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              ) : null}
+
+              {showHist ? (
+                <div className="mt-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+                  <div className="mb-2 text-sm font-medium">History (last 10 days, AM/PM)</div>
+                  {hist === undefined ? (
+                    <div className="text-xs text-[var(--k-muted)]">Loading…</div>
+                  ) : hist === null ? (
+                    <div className="text-xs text-[var(--k-muted)]">Failed to load history.</div>
+                  ) : (
+                    <div className="overflow-auto rounded border border-[var(--k-border)]">
+                      <table className="w-full border-collapse text-xs">
+                        <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                          <tr className="text-left">
+                            <th className="px-2 py-2">Date</th>
+                            <th className="px-2 py-2">AM</th>
+                            <th className="px-2 py-2">PM</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {hist.rows.map((r) => (
+                            <tr key={r.date} className="border-t border-[var(--k-border)]">
+                              <td className="px-2 py-2 font-mono">{r.date}</td>
+                              {(['am', 'pm'] as const).map((slot) => {
+                                const cell = slot === 'am' ? r.am : r.pm;
+                                return (
+                                  <td key={slot} className="px-2 py-2">
+                                    {cell ? (
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <div className="truncate font-mono">
+                                            {new Date(cell.capturedAt).toLocaleString()} • {cell.rowCount} rows
+                                          </div>
+                                          {cell.filters?.length ? (
+                                            <div className="mt-1 truncate text-[var(--k-muted)]">
+                                              {cell.filters.slice(0, 3).join(' | ')}
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-7 w-7"
+                                          title="Reference to chat"
+                                          aria-label="Reference to chat"
+                                          onClick={() => {
+                                            addReference({
+                                              kind: 'tv',
+                                              refId: cell.snapshotId,
+                                              snapshotId: cell.snapshotId,
+                                              screenerId: it.id,
+                                              screenerName: it.name,
+                                              capturedAt: cell.capturedAt,
+                                            });
+                                          }}
+                                        >
+                                          <ExternalLink className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <div className="text-[var(--k-muted)]">—</div>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               ) : null}
             </section>

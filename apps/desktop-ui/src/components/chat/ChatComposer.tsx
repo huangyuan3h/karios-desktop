@@ -141,7 +141,11 @@ export function ChatComposer({
                     ? `${r.ticker} ${r.name} (${r.barsDays}D) @ ${new Date(r.capturedAt).toLocaleString()}`
                     : r.kind === 'broker'
                       ? `${r.accountTitle} · ${r.snapshotKind} @ ${new Date(r.capturedAt).toLocaleString()}`
-                      : `${r.accountTitle} · account state @ ${new Date(r.capturedAt).toLocaleString()}`}
+                      : r.kind === 'brokerState'
+                        ? `${r.accountTitle} · account state @ ${new Date(r.capturedAt).toLocaleString()}`
+                        : r.kind === 'strategyReport'
+                          ? `${r.accountTitle} · strategy ${r.date}`
+                          : 'Unknown reference'}
               </span>
               <Button
                 variant="ghost"

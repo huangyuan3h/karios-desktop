@@ -8,6 +8,7 @@ import {
   CreditCard,
   LayoutDashboard,
   PieChart,
+  Sparkles,
   Settings,
   Table2,
 } from 'lucide-react';
@@ -19,6 +20,7 @@ const items = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'market', label: 'Market', icon: Table2 },
   { id: 'broker', label: 'Broker', icon: CreditCard },
+  { id: 'strategy', label: 'Strategy', icon: Sparkles },
   { id: 'resources', label: 'Resources', icon: BookOpen },
   { id: 'portfolio', label: 'Portfolio', icon: PieChart },
   { id: 'analysis', label: 'Analysis', icon: BarChart3 },

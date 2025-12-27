@@ -110,3 +110,59 @@ def test_tv_sync_persists_snapshot(tmp_path, monkeypatch) -> None:
     assert data["rows"][0]["Symbol"] == "000001"
 
 
+def test_tv_history_groups_by_am_pm(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    client = TestClient(main.app)
+    client.get("/integrations/tradingview/screeners")  # seed defaults
+
+    # Insert two snapshots for the same local date (Asia/Shanghai): one AM, one PM.
+    payload = {
+        "screenTitle": "Test",
+        "filters": ["A", "B"],
+        "url": "https://www.tradingview.com/screener/x/",
+        "headers": ["Symbol"],
+        "rows": [{"Symbol": "000001"}],
+    }
+    with main._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO tv_screener_snapshots(id, screener_id, captured_at, row_count, headers_json, rows_json)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "snap-am",
+                "falcon",
+                "2025-12-21T01:00:00+00:00",  # 09:00 CN => AM
+                1,
+                '["Symbol"]',
+                main.json.dumps(payload, ensure_ascii=False),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO tv_screener_snapshots(id, screener_id, captured_at, row_count, headers_json, rows_json)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "snap-pm",
+                "falcon",
+                "2025-12-21T08:00:00+00:00",  # 16:00 CN => PM
+                1,
+                '["Symbol"]',
+                main.json.dumps(payload, ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+
+    resp = client.get("/integrations/tradingview/screeners/falcon/history?days=3")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["screenerId"] == "falcon"
+    # Find the day row that has both am/pm.
+    day = next((r for r in data["rows"] if r["am"] or r["pm"]), None)
+    assert day is not None
+    assert day["am"]["snapshotId"] in {"snap-am", "snap-pm"}
+    assert day["pm"]["snapshotId"] in {"snap-am", "snap-pm"}
+

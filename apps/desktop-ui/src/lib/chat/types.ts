@@ -62,6 +62,15 @@ export type ChatReference =
       accountId: string;
       accountTitle: string;
       capturedAt: string;
+    }
+  | {
+      kind: 'strategyReport';
+      refId: string; // reportId
+      reportId: string;
+      accountId: string;
+      accountTitle: string;
+      date: string; // YYYY-MM-DD
+      createdAt: string;
     };
 
 export type AppSettings = {

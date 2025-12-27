@@ -5,7 +5,13 @@ import Image from 'next/image';
 import { RefreshCw, UploadCloud, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { newId } from '@/lib/id';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
@@ -65,7 +71,7 @@ async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
 async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
@@ -76,7 +82,7 @@ async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
   });
   const txt = await res.text().catch(() => '');
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
 export function BrokerPage() {
@@ -90,6 +96,9 @@ export function BrokerPage() {
   const [showNewAccount, setShowNewAccount] = React.useState(false);
   const [newAccountTitle, setNewAccountTitle] = React.useState('');
   const [newAccountMasked, setNewAccountMasked] = React.useState('');
+  const [showAllPositions, setShowAllPositions] = React.useState(false);
+  const [showAllOrders, setShowAllOrders] = React.useState(false);
+  const [showAllTrades, setShowAllTrades] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
     setError(null);
@@ -144,11 +153,30 @@ export function BrokerPage() {
       const st = await apiPostJson<BrokerAccountState>(
         `/broker/pingan/accounts/${encodeURIComponent(accountId)}/sync`,
         {
-        capturedAt: new Date().toISOString(),
-        images,
+          capturedAt: new Date().toISOString(),
+          images,
         },
       );
       setImages([]);
+      setState(st);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDeleteConditionalOrder(order: Record<string, unknown>) {
+    if (!accountId) return;
+    const ok = window.confirm('Delete this conditional order from the consolidated state?');
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const st = await apiPostJson<BrokerAccountState>(
+        `/broker/pingan/accounts/${encodeURIComponent(accountId)}/state/conditional-orders/delete`,
+        { order },
+      );
       setState(st);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -235,10 +263,19 @@ export function BrokerPage() {
               onChange={(e) => setNewAccountMasked(e.target.value)}
             />
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => void onCreateAccount()} disabled={busy || !newAccountTitle.trim()}>
+              <Button
+                size="sm"
+                onClick={() => void onCreateAccount()}
+                disabled={busy || !newAccountTitle.trim()}
+              >
                 Create
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => setShowNewAccount(false)} disabled={busy}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowNewAccount(false)}
+                disabled={busy}
+              >
                 Cancel
               </Button>
             </div>
@@ -260,8 +297,8 @@ export function BrokerPage() {
               <div className="mt-1 text-xs text-[var(--k-muted)]">
                 Updated: {new Date(state.updatedAt).toLocaleString()} • positions{' '}
                 {Number((state.counts as any).positions ?? state.positions.length)} • orders{' '}
-                {Number((state.counts as any).conditionalOrders ?? state.conditionalOrders.length)} • trades{' '}
-                {Number((state.counts as any).trades ?? state.trades.length)}
+                {Number((state.counts as any).conditionalOrders ?? state.conditionalOrders.length)}{' '}
+                • trades {Number((state.counts as any).trades ?? state.trades.length)}
               </div>
             </div>
             <Button
@@ -274,7 +311,9 @@ export function BrokerPage() {
                   refId: accountId,
                   broker: 'pingan',
                   accountId,
-                  accountTitle: acct ? `${acct.title}${acct.accountMasked ? ` (${acct.accountMasked})` : ''}` : 'PingAn',
+                  accountTitle: acct
+                    ? `${acct.title}${acct.accountMasked ? ` (${acct.accountMasked})` : ''}`
+                    : 'PingAn',
                   capturedAt: new Date().toISOString(),
                 });
               }}
@@ -307,9 +346,27 @@ export function BrokerPage() {
             </div>
 
             <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-              <div className="mb-2 text-sm font-medium">Positions</div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <div className="text-sm font-medium">Positions</div>
+                {state.positions.length > 12 ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-[var(--k-muted)]"
+                    onClick={() => setShowAllPositions((v) => !v)}
+                  >
+                    {showAllPositions ? 'Show less' : `Show all (${state.positions.length})`}
+                  </Button>
+                ) : null}
+              </div>
+              <div className="mb-2 text-xs text-[var(--k-muted)]">
+                Positions = your current holdings. Upload a holdings screenshot (持仓) to populate.
+              </div>
               {state.positions.length ? (
-                <div className="overflow-hidden rounded border border-[var(--k-border)]">
+                <div
+                  className="overflow-auto rounded border border-[var(--k-border)]"
+                  style={{ maxHeight: showAllPositions ? 360 : undefined }}
+                >
                   <table className="w-full border-collapse text-xs">
                     <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                       <tr className="text-left">
@@ -321,22 +378,30 @@ export function BrokerPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {state.positions.slice(0, 12).map((p, idx) => {
-                        const ticker = pickStr(p, ['ticker', 'Ticker', 'symbol', 'Symbol']);
-                        const name = pickStr(p, ['name', 'Name']);
-                        const qty = pickStr(p, ['qtyHeld', 'qty', 'quantity', '持仓', '持仓/可用']);
-                        const price = pickStr(p, ['price', '现价', 'last']);
-                        const pnlPct = pickStr(p, ['pnlPct', 'pnl%', '盈亏%', 'PnlPct']);
-                        return (
-                          <tr key={idx} className="border-t border-[var(--k-border)]">
-                            <td className="px-2 py-1 font-mono">{ticker}</td>
-                            <td className="px-2 py-1">{name}</td>
-                            <td className="px-2 py-1 font-mono">{qty}</td>
-                            <td className="px-2 py-1 font-mono">{price}</td>
-                            <td className="px-2 py-1 font-mono">{pnlPct}</td>
-                          </tr>
-                        );
-                      })}
+                      {(showAllPositions ? state.positions : state.positions.slice(0, 12)).map(
+                        (p, idx) => {
+                          const ticker = pickStr(p, ['ticker', 'Ticker', 'symbol', 'Symbol']);
+                          const name = pickStr(p, ['name', 'Name']);
+                          const qty = pickStr(p, [
+                            'qtyHeld',
+                            'qty',
+                            'quantity',
+                            '持仓',
+                            '持仓/可用',
+                          ]);
+                          const price = pickStr(p, ['price', '现价', 'last']);
+                          const pnlPct = pickStr(p, ['pnlPct', 'pnl%', '盈亏%', 'PnlPct']);
+                          return (
+                            <tr key={idx} className="border-t border-[var(--k-border)]">
+                              <td className="px-2 py-1 font-mono">{ticker}</td>
+                              <td className="px-2 py-1">{name}</td>
+                              <td className="px-2 py-1 font-mono">{qty}</td>
+                              <td className="px-2 py-1 font-mono">{price}</td>
+                              <td className="px-2 py-1 font-mono">{pnlPct}</td>
+                            </tr>
+                          );
+                        },
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -347,9 +412,24 @@ export function BrokerPage() {
           </div>
 
           <div className="mt-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-            <div className="mb-2 text-sm font-medium">Conditional orders</div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="text-sm font-medium">Conditional orders</div>
+              {state.conditionalOrders.length > 12 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-[var(--k-muted)]"
+                  onClick={() => setShowAllOrders((v) => !v)}
+                >
+                  {showAllOrders ? 'Show less' : `Show all (${state.conditionalOrders.length})`}
+                </Button>
+              ) : null}
+            </div>
             {state.conditionalOrders.length ? (
-              <div className="overflow-hidden rounded border border-[var(--k-border)]">
+              <div
+                className="overflow-auto rounded border border-[var(--k-border)]"
+                style={{ maxHeight: showAllOrders ? 420 : undefined }}
+              >
                 <table className="w-full border-collapse text-xs">
                   <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                     <tr className="text-left">
@@ -359,18 +439,23 @@ export function BrokerPage() {
                       <th className="px-2 py-1">Trigger</th>
                       <th className="px-2 py-1">Qty</th>
                       <th className="px-2 py-1">Status</th>
+                      <th className="px-2 py-1 w-[44px] text-right"> </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {state.conditionalOrders.slice(0, 12).map((o, idx) => {
+                    {(showAllOrders
+                      ? state.conditionalOrders
+                      : state.conditionalOrders.slice(0, 12)
+                    ).map((o, idx) => {
                       const ticker = pickStr(o, ['ticker', 'Ticker', 'symbol', 'Symbol']);
                       const name = pickStr(o, ['name', 'Name']);
                       const side = pickStr(o, ['side', 'Side', '方向']);
-                      const trigger = `${pickStr(o, ['triggerCondition', 'condition', '触发条件'])} ${pickStr(o, [
-                        'triggerValue',
-                        'value',
-                        '触发价',
-                      ])}`.trim();
+                      const trigger =
+                        `${pickStr(o, ['triggerCondition', 'condition', '触发条件'])} ${pickStr(o, [
+                          'triggerValue',
+                          'value',
+                          '触发价',
+                        ])}`.trim();
                       const qty = pickStr(o, ['qty', 'quantity', '委托数量', '数量']);
                       const status = pickStr(o, ['status', 'Status', '状态']);
                       return (
@@ -381,6 +466,19 @@ export function BrokerPage() {
                           <td className="px-2 py-1 font-mono">{trigger}</td>
                           <td className="px-2 py-1 font-mono">{qty}</td>
                           <td className="px-2 py-1 font-mono">{status}</td>
+                          <td className="px-2 py-1 text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              disabled={busy}
+                              onClick={() => void onDeleteConditionalOrder(o)}
+                              aria-label="Delete"
+                              title="Delete"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -388,7 +486,72 @@ export function BrokerPage() {
                 </table>
               </div>
             ) : (
-              <div className="text-xs text-[var(--k-muted)]">No conditional orders in current state.</div>
+              <div className="text-xs text-[var(--k-muted)]">
+                No conditional orders in current state.
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="text-sm font-medium">Trades</div>
+              {state.trades.length > 12 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-[var(--k-muted)]"
+                  onClick={() => setShowAllTrades((v) => !v)}
+                >
+                  {showAllTrades ? 'Show less' : `Show all (${state.trades.length})`}
+                </Button>
+              ) : null}
+            </div>
+            {state.trades.length ? (
+              <div
+                className="overflow-auto rounded border border-[var(--k-border)]"
+                style={{ maxHeight: showAllTrades ? 420 : undefined }}
+              >
+                <table className="w-full border-collapse text-xs">
+                  <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                    <tr className="text-left">
+                      <th className="px-2 py-1">Time</th>
+                      <th className="px-2 py-1">Ticker</th>
+                      <th className="px-2 py-1">Name</th>
+                      <th className="px-2 py-1">Side</th>
+                      <th className="px-2 py-1">Price</th>
+                      <th className="px-2 py-1">Qty</th>
+                      <th className="px-2 py-1">Amount</th>
+                      <th className="px-2 py-1">Fee</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(showAllTrades ? state.trades : state.trades.slice(0, 12)).map((t, idx) => {
+                      const time = pickStr(t, ['time', 'Time', 'date', 'Date', '时间']);
+                      const ticker = pickStr(t, ['ticker', 'Ticker', 'symbol', 'Symbol', '代码']);
+                      const name = pickStr(t, ['name', 'Name', '名称']);
+                      const side = pickStr(t, ['side', 'Side', '方向', '操作']);
+                      const price = pickStr(t, ['price', 'Price', '成交价']);
+                      const qty = pickStr(t, ['qty', 'quantity', '成交量', '数量']);
+                      const amount = pickStr(t, ['amount', 'Amount', '成交金额']);
+                      const fee = pickStr(t, ['fee', 'Fee', '手续费']);
+                      return (
+                        <tr key={idx} className="border-t border-[var(--k-border)]">
+                          <td className="px-2 py-1 font-mono">{time}</td>
+                          <td className="px-2 py-1 font-mono">{ticker}</td>
+                          <td className="px-2 py-1">{name}</td>
+                          <td className="px-2 py-1 font-mono">{side}</td>
+                          <td className="px-2 py-1 font-mono">{price}</td>
+                          <td className="px-2 py-1 font-mono">{qty}</td>
+                          <td className="px-2 py-1 font-mono">{amount}</td>
+                          <td className="px-2 py-1 font-mono">{fee}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-xs text-[var(--k-muted)]">No trades in current state.</div>
             )}
           </div>
         </section>
@@ -398,7 +561,11 @@ export function BrokerPage() {
         <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="mb-3 flex items-center justify-between">
             <div className="font-medium">Import screenshots</div>
-            <Button size="sm" disabled={busy || images.length === 0} onClick={() => void onImport()}>
+            <Button
+              size="sm"
+              disabled={busy || images.length === 0}
+              onClick={() => void onImport()}
+            >
               {busy ? 'Analyzing…' : 'Analyze & Save'}
             </Button>
           </div>
@@ -424,7 +591,10 @@ export function BrokerPage() {
             {images.length ? (
               <div className="mt-3 grid grid-cols-4 gap-2">
                 {images.map((img) => (
-                  <div key={img.id} className="group relative overflow-hidden rounded-md border border-[var(--k-border)]">
+                  <div
+                    key={img.id}
+                    className="group relative overflow-hidden rounded-md border border-[var(--k-border)]"
+                  >
                     <Image
                       src={img.dataUrl}
                       alt={img.name}
@@ -451,5 +621,3 @@ export function BrokerPage() {
     </div>
   );
 }
-
-

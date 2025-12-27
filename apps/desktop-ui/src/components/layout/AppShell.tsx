@@ -10,6 +10,7 @@ import { BrokerPage } from '@/components/pages/BrokerPage';
 import { MarketPage } from '@/components/pages/MarketPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
+import { StrategyPage } from '@/components/pages/StrategyPage';
 import { StockPage } from '@/components/pages/StockPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
@@ -99,6 +100,8 @@ export function AppShell() {
                 ? 'Market'
               : activePage === 'broker'
                 ? 'Broker'
+              : activePage === 'strategy'
+                ? 'Strategy'
               : activePage === 'stock'
                 ? activeStockSymbol ?? 'Stock'
               : activePage === 'screener'
@@ -146,6 +149,8 @@ export function AppShell() {
               />
             ) : activePage === 'broker' ? (
               <BrokerPage />
+            ) : activePage === 'strategy' ? (
+              <StrategyPage />
             ) : activePage === 'stock' && activeStockSymbol ? (
               <StockPage
                 symbol={activeStockSymbol}

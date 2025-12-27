@@ -201,3 +201,36 @@ def test_market_fund_flow_cn_only(tmp_path, monkeypatch) -> None:
     assert resp.status_code == 400
 
 
+def test_market_bars_hk_provider_error(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    # Insert HK stock via sync
+    monkeypatch.setattr(
+        main,
+        "fetch_cn_a_spot",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        main,
+        "fetch_hk_spot",
+        lambda: [
+            main.StockRow(
+                symbol="HK:00005",
+                market="HK",
+                ticker="00005",
+                name="HSBC",
+                currency="HKD",
+                quote={},
+            )
+        ],
+    )
+    client = TestClient(main.app)
+    client.post("/market/sync")
+
+    # Make HK provider fail (simulating AkShare internal NoneType error).
+    monkeypatch.setattr(main, "fetch_hk_daily_bars", lambda ticker, days=60: (_ for _ in ()).throw(RuntimeError("empty data")))
+
+    resp = client.get("/market/stocks/HK:00005/bars?days=60")
+    assert resp.status_code == 500
+

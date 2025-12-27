@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +34,7 @@ from market.akshare_provider import (
     fetch_hk_spot,
 )
 from tv.capture import capture_screener_over_cdp_sync
+from tv.normalize import split_symbol_cell
 
 
 @dataclass(frozen=True)
@@ -264,6 +266,35 @@ def _connect() -> sqlite3.Connection:
     )
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_broker_snapshots_broker_account_sha256 ON broker_snapshots(broker, account_id, sha256)",
+    )
+
+    # --- Strategy module (v0) ---
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS broker_account_prompts (
+          account_id TEXT PRIMARY KEY,
+          strategy_prompt TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+        )
+        """,
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS strategy_reports (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          date TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          model TEXT NOT NULL,
+          input_snapshot_json TEXT NOT NULL,
+          output_json TEXT NOT NULL,
+          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+        )
+        """,
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_strategy_reports_account_date ON strategy_reports(account_id, date)",
     )
     conn.commit()
     return conn
@@ -1029,6 +1060,26 @@ class ListTvScreenerSnapshotsResponse(BaseModel):
     items: list[TvScreenerSnapshotSummary]
 
 
+class TvScreenerHistoryCell(BaseModel):
+    snapshotId: str
+    capturedAt: str
+    rowCount: int
+    screenTitle: str | None = None
+    filters: list[str] = []
+
+
+class TvScreenerHistoryDayRow(BaseModel):
+    date: str  # YYYY-MM-DD in Asia/Shanghai
+    am: TvScreenerHistoryCell | None = None
+    pm: TvScreenerHistoryCell | None = None
+
+
+class TvScreenerHistoryResponse(BaseModel):
+    screenerId: str
+    screenerName: str
+    days: int
+    rows: list[TvScreenerHistoryDayRow]
+
 class TvScreenerSnapshotDetail(BaseModel):
     id: str
     screenerId: str
@@ -1097,6 +1148,15 @@ class BrokerAccountStateResponse(BaseModel):
 class BrokerSyncRequest(BaseModel):
     capturedAt: str | None = None
     images: list[BrokerImportImage]
+
+
+class DeleteBrokerConditionalOrderRequest(BaseModel):
+    """
+    Delete one conditional order row from the consolidated account state.
+    The order does not have a stable id, so we match by a normalized signature.
+    """
+
+    order: dict[str, Any]
 
 
 class BrokerAccountSummary(BaseModel):
@@ -1169,6 +1229,85 @@ class MarketFundFlowResponse(BaseModel):
     name: str
     currency: str
     items: list[dict[str, str]]
+
+
+# --- Strategy module (v0) ---
+class StrategyAccountPromptResponse(BaseModel):
+    accountId: str
+    prompt: str
+    updatedAt: str | None
+
+
+class StrategyAccountPromptRequest(BaseModel):
+    prompt: str
+
+
+class StrategyDailyGenerateRequest(BaseModel):
+    date: str | None = None  # YYYY-MM-DD, optional
+    force: bool = False
+    maxCandidates: int = 10
+
+
+class StrategyCandidate(BaseModel):
+    symbol: str
+    market: str
+    ticker: str
+    name: str
+    score: float
+    rank: int
+    why: str
+
+
+class StrategyLeader(BaseModel):
+    symbol: str
+    reason: str
+
+
+class StrategyLevels(BaseModel):
+    support: list[str] = []
+    resistance: list[str] = []
+    invalidations: list[str] = []
+
+
+class StrategyOrder(BaseModel):
+    """
+    v0: keep orders as human-readable conditional-order recipes, so the UI can display it
+    and the user can manually translate to broker conditional orders.
+    """
+
+    kind: str  # e.g. breakout_buy | pullback_buy | stop_loss | take_profit
+    side: str  # buy | sell
+    trigger: str  # e.g. "price >= 445.0"
+    qty: str  # e.g. "1000 shares" or "10% equity"
+    timeInForce: str | None = None  # day | gtc
+    notes: str | None = None
+
+
+class StrategyRecommendation(BaseModel):
+    symbol: str
+    ticker: str
+    name: str
+    thesis: str
+    levels: StrategyLevels
+    orders: list[StrategyOrder]
+    positionSizing: str
+    riskNotes: list[str] = []
+
+
+class StrategyReportResponse(BaseModel):
+    id: str
+    date: str
+    accountId: str
+    accountTitle: str
+    createdAt: str
+    model: str
+    candidates: list[StrategyCandidate]
+    leader: StrategyLeader
+    recommendations: list[StrategyRecommendation]
+    riskNotes: list[str] = []
+    # Debugging / traceability
+    inputSnapshot: dict[str, Any] | None = None
+    raw: dict[str, Any] | None = None
 
 
 @app.get("/integrations/tradingview/screeners", response_model=ListTvScreenersResponse)
@@ -1558,12 +1697,17 @@ def market_stock_bars(symbol: str, days: int = 60) -> MarketBarsResponse:
 
     if len(cached) < days2:
         ts = now_iso()
-        if market == "CN":
-            bars = fetch_cn_a_daily_bars(ticker, days=days2)
-        elif market == "HK":
-            bars = fetch_hk_daily_bars(ticker, days=days2)
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported market")
+        try:
+            if market == "CN":
+                bars = fetch_cn_a_daily_bars(ticker, days=days2)
+            elif market == "HK":
+                bars = fetch_hk_daily_bars(ticker, days=days2)
+            else:
+                raise HTTPException(status_code=400, detail="Unsupported market")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Bars fetch failed for {ticker}: {e}") from e
         with _connect() as conn:
             _upsert_market_bars(conn, sym, bars, ts)
             conn.commit()
@@ -1655,7 +1799,10 @@ def market_stock_chips(symbol: str, days: int = 60) -> MarketChipsResponse:
         )
 
     ts = now_iso()
-    items2 = fetch_cn_a_chip_summary(ticker, days=days2)
+    try:
+        items2 = fetch_cn_a_chip_summary(ticker, days=days2)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chip fetch failed for {ticker}: {e}") from e
     with _connect() as conn:
         _upsert_market_chips(conn, sym, items2, ts)
         conn.commit()
@@ -1714,7 +1861,10 @@ def market_stock_fund_flow(symbol: str, days: int = 60) -> MarketFundFlowRespons
         )
 
     ts = now_iso()
-    items2 = fetch_cn_a_fund_flow(ticker, days=days2)
+    try:
+        items2 = fetch_cn_a_fund_flow(ticker, days=days2)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fund flow fetch failed for {ticker}: {e}") from e
     with _connect() as conn:
         _upsert_market_fund_flow(conn, sym, items2, ts)
         conn.commit()
@@ -1810,6 +1960,152 @@ def _get_tv_snapshot(snapshot_id: str) -> TvScreenerSnapshotDetail | None:
             ],
         )
 
+
+def _parse_iso_datetime(value: str) -> datetime | None:
+    """
+    Parse an ISO string used by our capture pipeline. Accepts 'Z' suffix.
+    """
+    s = (value or "").strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
+
+
+def _tv_local_date_and_slot(captured_at: str) -> tuple[str, str]:
+    """
+    Group snapshots by local date and slot (am/pm) in Asia/Shanghai.
+    """
+    dt = _parse_iso_datetime(captured_at)
+    if dt is None:
+        return _today_cn_date_str(), "unknown"
+    try:
+        dt2 = dt.astimezone(ZoneInfo("Asia/Shanghai"))
+    except Exception:
+        dt2 = dt.astimezone(UTC)
+    slot = "am" if dt2.hour < 12 else "pm"
+    return dt2.date().isoformat(), slot
+
+
+def _list_tv_snapshots_for_screener(
+    screener_id: str,
+    *,
+    days: int,
+) -> list[dict[str, Any]]:
+    """
+    DB-first: list snapshot rows for screener within last N days.
+    Returns rows with minimal payload extraction (screenTitle/filters).
+    """
+    days2 = max(1, min(int(days), 60))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, screener_id, captured_at, row_count, rows_json
+            FROM tv_screener_snapshots
+            WHERE screener_id = ?
+            ORDER BY captured_at DESC
+            LIMIT 200
+            """,
+            (screener_id,),
+        ).fetchall()
+
+    out: list[dict[str, Any]] = []
+    # Filter by local date window (Asia/Shanghai).
+    keep_dates: set[str] = set()
+    try:
+        tz2 = ZoneInfo("Asia/Shanghai")
+        d0 = datetime.now(tz=tz2).date()
+    except Exception:
+        d0 = datetime.now(tz=UTC).date()
+    for i in range(days2):
+        keep_dates.add((d0.fromordinal(d0.toordinal() - i)).isoformat())
+
+    for r in rows:
+        sid = str(r[0])
+        captured_at = str(r[2])
+        local_date, _slot = _tv_local_date_and_slot(captured_at)
+        if local_date not in keep_dates:
+            continue
+        try:
+            payload = json.loads(str(r[4]) or "{}")
+            screen_title = str(payload.get("screenTitle") or "") or None
+            filters = payload.get("filters") or []
+            filters2 = [str(x) for x in filters if str(x).strip()] if isinstance(filters, list) else []
+        except Exception:
+            screen_title = None
+            filters2 = []
+        out.append(
+            {
+                "snapshotId": sid,
+                "screenerId": str(r[1]),
+                "capturedAt": captured_at,
+                "rowCount": int(r[3]),
+                "screenTitle": screen_title,
+                "filters": filters2,
+            },
+        )
+    return out
+
+
+@app.get(
+    "/integrations/tradingview/screeners/{screener_id}/history",
+    response_model=TvScreenerHistoryResponse,
+)
+def tv_screener_history(screener_id: str, days: int = 10) -> TvScreenerHistoryResponse:
+    _seed_default_tv_screeners()
+    s = _get_tv_screener_row(screener_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail="Screener not found")
+    days2 = max(1, min(int(days), 30))
+
+    items = _list_tv_snapshots_for_screener(screener_id, days=days2)
+    # Build last N local dates in descending order.
+    try:
+        tz = ZoneInfo("Asia/Shanghai")
+        d0 = datetime.now(tz=tz).date()
+    except Exception:
+        d0 = datetime.now(tz=UTC).date()
+    dates = [(d0.fromordinal(d0.toordinal() - i)).isoformat() for i in range(days2)]
+    by_date: dict[str, dict[str, TvScreenerHistoryCell]] = {d: {} for d in dates}
+
+    for it in items:
+        local_date, slot = _tv_local_date_and_slot(str(it.get("capturedAt") or ""))
+        if local_date not in by_date:
+            continue
+        # Keep the latest snapshot per slot (items are sorted DESC by capturedAt).
+        if slot not in {"am", "pm"}:
+            continue
+        if slot in by_date[local_date]:
+            continue
+        by_date[local_date][slot] = TvScreenerHistoryCell(
+            snapshotId=str(it.get("snapshotId") or ""),
+            capturedAt=str(it.get("capturedAt") or ""),
+            rowCount=int(it.get("rowCount") or 0),
+            screenTitle=str(it.get("screenTitle") or "") or None,
+            filters=[str(x) for x in (it.get("filters") or []) if str(x).strip()],
+        )
+
+    rows_out: list[TvScreenerHistoryDayRow] = []
+    for d in dates:
+        cells = by_date.get(d) or {}
+        rows_out.append(
+            TvScreenerHistoryDayRow(
+                date=d,
+                am=cells.get("am"),
+                pm=cells.get("pm"),
+            ),
+        )
+
+    return TvScreenerHistoryResponse(
+        screenerId=str(s["id"]),
+        screenerName=str(s["name"]),
+        days=days2,
+        rows=rows_out,
+    )
 
 @app.post(
     "/integrations/tradingview/screeners/{screener_id}/sync",
@@ -2169,9 +2465,30 @@ def sync_pingan_account_from_screenshots(
     captured_at = (req.capturedAt or now_iso()).strip() or now_iso()
 
     overview: dict[str, Any] | None = None
-    positions: list[dict[str, Any]] | None = None
-    orders: list[dict[str, Any]] | None = None
-    trades: list[dict[str, Any]] | None = None
+
+    saw_positions = False
+    saw_orders = False
+    saw_trades = False
+    positions_acc: list[dict[str, Any]] = []
+    orders_acc: list[dict[str, Any]] = []
+    trades_acc: list[dict[str, Any]] = []
+
+    def _dedupe(rows: list[dict[str, Any]], *, keys: list[str]) -> list[dict[str, Any]]:
+        """
+        Dedupe rows across multiple screenshots. We keep order and prefer earlier rows.
+        """
+        out_rows: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for r in rows:
+            base = {k: _norm_str(r.get(k)) for k in keys if k in r and _norm_str(r.get(k))}
+            if not base:
+                base = r
+            sig = json.dumps(base, ensure_ascii=False, sort_keys=True)
+            if sig in seen:
+                continue
+            seen.add(sig)
+            out_rows.append(r)
+        return out_rows
 
     for img in req.images:
         # We intentionally do NOT write images to disk in the state-first design.
@@ -2182,31 +2499,934 @@ def sync_pingan_account_from_screenshots(
         data = extracted.get("data")
         data2 = data if isinstance(data, dict) else {}
 
+        # NOTE: A single screenshot can contain multiple sections (overview + positions, etc).
+        # We therefore extract by data keys as well, not only by the classifier kind.
         if kind == "account_overview":
             overview = data2
-        elif kind == "positions":
-            ps = data2.get("positions")
-            if isinstance(ps, list):
-                positions = [p if isinstance(p, dict) else {"raw": p} for p in ps]
-        elif kind == "conditional_orders":
-            os_ = data2.get("orders")
-            if isinstance(os_, list):
-                orders = [o if isinstance(o, dict) else {"raw": o} for o in os_]
-        elif kind == "trades":
-            ts = data2.get("trades")
-            if isinstance(ts, list):
-                trades = [t if isinstance(t, dict) else {"raw": t} for t in ts]
+        elif kind == "positions" and overview is None and any(
+            k in data2 for k in ("totalAssets", "securitiesValue", "cashAvailable", "withdrawable")
+        ):
+            # Some models return kind=positions but include overview numbers; keep them if present.
+            overview = data2
+
+        ps = data2.get("positions")
+        if isinstance(ps, list):
+            saw_positions = True
+            positions_acc.extend([p if isinstance(p, dict) else {"raw": p} for p in ps])
+
+        os_ = data2.get("orders")
+        if isinstance(os_, list):
+            saw_orders = True
+            orders_acc.extend([o if isinstance(o, dict) else {"raw": o} for o in os_])
+
+        ts = data2.get("trades")
+        if isinstance(ts, list):
+            saw_trades = True
+            trades_acc.extend([t if isinstance(t, dict) else {"raw": t} for t in ts])
+
+    positions_out: list[dict[str, Any]] | None = None
+    orders_out: list[dict[str, Any]] | None = None
+    trades_out: list[dict[str, Any]] | None = None
+    if saw_positions and positions_acc:
+        positions_out = _dedupe(positions_acc, keys=["ticker", "Ticker", "symbol", "Symbol", "name", "Name"])
+    if saw_orders and orders_acc:
+        orders_out = _dedupe(
+            orders_acc,
+            keys=[
+                "ticker",
+                "Ticker",
+                "symbol",
+                "Symbol",
+                "name",
+                "Name",
+                "side",
+                "Side",
+                "triggerCondition",
+                "triggerValue",
+                "qty",
+                "quantity",
+                "status",
+                "validUntil",
+            ],
+        )
+    if saw_trades and trades_acc:
+        # User expectation: dedupe by time + ticker (code). Keep other fields as-is.
+        trades_out = _dedupe(trades_acc, keys=["ticker", "Ticker", "symbol", "Symbol", "time", "date"])
 
     _upsert_account_state(
         account_id=aid,
         broker="pingan",
         updated_at=captured_at,
         overview=overview,
-        positions=positions,
-        conditional_orders=orders,
-        trades=trades,
+        positions=positions_out,
+        conditional_orders=orders_out,
+        trades=trades_out,
     )
     return _account_state_response(aid)
+
+
+def _norm_str(v: Any) -> str:
+    s = "" if v is None else str(v)
+    s2 = re.sub(r"\s+", " ", s).strip()
+    return s2
+
+
+def _pick_first_str(obj: dict[str, Any], keys: list[str]) -> str:
+    for k in keys:
+        if k in obj:
+            v = _norm_str(obj.get(k))
+            if v:
+                return v
+    return ""
+
+
+def _conditional_order_key(order: dict[str, Any]) -> str:
+    """
+    Build a stable signature for a conditional order row across OCR/model variants.
+    """
+    payload = {
+        "ticker": _pick_first_str(order, ["ticker", "Ticker", "symbol", "Symbol", "代码"]),
+        "side": _pick_first_str(order, ["side", "Side", "方向"]).lower(),
+        "triggerCondition": _pick_first_str(order, ["triggerCondition", "condition", "触发条件"]),
+        "triggerValue": _pick_first_str(order, ["triggerValue", "value", "触发价"]),
+        "qty": _pick_first_str(order, ["qty", "quantity", "委托数量", "数量"]),
+        "status": _pick_first_str(order, ["status", "Status", "状态"]),
+        "validUntil": _pick_first_str(order, ["validUntil", "有效期"]),
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+@app.post(
+    "/broker/pingan/accounts/{account_id}/state/conditional-orders/delete",
+    response_model=BrokerAccountStateResponse,
+)
+def delete_pingan_account_conditional_order(
+    account_id: str,
+    req: DeleteBrokerConditionalOrderRequest,
+) -> BrokerAccountStateResponse:
+    """
+    Manual adjustment: delete one conditional order row from the consolidated state.
+    """
+    aid = (account_id or "").strip()
+    if not aid:
+        raise HTTPException(status_code=400, detail="account_id is required")
+    if not isinstance(req.order, dict) or not req.order:
+        raise HTTPException(status_code=400, detail="order is required")
+
+    row = _get_account_state_row(aid)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Account state not found")
+
+    target_key = _conditional_order_key(req.order)
+    if not target_key or target_key == "{}":
+        raise HTTPException(status_code=400, detail="order is invalid")
+
+    raw_orders = row.get("conditionalOrders")
+    orders: list[Any] = raw_orders if isinstance(raw_orders, list) else []
+
+    kept: list[dict[str, Any]] = []
+    removed = 0
+    for o in orders:
+        if isinstance(o, dict) and _conditional_order_key(o) == target_key:
+            removed += 1
+            continue
+        kept.append(o if isinstance(o, dict) else {"raw": o})
+
+    if removed == 0:
+        raise HTTPException(status_code=404, detail="Conditional order not found")
+
+    # Persist new state with fresh timestamp (manual edit).
+    raw_positions = row.get("positions")
+    positions: list[Any] = raw_positions if isinstance(raw_positions, list) else []
+    raw_trades = row.get("trades")
+    trades: list[Any] = raw_trades if isinstance(raw_trades, list) else []
+    overview = row.get("overview") if isinstance(row.get("overview"), dict) else {}
+
+    _upsert_account_state(
+        account_id=aid,
+        broker="pingan",
+        updated_at=now_iso(),
+        overview=overview,
+        positions=[x if isinstance(x, dict) else {"raw": x} for x in positions],
+        conditional_orders=kept,
+        trades=[x if isinstance(x, dict) else {"raw": x} for x in trades],
+    )
+    return _account_state_response(aid)
+
+
+def _today_cn_date_str() -> str:
+    """
+    Trading strategy is day-based and for CN/HK markets; use Asia/Shanghai calendar date.
+    """
+    try:
+        tz = ZoneInfo("Asia/Shanghai")
+        return datetime.now(tz=tz).date().isoformat()
+    except Exception:
+        return datetime.now(tz=UTC).date().isoformat()
+
+
+def _get_broker_account_row(account_id: str) -> dict[str, str] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, broker, title, account_masked, updated_at FROM broker_accounts WHERE id = ?",
+            (account_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": str(row[0]),
+            "broker": str(row[1]),
+            "title": str(row[2]),
+            "accountMasked": str(row[3]) if row[3] is not None else "",
+            "updatedAt": str(row[4]),
+        }
+
+
+def _get_strategy_prompt(account_id: str) -> tuple[str, str | None]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT strategy_prompt, updated_at FROM broker_account_prompts WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+        if row is None:
+            return "", None
+        return str(row[0] or ""), str(row[1] or "") or None
+
+
+def _set_strategy_prompt(account_id: str, prompt: str) -> StrategyAccountPromptResponse:
+    ts = now_iso()
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO broker_account_prompts(account_id, strategy_prompt, updated_at)
+            VALUES(?, ?, ?)
+            ON CONFLICT(account_id) DO UPDATE SET
+              strategy_prompt = excluded.strategy_prompt,
+              updated_at = excluded.updated_at
+            """,
+            (account_id, prompt, ts),
+        )
+        conn.commit()
+    return StrategyAccountPromptResponse(accountId=account_id, prompt=prompt, updatedAt=ts)
+
+
+@app.get("/strategy/accounts/{account_id}/prompt", response_model=StrategyAccountPromptResponse)
+def get_strategy_account_prompt(account_id: str) -> StrategyAccountPromptResponse:
+    aid = (account_id or "").strip()
+    if not aid:
+        raise HTTPException(status_code=400, detail="account_id is required")
+    if _get_broker_account_row(aid) is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    prompt, updated_at = _get_strategy_prompt(aid)
+    return StrategyAccountPromptResponse(accountId=aid, prompt=prompt, updatedAt=updated_at)
+
+
+@app.put("/strategy/accounts/{account_id}/prompt", response_model=StrategyAccountPromptResponse)
+def put_strategy_account_prompt(
+    account_id: str,
+    req: StrategyAccountPromptRequest,
+) -> StrategyAccountPromptResponse:
+    aid = (account_id or "").strip()
+    if not aid:
+        raise HTTPException(status_code=400, detail="account_id is required")
+    if _get_broker_account_row(aid) is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    prompt = (req.prompt or "").strip()
+    return _set_strategy_prompt(aid, prompt)
+
+
+def _get_strategy_report_row(account_id: str, date: str) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, account_id, date, created_at, model, input_snapshot_json, output_json
+            FROM strategy_reports
+            WHERE account_id = ? AND date = ?
+            """,
+            (account_id, date),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": str(row[0]),
+            "accountId": str(row[1]),
+            "date": str(row[2]),
+            "createdAt": str(row[3]),
+            "model": str(row[4]),
+            "inputSnapshot": json.loads(str(row[5]) or "{}"),
+            "output": json.loads(str(row[6]) or "{}"),
+        }
+
+
+def _store_strategy_report(
+    *,
+    report_id: str,
+    account_id: str,
+    date: str,
+    created_at: str,
+    model: str,
+    input_snapshot: dict[str, Any],
+    output: dict[str, Any],
+) -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO strategy_reports(id, account_id, date, created_at, model, input_snapshot_json, output_json)
+            VALUES(?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(account_id, date) DO UPDATE SET
+              id = excluded.id,
+              created_at = excluded.created_at,
+              model = excluded.model,
+              input_snapshot_json = excluded.input_snapshot_json,
+              output_json = excluded.output_json
+            """,
+            (
+                report_id,
+                account_id,
+                date,
+                created_at,
+                model,
+                json.dumps(input_snapshot, ensure_ascii=False),
+                json.dumps(output, ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+
+
+def _safe_float(v: Any) -> float:
+    try:
+        return float(str(v).strip())
+    except Exception:
+        return 0.0
+
+
+def _safe_int(v: Any) -> int:
+    try:
+        return int(float(str(v).strip()))
+    except Exception:
+        return 0
+
+
+def _strategy_report_response(
+    *,
+    report_id: str,
+    date: str,
+    account_id: str,
+    account_title: str,
+    created_at: str,
+    model: str,
+    output: dict[str, Any],
+    input_snapshot: dict[str, Any] | None,
+) -> StrategyReportResponse:
+    # Candidates
+    raw_candidates = output.get("candidates")
+    candidates_in: list[Any] = raw_candidates if isinstance(raw_candidates, list) else []
+    candidates: list[StrategyCandidate] = []
+    for i, c in enumerate(candidates_in[:5]):
+        if not isinstance(c, dict):
+            continue
+        candidates.append(
+            StrategyCandidate(
+                symbol=_norm_str(c.get("symbol") or ""),
+                market=_norm_str(c.get("market") or ""),
+                ticker=_norm_str(c.get("ticker") or ""),
+                name=_norm_str(c.get("name") or ""),
+                score=_safe_float(c.get("score")),
+                rank=_safe_int(c.get("rank")) or (i + 1),
+                why=_norm_str(c.get("why") or ""),
+            ),
+        )
+
+    # Leader
+    leader_obj = output.get("leader") if isinstance(output.get("leader"), dict) else {}
+    leader = StrategyLeader(
+        symbol=_norm_str((leader_obj or {}).get("symbol") or ""),
+        reason=_norm_str((leader_obj or {}).get("reason") or ""),
+    )
+
+    # Recommendations
+    raw_recs = output.get("recommendations")
+    recs_in: list[Any] = raw_recs if isinstance(raw_recs, list) else []
+    recs: list[StrategyRecommendation] = []
+    for r in recs_in[:3]:
+        if not isinstance(r, dict):
+            continue
+        levels_obj = r.get("levels") if isinstance(r.get("levels"), dict) else {}
+        levels = StrategyLevels(
+            support=[_norm_str(x) for x in (levels_obj.get("support") or []) if _norm_str(x)],
+            resistance=[_norm_str(x) for x in (levels_obj.get("resistance") or []) if _norm_str(x)],
+            invalidations=[_norm_str(x) for x in (levels_obj.get("invalidations") or []) if _norm_str(x)],
+        )
+        orders_in: list[Any] = r.get("orders") if isinstance(r.get("orders"), list) else []
+        orders: list[StrategyOrder] = []
+        for o in orders_in:
+            if not isinstance(o, dict):
+                continue
+            orders.append(
+                StrategyOrder(
+                    kind=_norm_str(o.get("kind") or ""),
+                    side=_norm_str(o.get("side") or ""),
+                    trigger=_norm_str(o.get("trigger") or ""),
+                    qty=_norm_str(o.get("qty") or ""),
+                    timeInForce=_norm_str(o.get("timeInForce") or "") or None,
+                    notes=_norm_str(o.get("notes") or "") or None,
+                ),
+            )
+        risk_notes = r.get("riskNotes")
+        rn_in: list[Any] = risk_notes if isinstance(risk_notes, list) else []
+        recs.append(
+            StrategyRecommendation(
+                symbol=_norm_str(r.get("symbol") or ""),
+                ticker=_norm_str(r.get("ticker") or ""),
+                name=_norm_str(r.get("name") or ""),
+                thesis=_norm_str(r.get("thesis") or ""),
+                levels=levels,
+                orders=orders,
+                positionSizing=_norm_str(r.get("positionSizing") or ""),
+                riskNotes=[_norm_str(x) for x in rn_in if _norm_str(x)],
+            ),
+        )
+
+    # Risk notes
+    risk = output.get("riskNotes")
+    risk_in: list[Any] = risk if isinstance(risk, list) else []
+    risk_notes_out = [_norm_str(x) for x in risk_in if _norm_str(x)]
+
+    return StrategyReportResponse(
+        id=report_id,
+        date=date,
+        accountId=account_id,
+        accountTitle=account_title,
+        createdAt=created_at,
+        model=model,
+        candidates=candidates,
+        leader=leader,
+        recommendations=recs,
+        riskNotes=risk_notes_out,
+        inputSnapshot=input_snapshot,
+        raw=output,
+    )
+
+
+def _latest_tv_snapshot_for_screener(screener_id: str) -> TvScreenerSnapshotDetail | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id
+            FROM tv_screener_snapshots
+            WHERE screener_id = ?
+            ORDER BY captured_at DESC
+            LIMIT 1
+            """,
+            (screener_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return _get_tv_snapshot(str(row[0]))
+
+
+def _pick_tv_columns(headers: list[str]) -> list[str]:
+    preferred = [
+        "Ticker",
+        "Name",
+        "Symbol",
+        "Price",
+        "Change %",
+        "Rel Volume",
+        "Rel Volume 1W",
+        "Market cap",
+        "Sector",
+        "Analyst Rating",
+        "RSI (14)",
+    ]
+    seth = set(headers)
+    picked = [h for h in preferred if h in seth]
+    rest = [h for h in headers if h not in picked]
+    return (picked + rest)[:8]
+
+
+def _tv_snapshot_brief(snapshot_id: str, *, max_rows: int = 20) -> dict[str, Any]:
+    snap = _get_tv_snapshot(snapshot_id)
+    if snap is None:
+        return {"snapshotId": snapshot_id, "status": "not_found"}
+    cols = _pick_tv_columns(snap.headers)
+    rows = snap.rows[: max(0, int(max_rows))]
+    # Project only selected columns to reduce token usage.
+    out_rows: list[dict[str, str]] = []
+    for r in rows:
+        rr: dict[str, str] = {}
+        for c in cols:
+            rr[c] = str(r.get(c) or "").replace("\n", " ").strip()
+        out_rows.append(rr)
+    return {
+        "snapshotId": snap.id,
+        "screenerId": snap.screenerId,
+        "capturedAt": snap.capturedAt,
+        "screenTitle": snap.screenTitle,
+        "filters": snap.filters,
+        "url": snap.url,
+        "columns": cols,
+        "rows": out_rows,
+        "rowCount": snap.rowCount,
+    }
+
+
+def _infer_market_and_currency_from_tv_row(row: dict[str, Any]) -> tuple[str, str]:
+    price = _norm_str(row.get("Price") or row.get("price") or "")
+    if "HKD" in price:
+        return "HK", "HKD"
+    if "CNY" in price:
+        return "CN", "CNY"
+    ticker = _norm_str(row.get("Ticker") or "")
+    # CN A-share tickers are 6 digits. Treat shorter numeric tickers as HK by default.
+    if ticker.isdigit() and 0 < len(ticker) < 6:
+        return "HK", "HKD"
+    return "CN", "CNY"
+
+
+def _extract_tv_candidates(snap: TvScreenerSnapshotDetail) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    for r in snap.rows:
+        # IMPORTANT: Keep original newlines in Symbol cell, otherwise we can't split ticker/name.
+        sym_cell = str(r.get("Symbol") or r.get("Ticker") or r.get("代码") or "").strip()
+        if not sym_cell:
+            continue
+        parts = split_symbol_cell(sym_cell)
+        ticker = _norm_str(parts.get("Ticker") or "") or _norm_str(r.get("Ticker") or "")
+        name = _norm_str(parts.get("Name") or "") or _norm_str(r.get("Name") or "")
+        if not ticker:
+            continue
+        market, currency = _infer_market_and_currency_from_tv_row({**r, **parts})
+        out.append(
+            {
+                "market": market,
+                "currency": currency,
+                "ticker": ticker,
+                "name": name,
+                "symbol": f"{market}:{ticker}",
+            },
+        )
+    return out
+
+
+def _ensure_market_stock_basic(
+    *,
+    symbol: str,
+    market: str,
+    ticker: str,
+    name: str,
+    currency: str,
+) -> None:
+    with _connect() as conn:
+        row = conn.execute("SELECT symbol FROM market_stocks WHERE symbol = ?", (symbol,)).fetchone()
+        if row is not None:
+            return
+        ts = now_iso()
+        conn.execute(
+            """
+            INSERT INTO market_stocks(symbol, market, ticker, name, currency, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (symbol, market, ticker, name or ticker, currency, ts),
+        )
+        conn.commit()
+
+
+def _load_cached_bars(symbol: str, *, days: int) -> list[dict[str, str]]:
+    """
+    DB-first: load cached bars from SQLite. Returns bars in chronological order.
+    """
+    sym = symbol.strip()
+    days2 = max(1, min(int(days), 200))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT date, open, high, low, close, volume, amount
+            FROM market_bars
+            WHERE symbol = ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (sym, days2),
+        ).fetchall()
+    out = [
+        {
+            "date": str(r[0]),
+            "open": str(r[1] or ""),
+            "high": str(r[2] or ""),
+            "low": str(r[3] or ""),
+            "close": str(r[4] or ""),
+            "volume": str(r[5] or ""),
+            "amount": str(r[6] or ""),
+        }
+        for r in reversed(rows)
+    ]
+    return out
+
+
+def _load_cached_chips(symbol: str, *, days: int) -> list[dict[str, str]]:
+    """
+    DB-first: load cached chip distribution rows from SQLite.
+    """
+    sym = symbol.strip()
+    days2 = max(1, min(int(days), 200))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT raw_json
+            FROM market_chips
+            WHERE symbol = ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (sym, days2),
+        ).fetchall()
+    out: list[dict[str, str]] = []
+    for r in reversed(rows):
+        try:
+            obj = json.loads(str(r[0]) or "{}")
+            if isinstance(obj, dict):
+                out.append({str(k): str(v) for k, v in obj.items()})
+        except Exception:
+            continue
+    return out
+
+
+def _load_cached_fund_flow(symbol: str, *, days: int) -> list[dict[str, str]]:
+    """
+    DB-first: load cached fund flow distribution rows from SQLite.
+    """
+    sym = symbol.strip()
+    days2 = max(1, min(int(days), 200))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT raw_json
+            FROM market_fund_flow
+            WHERE symbol = ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (sym, days2),
+        ).fetchall()
+    out: list[dict[str, str]] = []
+    for r in reversed(rows):
+        try:
+            obj = json.loads(str(r[0]) or "{}")
+            if isinstance(obj, dict):
+                out.append({str(k): str(v) for k, v in obj.items()})
+        except Exception:
+            continue
+    return out
+
+
+def _bars_features(bars: list[dict[str, str]]) -> dict[str, Any]:
+    closes = []
+    highs = []
+    lows = []
+    volumes = []
+    for b in bars:
+        closes.append(_safe_float(b.get("close")))
+        highs.append(_safe_float(b.get("high")))
+        lows.append(_safe_float(b.get("low")))
+        volumes.append(_safe_float(b.get("volume")))
+    last_close = closes[-1] if closes else 0.0
+
+    def sma(xs: list[float], n: int) -> float:
+        if len(xs) < n or n <= 0:
+            return 0.0
+        return sum(xs[-n:]) / float(n)
+
+    return {
+        "lastClose": last_close,
+        "sma5": sma(closes, 5),
+        "sma10": sma(closes, 10),
+        "sma20": sma(closes, 20),
+        "high10": max(highs[-10:]) if len(highs) >= 10 else (max(highs) if highs else 0.0),
+        "low10": min(lows[-10:]) if len(lows) >= 10 else (min(lows) if lows else 0.0),
+        "volSma10": sma(volumes, 10),
+    }
+
+
+def _ai_strategy_daily(*, payload: dict[str, Any]) -> dict[str, Any]:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        f"{_ai_service_base_url()}/strategy/daily",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+        return json.loads(raw)
+
+
+@app.get("/strategy/accounts/{account_id}/daily", response_model=StrategyReportResponse)
+def get_strategy_daily_report(account_id: str, date: str | None = None) -> StrategyReportResponse:
+    aid = (account_id or "").strip()
+    if not aid:
+        raise HTTPException(status_code=400, detail="account_id is required")
+    acct = _get_broker_account_row(aid)
+    if acct is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    d = (date or "").strip() or _today_cn_date_str()
+    row = _get_strategy_report_row(aid, d)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return _strategy_report_response(
+        report_id=str(row["id"]),
+        date=d,
+        account_id=aid,
+        account_title=str(acct["title"]),
+        created_at=str(row["createdAt"]),
+        model=str(row["model"]),
+        output=row["output"] if isinstance(row.get("output"), dict) else {},
+        input_snapshot=row["inputSnapshot"] if isinstance(row.get("inputSnapshot"), dict) else None,
+    )
+
+
+@app.post("/strategy/accounts/{account_id}/daily", response_model=StrategyReportResponse)
+def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRequest) -> StrategyReportResponse:
+    aid = (account_id or "").strip()
+    if not aid:
+        raise HTTPException(status_code=400, detail="account_id is required")
+    acct = _get_broker_account_row(aid)
+    if acct is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    d = (req.date or "").strip() or _today_cn_date_str()
+    existing = _get_strategy_report_row(aid, d)
+    if existing is not None and not req.force:
+        return _strategy_report_response(
+            report_id=str(existing["id"]),
+            date=d,
+            account_id=aid,
+            account_title=str(acct["title"]),
+            created_at=str(existing["createdAt"]),
+            model=str(existing["model"]),
+            output=existing["output"] if isinstance(existing.get("output"), dict) else {},
+            input_snapshot=existing["inputSnapshot"] if isinstance(existing.get("inputSnapshot"), dict) else None,
+        )
+
+    # Context assembly (v0)
+    strategy_prompt, _ = _get_strategy_prompt(aid)
+    state_row = _get_account_state_row(aid) or {
+        "overview": {},
+        "positions": [],
+        "conditionalOrders": [],
+        "trades": [],
+    }
+
+    # Latest TradingView snapshots (default 2 screeners).
+    _seed_default_tv_screeners()
+    snaps: list[TvScreenerSnapshotDetail] = []
+    for sid in ("falcon", "blackhorse"):
+        s = _latest_tv_snapshot_for_screener(sid)
+        if s is not None:
+            snaps.append(s)
+
+    # Candidate pool = union of TV rows, capped.
+    pool: list[dict[str, str]] = []
+    seen_sym: set[str] = set()
+    for s in snaps:
+        for c in _extract_tv_candidates(s):
+            sym = c["symbol"]
+            if sym in seen_sym:
+                continue
+            seen_sym.add(sym)
+            pool.append(c)
+            if len(pool) >= max(1, min(int(req.maxCandidates), 20)):
+                break
+        if len(pool) >= max(1, min(int(req.maxCandidates), 20)):
+            break
+
+    # Fallback candidate pool: include current holdings to ensure we can always generate a report.
+    raw_positions = state_row.get("positions")
+    pos_list: list[Any] = raw_positions if isinstance(raw_positions, list) else []
+    for p in pos_list:
+        if not isinstance(p, dict):
+            continue
+        ticker = _norm_str(p.get("ticker") or p.get("Ticker") or p.get("symbol") or p.get("Symbol") or "")
+        if not ticker:
+            continue
+        name = _norm_str(p.get("name") or p.get("Name") or "")
+        market = "HK" if (len(ticker) in (4, 5)) else "CN"
+        currency = "HKD" if market == "HK" else "CNY"
+        sym = f"{market}:{ticker}"
+        if sym in seen_sym:
+            continue
+        seen_sym.add(sym)
+        pool.append({"symbol": sym, "market": market, "currency": currency, "ticker": ticker, "name": name})
+        if len(pool) >= max(1, min(int(req.maxCandidates), 20)):
+            break
+
+    # Ensure market universe has these symbols so we can fetch bars/chips/fund-flow.
+    for c in pool:
+        _ensure_market_stock_basic(
+            symbol=c["symbol"],
+            market=c["market"],
+            ticker=c["ticker"],
+            name=c.get("name") or c["ticker"],
+            currency=c["currency"],
+        )
+
+    # Fetch deep data for candidates (bounded).
+    stock_context: list[dict[str, Any]] = []
+    for c in pool:
+        sym = c["symbol"]
+        # DB-first: prefer cached bars; only fetch if cache is empty.
+        bars = _load_cached_bars(sym, days=60)
+        bars_error: str | None = None
+        if not bars:
+            try:
+                bars_resp = market_stock_bars(sym, days=60)
+                bars = bars_resp.bars
+            except Exception as e:
+                # v0: allow missing bars to avoid crashing daily report.
+                bars = []
+                bars_error = str(e)
+        feats = _bars_features(bars)
+        # DB-first: prefer cached chips/fund-flow. Only sync when missing.
+        chips = _load_cached_chips(sym, days=30)
+        fund_flow = _load_cached_fund_flow(sym, days=30)
+        if not chips:
+            try:
+                chips = market_stock_chips(sym, days=30).items
+            except Exception:
+                chips = []
+        if not fund_flow:
+            try:
+                fund_flow = market_stock_fund_flow(sym, days=30).items
+            except Exception:
+                fund_flow = []
+        stock_context.append(
+            {
+                "symbol": sym,
+                "market": c["market"],
+                "ticker": c["ticker"],
+                "name": c.get("name") or "",
+                "currency": c["currency"],
+                "barsDays": 60,
+                "chipsDays": 30,
+                "fundFlowDays": 30,
+                "availability": {
+                    "barsCached": True if bars else False,
+                    "chipsCached": True if chips else False,
+                    "fundFlowCached": True if fund_flow else False,
+                    "barsError": bars_error,
+                },
+                "features": feats,
+                "bars": bars,
+                "chips": chips,
+                "fundFlow": fund_flow,
+            },
+        )
+
+    # TradingView context: last 5 days history (AM/PM) for each screener.
+    tv_history: list[dict[str, Any]] = []
+    for sid in ("falcon", "blackhorse"):
+        srow = _get_tv_screener_row(sid)
+        if srow is None:
+            continue
+        hist = tv_screener_history(sid, days=5)
+        # Expand cells into compact snapshot briefs; keep time markers.
+        expanded: list[dict[str, Any]] = []
+        for day in hist.rows:
+            for slot in ("am", "pm"):
+                cell = getattr(day, slot)
+                if cell is None:
+                    continue
+                brief = _tv_snapshot_brief(cell.snapshotId, max_rows=20)
+                expanded.append(
+                    {
+                        "date": day.date,
+                        "slot": slot,
+                        "capturedAt": cell.capturedAt,
+                        "rowCount": cell.rowCount,
+                        "snapshot": brief,
+                    },
+                )
+        tv_history.append(
+            {
+                "screenerId": sid,
+                "screenerName": str(srow.get("name") or sid),
+                "days": 5,
+                "rows": expanded,
+            },
+        )
+
+    input_snapshot: dict[str, Any] = {
+        "date": d,
+        "account": {
+            "accountId": aid,
+            "broker": acct["broker"],
+            "accountTitle": acct["title"],
+            "accountMasked": acct.get("accountMasked") or "",
+        },
+        "accountPrompt": strategy_prompt,
+        "accountState": {
+            "overview": state_row.get("overview") if isinstance(state_row.get("overview"), dict) else {},
+            "positions": state_row.get("positions") if isinstance(state_row.get("positions"), list) else [],
+            "conditionalOrders": state_row.get("conditionalOrders")
+            if isinstance(state_row.get("conditionalOrders"), list)
+            else [],
+            "trades": state_row.get("trades") if isinstance(state_row.get("trades"), list) else [],
+        },
+        "tradingView": {
+            "latest": [
+                {
+                    "snapshotId": s.id,
+                    "screenerId": s.screenerId,
+                    "capturedAt": s.capturedAt,
+                    "screenTitle": s.screenTitle,
+                    "filters": s.filters,
+                    "url": s.url,
+                    "rowCount": s.rowCount,
+                }
+                for s in snaps
+            ],
+            "history": tv_history,
+        },
+        "stocks": stock_context,
+    }
+
+    # Call ai-service
+    ai_payload = {
+        "date": d,
+        "accountId": aid,
+        "accountTitle": acct["title"],
+        "accountPrompt": strategy_prompt,
+        "context": input_snapshot,
+    }
+    try:
+        out = _ai_strategy_daily(payload=ai_payload)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"ai-service request failed: {e}") from e
+
+    output = out if isinstance(out, dict) else {"error": "Invalid strategy output", "raw": out}
+    model = _norm_str(output.get("model") or os.getenv("AI_MODEL") or "ai-service")
+
+    report_id = str(uuid.uuid4())
+    created_at = now_iso()
+    _store_strategy_report(
+        report_id=report_id,
+        account_id=aid,
+        date=d,
+        created_at=created_at,
+        model=model,
+        input_snapshot=input_snapshot,
+        output=output,
+    )
+    return _strategy_report_response(
+        report_id=report_id,
+        date=d,
+        account_id=aid,
+        account_title=str(acct["title"]),
+        created_at=created_at,
+        model=model,
+        output=output,
+        input_snapshot=input_snapshot,
+    )
 
 
 def list_system_prompt_presets() -> list[SystemPromptPresetSummary]:

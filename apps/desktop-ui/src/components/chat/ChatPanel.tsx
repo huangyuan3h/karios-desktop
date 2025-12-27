@@ -284,6 +284,53 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       continue;
     }
 
+    if (ref.kind === 'strategyReport') {
+      try {
+        const resp = await fetch(
+          `${QUANT_BASE_URL}/strategy/accounts/${encodeURIComponent(ref.accountId)}/daily?date=${encodeURIComponent(ref.date)}`,
+          { cache: 'no-store' },
+        );
+        if (!resp.ok) throw new Error('failed to load strategy report');
+        const rep = (await resp.json()) as any;
+        out += `## Strategy report: ${ref.accountTitle}\n`;
+        out += `- date: ${String(rep.date ?? ref.date)}\n`;
+        out += `- model: ${String(rep.model ?? '')}\n`;
+        out += `- createdAt: ${String(rep.createdAt ?? ref.createdAt)}\n`;
+        if (rep.leader && typeof rep.leader === 'object') {
+          out += `\nLeader:\n`;
+          out += `- symbol: ${String(rep.leader.symbol ?? '')}\n`;
+          out += `- reason: ${String(rep.leader.reason ?? '')}\n`;
+        }
+        const cands = Array.isArray(rep.candidates) ? rep.candidates.slice(0, 5) : [];
+        if (cands.length) {
+          out += `\nCandidates (first ${cands.length}):\n`;
+          for (const c of cands) {
+            out += `- #${String(c.rank ?? '')} ${String(c.ticker ?? '')} ${String(c.name ?? '')} score=${String(c.score ?? '')} why=${String(c.why ?? '')}\n`;
+          }
+        }
+        const recs = Array.isArray(rep.recommendations) ? rep.recommendations.slice(0, 3) : [];
+        if (recs.length) {
+          out += `\nRecommendations (first ${recs.length}):\n`;
+          for (const r of recs) {
+            out += `- ${String(r.ticker ?? '')} ${String(r.name ?? '')} thesis=${String(r.thesis ?? '')}\n`;
+            const orders = Array.isArray(r.orders) ? r.orders.slice(0, 8) : [];
+            if (orders.length) {
+              out += `  Orders:\n`;
+              for (const o of orders) {
+                out += `  - ${String(o.kind ?? '')} ${String(o.side ?? '')} trigger=${String(o.trigger ?? '')} qty=${String(o.qty ?? '')} tif=${String(o.timeInForce ?? '')}\n`;
+              }
+            }
+          }
+        }
+        out += `\n`;
+      } catch {
+        out += `## Strategy report: ${ref.accountTitle}\n`;
+        out += `- date: ${ref.date}\n`;
+        out += `- status: failed to load report\n\n`;
+      }
+      continue;
+    }
+
     // Stock reference
     try {
       const [barsResp, chipsResp, ffResp] = await Promise.all([
