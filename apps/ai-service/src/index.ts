@@ -515,7 +515,10 @@ app.post('/strategy/daily-markdown', async (c) => {
     '  - Insert a blank line between sections.\n' +
     '  - NEVER put "# ..." and "## ..." on the same line.\n' +
     '- IMPORTANT output style:\n' +
-    '  - Prefer TABLES over long paragraphs. Keep narrative short; put decisions into tables.\n' +
+    '  - This must be a COMPLETE, readable report: combine short analysis paragraphs + tables.\n' +
+    '  - Prefer TABLES for decisions; keep paragraphs short (2-6 lines). Avoid huge walls of text.\n' +
+    '  - Each table MUST be written in valid GFM markdown table syntax, with header row + separator row on separate lines.\n' +
+    '  - Do NOT squeeze tables into a single line. Every row must be on its own line.\n' +
     '  - Section 2 (candidates) MUST be a markdown table.\n' +
     '  - Section 3 (holdings) MUST be a markdown table.\n' +
     '  - Section 5 MUST be a markdown table (the final action table).\n' +
@@ -529,19 +532,22 @@ app.post('/strategy/daily-markdown', async (c) => {
     'You MUST follow this template (fill with real content, keep headings exactly):\n' +
     `# ${accountTitle} 日度交易报告（${date}）\n\n` +
     '## 0）结果摘要（只要结论，用表格）\n\n' +
-    '| Focus themes | Leader | Risk budget | Max positions | Notes |\n' +
+    '| Focus themes | Leader | Risk budget | Max positions | Today stance | Notes |\n' +
     '|---|---|---|---|---|\n' +
-    '| TBD | TBD | 单笔≤1% 净值 | ≤3 | 右侧交易/条件单 |\n\n' +
+    '| TBD | TBD | 单笔≤1% 净值 | ≤3 | 进攻/均衡/防守 | 右侧交易/条件单 |\n\n' +
     '## 1）资金流向板块（行业资金流与轮动判断）\n\n' +
     '（用 3-6 条 bullet，总结：Top流入/Top流出/持续性/对持仓威胁/今日聚焦主题）\n\n' +
     '## 2）Top candidates（≤ 3）\n\n' +
-    '| Rank | Symbol | Name | Current | Why now | Key levels (S/R/Invalid) | Plan A (breakout trigger) | Plan B (pullback trigger) | Risk |\n' +
-    '|---:|---|---|---:|---|---|---|---|---|\n' +
-    '| 1 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |\n\n' +
+    '评分说明（0-100）：Trend(0-40)+Flow(0-30)+Structure(0-20)+Risk(0-10)。\n\n' +
+    '| Rank | Score | Symbol | Name | Current | Why now (1 line) | Key levels (S/R/Invalid) | Plan A (breakout trigger) | Plan B (pullback trigger) | Risk (1 line) |\n' +
+    '|---:|---:|---|---|---:|---|---|---|---|---|\n' +
+    '| 1 | 0 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |\n\n' +
+    '（用 1-2 段短文说明：为什么它是“龙头/优先级最高”，以及今天不做什么。）\n\n' +
     '## 3）现有持仓：止损 / 持有 / 减仓 / 清仓\n\n' +
-    '| Symbol | Name | Qty | Cost | Current | PnL% | Action | StopLoss trigger | Reduce/Exit trigger | Conditional orders (keep/adjust/cancel) | Notes |\n' +
-    '|---|---|---:|---:|---:|---:|---|---|---|---|---|\n' +
-    '| TBD | TBD | TBD | TBD | TBD | TBD | Hold/Reduce/Exit | TBD | TBD | TBD | TBD |\n\n' +
+    '| Symbol | Name | Qty | Cost | Current | PnL% | Action | Score | StopLoss trigger | Reduce/Exit trigger | Orders (keep/adjust/cancel) | Notes |\n' +
+    '|---|---|---:|---:|---:|---:|---|---:|---|---|---|---|\n' +
+    '| TBD | TBD | TBD | TBD | TBD | TBD | Hold/Reduce/Exit | 0 | TBD | TBD | TBD | TBD |\n\n' +
+    '（用 1 段短文总结：今天优先处理哪一只持仓的风险、哪些仓位可以顺势持有。）\n\n' +
     '## 4）盘中执行要点\n\n' +
     '- 只写 5-8 条“可执行规则”（例如：触发后必须补止损单；未触发不交易；午后复核；收盘撤销等）\n\n' +
     '## 5）平安证券条件单风格（总表）\n\n' +
@@ -561,7 +567,7 @@ app.post('/strategy/daily-markdown', async (c) => {
     '  - If there are existing conditional orders in context.accountState.conditionalOrders, say whether to keep/adjust/cancel.\n' +
     '- Section 5: Provide ONE consolidated action table (merge new opportunities + existing holdings) in Ping An style.\n' +
     '  - Use these columns exactly:\n' +
-    '    Symbol | Name | Current | Action | OrderType | TriggerCondition | TriggerValue | Qty | ValidUntil | Rationale | Risk | Exit\n' +
+    '    Priority | Score | Symbol | Name | Current | Action | OrderType | TriggerCondition | TriggerValue | Qty | ValidUntil | Rationale | Risk | Exit\n' +
     '  - OrderType should match Ping An wording (examples): 到价买入/到价卖出/反弹买入/回落卖出\n' +
     '  - TriggerCondition examples: 价格上穿/价格下穿/到价/回落/反弹\n' +
     '  - TriggerValue should be specific if possible; otherwise write TBD.\n' +

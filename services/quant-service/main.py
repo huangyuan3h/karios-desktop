@@ -3552,7 +3552,15 @@ def _normalize_strategy_markdown(md: str) -> str:
     for i in range(0, len(parts), 2):  # outside code fences
         # If a model puts '...## Heading' on the same line, split it.
         # Note: use lookahead so it also fixes cases without spaces (e.g. ')...## 1）').
-        parts[i] = re.sub(r"([^\n])(?=#{2,6}\s)", r"\1\n\n", parts[i])
+        seg = re.sub(r"([^\n])(?=#{2,6}\s)", r"\1\n\n", parts[i])
+
+        # Fix "one-line tables" so markdown renderers can parse them.
+        seg = re.sub(r"\|\|\s*(?=[-:]{3,})", "|\n|", seg)  # header -> separator
+        seg = re.sub(r"\|\|\s*(?=\d+\s*\|)", "|\n|", seg)  # separator -> data row (rank starts with number)
+        seg = re.sub(r"\|\s+\|", "|\n|", seg)  # general row boundary as "| |"
+        # Ensure table header starts on a new line.
+        seg = re.sub(r"([^\n])\s*(\|[^\n]*\n\|\s*[-:]{3,}[^\n]*)", r"\1\n\n\2", seg)
+        parts[i] = seg
     out = "```".join(parts)
     return out.strip() + "\n"
 

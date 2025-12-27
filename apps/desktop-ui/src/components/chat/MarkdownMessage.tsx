@@ -12,6 +12,18 @@ function normalizeMarkdownForRender(content: string): string {
   for (let i = 0; i < parts.length; i += 2) {
     // Insert blank lines before headings that are not at line start (e.g. "# title ## 1) ...").
     parts[i] = parts[i].replace(/([^\n])(?=#{2,6}\s)/g, '$1\n\n');
+
+    // Fix "one-line tables" produced by LLMs so remark-gfm can parse them.
+    // Typical bad patterns:
+    // - "... | A | B | C ||---|---|---|| 1 | ..."  (rows concatenated with "||" or "| |")
+    // Step 1: split concatenated rows (only outside code fences).
+    let seg = parts[i];
+    seg = seg.replace(/\|\|\s*(?=[-:]{3,})/g, '|\n|'); // header -> separator
+    seg = seg.replace(/\|\|\s*(?=\d+\s*\|)/g, '|\n|'); // separator -> first data row (rank starts with number)
+    seg = seg.replace(/\|\s+\|/g, '|\n|'); // general row boundary written as "| |"
+    // Step 2: ensure the table starts at line beginning (header row + next separator row).
+    seg = seg.replace(/([^\n])\s*(\|[^\n]*\n\|\s*[-:]{3,}[^\n]*)/g, '$1\n\n$2');
+    parts[i] = seg;
   }
   return parts.join('```');
 }
@@ -47,7 +59,9 @@ export function MarkdownMessage({ content, className }: { content: string; class
             </th>
           ),
           td: ({ children }) => (
-            <td className="align-top border-b border-[var(--k-border)] px-3 py-2">{children}</td>
+            <td className="align-top border-b border-[var(--k-border)] px-3 py-2 whitespace-normal break-words">
+              {children}
+            </td>
           ),
           code: ({ children }) => (
             <code className="rounded bg-[var(--k-surface-2)] px-1 py-0.5 text-[0.9em]">{children}</code>
