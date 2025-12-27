@@ -7,6 +7,7 @@ import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
 import { BrokerPage } from '@/components/pages/BrokerPage';
+import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
 import { MarketPage } from '@/components/pages/MarketPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
@@ -98,6 +99,8 @@ export function AppShell() {
               ? 'Dashboard'
               : activePage === 'market'
                 ? 'Market'
+              : activePage === 'industryFlow'
+                ? 'Industry Flow'
               : activePage === 'broker'
                 ? 'Broker'
               : activePage === 'strategy'
@@ -149,6 +152,8 @@ export function AppShell() {
               />
             ) : activePage === 'broker' ? (
               <BrokerPage />
+            ) : activePage === 'industryFlow' ? (
+              <IndustryFlowPage />
             ) : activePage === 'strategy' ? (
               <StrategyPage />
             ) : activePage === 'stock' && activeStockSymbol ? (

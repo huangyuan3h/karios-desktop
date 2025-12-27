@@ -71,6 +71,14 @@ export type ChatReference =
       accountTitle: string;
       date: string; // YYYY-MM-DD
       createdAt: string;
+    }
+  | {
+      kind: 'industryFundFlow';
+      refId: string; // stable key: `${asOfDate}:${days}:${topN}`
+      asOfDate: string; // YYYY-MM-DD
+      days: number; // typically 10
+      topN: number; // typically 10
+      createdAt: string;
     };
 
 export type AppSettings = {

@@ -331,6 +331,42 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       continue;
     }
 
+    if (ref.kind === 'industryFundFlow') {
+      try {
+        const resp = await fetch(
+          `${QUANT_BASE_URL}/market/cn/industry-fund-flow?days=${encodeURIComponent(String(ref.days))}&topN=${encodeURIComponent(String(ref.topN))}&asOfDate=${encodeURIComponent(ref.asOfDate)}`,
+          { cache: 'no-store' },
+        );
+        if (!resp.ok) throw new Error('failed to load industry fund flow');
+        const ff = (await resp.json()) as any;
+        out += `## CN industry fund flow\n`;
+        out += `- asOfDate: ${String(ff.asOfDate ?? ref.asOfDate)}\n`;
+        out += `- days: ${String(ff.days ?? ref.days)}\n`;
+        out += `- topN: ${String(ref.topN)}\n`;
+
+        const top = Array.isArray(ff.top) ? ff.top.slice(0, ref.topN) : [];
+        if (top.length) {
+          out += `\nTop industries:\n`;
+          for (const r of top) {
+            out += `- ${String(r.industryName ?? '')} netInflow=${String(r.netInflow ?? '')} sum10d=${String(r.sum10d ?? '')}\n`;
+            const series = Array.isArray(r.series10d) ? r.series10d.slice(0, 10) : [];
+            if (series.length) {
+              out += `  series10d:\n`;
+              for (const p of series) {
+                out += `  - ${String(p.date ?? '')}: ${String(p.netInflow ?? '')}\n`;
+              }
+            }
+          }
+        }
+        out += `\n`;
+      } catch {
+        out += `## CN industry fund flow\n`;
+        out += `- asOfDate: ${ref.asOfDate}\n`;
+        out += `- status: failed to load\n\n`;
+      }
+      continue;
+    }
+
     // Stock reference
     try {
       const [barsResp, chipsResp, ffResp] = await Promise.all([

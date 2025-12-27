@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 const items = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'market', label: 'Market', icon: Table2 },
+  { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
   { id: 'broker', label: 'Broker', icon: CreditCard },
   { id: 'strategy', label: 'Strategy', icon: Sparkles },
   { id: 'resources', label: 'Resources', icon: BookOpen },

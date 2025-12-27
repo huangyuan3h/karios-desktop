@@ -29,6 +29,8 @@ from market.akshare_provider import (
     fetch_cn_a_chip_summary,
     fetch_cn_a_daily_bars,
     fetch_cn_a_fund_flow,
+    fetch_cn_industry_fund_flow_hist,
+    fetch_cn_industry_fund_flow_eod,
     fetch_cn_a_spot,
     fetch_hk_daily_bars,
     fetch_hk_spot,
@@ -201,6 +203,23 @@ def _connect() -> sqlite3.Connection:
           FOREIGN KEY(symbol) REFERENCES market_stocks(symbol)
         )
         """,
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS market_cn_industry_fund_flow_daily (
+          date TEXT NOT NULL,
+          industry_code TEXT NOT NULL,
+          industry_name TEXT NOT NULL,
+          net_inflow REAL NOT NULL,
+          updated_at TEXT NOT NULL,
+          raw_json TEXT NOT NULL,
+          PRIMARY KEY(date, industry_code)
+        )
+        """,
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cn_industry_fund_flow_date ON market_cn_industry_fund_flow_daily(date DESC)",
     )
 
     # --- Broker snapshots (v0) ---
@@ -1231,6 +1250,42 @@ class MarketFundFlowResponse(BaseModel):
     items: list[dict[str, str]]
 
 
+class IndustryFundFlowPoint(BaseModel):
+    date: str  # YYYY-MM-DD
+    netInflow: float  # CNY
+
+
+class IndustryFundFlowRow(BaseModel):
+    industryCode: str
+    industryName: str
+    netInflow: float  # CNY, asOfDate
+    sum10d: float  # CNY
+    series10d: list[IndustryFundFlowPoint]
+
+
+class MarketCnIndustryFundFlowResponse(BaseModel):
+    asOfDate: str  # YYYY-MM-DD
+    days: int
+    topN: int
+    top: list[IndustryFundFlowRow]
+
+
+class MarketCnIndustryFundFlowSyncRequest(BaseModel):
+    date: str | None = None  # YYYY-MM-DD in Asia/Shanghai
+    days: int = 10
+    topN: int = 10  # also used for backfill hist
+    force: bool = False
+
+
+class MarketCnIndustryFundFlowSyncResponse(BaseModel):
+    ok: bool
+    asOfDate: str
+    days: int
+    rowsUpserted: int
+    histRowsUpserted: int
+    message: str | None = None
+
+
 # --- Strategy module (v0) ---
 class StrategyAccountPromptResponse(BaseModel):
     accountId: str
@@ -1576,6 +1631,46 @@ def _upsert_market_fund_flow(
         )
 
 
+def _upsert_cn_industry_fund_flow_daily(
+    conn: sqlite3.Connection,
+    *,
+    items: list[dict[str, Any]],
+    ts: str,
+) -> None:
+    """
+    Upsert CN industry fund flow rows into SQLite.
+
+    Expected normalized input:
+    - date (YYYY-MM-DD)
+    - industry_code
+    - industry_name
+    - net_inflow (CNY)
+    - raw (dict)
+    """
+    for it in items:
+        d = str(it.get("date") or "").strip()
+        code = str(it.get("industry_code") or "").strip()
+        name = str(it.get("industry_name") or "").strip()
+        if not d or not code or not name:
+            continue
+        net = float(it.get("net_inflow") or 0.0)
+        raw = json.dumps(it.get("raw") or {}, ensure_ascii=False)
+        conn.execute(
+            """
+            INSERT INTO market_cn_industry_fund_flow_daily(
+              date, industry_code, industry_name, net_inflow, updated_at, raw_json
+            )
+            VALUES(?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date, industry_code) DO UPDATE SET
+              industry_name = excluded.industry_name,
+              net_inflow = excluded.net_inflow,
+              updated_at = excluded.updated_at,
+              raw_json = excluded.raw_json
+            """,
+            (d, code, name, net, ts, raw),
+        )
+
+
 @app.get("/market/status", response_model=MarketStatusResponse)
 def market_status() -> MarketStatusResponse:
     with _connect() as conn:
@@ -1878,6 +1973,198 @@ def market_stock_fund_flow(symbol: str, days: int = 60) -> MarketFundFlowRespons
     )
 
 
+def _parse_yyyy_mm_dd(value: str) -> datetime | None:
+    try:
+        # Accept both full ISO and date-only.
+        dt = datetime.fromisoformat(value.strip())
+        return dt
+    except Exception:
+        try:
+            return datetime.strptime(value.strip(), "%Y-%m-%d").replace(tzinfo=UTC)
+        except Exception:
+            return None
+
+
+def _get_latest_cn_industry_fund_flow_date(conn: sqlite3.Connection) -> str | None:
+    row = conn.execute("SELECT MAX(date) FROM market_cn_industry_fund_flow_daily").fetchone()
+    if not row or not row[0]:
+        return None
+    return str(row[0])
+
+
+@app.post(
+    "/market/cn/industry-fund-flow/sync",
+    response_model=MarketCnIndustryFundFlowSyncResponse,
+)
+def market_cn_industry_fund_flow_sync(
+    req: MarketCnIndustryFundFlowSyncRequest,
+) -> MarketCnIndustryFundFlowSyncResponse:
+    """
+    Sync CN industry fund flow into SQLite (DB-first cache for UI + strategy).
+
+    Note: Data source is "latest snapshot" style. If you pass a historical date, we still
+    label the snapshot using that date; for true backfill, rely on the hist backfill below.
+    """
+    as_of_str = (req.date or "").strip() or _today_cn_date_str()
+    dt = _parse_yyyy_mm_dd(as_of_str)
+    if dt is None:
+        raise HTTPException(status_code=400, detail="Invalid date format (expected YYYY-MM-DD).")
+    as_of = dt.date()
+
+    days = max(1, min(int(req.days), 30))
+    top_n = max(1, min(int(req.topN), 50))
+    ts = now_iso()
+
+    with _connect() as conn:
+        if not req.force:
+            row = conn.execute(
+                "SELECT COUNT(1) FROM market_cn_industry_fund_flow_daily WHERE date = ?",
+                (as_of.strftime("%Y-%m-%d"),),
+            ).fetchone()
+            if row and int(row[0] or 0) > 0:
+                return MarketCnIndustryFundFlowSyncResponse(
+                    ok=True,
+                    asOfDate=as_of.strftime("%Y-%m-%d"),
+                    days=days,
+                    rowsUpserted=0,
+                    histRowsUpserted=0,
+                    message="Skipped (already cached). Use force=true to refresh.",
+                )
+
+    # Fetch latest snapshot
+    try:
+        items = fetch_cn_industry_fund_flow_eod(as_of)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Industry fund flow fetch failed: {e}") from e
+
+    # Upsert snapshot rows
+    with _connect() as conn:
+        _upsert_cn_industry_fund_flow_daily(conn, items=items, ts=ts)
+        conn.commit()
+
+    # Backfill hist for TopN industries (for sparkline + strategy context)
+    hist_rows_upserted = 0
+    try:
+        top_items = sorted(items, key=lambda x: float(x.get("net_inflow") or 0.0), reverse=True)[:top_n]
+        hist_upserts: list[dict[str, Any]] = []
+        as_of_d = as_of.strftime("%Y-%m-%d")
+        for it in top_items:
+            name = str(it.get("industry_name") or "").strip()
+            code = str(it.get("industry_code") or "").strip()
+            if not name or not code:
+                continue
+            hist = fetch_cn_industry_fund_flow_hist(name, days=days)
+            for h in hist:
+                d2 = str(h.get("date") or "").strip()
+                if not d2:
+                    continue
+                # Do NOT overwrite the latest snapshot value for asOfDate with hist rows.
+                if d2 == as_of_d:
+                    continue
+                hist_upserts.append(
+                    {
+                        "date": d2,
+                        "industry_code": code,
+                        "industry_name": name,
+                        "net_inflow": float(h.get("net_inflow") or 0.0),
+                        "raw": h.get("raw") or {},
+                    }
+                )
+        with _connect() as conn:
+            _upsert_cn_industry_fund_flow_daily(conn, items=hist_upserts, ts=ts)
+            conn.commit()
+        hist_rows_upserted = len(hist_upserts)
+    except Exception:
+        # Best-effort: do not fail the sync if hist backfill breaks.
+        hist_rows_upserted = 0
+
+    return MarketCnIndustryFundFlowSyncResponse(
+        ok=True,
+        asOfDate=as_of.strftime("%Y-%m-%d"),
+        days=days,
+        rowsUpserted=len(items),
+        histRowsUpserted=hist_rows_upserted,
+        message=None,
+    )
+
+
+@app.get(
+    "/market/cn/industry-fund-flow",
+    response_model=MarketCnIndustryFundFlowResponse,
+)
+def market_cn_industry_fund_flow(
+    days: int = 10,
+    topN: int = 30,
+    asOfDate: str | None = None,
+) -> MarketCnIndustryFundFlowResponse:
+    days2 = max(1, min(int(days), 30))
+    top2 = max(1, min(int(topN), 100))
+    with _connect() as conn:
+        as_of = (asOfDate or "").strip() or (_get_latest_cn_industry_fund_flow_date(conn) or "")
+        if not as_of:
+            return MarketCnIndustryFundFlowResponse(asOfDate=_today_cn_date_str(), days=days2, topN=top2, top=[])
+
+        # Load last N dates we have (descending), then reverse for series.
+        date_rows = conn.execute(
+            """
+            SELECT DISTINCT date
+            FROM market_cn_industry_fund_flow_daily
+            WHERE date <= ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (as_of, days2),
+        ).fetchall()
+        dates_desc = [str(r[0]) for r in date_rows if r and r[0]]
+        dates = list(reversed(dates_desc))
+        if not dates:
+            return MarketCnIndustryFundFlowResponse(asOfDate=as_of, days=days2, topN=top2, top=[])
+
+        # Load all rows for those dates
+        placeholders = ",".join(["?"] * len(dates))
+        rows = conn.execute(
+            f"""
+            SELECT date, industry_code, industry_name, net_inflow
+            FROM market_cn_industry_fund_flow_daily
+            WHERE date IN ({placeholders})
+            """,
+            tuple(dates),
+        ).fetchall()
+
+    # Aggregate per industry
+    by_code: dict[str, dict[str, Any]] = {}
+    for d, code, name, net in rows:
+        code2 = str(code)
+        d2 = str(d)
+        name2 = str(name)
+        net2 = float(net or 0.0)
+        cur = by_code.get(code2)
+        if cur is None:
+            cur = {"industryCode": code2, "industryName": name2, "series": {}, "sum": 0.0}
+            by_code[code2] = cur
+        cur["industryName"] = name2 or cur["industryName"]
+        cur["series"][d2] = net2
+        cur["sum"] = float(cur["sum"]) + net2
+
+    out_rows: list[IndustryFundFlowRow] = []
+    for code, agg in by_code.items():
+        series_map: dict[str, float] = agg.get("series") or {}
+        series = [IndustryFundFlowPoint(date=d, netInflow=float(series_map.get(d, 0.0))) for d in dates]
+        net_asof = float(series_map.get(as_of, 0.0))
+        out_rows.append(
+            IndustryFundFlowRow(
+                industryCode=code,
+                industryName=str(agg.get("industryName") or ""),
+                netInflow=net_asof,
+                sum10d=float(agg.get("sum") or 0.0),
+                series10d=series,
+            )
+        )
+
+    out_rows.sort(key=lambda r: r.netInflow, reverse=True)
+    return MarketCnIndustryFundFlowResponse(asOfDate=as_of, days=days2, topN=top2, top=out_rows[:top2])
+
+
 def _get_tv_screener_row(screener_id: str) -> dict[str, Any] | None:
     with _connect() as conn:
         row = conn.execute(
@@ -2014,15 +2301,22 @@ def _list_tv_snapshots_for_screener(
         ).fetchall()
 
     out: list[dict[str, Any]] = []
-    # Filter by local date window (Asia/Shanghai).
-    keep_dates: set[str] = set()
-    try:
-        tz2 = ZoneInfo("Asia/Shanghai")
-        d0 = datetime.now(tz=tz2).date()
-    except Exception:
-        d0 = datetime.now(tz=UTC).date()
-    for i in range(days2):
-        keep_dates.add((d0.fromordinal(d0.toordinal() - i)).isoformat())
+    # Filter by local date window based on existing snapshots (stable for tests and UX).
+    # Pick the latest N distinct local dates present in data.
+    dates_desc: list[str] = []
+    seen_dates: set[str] = set()
+    for r in rows:
+        captured_at = str(r[2])
+        local_date, _slot = _tv_local_date_and_slot(captured_at)
+        if not local_date:
+            continue
+        if local_date in seen_dates:
+            continue
+        seen_dates.add(local_date)
+        dates_desc.append(local_date)
+        if len(dates_desc) >= days2:
+            break
+    keep_dates: set[str] = set(dates_desc)
 
     for r in rows:
         sid = str(r[0])
@@ -2063,13 +2357,21 @@ def tv_screener_history(screener_id: str, days: int = 10) -> TvScreenerHistoryRe
     days2 = max(1, min(int(days), 30))
 
     items = _list_tv_snapshots_for_screener(screener_id, days=days2)
-    # Build last N local dates in descending order.
-    try:
-        tz = ZoneInfo("Asia/Shanghai")
-        d0 = datetime.now(tz=tz).date()
-    except Exception:
-        d0 = datetime.now(tz=UTC).date()
-    dates = [(d0.fromordinal(d0.toordinal() - i)).isoformat() for i in range(days2)]
+    # Build last N local dates based on available snapshots (DESC).
+    dates_desc: list[str] = []
+    seen_dates: set[str] = set()
+    for it in items:
+        local_date, _slot = _tv_local_date_and_slot(str(it.get("capturedAt") or ""))
+        if not local_date or local_date in seen_dates:
+            continue
+        seen_dates.add(local_date)
+        dates_desc.append(local_date)
+        if len(dates_desc) >= days2:
+            break
+    # Fallback: still return an empty grid keyed by today if we have no snapshots.
+    if not dates_desc:
+        dates_desc = [_today_cn_date_str()]
+    dates = list(reversed(dates_desc))
     by_date: dict[str, dict[str, TvScreenerHistoryCell]] = {d: {} for d in dates}
 
     for it in items:
@@ -3355,6 +3657,39 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             },
         )
 
+    # CN industry fund flow context (Top10 + 10d series), DB-first with best-effort sync.
+    industry_flow_top: list[dict[str, Any]] = []
+    industry_flow_meta: dict[str, Any] = {"asOfDate": d, "days": 10, "topN": 10, "metric": "netInflowEod"}
+    industry_flow_error: str | None = None
+    try:
+        flow = market_cn_industry_fund_flow(days=10, topN=10, asOfDate=d)
+        if not flow.top:
+            try:
+                market_cn_industry_fund_flow_sync(
+                    MarketCnIndustryFundFlowSyncRequest(date=d, days=10, topN=10, force=False)
+                )
+            except Exception:
+                pass
+            flow = market_cn_industry_fund_flow(days=10, topN=10, asOfDate=d)
+        industry_flow_meta = {
+            "asOfDate": flow.asOfDate,
+            "days": flow.days,
+            "topN": flow.topN,
+            "metric": "netInflowEod",
+        }
+        for r in flow.top:
+            industry_flow_top.append(
+                {
+                    "industryCode": r.industryCode,
+                    "industryName": r.industryName,
+                    "netInflow": r.netInflow,
+                    "sum10d": r.sum10d,
+                    "series10d": [{"date": p.date, "netInflow": p.netInflow} for p in r.series10d],
+                }
+            )
+    except Exception as e:
+        industry_flow_error = str(e)
+
     input_snapshot: dict[str, Any] = {
         "date": d,
         "account": {
@@ -3386,6 +3721,11 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                 for s in snaps
             ],
             "history": tv_history,
+        },
+        "industryFundFlow": {
+            "meta": industry_flow_meta,
+            "top": industry_flow_top,
+            "error": industry_flow_error,
         },
         "stocks": stock_context,
     }

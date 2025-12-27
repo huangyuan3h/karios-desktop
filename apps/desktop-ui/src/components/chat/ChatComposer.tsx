@@ -145,6 +145,8 @@ export function ChatComposer({
                         ? `${r.accountTitle} · account state @ ${new Date(r.capturedAt).toLocaleString()}`
                         : r.kind === 'strategyReport'
                           ? `${r.accountTitle} · strategy ${r.date}`
+                          : r.kind === 'industryFundFlow'
+                            ? `CN industry fund flow · ${r.asOfDate} (${r.days}D)`
                           : 'Unknown reference'}
               </span>
               <Button
