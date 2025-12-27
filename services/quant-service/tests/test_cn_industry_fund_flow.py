@@ -60,6 +60,7 @@ def test_cn_industry_fund_flow_sync_and_query(tmp_path, monkeypatch) -> None:
     assert resp.status_code == 200
     q = resp.json()
     assert q["asOfDate"] == as_of
+    assert isinstance(q["dates"], list)
     assert q["top"][0]["industryName"] == "Power"
     assert q["top"][0]["netInflow"] == 5_000_000_000.0
     assert len(q["top"][0]["series10d"]) >= 1
@@ -153,6 +154,7 @@ def test_strategy_injects_industry_fund_flow(tmp_path, monkeypatch) -> None:
         asOfDate="2025-12-26",
         days=10,
         topN=10,
+        dates=["2025-12-26"],
         top=[
             main.IndustryFundFlowRow(
                 industryCode="BK_A",

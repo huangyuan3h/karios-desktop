@@ -24,6 +24,7 @@ type IndustryFundFlowResp = {
   asOfDate: string;
   days: number;
   topN: number;
+  dates: string[];
   top: IndustryFundFlowRow[];
 };
 
@@ -64,21 +65,94 @@ function sumLastN(series: IndustryFundFlowPoint[], n: number): number {
 function Sparkline({ series }: { series: IndustryFundFlowPoint[] }) {
   const vals = series.map((p) => (Number.isFinite(p.netInflow) ? p.netInflow : 0));
   const maxAbs = Math.max(1, ...vals.map((v) => Math.abs(v)));
+  const w = Math.max(60, series.length * 10);
+  const h = 28;
+  const mid = Math.round(h / 2);
+  const pts = vals.map((v, i) => {
+    const x = series.length <= 1 ? w / 2 : (i / (series.length - 1)) * (w - 4) + 2;
+    const y = mid - (v / maxAbs) * (mid - 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const last = vals[vals.length - 1] ?? 0;
+  const stroke = last >= 0 ? '#ef4444' : '#10b981';
   return (
-    <div className="flex h-6 items-end gap-[2px]">
-      {series.map((p) => {
-        const v = Number.isFinite(p.netInflow) ? p.netInflow : 0;
-        const h = Math.max(1, Math.round((Math.abs(v) / maxAbs) * 24));
-        const cls = v >= 0 ? 'bg-red-500/70' : 'bg-emerald-500/70';
-        return (
-          <div
-            key={p.date}
-            title={`${p.date}: ${fmtCny(v)}`}
-            className={`w-[6px] rounded-sm ${cls}`}
-            style={{ height: `${h}px` }}
-          />
-        );
-      })}
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block">
+      <line x1="0" y1={mid} x2={w} y2={mid} stroke="rgba(120,120,120,0.25)" strokeWidth="1" />
+      {pts.length >= 2 ? (
+        <polyline fill="none" stroke={stroke} strokeWidth="2" points={pts.join(' ')} />
+      ) : (
+        <circle cx={w / 2} cy={mid} r="2" fill={stroke} />
+      )}
+      {series.length ? (
+        <title>
+          {series
+            .map((p, i) => `${p.date}: ${fmtCny(vals[i] ?? 0)}`)
+            .join(' | ')}
+        </title>
+      ) : null}
+    </svg>
+  );
+}
+
+function Top5ByDateTable({
+  title,
+  dates,
+  rows,
+  onReference,
+}: {
+  title: string;
+  dates: string[];
+  rows: Array<{ industryCode: string; industryName: string; series: Record<string, number> }>;
+  onReference: () => void;
+}) {
+  const shownDates = dates.slice(-10);
+  return (
+    <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="text-sm font-medium">{title}</div>
+        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
+          Reference
+        </Button>
+      </div>
+      <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+        <table className="w-full border-collapse text-xs">
+          <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+            <tr className="text-left">
+              <th className="px-2 py-1">#</th>
+              <th className="px-2 py-1">Industry</th>
+              {shownDates.map((d) => (
+                <th key={d} className="px-2 py-1 font-mono">
+                  {d.slice(5)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, idx) => (
+              <tr key={r.industryCode} className="border-t border-[var(--k-border)]">
+                <td className="px-2 py-1 font-mono">{idx + 1}</td>
+                <td className="px-2 py-1">{r.industryName}</td>
+                {shownDates.map((d) => {
+                  const v = r.series[d] ?? 0;
+                  const cls = v >= 0 ? 'text-red-600' : 'text-emerald-600';
+                  return (
+                    <td key={d} className={`px-2 py-1 font-mono ${cls}`} title={`${d}: ${fmtCny(v)}`}>
+                      {fmtCny(v)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+            {!rows.length ? (
+              <tr>
+                <td colSpan={2 + shownDates.length} className="px-2 py-6 text-center text-[var(--k-muted)]">
+                  No data
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -145,6 +219,7 @@ export function IndustryFlowPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [topN, setTopN] = React.useState(30);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
+  const [lastSyncMsg, setLastSyncMsg] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     setError(null);
@@ -166,8 +241,20 @@ export function IndustryFlowPage() {
   async function onSync(force: boolean) {
     setBusy(true);
     setError(null);
+    setLastSyncMsg(null);
     try {
-      await apiPostJson('/market/cn/industry-fund-flow/sync', { days: 10, topN: 10, force });
+      const r = await apiPostJson<any>('/market/cn/industry-fund-flow/sync', { days: 10, topN: 10, force });
+      if (r && typeof r === 'object') {
+        const msg = [
+          `rowsUpserted=${String(r.rowsUpserted ?? '')}`,
+          `histRowsUpserted=${String(r.histRowsUpserted ?? '')}`,
+          `histFailures=${String(r.histFailures ?? 0)}`,
+          r.message ? String(r.message) : '',
+        ]
+          .filter(Boolean)
+          .join(' • ');
+        setLastSyncMsg(msg || null);
+      }
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -214,10 +301,16 @@ export function IndustryFlowPage() {
           {error}
         </div>
       ) : null}
+      {lastSyncMsg ? (
+        <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 text-sm text-[var(--k-muted)]">
+          {lastSyncMsg}
+        </div>
+      ) : null}
 
       <div className="mb-3 flex items-center justify-between">
         <div className="text-xs text-[var(--k-muted)]">
           As of: {resp?.asOfDate ?? '—'} • days: {resp?.days ?? 10}
+          {resp?.dates?.length ? ` • cachedDates: ${resp.dates.length}` : ''}
         </div>
         <div className="flex items-center gap-2 text-xs text-[var(--k-muted)]">
           <span>Top:</span>
@@ -237,12 +330,13 @@ export function IndustryFlowPage() {
       </div>
 
       {resp?.top?.length ? (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4">
           {(() => {
             const rows = resp.top.slice(0, 100);
             const asOfDate = resp.asOfDate || new Date().toISOString().slice(0, 10);
             const baseDays = resp.days || 10;
             const top = 10;
+            const dates = resp.dates ?? rows[0]?.series10d?.map((p) => p.date) ?? [];
 
             const in1d = rows
               .filter((r) => r.netInflow > 0)
@@ -266,6 +360,31 @@ export function IndustryFlowPage() {
 
             return (
               <>
+                <Top5ByDateTable
+                  title="Top inflow (Top5 × Date)"
+                  dates={dates}
+                  rows={in1d.slice(0, 5).map((r) => ({
+                    industryCode: r.industryCode,
+                    industryName: r.industryName,
+                    series: Object.fromEntries((r.series10d ?? []).map((p) => [p.date, p.netInflow])),
+                  }))}
+                  onReference={() =>
+                    addReference({
+                      kind: 'industryFundFlow',
+                      refId: `${asOfDate}:${baseDays}:matrix5:${5}`,
+                      asOfDate,
+                      days: baseDays,
+                      topN: 5,
+                      metric: 'netInflow',
+                      windowDays: 1,
+                      direction: 'in',
+                      title: 'Top inflow (Top5 × Date)',
+                      createdAt: new Date().toISOString(),
+                    })
+                  }
+                />
+
+                <div className="grid gap-4 md:grid-cols-2">
                 <MiniTable
                   title="Top inflow (1D)"
                   valueLabel="Net inflow"
@@ -342,6 +461,7 @@ export function IndustryFlowPage() {
                     })
                   }
                 />
+                </div>
               </>
             );
           })()}

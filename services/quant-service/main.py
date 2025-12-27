@@ -1267,6 +1267,7 @@ class MarketCnIndustryFundFlowResponse(BaseModel):
     asOfDate: str  # YYYY-MM-DD
     days: int
     topN: int
+    dates: list[str]  # actual dates used in aggregation (ascending)
     top: list[IndustryFundFlowRow]
 
 
@@ -1283,6 +1284,7 @@ class MarketCnIndustryFundFlowSyncResponse(BaseModel):
     days: int
     rowsUpserted: int
     histRowsUpserted: int
+    histFailures: int = 0
     message: str | None = None
 
 
@@ -1654,7 +1656,8 @@ def _upsert_cn_industry_fund_flow_daily(
         if not d or not code or not name:
             continue
         net = float(it.get("net_inflow") or 0.0)
-        raw = json.dumps(it.get("raw") or {}, ensure_ascii=False)
+        # Some AkShare/Eastmoney rows contain datetime/date-like objects; serialize best-effort.
+        raw = json.dumps(it.get("raw") or {}, ensure_ascii=False, default=str)
         conn.execute(
             """
             INSERT INTO market_cn_industry_fund_flow_daily(
@@ -2044,6 +2047,7 @@ def market_cn_industry_fund_flow_sync(
 
     # Backfill hist for TopN industries (for sparkline + strategy context)
     hist_rows_upserted = 0
+    hist_failures = 0
     try:
         top_items = sorted(items, key=lambda x: float(x.get("net_inflow") or 0.0), reverse=True)[:top_n]
         hist_upserts: list[dict[str, Any]] = []
@@ -2053,7 +2057,11 @@ def market_cn_industry_fund_flow_sync(
             code = str(it.get("industry_code") or "").strip()
             if not name or not code:
                 continue
-            hist = fetch_cn_industry_fund_flow_hist(name, days=days)
+            try:
+                hist = fetch_cn_industry_fund_flow_hist(name, days=days)
+            except Exception:
+                hist_failures += 1
+                continue
             for h in hist:
                 d2 = str(h.get("date") or "").strip()
                 if not d2:
@@ -2077,6 +2085,7 @@ def market_cn_industry_fund_flow_sync(
     except Exception:
         # Best-effort: do not fail the sync if hist backfill breaks.
         hist_rows_upserted = 0
+        hist_failures = 0
 
     return MarketCnIndustryFundFlowSyncResponse(
         ok=True,
@@ -2084,7 +2093,8 @@ def market_cn_industry_fund_flow_sync(
         days=days,
         rowsUpserted=len(items),
         histRowsUpserted=hist_rows_upserted,
-        message=None,
+        histFailures=hist_failures,
+        message=None if hist_failures == 0 else f"Hist backfill partial: {hist_failures} industries failed.",
     )
 
 
@@ -2102,7 +2112,13 @@ def market_cn_industry_fund_flow(
     with _connect() as conn:
         as_of = (asOfDate or "").strip() or (_get_latest_cn_industry_fund_flow_date(conn) or "")
         if not as_of:
-            return MarketCnIndustryFundFlowResponse(asOfDate=_today_cn_date_str(), days=days2, topN=top2, top=[])
+            return MarketCnIndustryFundFlowResponse(
+                asOfDate=_today_cn_date_str(),
+                days=days2,
+                topN=top2,
+                dates=[],
+                top=[],
+            )
 
         # Load last N dates we have (descending), then reverse for series.
         date_rows = conn.execute(
@@ -2118,7 +2134,7 @@ def market_cn_industry_fund_flow(
         dates_desc = [str(r[0]) for r in date_rows if r and r[0]]
         dates = list(reversed(dates_desc))
         if not dates:
-            return MarketCnIndustryFundFlowResponse(asOfDate=as_of, days=days2, topN=top2, top=[])
+            return MarketCnIndustryFundFlowResponse(asOfDate=as_of, days=days2, topN=top2, dates=[], top=[])
 
         # Load all rows for those dates
         placeholders = ",".join(["?"] * len(dates))
@@ -2162,7 +2178,13 @@ def market_cn_industry_fund_flow(
         )
 
     out_rows.sort(key=lambda r: r.netInflow, reverse=True)
-    return MarketCnIndustryFundFlowResponse(asOfDate=as_of, days=days2, topN=top2, top=out_rows[:top2])
+    return MarketCnIndustryFundFlowResponse(
+        asOfDate=as_of,
+        days=days2,
+        topN=top2,
+        dates=dates,
+        top=out_rows[:top2],
+    )
 
 
 def _get_tv_screener_row(screener_id: str) -> dict[str, Any] | None:
