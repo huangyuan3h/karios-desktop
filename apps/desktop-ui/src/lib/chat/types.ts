@@ -82,6 +82,7 @@ export type ChatReference =
       metric?: 'netInflow' | 'sum';
       windowDays?: number; // e.g. 1/5/10 (used with metric='sum' or for labeling)
       direction?: 'in' | 'out'; // in=top positive, out=top negative
+      view?: 'rankedList' | 'dailyTopByDate' | 'matrixValues';
       title?: string;
       createdAt: string;
     };

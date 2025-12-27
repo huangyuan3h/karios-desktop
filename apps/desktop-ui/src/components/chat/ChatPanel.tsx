@@ -347,8 +347,10 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         if (ref.metric) out += `- metric: ${ref.metric}\n`;
         if (ref.windowDays) out += `- windowDays: ${ref.windowDays}\n`;
         if (ref.direction) out += `- direction: ${ref.direction}\n`;
+        if (ref.view) out += `- view: ${ref.view}\n`;
 
         const items = Array.isArray(ff.top) ? ff.top : [];
+        const view = ref.view ?? 'rankedList';
         const windowDays = Math.max(1, Math.min(Number(ref.windowDays ?? ref.days ?? 10), 30));
         const metric = ref.metric ?? 'netInflow';
         function sumLastN(series: any[], n: number): number {
@@ -358,26 +360,48 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
           for (const p of tail) s += Number(p?.netInflow ?? 0) || 0;
           return s;
         }
-        type ScoredIndustry = { r: any; score: number; net: number };
-        const scored: ScoredIndustry[] = items.map((r: any) => {
-          const net = Number(r?.netInflow ?? 0) || 0;
-          const sum = metric === 'sum' ? sumLastN(r?.series10d, windowDays) : net;
-          return { r, score: sum, net };
-        });
-        const dir = ref.direction ?? 'in';
-        scored.sort((a: ScoredIndustry, b: ScoredIndustry) =>
-          dir === 'out' ? a.score - b.score : b.score - a.score,
-        );
-        const top = scored.slice(0, ref.topN).map((x: ScoredIndustry) => x.r);
-        if (top.length) {
-          out += `\nTop industries:\n`;
-          for (const r of top) {
-            out += `- ${String(r.industryName ?? '')} netInflow=${String(r.netInflow ?? '')} sum10d=${String(r.sum10d ?? '')}\n`;
-            const series = Array.isArray(r.series10d) ? r.series10d.slice(0, 10) : [];
-            if (series.length) {
-              out += `  series10d:\n`;
-              for (const p of series) {
-                out += `  - ${String(p.date ?? '')}: ${String(p.netInflow ?? '')}\n`;
+
+        if (view === 'dailyTopByDate') {
+          const dates = Array.isArray(ff.dates) ? ff.dates : [];
+          const shown = dates.slice(-Math.max(1, Math.min(Number(ref.days ?? 10), 30)));
+          const topK = Math.max(1, Math.min(Number(ref.topN ?? 5), 20));
+          out += `\nDaily top inflow by date:\n`;
+          for (const d of shown) {
+            const scored = items
+              .map((r: any) => {
+                const series = Array.isArray(r?.series10d) ? r.series10d : [];
+                const p = series.find((x: any) => String(x?.date ?? '') === String(d));
+                const v = Number(p?.netInflow ?? 0) || 0;
+                return { name: String(r?.industryName ?? ''), v };
+              })
+              .sort((a: any, b: any) => b.v - a.v)
+              .slice(0, topK)
+              .map((x: any) => x.name)
+              .filter(Boolean);
+            out += `- ${String(d)}: ${scored.join(' / ')}\n`;
+          }
+        } else {
+          type ScoredIndustry = { r: any; score: number };
+          const scored: ScoredIndustry[] = items.map((r: any) => {
+            const net = Number(r?.netInflow ?? 0) || 0;
+            const sum = metric === 'sum' ? sumLastN(r?.series10d, windowDays) : net;
+            return { r, score: sum };
+          });
+          const dir = ref.direction ?? 'in';
+          scored.sort((a: ScoredIndustry, b: ScoredIndustry) =>
+            dir === 'out' ? a.score - b.score : b.score - a.score,
+          );
+          const top = scored.slice(0, ref.topN).map((x: ScoredIndustry) => x.r);
+          if (top.length) {
+            out += `\nTop industries:\n`;
+            for (const r of top) {
+              out += `- ${String(r.industryName ?? '')} netInflow=${String(r.netInflow ?? '')} sum10d=${String(r.sum10d ?? '')}\n`;
+              const series = Array.isArray(r.series10d) ? r.series10d.slice(0, 10) : [];
+              if (series.length) {
+                out += `  series10d:\n`;
+                for (const p of series) {
+                  out += `  - ${String(p.date ?? '')}: ${String(p.netInflow ?? '')}\n`;
+                }
               }
             }
           }

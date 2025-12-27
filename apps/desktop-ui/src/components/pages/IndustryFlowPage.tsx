@@ -94,15 +94,17 @@ function Sparkline({ series }: { series: IndustryFundFlowPoint[] }) {
   );
 }
 
-function Top5ByDateTable({
+function DailyTopByDateTable({
   title,
   dates,
-  rows,
+  topByDate,
+  topK,
   onReference,
 }: {
   title: string;
   dates: string[];
-  rows: Array<{ industryCode: string; industryName: string; series: Record<string, number> }>;
+  topByDate: Record<string, Array<{ industryName: string; value: number }>>;
+  topK: number;
   onReference: () => void;
 }) {
   const shownDates = dates.slice(-10);
@@ -119,7 +121,6 @@ function Top5ByDateTable({
           <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
             <tr className="text-left">
               <th className="px-2 py-1">#</th>
-              <th className="px-2 py-1">Industry</th>
               {shownDates.map((d) => (
                 <th key={d} className="px-2 py-1 font-mono">
                   {d.slice(5)}
@@ -128,24 +129,24 @@ function Top5ByDateTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, idx) => (
-              <tr key={r.industryCode} className="border-t border-[var(--k-border)]">
+            {Array.from({ length: topK }).map((_, idx) => (
+              <tr key={idx} className="border-t border-[var(--k-border)]">
                 <td className="px-2 py-1 font-mono">{idx + 1}</td>
-                <td className="px-2 py-1">{r.industryName}</td>
                 {shownDates.map((d) => {
-                  const v = r.series[d] ?? 0;
-                  const cls = v >= 0 ? 'text-red-600' : 'text-emerald-600';
+                  const it = (topByDate[d] || [])[idx];
+                  const name = it?.industryName ?? '';
+                  const v = it?.value ?? 0;
                   return (
-                    <td key={d} className={`px-2 py-1 font-mono ${cls}`} title={`${d}: ${fmtCny(v)}`}>
-                      {fmtCny(v)}
+                    <td key={d} className="px-2 py-1" title={`${d}: ${fmtCny(v)}`}>
+                      {name || '—'}
                     </td>
                   );
                 })}
               </tr>
             ))}
-            {!rows.length ? (
+            {!shownDates.length ? (
               <tr>
-                <td colSpan={2 + shownDates.length} className="px-2 py-6 text-center text-[var(--k-muted)]">
+                <td colSpan={1 + shownDates.length} className="px-2 py-6 text-center text-[var(--k-muted)]">
                   No data
                 </td>
               </tr>
@@ -224,15 +225,17 @@ export function IndustryFlowPage() {
   const refresh = React.useCallback(async () => {
     setError(null);
     try {
+      // Always load full universe for accurate per-day ranking widgets.
+      const universeTopN = 200;
       const r = await apiGetJson<IndustryFundFlowResp>(
-        `/market/cn/industry-fund-flow?days=10&topN=${encodeURIComponent(String(topN))}`,
+        `/market/cn/industry-fund-flow?days=10&topN=${encodeURIComponent(String(universeTopN))}`,
       );
       setResp(r);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setResp(null);
     }
-  }, [topN]);
+  }, []);
 
   React.useEffect(() => {
     void refresh();
@@ -332,11 +335,25 @@ export function IndustryFlowPage() {
       {resp?.top?.length ? (
         <div className="grid gap-4">
           {(() => {
-            const rows = resp.top.slice(0, 100);
+            const rows = resp.top.slice(0, 500);
             const asOfDate = resp.asOfDate || new Date().toISOString().slice(0, 10);
             const baseDays = resp.days || 10;
             const top = 10;
             const dates = resp.dates ?? rows[0]?.series10d?.map((p) => p.date) ?? [];
+            const topK = 5;
+
+            // Build daily top inflow list for each date using full universe rows.
+            const topByDate: Record<string, Array<{ industryName: string; value: number }>> = {};
+            for (const d of dates) {
+              const scored = rows
+                .map((r) => {
+                  const v = (r.series10d || []).find((p) => p.date === d)?.netInflow ?? 0;
+                  return { industryName: r.industryName, value: v };
+                })
+                .sort((a, b) => b.value - a.value)
+                .slice(0, topK);
+              topByDate[d] = scored;
+            }
 
             const in1d = rows
               .filter((r) => r.netInflow > 0)
@@ -360,25 +377,23 @@ export function IndustryFlowPage() {
 
             return (
               <>
-                <Top5ByDateTable
-                  title="Top inflow (Top5 × Date)"
+                <DailyTopByDateTable
+                  title="Daily top inflow (Top5 × Date)"
                   dates={dates}
-                  rows={in1d.slice(0, 5).map((r) => ({
-                    industryCode: r.industryCode,
-                    industryName: r.industryName,
-                    series: Object.fromEntries((r.series10d ?? []).map((p) => [p.date, p.netInflow])),
-                  }))}
+                  topByDate={topByDate}
+                  topK={topK}
                   onReference={() =>
                     addReference({
                       kind: 'industryFundFlow',
-                      refId: `${asOfDate}:${baseDays}:matrix5:${5}`,
+                      refId: `${asOfDate}:${baseDays}:dailyTop:${topK}`,
                       asOfDate,
                       days: baseDays,
-                      topN: 5,
+                      topN: topK,
                       metric: 'netInflow',
                       windowDays: 1,
                       direction: 'in',
-                      title: 'Top inflow (Top5 × Date)',
+                      view: 'dailyTopByDate',
+                      title: 'Daily top inflow (Top5 × Date)',
                       createdAt: new Date().toISOString(),
                     })
                   }
@@ -485,7 +500,7 @@ export function IndustryFlowPage() {
               </tr>
             </thead>
             <tbody>
-              {resp.top.map((r, idx) => (
+              {resp.top.slice(0, topN).map((r, idx) => (
                 <tr key={r.industryCode} className="border-t border-[var(--k-border)]">
                   <td className="px-3 py-2 font-mono">{idx + 1}</td>
                   <td className="px-3 py-2">{r.industryName}</td>
