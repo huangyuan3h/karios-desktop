@@ -255,9 +255,12 @@ export function StrategyPage() {
     setBusy(true);
     setError(null);
     try {
-      await apiPutJson<StrategyPrompt>(`/strategy/accounts/${encodeURIComponent(accountId)}/prompt`, {
-        prompt,
-      });
+      await apiPutJson<StrategyPrompt>(
+        `/strategy/accounts/${encodeURIComponent(accountId)}/prompt`,
+        {
+          prompt,
+        },
+      );
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -352,7 +355,12 @@ export function StrategyPage() {
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="text-sm font-medium">Account strategy prompt</div>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="secondary" disabled={!accountId || busy} onClick={() => void onSavePrompt()}>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!accountId || busy}
+              onClick={() => void onSavePrompt()}
+            >
               Save
             </Button>
             <Button
@@ -363,7 +371,12 @@ export function StrategyPage() {
             >
               Use cached
             </Button>
-            <Button size="sm" disabled={!accountId || busy} onClick={() => void onGenerateToday()} className="gap-2">
+            <Button
+              size="sm"
+              disabled={!accountId || busy}
+              onClick={() => void onGenerateToday()}
+              className="gap-2"
+            >
               <Sparkles className="h-4 w-4" />
               Generate today
             </Button>
@@ -376,7 +389,8 @@ export function StrategyPage() {
           className="min-h-[120px]"
         />
         <div className="mt-2 text-xs text-[var(--k-muted)]">
-          Tip: include constraints like max positions, max per-position %, no margin, CN/HK only, etc.
+          Tip: include constraints like max positions, max per-position %, no margin, CN/HK only,
+          etc.
         </div>
       </section>
 
@@ -384,11 +398,19 @@ export function StrategyPage() {
         <div className="mb-2 text-sm font-medium">Context toggles (sent to Strategy LLM)</div>
         <div className="grid gap-2 text-sm md:grid-cols-2">
           <label className="flex items-center gap-2">
-            <input type="checkbox" checked={ctxAccount} onChange={(e) => setCtxAccount(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={ctxAccount}
+              onChange={(e) => setCtxAccount(e.target.checked)}
+            />
             <span>Account state (overview/positions/orders/trades)</span>
           </label>
           <label className="flex items-center gap-2">
-            <input type="checkbox" checked={ctxScreener} onChange={(e) => setCtxScreener(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={ctxScreener}
+              onChange={(e) => setCtxScreener(e.target.checked)}
+            />
             <span>TradingView screeners (latest + history)</span>
           </label>
           <label className="flex items-center gap-2">
@@ -400,12 +422,32 @@ export function StrategyPage() {
             <span>Industry fund flow (Top10 + 10D)</span>
           </label>
           <label className="flex items-center gap-2">
-            <input type="checkbox" checked={ctxStocks} onChange={(e) => setCtxStocks(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={ctxStocks}
+              onChange={(e) => setCtxStocks(e.target.checked)}
+            />
             <span>Per-stock deep context (bars/chips/fund-flow)</span>
           </label>
         </div>
         <div className="mt-2 text-xs text-[var(--k-muted)]">
-          Note: “Generate today” uses these toggles immediately. “Use cached” may return a report generated with different toggles.
+          Note: “Generate today” uses these toggles immediately. “Use cached” may return a report
+          generated with different toggles.
+        </div>
+      </section>
+
+      <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+        <div className="mb-2 text-sm font-medium">How it works (2-stage LLM)</div>
+        <div className="text-sm text-[var(--k-muted)]">
+          <div className="mb-2">
+            Stage 1: <span className="text-[var(--k-text)]">Pick Top5 candidates</span> using
+            account state + TradingView + industry flow (no per-stock deep context). Returns JSON
+            with scores.
+          </div>
+          <div>
+            Stage 2: Fetch deep context only for Stage-1 candidates (chips + fund flow + bars tails)
+            and generate the final Markdown report with tables and action plans.
+          </div>
         </div>
       </section>
 
@@ -469,24 +511,73 @@ export function StrategyPage() {
                   Request = payload sent to ai-service. Response = JSON returned by ai-service.
                 </div>
                 <div className="mb-2 text-xs font-medium">Markdown (rendered)</div>
-                <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">{reportMd}</pre>
-                <div className="mb-2 text-xs font-medium">Request (to ai-service)</div>
                 <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
-                  {JSON.stringify(
-                    {
-                      date: report.date,
-                      accountId: report.accountId,
-                      accountTitle: report.accountTitle,
-                      context: report.inputSnapshot ?? null,
-                    },
-                    null,
-                    2,
-                  )}
+                  {reportMd}
                 </pre>
-                <div className="mb-2 text-xs font-medium">Response (from ai-service)</div>
-                <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
-                  {JSON.stringify(report.raw ?? report, null, 2)}
-                </pre>
+                {(() => {
+                  const rawObj = (report.raw ?? {}) as Record<string, unknown>;
+                  const dbg = rawObj['debug'];
+                  const dbgObj =
+                    dbg && typeof dbg === 'object' ? (dbg as Record<string, unknown>) : null;
+                  const stage1 = dbgObj?.['stage1'];
+                  const stage2 = dbgObj?.['stage2'];
+                  const stage1Obj =
+                    stage1 && typeof stage1 === 'object'
+                      ? (stage1 as Record<string, unknown>)
+                      : null;
+                  const stage2Obj =
+                    stage2 && typeof stage2 === 'object'
+                      ? (stage2 as Record<string, unknown>)
+                      : null;
+                  if (stage1Obj && stage2Obj) {
+                    return (
+                      <>
+                        <div className="mb-2 text-xs font-medium">Stage 1: candidates (JSON)</div>
+                        <div className="mb-2 text-xs text-[var(--k-muted)]">
+                          No per-stock deep context is included.
+                        </div>
+                        <div className="mb-2 text-xs font-medium">Stage 1 request</div>
+                        <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                          {JSON.stringify(stage1Obj['request'] ?? null, null, 2)}
+                        </pre>
+                        <div className="mb-2 text-xs font-medium">Stage 1 response</div>
+                        <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                          {JSON.stringify(stage1Obj['response'] ?? null, null, 2)}
+                        </pre>
+                        <div className="mb-2 text-xs font-medium">Stage 2: report (Markdown)</div>
+                        <div className="mb-2 text-xs font-medium">Stage 2 request</div>
+                        <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                          {JSON.stringify(stage2Obj['request'] ?? null, null, 2)}
+                        </pre>
+                        <div className="mb-2 text-xs font-medium">Stage 2 response</div>
+                        <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                          {JSON.stringify(stage2Obj['response'] ?? null, null, 2)}
+                        </pre>
+                      </>
+                    );
+                  }
+                  return (
+                    <>
+                      <div className="mb-2 text-xs font-medium">Request (to ai-service)</div>
+                      <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                        {JSON.stringify(
+                          {
+                            date: report.date,
+                            accountId: report.accountId,
+                            accountTitle: report.accountTitle,
+                            context: report.inputSnapshot ?? null,
+                          },
+                          null,
+                          2,
+                        )}
+                      </pre>
+                      <div className="mb-2 text-xs font-medium">Response (from ai-service)</div>
+                      <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                        {JSON.stringify(report.raw ?? report, null, 2)}
+                      </pre>
+                    </>
+                  );
+                })()}
               </div>
             ) : null}
           </div>
@@ -497,5 +588,3 @@ export function StrategyPage() {
     </div>
   );
 }
-
-

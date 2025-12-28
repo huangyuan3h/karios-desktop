@@ -94,8 +94,23 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(main, "market_stock_chips", fake_chips)
     monkeypatch.setattr(main, "market_stock_fund_flow", fake_flow)
 
+    captured = {"stage1": None, "stage2": None}
+
+    def fake_ai_strategy_candidates(*, payload):
+        captured["stage1"] = payload
+        return {
+            "date": "2025-12-21",
+            "accountId": account_id,
+            "accountTitle": "Main",
+            "candidates": [],
+            "leader": {"symbol": "", "reason": ""},
+            "model": "test-model",
+        }
+
+    monkeypatch.setattr(main, "_ai_strategy_candidates", fake_ai_strategy_candidates)
+
     def fake_ai_strategy_daily_markdown(*, payload):
-        _ = payload
+        captured["stage2"] = payload
         return {
             "date": "2025-12-21",
             "accountId": account_id,
@@ -130,6 +145,11 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     assert snap.get("tradingView") == {}
     assert snap.get("industryFundFlow") == {}
     assert snap.get("stocks") == []
+    # Two-stage debug should exist in raw output.
+    assert isinstance(data.get("raw"), dict)
+    assert isinstance((data.get("raw") or {}).get("debug"), dict)
+    assert captured["stage1"] is not None
+    assert captured["stage2"] is not None
 
     # Reuse report (should not generate a new id when force=false)
     resp2 = client.post(

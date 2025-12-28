@@ -639,11 +639,15 @@ def _account_state_response(account_id: str) -> BrokerAccountStateResponse:
 
     raw_trades = row.get("trades")
     trades: list[Any] = raw_trades if isinstance(raw_trades, list) else []
+    raw_overview = row.get("overview")
+    overview_obj: dict[str, Any] = (
+        {str(k): v for k, v in raw_overview.items()} if isinstance(raw_overview, dict) else {}
+    )
     return BrokerAccountStateResponse(
         accountId=str(row["accountId"]),
         broker=str(row["broker"]),
         updatedAt=str(row["updatedAt"]),
-        overview=row.get("overview") if isinstance(row.get("overview"), dict) else {},
+        overview=overview_obj,
         positions=[x if isinstance(x, dict) else {"raw": x} for x in positions],
         conditionalOrders=[x if isinstance(x, dict) else {"raw": x} for x in orders],
         trades=[x if isinstance(x, dict) else {"raw": x} for x in trades],
@@ -3186,13 +3190,21 @@ def _strategy_report_response(
     for r in recs_in[:3]:
         if not isinstance(r, dict):
             continue
-        levels_obj = r.get("levels") if isinstance(r.get("levels"), dict) else {}
+        raw_levels = r.get("levels")
+        levels_obj: dict[str, Any] = raw_levels if isinstance(raw_levels, dict) else {}
+        raw_support = levels_obj.get("support")
+        support_in: list[Any] = raw_support if isinstance(raw_support, list) else []
+        raw_res = levels_obj.get("resistance")
+        res_in: list[Any] = raw_res if isinstance(raw_res, list) else []
+        raw_inv = levels_obj.get("invalidations")
+        inv_in: list[Any] = raw_inv if isinstance(raw_inv, list) else []
         levels = StrategyLevels(
-            support=[_norm_str(x) for x in (levels_obj.get("support") or []) if _norm_str(x)],
-            resistance=[_norm_str(x) for x in (levels_obj.get("resistance") or []) if _norm_str(x)],
-            invalidations=[_norm_str(x) for x in (levels_obj.get("invalidations") or []) if _norm_str(x)],
+            support=[_norm_str(x) for x in support_in if _norm_str(x)],
+            resistance=[_norm_str(x) for x in res_in if _norm_str(x)],
+            invalidations=[_norm_str(x) for x in inv_in if _norm_str(x)],
         )
-        orders_in: list[Any] = r.get("orders") if isinstance(r.get("orders"), list) else []
+        raw_orders2 = r.get("orders")
+        orders_in: list[Any] = raw_orders2 if isinstance(raw_orders2, list) else []
         orders: list[StrategyOrder] = []
         for o in orders_in:
             if not isinstance(o, dict):
@@ -3484,6 +3496,41 @@ def _bars_features(bars: list[dict[str, str]]) -> dict[str, Any]:
     }
 
 
+def _chips_summary_last(x: Any) -> dict[str, Any]:
+    d = x if isinstance(x, dict) else {}
+    return {
+        "date": _norm_str(d.get("date") or ""),
+        "profitRatio": d.get("profitRatio"),
+        "avgCost": d.get("avgCost"),
+        "cost90Low": d.get("cost90Low"),
+        "cost90High": d.get("cost90High"),
+        "cost90Conc": d.get("cost90Conc"),
+        "cost70Low": d.get("cost70Low"),
+        "cost70High": d.get("cost70High"),
+        "cost70Conc": d.get("cost70Conc"),
+    }
+
+
+def _fund_flow_breakdown_last(x: Any) -> dict[str, Any]:
+    d = x if isinstance(x, dict) else {}
+    return {
+        "date": _norm_str(d.get("date") or ""),
+        "close": d.get("close"),
+        "changePct": d.get("changePct"),
+        # Bucket breakdown (small/medium/large/super/main) as requested.
+        "mainNetAmount": d.get("mainNetAmount"),
+        "mainNetRatio": d.get("mainNetRatio"),
+        "superNetAmount": d.get("superNetAmount"),
+        "superNetRatio": d.get("superNetRatio"),
+        "largeNetAmount": d.get("largeNetAmount"),
+        "largeNetRatio": d.get("largeNetRatio"),
+        "mediumNetAmount": d.get("mediumNetAmount"),
+        "mediumNetRatio": d.get("mediumNetRatio"),
+        "smallNetAmount": d.get("smallNetAmount"),
+        "smallNetRatio": d.get("smallNetRatio"),
+    }
+
+
 def _ai_strategy_daily(*, payload: dict[str, Any]) -> dict[str, Any]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
@@ -3495,6 +3542,46 @@ def _ai_strategy_daily(*, payload: dict[str, Any]) -> dict[str, Any]:
     with urllib.request.urlopen(req, timeout=120) as resp:
         raw = resp.read().decode("utf-8", errors="replace")
         return json.loads(raw)
+
+
+def _ai_strategy_candidates(*, payload: dict[str, Any]) -> dict[str, Any]:
+    url = f"{_ai_service_base_url()}/strategy/candidates"
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+    def _do() -> dict[str, Any]:
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                raw = resp.read().decode("utf-8")
+                return json.loads(raw)
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                err_body = ""
+            raise OSError(
+                f"ai-service HTTP {getattr(e, 'code', '?')} {getattr(e, 'reason', '')} while calling {url}: {err_body}"
+            ) from e
+        except http.client.RemoteDisconnected as e:
+            raise OSError(f"ai-service disconnected while calling {url}: {e}") from e
+        except urllib.error.URLError as e:
+            raise OSError(f"ai-service URL error while calling {url}: {e}") from e
+        except TimeoutError as e:
+            raise OSError(f"ai-service timeout while calling {url}: {e}") from e
+
+    try:
+        return _do()
+    except OSError as e:
+        msg = str(e)
+        if ("disconnected" in msg) or ("Connection reset" in msg) or ("timeout" in msg):
+            time.sleep(0.25)
+            return _do()
+        raise
 
 
 def _ai_strategy_daily_markdown(*, payload: dict[str, Any]) -> dict[str, Any]:
@@ -3630,6 +3717,19 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             if s is not None:
                 snaps.append(s)
 
+    tv_latest: list[dict[str, Any]] = [
+        {
+            "snapshotId": s.id,
+            "screenerId": s.screenerId,
+            "capturedAt": s.capturedAt,
+            "screenTitle": s.screenTitle,
+            "filters": s.filters,
+            "url": s.url,
+            "rowCount": s.rowCount,
+        }
+        for s in snaps
+    ]
+
     # Candidate pool = union of TV rows, capped.
     pool: list[dict[str, str]] = []
     seen_sym: set[str] = set()
@@ -3667,97 +3767,6 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             if len(pool) >= max(1, min(int(req.maxCandidates), 20)):
                 break
 
-    # Ensure market universe has these symbols so we can fetch bars/chips/fund-flow.
-    for c in pool:
-        _ensure_market_stock_basic(
-            symbol=c["symbol"],
-            market=c["market"],
-            ticker=c["ticker"],
-            name=c.get("name") or c["ticker"],
-            currency=c["currency"],
-        )
-
-    # Fetch deep data for candidates (bounded). IMPORTANT: keep context compact.
-    stock_context: list[dict[str, Any]] = []
-    if req.includeStocks:
-        # Provide deep context only for a small subset: holdings + first TV candidates.
-        deep_syms: list[str] = []
-        if req.includeAccountState:
-            raw_positions2 = state_row.get("positions")
-            pos_list2: list[Any] = raw_positions2 if isinstance(raw_positions2, list) else []
-            for p in pos_list2:
-                if not isinstance(p, dict):
-                    continue
-                ticker2 = _norm_str(p.get("ticker") or p.get("Ticker") or p.get("symbol") or p.get("Symbol") or "")
-                if not ticker2:
-                    continue
-                market2 = "HK" if (len(ticker2) in (4, 5)) else "CN"
-                sym2 = f"{market2}:{ticker2}"
-                if sym2 not in deep_syms:
-                    deep_syms.append(sym2)
-                if len(deep_syms) >= 5:
-                    break
-        for c in pool[:5]:
-            sym2 = c["symbol"]
-            if sym2 not in deep_syms:
-                deep_syms.append(sym2)
-            if len(deep_syms) >= 8:
-                break
-        deep_set = set(deep_syms)
-
-        for c in pool:
-            sym = c["symbol"]
-            include_deep = sym in deep_set
-            bars = _load_cached_bars(sym, days=60) if include_deep else []
-            bars_error: str | None = None
-            if include_deep and not bars:
-                try:
-                    bars_resp = market_stock_bars(sym, days=60)
-                    bars = bars_resp.bars
-                except Exception as e:
-                    bars = []
-                    bars_error = str(e)
-            feats = _bars_features(bars) if include_deep else {}
-
-            chips = _load_cached_chips(sym, days=30) if include_deep else []
-            fund_flow = _load_cached_fund_flow(sym, days=30) if include_deep else []
-            if include_deep and not chips:
-                try:
-                    chips = market_stock_chips(sym, days=30).items
-                except Exception:
-                    chips = []
-            if include_deep and not fund_flow:
-                try:
-                    fund_flow = market_stock_fund_flow(sym, days=30).items
-                except Exception:
-                    fund_flow = []
-
-            # Compact tails only (avoid sending full arrays).
-            bars_tail = bars[-6:] if bars else []
-            chips_tail = chips[-3:] if chips else []
-            ff_tail = fund_flow[-5:] if fund_flow else []
-
-            stock_context.append(
-                {
-                    "symbol": sym,
-                    "market": c["market"],
-                    "ticker": c["ticker"],
-                    "name": c.get("name") or "",
-                    "currency": c["currency"],
-                    "deep": include_deep,
-                    "availability": {
-                        "barsCached": True if bars else False,
-                        "chipsCached": True if chips else False,
-                        "fundFlowCached": True if fund_flow else False,
-                        "barsError": bars_error,
-                    },
-                    "features": feats,
-                    "barsTail": bars_tail,
-                    "chipsTail": chips_tail,
-                    "fundFlowTail": ff_tail,
-                },
-            )
-
     # TradingView context: last 5 days history (AM/PM) for each screener.
     tv_history: list[dict[str, Any]] = []
     if req.includeTradingView:
@@ -3766,7 +3775,6 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             if srow is None:
                 continue
             hist = tv_screener_history(sid, days=5)
-            # Expand cells into compact snapshot briefs; keep time markers.
             expanded: list[dict[str, Any]] = []
             for day in hist.rows:
                 for slot in ("am", "pm"):
@@ -3784,12 +3792,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                         },
                     )
             tv_history.append(
-                {
-                    "screenerId": sid,
-                    "screenerName": str(srow.get("name") or sid),
-                    "days": 5,
-                    "rows": expanded,
-                },
+                {"screenerId": sid, "screenerName": str(srow.get("name") or sid), "days": 5, "rows": expanded},
             )
 
     # CN industry fund flow context (Top10 + 10d series), DB-first with best-effort sync.
@@ -3826,6 +3829,138 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         except Exception as e:
             industry_flow_error = str(e)
 
+    # Stage 1: candidate selection WITHOUT per-stock deep context.
+    base_snapshot: dict[str, Any] = {
+        "date": d,
+        "account": {
+            "accountId": aid,
+            "broker": "pingan",
+            "accountTitle": acct["title"],
+            "accountMasked": acct.get("accountMasked"),
+        },
+        "accountPrompt": strategy_prompt,
+        "accountState": {} if not req.includeAccountState else state_row,
+        "tradingView": {} if not req.includeTradingView else {"latest": tv_latest, "history": tv_history},
+        "industryFundFlow": {}
+        if not req.includeIndustryFundFlow
+        else {"meta": industry_flow_meta, "top": industry_flow_top, "error": industry_flow_error},
+        # Provide an explicit universe so stage 1 doesn't need to parse TV rows.
+        "candidateUniverse": pool,
+        # Stage 1 explicitly excludes deep context.
+        "stocks": [],
+    }
+
+    stage1_req = {
+        "date": d,
+        "accountId": aid,
+        "accountTitle": acct["title"],
+        "accountPrompt": strategy_prompt,
+        "context": base_snapshot,
+    }
+
+    stage1_resp: dict[str, Any] = {}
+    stage1_candidates: list[dict[str, Any]] = []
+    stage1_leader: dict[str, Any] = {"symbol": "", "reason": ""}
+    stage1_error: str | None = None
+    try:
+        stage1_resp = _ai_strategy_candidates(payload=stage1_req)
+        c_in = stage1_resp.get("candidates")
+        stage1_candidates = c_in if isinstance(c_in, list) else []
+        leader_in = stage1_resp.get("leader")
+        stage1_leader = leader_in if isinstance(leader_in, dict) else stage1_leader
+    except OSError as e:
+        stage1_error = str(e)
+
+    # Decide which symbols to fetch deep context for stage 2.
+    selected_syms: list[str] = []
+    for c in stage1_candidates[:5]:
+        if not isinstance(c, dict):
+            continue
+        sym = _norm_str(c.get("symbol") or "")
+        if sym and sym not in selected_syms:
+            selected_syms.append(sym)
+    if not selected_syms:
+        # Fallback: pick from pool if stage1 failed/empty.
+        for c in pool[:5]:
+            sym = _norm_str(c.get("symbol") or "")
+            if sym and sym not in selected_syms:
+                selected_syms.append(sym)
+
+    # Ensure market universe has selected symbols so we can fetch bars/chips/fund-flow.
+    selected_meta: dict[str, dict[str, str]] = {c["symbol"]: c for c in pool if isinstance(c, dict) and _norm_str(c.get("symbol"))}
+    for sym in selected_syms:
+        meta = selected_meta.get(sym) or {}
+        market = _norm_str(meta.get("market") or sym.split(":")[0] if ":" in sym else "CN")
+        ticker = _norm_str(meta.get("ticker") or sym.split(":")[1] if ":" in sym else sym)
+        currency = _norm_str(meta.get("currency") or ("HKD" if market == "HK" else "CNY"))
+        name = _norm_str(meta.get("name") or ticker)
+        _ensure_market_stock_basic(symbol=sym, market=market, ticker=ticker, name=name, currency=currency)
+
+    # Stage 2: fetch deep context ONLY for selected symbols (if enabled).
+    stock_context: list[dict[str, Any]] = []
+    if req.includeStocks:
+        for sym in selected_syms:
+            meta = selected_meta.get(sym) or {}
+            market = _norm_str(meta.get("market") or sym.split(":")[0] if ":" in sym else "CN")
+            ticker = _norm_str(meta.get("ticker") or sym.split(":")[1] if ":" in sym else sym)
+            currency = _norm_str(meta.get("currency") or ("HKD" if market == "HK" else "CNY"))
+            name = _norm_str(meta.get("name") or "")
+
+            bars = _load_cached_bars(sym, days=60)
+            bars_error: str | None = None
+            if not bars:
+                try:
+                    bars_resp = market_stock_bars(sym, days=60)
+                    bars = bars_resp.bars
+                except Exception as e:
+                    bars = []
+                    bars_error = str(e)
+            feats = _bars_features(bars)
+
+            chips = _load_cached_chips(sym, days=30)
+            fund_flow = _load_cached_fund_flow(sym, days=30)
+            if not chips:
+                try:
+                    chips = market_stock_chips(sym, days=30).items
+                except Exception:
+                    chips = []
+            if not fund_flow:
+                try:
+                    fund_flow = market_stock_fund_flow(sym, days=30).items
+                except Exception:
+                    fund_flow = []
+
+            bars_tail = bars[-6:] if bars else []
+            chips_tail = chips[-3:] if chips else []
+            ff_tail = fund_flow[-5:] if fund_flow else []
+            chips_last = chips_tail[-1] if chips_tail else {}
+            ff_last = ff_tail[-1] if ff_tail else {}
+
+            stock_context.append(
+                {
+                    "symbol": sym,
+                    "market": market,
+                    "ticker": ticker,
+                    "name": name,
+                    "currency": currency,
+                    "deep": True,
+                    "availability": {
+                        "barsCached": True if bars else False,
+                        "chipsCached": True if chips else False,
+                        "fundFlowCached": True if fund_flow else False,
+                        "barsError": bars_error,
+                    },
+                    "features": feats,
+                    # Deep context guarantees:
+                    "chipsSummary": _chips_summary_last(chips_last),
+                    "fundFlowBreakdown": _fund_flow_breakdown_last(ff_last),
+                    "barsTail": bars_tail,
+                    "chipsTail": chips_tail,
+                    "fundFlowTail": ff_tail,
+                },
+            )
+
+    # Stage 2 snapshot: includes stage1 results + deep context for selected symbols.
     input_snapshot: dict[str, Any] = {
         "date": d,
         "account": {
@@ -3835,45 +3970,19 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             "accountMasked": acct.get("accountMasked") or "",
         },
         "accountPrompt": strategy_prompt,
-        "accountState": {}
-        if not req.includeAccountState
-        else {
-            "overview": state_row.get("overview") if isinstance(state_row.get("overview"), dict) else {},
-            "positions": state_row.get("positions") if isinstance(state_row.get("positions"), list) else [],
-            "conditionalOrders": state_row.get("conditionalOrders")
-            if isinstance(state_row.get("conditionalOrders"), list)
-            else [],
-            "trades": state_row.get("trades") if isinstance(state_row.get("trades"), list) else [],
-        },
-        "tradingView": {}
-        if not req.includeTradingView
-        else {
-            "latest": [
-                {
-                    "snapshotId": s.id,
-                    "screenerId": s.screenerId,
-                    "capturedAt": s.capturedAt,
-                    "screenTitle": s.screenTitle,
-                    "filters": s.filters,
-                    "url": s.url,
-                    "rowCount": s.rowCount,
-                }
-                for s in snaps
-            ],
-            "history": tv_history,
-        },
+        "accountState": {} if not req.includeAccountState else state_row,
+        "tradingView": {} if not req.includeTradingView else {"latest": tv_latest, "history": tv_history},
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow
-        else {
-            "meta": industry_flow_meta,
-            "top": industry_flow_top,
-            "error": industry_flow_error,
-        },
+        else {"meta": industry_flow_meta, "top": industry_flow_top, "error": industry_flow_error},
+        "candidateUniverse": pool,
+        "stage1": {"candidates": stage1_candidates[:5], "leader": stage1_leader, "error": stage1_error},
+        "selectedSymbols": selected_syms,
         "stocks": [] if not req.includeStocks else stock_context,
     }
 
-    # Call ai-service
-    ai_payload = {
+    # Call ai-service (stage 2 markdown)
+    stage2_req = {
         "date": d,
         "accountId": aid,
         "accountTitle": acct["title"],
@@ -3881,16 +3990,23 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         "context": input_snapshot,
     }
     try:
-        out = _ai_strategy_daily_markdown(payload=ai_payload)
+        out = _ai_strategy_daily_markdown(payload=stage2_req)
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"ai-service request failed: {e}") from e
 
-    output = out if isinstance(out, dict) else {"error": "Invalid strategy output", "raw": out}
+    stage2_resp_raw: dict[str, Any] = out if isinstance(out, dict) else {"error": "Invalid strategy output", "raw": out}
+    # Copy to avoid circular refs when attaching debug.
+    output: dict[str, Any] = dict(stage2_resp_raw)
     # Normalize markdown for UI rendering (avoid headings on same line).
     if isinstance(output.get("markdown"), str):
         raw_md = output.get("markdown") or ""
         output.setdefault("markdownRaw", raw_md)
         output["markdown"] = _normalize_strategy_markdown(raw_md)
+    # Two-stage debug info (stored in report.raw for UI debug)
+    output["debug"] = {
+        "stage1": {"request": stage1_req, "response": stage1_resp, "error": stage1_error},
+        "stage2": {"request": stage2_req, "response": stage2_resp_raw},
+    }
     model = _norm_str(output.get("model") or os.getenv("AI_MODEL") or "ai-service")
 
     report_id = str(uuid.uuid4())

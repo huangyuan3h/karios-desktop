@@ -245,10 +245,7 @@ def fetch_cn_a_fund_flow(ticker: str, *, days: int = 60) -> list[dict[str, str]]
     try:
         df = ak.stock_individual_fund_flow(stock=ticker, market=market)
     except TypeError:
-        try:
-            df = ak.stock_individual_fund_flow(symbol=ticker, market=market)
-        except TypeError:
-            df = ak.stock_individual_fund_flow(ticker, market=market)
+        df = ak.stock_individual_fund_flow(ticker, market=market)
     except Exception as e:
         raise RuntimeError(f"AkShare stock_individual_fund_flow failed for {ticker}: {e}") from e
     rows = _to_records(df)

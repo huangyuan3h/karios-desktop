@@ -167,17 +167,50 @@ def test_strategy_injects_industry_fund_flow(tmp_path, monkeypatch) -> None:
     )
     monkeypatch.setattr(main, "market_cn_industry_fund_flow", lambda days=10, topN=10, asOfDate=None: flow)
 
+    captured = {"stage1": None, "stage2": None}
+
+    # Stage 1 candidates call (avoid ai-service).
+    monkeypatch.setattr(
+        main,
+        "_ai_strategy_candidates",
+        lambda *, payload: (
+            captured.__setitem__("stage1", payload)
+            or {
+            "date": "2025-12-26",
+            "accountId": account_id,
+            "accountTitle": "Main",
+            "candidates": [
+                {
+                    "symbol": "CN:300502",
+                    "market": "CN",
+                    "ticker": "300502",
+                    "name": "Xin Yi Sheng",
+                    "score": 88,
+                    "rank": 1,
+                    "why": "test",
+                    "scoreBreakdown": {"trend": 30, "flow": 25, "structure": 20, "risk": 13},
+                }
+            ],
+            "leader": {"symbol": "CN:300502", "reason": "test"},
+            "model": "test-model",
+        }
+        ),
+    )
+
     # Avoid AI call.
     monkeypatch.setattr(
         main,
         "_ai_strategy_daily_markdown",
-        lambda *, payload: {
+        lambda *, payload: (
+            captured.__setitem__("stage2", payload)
+            or {
             "date": "2025-12-26",
             "accountId": account_id,
             "accountTitle": "Main",
             "markdown": "# Main 日度交易报告（2025-12-26）\n\n## 1）资金流向板块\n- Power\n",
             "model": "test-model",
-        },
+        }
+        ),
     )
 
     resp = client.post(
@@ -189,5 +222,7 @@ def test_strategy_injects_industry_fund_flow(tmp_path, monkeypatch) -> None:
     ctx = rep.get("inputSnapshot") or {}
     assert "industryFundFlow" in ctx
     assert (ctx["industryFundFlow"].get("top") or [])[0]["industryName"] == "Power"
+    assert captured["stage1"] is not None
+    assert captured["stage2"] is not None
 
 

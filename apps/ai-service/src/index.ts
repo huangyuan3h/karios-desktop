@@ -54,6 +54,37 @@ const StrategyDailyRequestSchema = z.object({
   context: z.record(z.any()),
 });
 
+const StrategyCandidatesRowSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  ticker: z.string(),
+  name: z.string(),
+  score: z.number().min(0).max(100),
+  rank: z.number().int().min(1).max(5),
+  why: z.string(),
+  scoreBreakdown: z
+    .object({
+      trend: z.number().min(0).max(40),
+      flow: z.number().min(0).max(30),
+      structure: z.number().min(0).max(20),
+      risk: z.number().min(0).max(10),
+    })
+    .optional(),
+});
+
+const StrategyCandidatesResponseSchema = z.object({
+  date: z.string(),
+  accountId: z.string(),
+  accountTitle: z.string(),
+  candidates: z.array(StrategyCandidatesRowSchema).max(5),
+  leader: z.object({
+    symbol: z.string(),
+    reason: z.string(),
+  }),
+  riskNotes: z.array(z.string()).optional(),
+  model: z.string(),
+});
+
 const StrategyDailyMarkdownResponseSchema = z.object({
   date: z.string(),
   accountId: z.string(),
@@ -474,6 +505,92 @@ app.post('/strategy/daily', async (c) => {
   );
 });
 
+app.post('/strategy/candidates', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = StrategyDailyRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+  }
+
+  let model: AiModel;
+  let fallbackModel: AiModel | null = null;
+  try {
+    model = getModel(process.env.AI_STRATEGY_MODEL);
+    const fb = getStrategyFallbackModelId();
+    if (fb) fallbackModel = getModel(fb);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid AI configuration';
+    return c.json({ error: message }, 500);
+  }
+
+  const modelId = process.env.AI_STRATEGY_MODEL ?? process.env.AI_MODEL ?? '';
+  const fallbackModelId = getStrategyFallbackModelId();
+  const accountTitle = (parsed.data.accountTitle ?? '').trim() || 'Account';
+  const accountPrompt = (parsed.data.accountPrompt ?? '').trim();
+  const date = parsed.data.date.trim();
+
+  const system =
+    'You are a stock selection engine for swing trading. ' +
+    'Your ONLY job is to rank candidates and choose a leader using the given context. ' +
+    'Return a valid JSON object matching the provided schema. No markdown fences.';
+
+  const instruction =
+    `Task: Rank Top 5 candidate assets for ${accountTitle} on ${date}.\n` +
+    'Constraints:\n' +
+    '- Do NOT require per-stock deep context. Assume it is NOT available.\n' +
+    '- Use ONLY: accountState, TradingView latest+history, industryFundFlow.\n' +
+    '- Return exactly 1..5 candidates with numeric Score 0-100 and rank 1..5.\n' +
+    '- Rank must be consistent with score (higher score => better rank).\n' +
+    '- Provide a single leader (龙头) and a short reason.\n' +
+    '- Score rubric (0-100): Trend(0-40)+Flow(0-30)+Structure(0-20)+Risk(0-10).\n' +
+    '- Fill scoreBreakdown numbers to match the total score.\n' +
+    '- Use Chinese.\n\n' +
+    (accountPrompt ? `Account prompt:\n${accountPrompt}\n\n` : '') +
+    'Context JSON:\n' +
+    JSON.stringify(parsed.data.context);
+
+  async function run(m: AiModel): Promise<unknown> {
+    const { object } = await generateObject({
+      model: m,
+      schema: StrategyCandidatesResponseSchema,
+      system,
+      prompt: instruction,
+      temperature: 0,
+      maxOutputTokens: 1800,
+    });
+    return object;
+  }
+
+  try {
+    const obj = await run(model);
+    const out = StrategyCandidatesResponseSchema.parse(obj);
+    return c.json({ ...out, model: modelId || out.model });
+  } catch (e) {
+    if (fallbackModel) {
+      try {
+        const obj = await run(fallbackModel);
+        const out = StrategyCandidatesResponseSchema.parse(obj);
+        return c.json({ ...out, model: fallbackModelId || modelId || out.model });
+      } catch {
+        // fallthrough
+      }
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json(
+      {
+        date,
+        accountId: parsed.data.accountId,
+        accountTitle,
+        candidates: [],
+        leader: { symbol: '', reason: '' },
+        riskNotes: [`Candidates generation failed: ${msg}`],
+        model: modelId || 'unknown',
+      },
+      200,
+    );
+  }
+});
+
 app.post('/strategy/daily-markdown', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = StrategyDailyRequestSchema.safeParse(body);
@@ -550,6 +667,8 @@ app.post('/strategy/daily-markdown', async (c) => {
     '先用 2-4 句说明候选筛选逻辑（行业资金 + 趋势 + 结构 + 风险），再给表格。\n\n' +
     '评分说明（0-100）：Trend(0-40)+Flow(0-30)+Structure(0-20)+Risk(0-10)。\n' +
     '要求：Score 给出整数 0-100，并按 Score 排序；Risk 列写明影响打分的主要不确定性（如缺少现价/缺少行业数据/深度数据不足）。\n\n' +
+    'If context.stage1.candidates is provided, you MUST use it as the candidate list source and pick Top3 from it.\n' +
+    'If context.stage1 is missing/empty, you may derive candidates from context.candidateUniverse.\n\n' +
     '| Rank | Score | Symbol | Name | Current | Why now (1 line) | Key levels (S/R/Invalid) | Plan A (breakout trigger) | Plan B (pullback trigger) | Risk (1 line) |\n' +
     '|---:|---:|---|---|---:|---|---|---|---|---|\n' +
     '| 1 | 0 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |\n\n' +
