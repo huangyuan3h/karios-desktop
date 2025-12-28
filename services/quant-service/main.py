@@ -3273,6 +3273,34 @@ def _latest_tv_snapshot_for_screener(screener_id: str) -> TvScreenerSnapshotDeta
         return _get_tv_snapshot(str(row[0]))
 
 
+def _list_enabled_tv_screeners(*, limit: int = 6) -> list[dict[str, Any]]:
+    _seed_default_tv_screeners()
+    limit2 = max(1, min(int(limit), 20))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, name, url, enabled, updated_at
+            FROM tv_screeners
+            WHERE enabled = 1
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            (limit2,),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            out.append(
+                {
+                    "id": str(r[0]),
+                    "name": str(r[1]),
+                    "url": str(r[2]),
+                    "enabled": bool(r[3]),
+                    "updatedAt": str(r[4]),
+                }
+            )
+        return out
+
+
 def _pick_tv_columns(headers: list[str]) -> list[str]:
     preferred = [
         "Ticker",
@@ -3708,11 +3736,15 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         "trades": [],
     }
 
-    # Latest TradingView snapshots (default 2 screeners).
-    _seed_default_tv_screeners()
+    # Latest TradingView snapshots (all enabled screeners; capped).
     snaps: list[TvScreenerSnapshotDetail] = []
+    tv_screeners_selected: list[dict[str, Any]] = []
     if req.includeTradingView:
-        for sid in ("falcon", "blackhorse"):
+        tv_screeners_selected = _list_enabled_tv_screeners(limit=6)
+        for sc in tv_screeners_selected:
+            sid = _norm_str(sc.get("id") or "")
+            if not sid:
+                continue
             s = _latest_tv_snapshot_for_screener(sid)
             if s is not None:
                 snaps.append(s)
@@ -3760,7 +3792,9 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
     # TradingView context: last 5 days history (AM/PM) for each screener.
     tv_history: list[dict[str, Any]] = []
     if req.includeTradingView:
-        for sid in ("falcon", "blackhorse"):
+        # Use the same screeners as latest; keep history small to control tokens.
+        ids = [_norm_str(x.get("id") or "") for x in tv_screeners_selected if isinstance(x, dict)]
+        for sid in [x for x in ids if x]:
             srow = _get_tv_screener_row(sid)
             if srow is None:
                 continue

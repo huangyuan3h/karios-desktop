@@ -634,7 +634,11 @@ app.post('/strategy/daily-markdown', async (c) => {
     '  - NEVER put analysis text on the same line as a heading (no "## Title ...analysis...").\n' +
     '- IMPORTANT output style:\n' +
     '  - This must be a COMPLETE, readable report: combine short analysis paragraphs + tables.\n' +
-    '  - Prefer TABLES for decisions; keep paragraphs short (2-6 lines). Avoid huge walls of text.\n' +
+    '  - Prefer TABLES for decisions; keep paragraphs short.\n' +
+    '  - Paragraph limits:\n' +
+    '    - Any normal paragraph MUST be <= 300 Chinese characters.\n' +
+    '    - Use at most 2 paragraphs per section.\n' +
+    '    - Prefer 3-6 bullet points over long prose.\n' +
     '  - TABLES MUST render reliably:\n' +
     '    - Each table MUST be valid GFM markdown table syntax.\n' +
     '    - Header row, separator row, and each data row MUST be on its OWN line.\n' +
@@ -669,29 +673,30 @@ app.post('/strategy/daily-markdown', async (c) => {
     `账户：${accountTitle}\n` +
     `日期：${date}\n\n` +
     '## 0 结果摘要\n\n' +
-    '用 1-2 句概括“今天主线/风险偏好/操作倾向”，然后给出下面摘要表。\n\n' +
+    '用 1 段短文（<=200字）概括“主线/风险偏好/操作倾向”，然后给出摘要表。\n\n' +
     '| Focus themes | Leader | Risk budget | Max positions | Today stance | Notes |\n' +
     '|---|---|---|---|---|\n' +
     '| TBD | TBD | 单笔≤1% 净值 | ≤3 | 进攻/均衡/防守 | 右侧交易/条件单 |\n\n' +
     '（在表格下面再用 2-4 句解释：为什么这些是主线/为什么不是别的。）\n\n' +
     '## 1 资金板块\n\n' +
-    '（用 3-6 条 bullet，总结：Top流入/Top流出/持续性/对持仓威胁/今日聚焦主题）\n\n' +
+    '用 3-6 条 bullet，总结：Top流入/Top流出/持续性/对持仓威胁/今日聚焦主题。\n\n' +
     '## 2 候选Top3\n\n' +
-    '先用 2-4 句说明候选筛选逻辑（行业资金 + 趋势 + 结构 + 风险），再给表格。\n\n' +
+    '先用 1 段短文（<=220字）说明候选筛选逻辑（行业资金 + 趋势 + 结构 + 风险），再给表格。\n\n' +
     '评分说明（0-100）：Trend(0-40)+Flow(0-30)+Structure(0-20)+Risk(0-10)。\n' +
     '要求：Score 给出整数 0-100，并按 Score 排序；Risk 列写明影响打分的主要不确定性（如缺少现价/缺少行业数据/深度数据不足）。\n\n' +
     'If context.stage1.candidates is provided, you MUST use it as the candidate list source and pick Top3 from it.\n' +
     'If context.stage1 is missing/empty, you may derive candidates from context.candidateUniverse.\n\n' +
-    '| Rank | Score | Symbol | Name | Current | Why now (1 line) | Key levels (S/R/Invalid) | Plan A (breakout trigger) | Plan B (pullback trigger) | Risk (1 line) |\n' +
-    '|---:|---:|---|---|---:|---|---|---|---|---|\n' +
-    '| 1 | 0 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |\n\n' +
-    '（用 1-2 段短文说明：为什么它是“龙头/优先级最高”，以及今天不做什么。）\n\n' +
+    '候选表只要“筛选结果与理由”，不要写具体交易触发价/关键位/PlanA/PlanB（这些放到第5部分条件单总表）。\n\n' +
+    '| Rank | Score | Symbol | Name | Current | 基本面分析 | Why now (技术面/资金面 1行) | Risk (1 line) |\n' +
+    '|---:|---:|---|---|---:|---|---|---|\n' +
+    '| 1 | 0 | TBD | TBD | TBD | TBD | TBD | TBD |\n\n' +
+    '表格后用 1 段短文（<=220字）总结：Top3 的共同点、谁是龙头（只选1个）、以及今天不做什么。\n\n' +
     '## 3 持仓计划\n\n' +
-    '先用 2-4 句总结“今天持仓处理总思路”（先处理风险源/如何锁利/哪些继续拿）。\n\n' +
+    '先用 1 段短文（<=220字）总结“今天持仓处理总思路”（先处理风险源/如何锁利/哪些继续拿）。\n\n' +
     '| Symbol | Name | Qty | Cost | Current | PnL% | Action | Score | StopLoss trigger | Reduce/Exit trigger | Orders (keep/adjust/cancel) | Notes |\n' +
     '|---|---|---:|---:|---:|---:|---|---:|---|---|---|---|\n' +
     '| TBD | TBD | TBD | TBD | TBD | TBD | Hold/Reduce/Exit | 0 | TBD | TBD | TBD | TBD |\n\n' +
-    '（用 1 段短文总结：今天优先处理哪一只持仓的风险、哪些仓位可以顺势持有。）\n\n' +
+    '表格后用 1 段短文（<=220字）总结：优先处理哪一只风险源 + 哪些仓位顺势持有。\n\n' +
     '## 4 执行要点\n\n' +
     '- 只写 5-8 条“可执行规则”（例如：触发后必须补止损单；未触发不交易；午后复核；收盘撤销等）\n\n' +
     '## 5 条件单总表\n\n' +
