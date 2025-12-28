@@ -149,23 +149,20 @@ def test_strategy_injects_industry_fund_flow(tmp_path, monkeypatch) -> None:
         ),
     )
 
-    # Patch industry flow query to return deterministic context (so we don't need DB writes).
-    flow = main.MarketCnIndustryFundFlowResponse(
-        asOfDate="2025-12-26",
-        days=10,
-        topN=10,
-        dates=["2025-12-26"],
-        top=[
-            main.IndustryFundFlowRow(
-                industryCode="BK_A",
-                industryName="Power",
-                netInflow=123.0,
-                sum10d=456.0,
-                series10d=[main.IndustryFundFlowPoint(date="2025-12-26", netInflow=123.0)],
-            )
-        ],
+    # Patch screenshot-style daily top inflow matrix (so we don't need DB writes).
+    monkeypatch.setattr(
+        main,
+        "_market_cn_industry_fund_flow_top_by_date",
+        lambda *, as_of_date, days=10, top_k=5: {
+            "asOfDate": as_of_date,
+            "days": 10,
+            "topK": 5,
+            "dates": ["2025-12-26"],
+            "ranks": [1, 2, 3, 4, 5],
+            "matrix": [["Power"], ["Other2"], ["Other3"], ["Other4"], ["Other5"]],
+            "topByDate": [{"date": "2025-12-26", "top": ["Power", "Other2", "Other3", "Other4", "Other5"]}],
+        },
     )
-    monkeypatch.setattr(main, "market_cn_industry_fund_flow", lambda days=10, topN=10, asOfDate=None: flow)
 
     captured = {"stage1": None, "stage2": None}
 
@@ -221,7 +218,8 @@ def test_strategy_injects_industry_fund_flow(tmp_path, monkeypatch) -> None:
     rep = resp.json()
     ctx = rep.get("inputSnapshot") or {}
     assert "industryFundFlow" in ctx
-    assert (ctx["industryFundFlow"].get("top") or [])[0]["industryName"] == "Power"
+    daily = (ctx["industryFundFlow"].get("dailyTopInflow") or {})
+    assert (daily.get("topByDate") or [])[0]["top"][0] == "Power"
     assert captured["stage1"] is not None
     assert captured["stage2"] is not None
 

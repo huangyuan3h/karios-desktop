@@ -2200,6 +2200,72 @@ def market_cn_industry_fund_flow(
     )
 
 
+def _market_cn_industry_fund_flow_top_by_date(
+    *, as_of_date: str, days: int = 10, top_k: int = 5
+) -> dict[str, Any]:
+    """
+    Screenshot-style 'TopK × Date' matrix of industry NAMES (no numeric values).
+
+    Returns:
+      - asOfDate, days, topK
+      - dates: last N dates we have (ASC)
+      - ranks: [1..topK]
+      - matrix: rows by rank, cols by date -> industryName
+      - topByDate: [{date, top:[name1..nameK]}]
+    """
+    days2 = max(1, min(int(days), 30))
+    topk2 = max(1, min(int(top_k), 10))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            WITH dates AS (
+              SELECT DISTINCT date
+              FROM market_cn_industry_fund_flow_daily
+              WHERE date <= ?
+              ORDER BY date DESC
+              LIMIT ?
+            ),
+            ranked AS (
+              SELECT date, industry_name, net_inflow,
+                     ROW_NUMBER() OVER (PARTITION BY date ORDER BY net_inflow DESC) AS rn
+              FROM market_cn_industry_fund_flow_daily
+              WHERE date IN (SELECT date FROM dates)
+            )
+            SELECT date, rn, industry_name
+            FROM ranked
+            WHERE rn <= ?
+            ORDER BY date ASC, rn ASC
+            """,
+            (as_of_date, days2, topk2),
+        ).fetchall()
+
+    by_date: dict[str, list[str]] = {}
+    for r in rows:
+        d = str(r[0])
+        rn = int(r[1])
+        name = str(r[2] or "")
+        if d not in by_date:
+            by_date[d] = [""] * topk2
+        if 1 <= rn <= topk2:
+            by_date[d][rn - 1] = name
+
+    dates = sorted(by_date.keys())
+    top_by_date = [{"date": d, "top": by_date[d]} for d in dates]
+    matrix: list[list[str]] = []
+    for idx in range(topk2):
+        matrix.append([by_date[d][idx] for d in dates])
+
+    return {
+        "asOfDate": as_of_date,
+        "days": days2,
+        "topK": topk2,
+        "dates": dates,
+        "ranks": list(range(1, topk2 + 1)),
+        "matrix": matrix,
+        "topByDate": top_by_date,
+    }
+
+
 def _get_tv_screener_row(screener_id: str) -> dict[str, Any] | None:
     with _connect() as conn:
         row = conn.execute(
@@ -3665,9 +3731,17 @@ def _normalize_strategy_markdown(md: str) -> str:
 
     parts = s.split("```")
     for i in range(0, len(parts), 2):  # outside code fences
+        # If model puts analysis text on the same line as known headings, split it.
+        # Example: "## 0 结果摘要 主线偏向..." -> "## 0 结果摘要\n\n主线偏向..."
+        seg = re.sub(
+            r"^(##\s*(?:0|1|2|3|4|5)\s*(?:结果摘要|资金板块|候选Top3|持仓计划|执行要点|条件单总表))\s+([^\n#].*)$",
+            r"\1\n\n\2",
+            parts[i],
+            flags=re.MULTILINE,
+        )
         # If a model puts '...## Heading' on the same line, split it.
         # Note: use lookahead so it also fixes cases without spaces (e.g. ')...## 1）').
-        seg = re.sub(r"([^\n])(?=#{2,6}\s)", r"\1\n\n", parts[i])
+        seg = re.sub(r"([^\n])(?=#{2,6}\s)", r"\1\n\n", seg)
 
         # Fix "one-line tables" so markdown renderers can parse them.
         seg = re.sub(r"\|\|\s*(?=[-:]{3,})", "|\n|", seg)  # header -> separator
@@ -3789,67 +3863,20 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             if len(pool) >= max(1, min(int(req.maxCandidates), 20)):
                 break
 
-    # TradingView context: last 5 days history (AM/PM) for each screener.
-    tv_history: list[dict[str, Any]] = []
-    if req.includeTradingView:
-        # Use the same screeners as latest; keep history small to control tokens.
-        ids = [_norm_str(x.get("id") or "") for x in tv_screeners_selected if isinstance(x, dict)]
-        for sid in [x for x in ids if x]:
-            srow = _get_tv_screener_row(sid)
-            if srow is None:
-                continue
-            hist = tv_screener_history(sid, days=5)
-            expanded: list[dict[str, Any]] = []
-            for day in hist.rows:
-                for slot in ("am", "pm"):
-                    cell = getattr(day, slot)
-                    if cell is None:
-                        continue
-                    brief = _tv_snapshot_brief(cell.snapshotId, max_rows=20)
-                    expanded.append(
-                        {
-                            "date": day.date,
-                            "slot": slot,
-                            "capturedAt": cell.capturedAt,
-                            "rowCount": cell.rowCount,
-                            "snapshot": brief,
-                        },
-                    )
-            tv_history.append(
-                {"screenerId": sid, "screenerName": str(srow.get("name") or sid), "days": 5, "rows": expanded},
-            )
-
-    # CN industry fund flow context (Top10 + 10d series), DB-first with best-effort sync.
-    industry_flow_top: list[dict[str, Any]] = []
-    industry_flow_meta: dict[str, Any] = {"asOfDate": d, "days": 10, "topN": 10, "metric": "netInflowEod"}
+    # CN industry fund flow context: screenshot-style Top5×Date (names only), DB-first with best-effort sync.
+    industry_flow_daily: dict[str, Any] = {"asOfDate": d, "days": 10, "topK": 5, "dates": [], "ranks": [], "matrix": [], "topByDate": []}
     industry_flow_error: str | None = None
     if req.includeIndustryFundFlow:
         try:
-            flow = market_cn_industry_fund_flow(days=10, topN=10, asOfDate=d)
-            if not flow.top:
+            industry_flow_daily = _market_cn_industry_fund_flow_top_by_date(as_of_date=d, days=10, top_k=5)
+            if not (industry_flow_daily.get("dates") or []):
                 try:
                     market_cn_industry_fund_flow_sync(
                         MarketCnIndustryFundFlowSyncRequest(date=d, days=10, topN=10, force=False)
                     )
                 except Exception:
                     pass
-                flow = market_cn_industry_fund_flow(days=10, topN=10, asOfDate=d)
-            industry_flow_meta = {
-                "asOfDate": flow.asOfDate,
-                "days": flow.days,
-                "topN": flow.topN,
-                "metric": "netInflowEod",
-            }
-            for r in flow.top:
-                industry_flow_top.append(
-                    {
-                        "industryCode": r.industryCode,
-                        "industryName": r.industryName,
-                        "netInflow": r.netInflow,
-                        "sum10d": r.sum10d,
-                        "series10d": [{"date": p.date, "netInflow": p.netInflow} for p in r.series10d],
-                    }
-                )
+                industry_flow_daily = _market_cn_industry_fund_flow_top_by_date(as_of_date=d, days=10, top_k=5)
         except Exception as e:
             industry_flow_error = str(e)
 
@@ -3864,10 +3891,10 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         },
         "accountPrompt": strategy_prompt,
         "accountState": {} if not req.includeAccountState else state_row,
-        "tradingView": {} if not req.includeTradingView else {"latest": tv_latest, "history": tv_history},
+        "tradingView": {} if not req.includeTradingView else {"latest": tv_latest},
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow
-        else {"meta": industry_flow_meta, "top": industry_flow_top, "error": industry_flow_error},
+        else {"dailyTopInflow": industry_flow_daily, "error": industry_flow_error},
         # Provide an explicit universe so stage 1 doesn't need to parse TV rows.
         "candidateUniverse": pool,
         # Stage 1 explicitly excludes deep context.
@@ -3995,10 +4022,10 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         },
         "accountPrompt": strategy_prompt,
         "accountState": {} if not req.includeAccountState else state_row,
-        "tradingView": {} if not req.includeTradingView else {"latest": tv_latest, "history": tv_history},
+        "tradingView": {} if not req.includeTradingView else {"latest": tv_latest},
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow
-        else {"meta": industry_flow_meta, "top": industry_flow_top, "error": industry_flow_error},
+        else {"dailyTopInflow": industry_flow_daily, "error": industry_flow_error},
         "candidateUniverse": pool,
         "stage1": {"candidates": stage1_candidates[:5], "leader": stage1_leader, "error": stage1_error},
         "selectedSymbols": selected_syms,

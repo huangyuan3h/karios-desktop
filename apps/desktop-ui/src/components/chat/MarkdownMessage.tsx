@@ -10,6 +10,14 @@ function normalizeMarkdownForRender(content: string): string {
   // Avoid modifying fenced code blocks.
   const parts = s.split('```');
   for (let i = 0; i < parts.length; i += 2) {
+    // If model puts analysis text on the same line as known headings, split it.
+    // Example: "## 0 结果摘要 主线偏向..." -> "## 0 结果摘要\n\n主线偏向..."
+    // Keep this conservative: only apply to our fixed headings.
+    parts[i] = parts[i].replace(
+      /^(##\s*(?:0|1|2|3|4|5)\s*(?:结果摘要|资金板块|候选Top3|持仓计划|执行要点|条件单总表))\s+([^\n#].*)$/gm,
+      '$1\n\n$2',
+    );
+
     // Insert blank lines before headings that are not at line start (e.g. "# title ## 1) ...").
     parts[i] = parts[i].replace(/([^\n])(?=#{2,6}\s)/g, '$1\n\n');
 

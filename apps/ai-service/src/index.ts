@@ -539,6 +539,7 @@ app.post('/strategy/candidates', async (c) => {
     'Constraints:\n' +
     '- Do NOT require per-stock deep context. Assume it is NOT available.\n' +
     '- Use ONLY: accountState, TradingView latest+history, industryFundFlow.\n' +
+    '- industryFundFlow format: use context.industryFundFlow.dailyTopInflow (Top5×Date industry names).\n' +
     '- Return exactly 1..5 candidates with numeric Score 0-100 and rank 1..5.\n' +
     '- Rank must be consistent with score (higher score => better rank).\n' +
     '- Provide a single leader (龙头) and a short reason.\n' +
@@ -701,10 +702,9 @@ app.post('/strategy/daily-markdown', async (c) => {
     '- 只写 5-8 条“可执行规则”（例如：触发后必须补止损单；未触发不交易；午后复核；收盘撤销等）\n\n' +
     '## 5 条件单总表\n\n' +
     '在表格上方用 2-3 句解释：总表如何使用（先挂什么/触发后做什么/何时撤单）。\n\n' +
-    '- Section 1 MUST analyze capital rotation using context.industryFundFlow:\n' +
-    '  - Identify top inflow industries (1D and 10D sum) and whether inflow is sustained or one-off.\n' +
-    '  - Identify top outflow industries and whether it threatens current holdings.\n' +
-    '  - Conclude a single "focus industry theme" for today (1-2 themes).\n' +
+    '- Section 1 MUST analyze capital rotation using context.industryFundFlow.dailyTopInflow:\n' +
+    '  - Use the Top5×Date matrix (industry names) to infer persistence and rotation.\n' +
+    '  - Identify 1-2 focus themes based on frequency/streak in recent dates.\n' +
     '- Section 2: Top candidates <= 3. For each candidate provide concrete analysis:\n' +
     '  - Why now (trend/relative strength/industry flow)\n' +
     '  - Key levels (support/resistance/invalidation)\n' +

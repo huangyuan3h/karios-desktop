@@ -16,6 +16,33 @@ import { Textarea } from '@/components/ui/textarea';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 
+function DebugBlock({
+  title,
+  description,
+  defaultOpen,
+  children,
+}: {
+  title: string;
+  description?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details
+      open={defaultOpen}
+      className="mb-3 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)]"
+    >
+      <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium">
+        <div className="flex flex-col gap-1">
+          <div className="text-[var(--k-text)]">{title}</div>
+          {description ? <div className="text-[var(--k-muted)]">{description}</div> : null}
+        </div>
+      </summary>
+      <div className="border-t border-[var(--k-border)] px-3 py-2">{children}</div>
+    </details>
+  );
+}
+
 type BrokerAccount = {
   id: string;
   broker: string;
@@ -520,10 +547,15 @@ export function StrategyPage() {
                 <div className="mb-2 text-xs text-[var(--k-muted)]">
                   Request = payload sent to ai-service. Response = JSON returned by ai-service.
                 </div>
-                <div className="mb-2 text-xs font-medium">Markdown (rendered)</div>
-                <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
-                  {reportMd}
-                </pre>
+                <DebugBlock
+                  title="Markdown (normalized)"
+                  description="This is the exact markdown text we render above."
+                  defaultOpen={false}
+                >
+                  <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                    {reportMd}
+                  </pre>
+                </DebugBlock>
                 {(() => {
                   const rawObj = (report.raw ?? {}) as Record<string, unknown>;
                   const dbg = rawObj['debug'];
@@ -542,49 +574,70 @@ export function StrategyPage() {
                   if (stage1Obj && stage2Obj) {
                     return (
                       <>
-                        <div className="mb-2 text-xs font-medium">Stage 1: candidates (JSON)</div>
-                        <div className="mb-2 text-xs text-[var(--k-muted)]">
-                          No per-stock deep context is included.
-                        </div>
-                        <div className="mb-2 text-xs font-medium">Stage 1 request</div>
-                        <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
-                          {JSON.stringify(stage1Obj['request'] ?? null, null, 2)}
-                        </pre>
-                        <div className="mb-2 text-xs font-medium">Stage 1 response</div>
-                        <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
-                          {JSON.stringify(stage1Obj['response'] ?? null, null, 2)}
-                        </pre>
-                        <div className="mb-2 text-xs font-medium">Stage 2: report (Markdown)</div>
-                        <div className="mb-2 text-xs font-medium">Stage 2 request</div>
-                        <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
-                          {JSON.stringify(stage2Obj['request'] ?? null, null, 2)}
-                        </pre>
-                        <div className="mb-2 text-xs font-medium">Stage 2 response</div>
-                        <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
-                          {JSON.stringify(stage2Obj['response'] ?? null, null, 2)}
-                        </pre>
+                        <DebugBlock
+                          title="Stage 1 — Request (candidates JSON)"
+                          description="No per-stock deep context. Uses account + TradingView latest + industry matrix."
+                          defaultOpen={false}
+                        >
+                          <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                            {JSON.stringify(stage1Obj['request'] ?? null, null, 2)}
+                          </pre>
+                        </DebugBlock>
+
+                        <DebugBlock
+                          title="Stage 1 — Response (Top5 + scores)"
+                          description="Top5 candidates + score; leader selection."
+                          defaultOpen
+                        >
+                          <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                            {JSON.stringify(stage1Obj['response'] ?? null, null, 2)}
+                          </pre>
+                        </DebugBlock>
+
+                        <DebugBlock
+                          title="Stage 2 — Request (markdown report)"
+                          description="Includes deep context only for Stage-1 selected symbols."
+                          defaultOpen={false}
+                        >
+                          <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                            {JSON.stringify(stage2Obj['request'] ?? null, null, 2)}
+                          </pre>
+                        </DebugBlock>
+
+                        <DebugBlock
+                          title="Stage 2 — Response"
+                          description="Raw ai-service JSON response (contains markdown)."
+                          defaultOpen={false}
+                        >
+                          <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                            {JSON.stringify(stage2Obj['response'] ?? null, null, 2)}
+                          </pre>
+                        </DebugBlock>
                       </>
                     );
                   }
                   return (
                     <>
-                      <div className="mb-2 text-xs font-medium">Request (to ai-service)</div>
-                      <pre className="mb-4 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
-                        {JSON.stringify(
-                          {
-                            date: report.date,
-                            accountId: report.accountId,
-                            accountTitle: report.accountTitle,
-                            context: report.inputSnapshot ?? null,
-                          },
-                          null,
-                          2,
-                        )}
-                      </pre>
-                      <div className="mb-2 text-xs font-medium">Response (from ai-service)</div>
-                      <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
-                        {JSON.stringify(report.raw ?? report, null, 2)}
-                      </pre>
+                      <DebugBlock title="Request (to ai-service)" defaultOpen={false}>
+                        <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                          {JSON.stringify(
+                            {
+                              date: report.date,
+                              accountId: report.accountId,
+                              accountTitle: report.accountTitle,
+                              context: report.inputSnapshot ?? null,
+                            },
+                            null,
+                            2,
+                          )}
+                        </pre>
+                      </DebugBlock>
+
+                      <DebugBlock title="Response (from ai-service)" defaultOpen={false}>
+                        <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                          {JSON.stringify(report.raw ?? report, null, 2)}
+                        </pre>
+                      </DebugBlock>
                     </>
                   );
                 })()}
