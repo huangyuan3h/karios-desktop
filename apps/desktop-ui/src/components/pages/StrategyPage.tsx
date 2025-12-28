@@ -449,7 +449,7 @@ export function StrategyPage() {
             </div>
           </div>
 
-          <div className="mt-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4">
+          <div className="mt-4">
             <MarkdownMessage content={reportMd} className="text-sm" />
           </div>
 

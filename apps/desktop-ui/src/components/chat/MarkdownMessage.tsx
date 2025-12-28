@@ -48,16 +48,20 @@ export function MarkdownMessage({ content, className }: { content: string; class
         remarkPlugins={[remarkGfm]}
         components={{
           table: ({ children }) => (
-            <div className="my-3 overflow-x-auto rounded-md border border-[var(--k-border)] bg-[var(--k-surface)]">
-              <table className="w-full border-collapse text-sm">{children}</table>
+            <div className="not-prose my-3 overflow-x-auto rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] shadow-sm">
+              <table className="m-0 w-full border-collapse text-sm">{children}</table>
             </div>
           ),
-          thead: ({ children }) => <thead className="bg-[var(--k-surface-2)]">{children}</thead>,
+          thead: ({ children }) => (
+            <thead className="bg-[var(--k-surface-2)] align-middle">{children}</thead>
+          ),
           th: ({ children }) => (
             <th className="whitespace-nowrap border-b border-[var(--k-border)] px-3 py-2 text-left font-medium">
               {children}
             </th>
           ),
+          tbody: ({ children }) => <tbody className="divide-y divide-[var(--k-border)]">{children}</tbody>,
+          tr: ({ children }) => <tr className="odd:bg-[var(--k-surface)] even:bg-[var(--k-surface-2)]">{children}</tr>,
           td: ({ children }) => (
             <td className="align-top border-b border-[var(--k-border)] px-3 py-2 whitespace-normal break-words">
               {children}
