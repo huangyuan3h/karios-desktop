@@ -631,6 +631,7 @@ app.post('/strategy/daily-markdown', async (c) => {
     '  - Each heading MUST be on its own line.\n' +
     '  - Insert a blank line between sections.\n' +
     '  - NEVER put "# ..." and "## ..." on the same line.\n' +
+    '  - NEVER put analysis text on the same line as a heading (no "## Title ...analysis...").\n' +
     '- IMPORTANT output style:\n' +
     '  - This must be a COMPLETE, readable report: combine short analysis paragraphs + tables.\n' +
     '  - Prefer TABLES for decisions; keep paragraphs short (2-6 lines). Avoid huge walls of text.\n' +
@@ -645,6 +646,10 @@ app.post('/strategy/daily-markdown', async (c) => {
     '      |---|---|\\n' +
     '      | a | b |\\n' +
     '  - Headings must be SHORT (avoid long H1/H2). Put detailed descriptions as normal paragraphs (p) above/below tables.\n' +
+    '  - Do NOT use any extra headings beyond the template (no "###").\n' +
+    '  - H1 must be EXACTLY: "# 日度交易报告"\n' +
+    '  - H2 headings must be EXACTLY these (no extra text on the same line):\n' +
+    '    "## 0 结果摘要", "## 1 资金板块", "## 2 候选Top3", "## 3 持仓计划", "## 4 执行要点", "## 5 条件单总表"\n' +
     '  - Section 2 (candidates) MUST be a markdown table.\n' +
     '  - Section 3 (holdings) MUST be a markdown table.\n' +
     '  - Section 5 MUST be a markdown table (the final action table).\n' +

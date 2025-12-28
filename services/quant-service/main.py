@@ -3717,18 +3717,8 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             if s is not None:
                 snaps.append(s)
 
-    tv_latest: list[dict[str, Any]] = [
-        {
-            "snapshotId": s.id,
-            "screenerId": s.screenerId,
-            "capturedAt": s.capturedAt,
-            "screenTitle": s.screenTitle,
-            "filters": s.filters,
-            "url": s.url,
-            "rowCount": s.rowCount,
-        }
-        for s in snaps
-    ]
+    # Include brief rows so debug can show tickers for newly-synced screeners.
+    tv_latest: list[dict[str, Any]] = [_tv_snapshot_brief(s.id, max_rows=20) for s in snaps]
 
     # Candidate pool = union of TV rows, capped.
     pool: list[dict[str, str]] = []

@@ -377,11 +377,21 @@ export function StrategyPage() {
               onClick={() => void onGenerateToday()}
               className="gap-2"
             >
-              <Sparkles className="h-4 w-4" />
-              Generate today
+              {busy ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              {busy ? 'Generating…' : 'Generate today'}
             </Button>
           </div>
         </div>
+        {busy ? (
+          <div className="mb-3 flex items-center gap-2 text-xs text-[var(--k-muted)]">
+            <div className="h-2 w-2 rounded-full bg-[var(--k-muted)] animate-pulse" />
+            <div className="animate-pulse">Calling LLM (stage1 → stage2)…</div>
+          </div>
+        ) : null}
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
