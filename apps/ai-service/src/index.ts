@@ -634,8 +634,16 @@ app.post('/strategy/daily-markdown', async (c) => {
     '- IMPORTANT output style:\n' +
     '  - This must be a COMPLETE, readable report: combine short analysis paragraphs + tables.\n' +
     '  - Prefer TABLES for decisions; keep paragraphs short (2-6 lines). Avoid huge walls of text.\n' +
-    '  - Each table MUST be written in valid GFM markdown table syntax, with header row + separator row on separate lines.\n' +
-    '  - Do NOT squeeze tables into a single line. Every row must be on its own line.\n' +
+    '  - TABLES MUST render reliably:\n' +
+    '    - Each table MUST be valid GFM markdown table syntax.\n' +
+    '    - Header row, separator row, and each data row MUST be on its OWN line.\n' +
+    '    - Tables MUST start at the beginning of a line (no leading text before the first "|").\n' +
+    '    - Do NOT place table pipes "|" in normal paragraphs. Pipes are only allowed inside tables.\n' +
+    '    - Do NOT squeeze tables into a single line.\n' +
+    '    - Correct example (copy the formatting):\n' +
+    '      | ColA | ColB |\\n' +
+    '      |---|---|\\n' +
+    '      | a | b |\\n' +
     '  - Headings must be SHORT (avoid long H1/H2). Put detailed descriptions as normal paragraphs (p) above/below tables.\n' +
     '  - Section 2 (candidates) MUST be a markdown table.\n' +
     '  - Section 3 (holdings) MUST be a markdown table.\n' +
@@ -653,7 +661,7 @@ app.post('/strategy/daily-markdown', async (c) => {
     '\n' +
     'You MUST follow this template (fill with real content, keep headings exactly):\n' +
     '# 日度交易报告\n\n' +
-    `账户：${accountTitle}\n\n` +
+    `账户：${accountTitle}\n` +
     `日期：${date}\n\n` +
     '## 0 结果摘要\n\n' +
     '用 1-2 句概括“今天主线/风险偏好/操作倾向”，然后给出下面摘要表。\n\n' +
