@@ -2,11 +2,11 @@
 
 import {
   BarChart3,
-  BookOpen,
   ChevronsLeft,
   ChevronsRight,
+  CreditCard,
   LayoutDashboard,
-  PieChart,
+  Sparkles,
   Settings,
   Table2,
 } from 'lucide-react';
@@ -16,9 +16,10 @@ import { cn } from '@/lib/utils';
 
 const items = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'resources', label: 'Resources', icon: BookOpen },
-  { id: 'portfolio', label: 'Portfolio', icon: PieChart },
-  { id: 'analysis', label: 'Analysis', icon: BarChart3 },
+  { id: 'market', label: 'Market', icon: Table2 },
+  { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
+  { id: 'broker', label: 'Broker', icon: CreditCard },
+  { id: 'strategy', label: 'Strategy', icon: Sparkles },
   { id: 'screener', label: 'Screener', icon: Table2 },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
@@ -43,12 +44,7 @@ export function SidebarNav({
         isCollapsed ? 'w-[72px]' : 'w-[240px]',
       )}
     >
-      <div
-        className={cn(
-          'flex items-center px-4 py-3',
-          isCollapsed ? 'justify-between' : 'gap-2',
-        )}
-      >
+      <div className={cn('flex items-center px-4 py-3', isCollapsed ? 'justify-between' : 'gap-2')}>
         <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--k-text)] text-[var(--k-surface)]">
           K
         </div>
@@ -116,5 +112,3 @@ export function SidebarNav({
     </aside>
   );
 }
-
-

@@ -131,17 +131,29 @@ export function ChatComposer({
           <div className="text-xs text-[var(--k-muted)]">Referenced:</div>
           {references.map((r) => (
             <div
-              key={r.snapshotId}
+              key={r.refId}
               className="flex items-center gap-1 rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-1 text-xs text-[var(--k-muted)]"
             >
               <span className="max-w-[220px] truncate">
-                {r.screenerName} @ {new Date(r.capturedAt).toLocaleString()}
+                {r.kind === 'tv'
+                  ? `${r.screenerName} @ ${new Date(r.capturedAt).toLocaleString()}`
+                  : r.kind === 'stock'
+                    ? `${r.ticker} ${r.name} (${r.barsDays}D) @ ${new Date(r.capturedAt).toLocaleString()}`
+                    : r.kind === 'broker'
+                      ? `${r.accountTitle} · ${r.snapshotKind} @ ${new Date(r.capturedAt).toLocaleString()}`
+                      : r.kind === 'brokerState'
+                        ? `${r.accountTitle} · account state @ ${new Date(r.capturedAt).toLocaleString()}`
+                        : r.kind === 'strategyReport'
+                          ? `${r.accountTitle} · strategy ${r.date}`
+                          : r.kind === 'industryFundFlow'
+                            ? `${r.title || 'CN industry fund flow'} · ${r.asOfDate}`
+                          : 'Unknown reference'}
               </span>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-5 w-5 rounded-full p-0"
-                onClick={() => onRemoveReference?.(r.snapshotId)}
+                onClick={() => onRemoveReference?.(r.refId)}
                 aria-label="Remove reference"
               >
                 <X className="h-3 w-3" />

@@ -5,6 +5,7 @@ description = "Quant/data service for Karios Desktop"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "akshare>=1.16.0",
     "fastapi>=0.125.0",
     "playwright>=1.55.0",
     "pydantic>=2.12.5",

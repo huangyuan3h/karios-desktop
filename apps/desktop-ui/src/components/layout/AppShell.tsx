@@ -1,13 +1,19 @@
 'use client';
 
 import * as React from 'react';
-import { Bot, Search } from 'lucide-react';
+import { Bot } from 'lucide-react';
 
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
+import { BrokerPage } from '@/components/pages/BrokerPage';
+import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
+import { MarketPage } from '@/components/pages/MarketPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
+import { StrategyPage } from '@/components/pages/StrategyPage';
+import { StockPage } from '@/components/pages/StockPage';
+import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
@@ -22,6 +28,7 @@ export function AppShell() {
 
   const [activePage, setActivePage] = React.useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [activeStockSymbol, setActiveStockSymbol] = React.useState<string | null>(null);
   const draggingRef = React.useRef(false);
   const agentVisibleRef = React.useRef(agentVisible);
   const agentModeRef = React.useRef(agentMode);
@@ -90,6 +97,16 @@ export function AppShell() {
           <div className="text-sm font-semibold">
             {activePage === 'dashboard'
               ? 'Dashboard'
+              : activePage === 'market'
+                ? 'Market'
+              : activePage === 'industryFlow'
+                ? 'Industry Flow'
+              : activePage === 'broker'
+                ? 'Broker'
+              : activePage === 'strategy'
+                ? 'Strategy'
+              : activePage === 'stock'
+                ? activeStockSymbol ?? 'Stock'
               : activePage === 'screener'
                 ? 'Screener'
               : activePage === 'settings'
@@ -100,13 +117,12 @@ export function AppShell() {
           <div className="flex-1" />
 
           <div className="flex items-center gap-2">
-            <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--k-muted)]" />
-              <input
-                className="h-9 w-[360px] rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
-                placeholder="Search stocks / indices..."
-              />
-            </div>
+            <GlobalStockSearch
+              onSelectSymbol={(symbol) => {
+                setActiveStockSymbol(symbol);
+                setActivePage('stock');
+              }}
+            />
             <ThemeToggle />
             <Button
               variant="secondary"
@@ -127,6 +143,24 @@ export function AppShell() {
           <div className="min-w-0 flex-1 overflow-auto">
             {activePage === 'settings' ? (
               <SettingsPage />
+            ) : activePage === 'market' ? (
+              <MarketPage
+                onOpenStock={(symbol) => {
+                  setActiveStockSymbol(symbol);
+                  setActivePage('stock');
+                }}
+              />
+            ) : activePage === 'broker' ? (
+              <BrokerPage />
+            ) : activePage === 'industryFlow' ? (
+              <IndustryFlowPage />
+            ) : activePage === 'strategy' ? (
+              <StrategyPage />
+            ) : activePage === 'stock' && activeStockSymbol ? (
+              <StockPage
+                symbol={activeStockSymbol}
+                onBack={() => setActivePage('market')}
+              />
             ) : activePage === 'screener' ? (
               <ScreenerPage />
             ) : (
