@@ -497,6 +497,60 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
             out += `| ${date} | ${ticker} | ${name} | ${score} | ${entry} | ${now} | ${pct} | ${reason} |\n`;
           }
           out += `\n`;
+
+          // Always provide latest deep context for the newest trading day leaders (<=2) with force refresh.
+          const dates = Array.isArray(ls.dates) ? ls.dates : [];
+          const latestDate = dates.length ? dates[dates.length - 1] : '';
+          const latestLeaders = latestDate
+            ? leaders.filter((x) => String(x.date ?? '') === latestDate).slice(0, 2)
+            : leaders.slice(0, 2);
+          if (latestLeaders.length) {
+            out += `Deep context (force refreshed for latest leaders):\n`;
+            for (const r of latestLeaders) {
+              const sym = String(r.symbol ?? '').trim();
+              if (!sym) continue;
+              try {
+                const [barsResp, chipsResp, ffResp] = await Promise.all([
+                  fetch(
+                    `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(sym)}/bars?days=60&force=true`,
+                    { cache: 'no-store' },
+                  ),
+                  fetch(
+                    `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(sym)}/chips?days=30&force=true`,
+                    { cache: 'no-store' },
+                  ).catch(() => null as any),
+                  fetch(
+                    `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(sym)}/fund-flow?days=30&force=true`,
+                    { cache: 'no-store' },
+                  ).catch(() => null as any),
+                ]);
+                if (!barsResp.ok) throw new Error('failed to load bars');
+                const bars = (await barsResp.json()) as StockBarsDetail;
+                const lastBar = (bars.bars || []).slice(-1)[0];
+                out += `- ${bars.ticker} ${bars.name} (${bars.symbol})\n`;
+                if (lastBar) {
+                  out += `  - lastBar: ${lastBar.date} close=${lastBar.close} volume=${lastBar.volume} amount=${lastBar.amount}\n`;
+                }
+                if (chipsResp && chipsResp.ok) {
+                  const chips = (await chipsResp.json()) as StockChipsDetail;
+                  const last = (chips.items || []).slice(-1)[0];
+                  if (last) {
+                    out += `  - chips: profitRatio=${last.profitRatio} avgCost=${last.avgCost} 70%=[${last.cost70Low},${last.cost70High}] 90%=[${last.cost90Low},${last.cost90High}]\n`;
+                  }
+                }
+                if (ffResp && ffResp.ok) {
+                  const ff = (await ffResp.json()) as StockFundFlowDetail;
+                  const last = (ff.items || []).slice(-1)[0];
+                  if (last) {
+                    out += `  - fundFlow: main=${last.mainNetAmount}(${last.mainNetRatio}%) super=${last.superNetAmount}(${last.superNetRatio}%) large=${last.largeNetAmount}(${last.largeNetRatio}%) medium=${last.mediumNetAmount}(${last.mediumNetRatio}%) small=${last.smallNetAmount}(${last.smallNetRatio}%)\n`;
+                  }
+                }
+              } catch {
+                out += `- ${String(r.ticker ?? sym)}: failed to force refresh deep context\n`;
+              }
+            }
+            out += `\n`;
+          }
         }
       } catch {
         out += `## Leader stocks\n`;

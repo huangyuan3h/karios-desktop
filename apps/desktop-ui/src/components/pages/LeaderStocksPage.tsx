@@ -90,7 +90,7 @@ async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
   return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
-export function LeaderStocksPage() {
+export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const { addReference } = useChatStore();
   const [data, setData] = React.useState<LeaderListResponse | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -242,7 +242,14 @@ export function LeaderStocksPage() {
                         <React.Fragment key={r.id}>
                           <tr className="bg-[var(--k-surface)]">
                             <td className="border-b border-[var(--k-border)] px-2 py-2 font-mono">
-                              {r.ticker || r.symbol}
+                              <button
+                                type="button"
+                                className="text-[var(--k-accent)] hover:underline"
+                                onClick={() => onOpenStock?.(r.symbol)}
+                                title="Open stock detail"
+                              >
+                                {r.ticker || r.symbol}
+                              </button>
                             </td>
                             <td className="border-b border-[var(--k-border)] px-2 py-2">{r.name}</td>
                             <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">

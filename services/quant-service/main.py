@@ -4179,17 +4179,34 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
     if req.includeLeaders:
         try:
             leader_dates, leader_rows = _list_leader_stocks(days=10)
-            leaders_out: list[dict[str, Any]] = []
-            for r in leader_rows[:20]:
+            latest_date = leader_dates[-1] if leader_dates else ""
+            latest_rows = [r for r in leader_rows if _norm_str(r.get("date") or "") == latest_date][:2]
+            latest_out: list[dict[str, Any]] = []
+            for r in latest_rows:
                 sym = _norm_str(r.get("symbol") or "")
-                d0 = _norm_str(r.get("date") or "")
-                series = _bars_series_since(sym, d0, limit=30) if (sym and d0) else []
-                now_close = series[-1]["close"] if series else None
+                if not sym:
+                    continue
+                bars_resp = market_stock_bars(sym, days=60, force=True)
+                bars = bars_resp.bars
+                last_bar = bars[-1] if bars else {}
+                chips_items: list[dict[str, str]] = []
+                fund_flow_items: list[dict[str, str]] = []
+                try:
+                    chips_items = market_stock_chips(sym, days=30, force=True).items
+                except Exception:
+                    chips_items = []
+                try:
+                    fund_flow_items = market_stock_fund_flow(sym, days=30, force=True).items
+                except Exception:
+                    fund_flow_items = []
+                chips_last = chips_items[-1] if chips_items else {}
+                ff_last = fund_flow_items[-1] if fund_flow_items else {}
                 entry = r.get("entryPrice")
+                now_close = _safe_float(last_bar.get("close")) if isinstance(last_bar, dict) else None
                 pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
-                leaders_out.append(
+                latest_out.append(
                     {
-                        "date": d0,
+                        "date": latest_date,
                         "symbol": sym,
                         "ticker": _norm_str(r.get("ticker") or ""),
                         "name": _norm_str(r.get("name") or ""),
@@ -4198,9 +4215,41 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                         "entryPrice": entry,
                         "nowClose": float(now_close) if now_close is not None else None,
                         "pctSinceEntry": float(pct) if pct is not None else None,
+                        "current": {
+                            "barDate": _norm_str(last_bar.get("date") if isinstance(last_bar, dict) else ""),
+                            "close": last_bar.get("close") if isinstance(last_bar, dict) else None,
+                            "volume": last_bar.get("volume") if isinstance(last_bar, dict) else None,
+                            "amount": last_bar.get("amount") if isinstance(last_bar, dict) else None,
+                        },
+                        "chipsSummary": _chips_summary_last(chips_last),
+                        "fundFlowBreakdown": _fund_flow_breakdown_last(ff_last),
+                        "barsTail": bars[-6:] if bars else [],
                     }
                 )
-            leader_ctx = {"days": 10, "dates": leader_dates, "leaders": leaders_out}
+
+            history_out: list[dict[str, Any]] = []
+            for r in leader_rows[:20]:
+                sym = _norm_str(r.get("symbol") or "")
+                d0 = _norm_str(r.get("date") or "")
+                entry = r.get("entryPrice")
+                history_out.append(
+                    {
+                        "date": d0,
+                        "symbol": sym,
+                        "ticker": _norm_str(r.get("ticker") or ""),
+                        "name": _norm_str(r.get("name") or ""),
+                        "score": r.get("score"),
+                        "reason": _norm_str(r.get("reason") or ""),
+                        "entryPrice": entry,
+                    }
+                )
+            leader_ctx = {
+                "days": 10,
+                "dates": leader_dates,
+                "latestDate": latest_date,
+                "latestLeaders": latest_out,
+                "history": history_out,
+            }
         except Exception as e:
             leader_ctx = {"days": 10, "dates": [], "leaders": [], "error": str(e)}
 
@@ -4282,29 +4331,35 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             currency = _norm_str(meta.get("currency") or ("HKD" if market == "HK" else "CNY"))
             name = _norm_str(meta.get("name") or "")
 
-            bars = _load_cached_bars(sym, days=60)
+            bars_cached = _load_cached_bars(sym, days=60)
+            bars = bars_cached
             bars_error: str | None = None
-            if not bars:
-                try:
-                    bars_resp = market_stock_bars(sym, days=60)
-                    bars = bars_resp.bars
-                except Exception as e:
-                    bars = []
-                    bars_error = str(e)
+            bars_forced = True
+            try:
+                bars_resp = market_stock_bars(sym, days=60, force=True)
+                bars = bars_resp.bars
+            except Exception as e:
+                # Fallback to cached bars if force refresh fails (AkShare may be flaky).
+                bars = bars_cached
+                bars_error = str(e)
             feats = _bars_features(bars)
 
-            chips = _load_cached_chips(sym, days=30)
-            fund_flow = _load_cached_fund_flow(sym, days=30)
-            if not chips:
-                try:
-                    chips = market_stock_chips(sym, days=30).items
-                except Exception:
-                    chips = []
-            if not fund_flow:
-                try:
-                    fund_flow = market_stock_fund_flow(sym, days=30).items
-                except Exception:
-                    fund_flow = []
+            chips_cached = _load_cached_chips(sym, days=30)
+            fund_flow_cached = _load_cached_fund_flow(sym, days=30)
+            chips = chips_cached
+            fund_flow = fund_flow_cached
+            chips_error: str | None = None
+            fund_flow_error: str | None = None
+            try:
+                chips = market_stock_chips(sym, days=30, force=True).items
+            except Exception as e:
+                chips = chips_cached
+                chips_error = str(e)
+            try:
+                fund_flow = market_stock_fund_flow(sym, days=30, force=True).items
+            except Exception as e:
+                fund_flow = fund_flow_cached
+                fund_flow_error = str(e)
 
             bars_tail = bars[-6:] if bars else []
             chips_tail = chips[-3:] if chips else []
@@ -4321,10 +4376,14 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                     "currency": currency,
                     "deep": True,
                     "availability": {
-                        "barsCached": True if bars else False,
-                        "chipsCached": True if chips else False,
-                        "fundFlowCached": True if fund_flow else False,
+                        "forced": True,
+                        "barsCached": True if bars_cached else False,
+                        "chipsCached": True if chips_cached else False,
+                        "fundFlowCached": True if fund_flow_cached else False,
+                        "barsForced": bars_forced,
                         "barsError": bars_error,
+                        "chipsError": chips_error,
+                        "fundFlowError": fund_flow_error,
                     },
                     "features": feats,
                     # Deep context guarantees:

@@ -160,7 +160,12 @@ export function AppShell() {
             ) : activePage === 'strategy' ? (
               <StrategyPage />
             ) : activePage === 'leaders' ? (
-              <LeaderStocksPage />
+              <LeaderStocksPage
+                onOpenStock={(symbol) => {
+                  setActiveStockSymbol(symbol);
+                  setActivePage('stock');
+                }}
+              />
             ) : activePage === 'stock' && activeStockSymbol ? (
               <StockPage
                 symbol={activeStockSymbol}

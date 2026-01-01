@@ -57,7 +57,7 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
         conn.commit()
 
     # Avoid AkShare and AI calls in tests.
-    def fake_bars(symbol: str, days: int = 60):
+    def fake_bars(symbol: str, days: int = 60, force: bool = False):
         return main.MarketBarsResponse(
             symbol=symbol,
             market="CN",
@@ -70,7 +70,7 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
             ],
         )
 
-    def fake_chips(symbol: str, days: int = 30):
+    def fake_chips(symbol: str, days: int = 30, force: bool = False):
         return main.MarketChipsResponse(
             symbol=symbol,
             market="CN",
@@ -80,7 +80,7 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
             items=[],
         )
 
-    def fake_flow(symbol: str, days: int = 30):
+    def fake_flow(symbol: str, days: int = 30, force: bool = False):
         return main.MarketFundFlowResponse(
             symbol=symbol,
             market="CN",

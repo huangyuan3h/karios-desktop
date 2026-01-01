@@ -40,7 +40,7 @@ def test_leader_daily_generation_and_entry_price(tmp_path, monkeypatch) -> None:
     _seed_tv_snapshot()
 
     # Avoid AkShare calls.
-    def fake_chips(symbol: str, days: int = 30):
+    def fake_chips(symbol: str, days: int = 30, force: bool = False):
         return main.MarketChipsResponse(
             symbol=symbol,
             market="CN",
@@ -50,7 +50,7 @@ def test_leader_daily_generation_and_entry_price(tmp_path, monkeypatch) -> None:
             items=[],
         )
 
-    def fake_flow(symbol: str, days: int = 30):
+    def fake_flow(symbol: str, days: int = 30, force: bool = False):
         return main.MarketFundFlowResponse(
             symbol=symbol,
             market="CN",
@@ -64,7 +64,7 @@ def test_leader_daily_generation_and_entry_price(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(main, "market_stock_fund_flow", fake_flow)
 
     # Bars should include selection date close for entryPrice.
-    def fake_bars(symbol: str, days: int = 60):
+    def fake_bars(symbol: str, days: int = 60, force: bool = False):
         return main.MarketBarsResponse(
             symbol=symbol,
             market="CN",
