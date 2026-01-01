@@ -389,9 +389,35 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 
         if (view === 'dailyTopByDate') {
           const dates = Array.isArray(ff.dates) ? ff.dates : [];
-          const shown = dates.slice(-Math.max(1, Math.min(Number(ref.days ?? 10), 30)));
+          const rawShown = dates.slice(-Math.max(1, Math.min(Number(ref.days ?? 10), 30)));
           const topK = Math.max(1, Math.min(Number(ref.topN ?? 5), 20));
+          const shown: string[] = [];
+          let collapsed = 0;
+          let prevSig = '';
+          for (const d of rawShown) {
+            const scored = items
+              .map((r: any) => {
+                const series = Array.isArray(r?.series10d) ? r.series10d : [];
+                const p = series.find((x: any) => String(x?.date ?? '') === String(d));
+                const v = Number(p?.netInflow ?? 0) || 0;
+                return { name: String(r?.industryName ?? ''), v };
+              })
+              .sort((a: any, b: any) => b.v - a.v)
+              .slice(0, topK)
+              .map((x: any) => x.name)
+              .filter(Boolean);
+            const sig = scored.join('|');
+            if (sig && sig === prevSig) {
+              collapsed += 1;
+              continue;
+            }
+            shown.push(d);
+            prevSig = sig;
+          }
           out += `\nDaily top inflow by date:\n`;
+          if (collapsed) {
+            out += `- note: collapsed ${collapsed} duplicate non-trading snapshot${collapsed > 1 ? 's' : ''}\n`;
+          }
           for (const d of shown) {
             const scored = items
               .map((r: any) => {

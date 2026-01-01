@@ -107,11 +107,31 @@ function DailyTopByDateTable({
   topK: number;
   onReference: () => void;
 }) {
-  const shownDates = dates.slice(-10);
+  const rawShownDates = dates.slice(-10);
+  const deduped: string[] = [];
+  let collapsed = 0;
+  let prevSig = '';
+  for (const d of rawShownDates) {
+    const sig = (topByDate[d] || []).slice(0, topK).map((x) => x.industryName || '').join('|');
+    if (sig && sig === prevSig) {
+      collapsed += 1;
+      continue;
+    }
+    deduped.push(d);
+    prevSig = sig;
+  }
+  const shownDates = deduped;
   return (
     <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="text-sm font-medium">{title}</div>
+        <div className="text-sm font-medium">
+          {title}
+          {collapsed ? (
+            <span className="ml-2 text-xs font-normal text-[var(--k-muted)]">
+              (collapsed {collapsed} duplicate non-trading snapshot{collapsed > 1 ? 's' : ''})
+            </span>
+          ) : null}
+        </div>
         <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
           Reference
         </Button>

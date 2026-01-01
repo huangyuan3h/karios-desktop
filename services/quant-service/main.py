@@ -2065,6 +2065,22 @@ def _get_latest_cn_industry_fund_flow_date(conn: sqlite3.Connection) -> str | No
     return str(row[0])
 
 
+def _industry_flow_signature(items: list[dict[str, Any]]) -> str:
+    """
+    Create a stable signature for an EOD snapshot to detect non-trading-day duplicates.
+    We only use (industry_code, net_inflow) pairs and ignore raw_json.
+    """
+    pairs: list[tuple[str, float]] = []
+    for it in items:
+        code = str(it.get("industry_code") or "").strip()
+        if not code:
+            continue
+        pairs.append((code, float(it.get("net_inflow") or 0.0)))
+    pairs.sort(key=lambda x: x[0])
+    s = json.dumps(pairs, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha1(s.encode("utf-8")).hexdigest()
+
+
 @app.post(
     "/market/cn/industry-fund-flow/sync",
     response_model=MarketCnIndustryFundFlowSyncResponse,
@@ -2109,6 +2125,32 @@ def market_cn_industry_fund_flow_sync(
         items = fetch_cn_industry_fund_flow_eod(as_of)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Industry fund flow fetch failed: {e}") from e
+
+    # If the market is closed (holiday/weekend), the provider may return the SAME snapshot as the
+    # latest trading day. Detect it by comparing snapshot signatures and avoid storing a duplicate date.
+    req_date = as_of.strftime("%Y-%m-%d")
+    effective_date = req_date
+    message: str | None = None
+    with _connect() as conn:
+        latest = _get_latest_cn_industry_fund_flow_date(conn)
+        if latest and latest < req_date:
+            prev_rows = conn.execute(
+                "SELECT industry_code, net_inflow FROM market_cn_industry_fund_flow_daily WHERE date = ?",
+                (latest,),
+            ).fetchall()
+            prev_items = [
+                {"industry_code": str(r[0] or ""), "net_inflow": float(r[1] or 0.0)}
+                for r in prev_rows
+                if r and r[0]
+            ]
+            if prev_items and _industry_flow_signature(prev_items) == _industry_flow_signature(items):
+                effective_date = latest
+                # Clean up previously cached holiday rows (if any) to prevent duplicates.
+                conn.execute("DELETE FROM market_cn_industry_fund_flow_daily WHERE date = ?", (req_date,))
+                conn.commit()
+                for it in items:
+                    it["date"] = effective_date
+                message = f"Market closed on {req_date}. Reused latest trading day snapshot: {effective_date}."
 
     # Upsert snapshot rows
     with _connect() as conn:
@@ -2159,12 +2201,16 @@ def market_cn_industry_fund_flow_sync(
 
     return MarketCnIndustryFundFlowSyncResponse(
         ok=True,
-        asOfDate=as_of.strftime("%Y-%m-%d"),
+        asOfDate=effective_date,
         days=days,
         rowsUpserted=len(items),
         histRowsUpserted=hist_rows_upserted,
         histFailures=hist_failures,
-        message=None if hist_failures == 0 else f"Hist backfill partial: {hist_failures} industries failed.",
+        message=(
+            message
+            if message
+            else (None if hist_failures == 0 else f"Hist backfill partial: {hist_failures} industries failed.")
+        ),
     )
 
 
