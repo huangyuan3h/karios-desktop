@@ -236,6 +236,7 @@ export function StrategyPage() {
   const [ctxAccount, setCtxAccount] = React.useState(true);
   const [ctxScreener, setCtxScreener] = React.useState(true);
   const [ctxIndustryFlow, setCtxIndustryFlow] = React.useState(true);
+  const [ctxLeaders, setCtxLeaders] = React.useState(true);
   const [ctxStocks, setCtxStocks] = React.useState(true);
 
   const reportMd = React.useMemo(() => {
@@ -308,6 +309,7 @@ export function StrategyPage() {
           includeAccountState: ctxAccount,
           includeTradingView: ctxScreener,
           includeIndustryFundFlow: ctxIndustryFlow,
+          includeLeaders: ctxLeaders,
           includeStocks: ctxStocks,
         },
       );
@@ -331,6 +333,7 @@ export function StrategyPage() {
           includeAccountState: ctxAccount,
           includeTradingView: ctxScreener,
           includeIndustryFundFlow: ctxIndustryFlow,
+          includeLeaders: ctxLeaders,
           includeStocks: ctxStocks,
         },
       );
@@ -448,7 +451,7 @@ export function StrategyPage() {
               checked={ctxScreener}
               onChange={(e) => setCtxScreener(e.target.checked)}
             />
-            <span>TradingView screeners (latest + history)</span>
+            <span>TradingView screeners (latest)</span>
           </label>
           <label className="flex items-center gap-2">
             <input
@@ -457,6 +460,14 @@ export function StrategyPage() {
               onChange={(e) => setCtxIndustryFlow(e.target.checked)}
             />
             <span>Industry fund flow (Top10 + 10D)</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={ctxLeaders}
+              onChange={(e) => setCtxLeaders(e.target.checked)}
+            />
+            <span>Leaders (龙头股, last 10 trading days)</span>
           </label>
           <label className="flex items-center gap-2">
             <input

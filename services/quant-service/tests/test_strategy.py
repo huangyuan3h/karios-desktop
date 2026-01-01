@@ -131,6 +131,7 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
             "includeAccountState": True,
             "includeTradingView": False,
             "includeIndustryFundFlow": False,
+            "includeLeaders": False,
             "includeStocks": False,
         },
     )
@@ -144,12 +145,16 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     assert isinstance(snap, dict)
     assert snap.get("tradingView") == {}
     assert snap.get("industryFundFlow") == {}
+    assert snap.get("leaderStocks") == {}
     assert snap.get("stocks") == []
     # Two-stage debug should exist in raw output.
     assert isinstance(data.get("raw"), dict)
     assert isinstance((data.get("raw") or {}).get("debug"), dict)
     assert captured["stage1"] is not None
     assert captured["stage2"] is not None
+    ctx1 = (captured["stage1"] or {}).get("context") if isinstance(captured["stage1"], dict) else None
+    assert isinstance(ctx1, dict)
+    assert ctx1.get("leaderStocks") == {}
 
     # Reuse report (should not generate a new id when force=false)
     resp2 = client.post(

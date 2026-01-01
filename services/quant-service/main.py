@@ -1333,6 +1333,7 @@ class StrategyDailyGenerateRequest(BaseModel):
     includeAccountState: bool = True
     includeTradingView: bool = True
     includeIndustryFundFlow: bool = True
+    includeLeaders: bool = True
     includeStocks: bool = True
 
 
@@ -1835,7 +1836,7 @@ def market_list_stocks(
 
 
 @app.get("/market/stocks/{symbol}/bars", response_model=MarketBarsResponse)
-def market_stock_bars(symbol: str, days: int = 60) -> MarketBarsResponse:
+def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> MarketBarsResponse:
     days2 = max(10, min(int(days), 200))
     sym = symbol.strip()
     with _connect() as conn:
@@ -1863,7 +1864,7 @@ def market_stock_bars(symbol: str, days: int = 60) -> MarketBarsResponse:
             (sym, days2),
         ).fetchall()
 
-    if len(cached) < days2:
+    if force or len(cached) < days2:
         ts = now_iso()
         try:
             if market == "CN":
@@ -1923,7 +1924,7 @@ def market_stock_bars(symbol: str, days: int = 60) -> MarketBarsResponse:
 
 
 @app.get("/market/stocks/{symbol}/chips", response_model=MarketChipsResponse)
-def market_stock_chips(symbol: str, days: int = 60) -> MarketChipsResponse:
+def market_stock_chips(symbol: str, days: int = 60, force: bool = False) -> MarketChipsResponse:
     days2 = max(10, min(int(days), 200))
     sym = symbol.strip()
     with _connect() as conn:
@@ -1955,7 +1956,7 @@ def market_stock_chips(symbol: str, days: int = 60) -> MarketChipsResponse:
             """,
             (sym, days2),
         ).fetchall()
-    if len(cached) >= min(days2, 30):
+    if (not force) and len(cached) >= min(days2, 30):
         items = [json.loads(str(r[0])) for r in reversed(cached)]
         return MarketChipsResponse(
             symbol=sym,
@@ -1985,7 +1986,7 @@ def market_stock_chips(symbol: str, days: int = 60) -> MarketChipsResponse:
 
 
 @app.get("/market/stocks/{symbol}/fund-flow", response_model=MarketFundFlowResponse)
-def market_stock_fund_flow(symbol: str, days: int = 60) -> MarketFundFlowResponse:
+def market_stock_fund_flow(symbol: str, days: int = 60, force: bool = False) -> MarketFundFlowResponse:
     days2 = max(10, min(int(days), 200))
     sym = symbol.strip()
     with _connect() as conn:
@@ -2017,7 +2018,7 @@ def market_stock_fund_flow(symbol: str, days: int = 60) -> MarketFundFlowRespons
             """,
             (sym, days2),
         ).fetchall()
-    if len(cached) >= min(days2, 30):
+    if (not force) and len(cached) >= min(days2, 30):
         items = [json.loads(str(r[0])) for r in reversed(cached)]
         return MarketFundFlowResponse(
             symbol=sym,
@@ -4173,6 +4174,36 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         except Exception as e:
             industry_flow_error = str(e)
 
+    # Leader stocks context: last 10 trading days leaders (DB-first), compact summary.
+    leader_ctx: dict[str, Any] = {}
+    if req.includeLeaders:
+        try:
+            leader_dates, leader_rows = _list_leader_stocks(days=10)
+            leaders_out: list[dict[str, Any]] = []
+            for r in leader_rows[:20]:
+                sym = _norm_str(r.get("symbol") or "")
+                d0 = _norm_str(r.get("date") or "")
+                series = _bars_series_since(sym, d0, limit=30) if (sym and d0) else []
+                now_close = series[-1]["close"] if series else None
+                entry = r.get("entryPrice")
+                pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
+                leaders_out.append(
+                    {
+                        "date": d0,
+                        "symbol": sym,
+                        "ticker": _norm_str(r.get("ticker") or ""),
+                        "name": _norm_str(r.get("name") or ""),
+                        "score": r.get("score"),
+                        "reason": _norm_str(r.get("reason") or ""),
+                        "entryPrice": entry,
+                        "nowClose": float(now_close) if now_close is not None else None,
+                        "pctSinceEntry": float(pct) if pct is not None else None,
+                    }
+                )
+            leader_ctx = {"days": 10, "dates": leader_dates, "leaders": leaders_out}
+        except Exception as e:
+            leader_ctx = {"days": 10, "dates": [], "leaders": [], "error": str(e)}
+
     # Stage 1: candidate selection WITHOUT per-stock deep context.
     base_snapshot: dict[str, Any] = {
         "date": d,
@@ -4188,6 +4219,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow
         else {"dailyTopInflow": industry_flow_daily, "error": industry_flow_error},
+        "leaderStocks": {} if not req.includeLeaders else leader_ctx,
         # Provide an explicit universe so stage 1 doesn't need to parse TV rows.
         "candidateUniverse": pool,
         # Stage 1 explicitly excludes deep context.
@@ -4319,6 +4351,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow
         else {"dailyTopInflow": industry_flow_daily, "error": industry_flow_error},
+        "leaderStocks": {} if not req.includeLeaders else leader_ctx,
         "candidateUniverse": pool,
         "stage1": {"candidates": stage1_candidates[:5], "leader": stage1_leader, "error": stage1_error},
         "selectedSymbols": selected_syms,
