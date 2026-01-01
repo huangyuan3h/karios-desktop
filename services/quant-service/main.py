@@ -315,6 +315,25 @@ def _connect() -> sqlite3.Connection:
         """,
     )
     conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS leader_stocks (
+          id TEXT PRIMARY KEY,
+          date TEXT NOT NULL,
+          symbol TEXT NOT NULL,
+          market TEXT NOT NULL,
+          ticker TEXT NOT NULL,
+          name TEXT NOT NULL,
+          entry_price REAL,
+          score REAL,
+          reason TEXT NOT NULL,
+          source_signals_json TEXT NOT NULL,
+          risk_points_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          UNIQUE(date, symbol)
+        )
+        """,
+    )
+    conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_strategy_reports_account_date ON strategy_reports(account_id, date)",
     )
     conn.commit()
@@ -1380,6 +1399,44 @@ class StrategyReportResponse(BaseModel):
     raw: dict[str, Any] | None = None
 
 
+# --- Leader stocks module (v0) ---
+class LeaderDailyGenerateRequest(BaseModel):
+    date: str | None = None  # YYYY-MM-DD
+    force: bool = False
+    maxCandidates: int = 20  # candidate universe cap from screener
+
+
+class LeaderPick(BaseModel):
+    id: str
+    date: str
+    symbol: str
+    market: str
+    ticker: str
+    name: str
+    entryPrice: float | None = None
+    score: float | None = None
+    reason: str
+    sourceSignals: dict[str, Any] = {}
+    riskPoints: list[str] = []
+    createdAt: str
+    # Computed metrics
+    nowClose: float | None = None
+    pctSinceEntry: float | None = None
+    series: list[dict[str, Any]] = []  # [{date, close}]
+
+
+class LeaderDailyResponse(BaseModel):
+    date: str
+    leaders: list[LeaderPick]
+    debug: dict[str, Any] | None = None
+
+
+class LeaderListResponse(BaseModel):
+    days: int = 10
+    dates: list[str]
+    leaders: list[LeaderPick]
+
+
 @app.get("/integrations/tradingview/screeners", response_model=ListTvScreenersResponse)
 def list_tv_screeners() -> ListTvScreenersResponse:
     _seed_default_tv_screeners()
@@ -2264,6 +2321,156 @@ def _market_cn_industry_fund_flow_top_by_date(
         "matrix": matrix,
         "topByDate": top_by_date,
     }
+
+
+def _upsert_leader_stocks(*, date: str, items: list[dict[str, Any]], ts: str) -> list[str]:
+    """
+    Upsert leaders for a date. Returns inserted/updated ids.
+    """
+    ids: list[str] = []
+    with _connect() as conn:
+        for it in items:
+            rid = str(it.get("id") or uuid.uuid4())
+            conn.execute(
+                """
+                INSERT INTO leader_stocks(
+                  id, date, symbol, market, ticker, name,
+                  entry_price, score, reason, source_signals_json, risk_points_json, created_at
+                )
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date, symbol) DO UPDATE SET
+                  id = excluded.id,
+                  market = excluded.market,
+                  ticker = excluded.ticker,
+                  name = excluded.name,
+                  entry_price = excluded.entry_price,
+                  score = excluded.score,
+                  reason = excluded.reason,
+                  source_signals_json = excluded.source_signals_json,
+                  risk_points_json = excluded.risk_points_json,
+                  created_at = excluded.created_at
+                """,
+                (
+                    rid,
+                    date,
+                    str(it.get("symbol") or ""),
+                    str(it.get("market") or ""),
+                    str(it.get("ticker") or ""),
+                    str(it.get("name") or ""),
+                    it.get("entryPrice"),
+                    it.get("score"),
+                    str(it.get("reason") or ""),
+                    json.dumps(it.get("sourceSignals") or {}, ensure_ascii=False),
+                    json.dumps(it.get("riskPoints") or [], ensure_ascii=False),
+                    ts,
+                ),
+            )
+            ids.append(rid)
+        conn.commit()
+    return ids
+
+
+def _list_leader_stocks(*, days: int = 10) -> tuple[list[str], list[dict[str, Any]]]:
+    days2 = max(1, min(int(days), 30))
+    with _connect() as conn:
+        date_rows = conn.execute(
+            """
+            SELECT DISTINCT date
+            FROM leader_stocks
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (days2,),
+        ).fetchall()
+        dates_desc = [str(r[0]) for r in date_rows if r and r[0]]
+        dates = list(reversed(dates_desc))
+        if not dates:
+            return ([], [])
+        placeholders = ",".join(["?"] * len(dates))
+        rows = conn.execute(
+            f"""
+            SELECT id, date, symbol, market, ticker, name, entry_price, score, reason,
+                   source_signals_json, risk_points_json, created_at
+            FROM leader_stocks
+            WHERE date IN ({placeholders})
+            ORDER BY date DESC, score DESC
+            """,
+            tuple(dates),
+        ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "id": str(r[0]),
+                "date": str(r[1]),
+                "symbol": str(r[2]),
+                "market": str(r[3]),
+                "ticker": str(r[4]),
+                "name": str(r[5]),
+                "entryPrice": float(r[6]) if r[6] is not None else None,
+                "score": float(r[7]) if r[7] is not None else None,
+                "reason": str(r[8] or ""),
+                "sourceSignals": json.loads(str(r[9]) or "{}") if r[9] else {},
+                "riskPoints": json.loads(str(r[10]) or "[]") if r[10] else [],
+                "createdAt": str(r[11]),
+            }
+        )
+    return (dates, out)
+
+
+def _prune_leader_stocks_keep_last_n_days(*, keep_days: int = 10) -> None:
+    keep2 = max(1, min(int(keep_days), 60))
+    with _connect() as conn:
+        date_rows = conn.execute(
+            """
+            SELECT DISTINCT date
+            FROM leader_stocks
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (keep2,),
+        ).fetchall()
+        keep_dates = [str(r[0]) for r in date_rows if r and r[0]]
+        if not keep_dates:
+            return
+        placeholders = ",".join(["?"] * len(keep_dates))
+        conn.execute(
+            f"DELETE FROM leader_stocks WHERE date NOT IN ({placeholders})",
+            tuple(keep_dates),
+        )
+        conn.commit()
+
+
+def _entry_close_for_date(symbol: str, date_str: str) -> float | None:
+    bars = _load_cached_bars(symbol, days=120)
+    if not bars:
+        try:
+            bars = market_stock_bars(symbol, days=120).bars
+        except Exception:
+            bars = []
+    for b in bars:
+        if str(b.get("date") or "") == date_str:
+            v = _safe_float(b.get("close"))
+            return v if v > 0 else None
+    return None
+
+
+def _bars_series_since(symbol: str, start_date: str, *, limit: int = 60) -> list[dict[str, Any]]:
+    bars = _load_cached_bars(symbol, days=180)
+    if not bars:
+        try:
+            bars = market_stock_bars(symbol, days=180).bars
+        except Exception:
+            bars = []
+    out: list[dict[str, Any]] = []
+    for b in bars:
+        d = str(b.get("date") or "")
+        if not d:
+            continue
+        if d < start_date:
+            continue
+        out.append({"date": d, "close": _safe_float(b.get("close"))})
+    return out[: max(1, int(limit))]
 
 
 def _get_tv_screener_row(screener_id: str) -> dict[str, Any] | None:
@@ -3678,6 +3885,46 @@ def _ai_strategy_candidates(*, payload: dict[str, Any]) -> dict[str, Any]:
         raise
 
 
+def _ai_leader_daily(*, payload: dict[str, Any]) -> dict[str, Any]:
+    url = f"{_ai_service_base_url()}/leader/daily"
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+    def _do() -> dict[str, Any]:
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                raw = resp.read().decode("utf-8")
+                return json.loads(raw)
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                err_body = ""
+            raise OSError(
+                f"ai-service HTTP {getattr(e, 'code', '?')} {getattr(e, 'reason', '')} while calling {url}: {err_body}"
+            ) from e
+        except http.client.RemoteDisconnected as e:
+            raise OSError(f"ai-service disconnected while calling {url}: {e}") from e
+        except urllib.error.URLError as e:
+            raise OSError(f"ai-service URL error while calling {url}: {e}") from e
+        except TimeoutError as e:
+            raise OSError(f"ai-service timeout while calling {url}: {e}") from e
+
+    try:
+        return _do()
+    except OSError as e:
+        msg = str(e)
+        if ("disconnected" in msg) or ("Connection reset" in msg) or ("timeout" in msg):
+            time.sleep(0.25)
+            return _do()
+        raise
+
+
 def _ai_strategy_daily_markdown(*, payload: dict[str, Any]) -> dict[str, Any]:
     url = f"{_ai_service_base_url()}/strategy/daily-markdown"
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -4081,6 +4328,240 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         output=output,
         input_snapshot=input_snapshot,
     )
+
+
+@app.post("/leader/daily", response_model=LeaderDailyResponse)
+def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyResponse:
+    d = (req.date or "").strip() or _today_cn_date_str()
+    ts = now_iso()
+
+    # If already generated for this date and not forced, return existing.
+    if not req.force:
+        dates, rows = _list_leader_stocks(days=10)
+        existing = [r for r in rows if str(r.get("date") or "") == d]
+        if existing:
+            leaders_out: list[LeaderPick] = []
+            for r in existing:
+                series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)
+                now_close = series[-1]["close"] if series else None
+                entry = r.get("entryPrice")
+                pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
+                src0 = r.get("sourceSignals")
+                src = src0 if isinstance(src0, dict) else {}
+                leaders_out.append(
+                    LeaderPick(
+                        id=str(r["id"]),
+                        date=str(r["date"]),
+                        symbol=str(r["symbol"]),
+                        market=str(r["market"]),
+                        ticker=str(r["ticker"]),
+                        name=str(r["name"]),
+                        entryPrice=r.get("entryPrice"),
+                        score=r.get("score"),
+                        reason=str(r.get("reason") or ""),
+                        sourceSignals=src,
+                        riskPoints=[str(x) for x in (r.get("riskPoints") or []) if str(x)],
+                        createdAt=str(r.get("createdAt") or ""),
+                        nowClose=float(now_close) if now_close is not None else None,
+                        pctSinceEntry=float(pct) if pct is not None else None,
+                        series=series,
+                    )
+                )
+            return LeaderDailyResponse(date=d, leaders=leaders_out, debug=None)
+
+    # Build TradingView latest snapshots (enabled screeners).
+    snaps: list[TvScreenerSnapshotDetail] = []
+    tv_screeners_selected = _list_enabled_tv_screeners(limit=6)
+    for sc in tv_screeners_selected:
+        sid = _norm_str(sc.get("id") or "")
+        if not sid:
+            continue
+        s = _latest_tv_snapshot_for_screener(sid)
+        if s is not None:
+            snaps.append(s)
+    tv_latest = [_tv_snapshot_brief(s.id, max_rows=20) for s in snaps]
+
+    # Candidate universe from latest snapshots.
+    pool: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for s in snaps:
+        for c in _extract_tv_candidates(s):
+            sym = c["symbol"]
+            if sym in seen:
+                continue
+            seen.add(sym)
+            pool.append(c)
+            if len(pool) >= max(1, min(int(req.maxCandidates), 50)):
+                break
+        if len(pool) >= max(1, min(int(req.maxCandidates), 50)):
+            break
+
+    # Industry flow matrix (names only).
+    industry_daily = _market_cn_industry_fund_flow_top_by_date(as_of_date=d, days=10, top_k=5)
+
+    # Leader history (last 10 trading days).
+    _, hist_rows = _list_leader_stocks(days=10)
+    leader_history = [
+        {"date": str(r.get("date") or ""), "symbol": str(r.get("symbol") or ""), "score": r.get("score")}
+        for r in hist_rows
+    ]
+
+    # Market per-stock summaries (compact) for candidate universe.
+    market_ctx: list[dict[str, Any]] = []
+    for c in pool[: max(1, min(int(req.maxCandidates), 20))]:
+        sym = c["symbol"]
+        _ensure_market_stock_basic(
+            symbol=sym,
+            market=c["market"],
+            ticker=c["ticker"],
+            name=c.get("name") or c["ticker"],
+            currency=c["currency"],
+        )
+        bars = _load_cached_bars(sym, days=60)
+        if not bars:
+            try:
+                bars = market_stock_bars(sym, days=60).bars
+            except Exception:
+                bars = []
+        feats = _bars_features(bars)
+        chips = _load_cached_chips(sym, days=30)
+        if not chips:
+            try:
+                chips = market_stock_chips(sym, days=30).items
+            except Exception:
+                chips = []
+        ff = _load_cached_fund_flow(sym, days=30)
+        if not ff:
+            try:
+                ff = market_stock_fund_flow(sym, days=30).items
+            except Exception:
+                ff = []
+        chips_tail = chips[-3:] if chips else []
+        ff_tail = ff[-5:] if ff else []
+        market_ctx.append(
+            {
+                "symbol": sym,
+                "ticker": c["ticker"],
+                "name": c.get("name") or "",
+                "features": feats,
+                "barsTail": (bars[-6:] if bars else []),
+                "chipsSummary": _chips_summary_last(chips_tail[-1] if chips_tail else {}),
+                "fundFlowBreakdown": _fund_flow_breakdown_last(ff_tail[-1] if ff_tail else {}),
+            }
+        )
+
+    context = {
+        "date": d,
+        "tradingView": {"latest": tv_latest},
+        "industryFundFlow": {"dailyTopInflow": industry_daily},
+        "candidateUniverse": pool,
+        "market": market_ctx,
+        "leaderHistory": leader_history,
+    }
+    stage_req = {"date": d, "context": context}
+    stage_resp: dict[str, Any] = {}
+    try:
+        stage_resp = _ai_leader_daily(payload=stage_req)
+    except OSError as e:
+        stage_resp = {"date": d, "leaders": [], "error": str(e)}
+
+    leaders_in = stage_resp.get("leaders")
+    leaders_list: list[Any] = leaders_in if isinstance(leaders_in, list) else []
+    picks: list[dict[str, Any]] = []
+    for it in leaders_list[:2]:
+        if not isinstance(it, dict):
+            continue
+        sym = _norm_str(it.get("symbol") or "")
+        if not sym:
+            continue
+        # Ensure chosen symbol is within today universe.
+        if sym not in seen:
+            continue
+        entry = _entry_close_for_date(sym, d)
+        meta = next((x for x in pool if x.get("symbol") == sym), None) or {}
+        picks.append(
+            {
+                "id": str(uuid.uuid4()),
+                "symbol": sym,
+                "market": _norm_str(it.get("market") or meta.get("market") or ""),
+                "ticker": _norm_str(it.get("ticker") or meta.get("ticker") or ""),
+                "name": _norm_str(it.get("name") or meta.get("name") or ""),
+                "entryPrice": entry,
+                "score": _safe_float(it.get("score")),
+                "reason": _norm_str(it.get("reason") or ""),
+                "sourceSignals": it.get("sourceSignals") if isinstance(it.get("sourceSignals"), dict) else {},
+                "riskPoints": it.get("riskPoints") if isinstance(it.get("riskPoints"), list) else [],
+            }
+        )
+
+    _upsert_leader_stocks(date=d, items=picks, ts=ts)
+    _prune_leader_stocks_keep_last_n_days(keep_days=10)
+
+    # Build response with computed series.
+    _, saved_rows = _list_leader_stocks(days=10)
+    today_rows = [r for r in saved_rows if str(r.get("date") or "") == d]
+    out: list[LeaderPick] = []
+    for r in today_rows:
+        series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)
+        now_close = series[-1]["close"] if series else None
+        entry = r.get("entryPrice")
+        pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
+        src0 = r.get("sourceSignals")
+        src = src0 if isinstance(src0, dict) else {}
+        out.append(
+            LeaderPick(
+                id=str(r["id"]),
+                date=str(r["date"]),
+                symbol=str(r["symbol"]),
+                market=str(r["market"]),
+                ticker=str(r["ticker"]),
+                name=str(r["name"]),
+                entryPrice=r.get("entryPrice"),
+                score=r.get("score"),
+                reason=str(r.get("reason") or ""),
+                sourceSignals=src,
+                riskPoints=[str(x) for x in (r.get("riskPoints") or []) if str(x)],
+                createdAt=str(r.get("createdAt") or ""),
+                nowClose=float(now_close) if now_close is not None else None,
+                pctSinceEntry=float(pct) if pct is not None else None,
+                series=series,
+            )
+        )
+
+    return LeaderDailyResponse(date=d, leaders=out, debug={"request": stage_req, "response": stage_resp})
+
+
+@app.get("/leader", response_model=LeaderListResponse)
+def list_leader_stocks(days: int = 10) -> LeaderListResponse:
+    dates, rows = _list_leader_stocks(days=days)
+    out: list[LeaderPick] = []
+    for r in rows:
+        series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)
+        now_close = series[-1]["close"] if series else None
+        entry = r.get("entryPrice")
+        pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
+        src0 = r.get("sourceSignals")
+        src = src0 if isinstance(src0, dict) else {}
+        out.append(
+            LeaderPick(
+                id=str(r["id"]),
+                date=str(r["date"]),
+                symbol=str(r["symbol"]),
+                market=str(r["market"]),
+                ticker=str(r["ticker"]),
+                name=str(r["name"]),
+                entryPrice=r.get("entryPrice"),
+                score=r.get("score"),
+                reason=str(r.get("reason") or ""),
+                sourceSignals=src,
+                riskPoints=[str(x) for x in (r.get("riskPoints") or []) if str(x)],
+                createdAt=str(r.get("createdAt") or ""),
+                nowClose=float(now_close) if now_close is not None else None,
+                pctSinceEntry=float(pct) if pct is not None else None,
+                series=series,
+            )
+        )
+    return LeaderListResponse(days=max(1, min(int(days), 30)), dates=dates, leaders=out)
 
 
 def list_system_prompt_presets() -> list[SystemPromptPresetSummary]:

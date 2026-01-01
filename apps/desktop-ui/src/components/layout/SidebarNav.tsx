@@ -4,6 +4,7 @@ import {
   BarChart3,
   ChevronsLeft,
   ChevronsRight,
+  Crown,
   CreditCard,
   LayoutDashboard,
   Sparkles,
@@ -20,6 +21,7 @@ const items = [
   { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
   { id: 'broker', label: 'Broker', icon: CreditCard },
   { id: 'strategy', label: 'Strategy', icon: Sparkles },
+  { id: 'leaders', label: 'Leaders', icon: Crown },
   { id: 'screener', label: 'Screener', icon: Table2 },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];

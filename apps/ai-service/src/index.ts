@@ -93,6 +93,34 @@ const StrategyDailyMarkdownResponseSchema = z.object({
   model: z.string(),
 });
 
+const LeaderDailyRequestSchema = z.object({
+  date: z.string().min(1),
+  context: z.record(z.any()),
+});
+
+const LeaderPickSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  ticker: z.string(),
+  name: z.string(),
+  score: z.number().min(0).max(100),
+  reason: z.string(),
+  sourceSignals: z
+    .object({
+      industries: z.array(z.string()).optional(),
+      screeners: z.array(z.string()).optional(),
+      notes: z.array(z.string()).optional(),
+    })
+    .optional(),
+  riskPoints: z.array(z.string()).optional(),
+});
+
+const LeaderDailyResponseSchema = z.object({
+  date: z.string(),
+  leaders: z.array(LeaderPickSchema).max(2),
+  model: z.string(),
+});
+
 const StrategyCandidateSchema = z.object({
   symbol: z.string(),
   market: z.string(),
@@ -586,6 +614,95 @@ app.post('/strategy/candidates', async (c) => {
         leader: { symbol: '', reason: '' },
         riskNotes: [`Candidates generation failed: ${msg}`],
         model: modelId || 'unknown',
+      },
+      200,
+    );
+  }
+});
+
+app.post('/leader/daily', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = LeaderDailyRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+  }
+
+  let model: AiModel;
+  let fallbackModel: AiModel | null = null;
+  try {
+    model = getModel(process.env.AI_STRATEGY_MODEL);
+    const fb = getStrategyFallbackModelId();
+    if (fb) fallbackModel = getModel(fb);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid AI configuration';
+    return c.json({ error: message }, 500);
+  }
+
+  const modelId = process.env.AI_STRATEGY_MODEL ?? process.env.AI_MODEL ?? '';
+  const fallbackModelId = getStrategyFallbackModelId();
+  const date = parsed.data.date.trim();
+
+  const system =
+    'You are a leader stock (龙头股) selection engine for CN/HK swing trading. ' +
+    'Your ONLY job is to pick up to 2 leaders for today using the provided context. ' +
+    'Return a valid JSON object matching the provided schema. No markdown fences.';
+
+  const instruction =
+    `Task: Select up to 2 leader stocks for ${date}.\n` +
+    'Rules:\n' +
+    '- You MUST choose leaders ONLY from context.candidateUniverse symbols.\n' +
+    '- Use inputs:\n' +
+    '  - context.tradingView.latest (screener latest rows)\n' +
+    '  - context.industryFundFlow.dailyTopInflow (Top5×Date industry names)\n' +
+    '  - context.market (per-stock summaries if present)\n' +
+    '  - context.leaderHistory (last 10 trading days leaders)\n' +
+    '- Daily limit: leaders <= 2.\n' +
+    '- Prefer NEW leaders from today’s industry themes + screener strength.\n' +
+    '- Avoid duplicates: if a symbol was selected recently, only pick again if it is clearly still the leader today.\n' +
+    '- Provide numeric score 0-100.\n' +
+    '- Provide a concise Chinese reason explaining why it is leader (trend/flow/industry/relative strength).\n' +
+    '- Provide sourceSignals:\n' +
+    '  - industries: 1-3 industry names from the matrix\n' +
+    '  - screeners: screener names/ids that surfaced it\n' +
+    '  - notes: optional short supporting notes\n' +
+    '- Provide riskPoints: 2-4 bullets.\n' +
+    'Return JSON only.\n\n' +
+    'Context JSON:\n' +
+    JSON.stringify(parsed.data.context);
+
+  async function run(m: AiModel): Promise<unknown> {
+    const { object } = await generateObject({
+      model: m,
+      schema: LeaderDailyResponseSchema,
+      system,
+      prompt: instruction,
+      temperature: 0,
+      maxOutputTokens: 1400,
+    });
+    return object;
+  }
+
+  try {
+    const obj = await run(model);
+    const out = LeaderDailyResponseSchema.parse(obj);
+    return c.json({ ...out, model: modelId || out.model });
+  } catch (e) {
+    if (fallbackModel) {
+      try {
+        const obj = await run(fallbackModel);
+        const out = LeaderDailyResponseSchema.parse(obj);
+        return c.json({ ...out, model: fallbackModelId || modelId || out.model });
+      } catch {
+        // fallthrough
+      }
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json(
+      {
+        date,
+        leaders: [],
+        model: modelId || 'unknown',
+        error: `Leader generation failed: ${msg}`,
       },
       200,
     );

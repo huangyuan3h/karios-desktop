@@ -85,6 +85,12 @@ export type ChatReference =
       view?: 'rankedList' | 'dailyTopByDate' | 'matrixValues';
       title?: string;
       createdAt: string;
+    }
+  | {
+      kind: 'leaderStocks';
+      refId: string; // stable key: `leaderStocks:${days}:${ts}`
+      days: number; // typically 10
+      createdAt: string;
     };
 
 export type AppSettings = {

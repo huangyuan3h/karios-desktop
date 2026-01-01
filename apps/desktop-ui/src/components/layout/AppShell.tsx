@@ -8,6 +8,7 @@ import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
 import { BrokerPage } from '@/components/pages/BrokerPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
+import { LeaderStocksPage } from '@/components/pages/LeaderStocksPage';
 import { MarketPage } from '@/components/pages/MarketPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
@@ -105,6 +106,8 @@ export function AppShell() {
                 ? 'Broker'
               : activePage === 'strategy'
                 ? 'Strategy'
+              : activePage === 'leaders'
+                ? 'Leaders'
               : activePage === 'stock'
                 ? activeStockSymbol ?? 'Stock'
               : activePage === 'screener'
@@ -156,6 +159,8 @@ export function AppShell() {
               <IndustryFlowPage />
             ) : activePage === 'strategy' ? (
               <StrategyPage />
+            ) : activePage === 'leaders' ? (
+              <LeaderStocksPage />
             ) : activePage === 'stock' && activeStockSymbol ? (
               <StockPage
                 symbol={activeStockSymbol}

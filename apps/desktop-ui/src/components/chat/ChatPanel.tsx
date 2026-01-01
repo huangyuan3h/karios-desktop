@@ -101,6 +101,27 @@ type StockFundFlowDetail = {
     smallNetRatio: string;
   }>;
 };
+
+type LeaderStocksList = {
+  days: number;
+  dates: string[];
+  leaders: Array<{
+    id: string;
+    date: string;
+    symbol: string;
+    market: string;
+    ticker: string;
+    name: string;
+    entryPrice?: number | null;
+    nowClose?: number | null;
+    pctSinceEntry?: number | null;
+    score?: number | null;
+    reason?: string | null;
+    sourceSignals?: Record<string, unknown>;
+    riskPoints?: string[];
+  }>;
+};
+
 function pickColumns(headers: string[]) {
   const preferred = [
     'Ticker',
@@ -415,6 +436,44 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       } catch {
         out += `## ${ref.title || 'CN industry fund flow'}\n`;
         out += `- asOfDate: ${ref.asOfDate}\n`;
+        out += `- status: failed to load\n\n`;
+      }
+      continue;
+    }
+
+    if (ref.kind === 'leaderStocks') {
+      try {
+        const resp = await fetch(
+          `${QUANT_BASE_URL}/leader?days=${encodeURIComponent(String(ref.days))}`,
+          { cache: 'no-store' },
+        );
+        if (!resp.ok) throw new Error('failed to load leader stocks');
+        const ls = (await resp.json()) as LeaderStocksList;
+        out += `## Leader stocks (last ${String(ls.days ?? ref.days)} trading days)\n`;
+        out += `- days: ${String(ls.days ?? ref.days)}\n`;
+        out += `- dates: ${(Array.isArray(ls.dates) ? ls.dates : []).join(', ')}\n\n`;
+
+        const leaders = Array.isArray(ls.leaders) ? ls.leaders : [];
+        if (leaders.length) {
+          out += `| Date | Ticker | Name | Score | EntryClose | Now | Pct | Reason |\n`;
+          out += `|---|---|---|---:|---:|---:|---:|---|\n`;
+          for (const r of leaders) {
+            const date = String(r.date ?? '');
+            const ticker = String(r.ticker ?? r.symbol ?? '');
+            const name = String(r.name ?? '');
+            const score = Number.isFinite(r.score as number) ? String(Math.round(r.score as number)) : '—';
+            const entry = Number.isFinite(r.entryPrice as number) ? (r.entryPrice as number).toFixed(2) : '—';
+            const now = Number.isFinite(r.nowClose as number) ? (r.nowClose as number).toFixed(2) : '—';
+            const pct = Number.isFinite(r.pctSinceEntry as number)
+              ? `${(((r.pctSinceEntry as number) || 0) * 100).toFixed(2)}%`
+              : '—';
+            const reason = String(r.reason ?? '').replaceAll('\n', ' ');
+            out += `| ${date} | ${ticker} | ${name} | ${score} | ${entry} | ${now} | ${pct} | ${reason} |\n`;
+          }
+          out += `\n`;
+        }
+      } catch {
+        out += `## Leader stocks\n`;
         out += `- status: failed to load\n\n`;
       }
       continue;
