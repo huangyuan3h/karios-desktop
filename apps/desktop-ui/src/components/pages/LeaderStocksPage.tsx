@@ -20,6 +20,14 @@ type LeaderPick = {
   entryPrice?: number | null;
   score?: number | null;
   reason: string;
+  whyBullets?: string[];
+  expectedDurationDays?: number | null;
+  buyZone?: Record<string, unknown>;
+  triggers?: Array<Record<string, unknown>>;
+  invalidation?: string | null;
+  targetPrice?: Record<string, unknown>;
+  probability?: number | null;
+  risks?: string[];
   sourceSignals?: Record<string, unknown>;
   riskPoints?: string[];
   createdAt: string;
@@ -48,6 +56,20 @@ function fmtPct(v: number | null | undefined) {
 function fmtPrice(v: number | null | undefined) {
   if (!Number.isFinite(v as number)) return '—';
   return (v as number).toFixed(2);
+}
+
+function fmtPlanLine(r: LeaderPick) {
+  const bz = r.buyZone ?? {};
+  const tp = r.targetPrice ?? {};
+  const bzLow = (bz as any).low;
+  const bzHigh = (bz as any).high;
+  const tpPrimary = (tp as any).primary;
+  const parts: string[] = [];
+  if (bzLow != null && bzHigh != null) parts.push(`Buy:${String(bzLow)}-${String(bzHigh)}`);
+  if (tpPrimary != null) parts.push(`Target:${String(tpPrimary)}`);
+  if (Number.isFinite(r.expectedDurationDays as number)) parts.push(`Dur:${String(r.expectedDurationDays)}d`);
+  if (Number.isFinite(r.probability as number)) parts.push(`P:${String(r.probability)}/5`);
+  return parts.length ? parts.join(' • ') : '';
 }
 
 function CloseSparkline({ series }: { series: LeaderSeriesPoint[] }) {
@@ -127,15 +149,23 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
   }
 
   const leaders = data?.leaders ?? [];
-  const byDate = React.useMemo(() => {
-    const m = new Map<string, LeaderPick[]>();
+  // Consolidated view: dedupe by symbol, keep the latest record (largest date).
+  const consolidated = React.useMemo(() => {
+    const m = new Map<string, LeaderPick>();
     for (const it of leaders) {
-      const arr = m.get(it.date) ?? [];
-      arr.push(it);
-      m.set(it.date, arr);
+      const key = String(it.symbol || it.ticker || '').trim();
+      if (!key) continue;
+      const prev = m.get(key);
+      if (!prev || String(it.date || '').localeCompare(String(prev.date || '')) > 0) {
+        m.set(key, it);
+      }
     }
-    // newest first
-    return Array.from(m.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+    return Array.from(m.values()).sort((a, b) => {
+      const sa = Number.isFinite(a.score as number) ? (a.score as number) : -1;
+      const sb = Number.isFinite(b.score as number) ? (b.score as number) : -1;
+      if (sb !== sa) return sb - sa;
+      return String(b.date || '').localeCompare(String(a.date || ''));
+    });
   }, [leaders]);
 
   return (
@@ -182,7 +212,9 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
 
       <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="text-sm font-medium">Leaders (last {data?.days ?? 10} trading days)</div>
+          <div className="text-sm font-medium">
+            Leaders (deduped, keep latest per symbol • last {data?.days ?? 10} trading days)
+          </div>
           <Button
             size="sm"
             variant="secondary"
@@ -202,107 +234,109 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
           </div>
         ) : null}
 
-        {byDate.length ? (
-          <div className="space-y-4">
-            {byDate.map(([date, rows]) => (
-              <div key={date} className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                <div className="mb-2 text-sm font-medium">{date}</div>
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-sm">
-                    <thead className="bg-[var(--k-surface)]">
-                      <tr>
-                        <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">
-                          Symbol
-                        </th>
-                        <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">
-                          Name
-                        </th>
-                        <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">
-                          Score
-                        </th>
-                        <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">
-                          Entry close
-                        </th>
-                        <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">
-                          Now
-                        </th>
-                        <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">
-                          Pct
-                        </th>
-                        <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">
-                          Why
-                        </th>
-                        <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">
-                          Trend
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r) => (
-                        <React.Fragment key={r.id}>
-                          <tr className="bg-[var(--k-surface)]">
-                            <td className="border-b border-[var(--k-border)] px-2 py-2 font-mono">
-                              <button
-                                type="button"
-                                className="text-[var(--k-accent)] hover:underline"
-                                onClick={() => onOpenStock?.(r.symbol)}
-                                title="Open stock detail"
-                              >
-                                {r.ticker || r.symbol}
-                              </button>
-                            </td>
-                            <td className="border-b border-[var(--k-border)] px-2 py-2">{r.name}</td>
-                            <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">
-                              {Number.isFinite(r.score as number) ? Math.round(r.score as number) : '—'}
-                            </td>
-                            <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">
-                              {fmtPrice(r.entryPrice)}
-                            </td>
-                            <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">
-                              {fmtPrice(r.nowClose)}
-                            </td>
-                            <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">
-                              {fmtPct(r.pctSinceEntry)}
-                            </td>
-                            <td className="border-b border-[var(--k-border)] px-2 py-2 text-[var(--k-muted)]">
-                              {r.reason}
-                            </td>
-                            <td className="border-b border-[var(--k-border)] px-2 py-2">
-                              {r.series?.length ? <CloseSparkline series={r.series} /> : null}
-                            </td>
-                          </tr>
-                          <tr>
-                            <td colSpan={8} className="border-b border-[var(--k-border)] px-2 py-2">
-                              <details>
-                                <summary className="cursor-pointer text-xs text-[var(--k-muted)]">
-                                  Details
-                                </summary>
-                                <div className="mt-2 grid gap-2 text-xs text-[var(--k-muted)] md:grid-cols-2">
-                                  <div>
-                                    <div className="font-medium text-[var(--k-text)]">Source signals</div>
-                                    <pre className="mt-1 whitespace-pre-wrap break-words">
-                                      {JSON.stringify(r.sourceSignals ?? {}, null, 2)}
-                                    </pre>
-                                  </div>
-                                  <div>
-                                    <div className="font-medium text-[var(--k-text)]">Risk points</div>
-                                    <ul className="mt-1 list-disc pl-4">
-                                      {(r.riskPoints ?? []).map((x, idx) => (
-                                        <li key={idx}>{x}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
+        {consolidated.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead className="bg-[var(--k-surface)]">
+                <tr>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Symbol</th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Name</th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Score</th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Last date</th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Entry close</th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Now</th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Pct</th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Why</th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Trend</th>
+                </tr>
+              </thead>
+              <tbody>
+                {consolidated.map((r) => (
+                  <React.Fragment key={r.id}>
+                    <tr className="bg-[var(--k-surface)]">
+                      <td className="border-b border-[var(--k-border)] px-2 py-2 font-mono">
+                        <button
+                          type="button"
+                          className="text-[var(--k-accent)] hover:underline"
+                          onClick={() => onOpenStock?.(r.symbol)}
+                          title="Open stock detail"
+                        >
+                          {r.ticker || r.symbol}
+                        </button>
+                      </td>
+                      <td className="border-b border-[var(--k-border)] px-2 py-2">{r.name}</td>
+                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">
+                        {Number.isFinite(r.score as number) ? Math.round(r.score as number) : '—'}
+                      </td>
+                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-right font-mono">
+                        {String(r.date || '—')}
+                      </td>
+                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">{fmtPrice(r.entryPrice)}</td>
+                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">{fmtPrice(r.nowClose)}</td>
+                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">{fmtPct(r.pctSinceEntry)}</td>
+                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-[var(--k-muted)]">
+                        {r.whyBullets?.length ? (
+                          <div className="space-y-1">
+                            <ul className="list-disc pl-4">
+                              {r.whyBullets.slice(0, 3).map((x, idx) => (
+                                <li key={idx}>{x}</li>
+                              ))}
+                            </ul>
+                            {fmtPlanLine(r) ? <div className="text-[11px] opacity-80">{fmtPlanLine(r)}</div> : null}
+                          </div>
+                        ) : (
+                          r.reason
+                        )}
+                      </td>
+                      <td className="border-b border-[var(--k-border)] px-2 py-2">
+                        {r.series?.length ? <CloseSparkline series={r.series} /> : null}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td colSpan={9} className="border-b border-[var(--k-border)] px-2 py-2">
+                        <details>
+                          <summary className="cursor-pointer text-xs text-[var(--k-muted)]">Details</summary>
+                          <div className="mt-2 grid gap-3 text-xs text-[var(--k-muted)] md:grid-cols-3">
+                            <div>
+                              <div className="font-medium text-[var(--k-text)]">Source signals</div>
+                              <pre className="mt-1 whitespace-pre-wrap break-words">
+                                {JSON.stringify(r.sourceSignals ?? {}, null, 2)}
+                              </pre>
+                            </div>
+                            <div>
+                              <div className="font-medium text-[var(--k-text)]">Execution plan</div>
+                              <div className="mt-1 space-y-1">
+                                <div>durationDays: {String(r.expectedDurationDays ?? '—')}</div>
+                                <div>buyZone: {JSON.stringify(r.buyZone ?? {}, null, 0)}</div>
+                                <div>targetPrice: {JSON.stringify(r.targetPrice ?? {}, null, 0)}</div>
+                                <div>invalidation: {String(r.invalidation ?? '—')}</div>
+                                <div>probability: {String(r.probability ?? '—')}/5</div>
+                                <div>
+                                  triggers:
+                                  <ul className="mt-1 list-disc pl-4">
+                                    {(r.triggers ?? []).slice(0, 4).map((t, idx) => (
+                                      <li key={idx}>{JSON.stringify(t)}</li>
+                                    ))}
+                                  </ul>
                                 </div>
-                              </details>
-                            </td>
-                          </tr>
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="font-medium text-[var(--k-text)]">Risks</div>
+                              <ul className="mt-1 list-disc pl-4">
+                                {(r.risks?.length ? r.risks : r.riskPoints ?? []).map((x, idx) => (
+                                  <li key={idx}>{x}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        </details>
+                      </td>
+                    </tr>
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
           <div className="text-sm text-[var(--k-muted)]">

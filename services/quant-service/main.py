@@ -326,6 +326,13 @@ def _connect() -> sqlite3.Connection:
           entry_price REAL,
           score REAL,
           reason TEXT NOT NULL,
+          why_bullets_json TEXT,
+          expected_duration_days INTEGER,
+          buy_zone_json TEXT,
+          triggers_json TEXT,
+          invalidation TEXT,
+          target_price_json TEXT,
+          probability INTEGER,
           source_signals_json TEXT NOT NULL,
           risk_points_json TEXT NOT NULL,
           created_at TEXT NOT NULL,
@@ -333,6 +340,22 @@ def _connect() -> sqlite3.Connection:
         )
         """,
     )
+    # Backward-compatible migration: add missing columns for existing DBs.
+    try:
+        cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(leader_stocks)").fetchall()}
+        def _add(col: str, ddl: str) -> None:
+            if col not in cols:
+                conn.execute(f"ALTER TABLE leader_stocks ADD COLUMN {ddl}")
+        _add("why_bullets_json", "why_bullets_json TEXT")
+        _add("expected_duration_days", "expected_duration_days INTEGER")
+        _add("buy_zone_json", "buy_zone_json TEXT")
+        _add("triggers_json", "triggers_json TEXT")
+        _add("invalidation", "invalidation TEXT")
+        _add("target_price_json", "target_price_json TEXT")
+        _add("probability", "probability INTEGER")
+    except Exception:
+        # Best-effort: do not block startup if schema probing fails.
+        pass
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_strategy_reports_account_date ON strategy_reports(account_id, date)",
     )
@@ -1417,6 +1440,14 @@ class LeaderPick(BaseModel):
     entryPrice: float | None = None
     score: float | None = None
     reason: str
+    whyBullets: list[str] = []
+    expectedDurationDays: int | None = None
+    buyZone: dict[str, Any] = {}
+    triggers: list[dict[str, Any]] = []
+    invalidation: str | None = None
+    targetPrice: dict[str, Any] = {}
+    probability: int | None = None
+    risks: list[str] = []
     sourceSignals: dict[str, Any] = {}
     riskPoints: list[str] = []
     createdAt: str
@@ -2482,9 +2513,11 @@ def _upsert_leader_stocks(*, date: str, items: list[dict[str, Any]], ts: str) ->
                 """
                 INSERT INTO leader_stocks(
                   id, date, symbol, market, ticker, name,
-                  entry_price, score, reason, source_signals_json, risk_points_json, created_at
+                  entry_price, score, reason,
+                  why_bullets_json, expected_duration_days, buy_zone_json, triggers_json, invalidation, target_price_json, probability,
+                  source_signals_json, risk_points_json, created_at
                 )
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(date, symbol) DO UPDATE SET
                   id = excluded.id,
                   market = excluded.market,
@@ -2493,6 +2526,13 @@ def _upsert_leader_stocks(*, date: str, items: list[dict[str, Any]], ts: str) ->
                   entry_price = excluded.entry_price,
                   score = excluded.score,
                   reason = excluded.reason,
+                  why_bullets_json = excluded.why_bullets_json,
+                  expected_duration_days = excluded.expected_duration_days,
+                  buy_zone_json = excluded.buy_zone_json,
+                  triggers_json = excluded.triggers_json,
+                  invalidation = excluded.invalidation,
+                  target_price_json = excluded.target_price_json,
+                  probability = excluded.probability,
                   source_signals_json = excluded.source_signals_json,
                   risk_points_json = excluded.risk_points_json,
                   created_at = excluded.created_at
@@ -2507,8 +2547,15 @@ def _upsert_leader_stocks(*, date: str, items: list[dict[str, Any]], ts: str) ->
                     it.get("entryPrice"),
                     it.get("score"),
                     str(it.get("reason") or ""),
+                    json.dumps(it.get("whyBullets") or [], ensure_ascii=False),
+                    int(it.get("expectedDurationDays") or 0) or None,
+                    json.dumps(it.get("buyZone") or {}, ensure_ascii=False),
+                    json.dumps(it.get("triggers") or [], ensure_ascii=False),
+                    str(it.get("invalidation") or "") or None,
+                    json.dumps(it.get("targetPrice") or {}, ensure_ascii=False),
+                    int(it.get("probability") or 0) or None,
                     json.dumps(it.get("sourceSignals") or {}, ensure_ascii=False),
-                    json.dumps(it.get("riskPoints") or [], ensure_ascii=False),
+                    json.dumps(it.get("risks") or it.get("riskPoints") or [], ensure_ascii=False),
                     ts,
                 ),
             )
@@ -2537,6 +2584,7 @@ def _list_leader_stocks(*, days: int = 10) -> tuple[list[str], list[dict[str, An
         rows = conn.execute(
             f"""
             SELECT id, date, symbol, market, ticker, name, entry_price, score, reason,
+                   why_bullets_json, expected_duration_days, buy_zone_json, triggers_json, invalidation, target_price_json, probability,
                    source_signals_json, risk_points_json, created_at
             FROM leader_stocks
             WHERE date IN ({placeholders})
@@ -2557,9 +2605,16 @@ def _list_leader_stocks(*, days: int = 10) -> tuple[list[str], list[dict[str, An
                 "entryPrice": float(r[6]) if r[6] is not None else None,
                 "score": float(r[7]) if r[7] is not None else None,
                 "reason": str(r[8] or ""),
-                "sourceSignals": json.loads(str(r[9]) or "{}") if r[9] else {},
-                "riskPoints": json.loads(str(r[10]) or "[]") if r[10] else [],
-                "createdAt": str(r[11]),
+                "whyBullets": json.loads(str(r[9]) or "[]") if r[9] else [],
+                "expectedDurationDays": int(r[10]) if r[10] is not None else None,
+                "buyZone": json.loads(str(r[11]) or "{}") if r[11] else {},
+                "triggers": json.loads(str(r[12]) or "[]") if r[12] else [],
+                "invalidation": str(r[13] or "") or None,
+                "targetPrice": json.loads(str(r[14]) or "{}") if r[14] else {},
+                "probability": int(r[15]) if r[15] is not None else None,
+                "sourceSignals": json.loads(str(r[16]) or "{}") if r[16] else {},
+                "riskPoints": json.loads(str(r[17]) or "[]") if r[17] else [],
+                "createdAt": str(r[18]),
             }
         )
     return (dates, out)
@@ -4599,6 +4654,16 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                 pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
                 src0 = r.get("sourceSignals")
                 src = src0 if isinstance(src0, dict) else {}
+                why0 = r.get("whyBullets")
+                why = [str(x) for x in (why0 or [])] if isinstance(why0, list) else []
+                bz0 = r.get("buyZone")
+                bz = bz0 if isinstance(bz0, dict) else {}
+                trg0 = r.get("triggers")
+                trg = trg0 if isinstance(trg0, list) else []
+                tp0 = r.get("targetPrice")
+                tp = tp0 if isinstance(tp0, dict) else {}
+                risks0 = r.get("riskPoints")
+                risks = [str(x) for x in (risks0 or [])] if isinstance(risks0, list) else []
                 leaders_out.append(
                     LeaderPick(
                         id=str(r["id"]),
@@ -4610,6 +4675,14 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                         entryPrice=r.get("entryPrice"),
                         score=r.get("score"),
                         reason=str(r.get("reason") or ""),
+                        whyBullets=why,
+                        expectedDurationDays=r.get("expectedDurationDays"),
+                        buyZone=bz,
+                        triggers=trg,
+                        invalidation=r.get("invalidation"),
+                        targetPrice=tp,
+                        probability=r.get("probability"),
+                        risks=risks,
                         sourceSignals=src,
                         riskPoints=[str(x) for x in (r.get("riskPoints") or []) if str(x)],
                         createdAt=str(r.get("createdAt") or ""),
@@ -4668,25 +4741,25 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
             name=c.get("name") or c["ticker"],
             currency=c["currency"],
         )
-        bars = _load_cached_bars(sym, days=60)
-        if not bars:
-            try:
-                bars = market_stock_bars(sym, days=60).bars
-            except Exception:
-                bars = []
+        bars_cached = _load_cached_bars(sym, days=60)
+        bars = bars_cached
+        try:
+            bars = market_stock_bars(sym, days=60, force=True).bars
+        except Exception:
+            bars = bars_cached
         feats = _bars_features(bars)
-        chips = _load_cached_chips(sym, days=30)
-        if not chips:
-            try:
-                chips = market_stock_chips(sym, days=30).items
-            except Exception:
-                chips = []
-        ff = _load_cached_fund_flow(sym, days=30)
-        if not ff:
-            try:
-                ff = market_stock_fund_flow(sym, days=30).items
-            except Exception:
-                ff = []
+        chips_cached = _load_cached_chips(sym, days=30)
+        chips = chips_cached
+        try:
+            chips = market_stock_chips(sym, days=30, force=True).items
+        except Exception:
+            chips = chips_cached
+        ff_cached = _load_cached_fund_flow(sym, days=30)
+        ff = ff_cached
+        try:
+            ff = market_stock_fund_flow(sym, days=30, force=True).items
+        except Exception:
+            ff = ff_cached
         chips_tail = chips[-3:] if chips else []
         ff_tail = ff[-5:] if ff else []
         market_ctx.append(
@@ -4740,7 +4813,15 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                 "entryPrice": entry,
                 "score": _safe_float(it.get("score")),
                 "reason": _norm_str(it.get("reason") or ""),
+                "whyBullets": it.get("whyBullets") if isinstance(it.get("whyBullets"), list) else [],
+                "expectedDurationDays": int(it.get("expectedDurationDays") or 0) or None,
+                "buyZone": it.get("buyZone") if isinstance(it.get("buyZone"), dict) else {},
+                "triggers": it.get("triggers") if isinstance(it.get("triggers"), list) else [],
+                "invalidation": _norm_str(it.get("invalidation") or "") or None,
+                "targetPrice": it.get("targetPrice") if isinstance(it.get("targetPrice"), dict) else {},
+                "probability": int(it.get("probability") or 0) or None,
                 "sourceSignals": it.get("sourceSignals") if isinstance(it.get("sourceSignals"), dict) else {},
+                "risks": it.get("risks") if isinstance(it.get("risks"), list) else [],
                 "riskPoints": it.get("riskPoints") if isinstance(it.get("riskPoints"), list) else [],
             }
         )
@@ -4759,6 +4840,16 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
         pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
         src0 = r.get("sourceSignals")
         src = src0 if isinstance(src0, dict) else {}
+        why0 = r.get("whyBullets")
+        why = [str(x) for x in (why0 or [])] if isinstance(why0, list) else []
+        bz0 = r.get("buyZone")
+        bz = bz0 if isinstance(bz0, dict) else {}
+        trg0 = r.get("triggers")
+        trg = trg0 if isinstance(trg0, list) else []
+        tp0 = r.get("targetPrice")
+        tp = tp0 if isinstance(tp0, dict) else {}
+        risks0 = r.get("riskPoints")
+        risks = [str(x) for x in (risks0 or [])] if isinstance(risks0, list) else []
         out.append(
             LeaderPick(
                 id=str(r["id"]),
@@ -4770,6 +4861,14 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                 entryPrice=r.get("entryPrice"),
                 score=r.get("score"),
                 reason=str(r.get("reason") or ""),
+                whyBullets=why,
+                expectedDurationDays=r.get("expectedDurationDays"),
+                buyZone=bz,
+                triggers=trg,
+                invalidation=r.get("invalidation"),
+                targetPrice=tp,
+                probability=r.get("probability"),
+                risks=risks,
                 sourceSignals=src,
                 riskPoints=[str(x) for x in (r.get("riskPoints") or []) if str(x)],
                 createdAt=str(r.get("createdAt") or ""),
@@ -4793,6 +4892,16 @@ def list_leader_stocks(days: int = 10) -> LeaderListResponse:
         pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
         src0 = r.get("sourceSignals")
         src = src0 if isinstance(src0, dict) else {}
+        why0 = r.get("whyBullets")
+        why = [str(x) for x in (why0 or [])] if isinstance(why0, list) else []
+        bz0 = r.get("buyZone")
+        bz = bz0 if isinstance(bz0, dict) else {}
+        trg0 = r.get("triggers")
+        trg = trg0 if isinstance(trg0, list) else []
+        tp0 = r.get("targetPrice")
+        tp = tp0 if isinstance(tp0, dict) else {}
+        risks0 = r.get("riskPoints")
+        risks = [str(x) for x in (risks0 or [])] if isinstance(risks0, list) else []
         out.append(
             LeaderPick(
                 id=str(r["id"]),
@@ -4804,6 +4913,14 @@ def list_leader_stocks(days: int = 10) -> LeaderListResponse:
                 entryPrice=r.get("entryPrice"),
                 score=r.get("score"),
                 reason=str(r.get("reason") or ""),
+                whyBullets=why,
+                expectedDurationDays=r.get("expectedDurationDays"),
+                buyZone=bz,
+                triggers=trg,
+                invalidation=r.get("invalidation"),
+                targetPrice=tp,
+                probability=r.get("probability"),
+                risks=risks,
                 sourceSignals=src,
                 riskPoints=[str(x) for x in (r.get("riskPoints") or []) if str(x)],
                 createdAt=str(r.get("createdAt") or ""),
@@ -5074,6 +5191,29 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
 
     # Industry flow matrix (Top5×Date names only). No sync here; dashboard sync button is the source of truth.
     industry_daily = _market_cn_industry_fund_flow_top_by_date(as_of_date=as_of, days=5, top_k=5)
+    # Industry flow (5D numeric): Top industries sorted by 5D sum, include daily net inflow series.
+    industry_flow_5d: dict[str, Any] = {}
+    try:
+        ff = market_cn_industry_fund_flow(days=5, topN=30, asOfDate=as_of)
+        rows_sorted = sorted((ff.top or []), key=lambda r: r.sum10d, reverse=True)[:10]
+        industry_flow_5d = {
+            "asOfDate": ff.asOfDate,
+            "days": ff.days,
+            "topN": 10,
+            "dates": ff.dates,
+            "top": [
+                {
+                    "industryCode": r.industryCode,
+                    "industryName": r.industryName,
+                    "sum5d": r.sum10d,
+                    "netInflow": r.netInflow,
+                    "series": [{"date": p.date, "netInflow": p.netInflow} for p in (r.series10d or [])],
+                }
+                for r in rows_sorted
+            ],
+        }
+    except Exception:
+        industry_flow_5d = {}
 
     # Leaders summary: show latest leaders with forced latest market info (<=2), plus history list.
     leaders_summary = DashboardLeadersSummary(latestDate=None, latest=[], history=[])
@@ -5123,6 +5263,14 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
                         "name": _norm_str(r.get("name") or ""),
                         "score": r.get("score"),
                         "reason": _norm_str(r.get("reason") or ""),
+                        "whyBullets": r.get("whyBullets") if isinstance(r.get("whyBullets"), list) else [],
+                        "expectedDurationDays": r.get("expectedDurationDays"),
+                        "buyZone": r.get("buyZone") if isinstance(r.get("buyZone"), dict) else {},
+                        "triggers": r.get("triggers") if isinstance(r.get("triggers"), list) else [],
+                        "invalidation": _norm_str(r.get("invalidation") or "") or None,
+                        "targetPrice": r.get("targetPrice") if isinstance(r.get("targetPrice"), dict) else {},
+                        "probability": r.get("probability"),
+                        "risks": r.get("riskPoints") if isinstance(r.get("riskPoints"), list) else [],
                         "current": {
                             "barDate": _norm_str(last_bar.get("date") if isinstance(last_bar, dict) else ""),
                             "close": last_bar.get("close") if isinstance(last_bar, dict) else None,
@@ -5163,7 +5311,7 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
         accountState=state_sum,
         holdings=holdings_out,
         marketStatus=market_status_out,
-        industryFundFlow=industry_daily,
+        industryFundFlow={**industry_daily, "flow5d": industry_flow_5d},
         leaders=leaders_summary,
         screeners=screener_rows,
     )

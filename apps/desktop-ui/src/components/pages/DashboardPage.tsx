@@ -250,11 +250,16 @@ export function DashboardPage({
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* Masonry-style layout to reduce whitespace caused by uneven card heights. */}
+      <div className="columns-1 [column-gap:16px] lg:columns-2">
         {orderedCards.map((c: any) => {
           const id = String(c.id);
+          const spanAll = id === 'screeners' ? 'lg:[column-span:all]' : '';
           return (
-            <section key={id} className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+            <section
+              key={id}
+              className={`mb-4 break-inside-avoid rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 ${spanAll}`}
+            >
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="text-sm font-medium">{c.title}</div>
                 {editLayout ? (
@@ -449,6 +454,56 @@ export function DashboardPage({
                             </tbody>
                           </table>
                         </div>
+                        {(() => {
+                          const flow5d: any = (summary?.industryFundFlow as any)?.flow5d ?? null;
+                          const flowDates: string[] = Array.isArray(flow5d?.dates) ? flow5d.dates : [];
+                          const cols: string[] = flowDates.length ? flowDates.slice(-5) : dedupedDates;
+                          const topRows: any[] = Array.isArray(flow5d?.top) ? flow5d.top : [];
+                          if (!topRows.length || !cols.length) return null;
+                          const colDates = cols;
+                          return (
+                            <div className="mt-4">
+                              <div className="mb-2 text-xs text-[var(--k-muted)]">5D net inflow (Top by 5D sum)</div>
+                              <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                                <table className="w-full border-collapse text-xs">
+                                  <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                                    <tr className="text-left">
+                                      <th className="px-2 py-2">Industry</th>
+                                      <th className="px-2 py-2 text-right">Sum(5D)</th>
+                                      {colDates.map((d: string) => (
+                                        <th key={d} className="px-2 py-2 text-right font-mono">
+                                          {String(d).slice(5)}
+                                        </th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {topRows.slice(0, 10).map((r: any, idx: number) => {
+                                      const seriesArr: any[] = Array.isArray(r?.series) ? r.series : [];
+                                      const map: Record<string, number> = {};
+                                      for (const p of seriesArr) {
+                                        const dd = String(p?.date ?? '');
+                                        const nv = Number(p?.netInflow ?? 0);
+                                        if (dd) map[dd] = Number.isFinite(nv) ? nv : 0;
+                                      }
+                                      return (
+                                        <tr key={`${String(r?.industryCode ?? idx)}`} className="border-t border-[var(--k-border)]">
+                                          <td className="px-2 py-2">{String(r?.industryName ?? '')}</td>
+                                          <td className="px-2 py-2 text-right font-mono">{fmtAmountCn(r?.sum5d)}</td>
+                                          {colDates.map((d: string) => (
+                                            <td key={d} className="px-2 py-2 text-right font-mono">
+                                              {fmtAmountCn(map[d] ?? 0)}
+                                            </td>
+                                          ))}
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })()}
                         <div className="mt-3 flex items-center gap-2">
                           <Button size="sm" variant="secondary" onClick={() => onNavigate?.('industryFlow')}>
                             Open Industry Flow
@@ -496,6 +551,20 @@ export function DashboardPage({
                           <div className="text-xs text-[var(--k-muted)]">score: {String(r.score ?? '—')}</div>
                         </div>
                         <div className="mt-1 text-xs text-[var(--k-muted)]">{String(r.name ?? '')}</div>
+                        {Array.isArray(r.whyBullets) && r.whyBullets.length ? (
+                          <ul className="mt-2 list-disc pl-4 text-xs text-[var(--k-muted)]">
+                            {r.whyBullets.slice(0, 2).map((x: any, idx: number) => (
+                              <li key={idx}>{String(x)}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="mt-2 text-xs text-[var(--k-muted)]">{String(r.reason ?? '')}</div>
+                        )}
+                        <div className="mt-2 text-xs text-[var(--k-muted)]">
+                          buy={String(r.buyZone?.low ?? '—')}-{String(r.buyZone?.high ?? '—')} • target=
+                          {String(r.targetPrice?.primary ?? '—')} • dur={String(r.expectedDurationDays ?? '—')}d • p=
+                          {String(r.probability ?? '—')}/5
+                        </div>
                         <div className="mt-2 text-xs text-[var(--k-muted)]">
                           close={String(r.current?.close ?? '—')} vol={String(r.current?.volume ?? '—')}
                         </div>

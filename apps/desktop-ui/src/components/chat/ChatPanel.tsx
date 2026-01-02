@@ -117,6 +117,11 @@ type LeaderStocksList = {
     pctSinceEntry?: number | null;
     score?: number | null;
     reason?: string | null;
+    whyBullets?: string[];
+    expectedDurationDays?: number | null;
+    buyZone?: Record<string, unknown>;
+    targetPrice?: Record<string, unknown>;
+    probability?: number | null;
     sourceSignals?: Record<string, unknown>;
     riskPoints?: string[];
   }>;
@@ -481,20 +486,24 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 
         const leaders = Array.isArray(ls.leaders) ? ls.leaders : [];
         if (leaders.length) {
-          out += `| Date | Ticker | Name | Score | EntryClose | Now | Pct | Reason |\n`;
-          out += `|---|---|---|---:|---:|---:|---:|---|\n`;
+          out += `| Date | Ticker | Name | Score | Dur(d) | BuyZone | Target | P(1-5) | Why |\n`;
+          out += `|---|---|---|---:|---:|---|---|---:|---|\n`;
           for (const r of leaders) {
             const date = String(r.date ?? '');
             const ticker = String(r.ticker ?? r.symbol ?? '');
             const name = String(r.name ?? '');
             const score = Number.isFinite(r.score as number) ? String(Math.round(r.score as number)) : '—';
-            const entry = Number.isFinite(r.entryPrice as number) ? (r.entryPrice as number).toFixed(2) : '—';
-            const now = Number.isFinite(r.nowClose as number) ? (r.nowClose as number).toFixed(2) : '—';
-            const pct = Number.isFinite(r.pctSinceEntry as number)
-              ? `${(((r.pctSinceEntry as number) || 0) * 100).toFixed(2)}%`
-              : '—';
-            const reason = String(r.reason ?? '').replaceAll('\n', ' ');
-            out += `| ${date} | ${ticker} | ${name} | ${score} | ${entry} | ${now} | ${pct} | ${reason} |\n`;
+            const dur = Number.isFinite(r.expectedDurationDays as number) ? String(r.expectedDurationDays) : '—';
+            const bzLow = (r.buyZone as any)?.low;
+            const bzHigh = (r.buyZone as any)?.high;
+            const buyZone = bzLow != null && bzHigh != null ? `${String(bzLow)}-${String(bzHigh)}` : '—';
+            const target = (r.targetPrice as any)?.primary != null ? String((r.targetPrice as any).primary) : '—';
+            const prob = Number.isFinite(r.probability as number) ? String(r.probability) : '—';
+            const why =
+              Array.isArray(r.whyBullets) && r.whyBullets.length
+                ? r.whyBullets.slice(0, 2).map((x) => String(x)).join(' / ')
+                : String(r.reason ?? '').replaceAll('\n', ' ');
+            out += `| ${date} | ${ticker} | ${name} | ${score} | ${dur} | ${buyZone} | ${target} | ${prob} | ${why} |\n`;
           }
           out += `\n`;
 

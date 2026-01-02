@@ -98,6 +98,24 @@ const LeaderDailyRequestSchema = z.object({
   context: z.record(z.any()),
 });
 
+const LeaderBuyZoneSchema = z.object({
+  low: z.union([z.number(), z.string()]),
+  high: z.union([z.number(), z.string()]),
+  note: z.string().optional(),
+});
+
+const LeaderTriggerSchema = z.object({
+  kind: z.enum(['breakout', 'pullback']),
+  condition: z.string(),
+  value: z.union([z.number(), z.string()]).optional(),
+});
+
+const LeaderTargetPriceSchema = z.object({
+  primary: z.union([z.number(), z.string()]),
+  stretch: z.union([z.number(), z.string()]).optional(),
+  note: z.string().optional(),
+});
+
 const LeaderPickSchema = z.object({
   symbol: z.string(),
   market: z.string(),
@@ -105,6 +123,14 @@ const LeaderPickSchema = z.object({
   name: z.string(),
   score: z.number().min(0).max(100),
   reason: z.string(),
+  whyBullets: z.array(z.string()).min(3).max(6),
+  expectedDurationDays: z.number().int().min(1).max(10),
+  buyZone: LeaderBuyZoneSchema,
+  triggers: z.array(LeaderTriggerSchema).min(1).max(4),
+  invalidation: z.string(),
+  targetPrice: LeaderTargetPriceSchema,
+  probability: z.number().int().min(1).max(5),
+  risks: z.array(z.string()).min(2).max(4),
   sourceSignals: z
     .object({
       industries: z.array(z.string()).optional(),
@@ -660,7 +686,17 @@ app.post('/leader/daily', async (c) => {
     '- Prefer NEW leaders from today’s industry themes + screener strength.\n' +
     '- Avoid duplicates: if a symbol was selected recently, only pick again if it is clearly still the leader today.\n' +
     '- Provide numeric score 0-100.\n' +
-    '- Provide a concise Chinese reason explaining why it is leader (trend/flow/industry/relative strength).\n' +
+    '- Provide a concise Chinese reason.\n' +
+    '- CRITICAL: Provide actionable fields for execution:\n' +
+    '  - whyBullets: 3-6 short bullets (each <= 20 Chinese chars), explain why it is worth buying.\n' +
+    '  - expectedDurationDays: 1-10 (how long this leader thesis likely lasts).\n' +
+    '  - buyZone: a price range {low, high} where fill probability is high.\n' +
+    '  - triggers: 1-2 triggers (breakout/pullback), each has condition and optional value.\n' +
+    '  - invalidation: ONE clear invalidation rule (price below X / structure breaks).\n' +
+    '  - targetPrice: {primary, stretch?} price targets.\n' +
+    '  - probability: integer 1-5 (success probability).\n' +
+    '  - risks: 2-4 key risks.\n' +
+    '- If you lack a field (e.g. current price), write a best-effort number based on context.market.barsTail close; otherwise write "TBD" and explain in risks.\n' +
     '- Provide sourceSignals:\n' +
     '  - industries: 1-3 industry names from the matrix\n' +
     '  - screeners: screener names/ids that surfaced it\n' +
