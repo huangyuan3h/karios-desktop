@@ -18,48 +18,6 @@ import { useChatStore } from '@/lib/chat/store';
 type DashboardSummary = any;
 type DashboardSyncResp = any;
 
-function useMasonrySpans(ids: string[], rowHeight = 8, gap = 16) {
-  const [spans, setSpans] = React.useState<Record<string, number>>({});
-  const observers = React.useRef<Record<string, ResizeObserver>>({});
-  const refs = React.useRef<Record<string, HTMLElement | null>>({});
-
-  const setRef = React.useCallback((id: string) => {
-    return (el: HTMLElement | null) => {
-      refs.current[id] = el;
-    };
-  }, []);
-
-  React.useEffect(() => {
-    const nextObs: Record<string, ResizeObserver> = {};
-
-    function attach(id: string) {
-      const el = refs.current[id];
-      if (!el) return;
-      const ro = new ResizeObserver(() => {
-        const h = el.getBoundingClientRect().height;
-        const span = Math.max(1, Math.ceil((h + gap) / rowHeight));
-        setSpans((prev) => (prev[id] === span ? prev : { ...prev, [id]: span }));
-      });
-      ro.observe(el);
-      nextObs[id] = ro;
-    }
-
-    for (const id of ids) attach(id);
-
-    // cleanup old observers
-    for (const k of Object.keys(observers.current)) {
-      observers.current[k]?.disconnect();
-    }
-    observers.current = nextObs;
-
-    return () => {
-      for (const k of Object.keys(nextObs)) nextObs[k]?.disconnect();
-    };
-  }, [ids, rowHeight, gap]);
-
-  return { spans, setRef };
-}
-
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
@@ -187,8 +145,6 @@ export function DashboardPage({
 
   const cardsById = React.useMemo(() => Object.fromEntries(defaultCards.map((c) => [c.id, c])), [defaultCards]);
   const orderedCards = cardOrder.map((id) => cardsById[id]).filter(Boolean);
-  const masonryIds = React.useMemo(() => orderedCards.map((c: any) => String(c.id)), [orderedCards]);
-  const { spans, setRef } = useMasonrySpans(masonryIds, 8, 12);
 
   function moveCard(id: string, dir: -1 | 1) {
     const idx = cardOrder.indexOf(id);
@@ -294,20 +250,15 @@ export function DashboardPage({
         </div>
       ) : null}
 
-      {/* True masonry grid: tighter than CSS columns, avoids large whitespace. */}
-      <div
-        className="grid gap-3 lg:grid-cols-2 [grid-auto-rows:8px] [grid-auto-flow:dense]"
-      >
+      {/* Stable masonry-like layout using CSS columns (no observers, no setState loops). */}
+      <div className="columns-1 [column-gap:16px] lg:columns-2">
         {orderedCards.map((c: any) => {
           const id = String(c.id);
-          const spanAll = id === 'screeners' ? 'lg:col-span-2' : '';
-          const rowSpan = spans[id] ?? 1;
+          const spanAll = id === 'screeners' ? 'lg:[column-span:all]' : '';
           return (
             <section
               key={id}
-              ref={setRef(id) as any}
-              style={{ gridRowEnd: `span ${rowSpan}` }}
-              className={`rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-3 ${spanAll}`}
+              className={`mb-4 break-inside-avoid rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 ${spanAll}`}
             >
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="text-sm font-medium">{c.title}</div>
