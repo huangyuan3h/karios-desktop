@@ -1438,6 +1438,102 @@ class LeaderListResponse(BaseModel):
     leaders: list[LeaderPick]
 
 
+# --- Dashboard module (v0) ---
+class DashboardSyncRequest(BaseModel):
+    force: bool = True
+
+
+class DashboardSyncStep(BaseModel):
+    name: str
+    ok: bool
+    durationMs: int
+    message: str | None = None
+    meta: dict[str, Any] = {}
+
+
+class DashboardScreenerSyncItem(BaseModel):
+    id: str
+    name: str
+    ok: bool
+    rowCount: int = 0
+    capturedAt: str | None = None
+    filtersCount: int = 0
+    error: str | None = None
+
+
+class DashboardScreenerSyncStatus(BaseModel):
+    enabledCount: int
+    syncedCount: int
+    failed: list[DashboardScreenerSyncItem] = []
+    missing: list[dict[str, str]] = []  # [{id,name,reason}]
+    items: list[DashboardScreenerSyncItem] = []
+
+
+class DashboardSyncResponse(BaseModel):
+    ok: bool
+    startedAt: str
+    finishedAt: str
+    steps: list[DashboardSyncStep]
+    screener: DashboardScreenerSyncStatus
+
+
+class DashboardAccountItem(BaseModel):
+    id: str
+    broker: str
+    title: str
+    accountMasked: str | None
+    updatedAt: str
+
+
+class DashboardAccountStateSummary(BaseModel):
+    accountId: str
+    broker: str
+    updatedAt: str | None = None
+    cashAvailable: str | None = None
+    totalAssets: str | None = None
+    positionsCount: int = 0
+    conditionalOrdersCount: int = 0
+    tradesCount: int = 0
+
+
+class DashboardHoldingRow(BaseModel):
+    ticker: str
+    name: str | None = None
+    qty: str | None = None
+    price: str | None = None
+    cost: str | None = None
+    pnl: str | None = None
+    pnlPct: str | None = None
+
+
+class DashboardLeadersSummary(BaseModel):
+    latestDate: str | None = None
+    latest: list[dict[str, Any]] = []
+    history: list[dict[str, Any]] = []
+
+
+class DashboardScreenerStatusRow(BaseModel):
+    id: str
+    name: str
+    enabled: bool
+    updatedAt: str | None = None
+    capturedAt: str | None = None
+    rowCount: int = 0
+    filtersCount: int = 0
+
+
+class DashboardSummaryResponse(BaseModel):
+    asOfDate: str
+    accounts: list[DashboardAccountItem]
+    selectedAccountId: str | None = None
+    accountState: DashboardAccountStateSummary | None = None
+    holdings: list[DashboardHoldingRow] = []
+    marketStatus: dict[str, Any] = {}
+    industryFundFlow: dict[str, Any] = {}
+    leaders: DashboardLeadersSummary = DashboardLeadersSummary()
+    screeners: list[DashboardScreenerStatusRow] = []
+
+
 @app.get("/integrations/tradingview/screeners", response_model=ListTvScreenersResponse)
 def list_tv_screeners() -> ListTvScreenersResponse:
     _seed_default_tv_screeners()
@@ -3621,6 +3717,19 @@ def _list_enabled_tv_screeners(*, limit: int = 6) -> list[dict[str, Any]]:
         return out
 
 
+def _tv_latest_snapshot_meta(screener_id: str) -> dict[str, Any] | None:
+    snap = _latest_tv_snapshot_for_screener(screener_id)
+    if snap is None:
+        return None
+    return {
+        "snapshotId": snap.id,
+        "capturedAt": snap.capturedAt,
+        "rowCount": snap.rowCount,
+        "filtersCount": len(snap.filters or []),
+        "filters": snap.filters or [],
+    }
+
+
 def _pick_tv_columns(headers: list[str]) -> list[str]:
     preferred = [
         "Ticker",
@@ -4700,6 +4809,307 @@ def list_leader_stocks(days: int = 10) -> LeaderListResponse:
             )
         )
     return LeaderListResponse(days=max(1, min(int(days), 30)), dates=dates, leaders=out)
+
+
+@app.post("/dashboard/sync", response_model=DashboardSyncResponse)
+def dashboard_sync(req: DashboardSyncRequest) -> DashboardSyncResponse:
+    started_at = now_iso()
+    t0 = time.perf_counter()
+    steps: list[DashboardSyncStep] = []
+
+    def step(name: str, fn) -> dict[str, Any]:
+        st = time.perf_counter()
+        ok = True
+        msg: str | None = None
+        meta: dict[str, Any] = {}
+        try:
+            out = fn()
+            if isinstance(out, dict):
+                meta = out
+        except HTTPException as e:
+            ok = False
+            msg = str(e.detail)
+        except Exception as e:
+            ok = False
+            msg = str(e)
+        dur = int((time.perf_counter() - st) * 1000)
+        steps.append(DashboardSyncStep(name=name, ok=ok, durationMs=dur, message=msg, meta=meta))
+        return {"ok": ok, "message": msg, "meta": meta}
+
+    # 1) Market sync (always refresh spot+quotes).
+    def _sync_market() -> dict[str, Any]:
+        resp = market_sync()
+        body = bytes(resp.body).decode("utf-8", errors="replace") if hasattr(resp, "body") else ""
+        try:
+            j = json.loads(body) if body else {}
+        except Exception:
+            j = {}
+        return {"response": j}
+
+    step("market", _sync_market)
+
+    # 2) Industry fund flow sync (force).
+    def _sync_industry() -> dict[str, Any]:
+        d = _today_cn_date_str()
+        out = market_cn_industry_fund_flow_sync(MarketCnIndustryFundFlowSyncRequest(date=d, days=10, topN=10, force=True))
+        return {"asOfDate": out.asOfDate, "rowsUpserted": out.rowsUpserted, "histRowsUpserted": out.histRowsUpserted, "message": out.message}
+
+    step("industryFundFlow", _sync_industry)
+
+    # 3) TradingView screeners (sync all enabled).
+    screener_items: list[DashboardScreenerSyncItem] = []
+    enabled = _list_enabled_tv_screeners(limit=50)
+    for sc in enabled:
+        sid = _norm_str(sc.get("id") or "")
+        name = _norm_str(sc.get("name") or sid)
+        if not sid:
+            continue
+        st = time.perf_counter()
+        ok = True
+        err: str | None = None
+        captured_at: str | None = None
+        row_count = 0
+        filters_count = 0
+        try:
+            res = sync_tv_screener(sid)
+            captured_at = res.capturedAt
+            row_count = int(res.rowCount)
+            meta = _tv_latest_snapshot_meta(sid) or {}
+            filters_count = int(meta.get("filtersCount") or 0)
+        except HTTPException as e:
+            ok = False
+            err = str(e.detail)
+        except Exception as e:
+            ok = False
+            err = str(e)
+        _dur = int((time.perf_counter() - st) * 1000)
+        screener_items.append(
+            DashboardScreenerSyncItem(
+                id=sid,
+                name=name,
+                ok=ok,
+                rowCount=row_count,
+                capturedAt=captured_at,
+                filtersCount=filters_count,
+                error=err,
+            )
+        )
+        # Attach per-screener details into the main step meta (aggregated later).
+        _ = _dur
+
+    failed = [it for it in screener_items if not it.ok]
+    synced_count = len([it for it in screener_items if it.ok])
+
+    # Coverage/missing check: ensure each enabled screener has a latest snapshot.
+    missing: list[dict[str, str]] = []
+    for sc in enabled:
+        sid = _norm_str(sc.get("id") or "")
+        name = _norm_str(sc.get("name") or sid)
+        if not sid:
+            continue
+        meta2 = _tv_latest_snapshot_meta(sid)
+        if meta2 is None:
+            missing.append({"id": sid, "name": name, "reason": "No snapshots found"})
+            continue
+        if int(meta2.get("rowCount") or 0) <= 0:
+            missing.append({"id": sid, "name": name, "reason": "RowCount=0 (grid not captured)"})
+
+    # Record as a step for UI consistency.
+    steps.append(
+        DashboardSyncStep(
+            name="screeners",
+            ok=(len(failed) == 0 and len(missing) == 0),
+            durationMs=0,
+            message=None if (len(failed) == 0 and len(missing) == 0) else "Some screeners failed or missing",
+            meta={
+                "enabledCount": len(enabled),
+                "syncedCount": synced_count,
+                "failed": [it.model_dump() for it in failed],
+                "missing": missing,
+            },
+        )
+    )
+
+    finished_at = now_iso()
+    ok_all = all(s.ok for s in steps)
+    _total_ms = int((time.perf_counter() - t0) * 1000)
+    # Ensure last step shows total duration if needed.
+    if steps:
+        steps[-1].durationMs = steps[-1].durationMs or _total_ms
+
+    return DashboardSyncResponse(
+        ok=ok_all,
+        startedAt=started_at,
+        finishedAt=finished_at,
+        steps=steps,
+        screener=DashboardScreenerSyncStatus(
+            enabledCount=len(enabled),
+            syncedCount=synced_count,
+            failed=[DashboardScreenerSyncItem(**it.model_dump()) for it in failed],
+            missing=missing,
+            items=screener_items,
+        ),
+    )
+
+
+@app.get("/dashboard/summary", response_model=DashboardSummaryResponse)
+def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
+    as_of = _today_cn_date_str()
+    # Accounts (pingan) + selected.
+    accs = list_broker_accounts(broker="pingan")
+    accounts_out = [
+        DashboardAccountItem(
+            id=a.id,
+            broker=a.broker,
+            title=a.title,
+            accountMasked=a.accountMasked,
+            updatedAt=a.updatedAt,
+        )
+        for a in accs
+    ]
+    selected_id = (accountId or "").strip() or (accounts_out[0].id if accounts_out else None)
+
+    # Account state summary + holdings.
+    state_sum: DashboardAccountStateSummary | None = None
+    holdings_out: list[DashboardHoldingRow] = []
+    if selected_id:
+        st = _get_account_state_row(selected_id)
+        if st and isinstance(st, dict):
+            ov_raw = st.get("overview")
+            ov: dict[str, Any] = ov_raw if isinstance(ov_raw, dict) else {}
+            pos_raw = st.get("positions")
+            positions: list[Any] = pos_raw if isinstance(pos_raw, list) else []
+            orders_raw = st.get("conditionalOrders")
+            orders: list[Any] = orders_raw if isinstance(orders_raw, list) else []
+            trades_raw = st.get("trades")
+            trades: list[Any] = trades_raw if isinstance(trades_raw, list) else []
+            state_sum = DashboardAccountStateSummary(
+                accountId=selected_id,
+                broker=str(st.get("broker") or "pingan"),
+                updatedAt=str(st.get("updatedAt") or ""),
+                cashAvailable=str(ov.get("cashAvailable") or ov.get("现金可用") or "") or None,
+                totalAssets=str(ov.get("totalAssets") or ov.get("总资产") or "") or None,
+                positionsCount=len(positions),
+                conditionalOrdersCount=len(orders),
+                tradesCount=len(trades),
+            )
+            for p in positions[:12]:
+                if not isinstance(p, dict):
+                    continue
+                holdings_out.append(
+                    DashboardHoldingRow(
+                        ticker=_norm_str(p.get("ticker") or p.get("Ticker") or ""),
+                        name=_norm_str(p.get("name") or p.get("Name") or "") or None,
+                        qty=_norm_str(p.get("qtyHeld") or p.get("qty") or p.get("Qty") or "") or None,
+                        price=_norm_str(p.get("price") or p.get("Price") or "") or None,
+                        cost=_norm_str(p.get("cost") or p.get("Cost") or "") or None,
+                        pnl=_norm_str(p.get("pnl") or p.get("PnL") or "") or None,
+                        pnlPct=_norm_str(p.get("pnlPct") or p.get("PnLPct") or "") or None,
+                    )
+                )
+
+    # Market status (counts + last sync).
+    ms = market_status()
+    market_status_out: dict[str, Any] = {
+        "stocks": ms.stocks,
+        "lastSyncAt": ms.lastSyncAt,
+    }
+
+    # Industry flow matrix (Top5×Date names only). No sync here; dashboard sync button is the source of truth.
+    industry_daily = _market_cn_industry_fund_flow_top_by_date(as_of_date=as_of, days=10, top_k=5)
+
+    # Leaders summary: show latest leaders with forced latest market info (<=2), plus history list.
+    leaders_summary = DashboardLeadersSummary(latestDate=None, latest=[], history=[])
+    try:
+        leader_dates, leader_rows = _list_leader_stocks(days=10)
+        latest_date = leader_dates[-1] if leader_dates else None
+        leaders_summary.latestDate = latest_date
+        # History (compact)
+        leaders_summary.history = [
+            {
+                "date": _norm_str(r.get("date") or ""),
+                "symbol": _norm_str(r.get("symbol") or ""),
+                "ticker": _norm_str(r.get("ticker") or ""),
+                "name": _norm_str(r.get("name") or ""),
+                "score": r.get("score"),
+            }
+            for r in leader_rows[:20]
+            if isinstance(r, dict)
+        ]
+        # Latest deep summary (force)
+        if latest_date:
+            latest_rows = [r for r in leader_rows if _norm_str(r.get("date") or "") == latest_date][:2]
+            latest_out: list[dict[str, Any]] = []
+            for r in latest_rows:
+                sym = _norm_str(r.get("symbol") or "")
+                if not sym:
+                    continue
+                bars_resp = market_stock_bars(sym, days=60, force=True)
+                last_bar = (bars_resp.bars or [])[-1] if bars_resp.bars else {}
+                chips_last: dict[str, str] = {}
+                ff_last: dict[str, str] = {}
+                try:
+                    chips_items = market_stock_chips(sym, days=30, force=True).items
+                    chips_last = chips_items[-1] if chips_items else {}
+                except Exception:
+                    chips_last = {}
+                try:
+                    ff_items = market_stock_fund_flow(sym, days=30, force=True).items
+                    ff_last = ff_items[-1] if ff_items else {}
+                except Exception:
+                    ff_last = {}
+                latest_out.append(
+                    {
+                        "date": latest_date,
+                        "symbol": sym,
+                        "ticker": _norm_str(r.get("ticker") or ""),
+                        "name": _norm_str(r.get("name") or ""),
+                        "score": r.get("score"),
+                        "reason": _norm_str(r.get("reason") or ""),
+                        "current": {
+                            "barDate": _norm_str(last_bar.get("date") if isinstance(last_bar, dict) else ""),
+                            "close": last_bar.get("close") if isinstance(last_bar, dict) else None,
+                            "volume": last_bar.get("volume") if isinstance(last_bar, dict) else None,
+                            "amount": last_bar.get("amount") if isinstance(last_bar, dict) else None,
+                        },
+                        "chipsSummary": _chips_summary_last(chips_last),
+                        "fundFlowBreakdown": _fund_flow_breakdown_last(ff_last),
+                    }
+                )
+            leaders_summary.latest = latest_out
+    except Exception:
+        pass
+
+    # Screeners status: enabled screeners + latest snapshot meta.
+    screeners = _list_enabled_tv_screeners(limit=50)
+    screener_rows: list[DashboardScreenerStatusRow] = []
+    for sc in screeners:
+        sid = _norm_str(sc.get("id") or "")
+        name = _norm_str(sc.get("name") or sid)
+        meta = _tv_latest_snapshot_meta(sid) or {}
+        screener_rows.append(
+            DashboardScreenerStatusRow(
+                id=sid,
+                name=name,
+                enabled=bool(sc.get("enabled")),
+                updatedAt=_norm_str(sc.get("updatedAt") or "") or None,
+                capturedAt=_norm_str(meta.get("capturedAt") or "") or None,
+                rowCount=int(meta.get("rowCount") or 0),
+                filtersCount=int(meta.get("filtersCount") or 0),
+            )
+        )
+
+    return DashboardSummaryResponse(
+        asOfDate=as_of,
+        accounts=accounts_out,
+        selectedAccountId=selected_id,
+        accountState=state_sum,
+        holdings=holdings_out,
+        marketStatus=market_status_out,
+        industryFundFlow=industry_daily,
+        leaders=leaders_summary,
+        screeners=screener_rows,
+    )
 
 
 def list_system_prompt_presets() -> list[SystemPromptPresetSummary]:

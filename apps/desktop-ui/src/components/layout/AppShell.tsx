@@ -174,7 +174,13 @@ export function AppShell() {
             ) : activePage === 'screener' ? (
               <ScreenerPage />
             ) : (
-              <DashboardPage />
+              <DashboardPage
+                onNavigate={(id) => setActivePage(id)}
+                onOpenStock={(symbol) => {
+                  setActiveStockSymbol(symbol);
+                  setActivePage('stock');
+                }}
+              />
             )}
           </div>
 

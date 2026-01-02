@@ -1,69 +1,532 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+'use client';
+
+import * as React from 'react';
+import { RefreshCw } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { useChatStore } from '@/lib/chat/store';
 
-export function DashboardPage() {
+type DashboardSummary = any;
+type DashboardSyncResp = any;
+
+async function apiGetJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
+}
+
+async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
+}
+
+function loadCardOrder(): string[] | null {
+  try {
+    const raw = window.localStorage.getItem('karios.dashboard.cardOrder.v0');
+    if (!raw) return null;
+    const arr = JSON.parse(raw) as unknown;
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCardOrder(ids: string[]) {
+  try {
+    window.localStorage.setItem('karios.dashboard.cardOrder.v0', JSON.stringify(ids));
+  } catch {
+    // ignore
+  }
+}
+
+function fmtDateTime(x: string | null | undefined) {
+  if (!x) return '—';
+  const d = new Date(x);
+  return Number.isNaN(d.getTime()) ? x : d.toLocaleString();
+}
+
+export function DashboardPage({
+  onNavigate,
+  onOpenStock,
+}: {
+  onNavigate?: (pageId: string) => void;
+  onOpenStock?: (symbol: string) => void;
+}) {
+  const { addReference } = useChatStore();
+  const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
+  const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [accountId, setAccountId] = React.useState<string>('');
+  const [editLayout, setEditLayout] = React.useState(false);
+
+  const defaultCards = React.useMemo(
+    () => [
+      { id: 'account', title: 'Account overview' },
+      { id: 'industry', title: 'Industry fund flow' },
+      { id: 'leaders', title: 'Leaders' },
+      { id: 'holdings', title: 'Holdings' },
+      { id: 'screeners', title: 'Screener sync' },
+      { id: 'market', title: 'Market status' },
+    ],
+    [],
+  );
+
+  const [cardOrder, setCardOrder] = React.useState<string[]>(() => []);
+  React.useEffect(() => {
+    const loaded = loadCardOrder();
+    const ids = defaultCards.map((c) => c.id);
+    const next = loaded ? [...loaded.filter((x) => ids.includes(x)), ...ids.filter((x) => !loaded.includes(x))] : ids;
+    setCardOrder(next);
+  }, [defaultCards]);
+
+  const refresh = React.useCallback(async (nextAccountId?: string) => {
+    setError(null);
+    try {
+      const q = nextAccountId ? `?accountId=${encodeURIComponent(nextAccountId)}` : accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+      const s = await apiGetJson<DashboardSummary>(`/dashboard/summary${q}`);
+      setSummary(s);
+      const sel = String(s?.selectedAccountId ?? '');
+      if (sel && sel !== accountId) setAccountId(sel);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [accountId]);
+
+  React.useEffect(() => {
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function onSyncAll() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await apiPostJson<DashboardSyncResp>('/dashboard/sync', { force: true });
+      setSyncResp(r);
+      await refresh(accountId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const cardsById = React.useMemo(() => Object.fromEntries(defaultCards.map((c) => [c.id, c])), [defaultCards]);
+  const orderedCards = cardOrder.map((id) => cardsById[id]).filter(Boolean);
+
+  function moveCard(id: string, dir: -1 | 1) {
+    const idx = cardOrder.indexOf(id);
+    if (idx < 0) return;
+    const j = idx + dir;
+    if (j < 0 || j >= cardOrder.length) return;
+    const next = [...cardOrder];
+    const tmp = next[idx];
+    next[idx] = next[j];
+    next[j] = tmp;
+    setCardOrder(next);
+    saveCardOrder(next);
+  }
+
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-sm text-[var(--k-muted)]">
-          Your fast market desk—watch, analyze, act.
-        </p>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-medium">Recent Reports</div>
-            <Button variant="link" size="sm" className="h-auto px-0 py-0 text-xs">
-              View all
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {[
-              ['Macro & Tech', '2025-12-20'],
-              ['AI & Rates', '2025-12-19'],
-              ['Risk Review', '2025-12-18'],
-              ['FX & Commodities', '2025-12-16'],
-            ].map(([title, date]) => (
-              <div
-                key={title}
-                className="flex items-center justify-between rounded-lg border border-[var(--k-border)] px-3 py-2 text-sm"
-              >
-                <div className="truncate">{title}</div>
-                <div className="text-xs text-[var(--k-muted)]">{date}</div>
-              </div>
-            ))}
+    <div className="mx-auto w-full max-w-6xl p-6">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <div className="text-lg font-semibold">Dashboard</div>
+          <div className="mt-1 text-sm text-[var(--k-muted)]">
+            One-click sync + monitor key signals (account / flow / leaders / holdings).
           </div>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={accountId} onValueChange={(v) => { setAccountId(v); void refresh(v); }}>
+            <SelectTrigger className="h-9 w-[240px]">
+              <SelectValue placeholder="Select account" />
+            </SelectTrigger>
+            <SelectContent>
+              {(summary?.accounts ?? []).map((a: any) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.title}{a.accountMasked ? ` (${a.accountMasked})` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="secondary" size="sm" className="gap-2" disabled={busy} onClick={() => void refresh()}>
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+          <Button size="sm" className="gap-2" disabled={busy} onClick={() => void onSyncAll()}>
+            {busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {busy ? 'Syncing…' : 'Sync all (force)'}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setEditLayout((v) => !v)}>
+            {editLayout ? 'Done' : 'Edit layout'}
+          </Button>
+        </div>
+      </div>
 
-        <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-          <div className="mb-3 text-sm font-medium">Watchlist</div>
-          <div className="overflow-hidden rounded-lg border border-[var(--k-border)]">
-            <div className="grid grid-cols-[1fr_80px_80px] gap-2 bg-[var(--k-surface-2)] px-3 py-2 text-xs font-medium text-[var(--k-muted)]">
-              <div>Symbol</div>
-              <div className="text-right">Last</div>
-              <div className="text-right">Chg%</div>
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-[var(--k-muted)]">
+        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('broker')}>
+          Broker
+        </Button>
+        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('market')}>
+          Market
+        </Button>
+        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('industryFlow')}>
+          Industry Flow
+        </Button>
+        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('leaders')}>
+          Leaders
+        </Button>
+        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('strategy')}>
+          Strategy
+        </Button>
+        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('screener')}>
+          Screener
+        </Button>
+        <div className="ml-auto">
+          asOfDate: <span className="font-mono">{summary?.asOfDate ?? '—'}</span>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+          {error}
+        </div>
+      ) : null}
+
+      {syncResp ? (
+        <div className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+          <div className="mb-2 text-sm font-medium">Last sync result</div>
+          <div className="text-xs text-[var(--k-muted)]">
+            started: {fmtDateTime(syncResp.startedAt)} • finished: {fmtDateTime(syncResp.finishedAt)} • ok:{' '}
+            {String(Boolean(syncResp.ok))}
+          </div>
+          <div className="mt-3 overflow-auto rounded-lg border border-[var(--k-border)]">
+            <table className="w-full border-collapse text-xs">
+              <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                <tr className="text-left">
+                  <th className="px-3 py-2">Step</th>
+                  <th className="px-3 py-2">OK</th>
+                  <th className="px-3 py-2">Duration</th>
+                  <th className="px-3 py-2">Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(syncResp.steps ?? []).map((s: any) => (
+                  <tr key={String(s.name)} className="border-t border-[var(--k-border)]">
+                    <td className="px-3 py-2 font-mono">{String(s.name)}</td>
+                    <td className="px-3 py-2">{String(Boolean(s.ok))}</td>
+                    <td className="px-3 py-2 font-mono">{String(s.durationMs ?? 0)}ms</td>
+                    <td className="px-3 py-2 text-[var(--k-muted)]">{String(s.message ?? '')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {(syncResp.screener?.failed?.length || syncResp.screener?.missing?.length) ? (
+            <div className="mt-3 text-xs text-red-600">
+              Screener issues: failed={syncResp.screener?.failed?.length ?? 0} missing={syncResp.screener?.missing?.length ?? 0}
             </div>
-            {[
-              ['CSI300', '4,568.18', '+0.34%'],
-              ['SHCOMP', '3,890.45', '+0.36%'],
-              ['SPX', '-', '-'],
-              ['NDX', '-', '-'],
-            ].map(([sym, last, chg]) => (
-              <div
-                key={sym}
-                className="grid grid-cols-[1fr_80px_80px] gap-2 border-t border-[var(--k-border)] px-3 py-2 text-sm"
-              >
-                <div className="font-medium">{sym}</div>
-                <div className="text-right tabular-nums">{last}</div>
-                <div className="text-right text-emerald-600 tabular-nums">
-                  {chg}
-                </div>
-              </div>
-            ))}
-          </div>
+          ) : null}
         </div>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {orderedCards.map((c: any) => {
+          const id = String(c.id);
+          return (
+            <section key={id} className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="text-sm font-medium">{c.title}</div>
+                {editLayout ? (
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="secondary" className="h-7 px-2 text-xs" onClick={() => moveCard(id, -1)}>
+                      ↑
+                    </Button>
+                    <Button size="sm" variant="secondary" className="h-7 px-2 text-xs" onClick={() => moveCard(id, 1)}>
+                      ↓
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+
+              {id === 'account' ? (
+                <div className="text-sm">
+                  <div className="text-[var(--k-muted)]">
+                    updatedAt: {fmtDateTime(summary?.accountState?.updatedAt)}
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+                      <div className="text-xs text-[var(--k-muted)]">Total assets</div>
+                      <div className="mt-1 font-mono">{summary?.accountState?.totalAssets ?? '—'}</div>
+                    </div>
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+                      <div className="text-xs text-[var(--k-muted)]">Cash available</div>
+                      <div className="mt-1 font-mono">{summary?.accountState?.cashAvailable ?? '—'}</div>
+                    </div>
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+                      <div className="text-xs text-[var(--k-muted)]">Positions</div>
+                      <div className="mt-1 font-mono">{String(summary?.accountState?.positionsCount ?? 0)}</div>
+                    </div>
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+                      <div className="text-xs text-[var(--k-muted)]">Conditional orders</div>
+                      <div className="mt-1 font-mono">{String(summary?.accountState?.conditionalOrdersCount ?? 0)}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('broker')}>
+                      Open Broker
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={!summary?.selectedAccountId}
+                      onClick={() => {
+                        if (!summary?.selectedAccountId) return;
+                        const acc = (summary?.accounts ?? []).find((a: any) => a.id === summary.selectedAccountId);
+                        addReference({
+                          kind: 'brokerState',
+                          refId: summary.selectedAccountId,
+                          broker: 'pingan',
+                          accountId: summary.selectedAccountId,
+                          accountTitle: String(acc?.title ?? 'Account'),
+                          capturedAt: new Date().toISOString(),
+                        } as any);
+                      }}
+                    >
+                      Reference
+                    </Button>
+                  </div>
+                </div>
+              ) : id === 'industry' ? (
+                <div>
+                  <div className="mb-2 text-xs text-[var(--k-muted)]">
+                    Top5×Date hotspots (names only)
+                  </div>
+                  <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                    <table className="w-full border-collapse text-xs">
+                      <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                        <tr className="text-left">
+                          <th className="px-2 py-2">#</th>
+                          {(summary?.industryFundFlow?.dates ?? []).slice(-10).map((d: string) => (
+                            <th key={d} className="px-2 py-2 font-mono">{String(d).slice(5)}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <tr key={i} className="border-t border-[var(--k-border)]">
+                            <td className="px-2 py-2 font-mono">{i + 1}</td>
+                            {(summary?.industryFundFlow?.matrix?.[i] ?? []).slice(-10).map((name: string, j: number) => (
+                              <td key={j} className="px-2 py-2">{String(name ?? '')}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('industryFlow')}>
+                      Open Industry Flow
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const asOfDate = String(summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '');
+                        addReference({
+                          kind: 'industryFundFlow',
+                          refId: `${asOfDate}:10:10`,
+                          asOfDate,
+                          days: 10,
+                          topN: 10,
+                          view: 'dailyTopByDate',
+                          title: 'CN industry fund flow (Top by date)',
+                          createdAt: new Date().toISOString(),
+                        } as any);
+                      }}
+                    >
+                      Reference
+                    </Button>
+                  </div>
+                </div>
+              ) : id === 'leaders' ? (
+                <div>
+                  <div className="mb-2 text-xs text-[var(--k-muted)]">
+                    latestDate: {summary?.leaders?.latestDate ?? '—'}
+                  </div>
+                  <div className="space-y-2">
+                    {(summary?.leaders?.latest ?? []).slice(0, 2).map((r: any) => (
+                      <div key={String(r.symbol)} className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            className="font-mono text-sm text-[var(--k-accent)] hover:underline"
+                            onClick={() => onOpenStock?.(String(r.symbol))}
+                          >
+                            {String(r.ticker ?? r.symbol)}
+                          </button>
+                          <div className="text-xs text-[var(--k-muted)]">score: {String(r.score ?? '—')}</div>
+                        </div>
+                        <div className="mt-1 text-xs text-[var(--k-muted)]">{String(r.name ?? '')}</div>
+                        <div className="mt-2 text-xs text-[var(--k-muted)]">
+                          close={String(r.current?.close ?? '—')} vol={String(r.current?.volume ?? '—')}
+                        </div>
+                      </div>
+                    ))}
+                    {!((summary?.leaders?.latest ?? []).length) ? (
+                      <div className="text-sm text-[var(--k-muted)]">No leaders yet. Generate in Leaders tab.</div>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('leaders')}>
+                      Open Leaders
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        addReference({
+                          kind: 'leaderStocks',
+                          refId: `leaderStocks:10:${Date.now()}`,
+                          days: 10,
+                          createdAt: new Date().toISOString(),
+                        } as any);
+                      }}
+                    >
+                      Reference
+                    </Button>
+                  </div>
+                </div>
+              ) : id === 'holdings' ? (
+                <div>
+                  <div className="mb-2 text-xs text-[var(--k-muted)]">
+                    Top holdings (from broker state; manual sync in Broker)
+                  </div>
+                  <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                    <table className="w-full border-collapse text-xs">
+                      <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                        <tr className="text-left">
+                          <th className="px-2 py-2">Ticker</th>
+                          <th className="px-2 py-2">Name</th>
+                          <th className="px-2 py-2 text-right">Qty</th>
+                          <th className="px-2 py-2 text-right">Price</th>
+                          <th className="px-2 py-2 text-right">PnL%</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(summary?.holdings ?? []).slice(0, 12).map((h: any, idx: number) => (
+                          <tr key={idx} className="border-t border-[var(--k-border)]">
+                            <td className="px-2 py-2 font-mono">{String(h.ticker ?? '')}</td>
+                            <td className="px-2 py-2">{String(h.name ?? '')}</td>
+                            <td className="px-2 py-2 text-right font-mono">{String(h.qty ?? '')}</td>
+                            <td className="px-2 py-2 text-right font-mono">{String(h.price ?? '')}</td>
+                            <td className="px-2 py-2 text-right font-mono">{String(h.pnlPct ?? '')}</td>
+                          </tr>
+                        ))}
+                        {!(summary?.holdings ?? []).length ? (
+                          <tr>
+                            <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={5}>
+                              No holdings cached yet. Upload broker screenshots in Broker tab.
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('broker')}>
+                      Open Broker
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('strategy')}>
+                      Open Strategy
+                    </Button>
+                  </div>
+                </div>
+              ) : id === 'screeners' ? (
+                <div>
+                  <div className="mb-2 text-xs text-[var(--k-muted)]">
+                    Enabled screeners (no content). Missing/rowCount=0 will be highlighted.
+                  </div>
+                  <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                    <table className="w-full border-collapse text-xs">
+                      <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                        <tr className="text-left">
+                          <th className="px-2 py-2">Name</th>
+                          <th className="px-2 py-2">capturedAt</th>
+                          <th className="px-2 py-2 text-right">rows</th>
+                          <th className="px-2 py-2 text-right">filters</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(summary?.screeners ?? []).map((s: any) => {
+                          const bad = !s.capturedAt || Number(s.rowCount ?? 0) <= 0;
+                          return (
+                            <tr key={String(s.id)} className="border-t border-[var(--k-border)]">
+                              <td className="px-2 py-2">{String(s.name ?? s.id)}</td>
+                              <td className={`px-2 py-2 font-mono ${bad ? 'text-red-600' : ''}`}>{String(s.capturedAt ?? '—')}</td>
+                              <td className={`px-2 py-2 text-right font-mono ${bad ? 'text-red-600' : ''}`}>{String(s.rowCount ?? 0)}</td>
+                              <td className="px-2 py-2 text-right font-mono">{String(s.filtersCount ?? 0)}</td>
+                            </tr>
+                          );
+                        })}
+                        {!(summary?.screeners ?? []).length ? (
+                          <tr>
+                            <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={4}>
+                              No enabled screeners.
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('screener')}>
+                      Open Screener
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="text-sm text-[var(--k-muted)]">
+                    stocks: {String(summary?.marketStatus?.stocks ?? '—')}
+                  </div>
+                  <div className="mt-1 text-xs text-[var(--k-muted)]">
+                    lastSyncAt: {fmtDateTime(summary?.marketStatus?.lastSyncAt)}
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('market')}>
+                      Open Market
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </section>
+          );
+        })}
       </div>
+
+      {editLayout ? (
+        <div className="mt-4 text-xs text-[var(--k-muted)]">
+          Layout config is saved locally. Drag-and-drop UI can be added later; for now use ↑/↓.
+        </div>
+      ) : null}
     </div>
   );
 }
