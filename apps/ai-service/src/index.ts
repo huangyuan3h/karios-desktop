@@ -592,8 +592,10 @@ app.post('/strategy/candidates', async (c) => {
     `Task: Rank Top 5 candidate assets for ${accountTitle} on ${date}.\n` +
     'Constraints:\n' +
     '- Do NOT require per-stock deep context. Assume it is NOT available.\n' +
-    '- Use ONLY: accountState, TradingView latest+history, industryFundFlow.\n' +
+    '- Use ONLY: accountState, TradingView latest+history, industryFundFlow, marketSentiment.\n' +
     '- industryFundFlow format: use context.industryFundFlow.dailyTopInflow (Top5×Date industry names).\n' +
+    '- marketSentiment format: use context.marketSentiment.latest (riskMode, upDownRatio, yesterdayLimitUpPremium, failedLimitUpRate).\n' +
+    '- If riskMode is "no_new_positions": still output candidates, but you MUST set Today stance to defensive in leader reason and reduce Risk sub-score accordingly.\n' +
     '- Return exactly 1..5 candidates with numeric Score 0-100 and rank 1..5.\n' +
     '- Rank must be consistent with score (higher score => better rank).\n' +
     '- Provide a single leader (龙头) and a short reason.\n' +
@@ -822,15 +824,19 @@ app.post('/strategy/daily-markdown', async (c) => {
     '  4) Overall execution plan (盘中执行要点)\n' +
     '  5) Ping An conditional-order action table (平安证券条件单风格 总表)\n' +
     '\n' +
+    'Market sentiment MUST be considered using context.marketSentiment.latest:\n' +
+    '- Use it to decide Today stance (进攻/均衡/防守) and Risk budget.\n' +
+    '- If riskMode is "no_new_positions", you MUST state: 禁止开新仓，只处理持仓，并在第5表里不要给新的开仓条件单。\n' +
+    '- If riskMode is "caution", you MUST reduce position sizing and emphasize confirmation (回封/回踩) over chasing.\n' +
     'You MUST follow this template (fill with real content, keep headings exactly):\n' +
     '# 日度交易报告\n\n' +
     `账户：${accountTitle}\n` +
     `日期：${date}\n\n` +
     '## 0 结果摘要\n\n' +
-    '用 1 段短文（<=200字）概括“主线/风险偏好/操作倾向”，然后给出摘要表。\n\n' +
+    '用 1 段短文（<=200字）概括“主线/风险偏好/操作倾向”，必须引用 marketSentiment 的 riskMode/ratio/premium/failedRate 做出结论，然后给出摘要表。\n\n' +
     '| Focus themes | Leader | Risk budget | Max positions | Today stance | Notes |\n' +
     '|---|---|---|---|---|\n' +
-    '| TBD | TBD | 单笔≤1% 净值 | ≤3 | 进攻/均衡/防守 | 右侧交易/条件单 |\n\n' +
+    '| TBD | TBD | 单笔≤1% 净值 | ≤3 | 进攻/均衡/防守 | marketSentiment: riskMode=... |\n\n' +
     '（在表格下面再用 2-4 句解释：为什么这些是主线/为什么不是别的。）\n\n' +
     '## 1 资金板块\n\n' +
     '用 3-6 条 bullet，总结：Top流入/Top流出/持续性/对持仓威胁/今日聚焦主题。\n\n' +
@@ -852,7 +858,7 @@ app.post('/strategy/daily-markdown', async (c) => {
     '| TBD | TBD | TBD | TBD | TBD | TBD | Hold/Reduce/Exit | 0 | TBD | TBD | TBD | TBD |\n\n' +
     '表格后用 1 段短文（<=220字）总结：优先处理哪一只风险源 + 哪些仓位顺势持有。\n\n' +
     '## 4 执行要点\n\n' +
-    '- 只写 5-8 条“可执行规则”（例如：触发后必须补止损单；未触发不交易；午后复核；收盘撤销等）\n\n' +
+    '- 只写 5-8 条“可执行规则”（必须包含 1 条基于 marketSentiment riskMode 的总风控规则；例如：禁止开新仓/轻仓试错/只做回封确认等）\n\n' +
     '## 5 条件单总表\n\n' +
     '在表格上方用 2-3 句解释：总表如何使用（先挂什么/触发后做什么/何时撤单）。\n\n' +
     '- Section 1 MUST analyze capital rotation using context.industryFundFlow.dailyTopInflow:\n' +
