@@ -61,6 +61,22 @@ function fmtDateTime(x: string | null | undefined) {
   return Number.isNaN(d.getTime()) ? x : d.toLocaleString();
 }
 
+function parseNum(x: unknown): number | null {
+  const s = String(x ?? '').trim();
+  if (!s) return null;
+  const n = Number(s.replaceAll(',', ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+function fmtAmountCn(x: unknown): string {
+  const n = parseNum(x);
+  if (n == null) return '—';
+  const abs = Math.abs(n);
+  if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿`;
+  if (abs >= 1e4) return `${(n / 1e4).toFixed(1)}万`;
+  return `${n.toFixed(0)}`;
+}
+
 export function DashboardPage({
   onNavigate,
   onOpenStock,
@@ -81,7 +97,6 @@ export function DashboardPage({
       { id: 'account', title: 'Account overview' },
       { id: 'industry', title: 'Industry fund flow' },
       { id: 'leaders', title: 'Leaders' },
-      { id: 'holdings', title: 'Holdings' },
       { id: 'screeners', title: 'Screener sync' },
       { id: 'market', title: 'Market status' },
     ],
@@ -154,18 +169,6 @@ export function DashboardPage({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={accountId} onValueChange={(v) => { setAccountId(v); void refresh(v); }}>
-            <SelectTrigger className="h-9 w-[240px]">
-              <SelectValue placeholder="Select account" />
-            </SelectTrigger>
-            <SelectContent>
-              {(summary?.accounts ?? []).map((a: any) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.title}{a.accountMasked ? ` (${a.accountMasked})` : ''}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
           <Button variant="secondary" size="sm" className="gap-2" disabled={busy} onClick={() => void refresh()}>
             <RefreshCw className="h-4 w-4" />
             Refresh
@@ -268,25 +271,92 @@ export function DashboardPage({
 
               {id === 'account' ? (
                 <div className="text-sm">
-                  <div className="text-[var(--k-muted)]">
-                    updatedAt: {fmtDateTime(summary?.accountState?.updatedAt)}
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs text-[var(--k-muted)]">
+                      updatedAt: {fmtDateTime(summary?.accountState?.updatedAt)}
+                    </div>
+                    <Select
+                      value={accountId}
+                      onValueChange={(v) => {
+                        setAccountId(v);
+                        void refresh(v);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-[240px]">
+                        <SelectValue placeholder="Select account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(summary?.accounts ?? []).map((a: any) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.title}
+                            {a.accountMasked ? ` (${a.accountMasked})` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
+
                   <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
                       <div className="text-xs text-[var(--k-muted)]">Total assets</div>
-                      <div className="mt-1 font-mono">{summary?.accountState?.totalAssets ?? '—'}</div>
+                      <div className="mt-1 font-mono">{fmtAmountCn(summary?.accountState?.totalAssets)}</div>
                     </div>
                     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
                       <div className="text-xs text-[var(--k-muted)]">Cash available</div>
-                      <div className="mt-1 font-mono">{summary?.accountState?.cashAvailable ?? '—'}</div>
+                      <div className="mt-1 font-mono">{fmtAmountCn(summary?.accountState?.cashAvailable)}</div>
                     </div>
-                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                      <div className="text-xs text-[var(--k-muted)]">Positions</div>
-                      <div className="mt-1 font-mono">{String(summary?.accountState?.positionsCount ?? 0)}</div>
-                    </div>
-                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                      <div className="text-xs text-[var(--k-muted)]">Conditional orders</div>
-                      <div className="mt-1 font-mono">{String(summary?.accountState?.conditionalOrdersCount ?? 0)}</div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="mb-2 text-xs text-[var(--k-muted)]">Holdings</div>
+                    <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                      <table className="w-full border-collapse text-xs">
+                        <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                          <tr className="text-left">
+                            <th className="px-2 py-2">Ticker</th>
+                            <th className="px-2 py-2">Name</th>
+                            <th className="px-2 py-2 text-right">Price</th>
+                            <th className="px-2 py-2 text-right">Weight</th>
+                            <th className="px-2 py-2 text-right">PnL</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(summary?.holdings ?? []).slice(0, 12).map((h: any, idx: number) => {
+                            const ticker = String(h.ticker ?? '').trim();
+                            const sym = String(h.symbol ?? '').trim();
+                            const inferredSymbol = sym
+                              ? sym
+                              : `${ticker.length === 4 || ticker.length === 5 ? 'HK' : 'CN'}:${ticker}`;
+                            const weight = Number.isFinite(h.weightPct) ? `${Number(h.weightPct).toFixed(1)}%` : '—';
+                            return (
+                              <tr key={idx} className="border-t border-[var(--k-border)]">
+                                <td className="px-2 py-2 font-mono">
+                                  <button
+                                    type="button"
+                                    className="text-[var(--k-accent)] hover:underline"
+                                    onClick={() => onOpenStock?.(inferredSymbol)}
+                                    title="Open stock detail"
+                                  >
+                                    {ticker}
+                                  </button>
+                                </td>
+                                <td className="px-2 py-2">{String(h.name ?? '')}</td>
+                                <td className="px-2 py-2 text-right font-mono">
+                                  {Number.isFinite(h.price) ? Number(h.price).toFixed(2) : '—'}
+                                </td>
+                                <td className="px-2 py-2 text-right font-mono">{weight}</td>
+                                <td className="px-2 py-2 text-right font-mono">{fmtAmountCn(h.pnlAmount)}</td>
+                              </tr>
+                            );
+                          })}
+                          {!(summary?.holdings ?? []).length ? (
+                            <tr>
+                              <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={5}>
+                                No holdings cached yet. Upload broker screenshots in Broker tab.
+                              </td>
+                            </tr>
+                          ) : null}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                   <div className="mt-3 flex items-center gap-2">
@@ -319,52 +389,93 @@ export function DashboardPage({
                   <div className="mb-2 text-xs text-[var(--k-muted)]">
                     Top5×Date hotspots (names only)
                   </div>
-                  <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                    <table className="w-full border-collapse text-xs">
-                      <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                        <tr className="text-left">
-                          <th className="px-2 py-2">#</th>
-                          {(summary?.industryFundFlow?.dates ?? []).slice(-10).map((d: string) => (
-                            <th key={d} className="px-2 py-2 font-mono">{String(d).slice(5)}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <tr key={i} className="border-t border-[var(--k-border)]">
-                            <td className="px-2 py-2 font-mono">{i + 1}</td>
-                            {(summary?.industryFundFlow?.matrix?.[i] ?? []).slice(-10).map((name: string, j: number) => (
-                              <td key={j} className="px-2 py-2">{String(name ?? '')}</td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('industryFlow')}>
-                      Open Industry Flow
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        const asOfDate = String(summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '');
-                        addReference({
-                          kind: 'industryFundFlow',
-                          refId: `${asOfDate}:10:10`,
-                          asOfDate,
-                          days: 10,
-                          topN: 10,
-                          view: 'dailyTopByDate',
-                          title: 'CN industry fund flow (Top by date)',
-                          createdAt: new Date().toISOString(),
-                        } as any);
-                      }}
-                    >
-                      Reference
-                    </Button>
-                  </div>
+                  {(() => {
+                    const datesAll: string[] = Array.isArray(summary?.industryFundFlow?.dates)
+                      ? summary.industryFundFlow.dates
+                      : [];
+                    const rawShownDates = datesAll.slice(-5);
+                    const topByDateArr: any[] = Array.isArray(summary?.industryFundFlow?.topByDate)
+                      ? summary.industryFundFlow.topByDate
+                      : [];
+                    const map: Record<string, string[]> = {};
+                    for (const it of topByDateArr) {
+                      const d = String(it?.date ?? '');
+                      const top = Array.isArray(it?.top) ? it.top.map((x: any) => String(x ?? '')) : [];
+                      if (d) map[d] = top;
+                    }
+                    const dedupedDates: string[] = [];
+                    let prevSig = '';
+                    let collapsed = 0;
+                    for (const d of rawShownDates) {
+                      const sig = (map[d] || []).slice(0, 5).join('|');
+                      if (sig && sig === prevSig) {
+                        collapsed += 1;
+                        continue;
+                      }
+                      dedupedDates.push(d);
+                      prevSig = sig;
+                    }
+
+                    return (
+                      <>
+                        {collapsed ? (
+                          <div className="mb-2 text-xs text-[var(--k-muted)]">
+                            collapsed {collapsed} duplicate non-trading snapshot{collapsed > 1 ? 's' : ''}
+                          </div>
+                        ) : null}
+                        <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                          <table className="w-full border-collapse text-xs">
+                            <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                              <tr className="text-left">
+                                <th className="px-2 py-2">#</th>
+                                {dedupedDates.map((d: string) => (
+                                  <th key={d} className="px-2 py-2 font-mono">
+                                    {String(d).slice(5)}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <tr key={i} className="border-t border-[var(--k-border)]">
+                                  <td className="px-2 py-2 font-mono">{i + 1}</td>
+                                  {dedupedDates.map((d: string, j: number) => (
+                                    <td key={j} className="px-2 py-2">
+                                      {String((map[d] || [])[i] ?? '')}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="mt-3 flex items-center gap-2">
+                          <Button size="sm" variant="secondary" onClick={() => onNavigate?.('industryFlow')}>
+                            Open Industry Flow
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              const asOfDate = String(summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '');
+                              addReference({
+                                kind: 'industryFundFlow',
+                                refId: `${asOfDate}:5:10`,
+                                asOfDate,
+                                days: 5,
+                                topN: 10,
+                                view: 'dailyTopByDate',
+                                title: 'CN industry fund flow (Top by date)',
+                                createdAt: new Date().toISOString(),
+                              } as any);
+                            }}
+                          >
+                            Reference
+                          </Button>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               ) : id === 'leaders' ? (
                 <div>
@@ -411,51 +522,6 @@ export function DashboardPage({
                       }}
                     >
                       Reference
-                    </Button>
-                  </div>
-                </div>
-              ) : id === 'holdings' ? (
-                <div>
-                  <div className="mb-2 text-xs text-[var(--k-muted)]">
-                    Top holdings (from broker state; manual sync in Broker)
-                  </div>
-                  <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                    <table className="w-full border-collapse text-xs">
-                      <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                        <tr className="text-left">
-                          <th className="px-2 py-2">Ticker</th>
-                          <th className="px-2 py-2">Name</th>
-                          <th className="px-2 py-2 text-right">Qty</th>
-                          <th className="px-2 py-2 text-right">Price</th>
-                          <th className="px-2 py-2 text-right">PnL%</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(summary?.holdings ?? []).slice(0, 12).map((h: any, idx: number) => (
-                          <tr key={idx} className="border-t border-[var(--k-border)]">
-                            <td className="px-2 py-2 font-mono">{String(h.ticker ?? '')}</td>
-                            <td className="px-2 py-2">{String(h.name ?? '')}</td>
-                            <td className="px-2 py-2 text-right font-mono">{String(h.qty ?? '')}</td>
-                            <td className="px-2 py-2 text-right font-mono">{String(h.price ?? '')}</td>
-                            <td className="px-2 py-2 text-right font-mono">{String(h.pnlPct ?? '')}</td>
-                          </tr>
-                        ))}
-                        {!(summary?.holdings ?? []).length ? (
-                          <tr>
-                            <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={5}>
-                              No holdings cached yet. Upload broker screenshots in Broker tab.
-                            </td>
-                          </tr>
-                        ) : null}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('broker')}>
-                      Open Broker
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('strategy')}>
-                      Open Strategy
                     </Button>
                   </div>
                 </div>

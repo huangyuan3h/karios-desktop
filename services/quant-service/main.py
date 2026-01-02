@@ -1499,8 +1499,12 @@ class DashboardAccountStateSummary(BaseModel):
 class DashboardHoldingRow(BaseModel):
     ticker: str
     name: str | None = None
+    symbol: str | None = None
+    price: float | None = None
+    weightPct: float | None = None
+    pnlAmount: float | None = None
+    # Keep raw fields for debug/compat if needed.
     qty: str | None = None
-    price: str | None = None
     cost: str | None = None
     pnl: str | None = None
     pnlPct: str | None = None
@@ -4983,6 +4987,9 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
             orders: list[Any] = orders_raw if isinstance(orders_raw, list) else []
             trades_raw = st.get("trades")
             trades: list[Any] = trades_raw if isinstance(trades_raw, list) else []
+            # Parse total assets for weight% calculation.
+            total_assets_raw = ov.get("totalAssets") or ov.get("总资产") or ""
+            total_assets_num = _safe_float(str(total_assets_raw).replace(",", "")) if total_assets_raw else 0.0
             state_sum = DashboardAccountStateSummary(
                 accountId=selected_id,
                 broker=str(st.get("broker") or "pingan"),
@@ -4996,14 +5003,64 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
             for p in positions[:12]:
                 if not isinstance(p, dict):
                     continue
+                ticker_raw = (
+                    p.get("ticker")
+                    or p.get("Ticker")
+                    or p.get("symbol")
+                    or p.get("Symbol")
+                    or p.get("code")
+                    or p.get("Code")
+                    or p.get("证券代码")
+                    or p.get("股票代码")
+                    or ""
+                )
+                ticker_s = _norm_str(ticker_raw or "")
+                sym: str | None = None
+                if ":" in ticker_s:
+                    sym = ticker_s
+                    ticker_s = ticker_s.split(":")[-1].strip()
+                if ticker_s and sym is None:
+                    mkt = "HK" if len(ticker_s) in (4, 5) else "CN"
+                    sym = f"{mkt}:{ticker_s}"
+                price_raw = p.get("price") or p.get("Price") or p.get("现价") or p.get("最新价") or ""
+                cost_raw = p.get("cost") or p.get("Cost") or p.get("成本") or p.get("成本价") or ""
+                qty_raw = p.get("qtyHeld") or p.get("qty") or p.get("Qty") or p.get("数量") or ""
+                pnl_raw = p.get("pnl") or p.get("PnL") or p.get("盈亏") or p.get("浮动盈亏") or ""
+                market_value_raw = (
+                    p.get("marketValue")
+                    or p.get("MarketValue")
+                    or p.get("value")
+                    or p.get("Value")
+                    or p.get("市值")
+                    or p.get("持仓市值")
+                    or ""
+                )
+
+                price_num = _safe_float(str(price_raw).replace(",", "")) if price_raw else 0.0
+                cost_num = _safe_float(str(cost_raw).replace(",", "")) if cost_raw else 0.0
+                qty_num = _safe_float(str(qty_raw).replace(",", "")) if qty_raw else 0.0
+                mv_num = _safe_float(str(market_value_raw).replace(",", "")) if market_value_raw else 0.0
+                if mv_num <= 0.0 and price_num > 0.0 and qty_num > 0.0:
+                    mv_num = price_num * qty_num
+                weight_pct = (mv_num / total_assets_num * 100.0) if (mv_num > 0.0 and total_assets_num > 0.0) else None
+
+                pnl_amount: float | None = None
+                pnl_num = _safe_float(str(pnl_raw).replace(",", "")) if pnl_raw else 0.0
+                if pnl_raw and pnl_num != 0.0:
+                    pnl_amount = pnl_num
+                elif price_num > 0.0 and cost_num > 0.0 and qty_num > 0.0:
+                    pnl_amount = (price_num - cost_num) * qty_num
                 holdings_out.append(
                     DashboardHoldingRow(
-                        ticker=_norm_str(p.get("ticker") or p.get("Ticker") or ""),
+                        ticker=ticker_s,
+                        symbol=sym,
                         name=_norm_str(p.get("name") or p.get("Name") or "") or None,
-                        qty=_norm_str(p.get("qtyHeld") or p.get("qty") or p.get("Qty") or "") or None,
-                        price=_norm_str(p.get("price") or p.get("Price") or "") or None,
-                        cost=_norm_str(p.get("cost") or p.get("Cost") or "") or None,
-                        pnl=_norm_str(p.get("pnl") or p.get("PnL") or "") or None,
+                        price=(price_num if price_num > 0.0 else None),
+                        weightPct=weight_pct,
+                        pnlAmount=pnl_amount,
+                        qty=_norm_str(qty_raw) or None,
+                        cost=_norm_str(cost_raw) or None,
+                        pnl=_norm_str(pnl_raw) or None,
                         pnlPct=_norm_str(p.get("pnlPct") or p.get("PnLPct") or "") or None,
                     )
                 )
@@ -5016,7 +5073,7 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
     }
 
     # Industry flow matrix (Top5×Date names only). No sync here; dashboard sync button is the source of truth.
-    industry_daily = _market_cn_industry_fund_flow_top_by_date(as_of_date=as_of, days=10, top_k=5)
+    industry_daily = _market_cn_industry_fund_flow_top_by_date(as_of_date=as_of, days=5, top_k=5)
 
     # Leaders summary: show latest leaders with forced latest market info (<=2), plus history list.
     leaders_summary = DashboardLeadersSummary(latestDate=None, latest=[], history=[])
