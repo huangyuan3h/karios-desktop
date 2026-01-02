@@ -569,6 +569,45 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       continue;
     }
 
+    if (ref.kind === 'marketSentiment') {
+      try {
+        const resp = await fetch(
+          `${QUANT_BASE_URL}/market/cn/sentiment?days=${encodeURIComponent(String(ref.days))}&asOfDate=${encodeURIComponent(String(ref.asOfDate))}`,
+          { cache: 'no-store' },
+        );
+        if (!resp.ok) throw new Error('failed to load market sentiment');
+        const ms = (await resp.json()) as any;
+        const items: any[] = Array.isArray(ms?.items) ? ms.items : [];
+        const latest = items.length ? items[items.length - 1] : null;
+        out += `## Market sentiment (CN A-share)\n`;
+        out += `- asOfDate: ${String(ms?.asOfDate ?? ref.asOfDate)}\n`;
+        out += `- riskMode: ${String(latest?.riskMode ?? '—')}\n`;
+        if (Array.isArray(latest?.rules) && latest.rules.length) {
+          out += `- rules: ${latest.rules.map((x: any) => String(x)).join(' | ')}\n`;
+        }
+        out += `\n`;
+
+        out += `| Date | Up | Down | Flat | Ratio | YdayLimitUpPremium | FailedLimitUpRate | Risk |\n`;
+        out += `|---|---:|---:|---:|---:|---:|---:|---|\n`;
+        for (const it of items.slice(-ref.days)) {
+          const date = String(it?.date ?? '');
+          const up = Number(it?.upCount ?? 0);
+          const down = Number(it?.downCount ?? 0);
+          const flat = Number(it?.flatCount ?? 0);
+          const ratio = Number.isFinite(it?.upDownRatio) ? Number(it.upDownRatio).toFixed(2) : '—';
+          const prem = Number.isFinite(it?.yesterdayLimitUpPremium) ? `${Number(it.yesterdayLimitUpPremium).toFixed(2)}%` : '—';
+          const failed = Number.isFinite(it?.failedLimitUpRate) ? `${Number(it.failedLimitUpRate).toFixed(1)}%` : '—';
+          const risk = String(it?.riskMode ?? '');
+          out += `| ${date} | ${up} | ${down} | ${flat} | ${ratio} | ${prem} | ${failed} | ${risk} |\n`;
+        }
+        out += `\n`;
+      } catch {
+        out += `## Market sentiment (CN A-share)\n`;
+        out += `- status: failed to load\n\n`;
+      }
+      continue;
+    }
+
     // Stock reference
     try {
       const [barsResp, chipsResp, ffResp] = await Promise.all([

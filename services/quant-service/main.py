@@ -34,6 +34,9 @@ from market.akshare_provider import (
     fetch_cn_industry_fund_flow_hist,
     fetch_cn_industry_fund_flow_eod,
     fetch_cn_a_spot,
+    fetch_cn_market_breadth_eod,
+    fetch_cn_yesterday_limitup_premium,
+    fetch_cn_failed_limitup_rate,
     fetch_hk_daily_bars,
     fetch_hk_spot,
 )
@@ -223,6 +226,28 @@ def _connect() -> sqlite3.Connection:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_cn_industry_fund_flow_date ON market_cn_industry_fund_flow_daily(date DESC)",
     )
+
+    # --- CN market breadth & sentiment (v0) ---
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS market_cn_sentiment_daily (
+          date TEXT PRIMARY KEY,
+          as_of_date TEXT NOT NULL,
+          up_count INTEGER NOT NULL,
+          down_count INTEGER NOT NULL,
+          flat_count INTEGER NOT NULL,
+          total_count INTEGER NOT NULL,
+          up_down_ratio REAL NOT NULL,
+          yesterday_limitup_premium REAL NOT NULL,
+          failed_limitup_rate REAL NOT NULL,
+          risk_mode TEXT NOT NULL,
+          rules_json TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          raw_json TEXT NOT NULL
+        )
+        """,
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cn_sentiment_date ON market_cn_sentiment_daily(date DESC)")
 
     # --- Broker snapshots (v0) ---
     conn.execute(
@@ -1336,6 +1361,32 @@ class MarketCnIndustryFundFlowSyncResponse(BaseModel):
     message: str | None = None
 
 
+# --- CN market breadth & sentiment (v0) ---
+class MarketCnSentimentRow(BaseModel):
+    date: str  # YYYY-MM-DD
+    upCount: int
+    downCount: int
+    flatCount: int
+    totalCount: int
+    upDownRatio: float
+    yesterdayLimitUpPremium: float  # percent, e.g. -1.2 means -1.2%
+    failedLimitUpRate: float  # percent, e.g. 35.0
+    riskMode: str  # normal | caution | no_new_positions
+    rules: list[str] = []
+    updatedAt: str
+
+
+class MarketCnSentimentResponse(BaseModel):
+    asOfDate: str
+    days: int
+    items: list[MarketCnSentimentRow]
+
+
+class MarketCnSentimentSyncRequest(BaseModel):
+    date: str | None = None
+    force: bool = False
+
+
 # --- Strategy module (v0) ---
 class StrategyAccountPromptResponse(BaseModel):
     accountId: str
@@ -1356,6 +1407,7 @@ class StrategyDailyGenerateRequest(BaseModel):
     includeAccountState: bool = True
     includeTradingView: bool = True
     includeIndustryFundFlow: bool = True
+    includeMarketSentiment: bool = True
     includeLeaders: bool = True
     includeStocks: bool = True
 
@@ -1565,6 +1617,7 @@ class DashboardSummaryResponse(BaseModel):
     holdings: list[DashboardHoldingRow] = []
     marketStatus: dict[str, Any] = {}
     industryFundFlow: dict[str, Any] = {}
+    marketSentiment: dict[str, Any] = {}
     leaders: DashboardLeadersSummary = DashboardLeadersSummary()
     screeners: list[DashboardScreenerStatusRow] = []
 
@@ -2433,6 +2486,191 @@ def market_cn_industry_fund_flow(
         dates=dates,
         top=out_rows[:top2],
     )
+
+
+def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
+    """
+    Compute CN A-share breadth & sentiment (simplified MVP) for the given date (YYYY-MM-DD).
+    """
+    ts = now_iso()
+    as_of = d
+    dt = datetime.strptime(d, "%Y-%m-%d").date()
+    raw: dict[str, Any] = {}
+    # 1) Breadth
+    breadth = fetch_cn_market_breadth_eod(dt)
+    raw["breadth"] = breadth
+    up = int(breadth.get("up_count") or 0)
+    down = int(breadth.get("down_count") or 0)
+    flat = int(breadth.get("flat_count") or 0)
+    ratio = float(breadth.get("up_down_ratio") or 0.0)
+    # 2) Yesterday limit-up premium
+    premium_obj = fetch_cn_yesterday_limitup_premium(dt)
+    raw["yesterdayLimitUpPremium"] = premium_obj
+    premium = float(premium_obj.get("premium") or 0.0)
+    # 3) Failed limit-up rate
+    failed_obj = fetch_cn_failed_limitup_rate(dt)
+    raw["failedLimitUpRate"] = failed_obj
+    failed_rate = float(failed_obj.get("failed_rate") or 0.0)
+
+    # Risk rules (MVP)
+    rules: list[str] = []
+    risk_mode = "normal"
+    if premium < 0.0 and failed_rate > 30.0:
+        risk_mode = "no_new_positions"
+        rules.append("premium<0 && failedLimitUpRate>30 => no_new_positions")
+    elif premium < 0.0 or failed_rate > 30.0:
+        risk_mode = "caution"
+        rules.append("premium<0 or failedLimitUpRate>30 => caution")
+
+    return {
+        "date": d,
+        "asOfDate": as_of,
+        "up": up,
+        "down": down,
+        "flat": flat,
+        "ratio": ratio,
+        "premium": premium,
+        "failedRate": failed_rate,
+        "riskMode": risk_mode,
+        "rules": rules,
+        "updatedAt": ts,
+        "raw": raw,
+    }
+
+
+@app.post("/market/cn/sentiment/sync", response_model=MarketCnSentimentResponse)
+def market_cn_sentiment_sync(req: MarketCnSentimentSyncRequest) -> MarketCnSentimentResponse:
+    d = (req.date or "").strip() or _today_cn_date_str()
+    # DB-first: return cached if exists and not forced.
+    if not req.force:
+        cached = _list_cn_sentiment_days(as_of_date=d, days=1)
+        if cached and str(cached[-1].get("date") or "") == d:
+            return MarketCnSentimentResponse(asOfDate=d, days=1, items=[MarketCnSentimentRow(**cached[-1])])
+
+    try:
+        out = _compute_cn_sentiment_for_date(d)
+    except Exception as e:
+        # Return empty but do not crash.
+        return MarketCnSentimentResponse(asOfDate=d, days=1, items=[])
+
+    raw0 = out.get("raw")
+    raw_dict: dict[str, Any] = raw0 if isinstance(raw0, dict) else {}
+    _upsert_cn_sentiment_daily(
+        date=d,
+        as_of_date=str(out["asOfDate"]),
+        up=int(out["up"]),
+        down=int(out["down"]),
+        flat=int(out["flat"]),
+        up_down_ratio=float(out["ratio"]),
+        premium=float(out["premium"]),
+        failed_rate=float(out["failedRate"]),
+        risk_mode=str(out["riskMode"]),
+        rules=[str(x) for x in (out.get("rules") or [])],
+        updated_at=str(out["updatedAt"]),
+        raw=raw_dict,
+    )
+    items = _list_cn_sentiment_days(as_of_date=d, days=1)
+    return MarketCnSentimentResponse(asOfDate=d, days=1, items=[MarketCnSentimentRow(**items[-1])] if items else [])
+
+
+@app.get("/market/cn/sentiment", response_model=MarketCnSentimentResponse)
+def market_cn_sentiment(days: int = 10, asOfDate: str | None = None) -> MarketCnSentimentResponse:
+    d = (asOfDate or "").strip() or _today_cn_date_str()
+    items = _list_cn_sentiment_days(as_of_date=d, days=days)
+    return MarketCnSentimentResponse(asOfDate=d, days=max(1, min(int(days), 30)), items=[MarketCnSentimentRow(**x) for x in items])
+
+
+def _upsert_cn_sentiment_daily(
+    *,
+    date: str,
+    as_of_date: str,
+    up: int,
+    down: int,
+    flat: int,
+    up_down_ratio: float,
+    premium: float,
+    failed_rate: float,
+    risk_mode: str,
+    rules: list[str],
+    updated_at: str,
+    raw: dict[str, Any],
+) -> None:
+    with _connect() as conn:
+        total = max(0, int(up) + int(down) + int(flat))
+        conn.execute(
+            """
+            INSERT INTO market_cn_sentiment_daily(
+              date, as_of_date, up_count, down_count, flat_count, total_count,
+              up_down_ratio, yesterday_limitup_premium, failed_limitup_rate,
+              risk_mode, rules_json, updated_at, raw_json
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date) DO UPDATE SET
+              as_of_date = excluded.as_of_date,
+              up_count = excluded.up_count,
+              down_count = excluded.down_count,
+              flat_count = excluded.flat_count,
+              total_count = excluded.total_count,
+              up_down_ratio = excluded.up_down_ratio,
+              yesterday_limitup_premium = excluded.yesterday_limitup_premium,
+              failed_limitup_rate = excluded.failed_limitup_rate,
+              risk_mode = excluded.risk_mode,
+              rules_json = excluded.rules_json,
+              updated_at = excluded.updated_at,
+              raw_json = excluded.raw_json
+            """,
+            (
+                date,
+                as_of_date,
+                int(up),
+                int(down),
+                int(flat),
+                int(total),
+                float(up_down_ratio),
+                float(premium),
+                float(failed_rate),
+                str(risk_mode),
+                json.dumps(rules or [], ensure_ascii=False),
+                updated_at,
+                json.dumps(raw or {}, ensure_ascii=False, default=str),
+            ),
+        )
+        conn.commit()
+
+
+def _list_cn_sentiment_days(*, as_of_date: str, days: int) -> list[dict[str, Any]]:
+    days2 = max(1, min(int(days), 30))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT date, up_count, down_count, flat_count, total_count,
+                   up_down_ratio, yesterday_limitup_premium, failed_limitup_rate,
+                   risk_mode, rules_json, updated_at
+            FROM market_cn_sentiment_daily
+            WHERE date <= ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (as_of_date, days2),
+        ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "date": str(r[0]),
+                "upCount": int(r[1] or 0),
+                "downCount": int(r[2] or 0),
+                "flatCount": int(r[3] or 0),
+                "totalCount": int(r[4] or 0),
+                "upDownRatio": float(r[5] or 0.0),
+                "yesterdayLimitUpPremium": float(r[6] or 0.0),
+                "failedLimitUpRate": float(r[7] or 0.0),
+                "riskMode": str(r[8] or "normal"),
+                "rules": json.loads(str(r[9]) or "[]") if r[9] else [],
+                "updatedAt": str(r[10] or ""),
+            }
+        )
+    return list(reversed(out))
 
 
 def _market_cn_industry_fund_flow_top_by_date(
@@ -4438,6 +4676,14 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             leader_ctx = {"days": 10, "dates": [], "leaders": [], "error": str(e)}
 
     # Stage 1: candidate selection WITHOUT per-stock deep context.
+    sentiment_ctx: dict[str, Any] = {}
+    if req.includeMarketSentiment:
+        try:
+            items = _list_cn_sentiment_days(as_of_date=d, days=5)
+            latest = items[-1] if items else {}
+            sentiment_ctx = {"asOfDate": d, "days": 5, "latest": latest, "items": items}
+        except Exception as e:
+            sentiment_ctx = {"asOfDate": d, "days": 5, "error": str(e), "items": []}
     base_snapshot: dict[str, Any] = {
         "date": d,
         "account": {
@@ -4452,6 +4698,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow
         else {"dailyTopInflow": industry_flow_daily, "error": industry_flow_error},
+        "marketSentiment": {} if not req.includeMarketSentiment else sentiment_ctx,
         "leaderStocks": {} if not req.includeLeaders else leader_ctx,
         # Provide an explicit universe so stage 1 doesn't need to parse TV rows.
         "candidateUniverse": pool,
@@ -4594,6 +4841,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow
         else {"dailyTopInflow": industry_flow_daily, "error": industry_flow_error},
+        "marketSentiment": {} if not req.includeMarketSentiment else sentiment_ctx,
         "leaderStocks": {} if not req.includeLeaders else leader_ctx,
         "candidateUniverse": pool,
         "stage1": {"candidates": stage1_candidates[:5], "leader": stage1_leader, "error": stage1_error},
@@ -4993,7 +5241,16 @@ def dashboard_sync(req: DashboardSyncRequest) -> DashboardSyncResponse:
 
     step("industryFundFlow", _sync_industry)
 
-    # 3) TradingView screeners (sync all enabled).
+    # 3) Market sentiment (force).
+    def _sync_sentiment() -> dict[str, Any]:
+        d = _today_cn_date_str()
+        out = market_cn_sentiment_sync(MarketCnSentimentSyncRequest(date=d, force=True))
+        last = out.items[-1].model_dump() if out.items else {}
+        return {"asOfDate": out.asOfDate, "riskMode": str(last.get("riskMode") or ""), "premium": last.get("yesterdayLimitUpPremium"), "failedRate": last.get("failedLimitUpRate")}
+
+    step("marketSentiment", _sync_sentiment)
+
+    # 4) TradingView screeners (sync all enabled).
     screener_items: list[DashboardScreenerSyncItem] = []
     enabled = _list_enabled_tv_screeners(limit=50)
     for sc in enabled:
@@ -5231,6 +5488,18 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
     except Exception:
         industry_flow_5d = {}
 
+    # Market sentiment (last 5 days). No sync here; dashboard sync button is the source of truth.
+    market_sentiment: dict[str, Any] = {}
+    try:
+        items = _list_cn_sentiment_days(as_of_date=as_of, days=5)
+        market_sentiment = {
+            "asOfDate": as_of,
+            "days": 5,
+            "items": items,
+        }
+    except Exception:
+        market_sentiment = {}
+
     # Leaders summary: show latest leaders with forced latest market info (<=2), plus history list.
     leaders_summary = DashboardLeadersSummary(latestDate=None, latest=[], history=[])
     try:
@@ -5328,6 +5597,7 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
         holdings=holdings_out,
         marketStatus=market_status_out,
         industryFundFlow={**industry_daily, "flow5d": industry_flow_5d},
+        marketSentiment=market_sentiment,
         leaders=leaders_summary,
         screeners=screener_rows,
     )

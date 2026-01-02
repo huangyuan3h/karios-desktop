@@ -95,6 +95,7 @@ export function DashboardPage({
   const defaultCards = React.useMemo(
     () => [
       { id: 'account', title: 'Account overview' },
+      { id: 'sentiment', title: 'Market sentiment' },
       { id: 'industry', title: 'Industry fund flow' },
       { id: 'leaders', title: 'Leaders' },
       { id: 'screeners', title: 'Screener sync' },
@@ -305,6 +306,7 @@ export function DashboardPage({
 
       {(() => {
         const weightOf = (id: string) => {
+          if (id === 'sentiment') return 3;
           if (id === 'industry') return 6;
           if (id === 'account') return 4;
           if (id === 'leaders') return 3;
@@ -483,6 +485,141 @@ export function DashboardPage({
                       Reference
                     </Button>
                   </div>
+                </div>
+              ) : id === 'sentiment' ? (
+                <div>
+                  {(() => {
+                    const ms = summary?.marketSentiment ?? {};
+                    const items: any[] = Array.isArray(ms.items) ? ms.items : [];
+                    const latest = items.length ? items[items.length - 1] : null;
+                    const risk = String(latest?.riskMode ?? '—');
+                    const premium = Number.isFinite(latest?.yesterdayLimitUpPremium)
+                      ? `${Number(latest.yesterdayLimitUpPremium).toFixed(2)}%`
+                      : '—';
+                    const failed = Number.isFinite(latest?.failedLimitUpRate)
+                      ? `${Number(latest.failedLimitUpRate).toFixed(1)}%`
+                      : '—';
+                    const ratio = Number.isFinite(latest?.upDownRatio)
+                      ? Number(latest.upDownRatio).toFixed(2)
+                      : '—';
+                    const up = Number(latest?.upCount ?? 0);
+                    const down = Number(latest?.downCount ?? 0);
+                    const flat = Number(latest?.flatCount ?? 0);
+                    const badge =
+                      risk === 'no_new_positions'
+                        ? 'border-red-500/30 bg-red-500/10 text-red-600'
+                        : risk === 'caution'
+                          ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
+                          : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
+                    return (
+                      <>
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <div className={`rounded-md border px-2 py-1 text-xs ${badge}`}>
+                            risk: {risk}
+                          </div>
+                          {Array.isArray(latest?.rules) && latest.rules.length ? (
+                            <div className="text-xs text-[var(--k-muted)]">
+                              {latest.rules
+                                .slice(0, 2)
+                                .map((x: any) => String(x))
+                                .join(' • ')}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+                            <div className="text-xs text-[var(--k-muted)]">Up/Down/Flat</div>
+                            <div className="mt-1 font-mono">
+                              {up}/{down}/{flat}
+                            </div>
+                            <div className="mt-1 text-xs text-[var(--k-muted)]">ratio: {ratio}</div>
+                          </div>
+                          <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+                            <div className="text-xs text-[var(--k-muted)]">Sentiment</div>
+                            <div className="mt-1 text-xs text-[var(--k-muted)]">
+                              yesterday limit-up premium
+                            </div>
+                            <div className="mt-0.5 font-mono">{premium}</div>
+                            <div className="mt-1 text-xs text-[var(--k-muted)]">
+                              failed limit-up rate
+                            </div>
+                            <div className="mt-0.5 font-mono">{failed}</div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3">
+                          <div className="mb-2 text-xs text-[var(--k-muted)]">Last 5 days</div>
+                          <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                            <table className="w-full border-collapse text-xs">
+                              <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                                <tr className="text-left">
+                                  <th className="px-2 py-2 font-mono">date</th>
+                                  <th className="px-2 py-2 text-right">ratio</th>
+                                  <th className="px-2 py-2 text-right">premium%</th>
+                                  <th className="px-2 py-2 text-right">failed%</th>
+                                  <th className="px-2 py-2">risk</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(items || []).slice(-5).map((it: any, idx: number) => (
+                                  <tr key={idx} className="border-t border-[var(--k-border)]">
+                                    <td className="px-2 py-2 font-mono">{String(it.date ?? '')}</td>
+                                    <td className="px-2 py-2 text-right font-mono">
+                                      {Number.isFinite(it.upDownRatio)
+                                        ? Number(it.upDownRatio).toFixed(2)
+                                        : '—'}
+                                    </td>
+                                    <td className="px-2 py-2 text-right font-mono">
+                                      {Number.isFinite(it.yesterdayLimitUpPremium)
+                                        ? `${Number(it.yesterdayLimitUpPremium).toFixed(2)}%`
+                                        : '—'}
+                                    </td>
+                                    <td className="px-2 py-2 text-right font-mono">
+                                      {Number.isFinite(it.failedLimitUpRate)
+                                        ? `${Number(it.failedLimitUpRate).toFixed(1)}%`
+                                        : '—'}
+                                    </td>
+                                    <td className="px-2 py-2">{String(it.riskMode ?? '')}</td>
+                                  </tr>
+                                ))}
+                                {!items.length ? (
+                                  <tr>
+                                    <td
+                                      className="px-2 py-3 text-sm text-[var(--k-muted)]"
+                                      colSpan={5}
+                                    >
+                                      No sentiment cached yet. Click “Sync all (force)”.
+                                    </td>
+                                  </tr>
+                                ) : null}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              const asOfDate = String(ms.asOfDate ?? summary?.asOfDate ?? '');
+                              addReference({
+                                kind: 'marketSentiment',
+                                refId: `${asOfDate}:5`,
+                                asOfDate,
+                                days: 5,
+                                title: 'CN market sentiment (breadth & limit-up)',
+                                createdAt: new Date().toISOString(),
+                              } as any);
+                            }}
+                          >
+                            Reference
+                          </Button>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               ) : id === 'industry' ? (
                 <div>

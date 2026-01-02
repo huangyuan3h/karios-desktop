@@ -91,6 +91,14 @@ export type ChatReference =
       refId: string; // stable key: `leaderStocks:${days}:${ts}`
       days: number; // typically 10
       createdAt: string;
+    }
+  | {
+      kind: 'marketSentiment';
+      refId: string; // stable key: `${asOfDate}:${days}`
+      asOfDate: string; // YYYY-MM-DD
+      days: number; // typically 5
+      title?: string;
+      createdAt: string;
     };
 
 export type AppSettings = {

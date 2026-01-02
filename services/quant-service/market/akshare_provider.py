@@ -77,6 +77,147 @@ def fetch_cn_a_spot() -> list[StockRow]:
     return out
 
 
+def fetch_cn_market_breadth_eod(as_of: date) -> dict[str, Any]:
+    """
+    CN A-share market breadth (EOD-style snapshot).
+
+    Returns:
+      - date (YYYY-MM-DD)
+      - up_count, down_count, flat_count, total_count
+      - up_down_ratio (up/down, down==0 -> up)
+      - raw (dict) optional
+    """
+    ak = _akshare()
+    d = as_of.strftime("%Y-%m-%d")
+    # Use spot snapshot as a stable source.
+    df = ak.stock_zh_a_spot_em()
+    rows = _to_records(df)
+    up = 0
+    down = 0
+    flat = 0
+    for r in rows:
+        chg = r.get("涨跌幅") or r.get("change_pct") or r.get("涨跌幅%") or ""
+        s = str(chg).strip().replace("%", "")
+        try:
+            v = float(s)
+        except Exception:
+            continue
+        if v > 0:
+            up += 1
+        elif v < 0:
+            down += 1
+        else:
+            flat += 1
+    total = up + down + flat
+    ratio = float(up) / float(down) if down > 0 else float(up)
+    return {
+        "date": d,
+        "up_count": up,
+        "down_count": down,
+        "flat_count": flat,
+        "total_count": total,
+        "up_down_ratio": ratio,
+        "raw": {"source": "stock_zh_a_spot_em", "rows": len(rows)},
+    }
+
+
+def _safe_trade_date(x: date) -> str:
+    return x.strftime("%Y%m%d")
+
+
+def fetch_cn_yesterday_limitup_premium(as_of: date) -> dict[str, Any]:
+    """
+    Simplified yesterday limit-up premium:
+      - take yesterday's limit-up pool
+      - compute today's average change_pct of that pool
+
+    Returns:
+      - date (YYYY-MM-DD)
+      - premium (percent, e.g. -1.2 means -1.2%)
+      - count (pool size)
+      - raw (dict)
+    """
+    ak = _akshare()
+    d = as_of.strftime("%Y-%m-%d")
+    y = as_of - timedelta(days=1)
+    # AkShare interfaces can vary; keep best-effort.
+    if not hasattr(ak, "stock_zt_pool_em"):
+        raise RuntimeError("AkShare missing stock_zt_pool_em. Please upgrade AkShare.")
+    df = ak.stock_zt_pool_em(date=_safe_trade_date(y))  # type: ignore[misc]
+    rows = _to_records(df)
+    codes: list[str] = []
+    for r in rows:
+        code = str(r.get("代码") or r.get("code") or r.get("股票代码") or "").strip()
+        if code:
+            codes.append(code)
+    if not codes:
+        return {"date": d, "premium": 0.0, "count": 0, "raw": {"y": y.strftime("%Y-%m-%d")}}
+
+    # Map today's spot change_pct for those codes.
+    spot = fetch_cn_a_spot()
+    chg_map: dict[str, float] = {}
+    for srow in spot:
+        # srow.ticker already.
+        v = str(srow.quote.get("change_pct") or "").strip().replace("%", "")
+        try:
+            chg_map[srow.ticker] = float(v)
+        except Exception:
+            continue
+    vals: list[float] = []
+    for code in codes:
+        if code in chg_map:
+            vals.append(float(chg_map[code]))
+    premium = float(sum(vals) / len(vals)) if vals else 0.0
+    return {"date": d, "premium": premium, "count": len(codes), "raw": {"y": y.strftime("%Y-%m-%d"), "matched": len(vals)}}
+
+
+def fetch_cn_failed_limitup_rate(as_of: date) -> dict[str, Any]:
+    """
+    Simplified failed limit-up rate:
+      - failed = count(ever limit-up today) - count(close limit-up today)
+      - rate = failed / ever
+
+    Returns:
+      - date (YYYY-MM-DD)
+      - failed_rate (percent)
+      - ever_count, close_count
+      - raw (dict)
+    """
+    ak = _akshare()
+    d = as_of.strftime("%Y-%m-%d")
+    # ever limit-up pool
+    if not hasattr(ak, "stock_zt_pool_strong_em"):
+        raise RuntimeError("AkShare missing stock_zt_pool_strong_em. Please upgrade AkShare.")
+    if not hasattr(ak, "stock_zt_pool_em"):
+        raise RuntimeError("AkShare missing stock_zt_pool_em. Please upgrade AkShare.")
+    df_ever = ak.stock_zt_pool_strong_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
+    ever_rows = _to_records(df_ever)
+    df_close = ak.stock_zt_pool_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
+    close_rows = _to_records(df_close)
+
+    def _codes(rs: list[dict[str, Any]]) -> set[str]:
+        s: set[str] = set()
+        for r in rs:
+            code = str(r.get("代码") or r.get("code") or r.get("股票代码") or "").strip()
+            if code:
+                s.add(code)
+        return s
+
+    ever = _codes(ever_rows)
+    close = _codes(close_rows)
+    ever_count = len(ever)
+    close_count = len(close)
+    failed = max(0, ever_count - close_count)
+    rate = (float(failed) / float(ever_count) * 100.0) if ever_count > 0 else 0.0
+    return {
+        "date": d,
+        "failed_rate": rate,
+        "ever_count": ever_count,
+        "close_count": close_count,
+        "raw": {"everRows": len(ever_rows), "closeRows": len(close_rows)},
+    }
+
+
 def fetch_hk_spot() -> list[StockRow]:
     ak = _akshare()
     # NOTE: AkShare naming may change; keep this isolated.

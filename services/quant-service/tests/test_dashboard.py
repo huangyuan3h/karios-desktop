@@ -25,6 +25,31 @@ def test_dashboard_sync_runs_all_steps(tmp_path, monkeypatch) -> None:
     )
     monkeypatch.setattr(main, "fetch_hk_spot", lambda: [])
 
+    # Market sentiment providers (avoid AkShare).
+    monkeypatch.setattr(
+        main,
+        "fetch_cn_market_breadth_eod",
+        lambda as_of: {
+            "date": as_of.strftime("%Y-%m-%d"),
+            "up_count": 500,
+            "down_count": 4000,
+            "flat_count": 100,
+            "total_count": 4600,
+            "up_down_ratio": 0.125,
+            "raw": {},
+        },
+    )
+    monkeypatch.setattr(
+        main,
+        "fetch_cn_yesterday_limitup_premium",
+        lambda as_of: {"date": as_of.strftime("%Y-%m-%d"), "premium": -0.5, "count": 50, "raw": {}},
+    )
+    monkeypatch.setattr(
+        main,
+        "fetch_cn_failed_limitup_rate",
+        lambda as_of: {"date": as_of.strftime("%Y-%m-%d"), "failed_rate": 35.0, "ever_count": 100, "close_count": 65, "raw": {}},
+    )
+
     # Industry fund flow providers
     monkeypatch.setattr(
         main,
@@ -62,7 +87,7 @@ def test_dashboard_sync_runs_all_steps(tmp_path, monkeypatch) -> None:
     data = resp.json()
     assert data["ok"] in (True, False)
     names = {s["name"] for s in data["steps"]}
-    assert {"market", "industryFundFlow", "screeners"} <= names
+    assert {"market", "industryFundFlow", "marketSentiment", "screeners"} <= names
     assert data["screener"]["enabledCount"] >= 1
     assert isinstance(data["screener"]["items"], list)
 
@@ -141,6 +166,22 @@ def test_dashboard_summary_shape(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(main, "fetch_cn_a_chip_summary", lambda ticker, days=30: [])
     monkeypatch.setattr(main, "fetch_cn_a_fund_flow", lambda ticker, days=30: [])
 
+    # Seed one sentiment day.
+    main._upsert_cn_sentiment_daily(
+        date="2025-12-21",
+        as_of_date="2025-12-21",
+        up=500,
+        down=4000,
+        flat=100,
+        up_down_ratio=0.125,
+        premium=-0.5,
+        failed_rate=35.0,
+        risk_mode="no_new_positions",
+        rules=["premium<0 && failedLimitUpRate>30 => no_new_positions"],
+        updated_at="2025-12-21T00:00:00Z",
+        raw={},
+    )
+
     resp = client.get(f"/dashboard/summary?accountId={account_id}")
     assert resp.status_code == 200
     data = resp.json()
@@ -148,6 +189,7 @@ def test_dashboard_summary_shape(tmp_path, monkeypatch) -> None:
     assert isinstance(data["accounts"], list)
     assert isinstance(data.get("marketStatus"), dict)
     assert isinstance(data.get("industryFundFlow"), dict)
+    assert isinstance(data.get("marketSentiment"), dict)
     assert isinstance(data.get("leaders"), dict)
     assert isinstance(data.get("screeners"), list)
 

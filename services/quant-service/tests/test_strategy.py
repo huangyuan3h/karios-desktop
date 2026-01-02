@@ -56,6 +56,22 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
         )
         conn.commit()
 
+    # Seed one sentiment day so includeMarketSentiment can inject data.
+    main._upsert_cn_sentiment_daily(
+        date="2025-12-21",
+        as_of_date="2025-12-21",
+        up=500,
+        down=4000,
+        flat=100,
+        up_down_ratio=0.125,
+        premium=-0.5,
+        failed_rate=35.0,
+        risk_mode="no_new_positions",
+        rules=["premium<0 && failedLimitUpRate>30 => no_new_positions"],
+        updated_at="2025-12-21T00:00:00Z",
+        raw={},
+    )
+
     # Avoid AkShare and AI calls in tests.
     def fake_bars(symbol: str, days: int = 60, force: bool = False):
         return main.MarketBarsResponse(
@@ -131,6 +147,7 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
             "includeAccountState": True,
             "includeTradingView": False,
             "includeIndustryFundFlow": False,
+            "includeMarketSentiment": True,
             "includeLeaders": False,
             "includeStocks": False,
         },
@@ -145,6 +162,8 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     assert isinstance(snap, dict)
     assert snap.get("tradingView") == {}
     assert snap.get("industryFundFlow") == {}
+    assert isinstance(snap.get("marketSentiment"), dict)
+    assert (snap.get("marketSentiment") or {}).get("latest", {}).get("riskMode") == "no_new_positions"
     assert snap.get("leaderStocks") == {}
     assert snap.get("stocks") == []
     # Two-stage debug should exist in raw output.

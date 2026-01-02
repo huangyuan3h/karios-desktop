@@ -236,6 +236,7 @@ export function StrategyPage() {
   const [ctxAccount, setCtxAccount] = React.useState(true);
   const [ctxScreener, setCtxScreener] = React.useState(true);
   const [ctxIndustryFlow, setCtxIndustryFlow] = React.useState(true);
+  const [ctxSentiment, setCtxSentiment] = React.useState(true);
   const [ctxLeaders, setCtxLeaders] = React.useState(true);
   const [ctxStocks, setCtxStocks] = React.useState(true);
 
@@ -309,6 +310,7 @@ export function StrategyPage() {
           includeAccountState: ctxAccount,
           includeTradingView: ctxScreener,
           includeIndustryFundFlow: ctxIndustryFlow,
+          includeMarketSentiment: ctxSentiment,
           includeLeaders: ctxLeaders,
           includeStocks: ctxStocks,
         },
@@ -333,6 +335,7 @@ export function StrategyPage() {
           includeAccountState: ctxAccount,
           includeTradingView: ctxScreener,
           includeIndustryFundFlow: ctxIndustryFlow,
+          includeMarketSentiment: ctxSentiment,
           includeLeaders: ctxLeaders,
           includeStocks: ctxStocks,
         },
@@ -460,6 +463,14 @@ export function StrategyPage() {
               onChange={(e) => setCtxIndustryFlow(e.target.checked)}
             />
             <span>Industry fund flow (Top10 + 10D)</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={ctxSentiment}
+              onChange={(e) => setCtxSentiment(e.target.checked)}
+            />
+            <span>Market sentiment (breadth &amp; limit-up)</span>
           </label>
           <label className="flex items-center gap-2">
             <input
