@@ -107,22 +107,31 @@ export function DashboardPage({
   React.useEffect(() => {
     const loaded = loadCardOrder();
     const ids = defaultCards.map((c) => c.id);
-    const next = loaded ? [...loaded.filter((x) => ids.includes(x)), ...ids.filter((x) => !loaded.includes(x))] : ids;
+    const next = loaded
+      ? [...loaded.filter((x) => ids.includes(x)), ...ids.filter((x) => !loaded.includes(x))]
+      : ids;
     setCardOrder(next);
   }, [defaultCards]);
 
-  const refresh = React.useCallback(async (nextAccountId?: string) => {
-    setError(null);
-    try {
-      const q = nextAccountId ? `?accountId=${encodeURIComponent(nextAccountId)}` : accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
-      const s = await apiGetJson<DashboardSummary>(`/dashboard/summary${q}`);
-      setSummary(s);
-      const sel = String(s?.selectedAccountId ?? '');
-      if (sel && sel !== accountId) setAccountId(sel);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [accountId]);
+  const refresh = React.useCallback(
+    async (nextAccountId?: string) => {
+      setError(null);
+      try {
+        const q = nextAccountId
+          ? `?accountId=${encodeURIComponent(nextAccountId)}`
+          : accountId
+            ? `?accountId=${encodeURIComponent(accountId)}`
+            : '';
+        const s = await apiGetJson<DashboardSummary>(`/dashboard/summary${q}`);
+        setSummary(s);
+        const sel = String(s?.selectedAccountId ?? '');
+        if (sel && sel !== accountId) setAccountId(sel);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [accountId],
+  );
 
   React.useEffect(() => {
     void refresh();
@@ -143,7 +152,10 @@ export function DashboardPage({
     }
   }
 
-  const cardsById = React.useMemo(() => Object.fromEntries(defaultCards.map((c) => [c.id, c])), [defaultCards]);
+  const cardsById = React.useMemo(
+    () => Object.fromEntries(defaultCards.map((c) => [c.id, c])),
+    [defaultCards],
+  );
   const orderedCards = cardOrder.map((id) => cardsById[id]).filter(Boolean);
 
   function moveCard(id: string, dir: -1 | 1) {
@@ -169,12 +181,22 @@ export function DashboardPage({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" className="gap-2" disabled={busy} onClick={() => void refresh()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="gap-2"
+            disabled={busy}
+            onClick={() => void refresh()}
+          >
             <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
           <Button size="sm" className="gap-2" disabled={busy} onClick={() => void onSyncAll()}>
-            {busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {busy ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
             {busy ? 'Syncing…' : 'Sync all (force)'}
           </Button>
           <Button size="sm" variant="secondary" onClick={() => setEditLayout((v) => !v)}>
@@ -184,22 +206,52 @@ export function DashboardPage({
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-[var(--k-muted)]">
-        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('broker')}>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-8 px-3 text-xs"
+          onClick={() => onNavigate?.('broker')}
+        >
           Broker
         </Button>
-        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('market')}>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-8 px-3 text-xs"
+          onClick={() => onNavigate?.('market')}
+        >
           Market
         </Button>
-        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('industryFlow')}>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-8 px-3 text-xs"
+          onClick={() => onNavigate?.('industryFlow')}
+        >
           Industry Flow
         </Button>
-        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('leaders')}>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-8 px-3 text-xs"
+          onClick={() => onNavigate?.('leaders')}
+        >
           Leaders
         </Button>
-        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('strategy')}>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-8 px-3 text-xs"
+          onClick={() => onNavigate?.('strategy')}
+        >
           Strategy
         </Button>
-        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('screener')}>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-8 px-3 text-xs"
+          onClick={() => onNavigate?.('screener')}
+        >
           Screener
         </Button>
         <div className="ml-auto">
@@ -217,8 +269,8 @@ export function DashboardPage({
         <div className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="mb-2 text-sm font-medium">Last sync result</div>
           <div className="text-xs text-[var(--k-muted)]">
-            started: {fmtDateTime(syncResp.startedAt)} • finished: {fmtDateTime(syncResp.finishedAt)} • ok:{' '}
-            {String(Boolean(syncResp.ok))}
+            started: {fmtDateTime(syncResp.startedAt)} • finished:{' '}
+            {fmtDateTime(syncResp.finishedAt)} • ok: {String(Boolean(syncResp.ok))}
           </div>
           <div className="mt-3 overflow-auto rounded-lg border border-[var(--k-border)]">
             <table className="w-full border-collapse text-xs">
@@ -242,32 +294,65 @@ export function DashboardPage({
               </tbody>
             </table>
           </div>
-          {(syncResp.screener?.failed?.length || syncResp.screener?.missing?.length) ? (
+          {syncResp.screener?.failed?.length || syncResp.screener?.missing?.length ? (
             <div className="mt-3 text-xs text-red-600">
-              Screener issues: failed={syncResp.screener?.failed?.length ?? 0} missing={syncResp.screener?.missing?.length ?? 0}
+              Screener issues: failed={syncResp.screener?.failed?.length ?? 0} missing=
+              {syncResp.screener?.missing?.length ?? 0}
             </div>
           ) : null}
         </div>
       ) : null}
 
-      {/* Stable masonry-like layout using CSS columns (no observers, no setState loops). */}
-      <div className="columns-1 [column-gap:16px] lg:columns-2">
-        {orderedCards.map((c: any) => {
+      {(() => {
+        const weightOf = (id: string) => {
+          if (id === 'industry') return 6;
+          if (id === 'account') return 4;
+          if (id === 'leaders') return 3;
+          if (id === 'screeners') return 2;
+          if (id === 'market') return 2;
+          return 2;
+        };
+        const left: any[] = [];
+        const right: any[] = [];
+        let wl = 0;
+        let wr = 0;
+        for (const c of orderedCards) {
           const id = String(c.id);
-          const spanAll = id === 'screeners' ? 'lg:[column-span:all]' : '';
+          const w = weightOf(id);
+          if (wl <= wr) {
+            left.push(c);
+            wl += w;
+          } else {
+            right.push(c);
+            wr += w;
+          }
+        }
+
+        const renderCard = (c: any) => {
+          const id = String(c.id);
           return (
             <section
               key={id}
-              className={`mb-4 break-inside-avoid rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 ${spanAll}`}
+              className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4"
             >
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="text-sm font-medium">{c.title}</div>
                 {editLayout ? (
                   <div className="flex items-center gap-1">
-                    <Button size="sm" variant="secondary" className="h-7 px-2 text-xs" onClick={() => moveCard(id, -1)}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => moveCard(id, -1)}
+                    >
                       ↑
                     </Button>
-                    <Button size="sm" variant="secondary" className="h-7 px-2 text-xs" onClick={() => moveCard(id, 1)}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => moveCard(id, 1)}
+                    >
                       ↓
                     </Button>
                   </div>
@@ -304,11 +389,15 @@ export function DashboardPage({
                   <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
                       <div className="text-xs text-[var(--k-muted)]">Total assets</div>
-                      <div className="mt-1 font-mono">{fmtAmountCn(summary?.accountState?.totalAssets)}</div>
+                      <div className="mt-1 font-mono">
+                        {fmtAmountCn(summary?.accountState?.totalAssets)}
+                      </div>
                     </div>
                     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
                       <div className="text-xs text-[var(--k-muted)]">Cash available</div>
-                      <div className="mt-1 font-mono">{fmtAmountCn(summary?.accountState?.cashAvailable)}</div>
+                      <div className="mt-1 font-mono">
+                        {fmtAmountCn(summary?.accountState?.cashAvailable)}
+                      </div>
                     </div>
                   </div>
                   <div className="mt-3">
@@ -331,7 +420,9 @@ export function DashboardPage({
                             const inferredSymbol = sym
                               ? sym
                               : `${ticker.length === 4 || ticker.length === 5 ? 'HK' : 'CN'}:${ticker}`;
-                            const weight = Number.isFinite(h.weightPct) ? `${Number(h.weightPct).toFixed(1)}%` : '—';
+                            const weight = Number.isFinite(h.weightPct)
+                              ? `${Number(h.weightPct).toFixed(1)}%`
+                              : '—';
                             return (
                               <tr key={idx} className="border-t border-[var(--k-border)]">
                                 <td className="px-2 py-2 font-mono">
@@ -349,7 +440,9 @@ export function DashboardPage({
                                   {Number.isFinite(h.price) ? Number(h.price).toFixed(2) : '—'}
                                 </td>
                                 <td className="px-2 py-2 text-right font-mono">{weight}</td>
-                                <td className="px-2 py-2 text-right font-mono">{fmtAmountCn(h.pnlAmount)}</td>
+                                <td className="px-2 py-2 text-right font-mono">
+                                  {fmtAmountCn(h.pnlAmount)}
+                                </td>
                               </tr>
                             );
                           })}
@@ -374,7 +467,9 @@ export function DashboardPage({
                       disabled={!summary?.selectedAccountId}
                       onClick={() => {
                         if (!summary?.selectedAccountId) return;
-                        const acc = (summary?.accounts ?? []).find((a: any) => a.id === summary.selectedAccountId);
+                        const acc = (summary?.accounts ?? []).find(
+                          (a: any) => a.id === summary.selectedAccountId,
+                        );
                         addReference({
                           kind: 'brokerState',
                           refId: summary.selectedAccountId,
@@ -405,7 +500,9 @@ export function DashboardPage({
                     const map: Record<string, string[]> = {};
                     for (const it of topByDateArr) {
                       const d = String(it?.date ?? '');
-                      const top = Array.isArray(it?.top) ? it.top.map((x: any) => String(x ?? '')) : [];
+                      const top = Array.isArray(it?.top)
+                        ? it.top.map((x: any) => String(x ?? ''))
+                        : [];
                       if (d) map[d] = top;
                     }
                     const dedupedDates: string[] = [];
@@ -425,7 +522,8 @@ export function DashboardPage({
                       <>
                         {collapsed ? (
                           <div className="mb-2 text-xs text-[var(--k-muted)]">
-                            collapsed {collapsed} duplicate non-trading snapshot{collapsed > 1 ? 's' : ''}
+                            collapsed {collapsed} duplicate non-trading snapshot
+                            {collapsed > 1 ? 's' : ''}
                           </div>
                         ) : null}
                         <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
@@ -456,14 +554,20 @@ export function DashboardPage({
                         </div>
                         {(() => {
                           const flow5d: any = (summary?.industryFundFlow as any)?.flow5d ?? null;
-                          const flowDates: string[] = Array.isArray(flow5d?.dates) ? flow5d.dates : [];
-                          const cols: string[] = flowDates.length ? flowDates.slice(-5) : dedupedDates;
+                          const flowDates: string[] = Array.isArray(flow5d?.dates)
+                            ? flow5d.dates
+                            : [];
+                          const cols: string[] = flowDates.length
+                            ? flowDates.slice(-5)
+                            : dedupedDates;
                           const topRows: any[] = Array.isArray(flow5d?.top) ? flow5d.top : [];
                           if (!topRows.length || !cols.length) return null;
                           const colDates = cols;
                           return (
                             <div className="mt-4">
-                              <div className="mb-2 text-xs text-[var(--k-muted)]">5D net inflow (Top by 5D sum)</div>
+                              <div className="mb-2 text-xs text-[var(--k-muted)]">
+                                5D net inflow (Top by 5D sum)
+                              </div>
                               <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
                                 <table className="w-full border-collapse text-xs">
                                   <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
@@ -479,7 +583,9 @@ export function DashboardPage({
                                   </thead>
                                   <tbody>
                                     {topRows.slice(0, 10).map((r: any, idx: number) => {
-                                      const seriesArr: any[] = Array.isArray(r?.series) ? r.series : [];
+                                      const seriesArr: any[] = Array.isArray(r?.series)
+                                        ? r.series
+                                        : [];
                                       const map: Record<string, number> = {};
                                       for (const p of seriesArr) {
                                         const dd = String(p?.date ?? '');
@@ -487,9 +593,16 @@ export function DashboardPage({
                                         if (dd) map[dd] = Number.isFinite(nv) ? nv : 0;
                                       }
                                       return (
-                                        <tr key={`${String(r?.industryCode ?? idx)}`} className="border-t border-[var(--k-border)]">
-                                          <td className="px-2 py-2">{String(r?.industryName ?? '')}</td>
-                                          <td className="px-2 py-2 text-right font-mono">{fmtAmountCn(r?.sum5d)}</td>
+                                        <tr
+                                          key={`${String(r?.industryCode ?? idx)}`}
+                                          className="border-t border-[var(--k-border)]"
+                                        >
+                                          <td className="px-2 py-2">
+                                            {String(r?.industryName ?? '')}
+                                          </td>
+                                          <td className="px-2 py-2 text-right font-mono">
+                                            {fmtAmountCn(r?.sum5d)}
+                                          </td>
                                           {colDates.map((d: string) => (
                                             <td key={d} className="px-2 py-2 text-right font-mono">
                                               {fmtAmountCn(map[d] ?? 0)}
@@ -505,14 +618,20 @@ export function DashboardPage({
                           );
                         })()}
                         <div className="mt-3 flex items-center gap-2">
-                          <Button size="sm" variant="secondary" onClick={() => onNavigate?.('industryFlow')}>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => onNavigate?.('industryFlow')}
+                          >
                             Open Industry Flow
                           </Button>
                           <Button
                             size="sm"
                             variant="secondary"
                             onClick={() => {
-                              const asOfDate = String(summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '');
+                              const asOfDate = String(
+                                summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '',
+                              );
                               addReference({
                                 kind: 'industryFundFlow',
                                 refId: `${asOfDate}:5:10`,
@@ -539,7 +658,10 @@ export function DashboardPage({
                   </div>
                   <div className="space-y-2">
                     {(summary?.leaders?.latest ?? []).slice(0, 2).map((r: any) => (
-                      <div key={String(r.symbol)} className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+                      <div
+                        key={String(r.symbol)}
+                        className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3"
+                      >
                         <div className="flex items-center justify-between gap-2">
                           <button
                             type="button"
@@ -548,9 +670,13 @@ export function DashboardPage({
                           >
                             {String(r.ticker ?? r.symbol)}
                           </button>
-                          <div className="text-xs text-[var(--k-muted)]">score: {String(r.score ?? '—')}</div>
+                          <div className="text-xs text-[var(--k-muted)]">
+                            score: {String(r.score ?? '—')}
+                          </div>
                         </div>
-                        <div className="mt-1 text-xs text-[var(--k-muted)]">{String(r.name ?? '')}</div>
+                        <div className="mt-1 text-xs text-[var(--k-muted)]">
+                          {String(r.name ?? '')}
+                        </div>
                         {Array.isArray(r.whyBullets) && r.whyBullets.length ? (
                           <ul className="mt-2 list-disc pl-4 text-xs text-[var(--k-muted)]">
                             {r.whyBullets.slice(0, 2).map((x: any, idx: number) => (
@@ -558,20 +684,29 @@ export function DashboardPage({
                             ))}
                           </ul>
                         ) : (
-                          <div className="mt-2 text-xs text-[var(--k-muted)]">{String(r.reason ?? '')}</div>
+                          <div className="mt-2 text-xs text-[var(--k-muted)]">
+                            {String(r.reason ?? '')}
+                          </div>
                         )}
                         <div className="mt-2 text-xs text-[var(--k-muted)]">
-                          buy={String(r.buyZone?.low ?? '—')}-{String(r.buyZone?.high ?? '—')} • target=
-                          {String(r.targetPrice?.primary ?? '—')} • dur={String(r.expectedDurationDays ?? '—')}d • p=
-                          {Number.isFinite(Number(r.probability)) ? `${Math.max(1, Math.min(5, Math.round(Number(r.probability)))) * 20}%` : '—'}
+                          buy={String(r.buyZone?.low ?? '—')}-{String(r.buyZone?.high ?? '—')} •
+                          target=
+                          {String(r.targetPrice?.primary ?? '—')} • dur=
+                          {String(r.expectedDurationDays ?? '—')}d • p=
+                          {Number.isFinite(Number(r.probability))
+                            ? `${Math.max(1, Math.min(5, Math.round(Number(r.probability)))) * 20}%`
+                            : '—'}
                         </div>
                         <div className="mt-2 text-xs text-[var(--k-muted)]">
-                          close={String(r.current?.close ?? '—')} vol={String(r.current?.volume ?? '—')}
+                          close={String(r.current?.close ?? '—')} vol=
+                          {String(r.current?.volume ?? '—')}
                         </div>
                       </div>
                     ))}
-                    {!((summary?.leaders?.latest ?? []).length) ? (
-                      <div className="text-sm text-[var(--k-muted)]">No leaders yet. Generate in Leaders tab.</div>
+                    {!(summary?.leaders?.latest ?? []).length ? (
+                      <div className="text-sm text-[var(--k-muted)]">
+                        No leaders yet. Generate in Leaders tab.
+                      </div>
                     ) : null}
                   </div>
                   <div className="mt-3 flex items-center gap-2">
@@ -615,9 +750,17 @@ export function DashboardPage({
                           return (
                             <tr key={String(s.id)} className="border-t border-[var(--k-border)]">
                               <td className="px-2 py-2">{String(s.name ?? s.id)}</td>
-                              <td className={`px-2 py-2 font-mono ${bad ? 'text-red-600' : ''}`}>{String(s.capturedAt ?? '—')}</td>
-                              <td className={`px-2 py-2 text-right font-mono ${bad ? 'text-red-600' : ''}`}>{String(s.rowCount ?? 0)}</td>
-                              <td className="px-2 py-2 text-right font-mono">{String(s.filtersCount ?? 0)}</td>
+                              <td className={`px-2 py-2 font-mono ${bad ? 'text-red-600' : ''}`}>
+                                {String(s.capturedAt ?? '—')}
+                              </td>
+                              <td
+                                className={`px-2 py-2 text-right font-mono ${bad ? 'text-red-600' : ''}`}
+                              >
+                                {String(s.rowCount ?? 0)}
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono">
+                                {String(s.filtersCount ?? 0)}
+                              </td>
                             </tr>
                           );
                         })}
@@ -654,8 +797,18 @@ export function DashboardPage({
               )}
             </section>
           );
-        })}
-      </div>
+        };
+
+        return (
+          <>
+            <div className="space-y-4 lg:hidden">{orderedCards.map(renderCard)}</div>
+            <div className="hidden lg:grid lg:grid-cols-2 lg:gap-4">
+              <div className="space-y-4">{left.map(renderCard)}</div>
+              <div className="space-y-4">{right.map(renderCard)}</div>
+            </div>
+          </>
+        );
+      })()}
 
       {editLayout ? (
         <div className="mt-4 text-xs text-[var(--k-muted)]">
@@ -665,5 +818,3 @@ export function DashboardPage({
     </div>
   );
 }
-
-
