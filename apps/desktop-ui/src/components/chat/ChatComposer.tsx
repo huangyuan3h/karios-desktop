@@ -149,6 +149,8 @@ export function ChatComposer({
                             ? `${r.title || 'CN industry fund flow'} · ${r.asOfDate}`
                           : r.kind === 'leaderStocks'
                             ? `Leader stocks · last ${r.days}D`
+                          : r.kind === 'marketSentiment'
+                            ? `${r.title || 'Market sentiment'} · ${r.asOfDate} (last ${r.days}D)`
                           : 'Unknown reference'}
               </span>
               <Button

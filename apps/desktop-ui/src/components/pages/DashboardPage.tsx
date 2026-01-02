@@ -88,6 +88,7 @@ export function DashboardPage({
   const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
   const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [sentimentBusy, setSentimentBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [accountId, setAccountId] = React.useState<string>('');
   const [editLayout, setEditLayout] = React.useState(false);
@@ -150,6 +151,19 @@ export function DashboardPage({
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onSyncSentiment() {
+    setSentimentBusy(true);
+    setError(null);
+    try {
+      await apiPostJson('/market/cn/sentiment/sync', { force: true });
+      await refresh(accountId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSentimentBusy(false);
     }
   }
 
@@ -599,6 +613,19 @@ export function DashboardPage({
                         </div>
 
                         <div className="mt-3 flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={sentimentBusy}
+                            onClick={() => void onSyncSentiment()}
+                          >
+                            {sentimentBusy ? (
+                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                            )}
+                            Sync sentiment
+                          </Button>
                           <Button
                             size="sm"
                             variant="secondary"

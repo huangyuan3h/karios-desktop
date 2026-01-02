@@ -2496,21 +2496,40 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
     as_of = d
     dt = datetime.strptime(d, "%Y-%m-%d").date()
     raw: dict[str, Any] = {}
+    errors: list[str] = []
     # 1) Breadth
-    breadth = fetch_cn_market_breadth_eod(dt)
-    raw["breadth"] = breadth
-    up = int(breadth.get("up_count") or 0)
-    down = int(breadth.get("down_count") or 0)
-    flat = int(breadth.get("flat_count") or 0)
-    ratio = float(breadth.get("up_down_ratio") or 0.0)
+    up = 0
+    down = 0
+    flat = 0
+    ratio = 0.0
+    try:
+        breadth = fetch_cn_market_breadth_eod(dt)
+        raw["breadth"] = breadth
+        up = int(breadth.get("up_count") or 0)
+        down = int(breadth.get("down_count") or 0)
+        flat = int(breadth.get("flat_count") or 0)
+        ratio = float(breadth.get("up_down_ratio") or 0.0)
+    except Exception as e:
+        errors.append(f"breadth_failed: {e}")
+        raw["breadthError"] = str(e)
     # 2) Yesterday limit-up premium
-    premium_obj = fetch_cn_yesterday_limitup_premium(dt)
-    raw["yesterdayLimitUpPremium"] = premium_obj
-    premium = float(premium_obj.get("premium") or 0.0)
+    premium = 0.0
+    try:
+        premium_obj = fetch_cn_yesterday_limitup_premium(dt)
+        raw["yesterdayLimitUpPremium"] = premium_obj
+        premium = float(premium_obj.get("premium") or 0.0)
+    except Exception as e:
+        errors.append(f"yesterday_limitup_premium_failed: {e}")
+        raw["yesterdayLimitUpPremiumError"] = str(e)
     # 3) Failed limit-up rate
-    failed_obj = fetch_cn_failed_limitup_rate(dt)
-    raw["failedLimitUpRate"] = failed_obj
-    failed_rate = float(failed_obj.get("failed_rate") or 0.0)
+    failed_rate = 0.0
+    try:
+        failed_obj = fetch_cn_failed_limitup_rate(dt)
+        raw["failedLimitUpRate"] = failed_obj
+        failed_rate = float(failed_obj.get("failed_rate") or 0.0)
+    except Exception as e:
+        errors.append(f"failed_limitup_rate_failed: {e}")
+        raw["failedLimitUpRateError"] = str(e)
 
     # Risk rules (MVP)
     rules: list[str] = []
@@ -2521,6 +2540,11 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
     elif premium < 0.0 or failed_rate > 30.0:
         risk_mode = "caution"
         rules.append("premium<0 or failedLimitUpRate>30 => caution")
+    if errors:
+        # If any part failed, mark as caution so users don't blindly trust it.
+        if risk_mode == "normal":
+            risk_mode = "caution"
+        rules.extend(errors[:3])
 
     return {
         "date": d,
@@ -2550,8 +2574,21 @@ def market_cn_sentiment_sync(req: MarketCnSentimentSyncRequest) -> MarketCnSenti
     try:
         out = _compute_cn_sentiment_for_date(d)
     except Exception as e:
-        # Return empty but do not crash.
-        return MarketCnSentimentResponse(asOfDate=d, days=1, items=[])
+        # Best-effort: still upsert a row with errors so UI can show what happened.
+        out = {
+            "date": d,
+            "asOfDate": d,
+            "up": 0,
+            "down": 0,
+            "flat": 0,
+            "ratio": 0.0,
+            "premium": 0.0,
+            "failedRate": 0.0,
+            "riskMode": "caution",
+            "rules": [f"compute_failed: {e}"],
+            "updatedAt": now_iso(),
+            "raw": {"error": str(e)},
+        }
 
     raw0 = out.get("raw")
     raw_dict: dict[str, Any] = raw0 if isinstance(raw0, dict) else {}
