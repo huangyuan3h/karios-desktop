@@ -486,7 +486,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 
         const leaders = Array.isArray(ls.leaders) ? ls.leaders : [];
         if (leaders.length) {
-          out += `| Date | Ticker | Name | Score | Dur(d) | BuyZone | Target | P(1-5) | Why |\n`;
+          out += `| Date | Ticker | Name | Score | Dur(d) | BuyZone | Target | P | Why |\n`;
           out += `|---|---|---|---:|---:|---|---|---:|---|\n`;
           for (const r of leaders) {
             const date = String(r.date ?? '');
@@ -498,7 +498,8 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
             const bzHigh = (r.buyZone as any)?.high;
             const buyZone = bzLow != null && bzHigh != null ? `${String(bzLow)}-${String(bzHigh)}` : '—';
             const target = (r.targetPrice as any)?.primary != null ? String((r.targetPrice as any).primary) : '—';
-            const prob = Number.isFinite(r.probability as number) ? String(r.probability) : '—';
+            const pNum = Number.isFinite(r.probability as number) ? Math.max(1, Math.min(5, Math.round(r.probability as number))) : null;
+            const prob = pNum != null ? `${pNum * 20}%` : '—';
             const why =
               Array.isArray(r.whyBullets) && r.whyBullets.length
                 ? r.whyBullets.slice(0, 2).map((x) => String(x)).join(' / ')

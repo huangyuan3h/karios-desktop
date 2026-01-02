@@ -2644,17 +2644,31 @@ def _prune_leader_stocks_keep_last_n_days(*, keep_days: int = 10) -> None:
 
 
 def _entry_close_for_date(symbol: str, date_str: str) -> float | None:
-    bars = _load_cached_bars(symbol, days=120)
+    """
+    Prefer close on the exact date; if unavailable (e.g., intraday / holiday / data delay),
+    fall back to the latest available close on or before the date.
+    """
+    bars = _load_cached_bars(symbol, days=180)
     if not bars:
         try:
-            bars = market_stock_bars(symbol, days=120).bars
+            bars = market_stock_bars(symbol, days=180, force=True).bars
         except Exception:
             bars = []
+    best_close: float | None = None
+    best_date: str = ""
     for b in bars:
-        if str(b.get("date") or "") == date_str:
-            v = _safe_float(b.get("close"))
-            return v if v > 0 else None
-    return None
+        d = str(b.get("date") or "")
+        if not d or d > date_str:
+            continue
+        v = _safe_float(b.get("close"))
+        if v <= 0:
+            continue
+        if d == date_str:
+            return v
+        if d > best_date:
+            best_date = d
+            best_close = v
+    return best_close
 
 
 def _bars_series_since(symbol: str, start_date: str, *, limit: int = 60) -> list[dict[str, Any]]:
@@ -2672,7 +2686,9 @@ def _bars_series_since(symbol: str, start_date: str, *, limit: int = 60) -> list
         if d < start_date:
             continue
         out.append({"date": d, "close": _safe_float(b.get("close"))})
-    return out[: max(1, int(limit))]
+    out.sort(key=lambda x: str(x.get("date") or ""))
+    lim = max(1, int(limit))
+    return out[-lim:]
 
 
 def _get_tv_screener_row(screener_id: str) -> dict[str, Any] | None:

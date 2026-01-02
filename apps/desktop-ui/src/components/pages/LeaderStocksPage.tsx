@@ -58,6 +58,56 @@ function fmtPrice(v: number | null | undefined) {
   return (v as number).toFixed(2);
 }
 
+function fmtPerf(r: LeaderPick) {
+  const entry = Number.isFinite(r.entryPrice as number) ? (r.entryPrice as number).toFixed(2) : null;
+  const now = Number.isFinite(r.nowClose as number) ? (r.nowClose as number).toFixed(2) : null;
+  const pct = Number.isFinite(r.pctSinceEntry as number)
+    ? `${(((r.pctSinceEntry as number) || 0) * 100).toFixed(2)}%`
+    : null;
+  if (entry && now && pct) return `${entry} → ${now} (${pct})`;
+  if (now && pct) return `${now} (${pct})`;
+  if (now) return now;
+  return '—';
+}
+
+function fmtBuyZoneText(r: LeaderPick) {
+  const bz = r.buyZone ?? {};
+  const low = (bz as any).low;
+  const high = (bz as any).high;
+  const note = (bz as any).note;
+  if (low == null || high == null) return '—';
+  return `${String(low)} - ${String(high)}${note ? ` (${String(note)})` : ''}`;
+}
+
+function fmtTargetText(r: LeaderPick) {
+  const tp = r.targetPrice ?? {};
+  const primary = (tp as any).primary;
+  const stretch = (tp as any).stretch;
+  const note = (tp as any).note;
+  if (primary == null && stretch == null) return '—';
+  const s = stretch != null ? `${String(primary)} / ${String(stretch)}` : String(primary);
+  return `${s}${note ? ` (${String(note)})` : ''}`;
+}
+
+function fmtProbability(p: number | null | undefined) {
+  const n = Number(p);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  const clamped = Math.max(1, Math.min(5, Math.round(n)));
+  const pct = clamped * 20;
+  const label =
+    clamped === 1 ? '低' : clamped === 2 ? '偏低' : clamped === 3 ? '中等' : clamped === 4 ? '偏高' : '很高';
+  return `${pct}%（${label}）`;
+}
+
+function fmtTriggerText(t: Record<string, unknown>) {
+  const kind = String((t as any).kind ?? '');
+  const label = kind === 'breakout' ? 'Breakout' : kind === 'pullback' ? 'Pullback' : kind || 'Trigger';
+  const cond = String((t as any).condition ?? '').trim();
+  const val = (t as any).value;
+  const tail = val != null && String(val).trim() ? ` @ ${String(val)}` : '';
+  return `${label}: ${cond}${tail}`.trim();
+}
+
 function fmtPlanLine(r: LeaderPick) {
   const bz = r.buyZone ?? {};
   const tp = r.targetPrice ?? {};
@@ -68,7 +118,7 @@ function fmtPlanLine(r: LeaderPick) {
   if (bzLow != null && bzHigh != null) parts.push(`Buy:${String(bzLow)}-${String(bzHigh)}`);
   if (tpPrimary != null) parts.push(`Target:${String(tpPrimary)}`);
   if (Number.isFinite(r.expectedDurationDays as number)) parts.push(`Dur:${String(r.expectedDurationDays)}d`);
-  if (Number.isFinite(r.probability as number)) parts.push(`P:${String(r.probability)}/5`);
+  if (Number.isFinite(r.probability as number)) parts.push(`P:${fmtProbability(r.probability)}`);
   return parts.length ? parts.join(' • ') : '';
 }
 
@@ -243,9 +293,7 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Name</th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Score</th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Last date</th>
-                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Entry close</th>
-                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Now</th>
-                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Pct</th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Perf</th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Why</th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Trend</th>
                 </tr>
@@ -271,9 +319,7 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                       <td className="border-b border-[var(--k-border)] px-2 py-2 text-right font-mono">
                         {String(r.date || '—')}
                       </td>
-                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">{fmtPrice(r.entryPrice)}</td>
-                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">{fmtPrice(r.nowClose)}</td>
-                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">{fmtPct(r.pctSinceEntry)}</td>
+                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-right font-mono">{fmtPerf(r)}</td>
                       <td className="border-b border-[var(--k-border)] px-2 py-2 text-[var(--k-muted)]">
                         {r.whyBullets?.length ? (
                           <div className="space-y-1">
@@ -293,41 +339,123 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                       </td>
                     </tr>
                     <tr>
-                      <td colSpan={9} className="border-b border-[var(--k-border)] px-2 py-2">
+                      <td colSpan={7} className="border-b border-[var(--k-border)] px-2 py-2">
                         <details>
                           <summary className="cursor-pointer text-xs text-[var(--k-muted)]">Details</summary>
-                          <div className="mt-2 grid gap-3 text-xs text-[var(--k-muted)] md:grid-cols-3">
-                            <div>
-                              <div className="font-medium text-[var(--k-text)]">Source signals</div>
-                              <pre className="mt-1 whitespace-pre-wrap break-words">
-                                {JSON.stringify(r.sourceSignals ?? {}, null, 2)}
-                              </pre>
-                            </div>
-                            <div>
-                              <div className="font-medium text-[var(--k-text)]">Execution plan</div>
-                              <div className="mt-1 space-y-1">
-                                <div>durationDays: {String(r.expectedDurationDays ?? '—')}</div>
-                                <div>buyZone: {JSON.stringify(r.buyZone ?? {}, null, 0)}</div>
-                                <div>targetPrice: {JSON.stringify(r.targetPrice ?? {}, null, 0)}</div>
-                                <div>invalidation: {String(r.invalidation ?? '—')}</div>
-                                <div>probability: {String(r.probability ?? '—')}/5</div>
+                          <div className="mt-2 grid gap-3 text-xs md:grid-cols-3">
+                            <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+                              <div className="text-xs font-medium text-[var(--k-text)]">Source</div>
+                              <div className="mt-2 space-y-2 text-[var(--k-muted)]">
                                 <div>
-                                  triggers:
-                                  <ul className="mt-1 list-disc pl-4">
-                                    {(r.triggers ?? []).slice(0, 4).map((t, idx) => (
-                                      <li key={idx}>{JSON.stringify(t)}</li>
-                                    ))}
-                                  </ul>
+                                  <div className="text-[11px] uppercase tracking-wide opacity-80">Industries</div>
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {Array.isArray((r.sourceSignals as any)?.industries) && (r.sourceSignals as any).industries.length ? (
+                                      (r.sourceSignals as any).industries.slice(0, 3).map((x: any, idx: number) => (
+                                        <span
+                                          key={idx}
+                                          className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5"
+                                        >
+                                          {String(x)}
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span>—</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-[11px] uppercase tracking-wide opacity-80">Screeners</div>
+                                  <div className="mt-1">
+                                    {Array.isArray((r.sourceSignals as any)?.screeners) && (r.sourceSignals as any).screeners.length ? (
+                                      <ul className="list-disc pl-4">
+                                        {(r.sourceSignals as any).screeners.slice(0, 3).map((x: any, idx: number) => (
+                                          <li key={idx}>{String(x)}</li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <span>—</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-[11px] uppercase tracking-wide opacity-80">Notes</div>
+                                  <div className="mt-1">
+                                    {Array.isArray((r.sourceSignals as any)?.notes) && (r.sourceSignals as any).notes.length ? (
+                                      <ul className="list-disc pl-4">
+                                        {(r.sourceSignals as any).notes.slice(0, 3).map((x: any, idx: number) => (
+                                          <li key={idx}>{String(x)}</li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <span>—</span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                            <div>
-                              <div className="font-medium text-[var(--k-text)]">Risks</div>
-                              <ul className="mt-1 list-disc pl-4">
-                                {(r.risks?.length ? r.risks : r.riskPoints ?? []).map((x, idx) => (
-                                  <li key={idx}>{x}</li>
-                                ))}
-                              </ul>
+
+                            <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+                              <div className="text-xs font-medium text-[var(--k-text)]">Plan</div>
+                              <div className="mt-2 space-y-2 text-[var(--k-muted)]">
+                                <div className="grid grid-cols-[96px_1fr] gap-2">
+                                  <div className="opacity-80">Performance</div>
+                                  <div className="font-mono">
+                                    {fmtPerf(r)}
+                                    {fmtPerf(r) === '—' ? (
+                                      <span className="ml-2 text-[11px] opacity-70">(no bars yet; open Stock page to sync)</span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-[96px_1fr] gap-2">
+                                  <div className="opacity-80">Duration</div>
+                                  <div>{Number.isFinite(r.expectedDurationDays as number) ? `${r.expectedDurationDays} days` : '—'}</div>
+                                </div>
+                                <div className="grid grid-cols-[96px_1fr] gap-2">
+                                  <div className="opacity-80">Buy zone</div>
+                                  <div className="font-mono">{fmtBuyZoneText(r)}</div>
+                                </div>
+                                <div className="grid grid-cols-[96px_1fr] gap-2">
+                                  <div className="opacity-80">Targets</div>
+                                  <div className="font-mono">{fmtTargetText(r)}</div>
+                                </div>
+                                <div className="grid grid-cols-[96px_1fr] gap-2">
+                                  <div className="opacity-80">Invalidation</div>
+                                  <div>{String(r.invalidation ?? '—')}</div>
+                                </div>
+                                <div className="grid grid-cols-[96px_1fr] gap-2">
+                                  <div className="opacity-80">Probability</div>
+                                  <div>{fmtProbability(r.probability ?? null)}</div>
+                                </div>
+                                <div>
+                                  <div className="text-[11px] uppercase tracking-wide opacity-80">Triggers</div>
+                                  <div className="mt-1">
+                                    {Array.isArray(r.triggers) && r.triggers.length ? (
+                                      <ul className="list-disc pl-4">
+                                        {r.triggers.slice(0, 4).map((t, idx) => (
+                                          <li key={idx}>{fmtTriggerText(t as any)}</li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <span>—</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+                              <div className="text-xs font-medium text-[var(--k-text)]">Risks</div>
+                              <div className="mt-2 text-[var(--k-muted)]">
+                                {((r.risks?.length ? r.risks : r.riskPoints) ?? []).length ? (
+                                  <ul className="list-disc pl-4">
+                                    {((r.risks?.length ? r.risks : r.riskPoints) ?? []).slice(0, 6).map((x, idx) => (
+                                      <li key={idx}>{x}</li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <span>—</span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </details>
