@@ -101,6 +101,32 @@ type StockFundFlowDetail = {
     smallNetRatio: string;
   }>;
 };
+
+type LeaderStocksList = {
+  days: number;
+  dates: string[];
+  leaders: Array<{
+    id: string;
+    date: string;
+    symbol: string;
+    market: string;
+    ticker: string;
+    name: string;
+    entryPrice?: number | null;
+    nowClose?: number | null;
+    pctSinceEntry?: number | null;
+    score?: number | null;
+    reason?: string | null;
+    whyBullets?: string[];
+    expectedDurationDays?: number | null;
+    buyZone?: Record<string, unknown>;
+    targetPrice?: Record<string, unknown>;
+    probability?: number | null;
+    sourceSignals?: Record<string, unknown>;
+    riskPoints?: string[];
+  }>;
+};
+
 function pickColumns(headers: string[]) {
   const preferred = [
     'Ticker',
@@ -368,9 +394,35 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 
         if (view === 'dailyTopByDate') {
           const dates = Array.isArray(ff.dates) ? ff.dates : [];
-          const shown = dates.slice(-Math.max(1, Math.min(Number(ref.days ?? 10), 30)));
+          const rawShown = dates.slice(-Math.max(1, Math.min(Number(ref.days ?? 10), 30)));
           const topK = Math.max(1, Math.min(Number(ref.topN ?? 5), 20));
+          const shown: string[] = [];
+          let collapsed = 0;
+          let prevSig = '';
+          for (const d of rawShown) {
+            const scored = items
+              .map((r: any) => {
+                const series = Array.isArray(r?.series10d) ? r.series10d : [];
+                const p = series.find((x: any) => String(x?.date ?? '') === String(d));
+                const v = Number(p?.netInflow ?? 0) || 0;
+                return { name: String(r?.industryName ?? ''), v };
+              })
+              .sort((a: any, b: any) => b.v - a.v)
+              .slice(0, topK)
+              .map((x: any) => x.name)
+              .filter(Boolean);
+            const sig = scored.join('|');
+            if (sig && sig === prevSig) {
+              collapsed += 1;
+              continue;
+            }
+            shown.push(d);
+            prevSig = sig;
+          }
           out += `\nDaily top inflow by date:\n`;
+          if (collapsed) {
+            out += `- note: collapsed ${collapsed} duplicate non-trading snapshot${collapsed > 1 ? 's' : ''}\n`;
+          }
           for (const d of shown) {
             const scored = items
               .map((r: any) => {
@@ -415,6 +467,142 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       } catch {
         out += `## ${ref.title || 'CN industry fund flow'}\n`;
         out += `- asOfDate: ${ref.asOfDate}\n`;
+        out += `- status: failed to load\n\n`;
+      }
+      continue;
+    }
+
+    if (ref.kind === 'leaderStocks') {
+      try {
+        const resp = await fetch(
+          `${QUANT_BASE_URL}/leader?days=${encodeURIComponent(String(ref.days))}`,
+          { cache: 'no-store' },
+        );
+        if (!resp.ok) throw new Error('failed to load leader stocks');
+        const ls = (await resp.json()) as LeaderStocksList;
+        out += `## Leader stocks (last ${String(ls.days ?? ref.days)} trading days)\n`;
+        out += `- days: ${String(ls.days ?? ref.days)}\n`;
+        out += `- dates: ${(Array.isArray(ls.dates) ? ls.dates : []).join(', ')}\n\n`;
+
+        const leaders = Array.isArray(ls.leaders) ? ls.leaders : [];
+        if (leaders.length) {
+          out += `| Date | Ticker | Name | Score | Dur(d) | BuyZone | Target | P | Why |\n`;
+          out += `|---|---|---|---:|---:|---|---|---:|---|\n`;
+          for (const r of leaders) {
+            const date = String(r.date ?? '');
+            const ticker = String(r.ticker ?? r.symbol ?? '');
+            const name = String(r.name ?? '');
+            const score = Number.isFinite(r.score as number) ? String(Math.round(r.score as number)) : '—';
+            const dur = Number.isFinite(r.expectedDurationDays as number) ? String(r.expectedDurationDays) : '—';
+            const bzLow = (r.buyZone as any)?.low;
+            const bzHigh = (r.buyZone as any)?.high;
+            const buyZone = bzLow != null && bzHigh != null ? `${String(bzLow)}-${String(bzHigh)}` : '—';
+            const target = (r.targetPrice as any)?.primary != null ? String((r.targetPrice as any).primary) : '—';
+            const pNum = Number.isFinite(r.probability as number) ? Math.max(1, Math.min(5, Math.round(r.probability as number))) : null;
+            const prob = pNum != null ? `${pNum * 20}%` : '—';
+            const why =
+              Array.isArray(r.whyBullets) && r.whyBullets.length
+                ? r.whyBullets.slice(0, 2).map((x) => String(x)).join(' / ')
+                : String(r.reason ?? '').replaceAll('\n', ' ');
+            out += `| ${date} | ${ticker} | ${name} | ${score} | ${dur} | ${buyZone} | ${target} | ${prob} | ${why} |\n`;
+          }
+          out += `\n`;
+
+          // Always provide latest deep context for the newest trading day leaders (<=2) with force refresh.
+          const dates = Array.isArray(ls.dates) ? ls.dates : [];
+          const latestDate = dates.length ? dates[dates.length - 1] : '';
+          const latestLeaders = latestDate
+            ? leaders.filter((x) => String(x.date ?? '') === latestDate).slice(0, 2)
+            : leaders.slice(0, 2);
+          if (latestLeaders.length) {
+            out += `Deep context (force refreshed for latest leaders):\n`;
+            for (const r of latestLeaders) {
+              const sym = String(r.symbol ?? '').trim();
+              if (!sym) continue;
+              try {
+                const [barsResp, chipsResp, ffResp] = await Promise.all([
+                  fetch(
+                    `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(sym)}/bars?days=60&force=true`,
+                    { cache: 'no-store' },
+                  ),
+                  fetch(
+                    `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(sym)}/chips?days=30&force=true`,
+                    { cache: 'no-store' },
+                  ).catch(() => null as any),
+                  fetch(
+                    `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(sym)}/fund-flow?days=30&force=true`,
+                    { cache: 'no-store' },
+                  ).catch(() => null as any),
+                ]);
+                if (!barsResp.ok) throw new Error('failed to load bars');
+                const bars = (await barsResp.json()) as StockBarsDetail;
+                const lastBar = (bars.bars || []).slice(-1)[0];
+                out += `- ${bars.ticker} ${bars.name} (${bars.symbol})\n`;
+                if (lastBar) {
+                  out += `  - lastBar: ${lastBar.date} close=${lastBar.close} volume=${lastBar.volume} amount=${lastBar.amount}\n`;
+                }
+                if (chipsResp && chipsResp.ok) {
+                  const chips = (await chipsResp.json()) as StockChipsDetail;
+                  const last = (chips.items || []).slice(-1)[0];
+                  if (last) {
+                    out += `  - chips: profitRatio=${last.profitRatio} avgCost=${last.avgCost} 70%=[${last.cost70Low},${last.cost70High}] 90%=[${last.cost90Low},${last.cost90High}]\n`;
+                  }
+                }
+                if (ffResp && ffResp.ok) {
+                  const ff = (await ffResp.json()) as StockFundFlowDetail;
+                  const last = (ff.items || []).slice(-1)[0];
+                  if (last) {
+                    out += `  - fundFlow: main=${last.mainNetAmount}(${last.mainNetRatio}%) super=${last.superNetAmount}(${last.superNetRatio}%) large=${last.largeNetAmount}(${last.largeNetRatio}%) medium=${last.mediumNetAmount}(${last.mediumNetRatio}%) small=${last.smallNetAmount}(${last.smallNetRatio}%)\n`;
+                  }
+                }
+              } catch {
+                out += `- ${String(r.ticker ?? sym)}: failed to force refresh deep context\n`;
+              }
+            }
+            out += `\n`;
+          }
+        }
+      } catch {
+        out += `## Leader stocks\n`;
+        out += `- status: failed to load\n\n`;
+      }
+      continue;
+    }
+
+    if (ref.kind === 'marketSentiment') {
+      try {
+        const resp = await fetch(
+          `${QUANT_BASE_URL}/market/cn/sentiment?days=${encodeURIComponent(String(ref.days))}&asOfDate=${encodeURIComponent(String(ref.asOfDate))}`,
+          { cache: 'no-store' },
+        );
+        if (!resp.ok) throw new Error('failed to load market sentiment');
+        const ms = (await resp.json()) as any;
+        const items: any[] = Array.isArray(ms?.items) ? ms.items : [];
+        const latest = items.length ? items[items.length - 1] : null;
+        out += `## Market sentiment (CN A-share)\n`;
+        out += `- asOfDate: ${String(ms?.asOfDate ?? ref.asOfDate)}\n`;
+        out += `- riskMode: ${String(latest?.riskMode ?? '—')}\n`;
+        if (Array.isArray(latest?.rules) && latest.rules.length) {
+          out += `- rules: ${latest.rules.map((x: any) => String(x)).join(' | ')}\n`;
+        }
+        out += `\n`;
+
+        out += `| Date | Up | Down | Flat | Ratio | YdayLimitUpPremium | FailedLimitUpRate | Risk |\n`;
+        out += `|---|---:|---:|---:|---:|---:|---:|---|\n`;
+        for (const it of items.slice(-ref.days)) {
+          const date = String(it?.date ?? '');
+          const up = Number(it?.upCount ?? 0);
+          const down = Number(it?.downCount ?? 0);
+          const flat = Number(it?.flatCount ?? 0);
+          const ratio = Number.isFinite(it?.upDownRatio) ? Number(it.upDownRatio).toFixed(2) : '—';
+          const prem = Number.isFinite(it?.yesterdayLimitUpPremium) ? `${Number(it.yesterdayLimitUpPremium).toFixed(2)}%` : '—';
+          const failed = Number.isFinite(it?.failedLimitUpRate) ? `${Number(it.failedLimitUpRate).toFixed(1)}%` : '—';
+          const risk = String(it?.riskMode ?? '');
+          out += `| ${date} | ${up} | ${down} | ${flat} | ${ratio} | ${prem} | ${failed} | ${risk} |\n`;
+        }
+        out += `\n`;
+      } catch {
+        out += `## Market sentiment (CN A-share)\n`;
         out += `- status: failed to load\n\n`;
       }
       continue;

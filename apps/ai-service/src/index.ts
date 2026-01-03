@@ -93,6 +93,60 @@ const StrategyDailyMarkdownResponseSchema = z.object({
   model: z.string(),
 });
 
+const LeaderDailyRequestSchema = z.object({
+  date: z.string().min(1),
+  context: z.record(z.any()),
+});
+
+const LeaderBuyZoneSchema = z.object({
+  low: z.union([z.number(), z.string()]),
+  high: z.union([z.number(), z.string()]),
+  note: z.string().optional(),
+});
+
+const LeaderTriggerSchema = z.object({
+  kind: z.enum(['breakout', 'pullback']),
+  condition: z.string(),
+  value: z.union([z.number(), z.string()]).optional(),
+});
+
+const LeaderTargetPriceSchema = z.object({
+  primary: z.union([z.number(), z.string()]),
+  stretch: z.union([z.number(), z.string()]).optional(),
+  note: z.string().optional(),
+});
+
+const LeaderPickSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  ticker: z.string(),
+  name: z.string(),
+  score: z.number().min(0).max(100),
+  reason: z.string(),
+  whyBullets: z.array(z.string()).min(3).max(6),
+  expectedDurationDays: z.number().int().min(1).max(10),
+  buyZone: LeaderBuyZoneSchema,
+  triggers: z.array(LeaderTriggerSchema).min(1).max(4),
+  invalidation: z.string(),
+  targetPrice: LeaderTargetPriceSchema,
+  probability: z.number().int().min(1).max(5),
+  risks: z.array(z.string()).min(2).max(4),
+  sourceSignals: z
+    .object({
+      industries: z.array(z.string()).optional(),
+      screeners: z.array(z.string()).optional(),
+      notes: z.array(z.string()).optional(),
+    })
+    .optional(),
+  riskPoints: z.array(z.string()).optional(),
+});
+
+const LeaderDailyResponseSchema = z.object({
+  date: z.string(),
+  leaders: z.array(LeaderPickSchema).max(2),
+  model: z.string(),
+});
+
 const StrategyCandidateSchema = z.object({
   symbol: z.string(),
   market: z.string(),
@@ -538,8 +592,10 @@ app.post('/strategy/candidates', async (c) => {
     `Task: Rank Top 5 candidate assets for ${accountTitle} on ${date}.\n` +
     'Constraints:\n' +
     '- Do NOT require per-stock deep context. Assume it is NOT available.\n' +
-    '- Use ONLY: accountState, TradingView latest+history, industryFundFlow.\n' +
+    '- Use ONLY: accountState, TradingView latest+history, industryFundFlow, marketSentiment.\n' +
     '- industryFundFlow format: use context.industryFundFlow.dailyTopInflow (Top5×Date industry names).\n' +
+    '- marketSentiment format: use context.marketSentiment.latest (riskMode, upDownRatio, yesterdayLimitUpPremium, failedLimitUpRate).\n' +
+    '- If riskMode is "no_new_positions": still output candidates, but you MUST set Today stance to defensive in leader reason and reduce Risk sub-score accordingly.\n' +
     '- Return exactly 1..5 candidates with numeric Score 0-100 and rank 1..5.\n' +
     '- Rank must be consistent with score (higher score => better rank).\n' +
     '- Provide a single leader (龙头) and a short reason.\n' +
@@ -586,6 +642,105 @@ app.post('/strategy/candidates', async (c) => {
         leader: { symbol: '', reason: '' },
         riskNotes: [`Candidates generation failed: ${msg}`],
         model: modelId || 'unknown',
+      },
+      200,
+    );
+  }
+});
+
+app.post('/leader/daily', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = LeaderDailyRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+  }
+
+  let model: AiModel;
+  let fallbackModel: AiModel | null = null;
+  try {
+    model = getModel(process.env.AI_STRATEGY_MODEL);
+    const fb = getStrategyFallbackModelId();
+    if (fb) fallbackModel = getModel(fb);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid AI configuration';
+    return c.json({ error: message }, 500);
+  }
+
+  const modelId = process.env.AI_STRATEGY_MODEL ?? process.env.AI_MODEL ?? '';
+  const fallbackModelId = getStrategyFallbackModelId();
+  const date = parsed.data.date.trim();
+
+  const system =
+    'You are a leader stock (龙头股) selection engine for CN/HK swing trading. ' +
+    'Your ONLY job is to pick up to 2 leaders for today using the provided context. ' +
+    'Return a valid JSON object matching the provided schema. No markdown fences.';
+
+  const instruction =
+    `Task: Select up to 2 leader stocks for ${date}.\n` +
+    'Rules:\n' +
+    '- You MUST choose leaders ONLY from context.candidateUniverse symbols.\n' +
+    '- Use inputs:\n' +
+    '  - context.tradingView.latest (screener latest rows)\n' +
+    '  - context.industryFundFlow.dailyTopInflow (Top5×Date industry names)\n' +
+    '  - context.market (per-stock summaries if present)\n' +
+    '  - context.leaderHistory (last 10 trading days leaders)\n' +
+    '- Daily limit: leaders <= 2.\n' +
+    '- Prefer NEW leaders from today’s industry themes + screener strength.\n' +
+    '- Avoid duplicates: if a symbol was selected recently, only pick again if it is clearly still the leader today.\n' +
+    '- Provide numeric score 0-100.\n' +
+    '- Provide a concise Chinese reason.\n' +
+    '- CRITICAL: Provide actionable fields for execution:\n' +
+    '  - whyBullets: 3-6 short bullets (each <= 20 Chinese chars), explain why it is worth buying.\n' +
+    '  - expectedDurationDays: 1-10 (how long this leader thesis likely lasts).\n' +
+    '  - buyZone: a price range {low, high} where fill probability is high.\n' +
+    '  - triggers: 1-2 triggers (breakout/pullback), each has condition and optional value.\n' +
+    '  - invalidation: ONE clear invalidation rule (price below X / structure breaks).\n' +
+    '  - targetPrice: {primary, stretch?} price targets.\n' +
+    '  - probability: integer 1-5 (success probability).\n' +
+    '  - risks: 2-4 key risks.\n' +
+    '- If you lack a field (e.g. current price), write a best-effort number based on context.market.barsTail close; otherwise write "TBD" and explain in risks.\n' +
+    '- Provide sourceSignals:\n' +
+    '  - industries: 1-3 industry names from the matrix\n' +
+    '  - screeners: screener names/ids that surfaced it\n' +
+    '  - notes: optional short supporting notes\n' +
+    '- Provide riskPoints: 2-4 bullets.\n' +
+    'Return JSON only.\n\n' +
+    'Context JSON:\n' +
+    JSON.stringify(parsed.data.context);
+
+  async function run(m: AiModel): Promise<unknown> {
+    const { object } = await generateObject({
+      model: m,
+      schema: LeaderDailyResponseSchema,
+      system,
+      prompt: instruction,
+      temperature: 0,
+      maxOutputTokens: 1400,
+    });
+    return object;
+  }
+
+  try {
+    const obj = await run(model);
+    const out = LeaderDailyResponseSchema.parse(obj);
+    return c.json({ ...out, model: modelId || out.model });
+  } catch (e) {
+    if (fallbackModel) {
+      try {
+        const obj = await run(fallbackModel);
+        const out = LeaderDailyResponseSchema.parse(obj);
+        return c.json({ ...out, model: fallbackModelId || modelId || out.model });
+      } catch {
+        // fallthrough
+      }
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json(
+      {
+        date,
+        leaders: [],
+        model: modelId || 'unknown',
+        error: `Leader generation failed: ${msg}`,
       },
       200,
     );
@@ -669,15 +824,19 @@ app.post('/strategy/daily-markdown', async (c) => {
     '  4) Overall execution plan (盘中执行要点)\n' +
     '  5) Ping An conditional-order action table (平安证券条件单风格 总表)\n' +
     '\n' +
+    'Market sentiment MUST be considered using context.marketSentiment.latest:\n' +
+    '- Use it to decide Today stance (进攻/均衡/防守) and Risk budget.\n' +
+    '- If riskMode is "no_new_positions", you MUST state: 禁止开新仓，只处理持仓，并在第5表里不要给新的开仓条件单。\n' +
+    '- If riskMode is "caution", you MUST reduce position sizing and emphasize confirmation (回封/回踩) over chasing.\n' +
     'You MUST follow this template (fill with real content, keep headings exactly):\n' +
     '# 日度交易报告\n\n' +
     `账户：${accountTitle}\n` +
     `日期：${date}\n\n` +
     '## 0 结果摘要\n\n' +
-    '用 1 段短文（<=200字）概括“主线/风险偏好/操作倾向”，然后给出摘要表。\n\n' +
+    '用 1 段短文（<=200字）概括“主线/风险偏好/操作倾向”，必须引用 marketSentiment 的 riskMode/ratio/premium/failedRate 做出结论，然后给出摘要表。\n\n' +
     '| Focus themes | Leader | Risk budget | Max positions | Today stance | Notes |\n' +
     '|---|---|---|---|---|\n' +
-    '| TBD | TBD | 单笔≤1% 净值 | ≤3 | 进攻/均衡/防守 | 右侧交易/条件单 |\n\n' +
+    '| TBD | TBD | 单笔≤1% 净值 | ≤3 | 进攻/均衡/防守 | marketSentiment: riskMode=... |\n\n' +
     '（在表格下面再用 2-4 句解释：为什么这些是主线/为什么不是别的。）\n\n' +
     '## 1 资金板块\n\n' +
     '用 3-6 条 bullet，总结：Top流入/Top流出/持续性/对持仓威胁/今日聚焦主题。\n\n' +
@@ -699,7 +858,7 @@ app.post('/strategy/daily-markdown', async (c) => {
     '| TBD | TBD | TBD | TBD | TBD | TBD | Hold/Reduce/Exit | 0 | TBD | TBD | TBD | TBD |\n\n' +
     '表格后用 1 段短文（<=220字）总结：优先处理哪一只风险源 + 哪些仓位顺势持有。\n\n' +
     '## 4 执行要点\n\n' +
-    '- 只写 5-8 条“可执行规则”（例如：触发后必须补止损单；未触发不交易；午后复核；收盘撤销等）\n\n' +
+    '- 只写 5-8 条“可执行规则”（必须包含 1 条基于 marketSentiment riskMode 的总风控规则；例如：禁止开新仓/轻仓试错/只做回封确认等）\n\n' +
     '## 5 条件单总表\n\n' +
     '在表格上方用 2-3 句解释：总表如何使用（先挂什么/触发后做什么/何时撤单）。\n\n' +
     '- Section 1 MUST analyze capital rotation using context.industryFundFlow.dailyTopInflow:\n' +
