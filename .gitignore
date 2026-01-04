@@ -28,6 +28,10 @@ __pycache__/
 # Local captured data (screenshots/snapshots)
 services/quant-service/data/
 
+# PyInstaller (quant-service sidecar build artifacts)
+services/quant-service/build/
+services/quant-service/*.spec
+
 # Tauri / Rust
 target/
 src-tauri/target/

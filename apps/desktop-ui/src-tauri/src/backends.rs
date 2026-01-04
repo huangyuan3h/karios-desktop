@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::fs::{create_dir_all, OpenOptions};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -40,6 +41,11 @@ fn exe_suffix() -> &'static str {
   if cfg!(windows) { ".exe" } else { "" }
 }
 
+fn tauri_target_triple() -> Option<&'static str> {
+  // Provided by tauri-build at compile time for bundle builds.
+  option_env!("TAURI_ENV_TARGET_TRIPLE")
+}
+
 fn candidate_dirs(app: &AppHandle) -> Vec<PathBuf> {
   // Tauri bundles external binaries near the main executable on most platforms.
   // We also search resource_dir as a fallback to be more robust across bundlers.
@@ -62,11 +68,22 @@ fn candidate_dirs(app: &AppHandle) -> Vec<PathBuf> {
 }
 
 fn find_external_bin(app: &AppHandle, base_name: &str) -> Option<PathBuf> {
-  let file = format!("{base_name}{}", exe_suffix());
+  // Tauri bundles sidecars with a `-{target_triple}` suffix by default.
+  // We search both `{name}-{target}` and `{name}` for dev / custom layouts.
+  let suffix = exe_suffix();
+  let mut candidates: Vec<String> = vec![];
+
+  if let Some(triple) = tauri_target_triple() {
+    candidates.push(format!("{base_name}-{triple}{suffix}"));
+  }
+  candidates.push(format!("{base_name}{suffix}"));
+
   for dir in candidate_dirs(app) {
-    let p = dir.join(&file);
-    if p.exists() {
-      return Some(p);
+    for file in &candidates {
+      let p = dir.join(file);
+      if p.exists() {
+        return Some(p);
+      }
     }
   }
   None
@@ -76,6 +93,7 @@ fn spawn_backend(
   app: &AppHandle,
   name: &'static str,
   port: u16,
+  timeout: Duration,
   envs: &[(&str, String)],
 ) -> Result<Child, String> {
   let bin = find_external_bin(app, name).ok_or_else(|| {
@@ -86,22 +104,42 @@ fn spawn_backend(
     )
   })?;
 
+  let log_dir = app
+    .path()
+    .app_data_dir()
+    .map(|p| p.join("logs"))
+    .map_err(|e| format!("Failed to resolve app_data_dir for logs: {e}"))?;
+  let _ = create_dir_all(&log_dir);
+
+  let log_path = log_dir.join(format!("{name}.log"));
+  let log_file = OpenOptions::new()
+    .create(true)
+    .append(true)
+    .open(&log_path)
+    .map_err(|e| format!("Failed to open log file {:?}: {e}", log_path))?;
+
   let mut cmd = Command::new(&bin);
   cmd.stdin(Stdio::null())
-    .stdout(Stdio::null())
-    .stderr(Stdio::null());
+    .stdout(Stdio::from(
+      log_file
+        .try_clone()
+        .map_err(|e| format!("Failed to clone log file handle {:?}: {e}", log_path))?,
+    ))
+    .stderr(Stdio::from(log_file));
 
   for (k, v) in envs {
     cmd.env(k, v);
   }
 
+  cmd.env("KARIOS_SIDE_CAR", "1");
+
   // NOTE: We intentionally don't read child stdout/stderr in release to avoid blocking.
-  // If you need troubleshooting, enable logs in Rust and/or emit a debug window.
+  // If you need troubleshooting, check the log file under app_data_dir/logs/.
   let child = cmd
     .spawn()
     .map_err(|e| format!("Failed to spawn {name} ({:?}): {e}", bin))?;
 
-  if !wait_port(port, Duration::from_secs(8)) {
+  if !wait_port(port, timeout) {
     return Err(format!(
       "{name} did not become ready on port {port} within timeout"
     ));
@@ -136,15 +174,22 @@ impl BackendManager {
       app,
       "karios-ai-service",
       ai_port,
-      &[("PORT", ai_port.to_string())],
+      Duration::from_secs(10),
+      &[
+        ("PORT", ai_port.to_string()),
+        ("NODE_ENV", "production".to_string()),
+      ],
     );
 
     match ai {
-      Ok(child) => spawned.push(BackendChild {
-        name: "karios-ai-service",
-        port: ai_port,
-        child,
-      }),
+      Ok(child) => {
+        eprintln!("[karios] started sidecar: karios-ai-service on 127.0.0.1:{ai_port}");
+        spawned.push(BackendChild {
+          name: "karios-ai-service",
+          port: ai_port,
+          child,
+        });
+      }
       Err(err) => {
         eprintln!("[karios] failed to start ai-service sidecar: {err}");
         // If AI is unavailable, quant-service will still run but strategy features will fail.
@@ -155,6 +200,7 @@ impl BackendManager {
       ("HOST", "127.0.0.1".to_string()),
       ("PORT", quant_port.to_string()),
       ("AI_SERVICE_BASE_URL", format!("http://127.0.0.1:{ai_port}")),
+      ("PYTHONUNBUFFERED", "1".to_string()),
       (
         "DATABASE_PATH",
         app
@@ -169,13 +215,22 @@ impl BackendManager {
       ),
     ];
 
-    let quant = spawn_backend(app, "karios-quant-service", quant_port, &quant_envs);
+    let quant = spawn_backend(
+      app,
+      "karios-quant-service",
+      quant_port,
+      Duration::from_secs(25),
+      &quant_envs,
+    );
     match quant {
-      Ok(child) => spawned.push(BackendChild {
-        name: "karios-quant-service",
-        port: quant_port,
-        child,
-      }),
+      Ok(child) => {
+        eprintln!("[karios] started sidecar: karios-quant-service on 127.0.0.1:{quant_port}");
+        spawned.push(BackendChild {
+          name: "karios-quant-service",
+          port: quant_port,
+          child,
+        });
+      }
       Err(err) => {
         eprintln!("[karios] failed to start quant-service sidecar: {err}");
       }
@@ -187,6 +242,7 @@ impl BackendManager {
   pub fn stop_all(&self) {
     let mut children = self.children.lock().expect("backend children lock poisoned");
     for c in children.iter_mut() {
+      eprintln!("[karios] stopping sidecar: {} on 127.0.0.1:{}", c.name, c.port);
       // Best-effort: ignore failures
       let _ = c.child.kill();
     }
