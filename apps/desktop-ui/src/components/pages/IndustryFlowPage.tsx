@@ -266,7 +266,11 @@ export function IndustryFlowPage() {
     setError(null);
     setLastSyncMsg(null);
     try {
-      const r = await apiPostJson<any>('/market/cn/industry-fund-flow/sync', { days: 10, topN: 10, force });
+      const r = await apiPostJson<Record<string, unknown>>('/market/cn/industry-fund-flow/sync', {
+        days: 10,
+        topN: 10,
+        force,
+      });
       if (r && typeof r === 'object') {
         const msg = [
           `rowsUpserted=${String(r.rowsUpserted ?? '')}`,

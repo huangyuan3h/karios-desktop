@@ -70,29 +70,34 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     const loaded = loadJson<PersistedState>(STORAGE_KEY, defaultState);
+    const rawRefsVal = (loaded as Partial<PersistedState> as unknown as { references?: unknown }).references;
+    const rawRefs: unknown[] = Array.isArray(rawRefsVal) ? rawRefsVal : [];
     setState({
       ...defaultState,
       ...loaded,
-      references: Array.isArray((loaded as Partial<PersistedState>).references)
-        ? ((loaded as Partial<PersistedState>).references as any[]).map((r) => {
+      references: rawRefs
+        .map((r) => {
             // Backward-compatible migration:
             // - old TV reference shape: { snapshotId, screenerId, screenerName, capturedAt }
-            if (r && typeof r === 'object' && typeof r.kind === 'string' && typeof r.refId === 'string') {
-              return r;
-            }
-            if (r && typeof r === 'object' && typeof r.snapshotId === 'string') {
-              return {
-                kind: 'tv',
-                refId: r.snapshotId,
-                snapshotId: r.snapshotId,
-                screenerId: String(r.screenerId ?? ''),
-                screenerName: String(r.screenerName ?? 'TradingView'),
-                capturedAt: String(r.capturedAt ?? new Date().toISOString()),
-              };
+            if (r && typeof r === 'object') {
+              const rec = r as Record<string, unknown>;
+              if (typeof rec.kind === 'string' && typeof rec.refId === 'string') {
+                return rec as unknown as ChatReference;
+              }
+              if (typeof rec.snapshotId === 'string') {
+                return {
+                  kind: 'tv',
+                  refId: rec.snapshotId,
+                  snapshotId: rec.snapshotId,
+                  screenerId: String(rec.screenerId ?? ''),
+                  screenerName: String(rec.screenerName ?? 'TradingView'),
+                  capturedAt: String(rec.capturedAt ?? new Date().toISOString()),
+                } satisfies ChatReference;
+              }
             }
             return null;
-          }).filter(Boolean)
-        : [],
+          })
+        .filter((x): x is ChatReference => Boolean(x)),
     });
   }, []);
 

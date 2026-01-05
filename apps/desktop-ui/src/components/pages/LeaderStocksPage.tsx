@@ -48,14 +48,12 @@ type LeaderDailyResponse = {
   debug?: unknown;
 };
 
-function fmtPct(v: number | null | undefined) {
-  if (!Number.isFinite(v as number)) return '—';
-  return `${((v as number) * 100).toFixed(2)}%`;
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 }
 
-function fmtPrice(v: number | null | undefined) {
-  if (!Number.isFinite(v as number)) return '—';
-  return (v as number).toFixed(2);
+function asStringArray(v: unknown): string[] {
+  return Array.isArray(v) ? v.map((x) => String(x)).filter(Boolean) : [];
 }
 
 function fmtPerf(r: LeaderPick) {
@@ -72,18 +70,18 @@ function fmtPerf(r: LeaderPick) {
 
 function fmtBuyZoneText(r: LeaderPick) {
   const bz = r.buyZone ?? {};
-  const low = (bz as any).low;
-  const high = (bz as any).high;
-  const note = (bz as any).note;
+  const low = isRecord(bz) ? bz.low : null;
+  const high = isRecord(bz) ? bz.high : null;
+  const note = isRecord(bz) ? bz.note : null;
   if (low == null || high == null) return '—';
   return `${String(low)} - ${String(high)}${note ? ` (${String(note)})` : ''}`;
 }
 
 function fmtTargetText(r: LeaderPick) {
   const tp = r.targetPrice ?? {};
-  const primary = (tp as any).primary;
-  const stretch = (tp as any).stretch;
-  const note = (tp as any).note;
+  const primary = isRecord(tp) ? tp.primary : null;
+  const stretch = isRecord(tp) ? tp.stretch : null;
+  const note = isRecord(tp) ? tp.note : null;
   if (primary == null && stretch == null) return '—';
   const s = stretch != null ? `${String(primary)} / ${String(stretch)}` : String(primary);
   return `${s}${note ? ` (${String(note)})` : ''}`;
@@ -100,10 +98,10 @@ function fmtProbability(p: number | null | undefined) {
 }
 
 function fmtTriggerText(t: Record<string, unknown>) {
-  const kind = String((t as any).kind ?? '');
+  const kind = String(t.kind ?? '');
   const label = kind === 'breakout' ? 'Breakout' : kind === 'pullback' ? 'Pullback' : kind || 'Trigger';
-  const cond = String((t as any).condition ?? '').trim();
-  const val = (t as any).value;
+  const cond = String(t.condition ?? '').trim();
+  const val = t.value;
   const tail = val != null && String(val).trim() ? ` @ ${String(val)}` : '';
   return `${label}: ${cond}${tail}`.trim();
 }
@@ -111,9 +109,9 @@ function fmtTriggerText(t: Record<string, unknown>) {
 function fmtPlanLine(r: LeaderPick) {
   const bz = r.buyZone ?? {};
   const tp = r.targetPrice ?? {};
-  const bzLow = (bz as any).low;
-  const bzHigh = (bz as any).high;
-  const tpPrimary = (tp as any).primary;
+  const bzLow = isRecord(bz) ? bz.low : null;
+  const bzHigh = isRecord(bz) ? bz.high : null;
+  const tpPrimary = isRecord(tp) ? tp.primary : null;
   const parts: string[] = [];
   if (bzLow != null && bzHigh != null) parts.push(`Buy:${String(bzLow)}-${String(bzHigh)}`);
   if (tpPrimary != null) parts.push(`Target:${String(tpPrimary)}`);
@@ -199,7 +197,7 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
     }
   }
 
-  const leaders = data?.leaders ?? [];
+  const leaders = React.useMemo(() => data?.leaders ?? [], [data]);
   // Consolidated view: dedupe by symbol, keep the latest record (largest date).
   const consolidated = React.useMemo(() => {
     const m = new Map<string, LeaderPick>();
@@ -350,8 +348,8 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                                 <div>
                                   <div className="text-[11px] uppercase tracking-wide opacity-80">Industries</div>
                                   <div className="mt-1 flex flex-wrap gap-1">
-                                    {Array.isArray((r.sourceSignals as any)?.industries) && (r.sourceSignals as any).industries.length ? (
-                                      (r.sourceSignals as any).industries.slice(0, 3).map((x: any, idx: number) => (
+                                    {isRecord(r.sourceSignals) && asStringArray(r.sourceSignals.industries).length ? (
+                                      asStringArray(r.sourceSignals.industries).slice(0, 3).map((x, idx) => (
                                         <span
                                           key={idx}
                                           className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5"
@@ -367,9 +365,9 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                                 <div>
                                   <div className="text-[11px] uppercase tracking-wide opacity-80">Screeners</div>
                                   <div className="mt-1">
-                                    {Array.isArray((r.sourceSignals as any)?.screeners) && (r.sourceSignals as any).screeners.length ? (
+                                    {isRecord(r.sourceSignals) && asStringArray(r.sourceSignals.screeners).length ? (
                                       <ul className="list-disc pl-4">
-                                        {(r.sourceSignals as any).screeners.slice(0, 3).map((x: any, idx: number) => (
+                                        {asStringArray(r.sourceSignals.screeners).slice(0, 3).map((x, idx) => (
                                           <li key={idx}>{String(x)}</li>
                                         ))}
                                       </ul>
@@ -381,9 +379,9 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                                 <div>
                                   <div className="text-[11px] uppercase tracking-wide opacity-80">Notes</div>
                                   <div className="mt-1">
-                                    {Array.isArray((r.sourceSignals as any)?.notes) && (r.sourceSignals as any).notes.length ? (
+                                    {isRecord(r.sourceSignals) && asStringArray(r.sourceSignals.notes).length ? (
                                       <ul className="list-disc pl-4">
-                                        {(r.sourceSignals as any).notes.slice(0, 3).map((x: any, idx: number) => (
+                                        {asStringArray(r.sourceSignals.notes).slice(0, 3).map((x, idx) => (
                                           <li key={idx}>{String(x)}</li>
                                         ))}
                                       </ul>
@@ -433,7 +431,7 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                                     {Array.isArray(r.triggers) && r.triggers.length ? (
                                       <ul className="list-disc pl-4">
                                         {r.triggers.slice(0, 4).map((t, idx) => (
-                                          <li key={idx}>{fmtTriggerText(t as any)}</li>
+                                          <li key={idx}>{fmtTriggerText(t)}</li>
                                         ))}
                                       </ul>
                                     ) : (

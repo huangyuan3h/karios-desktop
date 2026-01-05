@@ -296,9 +296,9 @@ export function BrokerPage() {
               <div className="font-medium">Account state</div>
               <div className="mt-1 text-xs text-[var(--k-muted)]">
                 Updated: {new Date(state.updatedAt).toLocaleString()} • positions{' '}
-                {Number((state.counts as any).positions ?? state.positions.length)} • orders{' '}
-                {Number((state.counts as any).conditionalOrders ?? state.conditionalOrders.length)}{' '}
-                • trades {Number((state.counts as any).trades ?? state.trades.length)}
+                {Number(state.counts?.positions ?? state.positions.length)} • orders{' '}
+                {Number(state.counts?.conditionalOrders ?? state.conditionalOrders.length)} • trades{' '}
+                {Number(state.counts?.trades ?? state.trades.length)}
               </div>
             </div>
             <Button
@@ -329,12 +329,12 @@ export function BrokerPage() {
                 {(() => {
                   const ov = state.overview || {};
                   return [
-                    ['totalAssets', 'Total assets', formatWan((ov as any).totalAssets)],
-                    ['securitiesValue', 'Securities', formatWan((ov as any).securitiesValue)],
-                    ['cashAvailable', 'Cash available', formatWan((ov as any).cashAvailable)],
-                    ['withdrawable', 'Withdrawable', formatWan((ov as any).withdrawable)],
-                    ['pnlTotal', 'PnL total', formatWan((ov as any).pnlTotal)],
-                    ['pnlToday', 'PnL today', formatWan((ov as any).pnlToday)],
+                    ['totalAssets', 'Total assets', formatWan(ov.totalAssets)],
+                    ['securitiesValue', 'Securities', formatWan(ov.securitiesValue)],
+                    ['cashAvailable', 'Cash available', formatWan(ov.cashAvailable)],
+                    ['withdrawable', 'Withdrawable', formatWan(ov.withdrawable)],
+                    ['pnlTotal', 'PnL total', formatWan(ov.pnlTotal)],
+                    ['pnlToday', 'PnL today', formatWan(ov.pnlToday)],
                   ].map(([k, label, value]) => (
                     <div key={String(k)} className="flex items-center justify-between gap-2">
                       <div className="text-[var(--k-muted)]">{String(label)}</div>

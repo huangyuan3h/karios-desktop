@@ -178,7 +178,7 @@ export function StockPage({
     // Auto-sync at most once every 10 minutes per symbol.
     const age = Date.now() - prev;
     void refresh({ force: age > 10 * 60 * 1000 });
-  }, [refresh]);
+  }, [refresh, symbol]);
 
   return (
     <div className="mx-auto w-full max-w-6xl p-6">

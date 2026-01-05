@@ -259,7 +259,7 @@ export function SettingsPage() {
               />
             </div>
             <div className="mt-2 text-xs text-[var(--k-muted)]">
-              We copy "Local State" and the selected profile into the dedicated user-data-dir, so CDP works.
+              We copy &quot;Local State&quot; and the selected profile into the dedicated user-data-dir, so CDP works.
             </div>
             <div className="mt-3 flex items-center justify-between gap-3">
               <div className="text-xs text-[var(--k-muted)]">
