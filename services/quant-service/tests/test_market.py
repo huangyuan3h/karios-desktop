@@ -73,11 +73,7 @@ def test_market_chips_cn_only(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "test.sqlite3"
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
 
-    # Seed one CN stock.
-    client = TestClient(main.app)
-    client.post("/market/sync")  # may fail if not patched, so patch providers below
-
-    # Patch spot providers to insert CN/HK quickly.
+    # Patch spot providers to insert CN/HK quickly (avoid network/AkShare in tests).
     monkeypatch.setattr(
         main,
         "fetch_cn_a_spot",
@@ -106,6 +102,7 @@ def test_market_chips_cn_only(tmp_path, monkeypatch) -> None:
             )
         ],
     )
+    client = TestClient(main.app)
     client.post("/market/sync")
 
     # Patch chip provider.
@@ -233,4 +230,65 @@ def test_market_bars_hk_provider_error(tmp_path, monkeypatch) -> None:
 
     resp = client.get("/market/stocks/HK:00005/bars?days=60")
     assert resp.status_code == 500
+
+
+def test_market_bars_force_refresh_even_when_cached(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    # Insert CN stock via sync
+    monkeypatch.setattr(
+        main,
+        "fetch_cn_a_spot",
+        lambda: [
+            main.StockRow(
+                symbol="CN:000001",
+                market="CN",
+                ticker="000001",
+                name="Ping An Bank",
+                currency="CNY",
+                quote={},
+            )
+        ],
+    )
+    monkeypatch.setattr(main, "fetch_hk_spot", lambda: [])
+    client = TestClient(main.app)
+    client.post("/market/sync")
+
+    # Seed cached bars with enough rows so the old logic would NOT fetch.
+    with main._connect() as conn:
+        ts = "2025-12-20T00:00:00Z"
+        for i in range(60):
+            d = f"2025-10-{(i % 30) + 1:02d}"
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO market_bars(symbol, date, open, high, low, close, volume, amount, updated_at)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("CN:000001", d, "10", "11", "9", "10", "100", "1000", ts),
+            )
+        conn.commit()
+
+    called = {"n": 0}
+
+    def fake_cn_bars(ticker: str, days: int = 60):
+        called["n"] += 1
+        return [
+            main.BarRow(
+                date="2025-12-21",
+                open="10",
+                high="12",
+                low="10",
+                close="11",
+                volume="120",
+                amount="1200",
+            )
+        ]
+
+    monkeypatch.setattr(main, "fetch_cn_a_daily_bars", fake_cn_bars)
+
+    resp = client.get("/market/stocks/CN:000001/bars?days=60&force=true")
+    assert resp.status_code == 200
+    assert called["n"] == 1
+    assert resp.json()["bars"][-1]["close"] == "11"
 

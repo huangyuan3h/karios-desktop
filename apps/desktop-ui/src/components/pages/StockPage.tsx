@@ -84,6 +84,24 @@ async function apiGetJson<T>(path: string): Promise<T> {
   return (txt ? (JSON.parse(txt) as T) : ({} as T));
 }
 
+function getLastDetailSyncMs(symbol: string): number {
+  try {
+    const v = window.localStorage.getItem(`karios.market.stockDetailLastSync:${symbol}`);
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function setLastDetailSyncMs(symbol: string, ms: number) {
+  try {
+    window.localStorage.setItem(`karios.market.stockDetailLastSync:${symbol}`, String(ms));
+  } catch {
+    // ignore
+  }
+}
+
 export function StockPage({
   symbol,
   onBack,
@@ -97,6 +115,7 @@ export function StockPage({
   const [fundFlow, setFundFlow] = React.useState<FundFlowResp | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [lastSyncMs, setLastSyncMs] = React.useState<number>(0);
   const chartData: OHLCV[] = React.useMemo(() => {
     const bars = data?.bars ?? [];
     return bars
@@ -121,22 +140,31 @@ export function StockPage({
       .filter(Boolean) as OHLCV[];
   }, [data]);
 
-  const refresh = React.useCallback(async () => {
+  const refresh = React.useCallback(async ({ force }: { force?: boolean } = {}) => {
     setError(null);
     setBusy(true);
     try {
       const [d, c] = await Promise.all([
-        apiGetJson<BarsResp>(`/market/stocks/${encodeURIComponent(symbol)}/bars?days=60`),
-        apiGetJson<ChipsResp>(`/market/stocks/${encodeURIComponent(symbol)}/chips?days=30`).catch(
+        apiGetJson<BarsResp>(
+          `/market/stocks/${encodeURIComponent(symbol)}/bars?days=60${force ? '&force=true' : ''}`,
+        ),
+        apiGetJson<ChipsResp>(
+          `/market/stocks/${encodeURIComponent(symbol)}/chips?days=30${force ? '&force=true' : ''}`,
+        ).catch(
           () => null,
         ),
       ]);
       const ff = await apiGetJson<FundFlowResp>(
-        `/market/stocks/${encodeURIComponent(symbol)}/fund-flow?days=30`,
+        `/market/stocks/${encodeURIComponent(symbol)}/fund-flow?days=30${force ? '&force=true' : ''}`,
       ).catch(() => null);
       setData(d);
       setChips(c);
       setFundFlow(ff);
+      if (force) {
+        const now = Date.now();
+        setLastDetailSyncMs(symbol, now);
+        setLastSyncMs(now);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -145,8 +173,12 @@ export function StockPage({
   }, [symbol]);
 
   React.useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    const prev = getLastDetailSyncMs(symbol);
+    setLastSyncMs(prev);
+    // Auto-sync at most once every 10 minutes per symbol.
+    const age = Date.now() - prev;
+    void refresh({ force: age > 10 * 60 * 1000 });
+  }, [refresh, symbol]);
 
   return (
     <div className="mx-auto w-full max-w-6xl p-6">
@@ -166,6 +198,9 @@ export function StockPage({
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={busy}>
             Refresh
+          </Button>
+          <Button size="sm" onClick={() => void refresh({ force: true })} disabled={busy}>
+            Sync detail
           </Button>
           <Button
             size="sm"
@@ -190,6 +225,11 @@ export function StockPage({
           </Button>
         </div>
       </div>
+      {lastSyncMs ? (
+        <div className="mb-3 text-xs text-[var(--k-muted)]">
+          Last detail sync: {new Date(lastSyncMs).toLocaleString()}
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">

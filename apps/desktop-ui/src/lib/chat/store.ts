@@ -70,29 +70,35 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     const loaded = loadJson<PersistedState>(STORAGE_KEY, defaultState);
+    const rawRefsVal = (loaded as Partial<PersistedState> as unknown as { references?: unknown })
+      .references;
+    const rawRefs: unknown[] = Array.isArray(rawRefsVal) ? rawRefsVal : [];
     setState({
       ...defaultState,
       ...loaded,
-      references: Array.isArray((loaded as Partial<PersistedState>).references)
-        ? ((loaded as Partial<PersistedState>).references as any[]).map((r) => {
-            // Backward-compatible migration:
-            // - old TV reference shape: { snapshotId, screenerId, screenerName, capturedAt }
-            if (r && typeof r === 'object' && typeof r.kind === 'string' && typeof r.refId === 'string') {
-              return r;
+      references: rawRefs
+        .map((r) => {
+          // Backward-compatible migration:
+          // - old TV reference shape: { snapshotId, screenerId, screenerName, capturedAt }
+          if (r && typeof r === 'object') {
+            const rec = r as Record<string, unknown>;
+            if (typeof rec.kind === 'string' && typeof rec.refId === 'string') {
+              return rec as unknown as ChatReference;
             }
-            if (r && typeof r === 'object' && typeof r.snapshotId === 'string') {
+            if (typeof rec.snapshotId === 'string') {
               return {
                 kind: 'tv',
-                refId: r.snapshotId,
-                snapshotId: r.snapshotId,
-                screenerId: String(r.screenerId ?? ''),
-                screenerName: String(r.screenerName ?? 'TradingView'),
-                capturedAt: String(r.capturedAt ?? new Date().toISOString()),
-              };
+                refId: rec.snapshotId,
+                snapshotId: rec.snapshotId,
+                screenerId: String(rec.screenerId ?? ''),
+                screenerName: String(rec.screenerName ?? 'TradingView'),
+                capturedAt: String(rec.capturedAt ?? new Date().toISOString()),
+              } satisfies ChatReference;
             }
-            return null;
-          }).filter(Boolean)
-        : [],
+          }
+          return null;
+        })
+        .filter((x): x is ChatReference => Boolean(x)),
     });
   }, []);
 
@@ -101,8 +107,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
   }, [state]);
 
   const activeSession =
-    state.sessions.find((s) => s.id === state.activeSessionId) ??
-    (state.sessions[0] ?? null);
+    state.sessions.find((s) => s.id === state.activeSessionId) ?? state.sessions[0] ?? null;
 
   React.useEffect(() => {
     if (!state.activeSessionId && state.sessions.length > 0) {
@@ -226,7 +231,8 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
       },
       addReference: (ref: ChatReference) => {
         setState((prev) => {
-          if (prev.references.some((r) => r.refId === ref.refId && r.kind === ref.kind)) return prev;
+          if (prev.references.some((r) => r.refId === ref.refId && r.kind === ref.kind))
+            return prev;
           return { ...prev, references: [ref, ...prev.references] };
         });
       },
@@ -250,14 +256,23 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
         // Prefer presets API (v0.2+). Fall back to legacy single-value API.
         const resp = await fetch(`${QUANT_BASE_URL}/system-prompts/active`);
         if (resp.ok) {
-          const data = (await resp.json()) as { id?: string | null; title?: string; content?: string };
+          const data = (await resp.json()) as {
+            id?: string | null;
+            title?: string;
+            content?: string;
+          };
           const content = typeof data.content === 'string' ? data.content : '';
           const title = typeof data.title === 'string' ? data.title : 'Legacy';
           const id = data.id === null || typeof data.id === 'string' ? (data.id ?? null) : null;
           if (cancelled) return;
           setState((prev) => ({
             ...prev,
-            settings: { ...prev.settings, systemPromptId: id, systemPromptTitle: title, systemPrompt: content },
+            settings: {
+              ...prev.settings,
+              systemPromptId: id,
+              systemPromptTitle: title,
+              systemPrompt: content,
+            },
           }));
           return;
         }
@@ -269,7 +284,12 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         setState((prev) => ({
           ...prev,
-          settings: { ...prev.settings, systemPromptId: null, systemPromptTitle: 'Legacy', systemPrompt: value },
+          settings: {
+            ...prev.settings,
+            systemPromptId: null,
+            systemPromptTitle: 'Legacy',
+            systemPrompt: value,
+          },
         }));
       } catch {
         // ignore
@@ -283,4 +303,3 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
 
   return React.createElement(ChatStoreContext.Provider, { value: api }, children);
 }
-

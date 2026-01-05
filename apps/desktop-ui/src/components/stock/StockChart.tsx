@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { IChartApi, Time } from 'lightweight-charts';
+import type { IChartApi, LogicalRange, Time } from 'lightweight-charts';
 import {
   CandlestickSeries,
   ColorType,
@@ -156,7 +156,7 @@ export function StockChart({ data }: Props) {
     kdjChart.timeScale().fitContent();
 
     // Sync visible range from the main (price) chart.
-    const onRangeChange = (range: any) => {
+    const onRangeChange = (range: LogicalRange | null) => {
       if (!range) return;
       for (const c of [volChart, macdChart, kdjChart]) {
         c.timeScale().setVisibleLogicalRange(range);

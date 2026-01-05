@@ -31,9 +31,12 @@ from market.akshare_provider import (
     fetch_cn_a_chip_summary,
     fetch_cn_a_daily_bars,
     fetch_cn_a_fund_flow,
-    fetch_cn_industry_fund_flow_hist,
-    fetch_cn_industry_fund_flow_eod,
     fetch_cn_a_spot,
+    fetch_cn_failed_limitup_rate,
+    fetch_cn_industry_fund_flow_eod,
+    fetch_cn_industry_fund_flow_hist,
+    fetch_cn_market_breadth_eod,
+    fetch_cn_yesterday_limitup_premium,
     fetch_hk_daily_bars,
     fetch_hk_spot,
 )
@@ -224,6 +227,28 @@ def _connect() -> sqlite3.Connection:
         "CREATE INDEX IF NOT EXISTS idx_cn_industry_fund_flow_date ON market_cn_industry_fund_flow_daily(date DESC)",
     )
 
+    # --- CN market breadth & sentiment (v0) ---
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS market_cn_sentiment_daily (
+          date TEXT PRIMARY KEY,
+          as_of_date TEXT NOT NULL,
+          up_count INTEGER NOT NULL,
+          down_count INTEGER NOT NULL,
+          flat_count INTEGER NOT NULL,
+          total_count INTEGER NOT NULL,
+          up_down_ratio REAL NOT NULL,
+          yesterday_limitup_premium REAL NOT NULL,
+          failed_limitup_rate REAL NOT NULL,
+          risk_mode TEXT NOT NULL,
+          rules_json TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          raw_json TEXT NOT NULL
+        )
+        """,
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cn_sentiment_date ON market_cn_sentiment_daily(date DESC)")
+
     # --- Broker snapshots (v0) ---
     conn.execute(
         """
@@ -314,6 +339,48 @@ def _connect() -> sqlite3.Connection:
         )
         """,
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS leader_stocks (
+          id TEXT PRIMARY KEY,
+          date TEXT NOT NULL,
+          symbol TEXT NOT NULL,
+          market TEXT NOT NULL,
+          ticker TEXT NOT NULL,
+          name TEXT NOT NULL,
+          entry_price REAL,
+          score REAL,
+          reason TEXT NOT NULL,
+          why_bullets_json TEXT,
+          expected_duration_days INTEGER,
+          buy_zone_json TEXT,
+          triggers_json TEXT,
+          invalidation TEXT,
+          target_price_json TEXT,
+          probability INTEGER,
+          source_signals_json TEXT NOT NULL,
+          risk_points_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          UNIQUE(date, symbol)
+        )
+        """,
+    )
+    # Backward-compatible migration: add missing columns for existing DBs.
+    try:
+        cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(leader_stocks)").fetchall()}
+        def _add(col: str, ddl: str) -> None:
+            if col not in cols:
+                conn.execute(f"ALTER TABLE leader_stocks ADD COLUMN {ddl}")
+        _add("why_bullets_json", "why_bullets_json TEXT")
+        _add("expected_duration_days", "expected_duration_days INTEGER")
+        _add("buy_zone_json", "buy_zone_json TEXT")
+        _add("triggers_json", "triggers_json TEXT")
+        _add("invalidation", "invalidation TEXT")
+        _add("target_price_json", "target_price_json TEXT")
+        _add("probability", "probability INTEGER")
+    except Exception:
+        # Best-effort: do not block startup if schema probing fails.
+        pass
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_strategy_reports_account_date ON strategy_reports(account_id, date)",
     )
@@ -1294,6 +1361,32 @@ class MarketCnIndustryFundFlowSyncResponse(BaseModel):
     message: str | None = None
 
 
+# --- CN market breadth & sentiment (v0) ---
+class MarketCnSentimentRow(BaseModel):
+    date: str  # YYYY-MM-DD
+    upCount: int
+    downCount: int
+    flatCount: int
+    totalCount: int
+    upDownRatio: float
+    yesterdayLimitUpPremium: float  # percent, e.g. -1.2 means -1.2%
+    failedLimitUpRate: float  # percent, e.g. 35.0
+    riskMode: str  # normal | caution | no_new_positions
+    rules: list[str] = []
+    updatedAt: str
+
+
+class MarketCnSentimentResponse(BaseModel):
+    asOfDate: str
+    days: int
+    items: list[MarketCnSentimentRow]
+
+
+class MarketCnSentimentSyncRequest(BaseModel):
+    date: str | None = None
+    force: bool = False
+
+
 # --- Strategy module (v0) ---
 class StrategyAccountPromptResponse(BaseModel):
     accountId: str
@@ -1314,6 +1407,8 @@ class StrategyDailyGenerateRequest(BaseModel):
     includeAccountState: bool = True
     includeTradingView: bool = True
     includeIndustryFundFlow: bool = True
+    includeMarketSentiment: bool = True
+    includeLeaders: bool = True
     includeStocks: bool = True
 
 
@@ -1378,6 +1473,153 @@ class StrategyReportResponse(BaseModel):
     # Debugging / traceability
     inputSnapshot: dict[str, Any] | None = None
     raw: dict[str, Any] | None = None
+
+
+# --- Leader stocks module (v0) ---
+class LeaderDailyGenerateRequest(BaseModel):
+    date: str | None = None  # YYYY-MM-DD
+    force: bool = False
+    maxCandidates: int = 20  # candidate universe cap from screener
+
+
+class LeaderPick(BaseModel):
+    id: str
+    date: str
+    symbol: str
+    market: str
+    ticker: str
+    name: str
+    entryPrice: float | None = None
+    score: float | None = None
+    reason: str
+    whyBullets: list[str] = []
+    expectedDurationDays: int | None = None
+    buyZone: dict[str, Any] = {}
+    triggers: list[dict[str, Any]] = []
+    invalidation: str | None = None
+    targetPrice: dict[str, Any] = {}
+    probability: int | None = None
+    risks: list[str] = []
+    sourceSignals: dict[str, Any] = {}
+    riskPoints: list[str] = []
+    createdAt: str
+    # Computed metrics
+    nowClose: float | None = None
+    pctSinceEntry: float | None = None
+    series: list[dict[str, Any]] = []  # [{date, close}]
+
+
+class LeaderDailyResponse(BaseModel):
+    date: str
+    leaders: list[LeaderPick]
+    debug: dict[str, Any] | None = None
+
+
+class LeaderListResponse(BaseModel):
+    days: int = 10
+    dates: list[str]
+    leaders: list[LeaderPick]
+
+
+# --- Dashboard module (v0) ---
+class DashboardSyncRequest(BaseModel):
+    force: bool = True
+
+
+class DashboardSyncStep(BaseModel):
+    name: str
+    ok: bool
+    durationMs: int
+    message: str | None = None
+    meta: dict[str, Any] = {}
+
+
+class DashboardScreenerSyncItem(BaseModel):
+    id: str
+    name: str
+    ok: bool
+    rowCount: int = 0
+    capturedAt: str | None = None
+    filtersCount: int = 0
+    error: str | None = None
+
+
+class DashboardScreenerSyncStatus(BaseModel):
+    enabledCount: int
+    syncedCount: int
+    failed: list[DashboardScreenerSyncItem] = []
+    missing: list[dict[str, str]] = []  # [{id,name,reason}]
+    items: list[DashboardScreenerSyncItem] = []
+
+
+class DashboardSyncResponse(BaseModel):
+    ok: bool
+    startedAt: str
+    finishedAt: str
+    steps: list[DashboardSyncStep]
+    screener: DashboardScreenerSyncStatus
+
+
+class DashboardAccountItem(BaseModel):
+    id: str
+    broker: str
+    title: str
+    accountMasked: str | None
+    updatedAt: str
+
+
+class DashboardAccountStateSummary(BaseModel):
+    accountId: str
+    broker: str
+    updatedAt: str | None = None
+    cashAvailable: str | None = None
+    totalAssets: str | None = None
+    positionsCount: int = 0
+    conditionalOrdersCount: int = 0
+    tradesCount: int = 0
+
+
+class DashboardHoldingRow(BaseModel):
+    ticker: str
+    name: str | None = None
+    symbol: str | None = None
+    price: float | None = None
+    weightPct: float | None = None
+    pnlAmount: float | None = None
+    # Keep raw fields for debug/compat if needed.
+    qty: str | None = None
+    cost: str | None = None
+    pnl: str | None = None
+    pnlPct: str | None = None
+
+
+class DashboardLeadersSummary(BaseModel):
+    latestDate: str | None = None
+    latest: list[dict[str, Any]] = []
+    history: list[dict[str, Any]] = []
+
+
+class DashboardScreenerStatusRow(BaseModel):
+    id: str
+    name: str
+    enabled: bool
+    updatedAt: str | None = None
+    capturedAt: str | None = None
+    rowCount: int = 0
+    filtersCount: int = 0
+
+
+class DashboardSummaryResponse(BaseModel):
+    asOfDate: str
+    accounts: list[DashboardAccountItem]
+    selectedAccountId: str | None = None
+    accountState: DashboardAccountStateSummary | None = None
+    holdings: list[DashboardHoldingRow] = []
+    marketStatus: dict[str, Any] = {}
+    industryFundFlow: dict[str, Any] = {}
+    marketSentiment: dict[str, Any] = {}
+    leaders: DashboardLeadersSummary = DashboardLeadersSummary()
+    screeners: list[DashboardScreenerStatusRow] = []
 
 
 @app.get("/integrations/tradingview/screeners", response_model=ListTvScreenersResponse)
@@ -1778,7 +2020,7 @@ def market_list_stocks(
 
 
 @app.get("/market/stocks/{symbol}/bars", response_model=MarketBarsResponse)
-def market_stock_bars(symbol: str, days: int = 60) -> MarketBarsResponse:
+def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> MarketBarsResponse:
     days2 = max(10, min(int(days), 200))
     sym = symbol.strip()
     with _connect() as conn:
@@ -1806,7 +2048,7 @@ def market_stock_bars(symbol: str, days: int = 60) -> MarketBarsResponse:
             (sym, days2),
         ).fetchall()
 
-    if len(cached) < days2:
+    if force or len(cached) < days2:
         ts = now_iso()
         try:
             if market == "CN":
@@ -1866,7 +2108,7 @@ def market_stock_bars(symbol: str, days: int = 60) -> MarketBarsResponse:
 
 
 @app.get("/market/stocks/{symbol}/chips", response_model=MarketChipsResponse)
-def market_stock_chips(symbol: str, days: int = 60) -> MarketChipsResponse:
+def market_stock_chips(symbol: str, days: int = 60, force: bool = False) -> MarketChipsResponse:
     days2 = max(10, min(int(days), 200))
     sym = symbol.strip()
     with _connect() as conn:
@@ -1898,7 +2140,7 @@ def market_stock_chips(symbol: str, days: int = 60) -> MarketChipsResponse:
             """,
             (sym, days2),
         ).fetchall()
-    if len(cached) >= min(days2, 30):
+    if (not force) and len(cached) >= min(days2, 30):
         items = [json.loads(str(r[0])) for r in reversed(cached)]
         return MarketChipsResponse(
             symbol=sym,
@@ -1928,7 +2170,7 @@ def market_stock_chips(symbol: str, days: int = 60) -> MarketChipsResponse:
 
 
 @app.get("/market/stocks/{symbol}/fund-flow", response_model=MarketFundFlowResponse)
-def market_stock_fund_flow(symbol: str, days: int = 60) -> MarketFundFlowResponse:
+def market_stock_fund_flow(symbol: str, days: int = 60, force: bool = False) -> MarketFundFlowResponse:
     days2 = max(10, min(int(days), 200))
     sym = symbol.strip()
     with _connect() as conn:
@@ -1960,7 +2202,7 @@ def market_stock_fund_flow(symbol: str, days: int = 60) -> MarketFundFlowRespons
             """,
             (sym, days2),
         ).fetchall()
-    if len(cached) >= min(days2, 30):
+    if (not force) and len(cached) >= min(days2, 30):
         items = [json.loads(str(r[0])) for r in reversed(cached)]
         return MarketFundFlowResponse(
             symbol=sym,
@@ -2008,6 +2250,22 @@ def _get_latest_cn_industry_fund_flow_date(conn: sqlite3.Connection) -> str | No
     return str(row[0])
 
 
+def _industry_flow_signature(items: list[dict[str, Any]]) -> str:
+    """
+    Create a stable signature for an EOD snapshot to detect non-trading-day duplicates.
+    We only use (industry_code, net_inflow) pairs and ignore raw_json.
+    """
+    pairs: list[tuple[str, float]] = []
+    for it in items:
+        code = str(it.get("industry_code") or "").strip()
+        if not code:
+            continue
+        pairs.append((code, float(it.get("net_inflow") or 0.0)))
+    pairs.sort(key=lambda x: x[0])
+    s = json.dumps(pairs, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha1(s.encode("utf-8")).hexdigest()
+
+
 @app.post(
     "/market/cn/industry-fund-flow/sync",
     response_model=MarketCnIndustryFundFlowSyncResponse,
@@ -2052,6 +2310,32 @@ def market_cn_industry_fund_flow_sync(
         items = fetch_cn_industry_fund_flow_eod(as_of)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Industry fund flow fetch failed: {e}") from e
+
+    # If the market is closed (holiday/weekend), the provider may return the SAME snapshot as the
+    # latest trading day. Detect it by comparing snapshot signatures and avoid storing a duplicate date.
+    req_date = as_of.strftime("%Y-%m-%d")
+    effective_date = req_date
+    message: str | None = None
+    with _connect() as conn:
+        latest = _get_latest_cn_industry_fund_flow_date(conn)
+        if latest and latest < req_date:
+            prev_rows = conn.execute(
+                "SELECT industry_code, net_inflow FROM market_cn_industry_fund_flow_daily WHERE date = ?",
+                (latest,),
+            ).fetchall()
+            prev_items = [
+                {"industry_code": str(r[0] or ""), "net_inflow": float(r[1] or 0.0)}
+                for r in prev_rows
+                if r and r[0]
+            ]
+            if prev_items and _industry_flow_signature(prev_items) == _industry_flow_signature(items):
+                effective_date = latest
+                # Clean up previously cached holiday rows (if any) to prevent duplicates.
+                conn.execute("DELETE FROM market_cn_industry_fund_flow_daily WHERE date = ?", (req_date,))
+                conn.commit()
+                for it in items:
+                    it["date"] = effective_date
+                message = f"Market closed on {req_date}. Reused latest trading day snapshot: {effective_date}."
 
     # Upsert snapshot rows
     with _connect() as conn:
@@ -2102,12 +2386,16 @@ def market_cn_industry_fund_flow_sync(
 
     return MarketCnIndustryFundFlowSyncResponse(
         ok=True,
-        asOfDate=as_of.strftime("%Y-%m-%d"),
+        asOfDate=effective_date,
         days=days,
         rowsUpserted=len(items),
         histRowsUpserted=hist_rows_upserted,
         histFailures=hist_failures,
-        message=None if hist_failures == 0 else f"Hist backfill partial: {hist_failures} industries failed.",
+        message=(
+            message
+            if message
+            else (None if hist_failures == 0 else f"Hist backfill partial: {hist_failures} industries failed.")
+        ),
     )
 
 
@@ -2200,6 +2488,228 @@ def market_cn_industry_fund_flow(
     )
 
 
+def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
+    """
+    Compute CN A-share breadth & sentiment (simplified MVP) for the given date (YYYY-MM-DD).
+    """
+    ts = now_iso()
+    as_of = d
+    dt = datetime.strptime(d, "%Y-%m-%d").date()
+    raw: dict[str, Any] = {}
+    errors: list[str] = []
+    # 1) Breadth
+    up = 0
+    down = 0
+    flat = 0
+    ratio = 0.0
+    try:
+        breadth = fetch_cn_market_breadth_eod(dt)
+        raw["breadth"] = breadth
+        up = int(breadth.get("up_count") or 0)
+        down = int(breadth.get("down_count") or 0)
+        flat = int(breadth.get("flat_count") or 0)
+        ratio = float(breadth.get("up_down_ratio") or 0.0)
+    except Exception as e:
+        errors.append(f"breadth_failed: {e}")
+        raw["breadthError"] = str(e)
+    # 2) Yesterday limit-up premium
+    premium = 0.0
+    try:
+        premium_obj = fetch_cn_yesterday_limitup_premium(dt)
+        raw["yesterdayLimitUpPremium"] = premium_obj
+        premium = float(premium_obj.get("premium") or 0.0)
+    except Exception as e:
+        errors.append(f"yesterday_limitup_premium_failed: {e}")
+        raw["yesterdayLimitUpPremiumError"] = str(e)
+    # 3) Failed limit-up rate
+    failed_rate = 0.0
+    try:
+        failed_obj = fetch_cn_failed_limitup_rate(dt)
+        raw["failedLimitUpRate"] = failed_obj
+        failed_rate = float(failed_obj.get("failed_rate") or 0.0)
+    except Exception as e:
+        errors.append(f"failed_limitup_rate_failed: {e}")
+        raw["failedLimitUpRateError"] = str(e)
+
+    # Risk rules (MVP)
+    rules: list[str] = []
+    risk_mode = "normal"
+    if premium < 0.0 and failed_rate > 30.0:
+        risk_mode = "no_new_positions"
+        rules.append("premium<0 && failedLimitUpRate>30 => no_new_positions")
+    elif premium < 0.0 or failed_rate > 30.0:
+        risk_mode = "caution"
+        rules.append("premium<0 or failedLimitUpRate>30 => caution")
+    if errors:
+        # If any part failed, mark as caution so users don't blindly trust it.
+        if risk_mode == "normal":
+            risk_mode = "caution"
+        rules.extend(errors[:3])
+
+    return {
+        "date": d,
+        "asOfDate": as_of,
+        "up": up,
+        "down": down,
+        "flat": flat,
+        "ratio": ratio,
+        "premium": premium,
+        "failedRate": failed_rate,
+        "riskMode": risk_mode,
+        "rules": rules,
+        "updatedAt": ts,
+        "raw": raw,
+    }
+
+
+@app.post("/market/cn/sentiment/sync", response_model=MarketCnSentimentResponse)
+def market_cn_sentiment_sync(req: MarketCnSentimentSyncRequest) -> MarketCnSentimentResponse:
+    d = (req.date or "").strip() or _today_cn_date_str()
+    # DB-first: return cached if exists and not forced.
+    if not req.force:
+        cached = _list_cn_sentiment_days(as_of_date=d, days=1)
+        if cached and str(cached[-1].get("date") or "") == d:
+            return MarketCnSentimentResponse(asOfDate=d, days=1, items=[MarketCnSentimentRow(**cached[-1])])
+
+    try:
+        out = _compute_cn_sentiment_for_date(d)
+    except Exception as e:
+        # Best-effort: still upsert a row with errors so UI can show what happened.
+        out = {
+            "date": d,
+            "asOfDate": d,
+            "up": 0,
+            "down": 0,
+            "flat": 0,
+            "ratio": 0.0,
+            "premium": 0.0,
+            "failedRate": 0.0,
+            "riskMode": "caution",
+            "rules": [f"compute_failed: {e}"],
+            "updatedAt": now_iso(),
+            "raw": {"error": str(e)},
+        }
+
+    raw0 = out.get("raw")
+    raw_dict: dict[str, Any] = raw0 if isinstance(raw0, dict) else {}
+    _upsert_cn_sentiment_daily(
+        date=d,
+        as_of_date=str(out["asOfDate"]),
+        up=int(out["up"]),
+        down=int(out["down"]),
+        flat=int(out["flat"]),
+        up_down_ratio=float(out["ratio"]),
+        premium=float(out["premium"]),
+        failed_rate=float(out["failedRate"]),
+        risk_mode=str(out["riskMode"]),
+        rules=[str(x) for x in (out.get("rules") or [])],
+        updated_at=str(out["updatedAt"]),
+        raw=raw_dict,
+    )
+    items = _list_cn_sentiment_days(as_of_date=d, days=1)
+    return MarketCnSentimentResponse(asOfDate=d, days=1, items=[MarketCnSentimentRow(**items[-1])] if items else [])
+
+
+@app.get("/market/cn/sentiment", response_model=MarketCnSentimentResponse)
+def market_cn_sentiment(days: int = 10, asOfDate: str | None = None) -> MarketCnSentimentResponse:
+    d = (asOfDate or "").strip() or _today_cn_date_str()
+    items = _list_cn_sentiment_days(as_of_date=d, days=days)
+    return MarketCnSentimentResponse(asOfDate=d, days=max(1, min(int(days), 30)), items=[MarketCnSentimentRow(**x) for x in items])
+
+
+def _upsert_cn_sentiment_daily(
+    *,
+    date: str,
+    as_of_date: str,
+    up: int,
+    down: int,
+    flat: int,
+    up_down_ratio: float,
+    premium: float,
+    failed_rate: float,
+    risk_mode: str,
+    rules: list[str],
+    updated_at: str,
+    raw: dict[str, Any],
+) -> None:
+    with _connect() as conn:
+        total = max(0, int(up) + int(down) + int(flat))
+        conn.execute(
+            """
+            INSERT INTO market_cn_sentiment_daily(
+              date, as_of_date, up_count, down_count, flat_count, total_count,
+              up_down_ratio, yesterday_limitup_premium, failed_limitup_rate,
+              risk_mode, rules_json, updated_at, raw_json
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date) DO UPDATE SET
+              as_of_date = excluded.as_of_date,
+              up_count = excluded.up_count,
+              down_count = excluded.down_count,
+              flat_count = excluded.flat_count,
+              total_count = excluded.total_count,
+              up_down_ratio = excluded.up_down_ratio,
+              yesterday_limitup_premium = excluded.yesterday_limitup_premium,
+              failed_limitup_rate = excluded.failed_limitup_rate,
+              risk_mode = excluded.risk_mode,
+              rules_json = excluded.rules_json,
+              updated_at = excluded.updated_at,
+              raw_json = excluded.raw_json
+            """,
+            (
+                date,
+                as_of_date,
+                int(up),
+                int(down),
+                int(flat),
+                int(total),
+                float(up_down_ratio),
+                float(premium),
+                float(failed_rate),
+                str(risk_mode),
+                json.dumps(rules or [], ensure_ascii=False),
+                updated_at,
+                json.dumps(raw or {}, ensure_ascii=False, default=str),
+            ),
+        )
+        conn.commit()
+
+
+def _list_cn_sentiment_days(*, as_of_date: str, days: int) -> list[dict[str, Any]]:
+    days2 = max(1, min(int(days), 30))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT date, up_count, down_count, flat_count, total_count,
+                   up_down_ratio, yesterday_limitup_premium, failed_limitup_rate,
+                   risk_mode, rules_json, updated_at
+            FROM market_cn_sentiment_daily
+            WHERE date <= ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (as_of_date, days2),
+        ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "date": str(r[0]),
+                "upCount": int(r[1] or 0),
+                "downCount": int(r[2] or 0),
+                "flatCount": int(r[3] or 0),
+                "totalCount": int(r[4] or 0),
+                "upDownRatio": float(r[5] or 0.0),
+                "yesterdayLimitUpPremium": float(r[6] or 0.0),
+                "failedLimitUpRate": float(r[7] or 0.0),
+                "riskMode": str(r[8] or "normal"),
+                "rules": json.loads(str(r[9]) or "[]") if r[9] else [],
+                "updatedAt": str(r[10] or ""),
+            }
+        )
+    return list(reversed(out))
+
+
 def _market_cn_industry_fund_flow_top_by_date(
     *, as_of_date: str, days: int = 10, top_k: int = 5
 ) -> dict[str, Any]:
@@ -2264,6 +2774,196 @@ def _market_cn_industry_fund_flow_top_by_date(
         "matrix": matrix,
         "topByDate": top_by_date,
     }
+
+
+def _upsert_leader_stocks(*, date: str, items: list[dict[str, Any]], ts: str) -> list[str]:
+    """
+    Upsert leaders for a date. Returns inserted/updated ids.
+    """
+    ids: list[str] = []
+    with _connect() as conn:
+        for it in items:
+            rid = str(it.get("id") or uuid.uuid4())
+            conn.execute(
+                """
+                INSERT INTO leader_stocks(
+                  id, date, symbol, market, ticker, name,
+                  entry_price, score, reason,
+                  why_bullets_json, expected_duration_days, buy_zone_json, triggers_json, invalidation, target_price_json, probability,
+                  source_signals_json, risk_points_json, created_at
+                )
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date, symbol) DO UPDATE SET
+                  id = excluded.id,
+                  market = excluded.market,
+                  ticker = excluded.ticker,
+                  name = excluded.name,
+                  entry_price = excluded.entry_price,
+                  score = excluded.score,
+                  reason = excluded.reason,
+                  why_bullets_json = excluded.why_bullets_json,
+                  expected_duration_days = excluded.expected_duration_days,
+                  buy_zone_json = excluded.buy_zone_json,
+                  triggers_json = excluded.triggers_json,
+                  invalidation = excluded.invalidation,
+                  target_price_json = excluded.target_price_json,
+                  probability = excluded.probability,
+                  source_signals_json = excluded.source_signals_json,
+                  risk_points_json = excluded.risk_points_json,
+                  created_at = excluded.created_at
+                """,
+                (
+                    rid,
+                    date,
+                    str(it.get("symbol") or ""),
+                    str(it.get("market") or ""),
+                    str(it.get("ticker") or ""),
+                    str(it.get("name") or ""),
+                    it.get("entryPrice"),
+                    it.get("score"),
+                    str(it.get("reason") or ""),
+                    json.dumps(it.get("whyBullets") or [], ensure_ascii=False),
+                    int(it.get("expectedDurationDays") or 0) or None,
+                    json.dumps(it.get("buyZone") or {}, ensure_ascii=False),
+                    json.dumps(it.get("triggers") or [], ensure_ascii=False),
+                    str(it.get("invalidation") or "") or None,
+                    json.dumps(it.get("targetPrice") or {}, ensure_ascii=False),
+                    int(it.get("probability") or 0) or None,
+                    json.dumps(it.get("sourceSignals") or {}, ensure_ascii=False),
+                    json.dumps(it.get("risks") or it.get("riskPoints") or [], ensure_ascii=False),
+                    ts,
+                ),
+            )
+            ids.append(rid)
+        conn.commit()
+    return ids
+
+
+def _list_leader_stocks(*, days: int = 10) -> tuple[list[str], list[dict[str, Any]]]:
+    days2 = max(1, min(int(days), 30))
+    with _connect() as conn:
+        date_rows = conn.execute(
+            """
+            SELECT DISTINCT date
+            FROM leader_stocks
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (days2,),
+        ).fetchall()
+        dates_desc = [str(r[0]) for r in date_rows if r and r[0]]
+        dates = list(reversed(dates_desc))
+        if not dates:
+            return ([], [])
+        placeholders = ",".join(["?"] * len(dates))
+        rows = conn.execute(
+            f"""
+            SELECT id, date, symbol, market, ticker, name, entry_price, score, reason,
+                   why_bullets_json, expected_duration_days, buy_zone_json, triggers_json, invalidation, target_price_json, probability,
+                   source_signals_json, risk_points_json, created_at
+            FROM leader_stocks
+            WHERE date IN ({placeholders})
+            ORDER BY date DESC, score DESC
+            """,
+            tuple(dates),
+        ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "id": str(r[0]),
+                "date": str(r[1]),
+                "symbol": str(r[2]),
+                "market": str(r[3]),
+                "ticker": str(r[4]),
+                "name": str(r[5]),
+                "entryPrice": float(r[6]) if r[6] is not None else None,
+                "score": float(r[7]) if r[7] is not None else None,
+                "reason": str(r[8] or ""),
+                "whyBullets": json.loads(str(r[9]) or "[]") if r[9] else [],
+                "expectedDurationDays": int(r[10]) if r[10] is not None else None,
+                "buyZone": json.loads(str(r[11]) or "{}") if r[11] else {},
+                "triggers": json.loads(str(r[12]) or "[]") if r[12] else [],
+                "invalidation": str(r[13] or "") or None,
+                "targetPrice": json.loads(str(r[14]) or "{}") if r[14] else {},
+                "probability": int(r[15]) if r[15] is not None else None,
+                "sourceSignals": json.loads(str(r[16]) or "{}") if r[16] else {},
+                "riskPoints": json.loads(str(r[17]) or "[]") if r[17] else [],
+                "createdAt": str(r[18]),
+            }
+        )
+    return (dates, out)
+
+
+def _prune_leader_stocks_keep_last_n_days(*, keep_days: int = 10) -> None:
+    keep2 = max(1, min(int(keep_days), 60))
+    with _connect() as conn:
+        date_rows = conn.execute(
+            """
+            SELECT DISTINCT date
+            FROM leader_stocks
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (keep2,),
+        ).fetchall()
+        keep_dates = [str(r[0]) for r in date_rows if r and r[0]]
+        if not keep_dates:
+            return
+        placeholders = ",".join(["?"] * len(keep_dates))
+        conn.execute(
+            f"DELETE FROM leader_stocks WHERE date NOT IN ({placeholders})",
+            tuple(keep_dates),
+        )
+        conn.commit()
+
+
+def _entry_close_for_date(symbol: str, date_str: str) -> float | None:
+    """
+    Prefer close on the exact date; if unavailable (e.g., intraday / holiday / data delay),
+    fall back to the latest available close on or before the date.
+    """
+    bars = _load_cached_bars(symbol, days=180)
+    if not bars:
+        try:
+            bars = market_stock_bars(symbol, days=180, force=True).bars
+        except Exception:
+            bars = []
+    best_close: float | None = None
+    best_date: str = ""
+    for b in bars:
+        d = str(b.get("date") or "")
+        if not d or d > date_str:
+            continue
+        v = _safe_float(b.get("close"))
+        if v <= 0:
+            continue
+        if d == date_str:
+            return v
+        if d > best_date:
+            best_date = d
+            best_close = v
+    return best_close
+
+
+def _bars_series_since(symbol: str, start_date: str, *, limit: int = 60) -> list[dict[str, Any]]:
+    bars = _load_cached_bars(symbol, days=180)
+    if not bars:
+        try:
+            bars = market_stock_bars(symbol, days=180).bars
+        except Exception:
+            bars = []
+    out: list[dict[str, Any]] = []
+    for b in bars:
+        d = str(b.get("date") or "")
+        if not d:
+            continue
+        if d < start_date:
+            continue
+        out.append({"date": d, "close": _safe_float(b.get("close"))})
+    out.sort(key=lambda x: str(x.get("date") or ""))
+    lim = max(1, int(limit))
+    return out[-lim:]
 
 
 def _get_tv_screener_row(screener_id: str) -> dict[str, Any] | None:
@@ -3367,6 +4067,19 @@ def _list_enabled_tv_screeners(*, limit: int = 6) -> list[dict[str, Any]]:
         return out
 
 
+def _tv_latest_snapshot_meta(screener_id: str) -> dict[str, Any] | None:
+    snap = _latest_tv_snapshot_for_screener(screener_id)
+    if snap is None:
+        return None
+    return {
+        "snapshotId": snap.id,
+        "capturedAt": snap.capturedAt,
+        "rowCount": snap.rowCount,
+        "filtersCount": len(snap.filters or []),
+        "filters": snap.filters or [],
+    }
+
+
 def _pick_tv_columns(headers: list[str]) -> list[str]:
     preferred = [
         "Ticker",
@@ -3678,6 +4391,46 @@ def _ai_strategy_candidates(*, payload: dict[str, Any]) -> dict[str, Any]:
         raise
 
 
+def _ai_leader_daily(*, payload: dict[str, Any]) -> dict[str, Any]:
+    url = f"{_ai_service_base_url()}/leader/daily"
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+    def _do() -> dict[str, Any]:
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                raw = resp.read().decode("utf-8")
+                return json.loads(raw)
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                err_body = ""
+            raise OSError(
+                f"ai-service HTTP {getattr(e, 'code', '?')} {getattr(e, 'reason', '')} while calling {url}: {err_body}"
+            ) from e
+        except http.client.RemoteDisconnected as e:
+            raise OSError(f"ai-service disconnected while calling {url}: {e}") from e
+        except urllib.error.URLError as e:
+            raise OSError(f"ai-service URL error while calling {url}: {e}") from e
+        except TimeoutError as e:
+            raise OSError(f"ai-service timeout while calling {url}: {e}") from e
+
+    try:
+        return _do()
+    except OSError as e:
+        msg = str(e)
+        if ("disconnected" in msg) or ("Connection reset" in msg) or ("timeout" in msg):
+            time.sleep(0.25)
+            return _do()
+        raise
+
+
 def _ai_strategy_daily_markdown(*, payload: dict[str, Any]) -> dict[str, Any]:
     url = f"{_ai_service_base_url()}/strategy/daily-markdown"
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -3880,7 +4633,87 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         except Exception as e:
             industry_flow_error = str(e)
 
+    # Leader stocks context: last 10 trading days leaders (DB-first), compact summary.
+    leader_ctx: dict[str, Any] = {}
+    if req.includeLeaders:
+        try:
+            leader_dates, leader_rows = _list_leader_stocks(days=10)
+            latest_date = leader_dates[-1] if leader_dates else ""
+
+            # Strategy context requirement:
+            # - Include leaders from recent days (not only today)
+            # - Cap to max 10 entries to control token size
+            # - Prefer latest record per symbol (dedup by symbol)
+            picked: list[dict[str, Any]] = []
+            seen_leader_sym: set[str] = set()
+            for r in leader_rows:
+                sym = _norm_str(r.get("symbol") or "")
+                if not sym or sym in seen_leader_sym:
+                    continue
+                seen_leader_sym.add(sym)
+                picked.append(r)
+                if len(picked) >= 10:
+                    break
+
+            leaders_out: list[dict[str, Any]] = []
+            for r in picked:
+                sym = _norm_str(r.get("symbol") or "")
+                if not sym:
+                    continue
+                bars_resp = market_stock_bars(sym, days=60, force=True)
+                bars = bars_resp.bars
+                last_bar = bars[-1] if bars else {}
+                chips_items: list[dict[str, str]] = []
+                fund_flow_items: list[dict[str, str]] = []
+                try:
+                    chips_items = market_stock_chips(sym, days=30, force=True).items
+                except Exception:
+                    chips_items = []
+                try:
+                    fund_flow_items = market_stock_fund_flow(sym, days=30, force=True).items
+                except Exception:
+                    fund_flow_items = []
+                chips_last = chips_items[-1] if chips_items else {}
+                ff_last = fund_flow_items[-1] if fund_flow_items else {}
+                entry = r.get("entryPrice")
+                now_close = _safe_float(last_bar.get("close")) if isinstance(last_bar, dict) else None
+                pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
+                leaders_out.append(
+                    {
+                        "date": _norm_str(r.get("date") or ""),
+                        "symbol": sym,
+                        "ticker": _norm_str(r.get("ticker") or ""),
+                        "name": _norm_str(r.get("name") or ""),
+                        "score": r.get("score"),
+                        "reason": _norm_str(r.get("reason") or ""),
+                        "entryPrice": entry,
+                        "nowClose": float(now_close) if now_close is not None else None,
+                        "pctSinceEntry": float(pct) if pct is not None else None,
+                        "current": {
+                            "barDate": _norm_str(last_bar.get("date") if isinstance(last_bar, dict) else ""),
+                            "close": last_bar.get("close") if isinstance(last_bar, dict) else None,
+                            "volume": last_bar.get("volume") if isinstance(last_bar, dict) else None,
+                            "amount": last_bar.get("amount") if isinstance(last_bar, dict) else None,
+                        },
+                        "chipsSummary": _chips_summary_last(chips_last),
+                        "fundFlowBreakdown": _fund_flow_breakdown_last(ff_last),
+                        "barsTail": bars[-6:] if bars else [],
+                    }
+                )
+
+            leader_ctx = {"days": 10, "dates": leader_dates, "latestDate": latest_date, "leaders": leaders_out}
+        except Exception as e:
+            leader_ctx = {"days": 10, "dates": [], "leaders": [], "error": str(e)}
+
     # Stage 1: candidate selection WITHOUT per-stock deep context.
+    sentiment_ctx: dict[str, Any] = {}
+    if req.includeMarketSentiment:
+        try:
+            items = _list_cn_sentiment_days(as_of_date=d, days=5)
+            latest = items[-1] if items else {}
+            sentiment_ctx = {"asOfDate": d, "days": 5, "latest": latest, "items": items}
+        except Exception as e:
+            sentiment_ctx = {"asOfDate": d, "days": 5, "error": str(e), "items": []}
     base_snapshot: dict[str, Any] = {
         "date": d,
         "account": {
@@ -3895,6 +4728,8 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow
         else {"dailyTopInflow": industry_flow_daily, "error": industry_flow_error},
+        "marketSentiment": {} if not req.includeMarketSentiment else sentiment_ctx,
+        "leaderStocks": {} if not req.includeLeaders else leader_ctx,
         # Provide an explicit universe so stage 1 doesn't need to parse TV rows.
         "candidateUniverse": pool,
         # Stage 1 explicitly excludes deep context.
@@ -3957,29 +4792,35 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
             currency = _norm_str(meta.get("currency") or ("HKD" if market == "HK" else "CNY"))
             name = _norm_str(meta.get("name") or "")
 
-            bars = _load_cached_bars(sym, days=60)
+            bars_cached = _load_cached_bars(sym, days=60)
+            bars = bars_cached
             bars_error: str | None = None
-            if not bars:
-                try:
-                    bars_resp = market_stock_bars(sym, days=60)
-                    bars = bars_resp.bars
-                except Exception as e:
-                    bars = []
-                    bars_error = str(e)
+            bars_forced = True
+            try:
+                bars_resp = market_stock_bars(sym, days=60, force=True)
+                bars = bars_resp.bars
+            except Exception as e:
+                # Fallback to cached bars if force refresh fails (AkShare may be flaky).
+                bars = bars_cached
+                bars_error = str(e)
             feats = _bars_features(bars)
 
-            chips = _load_cached_chips(sym, days=30)
-            fund_flow = _load_cached_fund_flow(sym, days=30)
-            if not chips:
-                try:
-                    chips = market_stock_chips(sym, days=30).items
-                except Exception:
-                    chips = []
-            if not fund_flow:
-                try:
-                    fund_flow = market_stock_fund_flow(sym, days=30).items
-                except Exception:
-                    fund_flow = []
+            chips_cached = _load_cached_chips(sym, days=30)
+            fund_flow_cached = _load_cached_fund_flow(sym, days=30)
+            chips = chips_cached
+            fund_flow = fund_flow_cached
+            chips_error: str | None = None
+            fund_flow_error: str | None = None
+            try:
+                chips = market_stock_chips(sym, days=30, force=True).items
+            except Exception as e:
+                chips = chips_cached
+                chips_error = str(e)
+            try:
+                fund_flow = market_stock_fund_flow(sym, days=30, force=True).items
+            except Exception as e:
+                fund_flow = fund_flow_cached
+                fund_flow_error = str(e)
 
             bars_tail = bars[-6:] if bars else []
             chips_tail = chips[-3:] if chips else []
@@ -3996,10 +4837,14 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                     "currency": currency,
                     "deep": True,
                     "availability": {
-                        "barsCached": True if bars else False,
-                        "chipsCached": True if chips else False,
-                        "fundFlowCached": True if fund_flow else False,
+                        "forced": True,
+                        "barsCached": True if bars_cached else False,
+                        "chipsCached": True if chips_cached else False,
+                        "fundFlowCached": True if fund_flow_cached else False,
+                        "barsForced": bars_forced,
                         "barsError": bars_error,
+                        "chipsError": chips_error,
+                        "fundFlowError": fund_flow_error,
                     },
                     "features": feats,
                     # Deep context guarantees:
@@ -4026,6 +4871,8 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow
         else {"dailyTopInflow": industry_flow_daily, "error": industry_flow_error},
+        "marketSentiment": {} if not req.includeMarketSentiment else sentiment_ctx,
+        "leaderStocks": {} if not req.includeLeaders else leader_ctx,
         "candidateUniverse": pool,
         "stage1": {"candidates": stage1_candidates[:5], "leader": stage1_leader, "error": stage1_error},
         "selectedSymbols": selected_syms,
@@ -4080,6 +4927,729 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         model=model,
         output=output,
         input_snapshot=input_snapshot,
+    )
+
+
+@app.post("/leader/daily", response_model=LeaderDailyResponse)
+def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyResponse:
+    d = (req.date or "").strip() or _today_cn_date_str()
+    ts = now_iso()
+
+    # If already generated for this date and not forced, return existing.
+    if not req.force:
+        dates, rows = _list_leader_stocks(days=10)
+        existing = [r for r in rows if str(r.get("date") or "") == d]
+        if existing:
+            leaders_out: list[LeaderPick] = []
+            for r in existing:
+                series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)
+                now_close = series[-1]["close"] if series else None
+                entry = r.get("entryPrice")
+                pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
+                src0 = r.get("sourceSignals")
+                src = src0 if isinstance(src0, dict) else {}
+                why0 = r.get("whyBullets")
+                why = [str(x) for x in (why0 or [])] if isinstance(why0, list) else []
+                bz0 = r.get("buyZone")
+                bz = bz0 if isinstance(bz0, dict) else {}
+                trg0 = r.get("triggers")
+                trg = trg0 if isinstance(trg0, list) else []
+                tp0 = r.get("targetPrice")
+                tp = tp0 if isinstance(tp0, dict) else {}
+                risks0 = r.get("riskPoints")
+                risks = [str(x) for x in (risks0 or [])] if isinstance(risks0, list) else []
+                leaders_out.append(
+                    LeaderPick(
+                        id=str(r["id"]),
+                        date=str(r["date"]),
+                        symbol=str(r["symbol"]),
+                        market=str(r["market"]),
+                        ticker=str(r["ticker"]),
+                        name=str(r["name"]),
+                        entryPrice=r.get("entryPrice"),
+                        score=r.get("score"),
+                        reason=str(r.get("reason") or ""),
+                        whyBullets=why,
+                        expectedDurationDays=r.get("expectedDurationDays"),
+                        buyZone=bz,
+                        triggers=trg,
+                        invalidation=r.get("invalidation"),
+                        targetPrice=tp,
+                        probability=r.get("probability"),
+                        risks=risks,
+                        sourceSignals=src,
+                        riskPoints=[str(x) for x in (r.get("riskPoints") or []) if str(x)],
+                        createdAt=str(r.get("createdAt") or ""),
+                        nowClose=float(now_close) if now_close is not None else None,
+                        pctSinceEntry=float(pct) if pct is not None else None,
+                        series=series,
+                    )
+                )
+            return LeaderDailyResponse(date=d, leaders=leaders_out, debug=None)
+
+    # Build TradingView latest snapshots (enabled screeners).
+    snaps: list[TvScreenerSnapshotDetail] = []
+    tv_screeners_selected = _list_enabled_tv_screeners(limit=6)
+    for sc in tv_screeners_selected:
+        sid = _norm_str(sc.get("id") or "")
+        if not sid:
+            continue
+        s = _latest_tv_snapshot_for_screener(sid)
+        if s is not None:
+            snaps.append(s)
+    tv_latest = [_tv_snapshot_brief(s.id, max_rows=20) for s in snaps]
+
+    # Candidate universe from latest snapshots.
+    pool: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for s in snaps:
+        for c in _extract_tv_candidates(s):
+            sym = c["symbol"]
+            if sym in seen:
+                continue
+            seen.add(sym)
+            pool.append(c)
+            if len(pool) >= max(1, min(int(req.maxCandidates), 50)):
+                break
+        if len(pool) >= max(1, min(int(req.maxCandidates), 50)):
+            break
+
+    # Industry flow matrix (names only).
+    industry_daily = _market_cn_industry_fund_flow_top_by_date(as_of_date=d, days=10, top_k=5)
+
+    # Leader history (last 10 trading days).
+    _, hist_rows = _list_leader_stocks(days=10)
+    leader_history = [
+        {"date": str(r.get("date") or ""), "symbol": str(r.get("symbol") or ""), "score": r.get("score")}
+        for r in hist_rows
+    ]
+
+    # Market per-stock summaries (compact) for candidate universe.
+    market_ctx: list[dict[str, Any]] = []
+    for c in pool[: max(1, min(int(req.maxCandidates), 20))]:
+        sym = c["symbol"]
+        _ensure_market_stock_basic(
+            symbol=sym,
+            market=c["market"],
+            ticker=c["ticker"],
+            name=c.get("name") or c["ticker"],
+            currency=c["currency"],
+        )
+        bars_cached = _load_cached_bars(sym, days=60)
+        bars = bars_cached
+        try:
+            bars = market_stock_bars(sym, days=60, force=True).bars
+        except Exception:
+            bars = bars_cached
+        feats = _bars_features(bars)
+        chips_cached = _load_cached_chips(sym, days=30)
+        chips = chips_cached
+        try:
+            chips = market_stock_chips(sym, days=30, force=True).items
+        except Exception:
+            chips = chips_cached
+        ff_cached = _load_cached_fund_flow(sym, days=30)
+        ff = ff_cached
+        try:
+            ff = market_stock_fund_flow(sym, days=30, force=True).items
+        except Exception:
+            ff = ff_cached
+        chips_tail = chips[-3:] if chips else []
+        ff_tail = ff[-5:] if ff else []
+        market_ctx.append(
+            {
+                "symbol": sym,
+                "ticker": c["ticker"],
+                "name": c.get("name") or "",
+                "features": feats,
+                "barsTail": (bars[-6:] if bars else []),
+                "chipsSummary": _chips_summary_last(chips_tail[-1] if chips_tail else {}),
+                "fundFlowBreakdown": _fund_flow_breakdown_last(ff_tail[-1] if ff_tail else {}),
+            }
+        )
+
+    context = {
+        "date": d,
+        "tradingView": {"latest": tv_latest},
+        "industryFundFlow": {"dailyTopInflow": industry_daily},
+        "candidateUniverse": pool,
+        "market": market_ctx,
+        "leaderHistory": leader_history,
+    }
+    stage_req = {"date": d, "context": context}
+    stage_resp: dict[str, Any] = {}
+    try:
+        stage_resp = _ai_leader_daily(payload=stage_req)
+    except OSError as e:
+        stage_resp = {"date": d, "leaders": [], "error": str(e)}
+
+    leaders_in = stage_resp.get("leaders")
+    leaders_list: list[Any] = leaders_in if isinstance(leaders_in, list) else []
+    picks: list[dict[str, Any]] = []
+    for it in leaders_list[:2]:
+        if not isinstance(it, dict):
+            continue
+        sym = _norm_str(it.get("symbol") or "")
+        if not sym:
+            continue
+        # Ensure chosen symbol is within today universe.
+        if sym not in seen:
+            continue
+        entry = _entry_close_for_date(sym, d)
+        meta = next((x for x in pool if x.get("symbol") == sym), None) or {}
+        picks.append(
+            {
+                "id": str(uuid.uuid4()),
+                "symbol": sym,
+                "market": _norm_str(it.get("market") or meta.get("market") or ""),
+                "ticker": _norm_str(it.get("ticker") or meta.get("ticker") or ""),
+                "name": _norm_str(it.get("name") or meta.get("name") or ""),
+                "entryPrice": entry,
+                "score": _safe_float(it.get("score")),
+                "reason": _norm_str(it.get("reason") or ""),
+                "whyBullets": it.get("whyBullets") if isinstance(it.get("whyBullets"), list) else [],
+                "expectedDurationDays": int(it.get("expectedDurationDays") or 0) or None,
+                "buyZone": it.get("buyZone") if isinstance(it.get("buyZone"), dict) else {},
+                "triggers": it.get("triggers") if isinstance(it.get("triggers"), list) else [],
+                "invalidation": _norm_str(it.get("invalidation") or "") or None,
+                "targetPrice": it.get("targetPrice") if isinstance(it.get("targetPrice"), dict) else {},
+                "probability": int(it.get("probability") or 0) or None,
+                "sourceSignals": it.get("sourceSignals") if isinstance(it.get("sourceSignals"), dict) else {},
+                "risks": it.get("risks") if isinstance(it.get("risks"), list) else [],
+                "riskPoints": it.get("riskPoints") if isinstance(it.get("riskPoints"), list) else [],
+            }
+        )
+
+    _upsert_leader_stocks(date=d, items=picks, ts=ts)
+    _prune_leader_stocks_keep_last_n_days(keep_days=10)
+
+    # Build response with computed series.
+    _, saved_rows = _list_leader_stocks(days=10)
+    today_rows = [r for r in saved_rows if str(r.get("date") or "") == d]
+    out: list[LeaderPick] = []
+    for r in today_rows:
+        series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)
+        now_close = series[-1]["close"] if series else None
+        entry = r.get("entryPrice")
+        pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
+        src0 = r.get("sourceSignals")
+        src = src0 if isinstance(src0, dict) else {}
+        why0 = r.get("whyBullets")
+        why = [str(x) for x in (why0 or [])] if isinstance(why0, list) else []
+        bz0 = r.get("buyZone")
+        bz = bz0 if isinstance(bz0, dict) else {}
+        trg0 = r.get("triggers")
+        trg = trg0 if isinstance(trg0, list) else []
+        tp0 = r.get("targetPrice")
+        tp = tp0 if isinstance(tp0, dict) else {}
+        risks0 = r.get("riskPoints")
+        risks = [str(x) for x in (risks0 or [])] if isinstance(risks0, list) else []
+        out.append(
+            LeaderPick(
+                id=str(r["id"]),
+                date=str(r["date"]),
+                symbol=str(r["symbol"]),
+                market=str(r["market"]),
+                ticker=str(r["ticker"]),
+                name=str(r["name"]),
+                entryPrice=r.get("entryPrice"),
+                score=r.get("score"),
+                reason=str(r.get("reason") or ""),
+                whyBullets=why,
+                expectedDurationDays=r.get("expectedDurationDays"),
+                buyZone=bz,
+                triggers=trg,
+                invalidation=r.get("invalidation"),
+                targetPrice=tp,
+                probability=r.get("probability"),
+                risks=risks,
+                sourceSignals=src,
+                riskPoints=[str(x) for x in (r.get("riskPoints") or []) if str(x)],
+                createdAt=str(r.get("createdAt") or ""),
+                nowClose=float(now_close) if now_close is not None else None,
+                pctSinceEntry=float(pct) if pct is not None else None,
+                series=series,
+            )
+        )
+
+    return LeaderDailyResponse(date=d, leaders=out, debug={"request": stage_req, "response": stage_resp})
+
+
+@app.get("/leader", response_model=LeaderListResponse)
+def list_leader_stocks(days: int = 10, force: bool = False) -> LeaderListResponse:
+    dates, rows = _list_leader_stocks(days=days)
+    # Optional: refresh latest market data for leader symbols so historical leaders' perf is up-to-date.
+    # This can be expensive, so it is opt-in (used by UI refresh / chat reference).
+    if force:
+        # Deduplicate symbols and cap to keep the call cost bounded.
+        syms: list[str] = []
+        seen: set[str] = set()
+        for r in rows:
+            sym = _norm_str(r.get("symbol") or "")
+            if not sym or sym in seen:
+                continue
+            seen.add(sym)
+            syms.append(sym)
+            if len(syms) >= 12:
+                break
+        for sym in syms:
+            try:
+                market_stock_bars(sym, days=60, force=True)
+            except Exception:
+                pass
+
+    out: list[LeaderPick] = []
+    for r in rows:
+        series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)
+        now_close = series[-1]["close"] if series else None
+        entry = r.get("entryPrice")
+        pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
+        src0 = r.get("sourceSignals")
+        src = src0 if isinstance(src0, dict) else {}
+        why0 = r.get("whyBullets")
+        why = [str(x) for x in (why0 or [])] if isinstance(why0, list) else []
+        bz0 = r.get("buyZone")
+        bz = bz0 if isinstance(bz0, dict) else {}
+        trg0 = r.get("triggers")
+        trg = trg0 if isinstance(trg0, list) else []
+        tp0 = r.get("targetPrice")
+        tp = tp0 if isinstance(tp0, dict) else {}
+        risks0 = r.get("riskPoints")
+        risks = [str(x) for x in (risks0 or [])] if isinstance(risks0, list) else []
+        out.append(
+            LeaderPick(
+                id=str(r["id"]),
+                date=str(r["date"]),
+                symbol=str(r["symbol"]),
+                market=str(r["market"]),
+                ticker=str(r["ticker"]),
+                name=str(r["name"]),
+                entryPrice=r.get("entryPrice"),
+                score=r.get("score"),
+                reason=str(r.get("reason") or ""),
+                whyBullets=why,
+                expectedDurationDays=r.get("expectedDurationDays"),
+                buyZone=bz,
+                triggers=trg,
+                invalidation=r.get("invalidation"),
+                targetPrice=tp,
+                probability=r.get("probability"),
+                risks=risks,
+                sourceSignals=src,
+                riskPoints=[str(x) for x in (r.get("riskPoints") or []) if str(x)],
+                createdAt=str(r.get("createdAt") or ""),
+                nowClose=float(now_close) if now_close is not None else None,
+                pctSinceEntry=float(pct) if pct is not None else None,
+                series=series,
+            )
+        )
+    return LeaderListResponse(days=max(1, min(int(days), 30)), dates=dates, leaders=out)
+
+
+@app.post("/dashboard/sync", response_model=DashboardSyncResponse)
+def dashboard_sync(req: DashboardSyncRequest) -> DashboardSyncResponse:
+    started_at = now_iso()
+    t0 = time.perf_counter()
+    steps: list[DashboardSyncStep] = []
+
+    def step(name: str, fn) -> dict[str, Any]:
+        st = time.perf_counter()
+        ok = True
+        msg: str | None = None
+        meta: dict[str, Any] = {}
+        try:
+            out = fn()
+            if isinstance(out, dict):
+                meta = out
+        except HTTPException as e:
+            ok = False
+            msg = str(e.detail)
+        except Exception as e:
+            ok = False
+            msg = str(e)
+        dur = int((time.perf_counter() - st) * 1000)
+        steps.append(DashboardSyncStep(name=name, ok=ok, durationMs=dur, message=msg, meta=meta))
+        return {"ok": ok, "message": msg, "meta": meta}
+
+    # 1) Market sync (always refresh spot+quotes).
+    def _sync_market() -> dict[str, Any]:
+        resp = market_sync()
+        body = bytes(resp.body).decode("utf-8", errors="replace") if hasattr(resp, "body") else ""
+        try:
+            j = json.loads(body) if body else {}
+        except Exception:
+            j = {}
+        return {"response": j}
+
+    step("market", _sync_market)
+
+    # 2) Industry fund flow sync (force).
+    def _sync_industry() -> dict[str, Any]:
+        d = _today_cn_date_str()
+        out = market_cn_industry_fund_flow_sync(MarketCnIndustryFundFlowSyncRequest(date=d, days=10, topN=10, force=True))
+        return {"asOfDate": out.asOfDate, "rowsUpserted": out.rowsUpserted, "histRowsUpserted": out.histRowsUpserted, "message": out.message}
+
+    step("industryFundFlow", _sync_industry)
+
+    # 3) Market sentiment (force).
+    def _sync_sentiment() -> dict[str, Any]:
+        d = _today_cn_date_str()
+        out = market_cn_sentiment_sync(MarketCnSentimentSyncRequest(date=d, force=True))
+        last = out.items[-1].model_dump() if out.items else {}
+        return {"asOfDate": out.asOfDate, "riskMode": str(last.get("riskMode") or ""), "premium": last.get("yesterdayLimitUpPremium"), "failedRate": last.get("failedLimitUpRate")}
+
+    step("marketSentiment", _sync_sentiment)
+
+    # 4) TradingView screeners (sync all enabled).
+    screener_items: list[DashboardScreenerSyncItem] = []
+    enabled = _list_enabled_tv_screeners(limit=50)
+    for sc in enabled:
+        sid = _norm_str(sc.get("id") or "")
+        name = _norm_str(sc.get("name") or sid)
+        if not sid:
+            continue
+        st = time.perf_counter()
+        ok = True
+        err: str | None = None
+        captured_at: str | None = None
+        row_count = 0
+        filters_count = 0
+        try:
+            res = sync_tv_screener(sid)
+            captured_at = res.capturedAt
+            row_count = int(res.rowCount)
+            meta = _tv_latest_snapshot_meta(sid) or {}
+            filters_count = int(meta.get("filtersCount") or 0)
+        except HTTPException as e:
+            ok = False
+            err = str(e.detail)
+        except Exception as e:
+            ok = False
+            err = str(e)
+        _dur = int((time.perf_counter() - st) * 1000)
+        screener_items.append(
+            DashboardScreenerSyncItem(
+                id=sid,
+                name=name,
+                ok=ok,
+                rowCount=row_count,
+                capturedAt=captured_at,
+                filtersCount=filters_count,
+                error=err,
+            )
+        )
+        # Attach per-screener details into the main step meta (aggregated later).
+        _ = _dur
+
+    failed = [it for it in screener_items if not it.ok]
+    synced_count = len([it for it in screener_items if it.ok])
+
+    # Coverage/missing check: ensure each enabled screener has a latest snapshot.
+    missing: list[dict[str, str]] = []
+    for sc in enabled:
+        sid = _norm_str(sc.get("id") or "")
+        name = _norm_str(sc.get("name") or sid)
+        if not sid:
+            continue
+        meta2 = _tv_latest_snapshot_meta(sid)
+        if meta2 is None:
+            missing.append({"id": sid, "name": name, "reason": "No snapshots found"})
+            continue
+        if int(meta2.get("rowCount") or 0) <= 0:
+            missing.append({"id": sid, "name": name, "reason": "RowCount=0 (grid not captured)"})
+
+    # Record as a step for UI consistency.
+    steps.append(
+        DashboardSyncStep(
+            name="screeners",
+            ok=(len(failed) == 0 and len(missing) == 0),
+            durationMs=0,
+            message=None if (len(failed) == 0 and len(missing) == 0) else "Some screeners failed or missing",
+            meta={
+                "enabledCount": len(enabled),
+                "syncedCount": synced_count,
+                "failed": [it.model_dump() for it in failed],
+                "missing": missing,
+            },
+        )
+    )
+
+    finished_at = now_iso()
+    ok_all = all(s.ok for s in steps)
+    _total_ms = int((time.perf_counter() - t0) * 1000)
+    # Ensure last step shows total duration if needed.
+    if steps:
+        steps[-1].durationMs = steps[-1].durationMs or _total_ms
+
+    return DashboardSyncResponse(
+        ok=ok_all,
+        startedAt=started_at,
+        finishedAt=finished_at,
+        steps=steps,
+        screener=DashboardScreenerSyncStatus(
+            enabledCount=len(enabled),
+            syncedCount=synced_count,
+            failed=[DashboardScreenerSyncItem(**it.model_dump()) for it in failed],
+            missing=missing,
+            items=screener_items,
+        ),
+    )
+
+
+@app.get("/dashboard/summary", response_model=DashboardSummaryResponse)
+def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
+    as_of = _today_cn_date_str()
+    # Accounts (pingan) + selected.
+    accs = list_broker_accounts(broker="pingan")
+    accounts_out = [
+        DashboardAccountItem(
+            id=a.id,
+            broker=a.broker,
+            title=a.title,
+            accountMasked=a.accountMasked,
+            updatedAt=a.updatedAt,
+        )
+        for a in accs
+    ]
+    selected_id = (accountId or "").strip() or (accounts_out[0].id if accounts_out else None)
+
+    # Account state summary + holdings.
+    state_sum: DashboardAccountStateSummary | None = None
+    holdings_out: list[DashboardHoldingRow] = []
+    if selected_id:
+        st = _get_account_state_row(selected_id)
+        if st and isinstance(st, dict):
+            ov_raw = st.get("overview")
+            ov: dict[str, Any] = ov_raw if isinstance(ov_raw, dict) else {}
+            pos_raw = st.get("positions")
+            positions: list[Any] = pos_raw if isinstance(pos_raw, list) else []
+            orders_raw = st.get("conditionalOrders")
+            orders: list[Any] = orders_raw if isinstance(orders_raw, list) else []
+            trades_raw = st.get("trades")
+            trades: list[Any] = trades_raw if isinstance(trades_raw, list) else []
+            # Parse total assets for weight% calculation.
+            total_assets_raw = ov.get("totalAssets") or ov.get("总资产") or ""
+            total_assets_num = _safe_float(str(total_assets_raw).replace(",", "")) if total_assets_raw else 0.0
+            state_sum = DashboardAccountStateSummary(
+                accountId=selected_id,
+                broker=str(st.get("broker") or "pingan"),
+                updatedAt=str(st.get("updatedAt") or ""),
+                cashAvailable=str(ov.get("cashAvailable") or ov.get("现金可用") or "") or None,
+                totalAssets=str(ov.get("totalAssets") or ov.get("总资产") or "") or None,
+                positionsCount=len(positions),
+                conditionalOrdersCount=len(orders),
+                tradesCount=len(trades),
+            )
+            for p in positions[:12]:
+                if not isinstance(p, dict):
+                    continue
+                ticker_raw = (
+                    p.get("ticker")
+                    or p.get("Ticker")
+                    or p.get("symbol")
+                    or p.get("Symbol")
+                    or p.get("code")
+                    or p.get("Code")
+                    or p.get("证券代码")
+                    or p.get("股票代码")
+                    or ""
+                )
+                ticker_s = _norm_str(ticker_raw or "")
+                sym: str | None = None
+                if ":" in ticker_s:
+                    sym = ticker_s
+                    ticker_s = ticker_s.split(":")[-1].strip()
+                if ticker_s and sym is None:
+                    mkt = "HK" if len(ticker_s) in (4, 5) else "CN"
+                    sym = f"{mkt}:{ticker_s}"
+                price_raw = p.get("price") or p.get("Price") or p.get("现价") or p.get("最新价") or ""
+                cost_raw = p.get("cost") or p.get("Cost") or p.get("成本") or p.get("成本价") or ""
+                qty_raw = p.get("qtyHeld") or p.get("qty") or p.get("Qty") or p.get("数量") or ""
+                pnl_raw = p.get("pnl") or p.get("PnL") or p.get("盈亏") or p.get("浮动盈亏") or ""
+                market_value_raw = (
+                    p.get("marketValue")
+                    or p.get("MarketValue")
+                    or p.get("value")
+                    or p.get("Value")
+                    or p.get("市值")
+                    or p.get("持仓市值")
+                    or ""
+                )
+
+                price_num = _safe_float(str(price_raw).replace(",", "")) if price_raw else 0.0
+                cost_num = _safe_float(str(cost_raw).replace(",", "")) if cost_raw else 0.0
+                qty_num = _safe_float(str(qty_raw).replace(",", "")) if qty_raw else 0.0
+                mv_num = _safe_float(str(market_value_raw).replace(",", "")) if market_value_raw else 0.0
+                if mv_num <= 0.0 and price_num > 0.0 and qty_num > 0.0:
+                    mv_num = price_num * qty_num
+                weight_pct = (mv_num / total_assets_num * 100.0) if (mv_num > 0.0 and total_assets_num > 0.0) else None
+
+                pnl_amount: float | None = None
+                pnl_num = _safe_float(str(pnl_raw).replace(",", "")) if pnl_raw else 0.0
+                if pnl_raw and pnl_num != 0.0:
+                    pnl_amount = pnl_num
+                elif price_num > 0.0 and cost_num > 0.0 and qty_num > 0.0:
+                    pnl_amount = (price_num - cost_num) * qty_num
+                holdings_out.append(
+                    DashboardHoldingRow(
+                        ticker=ticker_s,
+                        symbol=sym,
+                        name=_norm_str(p.get("name") or p.get("Name") or "") or None,
+                        price=(price_num if price_num > 0.0 else None),
+                        weightPct=weight_pct,
+                        pnlAmount=pnl_amount,
+                        qty=_norm_str(qty_raw) or None,
+                        cost=_norm_str(cost_raw) or None,
+                        pnl=_norm_str(pnl_raw) or None,
+                        pnlPct=_norm_str(p.get("pnlPct") or p.get("PnLPct") or "") or None,
+                    )
+                )
+
+    # Market status (counts + last sync).
+    ms = market_status()
+    market_status_out: dict[str, Any] = {
+        "stocks": ms.stocks,
+        "lastSyncAt": ms.lastSyncAt,
+    }
+
+    # Industry flow matrix (Top5×Date names only). No sync here; dashboard sync button is the source of truth.
+    industry_daily = _market_cn_industry_fund_flow_top_by_date(as_of_date=as_of, days=5, top_k=5)
+    # Industry flow (5D numeric): Top industries sorted by 5D sum, include daily net inflow series.
+    industry_flow_5d: dict[str, Any] = {}
+    try:
+        ff = market_cn_industry_fund_flow(days=5, topN=30, asOfDate=as_of)
+        rows_sorted = sorted((ff.top or []), key=lambda r: r.sum10d, reverse=True)[:10]
+        industry_flow_5d = {
+            "asOfDate": ff.asOfDate,
+            "days": ff.days,
+            "topN": 10,
+            "dates": ff.dates,
+            "top": [
+                {
+                    "industryCode": r.industryCode,
+                    "industryName": r.industryName,
+                    "sum5d": r.sum10d,
+                    "netInflow": r.netInflow,
+                    "series": [{"date": p.date, "netInflow": p.netInflow} for p in (r.series10d or [])],
+                }
+                for r in rows_sorted
+            ],
+        }
+    except Exception:
+        industry_flow_5d = {}
+
+    # Market sentiment (last 5 days). No sync here; dashboard sync button is the source of truth.
+    market_sentiment: dict[str, Any] = {}
+    try:
+        items = _list_cn_sentiment_days(as_of_date=as_of, days=5)
+        market_sentiment = {
+            "asOfDate": as_of,
+            "days": 5,
+            "items": items,
+        }
+    except Exception:
+        market_sentiment = {}
+
+    # Leaders summary: show latest leaders with forced latest market info (<=2), plus history list.
+    leaders_summary = DashboardLeadersSummary(latestDate=None, latest=[], history=[])
+    try:
+        leader_dates, leader_rows = _list_leader_stocks(days=10)
+        latest_date = leader_dates[-1] if leader_dates else None
+        leaders_summary.latestDate = latest_date
+        # History (compact)
+        leaders_summary.history = [
+            {
+                "date": _norm_str(r.get("date") or ""),
+                "symbol": _norm_str(r.get("symbol") or ""),
+                "ticker": _norm_str(r.get("ticker") or ""),
+                "name": _norm_str(r.get("name") or ""),
+                "score": r.get("score"),
+            }
+            for r in leader_rows[:20]
+            if isinstance(r, dict)
+        ]
+        # Latest deep summary (force)
+        if latest_date:
+            latest_rows = [r for r in leader_rows if _norm_str(r.get("date") or "") == latest_date][:2]
+            latest_out: list[dict[str, Any]] = []
+            for r in latest_rows:
+                sym = _norm_str(r.get("symbol") or "")
+                if not sym:
+                    continue
+                bars_resp = market_stock_bars(sym, days=60, force=True)
+                last_bar = (bars_resp.bars or [])[-1] if bars_resp.bars else {}
+                chips_last: dict[str, str] = {}
+                ff_last: dict[str, str] = {}
+                try:
+                    chips_items = market_stock_chips(sym, days=30, force=True).items
+                    chips_last = chips_items[-1] if chips_items else {}
+                except Exception:
+                    chips_last = {}
+                try:
+                    ff_items = market_stock_fund_flow(sym, days=30, force=True).items
+                    ff_last = ff_items[-1] if ff_items else {}
+                except Exception:
+                    ff_last = {}
+                latest_out.append(
+                    {
+                        "date": latest_date,
+                        "symbol": sym,
+                        "ticker": _norm_str(r.get("ticker") or ""),
+                        "name": _norm_str(r.get("name") or ""),
+                        "score": r.get("score"),
+                        "reason": _norm_str(r.get("reason") or ""),
+                        "whyBullets": r.get("whyBullets") if isinstance(r.get("whyBullets"), list) else [],
+                        "expectedDurationDays": r.get("expectedDurationDays"),
+                        "buyZone": r.get("buyZone") if isinstance(r.get("buyZone"), dict) else {},
+                        "triggers": r.get("triggers") if isinstance(r.get("triggers"), list) else [],
+                        "invalidation": _norm_str(r.get("invalidation") or "") or None,
+                        "targetPrice": r.get("targetPrice") if isinstance(r.get("targetPrice"), dict) else {},
+                        "probability": r.get("probability"),
+                        "risks": r.get("riskPoints") if isinstance(r.get("riskPoints"), list) else [],
+                        "current": {
+                            "barDate": _norm_str(last_bar.get("date") if isinstance(last_bar, dict) else ""),
+                            "close": last_bar.get("close") if isinstance(last_bar, dict) else None,
+                            "volume": last_bar.get("volume") if isinstance(last_bar, dict) else None,
+                            "amount": last_bar.get("amount") if isinstance(last_bar, dict) else None,
+                        },
+                        "chipsSummary": _chips_summary_last(chips_last),
+                        "fundFlowBreakdown": _fund_flow_breakdown_last(ff_last),
+                    }
+                )
+            leaders_summary.latest = latest_out
+    except Exception:
+        pass
+
+    # Screeners status: enabled screeners + latest snapshot meta.
+    screeners = _list_enabled_tv_screeners(limit=50)
+    screener_rows: list[DashboardScreenerStatusRow] = []
+    for sc in screeners:
+        sid = _norm_str(sc.get("id") or "")
+        name = _norm_str(sc.get("name") or sid)
+        meta = _tv_latest_snapshot_meta(sid) or {}
+        screener_rows.append(
+            DashboardScreenerStatusRow(
+                id=sid,
+                name=name,
+                enabled=bool(sc.get("enabled")),
+                updatedAt=_norm_str(sc.get("updatedAt") or "") or None,
+                capturedAt=_norm_str(meta.get("capturedAt") or "") or None,
+                rowCount=int(meta.get("rowCount") or 0),
+                filtersCount=int(meta.get("filtersCount") or 0),
+            )
+        )
+
+    return DashboardSummaryResponse(
+        asOfDate=as_of,
+        accounts=accounts_out,
+        selectedAccountId=selected_id,
+        accountState=state_sum,
+        holdings=holdings_out,
+        marketStatus=market_status_out,
+        industryFundFlow={**industry_daily, "flow5d": industry_flow_5d},
+        marketSentiment=market_sentiment,
+        leaders=leaders_summary,
+        screeners=screener_rows,
     )
 
 
