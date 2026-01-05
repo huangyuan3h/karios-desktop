@@ -4639,9 +4639,24 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         try:
             leader_dates, leader_rows = _list_leader_stocks(days=10)
             latest_date = leader_dates[-1] if leader_dates else ""
-            latest_rows = [r for r in leader_rows if _norm_str(r.get("date") or "") == latest_date][:2]
-            latest_out: list[dict[str, Any]] = []
-            for r in latest_rows:
+
+            # Strategy context requirement:
+            # - Include leaders from recent days (not only today)
+            # - Cap to max 10 entries to control token size
+            # - Prefer latest record per symbol (dedup by symbol)
+            picked: list[dict[str, Any]] = []
+            seen_leader_sym: set[str] = set()
+            for r in leader_rows:
+                sym = _norm_str(r.get("symbol") or "")
+                if not sym or sym in seen_leader_sym:
+                    continue
+                seen_leader_sym.add(sym)
+                picked.append(r)
+                if len(picked) >= 10:
+                    break
+
+            leaders_out: list[dict[str, Any]] = []
+            for r in picked:
                 sym = _norm_str(r.get("symbol") or "")
                 if not sym:
                     continue
@@ -4663,9 +4678,9 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                 entry = r.get("entryPrice")
                 now_close = _safe_float(last_bar.get("close")) if isinstance(last_bar, dict) else None
                 pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
-                latest_out.append(
+                leaders_out.append(
                     {
-                        "date": latest_date,
+                        "date": _norm_str(r.get("date") or ""),
                         "symbol": sym,
                         "ticker": _norm_str(r.get("ticker") or ""),
                         "name": _norm_str(r.get("name") or ""),
@@ -4686,29 +4701,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                     }
                 )
 
-            history_out: list[dict[str, Any]] = []
-            for r in leader_rows[:20]:
-                sym = _norm_str(r.get("symbol") or "")
-                d0 = _norm_str(r.get("date") or "")
-                entry = r.get("entryPrice")
-                history_out.append(
-                    {
-                        "date": d0,
-                        "symbol": sym,
-                        "ticker": _norm_str(r.get("ticker") or ""),
-                        "name": _norm_str(r.get("name") or ""),
-                        "score": r.get("score"),
-                        "reason": _norm_str(r.get("reason") or ""),
-                        "entryPrice": entry,
-                    }
-                )
-            leader_ctx = {
-                "days": 10,
-                "dates": leader_dates,
-                "latestDate": latest_date,
-                "latestLeaders": latest_out,
-                "history": history_out,
-            }
+            leader_ctx = {"days": 10, "dates": leader_dates, "latestDate": latest_date, "leaders": leaders_out}
         except Exception as e:
             leader_ctx = {"days": 10, "dates": [], "leaders": [], "error": str(e)}
 
@@ -5183,8 +5176,28 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
 
 
 @app.get("/leader", response_model=LeaderListResponse)
-def list_leader_stocks(days: int = 10) -> LeaderListResponse:
+def list_leader_stocks(days: int = 10, force: bool = False) -> LeaderListResponse:
     dates, rows = _list_leader_stocks(days=days)
+    # Optional: refresh latest market data for leader symbols so historical leaders' perf is up-to-date.
+    # This can be expensive, so it is opt-in (used by UI refresh / chat reference).
+    if force:
+        # Deduplicate symbols and cap to keep the call cost bounded.
+        syms: list[str] = []
+        seen: set[str] = set()
+        for r in rows:
+            sym = _norm_str(r.get("symbol") or "")
+            if not sym or sym in seen:
+                continue
+            seen.add(sym)
+            syms.append(sym)
+            if len(syms) >= 12:
+                break
+        for sym in syms:
+            try:
+                market_stock_bars(sym, days=60, force=True)
+            except Exception:
+                pass
+
     out: list[LeaderPick] = []
     for r in rows:
         series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)

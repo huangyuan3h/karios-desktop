@@ -475,7 +475,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     if (ref.kind === 'leaderStocks') {
       try {
         const resp = await fetch(
-          `${QUANT_BASE_URL}/leader?days=${encodeURIComponent(String(ref.days))}`,
+          `${QUANT_BASE_URL}/leader?days=${encodeURIComponent(String(ref.days))}&force=true`,
           { cache: 'no-store' },
         );
         if (!resp.ok) throw new Error('failed to load leader stocks');

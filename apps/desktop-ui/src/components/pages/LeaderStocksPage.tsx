@@ -173,7 +173,8 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
   const refresh = React.useCallback(async () => {
     setError(null);
     try {
-      const r = await apiGetJson<LeaderListResponse>('/leader?days=10');
+      // Force refresh so historical leaders' perf uses the latest market data.
+      const r = await apiGetJson<LeaderListResponse>('/leader?days=10&force=true');
       setData(r);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
