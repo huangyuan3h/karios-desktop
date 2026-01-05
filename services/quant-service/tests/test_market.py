@@ -73,11 +73,7 @@ def test_market_chips_cn_only(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "test.sqlite3"
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
 
-    # Seed one CN stock.
-    client = TestClient(main.app)
-    client.post("/market/sync")  # may fail if not patched, so patch providers below
-
-    # Patch spot providers to insert CN/HK quickly.
+    # Patch spot providers to insert CN/HK quickly (avoid network/AkShare in tests).
     monkeypatch.setattr(
         main,
         "fetch_cn_a_spot",
@@ -106,6 +102,7 @@ def test_market_chips_cn_only(tmp_path, monkeypatch) -> None:
             )
         ],
     )
+    client = TestClient(main.app)
     client.post("/market/sync")
 
     # Patch chip provider.
