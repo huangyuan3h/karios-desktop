@@ -2918,6 +2918,15 @@ def _prune_leader_stocks_keep_last_n_days(*, keep_days: int = 10) -> None:
         conn.commit()
 
 
+def _delete_leader_stocks_for_date(date: str) -> None:
+    d = (date or "").strip()
+    if not d:
+        return
+    with _connect() as conn:
+        conn.execute("DELETE FROM leader_stocks WHERE date = ?", (d,))
+        conn.commit()
+
+
 def _entry_close_for_date(symbol: str, date_str: str) -> float | None:
     """
     Prefer close on the exact date; if unavailable (e.g., intraday / holiday / data delay),
@@ -5119,6 +5128,12 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                 "riskPoints": it.get("riskPoints") if isinstance(it.get("riskPoints"), list) else [],
             }
         )
+
+    # IMPORTANT: If generating again for the same date (e.g., AM/PM runs),
+    # keep at most 2 leaders per day by REPLACING the day's records.
+    # Only delete existing rows if we have new picks (avoid losing previous leaders on AI failure).
+    if req.force and picks:
+        _delete_leader_stocks_for_date(d)
 
     _upsert_leader_stocks(date=d, items=picks, ts=ts)
     _prune_leader_stocks_keep_last_n_days(keep_days=10)
