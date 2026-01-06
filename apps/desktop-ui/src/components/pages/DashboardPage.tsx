@@ -17,6 +17,7 @@ import { useChatStore } from '@/lib/chat/store';
 
 type DashboardSummary = any;
 type DashboardSyncResp = any;
+type LeaderListResp = any;
 
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
@@ -77,6 +78,27 @@ function fmtAmountCn(x: unknown): string {
   return `${n.toFixed(0)}`;
 }
 
+function fmtPerfLine(r: any): string {
+  const entry = Number(r?.entryPrice);
+  const now = Number(r?.nowClose);
+  const pct = Number(r?.pctSinceEntry);
+  const entryOk = Number.isFinite(entry) ? entry.toFixed(2) : null;
+  const nowOk = Number.isFinite(now) ? now.toFixed(2) : null;
+  const pctOk = Number.isFinite(pct) ? `${(pct * 100).toFixed(2)}%` : null;
+  if (entryOk && nowOk && pctOk) return `${entryOk} → ${nowOk} (${pctOk})`;
+  if (nowOk && pctOk) return `${nowOk} (${pctOk})`;
+  if (nowOk) return nowOk;
+  return '—';
+}
+
+function fmtLeaderScore(r: any): string {
+  const live = Number(r?.liveScore);
+  if (Number.isFinite(live)) return String(Math.round(live));
+  const s = Number(r?.score);
+  if (Number.isFinite(s)) return String(Math.round(s));
+  return '—';
+}
+
 export function DashboardPage({
   onNavigate,
   onOpenStock,
@@ -86,6 +108,7 @@ export function DashboardPage({
 }) {
   const { addReference } = useChatStore();
   const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
+  const [leadersAll, setLeadersAll] = React.useState<LeaderListResp | null>(null);
   const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [sentimentBusy, setSentimentBusy] = React.useState(false);
@@ -128,6 +151,15 @@ export function DashboardPage({
         setSummary(s);
         const sel = String(s?.selectedAccountId ?? '');
         if (sel && sel !== accountId) setAccountId(sel);
+
+        // Fetch all leaders (last 10 trading days) with force refresh so perf is up-to-date.
+        // Dashboard summary only includes latest leaders; this powers the "show all" view.
+        try {
+          const ls = await apiGetJson<LeaderListResp>(`/leader?days=10&force=true`);
+          setLeadersAll(ls);
+        } catch {
+          setLeadersAll(null);
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -818,60 +850,83 @@ export function DashboardPage({
               ) : id === 'leaders' ? (
                 <div>
                   <div className="mb-2 text-xs text-[var(--k-muted)]">
-                    latestDate: {summary?.leaders?.latestDate ?? '—'}
+                    last 10 trading days • latestDate: {summary?.leaders?.latestDate ?? '—'}
                   </div>
-                  <div className="space-y-2">
-                    {(summary?.leaders?.latest ?? []).slice(0, 2).map((r: any) => (
-                      <div
-                        key={String(r.symbol)}
-                        className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <button
-                            type="button"
-                            className="font-mono text-sm text-[var(--k-accent)] hover:underline"
-                            onClick={() => onOpenStock?.(String(r.symbol))}
-                          >
-                            {String(r.ticker ?? r.symbol)}
-                          </button>
-                          <div className="text-xs text-[var(--k-muted)]">
-                            score: {String(r.score ?? '—')}
-                          </div>
+
+                  {(() => {
+                    const raw = Array.isArray(leadersAll?.leaders) ? leadersAll.leaders : [];
+                    // Consolidated view: dedupe by symbol, keep the latest record per symbol, sorted by score desc.
+                    const m = new Map<string, any>();
+                    for (const it of raw) {
+                      const key = String(it?.symbol ?? it?.ticker ?? '').trim();
+                      if (!key) continue;
+                      const prev = m.get(key);
+                      if (!prev || String(it?.date ?? '').localeCompare(String(prev?.date ?? '')) > 0) {
+                        m.set(key, it);
+                      }
+                    }
+                    const rows = Array.from(m.values()).sort((a: any, b: any) => {
+                      const sa = Number.isFinite(Number(a?.liveScore))
+                        ? Number(a.liveScore)
+                        : Number.isFinite(Number(a?.score))
+                          ? Number(a.score)
+                          : -1;
+                      const sb = Number.isFinite(Number(b?.liveScore))
+                        ? Number(b.liveScore)
+                        : Number.isFinite(Number(b?.score))
+                          ? Number(b.score)
+                          : -1;
+                      if (sb !== sa) return sb - sa;
+                      return String(b?.date ?? '').localeCompare(String(a?.date ?? ''));
+                    });
+
+                    if (!rows.length) {
+                      return (
+                        <div className="text-sm text-[var(--k-muted)]">
+                          No leaders yet. Generate in Leaders tab.
                         </div>
-                        <div className="mt-1 text-xs text-[var(--k-muted)]">
-                          {String(r.name ?? '')}
-                        </div>
-                        {Array.isArray(r.whyBullets) && r.whyBullets.length ? (
-                          <ul className="mt-2 list-disc pl-4 text-xs text-[var(--k-muted)]">
-                            {r.whyBullets.slice(0, 2).map((x: any, idx: number) => (
-                              <li key={idx}>{String(x)}</li>
+                      );
+                    }
+
+                    return (
+                      <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                        <table className="w-full border-collapse text-xs">
+                          <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                            <tr className="text-left">
+                              <th className="px-2 py-2">Ticker</th>
+                              <th className="px-2 py-2">Name</th>
+                              <th className="px-2 py-2 text-right">Live score</th>
+                              <th className="px-2 py-2 text-right">Last date</th>
+                              <th className="px-2 py-2 text-right">Perf</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.slice(0, 24).map((r: any) => (
+                              <tr key={String(r?.symbol ?? r?.ticker)} className="border-t border-[var(--k-border)]">
+                                <td className="px-2 py-2 font-mono">
+                                  <button
+                                    type="button"
+                                    className="text-[var(--k-accent)] hover:underline"
+                                    onClick={() => onOpenStock?.(String(r?.symbol ?? ''))}
+                                  >
+                                    {String(r?.ticker ?? r?.symbol ?? '')}
+                                  </button>
+                                </td>
+                                <td className="px-2 py-2">{String(r?.name ?? '')}</td>
+                                <td className="px-2 py-2 text-right font-mono">{fmtLeaderScore(r)}</td>
+                                <td className="px-2 py-2 text-right font-mono">{String(r?.date ?? '—')}</td>
+                                <td className="px-2 py-2 text-right font-mono">{fmtPerfLine(r)}</td>
+                              </tr>
                             ))}
-                          </ul>
-                        ) : (
-                          <div className="mt-2 text-xs text-[var(--k-muted)]">
-                            {String(r.reason ?? '')}
-                          </div>
-                        )}
-                        <div className="mt-2 text-xs text-[var(--k-muted)]">
-                          buy={String(r.buyZone?.low ?? '—')}-{String(r.buyZone?.high ?? '—')} •
-                          target=
-                          {String(r.targetPrice?.primary ?? '—')} • dur=
-                          {String(r.expectedDurationDays ?? '—')}d • p=
-                          {Number.isFinite(Number(r.probability))
-                            ? `${Math.max(1, Math.min(5, Math.round(Number(r.probability)))) * 20}%`
-                            : '—'}
-                        </div>
-                        <div className="mt-2 text-xs text-[var(--k-muted)]">
-                          close={String(r.current?.close ?? '—')} vol=
-                          {String(r.current?.volume ?? '—')}
-                        </div>
+                          </tbody>
+                        </table>
                       </div>
-                    ))}
-                    {!(summary?.leaders?.latest ?? []).length ? (
-                      <div className="text-sm text-[var(--k-muted)]">
-                        No leaders yet. Generate in Leaders tab.
-                      </div>
-                    ) : null}
+                    );
+                  })()}
+
+                  <div className="mt-2 text-xs text-[var(--k-muted)]">
+                    Live score is a deterministic “investability” score computed from the latest market data (bars /
+                    chips / fund-flow). It refreshes on force refresh and is intended for cross-day comparison.
                   </div>
                   <div className="mt-3 flex items-center gap-2">
                     <Button size="sm" variant="secondary" onClick={() => onNavigate?.('leaders')}>

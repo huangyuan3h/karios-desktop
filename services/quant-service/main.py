@@ -365,6 +365,16 @@ def _connect() -> sqlite3.Connection:
         )
         """,
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS leader_stock_scores (
+          symbol TEXT PRIMARY KEY,
+          live_score REAL NOT NULL,
+          breakdown_json TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+        """,
+    )
     # Backward-compatible migration: add missing columns for existing DBs.
     try:
         cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(leader_stocks)").fetchall()}
@@ -1491,6 +1501,8 @@ class LeaderPick(BaseModel):
     name: str
     entryPrice: float | None = None
     score: float | None = None
+    liveScore: float | None = None
+    liveScoreUpdatedAt: str | None = None
     reason: str
     whyBullets: list[str] = []
     expectedDurationDays: int | None = None
@@ -2925,6 +2937,207 @@ def _delete_leader_stocks_for_date(date: str) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM leader_stocks WHERE date = ?", (d,))
         conn.commit()
+
+
+def _get_leader_live_scores(symbols: list[str]) -> dict[str, dict[str, Any]]:
+    syms = [str(s).strip() for s in symbols if str(s).strip()]
+    if not syms:
+        return {}
+    placeholders = ",".join(["?"] * len(syms))
+    with _connect() as conn:
+        rows = conn.execute(
+            f"SELECT symbol, live_score, breakdown_json, updated_at FROM leader_stock_scores WHERE symbol IN ({placeholders})",
+            tuple(syms),
+        ).fetchall()
+    out: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        sym = str(r[0] or "")
+        try:
+            breakdown = json.loads(str(r[2]) or "{}")
+        except Exception:
+            breakdown = {}
+        out[sym] = {"liveScore": float(r[1]) if r[1] is not None else None, "updatedAt": str(r[3] or "")}
+        if isinstance(breakdown, dict):
+            out[sym]["breakdown"] = breakdown
+    return out
+
+
+def _upsert_leader_live_score(*, symbol: str, live_score: float, breakdown: dict[str, Any], ts: str) -> None:
+    sym = (symbol or "").strip()
+    if not sym:
+        return
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO leader_stock_scores(symbol, live_score, breakdown_json, updated_at)
+            VALUES(?, ?, ?, ?)
+            ON CONFLICT(symbol) DO UPDATE SET
+              live_score = excluded.live_score,
+              breakdown_json = excluded.breakdown_json,
+              updated_at = excluded.updated_at
+            """,
+            (sym, float(live_score), json.dumps(breakdown or {}, ensure_ascii=False), ts),
+        )
+        conn.commit()
+
+
+def _compute_leader_live_score(
+    *,
+    market: str,
+    feats: dict[str, Any],
+    chips_summary: dict[str, Any] | None,
+    ff_breakdown: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """
+    Deterministic "investability" score at current time.
+    - Range: 0..100
+    - Intended for cross-day comparison better than LLM daily scores.
+    """
+    last_close = _safe_float(feats.get("lastClose"))
+    sma5 = _safe_float(feats.get("sma5"))
+    sma10 = _safe_float(feats.get("sma10"))
+    sma20 = _safe_float(feats.get("sma20"))
+    high10 = _safe_float(feats.get("high10"))
+
+    # Trend (0-40)
+    trend = 0.0
+    if sma20 > 0 and last_close > sma20:
+        trend += 20.0
+    elif last_close > 0:
+        trend += 8.0
+    if sma5 > 0 and sma10 > 0 and sma20 > 0 and (sma5 >= sma10 >= sma20):
+        trend += 10.0
+    if high10 > 0 and last_close >= high10 * 0.98:
+        trend += 10.0
+    trend = max(0.0, min(40.0, trend))
+
+    # Flow (0-30) - CN only (HK gets neutral flow).
+    flow = 0.0
+    if market == "CN" and isinstance(ff_breakdown, dict):
+        main_ratio = _safe_float(ff_breakdown.get("mainNetRatio"))
+        super_ratio = _safe_float(ff_breakdown.get("superNetRatio"))
+        large_ratio = _safe_float(ff_breakdown.get("largeNetRatio"))
+        change_pct = _safe_float(ff_breakdown.get("changePct"))
+        if main_ratio > 2:
+            flow += 18.0
+        elif main_ratio > 0:
+            flow += 12.0
+        else:
+            flow += 4.0
+        if (super_ratio + large_ratio) > 1.0:
+            flow += 7.0
+        elif (super_ratio + large_ratio) > 0.0:
+            flow += 4.0
+        if change_pct > 0:
+            flow += 5.0
+    else:
+        flow += 12.0
+    flow = max(0.0, min(30.0, flow))
+
+    # Structure (0-20) - CN only (HK gets neutral structure).
+    structure = 0.0
+    if market == "CN" and isinstance(chips_summary, dict):
+        pr = _safe_float(chips_summary.get("profitRatio"))
+        avg_cost = _safe_float(chips_summary.get("avgCost"))
+        conc70 = _safe_float(chips_summary.get("cost70Conc"))
+        if pr >= 0.65:
+            structure += 12.0
+        elif pr >= 0.45:
+            structure += 9.0
+        else:
+            structure += 6.0
+        if avg_cost > 0 and last_close >= avg_cost:
+            structure += 5.0
+        elif avg_cost > 0:
+            structure += 3.0
+        if conc70 >= 0.08:
+            structure += 3.0
+        else:
+            structure += 1.0
+    else:
+        structure += 10.0
+    structure = max(0.0, min(20.0, structure))
+
+    # Risk (0-10) - higher is better (lower risk).
+    risk = 10.0
+    ext = (last_close / sma20 - 1.0) if (sma20 > 0 and last_close > 0) else 0.0
+    if ext > 0.15:
+        risk -= 5.0
+    elif ext > 0.10:
+        risk -= 3.0
+    if market == "CN" and isinstance(ff_breakdown, dict):
+        main_ratio = _safe_float(ff_breakdown.get("mainNetRatio"))
+        if main_ratio < 0:
+            risk -= 3.0
+    risk = max(0.0, min(10.0, risk))
+
+    total = trend + flow + structure + risk
+    total = max(0.0, min(100.0, total))
+    return {
+        "total": round(total, 2),
+        "trend": round(trend, 2),
+        "flow": round(flow, 2),
+        "structure": round(structure, 2),
+        "risk": round(risk, 2),
+    }
+
+
+def _refresh_leader_live_scores(*, symbols: list[str], ts: str, force_refresh_market: bool = False) -> None:
+    # Refresh scores for a limited set of symbols (<= 30) to keep runtime bounded.
+    syms: list[str] = []
+    seen: set[str] = set()
+    for s in symbols:
+        sym = (s or "").strip()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        syms.append(sym)
+        if len(syms) >= 30:
+            break
+
+    for sym in syms:
+        try:
+            # Determine market quickly
+            with _connect() as conn:
+                row = conn.execute(
+                    "SELECT market, ticker FROM market_stocks WHERE symbol = ?",
+                    (sym,),
+                ).fetchone()
+            market = str(row[0]) if row and row[0] else ("HK" if sym.startswith("HK:") else "CN")
+            bars_cached = _load_cached_bars(sym, days=60)
+            bars = bars_cached
+            if force_refresh_market:
+                try:
+                    bars = market_stock_bars(sym, days=60, force=True).bars
+                except Exception:
+                    bars = bars_cached
+            feats = _bars_features(bars or [])
+
+            chips_summary: dict[str, Any] | None = None
+            ff_breakdown: dict[str, Any] | None = None
+            if market == "CN":
+                try:
+                    chips_items = market_stock_chips(sym, days=30, force=bool(force_refresh_market)).items
+                    chips_last = chips_items[-1] if chips_items else {}
+                    chips_summary = _chips_summary_last(chips_last)
+                except Exception:
+                    chips_summary = None
+                try:
+                    ff_items = market_stock_fund_flow(sym, days=30, force=bool(force_refresh_market)).items
+                    ff_last = ff_items[-1] if ff_items else {}
+                    ff_breakdown = _fund_flow_breakdown_last(ff_last)
+                except Exception:
+                    ff_breakdown = None
+
+            breakdown = _compute_leader_live_score(
+                market=market,
+                feats=feats,
+                chips_summary=chips_summary,
+                ff_breakdown=ff_breakdown,
+            )
+            _upsert_leader_live_score(symbol=sym, live_score=float(breakdown.get("total") or 0.0), breakdown=breakdown, ts=ts)
+        except Exception:
+            continue
 
 
 def _entry_close_for_date(symbol: str, date_str: str) -> float | None:
@@ -4684,6 +4897,23 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                     fund_flow_items = []
                 chips_last = chips_items[-1] if chips_items else {}
                 ff_last = fund_flow_items[-1] if fund_flow_items else {}
+                feats = _bars_features(bars or [])
+                live_breakdown = _compute_leader_live_score(
+                    market=_norm_str(r.get("market") or ""),
+                    feats=feats,
+                    chips_summary=_chips_summary_last(chips_last),
+                    ff_breakdown=_fund_flow_breakdown_last(ff_last),
+                )
+                ts2 = now_iso()
+                try:
+                    _upsert_leader_live_score(
+                        symbol=sym,
+                        live_score=float(live_breakdown.get("total") or 0.0),
+                        breakdown=live_breakdown,
+                        ts=ts2,
+                    )
+                except Exception:
+                    pass
                 entry = r.get("entryPrice")
                 now_close = _safe_float(last_bar.get("close")) if isinstance(last_bar, dict) else None
                 pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
@@ -4694,6 +4924,8 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                         "ticker": _norm_str(r.get("ticker") or ""),
                         "name": _norm_str(r.get("name") or ""),
                         "score": r.get("score"),
+                        "liveScore": live_breakdown.get("total"),
+                        "liveScoreUpdatedAt": ts2,
                         "reason": _norm_str(r.get("reason") or ""),
                         "entryPrice": entry,
                         "nowClose": float(now_close) if now_close is not None else None,
@@ -4949,12 +5181,14 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
         dates, rows = _list_leader_stocks(days=10)
         existing = [r for r in rows if str(r.get("date") or "") == d]
         if existing:
+            live_map = _get_leader_live_scores([_norm_str(r.get("symbol") or "") for r in existing if isinstance(r, dict)])
             leaders_out: list[LeaderPick] = []
             for r in existing:
                 series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)
                 now_close = series[-1]["close"] if series else None
                 entry = r.get("entryPrice")
                 pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
+                live = live_map.get(_norm_str(r.get("symbol") or ""), {})
                 src0 = r.get("sourceSignals")
                 src = src0 if isinstance(src0, dict) else {}
                 why0 = r.get("whyBullets")
@@ -4977,6 +5211,8 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                         name=str(r["name"]),
                         entryPrice=r.get("entryPrice"),
                         score=r.get("score"),
+                        liveScore=live.get("liveScore"),
+                        liveScoreUpdatedAt=str(live.get("updatedAt") or "") or None,
                         reason=str(r.get("reason") or ""),
                         whyBullets=why,
                         expectedDurationDays=r.get("expectedDurationDays"),
@@ -5138,15 +5374,25 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
     _upsert_leader_stocks(date=d, items=picks, ts=ts)
     _prune_leader_stocks_keep_last_n_days(keep_days=10)
 
+    # Refresh live score for all tracked leaders (cached-only; UI can opt-in force refresh via GET /leader?force=true).
+    try:
+        _, rows2 = _list_leader_stocks(days=10)
+        syms = [str(r.get("symbol") or "") for r in rows2 if isinstance(r, dict)]
+        _refresh_leader_live_scores(symbols=syms, ts=ts, force_refresh_market=False)
+    except Exception:
+        pass
+
     # Build response with computed series.
     _, saved_rows = _list_leader_stocks(days=10)
     today_rows = [r for r in saved_rows if str(r.get("date") or "") == d]
+    live_map_today = _get_leader_live_scores([_norm_str(r.get("symbol") or "") for r in today_rows if isinstance(r, dict)])
     out: list[LeaderPick] = []
     for r in today_rows:
         series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)
         now_close = series[-1]["close"] if series else None
         entry = r.get("entryPrice")
         pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
+        live = live_map_today.get(_norm_str(r.get("symbol") or ""), {})
         src0 = r.get("sourceSignals")
         src = src0 if isinstance(src0, dict) else {}
         why0 = r.get("whyBullets")
@@ -5169,6 +5415,8 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                 name=str(r["name"]),
                 entryPrice=r.get("entryPrice"),
                 score=r.get("score"),
+                liveScore=live.get("liveScore"),
+                liveScoreUpdatedAt=str(live.get("updatedAt") or "") or None,
                 reason=str(r.get("reason") or ""),
                 whyBullets=why,
                 expectedDurationDays=r.get("expectedDurationDays"),
@@ -5205,20 +5453,26 @@ def list_leader_stocks(days: int = 10, force: bool = False) -> LeaderListRespons
                 continue
             seen.add(sym)
             syms.append(sym)
-            if len(syms) >= 12:
+            if len(syms) >= 20:
                 break
         for sym in syms:
             try:
                 market_stock_bars(sym, days=60, force=True)
             except Exception:
                 pass
+        try:
+            _refresh_leader_live_scores(symbols=syms, ts=now_iso(), force_refresh_market=True)
+        except Exception:
+            pass
 
+    live_map = _get_leader_live_scores([_norm_str(r.get("symbol") or "") for r in rows if isinstance(r, dict)])
     out: list[LeaderPick] = []
     for r in rows:
         series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)
         now_close = series[-1]["close"] if series else None
         entry = r.get("entryPrice")
         pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
+        live = live_map.get(_norm_str(r.get("symbol") or ""), {})
         src0 = r.get("sourceSignals")
         src = src0 if isinstance(src0, dict) else {}
         why0 = r.get("whyBullets")
@@ -5241,6 +5495,8 @@ def list_leader_stocks(days: int = 10, force: bool = False) -> LeaderListRespons
                 name=str(r["name"]),
                 entryPrice=r.get("entryPrice"),
                 score=r.get("score"),
+                liveScore=live.get("liveScore"),
+                liveScoreUpdatedAt=str(live.get("updatedAt") or "") or None,
                 reason=str(r.get("reason") or ""),
                 whyBullets=why,
                 expectedDurationDays=r.get("expectedDurationDays"),
@@ -5605,6 +5861,24 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
                     ff_last = ff_items[-1] if ff_items else {}
                 except Exception:
                     ff_last = {}
+                # Compute and persist live score (deterministic, based on latest market data).
+                ts2 = now_iso()
+                try:
+                    feats = _bars_features(bars_resp.bars or [])
+                    live_breakdown = _compute_leader_live_score(
+                        market=_norm_str(r.get("market") or ""),
+                        feats=feats,
+                        chips_summary=_chips_summary_last(chips_last),
+                        ff_breakdown=_fund_flow_breakdown_last(ff_last),
+                    )
+                    _upsert_leader_live_score(
+                        symbol=sym,
+                        live_score=float(live_breakdown.get("total") or 0.0),
+                        breakdown=live_breakdown,
+                        ts=ts2,
+                    )
+                except Exception:
+                    live_breakdown = {}
                 latest_out.append(
                     {
                         "date": latest_date,
@@ -5612,6 +5886,8 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
                         "ticker": _norm_str(r.get("ticker") or ""),
                         "name": _norm_str(r.get("name") or ""),
                         "score": r.get("score"),
+                        "liveScore": live_breakdown.get("total") if isinstance(live_breakdown, dict) else None,
+                        "liveScoreUpdatedAt": ts2,
                         "reason": _norm_str(r.get("reason") or ""),
                         "whyBullets": r.get("whyBullets") if isinstance(r.get("whyBullets"), list) else [],
                         "expectedDurationDays": r.get("expectedDurationDays"),

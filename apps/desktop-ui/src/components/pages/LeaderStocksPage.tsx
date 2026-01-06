@@ -19,6 +19,8 @@ type LeaderPick = {
   name: string;
   entryPrice?: number | null;
   score?: number | null;
+  liveScore?: number | null;
+  liveScoreUpdatedAt?: string | null;
   reason: string;
   whyBullets?: string[];
   expectedDurationDays?: number | null;
@@ -65,6 +67,14 @@ function fmtPerf(r: LeaderPick) {
   if (entry && now && pct) return `${entry} → ${now} (${pct})`;
   if (now && pct) return `${now} (${pct})`;
   if (now) return now;
+  return '—';
+}
+
+function fmtLeaderScore(r: LeaderPick): string {
+  const live = Number(r.liveScore);
+  if (Number.isFinite(live)) return String(Math.round(live));
+  const s = Number(r.score);
+  if (Number.isFinite(s)) return String(Math.round(s));
   return '—';
 }
 
@@ -210,8 +220,16 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
       }
     }
     return Array.from(m.values()).sort((a, b) => {
-      const sa = Number.isFinite(a.score as number) ? (a.score as number) : -1;
-      const sb = Number.isFinite(b.score as number) ? (b.score as number) : -1;
+      const sa = Number.isFinite(a.liveScore as number)
+        ? (a.liveScore as number)
+        : Number.isFinite(a.score as number)
+          ? (a.score as number)
+          : -1;
+      const sb = Number.isFinite(b.liveScore as number)
+        ? (b.liveScore as number)
+        : Number.isFinite(b.score as number)
+          ? (b.score as number)
+          : -1;
       if (sb !== sa) return sb - sa;
       return String(b.date || '').localeCompare(String(a.date || ''));
     });
@@ -290,7 +308,9 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                 <tr>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Symbol</th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Name</th>
-                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Score</th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">
+                    Live score
+                  </th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Last date</th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Perf</th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Why</th>
@@ -313,7 +333,14 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                       </td>
                       <td className="border-b border-[var(--k-border)] px-2 py-2">{r.name}</td>
                       <td className="border-b border-[var(--k-border)] px-2 py-2 text-right">
-                        {Number.isFinite(r.score as number) ? Math.round(r.score as number) : '—'}
+                        <div className="flex flex-col items-end">
+                          <div className="font-mono">{fmtLeaderScore(r)}</div>
+                          {r.liveScoreUpdatedAt ? (
+                            <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
+                              updated: {String(r.liveScoreUpdatedAt).slice(0, 19)}
+                            </div>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="border-b border-[var(--k-border)] px-2 py-2 text-right font-mono">
                         {String(r.date || '—')}

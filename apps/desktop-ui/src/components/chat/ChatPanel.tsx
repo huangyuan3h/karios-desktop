@@ -116,6 +116,8 @@ type LeaderStocksList = {
     nowClose?: number | null;
     pctSinceEntry?: number | null;
     score?: number | null;
+    liveScore?: number | null;
+    liveScoreUpdatedAt?: string | null;
     reason?: string | null;
     whyBullets?: string[];
     expectedDurationDays?: number | null;
@@ -538,13 +540,17 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 
         const leaders = Array.isArray(ls.leaders) ? ls.leaders : [];
         if (leaders.length) {
-          out += `| Date | Ticker | Name | Score | Dur(d) | BuyZone | Target | P | Why |\n`;
+          out += `| Date | Ticker | Name | LiveScore | Dur(d) | BuyZone | Target | P | Why |\n`;
           out += `|---|---|---|---:|---:|---|---|---:|---|\n`;
           for (const r of leaders) {
             const date = String(r.date ?? '');
             const ticker = String(r.ticker ?? r.symbol ?? '');
             const name = String(r.name ?? '');
-            const score = Number.isFinite(r.score as number) ? String(Math.round(r.score as number)) : '—';
+            const liveScore = Number.isFinite(r.liveScore as number)
+              ? String(Math.round(r.liveScore as number))
+              : Number.isFinite(r.score as number)
+                ? String(Math.round(r.score as number))
+                : '—';
             const dur = Number.isFinite(r.expectedDurationDays as number) ? String(r.expectedDurationDays) : '—';
             const bz = r.buyZone ?? {};
             const bzLow = isRecord(bz) ? bz['low'] : null;
@@ -559,7 +565,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
               Array.isArray(r.whyBullets) && r.whyBullets.length
                 ? r.whyBullets.slice(0, 2).map((x) => String(x)).join(' / ')
                 : String(r.reason ?? '').replaceAll('\n', ' ');
-            out += `| ${date} | ${ticker} | ${name} | ${score} | ${dur} | ${buyZone} | ${target} | ${prob} | ${why} |\n`;
+            out += `| ${date} | ${ticker} | ${name} | ${liveScore} | ${dur} | ${buyZone} | ${target} | ${prob} | ${why} |\n`;
           }
           out += `\n`;
 
