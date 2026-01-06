@@ -5374,11 +5374,13 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
     _upsert_leader_stocks(date=d, items=picks, ts=ts)
     _prune_leader_stocks_keep_last_n_days(keep_days=10)
 
-    # Refresh live score for all tracked leaders (cached-only; UI can opt-in force refresh via GET /leader?force=true).
+    # Refresh live score for all tracked leaders.
+    # - When generating (force=true), we treat this as "refresh now" and force-refresh market data.
+    # - Otherwise, keep it cached-only to reduce cost.
     try:
         _, rows2 = _list_leader_stocks(days=10)
         syms = [str(r.get("symbol") or "") for r in rows2 if isinstance(r, dict)]
-        _refresh_leader_live_scores(symbols=syms, ts=ts, force_refresh_market=False)
+        _refresh_leader_live_scores(symbols=syms, ts=ts, force_refresh_market=bool(req.force))
     except Exception:
         pass
 
