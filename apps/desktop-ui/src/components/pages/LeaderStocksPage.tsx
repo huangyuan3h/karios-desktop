@@ -59,7 +59,9 @@ function asStringArray(v: unknown): string[] {
 }
 
 function fmtPerf(r: LeaderPick) {
-  const entry = Number.isFinite(r.entryPrice as number) ? (r.entryPrice as number).toFixed(2) : null;
+  const entry = Number.isFinite(r.entryPrice as number)
+    ? (r.entryPrice as number).toFixed(2)
+    : null;
   const now = Number.isFinite(r.nowClose as number) ? (r.nowClose as number).toFixed(2) : null;
   const pct = Number.isFinite(r.pctSinceEntry as number)
     ? `${(((r.pctSinceEntry as number) || 0) * 100).toFixed(2)}%`
@@ -109,13 +111,22 @@ function fmtProbability(p: number | null | undefined) {
   const clamped = Math.max(1, Math.min(5, Math.round(n)));
   const pct = clamped * 20;
   const label =
-    clamped === 1 ? '低' : clamped === 2 ? '偏低' : clamped === 3 ? '中等' : clamped === 4 ? '偏高' : '很高';
+    clamped === 1
+      ? '低'
+      : clamped === 2
+        ? '偏低'
+        : clamped === 3
+          ? '中等'
+          : clamped === 4
+            ? '偏高'
+            : '很高';
   return `${pct}%（${label}）`;
 }
 
 function fmtTriggerText(t: Record<string, unknown>) {
   const kind = String(t.kind ?? '');
-  const label = kind === 'breakout' ? 'Breakout' : kind === 'pullback' ? 'Pullback' : kind || 'Trigger';
+  const label =
+    kind === 'breakout' ? 'Breakout' : kind === 'pullback' ? 'Pullback' : kind || 'Trigger';
   const cond = String(t.condition ?? '').trim();
   const val = t.value;
   const tail = val != null && String(val).trim() ? ` @ ${String(val)}` : '';
@@ -131,7 +142,8 @@ function fmtPlanLine(r: LeaderPick) {
   const parts: string[] = [];
   if (bzLow != null && bzHigh != null) parts.push(`Buy:${String(bzLow)}-${String(bzHigh)}`);
   if (tpPrimary != null) parts.push(`Target:${String(tpPrimary)}`);
-  if (Number.isFinite(r.expectedDurationDays as number)) parts.push(`Dur:${String(r.expectedDurationDays)}d`);
+  if (Number.isFinite(r.expectedDurationDays as number))
+    parts.push(`Dur:${String(r.expectedDurationDays)}d`);
   if (Number.isFinite(r.probability as number)) parts.push(`P:${fmtProbability(r.probability)}`);
   return parts.length ? parts.join(' • ') : '';
 }
@@ -252,12 +264,27 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void refresh()} className="gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={busy}
+            onClick={() => void refresh()}
+            className="gap-2"
+          >
             <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
-          <Button size="sm" disabled={busy} onClick={() => void onGenerateToday()} className="gap-2">
-            {busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={() => void onGenerateToday()}
+            className="gap-2"
+          >
+            {busy ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
             {busy ? 'Generating…' : 'Generate today'}
           </Button>
           <Button
@@ -313,15 +340,27 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
             <table className="w-full border-collapse text-sm">
               <thead className="bg-[var(--k-surface)]">
                 <tr>
-                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Symbol</th>
-                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Name</th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">
+                    Symbol
+                  </th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">
+                    Name
+                  </th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">
                     Live score
                   </th>
-                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Last date</th>
-                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">Perf</th>
-                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Why</th>
-                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">Trend</th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">
+                    Last date
+                  </th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">
+                    Perf
+                  </th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">
+                    Why
+                  </th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">
+                    Trend
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -352,7 +391,9 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                       <td className="border-b border-[var(--k-border)] px-2 py-2 text-right font-mono">
                         {String(r.date || '—')}
                       </td>
-                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-right font-mono">{fmtPerf(r)}</td>
+                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-right font-mono">
+                        {fmtPerf(r)}
+                      </td>
                       <td className="border-b border-[var(--k-border)] px-2 py-2 text-[var(--k-muted)]">
                         {r.whyBullets?.length ? (
                           <div className="space-y-1">
@@ -361,7 +402,9 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                                 <li key={idx}>{x}</li>
                               ))}
                             </ul>
-                            {fmtPlanLine(r) ? <div className="text-[11px] opacity-80">{fmtPlanLine(r)}</div> : null}
+                            {fmtPlanLine(r) ? (
+                              <div className="text-[11px] opacity-80">{fmtPlanLine(r)}</div>
+                            ) : null}
                           </div>
                         ) : (
                           r.reason
@@ -374,36 +417,48 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                     <tr>
                       <td colSpan={7} className="border-b border-[var(--k-border)] px-2 py-2">
                         <details>
-                          <summary className="cursor-pointer text-xs text-[var(--k-muted)]">Details</summary>
+                          <summary className="cursor-pointer text-xs text-[var(--k-muted)]">
+                            Details
+                          </summary>
                           <div className="mt-2 grid gap-3 text-xs md:grid-cols-3">
                             <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
                               <div className="text-xs font-medium text-[var(--k-text)]">Source</div>
                               <div className="mt-2 space-y-2 text-[var(--k-muted)]">
                                 <div>
-                                  <div className="text-[11px] uppercase tracking-wide opacity-80">Industries</div>
+                                  <div className="text-[11px] uppercase tracking-wide opacity-80">
+                                    Industries
+                                  </div>
                                   <div className="mt-1 flex flex-wrap gap-1">
-                                    {isRecord(r.sourceSignals) && asStringArray(r.sourceSignals.industries).length ? (
-                                      asStringArray(r.sourceSignals.industries).slice(0, 3).map((x, idx) => (
-                                        <span
-                                          key={idx}
-                                          className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5"
-                                        >
-                                          {String(x)}
-                                        </span>
-                                      ))
+                                    {isRecord(r.sourceSignals) &&
+                                    asStringArray(r.sourceSignals.industries).length ? (
+                                      asStringArray(r.sourceSignals.industries)
+                                        .slice(0, 3)
+                                        .map((x, idx) => (
+                                          <span
+                                            key={idx}
+                                            className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5"
+                                          >
+                                            {String(x)}
+                                          </span>
+                                        ))
                                     ) : (
                                       <span>—</span>
                                     )}
                                   </div>
                                 </div>
                                 <div>
-                                  <div className="text-[11px] uppercase tracking-wide opacity-80">Screeners</div>
+                                  <div className="text-[11px] uppercase tracking-wide opacity-80">
+                                    Screeners
+                                  </div>
                                   <div className="mt-1">
-                                    {isRecord(r.sourceSignals) && asStringArray(r.sourceSignals.screeners).length ? (
+                                    {isRecord(r.sourceSignals) &&
+                                    asStringArray(r.sourceSignals.screeners).length ? (
                                       <ul className="list-disc pl-4">
-                                        {asStringArray(r.sourceSignals.screeners).slice(0, 3).map((x, idx) => (
-                                          <li key={idx}>{String(x)}</li>
-                                        ))}
+                                        {asStringArray(r.sourceSignals.screeners)
+                                          .slice(0, 3)
+                                          .map((x, idx) => (
+                                            <li key={idx}>{String(x)}</li>
+                                          ))}
                                       </ul>
                                     ) : (
                                       <span>—</span>
@@ -411,13 +466,18 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                                   </div>
                                 </div>
                                 <div>
-                                  <div className="text-[11px] uppercase tracking-wide opacity-80">Notes</div>
+                                  <div className="text-[11px] uppercase tracking-wide opacity-80">
+                                    Notes
+                                  </div>
                                   <div className="mt-1">
-                                    {isRecord(r.sourceSignals) && asStringArray(r.sourceSignals.notes).length ? (
+                                    {isRecord(r.sourceSignals) &&
+                                    asStringArray(r.sourceSignals.notes).length ? (
                                       <ul className="list-disc pl-4">
-                                        {asStringArray(r.sourceSignals.notes).slice(0, 3).map((x, idx) => (
-                                          <li key={idx}>{String(x)}</li>
-                                        ))}
+                                        {asStringArray(r.sourceSignals.notes)
+                                          .slice(0, 3)
+                                          .map((x, idx) => (
+                                            <li key={idx}>{String(x)}</li>
+                                          ))}
                                       </ul>
                                     ) : (
                                       <span>—</span>
@@ -435,13 +495,19 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                                   <div className="font-mono">
                                     {fmtPerf(r)}
                                     {fmtPerf(r) === '—' ? (
-                                      <span className="ml-2 text-[11px] opacity-70">(no bars yet; open Stock page to sync)</span>
+                                      <span className="ml-2 text-[11px] opacity-70">
+                                        (no bars yet; open Stock page to sync)
+                                      </span>
                                     ) : null}
                                   </div>
                                 </div>
                                 <div className="grid grid-cols-[96px_1fr] gap-2">
                                   <div className="opacity-80">Duration</div>
-                                  <div>{Number.isFinite(r.expectedDurationDays as number) ? `${r.expectedDurationDays} days` : '—'}</div>
+                                  <div>
+                                    {Number.isFinite(r.expectedDurationDays as number)
+                                      ? `${r.expectedDurationDays} days`
+                                      : '—'}
+                                  </div>
                                 </div>
                                 <div className="grid grid-cols-[96px_1fr] gap-2">
                                   <div className="opacity-80">Buy zone</div>
@@ -460,7 +526,9 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                                   <div>{fmtProbability(r.probability ?? null)}</div>
                                 </div>
                                 <div>
-                                  <div className="text-[11px] uppercase tracking-wide opacity-80">Triggers</div>
+                                  <div className="text-[11px] uppercase tracking-wide opacity-80">
+                                    Triggers
+                                  </div>
                                   <div className="mt-1">
                                     {Array.isArray(r.triggers) && r.triggers.length ? (
                                       <ul className="list-disc pl-4">
@@ -481,9 +549,11 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                               <div className="mt-2 text-[var(--k-muted)]">
                                 {((r.risks?.length ? r.risks : r.riskPoints) ?? []).length ? (
                                   <ul className="list-disc pl-4">
-                                    {((r.risks?.length ? r.risks : r.riskPoints) ?? []).slice(0, 6).map((x, idx) => (
-                                      <li key={idx}>{x}</li>
-                                    ))}
+                                    {((r.risks?.length ? r.risks : r.riskPoints) ?? [])
+                                      .slice(0, 6)
+                                      .map((x, idx) => (
+                                        <li key={idx}>{x}</li>
+                                      ))}
                                   </ul>
                                 ) : (
                                   <span>—</span>
@@ -508,5 +578,3 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
     </div>
   );
 }
-
-
