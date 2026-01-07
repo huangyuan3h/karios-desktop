@@ -78,6 +78,12 @@ function fmtLeaderScore(r: LeaderPick): string {
   return '—';
 }
 
+function fmtLocalDateTime(x: string): string {
+  const d = new Date(x);
+  if (Number.isNaN(d.getTime())) return x;
+  return d.toLocaleString();
+}
+
 function fmtBuyZoneText(r: LeaderPick) {
   const bz = r.buyZone ?? {};
   const low = isRecord(bz) ? bz.low : null;
@@ -338,7 +344,7 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                           <div className="font-mono">{fmtLeaderScore(r)}</div>
                           {r.liveScoreUpdatedAt ? (
                             <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
-                              updated: {String(r.liveScoreUpdatedAt).slice(0, 19)}
+                              updated: {fmtLocalDateTime(String(r.liveScoreUpdatedAt))}
                             </div>
                           ) : null}
                         </div>
