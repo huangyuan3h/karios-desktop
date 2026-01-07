@@ -181,8 +181,9 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
   const refresh = React.useCallback(async () => {
     setError(null);
     try {
-      // Force refresh so historical leaders' perf uses the latest market data.
-      const r = await apiGetJson<LeaderListResponse>('/leader?days=10&force=true');
+      // NOTE: Do NOT force refresh on page enter/refresh.
+      // Live score refresh should only happen on "Generate today" or Dashboard "Sync all".
+      const r = await apiGetJson<LeaderListResponse>('/leader?days=10&force=false');
       setData(r);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

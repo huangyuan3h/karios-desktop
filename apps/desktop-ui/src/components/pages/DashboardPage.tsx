@@ -152,10 +152,10 @@ export function DashboardPage({
         const sel = String(s?.selectedAccountId ?? '');
         if (sel && sel !== accountId) setAccountId(sel);
 
-        // Fetch all leaders (last 10 trading days) with force refresh so perf is up-to-date.
-        // Dashboard summary only includes latest leaders; this powers the "show all" view.
+        // Fetch all leaders (last 10 trading days) WITHOUT force refresh.
+        // Live score refresh should only happen on "Sync all" (after other modules are synced) or Leader "Generate today".
         try {
-          const ls = await apiGetJson<LeaderListResp>(`/leader?days=10&force=true`);
+          const ls = await apiGetJson<LeaderListResp>(`/leader?days=10&force=false`);
           setLeadersAll(ls);
         } catch {
           setLeadersAll(null);

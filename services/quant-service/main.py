@@ -4,6 +4,7 @@ import base64
 import hashlib
 import http.client
 import json
+import math
 import os
 import re
 import shutil
@@ -503,6 +504,20 @@ def put_system_prompt(req: SystemPromptRequest) -> dict[str, bool]:
 def now_iso() -> str:
     # Use ISO 8601 for cross-language compatibility.
     return datetime.now(tz=UTC).isoformat()
+
+
+def _finite_float(x: Any, default: float = 0.0) -> float:
+    """
+    Convert to float and sanitize NaN/Inf to a finite default.
+    This prevents:
+    - SQLite NOT NULL constraint failures when a provider returns NaN
+    - JSON serialization crashes (some encoders reject NaN)
+    """
+    try:
+        f = float(x)
+        return f if math.isfinite(f) else float(default)
+    except Exception:
+        return float(default)
 
 
 def _parse_data_url(data_url: str) -> tuple[str, bytes]:
@@ -2520,7 +2535,7 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
         up = int(breadth.get("up_count") or 0)
         down = int(breadth.get("down_count") or 0)
         flat = int(breadth.get("flat_count") or 0)
-        ratio = float(breadth.get("up_down_ratio") or 0.0)
+        ratio = _finite_float(breadth.get("up_down_ratio"), 0.0)
     except Exception as e:
         errors.append(f"breadth_failed: {e}")
         raw["breadthError"] = str(e)
@@ -2529,7 +2544,14 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
     try:
         premium_obj = fetch_cn_yesterday_limitup_premium(dt)
         raw["yesterdayLimitUpPremium"] = premium_obj
-        premium = float(premium_obj.get("premium") or 0.0)
+        premium_raw = premium_obj.get("premium")
+        premium = _finite_float(premium_raw, 0.0)
+        try:
+            if premium_raw is not None and not math.isfinite(float(premium_raw)):
+                errors.append("yesterday_limitup_premium_nan")
+        except Exception:
+            # ignore parse errors; _finite_float already sanitized it.
+            pass
     except Exception as e:
         errors.append(f"yesterday_limitup_premium_failed: {e}")
         raw["yesterdayLimitUpPremiumError"] = str(e)
@@ -2538,7 +2560,13 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
     try:
         failed_obj = fetch_cn_failed_limitup_rate(dt)
         raw["failedLimitUpRate"] = failed_obj
-        failed_rate = float(failed_obj.get("failed_rate") or 0.0)
+        failed_raw = failed_obj.get("failed_rate")
+        failed_rate = _finite_float(failed_raw, 0.0)
+        try:
+            if failed_raw is not None and not math.isfinite(float(failed_raw)):
+                errors.append("failed_limitup_rate_nan")
+        except Exception:
+            pass
     except Exception as e:
         errors.append(f"failed_limitup_rate_failed: {e}")
         raw["failedLimitUpRateError"] = str(e)
@@ -2604,22 +2632,57 @@ def market_cn_sentiment_sync(req: MarketCnSentimentSyncRequest) -> MarketCnSenti
 
     raw0 = out.get("raw")
     raw_dict: dict[str, Any] = raw0 if isinstance(raw0, dict) else {}
-    _upsert_cn_sentiment_daily(
-        date=d,
-        as_of_date=str(out["asOfDate"]),
-        up=int(out["up"]),
-        down=int(out["down"]),
-        flat=int(out["flat"]),
-        up_down_ratio=float(out["ratio"]),
-        premium=float(out["premium"]),
-        failed_rate=float(out["failedRate"]),
-        risk_mode=str(out["riskMode"]),
-        rules=[str(x) for x in (out.get("rules") or [])],
-        updated_at=str(out["updatedAt"]),
-        raw=raw_dict,
+    rules2 = [str(x) for x in (out.get("rules") or [])]
+    upsert_ok = False
+    try:
+        _upsert_cn_sentiment_daily(
+            date=d,
+            as_of_date=str(out["asOfDate"]),
+            up=int(out["up"]),
+            down=int(out["down"]),
+            flat=int(out["flat"]),
+            up_down_ratio=_finite_float(out.get("ratio"), 0.0),
+            premium=_finite_float(out.get("premium"), 0.0),
+            failed_rate=_finite_float(out.get("failedRate"), 0.0),
+            risk_mode=str(out["riskMode"]),
+            rules=rules2,
+            updated_at=str(out["updatedAt"]),
+            raw=raw_dict,
+        )
+        upsert_ok = True
+    except Exception as e:
+        # Never 500: return computed result and attach DB error in rules/raw for visibility.
+        rules2 = [*rules2, f"upsert_failed: {e}"]
+        raw_dict = {**raw_dict, "upsertError": str(e)}
+
+    try:
+        items = _list_cn_sentiment_days(as_of_date=d, days=1)
+        if items and upsert_ok and str(items[-1].get("date") or "") == d:
+            return MarketCnSentimentResponse(asOfDate=d, days=1, items=[MarketCnSentimentRow(**items[-1])])
+    except Exception as e:
+        rules2 = [*rules2, f"readback_failed: {e}"]
+        raw_dict = {**raw_dict, "readbackError": str(e)}
+
+    # Fallback: computed-only (not persisted).
+    return MarketCnSentimentResponse(
+        asOfDate=d,
+        days=1,
+        items=[
+            MarketCnSentimentRow(
+                date=str(out.get("date") or d),
+                upCount=int(out.get("up") or 0),
+                downCount=int(out.get("down") or 0),
+                flatCount=int(out.get("flat") or 0),
+                totalCount=int(int(out.get("up") or 0) + int(out.get("down") or 0) + int(out.get("flat") or 0)),
+                upDownRatio=_finite_float(out.get("ratio"), 0.0),
+                yesterdayLimitUpPremium=_finite_float(out.get("premium"), 0.0),
+                failedLimitUpRate=_finite_float(out.get("failedRate"), 0.0),
+                riskMode=str(out.get("riskMode") or "caution"),
+                rules=rules2,
+                updatedAt=str(out.get("updatedAt") or now_iso()),
+            )
+        ],
     )
-    items = _list_cn_sentiment_days(as_of_date=d, days=1)
-    return MarketCnSentimentResponse(asOfDate=d, days=1, items=[MarketCnSentimentRow(**items[-1])] if items else [])
 
 
 @app.get("/market/cn/sentiment", response_model=MarketCnSentimentResponse)
@@ -4904,16 +4967,9 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                     chips_summary=_chips_summary_last(chips_last),
                     ff_breakdown=_fund_flow_breakdown_last(ff_last),
                 )
+                # NOTE: Do NOT persist live score from Strategy context assembly.
+                # Live score refresh should only happen on Leader "Generate today" or Dashboard "Sync all".
                 ts2 = now_iso()
-                try:
-                    _upsert_leader_live_score(
-                        symbol=sym,
-                        live_score=float(live_breakdown.get("total") or 0.0),
-                        breakdown=live_breakdown,
-                        ts=ts2,
-                    )
-                except Exception:
-                    pass
                 entry = r.get("entryPrice")
                 now_close = _safe_float(last_bar.get("close")) if isinstance(last_bar, dict) else None
                 pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
@@ -5647,6 +5703,42 @@ def dashboard_sync(req: DashboardSyncRequest) -> DashboardSyncResponse:
         )
     )
 
+    # 5) Leaders (force refresh) - run AFTER market/industry/sentiment/screeners so leader scoring can reference latest data.
+    try:
+        st = time.perf_counter()
+        meta: dict[str, Any] = {}
+        try:
+            ls = list_leader_stocks(days=10, force=True)
+            unique_syms = {str(x.symbol) for x in (ls.leaders or []) if getattr(x, "symbol", None)}
+            meta = {
+                "days": int(ls.days),
+                "dates": len(ls.dates or []),
+                "leaders": len(ls.leaders or []),
+                "symbols": len(unique_syms),
+            }
+            steps.append(
+                DashboardSyncStep(
+                    name="leaders",
+                    ok=True,
+                    durationMs=int((time.perf_counter() - st) * 1000),
+                    message=None,
+                    meta=meta,
+                )
+            )
+        except Exception as e:
+            steps.append(
+                DashboardSyncStep(
+                    name="leaders",
+                    ok=False,
+                    durationMs=int((time.perf_counter() - st) * 1000),
+                    message=str(e),
+                    meta={},
+                )
+            )
+    except Exception:
+        # Best-effort: never fail the whole sync due to leaders.
+        pass
+
     finished_at = now_iso()
     ok_all = all(s.ok for s in steps)
     _total_ms = int((time.perf_counter() - t0) * 1000)
@@ -5823,12 +5915,14 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
     except Exception:
         market_sentiment = {}
 
-    # Leaders summary: show latest leaders with forced latest market info (<=2), plus history list.
+    # Leaders summary: show latest leaders using cached market info (<=2), plus history list.
+    # Do NOT force refresh here; Dashboard "Sync all" is the source of truth for refreshing leaders/liveScore.
     leaders_summary = DashboardLeadersSummary(latestDate=None, latest=[], history=[])
     try:
         leader_dates, leader_rows = _list_leader_stocks(days=10)
         latest_date = leader_dates[-1] if leader_dates else None
         leaders_summary.latestDate = latest_date
+        live_map = _get_leader_live_scores([_norm_str(r.get("symbol") or "") for r in leader_rows if isinstance(r, dict)])
         # History (compact)
         leaders_summary.history = [
             {
@@ -5841,7 +5935,7 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
             for r in leader_rows[:20]
             if isinstance(r, dict)
         ]
-        # Latest deep summary (force)
+        # Latest deep summary (cached)
         if latest_date:
             latest_rows = [r for r in leader_rows if _norm_str(r.get("date") or "") == latest_date][:2]
             latest_out: list[dict[str, Any]] = []
@@ -5849,38 +5943,21 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
                 sym = _norm_str(r.get("symbol") or "")
                 if not sym:
                     continue
-                bars_resp = market_stock_bars(sym, days=60, force=True)
+                live = live_map.get(sym, {})
+                bars_resp = market_stock_bars(sym, days=60, force=False)
                 last_bar = (bars_resp.bars or [])[-1] if bars_resp.bars else {}
                 chips_last: dict[str, str] = {}
                 ff_last: dict[str, str] = {}
                 try:
-                    chips_items = market_stock_chips(sym, days=30, force=True).items
+                    chips_items = market_stock_chips(sym, days=30, force=False).items
                     chips_last = chips_items[-1] if chips_items else {}
                 except Exception:
                     chips_last = {}
                 try:
-                    ff_items = market_stock_fund_flow(sym, days=30, force=True).items
+                    ff_items = market_stock_fund_flow(sym, days=30, force=False).items
                     ff_last = ff_items[-1] if ff_items else {}
                 except Exception:
                     ff_last = {}
-                # Compute and persist live score (deterministic, based on latest market data).
-                ts2 = now_iso()
-                try:
-                    feats = _bars_features(bars_resp.bars or [])
-                    live_breakdown = _compute_leader_live_score(
-                        market=_norm_str(r.get("market") or ""),
-                        feats=feats,
-                        chips_summary=_chips_summary_last(chips_last),
-                        ff_breakdown=_fund_flow_breakdown_last(ff_last),
-                    )
-                    _upsert_leader_live_score(
-                        symbol=sym,
-                        live_score=float(live_breakdown.get("total") or 0.0),
-                        breakdown=live_breakdown,
-                        ts=ts2,
-                    )
-                except Exception:
-                    live_breakdown = {}
                 latest_out.append(
                     {
                         "date": latest_date,
@@ -5888,8 +5965,8 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
                         "ticker": _norm_str(r.get("ticker") or ""),
                         "name": _norm_str(r.get("name") or ""),
                         "score": r.get("score"),
-                        "liveScore": live_breakdown.get("total") if isinstance(live_breakdown, dict) else None,
-                        "liveScoreUpdatedAt": ts2,
+                        "liveScore": live.get("liveScore"),
+                        "liveScoreUpdatedAt": _norm_str(live.get("updatedAt") or "") or None,
                         "reason": _norm_str(r.get("reason") or ""),
                         "whyBullets": r.get("whyBullets") if isinstance(r.get("whyBullets"), list) else [],
                         "expectedDurationDays": r.get("expectedDurationDays"),
