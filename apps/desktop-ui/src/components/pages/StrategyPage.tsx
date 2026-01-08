@@ -107,6 +107,20 @@ type StrategyPrompt = {
   updatedAt: string | null;
 };
 
+type StrategyReportSummary = {
+  id: string;
+  date: string;
+  createdAt: string;
+  model: string;
+  hasMarkdown: boolean;
+};
+
+type ListStrategyReportsResponse = {
+  accountId: string;
+  days: number;
+  items: StrategyReportSummary[];
+};
+
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
@@ -230,6 +244,8 @@ export function StrategyPage() {
   const [accountId, setAccountId] = React.useState<string>('');
   const [prompt, setPrompt] = React.useState<string>('');
   const [report, setReport] = React.useState<StrategyReport | null>(null);
+  const [reportDate, setReportDate] = React.useState<string>('');
+  const [history, setHistory] = React.useState<StrategyReportSummary[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [debugOpen, setDebugOpen] = React.useState(false);
@@ -246,6 +262,17 @@ export function StrategyPage() {
     return md || buildStrategyMarkdown(report);
   }, [report]);
 
+  const loadReport = React.useCallback(async (effectiveAccountId: string, d: string) => {
+    try {
+      const r = await apiGetJson<StrategyReport>(
+        `/strategy/accounts/${encodeURIComponent(effectiveAccountId)}/daily?date=${encodeURIComponent(d)}`,
+      );
+      setReport(r);
+    } catch {
+      setReport(null);
+    }
+  }, []);
+
   const refresh = React.useCallback(async () => {
     setError(null);
     try {
@@ -259,21 +286,30 @@ export function StrategyPage() {
         );
         setPrompt(p.prompt || '');
         try {
-          const r = await apiGetJson<StrategyReport>(
-            `/strategy/accounts/${encodeURIComponent(effectiveAccountId)}/daily`,
+          const hs = await apiGetJson<ListStrategyReportsResponse>(
+            `/strategy/accounts/${encodeURIComponent(effectiveAccountId)}/reports?days=10`,
           );
-          setReport(r);
+          const items = Array.isArray(hs.items) ? hs.items : [];
+          setHistory(items);
+          const nextDate = reportDate || items[0]?.date || new Date().toISOString().slice(0, 10);
+          if (nextDate !== reportDate) setReportDate(nextDate);
+          await loadReport(effectiveAccountId, nextDate);
         } catch {
-          setReport(null);
+          setHistory([]);
+          const nextDate = reportDate || new Date().toISOString().slice(0, 10);
+          if (nextDate !== reportDate) setReportDate(nextDate);
+          await loadReport(effectiveAccountId, nextDate);
         }
       } else {
         setPrompt('');
         setReport(null);
+        setHistory([]);
+        setReportDate('');
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [accountId]);
+  }, [accountId, loadReport, reportDate]);
 
   React.useEffect(() => {
     void refresh();
@@ -307,6 +343,7 @@ export function StrategyPage() {
         `/strategy/accounts/${encodeURIComponent(accountId)}/daily`,
         {
           force: true,
+          date: undefined,
           includeAccountState: ctxAccount,
           includeTradingView: ctxScreener,
           includeIndustryFundFlow: ctxIndustryFlow,
@@ -316,6 +353,8 @@ export function StrategyPage() {
         },
       );
       setReport(r);
+      setReportDate(String(r.date || ''));
+      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -332,6 +371,7 @@ export function StrategyPage() {
         `/strategy/accounts/${encodeURIComponent(accountId)}/daily`,
         {
           force: false,
+          date: reportDate || undefined,
           includeAccountState: ctxAccount,
           includeTradingView: ctxScreener,
           includeIndustryFundFlow: ctxIndustryFlow,
@@ -341,6 +381,8 @@ export function StrategyPage() {
         },
       );
       setReport(r);
+      setReportDate(String(r.date || reportDate || ''));
+      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -369,6 +411,29 @@ export function StrategyPage() {
                   {a.accountMasked ? ` (${a.accountMasked})` : ''}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={reportDate}
+            onValueChange={(v) => {
+              setReportDate(v);
+              if (accountId) void loadReport(accountId, v);
+            }}
+          >
+            <SelectTrigger className="h-9 w-[180px]">
+              <SelectValue placeholder="Report date" />
+            </SelectTrigger>
+            <SelectContent>
+              {history.map((it) => (
+                <SelectItem key={it.date} value={it.date}>
+                  {it.date}
+                </SelectItem>
+              ))}
+              {!history.length ? (
+                <SelectItem value={reportDate || '__none__'} disabled>
+                  No history
+                </SelectItem>
+              ) : null}
             </SelectContent>
           </Select>
           <Button variant="secondary" size="sm" onClick={() => void refresh()} className="gap-2">

@@ -1601,6 +1601,20 @@ class StrategyReportResponse(BaseModel):
     raw: dict[str, Any] | None = None
 
 
+class StrategyReportSummary(BaseModel):
+    id: str
+    date: str
+    createdAt: str
+    model: str
+    hasMarkdown: bool = False
+
+
+class ListStrategyReportsResponse(BaseModel):
+    accountId: str
+    days: int
+    items: list[StrategyReportSummary]
+
+
 # --- Leader stocks module (v0) ---
 class LeaderDailyGenerateRequest(BaseModel):
     date: str | None = None  # YYYY-MM-DD
@@ -2881,8 +2895,8 @@ def rank_cn_next2d_generate(req: RankNext2dGenerateRequest) -> RankSnapshotRespo
     snap_id = _upsert_cn_rank_snapshot(account_id=aid, as_of_date=as_of, universe_version=universe, ts=ts, output=output)
     _prune_cn_rank_snapshots(keep_days=10)
     out_items = output.get("items")
-    items0: list[Any] = out_items if isinstance(out_items, list) else []
-    items = items0[:limit2]
+    items1: list[Any] = out_items if isinstance(out_items, list) else []
+    items = items1[:limit2]
     return RankSnapshotResponse(
         id=snap_id,
         asOfDate=str(output.get("asOfDate") or as_of),
@@ -4384,6 +4398,47 @@ def _store_strategy_report(
         conn.commit()
 
 
+def _list_strategy_reports(*, account_id: str, days: int = 10) -> list[dict[str, Any]]:
+    days2 = max(1, min(int(days), 60))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, date, created_at, model, output_json
+            FROM strategy_reports
+            WHERE account_id = ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (account_id, days2),
+        ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        try:
+            output = json.loads(str(r[4]) or "{}")
+        except Exception:
+            output = {}
+        has_md = isinstance(output, dict) and bool(_norm_str(output.get("markdown") or "").strip())
+        out.append({"id": str(r[0]), "date": str(r[1]), "createdAt": str(r[2]), "model": str(r[3]), "hasMarkdown": has_md})
+    return out
+
+
+def _prune_strategy_reports_keep_last_n_days(*, account_id: str, keep_days: int = 10) -> None:
+    keep = max(1, min(int(keep_days), 60))
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT date FROM strategy_reports WHERE account_id = ? ORDER BY date DESC",
+            (account_id,),
+        ).fetchall()
+        dates = [str(r[0]) for r in rows if r and r[0]]
+        to_delete = dates[keep:]
+        for d in to_delete:
+            conn.execute(
+                "DELETE FROM strategy_reports WHERE account_id = ? AND date = ?",
+                (account_id, d),
+            )
+        conn.commit()
+
+
 def _safe_float(v: Any) -> float:
     try:
         return float(str(v).strip())
@@ -5404,6 +5459,21 @@ def get_strategy_daily_report(account_id: str, date: str | None = None) -> Strat
     )
 
 
+@app.get("/strategy/accounts/{account_id}/reports", response_model=ListStrategyReportsResponse)
+def get_strategy_reports(account_id: str, days: int = 10) -> ListStrategyReportsResponse:
+    aid = (account_id or "").strip()
+    if not aid:
+        raise HTTPException(status_code=400, detail="account_id is required")
+    if _get_broker_account_row(aid) is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    items = _list_strategy_reports(account_id=aid, days=days)
+    return ListStrategyReportsResponse(
+        accountId=aid,
+        days=max(1, min(int(days), 60)),
+        items=[StrategyReportSummary(**x) for x in items if isinstance(x, dict)],
+    )
+
+
 @app.post("/strategy/accounts/{account_id}/daily", response_model=StrategyReportResponse)
 def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRequest) -> StrategyReportResponse:
     aid = (account_id or "").strip()
@@ -5803,6 +5873,11 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         input_snapshot=input_snapshot,
         output=output,
     )
+    # Keep last 10 days of reports per account (best-effort).
+    try:
+        _prune_strategy_reports_keep_last_n_days(account_id=aid, keep_days=10)
+    except Exception:
+        pass
     return _strategy_report_response(
         report_id=report_id,
         date=d,

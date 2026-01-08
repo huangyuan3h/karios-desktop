@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from datetime import date, timedelta
 
 import main
 
@@ -188,4 +189,47 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     assert resp3.status_code == 200
     assert resp3.json()["id"] == data["id"]
 
+    # List reports (history)
+    resp4 = client.get(f"/strategy/accounts/{account_id}/reports?days=10")
+    assert resp4.status_code == 200
+    hs = resp4.json()
+    assert hs["accountId"] == account_id
+    assert hs["days"] == 10
+    items = hs.get("items") or []
+    assert isinstance(items, list)
+    assert items[0]["date"] == "2025-12-21"
+    assert items[0]["hasMarkdown"] is True
+
+
+def test_strategy_reports_prune_keeps_last_10_days(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    client = TestClient(main.app)
+    acc = client.post("/broker/accounts", json={"broker": "pingan", "title": "Main"}).json()
+    account_id = acc["id"]
+
+    # Seed 12 days of reports (direct DB write).
+    for i in range(12):
+        d = (date(2025, 12, 1) + timedelta(days=i)).isoformat()
+        main._store_strategy_report(
+            report_id=f"r-{i}",
+            account_id=account_id,
+            date=d,
+            created_at=f"{d}T00:00:00Z",
+            model="test-model",
+            input_snapshot={},
+            output={"markdown": "# Daily Strategy Report\n\n- ok\n"},
+        )
+
+    # Prune should keep the latest 10 dates.
+    main._prune_strategy_reports_keep_last_n_days(account_id=account_id, keep_days=10)
+    hs = client.get(f"/strategy/accounts/{account_id}/reports?days=60").json()
+    items = hs.get("items") or []
+    assert isinstance(items, list)
+    assert len(items) == 10
+    dates = [x.get("date") for x in items if isinstance(x, dict)]
+    assert "2025-12-01" not in dates
+    assert "2025-12-02" not in dates
+    assert "2025-12-12" in dates
 
