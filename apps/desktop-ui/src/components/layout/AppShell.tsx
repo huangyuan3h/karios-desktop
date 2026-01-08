@@ -10,6 +10,7 @@ import { BrokerPage } from '@/components/pages/BrokerPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
 import { LeaderStocksPage } from '@/components/pages/LeaderStocksPage';
 import { MarketPage } from '@/components/pages/MarketPage';
+import { RankPage } from '@/components/pages/RankPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
 import { StrategyPage } from '@/components/pages/StrategyPage';
@@ -100,6 +101,8 @@ export function AppShell() {
               ? 'Dashboard'
               : activePage === 'market'
                 ? 'Market'
+              : activePage === 'rank'
+                ? 'Rank (1-2D)'
               : activePage === 'industryFlow'
                 ? 'Industry Flow'
               : activePage === 'broker'
@@ -155,6 +158,13 @@ export function AppShell() {
               />
             ) : activePage === 'broker' ? (
               <BrokerPage />
+            ) : activePage === 'rank' ? (
+              <RankPage
+                onOpenStock={(symbol) => {
+                  setActiveStockSymbol(symbol);
+                  setActivePage('stock');
+                }}
+              />
             ) : activePage === 'industryFlow' ? (
               <IndustryFlowPage />
             ) : activePage === 'strategy' ? (

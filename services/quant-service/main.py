@@ -376,6 +376,23 @@ def _connect() -> sqlite3.Connection:
         )
         """,
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cn_rank_snapshots (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          as_of_date TEXT NOT NULL,
+          universe_version TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          output_json TEXT NOT NULL,
+          UNIQUE(account_id, as_of_date, universe_version),
+          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+        )
+        """,
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cn_rank_snapshots_date ON cn_rank_snapshots(as_of_date DESC)",
+    )
     # Backward-compatible migration: add missing columns for existing DBs.
     try:
         cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(leader_stocks)").fetchall()}
@@ -518,6 +535,57 @@ def _finite_float(x: Any, default: float = 0.0) -> float:
         return f if math.isfinite(f) else float(default)
     except Exception:
         return float(default)
+
+
+def _prune_cn_rank_snapshots(*, keep_days: int = 10) -> None:
+    keep = max(1, min(int(keep_days), 60))
+    with _connect() as conn:
+        # Keep by date string ordering (YYYY-MM-DD).
+        rows = conn.execute(
+            "SELECT DISTINCT as_of_date FROM cn_rank_snapshots ORDER BY as_of_date DESC",
+        ).fetchall()
+        dates = [str(r[0]) for r in rows if r and r[0]]
+        to_delete = dates[keep:]
+        for d in to_delete:
+            conn.execute("DELETE FROM cn_rank_snapshots WHERE as_of_date = ?", (d,))
+        conn.commit()
+
+
+def _get_cn_rank_snapshot(*, account_id: str, as_of_date: str, universe_version: str) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, created_at, output_json
+            FROM cn_rank_snapshots
+            WHERE account_id = ? AND as_of_date = ? AND universe_version = ?
+            """,
+            (account_id, as_of_date, universe_version),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        out = json.loads(str(row[2]) or "{}")
+    except Exception:
+        out = {}
+    return {"id": str(row[0]), "createdAt": str(row[1]), "output": out}
+
+
+def _upsert_cn_rank_snapshot(*, account_id: str, as_of_date: str, universe_version: str, ts: str, output: dict[str, Any]) -> str:
+    snap_id = str(uuid.uuid4())
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO cn_rank_snapshots(id, account_id, as_of_date, universe_version, created_at, output_json)
+            VALUES(?, ?, ?, ?, ?, ?)
+            ON CONFLICT(account_id, as_of_date, universe_version) DO UPDATE SET
+              id = excluded.id,
+              created_at = excluded.created_at,
+              output_json = excluded.output_json
+            """,
+            (snap_id, account_id, as_of_date, universe_version, ts, json.dumps(output or {}, ensure_ascii=False, default=str)),
+        )
+        conn.commit()
+    return snap_id
 
 
 def _parse_data_url(data_url: str) -> tuple[str, bytes]:
@@ -1410,6 +1478,39 @@ class MarketCnSentimentResponse(BaseModel):
 class MarketCnSentimentSyncRequest(BaseModel):
     date: str | None = None
     force: bool = False
+
+
+# --- CN 1-2D rank (rule+factor) (v0) ---
+class RankNext2dGenerateRequest(BaseModel):
+    accountId: str | None = None
+    asOfDate: str | None = None  # YYYY-MM-DD
+    force: bool = False
+    limit: int = 30
+    universeVersion: str = "v0"
+    includeHoldings: bool = True
+
+
+class RankItem(BaseModel):
+    symbol: str
+    market: str
+    ticker: str
+    name: str
+    sector: str | None = None
+    score: float
+    probBand: str  # High | Medium | Low
+    signals: list[str] = []
+    breakdown: dict[str, float] = {}
+
+
+class RankSnapshotResponse(BaseModel):
+    id: str
+    asOfDate: str
+    accountId: str
+    createdAt: str
+    universeVersion: str
+    riskMode: str | None = None
+    items: list[RankItem] = []
+    debug: dict[str, Any] | None = None
 
 
 # --- Strategy module (v0) ---
@@ -2690,6 +2791,108 @@ def market_cn_sentiment(days: int = 10, asOfDate: str | None = None) -> MarketCn
     d = (asOfDate or "").strip() or _today_cn_date_str()
     items = _list_cn_sentiment_days(as_of_date=d, days=days)
     return MarketCnSentimentResponse(asOfDate=d, days=max(1, min(int(days), 30)), items=[MarketCnSentimentRow(**x) for x in items])
+
+
+@app.get("/rank/cn/next2d", response_model=RankSnapshotResponse)
+def rank_cn_next2d(
+    accountId: str | None = None,
+    limit: int = 30,
+    asOfDate: str | None = None,
+    universeVersion: str = "v0",
+) -> RankSnapshotResponse:
+    as_of = (asOfDate or "").strip() or _today_cn_date_str()
+    # Default account: first pingan account.
+    aid = (accountId or "").strip()
+    if not aid:
+        accs = list_broker_accounts(broker="pingan")
+        aid = accs[0].id if accs else ""
+    if not aid:
+        raise HTTPException(status_code=400, detail="accountId is required")
+
+    cached = _get_cn_rank_snapshot(account_id=aid, as_of_date=as_of, universe_version=universeVersion)
+    if cached is None:
+        return RankSnapshotResponse(
+            id="",
+            asOfDate=as_of,
+            accountId=aid,
+            createdAt="",
+            universeVersion=universeVersion,
+            riskMode=None,
+            items=[],
+            debug={"status": "no_snapshot"},
+        )
+    out_raw = cached.get("output")
+    out: dict[str, Any] = out_raw if isinstance(out_raw, dict) else {}
+    items_raw = out.get("items")
+    items0: list[Any] = items_raw if isinstance(items_raw, list) else []
+    items = items0[: max(1, min(int(limit), 200))]
+    return RankSnapshotResponse(
+        id=str(cached.get("id") or ""),
+        asOfDate=str(out.get("asOfDate") or as_of),
+        accountId=aid,
+        createdAt=str(cached.get("createdAt") or ""),
+        universeVersion=str(out.get("universeVersion") or universeVersion),
+        riskMode=str(out.get("riskMode") or "") or None,
+        items=[RankItem(**x) for x in items if isinstance(x, dict)],
+        debug=out.get("debug") if isinstance(out.get("debug"), dict) else None,
+    )
+
+
+@app.post("/rank/cn/next2d/generate", response_model=RankSnapshotResponse)
+def rank_cn_next2d_generate(req: RankNext2dGenerateRequest) -> RankSnapshotResponse:
+    as_of = (req.asOfDate or "").strip() or _today_cn_date_str()
+    universe = (req.universeVersion or "").strip() or "v0"
+    limit2 = max(1, min(int(req.limit), 200))
+
+    # Default account: first pingan account.
+    aid = (req.accountId or "").strip()
+    if not aid:
+        accs = list_broker_accounts(broker="pingan")
+        aid = accs[0].id if accs else ""
+    if not aid:
+        raise HTTPException(status_code=400, detail="accountId is required")
+
+    cached = _get_cn_rank_snapshot(account_id=aid, as_of_date=as_of, universe_version=universe)
+    if cached is not None and not req.force:
+        out_raw = cached.get("output")
+        out: dict[str, Any] = out_raw if isinstance(out_raw, dict) else {}
+        items_raw = out.get("items")
+        items0: list[Any] = items_raw if isinstance(items_raw, list) else []
+        items = items0[:limit2]
+        return RankSnapshotResponse(
+            id=str(cached.get("id") or ""),
+            asOfDate=str(out.get("asOfDate") or as_of),
+            accountId=aid,
+            createdAt=str(cached.get("createdAt") or ""),
+            universeVersion=str(out.get("universeVersion") or universe),
+            riskMode=str(out.get("riskMode") or "") or None,
+            items=[RankItem(**x) for x in items if isinstance(x, dict)],
+            debug=out.get("debug") if isinstance(out.get("debug"), dict) else None,
+        )
+
+    ts = now_iso()
+    output = _rank_build_and_score(
+        account_id=aid,
+        as_of_date=as_of,
+        limit=limit2,
+        universe_version=universe,
+        include_holdings=bool(req.includeHoldings),
+    )
+    snap_id = _upsert_cn_rank_snapshot(account_id=aid, as_of_date=as_of, universe_version=universe, ts=ts, output=output)
+    _prune_cn_rank_snapshots(keep_days=10)
+    out_items = output.get("items")
+    items0: list[Any] = out_items if isinstance(out_items, list) else []
+    items = items0[:limit2]
+    return RankSnapshotResponse(
+        id=snap_id,
+        asOfDate=str(output.get("asOfDate") or as_of),
+        accountId=aid,
+        createdAt=ts,
+        universeVersion=str(output.get("universeVersion") or universe),
+        riskMode=str(output.get("riskMode") or "") or None,
+        items=[RankItem(**x) for x in items if isinstance(x, dict)],
+        debug=output.get("debug") if isinstance(output.get("debug"), dict) else None,
+    )
 
 
 def _upsert_cn_sentiment_daily(
@@ -4588,6 +4791,33 @@ def _bars_features(bars: list[dict[str, str]]) -> dict[str, Any]:
     }
 
 
+def _rank_bars_metrics(bars: list[dict[str, str]]) -> dict[str, Any]:
+    feats = _bars_features(bars)
+    highs = [_safe_float(b.get("high")) for b in bars]
+    closes = [_safe_float(b.get("close")) for b in bars]
+    volumes = [_safe_float(b.get("volume")) for b in bars]
+    amounts = [_safe_float(b.get("amount")) for b in bars]
+    last_vol = volumes[-1] if volumes else 0.0
+    last_amt = amounts[-1] if amounts else 0.0
+    high20 = max(highs[-20:]) if len(highs) >= 20 else (max(highs) if highs else 0.0)
+    low20 = min(highs[-20:]) if len(highs) >= 20 else (min(highs) if highs else 0.0)
+
+    def sma(xs: list[float], n: int) -> float:
+        if len(xs) < n or n <= 0:
+            return 0.0
+        return sum(xs[-n:]) / float(n)
+
+    return {
+        **feats,
+        "lastVolume": last_vol,
+        "lastAmount": last_amt,
+        "high20": high20,
+        "low20": low20,
+        "volSma20": sma(volumes, 20),
+        "close20": closes[-20:] if len(closes) >= 20 else closes,
+    }
+
+
 def _chips_summary_last(x: Any) -> dict[str, Any]:
     d = x if isinstance(x, dict) else {}
     return {
@@ -4620,6 +4850,364 @@ def _fund_flow_breakdown_last(x: Any) -> dict[str, Any]:
         "mediumNetRatio": d.get("mediumNetRatio"),
         "smallNetAmount": d.get("smallNetAmount"),
         "smallNetRatio": d.get("smallNetRatio"),
+    }
+
+
+def _rank_prob_band(score: float) -> str:
+    s = float(score or 0.0)
+    if s >= 80.0:
+        return "High"
+    if s >= 65.0:
+        return "Medium"
+    return "Low"
+
+
+def _rank_is_bad_cn_name(name: str) -> bool:
+    raw = name or ""
+    n = raw.upper()
+    # Common CN A-share flags
+    if n.startswith("*ST"):
+        return True
+    # "STxxxx" is common, but avoid false positives for English names like "StrongOne".
+    if n.startswith("ST") and len(raw) >= 3:
+        c3 = raw[2]
+        if c3.isascii() and c3.isalpha():
+            return False
+        return True
+    if " ST" in n:
+        return True
+    if ("退市" in raw) or ("退" in raw):
+        return True
+    return False
+
+
+def _rank_extract_tv_pool(*, max_screeners: int = 20, max_rows: int = 120) -> list[dict[str, Any]]:
+    """
+    Build candidate pool from latest enabled TradingView snapshots.
+    Includes best-effort 'sector' field if present in snapshot rows.
+    """
+    snaps: list[TvScreenerSnapshotDetail] = []
+    for sc in _list_enabled_tv_screeners(limit=max_screeners):
+        sid = _norm_str(sc.get("id") or "")
+        if not sid:
+            continue
+        s = _latest_tv_snapshot_for_screener(sid)
+        if s is not None:
+            snaps.append(s)
+
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for snap in snaps:
+        for r in snap.rows:
+            sym_cell = str(r.get("Symbol") or r.get("Ticker") or r.get("代码") or "").strip()
+            if not sym_cell:
+                continue
+            parts = split_symbol_cell(sym_cell)
+            ticker = _norm_str(parts.get("Ticker") or "") or _norm_str(r.get("Ticker") or "")
+            name = _norm_str(parts.get("Name") or "") or _norm_str(r.get("Name") or "")
+            if not ticker:
+                continue
+            market, currency = _infer_market_and_currency_from_tv_row({**r, **parts})
+            sym = f"{market}:{ticker}"
+            if sym in seen:
+                continue
+            seen.add(sym)
+            sector = _norm_str(r.get("Sector") or r.get("Industry") or r.get("行业") or r.get("板块") or "")
+            out.append(
+                {
+                    "symbol": sym,
+                    "market": market,
+                    "currency": currency,
+                    "ticker": ticker,
+                    "name": name,
+                    "sector": sector or None,
+                    "isHolding": False,
+                }
+            )
+            if len(out) >= max(1, min(int(max_rows), 500)):
+                break
+        if len(out) >= max(1, min(int(max_rows), 500)):
+            break
+    return out
+
+
+def _rank_extract_holdings_pool(account_id: str) -> list[dict[str, Any]]:
+    row = _get_account_state_row(account_id) or {}
+    raw_positions = row.get("positions")
+    pos_list: list[Any] = raw_positions if isinstance(raw_positions, list) else []
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for p in pos_list:
+        if not isinstance(p, dict):
+            continue
+        ticker = _norm_str(
+            p.get("ticker")
+            or p.get("Ticker")
+            or p.get("symbol")
+            or p.get("Symbol")
+            or p.get("code")
+            or p.get("证券代码")
+            or p.get("股票代码")
+            or ""
+        )
+        if not ticker:
+            continue
+        name = _norm_str(p.get("name") or p.get("Name") or "")
+        market = "HK" if len(ticker) in (4, 5) else "CN"
+        currency = "HKD" if market == "HK" else "CNY"
+        sym = f"{market}:{ticker}"
+        if sym in seen:
+            continue
+        seen.add(sym)
+        out.append(
+            {
+                "symbol": sym,
+                "market": market,
+                "currency": currency,
+                "ticker": ticker,
+                "name": name,
+                "sector": None,
+                "isHolding": True,
+            }
+        )
+    return out
+
+
+def _rank_build_and_score(
+    *,
+    account_id: str,
+    as_of_date: str,
+    limit: int,
+    universe_version: str,
+    include_holdings: bool,
+) -> dict[str, Any]:
+    """
+    Rank CN candidates for next 1-2 days using deterministic factors, DB-first only.
+    No external sync is triggered here (expects Dashboard Sync all / manual sync to refresh caches).
+    """
+    # Risk context (latest 5D).
+    risk_mode: str | None = None
+    failed_rate = 0.0
+    premium = 0.0
+    try:
+        items = _list_cn_sentiment_days(as_of_date=as_of_date, days=5)
+        latest = items[-1] if items else {}
+        risk_mode = _norm_str(latest.get("riskMode") or "") or None
+        failed_rate = _finite_float(latest.get("failedLimitUpRate"), 0.0)
+        premium = _finite_float(latest.get("yesterdayLimitUpPremium"), 0.0)
+    except Exception:
+        risk_mode = None
+
+    risk_penalty = 0.0
+    if risk_mode == "no_new_positions":
+        risk_penalty -= 0.25
+    elif risk_mode == "caution":
+        risk_penalty -= 0.10
+    if failed_rate > 50.0:
+        risk_penalty -= 0.05
+    if premium < 0.0:
+        risk_penalty -= 0.05
+
+    # Industry flow (names only) as a weak prior.
+    hot_set: set[str] = set()
+    try:
+        mat = _market_cn_industry_fund_flow_top_by_date(as_of_date=as_of_date, days=10, top_k=5)
+        top_by_date = mat.get("topByDate") if isinstance(mat, dict) else None
+        if isinstance(top_by_date, list) and top_by_date:
+            latest = top_by_date[-1] if isinstance(top_by_date[-1], dict) else {}
+            tops = latest.get("topIndustries") if isinstance(latest, dict) else None
+            if isinstance(tops, list):
+                hot_set = {str(x) for x in tops if str(x).strip()}
+    except Exception:
+        hot_set = set()
+
+    tv_pool = _rank_extract_tv_pool(max_screeners=20, max_rows=160)
+    holdings_pool = _rank_extract_holdings_pool(account_id) if include_holdings else []
+    # Merge: TV first, then holdings (ensure included).
+    pool: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for it in tv_pool + holdings_pool:
+        sym = _norm_str(it.get("symbol") or "")
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        pool.append(it)
+
+    weights = {
+        "trend": 0.30,
+        "breakout": 0.15,
+        "volume": 0.10,
+        "flow": 0.20,
+        "chips": 0.10,
+        "sectorHot": 0.15,
+    }
+
+    def clamp01(x: float) -> float:
+        return max(0.0, min(1.0, float(x)))
+
+    scored: list[dict[str, Any]] = []
+    dropped = {"badName": 0, "noBars": 0, "lowLiquidity": 0, "notMomentum": 0}
+    for it in pool:
+        sym = str(it.get("symbol") or "")
+        market = str(it.get("market") or "CN")
+        if market != "CN":
+            continue
+        ticker = str(it.get("ticker") or sym.split(":")[-1])
+        name = str(it.get("name") or ticker)
+        sector = it.get("sector") if isinstance(it.get("sector"), str) else None
+        is_holding = bool(it.get("isHolding"))
+
+        if (not is_holding) and _rank_is_bad_cn_name(name):
+            dropped["badName"] += 1
+            continue
+
+        bars = _load_cached_bars(sym, days=60)
+        if len(bars) < 15:
+            if not is_holding:
+                dropped["noBars"] += 1
+                continue
+        m = _rank_bars_metrics(bars)
+        last_close = _finite_float(m.get("lastClose"), 0.0)
+        sma5 = _finite_float(m.get("sma5"), 0.0)
+        sma10 = _finite_float(m.get("sma10"), 0.0)
+        sma20 = _finite_float(m.get("sma20"), 0.0)
+        high20 = _finite_float(m.get("high20"), 0.0)
+        vol_sma10 = _finite_float(m.get("volSma10"), 0.0)
+        last_vol = _finite_float(m.get("lastVolume"), 0.0)
+        last_amt = _finite_float(m.get("lastAmount"), 0.0)
+
+        # Liquidity filter: amount >= 1e8 CNY (best-effort; holdings bypass).
+        if (not is_holding) and last_amt > 0 and last_amt < 1e8:
+            dropped["lowLiquidity"] += 1
+            continue
+
+        # Trend score.
+        trend = 0.0
+        if sma20 > 0 and last_close > sma20:
+            trend += 0.45
+        if sma5 > 0 and sma10 > 0 and sma20 > 0 and (sma5 >= sma10 >= sma20):
+            trend += 0.45
+        if sma5 > 0 and last_close >= sma5:
+            trend += 0.10
+        trend = clamp01(trend)
+
+        # Breakout proximity: within 3% of 20D high.
+        breakout = 0.0
+        if high20 > 0 and last_close > 0:
+            dist = (high20 - last_close) / high20
+            breakout = clamp01(1.0 - dist / 0.03)
+
+        # Volume expansion.
+        rel_vol = (last_vol / vol_sma10) if (last_vol > 0 and vol_sma10 > 0) else 0.0
+        volume = clamp01(rel_vol / 2.0)  # 2x volSma10 -> 1.0
+
+        # Momentum filter (right-side): require trend + breakout + volume. Holdings bypass.
+        if (not is_holding) and (trend < 0.55 or breakout < 0.20 or volume < 0.25):
+            dropped["notMomentum"] += 1
+            continue
+
+        # Fund flow score (cached-only).
+        ff_items = _load_cached_fund_flow(sym, days=30)
+        ff_last = ff_items[-1] if ff_items else {}
+        ff = _fund_flow_breakdown_last(ff_last)
+        main_ratio = _finite_float(ff.get("mainNetRatio"), 0.0)
+        super_ratio = _finite_float(ff.get("superNetRatio"), 0.0)
+        large_ratio = _finite_float(ff.get("largeNetRatio"), 0.0)
+        flow = 0.3
+        if main_ratio > 2.0:
+            flow = 1.0
+        elif main_ratio > 0.0:
+            flow = 0.75
+        elif main_ratio < -1.0:
+            flow = 0.10
+        if (super_ratio + large_ratio) > 1.0:
+            flow = clamp01(flow + 0.15)
+        flow = clamp01(flow)
+
+        # Chips score (cached-only).
+        chips_items = _load_cached_chips(sym, days=30)
+        chips_last = chips_items[-1] if chips_items else {}
+        ch = _chips_summary_last(chips_last)
+        pr = _finite_float(ch.get("profitRatio"), 0.0)
+        avg_cost = _finite_float(ch.get("avgCost"), 0.0)
+        chips = 0.30
+        if pr >= 0.65:
+            chips += 0.45
+        elif pr >= 0.45:
+            chips += 0.30
+        if avg_cost > 0 and last_close >= avg_cost:
+            chips += 0.25
+        chips = clamp01(chips)
+
+        # Sector hotness (weak prior).
+        sector_hot = 0.0
+        if sector and hot_set:
+            sector_hot = 1.0 if sector in hot_set else 0.25
+        elif hot_set:
+            sector_hot = 0.10
+        sector_hot = clamp01(sector_hot)
+
+        breakdown = {
+            "trend": round(trend, 4),
+            "breakout": round(breakout, 4),
+            "volume": round(volume, 4),
+            "flow": round(flow, 4),
+            "chips": round(chips, 4),
+            "sectorHot": round(sector_hot, 4),
+            "riskPenalty": round(float(risk_penalty), 4),
+        }
+        total = 0.0
+        for k, w in weights.items():
+            total += float(w) * float(breakdown.get(k) or 0.0)
+        total = (total + risk_penalty) * 100.0
+        total = max(0.0, min(100.0, total))
+
+        signals: list[str] = []
+        if breakout >= 0.8:
+            signals.append("Near 20D high (breakout setup)")
+        if trend >= 0.8:
+            signals.append("MA uptrend (bullish alignment)")
+        if volume >= 0.6:
+            signals.append("Volume expansion")
+        if main_ratio > 0:
+            signals.append("Positive main fund flow")
+        if pr >= 0.55:
+            signals.append("High chip profit ratio")
+        if sector_hot >= 0.9:
+            signals.append("Hot sector")
+        if risk_mode:
+            signals.append(f"Risk mode: {risk_mode}")
+
+        scored.append(
+            {
+                "symbol": sym,
+                "market": market,
+                "ticker": ticker,
+                "name": name,
+                "sector": sector,
+                "score": round(total, 2),
+                "probBand": _rank_prob_band(total),
+                "signals": signals[:6],
+                "breakdown": breakdown,
+                "isHolding": is_holding,
+            }
+        )
+
+    scored.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
+    top = scored[: max(1, min(int(limit), 200))]
+    return {
+        "asOfDate": as_of_date,
+        "accountId": account_id,
+        "universeVersion": universe_version,
+        "riskMode": risk_mode,
+        "items": top,
+        "debug": {
+            "poolSize": len(pool),
+            "tvPool": len(tv_pool),
+            "holdingsPool": len(holdings_pool),
+            "scored": len(scored),
+            "dropped": dropped,
+        },
     }
 
 
@@ -5706,11 +6294,11 @@ def dashboard_sync(req: DashboardSyncRequest) -> DashboardSyncResponse:
     # 5) Leaders (force refresh) - run AFTER market/industry/sentiment/screeners so leader scoring can reference latest data.
     try:
         st = time.perf_counter()
-        meta: dict[str, Any] = {}
+        leaders_meta: dict[str, Any] = {}
         try:
             ls = list_leader_stocks(days=10, force=True)
             unique_syms = {str(x.symbol) for x in (ls.leaders or []) if getattr(x, "symbol", None)}
-            meta = {
+            leaders_meta = {
                 "days": int(ls.days),
                 "dates": len(ls.dates or []),
                 "leaders": len(ls.leaders or []),
@@ -5722,7 +6310,7 @@ def dashboard_sync(req: DashboardSyncRequest) -> DashboardSyncResponse:
                     ok=True,
                     durationMs=int((time.perf_counter() - st) * 1000),
                     message=None,
-                    meta=meta,
+                    meta=leaders_meta,
                 )
             )
         except Exception as e:

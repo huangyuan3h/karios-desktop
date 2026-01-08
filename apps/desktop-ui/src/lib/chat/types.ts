@@ -99,6 +99,14 @@ export type ChatReference =
       days: number; // typically 5
       title?: string;
       createdAt: string;
+    }
+  | {
+      kind: 'rankList';
+      refId: string; // stable key: `rankList:${accountId}:${ts}`
+      accountId: string;
+      asOfDate: string; // YYYY-MM-DD
+      limit: number; // typically 30
+      createdAt: string;
     };
 
 export type AppSettings = {

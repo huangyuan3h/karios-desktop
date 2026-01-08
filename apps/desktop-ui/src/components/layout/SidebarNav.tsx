@@ -7,6 +7,7 @@ import {
   Crown,
   CreditCard,
   LayoutDashboard,
+  ListOrdered,
   Sparkles,
   Settings,
   Table2,
@@ -18,6 +19,7 @@ import { cn } from '@/lib/utils';
 const items = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'market', label: 'Market', icon: Table2 },
+  { id: 'rank', label: 'Rank (1-2D)', icon: ListOrdered },
   { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
   { id: 'broker', label: 'Broker', icon: CreditCard },
   { id: 'strategy', label: 'Strategy', icon: Sparkles },
