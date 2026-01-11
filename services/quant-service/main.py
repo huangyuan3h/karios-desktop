@@ -2532,6 +2532,7 @@ class StrategyDailyGenerateRequest(BaseModel):
     includeLeaders: bool = True
     includeMainline: bool = True
     includeStocks: bool = True
+    includeQuant2d: bool = False
 
 
 class StrategyCandidate(BaseModel):
@@ -8590,6 +8591,56 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         except Exception as e:
             mainline_ctx = {"error": str(e)}
 
+    # Quant (next2d) snapshot: optional context injection for Strategy.
+    quant2d_ctx: dict[str, Any] = {}
+    if req.includeQuant2d:
+        try:
+            cached_q = _get_cn_rank_snapshot(account_id=aid, as_of_date=d, universe_version="v0")
+            if cached_q is None or not isinstance(cached_q.get("output"), dict):
+                quant2d_ctx = {"asOfDate": d, "status": "no_snapshot"}
+            else:
+                outq: dict[str, Any] = cached_q.get("output") if isinstance(cached_q.get("output"), dict) else {}
+                items0 = outq.get("items")
+                items: list[Any] = items0 if isinstance(items0, list) else []
+                top3: list[dict[str, Any]] = []
+                for it in items[:3]:
+                    if not isinstance(it, dict):
+                        continue
+                    top3.append(
+                        {
+                            "symbol": _norm_str(it.get("symbol") or ""),
+                            "ticker": _norm_str(it.get("ticker") or ""),
+                            "name": _norm_str(it.get("name") or ""),
+                            "score": _finite_float(it.get("score"), 0.0),
+                            "rawScore": _finite_float(it.get("rawScore"), 0.0),
+                            "probProfit2d": it.get("probProfit2d"),
+                            "ev2dPct": it.get("ev2dPct"),
+                            "dd2dPct": it.get("dd2dPct"),
+                            "confidence": _norm_str(it.get("confidence") or "") or None,
+                            "buyPrice": it.get("buyPrice"),
+                            "buyPriceSrc": _norm_str(it.get("buyPriceSrc") or "") or None,
+                            "whyBullets": it.get("whyBullets") if isinstance(it.get("whyBullets"), list) else [],
+                        }
+                    )
+                dbg0 = outq.get("debug")
+                dbg: dict[str, Any] = dbg0 if isinstance(dbg0, dict) else {}
+                quant2d_ctx = {
+                    "id": str(cached_q.get("id") or ""),
+                    "createdAt": str(cached_q.get("createdAt") or ""),
+                    "asOfTs": str(outq.get("asOfTs") or "") or None,
+                    "asOfDate": str(outq.get("asOfDate") or d),
+                    "riskMode": str(outq.get("riskMode") or "") or None,
+                    "objective": str(outq.get("objective") or "") or None,
+                    "horizon": str(outq.get("horizon") or "") or None,
+                    "top3": top3,
+                    "debug": {
+                        "calibrationN": int((dbg.get("calibrationN") or 0) if isinstance(dbg, dict) else 0),
+                        "calibrationReady": bool(dbg.get("calibrationReady")) if isinstance(dbg, dict) else False,
+                    },
+                }
+        except Exception as e:
+            quant2d_ctx = {"asOfDate": d, "error": str(e)}
+
     # Stage 1: candidate selection WITHOUT per-stock deep context.
     sentiment_ctx: dict[str, Any] = {}
     if req.includeMarketSentiment:
@@ -8616,6 +8667,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         "marketSentiment": {} if not req.includeMarketSentiment else sentiment_ctx,
         "leaderStocks": {} if not req.includeLeaders else leader_ctx,
         "mainline": {} if not req.includeMainline else mainline_ctx,
+        "quant2d": {} if not req.includeQuant2d else quant2d_ctx,
         # Provide an explicit universe so stage 1 doesn't need to parse TV rows.
         "candidateUniverse": pool,
         # Stage 1 explicitly excludes deep context.
@@ -8759,6 +8811,8 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         else {"dailyTopInflow": industry_flow_daily, "error": industry_flow_error},
         "marketSentiment": {} if not req.includeMarketSentiment else sentiment_ctx,
         "leaderStocks": {} if not req.includeLeaders else leader_ctx,
+        "mainline": {} if not req.includeMainline else mainline_ctx,
+        "quant2d": {} if not req.includeQuant2d else quant2d_ctx,
         "candidateUniverse": pool,
         "stage1": {"candidates": stage1_candidates[:5], "leader": stage1_leader, "error": stage1_error},
         "selectedSymbols": selected_syms,

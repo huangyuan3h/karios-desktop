@@ -255,6 +255,7 @@ export function StrategyPage() {
   const [ctxSentiment, setCtxSentiment] = React.useState(true);
   const [ctxLeaders, setCtxLeaders] = React.useState(true);
   const [ctxStocks, setCtxStocks] = React.useState(true);
+  const [ctxQuant2d, setCtxQuant2d] = React.useState(true);
 
   const reportMd = React.useMemo(() => {
     if (!report) return '';
@@ -350,6 +351,7 @@ export function StrategyPage() {
           includeMarketSentiment: ctxSentiment,
           includeLeaders: ctxLeaders,
           includeStocks: ctxStocks,
+          includeQuant2d: ctxQuant2d,
         },
       );
       setReport(r);
@@ -378,6 +380,7 @@ export function StrategyPage() {
           includeMarketSentiment: ctxSentiment,
           includeLeaders: ctxLeaders,
           includeStocks: ctxStocks,
+          includeQuant2d: ctxQuant2d,
         },
       );
       setReport(r);
@@ -552,6 +555,14 @@ export function StrategyPage() {
               onChange={(e) => setCtxStocks(e.target.checked)}
             />
             <span>Per-stock deep context (bars/chips/fund-flow)</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={ctxQuant2d}
+              onChange={(e) => setCtxQuant2d(e.target.checked)}
+            />
+            <span>Quant Top Picks (2D) snapshot</span>
           </label>
         </div>
         <div className="mt-2 text-xs text-[var(--k-muted)]">

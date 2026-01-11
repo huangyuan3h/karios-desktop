@@ -182,6 +182,7 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
             "includeMarketSentiment": True,
             "includeLeaders": False,
             "includeStocks": False,
+            "includeQuant2d": False,
         },
     )
     assert resp.status_code == 200
@@ -234,6 +235,107 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     assert isinstance(items, list)
     assert items[0]["date"] == "2025-12-21"
     assert items[0]["hasMarkdown"] is True
+
+
+def test_strategy_optional_quant2d_context(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    client = TestClient(main.app)
+    acc = client.post("/broker/accounts", json={"broker": "pingan", "title": "Main"}).json()
+    account_id = acc["id"]
+
+    # Seed a quant next2d snapshot (DB-first, no network).
+    main._upsert_cn_rank_snapshot(
+        account_id=account_id,
+        as_of_date="2025-12-21",
+        universe_version="v0",
+        ts="2025-12-21T00:00:00Z",
+        output={
+            "asOfTs": "2025-12-21T00:00:00Z",
+            "asOfDate": "2025-12-21",
+            "universeVersion": "v0",
+            "riskMode": "caution",
+            "objective": "profit_probability_2d",
+            "horizon": "2d",
+            "items": [
+                {
+                    "symbol": "CN:300308",
+                    "market": "CN",
+                    "ticker": "300308",
+                    "name": "Test A",
+                    "score": 77.5,
+                    "rawScore": 68.0,
+                    "probProfit2d": None,
+                    "ev2dPct": None,
+                    "dd2dPct": None,
+                    "confidence": "Low",
+                    "buyPrice": 10.0,
+                    "buyPriceSrc": "spot",
+                    "whyBullets": ["trend up", "flow ok"],
+                }
+            ],
+            "debug": {"calibrationN": 0, "calibrationReady": False},
+        },
+    )
+
+    captured = {"stage1": None, "stage2": None}
+
+    def fake_ai_strategy_candidates(*, payload):
+        captured["stage1"] = payload
+        return {
+            "date": "2025-12-21",
+            "accountId": account_id,
+            "accountTitle": "Main",
+            "candidates": [],
+            "leader": {"symbol": "", "reason": ""},
+            "model": "test-model",
+        }
+
+    def fake_ai_strategy_daily_markdown(*, payload):
+        captured["stage2"] = payload
+        return {
+            "date": "2025-12-21",
+            "accountId": account_id,
+            "accountTitle": "Main",
+            "markdown": "# Daily Strategy Report\n\n- ok\n",
+            "model": "test-model",
+        }
+
+    monkeypatch.setattr(main, "_ai_strategy_candidates", fake_ai_strategy_candidates)
+    monkeypatch.setattr(main, "_ai_strategy_daily_markdown", fake_ai_strategy_daily_markdown)
+
+    # Disable mainline to isolate quant2d assertions.
+    monkeypatch.setattr(main, "_get_cn_mainline_snapshot_latest", lambda *args, **kwargs: None)
+
+    resp = client.post(
+        f"/strategy/accounts/{account_id}/daily",
+        json={
+            "date": "2025-12-21",
+            "force": True,
+            "includeTradingView": False,
+            "includeIndustryFundFlow": False,
+            "includeMarketSentiment": False,
+            "includeLeaders": False,
+            "includeStocks": False,
+            "includeMainline": False,
+            "includeQuant2d": True,
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    ctx1 = (captured["stage1"] or {}).get("context") if isinstance(captured["stage1"], dict) else None
+    assert isinstance(ctx1, dict)
+    q1 = ctx1.get("quant2d")
+    assert isinstance(q1, dict)
+    assert (q1.get("top3") or [])[0]["ticker"] == "300308"
+
+    snap = data.get("inputSnapshot") or {}
+    assert isinstance(snap, dict)
+    q2 = snap.get("quant2d")
+    assert isinstance(q2, dict)
+    assert (q2.get("top3") or [])[0]["ticker"] == "300308"
 
 
 def test_strategy_reports_prune_keeps_last_10_days(tmp_path, monkeypatch) -> None:
