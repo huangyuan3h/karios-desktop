@@ -206,6 +206,19 @@ def test_rank_next2d_generate_and_read(tmp_path, monkeypatch) -> None:
     _seed_cn_stock_basic("CN:000002", "000002", "WeakOne")
     _seed_cn_stock_basic("CN:000003", "000003", "HoldingOnly")
 
+    # Avoid AkShare and ai-service calls in tests.
+    monkeypatch.setattr(main, "fetch_cn_a_spot", lambda: [])
+    monkeypatch.setattr(
+        main,
+        "_ai_quant_rank_explain",
+        lambda *, payload: {
+            "asOfTs": payload.get("asOfTs", ""),
+            "asOfDate": payload.get("asOfDate", ""),
+            "items": [{"symbol": c.get("symbol", ""), "llmScoreAdj": 0, "whyBullets": [{"text": "ok", "evidenceRefs": ["breakdown"]}]} for c in (payload.get("candidates") or []) if isinstance(c, dict)],
+            "model": "test-model",
+        },
+    )
+
     # StrongOne: uptrend + breakout-ish + enough liquidity.
     _seed_bars("CN:000001", start="2025-12-10", n=25, close0=10.0, step=0.2, amount=2e8, vol0=1000)
     _seed_flow("CN:000001", d="2026-01-07", main_ratio=3.0)

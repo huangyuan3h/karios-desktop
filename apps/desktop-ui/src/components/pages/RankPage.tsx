@@ -24,55 +24,56 @@ type RankItem = {
   name: string;
   sector?: string | null;
   score: number;
-  probBand: string;
+  probBand?: string | null;
+  probProfit2d?: number | null; // 0-100
+  ev2dPct?: number | null;
+  dd2dPct?: number | null;
+  confidence?: string | null;
+  buyPrice?: number | null;
+  buyPriceSrc?: string | null;
+  rawScore?: number | null;
+  whyBullets?: string[];
   signals?: string[];
   breakdown?: Record<string, number>;
 };
 
 type RankSnapshot = {
   id: string;
+  asOfTs?: string | null;
   asOfDate: string;
   accountId: string;
   createdAt: string;
   universeVersion: string;
   riskMode?: string | null;
+  objective?: string | null;
+  horizon?: string | null;
   items: RankItem[];
   debug?: unknown;
 };
 
-type IntradayObservationRow = {
-  id: string;
-  tradeDate: string;
-  ts: string;
+type MorningRadarTheme = {
   kind: string;
-  raw?: unknown;
-  createdAt: string;
-};
-
-type IntradayRankItem = {
-  symbol: string;
-  market: string;
-  ticker: string;
   name: string;
   score: number;
-  probBand: string;
-  slot: string;
-  signals?: string[];
-  factors?: Record<string, number>;
-  notes?: string | null;
+  todayStrength?: number;
+  volSurge?: number;
+  limitupCount?: number;
+  followersCount?: number;
+  topTickers?: Array<{
+    symbol: string;
+    ticker: string;
+    name: string;
+    chgPct?: number;
+    volRatio?: number;
+  }>;
 };
 
-type IntradayRankSnapshot = {
-  id: string;
+type MorningRadarResponse = {
   asOfTs: string;
   tradeDate: string;
-  slot: string;
   accountId: string;
-  createdAt: string;
   universeVersion: string;
-  riskMode?: string | null;
-  items: IntradayRankItem[];
-  observations?: IntradayObservationRow[];
+  themes: MorningRadarTheme[];
   debug?: unknown;
 };
 
@@ -104,9 +105,9 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
   const { addReference } = useChatStore();
   const [accounts, setAccounts] = React.useState<BrokerAccount[]>([]);
   const [accountId, setAccountId] = React.useState<string>('');
-  const [mode, setMode] = React.useState<'next2d' | 'intraday'>('next2d');
+  const [tab, setTab] = React.useState<'top2d' | 'morning'>('top2d');
   const [dataNext2d, setDataNext2d] = React.useState<RankSnapshot | null>(null);
-  const [dataIntraday, setDataIntraday] = React.useState<IntradayRankSnapshot | null>(null);
+  const [dataMorning, setDataMorning] = React.useState<MorningRadarResponse | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -134,21 +135,15 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
       if (!accountId) return;
       setError(null);
       try {
-        if (mode === 'intraday') {
-          if (force) {
-            const r = await apiPostJson<IntradayRankSnapshot>('/rank/cn/intraday/generate', {
-              accountId,
-              force: true,
-              limit: 30,
-              universeVersion: 'v0',
-            });
-            setDataIntraday(r);
-          } else {
-            const r = await apiGetJson<IntradayRankSnapshot>(
-              `/rank/cn/intraday?accountId=${encodeURIComponent(accountId)}&limit=30&universeVersion=v0`,
-            );
-            setDataIntraday(r);
-          }
+        if (tab === 'morning') {
+          const r = await apiPostJson<MorningRadarResponse>('/rank/cn/morning/generate', {
+            accountId,
+            universeVersion: 'v0',
+            topK: 3,
+            perTheme: 3,
+            asOfTs: new Date().toISOString(),
+          });
+          setDataMorning(r);
         } else {
           if (force) {
             const r = await apiPostJson<RankSnapshot>('/rank/cn/next2d/generate', {
@@ -170,7 +165,7 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
         setError(e instanceof Error ? e.message : String(e));
       }
     },
-    [accountId, mode],
+    [accountId, tab],
   );
 
   React.useEffect(() => {
@@ -190,30 +185,28 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
     <div className="mx-auto w-full max-w-6xl p-6">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <div className="text-lg font-semibold">
-            Quant
-          </div>
+          <div className="text-lg font-semibold">Quant</div>
           <div className="mt-1 text-sm text-[var(--k-muted)]">
-            {mode === 'intraday'
-              ? 'Intraday scoring from spot + minute bars (best-effort). Use Generate for a fresh snapshot.'
-              : 'Rule+factor scoring from cached market data (no auto-sync). Use Dashboard Sync all or Generate to refresh.'}
+            {tab === 'morning'
+              ? 'Morning radar (09:00-10:00): identify strong themes and representative stocks for manual verification.'
+              : 'Top picks (2D): score is a calibrated profit-likelihood decision score for buying now and holding ~2 trading days.'}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-1 text-xs">
             <button
               type="button"
-              className={`rounded px-2 py-1 ${mode === 'next2d' ? 'bg-[var(--k-surface-2)]' : ''}`}
-              onClick={() => setMode('next2d')}
+              className={`rounded px-2 py-1 ${tab === 'top2d' ? 'bg-[var(--k-surface-2)]' : ''}`}
+              onClick={() => setTab('top2d')}
             >
-              Next 1-2D
+              Top Picks (2D)
             </button>
             <button
               type="button"
-              className={`rounded px-2 py-1 ${mode === 'intraday' ? 'bg-[var(--k-surface-2)]' : ''}`}
-              onClick={() => setMode('intraday')}
+              className={`rounded px-2 py-1 ${tab === 'morning' ? 'bg-[var(--k-surface-2)]' : ''}`}
+              onClick={() => setTab('morning')}
             >
-              Intraday
+              Morning Radar
             </button>
           </div>
           <Button
@@ -226,26 +219,25 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
             <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
-          <Button size="sm" className="gap-2" disabled={!accountId || busy} onClick={() => void onGenerate()}>
-            {busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {busy ? 'Generating…' : 'Generate'}
-          </Button>
           <Button
             size="sm"
-            variant="secondary"
-            disabled={!accountId}
-            onClick={() => {
-              if (mode === 'intraday') {
-                addReference({
-                  kind: 'intradayRankList',
-                  refId: `intradayRankList:${accountId}:${Date.now()}`,
-                  accountId,
-                  asOfTs: String(dataIntraday?.asOfTs ?? ''),
-                  slot: String(dataIntraday?.slot ?? ''),
-                  limit: 30,
-                  createdAt: new Date().toISOString(),
-                } satisfies ChatReference);
-              } else {
+            className="gap-2"
+            disabled={!accountId || busy}
+            onClick={() => void onGenerate()}
+          >
+            {busy ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            {busy ? 'Generating…' : 'Generate'}
+          </Button>
+          {tab === 'top2d' ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!accountId}
+              onClick={() => {
                 addReference({
                   kind: 'rankList',
                   refId: `rankList:${accountId}:${Date.now()}`,
@@ -254,11 +246,11 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
                   limit: 30,
                   createdAt: new Date().toISOString(),
                 } satisfies ChatReference);
-              }
-            }}
-          >
-            Reference
-          </Button>
+              }}
+            >
+              Reference
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -283,16 +275,18 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
           </Select>
         </div>
         <div className="text-xs text-[var(--k-muted)]">
-          {mode === 'intraday' ? (
+          {tab === 'morning' ? (
             <>
-              tradeDate: {dataIntraday?.tradeDate ?? '—'} • slot: {dataIntraday?.slot ?? '—'} • asOfTs:{' '}
-              {fmtDateTime(dataIntraday?.asOfTs)} • createdAt: {fmtDateTime(dataIntraday?.createdAt)} • riskMode:{' '}
-              {dataIntraday?.riskMode ?? '—'}
+              tradeDate: {dataMorning?.tradeDate ?? '—'} • asOfTs:{' '}
+              {fmtDateTime(dataMorning?.asOfTs)} • createdAt: {fmtDateTime(dataMorning?.asOfTs)} •
+              universe: {dataMorning?.universeVersion ?? 'v0'}
             </>
           ) : (
             <>
-              asOfDate: {dataNext2d?.asOfDate ?? '—'} • createdAt: {fmtDateTime(dataNext2d?.createdAt)} • riskMode:{' '}
-              {dataNext2d?.riskMode ?? '—'}
+              asOfDate: {dataNext2d?.asOfDate ?? '—'} • asOfTs:{' '}
+              {fmtDateTime(dataNext2d?.asOfTs ?? '')} • createdAt:{' '}
+              {fmtDateTime(dataNext2d?.createdAt)} • riskMode: {dataNext2d?.riskMode ?? '—'} •
+              objective: {dataNext2d?.objective ?? '—'}
             </>
           )}
         </div>
@@ -304,114 +298,233 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
         </div>
       ) : null}
 
-      <div className="overflow-auto rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]">
-        <table className="w-full border-collapse text-sm">
-          <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-            <tr className="text-left">
-              <th className="px-2 py-2">#</th>
-              <th className="px-2 py-2">Ticker</th>
-              <th className="px-2 py-2">Name</th>
-              <th className="px-2 py-2 text-right">Score</th>
-              <th className="px-2 py-2">Prob</th>
-              <th className="px-2 py-2">Signals</th>
-            </tr>
-          </thead>
-          <tbody>
-            {((mode === 'intraday' ? dataIntraday?.items : dataNext2d?.items) ?? []).map((r, idx) => (
-              <React.Fragment key={r.symbol}>
-                <tr className="border-t border-[var(--k-border)]">
-                  <td className="px-2 py-2 font-mono text-[var(--k-muted)]">{idx + 1}</td>
-                  <td className="px-2 py-2 font-mono">
-                    <button
-                      type="button"
-                      className="text-[var(--k-accent)] hover:underline"
-                      onClick={() => onOpenStock?.(r.symbol)}
-                    >
-                      {r.ticker}
-                    </button>
-                  </td>
-                  <td className="px-2 py-2">{r.name}</td>
-                  <td className="px-2 py-2 text-right font-mono">{Math.round(Number(r.score ?? 0))}</td>
-                  <td className="px-2 py-2">{String(r.probBand ?? '')}</td>
-                  <td className="px-2 py-2 text-xs text-[var(--k-muted)]">
-                    {(Array.isArray(r.signals) ? r.signals : []).slice(0, 4).join(' · ')}
-                  </td>
-                </tr>
-                <tr className="border-t border-[var(--k-border)] bg-[var(--k-surface)]">
-                  <td className="px-2 py-2" colSpan={6}>
-                    <details>
-                      <summary className="cursor-pointer text-xs text-[var(--k-muted)]">Details</summary>
-                      <div className="mt-2 grid gap-2 text-xs text-[var(--k-muted)] md:grid-cols-3">
-                        <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                          <div className="text-xs font-medium text-[var(--k-text)]">
-                            {mode === 'intraday' ? 'Factors' : 'Breakdown'}
+      {tab === 'top2d' ? (
+        <div className="space-y-4">
+          {(() => {
+            const items = dataNext2d?.items ?? [];
+            const top1 = items[0];
+            const top3 = items.slice(0, 3);
+            return (
+              <>
+                <section className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+                  <div className="text-sm font-medium">Top pick now (2D)</div>
+                  <div className="mt-1 text-xs text-[var(--k-muted)]">
+                    Score is a decision score prioritizing profit probability over ~2 trading days
+                    (buy now). Prob/EV/DD are calibrated from historical outcomes (best-effort).
+                  </div>
+                  {top1 ? (
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      <div className="md:col-span-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            className="font-mono text-[var(--k-accent)] hover:underline"
+                            onClick={() => onOpenStock?.(top1.symbol)}
+                          >
+                            {top1.ticker}
+                          </button>
+                          <div className="text-sm">{top1.name}</div>
+                          <div className="text-xs text-[var(--k-muted)]">
+                            {top1.sector ? `· ${top1.sector}` : ''}
                           </div>
-                          <pre className="mt-2 whitespace-pre-wrap break-words text-xs">
-                            {JSON.stringify(
-                              mode === 'intraday'
-                                ? (r as IntradayRankItem).factors ?? {}
-                                : (r as RankItem).breakdown ?? {},
-                              null,
-                              2,
-                            )}
-                          </pre>
                         </div>
-                        <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                          <div className="text-xs font-medium text-[var(--k-text)]">Meta</div>
-                          <div className="mt-2 space-y-1">
-                            <div>symbol: {r.symbol}</div>
-                            <div>
-                              {mode === 'intraday'
-                                ? `slot: ${String((r as IntradayRankItem).slot ?? '—')}`
-                                : `sector: ${String((r as RankItem).sector ?? '—')}`}
-                            </div>
+                        <div className="mt-2 text-xs text-[var(--k-muted)]">
+                          {(top1.whyBullets ?? []).slice(0, 4).join(' · ')}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3 text-xs">
+                        <div className="flex items-center justify-between">
+                          <div className="text-[var(--k-muted)]">Score</div>
+                          <div className="font-mono text-[var(--k-text)]">
+                            {Math.round(Number(top1.score ?? 0))}
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <div className="text-[var(--k-muted)]">ProbProfit2D</div>
+                          <div className="font-mono">
+                            {Math.round(Number(top1.probProfit2d ?? 0))}%
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <div className="text-[var(--k-muted)]">EV2D</div>
+                          <div className="font-mono">{Number(top1.ev2dPct ?? 0).toFixed(2)}%</div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <div className="text-[var(--k-muted)]">DD2D</div>
+                          <div className="font-mono">{Number(top1.dd2dPct ?? 0).toFixed(2)}%</div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <div className="text-[var(--k-muted)]">Confidence</div>
+                          <div className="font-mono">{String(top1.confidence ?? '—')}</div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <div className="text-[var(--k-muted)]">Buy price</div>
+                          <div className="font-mono">
+                            {top1.buyPrice
+                              ? `${top1.buyPrice.toFixed(2)} (${top1.buyPriceSrc ?? '—'})`
+                              : '—'}
                           </div>
                         </div>
                       </div>
-                    </details>
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-sm text-[var(--k-muted)]">
+                      No snapshot yet. Click Generate.
+                    </div>
+                  )}
+                </section>
+
+                <section className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]">
+                  <div className="border-b border-[var(--k-border)] px-4 py-3 text-sm font-medium">
+                    Top 3 (backup)
+                  </div>
+                  <div className="divide-y divide-[var(--k-border)]">
+                    {top3.map((r, idx) => (
+                      <div key={r.symbol} className="px-4 py-3 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 font-mono text-xs text-[var(--k-muted)]">
+                              {idx + 1}
+                            </div>
+                            <button
+                              type="button"
+                              className="font-mono text-[var(--k-accent)] hover:underline"
+                              onClick={() => onOpenStock?.(r.symbol)}
+                            >
+                              {r.ticker}
+                            </button>
+                            <div>{r.name}</div>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs">
+                            <div className="font-mono">
+                              Score {Math.round(Number(r.score ?? 0))}
+                            </div>
+                            <div className="font-mono text-[var(--k-muted)]">
+                              Prob {Math.round(Number(r.probProfit2d ?? 0))}%
+                            </div>
+                            <div className="font-mono text-[var(--k-muted)]">
+                              Conf {String(r.confidence ?? '—')}
+                            </div>
+                          </div>
+                        </div>
+                        {(r.whyBullets ?? []).length ? (
+                          <div className="mt-1 text-xs text-[var(--k-muted)]">
+                            {(r.whyBullets ?? []).slice(0, 3).join(' · ')}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                    {!top3.length ? (
+                      <div className="px-4 py-3 text-sm text-[var(--k-muted)]">
+                        No snapshot yet. Click Generate (or run Dashboard Sync all first).
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
+
+                <section className="overflow-auto rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]">
+                  <details>
+                    <summary className="cursor-pointer px-4 py-3 text-sm text-[var(--k-muted)]">
+                      Full list (details)
+                    </summary>
+                    <table className="w-full border-collapse text-sm">
+                      <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                        <tr className="text-left">
+                          <th className="px-2 py-2">#</th>
+                          <th className="px-2 py-2">Ticker</th>
+                          <th className="px-2 py-2">Name</th>
+                          <th className="px-2 py-2 text-right">Score</th>
+                          <th className="px-2 py-2 text-right">Prob%</th>
+                          <th className="px-2 py-2">Why</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((r, idx) => (
+                          <tr key={r.symbol} className="border-t border-[var(--k-border)]">
+                            <td className="px-2 py-2 font-mono text-[var(--k-muted)]">{idx + 1}</td>
+                            <td className="px-2 py-2 font-mono">
+                              <button
+                                type="button"
+                                className="text-[var(--k-accent)] hover:underline"
+                                onClick={() => onOpenStock?.(r.symbol)}
+                              >
+                                {r.ticker}
+                              </button>
+                            </td>
+                            <td className="px-2 py-2">{r.name}</td>
+                            <td className="px-2 py-2 text-right font-mono">
+                              {Math.round(Number(r.score ?? 0))}
+                            </td>
+                            <td className="px-2 py-2 text-right font-mono">
+                              {Math.round(Number(r.probProfit2d ?? 0))}
+                            </td>
+                            <td className="px-2 py-2 text-xs text-[var(--k-muted)]">
+                              {(r.whyBullets ?? []).slice(0, 2).join(' · ')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </details>
+                </section>
+              </>
+            );
+          })()}
+        </div>
+      ) : (
+        <div className="overflow-auto rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]">
+          <table className="w-full border-collapse text-sm">
+            <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+              <tr className="text-left">
+                <th className="px-2 py-2">#</th>
+                <th className="px-2 py-2">Theme</th>
+                <th className="px-2 py-2 text-right">Score</th>
+                <th className="px-2 py-2 text-right">Strength</th>
+                <th className="px-2 py-2 text-right">LU</th>
+                <th className="px-2 py-2">Top stocks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(dataMorning?.themes ?? []).map((t, idx) => (
+                <tr key={`${t.kind}:${t.name}`} className="border-t border-[var(--k-border)]">
+                  <td className="px-2 py-2 font-mono text-[var(--k-muted)]">{idx + 1}</td>
+                  <td className="px-2 py-2">
+                    <span className="font-mono text-[var(--k-muted)]">{t.kind}</span> {t.name}
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono">
+                    {Math.round(Number(t.score ?? 0))}
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono">
+                    {Number(t.todayStrength ?? 0).toFixed(1)}%
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono">{Number(t.limitupCount ?? 0)}</td>
+                  <td className="px-2 py-2 text-xs text-[var(--k-muted)]">
+                    {(t.topTickers ?? []).slice(0, 3).map((x) => (
+                      <button
+                        key={x.symbol}
+                        type="button"
+                        className="mr-2 font-mono text-[var(--k-accent)] hover:underline"
+                        onClick={() => onOpenStock?.(x.symbol)}
+                        title={`${x.symbol}${typeof x.chgPct === 'number' ? ` · ${x.chgPct}%` : ''}`}
+                      >
+                        {x.ticker}
+                      </button>
+                    ))}
+                    {!(t.topTickers ?? []).length ? '—' : null}
                   </td>
                 </tr>
-              </React.Fragment>
-            ))}
-            {!((mode === 'intraday' ? dataIntraday?.items : dataNext2d?.items) ?? []).length ? (
-              <tr>
-                <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={6}>
-                  No snapshot yet. Click Generate (or run Dashboard Sync all first).
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-
-      {mode === 'intraday' ? (
-        <div className="mt-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-          <div className="text-sm font-medium">Observations (today)</div>
-          <div className="mt-2 text-xs text-[var(--k-muted)]">
-            These are lightweight logs collected around key time points (best-effort).
-          </div>
-          <div className="mt-3 space-y-2">
-            {(dataIntraday?.observations ?? []).slice(-10).map((o) => (
-              <details
-                key={o.id}
-                className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2"
-              >
-                <summary className="cursor-pointer text-xs text-[var(--k-muted)]">
-                  {o.kind} · {fmtDateTime(o.ts)}
-                </summary>
-                <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
-                  {JSON.stringify(o.raw ?? {}, null, 2)}
-                </pre>
-              </details>
-            ))}
-            {!(dataIntraday?.observations ?? []).length ? (
-              <div className="text-sm text-[var(--k-muted)]">No observations yet.</div>
-            ) : null}
-          </div>
+              ))}
+              {!(dataMorning?.themes ?? []).length ? (
+                <tr>
+                  <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={6}>
+                    No radar yet. Click Generate.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
-
-

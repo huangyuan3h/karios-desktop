@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -400,6 +400,65 @@ def _connect() -> sqlite3.Connection:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_cn_rank_snapshots_date ON cn_rank_snapshots(as_of_date DESC)",
     )
+    # --- Quant 2D rank learning loop (v0) ---
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS quant_2d_rank_events (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          as_of_ts TEXT NOT NULL,
+          as_of_date TEXT NOT NULL,
+          symbol TEXT NOT NULL,
+          ticker TEXT NOT NULL,
+          name TEXT NOT NULL,
+          buy_price REAL NOT NULL,
+          buy_price_src TEXT NOT NULL,
+          raw_score REAL NOT NULL,
+          evidence_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          UNIQUE(account_id, as_of_ts, symbol),
+          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+        )
+        """,
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_quant_2d_rank_events_date ON quant_2d_rank_events(as_of_date DESC)",
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS quant_2d_outcomes (
+          event_id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          as_of_ts TEXT NOT NULL,
+          as_of_date TEXT NOT NULL,
+          symbol TEXT NOT NULL,
+          buy_price REAL NOT NULL,
+          t1_date TEXT NOT NULL,
+          t2_date TEXT NOT NULL,
+          close_t1 REAL,
+          close_t2 REAL,
+          low_min REAL,
+          ret2d_avg_pct REAL,
+          dd2d_pct REAL,
+          win INTEGER NOT NULL,
+          labeled_at TEXT NOT NULL,
+          FOREIGN KEY(event_id) REFERENCES quant_2d_rank_events(id),
+          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+        )
+        """,
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_quant_2d_outcomes_date ON quant_2d_outcomes(as_of_date DESC)",
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS quant_2d_calibration_cache (
+          key TEXT PRIMARY KEY,
+          updated_at TEXT NOT NULL,
+          output_json TEXT NOT NULL
+        )
+        """,
+    )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS cn_intraday_rank_snapshots (
@@ -780,6 +839,301 @@ def _upsert_cn_rank_snapshot(*, account_id: str, as_of_date: str, universe_versi
         )
         conn.commit()
     return snap_id
+
+
+def _get_market_bar_by_date(*, symbol: str, date: str) -> dict[str, Any] | None:
+    sym = (symbol or "").strip()
+    d = (date or "").strip()
+    if not sym or not d:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT date, open, high, low, close, volume, amount
+            FROM market_bars
+            WHERE symbol = ? AND date = ?
+            """,
+            (sym, d),
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "date": str(row[0]),
+        "open": str(row[1] or ""),
+        "high": str(row[2] or ""),
+        "low": str(row[3] or ""),
+        "close": str(row[4] or ""),
+        "volume": str(row[5] or ""),
+        "amount": str(row[6] or ""),
+    }
+
+
+def _cn_next_trade_dates(*, as_of_date: str, n: int) -> list[str]:
+    """
+    Best-effort CN trading day forward steps (weekday-only; no holiday calendar).
+    """
+    n2 = max(1, min(int(n), 10))
+    try:
+        d0 = datetime.strptime(as_of_date, "%Y-%m-%d").date()
+    except Exception:
+        d0 = datetime.now(tz=UTC).date()
+    out: list[str] = []
+    cur = d0
+    while len(out) < n2:
+        cur = cur + timedelta(days=1)
+        if cur.weekday() >= 5:
+            continue
+        out.append(cur.isoformat())
+    return out
+
+
+def _upsert_quant_2d_rank_events(
+    *,
+    account_id: str,
+    as_of_ts: str,
+    as_of_date: str,
+    rows: list[dict[str, Any]],
+) -> None:
+    """
+    Persist generated candidates (evidence + buy price) for later outcome labeling/calibration.
+    """
+    ts = now_iso()
+    with _connect() as conn:
+        for r in rows:
+            sym = _norm_str(r.get("symbol") or "")
+            ticker = _norm_str(r.get("ticker") or "")
+            name = _norm_str(r.get("name") or "")
+            if not sym or not ticker:
+                continue
+            ev = r.get("evidence") if isinstance(r.get("evidence"), dict) else {}
+            buy_price = _finite_float(r.get("buyPrice"), 0.0)
+            if buy_price <= 0:
+                continue
+            buy_src = _norm_str(r.get("buyPriceSrc") or "unknown") or "unknown"
+            raw_score = _finite_float(r.get("rawScore"), 0.0)
+            eid = str(uuid.uuid4())
+            conn.execute(
+                """
+                INSERT INTO quant_2d_rank_events(
+                  id, account_id, as_of_ts, as_of_date, symbol, ticker, name,
+                  buy_price, buy_price_src, raw_score, evidence_json, created_at
+                )
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(account_id, as_of_ts, symbol) DO UPDATE SET
+                  buy_price = excluded.buy_price,
+                  buy_price_src = excluded.buy_price_src,
+                  raw_score = excluded.raw_score,
+                  evidence_json = excluded.evidence_json,
+                  created_at = excluded.created_at
+                """,
+                (
+                    eid,
+                    account_id,
+                    as_of_ts,
+                    as_of_date,
+                    sym,
+                    ticker,
+                    name,
+                    float(buy_price),
+                    buy_src,
+                    float(raw_score),
+                    json.dumps(ev or {}, ensure_ascii=False, default=str),
+                    ts,
+                ),
+            )
+        conn.commit()
+
+
+def _label_quant_2d_outcomes_best_effort(*, account_id: str, as_of_date: str | None = None, limit: int = 500) -> dict[str, Any]:
+    """
+    Best-effort offline labeling for 2D outcomes based on cached daily bars.
+    Outcome metric: average return of next 2 trading days' closes relative to buy_price.
+    """
+    lim = max(1, min(int(limit), 5000))
+    where = ""
+    args: list[Any] = [account_id]
+    if as_of_date:
+        where = " AND e.as_of_date = ?"
+        args.append(str(as_of_date))
+    with _connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT e.id, e.as_of_ts, e.as_of_date, e.symbol, e.buy_price
+            FROM quant_2d_rank_events e
+            LEFT JOIN quant_2d_outcomes o ON o.event_id = e.id
+            WHERE e.account_id = ?{where} AND o.event_id IS NULL
+            ORDER BY e.as_of_ts ASC
+            LIMIT ?
+            """,
+            (*args, lim),
+        ).fetchall()
+
+    labeled = 0
+    skipped = 0
+    for r in rows:
+        event_id = str(r[0])
+        ts = str(r[1])
+        d0 = str(r[2])
+        sym = str(r[3])
+        buy = float(r[4] or 0.0)
+        if not sym or buy <= 0:
+            skipped += 1
+            continue
+        t12 = _cn_next_trade_dates(as_of_date=d0, n=2)
+        t1 = t12[0] if len(t12) >= 1 else ""
+        t2 = t12[1] if len(t12) >= 2 else ""
+        if not t1 or not t2:
+            skipped += 1
+            continue
+        b1 = _get_market_bar_by_date(symbol=sym, date=t1)
+        b2 = _get_market_bar_by_date(symbol=sym, date=t2)
+        if b1 is None or b2 is None:
+            skipped += 1
+            continue
+        c1 = _finite_float(b1.get("close"), 0.0)
+        c2 = _finite_float(b2.get("close"), 0.0)
+        l1 = _finite_float(b1.get("low"), 0.0)
+        l2 = _finite_float(b2.get("low"), 0.0)
+        if c1 <= 0 or c2 <= 0:
+            skipped += 1
+            continue
+        ret_avg = ((c1 + c2) / 2.0) / buy - 1.0
+        low_min = min([x for x in [l1, l2] if x > 0] or [0.0])
+        dd = (low_min / buy - 1.0) if (low_min > 0 and buy > 0) else 0.0
+        win = 1 if ret_avg > 0 else 0
+        labeled_at = now_iso()
+        with _connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO quant_2d_outcomes(
+                  event_id, account_id, as_of_ts, as_of_date, symbol, buy_price,
+                  t1_date, t2_date, close_t1, close_t2, low_min,
+                  ret2d_avg_pct, dd2d_pct, win, labeled_at
+                )
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    account_id,
+                    ts,
+                    d0,
+                    sym,
+                    float(buy),
+                    t1,
+                    t2,
+                    float(c1),
+                    float(c2),
+                    float(low_min),
+                    float(ret_avg * 100.0),
+                    float(dd * 100.0),
+                    int(win),
+                    labeled_at,
+                ),
+            )
+            conn.commit()
+        labeled += 1
+    return {"unlabeled": len(rows), "labeled": labeled, "skipped": skipped}
+
+
+def _get_quant_2d_calibration_cached(*, key: str) -> dict[str, Any] | None:
+    k = (key or "").strip()
+    if not k:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT updated_at, output_json FROM quant_2d_calibration_cache WHERE key = ?",
+            (k,),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        out = json.loads(str(row[1]) or "{}")
+    except Exception:
+        out = {}
+    return {"updatedAt": str(row[0]), "output": out}
+
+
+def _upsert_quant_2d_calibration_cached(*, key: str, ts: str, output: dict[str, Any]) -> None:
+    k = (key or "").strip()
+    if not k:
+        return
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO quant_2d_calibration_cache(key, updated_at, output_json)
+            VALUES(?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+              updated_at = excluded.updated_at,
+              output_json = excluded.output_json
+            """,
+            (k, ts, json.dumps(output or {}, ensure_ascii=False, default=str)),
+        )
+        conn.commit()
+
+
+def _build_quant_2d_calibration(
+    *,
+    account_id: str,
+    buckets: int = 20,
+    lookback_days: int = 180,
+) -> dict[str, Any]:
+    b = max(5, min(int(buckets), 50))
+    days = max(10, min(int(lookback_days), 720))
+    # Simple lookback by as_of_date string ordering (YYYY-MM-DD).
+    cutoff = (datetime.now(tz=UTC).date() - timedelta(days=days)).isoformat()
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT e.raw_score, o.win, o.ret2d_avg_pct, o.dd2d_pct
+            FROM quant_2d_outcomes o
+            JOIN quant_2d_rank_events e ON e.id = o.event_id
+            WHERE o.account_id = ? AND o.as_of_date >= ?
+            """,
+            (account_id, cutoff),
+        ).fetchall()
+
+    pts: list[tuple[float, int, float, float]] = []
+    for r in rows:
+        raw = float(r[0] or 0.0)
+        win = int(r[1] or 0)
+        ret = float(r[2] or 0.0)
+        dd = float(r[3] or 0.0)
+        pts.append((raw, win, ret, dd))
+    pts.sort(key=lambda x: x[0])
+    if not pts:
+        return {"buckets": b, "n": 0, "items": []}
+
+    # Equal-frequency buckets.
+    n = len(pts)
+    items: list[dict[str, Any]] = []
+    for i in range(b):
+        lo_idx = int(i * n / b)
+        hi_idx = int((i + 1) * n / b)
+        seg = pts[lo_idx:hi_idx] if hi_idx > lo_idx else []
+        if not seg:
+            continue
+        raws = [x[0] for x in seg]
+        wins = [x[1] for x in seg]
+        rets = [x[2] for x in seg]
+        dds = [x[3] for x in seg]
+        prob = float(sum(wins)) / float(len(wins)) if wins else 0.0
+        ev = float(sum(rets)) / float(len(rets)) if rets else 0.0
+        dd_mean = float(sum(dds)) / float(len(dds)) if dds else 0.0
+        # Conservative tail return (10th percentile).
+        rets_sorted = sorted(rets)
+        p10 = rets_sorted[int(0.10 * (len(rets_sorted) - 1))] if len(rets_sorted) >= 2 else (rets_sorted[0] if rets_sorted else 0.0)
+        items.append(
+            {
+                "minRawScore": float(min(raws)),
+                "maxRawScore": float(max(raws)),
+                "n": int(len(seg)),
+                "probWin": float(prob),  # 0..1
+                "ev2dPct": float(ev),
+                "p10Ret2dPct": float(p10),
+                "dd2dPct": float(dd_mean),
+            }
+        )
+    return {"buckets": b, "n": n, "items": items}
 
 
 def _prune_cn_intraday_rank_snapshots(*, account_id: str, keep_days: int = 10) -> None:
@@ -1999,19 +2353,35 @@ class RankItem(BaseModel):
     ticker: str
     name: str
     sector: str | None = None
+    # Final decision score (0-100): higher means "more likely to profit within ~2 trading days".
     score: float
-    probBand: str  # High | Medium | Low
+    # Calibrated metrics (best-effort).
+    probProfit2d: float | None = None  # 0-100 (%)
+    ev2dPct: float | None = None  # percent
+    dd2dPct: float | None = None  # percent (<=0 means drawdown)
+    confidence: str | None = None  # High | Medium | Low
+    # Snapshot metadata.
+    buyPrice: float | None = None
+    buyPriceSrc: str | None = None  # spot | bars_close | unknown
+    # Explanations (best-effort).
+    whyBullets: list[str] = []
+    # Debug fields.
+    rawScore: float | None = None
+    probBand: str | None = None  # High | Medium | Low (derived)
     signals: list[str] = []
     breakdown: dict[str, float] = {}
 
 
 class RankSnapshotResponse(BaseModel):
     id: str
+    asOfTs: str | None = None
     asOfDate: str
     accountId: str
     createdAt: str
     universeVersion: str
     riskMode: str | None = None
+    objective: str | None = None
+    horizon: str | None = None
     items: list[RankItem] = []
     debug: dict[str, Any] | None = None
 
@@ -2065,6 +2435,35 @@ class IntradayRankSnapshotResponse(BaseModel):
     items: list[IntradayRankItem] = []
     observations: list[IntradayObservationRow] = []
     debug: dict[str, Any] | None = None
+
+
+# --- CN morning radar (09-10) (v0) ---
+class MorningRadarTheme(BaseModel):
+    kind: str  # industry | concept
+    name: str
+    score: float
+    todayStrength: float = 0.0
+    volSurge: float = 0.0
+    limitupCount: int = 0
+    followersCount: int = 0
+    topTickers: list[dict[str, Any]] = []
+
+
+class MorningRadarResponse(BaseModel):
+    asOfTs: str
+    tradeDate: str
+    accountId: str
+    universeVersion: str
+    themes: list[MorningRadarTheme] = []
+    debug: dict[str, Any] | None = None
+
+
+class MorningRadarGenerateRequest(BaseModel):
+    accountId: str | None = None
+    asOfTs: str | None = None
+    universeVersion: str = "v0"
+    topK: int = 3
+    perTheme: int = 3
 
 
 # --- Leaders mainline (industry+concept) (v0) ---
@@ -3441,11 +3840,14 @@ def rank_cn_next2d(
     items = items0[: max(1, min(int(limit), 200))]
     return RankSnapshotResponse(
         id=str(cached.get("id") or ""),
+        asOfTs=str(out.get("asOfTs") or "") or None,
         asOfDate=str(out.get("asOfDate") or as_of),
         accountId=aid,
         createdAt=str(cached.get("createdAt") or ""),
         universeVersion=str(out.get("universeVersion") or universeVersion),
         riskMode=str(out.get("riskMode") or "") or None,
+        objective=str(out.get("objective") or "") or None,
+        horizon=str(out.get("horizon") or "") or None,
         items=[RankItem(**x) for x in items if isinstance(x, dict)],
         debug=out.get("debug") if isinstance(out.get("debug"), dict) else None,
     )
@@ -3484,26 +3886,235 @@ def rank_cn_next2d_generate(req: RankNext2dGenerateRequest) -> RankSnapshotRespo
         )
 
     ts = now_iso()
-    output = _rank_build_and_score(
+    # Run best-effort outcome labeling to keep calibration fresh.
+    try:
+        _label_quant_2d_outcomes_best_effort(account_id=aid, limit=500)
+    except Exception:
+        pass
+
+    # Build a larger raw universe for learning; still return only `limit`.
+    internal_limit = max(limit2, 80)
+    raw_out = _rank_build_and_score(
         account_id=aid,
         as_of_date=as_of,
-        limit=limit2,
+        limit=internal_limit,
         universe_version=universe,
         include_holdings=bool(req.includeHoldings),
     )
+
+    # Calibration (bucketed, cached).
+    calib_key = f"v0:{aid}:quant2d:bucket20"
+    calib_out: dict[str, Any] = {}
+    cached_cal = _get_quant_2d_calibration_cached(key=calib_key)
+    use_cache = False
+    if cached_cal is not None:
+        try:
+            updated = datetime.fromisoformat(str(cached_cal.get("updatedAt") or "")).replace(tzinfo=UTC)
+            age = (datetime.now(tz=UTC) - updated).total_seconds()
+            if age <= 6 * 3600:
+                out0 = cached_cal.get("output")
+                calib_out = out0 if isinstance(out0, dict) else {}
+                use_cache = True
+        except Exception:
+            use_cache = False
+    if not use_cache:
+        calib_out = _build_quant_2d_calibration(account_id=aid, buckets=20, lookback_days=180)
+        try:
+            _upsert_quant_2d_calibration_cached(key=calib_key, ts=ts, output=calib_out)
+        except Exception:
+            pass
+
+    items_raw = raw_out.get("items")
+    raw_items: list[Any] = items_raw if isinstance(items_raw, list) else []
+
+    # Persist rank events for learning (cap).
+    try:
+        ev_rows: list[dict[str, Any]] = []
+        for r in raw_items[:80]:
+            if not isinstance(r, dict):
+                continue
+            ev = r.get("evidence") if isinstance(r.get("evidence"), dict) else {}
+            ev_rows.append(
+                {
+                    "symbol": r.get("symbol"),
+                    "ticker": r.get("ticker"),
+                    "name": r.get("name"),
+                    "buyPrice": ev.get("buyPrice"),
+                    "buyPriceSrc": ev.get("buyPriceSrc"),
+                    "rawScore": r.get("rawScore"),
+                    "evidence": ev,
+                }
+            )
+        _upsert_quant_2d_rank_events(account_id=aid, as_of_ts=str(raw_out.get("asOfTs") or ts), as_of_date=as_of, rows=ev_rows)
+    except Exception:
+        pass
+
+    # Apply calibration and compute base decision score (before LLM rerank).
+    final_items: list[dict[str, Any]] = []
+    evidence_by_symbol: dict[str, dict[str, Any]] = {}
+    for r in raw_items:
+        if not isinstance(r, dict):
+            continue
+        raw_score = _finite_float(r.get("rawScore"), _finite_float(r.get("score"), 0.0))
+        ev = r.get("evidence") if isinstance(r.get("evidence"), dict) else {}
+        sym = _norm_str(r.get("symbol") or "")
+        if sym and isinstance(ev, dict):
+            evidence_by_symbol[sym] = ev
+        bkt = _quant2d_find_bucket(calib_out, raw_score)
+        if bkt is None:
+            prob = 0.0
+            ev2 = 0.0
+            p10 = 0.0
+            dd2 = 0.0
+            n = 0
+        else:
+            prob = _finite_float(bkt.get("probWin"), 0.0) * 100.0
+            ev2 = _finite_float(bkt.get("ev2dPct"), 0.0)
+            p10 = _finite_float(bkt.get("p10Ret2dPct"), 0.0)
+            dd2 = _finite_float(bkt.get("dd2dPct"), 0.0)
+            n = int(bkt.get("n") or 0)
+        score = _quant2d_decision_score(prob_profit_pct=prob, ev2d_pct=ev2, p10_ret2d_pct=p10, dd2d_pct=dd2)
+        why = _quant2d_why_from_evidence(ev)
+        final_items.append(
+            {
+                "symbol": r.get("symbol"),
+                "market": r.get("market"),
+                "ticker": r.get("ticker"),
+                "name": r.get("name"),
+                "sector": r.get("sector"),
+                "score": round(float(score), 2),
+                "probProfit2d": round(float(prob), 2),
+                "ev2dPct": round(float(ev2), 3),
+                "dd2dPct": round(float(dd2), 3),
+                "confidence": _quant2d_confidence(n),
+                "buyPrice": _finite_float(ev.get("buyPrice"), 0.0) or None,
+                "buyPriceSrc": _norm_str(ev.get("buyPriceSrc") or "") or None,
+                "whyBullets": why,
+                "rawScore": round(float(raw_score), 2),
+                "probBand": _quant2d_prob_band(prob),
+                "signals": r.get("signals") if isinstance(r.get("signals"), list) else [],
+                "breakdown": r.get("breakdown") if isinstance(r.get("breakdown"), dict) else {},
+            }
+        )
+
+    # LLM rerank + explain (best-effort): only adjust TopK candidates, and only when evidenceRefs are valid.
+    llm_meta: dict[str, Any] = {"ok": False}
+    try:
+        top_for_llm = sorted(final_items, key=lambda x: float(x.get("score") or 0.0), reverse=True)[:12]
+        payload = {
+            "asOfTs": str(raw_out.get("asOfTs") or ts),
+            "asOfDate": as_of,
+            "horizon": "2d",
+            "objective": "profit_probability",
+            "candidates": [
+                {
+                    "symbol": _norm_str(x.get("symbol") or ""),
+                    "ticker": _norm_str(x.get("ticker") or ""),
+                    "name": _norm_str(x.get("name") or ""),
+                    "evidence": evidence_by_symbol.get(_norm_str(x.get("symbol") or ""), {}),
+                }
+                for x in top_for_llm
+                if _norm_str(x.get("symbol") or "")
+            ],
+            "context": {
+                "riskMode": raw_out.get("riskMode"),
+                "calibrationN": int((calib_out.get("n") or 0) if isinstance(calib_out, dict) else 0),
+                "asOfDate": as_of,
+            },
+        }
+        resp = _ai_quant_rank_explain(payload=payload)
+        items_in = resp.get("items") if isinstance(resp, dict) else None
+        items_llm: list[Any] = items_in if isinstance(items_in, list) else []
+        adj_by_sym: dict[str, dict[str, Any]] = {}
+        for it in items_llm:
+            if not isinstance(it, dict):
+                continue
+            sym = _norm_str(it.get("symbol") or "")
+            if not sym:
+                continue
+            adj_by_sym[sym] = it
+        applied = 0
+        for x in final_items:
+            sym = _norm_str(x.get("symbol") or "")
+            if not sym:
+                continue
+            if sym not in adj_by_sym:
+                continue
+            ev = evidence_by_symbol.get(sym) or {}
+            it = adj_by_sym[sym]
+            adj = _finite_float(it.get("llmScoreAdj"), 0.0)
+            # Validate why bullets.
+            why_in = it.get("whyBullets")
+            why_out: list[str] = []
+            if isinstance(why_in, list):
+                for b in why_in:
+                    if not isinstance(b, dict):
+                        continue
+                    txt = _norm_str(b.get("text") or "")
+                    refs0 = b.get("evidenceRefs")
+                    refs: list[str] = [str(r).strip() for r in refs0] if isinstance(refs0, list) else []
+                    if not txt or not refs:
+                        continue
+                    ok = True
+                    for ref in refs[:4]:
+                        if _get_by_dot_path(ev, ref) is None:
+                            ok = False
+                            break
+                    if ok:
+                        why_out.append(txt)
+                    if len(why_out) >= 5:
+                        break
+            if why_out:
+                x["whyBullets"] = why_out
+                # Apply small adjustment ONLY when we have evidence-backed bullets.
+                x["score"] = round(
+                    max(0.0, min(100.0, float(x.get("score") or 0.0) + float(adj))),
+                    2,
+                )
+                applied += 1
+        llm_meta = {
+            "ok": True,
+            "applied": applied,
+            "model": resp.get("model") if isinstance(resp, dict) else None,
+        }
+    except Exception as e:
+        llm_meta = {"ok": False, "error": str(e)}
+
+    final_items.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
+    final_items = final_items[:limit2]
+
+    output = {
+        "asOfTs": str(raw_out.get("asOfTs") or ts),
+        "asOfDate": as_of,
+        "objective": "profit_probability_2d",
+        "horizon": "avg_close_t1_t2",
+        "accountId": aid,
+        "universeVersion": universe,
+        "riskMode": raw_out.get("riskMode"),
+        "items": final_items,
+        "debug": {
+            "raw": raw_out.get("debug") if isinstance(raw_out.get("debug"), dict) else {},
+            "calibrationKey": calib_key,
+            "calibrationCached": bool(use_cache),
+            "calibrationN": int((calib_out.get("n") or 0) if isinstance(calib_out, dict) else 0),
+            "calibrationBuckets": len(calib_out.get("items") or []) if isinstance(calib_out.get("items"), list) else 0,
+            "llm": llm_meta,
+        },
+    }
+
     snap_id = _upsert_cn_rank_snapshot(account_id=aid, as_of_date=as_of, universe_version=universe, ts=ts, output=output)
     _prune_cn_rank_snapshots(keep_days=10)
-    out_items = output.get("items")
-    items1: list[Any] = out_items if isinstance(out_items, list) else []
-    items = items1[:limit2]
     return RankSnapshotResponse(
         id=snap_id,
+        asOfTs=str(output.get("asOfTs") or "") or None,
         asOfDate=str(output.get("asOfDate") or as_of),
         accountId=aid,
         createdAt=ts,
         universeVersion=str(output.get("universeVersion") or universe),
         riskMode=str(output.get("riskMode") or "") or None,
-        items=[RankItem(**x) for x in items if isinstance(x, dict)],
+        objective=str(output.get("objective") or "") or None,
+        horizon=str(output.get("horizon") or "") or None,
+        items=[RankItem(**x) for x in final_items if isinstance(x, dict)],
         debug=output.get("debug") if isinstance(output.get("debug"), dict) else None,
     )
 
@@ -3653,6 +4264,111 @@ def rank_cn_intraday_generate(req: IntradayRankGenerateRequest) -> IntradayRankS
         items=[IntradayRankItem(**x) for x in items if isinstance(x, dict)],
         observations=obs_items,
         debug=output.get("debug") if isinstance(output.get("debug"), dict) else None,
+    )
+
+
+def _quant_morning_radar_build(
+    *,
+    account_id: str,
+    as_of_ts: str,
+    universe_version: str,
+    top_k: int = 3,
+    per_theme: int = 3,
+) -> dict[str, Any]:
+    tz = ZoneInfo("Asia/Shanghai")
+    try:
+        dt = datetime.fromisoformat(as_of_ts.replace("Z", "+00:00"))
+        dt_cn = dt.astimezone(tz)
+    except Exception:
+        dt_cn = datetime.now(tz=tz)
+    trade_date = dt_cn.strftime("%Y-%m-%d")
+
+    # Spot snapshot for representative stocks.
+    spot_rows: list[StockRow] = []
+    try:
+        spot_rows = fetch_cn_a_spot()
+    except Exception:
+        spot_rows = []
+    spot_map: dict[str, StockRow] = {s.ticker: s for s in spot_rows if s.market == "CN" and s.ticker}
+
+    themes, dbg = _mainline_step1_candidates(trade_date=trade_date, force_membership=False)
+    topk = (themes or [])[: max(1, min(int(top_k), 10))]
+
+    out_themes: list[dict[str, Any]] = []
+    for t in topk:
+        if not isinstance(t, dict):
+            continue
+        kind = _norm_str(t.get("kind") or "")
+        name = _norm_str(t.get("name") or "")
+        if not kind or not name:
+            continue
+        mem, _meta = _get_theme_members(kind=kind, name=name, trade_date=trade_date, force=False)
+        # Pick representative stocks from members using spot change_pct.
+        picks: list[dict[str, Any]] = []
+        for code in (mem or [])[:300]:
+            s = spot_map.get(code)
+            if s is None:
+                continue
+            picks.append(
+                {
+                    "symbol": s.symbol,
+                    "ticker": s.ticker,
+                    "name": s.name,
+                    "chgPct": _parse_pct(s.quote.get("change_pct") or ""),
+                    "volRatio": _parse_num(s.quote.get("vol_ratio") or ""),
+                    "turnover": _parse_num(s.quote.get("turnover") or ""),
+                }
+            )
+        picks.sort(key=lambda x: float(x.get("chgPct") or 0.0), reverse=True)
+        out_themes.append(
+            {
+                "kind": kind,
+                "name": name,
+                "score": _finite_float(t.get("step1Score"), 0.0),
+                "todayStrength": _finite_float(t.get("todayStrength"), 0.0),
+                "volSurge": _finite_float(t.get("volSurge"), 0.0),
+                "limitupCount": int(t.get("limitupCount") or 0),
+                "followersCount": int(t.get("followersCount") or 0),
+                "topTickers": picks[: max(1, min(int(per_theme), 10))],
+            }
+        )
+
+    return {
+        "asOfTs": as_of_ts,
+        "tradeDate": trade_date,
+        "accountId": account_id,
+        "universeVersion": universe_version,
+        "themes": out_themes,
+        "debug": {"step1": dbg, "spotRows": len(spot_rows)},
+    }
+
+
+@app.post("/rank/cn/morning/generate", response_model=MorningRadarResponse)
+def rank_cn_morning_generate(req: MorningRadarGenerateRequest) -> MorningRadarResponse:
+    universe = (req.universeVersion or "").strip() or "v0"
+    aid = (req.accountId or "").strip()
+    if not aid:
+        accs = list_broker_accounts(broker="pingan")
+        aid = accs[0].id if accs else ""
+    if not aid:
+        raise HTTPException(status_code=400, detail="accountId is required")
+    ts = (req.asOfTs or "").strip() or now_iso()
+    out = _quant_morning_radar_build(
+        account_id=aid,
+        as_of_ts=ts,
+        universe_version=universe,
+        top_k=int(req.topK),
+        per_theme=int(req.perTheme),
+    )
+    themes_raw = out.get("themes")
+    themes0: list[Any] = themes_raw if isinstance(themes_raw, list) else []
+    return MorningRadarResponse(
+        asOfTs=str(out.get("asOfTs") or ts),
+        tradeDate=str(out.get("tradeDate") or _today_cn_date_str()),
+        accountId=aid,
+        universeVersion=universe,
+        themes=[MorningRadarTheme(**x) for x in themes0 if isinstance(x, dict)],
+        debug=out.get("debug") if isinstance(out.get("debug"), dict) else None,
     )
 
 
@@ -6013,6 +6729,14 @@ def _rank_build_and_score(
     except Exception:
         hot_set = set()
 
+    # Best-effort spot snapshot for buyPrice/evidence (does not affect DB-first bars/chips/flow scoring).
+    spot_rows: list[StockRow] = []
+    try:
+        spot_rows = fetch_cn_a_spot()
+    except Exception:
+        spot_rows = []
+    spot_map: dict[str, StockRow] = {s.ticker: s for s in spot_rows if s.market == "CN" and s.ticker}
+
     tv_pool = _rank_extract_tv_pool(max_screeners=20, max_rows=160)
     holdings_pool = _rank_extract_holdings_pool(account_id) if include_holdings else []
     # Merge: TV first, then holdings (ensure included).
@@ -6170,6 +6894,54 @@ def _rank_build_and_score(
         if risk_mode:
             signals.append(f"Risk mode: {risk_mode}")
 
+        spot = spot_map.get(ticker)
+        buy_price = _finite_float((spot.quote.get("price") if spot else None), 0.0) if spot else 0.0
+        buy_src = "spot" if buy_price > 0 else "bars_close"
+        if buy_price <= 0:
+            buy_price = last_close
+            buy_src = "bars_close" if buy_price > 0 else "unknown"
+
+        evidence = {
+            "asOfDate": as_of_date,
+            "symbol": sym,
+            "ticker": ticker,
+            "name": name,
+            "sector": sector,
+            "riskMode": risk_mode,
+            "buyPrice": buy_price,
+            "buyPriceSrc": buy_src,
+            "spot": (
+                {
+                    "price": spot.quote.get("price"),
+                    "chgPct": spot.quote.get("change_pct"),
+                    "volRatio": spot.quote.get("vol_ratio"),
+                    "turnover": spot.quote.get("turnover"),
+                }
+                if spot
+                else {}
+            ),
+            "bars": {
+                "lastClose": last_close,
+                "sma5": sma5,
+                "sma10": sma10,
+                "sma20": sma20,
+                "high20": high20,
+                "lastAmount": last_amt,
+                "lastVolume": last_vol,
+                "relVol": rel_vol,
+            },
+            "fundFlow": {
+                "mainNetRatio": main_ratio,
+                "superNetRatio": super_ratio,
+                "largeNetRatio": large_ratio,
+            },
+            "chips": {
+                "profitRatio": pr,
+                "avgCost": avg_cost,
+            },
+            "breakdown": breakdown,
+        }
+
         scored.append(
             {
                 "symbol": sym,
@@ -6177,10 +6949,15 @@ def _rank_build_and_score(
                 "ticker": ticker,
                 "name": name,
                 "sector": sector,
+                # rawScore is the deterministic factor score; final score will be calibrated in the API layer.
+                "rawScore": round(total, 2),
                 "score": round(total, 2),
                 "probBand": _rank_prob_band(total),
                 "signals": signals[:6],
                 "breakdown": breakdown,
+                "buyPrice": float(buy_price) if buy_price > 0 else None,
+                "buyPriceSrc": buy_src,
+                "evidence": evidence,
                 "isHolding": is_holding,
             }
         )
@@ -6189,6 +6966,7 @@ def _rank_build_and_score(
     top = scored[: max(1, min(int(limit), 200))]
     return {
         "asOfDate": as_of_date,
+        "asOfTs": now_iso(),
         "accountId": account_id,
         "universeVersion": universe_version,
         "riskMode": risk_mode,
@@ -6199,8 +6977,99 @@ def _rank_build_and_score(
             "holdingsPool": len(holdings_pool),
             "scored": len(scored),
             "dropped": dropped,
+            "spotRows": len(spot_rows),
         },
     }
+
+
+def _quant2d_confidence(n: int) -> str:
+    if int(n) >= 200:
+        return "High"
+    if int(n) >= 60:
+        return "Medium"
+    return "Low"
+
+
+def _quant2d_prob_band(prob_pct: float) -> str:
+    p = float(prob_pct or 0.0)
+    if p >= 70.0:
+        return "High"
+    if p >= 55.0:
+        return "Medium"
+    return "Low"
+
+
+def _quant2d_find_bucket(calib: dict[str, Any], raw_score: float) -> dict[str, Any] | None:
+    items = calib.get("items") if isinstance(calib, dict) else None
+    if not isinstance(items, list) or not items:
+        return None
+    s = float(raw_score or 0.0)
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        lo = _finite_float(it.get("minRawScore"), -1e9)
+        hi = _finite_float(it.get("maxRawScore"), 1e9)
+        if lo <= s <= hi:
+            return it
+    # Fallback: nearest by min/max distance.
+    best = None
+    best_dist = 1e18
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        lo = _finite_float(it.get("minRawScore"), 0.0)
+        hi = _finite_float(it.get("maxRawScore"), 0.0)
+        dist = min(abs(s - lo), abs(s - hi))
+        if dist < best_dist:
+            best_dist = dist
+            best = it
+    return best if isinstance(best, dict) else None
+
+
+def _quant2d_decision_score(
+    *,
+    prob_profit_pct: float,
+    ev2d_pct: float,
+    p10_ret2d_pct: float,
+    dd2d_pct: float,
+) -> float:
+    """
+    Decision score (0-100) that strongly prioritizes win probability,
+    while penalizing downside tails and drawdown (prefers 'high prob small win, low prob small loss').
+    """
+    p = max(0.0, min(100.0, float(prob_profit_pct or 0.0)))
+    ev = float(ev2d_pct or 0.0)
+    p10 = float(p10_ret2d_pct or 0.0)
+    dd = float(dd2d_pct or 0.0)  # <=0 for drawdown
+
+    # Cap EV contribution to avoid rare big winners dominating.
+    ev_adj = max(-2.0, min(4.0, ev)) * 2.0
+    # Penalize tail loss (if p10 is negative).
+    tail_pen = max(0.0, min(6.0, -p10)) * 4.0
+    # Penalize drawdown magnitude.
+    dd_pen = max(0.0, min(8.0, -dd)) * 1.5
+
+    s = p + ev_adj - tail_pen - dd_pen
+    return max(0.0, min(100.0, s))
+
+
+def _quant2d_why_from_evidence(evidence: dict[str, Any]) -> list[str]:
+    """
+    Short, deterministic 'why' bullets derived from numeric evidence. LLM may override later.
+    """
+    bd = evidence.get("breakdown") if isinstance(evidence.get("breakdown"), dict) else {}
+    parts: list[tuple[str, float]] = []
+    for k in ("trend", "breakout", "flow", "volume", "chips", "sectorHot"):
+        parts.append((k, _finite_float(bd.get(k), 0.0)))
+    parts.sort(key=lambda x: x[1], reverse=True)
+    top = [x for x in parts[:3] if x[1] > 0]
+    out: list[str] = []
+    for k, v in top:
+        out.append(f"{k}: {v:.2f}")
+    risk = _norm_str(evidence.get("riskMode") or "")
+    if risk:
+        out.append(f"riskMode: {risk}")
+    return out[:4]
 
 
 def _parse_pct(v: Any) -> float:
@@ -7235,6 +8104,60 @@ def _build_mainline_snapshot(
         "themesTopK": themes_topk,
         "debug": {"step1": dbg1, "step2": dbg2, "aiError": ai_error},
     }
+
+
+def _ai_quant_rank_explain(*, payload: dict[str, Any]) -> dict[str, Any]:
+    url = f"{_ai_service_base_url()}/quant/rank/explain"
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+    def _do() -> dict[str, Any]:
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read().decode("utf-8")
+                return json.loads(raw)
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                err_body = ""
+            raise OSError(
+                f"ai-service HTTP {getattr(e, 'code', '?')} {getattr(e, 'reason', '')} while calling {url}: {err_body}"
+            ) from e
+        except http.client.RemoteDisconnected as e:
+            raise OSError(f"ai-service disconnected while calling {url}: {e}") from e
+        except urllib.error.URLError as e:
+            raise OSError(f"ai-service URL error while calling {url}: {e}") from e
+        except TimeoutError as e:
+            raise OSError(f"ai-service timeout while calling {url}: {e}") from e
+
+    try:
+        return _do()
+    except OSError as e:
+        msg = str(e)
+        if ("disconnected" in msg) or ("Connection reset" in msg) or ("timeout" in msg):
+            time.sleep(0.25)
+            return _do()
+        raise
+
+
+def _get_by_dot_path(obj: dict[str, Any], path: str) -> Any:
+    cur: Any = obj
+    for part in (path or "").split("."):
+        p = part.strip()
+        if not p:
+            return None
+        if not isinstance(cur, dict):
+            return None
+        if p not in cur:
+            return None
+        cur = cur.get(p)
+    return cur
 
 
 def _ai_strategy_daily(*, payload: dict[str, Any]) -> dict[str, Any]:
