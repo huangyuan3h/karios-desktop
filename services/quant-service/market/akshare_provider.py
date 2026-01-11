@@ -60,6 +60,8 @@ def fetch_cn_a_spot() -> list[StockRow]:
         quote = {
             "price": str(r.get("最新价") or ""),
             "change_pct": str(r.get("涨跌幅") or ""),
+            "open_pct": str(r.get("今开") or r.get("开盘") or ""),
+            "vol_ratio": str(r.get("量比") or ""),
             "volume": str(r.get("成交量") or ""),
             "turnover": str(r.get("成交额") or ""),
             "market_cap": str(r.get("总市值") or ""),
@@ -73,6 +75,57 @@ def fetch_cn_a_spot() -> list[StockRow]:
                 currency="CNY",
                 quote=quote,
             ),
+        )
+    return out
+
+
+def fetch_cn_a_minute_bars(
+    ticker: str,
+    *,
+    trade_date: str,
+    interval: str = "1",
+) -> list[dict[str, Any]]:
+    """
+    Fetch CN A-share minute bars using AkShare (best-effort).
+
+    Notes:
+    - AkShare APIs vary by version; we intentionally keep this function resilient.
+    - We filter rows by `trade_date` (YYYY-MM-DD) after fetch to avoid relying on optional date params.
+    - Returned rows are plain dicts with normalized keys:
+      - ts (ISO-like string), open, high, low, close, volume, amount
+    """
+    ak = _akshare()
+    if not hasattr(ak, "stock_zh_a_hist_min_em"):
+        raise RuntimeError("AkShare missing stock_zh_a_hist_min_em. Please upgrade AkShare.")
+
+    # Best-effort call: some versions accept (symbol, period, adjust), some require named args.
+    try:
+        df = ak.stock_zh_a_hist_min_em(symbol=ticker, period=interval, adjust="")  # type: ignore[misc]
+    except TypeError:
+        df = ak.stock_zh_a_hist_min_em(ticker, interval)  # type: ignore[misc]
+
+    rows = _to_records(df)
+    out: list[dict[str, Any]] = []
+    d_prefix = trade_date.strip()
+    for r in rows:
+        # Common time column names: "时间" or "日期时间"
+        ts0 = r.get("时间") or r.get("日期时间") or r.get("datetime") or r.get("time") or ""
+        ts = str(ts0).strip().replace("/", "-")
+        if not ts:
+            continue
+        if d_prefix not in ts:
+            # AkShare may include multiple days; keep only the requested trade_date.
+            continue
+        out.append(
+            {
+                "ts": ts,
+                "open": r.get("开盘") or r.get("open") or r.get("Open") or "",
+                "high": r.get("最高") or r.get("high") or r.get("High") or "",
+                "low": r.get("最低") or r.get("low") or r.get("Low") or "",
+                "close": r.get("收盘") or r.get("close") or r.get("Close") or "",
+                "volume": r.get("成交量") or r.get("volume") or r.get("Volume") or "",
+                "amount": r.get("成交额") or r.get("amount") or r.get("Amount") or "",
+            }
         )
     return out
 
@@ -216,6 +269,134 @@ def fetch_cn_failed_limitup_rate(as_of: date) -> dict[str, Any]:
         "close_count": close_count,
         "raw": {"everRows": len(ever_rows), "closeRows": len(close_rows)},
     }
+
+
+def fetch_cn_limitup_pool(as_of: date) -> list[dict[str, Any]]:
+    """
+    CN A-share limit-up pool (best-effort).
+
+    Returns a list of dict with:
+      - ticker
+      - name (optional)
+      - raw (original fields)
+    """
+    ak = _akshare()
+    if not hasattr(ak, "stock_zt_pool_em"):
+        raise RuntimeError("AkShare missing stock_zt_pool_em. Please upgrade AkShare.")
+    df = ak.stock_zt_pool_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
+    rows = _to_records(df)
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        code = str(r.get("代码") or r.get("code") or r.get("股票代码") or "").strip()
+        if not code:
+            continue
+        name = str(r.get("名称") or r.get("name") or r.get("股票简称") or "").strip()
+        out.append({"ticker": code, "name": name, "raw": r})
+    return out
+
+
+def fetch_cn_industry_members(industry_name: str) -> list[str]:
+    """
+    Fetch industry board members (tickers) by industry name (best-effort).
+    """
+    ak = _akshare()
+    fn = None
+    if hasattr(ak, "stock_board_industry_cons_em"):
+        fn = ak.stock_board_industry_cons_em  # type: ignore[attr-defined]
+    elif hasattr(ak, "stock_board_industry_cons_ths"):
+        fn = ak.stock_board_industry_cons_ths  # type: ignore[attr-defined]
+    if fn is None:
+        raise RuntimeError("AkShare missing industry constituents API. Please upgrade AkShare.")
+    df = fn(industry_name)  # type: ignore[misc]
+    rows = _to_records(df)
+    out: list[str] = []
+    for r in rows:
+        code = str(r.get("代码") or r.get("code") or r.get("股票代码") or "").strip()
+        if code:
+            out.append(code)
+    return out
+
+
+def fetch_cn_concept_members(concept_name: str) -> list[str]:
+    """
+    Fetch concept board members (tickers) by concept name (best-effort).
+    """
+    ak = _akshare()
+    fn = None
+    if hasattr(ak, "stock_board_concept_cons_em"):
+        fn = ak.stock_board_concept_cons_em  # type: ignore[attr-defined]
+    elif hasattr(ak, "stock_board_concept_cons_ths"):
+        fn = ak.stock_board_concept_cons_ths  # type: ignore[attr-defined]
+    if fn is None:
+        raise RuntimeError("AkShare missing concept constituents API. Please upgrade AkShare.")
+    df = fn(concept_name)  # type: ignore[misc]
+    rows = _to_records(df)
+    out: list[str] = []
+    for r in rows:
+        code = str(r.get("代码") or r.get("code") or r.get("股票代码") or "").strip()
+        if code:
+            out.append(code)
+    return out
+
+
+def fetch_cn_industry_boards_spot() -> list[dict[str, Any]]:
+    """
+    CN A-share industry board spot rank (best-effort).
+    Returns list of dict with:
+      - name
+      - change_pct
+      - turnover
+      - raw
+    """
+    ak = _akshare()
+    fn = None
+    if hasattr(ak, "stock_board_industry_name_em"):
+        fn = ak.stock_board_industry_name_em  # type: ignore[attr-defined]
+    elif hasattr(ak, "stock_board_industry_name_ths"):
+        fn = ak.stock_board_industry_name_ths  # type: ignore[attr-defined]
+    if fn is None:
+        raise RuntimeError("AkShare missing industry board spot API. Please upgrade AkShare.")
+    df = fn()  # type: ignore[misc]
+    rows = _to_records(df)
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        name = str(r.get("板块名称") or r.get("行业名称") or r.get("name") or r.get("名称") or "").strip()
+        if not name:
+            continue
+        chg = r.get("涨跌幅") or r.get("涨跌幅%") or r.get("change_pct") or ""
+        turnover = r.get("成交额") or r.get("成交额(元)") or r.get("turnover") or ""
+        out.append({"name": name, "change_pct": str(chg), "turnover": str(turnover), "raw": r})
+    return out
+
+
+def fetch_cn_concept_boards_spot() -> list[dict[str, Any]]:
+    """
+    CN A-share concept board spot rank (best-effort).
+    Returns list of dict with:
+      - name
+      - change_pct
+      - turnover
+      - raw
+    """
+    ak = _akshare()
+    fn = None
+    if hasattr(ak, "stock_board_concept_name_em"):
+        fn = ak.stock_board_concept_name_em  # type: ignore[attr-defined]
+    elif hasattr(ak, "stock_board_concept_name_ths"):
+        fn = ak.stock_board_concept_name_ths  # type: ignore[attr-defined]
+    if fn is None:
+        raise RuntimeError("AkShare missing concept board spot API. Please upgrade AkShare.")
+    df = fn()  # type: ignore[misc]
+    rows = _to_records(df)
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        name = str(r.get("板块名称") or r.get("概念名称") or r.get("name") or r.get("名称") or "").strip()
+        if not name:
+            continue
+        chg = r.get("涨跌幅") or r.get("涨跌幅%") or r.get("change_pct") or ""
+        turnover = r.get("成交额") or r.get("成交额(元)") or r.get("turnover") or ""
+        out.append({"name": name, "change_pct": str(chg), "turnover": str(turnover), "raw": r})
+    return out
 
 
 def fetch_hk_spot() -> list[StockRow]:

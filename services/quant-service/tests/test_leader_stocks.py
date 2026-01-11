@@ -170,6 +170,129 @@ def test_leader_daily_generation_and_entry_price(tmp_path, monkeypatch) -> None:
     assert isinstance(l0b["targetPrice"], dict)
 
 
+def test_leader_daily_force_replaces_same_date(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    _seed_tv_snapshot()
+    # Insert a newer snapshot with a larger universe so we can pick different leaders on the same date.
+    with main._connect() as conn:
+        payload2 = {
+            "screenTitle": "Falcon",
+            "filters": ["TestFilter"],
+            "url": "https://www.tradingview.com/screener/falcon/",
+            "headers": ["Symbol", "Price"],
+            "rows": [
+                {"Symbol": "300502\nXin Yi Sheng\nD", "Price": "434.32 CNY"},
+                {"Symbol": "300308\nZhong Ji Xuchuang\nD", "Price": "573.74 CNY"},
+                {"Symbol": "300999\nTest C\nD", "Price": "50.00 CNY"},
+                {"Symbol": "000559\nTest D\nD", "Price": "20.00 CNY"},
+            ],
+        }
+        conn.execute(
+            """
+            INSERT INTO tv_screener_snapshots(id, screener_id, captured_at, row_count, headers_json, rows_json)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "snap-leader-2",
+                "falcon",
+                "2025-12-21T12:00:00Z",
+                4,
+                '["Symbol","Price"]',
+                main.json.dumps(payload2, ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+
+    # Avoid AkShare calls.
+    monkeypatch.setattr(
+        main,
+        "market_stock_chips",
+        lambda symbol, days=30, force=False: main.MarketChipsResponse(
+            symbol=symbol,
+            market="CN",
+            ticker=symbol.split(":")[1],
+            name="Test",
+            currency="CNY",
+            items=[],
+        ),
+    )
+    monkeypatch.setattr(
+        main,
+        "market_stock_fund_flow",
+        lambda symbol, days=30, force=False: main.MarketFundFlowResponse(
+            symbol=symbol,
+            market="CN",
+            ticker=symbol.split(":")[1],
+            name="Test",
+            currency="CNY",
+            items=[],
+        ),
+    )
+
+    monkeypatch.setattr(
+        main,
+        "market_stock_bars",
+        lambda symbol, days=60, force=False: main.MarketBarsResponse(
+            symbol=symbol,
+            market="CN",
+            ticker=symbol.split(":")[1],
+            name="Test",
+            currency="CNY",
+            bars=[
+                {
+                    "date": "2025-12-21",
+                    "open": "10",
+                    "high": "12",
+                    "low": "10",
+                    "close": "11",
+                    "volume": "120",
+                    "amount": "1200",
+                }
+            ],
+        ),
+    )
+
+    client = TestClient(main.app)
+
+    # First run picks A/B.
+    monkeypatch.setattr(
+        main,
+        "_ai_leader_daily",
+        lambda *, payload: {
+            "date": payload["date"],
+            "leaders": [
+                {"symbol": "CN:300502", "market": "CN", "ticker": "300502", "name": "A", "score": 90, "reason": "A"},
+                {"symbol": "CN:300308", "market": "CN", "ticker": "300308", "name": "B", "score": 80, "reason": "B"},
+            ],
+        },
+    )
+    resp1 = client.post("/leader/daily", json={"date": "2025-12-21", "force": True})
+    assert resp1.status_code == 200
+
+    # Second run picks C/D; should REPLACE same date rows (not append to 4).
+    monkeypatch.setattr(
+        main,
+        "_ai_leader_daily",
+        lambda *, payload: {
+            "date": payload["date"],
+            "leaders": [
+                {"symbol": "CN:300999", "market": "CN", "ticker": "300999", "name": "C", "score": 95, "reason": "C"},
+                {"symbol": "CN:000559", "market": "CN", "ticker": "000559", "name": "D", "score": 85, "reason": "D"},
+            ],
+        },
+    )
+    resp2 = client.post("/leader/daily", json={"date": "2025-12-21", "force": True})
+    assert resp2.status_code == 200
+
+    lst = client.get("/leader?days=10").json()
+    todays = [x for x in lst["leaders"] if x["date"] == "2025-12-21"]
+    assert 1 <= len(todays) <= 2
+    tickers = {x["ticker"] for x in todays}
+    assert tickers == {"300999", "000559"}
+
+
 def test_leader_retention_keeps_last_10_dates(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "test.sqlite3"
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
