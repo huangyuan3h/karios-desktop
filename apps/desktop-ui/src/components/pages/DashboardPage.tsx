@@ -925,8 +925,9 @@ export function DashboardPage({
                   })()}
 
                   <div className="mt-2 text-xs text-[var(--k-muted)]">
-                    Live score is a deterministic “investability” score computed from the latest market data (bars /
-                    chips / fund-flow). It refreshes on force refresh and is intended for cross-day comparison.
+                    Live score estimates a 2-day “profit edge” (probability-weighted expected return with drawdown
+                    penalty), computed from recent price history plus the latest fund-flow/chips when available. It
+                    refreshes on “Sync all (force)” or Leader “Generate today”.
                   </div>
                   <div className="mt-3 flex items-center gap-2">
                     <Button size="sm" variant="secondary" onClick={() => onNavigate?.('leaders')}>

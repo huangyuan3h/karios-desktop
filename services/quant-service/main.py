@@ -4018,20 +4018,27 @@ def _compute_leader_live_score(
     *,
     market: str,
     feats: dict[str, Any],
+    bars: list[dict[str, Any]] | None = None,
     chips_summary: dict[str, Any] | None,
     ff_breakdown: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """
-    Deterministic "investability" score at current time.
-    - Range: 0..100
-    - Intended for cross-day comparison better than LLM daily scores.
+    Probability-weighted expected profitability score for the next ~2 trading days.
+    - Range: 0..100 (higher => better expected edge)
+    - Emphasizes win probability, while penalizing expected drawdown.
+    - Uses recent daily bars (kNN-like similarity on price features) when available.
+    - Falls back to a deterministic investability score when data is insufficient.
     """
+    def clamp01(x: float) -> float:
+        return max(0.0, min(1.0, float(x)))
+
     last_close = _safe_float(feats.get("lastClose"))
     sma5 = _safe_float(feats.get("sma5"))
     sma10 = _safe_float(feats.get("sma10"))
     sma20 = _safe_float(feats.get("sma20"))
     high10 = _safe_float(feats.get("high10"))
 
+    # --- Legacy deterministic investability breakdown (kept for explainability) ---
     # Trend (0-40)
     trend = 0.0
     if sma20 > 0 and last_close > sma20:
@@ -4046,6 +4053,10 @@ def _compute_leader_live_score(
 
     # Flow (0-30) - CN only (HK gets neutral flow).
     flow = 0.0
+    main_ratio = 0.0
+    super_ratio = 0.0
+    large_ratio = 0.0
+    change_pct = 0.0
     if market == "CN" and isinstance(ff_breakdown, dict):
         main_ratio = _safe_float(ff_breakdown.get("mainNetRatio"))
         super_ratio = _safe_float(ff_breakdown.get("superNetRatio"))
@@ -4069,6 +4080,9 @@ def _compute_leader_live_score(
 
     # Structure (0-20) - CN only (HK gets neutral structure).
     structure = 0.0
+    pr = 0.0
+    avg_cost = 0.0
+    conc70 = 0.0
     if market == "CN" and isinstance(chips_summary, dict):
         pr = _safe_float(chips_summary.get("profitRatio"))
         avg_cost = _safe_float(chips_summary.get("avgCost"))
@@ -4099,15 +4113,183 @@ def _compute_leader_live_score(
     elif ext > 0.10:
         risk -= 3.0
     if market == "CN" and isinstance(ff_breakdown, dict):
-        main_ratio = _safe_float(ff_breakdown.get("mainNetRatio"))
         if main_ratio < 0:
             risk -= 3.0
     risk = max(0.0, min(10.0, risk))
 
-    total = trend + flow + structure + risk
-    total = max(0.0, min(100.0, total))
+    investability_total = max(0.0, min(100.0, trend + flow + structure + risk))
+
+    # --- 2D profitability stats from recent bars (kNN-like similarity) ---
+    p_win = 0.5
+    ev_pct = 0.0
+    dd_pct = 0.0
+    samples = 0
+    k = 0
+    used_model = "fallback_investability"
+
+    def _closes_from_bars(bs: list[dict[str, Any]]) -> list[float]:
+        out: list[float] = []
+        for b in bs:
+            c = _finite_float((b or {}).get("close"), 0.0)
+            if c > 0:
+                out.append(float(c))
+        return out
+
+    def _sma(cl: list[float], end_idx: int, n: int) -> float:
+        if end_idx + 1 < n:
+            return 0.0
+        seg = cl[end_idx + 1 - n : end_idx + 1]
+        return float(sum(seg) / len(seg)) if seg else 0.0
+
+    def _high(cl: list[float], end_idx: int, n: int) -> float:
+        if end_idx < 0:
+            return 0.0
+        start = max(0, end_idx + 1 - n)
+        seg = cl[start : end_idx + 1]
+        return float(max(seg)) if seg else 0.0
+
+    def _std(xs: list[float]) -> float:
+        if not xs:
+            return 0.0
+        m = sum(xs) / len(xs)
+        v = sum((x - m) ** 2 for x in xs) / len(xs)
+        return float(math.sqrt(max(0.0, v)))
+
+    bs = bars if isinstance(bars, list) else None
+    if bs and len(bs) >= 35:
+        closes = _closes_from_bars(bs[-220:])
+        if len(closes) >= 35:
+            # Build historical feature vectors and future labels.
+            xs: list[list[float]] = []
+            ys_ret: list[float] = []
+            ys_dd: list[float] = []
+            # Need at least 20 bars for MA features and +2 for label.
+            for i in range(20, len(closes) - 2):
+                c = closes[i]
+                c1 = closes[i - 1]
+                c3 = closes[i - 3] if i >= 3 else c1
+                if c <= 0 or c1 <= 0 or c3 <= 0:
+                    continue
+                ret1 = c / c1 - 1.0
+                ret3 = c / c3 - 1.0
+                ma5 = _sma(closes, i, 5)
+                ma20 = _sma(closes, i, 20)
+                ma_gap = (ma5 / ma20 - 1.0) if (ma5 > 0 and ma20 > 0) else 0.0
+                hi10 = _high(closes, i, 10)
+                dist_hi10 = (c / hi10 - 1.0) if hi10 > 0 else 0.0
+                # Volatility: std of last 10 1D returns.
+                r10 = []
+                for j in range(max(1, i - 9), i + 1):
+                    if closes[j - 1] > 0 and closes[j] > 0:
+                        r10.append(closes[j] / closes[j - 1] - 1.0)
+                vol10 = _std(r10)
+
+                # Labels: 2D forward return and worst close drawdown within 2D.
+                fut2 = closes[i + 2] / c - 1.0
+                low2 = min(closes[i + 1], closes[i + 2]) / c - 1.0
+                dd2 = abs(min(0.0, low2))
+
+                xs.append([ret1, ret3, ma_gap, dist_hi10, vol10])
+                ys_ret.append(float(fut2))
+                ys_dd.append(float(dd2))
+
+            # Current feature vector.
+            i0 = len(closes) - 1
+            if len(xs) >= 25 and i0 >= 20:
+                c = closes[i0]
+                c1 = closes[i0 - 1]
+                c3 = closes[i0 - 3] if i0 >= 3 else c1
+                ret1_0 = c / c1 - 1.0 if (c > 0 and c1 > 0) else 0.0
+                ret3_0 = c / c3 - 1.0 if (c > 0 and c3 > 0) else 0.0
+                ma5_0 = _sma(closes, i0, 5)
+                ma20_0 = _sma(closes, i0, 20)
+                ma_gap_0 = (ma5_0 / ma20_0 - 1.0) if (ma5_0 > 0 and ma20_0 > 0) else 0.0
+                hi10_0 = _high(closes, i0, 10)
+                dist_hi10_0 = (c / hi10_0 - 1.0) if hi10_0 > 0 else 0.0
+                r10_0 = []
+                for j in range(max(1, i0 - 9), i0 + 1):
+                    if closes[j - 1] > 0 and closes[j] > 0:
+                        r10_0.append(closes[j] / closes[j - 1] - 1.0)
+                vol10_0 = _std(r10_0)
+                x0 = [ret1_0, ret3_0, ma_gap_0, dist_hi10_0, vol10_0]
+
+                # Standardize by historical mean/std per feature.
+                cols = list(zip(*xs, strict=False))
+                means = [float(sum(col) / len(col)) for col in cols]
+                stds = [max(1e-9, _std(list(col))) for col in cols]
+
+                def _z(v: list[float]) -> list[float]:
+                    return [(v[i] - means[i]) / stds[i] for i in range(len(v))]
+
+                xz = [_z(v) for v in xs]
+                x0z = _z(x0)
+
+                # Nearest neighbors.
+                dists = []
+                for i, v in enumerate(xz):
+                    d = 0.0
+                    for j in range(len(v)):
+                        dv = v[j] - x0z[j]
+                        d += dv * dv
+                    dists.append((d, i))
+                dists.sort(key=lambda t: t[0])
+                k = max(15, min(35, int(len(dists) * 0.15)))
+                idxs = [i for _d, i in dists[:k]]
+                samples = len(idxs)
+                if samples >= 15:
+                    wins = [ys_ret[i] for i in idxs if ys_ret[i] > 0]
+                    losses = [ys_ret[i] for i in idxs if ys_ret[i] <= 0]
+                    p_win = float(len(wins) / samples) if samples > 0 else 0.5
+                    e_win = float(sum(wins) / len(wins)) if wins else 0.0
+                    e_loss = float(sum(abs(x) for x in losses) / len(losses)) if losses else 0.0
+                    ev = p_win * e_win - (1.0 - p_win) * e_loss
+                    dd = float(sum(ys_dd[i] for i in idxs) / samples) if samples > 0 else 0.0
+
+                    # Adjust P using latest flow/chips proxies (small bounded nudges).
+                    p_adj = p_win
+                    if market == "CN":
+                        if main_ratio > 2:
+                            p_adj += 0.03
+                        elif main_ratio > 0:
+                            p_adj += 0.015
+                        elif main_ratio < 0:
+                            p_adj -= 0.02
+                        if pr >= 0.65:
+                            p_adj += 0.02
+                        elif pr >= 0.45:
+                            p_adj += 0.01
+                        elif pr > 0:
+                            p_adj -= 0.01
+                    # Penalize excessive extension slightly.
+                    if ext > 0.15:
+                        p_adj -= 0.02
+                    p_adj = max(0.05, min(0.95, p_adj))
+
+                    p_win = p_adj
+                    ev_pct = float(ev * 100.0)
+                    dd_pct = float(dd * 100.0)
+                    used_model = "knn_2d_edge"
+
+    # Combine into final live score (probability weighted, with drawdown penalty).
+    # Probability has higher weight by design.
+    edge = 1.8 * (p_win * 100.0 - 50.0) + 0.8 * ev_pct - 0.6 * dd_pct
+    total = 50.0 + edge
+
+    if used_model == "fallback_investability":
+        total = investability_total
+    total = max(0.0, min(100.0, float(total)))
+
     return {
         "total": round(total, 2),
+        "model": used_model,
+        # Profitability view (2D horizon)
+        "pWin2d": round(float(p_win), 4),
+        "ev2dPct": round(float(ev_pct), 4),
+        "dd2dPct": round(float(dd_pct), 4),
+        "samples": int(samples),
+        "k": int(k),
+        # Legacy investability view (for explanation/debug)
+        "investabilityTotal": round(float(investability_total), 2),
         "trend": round(trend, 2),
         "flow": round(flow, 2),
         "structure": round(structure, 2),
@@ -4165,6 +4347,7 @@ def _refresh_leader_live_scores(*, symbols: list[str], ts: str, force_refresh_ma
             breakdown = _compute_leader_live_score(
                 market=market,
                 feats=feats,
+                bars=bars if isinstance(bars, list) else None,
                 chips_summary=chips_summary,
                 ff_breakdown=ff_breakdown,
             )
@@ -7409,6 +7592,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                 live_breakdown = _compute_leader_live_score(
                     market=_norm_str(r.get("market") or ""),
                     feats=feats,
+                    bars=bars if isinstance(bars, list) else None,
                     chips_summary=_chips_summary_last(chips_last),
                     ff_breakdown=_fund_flow_breakdown_last(ff_last),
                 )
