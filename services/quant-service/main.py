@@ -8357,6 +8357,61 @@ def dashboard_sync(req: DashboardSyncRequest) -> DashboardSyncResponse:
         # Best-effort: never fail the whole sync due to leaders.
         pass
 
+    # 6) Mainline (force generate snapshot) - run last; does NOT generate leaders.
+    # This is used for UI display and for Leaders "Generate today" candidate pool shaping.
+    try:
+        st = time.perf_counter()
+        try:
+            accs = list_broker_accounts(broker="pingan")
+            aid = accs[0].id if accs else ""
+            if not aid:
+                raise RuntimeError("No broker account found (pingan).")
+            as_of_ts = now_iso()
+            out = _build_mainline_snapshot(
+                account_id=aid,
+                as_of_ts=as_of_ts,
+                universe_version="v0",
+                force=bool(req.force),
+                top_k=3,
+            )
+            _insert_cn_mainline_snapshot(
+                account_id=aid,
+                trade_date=str(out.get("tradeDate") or _today_cn_date_str()),
+                as_of_ts=str(out.get("asOfTs") or as_of_ts),
+                universe_version=str(out.get("universeVersion") or "v0"),
+                ts=as_of_ts,
+                output=out,
+            )
+            _prune_cn_mainline_snapshots(account_id=aid, keep_days=10)
+            sel = out.get("selected") if isinstance(out, dict) else None
+            meta = {
+                "tradeDate": str(out.get("tradeDate") or ""),
+                "selected": ({"kind": str(sel.get("kind") or ""), "name": str(sel.get("name") or ""), "score": sel.get("compositeScore")} if isinstance(sel, dict) else None),
+                "themes": len(out.get("themesTopK") or []) if isinstance(out.get("themesTopK"), list) else 0,
+            }
+            steps.append(
+                DashboardSyncStep(
+                    name="mainline",
+                    ok=True,
+                    durationMs=int((time.perf_counter() - st) * 1000),
+                    message=None,
+                    meta=meta,
+                )
+            )
+        except Exception as e:
+            steps.append(
+                DashboardSyncStep(
+                    name="mainline",
+                    ok=False,
+                    durationMs=int((time.perf_counter() - st) * 1000),
+                    message=str(e),
+                    meta={},
+                )
+            )
+    except Exception:
+        # Best-effort: never fail the whole sync due to mainline.
+        pass
+
     finished_at = now_iso()
     ok_all = all(s.ok for s in steps)
     _total_ms = int((time.perf_counter() - t0) * 1000)
