@@ -102,7 +102,7 @@ export function AppShell() {
               : activePage === 'market'
                 ? 'Market'
               : activePage === 'rank'
-                ? 'Rank (1-2D)'
+                ? 'Quant'
               : activePage === 'industryFlow'
                 ? 'Industry Flow'
               : activePage === 'broker'

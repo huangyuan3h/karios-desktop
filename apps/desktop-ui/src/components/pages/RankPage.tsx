@@ -191,7 +191,7 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <div className="text-lg font-semibold">
-            {mode === 'intraday' ? 'CN Rank (Intraday · DeltaT 1H)' : 'CN Rank (next 1-2D)'}
+            Quant
           </div>
           <div className="mt-1 text-sm text-[var(--k-muted)]">
             {mode === 'intraday'
