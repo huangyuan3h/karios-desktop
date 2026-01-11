@@ -139,6 +139,36 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setattr(main, "_ai_strategy_daily_markdown", fake_ai_strategy_daily_markdown)
 
+    # Mainline snapshot should be included in Strategy context (DB-first).
+    expected_account_id = account_id
+
+    def fake_get_mainline_latest(*, account_id: str, trade_date: str | None, universe_version: str):
+        assert account_id == expected_account_id
+        assert trade_date == "2025-12-21"
+        assert universe_version == "v0"
+        return {
+            "id": "ml-1",
+            "createdAt": "2025-12-21T00:00:00Z",
+            "output": {
+                "tradeDate": "2025-12-21",
+                "asOfTs": "2025-12-21T00:00:00Z",
+                "accountId": expected_account_id,
+                "universeVersion": "v0",
+                "riskMode": "caution",
+                "selected": {
+                    "kind": "concept",
+                    "name": "CPO",
+                    "compositeScore": 80,
+                    "structureScore": 70,
+                    "logicScore": 75,
+                    "topTickers": [{"symbol": "CN:300308", "ticker": "300308", "name": "Zhong Ji Xuchuang"}],
+                },
+                "themesTopK": [],
+            },
+        }
+
+    monkeypatch.setattr(main, "_get_cn_mainline_snapshot_latest", fake_get_mainline_latest)
+
     # Generate report
     resp = client.post(
         f"/strategy/accounts/{account_id}/daily",
@@ -176,6 +206,10 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     ctx1 = (captured["stage1"] or {}).get("context") if isinstance(captured["stage1"], dict) else None
     assert isinstance(ctx1, dict)
     assert ctx1.get("leaderStocks") == {}
+    ml1 = ctx1.get("mainline")
+    assert isinstance(ml1, dict)
+    assert ml1.get("tradeDate") == "2025-12-21"
+    assert (ml1.get("selected") or {}).get("name") == "CPO"
 
     # Reuse report (should not generate a new id when force=false)
     resp2 = client.post(

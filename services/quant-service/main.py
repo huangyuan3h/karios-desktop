@@ -2131,6 +2131,7 @@ class StrategyDailyGenerateRequest(BaseModel):
     includeIndustryFundFlow: bool = True
     includeMarketSentiment: bool = True
     includeLeaders: bool = True
+    includeMainline: bool = True
     includeStocks: bool = True
 
 
@@ -7631,6 +7632,20 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         except Exception as e:
             leader_ctx = {"days": 10, "dates": [], "leaders": [], "error": str(e)}
 
+    # Mainline snapshot context: DB-first (no generation), latest snapshot for the day.
+    mainline_ctx: dict[str, Any] = {}
+    if req.includeMainline:
+        try:
+            cached = _get_cn_mainline_snapshot_latest(account_id=aid, trade_date=d, universe_version="v0")
+            if cached is not None and isinstance(cached.get("output"), dict):
+                out0: dict[str, Any] = cached.get("output") if isinstance(cached.get("output"), dict) else {}
+                mainline_ctx = {"id": str(cached.get("id") or ""), "createdAt": str(cached.get("createdAt") or "")}
+                mainline_ctx.update(out0)
+            else:
+                mainline_ctx = {}
+        except Exception as e:
+            mainline_ctx = {"error": str(e)}
+
     # Stage 1: candidate selection WITHOUT per-stock deep context.
     sentiment_ctx: dict[str, Any] = {}
     if req.includeMarketSentiment:
@@ -7656,6 +7671,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         else {"dailyTopInflow": industry_flow_daily, "error": industry_flow_error},
         "marketSentiment": {} if not req.includeMarketSentiment else sentiment_ctx,
         "leaderStocks": {} if not req.includeLeaders else leader_ctx,
+        "mainline": {} if not req.includeMainline else mainline_ctx,
         # Provide an explicit universe so stage 1 doesn't need to parse TV rows.
         "candidateUniverse": pool,
         # Stage 1 explicitly excludes deep context.
