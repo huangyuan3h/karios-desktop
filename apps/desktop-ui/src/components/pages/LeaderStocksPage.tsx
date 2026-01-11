@@ -59,6 +59,14 @@ type MainlineTheme = {
   logicGrade?: string | null;
   logicSummary?: string | null;
   leaderCandidate?: Record<string, unknown> | null;
+  topTickers?: Array<{
+    symbol: string;
+    ticker: string;
+    name: string;
+    chgPct?: number;
+    volRatio?: number;
+    turnover?: number;
+  }>;
   followersCount?: number;
   limitupCount?: number;
   volSurge?: number;
@@ -114,6 +122,22 @@ function fmtLocalDateTime(x: string): string {
   const d = new Date(x);
   if (Number.isNaN(d.getTime())) return x;
   return d.toLocaleString();
+}
+
+function riskModeExplain(riskMode: string | null | undefined): string {
+  const v = String(riskMode ?? '').trim();
+  if (v === 'no_new_positions') return '风险高：不建议开新仓（只处理持仓）';
+  if (v === 'caution') return '谨慎：建议小仓位、等确认（回封/回踩）';
+  if (v === 'normal') return '正常：可以按信号参与（仍需风控）';
+  return '—';
+}
+
+function scoreLabel(score: number | null | undefined): string {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return '—';
+  if (n >= 85) return '强';
+  if (n >= 70) return '中等偏强';
+  return '偏弱';
 }
 
 function fmtBuyZoneText(r: LeaderPick) {
@@ -379,11 +403,14 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
       <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-sm font-medium">Mainline</div>
+            <div className="text-sm font-medium">主线（你最需要看的结论）</div>
             <div className="mt-1 text-xs text-[var(--k-muted)]">
               tradeDate: {mainline?.tradeDate ?? '—'} • updated:{' '}
               {mainline?.createdAt ? fmtLocalDateTime(mainline.createdAt) : '—'} • riskMode:{' '}
               {mainline?.riskMode ?? '—'}
+            </div>
+            <div className="mt-1 text-xs text-[var(--k-muted)]">
+              {riskModeExplain(mainline?.riskMode ?? null)}
             </div>
           </div>
           <div className="text-xs text-[var(--k-muted)]">
@@ -396,7 +423,8 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
             <div className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm font-semibold">
-                  {mainline.selected.kind}: {mainline.selected.name}
+                  结论：今天主线是「{mainline.selected.kind} · {mainline.selected.name}」（
+                  {scoreLabel(mainline.selected.compositeScore)}）
                 </div>
                 <div className="text-xs text-[var(--k-muted)]">
                   composite {Math.round(Number(mainline.selected.compositeScore ?? 0))} • structure{' '}
@@ -405,9 +433,65 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                   {mainline.selected.logicGrade ? ` (${mainline.selected.logicGrade})` : ''}
                 </div>
               </div>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <div className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+                  <div className="text-xs font-medium">为什么这么判断（证据）</div>
+                  <div className="mt-2 space-y-1 text-xs text-[var(--k-muted)]">
+                    <div>
+                      涨停家数（LU）:{' '}
+                      <span className="font-mono">
+                        {Number(mainline.selected.limitupCount ?? 0)}
+                      </span>
+                      {' · '}
+                      跟涨梯队（Followers）:{' '}
+                      <span className="font-mono">
+                        {Number(mainline.selected.followersCount ?? 0)}
+                      </span>
+                    </div>
+                    <div>
+                      结构分（Struct）:{' '}
+                      <span className="font-mono">
+                        {Math.round(Number(mainline.selected.structureScore ?? 0))}
+                      </span>
+                      {' · '}
+                      逻辑分（Logic）:{' '}
+                      <span className="font-mono">
+                        {Math.round(Number(mainline.selected.logicScore ?? 0))}
+                      </span>
+                    </div>
+                    <div className="text-[11px]">
+                      提示：Struct=板块内是否“有龙头+有梯队+联动强”；Logic=AI基于证据给的持续性判断（不抓新闻）。
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+                  <div className="text-xs font-medium">相关股票（点进去你就能验证）</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(mainline.selected.topTickers ?? []).slice(0, 12).map((x) => (
+                      <button
+                        key={x.symbol}
+                        type="button"
+                        className="rounded-full border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 py-1 text-xs hover:bg-[var(--k-surface)]"
+                        onClick={() => onOpenStock?.(x.symbol)}
+                        title={`${x.symbol}${x.chgPct != null ? ` · ${x.chgPct}%` : ''}`}
+                      >
+                        <span className="font-mono">{x.ticker}</span> {x.name}
+                        {typeof x.chgPct === 'number' ? (
+                          <span className="ml-1 font-mono text-[var(--k-muted)]">{`${x.chgPct.toFixed(1)}%`}</span>
+                        ) : null}
+                      </button>
+                    ))}
+                    {!(mainline.selected.topTickers ?? []).length ? (
+                      <div className="text-xs text-[var(--k-muted)]">
+                        暂无成分股列表（数据源可能缺失）。
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
               {mainline.selected.logicSummary ? (
                 <div className="mt-2 text-xs text-[var(--k-muted)]">
-                  {mainline.selected.logicSummary}
+                  AI 逻辑摘要：{mainline.selected.logicSummary}
                 </div>
               ) : null}
               {(mainline.selected.decaySignals ?? []).length ? (
@@ -417,7 +501,7 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
               ) : null}
               {mainline.selected.leaderCandidate && isRecord(mainline.selected.leaderCandidate) ? (
                 <div className="mt-2 text-xs text-[var(--k-muted)]">
-                  leader candidate:{' '}
+                  结构龙头候选（不一定最终入选）:{' '}
                   <button
                     type="button"
                     className="font-mono text-[var(--k-accent)] hover:underline"
@@ -441,7 +525,8 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
             </div>
           ) : (
             <div className="text-sm text-[var(--k-muted)]">
-              No clear mainline detected (rotation / weak breadth).
+              结论：暂无明确主线（可能是轮动/多线混战）。你可以先观望，或者用“Detect
+              mainline”再跑一次看看。
             </div>
           )}
         </div>
@@ -451,19 +536,38 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
             <table className="w-full border-collapse text-xs">
               <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
                 <tr className="text-left">
-                  <th className="px-2 py-2">Theme</th>
-                  <th className="px-2 py-2 text-right">Composite</th>
-                  <th className="px-2 py-2 text-right">Struct</th>
-                  <th className="px-2 py-2 text-right">Logic</th>
-                  <th className="px-2 py-2 text-right">LU</th>
-                  <th className="px-2 py-2 text-right">Followers</th>
+                  <th className="px-2 py-2">备选主线（TopK）</th>
+                  <th className="px-2 py-2 text-right">综合</th>
+                  <th className="px-2 py-2 text-right">结构</th>
+                  <th className="px-2 py-2 text-right">逻辑</th>
+                  <th className="px-2 py-2 text-right">涨停</th>
+                  <th className="px-2 py-2 text-right">跟涨</th>
                 </tr>
               </thead>
               <tbody>
                 {(mainline?.themesTopK ?? []).map((t) => (
                   <tr key={`${t.kind}:${t.name}`} className="border-t border-[var(--k-border)]">
                     <td className="px-2 py-2">
-                      <span className="font-mono text-[var(--k-muted)]">{t.kind}</span> {t.name}
+                      <details>
+                        <summary className="cursor-pointer">
+                          <span className="font-mono text-[var(--k-muted)]">{t.kind}</span> {t.name}
+                        </summary>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {(t.topTickers ?? []).slice(0, 12).map((x) => (
+                            <button
+                              key={x.symbol}
+                              type="button"
+                              className="rounded-full border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 py-1 text-xs hover:bg-[var(--k-surface)]"
+                              onClick={() => onOpenStock?.(x.symbol)}
+                            >
+                              <span className="font-mono">{x.ticker}</span> {x.name}
+                            </button>
+                          ))}
+                          {!(t.topTickers ?? []).length ? (
+                            <div className="text-xs text-[var(--k-muted)]">暂无成分股列表。</div>
+                          ) : null}
+                        </div>
+                      </details>
                     </td>
                     <td className="px-2 py-2 text-right font-mono">
                       {Math.round(Number(t.compositeScore ?? 0))}

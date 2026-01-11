@@ -2077,6 +2077,7 @@ class MainlineTheme(BaseModel):
     logicGrade: str | None = None  # S | A | B
     logicSummary: str | None = None
     leaderCandidate: dict[str, Any] | None = None
+    topTickers: list[dict[str, Any]] = []
     followersCount: int = 0
     limitupCount: int = 0
     volSurge: float = 0.0
@@ -6941,6 +6942,40 @@ def _build_mainline_snapshot(
         logic_map = {}
 
     # Merge + composite decision.
+    spot_rows: list[StockRow] = []
+    try:
+        spot_rows = fetch_cn_a_spot()
+    except Exception:
+        spot_rows = []
+    spot_map: dict[str, StockRow] = {s.ticker: s for s in spot_rows if s.market == "CN" and s.ticker}
+
+    def _top_tickers_for_theme(kind: str, name: str) -> list[dict[str, Any]]:
+        try:
+            members, _meta = _get_theme_members(kind=kind, name=name, trade_date=trade_date, force=False)
+        except Exception:
+            members = []
+        rows = []
+        for t in (members or [])[:800]:
+            s = spot_map.get(str(t))
+            chg = _parse_pct(s.quote.get("change_pct") or "") if s is not None else 0.0
+            turnover = _parse_num(s.quote.get("turnover") or "") if s is not None else 0.0
+            vol_ratio = _parse_num(s.quote.get("vol_ratio") or "") if s is not None else 0.0
+            rows.append((str(t), chg, turnover, vol_ratio, (s.name if s is not None else "")))
+        rows.sort(key=lambda x: (x[1], x[2]), reverse=True)
+        out = []
+        for t, chg, turnover, vol_ratio, nm in rows[:12]:
+            out.append(
+                {
+                    "symbol": f"CN:{t}",
+                    "ticker": t,
+                    "name": nm or t,
+                    "chgPct": round(float(chg), 2),
+                    "turnover": float(turnover),
+                    "volRatio": round(float(vol_ratio), 2),
+                }
+            )
+        return out
+
     merged: list[dict[str, Any]] = []
     for it in cands2:
         kind = str(it.get("kind") or "")
@@ -6952,6 +6987,7 @@ def _build_mainline_snapshot(
         logic_summary = _norm_str(logic.get("logicSummary") or "") or None
         structure_score = _finite_float(it.get("structureScore"), 0.0)
         composite = 0.5 * float(structure_score) + 0.5 * float(logic_score)
+        top_tickers = _top_tickers_for_theme(kind, name)
         merged.append(
             {
                 "kind": kind,
@@ -6962,6 +6998,7 @@ def _build_mainline_snapshot(
                 "logicGrade": logic_grade,
                 "logicSummary": logic_summary,
                 "leaderCandidate": it.get("leaderCandidate") if isinstance(it.get("leaderCandidate"), dict) else None,
+                "topTickers": top_tickers,
                 "followersCount": int(it.get("followersCount") or 0),
                 "limitupCount": int(it.get("limitupCount") or 0),
                 "volSurge": float(it.get("volSurge") or 0.0),
