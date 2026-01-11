@@ -101,6 +101,11 @@ function fmtDateTime(x: string | null | undefined) {
   return Number.isNaN(d.getTime()) ? x : d.toLocaleString();
 }
 
+function fmtPctOrDash(x: number | null | undefined, digits = 0) {
+  if (typeof x !== 'number' || Number.isNaN(x)) return '—';
+  return `${x.toFixed(digits)}%`;
+}
+
 export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const { addReference } = useChatStore();
   const [accounts, setAccounts] = React.useState<BrokerAccount[]>([]);
@@ -329,7 +334,10 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
                           </div>
                         </div>
                         <div className="mt-2 text-xs text-[var(--k-muted)]">
-                          {(top1.whyBullets ?? []).slice(0, 4).join(' · ')}
+                          {(top1.whyBullets ?? []).slice(0, 4).join(' · ') ||
+                            (typeof top1.probProfit2d === 'number'
+                              ? ''
+                              : 'Calibration not ready yet (need ~2 trading days of outcomes). Using baseline rawScore.')}
                         </div>
                       </div>
                       <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3 text-xs">
@@ -342,16 +350,18 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
                         <div className="mt-2 flex items-center justify-between">
                           <div className="text-[var(--k-muted)]">ProbProfit2D</div>
                           <div className="font-mono">
-                            {Math.round(Number(top1.probProfit2d ?? 0))}%
+                            {typeof top1.probProfit2d === 'number'
+                              ? `${Math.round(top1.probProfit2d)}%`
+                              : '—'}
                           </div>
                         </div>
                         <div className="mt-2 flex items-center justify-between">
                           <div className="text-[var(--k-muted)]">EV2D</div>
-                          <div className="font-mono">{Number(top1.ev2dPct ?? 0).toFixed(2)}%</div>
+                          <div className="font-mono">{fmtPctOrDash(top1.ev2dPct, 2)}</div>
                         </div>
                         <div className="mt-2 flex items-center justify-between">
                           <div className="text-[var(--k-muted)]">DD2D</div>
-                          <div className="font-mono">{Number(top1.dd2dPct ?? 0).toFixed(2)}%</div>
+                          <div className="font-mono">{fmtPctOrDash(top1.dd2dPct, 2)}</div>
                         </div>
                         <div className="mt-2 flex items-center justify-between">
                           <div className="text-[var(--k-muted)]">Confidence</div>

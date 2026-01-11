@@ -3952,6 +3952,8 @@ def rank_cn_next2d_generate(req: RankNext2dGenerateRequest) -> RankSnapshotRespo
     # Apply calibration and compute base decision score (before LLM rerank).
     final_items: list[dict[str, Any]] = []
     evidence_by_symbol: dict[str, dict[str, Any]] = {}
+    calib_n_total = int((calib_out.get("n") or 0) if isinstance(calib_out, dict) else 0)
+    calib_ready = calib_n_total >= 60 and isinstance(calib_out.get("items"), list) and bool(calib_out.get("items"))
     for r in raw_items:
         if not isinstance(r, dict):
             continue
@@ -3960,21 +3962,39 @@ def rank_cn_next2d_generate(req: RankNext2dGenerateRequest) -> RankSnapshotRespo
         sym = _norm_str(r.get("symbol") or "")
         if sym and isinstance(ev, dict):
             evidence_by_symbol[sym] = ev
-        bkt = _quant2d_find_bucket(calib_out, raw_score)
-        if bkt is None:
-            prob = 0.0
-            ev2 = 0.0
-            p10 = 0.0
-            dd2 = 0.0
-            n = 0
-        else:
-            prob = _finite_float(bkt.get("probWin"), 0.0) * 100.0
-            ev2 = _finite_float(bkt.get("ev2dPct"), 0.0)
-            p10 = _finite_float(bkt.get("p10Ret2dPct"), 0.0)
-            dd2 = _finite_float(bkt.get("dd2dPct"), 0.0)
-            n = int(bkt.get("n") or 0)
-        score = _quant2d_decision_score(prob_profit_pct=prob, ev2d_pct=ev2, p10_ret2d_pct=p10, dd2d_pct=dd2)
         why = _quant2d_why_from_evidence(ev)
+
+        # Bootstrap: if calibration is not ready, use deterministic rawScore as score.
+        if not calib_ready:
+            score = max(0.0, min(100.0, float(raw_score)))
+            prob: float | None = None
+            ev2: float | None = None
+            dd2: float | None = None
+            p10 = 0.0
+            n = 0
+            prob_band = _rank_prob_band(float(raw_score))
+            conf = "Low"
+        else:
+            bkt = _quant2d_find_bucket(calib_out, raw_score)
+            if bkt is None:
+                # Calibration exists but this score fell outside buckets; fall back to raw score.
+                score = max(0.0, min(100.0, float(raw_score)))
+                prob = None
+                ev2 = None
+                dd2 = None
+                p10 = 0.0
+                n = 0
+                prob_band = _rank_prob_band(float(raw_score))
+                conf = "Low"
+            else:
+                prob = _finite_float(bkt.get("probWin"), 0.0) * 100.0
+                ev2 = _finite_float(bkt.get("ev2dPct"), 0.0)
+                p10 = _finite_float(bkt.get("p10Ret2dPct"), 0.0)
+                dd2 = _finite_float(bkt.get("dd2dPct"), 0.0)
+                n = int(bkt.get("n") or 0)
+                conf = _quant2d_confidence(n)
+                score = _quant2d_decision_score(prob_profit_pct=prob, ev2d_pct=ev2, p10_ret2d_pct=p10, dd2d_pct=dd2)
+                prob_band = _quant2d_prob_band(prob)
         final_items.append(
             {
                 "symbol": r.get("symbol"),
@@ -3983,15 +4003,15 @@ def rank_cn_next2d_generate(req: RankNext2dGenerateRequest) -> RankSnapshotRespo
                 "name": r.get("name"),
                 "sector": r.get("sector"),
                 "score": round(float(score), 2),
-                "probProfit2d": round(float(prob), 2),
-                "ev2dPct": round(float(ev2), 3),
-                "dd2dPct": round(float(dd2), 3),
-                "confidence": _quant2d_confidence(n),
+                "probProfit2d": (round(float(prob), 2) if isinstance(prob, (int, float)) else None),
+                "ev2dPct": (round(float(ev2), 3) if isinstance(ev2, (int, float)) else None),
+                "dd2dPct": (round(float(dd2), 3) if isinstance(dd2, (int, float)) else None),
+                "confidence": conf,
                 "buyPrice": _finite_float(ev.get("buyPrice"), 0.0) or None,
                 "buyPriceSrc": _norm_str(ev.get("buyPriceSrc") or "") or None,
                 "whyBullets": why,
                 "rawScore": round(float(raw_score), 2),
-                "probBand": _quant2d_prob_band(prob),
+                "probBand": prob_band,
                 "signals": r.get("signals") if isinstance(r.get("signals"), list) else [],
                 "breakdown": r.get("breakdown") if isinstance(r.get("breakdown"), dict) else {},
             }
@@ -4098,6 +4118,7 @@ def rank_cn_next2d_generate(req: RankNext2dGenerateRequest) -> RankSnapshotRespo
             "calibrationCached": bool(use_cache),
             "calibrationN": int((calib_out.get("n") or 0) if isinstance(calib_out, dict) else 0),
             "calibrationBuckets": len(calib_out.get("items") or []) if isinstance(calib_out.get("items"), list) else 0,
+            "calibrationReady": bool(calib_ready),
             "llm": llm_meta,
         },
     }

@@ -253,6 +253,8 @@ def test_rank_next2d_generate_and_read(tmp_path, monkeypatch) -> None:
     assert isinstance(row0, dict)
     assert isinstance(row0.get("breakdown"), dict)
     assert float(row0["breakdown"].get("riskPenalty") or 0.0) < 0.0
+    # Bootstrap behavior: without enough calibration data, score should fall back to rawScore.
+    assert float(row0.get("rawScore") or 0.0) == float(row0.get("score") or 0.0)
 
     # Read cached snapshot
     resp2 = client.get(f"/rank/cn/next2d?accountId={account_id}&asOfDate=2026-01-07&limit=30")

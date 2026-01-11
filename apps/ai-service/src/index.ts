@@ -968,17 +968,10 @@ app.post('/quant/rank/explain', async (c) => {
       {
         asOfTs,
         asOfDate,
-        items: parsed.data.candidates.map((x) => ({
-          symbol: x.symbol,
-          llmScoreAdj: 0,
-          whyBullets: [
-            {
-              text: `Quant rerank failed: ${msg}`,
-              evidenceRefs: ['breakdown'],
-            },
-          ],
-        })),
+        // Fail closed: do not override baseline ranking/why if model fails.
+        items: [],
         model: modelId || 'unknown',
+        error: `Quant rerank failed: ${msg}`,
       },
       200,
     );
