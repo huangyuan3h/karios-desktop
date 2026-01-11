@@ -11,6 +11,7 @@ import shutil
 import signal
 import sqlite3
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -32,10 +33,16 @@ from market.akshare_provider import (
     fetch_cn_a_chip_summary,
     fetch_cn_a_daily_bars,
     fetch_cn_a_fund_flow,
+    fetch_cn_a_minute_bars,
     fetch_cn_a_spot,
+    fetch_cn_concept_boards_spot,
+    fetch_cn_concept_members,
     fetch_cn_failed_limitup_rate,
+    fetch_cn_industry_boards_spot,
     fetch_cn_industry_fund_flow_eod,
     fetch_cn_industry_fund_flow_hist,
+    fetch_cn_industry_members,
+    fetch_cn_limitup_pool,
     fetch_cn_market_breadth_eod,
     fetch_cn_yesterday_limitup_premium,
     fetch_hk_daily_bars,
@@ -393,6 +400,95 @@ def _connect() -> sqlite3.Connection:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_cn_rank_snapshots_date ON cn_rank_snapshots(as_of_date DESC)",
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cn_intraday_rank_snapshots (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          as_of_ts TEXT NOT NULL,
+          trade_date TEXT NOT NULL,
+          slot TEXT NOT NULL,
+          universe_version TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          output_json TEXT NOT NULL,
+          UNIQUE(account_id, as_of_ts, slot, universe_version),
+          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+        )
+        """,
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cn_intraday_rank_snapshots_trade_date ON cn_intraday_rank_snapshots(trade_date DESC)",
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cn_intraday_rank_snapshots_as_of_ts ON cn_intraday_rank_snapshots(as_of_ts DESC)",
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cn_intraday_observations (
+          id TEXT PRIMARY KEY,
+          trade_date TEXT NOT NULL,
+          ts TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          raw_json TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+        """,
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cn_intraday_observations_trade_date ON cn_intraday_observations(trade_date DESC)",
+    )
+    # Optional minute bars cache (only for small candidate pools).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS market_cn_minute_bars (
+          symbol TEXT NOT NULL,
+          trade_date TEXT NOT NULL,
+          interval TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          bars_json TEXT NOT NULL,
+          PRIMARY KEY(symbol, trade_date, interval)
+        )
+        """,
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cn_mainline_snapshots (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          trade_date TEXT NOT NULL,
+          as_of_ts TEXT NOT NULL,
+          universe_version TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          output_json TEXT NOT NULL,
+          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+        )
+        """,
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cn_mainline_snapshots_trade_date ON cn_mainline_snapshots(trade_date DESC)",
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cn_mainline_snapshots_as_of_ts ON cn_mainline_snapshots(as_of_ts DESC)",
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cn_mainline_snapshots_account_date ON cn_mainline_snapshots(account_id, trade_date DESC)",
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cn_theme_membership_cache (
+          theme_key TEXT NOT NULL,
+          trade_date TEXT NOT NULL,
+          members_json TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY(theme_key, trade_date)
+        )
+        """,
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cn_theme_membership_cache_trade_date ON cn_theme_membership_cache(trade_date DESC)",
+    )
     # Backward-compatible migration: add missing columns for existing DBs.
     try:
         cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(leader_stocks)").fetchall()}
@@ -523,6 +619,104 @@ def now_iso() -> str:
     return datetime.now(tz=UTC).isoformat()
 
 
+_intraday_scheduler_started = False
+_intraday_scheduler_lock = threading.Lock()
+
+
+def _should_start_intraday_scheduler() -> bool:
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return False
+    v = str(os.getenv("ENABLE_INTRADAY_RANK_SCHEDULER", "") or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def _run_intraday_scheduler_loop() -> None:
+    """
+    A lightweight in-process scheduler for desktop usage.
+    It triggers intraday rank snapshots at configured clock times (Asia/Shanghai).
+    """
+    tz = ZoneInfo("Asia/Shanghai")
+    # Target times (HH:MM, local time)
+    targets = [
+        ("09:15", "preopen_intent"),
+        ("09:25", "opening_anchor"),
+        ("10:25", "hourly_prep"),
+        ("11:25", "hourly_prep"),
+        ("13:55", "hourly_prep"),
+        ("14:35", "hourly_prep"),
+    ]
+    fired: set[str] = set()
+    while True:
+        try:
+            now_cn = datetime.now(tz=tz)
+            trade_date = now_cn.strftime("%Y-%m-%d")
+            hhmm = now_cn.strftime("%H:%M")
+            for t, kind in targets:
+                key = f"{trade_date}|{t}|{kind}"
+                if key in fired:
+                    continue
+                # Fire within a small window to tolerate sleep jitter.
+                if hhmm == t:
+                    # Default account: first pingan account.
+                    accs = list_broker_accounts(broker="pingan")
+                    aid = accs[0].id if accs else ""
+                    if aid:
+                        try:
+                            as_of_ts = now_iso()
+                            slot = _infer_intraday_slot(now_cn)
+                            # Observation first (best-effort).
+                            _append_cn_intraday_observation(
+                                trade_date=trade_date,
+                                ts=as_of_ts,
+                                kind=kind,
+                                raw={"note": "scheduled", "slot": slot},
+                            )
+                            # Generate snapshot.
+                            out = _intraday_rank_build_and_score(
+                                account_id=aid,
+                                as_of_ts=as_of_ts,
+                                slot=slot,
+                                limit=30,
+                                universe_version="v0",
+                            )
+                            _upsert_cn_intraday_rank_snapshot(
+                                account_id=aid,
+                                as_of_ts=as_of_ts,
+                                trade_date=str(out.get("tradeDate") or trade_date),
+                                slot=str(out.get("slot") or slot),
+                                universe_version="v0",
+                                ts=as_of_ts,
+                                output=out,
+                            )
+                            _prune_cn_intraday_rank_snapshots(account_id=aid, keep_days=10)
+                        except Exception:
+                            # Do not crash the scheduler loop.
+                            pass
+                    fired.add(key)
+            # Reset fired set when a new trade_date begins.
+            fired = {k for k in fired if k.startswith(f"{trade_date}|")}
+        except Exception:
+            pass
+        time.sleep(20)
+
+
+def _start_intraday_scheduler() -> None:
+    global _intraday_scheduler_started
+    if not _should_start_intraday_scheduler():
+        return
+    with _intraday_scheduler_lock:
+        if _intraday_scheduler_started:
+            return
+        t = threading.Thread(target=_run_intraday_scheduler_loop, name="intraday-rank-scheduler", daemon=True)
+        t.start()
+        _intraday_scheduler_started = True
+
+
+@app.on_event("startup")
+def _on_startup() -> None:
+    _start_intraday_scheduler()
+
+
 def _finite_float(x: Any, default: float = 0.0) -> float:
     """
     Convert to float and sanitize NaN/Inf to a finite default.
@@ -586,6 +780,315 @@ def _upsert_cn_rank_snapshot(*, account_id: str, as_of_date: str, universe_versi
         )
         conn.commit()
     return snap_id
+
+
+def _prune_cn_intraday_rank_snapshots(*, account_id: str, keep_days: int = 10) -> None:
+    keep = max(1, min(int(keep_days), 60))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT trade_date
+            FROM cn_intraday_rank_snapshots
+            WHERE account_id = ?
+            ORDER BY trade_date DESC
+            """,
+            (account_id,),
+        ).fetchall()
+        dates = [str(r[0]) for r in rows if r and r[0]]
+        to_delete = dates[keep:]
+        for d in to_delete:
+            conn.execute(
+                "DELETE FROM cn_intraday_rank_snapshots WHERE account_id = ? AND trade_date = ?",
+                (account_id, d),
+            )
+        conn.commit()
+
+
+def _get_cn_intraday_rank_snapshot_latest(
+    *,
+    account_id: str,
+    universe_version: str,
+) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, created_at, output_json
+            FROM cn_intraday_rank_snapshots
+            WHERE account_id = ? AND universe_version = ?
+            ORDER BY as_of_ts DESC
+            LIMIT 1
+            """,
+            (account_id, universe_version),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        out = json.loads(str(row[2]) or "{}")
+    except Exception:
+        out = {}
+    return {"id": str(row[0]), "createdAt": str(row[1]), "output": out}
+
+
+def _get_cn_intraday_rank_snapshot_latest_for(
+    *,
+    account_id: str,
+    trade_date: str,
+    slot: str,
+    universe_version: str,
+) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, created_at, output_json
+            FROM cn_intraday_rank_snapshots
+            WHERE account_id = ? AND trade_date = ? AND slot = ? AND universe_version = ?
+            ORDER BY as_of_ts DESC
+            LIMIT 1
+            """,
+            (account_id, trade_date, slot, universe_version),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        out = json.loads(str(row[2]) or "{}")
+    except Exception:
+        out = {}
+    return {"id": str(row[0]), "createdAt": str(row[1]), "output": out}
+
+
+def _upsert_cn_intraday_rank_snapshot(
+    *,
+    account_id: str,
+    as_of_ts: str,
+    trade_date: str,
+    slot: str,
+    universe_version: str,
+    ts: str,
+    output: dict[str, Any],
+) -> str:
+    snap_id = str(uuid.uuid4())
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO cn_intraday_rank_snapshots(
+              id, account_id, as_of_ts, trade_date, slot, universe_version, created_at, output_json
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(account_id, as_of_ts, slot, universe_version) DO UPDATE SET
+              id = excluded.id,
+              trade_date = excluded.trade_date,
+              created_at = excluded.created_at,
+              output_json = excluded.output_json
+            """,
+            (
+                snap_id,
+                account_id,
+                as_of_ts,
+                trade_date,
+                slot,
+                universe_version,
+                ts,
+                json.dumps(output or {}, ensure_ascii=False, default=str),
+            ),
+        )
+        conn.commit()
+    return snap_id
+
+
+def _append_cn_intraday_observation(*, trade_date: str, ts: str, kind: str, raw: dict[str, Any]) -> str:
+    obs_id = str(uuid.uuid4())
+    created_at = now_iso()
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO cn_intraday_observations(id, trade_date, ts, kind, raw_json, created_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (obs_id, trade_date, ts, kind, json.dumps(raw or {}, ensure_ascii=False, default=str), created_at),
+        )
+        conn.commit()
+    return obs_id
+
+
+def _list_cn_intraday_observations(*, trade_date: str) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, trade_date, ts, kind, raw_json, created_at
+            FROM cn_intraday_observations
+            WHERE trade_date = ?
+            ORDER BY ts ASC
+            """,
+            (trade_date,),
+        ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        try:
+            raw = json.loads(str(r[4]) or "{}")
+        except Exception:
+            raw = {}
+        out.append(
+            {
+                "id": str(r[0]),
+                "tradeDate": str(r[1]),
+                "ts": str(r[2]),
+                "kind": str(r[3]),
+                "raw": raw,
+                "createdAt": str(r[5]),
+            }
+        )
+    return out
+
+
+def _get_cn_minute_bars_cached(*, symbol: str, trade_date: str, interval: str) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT updated_at, bars_json
+            FROM market_cn_minute_bars
+            WHERE symbol = ? AND trade_date = ? AND interval = ?
+            """,
+            (symbol, trade_date, interval),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        bars = json.loads(str(row[1]) or "[]")
+    except Exception:
+        bars = []
+    return {"updatedAt": str(row[0]), "bars": bars if isinstance(bars, list) else []}
+
+
+def _upsert_cn_minute_bars_cached(*, symbol: str, trade_date: str, interval: str, ts: str, bars: list[dict[str, Any]]) -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO market_cn_minute_bars(symbol, trade_date, interval, updated_at, bars_json)
+            VALUES(?, ?, ?, ?, ?)
+            ON CONFLICT(symbol, trade_date, interval) DO UPDATE SET
+              updated_at = excluded.updated_at,
+              bars_json = excluded.bars_json
+            """,
+            (symbol, trade_date, interval, ts, json.dumps(bars or [], ensure_ascii=False, default=str)),
+        )
+        conn.commit()
+
+
+def _prune_cn_mainline_snapshots(*, account_id: str, keep_days: int = 10) -> None:
+    keep = max(1, min(int(keep_days), 60))
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT trade_date
+            FROM cn_mainline_snapshots
+            WHERE account_id = ?
+            ORDER BY trade_date DESC
+            """,
+            (account_id,),
+        ).fetchall()
+        dates = [str(r[0]) for r in rows if r and r[0]]
+        to_delete = dates[keep:]
+        for d in to_delete:
+            conn.execute(
+                "DELETE FROM cn_mainline_snapshots WHERE account_id = ? AND trade_date = ?",
+                (account_id, d),
+            )
+        conn.commit()
+
+
+def _get_cn_mainline_snapshot_latest(
+    *,
+    account_id: str,
+    trade_date: str | None,
+    universe_version: str,
+) -> dict[str, Any] | None:
+    with _connect() as conn:
+        if trade_date:
+            row = conn.execute(
+                """
+                SELECT id, created_at, output_json
+                FROM cn_mainline_snapshots
+                WHERE account_id = ? AND trade_date = ? AND universe_version = ?
+                ORDER BY as_of_ts DESC
+                LIMIT 1
+                """,
+                (account_id, trade_date, universe_version),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT id, created_at, output_json
+                FROM cn_mainline_snapshots
+                WHERE account_id = ? AND universe_version = ?
+                ORDER BY as_of_ts DESC
+                LIMIT 1
+                """,
+                (account_id, universe_version),
+            ).fetchone()
+    if row is None:
+        return None
+    try:
+        out = json.loads(str(row[2]) or "{}")
+    except Exception:
+        out = {}
+    return {"id": str(row[0]), "createdAt": str(row[1]), "output": out}
+
+
+def _insert_cn_mainline_snapshot(
+    *,
+    account_id: str,
+    trade_date: str,
+    as_of_ts: str,
+    universe_version: str,
+    ts: str,
+    output: dict[str, Any],
+) -> str:
+    snap_id = str(uuid.uuid4())
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO cn_mainline_snapshots(id, account_id, trade_date, as_of_ts, universe_version, created_at, output_json)
+            VALUES(?, ?, ?, ?, ?, ?, ?)
+            """,
+            (snap_id, account_id, trade_date, as_of_ts, universe_version, ts, json.dumps(output or {}, ensure_ascii=False, default=str)),
+        )
+        conn.commit()
+    return snap_id
+
+
+def _get_theme_members_cached(*, theme_key: str, trade_date: str) -> dict[str, Any] | None:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT updated_at, members_json
+            FROM cn_theme_membership_cache
+            WHERE theme_key = ? AND trade_date = ?
+            """,
+            (theme_key, trade_date),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        members = json.loads(str(row[1]) or "[]")
+    except Exception:
+        members = []
+    return {"updatedAt": str(row[0]), "members": members if isinstance(members, list) else []}
+
+
+def _upsert_theme_members_cached(*, theme_key: str, trade_date: str, ts: str, members: list[str]) -> None:
+    mem = [str(x).strip() for x in (members or []) if str(x).strip()]
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO cn_theme_membership_cache(theme_key, trade_date, members_json, updated_at)
+            VALUES(?, ?, ?, ?)
+            ON CONFLICT(theme_key, trade_date) DO UPDATE SET
+              members_json = excluded.members_json,
+              updated_at = excluded.updated_at
+            """,
+            (theme_key, trade_date, json.dumps(mem, ensure_ascii=False), ts),
+        )
+        conn.commit()
 
 
 def _parse_data_url(data_url: str) -> tuple[str, bytes]:
@@ -1513,6 +2016,98 @@ class RankSnapshotResponse(BaseModel):
     debug: dict[str, Any] | None = None
 
 
+# --- CN intraday rank (DeltaT 1H) (v0) ---
+class IntradayRankGenerateRequest(BaseModel):
+    accountId: str | None = None
+    asOfTs: str | None = None  # ISO timestamp, default=now
+    slot: str | None = None  # auto if omitted
+    force: bool = False
+    limit: int = 30
+    universeVersion: str = "v0"
+
+
+class IntradayObservationRow(BaseModel):
+    id: str
+    tradeDate: str
+    ts: str
+    kind: str  # preopen_intent | opening_anchor | hourly_prep
+    raw: dict[str, Any] = {}
+    createdAt: str
+
+
+class IntradayObservationsResponse(BaseModel):
+    tradeDate: str
+    items: list[IntradayObservationRow] = []
+
+
+class IntradayRankItem(BaseModel):
+    symbol: str
+    market: str
+    ticker: str
+    name: str
+    score: float
+    probBand: str  # High | Medium | Low
+    slot: str
+    signals: list[str] = []
+    factors: dict[str, float] = {}
+    notes: str | None = None
+
+
+class IntradayRankSnapshotResponse(BaseModel):
+    id: str
+    asOfTs: str
+    tradeDate: str
+    slot: str
+    accountId: str
+    createdAt: str
+    universeVersion: str
+    riskMode: str | None = None
+    items: list[IntradayRankItem] = []
+    observations: list[IntradayObservationRow] = []
+    debug: dict[str, Any] | None = None
+
+
+# --- Leaders mainline (industry+concept) (v0) ---
+class MainlineTheme(BaseModel):
+    kind: str  # industry | concept
+    name: str
+    compositeScore: float
+    structureScore: float
+    logicScore: float
+    logicGrade: str | None = None  # S | A | B
+    logicSummary: str | None = None
+    leaderCandidate: dict[str, Any] | None = None
+    followersCount: int = 0
+    limitupCount: int = 0
+    volSurge: float = 0.0
+    todayStrength: float = 0.0
+    ret3d: float = 0.0
+    evidence: dict[str, Any] = {}
+    decaySignals: list[str] = []
+
+
+class MainlineSnapshotResponse(BaseModel):
+    id: str
+    tradeDate: str
+    asOfTs: str
+    accountId: str
+    createdAt: str
+    universeVersion: str
+    riskMode: str | None = None
+    selected: MainlineTheme | None = None
+    themesTopK: list[MainlineTheme] = []
+    debug: dict[str, Any] | None = None
+
+
+class MainlineGenerateRequest(BaseModel):
+    accountId: str | None = None
+    tradeDate: str | None = None
+    asOfTs: str | None = None
+    universeVersion: str = "v0"
+    force: bool = False
+    topK: int = 3
+
+
 # --- Strategy module (v0) ---
 class StrategyAccountPromptResponse(BaseModel):
     accountId: str
@@ -1620,6 +2215,8 @@ class LeaderDailyGenerateRequest(BaseModel):
     date: str | None = None  # YYYY-MM-DD
     force: bool = False
     maxCandidates: int = 20  # candidate universe cap from screener
+    useMainline: bool = True
+    mainlineTopK: int = 3
 
 
 class LeaderPick(BaseModel):
@@ -2907,6 +3504,161 @@ def rank_cn_next2d_generate(req: RankNext2dGenerateRequest) -> RankSnapshotRespo
         items=[RankItem(**x) for x in items if isinstance(x, dict)],
         debug=output.get("debug") if isinstance(output.get("debug"), dict) else None,
     )
+
+
+@app.get("/rank/cn/intraday", response_model=IntradayRankSnapshotResponse)
+def rank_cn_intraday(
+    accountId: str | None = None,
+    limit: int = 30,
+    universeVersion: str = "v0",
+) -> IntradayRankSnapshotResponse:
+    universe = (universeVersion or "").strip() or "v0"
+    limit2 = max(1, min(int(limit), 200))
+
+    aid = (accountId or "").strip()
+    if not aid:
+        accs = list_broker_accounts(broker="pingan")
+        aid = accs[0].id if accs else ""
+    if not aid:
+        raise HTTPException(status_code=400, detail="accountId is required")
+
+    cached = _get_cn_intraday_rank_snapshot_latest(account_id=aid, universe_version=universe)
+    if cached is None:
+        now_ts = now_iso()
+        trade_date = _today_cn_date_str()
+        return IntradayRankSnapshotResponse(
+            id="",
+            asOfTs=now_ts,
+            tradeDate=trade_date,
+            slot="",
+            accountId=aid,
+            createdAt="",
+            universeVersion=universe,
+            riskMode=None,
+            items=[],
+            observations=[],
+            debug={"status": "no_snapshot"},
+        )
+    out_raw = cached.get("output")
+    out: dict[str, Any] = out_raw if isinstance(out_raw, dict) else {}
+    items_raw = out.get("items")
+    items0: list[Any] = items_raw if isinstance(items_raw, list) else []
+    items = items0[:limit2]
+    obs_raw = out.get("observations")
+    obs0: list[Any] = obs_raw if isinstance(obs_raw, list) else []
+    obs_items = [IntradayObservationRow(**x) for x in obs0 if isinstance(x, dict)]
+    return IntradayRankSnapshotResponse(
+        id=str(cached.get("id") or ""),
+        asOfTs=str(out.get("asOfTs") or ""),
+        tradeDate=str(out.get("tradeDate") or ""),
+        slot=str(out.get("slot") or ""),
+        accountId=aid,
+        createdAt=str(cached.get("createdAt") or ""),
+        universeVersion=str(out.get("universeVersion") or universe),
+        riskMode=str(out.get("riskMode") or "") or None,
+        items=[IntradayRankItem(**x) for x in items if isinstance(x, dict)],
+        observations=obs_items,
+        debug=out.get("debug") if isinstance(out.get("debug"), dict) else None,
+    )
+
+
+@app.post("/rank/cn/intraday/generate", response_model=IntradayRankSnapshotResponse)
+def rank_cn_intraday_generate(req: IntradayRankGenerateRequest) -> IntradayRankSnapshotResponse:
+    universe = (req.universeVersion or "").strip() or "v0"
+    limit2 = max(1, min(int(req.limit), 200))
+    as_of_ts = (req.asOfTs or "").strip() or now_iso()
+
+    aid = (req.accountId or "").strip()
+    if not aid:
+        accs = list_broker_accounts(broker="pingan")
+        aid = accs[0].id if accs else ""
+    if not aid:
+        raise HTTPException(status_code=400, detail="accountId is required")
+
+    tz = ZoneInfo("Asia/Shanghai")
+    try:
+        dt = datetime.fromisoformat(as_of_ts.replace("Z", "+00:00"))
+        dt_cn = dt.astimezone(tz)
+    except Exception:
+        dt_cn = datetime.now(tz=tz)
+    trade_date = dt_cn.strftime("%Y-%m-%d")
+    slot = (req.slot or "").strip() or _infer_intraday_slot(dt_cn)
+
+    if not req.force:
+        cached = _get_cn_intraday_rank_snapshot_latest_for(
+            account_id=aid,
+            trade_date=trade_date,
+            slot=slot,
+            universe_version=universe,
+        )
+        if cached is not None:
+            out_raw = cached.get("output")
+            out: dict[str, Any] = out_raw if isinstance(out_raw, dict) else {}
+            items_raw = out.get("items")
+            items0: list[Any] = items_raw if isinstance(items_raw, list) else []
+            items = items0[:limit2]
+            obs_raw = out.get("observations")
+            obs0: list[Any] = obs_raw if isinstance(obs_raw, list) else []
+            obs_items = [IntradayObservationRow(**x) for x in obs0 if isinstance(x, dict)]
+            return IntradayRankSnapshotResponse(
+                id=str(cached.get("id") or ""),
+                asOfTs=str(out.get("asOfTs") or as_of_ts),
+                tradeDate=str(out.get("tradeDate") or trade_date),
+                slot=str(out.get("slot") or slot),
+                accountId=aid,
+                createdAt=str(cached.get("createdAt") or ""),
+                universeVersion=str(out.get("universeVersion") or universe),
+                riskMode=str(out.get("riskMode") or "") or None,
+                items=[IntradayRankItem(**x) for x in items if isinstance(x, dict)],
+                observations=obs_items,
+                debug=out.get("debug") if isinstance(out.get("debug"), dict) else None,
+            )
+
+    ts = now_iso()
+    output = _intraday_rank_build_and_score(
+        account_id=aid,
+        as_of_ts=as_of_ts,
+        slot=slot,
+        limit=limit2,
+        universe_version=universe,
+    )
+    snap_id = _upsert_cn_intraday_rank_snapshot(
+        account_id=aid,
+        as_of_ts=as_of_ts,
+        trade_date=str(output.get("tradeDate") or trade_date),
+        slot=str(output.get("slot") or slot),
+        universe_version=universe,
+        ts=ts,
+        output=output,
+    )
+    _prune_cn_intraday_rank_snapshots(account_id=aid, keep_days=10)
+
+    out_items = output.get("items")
+    items1: list[Any] = out_items if isinstance(out_items, list) else []
+    items = items1[:limit2]
+    out_obs = output.get("observations")
+    obs1: list[Any] = out_obs if isinstance(out_obs, list) else []
+    obs_items = [IntradayObservationRow(**x) for x in obs1 if isinstance(x, dict)]
+    return IntradayRankSnapshotResponse(
+        id=snap_id,
+        asOfTs=str(output.get("asOfTs") or as_of_ts),
+        tradeDate=str(output.get("tradeDate") or trade_date),
+        slot=str(output.get("slot") or slot),
+        accountId=aid,
+        createdAt=ts,
+        universeVersion=str(output.get("universeVersion") or universe),
+        riskMode=str(output.get("riskMode") or "") or None,
+        items=[IntradayRankItem(**x) for x in items if isinstance(x, dict)],
+        observations=obs_items,
+        debug=output.get("debug") if isinstance(output.get("debug"), dict) else None,
+    )
+
+
+@app.get("/rank/cn/intraday/observations", response_model=IntradayObservationsResponse)
+def rank_cn_intraday_observations(date: str | None = None) -> IntradayObservationsResponse:
+    trade_date = (date or "").strip() or _today_cn_date_str()
+    items = _list_cn_intraday_observations(trade_date=trade_date)
+    return IntradayObservationsResponse(tradeDate=trade_date, items=[IntradayObservationRow(**x) for x in items])
 
 
 def _upsert_cn_sentiment_daily(
@@ -5266,6 +6018,1004 @@ def _rank_build_and_score(
     }
 
 
+def _parse_pct(v: Any) -> float:
+    s = str(v or "").strip().replace("%", "")
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
+
+
+def _parse_num(v: Any) -> float:
+    s = str(v or "").strip().replace(",", "")
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
+
+
+def _theme_key(kind: str, name: str) -> str:
+    return f"{(kind or '').strip().lower()}:{(name or '').strip()}"
+
+
+def _cn_trade_date_from_iso_ts(ts: str) -> str:
+    tz = ZoneInfo("Asia/Shanghai")
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return dt.astimezone(tz).strftime("%Y-%m-%d")
+    except Exception:
+        return datetime.now(tz=tz).strftime("%Y-%m-%d")
+
+
+def _get_theme_members(
+    *,
+    kind: str,
+    name: str,
+    trade_date: str,
+    force: bool,
+    ttl_sec: int = 3600,
+) -> tuple[list[str], dict[str, Any]]:
+    """
+    Resolve theme members (tickers) with a DB cache.
+    """
+    k = _theme_key(kind, name)
+    cached = None if force else _get_theme_members_cached(theme_key=k, trade_date=trade_date)
+    if cached is not None:
+        try:
+            updated = datetime.fromisoformat(str(cached.get("updatedAt") or "")).replace(tzinfo=UTC)
+            age = (datetime.now(tz=UTC) - updated).total_seconds()
+            if age <= float(ttl_sec):
+                mem0 = cached.get("members") or []
+                mem = [str(x).strip() for x in mem0 if str(x).strip()]
+                return mem, {"cached": True, "ageSec": age}
+        except Exception:
+            pass
+
+    try:
+        if kind == "industry":
+            members = fetch_cn_industry_members(name)
+        elif kind == "concept":
+            members = fetch_cn_concept_members(name)
+        else:
+            members = []
+        mem = [str(x).strip() for x in (members or []) if str(x).strip()]
+        ts = now_iso()
+        _upsert_theme_members_cached(theme_key=k, trade_date=trade_date, ts=ts, members=mem)
+        return mem, {"cached": False, "fetched": True, "count": len(mem)}
+    except Exception as e:
+        return [], {"cached": False, "error": str(e)}
+
+
+def _infer_intraday_slot(dt_cn: datetime) -> str:
+    """
+    Slot boundaries (Asia/Shanghai):
+      - 09:30-10:30 -> s1
+      - 10:30-11:30 -> s2
+      - 13:00-14:00 -> s3
+      - 14:00-14:45 -> s4
+    Outside these windows, map to the nearest next slot (for manual generation).
+    """
+    h = int(dt_cn.hour)
+    m = int(dt_cn.minute)
+    hm = h * 60 + m
+    s1_start = 9 * 60 + 30
+    s1_end = 10 * 60 + 30
+    s2_end = 11 * 60 + 30
+    s3_start = 13 * 60
+    s3_end = 14 * 60
+    s4_end = 14 * 60 + 45
+    if s1_start <= hm < s1_end:
+        return "0930_1030"
+    if s1_end <= hm < s2_end:
+        return "1030_1130"
+    if s3_start <= hm < s3_end:
+        return "1300_1400"
+    if s3_end <= hm < s4_end:
+        return "1400_1445"
+    # Off-hours: best-effort mapping
+    if hm < s1_start:
+        return "0930_1030"
+    if s2_end <= hm < s3_start:
+        return "1300_1400"
+    if hm >= s4_end:
+        return "1400_1445"
+    return "0930_1030"
+
+
+def _intraday_prob_band(score: float) -> str:
+    if score >= 80:
+        return "High"
+    if score >= 55:
+        return "Medium"
+    return "Low"
+
+
+def _intraday_minute_features(bars: list[dict[str, Any]]) -> dict[str, float]:
+    """
+    Compute intraday features from minute bars (best-effort).
+    Bars are expected to be in chronological order; if not, we sort by ts.
+    """
+    if not bars:
+        return {
+            "vwapAboveRatio": 0.0,
+            "mom5": 0.0,
+            "mom15": 0.0,
+            "posMinutesRatio": 0.0,
+            "pullbackRatio": 1.0,
+            "closeNearHigh": 0.0,
+            "lateRet15": 0.0,
+            "lateRet30": 0.0,
+            "lateVolSpike": 0.0,
+        }
+    # Sort by timestamp string.
+    bs = sorted(bars, key=lambda x: str(x.get("ts") or ""))
+    closes = [_parse_num(x.get("close")) for x in bs]
+    highs = [_parse_num(x.get("high")) for x in bs]
+    vols = [_parse_num(x.get("volume")) for x in bs]
+    amts = [_parse_num(x.get("amount")) for x in bs]
+
+    # VWAP (cumulative amount / cumulative volume); fallback to close if amount unavailable.
+    cum_amt = 0.0
+    cum_vol = 0.0
+    above = 0
+    for i in range(len(bs)):
+        v = vols[i]
+        a = amts[i]
+        if v > 0:
+            cum_vol += v
+            cum_amt += a if a > 0 else (closes[i] * v)
+        vwap = (cum_amt / cum_vol) if cum_vol > 0 else closes[i]
+        if closes[i] >= vwap:
+            above += 1
+    vwap_above_ratio = float(above) / float(len(bs)) if bs else 0.0
+
+    def _mom(n: int) -> float:
+        if len(closes) <= n or closes[-1] <= 0 or closes[-1 - n] <= 0:
+            return 0.0
+        return (closes[-1] / closes[-1 - n] - 1.0) * 100.0
+
+    mom5 = _mom(5)
+    mom15 = _mom(15)
+
+    pos_minutes = 0
+    for i in range(1, len(closes)):
+        if closes[i] > closes[i - 1]:
+            pos_minutes += 1
+    pos_minutes_ratio = float(pos_minutes) / float(max(1, len(closes) - 1))
+
+    day_high = max(highs) if highs else 0.0
+    last_close = closes[-1] if closes else 0.0
+    close_near_high = 1.0 if (day_high > 0 and last_close >= day_high * 0.99) else 0.0
+
+    # Pullback ratio: (day_high - last_close) / max(1e-9, day_high - first_close)
+    first_close = closes[0] if closes else 0.0
+    denom = max(1e-9, (day_high - first_close))
+    pullback_ratio = (day_high - last_close) / denom if denom > 0 else 1.0
+    pullback_ratio = max(0.0, min(1.0, pullback_ratio))
+
+    # Late returns.
+    late_ret15 = _mom(15)
+    late_ret30 = _mom(30)
+
+    # Late volume spike: last 15m volume / avg 15m block volume.
+    block = 15
+    blocks = []
+    for i in range(0, len(vols), block):
+        blocks.append(sum(vols[i : i + block]))
+    last_block = blocks[-1] if blocks else 0.0
+    avg_block = (sum(blocks[:-1]) / max(1, len(blocks) - 1)) if len(blocks) > 1 else (blocks[0] if blocks else 0.0)
+    late_vol_spike = (last_block / avg_block) if (last_block > 0 and avg_block > 0) else 0.0
+
+    return {
+        "vwapAboveRatio": float(vwap_above_ratio),
+        "mom5": float(mom5),
+        "mom15": float(mom15),
+        "posMinutesRatio": float(pos_minutes_ratio),
+        "pullbackRatio": float(pullback_ratio),
+        "closeNearHigh": float(close_near_high),
+        "lateRet15": float(late_ret15),
+        "lateRet30": float(late_ret30),
+        "lateVolSpike": float(late_vol_spike),
+    }
+
+
+def _intraday_get_minute_bars(
+    *,
+    symbol: str,
+    trade_date: str,
+    interval: str,
+    force: bool,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """
+    DB-first minute bars for a single CN symbol.
+    Cache TTL is short because intraday data changes quickly.
+    """
+    ttl_sec = 90
+    now_ts = now_iso()
+    cached = None if force else _get_cn_minute_bars_cached(symbol=symbol, trade_date=trade_date, interval=interval)
+    if cached is not None:
+        try:
+            updated = datetime.fromisoformat(str(cached.get("updatedAt") or "")).replace(tzinfo=UTC)
+            age = (datetime.now(tz=UTC) - updated).total_seconds()
+            if age <= ttl_sec:
+                return list(cached.get("bars") or []), {"cached": True, "ageSec": age}
+        except Exception:
+            pass
+    # Fetch and cache.
+    ticker = symbol.split(":")[-1]
+    try:
+        bars = fetch_cn_a_minute_bars(ticker, trade_date=trade_date, interval=interval)
+        if isinstance(bars, list):
+            _upsert_cn_minute_bars_cached(symbol=symbol, trade_date=trade_date, interval=interval, ts=now_ts, bars=bars)
+            return bars, {"cached": False, "fetched": True, "count": len(bars)}
+    except Exception as e:
+        return [], {"cached": False, "error": str(e)}
+    return [], {"cached": False, "fetched": False}
+
+
+def _intraday_rank_build_and_score(
+    *,
+    account_id: str,
+    as_of_ts: str,
+    slot: str,
+    limit: int,
+    universe_version: str,
+) -> dict[str, Any]:
+    """
+    Intraday rank based on spot + minute bars (CN only), best-effort.
+    """
+    tz = ZoneInfo("Asia/Shanghai")
+    try:
+        dt = datetime.fromisoformat(as_of_ts.replace("Z", "+00:00"))
+        dt_cn = dt.astimezone(tz)
+    except Exception:
+        dt_cn = datetime.now(tz=tz)
+    trade_date = dt_cn.strftime("%Y-%m-%d")
+
+    # Risk mode (reuse latest sentiment).
+    risk_mode: str | None = None
+    try:
+        items = _list_cn_sentiment_days(as_of_date=trade_date, days=5)
+        latest = items[-1] if items else {}
+        risk_mode = _norm_str(latest.get("riskMode") or "") or None
+    except Exception:
+        risk_mode = None
+
+    # Candidate pool: TV + holdings + spot movers.
+    pool: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for it in _rank_extract_tv_pool(max_screeners=20, max_rows=120) + _rank_extract_holdings_pool(account_id):
+        sym = _norm_str(it.get("symbol") or "")
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        pool.append(it)
+        if len(pool) >= 160:
+            break
+
+    spot_rows: list[StockRow] = []
+    try:
+        spot_rows = fetch_cn_a_spot()
+    except Exception:
+        spot_rows = []
+    spot_map: dict[str, StockRow] = {s.ticker: s for s in spot_rows if s.market == "CN" and s.ticker}
+
+    # Add spot movers (top by change_pct), capped.
+    movers = sorted(spot_rows, key=lambda s: _parse_pct(s.quote.get("change_pct") or ""), reverse=True)[:120]
+    for s in movers:
+        sym = _norm_str(s.symbol)
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        pool.append({"symbol": sym, "market": "CN", "ticker": s.ticker, "name": s.name, "isHolding": False})
+        if len(pool) >= 220:
+            break
+
+    def clamp01(x: float) -> float:
+        return max(0.0, min(1.0, float(x)))
+
+    scored: list[dict[str, Any]] = []
+    debug_fetch: dict[str, Any] = {"minuteBars": {"ok": 0, "err": 0}}
+    for it in pool:
+        sym = _norm_str(it.get("symbol") or "")
+        if not sym.startswith("CN:"):
+            continue
+        ticker = _norm_str(it.get("ticker") or sym.split(":")[-1])
+        name = _norm_str(it.get("name") or ticker)
+        is_holding = bool(it.get("isHolding"))
+        spot = spot_map.get(ticker)
+        vol_ratio = _parse_num((spot.quote.get("vol_ratio") if spot else "") or 0.0)
+        chg_pct = _parse_pct((spot.quote.get("change_pct") if spot else "") or 0.0)
+
+        # Quick liquidity filter via turnover if available (holdings bypass).
+        turnover = _parse_num((spot.quote.get("turnover") if spot else "") or 0.0)
+        if (not is_holding) and turnover > 0 and turnover < 5e7:
+            continue
+
+        bars, meta = _intraday_get_minute_bars(symbol=sym, trade_date=trade_date, interval="1", force=False)
+        if bars:
+            debug_fetch["minuteBars"]["ok"] += 1
+        else:
+            debug_fetch["minuteBars"]["err"] += 1
+
+        f = _intraday_minute_features(bars)
+        # Build slot-specific factors and score.
+        factors: dict[str, float] = {}
+        signals: list[str] = []
+        score01 = 0.0
+
+        if slot == "0930_1030":
+            # relVol proxy via spot vol_ratio (1->0.2, 5->1.0)
+            relv = clamp01(vol_ratio / 5.0)
+            mom = clamp01(max(0.0, f["mom15"]) / 5.0)
+            vwap = clamp01(f["vwapAboveRatio"])
+            factors = {"relVol": round(relv, 4), "mom15": round(mom, 4), "aboveVwap": round(vwap, 4)}
+            score01 = 0.45 * relv + 0.35 * mom + 0.20 * vwap
+            if vol_ratio >= 3:
+                signals.append("High relative volume")
+            if f["vwapAboveRatio"] >= 0.7:
+                signals.append("Above VWAP")
+            if chg_pct >= 2:
+                signals.append("Early strength")
+        elif slot == "1030_1130":
+            support = clamp01(1.0 - f["pullbackRatio"])
+            vwap_hold = clamp01(f["vwapAboveRatio"])
+            factors = {"support": round(support, 4), "vwapHold": round(vwap_hold, 4)}
+            score01 = 0.55 * support + 0.45 * vwap_hold
+            if support >= 0.6:
+                signals.append("Low pullback (strong support)")
+        elif slot == "1300_1400":
+            mom = clamp01(max(0.0, f["mom15"]) / 4.0)
+            posm = clamp01(f["posMinutesRatio"])
+            factors = {"mom15": round(mom, 4), "posMinutes": round(posm, 4)}
+            score01 = 0.55 * mom + 0.45 * posm
+            if mom >= 0.6:
+                signals.append("Afternoon acceleration")
+        else:  # 1400_1445
+            late = clamp01(max(0.0, f["lateRet15"]) / 3.0)
+            spike = clamp01(f["lateVolSpike"] / 2.0)
+            near = clamp01(f["closeNearHigh"])
+            factors = {"lateRet15": round(late, 4), "lateVolSpike": round(spike, 4), "closeNearHigh": round(near, 4)}
+            score01 = 0.45 * late + 0.35 * spike + 0.20 * near
+            if f["lateVolSpike"] >= 1.5:
+                signals.append("Late volume spike")
+            if f["closeNearHigh"] >= 1.0:
+                signals.append("Close near day high")
+
+        # Risk penalty.
+        if risk_mode == "no_new_positions" and not is_holding:
+            score01 *= 0.75
+            signals.append("Risk mode: no_new_positions")
+        elif risk_mode == "caution" and not is_holding:
+            score01 *= 0.90
+            signals.append("Risk mode: caution")
+
+        score = max(0.0, min(100.0, score01 * 100.0))
+        scored.append(
+            {
+                "symbol": sym,
+                "market": "CN",
+                "ticker": ticker,
+                "name": name,
+                "score": round(score, 2),
+                "probBand": _intraday_prob_band(score),
+                "slot": slot,
+                "signals": signals[:6],
+                "factors": factors,
+                "notes": None,
+                "isHolding": is_holding,
+                "debug": {"spot": {"chgPct": chg_pct, "volRatio": vol_ratio}, "minuteMeta": meta},
+            }
+        )
+
+    scored.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
+    top = scored[: max(1, min(int(limit), 200))]
+
+    # Observations: store a small diagnostic snapshot.
+    obs_raw = {
+        "slot": slot,
+        "topMovers": [
+            {"ticker": s.ticker, "name": s.name, "chgPct": _parse_pct(s.quote.get("change_pct") or ""), "volRatio": _parse_num(s.quote.get("vol_ratio") or "")}
+            for s in movers[:15]
+        ],
+    }
+    _append_cn_intraday_observation(trade_date=trade_date, ts=as_of_ts, kind="hourly_prep", raw=obs_raw)
+    obs_items = _list_cn_intraday_observations(trade_date=trade_date)
+
+    return {
+        "asOfTs": as_of_ts,
+        "tradeDate": trade_date,
+        "slot": slot,
+        "accountId": account_id,
+        "universeVersion": universe_version,
+        "riskMode": risk_mode,
+        "items": top,
+        "observations": obs_items,
+        "debug": {"poolSize": len(pool), "spotRows": len(spot_rows), "fetch": debug_fetch},
+    }
+
+
+def _mainline_step1_candidates(
+    *,
+    trade_date: str,
+    force_membership: bool,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """
+    Step1: identify candidate themes (industry+concept) using available signals:
+      - today strength (spot change pct)
+      - 3D return (from cached daily bars)
+      - volume surge proxy (today turnover vs 5D avg amount)
+      - limit-up count (theme members ∩ limit-up pool)
+    """
+    debug: dict[str, Any] = {"sources": {}, "errors": []}
+
+    # Strong set: top movers by change pct with basic liquidity filters.
+    spot_rows: list[StockRow] = []
+    try:
+        spot_rows = fetch_cn_a_spot()
+        debug["sources"]["spot"] = len(spot_rows)
+    except Exception as e:
+        debug["errors"].append(f"spot_failed: {e}")
+        spot_rows = []
+
+    spot_cn = [s for s in spot_rows if s.market == "CN" and s.ticker]
+    spot_cn_sorted = sorted(spot_cn, key=lambda s: _parse_pct(s.quote.get("change_pct") or ""), reverse=True)
+    strong = []
+    for s in spot_cn_sorted[:400]:
+        turnover = _parse_num(s.quote.get("turnover") or "")
+        vol_ratio = _parse_num(s.quote.get("vol_ratio") or "")
+        # Loose filters: keep meaningful liquidity and attention.
+        if turnover > 3e7 and (vol_ratio <= 0 or vol_ratio >= 1.2):
+            strong.append(s)
+    strong = strong[:200]
+    strong_set = {s.ticker for s in strong if s.ticker}
+    spot_map: dict[str, StockRow] = {s.ticker: s for s in spot_cn if s.ticker}
+
+    # Limit-up pool.
+    limitups: list[dict[str, Any]] = []
+    try:
+        dt = datetime.strptime(trade_date, "%Y-%m-%d").date()
+        limitups = fetch_cn_limitup_pool(dt)
+        debug["sources"]["limitups"] = len(limitups)
+    except Exception as e:
+        debug["errors"].append(f"limitup_pool_failed: {e}")
+        limitups = []
+    limitup_set = {str(x.get("ticker") or "").strip() for x in limitups if str(x.get("ticker") or "").strip()}
+
+    # Theme name candidates.
+    industry_names: list[str] = []
+    concept_names: list[str] = []
+
+    # Industry: from existing industry fund flow (DB) + spot rank (AkShare).
+    try:
+        mat = _market_cn_industry_fund_flow_top_by_date(as_of_date=trade_date, days=10, top_k=10)
+        top_by_date = mat.get("topByDate") if isinstance(mat, dict) else None
+        if isinstance(top_by_date, list) and top_by_date:
+            latest = top_by_date[-1] if isinstance(top_by_date[-1], dict) else {}
+            tops = latest.get("topIndustries") if isinstance(latest, dict) else None
+            if isinstance(tops, list):
+                for x in tops:
+                    n = str(x).strip()
+                    if n:
+                        industry_names.append(n)
+        debug["sources"]["industryFlowNames"] = len(industry_names)
+    except Exception as e:
+        debug["errors"].append(f"industry_flow_failed: {e}")
+
+    try:
+        boards = fetch_cn_industry_boards_spot()
+        names = [str(x.get("name") or "").strip() for x in boards[:30]]
+        industry_names.extend([n for n in names if n])
+        debug["sources"]["industryBoards"] = len(boards)
+    except Exception as e:
+        debug["errors"].append(f"industry_boards_failed: {e}")
+
+    try:
+        boards = fetch_cn_concept_boards_spot()
+        names = [str(x.get("name") or "").strip() for x in boards[:30]]
+        concept_names.extend([n for n in names if n])
+        debug["sources"]["conceptBoards"] = len(boards)
+    except Exception as e:
+        debug["errors"].append(f"concept_boards_failed: {e}")
+
+    def _dedupe(xs: list[str]) -> list[str]:
+        out: list[str] = []
+        seen: set[str] = set()
+        for x in xs:
+            k = x.strip()
+            if not k or k in seen:
+                continue
+            seen.add(k)
+            out.append(k)
+        return out
+
+    industry_names = _dedupe(industry_names)[:25]
+    concept_names = _dedupe(concept_names)[:25]
+
+    # Compute features per theme on a bounded subset (intersection with strong movers if possible).
+    def _ret3d_for_symbol(sym: str) -> float:
+        bars = _load_cached_bars(sym, days=10)
+        if len(bars) < 4:
+            return 0.0
+        try:
+            c0 = _finite_float(bars[-4].get("close"), 0.0)
+            c1 = _finite_float(bars[-1].get("close"), 0.0)
+            if c0 > 0 and c1 > 0:
+                return (c1 / c0 - 1.0) * 100.0
+        except Exception:
+            return 0.0
+        return 0.0
+
+    def _amount_5d_avg(sym: str) -> float:
+        bars = _load_cached_bars(sym, days=10)
+        vals = []
+        for b in bars[-5:]:
+            a = _finite_float(b.get("amount"), 0.0)
+            if a > 0:
+                vals.append(a)
+        return float(sum(vals) / len(vals)) if vals else 0.0
+
+    items: list[dict[str, Any]] = []
+    membership_debug: dict[str, Any] = {"ok": 0, "err": 0}
+    for kind, names in (("industry", industry_names), ("concept", concept_names)):
+        for name in names:
+            members, meta = _get_theme_members(kind=kind, name=name, trade_date=trade_date, force=force_membership)
+            if members:
+                membership_debug["ok"] += 1
+            else:
+                membership_debug["err"] += 1
+
+            # Bound computation cost.
+            mem_set = set(members)
+            intersect = [t for t in members if t in strong_set]
+            sample = intersect[:60] if intersect else list(mem_set)[:60]
+
+            # Limit-up count.
+            limitup_count = len([t for t in mem_set if t in limitup_set])
+
+            # Followers (today > 5% or limit-up).
+            followers = 0
+            today_vals: list[float] = []
+            turnover_sum = 0.0
+            amt5_sum = 0.0
+            ret3_vals: list[float] = []
+            for t in sample:
+                s = spot_map.get(t)
+                if s is not None:
+                    chg = _parse_pct(s.quote.get("change_pct") or "")
+                    today_vals.append(chg)
+                    if chg >= 5.0:
+                        followers += 1
+                    turnover_sum += _parse_num(s.quote.get("turnover") or "")
+                if t in limitup_set:
+                    followers += 1
+                sym = f"CN:{t}"
+                ret3_vals.append(_ret3d_for_symbol(sym))
+                amt5_sum += _amount_5d_avg(sym)
+
+            today_strength = float(sum(today_vals) / len(today_vals)) if today_vals else 0.0
+            ret3d = float(sum(ret3_vals) / len(ret3_vals)) if ret3_vals else 0.0
+            vol_surge = (turnover_sum / amt5_sum) if (turnover_sum > 0 and amt5_sum > 0) else 0.0
+
+            items.append(
+                {
+                    "kind": kind,
+                    "name": name,
+                    "todayStrength": round(today_strength, 4),
+                    "ret3d": round(ret3d, 4),
+                    "volSurge": round(float(vol_surge), 4),
+                    "limitupCount": int(limitup_count),
+                    "followersCount": int(followers),
+                    "membershipMeta": meta,
+                    "sampleSize": int(len(sample)),
+                }
+            )
+
+    debug["membership"] = membership_debug
+
+    # Normalize and score for ranking.
+    def _norm01(xs: list[float]) -> list[float]:
+        if not xs:
+            return []
+        lo = min(xs)
+        hi = max(xs)
+        span = max(1e-9, hi - lo)
+        return [(x - lo) / span for x in xs]
+
+    today_list = [float(x.get("todayStrength") or 0.0) for x in items]
+    ret3_list = [float(x.get("ret3d") or 0.0) for x in items]
+    vol_list = [float(x.get("volSurge") or 0.0) for x in items]
+    lu_list = [float(x.get("limitupCount") or 0.0) for x in items]
+
+    today_n = _norm01(today_list)
+    ret3_n = _norm01(ret3_list)
+    vol_n = _norm01(vol_list)
+    lu_n = _norm01(lu_list)
+
+    scored: list[dict[str, Any]] = []
+    for i, it in enumerate(items):
+        # Step1 score: prioritize limit-up breadth and price action, then volume and 3D continuation.
+        s = 0.0
+        s += 0.35 * float(lu_n[i] if i < len(lu_n) else 0.0)
+        s += 0.30 * float(today_n[i] if i < len(today_n) else 0.0)
+        s += 0.20 * float(vol_n[i] if i < len(vol_n) else 0.0)
+        s += 0.15 * float(ret3_n[i] if i < len(ret3_n) else 0.0)
+
+        # Hard-ish filters aligned with your A/B/C/D idea; keep best-effort.
+        limitup_ok = int(it.get("limitupCount") or 0) >= 3
+        strength_ok = float(it.get("todayStrength") or 0.0) >= 2.0
+        vol_ok = float(it.get("volSurge") or 0.0) >= 1.2
+        if not (limitup_ok or (strength_ok and vol_ok)):
+            continue
+
+        scored.append({**it, "step1Score": round(s * 100.0, 2)})
+
+    scored.sort(key=lambda x: float(x.get("step1Score") or 0.0), reverse=True)
+    return scored, debug
+
+
+def _mainline_step2_structure(
+    *,
+    trade_date: str,
+    candidates: list[dict[str, Any]],
+    force_membership: bool,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """
+    Step2: structure analysis inside a theme:
+      - leader_candidate selection
+      - tiering completeness (followers)
+      - linkage/consistency proxy using daily bars
+    """
+    debug: dict[str, Any] = {"errors": [], "themes": []}
+
+    spot_rows: list[StockRow] = []
+    try:
+        spot_rows = fetch_cn_a_spot()
+    except Exception:
+        spot_rows = []
+    spot_map: dict[str, StockRow] = {s.ticker: s for s in spot_rows if s.market == "CN" and s.ticker}
+
+    limitup_set: set[str] = set()
+    try:
+        dt = datetime.strptime(trade_date, "%Y-%m-%d").date()
+        limitups = fetch_cn_limitup_pool(dt)
+        limitup_set = {str(x.get("ticker") or "").strip() for x in limitups if str(x.get("ticker") or "").strip()}
+    except Exception as e:
+        debug["errors"].append(f"limitup_pool_failed: {e}")
+        limitup_set = set()
+
+    def clamp01(x: float) -> float:
+        return max(0.0, min(1.0, float(x)))
+
+    def _ret_nd(sym: str, n: int) -> float:
+        bars = _load_cached_bars(sym, days=max(10, n + 2))
+        if len(bars) <= n:
+            return 0.0
+        c0 = _finite_float(bars[-1 - n].get("close"), 0.0)
+        c1 = _finite_float(bars[-1].get("close"), 0.0)
+        if c0 > 0 and c1 > 0:
+            return (c1 / c0 - 1.0) * 100.0
+        return 0.0
+
+    def _returns_series(sym: str, n: int) -> list[float]:
+        bars = _load_cached_bars(sym, days=max(20, n + 2))
+        if len(bars) < (n + 1):
+            return []
+        closes = [_finite_float(b.get("close"), 0.0) for b in bars]
+        rets: list[float] = []
+        for i in range(len(closes) - n, len(closes)):
+            if i <= 0:
+                continue
+            c0 = closes[i - 1]
+            c1 = closes[i]
+            if c0 > 0 and c1 > 0:
+                rets.append(c1 / c0 - 1.0)
+        return rets
+
+    def _corr(a: list[float], b: list[float]) -> float:
+        if len(a) != len(b) or len(a) < 3:
+            return 0.0
+        ma = sum(a) / len(a)
+        mb = sum(b) / len(b)
+        num = sum((a[i] - ma) * (b[i] - mb) for i in range(len(a)))
+        da = math.sqrt(sum((x - ma) ** 2 for x in a))
+        db = math.sqrt(sum((x - mb) ** 2 for x in b))
+        if da <= 1e-9 or db <= 1e-9:
+            return 0.0
+        return float(num / (da * db))
+
+    out: list[dict[str, Any]] = []
+    for it in candidates:
+        kind = str(it.get("kind") or "").strip()
+        name = str(it.get("name") or "").strip()
+        if not kind or not name:
+            continue
+
+        members, meta = _get_theme_members(kind=kind, name=name, trade_date=trade_date, force=force_membership)
+        mem = [m for m in members if m]
+        if not mem:
+            out.append({**it, "structureScore": 0.0, "leaderCandidate": None, "structureDebug": {"members": 0, "meta": meta}})
+            continue
+
+        # Prefer evaluating a bounded set of active members.
+        ranked = []
+        for t in mem:
+            s = spot_map.get(t)
+            turnover = _parse_num(s.quote.get("turnover") or "") if s is not None else 0.0
+            chg = _parse_pct(s.quote.get("change_pct") or "") if s is not None else 0.0
+            vol_ratio = _parse_num(s.quote.get("vol_ratio") or "") if s is not None else 0.0
+            ranked.append((t, turnover, chg, vol_ratio))
+        ranked.sort(key=lambda x: (x[1], x[2], x[3]), reverse=True)
+        sample = [x[0] for x in ranked[:40]]
+
+        # Leader candidate: highest combination of 5D return + today strength + vol_ratio.
+        best = None
+        best_score = -1.0
+        for t in sample:
+            sym = f"CN:{t}"
+            r5 = _ret_nd(sym, 5)
+            s = spot_map.get(t)
+            chg = _parse_pct(s.quote.get("change_pct") or "") if s is not None else 0.0
+            vol_ratio = _parse_num(s.quote.get("vol_ratio") or "") if s is not None else 0.0
+            # Map to 0..1 then weight.
+            sc = 0.45 * clamp01(r5 / 15.0) + 0.35 * clamp01(chg / 8.0) + 0.20 * clamp01(vol_ratio / 5.0)
+            if sc > best_score:
+                best_score = sc
+                best = t
+
+        leader_candidate = None
+        if best:
+            s = spot_map.get(best)
+            leader_candidate = {
+                "symbol": f"CN:{best}",
+                "ticker": best,
+                "name": (s.name if s is not None else best),
+                "todayChgPct": _parse_pct(s.quote.get("change_pct") or "") if s is not None else 0.0,
+                "volRatio": _parse_num(s.quote.get("vol_ratio") or "") if s is not None else 0.0,
+                "turnover": _parse_num(s.quote.get("turnover") or "") if s is not None else 0.0,
+                "ret5d": round(_ret_nd(f"CN:{best}", 5), 4),
+            }
+
+        # Tiering: followers count + distribution.
+        chgs = []
+        followers = 0
+        limitups = 0
+        for t in sample:
+            s = spot_map.get(t)
+            chg = _parse_pct(s.quote.get("change_pct") or "") if s is not None else 0.0
+            chgs.append(chg)
+            if chg >= 5.0:
+                followers += 1
+            if t in limitup_set:
+                limitups += 1
+        chgs.sort(reverse=True)
+        top1 = chgs[0] if chgs else 0.0
+        top5 = chgs[4] if len(chgs) >= 5 else (chgs[-1] if chgs else 0.0)
+        gap = max(0.0, top1 - top5)
+        tiering = clamp01(min(1.0, followers / 6.0) * 0.65 + clamp01(gap / 6.0) * 0.35)
+
+        # Linkage: corr between leader daily returns and average theme returns (sample-based).
+        linkage = 0.0
+        if best:
+            lead_rets = _returns_series(f"CN:{best}", 5)
+            if lead_rets:
+                # Build average return series for top M sample members.
+                m = 12
+                series_list = []
+                for t in sample[:m]:
+                    rs = _returns_series(f"CN:{t}", 5)
+                    if len(rs) == len(lead_rets):
+                        series_list.append(rs)
+                if series_list:
+                    avg = []
+                    for i2 in range(len(lead_rets)):
+                        avg.append(float(sum(rs[i2] for rs in series_list) / len(series_list)))
+                    linkage = clamp01((_corr(lead_rets, avg) + 1.0) / 2.0)
+
+        # Leader strength uses best_score (0..1).
+        leader_strength = clamp01(best_score if best_score > 0 else 0.0)
+
+        structure01 = 0.40 * leader_strength + 0.35 * tiering + 0.25 * linkage
+        structure_score = round(structure01 * 100.0, 2)
+
+        out.append(
+            {
+                **it,
+                "structureScore": structure_score,
+                "leaderCandidate": leader_candidate,
+                "followersCount": int(max(int(it.get("followersCount") or 0), followers)),
+                "limitupCount": int(max(int(it.get("limitupCount") or 0), limitups)),
+                "structureDebug": {
+                    "members": len(mem),
+                    "sample": len(sample),
+                    "leaderStrength": round(leader_strength, 4),
+                    "tiering": round(tiering, 4),
+                    "linkage": round(linkage, 4),
+                    "membershipMeta": meta,
+                },
+            }
+        )
+        debug["themes"].append({"kind": kind, "name": name, "members": len(mem), "sample": len(sample)})
+
+    out.sort(key=lambda x: float(x.get("structureScore") or 0.0), reverse=True)
+    return out, debug
+
+
+def _ai_mainline_explain(*, payload: dict[str, Any]) -> dict[str, Any]:
+    url = f"{_ai_service_base_url()}/mainline/explain"
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+    def _do() -> dict[str, Any]:
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                raw = resp.read().decode("utf-8")
+                return json.loads(raw)
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                err_body = ""
+            raise OSError(
+                f"ai-service HTTP {getattr(e, 'code', '?')} {getattr(e, 'reason', '')} while calling {url}: {err_body}"
+            ) from e
+        except http.client.RemoteDisconnected as e:
+            raise OSError(f"ai-service disconnected while calling {url}: {e}") from e
+        except urllib.error.URLError as e:
+            raise OSError(f"ai-service URL error while calling {url}: {e}") from e
+        except TimeoutError as e:
+            raise OSError(f"ai-service timeout while calling {url}: {e}") from e
+
+    try:
+        return _do()
+    except OSError as e:
+        msg = str(e)
+        if ("disconnected" in msg) or ("Connection reset" in msg) or ("timeout" in msg):
+            time.sleep(0.25)
+            return _do()
+        raise
+
+
+def _build_mainline_snapshot(
+    *,
+    account_id: str,
+    as_of_ts: str,
+    universe_version: str,
+    force: bool,
+    top_k: int,
+) -> dict[str, Any]:
+    trade_date = _cn_trade_date_from_iso_ts(as_of_ts)
+    # Risk context (latest sentiment).
+    risk_mode: str | None = None
+    try:
+        items = _list_cn_sentiment_days(as_of_date=trade_date, days=5)
+        latest = items[-1] if items else {}
+        risk_mode = _norm_str(latest.get("riskMode") or "") or None
+    except Exception:
+        risk_mode = None
+
+    cands1, dbg1 = _mainline_step1_candidates(trade_date=trade_date, force_membership=force)
+    # Bound: structure analysis only on top Step1 candidates.
+    cands2, dbg2 = _mainline_step2_structure(trade_date=trade_date, candidates=cands1[:12], force_membership=force)
+
+    # AI logic layer (best-effort).
+    logic_map: dict[str, dict[str, Any]] = {}
+    ai_error: str | None = None
+    try:
+        themes_payload = []
+        for it in cands2[:8]:
+            themes_payload.append(
+                {
+                    "kind": str(it.get("kind") or ""),
+                    "name": str(it.get("name") or ""),
+                    "evidence": {
+                        "step1Score": it.get("step1Score"),
+                        "todayStrength": it.get("todayStrength"),
+                        "ret3d": it.get("ret3d"),
+                        "volSurge": it.get("volSurge"),
+                        "limitupCount": it.get("limitupCount"),
+                        "followersCount": it.get("followersCount"),
+                        "structureScore": it.get("structureScore"),
+                        "leaderCandidate": it.get("leaderCandidate"),
+                        "structureDebug": it.get("structureDebug"),
+                        "riskMode": risk_mode,
+                    },
+                }
+            )
+        if themes_payload:
+            resp = _ai_mainline_explain(payload={"date": trade_date, "themes": themes_payload, "context": {"riskMode": risk_mode}})
+            lst = resp.get("themes")
+            arr: list[Any] = lst if isinstance(lst, list) else []
+            for x in arr:
+                if not isinstance(x, dict):
+                    continue
+                k = _theme_key(str(x.get("kind") or ""), str(x.get("name") or ""))
+                logic_map[k] = x
+    except Exception as e:
+        ai_error = str(e)
+        logic_map = {}
+
+    # Merge + composite decision.
+    merged: list[dict[str, Any]] = []
+    for it in cands2:
+        kind = str(it.get("kind") or "")
+        name = str(it.get("name") or "")
+        k = _theme_key(kind, name)
+        logic = logic_map.get(k, {})
+        logic_score = _finite_float(logic.get("logicScore"), _finite_float(it.get("structureScore"), 0.0))
+        logic_grade = _norm_str(logic.get("logicGrade") or "") or None
+        logic_summary = _norm_str(logic.get("logicSummary") or "") or None
+        structure_score = _finite_float(it.get("structureScore"), 0.0)
+        composite = 0.5 * float(structure_score) + 0.5 * float(logic_score)
+        merged.append(
+            {
+                "kind": kind,
+                "name": name,
+                "compositeScore": round(composite, 2),
+                "structureScore": round(structure_score, 2),
+                "logicScore": round(float(logic_score), 2),
+                "logicGrade": logic_grade,
+                "logicSummary": logic_summary,
+                "leaderCandidate": it.get("leaderCandidate") if isinstance(it.get("leaderCandidate"), dict) else None,
+                "followersCount": int(it.get("followersCount") or 0),
+                "limitupCount": int(it.get("limitupCount") or 0),
+                "volSurge": float(it.get("volSurge") or 0.0),
+                "todayStrength": float(it.get("todayStrength") or 0.0),
+                "ret3d": float(it.get("ret3d") or 0.0),
+                "evidence": {
+                    "step1": {k2: it.get(k2) for k2 in ("step1Score", "todayStrength", "ret3d", "volSurge", "limitupCount", "followersCount")},
+                    "structure": it.get("structureDebug") if isinstance(it.get("structureDebug"), dict) else {},
+                    "logic": logic if isinstance(logic, dict) else {},
+                },
+                "decaySignals": [],
+            }
+        )
+
+    merged.sort(key=lambda x: float(x.get("compositeScore") or 0.0), reverse=True)
+    themes_topk = merged[: max(1, min(int(top_k), 10))]
+
+    selected: dict[str, Any] | None = None
+    if themes_topk:
+        top1 = themes_topk[0]
+        top2 = themes_topk[1] if len(themes_topk) > 1 else None
+        s1 = float(top1.get("compositeScore") or 0.0)
+        s2 = float(top2.get("compositeScore") or 0.0) if top2 else 0.0
+        if s1 >= 70.0 and ((s1 - s2) >= 5.0):
+            selected = dict(top1)
+
+    # Decay signals (lightweight).
+    if selected and isinstance(selected.get("leaderCandidate"), dict):
+        t = str((selected.get("leaderCandidate") or {}).get("ticker") or "").strip()
+        if t:
+            sym = f"CN:{t}"
+            bars = _load_cached_bars(sym, days=10)
+            if len(bars) >= 3:
+                c2 = _finite_float(bars[-3].get("close"), 0.0)
+                c1 = _finite_float(bars[-2].get("close"), 0.0)
+                c0 = _finite_float(bars[-1].get("close"), 0.0)
+                if c2 > 0 and c1 > 0 and c0 > 0:
+                    r1 = c1 / c2 - 1.0
+                    r0 = c0 / c1 - 1.0
+                    if (r0 <= 0 and r1 <= 0) or (r0 <= -0.03):
+                        selected["decaySignals"] = ["leader_weakening"]
+
+    return {
+        "tradeDate": trade_date,
+        "asOfTs": as_of_ts,
+        "accountId": account_id,
+        "universeVersion": universe_version,
+        "riskMode": risk_mode,
+        "selected": selected,
+        "themesTopK": themes_topk,
+        "debug": {"step1": dbg1, "step2": dbg2, "aiError": ai_error},
+    }
+
+
 def _ai_strategy_daily(*, payload: dict[str, Any]) -> dict[str, Any]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
@@ -5963,20 +7713,123 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
             snaps.append(s)
     tv_latest = [_tv_snapshot_brief(s.id, max_rows=20) for s in snaps]
 
-    # Candidate universe from latest snapshots.
-    pool: list[dict[str, str]] = []
-    seen: set[str] = set()
+    # Candidate universe from latest snapshots (TV).
+    tv_pool: list[dict[str, str]] = []
+    tv_seen: set[str] = set()
+    tv_cap = max(1, min(int(req.maxCandidates), 120))
     for s in snaps:
         for c in _extract_tv_candidates(s):
+            sym = c["symbol"]
+            if sym in tv_seen:
+                continue
+            tv_seen.add(sym)
+            tv_pool.append(c)
+            if len(tv_pool) >= tv_cap:
+                break
+        if len(tv_pool) >= tv_cap:
+            break
+
+    # Build mainline snapshot (best-effort) and adjust candidate universe if a clear mainline exists.
+    mainline_out: dict[str, Any] | None = None
+    mainline_selected: dict[str, Any] | None = None
+    aid_mainline = ""
+    if bool(req.useMainline):
+        try:
+            accs = list_broker_accounts(broker="pingan")
+            aid_mainline = accs[0].id if accs else ""
+            if aid_mainline:
+                topk = max(1, min(int(req.mainlineTopK), 10))
+                mainline_out = _build_mainline_snapshot(
+                    account_id=aid_mainline,
+                    as_of_ts=ts,
+                    universe_version="v0",
+                    force=bool(req.force),
+                    top_k=topk,
+                )
+                # Persist snapshot for UI/debug.
+                _insert_cn_mainline_snapshot(
+                    account_id=aid_mainline,
+                    trade_date=str(mainline_out.get("tradeDate") or d),
+                    as_of_ts=str(mainline_out.get("asOfTs") or ts),
+                    universe_version=str(mainline_out.get("universeVersion") or "v0"),
+                    ts=ts,
+                    output=mainline_out,
+                )
+                _prune_cn_mainline_snapshots(account_id=aid_mainline, keep_days=10)
+                sel = mainline_out.get("selected")
+                mainline_selected = sel if isinstance(sel, dict) else None
+        except Exception:
+            mainline_out = None
+            mainline_selected = None
+
+    pool: list[dict[str, str]] = []
+    seen: set[str] = set()
+    if mainline_selected and aid_mainline:
+        kind = str(mainline_selected.get("kind") or "").strip()
+        name = str(mainline_selected.get("name") or "").strip()
+        try:
+            mem, _meta = _get_theme_members(kind=kind, name=name, trade_date=d, force=bool(req.force))
+        except Exception:
+            mem = []
+        # Merge: theme members first, then TV, then holdings.
+        spot_rows = []
+        try:
+            spot_rows = fetch_cn_a_spot()
+        except Exception:
+            spot_rows = []
+        spot_map = {s.ticker: s for s in spot_rows if s.market == "CN" and s.ticker}
+
+        for t in (mem or [])[:300]:
+            sym = f"CN:{t}"
+            if sym in seen:
+                continue
+            seen.add(sym)
+            s = spot_map.get(t)
+            pool.append(
+                {
+                    "symbol": sym,
+                    "market": "CN",
+                    "currency": "CNY",
+                    "ticker": t,
+                    "name": (s.name if s is not None else t),
+                }
+            )
+            if len(pool) >= tv_cap:
+                break
+
+        for c in tv_pool:
             sym = c["symbol"]
             if sym in seen:
                 continue
             seen.add(sym)
             pool.append(c)
-            if len(pool) >= max(1, min(int(req.maxCandidates), 50)):
+            if len(pool) >= tv_cap:
                 break
-        if len(pool) >= max(1, min(int(req.maxCandidates), 50)):
-            break
+
+        # Holdings (ensure included).
+        try:
+            holds = _rank_extract_holdings_pool(aid_mainline)
+        except Exception:
+            holds = []
+        for h in holds:
+            sym = _norm_str(h.get("symbol") or "")
+            if not sym or sym in seen:
+                continue
+            seen.add(sym)
+            pool.append(
+                {
+                    "symbol": sym,
+                    "market": _norm_str(h.get("market") or "CN"),
+                    "currency": _norm_str(h.get("currency") or "CNY"),
+                    "ticker": _norm_str(h.get("ticker") or sym.split(":")[-1]),
+                    "name": _norm_str(h.get("name") or ""),
+                }
+            )
+            if len(pool) >= tv_cap:
+                break
+    else:
+        pool = list(tv_pool)
+        seen = set(tv_seen)
 
     # Industry flow matrix (names only).
     industry_daily = _market_cn_industry_fund_flow_top_by_date(as_of_date=d, days=10, top_k=5)
@@ -6036,6 +7889,7 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
         "date": d,
         "tradingView": {"latest": tv_latest},
         "industryFundFlow": {"dailyTopInflow": industry_daily},
+        "mainline": {"snapshot": mainline_out, "selected": mainline_selected},
         "candidateUniverse": pool,
         "market": market_ctx,
         "leaderHistory": leader_history,
@@ -6157,6 +8011,107 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
         )
 
     return LeaderDailyResponse(date=d, leaders=out, debug={"request": stage_req, "response": stage_resp})
+
+
+@app.get("/leader/mainline", response_model=MainlineSnapshotResponse)
+def leader_mainline(
+    accountId: str | None = None,
+    tradeDate: str | None = None,
+    universeVersion: str = "v0",
+) -> MainlineSnapshotResponse:
+    universe = (universeVersion or "").strip() or "v0"
+    d = (tradeDate or "").strip() or None
+
+    aid = (accountId or "").strip()
+    if not aid:
+        accs = list_broker_accounts(broker="pingan")
+        aid = accs[0].id if accs else ""
+    if not aid:
+        raise HTTPException(status_code=400, detail="accountId is required")
+
+    cached = _get_cn_mainline_snapshot_latest(account_id=aid, trade_date=d, universe_version=universe)
+    if cached is None:
+        now_ts = now_iso()
+        return MainlineSnapshotResponse(
+            id="",
+            tradeDate=d or _today_cn_date_str(),
+            asOfTs=now_ts,
+            accountId=aid,
+            createdAt="",
+            universeVersion=universe,
+            riskMode=None,
+            selected=None,
+            themesTopK=[],
+            debug={"status": "no_snapshot"},
+        )
+    out_raw = cached.get("output")
+    out: dict[str, Any] = out_raw if isinstance(out_raw, dict) else {}
+    themes_raw = out.get("themesTopK")
+    themes0: list[Any] = themes_raw if isinstance(themes_raw, list) else []
+    sel0 = out.get("selected")
+    selected = MainlineTheme(**sel0) if isinstance(sel0, dict) else None
+    return MainlineSnapshotResponse(
+        id=str(cached.get("id") or ""),
+        tradeDate=str(out.get("tradeDate") or d or _today_cn_date_str()),
+        asOfTs=str(out.get("asOfTs") or ""),
+        accountId=aid,
+        createdAt=str(cached.get("createdAt") or ""),
+        universeVersion=str(out.get("universeVersion") or universe),
+        riskMode=str(out.get("riskMode") or "") or None,
+        selected=selected,
+        themesTopK=[MainlineTheme(**x) for x in themes0 if isinstance(x, dict)],
+        debug=out.get("debug") if isinstance(out.get("debug"), dict) else None,
+    )
+
+
+@app.post("/leader/mainline/generate", response_model=MainlineSnapshotResponse)
+def leader_mainline_generate(req: MainlineGenerateRequest) -> MainlineSnapshotResponse:
+    universe = (req.universeVersion or "").strip() or "v0"
+    top_k = max(1, min(int(req.topK), 10))
+    as_of_ts = (req.asOfTs or "").strip() or now_iso()
+    trade_date = (req.tradeDate or "").strip() or _cn_trade_date_from_iso_ts(as_of_ts)
+
+    aid = (req.accountId or "").strip()
+    if not aid:
+        accs = list_broker_accounts(broker="pingan")
+        aid = accs[0].id if accs else ""
+    if not aid:
+        raise HTTPException(status_code=400, detail="accountId is required")
+
+    ts = now_iso()
+    output = _build_mainline_snapshot(
+        account_id=aid,
+        as_of_ts=as_of_ts,
+        universe_version=universe,
+        force=bool(req.force),
+        top_k=top_k,
+    )
+    snap_id = _insert_cn_mainline_snapshot(
+        account_id=aid,
+        trade_date=trade_date,
+        as_of_ts=as_of_ts,
+        universe_version=universe,
+        ts=ts,
+        output=output,
+    )
+    _prune_cn_mainline_snapshots(account_id=aid, keep_days=10)
+
+    themes_raw = output.get("themesTopK")
+    themes0: list[Any] = themes_raw if isinstance(themes_raw, list) else []
+    sel0 = output.get("selected")
+    selected = MainlineTheme(**sel0) if isinstance(sel0, dict) else None
+    return MainlineSnapshotResponse(
+        id=snap_id,
+        tradeDate=str(output.get("tradeDate") or trade_date),
+        asOfTs=str(output.get("asOfTs") or as_of_ts),
+        accountId=aid,
+        createdAt=ts,
+        universeVersion=str(output.get("universeVersion") or universe),
+        riskMode=str(output.get("riskMode") or "") or None,
+        selected=selected,
+        themesTopK=[MainlineTheme(**x) for x in themes0 if isinstance(x, dict)],
+        debug=output.get("debug") if isinstance(output.get("debug"), dict) else None,
+    )
 
 
 @app.get("/leader", response_model=LeaderListResponse)

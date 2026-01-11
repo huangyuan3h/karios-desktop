@@ -50,6 +50,36 @@ type LeaderDailyResponse = {
   debug?: unknown;
 };
 
+type MainlineTheme = {
+  kind: string;
+  name: string;
+  compositeScore: number;
+  structureScore: number;
+  logicScore: number;
+  logicGrade?: string | null;
+  logicSummary?: string | null;
+  leaderCandidate?: Record<string, unknown> | null;
+  followersCount?: number;
+  limitupCount?: number;
+  volSurge?: number;
+  todayStrength?: number;
+  ret3d?: number;
+  decaySignals?: string[];
+};
+
+type MainlineSnapshot = {
+  id: string;
+  tradeDate: string;
+  asOfTs: string;
+  accountId: string;
+  createdAt: string;
+  universeVersion: string;
+  riskMode?: string | null;
+  selected?: MainlineTheme | null;
+  themesTopK?: MainlineTheme[];
+  debug?: unknown;
+};
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 }
@@ -191,7 +221,9 @@ async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
 export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const { addReference } = useChatStore();
   const [data, setData] = React.useState<LeaderListResponse | null>(null);
+  const [mainline, setMainline] = React.useState<MainlineSnapshot | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [mainlineBusy, setMainlineBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [debugOpen, setDebugOpen] = React.useState(false);
   const [lastDebug, setLastDebug] = React.useState<unknown>(null);
@@ -203,6 +235,8 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
       // Live score refresh should only happen on "Generate today" or Dashboard "Sync all".
       const r = await apiGetJson<LeaderListResponse>('/leader?days=10&force=false');
       setData(r);
+      const ml = await apiGetJson<MainlineSnapshot>('/leader/mainline');
+      setMainline(ml);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -223,6 +257,23 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onDetectMainline() {
+    setMainlineBusy(true);
+    setError(null);
+    try {
+      const r = await apiPostJson<MainlineSnapshot>('/leader/mainline/generate', {
+        force: true,
+        topK: 3,
+        universeVersion: 'v0',
+      });
+      setMainline(r);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMainlineBusy(false);
     }
   }
 
@@ -275,6 +326,20 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
             Refresh
           </Button>
           <Button
+            variant="secondary"
+            size="sm"
+            disabled={mainlineBusy}
+            onClick={() => void onDetectMainline()}
+            className="gap-2"
+          >
+            {mainlineBusy ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            {mainlineBusy ? 'Detecting…' : 'Detect mainline'}
+          </Button>
+          <Button
             size="sm"
             disabled={busy}
             onClick={() => void onGenerateToday()}
@@ -310,6 +375,119 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
           {error}
         </div>
       ) : null}
+
+      <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium">Mainline</div>
+            <div className="mt-1 text-xs text-[var(--k-muted)]">
+              tradeDate: {mainline?.tradeDate ?? '—'} • updated:{' '}
+              {mainline?.createdAt ? fmtLocalDateTime(mainline.createdAt) : '—'} • riskMode:{' '}
+              {mainline?.riskMode ?? '—'}
+            </div>
+          </div>
+          <div className="text-xs text-[var(--k-muted)]">
+            {mainline?.id ? `snapshot: ${mainline.id.slice(0, 8)}…` : 'no snapshot'}
+          </div>
+        </div>
+
+        <div className="mt-3">
+          {mainline?.selected ? (
+            <div className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm font-semibold">
+                  {mainline.selected.kind}: {mainline.selected.name}
+                </div>
+                <div className="text-xs text-[var(--k-muted)]">
+                  composite {Math.round(Number(mainline.selected.compositeScore ?? 0))} • structure{' '}
+                  {Math.round(Number(mainline.selected.structureScore ?? 0))} • logic{' '}
+                  {Math.round(Number(mainline.selected.logicScore ?? 0))}
+                  {mainline.selected.logicGrade ? ` (${mainline.selected.logicGrade})` : ''}
+                </div>
+              </div>
+              {mainline.selected.logicSummary ? (
+                <div className="mt-2 text-xs text-[var(--k-muted)]">
+                  {mainline.selected.logicSummary}
+                </div>
+              ) : null}
+              {(mainline.selected.decaySignals ?? []).length ? (
+                <div className="mt-2 text-xs text-amber-600">
+                  Decay signals: {(mainline.selected.decaySignals ?? []).join(' · ')}
+                </div>
+              ) : null}
+              {mainline.selected.leaderCandidate && isRecord(mainline.selected.leaderCandidate) ? (
+                <div className="mt-2 text-xs text-[var(--k-muted)]">
+                  leader candidate:{' '}
+                  <button
+                    type="button"
+                    className="font-mono text-[var(--k-accent)] hover:underline"
+                    onClick={() => {
+                      const sym = String(
+                        (mainline.selected?.leaderCandidate as Record<string, unknown>)?.symbol ??
+                          '',
+                      );
+                      if (sym) onOpenStock?.(sym);
+                    }}
+                  >
+                    {String(
+                      (mainline.selected.leaderCandidate as Record<string, unknown>)?.ticker ?? '',
+                    )}
+                  </button>{' '}
+                  {String(
+                    (mainline.selected.leaderCandidate as Record<string, unknown>)?.name ?? '',
+                  )}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="text-sm text-[var(--k-muted)]">
+              No clear mainline detected (rotation / weak breadth).
+            </div>
+          )}
+        </div>
+
+        {(mainline?.themesTopK ?? []).length ? (
+          <div className="mt-3 overflow-auto rounded-md border border-[var(--k-border)]">
+            <table className="w-full border-collapse text-xs">
+              <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                <tr className="text-left">
+                  <th className="px-2 py-2">Theme</th>
+                  <th className="px-2 py-2 text-right">Composite</th>
+                  <th className="px-2 py-2 text-right">Struct</th>
+                  <th className="px-2 py-2 text-right">Logic</th>
+                  <th className="px-2 py-2 text-right">LU</th>
+                  <th className="px-2 py-2 text-right">Followers</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(mainline?.themesTopK ?? []).map((t) => (
+                  <tr key={`${t.kind}:${t.name}`} className="border-t border-[var(--k-border)]">
+                    <td className="px-2 py-2">
+                      <span className="font-mono text-[var(--k-muted)]">{t.kind}</span> {t.name}
+                    </td>
+                    <td className="px-2 py-2 text-right font-mono">
+                      {Math.round(Number(t.compositeScore ?? 0))}
+                    </td>
+                    <td className="px-2 py-2 text-right font-mono">
+                      {Math.round(Number(t.structureScore ?? 0))}
+                    </td>
+                    <td className="px-2 py-2 text-right font-mono">
+                      {Math.round(Number(t.logicScore ?? 0))}
+                      {t.logicGrade ? ` ${t.logicGrade}` : ''}
+                    </td>
+                    <td className="px-2 py-2 text-right font-mono">
+                      {Number(t.limitupCount ?? 0)}
+                    </td>
+                    <td className="px-2 py-2 text-right font-mono">
+                      {Number(t.followersCount ?? 0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
 
       <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="mb-2 flex items-center justify-between gap-2">

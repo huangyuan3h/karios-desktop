@@ -147,6 +147,33 @@ const LeaderDailyResponseSchema = z.object({
   model: z.string(),
 });
 
+const MainlineThemeInputSchema = z.object({
+  kind: z.enum(['industry', 'concept']),
+  name: z.string().min(1),
+  evidence: z.record(z.any()),
+});
+
+const MainlineExplainRequestSchema = z.object({
+  date: z.string().min(1),
+  themes: z.array(MainlineThemeInputSchema).min(1).max(20),
+  context: z.record(z.any()).optional(),
+});
+
+const MainlineThemeExplainSchema = z.object({
+  kind: z.enum(['industry', 'concept']),
+  name: z.string(),
+  logicScore: z.number().min(0).max(100),
+  logicGrade: z.enum(['S', 'A', 'B']).optional(),
+  logicSummary: z.string().optional(),
+  catalysts: z.array(z.string()).optional(),
+});
+
+const MainlineExplainResponseSchema = z.object({
+  date: z.string(),
+  themes: z.array(MainlineThemeExplainSchema),
+  model: z.string(),
+});
+
 const StrategyCandidateSchema = z.object({
   symbol: z.string(),
   market: z.string(),
@@ -741,6 +768,92 @@ app.post('/leader/daily', async (c) => {
         leaders: [],
         model: modelId || 'unknown',
         error: `Leader generation failed: ${msg}`,
+      },
+      200,
+    );
+  }
+});
+
+app.post('/mainline/explain', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = MainlineExplainRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+  }
+
+  let model: AiModel;
+  let fallbackModel: AiModel | null = null;
+  try {
+    model = getModel(process.env.AI_STRATEGY_MODEL);
+    const fb = getStrategyFallbackModelId();
+    if (fb) fallbackModel = getModel(fb);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid AI configuration';
+    return c.json({ error: message }, 500);
+  }
+
+  const modelId = process.env.AI_STRATEGY_MODEL ?? process.env.AI_MODEL ?? '';
+  const fallbackModelId = getStrategyFallbackModelId();
+  const date = parsed.data.date.trim();
+
+  const system =
+    'You are a CN market mainline (主线) analysis engine. ' +
+    'You must analyze WHY a theme is moving using the provided structured evidence. ' +
+    'Return a valid JSON object matching the schema. No markdown fences.';
+
+  const instruction =
+    `Task: For each candidate theme on ${date}, assign logicScore(0-100) and logicGrade(S/A/B), and write a concise English logicSummary.\n` +
+    'Scoring rubric (approx):\n' +
+    '- S (81-100): policy + industry trend both present, with plausible catalysts.\n' +
+    '- A (61-80): any 2 of {policy, industry trend, earnings} present.\n' +
+    '- B (0-60): single short-term event or weak evidence.\n' +
+    'Rules:\n' +
+    '- Base ONLY on provided evidence. Do NOT fabricate news or specific policy documents.\n' +
+    '- If uncertain, lower the score and say uncertainty explicitly.\n' +
+    '- logicSummary must be <= 3 short sentences, English.\n' +
+    '- catalysts (optional): 1-3 short bullets, English.\n' +
+    'Return JSON only.\n\n' +
+    'Input JSON:\n' +
+    JSON.stringify(parsed.data);
+
+  async function run(m: AiModel): Promise<unknown> {
+    const { object } = await generateObject({
+      model: m,
+      schema: MainlineExplainResponseSchema,
+      system,
+      prompt: instruction,
+      temperature: 0,
+      maxOutputTokens: 1200,
+    });
+    return object;
+  }
+
+  try {
+    const obj = await run(model);
+    const out = MainlineExplainResponseSchema.parse(obj);
+    return c.json({ ...out, model: modelId || out.model });
+  } catch (e) {
+    if (fallbackModel) {
+      try {
+        const obj = await run(fallbackModel);
+        const out = MainlineExplainResponseSchema.parse(obj);
+        return c.json({ ...out, model: fallbackModelId || modelId || out.model });
+      } catch {
+        // fallthrough
+      }
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json(
+      {
+        date,
+        themes: parsed.data.themes.map((t) => ({
+          kind: t.kind,
+          name: t.name,
+          logicScore: 50,
+          logicGrade: 'B',
+          logicSummary: `Mainline analysis failed: ${msg}`,
+        })),
+        model: modelId || 'unknown',
       },
       200,
     );

@@ -153,6 +153,8 @@ export function ChatComposer({
                             ? `${r.title || 'Market sentiment'} · ${r.asOfDate} (last ${r.days}D)`
                           : r.kind === 'rankList'
                             ? `CN rank (1-2D) · ${r.asOfDate || 'latest'} (top ${r.limit})`
+                          : r.kind === 'intradayRankList'
+                            ? `CN rank (Intraday) · ${r.slot || 'auto'} (top ${r.limit})`
                           : 'Unknown reference'}
               </span>
               <Button
