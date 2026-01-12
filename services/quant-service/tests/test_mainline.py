@@ -156,7 +156,10 @@ def test_mainline_no_clear_mainline(tmp_path, monkeypatch) -> None:
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["selected"] is None
+    # Should still return Top1 as a "best theme", but mark it as not clear (rotation/multi-line).
+    assert data["selected"] is not None
+    assert isinstance(data.get("debug"), dict)
+    assert (data.get("debug") or {}).get("selectedClear") is False
 
 
 def test_leader_daily_uses_mainline_candidate_pool(tmp_path, monkeypatch) -> None:

@@ -7780,7 +7780,9 @@ def _mainline_step1_candidates(
         s += 0.20 * float(vol_n[i] if i < len(vol_n) else 0.0)
         s += 0.15 * float(ret3_n[i] if i < len(ret3_n) else 0.0)
 
-        # Hard-ish filters aligned with your A/B/C/D idea; keep best-effort.
+        # Soft filters aligned with your A/B/C/D idea; keep best-effort.
+        # IMPORTANT: never return an empty candidate list if we have theme names, because the UI
+        # needs a "best theme" even in rotation/multi-line markets or when data sources are flaky.
         limitup_ok = int(it.get("limitupCount") or 0) >= 3
         strength_ok = float(it.get("todayStrength") or 0.0) >= 2.0
         vol_ok = float(it.get("volSurge") or 0.0) >= 1.2
@@ -7788,6 +7790,20 @@ def _mainline_step1_candidates(
             continue
 
         scored.append({**it, "step1Score": round(s * 100.0, 2)})
+
+    # Fallback: if nothing passed filters, keep top candidates by score (best-effort).
+    if not scored and items:
+        debug["fallback"] = "no_item_passed_filters"
+        tmp: list[dict[str, Any]] = []
+        for i, it in enumerate(items):
+            s = 0.0
+            s += 0.35 * float(lu_n[i] if i < len(lu_n) else 0.0)
+            s += 0.30 * float(today_n[i] if i < len(today_n) else 0.0)
+            s += 0.20 * float(vol_n[i] if i < len(vol_n) else 0.0)
+            s += 0.15 * float(ret3_n[i] if i < len(ret3_n) else 0.0)
+            tmp.append({**it, "step1Score": round(s * 100.0, 2)})
+        tmp.sort(key=lambda x: float(x.get("step1Score") or 0.0), reverse=True)
+        scored = tmp[:12]
 
     scored.sort(key=lambda x: float(x.get("step1Score") or 0.0), reverse=True)
     return scored, debug
@@ -8155,13 +8171,28 @@ def _build_mainline_snapshot(
     themes_topk = merged[: max(1, min(int(top_k), 10))]
 
     selected: dict[str, Any] | None = None
+    selected_clear = False
+    selected_reason = ""
     if themes_topk:
         top1 = themes_topk[0]
         top2 = themes_topk[1] if len(themes_topk) > 1 else None
         s1 = float(top1.get("compositeScore") or 0.0)
         s2 = float(top2.get("compositeScore") or 0.0) if top2 else 0.0
+        # "Clear mainline" threshold (used to constrain Leaders candidate universe).
+        # If not clear, still return Top1 as a "best theme" so the UI always has a conclusion,
+        # but mark it as not clear to avoid over-fitting / false restriction.
         if s1 >= 70.0 and ((s1 - s2) >= 5.0):
+            selected_clear = True
+            selected_reason = "clear_mainline(score>=70 && gap>=5)"
             selected = dict(top1)
+        else:
+            selected_clear = False
+            selected_reason = "weak_mainline(rotation_or_multi_line)"
+            selected = dict(top1)
+            # Help UI/users interpret: this is a best-effort Top1, not a confirmed mainline.
+            selected.setdefault("decaySignals", [])
+            if isinstance(selected.get("decaySignals"), list):
+                selected["decaySignals"] = list(selected.get("decaySignals") or []) + ["weak_mainline"]
 
     # Decay signals (lightweight).
     if selected and isinstance(selected.get("leaderCandidate"), dict):
@@ -8187,7 +8218,13 @@ def _build_mainline_snapshot(
         "riskMode": risk_mode,
         "selected": selected,
         "themesTopK": themes_topk,
-        "debug": {"step1": dbg1, "step2": dbg2, "aiError": ai_error},
+        "debug": {
+            "step1": dbg1,
+            "step2": dbg2,
+            "aiError": ai_error,
+            "selectedClear": bool(selected_clear),
+            "selectedReason": selected_reason,
+        },
     }
 
 
@@ -9030,6 +9067,7 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
     # Build mainline snapshot (best-effort) and adjust candidate universe if a clear mainline exists.
     mainline_out: dict[str, Any] | None = None
     mainline_selected: dict[str, Any] | None = None
+    mainline_selected_clear = False
     aid_mainline = ""
     if bool(req.useMainline):
         try:
@@ -9056,13 +9094,17 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                 _prune_cn_mainline_snapshots(account_id=aid_mainline, keep_days=10)
                 sel = mainline_out.get("selected")
                 mainline_selected = sel if isinstance(sel, dict) else None
+                dbg_ml = mainline_out.get("debug") if isinstance(mainline_out.get("debug"), dict) else {}
+                mainline_selected_clear = bool(dbg_ml.get("selectedClear")) if isinstance(dbg_ml, dict) else False
         except Exception:
             mainline_out = None
             mainline_selected = None
+            mainline_selected_clear = False
 
     pool: list[dict[str, str]] = []
     seen: set[str] = set()
-    if mainline_selected and aid_mainline:
+    # Only restrict candidate universe when the mainline is marked as "clear".
+    if mainline_selected and mainline_selected_clear and aid_mainline:
         kind = str(mainline_selected.get("kind") or "").strip()
         name = str(mainline_selected.get("name") or "").strip()
         try:
