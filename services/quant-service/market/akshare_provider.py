@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
@@ -148,7 +149,37 @@ def fetch_cn_market_breadth_eod(as_of: date) -> dict[str, Any]:
     up = 0
     down = 0
     flat = 0
+    total_turnover_cny = 0.0
+    total_volume = 0.0
+
+    def _to_float0(v: Any) -> float:
+        if v is None:
+            return 0.0
+        if isinstance(v, (int, float)):
+            return float(v) if float(v) == float(v) else 0.0
+        s = str(v).strip().replace(",", "").replace("%", "")
+        if not s or s in ("-", "—", "N/A", "None"):
+            return 0.0
+        # Keep digits / sign / dot only
+        keep = []
+        for ch in s:
+            if ch.isdigit() or ch in (".", "-", "+"):
+                keep.append(ch)
+        try:
+            return float("".join(keep))
+        except Exception:
+            return 0.0
+
     for r in rows:
+        # Market activity (best-effort): sum turnover/volume from spot snapshot.
+        # Note: this is NOT true historical EOD for arbitrary dates; it's the current snapshot when called.
+        # We keep it consistent with breadth which is also computed from spot.
+        turnover0 = r.get("成交额") or r.get("turnover") or r.get("成交额(元)") or ""
+        vol0 = r.get("成交量") or r.get("volume") or ""
+        total_turnover_cny += _parse_money_to_cny(turnover0)
+        total_volume += _to_float0(vol0)
+
+        # Breadth: only count rows with parseable change_pct.
         chg = r.get("涨跌幅") or r.get("change_pct") or r.get("涨跌幅%") or ""
         s = str(chg).strip().replace("%", "")
         try:
@@ -170,6 +201,8 @@ def fetch_cn_market_breadth_eod(as_of: date) -> dict[str, Any]:
         "flat_count": flat,
         "total_count": total,
         "up_down_ratio": ratio,
+        "total_turnover_cny": total_turnover_cny,
+        "total_volume": total_volume,
         "raw": {"source": "stock_zh_a_spot_em", "rows": len(rows)},
     }
 
@@ -192,19 +225,36 @@ def fetch_cn_yesterday_limitup_premium(as_of: date) -> dict[str, Any]:
     """
     ak = _akshare()
     d = as_of.strftime("%Y-%m-%d")
-    y = as_of - timedelta(days=1)
     # AkShare interfaces can vary; keep best-effort.
     if not hasattr(ak, "stock_zt_pool_em"):
         raise RuntimeError("AkShare missing stock_zt_pool_em. Please upgrade AkShare.")
-    df = ak.stock_zt_pool_em(date=_safe_trade_date(y))  # type: ignore[misc]
-    rows = _to_records(df)
+
+    # "Yesterday" may be a non-trading day (weekend/holiday). Walk back to find the most recent
+    # day with a non-empty limit-up pool (best-effort).
+    chosen_y: date | None = None
     codes: list[str] = []
-    for r in rows:
-        code = str(r.get("代码") or r.get("code") or r.get("股票代码") or "").strip()
-        if code:
-            codes.append(code)
+    for back in range(1, 8):
+        y = as_of - timedelta(days=back)
+        try:
+            df = ak.stock_zt_pool_em(date=_safe_trade_date(y))  # type: ignore[misc]
+            rows = _to_records(df)
+        except Exception:
+            continue
+        codes = []
+        for r in rows:
+            code = str(r.get("代码") or r.get("code") or r.get("股票代码") or "").strip()
+            if code:
+                codes.append(code)
+        if codes:
+            chosen_y = y
+            break
     if not codes:
-        return {"date": d, "premium": 0.0, "count": 0, "raw": {"y": y.strftime("%Y-%m-%d")}}
+        return {
+            "date": d,
+            "premium": 0.0,
+            "count": 0,
+            "raw": {"y": None, "searchedBackDays": 7},
+        }
 
     # Map today's spot change_pct for those codes.
     spot = fetch_cn_a_spot()
@@ -221,7 +271,12 @@ def fetch_cn_yesterday_limitup_premium(as_of: date) -> dict[str, Any]:
         if code in chg_map:
             vals.append(float(chg_map[code]))
     premium = float(sum(vals) / len(vals)) if vals else 0.0
-    return {"date": d, "premium": premium, "count": len(codes), "raw": {"y": y.strftime("%Y-%m-%d"), "matched": len(vals)}}
+    return {
+        "date": d,
+        "premium": premium,
+        "count": len(codes),
+        "raw": {"y": chosen_y.strftime("%Y-%m-%d") if chosen_y else None, "matched": len(vals)},
+    }
 
 
 def fetch_cn_failed_limitup_rate(as_of: date) -> dict[str, Any]:
@@ -238,15 +293,31 @@ def fetch_cn_failed_limitup_rate(as_of: date) -> dict[str, Any]:
     """
     ak = _akshare()
     d = as_of.strftime("%Y-%m-%d")
-    # ever limit-up pool
-    if not hasattr(ak, "stock_zt_pool_strong_em"):
-        raise RuntimeError("AkShare missing stock_zt_pool_strong_em. Please upgrade AkShare.")
+    # Preferred method: use dedicated "炸板" (failed limit-up) pool if available.
+    # This avoids relying on "strong pool" APIs whose semantics vary by AkShare versions.
     if not hasattr(ak, "stock_zt_pool_em"):
         raise RuntimeError("AkShare missing stock_zt_pool_em. Please upgrade AkShare.")
-    df_ever = ak.stock_zt_pool_strong_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
-    ever_rows = _to_records(df_ever)
     df_close = ak.stock_zt_pool_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
     close_rows = _to_records(df_close)
+    failed_rows: list[dict[str, Any]] = []
+    method = "fallback_strong_minus_close"
+    if hasattr(ak, "stock_zt_pool_zbgc_em"):
+        try:
+            df_failed = ak.stock_zt_pool_zbgc_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
+            failed_rows = _to_records(df_failed)
+            method = "zbgc_over_zbgc_plus_close"
+        except Exception:
+            failed_rows = []
+            method = "fallback_strong_minus_close"
+    elif hasattr(ak, "stock_zt_pool_zb_em"):
+        # Some versions use a shorter name.
+        try:
+            df_failed = ak.stock_zt_pool_zb_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
+            failed_rows = _to_records(df_failed)
+            method = "zb_over_zb_plus_close"
+        except Exception:
+            failed_rows = []
+            method = "fallback_strong_minus_close"
 
     def _codes(rs: list[dict[str, Any]]) -> set[str]:
         s: set[str] = set()
@@ -256,18 +327,34 @@ def fetch_cn_failed_limitup_rate(as_of: date) -> dict[str, Any]:
                 s.add(code)
         return s
 
-    ever = _codes(ever_rows)
     close = _codes(close_rows)
-    ever_count = len(ever)
     close_count = len(close)
-    failed = max(0, ever_count - close_count)
-    rate = (float(failed) / float(ever_count) * 100.0) if ever_count > 0 else 0.0
+    failed = _codes(failed_rows)
+    failed_count = len(failed)
+    if method in ("zbgc_over_zbgc_plus_close", "zb_over_zb_plus_close"):
+        denom = failed_count + close_count
+        rate = (float(failed_count) / float(denom) * 100.0) if denom > 0 else 0.0
+        ever_count = denom
+    else:
+        # Fallback: infer "ever" via strong pool minus close pool (legacy behavior).
+        if not hasattr(ak, "stock_zt_pool_strong_em"):
+            raise RuntimeError("AkShare missing stock_zt_pool_strong_em. Please upgrade AkShare.")
+        df_ever = ak.stock_zt_pool_strong_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
+        ever_rows = _to_records(df_ever)
+        ever = _codes(ever_rows)
+        ever_count = len(ever)
+        failed_count = max(0, ever_count - close_count)
+        rate = (float(failed_count) / float(ever_count) * 100.0) if ever_count > 0 else 0.0
     return {
         "date": d,
         "failed_rate": rate,
         "ever_count": ever_count,
         "close_count": close_count,
-        "raw": {"everRows": len(ever_rows), "closeRows": len(close_rows)},
+        "raw": {
+            "method": method,
+            "failedRows": len(failed_rows),
+            "closeRows": len(close_rows),
+        },
     }
 
 
@@ -610,7 +697,8 @@ def _parse_money_to_cny(value: Any) -> float:
     if value is None:
         return 0.0
     if isinstance(value, (int, float)):
-        return float(value)
+        f = float(value)
+        return f if math.isfinite(f) else 0.0
     s = str(value).strip()
     if not s or s in ("-", "—", "N/A", "None"):
         return 0.0

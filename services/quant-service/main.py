@@ -246,6 +246,8 @@ def _connect() -> sqlite3.Connection:
           flat_count INTEGER NOT NULL,
           total_count INTEGER NOT NULL,
           up_down_ratio REAL NOT NULL,
+          market_turnover_cny REAL NOT NULL DEFAULT 0.0,
+          market_volume REAL NOT NULL DEFAULT 0.0,
           yesterday_limitup_premium REAL NOT NULL,
           failed_limitup_rate REAL NOT NULL,
           risk_mode TEXT NOT NULL,
@@ -256,6 +258,12 @@ def _connect() -> sqlite3.Connection:
         """,
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cn_sentiment_date ON market_cn_sentiment_daily(date DESC)")
+    # Add market turnover/volume columns to existing DBs.
+    cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(market_cn_sentiment_daily)").fetchall()}
+    if "market_turnover_cny" not in cols:
+        conn.execute("ALTER TABLE market_cn_sentiment_daily ADD COLUMN market_turnover_cny REAL NOT NULL DEFAULT 0.0;")
+    if "market_volume" not in cols:
+        conn.execute("ALTER TABLE market_cn_sentiment_daily ADD COLUMN market_volume REAL NOT NULL DEFAULT 0.0;")
 
     # --- Broker snapshots (v0) ---
     conn.execute(
@@ -2319,9 +2327,11 @@ class MarketCnSentimentRow(BaseModel):
     flatCount: int
     totalCount: int
     upDownRatio: float
+    marketTurnoverCny: float = 0.0
+    marketVolume: float = 0.0
     yesterdayLimitUpPremium: float  # percent, e.g. -1.2 means -1.2%
     failedLimitUpRate: float  # percent, e.g. 35.0
-    riskMode: str  # normal | caution | no_new_positions
+    riskMode: str  # no_new_positions | caution | normal | hot | euphoric
     rules: list[str] = []
     updatedAt: str
 
@@ -3643,6 +3653,8 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
     down = 0
     flat = 0
     ratio = 0.0
+    market_turnover_cny = 0.0
+    market_volume = 0.0
     try:
         breadth = fetch_cn_market_breadth_eod(dt)
         raw["breadth"] = breadth
@@ -3650,6 +3662,8 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
         down = int(breadth.get("down_count") or 0)
         flat = int(breadth.get("flat_count") or 0)
         ratio = _finite_float(breadth.get("up_down_ratio"), 0.0)
+        market_turnover_cny = _finite_float(breadth.get("total_turnover_cny"), 0.0)
+        market_volume = _finite_float(breadth.get("total_volume"), 0.0)
     except Exception as e:
         errors.append(f"breadth_failed: {e}")
         raw["breadthError"] = str(e)
@@ -3685,15 +3699,48 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
         errors.append(f"failed_limitup_rate_failed: {e}")
         raw["failedLimitUpRateError"] = str(e)
 
-    # Risk rules (MVP)
+    # Risk rules (5-zone MVP):
+    # no_new_positions (risk-off) -> caution -> normal -> hot -> euphoric
     rules: list[str] = []
     risk_mode = "normal"
-    if premium < 0.0 and failed_rate > 30.0:
-        risk_mode = "no_new_positions"
-        rules.append("premium<0 && failedLimitUpRate>30 => no_new_positions")
-    elif premium < 0.0 or failed_rate > 30.0:
-        risk_mode = "caution"
-        rules.append("premium<0 or failedLimitUpRate>30 => caution")
+
+    # Note: marketTurnoverCny is best-effort, computed from spot snapshot (same source as breadth).
+    turnover_high = market_turnover_cny >= 1.5e12  # ~1.5T CNY
+    turnover_hot = market_turnover_cny >= 1.8e12
+    turnover_euphoric = market_turnover_cny >= 2.5e12
+    breadth_good = ratio >= 1.2
+    breadth_hot = ratio >= 1.5
+    breadth_euphoric = ratio >= 2.0
+    premium_good = premium >= 0.0
+    premium_hot = premium >= 0.5
+    premium_euphoric = premium >= 3.0
+
+    # Bullish override: high activity + breadth + positive premium should not be forced into caution.
+    bullish_override = turnover_high and breadth_good and premium_good
+
+    # 1) Bullish tiers first (so we can output hot/euphoric).
+    if turnover_euphoric and breadth_euphoric and premium_euphoric and failed_rate <= 35.0:
+        risk_mode = "euphoric"
+        rules.append("euphoric(turnover>=2.5T && breadth>=2.0 && premium>=3.0 && failed<=35)")
+    elif turnover_hot and breadth_hot and premium_hot and failed_rate <= 50.0:
+        risk_mode = "hot"
+        rules.append("hot(turnover>=1.8T && breadth>=1.5 && premium>=0.5 && failed<=50)")
+    else:
+        # 2) Bearish / risk-off gates.
+        if premium < 0.0 and failed_rate >= 70.0:
+            risk_mode = "no_new_positions"
+            rules.append("premium<0 && failedLimitUpRate>=70 => no_new_positions")
+        elif failed_rate >= 70.0:
+            risk_mode = "caution"
+            rules.append("failedLimitUpRate>=70 => caution")
+        elif premium < 0.0:
+            risk_mode = "caution"
+            rules.append("premium<0 => caution")
+
+        # 3) Override: allow normal in strong markets even if failed rate is noisy.
+        if risk_mode in ("caution", "no_new_positions") and bullish_override and failed_rate <= 85.0:
+            risk_mode = "normal"
+            rules.append("bullish_override(turnover_high && breadth_ratio>=1.2 && premium>=0)")
     if errors:
         # If any part failed, mark as caution so users don't blindly trust it.
         if risk_mode == "normal":
@@ -3707,6 +3754,8 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
         "down": down,
         "flat": flat,
         "ratio": ratio,
+        "marketTurnoverCny": market_turnover_cny,
+        "marketVolume": market_volume,
         "premium": premium,
         "failedRate": failed_rate,
         "riskMode": risk_mode,
@@ -3756,6 +3805,8 @@ def market_cn_sentiment_sync(req: MarketCnSentimentSyncRequest) -> MarketCnSenti
             down=int(out["down"]),
             flat=int(out["flat"]),
             up_down_ratio=_finite_float(out.get("ratio"), 0.0),
+            market_turnover_cny=_finite_float(out.get("marketTurnoverCny"), 0.0),
+            market_volume=_finite_float(out.get("marketVolume"), 0.0),
             premium=_finite_float(out.get("premium"), 0.0),
             failed_rate=_finite_float(out.get("failedRate"), 0.0),
             risk_mode=str(out["riskMode"]),
@@ -3789,6 +3840,8 @@ def market_cn_sentiment_sync(req: MarketCnSentimentSyncRequest) -> MarketCnSenti
                 flatCount=int(out.get("flat") or 0),
                 totalCount=int(int(out.get("up") or 0) + int(out.get("down") or 0) + int(out.get("flat") or 0)),
                 upDownRatio=_finite_float(out.get("ratio"), 0.0),
+                marketTurnoverCny=_finite_float(out.get("marketTurnoverCny"), 0.0),
+                marketVolume=_finite_float(out.get("marketVolume"), 0.0),
                 yesterdayLimitUpPremium=_finite_float(out.get("premium"), 0.0),
                 failedLimitUpRate=_finite_float(out.get("failedRate"), 0.0),
                 riskMode=str(out.get("riskMode") or "caution"),
@@ -4409,6 +4462,8 @@ def _upsert_cn_sentiment_daily(
     down: int,
     flat: int,
     up_down_ratio: float,
+    market_turnover_cny: float = 0.0,
+    market_volume: float = 0.0,
     premium: float,
     failed_rate: float,
     risk_mode: str,
@@ -4422,10 +4477,11 @@ def _upsert_cn_sentiment_daily(
             """
             INSERT INTO market_cn_sentiment_daily(
               date, as_of_date, up_count, down_count, flat_count, total_count,
-              up_down_ratio, yesterday_limitup_premium, failed_limitup_rate,
+              up_down_ratio, market_turnover_cny, market_volume,
+              yesterday_limitup_premium, failed_limitup_rate,
               risk_mode, rules_json, updated_at, raw_json
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(date) DO UPDATE SET
               as_of_date = excluded.as_of_date,
               up_count = excluded.up_count,
@@ -4433,6 +4489,8 @@ def _upsert_cn_sentiment_daily(
               flat_count = excluded.flat_count,
               total_count = excluded.total_count,
               up_down_ratio = excluded.up_down_ratio,
+              market_turnover_cny = excluded.market_turnover_cny,
+              market_volume = excluded.market_volume,
               yesterday_limitup_premium = excluded.yesterday_limitup_premium,
               failed_limitup_rate = excluded.failed_limitup_rate,
               risk_mode = excluded.risk_mode,
@@ -4448,6 +4506,8 @@ def _upsert_cn_sentiment_daily(
                 int(flat),
                 int(total),
                 float(up_down_ratio),
+                float(market_turnover_cny),
+                float(market_volume),
                 float(premium),
                 float(failed_rate),
                 str(risk_mode),
@@ -4465,7 +4525,8 @@ def _list_cn_sentiment_days(*, as_of_date: str, days: int) -> list[dict[str, Any
         rows = conn.execute(
             """
             SELECT date, up_count, down_count, flat_count, total_count,
-                   up_down_ratio, yesterday_limitup_premium, failed_limitup_rate,
+                   up_down_ratio, market_turnover_cny, market_volume,
+                   yesterday_limitup_premium, failed_limitup_rate,
                    risk_mode, rules_json, updated_at
             FROM market_cn_sentiment_daily
             WHERE date <= ?
@@ -4484,11 +4545,13 @@ def _list_cn_sentiment_days(*, as_of_date: str, days: int) -> list[dict[str, Any
                 "flatCount": int(r[3] or 0),
                 "totalCount": int(r[4] or 0),
                 "upDownRatio": float(r[5] or 0.0),
-                "yesterdayLimitUpPremium": float(r[6] or 0.0),
-                "failedLimitUpRate": float(r[7] or 0.0),
-                "riskMode": str(r[8] or "normal"),
-                "rules": json.loads(str(r[9]) or "[]") if r[9] else [],
-                "updatedAt": str(r[10] or ""),
+                "marketTurnoverCny": float(r[6] or 0.0),
+                "marketVolume": float(r[7] or 0.0),
+                "yesterdayLimitUpPremium": float(r[8] or 0.0),
+                "failedLimitUpRate": float(r[9] or 0.0),
+                "riskMode": str(r[10] or "normal"),
+                "rules": json.loads(str(r[11]) or "[]") if r[11] else [],
+                "updatedAt": str(r[12] or ""),
             }
         )
     return list(reversed(out))

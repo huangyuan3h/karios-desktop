@@ -146,6 +146,8 @@ function riskModeExplain(riskMode: string | null | undefined): string {
   if (v === 'no_new_positions') return '风险高：不建议开新仓（只处理持仓）';
   if (v === 'caution') return '谨慎：建议小仓位、等确认（回封/回踩）';
   if (v === 'normal') return '正常：可以按信号参与（仍需风控）';
+  if (v === 'hot') return '偏热：趋势强、可积极一些（仍建议分批）';
+  if (v === 'euphoric') return '亢奋：极强但波动大，追高需更严格止损';
   return '—';
 }
 
@@ -225,7 +227,9 @@ export function DashboardPage({
 
         // Fetch mainline snapshot (read-only).
         try {
-          const q2 = effectiveAccountId ? `?accountId=${encodeURIComponent(effectiveAccountId)}` : '';
+          const q2 = effectiveAccountId
+            ? `?accountId=${encodeURIComponent(effectiveAccountId)}`
+            : '';
           const ml = await apiGetJson<MainlineSnapshot>(`/leader/mainline${q2}`);
           setMainline(ml);
         } catch {
@@ -274,7 +278,9 @@ export function DashboardPage({
     setMainlineBusy(true);
     setError(null);
     try {
-      const q = accountId ? { accountId, force: true, topK: 3, universeVersion: 'v0' } : { force: true, topK: 3, universeVersion: 'v0' };
+      const q = accountId
+        ? { accountId, force: true, topK: 3, universeVersion: 'v0' }
+        : { force: true, topK: 3, universeVersion: 'v0' };
       await apiPostJson('/leader/mainline/generate', q);
       await refresh(accountId);
     } catch (e) {
@@ -622,8 +628,8 @@ export function DashboardPage({
                 <div>
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs text-[var(--k-muted)]">
-                      tradeDate: {mainline?.tradeDate ?? '—'} • updatedAt: {fmtDateTime(mainline?.createdAt)} • riskMode:{' '}
-                      {mainline?.riskMode ?? '—'}
+                      tradeDate: {mainline?.tradeDate ?? '—'} • updatedAt:{' '}
+                      {fmtDateTime(mainline?.createdAt)} • riskMode: {mainline?.riskMode ?? '—'}
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
@@ -640,13 +646,20 @@ export function DashboardPage({
                         )}
                         <span className="ml-2">{mainlineBusy ? 'Detecting…' : 'Detect'}</span>
                       </Button>
-                      <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => onNavigate?.('leaders')}>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => onNavigate?.('leaders')}
+                      >
                         Open Leaders
                       </Button>
                     </div>
                   </div>
 
-                  <div className="text-xs text-[var(--k-muted)]">{riskModeExplain(mainline?.riskMode ?? null)}</div>
+                  <div className="text-xs text-[var(--k-muted)]">
+                    {riskModeExplain(mainline?.riskMode ?? null)}
+                  </div>
 
                   {mainline?.selected ? (
                     <div className="mt-3 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
@@ -656,20 +669,28 @@ export function DashboardPage({
                           {scoreLabel(mainline.selected.compositeScore ?? null)}）
                         </div>
                         <div className="text-xs text-[var(--k-muted)]">
-                          composite {Math.round(Number(mainline.selected.compositeScore ?? 0))} • structure{' '}
-                          {Math.round(Number(mainline.selected.structureScore ?? 0))} • logic{' '}
-                          {Math.round(Number(mainline.selected.logicScore ?? 0))}
+                          composite {Math.round(Number(mainline.selected.compositeScore ?? 0))} •
+                          structure {Math.round(Number(mainline.selected.structureScore ?? 0))} •
+                          logic {Math.round(Number(mainline.selected.logicScore ?? 0))}
                           {mainline.selected.logicGrade ? ` (${mainline.selected.logicGrade})` : ''}
                         </div>
                       </div>
 
                       <div className="mt-2 text-xs text-[var(--k-muted)]">
-                        涨停（LU）: <span className="font-mono">{Number(mainline.selected.limitupCount ?? 0)}</span> · 跟涨（Followers）:{' '}
-                        <span className="font-mono">{Number(mainline.selected.followersCount ?? 0)}</span>
+                        涨停（LU）:{' '}
+                        <span className="font-mono">
+                          {Number(mainline.selected.limitupCount ?? 0)}
+                        </span>{' '}
+                        · 跟涨（Followers）:{' '}
+                        <span className="font-mono">
+                          {Number(mainline.selected.followersCount ?? 0)}
+                        </span>
                       </div>
 
                       {mainline.selected.logicSummary ? (
-                        <div className="mt-2 text-xs text-[var(--k-muted)]">AI 逻辑摘要：{mainline.selected.logicSummary}</div>
+                        <div className="mt-2 text-xs text-[var(--k-muted)]">
+                          AI 逻辑摘要：{mainline.selected.logicSummary}
+                        </div>
                       ) : null}
 
                       <div className="mt-3">
@@ -690,14 +711,17 @@ export function DashboardPage({
                             </button>
                           ))}
                           {!(mainline.selected.topTickers ?? []).length ? (
-                            <div className="text-xs text-[var(--k-muted)]">暂无成分股列表（数据源可能缺失）。</div>
+                            <div className="text-xs text-[var(--k-muted)]">
+                              暂无成分股列表（数据源可能缺失）。
+                            </div>
                           ) : null}
                         </div>
                       </div>
                     </div>
                   ) : (
                     <div className="mt-3 text-sm text-[var(--k-muted)]">
-                      结论：暂无明确主线（可能是轮动/多线混战）。你可以先观望，或点 Detect 再跑一次。
+                      结论：暂无明确主线（可能是轮动/多线混战）。你可以先观望，或点 Detect
+                      再跑一次。
                     </div>
                   )}
 
@@ -705,49 +729,63 @@ export function DashboardPage({
                     const themesTopK = mainline?.themesTopK ?? [];
                     if (!themesTopK.length) return null;
                     return (
-                    <div className="mt-3 overflow-auto rounded-lg border border-[var(--k-border)]">
-                      <table className="w-full border-collapse text-xs">
-                        <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                          <tr className="text-left">
-                            <th className="px-2 py-2">备选主线TopK</th>
-                            <th className="px-2 py-2 text-right">综合</th>
-                            <th className="px-2 py-2 text-right">涨停</th>
-                            <th className="px-2 py-2 text-right">跟涨</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {themesTopK.slice(0, 3).map((t) => (
-                            <tr key={`${t.kind}:${t.name}`} className="border-t border-[var(--k-border)]">
-                              <td className="px-2 py-2">
-                                <details>
-                                  <summary className="cursor-pointer">
-                                    <span className="font-mono text-[var(--k-muted)]">{t.kind}</span> {t.name}
-                                  </summary>
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {(t.topTickers ?? []).slice(0, 10).map((x) => (
-                                      <button
-                                        key={x.symbol}
-                                        type="button"
-                                        className="rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-1 text-xs hover:bg-[var(--k-surface-2)]"
-                                        onClick={() => onOpenStock?.(x.symbol)}
-                                      >
-                                        <span className="font-mono">{x.ticker}</span> {x.name}
-                                      </button>
-                                    ))}
-                                    {!(t.topTickers ?? []).length ? (
-                                      <div className="text-xs text-[var(--k-muted)]">暂无成分股列表。</div>
-                                    ) : null}
-                                  </div>
-                                </details>
-                              </td>
-                              <td className="px-2 py-2 text-right font-mono">{Math.round(Number(t.compositeScore ?? 0))}</td>
-                              <td className="px-2 py-2 text-right font-mono">{Number(t.limitupCount ?? 0)}</td>
-                              <td className="px-2 py-2 text-right font-mono">{Number(t.followersCount ?? 0)}</td>
+                      <div className="mt-3 overflow-auto rounded-lg border border-[var(--k-border)]">
+                        <table className="w-full border-collapse text-xs">
+                          <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                            <tr className="text-left">
+                              <th className="px-2 py-2">备选主线TopK</th>
+                              <th className="px-2 py-2 text-right">综合</th>
+                              <th className="px-2 py-2 text-right">涨停</th>
+                              <th className="px-2 py-2 text-right">跟涨</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody>
+                            {themesTopK.slice(0, 3).map((t) => (
+                              <tr
+                                key={`${t.kind}:${t.name}`}
+                                className="border-t border-[var(--k-border)]"
+                              >
+                                <td className="px-2 py-2">
+                                  <details>
+                                    <summary className="cursor-pointer">
+                                      <span className="font-mono text-[var(--k-muted)]">
+                                        {t.kind}
+                                      </span>{' '}
+                                      {t.name}
+                                    </summary>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {(t.topTickers ?? []).slice(0, 10).map((x) => (
+                                        <button
+                                          key={x.symbol}
+                                          type="button"
+                                          className="rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-1 text-xs hover:bg-[var(--k-surface-2)]"
+                                          onClick={() => onOpenStock?.(x.symbol)}
+                                        >
+                                          <span className="font-mono">{x.ticker}</span> {x.name}
+                                        </button>
+                                      ))}
+                                      {!(t.topTickers ?? []).length ? (
+                                        <div className="text-xs text-[var(--k-muted)]">
+                                          暂无成分股列表。
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  </details>
+                                </td>
+                                <td className="px-2 py-2 text-right font-mono">
+                                  {Math.round(Number(t.compositeScore ?? 0))}
+                                </td>
+                                <td className="px-2 py-2 text-right font-mono">
+                                  {Number(t.limitupCount ?? 0)}
+                                </td>
+                                <td className="px-2 py-2 text-right font-mono">
+                                  {Number(t.followersCount ?? 0)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     );
                   })()}
                 </div>
@@ -764,6 +802,7 @@ export function DashboardPage({
                     const failed = Number.isFinite(latest?.failedLimitUpRate)
                       ? `${Number(latest.failedLimitUpRate).toFixed(1)}%`
                       : '—';
+                    const turnover = fmtAmountCn(latest?.marketTurnoverCny);
                     const ratio = Number.isFinite(latest?.upDownRatio)
                       ? Number(latest.upDownRatio).toFixed(2)
                       : '—';
@@ -775,7 +814,11 @@ export function DashboardPage({
                         ? 'border-red-500/30 bg-red-500/10 text-red-600'
                         : risk === 'caution'
                           ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
-                          : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
+                          : risk === 'hot'
+                            ? 'border-green-500/30 bg-green-500/10 text-green-700'
+                            : risk === 'euphoric'
+                              ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700'
+                              : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
                     return (
                       <>
                         <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -799,6 +842,9 @@ export function DashboardPage({
                               {up}/{down}/{flat}
                             </div>
                             <div className="mt-1 text-xs text-[var(--k-muted)]">ratio: {ratio}</div>
+                            <div className="mt-1 text-xs text-[var(--k-muted)]">
+                              turnover: {turnover}
+                            </div>
                           </div>
                           <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
                             <div className="text-xs text-[var(--k-muted)]">Sentiment</div>
@@ -821,6 +867,7 @@ export function DashboardPage({
                                 <tr className="text-left">
                                   <th className="px-2 py-2 font-mono">date</th>
                                   <th className="px-2 py-2 text-right">ratio</th>
+                                  <th className="px-2 py-2 text-right">turnover</th>
                                   <th className="px-2 py-2 text-right">premium%</th>
                                   <th className="px-2 py-2 text-right">failed%</th>
                                   <th className="px-2 py-2">risk</th>
@@ -834,6 +881,9 @@ export function DashboardPage({
                                       {Number.isFinite(it.upDownRatio)
                                         ? Number(it.upDownRatio).toFixed(2)
                                         : '—'}
+                                    </td>
+                                    <td className="px-2 py-2 text-right font-mono">
+                                      {fmtAmountCn(it.marketTurnoverCny)}
                                     </td>
                                     <td className="px-2 py-2 text-right font-mono">
                                       {Number.isFinite(it.yesterdayLimitUpPremium)
@@ -852,7 +902,7 @@ export function DashboardPage({
                                   <tr>
                                     <td
                                       className="px-2 py-3 text-sm text-[var(--k-muted)]"
-                                      colSpan={5}
+                                      colSpan={6}
                                     >
                                       No sentiment cached yet. Click “Sync all (force)”.
                                     </td>
@@ -1080,7 +1130,10 @@ export function DashboardPage({
                       const key = String(it?.symbol ?? it?.ticker ?? '').trim();
                       if (!key) continue;
                       const prev = m.get(key);
-                      if (!prev || String(it?.date ?? '').localeCompare(String(prev?.date ?? '')) > 0) {
+                      if (
+                        !prev ||
+                        String(it?.date ?? '').localeCompare(String(prev?.date ?? '')) > 0
+                      ) {
                         m.set(key, it);
                       }
                     }
@@ -1121,7 +1174,10 @@ export function DashboardPage({
                           </thead>
                           <tbody>
                             {rows.slice(0, 24).map((r: any) => (
-                              <tr key={String(r?.symbol ?? r?.ticker)} className="border-t border-[var(--k-border)]">
+                              <tr
+                                key={String(r?.symbol ?? r?.ticker)}
+                                className="border-t border-[var(--k-border)]"
+                              >
                                 <td className="px-2 py-2 font-mono">
                                   <button
                                     type="button"
@@ -1132,8 +1188,12 @@ export function DashboardPage({
                                   </button>
                                 </td>
                                 <td className="px-2 py-2">{String(r?.name ?? '')}</td>
-                                <td className="px-2 py-2 text-right font-mono">{fmtLeaderScore(r)}</td>
-                                <td className="px-2 py-2 text-right font-mono">{String(r?.date ?? '—')}</td>
+                                <td className="px-2 py-2 text-right font-mono">
+                                  {fmtLeaderScore(r)}
+                                </td>
+                                <td className="px-2 py-2 text-right font-mono">
+                                  {String(r?.date ?? '—')}
+                                </td>
                                 <td className="px-2 py-2 text-right font-mono">{fmtPerfLine(r)}</td>
                               </tr>
                             ))}
@@ -1144,9 +1204,10 @@ export function DashboardPage({
                   })()}
 
                   <div className="mt-2 text-xs text-[var(--k-muted)]">
-                    Live score estimates a 2-day “profit edge” (probability-weighted expected return with drawdown
-                    penalty), computed from recent price history plus the latest fund-flow/chips when available. It
-                    refreshes on “Sync all (force)” or Leader “Generate today”.
+                    Live score estimates a 2-day “profit edge” (probability-weighted expected return
+                    with drawdown penalty), computed from recent price history plus the latest
+                    fund-flow/chips when available. It refreshes on “Sync all (force)” or Leader
+                    “Generate today”.
                   </div>
                   <div className="mt-3 flex items-center gap-2">
                     <Button size="sm" variant="secondary" onClick={() => onNavigate?.('leaders')}>
