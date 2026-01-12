@@ -9219,6 +9219,83 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
         pool = list(tv_pool)
         seen = set(tv_seen)
 
+    # Merge Quant (next2d) top candidates into leader candidate universe (best-effort).
+    # This reduces misses when a strong stock is not surfaced by enabled TV screeners.
+    quant_score_map: dict[str, float] = {}
+    try:
+        aid_quant = aid_mainline
+        if not aid_quant:
+            accs2 = list_broker_accounts(broker="pingan")
+            aid_quant = accs2[0].id if accs2 else ""
+        if aid_quant:
+            q_snap = _get_cn_rank_snapshot(account_id=aid_quant, as_of_date=d, universe_version="v0")
+            out0 = q_snap.get("output") if isinstance(q_snap, dict) else None
+            outq: dict[str, Any] = out0 if isinstance(out0, dict) else {}
+            items0 = outq.get("items")
+            q_items: list[Any] = items0 if isinstance(items0, list) else []
+            for it in q_items[:40]:
+                if not isinstance(it, dict):
+                    continue
+                sym = _norm_str(it.get("symbol") or "")
+                ticker = _norm_str(it.get("ticker") or "")
+                if not sym and ticker:
+                    sym = f"CN:{ticker}"
+                if not sym or sym in seen:
+                    continue
+                if not ticker and ":" in sym:
+                    ticker = sym.split(":")[1]
+                pool.append(
+                    {
+                        "symbol": sym,
+                        "market": _norm_str(it.get("market") or "CN") or "CN",
+                        "currency": "CNY",
+                        "ticker": ticker or sym.split(":")[-1],
+                        "name": _norm_str(it.get("name") or "") or (ticker or sym.split(":")[-1]),
+                    }
+                )
+                seen.add(sym)
+                quant_score_map[sym] = _finite_float(it.get("score"), 0.0)
+                if len(pool) >= 160:
+                    break
+    except Exception:
+        pass
+
+    # Deterministic candidate ordering: avoid "randomness" from TV/member ordering.
+    # Rank by a simple strength score (Quant2D score if present + spot strength proxies).
+    spot_rows2: list[StockRow] = []
+    try:
+        spot_rows2 = fetch_cn_a_spot()
+    except Exception:
+        spot_rows2 = []
+    spot_map2: dict[str, StockRow] = {s.ticker: s for s in spot_rows2 if s.market == "CN" and s.ticker}
+
+    def _cand_strength(c: dict[str, Any]) -> float:
+        sym = _norm_str(c.get("symbol") or "")
+        ticker = _norm_str(c.get("ticker") or "") or (sym.split(":")[1] if ":" in sym else "")
+        q = _finite_float(quant_score_map.get(sym), 0.0)
+        chg = 0.0
+        volr = 0.0
+        turn = 0.0
+        srow = spot_map2.get(ticker)
+        if srow is not None:
+            chg = _parse_pct(srow.quote.get("change_pct") or "")
+            volr = _parse_num(srow.quote.get("vol_ratio") or "")
+            turn = _parse_num(srow.quote.get("turnover") or "")
+        # Compose: prioritize Quant2D when available; otherwise use spot proxies.
+        base = 0.0
+        if q > 0:
+            base += 0.70 * q
+        base += 2.0 * max(-5.0, min(10.0, float(chg)))  # -10..20
+        base += 4.0 * max(0.0, min(5.0, float(volr)))  # 0..20
+        # Turnover in CNY: use log scaling (0..~20)
+        try:
+            base += 10.0 * math.log10(1.0 + max(0.0, float(turn)) / 1e8)
+        except Exception:
+            base += 0.0
+        return float(base)
+
+    pool.sort(key=_cand_strength, reverse=True)
+
     # Industry flow matrix (names only).
     industry_daily = _market_cn_industry_fund_flow_top_by_date(as_of_date=d, days=10, top_k=5)
 
@@ -9231,7 +9308,8 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
 
     # Market per-stock summaries (compact) for candidate universe.
     market_ctx: list[dict[str, Any]] = []
-    for c in pool[: max(1, min(int(req.maxCandidates), 20))]:
+    top_n = max(1, min(int(req.maxCandidates), 20))
+    for c in pool[:top_n]:
         sym = c["symbol"]
         _ensure_market_stock_basic(
             symbol=sym,
@@ -9266,6 +9344,8 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                 "symbol": sym,
                 "ticker": c["ticker"],
                 "name": c.get("name") or "",
+                "candidateStrength": round(_cand_strength(c), 2),
+                "quant2dScore": round(_finite_float(quant_score_map.get(sym), 0.0), 2) if sym else 0.0,
                 "features": feats,
                 "barsTail": (bars[-6:] if bars else []),
                 "chipsSummary": _chips_summary_last(chips_tail[-1] if chips_tail else {}),
@@ -9279,6 +9359,17 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
         "industryFundFlow": {"dailyTopInflow": industry_daily},
         "mainline": {"snapshot": mainline_out, "selected": mainline_selected},
         "candidateUniverse": pool,
+        "candidateUniverseTop": [
+            {
+                "symbol": x.get("symbol"),
+                "ticker": x.get("ticker"),
+                "name": x.get("name"),
+                "candidateStrength": round(_cand_strength(x), 2),
+                "quant2dScore": round(_finite_float(quant_score_map.get(_norm_str(x.get("symbol") or "")), 0.0), 2),
+            }
+            for x in pool[: min(40, len(pool))]
+            if isinstance(x, dict)
+        ],
         "market": market_ctx,
         "leaderHistory": leader_history,
     }
