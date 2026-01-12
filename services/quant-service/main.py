@@ -2658,6 +2658,10 @@ class LeaderPick(BaseModel):
     nowClose: float | None = None
     pctSinceEntry: float | None = None
     series: list[dict[str, Any]] = []  # [{date, close}]
+    # Today's change percent (best-effort) computed from the latest 2 daily closes: (c0/c-1 - 1) * 100.
+    todayChangePct: float | None = None  # percent, e.g. 3.21 means +3.21%
+    # Trend series for UI sparkline (best-effort): last N daily closes.
+    trendSeries: list[dict[str, Any]] = []  # [{date, close}]
 
 
 class LeaderDailyResponse(BaseModel):
@@ -5199,6 +5203,39 @@ def _bars_series_since(symbol: str, start_date: str, *, limit: int = 60) -> list
         if not d:
             continue
         if d < start_date:
+            continue
+        out.append({"date": d, "close": _safe_float(b.get("close"))})
+    out.sort(key=lambda x: str(x.get("date") or ""))
+    lim = max(1, int(limit))
+    return out[-lim:]
+
+
+def _bars_series_since_cached(symbol: str, start_date: str, *, limit: int = 60) -> list[dict[str, Any]]:
+    """
+    Cached-only daily close series (no external fetch).
+    Used by UI endpoints to avoid triggering AkShare on refresh.
+    """
+    bars = _load_cached_bars(symbol, days=240)
+    out: list[dict[str, Any]] = []
+    for b in bars:
+        d = str(b.get("date") or "")
+        if not d or d < start_date:
+            continue
+        out.append({"date": d, "close": _safe_float(b.get("close"))})
+    out.sort(key=lambda x: str(x.get("date") or ""))
+    lim = max(1, int(limit))
+    return out[-lim:]
+
+
+def _bars_series_last_cached(symbol: str, *, limit: int = 20) -> list[dict[str, Any]]:
+    """
+    Cached-only last N daily closes (no external fetch).
+    """
+    bars = _load_cached_bars(symbol, days=240)
+    out: list[dict[str, Any]] = []
+    for b in bars:
+        d = str(b.get("date") or "")
+        if not d:
             continue
         out.append({"date": d, "close": _safe_float(b.get("close"))})
     out.sort(key=lambda x: str(x.get("date") or ""))
@@ -8988,8 +9025,17 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
             live_map = _get_leader_live_scores([_norm_str(r.get("symbol") or "") for r in existing if isinstance(r, dict)])
             leaders_out: list[LeaderPick] = []
             for r in existing:
-                series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)
-                now_close = series[-1]["close"] if series else None
+                sym = str(r["symbol"])
+                series = _bars_series_since_cached(sym, str(r["date"]), limit=60)
+                trend_series = _bars_series_last_cached(sym, limit=20)
+                now_close = (trend_series[-1].get("close") if trend_series else None) or (series[-1].get("close") if series else None)
+                today_chg_pct: float | None = None
+                src2 = trend_series[-2:] if len(trend_series) >= 2 else series[-2:] if len(series) >= 2 else []
+                if len(src2) >= 2:
+                    c_prev = _safe_float(src2[0].get("close"))
+                    c_last = _safe_float(src2[1].get("close"))
+                    if c_prev and c_last and c_prev > 0:
+                        today_chg_pct = (c_last / c_prev - 1.0) * 100.0
                 entry = r.get("entryPrice")
                 pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
                 live = live_map.get(_norm_str(r.get("symbol") or ""), {})
@@ -9032,6 +9078,8 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                         nowClose=float(now_close) if now_close is not None else None,
                         pctSinceEntry=float(pct) if pct is not None else None,
                         series=series,
+                    todayChangePct=float(today_chg_pct) if today_chg_pct is not None else None,
+                    trendSeries=trend_series,
                     )
                 )
             return LeaderDailyResponse(date=d, leaders=leaders_out, debug=None)
@@ -9303,8 +9351,17 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
     live_map_today = _get_leader_live_scores([_norm_str(r.get("symbol") or "") for r in today_rows if isinstance(r, dict)])
     out: list[LeaderPick] = []
     for r in today_rows:
-        series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)
-        now_close = series[-1]["close"] if series else None
+        sym = str(r["symbol"])
+        series = _bars_series_since_cached(sym, str(r["date"]), limit=60)
+        trend_series = _bars_series_last_cached(sym, limit=20)
+        now_close = (trend_series[-1].get("close") if trend_series else None) or (series[-1].get("close") if series else None)
+        today_chg_pct: float | None = None
+        src2 = trend_series[-2:] if len(trend_series) >= 2 else series[-2:] if len(series) >= 2 else []
+        if len(src2) >= 2:
+            c_prev = _safe_float(src2[0].get("close"))
+            c_last = _safe_float(src2[1].get("close"))
+            if c_prev and c_last and c_prev > 0:
+                today_chg_pct = (c_last / c_prev - 1.0) * 100.0
         entry = r.get("entryPrice")
         pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
         live = live_map_today.get(_norm_str(r.get("symbol") or ""), {})
@@ -9347,6 +9404,8 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                 nowClose=float(now_close) if now_close is not None else None,
                 pctSinceEntry=float(pct) if pct is not None else None,
                 series=series,
+            todayChangePct=float(today_chg_pct) if today_chg_pct is not None else None,
+            trendSeries=trend_series,
             )
         )
 
@@ -9484,8 +9543,17 @@ def list_leader_stocks(days: int = 10, force: bool = False) -> LeaderListRespons
     live_map = _get_leader_live_scores([_norm_str(r.get("symbol") or "") for r in rows if isinstance(r, dict)])
     out: list[LeaderPick] = []
     for r in rows:
-        series = _bars_series_since(str(r["symbol"]), str(r["date"]), limit=60)
-        now_close = series[-1]["close"] if series else None
+        sym = str(r["symbol"])
+        series = _bars_series_since_cached(sym, str(r["date"]), limit=60)
+        trend_series = _bars_series_last_cached(sym, limit=20)
+        now_close = (trend_series[-1].get("close") if trend_series else None) or (series[-1].get("close") if series else None)
+        today_chg_pct: float | None = None
+        src2 = trend_series[-2:] if len(trend_series) >= 2 else series[-2:] if len(series) >= 2 else []
+        if len(src2) >= 2:
+            c_prev = _safe_float(src2[0].get("close"))
+            c_last = _safe_float(src2[1].get("close"))
+            if c_prev and c_last and c_prev > 0:
+                today_chg_pct = (c_last / c_prev - 1.0) * 100.0
         entry = r.get("entryPrice")
         pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
         live = live_map.get(_norm_str(r.get("symbol") or ""), {})
@@ -9528,6 +9596,8 @@ def list_leader_stocks(days: int = 10, force: bool = False) -> LeaderListRespons
                 nowClose=float(now_close) if now_close is not None else None,
                 pctSinceEntry=float(pct) if pct is not None else None,
                 series=series,
+                todayChangePct=float(today_chg_pct) if today_chg_pct is not None else None,
+                trendSeries=trend_series,
             )
         )
     return LeaderListResponse(days=max(1, min(int(days), 30)), dates=dates, leaders=out)

@@ -36,6 +36,8 @@ type LeaderPick = {
   nowClose?: number | null;
   pctSinceEntry?: number | null;
   series?: LeaderSeriesPoint[];
+  todayChangePct?: number | null; // percent
+  trendSeries?: LeaderSeriesPoint[];
 };
 
 type LeaderListResponse = {
@@ -96,18 +98,19 @@ function asStringArray(v: unknown): string[] {
   return Array.isArray(v) ? v.map((x) => String(x)).filter(Boolean) : [];
 }
 
-function fmtPerf(r: LeaderPick) {
-  const entry = Number.isFinite(r.entryPrice as number)
-    ? (r.entryPrice as number).toFixed(2)
-    : null;
-  const now = Number.isFinite(r.nowClose as number) ? (r.nowClose as number).toFixed(2) : null;
-  const pct = Number.isFinite(r.pctSinceEntry as number)
-    ? `${(((r.pctSinceEntry as number) || 0) * 100).toFixed(2)}%`
-    : null;
-  if (entry && now && pct) return `${entry} → ${now} (${pct})`;
-  if (now && pct) return `${now} (${pct})`;
-  if (now) return now;
-  return '—';
+function fmtTodayPct(r: LeaderPick): string {
+  const p = Number(r.todayChangePct);
+  if (!Number.isFinite(p)) return '—';
+  const sign = p > 0 ? '+' : '';
+  return `${sign}${p.toFixed(2)}%`;
+}
+
+function fmtSinceEntryPct(r: LeaderPick): string {
+  const p = Number(r.pctSinceEntry);
+  if (!Number.isFinite(p)) return '—';
+  const pct = p * 100.0;
+  const sign = pct > 0 ? '+' : '';
+  return `${sign}${pct.toFixed(2)}%`;
 }
 
 function fmtLeaderScore(r: LeaderPick): string {
@@ -129,6 +132,8 @@ function riskModeExplain(riskMode: string | null | undefined): string {
   if (v === 'no_new_positions') return '风险高：不建议开新仓（只处理持仓）';
   if (v === 'caution') return '谨慎：建议小仓位、等确认（回封/回踩）';
   if (v === 'normal') return '正常：可以按信号参与（仍需风控）';
+  if (v === 'hot') return '偏热：趋势强、可积极一些（仍建议分批）';
+  if (v === 'euphoric') return '亢奋：极强但波动大，追高需更严格止损';
   return '—';
 }
 
@@ -203,9 +208,10 @@ function fmtPlanLine(r: LeaderPick) {
 }
 
 function CloseSparkline({ series }: { series: LeaderSeriesPoint[] }) {
-  const vals = series.map((p) => (Number.isFinite(p.close) ? p.close : 0));
-  const min = Math.min(...vals, 0);
-  const max = Math.max(...vals, 1);
+  const vals = series.map((p) => p.close).filter((x) => Number.isFinite(x));
+  if (!vals.length) return null;
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
   const w = 120;
   const h = 24;
   const pad = 2;
@@ -635,7 +641,7 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                     Last date
                   </th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">
-                    Perf
+                    Today
                   </th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-left">
                     Why
@@ -674,7 +680,7 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                         {String(r.date || '—')}
                       </td>
                       <td className="border-b border-[var(--k-border)] px-2 py-2 text-right font-mono">
-                        {fmtPerf(r)}
+                        {fmtTodayPct(r)}
                       </td>
                       <td className="border-b border-[var(--k-border)] px-2 py-2 text-[var(--k-muted)]">
                         {r.whyBullets?.length ? (
@@ -693,7 +699,11 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                         )}
                       </td>
                       <td className="border-b border-[var(--k-border)] px-2 py-2">
-                        {r.series?.length ? <CloseSparkline series={r.series} /> : null}
+                        {(r.trendSeries?.length || r.series?.length) ? (
+                          <CloseSparkline series={(r.trendSeries ?? r.series ?? []) as LeaderSeriesPoint[]} />
+                        ) : (
+                          <div className="text-[11px] text-[var(--k-muted)]">—</div>
+                        )}
                       </td>
                     </tr>
                     <tr>
@@ -775,8 +785,8 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                                 <div className="grid grid-cols-[96px_1fr] gap-2">
                                   <div className="opacity-80">Performance</div>
                                   <div className="font-mono">
-                                    {fmtPerf(r)}
-                                    {fmtPerf(r) === '—' ? (
+                                    Today: {fmtTodayPct(r)} • Since: {fmtSinceEntryPct(r)}
+                                    {fmtTodayPct(r) === '—' ? (
                                       <span className="ml-2 text-[11px] opacity-70">
                                         (no bars yet; open Stock page to sync)
                                       </span>

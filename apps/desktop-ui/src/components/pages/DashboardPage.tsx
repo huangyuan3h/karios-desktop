@@ -121,15 +121,11 @@ function fmtAmountCn(x: unknown): string {
 }
 
 function fmtPerfLine(r: any): string {
-  const entry = Number(r?.entryPrice);
-  const now = Number(r?.nowClose);
-  const pct = Number(r?.pctSinceEntry);
-  const entryOk = Number.isFinite(entry) ? entry.toFixed(2) : null;
-  const nowOk = Number.isFinite(now) ? now.toFixed(2) : null;
-  const pctOk = Number.isFinite(pct) ? `${(pct * 100).toFixed(2)}%` : null;
-  if (entryOk && nowOk && pctOk) return `${entryOk} → ${nowOk} (${pctOk})`;
-  if (nowOk && pctOk) return `${nowOk} (${pctOk})`;
-  if (nowOk) return nowOk;
+  const p = Number(r?.todayChangePct);
+  if (Number.isFinite(p)) {
+    const sign = p > 0 ? '+' : '';
+    return `${sign}${p.toFixed(2)}%`;
+  }
   return '—';
 }
 
@@ -1169,7 +1165,7 @@ export function DashboardPage({
                               <th className="px-2 py-2">Name</th>
                               <th className="px-2 py-2 text-right">Live score</th>
                               <th className="px-2 py-2 text-right">Last date</th>
-                              <th className="px-2 py-2 text-right">Perf</th>
+                              <th className="px-2 py-2 text-right">Today</th>
                             </tr>
                           </thead>
                           <tbody>
