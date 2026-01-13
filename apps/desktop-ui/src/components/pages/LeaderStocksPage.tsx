@@ -638,6 +638,9 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                     Live score
                   </th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">
+                    Upside
+                  </th>
+                  <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">
                     Last date
                   </th>
                   <th className="whitespace-nowrap border-b border-[var(--k-border)] px-2 py-2 text-right">
@@ -677,6 +680,9 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                         </div>
                       </td>
                       <td className="border-b border-[var(--k-border)] px-2 py-2 text-right font-mono">
+                        {Number.isFinite(Number(r.score)) ? String(Math.round(Number(r.score))) : '—'}
+                      </td>
+                      <td className="border-b border-[var(--k-border)] px-2 py-2 text-right font-mono">
                         {String(r.date || '—')}
                       </td>
                       <td className="border-b border-[var(--k-border)] px-2 py-2 text-right font-mono">
@@ -707,7 +713,7 @@ export function LeaderStocksPage({ onOpenStock }: { onOpenStock?: (symbol: strin
                       </td>
                     </tr>
                     <tr>
-                      <td colSpan={7} className="border-b border-[var(--k-border)] px-2 py-2">
+                      <td colSpan={8} className="border-b border-[var(--k-border)] px-2 py-2">
                         <details>
                           <summary className="cursor-pointer text-xs text-[var(--k-muted)]">
                             Details

@@ -9222,6 +9222,8 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
     # Merge Quant (next2d) top candidates into leader candidate universe (best-effort).
     # This reduces misses when a strong stock is not surfaced by enabled TV screeners.
     quant_score_map: dict[str, float] = {}
+    quant_ev_map: dict[str, float] = {}
+    quant_prob_map: dict[str, float] = {}
     try:
         aid_quant = aid_mainline
         if not aid_quant:
@@ -9233,6 +9235,20 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
             outq: dict[str, Any] = out0 if isinstance(out0, dict) else {}
             items0 = outq.get("items")
             q_items: list[Any] = items0 if isinstance(items0, list) else []
+            # First, build maps for all items (even if already in pool).
+            for it in q_items[:120]:
+                if not isinstance(it, dict):
+                    continue
+                sym0 = _norm_str(it.get("symbol") or "")
+                ticker0 = _norm_str(it.get("ticker") or "")
+                if not sym0 and ticker0:
+                    sym0 = f"CN:{ticker0}"
+                if not sym0:
+                    continue
+                quant_score_map[sym0] = _finite_float(it.get("score"), 0.0)
+                quant_ev_map[sym0] = _finite_float(it.get("ev2dPct"), 0.0)
+                quant_prob_map[sym0] = _finite_float(it.get("probProfit2d"), 0.0)
+
             for it in q_items[:40]:
                 if not isinstance(it, dict):
                     continue
@@ -9254,7 +9270,6 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                     }
                 )
                 seen.add(sym)
-                quant_score_map[sym] = _finite_float(it.get("score"), 0.0)
                 if len(pool) >= 160:
                     break
     except Exception:
@@ -9273,6 +9288,7 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
         sym = _norm_str(c.get("symbol") or "")
         ticker = _norm_str(c.get("ticker") or "") or (sym.split(":")[1] if ":" in sym else "")
         q = _finite_float(quant_score_map.get(sym), 0.0)
+        q_ev = _finite_float(quant_ev_map.get(sym), 0.0)
         chg = 0.0
         volr = 0.0
         turn = 0.0
@@ -9281,12 +9297,15 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
             chg = _parse_pct(srow.quote.get("change_pct") or "")
             volr = _parse_num(srow.quote.get("vol_ratio") or "")
             turn = _parse_num(srow.quote.get("turnover") or "")
-        # Compose: prioritize Quant2D when available; otherwise use spot proxies.
+        # Compose: Leader objective = upside (larger expected move), accept lower win-rate.
+        # Use Quant EV (if present) as a weak upside hint, but prioritize spot momentum/attention.
         base = 0.0
         if q > 0:
-            base += 0.70 * q
-        base += 2.0 * max(-5.0, min(10.0, float(chg)))  # -10..20
-        base += 4.0 * max(0.0, min(5.0, float(volr)))  # 0..20
+            base += 0.35 * q
+        if q_ev > 0:
+            base += 4.0 * max(0.0, min(8.0, float(q_ev)))  # 0..32
+        base += 3.0 * max(-5.0, min(10.0, float(chg)))  # -15..30
+        base += 6.0 * max(0.0, min(5.0, float(volr)))  # 0..30
         # Turnover in CNY: use log scaling (0..~20)
         try:
             base += 10.0 * math.log10(1.0 + max(0.0, float(turn)) / 1e8)
@@ -9346,6 +9365,8 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                 "name": c.get("name") or "",
                 "candidateStrength": round(_cand_strength(c), 2),
                 "quant2dScore": round(_finite_float(quant_score_map.get(sym), 0.0), 2) if sym else 0.0,
+                "quant2dEv2dPct": round(_finite_float(quant_ev_map.get(sym), 0.0), 3) if sym else 0.0,
+                "quant2dProbProfit2d": round(_finite_float(quant_prob_map.get(sym), 0.0), 2) if sym else 0.0,
                 "features": feats,
                 "barsTail": (bars[-6:] if bars else []),
                 "chipsSummary": _chips_summary_last(chips_tail[-1] if chips_tail else {}),
@@ -9366,6 +9387,8 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                 "name": x.get("name"),
                 "candidateStrength": round(_cand_strength(x), 2),
                 "quant2dScore": round(_finite_float(quant_score_map.get(_norm_str(x.get("symbol") or "")), 0.0), 2),
+                "quant2dEv2dPct": round(_finite_float(quant_ev_map.get(_norm_str(x.get("symbol") or "")), 0.0), 3),
+                "quant2dProbProfit2d": round(_finite_float(quant_prob_map.get(_norm_str(x.get("symbol") or "")), 0.0), 2),
             }
             for x in pool[: min(40, len(pool))]
             if isinstance(x, dict)

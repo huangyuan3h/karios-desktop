@@ -898,7 +898,7 @@ export function DashboardPage({
                                   <tr>
                                     <td
                                       className="px-2 py-3 text-sm text-[var(--k-muted)]"
-                                      colSpan={6}
+                                      colSpan={7}
                                     >
                                       No sentiment cached yet. Click “Sync all (force)”.
                                     </td>
@@ -1164,6 +1164,7 @@ export function DashboardPage({
                               <th className="px-2 py-2">Ticker</th>
                               <th className="px-2 py-2">Name</th>
                               <th className="px-2 py-2 text-right">Live score</th>
+                              <th className="px-2 py-2 text-right">Upside</th>
                               <th className="px-2 py-2 text-right">Last date</th>
                               <th className="px-2 py-2 text-right">Today</th>
                             </tr>
@@ -1186,6 +1187,11 @@ export function DashboardPage({
                                 <td className="px-2 py-2">{String(r?.name ?? '')}</td>
                                 <td className="px-2 py-2 text-right font-mono">
                                   {fmtLeaderScore(r)}
+                                </td>
+                                <td className="px-2 py-2 text-right font-mono">
+                                  {Number.isFinite(Number(r?.score))
+                                    ? String(Math.round(Number(r.score)))
+                                    : '—'}
                                 </td>
                                 <td className="px-2 py-2 text-right font-mono">
                                   {String(r?.date ?? '—')}

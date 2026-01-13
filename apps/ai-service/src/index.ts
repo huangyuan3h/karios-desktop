@@ -656,6 +656,10 @@ app.post('/strategy/candidates', async (c) => {
     'Constraints:\n' +
     '- Do NOT require per-stock deep context. Assume it is NOT available.\n' +
     '- Use ONLY: accountState, TradingView latest+history, industryFundFlow, marketSentiment.\n' +
+    "- Mainline (主线): if context.mainline.selected exists, you MUST treat it as today's primary focus theme and reflect it in:\n" +
+    '  - leader.reason (mention mainline name and whether it is clear)\n' +
+    '  - candidate ranking (prefer candidates aligned with mainline when it is clear)\n' +
+    '  - If context.mainline.debug.selectedClear is false, describe it as "weak mainline / rotation" and do NOT overfit.\n' +
     '- industryFundFlow format: use context.industryFundFlow.dailyTopInflow (Top5×Date industry names).\n' +
     '- marketSentiment format: use context.marketSentiment.latest (riskMode, upDownRatio, yesterdayLimitUpPremium, failedLimitUpRate).\n' +
     '- If riskMode is "no_new_positions": still output candidates, but you MUST set Today stance to defensive in leader reason and reduce Risk sub-score accordingly.\n' +
@@ -750,7 +754,8 @@ app.post('/leader/daily', async (c) => {
     '- Daily limit: leaders <= 2.\n' +
     '- Prefer NEW leaders from today’s industry themes + screener strength.\n' +
     '- Avoid duplicates: if a symbol was selected recently, only pick again if it is clearly still the leader today.\n' +
-    '- Provide numeric score 0-100.\n' +
+    '- Objective: maximize upside (bigger expected move) over the next ~1-3 trading days, accepting lower win-rate.\n' +
+    '- score (0-100) MUST represent UpsideScore (higher = larger expected upside / momentum continuation).\n' +
     '- Provide a concise Chinese reason.\n' +
     '- CRITICAL: Provide actionable fields for execution:\n' +
     '  - whyBullets: 3-6 short bullets (each <= 20 Chinese chars), explain why it is worth buying.\n' +
@@ -759,7 +764,7 @@ app.post('/leader/daily', async (c) => {
     '  - triggers: 1-2 triggers (breakout/pullback), each has condition and optional value.\n' +
     '  - invalidation: ONE clear invalidation rule (price below X / structure breaks).\n' +
     '  - targetPrice: {primary, stretch?} price targets.\n' +
-    '  - probability: integer 1-5 (success probability).\n' +
+    '  - probability: integer 1-5 (win-rate / success probability), do NOT conflate with UpsideScore.\n' +
     '  - risks: 2-4 key risks.\n' +
     '- If you lack a field (e.g. current price), write a best-effort number based on context.market.barsTail close; otherwise write "TBD" and explain in risks.\n' +
     '- Provide sourceSignals:\n' +
@@ -1064,10 +1069,16 @@ app.post('/strategy/daily-markdown', async (c) => {
     `账户：${accountTitle}\n` +
     `日期：${date}\n\n` +
     '## 0 结果摘要\n\n' +
-    '用 1 段短文（<=200字）概括“主线/风险偏好/操作倾向”，必须引用 marketSentiment 的 riskMode/ratio/premium/failedRate 做出结论，然后给出摘要表。\n\n' +
+    '用 1 段短文（<=200字）概括“主线/风险偏好/操作倾向”，必须引用 marketSentiment 的 riskMode/ratio/premium/failedRate 做出结论。\n' +
+    '主线来源规则（必须遵守）：\n' +
+    "- If context.mainline.selected exists: you MUST use it as today's mainline/focus theme.\n" +
+    '- You MUST mention whether it is clear: use context.mainline.debug.selectedClear (true=clear, false=weak/rotation).\n' +
+    '- If selectedClear is false, describe it as "弱主线/轮动" and do NOT overfit; still pick 1-2 focus themes.\n' +
+    '- If context.mainline.selected is missing: infer focus themes from industryFundFlow + TradingView only.\n\n' +
+    '然后给出摘要表（Focus themes 必须填写，不允许 TBD）：\n\n' +
     '| Focus themes | Leader | Risk budget | Max positions | Today stance | Notes |\n' +
     '|---|---|---|---|---|\n' +
-    '| TBD | TBD | 单笔≤1% 净值 | ≤3 | 进攻/均衡/防守 | marketSentiment: riskMode=... |\n\n' +
+    '| 主线/备选主题（1-2个） | TBD | 单笔≤1% 净值 | ≤3 | 进攻/均衡/防守 | marketSentiment: riskMode=...; mainline: clear/weak |\n\n' +
     '（在表格下面再用 2-4 句解释：为什么这些是主线/为什么不是别的。）\n\n' +
     '## 1 资金板块\n\n' +
     '用 3-6 条 bullet，总结：Top流入/Top流出/持续性/对持仓威胁/今日聚焦主题。\n\n' +
