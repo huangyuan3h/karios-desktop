@@ -1043,33 +1043,30 @@ app.post('/strategy/daily-markdown', async (c) => {
     '      | a | b |\\n' +
     '  - Headings must be SHORT (avoid long H1/H2). Put detailed descriptions as normal paragraphs (p) above/below tables.\n' +
     '  - Do NOT use any extra headings beyond the template (no "###").\n' +
-    '  - H1 must be EXACTLY: "# 日度交易报告"\n' +
     '  - H2 headings must be EXACTLY these (no extra text on the same line):\n' +
-    '    "## 0 结果摘要", "## 1 资金板块", "## 2 候选Top3", "## 3 持仓计划", "## 4 执行要点", "## 5 条件单总表"\n' +
-    '  - Section 2 (candidates) MUST be a markdown table.\n' +
-    '  - Section 3 (holdings) MUST be a markdown table.\n' +
-    '  - Section 5 MUST be a markdown table (the final action table).\n' +
+    '    "## 1 总览", "## 2 机会Top3", "## 3 资金板块", "## 4 持仓计划", "## 5 执行要点", "## 6 条件单总表"\n' +
+    '  - Section 2 (opportunities) MUST be a markdown table.\n' +
+    '  - Section 4 (holdings) MUST be a markdown table.\n' +
+    '  - Section 6 MUST be a markdown table (the final action table).\n' +
     '  - CRITICAL: Section 2 table MUST include a numeric Score column (0-100).\n' +
     '    - Score MUST be filled (do not leave all 0 / TBD).\n' +
     '    - Use the provided rubric and estimate even if some inputs are missing; explain uncertainty in the Risk column.\n' +
     '    - Rank must be consistent with Score (higher score => better rank).\n' +
     '- The report MUST contain the following sections IN THIS ORDER:\n' +
-    '  1) Market/Industry fund flow (资金流向板块)\n' +
-    "  2) Today's Top candidates (<= 3)\n" +
-    '  3) Holdings plan (现有持仓：哪些止损/持有/减仓/清仓)\n' +
-    '  4) Overall execution plan (盘中执行要点)\n' +
-    '  5) Ping An conditional-order action table (平安证券条件单风格 总表)\n' +
+    '  1) Overall summary (总览)\n' +
+    '  2) Opportunities Top3 (机会Top3)\n' +
+    '  3) Market/Industry fund flow (资金板块)\n' +
+    '  4) Holdings plan (持仓计划)\n' +
+    '  5) Execution rules (执行要点)\n' +
+    '  6) Ping An conditional-order action table (条件单总表)\n' +
     '\n' +
     'Market sentiment MUST be considered using context.marketSentiment.latest:\n' +
     '- Use it to decide Today stance (进攻/均衡/防守) and Risk budget.\n' +
     '- If riskMode is "no_new_positions", you MUST state: 禁止开新仓，只处理持仓，并在第5表里不要给新的开仓条件单。\n' +
     '- If riskMode is "caution", you MUST reduce position sizing and emphasize confirmation (回封/回踩) over chasing.\n' +
     'You MUST follow this template (fill with real content, keep headings exactly):\n' +
-    '# 日度交易报告\n\n' +
-    `账户：${accountTitle}\n` +
-    `日期：${date}\n\n` +
-    '## 0 结果摘要\n\n' +
-    '用 1 段短文（<=200字）概括“主线/风险偏好/操作倾向”，必须引用 marketSentiment 的 riskMode/ratio/premium/failedRate 做出结论。\n' +
+    '## 1 总览\n\n' +
+    '用 1 段短文（<=200字）概括：主线 + 市场情绪 + 板块（资金）结论，必须引用 marketSentiment 的 riskMode/ratio/premium/failedRate 做出结论。\n' +
     '主线来源规则（必须遵守）：\n' +
     "- If context.mainline.selected exists: you MUST use it as today's mainline/focus theme.\n" +
     '- You MUST mention whether it is clear: use context.mainline.debug.selectedClear (true=clear, false=weak/rotation).\n' +
@@ -1080,43 +1077,39 @@ app.post('/strategy/daily-markdown', async (c) => {
     '|---|---|---|---|---|\n' +
     '| 主线/备选主题（1-2个） | TBD | 单笔≤1% 净值 | ≤3 | 进攻/均衡/防守 | marketSentiment: riskMode=...; mainline: clear/weak |\n\n' +
     '（在表格下面再用 2-4 句解释：为什么这些是主线/为什么不是别的。）\n\n' +
-    '## 1 资金板块\n\n' +
-    '用 3-6 条 bullet，总结：Top流入/Top流出/持续性/对持仓威胁/今日聚焦主题。\n\n' +
-    '## 2 候选Top3\n\n' +
-    '先用 1 段短文（<=220字）说明候选筛选逻辑（行业资金 + 趋势 + 结构 + 风险），再给表格。\n\n' +
+    '## 2 机会Top3\n\n' +
+    '用 1 段短文（<=220字）说明机会筛选逻辑（优先：主线龙头/强势股 + 行业资金 + 趋势结构 + 风险），再给表格。\n' +
+    '优先级规则（必须遵守）：\n' +
+    '- Prefer stocks aligned with context.mainline.selected and described as leaders/representatives in context.mainline.snapshot (if available).\n' +
+    '- If context.stage1.candidates is provided, you MUST pick Top3 from it (re-rank is allowed).\n\n' +
     '评分说明（0-100）：Trend(0-40)+Flow(0-30)+Structure(0-20)+Risk(0-10)。\n' +
     '要求：Score 给出整数 0-100，并按 Score 排序；Risk 列写明影响打分的主要不确定性（如缺少现价/缺少行业数据/深度数据不足）。\n\n' +
-    'If context.stage1.candidates is provided, you MUST use it as the candidate list source and pick Top3 from it.\n' +
-    'If context.stage1 is missing/empty, you may derive candidates from context.candidateUniverse.\n\n' +
-    '候选表只要“筛选结果与理由”，不要写具体交易触发价/关键位/PlanA/PlanB（这些放到第5部分条件单总表）。\n\n' +
-    '| Rank | Score | Symbol | Name | Current | 基本面分析 | Why now (技术面/资金面 1行) | Risk (1 line) |\n' +
+    '机会表只要“筛选结果与理由”，不要写具体交易触发价/关键位/PlanA/PlanB（这些放到条件单总表）。\n\n' +
+    '| Rank | Score | Symbol | Name | Current | Why now (主线/技术/资金 1行) | Risk (1 line) |\n' +
     '|---:|---:|---|---|---:|---|---|---|\n' +
     '| 1 | 0 | TBD | TBD | TBD | TBD | TBD | TBD |\n\n' +
     '表格后用 1 段短文（<=220字）总结：Top3 的共同点、谁是龙头（只选1个）、以及今天不做什么。\n\n' +
-    '## 3 持仓计划\n\n' +
+    '## 3 资金板块\n\n' +
+    '用 3-6 条 bullet，总结：Top流入/Top流出/持续性/对持仓威胁/今日聚焦主题。\n\n' +
+    '## 4 持仓计划\n\n' +
     '先用 1 段短文（<=220字）总结“今天持仓处理总思路”（先处理风险源/如何锁利/哪些继续拿）。\n\n' +
     '| Symbol | Name | Qty | Cost | Current | PnL% | Action | Score | StopLoss trigger | Reduce/Exit trigger | Orders (keep/adjust/cancel) | Notes |\n' +
     '|---|---|---:|---:|---:|---:|---|---:|---|---|---|---|\n' +
     '| TBD | TBD | TBD | TBD | TBD | TBD | Hold/Reduce/Exit | 0 | TBD | TBD | TBD | TBD |\n\n' +
     '表格后用 1 段短文（<=220字）总结：优先处理哪一只风险源 + 哪些仓位顺势持有。\n\n' +
-    '## 4 执行要点\n\n' +
+    '## 5 执行要点\n\n' +
     '- 只写 5-8 条“可执行规则”（必须包含 1 条基于 marketSentiment riskMode 的总风控规则；例如：禁止开新仓/轻仓试错/只做回封确认等）\n\n' +
-    '## 5 条件单总表\n\n' +
+    '## 6 条件单总表\n\n' +
     '在表格上方用 2-3 句解释：总表如何使用（先挂什么/触发后做什么/何时撤单）。\n\n' +
     '- Section 1 MUST analyze capital rotation using context.industryFundFlow.dailyTopInflow:\n' +
     '  - Use the Top5×Date matrix (industry names) to infer persistence and rotation.\n' +
     '  - Identify 1-2 focus themes based on frequency/streak in recent dates.\n' +
-    '- Section 2: Top candidates <= 3. For each candidate provide concrete analysis:\n' +
-    '  - Why now (trend/relative strength/industry flow)\n' +
-    '  - Key levels (support/resistance/invalidation)\n' +
-    '  - Plan A (breakout) + Plan B (pullback) triggers\n' +
-    '  - Risk points\n' +
-    '  Use available fields from context.stocks[*]: features, barsTail, chipsTail, fundFlowTail.\n' +
-    '- Section 3 MUST cover EACH current position in context.accountState.positions:\n' +
+    '- Section 2: Opportunities <= 3. Use it as a clean selection table only (no triggers; triggers go to Section 6).\n' +
+    '- Section 4 MUST cover EACH current position in context.accountState.positions:\n' +
     '  - Decide: Hold / Add / Reduce / Exit\n' +
     '  - Provide a stop-loss trigger (price下穿/到价卖出)\n' +
     '  - If there are existing conditional orders in context.accountState.conditionalOrders, say whether to keep/adjust/cancel.\n' +
-    '- Section 5: Provide ONE consolidated action table (merge new opportunities + existing holdings) in Ping An style.\n' +
+    '- Section 6: Provide ONE consolidated action table (merge new opportunities + existing holdings) in Ping An style.\n' +
     '  - Use these columns exactly:\n' +
     '    Priority | Score | Symbol | Name | Current | Action | OrderType | TriggerCondition | TriggerValue | Qty | ValidUntil | Rationale | Risk | Exit\n' +
     '  - OrderType should match Ping An wording (examples): 到价买入/到价卖出/反弹买入/回落卖出\n' +
