@@ -274,49 +274,57 @@ export function StrategyPage() {
     }
   }, []);
 
-  const refresh = React.useCallback(async (opts?: { preferredDate?: string; forceLatest?: boolean }) => {
-    setError(null);
-    try {
-      const acc = await apiGetJson<BrokerAccount[]>('/broker/accounts?broker=pingan');
-      setAccounts(acc);
-      const effectiveAccountId = accountId || acc[0]?.id || '';
-      if (!accountId && effectiveAccountId) setAccountId(effectiveAccountId);
-      if (effectiveAccountId) {
-        const p = await apiGetJson<StrategyPrompt>(
-          `/strategy/accounts/${encodeURIComponent(effectiveAccountId)}/prompt`,
-        );
-        setPrompt(p.prompt || '');
-        try {
-          const hs = await apiGetJson<ListStrategyReportsResponse>(
-            `/strategy/accounts/${encodeURIComponent(effectiveAccountId)}/reports?days=10`,
+  const refresh = React.useCallback(
+    async (opts?: { preferredDate?: string; forceLatest?: boolean }) => {
+      setError(null);
+      try {
+        const acc = await apiGetJson<BrokerAccount[]>('/broker/accounts?broker=pingan');
+        setAccounts(acc);
+        const effectiveAccountId = accountId || acc[0]?.id || '';
+        if (!accountId && effectiveAccountId) setAccountId(effectiveAccountId);
+        if (effectiveAccountId) {
+          const p = await apiGetJson<StrategyPrompt>(
+            `/strategy/accounts/${encodeURIComponent(effectiveAccountId)}/prompt`,
           );
-          const items = Array.isArray(hs.items) ? hs.items : [];
-          setHistory(items);
-          const latest = items[0]?.date || new Date().toISOString().slice(0, 10);
-          const preferred = (opts?.preferredDate ?? '').trim();
-          const hasPreferred = preferred ? items.some((x) => x?.date === preferred) : false;
-          const hasCurrent = reportDate ? items.some((x) => x?.date === reportDate) : false;
-          const nextDate =
-            opts?.forceLatest ? latest : hasPreferred ? preferred : hasCurrent ? reportDate : latest;
-          if (nextDate !== reportDate) setReportDate(nextDate);
-          await loadReport(effectiveAccountId, nextDate);
-        } catch {
+          setPrompt(p.prompt || '');
+          try {
+            const hs = await apiGetJson<ListStrategyReportsResponse>(
+              `/strategy/accounts/${encodeURIComponent(effectiveAccountId)}/reports?days=10`,
+            );
+            const items = Array.isArray(hs.items) ? hs.items : [];
+            setHistory(items);
+            const latest = items[0]?.date || new Date().toISOString().slice(0, 10);
+            const preferred = (opts?.preferredDate ?? '').trim();
+            const hasPreferred = preferred ? items.some((x) => x?.date === preferred) : false;
+            const hasCurrent = reportDate ? items.some((x) => x?.date === reportDate) : false;
+            const nextDate = opts?.forceLatest
+              ? latest
+              : hasPreferred
+                ? preferred
+                : hasCurrent
+                  ? reportDate
+                  : latest;
+            if (nextDate !== reportDate) setReportDate(nextDate);
+            await loadReport(effectiveAccountId, nextDate);
+          } catch {
+            setHistory([]);
+            const preferred = (opts?.preferredDate ?? '').trim();
+            const fallback = preferred || reportDate || new Date().toISOString().slice(0, 10);
+            if (fallback !== reportDate) setReportDate(fallback);
+            await loadReport(effectiveAccountId, fallback);
+          }
+        } else {
+          setPrompt('');
+          setReport(null);
           setHistory([]);
-          const preferred = (opts?.preferredDate ?? '').trim();
-          const fallback = preferred || reportDate || new Date().toISOString().slice(0, 10);
-          if (fallback !== reportDate) setReportDate(fallback);
-          await loadReport(effectiveAccountId, fallback);
+          setReportDate('');
         }
-      } else {
-        setPrompt('');
-        setReport(null);
-        setHistory([]);
-        setReportDate('');
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [accountId, loadReport, reportDate]);
+    },
+    [accountId, loadReport, reportDate],
+  );
 
   React.useEffect(() => {
     void refresh();
