@@ -1020,34 +1020,35 @@ app.post('/strategy/daily-markdown', async (c) => {
     '- STRICT Markdown formatting: Headings at column 0, blank lines between sections, valid GFM tables.\n' +
     '- NO "###" levels. Only use H2 headings exactly as defined below.\n' +
     '- LANGUAGE: Chinese (Simplified).\n\n' +
-    '## 1 总览 (Market & Execution)\n\n' +
+    '## 1 总览\n\n' +
     '用 1 段短文（<=200字）综合概括：\n' +
-    '1. 市场情绪：引用 context.marketSentiment 的 riskMode/ratio 等数据给出结论。\n' +
+    '1. 市场情绪：引用 context.marketSentiment 数据给出定性结论（不直接显示 riskMode 变量名）。\n' +
     '2. 资金流向：总结 context.industryFundFlow.dailyTopInflow 的流入/流出及持续性。\n' +
     '3. 执行军规：给出今日核心操作原则（如：禁止开新仓、只做回踩、严格止损等）。\n\n' +
     '| Focus themes | Leader | Risk Mode | Today Stance | Execution Key |\n' +
     '|---|---|---|---|---|\n' +
-    '| 主线/备选主题 | 龙头股 | 从 sentiment 获取 | 进攻/均衡/防守 | 1句话风控准则 |\n\n' +
-    '## 2 机会Top3 (Selection)\n\n' +
-    '核心描述：基于主线逻辑与评分系统筛选出的最强标的（从 context.stage1.candidates 选取）。\n\n' +
-    '| Rank | Score | Symbol | Name | Current | Why now (1行) | Risk (1行) |\n' +
+    '| 主线/备选主题 | 龙头股 | 情绪状态描述 | 进攻/均衡/防守 | 1句话风控准则 |\n\n' +
+    '## 2 机会Top3\n\n' +
+    '核心描述：基于主线逻辑与评分系统从候选中选出的强势标的。\n\n' +
+    '| Rank | Score | Symbol | Name | Current | Why | Risk |\n' +
     '|---:|---:|---|---|---:|---|---|\n\n' +
-    '## 3 持仓计划 (Holdings)\n\n' +
-    '核心描述：对 context.accountState.positions 进行风险检查，明确优先处理的对象与防御边界。\n\n' +
+    '## 3 持仓计划\n\n' +
+    '核心描述：对当前持仓进行风险检查，明确止损边界与处理优先级。\n\n' +
     '| Symbol | Name | PnL% | Action | Score | StopLoss | Orders | Notes |\n' +
     '|---|---|---:|---|---:|---|---|---|\n\n' +
-    '## 4 条件单总表 (Operations)\n\n' +
-    '核心描述：整合新机会与旧持仓，提供可直接录入平安证券系统的条件单指令明细。\n\n' +
+    '## 4 条件单总表\n\n' +
+    '核心描述：整合新机会与旧持仓，提供可直接录入平安证券系统的条件单指令。\n\n' +
     '| Priority | Symbol | Name | Action | OrderType | TriggerCondition | TriggerValue | Qty | Rationale |\n' +
     '|---|---|---|---|---|---|---|---|---|\n\n' +
-    '## 5 总结 (Summary)\n\n' +
+    '## 5 总结\n\n' +
     '用 2-3 句话总结今日操作的胜负手关键点，以及盘中需额外警惕的变量。\n\n' +
     'CRITICAL RULES:\n' +
     '1. Section 1 MUST merge fund flow analysis and execution rules into the intro and table.\n' +
     '2. "Actionable" focus: If riskMode is "no_new_positions", Section 2/4/5 must NOT suggest any buy orders.\n' +
-    '3. Score calculation (0-100): Trend(40)+Flow(30)+Structure(20)+Risk(10).\n' +
-    '4. Each section (except Summary) MUST follow the "Title -> 1-2 sentence description -> Table" sequence.\n' +
-    '5. Tables must NOT have leading spaces and must render reliably.\n\n' +
+    '3. NO redundant text: Do not explain the scoring weights (40/30/20/10) in the report text; just use them for calculation.\n' +
+    '4. NO parentheses in table headers: Keep "Why" and "Risk" column names clean. Ensure their content is concise (strictly 1 line).\n' +
+    '5. Each section (except Summary) MUST follow the "Title -> 1-2 sentence description -> Table" sequence.\n' +
+    '6. Tables must NOT have leading spaces and must render reliably.\n\n' +
     (accountPrompt ? `Account prompt:\n${accountPrompt}\n\n` : '') +
     'Context JSON:\n' +
     JSON.stringify(parsed.data.context);
