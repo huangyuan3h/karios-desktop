@@ -1016,39 +1016,36 @@ app.post('/strategy/daily-markdown', async (c) => {
   const instruction =
     `Task: Write a daily trading report for ${accountTitle} on ${date}.\n` +
     'Output requirements:\n' +
-    '- Return a SINGLE Markdown document with a clean, professional layout.\n' +
-    '- STRICT Markdown formatting: Headings at column 0, blank lines between sections, valid GFM tables.\n' +
-    '- NO "###" levels. Only use H2 headings exactly as defined below.\n' +
+    '- Return a SINGLE Markdown document.\n' +
+    '- Use "Number. Title" format for headings (e.g., "1. 总览").\n' +
+    '- STRICT Markdown: Headings must start at column 0, followed by EXACTLY two newlines.\n' +
     '- LANGUAGE: Chinese (Simplified).\n\n' +
-    '## 1 总览\n\n' +
-    '用 1 段短文（<=200字）综合概括：\n' +
-    '1. 市场情绪：引用 context.marketSentiment 数据给出定性结论（不直接显示 riskMode 变量名）。\n' +
-    '2. 资金流向：总结 context.industryFundFlow.dailyTopInflow 的流入/流出及持续性。\n' +
-    '3. 执行军规：给出今日核心操作原则（如：禁止开新仓、只做回踩、严格止损等）。\n\n' +
-    '| Focus themes | Leader | Risk Mode | Today Stance | Execution Key |\n' +
+    '1. 总览\n\n' +
+    '直接用 1 段短文（<=150字）概括：当前情绪定性（不显示变量名）、资金流入流出行业结论、今日核心操作硬准则（如：只卖不买、突破买入等）。拒绝虚词。\n\n' +
+    '| Focus themes | Leader | Sentiment | Stance | Execution Key |\n' +
     '|---|---|---|---|---|\n' +
-    '| 主线/备选主题 | 龙头股 | 情绪状态描述 | 进攻/均衡/防守 | 1句话风控准则 |\n\n' +
-    '## 2 机会Top3\n\n' +
-    '核心描述：基于主线逻辑与评分系统从候选中选出的强势标的。\n\n' +
+    '| 主线名称 | 龙头股 | 情绪定性 | 进攻/均衡/防守 | 一句话风控准则 |\n\n' +
+    '2. 机会\n\n' +
+    '简要说明选股逻辑（1句，严禁出现“优先选择量价强”等废话，直接说当前选股的共同技术特征）。\n\n' +
     '| Rank | Score | Symbol | Name | Current | Why | Risk |\n' +
     '|---:|---:|---|---|---:|---|---|\n\n' +
-    '## 3 持仓计划\n\n' +
-    '核心描述：对当前持仓进行风险检查，明确止损边界与处理优先级。\n\n' +
+    '3. 持仓计划\n\n' +
+    '简要说明当前持仓风险分布（1句）。\n\n' +
     '| Symbol | Name | PnL% | Action | Score | StopLoss | Orders | Notes |\n' +
     '|---|---|---:|---|---:|---|---|---|\n\n' +
-    '## 4 条件单总表\n\n' +
-    '核心描述：整合新机会与旧持仓，提供可直接录入平安证券系统的条件单指令。\n\n' +
+    '4. 条件单总表\n\n' +
+    '简要说明条件单录入优先级逻辑（1句）。\n\n' +
     '| Priority | Symbol | Name | Action | OrderType | TriggerCondition | TriggerValue | Qty | Rationale |\n' +
     '|---|---|---|---|---|---|---|---|---|\n\n' +
-    '## 5 总结\n\n' +
-    '用 2-3 句话总结今日操作的胜负手关键点，以及盘中需额外警惕的变量。\n\n' +
+    '5. 总结\n\n' +
+    '用 2 句话点明今日胜负手及核心变量。\n\n' +
     'CRITICAL RULES:\n' +
-    '1. Section 1 MUST merge fund flow analysis and execution rules into the intro and table.\n' +
-    '2. "Actionable" focus: If riskMode is "no_new_positions", Section 2/4/5 must NOT suggest any buy orders.\n' +
-    '3. NO redundant text: Do not explain the scoring weights (40/30/20/10) in the report text; just use them for calculation.\n' +
-    '4. NO parentheses in table headers: Keep "Why" and "Risk" column names clean. Ensure their content is concise (strictly 1 line).\n' +
-    '5. Each section (except Summary) MUST follow the "Title -> 1-2 sentence description -> Table" sequence.\n' +
-    '6. Tables must NOT have leading spaces and must render reliably.\n\n' +
+    '1. NO JARGON/TRUISMS: Delete sentences like "优先选择量价强...", "回踩方案...", "风险点...". Use concrete data and specific actions instead.\n' +
+    '2. HEADING FORMAT: Must be "1. 总览", "2. 机会", etc. (No parentheses, no Top3).\n' +
+    '3. NO redundant text: Descriptions must be strictly 1 sentence, maximum 2.\n' +
+    '4. TABLE CLEANLINESS: No parentheses in headers. "Why" and "Risk" columns must be punchy and data-focused.\n' +
+    '5. ACTIONABLE ONLY: If riskMode is "no_new_positions", do not suggest any buy orders in any table.\n' +
+    '6. Avoid showing internal variables like riskMode/ratio; translate them into trader language.\n\n' +
     (accountPrompt ? `Account prompt:\n${accountPrompt}\n\n` : '') +
     'Context JSON:\n' +
     JSON.stringify(parsed.data.context);

@@ -274,7 +274,7 @@ export function StrategyPage() {
     }
   }, []);
 
-  const refresh = React.useCallback(async () => {
+  const refresh = React.useCallback(async (opts?: { preferredDate?: string; forceLatest?: boolean }) => {
     setError(null);
     try {
       const acc = await apiGetJson<BrokerAccount[]>('/broker/accounts?broker=pingan');
@@ -292,14 +292,20 @@ export function StrategyPage() {
           );
           const items = Array.isArray(hs.items) ? hs.items : [];
           setHistory(items);
-          const nextDate = reportDate || items[0]?.date || new Date().toISOString().slice(0, 10);
+          const latest = items[0]?.date || new Date().toISOString().slice(0, 10);
+          const preferred = (opts?.preferredDate ?? '').trim();
+          const hasPreferred = preferred ? items.some((x) => x?.date === preferred) : false;
+          const hasCurrent = reportDate ? items.some((x) => x?.date === reportDate) : false;
+          const nextDate =
+            opts?.forceLatest ? latest : hasPreferred ? preferred : hasCurrent ? reportDate : latest;
           if (nextDate !== reportDate) setReportDate(nextDate);
           await loadReport(effectiveAccountId, nextDate);
         } catch {
           setHistory([]);
-          const nextDate = reportDate || new Date().toISOString().slice(0, 10);
-          if (nextDate !== reportDate) setReportDate(nextDate);
-          await loadReport(effectiveAccountId, nextDate);
+          const preferred = (opts?.preferredDate ?? '').trim();
+          const fallback = preferred || reportDate || new Date().toISOString().slice(0, 10);
+          if (fallback !== reportDate) setReportDate(fallback);
+          await loadReport(effectiveAccountId, fallback);
         }
       } else {
         setPrompt('');
@@ -355,8 +361,9 @@ export function StrategyPage() {
         },
       );
       setReport(r);
-      setReportDate(String(r.date || ''));
-      await refresh();
+      const d = String(r.date || '').trim();
+      if (d) setReportDate(d);
+      await refresh({ preferredDate: d, forceLatest: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -384,8 +391,9 @@ export function StrategyPage() {
         },
       );
       setReport(r);
-      setReportDate(String(r.date || reportDate || ''));
-      await refresh();
+      const d = String(r.date || reportDate || '').trim();
+      if (d) setReportDate(d);
+      await refresh({ preferredDate: d });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -403,7 +411,15 @@ export function StrategyPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={accountId} onValueChange={(v) => setAccountId(v)}>
+          <Select
+            value={accountId}
+            onValueChange={(v) => {
+              setAccountId(v);
+              // Always default to latest report day when switching accounts.
+              setReportDate('');
+              setReport(null);
+            }}
+          >
             <SelectTrigger className="h-9 w-[240px]">
               <SelectValue placeholder="Select account" />
             </SelectTrigger>
