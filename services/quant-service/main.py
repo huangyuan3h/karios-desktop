@@ -3662,11 +3662,44 @@ def _market_stock_trendok_one(
                     if shrink_then_flip and vol_dry:
                         exit_now = True
                         exit_reasons.append("momentum_exhaustion:hist_shrink3_flip_negative_and_volume_dry")
-                    # Warning: shrinking for 3 consecutive days, still positive, with volume drying.
-                    shrink3_still_pos = (h[0] > h[1] > h[2] > h[3] > 0.0)
-                    if (not shrink_then_flip) and shrink3_still_pos and vol_dry:
+                    # Warning: histogram still positive but momentum is weakening.
+                    # Relaxed rule: in last 3 comparisons, at least 2 are shrinking, and last hist > 0.
+                    if not shrink_then_flip:
+                        shrink_cnt = 0
+                        if h[1] < h[0]:
+                            shrink_cnt += 1
+                        if h[2] < h[1]:
+                            shrink_cnt += 1
+                        if h[3] < h[2]:
+                            shrink_cnt += 1
+                        stop_parts["warn_hist4"] = [round(x, 6) for x in h]
+                        stop_parts["warn_hist_shrink_cnt_3"] = shrink_cnt
+                        if avg30v > 0:
+                            stop_parts["warn_vol_ratio_5_30"] = round(avg5v / avg30v, 6)
+                        if h[3] > 0.0 and shrink_cnt >= 2:
+                            if vol_dry:
+                                warn_reduce_half = True
+                                warn_reasons.append("momentum_warning:hist_shrinking_and_volume_dry")
+                            else:
+                                warn_reduce_half = True
+                                warn_reasons.append("momentum_warning:hist_shrinking")
+            else:
+                # If volume averages are unavailable, still warn based on MACD histogram shrinking (best-effort).
+                if len(hist) >= 4:
+                    h = [float(x) for x in hist[-4:]]
+                    shrink_cnt = 0
+                    if h[1] < h[0]:
+                        shrink_cnt += 1
+                    if h[2] < h[1]:
+                        shrink_cnt += 1
+                    if h[3] < h[2]:
+                        shrink_cnt += 1
+                    stop_parts["warn_hist4"] = [round(x, 6) for x in h]
+                    stop_parts["warn_hist_shrink_cnt_3"] = shrink_cnt
+                    stop_parts["warn_vol_ratio_5_30"] = None
+                    if h[3] > 0.0 and shrink_cnt >= 2:
                         warn_reduce_half = True
-                        warn_reasons.append("momentum_warning:hist_shrink3_still_positive_and_volume_dry")
+                        warn_reasons.append("momentum_warning:hist_shrinking_volume_unknown")
 
             stop_parts["exit_now"] = bool(exit_now)
             stop_parts["exit_reasons"] = exit_reasons

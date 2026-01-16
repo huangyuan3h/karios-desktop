@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Info, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Info, RefreshCw, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
@@ -610,7 +610,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             exitNow ? 'font-mono text-red-600' : warnHalf ? 'font-mono text-amber-700' : 'font-mono'
           }
         >
-          {exitNow ? exitDisplay || '立刻离场' : fmtPrice(p)}
+          {exitNow ? exitDisplay || '立刻离场' : warnHalf ? `⚠︎ ${fmtPrice(p)}` : fmtPrice(p)}
         </span>
       </button>
     );
@@ -826,12 +826,22 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       </Button>
                     </div>
                   </th>
-                  <th className="px-3 py-2 w-[90px] text-right"> </th>
+                  <th className="px-3 py-2 w-[54px] text-right"> </th>
                 </tr>
               </thead>
               <tbody>
                 {sortedItems.map((it) => (
-                  <tr key={it.symbol} className="border-t border-[var(--k-border)]">
+                  <tr
+                    key={it.symbol}
+                    className="border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)] cursor-pointer"
+                    onClick={() => onOpenStock?.(it.symbol)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') onOpenStock?.(it.symbol);
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`Open ${it.symbol}`}
+                  >
                     <td className="px-3 py-2 font-mono">{it.symbol}</td>
                     <td className="px-3 py-2">{it.name || '—'}</td>
                     <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
@@ -850,23 +860,15 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     <td className="px-3 py-2">{renderStopLossCell(it.symbol)}</td>
                     <td className="px-3 py-2">{renderTrendOkCell(it.symbol)}</td>
                     <td className="px-3 py-2 text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="secondary"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => onOpenStock?.(it.symbol)}
-                          disabled={!onOpenStock}
-                          aria-label="Open"
-                          title="Open"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                      <div className="flex justify-end">
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() => onRemove(it.symbol)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemove(it.symbol);
+                          }}
                           aria-label="Remove"
                           title="Remove"
                         >
