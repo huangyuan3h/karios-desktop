@@ -3246,6 +3246,242 @@ def market_resolve_stocks(symbols: list[str] = Query(default=[])) -> list[Market
     return [by_sym[s] for s in syms if s in by_sym]
 
 
+class TrendOkChecks(BaseModel):
+    emaOrder: bool | None = None  # EMA(5) > EMA(20) > EMA(60)
+    macdPositive: bool | None = None  # macdLine > 0
+    macdHistExpanding: bool | None = None  # hist[-3] < hist[-2] < hist[-1]
+    closeNear20dHigh: bool | None = None  # close >= 0.95 * high20
+    rsiInRange: bool | None = None  # 50 <= rsi14 <= 75
+    volumeSurge: bool | None = None  # avgVol5 > 1.2 * avgVol30
+
+
+class TrendOkValues(BaseModel):
+    close: float | None = None
+    ema5: float | None = None
+    ema20: float | None = None
+    ema60: float | None = None
+    macd: float | None = None  # macdLine
+    macdSignal: float | None = None
+    macdHist: float | None = None
+    rsi14: float | None = None
+    high20: float | None = None
+    avgVol5: float | None = None
+    avgVol30: float | None = None
+
+
+class TrendOkResult(BaseModel):
+    symbol: str
+    name: str | None = None
+    asOfDate: str | None = None
+    trendOk: bool | None = None
+    checks: TrendOkChecks = TrendOkChecks()
+    values: TrendOkValues = TrendOkValues()
+    missingData: list[str] = []
+
+
+def _ema(values: list[float], period: int) -> list[float]:
+    """
+    Exponential Moving Average (EMA).
+    Returns an EMA series aligned with input values.
+    """
+    if period <= 0 or not values:
+        return []
+    alpha = 2.0 / (float(period) + 1.0)
+    out: list[float] = []
+    prev = values[0]
+    out.append(prev)
+    for v in values[1:]:
+        prev = alpha * v + (1.0 - alpha) * prev
+        out.append(prev)
+    return out
+
+
+def _rsi(values: list[float], period: int = 14) -> list[float]:
+    """
+    Relative Strength Index (RSI) using Wilder's smoothing.
+    Returns RSI series aligned with input values; first values may be 0.0 due to warm-up.
+    """
+    if period <= 0 or len(values) < 2:
+        return []
+    gains: list[float] = [0.0]
+    losses: list[float] = [0.0]
+    for i in range(1, len(values)):
+        chg = values[i] - values[i - 1]
+        gains.append(max(0.0, chg))
+        losses.append(max(0.0, -chg))
+    # Wilder smoothing
+    avg_gain = 0.0
+    avg_loss = 0.0
+    out: list[float] = [0.0] * len(values)
+    for i in range(1, len(values)):
+        if i <= period:
+            # build initial average using simple mean for first 'period' changes
+            avg_gain = sum(gains[1 : i + 1]) / max(1.0, float(i))
+            avg_loss = sum(losses[1 : i + 1]) / max(1.0, float(i))
+        else:
+            avg_gain = (avg_gain * (period - 1) + gains[i]) / float(period)
+            avg_loss = (avg_loss * (period - 1) + losses[i]) / float(period)
+        if avg_loss <= 0.0:
+            out[i] = 100.0 if avg_gain > 0.0 else 50.0
+        else:
+            rs = avg_gain / avg_loss
+            out[i] = 100.0 - (100.0 / (1.0 + rs))
+    return out
+
+
+def _macd(values: list[float], fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[list[float], list[float], list[float]]:
+    """
+    MACD (Moving Average Convergence Divergence).
+    Returns (macdLine, signalLine, histogram) series aligned with input values.
+    """
+    if not values:
+        return ([], [], [])
+    ema_fast = _ema(values, fast)
+    ema_slow = _ema(values, slow)
+    macd_line = [a - b for a, b in zip(ema_fast, ema_slow)]
+    signal_line = _ema(macd_line, signal)
+    hist = [m - s for m, s in zip(macd_line, signal_line)]
+    return (macd_line, signal_line, hist)
+
+
+def _parse_float_safe(v: Any) -> float | None:
+    try:
+        if v is None:
+            return None
+        n = float(v)
+        return n if math.isfinite(n) else None
+    except Exception:
+        return None
+
+
+def _market_stock_trendok_one(*, symbol: str, name: str | None, bars: list[tuple[str, str | None, str | None]]) -> TrendOkResult:
+    """
+    Compute TrendOK for one CN symbol from daily bars.
+    bars: list of (date, close, volume) ordered by date ASC.
+    """
+    res = TrendOkResult(symbol=symbol, name=name)
+    if not symbol.startswith("CN:"):
+        res.missingData.append("unsupported_market")
+        return res
+
+    closes: list[float] = []
+    vols: list[float] = []
+    dates: list[str] = []
+    for d, c, v in bars:
+        c2 = _parse_float_safe(c)
+        v2 = _parse_float_safe(v)
+        if c2 is None:
+            continue
+        closes.append(c2)
+        vols.append(v2 if v2 is not None else 0.0)
+        dates.append(str(d))
+
+    if not closes:
+        res.missingData.append("no_bars")
+        return res
+    res.asOfDate = dates[-1]
+    res.values.close = closes[-1]
+
+    if len(closes) < 60:
+        res.missingData.append("bars_lt_60")
+        # still compute whatever is possible for display/debug
+
+    ema5s = _ema(closes, 5)
+    ema20s = _ema(closes, 20)
+    ema60s = _ema(closes, 60)
+    if ema5s and ema20s and ema60s:
+        res.values.ema5 = ema5s[-1]
+        res.values.ema20 = ema20s[-1]
+        res.values.ema60 = ema60s[-1]
+        res.checks.emaOrder = bool(ema5s[-1] > ema20s[-1] > ema60s[-1])
+
+    macd_line, sig_line, hist = _macd(closes, 12, 26, 9)
+    if macd_line and sig_line and hist:
+        res.values.macd = macd_line[-1]
+        res.values.macdSignal = sig_line[-1]
+        res.values.macdHist = hist[-1]
+        res.checks.macdPositive = bool(macd_line[-1] > 0.0)
+        if len(hist) >= 3:
+            res.checks.macdHistExpanding = bool(hist[-3] < hist[-2] < hist[-1])
+
+    rsi14s = _rsi(closes, 14)
+    if rsi14s:
+        res.values.rsi14 = rsi14s[-1]
+        res.checks.rsiInRange = bool(50.0 <= rsi14s[-1] <= 75.0)
+
+    if len(closes) >= 20:
+        high20 = max(closes[-20:])
+        res.values.high20 = high20
+        res.checks.closeNear20dHigh = bool(closes[-1] >= 0.95 * high20)
+
+    if len(vols) >= 30:
+        avg5 = sum(vols[-5:]) / 5.0
+        avg30 = sum(vols[-30:]) / 30.0
+        res.values.avgVol5 = avg5
+        res.values.avgVol30 = avg30
+        res.checks.volumeSurge = bool(avg5 > 1.2 * avg30) if avg30 > 0 else bool(avg5 > 0)
+
+    # Decide final TrendOK: require all checks to be True; if any required check is None, return None.
+    required = [
+        res.checks.emaOrder,
+        res.checks.macdPositive,
+        res.checks.macdHistExpanding,
+        res.checks.closeNear20dHigh,
+        res.checks.rsiInRange,
+        res.checks.volumeSurge,
+    ]
+    if any(x is None for x in required):
+        res.trendOk = None
+        res.missingData.append("insufficient_indicators")
+    else:
+        res.trendOk = bool(all(bool(x) for x in required))
+    return res
+
+
+@app.get("/market/stocks/trendok", response_model=list[TrendOkResult])
+def market_stocks_trendok(symbols: list[str] = Query(default=[])) -> list[TrendOkResult]:
+    """
+    Batch TrendOK evaluation for Watchlist (CN daily only).
+    Uses DB-cached daily bars and does NOT trigger external fetches.
+    """
+    syms0 = symbols if isinstance(symbols, list) else []
+    syms = [str(s or "").strip().upper() for s in syms0]
+    syms = [s for s in syms if s]
+    if not syms:
+        return []
+    if len(syms) > 200:
+        syms = syms[:200]
+
+    # Load names (best-effort).
+    by_name: dict[str, str] = {}
+    placeholders = ",".join(["?"] * len(syms))
+    with _connect() as conn:
+        for r in conn.execute(
+            f"SELECT symbol, name FROM market_stocks WHERE symbol IN ({placeholders})",
+            tuple(syms),
+        ).fetchall():
+            by_name[str(r[0])] = str(r[1])
+
+    out: list[TrendOkResult] = []
+    with _connect() as conn:
+        for sym in syms:
+            # Pull the most recent 120 daily bars for indicators.
+            rows = conn.execute(
+                """
+                SELECT date, close, volume
+                FROM market_bars
+                WHERE symbol = ?
+                ORDER BY date ASC
+                """,
+                (sym,),
+            ).fetchall()
+            # Keep only the tail for performance.
+            tail = rows[-120:] if len(rows) > 120 else rows
+            bars = [(str(r[0]), str(r[1]) if r[1] is not None else None, str(r[2]) if r[2] is not None else None) for r in tail]
+            out.append(_market_stock_trendok_one(symbol=sym, name=by_name.get(sym), bars=bars))
+    return out
+
+
 @app.get("/market/stocks/{symbol}/bars", response_model=MarketBarsResponse)
 def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> MarketBarsResponse:
     days2 = max(10, min(int(days), 200))

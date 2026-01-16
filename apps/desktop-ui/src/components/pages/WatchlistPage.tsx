@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { Eye, Trash2 } from 'lucide-react';
+import { Eye, Info, Trash2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
@@ -22,6 +23,24 @@ type MarketStockBasicRow = {
   ticker: string;
   name: string;
   currency: string;
+};
+
+type TrendOkChecks = {
+  emaOrder?: boolean | null;
+  macdPositive?: boolean | null;
+  macdHistExpanding?: boolean | null;
+  closeNear20dHigh?: boolean | null;
+  rsiInRange?: boolean | null;
+  volumeSurge?: boolean | null;
+};
+
+type TrendOkResult = {
+  symbol: string;
+  name?: string | null;
+  asOfDate?: string | null;
+  trendOk?: boolean | null;
+  checks?: TrendOkChecks;
+  missingData?: string[];
 };
 
 async function apiGetJson<T>(path: string): Promise<T> {
@@ -58,6 +77,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [items, setItems] = React.useState<WatchlistItem[]>([]);
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
+  const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
+  const [tooltip, setTooltip] = React.useState<{
+    open: boolean;
+    x: number;
+    y: number;
+    w: number;
+    content: React.ReactNode;
+  }>({ open: false, x: 0, y: 0, w: 0, content: null });
 
   React.useEffect(() => {
     const saved = loadJson<WatchlistItem[]>(STORAGE_KEY, []);
@@ -119,6 +146,34 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     };
   }, [items]);
 
+  React.useEffect(() => {
+    let cancelled = false;
+    async function loadTrendOk() {
+      const syms = items.map((x) => x.symbol).filter(Boolean);
+      if (!syms.length) {
+        setTrend({});
+        return;
+      }
+      try {
+        const sp = new URLSearchParams();
+        for (const s of syms) sp.append('symbols', s);
+        const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+        if (cancelled) return;
+        const next: Record<string, TrendOkResult> = {};
+        for (const r of Array.isArray(rows) ? rows : []) {
+          if (r && r.symbol) next[r.symbol] = r;
+        }
+        setTrend(next);
+      } catch (e) {
+        if (!cancelled) console.warn('Watchlist trendok load failed:', e);
+      }
+    }
+    void loadTrendOk();
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
   function onAdd() {
     setError(null);
     const parsed = normalizeSymbolInput(code);
@@ -146,6 +201,92 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   function onRemove(sym: string) {
     persist(items.filter((x) => x.symbol !== sym));
   }
+
+  function showTooltip(el: HTMLElement, content: React.ReactNode, width = 360) {
+    const r = el.getBoundingClientRect();
+    const x = Math.max(8, Math.min(window.innerWidth - width - 8, r.left));
+    const y = Math.min(window.innerHeight - 16, r.bottom + 8);
+    setTooltip({ open: true, x, y, w: width, content });
+  }
+
+  function hideTooltip() {
+    setTooltip((prev) => (prev.open ? { ...prev, open: false } : prev));
+  }
+
+  function checkLine(label: string, ok: boolean | null | undefined, detail: string) {
+    if (ok == null) return { label, state: '—', detail };
+    return { label, state: ok ? '✅' : '❌', detail };
+  }
+
+  function renderTrendOkCell(sym: string) {
+    const t = trend[sym];
+    const ok = t?.trendOk ?? null;
+    const icon = ok == null ? '—' : ok ? '✅' : '❌';
+    const lines = [
+      checkLine('EMA order', t?.checks?.emaOrder ?? null, 'EMA(5) > EMA(20) > EMA(60)'),
+      checkLine('MACD > 0', t?.checks?.macdPositive ?? null, 'macdLine > 0'),
+      checkLine('MACD hist', t?.checks?.macdHistExpanding ?? null, 'hist[-3] < hist[-2] < hist[-1]'),
+      checkLine('Near 20D high', t?.checks?.closeNear20dHigh ?? null, 'Close >= 0.95 * High(20)'),
+      checkLine('RSI(14)', t?.checks?.rsiInRange ?? null, '50 <= RSI <= 75'),
+      checkLine('Volume surge', t?.checks?.volumeSurge ?? null, 'AvgVol(5) > 1.2 * AvgVol(30)'),
+    ];
+    const missing = (t?.missingData ?? []).filter(Boolean);
+    const tip = (
+      <>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="font-medium">TrendOK checks</div>
+          <div className="font-mono text-[var(--k-muted)]">{sym}</div>
+        </div>
+        <div className="space-y-1">
+          {lines.map((x) => (
+            <div key={x.label} className="flex items-start justify-between gap-3">
+              <div className="text-[var(--k-muted)]">{x.label}</div>
+              <div className="flex-1 text-right">
+                <span className="font-mono">{x.state}</span>{' '}
+                <span className="text-[var(--k-muted)]">{x.detail}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {missing.length ? (
+          <div className="mt-2 text-[var(--k-muted)]">
+            Missing: <span className="font-mono">{missing.join(', ')}</span>
+          </div>
+        ) : null}
+      </>
+    );
+    return (
+      <button
+        type="button"
+        className="inline-flex items-center"
+        onMouseEnter={(e) => showTooltip(e.currentTarget, tip, 360)}
+        onMouseLeave={hideTooltip}
+        onFocus={(e) => showTooltip(e.currentTarget, tip, 360)}
+        onBlur={hideTooltip}
+        aria-label="TrendOK details"
+      >
+        <span className="font-mono">{icon}</span>
+      </button>
+    );
+  }
+
+  const headerTip = (
+    <>
+      <div className="mb-2 font-medium">Definition (CN daily)</div>
+      <div className="space-y-1 text-[var(--k-muted)]">
+        <div>✅ only when ALL rules are satisfied.</div>
+        <div>— when data/indicators are insufficient.</div>
+      </div>
+      <div className="mt-2 space-y-1">
+        <div>1) EMA(5) &gt; EMA(20) &gt; EMA(60)</div>
+        <div>2) MACD line &gt; 0</div>
+        <div>3) MACD histogram expanding: hist[-3] &lt; hist[-2] &lt; hist[-1]</div>
+        <div>4) Close ≥ 0.95 × High(20)</div>
+        <div>5) RSI(14) in [50, 75]</div>
+        <div>6) AvgVol(5) &gt; 1.2 × AvgVol(30)</div>
+      </div>
+    </>
+  );
 
   return (
     <div className="mx-auto w-full max-w-5xl p-6">
@@ -208,7 +349,23 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 <tr className="text-left">
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2 w-[120px]">Added</th>
+                  <th className="px-3 py-2">
+                    <div className="inline-flex items-center gap-2">
+                      <span>TrendOK</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-full"
+                        onMouseEnter={(e) => showTooltip(e.currentTarget, headerTip, 380)}
+                        onMouseLeave={hideTooltip}
+                        onFocus={(e) => showTooltip(e.currentTarget, headerTip, 380)}
+                        onBlur={hideTooltip}
+                        aria-label="TrendOK definition"
+                      >
+                        <Info className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </th>
                   <th className="px-3 py-2 w-[90px] text-right"> </th>
                 </tr>
               </thead>
@@ -217,9 +374,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   <tr key={it.symbol} className="border-t border-[var(--k-border)]">
                     <td className="px-3 py-2 font-mono">{it.symbol}</td>
                     <td className="px-3 py-2">{it.name || '—'}</td>
-                    <td className="px-3 py-2 text-xs text-[var(--k-muted)]">
-                      {new Date(it.addedAt).toLocaleDateString()}
-                    </td>
+                    <td className="px-3 py-2">{renderTrendOkCell(it.symbol)}</td>
                     <td className="px-3 py-2 text-right">
                       <div className="flex justify-end gap-2">
                         <Button
@@ -254,6 +409,18 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           <div className="text-sm text-[var(--k-muted)]">No items yet. Add a ticker above.</div>
         )}
       </section>
+
+      {tooltip.open
+        ? createPortal(
+            <div
+              className="fixed z-[9999] rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs text-[var(--k-text)] shadow-lg"
+              style={{ left: tooltip.x, top: tooltip.y, width: tooltip.w }}
+            >
+              {tooltip.content}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
