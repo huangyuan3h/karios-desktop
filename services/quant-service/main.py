@@ -3279,6 +3279,13 @@ class TrendOkResult(BaseModel):
     scoreParts: dict[str, float] = {}  # points breakdown (positive parts and penalties)
     stopLossPrice: float | None = None
     stopLossParts: dict[str, Any] = {}
+    buyMode: str | None = None  # A_pullback | B_momentum | none
+    buyAction: str | None = None  # wait | buy | add | avoid
+    buyZoneLow: float | None = None
+    buyZoneHigh: float | None = None
+    buyRefPrice: float | None = None
+    buyWhy: str | None = None
+    buyChecks: dict[str, Any] = {}
     checks: TrendOkChecks = TrendOkChecks()
     values: TrendOkValues = TrendOkValues()
     missingData: list[str] = []
@@ -3388,11 +3395,11 @@ def _market_stock_trendok_one(
     *,
     symbol: str,
     name: str | None,
-    bars: list[tuple[str, str | None, str | None, str | None, str | None]],
+    bars: list[tuple[str, str | None, str | None, str | None, str | None, str | None]],
 ) -> TrendOkResult:
     """
     Compute TrendOK for one CN symbol from daily bars.
-    bars: list of (date, high, low, close, volume) ordered by date ASC.
+    bars: list of (date, open, high, low, close, volume) ordered by date ASC.
     """
     res = TrendOkResult(symbol=symbol, name=name)
     if not symbol.startswith("CN:"):
@@ -3403,18 +3410,21 @@ def _market_stock_trendok_one(
     vols: list[float] = []
     highs: list[float] = []
     lows: list[float] = []
+    opens: list[float] = []
     dates: list[str] = []
-    for d, h, l, c, v in bars:
+    for d, o, h, l, c, v in bars:
         c2 = _parse_float_safe(c)
         v2 = _parse_float_safe(v)
         h2 = _parse_float_safe(h)
         l2 = _parse_float_safe(l)
+        o2 = _parse_float_safe(o)
         if c2 is None:
             continue
         closes.append(c2)
         vols.append(v2 if v2 is not None else 0.0)
         highs.append(h2 if h2 is not None else c2)
         lows.append(l2 if l2 is not None else c2)
+        opens.append(o2 if o2 is not None else c2)
         dates.append(str(d))
 
     if not closes:
@@ -3786,6 +3796,131 @@ def _market_stock_trendok_one(
     except Exception:
         res.stopLossPrice = None
 
+    # ---------- Buy (CN daily), deterministic (no LLM) ----------
+    # Unified two-mode right-side system:
+    # - Mode A: breakout + pullback
+    # - Mode B: momentum new-high
+    try:
+        buy_checks: dict[str, Any] = {}
+        buy_mode: str = "none"
+        buy_action: str = "wait"
+        buy_zone_low: float | None = None
+        buy_zone_high: float | None = None
+        buy_why: str | None = None
+
+        if bool(res.stopLossParts.get("exit_now")):
+            buy_mode = "none"
+            buy_action = "avoid"
+            buy_why = "风险：立刻离场信号触发，禁止买入"
+        else:
+            n = len(closes)
+            if n >= 26 and len(opens) == n and len(highs) == n and len(lows) == n and len(vols) == n:
+                close = closes[-1]
+                vol = vols[-1]
+                vol_prev = vols[-2] if n >= 2 else vol
+
+                vol_sma20 = (sum(vols[-21:-1]) / 20.0) if n >= 21 else None
+                buy_checks["vol_sma20"] = round(vol_sma20, 6) if vol_sma20 is not None else None
+
+                ema20_rising = False
+                if ema20s and len(ema20s) >= 2:
+                    ema20_rising = bool(ema20s[-1] > ema20s[-2])
+                macd_hist_now = float(hist[-1]) if hist else 0.0
+                in_trend = bool(
+                    res.values.ema20 is not None
+                    and close > float(res.values.ema20)
+                    and ema20_rising
+                    and macd_hist_now > 0.0
+                )
+                buy_checks["in_trend"] = in_trend
+                buy_checks["ema20_rising"] = ema20_rising
+                buy_checks["macd_hist_now"] = round(macd_hist_now, 6)
+
+                if in_trend:
+                    buy_mode = "B_momentum"
+                    prev10_high = max(highs[-11:-1]) if n >= 11 else max(highs[:-1])
+                    new_high = bool(close > prev10_high)
+                    vol_ok = bool(vol_sma20 is not None and vol > vol_sma20 * 1.2)
+                    macd_inc = bool(len(hist) >= 2 and float(hist[-1]) > float(hist[-2]))
+                    rsi_ok = bool(res.values.rsi14 is not None and float(res.values.rsi14) < 80.0)
+                    buy_checks["b_prev10_high"] = round(prev10_high, 6)
+                    buy_checks["b_new_high"] = new_high
+                    buy_checks["b_vol_ok"] = vol_ok
+                    buy_checks["b_macd_inc"] = macd_inc
+                    buy_checks["b_rsi_ok"] = rsi_ok
+
+                    buy_zone_low = float(prev10_high)
+                    buy_zone_high = float(prev10_high) * 1.02
+                    if new_high and vol_ok and macd_inc and rsi_ok:
+                        buy_action = "buy"
+                        buy_why = "模式B：趋势中创10日新高，放量且动能增强"
+                    else:
+                        buy_action = "wait"
+                        buy_why = "模式B：趋势中，等待新高+放量/动能确认"
+                else:
+                    buy_mode = "A_pullback"
+                    breakout_idx: int | None = None
+                    breakout_level: float | None = None
+                    # Search last 1..5 days for breakout day (exclude today)
+                    for k in range(1, min(6, n)):
+                        di = n - 1 - k
+                        if di < 21:
+                            continue
+                        level = max(highs[di - 20 : di])
+                        vol_ma = sum(vols[di - 20 : di]) / 20.0
+                        is_breakout = bool(closes[di] > level and vols[di] > vol_ma * 1.2)
+                        if is_breakout:
+                            breakout_idx = di
+                            breakout_level = level
+                            break
+                    in_pullback_window = breakout_idx is not None
+                    buy_checks["a_in_pullback_window"] = in_pullback_window
+                    buy_checks["a_breakout_idx"] = breakout_idx
+                    buy_checks["a_breakout_level"] = round(breakout_level, 6) if breakout_level is not None else None
+
+                    ema20_now = float(res.values.ema20) if res.values.ema20 is not None else None
+                    low10 = min(lows[-10:]) if n >= 10 else min(lows)
+                    support = max(low10, ema20_now) if ema20_now is not None else low10
+                    buy_checks["a_support"] = round(support, 6)
+
+                    if breakout_level is not None and ema20_now is not None:
+                        pullback_signal = (
+                            (lows[-1] <= breakout_level * 1.01)
+                            and (close >= support * 0.99)
+                            and (vol < vol_prev)
+                            and (closes[-1] > opens[-1])
+                        )
+                        buy_checks["a_pullback_signal"] = bool(pullback_signal)
+                        buy_zone_low = max(support * 0.99, breakout_level * 0.99)
+                        buy_zone_high = breakout_level * 1.01
+                        if in_pullback_window and pullback_signal:
+                            buy_action = "buy"
+                            buy_why = "模式A：突破后回踩到支撑区，缩量止跌"
+                        elif in_pullback_window:
+                            buy_action = "wait"
+                            buy_why = "模式A：回踩窗口内，等待缩量止跌"
+                        else:
+                            buy_action = "wait"
+                            buy_why = "模式A：未在回踩窗口"
+                    else:
+                        buy_action = "wait"
+                        buy_why = "模式A：数据不足（需要≥20日平台/EMA）"
+            else:
+                buy_mode = "none"
+                buy_action = "wait"
+                buy_why = "数据不足（需要至少26日K线）"
+
+        res.buyMode = buy_mode
+        res.buyAction = buy_action
+        res.buyZoneLow = round(buy_zone_low, 6) if buy_zone_low is not None else None
+        res.buyZoneHigh = round(buy_zone_high, 6) if buy_zone_high is not None else None
+        res.buyRefPrice = round(float(closes[-1]), 6) if closes else None
+        res.buyWhy = buy_why
+        res.buyChecks = buy_checks
+    except Exception:
+        res.buyMode = None
+        res.buyAction = None
+
     # Decide final TrendOK: require all checks to be True; if any required check is None, return None.
     required = [
         res.checks.emaOrder,
@@ -3833,7 +3968,7 @@ def market_stocks_trendok(symbols: list[str] = Query(default=[])) -> list[TrendO
             # Pull the most recent 120 daily bars for indicators.
             rows = conn.execute(
                 """
-                SELECT date, high, low, close, volume
+                SELECT date, open, high, low, close, volume
                 FROM market_bars
                 WHERE symbol = ?
                 ORDER BY date ASC
@@ -3849,6 +3984,7 @@ def market_stocks_trendok(symbols: list[str] = Query(default=[])) -> list[TrendO
                     str(r[2]) if r[2] is not None else None,
                     str(r[3]) if r[3] is not None else None,
                     str(r[4]) if r[4] is not None else None,
+                    str(r[5]) if r[5] is not None else None,
                 )
                 for r in tail
             ]

@@ -58,6 +58,13 @@ type TrendOkResult = {
   scoreParts?: Record<string, number>; // points breakdown (positive parts and penalties)
   stopLossPrice?: number | null;
   stopLossParts?: Record<string, unknown>;
+  buyMode?: string | null;
+  buyAction?: string | null;
+  buyZoneLow?: number | null;
+  buyZoneHigh?: number | null;
+  buyRefPrice?: number | null;
+  buyWhy?: string | null;
+  buyChecks?: Record<string, unknown>;
   checks?: TrendOkChecks;
   values?: TrendOkValues;
   missingData?: string[];
@@ -162,6 +169,31 @@ function fmtScore(v: number | null | undefined): string {
 function fmtNum(v: unknown, digits = 2): string {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
   return v.toFixed(digits);
+}
+
+function fmtBuyCell(t: TrendOkResult | undefined | null): {
+  text: string;
+  tone: 'buy' | 'wait' | 'avoid' | 'none';
+} {
+  if (!t || !t.buyMode || !t.buyAction) return { text: '—', tone: 'none' };
+  if (t.buyAction === 'avoid') return { text: '回避', tone: 'avoid' };
+  const zl = typeof t.buyZoneLow === 'number' ? t.buyZoneLow : null;
+  const zh = typeof t.buyZoneHigh === 'number' ? t.buyZoneHigh : null;
+  const zone =
+    zl != null && zh != null
+      ? `${zl.toFixed(2)}–${zh.toFixed(2)}`
+      : zl != null
+        ? `${zl.toFixed(2)}`
+        : '—';
+  if (t.buyMode === 'A_pullback') {
+    const prefix = t.buyAction === 'buy' ? 'A 买' : 'A 等';
+    return { text: `${prefix} 回踩 ${zone}`, tone: t.buyAction === 'buy' ? 'buy' : 'wait' };
+  }
+  if (t.buyMode === 'B_momentum') {
+    const prefix = t.buyAction === 'buy' ? 'B 买' : 'B 等';
+    return { text: `${prefix} 新高 ${zone}`, tone: t.buyAction === 'buy' ? 'buy' : 'wait' };
+  }
+  return { text: '无', tone: 'none' };
 }
 
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
@@ -643,6 +675,50 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     );
   }
 
+  function renderBuyCell(sym: string) {
+    const t = trend[sym];
+    const { text, tone } = fmtBuyCell(t);
+    const why = typeof t?.buyWhy === 'string' ? t.buyWhy : null;
+    const tip = (
+      <>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="font-medium">买入</div>
+          <div className="font-mono text-[var(--k-muted)]">{sym}</div>
+        </div>
+        <div className="text-[var(--k-muted)]">{why || '—'}</div>
+        <div className="mt-2 flex items-center justify-between">
+          <div className="text-[var(--k-muted)]">建议</div>
+          <div className="font-mono">{text}</div>
+        </div>
+      </>
+    );
+    return (
+      <button
+        type="button"
+        className="inline-flex items-center"
+        onMouseEnter={(e) => showTooltip(e.currentTarget, tip, 380)}
+        onMouseLeave={hideTooltip}
+        onFocus={(e) => showTooltip(e.currentTarget, tip, 380)}
+        onBlur={hideTooltip}
+        aria-label="Buy details"
+      >
+        <span
+          className={
+            tone === 'buy'
+              ? 'font-mono text-emerald-700'
+              : tone === 'avoid'
+                ? 'font-mono text-red-600'
+                : tone === 'wait'
+                  ? 'font-mono text-[var(--k-muted)]'
+                  : 'font-mono'
+          }
+        >
+          {text}
+        </span>
+      </button>
+    );
+  }
+
   const sortedItems = React.useMemo(() => {
     if (!scoreSortEnabled) return items;
     const arr = [...items];
@@ -779,6 +855,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       )}
                     </button>
                   </th>
+                  <th className="px-3 py-2">买入</th>
                   <th className="px-3 py-2">Current</th>
                   <th className="px-3 py-2">止损</th>
                   <th className="px-3 py-2">
@@ -817,6 +894,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     <td className="px-3 py-2 font-mono">{it.symbol}</td>
                     <td className="px-3 py-2">{it.name || '—'}</td>
                     <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
+                    <td className="px-3 py-2">{renderBuyCell(it.symbol)}</td>
                     <td
                       className="px-3 py-2 font-mono"
                       title={

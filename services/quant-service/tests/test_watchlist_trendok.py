@@ -10,12 +10,30 @@ def _seed_market_stock(symbol: str, market: str, ticker: str, name: str, currenc
     main._ensure_market_stock_basic(symbol=symbol, market=market, ticker=ticker, name=name, currency=currency)
 
 
-def _seed_market_bars(symbol: str, start_date: str, closes: list[float], vols: list[float]) -> None:
+def _seed_market_bars(
+    symbol: str,
+    start_date: str,
+    closes: list[float],
+    vols: list[float],
+    *,
+    opens: list[float] | None = None,
+    highs: list[float] | None = None,
+    lows: list[float] | None = None,
+) -> None:
     assert len(closes) == len(vols)
+    if opens is not None:
+        assert len(opens) == len(closes)
+    if highs is not None:
+        assert len(highs) == len(closes)
+    if lows is not None:
+        assert len(lows) == len(closes)
     start = datetime.fromisoformat(start_date).replace(tzinfo=UTC)
     with main._connect() as conn:
         for i, (c, v) in enumerate(zip(closes, vols)):
             d = (start + timedelta(days=i)).date().isoformat()
+            o = opens[i] if opens is not None else c
+            h = highs[i] if highs is not None else c
+            l = lows[i] if lows is not None else c
             conn.execute(
                 """
                 INSERT INTO market_bars(symbol, date, open, high, low, close, volume, amount, updated_at)
@@ -28,9 +46,9 @@ def _seed_market_bars(symbol: str, start_date: str, closes: list[float], vols: l
                 (
                     symbol,
                     d,
-                    str(c),
-                    str(c),
-                    str(c),
+                    str(o),
+                    str(h),
+                    str(l),
                     str(c),
                     str(v),
                     str(c * v),
@@ -222,4 +240,128 @@ def test_watchlist_stoploss_warn_on_macd_hist_shrink_but_positive(tmp_path, monk
         if precond:
             assert parts.get("warn_reduce_half") is True
             assert isinstance(parts.get("warn_display"), str)
+
+
+def test_watchlist_buy_mode_b_momentum(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    client = TestClient(main.app)
+    _seed_market_stock("CN:000005", "CN", "000005", "Epsilon")
+
+    # Build an uptrend with mild pullbacks (keep RSI < 80), then a small acceleration + volume surge.
+    closes: list[float] = []
+    price = 10.0
+    for i in range(70):
+        if i % 7 == 0 and i > 0:
+            price -= 0.06
+        else:
+            price += 0.08
+        closes.append(round(price, 4))
+    # Boost last 2 days to encourage MACD hist increasing.
+    closes[-2] = round(closes[-3] + 0.10, 4)
+    closes[-1] = round(closes[-2] + 0.14, 4)
+
+    vols: list[float] = [1000.0] * 69 + [2500.0]
+    _seed_market_bars("CN:000005", "2025-10-01", closes=closes, vols=vols)
+
+    resp = client.get("/market/stocks/trendok?symbols=CN:000005")
+    assert resp.status_code == 200
+    r = resp.json()[0]
+    assert r.get("buyMode") in ("B_momentum", "A_pullback", "none")
+    assert r.get("buyMode") == "B_momentum"
+    assert r.get("buyAction") in ("buy", "wait", "avoid", "add")
+    assert r.get("buyZoneLow") is not None
+    assert r.get("buyZoneHigh") is not None
+    assert float(r["buyZoneHigh"]) >= float(r["buyZoneLow"])
+    # Ideally should be actionable in this constructed setup.
+    assert r.get("buyAction") in ("buy", "wait")
+
+
+def test_watchlist_buy_mode_a_pullback_buy(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    client = TestClient(main.app)
+    _seed_market_stock("CN:000006", "CN", "000006", "Zeta")
+
+    # Build 60 days of flat range (10.0), then a breakout spike, then a sharp pullback.
+    # This setup should NOT be considered `in_trend` (MACD hist tends to weaken/turn <=0 after the spike),
+    # but should satisfy Mode A (breakout happened within last 1..5 days and today is a pullback buy).
+    closes: list[float] = [10.0] * 60
+    highs: list[float] = [10.0] * 60
+    lows: list[float] = [10.0] * 60
+    opens: list[float] = [10.0] * 60
+    vols: list[float] = [1000.0] * 60
+
+    # Add 9 days (total 69). We'll set the breakout day at index -5 (within 1..5 day window).
+    for _ in range(9):
+        closes.append(10.0)
+        highs.append(10.0)
+        lows.append(10.0)
+        opens.append(10.0)
+        vols.append(900.0)
+
+    # Breakout day 4 days ago (index -5): close > prior 20-day high (10.0) with volume surge.
+    closes[-5] = 12.0
+    highs[-5] = 12.0
+    lows[-5] = 11.6
+    opens[-5] = 11.7
+    vols[-5] = 2200.0
+
+    # Multi-day pullback (helps MACD hist weaken/turn <=0)
+    closes[-4] = 10.3
+    highs[-4] = 10.6
+    lows[-4] = 10.12
+    opens[-4] = 10.4
+    vols[-4] = 1500.0
+
+    closes[-3] = 10.1
+    highs[-3] = 10.3
+    lows[-3] = 10.02
+    opens[-3] = 10.2
+    vols[-3] = 1300.0
+
+    closes[-2] = 10.0
+    highs[-2] = 10.15
+    lows[-2] = 9.98
+    opens[-2] = 10.05
+    vols[-2] = 1100.0
+
+    # Today (last): pullback buy day (bullish candle, shrinking volume, touches breakout zone)
+    lows[-1] = 10.03
+    opens[-1] = 10.18
+    closes[-1] = 10.25  # placeholder; will be adjusted to EMA20_prev for deterministic mode selection
+    highs[-1] = 10.3
+    vols[-1] = 900.0
+
+    assert len(closes) == 69
+    # Make today's close equal to yesterday's EMA20 so:
+    # - close > ema20 is False (mode A eligible)
+    # - close < ema20 is False (no exit-now)
+    def _ema_last(vals: list[float], period: int) -> float:
+        alpha = 2.0 / (float(period) + 1.0)
+        prev = vals[0]
+        for v in vals[1:]:
+            prev = alpha * v + (1.0 - alpha) * prev
+        return prev
+
+    ema20_prev = _ema_last(closes[:-1], 20)
+    closes[-1] = float(ema20_prev)
+    # Keep candle bullish and high>=close.
+    opens[-1] = min(opens[-1], closes[-1] - 0.01)
+    highs[-1] = max(highs[-1], closes[-1])
+
+    _seed_market_bars("CN:000006", "2025-10-01", closes=closes, vols=vols, opens=opens, highs=highs, lows=lows)
+
+    resp = client.get("/market/stocks/trendok?symbols=CN:000006")
+    assert resp.status_code == 200
+    r = resp.json()[0]
+    assert r.get("buyMode") == "A_pullback", f"buyMode={r.get('buyMode')} buyAction={r.get('buyAction')} checks={r.get('buyChecks')}"
+    assert r.get("buyAction") in ("buy", "wait", "avoid")
+    # In our constructed case, we expect a buy signal.
+    assert r.get("buyAction") == "buy", f"buyMode={r.get('buyMode')} checks={r.get('buyChecks')}"
+    assert r.get("buyZoneLow") is not None
+    assert r.get("buyZoneHigh") is not None
+    assert float(r["buyZoneHigh"]) >= float(r["buyZoneLow"])
 
