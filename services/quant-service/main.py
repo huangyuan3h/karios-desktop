@@ -3249,7 +3249,7 @@ def market_resolve_stocks(symbols: list[str] = Query(default=[])) -> list[Market
 class TrendOkChecks(BaseModel):
     emaOrder: bool | None = None  # EMA(5) > EMA(20) > EMA(60)
     macdPositive: bool | None = None  # macdLine > 0
-    macdHistExpanding: bool | None = None  # hist[-3] < hist[-2] < hist[-1]
+    macdHistExpanding: bool | None = None  # last 4 days: >=2 day-over-day increases
     closeNear20dHigh: bool | None = None  # close >= 0.95 * high20
     rsiInRange: bool | None = None  # 50 <= rsi14 <= 75
     volumeSurge: bool | None = None  # avgVol5 > 1.2 * avgVol30
@@ -3401,8 +3401,18 @@ def _market_stock_trendok_one(*, symbol: str, name: str | None, bars: list[tuple
         res.values.macdSignal = sig_line[-1]
         res.values.macdHist = hist[-1]
         res.checks.macdPositive = bool(macd_line[-1] > 0.0)
-        if len(hist) >= 3:
-            res.checks.macdHistExpanding = bool(hist[-3] < hist[-2] < hist[-1])
+        if len(hist) >= 4:
+            # Use the last 4 histogram values and count day-over-day expansions.
+            # Condition: in the last 3 comparisons, at least 2 are increasing.
+            h = hist[-4:]
+            inc = 0
+            if h[1] > h[0]:
+                inc += 1
+            if h[2] > h[1]:
+                inc += 1
+            if h[3] > h[2]:
+                inc += 1
+            res.checks.macdHistExpanding = bool(inc >= 2)
 
     rsi14s = _rsi(closes, 14)
     if rsi14s:

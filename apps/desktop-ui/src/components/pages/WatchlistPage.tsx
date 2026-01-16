@@ -225,7 +225,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     const lines = [
       checkLine('EMA order', t?.checks?.emaOrder ?? null, 'EMA(5) > EMA(20) > EMA(60)'),
       checkLine('MACD > 0', t?.checks?.macdPositive ?? null, 'macdLine > 0'),
-      checkLine('MACD hist', t?.checks?.macdHistExpanding ?? null, 'hist[-3] < hist[-2] < hist[-1]'),
+      checkLine('MACD hist', t?.checks?.macdHistExpanding ?? null, 'last 4 days: >=2 day-over-day increases'),
       checkLine('Near 20D high', t?.checks?.closeNear20dHigh ?? null, 'Close >= 0.95 * High(20)'),
       checkLine('RSI(14)', t?.checks?.rsiInRange ?? null, '50 <= RSI <= 75'),
       checkLine('Volume surge', t?.checks?.volumeSurge ?? null, 'AvgVol(5) > 1.2 * AvgVol(30)'),
@@ -280,7 +280,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       <div className="mt-2 space-y-1">
         <div>1) EMA(5) &gt; EMA(20) &gt; EMA(60)</div>
         <div>2) MACD line &gt; 0</div>
-        <div>3) MACD histogram expanding: hist[-3] &lt; hist[-2] &lt; hist[-1]</div>
+        <div>3) MACD histogram expanding: last 4 days, at least 2 day-over-day increases</div>
         <div>4) Close ≥ 0.95 × High(20)</div>
         <div>5) RSI(14) in [50, 75]</div>
         <div>6) AvgVol(5) &gt; 1.2 × AvgVol(30)</div>

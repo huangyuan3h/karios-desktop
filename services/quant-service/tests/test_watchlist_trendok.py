@@ -68,7 +68,7 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
 
     # Build 70 days closes:
     # - Gentle uptrend with periodic pullbacks to keep RSI in 50..75
-    # - Last 3 days accelerate to satisfy MACD histogram expanding (best-effort)
+    # - Last 4 days have enough momentum expansions to satisfy MACD histogram expanding (best-effort)
     closes: list[float] = []
     price = 10.0
     for i in range(70):
