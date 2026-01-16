@@ -3634,58 +3634,110 @@ def _market_stock_trendok_one(
                 final_support = max(final_support, chip_support * 0.99)
             stop_parts["final_support"] = round(final_support, 6)
 
-            # Volatility bin: std(returns[-20:])
-            vol_std20: float | None = None
-            if len(closes) >= 21:
-                rets_sl: list[float] = []
-                for i in range(-20, 0):
-                    c0 = closes[i - 1]
-                    c1 = closes[i]
-                    if c0 > 0:
-                        rets_sl.append((c1 / c0) - 1.0)
-                if len(rets_sl) >= 10:
-                    mu = sum(rets_sl) / float(len(rets_sl))
-                    var = sum((r - mu) ** 2 for r in rets_sl) / float(len(rets_sl))
-                    vol_std20 = math.sqrt(max(0.0, var))
-            stop_parts["vol_std20"] = round(vol_std20, 6) if vol_std20 is not None else None
+            # Exit-now overrides:
+            # 1) Trend structure break: EMA5 < EMA20 OR close < EMA20 => exit immediately (stop = current)
+            exit_now = False
+            exit_reasons: list[str] = []
+            if res.values.ema5 is not None and res.values.ema20 is not None:
+                if float(res.values.ema5) < float(res.values.ema20):
+                    exit_now = True
+                    exit_reasons.append("trend_structure_break:ema5_below_ema20")
+            if res.values.ema20 is not None and current < float(res.values.ema20):
+                exit_now = True
+                exit_reasons.append("trend_structure_break:close_below_ema20")
 
-            if vol_std20 is None:
-                atr_k = 1.2
-                max_loss_pct = 0.08
-                vol_bin = "unknown"
-            elif vol_std20 <= 0.02:
-                atr_k = 1.1
-                max_loss_pct = 0.06
-                vol_bin = "low"
-            elif vol_std20 <= 0.04:
-                atr_k = 1.2
-                max_loss_pct = 0.08
-                vol_bin = "mid"
-            else:
-                atr_k = 1.4
-                max_loss_pct = 0.10
-                vol_bin = "high"
-            stop_parts["vol_bin"] = vol_bin
-            stop_parts["atr_k"] = atr_k
-            stop_parts["max_loss_pct"] = max_loss_pct
+            # 2) Momentum exhaustion: MACD hist shrinks 3 days then turns negative + volume dries up
+            # Define shrink as: hist[-4] > hist[-3] > hist[-2] > 0 and hist[-1] < 0
+            # Volume dries up as: avgVol5 < avgVol30
+            # Also add a warning case: shrinks 3 days but NOT negative yet => suggest sell half.
+            warn_reduce_half = False
+            warn_reasons: list[str] = []
+            if res.values.avgVol5 is not None and res.values.avgVol30 is not None:
+                avg5v = float(res.values.avgVol5)
+                avg30v = float(res.values.avgVol30)
+                if len(hist) >= 4:
+                    h = [float(x) for x in hist[-4:]]
+                    shrink_then_flip = (h[0] > h[1] > h[2] > 0.0) and (h[3] < 0.0)
+                    vol_dry = avg30v > 0.0 and (avg5v < avg30v)
+                    if shrink_then_flip and vol_dry:
+                        exit_now = True
+                        exit_reasons.append("momentum_exhaustion:hist_shrink3_flip_negative_and_volume_dry")
+                    # Warning: shrinking for 3 consecutive days, still positive, with volume drying.
+                    shrink3_still_pos = (h[0] > h[1] > h[2] > h[3] > 0.0)
+                    if (not shrink_then_flip) and shrink3_still_pos and vol_dry:
+                        warn_reduce_half = True
+                        warn_reasons.append("momentum_warning:hist_shrink3_still_positive_and_volume_dry")
 
-            atr14 = _atr14(highs, lows, closes, 14)
-            if atr14 is None:
-                res.stopLossPrice = None
-                res.missingData.append("atr14_unavailable")
-            else:
-                buffer = atr_k * atr14
-                hard_stop = current * (1.0 - max_loss_pct)
-                stop_loss_support = final_support - buffer
-                final_stop = max(stop_loss_support, hard_stop)
-                final_stop = min(final_stop, current)  # never above current
-                stop_parts["atr14"] = round(atr14, 6)
-                stop_parts["buffer"] = round(buffer, 6)
-                stop_parts["hard_stop"] = round(hard_stop, 6)
-                stop_parts["stop_loss_support_minus_buffer"] = round(stop_loss_support, 6)
-                stop_parts["final_stop_loss"] = round(final_stop, 6)
-                res.stopLossPrice = round(final_stop, 6)
+            stop_parts["exit_now"] = bool(exit_now)
+            stop_parts["exit_reasons"] = exit_reasons
+            stop_parts["warn_reduce_half"] = bool(warn_reduce_half)
+            stop_parts["warn_reasons"] = warn_reasons
+            if warn_reduce_half:
+                stop_parts["warn_display"] = "警告：MACD柱缩小但未转负，建议至少卖出一半"
+
+            if exit_now:
+                # immediate exit: stop at current price
+                res.stopLossPrice = round(current, 6)
+                stop_parts["final_stop_loss"] = round(current, 6)
+                stop_parts["exit_display"] = "立刻离场"
                 res.stopLossParts = stop_parts
+                # Skip normal stop-loss calculation (but continue to compute trendOk decision below).
+                # (No further stop-loss parts are needed in this branch.)
+                pass
+            else:
+
+                # Volatility bin: std(returns[-20:])
+                vol_std20: float | None = None
+                if len(closes) >= 21:
+                    rets_sl: list[float] = []
+                    for i in range(-20, 0):
+                        c0 = closes[i - 1]
+                        c1 = closes[i]
+                        if c0 > 0:
+                            rets_sl.append((c1 / c0) - 1.0)
+                    if len(rets_sl) >= 10:
+                        mu = sum(rets_sl) / float(len(rets_sl))
+                        var = sum((r - mu) ** 2 for r in rets_sl) / float(len(rets_sl))
+                        vol_std20 = math.sqrt(max(0.0, var))
+                stop_parts["vol_std20"] = round(vol_std20, 6) if vol_std20 is not None else None
+
+                if vol_std20 is None:
+                    atr_k = 1.2
+                    max_loss_pct = 0.08
+                    vol_bin = "unknown"
+                elif vol_std20 <= 0.02:
+                    atr_k = 1.1
+                    max_loss_pct = 0.06
+                    vol_bin = "low"
+                elif vol_std20 <= 0.04:
+                    atr_k = 1.2
+                    max_loss_pct = 0.08
+                    vol_bin = "mid"
+                else:
+                    atr_k = 1.4
+                    max_loss_pct = 0.10
+                    vol_bin = "high"
+                stop_parts["vol_bin"] = vol_bin
+                stop_parts["atr_k"] = atr_k
+                stop_parts["max_loss_pct"] = max_loss_pct
+
+                atr14 = _atr14(highs, lows, closes, 14)
+                if atr14 is None:
+                    res.stopLossPrice = None
+                    res.missingData.append("atr14_unavailable")
+                else:
+                    buffer = atr_k * atr14
+                    hard_stop = current * (1.0 - max_loss_pct)
+                    stop_loss_support = final_support - buffer
+                    final_stop = max(stop_loss_support, hard_stop)
+                    final_stop = min(final_stop, current)  # never above current
+                    stop_parts["atr14"] = round(atr14, 6)
+                    stop_parts["buffer"] = round(buffer, 6)
+                    stop_parts["hard_stop"] = round(hard_stop, 6)
+                    stop_parts["stop_loss_support_minus_buffer"] = round(stop_loss_support, 6)
+                    stop_parts["final_stop_loss"] = round(final_stop, 6)
+                    res.stopLossPrice = round(final_stop, 6)
+                    res.stopLossParts = stop_parts
     except Exception:
         res.stopLossPrice = None
 

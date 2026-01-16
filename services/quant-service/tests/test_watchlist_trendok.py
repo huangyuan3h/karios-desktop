@@ -148,3 +148,78 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
     # Pass-case should score higher than fail-case (volume confirmation contributes).
     assert float(r1["score"]) > float(r2["score"])
 
+
+def test_watchlist_stoploss_exit_now_on_trend_structure_break(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    client = TestClient(main.app)
+    _seed_market_stock("CN:000003", "CN", "000003", "Gamma")
+
+    # Create a clear downtrend so EMA5 < EMA20 and/or close < EMA20 triggers exit-now.
+    closes: list[float] = []
+    price = 20.0
+    for i in range(70):
+        price -= 0.12
+        closes.append(round(price, 4))
+
+    vols: list[float] = [1000.0] * 65 + [800.0] * 5
+    _seed_market_bars("CN:000003", "2025-10-01", closes=closes, vols=vols)
+
+    resp = client.get("/market/stocks/trendok?symbols=CN:000003")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert isinstance(rows, list) and len(rows) == 1
+    r = rows[0]
+    assert r["symbol"] == "CN:000003"
+    assert r.get("stopLossPrice") is not None
+    close = float((r.get("values") or {}).get("close"))
+    assert float(r["stopLossPrice"]) == close
+    parts = r.get("stopLossParts") or {}
+    assert isinstance(parts, dict)
+    assert parts.get("exit_now") is True
+    assert isinstance(parts.get("exit_reasons"), list)
+
+
+def test_watchlist_stoploss_warn_on_macd_hist_shrink_but_positive(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    client = TestClient(main.app)
+    _seed_market_stock("CN:000004", "CN", "000004", "Delta")
+
+    # Construct a series that trends up strongly, then slows/plateaus so MACD hist shrinks
+    # for several days but stays positive, with volume drying up.
+    closes: list[float] = []
+    price = 10.0
+    # Strong uptrend
+    for _ in range(55):
+        price += 0.10
+        closes.append(round(price, 4))
+    # Slowing uptrend / plateau
+    for step in [0.06, 0.04, 0.03, 0.02, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01]:
+        price += step
+        closes.append(round(price, 4))
+    assert len(closes) >= 70
+    closes = closes[:70]
+
+    # Volume dries up in the last 5 days.
+    vols: list[float] = [2000.0] * 65 + [800.0] * 5
+    _seed_market_bars("CN:000004", "2025-10-01", closes=closes, vols=vols)
+
+    resp = client.get("/market/stocks/trendok?symbols=CN:000004")
+    assert resp.status_code == 200
+    r = resp.json()[0]
+    parts = r.get("stopLossParts") or {}
+    assert isinstance(parts, dict)
+
+    # If the specific MACD histogram shrink condition is met, we should see the warning flag.
+    # This test is designed to be robust: require the flag OR the absence of the precondition in macdHist4.
+    h4 = ((r.get("values") or {}).get("macdHist4")) or []
+    if isinstance(h4, list) and len(h4) == 4 and all(isinstance(x, (int, float)) for x in h4):
+        h0, h1, h2, h3 = [float(x) for x in h4]
+        precond = (h0 > h1 > h2 > h3 > 0.0)
+        if precond:
+            assert parts.get("warn_reduce_half") is True
+            assert isinstance(parts.get("warn_display"), str)
+

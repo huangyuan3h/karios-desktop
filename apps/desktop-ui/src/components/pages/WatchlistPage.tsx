@@ -491,12 +491,27 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     const parts = t?.stopLossParts ?? null;
     const get = (k: string) =>
       parts && typeof parts === 'object' ? (parts as Record<string, unknown>)[k] : undefined;
+    const exitNow = Boolean(get('exit_now'));
+    const exitDisplay =
+      typeof get('exit_display') === 'string' ? String(get('exit_display')) : null;
+    const warnHalf = Boolean(get('warn_reduce_half'));
+    const warnDisplay =
+      typeof get('warn_display') === 'string' ? String(get('warn_display')) : null;
     const tip = (
       <>
         <div className="mb-2 flex items-center justify-between">
           <div className="font-medium">StopLoss</div>
           <div className="font-mono text-[var(--k-muted)]">{sym}</div>
         </div>
+        {exitNow ? (
+          <div className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-600">
+            {exitDisplay || '立刻离场'}
+          </div>
+        ) : warnHalf ? (
+          <div className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-700">
+            {warnDisplay || '警告：MACD柱缩小但未转负，建议至少卖出一半'}
+          </div>
+        ) : null}
         <div className="text-[var(--k-muted)]">
           Formula: max(final_support - atr_k×ATR14, hard_stop)
         </div>
@@ -590,7 +605,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         onBlur={hideTooltip}
         aria-label="StopLoss details"
       >
-        <span className="font-mono">{fmtPrice(p)}</span>
+        <span
+          className={
+            exitNow ? 'font-mono text-red-600' : warnHalf ? 'font-mono text-amber-700' : 'font-mono'
+          }
+        >
+          {exitNow ? exitDisplay || '立刻离场' : fmtPrice(p)}
+        </span>
       </button>
     );
   }
