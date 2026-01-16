@@ -537,6 +537,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     };
     // Semantics: ✅ means "NOT triggered" (safe), ❌ means "triggered" (exit-now condition hit).
     const ok = (triggered: boolean) => (triggered ? '❌' : '✅');
+    const exitMomAndVol = Boolean(exitChecks.momentum_exhaustion && exitChecks.volume_dry);
     const tip = (
       <>
         <div className="mb-2 flex items-center justify-between">
@@ -558,7 +559,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         <div className="mt-2 rounded border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 py-1">
           <div className="mb-1 font-medium">立刻离场检查</div>
           <div className="text-[10px] text-[var(--k-muted)]">
-            ✅ 表示未触发（安全）；若任一项变为 ❌，则显示“立刻离场”，止损价=当前价。
+            ✅ 安全 / ❌ 触发。任一条为 ❌ 即“立刻离场”（止损价=当前价）。
           </div>
           <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
             <div className="flex items-center justify-between gap-2">
@@ -570,12 +571,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               <span className="font-mono">{ok(exitChecks.close_lt_ema20)}</span>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[var(--k-muted)]">动能衰竭</span>
-              <span className="font-mono">{ok(exitChecks.momentum_exhaustion)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[var(--k-muted)]">量能萎缩</span>
-              <span className="font-mono">{ok(exitChecks.volume_dry)}</span>
+              <span className="text-[var(--k-muted)]">动能衰竭 + 量能萎缩</span>
+              <span className="font-mono">{ok(exitMomAndVol)}</span>
             </div>
           </div>
         </div>
