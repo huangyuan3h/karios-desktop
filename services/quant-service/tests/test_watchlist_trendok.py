@@ -29,11 +29,11 @@ def _seed_market_bars(
         assert len(lows) == len(closes)
     start = datetime.fromisoformat(start_date).replace(tzinfo=UTC)
     with main._connect() as conn:
-        for i, (c, v) in enumerate(zip(closes, vols)):
+        for i, (c, v) in enumerate(zip(closes, vols, strict=True)):
             d = (start + timedelta(days=i)).date().isoformat()
             o = opens[i] if opens is not None else c
             h = highs[i] if highs is not None else c
-            l = lows[i] if lows is not None else c
+            low = lows[i] if lows is not None else c
             conn.execute(
                 """
                 INSERT INTO market_bars(symbol, date, open, high, low, close, volume, amount, updated_at)
@@ -48,7 +48,7 @@ def _seed_market_bars(
                     d,
                     str(o),
                     str(h),
-                    str(l),
+                    str(low),
                     str(c),
                     str(v),
                     str(c * v),
@@ -177,7 +177,7 @@ def test_watchlist_stoploss_exit_now_on_trend_structure_break(tmp_path, monkeypa
     # Create a clear downtrend so EMA5 < EMA20 and/or close < EMA20 triggers exit-now.
     closes: list[float] = []
     price = 20.0
-    for i in range(70):
+    for _i in range(70):
         price -= 0.12
         closes.append(round(price, 4))
 

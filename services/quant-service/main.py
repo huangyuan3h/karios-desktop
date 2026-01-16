@@ -19,7 +19,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Query
@@ -3207,7 +3207,7 @@ def market_list_stocks(
 
 
 @app.get("/market/stocks/resolve", response_model=list[MarketStockBasicRow])
-def market_resolve_stocks(symbols: list[str] = Query(default=[])) -> list[MarketStockBasicRow]:
+def market_resolve_stocks(symbols: Annotated[list[str] | None, Query(None)] = None) -> list[MarketStockBasicRow]:
     """
     Resolve stock basic info by symbol, using the local market universe cache.
     This is a DB-first helper for UI modules (e.g. Watchlist).
@@ -3350,9 +3350,9 @@ def _macd(values: list[float], fast: int = 12, slow: int = 26, signal: int = 9) 
         return ([], [], [])
     ema_fast = _ema(values, fast)
     ema_slow = _ema(values, slow)
-    macd_line = [a - b for a, b in zip(ema_fast, ema_slow)]
+    macd_line = [a - b for a, b in zip(ema_fast, ema_slow, strict=True)]
     signal_line = _ema(macd_line, signal)
-    hist = [m - s for m, s in zip(macd_line, signal_line)]
+    hist = [m - s for m, s in zip(macd_line, signal_line, strict=True)]
     return (macd_line, signal_line, hist)
 
 
@@ -3369,9 +3369,9 @@ def _atr14(highs: list[float], lows: list[float], closes: list[float], period: i
     tr: list[float] = []
     for i in range(1, n):
         h = highs[i]
-        l = lows[i]
+        low = lows[i]
         pc = closes[i - 1]
-        tr_i = max(h - l, abs(h - pc), abs(l - pc))
+        tr_i = max(h - low, abs(h - pc), abs(low - pc))
         tr.append(tr_i)
     if len(tr) < period:
         return None
@@ -3412,11 +3412,11 @@ def _market_stock_trendok_one(
     lows: list[float] = []
     opens: list[float] = []
     dates: list[str] = []
-    for d, o, h, l, c, v in bars:
+    for d, o, h, low, c, v in bars:
         c2 = _parse_float_safe(c)
         v2 = _parse_float_safe(v)
         h2 = _parse_float_safe(h)
-        l2 = _parse_float_safe(l)
+        l2 = _parse_float_safe(low)
         o2 = _parse_float_safe(o)
         if c2 is None:
             continue
@@ -3939,7 +3939,7 @@ def _market_stock_trendok_one(
 
 
 @app.get("/market/stocks/trendok", response_model=list[TrendOkResult])
-def market_stocks_trendok(symbols: list[str] = Query(default=[])) -> list[TrendOkResult]:
+def market_stocks_trendok(symbols: Annotated[list[str] | None, Query(None)] = None) -> list[TrendOkResult]:
     """
     Batch TrendOK evaluation for Watchlist (CN daily only).
     Uses DB-cached daily bars and does NOT trigger external fetches.
