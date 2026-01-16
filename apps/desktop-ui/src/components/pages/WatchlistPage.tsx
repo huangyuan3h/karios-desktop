@@ -34,12 +34,28 @@ type TrendOkChecks = {
   volumeSurge?: boolean | null;
 };
 
+type TrendOkValues = {
+  close?: number | null;
+  ema5?: number | null;
+  ema20?: number | null;
+  ema60?: number | null;
+  macd?: number | null;
+  macdSignal?: number | null;
+  macdHist?: number | null;
+  macdHist4?: number[];
+  rsi14?: number | null;
+  high20?: number | null;
+  avgVol5?: number | null;
+  avgVol30?: number | null;
+};
+
 type TrendOkResult = {
   symbol: string;
   name?: string | null;
   asOfDate?: string | null;
   trendOk?: boolean | null;
   checks?: TrendOkChecks;
+  values?: TrendOkValues;
   missingData?: string[];
 };
 
@@ -222,12 +238,40 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     const t = trend[sym];
     const ok = t?.trendOk ?? null;
     const icon = ok == null ? '—' : ok ? '✅' : '❌';
+    const rsiNow =
+      typeof t?.values?.rsi14 === 'number' && Number.isFinite(t.values.rsi14)
+        ? t.values.rsi14
+        : null;
+    const h4 =
+      Array.isArray(t?.values?.macdHist4) && t?.values?.macdHist4?.length === 4
+        ? t.values.macdHist4
+        : null;
+    const hpos = h4 ? h4.map((x) => Math.max(0, Number(x))) : null;
+    const d1 = hpos ? hpos[1] > hpos[0] : null;
+    const d2 = hpos ? hpos[2] > hpos[1] : null;
+    const d3 = hpos ? hpos[3] > hpos[2] : null;
+    const hLastPos = hpos ? hpos[3] > 0 : null;
+    const macdHistDetail = h4
+      ? `need h_last>0: ${hLastPos ? '✅' : '❌'}; d1 ${d1 ? '✅' : '❌'}; d2 ${
+          d2 ? '✅' : '❌'
+        }; d3 ${d3 ? '✅' : '❌'} (h: ${h4
+          .map((x) => (Number.isFinite(Number(x)) ? Number(x).toFixed(3) : '—'))
+          .join(', ')})`
+      : 'need last 4 histogram values';
     const lines = [
       checkLine('EMA order', t?.checks?.emaOrder ?? null, 'EMA(5) > EMA(20) > EMA(60)'),
       checkLine('MACD > 0', t?.checks?.macdPositive ?? null, 'macdLine > 0'),
-      checkLine('MACD hist', t?.checks?.macdHistExpanding ?? null, 'last 4 days: >=2 day-over-day increases'),
+      checkLine(
+        'MACD hist',
+        t?.checks?.macdHistExpanding ?? null,
+        `last 4 days: (hist>0) and >=2 increases (positive-part); ${macdHistDetail}`,
+      ),
       checkLine('Near 20D high', t?.checks?.closeNear20dHigh ?? null, 'Close >= 0.95 * High(20)'),
-      checkLine('RSI(14)', t?.checks?.rsiInRange ?? null, '50 <= RSI <= 75'),
+      checkLine(
+        'RSI(14)',
+        t?.checks?.rsiInRange ?? null,
+        `50 <= RSI <= 75${rsiNow == null ? '' : ` (now: ${rsiNow.toFixed(1)})`}`,
+      ),
       checkLine('Volume surge', t?.checks?.volumeSurge ?? null, 'AvgVol(5) > 1.2 * AvgVol(30)'),
     ];
     const missing = (t?.missingData ?? []).filter(Boolean);

@@ -68,7 +68,7 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
 
     # Build 70 days closes:
     # - Gentle uptrend with periodic pullbacks to keep RSI in 50..75
-    # - Last 4 days have enough momentum expansions to satisfy MACD histogram expanding (best-effort)
+    # - A small dip before the last 4 days + clear acceleration to satisfy MACD histogram expansion
     closes: list[float] = []
     price = 10.0
     for i in range(70):
@@ -78,18 +78,14 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
                 price -= 0.04
             else:
                 price += 0.05
+        elif i < 64:
+            # Buffer zone: add a slight negative drift to keep RSI away from overbought,
+            # while preserving a higher baseline for EMA order.
+            price += 0.04 if (i % 2 == 1) else -0.14
         else:
-            # Last ~14 days: explicit alternating moves to keep RSI in-range.
-            if i < 67:
-                price += 0.06 if (i % 2 == 1) else -0.06
-            else:
-                # Last 3 days: mild acceleration.
-                if i == 67:
-                    price += 0.06
-                elif i == 68:
-                    price += 0.08
-                else:
-                    price += 0.10
+            # Last 6 days: clear acceleration to make MACD histogram turn positive earlier and keep expanding.
+            step = [0.08, 0.10, 0.12, 0.14, 0.16, 0.17][i - 64]
+            price += step
         closes.append(round(price, 4))
 
     # Volumes: last 5 days boosted to satisfy AvgVol(5) > 1.2 * AvgVol(30)
@@ -112,9 +108,13 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
     checks1 = r1.get("checks") or {}
     assert checks1.get("emaOrder") is True
     assert checks1.get("macdPositive") is True
-    assert checks1.get("macdHistExpanding") is True
+    assert checks1.get("macdHistExpanding") is True, (
+        f"macdHist4={((r1.get('values') or {}).get('macdHist4') or [])} "
+        f"macd={((r1.get('values') or {}).get('macd'))} "
+        f"signal={((r1.get('values') or {}).get('macdSignal'))}"
+    )
     assert checks1.get("closeNear20dHigh") is True
-    assert checks1.get("rsiInRange") is True
+    assert checks1.get("rsiInRange") is True, f"rsi14={((r1.get('values') or {}).get('rsi14'))}"
     assert checks1.get("volumeSurge") is True
     assert r1["trendOk"] is True
 

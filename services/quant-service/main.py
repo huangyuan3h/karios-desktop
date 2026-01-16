@@ -3263,6 +3263,7 @@ class TrendOkValues(BaseModel):
     macd: float | None = None  # macdLine
     macdSignal: float | None = None
     macdHist: float | None = None
+    macdHist4: list[float] = []  # last 4 histogram values (oldest -> newest)
     rsi14: float | None = None
     high20: float | None = None
     avgVol5: float | None = None
@@ -3403,16 +3404,21 @@ def _market_stock_trendok_one(*, symbol: str, name: str | None, bars: list[tuple
         res.checks.macdPositive = bool(macd_line[-1] > 0.0)
         if len(hist) >= 4:
             # Use the last 4 histogram values and count day-over-day expansions.
-            # Condition: in the last 3 comparisons, at least 2 are increasing.
+            # Condition (bullish expansion):
+            # - Latest histogram must be > 0
+            # - In the last 3 comparisons, at least 2 are increasing,
+            #   counting only the positive part (negative values are treated as 0).
             h = hist[-4:]
+            res.values.macdHist4 = [float(x) for x in h]
+            hpos = [max(0.0, float(x)) for x in h]
             inc = 0
-            if h[1] > h[0]:
+            if hpos[1] > hpos[0]:
                 inc += 1
-            if h[2] > h[1]:
+            if hpos[2] > hpos[1]:
                 inc += 1
-            if h[3] > h[2]:
+            if hpos[3] > hpos[2]:
                 inc += 1
-            res.checks.macdHistExpanding = bool(inc >= 2)
+            res.checks.macdHistExpanding = bool(hpos[3] > 0.0 and inc >= 2)
 
     rsi14s = _rsi(closes, 14)
     if rsi14s:
