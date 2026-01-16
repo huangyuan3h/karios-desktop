@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Eye, Info, Trash2 } from 'lucide-react';
+import { Eye, Info, RefreshCw, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
@@ -59,6 +59,33 @@ type TrendOkResult = {
   missingData?: string[];
 };
 
+type TvScreener = {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  updatedAt: string;
+};
+
+type TvSnapshotSummary = {
+  id: string;
+  screenerId: string;
+  capturedAt: string;
+  rowCount: number;
+};
+
+type TvSnapshotDetail = {
+  id: string;
+  screenerId: string;
+  capturedAt: string;
+  rowCount: number;
+  screenTitle: string | null;
+  filters: string[];
+  url: string;
+  headers: string[];
+  rows: Record<string, string>[];
+};
+
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
@@ -86,7 +113,36 @@ function normalizeSymbolInput(input: string): { symbol: string } | { error: stri
     return { symbol: `HK:${raw.padStart(4, '0')}` };
   }
 
-  return { error: 'Unsupported code format. Use 6-digit CN ticker, 4-5 digit HK ticker, or CN:/HK: prefixed symbol.' };
+  return {
+    error:
+      'Unsupported code format. Use 6-digit CN ticker, 4-5 digit HK ticker, or CN:/HK: prefixed symbol.',
+  };
+}
+
+function normalizeScreenerSymbol(raw: string): string | null {
+  const s = String(raw || '')
+    .trim()
+    .toUpperCase();
+  if (!s) return null;
+
+  // Try the same rules as manual input first.
+  const parsed = normalizeSymbolInput(s);
+  if (!('error' in parsed)) return parsed.symbol;
+
+  // TradingView forms like "SSE:600000" / "SZSE:000001" / "HKEX:0700"
+  const m = s.match(/^[A-Z]+:(\d{4,6})$/);
+  if (m) {
+    const code = m[1];
+    if (/^\d{6}$/.test(code)) return `CN:${code}`;
+    if (/^\d{4,5}$/.test(code)) return `HK:${code.padStart(4, '0')}`;
+  }
+  return null;
+}
+
+function chunk<T>(arr: T[], n: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
 }
 
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
@@ -94,6 +150,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
+  const [syncBusy, setSyncBusy] = React.useState(false);
+  const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [tooltip, setTooltip] = React.useState<{
     open: boolean;
     x: number;
@@ -113,7 +171,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         return {
           symbol: String(it.symbol ?? '').trim(),
           name: it.name ?? null,
-          nameStatus: it.nameStatus === 'resolved' || it.nameStatus === 'not_found' ? it.nameStatus : undefined,
+          nameStatus:
+            it.nameStatus === 'resolved' || it.nameStatus === 'not_found'
+              ? it.nameStatus
+              : undefined,
           addedAt: String(it.addedAt ?? new Date().toISOString()),
         };
       })
@@ -138,7 +199,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       try {
         const sp = new URLSearchParams();
         for (const s of missing) sp.append('symbols', s);
-        const rows = await apiGetJson<MarketStockBasicRow[]>(`/market/stocks/resolve?${sp.toString()}`);
+        const rows = await apiGetJson<MarketStockBasicRow[]>(
+          `/market/stocks/resolve?${sp.toString()}`,
+        );
         if (cancelled) return;
         const bySym = new Map<string, MarketStockBasicRow>();
         for (const r of Array.isArray(rows) ? rows : []) bySym.set(r.symbol, r);
@@ -192,6 +255,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
   function onAdd() {
     setError(null);
+    setSyncMsg(null);
     const parsed = normalizeSymbolInput(code);
     if ('error' in parsed) {
       setError(parsed.error);
@@ -215,7 +279,83 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   }
 
   function onRemove(sym: string) {
+    setSyncMsg(null);
     persist(items.filter((x) => x.symbol !== sym));
+  }
+
+  async function onSyncFromScreener() {
+    setError(null);
+    setSyncMsg(null);
+    setSyncBusy(true);
+    try {
+      const s = await apiGetJson<{ items: TvScreener[] }>('/integrations/tradingview/screeners');
+      const enabled = (s.items || []).filter((x) => x && x.enabled);
+      if (!enabled.length) {
+        setSyncMsg('No enabled screeners.');
+        return;
+      }
+
+      const snapshotDetails = await Promise.all(
+        enabled.map(async (sc) => {
+          const list = await apiGetJson<{ items: TvSnapshotSummary[] }>(
+            `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/snapshots?limit=1`,
+          );
+          const latest = list.items?.[0];
+          if (!latest) return null;
+          return await apiGetJson<TvSnapshotDetail>(
+            `/integrations/tradingview/snapshots/${encodeURIComponent(latest.id)}`,
+          );
+        }),
+      );
+
+      const candidates: string[] = [];
+      for (const snap of snapshotDetails) {
+        if (!snap) continue;
+        for (const r of snap.rows || []) {
+          const raw = String(r['Ticker'] || r['Symbol'] || '').trim();
+          const sym = normalizeScreenerSymbol(raw);
+          if (sym) candidates.push(sym);
+        }
+      }
+
+      const uniq = Array.from(new Set(candidates)).slice(0, 2000);
+      if (!uniq.length) {
+        setSyncMsg('No symbols found in latest screener snapshots.');
+        return;
+      }
+
+      // Batch TrendOK checks (backend caps at 200; we chunk explicitly).
+      const okSyms: string[] = [];
+      for (const part of chunk(uniq, 200)) {
+        const sp = new URLSearchParams();
+        for (const s2 of part) sp.append('symbols', s2);
+        const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+        for (const rr of Array.isArray(rows) ? rows : []) {
+          if (rr && rr.symbol && rr.trendOk === true) okSyms.push(rr.symbol);
+        }
+      }
+      const okUniq = Array.from(new Set(okSyms));
+
+      const existing = new Set(items.map((x) => x.symbol));
+      const now = new Date().toISOString();
+      const added: WatchlistItem[] = okUniq
+        .filter((sym) => !existing.has(sym))
+        .map((sym) => ({ symbol: sym, name: null, addedAt: now }));
+
+      if (!added.length) {
+        setSyncMsg(
+          `Screener scanned ${uniq.length} symbols; TrendOK ✅: ${okUniq.length}; nothing new to add.`,
+        );
+        return;
+      }
+
+      persist([...added, ...items]);
+      setSyncMsg(`Added ${added.length} TrendOK ✅ stocks from screener (scanned ${uniq.length}).`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSyncBusy(false);
+    }
   }
 
   function showTooltip(el: HTMLElement, content: React.ReactNode, width = 360) {
@@ -334,12 +474,29 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
   return (
     <div className="mx-auto w-full max-w-5xl p-6">
-      <div className="mb-6">
-        <div className="text-lg font-semibold">Watchlist</div>
-        <div className="mt-1 text-sm text-[var(--k-muted)]">Manage the stocks you are watching.</div>
-        <div className="mt-1 text-xs text-[var(--k-muted)]">
-          Names are resolved from Market cache. If names are missing, go to Market and click Sync once.
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-lg font-semibold">Watchlist</div>
+          <div className="mt-1 text-sm text-[var(--k-muted)]">
+            Manage the stocks you are watching.
+          </div>
+          <div className="mt-1 text-xs text-[var(--k-muted)]">
+            Names are resolved from Market cache. If names are missing, go to Market and click Sync
+            once.
+          </div>
+          {syncMsg ? <div className="mt-2 text-xs text-[var(--k-muted)]">{syncMsg}</div> : null}
+          {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => void onSyncFromScreener()}
+          disabled={syncBusy}
+          className="gap-2"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Sync from screener
+        </Button>
       </div>
 
       <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
@@ -371,13 +528,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             </Button>
           </div>
         </div>
-        {error ? (
-          <div className="mt-2 text-sm text-red-600">{error}</div>
-        ) : (
-          <div className="mt-2 text-xs text-[var(--k-muted)]">
-            Supported inputs: CN 6-digit ticker, HK 4-5 digit ticker, or prefixed symbol (CN:/HK:).
-          </div>
-        )}
+        <div className="mt-2 text-xs text-[var(--k-muted)]">
+          Supported inputs: CN 6-digit ticker, HK 4-5 digit ticker, or prefixed symbol (CN:/HK:).
+        </div>
       </section>
 
       <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
@@ -468,4 +621,3 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     </div>
   );
 }
-
