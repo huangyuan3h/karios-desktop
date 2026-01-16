@@ -15,6 +15,7 @@ import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
 import { StrategyPage } from '@/components/pages/StrategyPage';
 import { StockPage } from '@/components/pages/StockPage';
+import { WatchlistPage } from '@/components/pages/WatchlistPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
@@ -105,6 +106,8 @@ export function AppShell() {
                 ? 'Quant'
               : activePage === 'industryFlow'
                 ? 'Industry Flow'
+              : activePage === 'watchlist'
+                ? 'Watchlist'
               : activePage === 'broker'
                 ? 'Broker'
               : activePage === 'strategy'
@@ -167,6 +170,13 @@ export function AppShell() {
               />
             ) : activePage === 'industryFlow' ? (
               <IndustryFlowPage />
+            ) : activePage === 'watchlist' ? (
+              <WatchlistPage
+                onOpenStock={(symbol) => {
+                  setActiveStockSymbol(symbol);
+                  setActivePage('stock');
+                }}
+              />
             ) : activePage === 'strategy' ? (
               <StrategyPage />
             ) : activePage === 'leaders' ? (

@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   ListOrdered,
   Sparkles,
+  Star,
   Settings,
   Table2,
 } from 'lucide-react';
@@ -21,6 +22,7 @@ const items = [
   { id: 'market', label: 'Market', icon: Table2 },
   { id: 'rank', label: 'Quant', icon: ListOrdered },
   { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
+  { id: 'watchlist', label: 'Watchlist', icon: Star },
   { id: 'broker', label: 'Broker', icon: CreditCard },
   { id: 'strategy', label: 'Strategy', icon: Sparkles },
   { id: 'leaders', label: 'Leaders', icon: Crown },
