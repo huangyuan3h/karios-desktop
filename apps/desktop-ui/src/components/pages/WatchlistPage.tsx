@@ -145,6 +145,11 @@ function chunk<T>(arr: T[], n: number): T[][] {
   return out;
 }
 
+function fmtPrice(v: number | null | undefined): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return v.toFixed(2);
+}
+
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const [items, setItems] = React.useState<WatchlistItem[]>([]);
   const [code, setCode] = React.useState('');
@@ -546,6 +551,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 <tr className="text-left">
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2">Current</th>
                   <th className="px-3 py-2">
                     <div className="inline-flex items-center gap-2">
                       <span>TrendOK</span>
@@ -571,6 +577,18 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   <tr key={it.symbol} className="border-t border-[var(--k-border)]">
                     <td className="px-3 py-2 font-mono">{it.symbol}</td>
                     <td className="px-3 py-2">{it.name || '—'}</td>
+                    <td
+                      className="px-3 py-2 font-mono"
+                      title={
+                        trend[it.symbol]?.asOfDate
+                          ? `as of ${trend[it.symbol]?.asOfDate}`
+                          : trend[it.symbol]
+                            ? 'as of latest cached daily bar'
+                            : '—'
+                      }
+                    >
+                      {fmtPrice(trend[it.symbol]?.values?.close)}
+                    </td>
                     <td className="px-3 py-2">{renderTrendOkCell(it.symbol)}</td>
                     <td className="px-3 py-2 text-right">
                       <div className="flex justify-end gap-2">
