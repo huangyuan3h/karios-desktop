@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, Info, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, CircleX, Info, RefreshCw, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
@@ -609,13 +609,19 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         onBlur={hideTooltip}
         aria-label="StopLoss details"
       >
-        <span
-          className={
-            exitNow ? 'font-mono text-red-600' : warnHalf ? 'font-mono text-amber-700' : 'font-mono'
-          }
-        >
-          {exitNow ? exitDisplay || '立刻离场' : warnHalf ? `⚠︎ ${fmtPrice(p)}` : fmtPrice(p)}
-        </span>
+        {exitNow ? (
+          <span className="inline-flex items-center gap-1 font-mono text-red-600">
+            <CircleX className="h-4 w-4" aria-hidden />
+            {fmtPrice(p)}
+          </span>
+        ) : warnHalf ? (
+          <span className="inline-flex items-center gap-1 font-mono text-amber-700">
+            <span aria-hidden>⚠︎</span>
+            {fmtPrice(p)}
+          </span>
+        ) : (
+          <span className="font-mono">{fmtPrice(p)}</span>
+        )}
       </button>
     );
   }
@@ -882,16 +888,19 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 {sortedItems.map((it) => (
                   <tr
                     key={it.symbol}
-                    className="border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)] cursor-pointer"
-                    onClick={() => onOpenStock?.(it.symbol)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') onOpenStock?.(it.symbol);
-                    }}
-                    tabIndex={0}
-                    role="button"
-                    aria-label={`Open ${it.symbol}`}
+                    className="border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)]"
                   >
-                    <td className="px-3 py-2 font-mono">{it.symbol}</td>
+                    <td className="px-3 py-2 font-mono">
+                      <button
+                        type="button"
+                        className="inline-flex items-center rounded px-1 py-0.5 hover:underline"
+                        onClick={() => onOpenStock?.(it.symbol)}
+                        disabled={!onOpenStock}
+                        aria-label={`Open ${it.symbol}`}
+                      >
+                        {it.symbol}
+                      </button>
+                    </td>
                     <td className="px-3 py-2">{it.name || '—'}</td>
                     <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
                     <td className="px-3 py-2">{renderBuyCell(it.symbol)}</td>
@@ -915,10 +924,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRemove(it.symbol);
-                          }}
+                          onClick={() => onRemove(it.symbol)}
                           aria-label="Remove"
                           title="Remove"
                         >
