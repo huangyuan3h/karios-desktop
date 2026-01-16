@@ -85,6 +85,17 @@ async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
   return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
+async function apiPutJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
+}
+
 export function BrokerPage() {
   const { addReference } = useChatStore();
   const [images, setImages] = React.useState<ImportImage[]>([]);
@@ -96,9 +107,9 @@ export function BrokerPage() {
   const [showNewAccount, setShowNewAccount] = React.useState(false);
   const [newAccountTitle, setNewAccountTitle] = React.useState('');
   const [newAccountMasked, setNewAccountMasked] = React.useState('');
+  const [showRenameAccount, setShowRenameAccount] = React.useState(false);
+  const [renameAccountTitle, setRenameAccountTitle] = React.useState('');
   const [showAllPositions, setShowAllPositions] = React.useState(false);
-  const [showAllOrders, setShowAllOrders] = React.useState(false);
-  const [showAllTrades, setShowAllTrades] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
     setError(null);
@@ -123,6 +134,15 @@ export function BrokerPage() {
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  React.useEffect(() => {
+    if (!showRenameAccount) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowRenameAccount(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showRenameAccount]);
 
   const addImageFiles = React.useCallback(async (files: File[]) => {
     const next: ImportImage[] = [];
@@ -166,25 +186,6 @@ export function BrokerPage() {
     }
   }
 
-  async function onDeleteConditionalOrder(order: Record<string, unknown>) {
-    if (!accountId) return;
-    const ok = window.confirm('Delete this conditional order from the consolidated state?');
-    if (!ok) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const st = await apiPostJson<BrokerAccountState>(
-        `/broker/pingan/accounts/${encodeURIComponent(accountId)}/state/conditional-orders/delete`,
-        { order },
-      );
-      setState(st);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function onCreateAccount() {
     const title = newAccountTitle.trim();
     if (!title) return;
@@ -200,6 +201,23 @@ export function BrokerPage() {
       setNewAccountMasked('');
       setShowNewAccount(false);
       setAccountId(created.id);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRenameAccount() {
+    const title = renameAccountTitle.trim();
+    if (!accountId) return;
+    if (!title) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiPutJson<{ ok: boolean }>(`/broker/accounts/${encodeURIComponent(accountId)}`, { title });
+      setShowRenameAccount(false);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -234,6 +252,20 @@ export function BrokerPage() {
           <Button
             variant="secondary"
             size="sm"
+            onClick={() => {
+              if (!accountId) return;
+              const acct = accounts.find((a) => a.id === accountId);
+              setRenameAccountTitle((acct?.title ?? '').trim());
+              setShowRenameAccount(true);
+            }}
+            disabled={busy || !accountId}
+            title="Rename account"
+          >
+            Rename
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => setShowNewAccount((v) => !v)}
             disabled={busy}
           >
@@ -245,6 +277,48 @@ export function BrokerPage() {
           </Button>
         </div>
       </div>
+
+      {showRenameAccount ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Rename account"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowRenameAccount(false);
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 shadow-xl">
+            <div className="mb-2 text-sm font-medium">Rename account</div>
+            <div className="text-xs text-[var(--k-muted)]">
+              This updates the account title in SQLite and affects all modules.
+            </div>
+            <div className="mt-3 grid gap-2">
+              <input
+                className="h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 text-sm outline-none"
+                placeholder="New title"
+                value={renameAccountTitle}
+                onChange={(e) => setRenameAccountTitle(e.target.value)}
+                maxLength={64}
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowRenameAccount(false)}
+                  disabled={busy}
+                >
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={() => void onRenameAccount()} disabled={busy || !renameAccountTitle.trim()}>
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showNewAccount ? (
         <div className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
@@ -296,9 +370,7 @@ export function BrokerPage() {
               <div className="font-medium">Account state</div>
               <div className="mt-1 text-xs text-[var(--k-muted)]">
                 Updated: {new Date(state.updatedAt).toLocaleString()} • positions{' '}
-                {Number(state.counts?.positions ?? state.positions.length)} • orders{' '}
-                {Number(state.counts?.conditionalOrders ?? state.conditionalOrders.length)} • trades{' '}
-                {Number(state.counts?.trades ?? state.trades.length)}
+                {Number(state.counts?.positions ?? state.positions.length)}
               </div>
             </div>
             <Button
@@ -411,149 +483,6 @@ export function BrokerPage() {
             </div>
           </div>
 
-          <div className="mt-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="text-sm font-medium">Conditional orders</div>
-              {state.conditionalOrders.length > 12 ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs text-[var(--k-muted)]"
-                  onClick={() => setShowAllOrders((v) => !v)}
-                >
-                  {showAllOrders ? 'Show less' : `Show all (${state.conditionalOrders.length})`}
-                </Button>
-              ) : null}
-            </div>
-            {state.conditionalOrders.length ? (
-              <div
-                className="overflow-auto rounded border border-[var(--k-border)]"
-                style={{ maxHeight: showAllOrders ? 420 : undefined }}
-              >
-                <table className="w-full border-collapse text-xs">
-                  <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
-                    <tr className="text-left">
-                      <th className="px-2 py-1">Ticker</th>
-                      <th className="px-2 py-1">Name</th>
-                      <th className="px-2 py-1">Side</th>
-                      <th className="px-2 py-1">Trigger</th>
-                      <th className="px-2 py-1">Qty</th>
-                      <th className="px-2 py-1">Status</th>
-                      <th className="px-2 py-1 w-[44px] text-right"> </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(showAllOrders
-                      ? state.conditionalOrders
-                      : state.conditionalOrders.slice(0, 12)
-                    ).map((o, idx) => {
-                      const ticker = pickStr(o, ['ticker', 'Ticker', 'symbol', 'Symbol']);
-                      const name = pickStr(o, ['name', 'Name']);
-                      const side = pickStr(o, ['side', 'Side', '方向']);
-                      const trigger =
-                        `${pickStr(o, ['triggerCondition', 'condition', '触发条件'])} ${pickStr(o, [
-                          'triggerValue',
-                          'value',
-                          '触发价',
-                        ])}`.trim();
-                      const qty = pickStr(o, ['qty', 'quantity', '委托数量', '数量']);
-                      const status = pickStr(o, ['status', 'Status', '状态']);
-                      return (
-                        <tr key={idx} className="border-t border-[var(--k-border)]">
-                          <td className="px-2 py-1 font-mono">{ticker}</td>
-                          <td className="px-2 py-1">{name}</td>
-                          <td className="px-2 py-1 font-mono">{side}</td>
-                          <td className="px-2 py-1 font-mono">{trigger}</td>
-                          <td className="px-2 py-1 font-mono">{qty}</td>
-                          <td className="px-2 py-1 font-mono">{status}</td>
-                          <td className="px-2 py-1 text-right">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              disabled={busy}
-                              onClick={() => void onDeleteConditionalOrder(o)}
-                              aria-label="Delete"
-                              title="Delete"
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-xs text-[var(--k-muted)]">
-                No conditional orders in current state.
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="text-sm font-medium">Trades</div>
-              {state.trades.length > 12 ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs text-[var(--k-muted)]"
-                  onClick={() => setShowAllTrades((v) => !v)}
-                >
-                  {showAllTrades ? 'Show less' : `Show all (${state.trades.length})`}
-                </Button>
-              ) : null}
-            </div>
-            {state.trades.length ? (
-              <div
-                className="overflow-auto rounded border border-[var(--k-border)]"
-                style={{ maxHeight: showAllTrades ? 420 : undefined }}
-              >
-                <table className="w-full border-collapse text-xs">
-                  <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
-                    <tr className="text-left">
-                      <th className="px-2 py-1">Time</th>
-                      <th className="px-2 py-1">Ticker</th>
-                      <th className="px-2 py-1">Name</th>
-                      <th className="px-2 py-1">Side</th>
-                      <th className="px-2 py-1">Price</th>
-                      <th className="px-2 py-1">Qty</th>
-                      <th className="px-2 py-1">Amount</th>
-                      <th className="px-2 py-1">Fee</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(showAllTrades ? state.trades : state.trades.slice(0, 12)).map((t, idx) => {
-                      const time = pickStr(t, ['time', 'Time', 'date', 'Date', '时间']);
-                      const ticker = pickStr(t, ['ticker', 'Ticker', 'symbol', 'Symbol', '代码']);
-                      const name = pickStr(t, ['name', 'Name', '名称']);
-                      const side = pickStr(t, ['side', 'Side', '方向', '操作']);
-                      const price = pickStr(t, ['price', 'Price', '成交价']);
-                      const qty = pickStr(t, ['qty', 'quantity', '成交量', '数量']);
-                      const amount = pickStr(t, ['amount', 'Amount', '成交金额']);
-                      const fee = pickStr(t, ['fee', 'Fee', '手续费']);
-                      return (
-                        <tr key={idx} className="border-t border-[var(--k-border)]">
-                          <td className="px-2 py-1 font-mono">{time}</td>
-                          <td className="px-2 py-1 font-mono">{ticker}</td>
-                          <td className="px-2 py-1">{name}</td>
-                          <td className="px-2 py-1 font-mono">{side}</td>
-                          <td className="px-2 py-1 font-mono">{price}</td>
-                          <td className="px-2 py-1 font-mono">{qty}</td>
-                          <td className="px-2 py-1 font-mono">{amount}</td>
-                          <td className="px-2 py-1 font-mono">{fee}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-xs text-[var(--k-muted)]">No trades in current state.</div>
-            )}
-          </div>
         </section>
       ) : null}
 

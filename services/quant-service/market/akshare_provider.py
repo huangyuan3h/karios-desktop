@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
@@ -60,6 +61,8 @@ def fetch_cn_a_spot() -> list[StockRow]:
         quote = {
             "price": str(r.get("最新价") or ""),
             "change_pct": str(r.get("涨跌幅") or ""),
+            "open_pct": str(r.get("今开") or r.get("开盘") or ""),
+            "vol_ratio": str(r.get("量比") or ""),
             "volume": str(r.get("成交量") or ""),
             "turnover": str(r.get("成交额") or ""),
             "market_cap": str(r.get("总市值") or ""),
@@ -73,6 +76,57 @@ def fetch_cn_a_spot() -> list[StockRow]:
                 currency="CNY",
                 quote=quote,
             ),
+        )
+    return out
+
+
+def fetch_cn_a_minute_bars(
+    ticker: str,
+    *,
+    trade_date: str,
+    interval: str = "1",
+) -> list[dict[str, Any]]:
+    """
+    Fetch CN A-share minute bars using AkShare (best-effort).
+
+    Notes:
+    - AkShare APIs vary by version; we intentionally keep this function resilient.
+    - We filter rows by `trade_date` (YYYY-MM-DD) after fetch to avoid relying on optional date params.
+    - Returned rows are plain dicts with normalized keys:
+      - ts (ISO-like string), open, high, low, close, volume, amount
+    """
+    ak = _akshare()
+    if not hasattr(ak, "stock_zh_a_hist_min_em"):
+        raise RuntimeError("AkShare missing stock_zh_a_hist_min_em. Please upgrade AkShare.")
+
+    # Best-effort call: some versions accept (symbol, period, adjust), some require named args.
+    try:
+        df = ak.stock_zh_a_hist_min_em(symbol=ticker, period=interval, adjust="")  # type: ignore[misc]
+    except TypeError:
+        df = ak.stock_zh_a_hist_min_em(ticker, interval)  # type: ignore[misc]
+
+    rows = _to_records(df)
+    out: list[dict[str, Any]] = []
+    d_prefix = trade_date.strip()
+    for r in rows:
+        # Common time column names: "时间" or "日期时间"
+        ts0 = r.get("时间") or r.get("日期时间") or r.get("datetime") or r.get("time") or ""
+        ts = str(ts0).strip().replace("/", "-")
+        if not ts:
+            continue
+        if d_prefix not in ts:
+            # AkShare may include multiple days; keep only the requested trade_date.
+            continue
+        out.append(
+            {
+                "ts": ts,
+                "open": r.get("开盘") or r.get("open") or r.get("Open") or "",
+                "high": r.get("最高") or r.get("high") or r.get("High") or "",
+                "low": r.get("最低") or r.get("low") or r.get("Low") or "",
+                "close": r.get("收盘") or r.get("close") or r.get("Close") or "",
+                "volume": r.get("成交量") or r.get("volume") or r.get("Volume") or "",
+                "amount": r.get("成交额") or r.get("amount") or r.get("Amount") or "",
+            }
         )
     return out
 
@@ -95,7 +149,37 @@ def fetch_cn_market_breadth_eod(as_of: date) -> dict[str, Any]:
     up = 0
     down = 0
     flat = 0
+    total_turnover_cny = 0.0
+    total_volume = 0.0
+
+    def _to_float0(v: Any) -> float:
+        if v is None:
+            return 0.0
+        if isinstance(v, (int, float)):
+            return float(v) if float(v) == float(v) else 0.0
+        s = str(v).strip().replace(",", "").replace("%", "")
+        if not s or s in ("-", "—", "N/A", "None"):
+            return 0.0
+        # Keep digits / sign / dot only
+        keep = []
+        for ch in s:
+            if ch.isdigit() or ch in (".", "-", "+"):
+                keep.append(ch)
+        try:
+            return float("".join(keep))
+        except Exception:
+            return 0.0
+
     for r in rows:
+        # Market activity (best-effort): sum turnover/volume from spot snapshot.
+        # Note: this is NOT true historical EOD for arbitrary dates; it's the current snapshot when called.
+        # We keep it consistent with breadth which is also computed from spot.
+        turnover0 = r.get("成交额") or r.get("turnover") or r.get("成交额(元)") or ""
+        vol0 = r.get("成交量") or r.get("volume") or ""
+        total_turnover_cny += _parse_money_to_cny(turnover0)
+        total_volume += _to_float0(vol0)
+
+        # Breadth: only count rows with parseable change_pct.
         chg = r.get("涨跌幅") or r.get("change_pct") or r.get("涨跌幅%") or ""
         s = str(chg).strip().replace("%", "")
         try:
@@ -117,6 +201,8 @@ def fetch_cn_market_breadth_eod(as_of: date) -> dict[str, Any]:
         "flat_count": flat,
         "total_count": total,
         "up_down_ratio": ratio,
+        "total_turnover_cny": total_turnover_cny,
+        "total_volume": total_volume,
         "raw": {"source": "stock_zh_a_spot_em", "rows": len(rows)},
     }
 
@@ -139,19 +225,36 @@ def fetch_cn_yesterday_limitup_premium(as_of: date) -> dict[str, Any]:
     """
     ak = _akshare()
     d = as_of.strftime("%Y-%m-%d")
-    y = as_of - timedelta(days=1)
     # AkShare interfaces can vary; keep best-effort.
     if not hasattr(ak, "stock_zt_pool_em"):
         raise RuntimeError("AkShare missing stock_zt_pool_em. Please upgrade AkShare.")
-    df = ak.stock_zt_pool_em(date=_safe_trade_date(y))  # type: ignore[misc]
-    rows = _to_records(df)
+
+    # "Yesterday" may be a non-trading day (weekend/holiday). Walk back to find the most recent
+    # day with a non-empty limit-up pool (best-effort).
+    chosen_y: date | None = None
     codes: list[str] = []
-    for r in rows:
-        code = str(r.get("代码") or r.get("code") or r.get("股票代码") or "").strip()
-        if code:
-            codes.append(code)
+    for back in range(1, 8):
+        y = as_of - timedelta(days=back)
+        try:
+            df = ak.stock_zt_pool_em(date=_safe_trade_date(y))  # type: ignore[misc]
+            rows = _to_records(df)
+        except Exception:
+            continue
+        codes = []
+        for r in rows:
+            code = str(r.get("代码") or r.get("code") or r.get("股票代码") or "").strip()
+            if code:
+                codes.append(code)
+        if codes:
+            chosen_y = y
+            break
     if not codes:
-        return {"date": d, "premium": 0.0, "count": 0, "raw": {"y": y.strftime("%Y-%m-%d")}}
+        return {
+            "date": d,
+            "premium": 0.0,
+            "count": 0,
+            "raw": {"y": None, "searchedBackDays": 7},
+        }
 
     # Map today's spot change_pct for those codes.
     spot = fetch_cn_a_spot()
@@ -168,7 +271,12 @@ def fetch_cn_yesterday_limitup_premium(as_of: date) -> dict[str, Any]:
         if code in chg_map:
             vals.append(float(chg_map[code]))
     premium = float(sum(vals) / len(vals)) if vals else 0.0
-    return {"date": d, "premium": premium, "count": len(codes), "raw": {"y": y.strftime("%Y-%m-%d"), "matched": len(vals)}}
+    return {
+        "date": d,
+        "premium": premium,
+        "count": len(codes),
+        "raw": {"y": chosen_y.strftime("%Y-%m-%d") if chosen_y else None, "matched": len(vals)},
+    }
 
 
 def fetch_cn_failed_limitup_rate(as_of: date) -> dict[str, Any]:
@@ -185,15 +293,31 @@ def fetch_cn_failed_limitup_rate(as_of: date) -> dict[str, Any]:
     """
     ak = _akshare()
     d = as_of.strftime("%Y-%m-%d")
-    # ever limit-up pool
-    if not hasattr(ak, "stock_zt_pool_strong_em"):
-        raise RuntimeError("AkShare missing stock_zt_pool_strong_em. Please upgrade AkShare.")
+    # Preferred method: use dedicated "炸板" (failed limit-up) pool if available.
+    # This avoids relying on "strong pool" APIs whose semantics vary by AkShare versions.
     if not hasattr(ak, "stock_zt_pool_em"):
         raise RuntimeError("AkShare missing stock_zt_pool_em. Please upgrade AkShare.")
-    df_ever = ak.stock_zt_pool_strong_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
-    ever_rows = _to_records(df_ever)
     df_close = ak.stock_zt_pool_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
     close_rows = _to_records(df_close)
+    failed_rows: list[dict[str, Any]] = []
+    method = "fallback_strong_minus_close"
+    if hasattr(ak, "stock_zt_pool_zbgc_em"):
+        try:
+            df_failed = ak.stock_zt_pool_zbgc_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
+            failed_rows = _to_records(df_failed)
+            method = "zbgc_over_zbgc_plus_close"
+        except Exception:
+            failed_rows = []
+            method = "fallback_strong_minus_close"
+    elif hasattr(ak, "stock_zt_pool_zb_em"):
+        # Some versions use a shorter name.
+        try:
+            df_failed = ak.stock_zt_pool_zb_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
+            failed_rows = _to_records(df_failed)
+            method = "zb_over_zb_plus_close"
+        except Exception:
+            failed_rows = []
+            method = "fallback_strong_minus_close"
 
     def _codes(rs: list[dict[str, Any]]) -> set[str]:
         s: set[str] = set()
@@ -203,19 +327,163 @@ def fetch_cn_failed_limitup_rate(as_of: date) -> dict[str, Any]:
                 s.add(code)
         return s
 
-    ever = _codes(ever_rows)
     close = _codes(close_rows)
-    ever_count = len(ever)
     close_count = len(close)
-    failed = max(0, ever_count - close_count)
-    rate = (float(failed) / float(ever_count) * 100.0) if ever_count > 0 else 0.0
+    failed = _codes(failed_rows)
+    failed_count = len(failed)
+    if method in ("zbgc_over_zbgc_plus_close", "zb_over_zb_plus_close"):
+        denom = failed_count + close_count
+        rate = (float(failed_count) / float(denom) * 100.0) if denom > 0 else 0.0
+        ever_count = denom
+    else:
+        # Fallback: infer "ever" via strong pool minus close pool (legacy behavior).
+        if not hasattr(ak, "stock_zt_pool_strong_em"):
+            raise RuntimeError("AkShare missing stock_zt_pool_strong_em. Please upgrade AkShare.")
+        df_ever = ak.stock_zt_pool_strong_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
+        ever_rows = _to_records(df_ever)
+        ever = _codes(ever_rows)
+        ever_count = len(ever)
+        failed_count = max(0, ever_count - close_count)
+        rate = (float(failed_count) / float(ever_count) * 100.0) if ever_count > 0 else 0.0
     return {
         "date": d,
         "failed_rate": rate,
         "ever_count": ever_count,
         "close_count": close_count,
-        "raw": {"everRows": len(ever_rows), "closeRows": len(close_rows)},
+        "raw": {
+            "method": method,
+            "failedRows": len(failed_rows),
+            "closeRows": len(close_rows),
+        },
     }
+
+
+def fetch_cn_limitup_pool(as_of: date) -> list[dict[str, Any]]:
+    """
+    CN A-share limit-up pool (best-effort).
+
+    Returns a list of dict with:
+      - ticker
+      - name (optional)
+      - raw (original fields)
+    """
+    ak = _akshare()
+    if not hasattr(ak, "stock_zt_pool_em"):
+        raise RuntimeError("AkShare missing stock_zt_pool_em. Please upgrade AkShare.")
+    df = ak.stock_zt_pool_em(date=_safe_trade_date(as_of))  # type: ignore[misc]
+    rows = _to_records(df)
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        code = str(r.get("代码") or r.get("code") or r.get("股票代码") or "").strip()
+        if not code:
+            continue
+        name = str(r.get("名称") or r.get("name") or r.get("股票简称") or "").strip()
+        out.append({"ticker": code, "name": name, "raw": r})
+    return out
+
+
+def fetch_cn_industry_members(industry_name: str) -> list[str]:
+    """
+    Fetch industry board members (tickers) by industry name (best-effort).
+    """
+    ak = _akshare()
+    fn = None
+    if hasattr(ak, "stock_board_industry_cons_em"):
+        fn = ak.stock_board_industry_cons_em  # type: ignore[attr-defined]
+    elif hasattr(ak, "stock_board_industry_cons_ths"):
+        fn = ak.stock_board_industry_cons_ths  # type: ignore[attr-defined]
+    if fn is None:
+        raise RuntimeError("AkShare missing industry constituents API. Please upgrade AkShare.")
+    df = fn(industry_name)  # type: ignore[misc]
+    rows = _to_records(df)
+    out: list[str] = []
+    for r in rows:
+        code = str(r.get("代码") or r.get("code") or r.get("股票代码") or "").strip()
+        if code:
+            out.append(code)
+    return out
+
+
+def fetch_cn_concept_members(concept_name: str) -> list[str]:
+    """
+    Fetch concept board members (tickers) by concept name (best-effort).
+    """
+    ak = _akshare()
+    fn = None
+    if hasattr(ak, "stock_board_concept_cons_em"):
+        fn = ak.stock_board_concept_cons_em  # type: ignore[attr-defined]
+    elif hasattr(ak, "stock_board_concept_cons_ths"):
+        fn = ak.stock_board_concept_cons_ths  # type: ignore[attr-defined]
+    if fn is None:
+        raise RuntimeError("AkShare missing concept constituents API. Please upgrade AkShare.")
+    df = fn(concept_name)  # type: ignore[misc]
+    rows = _to_records(df)
+    out: list[str] = []
+    for r in rows:
+        code = str(r.get("代码") or r.get("code") or r.get("股票代码") or "").strip()
+        if code:
+            out.append(code)
+    return out
+
+
+def fetch_cn_industry_boards_spot() -> list[dict[str, Any]]:
+    """
+    CN A-share industry board spot rank (best-effort).
+    Returns list of dict with:
+      - name
+      - change_pct
+      - turnover
+      - raw
+    """
+    ak = _akshare()
+    fn = None
+    if hasattr(ak, "stock_board_industry_name_em"):
+        fn = ak.stock_board_industry_name_em  # type: ignore[attr-defined]
+    elif hasattr(ak, "stock_board_industry_name_ths"):
+        fn = ak.stock_board_industry_name_ths  # type: ignore[attr-defined]
+    if fn is None:
+        raise RuntimeError("AkShare missing industry board spot API. Please upgrade AkShare.")
+    df = fn()  # type: ignore[misc]
+    rows = _to_records(df)
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        name = str(r.get("板块名称") or r.get("行业名称") or r.get("name") or r.get("名称") or "").strip()
+        if not name:
+            continue
+        chg = r.get("涨跌幅") or r.get("涨跌幅%") or r.get("change_pct") or ""
+        turnover = r.get("成交额") or r.get("成交额(元)") or r.get("turnover") or ""
+        out.append({"name": name, "change_pct": str(chg), "turnover": str(turnover), "raw": r})
+    return out
+
+
+def fetch_cn_concept_boards_spot() -> list[dict[str, Any]]:
+    """
+    CN A-share concept board spot rank (best-effort).
+    Returns list of dict with:
+      - name
+      - change_pct
+      - turnover
+      - raw
+    """
+    ak = _akshare()
+    fn = None
+    if hasattr(ak, "stock_board_concept_name_em"):
+        fn = ak.stock_board_concept_name_em  # type: ignore[attr-defined]
+    elif hasattr(ak, "stock_board_concept_name_ths"):
+        fn = ak.stock_board_concept_name_ths  # type: ignore[attr-defined]
+    if fn is None:
+        raise RuntimeError("AkShare missing concept board spot API. Please upgrade AkShare.")
+    df = fn()  # type: ignore[misc]
+    rows = _to_records(df)
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        name = str(r.get("板块名称") or r.get("概念名称") or r.get("name") or r.get("名称") or "").strip()
+        if not name:
+            continue
+        chg = r.get("涨跌幅") or r.get("涨跌幅%") or r.get("change_pct") or ""
+        turnover = r.get("成交额") or r.get("成交额(元)") or r.get("turnover") or ""
+        out.append({"name": name, "change_pct": str(chg), "turnover": str(turnover), "raw": r})
+    return out
 
 
 def fetch_hk_spot() -> list[StockRow]:
@@ -429,7 +697,8 @@ def _parse_money_to_cny(value: Any) -> float:
     if value is None:
         return 0.0
     if isinstance(value, (int, float)):
-        return float(value)
+        f = float(value)
+        return f if math.isfinite(f) else 0.0
     s = str(value).strip()
     if not s or s in ("-", "—", "N/A", "None"):
         return 0.0

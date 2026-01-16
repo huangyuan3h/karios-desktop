@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from fastapi.testclient import TestClient
 
 import main
@@ -137,6 +139,36 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setattr(main, "_ai_strategy_daily_markdown", fake_ai_strategy_daily_markdown)
 
+    # Mainline snapshot should be included in Strategy context (DB-first).
+    expected_account_id = account_id
+
+    def fake_get_mainline_latest(*, account_id: str, trade_date: str | None, universe_version: str):
+        assert account_id == expected_account_id
+        assert trade_date == "2025-12-21"
+        assert universe_version == "v0"
+        return {
+            "id": "ml-1",
+            "createdAt": "2025-12-21T00:00:00Z",
+            "output": {
+                "tradeDate": "2025-12-21",
+                "asOfTs": "2025-12-21T00:00:00Z",
+                "accountId": expected_account_id,
+                "universeVersion": "v0",
+                "riskMode": "caution",
+                "selected": {
+                    "kind": "concept",
+                    "name": "CPO",
+                    "compositeScore": 80,
+                    "structureScore": 70,
+                    "logicScore": 75,
+                    "topTickers": [{"symbol": "CN:300308", "ticker": "300308", "name": "Zhong Ji Xuchuang"}],
+                },
+                "themesTopK": [],
+            },
+        }
+
+    monkeypatch.setattr(main, "_get_cn_mainline_snapshot_latest", fake_get_mainline_latest)
+
     # Generate report
     resp = client.post(
         f"/strategy/accounts/{account_id}/daily",
@@ -150,6 +182,7 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
             "includeMarketSentiment": True,
             "includeLeaders": False,
             "includeStocks": False,
+            "includeQuant2d": False,
         },
     )
     assert resp.status_code == 200
@@ -174,6 +207,10 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     ctx1 = (captured["stage1"] or {}).get("context") if isinstance(captured["stage1"], dict) else None
     assert isinstance(ctx1, dict)
     assert ctx1.get("leaderStocks") == {}
+    ml1 = ctx1.get("mainline")
+    assert isinstance(ml1, dict)
+    assert ml1.get("tradeDate") == "2025-12-21"
+    assert (ml1.get("selected") or {}).get("name") == "CPO"
 
     # Reuse report (should not generate a new id when force=false)
     resp2 = client.post(
@@ -188,4 +225,148 @@ def test_strategy_prompt_and_daily_report(tmp_path, monkeypatch) -> None:
     assert resp3.status_code == 200
     assert resp3.json()["id"] == data["id"]
 
+    # List reports (history)
+    resp4 = client.get(f"/strategy/accounts/{account_id}/reports?days=10")
+    assert resp4.status_code == 200
+    hs = resp4.json()
+    assert hs["accountId"] == account_id
+    assert hs["days"] == 10
+    items = hs.get("items") or []
+    assert isinstance(items, list)
+    assert items[0]["date"] == "2025-12-21"
+    assert items[0]["hasMarkdown"] is True
+
+
+def test_strategy_optional_quant2d_context(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    client = TestClient(main.app)
+    acc = client.post("/broker/accounts", json={"broker": "pingan", "title": "Main"}).json()
+    account_id = acc["id"]
+
+    # Seed a quant next2d snapshot (DB-first, no network).
+    main._upsert_cn_rank_snapshot(
+        account_id=account_id,
+        as_of_date="2025-12-21",
+        universe_version="v0",
+        ts="2025-12-21T00:00:00Z",
+        output={
+            "asOfTs": "2025-12-21T00:00:00Z",
+            "asOfDate": "2025-12-21",
+            "universeVersion": "v0",
+            "riskMode": "caution",
+            "objective": "profit_probability_2d",
+            "horizon": "2d",
+            "items": [
+                {
+                    "symbol": "CN:300308",
+                    "market": "CN",
+                    "ticker": "300308",
+                    "name": "Test A",
+                    "score": 77.5,
+                    "rawScore": 68.0,
+                    "probProfit2d": None,
+                    "ev2dPct": None,
+                    "dd2dPct": None,
+                    "confidence": "Low",
+                    "buyPrice": 10.0,
+                    "buyPriceSrc": "spot",
+                    "whyBullets": ["trend up", "flow ok"],
+                }
+            ],
+            "debug": {"calibrationN": 0, "calibrationReady": False},
+        },
+    )
+
+    captured = {"stage1": None, "stage2": None}
+
+    def fake_ai_strategy_candidates(*, payload):
+        captured["stage1"] = payload
+        return {
+            "date": "2025-12-21",
+            "accountId": account_id,
+            "accountTitle": "Main",
+            "candidates": [],
+            "leader": {"symbol": "", "reason": ""},
+            "model": "test-model",
+        }
+
+    def fake_ai_strategy_daily_markdown(*, payload):
+        captured["stage2"] = payload
+        return {
+            "date": "2025-12-21",
+            "accountId": account_id,
+            "accountTitle": "Main",
+            "markdown": "# Daily Strategy Report\n\n- ok\n",
+            "model": "test-model",
+        }
+
+    monkeypatch.setattr(main, "_ai_strategy_candidates", fake_ai_strategy_candidates)
+    monkeypatch.setattr(main, "_ai_strategy_daily_markdown", fake_ai_strategy_daily_markdown)
+
+    # Disable mainline to isolate quant2d assertions.
+    monkeypatch.setattr(main, "_get_cn_mainline_snapshot_latest", lambda *args, **kwargs: None)
+
+    resp = client.post(
+        f"/strategy/accounts/{account_id}/daily",
+        json={
+            "date": "2025-12-21",
+            "force": True,
+            "includeTradingView": False,
+            "includeIndustryFundFlow": False,
+            "includeMarketSentiment": False,
+            "includeLeaders": False,
+            "includeStocks": False,
+            "includeMainline": False,
+            "includeQuant2d": True,
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    ctx1 = (captured["stage1"] or {}).get("context") if isinstance(captured["stage1"], dict) else None
+    assert isinstance(ctx1, dict)
+    q1 = ctx1.get("quant2d")
+    assert isinstance(q1, dict)
+    assert (q1.get("top3") or [])[0]["ticker"] == "300308"
+
+    snap = data.get("inputSnapshot") or {}
+    assert isinstance(snap, dict)
+    q2 = snap.get("quant2d")
+    assert isinstance(q2, dict)
+    assert (q2.get("top3") or [])[0]["ticker"] == "300308"
+
+
+def test_strategy_reports_prune_keeps_last_10_days(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    client = TestClient(main.app)
+    acc = client.post("/broker/accounts", json={"broker": "pingan", "title": "Main"}).json()
+    account_id = acc["id"]
+
+    # Seed 12 days of reports (direct DB write).
+    for i in range(12):
+        d = (date(2025, 12, 1) + timedelta(days=i)).isoformat()
+        main._store_strategy_report(
+            report_id=f"r-{i}",
+            account_id=account_id,
+            date=d,
+            created_at=f"{d}T00:00:00Z",
+            model="test-model",
+            input_snapshot={},
+            output={"markdown": "# Daily Strategy Report\n\n- ok\n"},
+        )
+
+    # Prune should keep the latest 10 dates.
+    main._prune_strategy_reports_keep_last_n_days(account_id=account_id, keep_days=10)
+    hs = client.get(f"/strategy/accounts/{account_id}/reports?days=60").json()
+    items = hs.get("items") or []
+    assert isinstance(items, list)
+    assert len(items) == 10
+    dates = [x.get("date") for x in items if isinstance(x, dict)]
+    assert "2025-12-01" not in dates
+    assert "2025-12-02" not in dates
+    assert "2025-12-12" in dates
 

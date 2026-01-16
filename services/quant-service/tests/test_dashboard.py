@@ -8,6 +8,9 @@ def test_dashboard_sync_runs_all_steps(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "test.sqlite3"
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
 
+    client = TestClient(main.app)
+    client.post("/broker/accounts", json={"broker": "pingan", "title": "Main"}).json()
+
     # Market providers
     monkeypatch.setattr(
         main,
@@ -81,13 +84,28 @@ def test_dashboard_sync_runs_all_steps(tmp_path, monkeypatch) -> None:
         ),
     )
 
-    client = TestClient(main.app)
+    # Mainline generation: avoid AkShare/AI calls.
+    monkeypatch.setattr(
+        main,
+        "_build_mainline_snapshot",
+        lambda **_k: {
+            "tradeDate": "2025-12-21",
+            "asOfTs": "2025-12-21T00:00:00Z",
+            "accountId": "aid",
+            "universeVersion": "v0",
+            "riskMode": "caution",
+            "selected": {"kind": "industry", "name": "Bank", "compositeScore": 80},
+            "themesTopK": [{"kind": "industry", "name": "Bank", "compositeScore": 80, "structureScore": 80, "logicScore": 80}],
+            "debug": {},
+        },
+    )
+
     resp = client.post("/dashboard/sync", json={"force": True})
     assert resp.status_code == 200
     data = resp.json()
     assert data["ok"] in (True, False)
     names = {s["name"] for s in data["steps"]}
-    assert {"market", "industryFundFlow", "marketSentiment", "screeners"} <= names
+    assert {"market", "industryFundFlow", "marketSentiment", "screeners", "mainline"} <= names
     assert data["screener"]["enabledCount"] >= 1
     assert isinstance(data["screener"]["items"], list)
 

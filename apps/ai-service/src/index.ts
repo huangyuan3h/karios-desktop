@@ -147,6 +147,69 @@ const LeaderDailyResponseSchema = z.object({
   model: z.string(),
 });
 
+const MainlineThemeInputSchema = z.object({
+  kind: z.enum(['industry', 'concept']),
+  name: z.string().min(1),
+  evidence: z.record(z.any()),
+});
+
+const MainlineExplainRequestSchema = z.object({
+  date: z.string().min(1),
+  themes: z.array(MainlineThemeInputSchema).min(1).max(20),
+  context: z.record(z.any()).optional(),
+});
+
+const MainlineThemeExplainSchema = z.object({
+  kind: z.enum(['industry', 'concept']),
+  name: z.string(),
+  logicScore: z.number().min(0).max(100),
+  logicGrade: z.enum(['S', 'A', 'B']).optional(),
+  logicSummary: z.string().optional(),
+  catalysts: z.array(z.string()).optional(),
+});
+
+const MainlineExplainResponseSchema = z.object({
+  date: z.string(),
+  themes: z.array(MainlineThemeExplainSchema),
+  model: z.string(),
+});
+
+// --- Quant rank (2D profit) (v0) ---
+const QuantRankCandidateInputSchema = z.object({
+  symbol: z.string().min(1),
+  ticker: z.string().min(1),
+  name: z.string().optional(),
+  evidence: z.record(z.any()),
+});
+
+const QuantRankExplainRequestSchema = z.object({
+  asOfTs: z.string().min(1),
+  asOfDate: z.string().min(1),
+  horizon: z.literal('2d'),
+  objective: z.literal('profit_probability'),
+  candidates: z.array(QuantRankCandidateInputSchema).min(1).max(30),
+  context: z.record(z.any()).optional(),
+});
+
+const QuantRankWhyBulletSchema = z.object({
+  text: z.string().min(1).max(200),
+  evidenceRefs: z.array(z.string().min(1)).min(1).max(4),
+});
+
+const QuantRankExplainItemSchema = z.object({
+  symbol: z.string().min(1),
+  llmScoreAdj: z.number().min(-5).max(5),
+  whyBullets: z.array(QuantRankWhyBulletSchema).min(2).max(5),
+  riskNotes: z.array(z.string()).max(4).optional(),
+});
+
+const QuantRankExplainResponseSchema = z.object({
+  asOfTs: z.string(),
+  asOfDate: z.string(),
+  items: z.array(QuantRankExplainItemSchema),
+  model: z.string(),
+});
+
 const StrategyCandidateSchema = z.object({
   symbol: z.string(),
   market: z.string(),
@@ -593,6 +656,10 @@ app.post('/strategy/candidates', async (c) => {
     'Constraints:\n' +
     '- Do NOT require per-stock deep context. Assume it is NOT available.\n' +
     '- Use ONLY: accountState, TradingView latest+history, industryFundFlow, marketSentiment.\n' +
+    "- Mainline (主线): if context.mainline.selected exists, you MUST treat it as today's primary focus theme and reflect it in:\n" +
+    '  - leader.reason (mention mainline name and whether it is clear)\n' +
+    '  - candidate ranking (prefer candidates aligned with mainline when it is clear)\n' +
+    '  - If context.mainline.debug.selectedClear is false, describe it as "weak mainline / rotation" and do NOT overfit.\n' +
     '- industryFundFlow format: use context.industryFundFlow.dailyTopInflow (Top5×Date industry names).\n' +
     '- marketSentiment format: use context.marketSentiment.latest (riskMode, upDownRatio, yesterdayLimitUpPremium, failedLimitUpRate).\n' +
     '- If riskMode is "no_new_positions": still output candidates, but you MUST set Today stance to defensive in leader reason and reduce Risk sub-score accordingly.\n' +
@@ -687,7 +754,8 @@ app.post('/leader/daily', async (c) => {
     '- Daily limit: leaders <= 2.\n' +
     '- Prefer NEW leaders from today’s industry themes + screener strength.\n' +
     '- Avoid duplicates: if a symbol was selected recently, only pick again if it is clearly still the leader today.\n' +
-    '- Provide numeric score 0-100.\n' +
+    '- Objective: maximize upside (bigger expected move) over the next ~1-3 trading days, accepting lower win-rate.\n' +
+    '- score (0-100) MUST represent UpsideScore (higher = larger expected upside / momentum continuation).\n' +
     '- Provide a concise Chinese reason.\n' +
     '- CRITICAL: Provide actionable fields for execution:\n' +
     '  - whyBullets: 3-6 short bullets (each <= 20 Chinese chars), explain why it is worth buying.\n' +
@@ -696,7 +764,7 @@ app.post('/leader/daily', async (c) => {
     '  - triggers: 1-2 triggers (breakout/pullback), each has condition and optional value.\n' +
     '  - invalidation: ONE clear invalidation rule (price below X / structure breaks).\n' +
     '  - targetPrice: {primary, stretch?} price targets.\n' +
-    '  - probability: integer 1-5 (success probability).\n' +
+    '  - probability: integer 1-5 (win-rate / success probability), do NOT conflate with UpsideScore.\n' +
     '  - risks: 2-4 key risks.\n' +
     '- If you lack a field (e.g. current price), write a best-effort number based on context.market.barsTail close; otherwise write "TBD" and explain in risks.\n' +
     '- Provide sourceSignals:\n' +
@@ -747,6 +815,174 @@ app.post('/leader/daily', async (c) => {
   }
 });
 
+app.post('/mainline/explain', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = MainlineExplainRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+  }
+
+  let model: AiModel;
+  let fallbackModel: AiModel | null = null;
+  try {
+    model = getModel(process.env.AI_STRATEGY_MODEL);
+    const fb = getStrategyFallbackModelId();
+    if (fb) fallbackModel = getModel(fb);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid AI configuration';
+    return c.json({ error: message }, 500);
+  }
+
+  const modelId = process.env.AI_STRATEGY_MODEL ?? process.env.AI_MODEL ?? '';
+  const fallbackModelId = getStrategyFallbackModelId();
+  const date = parsed.data.date.trim();
+
+  const system =
+    'You are a CN market mainline (主线) analysis engine. ' +
+    'You must analyze WHY a theme is moving using the provided structured evidence. ' +
+    'Return a valid JSON object matching the schema. No markdown fences.';
+
+  const instruction =
+    `Task: For each candidate theme on ${date}, assign logicScore(0-100) and logicGrade(S/A/B), and write a concise English logicSummary.\n` +
+    'Scoring rubric (approx):\n' +
+    '- S (81-100): policy + industry trend both present, with plausible catalysts.\n' +
+    '- A (61-80): any 2 of {policy, industry trend, earnings} present.\n' +
+    '- B (0-60): single short-term event or weak evidence.\n' +
+    'Rules:\n' +
+    '- Base ONLY on provided evidence. Do NOT fabricate news or specific policy documents.\n' +
+    '- If uncertain, lower the score and say uncertainty explicitly.\n' +
+    '- logicSummary must be <= 3 short sentences, English.\n' +
+    '- catalysts (optional): 1-3 short bullets, English.\n' +
+    'Return JSON only.\n\n' +
+    'Input JSON:\n' +
+    JSON.stringify(parsed.data);
+
+  async function run(m: AiModel): Promise<unknown> {
+    const { object } = await generateObject({
+      model: m,
+      schema: MainlineExplainResponseSchema,
+      system,
+      prompt: instruction,
+      temperature: 0,
+      maxOutputTokens: 1200,
+    });
+    return object;
+  }
+
+  try {
+    const obj = await run(model);
+    const out = MainlineExplainResponseSchema.parse(obj);
+    return c.json({ ...out, model: modelId || out.model });
+  } catch (e) {
+    if (fallbackModel) {
+      try {
+        const obj = await run(fallbackModel);
+        const out = MainlineExplainResponseSchema.parse(obj);
+        return c.json({ ...out, model: fallbackModelId || modelId || out.model });
+      } catch {
+        // fallthrough
+      }
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json(
+      {
+        date,
+        themes: parsed.data.themes.map((t) => ({
+          kind: t.kind,
+          name: t.name,
+          logicScore: 50,
+          logicGrade: 'B',
+          logicSummary: `Mainline analysis failed: ${msg}`,
+        })),
+        model: modelId || 'unknown',
+      },
+      200,
+    );
+  }
+});
+
+app.post('/quant/rank/explain', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = QuantRankExplainRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+  }
+
+  let model: AiModel;
+  let fallbackModel: AiModel | null = null;
+  try {
+    model = getModel(process.env.AI_STRATEGY_MODEL);
+    const fb = getStrategyFallbackModelId();
+    if (fb) fallbackModel = getModel(fb);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid AI configuration';
+    return c.json({ error: message }, 500);
+  }
+
+  const modelId = process.env.AI_STRATEGY_MODEL ?? process.env.AI_MODEL ?? '';
+  const fallbackModelId = getStrategyFallbackModelId();
+
+  const { asOfTs, asOfDate } = parsed.data;
+
+  const system =
+    'You are a quant ranking engine for CN A-shares. ' +
+    'You must base ALL reasoning strictly on the provided structured evidence. ' +
+    'Return a valid JSON object matching the schema. No markdown fences.';
+
+  const instruction =
+    `Task: Re-rank candidates for a 2-trading-day horizon (buy NOW at asOfTs=${asOfTs}).\n` +
+    'Goal: prioritize high probability of profit, while also preferring small stable gains and avoiding tail losses.\n' +
+    'Rules:\n' +
+    '- You MUST NOT use any external knowledge about the company. Use ONLY evidence.\n' +
+    '- For each item, output llmScoreAdj in [-5, +5]. Use small adjustments only.\n' +
+    '- whyBullets: 2-5 bullets. Each bullet MUST include 1-4 evidenceRefs strings.\n' +
+    '- evidenceRefs must point to existing evidence keys (dot paths like "spot.price", "bars.sma20", "fundFlow.mainNetRatio", "chips.profitRatio", "breakdown.trend").\n' +
+    '- Keep text short and actionable (English).\n' +
+    'Return JSON only.\n\n' +
+    'Input JSON:\n' +
+    JSON.stringify(parsed.data);
+
+  async function run(m: AiModel): Promise<unknown> {
+    const { object } = await generateObject({
+      model: m,
+      schema: QuantRankExplainResponseSchema,
+      system,
+      prompt: instruction,
+      temperature: 0,
+      maxOutputTokens: 1400,
+    });
+    return object;
+  }
+
+  try {
+    const obj = await run(model);
+    const out = QuantRankExplainResponseSchema.parse(obj);
+    return c.json({ ...out, model: modelId || out.model });
+  } catch (e) {
+    if (fallbackModel) {
+      try {
+        const obj = await run(fallbackModel);
+        const out = QuantRankExplainResponseSchema.parse(obj);
+        return c.json({ ...out, model: fallbackModelId || modelId || out.model });
+      } catch {
+        // fallthrough
+      }
+    }
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json(
+      {
+        asOfTs,
+        asOfDate,
+        // Fail closed: do not override baseline ranking/why if model fails.
+        items: [],
+        model: modelId || 'unknown',
+        error: `Quant rerank failed: ${msg}`,
+      },
+      200,
+    );
+  }
+});
+
 app.post('/strategy/daily-markdown', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = StrategyDailyRequestSchema.safeParse(body);
@@ -781,111 +1017,54 @@ app.post('/strategy/daily-markdown', async (c) => {
     `Task: Write a daily trading report for ${accountTitle} on ${date}.\n` +
     'Output requirements:\n' +
     '- Return a SINGLE Markdown document.\n' +
-    '- Use clear headings and bullet points.\n' +
-    '- STRICT Markdown formatting rules:\n' +
-    '  - Every heading must start at the beginning of a line (column 0).\n' +
-    '  - Each heading MUST be on its own line.\n' +
-    '  - Insert a blank line between sections.\n' +
-    '  - NEVER put "# ..." and "## ..." on the same line.\n' +
-    '  - NEVER put analysis text on the same line as a heading (no "## Title ...analysis...").\n' +
-    '- IMPORTANT output style:\n' +
-    '  - This must be a COMPLETE, readable report: combine short analysis paragraphs + tables.\n' +
-    '  - Prefer TABLES for decisions; keep paragraphs short.\n' +
-    '  - Paragraph limits:\n' +
-    '    - Any normal paragraph MUST be <= 300 Chinese characters.\n' +
-    '    - Use at most 2 paragraphs per section.\n' +
-    '    - Prefer 3-6 bullet points over long prose.\n' +
-    '  - TABLES MUST render reliably:\n' +
-    '    - Each table MUST be valid GFM markdown table syntax.\n' +
-    '    - Header row, separator row, and each data row MUST be on its OWN line.\n' +
-    '    - Tables MUST start at the beginning of a line (no leading text before the first "|").\n' +
-    '    - Do NOT place table pipes "|" in normal paragraphs. Pipes are only allowed inside tables.\n' +
-    '    - Do NOT squeeze tables into a single line.\n' +
-    '    - Correct example (copy the formatting):\n' +
-    '      | ColA | ColB |\\n' +
-    '      |---|---|\\n' +
-    '      | a | b |\\n' +
-    '  - Headings must be SHORT (avoid long H1/H2). Put detailed descriptions as normal paragraphs (p) above/below tables.\n' +
-    '  - Do NOT use any extra headings beyond the template (no "###").\n' +
-    '  - H1 must be EXACTLY: "# 日度交易报告"\n' +
-    '  - H2 headings must be EXACTLY these (no extra text on the same line):\n' +
-    '    "## 0 结果摘要", "## 1 资金板块", "## 2 候选Top3", "## 3 持仓计划", "## 4 执行要点", "## 5 条件单总表"\n' +
-    '  - Section 2 (candidates) MUST be a markdown table.\n' +
-    '  - Section 3 (holdings) MUST be a markdown table.\n' +
-    '  - Section 5 MUST be a markdown table (the final action table).\n' +
-    '  - CRITICAL: Section 2 table MUST include a numeric Score column (0-100).\n' +
-    '    - Score MUST be filled (do not leave all 0 / TBD).\n' +
-    '    - Use the provided rubric and estimate even if some inputs are missing; explain uncertainty in the Risk column.\n' +
-    '    - Rank must be consistent with Score (higher score => better rank).\n' +
-    '- The report MUST contain the following sections IN THIS ORDER:\n' +
-    '  1) Market/Industry fund flow (资金流向板块)\n' +
-    "  2) Today's Top candidates (<= 3)\n" +
-    '  3) Holdings plan (现有持仓：哪些止损/持有/减仓/清仓)\n' +
-    '  4) Overall execution plan (盘中执行要点)\n' +
-    '  5) Ping An conditional-order action table (平安证券条件单风格 总表)\n' +
-    '\n' +
-    'Market sentiment MUST be considered using context.marketSentiment.latest:\n' +
-    '- Use it to decide Today stance (进攻/均衡/防守) and Risk budget.\n' +
-    '- If riskMode is "no_new_positions", you MUST state: 禁止开新仓，只处理持仓，并在第5表里不要给新的开仓条件单。\n' +
-    '- If riskMode is "caution", you MUST reduce position sizing and emphasize confirmation (回封/回踩) over chasing.\n' +
-    'You MUST follow this template (fill with real content, keep headings exactly):\n' +
-    '# 日度交易报告\n\n' +
-    `账户：${accountTitle}\n` +
-    `日期：${date}\n\n` +
-    '## 0 结果摘要\n\n' +
-    '用 1 段短文（<=200字）概括“主线/风险偏好/操作倾向”，必须引用 marketSentiment 的 riskMode/ratio/premium/failedRate 做出结论，然后给出摘要表。\n\n' +
-    '| Focus themes | Leader | Risk budget | Max positions | Today stance | Notes |\n' +
+    '- LANGUAGE: Chinese (Simplified).\n' +
+    '- Use ONLY these H2 headings EXACTLY (no extra headings, no "###"):\n' +
+    '  - "## 1 总览"\n' +
+    '  - "## 2 机会Top3"\n' +
+    '  - "## 3 持仓计划"\n' +
+    '  - "## 4 条件单总表"\n' +
+    '  - "## 5 总结"\n' +
+    '- SECTION ORDER rule (MUST follow, for each section):\n' +
+    '  - Heading line\n' +
+    '  - TABLE immediately (no prose before the table)\n' +
+    '  - Then 1 short paragraph (<=150字) or 3-5 bullets (no tables)\n' +
+    '- STRICT TABLE rules (MUST follow):\n' +
+    '  - Tables MUST be valid GFM markdown tables.\n' +
+    '  - Each table row MUST be on its own line.\n' +
+    '  - No leading spaces before any "|" table line.\n' +
+    '  - NEVER use "|" in normal paragraphs/bullets. Pipes are only allowed inside tables.\n' +
+    '  - Table cells MUST be single-line text (no "\\n"). If you need multiple points, use ";" within the cell.\n' +
+    '  - If data is missing, write "—" (do NOT omit columns).\n\n' +
+    '## 1 总览\n\n' +
+    '| Focus themes | Leader | Sentiment | Stance | Execution Key |\n' +
     '|---|---|---|---|---|\n' +
-    '| TBD | TBD | 单笔≤1% 净值 | ≤3 | 进攻/均衡/防守 | marketSentiment: riskMode=... |\n\n' +
-    '（在表格下面再用 2-4 句解释：为什么这些是主线/为什么不是别的。）\n\n' +
-    '## 1 资金板块\n\n' +
-    '用 3-6 条 bullet，总结：Top流入/Top流出/持续性/对持仓威胁/今日聚焦主题。\n\n' +
-    '## 2 候选Top3\n\n' +
-    '先用 1 段短文（<=220字）说明候选筛选逻辑（行业资金 + 趋势 + 结构 + 风险），再给表格。\n\n' +
-    '评分说明（0-100）：Trend(0-40)+Flow(0-30)+Structure(0-20)+Risk(0-10)。\n' +
-    '要求：Score 给出整数 0-100，并按 Score 排序；Risk 列写明影响打分的主要不确定性（如缺少现价/缺少行业数据/深度数据不足）。\n\n' +
-    'If context.stage1.candidates is provided, you MUST use it as the candidate list source and pick Top3 from it.\n' +
-    'If context.stage1 is missing/empty, you may derive candidates from context.candidateUniverse.\n\n' +
-    '候选表只要“筛选结果与理由”，不要写具体交易触发价/关键位/PlanA/PlanB（这些放到第5部分条件单总表）。\n\n' +
-    '| Rank | Score | Symbol | Name | Current | 基本面分析 | Why now (技术面/资金面 1行) | Risk (1 line) |\n' +
-    '|---:|---:|---|---|---:|---|---|---|\n' +
-    '| 1 | 0 | TBD | TBD | TBD | TBD | TBD | TBD |\n\n' +
-    '表格后用 1 段短文（<=220字）总结：Top3 的共同点、谁是龙头（只选1个）、以及今天不做什么。\n\n' +
+    '| 主线名称 | 龙头股 | 情绪定性 | 进攻/均衡/防守 | 一句话风控准则 |\n\n' +
+    '在表格下面用 1 段短文（<=150字）概括：主线+情绪+行业资金结论，并给出今日唯一硬准则（必须可执行，拒绝虚词）。\n\n' +
+    '## 2 机会Top3\n\n' +
+    '| Rank | Score | Symbol | Name | Current | Why | Risk |\n' +
+    '|---:|---:|---|---|---:|---|---|\n' +
+    '| 1 | 0 | CN:000000 | 示例 | — | — | — |\n' +
+    '| 2 | 0 | CN:000000 | 示例 | — | — | — |\n' +
+    '| 3 | 0 | CN:000000 | 示例 | — | — | — |\n\n' +
+    '在表格下面写 1 句话：这 3 个机会的共同结构特征（必须具体，禁止套话）。\n\n' +
     '## 3 持仓计划\n\n' +
-    '先用 1 段短文（<=220字）总结“今天持仓处理总思路”（先处理风险源/如何锁利/哪些继续拿）。\n\n' +
-    '| Symbol | Name | Qty | Cost | Current | PnL% | Action | Score | StopLoss trigger | Reduce/Exit trigger | Orders (keep/adjust/cancel) | Notes |\n' +
-    '|---|---|---:|---:|---:|---:|---|---:|---|---|---|---|\n' +
-    '| TBD | TBD | TBD | TBD | TBD | TBD | Hold/Reduce/Exit | 0 | TBD | TBD | TBD | TBD |\n\n' +
-    '表格后用 1 段短文（<=220字）总结：优先处理哪一只风险源 + 哪些仓位顺势持有。\n\n' +
-    '## 4 执行要点\n\n' +
-    '- 只写 5-8 条“可执行规则”（必须包含 1 条基于 marketSentiment riskMode 的总风控规则；例如：禁止开新仓/轻仓试错/只做回封确认等）\n\n' +
-    '## 5 条件单总表\n\n' +
-    '在表格上方用 2-3 句解释：总表如何使用（先挂什么/触发后做什么/何时撤单）。\n\n' +
-    '- Section 1 MUST analyze capital rotation using context.industryFundFlow.dailyTopInflow:\n' +
-    '  - Use the Top5×Date matrix (industry names) to infer persistence and rotation.\n' +
-    '  - Identify 1-2 focus themes based on frequency/streak in recent dates.\n' +
-    '- Section 2: Top candidates <= 3. For each candidate provide concrete analysis:\n' +
-    '  - Why now (trend/relative strength/industry flow)\n' +
-    '  - Key levels (support/resistance/invalidation)\n' +
-    '  - Plan A (breakout) + Plan B (pullback) triggers\n' +
-    '  - Risk points\n' +
-    '  Use available fields from context.stocks[*]: features, barsTail, chipsTail, fundFlowTail.\n' +
-    '- Section 3 MUST cover EACH current position in context.accountState.positions:\n' +
-    '  - Decide: Hold / Add / Reduce / Exit\n' +
-    '  - Provide a stop-loss trigger (price下穿/到价卖出)\n' +
-    '  - If there are existing conditional orders in context.accountState.conditionalOrders, say whether to keep/adjust/cancel.\n' +
-    '- Section 5: Provide ONE consolidated action table (merge new opportunities + existing holdings) in Ping An style.\n' +
-    '  - Use these columns exactly:\n' +
-    '    Priority | Score | Symbol | Name | Current | Action | OrderType | TriggerCondition | TriggerValue | Qty | ValidUntil | Rationale | Risk | Exit\n' +
-    '  - OrderType should match Ping An wording (examples): 到价买入/到价卖出/反弹买入/回落卖出\n' +
-    '  - TriggerCondition examples: 价格上穿/价格下穿/到价/回落/反弹\n' +
-    '  - TriggerValue should be specific if possible; otherwise write TBD.\n' +
-    '  - ValidUntil should be a concrete date (e.g. within 3-10 trading days).\n' +
-    '- IMPORTANT:\n' +
-    '  - If you lack a field (e.g. Current price), write TBD and explain what data is missing.\n' +
-    '  - Do NOT exceed 3 candidates.\n' +
-    '  - Prefer actionable triggers over vague advice.\n' +
-    '- Use the SAME language as the user/account prompt (Chinese is expected).\n\n' +
+    '| Symbol | Name | PnL% | Action | Score | StopLoss | Orders | Notes |\n' +
+    '|---|---|---:|---|---:|---|---|---|\n' +
+    '| CN:000000 | 示例 | — | Hold/Reduce/Exit | 0 | — | — | — |\n\n' +
+    '在表格下面写 1 句话：当前持仓风险集中在哪（只说最关键的 1 个点）。\n\n' +
+    '## 4 条件单总表\n\n' +
+    '| Priority | Symbol | Name | Action | OrderType | TriggerCondition | TriggerValue | Qty | Rationale |\n' +
+    '|---:|---|---|---|---|---|---:|---:|---|\n' +
+    '| 1 | CN:000000 | 示例 | Buy/Sell | 到价买入/到价卖出 | 价格上穿/价格下穿/到价 | 0 | 0 | — |\n\n' +
+    '在表格下面写 3-5 条 bullet：录入顺序与撤单规则（每条必须可执行）。\n\n' +
+    '## 5 总结\n\n' +
+    '用 2 句话点明：今日胜负手 + 盘中最该盯的 1 个变量。\n\n' +
+    'CRITICAL RULES:\n' +
+    '1. Data-grounded: Use ONLY provided Context JSON. No external knowledge.\n' +
+    '2. NO JARGON/TRUISMS: Delete sentences like "优先选择量价强...". Use concrete data-backed statements.\n' +
+    '3. TABLE STABILITY: Every table must have correct header + separator. Section 2 must have EXACTLY 3 data rows.\n' +
+    '4. ACTIONABLE ONLY: If context.marketSentiment.latest implies "no new positions", then Section 4 must NOT include any Buy actions.\n' +
+    '5. Avoid internal variable names (riskMode/ratio/premium/failedRate). Translate them into trader language.\n\n' +
     (accountPrompt ? `Account prompt:\n${accountPrompt}\n\n` : '') +
     'Context JSON:\n' +
     JSON.stringify(parsed.data.context);

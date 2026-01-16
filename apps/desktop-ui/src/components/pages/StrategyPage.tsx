@@ -107,6 +107,20 @@ type StrategyPrompt = {
   updatedAt: string | null;
 };
 
+type StrategyReportSummary = {
+  id: string;
+  date: string;
+  createdAt: string;
+  model: string;
+  hasMarkdown: boolean;
+};
+
+type ListStrategyReportsResponse = {
+  accountId: string;
+  days: number;
+  items: StrategyReportSummary[];
+};
+
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
@@ -230,6 +244,8 @@ export function StrategyPage() {
   const [accountId, setAccountId] = React.useState<string>('');
   const [prompt, setPrompt] = React.useState<string>('');
   const [report, setReport] = React.useState<StrategyReport | null>(null);
+  const [reportDate, setReportDate] = React.useState<string>('');
+  const [history, setHistory] = React.useState<StrategyReportSummary[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [debugOpen, setDebugOpen] = React.useState(false);
@@ -239,6 +255,7 @@ export function StrategyPage() {
   const [ctxSentiment, setCtxSentiment] = React.useState(true);
   const [ctxLeaders, setCtxLeaders] = React.useState(true);
   const [ctxStocks, setCtxStocks] = React.useState(true);
+  const [ctxQuant2d, setCtxQuant2d] = React.useState(true);
 
   const reportMd = React.useMemo(() => {
     if (!report) return '';
@@ -246,34 +263,68 @@ export function StrategyPage() {
     return md || buildStrategyMarkdown(report);
   }, [report]);
 
-  const refresh = React.useCallback(async () => {
-    setError(null);
+  const loadReport = React.useCallback(async (effectiveAccountId: string, d: string) => {
     try {
-      const acc = await apiGetJson<BrokerAccount[]>('/broker/accounts?broker=pingan');
-      setAccounts(acc);
-      const effectiveAccountId = accountId || acc[0]?.id || '';
-      if (!accountId && effectiveAccountId) setAccountId(effectiveAccountId);
-      if (effectiveAccountId) {
-        const p = await apiGetJson<StrategyPrompt>(
-          `/strategy/accounts/${encodeURIComponent(effectiveAccountId)}/prompt`,
-        );
-        setPrompt(p.prompt || '');
-        try {
-          const r = await apiGetJson<StrategyReport>(
-            `/strategy/accounts/${encodeURIComponent(effectiveAccountId)}/daily`,
-          );
-          setReport(r);
-        } catch {
-          setReport(null);
-        }
-      } else {
-        setPrompt('');
-        setReport(null);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const r = await apiGetJson<StrategyReport>(
+        `/strategy/accounts/${encodeURIComponent(effectiveAccountId)}/daily?date=${encodeURIComponent(d)}`,
+      );
+      setReport(r);
+    } catch {
+      setReport(null);
     }
-  }, [accountId]);
+  }, []);
+
+  const refresh = React.useCallback(
+    async (opts?: { preferredDate?: string; forceLatest?: boolean }) => {
+      setError(null);
+      try {
+        const acc = await apiGetJson<BrokerAccount[]>('/broker/accounts?broker=pingan');
+        setAccounts(acc);
+        const effectiveAccountId = accountId || acc[0]?.id || '';
+        if (!accountId && effectiveAccountId) setAccountId(effectiveAccountId);
+        if (effectiveAccountId) {
+          const p = await apiGetJson<StrategyPrompt>(
+            `/strategy/accounts/${encodeURIComponent(effectiveAccountId)}/prompt`,
+          );
+          setPrompt(p.prompt || '');
+          try {
+            const hs = await apiGetJson<ListStrategyReportsResponse>(
+              `/strategy/accounts/${encodeURIComponent(effectiveAccountId)}/reports?days=10`,
+            );
+            const items = Array.isArray(hs.items) ? hs.items : [];
+            setHistory(items);
+            const latest = items[0]?.date || new Date().toISOString().slice(0, 10);
+            const preferred = (opts?.preferredDate ?? '').trim();
+            const hasPreferred = preferred ? items.some((x) => x?.date === preferred) : false;
+            const hasCurrent = reportDate ? items.some((x) => x?.date === reportDate) : false;
+            const nextDate = opts?.forceLatest
+              ? latest
+              : hasPreferred
+                ? preferred
+                : hasCurrent
+                  ? reportDate
+                  : latest;
+            if (nextDate !== reportDate) setReportDate(nextDate);
+            await loadReport(effectiveAccountId, nextDate);
+          } catch {
+            setHistory([]);
+            const preferred = (opts?.preferredDate ?? '').trim();
+            const fallback = preferred || reportDate || new Date().toISOString().slice(0, 10);
+            if (fallback !== reportDate) setReportDate(fallback);
+            await loadReport(effectiveAccountId, fallback);
+          }
+        } else {
+          setPrompt('');
+          setReport(null);
+          setHistory([]);
+          setReportDate('');
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [accountId, loadReport, reportDate],
+  );
 
   React.useEffect(() => {
     void refresh();
@@ -307,15 +358,20 @@ export function StrategyPage() {
         `/strategy/accounts/${encodeURIComponent(accountId)}/daily`,
         {
           force: true,
+          date: undefined,
           includeAccountState: ctxAccount,
           includeTradingView: ctxScreener,
           includeIndustryFundFlow: ctxIndustryFlow,
           includeMarketSentiment: ctxSentiment,
           includeLeaders: ctxLeaders,
           includeStocks: ctxStocks,
+          includeQuant2d: ctxQuant2d,
         },
       );
       setReport(r);
+      const d = String(r.date || '').trim();
+      if (d) setReportDate(d);
+      await refresh({ preferredDate: d, forceLatest: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -332,15 +388,20 @@ export function StrategyPage() {
         `/strategy/accounts/${encodeURIComponent(accountId)}/daily`,
         {
           force: false,
+          date: reportDate || undefined,
           includeAccountState: ctxAccount,
           includeTradingView: ctxScreener,
           includeIndustryFundFlow: ctxIndustryFlow,
           includeMarketSentiment: ctxSentiment,
           includeLeaders: ctxLeaders,
           includeStocks: ctxStocks,
+          includeQuant2d: ctxQuant2d,
         },
       );
       setReport(r);
+      const d = String(r.date || reportDate || '').trim();
+      if (d) setReportDate(d);
+      await refresh({ preferredDate: d });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -358,7 +419,15 @@ export function StrategyPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={accountId} onValueChange={(v) => setAccountId(v)}>
+          <Select
+            value={accountId}
+            onValueChange={(v) => {
+              setAccountId(v);
+              // Always default to latest report day when switching accounts.
+              setReportDate('');
+              setReport(null);
+            }}
+          >
             <SelectTrigger className="h-9 w-[240px]">
               <SelectValue placeholder="Select account" />
             </SelectTrigger>
@@ -369,6 +438,29 @@ export function StrategyPage() {
                   {a.accountMasked ? ` (${a.accountMasked})` : ''}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={reportDate}
+            onValueChange={(v) => {
+              setReportDate(v);
+              if (accountId) void loadReport(accountId, v);
+            }}
+          >
+            <SelectTrigger className="h-9 w-[180px]">
+              <SelectValue placeholder="Report date" />
+            </SelectTrigger>
+            <SelectContent>
+              {history.map((it) => (
+                <SelectItem key={it.date} value={it.date}>
+                  {it.date}
+                </SelectItem>
+              ))}
+              {!history.length ? (
+                <SelectItem value={reportDate || '__none__'} disabled>
+                  No history
+                </SelectItem>
+              ) : null}
             </SelectContent>
           </Select>
           <Button variant="secondary" size="sm" onClick={() => void refresh()} className="gap-2">
@@ -487,6 +579,14 @@ export function StrategyPage() {
               onChange={(e) => setCtxStocks(e.target.checked)}
             />
             <span>Per-stock deep context (bars/chips/fund-flow)</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={ctxQuant2d}
+              onChange={(e) => setCtxQuant2d(e.target.checked)}
+            />
+            <span>Quant Top Picks (2D) snapshot</span>
           </label>
         </div>
         <div className="mt-2 text-xs text-[var(--k-muted)]">

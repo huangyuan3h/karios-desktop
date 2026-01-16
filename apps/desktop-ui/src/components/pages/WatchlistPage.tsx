@@ -1,0 +1,960 @@
+'use client';
+
+import * as React from 'react';
+import { ArrowDown, ArrowUp, ArrowUpDown, CircleX, Info, RefreshCw, Trash2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+
+import { Button } from '@/components/ui/button';
+import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { loadJson, saveJson } from '@/lib/storage';
+
+type WatchlistItem = {
+  symbol: string; // e.g. "CN:600000" or "HK:0700"
+  name?: string | null;
+  nameStatus?: 'resolved' | 'not_found';
+  addedAt: string; // ISO
+};
+
+const STORAGE_KEY = 'karios.watchlist.v1';
+
+type MarketStockBasicRow = {
+  symbol: string;
+  market: string;
+  ticker: string;
+  name: string;
+  currency: string;
+};
+
+type TrendOkChecks = {
+  emaOrder?: boolean | null;
+  macdPositive?: boolean | null;
+  macdHistExpanding?: boolean | null;
+  closeNear20dHigh?: boolean | null;
+  rsiInRange?: boolean | null;
+  volumeSurge?: boolean | null;
+};
+
+type TrendOkValues = {
+  close?: number | null;
+  ema5?: number | null;
+  ema20?: number | null;
+  ema60?: number | null;
+  macd?: number | null;
+  macdSignal?: number | null;
+  macdHist?: number | null;
+  macdHist4?: number[];
+  rsi14?: number | null;
+  high20?: number | null;
+  avgVol5?: number | null;
+  avgVol30?: number | null;
+};
+
+type TrendOkResult = {
+  symbol: string;
+  name?: string | null;
+  asOfDate?: string | null;
+  trendOk?: boolean | null;
+  score?: number | null; // 0..100, formula-based (no LLM)
+  scoreParts?: Record<string, number>; // points breakdown (positive parts and penalties)
+  stopLossPrice?: number | null;
+  stopLossParts?: Record<string, unknown>;
+  buyMode?: string | null;
+  buyAction?: string | null;
+  buyZoneLow?: number | null;
+  buyZoneHigh?: number | null;
+  buyRefPrice?: number | null;
+  buyWhy?: string | null;
+  buyChecks?: Record<string, unknown>;
+  checks?: TrendOkChecks;
+  values?: TrendOkValues;
+  missingData?: string[];
+};
+
+type TvScreener = {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  updatedAt: string;
+};
+
+type TvSnapshotSummary = {
+  id: string;
+  screenerId: string;
+  capturedAt: string;
+  rowCount: number;
+};
+
+type TvSnapshotDetail = {
+  id: string;
+  screenerId: string;
+  capturedAt: string;
+  rowCount: number;
+  screenTitle: string | null;
+  filters: string[];
+  url: string;
+  headers: string[];
+  rows: Record<string, string>[];
+};
+
+async function apiGetJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
+}
+
+function normalizeSymbolInput(input: string): { symbol: string } | { error: string } {
+  const raw = (input || '').trim().toUpperCase();
+  if (!raw) return { error: 'Empty input' };
+
+  // Accept already-normalized market prefix forms.
+  // Examples: "CN:600000", "HK:0700"
+  if (/^(CN|HK):[0-9A-Z.\-]{1,16}$/.test(raw)) {
+    return { symbol: raw };
+  }
+
+  // CN A-share ticker (6 digits)
+  if (/^\d{6}$/.test(raw)) {
+    return { symbol: `CN:${raw}` };
+  }
+
+  // HK ticker (4-5 digits), allow leading zeros
+  if (/^\d{4,5}$/.test(raw)) {
+    return { symbol: `HK:${raw.padStart(4, '0')}` };
+  }
+
+  return {
+    error:
+      'Unsupported code format. Use 6-digit CN ticker, 4-5 digit HK ticker, or CN:/HK: prefixed symbol.',
+  };
+}
+
+function normalizeScreenerSymbol(raw: string): string | null {
+  const s = String(raw || '')
+    .trim()
+    .toUpperCase();
+  if (!s) return null;
+
+  // Try the same rules as manual input first.
+  const parsed = normalizeSymbolInput(s);
+  if (!('error' in parsed)) return parsed.symbol;
+
+  // TradingView forms like "SSE:600000" / "SZSE:000001" / "HKEX:0700"
+  const m = s.match(/^[A-Z]+:(\d{4,6})$/);
+  if (m) {
+    const code = m[1];
+    if (/^\d{6}$/.test(code)) return `CN:${code}`;
+    if (/^\d{4,5}$/.test(code)) return `HK:${code.padStart(4, '0')}`;
+  }
+  return null;
+}
+
+function chunk<T>(arr: T[], n: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+}
+
+function fmtPrice(v: number | null | undefined): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return v.toFixed(2);
+}
+
+function fmtScore(v: number | null | undefined): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return String(Math.round(v));
+}
+
+function fmtNum(v: unknown, digits = 2): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return v.toFixed(digits);
+}
+
+function fmtBuyCell(t: TrendOkResult | undefined | null): {
+  text: string;
+  tone: 'buy' | 'wait' | 'avoid' | 'none';
+} {
+  if (!t || !t.buyMode || !t.buyAction) return { text: '—', tone: 'none' };
+  if (t.buyAction === 'avoid') return { text: '回避', tone: 'avoid' };
+  const zl = typeof t.buyZoneLow === 'number' ? t.buyZoneLow : null;
+  const zh = typeof t.buyZoneHigh === 'number' ? t.buyZoneHigh : null;
+  const zone =
+    zl != null && zh != null
+      ? `${zl.toFixed(2)}–${zh.toFixed(2)}`
+      : zl != null
+        ? `${zl.toFixed(2)}`
+        : '—';
+  if (t.buyMode === 'A_pullback') {
+    const prefix = t.buyAction === 'buy' ? 'A 买' : 'A 等';
+    return { text: `${prefix} 回踩 ${zone}`, tone: t.buyAction === 'buy' ? 'buy' : 'wait' };
+  }
+  if (t.buyMode === 'B_momentum') {
+    const prefix = t.buyAction === 'buy' ? 'B 买' : 'B 等';
+    return { text: `${prefix} 新高 ${zone}`, tone: t.buyAction === 'buy' ? 'buy' : 'wait' };
+  }
+  return { text: '无', tone: 'none' };
+}
+
+export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
+  const [items, setItems] = React.useState<WatchlistItem[]>([]);
+  const [code, setCode] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
+  const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
+  const [syncBusy, setSyncBusy] = React.useState(false);
+  const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
+  const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
+  const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
+  const [tooltip, setTooltip] = React.useState<{
+    open: boolean;
+    x: number;
+    y: number;
+    w: number;
+    placement: 'top-end' | 'bottom-end';
+    content: React.ReactNode;
+  }>({ open: false, x: 0, y: 0, w: 0, placement: 'top-end', content: null });
+
+  React.useEffect(() => {
+    const saved = loadJson<WatchlistItem[]>(STORAGE_KEY, []);
+    // Backward-compatible migration: drop deprecated fields (e.g. note).
+    const arr = Array.isArray(saved) ? saved : [];
+    const migrated: WatchlistItem[] = arr
+      .filter((x) => x && typeof x === 'object')
+      .map((x) => {
+        const it = x as Partial<WatchlistItem> & { note?: unknown };
+        return {
+          symbol: String(it.symbol ?? '').trim(),
+          name: it.name ?? null,
+          nameStatus:
+            it.nameStatus === 'resolved' || it.nameStatus === 'not_found'
+              ? it.nameStatus
+              : undefined,
+          addedAt: String(it.addedAt ?? new Date().toISOString()),
+        };
+      })
+      .filter((x) => Boolean(x.symbol));
+    setItems(migrated);
+    saveJson(STORAGE_KEY, migrated);
+  }, []);
+
+  function persist(next: WatchlistItem[]) {
+    setItems(next);
+    saveJson(STORAGE_KEY, next);
+  }
+
+  React.useEffect(() => {
+    let cancelled = false;
+    async function resolveMissingNames() {
+      const missing = items
+        .filter((x) => !x.name && x.nameStatus !== 'not_found')
+        .map((x) => x.symbol);
+      if (!missing.length) return;
+
+      try {
+        const sp = new URLSearchParams();
+        for (const s of missing) sp.append('symbols', s);
+        const rows = await apiGetJson<MarketStockBasicRow[]>(
+          `/market/stocks/resolve?${sp.toString()}`,
+        );
+        if (cancelled) return;
+        const bySym = new Map<string, MarketStockBasicRow>();
+        for (const r of Array.isArray(rows) ? rows : []) bySym.set(r.symbol, r);
+
+        const next = items.map((it) => {
+          if (it.name || it.nameStatus === 'resolved') return it;
+          const hit = bySym.get(it.symbol);
+          if (hit) return { ...it, name: hit.name, nameStatus: 'resolved' as const };
+          if (missing.includes(it.symbol)) return { ...it, nameStatus: 'not_found' as const };
+          return it;
+        });
+        persist(next);
+      } catch (e) {
+        // If Market is not synced or service is unavailable, keep silent; user can still manage codes.
+        if (!cancelled) console.warn('Watchlist name resolve failed:', e);
+      }
+    }
+    void resolveMissingNames();
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    async function loadTrendOk() {
+      const syms = items.map((x) => x.symbol).filter(Boolean);
+      if (!syms.length) {
+        setTrend({});
+        return;
+      }
+      try {
+        const sp = new URLSearchParams();
+        for (const s of syms) sp.append('symbols', s);
+        const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+        if (cancelled) return;
+        const next: Record<string, TrendOkResult> = {};
+        for (const r of Array.isArray(rows) ? rows : []) {
+          if (r && r.symbol) next[r.symbol] = r;
+        }
+        setTrend(next);
+      } catch (e) {
+        if (!cancelled) console.warn('Watchlist trendok load failed:', e);
+      }
+    }
+    void loadTrendOk();
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
+  function onAdd() {
+    setError(null);
+    setSyncMsg(null);
+    const parsed = normalizeSymbolInput(code);
+    if ('error' in parsed) {
+      setError(parsed.error);
+      return;
+    }
+    const sym = parsed.symbol;
+    if (items.some((x) => x.symbol === sym)) {
+      setError('Already in watchlist.');
+      return;
+    }
+    const next: WatchlistItem[] = [
+      {
+        symbol: sym,
+        name: null,
+        addedAt: new Date().toISOString(),
+      },
+      ...items,
+    ];
+    persist(next);
+    setCode('');
+  }
+
+  function onRemove(sym: string) {
+    setSyncMsg(null);
+    persist(items.filter((x) => x.symbol !== sym));
+  }
+
+  async function onSyncFromScreener() {
+    setError(null);
+    setSyncMsg(null);
+    setSyncBusy(true);
+    try {
+      const s = await apiGetJson<{ items: TvScreener[] }>('/integrations/tradingview/screeners');
+      const enabled = (s.items || []).filter((x) => x && x.enabled);
+      if (!enabled.length) {
+        setSyncMsg('No enabled screeners.');
+        return;
+      }
+
+      const snapshotDetails = await Promise.all(
+        enabled.map(async (sc) => {
+          const list = await apiGetJson<{ items: TvSnapshotSummary[] }>(
+            `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/snapshots?limit=1`,
+          );
+          const latest = list.items?.[0];
+          if (!latest) return null;
+          return await apiGetJson<TvSnapshotDetail>(
+            `/integrations/tradingview/snapshots/${encodeURIComponent(latest.id)}`,
+          );
+        }),
+      );
+
+      const candidates: string[] = [];
+      for (const snap of snapshotDetails) {
+        if (!snap) continue;
+        for (const r of snap.rows || []) {
+          const raw = String(r['Ticker'] || r['Symbol'] || '').trim();
+          const sym = normalizeScreenerSymbol(raw);
+          if (sym) candidates.push(sym);
+        }
+      }
+
+      const uniq = Array.from(new Set(candidates)).slice(0, 2000);
+      if (!uniq.length) {
+        setSyncMsg('No symbols found in latest screener snapshots.');
+        return;
+      }
+
+      // Batch TrendOK checks (backend caps at 200; we chunk explicitly).
+      const okSyms: string[] = [];
+      for (const part of chunk(uniq, 200)) {
+        const sp = new URLSearchParams();
+        for (const s2 of part) sp.append('symbols', s2);
+        const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+        for (const rr of Array.isArray(rows) ? rows : []) {
+          if (rr && rr.symbol && rr.trendOk === true) okSyms.push(rr.symbol);
+        }
+      }
+      const okUniq = Array.from(new Set(okSyms));
+
+      const existing = new Set(items.map((x) => x.symbol));
+      const now = new Date().toISOString();
+      const added: WatchlistItem[] = okUniq
+        .filter((sym) => !existing.has(sym))
+        .map((sym) => ({ symbol: sym, name: null, addedAt: now }));
+
+      if (!added.length) {
+        setSyncMsg(
+          `Screener scanned ${uniq.length} symbols; TrendOK ✅: ${okUniq.length}; nothing new to add.`,
+        );
+        return;
+      }
+
+      persist([...added, ...items]);
+      setSyncMsg(`Added ${added.length} TrendOK ✅ stocks from screener (scanned ${uniq.length}).`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSyncBusy(false);
+    }
+  }
+
+  function showTooltip(el: HTMLElement, content: React.ReactNode, width = 360) {
+    // Render via portal to avoid clipping, but anchor near the hovered element.
+    // Place the tooltip at the element's top-right corner (top-end). If there isn't
+    // enough room above, flip to bottom-end.
+    const r = el.getBoundingClientRect();
+    const pad = 12;
+    const w = Math.min(width, Math.max(240, window.innerWidth - pad * 2));
+    const x = Math.max(pad, Math.min(window.innerWidth - w - pad, r.right - w));
+    const preferTop = r.top > 140;
+    const placement: 'top-end' | 'bottom-end' = preferTop ? 'top-end' : 'bottom-end';
+    const y = preferTop
+      ? Math.max(pad, r.top - 8)
+      : Math.min(window.innerHeight - pad, r.bottom + 8);
+    setTooltip({ open: true, x, y, w, placement, content });
+  }
+
+  function hideTooltip() {
+    setTooltip((prev) => (prev.open ? { ...prev, open: false } : prev));
+  }
+
+  function checkLine(label: string, ok: boolean | null | undefined, detail: string) {
+    if (ok == null) return { label, state: '—', detail };
+    return { label, state: ok ? '✅' : '❌', detail };
+  }
+
+  function renderTrendOkCell(sym: string) {
+    const t = trend[sym];
+    const ok = t?.trendOk ?? null;
+    const icon = ok == null ? '—' : ok ? '✅' : '❌';
+    const rsiNow =
+      typeof t?.values?.rsi14 === 'number' && Number.isFinite(t.values.rsi14)
+        ? t.values.rsi14
+        : null;
+    const h4 =
+      Array.isArray(t?.values?.macdHist4) && t?.values?.macdHist4?.length === 4
+        ? t.values.macdHist4
+        : null;
+    const hpos = h4 ? h4.map((x) => Math.max(0, Number(x))) : null;
+    const d1 = hpos ? hpos[1] > hpos[0] : null;
+    const d2 = hpos ? hpos[2] > hpos[1] : null;
+    const d3 = hpos ? hpos[3] > hpos[2] : null;
+    const hLastPos = hpos ? hpos[3] > 0 : null;
+    const macdHistDetail = h4
+      ? `need h_last>0: ${hLastPos ? '✅' : '❌'}; d1 ${d1 ? '✅' : '❌'}; d2 ${
+          d2 ? '✅' : '❌'
+        }; d3 ${d3 ? '✅' : '❌'} (h: ${h4
+          .map((x) => (Number.isFinite(Number(x)) ? Number(x).toFixed(3) : '—'))
+          .join(', ')})`
+      : 'need last 4 histogram values';
+    const lines = [
+      checkLine('EMA order', t?.checks?.emaOrder ?? null, 'EMA(5) > EMA(20) > EMA(60)'),
+      checkLine('MACD > 0', t?.checks?.macdPositive ?? null, 'macdLine > 0'),
+      checkLine(
+        'MACD hist',
+        t?.checks?.macdHistExpanding ?? null,
+        `last 4 days: (hist>0) and >=2 increases (positive-part); ${macdHistDetail}`,
+      ),
+      checkLine('Near 20D high', t?.checks?.closeNear20dHigh ?? null, 'Close >= 0.95 * High(20)'),
+      checkLine(
+        'RSI(14)',
+        t?.checks?.rsiInRange ?? null,
+        `50 <= RSI <= 75${rsiNow == null ? '' : ` (now: ${rsiNow.toFixed(1)})`}`,
+      ),
+      checkLine('Volume surge', t?.checks?.volumeSurge ?? null, 'AvgVol(5) > 1.2 * AvgVol(30)'),
+    ];
+    const missing = (t?.missingData ?? []).filter(Boolean);
+    const tip = (
+      <>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="font-medium">TrendOK checks</div>
+          <div className="font-mono text-[var(--k-muted)]">{sym}</div>
+        </div>
+        <div className="space-y-1">
+          {lines.map((x) => (
+            <div key={x.label} className="flex items-start justify-between gap-3">
+              <div className="text-[var(--k-muted)]">{x.label}</div>
+              <div className="flex-1 text-right">
+                <span className="font-mono">{x.state}</span>{' '}
+                <span className="text-[var(--k-muted)]">{x.detail}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {missing.length ? (
+          <div className="mt-2 text-[var(--k-muted)]">
+            Missing: <span className="font-mono">{missing.join(', ')}</span>
+          </div>
+        ) : null}
+      </>
+    );
+    return (
+      <button
+        type="button"
+        className="inline-flex items-center"
+        onMouseEnter={(e) => showTooltip(e.currentTarget, tip, 360)}
+        onMouseLeave={hideTooltip}
+        onFocus={(e) => showTooltip(e.currentTarget, tip, 360)}
+        onBlur={hideTooltip}
+        aria-label="TrendOK details"
+      >
+        <span className="font-mono">{icon}</span>
+      </button>
+    );
+  }
+
+  function renderStopLossCell(sym: string) {
+    const t = trend[sym];
+    const p = t?.stopLossPrice ?? null;
+    const parts = t?.stopLossParts ?? null;
+    const get = (k: string) =>
+      parts && typeof parts === 'object' ? (parts as Record<string, unknown>)[k] : undefined;
+    const exitNow = Boolean(get('exit_now'));
+    const exitDisplay =
+      typeof get('exit_display') === 'string' ? String(get('exit_display')) : null;
+    const warnHalf = Boolean(get('warn_reduce_half'));
+    const warnDisplay =
+      typeof get('warn_display') === 'string' ? String(get('warn_display')) : null;
+    const exitChecks = {
+      ema5_lt_ema20: Boolean(get('exit_check_ema5_lt_ema20')),
+      close_lt_ema20: Boolean(get('exit_check_close_lt_ema20')),
+      momentum_exhaustion: Boolean(get('exit_check_momentum_exhaustion')),
+      volume_dry: Boolean(get('exit_check_volume_dry')),
+    };
+    // Semantics: ✅ means "NOT triggered" (safe), ❌ means "triggered" (exit-now condition hit).
+    const ok = (triggered: boolean) => (triggered ? '❌' : '✅');
+    const exitMomAndVol = Boolean(exitChecks.momentum_exhaustion && exitChecks.volume_dry);
+    const tip = (
+      <>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="font-medium">StopLoss</div>
+          <div className="font-mono text-[var(--k-muted)]">{sym}</div>
+        </div>
+        {exitNow ? (
+          <div className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-red-600">
+            {exitDisplay || '立刻离场'}
+          </div>
+        ) : warnHalf ? (
+          <div className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-700">
+            {warnDisplay || '警告：MACD柱缩小但未转负，建议至少卖出一半'}
+          </div>
+        ) : null}
+        <div className="text-[var(--k-muted)]">
+          Formula: max(final_support - atr_k×ATR14, hard_stop)
+        </div>
+        <div className="mt-2 rounded border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 py-1">
+          <div className="mb-1 font-medium">立刻离场检查</div>
+          <div className="text-[10px] text-[var(--k-muted)]">
+            ✅ 安全 / ❌ 触发。任一条为 ❌ 即“立刻离场”（止损价=当前价）。
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[var(--k-muted)]">EMA5 &lt; EMA20</span>
+              <span className="font-mono">{ok(exitChecks.ema5_lt_ema20)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[var(--k-muted)]">收盘价 &lt; EMA20</span>
+              <span className="font-mono">{ok(exitChecks.close_lt_ema20)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[var(--k-muted)]">动能衰竭 + 量能萎缩</span>
+              <span className="font-mono">{ok(exitMomAndVol)}</span>
+            </div>
+          </div>
+        </div>
+        <div className="mt-2 space-y-1">
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">StopLoss</div>
+            <div className="font-mono">{fmtPrice(p)}</div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">final_support</div>
+            <div className="font-mono">{fmtNum(get('final_support'), 2)}</div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">buffer</div>
+            <div className="font-mono">{fmtNum(get('buffer'), 3)}</div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">hard_stop</div>
+            <div className="font-mono">{fmtNum(get('hard_stop'), 2)}</div>
+          </div>
+        </div>
+      </>
+    );
+    return (
+      <button
+        type="button"
+        className="inline-flex items-center"
+        onMouseEnter={(e) => showTooltip(e.currentTarget, tip, 380)}
+        onMouseLeave={hideTooltip}
+        onFocus={(e) => showTooltip(e.currentTarget, tip, 380)}
+        onBlur={hideTooltip}
+        aria-label="StopLoss details"
+      >
+        {exitNow ? (
+          <span className="inline-flex items-center gap-1 font-mono text-red-600">
+            <CircleX className="h-4 w-4" aria-hidden />
+            {fmtPrice(p)}
+          </span>
+        ) : warnHalf ? (
+          <span className="inline-flex items-center gap-1 font-mono text-amber-700">
+            <span aria-hidden>⚠︎</span>
+            {fmtPrice(p)}
+          </span>
+        ) : (
+          <span className="font-mono">{fmtPrice(p)}</span>
+        )}
+      </button>
+    );
+  }
+
+  function renderScoreCell(sym: string) {
+    const t = trend[sym];
+    const score = t?.score ?? null;
+    const parts = t?.scoreParts ?? null;
+    const entries =
+      parts && typeof parts === 'object'
+        ? Object.entries(parts).filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
+        : [];
+    entries.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+    const tip = (
+      <>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="font-medium">Score (0–100)</div>
+          <div className="font-mono text-[var(--k-muted)]">{sym}</div>
+        </div>
+        <div className="text-[var(--k-muted)]">
+          Deterministic formula (CN daily, no LLM). Higher means better short-horizon setup.
+        </div>
+        <div className="mt-2 space-y-1">
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">Total</div>
+            <div className="font-mono">{fmtScore(score)}</div>
+          </div>
+          {entries.length ? (
+            <div className="mt-2">
+              {entries.map(([k, v]) => (
+                <div key={k} className="flex items-center justify-between gap-3">
+                  <div className="text-[var(--k-muted)]">{k}</div>
+                  <div className="font-mono">{v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1)}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-2 text-[var(--k-muted)]">
+              No breakdown available (insufficient data).
+            </div>
+          )}
+        </div>
+      </>
+    );
+    return (
+      <button
+        type="button"
+        className="inline-flex items-center"
+        onMouseEnter={(e) => showTooltip(e.currentTarget, tip, 360)}
+        onMouseLeave={hideTooltip}
+        onFocus={(e) => showTooltip(e.currentTarget, tip, 360)}
+        onBlur={hideTooltip}
+        aria-label="Score details"
+      >
+        <span className="font-mono">{fmtScore(score)}</span>
+      </button>
+    );
+  }
+
+  function renderBuyCell(sym: string) {
+    const t = trend[sym];
+    const { text, tone } = fmtBuyCell(t);
+    const why = typeof t?.buyWhy === 'string' ? t.buyWhy : null;
+    const tip = (
+      <>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="font-medium">买入</div>
+          <div className="font-mono text-[var(--k-muted)]">{sym}</div>
+        </div>
+        <div className="text-[var(--k-muted)]">{why || '—'}</div>
+        <div className="mt-2 flex items-center justify-between">
+          <div className="text-[var(--k-muted)]">建议</div>
+          <div className="font-mono">{text}</div>
+        </div>
+      </>
+    );
+    return (
+      <button
+        type="button"
+        className="inline-flex items-center"
+        onMouseEnter={(e) => showTooltip(e.currentTarget, tip, 380)}
+        onMouseLeave={hideTooltip}
+        onFocus={(e) => showTooltip(e.currentTarget, tip, 380)}
+        onBlur={hideTooltip}
+        aria-label="Buy details"
+      >
+        <span
+          className={
+            tone === 'buy'
+              ? 'font-mono text-emerald-700'
+              : tone === 'avoid'
+                ? 'font-mono text-red-600'
+                : tone === 'wait'
+                  ? 'font-mono text-[var(--k-muted)]'
+                  : 'font-mono'
+          }
+        >
+          {text}
+        </span>
+      </button>
+    );
+  }
+
+  const sortedItems = React.useMemo(() => {
+    if (!scoreSortEnabled) return items;
+    const arr = [...items];
+    arr.sort((a, b) => {
+      const sa = trend[a.symbol]?.score;
+      const sb = trend[b.symbol]?.score;
+      const va = typeof sa === 'number' && Number.isFinite(sa) ? sa : null;
+      const vb = typeof sb === 'number' && Number.isFinite(sb) ? sb : null;
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1; // push unknown to bottom
+      if (vb == null) return -1;
+      const d = va - vb;
+      return scoreSortDir === 'asc' ? d : -d;
+    });
+    return arr;
+  }, [items, trend, scoreSortEnabled, scoreSortDir]);
+
+  const headerTip = (
+    <>
+      <div className="mb-2 font-medium">Definition (CN daily)</div>
+      <div className="space-y-1 text-[var(--k-muted)]">
+        <div>✅ only when ALL rules are satisfied.</div>
+        <div>— when data/indicators are insufficient.</div>
+      </div>
+      <div className="mt-2 space-y-1">
+        <div>1) EMA(5) &gt; EMA(20) &gt; EMA(60)</div>
+        <div>2) MACD line &gt; 0</div>
+        <div>3) MACD histogram expanding: last 4 days, at least 2 day-over-day increases</div>
+        <div>4) Close ≥ 0.95 × High(20)</div>
+        <div>5) RSI(14) in [50, 75]</div>
+        <div>6) AvgVol(5) &gt; 1.2 × AvgVol(30)</div>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="mx-auto w-full max-w-5xl p-6">
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-lg font-semibold">Watchlist</div>
+          <div className="mt-1 text-sm text-[var(--k-muted)]">
+            Manage the stocks you are watching.
+          </div>
+          <div className="mt-1 text-xs text-[var(--k-muted)]">
+            Names are resolved from Market cache. If names are missing, go to Market and click Sync
+            once.
+          </div>
+          {syncMsg ? <div className="mt-2 text-xs text-[var(--k-muted)]">{syncMsg}</div> : null}
+          {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
+        </div>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => void onSyncFromScreener()}
+          disabled={syncBusy}
+          className="gap-2"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Sync from screener
+        </Button>
+      </div>
+
+      <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+        <div className="mb-2 text-sm font-medium">Add</div>
+        <div className="grid gap-2 md:grid-cols-12">
+          <input
+            className="h-9 md:col-span-10 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 text-sm outline-none"
+            placeholder="Ticker (e.g. 600000 / 0700 / CN:600000)"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onAdd();
+            }}
+          />
+          <div className="md:col-span-2 flex gap-2">
+            <Button size="sm" onClick={onAdd} disabled={!code.trim()}>
+              Add
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setCode('');
+                setError(null);
+              }}
+              disabled={!code.trim() && !error}
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
+        <div className="mt-2 text-xs text-[var(--k-muted)]">
+          Supported inputs: CN 6-digit ticker, HK 4-5 digit ticker, or prefixed symbol (CN:/HK:).
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-sm font-medium">List</div>
+          <div className="text-xs text-[var(--k-muted)]">{items.length} items</div>
+        </div>
+
+        {items.length ? (
+          <div className="overflow-auto rounded border border-[var(--k-border)]">
+            <table className="w-full border-collapse text-sm">
+              <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                <tr className="text-left">
+                  <th className="px-3 py-2">Symbol</th>
+                  <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1"
+                      onClick={() => {
+                        setScoreSortEnabled(true);
+                        setScoreSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setScoreSortEnabled((v) => !v);
+                      }}
+                      title="Click to toggle sort. Right-click to enable/disable sorting."
+                      aria-label="Sort by score"
+                    >
+                      <span>Score</span>
+                      {scoreSortEnabled ? (
+                        scoreSortDir === 'desc' ? (
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-3 py-2">买入</th>
+                  <th className="px-3 py-2">Current</th>
+                  <th className="px-3 py-2">止损</th>
+                  <th className="px-3 py-2">
+                    <div className="inline-flex items-center gap-2">
+                      <span>TrendOK</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-full"
+                        onMouseEnter={(e) => showTooltip(e.currentTarget, headerTip, 380)}
+                        onMouseLeave={hideTooltip}
+                        onFocus={(e) => showTooltip(e.currentTarget, headerTip, 380)}
+                        onBlur={hideTooltip}
+                        aria-label="TrendOK definition"
+                      >
+                        <Info className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </th>
+                  <th className="px-3 py-2 w-[54px] text-right"> </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedItems.map((it) => (
+                  <tr
+                    key={it.symbol}
+                    className="border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)]"
+                  >
+                    <td className="px-3 py-2 font-mono">
+                      <button
+                        type="button"
+                        className="inline-flex items-center rounded px-1 py-0.5 hover:underline"
+                        onClick={() => onOpenStock?.(it.symbol)}
+                        disabled={!onOpenStock}
+                        aria-label={`Open ${it.symbol}`}
+                      >
+                        {it.symbol}
+                      </button>
+                    </td>
+                    <td className="px-3 py-2">{it.name || '—'}</td>
+                    <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
+                    <td className="px-3 py-2">{renderBuyCell(it.symbol)}</td>
+                    <td
+                      className="px-3 py-2 font-mono"
+                      title={
+                        trend[it.symbol]?.asOfDate
+                          ? `as of ${trend[it.symbol]?.asOfDate}`
+                          : trend[it.symbol]
+                            ? 'as of latest cached daily bar'
+                            : '—'
+                      }
+                    >
+                      {fmtPrice(trend[it.symbol]?.values?.close)}
+                    </td>
+                    <td className="px-3 py-2">{renderStopLossCell(it.symbol)}</td>
+                    <td className="px-3 py-2">{renderTrendOkCell(it.symbol)}</td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => onRemove(it.symbol)}
+                          aria-label="Remove"
+                          title="Remove"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-sm text-[var(--k-muted)]">No items yet. Add a ticker above.</div>
+        )}
+      </section>
+
+      {tooltip.open
+        ? createPortal(
+            <div
+              className="fixed z-[9999] max-h-[70vh] overflow-auto rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs text-[var(--k-text)] shadow-lg"
+              style={{
+                left: tooltip.x,
+                top: tooltip.y,
+                width: tooltip.w,
+                transform: tooltip.placement === 'top-end' ? 'translateY(-100%)' : undefined,
+              }}
+            >
+              {tooltip.content}
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}

@@ -99,6 +99,21 @@ export type ChatReference =
       days: number; // typically 5
       title?: string;
       createdAt: string;
+    }
+  | {
+      kind: 'rankList';
+      refId: string; // stable key: `rankList:${ts}`
+      asOfDate: string; // YYYY-MM-DD
+      limit: number; // typically 30
+      createdAt: string;
+    }
+  | {
+      kind: 'intradayRankList';
+      refId: string; // stable key: `intradayRankList:${ts}`
+      asOfTs: string; // ISO timestamp
+      slot: string; // 0930_1030 | 1030_1130 | 1300_1400 | 1400_1445
+      limit: number; // typically 30
+      createdAt: string;
     };
 
 export type AppSettings = {

@@ -116,6 +116,8 @@ type LeaderStocksList = {
     nowClose?: number | null;
     pctSinceEntry?: number | null;
     score?: number | null;
+    liveScore?: number | null;
+    liveScoreUpdatedAt?: string | null;
     reason?: string | null;
     whyBullets?: string[];
     expectedDurationDays?: number | null;
@@ -526,8 +528,9 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 
     if (ref.kind === 'leaderStocks') {
       try {
+        // Do NOT force refresh here (avoid triggering live score updates from chat reference).
         const resp = await fetch(
-          `${QUANT_BASE_URL}/leader?days=${encodeURIComponent(String(ref.days))}&force=true`,
+          `${QUANT_BASE_URL}/leader?days=${encodeURIComponent(String(ref.days))}&force=false`,
           { cache: 'no-store' },
         );
         if (!resp.ok) throw new Error('failed to load leader stocks');
@@ -538,13 +541,17 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 
         const leaders = Array.isArray(ls.leaders) ? ls.leaders : [];
         if (leaders.length) {
-          out += `| Date | Ticker | Name | Score | Dur(d) | BuyZone | Target | P | Why |\n`;
+          out += `| Date | Ticker | Name | LiveScore | Dur(d) | BuyZone | Target | P | Why |\n`;
           out += `|---|---|---|---:|---:|---|---|---:|---|\n`;
           for (const r of leaders) {
             const date = String(r.date ?? '');
             const ticker = String(r.ticker ?? r.symbol ?? '');
             const name = String(r.name ?? '');
-            const score = Number.isFinite(r.score as number) ? String(Math.round(r.score as number)) : '—';
+            const liveScore = Number.isFinite(r.liveScore as number)
+              ? String(Math.round(r.liveScore as number))
+              : Number.isFinite(r.score as number)
+                ? String(Math.round(r.score as number))
+                : '—';
             const dur = Number.isFinite(r.expectedDurationDays as number) ? String(r.expectedDurationDays) : '—';
             const bz = r.buyZone ?? {};
             const bzLow = isRecord(bz) ? bz['low'] : null;
@@ -559,63 +566,11 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
               Array.isArray(r.whyBullets) && r.whyBullets.length
                 ? r.whyBullets.slice(0, 2).map((x) => String(x)).join(' / ')
                 : String(r.reason ?? '').replaceAll('\n', ' ');
-            out += `| ${date} | ${ticker} | ${name} | ${score} | ${dur} | ${buyZone} | ${target} | ${prob} | ${why} |\n`;
+            out += `| ${date} | ${ticker} | ${name} | ${liveScore} | ${dur} | ${buyZone} | ${target} | ${prob} | ${why} |\n`;
           }
           out += `\n`;
 
-          // Always provide latest deep context for the newest trading day leaders (<=2) with force refresh.
-          const dates = Array.isArray(ls.dates) ? ls.dates : [];
-          const latestDate = dates.length ? dates[dates.length - 1] : '';
-          const latestLeaders = latestDate
-            ? leaders.filter((x) => String(x.date ?? '') === latestDate).slice(0, 2)
-            : leaders.slice(0, 2);
-          if (latestLeaders.length) {
-            out += `Deep context (force refreshed for latest leaders):\n`;
-            for (const r of latestLeaders) {
-              const sym = String(r.symbol ?? '').trim();
-              if (!sym) continue;
-              try {
-                const [barsResp, chipsResp, ffResp] = await Promise.all([
-                  fetch(
-                    `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(sym)}/bars?days=60&force=true`,
-                    { cache: 'no-store' },
-                  ),
-                  fetch(
-                    `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(sym)}/chips?days=30&force=true`,
-                    { cache: 'no-store' },
-                  ).catch(() => null),
-                  fetch(
-                    `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(sym)}/fund-flow?days=30&force=true`,
-                    { cache: 'no-store' },
-                  ).catch(() => null),
-                ]);
-                if (!barsResp.ok) throw new Error('failed to load bars');
-                const bars = (await barsResp.json()) as StockBarsDetail;
-                const lastBar = (bars.bars || []).slice(-1)[0];
-                out += `- ${bars.ticker} ${bars.name} (${bars.symbol})\n`;
-                if (lastBar) {
-                  out += `  - lastBar: ${lastBar.date} close=${lastBar.close} volume=${lastBar.volume} amount=${lastBar.amount}\n`;
-                }
-                if (chipsResp && chipsResp.ok) {
-                  const chips = (await chipsResp.json()) as StockChipsDetail;
-                  const last = (chips.items || []).slice(-1)[0];
-                  if (last) {
-                    out += `  - chips: profitRatio=${last.profitRatio} avgCost=${last.avgCost} 70%=[${last.cost70Low},${last.cost70High}] 90%=[${last.cost90Low},${last.cost90High}]\n`;
-                  }
-                }
-                if (ffResp && ffResp.ok) {
-                  const ff = (await ffResp.json()) as StockFundFlowDetail;
-                  const last = (ff.items || []).slice(-1)[0];
-                  if (last) {
-                    out += `  - fundFlow: main=${last.mainNetAmount}(${last.mainNetRatio}%) super=${last.superNetAmount}(${last.superNetRatio}%) large=${last.largeNetAmount}(${last.largeNetRatio}%) medium=${last.mediumNetAmount}(${last.mediumNetRatio}%) small=${last.smallNetAmount}(${last.smallNetRatio}%)\n`;
-                  }
-                }
-              } catch {
-                out += `- ${String(r.ticker ?? sym)}: failed to force refresh deep context\n`;
-              }
-            }
-            out += `\n`;
-          }
+          // NOTE: Do not force refresh deep context from chat reference.
         }
       } catch {
         out += `## Leader stocks\n`;
@@ -668,6 +623,82 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         out += `## Market sentiment (CN A-share)\n`;
         out += `- status: failed to load\n\n`;
       }
+      continue;
+    }
+
+    if (ref.kind === 'rankList') {
+      try {
+        const q =
+          `limit=${encodeURIComponent(String(ref.limit ?? 30))}` +
+          (ref.asOfDate ? `&asOfDate=${encodeURIComponent(String(ref.asOfDate))}` : '');
+        const resp = await fetch(`${QUANT_BASE_URL}/rank/cn/next2d?${q}`, { cache: 'no-store' });
+        if (!resp.ok) throw new Error('failed to load rank list');
+        const rk = (await resp.json()) as Record<string, unknown>;
+        const items = asArray(rk['items']).slice(0, Math.max(1, Math.min(200, Number(ref.limit ?? 30))));
+        out += `## CN rank (next 1-2D)\n`;
+        out += `- asOfDate: ${getStr(rk, 'asOfDate') || String(ref.asOfDate || '')}\n`;
+        out += `- riskMode: ${getStr(rk, 'riskMode')}\n\n`;
+        if (items.length) {
+          out += `| # | Ticker | Name | Score | Prob | Signals |\n`;
+          out += `|---:|---|---|---:|---|---|\n`;
+          items.forEach((it, i) => {
+            const row = asRecord(it) ?? {};
+            const ticker = getStr(row, 'ticker') || getStr(row, 'symbol');
+            const name = getStr(row, 'name');
+            const score = Number.isFinite(Number(row['score'])) ? String(Math.round(Number(row['score']))) : '—';
+            const prob = getStr(row, 'probBand');
+            const sig = asArray(row['signals']).slice(0, 4).map((x) => String(x)).join(' / ');
+            out += `| ${i + 1} | ${ticker} | ${name} | ${score} | ${prob} | ${sig} |\n`;
+          });
+          out += `\n`;
+        } else {
+          out += `- status: no snapshot\n\n`;
+        }
+      } catch {
+        out += `## CN rank (next 1-2D)\n`;
+        out += `- status: failed to load\n\n`;
+      }
+      continue;
+    }
+
+    if (ref.kind === 'intradayRankList') {
+      try {
+        const q = `limit=${encodeURIComponent(String(ref.limit ?? 30))}`;
+        const resp = await fetch(`${QUANT_BASE_URL}/rank/cn/intraday?${q}`, { cache: 'no-store' });
+        if (!resp.ok) throw new Error('failed to load intraday rank');
+        const rk = (await resp.json()) as Record<string, unknown>;
+        const items = asArray(rk['items']).slice(0, Math.max(1, Math.min(200, Number(ref.limit ?? 30))));
+        out += `## CN rank (Intraday · DeltaT 1H)\n`;
+        out += `- tradeDate: ${getStr(rk, 'tradeDate')}\n`;
+        out += `- slot: ${getStr(rk, 'slot') || String(ref.slot || '')}\n`;
+        out += `- asOfTs: ${getStr(rk, 'asOfTs') || String(ref.asOfTs || '')}\n`;
+        out += `- riskMode: ${getStr(rk, 'riskMode')}\n\n`;
+        if (items.length) {
+          out += `| # | Ticker | Name | Score | Prob | Signals |\n`;
+          out += `|---:|---|---|---:|---|---|\n`;
+          items.forEach((it, i) => {
+            const row = asRecord(it) ?? {};
+            const ticker = getStr(row, 'ticker') || getStr(row, 'symbol');
+            const name = getStr(row, 'name');
+            const score = Number.isFinite(Number(row['score'])) ? String(Math.round(Number(row['score']))) : '—';
+            const prob = getStr(row, 'probBand');
+            const sig = asArray(row['signals']).slice(0, 4).map((x) => String(x)).join(' / ');
+            out += `| ${i + 1} | ${ticker} | ${name} | ${score} | ${prob} | ${sig} |\n`;
+          });
+          out += `\n`;
+        } else {
+          out += `- status: no snapshot\n\n`;
+        }
+      } catch {
+        out += `## CN rank (Intraday · DeltaT 1H)\n`;
+        out += `- status: failed to load\n\n`;
+      }
+      continue;
+    }
+
+    if (ref.kind !== 'stock') {
+      out += `## Unknown reference\n`;
+      out += `- kind: ${String((ref as unknown as { kind?: unknown })?.kind ?? '')}\n\n`;
       continue;
     }
 
