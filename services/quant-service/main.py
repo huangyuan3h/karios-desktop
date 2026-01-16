@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
@@ -2254,6 +2254,14 @@ class MarketStocksResponse(BaseModel):
     limit: int
 
 
+class MarketStockBasicRow(BaseModel):
+    symbol: str
+    market: str
+    ticker: str
+    name: str
+    currency: str
+
+
 class MarketBarsResponse(BaseModel):
     symbol: str
     market: str
@@ -3172,6 +3180,46 @@ def market_list_stocks(
         for r in rows
     ]
     return MarketStocksResponse(items=items, total=total, offset=offset2, limit=limit2)
+
+
+@app.get("/market/stocks/resolve", response_model=list[MarketStockBasicRow])
+def market_resolve_stocks(symbols: list[str] = Query(default=[])) -> list[MarketStockBasicRow]:
+    """
+    Resolve stock basic info by symbol, using the local market universe cache.
+    This is a DB-first helper for UI modules (e.g. Watchlist).
+    """
+    syms0 = symbols if isinstance(symbols, list) else []
+    syms = [str(s or "").strip() for s in syms0]
+    syms = [s for s in syms if s]
+    if not syms:
+        return []
+    if len(syms) > 200:
+        syms = syms[:200]
+
+    placeholders = ",".join(["?"] * len(syms))
+    with _connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT symbol, market, ticker, name, currency
+            FROM market_stocks
+            WHERE symbol IN ({placeholders})
+            """,
+            tuple(syms),
+        ).fetchall()
+
+    by_sym: dict[str, MarketStockBasicRow] = {}
+    for r in rows:
+        sym = str(r[0])
+        by_sym[sym] = MarketStockBasicRow(
+            symbol=sym,
+            market=str(r[1]),
+            ticker=str(r[2]),
+            name=str(r[3]),
+            currency=str(r[4]),
+        )
+
+    # Preserve request order; drop unknown symbols.
+    return [by_sym[s] for s in syms if s in by_sym]
 
 
 @app.get("/market/stocks/{symbol}/bars", response_model=MarketBarsResponse)

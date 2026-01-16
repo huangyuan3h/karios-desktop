@@ -4,15 +4,33 @@ import * as React from 'react';
 import { Eye, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { QUANT_BASE_URL } from '@/lib/endpoints';
 import { loadJson, saveJson } from '@/lib/storage';
 
 type WatchlistItem = {
   symbol: string; // e.g. "CN:600000" or "HK:0700"
+  name?: string | null;
+  nameStatus?: 'resolved' | 'not_found';
   note?: string | null;
   addedAt: string; // ISO
 };
 
 const STORAGE_KEY = 'karios.watchlist.v1';
+
+type MarketStockBasicRow = {
+  symbol: string;
+  market: string;
+  ticker: string;
+  name: string;
+  currency: string;
+};
+
+async function apiGetJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
+}
 
 function normalizeSymbolInput(input: string): { symbol: string } | { error: string } {
   const raw = (input || '').trim().toUpperCase();
@@ -53,6 +71,41 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     saveJson(STORAGE_KEY, next);
   }
 
+  React.useEffect(() => {
+    let cancelled = false;
+    async function resolveMissingNames() {
+      const missing = items
+        .filter((x) => !x.name && x.nameStatus !== 'not_found')
+        .map((x) => x.symbol);
+      if (!missing.length) return;
+
+      try {
+        const sp = new URLSearchParams();
+        for (const s of missing) sp.append('symbols', s);
+        const rows = await apiGetJson<MarketStockBasicRow[]>(`/market/stocks/resolve?${sp.toString()}`);
+        if (cancelled) return;
+        const bySym = new Map<string, MarketStockBasicRow>();
+        for (const r of Array.isArray(rows) ? rows : []) bySym.set(r.symbol, r);
+
+        const next = items.map((it) => {
+          if (it.name || it.nameStatus === 'resolved') return it;
+          const hit = bySym.get(it.symbol);
+          if (hit) return { ...it, name: hit.name, nameStatus: 'resolved' as const };
+          if (missing.includes(it.symbol)) return { ...it, nameStatus: 'not_found' as const };
+          return it;
+        });
+        persist(next);
+      } catch (e) {
+        // If Market is not synced or service is unavailable, keep silent; user can still manage codes.
+        if (!cancelled) console.warn('Watchlist name resolve failed:', e);
+      }
+    }
+    void resolveMissingNames();
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
   function onAdd() {
     setError(null);
     const parsed = normalizeSymbolInput(code);
@@ -66,7 +119,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       return;
     }
     const next: WatchlistItem[] = [
-      { symbol: sym, note: (note || '').trim() || null, addedAt: new Date().toISOString() },
+      {
+        symbol: sym,
+        name: null,
+        note: (note || '').trim() || null,
+        addedAt: new Date().toISOString(),
+      },
       ...items,
     ];
     persist(next);
@@ -83,6 +141,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       <div className="mb-6">
         <div className="text-lg font-semibold">Watchlist</div>
         <div className="mt-1 text-sm text-[var(--k-muted)]">Manage the stocks you are watching.</div>
+        <div className="mt-1 text-xs text-[var(--k-muted)]">
+          Names are resolved from Market cache. If names are missing, go to Market and click Sync once.
+        </div>
       </div>
 
       <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
@@ -145,6 +206,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                 <tr className="text-left">
                   <th className="px-3 py-2">Symbol</th>
+                  <th className="px-3 py-2">Name</th>
                   <th className="px-3 py-2">Note</th>
                   <th className="px-3 py-2 w-[120px]">Added</th>
                   <th className="px-3 py-2 w-[90px] text-right"> </th>
@@ -154,6 +216,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 {items.map((it) => (
                   <tr key={it.symbol} className="border-t border-[var(--k-border)]">
                     <td className="px-3 py-2 font-mono">{it.symbol}</td>
+                    <td className="px-3 py-2">{it.name || '—'}</td>
                     <td className="px-3 py-2">{it.note || ''}</td>
                     <td className="px-3 py-2 text-xs text-[var(--k-muted)]">
                       {new Date(it.addedAt).toLocaleDateString()}
