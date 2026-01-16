@@ -524,73 +524,17 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             <div className="text-[var(--k-muted)]">StopLoss</div>
             <div className="font-mono">{fmtPrice(p)}</div>
           </div>
-        </div>
-        <div className="mt-2 border-t border-[var(--k-border)] pt-2">
-          <div className="mb-1 font-medium">Support</div>
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--k-muted)]">swing_low_10d</div>
-              <div className="font-mono">{fmtNum(get('swing_low_10d'), 2)}</div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--k-muted)]">platform_low</div>
-              <div className="font-mono">{fmtNum(get('platform_low_20d_excl_5d'), 2)}</div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--k-muted)]">ema20</div>
-              <div className="font-mono">{fmtNum(get('ema20'), 2)}</div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--k-muted)]">struct_support</div>
-              <div className="font-mono">{fmtNum(get('structural_support'), 2)}</div>
-            </div>
-            {get('chip_support_avgCost') !== undefined ? (
-              <div className="flex items-center justify-between">
-                <div className="text-[var(--k-muted)]">chip_support(avgCost)</div>
-                <div className="font-mono">{fmtNum(get('chip_support_avgCost'), 2)}</div>
-              </div>
-            ) : null}
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--k-muted)]">final_support</div>
-              <div className="font-mono">{fmtNum(get('final_support'), 2)}</div>
-            </div>
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">final_support</div>
+            <div className="font-mono">{fmtNum(get('final_support'), 2)}</div>
           </div>
-        </div>
-        <div className="mt-2 border-t border-[var(--k-border)] pt-2">
-          <div className="mb-1 font-medium">Buffer & caps</div>
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--k-muted)]">ATR14</div>
-              <div className="font-mono">{fmtNum(get('atr14'), 3)}</div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--k-muted)]">atr_k</div>
-              <div className="font-mono">{fmtNum(get('atr_k'), 2)}</div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--k-muted)]">buffer</div>
-              <div className="font-mono">{fmtNum(get('buffer'), 3)}</div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--k-muted)]">vol_std20</div>
-              <div className="font-mono">{fmtNum(get('vol_std20'), 4)}</div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--k-muted)]">vol_bin</div>
-              <div className="font-mono">{String(get('vol_bin') ?? '—')}</div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--k-muted)]">max_loss_pct</div>
-              <div className="font-mono">
-                {typeof get('max_loss_pct') === 'number'
-                  ? `${(get('max_loss_pct') as number) * 100}%`
-                  : '—'}
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--k-muted)]">hard_stop</div>
-              <div className="font-mono">{fmtNum(get('hard_stop'), 2)}</div>
-            </div>
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">buffer</div>
+            <div className="font-mono">{fmtNum(get('buffer'), 3)}</div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">hard_stop</div>
+            <div className="font-mono">{fmtNum(get('hard_stop'), 2)}</div>
           </div>
         </div>
       </>

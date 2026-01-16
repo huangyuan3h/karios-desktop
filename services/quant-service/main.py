@@ -3638,12 +3638,18 @@ def _market_stock_trendok_one(
             # 1) Trend structure break: EMA5 < EMA20 OR close < EMA20 => exit immediately (stop = current)
             exit_now = False
             exit_reasons: list[str] = []
+            exit_check_ema5_lt_ema20 = False
+            exit_check_close_lt_ema20 = False
+            exit_check_mom_exhaust = False
+            exit_check_vol_dry = False
             if res.values.ema5 is not None and res.values.ema20 is not None:
                 if float(res.values.ema5) < float(res.values.ema20):
                     exit_now = True
+                    exit_check_ema5_lt_ema20 = True
                     exit_reasons.append("trend_structure_break:ema5_below_ema20")
             if res.values.ema20 is not None and current < float(res.values.ema20):
                 exit_now = True
+                exit_check_close_lt_ema20 = True
                 exit_reasons.append("trend_structure_break:close_below_ema20")
 
             # 2) Momentum exhaustion: MACD hist shrinks 3 days then turns negative + volume dries up
@@ -3659,8 +3665,10 @@ def _market_stock_trendok_one(
                     h = [float(x) for x in hist[-4:]]
                     shrink_then_flip = (h[0] > h[1] > h[2] > 0.0) and (h[3] < 0.0)
                     vol_dry = avg30v > 0.0 and (avg5v < avg30v)
+                    exit_check_vol_dry = bool(vol_dry)
                     if shrink_then_flip and vol_dry:
                         exit_now = True
+                        exit_check_mom_exhaust = True
                         exit_reasons.append("momentum_exhaustion:hist_shrink3_flip_negative_and_volume_dry")
                     # Warning: histogram still positive but momentum is weakening.
                     # Relaxed rule: in last 3 comparisons, at least 2 are shrinking, and last hist > 0.
@@ -3703,6 +3711,10 @@ def _market_stock_trendok_one(
 
             stop_parts["exit_now"] = bool(exit_now)
             stop_parts["exit_reasons"] = exit_reasons
+            stop_parts["exit_check_ema5_lt_ema20"] = bool(exit_check_ema5_lt_ema20)
+            stop_parts["exit_check_close_lt_ema20"] = bool(exit_check_close_lt_ema20)
+            stop_parts["exit_check_momentum_exhaustion"] = bool(exit_check_mom_exhaust)
+            stop_parts["exit_check_volume_dry"] = bool(exit_check_vol_dry)
             stop_parts["warn_reduce_half"] = bool(warn_reduce_half)
             stop_parts["warn_reasons"] = warn_reasons
             if warn_reduce_half:
