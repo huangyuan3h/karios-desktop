@@ -3277,6 +3277,8 @@ class TrendOkResult(BaseModel):
     trendOk: bool | None = None
     score: float | None = None  # 0..100, formula-based (no LLM)
     scoreParts: dict[str, float] = {}  # points breakdown (positive parts and penalties)
+    stopLossPrice: float | None = None
+    stopLossParts: dict[str, Any] = {}
     checks: TrendOkChecks = TrendOkChecks()
     values: TrendOkValues = TrendOkValues()
     missingData: list[str] = []
@@ -3347,6 +3349,31 @@ def _macd(values: list[float], fast: int = 12, slow: int = 26, signal: int = 9) 
     return (macd_line, signal_line, hist)
 
 
+def _atr14(highs: list[float], lows: list[float], closes: list[float], period: int = 14) -> float | None:
+    """
+    ATR(period) using True Range + Wilder smoothing.
+    Returns latest ATR value.
+    """
+    if period <= 0:
+        return None
+    n = min(len(highs), len(lows), len(closes))
+    if n < period + 1:
+        return None
+    tr: list[float] = []
+    for i in range(1, n):
+        h = highs[i]
+        l = lows[i]
+        pc = closes[i - 1]
+        tr_i = max(h - l, abs(h - pc), abs(l - pc))
+        tr.append(tr_i)
+    if len(tr) < period:
+        return None
+    atr = sum(tr[:period]) / float(period)
+    for x in tr[period:]:
+        atr = (atr * (period - 1) + x) / float(period)
+    return atr if math.isfinite(atr) else None
+
+
 def _parse_float_safe(v: Any) -> float | None:
     try:
         if v is None:
@@ -3357,10 +3384,15 @@ def _parse_float_safe(v: Any) -> float | None:
         return None
 
 
-def _market_stock_trendok_one(*, symbol: str, name: str | None, bars: list[tuple[str, str | None, str | None]]) -> TrendOkResult:
+def _market_stock_trendok_one(
+    *,
+    symbol: str,
+    name: str | None,
+    bars: list[tuple[str, str | None, str | None, str | None, str | None]],
+) -> TrendOkResult:
     """
     Compute TrendOK for one CN symbol from daily bars.
-    bars: list of (date, close, volume) ordered by date ASC.
+    bars: list of (date, high, low, close, volume) ordered by date ASC.
     """
     res = TrendOkResult(symbol=symbol, name=name)
     if not symbol.startswith("CN:"):
@@ -3369,14 +3401,20 @@ def _market_stock_trendok_one(*, symbol: str, name: str | None, bars: list[tuple
 
     closes: list[float] = []
     vols: list[float] = []
+    highs: list[float] = []
+    lows: list[float] = []
     dates: list[str] = []
-    for d, c, v in bars:
+    for d, h, l, c, v in bars:
         c2 = _parse_float_safe(c)
         v2 = _parse_float_safe(v)
+        h2 = _parse_float_safe(h)
+        l2 = _parse_float_safe(l)
         if c2 is None:
             continue
         closes.append(c2)
         vols.append(v2 if v2 is not None else 0.0)
+        highs.append(h2 if h2 is not None else c2)
+        lows.append(l2 if l2 is not None else c2)
         dates.append(str(d))
 
     if not closes:
@@ -3552,6 +3590,105 @@ def _market_stock_trendok_one(*, symbol: str, name: str | None, bars: list[tuple
         # Keep score optional; never break endpoint for score computation failures.
         res.score = None
 
+    # ---------- StopLoss (CN daily), formula-based (no LLM) ----------
+    # stop_loss = max(final_support - atr_k*ATR14, current*(1-max_loss_pct))
+    try:
+        stop_parts: dict[str, Any] = {}
+        current = float(closes[-1])
+        stop_parts["current_price"] = round(current, 6)
+
+        if not lows or res.values.ema20 is None:
+            res.stopLossPrice = None
+            res.missingData.append("stoploss_missing_inputs")
+        else:
+            swing_low = min(lows[-10:]) if len(lows) >= 10 else min(lows)
+            if len(lows) >= 20:
+                # Exclude last 5 days if possible
+                platform_slice = lows[-20:-5] if len(lows) >= 25 else lows[: max(0, len(lows) - 5)]
+                platform_low = min(platform_slice) if platform_slice else swing_low
+            else:
+                platform_low = min(lows[: max(0, len(lows) - 5)]) if len(lows) > 5 else swing_low
+
+            ema20 = float(res.values.ema20)
+            structural_support = max(swing_low, platform_low, ema20)
+            stop_parts["swing_low_10d"] = round(swing_low, 6)
+            stop_parts["platform_low_20d_excl_5d"] = round(platform_low, 6)
+            stop_parts["ema20"] = round(ema20, 6)
+            stop_parts["structural_support"] = round(structural_support, 6)
+
+            # Optional chip support: use cached chips avgCost as a support proxy if below current.
+            chip_support: float | None = None
+            try:
+                chips_items = _load_cached_chips(symbol, days=30)
+                chips_last = chips_items[-1] if chips_items else {}
+                ch = _chips_summary_last(chips_last)
+                avg_cost = _safe_float(ch.get("avgCost"))
+                if avg_cost is not None and avg_cost < current:
+                    chip_support = float(avg_cost)
+                    stop_parts["chip_support_avgCost"] = round(chip_support, 6)
+            except Exception:
+                chip_support = None
+
+            final_support = structural_support
+            if chip_support is not None:
+                final_support = max(final_support, chip_support * 0.99)
+            stop_parts["final_support"] = round(final_support, 6)
+
+            # Volatility bin: std(returns[-20:])
+            vol_std20: float | None = None
+            if len(closes) >= 21:
+                rets_sl: list[float] = []
+                for i in range(-20, 0):
+                    c0 = closes[i - 1]
+                    c1 = closes[i]
+                    if c0 > 0:
+                        rets_sl.append((c1 / c0) - 1.0)
+                if len(rets_sl) >= 10:
+                    mu = sum(rets_sl) / float(len(rets_sl))
+                    var = sum((r - mu) ** 2 for r in rets_sl) / float(len(rets_sl))
+                    vol_std20 = math.sqrt(max(0.0, var))
+            stop_parts["vol_std20"] = round(vol_std20, 6) if vol_std20 is not None else None
+
+            if vol_std20 is None:
+                atr_k = 1.2
+                max_loss_pct = 0.08
+                vol_bin = "unknown"
+            elif vol_std20 <= 0.02:
+                atr_k = 1.1
+                max_loss_pct = 0.06
+                vol_bin = "low"
+            elif vol_std20 <= 0.04:
+                atr_k = 1.2
+                max_loss_pct = 0.08
+                vol_bin = "mid"
+            else:
+                atr_k = 1.4
+                max_loss_pct = 0.10
+                vol_bin = "high"
+            stop_parts["vol_bin"] = vol_bin
+            stop_parts["atr_k"] = atr_k
+            stop_parts["max_loss_pct"] = max_loss_pct
+
+            atr14 = _atr14(highs, lows, closes, 14)
+            if atr14 is None:
+                res.stopLossPrice = None
+                res.missingData.append("atr14_unavailable")
+            else:
+                buffer = atr_k * atr14
+                hard_stop = current * (1.0 - max_loss_pct)
+                stop_loss_support = final_support - buffer
+                final_stop = max(stop_loss_support, hard_stop)
+                final_stop = min(final_stop, current)  # never above current
+                stop_parts["atr14"] = round(atr14, 6)
+                stop_parts["buffer"] = round(buffer, 6)
+                stop_parts["hard_stop"] = round(hard_stop, 6)
+                stop_parts["stop_loss_support_minus_buffer"] = round(stop_loss_support, 6)
+                stop_parts["final_stop_loss"] = round(final_stop, 6)
+                res.stopLossPrice = round(final_stop, 6)
+                res.stopLossParts = stop_parts
+    except Exception:
+        res.stopLossPrice = None
+
     # Decide final TrendOK: require all checks to be True; if any required check is None, return None.
     required = [
         res.checks.emaOrder,
@@ -3599,7 +3736,7 @@ def market_stocks_trendok(symbols: list[str] = Query(default=[])) -> list[TrendO
             # Pull the most recent 120 daily bars for indicators.
             rows = conn.execute(
                 """
-                SELECT date, close, volume
+                SELECT date, high, low, close, volume
                 FROM market_bars
                 WHERE symbol = ?
                 ORDER BY date ASC
@@ -3608,7 +3745,16 @@ def market_stocks_trendok(symbols: list[str] = Query(default=[])) -> list[TrendO
             ).fetchall()
             # Keep only the tail for performance.
             tail = rows[-120:] if len(rows) > 120 else rows
-            bars = [(str(r[0]), str(r[1]) if r[1] is not None else None, str(r[2]) if r[2] is not None else None) for r in tail]
+            bars = [
+                (
+                    str(r[0]),
+                    str(r[1]) if r[1] is not None else None,
+                    str(r[2]) if r[2] is not None else None,
+                    str(r[3]) if r[3] is not None else None,
+                    str(r[4]) if r[4] is not None else None,
+                )
+                for r in tail
+            ]
             out.append(_market_stock_trendok_one(symbol=sym, name=by_name.get(sym), bars=bars))
     return out
 

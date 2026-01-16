@@ -120,6 +120,14 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
     assert r1.get("score") is not None
     assert 0 <= float(r1["score"]) <= 100
     assert isinstance(r1.get("scoreParts"), dict)
+    assert r1.get("stopLossPrice") is not None
+    sl1 = float(r1["stopLossPrice"])
+    assert sl1 > 0
+    assert sl1 <= float((r1.get("values") or {}).get("close"))
+    slp1 = r1.get("stopLossParts") or {}
+    assert isinstance(slp1, dict)
+    assert "hard_stop" in slp1
+    assert sl1 >= float(slp1["hard_stop"])
 
     r2 = rows[1]
     assert r2["symbol"] == "CN:000002"
@@ -128,6 +136,14 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
     assert r2["checks"]["volumeSurge"] is False
     assert r2.get("score") is not None
     assert 0 <= float(r2["score"]) <= 100
+    assert r2.get("stopLossPrice") is not None
+    sl2 = float(r2["stopLossPrice"])
+    assert sl2 > 0
+    assert sl2 <= float((r2.get("values") or {}).get("close"))
+    slp2 = r2.get("stopLossParts") or {}
+    assert isinstance(slp2, dict)
+    assert "hard_stop" in slp2
+    assert sl2 >= float(slp2["hard_stop"])
 
     # Pass-case should score higher than fail-case (volume confirmation contributes).
     assert float(r1["score"]) > float(r2["score"])

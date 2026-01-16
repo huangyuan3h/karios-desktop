@@ -56,6 +56,8 @@ type TrendOkResult = {
   trendOk?: boolean | null;
   score?: number | null; // 0..100, formula-based (no LLM)
   scoreParts?: Record<string, number>; // points breakdown (positive parts and penalties)
+  stopLossPrice?: number | null;
+  stopLossParts?: Record<string, unknown>;
   checks?: TrendOkChecks;
   values?: TrendOkValues;
   missingData?: string[];
@@ -157,6 +159,11 @@ function fmtScore(v: number | null | undefined): string {
   return String(Math.round(v));
 }
 
+function fmtNum(v: unknown, digits = 2): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return v.toFixed(digits);
+}
+
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const [items, setItems] = React.useState<WatchlistItem[]>([]);
   const [code, setCode] = React.useState('');
@@ -171,8 +178,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     x: number;
     y: number;
     w: number;
+    placement: 'top-end' | 'bottom-end';
     content: React.ReactNode;
-  }>({ open: false, x: 0, y: 0, w: 0, content: null });
+  }>({ open: false, x: 0, y: 0, w: 0, placement: 'top-end', content: null });
 
   React.useEffect(() => {
     const saved = loadJson<WatchlistItem[]>(STORAGE_KEY, []);
@@ -373,10 +381,19 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   }
 
   function showTooltip(el: HTMLElement, content: React.ReactNode, width = 360) {
+    // Render via portal to avoid clipping, but anchor near the hovered element.
+    // Place the tooltip at the element's top-right corner (top-end). If there isn't
+    // enough room above, flip to bottom-end.
     const r = el.getBoundingClientRect();
-    const x = Math.max(8, Math.min(window.innerWidth - width - 8, r.left));
-    const y = Math.min(window.innerHeight - 16, r.bottom + 8);
-    setTooltip({ open: true, x, y, w: width, content });
+    const pad = 12;
+    const w = Math.min(width, Math.max(240, window.innerWidth - pad * 2));
+    const x = Math.max(pad, Math.min(window.innerWidth - w - pad, r.right - w));
+    const preferTop = r.top > 140;
+    const placement: 'top-end' | 'bottom-end' = preferTop ? 'top-end' : 'bottom-end';
+    const y = preferTop
+      ? Math.max(pad, r.top - 8)
+      : Math.min(window.innerHeight - pad, r.bottom + 8);
+    setTooltip({ open: true, x, y, w, placement, content });
   }
 
   function hideTooltip() {
@@ -464,6 +481,116 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         aria-label="TrendOK details"
       >
         <span className="font-mono">{icon}</span>
+      </button>
+    );
+  }
+
+  function renderStopLossCell(sym: string) {
+    const t = trend[sym];
+    const p = t?.stopLossPrice ?? null;
+    const parts = t?.stopLossParts ?? null;
+    const get = (k: string) =>
+      parts && typeof parts === 'object' ? (parts as Record<string, unknown>)[k] : undefined;
+    const tip = (
+      <>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="font-medium">StopLoss</div>
+          <div className="font-mono text-[var(--k-muted)]">{sym}</div>
+        </div>
+        <div className="text-[var(--k-muted)]">
+          Formula: max(final_support - atr_k×ATR14, hard_stop)
+        </div>
+        <div className="mt-2 space-y-1">
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">Current</div>
+            <div className="font-mono">{fmtNum(get('current_price'), 2)}</div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">StopLoss</div>
+            <div className="font-mono">{fmtPrice(p)}</div>
+          </div>
+        </div>
+        <div className="mt-2 border-t border-[var(--k-border)] pt-2">
+          <div className="mb-1 font-medium">Support</div>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">swing_low_10d</div>
+              <div className="font-mono">{fmtNum(get('swing_low_10d'), 2)}</div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">platform_low</div>
+              <div className="font-mono">{fmtNum(get('platform_low_20d_excl_5d'), 2)}</div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">ema20</div>
+              <div className="font-mono">{fmtNum(get('ema20'), 2)}</div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">struct_support</div>
+              <div className="font-mono">{fmtNum(get('structural_support'), 2)}</div>
+            </div>
+            {get('chip_support_avgCost') !== undefined ? (
+              <div className="flex items-center justify-between">
+                <div className="text-[var(--k-muted)]">chip_support(avgCost)</div>
+                <div className="font-mono">{fmtNum(get('chip_support_avgCost'), 2)}</div>
+              </div>
+            ) : null}
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">final_support</div>
+              <div className="font-mono">{fmtNum(get('final_support'), 2)}</div>
+            </div>
+          </div>
+        </div>
+        <div className="mt-2 border-t border-[var(--k-border)] pt-2">
+          <div className="mb-1 font-medium">Buffer & caps</div>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">ATR14</div>
+              <div className="font-mono">{fmtNum(get('atr14'), 3)}</div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">atr_k</div>
+              <div className="font-mono">{fmtNum(get('atr_k'), 2)}</div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">buffer</div>
+              <div className="font-mono">{fmtNum(get('buffer'), 3)}</div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">vol_std20</div>
+              <div className="font-mono">{fmtNum(get('vol_std20'), 4)}</div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">vol_bin</div>
+              <div className="font-mono">{String(get('vol_bin') ?? '—')}</div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">max_loss_pct</div>
+              <div className="font-mono">
+                {typeof get('max_loss_pct') === 'number'
+                  ? `${(get('max_loss_pct') as number) * 100}%`
+                  : '—'}
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">hard_stop</div>
+              <div className="font-mono">{fmtNum(get('hard_stop'), 2)}</div>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+    return (
+      <button
+        type="button"
+        className="inline-flex items-center"
+        onMouseEnter={(e) => showTooltip(e.currentTarget, tip, 380)}
+        onMouseLeave={hideTooltip}
+        onFocus={(e) => showTooltip(e.currentTarget, tip, 380)}
+        onBlur={hideTooltip}
+        aria-label="StopLoss details"
+      >
+        <span className="font-mono">{fmtPrice(p)}</span>
       </button>
     );
   }
@@ -660,6 +787,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     </button>
                   </th>
                   <th className="px-3 py-2">Current</th>
+                  <th className="px-3 py-2">止损</th>
                   <th className="px-3 py-2">
                     <div className="inline-flex items-center gap-2">
                       <span>TrendOK</span>
@@ -698,6 +826,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     >
                       {fmtPrice(trend[it.symbol]?.values?.close)}
                     </td>
+                    <td className="px-3 py-2">{renderStopLossCell(it.symbol)}</td>
                     <td className="px-3 py-2">{renderTrendOkCell(it.symbol)}</td>
                     <td className="px-3 py-2 text-right">
                       <div className="flex justify-end gap-2">
@@ -737,8 +866,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       {tooltip.open
         ? createPortal(
             <div
-              className="fixed z-[9999] rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs text-[var(--k-text)] shadow-lg"
-              style={{ left: tooltip.x, top: tooltip.y, width: tooltip.w }}
+              className="fixed z-[9999] max-h-[70vh] overflow-auto rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs text-[var(--k-text)] shadow-lg"
+              style={{
+                left: tooltip.x,
+                top: tooltip.y,
+                width: tooltip.w,
+                transform: tooltip.placement === 'top-end' ? 'translateY(-100%)' : undefined,
+              }}
             >
               {tooltip.content}
             </div>,
