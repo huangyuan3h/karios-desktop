@@ -73,7 +73,8 @@ def test_intraday_rank_generate_and_read(tmp_path, monkeypatch) -> None:
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["accountId"] == account_id
+    # Quant is global; rank endpoints ignore accountId and use a stable internal account id.
+    assert data["accountId"] == "global"
     assert data["tradeDate"] == "2026-01-02"
     assert data["slot"] in ("0930_1030", "1030_1130", "1300_1400", "1400_1445")
     assert isinstance(data.get("items"), list)
@@ -81,10 +82,10 @@ def test_intraday_rank_generate_and_read(tmp_path, monkeypatch) -> None:
     assert data["items"][0]["ticker"] in ("000001", "000002")
 
     # Read latest snapshot.
-    resp2 = client.get(f"/rank/cn/intraday?accountId={account_id}&limit=30&universeVersion=v0")
+    resp2 = client.get("/rank/cn/intraday?limit=30&universeVersion=v0")
     assert resp2.status_code == 200
     got = resp2.json()
-    assert got["accountId"] == account_id
+    assert got["accountId"] == "global"
 
     # Observations API.
     resp3 = client.get("/rank/cn/intraday/observations?date=2026-01-02")

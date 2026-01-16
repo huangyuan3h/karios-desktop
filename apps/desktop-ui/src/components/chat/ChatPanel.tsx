@@ -628,8 +628,9 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 
     if (ref.kind === 'rankList') {
       try {
-        const q = `accountId=${encodeURIComponent(String(ref.accountId))}&limit=${encodeURIComponent(String(ref.limit ?? 30))}`
-          + (ref.asOfDate ? `&asOfDate=${encodeURIComponent(String(ref.asOfDate))}` : '');
+        const q =
+          `limit=${encodeURIComponent(String(ref.limit ?? 30))}` +
+          (ref.asOfDate ? `&asOfDate=${encodeURIComponent(String(ref.asOfDate))}` : '');
         const resp = await fetch(`${QUANT_BASE_URL}/rank/cn/next2d?${q}`, { cache: 'no-store' });
         if (!resp.ok) throw new Error('failed to load rank list');
         const rk = (await resp.json()) as Record<string, unknown>;
@@ -662,7 +663,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 
     if (ref.kind === 'intradayRankList') {
       try {
-        const q = `accountId=${encodeURIComponent(String(ref.accountId))}&limit=${encodeURIComponent(String(ref.limit ?? 30))}`;
+        const q = `limit=${encodeURIComponent(String(ref.limit ?? 30))}`;
         const resp = await fetch(`${QUANT_BASE_URL}/rank/cn/intraday?${q}`, { cache: 'no-store' });
         if (!resp.ok) throw new Error('failed to load intraday rank');
         const rk = (await resp.json()) as Record<string, unknown>;

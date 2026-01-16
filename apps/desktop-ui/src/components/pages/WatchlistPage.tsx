@@ -11,7 +11,6 @@ type WatchlistItem = {
   symbol: string; // e.g. "CN:600000" or "HK:0700"
   name?: string | null;
   nameStatus?: 'resolved' | 'not_found';
-  note?: string | null;
   addedAt: string; // ISO
 };
 
@@ -58,12 +57,26 @@ function normalizeSymbolInput(input: string): { symbol: string } | { error: stri
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const [items, setItems] = React.useState<WatchlistItem[]>([]);
   const [code, setCode] = React.useState('');
-  const [note, setNote] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const saved = loadJson<WatchlistItem[]>(STORAGE_KEY, []);
-    setItems(Array.isArray(saved) ? saved : []);
+    // Backward-compatible migration: drop deprecated fields (e.g. note).
+    const arr = Array.isArray(saved) ? saved : [];
+    const migrated: WatchlistItem[] = arr
+      .filter((x) => x && typeof x === 'object')
+      .map((x) => {
+        const it = x as Partial<WatchlistItem> & { note?: unknown };
+        return {
+          symbol: String(it.symbol ?? '').trim(),
+          name: it.name ?? null,
+          nameStatus: it.nameStatus === 'resolved' || it.nameStatus === 'not_found' ? it.nameStatus : undefined,
+          addedAt: String(it.addedAt ?? new Date().toISOString()),
+        };
+      })
+      .filter((x) => Boolean(x.symbol));
+    setItems(migrated);
+    saveJson(STORAGE_KEY, migrated);
   }, []);
 
   function persist(next: WatchlistItem[]) {
@@ -122,14 +135,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       {
         symbol: sym,
         name: null,
-        note: (note || '').trim() || null,
         addedAt: new Date().toISOString(),
       },
       ...items,
     ];
     persist(next);
     setCode('');
-    setNote('');
   }
 
   function onRemove(sym: string) {
@@ -150,19 +161,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         <div className="mb-2 text-sm font-medium">Add</div>
         <div className="grid gap-2 md:grid-cols-12">
           <input
-            className="h-9 md:col-span-3 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 text-sm outline-none"
+            className="h-9 md:col-span-10 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 text-sm outline-none"
             placeholder="Ticker (e.g. 600000 / 0700 / CN:600000)"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onAdd();
-            }}
-          />
-          <input
-            className="h-9 md:col-span-7 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 text-sm outline-none"
-            placeholder="Note (optional)"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') onAdd();
             }}
@@ -176,10 +178,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               variant="secondary"
               onClick={() => {
                 setCode('');
-                setNote('');
                 setError(null);
               }}
-              disabled={!code.trim() && !note.trim() && !error}
+              disabled={!code.trim() && !error}
             >
               Clear
             </Button>
@@ -207,7 +208,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 <tr className="text-left">
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Note</th>
                   <th className="px-3 py-2 w-[120px]">Added</th>
                   <th className="px-3 py-2 w-[90px] text-right"> </th>
                 </tr>
@@ -217,7 +217,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   <tr key={it.symbol} className="border-t border-[var(--k-border)]">
                     <td className="px-3 py-2 font-mono">{it.symbol}</td>
                     <td className="px-3 py-2">{it.name || '—'}</td>
-                    <td className="px-3 py-2">{it.note || ''}</td>
                     <td className="px-3 py-2 text-xs text-[var(--k-muted)]">
                       {new Date(it.addedAt).toLocaleDateString()}
                     </td>

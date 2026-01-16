@@ -1544,6 +1544,30 @@ def _seed_default_broker_account(broker: str) -> str:
         return aid
 
 
+_GLOBAL_QUANT_ACCOUNT_ID = "global"
+
+
+def _global_quant_account_id() -> str:
+    """
+    Quant/Rank is global and MUST NOT depend on any broker account.
+    DB schemas require an account_id (FK), so we use a stable internal account id.
+    """
+    ts = now_iso()
+    with _connect() as conn:
+        row = conn.execute("SELECT id FROM broker_accounts WHERE id = ?", (_GLOBAL_QUANT_ACCOUNT_ID,)).fetchone()
+        if row is not None:
+            return str(row[0])
+        conn.execute(
+            """
+            INSERT INTO broker_accounts(id, broker, title, account_masked, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (_GLOBAL_QUANT_ACCOUNT_ID, "system", "Global", None, ts, ts),
+        )
+        conn.commit()
+    return _GLOBAL_QUANT_ACCOUNT_ID
+
+
 def _get_account_state_row(account_id: str) -> dict[str, Any] | None:
     with _connect() as conn:
         row = conn.execute(
@@ -2362,7 +2386,7 @@ class RankNext2dGenerateRequest(BaseModel):
     force: bool = False
     limit: int = 30
     universeVersion: str = "v0"
-    includeHoldings: bool = True
+    includeHoldings: bool = False
 
 
 class RankItem(BaseModel):
@@ -3919,13 +3943,8 @@ def rank_cn_next2d(
     universeVersion: str = "v0",
 ) -> RankSnapshotResponse:
     as_of = (asOfDate or "").strip() or _today_cn_date_str()
-    # Default account: first pingan account.
-    aid = (accountId or "").strip()
-    if not aid:
-        accs = list_broker_accounts(broker="pingan")
-        aid = accs[0].id if accs else ""
-    if not aid:
-        raise HTTPException(status_code=400, detail="accountId is required")
+    # Quant is global: ignore accountId and use a stable internal account id for caching.
+    aid = _global_quant_account_id()
 
     cached = _get_cn_rank_snapshot(account_id=aid, as_of_date=as_of, universe_version=universeVersion)
     if cached is None:
@@ -3965,13 +3984,8 @@ def rank_cn_next2d_generate(req: RankNext2dGenerateRequest) -> RankSnapshotRespo
     universe = (req.universeVersion or "").strip() or "v0"
     limit2 = max(1, min(int(req.limit), 200))
 
-    # Default account: first pingan account.
-    aid = (req.accountId or "").strip()
-    if not aid:
-        accs = list_broker_accounts(broker="pingan")
-        aid = accs[0].id if accs else ""
-    if not aid:
-        raise HTTPException(status_code=400, detail="accountId is required")
+    # Quant is global: ignore accountId and use a stable internal account id for caching/learning.
+    aid = _global_quant_account_id()
 
     cached = _get_cn_rank_snapshot(account_id=aid, as_of_date=as_of, universe_version=universe)
     if cached is not None and not req.force:
@@ -4005,7 +4019,7 @@ def rank_cn_next2d_generate(req: RankNext2dGenerateRequest) -> RankSnapshotRespo
         as_of_date=as_of,
         limit=internal_limit,
         universe_version=universe,
-        include_holdings=bool(req.includeHoldings),
+        include_holdings=False,
     )
 
     # Calibration (bucketed, cached).
@@ -4255,12 +4269,8 @@ def rank_cn_intraday(
     universe = (universeVersion or "").strip() or "v0"
     limit2 = max(1, min(int(limit), 200))
 
-    aid = (accountId or "").strip()
-    if not aid:
-        accs = list_broker_accounts(broker="pingan")
-        aid = accs[0].id if accs else ""
-    if not aid:
-        raise HTTPException(status_code=400, detail="accountId is required")
+    # Quant is global: ignore accountId and use a stable internal account id for caching.
+    aid = _global_quant_account_id()
 
     cached = _get_cn_intraday_rank_snapshot_latest(account_id=aid, universe_version=universe)
     if cached is None:
@@ -4308,12 +4318,8 @@ def rank_cn_intraday_generate(req: IntradayRankGenerateRequest) -> IntradayRankS
     limit2 = max(1, min(int(req.limit), 200))
     as_of_ts = (req.asOfTs or "").strip() or now_iso()
 
-    aid = (req.accountId or "").strip()
-    if not aid:
-        accs = list_broker_accounts(broker="pingan")
-        aid = accs[0].id if accs else ""
-    if not aid:
-        raise HTTPException(status_code=400, detail="accountId is required")
+    # Quant is global: ignore accountId and use a stable internal account id for caching.
+    aid = _global_quant_account_id()
 
     tz = ZoneInfo("Asia/Shanghai")
     try:
@@ -4473,12 +4479,8 @@ def _quant_morning_radar_build(
 @app.post("/rank/cn/morning/generate", response_model=MorningRadarResponse)
 def rank_cn_morning_generate(req: MorningRadarGenerateRequest) -> MorningRadarResponse:
     universe = (req.universeVersion or "").strip() or "v0"
-    aid = (req.accountId or "").strip()
-    if not aid:
-        accs = list_broker_accounts(broker="pingan")
-        aid = accs[0].id if accs else ""
-    if not aid:
-        raise HTTPException(status_code=400, detail="accountId is required")
+    # Quant is global: ignore accountId and use a stable internal account id for caching.
+    aid = _global_quant_account_id()
     ts = (req.asOfTs or "").strip() or now_iso()
     out = _quant_morning_radar_build(
         account_id=aid,

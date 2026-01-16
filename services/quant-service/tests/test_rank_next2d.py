@@ -240,14 +240,12 @@ def test_rank_next2d_generate_and_read(tmp_path, monkeypatch) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["asOfDate"] == "2026-01-07"
-    assert data["accountId"] == account_id
+    # Quant is global; rank endpoints ignore accountId and use a stable internal account id.
+    assert data["accountId"] == "global"
     assert data["riskMode"] == "no_new_positions"
     tickers = [it["ticker"] for it in data["items"]]
     assert "000001" in tickers
-    assert "000003" in tickers
     assert "000002" not in tickers
-    # StrongOne should rank above holding-only.
-    assert tickers.index("000001") < tickers.index("000003")
     # Ensure risk penalty is present in breakdown.
     row0 = next((x for x in data["items"] if x["ticker"] == "000001"), None)
     assert isinstance(row0, dict)
@@ -257,10 +255,10 @@ def test_rank_next2d_generate_and_read(tmp_path, monkeypatch) -> None:
     assert float(row0.get("rawScore") or 0.0) == float(row0.get("score") or 0.0)
 
     # Read cached snapshot
-    resp2 = client.get(f"/rank/cn/next2d?accountId={account_id}&asOfDate=2026-01-07&limit=30")
+    resp2 = client.get("/rank/cn/next2d?asOfDate=2026-01-07&limit=30")
     assert resp2.status_code == 200
     data2 = resp2.json()
     assert data2["asOfDate"] == "2026-01-07"
-    assert len(data2["items"]) >= 2
+    assert len(data2["items"]) >= 1
 
 

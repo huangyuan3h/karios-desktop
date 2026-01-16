@@ -4,18 +4,9 @@ import * as React from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 import type { ChatReference } from '@/lib/chat/types';
-
-type BrokerAccount = { id: string; title: string; broker: string };
 
 type RankItem = {
   symbol: string;
@@ -41,7 +32,7 @@ type RankSnapshot = {
   id: string;
   asOfTs?: string | null;
   asOfDate: string;
-  accountId: string;
+  accountId?: string;
   createdAt: string;
   universeVersion: string;
   riskMode?: string | null;
@@ -71,7 +62,7 @@ type MorningRadarTheme = {
 type MorningRadarResponse = {
   asOfTs: string;
   tradeDate: string;
-  accountId: string;
+  accountId?: string;
   universeVersion: string;
   themes: MorningRadarTheme[];
   debug?: unknown;
@@ -108,41 +99,18 @@ function fmtPctOrDash(x: number | null | undefined, digits = 0) {
 
 export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const { addReference } = useChatStore();
-  const [accounts, setAccounts] = React.useState<BrokerAccount[]>([]);
-  const [accountId, setAccountId] = React.useState<string>('');
   const [tab, setTab] = React.useState<'top2d' | 'morning'>('top2d');
   const [dataNext2d, setDataNext2d] = React.useState<RankSnapshot | null>(null);
   const [dataMorning, setDataMorning] = React.useState<MorningRadarResponse | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const accs = await apiGetJson<BrokerAccount[]>('/broker/accounts?broker=pingan');
-        if (cancelled) return;
-        const list = Array.isArray(accs) ? accs : [];
-        setAccounts(list);
-        if (!accountId && list.length) setAccountId(String(list[0].id));
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const refresh = React.useCallback(
     async (force?: boolean) => {
-      if (!accountId) return;
       setError(null);
       try {
         if (tab === 'morning') {
           const r = await apiPostJson<MorningRadarResponse>('/rank/cn/morning/generate', {
-            accountId,
             universeVersion: 'v0',
             topK: 3,
             perTheme: 3,
@@ -152,16 +120,14 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
         } else {
           if (force) {
             const r = await apiPostJson<RankSnapshot>('/rank/cn/next2d/generate', {
-              accountId,
               force: true,
               limit: 30,
-              includeHoldings: true,
               universeVersion: 'v0',
             });
             setDataNext2d(r);
           } else {
             const r = await apiGetJson<RankSnapshot>(
-              `/rank/cn/next2d?accountId=${encodeURIComponent(accountId)}&limit=30&universeVersion=v0`,
+              `/rank/cn/next2d?limit=30&universeVersion=v0`,
             );
             setDataNext2d(r);
           }
@@ -170,7 +136,7 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
         setError(e instanceof Error ? e.message : String(e));
       }
     },
-    [accountId, tab],
+    [tab],
   );
 
   React.useEffect(() => {
@@ -218,7 +184,7 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
             variant="secondary"
             size="sm"
             className="gap-2"
-            disabled={!accountId || busy}
+            disabled={busy}
             onClick={() => void refresh(false)}
           >
             <RefreshCw className="h-4 w-4" />
@@ -227,7 +193,7 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
           <Button
             size="sm"
             className="gap-2"
-            disabled={!accountId || busy}
+            disabled={busy}
             onClick={() => void onGenerate()}
           >
             {busy ? (
@@ -241,12 +207,10 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
             <Button
               size="sm"
               variant="secondary"
-              disabled={!accountId}
               onClick={() => {
                 addReference({
                   kind: 'rankList',
-                  refId: `rankList:${accountId}:${Date.now()}`,
-                  accountId,
+                  refId: `rankList:${Date.now()}`,
                   asOfDate: String(dataNext2d?.asOfDate ?? ''),
                   limit: 30,
                   createdAt: new Date().toISOString(),
@@ -260,25 +224,6 @@ export function RankPage({ onOpenStock }: { onOpenStock?: (symbol: string) => vo
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="w-[280px]">
-          <Select value={accountId} onValueChange={setAccountId}>
-            <SelectTrigger className="h-9">
-              <SelectValue placeholder="Select account" />
-            </SelectTrigger>
-            <SelectContent>
-              {accounts.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.title || a.id}
-                </SelectItem>
-              ))}
-              {!accounts.length ? (
-                <SelectItem value="__none__" disabled>
-                  No accounts
-                </SelectItem>
-              ) : null}
-            </SelectContent>
-          </Select>
-        </div>
         <div className="text-xs text-[var(--k-muted)]">
           {tab === 'morning' ? (
             <>
