@@ -3275,6 +3275,8 @@ class TrendOkResult(BaseModel):
     name: str | None = None
     asOfDate: str | None = None
     trendOk: bool | None = None
+    score: float | None = None  # 0..100, formula-based (no LLM)
+    scoreParts: dict[str, float] = {}  # points breakdown (positive parts and penalties)
     checks: TrendOkChecks = TrendOkChecks()
     values: TrendOkValues = TrendOkValues()
     missingData: list[str] = []
@@ -3436,6 +3438,119 @@ def _market_stock_trendok_one(*, symbol: str, name: str | None, bars: list[tuple
         res.values.avgVol5 = avg5
         res.values.avgVol30 = avg30
         res.checks.volumeSurge = bool(avg5 > 1.2 * avg30) if avg30 > 0 else bool(avg5 > 0)
+
+    # ---------- Score (0..100), formula-based (CN daily; no LLM) ----------
+    # Goal: next 1-2 trading days action score; prefer strong trend + momentum + volume confirmation with limited risk.
+    try:
+        def _clip01(x: float) -> float:
+            return 0.0 if x <= 0.0 else 1.0 if x >= 1.0 else x
+
+        parts: dict[str, float] = {}
+
+        # If core indicators are missing, keep score as None (UI shows —).
+        if (
+            res.values.close is None
+            or res.values.ema5 is None
+            or res.values.ema20 is None
+            or res.values.ema60 is None
+            or res.values.high20 is None
+            or res.values.rsi14 is None
+            or res.values.avgVol5 is None
+            or res.values.avgVol30 is None
+            or res.values.macd is None
+            or not res.values.macdHist4
+        ):
+            res.score = None
+        else:
+            close = float(res.values.close)
+            ema5 = float(res.values.ema5)
+            ema20 = float(res.values.ema20)
+            ema60 = float(res.values.ema60)
+            high20 = float(res.values.high20)
+            rsi14 = float(res.values.rsi14)
+            avg5 = float(res.values.avgVol5)
+            avg30 = float(res.values.avgVol30)
+            macd_last = float(res.values.macd)
+            h4 = [float(x) for x in (res.values.macdHist4 or [])]
+
+            # Subscores in [0,1]
+            # 1) Trend / EMA (0.25): partial credit for partial alignment.
+            ema_pairs = 0
+            if ema5 > ema20:
+                ema_pairs += 1
+            if ema20 > ema60:
+                ema_pairs += 1
+            s_ema = float(ema_pairs) / 2.0
+
+            # 2) Momentum / MACD (0.20): require macdLine>0; positive-part expansions in last 4 hist values.
+            hpos = [max(0.0, x) for x in h4] if len(h4) == 4 else [0.0, 0.0, 0.0, 0.0]
+            inc = 0
+            if hpos[1] > hpos[0]:
+                inc += 1
+            if hpos[2] > hpos[1]:
+                inc += 1
+            if hpos[3] > hpos[2]:
+                inc += 1
+            s_hist = (float(inc) / 3.0) if hpos[3] > 0.0 else 0.0
+            s_macd = 0.0 if macd_last <= 0.0 else _clip01(0.5 + 0.5 * s_hist)
+
+            # 3) Near breakout (0.20): close/high20 in [0.85,0.95] -> [0,1]
+            ratio_hi = close / high20 if high20 > 0 else 0.0
+            s_break = _clip01((ratio_hi - 0.85) / 0.10)
+
+            # 4) RSI quality (0.15): triangular preference within [50,75], peak at 62.5
+            if 50.0 <= rsi14 <= 75.0:
+                s_rsi = _clip01(1.0 - (abs(rsi14 - 62.5) / 12.5))
+            else:
+                s_rsi = 0.0
+
+            # 5) Volume confirmation (0.20): avg5/avg30 in [1.0,1.3] -> [0,1]
+            ratio_vol = (avg5 / avg30) if avg30 > 0 else (1.0 if avg5 > 0 else 0.0)
+            s_vol = _clip01((ratio_vol - 1.0) / 0.30)
+
+            w_ema, w_macd, w_break, w_rsi, w_vol = 0.25, 0.20, 0.20, 0.15, 0.20
+            pts_ema = 100.0 * w_ema * s_ema
+            pts_macd = 100.0 * w_macd * s_macd
+            pts_break = 100.0 * w_break * s_break
+            pts_rsi = 100.0 * w_rsi * s_rsi
+            pts_vol = 100.0 * w_vol * s_vol
+            parts["ema"] = round(pts_ema, 3)
+            parts["macd"] = round(pts_macd, 3)
+            parts["breakout"] = round(pts_break, 3)
+            parts["rsi"] = round(pts_rsi, 3)
+            parts["volume"] = round(pts_vol, 3)
+
+            # Risk penalties (points, negative): volatility + below EMA20
+            penalty = 0.0
+            # Volatility: std of last 20 daily returns. 0.02 -> 0, 0.06 -> 10 points
+            if len(closes) >= 21:
+                rets: list[float] = []
+                for i in range(-20, 0):
+                    c0 = closes[i - 1]
+                    c1 = closes[i]
+                    if c0 > 0:
+                        rets.append((c1 / c0) - 1.0)
+                if len(rets) >= 10:
+                    mu = sum(rets) / float(len(rets))
+                    var = sum((r - mu) ** 2 for r in rets) / float(len(rets))
+                    std = math.sqrt(max(0.0, var))
+                    p_vol = _clip01((std - 0.02) / 0.04) * 10.0
+                    penalty += p_vol
+                    parts["penalty_volatility"] = -round(p_vol, 3)
+            # Below EMA20: 5% below -> 10 points
+            if ema20 > 0 and close < ema20:
+                dd = (ema20 - close) / ema20
+                p_below = _clip01(dd / 0.05) * 10.0
+                penalty += p_below
+                parts["penalty_below_ema20"] = -round(p_below, 3)
+
+            total = pts_ema + pts_macd + pts_break + pts_rsi + pts_vol - penalty
+            total2 = max(0.0, min(100.0, total))
+            res.score = round(total2, 3)
+            res.scoreParts = parts
+    except Exception:
+        # Keep score optional; never break endpoint for score computation failures.
+        res.score = None
 
     # Decide final TrendOK: require all checks to be True; if any required check is None, return None.
     required = [

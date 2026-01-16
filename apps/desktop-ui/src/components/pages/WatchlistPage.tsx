@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Eye, Info, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Info, RefreshCw, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
@@ -54,6 +54,8 @@ type TrendOkResult = {
   name?: string | null;
   asOfDate?: string | null;
   trendOk?: boolean | null;
+  score?: number | null; // 0..100, formula-based (no LLM)
+  scoreParts?: Record<string, number>; // points breakdown (positive parts and penalties)
   checks?: TrendOkChecks;
   values?: TrendOkValues;
   missingData?: string[];
@@ -150,6 +152,11 @@ function fmtPrice(v: number | null | undefined): string {
   return v.toFixed(2);
 }
 
+function fmtScore(v: number | null | undefined): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return String(Math.round(v));
+}
+
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const [items, setItems] = React.useState<WatchlistItem[]>([]);
   const [code, setCode] = React.useState('');
@@ -157,6 +164,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
+  const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
+  const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
   const [tooltip, setTooltip] = React.useState<{
     open: boolean;
     x: number;
@@ -459,6 +468,78 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     );
   }
 
+  function renderScoreCell(sym: string) {
+    const t = trend[sym];
+    const score = t?.score ?? null;
+    const parts = t?.scoreParts ?? null;
+    const entries =
+      parts && typeof parts === 'object'
+        ? Object.entries(parts).filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
+        : [];
+    entries.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+    const tip = (
+      <>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="font-medium">Score (0–100)</div>
+          <div className="font-mono text-[var(--k-muted)]">{sym}</div>
+        </div>
+        <div className="text-[var(--k-muted)]">
+          Deterministic formula (CN daily, no LLM). Higher means better short-horizon setup.
+        </div>
+        <div className="mt-2 space-y-1">
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">Total</div>
+            <div className="font-mono">{fmtScore(score)}</div>
+          </div>
+          {entries.length ? (
+            <div className="mt-2">
+              {entries.map(([k, v]) => (
+                <div key={k} className="flex items-center justify-between gap-3">
+                  <div className="text-[var(--k-muted)]">{k}</div>
+                  <div className="font-mono">{v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1)}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-2 text-[var(--k-muted)]">
+              No breakdown available (insufficient data).
+            </div>
+          )}
+        </div>
+      </>
+    );
+    return (
+      <button
+        type="button"
+        className="inline-flex items-center"
+        onMouseEnter={(e) => showTooltip(e.currentTarget, tip, 360)}
+        onMouseLeave={hideTooltip}
+        onFocus={(e) => showTooltip(e.currentTarget, tip, 360)}
+        onBlur={hideTooltip}
+        aria-label="Score details"
+      >
+        <span className="font-mono">{fmtScore(score)}</span>
+      </button>
+    );
+  }
+
+  const sortedItems = React.useMemo(() => {
+    if (!scoreSortEnabled) return items;
+    const arr = [...items];
+    arr.sort((a, b) => {
+      const sa = trend[a.symbol]?.score;
+      const sb = trend[b.symbol]?.score;
+      const va = typeof sa === 'number' && Number.isFinite(sa) ? sa : null;
+      const vb = typeof sb === 'number' && Number.isFinite(sb) ? sb : null;
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1; // push unknown to bottom
+      if (vb == null) return -1;
+      const d = va - vb;
+      return scoreSortDir === 'asc' ? d : -d;
+    });
+    return arr;
+  }, [items, trend, scoreSortEnabled, scoreSortDir]);
+
   const headerTip = (
     <>
       <div className="mb-2 font-medium">Definition (CN daily)</div>
@@ -551,6 +632,33 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 <tr className="text-left">
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1"
+                      onClick={() => {
+                        setScoreSortEnabled(true);
+                        setScoreSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setScoreSortEnabled((v) => !v);
+                      }}
+                      title="Click to toggle sort. Right-click to enable/disable sorting."
+                      aria-label="Sort by score"
+                    >
+                      <span>Score</span>
+                      {scoreSortEnabled ? (
+                        scoreSortDir === 'desc' ? (
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </th>
                   <th className="px-3 py-2">Current</th>
                   <th className="px-3 py-2">
                     <div className="inline-flex items-center gap-2">
@@ -573,10 +681,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 </tr>
               </thead>
               <tbody>
-                {items.map((it) => (
+                {sortedItems.map((it) => (
                   <tr key={it.symbol} className="border-t border-[var(--k-border)]">
                     <td className="px-3 py-2 font-mono">{it.symbol}</td>
                     <td className="px-3 py-2">{it.name || '—'}</td>
+                    <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
                     <td
                       className="px-3 py-2 font-mono"
                       title={

@@ -117,10 +117,18 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
     assert checks1.get("rsiInRange") is True, f"rsi14={((r1.get('values') or {}).get('rsi14'))}"
     assert checks1.get("volumeSurge") is True
     assert r1["trendOk"] is True
+    assert r1.get("score") is not None
+    assert 0 <= float(r1["score"]) <= 100
+    assert isinstance(r1.get("scoreParts"), dict)
 
     r2 = rows[1]
     assert r2["symbol"] == "CN:000002"
     # Volume surge should fail, thus TrendOK should be False when indicators are available.
     assert r2["trendOk"] is False
     assert r2["checks"]["volumeSurge"] is False
+    assert r2.get("score") is not None
+    assert 0 <= float(r2["score"]) <= 100
+
+    # Pass-case should score higher than fail-case (volume confirmation contributes).
+    assert float(r1["score"]) > float(r2["score"])
 
