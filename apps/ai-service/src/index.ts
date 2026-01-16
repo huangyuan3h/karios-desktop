@@ -1017,35 +1017,54 @@ app.post('/strategy/daily-markdown', async (c) => {
     `Task: Write a daily trading report for ${accountTitle} on ${date}.\n` +
     'Output requirements:\n' +
     '- Return a SINGLE Markdown document.\n' +
-    '- Use "Number. Title" format for headings (e.g., "1. 总览").\n' +
-    '- STRICT Markdown: Headings must start at column 0, followed by EXACTLY two newlines.\n' +
-    '- LANGUAGE: Chinese (Simplified).\n\n' +
-    '1. 总览\n\n' +
-    '直接用 1 段短文（<=150字）概括：当前情绪定性（不显示变量名）、资金流入流出行业结论、今日核心操作硬准则（如：只卖不买、突破买入等）。拒绝虚词。\n\n' +
+    '- LANGUAGE: Chinese (Simplified).\n' +
+    '- Use ONLY these H2 headings EXACTLY (no extra headings, no "###"):\n' +
+    '  - "## 1 总览"\n' +
+    '  - "## 2 机会Top3"\n' +
+    '  - "## 3 持仓计划"\n' +
+    '  - "## 4 条件单总表"\n' +
+    '  - "## 5 总结"\n' +
+    '- SECTION ORDER rule (MUST follow, for each section):\n' +
+    '  - Heading line\n' +
+    '  - TABLE immediately (no prose before the table)\n' +
+    '  - Then 1 short paragraph (<=150字) or 3-5 bullets (no tables)\n' +
+    '- STRICT TABLE rules (MUST follow):\n' +
+    '  - Tables MUST be valid GFM markdown tables.\n' +
+    '  - Each table row MUST be on its own line.\n' +
+    '  - No leading spaces before any "|" table line.\n' +
+    '  - NEVER use "|" in normal paragraphs/bullets. Pipes are only allowed inside tables.\n' +
+    '  - Table cells MUST be single-line text (no "\\n"). If you need multiple points, use ";" within the cell.\n' +
+    '  - If data is missing, write "—" (do NOT omit columns).\n\n' +
+    '## 1 总览\n\n' +
     '| Focus themes | Leader | Sentiment | Stance | Execution Key |\n' +
     '|---|---|---|---|---|\n' +
     '| 主线名称 | 龙头股 | 情绪定性 | 进攻/均衡/防守 | 一句话风控准则 |\n\n' +
-    '2. 机会\n\n' +
-    '简要说明选股逻辑（1句，严禁出现“优先选择量价强”等废话，直接说当前选股的共同技术特征）。\n\n' +
+    '在表格下面用 1 段短文（<=150字）概括：主线+情绪+行业资金结论，并给出今日唯一硬准则（必须可执行，拒绝虚词）。\n\n' +
+    '## 2 机会Top3\n\n' +
     '| Rank | Score | Symbol | Name | Current | Why | Risk |\n' +
-    '|---:|---:|---|---|---:|---|---|\n\n' +
-    '3. 持仓计划\n\n' +
-    '简要说明当前持仓风险分布（1句）。\n\n' +
+    '|---:|---:|---|---|---:|---|---|\n' +
+    '| 1 | 0 | CN:000000 | 示例 | — | — | — |\n' +
+    '| 2 | 0 | CN:000000 | 示例 | — | — | — |\n' +
+    '| 3 | 0 | CN:000000 | 示例 | — | — | — |\n\n' +
+    '在表格下面写 1 句话：这 3 个机会的共同结构特征（必须具体，禁止套话）。\n\n' +
+    '## 3 持仓计划\n\n' +
     '| Symbol | Name | PnL% | Action | Score | StopLoss | Orders | Notes |\n' +
-    '|---|---|---:|---|---:|---|---|---|\n\n' +
-    '4. 条件单总表\n\n' +
-    '简要说明条件单录入优先级逻辑（1句）。\n\n' +
+    '|---|---|---:|---|---:|---|---|---|\n' +
+    '| CN:000000 | 示例 | — | Hold/Reduce/Exit | 0 | — | — | — |\n\n' +
+    '在表格下面写 1 句话：当前持仓风险集中在哪（只说最关键的 1 个点）。\n\n' +
+    '## 4 条件单总表\n\n' +
     '| Priority | Symbol | Name | Action | OrderType | TriggerCondition | TriggerValue | Qty | Rationale |\n' +
-    '|---|---|---|---|---|---|---|---|---|\n\n' +
-    '5. 总结\n\n' +
-    '用 2 句话点明今日胜负手及核心变量。\n\n' +
+    '|---:|---|---|---|---|---|---:|---:|---|\n' +
+    '| 1 | CN:000000 | 示例 | Buy/Sell | 到价买入/到价卖出 | 价格上穿/价格下穿/到价 | 0 | 0 | — |\n\n' +
+    '在表格下面写 3-5 条 bullet：录入顺序与撤单规则（每条必须可执行）。\n\n' +
+    '## 5 总结\n\n' +
+    '用 2 句话点明：今日胜负手 + 盘中最该盯的 1 个变量。\n\n' +
     'CRITICAL RULES:\n' +
-    '1. NO JARGON/TRUISMS: Delete sentences like "优先选择量价强...", "回踩方案...", "风险点...". Use concrete data and specific actions instead.\n' +
-    '2. HEADING FORMAT: Must be "1. 总览", "2. 机会", etc. (No parentheses, no Top3).\n' +
-    '3. NO redundant text: Descriptions must be strictly 1 sentence, maximum 2.\n' +
-    '4. TABLE CLEANLINESS: No parentheses in headers. "Why" and "Risk" columns must be punchy and data-focused.\n' +
-    '5. ACTIONABLE ONLY: If riskMode is "no_new_positions", do not suggest any buy orders in any table.\n' +
-    '6. Avoid showing internal variables like riskMode/ratio; translate them into trader language.\n\n' +
+    '1. Data-grounded: Use ONLY provided Context JSON. No external knowledge.\n' +
+    '2. NO JARGON/TRUISMS: Delete sentences like "优先选择量价强...". Use concrete data-backed statements.\n' +
+    '3. TABLE STABILITY: Every table must have correct header + separator. Section 2 must have EXACTLY 3 data rows.\n' +
+    '4. ACTIONABLE ONLY: If context.marketSentiment.latest implies "no new positions", then Section 4 must NOT include any Buy actions.\n' +
+    '5. Avoid internal variable names (riskMode/ratio/premium/failedRate). Translate them into trader language.\n\n' +
     (accountPrompt ? `Account prompt:\n${accountPrompt}\n\n` : '') +
     'Context JSON:\n' +
     JSON.stringify(parsed.data.context);

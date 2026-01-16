@@ -8468,7 +8468,7 @@ def _normalize_strategy_markdown(md: str) -> str:
         # If model puts analysis text on the same line as known headings, split it.
         # Example: "## 0 结果摘要 主线偏向..." -> "## 0 结果摘要\n\n主线偏向..."
         seg = re.sub(
-            r"^(##\s*(?:(?:0|1|2|3|4|5)\s*(?:结果摘要|资金板块|候选Top3|持仓计划|执行要点|条件单总表)|(?:1|2|3|4|5|6)\s*(?:总览|机会Top3|资金板块|持仓计划|执行要点|条件单总表)))\s+([^\n#].*)$",
+            r"^(##\s*(?:(?:0|1|2|3|4|5)\s*(?:结果摘要|资金板块|候选Top3|持仓计划|执行要点|条件单总表)|(?:1|2|3|4|5|6)\s*(?:总览|机会Top3|机会|资金板块|持仓计划|执行要点|条件单总表|总结)))\s+([^\n#].*)$",
             r"\1\n\n\2",
             parts[i],
             flags=re.MULTILINE,
