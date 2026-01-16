@@ -3207,7 +3207,7 @@ def market_list_stocks(
 
 
 @app.get("/market/stocks/resolve", response_model=list[MarketStockBasicRow])
-def market_resolve_stocks(symbols: Annotated[list[str] | None, Query(None)] = None) -> list[MarketStockBasicRow]:
+def market_resolve_stocks(symbols: Annotated[list[str], Query()] = []) -> list[MarketStockBasicRow]:
     """
     Resolve stock basic info by symbol, using the local market universe cache.
     This is a DB-first helper for UI modules (e.g. Watchlist).
@@ -3939,7 +3939,7 @@ def _market_stock_trendok_one(
 
 
 @app.get("/market/stocks/trendok", response_model=list[TrendOkResult])
-def market_stocks_trendok(symbols: Annotated[list[str] | None, Query(None)] = None) -> list[TrendOkResult]:
+def market_stocks_trendok(symbols: Annotated[list[str], Query()] = []) -> list[TrendOkResult]:
     """
     Batch TrendOK evaluation for Watchlist (CN daily only).
     Uses DB-cached daily bars and does NOT trigger external fetches.
