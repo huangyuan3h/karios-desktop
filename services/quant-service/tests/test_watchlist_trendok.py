@@ -141,7 +141,9 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
     assert r1.get("stopLossPrice") is not None
     sl1 = float(r1["stopLossPrice"])
     assert sl1 > 0
-    assert sl1 <= float((r1.get("values") or {}).get("close"))
+    close1 = (r1.get("values") or {}).get("close")
+    assert close1 is not None
+    assert sl1 <= float(close1)
     slp1 = r1.get("stopLossParts") or {}
     assert isinstance(slp1, dict)
     assert "hard_stop" in slp1
@@ -157,7 +159,9 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
     assert r2.get("stopLossPrice") is not None
     sl2 = float(r2["stopLossPrice"])
     assert sl2 > 0
-    assert sl2 <= float((r2.get("values") or {}).get("close"))
+    close2 = (r2.get("values") or {}).get("close")
+    assert close2 is not None
+    assert sl2 <= float(close2)
     slp2 = r2.get("stopLossParts") or {}
     assert isinstance(slp2, dict)
     assert "hard_stop" in slp2
@@ -191,7 +195,9 @@ def test_watchlist_stoploss_exit_now_on_trend_structure_break(tmp_path, monkeypa
     r = rows[0]
     assert r["symbol"] == "CN:000003"
     assert r.get("stopLossPrice") is not None
-    close = float((r.get("values") or {}).get("close"))
+    close0 = (r.get("values") or {}).get("close")
+    assert close0 is not None
+    close = float(close0)
     assert float(r["stopLossPrice"]) == close
     parts = r.get("stopLossParts") or {}
     assert isinstance(parts, dict)

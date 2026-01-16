@@ -19,7 +19,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Query
@@ -4799,7 +4799,8 @@ def rank_cn_next2d_generate(req: RankNext2dGenerateRequest) -> RankSnapshotRespo
         for r in raw_items[:80]:
             if not isinstance(r, dict):
                 continue
-            ev = r.get("evidence") if isinstance(r.get("evidence"), dict) else {}
+            evidence0 = r.get("evidence")
+            ev = cast(dict[str, Any], evidence0) if isinstance(evidence0, dict) else {}
             ev_rows.append(
                 {
                     "symbol": r.get("symbol"),
@@ -4824,7 +4825,8 @@ def rank_cn_next2d_generate(req: RankNext2dGenerateRequest) -> RankSnapshotRespo
         if not isinstance(r, dict):
             continue
         raw_score = _finite_float(r.get("rawScore"), _finite_float(r.get("score"), 0.0))
-        ev = r.get("evidence") if isinstance(r.get("evidence"), dict) else {}
+        evidence0 = r.get("evidence")
+        ev = cast(dict[str, Any], evidence0) if isinstance(evidence0, dict) else {}
         sym = _norm_str(r.get("symbol") or "")
         if sym and isinstance(ev, dict):
             evidence_by_symbol[sym] = ev
@@ -7975,7 +7977,8 @@ def _quant2d_why_from_evidence(evidence: dict[str, Any]) -> list[str]:
     """
     Short, deterministic 'why' bullets derived from numeric evidence. LLM may override later.
     """
-    bd = evidence.get("breakdown") if isinstance(evidence.get("breakdown"), dict) else {}
+    breakdown0 = evidence.get("breakdown")
+    bd = cast(dict[str, Any], breakdown0) if isinstance(breakdown0, dict) else {}
     parts: list[tuple[str, float]] = []
     for k in ("trend", "breakout", "flow", "volume", "chips", "sectorHot"):
         parts.append((k, _finite_float(bd.get(k), 0.0)))
@@ -9515,8 +9518,8 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
     if req.includeMainline:
         try:
             cached = _get_cn_mainline_snapshot_latest(account_id=aid, trade_date=d, universe_version="v0")
-            if cached is not None and isinstance(cached.get("output"), dict):
-                out0: dict[str, Any] = cached.get("output") if isinstance(cached.get("output"), dict) else {}
+            if isinstance(cached, dict) and isinstance(cached.get("output"), dict):
+                out0 = cast(dict[str, Any], cached.get("output"))
                 mainline_ctx = {"id": str(cached.get("id") or ""), "createdAt": str(cached.get("createdAt") or "")}
                 mainline_ctx.update(out0)
             else:
@@ -9529,10 +9532,10 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
     if req.includeQuant2d:
         try:
             cached_q = _get_cn_rank_snapshot(account_id=aid, as_of_date=d, universe_version="v0")
-            if cached_q is None or not isinstance(cached_q.get("output"), dict):
+            if not isinstance(cached_q, dict) or not isinstance(cached_q.get("output"), dict):
                 quant2d_ctx = {"asOfDate": d, "status": "no_snapshot"}
             else:
-                outq: dict[str, Any] = cached_q.get("output") if isinstance(cached_q.get("output"), dict) else {}
+                outq = cast(dict[str, Any], cached_q.get("output"))
                 items0 = outq.get("items")
                 items: list[Any] = items0 if isinstance(items0, list) else []
                 top3: list[dict[str, Any]] = []
