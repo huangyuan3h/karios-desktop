@@ -1,7 +1,7 @@
 import { cors } from 'hono/cors';
 import { Hono } from 'hono';
 import { generateObject, generateText, streamText } from 'ai';
-import { openai } from '@ai-sdk/openai';
+import { createOpenAI, openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 
@@ -41,21 +41,6 @@ function applyProviderEnv(p: z.infer<typeof AiProfileSchema>): void {
     delete process.env.OPENAI_BASE_URL;
     return;
   }
-
-  if (p.provider === 'ollama') {
-    const baseUrl = p.ollama?.baseUrl?.trim() || 'http://127.0.0.1:11434/v1';
-    const key = p.ollama?.apiKey?.trim() || 'ollama';
-    process.env.OPENAI_BASE_URL = baseUrl;
-    process.env.OPENAI_API_KEY = key;
-    return;
-  }
-
-  // openai
-  const key = p.openai?.apiKey?.trim();
-  const baseUrl = p.openai?.baseUrl?.trim();
-  if (key) process.env.OPENAI_API_KEY = key;
-  if (baseUrl) process.env.OPENAI_BASE_URL = baseUrl;
-  if (!baseUrl) delete process.env.OPENAI_BASE_URL;
 }
 
 function pickActiveProfile(
@@ -67,13 +52,29 @@ function pickActiveProfile(
 }
 
 function modelFromProfile(p: z.infer<typeof AiProfileSchema>): { model: AiModel; provider: string; modelId: string } {
-  applyProviderEnv(p);
-  if (p.provider === 'google') return { model: google(p.modelId), provider: 'google', modelId: p.modelId };
-  return {
-    model: openai(p.modelId),
-    provider: p.provider === 'ollama' ? 'ollama' : 'openai',
-    modelId: p.modelId,
-  };
+  if (p.provider === 'google') {
+    applyProviderEnv(p);
+    return { model: google(p.modelId), provider: 'google', modelId: p.modelId };
+  }
+
+  if (p.provider === 'ollama') {
+    const baseURL = p.ollama?.baseUrl?.trim() || 'http://127.0.0.1:11434/v1';
+    // Ollama's OpenAI-compatible endpoint typically ignores apiKey; keep it empty/placeholder.
+    const apiKey = p.ollama?.apiKey?.trim() || 'ollama';
+    const ollamaClient = createOpenAI({
+      apiKey,
+      baseURL,
+    });
+    // IMPORTANT: Ollama implements OpenAI Chat Completions, not OpenAI Responses API.
+    return { model: ollamaClient.chat(p.modelId), provider: 'ollama', modelId: p.modelId };
+  }
+
+  const apiKey = p.openai?.apiKey?.trim() || '';
+  const baseURL = p.openai?.baseUrl?.trim() || undefined;
+  // Use explicit client to avoid relying on env var naming differences.
+  const openaiClient =
+    apiKey || baseURL ? createOpenAI({ apiKey, baseURL }) : openai;
+  return { model: openaiClient(p.modelId), provider: 'openai', modelId: p.modelId };
 }
 
 async function getResolvedModel(): Promise<{ model: AiModel; modelId: string; provider: string }> {
