@@ -137,6 +137,17 @@ export function SettingsPage() {
   const [addGoogleKey, setAddGoogleKey] = React.useState('');
   const [addOllamaBaseUrl, setAddOllamaBaseUrl] = React.useState('http://127.0.0.1:11434/v1');
   const [addOllamaKey, setAddOllamaKey] = React.useState('');
+
+  const [modelEditOpen, setModelEditOpen] = React.useState(false);
+  const [modelEditId, setModelEditId] = React.useState<string | null>(null);
+  const [modelEditName, setModelEditName] = React.useState('');
+  const [modelEditProvider, setModelEditProvider] = React.useState<'openai' | 'google' | 'ollama'>('openai');
+  const [modelEditModelId, setModelEditModelId] = React.useState('');
+  const [modelEditOpenaiKey, setModelEditOpenaiKey] = React.useState('');
+  const [modelEditOpenaiBaseUrl, setModelEditOpenaiBaseUrl] = React.useState('');
+  const [modelEditGoogleKey, setModelEditGoogleKey] = React.useState('');
+  const [modelEditOllamaBaseUrl, setModelEditOllamaBaseUrl] = React.useState('http://127.0.0.1:11434/v1');
+  const [modelEditOllamaKey, setModelEditOllamaKey] = React.useState('');
   const refresh = React.useCallback(async () => {
     setError(null);
     try {
@@ -248,6 +259,78 @@ export function SettingsPage() {
       setAddGoogleKey('');
       setAddOllamaBaseUrl('http://127.0.0.1:11434/v1');
       setAddOllamaKey('');
+    } catch (e) {
+      setAiErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  function openEditProfile(p: AiProfilePublic) {
+    setAiErr(null);
+    setAiMsg(null);
+    setModelEditOpen(true);
+    setModelEditId(p.id);
+    setModelEditName(p.name);
+    setModelEditProvider(p.provider);
+    setModelEditModelId(p.modelId);
+    // Never populate secrets from server; user can re-enter to rotate.
+    setModelEditOpenaiKey('');
+    setModelEditGoogleKey('');
+    setModelEditOllamaKey('');
+    setModelEditOpenaiBaseUrl(p.openai?.baseUrl ?? '');
+    setModelEditOllamaBaseUrl(p.ollama?.baseUrl ?? 'http://127.0.0.1:11434/v1');
+  }
+
+  async function saveEditProfile() {
+    const id = modelEditId;
+    if (!id) return;
+    setAiBusy(true);
+    setAiErr(null);
+    setAiMsg(null);
+    try {
+      if (!modelEditName.trim()) {
+        setAiErr('Name is required.');
+        return;
+      }
+      if (!modelEditModelId.trim()) {
+        setAiErr('Model ID is required.');
+        return;
+      }
+
+      const payload =
+        modelEditProvider === 'openai'
+          ? {
+              name: modelEditName.trim(),
+              modelId: modelEditModelId.trim(),
+              openai: {
+                apiKey: modelEditOpenaiKey.trim() || undefined,
+                baseUrl: modelEditOpenaiBaseUrl.trim() || undefined,
+              },
+            }
+          : modelEditProvider === 'google'
+            ? {
+                name: modelEditName.trim(),
+                modelId: modelEditModelId.trim(),
+                google: { apiKey: modelEditGoogleKey.trim() || undefined },
+              }
+            : {
+                name: modelEditName.trim(),
+                modelId: modelEditModelId.trim(),
+                ollama: {
+                  baseUrl: (modelEditOllamaBaseUrl.trim() || 'http://127.0.0.1:11434/v1') as string,
+                  apiKey: modelEditOllamaKey.trim() || undefined,
+                },
+              };
+
+      const out = await aiSendJson<AiConfigPublic>(`/config/profiles/${encodeURIComponent(id)}`, 'PUT', {
+        ...payload,
+        // keep provider unchanged for now; edit is for name/model/urls/optional key rotate
+      });
+      setAiCfg(out);
+      setAiMsg('Updated.');
+      setModelEditOpen(false);
+      setModelEditId(null);
     } catch (e) {
       setAiErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -695,7 +778,8 @@ export function SettingsPage() {
                     <div className="col-span-1" />
                     <div className="col-span-4">Name</div>
                     <div className="col-span-3">Provider</div>
-                    <div className="col-span-4">Model</div>
+                    <div className="col-span-3">Model</div>
+                    <div className="col-span-1 text-right">Edit</div>
                   </div>
                   <div className="divide-y divide-[var(--k-border)]">
                     {aiCfg.profiles.map((p) => {
@@ -731,10 +815,21 @@ export function SettingsPage() {
                           <div className="col-span-3">
                             <div className="pt-1 text-sm text-[var(--k-muted)]">{p.provider}</div>
                           </div>
-                          <div className="col-span-4">
+                          <div className="col-span-3">
                             <div className="truncate pt-1 font-mono text-xs text-[var(--k-muted)]">
                               {p.modelId}
                             </div>
+                          </div>
+                          <div className="col-span-1 flex items-center justify-end">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 px-2"
+                              onClick={() => openEditProfile(p)}
+                              disabled={aiBusy}
+                            >
+                              Edit
+                            </Button>
                           </div>
                         </div>
                       );
@@ -888,6 +983,116 @@ export function SettingsPage() {
                         Save
                       </Button>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {modelEditOpen ? (
+            <div className="fixed inset-0 z-[100]">
+              <div className="absolute inset-0 bg-black/40" onClick={() => setModelEditOpen(false)} />
+              <div className="absolute left-1/2 top-1/2 w-[560px] max-w-[92vw] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 shadow-xl">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">Edit model profile</div>
+                    <div className="mt-1 text-xs text-[var(--k-muted)]">
+                      Update name/model/URLs. Leave API key empty to keep the existing one.
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setModelEditOpen(false)} disabled={aiBusy}>
+                    Close
+                  </Button>
+                </div>
+
+                <div className="mt-4 grid gap-3 text-sm">
+                  <div className="grid grid-cols-12 gap-2">
+                    <div className="col-span-6">
+                      <div className="mb-1 text-xs text-[var(--k-muted)]">Name</div>
+                      <input
+                        className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                        value={modelEditName}
+                        onChange={(e) => setModelEditName(e.target.value)}
+                      />
+                    </div>
+                    <div className="col-span-6">
+                      <div className="mb-1 text-xs text-[var(--k-muted)]">Provider</div>
+                      <div className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 text-sm leading-9 text-[var(--k-muted)]">
+                        {modelEditProvider}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-1 text-xs text-[var(--k-muted)]">Model ID</div>
+                    <input
+                      className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                      value={modelEditModelId}
+                      onChange={(e) => setModelEditModelId(e.target.value)}
+                    />
+                  </div>
+
+                  {modelEditProvider === 'openai' ? (
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
+                      <div className="font-medium">OpenAI</div>
+                      <div className="mt-2 grid grid-cols-12 gap-2">
+                        <input
+                          className="col-span-7 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                          placeholder="API key (leave empty to keep)"
+                          value={modelEditOpenaiKey}
+                          onChange={(e) => setModelEditOpenaiKey(e.target.value)}
+                        />
+                        <input
+                          className="col-span-5 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                          placeholder="Base URL (optional)"
+                          value={modelEditOpenaiBaseUrl}
+                          onChange={(e) => setModelEditOpenaiBaseUrl(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {modelEditProvider === 'google' ? (
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
+                      <div className="font-medium">Google (Gemini)</div>
+                      <div className="mt-2">
+                        <input
+                          className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                          placeholder="API key (leave empty to keep)"
+                          value={modelEditGoogleKey}
+                          onChange={(e) => setModelEditGoogleKey(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {modelEditProvider === 'ollama' ? (
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
+                      <div className="font-medium">Ollama (local)</div>
+                      <div className="mt-2 grid grid-cols-12 gap-2">
+                        <input
+                          className="col-span-8 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                          placeholder="Base URL (OpenAI-compatible)"
+                          value={modelEditOllamaBaseUrl}
+                          onChange={(e) => setModelEditOllamaBaseUrl(e.target.value)}
+                        />
+                        <input
+                          className="col-span-4 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                          placeholder="API key (optional)"
+                          value={modelEditOllamaKey}
+                          onChange={(e) => setModelEditOllamaKey(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center justify-end gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => setModelEditOpen(false)} disabled={aiBusy}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" onClick={() => void saveEditProfile()} disabled={aiBusy}>
+                      Save
+                    </Button>
                   </div>
                 </div>
               </div>
