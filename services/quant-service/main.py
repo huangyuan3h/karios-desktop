@@ -2575,6 +2575,9 @@ class StrategyDailyGenerateRequest(BaseModel):
     includeMainline: bool = True
     includeStocks: bool = True
     includeQuant2d: bool = False
+    includeWatchlist: bool = False
+    # Client-provided local watchlist snapshot (small JSON). When includeWatchlist is off, ignored.
+    watchlist: dict[str, Any] | None = None
 
 
 class StrategyCandidate(BaseModel):
@@ -9352,11 +9355,21 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
     # Context assembly (v0)
     strategy_prompt, _ = _get_strategy_prompt(aid)
     state_row = _get_account_state_row(aid) or {
+        "accountId": aid,
+        "broker": str(acct["broker"]),
+        "updatedAt": now_iso(),
         "overview": {},
         "positions": [],
-        "conditionalOrders": [],
-        "trades": [],
     }
+    # Strategy context: keep it lean (overview + positions only).
+    if isinstance(state_row, dict):
+        state_row = {
+            "accountId": _norm_str(state_row.get("accountId") or aid),
+            "broker": _norm_str(state_row.get("broker") or acct["broker"]),
+            "updatedAt": _norm_str(state_row.get("updatedAt") or "") or now_iso(),
+            "overview": state_row.get("overview") if isinstance(state_row.get("overview"), dict) else {},
+            "positions": state_row.get("positions") if isinstance(state_row.get("positions"), list) else [],
+        }
 
     # Latest TradingView snapshots (all enabled screeners; capped).
     snaps: list[TvScreenerSnapshotDetail] = []
@@ -9373,6 +9386,30 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
 
     # Include brief rows so debug can show tickers for newly-synced screeners.
     tv_latest: list[dict[str, Any]] = [_tv_snapshot_brief(s.id, max_rows=20) for s in snaps]
+
+    watchlist_ctx: dict[str, Any] = {}
+    if req.includeWatchlist and isinstance(req.watchlist, dict):
+        wl_items0 = req.watchlist.get("items")
+        wl_items: list[dict[str, Any]] = []
+        if isinstance(wl_items0, list):
+            for it in wl_items0[:50]:
+                if not isinstance(it, dict):
+                    continue
+                sym = _norm_str(it.get("symbol") or "")
+                if not sym:
+                    continue
+                wl_items.append(
+                    {
+                        "symbol": sym,
+                        "name": _norm_str(it.get("name") or "") or None,
+                    }
+                )
+        watchlist_ctx = {
+            "version": int(req.watchlist.get("version") or 1),
+            "generatedAt": _norm_str(req.watchlist.get("generatedAt") or "") or None,
+            "count": len(wl_items),
+            "items": wl_items,
+        }
 
     # Candidate pool = union of TV rows, capped.
     pool: list[dict[str, str]] = []
@@ -9596,6 +9633,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         },
         "accountPrompt": strategy_prompt,
         "accountState": {} if not req.includeAccountState else state_row,
+        "watchlist": {} if not req.includeWatchlist else watchlist_ctx,
         "tradingView": {} if not req.includeTradingView else {"latest": tv_latest},
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow
@@ -9741,6 +9779,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         },
         "accountPrompt": strategy_prompt,
         "accountState": {} if not req.includeAccountState else state_row,
+        "watchlist": {} if not req.includeWatchlist else watchlist_ctx,
         "tradingView": {} if not req.includeTradingView else {"latest": tv_latest},
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow

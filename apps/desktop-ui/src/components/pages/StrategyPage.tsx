@@ -257,7 +257,7 @@ export function StrategyPage() {
   const [ctxLeaders, setCtxLeaders] = React.useState(true);
   const [ctxStocks, setCtxStocks] = React.useState(true);
   const [ctxQuant2d, setCtxQuant2d] = React.useState(true);
-  const [ctxWatchlist, setCtxWatchlist] = React.useState(false);
+  const [ctxWatchlist, setCtxWatchlist] = React.useState(true);
 
   const watchlistSnapshot = React.useMemo(() => {
     if (!ctxWatchlist) return null;
@@ -567,7 +567,7 @@ export function StrategyPage() {
               checked={ctxAccount}
               onChange={(e) => setCtxAccount(e.target.checked)}
             />
-            <span>Account state (overview/positions/orders/trades)</span>
+            <span>Account state (overview/positions)</span>
           </label>
           <label className="flex items-center gap-2">
             <input
