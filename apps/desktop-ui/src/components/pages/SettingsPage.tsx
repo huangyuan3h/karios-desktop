@@ -2,6 +2,8 @@
 
 import * as React from 'react';
 
+import { Check } from 'lucide-react';
+
 import { AI_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -424,80 +426,75 @@ export function SettingsPage() {
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 text-sm">
-              <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
-                <div className="flex items-center justify-between gap-3">
+            <div className="mt-4 overflow-hidden rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]">
+              <div className="divide-y divide-[var(--k-border)]">
+                <div className="flex items-center justify-between gap-4 px-4 py-3">
                   <div>
-                    <div className="font-medium">Silent mode</div>
-                    <div className="text-xs text-[var(--k-muted)]">
-                      Headless Chrome will not open a window. If login is required, temporarily turn
-                      it off.
+                    <div className="text-sm font-medium">Silent mode</div>
+                    <div className="mt-0.5 text-xs text-[var(--k-muted)]">
+                      Headless Chrome will not open a window. If login is required, temporarily turn it off.
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <div className="text-xs text-[var(--k-muted)]">Headless</div>
                     <Switch checked={headless} onCheckedChange={setHeadless} disabled={busy} />
                   </div>
                 </div>
-              </div>
 
-              <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
-                <div className="text-[var(--k-muted)]">Bootstrap from existing Chrome profile</div>
-                <div className="mt-2 grid grid-cols-12 gap-2">
-                  <input
-                    className="col-span-8 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
-                    placeholder="~/Library/Application Support/Google/Chrome"
-                    value={sourceUserDataDir}
-                    onChange={(e) => setSourceUserDataDir(e.target.value)}
-                    disabled={busy}
-                  />
-                  <input
-                    className="col-span-4 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
-                    placeholder="Profile 1"
-                    value={sourceProfileDir}
-                    onChange={(e) => setSourceProfileDir(e.target.value)}
-                    disabled={busy}
-                  />
-                </div>
-                <div className="mt-2 text-xs text-[var(--k-muted)]">
-                  We copy &quot;Local State&quot; and the selected profile into the dedicated
-                  user-data-dir, so CDP works.
-                </div>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <div className="text-xs text-[var(--k-muted)]">
-                    Force bootstrap will recopy the profile and restart Chrome if needed.
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-xs text-[var(--k-muted)]">Force</div>
-                    <Switch
-                      checked={forceBootstrap}
-                      onCheckedChange={setForceBootstrap}
+                <div className="px-4 py-3">
+                  <div className="text-sm font-medium">Bootstrap from existing Chrome profile</div>
+                  <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-12">
+                    <input
+                      className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)] md:col-span-8"
+                      placeholder="~/Library/Application Support/Google/Chrome"
+                      value={sourceUserDataDir}
+                      onChange={(e) => setSourceUserDataDir(e.target.value)}
                       disabled={busy}
                     />
+                    <input
+                      className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)] md:col-span-4"
+                      placeholder="Profile 1"
+                      value={sourceProfileDir}
+                      onChange={(e) => setSourceProfileDir(e.target.value)}
+                      disabled={busy}
+                    />
+                  </div>
+                  <div className="mt-2 text-xs text-[var(--k-muted)]">
+                    We copy &quot;Local State&quot; and the selected profile into the dedicated user-data-dir, so CDP works.
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-[var(--k-muted)]">
+                      Force bootstrap will recopy the profile and restart Chrome if needed.
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-xs text-[var(--k-muted)]">Force</div>
+                      <Switch checked={forceBootstrap} onCheckedChange={setForceBootstrap} disabled={busy} />
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
             {/* rest of TradingView UI unchanged */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
-                <div className="text-[var(--k-muted)]">Status</div>
-                <div className="mt-1 font-medium">
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-4 py-3">
+                <div className="text-xs text-[var(--k-muted)]">Status</div>
+                <div className="mt-1 text-sm font-medium">
                   {status?.running ? 'Running' : 'Stopped'}{' '}
                   <span className={cn(status?.cdpOk ? 'text-emerald-600' : 'text-[var(--k-muted)]')}>
                     {status?.cdpOk ? '(CDP OK)' : '(CDP not ready)'}
                   </span>
                 </div>
               </div>
-              <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
-                <div className="text-[var(--k-muted)]">Endpoint</div>
-                <div className="mt-1 font-medium">{status ? `${status.host}:${status.port}` : '—'}</div>
+              <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-4 py-3">
+                <div className="text-xs text-[var(--k-muted)]">Endpoint</div>
+                <div className="mt-1 text-sm font-medium">{status ? `${status.host}:${status.port}` : '—'}</div>
               </div>
             </div>
 
-            <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
-              <div className="text-[var(--k-muted)]">How to use</div>
-              <ol className="mt-1 list-decimal pl-5 text-[var(--k-muted)]">
+            <div className="mt-3 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-4 py-3">
+              <div className="text-xs text-[var(--k-muted)]">How to use</div>
+              <ol className="mt-2 list-decimal pl-5 text-sm text-[var(--k-muted)]">
                 <li>Click Start to launch a dedicated Chrome profile for TradingView automation.</li>
                 <li>In that Chrome window, login to TradingView (Google SSO etc.).</li>
                 <li>Come back to Kairos and click Sync on a screener.</li>
@@ -505,8 +502,8 @@ export function SettingsPage() {
             </div>
 
             {status ? (
-              <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
-                <div className="text-[var(--k-muted)]">Profile</div>
+              <div className="mt-3 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-4 py-3">
+                <div className="text-xs text-[var(--k-muted)]">Profile</div>
                 <div className="mt-1 font-mono text-xs text-[var(--k-muted)]">
                   userDataDir={status.userDataDir} • profile={status.profileDirectory} • pid=
                   {status.pid ?? '—'}
@@ -715,15 +712,17 @@ export function SettingsPage() {
                             <button
                               type="button"
                               className={cn(
-                                'h-6 w-6 rounded-full border border-[var(--k-border)]',
+                                'h-5 w-5 rounded-full border border-[var(--k-border)]',
                                 'grid place-items-center',
-                                active ? 'bg-[var(--k-text)] text-[var(--k-surface)]' : 'text-[var(--k-muted)]',
+                                active
+                                  ? 'bg-[var(--k-text)] text-[var(--k-surface)]'
+                                  : 'bg-[var(--k-surface)] text-[var(--k-muted)]',
                               )}
                               title={active ? 'Active' : 'Set active'}
                               onClick={() => void setActiveProfile(p.id)}
                               disabled={aiBusy}
                             >
-                              {active ? '✓' : ''}
+                              {active ? <Check className="h-3 w-3" /> : null}
                             </button>
                           </div>
                           <div className="col-span-4">
