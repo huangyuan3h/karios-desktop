@@ -741,6 +741,33 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     return arr;
   }, [items, trend, scoreSortEnabled, scoreSortDir]);
 
+  function referenceTable() {
+    const capturedAt = new Date().toISOString();
+    const rows = sortedItems.slice(0, 50).map((it) => {
+      const t = trend[it.symbol];
+      return {
+        symbol: it.symbol,
+        name: it.name ?? null,
+        asOfDate: t?.asOfDate ?? null,
+        close: t?.values?.close ?? null,
+        trendOk: t?.trendOk ?? null,
+        score: t?.score ?? null,
+        stopLossPrice: t?.stopLossPrice ?? null,
+        buyMode: t?.buyMode ?? null,
+        buyAction: t?.buyAction ?? null,
+        buyZoneLow: t?.buyZoneLow ?? null,
+        buyZoneHigh: t?.buyZoneHigh ?? null,
+      };
+    });
+    addReference({
+      kind: 'watchlistTable',
+      refId: `${capturedAt}:${sortedItems.length}`,
+      capturedAt,
+      total: sortedItems.length,
+      items: rows,
+    });
+  }
+
   const headerTip = (
     <>
       <div className="mb-2 font-medium">Definition (CN daily)</div>
@@ -774,16 +801,28 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           {syncMsg ? <div className="mt-2 text-xs text-[var(--k-muted)]">{syncMsg}</div> : null}
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => void onSyncFromScreener()}
-          disabled={syncBusy}
-          className="gap-2"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Sync from screener
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => referenceTable()}
+            disabled={!sortedItems.length}
+            className="gap-2"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Reference table
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void onSyncFromScreener()}
+            disabled={syncBusy}
+            className="gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Sync from screener
+          </Button>
+        </div>
       </div>
 
       <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">

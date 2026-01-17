@@ -51,6 +51,25 @@ export type ChatReference =
       buyWhy?: string | null;
     }
   | {
+      kind: 'watchlistTable';
+      refId: string; // stable key: `${capturedAt}:${count}`
+      capturedAt: string;
+      total: number;
+      items: Array<{
+        symbol: string;
+        name?: string | null;
+        asOfDate?: string | null;
+        close?: number | null;
+        trendOk?: boolean | null;
+        score?: number | null;
+        stopLossPrice?: number | null;
+        buyMode?: string | null;
+        buyAction?: string | null;
+        buyZoneLow?: number | null;
+        buyZoneHigh?: number | null;
+      }>;
+    }
+  | {
       kind: 'stock';
       refId: string; // symbol
       symbol: string;

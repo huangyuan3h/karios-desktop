@@ -234,6 +234,33 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       continue;
     }
 
+    if (ref.kind === 'watchlistTable') {
+      out += `## Watchlist table\n`;
+      out += `- capturedAt: ${ref.capturedAt}\n`;
+      out += `- total: ${ref.total}\n\n`;
+
+      const rows = Array.isArray(ref.items) ? ref.items.slice(0, 50) : [];
+      out += `Rows (first ${rows.length}):\n`;
+      for (const r of rows) {
+        const parts: string[] = [];
+        parts.push(`symbol=${r.symbol}`);
+        if (r.name) parts.push(`name=${String(r.name).replaceAll('\n', ' ')}`);
+        if (r.asOfDate) parts.push(`asOf=${r.asOfDate}`);
+        if (typeof r.close === 'number') parts.push(`close=${r.close}`);
+        if (typeof r.score === 'number') parts.push(`score=${r.score}`);
+        if (typeof r.trendOk === 'boolean') parts.push(`trendOk=${r.trendOk ? 'true' : 'false'}`);
+        if (typeof r.stopLossPrice === 'number') parts.push(`stopLoss=${r.stopLossPrice}`);
+        if (r.buyMode) parts.push(`buyMode=${r.buyMode}`);
+        if (r.buyAction) parts.push(`buyAction=${r.buyAction}`);
+        if (typeof r.buyZoneLow === 'number' || typeof r.buyZoneHigh === 'number') {
+          parts.push(`buyZone=${r.buyZoneLow ?? '—'}..${r.buyZoneHigh ?? '—'}`);
+        }
+        out += `- ${parts.join(' ; ')}\n`;
+      }
+      out += `\n`;
+      continue;
+    }
+
     if (ref.kind === 'broker') {
       try {
         const resp = await fetch(
