@@ -15,6 +15,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
+import { loadJson } from '@/lib/storage';
 
 function DebugBlock({
   title,
@@ -256,6 +257,30 @@ export function StrategyPage() {
   const [ctxLeaders, setCtxLeaders] = React.useState(true);
   const [ctxStocks, setCtxStocks] = React.useState(true);
   const [ctxQuant2d, setCtxQuant2d] = React.useState(true);
+  const [ctxWatchlist, setCtxWatchlist] = React.useState(false);
+
+  const watchlistSnapshot = React.useMemo(() => {
+    if (!ctxWatchlist) return null;
+    type WatchlistStorageRow = { symbol: string; name: string | null };
+    const raw = loadJson<unknown[]>('karios.watchlist.v1', []);
+    const rows: unknown[] = Array.isArray(raw) ? raw : [];
+    const items: WatchlistStorageRow[] = rows
+      .map((x) => {
+        if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
+        const rec = x as Record<string, unknown>;
+        const symbol = String(rec.symbol ?? '').trim();
+        if (!symbol) return null;
+        const nameVal = rec.name;
+        const name = typeof nameVal === 'string' ? nameVal : nameVal == null ? null : String(nameVal);
+        return { symbol, name };
+      })
+      .filter((x): x is WatchlistStorageRow => Boolean(x));
+    return {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      items,
+    };
+  }, [ctxWatchlist]);
 
   const reportMd = React.useMemo(() => {
     if (!report) return '';
@@ -366,6 +391,8 @@ export function StrategyPage() {
           includeLeaders: ctxLeaders,
           includeStocks: ctxStocks,
           includeQuant2d: ctxQuant2d,
+          includeWatchlist: ctxWatchlist,
+          watchlist: ctxWatchlist ? watchlistSnapshot : undefined,
         },
       );
       setReport(r);
@@ -396,6 +423,8 @@ export function StrategyPage() {
           includeLeaders: ctxLeaders,
           includeStocks: ctxStocks,
           includeQuant2d: ctxQuant2d,
+          includeWatchlist: ctxWatchlist,
+          watchlist: ctxWatchlist ? watchlistSnapshot : undefined,
         },
       );
       setReport(r);
@@ -587,6 +616,14 @@ export function StrategyPage() {
               onChange={(e) => setCtxQuant2d(e.target.checked)}
             />
             <span>Quant Top Picks (2D) snapshot</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={ctxWatchlist}
+              onChange={(e) => setCtxWatchlist(e.target.checked)}
+            />
+            <span>Watchlist (local, symbols + names)</span>
           </label>
         </div>
         <div className="mt-2 text-xs text-[var(--k-muted)]">

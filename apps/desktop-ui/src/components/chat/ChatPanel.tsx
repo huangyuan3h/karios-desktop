@@ -215,6 +215,25 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       continue;
     }
 
+    if (ref.kind === 'watchlistStock') {
+      const name = (ref.name ?? '').trim();
+      out += `## Watchlist: ${ref.symbol}${name ? ` (${name})` : ''}\n`;
+      out += `- capturedAt: ${ref.capturedAt}\n`;
+      if (ref.asOfDate) out += `- asOfDate: ${ref.asOfDate}\n`;
+      if (typeof ref.close === 'number') out += `- close: ${ref.close}\n`;
+      if (typeof ref.trendOk === 'boolean') out += `- trendOk: ${ref.trendOk ? 'true' : 'false'}\n`;
+      if (typeof ref.score === 'number') out += `- score: ${ref.score}\n`;
+      if (typeof ref.stopLossPrice === 'number') out += `- stopLossPrice: ${ref.stopLossPrice}\n`;
+      if (ref.buyMode) out += `- buyMode: ${ref.buyMode}\n`;
+      if (ref.buyAction) out += `- buyAction: ${ref.buyAction}\n`;
+      if (typeof ref.buyZoneLow === 'number' || typeof ref.buyZoneHigh === 'number') {
+        out += `- buyZone: ${ref.buyZoneLow ?? '—'} .. ${ref.buyZoneHigh ?? '—'}\n`;
+      }
+      if (ref.buyWhy) out += `\nWhy:\n- ${ref.buyWhy.replaceAll('\n', ' ')}\n`;
+      out += `\n`;
+      continue;
+    }
+
     if (ref.kind === 'broker') {
       try {
         const resp = await fetch(

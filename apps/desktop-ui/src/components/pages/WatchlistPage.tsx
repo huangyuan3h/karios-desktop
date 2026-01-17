@@ -1,12 +1,13 @@
 'use client';
 
 import * as React from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, CircleX, Info, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, CircleX, ExternalLink, Info, RefreshCw, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
 import { loadJson, saveJson } from '@/lib/storage';
+import { useChatStore } from '@/lib/chat/store';
 
 type WatchlistItem = {
   symbol: string; // e.g. "CN:600000" or "HK:0700"
@@ -197,6 +198,7 @@ function fmtBuyCell(t: TrendOkResult | undefined | null): {
 }
 
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
+  const { addReference } = useChatStore();
   const [items, setItems] = React.useState<WatchlistItem[]>([]);
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
@@ -917,6 +919,36 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     <td className="px-3 py-2">{renderTrendOkCell(it.symbol)}</td>
                     <td className="px-3 py-2 text-right">
                       <div className="flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => {
+                            const t = trend[it.symbol];
+                            const capturedAt = new Date().toISOString();
+                            addReference({
+                              kind: 'watchlistStock',
+                              refId: `${it.symbol}:${capturedAt}`,
+                              symbol: it.symbol,
+                              name: it.name ?? null,
+                              capturedAt,
+                              asOfDate: t?.asOfDate ?? null,
+                              close: t?.values?.close ?? null,
+                              trendOk: t?.trendOk ?? null,
+                              score: t?.score ?? null,
+                              stopLossPrice: t?.stopLossPrice ?? null,
+                              buyMode: t?.buyMode ?? null,
+                              buyAction: t?.buyAction ?? null,
+                              buyZoneLow: t?.buyZoneLow ?? null,
+                              buyZoneHigh: t?.buyZoneHigh ?? null,
+                              buyWhy: t?.buyWhy ?? null,
+                            });
+                          }}
+                          aria-label="Reference to chat"
+                          title="Reference to chat"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
