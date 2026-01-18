@@ -39,9 +39,50 @@ function jsonStringifyCompact(v: unknown): string {
   }
 }
 
+function toIndentedText(v: unknown, indent = 0): string {
+  const pad = ' '.repeat(Math.max(0, indent));
+  if (v == null) return `${pad}—`;
+  if (typeof v === 'string') return `${pad}${v}`;
+  if (typeof v === 'number' || typeof v === 'boolean') return `${pad}${String(v)}`;
+  if (Array.isArray(v)) {
+    if (!v.length) return `${pad}[]`;
+    const lines: string[] = [];
+    for (const it of v) {
+      const isScalar =
+        it == null || typeof it === 'string' || typeof it === 'number' || typeof it === 'boolean';
+      if (isScalar) {
+        lines.push(`${pad}- ${it == null ? '—' : String(it)}`);
+        continue;
+      }
+      lines.push(`${pad}-`);
+      lines.push(toIndentedText(it, indent + 2));
+    }
+    return lines.join('\n');
+  }
+  if (typeof v === 'object') {
+    const obj = v as Record<string, unknown>;
+    const keys = Object.keys(obj);
+    if (!keys.length) return `${pad}{}`;
+    const lines: string[] = [];
+    for (const k of keys.sort()) {
+      const val = obj[k];
+      const isScalar =
+        val == null || typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean';
+      if (isScalar) {
+        lines.push(`${pad}${k}: ${val == null ? '—' : String(val)}`);
+        continue;
+      }
+      lines.push(`${pad}${k}:`);
+      lines.push(toIndentedText(val, indent + 2));
+    }
+    return lines.join('\n');
+  }
+  return `${pad}${String(v)}`;
+}
+
 function buildContextMarkdown(context: unknown): string {
   if (!context || typeof context !== 'object' || Array.isArray(context)) {
-    return '---\n\n### context\n\n```json\n' + jsonStringifyPretty(context) + '\n```\n';
+    return '---\n\n### context\n\n```text\n' + toIndentedText(context) + '\n```\n';
   }
   const obj = context as Record<string, unknown>;
   const preferredOrder = [
@@ -72,9 +113,9 @@ function buildContextMarkdown(context: unknown): string {
   let out = '';
   for (const k of ordered) {
     out += `---\n\n### ${k}\n\n`;
-    out += '```json\n' + jsonStringifyPretty(obj[k]) + '\n```\n';
+    out += '```text\n' + toIndentedText(obj[k]) + '\n```\n';
   }
-  return out || '---\n\n### context\n\n```json\n' + jsonStringifyPretty(context) + '\n```\n';
+  return out || '---\n\n### context\n\n```text\n' + toIndentedText(context) + '\n```\n';
 }
 
 function buildPromptDebug({
@@ -953,8 +994,8 @@ app.post('/strategy/daily', async (c) => {
     '- Always include riskNotes arrays (use empty arrays if none).\n' +
     '- Use the SAME language as the user/account prompt (Chinese is expected).\n\n' +
     (accountPrompt ? `Account prompt:\n${accountPrompt}\n\n` : '') +
-    'Context JSON:\n' +
-    JSON.stringify(parsed.data.context);
+    'Context (markdown):\n' +
+    buildContextMarkdown(parsed.data.context);
 
   // Compact JSON template to reduce invalid outputs in text mode.
   const jsonTemplate =
@@ -1124,8 +1165,8 @@ app.post('/strategy/candidates', async (c) => {
     '- Fill scoreBreakdown numbers to match the total score.\n' +
     '- Use Chinese.\n\n' +
     (accountPrompt ? `Account prompt:\n${accountPrompt}\n\n` : '') +
-    'Context JSON:\n' +
-    JSON.stringify(parsed.data.context);
+    'Context (markdown):\n' +
+    buildContextMarkdown(parsed.data.context);
 
   const promptDebug = buildPromptDebug({
     system,
@@ -1236,8 +1277,8 @@ app.post('/leader/daily', async (c) => {
     '  - notes: optional short supporting notes\n' +
     '- Provide riskPoints: 2-4 bullets.\n' +
     'Return JSON only.\n\n' +
-    'Context JSON:\n' +
-    JSON.stringify(parsed.data.context);
+    'Context (markdown):\n' +
+    buildContextMarkdown(parsed.data.context);
 
   async function run(m: AiModel): Promise<unknown> {
     const { object } = await generateObject({
@@ -1536,8 +1577,8 @@ app.post('/strategy/daily-markdown', async (c) => {
     '4. ACTIONABLE ONLY: If context.marketSentiment.latest implies "no new positions", then Section 4 must NOT include any Buy actions.\n' +
     '5. Avoid internal variable names (riskMode/ratio/premium/failedRate). Translate them into trader language.\n\n' +
     (accountPrompt ? `Account prompt:\n${accountPrompt}\n\n` : '') +
-    'Context JSON:\n' +
-    JSON.stringify(parsed.data.context);
+    'Context (markdown):\n' +
+    buildContextMarkdown(parsed.data.context);
 
   const promptDebug = buildPromptDebug({
     system,

@@ -57,7 +57,7 @@ export function MarkdownMessage({ content, className }: { content: string; class
         remarkPlugins={[remarkGfm]}
         components={{
           pre: ({ children }) => (
-            <pre className="not-prose my-3 overflow-x-auto rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3 text-xs leading-relaxed text-[var(--k-text)]">
+            <pre className="not-prose my-3 whitespace-pre-wrap break-words rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3 text-xs leading-relaxed text-[var(--k-text)]">
               {children}
             </pre>
           ),
