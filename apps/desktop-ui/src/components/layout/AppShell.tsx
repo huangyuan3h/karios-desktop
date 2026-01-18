@@ -9,6 +9,7 @@ import { DashboardPage } from '@/components/pages/DashboardPage';
 import { BrokerPage } from '@/components/pages/BrokerPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
 import { LeaderStocksPage } from '@/components/pages/LeaderStocksPage';
+import { JournalPage } from '@/components/pages/JournalPage';
 import { MarketPage } from '@/components/pages/MarketPage';
 import { RankPage } from '@/components/pages/RankPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
@@ -112,6 +113,8 @@ export function AppShell() {
                 ? 'Broker'
               : activePage === 'strategy'
                 ? 'Strategy'
+              : activePage === 'journal'
+                ? 'Journal'
               : activePage === 'leaders'
                 ? 'Leaders'
               : activePage === 'stock'
@@ -179,6 +182,8 @@ export function AppShell() {
               />
             ) : activePage === 'strategy' ? (
               <StrategyPage />
+            ) : activePage === 'journal' ? (
+              <JournalPage />
             ) : activePage === 'leaders' ? (
               <LeaderStocksPage
                 onOpenStock={(symbol) => {

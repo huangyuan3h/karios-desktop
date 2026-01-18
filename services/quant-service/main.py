@@ -355,6 +355,18 @@ def _connect() -> sqlite3.Connection:
         )
         """,
     )
+    # --- Trade journal module (v0) ---
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS trade_journals (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          content_md TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+        """,
+    )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS leader_stocks (
@@ -2655,6 +2667,30 @@ class ListStrategyReportsResponse(BaseModel):
     accountId: str
     days: int
     items: list[StrategyReportSummary]
+
+
+# --- Trade journal module (v0) ---
+class TradeJournal(BaseModel):
+    id: str
+    title: str
+    contentMd: str
+    createdAt: str
+    updatedAt: str
+
+
+class TradeJournalCreateRequest(BaseModel):
+    title: str | None = None
+    contentMd: str = ""
+
+
+class TradeJournalUpdateRequest(BaseModel):
+    title: str | None = None
+    contentMd: str | None = None
+
+
+class ListTradeJournalsResponse(BaseModel):
+    total: int
+    items: list[TradeJournal]
 
 
 # --- Leader stocks module (v0) ---
@@ -9880,6 +9916,136 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         output=output,
         input_snapshot=input_snapshot,
     )
+
+
+# --- Trade journal module (v0) ---
+def _trade_journal_from_row(r: tuple[Any, ...]) -> TradeJournal:
+    return TradeJournal(
+        id=str(r[0]),
+        title=str(r[1]),
+        contentMd=str(r[2]),
+        createdAt=str(r[3]),
+        updatedAt=str(r[4]),
+    )
+
+
+@app.get("/journals", response_model=ListTradeJournalsResponse)
+def list_trade_journals(limit: int = 20, offset: int = 0) -> ListTradeJournalsResponse:
+    limit2 = max(1, min(int(limit), 200))
+    offset2 = max(0, int(offset))
+    with _connect() as conn:
+        total = int(conn.execute("SELECT COUNT(*) FROM trade_journals").fetchone()[0])
+        rows = conn.execute(
+            """
+            SELECT id, title, content_md, created_at, updated_at
+            FROM trade_journals
+            ORDER BY updated_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit2, offset2),
+        ).fetchall()
+    items = [_trade_journal_from_row(tuple(r)) for r in rows]
+    return ListTradeJournalsResponse(total=total, items=items)
+
+
+@app.get("/journals/{journal_id}", response_model=TradeJournal)
+def get_trade_journal(journal_id: str) -> TradeJournal:
+    jid = (journal_id or "").strip()
+    if not jid:
+        raise HTTPException(status_code=400, detail="journal_id is required")
+    with _connect() as conn:
+        r = conn.execute(
+            """
+            SELECT id, title, content_md, created_at, updated_at
+            FROM trade_journals
+            WHERE id = ?
+            """,
+            (jid,),
+        ).fetchone()
+    if r is None:
+        raise HTTPException(status_code=404, detail="Journal not found")
+    return _trade_journal_from_row(tuple(r))
+
+
+@app.post("/journals", response_model=TradeJournal)
+def create_trade_journal(req: TradeJournalCreateRequest) -> TradeJournal:
+    now = now_iso()
+    jid = str(uuid.uuid4())
+    title = (req.title or "").strip() or "Trading Journal"
+    content = req.contentMd or ""
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO trade_journals(id, title, content_md, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?)
+            """,
+            (jid, title, content, now, now),
+        )
+        conn.commit()
+        r = conn.execute(
+            """
+            SELECT id, title, content_md, created_at, updated_at
+            FROM trade_journals
+            WHERE id = ?
+            """,
+            (jid,),
+        ).fetchone()
+    return _trade_journal_from_row(tuple(r))
+
+
+@app.put("/journals/{journal_id}", response_model=TradeJournal)
+def update_trade_journal(journal_id: str, req: TradeJournalUpdateRequest) -> TradeJournal:
+    jid = (journal_id or "").strip()
+    if not jid:
+        raise HTTPException(status_code=400, detail="journal_id is required")
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT id, title, content_md, created_at, updated_at
+            FROM trade_journals
+            WHERE id = ?
+            """,
+            (jid,),
+        ).fetchone()
+        if cur is None:
+            raise HTTPException(status_code=404, detail="Journal not found")
+        cur_t = str(cur[1])
+        cur_c = str(cur[2])
+        next_title = (req.title.strip() if isinstance(req.title, str) else cur_t) or cur_t
+        next_content = req.contentMd if isinstance(req.contentMd, str) else cur_c
+        now = now_iso()
+        conn.execute(
+            """
+            UPDATE trade_journals
+            SET title = ?, content_md = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (next_title, next_content, now, jid),
+        )
+        conn.commit()
+        r = conn.execute(
+            """
+            SELECT id, title, content_md, created_at, updated_at
+            FROM trade_journals
+            WHERE id = ?
+            """,
+            (jid,),
+        ).fetchone()
+    return _trade_journal_from_row(tuple(r))
+
+
+@app.delete("/journals/{journal_id}")
+def delete_trade_journal(journal_id: str) -> dict[str, Any]:
+    jid = (journal_id or "").strip()
+    if not jid:
+        raise HTTPException(status_code=400, detail="journal_id is required")
+    with _connect() as conn:
+        cur = conn.execute("SELECT id FROM trade_journals WHERE id = ?", (jid,)).fetchone()
+        if cur is None:
+            raise HTTPException(status_code=404, detail="Journal not found")
+        conn.execute("DELETE FROM trade_journals WHERE id = ?", (jid,))
+        conn.commit()
+    return {"ok": True}
 
 
 @app.post("/leader/daily", response_model=LeaderDailyResponse)
