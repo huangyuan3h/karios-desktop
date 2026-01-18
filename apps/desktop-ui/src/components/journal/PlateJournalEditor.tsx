@@ -8,6 +8,7 @@ import {
   Link2,
   List,
   ListOrdered,
+  MessageSquareQuote,
   Quote,
   Redo2,
   Strikethrough,
@@ -73,7 +74,15 @@ function ToolbarButton({
   );
 }
 
-function PlateToolbar() {
+function PlateToolbar({
+  onReference,
+  journalId,
+  title,
+}: {
+  onReference?: (content: string) => void;
+  journalId?: string;
+  title?: string;
+}) {
   // Plate's `useEditorRef` is intentionally generic; cast to access runtime editor APIs for toolbar.
   const editor = useEditorRef() as unknown as {
     undo: () => void;
@@ -81,6 +90,7 @@ function PlateToolbar() {
     history?: { undos?: unknown[]; redos?: unknown[] };
     tf: { toggleMark: (k: string) => void; toggleBlock: (k: string) => void; focus: () => void };
     getMarks?: () => Record<string, unknown> | null | undefined;
+    api?: { markdown: { serialize: () => string } };
   };
   const marks = editor.getMarks?.() ?? {};
   const hasMark = (k: string) => Boolean(marks?.[k]);
@@ -91,6 +101,19 @@ function PlateToolbar() {
     // Best-effort: keep dropdown stable; we don't attempt deep selection analysis here.
     // User can still change it to apply the block type.
   }, []);
+
+  const handleReference = React.useCallback(() => {
+    if (!onReference || !editor.api) return;
+
+    try {
+      const content = editor.api.markdown.serialize();
+      if (content.trim()) {
+        onReference(content);
+      }
+    } catch (error) {
+      console.error('Failed to serialize journal content for reference:', error);
+    }
+  }, [onReference, editor]);
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-[var(--k-border)] bg-white px-3 py-2">
@@ -234,6 +257,16 @@ function PlateToolbar() {
       >
         <Link2 className="h-4 w-4" />
       </ToolbarButton>
+
+      <div className="mx-1 h-6 w-px bg-[var(--k-border)]" />
+
+      <ToolbarButton
+        title="Reference to AI"
+        onClick={handleReference}
+        disabled={!onReference || !editor.api}
+      >
+        <MessageSquareQuote className="h-4 w-4" />
+      </ToolbarButton>
     </div>
   );
 }
@@ -242,10 +275,16 @@ export function PlateJournalEditor({
   initialMarkdown,
   onMarkdownChange,
   className,
+  onReference,
+  journalId,
+  title,
 }: {
   initialMarkdown: string;
   onMarkdownChange: (markdown: string) => void;
   className?: string;
+  onReference?: (content: string) => void;
+  journalId?: string;
+  title?: string;
 }) {
   const editor = React.useMemo(() => {
     return createPlateEditor({
@@ -284,7 +323,7 @@ export function PlateJournalEditor({
           onMarkdownChange(md);
         }}
       >
-        <PlateToolbar />
+        <PlateToolbar onReference={onReference} journalId={journalId} title={title} />
         <div className="p-3">
           <PlateContent className="min-h-[420px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 text-sm outline-none" />
         </div>

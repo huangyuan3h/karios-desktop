@@ -150,6 +150,14 @@ export type ChatReference =
       slot: string; // 0930_1030 | 1030_1130 | 1300_1400 | 1400_1445
       limit: number; // typically 30
       createdAt: string;
+    }
+  | {
+      kind: 'journal';
+      refId: string; // stable key: `journal:${journalId}:${timestamp}`
+      journalId: string;
+      title: string;
+      content: string; // markdown content
+      capturedAt: string;
     };
 
 export type AppSettings = {
@@ -164,5 +172,3 @@ export type AgentPanelState = {
   width: number;
   historyOpen: boolean;
 };
-
-

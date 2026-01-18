@@ -6,6 +6,9 @@ import { ArrowLeft, Save } from 'lucide-react';
 import { PlateJournalEditor } from '@/components/journal/PlateJournalEditor';
 import { Button } from '@/components/ui/button';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { useChatStore } from '@/lib/chat/store';
+import type { ChatReference } from '@/lib/chat/types';
+import { newId } from '@/lib/id';
 
 type TradeJournal = {
   id: string;
@@ -67,6 +70,7 @@ export function JournalWritePage({
   onJournalIdChange: (id: string | null) => void;
   onExit: () => void;
 }) {
+  const { addReference, setAgent } = useChatStore();
   const [title, setTitle] = React.useState('');
   const [contentMd, setContentMd] = React.useState('');
   const [createdAt, setCreatedAt] = React.useState<string | null>(null);
@@ -141,6 +145,31 @@ export function JournalWritePage({
     }
   }
 
+  const handleReference = React.useCallback(
+    (content: string) => {
+      if (!content.trim()) return;
+
+      const currentJournalId = journalId || 'new';
+      const journalTitle = title.trim() || 'Untitled Journal';
+      const now = new Date().toISOString();
+
+      const reference: ChatReference = {
+        kind: 'journal',
+        refId: `journal:${currentJournalId}:${now}`,
+        journalId: currentJournalId,
+        title: journalTitle,
+        content: content,
+        capturedAt: now,
+      };
+
+      addReference(reference);
+
+      // Open agent panel if not already visible
+      setAgent((prev) => ({ ...prev, visible: true, historyOpen: false }));
+    },
+    [journalId, title, addReference, setAgent],
+  );
+
   return (
     <div className="mx-auto w-full max-w-5xl p-6">
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -195,6 +224,9 @@ export function JournalWritePage({
         key={editorKey}
         initialMarkdown={contentMd || ''}
         onMarkdownChange={(md) => setContentMd(md)}
+        onReference={handleReference}
+        journalId={journalId || undefined}
+        title={title}
       />
     </div>
   );
