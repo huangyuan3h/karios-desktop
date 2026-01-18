@@ -9,7 +9,8 @@ import { DashboardPage } from '@/components/pages/DashboardPage';
 import { BrokerPage } from '@/components/pages/BrokerPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
 import { LeaderStocksPage } from '@/components/pages/LeaderStocksPage';
-import { JournalPage } from '@/components/pages/JournalPage';
+import { JournalReadPage } from '@/components/pages/JournalReadPage';
+import { JournalWritePage } from '@/components/pages/JournalWritePage';
 import { MarketPage } from '@/components/pages/MarketPage';
 import { RankPage } from '@/components/pages/RankPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
@@ -33,6 +34,7 @@ export function AppShell() {
   const [activePage, setActivePage] = React.useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [activeStockSymbol, setActiveStockSymbol] = React.useState<string | null>(null);
+  const [activeJournalId, setActiveJournalId] = React.useState<string | null>(null);
   const draggingRef = React.useRef(false);
   const agentVisibleRef = React.useRef(agentVisible);
   const agentModeRef = React.useRef(agentMode);
@@ -113,8 +115,10 @@ export function AppShell() {
                 ? 'Broker'
               : activePage === 'strategy'
                 ? 'Strategy'
-              : activePage === 'journal'
+              : activePage === 'journalRead'
                 ? 'Journal'
+              : activePage === 'journalWrite'
+                ? 'Write'
               : activePage === 'leaders'
                 ? 'Leaders'
               : activePage === 'stock'
@@ -182,8 +186,16 @@ export function AppShell() {
               />
             ) : activePage === 'strategy' ? (
               <StrategyPage />
-            ) : activePage === 'journal' ? (
-              <JournalPage />
+            ) : activePage === 'journalRead' ? (
+              <JournalReadPage
+                activeId={activeJournalId}
+                onEdit={(id) => {
+                  setActiveJournalId(id);
+                  setActivePage('journalWrite');
+                }}
+              />
+            ) : activePage === 'journalWrite' ? (
+              <JournalWritePage journalId={activeJournalId} onJournalIdChange={setActiveJournalId} />
             ) : activePage === 'leaders' ? (
               <LeaderStocksPage
                 onOpenStock={(symbol) => {
