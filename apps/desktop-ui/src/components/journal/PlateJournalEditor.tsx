@@ -56,8 +56,13 @@ function ToolbarButton({
     <Button
       type="button"
       size="sm"
-      variant={active ? 'default' : 'secondary'}
-      className="h-8 w-8 p-0"
+      variant={active ? 'secondary' : 'ghost'}
+      className={cn(
+        'h-8 w-8 p-0',
+        active
+          ? 'bg-[var(--k-surface)] text-[var(--k-text)] hover:bg-[var(--k-surface)]'
+          : 'text-[var(--k-muted)] hover:bg-[var(--k-surface)] hover:text-[var(--k-text)]',
+      )}
       title={title}
       aria-label={title}
       disabled={disabled}
@@ -88,7 +93,7 @@ function PlateToolbar() {
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2">
+    <div className="flex flex-wrap items-center gap-2 border-b border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
       <ToolbarButton title="Undo" onClick={() => editor.undo()} disabled={!editor.history?.undos?.length}>
         <Undo2 className="h-4 w-4" />
       </ToolbarButton>
@@ -107,7 +112,7 @@ function PlateToolbar() {
           editor.tf.focus();
         }}
       >
-        <SelectTrigger className="h-8 w-[140px]">
+        <SelectTrigger className="h-8 w-[140px] bg-[var(--k-surface)]">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -269,7 +274,7 @@ export function PlateJournalEditor({
       >
         <PlateToolbar />
         <div className="p-3">
-          <PlateContent className="min-h-[420px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-sm outline-none" />
+          <PlateContent className="min-h-[420px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 text-sm outline-none" />
         </div>
       </Plate>
     </div>

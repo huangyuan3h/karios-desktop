@@ -204,12 +204,12 @@ export function JournalWritePage({
         </div>
       </div>
 
-      <section className="mb-3 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+      <section className="mb-3 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4">
         <div className="grid gap-2 md:grid-cols-12">
           <div className="md:col-span-8">
             <div className="text-xs text-[var(--k-muted)]">Title</div>
             <input
-              className="mt-1 h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 text-sm outline-none"
+              className="mt-1 h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm text-[var(--k-text)] outline-none"
               placeholder="Title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -217,9 +217,15 @@ export function JournalWritePage({
           </div>
           <div className="md:col-span-4">
             <div className="text-xs text-[var(--k-muted)]">Time</div>
-            <div className="mt-1 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-xs text-[var(--k-muted)]">
-              <div>Created: {fmtTs(createdAt)}</div>
-              <div>Updated: {fmtTs(updatedAt)}</div>
+            <div className="mt-1 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[var(--k-muted)]">Created</span>
+                <span className="font-medium text-[var(--k-text)]">{fmtTs(createdAt)}</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <span className="text-[var(--k-muted)]">Updated</span>
+                <span className="font-medium text-[var(--k-text)]">{fmtTs(updatedAt)}</span>
+              </div>
             </div>
           </div>
         </div>
