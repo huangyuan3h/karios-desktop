@@ -93,11 +93,19 @@ function PlateToolbar() {
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
-      <ToolbarButton title="Undo" onClick={() => editor.undo()} disabled={!editor.history?.undos?.length}>
+    <div className="flex flex-wrap items-center gap-2 border-b border-[var(--k-border)] bg-white px-3 py-2">
+      <ToolbarButton
+        title="Undo"
+        onClick={() => editor.undo()}
+        disabled={!editor.history?.undos?.length}
+      >
         <Undo2 className="h-4 w-4" />
       </ToolbarButton>
-      <ToolbarButton title="Redo" onClick={() => editor.redo()} disabled={!editor.history?.redos?.length}>
+      <ToolbarButton
+        title="Redo"
+        onClick={() => editor.redo()}
+        disabled={!editor.history?.redos?.length}
+      >
         <Redo2 className="h-4 w-4" />
       </ToolbarButton>
 
@@ -254,21 +262,25 @@ export function PlateJournalEditor({
       ],
       value: (e) =>
         // MarkdownPlugin augments `editor.api` at runtime; TS types don't include it by default.
-        (e as unknown as { api: { markdown: { deserialize: (md: string) => Value } } }).api.markdown.deserialize(
-          initialMarkdown || '',
-        ),
+        (
+          e as unknown as { api: { markdown: { deserialize: (md: string) => Value } } }
+        ).api.markdown.deserialize(initialMarkdown || ''),
     });
     // initialMarkdown is intentionally captured once; reloading content is handled by keying parent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div className={cn('rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]', className)}>
+    <div
+      className={cn('rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]', className)}
+    >
       <Plate
         editor={editor}
         onChange={() => {
           // MarkdownPlugin augments `editor.api` at runtime; TS types don't include it by default.
-          const md = (editor as unknown as { api: { markdown: { serialize: () => string } } }).api.markdown.serialize();
+          const md = (
+            editor as unknown as { api: { markdown: { serialize: () => string } } }
+          ).api.markdown.serialize();
           onMarkdownChange(md);
         }}
       >
@@ -280,4 +292,3 @@ export function PlateJournalEditor({
     </div>
   );
 }
-

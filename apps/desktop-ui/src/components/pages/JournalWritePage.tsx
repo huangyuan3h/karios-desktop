@@ -76,14 +76,17 @@ export function JournalWritePage({
 
   const editorKey = journalId || 'new';
 
-  const loadOne = React.useCallback(async (id: string) => {
-    const j = await apiGetJson<TradeJournal>(`/journals/${encodeURIComponent(id)}`);
-    onJournalIdChange(j.id);
-    setTitle(j.title || '');
-    setContentMd(j.contentMd || '');
-    setCreatedAt(j.createdAt || null);
-    setUpdatedAt(j.updatedAt || null);
-  }, [onJournalIdChange]);
+  const loadOne = React.useCallback(
+    async (id: string) => {
+      const j = await apiGetJson<TradeJournal>(`/journals/${encodeURIComponent(id)}`);
+      onJournalIdChange(j.id);
+      setTitle(j.title || '');
+      setContentMd(j.contentMd || '');
+      setCreatedAt(j.createdAt || null);
+      setUpdatedAt(j.updatedAt || null);
+    },
+    [onJournalIdChange],
+  );
 
   React.useEffect(() => {
     void (async () => {
@@ -143,11 +146,19 @@ export function JournalWritePage({
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-lg font-semibold">Write</div>
-          <div className="mt-1 text-sm text-[var(--k-muted)]">Write your trading diary with a Plate toolbar.</div>
+          <div className="mt-1 text-sm text-[var(--k-muted)]">
+            Write your trading diary with a Plate toolbar.
+          </div>
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={() => onExit()} disabled={busy} className="gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => onExit()}
+            disabled={busy}
+            className="gap-2"
+          >
             <ArrowLeft className="h-4 w-4" />
             Exit
           </Button>
@@ -158,7 +169,7 @@ export function JournalWritePage({
         </div>
       </div>
 
-      <section className="mb-3 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4">
+      <section className="mb-3 rounded-xl border border-[var(--k-border)] bg-white p-4">
         <div className="grid gap-2 md:grid-cols-12">
           <div className="md:col-span-8">
             <div className="text-xs text-[var(--k-muted)]">Title</div>
@@ -188,4 +199,3 @@ export function JournalWritePage({
     </div>
   );
 }
-
