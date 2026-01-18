@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 import type { ChatReference } from '@/lib/chat/types';
-import { newId } from '@/lib/id';
 
 type TradeJournal = {
   id: string;
@@ -75,6 +74,8 @@ export function JournalWritePage({
   const [contentMd, setContentMd] = React.useState('');
   const [createdAt, setCreatedAt] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<string | null>(null);
+  // Plate editor only uses initialMarkdown on mount; bump to remount after async load.
+  const [editorRev, setEditorRev] = React.useState(0);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -88,6 +89,7 @@ export function JournalWritePage({
       setContentMd(j.contentMd || '');
       setCreatedAt(j.createdAt || null);
       setUpdatedAt(j.updatedAt || null);
+      setEditorRev((x) => x + 1);
     },
     [onJournalIdChange],
   );
@@ -111,6 +113,7 @@ export function JournalWritePage({
           setContentMd('');
           setCreatedAt(null);
           setUpdatedAt(null);
+          setEditorRev((x) => x + 1);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -138,6 +141,7 @@ export function JournalWritePage({
       setContentMd(j.contentMd || '');
       setCreatedAt(j.createdAt || null);
       setUpdatedAt(j.updatedAt || null);
+      setEditorRev((x) => x + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -221,12 +225,10 @@ export function JournalWritePage({
       </section>
 
       <PlateJournalEditor
-        key={editorKey}
+        key={`${editorKey}:${editorRev}`}
         initialMarkdown={contentMd || ''}
         onMarkdownChange={(md) => setContentMd(md)}
         onReference={handleReference}
-        journalId={journalId || undefined}
-        title={title}
       />
     </div>
   );

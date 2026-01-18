@@ -76,12 +76,8 @@ function ToolbarButton({
 
 function PlateToolbar({
   onReference,
-  journalId,
-  title,
 }: {
   onReference?: (content: string) => void;
-  journalId?: string;
-  title?: string;
 }) {
   // Plate's `useEditorRef` is intentionally generic; cast to access runtime editor APIs for toolbar.
   const editor = useEditorRef() as unknown as {
@@ -276,15 +272,11 @@ export function PlateJournalEditor({
   onMarkdownChange,
   className,
   onReference,
-  journalId,
-  title,
 }: {
   initialMarkdown: string;
   onMarkdownChange: (markdown: string) => void;
   className?: string;
   onReference?: (content: string) => void;
-  journalId?: string;
-  title?: string;
 }) {
   const editor = React.useMemo(() => {
     return createPlateEditor({
@@ -323,7 +315,7 @@ export function PlateJournalEditor({
           onMarkdownChange(md);
         }}
       >
-        <PlateToolbar onReference={onReference} journalId={journalId} title={title} />
+        <PlateToolbar onReference={onReference} />
         <div className="p-3">
           <PlateContent className="min-h-[420px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 text-sm outline-none" />
         </div>
