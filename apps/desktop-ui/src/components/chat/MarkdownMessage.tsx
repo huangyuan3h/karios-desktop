@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -55,6 +56,11 @@ export function MarkdownMessage({ content, className }: { content: string; class
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          pre: ({ children }) => (
+            <pre className="not-prose my-3 overflow-x-auto rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3 text-xs leading-relaxed text-[var(--k-text)]">
+              {children}
+            </pre>
+          ),
           table: ({ children }) => (
             <div className="not-prose my-3 overflow-x-auto rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] shadow-sm">
               <table className="m-0 w-full border-collapse text-sm">{children}</table>
@@ -75,9 +81,19 @@ export function MarkdownMessage({ content, className }: { content: string; class
               {children}
             </td>
           ),
-          code: ({ children }) => (
-            <code className="rounded bg-[var(--k-surface-2)] px-1 py-0.5 text-[0.9em]">{children}</code>
-          ),
+          code: (props) => {
+            // react-markdown's typings don't expose `inline` on this component prop, but it exists at runtime.
+            const p = props as unknown as { inline?: boolean; className?: string; children?: ReactNode };
+            const inline = Boolean(p.inline);
+            if (inline) {
+              return (
+                <code className="rounded bg-[var(--k-surface-2)] px-1 py-0.5 text-[0.9em] text-[var(--k-text)]">
+                  {p.children}
+                </code>
+              );
+            }
+            return <code className={cn('text-xs text-[var(--k-text)]', p.className)}>{p.children}</code>;
+          },
           blockquote: ({ children }) => (
             <blockquote className="border-l-4 border-[var(--k-border)] pl-3 text-[var(--k-muted)]">
               {children}

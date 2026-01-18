@@ -23,6 +23,92 @@ function asTrimmedString(v: unknown): string {
   return typeof v === 'string' ? v.trim() : '';
 }
 
+function jsonStringifyPretty(v: unknown): string {
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
+}
+
+function jsonStringifyCompact(v: unknown): string {
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
+function buildContextMarkdown(context: unknown): string {
+  if (!context || typeof context !== 'object' || Array.isArray(context)) {
+    return '---\n\n### context\n\n```json\n' + jsonStringifyPretty(context) + '\n```\n';
+  }
+  const obj = context as Record<string, unknown>;
+  const preferredOrder = [
+    'date',
+    'account',
+    'accountPrompt',
+    'accountState',
+    'watchlist',
+    'tradingView',
+    'industryFundFlow',
+    'marketSentiment',
+    'leaderStocks',
+    'mainline',
+    'quant2d',
+    'candidateUniverse',
+    'stage1',
+    'selectedSymbols',
+    'stocks',
+  ];
+  const keys = Object.keys(obj);
+  const ordered: string[] = [];
+  for (const k of preferredOrder) {
+    if (Object.prototype.hasOwnProperty.call(obj, k)) ordered.push(k);
+  }
+  const rest = keys.filter((k) => !ordered.includes(k)).sort();
+  ordered.push(...rest);
+
+  let out = '';
+  for (const k of ordered) {
+    out += `---\n\n### ${k}\n\n`;
+    out += '```json\n' + jsonStringifyPretty(obj[k]) + '\n```\n';
+  }
+  return out || '---\n\n### context\n\n```json\n' + jsonStringifyPretty(context) + '\n```\n';
+}
+
+function buildPromptDebug({
+  system,
+  promptText,
+  context,
+}: {
+  system: string;
+  promptText: string;
+  context: unknown;
+}): {
+  system: string;
+  promptText: string;
+  contextJsonCompact: string;
+  contextJsonPretty: string;
+  contextMarkdown: string;
+  promptMarkdown: string;
+} {
+  const contextJsonCompact = jsonStringifyCompact(context);
+  const contextJsonPretty = jsonStringifyPretty(context);
+  const contextMarkdown = buildContextMarkdown(context);
+  const promptMarkdown =
+    '## System\n\n```text\n' +
+    system +
+    '\n```\n\n' +
+    '## Prompt (as sent to model)\n\n```text\n' +
+    promptText +
+    '\n```\n\n' +
+    '## Context (segmented)\n\n' +
+    contextMarkdown;
+
+  return { system, promptText, contextJsonCompact, contextJsonPretty, contextMarkdown, promptMarkdown };
+}
+
 function normalizeOptionalString(v: unknown): string | undefined {
   const s = asTrimmedString(v);
   return s ? s : undefined;
@@ -1041,6 +1127,12 @@ app.post('/strategy/candidates', async (c) => {
     'Context JSON:\n' +
     JSON.stringify(parsed.data.context);
 
+  const promptDebug = buildPromptDebug({
+    system,
+    promptText: instruction,
+    context: parsed.data.context,
+  });
+
   async function run(m: AiModel): Promise<unknown> {
     const { object } = await generateObject({
       model: m,
@@ -1056,13 +1148,13 @@ app.post('/strategy/candidates', async (c) => {
   try {
     const obj = await run(model);
     const out = StrategyCandidatesResponseSchema.parse(obj);
-    return c.json({ ...out, model: modelId || out.model });
+    return c.json({ ...out, model: modelId || out.model, promptDebug });
   } catch (e) {
     if (fallbackModel) {
       try {
         const obj = await run(fallbackModel);
         const out = StrategyCandidatesResponseSchema.parse(obj);
-        return c.json({ ...out, model: fallbackModelId || modelId || out.model });
+        return c.json({ ...out, model: fallbackModelId || modelId || out.model, promptDebug });
       } catch {
         // fallthrough
       }
@@ -1077,6 +1169,7 @@ app.post('/strategy/candidates', async (c) => {
         leader: { symbol: '', reason: '' },
         riskNotes: [`Candidates generation failed: ${msg}`],
         model: modelId || 'unknown',
+        promptDebug,
       },
       200,
     );
@@ -1446,6 +1539,12 @@ app.post('/strategy/daily-markdown', async (c) => {
     'Context JSON:\n' +
     JSON.stringify(parsed.data.context);
 
+  const promptDebug = buildPromptDebug({
+    system,
+    promptText: instruction,
+    context: parsed.data.context,
+  });
+
   async function run(m: AiModel): Promise<string> {
     const { text } = await generateText({
       model: m,
@@ -1466,7 +1565,7 @@ app.post('/strategy/daily-markdown', async (c) => {
       markdown: md,
       model: modelId || 'unknown',
     });
-    return c.json(out);
+    return c.json({ ...out, promptDebug });
   } catch (e) {
     if (fallbackModel) {
       try {
@@ -1478,7 +1577,7 @@ app.post('/strategy/daily-markdown', async (c) => {
           markdown: md,
           model: fallbackModelId || modelId || 'unknown',
         });
-        return c.json(out);
+        return c.json({ ...out, promptDebug });
       } catch {
         // fallthrough
       }
@@ -1496,6 +1595,7 @@ app.post('/strategy/daily-markdown', async (c) => {
           `## Error\n\n` +
           `Strategy generation failed: ${msg}\n`,
         model: modelId || 'unknown',
+        promptDebug,
       },
       200,
     );
