@@ -9398,12 +9398,44 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
                 sym = _norm_str(it.get("symbol") or "")
                 if not sym:
                     continue
-                wl_items.append(
-                    {
-                        "symbol": sym,
-                        "name": _norm_str(it.get("name") or "") or None,
-                    }
-                )
+                name = _norm_str(it.get("name") or "") or None
+                # Enrich local watchlist items with real-time (cached) CN daily signals so the LLM
+                # can reason with actionable fields (TrendOK/Score/StopLoss/Buy).
+                enriched: dict[str, Any] = {"symbol": sym, "name": name}
+                try:
+                    bars = _load_cached_bars(sym, days=120)
+                    bars_tuples: list[
+                        tuple[str, str | None, str | None, str | None, str | None, str | None]
+                    ] = [
+                        (
+                            _norm_str(b.get("date") or ""),
+                            b.get("open") or None,
+                            b.get("high") or None,
+                            b.get("low") or None,
+                            b.get("close") or None,
+                            b.get("volume") or None,
+                        )
+                        for b in bars
+                        if isinstance(b, dict)
+                    ]
+                    t = _market_stock_trendok_one(symbol=sym, name=name, bars=bars_tuples)
+                    enriched.update(
+                        {
+                            "asOfDate": t.asOfDate,
+                            "close": t.values.close,
+                            "trendOk": t.trendOk,
+                            "score": t.score,
+                            "stopLossPrice": t.stopLossPrice,
+                            "buyMode": t.buyMode,
+                            "buyAction": t.buyAction,
+                            "buyZoneLow": t.buyZoneLow,
+                            "buyZoneHigh": t.buyZoneHigh,
+                            "missingData": list(t.missingData or []),
+                        }
+                    )
+                except Exception as e:
+                    enriched["enrichError"] = str(e)
+                wl_items.append(enriched)
         watchlist_ctx = {
             "version": int(req.watchlist.get("version") or 1),
             "generatedAt": _norm_str(req.watchlist.get("generatedAt") or "") or None,

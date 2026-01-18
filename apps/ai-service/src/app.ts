@@ -985,13 +985,14 @@ app.post('/strategy/daily', async (c) => {
   const instruction =
     `Task: Generate a daily trading guide for ${accountTitle} on ${date}.\n` +
     'Constraints:\n' +
-    '- Candidate universe: use ONLY the provided TradingView snapshots + the provided stocks list + current holdings.\n' +
+    '- Candidate universe: use ONLY the provided TradingView snapshots + the provided stocks list + current holdings + watchlist.\n' +
     '- Output <= 5 candidates with score 0-100 and rank.\n' +
     '- Pick a single leader (龙头) and explain why.\n' +
     '- Recommend <= 3 symbols (do not exceed 3).\n' +
     '- Orders must be conditional-order style. Provide clear trigger and quantity.\n' +
     '- Always include levels.support/resistance/invalidations arrays (use empty arrays if unknown).\n' +
     '- Always include riskNotes arrays (use empty arrays if none).\n' +
+    '- watchlist: if context.watchlist.items exists, it is user-curated and includes fields like trendOk/score/stopLoss/buyAction; use it to prioritize.\n' +
     '- Use the SAME language as the user/account prompt (Chinese is expected).\n\n' +
     (accountPrompt ? `Account prompt:\n${accountPrompt}\n\n` : '') +
     'Context (markdown):\n' +
@@ -1151,6 +1152,7 @@ app.post('/strategy/candidates', async (c) => {
     'Constraints:\n' +
     '- Do NOT require per-stock deep context. Assume it is NOT available.\n' +
     '- Use ONLY: accountState, TradingView latest+history, industryFundFlow, marketSentiment.\n' +
+    '- If context.watchlist.items exists, you MAY use it as additional candidate hints (user-curated list with trendOk/score).\n' +
     "- Mainline (主线): if context.mainline.selected exists, you MUST treat it as today's primary focus theme and reflect it in:\n" +
     '  - leader.reason (mention mainline name and whether it is clear)\n' +
     '  - candidate ranking (prefer candidates aligned with mainline when it is clear)\n' +
@@ -1575,6 +1577,7 @@ app.post('/strategy/daily-markdown', async (c) => {
     '2. NO JARGON/TRUISMS: Delete sentences like "优先选择量价强...". Use concrete data-backed statements.\n' +
     '3. TABLE STABILITY: Every table must have correct header + separator. Section 2 must have EXACTLY 3 data rows.\n' +
     '4. ACTIONABLE ONLY: If context.marketSentiment.latest implies "no new positions", then Section 4 must NOT include any Buy actions.\n' +
+    '4b. If context.watchlist.items exists, it is user watchlist with trendOk/score/stopLoss/buyAction; use it to improve Top3 and Holding plans.\n' +
     '5. Avoid internal variable names (riskMode/ratio/premium/failedRate). Translate them into trader language.\n\n' +
     (accountPrompt ? `Account prompt:\n${accountPrompt}\n\n` : '') +
     'Context (markdown):\n' +
