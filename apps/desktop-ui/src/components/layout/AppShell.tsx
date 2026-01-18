@@ -35,6 +35,7 @@ export function AppShell() {
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [activeStockSymbol, setActiveStockSymbol] = React.useState<string | null>(null);
   const [activeJournalId, setActiveJournalId] = React.useState<string | null>(null);
+  const [journalMode, setJournalMode] = React.useState<'read' | 'write'>('read');
   const draggingRef = React.useRef(false);
   const agentVisibleRef = React.useRef(agentVisible);
   const agentModeRef = React.useRef(agentMode);
@@ -93,7 +94,10 @@ export function AppShell() {
     <div className="flex h-screen w-screen bg-[var(--k-bg)] text-[var(--k-text)]">
       <SidebarNav
         activeId={activePage}
-        onSelect={setActivePage}
+        onSelect={(id) => {
+          setActivePage(id);
+          if (id === 'journal') setJournalMode('read');
+        }}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
       />
@@ -115,10 +119,8 @@ export function AppShell() {
                 ? 'Broker'
               : activePage === 'strategy'
                 ? 'Strategy'
-              : activePage === 'journalRead'
+              : activePage === 'journal'
                 ? 'Journal'
-              : activePage === 'journalWrite'
-                ? 'Write'
               : activePage === 'leaders'
                 ? 'Leaders'
               : activePage === 'stock'
@@ -186,16 +188,22 @@ export function AppShell() {
               />
             ) : activePage === 'strategy' ? (
               <StrategyPage />
-            ) : activePage === 'journalRead' ? (
-              <JournalReadPage
-                activeId={activeJournalId}
-                onEdit={(id) => {
-                  setActiveJournalId(id);
-                  setActivePage('journalWrite');
-                }}
-              />
-            ) : activePage === 'journalWrite' ? (
-              <JournalWritePage journalId={activeJournalId} onJournalIdChange={setActiveJournalId} />
+            ) : activePage === 'journal' ? (
+              journalMode === 'write' ? (
+                <JournalWritePage
+                  journalId={activeJournalId}
+                  onJournalIdChange={setActiveJournalId}
+                  onExit={() => setJournalMode('read')}
+                />
+              ) : (
+                <JournalReadPage
+                  activeId={activeJournalId}
+                  onEdit={(id) => {
+                    setActiveJournalId(id);
+                    setJournalMode('write');
+                  }}
+                />
+              )
             ) : activePage === 'leaders' ? (
               <LeaderStocksPage
                 onOpenStock={(symbol) => {

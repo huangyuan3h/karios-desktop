@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Plus, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save } from 'lucide-react';
 
 import { PlateJournalEditor } from '@/components/journal/PlateJournalEditor';
 import { Button } from '@/components/ui/button';
@@ -49,23 +49,23 @@ async function apiPutJson<T>(path: string, body: unknown): Promise<T> {
   return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
-async function apiDelete(path: string): Promise<void> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { method: 'DELETE' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-}
-
-function fmtTs(ts: string | null | undefined): string {
+function fmtTsSimple(ts: string | null | undefined): string {
   const s = String(ts ?? '').trim();
-  return s || '—';
+  if (!s) return '—';
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
+  if (m) return `${m[1]} ${m[2]}`;
+  // Fallback: best-effort for already pretty strings.
+  return s.replace('T', ' ').replace(/\.\d+.*$/, '');
 }
 
 export function JournalWritePage({
   journalId,
   onJournalIdChange,
+  onExit,
 }: {
   journalId: string | null;
   onJournalIdChange: (id: string | null) => void;
+  onExit: () => void;
 }) {
   const [title, setTitle] = React.useState('');
   const [contentMd, setContentMd] = React.useState('');
@@ -111,23 +111,6 @@ export function JournalWritePage({
     })();
   }, [journalId, loadOne, onJournalIdChange]);
 
-  async function onCreate() {
-    setBusy(true);
-    setError(null);
-    try {
-      const today = new Date().toISOString().slice(0, 10);
-      const j = await apiPostJson<TradeJournal>('/journals', {
-        title: `Trading Journal ${today}`,
-        contentMd: '',
-      });
-      await loadOne(j.id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function onSave() {
     setBusy(true);
     setError(null);
@@ -155,24 +138,6 @@ export function JournalWritePage({
     }
   }
 
-  async function onDelete() {
-    if (!journalId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await apiDelete(`/journals/${encodeURIComponent(journalId)}`);
-      onJournalIdChange(null);
-      setTitle(`Trading Journal ${new Date().toISOString().slice(0, 10)}`);
-      setContentMd('');
-      setCreatedAt(null);
-      setUpdatedAt(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <div className="mx-auto w-full max-w-5xl p-6">
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -182,24 +147,13 @@ export function JournalWritePage({
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={() => void onCreate()} disabled={busy} className="gap-2">
-            <Plus className="h-4 w-4" />
-            New
+          <Button size="sm" variant="secondary" onClick={() => onExit()} disabled={busy} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Exit
           </Button>
           <Button size="sm" onClick={() => void onSave()} disabled={busy} className="gap-2">
             <Save className="h-4 w-4" />
             Save
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => void onDelete()}
-            disabled={busy || !journalId}
-            className="gap-2"
-            title="Delete this entry"
-          >
-            <Trash2 className="h-4 w-4" />
-            Delete
           </Button>
         </div>
       </div>
@@ -218,13 +172,8 @@ export function JournalWritePage({
           <div className="md:col-span-4">
             <div className="text-xs text-[var(--k-muted)]">Time</div>
             <div className="mt-1 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[var(--k-muted)]">Created</span>
-                <span className="font-medium text-[var(--k-text)]">{fmtTs(createdAt)}</span>
-              </div>
-              <div className="mt-1 flex items-center justify-between gap-2">
-                <span className="text-[var(--k-muted)]">Updated</span>
-                <span className="font-medium text-[var(--k-text)]">{fmtTs(updatedAt)}</span>
+              <div className="font-medium text-[var(--k-text)]">
+                {fmtTsSimple(updatedAt || createdAt || new Date().toISOString())}
               </div>
             </div>
           </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Pencil, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, Pencil } from 'lucide-react';
 
 import { MarkdownMessage } from '@/components/chat/MarkdownMessage';
 import { Button } from '@/components/ui/button';
@@ -27,9 +27,29 @@ async function apiGetJson<T>(path: string): Promise<T> {
   return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
-function fmtTs(ts: string | null | undefined): string {
+async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
+}
+
+async function apiDelete(path: string): Promise<void> {
+  const res = await fetch(`${QUANT_BASE_URL}${path}`, { method: 'DELETE' });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+}
+
+function fmtTsSimple(ts: string | null | undefined): string {
   const s = String(ts ?? '').trim();
-  return s || '—';
+  if (!s) return '—';
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
+  if (m) return `${m[1]} ${m[2]}`;
+  return s.replace('T', ' ').replace(/\.\d+.*$/, '');
 }
 
 export function JournalReadPage({
@@ -51,6 +71,45 @@ export function JournalReadPage({
     setItems(xs);
     return xs;
   }, []);
+
+  async function onCreate() {
+    setBusy(true);
+    setError(null);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const j = await apiPostJson<TradeJournal>('/journals', {
+        title: `Trading Journal ${today}`,
+        contentMd: '',
+      });
+      await refreshList();
+      setSelectedId(j.id);
+      setSelected(j);
+      onEdit(j.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDeleteSelected() {
+    if (!selectedId) return;
+    const ok = window.confirm('Delete this journal entry?');
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiDelete(`/journals/${encodeURIComponent(selectedId)}`);
+      const xs = await refreshList();
+      const nextId = xs[0]?.id ?? null;
+      setSelectedId(nextId);
+      setSelected(nextId ? xs.find((x) => x.id === nextId) ?? null : null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   React.useEffect(() => {
     void (async () => {
@@ -89,6 +148,10 @@ export function JournalReadPage({
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={() => void onCreate()} disabled={busy} className="gap-2">
+            <Plus className="h-4 w-4" />
+            New
+          </Button>
           <Button
             size="sm"
             variant="secondary"
@@ -98,6 +161,16 @@ export function JournalReadPage({
           >
             <RefreshCw className={busy ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
             Refresh
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void onDeleteSelected()}
+            disabled={busy || !selectedId}
+            className="gap-2"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
           </Button>
           <Button
             size="sm"
@@ -136,7 +209,7 @@ export function JournalReadPage({
                     onClick={() => setSelectedId(it.id)}
                   >
                     <div className="truncate font-medium">{it.title || 'Untitled'}</div>
-                    <div className="mt-0.5 text-xs text-[var(--k-muted)]">{fmtTs(it.updatedAt)}</div>
+                    <div className="mt-0.5 text-xs text-[var(--k-muted)]">{fmtTsSimple(it.updatedAt)}</div>
                   </button>
                 );
               })}
@@ -153,7 +226,7 @@ export function JournalReadPage({
               <div className="mb-2">
                 <div className="text-base font-semibold">{selected.title || 'Untitled'}</div>
                 <div className="mt-1 text-xs text-[var(--k-muted)]">
-                  Updated: {fmtTs(selected.updatedAt)} • Created: {fmtTs(selected.createdAt)}
+                  Updated: {fmtTsSimple(selected.updatedAt)} • Created: {fmtTsSimple(selected.createdAt)}
                 </div>
               </div>
               <div className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
