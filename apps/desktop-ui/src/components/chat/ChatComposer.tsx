@@ -139,6 +139,10 @@ export function ChatComposer({
                   ? `${r.screenerName} @ ${new Date(r.capturedAt).toLocaleString()}`
                   : r.kind === 'stock'
                     ? `${r.ticker} ${r.name} (${r.barsDays}D) @ ${new Date(r.capturedAt).toLocaleString()}`
+                    : r.kind === 'watchlistStock'
+                      ? `${r.symbol}${r.name ? ` ${r.name}` : ''} · watchlist @ ${new Date(r.capturedAt).toLocaleString()}`
+                      : r.kind === 'watchlistTable'
+                        ? `Watchlist table · ${r.items.length}/${r.total} @ ${new Date(r.capturedAt).toLocaleString()}`
                     : r.kind === 'broker'
                       ? `${r.accountTitle} · ${r.snapshotKind} @ ${new Date(r.capturedAt).toLocaleString()}`
                       : r.kind === 'brokerState'
