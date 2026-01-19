@@ -3578,12 +3578,21 @@ def _market_stock_trendok_one(
                 inc += 1
             if hpos[3] > hpos[2]:
                 inc += 1
-            s_hist = (float(inc) / 3.0) if hpos[3] > 0.0 else 0.0
+            # Add "absolute strength" gate: tiny histogram changes near zero should not score high.
+            # Use a normalized threshold (hist/close) so the gate scales across price levels.
+            # Example: for close~100, 0.0005*close ~= 0.05 (matches the suggested 0.05 scale).
+            hist_min = 0.0005 * close if close > 0 else 0.0
+            has_hist_strength = bool(hpos[3] >= hist_min and hpos[3] > 0.0)
+            s_hist = (float(inc) / 3.0) if has_hist_strength else 0.0
             s_macd = 0.0 if macd_last <= 0.0 else _clip01(0.5 + 0.5 * s_hist)
 
             # 3) Near breakout (0.20): close/high20 in [0.85,0.95] -> [0,1]
-            ratio_hi = close / high20 if high20 > 0 else 0.0
+            # Use 20D highest HIGH (not just close) for better breakout semantics.
+            high20_high = max(highs[-20:]) if len(highs) >= 20 else high20
+            ratio_hi = close / high20_high if high20_high > 0 else 0.0
             s_break = _clip01((ratio_hi - 0.85) / 0.10)
+            # Bonus for true new high (stronger than "near high"): +3 points.
+            bonus_new_high = 3.0 if (high20_high > 0 and close >= high20_high) else 0.0
 
             # 4) RSI quality (0.15): triangular preference within [50,75], peak at 62.5
             if 50.0 <= rsi14 <= 75.0:
@@ -3606,24 +3615,18 @@ def _market_stock_trendok_one(
             parts["breakout"] = round(pts_break, 3)
             parts["rsi"] = round(pts_rsi, 3)
             parts["volume"] = round(pts_vol, 3)
+            if bonus_new_high > 0.0:
+                parts["bonus_new_high20"] = round(bonus_new_high, 3)
 
             # Risk penalties (points, negative): volatility + below EMA20
             penalty = 0.0
-            # Volatility: std of last 20 daily returns. 0.02 -> 0, 0.06 -> 10 points
-            if len(closes) >= 21:
-                rets: list[float] = []
-                for i in range(-20, 0):
-                    c0 = closes[i - 1]
-                    c1 = closes[i]
-                    if c0 > 0:
-                        rets.append((c1 / c0) - 1.0)
-                if len(rets) >= 10:
-                    mu = sum(rets) / float(len(rets))
-                    var = sum((r - mu) ** 2 for r in rets) / float(len(rets))
-                    std = math.sqrt(max(0.0, var))
-                    p_vol = _clip01((std - 0.02) / 0.04) * 10.0
-                    penalty += p_vol
-                    parts["penalty_volatility"] = -round(p_vol, 3)
+            # Volatility: ATR(14)/close. Map 0.015 -> 0, 0.05 -> 10 points.
+            atr14 = _atr14(highs, lows, closes, 14)
+            if atr14 is not None and close > 0:
+                atr_ratio = float(atr14) / float(close)
+                p_vol = _clip01((atr_ratio - 0.015) / 0.035) * 10.0
+                penalty += p_vol
+                parts["penalty_volatility_atr"] = -round(p_vol, 3)
             # Below EMA20: 5% below -> 10 points
             if ema20 > 0 and close < ema20:
                 dd = (ema20 - close) / ema20
@@ -3631,7 +3634,7 @@ def _market_stock_trendok_one(
                 penalty += p_below
                 parts["penalty_below_ema20"] = -round(p_below, 3)
 
-            total = pts_ema + pts_macd + pts_break + pts_rsi + pts_vol - penalty
+            total = pts_ema + pts_macd + pts_break + pts_rsi + pts_vol + bonus_new_high - penalty
             total2 = max(0.0, min(100.0, total))
             res.score = round(total2, 3)
             res.scoreParts = parts
