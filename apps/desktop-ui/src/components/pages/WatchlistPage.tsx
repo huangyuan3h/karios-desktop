@@ -14,9 +14,21 @@ type WatchlistItem = {
   name?: string | null;
   nameStatus?: 'resolved' | 'not_found';
   addedAt: string; // ISO
+  color?: string; // hex color for lightweight flag, default white (#ffffff)
 };
 
 const STORAGE_KEY = 'karios.watchlist.v1';
+
+const FLAG_COLORS: Array<{ label: string; hex: string }> = [
+  { label: 'White', hex: '#ffffff' },
+  { label: 'Red', hex: '#fee2e2' },
+  { label: 'Orange', hex: '#ffedd5' },
+  { label: 'Yellow', hex: '#fef9c3' },
+  { label: 'Green', hex: '#dcfce7' },
+  { label: 'Blue', hex: '#dbeafe' },
+  { label: 'Purple', hex: '#f3e8ff' },
+  { label: 'Gray', hex: '#f4f4f5' },
+];
 
 type MarketStockBasicRow = {
   symbol: string;
@@ -216,6 +228,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     content: React.ReactNode;
   }>({ open: false, x: 0, y: 0, w: 0, placement: 'top-end', content: null });
 
+  const [colorPicker, setColorPicker] = React.useState<{
+    open: boolean;
+    x: number;
+    y: number;
+    symbol: string | null;
+  }>({ open: false, x: 0, y: 0, symbol: null });
+
   React.useEffect(() => {
     const saved = loadJson<WatchlistItem[]>(STORAGE_KEY, []);
     // Backward-compatible migration: drop deprecated fields (e.g. note).
@@ -224,6 +243,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       .filter((x) => x && typeof x === 'object')
       .map((x) => {
         const it = x as Partial<WatchlistItem> & { note?: unknown };
+        const rawColor = typeof it.color === 'string' ? it.color.trim().toLowerCase() : '';
+        const color = FLAG_COLORS.some((c) => c.hex === rawColor) ? rawColor : '#ffffff';
         return {
           symbol: String(it.symbol ?? '').trim(),
           name: it.name ?? null,
@@ -232,6 +253,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               ? it.nameStatus
               : undefined,
           addedAt: String(it.addedAt ?? new Date().toISOString()),
+          color,
         };
       })
       .filter((x) => Boolean(x.symbol));
@@ -327,6 +349,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         symbol: sym,
         name: null,
         addedAt: new Date().toISOString(),
+        color: '#ffffff',
       },
       ...items,
     ];
@@ -396,7 +419,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       const now = new Date().toISOString();
       const added: WatchlistItem[] = okUniq
         .filter((sym) => !existing.has(sym))
-        .map((sym) => ({ symbol: sym, name: null, addedAt: now }));
+        .map((sym) => ({ symbol: sym, name: null, addedAt: now, color: '#ffffff' }));
 
       if (!added.length) {
         setSyncMsg(
@@ -433,6 +456,33 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   function hideTooltip() {
     setTooltip((prev) => (prev.open ? { ...prev, open: false } : prev));
   }
+
+  function showColorPicker(el: HTMLElement, sym: string) {
+    const r = el.getBoundingClientRect();
+    const pad = 10;
+    const panelW = 220;
+    const x = Math.max(pad, Math.min(window.innerWidth - panelW - pad, r.left));
+    const y = Math.min(window.innerHeight - pad, r.bottom + 8);
+    setColorPicker({ open: true, x, y, symbol: sym });
+  }
+
+  function hideColorPicker() {
+    setColorPicker((prev) => (prev.open ? { ...prev, open: false, symbol: null } : prev));
+  }
+
+  function setItemColor(symbol: string, color: string) {
+    const next = items.map((it) => (it.symbol === symbol ? { ...it, color } : it));
+    persist(next);
+  }
+
+  React.useEffect(() => {
+    if (!colorPicker.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') hideColorPicker();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [colorPicker.open]);
 
   function checkLine(label: string, ok: boolean | null | undefined, detail: string) {
     if (ok == null) return { label, state: '—', detail };
@@ -870,6 +920,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             <table className="w-full border-collapse text-sm">
               <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                 <tr className="text-left">
+                  <th className="px-3 py-2 w-[44px]" title="Color flag">
+                    <span className="sr-only">Color</span>
+                  </th>
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Name</th>
                   <th className="px-3 py-2">
@@ -928,6 +981,23 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     key={it.symbol}
                     className="border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)]"
                   >
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        className="grid h-6 w-6 place-items-center rounded hover:bg-[var(--k-surface-2)]"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          showColorPicker(e.currentTarget, it.symbol);
+                        }}
+                        aria-label="Set color flag"
+                        title="Set color flag"
+                      >
+                        <span
+                          className="h-3.5 w-3.5 rounded-sm border border-[var(--k-border)]"
+                          style={{ backgroundColor: it.color || '#ffffff' }}
+                        />
+                      </button>
+                    </td>
                     <td className="px-3 py-2 font-mono">
                       <button
                         type="button"
@@ -1022,6 +1092,54 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               }}
             >
               {tooltip.content}
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {colorPicker.open
+        ? createPortal(
+            <div className="fixed inset-0 z-[9999]" onMouseDown={hideColorPicker}>
+              <div
+                className="fixed rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs text-[var(--k-text)] shadow-lg"
+                style={{ left: colorPicker.x, top: colorPicker.y, width: 220 }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-medium text-[var(--k-muted)]">Color flag</div>
+                  <button
+                    type="button"
+                    className="grid h-7 w-7 place-items-center rounded hover:bg-[var(--k-surface-2)]"
+                    onClick={hideColorPicker}
+                    aria-label="Close"
+                  >
+                    <CircleX className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {FLAG_COLORS.map((c) => (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      className="group flex h-9 items-center justify-center rounded-md border border-[var(--k-border)] hover:bg-[var(--k-surface-2)]"
+                      onClick={() => {
+                        if (colorPicker.symbol) setItemColor(colorPicker.symbol, c.hex);
+                        hideColorPicker();
+                      }}
+                      aria-label={c.label}
+                      title={c.label}
+                    >
+                      <span
+                        className="h-5 w-5 rounded-sm border border-[var(--k-border)]"
+                        style={{ backgroundColor: c.hex }}
+                      />
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 text-[11px] text-[var(--k-muted)]">
+                  Tip: Press Esc or click outside to close.
+                </div>
+              </div>
             </div>,
             document.body,
           )
