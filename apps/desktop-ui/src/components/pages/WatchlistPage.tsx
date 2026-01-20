@@ -215,6 +215,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
+  const [trendBusy, setTrendBusy] = React.useState(false);
+  const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
@@ -234,6 +236,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     y: number;
     symbol: string | null;
   }>({ open: false, x: 0, y: 0, symbol: null });
+
+  const trendReqRef = React.useRef(0);
 
   React.useEffect(() => {
     const saved = loadJson<WatchlistItem[]>(STORAGE_KEY, []);
@@ -303,33 +307,50 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     };
   }, [items]);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    async function loadTrendOk() {
+  const refreshTrend = React.useCallback(
+    async (reason: 'items_changed' | 'manual' | 'timer') => {
       const syms = items.map((x) => x.symbol).filter(Boolean);
       if (!syms.length) {
         setTrend({});
+        setTrendUpdatedAt(null);
         return;
       }
+
+      const reqId = (trendReqRef.current += 1);
+      setTrendBusy(true);
       try {
         const sp = new URLSearchParams();
         for (const s of syms) sp.append('symbols', s);
         const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
-        if (cancelled) return;
+        if (reqId !== trendReqRef.current) return;
         const next: Record<string, TrendOkResult> = {};
         for (const r of Array.isArray(rows) ? rows : []) {
           if (r && r.symbol) next[r.symbol] = r;
         }
         setTrend(next);
+        setTrendUpdatedAt(new Date().toISOString());
+        if (reason === 'manual') setError(null);
       } catch (e) {
-        if (!cancelled) console.warn('Watchlist trendok load failed:', e);
+        if (reqId === trendReqRef.current) console.warn('Watchlist trendok load failed:', e);
+      } finally {
+        if (reqId === trendReqRef.current) setTrendBusy(false);
       }
-    }
-    void loadTrendOk();
-    return () => {
-      cancelled = true;
-    };
-  }, [items]);
+    },
+    [items],
+  );
+
+  React.useEffect(() => {
+    void refreshTrend('items_changed');
+  }, [refreshTrend]);
+
+  React.useEffect(() => {
+    // Auto refresh every 10 minutes to reflect DB updates without reloading the app.
+    if (!items.length) return;
+    const id = window.setInterval(() => {
+      void refreshTrend('timer');
+    }, 10 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [items.length, refreshTrend]);
 
   function onAdd() {
     setError(null);
@@ -848,10 +869,27 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             Names are resolved from Market cache. If names are missing, go to Market and click Sync
             once.
           </div>
+          <div className="mt-1 text-xs text-[var(--k-muted)]">
+            {trendUpdatedAt
+              ? `Scores updated at ${new Date(trendUpdatedAt).toLocaleString()} (auto refresh: 10 min)`
+              : 'Scores not loaded yet.'}
+          </div>
           {syncMsg ? <div className="mt-2 text-xs text-[var(--k-muted)]">{syncMsg}</div> : null}
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void refreshTrend('manual')}
+            disabled={trendBusy || !items.length}
+            className="gap-2"
+            aria-label="Refresh watchlist scores"
+            title="Refresh watchlist scores"
+          >
+            <RefreshCw className={trendBusy ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+            Refresh
+          </Button>
           <Button
             size="sm"
             variant="secondary"
