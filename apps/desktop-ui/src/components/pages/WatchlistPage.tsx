@@ -321,15 +321,20 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       try {
         // If requested, force-refresh latest daily bars (and optional chips) from network first.
         if (opts.forceMarket) {
-          // Keep it lightweight: daily bars are sufficient for score/trend/buy/stoploss;
-          // chips are optional but help stop-loss chip support when available.
-          await Promise.all(
-            syms.map(async (sym) => {
-              const enc = encodeURIComponent(sym);
-              await apiGetJson(`/market/stocks/${enc}/bars?days=60&force=true`).catch(() => null);
-              await apiGetJson(`/market/stocks/${enc}/chips?days=30&force=true`).catch(() => null);
-            }),
-          );
+          // Keep it lightweight: daily bars are sufficient for score/trend/buy/stoploss.
+          // Also, do sequential requests to avoid spiky traffic / upstream throttling.
+          let failures = 0;
+          for (const sym of syms) {
+            const enc = encodeURIComponent(sym);
+            const ok = await apiGetJson(`/market/stocks/${enc}/bars?days=60&force=true`)
+              .then(() => true)
+              .catch(() => false);
+            if (!ok) failures += 1;
+            await new Promise((r) => window.setTimeout(r, 120));
+          }
+          if (reason === 'manual' && failures > 0) {
+            setSyncMsg(`Network sync failed for ${failures}/${syms.length} symbols; using cached data.`);
+          }
         }
 
         const sp = new URLSearchParams();
@@ -360,7 +365,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     // Auto refresh every 10 minutes to reflect DB updates without reloading the app.
     if (!items.length) return;
     const id = window.setInterval(() => {
-      void refreshTrend('timer', { forceMarket: true });
+      // Auto refresh only recomputes from cache; manual refresh can force network sync.
+      void refreshTrend('timer', { forceMarket: false });
     }, 10 * 60 * 1000);
     return () => window.clearInterval(id);
   }, [items.length, refreshTrend]);

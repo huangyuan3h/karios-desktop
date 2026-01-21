@@ -2,9 +2,27 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
+
+
+def _ensure_no_proxy(host: str) -> None:
+    """
+    Ensure this host bypasses system proxy settings (HTTP(S)_PROXY).
+    This helps avoid ProxyError failures in some environments where proxy is misconfigured or blocks the host.
+    """
+    if not host:
+        return
+    cur = (os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or "").strip()
+    parts = [p.strip() for p in cur.split(",") if p.strip()]
+    if host in parts:
+        return
+    parts.append(host)
+    val = ",".join(parts)
+    os.environ["NO_PROXY"] = val
+    os.environ["no_proxy"] = val
 
 
 @dataclass(frozen=True)
@@ -30,6 +48,9 @@ class BarRow:
 
 def _akshare():
     try:
+        # AkShare CN history uses Eastmoney endpoints under the hood.
+        # Make it more resilient by bypassing proxy for these hosts.
+        _ensure_no_proxy("push2his.eastmoney.com")
         import akshare as ak  # type: ignore
 
         return ak
