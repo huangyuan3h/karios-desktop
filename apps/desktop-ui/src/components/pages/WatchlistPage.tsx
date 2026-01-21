@@ -308,7 +308,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   }, [items]);
 
   const refreshTrend = React.useCallback(
-    async (reason: 'items_changed' | 'manual' | 'timer') => {
+    async (reason: 'items_changed' | 'manual' | 'timer', opts: { forceMarket?: boolean } = {}) => {
       const syms = items.map((x) => x.symbol).filter(Boolean);
       if (!syms.length) {
         setTrend({});
@@ -319,6 +319,19 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       const reqId = (trendReqRef.current += 1);
       setTrendBusy(true);
       try {
+        // If requested, force-refresh latest daily bars (and optional chips) from network first.
+        if (opts.forceMarket) {
+          // Keep it lightweight: daily bars are sufficient for score/trend/buy/stoploss;
+          // chips are optional but help stop-loss chip support when available.
+          await Promise.all(
+            syms.map(async (sym) => {
+              const enc = encodeURIComponent(sym);
+              await apiGetJson(`/market/stocks/${enc}/bars?days=60&force=true`).catch(() => null);
+              await apiGetJson(`/market/stocks/${enc}/chips?days=30&force=true`).catch(() => null);
+            }),
+          );
+        }
+
         const sp = new URLSearchParams();
         for (const s of syms) sp.append('symbols', s);
         const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
@@ -347,7 +360,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     // Auto refresh every 10 minutes to reflect DB updates without reloading the app.
     if (!items.length) return;
     const id = window.setInterval(() => {
-      void refreshTrend('timer');
+      void refreshTrend('timer', { forceMarket: true });
     }, 10 * 60 * 1000);
     return () => window.clearInterval(id);
   }, [items.length, refreshTrend]);
@@ -881,11 +894,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => void refreshTrend('manual')}
+            onClick={() => void refreshTrend('manual', { forceMarket: true })}
             disabled={trendBusy || !items.length}
             className="gap-2"
             aria-label="Refresh watchlist scores"
-            title="Refresh watchlist scores"
+            title="Fetch latest daily bars from network and recompute"
           >
             <RefreshCw className={trendBusy ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
             Refresh
