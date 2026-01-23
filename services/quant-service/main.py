@@ -4063,19 +4063,57 @@ def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> Marke
             (sym, days2),
         ).fetchall()
 
+    def _resp_from_cached(rows: list[tuple[Any, ...]]) -> MarketBarsResponse:
+        out2 = [
+            {
+                "date": str(r[0]),
+                "open": str(r[1] or ""),
+                "high": str(r[2] or ""),
+                "low": str(r[3] or ""),
+                "close": str(r[4] or ""),
+                "volume": str(r[5] or ""),
+                "amount": str(r[6] or ""),
+            }
+            for r in reversed(rows)
+        ]
+        return MarketBarsResponse(
+            symbol=sym,
+            market=market,
+            ticker=ticker,
+            name=name,
+            currency=currency,
+            bars=out2,
+        )
+
     if force or len(cached) < days2:
         ts = now_iso()
         try:
-            if market == "CN":
-                bars = fetch_cn_a_daily_bars(ticker, days=days2)
-            elif market == "HK":
-                bars = fetch_hk_daily_bars(ticker, days=days2)
-            else:
-                raise HTTPException(status_code=400, detail="Unsupported market")
+            # Upstream endpoints can be flaky (e.g. remote disconnect). Retry once, then fall back to cache if available.
+            last_err: Exception | None = None
+            for attempt in range(2):
+                try:
+                    if market == "CN":
+                        bars = fetch_cn_a_daily_bars(ticker, days=days2)
+                    elif market == "HK":
+                        bars = fetch_hk_daily_bars(ticker, days=days2)
+                    else:
+                        raise HTTPException(status_code=400, detail="Unsupported market")
+                    last_err = None
+                    break
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    last_err = e
+                    if attempt == 0:
+                        time.sleep(0.4)
+                        continue
+            if last_err is not None:
+                if cached:
+                    # Graceful degrade: return cached bars so UI remains usable.
+                    return _resp_from_cached(cached)
+                raise HTTPException(status_code=500, detail=f"Bars fetch failed for {ticker}: {last_err}") from last_err
         except HTTPException:
             raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Bars fetch failed for {ticker}: {e}") from e
         with _connect() as conn:
             _upsert_market_bars(conn, sym, bars, ts)
             conn.commit()
@@ -4100,26 +4138,7 @@ def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> Marke
             bars=out,
         )
 
-    out2 = [
-        {
-            "date": str(r[0]),
-            "open": str(r[1] or ""),
-            "high": str(r[2] or ""),
-            "low": str(r[3] or ""),
-            "close": str(r[4] or ""),
-            "volume": str(r[5] or ""),
-            "amount": str(r[6] or ""),
-        }
-        for r in reversed(cached)
-    ]
-    return MarketBarsResponse(
-        symbol=sym,
-        market=market,
-        ticker=ticker,
-        name=name,
-        currency=currency,
-        bars=out2,
-    )
+    return _resp_from_cached(cached)
 
 
 @app.get("/market/stocks/{symbol}/chips", response_model=MarketChipsResponse)
