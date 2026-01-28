@@ -3167,11 +3167,37 @@ def market_status() -> MarketStatusResponse:
 @app.post("/market/sync")
 def market_sync() -> JSONResponse:
     ts = now_iso()
+    hk_error: str | None = None
     try:
+        # CN is required for the core market universe.
         cn = fetch_cn_a_spot()
+    except Exception as e:
+        # Upstream data sources can occasionally return HTML/captcha or abort connections.
+        # If we already have a cached market universe, keep the app usable by falling back to cache.
+        err = f"{type(e).__name__}: {repr(e)}"
+        with _connect() as conn:
+            row = conn.execute("SELECT COUNT(1) FROM market_stocks").fetchone()
+            cached_total = int(row[0]) if row else 0
+        if cached_total > 0:
+            # Do not update lastSyncAt on skipped runs; the UI can still surface the error.
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "stocks": cached_total,
+                    "syncedAt": ts,
+                    "skipped": True,
+                    "error": err,
+                    "hkOk": None,
+                    "hkError": None,
+                }
+            )
+        return JSONResponse({"ok": False, "error": err}, status_code=500)
+    try:
+        # HK is optional; failures should not block CN market sync.
         hk = fetch_hk_spot()
-    except RuntimeError as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+    except Exception as e:
+        hk = []
+        hk_error = f"{type(e).__name__}: {repr(e)}"
 
     with _connect() as conn:
         for s in cn + hk:
@@ -3180,7 +3206,15 @@ def market_sync() -> JSONResponse:
         conn.commit()
 
     set_setting("market_last_sync_at", ts)
-    return JSONResponse({"ok": True, "stocks": len(cn) + len(hk), "syncedAt": ts})
+    return JSONResponse(
+        {
+            "ok": True,
+            "stocks": len(cn) + len(hk),
+            "syncedAt": ts,
+            "hkOk": hk_error is None,
+            "hkError": hk_error,
+        }
+    )
 
 
 @app.get("/market/stocks", response_model=MarketStocksResponse)
@@ -4389,7 +4423,7 @@ def market_cn_industry_fund_flow_sync(
             if not name or not code:
                 continue
             try:
-                hist = fetch_cn_industry_fund_flow_hist(name, days=days)
+                hist = fetch_cn_industry_fund_flow_hist(name, industry_code=code, days=days)
             except Exception:
                 hist_failures += 1
                 continue
@@ -4660,7 +4694,24 @@ def market_cn_sentiment_sync(req: MarketCnSentimentSyncRequest) -> MarketCnSenti
     try:
         out = _compute_cn_sentiment_for_date(d)
     except Exception as e:
-        # Best-effort: still upsert a row with errors so UI can show what happened.
+        # Prefer returning cached values over overwriting the DB with zeros.
+        cached2 = _list_cn_sentiment_days(as_of_date=d, days=1)
+        if cached2:
+            last = cached2[-1]
+            last_rules = (last.get("rules") if isinstance(last.get("rules"), list) else []) or []
+            return MarketCnSentimentResponse(
+                asOfDate=d,
+                days=1,
+                items=[
+                    MarketCnSentimentRow(
+                        **{
+                            **last,
+                            "rules": [*last_rules, f"stale_sync_failed: {type(e).__name__}: {e}"],
+                        }
+                    )
+                ],
+            )
+        # Fallback: computed-only (not persisted).
         out = {
             "date": d,
             "asOfDate": d,
@@ -4671,14 +4722,67 @@ def market_cn_sentiment_sync(req: MarketCnSentimentSyncRequest) -> MarketCnSenti
             "premium": 0.0,
             "failedRate": 0.0,
             "riskMode": "caution",
-            "rules": [f"compute_failed: {e}"],
+            "rules": [f"compute_failed: {type(e).__name__}: {e}"],
             "updatedAt": now_iso(),
             "raw": {"error": str(e)},
         }
 
+    rules_raw = out.get("rules") or []
+    rules_list = [str(x) for x in rules_raw] if isinstance(rules_raw, list) else [str(rules_raw)]
+    # If upstream returns HTML/captcha or aborts connections, do NOT overwrite the DB with zeros.
+    upstream_failed = any(
+        ("breadth_failed" in r) or ("yesterday_limitup_premium_failed" in r) or ("compute_failed" in r)
+        for r in rules_list
+    )
+    if upstream_failed:
+        # Clean up placeholder rows written by older versions (all-zero rows caused by upstream failures).
+        try:
+            dt0 = datetime.strptime(d, "%Y-%m-%d").date()
+            with _connect() as conn:
+                for back in range(0, 8):  # last 7 days + today
+                    dd = (dt0 - timedelta(days=back)).strftime("%Y-%m-%d")
+                    conn.execute(
+                        """
+                        DELETE FROM market_cn_sentiment_daily
+                        WHERE date = ?
+                          AND total_count = 0
+                          AND up_down_ratio = 0.0
+                          AND market_turnover_cny = 0.0
+                          AND market_volume = 0.0
+                          AND yesterday_limitup_premium = 0.0
+                        """,
+                        (dd,),
+                    )
+                conn.commit()
+        except Exception:
+            # Best-effort cleanup: ignore failures.
+            pass
+        cached3 = _list_cn_sentiment_days(as_of_date=d, days=1)
+        if cached3:
+            last = cached3[-1]
+            last_date = str(last.get("date") or "")
+            last_rules = (last.get("rules") if isinstance(last.get("rules"), list) else []) or []
+            # Return cached data and surface why it is stale.
+            return MarketCnSentimentResponse(
+                asOfDate=d,
+                days=1,
+                items=[
+                    MarketCnSentimentRow(
+                        **{
+                            **last,
+                            "rules": [
+                                *last_rules,
+                                f"stale_upstream_failed: requested={d} latest={last_date}",
+                                *rules_list[:3],
+                            ],
+                        }
+                    )
+                ],
+            )
+
     raw0 = out.get("raw")
     raw_dict: dict[str, Any] = raw0 if isinstance(raw0, dict) else {}
-    rules2 = [str(x) for x in (out.get("rules") or [])]
+    rules2 = rules_list
     upsert_ok = False
     try:
         _upsert_cn_sentiment_daily(
@@ -10808,6 +10912,12 @@ def dashboard_sync(req: DashboardSyncRequest) -> DashboardSyncResponse:
             j = json.loads(body) if body else {}
         except Exception:
             j = {}
+        # Treat non-200 or ok=false as a step failure (so the UI shows it clearly).
+        status = int(getattr(resp, "status_code", 200) or 200)
+        ok_flag = bool(j.get("ok")) if isinstance(j, dict) else False
+        if status >= 400 or (isinstance(j, dict) and j.get("ok") is False) or (status == 200 and not ok_flag and j):
+            err = (j.get("error") if isinstance(j, dict) else None) or (j.get("detail") if isinstance(j, dict) else None) or body
+            raise RuntimeError(str(err or "Market sync failed."))
         return {"response": j}
 
     step("market", _sync_market)
@@ -10825,6 +10935,10 @@ def dashboard_sync(req: DashboardSyncRequest) -> DashboardSyncResponse:
         d = _today_cn_date_str()
         out = market_cn_sentiment_sync(MarketCnSentimentSyncRequest(date=d, force=True))
         last = out.items[-1].model_dump() if out.items else {}
+        # If the latest row is not for today, treat the step as failed (stale data).
+        last_date = str(last.get("date") or "")
+        if last_date and last_date != d:
+            raise RuntimeError(f"Sentiment sync stale (requested={d}, latest={last_date}). Upstream blocked/captcha.")
         return {"asOfDate": out.asOfDate, "riskMode": str(last.get("riskMode") or ""), "premium": last.get("yesterdayLimitUpPremium"), "failedRate": last.get("failedLimitUpRate")}
 
     step("marketSentiment", _sync_sentiment)

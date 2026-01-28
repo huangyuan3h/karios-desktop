@@ -28,8 +28,9 @@ def test_cn_industry_fund_flow_sync_and_query(tmp_path, monkeypatch) -> None:
             },
         ]
 
-    def fake_hist(name: str, *, days: int = 10):
+    def fake_hist(name: str, *, industry_code: str | None = None, days: int = 10):
         _ = days
+        _ = industry_code
         if name == "Power":
             return [
                 {"date": "2025-12-25", "net_inflow": 1.0, "raw": {}},

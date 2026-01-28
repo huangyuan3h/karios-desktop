@@ -67,7 +67,7 @@ def test_dashboard_sync_runs_all_steps(tmp_path, monkeypatch) -> None:
             }
         ],
     )
-    monkeypatch.setattr(main, "fetch_cn_industry_fund_flow_hist", lambda name, days=10: [])
+    monkeypatch.setattr(main, "fetch_cn_industry_fund_flow_hist", lambda name, industry_code=None, days=10: [])
 
     # TradingView capture: avoid real CDP/Playwright.
     monkeypatch.setattr(main, "_cdp_version", lambda host, port: {"Browser": "Chrome"})
