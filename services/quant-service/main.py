@@ -4543,30 +4543,40 @@ def market_cn_industry_fund_flow(
             tuple(dates),
         ).fetchall()
 
-    # Aggregate per industry
-    by_code: dict[str, dict[str, Any]] = {}
+    # Aggregate per industry.
+    #
+    # IMPORTANT: Use industry NAME as the primary key to avoid historical code mismatches.
+    # Different providers/versions may emit different `industry_code` values for the same
+    # industry (e.g. hashed codes vs BKxxxx), which would otherwise fragment the time series
+    # and cause the UI to show zeros (and "Top outflow" to be empty).
+    by_name: dict[str, dict[str, Any]] = {}
     for d, code, name, net in rows:
-        code2 = str(code)
         d2 = str(d)
-        name2 = str(name)
+        name2 = _norm_str(name)
+        if not name2:
+            continue
+        code2 = _norm_str(code)
         net2 = float(net or 0.0)
-        cur = by_code.get(code2)
+        cur = by_name.get(name2)
         if cur is None:
             cur = {"industryCode": code2, "industryName": name2, "series": {}, "sum": 0.0}
-            by_code[code2] = cur
-        cur["industryName"] = name2 or cur["industryName"]
+            by_name[name2] = cur
+        # Prefer a BK-style code when available.
+        if (not str(cur.get("industryCode") or "").strip()) or (str(code2).startswith("BK")):
+            if code2:
+                cur["industryCode"] = code2
         cur["series"][d2] = net2
         cur["sum"] = float(cur["sum"]) + net2
 
     out_rows: list[IndustryFundFlowRow] = []
-    for code, agg in by_code.items():
+    for name, agg in by_name.items():
         series_map: dict[str, float] = agg.get("series") or {}
         series = [IndustryFundFlowPoint(date=d, netInflow=float(series_map.get(d, 0.0))) for d in dates]
         net_asof = float(series_map.get(as_of, 0.0))
         out_rows.append(
             IndustryFundFlowRow(
-                industryCode=code,
-                industryName=str(agg.get("industryName") or ""),
+                industryCode=str(agg.get("industryCode") or ""),
+                industryName=str(agg.get("industryName") or name),
                 netInflow=net_asof,
                 sum10d=float(agg.get("sum") or 0.0),
                 series10d=series,
@@ -4612,7 +4622,8 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
         if not s or s in ("-", "—", "N/A", "None"):
             return 0.0
         try:
-            return float(s)
+            f = float(s)
+            return f if math.isfinite(f) else 0.0
         except Exception:
             return 0.0
 
@@ -4651,7 +4662,8 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
             chg_val: float | None = None
             if chg_raw and chg_raw not in ("-", "—", "N/A", "None"):
                 try:
-                    chg_val = float(chg_raw)
+                    f = float(chg_raw)
+                    chg_val = f if math.isfinite(f) else None
                 except Exception:
                     chg_val = None
 
