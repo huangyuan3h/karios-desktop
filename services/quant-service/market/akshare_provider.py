@@ -630,13 +630,37 @@ def fetch_cn_a_daily_bars(ticker: str, *, days: int = 60) -> list[BarRow]:
     start_date = start.strftime("%Y%m%d")
     end_date = end.strftime("%Y%m%d")
 
-    df = ak.stock_zh_a_hist(
-        symbol=ticker,
-        period="daily",
-        start_date=start_date,
-        end_date=end_date,
-        adjust="",
-    )
+    def _exchange_prefix(code: str) -> str:
+        # Best-effort inference:
+        # - Shanghai: 6xxxxxx (incl. STAR 688xxx)
+        # - Beijing: 8xxxxxx / 4xxxxxx
+        # - Otherwise: Shenzhen
+        s = (code or "").strip()
+        if s.startswith("6"):
+            return "sh"
+        if s.startswith(("8", "4")):
+            return "bj"
+        return "sz"
+
+    # Primary: Eastmoney (may be blocked/captcha in some environments).
+    try:
+        df = ak.stock_zh_a_hist(
+            symbol=ticker,
+            period="daily",
+            start_date=start_date,
+            end_date=end_date,
+            adjust="",
+        )
+    except Exception:
+        # Fallback 1: AkShare daily API (Tencent-style; verified to work when push2his is blocked).
+        pref = _exchange_prefix(ticker)
+        sym2 = f"{pref}{ticker}"
+        if hasattr(ak, "stock_zh_a_daily"):
+            df = _with_retry(lambda: ak.stock_zh_a_daily(symbol=sym2, start_date=start_date, end_date=end_date), tries=2, base_sleep_s=0.8)  # type: ignore[misc]
+        elif hasattr(ak, "stock_zh_a_hist_tx"):
+            df = _with_retry(lambda: ak.stock_zh_a_hist_tx(symbol=sym2, start_date=start_date, end_date=end_date), tries=2, base_sleep_s=0.8)  # type: ignore[misc]
+        else:
+            raise
     rows = _to_records(df)
 
     # Common columns: 日期 开盘 收盘 最高 最低 成交量 成交额
@@ -648,12 +672,12 @@ def fetch_cn_a_daily_bars(ticker: str, *, days: int = 60) -> list[BarRow]:
         out.append(
             BarRow(
                 date=d,
-                open=str(r.get("开盘") or r.get("open") or ""),
-                high=str(r.get("最高") or r.get("high") or ""),
-                low=str(r.get("最低") or r.get("low") or ""),
-                close=str(r.get("收盘") or r.get("close") or ""),
-                volume=str(r.get("成交量") or r.get("volume") or ""),
-                amount=str(r.get("成交额") or r.get("amount") or ""),
+                open=str(r.get("开盘") or r.get("open") or r.get("Open") or ""),
+                high=str(r.get("最高") or r.get("high") or r.get("High") or ""),
+                low=str(r.get("最低") or r.get("low") or r.get("Low") or ""),
+                close=str(r.get("收盘") or r.get("close") or r.get("Close") or ""),
+                volume=str(r.get("成交量") or r.get("volume") or r.get("Volume") or ""),
+                amount=str(r.get("成交额") or r.get("amount") or r.get("Amount") or ""),
             ),
         )
     return out[-days:]

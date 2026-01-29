@@ -4042,7 +4042,10 @@ def _market_stock_trendok_one(
 
 
 @app.get("/market/stocks/trendok", response_model=list[TrendOkResult])
-def market_stocks_trendok(symbols: Annotated[list[str] | None, Query()] = None) -> list[TrendOkResult]:
+def market_stocks_trendok(
+    symbols: Annotated[list[str] | None, Query()] = None,
+    refresh: bool = False,
+) -> list[TrendOkResult]:
     """
     Batch TrendOK evaluation for Watchlist (CN daily only).
     Uses DB-cached daily bars and does NOT trigger external fetches.
@@ -4064,6 +4067,16 @@ def market_stocks_trendok(symbols: Annotated[list[str] | None, Query()] = None) 
             tuple(syms),
         ).fetchall():
             by_name[str(r[0])] = str(r[1])
+
+    # Optional: refresh cached daily bars before computing indicators.
+    # This keeps Watchlist "current / stoploss / TrendOK" aligned with the latest daily bar.
+    if refresh:
+        for sym in syms:
+            try:
+                _ = market_stock_bars(sym, days=120, force=False)
+            except Exception:
+                # Best-effort: never fail the whole batch due to one symbol refresh.
+                pass
 
     out: list[TrendOkResult] = []
     with _connect() as conn:
@@ -4111,6 +4124,25 @@ def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> Marke
         name = str(row[3])
         currency = str(row[4])
 
+    def _latest_expected_daily_bar_date(mkt: str) -> str:
+        """
+        Best-effort expected latest completed daily bar date (YYYY-MM-DD).
+
+        We intentionally avoid complex holiday calendars; we only handle weekends.
+        This is used to decide whether DB cache is stale and should be refreshed even
+        when we already have enough cached rows.
+        """
+        if mkt == "HK":
+            tz = ZoneInfo("Asia/Hong_Kong")
+        else:
+            tz = ZoneInfo("Asia/Shanghai")
+        now_local = datetime.now(tz=tz).date()
+        # Weekend -> move back to Friday.
+        d0 = now_local
+        while d0.weekday() >= 5:
+            d0 = d0 - timedelta(days=1)
+        return d0.strftime("%Y-%m-%d")
+
     # Load cached bars first.
     with _connect() as conn:
         cached = conn.execute(
@@ -4146,7 +4178,12 @@ def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> Marke
             bars=out2,
         )
 
-    if force or len(cached) < days2:
+    # Auto-refresh if cache is stale (even if we already have enough rows).
+    cached_last = str(cached[0][0]) if cached else ""
+    expected_last = _latest_expected_daily_bar_date(market)
+    cache_stale = bool(cached_last and cached_last < expected_last)
+
+    if force or len(cached) < days2 or cache_stale:
         ts = now_iso()
         try:
             # Upstream endpoints can be flaky (e.g. remote disconnect). Retry once, then fall back to cache if available.
@@ -4227,7 +4264,7 @@ def market_stock_chips(symbol: str, days: int = 60, force: bool = False) -> Mark
     with _connect() as conn:
         cached = conn.execute(
             """
-            SELECT raw_json
+            SELECT date, raw_json
             FROM market_chips
             WHERE symbol = ?
             ORDER BY date DESC
@@ -4235,8 +4272,14 @@ def market_stock_chips(symbol: str, days: int = 60, force: bool = False) -> Mark
             """,
             (sym, days2),
         ).fetchall()
-    if (not force) and len(cached) >= min(days2, 30):
-        items = [json.loads(str(r[0])) for r in reversed(cached)]
+
+    # Auto-refresh if cache is stale (chips are daily; refresh when latest cached date lags).
+    cached_last = str(cached[0][0]) if cached else ""
+    expected_last = _today_cn_date_str()
+    cache_stale = bool(cached_last and cached_last < expected_last)
+
+    if (not force) and (not cache_stale) and len(cached) >= min(days2, 30):
+        items = [json.loads(str(r[1])) for r in reversed(cached)]
         return MarketChipsResponse(
             symbol=sym,
             market=market,
@@ -4289,7 +4332,7 @@ def market_stock_fund_flow(symbol: str, days: int = 60, force: bool = False) -> 
     with _connect() as conn:
         cached = conn.execute(
             """
-            SELECT raw_json
+            SELECT date, raw_json
             FROM market_fund_flow
             WHERE symbol = ?
             ORDER BY date DESC
@@ -4297,8 +4340,14 @@ def market_stock_fund_flow(symbol: str, days: int = 60, force: bool = False) -> 
             """,
             (sym, days2),
         ).fetchall()
-    if (not force) and len(cached) >= min(days2, 30):
-        items = [json.loads(str(r[0])) for r in reversed(cached)]
+
+    # Auto-refresh if cache is stale (fund flow is daily; refresh when latest cached date lags).
+    cached_last = str(cached[0][0]) if cached else ""
+    expected_last = _today_cn_date_str()
+    cache_stale = bool(cached_last and cached_last < expected_last)
+
+    if (not force) and (not cache_stale) and len(cached) >= min(days2, 30):
+        items = [json.loads(str(r[1])) for r in reversed(cached)]
         return MarketFundFlowResponse(
             symbol=sym,
             market=market,

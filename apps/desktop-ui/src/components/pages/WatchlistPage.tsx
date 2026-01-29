@@ -236,6 +236,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
+  const [syncStage, setSyncStage] = React.useState<string | null>(null);
+  const [syncProgress, setSyncProgress] = React.useState<{ cur: number; total: number } | null>(null);
+  const [syncLogs, setSyncLogs] = React.useState<string[]>([]);
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
   const [tooltip, setTooltip] = React.useState<{
@@ -355,6 +358,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         }
 
         const sp = new URLSearchParams();
+        // Always request a best-effort refresh so Watchlist is based on the latest daily bar.
+        // The backend will fall back to cache if upstream is blocked.
+        sp.set('refresh', 'true');
         for (const s of syms) sp.append('symbols', s);
         const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
         if (reqId !== trendReqRef.current) return;
@@ -423,6 +429,20 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     setError(null);
     setSyncMsg(null);
     setSyncBusy(true);
+    setSyncStage('Loading enabled screeners');
+    setSyncProgress(null);
+    setSyncLogs([]);
+
+    // UI-only helpers: show progress & last few steps.
+    const pushLog = (line: string) => {
+      setSyncLogs((prev) => [...prev, line].slice(-6));
+    };
+    const setStep = (label: string, cur?: number, total?: number) => {
+      setSyncStage(label);
+      if (typeof cur === 'number' && typeof total === 'number') setSyncProgress({ cur, total });
+      else setSyncProgress(null);
+      pushLog(label + (typeof cur === 'number' && typeof total === 'number' ? ` (${cur}/${total})` : ''));
+    };
     try {
       const s = await apiGetJson<{ items: TvScreener[] }>('/integrations/tradingview/screeners');
       const enabled = (s.items || []).filter((x) => x && x.enabled);
@@ -431,10 +451,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         return;
       }
 
+      setStep('Capturing TradingView snapshots', 0, enabled.length);
       // 1) Capture a fresh snapshot from each enabled screener (best-effort; sequential to avoid CDP conflicts).
       const freshSnapshotIds: string[] = [];
       let screenerFailures = 0;
-      for (const sc of enabled) {
+      for (let i = 0; i < enabled.length; i++) {
+        const sc = enabled[i]!;
+        setSyncProgress({ cur: i + 1, total: enabled.length });
         try {
           const r = await apiPostJson<TvScreenerSyncResponse>(
             `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/sync`,
@@ -445,9 +468,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         }
       }
 
+      setStep('Loading snapshot details', 0, enabled.length);
       // 2) Load snapshot details (prefer fresh; fall back to latest saved if sync failed).
       const snapshotDetails: TvSnapshotDetail[] = [];
-      for (const sc of enabled) {
+      for (let i = 0; i < enabled.length; i++) {
+        const sc = enabled[i]!;
+        setSyncProgress({ cur: i + 1, total: enabled.length });
         try {
           // Prefer the newest snapshot for this screener.
           let snapId: string | null = null;
@@ -483,21 +509,30 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         return;
       }
 
+      setStep('TrendOK prefilter (cache)', 0, uniq.length);
       // 3) Pre-filter by cached TrendOK (fast, no external fetch).
       const okSymsCached: string[] = [];
       for (const part of chunk(uniq, 200)) {
         const sp = new URLSearchParams();
+        sp.set('refresh', 'true');
         for (const s2 of part) sp.append('symbols', s2);
         const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
         for (const rr of Array.isArray(rows) ? rows : []) {
           if (rr && rr.symbol && rr.trendOk === true) okSymsCached.push(rr.symbol);
         }
+        setSyncProgress((p) => {
+          const prev = p?.cur ?? 0;
+          return { cur: Math.min(uniq.length, prev + part.length), total: uniq.length };
+        });
       }
       const okUniqCached = Array.from(new Set(okSymsCached));
 
+      setStep('Refreshing latest daily bars', 0, okUniqCached.length);
       // 4) Force-refresh daily bars from network for the cached-OK subset, then re-check TrendOK to make it "live".
       let barFailures = 0;
-      for (const sym of okUniqCached) {
+      for (let i = 0; i < okUniqCached.length; i++) {
+        const sym = okUniqCached[i]!;
+        setSyncProgress({ cur: i + 1, total: okUniqCached.length });
         const enc = encodeURIComponent(sym);
         const ok = await apiGetJson(`/market/stocks/${enc}/bars?days=60&force=true`)
           .then(() => true)
@@ -506,14 +541,20 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         await new Promise((r) => window.setTimeout(r, 120));
       }
 
+      setStep('TrendOK re-check (live)', 0, okUniqCached.length);
       const okSymsLive: string[] = [];
       for (const part of chunk(okUniqCached, 200)) {
         const sp = new URLSearchParams();
+        sp.set('refresh', 'true');
         for (const s2 of part) sp.append('symbols', s2);
         const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
         for (const rr of Array.isArray(rows) ? rows : []) {
           if (rr && rr.symbol && rr.trendOk === true) okSymsLive.push(rr.symbol);
         }
+        setSyncProgress((p) => {
+          const prev = p?.cur ?? 0;
+          return { cur: Math.min(okUniqCached.length, prev + part.length), total: okUniqCached.length };
+        });
       }
       const okUniq = Array.from(new Set(okSymsLive));
 
@@ -542,6 +583,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSyncBusy(false);
+      setSyncStage(null);
+      setSyncProgress(null);
     }
   }
 
@@ -961,6 +1004,39 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               ? `Scores updated at ${new Date(trendUpdatedAt).toLocaleString()} (auto refresh: 10 min)`
               : 'Scores not loaded yet.'}
           </div>
+          {syncBusy && syncStage ? (
+            <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-medium">Sync from screener</div>
+                <div className="text-[var(--k-muted)]">
+                  {syncProgress ? `${syncProgress.cur}/${syncProgress.total}` : '…'}
+                </div>
+              </div>
+              <div className="mt-1 text-[var(--k-muted)]">{syncStage}</div>
+              {syncProgress && syncProgress.total > 0 ? (
+                <div className="mt-2 h-2 w-full overflow-hidden rounded bg-[var(--k-surface-2)]">
+                  <div
+                    className="h-full bg-[var(--k-accent)]"
+                    style={{
+                      width: `${Math.max(
+                        0,
+                        Math.min(100, (syncProgress.cur / Math.max(1, syncProgress.total)) * 100),
+                      ).toFixed(1)}%`,
+                    }}
+                  />
+                </div>
+              ) : null}
+              {syncLogs.length ? (
+                <div className="mt-2 space-y-0.5 text-[var(--k-muted)]">
+                  {syncLogs.slice(-4).map((l, i) => (
+                    <div key={i} className="truncate">
+                      {l}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {syncMsg ? <div className="mt-2 text-xs text-[var(--k-muted)]">{syncMsg}</div> : null}
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
