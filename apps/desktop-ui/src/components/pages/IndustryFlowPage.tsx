@@ -394,6 +394,11 @@ export function IndustryFlowPage() {
               .map((r) => ({ ...r, value: sumLastN(r.series10d ?? [], 5) }))
               .sort((a, b) => b.value - a.value)
               .slice(0, top);
+            const out5d = rows
+              .map((r) => ({ ...r, value: sumLastN(r.series10d ?? [], 5) }))
+              .filter((r) => r.value < 0)
+              .sort((a, b) => a.value - b.value)
+              .slice(0, top);
             const in10d = rows
               .map((r) => ({ ...r, value: r.sum10d }))
               .sort((a, b) => b.value - a.value)
@@ -477,6 +482,25 @@ export function IndustryFlowPage() {
                       windowDays: 5,
                       direction: 'in',
                       title: 'Top inflow (5D sum)',
+                      createdAt: new Date().toISOString(),
+                    })
+                  }
+                />
+                <MiniTable
+                  title="Top outflow (5D sum)"
+                  valueLabel="Sum 5D"
+                  rows={out5d}
+                  onReference={() =>
+                    addReference({
+                      kind: 'industryFundFlow',
+                      refId: `${asOfDate}:${baseDays}:out5d:${top}`,
+                      asOfDate,
+                      days: baseDays,
+                      topN: top,
+                      metric: 'sum',
+                      windowDays: 5,
+                      direction: 'out',
+                      title: 'Top outflow (5D sum)',
                       createdAt: new Date().toISOString(),
                     })
                   }
