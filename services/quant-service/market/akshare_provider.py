@@ -117,8 +117,30 @@ def fetch_cn_a_spot() -> list[StockRow]:
         else:
             raise
     out: list[StockRow] = []
+
+    def _norm_cn_ticker(code_raw: Any) -> str:
+        """
+        Normalize CN ticker to 6-digit form.
+
+        AkShare different sources can return:
+        - "000001" (preferred)
+        - "sz000001"/"sh600000"/"bj832000"
+        We normalize to the last 6 digits for a stable symbol key.
+        """
+        s = str(code_raw or "").strip().lower()
+        if not s:
+            return ""
+        # Common prefixed formats: sh/sz/bj + 6 digits
+        if len(s) >= 8 and (s.startswith("sh") or s.startswith("sz") or s.startswith("bj")):
+            s = s[-6:]
+        # Keep digits only
+        digits = "".join([ch for ch in s if ch.isdigit()])
+        if len(digits) == 6:
+            return digits
+        return ""
+
     for r in _to_records(df):
-        code = str(r.get("代码") or r.get("code") or "").strip()
+        code = _norm_cn_ticker(r.get("代码") or r.get("code") or "")
         name = str(r.get("名称") or r.get("name") or "").strip()
         if not code or not name:
             continue
@@ -208,8 +230,14 @@ def fetch_cn_market_breadth_eod(as_of: date) -> dict[str, Any]:
     """
     ak = _akshare()
     d = as_of.strftime("%Y-%m-%d")
-    # Use spot snapshot as a stable source.
-    df = ak.stock_zh_a_spot_em()
+    # Use spot snapshot as a stable source. In some environments Eastmoney push2 endpoints can
+    # be blocked/aborted; fall back to the non-EM spot API.
+    try:
+        df = _with_retry(lambda: ak.stock_zh_a_spot_em(), tries=3)
+    except Exception:
+        if not hasattr(ak, "stock_zh_a_spot"):
+            raise
+        df = _with_retry(lambda: ak.stock_zh_a_spot(), tries=2, base_sleep_s=0.8)
     rows = _to_records(df)
     up = 0
     down = 0

@@ -264,6 +264,12 @@ def _connect() -> sqlite3.Connection:
         conn.execute("ALTER TABLE market_cn_sentiment_daily ADD COLUMN market_turnover_cny REAL NOT NULL DEFAULT 0.0;")
     if "market_volume" not in cols:
         conn.execute("ALTER TABLE market_cn_sentiment_daily ADD COLUMN market_volume REAL NOT NULL DEFAULT 0.0;")
+    # Defensive cleanup: remove any accidental test rows that may pollute the UI.
+    # (Rules are stored as a JSON array string; production data must never include 'seed'.)
+    try:
+        conn.execute("DELETE FROM market_cn_sentiment_daily WHERE rules_json LIKE '%seed%'")
+    except Exception:
+        pass
 
     # --- Broker snapshots (v0) ---
     conn.execute(
@@ -3200,6 +3206,27 @@ def market_sync() -> JSONResponse:
         hk_error = f"{type(e).__name__}: {repr(e)}"
 
     with _connect() as conn:
+        # Cleanup legacy tickers inserted by fallback providers (e.g. "sz000001"/"sh600000").
+        # These cause duplicate symbols and skew market breadth counts.
+        try:
+            bad_syms = conn.execute(
+                """
+                SELECT symbol
+                FROM market_stocks
+                WHERE market = 'CN'
+                  AND (
+                    LENGTH(ticker) != 6
+                    OR ticker GLOB '*[^0-9]*'
+                  )
+                """,
+            ).fetchall()
+            bad = [str(r[0]) for r in bad_syms if r and r[0]]
+            if bad:
+                placeholders = ",".join(["?"] * len(bad))
+                conn.execute(f"DELETE FROM market_quotes WHERE symbol IN ({placeholders})", tuple(bad))
+                conn.execute(f"DELETE FROM market_stocks WHERE symbol IN ({placeholders})", tuple(bad))
+        except Exception:
+            pass
         for s in cn + hk:
             _upsert_market_stock(conn, s, ts)
             _upsert_market_quote(conn, s, ts)
@@ -4572,8 +4599,93 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
     ratio = 0.0
     market_turnover_cny = 0.0
     market_volume = 0.0
+
+    def _finite_float0(v: Any) -> float:
+        if v is None:
+            return 0.0
+        if isinstance(v, (int, float)):
+            try:
+                return float(v) if math.isfinite(float(v)) else 0.0
+            except Exception:
+                return 0.0
+        s = str(v).strip().replace(",", "").replace("%", "")
+        if not s or s in ("-", "—", "N/A", "None"):
+            return 0.0
+        try:
+            return float(s)
+        except Exception:
+            return 0.0
+
+    def _breadth_from_market_cache() -> dict[str, Any] | None:
+        """
+        Prefer local market cache to avoid upstream blocks/captcha.
+        Uses `market_quotes.change_pct` for CN stocks to compute breadth and sums `turnover`/`volume`.
+        """
+        try:
+            with _connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT s.ticker, q.change_pct, q.turnover, q.volume
+                    FROM market_stocks s
+                    JOIN market_quotes q ON q.symbol = s.symbol
+                    WHERE s.market = 'CN'
+                    """,
+                ).fetchall()
+        except Exception:
+            return None
+        if not rows:
+            return None
+        up2 = 0
+        down2 = 0
+        flat2 = 0
+        turn2 = 0.0
+        vol2 = 0.0
+        for ticker, chg_s, turn_s, vol_s in rows:
+            t = str(ticker or "").strip()
+            # Only count CN equities (exclude legacy prefixed tickers and non-6-digit entries).
+            if len(t) != 6 or (not t.isdigit()):
+                continue
+
+            # Parse change_pct: treat non-numeric as missing (do NOT count as flat).
+            chg_raw = str(chg_s or "").strip().replace(",", "").replace("%", "")
+            chg_val: float | None = None
+            if chg_raw and chg_raw not in ("-", "—", "N/A", "None"):
+                try:
+                    chg_val = float(chg_raw)
+                except Exception:
+                    chg_val = None
+
+            if chg_val is not None:
+                if chg_val > 0:
+                    up2 += 1
+                elif chg_val < 0:
+                    down2 += 1
+                else:
+                    flat2 += 1
+
+            # Turnover/volume: best-effort sum regardless of change_pct parse success.
+            turn2 += _finite_float0(turn_s)
+            vol2 += _finite_float0(vol_s)
+        total2 = up2 + down2 + flat2
+        if total2 <= 0:
+            return None
+        ratio2 = float(up2) / float(down2) if down2 > 0 else float(up2)
+        return {
+            "date": d,
+            "up_count": up2,
+            "down_count": down2,
+            "flat_count": flat2,
+            "total_count": total2,
+            "up_down_ratio": ratio2,
+            "total_turnover_cny": turn2,
+            "total_volume": vol2,
+            "raw": {"source": "db_market_quotes", "rows": len(rows)},
+        }
     try:
-        breadth = fetch_cn_market_breadth_eod(dt)
+        # Prefer local cache for TODAY; for historical dates fall back to provider.
+        breadth = _breadth_from_market_cache() if d == _today_cn_date_str() else None
+        if breadth is None:
+            breadth = fetch_cn_market_breadth_eod(dt)
         raw["breadth"] = breadth
         up = int(breadth.get("up_count") or 0)
         down = int(breadth.get("down_count") or 0)
@@ -4729,12 +4841,16 @@ def market_cn_sentiment_sync(req: MarketCnSentimentSyncRequest) -> MarketCnSenti
 
     rules_raw = out.get("rules") or []
     rules_list = [str(x) for x in rules_raw] if isinstance(rules_raw, list) else [str(rules_raw)]
-    # If upstream returns HTML/captcha or aborts connections, do NOT overwrite the DB with zeros.
-    upstream_failed = any(
-        ("breadth_failed" in r) or ("yesterday_limitup_premium_failed" in r) or ("compute_failed" in r)
-        for r in rules_list
-    )
-    if upstream_failed:
+
+    breadth_failed = any(("breadth_failed" in r) for r in rules_list)
+    compute_failed = any(("compute_failed" in r) for r in rules_list)
+    premium_failed = any(("yesterday_limitup_premium_failed" in r) for r in rules_list)
+    failed_rate_failed = any(("failed_limitup_rate_failed" in r) for r in rules_list)
+
+    # If breadth computation failed, do NOT overwrite the DB with zeros.
+    # Premium/failed-rate failures are treated as partial failures: we can still update breadth
+    # metrics and keep other fields from cache.
+    if breadth_failed or compute_failed:
         # Clean up placeholder rows written by older versions (all-zero rows caused by upstream failures).
         try:
             dt0 = datetime.strptime(d, "%Y-%m-%d").date()
@@ -4779,6 +4895,23 @@ def market_cn_sentiment_sync(req: MarketCnSentimentSyncRequest) -> MarketCnSenti
                     )
                 ],
             )
+
+    # Partial failures: keep last known premium/failed-rate instead of writing zeros.
+    if premium_failed or failed_rate_failed:
+        cached4 = _list_cn_sentiment_days(as_of_date=d, days=1)
+        if cached4:
+            last = cached4[-1]
+            last_date = str(last.get("date") or "")
+            if premium_failed:
+                out["premium"] = float(last.get("yesterdayLimitUpPremium") or 0.0)
+                rules_list = [
+                    r for r in rules_list if "yesterday_limitup_premium_failed" not in r
+                ] + [f"premium_stale_from: {last_date}"]
+            if failed_rate_failed:
+                out["failedRate"] = float(last.get("failedLimitUpRate") or 0.0)
+                rules_list = [
+                    r for r in rules_list if "failed_limitup_rate_failed" not in r
+                ] + [f"failed_rate_stale_from: {last_date}"]
 
     raw0 = out.get("raw")
     raw_dict: dict[str, Any] = raw0 if isinstance(raw0, dict) else {}

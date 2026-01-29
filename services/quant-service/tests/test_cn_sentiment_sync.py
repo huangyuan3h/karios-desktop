@@ -20,7 +20,7 @@ def test_sentiment_sync_does_not_overwrite_on_upstream_failure(tmp_path, monkeyp
         premium=1.0,
         failed_rate=25.0,
         risk_mode="hot",
-        rules=["seed"],
+        rules=["fixture"],
         updated_at="2026-01-23T00:00:00Z",
         raw={},
     )
