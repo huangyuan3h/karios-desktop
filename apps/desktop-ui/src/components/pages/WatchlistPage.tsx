@@ -1,7 +1,16 @@
 'use client';
 
 import * as React from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, CircleX, ExternalLink, Info, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  CircleX,
+  ExternalLink,
+  Info,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
@@ -237,7 +246,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [syncStage, setSyncStage] = React.useState<string | null>(null);
-  const [syncProgress, setSyncProgress] = React.useState<{ cur: number; total: number } | null>(null);
+  const [syncProgress, setSyncProgress] = React.useState<{ cur: number; total: number } | null>(
+    null,
+  );
   const [syncLogs, setSyncLogs] = React.useState<string[]>([]);
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
@@ -339,28 +350,31 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       const reqId = (trendReqRef.current += 1);
       setTrendBusy(true);
       try {
-        // If requested, force-refresh latest daily bars (and optional chips) from network first.
+        // If requested, force-refresh daily bars in one batch (backend uses shared spot cache + parallel workers).
+        let refreshBars = false;
         if (opts.forceMarket) {
-          // Keep it lightweight: daily bars are sufficient for score/trend/buy/stoploss.
-          // Also, do sequential requests to avoid spiky traffic / upstream throttling.
-          let failures = 0;
-          for (const sym of syms) {
-            const enc = encodeURIComponent(sym);
-            const ok = await apiGetJson(`/market/stocks/${enc}/bars?days=60&force=true`)
-              .then(() => true)
-              .catch(() => false);
-            if (!ok) failures += 1;
-            await new Promise((r) => window.setTimeout(r, 120));
+          try {
+            const r = await apiPostJson<{ refreshed: number; failed: number }>(
+              '/market/stocks/bars/refresh',
+              { symbols: syms },
+            );
+            const failed = r?.failed ?? 0;
+            if (reason === 'manual' && failed > 0) {
+              setSyncMsg(
+                `Network sync failed for ${failed}/${syms.length} symbols; using cached data.`,
+              );
+            }
+          } catch {
+            if (reason === 'manual') {
+              setSyncMsg('Bars refresh failed; using cached data.');
+            }
           }
-          if (reason === 'manual' && failures > 0) {
-            setSyncMsg(`Network sync failed for ${failures}/${syms.length} symbols; using cached data.`);
-          }
+          refreshBars = true;
         }
 
         const sp = new URLSearchParams();
-        // Always request a best-effort refresh so Watchlist is based on the latest daily bar.
-        // The backend will fall back to cache if upstream is blocked.
-        sp.set('refresh', 'true');
+        // When we just did bars/refresh, skip duplicate refresh in trendok; otherwise ask backend to refresh cache.
+        sp.set('refresh', refreshBars ? 'false' : 'true');
         for (const s of syms) sp.append('symbols', s);
         const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
         if (reqId !== trendReqRef.current) return;
@@ -387,10 +401,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   React.useEffect(() => {
     // Auto refresh every 10 minutes to reflect DB updates without reloading the app.
     if (!items.length) return;
-    const id = window.setInterval(() => {
-      // Auto refresh only recomputes from cache; manual refresh can force network sync.
-      void refreshTrend('timer', { forceMarket: false });
-    }, 10 * 60 * 1000);
+    const id = window.setInterval(
+      () => {
+        // Auto refresh only recomputes from cache; manual refresh can force network sync.
+        void refreshTrend('timer', { forceMarket: false });
+      },
+      10 * 60 * 1000,
+    );
     return () => window.clearInterval(id);
   }, [items.length, refreshTrend]);
 
@@ -441,7 +458,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       setSyncStage(label);
       if (typeof cur === 'number' && typeof total === 'number') setSyncProgress({ cur, total });
       else setSyncProgress(null);
-      pushLog(label + (typeof cur === 'number' && typeof total === 'number' ? ` (${cur}/${total})` : ''));
+      pushLog(
+        label + (typeof cur === 'number' && typeof total === 'number' ? ` (${cur}/${total})` : ''),
+      );
     };
     try {
       const s = await apiGetJson<{ items: TvScreener[] }>('/integrations/tradingview/screeners');
@@ -553,7 +572,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         }
         setSyncProgress((p) => {
           const prev = p?.cur ?? 0;
-          return { cur: Math.min(okUniqCached.length, prev + part.length), total: okUniqCached.length };
+          return {
+            cur: Math.min(okUniqCached.length, prev + part.length),
+            total: okUniqCached.length,
+          };
         });
       }
       const okUniq = Array.from(new Set(okSymsLive));

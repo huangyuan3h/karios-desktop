@@ -5,6 +5,7 @@ import hashlib
 import math
 import os
 import random
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -76,6 +77,12 @@ class BarRow:
     close: str
     volume: str
     amount: str
+
+
+# TTL (seconds) for spot today-bar cache. Batch refresh (e.g. Watchlist) shares one spot fetch.
+_SPOT_TODAY_CACHE_TTL_S = 45
+_spot_today_cache: tuple[float, str, dict[str, BarRow]] | None = None
+_spot_today_cache_lock = threading.Lock()
 
 
 def _akshare():
@@ -623,6 +630,76 @@ def fetch_hk_spot() -> list[StockRow]:
     return out
 
 
+def _build_spot_today_bars_map(rows: list[dict[str, Any]], today_str: str) -> dict[str, BarRow]:
+    """Build ticker_6 -> BarRow map from spot API rows. Shared by cache fill."""
+    def _norm_ticker(code_raw: Any) -> str:
+        s = str(code_raw or "").strip().lower()
+        if not s:
+            return ""
+        if len(s) >= 8 and (s.startswith("sh") or s.startswith("sz") or s.startswith("bj")):
+            s = s[-6:]
+        digits = "".join([ch for ch in s if ch.isdigit()])
+        return digits if len(digits) == 6 else ""
+
+    out: dict[str, BarRow] = {}
+    for r in rows:
+        t6 = _norm_ticker(r.get("代码") or r.get("code") or "")
+        if not t6:
+            continue
+        open_ = str(r.get("今开") or r.get("开盘") or r.get("open") or "").strip()
+        high = str(r.get("最高") or r.get("high") or r.get("High") or "").strip()
+        low = str(r.get("最低") or r.get("low") or r.get("Low") or "").strip()
+        close = str(r.get("最新价") or r.get("收盘") or r.get("close") or "").strip()
+        volume = str(r.get("成交量") or r.get("volume") or r.get("Volume") or "").strip()
+        amount = str(r.get("成交额") or r.get("amount") or r.get("Amount") or "").strip()
+        out[t6] = BarRow(
+            date=today_str,
+            open=open_ or "0",
+            high=high or close or "0",
+            low=low or close or "0",
+            close=close or "0",
+            volume=volume or "0",
+            amount=amount or "0",
+        )
+    return out
+
+
+def _fetch_cn_a_today_bar_from_spot(ticker: str) -> BarRow | None:
+    """
+    Build today's daily bar from spot (real-time) API so the latest day reflects current price.
+
+    Uses a short-TTL cache so batch refresh (e.g. Watchlist N symbols) does one spot fetch
+    instead of N. Returns None if spot fails or ticker not found.
+    """
+    global _spot_today_cache
+    target = "".join([ch for ch in str(ticker or "").strip() if ch.isdigit()])
+    if len(target) != 6:
+        return None
+    today_str = date.today().strftime("%Y-%m-%d")
+    now = time.time()
+
+    with _spot_today_cache_lock:
+        if _spot_today_cache is not None:
+            ts, cache_date, m = _spot_today_cache
+            if cache_date == today_str and (now - ts) <= _SPOT_TODAY_CACHE_TTL_S:
+                return m.get(target)
+
+    # Cache miss or expired: fetch spot once and fill cache for all tickers.
+    ak = _akshare()
+    try:
+        df = _with_retry(lambda: ak.stock_zh_a_spot_em(), tries=3)
+    except Exception:
+        if hasattr(ak, "stock_zh_a_spot"):
+            df = _with_retry(lambda: ak.stock_zh_a_spot(), tries=2, base_sleep_s=0.8)
+        else:
+            return None
+    rows = _to_records(df)
+    m = _build_spot_today_bars_map(rows, today_str)
+    with _spot_today_cache_lock:
+        _spot_today_cache = (time.time(), today_str, m)
+    return m.get(target)
+
+
 def fetch_cn_a_daily_bars(ticker: str, *, days: int = 60) -> list[BarRow]:
     ak = _akshare()
     end = date.today()
@@ -680,6 +757,20 @@ def fetch_cn_a_daily_bars(ticker: str, *, days: int = 60) -> list[BarRow]:
                 amount=str(r.get("成交额") or r.get("amount") or r.get("Amount") or ""),
             ),
         )
+
+    # Patch latest day with real-time data from spot so noon refresh shows current price.
+    today_str = end.strftime("%Y-%m-%d")
+    today_bar = _fetch_cn_a_today_bar_from_spot(ticker)
+    if today_bar is not None:
+        def _norm_date(s: str) -> str:
+            s = (s or "").strip().replace("-", "")
+            return s[:8] if len(s) >= 8 else s
+
+        if out and _norm_date(out[-1].date) == _norm_date(today_str):
+            out[-1] = today_bar
+        else:
+            out.append(today_bar)
+
     return out[-days:]
 
 

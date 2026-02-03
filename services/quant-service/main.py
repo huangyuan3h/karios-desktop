@@ -13,6 +13,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import urllib.error
 import urllib.request
 import uuid
@@ -2313,6 +2314,15 @@ class MarketBarsResponse(BaseModel):
     bars: list[dict[str, str]]
 
 
+class BarsRefreshRequest(BaseModel):
+    symbols: list[str] = []
+
+
+class BarsRefreshResponse(BaseModel):
+    refreshed: int
+    failed: int
+
+
 class MarketChipsResponse(BaseModel):
     symbol: str
     market: str
@@ -4068,15 +4078,18 @@ def market_stocks_trendok(
         ).fetchall():
             by_name[str(r[0])] = str(r[1])
 
-    # Optional: refresh cached daily bars before computing indicators.
-    # This keeps Watchlist "current / stoploss / TrendOK" aligned with the latest daily bar.
+    # Optional: refresh cached daily bars before computing indicators (parallel, spot cache shared).
     if refresh:
-        for sym in syms:
-            try:
-                _ = market_stock_bars(sym, days=120, force=False)
-            except Exception:
-                # Best-effort: never fail the whole batch due to one symbol refresh.
-                pass
+        _BARS_REFRESH_WORKERS = 4
+        with ThreadPoolExecutor(max_workers=_BARS_REFRESH_WORKERS) as pool:
+            futures = {
+                pool.submit(market_stock_bars, sym, days=120, force=False): sym for sym in syms
+            }
+            for fut in as_completed(futures):
+                try:
+                    fut.result()
+                except Exception:
+                    pass
 
     out: list[TrendOkResult] = []
     with _connect() as conn:
@@ -4237,6 +4250,32 @@ def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> Marke
         )
 
     return _resp_from_cached(cached)
+
+
+@app.post("/market/stocks/bars/refresh", response_model=BarsRefreshResponse)
+def market_stocks_bars_refresh(body: BarsRefreshRequest) -> BarsRefreshResponse:
+    """
+    Batch refresh daily bars for given symbols (force fetch). Uses shared spot cache
+    and parallel workers so Watchlist can refresh in one call instead of N sequential GETs.
+    """
+    syms = [str(s or "").strip().upper() for s in (body.symbols or []) if str(s or "").strip()]
+    syms = syms[:200]
+    if not syms:
+        return BarsRefreshResponse(refreshed=0, failed=0)
+    refreshed = 0
+    failed = 0
+    _BARS_REFRESH_WORKERS = 4
+    with ThreadPoolExecutor(max_workers=_BARS_REFRESH_WORKERS) as pool:
+        futures = {
+            pool.submit(market_stock_bars, sym, days=120, force=True): sym for sym in syms
+        }
+        for fut in as_completed(futures):
+            try:
+                fut.result()
+                refreshed += 1
+            except Exception:
+                failed += 1
+    return BarsRefreshResponse(refreshed=refreshed, failed=failed)
 
 
 @app.get("/market/stocks/{symbol}/chips", response_model=MarketChipsResponse)
