@@ -81,7 +81,7 @@ async function apiGetJson<T>(path: string): Promise<T> {
     }
     throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
   }
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
 function getLastDetailSyncMs(symbol: string): number {
@@ -102,13 +102,7 @@ function setLastDetailSyncMs(symbol: string, ms: number) {
   }
 }
 
-export function StockPage({
-  symbol,
-  onBack,
-}: {
-  symbol: string;
-  onBack: () => void;
-}) {
+export function StockPage({ symbol, onBack }: { symbol: string; onBack: () => void }) {
   const { addReference } = useChatStore();
   const [data, setData] = React.useState<BarsResp | null>(null);
   const [chips, setChips] = React.useState<ChipsResp | null>(null);
@@ -125,7 +119,13 @@ export function StockPage({
         const low = Number(b.low);
         const close = Number(b.close);
         const volume = Number(String(b.volume).replaceAll(',', ''));
-        if (!b.date || !Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
+        if (
+          !b.date ||
+          !Number.isFinite(open) ||
+          !Number.isFinite(high) ||
+          !Number.isFinite(low) ||
+          !Number.isFinite(close)
+        ) {
           return null;
         }
         return {
@@ -140,45 +140,82 @@ export function StockPage({
       .filter(Boolean) as OHLCV[];
   }, [data]);
 
-  const refresh = React.useCallback(async ({ force }: { force?: boolean } = {}) => {
-    setError(null);
-    setBusy(true);
+  const refresh = React.useCallback(
+    async ({ force }: { force?: boolean } = {}) => {
+      setError(null);
+      setBusy(true);
+      try {
+        const [d, c] = await Promise.all([
+          apiGetJson<BarsResp>(
+            `/market/stocks/${encodeURIComponent(symbol)}/bars?days=60${force ? '&force=true' : ''}`,
+          ),
+          apiGetJson<ChipsResp>(
+            `/market/stocks/${encodeURIComponent(symbol)}/chips?days=30${force ? '&force=true' : ''}`,
+          ).catch(() => null),
+        ]);
+        const ff = await apiGetJson<FundFlowResp>(
+          `/market/stocks/${encodeURIComponent(symbol)}/fund-flow?days=30${force ? '&force=true' : ''}`,
+        ).catch(() => null);
+        setData(d);
+        setChips(c);
+        setFundFlow(ff);
+        if (force) {
+          const now = Date.now();
+          setLastDetailSyncMs(symbol, now);
+          setLastSyncMs(now);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [symbol],
+  );
+
+  // Background refresh: silently update data if cache is stale, without blocking UI.
+  const refreshInBackground = React.useCallback(async () => {
     try {
       const [d, c] = await Promise.all([
         apiGetJson<BarsResp>(
-          `/market/stocks/${encodeURIComponent(symbol)}/bars?days=60${force ? '&force=true' : ''}`,
-        ),
+          `/market/stocks/${encodeURIComponent(symbol)}/bars?days=60&force=true`,
+        ).catch(() => null),
         apiGetJson<ChipsResp>(
-          `/market/stocks/${encodeURIComponent(symbol)}/chips?days=30${force ? '&force=true' : ''}`,
-        ).catch(
-          () => null,
-        ),
+          `/market/stocks/${encodeURIComponent(symbol)}/chips?days=30&force=true`,
+        ).catch(() => null),
       ]);
       const ff = await apiGetJson<FundFlowResp>(
-        `/market/stocks/${encodeURIComponent(symbol)}/fund-flow?days=30${force ? '&force=true' : ''}`,
+        `/market/stocks/${encodeURIComponent(symbol)}/fund-flow?days=30&force=true`,
       ).catch(() => null);
-      setData(d);
-      setChips(c);
-      setFundFlow(ff);
-      if (force) {
+      // Only update if we got new data.
+      if (d) {
+        setData(d);
         const now = Date.now();
         setLastDetailSyncMs(symbol, now);
         setLastSyncMs(now);
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
+      if (c) setChips(c);
+      if (ff) setFundFlow(ff);
+    } catch {
+      // Silently fail in background refresh.
     }
   }, [symbol]);
 
   React.useEffect(() => {
     const prev = getLastDetailSyncMs(symbol);
     setLastSyncMs(prev);
-    // Auto-sync at most once every 10 minutes per symbol.
+    // Step 1: Load cached data immediately (fast, non-blocking).
+    void refresh({ force: false });
+    // Step 2: If cache is stale (>5 min), refresh in background and update UI when done.
     const age = Date.now() - prev;
-    void refresh({ force: age > 10 * 60 * 1000 });
-  }, [refresh, symbol]);
+    if (age > 5 * 60 * 1000) {
+      // Delay background refresh slightly so cached data renders first.
+      const timer = window.setTimeout(() => {
+        void refreshInBackground();
+      }, 300);
+      return () => window.clearTimeout(timer);
+    }
+  }, [refresh, refreshInBackground, symbol]);
 
   return (
     <div className="mx-auto w-full max-w-6xl p-6">
@@ -189,7 +226,9 @@ export function StockPage({
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
-            <div className="text-lg font-semibold">{data ? `${data.ticker} ${data.name}` : symbol}</div>
+            <div className="text-lg font-semibold">
+              {data ? `${data.ticker} ${data.name}` : symbol}
+            </div>
           </div>
           <div className="mt-1 text-sm text-[var(--k-muted)]">
             {data ? `${data.market} • ${data.currency}` : 'Loading...'}
@@ -264,8 +303,10 @@ export function StockPage({
           <>
             <div className="mt-2 text-sm text-[var(--k-muted)]">
               Latest: profitRatio={chips.items[chips.items.length - 1]?.profitRatio} • avgCost=
-              {chips.items[chips.items.length - 1]?.avgCost} • 70%[{chips.items[chips.items.length - 1]?.cost70Low},{' '}
-              {chips.items[chips.items.length - 1]?.cost70High}] • 90%[{chips.items[chips.items.length - 1]?.cost90Low},{' '}
+              {chips.items[chips.items.length - 1]?.avgCost} • 70%[
+              {chips.items[chips.items.length - 1]?.cost70Low},{' '}
+              {chips.items[chips.items.length - 1]?.cost70High}] • 90%[
+              {chips.items[chips.items.length - 1]?.cost90Low},{' '}
               {chips.items[chips.items.length - 1]?.cost90High}]
             </div>
             <div className="mt-3 overflow-hidden rounded-lg border border-[var(--k-border)]">
@@ -273,11 +314,13 @@ export function StockPage({
                 <table className="w-full border-collapse text-sm">
                   <thead className="sticky top-0 bg-[var(--k-surface-2)]">
                     <tr className="text-left text-xs text-[var(--k-muted)]">
-                      {['Date', 'Profit', 'Avg', '70% Low', '70% High', '90% Low', '90% High'].map((h) => (
-                        <th key={h} className="whitespace-nowrap px-3 py-2">
-                          {h}
-                        </th>
-                      ))}
+                      {['Date', 'Profit', 'Avg', '70% Low', '70% High', '90% Low', '90% High'].map(
+                        (h) => (
+                          <th key={h} className="whitespace-nowrap px-3 py-2">
+                            {h}
+                          </th>
+                        ),
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -368,5 +411,3 @@ export function StockPage({
     </div>
   );
 }
-
-
