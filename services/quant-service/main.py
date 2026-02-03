@@ -3385,7 +3385,7 @@ class TrendOkResult(BaseModel):
     name: str | None = None
     asOfDate: str | None = None
     trendOk: bool | None = None
-    score: float | None = None  # 0..100, formula-based (no LLM)
+    score: float | None = None  # 0+ (can exceed 100), formula-based (no LLM)
     scoreParts: dict[str, float] = {}  # points breakdown (positive parts and penalties)
     stopLossPrice: float | None = None
     stopLossParts: dict[str, Any] = {}
@@ -3603,8 +3603,9 @@ def _market_stock_trendok_one(
             close_at_new_high = bool(closes[-1] >= float(res.values.high20))
         res.checks.volumeSurge = volume_surge_by_ratio or close_at_new_high
 
-    # ---------- Score (0..100), formula-based (CN daily; no LLM) ----------
+    # ---------- Score (0+), formula-based (CN daily; no LLM) ----------
     # Goal: next 1-2 trading days action score; prefer strong trend + momentum + volume confirmation with limited risk.
+    # Score can exceed 100 when multiple bonuses apply (e.g., new high + high momentum + high elasticity).
     try:
         def _clip01(x: float) -> float:
             return 0.0 if x <= 0.0 else 1.0 if x >= 1.0 else x
@@ -3732,7 +3733,8 @@ def _market_stock_trendok_one(
                 parts["penalty_below_ema20"] = -round(p_below, 3)
 
             total = pts_ema + pts_macd + pts_break + pts_rsi + pts_vol + bonus_new_high + bonus_high_momentum + atr_bonus - penalty
-            total2 = max(0.0, min(100.0, total))
+            # Remove 100 cap: score can exceed 100 when multiple bonuses apply (e.g., new high + high momentum + high elasticity).
+            total2 = max(0.0, total)  # Only enforce minimum 0, allow scores > 100
             res.score = round(total2, 3)
             res.scoreParts = parts
     except Exception:

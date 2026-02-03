@@ -698,9 +698,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       checkLine(
         'RSI(14)',
         t?.checks?.rsiInRange ?? null,
-        `50 <= RSI <= 75${rsiNow == null ? '' : ` (now: ${rsiNow.toFixed(1)})`}`,
+        `50 <= RSI <= 85${rsiNow == null ? '' : ` (now: ${rsiNow.toFixed(1)})`}`,
       ),
-      checkLine('Volume surge', t?.checks?.volumeSurge ?? null, 'AvgVol(5) > 1.2 * AvgVol(30)'),
+      checkLine(
+        'Volume surge',
+        t?.checks?.volumeSurge ?? null,
+        'AvgVol(5) > 1.0 × AvgVol(30) OR Close ≥ High(20)',
+      ),
     ];
     const missing = (t?.missingData ?? []).filter(Boolean);
     const tip = (
@@ -860,11 +864,18 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     const tip = (
       <>
         <div className="mb-2 flex items-center justify-between">
-          <div className="font-medium">Score (0–100)</div>
+          <div className="font-medium">Score (0+)</div>
           <div className="font-mono text-[var(--k-muted)]">{sym}</div>
         </div>
         <div className="text-[var(--k-muted)]">
           Deterministic formula (CN daily, no LLM). Higher means better short-horizon setup.
+        </div>
+        <div className="mt-1 text-xs text-[var(--k-muted)]">
+          Note: Score can exceed 100 when multiple bonuses apply (e.g., new high + high momentum +
+          high elasticity).
+        </div>
+        <div className="mt-1 text-xs text-[var(--k-muted)]">
+          ATR volatility is bonus when trend up (high elasticity), penalty when trend down.
         </div>
         <div className="mt-2 space-y-1">
           <div className="flex items-center justify-between">
@@ -1003,8 +1014,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         <div>2) MACD line &gt; 0</div>
         <div>3) MACD histogram expanding: last 4 days, at least 2 day-over-day increases</div>
         <div>4) Close ≥ 0.95 × High(20)</div>
-        <div>5) RSI(14) in [50, 75]</div>
-        <div>6) AvgVol(5) &gt; 1.2 × AvgVol(30)</div>
+        <div>5) RSI(14) in [50, 85]</div>
+        <div>
+          6) AvgVol(5) &gt; 1.0 × AvgVol(30) OR Close ≥ High(20)
+          <span className="ml-1 text-xs">(缩量上涨也认可)</span>
+        </div>
       </div>
     </>
   );
