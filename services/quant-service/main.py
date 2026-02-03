@@ -3362,7 +3362,7 @@ class TrendOkChecks(BaseModel):
     macdHistExpanding: bool | None = None  # last 4 days: >=2 day-over-day increases
     closeNear20dHigh: bool | None = None  # close >= 0.95 * high20
     rsiInRange: bool | None = None  # 50 <= rsi14 <= 75
-    volumeSurge: bool | None = None  # avgVol5 > 1.2 * avgVol30
+    volumeSurge: bool | None = None  # avgVol5 > 1.0 * avgVol30 OR close >= high20 (缩量上涨也认可)
 
 
 class TrendOkValues(BaseModel):
@@ -3583,7 +3583,7 @@ def _market_stock_trendok_one(
     rsi14s = _rsi(closes, 14)
     if rsi14s:
         res.values.rsi14 = rsi14s[-1]
-        res.checks.rsiInRange = bool(50.0 <= rsi14s[-1] <= 75.0)
+        res.checks.rsiInRange = bool(50.0 <= rsi14s[-1] <= 85.0)
 
     if len(closes) >= 20:
         high20 = max(closes[-20:])
@@ -3595,7 +3595,13 @@ def _market_stock_trendok_one(
         avg30 = sum(vols[-30:]) / 30.0
         res.values.avgVol5 = avg5
         res.values.avgVol30 = avg30
-        res.checks.volumeSurge = bool(avg5 > 1.2 * avg30) if avg30 > 0 else bool(avg5 > 0)
+        # Volume surge: avgVol5 > avgVol30 OR close >= high20 (缩量上涨也认可，龙头股筹码锁定后缩量上涨是强势)
+        volume_surge_by_ratio = bool(avg5 > 1.0 * avg30) if avg30 > 0 else bool(avg5 > 0)
+        # If close >= high20 (new 20-day high), accept even without volume surge (light selling pressure is healthy)
+        close_at_new_high = False
+        if res.values.high20 is not None and len(closes) > 0:
+            close_at_new_high = bool(closes[-1] >= float(res.values.high20))
+        res.checks.volumeSurge = volume_surge_by_ratio or close_at_new_high
 
     # ---------- Score (0..100), formula-based (CN daily; no LLM) ----------
     # Goal: next 1-2 trading days action score; prefer strong trend + momentum + volume confirmation with limited risk.
@@ -3666,8 +3672,12 @@ def _market_stock_trendok_one(
             bonus_new_high = 3.0 if (high20_high > 0 and close >= high20_high) else 0.0
 
             # 4) RSI quality (0.15): triangular preference within [50,75], peak at 62.5
+            # For RSI > 75: no penalty (keep score), and add High Momentum Bonus if volume surges.
             if 50.0 <= rsi14 <= 75.0:
                 s_rsi = _clip01(1.0 - (abs(rsi14 - 62.5) / 12.5))
+            elif rsi14 > 75.0:
+                # RSI > 75: keep peak score (no penalty), treat as strong momentum
+                s_rsi = 1.0
             else:
                 s_rsi = 0.0
 
@@ -3689,15 +3699,31 @@ def _market_stock_trendok_one(
             if bonus_new_high > 0.0:
                 parts["bonus_new_high20"] = round(bonus_new_high, 3)
 
+            # High Momentum Bonus: RSI > 75 and volume surge (ratio_vol > 1.2)
+            bonus_high_momentum = 0.0
+            if rsi14 > 75.0 and ratio_vol > 1.2:
+                bonus_high_momentum = 5.0
+                parts["bonus_high_momentum"] = round(bonus_high_momentum, 3)
+
             # Risk penalties (points, negative): volatility + below EMA20
+            # ATR relative scoring: high volatility is bonus when trend is up, penalty when trend is down.
             penalty = 0.0
-            # Volatility: ATR(14)/close. Map 0.015 -> 0, 0.05 -> 10 points.
+            atr_bonus = 0.0
             atr14 = _atr14(highs, lows, closes, 14)
             if atr14 is not None and close > 0:
                 atr_ratio = float(atr14) / float(close)
-                p_vol = _clip01((atr_ratio - 0.015) / 0.035) * 10.0
-                penalty += p_vol
-                parts["penalty_volatility_atr"] = -round(p_vol, 3)
+                # Check if trend is up: Close > EMA20 and MACD expanding
+                trend_up = bool(close > ema20 and res.checks.macdHistExpanding is True)
+                if trend_up:
+                    # High volatility = high elasticity (good for tech/AI stocks like CPO)
+                    # Map ATR ratio [0.015, 0.05] -> [0, 10] bonus points
+                    atr_bonus = _clip01((atr_ratio - 0.015) / 0.035) * 10.0
+                    parts["bonus_volatility_atr_high_elasticity"] = round(atr_bonus, 3)
+                else:
+                    # Trend down: high volatility is risky, penalize
+                    p_vol = _clip01((atr_ratio - 0.015) / 0.035) * 10.0
+                    penalty += p_vol
+                    parts["penalty_volatility_atr"] = -round(p_vol, 3)
             # Below EMA20: 5% below -> 10 points
             if ema20 > 0 and close < ema20:
                 dd = (ema20 - close) / ema20
@@ -3705,7 +3731,7 @@ def _market_stock_trendok_one(
                 penalty += p_below
                 parts["penalty_below_ema20"] = -round(p_below, 3)
 
-            total = pts_ema + pts_macd + pts_break + pts_rsi + pts_vol + bonus_new_high - penalty
+            total = pts_ema + pts_macd + pts_break + pts_rsi + pts_vol + bonus_new_high + bonus_high_momentum + atr_bonus - penalty
             total2 = max(0.0, min(100.0, total))
             res.score = round(total2, 3)
             res.scoreParts = parts
