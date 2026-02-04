@@ -430,8 +430,17 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   }, [items]);
 
   const refreshTrend = React.useCallback(
-    async (reason: 'items_changed' | 'manual' | 'timer', opts: { forceMarket?: boolean } = {}) => {
-      const syms = items.map((x) => x.symbol).filter(Boolean);
+    async (
+      reason: 'items_changed' | 'manual' | 'timer',
+      opts: {
+        forceMarket?: boolean;
+        cacheOnly?: boolean;
+        ensureData?: boolean;
+        symbols?: string[];
+        mergeExisting?: boolean;
+      } = {},
+    ) => {
+      const syms = (opts.symbols || items.map((x) => x.symbol)).filter(Boolean);
       if (!syms.length) {
         setTrend({});
         setTrendUpdatedAt(null);
@@ -464,8 +473,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         }
 
         const sp = new URLSearchParams();
-        // When we just did bars/refresh, skip duplicate refresh in trendok; otherwise ask backend to refresh cache.
-        sp.set('refresh', refreshBars ? 'false' : 'true');
+        // When we just did bars/refresh, skip duplicate refresh in trendok;
+        // when cacheOnly, never trigger backend refresh.
+        sp.set('refresh', refreshBars || opts.cacheOnly ? 'false' : 'true');
         for (const s of syms) sp.append('symbols', s);
         const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
         if (reqId !== trendReqRef.current) return;
@@ -473,11 +483,28 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         for (const r of Array.isArray(rows) ? rows : []) {
           if (r && r.symbol) next[r.symbol] = r;
         }
-        setTrend(next);
+        const combined = opts.mergeExisting ? { ...trend, ...next } : next;
+        setTrend(combined);
         const ts = new Date().toISOString();
         setTrendUpdatedAt(ts);
-        saveJson(TREND_CACHE_KEY, next);
+        saveJson(TREND_CACHE_KEY, combined);
         saveJson(TREND_UPDATED_AT_KEY, ts);
+        if (opts.ensureData && opts.cacheOnly) {
+          const missing = syms.filter((sym) => {
+            const t = combined[sym];
+            const miss = Array.isArray(t?.missingData) ? t?.missingData?.length > 0 : false;
+            return !t || t.trendOk == null || miss;
+          });
+          if (missing.length) {
+            void refreshTrend('items_changed', {
+              cacheOnly: false,
+              forceMarket: false,
+              ensureData: false,
+              symbols: missing,
+              mergeExisting: true,
+            });
+          }
+        }
         if (reason === 'manual') setError(null);
       } catch (e) {
         if (reqId === trendReqRef.current) console.warn('Watchlist trendok load failed:', e);
@@ -489,9 +516,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   );
 
   React.useEffect(() => {
-    if (isCnTradingTime()) {
-      void refreshTrend('items_changed');
-    }
+    const cacheOnly = !isCnTradingTime();
+    void refreshTrend('items_changed', { cacheOnly, ensureData: true, mergeExisting: true });
   }, [refreshTrend]);
 
   React.useEffect(() => {

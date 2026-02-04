@@ -102,6 +102,28 @@ function setLastDetailSyncMs(symbol: string, ms: number) {
   }
 }
 
+function isCnTradingTime(now = new Date()): boolean {
+  const day = now.getDay(); // 0..6, Sun=0
+  if (day === 0 || day === 6) return false;
+  const hh = now.getHours();
+  const mm = now.getMinutes();
+  const hhmm = hh * 60 + mm;
+  const amStart = 9 * 60 + 30;
+  const amEnd = 11 * 60 + 30;
+  const pmStart = 13 * 60;
+  const pmEnd = 15 * 60;
+  return (hhmm >= amStart && hhmm <= amEnd) || (hhmm >= pmStart && hhmm <= pmEnd);
+}
+
+function isAfterMarketClose(ms: number, hour = 15, minute = 0): boolean {
+  if (!ms) return false;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return false;
+  const closeMin = hour * 60 + minute;
+  const hhmm = d.getHours() * 60 + d.getMinutes();
+  return hhmm >= closeMin;
+}
+
 export function StockPage({ symbol, onBack }: { symbol: string; onBack: () => void }) {
   const { addReference } = useChatStore();
   const [data, setData] = React.useState<BarsResp | null>(null);
@@ -175,6 +197,10 @@ export function StockPage({ symbol, onBack }: { symbol: string; onBack: () => vo
 
   // Background refresh: silently update data if cache is stale, without blocking UI.
   const refreshInBackground = React.useCallback(async () => {
+    const prev = getLastDetailSyncMs(symbol);
+    const shouldSkipRemote =
+      !isCnTradingTime() && isAfterMarketClose(prev) && (data?.bars?.length ?? 0) >= 60;
+    if (shouldSkipRemote) return;
     try {
       const [d, c] = await Promise.all([
         apiGetJson<BarsResp>(
@@ -199,7 +225,7 @@ export function StockPage({ symbol, onBack }: { symbol: string; onBack: () => vo
     } catch {
       // Silently fail in background refresh.
     }
-  }, [symbol]);
+  }, [data?.bars?.length, symbol]);
 
   React.useEffect(() => {
     const prev = getLastDetailSyncMs(symbol);
@@ -208,7 +234,9 @@ export function StockPage({ symbol, onBack }: { symbol: string; onBack: () => vo
     void refresh({ force: false });
     // Step 2: If cache is stale (>5 min), refresh in background and update UI when done.
     const age = Date.now() - prev;
-    if (age > 5 * 60 * 1000) {
+    const shouldSkipRemote =
+      !isCnTradingTime() && isAfterMarketClose(prev) && (data?.bars?.length ?? 0) >= 60;
+    if (age > 5 * 60 * 1000 && !shouldSkipRemote) {
       // Delay background refresh slightly so cached data renders first.
       const timer = window.setTimeout(() => {
         void refreshInBackground();

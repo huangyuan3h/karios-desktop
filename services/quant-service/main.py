@@ -1726,15 +1726,56 @@ def _run_eod_sync_pipeline(
     failed_steps = 0
     last_error: str | None = None
     try:
-        targets = _collect_eod_targets(override_symbols=override_symbols, limit=200)
-        _ensure_market_stocks_basic_bulk(targets)
-        all_symbols = [str(x.get("symbol") or "").strip().upper() for x in targets if str(x.get("symbol") or "").strip()]
-        detail["targetSymbols"] = all_symbols
-        _sync_run_set_targets(run_id=run_id, target_symbols=all_symbols, detail=detail)
+        targets: list[dict[str, Any]] = []
+        all_symbols: list[str] = []
+        resume_run_id: str | None = None
+        resume_info: dict[str, dict[str, Any]] = {}
 
-        resume_run_id, resume_info = _load_resume_step_info(trade_date=trade_date, kind="eod")
-        if resume_run_id:
-            detail["resumeFromRunId"] = resume_run_id
+        def step_prepare():
+            nonlocal targets, all_symbols, resume_run_id, resume_info
+            targets = _collect_eod_targets(override_symbols=override_symbols, limit=200)
+            _ensure_market_stocks_basic_bulk(targets)
+            all_symbols = [
+                str(x.get("symbol") or "").strip().upper()
+                for x in targets
+                if str(x.get("symbol") or "").strip()
+            ]
+            detail["targetSymbols"] = all_symbols
+            _sync_run_set_targets(run_id=run_id, target_symbols=all_symbols, detail=detail)
+            resume_run_id, resume_info = _load_resume_step_info(trade_date=trade_date, kind="eod")
+            if resume_run_id:
+                detail["resumeFromRunId"] = resume_run_id
+                _sync_run_set_targets(run_id=run_id, target_symbols=all_symbols, detail=detail)
+            return len(all_symbols), 0, {"totalSymbols": len(all_symbols)}
+
+        ok_prepare, _ok_count, _failed_count, _detail, err = _sync_step_run(
+            run_id=run_id,
+            step="prepare",
+            fn=step_prepare,
+        )
+        if ok_prepare:
+            ok_steps += 1
+        else:
+            failed_steps += 1
+            last_error = err or last_error
+
+        if not all_symbols:
+            ended_at = now_iso()
+            duration_ms = _sync_now_ms() - t0
+            detail2 = dict(detail)
+            detail2["message"] = "No targets to sync."
+            _sync_run_update(
+                run_id=run_id,
+                status="ok",
+                ended_at=ended_at,
+                duration_ms=duration_ms,
+                target_symbols=0,
+                ok_steps=ok_steps,
+                failed_steps=failed_steps,
+                error=None,
+                detail=detail2,
+            )
+            return run_id
 
         syms_quotes_all = [str(x.get("symbol") or "").strip().upper() for x in targets if str(x.get("symbol") or "").strip()]
         syms_quotes = _resume_symbols_for_step(step="quotes", symbols_all=syms_quotes_all, resume_info=resume_info)
