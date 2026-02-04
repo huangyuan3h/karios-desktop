@@ -2852,7 +2852,8 @@ class DashboardScreenerStatusRow(BaseModel):
 
 
 class DashboardSummaryResponse(BaseModel):
-    asOfDate: str
+    asOfDate: str  # Trading date (YYYY-MM-DD)
+    asOfTs: str  # Last dashboard summary refresh timestamp (ISO, with time)
     accounts: list[DashboardAccountItem]
     selectedAccountId: str | None = None
     accountState: DashboardAccountStateSummary | None = None
@@ -11641,6 +11642,7 @@ def dashboard_summary(accountId: str | None = None) -> DashboardSummaryResponse:
 
     return DashboardSummaryResponse(
         asOfDate=as_of,
+        asOfTs=now_iso(),
         accounts=accounts_out,
         selectedAccountId=selected_id,
         accountState=state_sum,

@@ -388,8 +388,13 @@ export function DashboardPage({
         >
           Screener
         </Button>
-        <div className="ml-auto">
-          asOfDate: <span className="font-mono">{summary?.asOfDate ?? '—'}</span>
+        <div className="ml-auto flex flex-col items-end gap-0.5 text-[var(--k-muted)]">
+          <div>
+            asOfDate: <span className="font-mono">{summary?.asOfDate ?? '—'}</span>
+          </div>
+          <div>
+            last updated: <span className="font-mono">{fmtDateTime((summary as any)?.asOfTs)}</span>
+          </div>
         </div>
       </div>
 
