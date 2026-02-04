@@ -12,6 +12,7 @@ import signal
 import subprocess
 import threading
 import time
+import contextvars
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import urllib.error
 import urllib.request
@@ -71,6 +72,20 @@ def load_config() -> ServerConfig:
 
 
 app = FastAPI(title="Karios Quant Service", version="0.1.0")
+
+# Use read-only DB connections for GET/HEAD/OPTIONS requests.
+_request_read_only: contextvars.ContextVar[bool] = contextvars.ContextVar("request_read_only", default=False)
+
+
+@app.middleware("http")
+async def _db_readonly_middleware(request: Request, call_next):
+    method = (request.method or "").upper()
+    read_only = method in {"GET", "HEAD", "OPTIONS"}
+    token = _request_read_only.set(read_only)
+    try:
+        return await call_next(request)
+    finally:
+        _request_read_only.reset(token)
 
 # Local desktop app: keep it permissive for v0.
 app.add_middleware(
@@ -651,7 +666,8 @@ def _connect() -> duckdb.DuckDBPyConnection:
     db_path = os.getenv("DATABASE_PATH", default_db)
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     try:
-        conn = duckdb.connect(db_path)
+        read_only = bool(_request_read_only.get())
+        conn = duckdb.connect(db_path, read_only=read_only)
     except duckdb.IOException as e:
         msg = str(e)
         if "Could not set lock on file" in msg:
@@ -662,7 +678,8 @@ def _connect() -> duckdb.DuckDBPyConnection:
         if "Unique file handle conflict" in msg:
             raise DbLockedError(msg) from e
         raise
-    _ensure_schema_once(conn, db_path)
+    if not bool(_request_read_only.get()):
+        _ensure_schema_once(conn, db_path)
     return conn
 
 
