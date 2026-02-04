@@ -533,7 +533,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       const okSymsCached: string[] = [];
       for (const part of chunk(uniq, 200)) {
         const sp = new URLSearchParams();
-        sp.set('refresh', 'true');
+        sp.set('refresh', 'false');
         for (const s2 of part) sp.append('symbols', s2);
         const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
         for (const rr of Array.isArray(rows) ? rows : []) {
@@ -549,22 +549,25 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       setStep('Refreshing latest daily bars', 0, okUniqCached.length);
       // 4) Force-refresh daily bars from network for the cached-OK subset, then re-check TrendOK to make it "live".
       let barFailures = 0;
-      for (let i = 0; i < okUniqCached.length; i++) {
-        const sym = okUniqCached[i]!;
-        setSyncProgress({ cur: i + 1, total: okUniqCached.length });
-        const enc = encodeURIComponent(sym);
-        const ok = await apiGetJson(`/market/stocks/${enc}/bars?days=60&force=true`)
-          .then(() => true)
-          .catch(() => false);
-        if (!ok) barFailures += 1;
-        await new Promise((r) => window.setTimeout(r, 120));
+      if (okUniqCached.length) {
+        try {
+          const r = await apiPostJson<{ refreshed: number; failed: number }>(
+            '/market/stocks/bars/refresh',
+            { symbols: okUniqCached },
+          );
+          barFailures = r?.failed ?? 0;
+        } catch {
+          barFailures = okUniqCached.length;
+        } finally {
+          setSyncProgress({ cur: okUniqCached.length, total: okUniqCached.length });
+        }
       }
 
       setStep('TrendOK re-check (live)', 0, okUniqCached.length);
       const okSymsLive: string[] = [];
       for (const part of chunk(okUniqCached, 200)) {
         const sp = new URLSearchParams();
-        sp.set('refresh', 'true');
+        sp.set('refresh', 'false');
         for (const s2 of part) sp.append('symbols', s2);
         const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
         for (const rr of Array.isArray(rows) ? rows : []) {

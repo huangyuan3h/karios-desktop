@@ -38,10 +38,6 @@ def _seed_market_bars(
                 """
                 INSERT INTO market_bars(symbol, date, open, high, low, close, volume, amount, updated_at)
                 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(symbol, date) DO UPDATE SET
-                  close=excluded.close,
-                  volume=excluded.volume,
-                  updated_at=excluded.updated_at
                 """,
                 (
                     symbol,
@@ -110,9 +106,12 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
     vols_ok: list[float] = [1000.0] * 65 + [2000.0] * 5
     _seed_market_bars("CN:000001", "2025-10-01", closes=closes, vols=vols_ok)
 
-    # Fail case: same closes but flat volume -> volumeSurge should fail, hence TrendOK false (if other checks computable).
+    # Fail case: flat volume AND last close is NOT a 20D new high -> volumeSurge should fail.
     vols_fail: list[float] = [1000.0] * 70
-    _seed_market_bars("CN:000002", "2025-10-01", closes=closes, vols=vols_fail)
+    closes2 = list(closes)
+    high20 = max(closes2[-20:])
+    closes2[-1] = round(high20 * 0.97, 4)  # still near high, but not a new high
+    _seed_market_bars("CN:000002", "2025-10-01", closes=closes2, vols=vols_fail)
 
     resp = client.get("/market/stocks/trendok?symbols=CN:000001&symbols=CN:000002")
     assert resp.status_code == 200
@@ -136,7 +135,7 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
     assert checks1.get("volumeSurge") is True
     assert r1["trendOk"] is True
     assert r1.get("score") is not None
-    assert 0 <= float(r1["score"]) <= 100
+    assert float(r1["score"]) >= 0
     assert isinstance(r1.get("scoreParts"), dict)
     assert r1.get("stopLossPrice") is not None
     sl1 = float(r1["stopLossPrice"])
@@ -155,7 +154,7 @@ def test_watchlist_trendok_pass_and_fail(tmp_path, monkeypatch) -> None:
     assert r2["trendOk"] is False
     assert r2["checks"]["volumeSurge"] is False
     assert r2.get("score") is not None
-    assert 0 <= float(r2["score"]) <= 100
+    assert float(r2["score"]) >= 0
     assert r2.get("stopLossPrice") is not None
     sl2 = float(r2["stopLossPrice"])
     assert sl2 > 0

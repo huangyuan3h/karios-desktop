@@ -23,10 +23,6 @@ def _seed_bars(tmp_path, symbols: list[str]) -> None:
                     """
                     INSERT INTO market_bars(symbol, date, open, high, low, close, volume, amount, updated_at)
                     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(symbol, date) DO UPDATE SET
-                      close = excluded.close,
-                      amount = excluded.amount,
-                      updated_at = excluded.updated_at
                     """,
                     (sym, d, "10", "10", "10", str(close), "1000", str(2e8), ts),
                 )

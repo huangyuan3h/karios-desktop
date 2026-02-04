@@ -136,17 +136,16 @@ def test_dashboard_summary_shape(tmp_path, monkeypatch) -> None:
         ts = "2025-12-21T00:00:00Z"
         conn.execute(
             """
-            INSERT OR REPLACE INTO market_stocks(symbol, market, ticker, name, currency, updated_at)
+            INSERT INTO market_stocks(symbol, market, ticker, name, currency, updated_at)
             VALUES(?, ?, ?, ?, ?, ?)
             """,
             ("CN:000001", "CN", "000001", "Ping An Bank", "CNY", ts),
         )
         conn.execute(
             """
-            INSERT OR REPLACE INTO leader_stocks(
+            INSERT INTO leader_stocks(
               id, date, symbol, market, ticker, name, entry_price, score, reason, source_signals_json, risk_points_json, created_at
-            )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "leader-1",

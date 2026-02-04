@@ -80,7 +80,8 @@ def test_quant2d_outcome_label_and_calibration(tmp_path, monkeypatch) -> None:
     assert abs(dd2d - (-3.0)) < 1e-6
     assert win == 1
 
-    cal = main._build_quant_2d_calibration(account_id=account_id, buckets=10, lookback_days=30)
+    # Use a wide lookback to keep the test stable across wall-clock dates.
+    cal = main._build_quant_2d_calibration(account_id=account_id, buckets=10, lookback_days=720)
     assert cal["n"] >= 1
     assert isinstance(cal.get("items"), list)
 

@@ -9,7 +9,6 @@ import os
 import re
 import shutil
 import signal
-import sqlite3
 import subprocess
 import threading
 import time
@@ -23,6 +22,7 @@ from pathlib import Path
 from typing import Annotated, Any, cast
 from zoneinfo import ZoneInfo
 
+import duckdb
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -64,7 +64,7 @@ def load_config() -> ServerConfig:
     return ServerConfig(
         host=os.getenv("HOST", "127.0.0.1"),
         port=int(os.getenv("PORT", "4320")),
-        db_path=os.getenv("DATABASE_PATH", str(Path(__file__).with_name("karios.sqlite3"))),
+        db_path=os.getenv("DATABASE_PATH", str(Path(__file__).with_name("karios.duckdb"))),
     )
 
 
@@ -79,13 +79,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# DuckDB schema initialization guard (avoid concurrent CREATE TABLE).
+_schema_lock = threading.Lock()
+_schema_initialized_paths: set[str] = set()
 
-def _connect() -> sqlite3.Connection:
-    default_db = str(Path(__file__).with_name("karios.sqlite3"))
-    db_path = os.getenv("DATABASE_PATH", default_db)
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA journal_mode=WAL;")
+
+def _init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS settings (
@@ -125,8 +124,7 @@ def _connect() -> sqlite3.Connection:
           captured_at TEXT NOT NULL,
           row_count INTEGER NOT NULL,
           headers_json TEXT NOT NULL,
-          rows_json TEXT NOT NULL,
-          FOREIGN KEY(screener_id) REFERENCES tv_screeners(id)
+          rows_json TEXT NOT NULL
         )
         """,
     )
@@ -152,8 +150,7 @@ def _connect() -> sqlite3.Connection:
           turnover TEXT,
           market_cap TEXT,
           updated_at TEXT NOT NULL,
-          raw_json TEXT NOT NULL,
-          FOREIGN KEY(symbol) REFERENCES market_stocks(symbol)
+          raw_json TEXT NOT NULL
         )
         """,
     )
@@ -169,8 +166,7 @@ def _connect() -> sqlite3.Connection:
           volume TEXT,
           amount TEXT,
           updated_at TEXT NOT NULL,
-          PRIMARY KEY(symbol, date),
-          FOREIGN KEY(symbol) REFERENCES market_stocks(symbol)
+          PRIMARY KEY(symbol, date)
         )
         """,
     )
@@ -189,8 +185,7 @@ def _connect() -> sqlite3.Connection:
           cost70_conc TEXT,
           updated_at TEXT NOT NULL,
           raw_json TEXT NOT NULL,
-          PRIMARY KEY(symbol, date),
-          FOREIGN KEY(symbol) REFERENCES market_stocks(symbol)
+          PRIMARY KEY(symbol, date)
         )
         """,
     )
@@ -213,8 +208,7 @@ def _connect() -> sqlite3.Connection:
           small_net_ratio TEXT,
           updated_at TEXT NOT NULL,
           raw_json TEXT NOT NULL,
-          PRIMARY KEY(symbol, date),
-          FOREIGN KEY(symbol) REFERENCES market_stocks(symbol)
+          PRIMARY KEY(symbol, date)
         )
         """,
     )
@@ -299,8 +293,7 @@ def _connect() -> sqlite3.Connection:
           overview_json TEXT NOT NULL,
           positions_json TEXT NOT NULL,
           conditional_orders_json TEXT NOT NULL,
-          trades_json TEXT NOT NULL,
-          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+          trades_json TEXT NOT NULL
         )
         """,
     )
@@ -343,8 +336,7 @@ def _connect() -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS broker_account_prompts (
           account_id TEXT PRIMARY KEY,
           strategy_prompt TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+          updated_at TEXT NOT NULL
         )
         """,
     )
@@ -357,8 +349,7 @@ def _connect() -> sqlite3.Connection:
           created_at TEXT NOT NULL,
           model TEXT NOT NULL,
           input_snapshot_json TEXT NOT NULL,
-          output_json TEXT NOT NULL,
-          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+          output_json TEXT NOT NULL
         )
         """,
     )
@@ -419,8 +410,7 @@ def _connect() -> sqlite3.Connection:
           universe_version TEXT NOT NULL,
           created_at TEXT NOT NULL,
           output_json TEXT NOT NULL,
-          UNIQUE(account_id, as_of_date, universe_version),
-          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+          UNIQUE(account_id, as_of_date, universe_version)
         )
         """,
     )
@@ -443,8 +433,7 @@ def _connect() -> sqlite3.Connection:
           raw_score REAL NOT NULL,
           evidence_json TEXT NOT NULL,
           created_at TEXT NOT NULL,
-          UNIQUE(account_id, as_of_ts, symbol),
-          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+          UNIQUE(account_id, as_of_ts, symbol)
         )
         """,
     )
@@ -468,9 +457,7 @@ def _connect() -> sqlite3.Connection:
           ret2d_avg_pct REAL,
           dd2d_pct REAL,
           win INTEGER NOT NULL,
-          labeled_at TEXT NOT NULL,
-          FOREIGN KEY(event_id) REFERENCES quant_2d_rank_events(id),
-          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+          labeled_at TEXT NOT NULL
         )
         """,
     )
@@ -497,8 +484,7 @@ def _connect() -> sqlite3.Connection:
           universe_version TEXT NOT NULL,
           created_at TEXT NOT NULL,
           output_json TEXT NOT NULL,
-          UNIQUE(account_id, as_of_ts, slot, universe_version),
-          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+          UNIQUE(account_id, as_of_ts, slot, universe_version)
         )
         """,
     )
@@ -546,8 +532,7 @@ def _connect() -> sqlite3.Connection:
           as_of_ts TEXT NOT NULL,
           universe_version TEXT NOT NULL,
           created_at TEXT NOT NULL,
-          output_json TEXT NOT NULL,
-          FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+          output_json TEXT NOT NULL
         )
         """,
     )
@@ -595,6 +580,22 @@ def _connect() -> sqlite3.Connection:
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_strategy_reports_account_date ON strategy_reports(account_id, date)",
     )
     conn.commit()
+
+
+def _ensure_schema_once(conn: duckdb.DuckDBPyConnection, db_path: str) -> None:
+    with _schema_lock:
+        if db_path in _schema_initialized_paths:
+            return
+        _init_schema(conn)
+        _schema_initialized_paths.add(db_path)
+
+
+def _connect() -> duckdb.DuckDBPyConnection:
+    default_db = str(Path(__file__).with_name("karios.duckdb"))
+    db_path = os.getenv("DATABASE_PATH", default_db)
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    conn = duckdb.connect(db_path)
+    _ensure_schema_once(conn, db_path)
     return conn
 
 
@@ -608,9 +609,11 @@ def set_setting(key: str, value: str) -> None:
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO settings(key, value)
-            VALUES(?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            MERGE INTO settings AS t
+            USING (SELECT ? AS key, ? AS value) AS s
+            ON t.key = s.key
+            WHEN MATCHED THEN UPDATE SET value = s.value
+            WHEN NOT MATCHED THEN INSERT (key, value) VALUES (s.key, s.value)
             """,
             (key, value),
         )
@@ -855,12 +858,23 @@ def _upsert_cn_rank_snapshot(*, account_id: str, as_of_date: str, universe_versi
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO cn_rank_snapshots(id, account_id, as_of_date, universe_version, created_at, output_json)
-            VALUES(?, ?, ?, ?, ?, ?)
-            ON CONFLICT(account_id, as_of_date, universe_version) DO UPDATE SET
-              id = excluded.id,
-              created_at = excluded.created_at,
-              output_json = excluded.output_json
+            MERGE INTO cn_rank_snapshots AS t
+            USING (
+              SELECT
+                ? AS id,
+                ? AS account_id,
+                ? AS as_of_date,
+                ? AS universe_version,
+                ? AS created_at,
+                ? AS output_json
+            ) AS s
+            ON t.account_id = s.account_id AND t.as_of_date = s.as_of_date AND t.universe_version = s.universe_version
+            WHEN MATCHED THEN UPDATE SET
+              id = s.id,
+              created_at = s.created_at,
+              output_json = s.output_json
+            WHEN NOT MATCHED THEN INSERT (id, account_id, as_of_date, universe_version, created_at, output_json)
+              VALUES (s.id, s.account_id, s.as_of_date, s.universe_version, s.created_at, s.output_json)
             """,
             (snap_id, account_id, as_of_date, universe_version, ts, json.dumps(output or {}, ensure_ascii=False, default=str)),
         )
@@ -941,17 +955,36 @@ def _upsert_quant_2d_rank_events(
             eid = str(uuid.uuid4())
             conn.execute(
                 """
-                INSERT INTO quant_2d_rank_events(
+                MERGE INTO quant_2d_rank_events AS t
+                USING (
+                  SELECT
+                    ? AS id,
+                    ? AS account_id,
+                    ? AS as_of_ts,
+                    ? AS as_of_date,
+                    ? AS symbol,
+                    ? AS ticker,
+                    ? AS name,
+                    ? AS buy_price,
+                    ? AS buy_price_src,
+                    ? AS raw_score,
+                    ? AS evidence_json,
+                    ? AS created_at
+                ) AS s
+                ON t.account_id = s.account_id AND t.as_of_ts = s.as_of_ts AND t.symbol = s.symbol
+                WHEN MATCHED THEN UPDATE SET
+                  buy_price = s.buy_price,
+                  buy_price_src = s.buy_price_src,
+                  raw_score = s.raw_score,
+                  evidence_json = s.evidence_json,
+                  created_at = s.created_at
+                WHEN NOT MATCHED THEN INSERT (
                   id, account_id, as_of_ts, as_of_date, symbol, ticker, name,
                   buy_price, buy_price_src, raw_score, evidence_json, created_at
+                ) VALUES (
+                  s.id, s.account_id, s.as_of_ts, s.as_of_date, s.symbol, s.ticker, s.name,
+                  s.buy_price, s.buy_price_src, s.raw_score, s.evidence_json, s.created_at
                 )
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(account_id, as_of_ts, symbol) DO UPDATE SET
-                  buy_price = excluded.buy_price,
-                  buy_price_src = excluded.buy_price_src,
-                  raw_score = excluded.raw_score,
-                  evidence_json = excluded.evidence_json,
-                  created_at = excluded.created_at
                 """,
                 (
                     eid,
@@ -1087,11 +1120,14 @@ def _upsert_quant_2d_calibration_cached(*, key: str, ts: str, output: dict[str, 
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO quant_2d_calibration_cache(key, updated_at, output_json)
-            VALUES(?, ?, ?)
-            ON CONFLICT(key) DO UPDATE SET
-              updated_at = excluded.updated_at,
-              output_json = excluded.output_json
+            MERGE INTO quant_2d_calibration_cache AS t
+            USING (SELECT ? AS key, ? AS updated_at, ? AS output_json) AS s
+            ON t.key = s.key
+            WHEN MATCHED THEN UPDATE SET
+              updated_at = s.updated_at,
+              output_json = s.output_json
+            WHEN NOT MATCHED THEN INSERT (key, updated_at, output_json)
+              VALUES (s.key, s.updated_at, s.output_json)
             """,
             (k, ts, json.dumps(output or {}, ensure_ascii=False, default=str)),
         )
@@ -1251,15 +1287,29 @@ def _upsert_cn_intraday_rank_snapshot(
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO cn_intraday_rank_snapshots(
+            MERGE INTO cn_intraday_rank_snapshots AS t
+            USING (
+              SELECT
+                ? AS id,
+                ? AS account_id,
+                ? AS as_of_ts,
+                ? AS trade_date,
+                ? AS slot,
+                ? AS universe_version,
+                ? AS created_at,
+                ? AS output_json
+            ) AS s
+            ON t.account_id = s.account_id AND t.as_of_ts = s.as_of_ts AND t.slot = s.slot AND t.universe_version = s.universe_version
+            WHEN MATCHED THEN UPDATE SET
+              id = s.id,
+              trade_date = s.trade_date,
+              created_at = s.created_at,
+              output_json = s.output_json
+            WHEN NOT MATCHED THEN INSERT (
               id, account_id, as_of_ts, trade_date, slot, universe_version, created_at, output_json
+            ) VALUES (
+              s.id, s.account_id, s.as_of_ts, s.trade_date, s.slot, s.universe_version, s.created_at, s.output_json
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(account_id, as_of_ts, slot, universe_version) DO UPDATE SET
-              id = excluded.id,
-              trade_date = excluded.trade_date,
-              created_at = excluded.created_at,
-              output_json = excluded.output_json
             """,
             (
                 snap_id,
@@ -1344,11 +1394,21 @@ def _upsert_cn_minute_bars_cached(*, symbol: str, trade_date: str, interval: str
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO market_cn_minute_bars(symbol, trade_date, interval, updated_at, bars_json)
-            VALUES(?, ?, ?, ?, ?)
-            ON CONFLICT(symbol, trade_date, interval) DO UPDATE SET
-              updated_at = excluded.updated_at,
-              bars_json = excluded.bars_json
+            MERGE INTO market_cn_minute_bars AS t
+            USING (
+              SELECT
+                ? AS symbol,
+                ? AS trade_date,
+                ? AS interval,
+                ? AS updated_at,
+                ? AS bars_json
+            ) AS s
+            ON t.symbol = s.symbol AND t.trade_date = s.trade_date AND t.interval = s.interval
+            WHEN MATCHED THEN UPDATE SET
+              updated_at = s.updated_at,
+              bars_json = s.bars_json
+            WHEN NOT MATCHED THEN INSERT (symbol, trade_date, interval, updated_at, bars_json)
+              VALUES (s.symbol, s.trade_date, s.interval, s.updated_at, s.bars_json)
             """,
             (symbol, trade_date, interval, ts, json.dumps(bars or [], ensure_ascii=False, default=str)),
         )
@@ -1461,11 +1521,14 @@ def _upsert_theme_members_cached(*, theme_key: str, trade_date: str, ts: str, me
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO cn_theme_membership_cache(theme_key, trade_date, members_json, updated_at)
-            VALUES(?, ?, ?, ?)
-            ON CONFLICT(theme_key, trade_date) DO UPDATE SET
-              members_json = excluded.members_json,
-              updated_at = excluded.updated_at
+            MERGE INTO cn_theme_membership_cache AS t
+            USING (SELECT ? AS theme_key, ? AS trade_date, ? AS members_json, ? AS updated_at) AS s
+            ON t.theme_key = s.theme_key AND t.trade_date = s.trade_date
+            WHEN MATCHED THEN UPDATE SET
+              members_json = s.members_json,
+              updated_at = s.updated_at
+            WHEN NOT MATCHED THEN INSERT (theme_key, trade_date, members_json, updated_at)
+              VALUES (s.theme_key, s.trade_date, s.members_json, s.updated_at)
             """,
             (theme_key, trade_date, json.dumps(mem, ensure_ascii=False), ts),
         )
@@ -2918,6 +2981,11 @@ def update_tv_screener(screener_id: str, req: UpdateTvScreenerRequest) -> JSONRe
     _seed_default_tv_screeners()
     ts = now_iso()
     with _connect() as conn:
+        # DuckDB does not reliably expose sqlite-style cursor.rowcount across versions.
+        # Check existence first to keep stable 404 semantics.
+        exists = conn.execute("SELECT 1 FROM tv_screeners WHERE id = ? LIMIT 1", (screener_id,)).fetchone()
+        if exists is None:
+            return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
         cur = conn.execute(
             """
             UPDATE tv_screeners
@@ -2933,8 +3001,6 @@ def update_tv_screener(screener_id: str, req: UpdateTvScreenerRequest) -> JSONRe
             ),
         )
         conn.commit()
-        if (cur.rowcount or 0) == 0:
-            return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
     return JSONResponse({"ok": True})
 
 
@@ -2942,45 +3008,71 @@ def update_tv_screener(screener_id: str, req: UpdateTvScreenerRequest) -> JSONRe
 def delete_tv_screener(screener_id: str) -> JSONResponse:
     _seed_default_tv_screeners()
     with _connect() as conn:
-        cur = conn.execute("DELETE FROM tv_screeners WHERE id = ?", (screener_id,))
-        conn.commit()
-        if (cur.rowcount or 0) == 0:
+        exists = conn.execute("SELECT 1 FROM tv_screeners WHERE id = ? LIMIT 1", (screener_id,)).fetchone()
+        if exists is None:
             return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
+        conn.execute("DELETE FROM tv_screeners WHERE id = ?", (screener_id,))
+        conn.commit()
     return JSONResponse({"ok": True})
 
 
-def _upsert_market_stock(conn: sqlite3.Connection, s: StockRow, ts: str) -> None:
+def _upsert_market_stock(conn: duckdb.DuckDBPyConnection, s: StockRow, ts: str) -> None:
     conn.execute(
         """
-        INSERT INTO market_stocks(symbol, market, ticker, name, currency, updated_at)
-        VALUES(?, ?, ?, ?, ?, ?)
-        ON CONFLICT(symbol) DO UPDATE SET
-          market = excluded.market,
-          ticker = excluded.ticker,
-          name = excluded.name,
-          currency = excluded.currency,
-          updated_at = excluded.updated_at
+        MERGE INTO market_stocks AS t
+        USING (
+          SELECT
+            ? AS symbol,
+            ? AS market,
+            ? AS ticker,
+            ? AS name,
+            ? AS currency,
+            ? AS updated_at
+        ) AS s
+        ON t.symbol = s.symbol
+        WHEN MATCHED THEN UPDATE SET
+          market = s.market,
+          ticker = s.ticker,
+          name = s.name,
+          currency = s.currency,
+          updated_at = s.updated_at
+        WHEN NOT MATCHED THEN INSERT (symbol, market, ticker, name, currency, updated_at)
+          VALUES (s.symbol, s.market, s.ticker, s.name, s.currency, s.updated_at)
         """,
         (s.symbol, s.market, s.ticker, s.name, s.currency, ts),
     )
 
 
-def _upsert_market_quote(conn: sqlite3.Connection, s: StockRow, ts: str) -> None:
+def _upsert_market_quote(conn: duckdb.DuckDBPyConnection, s: StockRow, ts: str) -> None:
     raw_json = json.dumps(s.quote, ensure_ascii=False)
     conn.execute(
         """
-        INSERT INTO market_quotes(
+        MERGE INTO market_quotes AS t
+        USING (
+          SELECT
+            ? AS symbol,
+            ? AS price,
+            ? AS change_pct,
+            ? AS volume,
+            ? AS turnover,
+            ? AS market_cap,
+            ? AS updated_at,
+            ? AS raw_json
+        ) AS s
+        ON t.symbol = s.symbol
+        WHEN MATCHED THEN UPDATE SET
+          price = s.price,
+          change_pct = s.change_pct,
+          volume = s.volume,
+          turnover = s.turnover,
+          market_cap = s.market_cap,
+          updated_at = s.updated_at,
+          raw_json = s.raw_json
+        WHEN NOT MATCHED THEN INSERT (
           symbol, price, change_pct, volume, turnover, market_cap, updated_at, raw_json
+        ) VALUES (
+          s.symbol, s.price, s.change_pct, s.volume, s.turnover, s.market_cap, s.updated_at, s.raw_json
         )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(symbol) DO UPDATE SET
-          price = excluded.price,
-          change_pct = excluded.change_pct,
-          volume = excluded.volume,
-          turnover = excluded.turnover,
-          market_cap = excluded.market_cap,
-          updated_at = excluded.updated_at,
-          raw_json = excluded.raw_json
         """,
         (
             s.symbol,
@@ -2995,22 +3087,37 @@ def _upsert_market_quote(conn: sqlite3.Connection, s: StockRow, ts: str) -> None
     )
 
 
-def _upsert_market_bars(conn: sqlite3.Connection, symbol: str, bars: list[BarRow], ts: str) -> None:
+def _upsert_market_bars(conn: duckdb.DuckDBPyConnection, symbol: str, bars: list[BarRow], ts: str) -> None:
     for b in bars:
         conn.execute(
             """
-            INSERT INTO market_bars(
+            MERGE INTO market_bars AS t
+            USING (
+              SELECT
+                ? AS symbol,
+                ? AS date,
+                ? AS open,
+                ? AS high,
+                ? AS low,
+                ? AS close,
+                ? AS volume,
+                ? AS amount,
+                ? AS updated_at
+            ) AS s
+            ON t.symbol = s.symbol AND t.date = s.date
+            WHEN MATCHED THEN UPDATE SET
+              open = s.open,
+              high = s.high,
+              low = s.low,
+              close = s.close,
+              volume = s.volume,
+              amount = s.amount,
+              updated_at = s.updated_at
+            WHEN NOT MATCHED THEN INSERT (
               symbol, date, open, high, low, close, volume, amount, updated_at
+            ) VALUES (
+              s.symbol, s.date, s.open, s.high, s.low, s.close, s.volume, s.amount, s.updated_at
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(symbol, date) DO UPDATE SET
-              open = excluded.open,
-              high = excluded.high,
-              low = excluded.low,
-              close = excluded.close,
-              volume = excluded.volume,
-              amount = excluded.amount,
-              updated_at = excluded.updated_at
             """,
             (
                 symbol,
@@ -3027,7 +3134,7 @@ def _upsert_market_bars(conn: sqlite3.Connection, symbol: str, bars: list[BarRow
 
 
 def _upsert_market_chips(
-    conn: sqlite3.Connection,
+    conn: duckdb.DuckDBPyConnection,
     symbol: str,
     items: list[dict[str, str]],
     ts: str,
@@ -3036,25 +3143,47 @@ def _upsert_market_chips(
         raw = json.dumps(it, ensure_ascii=False)
         conn.execute(
             """
-            INSERT INTO market_chips(
+            MERGE INTO market_chips AS t
+            USING (
+              SELECT
+                ? AS symbol,
+                ? AS date,
+                ? AS profit_ratio,
+                ? AS avg_cost,
+                ? AS cost90_low,
+                ? AS cost90_high,
+                ? AS cost90_conc,
+                ? AS cost70_low,
+                ? AS cost70_high,
+                ? AS cost70_conc,
+                ? AS updated_at,
+                ? AS raw_json
+            ) AS s
+            ON t.symbol = s.symbol AND t.date = s.date
+            WHEN MATCHED THEN UPDATE SET
+              profit_ratio = s.profit_ratio,
+              avg_cost = s.avg_cost,
+              cost90_low = s.cost90_low,
+              cost90_high = s.cost90_high,
+              cost90_conc = s.cost90_conc,
+              cost70_low = s.cost70_low,
+              cost70_high = s.cost70_high,
+              cost70_conc = s.cost70_conc,
+              updated_at = s.updated_at,
+              raw_json = s.raw_json
+            WHEN NOT MATCHED THEN INSERT (
               symbol, date,
               profit_ratio, avg_cost,
               cost90_low, cost90_high, cost90_conc,
               cost70_low, cost70_high, cost70_conc,
               updated_at, raw_json
+            ) VALUES (
+              s.symbol, s.date,
+              s.profit_ratio, s.avg_cost,
+              s.cost90_low, s.cost90_high, s.cost90_conc,
+              s.cost70_low, s.cost70_high, s.cost70_conc,
+              s.updated_at, s.raw_json
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(symbol, date) DO UPDATE SET
-              profit_ratio = excluded.profit_ratio,
-              avg_cost = excluded.avg_cost,
-              cost90_low = excluded.cost90_low,
-              cost90_high = excluded.cost90_high,
-              cost90_conc = excluded.cost90_conc,
-              cost70_low = excluded.cost70_low,
-              cost70_high = excluded.cost70_high,
-              cost70_conc = excluded.cost70_conc,
-              updated_at = excluded.updated_at,
-              raw_json = excluded.raw_json
             """,
             (
                 symbol,
@@ -3074,7 +3203,7 @@ def _upsert_market_chips(
 
 
 def _upsert_market_fund_flow(
-    conn: sqlite3.Connection,
+    conn: duckdb.DuckDBPyConnection,
     symbol: str,
     items: list[dict[str, str]],
     ts: str,
@@ -3083,7 +3212,43 @@ def _upsert_market_fund_flow(
         raw = json.dumps(it, ensure_ascii=False)
         conn.execute(
             """
-            INSERT INTO market_fund_flow(
+            MERGE INTO market_fund_flow AS t
+            USING (
+              SELECT
+                ? AS symbol,
+                ? AS date,
+                ? AS close,
+                ? AS change_pct,
+                ? AS main_net_amount,
+                ? AS main_net_ratio,
+                ? AS super_net_amount,
+                ? AS super_net_ratio,
+                ? AS large_net_amount,
+                ? AS large_net_ratio,
+                ? AS medium_net_amount,
+                ? AS medium_net_ratio,
+                ? AS small_net_amount,
+                ? AS small_net_ratio,
+                ? AS updated_at,
+                ? AS raw_json
+            ) AS s
+            ON t.symbol = s.symbol AND t.date = s.date
+            WHEN MATCHED THEN UPDATE SET
+              close = s.close,
+              change_pct = s.change_pct,
+              main_net_amount = s.main_net_amount,
+              main_net_ratio = s.main_net_ratio,
+              super_net_amount = s.super_net_amount,
+              super_net_ratio = s.super_net_ratio,
+              large_net_amount = s.large_net_amount,
+              large_net_ratio = s.large_net_ratio,
+              medium_net_amount = s.medium_net_amount,
+              medium_net_ratio = s.medium_net_ratio,
+              small_net_amount = s.small_net_amount,
+              small_net_ratio = s.small_net_ratio,
+              updated_at = s.updated_at,
+              raw_json = s.raw_json
+            WHEN NOT MATCHED THEN INSERT (
               symbol, date,
               close, change_pct,
               main_net_amount, main_net_ratio,
@@ -3092,23 +3257,16 @@ def _upsert_market_fund_flow(
               medium_net_amount, medium_net_ratio,
               small_net_amount, small_net_ratio,
               updated_at, raw_json
+            ) VALUES (
+              s.symbol, s.date,
+              s.close, s.change_pct,
+              s.main_net_amount, s.main_net_ratio,
+              s.super_net_amount, s.super_net_ratio,
+              s.large_net_amount, s.large_net_ratio,
+              s.medium_net_amount, s.medium_net_ratio,
+              s.small_net_amount, s.small_net_ratio,
+              s.updated_at, s.raw_json
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(symbol, date) DO UPDATE SET
-              close = excluded.close,
-              change_pct = excluded.change_pct,
-              main_net_amount = excluded.main_net_amount,
-              main_net_ratio = excluded.main_net_ratio,
-              super_net_amount = excluded.super_net_amount,
-              super_net_ratio = excluded.super_net_ratio,
-              large_net_amount = excluded.large_net_amount,
-              large_net_ratio = excluded.large_net_ratio,
-              medium_net_amount = excluded.medium_net_amount,
-              medium_net_ratio = excluded.medium_net_ratio,
-              small_net_amount = excluded.small_net_amount,
-              small_net_ratio = excluded.small_net_ratio,
-              updated_at = excluded.updated_at,
-              raw_json = excluded.raw_json
             """,
             (
                 symbol,
@@ -3132,7 +3290,7 @@ def _upsert_market_fund_flow(
 
 
 def _upsert_cn_industry_fund_flow_daily(
-    conn: sqlite3.Connection,
+    conn: duckdb.DuckDBPyConnection,
     *,
     items: list[dict[str, Any]],
     ts: str,
@@ -3158,15 +3316,27 @@ def _upsert_cn_industry_fund_flow_daily(
         raw = json.dumps(it.get("raw") or {}, ensure_ascii=False, default=str)
         conn.execute(
             """
-            INSERT INTO market_cn_industry_fund_flow_daily(
+            MERGE INTO market_cn_industry_fund_flow_daily AS t
+            USING (
+              SELECT
+                ? AS date,
+                ? AS industry_code,
+                ? AS industry_name,
+                ? AS net_inflow,
+                ? AS updated_at,
+                ? AS raw_json
+            ) AS s
+            ON t.date = s.date AND t.industry_code = s.industry_code
+            WHEN MATCHED THEN UPDATE SET
+              industry_name = s.industry_name,
+              net_inflow = s.net_inflow,
+              updated_at = s.updated_at,
+              raw_json = s.raw_json
+            WHEN NOT MATCHED THEN INSERT (
               date, industry_code, industry_name, net_inflow, updated_at, raw_json
+            ) VALUES (
+              s.date, s.industry_code, s.industry_name, s.net_inflow, s.updated_at, s.raw_json
             )
-            VALUES(?, ?, ?, ?, ?, ?)
-            ON CONFLICT(date, industry_code) DO UPDATE SET
-              industry_name = excluded.industry_name,
-              net_inflow = excluded.net_inflow,
-              updated_at = excluded.updated_at,
-              raw_json = excluded.raw_json
             """,
             (d, code, name, net, ts, raw),
         )
@@ -4455,7 +4625,7 @@ def _parse_yyyy_mm_dd(value: str) -> datetime | None:
             return None
 
 
-def _get_latest_cn_industry_fund_flow_date(conn: sqlite3.Connection) -> str | None:
+def _get_latest_cn_industry_fund_flow_date(conn: duckdb.DuckDBPyConnection) -> str | None:
     row = conn.execute("SELECT MAX(date) FROM market_cn_industry_fund_flow_daily").fetchone()
     if not row or not row[0]:
         return None
@@ -5704,28 +5874,52 @@ def _upsert_cn_sentiment_daily(
         total = max(0, int(up) + int(down) + int(flat))
         conn.execute(
             """
-            INSERT INTO market_cn_sentiment_daily(
+            MERGE INTO market_cn_sentiment_daily AS t
+            USING (
+              SELECT
+                ? AS date,
+                ? AS as_of_date,
+                ? AS up_count,
+                ? AS down_count,
+                ? AS flat_count,
+                ? AS total_count,
+                ? AS up_down_ratio,
+                ? AS market_turnover_cny,
+                ? AS market_volume,
+                ? AS yesterday_limitup_premium,
+                ? AS failed_limitup_rate,
+                ? AS risk_mode,
+                ? AS rules_json,
+                ? AS updated_at,
+                ? AS raw_json
+            ) AS s
+            ON t.date = s.date
+            WHEN MATCHED THEN UPDATE SET
+              as_of_date = s.as_of_date,
+              up_count = s.up_count,
+              down_count = s.down_count,
+              flat_count = s.flat_count,
+              total_count = s.total_count,
+              up_down_ratio = s.up_down_ratio,
+              market_turnover_cny = s.market_turnover_cny,
+              market_volume = s.market_volume,
+              yesterday_limitup_premium = s.yesterday_limitup_premium,
+              failed_limitup_rate = s.failed_limitup_rate,
+              risk_mode = s.risk_mode,
+              rules_json = s.rules_json,
+              updated_at = s.updated_at,
+              raw_json = s.raw_json
+            WHEN NOT MATCHED THEN INSERT (
               date, as_of_date, up_count, down_count, flat_count, total_count,
               up_down_ratio, market_turnover_cny, market_volume,
               yesterday_limitup_premium, failed_limitup_rate,
               risk_mode, rules_json, updated_at, raw_json
+            ) VALUES (
+              s.date, s.as_of_date, s.up_count, s.down_count, s.flat_count, s.total_count,
+              s.up_down_ratio, s.market_turnover_cny, s.market_volume,
+              s.yesterday_limitup_premium, s.failed_limitup_rate,
+              s.risk_mode, s.rules_json, s.updated_at, s.raw_json
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(date) DO UPDATE SET
-              as_of_date = excluded.as_of_date,
-              up_count = excluded.up_count,
-              down_count = excluded.down_count,
-              flat_count = excluded.flat_count,
-              total_count = excluded.total_count,
-              up_down_ratio = excluded.up_down_ratio,
-              market_turnover_cny = excluded.market_turnover_cny,
-              market_volume = excluded.market_volume,
-              yesterday_limitup_premium = excluded.yesterday_limitup_premium,
-              failed_limitup_rate = excluded.failed_limitup_rate,
-              risk_mode = excluded.risk_mode,
-              rules_json = excluded.rules_json,
-              updated_at = excluded.updated_at,
-              raw_json = excluded.raw_json
             """,
             (
                 date,
@@ -5862,31 +6056,59 @@ def _upsert_leader_stocks(*, date: str, items: list[dict[str, Any]], ts: str) ->
             rid = str(it.get("id") or uuid.uuid4())
             conn.execute(
                 """
-                INSERT INTO leader_stocks(
+                MERGE INTO leader_stocks AS t
+                USING (
+                  SELECT
+                    ? AS id,
+                    ? AS date,
+                    ? AS symbol,
+                    ? AS market,
+                    ? AS ticker,
+                    ? AS name,
+                    ? AS entry_price,
+                    ? AS score,
+                    ? AS reason,
+                    ? AS why_bullets_json,
+                    ? AS expected_duration_days,
+                    ? AS buy_zone_json,
+                    ? AS triggers_json,
+                    ? AS invalidation,
+                    ? AS target_price_json,
+                    ? AS probability,
+                    ? AS source_signals_json,
+                    ? AS risk_points_json,
+                    ? AS created_at
+                ) AS s
+                ON t.date = s.date AND t.symbol = s.symbol
+                WHEN MATCHED THEN UPDATE SET
+                  id = s.id,
+                  market = s.market,
+                  ticker = s.ticker,
+                  name = s.name,
+                  entry_price = s.entry_price,
+                  score = s.score,
+                  reason = s.reason,
+                  why_bullets_json = s.why_bullets_json,
+                  expected_duration_days = s.expected_duration_days,
+                  buy_zone_json = s.buy_zone_json,
+                  triggers_json = s.triggers_json,
+                  invalidation = s.invalidation,
+                  target_price_json = s.target_price_json,
+                  probability = s.probability,
+                  source_signals_json = s.source_signals_json,
+                  risk_points_json = s.risk_points_json,
+                  created_at = s.created_at
+                WHEN NOT MATCHED THEN INSERT (
                   id, date, symbol, market, ticker, name,
                   entry_price, score, reason,
                   why_bullets_json, expected_duration_days, buy_zone_json, triggers_json, invalidation, target_price_json, probability,
                   source_signals_json, risk_points_json, created_at
+                ) VALUES (
+                  s.id, s.date, s.symbol, s.market, s.ticker, s.name,
+                  s.entry_price, s.score, s.reason,
+                  s.why_bullets_json, s.expected_duration_days, s.buy_zone_json, s.triggers_json, s.invalidation, s.target_price_json, s.probability,
+                  s.source_signals_json, s.risk_points_json, s.created_at
                 )
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(date, symbol) DO UPDATE SET
-                  id = excluded.id,
-                  market = excluded.market,
-                  ticker = excluded.ticker,
-                  name = excluded.name,
-                  entry_price = excluded.entry_price,
-                  score = excluded.score,
-                  reason = excluded.reason,
-                  why_bullets_json = excluded.why_bullets_json,
-                  expected_duration_days = excluded.expected_duration_days,
-                  buy_zone_json = excluded.buy_zone_json,
-                  triggers_json = excluded.triggers_json,
-                  invalidation = excluded.invalidation,
-                  target_price_json = excluded.target_price_json,
-                  probability = excluded.probability,
-                  source_signals_json = excluded.source_signals_json,
-                  risk_points_json = excluded.risk_points_json,
-                  created_at = excluded.created_at
                 """,
                 (
                     rid,
@@ -6033,12 +6255,15 @@ def _upsert_leader_live_score(*, symbol: str, live_score: float, breakdown: dict
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO leader_stock_scores(symbol, live_score, breakdown_json, updated_at)
-            VALUES(?, ?, ?, ?)
-            ON CONFLICT(symbol) DO UPDATE SET
-              live_score = excluded.live_score,
-              breakdown_json = excluded.breakdown_json,
-              updated_at = excluded.updated_at
+            MERGE INTO leader_stock_scores AS t
+            USING (SELECT ? AS symbol, ? AS live_score, ? AS breakdown_json, ? AS updated_at) AS s
+            ON t.symbol = s.symbol
+            WHEN MATCHED THEN UPDATE SET
+              live_score = s.live_score,
+              breakdown_json = s.breakdown_json,
+              updated_at = s.updated_at
+            WHEN NOT MATCHED THEN INSERT (symbol, live_score, breakdown_json, updated_at)
+              VALUES (s.symbol, s.live_score, s.breakdown_json, s.updated_at)
             """,
             (sym, float(live_score), json.dumps(breakdown or {}, ensure_ascii=False), ts),
         )
@@ -6992,7 +7217,7 @@ def import_pingan_broker_screenshots(req: BrokerImportRequest) -> BrokerImportRe
                 """
                 SELECT id, broker, account_id, captured_at, kind, created_at
                 FROM broker_snapshots
-                WHERE broker = ? AND account_id IS ? AND sha256 = ?
+                WHERE broker = ? AND account_id IS NOT DISTINCT FROM ? AND sha256 = ?
                 """,
                 ("pingan", account_id, sha),
             ).fetchone()
@@ -7303,11 +7528,14 @@ def _set_strategy_prompt(account_id: str, prompt: str) -> StrategyAccountPromptR
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO broker_account_prompts(account_id, strategy_prompt, updated_at)
-            VALUES(?, ?, ?)
-            ON CONFLICT(account_id) DO UPDATE SET
-              strategy_prompt = excluded.strategy_prompt,
-              updated_at = excluded.updated_at
+            MERGE INTO broker_account_prompts AS t
+            USING (SELECT ? AS account_id, ? AS strategy_prompt, ? AS updated_at) AS s
+            ON t.account_id = s.account_id
+            WHEN MATCHED THEN UPDATE SET
+              strategy_prompt = s.strategy_prompt,
+              updated_at = s.updated_at
+            WHEN NOT MATCHED THEN INSERT (account_id, strategy_prompt, updated_at)
+              VALUES (s.account_id, s.strategy_prompt, s.updated_at)
             """,
             (account_id, prompt, ts),
         )
@@ -7376,14 +7604,26 @@ def _store_strategy_report(
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO strategy_reports(id, account_id, date, created_at, model, input_snapshot_json, output_json)
-            VALUES(?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(account_id, date) DO UPDATE SET
-              id = excluded.id,
-              created_at = excluded.created_at,
-              model = excluded.model,
-              input_snapshot_json = excluded.input_snapshot_json,
-              output_json = excluded.output_json
+            MERGE INTO strategy_reports AS t
+            USING (
+              SELECT
+                ? AS id,
+                ? AS account_id,
+                ? AS date,
+                ? AS created_at,
+                ? AS model,
+                ? AS input_snapshot_json,
+                ? AS output_json
+            ) AS s
+            ON t.account_id = s.account_id AND t.date = s.date
+            WHEN MATCHED THEN UPDATE SET
+              id = s.id,
+              created_at = s.created_at,
+              model = s.model,
+              input_snapshot_json = s.input_snapshot_json,
+              output_json = s.output_json
+            WHEN NOT MATCHED THEN INSERT (id, account_id, date, created_at, model, input_snapshot_json, output_json)
+              VALUES (s.id, s.account_id, s.date, s.created_at, s.model, s.input_snapshot_json, s.output_json)
             """,
             (
                 report_id,
@@ -11707,7 +11947,7 @@ def _insert_broker_snapshot(
     """
     with _connect() as conn:
         existing = conn.execute(
-            "SELECT id FROM broker_snapshots WHERE broker = ? AND account_id IS ? AND sha256 = ?",
+            "SELECT id FROM broker_snapshots WHERE broker = ? AND account_id IS NOT DISTINCT FROM ? AND sha256 = ?",
             (broker, account_id, sha256),
         ).fetchone()
         if existing is not None:
@@ -11775,7 +12015,7 @@ def _list_broker_snapshots(
             """
             SELECT id, broker, account_id, captured_at, kind, created_at
             FROM broker_snapshots
-            WHERE broker = ? AND account_id IS ?
+            WHERE broker = ? AND account_id IS NOT DISTINCT FROM ?
             ORDER BY captured_at DESC
             LIMIT ?
             """,
@@ -11821,9 +12061,12 @@ def update_system_prompt_preset(
 
 def delete_system_prompt_preset(preset_id: str) -> bool:
     with _connect() as conn:
-        cur = conn.execute("DELETE FROM system_prompts WHERE id = ?", (preset_id,))
+        exists = conn.execute("SELECT 1 FROM system_prompts WHERE id = ? LIMIT 1", (preset_id,)).fetchone()
+        if exists is None:
+            return False
+        conn.execute("DELETE FROM system_prompts WHERE id = ?", (preset_id,))
         conn.commit()
-        return (cur.rowcount or 0) > 0
+        return True
 
 
 def get_active_system_prompt() -> SystemPromptPresetDetail | None:
