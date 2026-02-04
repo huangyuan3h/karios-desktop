@@ -52,6 +52,36 @@ function statusColor(status?: string | null) {
   return 'text-[var(--k-muted)]';
 }
 
+function progressPercent(run?: any | null): number {
+  if (!run) return 0;
+  const steps = Array.isArray(run.steps) ? run.steps : [];
+  if (!steps.length) return 0;
+  let total = 0;
+  let done = 0;
+  for (const s of steps) {
+    const totalSymbols = Number(s.totalSymbols ?? 0);
+    const ok = Number(s.okCount ?? 0);
+    const failed = Number(s.failedCount ?? 0);
+    if (totalSymbols > 0) {
+      total += totalSymbols;
+      done += Math.min(totalSymbols, ok + failed);
+    } else {
+      total += 1;
+      const st = String(s.status || '').toLowerCase();
+      done += ['ok', 'partial', 'failed'].includes(st) ? 1 : 0;
+    }
+  }
+  if (!total) return 0;
+  return Math.min(100, Math.round((done / total) * 100));
+}
+
+function formatSymbols(list?: string[] | null, limit = 20): string {
+  if (!Array.isArray(list) || list.length === 0) return '—';
+  const head = list.slice(0, limit);
+  const rest = list.length - head.length;
+  return rest > 0 ? `${head.join(', ')} … +${rest}` : head.join(', ');
+}
+
 export function SyncPage() {
   const [lastRun, setLastRun] = React.useState<any | null>(null);
   const [runs, setRuns] = React.useState<any[]>([]);
@@ -106,6 +136,7 @@ export function SyncPage() {
   }
 
   const steps = Array.isArray(lastRun?.steps) ? lastRun.steps : [];
+  const progress = progressPercent(lastRun);
 
   return (
     <div className="space-y-4 p-4">
@@ -135,6 +166,18 @@ export function SyncPage() {
         <div className="mb-2 text-sm font-medium">Latest status</div>
         {lastRun ? (
           <div className="space-y-3 text-sm">
+            <div>
+              <div className="mb-1 flex items-center justify-between text-xs text-[var(--k-muted)]">
+                <span>Progress</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-[var(--k-border)]">
+                <div
+                  className="h-2 rounded-full bg-[var(--k-accent)] transition-[width]"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <div>
                 <div className="text-xs text-[var(--k-muted)]">Status</div>
@@ -183,6 +226,7 @@ export function SyncPage() {
                       <th className="px-3 py-2">Duration</th>
                       <th className="px-3 py-2">OK</th>
                       <th className="px-3 py-2">Failed</th>
+                      <th className="px-3 py-2">Symbols</th>
                       <th className="px-3 py-2">Error</th>
                     </tr>
                   </thead>
@@ -195,6 +239,23 @@ export function SyncPage() {
                         <td className="px-3 py-2">{fmtDuration(s.durationMs)}</td>
                         <td className="px-3 py-2">{s.okCount ?? '—'}</td>
                         <td className="px-3 py-2">{s.failedCount ?? '—'}</td>
+                        <td className="px-3 py-2">
+                          <details>
+                            <summary className="cursor-pointer text-[var(--k-muted)]">
+                              {s.totalSymbols ?? '—'} total
+                            </summary>
+                            <div className="mt-2 space-y-1 text-[11px]">
+                              <div>
+                                <span className="text-[var(--k-muted)]">OK:</span>{' '}
+                                {formatSymbols(s.symbolsOk)}
+                              </div>
+                              <div>
+                                <span className="text-[var(--k-muted)]">Failed:</span>{' '}
+                                {formatSymbols(s.symbolsFailed)}
+                              </div>
+                            </div>
+                          </details>
+                        </td>
                         <td className="px-3 py-2 text-[var(--k-muted)]">{s.error || '—'}</td>
                       </tr>
                     ))}

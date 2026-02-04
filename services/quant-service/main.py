@@ -968,6 +968,9 @@ class SyncRunStepStatus(BaseModel):
     okCount: int | None = None
     failedCount: int | None = None
     error: str | None = None
+    totalSymbols: int | None = None
+    symbolsOk: list[str] | None = None
+    symbolsFailed: list[str] | None = None
 
 
 class SyncRunStatus(BaseModel):
@@ -1207,6 +1210,78 @@ def _sync_step_run(
         return False, None, None, {"error": err}, err
 
 
+def _load_resume_step_info(
+    *,
+    trade_date: str,
+    kind: str = "eod",
+) -> tuple[str | None, dict[str, dict[str, Any]]]:
+    """
+    Load latest partial/failed run step details for the same trade_date.
+    Returns (run_id, step_detail_map).
+    """
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id
+            FROM sync_runs
+            WHERE kind = ? AND trade_date = ? AND status IN ('partial', 'failed')
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+            (kind, trade_date),
+        ).fetchone()
+        if row is None:
+            return None, {}
+        run_id = str(row[0])
+        rows = conn.execute(
+            """
+            SELECT step, detail_json
+            FROM sync_run_steps
+            WHERE run_id = ?
+            """,
+            (run_id,),
+        ).fetchall()
+    out: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        step = str(r[0] or "")
+        try:
+            detail = json.loads(str(r[1]) or "{}")
+            out[step] = detail if isinstance(detail, dict) else {}
+        except Exception:
+            out[step] = {}
+    return run_id, out
+
+
+def _resume_symbols_for_step(
+    *,
+    step: str,
+    symbols_all: list[str],
+    resume_info: dict[str, dict[str, Any]] | None,
+) -> list[str]:
+    if not resume_info or step not in resume_info:
+        return symbols_all
+    detail = resume_info.get(step) or {}
+    failed = detail.get("failedSymbols")
+    ok = detail.get("okSymbols")
+    if isinstance(failed, list) and failed:
+        failed2 = [str(s).strip().upper() for s in failed if str(s).strip()]
+        return [s for s in symbols_all if s in set(failed2)]
+    if isinstance(ok, list) and ok:
+        ok2 = {str(s).strip().upper() for s in ok if str(s).strip()}
+        return [s for s in symbols_all if s not in ok2]
+    return symbols_all
+
+
+def _filter_targets_by_symbols(
+    targets: list[dict[str, Any]],
+    symbols: list[str],
+) -> list[dict[str, Any]]:
+    want = {str(s).strip().upper() for s in symbols if str(s).strip()}
+    if not want:
+        return []
+    return [it for it in targets if str(it.get("symbol") or "").strip().upper() in want]
+
+
 def _collect_eod_targets(*, override_symbols: list[str] | None, limit: int = 200) -> list[dict[str, Any]]:
     """
     Build target symbol list for EOD sync.
@@ -1358,18 +1433,21 @@ def _batch_fetch_cn(
     *,
     workers: int,
     fetch_one,
-) -> tuple[int, int, list[tuple[str, list[dict[str, Any]]]]]:
+) -> tuple[int, int, list[tuple[str, list[dict[str, Any]]]], list[str], list[str], int]:
     """
     Fetch per-ticker daily data in parallel, without sharing DB connections across threads.
-    Returns (ok, failed, results) where results contains (symbol, items).
+    Returns (ok, failed, results, ok_symbols, failed_symbols, total_symbols) where
+    results contains (symbol, items).
     """
     cn = [it for it in items if str(it.get("market") or "").upper() == "CN"]
     cn = [it for it in cn if str(it.get("ticker") or "").strip()]
     if not cn:
-        return 0, 0, []
+        return 0, 0, [], [], [], 0
     ok = 0
     failed = 0
     results: list[tuple[str, list[dict[str, Any]]]] = []
+    ok_symbols: list[str] = []
+    failed_symbols: list[str] = []
     workers2 = max(1, min(int(workers), 16))
     with ThreadPoolExecutor(max_workers=workers2) as pool:
         futs = {}
@@ -1384,11 +1462,15 @@ def _batch_fetch_cn(
                 if isinstance(items2, list):
                     results.append((sym, items2))
                     ok += 1
+                    ok_symbols.append(sym)
                 else:
                     failed += 1
+                    failed_symbols.append(sym)
             except Exception:
                 failed += 1
-    return ok, failed, results
+                failed_symbols.append(sym)
+    total = len({str(it.get("symbol") or "").strip().upper() for it in cn if str(it.get("symbol") or "").strip()})
+    return ok, failed, results, ok_symbols, failed_symbols, total
 
 
 def _run_eod_sync_pipeline(
@@ -1436,10 +1518,16 @@ def _run_eod_sync_pipeline(
     try:
         targets = _collect_eod_targets(override_symbols=override_symbols, limit=200)
         _ensure_market_stocks_basic_bulk(targets)
-        detail["targetSymbols"] = [str(x.get("symbol") or "") for x in targets if str(x.get("symbol") or "").strip()]
+        all_symbols = [str(x.get("symbol") or "").strip().upper() for x in targets if str(x.get("symbol") or "").strip()]
+        detail["targetSymbols"] = all_symbols
+
+        resume_run_id, resume_info = _load_resume_step_info(trade_date=trade_date, kind="eod")
+        if resume_run_id:
+            detail["resumeFromRunId"] = resume_run_id
 
         def step_quotes():
-            syms = {str(x.get("symbol") or "").strip().upper() for x in targets}
+            syms_all = [str(x.get("symbol") or "").strip().upper() for x in targets if str(x.get("symbol") or "").strip()]
+            syms = _resume_symbols_for_step(step="quotes", symbols_all=syms_all, resume_info=resume_info)
             need_cn = any(s.startswith("CN:") for s in syms)
             need_hk = any(s.startswith("HK:") for s in syms)
             ts = now_iso()
@@ -1448,55 +1536,161 @@ def _run_eod_sync_pipeline(
             spot_map = {str(s.symbol).strip().upper(): s for s in (cn_rows + hk_rows) if getattr(s, "symbol", "")}
             ok = 0
             skipped = 0
+            ok_symbols: list[str] = []
+            failed_symbols: list[str] = []
             with _connect() as conn:
                 for sym in sorted(syms):
                     s = spot_map.get(sym)
                     if s is None:
                         skipped += 1
+                        failed_symbols.append(sym)
                         continue
                     _upsert_market_stock(conn, s, ts)
                     _upsert_market_quote(conn, s, ts)
                     ok += 1
+                    ok_symbols.append(sym)
                 conn.commit()
-            return ok, skipped, {"updated": ok, "skipped": skipped}
+            return ok, skipped, {
+                "totalSymbols": len(syms),
+                "okSymbols": ok_symbols,
+                "failedSymbols": failed_symbols,
+                "updated": ok,
+                "skipped": skipped,
+            }
 
         def step_bars():
-            syms = [str(x.get("symbol") or "").strip().upper() for x in targets]
+            syms_all = [str(x.get("symbol") or "").strip().upper() for x in targets if str(x.get("symbol") or "").strip()]
+            syms = _resume_symbols_for_step(step="bars", symbols_all=syms_all, resume_info=resume_info)
             syms = [s for s in syms if s][:200]
             if not syms:
-                return 0, 0, {"refreshed": 0, "failed": 0}
-            body = BarsRefreshRequest(symbols=syms)
-            out = market_stocks_bars_refresh(body)
-            return int(out.refreshed), int(out.failed), {"refreshed": int(out.refreshed), "failed": int(out.failed)}
+                return 0, 0, {"refreshed": 0, "failed": 0, "totalSymbols": 0, "okSymbols": [], "failedSymbols": []}
+            refreshed = 0
+            failed = 0
+            ok_symbols: list[str] = []
+            failed_symbols: list[str] = []
+            def _run_batch(batch_syms: list[str]) -> None:
+                nonlocal refreshed, failed, ok_symbols, failed_symbols
+                workers = 4
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    futures = {pool.submit(market_stock_bars, sym, days=120, force=True): sym for sym in batch_syms}
+                    for fut in as_completed(futures):
+                        sym = futures[fut]
+                        try:
+                            fut.result()
+                            refreshed += 1
+                            ok_symbols.append(sym)
+                        except Exception:
+                            failed += 1
+                            failed_symbols.append(sym)
+
+            _run_batch(syms)
+            if failed_symbols:
+                retry_syms = list(dict.fromkeys(failed_symbols))
+                failed_symbols = []
+                _run_batch(retry_syms)
+            ok_symbols = list(dict.fromkeys(ok_symbols))
+            failed_symbols = list(dict.fromkeys(failed_symbols))
+            refreshed = len(ok_symbols)
+            failed = len(failed_symbols)
+            return refreshed, failed, {
+                "totalSymbols": len(syms),
+                "okSymbols": ok_symbols,
+                "failedSymbols": failed_symbols,
+                "refreshed": refreshed,
+                "failed": failed,
+            }
 
         def step_chips():
             def fetch_one(sym: str, ticker: str):
                 return _call_with_retry(lambda: fetch_cn_a_chip_summary(ticker, days=60), tries=3)
 
-            ok, failed, results = _batch_fetch_cn(targets, workers=6, fetch_one=fetch_one)
+            cn_targets = [it for it in targets if str(it.get("market") or "").upper() == "CN"]
+            cn_symbols = [str(it.get("symbol") or "").strip().upper() for it in cn_targets if str(it.get("symbol") or "").strip()]
+            cn_symbols = _resume_symbols_for_step(step="chips", symbols_all=cn_symbols, resume_info=resume_info)
+            cn_targets2 = [it for it in cn_targets if str(it.get("symbol") or "").strip().upper() in set(cn_symbols)]
+            ok, failed, results, ok_symbols, failed_symbols, total_symbols = _batch_fetch_cn(
+                cn_targets2,
+                workers=6,
+                fetch_one=fetch_one,
+            )
+            if failed_symbols:
+                retry_targets = _filter_targets_by_symbols(cn_targets2, failed_symbols)
+                ok2, failed2, results2, ok_symbols2, failed_symbols2, _total2 = _batch_fetch_cn(
+                    retry_targets,
+                    workers=4,
+                    fetch_one=fetch_one,
+                )
+                results.extend(results2)
+                ok_symbols.extend(ok_symbols2)
+                failed_symbols = failed_symbols2
+            ok_symbols = list(dict.fromkeys(ok_symbols))
+            failed_symbols = list(dict.fromkeys(failed_symbols))
+            ok = len(ok_symbols)
+            failed = len(failed_symbols)
             ts = now_iso()
             with _connect() as conn:
                 for sym, items2 in results:
                     _upsert_market_chips(conn, sym, items2, ts)
                 conn.commit()
-            return ok, failed, {"updated": ok, "failed": failed}
+            return ok, failed, {
+                "totalSymbols": total_symbols,
+                "okSymbols": ok_symbols,
+                "failedSymbols": failed_symbols,
+                "updated": ok,
+                "failed": failed,
+            }
 
         def step_fund_flow():
             def fetch_one(sym: str, ticker: str):
                 return _call_with_retry(lambda: fetch_cn_a_fund_flow(ticker, days=60), tries=3)
 
-            ok, failed, results = _batch_fetch_cn(targets, workers=6, fetch_one=fetch_one)
+            cn_targets = [it for it in targets if str(it.get("market") or "").upper() == "CN"]
+            cn_symbols = [str(it.get("symbol") or "").strip().upper() for it in cn_targets if str(it.get("symbol") or "").strip()]
+            cn_symbols = _resume_symbols_for_step(step="fund_flow", symbols_all=cn_symbols, resume_info=resume_info)
+            cn_targets2 = [it for it in cn_targets if str(it.get("symbol") or "").strip().upper() in set(cn_symbols)]
+            ok, failed, results, ok_symbols, failed_symbols, total_symbols = _batch_fetch_cn(
+                cn_targets2,
+                workers=6,
+                fetch_one=fetch_one,
+            )
+            if failed_symbols:
+                retry_targets = _filter_targets_by_symbols(cn_targets2, failed_symbols)
+                ok2, failed2, results2, ok_symbols2, failed_symbols2, _total2 = _batch_fetch_cn(
+                    retry_targets,
+                    workers=4,
+                    fetch_one=fetch_one,
+                )
+                results.extend(results2)
+                ok_symbols.extend(ok_symbols2)
+                failed_symbols = failed_symbols2
+            ok_symbols = list(dict.fromkeys(ok_symbols))
+            failed_symbols = list(dict.fromkeys(failed_symbols))
+            ok = len(ok_symbols)
+            failed = len(failed_symbols)
             ts = now_iso()
             with _connect() as conn:
                 for sym, items2 in results:
                     _upsert_market_fund_flow(conn, sym, items2, ts)
                 conn.commit()
-            return ok, failed, {"updated": ok, "failed": failed}
+            return ok, failed, {
+                "totalSymbols": total_symbols,
+                "okSymbols": ok_symbols,
+                "failedSymbols": failed_symbols,
+                "updated": ok,
+                "failed": failed,
+            }
 
         def step_industry_flow():
             req = MarketCnIndustryFundFlowSyncRequest(date=trade_date, days=10, topN=5, force=bool(force))
             out = market_cn_industry_fund_flow_sync(req)
-            return 1, 0, {"ok": bool(out.ok), "rowsUpserted": int(out.rowsUpserted), "histRowsUpserted": int(out.histRowsUpserted)}
+            return 1, 0, {
+                "totalSymbols": 1,
+                "okSymbols": ["industry_fund_flow"],
+                "failedSymbols": [],
+                "ok": bool(out.ok),
+                "rowsUpserted": int(out.rowsUpserted),
+                "histRowsUpserted": int(out.histRowsUpserted),
+            }
 
         for step_name, fn in [
             ("quotes", step_quotes),
@@ -1593,26 +1787,37 @@ def sync_status() -> SyncStatusResponse:
             detail2 = {}
         steps_rows = conn.execute(
             """
-            SELECT step, status, started_at, ended_at, duration_ms, ok_count, failed_count, error
+            SELECT step, status, started_at, ended_at, duration_ms, ok_count, failed_count, error, detail_json
             FROM sync_run_steps
             WHERE run_id = ?
             ORDER BY started_at ASC
             """,
             (run_id,),
         ).fetchall()
-    steps = [
-        SyncRunStepStatus(
-            step=str(r[0]),
-            status=str(r[1]),
-            startedAt=str(r[2]),
-            endedAt=str(r[3]) if r[3] is not None else None,
-            durationMs=int(r[4]) if r[4] is not None else None,
-            okCount=int(r[5]) if r[5] is not None else None,
-            failedCount=int(r[6]) if r[6] is not None else None,
-            error=str(r[7]) if r[7] is not None else None,
+    steps: list[SyncRunStepStatus] = []
+    for r in steps_rows:
+        step_name = str(r[0])
+        detail: dict[str, Any] = {}
+        try:
+            raw = json.loads(str(r[8]) or "{}")
+            detail = raw if isinstance(raw, dict) else {}
+        except Exception:
+            detail = {}
+        steps.append(
+            SyncRunStepStatus(
+                step=step_name,
+                status=str(r[1]),
+                startedAt=str(r[2]),
+                endedAt=str(r[3]) if r[3] is not None else None,
+                durationMs=int(r[4]) if r[4] is not None else None,
+                okCount=int(r[5]) if r[5] is not None else None,
+                failedCount=int(r[6]) if r[6] is not None else None,
+                error=str(r[7]) if r[7] is not None else None,
+                totalSymbols=int(detail.get("totalSymbols")) if isinstance(detail.get("totalSymbols"), int) else None,
+                symbolsOk=detail.get("okSymbols") if isinstance(detail.get("okSymbols"), list) else None,
+                symbolsFailed=detail.get("failedSymbols") if isinstance(detail.get("failedSymbols"), list) else None,
+            ),
         )
-        for r in steps_rows
-    ]
     return SyncStatusResponse(
         ok=True,
         lastRun=SyncRunStatus(
