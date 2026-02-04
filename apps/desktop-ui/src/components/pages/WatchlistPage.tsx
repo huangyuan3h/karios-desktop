@@ -125,6 +125,12 @@ type TvScreenerSyncResponse = {
   rowCount: number;
 };
 
+type SyncCheckRow = {
+  symbol: string;
+  result: 'added' | 'skipped';
+  reason: string;
+};
+
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
@@ -195,6 +201,19 @@ function chunk<T>(arr: T[], n: number): T[][] {
   return out;
 }
 
+function isCnTradingTime(now = new Date()): boolean {
+  const day = now.getDay(); // 0..6, Sun=0
+  if (day === 0 || day === 6) return false;
+  const hh = now.getHours();
+  const mm = now.getMinutes();
+  const hhmm = hh * 60 + mm;
+  const amStart = 9 * 60 + 30;
+  const amEnd = 11 * 60 + 30;
+  const pmStart = 13 * 60;
+  const pmEnd = 15 * 60;
+  return (hhmm >= amStart && hhmm <= amEnd) || (hhmm >= pmStart && hhmm <= pmEnd);
+}
+
 function fmtPrice(v: number | null | undefined): string {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
   return v.toFixed(2);
@@ -250,6 +269,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     null,
   );
   const [syncLogs, setSyncLogs] = React.useState<string[]>([]);
+  const [syncReport, setSyncReport] = React.useState<SyncCheckRow[]>([]);
+  const [syncReportOpen, setSyncReportOpen] = React.useState(false);
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
   const [tooltip, setTooltip] = React.useState<{
@@ -395,7 +416,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   );
 
   React.useEffect(() => {
-    void refreshTrend('items_changed');
+    if (isCnTradingTime()) {
+      void refreshTrend('items_changed');
+    }
   }, [refreshTrend]);
 
   React.useEffect(() => {
@@ -403,7 +426,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     if (!items.length) return;
     const id = window.setInterval(
       () => {
-        // Auto refresh only recomputes from cache; manual refresh can force network sync.
+        // Auto refresh only during trading time; uses cache only.
+        if (!isCnTradingTime()) return;
         void refreshTrend('timer', { forceMarket: false });
       },
       10 * 60 * 1000,
@@ -449,6 +473,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     setSyncStage('Loading enabled screeners');
     setSyncProgress(null);
     setSyncLogs([]);
+    setSyncReport([]);
+    setSyncReportOpen(false);
 
     // UI-only helpers: show progress & last few steps.
     const pushLog = (line: string) => {
@@ -527,6 +553,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         setSyncMsg('No symbols found in latest screener snapshots.');
         return;
       }
+      const reportMap = new Map<string, SyncCheckRow>();
+      for (const sym of uniq) {
+        reportMap.set(sym, { symbol: sym, result: 'skipped', reason: 'Pending' });
+      }
 
       setStep('TrendOK prefilter (cache)', 0, uniq.length);
       // 3) Pre-filter by cached TrendOK (fast, no external fetch).
@@ -545,6 +575,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         });
       }
       const okUniqCached = Array.from(new Set(okSymsCached));
+      const okCachedSet = new Set(okUniqCached);
+      for (const sym of uniq) {
+        if (!okCachedSet.has(sym)) {
+          reportMap.set(sym, { symbol: sym, result: 'skipped', reason: 'TrendOK cached = false' });
+        }
+      }
 
       setStep('Refreshing latest daily bars', 0, okUniqCached.length);
       // 4) Force-refresh daily bars from network for the cached-OK subset, then re-check TrendOK to make it "live".
@@ -582,12 +618,26 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         });
       }
       const okUniq = Array.from(new Set(okSymsLive));
+      const okLiveSet = new Set(okUniq);
+      for (const sym of okUniqCached) {
+        if (!okLiveSet.has(sym)) {
+          reportMap.set(sym, { symbol: sym, result: 'skipped', reason: 'TrendOK live = false' });
+        }
+      }
 
       const existing = new Set(items.map((x) => x.symbol));
       const now = new Date().toISOString();
       const added: WatchlistItem[] = okUniq
         .filter((sym) => !existing.has(sym))
         .map((sym) => ({ symbol: sym, name: null, addedAt: now, color: '#ffffff' }));
+      for (const sym of okUniq) {
+        if (existing.has(sym)) {
+          reportMap.set(sym, { symbol: sym, result: 'skipped', reason: 'Already in watchlist' });
+        } else {
+          reportMap.set(sym, { symbol: sym, result: 'added', reason: 'TrendOK live = true' });
+        }
+      }
+      setSyncReport(Array.from(reportMap.values()));
 
       if (!added.length) {
         setSyncMsg(
@@ -1040,7 +1090,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           </div>
           <div className="mt-1 text-xs text-[var(--k-muted)]">
             {trendUpdatedAt
-              ? `Scores updated at ${new Date(trendUpdatedAt).toLocaleString()} (auto refresh: 10 min)`
+              ? `Scores updated at ${new Date(trendUpdatedAt).toLocaleString()} (auto refresh: trading time only)`
               : 'Scores not loaded yet.'}
           </div>
           {syncBusy && syncStage ? (
@@ -1077,6 +1127,45 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             </div>
           ) : null}
           {syncMsg ? <div className="mt-2 text-xs text-[var(--k-muted)]">{syncMsg}</div> : null}
+          {syncReport.length ? (
+            <div className="mt-3">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setSyncReportOpen((v) => !v)}
+              >
+                {syncReportOpen ? 'Hide sync report' : 'Show sync report'}
+              </Button>
+              {syncReportOpen ? (
+                <div className="mt-2 overflow-auto rounded border border-[var(--k-border)]">
+                  <table className="w-full border-collapse text-xs">
+                    <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                      <tr className="text-left">
+                        <th className="px-3 py-2">Symbol</th>
+                        <th className="px-3 py-2">Result</th>
+                        <th className="px-3 py-2">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {syncReport.map((r) => (
+                        <tr key={r.symbol} className="border-t border-[var(--k-border)]">
+                          <td className="px-3 py-2">{r.symbol}</td>
+                          <td className="px-3 py-2">
+                            {r.result === 'added' ? (
+                              <span className="text-emerald-600">Added</span>
+                            ) : (
+                              <span className="text-[var(--k-muted)]">Skipped</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-[var(--k-muted)]">{r.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
         <div className="flex items-center gap-2">
