@@ -1227,6 +1227,26 @@ def _sync_prune_runs(*, keep_run_id: str, kind: str = "eod") -> None:
         conn.commit()
 
 
+def _run_with_timeout(fn, *, timeout_s: float) -> Any:
+    result: dict[str, Any] = {}
+    err: list[Exception] = []
+
+    def _worker() -> None:
+        try:
+            result["value"] = fn()
+        except Exception as e:
+            err.append(e)
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(timeout_s)
+    if t.is_alive():
+        raise TimeoutError(f"Timeout after {timeout_s:.0f}s")
+    if err:
+        raise err[0]
+    return result.get("value")
+
+
 def _sync_run_update(
     *,
     run_id: str,
@@ -8343,7 +8363,17 @@ def sync_tv_screener(screener_id: str) -> TvScreenerSyncResponse:
 
     cdp_url = f"http://{TV_CDP_HOST}:{port}"
     try:
-        result = capture_screener_over_cdp_sync(cdp_url=cdp_url, url=str(screener["url"]))
+        timeout_ms = int(os.getenv("TV_SCREENER_TIMEOUT_MS", "60000") or "60000")
+        result = _run_with_timeout(
+            lambda: capture_screener_over_cdp_sync(
+                cdp_url=cdp_url,
+                url=str(screener["url"]),
+                timeout_ms=timeout_ms,
+            ),
+            timeout_s=max(5.0, float(timeout_ms) / 1000.0 + 5.0),
+        )
+    except TimeoutError as e:
+        raise HTTPException(status_code=504, detail=f"Screener capture timeout: {e}") from e
     except RuntimeError as e:
         msg = str(e)
         if "Cannot locate screener grid/table" in msg:

@@ -29,6 +29,7 @@ type WatchlistItem = {
 const STORAGE_KEY = 'karios.watchlist.v1';
 const TREND_CACHE_KEY = 'karios.watchlist.trend.v1';
 const TREND_UPDATED_AT_KEY = 'karios.watchlist.trendUpdatedAt.v1';
+const BARS_SYNC_AT_KEY = 'karios.watchlist.barsSyncAt.v1';
 
 const FLAG_COLORS: Array<{ label: string; hex: string }> = [
   { label: 'White', hex: '#ffffff' },
@@ -151,6 +152,33 @@ async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
   return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
+async function apiPostJsonWithTimeout<T>(
+  path: string,
+  body?: unknown,
+  timeoutMs = 45_000,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${QUANT_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: body != null ? { 'content-type': 'application/json' } : undefined,
+      body: body != null ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    const txt = await res.text().catch(() => '');
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+    return txt ? (JSON.parse(txt) as T) : ({} as T);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error(`Timeout after ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw e;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 function normalizeSymbolInput(input: string): { symbol: string } | { error: string } {
   const raw = (input || '').trim().toUpperCase();
   if (!raw) return { error: 'Empty input' };
@@ -214,6 +242,37 @@ function isCnTradingTime(now = new Date()): boolean {
   const pmStart = 13 * 60;
   const pmEnd = 15 * 60;
   return (hhmm >= amStart && hhmm <= amEnd) || (hhmm >= pmStart && hhmm <= pmEnd);
+}
+
+function isAfterHour(now = new Date(), hour = 16): boolean {
+  return now.getHours() >= hour;
+}
+
+function isRecent(ts: string | null | undefined, ms: number): boolean {
+  if (!ts) return false;
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return false;
+  return Date.now() - d.getTime() <= ms;
+}
+
+function trendFailReasons(t: TrendOkResult | undefined | null): string[] {
+  if (!t?.checks) return [];
+  const c = t.checks;
+  const reasons: string[] = [];
+  if (c.emaOrder === false) reasons.push('EMA order');
+  if (c.macdPositive === false) reasons.push('MACD positive');
+  if (c.macdHistExpanding === false) reasons.push('MACD expanding');
+  if (c.closeNear20dHigh === false) reasons.push('Close near 20D high');
+  if (c.rsiInRange === false) reasons.push('RSI range');
+  if (c.volumeSurge === false) reasons.push('Volume surge');
+  return reasons;
+}
+
+function shouldUseCachedSnapshot(capturedAt?: string | null): boolean {
+  if (!capturedAt) return false;
+  if (isCnTradingTime()) return false;
+  // Non-trading time: accept recent snapshot within 12h.
+  return isRecent(capturedAt, 12 * 60 * 60 * 1000);
 }
 
 function fmtPrice(v: number | null | undefined): string {
@@ -483,6 +542,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   async function onSyncFromScreener() {
     setError(null);
     setSyncMsg(null);
+    if (!isCnTradingTime() && isAfterHour()) {
+      setSyncMsg('Skipped: non-trading day after 16:00.');
+      return;
+    }
     setSyncBusy(true);
     setSyncStage('Loading enabled screeners');
     setSyncProgress(null);
@@ -510,20 +573,43 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         return;
       }
 
+      const latestById = new Map<string, TvSnapshotSummary | null>();
+      try {
+        const latestRows = await Promise.all(
+          enabled.map(async (sc) => {
+            const list = await apiGetJson<{ items: TvSnapshotSummary[] }>(
+              `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/snapshots?limit=1`,
+            );
+            return [sc.id, list.items?.[0] ?? null] as const;
+          }),
+        );
+        for (const [sid, row] of latestRows) latestById.set(sid, row);
+      } catch {
+        // If pre-check fails, fall back to capture per screener.
+      }
+
+      let screenerFailures = 0;
       setStep('Capturing TradingView snapshots', 0, enabled.length);
       // 1) Capture a fresh snapshot from each enabled screener (best-effort; sequential to avoid CDP conflicts).
       const freshSnapshotIds: string[] = [];
-      let screenerFailures = 0;
       for (let i = 0; i < enabled.length; i++) {
         const sc = enabled[i]!;
         setSyncProgress({ cur: i + 1, total: enabled.length });
+        const latest = latestById.get(sc.id) ?? null;
+        if (latest?.capturedAt && shouldUseCachedSnapshot(latest.capturedAt)) {
+          pushLog(`Using cached snapshot: ${sc.name || sc.id}`);
+          continue;
+        }
         try {
-          const r = await apiPostJson<TvScreenerSyncResponse>(
+          pushLog(`Capturing ${sc.name || sc.id}...`);
+          const r = await apiPostJsonWithTimeout<TvScreenerSyncResponse>(
             `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/sync`,
           );
           if (r?.snapshotId) freshSnapshotIds.push(String(r.snapshotId));
+          pushLog(`Captured ${sc.name || sc.id} (${r?.rowCount ?? 0} rows)`);
         } catch {
           screenerFailures += 1;
+          pushLog(`Capture failed: ${sc.name || sc.id}`);
         }
       }
 
@@ -537,10 +623,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           // Prefer the newest snapshot for this screener.
           let snapId: string | null = null;
           // If we captured fresh snapshots, pick the newest one from list (simple: query latest).
-          const list = await apiGetJson<{ items: TvSnapshotSummary[] }>(
-            `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/snapshots?limit=1`,
-          );
-          const latest = list.items?.[0];
+          const latest = latestById.get(sc.id) ?? null;
           if (latest?.id) snapId = String(latest.id);
           if (!snapId) continue;
           const d = await apiGetJson<TvSnapshotDetail>(
@@ -575,13 +658,16 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       setStep('TrendOK prefilter (cache)', 0, uniq.length);
       // 3) Pre-filter by cached TrendOK (fast, no external fetch).
       const okSymsCached: string[] = [];
+      const cachedMap = new Map<string, TrendOkResult>();
       for (const part of chunk(uniq, 200)) {
         const sp = new URLSearchParams();
         sp.set('refresh', 'false');
         for (const s2 of part) sp.append('symbols', s2);
         const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
         for (const rr of Array.isArray(rows) ? rows : []) {
-          if (rr && rr.symbol && rr.trendOk === true) okSymsCached.push(rr.symbol);
+          if (!rr || !rr.symbol) continue;
+          cachedMap.set(rr.symbol, rr);
+          if (rr.trendOk === true) okSymsCached.push(rr.symbol);
         }
         setSyncProgress((p) => {
           const prev = p?.cur ?? 0;
@@ -592,20 +678,47 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       const okCachedSet = new Set(okUniqCached);
       for (const sym of uniq) {
         if (!okCachedSet.has(sym)) {
-          reportMap.set(sym, { symbol: sym, result: 'skipped', reason: 'TrendOK cached = false' });
+          const rr = cachedMap.get(sym);
+          const reasons = trendFailReasons(rr);
+          reportMap.set(sym, {
+            symbol: sym,
+            result: 'skipped',
+            reason: reasons.length ? `Cached fail: ${reasons.join(', ')}` : 'Cached fail',
+          });
         }
       }
+      // Mark candidates that will enter bars refresh as pending.
+      for (const sym of okUniqCached) {
+        if (!reportMap.has(sym) || reportMap.get(sym)?.reason === 'Pending') {
+          reportMap.set(sym, { symbol: sym, result: 'skipped', reason: 'Refreshing bars (pending)' });
+        }
+      }
+      setSyncReport(Array.from(reportMap.values()));
 
       setStep('Refreshing latest daily bars', 0, okUniqCached.length);
       // 4) Force-refresh daily bars from network for the cached-OK subset, then re-check TrendOK to make it "live".
       let barFailures = 0;
       if (okUniqCached.length) {
         try {
-          const r = await apiPostJson<{ refreshed: number; failed: number }>(
-            '/market/stocks/bars/refresh',
-            { symbols: okUniqCached },
-          );
-          barFailures = r?.failed ?? 0;
+          const lastBarsSyncAt = loadJson<string | null>(BARS_SYNC_AT_KEY, null);
+          const canReuseDb =
+            !isCnTradingTime() &&
+            isRecent(lastBarsSyncAt, 12 * 60 * 60 * 1000) &&
+            okUniqCached.length > 0;
+          if (canReuseDb) {
+            pushLog('Bars refresh skipped (recent DB cache).');
+            barFailures = 0;
+          } else {
+            const r = await apiPostJsonWithTimeout<{ refreshed: number; failed: number }>(
+              '/market/stocks/bars/refresh',
+              { symbols: okUniqCached },
+              45_000,
+            );
+            barFailures = r?.failed ?? 0;
+            if (barFailures === 0) {
+              saveJson(BARS_SYNC_AT_KEY, new Date().toISOString());
+            }
+          }
         } catch {
           barFailures = okUniqCached.length;
         } finally {
@@ -635,7 +748,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       const okLiveSet = new Set(okUniq);
       for (const sym of okUniqCached) {
         if (!okLiveSet.has(sym)) {
-          reportMap.set(sym, { symbol: sym, result: 'skipped', reason: 'TrendOK live = false' });
+          reportMap.set(sym, { symbol: sym, result: 'skipped', reason: 'Live fail' });
         }
       }
 

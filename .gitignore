@@ -40,3 +40,4 @@ src-tauri/target/
 .DS_Store
 
 *.duckdb
+*.duckdb*
