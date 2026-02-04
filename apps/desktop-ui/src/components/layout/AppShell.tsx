@@ -17,6 +17,7 @@ import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
 import { StrategyPage } from '@/components/pages/StrategyPage';
 import { StockPage } from '@/components/pages/StockPage';
+import { SyncPage } from '@/components/pages/SyncPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
@@ -130,6 +131,8 @@ export function AppShell() {
                 ? 'Screener'
               : activePage === 'settings'
                 ? 'Settings'
+              : activePage === 'sync'
+                ? 'Sync'
                 : activePage}
           </div>
 
@@ -224,6 +227,8 @@ export function AppShell() {
               />
             ) : activePage === 'screener' ? (
               <ScreenerPage />
+            ) : activePage === 'sync' ? (
+              <SyncPage />
             ) : (
               <DashboardPage
                 onNavigate={(id) => setActivePage(id)}

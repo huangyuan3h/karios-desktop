@@ -23,7 +23,9 @@ from typing import Annotated, Any, cast
 from zoneinfo import ZoneInfo
 
 import duckdb
-from fastapi import FastAPI, HTTPException, Query
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
@@ -84,6 +86,22 @@ _schema_lock = threading.Lock()
 _schema_initialized_paths: set[str] = set()
 
 
+class DbLockedError(RuntimeError):
+    pass
+
+
+@app.exception_handler(DbLockedError)
+def _handle_db_locked(_request: Request, exc: DbLockedError) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={
+            "ok": False,
+            "error": "Database is locked by another process. Close DBeaver or open the DB in read-only mode.",
+            "detail": str(exc),
+        },
+    )
+
+
 def _init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(
         """
@@ -128,6 +146,44 @@ def _init_schema(conn: duckdb.DuckDBPyConnection) -> None:
         )
         """,
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sync_runs (
+          id TEXT PRIMARY KEY,
+          kind TEXT NOT NULL,
+          trade_date TEXT NOT NULL,
+          status TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          ended_at TEXT,
+          duration_ms INTEGER,
+          target_symbols INTEGER NOT NULL DEFAULT 0,
+          ok_steps INTEGER NOT NULL DEFAULT 0,
+          failed_steps INTEGER NOT NULL DEFAULT 0,
+          error TEXT,
+          detail_json TEXT NOT NULL
+        )
+        """,
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sync_run_steps (
+          id TEXT PRIMARY KEY,
+          run_id TEXT NOT NULL,
+          step TEXT NOT NULL,
+          status TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          ended_at TEXT,
+          duration_ms INTEGER,
+          ok_count INTEGER,
+          failed_count INTEGER,
+          error TEXT,
+          detail_json TEXT NOT NULL
+        )
+        """,
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sync_runs_trade_date ON sync_runs(trade_date DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sync_runs_started_at ON sync_runs(started_at DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sync_run_steps_run_id ON sync_run_steps(run_id)")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS market_stocks (
@@ -594,7 +650,18 @@ def _connect() -> duckdb.DuckDBPyConnection:
     default_db = str(Path(__file__).with_name("karios.duckdb"))
     db_path = os.getenv("DATABASE_PATH", default_db)
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = duckdb.connect(db_path)
+    try:
+        conn = duckdb.connect(db_path)
+    except duckdb.IOException as e:
+        msg = str(e)
+        if "Could not set lock on file" in msg:
+            raise DbLockedError(msg) from e
+        raise
+    except duckdb.BinderException as e:
+        msg = str(e)
+        if "Unique file handle conflict" in msg:
+            raise DbLockedError(msg) from e
+        raise
     _ensure_schema_once(conn, db_path)
     return conn
 
@@ -801,10 +868,832 @@ def _start_intraday_scheduler() -> None:
         _intraday_scheduler_started = True
 
 
+_eod_scheduler: BackgroundScheduler | None = None
+_eod_scheduler_started = False
+_eod_scheduler_lock = threading.Lock()
+
+
+def _should_start_eod_scheduler() -> bool:
+    """
+    Start the EOD sync scheduler for desktop usage.
+    It is disabled automatically in pytest to keep tests deterministic.
+    """
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return False
+    v = str(os.getenv("ENABLE_EOD_SYNC_SCHEDULER", "") or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def _parse_hhmm(value: str, *, default: str) -> tuple[int, int]:
+    s = (value or "").strip() or default
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", s)
+    if not m:
+        s = default
+        m = re.fullmatch(r"(\d{1,2}):(\d{2})", s)
+    hh = int(m.group(1)) if m else 15
+    mm = int(m.group(2)) if m else 15
+    hh = max(0, min(hh, 23))
+    mm = max(0, min(mm, 59))
+    return hh, mm
+
+
+def _start_eod_scheduler() -> None:
+    global _eod_scheduler_started, _eod_scheduler
+    if not _should_start_eod_scheduler():
+        return
+    with _eod_scheduler_lock:
+        if _eod_scheduler_started and _eod_scheduler is not None:
+            return
+
+        tz_name = (os.getenv("EOD_SYNC_TZ", "") or "").strip() or "Asia/Shanghai"
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = ZoneInfo("Asia/Shanghai")
+        hh, mm = _parse_hhmm(os.getenv("EOD_SYNC_TIME", "") or "", default="15:15")
+
+        sched = BackgroundScheduler(timezone=tz)
+        trigger = CronTrigger(hour=hh, minute=mm, timezone=tz)
+
+        def _job() -> None:
+            try:
+                run_eod_sync(source="scheduler")
+            except Exception:
+                # Best-effort: never crash the scheduler thread.
+                pass
+
+        sched.add_job(
+            _job,
+            trigger=trigger,
+            id="eod_sync_v0",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=60 * 60,
+        )
+        sched.start()
+        _eod_scheduler = sched
+        _eod_scheduler_started = True
+
+
+def _stop_eod_scheduler() -> None:
+    global _eod_scheduler
+    with _eod_scheduler_lock:
+        if _eod_scheduler is None:
+            return
+        try:
+            _eod_scheduler.shutdown(wait=False)
+        except Exception:
+            pass
+        _eod_scheduler = None
+
+
 @app.on_event("startup")
 def _on_startup() -> None:
     _start_intraday_scheduler()
+    _start_eod_scheduler()
 
+
+@app.on_event("shutdown")
+def _on_shutdown() -> None:
+    _stop_eod_scheduler()
+
+
+class SyncRunStepStatus(BaseModel):
+    step: str
+    status: str
+    startedAt: str
+    endedAt: str | None = None
+    durationMs: int | None = None
+    okCount: int | None = None
+    failedCount: int | None = None
+    error: str | None = None
+
+
+class SyncRunStatus(BaseModel):
+    id: str
+    kind: str
+    tradeDate: str
+    status: str
+    startedAt: str
+    endedAt: str | None = None
+    durationMs: int | None = None
+    targetSymbols: int = 0
+    okSteps: int = 0
+    failedSteps: int = 0
+    error: str | None = None
+    detail: dict[str, Any] = {}
+    steps: list[SyncRunStepStatus] = []
+
+
+class SyncRunSummary(BaseModel):
+    id: str
+    kind: str
+    tradeDate: str
+    status: str
+    startedAt: str
+    endedAt: str | None = None
+    durationMs: int | None = None
+    targetSymbols: int = 0
+    okSteps: int = 0
+    failedSteps: int = 0
+    error: str | None = None
+
+
+class SyncRunsResponse(BaseModel):
+    items: list[SyncRunSummary]
+    total: int
+    offset: int
+    limit: int
+
+
+class SyncStatusResponse(BaseModel):
+    ok: bool = True
+    lastRun: SyncRunStatus | None = None
+
+
+class SyncTriggerRequest(BaseModel):
+    force: bool = True
+    symbols: list[str] | None = None
+
+
+class SyncTriggerResponse(BaseModel):
+    ok: bool
+    runId: str
+    status: str
+
+
+_eod_sync_running = False
+_eod_sync_running_lock = threading.Lock()
+
+
+def _sync_now_ms() -> int:
+    return int(time.time() * 1000.0)
+
+
+def _sync_try_acquire() -> bool:
+    global _eod_sync_running
+    with _eod_sync_running_lock:
+        if _eod_sync_running:
+            return False
+        _eod_sync_running = True
+        return True
+
+
+def _sync_release() -> None:
+    global _eod_sync_running
+    with _eod_sync_running_lock:
+        _eod_sync_running = False
+
+
+def _sync_run_insert(*, run_id: str, kind: str, trade_date: str, status: str, started_at: str, detail: dict[str, Any]) -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO sync_runs(
+              id, kind, trade_date, status, started_at, ended_at, duration_ms,
+              target_symbols, ok_steps, failed_steps, error, detail_json
+            )
+            VALUES(?, ?, ?, ?, ?, NULL, NULL, 0, 0, 0, NULL, ?)
+            """,
+            (run_id, kind, trade_date, status, started_at, json.dumps(detail or {}, ensure_ascii=False, default=str)),
+        )
+        conn.commit()
+
+
+def _sync_run_update(
+    *,
+    run_id: str,
+    status: str,
+    ended_at: str | None,
+    duration_ms: int | None,
+    target_symbols: int,
+    ok_steps: int,
+    failed_steps: int,
+    error: str | None,
+    detail: dict[str, Any],
+) -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE sync_runs
+            SET
+              status = ?,
+              ended_at = ?,
+              duration_ms = ?,
+              target_symbols = ?,
+              ok_steps = ?,
+              failed_steps = ?,
+              error = ?,
+              detail_json = ?
+            WHERE id = ?
+            """,
+            (
+                status,
+                ended_at,
+                duration_ms,
+                int(target_symbols),
+                int(ok_steps),
+                int(failed_steps),
+                error,
+                json.dumps(detail or {}, ensure_ascii=False, default=str),
+                run_id,
+            ),
+        )
+        conn.commit()
+
+
+def _sync_step_insert(
+    *,
+    step_id: str,
+    run_id: str,
+    step: str,
+    status: str,
+    started_at: str,
+    detail: dict[str, Any],
+) -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO sync_run_steps(
+              id, run_id, step, status, started_at, ended_at, duration_ms,
+              ok_count, failed_count, error, detail_json
+            )
+            VALUES(?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?)
+            """,
+            (step_id, run_id, step, status, started_at, json.dumps(detail or {}, ensure_ascii=False, default=str)),
+        )
+        conn.commit()
+
+
+def _sync_step_update(
+    *,
+    step_id: str,
+    status: str,
+    ended_at: str,
+    duration_ms: int,
+    ok_count: int | None,
+    failed_count: int | None,
+    error: str | None,
+    detail: dict[str, Any],
+) -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE sync_run_steps
+            SET
+              status = ?,
+              ended_at = ?,
+              duration_ms = ?,
+              ok_count = ?,
+              failed_count = ?,
+              error = ?,
+              detail_json = ?
+            WHERE id = ?
+            """,
+            (
+                status,
+                ended_at,
+                int(duration_ms),
+                ok_count,
+                failed_count,
+                error,
+                json.dumps(detail or {}, ensure_ascii=False, default=str),
+                step_id,
+            ),
+        )
+        conn.commit()
+
+
+def _sync_step_run(
+    *,
+    run_id: str,
+    step: str,
+    fn,
+) -> tuple[bool, int | None, int | None, dict[str, Any], str | None]:
+    step_id = str(uuid.uuid4())
+    started_at = now_iso()
+    t0 = _sync_now_ms()
+    _sync_step_insert(step_id=step_id, run_id=run_id, step=step, status="running", started_at=started_at, detail={})
+    try:
+        ok_count, failed_count, detail = fn()
+        ended_at = now_iso()
+        dt = _sync_now_ms() - t0
+        _sync_step_update(
+            step_id=step_id,
+            status="ok",
+            ended_at=ended_at,
+            duration_ms=dt,
+            ok_count=ok_count,
+            failed_count=failed_count,
+            error=None,
+            detail=detail,
+        )
+        return True, ok_count, failed_count, detail, None
+    except Exception as e:
+        ended_at = now_iso()
+        dt = _sync_now_ms() - t0
+        err = f"{type(e).__name__}: {repr(e)}"
+        _sync_step_update(
+            step_id=step_id,
+            status="failed",
+            ended_at=ended_at,
+            duration_ms=dt,
+            ok_count=None,
+            failed_count=None,
+            error=err,
+            detail={"error": err},
+        )
+        return False, None, None, {"error": err}, err
+
+
+def _collect_eod_targets(*, override_symbols: list[str] | None, limit: int = 200) -> list[dict[str, Any]]:
+    """
+    Build target symbol list for EOD sync.
+    Priority:
+    - explicit override (manual trigger)
+    - latest enabled TradingView screeners (TV snapshot pool)
+    - holdings pool (first pingan account)
+    - fallback to local market universe cache (market_stocks)
+    """
+    if isinstance(override_symbols, list) and override_symbols:
+        out0 = []
+        for s in override_symbols:
+            sym = str(s or "").strip().upper()
+            if sym:
+                out0.append({"symbol": sym})
+        # Resolve via market cache when possible.
+        basics = market_resolve_stocks(symbols=[x["symbol"] for x in out0])
+        by_sym = {b.symbol: b for b in basics}
+        out: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for x in out0:
+            sym = str(x["symbol"])
+            if sym in seen:
+                continue
+            seen.add(sym)
+            b = by_sym.get(sym)
+            if b is not None:
+                out.append(
+                    {
+                        "symbol": b.symbol,
+                        "market": b.market,
+                        "ticker": b.ticker,
+                        "name": b.name,
+                        "currency": b.currency,
+                    }
+                )
+            else:
+                # Best-effort: infer by ticker length.
+                ticker = sym.split(":")[-1]
+                market = "HK" if len(ticker) in (4, 5) else "CN"
+                currency = "HKD" if market == "HK" else "CNY"
+                out.append({"symbol": sym, "market": market, "ticker": ticker, "name": ticker, "currency": currency})
+        return out[: max(1, min(int(limit), 500))]
+
+    pool = _rank_extract_tv_pool(max_screeners=20, max_rows=300)
+    accs = list_broker_accounts(broker="pingan")
+    aid = accs[0].id if accs else ""
+    pool2 = pool + (_rank_extract_holdings_pool(aid) if aid else [])
+    if not pool2:
+        with _connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT symbol, market, ticker, name, currency
+                FROM market_stocks
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (max(1, min(int(limit), 500)),),
+            ).fetchall()
+        pool2 = [
+            {
+                "symbol": str(r[0]),
+                "market": str(r[1]),
+                "ticker": str(r[2]),
+                "name": str(r[3]),
+                "currency": str(r[4]),
+            }
+            for r in rows
+        ]
+
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for it in pool2:
+        sym = str(it.get("symbol") or "").strip().upper()
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        out.append(
+            {
+                "symbol": sym,
+                "market": str(it.get("market") or "CN"),
+                "ticker": str(it.get("ticker") or sym.split(":")[-1]),
+                "name": str(it.get("name") or ""),
+                "currency": str(it.get("currency") or ("HKD" if str(it.get("market") or "") == "HK" else "CNY")),
+            }
+        )
+        if len(out) >= max(1, min(int(limit), 500)):
+            break
+    return out
+
+
+def _ensure_market_stocks_basic_bulk(items: list[dict[str, Any]]) -> int:
+    rows = [(str(it.get("symbol") or "").strip().upper(), it) for it in items]
+    rows = [(s, it) for s, it in rows if s]
+    if not rows:
+        return 0
+    syms = [s for s, _ in rows]
+    placeholders = ",".join(["?"] * len(syms))
+    with _connect() as conn:
+        existing_rows = conn.execute(
+            f"SELECT symbol FROM market_stocks WHERE symbol IN ({placeholders})",
+            tuple(syms),
+        ).fetchall()
+        existing = {str(r[0]) for r in existing_rows if r and r[0]}
+        ts = now_iso()
+        inserted = 0
+        for sym, it in rows:
+            if sym in existing:
+                continue
+            market = str(it.get("market") or "CN").strip().upper() or "CN"
+            ticker = str(it.get("ticker") or sym.split(":")[-1]).strip()
+            name = str(it.get("name") or "").strip() or ticker
+            currency = str(it.get("currency") or ("HKD" if market == "HK" else "CNY")).strip() or "CNY"
+            conn.execute(
+                """
+                INSERT INTO market_stocks(symbol, market, ticker, name, currency, updated_at)
+                VALUES(?, ?, ?, ?, ?, ?)
+                """,
+                (sym, market, ticker, name, currency, ts),
+            )
+            inserted += 1
+        conn.commit()
+    return inserted
+
+
+def _call_with_retry(fn, *, tries: int = 3, base_sleep_s: float = 0.4, max_sleep_s: float = 2.0):
+    """
+    Best-effort retry wrapper for providers not protected by `_with_retry` yet.
+    """
+    tries2 = max(1, min(int(tries), 5))
+    last: Exception | None = None
+    for i in range(tries2):
+        try:
+            return fn()
+        except Exception as e:
+            last = e
+            if i >= tries2 - 1:
+                raise
+            sleep_s = min(float(max_sleep_s), float(base_sleep_s) * (2**i))
+            sleep_s = sleep_s * (0.7 + (time.time() % 1.0) * 0.6)
+            time.sleep(max(0.0, sleep_s))
+    if last is not None:
+        raise last
+    raise RuntimeError("Retry wrapper failed unexpectedly.")
+
+
+def _batch_fetch_cn(
+    items: list[dict[str, Any]],
+    *,
+    workers: int,
+    fetch_one,
+) -> tuple[int, int, list[tuple[str, list[dict[str, Any]]]]]:
+    """
+    Fetch per-ticker daily data in parallel, without sharing DB connections across threads.
+    Returns (ok, failed, results) where results contains (symbol, items).
+    """
+    cn = [it for it in items if str(it.get("market") or "").upper() == "CN"]
+    cn = [it for it in cn if str(it.get("ticker") or "").strip()]
+    if not cn:
+        return 0, 0, []
+    ok = 0
+    failed = 0
+    results: list[tuple[str, list[dict[str, Any]]]] = []
+    workers2 = max(1, min(int(workers), 16))
+    with ThreadPoolExecutor(max_workers=workers2) as pool:
+        futs = {}
+        for it in cn:
+            sym = str(it.get("symbol") or "").strip().upper()
+            ticker = str(it.get("ticker") or "").strip()
+            futs[pool.submit(fetch_one, sym, ticker)] = sym
+        for fut in as_completed(futs):
+            sym = futs[fut]
+            try:
+                items2 = fut.result()
+                if isinstance(items2, list):
+                    results.append((sym, items2))
+                    ok += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+    return ok, failed, results
+
+
+def _run_eod_sync_pipeline(
+    *,
+    run_id: str,
+    source: str,
+    started_at: str,
+    trade_date: str,
+    override_symbols: list[str] | None,
+    force: bool,
+    preinserted: bool,
+) -> str:
+    """
+    EOD sync pipeline runner.
+    - Uses a global acquire/release to prevent overlapping runs.
+    - Records run-level and step-level progress to DuckDB.
+    """
+    if not _sync_try_acquire():
+        if preinserted:
+            _sync_run_update(
+                run_id=run_id,
+                status="skipped",
+                ended_at=now_iso(),
+                duration_ms=0,
+                target_symbols=0,
+                ok_steps=0,
+                failed_steps=0,
+                error="Already running.",
+                detail={"source": source, "force": bool(force), "status": "skipped"},
+            )
+        return ""
+
+    detail: dict[str, Any] = {"source": source, "force": bool(force)}
+    if not preinserted:
+        _sync_run_insert(run_id=run_id, kind="eod", trade_date=trade_date, status="running", started_at=started_at, detail=detail)
+    else:
+        with _connect() as conn:
+            conn.execute("UPDATE sync_runs SET status = ? WHERE id = ?", ("running", run_id))
+            conn.commit()
+
+    t0 = _sync_now_ms()
+    ok_steps = 0
+    failed_steps = 0
+    last_error: str | None = None
+    try:
+        targets = _collect_eod_targets(override_symbols=override_symbols, limit=200)
+        _ensure_market_stocks_basic_bulk(targets)
+        detail["targetSymbols"] = [str(x.get("symbol") or "") for x in targets if str(x.get("symbol") or "").strip()]
+
+        def step_quotes():
+            syms = {str(x.get("symbol") or "").strip().upper() for x in targets}
+            need_cn = any(s.startswith("CN:") for s in syms)
+            need_hk = any(s.startswith("HK:") for s in syms)
+            ts = now_iso()
+            cn_rows = fetch_cn_a_spot() if need_cn else []
+            hk_rows = fetch_hk_spot() if need_hk else []
+            spot_map = {str(s.symbol).strip().upper(): s for s in (cn_rows + hk_rows) if getattr(s, "symbol", "")}
+            ok = 0
+            skipped = 0
+            with _connect() as conn:
+                for sym in sorted(syms):
+                    s = spot_map.get(sym)
+                    if s is None:
+                        skipped += 1
+                        continue
+                    _upsert_market_stock(conn, s, ts)
+                    _upsert_market_quote(conn, s, ts)
+                    ok += 1
+                conn.commit()
+            return ok, skipped, {"updated": ok, "skipped": skipped}
+
+        def step_bars():
+            syms = [str(x.get("symbol") or "").strip().upper() for x in targets]
+            syms = [s for s in syms if s][:200]
+            if not syms:
+                return 0, 0, {"refreshed": 0, "failed": 0}
+            body = BarsRefreshRequest(symbols=syms)
+            out = market_stocks_bars_refresh(body)
+            return int(out.refreshed), int(out.failed), {"refreshed": int(out.refreshed), "failed": int(out.failed)}
+
+        def step_chips():
+            def fetch_one(sym: str, ticker: str):
+                return _call_with_retry(lambda: fetch_cn_a_chip_summary(ticker, days=60), tries=3)
+
+            ok, failed, results = _batch_fetch_cn(targets, workers=6, fetch_one=fetch_one)
+            ts = now_iso()
+            with _connect() as conn:
+                for sym, items2 in results:
+                    _upsert_market_chips(conn, sym, items2, ts)
+                conn.commit()
+            return ok, failed, {"updated": ok, "failed": failed}
+
+        def step_fund_flow():
+            def fetch_one(sym: str, ticker: str):
+                return _call_with_retry(lambda: fetch_cn_a_fund_flow(ticker, days=60), tries=3)
+
+            ok, failed, results = _batch_fetch_cn(targets, workers=6, fetch_one=fetch_one)
+            ts = now_iso()
+            with _connect() as conn:
+                for sym, items2 in results:
+                    _upsert_market_fund_flow(conn, sym, items2, ts)
+                conn.commit()
+            return ok, failed, {"updated": ok, "failed": failed}
+
+        def step_industry_flow():
+            req = MarketCnIndustryFundFlowSyncRequest(date=trade_date, days=10, topN=5, force=bool(force))
+            out = market_cn_industry_fund_flow_sync(req)
+            return 1, 0, {"ok": bool(out.ok), "rowsUpserted": int(out.rowsUpserted), "histRowsUpserted": int(out.histRowsUpserted)}
+
+        for step_name, fn in [
+            ("quotes", step_quotes),
+            ("bars", step_bars),
+            ("chips", step_chips),
+            ("fund_flow", step_fund_flow),
+            ("industry_fund_flow", step_industry_flow),
+        ]:
+            ok_step, _ok_count, _failed_count, _detail, err = _sync_step_run(run_id=run_id, step=step_name, fn=fn)
+            if ok_step:
+                ok_steps += 1
+            else:
+                failed_steps += 1
+                last_error = err or last_error
+
+        ended_at = now_iso()
+        duration_ms = _sync_now_ms() - t0
+        status = "ok" if failed_steps == 0 else "partial"
+        detail2 = dict(detail)
+        detail2["okSteps"] = ok_steps
+        detail2["failedSteps"] = failed_steps
+        _sync_run_update(
+            run_id=run_id,
+            status=status,
+            ended_at=ended_at,
+            duration_ms=duration_ms,
+            target_symbols=len(detail.get("targetSymbols") or []),
+            ok_steps=ok_steps,
+            failed_steps=failed_steps,
+            error=last_error,
+            detail=detail2,
+        )
+        set_setting("eod_last_sync_at", ended_at)
+        set_setting("eod_last_sync_run_id", run_id)
+        return run_id
+    except Exception as e:
+        ended_at = now_iso()
+        duration_ms = _sync_now_ms() - t0
+        err = f"{type(e).__name__}: {repr(e)}"
+        _sync_run_update(
+            run_id=run_id,
+            status="failed",
+            ended_at=ended_at,
+            duration_ms=duration_ms,
+            target_symbols=0,
+            ok_steps=ok_steps,
+            failed_steps=failed_steps,
+            error=err,
+            detail={"source": source, "force": bool(force), "error": err},
+        )
+        return ""
+    finally:
+        _sync_release()
+
+
+def run_eod_sync(*, source: str, override_symbols: list[str] | None = None, force: bool = True) -> str:
+    """
+    Run end-of-day sync in-process (desktop usage).
+    This is a best-effort pipeline: step failures do not abort subsequent steps.
+    """
+    run_id = str(uuid.uuid4())
+    started_at = now_iso()
+    trade_date = _today_cn_date_str()
+    return _run_eod_sync_pipeline(
+        run_id=run_id,
+        source=source,
+        started_at=started_at,
+        trade_date=trade_date,
+        override_symbols=override_symbols,
+        force=bool(force),
+        preinserted=False,
+    )
+
+
+@app.get("/sync/status", response_model=SyncStatusResponse)
+def sync_status() -> SyncStatusResponse:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, kind, trade_date, status, started_at, ended_at, duration_ms,
+                   target_symbols, ok_steps, failed_steps, error, detail_json
+            FROM sync_runs
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+        ).fetchone()
+        if row is None:
+            return SyncStatusResponse(ok=True, lastRun=None)
+        run_id = str(row[0])
+        try:
+            detail = json.loads(str(row[11]) or "{}")
+            detail2 = detail if isinstance(detail, dict) else {}
+        except Exception:
+            detail2 = {}
+        steps_rows = conn.execute(
+            """
+            SELECT step, status, started_at, ended_at, duration_ms, ok_count, failed_count, error
+            FROM sync_run_steps
+            WHERE run_id = ?
+            ORDER BY started_at ASC
+            """,
+            (run_id,),
+        ).fetchall()
+    steps = [
+        SyncRunStepStatus(
+            step=str(r[0]),
+            status=str(r[1]),
+            startedAt=str(r[2]),
+            endedAt=str(r[3]) if r[3] is not None else None,
+            durationMs=int(r[4]) if r[4] is not None else None,
+            okCount=int(r[5]) if r[5] is not None else None,
+            failedCount=int(r[6]) if r[6] is not None else None,
+            error=str(r[7]) if r[7] is not None else None,
+        )
+        for r in steps_rows
+    ]
+    return SyncStatusResponse(
+        ok=True,
+        lastRun=SyncRunStatus(
+            id=run_id,
+            kind=str(row[1]),
+            tradeDate=str(row[2]),
+            status=str(row[3]),
+            startedAt=str(row[4]),
+            endedAt=str(row[5]) if row[5] is not None else None,
+            durationMs=int(row[6]) if row[6] is not None else None,
+            targetSymbols=int(row[7] or 0),
+            okSteps=int(row[8] or 0),
+            failedSteps=int(row[9] or 0),
+            error=str(row[10]) if row[10] is not None else None,
+            detail=detail2,
+            steps=steps,
+        ),
+    )
+
+
+@app.get("/sync/runs", response_model=SyncRunsResponse)
+def sync_runs(limit: int = 20, offset: int = 0) -> SyncRunsResponse:
+    limit2 = max(1, min(int(limit), 200))
+    offset2 = max(0, int(offset))
+    with _connect() as conn:
+        total_row = conn.execute("SELECT COUNT(1) FROM sync_runs").fetchone()
+        total = int(total_row[0]) if total_row else 0
+        rows = conn.execute(
+            """
+            SELECT id, kind, trade_date, status, started_at, ended_at, duration_ms,
+                   target_symbols, ok_steps, failed_steps, error
+            FROM sync_runs
+            ORDER BY started_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit2, offset2),
+        ).fetchall()
+    items = [
+        SyncRunSummary(
+            id=str(r[0]),
+            kind=str(r[1]),
+            tradeDate=str(r[2]),
+            status=str(r[3]),
+            startedAt=str(r[4]),
+            endedAt=str(r[5]) if r[5] is not None else None,
+            durationMs=int(r[6]) if r[6] is not None else None,
+            targetSymbols=int(r[7] or 0),
+            okSteps=int(r[8] or 0),
+            failedSteps=int(r[9] or 0),
+            error=str(r[10]) if r[10] is not None else None,
+        )
+        for r in rows
+    ]
+    return SyncRunsResponse(items=items, total=total, offset=offset2, limit=limit2)
+
+
+@app.post("/sync/trigger", response_model=SyncTriggerResponse)
+def sync_trigger(req: SyncTriggerRequest) -> SyncTriggerResponse:
+    # Manual trigger runs in background to avoid blocking API/UI.
+    run_id = str(uuid.uuid4())
+    started_at = now_iso()
+    trade_date = _today_cn_date_str()
+    detail = {"source": "manual", "force": bool(req.force), "status": "queued"}
+    _sync_run_insert(run_id=run_id, kind="eod", trade_date=trade_date, status="queued", started_at=started_at, detail=detail)
+
+    t = threading.Thread(
+        target=_run_eod_sync_pipeline,
+        kwargs={
+            "run_id": run_id,
+            "source": "manual",
+            "started_at": started_at,
+            "trade_date": trade_date,
+            "override_symbols": req.symbols,
+            "force": bool(req.force),
+            "preinserted": True,
+        },
+        name="eod-sync-manual",
+        daemon=True,
+    )
+    t.start()
+    return SyncTriggerResponse(ok=True, runId=run_id, status="queued")
 
 def _finite_float(x: Any, default: float = 0.0) -> float:
     """

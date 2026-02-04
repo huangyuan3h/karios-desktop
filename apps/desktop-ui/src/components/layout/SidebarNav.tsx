@@ -8,6 +8,7 @@ import {
   CreditCard,
   LayoutDashboard,
   ListOrdered,
+  RefreshCw,
   NotebookPen,
   Sparkles,
   Star,
@@ -29,6 +30,7 @@ const items = [
   { id: 'journal', label: 'Journal', icon: NotebookPen },
   { id: 'leaders', label: 'Leaders', icon: Crown },
   { id: 'screener', label: 'Screener', icon: Table2 },
+  { id: 'sync', label: 'Sync', icon: RefreshCw },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
