@@ -101,6 +101,8 @@ app.add_middleware(
 _schema_lock = threading.Lock()
 _schema_initialized_paths: set[str] = set()
 _db_write_lock = threading.Lock()
+_db_mode_lock = threading.Lock()
+_db_access_mode: str | None = None  # "ro" | "rw"
 
 
 class DbLockedError(RuntimeError):
@@ -671,20 +673,48 @@ class _DbConnCtx:
         self._locked = False
 
     def __enter__(self) -> duckdb.DuckDBPyConnection:
-        if not self._read_only:
+        def _connect(read_only: bool) -> duckdb.DuckDBPyConnection:
+            return duckdb.connect(self._db_path, read_only=read_only)
+
+        write_intent = not bool(_request_read_only.get())
+        # Unify access mode within the process to avoid "different configuration" conflicts.
+        desired_mode = "ro" if self._read_only else "rw"
+        with _db_mode_lock:
+            global _db_access_mode
+            if _db_access_mode is None:
+                _db_access_mode = desired_mode
+            if _db_access_mode == "rw":
+                self._read_only = False
+            elif _db_access_mode == "ro" and desired_mode == "rw":
+                _db_access_mode = "rw"
+                self._read_only = False
+
+        if write_intent:
             _db_write_lock.acquire()
             self._locked = True
         try:
-            self._conn = duckdb.connect(self._db_path, read_only=self._read_only)
+            self._conn = _connect(self._read_only)
         except duckdb.IOException as e:
             msg = str(e)
             if "Could not set lock on file" in msg:
+                if self._locked:
+                    _db_write_lock.release()
+                    self._locked = False
                 raise DbLockedError(msg) from e
+            if self._locked:
+                _db_write_lock.release()
+                self._locked = False
             raise
         except duckdb.BinderException as e:
             msg = str(e)
             if "Unique file handle conflict" in msg:
+                if self._locked:
+                    _db_write_lock.release()
+                    self._locked = False
                 raise DbLockedError(msg) from e
+            if self._locked:
+                _db_write_lock.release()
+                self._locked = False
             raise
         if not self._read_only:
             _ensure_schema_once(self._conn, self._db_path)
@@ -995,6 +1025,7 @@ def _auto_resume_eod_sync() -> None:
     Best-effort only; never blocks startup.
     """
     try:
+        _sync_mark_previous_runs_failed(kind="eod")
         trade_date = _today_cn_date_str()
         resume_run_id, _resume_info = _load_resume_step_info(trade_date=trade_date, kind="eod")
         if not resume_run_id:
@@ -1138,6 +1169,61 @@ def _sync_run_insert(*, run_id: str, kind: str, trade_date: str, status: str, st
             """,
             (run_id, kind, trade_date, status, started_at, json.dumps(detail or {}, ensure_ascii=False, default=str)),
         )
+        conn.commit()
+
+
+def _sync_mark_previous_runs_failed(*, kind: str = "eod") -> None:
+    """
+    Mark any in-flight runs as failed before starting a new run.
+    """
+    ts = now_iso()
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, started_at FROM sync_runs WHERE kind = ? AND status IN ('running', 'queued')",
+            (kind,),
+        ).fetchall()
+        for r in rows:
+            rid = str(r[0])
+            started_at = str(r[1] or "")
+            try:
+                dt_ms = None
+                if started_at:
+                    dt_ms = _sync_now_ms() - int(datetime.fromisoformat(started_at.replace("Z", "+00:00")).timestamp() * 1000)
+            except Exception:
+                dt_ms = None
+            conn.execute(
+                """
+                UPDATE sync_runs
+                SET status = ?, ended_at = ?, duration_ms = ?, error = ?
+                WHERE id = ?
+                """,
+                ("failed", ts, dt_ms, "Superseded by a newer run.", rid),
+            )
+            conn.execute(
+                """
+                UPDATE sync_run_steps
+                SET status = ?, ended_at = ?, error = ?
+                WHERE run_id = ? AND status = 'running'
+                """,
+                ("failed", ts, "Superseded by a newer run.", rid),
+            )
+        conn.commit()
+
+
+def _sync_prune_runs(*, keep_run_id: str, kind: str = "eod") -> None:
+    """
+    Keep only the latest run record for a kind (and its steps).
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id FROM sync_runs WHERE kind = ? AND id != ?",
+            (kind, keep_run_id),
+        ).fetchall()
+        old_ids = [str(r[0]) for r in rows if r and r[0]]
+        if old_ids:
+            placeholders = ",".join(["?"] * len(old_ids))
+            conn.execute(f"DELETE FROM sync_run_steps WHERE run_id IN ({placeholders})", tuple(old_ids))
+            conn.execute(f"DELETE FROM sync_runs WHERE id IN ({placeholders})", tuple(old_ids))
         conn.commit()
 
 
@@ -1605,11 +1691,15 @@ def _run_eod_sync_pipeline(
 
     detail: dict[str, Any] = {"source": source, "force": bool(force)}
     if not preinserted:
+        _sync_mark_previous_runs_failed(kind="eod")
         _sync_run_insert(run_id=run_id, kind="eod", trade_date=trade_date, status="running", started_at=started_at, detail=detail)
+        _sync_prune_runs(keep_run_id=run_id, kind="eod")
     else:
+        _sync_mark_previous_runs_failed(kind="eod")
         with _connect() as conn:
             conn.execute("UPDATE sync_runs SET status = ? WHERE id = ?", ("running", run_id))
             conn.commit()
+        _sync_prune_runs(keep_run_id=run_id, kind="eod")
 
     t0 = _sync_now_ms()
     ok_steps = 0
@@ -2014,7 +2104,9 @@ def sync_trigger(req: SyncTriggerRequest) -> SyncTriggerResponse:
     started_at = now_iso()
     trade_date = _today_cn_date_str()
     detail = {"source": "manual", "force": bool(req.force), "status": "queued"}
+    _sync_mark_previous_runs_failed(kind="eod")
     _sync_run_insert(run_id=run_id, kind="eod", trade_date=trade_date, status="queued", started_at=started_at, detail=detail)
+    _sync_prune_runs(keep_run_id=run_id, kind="eod")
 
     t = threading.Thread(
         target=_run_eod_sync_pipeline,
