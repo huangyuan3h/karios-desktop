@@ -71,7 +71,14 @@ function progressPercent(run?: any | null): number {
       done += ['ok', 'partial', 'failed'].includes(st) ? 1 : 0;
     }
   }
-  if (!total) return 0;
+  if (!total) {
+    const totalSteps = steps.length || 1;
+    const doneSteps = steps.filter((s: any) => {
+      const st = String(s.status || '').toLowerCase();
+      return ['ok', 'partial', 'failed'].includes(st);
+    }).length;
+    return Math.min(100, Math.round((doneSteps / totalSteps) * 100));
+  }
   return Math.min(100, Math.round((done / total) * 100));
 }
 
@@ -245,6 +252,10 @@ export function SyncPage() {
                               {s.totalSymbols ?? '—'} total
                             </summary>
                             <div className="mt-2 space-y-1 text-[11px]">
+                              <div>
+                                <span className="text-[var(--k-muted)]">Pending:</span>{' '}
+                                {formatSymbols(s.symbolsPending)}
+                              </div>
                               <div>
                                 <span className="text-[var(--k-muted)]">OK:</span>{' '}
                                 {formatSymbols(s.symbolsOk)}

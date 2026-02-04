@@ -100,6 +100,7 @@ app.add_middleware(
 # DuckDB schema initialization guard (avoid concurrent CREATE TABLE).
 _schema_lock = threading.Lock()
 _schema_initialized_paths: set[str] = set()
+_db_write_lock = threading.Lock()
 
 
 class DbLockedError(RuntimeError):
@@ -662,26 +663,48 @@ def _ensure_schema_once(conn: duckdb.DuckDBPyConnection, db_path: str) -> None:
         _schema_initialized_paths.add(db_path)
 
 
-def _connect() -> duckdb.DuckDBPyConnection:
+class _DbConnCtx:
+    def __init__(self, db_path: str, *, read_only: bool):
+        self._db_path = db_path
+        self._read_only = read_only
+        self._conn: duckdb.DuckDBPyConnection | None = None
+        self._locked = False
+
+    def __enter__(self) -> duckdb.DuckDBPyConnection:
+        if not self._read_only:
+            _db_write_lock.acquire()
+            self._locked = True
+        try:
+            self._conn = duckdb.connect(self._db_path, read_only=self._read_only)
+        except duckdb.IOException as e:
+            msg = str(e)
+            if "Could not set lock on file" in msg:
+                raise DbLockedError(msg) from e
+            raise
+        except duckdb.BinderException as e:
+            msg = str(e)
+            if "Unique file handle conflict" in msg:
+                raise DbLockedError(msg) from e
+            raise
+        if not self._read_only:
+            _ensure_schema_once(self._conn, self._db_path)
+        return self._conn
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        try:
+            if self._conn is not None:
+                self._conn.close()
+        finally:
+            if self._locked:
+                _db_write_lock.release()
+
+
+def _connect() -> _DbConnCtx:
     default_db = str(Path(__file__).with_name("karios.duckdb"))
     db_path = os.getenv("DATABASE_PATH", default_db)
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    try:
-        read_only = bool(_request_read_only.get())
-        conn = duckdb.connect(db_path, read_only=read_only)
-    except duckdb.IOException as e:
-        msg = str(e)
-        if "Could not set lock on file" in msg:
-            raise DbLockedError(msg) from e
-        raise
-    except duckdb.BinderException as e:
-        msg = str(e)
-        if "Unique file handle conflict" in msg:
-            raise DbLockedError(msg) from e
-        raise
-    if not bool(_request_read_only.get()):
-        _ensure_schema_once(conn, db_path)
-    return conn
+    read_only = bool(_request_read_only.get())
+    return _DbConnCtx(db_path, read_only=read_only)
 
 
 def get_setting(key: str) -> str | None:
@@ -966,10 +989,45 @@ def _stop_eod_scheduler() -> None:
         _eod_scheduler = None
 
 
+def _auto_resume_eod_sync() -> None:
+    """
+    Auto-resume previous EOD sync if last run was interrupted or partial.
+    Best-effort only; never blocks startup.
+    """
+    try:
+        trade_date = _today_cn_date_str()
+        resume_run_id, _resume_info = _load_resume_step_info(trade_date=trade_date, kind="eod")
+        if not resume_run_id:
+            return
+        # Avoid resuming if a sync is already running.
+        if not _sync_try_acquire():
+            return
+        _sync_release()
+        t = threading.Thread(
+            target=_run_eod_sync_pipeline,
+            kwargs={
+                "run_id": str(uuid.uuid4()),
+                "source": "auto_resume",
+                "started_at": now_iso(),
+                "trade_date": trade_date,
+                "override_symbols": None,
+                "force": True,
+                "preinserted": False,
+            },
+            name="eod-sync-auto-resume",
+            daemon=True,
+        )
+        t.start()
+    except Exception:
+        # Never block startup.
+        pass
+
+
 @app.on_event("startup")
 def _on_startup() -> None:
     _start_intraday_scheduler()
     _start_eod_scheduler()
+    _auto_resume_eod_sync()
 
 
 @app.on_event("shutdown")
@@ -989,6 +1047,7 @@ class SyncRunStepStatus(BaseModel):
     totalSymbols: int | None = None
     symbolsOk: list[str] | None = None
     symbolsFailed: list[str] | None = None
+    symbolsPending: list[str] | None = None
 
 
 class SyncRunStatus(BaseModel):
@@ -1124,6 +1183,21 @@ def _sync_run_update(
         conn.commit()
 
 
+def _sync_run_set_targets(*, run_id: str, target_symbols: list[str], detail: dict[str, Any]) -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE sync_runs
+            SET
+              target_symbols = ?,
+              detail_json = ?
+            WHERE id = ?
+            """,
+            (len(target_symbols), json.dumps(detail or {}, ensure_ascii=False, default=str), run_id),
+        )
+        conn.commit()
+
+
 def _sync_step_insert(
     *,
     step_id: str,
@@ -1191,11 +1265,19 @@ def _sync_step_run(
     run_id: str,
     step: str,
     fn,
+    init_detail: dict[str, Any] | None = None,
 ) -> tuple[bool, int | None, int | None, dict[str, Any], str | None]:
     step_id = str(uuid.uuid4())
     started_at = now_iso()
     t0 = _sync_now_ms()
-    _sync_step_insert(step_id=step_id, run_id=run_id, step=step, status="running", started_at=started_at, detail={})
+    _sync_step_insert(
+        step_id=step_id,
+        run_id=run_id,
+        step=step,
+        status="running",
+        started_at=started_at,
+        detail=init_detail or {},
+    )
     try:
         ok_count, failed_count, detail = fn()
         ended_at = now_iso()
@@ -1538,14 +1620,17 @@ def _run_eod_sync_pipeline(
         _ensure_market_stocks_basic_bulk(targets)
         all_symbols = [str(x.get("symbol") or "").strip().upper() for x in targets if str(x.get("symbol") or "").strip()]
         detail["targetSymbols"] = all_symbols
+        _sync_run_set_targets(run_id=run_id, target_symbols=all_symbols, detail=detail)
 
         resume_run_id, resume_info = _load_resume_step_info(trade_date=trade_date, kind="eod")
         if resume_run_id:
             detail["resumeFromRunId"] = resume_run_id
 
+        syms_quotes_all = [str(x.get("symbol") or "").strip().upper() for x in targets if str(x.get("symbol") or "").strip()]
+        syms_quotes = _resume_symbols_for_step(step="quotes", symbols_all=syms_quotes_all, resume_info=resume_info)
+
         def step_quotes():
-            syms_all = [str(x.get("symbol") or "").strip().upper() for x in targets if str(x.get("symbol") or "").strip()]
-            syms = _resume_symbols_for_step(step="quotes", symbols_all=syms_all, resume_info=resume_info)
+            syms = syms_quotes
             need_cn = any(s.startswith("CN:") for s in syms)
             need_hk = any(s.startswith("HK:") for s in syms)
             ts = now_iso()
@@ -1576,10 +1661,12 @@ def _run_eod_sync_pipeline(
                 "skipped": skipped,
             }
 
+        syms_bars_all = [str(x.get("symbol") or "").strip().upper() for x in targets if str(x.get("symbol") or "").strip()]
+        syms_bars = _resume_symbols_for_step(step="bars", symbols_all=syms_bars_all, resume_info=resume_info)
+        syms_bars = [s for s in syms_bars if s][:200]
+
         def step_bars():
-            syms_all = [str(x.get("symbol") or "").strip().upper() for x in targets if str(x.get("symbol") or "").strip()]
-            syms = _resume_symbols_for_step(step="bars", symbols_all=syms_all, resume_info=resume_info)
-            syms = [s for s in syms if s][:200]
+            syms = syms_bars
             if not syms:
                 return 0, 0, {"refreshed": 0, "failed": 0, "totalSymbols": 0, "okSymbols": [], "failedSymbols": []}
             refreshed = 0
@@ -1618,14 +1705,16 @@ def _run_eod_sync_pipeline(
                 "failed": failed,
             }
 
+        cn_targets = [it for it in targets if str(it.get("market") or "").upper() == "CN"]
+        cn_symbols_all = [str(it.get("symbol") or "").strip().upper() for it in cn_targets if str(it.get("symbol") or "").strip()]
+        cn_symbols_chips = _resume_symbols_for_step(step="chips", symbols_all=cn_symbols_all, resume_info=resume_info)
+        cn_targets_chips = [it for it in cn_targets if str(it.get("symbol") or "").strip().upper() in set(cn_symbols_chips)]
+
         def step_chips():
             def fetch_one(sym: str, ticker: str):
                 return _call_with_retry(lambda: fetch_cn_a_chip_summary(ticker, days=60), tries=3)
 
-            cn_targets = [it for it in targets if str(it.get("market") or "").upper() == "CN"]
-            cn_symbols = [str(it.get("symbol") or "").strip().upper() for it in cn_targets if str(it.get("symbol") or "").strip()]
-            cn_symbols = _resume_symbols_for_step(step="chips", symbols_all=cn_symbols, resume_info=resume_info)
-            cn_targets2 = [it for it in cn_targets if str(it.get("symbol") or "").strip().upper() in set(cn_symbols)]
+            cn_targets2 = cn_targets_chips
             ok, failed, results, ok_symbols, failed_symbols, total_symbols = _batch_fetch_cn(
                 cn_targets2,
                 workers=6,
@@ -1658,14 +1747,14 @@ def _run_eod_sync_pipeline(
                 "failed": failed,
             }
 
+        cn_symbols_flow = _resume_symbols_for_step(step="fund_flow", symbols_all=cn_symbols_all, resume_info=resume_info)
+        cn_targets_flow = [it for it in cn_targets if str(it.get("symbol") or "").strip().upper() in set(cn_symbols_flow)]
+
         def step_fund_flow():
             def fetch_one(sym: str, ticker: str):
                 return _call_with_retry(lambda: fetch_cn_a_fund_flow(ticker, days=60), tries=3)
 
-            cn_targets = [it for it in targets if str(it.get("market") or "").upper() == "CN"]
-            cn_symbols = [str(it.get("symbol") or "").strip().upper() for it in cn_targets if str(it.get("symbol") or "").strip()]
-            cn_symbols = _resume_symbols_for_step(step="fund_flow", symbols_all=cn_symbols, resume_info=resume_info)
-            cn_targets2 = [it for it in cn_targets if str(it.get("symbol") or "").strip().upper() in set(cn_symbols)]
+            cn_targets2 = cn_targets_flow
             ok, failed, results, ok_symbols, failed_symbols, total_symbols = _batch_fetch_cn(
                 cn_targets2,
                 workers=6,
@@ -1710,14 +1799,39 @@ def _run_eod_sync_pipeline(
                 "histRowsUpserted": int(out.histRowsUpserted),
             }
 
-        for step_name, fn in [
-            ("quotes", step_quotes),
-            ("bars", step_bars),
-            ("chips", step_chips),
-            ("fund_flow", step_fund_flow),
-            ("industry_fund_flow", step_industry_flow),
+        for step_name, fn, init_detail in [
+            (
+                "quotes",
+                step_quotes,
+                {"totalSymbols": len(syms_quotes), "pendingSymbols": syms_quotes},
+            ),
+            (
+                "bars",
+                step_bars,
+                {"totalSymbols": len(syms_bars), "pendingSymbols": syms_bars},
+            ),
+            (
+                "chips",
+                step_chips,
+                {"totalSymbols": len(cn_symbols_chips), "pendingSymbols": cn_symbols_chips},
+            ),
+            (
+                "fund_flow",
+                step_fund_flow,
+                {"totalSymbols": len(cn_symbols_flow), "pendingSymbols": cn_symbols_flow},
+            ),
+            (
+                "industry_fund_flow",
+                step_industry_flow,
+                {"totalSymbols": 1, "pendingSymbols": ["industry_fund_flow"]},
+            ),
         ]:
-            ok_step, _ok_count, _failed_count, _detail, err = _sync_step_run(run_id=run_id, step=step_name, fn=fn)
+            ok_step, _ok_count, _failed_count, _detail, err = _sync_step_run(
+                run_id=run_id,
+                step=step_name,
+                fn=fn,
+                init_detail=init_detail,
+            )
             if ok_step:
                 ok_steps += 1
             else:
@@ -1834,6 +1948,7 @@ def sync_status() -> SyncStatusResponse:
                 totalSymbols=int(detail.get("totalSymbols")) if isinstance(detail.get("totalSymbols"), int) else None,
                 symbolsOk=detail.get("okSymbols") if isinstance(detail.get("okSymbols"), list) else None,
                 symbolsFailed=detail.get("failedSymbols") if isinstance(detail.get("failedSymbols"), list) else None,
+                symbolsPending=detail.get("pendingSymbols") if isinstance(detail.get("pendingSymbols"), list) else None,
             ),
         )
     return SyncStatusResponse(
