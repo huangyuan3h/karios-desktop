@@ -27,6 +27,8 @@ type WatchlistItem = {
 };
 
 const STORAGE_KEY = 'karios.watchlist.v1';
+const TREND_CACHE_KEY = 'karios.watchlist.trend.v1';
+const TREND_UPDATED_AT_KEY = 'karios.watchlist.trendUpdatedAt.v1';
 
 const FLAG_COLORS: Array<{ label: string; hex: string }> = [
   { label: 'White', hex: '#ffffff' },
@@ -317,6 +319,15 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     saveJson(STORAGE_KEY, migrated);
   }, []);
 
+  React.useEffect(() => {
+    const cached = loadJson<Record<string, TrendOkResult>>(TREND_CACHE_KEY, {});
+    if (cached && typeof cached === 'object') {
+      setTrend(cached);
+    }
+    const last = loadJson<string | null>(TREND_UPDATED_AT_KEY, null);
+    if (last) setTrendUpdatedAt(last);
+  }, []);
+
   function persist(next: WatchlistItem[]) {
     setItems(next);
     saveJson(STORAGE_KEY, next);
@@ -404,7 +415,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           if (r && r.symbol) next[r.symbol] = r;
         }
         setTrend(next);
-        setTrendUpdatedAt(new Date().toISOString());
+        const ts = new Date().toISOString();
+        setTrendUpdatedAt(ts);
+        saveJson(TREND_CACHE_KEY, next);
+        saveJson(TREND_UPDATED_AT_KEY, ts);
         if (reason === 'manual') setError(null);
       } catch (e) {
         if (reqId === trendReqRef.current) console.warn('Watchlist trendok load failed:', e);

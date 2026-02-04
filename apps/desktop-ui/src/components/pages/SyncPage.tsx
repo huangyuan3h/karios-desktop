@@ -58,26 +58,27 @@ function progressPercent(run?: any | null): number {
   if (!steps.length) return 0;
   let total = 0;
   let done = 0;
+  let doneSteps = 0;
+  let runningSteps = 0;
   for (const s of steps) {
     const totalSymbols = Number(s.totalSymbols ?? 0);
     const ok = Number(s.okCount ?? 0);
     const failed = Number(s.failedCount ?? 0);
+    const st = String(s.status || '').toLowerCase();
+    if (['ok', 'partial', 'failed'].includes(st)) doneSteps += 1;
+    if (st === 'running' || st === 'queued') runningSteps += 1;
     if (totalSymbols > 0) {
       total += totalSymbols;
       done += Math.min(totalSymbols, ok + failed);
     } else {
       total += 1;
-      const st = String(s.status || '').toLowerCase();
       done += ['ok', 'partial', 'failed'].includes(st) ? 1 : 0;
     }
   }
-  if (!total) {
-    const totalSteps = steps.length || 1;
-    const doneSteps = steps.filter((s: any) => {
-      const st = String(s.status || '').toLowerCase();
-      return ['ok', 'partial', 'failed'].includes(st);
-    }).length;
-    return Math.min(100, Math.round((doneSteps / totalSteps) * 100));
+  const totalSteps = steps.length || 1;
+  if (!total || done === 0) {
+    const stepProgress = (doneSteps + (runningSteps > 0 ? 0.5 : 0)) / totalSteps;
+    return Math.min(100, Math.max(0, Math.round(stepProgress * 100)));
   }
   return Math.min(100, Math.round((done / total) * 100));
 }
@@ -94,18 +95,26 @@ export function SyncPage() {
   const [runs, setRuns] = React.useState<any[]>([]);
   const [total, setTotal] = React.useState(0);
   const [loading, setLoading] = React.useState(false);
+  const [statusLoading, setStatusLoading] = React.useState(false);
   const [triggering, setTriggering] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadStatus = React.useCallback(async () => {
+    setStatusLoading(true);
     try {
-      const [status, list] = await Promise.all([
-        apiGetJson<SyncStatusResp>('/sync/status'),
-        apiGetJson<SyncRunsResp>('/sync/runs?limit=50&offset=0'),
-      ]);
+      const status = await apiGetJson<SyncStatusResp>('/sync/status');
       setLastRun(status?.lastRun ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStatusLoading(false);
+    }
+  }, []);
+
+  const loadRuns = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const list = await apiGetJson<SyncRunsResp>('/sync/runs?limit=50&offset=0');
       setRuns(Array.isArray(list?.items) ? list.items : []);
       setTotal(Number(list?.total || 0));
     } catch (e) {
@@ -114,6 +123,11 @@ export function SyncPage() {
       setLoading(false);
     }
   }, []);
+
+  const load = React.useCallback(async () => {
+    setError(null);
+    await Promise.all([loadStatus(), loadRuns()]);
+  }, [loadRuns, loadStatus]);
 
   React.useEffect(() => {
     load();
@@ -124,17 +138,25 @@ export function SyncPage() {
     const s = String(lastRun.status || '').toLowerCase();
     if (!['running', 'queued'].includes(s)) return;
     const t = window.setInterval(() => {
-      load();
+      void loadStatus();
     }, 2000);
     return () => window.clearInterval(t);
-  }, [lastRun, load]);
+  }, [lastRun, loadStatus]);
+
+  React.useEffect(() => {
+    const s = String(lastRun?.status || '').toLowerCase();
+    if (s && !['running', 'queued'].includes(s)) {
+      void loadRuns();
+    }
+  }, [lastRun?.status, loadRuns]);
 
   async function onTrigger() {
     setTriggering(true);
     setError(null);
     try {
       await apiPostJson('/sync/trigger', { force: true });
-      await load();
+      await loadStatus();
+      await loadRuns();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -162,7 +184,7 @@ export function SyncPage() {
               'Run EOD Sync'
             )}
           </Button>
-          <Button size="sm" variant="secondary" onClick={load} disabled={loading}>
+          <Button size="sm" variant="secondary" onClick={load} disabled={loading || statusLoading}>
             Refresh
           </Button>
         </div>
