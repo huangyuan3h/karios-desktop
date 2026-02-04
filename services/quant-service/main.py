@@ -51,6 +51,7 @@ from market.akshare_provider import (
     fetch_cn_yesterday_limitup_premium,
     fetch_hk_daily_bars,
     fetch_hk_spot,
+    _fetch_cn_a_today_bar_from_spot,
 )
 from tv.capture import capture_screener_over_cdp_sync
 from tv.normalize import split_symbol_cell
@@ -5492,6 +5493,36 @@ def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> Marke
             }
             for r in reversed(rows)
         ]
+        if market == "CN" and out2:
+            try:
+                today_bar = _fetch_cn_a_today_bar_from_spot(ticker)
+            except Exception:
+                today_bar = None
+            if today_bar is not None and _is_cn_trading_day():
+                today_str = str(today_bar.date)
+                last = out2[-1].get("date") if out2 else ""
+                if last == today_str:
+                    out2[-1] = {
+                        "date": today_bar.date,
+                        "open": today_bar.open,
+                        "high": today_bar.high,
+                        "low": today_bar.low,
+                        "close": today_bar.close,
+                        "volume": today_bar.volume,
+                        "amount": today_bar.amount,
+                    }
+                elif last and last < today_str:
+                    out2.append(
+                        {
+                            "date": today_bar.date,
+                            "open": today_bar.open,
+                            "high": today_bar.high,
+                            "low": today_bar.low,
+                            "close": today_bar.close,
+                            "volume": today_bar.volume,
+                            "amount": today_bar.amount,
+                        },
+                    )
         return MarketBarsResponse(
             symbol=sym,
             market=market,
@@ -5505,6 +5536,10 @@ def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> Marke
     cached_last = str(cached[0][0]) if cached else ""
     expected_last = _latest_expected_daily_bar_date(market)
     cache_stale = bool(cached_last and cached_last < expected_last)
+
+    if (not force) and (not _is_cn_trading_time()) and len(cached) >= days2 and cache_stale:
+        # Non-trading time: avoid heavy sync if cache is sufficient; rely on spot patch above.
+        return _resp_from_cached(cached)
 
     if force or len(cached) < days2 or cache_stale:
         ts = now_iso()
@@ -8604,6 +8639,27 @@ def _today_cn_date_str() -> str:
         return datetime.now(tz=tz).date().isoformat()
     except Exception:
         return datetime.now(tz=UTC).date().isoformat()
+
+
+def _is_cn_trading_time() -> bool:
+    try:
+        tz = ZoneInfo("Asia/Shanghai")
+        now = datetime.now(tz=tz)
+    except Exception:
+        return False
+    if now.weekday() >= 5:
+        return False
+    hhmm = now.strftime("%H:%M")
+    return ("09:30" <= hhmm <= "11:30") or ("13:00" <= hhmm <= "15:00")
+
+
+def _is_cn_trading_day() -> bool:
+    try:
+        tz = ZoneInfo("Asia/Shanghai")
+        now = datetime.now(tz=tz)
+        return now.weekday() < 5
+    except Exception:
+        return False
 
 
 def _get_broker_account_row(account_id: str) -> dict[str, str] | None:
