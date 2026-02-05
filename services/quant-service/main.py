@@ -4,6 +4,7 @@ import base64
 import hashlib
 import http.client
 import json
+import logging
 import math
 import os
 import re
@@ -73,6 +74,8 @@ def load_config() -> ServerConfig:
 
 
 app = FastAPI(title="Karios Quant Service", version="0.1.0")
+# Use uvicorn logger so messages show in server output by default.
+logger = logging.getLogger("uvicorn.error")
 
 # Use read-only DB connections for GET/HEAD/OPTIONS requests.
 _request_read_only: contextvars.ContextVar[bool] = contextvars.ContextVar("request_read_only", default=False)
@@ -1174,19 +1177,28 @@ def _sync_run_insert(*, run_id: str, kind: str, trade_date: str, status: str, st
         conn.commit()
 
 
-def _sync_mark_previous_runs_failed(*, kind: str = "eod") -> None:
+def _sync_mark_previous_runs_failed(*, kind: str = "eod", exclude_run_id: str | None = None) -> None:
     """
     Mark any in-flight runs as failed before starting a new run.
     """
     ts = now_iso()
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, started_at FROM sync_runs WHERE kind = ? AND status IN ('running', 'queued')",
+            "SELECT id, started_at, detail_json FROM sync_runs WHERE kind = ? AND status IN ('running', 'queued')",
             (kind,),
         ).fetchall()
         for r in rows:
             rid = str(r[0])
+            if exclude_run_id and rid == exclude_run_id:
+                continue
             started_at = str(r[1] or "")
+            try:
+                detail = json.loads(str(r[2]) or "{}")
+                if not isinstance(detail, dict):
+                    detail = {}
+            except Exception:
+                detail = {}
+            detail["message"] = "Superseded by a newer run."
             try:
                 dt_ms = None
                 if started_at:
@@ -1200,6 +1212,10 @@ def _sync_mark_previous_runs_failed(*, kind: str = "eod") -> None:
                 WHERE id = ?
                 """,
                 ("failed", ts, dt_ms, "Superseded by a newer run.", rid),
+            )
+            conn.execute(
+                "UPDATE sync_runs SET detail_json = ? WHERE id = ?",
+                (json.dumps(detail or {}, ensure_ascii=False, default=str), rid),
             )
             conn.execute(
                 """
@@ -1243,10 +1259,22 @@ def _run_with_timeout(fn, *, timeout_s: float) -> Any:
     t.start()
     t.join(timeout_s)
     if t.is_alive():
+        _sync_log(f"[eod] timeout after {timeout_s:.0f}s")
         raise TimeoutError(f"Timeout after {timeout_s:.0f}s")
     if err:
         raise err[0]
     return result.get("value")
+
+
+def _sync_log(msg: str) -> None:
+    try:
+        logger.info(msg)
+    except Exception:
+        print(msg)
+    try:
+        print(msg, flush=True)
+    except Exception:
+        pass
 
 
 def _sync_run_update(
@@ -1405,6 +1433,7 @@ def _sync_step_run(
         ended_at = now_iso()
         dt = _sync_now_ms() - t0
         err = f"{type(e).__name__}: {repr(e)}"
+        _sync_log(f"[eod] step={step} failed error={err}")
         _sync_step_update(
             step_id=step_id,
             status="failed",
@@ -1499,6 +1528,7 @@ def _collect_eod_targets(*, override_symbols: list[str] | None, limit: int = 200
     - holdings pool (first pingan account)
     - fallback to local market universe cache (market_stocks)
     """
+    _sync_log("[eod] collect_targets start")
     if isinstance(override_symbols, list) and override_symbols:
         out0 = []
         for s in override_symbols:
@@ -1532,12 +1562,15 @@ def _collect_eod_targets(*, override_symbols: list[str] | None, limit: int = 200
                 market = "HK" if len(ticker) in (4, 5) else "CN"
                 currency = "HKD" if market == "HK" else "CNY"
                 out.append({"symbol": sym, "market": market, "ticker": ticker, "name": ticker, "currency": currency})
+        _sync_log(f"[eod] collect_targets override count={len(out)}")
         return out[: max(1, min(int(limit), 500))]
 
     pool = _rank_extract_tv_pool(max_screeners=20, max_rows=300)
+    _sync_log(f"[eod] collect_targets tv_pool={len(pool)}")
     accs = list_broker_accounts(broker="pingan")
     aid = accs[0].id if accs else ""
     pool2 = pool + (_rank_extract_holdings_pool(aid) if aid else [])
+    _sync_log(f"[eod] collect_targets holdings_pool={len(pool2) - len(pool)}")
     if not pool2:
         with _connect() as conn:
             rows = conn.execute(
@@ -1559,6 +1592,7 @@ def _collect_eod_targets(*, override_symbols: list[str] | None, limit: int = 200
             }
             for r in rows
         ]
+        _sync_log(f"[eod] collect_targets fallback_market={len(pool2)}")
 
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -1578,6 +1612,7 @@ def _collect_eod_targets(*, override_symbols: list[str] | None, limit: int = 200
         )
         if len(out) >= max(1, min(int(limit), 500)):
             break
+    _sync_log(f"[eod] collect_targets final={len(out)}")
     return out
 
 
@@ -1717,11 +1752,12 @@ def _run_eod_sync_pipeline(
         _sync_run_insert(run_id=run_id, kind="eod", trade_date=trade_date, status="running", started_at=started_at, detail=detail)
         _sync_prune_runs(keep_run_id=run_id, kind="eod")
     else:
-        _sync_mark_previous_runs_failed(kind="eod")
+        _sync_mark_previous_runs_failed(kind="eod", exclude_run_id=run_id)
         with _connect() as conn:
             conn.execute("UPDATE sync_runs SET status = ? WHERE id = ?", ("running", run_id))
             conn.commit()
         _sync_prune_runs(keep_run_id=run_id, kind="eod")
+    _sync_log(f"[eod] run_id={run_id} started source={source} trade_date={trade_date}")
 
     t0 = _sync_now_ms()
     ok_steps = 0
@@ -1735,7 +1771,12 @@ def _run_eod_sync_pipeline(
 
         def step_prepare():
             nonlocal targets, all_symbols, resume_run_id, resume_info
-            targets = _collect_eod_targets(override_symbols=override_symbols, limit=200)
+            _sync_log("[eod] step=prepare start")
+            targets = _run_with_timeout(
+                lambda: _collect_eod_targets(override_symbols=override_symbols, limit=200),
+                timeout_s=20.0,
+            )
+            _sync_log(f"[eod] step=prepare collected targets={len(targets)}")
             _ensure_market_stocks_basic_bulk(targets)
             all_symbols = [
                 str(x.get("symbol") or "").strip().upper()
@@ -1748,6 +1789,7 @@ def _run_eod_sync_pipeline(
             if resume_run_id:
                 detail["resumeFromRunId"] = resume_run_id
                 _sync_run_set_targets(run_id=run_id, target_symbols=all_symbols, detail=detail)
+            _sync_log(f"[eod] step=prepare done targets={len(all_symbols)}")
             return len(all_symbols), 0, {"totalSymbols": len(all_symbols)}
 
         ok_prepare, _ok_count, _failed_count, _detail, err = _sync_step_run(
@@ -1783,6 +1825,7 @@ def _run_eod_sync_pipeline(
         syms_quotes = _resume_symbols_for_step(step="quotes", symbols_all=syms_quotes_all, resume_info=resume_info)
 
         def step_quotes():
+            _sync_log(f"[eod] step=quotes start symbols={len(syms)}")
             syms = syms_quotes
             need_cn = any(s.startswith("CN:") for s in syms)
             need_hk = any(s.startswith("HK:") for s in syms)
@@ -1805,6 +1848,8 @@ def _run_eod_sync_pipeline(
                     _upsert_market_quote(conn, s, ts)
                     ok += 1
                     ok_symbols.append(sym)
+                    if os.getenv("EOD_SYNC_LOG_EACH_SYMBOL"):
+                        _sync_log(f"[eod] step=quotes ok {sym}")
                 conn.commit()
             return ok, skipped, {
                 "totalSymbols": len(syms),
@@ -1819,6 +1864,7 @@ def _run_eod_sync_pipeline(
         syms_bars = [s for s in syms_bars if s][:200]
 
         def step_bars():
+            _sync_log(f"[eod] step=bars start symbols={len(syms)}")
             syms = syms_bars
             if not syms:
                 return 0, 0, {"refreshed": 0, "failed": 0, "totalSymbols": 0, "okSymbols": [], "failedSymbols": []}
@@ -1837,9 +1883,13 @@ def _run_eod_sync_pipeline(
                             fut.result()
                             refreshed += 1
                             ok_symbols.append(sym)
+                            if os.getenv("EOD_SYNC_LOG_EACH_SYMBOL"):
+                                _sync_log(f"[eod] step=bars ok {sym}")
                         except Exception:
                             failed += 1
                             failed_symbols.append(sym)
+                            if os.getenv("EOD_SYNC_LOG_EACH_SYMBOL"):
+                                _sync_log(f"[eod] step=bars fail {sym}")
 
             _run_batch(syms)
             if failed_symbols:
@@ -1864,6 +1914,7 @@ def _run_eod_sync_pipeline(
         cn_targets_chips = [it for it in cn_targets if str(it.get("symbol") or "").strip().upper() in set(cn_symbols_chips)]
 
         def step_chips():
+            _sync_log(f"[eod] step=chips start symbols={len(cn_symbols_chips)}")
             def fetch_one(sym: str, ticker: str):
                 return _call_with_retry(lambda: fetch_cn_a_chip_summary(ticker, days=60), tries=3)
 
@@ -1904,6 +1955,7 @@ def _run_eod_sync_pipeline(
         cn_targets_flow = [it for it in cn_targets if str(it.get("symbol") or "").strip().upper() in set(cn_symbols_flow)]
 
         def step_fund_flow():
+            _sync_log(f"[eod] step=fund_flow start symbols={len(cn_symbols_flow)}")
             def fetch_one(sym: str, ticker: str):
                 return _call_with_retry(lambda: fetch_cn_a_fund_flow(ticker, days=60), tries=3)
 
@@ -1941,8 +1993,10 @@ def _run_eod_sync_pipeline(
             }
 
         def step_industry_flow():
+            _sync_log("[eod] step=industry_fund_flow start")
             req = MarketCnIndustryFundFlowSyncRequest(date=trade_date, days=10, topN=5, force=bool(force))
             out = market_cn_industry_fund_flow_sync(req)
+            _sync_log("[eod] step=industry_fund_flow done")
             return 1, 0, {
                 "totalSymbols": 1,
                 "okSymbols": ["industry_fund_flow"],
@@ -2008,6 +2062,7 @@ def _run_eod_sync_pipeline(
             error=last_error,
             detail=detail2,
         )
+        _sync_log(f"[eod] run_id={run_id} finished status={status}")
         set_setting("eod_last_sync_at", ended_at)
         set_setting("eod_last_sync_run_id", run_id)
         return run_id
@@ -2167,9 +2222,10 @@ def sync_trigger(req: SyncTriggerRequest) -> SyncTriggerResponse:
     started_at = now_iso()
     trade_date = _today_cn_date_str()
     detail = {"source": "manual", "force": bool(req.force), "status": "queued"}
-    _sync_mark_previous_runs_failed(kind="eod")
+    _sync_mark_previous_runs_failed(kind="eod", exclude_run_id=run_id)
     _sync_run_insert(run_id=run_id, kind="eod", trade_date=trade_date, status="queued", started_at=started_at, detail=detail)
     _sync_prune_runs(keep_run_id=run_id, kind="eod")
+    _sync_log(f"[eod] run_id={run_id} queued source=manual trade_date={trade_date}")
 
     t = threading.Thread(
         target=_run_eod_sync_pipeline,
@@ -2186,6 +2242,7 @@ def sync_trigger(req: SyncTriggerRequest) -> SyncTriggerResponse:
         daemon=True,
     )
     t.start()
+    _sync_log(f"[eod] run_id={run_id} thread_started")
     return SyncTriggerResponse(ok=True, runId=run_id, status="queued")
 
 def _finite_float(x: Any, default: float = 0.0) -> float:

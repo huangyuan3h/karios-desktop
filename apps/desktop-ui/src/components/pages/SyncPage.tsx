@@ -139,7 +139,7 @@ export function SyncPage() {
     if (!['running', 'queued'].includes(s)) return;
     const t = window.setInterval(() => {
       void loadStatus();
-    }, 2000);
+    }, 5000);
     return () => window.clearInterval(t);
   }, [lastRun, loadStatus]);
 
@@ -250,7 +250,7 @@ export function SyncPage() {
               <div className="text-xs text-[var(--k-muted)]">{lastRun.detail.message}</div>
             ) : null}
             <div className="text-xs text-[var(--k-muted)]">
-              Targets: {formatSymbols(targetSymbols, 30)}
+              {targetSymbols.length ? `Targets: ${formatSymbols(targetSymbols, 30)}` : 'Targets: none'}
             </div>
 
             {steps.length ? (
