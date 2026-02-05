@@ -1030,6 +1030,8 @@ def _auto_resume_eod_sync() -> None:
         resume_run_id, _resume_info = _load_resume_step_info(trade_date=trade_date, kind="eod")
         if not resume_run_id:
             return
+        if os.getenv("ENABLE_EOD_SYNC_AUTO_RESUME", "").strip().lower() not in ("1", "true", "yes", "on"):
+            return
         # Avoid resuming if a sync is already running.
         if not _sync_try_acquire():
             return

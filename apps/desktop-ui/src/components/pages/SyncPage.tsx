@@ -166,6 +166,9 @@ export function SyncPage() {
 
   const steps = Array.isArray(lastRun?.steps) ? lastRun.steps : [];
   const progress = progressPercent(lastRun);
+  const targetSymbols = Array.isArray(lastRun?.detail?.targetSymbols)
+    ? lastRun.detail.targetSymbols
+    : [];
 
   return (
     <div className="space-y-4 p-4">
@@ -242,6 +245,12 @@ export function SyncPage() {
                 <div className="text-xs text-[var(--k-muted)]">Error</div>
                 <div className="truncate">{lastRun.error || '—'}</div>
               </div>
+            </div>
+            {lastRun?.detail?.message ? (
+              <div className="text-xs text-[var(--k-muted)]">{lastRun.detail.message}</div>
+            ) : null}
+            <div className="text-xs text-[var(--k-muted)]">
+              Targets: {formatSymbols(targetSymbols, 30)}
             </div>
 
             {steps.length ? (
