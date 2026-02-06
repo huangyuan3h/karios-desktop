@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import json
+from dataclasses import dataclass
+from datetime import date, timedelta
 import hashlib
+import json
 import math
 import os
 import random
 import time
+from typing import Any
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
-from datetime import date, timedelta
-from typing import Any
 
 
 def _ensure_no_proxy(host: str) -> None:
@@ -898,11 +898,11 @@ def fetch_cn_industry_fund_flow_eod(as_of: date) -> list[dict[str, Any]]:
     try:
         # key=f62 => "今日主力净流入-净额"
         rows = _with_retry(lambda: _dataapi_getbkzj("f62", "m:90 t:2"), tries=3)
-    except Exception:
+    except Exception as err:
         # Fallback: AkShare implementation (may fail when push2 is blocked).
         ak = _akshare()
         if not hasattr(ak, "stock_sector_fund_flow_rank"):
-            raise RuntimeError("AkShare missing stock_sector_fund_flow_rank. Please upgrade AkShare.")
+            raise RuntimeError("AkShare missing stock_sector_fund_flow_rank. Please upgrade AkShare.") from err
         df = _with_retry(lambda: ak.stock_sector_fund_flow_rank(indicator="今日", sector_type="行业资金流"), tries=3)
         rows = _to_records(df)
 
