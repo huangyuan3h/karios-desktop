@@ -85,6 +85,120 @@ def test_quant2d_outcome_label_and_calibration(tmp_path, monkeypatch) -> None:
     assert isinstance(cal.get("items"), list)
 
 
+def test_quant2d_calibration_uses_latest_date_window(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    client = TestClient(main.app)
+    acc = client.post("/broker/accounts", json={"broker": "pingan", "title": "Main"}).json()
+    account_id = acc["id"]
+
+    with main._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO quant_2d_rank_events(
+              id, account_id, as_of_ts, as_of_date, symbol, ticker, name, buy_price, buy_price_src, raw_score,
+              evidence_json, created_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "evt-1",
+                account_id,
+                "2020-01-01T00:00:00Z",
+                "2020-01-01",
+                "CN:000001",
+                "000001",
+                "Alpha",
+                10.0,
+                "spot",
+                80.0,
+                main.json.dumps({"breakdown": {"trend": 0.8}}, ensure_ascii=False),
+                "2020-01-01T00:00:00Z",
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO quant_2d_outcomes(
+              event_id, account_id, as_of_ts, as_of_date, symbol, buy_price, t1_date, t2_date, close_t1, close_t2,
+              low_min, ret2d_avg_pct, dd2d_pct, win, labeled_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "evt-1",
+                account_id,
+                "2020-01-01T00:00:00Z",
+                "2020-01-01",
+                "CN:000001",
+                10.0,
+                "2020-01-02",
+                "2020-01-03",
+                10.1,
+                10.2,
+                9.9,
+                1.5,
+                -1.0,
+                1,
+                "2020-01-03T00:00:00Z",
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO quant_2d_rank_events(
+              id, account_id, as_of_ts, as_of_date, symbol, ticker, name, buy_price, buy_price_src, raw_score,
+              evidence_json, created_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "evt-2",
+                account_id,
+                "2020-01-15T00:00:00Z",
+                "2020-01-15",
+                "CN:000002",
+                "000002",
+                "Beta",
+                12.0,
+                "spot",
+                90.0,
+                main.json.dumps({"breakdown": {"trend": 0.9}}, ensure_ascii=False),
+                "2020-01-15T00:00:00Z",
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO quant_2d_outcomes(
+              event_id, account_id, as_of_ts, as_of_date, symbol, buy_price, t1_date, t2_date, close_t1, close_t2,
+              low_min, ret2d_avg_pct, dd2d_pct, win, labeled_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "evt-2",
+                account_id,
+                "2020-01-15T00:00:00Z",
+                "2020-01-15",
+                "CN:000002",
+                12.0,
+                "2020-01-16",
+                "2020-01-17",
+                12.4,
+                12.2,
+                11.7,
+                2.0,
+                -2.5,
+                1,
+                "2020-01-17T00:00:00Z",
+            ),
+        )
+        conn.commit()
+
+    cal = main._build_quant_2d_calibration(account_id=account_id, buckets=10, lookback_days=30)
+    assert cal["n"] == 2
+    assert isinstance(cal.get("items"), list)
+
+
 def test_quant2d_llm_adjust_requires_valid_evidence_refs(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "test.sqlite3"
     monkeypatch.setenv("DATABASE_PATH", str(db_path))

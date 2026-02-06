@@ -1105,9 +1105,21 @@ def _build_quant_2d_calibration(
 ) -> dict[str, Any]:
     b = max(5, min(int(buckets), 50))
     days = max(10, min(int(lookback_days), 720))
-    # Simple lookback by as_of_date string ordering (YYYY-MM-DD).
-    cutoff = (datetime.now(tz=UTC).date() - timedelta(days=days)).isoformat()
     with _connect() as conn:
+        latest_row = conn.execute(
+            "SELECT MAX(as_of_date) FROM quant_2d_outcomes WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+        base_date = None
+        if latest_row and latest_row[0]:
+            try:
+                base_date = datetime.fromisoformat(str(latest_row[0])).date()
+            except ValueError:
+                base_date = None
+        if base_date is None:
+            base_date = datetime.now(tz=UTC).date()
+        # Simple lookback by as_of_date string ordering (YYYY-MM-DD).
+        cutoff = (base_date - timedelta(days=days)).isoformat()
         rows = conn.execute(
             """
             SELECT e.raw_score, o.win, o.ret2d_avg_pct, o.dd2d_pct
