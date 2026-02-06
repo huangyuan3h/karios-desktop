@@ -139,6 +139,10 @@ export function ChatComposer({
                   ? `${r.screenerName} @ ${new Date(r.capturedAt).toLocaleString()}`
                   : r.kind === 'stock'
                     ? `${r.ticker} ${r.name} (${r.barsDays}D) @ ${new Date(r.capturedAt).toLocaleString()}`
+                    : r.kind === 'watchlistStock'
+                      ? `${r.symbol}${r.name ? ` ${r.name}` : ''} · watchlist @ ${new Date(r.capturedAt).toLocaleString()}`
+                      : r.kind === 'watchlistTable'
+                        ? `Watchlist table · ${r.items.length}/${r.total} @ ${new Date(r.capturedAt).toLocaleString()}`
                     : r.kind === 'broker'
                       ? `${r.accountTitle} · ${r.snapshotKind} @ ${new Date(r.capturedAt).toLocaleString()}`
                       : r.kind === 'brokerState'
@@ -147,15 +151,17 @@ export function ChatComposer({
                           ? `${r.accountTitle} · strategy ${r.date}`
                           : r.kind === 'industryFundFlow'
                             ? `${r.title || 'CN industry fund flow'} · ${r.asOfDate}`
-                          : r.kind === 'leaderStocks'
-                            ? `Leader stocks · last ${r.days}D`
-                          : r.kind === 'marketSentiment'
-                            ? `${r.title || 'Market sentiment'} · ${r.asOfDate} (last ${r.days}D)`
-                          : r.kind === 'rankList'
-                            ? `CN rank (1-2D) · ${r.asOfDate || 'latest'} (top ${r.limit})`
-                          : r.kind === 'intradayRankList'
-                            ? `CN rank (Intraday) · ${r.slot || 'auto'} (top ${r.limit})`
-                          : 'Unknown reference'}
+                            : r.kind === 'leaderStocks'
+                              ? `Leader stocks · last ${r.days}D`
+                              : r.kind === 'marketSentiment'
+                                ? `${r.title || 'Market sentiment'} · ${r.asOfDate} (last ${r.days}D)`
+                                : r.kind === 'rankList'
+                                  ? `CN rank (1-2D) · ${r.asOfDate || 'latest'} (top ${r.limit})`
+                                  : r.kind === 'intradayRankList'
+                                    ? `CN rank (Intraday) · ${r.slot || 'auto'} (top ${r.limit})`
+                                    : r.kind === 'journal'
+                                      ? `${r.title} @ ${new Date(r.capturedAt).toLocaleString()}`
+                                      : 'Unknown reference'}
               </span>
               <Button
                 variant="ghost"
@@ -210,5 +216,3 @@ export function ChatComposer({
     </div>
   );
 }
-
-

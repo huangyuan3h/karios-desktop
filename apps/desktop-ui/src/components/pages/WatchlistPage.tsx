@@ -1,21 +1,34 @@
 'use client';
 
 import * as React from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, CircleX, Info, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, CircleX, ExternalLink, Info, RefreshCw, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
 import { loadJson, saveJson } from '@/lib/storage';
+import { useChatStore } from '@/lib/chat/store';
 
 type WatchlistItem = {
   symbol: string; // e.g. "CN:600000" or "HK:0700"
   name?: string | null;
   nameStatus?: 'resolved' | 'not_found';
   addedAt: string; // ISO
+  color?: string; // hex color for lightweight flag, default white (#ffffff)
 };
 
 const STORAGE_KEY = 'karios.watchlist.v1';
+
+const FLAG_COLORS: Array<{ label: string; hex: string }> = [
+  { label: 'White', hex: '#ffffff' },
+  { label: 'Red', hex: '#fee2e2' },
+  { label: 'Orange', hex: '#ffedd5' },
+  { label: 'Yellow', hex: '#fef9c3' },
+  { label: 'Green', hex: '#dcfce7' },
+  { label: 'Blue', hex: '#dbeafe' },
+  { label: 'Purple', hex: '#f3e8ff' },
+  { label: 'Gray', hex: '#f4f4f5' },
+];
 
 type MarketStockBasicRow = {
   symbol: string;
@@ -97,8 +110,25 @@ type TvSnapshotDetail = {
   rows: Record<string, string>[];
 };
 
+type TvScreenerSyncResponse = {
+  snapshotId: string;
+  capturedAt: string;
+  rowCount: number;
+};
+
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
+}
+
+async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: body != null ? { 'content-type': 'application/json' } : undefined,
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
   const txt = await res.text().catch(() => '');
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
   return txt ? (JSON.parse(txt) as T) : ({} as T);
@@ -197,12 +227,18 @@ function fmtBuyCell(t: TrendOkResult | undefined | null): {
 }
 
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
+  const { addReference } = useChatStore();
   const [items, setItems] = React.useState<WatchlistItem[]>([]);
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
+  const [trendBusy, setTrendBusy] = React.useState(false);
+  const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
+  const [syncStage, setSyncStage] = React.useState<string | null>(null);
+  const [syncProgress, setSyncProgress] = React.useState<{ cur: number; total: number } | null>(null);
+  const [syncLogs, setSyncLogs] = React.useState<string[]>([]);
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
   const [tooltip, setTooltip] = React.useState<{
@@ -214,6 +250,15 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     content: React.ReactNode;
   }>({ open: false, x: 0, y: 0, w: 0, placement: 'top-end', content: null });
 
+  const [colorPicker, setColorPicker] = React.useState<{
+    open: boolean;
+    x: number;
+    y: number;
+    symbol: string | null;
+  }>({ open: false, x: 0, y: 0, symbol: null });
+
+  const trendReqRef = React.useRef(0);
+
   React.useEffect(() => {
     const saved = loadJson<WatchlistItem[]>(STORAGE_KEY, []);
     // Backward-compatible migration: drop deprecated fields (e.g. note).
@@ -222,6 +267,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       .filter((x) => x && typeof x === 'object')
       .map((x) => {
         const it = x as Partial<WatchlistItem> & { note?: unknown };
+        const rawColor = typeof it.color === 'string' ? it.color.trim().toLowerCase() : '';
+        const color = FLAG_COLORS.some((c) => c.hex === rawColor) ? rawColor : '#ffffff';
         return {
           symbol: String(it.symbol ?? '').trim(),
           name: it.name ?? null,
@@ -230,6 +277,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               ? it.nameStatus
               : undefined,
           addedAt: String(it.addedAt ?? new Date().toISOString()),
+          color,
         };
       })
       .filter((x) => Boolean(x.symbol));
@@ -279,33 +327,72 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     };
   }, [items]);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    async function loadTrendOk() {
+  const refreshTrend = React.useCallback(
+    async (reason: 'items_changed' | 'manual' | 'timer', opts: { forceMarket?: boolean } = {}) => {
       const syms = items.map((x) => x.symbol).filter(Boolean);
       if (!syms.length) {
         setTrend({});
+        setTrendUpdatedAt(null);
         return;
       }
+
+      const reqId = (trendReqRef.current += 1);
+      setTrendBusy(true);
       try {
+        // If requested, force-refresh latest daily bars (and optional chips) from network first.
+        if (opts.forceMarket) {
+          // Keep it lightweight: daily bars are sufficient for score/trend/buy/stoploss.
+          // Also, do sequential requests to avoid spiky traffic / upstream throttling.
+          let failures = 0;
+          for (const sym of syms) {
+            const enc = encodeURIComponent(sym);
+            const ok = await apiGetJson(`/market/stocks/${enc}/bars?days=60&force=true`)
+              .then(() => true)
+              .catch(() => false);
+            if (!ok) failures += 1;
+            await new Promise((r) => window.setTimeout(r, 120));
+          }
+          if (reason === 'manual' && failures > 0) {
+            setSyncMsg(`Network sync failed for ${failures}/${syms.length} symbols; using cached data.`);
+          }
+        }
+
         const sp = new URLSearchParams();
+        // Always request a best-effort refresh so Watchlist is based on the latest daily bar.
+        // The backend will fall back to cache if upstream is blocked.
+        sp.set('refresh', 'true');
         for (const s of syms) sp.append('symbols', s);
         const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
-        if (cancelled) return;
+        if (reqId !== trendReqRef.current) return;
         const next: Record<string, TrendOkResult> = {};
         for (const r of Array.isArray(rows) ? rows : []) {
           if (r && r.symbol) next[r.symbol] = r;
         }
         setTrend(next);
+        setTrendUpdatedAt(new Date().toISOString());
+        if (reason === 'manual') setError(null);
       } catch (e) {
-        if (!cancelled) console.warn('Watchlist trendok load failed:', e);
+        if (reqId === trendReqRef.current) console.warn('Watchlist trendok load failed:', e);
+      } finally {
+        if (reqId === trendReqRef.current) setTrendBusy(false);
       }
-    }
-    void loadTrendOk();
-    return () => {
-      cancelled = true;
-    };
-  }, [items]);
+    },
+    [items],
+  );
+
+  React.useEffect(() => {
+    void refreshTrend('items_changed');
+  }, [refreshTrend]);
+
+  React.useEffect(() => {
+    // Auto refresh every 10 minutes to reflect DB updates without reloading the app.
+    if (!items.length) return;
+    const id = window.setInterval(() => {
+      // Auto refresh only recomputes from cache; manual refresh can force network sync.
+      void refreshTrend('timer', { forceMarket: false });
+    }, 10 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [items.length, refreshTrend]);
 
   function onAdd() {
     setError(null);
@@ -325,6 +412,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         symbol: sym,
         name: null,
         addedAt: new Date().toISOString(),
+        color: '#ffffff',
       },
       ...items,
     ];
@@ -341,6 +429,20 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     setError(null);
     setSyncMsg(null);
     setSyncBusy(true);
+    setSyncStage('Loading enabled screeners');
+    setSyncProgress(null);
+    setSyncLogs([]);
+
+    // UI-only helpers: show progress & last few steps.
+    const pushLog = (line: string) => {
+      setSyncLogs((prev) => [...prev, line].slice(-6));
+    };
+    const setStep = (label: string, cur?: number, total?: number) => {
+      setSyncStage(label);
+      if (typeof cur === 'number' && typeof total === 'number') setSyncProgress({ cur, total });
+      else setSyncProgress(null);
+      pushLog(label + (typeof cur === 'number' && typeof total === 'number' ? ` (${cur}/${total})` : ''));
+    };
     try {
       const s = await apiGetJson<{ items: TvScreener[] }>('/integrations/tradingview/screeners');
       const enabled = (s.items || []).filter((x) => x && x.enabled);
@@ -349,18 +451,47 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         return;
       }
 
-      const snapshotDetails = await Promise.all(
-        enabled.map(async (sc) => {
+      setStep('Capturing TradingView snapshots', 0, enabled.length);
+      // 1) Capture a fresh snapshot from each enabled screener (best-effort; sequential to avoid CDP conflicts).
+      const freshSnapshotIds: string[] = [];
+      let screenerFailures = 0;
+      for (let i = 0; i < enabled.length; i++) {
+        const sc = enabled[i]!;
+        setSyncProgress({ cur: i + 1, total: enabled.length });
+        try {
+          const r = await apiPostJson<TvScreenerSyncResponse>(
+            `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/sync`,
+          );
+          if (r?.snapshotId) freshSnapshotIds.push(String(r.snapshotId));
+        } catch {
+          screenerFailures += 1;
+        }
+      }
+
+      setStep('Loading snapshot details', 0, enabled.length);
+      // 2) Load snapshot details (prefer fresh; fall back to latest saved if sync failed).
+      const snapshotDetails: TvSnapshotDetail[] = [];
+      for (let i = 0; i < enabled.length; i++) {
+        const sc = enabled[i]!;
+        setSyncProgress({ cur: i + 1, total: enabled.length });
+        try {
+          // Prefer the newest snapshot for this screener.
+          let snapId: string | null = null;
+          // If we captured fresh snapshots, pick the newest one from list (simple: query latest).
           const list = await apiGetJson<{ items: TvSnapshotSummary[] }>(
             `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/snapshots?limit=1`,
           );
           const latest = list.items?.[0];
-          if (!latest) return null;
-          return await apiGetJson<TvSnapshotDetail>(
-            `/integrations/tradingview/snapshots/${encodeURIComponent(latest.id)}`,
+          if (latest?.id) snapId = String(latest.id);
+          if (!snapId) continue;
+          const d = await apiGetJson<TvSnapshotDetail>(
+            `/integrations/tradingview/snapshots/${encodeURIComponent(snapId)}`,
           );
-        }),
-      );
+          snapshotDetails.push(d);
+        } catch {
+          // ignore per-screener
+        }
+      }
 
       const candidates: string[] = [];
       for (const snap of snapshotDetails) {
@@ -378,37 +509,82 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         return;
       }
 
-      // Batch TrendOK checks (backend caps at 200; we chunk explicitly).
-      const okSyms: string[] = [];
+      setStep('TrendOK prefilter (cache)', 0, uniq.length);
+      // 3) Pre-filter by cached TrendOK (fast, no external fetch).
+      const okSymsCached: string[] = [];
       for (const part of chunk(uniq, 200)) {
         const sp = new URLSearchParams();
+        sp.set('refresh', 'true');
         for (const s2 of part) sp.append('symbols', s2);
         const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
         for (const rr of Array.isArray(rows) ? rows : []) {
-          if (rr && rr.symbol && rr.trendOk === true) okSyms.push(rr.symbol);
+          if (rr && rr.symbol && rr.trendOk === true) okSymsCached.push(rr.symbol);
         }
+        setSyncProgress((p) => {
+          const prev = p?.cur ?? 0;
+          return { cur: Math.min(uniq.length, prev + part.length), total: uniq.length };
+        });
       }
-      const okUniq = Array.from(new Set(okSyms));
+      const okUniqCached = Array.from(new Set(okSymsCached));
+
+      setStep('Refreshing latest daily bars', 0, okUniqCached.length);
+      // 4) Force-refresh daily bars from network for the cached-OK subset, then re-check TrendOK to make it "live".
+      let barFailures = 0;
+      for (let i = 0; i < okUniqCached.length; i++) {
+        const sym = okUniqCached[i]!;
+        setSyncProgress({ cur: i + 1, total: okUniqCached.length });
+        const enc = encodeURIComponent(sym);
+        const ok = await apiGetJson(`/market/stocks/${enc}/bars?days=60&force=true`)
+          .then(() => true)
+          .catch(() => false);
+        if (!ok) barFailures += 1;
+        await new Promise((r) => window.setTimeout(r, 120));
+      }
+
+      setStep('TrendOK re-check (live)', 0, okUniqCached.length);
+      const okSymsLive: string[] = [];
+      for (const part of chunk(okUniqCached, 200)) {
+        const sp = new URLSearchParams();
+        sp.set('refresh', 'true');
+        for (const s2 of part) sp.append('symbols', s2);
+        const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+        for (const rr of Array.isArray(rows) ? rows : []) {
+          if (rr && rr.symbol && rr.trendOk === true) okSymsLive.push(rr.symbol);
+        }
+        setSyncProgress((p) => {
+          const prev = p?.cur ?? 0;
+          return { cur: Math.min(okUniqCached.length, prev + part.length), total: okUniqCached.length };
+        });
+      }
+      const okUniq = Array.from(new Set(okSymsLive));
 
       const existing = new Set(items.map((x) => x.symbol));
       const now = new Date().toISOString();
       const added: WatchlistItem[] = okUniq
         .filter((sym) => !existing.has(sym))
-        .map((sym) => ({ symbol: sym, name: null, addedAt: now }));
+        .map((sym) => ({ symbol: sym, name: null, addedAt: now, color: '#ffffff' }));
 
       if (!added.length) {
         setSyncMsg(
-          `Screener scanned ${uniq.length} symbols; TrendOK ✅: ${okUniq.length}; nothing new to add.`,
+          `Screener scanned ${uniq.length} symbols; TrendOK ✅ (live): ${okUniq.length}; nothing new to add.` +
+            (screenerFailures ? ` (${screenerFailures} screener sync failed)` : '') +
+            (barFailures ? ` (${barFailures} bar sync failed, used cache)` : ''),
         );
         return;
       }
 
       persist([...added, ...items]);
-      setSyncMsg(`Added ${added.length} TrendOK ✅ stocks from screener (scanned ${uniq.length}).`);
+      setSyncMsg(
+        `Added ${added.length} TrendOK ✅ stocks from screener (scanned ${uniq.length}).` +
+          (screenerFailures ? ` (${screenerFailures} screener sync failed)` : '') +
+          (barFailures ? ` (${barFailures} bar sync failed, used cache)` : ''),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSyncBusy(false);
+      setSyncStage(null);
+      setSyncProgress(null);
     }
   }
 
@@ -431,6 +607,33 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   function hideTooltip() {
     setTooltip((prev) => (prev.open ? { ...prev, open: false } : prev));
   }
+
+  function showColorPicker(el: HTMLElement, sym: string) {
+    const r = el.getBoundingClientRect();
+    const pad = 10;
+    const panelW = 220;
+    const x = Math.max(pad, Math.min(window.innerWidth - panelW - pad, r.left));
+    const y = Math.min(window.innerHeight - pad, r.bottom + 8);
+    setColorPicker({ open: true, x, y, symbol: sym });
+  }
+
+  function hideColorPicker() {
+    setColorPicker((prev) => (prev.open ? { ...prev, open: false, symbol: null } : prev));
+  }
+
+  function setItemColor(symbol: string, color: string) {
+    const next = items.map((it) => (it.symbol === symbol ? { ...it, color } : it));
+    persist(next);
+  }
+
+  React.useEffect(() => {
+    if (!colorPicker.open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') hideColorPicker();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [colorPicker.open]);
 
   function checkLine(label: string, ok: boolean | null | undefined, detail: string) {
     if (ok == null) return { label, state: '—', detail };
@@ -739,6 +942,33 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     return arr;
   }, [items, trend, scoreSortEnabled, scoreSortDir]);
 
+  function referenceTable() {
+    const capturedAt = new Date().toISOString();
+    const rows = sortedItems.slice(0, 50).map((it) => {
+      const t = trend[it.symbol];
+      return {
+        symbol: it.symbol,
+        name: it.name ?? null,
+        asOfDate: t?.asOfDate ?? null,
+        close: t?.values?.close ?? null,
+        trendOk: t?.trendOk ?? null,
+        score: t?.score ?? null,
+        stopLossPrice: t?.stopLossPrice ?? null,
+        buyMode: t?.buyMode ?? null,
+        buyAction: t?.buyAction ?? null,
+        buyZoneLow: t?.buyZoneLow ?? null,
+        buyZoneHigh: t?.buyZoneHigh ?? null,
+      };
+    });
+    addReference({
+      kind: 'watchlistTable',
+      refId: `${capturedAt}:${sortedItems.length}`,
+      capturedAt,
+      total: sortedItems.length,
+      items: rows,
+    });
+  }
+
   const headerTip = (
     <>
       <div className="mb-2 font-medium">Definition (CN daily)</div>
@@ -769,19 +999,81 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             Names are resolved from Market cache. If names are missing, go to Market and click Sync
             once.
           </div>
+          <div className="mt-1 text-xs text-[var(--k-muted)]">
+            {trendUpdatedAt
+              ? `Scores updated at ${new Date(trendUpdatedAt).toLocaleString()} (auto refresh: 10 min)`
+              : 'Scores not loaded yet.'}
+          </div>
+          {syncBusy && syncStage ? (
+            <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-medium">Sync from screener</div>
+                <div className="text-[var(--k-muted)]">
+                  {syncProgress ? `${syncProgress.cur}/${syncProgress.total}` : '…'}
+                </div>
+              </div>
+              <div className="mt-1 text-[var(--k-muted)]">{syncStage}</div>
+              {syncProgress && syncProgress.total > 0 ? (
+                <div className="mt-2 h-2 w-full overflow-hidden rounded bg-[var(--k-surface-2)]">
+                  <div
+                    className="h-full bg-[var(--k-accent)]"
+                    style={{
+                      width: `${Math.max(
+                        0,
+                        Math.min(100, (syncProgress.cur / Math.max(1, syncProgress.total)) * 100),
+                      ).toFixed(1)}%`,
+                    }}
+                  />
+                </div>
+              ) : null}
+              {syncLogs.length ? (
+                <div className="mt-2 space-y-0.5 text-[var(--k-muted)]">
+                  {syncLogs.slice(-4).map((l, i) => (
+                    <div key={i} className="truncate">
+                      {l}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {syncMsg ? <div className="mt-2 text-xs text-[var(--k-muted)]">{syncMsg}</div> : null}
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => void onSyncFromScreener()}
-          disabled={syncBusy}
-          className="gap-2"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Sync from screener
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void refreshTrend('manual', { forceMarket: true })}
+            disabled={trendBusy || !items.length}
+            className="gap-2"
+            aria-label="Refresh watchlist scores"
+            title="Fetch latest daily bars from network and recompute"
+          >
+            <RefreshCw className={trendBusy ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+            Refresh
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => referenceTable()}
+            disabled={!sortedItems.length}
+            className="gap-2"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Reference table
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void onSyncFromScreener()}
+            disabled={syncBusy}
+            className="gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Sync from screener
+          </Button>
+        </div>
       </div>
 
       <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
@@ -829,6 +1121,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             <table className="w-full border-collapse text-sm">
               <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                 <tr className="text-left">
+                  <th className="px-3 py-2 w-[44px]" title="Color flag">
+                    <span className="sr-only">Color</span>
+                  </th>
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Name</th>
                   <th className="px-3 py-2">
@@ -887,6 +1182,23 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     key={it.symbol}
                     className="border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)]"
                   >
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        className="grid h-6 w-6 place-items-center rounded hover:bg-[var(--k-surface-2)]"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          showColorPicker(e.currentTarget, it.symbol);
+                        }}
+                        aria-label="Set color flag"
+                        title="Set color flag"
+                      >
+                        <span
+                          className="h-3.5 w-3.5 rounded-sm border border-[var(--k-border)]"
+                          style={{ backgroundColor: it.color || '#ffffff' }}
+                        />
+                      </button>
+                    </td>
                     <td className="px-3 py-2 font-mono">
                       <button
                         type="button"
@@ -921,6 +1233,36 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
+                          onClick={() => {
+                            const t = trend[it.symbol];
+                            const capturedAt = new Date().toISOString();
+                            addReference({
+                              kind: 'watchlistStock',
+                              refId: `${it.symbol}:${capturedAt}`,
+                              symbol: it.symbol,
+                              name: it.name ?? null,
+                              capturedAt,
+                              asOfDate: t?.asOfDate ?? null,
+                              close: t?.values?.close ?? null,
+                              trendOk: t?.trendOk ?? null,
+                              score: t?.score ?? null,
+                              stopLossPrice: t?.stopLossPrice ?? null,
+                              buyMode: t?.buyMode ?? null,
+                              buyAction: t?.buyAction ?? null,
+                              buyZoneLow: t?.buyZoneLow ?? null,
+                              buyZoneHigh: t?.buyZoneHigh ?? null,
+                              buyWhy: t?.buyWhy ?? null,
+                            });
+                          }}
+                          aria-label="Reference to chat"
+                          title="Reference to chat"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
                           onClick={() => onRemove(it.symbol)}
                           aria-label="Remove"
                           title="Remove"
@@ -951,6 +1293,54 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               }}
             >
               {tooltip.content}
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {colorPicker.open
+        ? createPortal(
+            <div className="fixed inset-0 z-[9999]" onMouseDown={hideColorPicker}>
+              <div
+                className="fixed rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs text-[var(--k-text)] shadow-lg"
+                style={{ left: colorPicker.x, top: colorPicker.y, width: 220 }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-medium text-[var(--k-muted)]">Color flag</div>
+                  <button
+                    type="button"
+                    className="grid h-7 w-7 place-items-center rounded hover:bg-[var(--k-surface-2)]"
+                    onClick={hideColorPicker}
+                    aria-label="Close"
+                  >
+                    <CircleX className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {FLAG_COLORS.map((c) => (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      className="group flex h-9 items-center justify-center rounded-md border border-[var(--k-border)] hover:bg-[var(--k-surface-2)]"
+                      onClick={() => {
+                        if (colorPicker.symbol) setItemColor(colorPicker.symbol, c.hex);
+                        hideColorPicker();
+                      }}
+                      aria-label={c.label}
+                      title={c.label}
+                    >
+                      <span
+                        className="h-5 w-5 rounded-sm border border-[var(--k-border)]"
+                        style={{ backgroundColor: c.hex }}
+                      />
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 text-[11px] text-[var(--k-muted)]">
+                  Tip: Press Esc or click outside to close.
+                </div>
+              </div>
             </div>,
             document.body,
           )

@@ -1,10 +1,60 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
+import os
+import random
+import time
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
+
+
+def _ensure_no_proxy(host: str) -> None:
+    """
+    Ensure this host bypasses system proxy settings (HTTP(S)_PROXY).
+    This helps avoid ProxyError failures in some environments where proxy is misconfigured or blocks the host.
+    """
+    if not host:
+        return
+    cur = (os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or "").strip()
+    parts = [p.strip() for p in cur.split(",") if p.strip()]
+    if host in parts:
+        return
+    parts.append(host)
+    val = ",".join(parts)
+    os.environ["NO_PROXY"] = val
+    os.environ["no_proxy"] = val
+
+
+def _with_retry(fn, *, tries: int = 3, base_sleep_s: float = 0.4, max_sleep_s: float = 2.0):
+    """
+    Best-effort retry wrapper for flaky upstream endpoints.
+
+    AkShare relies on public data sources (e.g., Eastmoney). These endpoints can occasionally
+    abort connections without responding (e.g., RemoteDisconnected). A small retry with
+    exponential backoff improves stability without changing data semantics.
+    """
+    tries2 = max(1, min(int(tries), 5))
+    last: Exception | None = None
+    for i in range(tries2):
+        try:
+            return fn()
+        except Exception as e:
+            last = e
+            if i >= tries2 - 1:
+                raise
+            # Exponential backoff with jitter.
+            sleep_s = min(float(max_sleep_s), float(base_sleep_s) * (2**i))
+            sleep_s = sleep_s * (0.7 + random.random() * 0.6)
+            time.sleep(max(0.0, sleep_s))
+    # Defensive: should never reach here.
+    if last is not None:
+        raise last
+    raise RuntimeError("Retry wrapper failed unexpectedly.")
 
 
 @dataclass(frozen=True)
@@ -30,6 +80,13 @@ class BarRow:
 
 def _akshare():
     try:
+        # AkShare CN history uses Eastmoney endpoints under the hood.
+        # Make it more resilient by bypassing proxy for these hosts.
+        # Include both explicit hosts and a domain suffix to cover AkShare's evolving endpoints.
+        _ensure_no_proxy(".eastmoney.com")
+        _ensure_no_proxy("datacenter-web.eastmoney.com")
+        _ensure_no_proxy("push2.eastmoney.com")
+        _ensure_no_proxy("push2his.eastmoney.com")
         import akshare as ak  # type: ignore
 
         return ak
@@ -50,10 +107,40 @@ def _to_records(df: Any) -> list[dict[str, Any]]:
 
 def fetch_cn_a_spot() -> list[StockRow]:
     ak = _akshare()
-    df = ak.stock_zh_a_spot_em()
+    # Eastmoney push2 endpoints can be blocked in some environments (RemoteDisconnected).
+    # Fallback to the non-EM spot API when needed (slower but more resilient).
+    try:
+        df = _with_retry(lambda: ak.stock_zh_a_spot_em(), tries=3)
+    except Exception:
+        if hasattr(ak, "stock_zh_a_spot"):
+            df = _with_retry(lambda: ak.stock_zh_a_spot(), tries=2, base_sleep_s=0.8)
+        else:
+            raise
     out: list[StockRow] = []
+
+    def _norm_cn_ticker(code_raw: Any) -> str:
+        """
+        Normalize CN ticker to 6-digit form.
+
+        AkShare different sources can return:
+        - "000001" (preferred)
+        - "sz000001"/"sh600000"/"bj832000"
+        We normalize to the last 6 digits for a stable symbol key.
+        """
+        s = str(code_raw or "").strip().lower()
+        if not s:
+            return ""
+        # Common prefixed formats: sh/sz/bj + 6 digits
+        if len(s) >= 8 and (s.startswith("sh") or s.startswith("sz") or s.startswith("bj")):
+            s = s[-6:]
+        # Keep digits only
+        digits = "".join([ch for ch in s if ch.isdigit()])
+        if len(digits) == 6:
+            return digits
+        return ""
+
     for r in _to_records(df):
-        code = str(r.get("代码") or r.get("code") or "").strip()
+        code = _norm_cn_ticker(r.get("代码") or r.get("code") or "")
         name = str(r.get("名称") or r.get("name") or "").strip()
         if not code or not name:
             continue
@@ -143,8 +230,14 @@ def fetch_cn_market_breadth_eod(as_of: date) -> dict[str, Any]:
     """
     ak = _akshare()
     d = as_of.strftime("%Y-%m-%d")
-    # Use spot snapshot as a stable source.
-    df = ak.stock_zh_a_spot_em()
+    # Use spot snapshot as a stable source. In some environments Eastmoney push2 endpoints can
+    # be blocked/aborted; fall back to the non-EM spot API.
+    try:
+        df = _with_retry(lambda: ak.stock_zh_a_spot_em(), tries=3)
+    except Exception:
+        if not hasattr(ak, "stock_zh_a_spot"):
+            raise
+        df = _with_retry(lambda: ak.stock_zh_a_spot(), tries=2, base_sleep_s=0.8)
     rows = _to_records(df)
     up = 0
     down = 0
@@ -491,7 +584,17 @@ def fetch_hk_spot() -> list[StockRow]:
     # NOTE: AkShare naming may change; keep this isolated.
     if not hasattr(ak, "stock_hk_spot_em"):
         raise RuntimeError("AkShare missing stock_hk_spot_em. Please upgrade AkShare.")
-    df = ak.stock_hk_spot_em()
+    try:
+        df = _with_retry(lambda: ak.stock_hk_spot_em(), tries=3)
+    except Exception:
+        # Fallback to non-EM API when EM endpoints are blocked/flaky.
+        if not hasattr(ak, "stock_hk_spot"):
+            return []
+        try:
+            df = _with_retry(lambda: ak.stock_hk_spot(), tries=2, base_sleep_s=0.8)
+        except Exception:
+            # Best-effort: HK quotes are optional; do not fail the whole market sync.
+            return []
     out: list[StockRow] = []
     for r in _to_records(df):
         code = str(r.get("代码") or r.get("code") or "").strip()
@@ -527,13 +630,37 @@ def fetch_cn_a_daily_bars(ticker: str, *, days: int = 60) -> list[BarRow]:
     start_date = start.strftime("%Y%m%d")
     end_date = end.strftime("%Y%m%d")
 
-    df = ak.stock_zh_a_hist(
-        symbol=ticker,
-        period="daily",
-        start_date=start_date,
-        end_date=end_date,
-        adjust="",
-    )
+    def _exchange_prefix(code: str) -> str:
+        # Best-effort inference:
+        # - Shanghai: 6xxxxxx (incl. STAR 688xxx)
+        # - Beijing: 8xxxxxx / 4xxxxxx
+        # - Otherwise: Shenzhen
+        s = (code or "").strip()
+        if s.startswith("6"):
+            return "sh"
+        if s.startswith(("8", "4")):
+            return "bj"
+        return "sz"
+
+    # Primary: Eastmoney (may be blocked/captcha in some environments).
+    try:
+        df = ak.stock_zh_a_hist(
+            symbol=ticker,
+            period="daily",
+            start_date=start_date,
+            end_date=end_date,
+            adjust="",
+        )
+    except Exception:
+        # Fallback 1: AkShare daily API (Tencent-style; verified to work when push2his is blocked).
+        pref = _exchange_prefix(ticker)
+        sym2 = f"{pref}{ticker}"
+        if hasattr(ak, "stock_zh_a_daily"):
+            df = _with_retry(lambda: ak.stock_zh_a_daily(symbol=sym2, start_date=start_date, end_date=end_date), tries=2, base_sleep_s=0.8)  # type: ignore[misc]
+        elif hasattr(ak, "stock_zh_a_hist_tx"):
+            df = _with_retry(lambda: ak.stock_zh_a_hist_tx(symbol=sym2, start_date=start_date, end_date=end_date), tries=2, base_sleep_s=0.8)  # type: ignore[misc]
+        else:
+            raise
     rows = _to_records(df)
 
     # Common columns: 日期 开盘 收盘 最高 最低 成交量 成交额
@@ -545,12 +672,12 @@ def fetch_cn_a_daily_bars(ticker: str, *, days: int = 60) -> list[BarRow]:
         out.append(
             BarRow(
                 date=d,
-                open=str(r.get("开盘") or r.get("open") or ""),
-                high=str(r.get("最高") or r.get("high") or ""),
-                low=str(r.get("最低") or r.get("low") or ""),
-                close=str(r.get("收盘") or r.get("close") or ""),
-                volume=str(r.get("成交量") or r.get("volume") or ""),
-                amount=str(r.get("成交额") or r.get("amount") or ""),
+                open=str(r.get("开盘") or r.get("open") or r.get("Open") or ""),
+                high=str(r.get("最高") or r.get("high") or r.get("High") or ""),
+                low=str(r.get("最低") or r.get("low") or r.get("Low") or ""),
+                close=str(r.get("收盘") or r.get("close") or r.get("Close") or ""),
+                volume=str(r.get("成交量") or r.get("volume") or r.get("Volume") or ""),
+                amount=str(r.get("成交额") or r.get("amount") or r.get("Amount") or ""),
             ),
         )
     return out[-days:]
@@ -746,13 +873,38 @@ def fetch_cn_industry_fund_flow_eod(as_of: date) -> list[dict[str, Any]]:
     - net_inflow (CNY)
     - raw (dict) original row
     """
-    ak = _akshare()
+    # Primary: Eastmoney dataapi endpoint (used by https://data.eastmoney.com/bkzj/hy.html).
+    # This works in environments where push2 endpoints are blocked/aborted.
+    def _dataapi_getbkzj(key: str, code: str) -> list[dict[str, Any]]:
+        url = "https://data.eastmoney.com/dataapi/bkzj/getbkzj"
+        qs = urllib.parse.urlencode({"key": key, "code": code})
+        req = urllib.request.Request(
+            f"{url}?{qs}",
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Accept": "application/json,text/plain,*/*",
+                "Referer": "https://data.eastmoney.com/bkzj/hy.html",
+                "Connection": "close",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read()
+        j = json.loads(raw.decode("utf-8", errors="replace"))
+        data = j.get("data") if isinstance(j, dict) else None
+        diff = (data or {}).get("diff") if isinstance(data, dict) else None
+        return diff if isinstance(diff, list) else []
 
-    # Eastmoney: board/sector fund flow rank (industry dimension)
-    if not hasattr(ak, "stock_sector_fund_flow_rank"):
-        raise RuntimeError("AkShare missing stock_sector_fund_flow_rank. Please upgrade AkShare.")
-    df = ak.stock_sector_fund_flow_rank(indicator="今日", sector_type="行业资金流")
-    rows = _to_records(df)
+    rows: list[dict[str, Any]] = []
+    try:
+        # key=f62 => "今日主力净流入-净额"
+        rows = _with_retry(lambda: _dataapi_getbkzj("f62", "m:90 t:2"), tries=3)
+    except Exception as err:
+        # Fallback: AkShare implementation (may fail when push2 is blocked).
+        ak = _akshare()
+        if not hasattr(ak, "stock_sector_fund_flow_rank"):
+            raise RuntimeError("AkShare missing stock_sector_fund_flow_rank. Please upgrade AkShare.") from err
+        df = _with_retry(lambda: ak.stock_sector_fund_flow_rank(indicator="今日", sector_type="行业资金流"), tries=3)
+        rows = _to_records(df)
 
     out: list[dict[str, Any]] = []
     d = as_of.strftime("%Y-%m-%d")
@@ -764,6 +916,7 @@ def fetch_cn_industry_fund_flow_eod(as_of: date) -> list[dict[str, Any]]:
             or r.get("行业")
             or r.get("板块名称")
             or r.get("板块")
+            or r.get("f14")  # Eastmoney dataapi field
             or ""
         ).strip()
         if not name:
@@ -773,6 +926,7 @@ def fetch_cn_industry_fund_flow_eod(as_of: date) -> list[dict[str, Any]]:
             or r.get("行业代码")
             or r.get("板块代码")
             or r.get("BK代码")
+            or r.get("f12")  # Eastmoney dataapi field
             or ""
         ).strip()
         if not code:
@@ -790,6 +944,7 @@ def fetch_cn_industry_fund_flow_eod(as_of: date) -> list[dict[str, Any]]:
             or r.get("今日净流入")
             or r.get("净额")
             or r.get("净流入额")
+            or r.get("f62")  # Eastmoney dataapi field
         )
         net_cny = _parse_money_to_cny(net)
 
@@ -805,7 +960,61 @@ def fetch_cn_industry_fund_flow_eod(as_of: date) -> list[dict[str, Any]]:
     return out
 
 
-def fetch_cn_industry_fund_flow_hist(industry_name: str, *, days: int = 10) -> list[dict[str, Any]]:
+def _eastmoney_board_fund_flow_daykline(*, secid: str) -> list[dict[str, Any]]:
+    """
+    Fetch board/sector daily fund flow time series from Eastmoney.
+
+    This is used as a resilient alternative when AkShare's code mapping (which depends on push2)
+    is blocked. The endpoint is also used by Eastmoney's own board detail page:
+    https://data.eastmoney.com/bkzj/BKxxxx.html
+    """
+    url = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
+    params = {
+        "lmt": "0",
+        "klt": "101",
+        "fields1": "f1,f2,f3,f7",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65",
+        "ut": "b2884a393a59ad64002292a3e90d46a5",
+        "secid": secid,
+        "_": int(time.time() * 1000),
+    }
+    qs = urllib.parse.urlencode(params)
+    req = urllib.request.Request(
+        f"{url}?{qs}",
+        headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "application/json,text/plain,*/*",
+            "Referer": "https://data.eastmoney.com/",
+            "Connection": "close",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        raw = resp.read()
+    j = json.loads(raw.decode("utf-8", errors="replace"))
+    data = j.get("data") if isinstance(j, dict) else None
+    klines = (data or {}).get("klines") if isinstance(data, dict) else None
+    if not isinstance(klines, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in klines:
+        s = str(item or "")
+        if not s:
+            continue
+        parts = s.split(",")
+        if len(parts) < 2:
+            continue
+        d = parts[0].strip()
+        net = parts[1].strip()
+        out.append({"date": d, "net_inflow": _parse_money_to_cny(net), "raw": {"kline": s}})
+    return out
+
+
+def fetch_cn_industry_fund_flow_hist(
+    industry_name: str,
+    *,
+    industry_code: str | None = None,
+    days: int = 10,
+) -> list[dict[str, Any]]:
     """
     CN A-share industry historical fund flow time series (daily).
 
@@ -815,13 +1024,29 @@ def fetch_cn_industry_fund_flow_hist(industry_name: str, *, days: int = 10) -> l
     - net_inflow (CNY)
     - raw (dict)
     """
+    days2 = max(1, min(int(days), 60))
+    # Preferred: use industry_code directly to avoid AkShare's mapping call (push2 can be blocked).
+    code = (industry_code or "").strip()
+    if code:
+        if "." in code:
+            secid = code
+        else:
+            # Eastmoney sector/board uses market=90 for BK codes.
+            secid = f"90.{code}"
+        try:
+            items = _with_retry(lambda: _eastmoney_board_fund_flow_daykline(secid=secid), tries=3)
+            return items[-days2:]
+        except Exception:
+            # Fall through to AkShare name-based method.
+            pass
+
     ak = _akshare()
     if not hasattr(ak, "stock_sector_fund_flow_hist"):
         raise RuntimeError("AkShare missing stock_sector_fund_flow_hist. Please upgrade AkShare.")
     name = (industry_name or "").strip()
     if not name:
         return []
-    df = ak.stock_sector_fund_flow_hist(symbol=name)
+    df = _with_retry(lambda: ak.stock_sector_fund_flow_hist(symbol=name), tries=3)
     rows = _to_records(df)
     out: list[dict[str, Any]] = []
     for r in rows:
@@ -837,6 +1062,6 @@ def fetch_cn_industry_fund_flow_hist(industry_name: str, *, days: int = 10) -> l
             or r.get("净流入额")
         )
         out.append({"date": d, "net_inflow": _parse_money_to_cny(net), "raw": r})
-    return out[-max(1, int(days)) :]
+    return out[-days2:]
 
 

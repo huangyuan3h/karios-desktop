@@ -170,6 +170,18 @@ impl BackendManager {
 
     let mut spawned: Vec<BackendChild> = vec![];
 
+    // Provide a stable app-specific data directory so ai-service can persist runtime config
+    // (e.g. model provider, model id, API keys) without relying on env vars.
+    let app_data_dir = app
+      .path()
+      .app_data_dir()
+      .ok()
+      .and_then(|p| {
+        let _ = std::fs::create_dir_all(&p);
+        Some(p.to_string_lossy().to_string())
+      })
+      .unwrap_or_else(|| ".".to_string());
+
     let ai = spawn_backend(
       app,
       "karios-ai-service",
@@ -178,6 +190,7 @@ impl BackendManager {
       &[
         ("PORT", ai_port.to_string()),
         ("NODE_ENV", "production".to_string()),
+        ("KARIOS_APP_DATA_DIR", app_data_dir.clone()),
       ],
     );
 

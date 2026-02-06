@@ -34,6 +34,42 @@ export type ChatReference =
       capturedAt: string;
     }
   | {
+      kind: 'watchlistStock';
+      refId: string; // stable key: `${symbol}:${capturedAt}`
+      symbol: string;
+      name?: string | null;
+      capturedAt: string;
+      asOfDate?: string | null;
+      close?: number | null;
+      trendOk?: boolean | null;
+      score?: number | null;
+      stopLossPrice?: number | null;
+      buyMode?: string | null;
+      buyAction?: string | null;
+      buyZoneLow?: number | null;
+      buyZoneHigh?: number | null;
+      buyWhy?: string | null;
+    }
+  | {
+      kind: 'watchlistTable';
+      refId: string; // stable key: `${capturedAt}:${count}`
+      capturedAt: string;
+      total: number;
+      items: Array<{
+        symbol: string;
+        name?: string | null;
+        asOfDate?: string | null;
+        close?: number | null;
+        trendOk?: boolean | null;
+        score?: number | null;
+        stopLossPrice?: number | null;
+        buyMode?: string | null;
+        buyAction?: string | null;
+        buyZoneLow?: number | null;
+        buyZoneHigh?: number | null;
+      }>;
+    }
+  | {
       kind: 'stock';
       refId: string; // symbol
       symbol: string;
@@ -114,6 +150,14 @@ export type ChatReference =
       slot: string; // 0930_1030 | 1030_1130 | 1300_1400 | 1400_1445
       limit: number; // typically 30
       createdAt: string;
+    }
+  | {
+      kind: 'journal';
+      refId: string; // stable key: `journal:${journalId}:${timestamp}`
+      journalId: string;
+      title: string;
+      content: string; // markdown content
+      capturedAt: string;
     };
 
 export type AppSettings = {
@@ -128,5 +172,3 @@ export type AgentPanelState = {
   width: number;
   historyOpen: boolean;
 };
-
-

@@ -69,6 +69,22 @@ def test_market_sync_and_list(tmp_path, monkeypatch) -> None:
     assert resp.json()["items"][0]["symbol"] == "HK:00005"
 
 
+def test_market_sync_handles_non_runtime_errors(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "test.sqlite3"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    # Simulate an upstream connection abort that is NOT a RuntimeError.
+    monkeypatch.setattr(main, "fetch_cn_a_spot", lambda: (_ for _ in ()).throw(Exception("Connection aborted")))
+    monkeypatch.setattr(main, "fetch_hk_spot", lambda: [])
+
+    client = TestClient(main.app)
+    resp = client.post("/market/sync")
+    assert resp.status_code == 500
+    data = resp.json()
+    assert data["ok"] is False
+    assert "Connection aborted" in str(data.get("error") or "")
+
+
 def test_market_chips_cn_only(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "test.sqlite3"
     monkeypatch.setenv("DATABASE_PATH", str(db_path))

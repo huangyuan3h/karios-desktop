@@ -9,6 +9,8 @@ import { DashboardPage } from '@/components/pages/DashboardPage';
 import { BrokerPage } from '@/components/pages/BrokerPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
 import { LeaderStocksPage } from '@/components/pages/LeaderStocksPage';
+import { JournalReadPage } from '@/components/pages/JournalReadPage';
+import { JournalWritePage } from '@/components/pages/JournalWritePage';
 import { MarketPage } from '@/components/pages/MarketPage';
 import { RankPage } from '@/components/pages/RankPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
@@ -32,6 +34,9 @@ export function AppShell() {
   const [activePage, setActivePage] = React.useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [activeStockSymbol, setActiveStockSymbol] = React.useState<string | null>(null);
+  const [stockReturnPage, setStockReturnPage] = React.useState<string>('market');
+  const [activeJournalId, setActiveJournalId] = React.useState<string | null>(null);
+  const [journalMode, setJournalMode] = React.useState<'read' | 'write'>('read');
   const draggingRef = React.useRef(false);
   const agentVisibleRef = React.useRef(agentVisible);
   const agentModeRef = React.useRef(agentMode);
@@ -90,7 +95,10 @@ export function AppShell() {
     <div className="flex h-screen w-screen bg-[var(--k-bg)] text-[var(--k-text)]">
       <SidebarNav
         activeId={activePage}
-        onSelect={setActivePage}
+        onSelect={(id) => {
+          setActivePage(id);
+          if (id === 'journal') setJournalMode('read');
+        }}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
       />
@@ -112,6 +120,8 @@ export function AppShell() {
                 ? 'Broker'
               : activePage === 'strategy'
                 ? 'Strategy'
+              : activePage === 'journal'
+                ? 'Journal'
               : activePage === 'leaders'
                 ? 'Leaders'
               : activePage === 'stock'
@@ -128,6 +138,7 @@ export function AppShell() {
           <div className="flex items-center gap-2">
             <GlobalStockSearch
               onSelectSymbol={(symbol) => {
+                setStockReturnPage(activePage);
                 setActiveStockSymbol(symbol);
                 setActivePage('stock');
               }}
@@ -155,6 +166,7 @@ export function AppShell() {
             ) : activePage === 'market' ? (
               <MarketPage
                 onOpenStock={(symbol) => {
+                  setStockReturnPage('market');
                   setActiveStockSymbol(symbol);
                   setActivePage('stock');
                 }}
@@ -164,6 +176,7 @@ export function AppShell() {
             ) : activePage === 'rank' ? (
               <RankPage
                 onOpenStock={(symbol) => {
+                  setStockReturnPage('rank');
                   setActiveStockSymbol(symbol);
                   setActivePage('stock');
                 }}
@@ -173,15 +186,33 @@ export function AppShell() {
             ) : activePage === 'watchlist' ? (
               <WatchlistPage
                 onOpenStock={(symbol) => {
+                  setStockReturnPage('watchlist');
                   setActiveStockSymbol(symbol);
                   setActivePage('stock');
                 }}
               />
             ) : activePage === 'strategy' ? (
               <StrategyPage />
+            ) : activePage === 'journal' ? (
+              journalMode === 'write' ? (
+                <JournalWritePage
+                  journalId={activeJournalId}
+                  onJournalIdChange={setActiveJournalId}
+                  onExit={() => setJournalMode('read')}
+                />
+              ) : (
+                <JournalReadPage
+                  activeId={activeJournalId}
+                  onEdit={(id) => {
+                    setActiveJournalId(id);
+                    setJournalMode('write');
+                  }}
+                />
+              )
             ) : activePage === 'leaders' ? (
               <LeaderStocksPage
                 onOpenStock={(symbol) => {
+                  setStockReturnPage('leaders');
                   setActiveStockSymbol(symbol);
                   setActivePage('stock');
                 }}
@@ -189,7 +220,7 @@ export function AppShell() {
             ) : activePage === 'stock' && activeStockSymbol ? (
               <StockPage
                 symbol={activeStockSymbol}
-                onBack={() => setActivePage('market')}
+                onBack={() => setActivePage(stockReturnPage || 'market')}
               />
             ) : activePage === 'screener' ? (
               <ScreenerPage />

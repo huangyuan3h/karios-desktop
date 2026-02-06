@@ -142,7 +142,9 @@ function asArray(v: unknown): unknown[] {
 }
 
 function asStringArray(v: unknown): string[] {
-  return asArray(v).map((x) => String(x)).filter(Boolean);
+  return asArray(v)
+    .map((x) => String(x))
+    .filter(Boolean);
 }
 
 function getStr(obj: Record<string, unknown>, key: string, fallback = ''): string {
@@ -215,6 +217,52 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       continue;
     }
 
+    if (ref.kind === 'watchlistStock') {
+      const name = (ref.name ?? '').trim();
+      out += `## Watchlist: ${ref.symbol}${name ? ` (${name})` : ''}\n`;
+      out += `- capturedAt: ${ref.capturedAt}\n`;
+      if (ref.asOfDate) out += `- asOfDate: ${ref.asOfDate}\n`;
+      if (typeof ref.close === 'number') out += `- close: ${ref.close}\n`;
+      if (typeof ref.trendOk === 'boolean') out += `- trendOk: ${ref.trendOk ? 'true' : 'false'}\n`;
+      if (typeof ref.score === 'number') out += `- score: ${ref.score}\n`;
+      if (typeof ref.stopLossPrice === 'number') out += `- stopLossPrice: ${ref.stopLossPrice}\n`;
+      if (ref.buyMode) out += `- buyMode: ${ref.buyMode}\n`;
+      if (ref.buyAction) out += `- buyAction: ${ref.buyAction}\n`;
+      if (typeof ref.buyZoneLow === 'number' || typeof ref.buyZoneHigh === 'number') {
+        out += `- buyZone: ${ref.buyZoneLow ?? '—'} .. ${ref.buyZoneHigh ?? '—'}\n`;
+      }
+      if (ref.buyWhy) out += `\nWhy:\n- ${ref.buyWhy.replaceAll('\n', ' ')}\n`;
+      out += `\n`;
+      continue;
+    }
+
+    if (ref.kind === 'watchlistTable') {
+      out += `## Watchlist table\n`;
+      out += `- capturedAt: ${ref.capturedAt}\n`;
+      out += `- total: ${ref.total}\n\n`;
+
+      const rows = Array.isArray(ref.items) ? ref.items.slice(0, 50) : [];
+      out += `Rows (first ${rows.length}):\n`;
+      for (const r of rows) {
+        const parts: string[] = [];
+        parts.push(`symbol=${r.symbol}`);
+        if (r.name) parts.push(`name=${String(r.name).replaceAll('\n', ' ')}`);
+        if (r.asOfDate) parts.push(`asOf=${r.asOfDate}`);
+        if (typeof r.close === 'number') parts.push(`close=${r.close}`);
+        if (typeof r.score === 'number') parts.push(`score=${r.score}`);
+        if (typeof r.trendOk === 'boolean') parts.push(`trendOk=${r.trendOk ? 'true' : 'false'}`);
+        if (typeof r.stopLossPrice === 'number') parts.push(`stopLoss=${r.stopLossPrice}`);
+        if (r.buyMode) parts.push(`buyMode=${r.buyMode}`);
+        if (r.buyAction) parts.push(`buyAction=${r.buyAction}`);
+        if (typeof r.buyZoneLow === 'number' || typeof r.buyZoneHigh === 'number') {
+          parts.push(`buyZone=${r.buyZoneLow ?? '—'}..${r.buyZoneHigh ?? '—'}`);
+        }
+        out += `- ${parts.join(' ; ')}\n`;
+      }
+      out += `\n`;
+      continue;
+    }
+
     if (ref.kind === 'broker') {
       try {
         const resp = await fetch(
@@ -270,9 +318,10 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
           out += `\nConditional orders (first ${rows.length}):\n`;
           for (const it of rows) {
             const o = asRecord(it) ?? {};
-            out += `- ${getStr(o, 'ticker')} ${getStr(o, 'name')} side=${getStr(o, 'side')} `
-              + `trigger=${getStr(o, 'triggerCondition')} ${getStr(o, 'triggerValue')} `
-              + `qty=${getStr(o, 'qty')} status=${getStr(o, 'status')} validUntil=${getStr(o, 'validUntil')}\n`;
+            out +=
+              `- ${getStr(o, 'ticker')} ${getStr(o, 'name')} side=${getStr(o, 'side')} ` +
+              `trigger=${getStr(o, 'triggerCondition')} ${getStr(o, 'triggerValue')} ` +
+              `qty=${getStr(o, 'qty')} status=${getStr(o, 'status')} validUntil=${getStr(o, 'validUntil')}\n`;
           }
           out += `\n`;
         } else {
@@ -314,8 +363,9 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         if (ps.length) {
           out += `\nPositions (first ${ps.length}):\n`;
           for (const p of ps) {
-            out += `- ${getStr(p, 'ticker')} ${getStr(p, 'name')} qty=${getStr(p, 'qtyHeld') || getStr(p, 'qty')} `
-              + `price=${getStr(p, 'price')} cost=${getStr(p, 'cost')} pnl=${getStr(p, 'pnl')} pnlPct=${getStr(p, 'pnlPct')}\n`;
+            out +=
+              `- ${getStr(p, 'ticker')} ${getStr(p, 'name')} qty=${getStr(p, 'qtyHeld') || getStr(p, 'qty')} ` +
+              `price=${getStr(p, 'price')} cost=${getStr(p, 'cost')} pnl=${getStr(p, 'pnl')} pnlPct=${getStr(p, 'pnlPct')}\n`;
           }
         }
 
@@ -323,9 +373,10 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         if (os.length) {
           out += `\nConditional orders (first ${os.length}):\n`;
           for (const o of os) {
-            out += `- ${getStr(o, 'ticker')} ${getStr(o, 'name')} side=${getStr(o, 'side')} `
-              + `trigger=${getStr(o, 'triggerCondition')} ${getStr(o, 'triggerValue')} `
-              + `qty=${getStr(o, 'qty')} status=${getStr(o, 'status')} validUntil=${getStr(o, 'validUntil')}\n`;
+            out +=
+              `- ${getStr(o, 'ticker')} ${getStr(o, 'name')} side=${getStr(o, 'side')} ` +
+              `trigger=${getStr(o, 'triggerCondition')} ${getStr(o, 'triggerValue')} ` +
+              `qty=${getStr(o, 'qty')} status=${getStr(o, 'status')} validUntil=${getStr(o, 'validUntil')}\n`;
           }
         }
 
@@ -334,8 +385,9 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
           out += `\nTrades (first ${ts.length}):\n`;
           for (const t of ts) {
             const when = getStr(t, 'time') || getStr(t, 'date');
-            out += `- ${when} ${getStr(t, 'side')} ${getStr(t, 'ticker')} ${getStr(t, 'name')} `
-              + `qty=${getStr(t, 'qty')} price=${getStr(t, 'price')}\n`;
+            out +=
+              `- ${when} ${getStr(t, 'side')} ${getStr(t, 'ticker')} ${getStr(t, 'name')} ` +
+              `qty=${getStr(t, 'qty')} price=${getStr(t, 'price')}\n`;
           }
         }
 
@@ -376,8 +428,9 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
           out += `\nCandidates (first ${cands.length}):\n`;
           for (const it of cands) {
             const c = asRecord(it) ?? {};
-            out += `- #${getStr(c, 'rank')} ${getStr(c, 'ticker')} ${getStr(c, 'name')} `
-              + `score=${getStr(c, 'score')} why=${getStr(c, 'why')}\n`;
+            out +=
+              `- #${getStr(c, 'rank')} ${getStr(c, 'ticker')} ${getStr(c, 'name')} ` +
+              `score=${getStr(c, 'score')} why=${getStr(c, 'why')}\n`;
           }
         }
         const recs = asArray(rep['recommendations']).slice(0, 3);
@@ -391,8 +444,9 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
               out += `  Orders:\n`;
               for (const it2 of orders) {
                 const o = asRecord(it2) ?? {};
-                out += `  - ${getStr(o, 'kind')} ${getStr(o, 'side')} trigger=${getStr(o, 'trigger')} `
-                  + `qty=${getStr(o, 'qty')} tif=${getStr(o, 'timeInForce')}\n`;
+                out +=
+                  `  - ${getStr(o, 'kind')} ${getStr(o, 'side')} trigger=${getStr(o, 'trigger')} ` +
+                  `qty=${getStr(o, 'qty')} tif=${getStr(o, 'timeInForce')}\n`;
               }
             }
           }
@@ -552,19 +606,26 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
               : Number.isFinite(r.score as number)
                 ? String(Math.round(r.score as number))
                 : '—';
-            const dur = Number.isFinite(r.expectedDurationDays as number) ? String(r.expectedDurationDays) : '—';
+            const dur = Number.isFinite(r.expectedDurationDays as number)
+              ? String(r.expectedDurationDays)
+              : '—';
             const bz = r.buyZone ?? {};
             const bzLow = isRecord(bz) ? bz['low'] : null;
             const bzHigh = isRecord(bz) ? bz['high'] : null;
-            const buyZone = bzLow != null && bzHigh != null ? `${String(bzLow)}-${String(bzHigh)}` : '—';
+            const buyZone =
+              bzLow != null && bzHigh != null ? `${String(bzLow)}-${String(bzHigh)}` : '—';
             const tp = r.targetPrice ?? {};
-            const target =
-              isRecord(tp) && tp['primary'] != null ? String(tp['primary']) : '—';
-            const pNum = Number.isFinite(r.probability as number) ? Math.max(1, Math.min(5, Math.round(r.probability as number))) : null;
+            const target = isRecord(tp) && tp['primary'] != null ? String(tp['primary']) : '—';
+            const pNum = Number.isFinite(r.probability as number)
+              ? Math.max(1, Math.min(5, Math.round(r.probability as number)))
+              : null;
             const prob = pNum != null ? `${pNum * 20}%` : '—';
             const why =
               Array.isArray(r.whyBullets) && r.whyBullets.length
-                ? r.whyBullets.slice(0, 2).map((x) => String(x)).join(' / ')
+                ? r.whyBullets
+                    .slice(0, 2)
+                    .map((x) => String(x))
+                    .join(' / ')
                 : String(r.reason ?? '').replaceAll('\n', ' ');
             out += `| ${date} | ${ticker} | ${name} | ${liveScore} | ${dur} | ${buyZone} | ${target} | ${prob} | ${why} |\n`;
           }
@@ -608,7 +669,9 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
           const up = getNum(row, 'upCount', 0);
           const down = getNum(row, 'downCount', 0);
           const flat = getNum(row, 'flatCount', 0);
-          const ratio = Number.isFinite(Number(row['upDownRatio'])) ? Number(row['upDownRatio']).toFixed(2) : '—';
+          const ratio = Number.isFinite(Number(row['upDownRatio']))
+            ? Number(row['upDownRatio']).toFixed(2)
+            : '—';
           const prem = Number.isFinite(Number(row['yesterdayLimitUpPremium']))
             ? `${Number(row['yesterdayLimitUpPremium']).toFixed(2)}%`
             : '—';
@@ -634,7 +697,10 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         const resp = await fetch(`${QUANT_BASE_URL}/rank/cn/next2d?${q}`, { cache: 'no-store' });
         if (!resp.ok) throw new Error('failed to load rank list');
         const rk = (await resp.json()) as Record<string, unknown>;
-        const items = asArray(rk['items']).slice(0, Math.max(1, Math.min(200, Number(ref.limit ?? 30))));
+        const items = asArray(rk['items']).slice(
+          0,
+          Math.max(1, Math.min(200, Number(ref.limit ?? 30))),
+        );
         out += `## CN rank (next 1-2D)\n`;
         out += `- asOfDate: ${getStr(rk, 'asOfDate') || String(ref.asOfDate || '')}\n`;
         out += `- riskMode: ${getStr(rk, 'riskMode')}\n\n`;
@@ -645,9 +711,14 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
             const row = asRecord(it) ?? {};
             const ticker = getStr(row, 'ticker') || getStr(row, 'symbol');
             const name = getStr(row, 'name');
-            const score = Number.isFinite(Number(row['score'])) ? String(Math.round(Number(row['score']))) : '—';
+            const score = Number.isFinite(Number(row['score']))
+              ? String(Math.round(Number(row['score'])))
+              : '—';
             const prob = getStr(row, 'probBand');
-            const sig = asArray(row['signals']).slice(0, 4).map((x) => String(x)).join(' / ');
+            const sig = asArray(row['signals'])
+              .slice(0, 4)
+              .map((x) => String(x))
+              .join(' / ');
             out += `| ${i + 1} | ${ticker} | ${name} | ${score} | ${prob} | ${sig} |\n`;
           });
           out += `\n`;
@@ -667,7 +738,10 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         const resp = await fetch(`${QUANT_BASE_URL}/rank/cn/intraday?${q}`, { cache: 'no-store' });
         if (!resp.ok) throw new Error('failed to load intraday rank');
         const rk = (await resp.json()) as Record<string, unknown>;
-        const items = asArray(rk['items']).slice(0, Math.max(1, Math.min(200, Number(ref.limit ?? 30))));
+        const items = asArray(rk['items']).slice(
+          0,
+          Math.max(1, Math.min(200, Number(ref.limit ?? 30))),
+        );
         out += `## CN rank (Intraday · DeltaT 1H)\n`;
         out += `- tradeDate: ${getStr(rk, 'tradeDate')}\n`;
         out += `- slot: ${getStr(rk, 'slot') || String(ref.slot || '')}\n`;
@@ -680,9 +754,14 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
             const row = asRecord(it) ?? {};
             const ticker = getStr(row, 'ticker') || getStr(row, 'symbol');
             const name = getStr(row, 'name');
-            const score = Number.isFinite(Number(row['score'])) ? String(Math.round(Number(row['score']))) : '—';
+            const score = Number.isFinite(Number(row['score']))
+              ? String(Math.round(Number(row['score'])))
+              : '—';
             const prob = getStr(row, 'probBand');
-            const sig = asArray(row['signals']).slice(0, 4).map((x) => String(x)).join(' / ');
+            const sig = asArray(row['signals'])
+              .slice(0, 4)
+              .map((x) => String(x))
+              .join(' / ');
             out += `| ${i + 1} | ${ticker} | ${name} | ${score} | ${prob} | ${sig} |\n`;
           });
           out += `\n`;
@@ -693,6 +772,15 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         out += `## CN rank (Intraday · DeltaT 1H)\n`;
         out += `- status: failed to load\n\n`;
       }
+      continue;
+    }
+
+    if (ref.kind === 'journal') {
+      out += `## Trading Journal: ${ref.title}\n`;
+      out += `- journalId: ${ref.journalId}\n`;
+      out += `- capturedAt: ${ref.capturedAt}\n`;
+      out += `\nContent:\n`;
+      out += `${ref.content}\n\n`;
       continue;
     }
 
@@ -739,9 +827,10 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         if (items.length) {
           out += `\nChips (last ${items.length}):\n`;
           for (const it of items) {
-            out += `- ${it.date} profitRatio=${it.profitRatio} avgCost=${it.avgCost} `
-              + `70%=[${it.cost70Low},${it.cost70High}] conc70=${it.cost70Conc} `
-              + `90%=[${it.cost90Low},${it.cost90High}] conc90=${it.cost90Conc}\n`;
+            out +=
+              `- ${it.date} profitRatio=${it.profitRatio} avgCost=${it.avgCost} ` +
+              `70%=[${it.cost70Low},${it.cost70High}] conc70=${it.cost70Conc} ` +
+              `90%=[${it.cost90Low},${it.cost90High}] conc90=${it.cost90Conc}\n`;
           }
         }
       }
@@ -752,12 +841,13 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         if (items.length) {
           out += `\nFund flow (last ${items.length}):\n`;
           for (const it of items) {
-            out += `- ${it.date} close=${it.close} chg=${it.changePct}% `
-              + `main=${it.mainNetAmount}(${it.mainNetRatio}%) `
-              + `super=${it.superNetAmount}(${it.superNetRatio}%) `
-              + `large=${it.largeNetAmount}(${it.largeNetRatio}%) `
-              + `medium=${it.mediumNetAmount}(${it.mediumNetRatio}%) `
-              + `small=${it.smallNetAmount}(${it.smallNetRatio}%)\n`;
+            out +=
+              `- ${it.date} close=${it.close} chg=${it.changePct}% ` +
+              `main=${it.mainNetAmount}(${it.mainNetRatio}%) ` +
+              `super=${it.superNetAmount}(${it.superNetRatio}%) ` +
+              `large=${it.largeNetAmount}(${it.largeNetRatio}%) ` +
+              `medium=${it.mediumNetAmount}(${it.mediumNetRatio}%) ` +
+              `small=${it.smallNetAmount}(${it.smallNetRatio}%)\n`;
           }
         }
       }
@@ -880,14 +970,11 @@ export function ChatPanel() {
                 }
               }
 
-              const referenceText =
-                refs.length > 0 ? await buildReferenceBlock(refs) : '';
+              const referenceText = refs.length > 0 ? await buildReferenceBlock(refs) : '';
               const payload = {
                 messages: [
                   ...(sp ? [{ role: 'system' as const, content: sp }] : []),
-                  ...(referenceText
-                    ? [{ role: 'system' as const, content: referenceText }]
-                    : []),
+                  ...(referenceText ? [{ role: 'system' as const, content: referenceText }] : []),
                   ...baseMessages,
                 ],
               };
@@ -927,5 +1014,3 @@ export function ChatPanel() {
     </div>
   );
 }
-
-

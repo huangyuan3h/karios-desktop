@@ -264,6 +264,12 @@ def _connect() -> sqlite3.Connection:
         conn.execute("ALTER TABLE market_cn_sentiment_daily ADD COLUMN market_turnover_cny REAL NOT NULL DEFAULT 0.0;")
     if "market_volume" not in cols:
         conn.execute("ALTER TABLE market_cn_sentiment_daily ADD COLUMN market_volume REAL NOT NULL DEFAULT 0.0;")
+    # Defensive cleanup: remove any accidental test rows that may pollute the UI.
+    # (Rules are stored as a JSON array string; production data must never include 'seed'.)
+    try:
+        conn.execute("DELETE FROM market_cn_sentiment_daily WHERE rules_json LIKE '%seed%'")
+    except Exception:
+        pass
 
     # --- Broker snapshots (v0) ---
     conn.execute(
@@ -352,6 +358,18 @@ def _connect() -> sqlite3.Connection:
           input_snapshot_json TEXT NOT NULL,
           output_json TEXT NOT NULL,
           FOREIGN KEY(account_id) REFERENCES broker_accounts(id)
+        )
+        """,
+    )
+    # --- Trade journal module (v0) ---
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS trade_journals (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          content_md TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
         )
         """,
     )
@@ -1087,9 +1105,21 @@ def _build_quant_2d_calibration(
 ) -> dict[str, Any]:
     b = max(5, min(int(buckets), 50))
     days = max(10, min(int(lookback_days), 720))
-    # Simple lookback by as_of_date string ordering (YYYY-MM-DD).
-    cutoff = (datetime.now(tz=UTC).date() - timedelta(days=days)).isoformat()
     with _connect() as conn:
+        latest_row = conn.execute(
+            "SELECT MAX(as_of_date) FROM quant_2d_outcomes WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+        base_date = None
+        if latest_row and latest_row[0]:
+            try:
+                base_date = datetime.fromisoformat(str(latest_row[0])).date()
+            except ValueError:
+                base_date = None
+        if base_date is None:
+            base_date = datetime.now(tz=UTC).date()
+        # Simple lookback by as_of_date string ordering (YYYY-MM-DD).
+        cutoff = (base_date - timedelta(days=days)).isoformat()
         rows = conn.execute(
             """
             SELECT e.raw_score, o.win, o.ret2d_avg_pct, o.dd2d_pct
@@ -2575,6 +2605,9 @@ class StrategyDailyGenerateRequest(BaseModel):
     includeMainline: bool = True
     includeStocks: bool = True
     includeQuant2d: bool = False
+    includeWatchlist: bool = False
+    # Client-provided local watchlist snapshot (small JSON). When includeWatchlist is off, ignored.
+    watchlist: dict[str, Any] | None = None
 
 
 class StrategyCandidate(BaseModel):
@@ -2652,6 +2685,30 @@ class ListStrategyReportsResponse(BaseModel):
     accountId: str
     days: int
     items: list[StrategyReportSummary]
+
+
+# --- Trade journal module (v0) ---
+class TradeJournal(BaseModel):
+    id: str
+    title: str
+    contentMd: str
+    createdAt: str
+    updatedAt: str
+
+
+class TradeJournalCreateRequest(BaseModel):
+    title: str | None = None
+    contentMd: str = ""
+
+
+class TradeJournalUpdateRequest(BaseModel):
+    title: str | None = None
+    contentMd: str | None = None
+
+
+class ListTradeJournalsResponse(BaseModel):
+    total: int
+    items: list[TradeJournal]
 
 
 # --- Leader stocks module (v0) ---
@@ -3128,20 +3185,75 @@ def market_status() -> MarketStatusResponse:
 @app.post("/market/sync")
 def market_sync() -> JSONResponse:
     ts = now_iso()
+    hk_error: str | None = None
     try:
+        # CN is required for the core market universe.
         cn = fetch_cn_a_spot()
+    except Exception as e:
+        # Upstream data sources can occasionally return HTML/captcha or abort connections.
+        # If we already have a cached market universe, keep the app usable by falling back to cache.
+        err = f"{type(e).__name__}: {repr(e)}"
+        with _connect() as conn:
+            row = conn.execute("SELECT COUNT(1) FROM market_stocks").fetchone()
+            cached_total = int(row[0]) if row else 0
+        if cached_total > 0:
+            # Do not update lastSyncAt on skipped runs; the UI can still surface the error.
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "stocks": cached_total,
+                    "syncedAt": ts,
+                    "skipped": True,
+                    "error": err,
+                    "hkOk": None,
+                    "hkError": None,
+                }
+            )
+        return JSONResponse({"ok": False, "error": err}, status_code=500)
+    try:
+        # HK is optional; failures should not block CN market sync.
         hk = fetch_hk_spot()
-    except RuntimeError as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+    except Exception as e:
+        hk = []
+        hk_error = f"{type(e).__name__}: {repr(e)}"
 
     with _connect() as conn:
+        # Cleanup legacy tickers inserted by fallback providers (e.g. "sz000001"/"sh600000").
+        # These cause duplicate symbols and skew market breadth counts.
+        try:
+            bad_syms = conn.execute(
+                """
+                SELECT symbol
+                FROM market_stocks
+                WHERE market = 'CN'
+                  AND (
+                    LENGTH(ticker) != 6
+                    OR ticker GLOB '*[^0-9]*'
+                  )
+                """,
+            ).fetchall()
+            bad = [str(r[0]) for r in bad_syms if r and r[0]]
+            if bad:
+                placeholders = ",".join(["?"] * len(bad))
+                conn.execute(f"DELETE FROM market_quotes WHERE symbol IN ({placeholders})", tuple(bad))
+                conn.execute(f"DELETE FROM market_stocks WHERE symbol IN ({placeholders})", tuple(bad))
+        except Exception:
+            pass
         for s in cn + hk:
             _upsert_market_stock(conn, s, ts)
             _upsert_market_quote(conn, s, ts)
         conn.commit()
 
     set_setting("market_last_sync_at", ts)
-    return JSONResponse({"ok": True, "stocks": len(cn) + len(hk), "syncedAt": ts})
+    return JSONResponse(
+        {
+            "ok": True,
+            "stocks": len(cn) + len(hk),
+            "syncedAt": ts,
+            "hkOk": hk_error is None,
+            "hkError": hk_error,
+        }
+    )
 
 
 @app.get("/market/stocks", response_model=MarketStocksResponse)
@@ -3539,12 +3651,21 @@ def _market_stock_trendok_one(
                 inc += 1
             if hpos[3] > hpos[2]:
                 inc += 1
-            s_hist = (float(inc) / 3.0) if hpos[3] > 0.0 else 0.0
+            # Add "absolute strength" gate: tiny histogram changes near zero should not score high.
+            # Use a normalized threshold (hist/close) so the gate scales across price levels.
+            # Example: for close~100, 0.0005*close ~= 0.05 (matches the suggested 0.05 scale).
+            hist_min = 0.0005 * close if close > 0 else 0.0
+            has_hist_strength = bool(hpos[3] >= hist_min and hpos[3] > 0.0)
+            s_hist = (float(inc) / 3.0) if has_hist_strength else 0.0
             s_macd = 0.0 if macd_last <= 0.0 else _clip01(0.5 + 0.5 * s_hist)
 
             # 3) Near breakout (0.20): close/high20 in [0.85,0.95] -> [0,1]
-            ratio_hi = close / high20 if high20 > 0 else 0.0
+            # Use 20D highest HIGH (not just close) for better breakout semantics.
+            high20_high = max(highs[-20:]) if len(highs) >= 20 else high20
+            ratio_hi = close / high20_high if high20_high > 0 else 0.0
             s_break = _clip01((ratio_hi - 0.85) / 0.10)
+            # Bonus for true new high (stronger than "near high"): +3 points.
+            bonus_new_high = 3.0 if (high20_high > 0 and close >= high20_high) else 0.0
 
             # 4) RSI quality (0.15): triangular preference within [50,75], peak at 62.5
             if 50.0 <= rsi14 <= 75.0:
@@ -3567,24 +3688,18 @@ def _market_stock_trendok_one(
             parts["breakout"] = round(pts_break, 3)
             parts["rsi"] = round(pts_rsi, 3)
             parts["volume"] = round(pts_vol, 3)
+            if bonus_new_high > 0.0:
+                parts["bonus_new_high20"] = round(bonus_new_high, 3)
 
             # Risk penalties (points, negative): volatility + below EMA20
             penalty = 0.0
-            # Volatility: std of last 20 daily returns. 0.02 -> 0, 0.06 -> 10 points
-            if len(closes) >= 21:
-                rets: list[float] = []
-                for i in range(-20, 0):
-                    c0 = closes[i - 1]
-                    c1 = closes[i]
-                    if c0 > 0:
-                        rets.append((c1 / c0) - 1.0)
-                if len(rets) >= 10:
-                    mu = sum(rets) / float(len(rets))
-                    var = sum((r - mu) ** 2 for r in rets) / float(len(rets))
-                    std = math.sqrt(max(0.0, var))
-                    p_vol = _clip01((std - 0.02) / 0.04) * 10.0
-                    penalty += p_vol
-                    parts["penalty_volatility"] = -round(p_vol, 3)
+            # Volatility: ATR(14)/close. Map 0.015 -> 0, 0.05 -> 10 points.
+            atr14 = _atr14(highs, lows, closes, 14)
+            if atr14 is not None and close > 0:
+                atr_ratio = float(atr14) / float(close)
+                p_vol = _clip01((atr_ratio - 0.015) / 0.035) * 10.0
+                penalty += p_vol
+                parts["penalty_volatility_atr"] = -round(p_vol, 3)
             # Below EMA20: 5% below -> 10 points
             if ema20 > 0 and close < ema20:
                 dd = (ema20 - close) / ema20
@@ -3592,7 +3707,7 @@ def _market_stock_trendok_one(
                 penalty += p_below
                 parts["penalty_below_ema20"] = -round(p_below, 3)
 
-            total = pts_ema + pts_macd + pts_break + pts_rsi + pts_vol - penalty
+            total = pts_ema + pts_macd + pts_break + pts_rsi + pts_vol + bonus_new_high - penalty
             total2 = max(0.0, min(100.0, total))
             res.score = round(total2, 3)
             res.scoreParts = parts
@@ -3939,7 +4054,10 @@ def _market_stock_trendok_one(
 
 
 @app.get("/market/stocks/trendok", response_model=list[TrendOkResult])
-def market_stocks_trendok(symbols: Annotated[list[str] | None, Query()] = None) -> list[TrendOkResult]:
+def market_stocks_trendok(
+    symbols: Annotated[list[str] | None, Query()] = None,
+    refresh: bool = False,
+) -> list[TrendOkResult]:
     """
     Batch TrendOK evaluation for Watchlist (CN daily only).
     Uses DB-cached daily bars and does NOT trigger external fetches.
@@ -3961,6 +4079,16 @@ def market_stocks_trendok(symbols: Annotated[list[str] | None, Query()] = None) 
             tuple(syms),
         ).fetchall():
             by_name[str(r[0])] = str(r[1])
+
+    # Optional: refresh cached daily bars before computing indicators.
+    # This keeps Watchlist "current / stoploss / TrendOK" aligned with the latest daily bar.
+    if refresh:
+        for sym in syms:
+            try:
+                _ = market_stock_bars(sym, days=120, force=False)
+            except Exception:
+                # Best-effort: never fail the whole batch due to one symbol refresh.
+                pass
 
     out: list[TrendOkResult] = []
     with _connect() as conn:
@@ -4008,6 +4136,25 @@ def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> Marke
         name = str(row[3])
         currency = str(row[4])
 
+    def _latest_expected_daily_bar_date(mkt: str) -> str:
+        """
+        Best-effort expected latest completed daily bar date (YYYY-MM-DD).
+
+        We intentionally avoid complex holiday calendars; we only handle weekends.
+        This is used to decide whether DB cache is stale and should be refreshed even
+        when we already have enough cached rows.
+        """
+        if mkt == "HK":
+            tz = ZoneInfo("Asia/Hong_Kong")
+        else:
+            tz = ZoneInfo("Asia/Shanghai")
+        now_local = datetime.now(tz=tz).date()
+        # Weekend -> move back to Friday.
+        d0 = now_local
+        while d0.weekday() >= 5:
+            d0 = d0 - timedelta(days=1)
+        return d0.strftime("%Y-%m-%d")
+
     # Load cached bars first.
     with _connect() as conn:
         cached = conn.execute(
@@ -4021,19 +4168,62 @@ def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> Marke
             (sym, days2),
         ).fetchall()
 
-    if force or len(cached) < days2:
+    def _resp_from_cached(rows: list[tuple[Any, ...]]) -> MarketBarsResponse:
+        out2 = [
+            {
+                "date": str(r[0]),
+                "open": str(r[1] or ""),
+                "high": str(r[2] or ""),
+                "low": str(r[3] or ""),
+                "close": str(r[4] or ""),
+                "volume": str(r[5] or ""),
+                "amount": str(r[6] or ""),
+            }
+            for r in reversed(rows)
+        ]
+        return MarketBarsResponse(
+            symbol=sym,
+            market=market,
+            ticker=ticker,
+            name=name,
+            currency=currency,
+            bars=out2,
+        )
+
+    # Auto-refresh if cache is stale (even if we already have enough rows).
+    cached_last = str(cached[0][0]) if cached else ""
+    expected_last = _latest_expected_daily_bar_date(market)
+    cache_stale = bool(cached_last and cached_last < expected_last)
+
+    if force or len(cached) < days2 or cache_stale:
         ts = now_iso()
         try:
-            if market == "CN":
-                bars = fetch_cn_a_daily_bars(ticker, days=days2)
-            elif market == "HK":
-                bars = fetch_hk_daily_bars(ticker, days=days2)
-            else:
-                raise HTTPException(status_code=400, detail="Unsupported market")
+            # Upstream endpoints can be flaky (e.g. remote disconnect). Retry once, then fall back to cache if available.
+            last_err: Exception | None = None
+            for attempt in range(2):
+                try:
+                    if market == "CN":
+                        bars = fetch_cn_a_daily_bars(ticker, days=days2)
+                    elif market == "HK":
+                        bars = fetch_hk_daily_bars(ticker, days=days2)
+                    else:
+                        raise HTTPException(status_code=400, detail="Unsupported market")
+                    last_err = None
+                    break
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    last_err = e
+                    if attempt == 0:
+                        time.sleep(0.4)
+                        continue
+            if last_err is not None:
+                if cached:
+                    # Graceful degrade: return cached bars so UI remains usable.
+                    return _resp_from_cached(cached)
+                raise HTTPException(status_code=500, detail=f"Bars fetch failed for {ticker}: {last_err}") from last_err
         except HTTPException:
             raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Bars fetch failed for {ticker}: {e}") from e
         with _connect() as conn:
             _upsert_market_bars(conn, sym, bars, ts)
             conn.commit()
@@ -4058,26 +4248,7 @@ def market_stock_bars(symbol: str, days: int = 60, force: bool = False) -> Marke
             bars=out,
         )
 
-    out2 = [
-        {
-            "date": str(r[0]),
-            "open": str(r[1] or ""),
-            "high": str(r[2] or ""),
-            "low": str(r[3] or ""),
-            "close": str(r[4] or ""),
-            "volume": str(r[5] or ""),
-            "amount": str(r[6] or ""),
-        }
-        for r in reversed(cached)
-    ]
-    return MarketBarsResponse(
-        symbol=sym,
-        market=market,
-        ticker=ticker,
-        name=name,
-        currency=currency,
-        bars=out2,
-    )
+    return _resp_from_cached(cached)
 
 
 @app.get("/market/stocks/{symbol}/chips", response_model=MarketChipsResponse)
@@ -4105,7 +4276,7 @@ def market_stock_chips(symbol: str, days: int = 60, force: bool = False) -> Mark
     with _connect() as conn:
         cached = conn.execute(
             """
-            SELECT raw_json
+            SELECT date, raw_json
             FROM market_chips
             WHERE symbol = ?
             ORDER BY date DESC
@@ -4113,8 +4284,14 @@ def market_stock_chips(symbol: str, days: int = 60, force: bool = False) -> Mark
             """,
             (sym, days2),
         ).fetchall()
-    if (not force) and len(cached) >= min(days2, 30):
-        items = [json.loads(str(r[0])) for r in reversed(cached)]
+
+    # Auto-refresh if cache is stale (chips are daily; refresh when latest cached date lags).
+    cached_last = str(cached[0][0]) if cached else ""
+    expected_last = _today_cn_date_str()
+    cache_stale = bool(cached_last and cached_last < expected_last)
+
+    if (not force) and (not cache_stale) and len(cached) >= min(days2, 30):
+        items = [json.loads(str(r[1])) for r in reversed(cached)]
         return MarketChipsResponse(
             symbol=sym,
             market=market,
@@ -4167,7 +4344,7 @@ def market_stock_fund_flow(symbol: str, days: int = 60, force: bool = False) -> 
     with _connect() as conn:
         cached = conn.execute(
             """
-            SELECT raw_json
+            SELECT date, raw_json
             FROM market_fund_flow
             WHERE symbol = ?
             ORDER BY date DESC
@@ -4175,8 +4352,14 @@ def market_stock_fund_flow(symbol: str, days: int = 60, force: bool = False) -> 
             """,
             (sym, days2),
         ).fetchall()
-    if (not force) and len(cached) >= min(days2, 30):
-        items = [json.loads(str(r[0])) for r in reversed(cached)]
+
+    # Auto-refresh if cache is stale (fund flow is daily; refresh when latest cached date lags).
+    cached_last = str(cached[0][0]) if cached else ""
+    expected_last = _today_cn_date_str()
+    cache_stale = bool(cached_last and cached_last < expected_last)
+
+    if (not force) and (not cache_stale) and len(cached) >= min(days2, 30):
+        items = [json.loads(str(r[1])) for r in reversed(cached)]
         return MarketFundFlowResponse(
             symbol=sym,
             market=market,
@@ -4328,7 +4511,7 @@ def market_cn_industry_fund_flow_sync(
             if not name or not code:
                 continue
             try:
-                hist = fetch_cn_industry_fund_flow_hist(name, days=days)
+                hist = fetch_cn_industry_fund_flow_hist(name, industry_code=code, days=days)
             except Exception:
                 hist_failures += 1
                 continue
@@ -4421,30 +4604,40 @@ def market_cn_industry_fund_flow(
             tuple(dates),
         ).fetchall()
 
-    # Aggregate per industry
-    by_code: dict[str, dict[str, Any]] = {}
+    # Aggregate per industry.
+    #
+    # IMPORTANT: Use industry NAME as the primary key to avoid historical code mismatches.
+    # Different providers/versions may emit different `industry_code` values for the same
+    # industry (e.g. hashed codes vs BKxxxx), which would otherwise fragment the time series
+    # and cause the UI to show zeros (and "Top outflow" to be empty).
+    by_name: dict[str, dict[str, Any]] = {}
     for d, code, name, net in rows:
-        code2 = str(code)
         d2 = str(d)
-        name2 = str(name)
+        name2 = _norm_str(name)
+        if not name2:
+            continue
+        code2 = _norm_str(code)
         net2 = float(net or 0.0)
-        cur = by_code.get(code2)
+        cur = by_name.get(name2)
         if cur is None:
             cur = {"industryCode": code2, "industryName": name2, "series": {}, "sum": 0.0}
-            by_code[code2] = cur
-        cur["industryName"] = name2 or cur["industryName"]
+            by_name[name2] = cur
+        # Prefer a BK-style code when available.
+        if (not str(cur.get("industryCode") or "").strip()) or (str(code2).startswith("BK")):
+            if code2:
+                cur["industryCode"] = code2
         cur["series"][d2] = net2
         cur["sum"] = float(cur["sum"]) + net2
 
     out_rows: list[IndustryFundFlowRow] = []
-    for code, agg in by_code.items():
+    for name, agg in by_name.items():
         series_map: dict[str, float] = agg.get("series") or {}
         series = [IndustryFundFlowPoint(date=d, netInflow=float(series_map.get(d, 0.0))) for d in dates]
         net_asof = float(series_map.get(as_of, 0.0))
         out_rows.append(
             IndustryFundFlowRow(
-                industryCode=code,
-                industryName=str(agg.get("industryName") or ""),
+                industryCode=str(agg.get("industryCode") or ""),
+                industryName=str(agg.get("industryName") or name),
                 netInflow=net_asof,
                 sum10d=float(agg.get("sum") or 0.0),
                 series10d=series,
@@ -4477,8 +4670,95 @@ def _compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
     ratio = 0.0
     market_turnover_cny = 0.0
     market_volume = 0.0
+
+    def _finite_float0(v: Any) -> float:
+        if v is None:
+            return 0.0
+        if isinstance(v, (int, float)):
+            try:
+                return float(v) if math.isfinite(float(v)) else 0.0
+            except Exception:
+                return 0.0
+        s = str(v).strip().replace(",", "").replace("%", "")
+        if not s or s in ("-", "—", "N/A", "None"):
+            return 0.0
+        try:
+            f = float(s)
+            return f if math.isfinite(f) else 0.0
+        except Exception:
+            return 0.0
+
+    def _breadth_from_market_cache() -> dict[str, Any] | None:
+        """
+        Prefer local market cache to avoid upstream blocks/captcha.
+        Uses `market_quotes.change_pct` for CN stocks to compute breadth and sums `turnover`/`volume`.
+        """
+        try:
+            with _connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT s.ticker, q.change_pct, q.turnover, q.volume
+                    FROM market_stocks s
+                    JOIN market_quotes q ON q.symbol = s.symbol
+                    WHERE s.market = 'CN'
+                    """,
+                ).fetchall()
+        except Exception:
+            return None
+        if not rows:
+            return None
+        up2 = 0
+        down2 = 0
+        flat2 = 0
+        turn2 = 0.0
+        vol2 = 0.0
+        for ticker, chg_s, turn_s, vol_s in rows:
+            t = str(ticker or "").strip()
+            # Only count CN equities (exclude legacy prefixed tickers and non-6-digit entries).
+            if len(t) != 6 or (not t.isdigit()):
+                continue
+
+            # Parse change_pct: treat non-numeric as missing (do NOT count as flat).
+            chg_raw = str(chg_s or "").strip().replace(",", "").replace("%", "")
+            chg_val: float | None = None
+            if chg_raw and chg_raw not in ("-", "—", "N/A", "None"):
+                try:
+                    f = float(chg_raw)
+                    chg_val = f if math.isfinite(f) else None
+                except Exception:
+                    chg_val = None
+
+            if chg_val is not None:
+                if chg_val > 0:
+                    up2 += 1
+                elif chg_val < 0:
+                    down2 += 1
+                else:
+                    flat2 += 1
+
+            # Turnover/volume: best-effort sum regardless of change_pct parse success.
+            turn2 += _finite_float0(turn_s)
+            vol2 += _finite_float0(vol_s)
+        total2 = up2 + down2 + flat2
+        if total2 <= 0:
+            return None
+        ratio2 = float(up2) / float(down2) if down2 > 0 else float(up2)
+        return {
+            "date": d,
+            "up_count": up2,
+            "down_count": down2,
+            "flat_count": flat2,
+            "total_count": total2,
+            "up_down_ratio": ratio2,
+            "total_turnover_cny": turn2,
+            "total_volume": vol2,
+            "raw": {"source": "db_market_quotes", "rows": len(rows)},
+        }
     try:
-        breadth = fetch_cn_market_breadth_eod(dt)
+        # Prefer local cache for TODAY; for historical dates fall back to provider.
+        breadth = _breadth_from_market_cache() if d == _today_cn_date_str() else None
+        if breadth is None:
+            breadth = fetch_cn_market_breadth_eod(dt)
         raw["breadth"] = breadth
         up = int(breadth.get("up_count") or 0)
         down = int(breadth.get("down_count") or 0)
@@ -4599,7 +4879,24 @@ def market_cn_sentiment_sync(req: MarketCnSentimentSyncRequest) -> MarketCnSenti
     try:
         out = _compute_cn_sentiment_for_date(d)
     except Exception as e:
-        # Best-effort: still upsert a row with errors so UI can show what happened.
+        # Prefer returning cached values over overwriting the DB with zeros.
+        cached2 = _list_cn_sentiment_days(as_of_date=d, days=1)
+        if cached2:
+            last = cached2[-1]
+            last_rules = (last.get("rules") if isinstance(last.get("rules"), list) else []) or []
+            return MarketCnSentimentResponse(
+                asOfDate=d,
+                days=1,
+                items=[
+                    MarketCnSentimentRow(
+                        **{
+                            **last,
+                            "rules": [*last_rules, f"stale_sync_failed: {type(e).__name__}: {e}"],
+                        }
+                    )
+                ],
+            )
+        # Fallback: computed-only (not persisted).
         out = {
             "date": d,
             "asOfDate": d,
@@ -4610,14 +4907,88 @@ def market_cn_sentiment_sync(req: MarketCnSentimentSyncRequest) -> MarketCnSenti
             "premium": 0.0,
             "failedRate": 0.0,
             "riskMode": "caution",
-            "rules": [f"compute_failed: {e}"],
+            "rules": [f"compute_failed: {type(e).__name__}: {e}"],
             "updatedAt": now_iso(),
             "raw": {"error": str(e)},
         }
 
+    rules_raw = out.get("rules") or []
+    rules_list = [str(x) for x in rules_raw] if isinstance(rules_raw, list) else [str(rules_raw)]
+
+    breadth_failed = any(("breadth_failed" in r) for r in rules_list)
+    compute_failed = any(("compute_failed" in r) for r in rules_list)
+    premium_failed = any(("yesterday_limitup_premium_failed" in r) for r in rules_list)
+    failed_rate_failed = any(("failed_limitup_rate_failed" in r) for r in rules_list)
+
+    # If breadth computation failed, do NOT overwrite the DB with zeros.
+    # Premium/failed-rate failures are treated as partial failures: we can still update breadth
+    # metrics and keep other fields from cache.
+    if breadth_failed or compute_failed:
+        # Clean up placeholder rows written by older versions (all-zero rows caused by upstream failures).
+        try:
+            dt0 = datetime.strptime(d, "%Y-%m-%d").date()
+            with _connect() as conn:
+                for back in range(0, 8):  # last 7 days + today
+                    dd = (dt0 - timedelta(days=back)).strftime("%Y-%m-%d")
+                    conn.execute(
+                        """
+                        DELETE FROM market_cn_sentiment_daily
+                        WHERE date = ?
+                          AND total_count = 0
+                          AND up_down_ratio = 0.0
+                          AND market_turnover_cny = 0.0
+                          AND market_volume = 0.0
+                          AND yesterday_limitup_premium = 0.0
+                        """,
+                        (dd,),
+                    )
+                conn.commit()
+        except Exception:
+            # Best-effort cleanup: ignore failures.
+            pass
+        cached3 = _list_cn_sentiment_days(as_of_date=d, days=1)
+        if cached3:
+            last = cached3[-1]
+            last_date = str(last.get("date") or "")
+            last_rules = (last.get("rules") if isinstance(last.get("rules"), list) else []) or []
+            # Return cached data and surface why it is stale.
+            return MarketCnSentimentResponse(
+                asOfDate=d,
+                days=1,
+                items=[
+                    MarketCnSentimentRow(
+                        **{
+                            **last,
+                            "rules": [
+                                *last_rules,
+                                f"stale_upstream_failed: requested={d} latest={last_date}",
+                                *rules_list[:3],
+                            ],
+                        }
+                    )
+                ],
+            )
+
+    # Partial failures: keep last known premium/failed-rate instead of writing zeros.
+    if premium_failed or failed_rate_failed:
+        cached4 = _list_cn_sentiment_days(as_of_date=d, days=1)
+        if cached4:
+            last = cached4[-1]
+            last_date = str(last.get("date") or "")
+            if premium_failed:
+                out["premium"] = float(last.get("yesterdayLimitUpPremium") or 0.0)
+                rules_list = [
+                    r for r in rules_list if "yesterday_limitup_premium_failed" not in r
+                ] + [f"premium_stale_from: {last_date}"]
+            if failed_rate_failed:
+                out["failedRate"] = float(last.get("failedLimitUpRate") or 0.0)
+                rules_list = [
+                    r for r in rules_list if "failed_limitup_rate_failed" not in r
+                ] + [f"failed_rate_stale_from: {last_date}"]
+
     raw0 = out.get("raw")
     raw_dict: dict[str, Any] = raw0 if isinstance(raw0, dict) else {}
-    rules2 = [str(x) for x in (out.get("rules") or [])]
+    rules2 = rules_list
     upsert_ok = False
     try:
         _upsert_cn_sentiment_daily(
@@ -9352,11 +9723,21 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
     # Context assembly (v0)
     strategy_prompt, _ = _get_strategy_prompt(aid)
     state_row = _get_account_state_row(aid) or {
+        "accountId": aid,
+        "broker": str(acct["broker"]),
+        "updatedAt": now_iso(),
         "overview": {},
         "positions": [],
-        "conditionalOrders": [],
-        "trades": [],
     }
+    # Strategy context: keep it lean (overview + positions only).
+    if isinstance(state_row, dict):
+        state_row = {
+            "accountId": _norm_str(state_row.get("accountId") or aid),
+            "broker": _norm_str(state_row.get("broker") or acct["broker"]),
+            "updatedAt": _norm_str(state_row.get("updatedAt") or "") or now_iso(),
+            "overview": state_row.get("overview") if isinstance(state_row.get("overview"), dict) else {},
+            "positions": state_row.get("positions") if isinstance(state_row.get("positions"), list) else [],
+        }
 
     # Latest TradingView snapshots (all enabled screeners; capped).
     snaps: list[TvScreenerSnapshotDetail] = []
@@ -9373,6 +9754,62 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
 
     # Include brief rows so debug can show tickers for newly-synced screeners.
     tv_latest: list[dict[str, Any]] = [_tv_snapshot_brief(s.id, max_rows=20) for s in snaps]
+
+    watchlist_ctx: dict[str, Any] = {}
+    if req.includeWatchlist and isinstance(req.watchlist, dict):
+        wl_items0 = req.watchlist.get("items")
+        wl_items: list[dict[str, Any]] = []
+        if isinstance(wl_items0, list):
+            for it in wl_items0[:50]:
+                if not isinstance(it, dict):
+                    continue
+                sym = _norm_str(it.get("symbol") or "")
+                if not sym:
+                    continue
+                name = _norm_str(it.get("name") or "") or None
+                # Enrich local watchlist items with real-time (cached) CN daily signals so the LLM
+                # can reason with actionable fields (TrendOK/Score/StopLoss/Buy).
+                enriched: dict[str, Any] = {"symbol": sym, "name": name}
+                try:
+                    bars = _load_cached_bars(sym, days=120)
+                    bars_tuples: list[
+                        tuple[str, str | None, str | None, str | None, str | None, str | None]
+                    ] = [
+                        (
+                            _norm_str(b.get("date") or ""),
+                            b.get("open") or None,
+                            b.get("high") or None,
+                            b.get("low") or None,
+                            b.get("close") or None,
+                            b.get("volume") or None,
+                        )
+                        for b in bars
+                        if isinstance(b, dict)
+                    ]
+                    t = _market_stock_trendok_one(symbol=sym, name=name, bars=bars_tuples)
+                    enriched.update(
+                        {
+                            "asOfDate": t.asOfDate,
+                            "close": t.values.close,
+                            "trendOk": t.trendOk,
+                            "score": t.score,
+                            "stopLossPrice": t.stopLossPrice,
+                            "buyMode": t.buyMode,
+                            "buyAction": t.buyAction,
+                            "buyZoneLow": t.buyZoneLow,
+                            "buyZoneHigh": t.buyZoneHigh,
+                            "missingData": list(t.missingData or []),
+                        }
+                    )
+                except Exception as e:
+                    enriched["enrichError"] = str(e)
+                wl_items.append(enriched)
+        watchlist_ctx = {
+            "version": int(req.watchlist.get("version") or 1),
+            "generatedAt": _norm_str(req.watchlist.get("generatedAt") or "") or None,
+            "count": len(wl_items),
+            "items": wl_items,
+        }
 
     # Candidate pool = union of TV rows, capped.
     pool: list[dict[str, str]] = []
@@ -9596,6 +10033,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         },
         "accountPrompt": strategy_prompt,
         "accountState": {} if not req.includeAccountState else state_row,
+        "watchlist": {} if not req.includeWatchlist else watchlist_ctx,
         "tradingView": {} if not req.includeTradingView else {"latest": tv_latest},
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow
@@ -9741,6 +10179,7 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         },
         "accountPrompt": strategy_prompt,
         "accountState": {} if not req.includeAccountState else state_row,
+        "watchlist": {} if not req.includeWatchlist else watchlist_ctx,
         "tradingView": {} if not req.includeTradingView else {"latest": tv_latest},
         "industryFundFlow": {}
         if not req.includeIndustryFundFlow
@@ -9809,6 +10248,136 @@ def generate_strategy_daily_report(account_id: str, req: StrategyDailyGenerateRe
         output=output,
         input_snapshot=input_snapshot,
     )
+
+
+# --- Trade journal module (v0) ---
+def _trade_journal_from_row(r: tuple[Any, ...]) -> TradeJournal:
+    return TradeJournal(
+        id=str(r[0]),
+        title=str(r[1]),
+        contentMd=str(r[2]),
+        createdAt=str(r[3]),
+        updatedAt=str(r[4]),
+    )
+
+
+@app.get("/journals", response_model=ListTradeJournalsResponse)
+def list_trade_journals(limit: int = 20, offset: int = 0) -> ListTradeJournalsResponse:
+    limit2 = max(1, min(int(limit), 200))
+    offset2 = max(0, int(offset))
+    with _connect() as conn:
+        total = int(conn.execute("SELECT COUNT(*) FROM trade_journals").fetchone()[0])
+        rows = conn.execute(
+            """
+            SELECT id, title, content_md, created_at, updated_at
+            FROM trade_journals
+            ORDER BY updated_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit2, offset2),
+        ).fetchall()
+    items = [_trade_journal_from_row(tuple(r)) for r in rows]
+    return ListTradeJournalsResponse(total=total, items=items)
+
+
+@app.get("/journals/{journal_id}", response_model=TradeJournal)
+def get_trade_journal(journal_id: str) -> TradeJournal:
+    jid = (journal_id or "").strip()
+    if not jid:
+        raise HTTPException(status_code=400, detail="journal_id is required")
+    with _connect() as conn:
+        r = conn.execute(
+            """
+            SELECT id, title, content_md, created_at, updated_at
+            FROM trade_journals
+            WHERE id = ?
+            """,
+            (jid,),
+        ).fetchone()
+    if r is None:
+        raise HTTPException(status_code=404, detail="Journal not found")
+    return _trade_journal_from_row(tuple(r))
+
+
+@app.post("/journals", response_model=TradeJournal)
+def create_trade_journal(req: TradeJournalCreateRequest) -> TradeJournal:
+    now = now_iso()
+    jid = str(uuid.uuid4())
+    title = (req.title or "").strip() or "Trading Journal"
+    content = req.contentMd or ""
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO trade_journals(id, title, content_md, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?)
+            """,
+            (jid, title, content, now, now),
+        )
+        conn.commit()
+        r = conn.execute(
+            """
+            SELECT id, title, content_md, created_at, updated_at
+            FROM trade_journals
+            WHERE id = ?
+            """,
+            (jid,),
+        ).fetchone()
+    return _trade_journal_from_row(tuple(r))
+
+
+@app.put("/journals/{journal_id}", response_model=TradeJournal)
+def update_trade_journal(journal_id: str, req: TradeJournalUpdateRequest) -> TradeJournal:
+    jid = (journal_id or "").strip()
+    if not jid:
+        raise HTTPException(status_code=400, detail="journal_id is required")
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT id, title, content_md, created_at, updated_at
+            FROM trade_journals
+            WHERE id = ?
+            """,
+            (jid,),
+        ).fetchone()
+        if cur is None:
+            raise HTTPException(status_code=404, detail="Journal not found")
+        cur_t = str(cur[1])
+        cur_c = str(cur[2])
+        next_title = (req.title.strip() if isinstance(req.title, str) else cur_t) or cur_t
+        next_content = req.contentMd if isinstance(req.contentMd, str) else cur_c
+        now = now_iso()
+        conn.execute(
+            """
+            UPDATE trade_journals
+            SET title = ?, content_md = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (next_title, next_content, now, jid),
+        )
+        conn.commit()
+        r = conn.execute(
+            """
+            SELECT id, title, content_md, created_at, updated_at
+            FROM trade_journals
+            WHERE id = ?
+            """,
+            (jid,),
+        ).fetchone()
+    return _trade_journal_from_row(tuple(r))
+
+
+@app.delete("/journals/{journal_id}")
+def delete_trade_journal(journal_id: str) -> dict[str, Any]:
+    jid = (journal_id or "").strip()
+    if not jid:
+        raise HTTPException(status_code=400, detail="journal_id is required")
+    with _connect() as conn:
+        cur = conn.execute("SELECT id FROM trade_journals WHERE id = ?", (jid,)).fetchone()
+        if cur is None:
+            raise HTTPException(status_code=404, detail="Journal not found")
+        conn.execute("DELETE FROM trade_journals WHERE id = ?", (jid,))
+        conn.commit()
+    return {"ok": True}
 
 
 @app.post("/leader/daily", response_model=LeaderDailyResponse)
@@ -10549,6 +11118,12 @@ def dashboard_sync(req: DashboardSyncRequest) -> DashboardSyncResponse:
             j = json.loads(body) if body else {}
         except Exception:
             j = {}
+        # Treat non-200 or ok=false as a step failure (so the UI shows it clearly).
+        status = int(getattr(resp, "status_code", 200) or 200)
+        ok_flag = bool(j.get("ok")) if isinstance(j, dict) else False
+        if status >= 400 or (isinstance(j, dict) and j.get("ok") is False) or (status == 200 and not ok_flag and j):
+            err = (j.get("error") if isinstance(j, dict) else None) or (j.get("detail") if isinstance(j, dict) else None) or body
+            raise RuntimeError(str(err or "Market sync failed."))
         return {"response": j}
 
     step("market", _sync_market)
@@ -10566,6 +11141,10 @@ def dashboard_sync(req: DashboardSyncRequest) -> DashboardSyncResponse:
         d = _today_cn_date_str()
         out = market_cn_sentiment_sync(MarketCnSentimentSyncRequest(date=d, force=True))
         last = out.items[-1].model_dump() if out.items else {}
+        # If the latest row is not for today, treat the step as failed (stale data).
+        last_date = str(last.get("date") or "")
+        if last_date and last_date != d:
+            raise RuntimeError(f"Sentiment sync stale (requested={d}, latest={last_date}). Upstream blocked/captcha.")
         return {"asOfDate": out.asOfDate, "riskMode": str(last.get("riskMode") or ""), "premium": last.get("yesterdayLimitUpPremium"), "failedRate": last.get("failedLimitUpRate")}
 
     step("marketSentiment", _sync_sentiment)

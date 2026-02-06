@@ -39,7 +39,8 @@ export const SelectContent = React.forwardRef<
       ref={ref}
       position={position}
       className={cn(
-        'z-50 min-w-[8rem] overflow-hidden rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] shadow-md',
+        // Ensure dropdown is above modal overlays (e.g. Settings add-profile modal uses z-[100]).
+        'z-[200] min-w-[8rem] overflow-hidden rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] shadow-md',
         'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         className,
       )}

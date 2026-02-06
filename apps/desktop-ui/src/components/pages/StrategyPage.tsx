@@ -15,6 +15,60 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { QUANT_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
+import { loadJson } from '@/lib/storage';
+
+function MarkdownOrText({
+  markdown,
+  defaultMode = 'preview',
+}: {
+  markdown: string;
+  defaultMode?: 'preview' | 'text';
+}) {
+  const [mode, setMode] = React.useState<'preview' | 'text'>(defaultMode);
+  const text = markdown || '';
+
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant={mode === 'preview' ? 'default' : 'secondary'}
+            onClick={() => setMode('preview')}
+            className="h-7 px-2 text-xs"
+          >
+            Preview
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === 'text' ? 'default' : 'secondary'}
+            onClick={() => setMode('text')}
+            className="h-7 px-2 text-xs"
+          >
+            Text
+          </Button>
+        </div>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => void navigator.clipboard?.writeText(text)}
+          className="h-7 px-2 text-xs"
+        >
+          Copy
+        </Button>
+      </div>
+      {mode === 'preview' ? (
+        <div className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2">
+          <MarkdownMessage content={text} className="text-xs" />
+        </div>
+      ) : (
+        <pre className="whitespace-pre-wrap break-words rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3 text-xs leading-relaxed text-[var(--k-text)]">
+          {text}
+        </pre>
+      )}
+    </div>
+  );
+}
 
 function DebugBlock({
   title,
@@ -256,6 +310,30 @@ export function StrategyPage() {
   const [ctxLeaders, setCtxLeaders] = React.useState(true);
   const [ctxStocks, setCtxStocks] = React.useState(true);
   const [ctxQuant2d, setCtxQuant2d] = React.useState(true);
+  const [ctxWatchlist, setCtxWatchlist] = React.useState(true);
+
+  const watchlistSnapshot = React.useMemo(() => {
+    if (!ctxWatchlist) return null;
+    type WatchlistStorageRow = { symbol: string; name: string | null };
+    const raw = loadJson<unknown[]>('karios.watchlist.v1', []);
+    const rows: unknown[] = Array.isArray(raw) ? raw : [];
+    const items: WatchlistStorageRow[] = rows
+      .map((x) => {
+        if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
+        const rec = x as Record<string, unknown>;
+        const symbol = String(rec.symbol ?? '').trim();
+        if (!symbol) return null;
+        const nameVal = rec.name;
+        const name = typeof nameVal === 'string' ? nameVal : nameVal == null ? null : String(nameVal);
+        return { symbol, name };
+      })
+      .filter((x): x is WatchlistStorageRow => Boolean(x));
+    return {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      items,
+    };
+  }, [ctxWatchlist]);
 
   const reportMd = React.useMemo(() => {
     if (!report) return '';
@@ -366,6 +444,8 @@ export function StrategyPage() {
           includeLeaders: ctxLeaders,
           includeStocks: ctxStocks,
           includeQuant2d: ctxQuant2d,
+          includeWatchlist: ctxWatchlist,
+          watchlist: ctxWatchlist ? watchlistSnapshot : undefined,
         },
       );
       setReport(r);
@@ -396,6 +476,8 @@ export function StrategyPage() {
           includeLeaders: ctxLeaders,
           includeStocks: ctxStocks,
           includeQuant2d: ctxQuant2d,
+          includeWatchlist: ctxWatchlist,
+          watchlist: ctxWatchlist ? watchlistSnapshot : undefined,
         },
       );
       setReport(r);
@@ -538,7 +620,7 @@ export function StrategyPage() {
               checked={ctxAccount}
               onChange={(e) => setCtxAccount(e.target.checked)}
             />
-            <span>Account state (overview/positions/orders/trades)</span>
+            <span>Account state (overview/positions)</span>
           </label>
           <label className="flex items-center gap-2">
             <input
@@ -587,6 +669,14 @@ export function StrategyPage() {
               onChange={(e) => setCtxQuant2d(e.target.checked)}
             />
             <span>Quant Top Picks (2D) snapshot</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={ctxWatchlist}
+              onChange={(e) => setCtxWatchlist(e.target.checked)}
+            />
+            <span>Watchlist (local, symbols + names)</span>
           </label>
         </div>
         <div className="mt-2 text-xs text-[var(--k-muted)]">
@@ -694,8 +784,61 @@ export function StrategyPage() {
                       ? (stage2 as Record<string, unknown>)
                       : null;
                   if (stage1Obj && stage2Obj) {
+                    const stage1Resp =
+                      stage1Obj['response'] && typeof stage1Obj['response'] === 'object'
+                        ? (stage1Obj['response'] as Record<string, unknown>)
+                        : null;
+                    const stage2Resp =
+                      stage2Obj['response'] && typeof stage2Obj['response'] === 'object'
+                        ? (stage2Obj['response'] as Record<string, unknown>)
+                        : null;
+                    const stage1PromptDebug =
+                      stage1Resp?.['promptDebug'] && typeof stage1Resp['promptDebug'] === 'object'
+                        ? (stage1Resp['promptDebug'] as Record<string, unknown>)
+                        : null;
+                    const stage2PromptDebug =
+                      stage2Resp?.['promptDebug'] && typeof stage2Resp['promptDebug'] === 'object'
+                        ? (stage2Resp['promptDebug'] as Record<string, unknown>)
+                        : null;
+                    const stage1PromptMd =
+                      typeof stage1PromptDebug?.['promptMarkdown'] === 'string'
+                        ? (stage1PromptDebug['promptMarkdown'] as string)
+                        : '';
+                    const stage2PromptMd =
+                      typeof stage2PromptDebug?.['promptMarkdown'] === 'string'
+                        ? (stage2PromptDebug['promptMarkdown'] as string)
+                        : '';
+
                     return (
                       <>
+                        <DebugBlock
+                          title="Stage 1 — Prompt (as sent to model)"
+                          description="Exact system + prompt, plus segmented context markdown for readability."
+                          defaultOpen
+                        >
+                          {stage1PromptMd ? (
+                            <MarkdownOrText markdown={stage1PromptMd} />
+                          ) : (
+                            <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                              promptDebug missing on stage1 response
+                            </pre>
+                          )}
+                        </DebugBlock>
+
+                        <DebugBlock
+                          title="Stage 2 — Prompt (as sent to model)"
+                          description="Exact system + prompt, plus segmented context markdown for readability."
+                          defaultOpen={false}
+                        >
+                          {stage2PromptMd ? (
+                            <MarkdownOrText markdown={stage2PromptMd} />
+                          ) : (
+                            <pre className="whitespace-pre-wrap break-words text-xs text-[var(--k-muted)]">
+                              promptDebug missing on stage2 response
+                            </pre>
+                          )}
+                        </DebugBlock>
+
                         <DebugBlock
                           title="Stage 1 — Request (candidates JSON)"
                           description="No per-stock deep context. Uses account + TradingView latest + industry matrix."
