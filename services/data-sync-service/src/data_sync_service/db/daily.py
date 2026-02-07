@@ -79,6 +79,7 @@ def _date_str(val: object) -> str | None:
 
 def get_last_trade_date(ts_code: str) -> date | None:
     """Return the latest trade_date for ts_code in DB, or None."""
+    ensure_table()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(

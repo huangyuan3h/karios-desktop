@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     last_ts_code TEXT,
     error_message TEXT
 );
-CREATE INDEX IF NOT EXISTS ix_sync_job_record_job_date ON {TABLE_NAME} (job_type, (sync_at::date));
+CREATE INDEX IF NOT EXISTS ix_sync_job_record_job_sync ON {TABLE_NAME} (job_type, sync_at);
 """
 
 
