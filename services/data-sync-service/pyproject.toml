@@ -7,8 +7,10 @@ requires-python = ">=3.13"
 dependencies = [
     "apscheduler>=3.11.0",
     "fastapi>=0.125.0",
+    "pandas>=2.2.0",
     "psycopg[binary]>=3.2.10",
     "python-dotenv>=1.1.1",
+    "tushare>=1.4.0",
     "uvicorn>=0.38.0",
 ]
 

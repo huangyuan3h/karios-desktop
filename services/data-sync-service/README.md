@@ -28,6 +28,7 @@ pnpm dev
 ## Endpoints
 
 - `GET /healthz`
+- `POST /sync/stock-basic` — sync stock basic list from tushare into DB (upsert by ts_code)
 
 ## Scheduler
 
