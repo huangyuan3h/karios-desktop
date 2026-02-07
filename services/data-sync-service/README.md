@@ -28,12 +28,7 @@ pnpm dev
 ## Endpoints
 
 - `GET /healthz`
-- `GET /foo`
-- `GET /scheduler/foo`
 
-## Scheduler Config
+## Scheduler
 
-Cron settings are hardcoded per job file. For example, `foo_job.py` uses:
-
-- `CRON_EXPRESSION = "*/5 * * * *"`
-- `LOG_PATH = services/data-sync-service/foo_job.log`
+One Python file per cron job under `scheduler/`, with `JOB_ID`, `build_trigger()`, and `run()`. Register in `scheduler/__init__.py`.
