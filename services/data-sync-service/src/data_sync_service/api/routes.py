@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from data_sync_service.db import check_db
+from data_sync_service.scheduler import get_foo_status
 from data_sync_service.service import foo
 
 router = APIRouter()
@@ -21,3 +22,8 @@ def healthz() -> dict:
 @router.get("/foo")
 def foo_endpoint() -> dict:
     return foo()
+
+
+@router.get("/scheduler/foo")
+def foo_schedule_status() -> dict:
+    return get_foo_status()

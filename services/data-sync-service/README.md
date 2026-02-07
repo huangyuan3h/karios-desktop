@@ -14,7 +14,7 @@ uv sync
 3. Run the service:
 
 ```bash
-uv run uvicorn data_sync_service.main:app --reload
+uv run uvicorn data_sync_service.main:app --app-dir src --reload
 ```
 
 ## Monorepo Dev
@@ -29,3 +29,11 @@ pnpm dev
 
 - `GET /healthz`
 - `GET /foo`
+- `GET /scheduler/foo`
+
+## Scheduler Config
+
+Cron settings are hardcoded per job file. For example, `foo_job.py` uses:
+
+- `CRON_EXPRESSION = "*/5 * * * *"`
+- `LOG_PATH = services/data-sync-service/foo_job.log`
