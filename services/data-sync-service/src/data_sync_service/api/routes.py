@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query
 
 from data_sync_service.db import check_db
+from data_sync_service.service.adj_factor import get_adj_factor_sync_status, sync_adj_factor_full
 from data_sync_service.service.daily import get_daily_from_db, get_daily_sync_status, sync_daily_full
 from data_sync_service.service.stock_basic import get_stock_basic_list, sync_stock_basic
 
@@ -50,5 +51,17 @@ def get_daily_status_endpoint() -> dict:
 
 @router.post("/sync/daily")
 def sync_daily_endpoint() -> dict:
-    """Trigger full sync of daily bars (2024-01-01 to today). Skips if today already succeeded; resumes from failure."""
+    """Trigger full sync of daily bars (2023-01-01 to today). Skips if today already succeeded; resumes from failure."""
     return sync_daily_full()
+
+
+@router.get("/sync/adj-factor/status")
+def get_adj_factor_status_endpoint() -> dict:
+    """Return today's adj_factor sync run record (success/fail, last_ts_code on failure)."""
+    return get_adj_factor_sync_status()
+
+
+@router.post("/sync/adj-factor")
+def sync_adj_factor_endpoint() -> dict:
+    """Trigger full sync of adj_factor into daily table. Skips if today already succeeded; resumes from failure."""
+    return sync_adj_factor_full()

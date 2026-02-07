@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     pct_chg    NUMERIC,
     vol        NUMERIC,
     amount     NUMERIC,
+    adj_factor NUMERIC,
     PRIMARY KEY (ts_code, trade_date)
 );
 """
@@ -48,6 +49,8 @@ def ensure_table() -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(CREATE_SQL)
+            # Backfill schema change for existing databases.
+            cur.execute(f"ALTER TABLE {TABLE_NAME} ADD COLUMN IF NOT EXISTS adj_factor NUMERIC")
         conn.commit()
 
 
@@ -84,6 +87,19 @@ def get_last_trade_date(ts_code: str) -> date | None:
         with conn.cursor() as cur:
             cur.execute(
                 f"SELECT MAX(trade_date) FROM {TABLE_NAME} WHERE ts_code = %s",
+                (ts_code,),
+            )
+            row = cur.fetchone()
+    return row[0] if row and row[0] else None
+
+
+def get_last_adj_factor_date(ts_code: str) -> date | None:
+    """Return the latest trade_date with non-null adj_factor for ts_code, or None."""
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT MAX(trade_date) FROM {TABLE_NAME} WHERE ts_code = %s AND adj_factor IS NOT NULL",
                 (ts_code,),
             )
             row = cur.fetchone()
@@ -141,7 +157,7 @@ def fetch_daily(
         with conn.cursor() as cur:
             cur.execute(
                 f"""
-                SELECT ts_code, trade_date, open, high, low, close, pre_close, change, pct_chg, vol, amount
+                SELECT ts_code, trade_date, open, high, low, close, pre_close, change, pct_chg, vol, amount, adj_factor
                 FROM {TABLE_NAME}
                 {where_sql}
                 ORDER BY ts_code, trade_date
@@ -168,3 +184,32 @@ def fetch_daily(
                 obj[col] = val
         out.append(obj)
     return out
+
+
+def update_adj_factor_from_dataframe(df: pd.DataFrame) -> int:
+    """
+    Update daily.adj_factor from a DataFrame with columns: ts_code, trade_date, adj_factor.
+    trade_date may be YYYYMMDD or YYYY-MM-DD; we normalize to YYYY-MM-DD.
+    Returns number of input rows processed (best-effort; DB update count may differ).
+    """
+    ensure_table()
+    rows = []
+    for _, row in df.iterrows():
+        ts_code = _scalar(row.get("ts_code"))
+        trade_date = _date_str(row.get("trade_date"))
+        adj_factor = _numeric(row.get("adj_factor"))
+        if not ts_code or not trade_date:
+            continue
+        rows.append((adj_factor, ts_code, trade_date))
+
+    if not rows:
+        return 0
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                f"UPDATE {TABLE_NAME} SET adj_factor = %s WHERE ts_code = %s AND trade_date = %s",
+                rows,
+            )
+        conn.commit()
+    return len(rows)
