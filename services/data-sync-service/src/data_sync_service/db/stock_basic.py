@@ -74,3 +74,25 @@ def upsert_from_dataframe(df: pd.DataFrame) -> int:
                 cur.execute(UPSERT_SQL, r)
         conn.commit()
     return len(rows)
+
+
+def fetch_all() -> list[dict]:
+    """Return all stock_basic rows from DB as list of dicts. Dates as YYYY-MM-DD strings."""
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT ts_code, symbol, name, industry, market, list_date, delist_date FROM {TABLE_NAME} ORDER BY ts_code"
+            )
+            rows = cur.fetchall()
+            columns = [d.name for d in cur.description]
+    out = []
+    for row in rows:
+        obj = {}
+        for col, val in zip(columns, row):
+            if hasattr(val, "strftime"):
+                obj[col] = val.strftime("%Y-%m-%d")
+            else:
+                obj[col] = val
+        out.append(obj)
+    return out

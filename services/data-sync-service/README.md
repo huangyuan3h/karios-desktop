@@ -28,8 +28,11 @@ pnpm dev
 ## Endpoints
 
 - `GET /healthz`
-- `POST /sync/stock-basic` — sync stock basic list from tushare into DB (upsert by ts_code)
+- `GET /sync/stock-basic` — return all stock_basic rows from DB (~5k)
+- `POST /sync/stock-basic` — trigger sync from tushare into DB (upsert by ts_code)
 
 ## Scheduler
 
 One Python file per cron job under `scheduler/`, with `JOB_ID`, `build_trigger()`, and `run()`. Register in `scheduler/__init__.py`.
+
+- `stock_basic_job`: every Friday 18:00 (Asia/Shanghai). Failures are logged only.

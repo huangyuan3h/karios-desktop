@@ -8,7 +8,7 @@ import pandas as pd
 import tushare as ts
 
 from data_sync_service.config import get_settings
-from data_sync_service.db.stock_basic import upsert_from_dataframe
+from data_sync_service.db.stock_basic import fetch_all, upsert_from_dataframe
 
 FIELDS = [
     "ts_code",
@@ -19,6 +19,11 @@ FIELDS = [
     "list_date",
     "delist_date",
 ]
+
+
+def get_stock_basic_list() -> list[dict]:
+    """Return all stock_basic rows from our database (ordered by ts_code)."""
+    return fetch_all()
 
 
 def sync_stock_basic() -> dict[str, Any]:
