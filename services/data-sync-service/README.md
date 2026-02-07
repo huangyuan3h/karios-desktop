@@ -30,9 +30,17 @@ pnpm dev
 - `GET /healthz`
 - `GET /sync/stock-basic` — return all stock_basic rows from DB (~5k)
 - `POST /sync/stock-basic` — trigger sync from tushare into DB (upsert by ts_code)
+- `GET /sync/daily` — return daily bars from DB (query params: ts_code, start_date, end_date, limit)
+- `GET /sync/daily/status` — today's full sync run (success/fail, last_ts_code on failure)
+- `POST /sync/daily` — trigger full sync of daily bars (2024-01-01 to today; skip if today ok, resume from failure)
 
 ## Scheduler
 
 One Python file per cron job under `scheduler/`, with `JOB_ID`, `build_trigger()`, and `run()`. Register in `scheduler/__init__.py`.
 
 - `stock_basic_job`: every Friday 18:00 (Asia/Shanghai). Failures are logged only.
+- `daily_sync_job`: full daily sync every Friday 17:00 (Asia/Shanghai), fallback only. Failures are logged only.
+
+## Sync job record
+
+Table `sync_job_record` stores each run: job_type, sync_at, success, last_ts_code (on failure), error_message. Used to skip if today already succeeded, or resume from last_ts_code after a failed run.

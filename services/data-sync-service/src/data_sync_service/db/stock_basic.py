@@ -76,6 +76,16 @@ def upsert_from_dataframe(df: pd.DataFrame) -> int:
     return len(rows)
 
 
+def fetch_ts_codes() -> list[str]:
+    """Return ordered list of ts_code from stock_basic (for sync loops)."""
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT ts_code FROM {TABLE_NAME} ORDER BY ts_code")
+            rows = cur.fetchall()
+    return [r[0] for r in rows if r and r[0]]
+
+
 def fetch_all() -> list[dict]:
     """Return all stock_basic rows from DB as list of dicts. Dates as YYYY-MM-DD strings."""
     ensure_table()
