@@ -128,12 +128,6 @@ type TvSnapshotDetail = {
   rows: Record<string, string>[];
 };
 
-type TvScreenerSyncResponse = {
-  snapshotId: string;
-  capturedAt: string;
-  rowCount: number;
-};
-
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
@@ -143,17 +137,6 @@ async function apiGetJson<T>(path: string): Promise<T> {
 
 async function apiGetJsonFrom<T>(baseUrl: string, path: string): Promise<T> {
   const res = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: body != null ? { 'content-type': 'application/json' } : undefined,
-    body: body != null ? JSON.stringify(body) : undefined,
-  });
   const txt = await res.text().catch(() => '');
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
   return txt ? (JSON.parse(txt) as T) : ({} as T);
@@ -522,33 +505,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         return;
       }
 
-      setStep('Capturing TradingView snapshots', 0, enabled.length);
-      // 1) Capture a fresh snapshot from each enabled screener (best-effort; sequential to avoid CDP conflicts).
-      const freshSnapshotIds: string[] = [];
-      let screenerFailures = 0;
-      for (let i = 0; i < enabled.length; i++) {
-        const sc = enabled[i]!;
-        setSyncProgress({ cur: i + 1, total: enabled.length });
-        try {
-          const r = await apiPostJson<TvScreenerSyncResponse>(
-            `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/sync`,
-          );
-          if (r?.snapshotId) freshSnapshotIds.push(String(r.snapshotId));
-        } catch {
-          screenerFailures += 1;
-        }
-      }
-
-      setStep('Loading snapshot details', 0, enabled.length);
-      // 2) Load snapshot details (prefer fresh; fall back to latest saved if sync failed).
+      setStep('Loading latest snapshots (DB)', 0, enabled.length);
+      // Load snapshot details from DB (no TradingView sync).
       const snapshotDetails: TvSnapshotDetail[] = [];
       for (let i = 0; i < enabled.length; i++) {
         const sc = enabled[i]!;
         setSyncProgress({ cur: i + 1, total: enabled.length });
         try {
-          // Prefer the newest snapshot for this screener.
           let snapId: string | null = null;
-          // If we captured fresh snapshots, pick the newest one from list (simple: query latest).
           const list = await apiGetJson<{ items: TvSnapshotSummary[] }>(
             `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/snapshots?limit=1`,
           );
@@ -580,8 +544,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         return;
       }
 
-      setStep('TrendOK prefilter (cache)', 0, uniq.length);
-      // 3) Pre-filter by cached TrendOK (fast, no external fetch).
+      setStep('TrendOK check', 0, uniq.length);
+      // Check TrendOK from data-sync-service DB cache (no network fetch in data-sync-service).
       const okSymsCached: string[] = [];
       for (const part of chunk(uniq, 200)) {
         const sp = new URLSearchParams();
@@ -600,40 +564,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         });
       }
       const okUniqCached = Array.from(new Set(okSymsCached));
-
-      setStep('Refreshing latest daily bars', 0, okUniqCached.length);
-      // 4) Force-refresh daily bars from network for the cached-OK subset, then re-check TrendOK to make it "live".
-      let barFailures = 0;
-      for (let i = 0; i < okUniqCached.length; i++) {
-        const sym = okUniqCached[i]!;
-        setSyncProgress({ cur: i + 1, total: okUniqCached.length });
-        const enc = encodeURIComponent(sym);
-        const ok = await apiGetJsonFrom(DATA_SYNC_BASE_URL, `/market/stocks/${enc}/bars?days=60&force=true`)
-          .then(() => true)
-          .catch(() => false);
-        if (!ok) barFailures += 1;
-        await new Promise((r) => window.setTimeout(r, 120));
-      }
-
-      setStep('TrendOK re-check (live)', 0, okUniqCached.length);
-      const okSymsLive: string[] = [];
-      for (const part of chunk(okUniqCached, 200)) {
-        const sp = new URLSearchParams();
-        sp.set('refresh', 'true');
-        for (const s2 of part) sp.append('symbols', s2);
-        const rows = await apiGetJsonFrom<TrendOkResult[]>(
-          DATA_SYNC_BASE_URL,
-          `/market/stocks/trendok?${sp.toString()}`,
-        );
-        for (const rr of Array.isArray(rows) ? rows : []) {
-          if (rr && rr.symbol && rr.trendOk === true) okSymsLive.push(rr.symbol);
-        }
-        setSyncProgress((p) => {
-          const prev = p?.cur ?? 0;
-          return { cur: Math.min(okUniqCached.length, prev + part.length), total: okUniqCached.length };
-        });
-      }
-      const okUniq = Array.from(new Set(okSymsLive));
+      const okUniq = okUniqCached;
 
       const existing = new Set(items.map((x) => x.symbol));
       const now = new Date().toISOString();
@@ -643,18 +574,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
       if (!added.length) {
         setSyncMsg(
-          `Screener scanned ${uniq.length} symbols; TrendOK ✅ (live): ${okUniq.length}; nothing new to add.` +
-            (screenerFailures ? ` (${screenerFailures} screener sync failed)` : '') +
-            (barFailures ? ` (${barFailures} bar sync failed, used cache)` : ''),
+          `Screener scanned ${uniq.length} symbols (latest snapshots); TrendOK ✅: ${okUniq.length}; nothing new to add.`,
         );
         return;
       }
 
       persist([...added, ...items]);
       setSyncMsg(
-        `Added ${added.length} TrendOK ✅ stocks from screener (scanned ${uniq.length}).` +
-          (screenerFailures ? ` (${screenerFailures} screener sync failed)` : '') +
-          (barFailures ? ` (${barFailures} bar sync failed, used cache)` : ''),
+        `Added ${added.length} TrendOK ✅ stocks from screener (latest snapshots; scanned ${uniq.length}).`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1084,7 +1011,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           {syncBusy && syncStage ? (
             <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <div className="font-medium">Sync from screener</div>
+                <div className="font-medium">Import from screener</div>
                 <div className="text-[var(--k-muted)]">
                   {syncProgress ? `${syncProgress.cur}/${syncProgress.total}` : '…'}
                 </div>
@@ -1148,7 +1075,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             className="gap-2"
           >
             <RefreshCw className="h-4 w-4" />
-            Sync from screener
+            Import from screener
           </Button>
         </div>
       </div>
