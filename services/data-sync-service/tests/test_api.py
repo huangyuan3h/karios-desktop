@@ -66,3 +66,21 @@ def test_tv_screeners_endpoint_shape() -> None:
     # Defaults should exist on a fresh DB.
     ids = {x.get("id") for x in payload["items"] if isinstance(x, dict)}
     assert {"falcon", "blackhorse"}.issubset(ids)
+
+
+def test_tv_chrome_status_endpoint_shape() -> None:
+    client = TestClient(app)
+    resp = client.get("/integrations/tradingview/status")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert set(payload.keys()) >= {
+        "running",
+        "pid",
+        "host",
+        "port",
+        "cdpOk",
+        "cdpVersion",
+        "userDataDir",
+        "profileDirectory",
+        "headless",
+    }

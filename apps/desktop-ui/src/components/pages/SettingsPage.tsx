@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import { Check } from 'lucide-react';
 
-import { AI_BASE_URL, DATA_SYNC_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
+import { AI_BASE_URL, DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -31,32 +31,9 @@ type TvChromeStatus = {
   headless: boolean;
 };
 
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return (await res.json()) as T;
-}
-
 async function apiGetJsonFrom<T>(baseUrl: string, path: string): Promise<T> {
   const res = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return (await res.json()) as T;
-}
-
-async function apiSendJson<T>(
-  path: string,
-  method: 'POST' | 'PUT' | 'DELETE',
-  body?: unknown,
-): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  }
   return (await res.json()) as T;
 }
 
@@ -179,7 +156,7 @@ export function SettingsPage() {
     try {
       const [s, st] = await Promise.all([
         apiGetJsonFrom<{ items: TvScreener[] }>(DATA_SYNC_BASE_URL, '/integrations/tradingview/screeners'),
-        apiGetJson<TvChromeStatus>('/integrations/tradingview/status'),
+        apiGetJsonFrom<TvChromeStatus>(DATA_SYNC_BASE_URL, '/integrations/tradingview/status'),
       ]);
       setScreeners(s.items);
       setStatus(st);
@@ -389,20 +366,16 @@ export function SettingsPage() {
     setError(null);
     try {
       const needsForce = !!status && status.profileDirectory !== sourceProfileDir;
-      const st = await apiSendJson<TvChromeStatus>(
-        '/integrations/tradingview/chrome/start',
-        'POST',
-        {
-          headless,
-          // Use a dedicated user-data-dir for CDP. Keep it stable so cookies persist.
-          userDataDir: status?.userDataDir ?? '~/.karios/chrome-tv-cdp',
-          // Use the same profile directory name as the source, so we can copy Profile 1.
-          profileDirectory: sourceProfileDir,
-          bootstrapFromChromeUserDataDir: sourceUserDataDir,
-          bootstrapFromProfileDirectory: sourceProfileDir,
-          forceBootstrap: forceBootstrap || needsForce,
-        },
-      );
+      const st = await apiSendJsonTo<TvChromeStatus>(DATA_SYNC_BASE_URL, '/integrations/tradingview/chrome/start', 'POST', {
+        headless,
+        // Use a dedicated user-data-dir for CDP. Keep it stable so cookies persist.
+        userDataDir: status?.userDataDir ?? '~/.karios/chrome-tv-cdp',
+        // Use the same profile directory name as the source, so we can copy Profile 1.
+        profileDirectory: sourceProfileDir,
+        bootstrapFromChromeUserDataDir: sourceUserDataDir,
+        bootstrapFromProfileDirectory: sourceProfileDir,
+        forceBootstrap: forceBootstrap || needsForce,
+      });
       setStatus(st);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -415,7 +388,7 @@ export function SettingsPage() {
     setBusy(true);
     setError(null);
     try {
-      const st = await apiSendJson<TvChromeStatus>('/integrations/tradingview/chrome/stop', 'POST');
+      const st = await apiSendJsonTo<TvChromeStatus>(DATA_SYNC_BASE_URL, '/integrations/tradingview/chrome/stop', 'POST');
       setStatus(st);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
