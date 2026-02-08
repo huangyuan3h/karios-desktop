@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, CircleX, ExternalLink, Info, RefreshCw
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
-import { DATA_SYNC_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { loadJson, saveJson } from '@/lib/storage';
 import { useChatStore } from '@/lib/chat/store';
 
@@ -136,7 +136,7 @@ type TvSnapshotDetail = {
 };
 
 async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
   return txt ? (JSON.parse(txt) as T) : ({} as T);

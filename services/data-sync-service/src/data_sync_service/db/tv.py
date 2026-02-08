@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from data_sync_service.db import get_connection
@@ -170,6 +171,7 @@ def upsert_snapshot(
     payload: dict[str, Any],
 ) -> None:
     ensure_tables()
+    payload_json = json.dumps(payload)
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -182,7 +184,7 @@ def upsert_snapshot(
                     row_count = EXCLUDED.row_count,
                     payload = EXCLUDED.payload
                 """,
-                (snapshot_id, screener_id, captured_at, int(row_count), payload),
+                (snapshot_id, screener_id, captured_at, int(row_count), payload_json),
             )
         conn.commit()
 

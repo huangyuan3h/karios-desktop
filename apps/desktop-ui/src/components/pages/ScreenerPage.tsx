@@ -5,7 +5,7 @@ import { ExternalLink, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 
 type TvScreener = {
   id: string;
@@ -56,13 +56,13 @@ type TvHistoryResponse = {
 };
 
 async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return (await res.json()) as T;
 }
 
 async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
     method: 'POST',
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,

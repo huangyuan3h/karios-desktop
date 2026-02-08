@@ -61,6 +61,11 @@ def tv_screener_history(screener_id: str, days: int = Query(10, ge=1, le=30)) ->
     return tvsvc.screener_history(screener_id=screener_id, days=int(days))
 
 
+@router.post("/integrations/tradingview/screeners/{screener_id}/sync")
+def sync_tv_screener(screener_id: str) -> dict[str, Any]:
+    return tvsvc.sync_screener(screener_id=screener_id)
+
+
 @router.post("/integrations/tradingview/migrate/sqlite")
 def migrate_tv_from_sqlite(req: MigrateTvFromSqliteRequest) -> dict[str, Any]:
     return tvsvc.migrate_from_sqlite(sqlite_path=req.sqlitePath)

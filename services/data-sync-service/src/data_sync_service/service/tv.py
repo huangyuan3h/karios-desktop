@@ -14,6 +14,8 @@ from fastapi import HTTPException
 
 from data_sync_service.config import ROOT_ENV_PATH
 from data_sync_service.db import tv as tvdb
+from data_sync_service.service import tv_chrome
+from data_sync_service.tv.capture import capture_screener_over_cdp_sync
 
 
 def _now_iso() -> str:
@@ -265,4 +267,78 @@ def migrate_from_sqlite(*, sqlite_path: str | None = None) -> dict[str, Any]:
         "screenersUpserted": upserted_screeners,
         "snapshotsUpserted": upserted_snapshots,
     }
+
+
+def sync_screener(*, screener_id: str) -> dict[str, Any]:
+    """
+    Capture a fresh snapshot for a screener via CDP-attached Chrome and persist to Postgres.
+    """
+    ensure_seeded()
+    sid = (screener_id or "").strip()
+    if not sid:
+        raise HTTPException(status_code=400, detail="screener_id is required")
+    screener = tvdb.fetch_screener_by_id(sid)
+    if screener is None:
+        raise HTTPException(status_code=404, detail="Screener not found")
+    if not screener.get("enabled"):
+        raise HTTPException(status_code=409, detail="Screener is disabled")
+    url = str(screener.get("url") or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="Screener URL is empty")
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="Screener URL must start with http(s)://")
+
+    st = tv_chrome.status()
+    if not st.cdpOk:
+        # Auto-start a headless Chrome for silent sync (same behavior as quant-service).
+        src_ud = (tv_chrome.get_setting("tv_bootstrap_src_user_data_dir") or "").strip()
+        src_profile = (tv_chrome.get_setting("tv_bootstrap_src_profile_dir") or "").strip()
+        desired_profile_dir = src_profile or tv_chrome.TV_PROFILE_DIR_DEFAULT
+        tv_chrome.start(
+            port=st.port,
+            userDataDir=st.userDataDir,
+            profileDirectory=desired_profile_dir,
+            chromeBin=(tv_chrome.get_setting("tv_chrome_bin") or tv_chrome.TV_CHROME_BIN_DEFAULT),
+            headless=True,
+            bootstrapFromChromeUserDataDir=src_ud or None,
+            bootstrapFromProfileDirectory=src_profile or None,
+            forceBootstrap=False,
+        )
+        st = tv_chrome.status()
+        if not st.cdpOk:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "CDP is not available. Auto-start failed. "
+                    "Please ensure Chrome profile is logged in to TradingView, "
+                    "or configure the bootstrap paths in Settings."
+                ),
+            )
+
+    cdp_url = f"http://{st.host}:{st.port}"
+    try:
+        result = capture_screener_over_cdp_sync(cdp_url=cdp_url, url=url)
+    except Exception as e:  # noqa: BLE001
+        # Avoid unhandled exceptions (which bypass CORS due to ServerErrorMiddleware).
+        msg = str(e) or e.__class__.__name__
+        if "Cannot locate screener grid/table" in msg:
+            raise HTTPException(status_code=409, detail=msg) from e
+        raise HTTPException(status_code=500, detail=msg) from e
+
+    snapshot_id = str(uuid.uuid4())
+    payload = {
+        "screenTitle": result.screen_title,
+        "filters": [str(x) for x in (result.filters or []) if str(x).strip()],
+        "url": result.url,
+        "headers": result.headers,
+        "rows": result.rows,
+    }
+    tvdb.upsert_snapshot(
+        snapshot_id=snapshot_id,
+        screener_id=sid,
+        captured_at=result.captured_at,
+        row_count=len(result.rows),
+        payload=payload,
+    )
+    return {"snapshotId": snapshot_id, "capturedAt": result.captured_at, "rowCount": len(result.rows)}
 
