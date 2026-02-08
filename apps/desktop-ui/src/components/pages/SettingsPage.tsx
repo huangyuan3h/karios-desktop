@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import { Check } from 'lucide-react';
 
-import { AI_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
+import { AI_BASE_URL, DATA_SYNC_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -37,12 +37,36 @@ async function apiGetJson<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function apiGetJsonFrom<T>(baseUrl: string, path: string): Promise<T> {
+  const res = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return (await res.json()) as T;
+}
+
 async function apiSendJson<T>(
   path: string,
   method: 'POST' | 'PUT' | 'DELETE',
   body?: unknown,
 ): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  }
+  return (await res.json()) as T;
+}
+
+async function apiSendJsonTo<T>(
+  baseUrl: string,
+  path: string,
+  method: 'POST' | 'PUT' | 'DELETE',
+  body?: unknown,
+): Promise<T> {
+  const res = await fetch(`${baseUrl}${path}`, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
@@ -120,6 +144,7 @@ export function SettingsPage() {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editName, setEditName] = React.useState('');
   const [editUrl, setEditUrl] = React.useState('');
+  const [tvMsg, setTvMsg] = React.useState<string | null>(null);
 
   // --- AI Models tab state (profiles) ---
   const [aiCfg, setAiCfg] = React.useState<AiConfigPublic | null>(null);
@@ -150,9 +175,10 @@ export function SettingsPage() {
   const [modelEditOllamaKey, setModelEditOllamaKey] = React.useState('');
   const refresh = React.useCallback(async () => {
     setError(null);
+    setTvMsg(null);
     try {
       const [s, st] = await Promise.all([
-        apiGetJson<{ items: TvScreener[] }>('/integrations/tradingview/screeners'),
+        apiGetJsonFrom<{ items: TvScreener[] }>(DATA_SYNC_BASE_URL, '/integrations/tradingview/screeners'),
         apiGetJson<TvChromeStatus>('/integrations/tradingview/status'),
       ]);
       setScreeners(s.items);
@@ -402,8 +428,9 @@ export function SettingsPage() {
     if (!newUrl.trim()) return;
     setBusy(true);
     setError(null);
+    setTvMsg(null);
     try {
-      await apiSendJson<{ id: string }>('/integrations/tradingview/screeners', 'POST', {
+      await apiSendJsonTo<{ id: string }>(DATA_SYNC_BASE_URL, '/integrations/tradingview/screeners', 'POST', {
         name: newName.trim() || 'Untitled',
         url: newUrl.trim(),
         enabled: true,
@@ -421,8 +448,10 @@ export function SettingsPage() {
   async function saveScreener(it: TvScreener, next: Partial<TvScreener>) {
     setBusy(true);
     setError(null);
+    setTvMsg(null);
     try {
-      await apiSendJson<{ ok: boolean }>(
+      await apiSendJsonTo<{ ok: boolean }>(
+        DATA_SYNC_BASE_URL,
         `/integrations/tradingview/screeners/${encodeURIComponent(it.id)}`,
         'PUT',
         {
@@ -442,10 +471,34 @@ export function SettingsPage() {
   async function deleteScreener(it: TvScreener) {
     setBusy(true);
     setError(null);
+    setTvMsg(null);
     try {
-      await apiSendJson<{ ok: boolean }>(
+      await apiSendJsonTo<{ ok: boolean }>(
+        DATA_SYNC_BASE_URL,
         `/integrations/tradingview/screeners/${encodeURIComponent(it.id)}`,
         'DELETE',
+      );
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function migrateTradingViewFromSqlite() {
+    setBusy(true);
+    setError(null);
+    setTvMsg(null);
+    try {
+      const out = await apiSendJsonTo<{
+        ok: boolean;
+        sqlitePath: string;
+        screenersUpserted: number;
+        snapshotsUpserted: number;
+      }>(DATA_SYNC_BASE_URL, '/integrations/tradingview/migrate/sqlite', 'POST', {});
+      setTvMsg(
+        `Migrated from SQLite: ${out.screenersUpserted} screeners, ${out.snapshotsUpserted} snapshots (${out.sqlitePath}).`,
       );
       await refresh();
     } catch (e) {
@@ -469,6 +522,11 @@ export function SettingsPage() {
           {error ? (
             <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
               {error}
+            </div>
+          ) : null}
+          {tvMsg ? (
+            <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
+              {tvMsg}
             </div>
           ) : null}
 
@@ -600,12 +658,17 @@ export function SettingsPage() {
               <div>
                 <div className="font-medium">Screeners</div>
                 <div className="text-sm text-[var(--k-muted)]">
-                  Manage TradingView screener URLs (targets) persisted in SQLite.
+                  Manage TradingView screener URLs (targets) persisted in data-sync-service DB (migratable from SQLite).
                 </div>
               </div>
-              <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={busy}>
-                Refresh
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={() => void migrateTradingViewFromSqlite()} disabled={busy}>
+                  Migrate
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={busy}>
+                  Refresh
+                </Button>
+              </div>
             </div>
 
             <div className="mt-4 grid gap-2">

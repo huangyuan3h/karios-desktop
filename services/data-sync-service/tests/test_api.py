@@ -55,3 +55,14 @@ def test_trendok_endpoint_shape() -> None:
     assert isinstance(arr[0]["checks"], dict)
     assert isinstance(arr[0]["values"], dict)
     assert isinstance(arr[0]["missingData"], list)
+
+
+def test_tv_screeners_endpoint_shape() -> None:
+    client = TestClient(app)
+    resp = client.get("/integrations/tradingview/screeners")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert "items" in payload and isinstance(payload["items"], list)
+    # Defaults should exist on a fresh DB.
+    ids = {x.get("id") for x in payload["items"] if isinstance(x, dict)}
+    assert {"falcon", "blackhorse"}.issubset(ids)
