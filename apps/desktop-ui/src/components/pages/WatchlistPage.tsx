@@ -736,20 +736,20 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           .join(', ')})`
       : 'need last 4 histogram values';
     const lines = [
-      checkLine('EMA order', t?.checks?.emaOrder ?? null, 'EMA(5) > EMA(20) > EMA(60)'),
+      checkLine('EMA trend', t?.checks?.emaOrder ?? null, 'Close > EMA(20) AND EMA(20) > EMA(60)'),
       checkLine('MACD > 0', t?.checks?.macdPositive ?? null, 'macdLine > 0'),
       checkLine(
         'MACD hist',
         t?.checks?.macdHistExpanding ?? null,
-        `last 4 days: (hist>0) and >=2 increases (positive-part); ${macdHistDetail}`,
+        `histogram > 0 (red bar above zero axis). Expansion is scored separately; ${macdHistDetail}`,
       ),
       checkLine('Near 20D high', t?.checks?.closeNear20dHigh ?? null, 'Close >= 0.95 * High(20)'),
       checkLine(
         'RSI(14)',
         t?.checks?.rsiInRange ?? null,
-        `50 <= RSI <= 75${rsiNow == null ? '' : ` (now: ${rsiNow.toFixed(1)})`}`,
+        `50 <= RSI <= 82${rsiNow == null ? '' : ` (now: ${rsiNow.toFixed(1)})`}`,
       ),
-      checkLine('Volume surge', t?.checks?.volumeSurge ?? null, 'AvgVol(5) > 1.2 * AvgVol(30)'),
+      checkLine('Volume', t?.checks?.volumeSurge ?? null, 'AvgVol(5) > 0.9 * AvgVol(30)'),
     ];
     const missing = (t?.missingData ?? []).filter(Boolean);
     const tip = (
@@ -1072,12 +1072,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         <div>— when data/indicators are insufficient.</div>
       </div>
       <div className="mt-2 space-y-1">
-        <div>1) EMA(5) &gt; EMA(20) &gt; EMA(60)</div>
+        <div>1) Close &gt; EMA(20) and EMA(20) &gt; EMA(60)</div>
         <div>2) MACD line &gt; 0</div>
-        <div>3) MACD histogram expanding: last 4 days, at least 2 day-over-day increases</div>
+        <div>3) MACD histogram &gt; 0</div>
         <div>4) Close ≥ 0.95 × High(20)</div>
-        <div>5) RSI(14) in [50, 75]</div>
-        <div>6) AvgVol(5) &gt; 1.2 × AvgVol(30)</div>
+        <div>5) RSI(14) in [50, 82]</div>
+        <div>6) AvgVol(5) &gt; 0.9 × AvgVol(30)</div>
       </div>
     </>
   );

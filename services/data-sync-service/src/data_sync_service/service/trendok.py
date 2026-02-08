@@ -213,12 +213,13 @@ def _trendok_one(
     opens: list[float] = []
     dates: list[str] = []
 
-    for d, o, h, low, c, v in bars:
-        c2 = _parse_float_safe(c)
-        v2 = _parse_float_safe(v)
-        h2 = _parse_float_safe(h)
-        l2 = _parse_float_safe(low)
-        o2 = _parse_float_safe(o)
+    # NOTE: Use explicit variable names to avoid mypy confusion with later locals.
+    for d, open_s, high_s, low_s, close_s, vol_s in bars:
+        c2 = _parse_float_safe(close_s)
+        v2 = _parse_float_safe(vol_s)
+        h2 = _parse_float_safe(high_s)
+        l2 = _parse_float_safe(low_s)
+        o2 = _parse_float_safe(open_s)
         if c2 is None:
             continue
         closes.append(c2)
@@ -246,7 +247,9 @@ def _trendok_one(
         res["values"]["ema5"] = ema5s[-1]
         res["values"]["ema20"] = ema20s[-1]
         res["values"]["ema60"] = ema60s[-1]
-        res["checks"]["emaOrder"] = bool(ema5s[-1] > ema20s[-1] > ema60s[-1])
+        # Rule 1 (optimized): allow EMA5 short-term noise.
+        # TrendOK requires close above EMA20 and EMA20 above EMA60.
+        res["checks"]["emaOrder"] = bool(closes[-1] > ema20s[-1] and ema20s[-1] > ema60s[-1])
 
     macd_line, sig_line, hist = _macd(closes, 12, 26, 9)
     if macd_line and sig_line and hist:
@@ -254,23 +257,18 @@ def _trendok_one(
         res["values"]["macdSignal"] = sig_line[-1]
         res["values"]["macdHist"] = hist[-1]
         res["checks"]["macdPositive"] = bool(macd_line[-1] > 0.0)
+        # Rule 3 (optimized): only require histogram above zero axis.
+        # "Expanding" is handled by the Score system as a soft signal.
+        res["checks"]["macdHistExpanding"] = bool(hist[-1] > 0.0)
         if len(hist) >= 4:
             h4 = hist[-4:]
             res["values"]["macdHist4"] = [float(x) for x in h4]
-            hpos = [max(0.0, float(x)) for x in h4]
-            inc = 0
-            if hpos[1] > hpos[0]:
-                inc += 1
-            if hpos[2] > hpos[1]:
-                inc += 1
-            if hpos[3] > hpos[2]:
-                inc += 1
-            res["checks"]["macdHistExpanding"] = bool(hpos[3] > 0.0 and inc >= 2)
 
     rsi14s = _rsi(closes, 14)
     if rsi14s:
         res["values"]["rsi14"] = rsi14s[-1]
-        res["checks"]["rsiInRange"] = bool(50.0 <= rsi14s[-1] <= 75.0)
+        # Rule 5 (optimized): allow strong trend RSI up to 82.
+        res["checks"]["rsiInRange"] = bool(50.0 <= rsi14s[-1] <= 82.0)
 
     if len(closes) >= 20:
         high20 = max(closes[-20:])
@@ -282,7 +280,9 @@ def _trendok_one(
         avg30 = sum(vols[-30:]) / 30.0
         res["values"]["avgVol5"] = avg5
         res["values"]["avgVol30"] = avg30
-        res["checks"]["volumeSurge"] = bool(avg5 > 1.2 * avg30) if avg30 > 0 else bool(avg5 > 0)
+        # Rule 6 (optimized): avoid filtering strong "tight volume" trends.
+        # Volume "surge" is moved to the Score system; TrendOK only blocks volume cliffs.
+        res["checks"]["volumeSurge"] = bool(avg5 > 0.9 * avg30) if avg30 > 0 else bool(avg5 > 0)
 
     # Score (ported; see quant-service for rationale)
     try:
@@ -336,15 +336,15 @@ def _trendok_one(
             s_break = _clip01((ratio_hi - 0.85) / 0.10)
             bonus_new_high = 3.0 if (high20_high > 0 and close >= high20_high) else 0.0
 
-            if 50.0 <= rsi14 <= 75.0:
-                s_rsi = _clip01(1.0 - (abs(rsi14 - 62.5) / 12.5))
-            else:
-                s_rsi = 0.0
+            # RSI subscore: momentum-friendly (do not penalize strong uptrends).
+            # Center at 70, linearly decays to 0 at 55/85 (then clipped).
+            s_rsi = _clip01(1.0 - (abs(rsi14 - 70.0) / 15.0))
 
             ratio_vol = (avg5 / avg30) if avg30 > 0 else (1.0 if avg5 > 0 else 0.0)
             s_vol = _clip01((ratio_vol - 1.0) / 0.30)
 
-            w_ema, w_macd, w_break, w_rsi, w_vol = 0.25, 0.20, 0.20, 0.15, 0.20
+            # Weights: emphasize breakout/new-high as primary right-side signal.
+            w_ema, w_macd, w_break, w_rsi, w_vol = 0.25, 0.15, 0.25, 0.15, 0.20
             pts_ema = 100.0 * w_ema * s_ema
             pts_macd = 100.0 * w_macd * s_macd
             pts_break = 100.0 * w_break * s_break
@@ -365,7 +365,9 @@ def _trendok_one(
             atr14 = _atr14(highs, lows, closes, 14)
             if atr14 is not None and close > 0:
                 atr_ratio = float(atr14) / float(close)
-                p_vol = _clip01((atr_ratio - 0.015) / 0.035) * 10.0
+                # Volatility penalty: tolerate high ATR in strong themes.
+                # New rule: start penalizing above 3% ATR/close, softer slope, half max penalty.
+                p_vol = _clip01((atr_ratio - 0.03) / 0.05) * 5.0
                 penalty += p_vol
                 parts["penalty_volatility_atr"] = -round(p_vol, 3)
             if ema20 > 0 and close < ema20:
@@ -436,8 +438,8 @@ def _trendok_one(
                 avg5v = float(res["values"]["avgVol5"])
                 avg30v = float(res["values"]["avgVol30"])
                 if len(hist) >= 4:
-                    h = [float(x) for x in hist[-4:]]
-                    shrink_then_flip = (h[0] > h[1] > h[2] > 0.0) and (h[3] < 0.0)
+                    hist4 = [float(x) for x in hist[-4:]]
+                    shrink_then_flip = (hist4[0] > hist4[1] > hist4[2] > 0.0) and (hist4[3] < 0.0)
                     vol_dry = avg30v > 0.0 and (avg5v < avg30v)
                     exit_check_vol_dry = bool(vol_dry)
                     if shrink_then_flip and vol_dry:
@@ -447,17 +449,17 @@ def _trendok_one(
 
                     if not shrink_then_flip:
                         shrink_cnt = 0
-                        if h[1] < h[0]:
+                        if hist4[1] < hist4[0]:
                             shrink_cnt += 1
-                        if h[2] < h[1]:
+                        if hist4[2] < hist4[1]:
                             shrink_cnt += 1
-                        if h[3] < h[2]:
+                        if hist4[3] < hist4[2]:
                             shrink_cnt += 1
-                        stop_parts["warn_hist4"] = [round(x, 6) for x in h]
+                        stop_parts["warn_hist4"] = [round(x, 6) for x in hist4]
                         stop_parts["warn_hist_shrink_cnt_3"] = shrink_cnt
                         if avg30v > 0:
                             stop_parts["warn_vol_ratio_5_30"] = round(avg5v / avg30v, 6)
-                        if h[3] > 0.0 and shrink_cnt >= 2:
+                        if hist4[3] > 0.0 and shrink_cnt >= 2:
                             warn_reduce_half = True
                             warn_reasons.append(
                                 "momentum_warning:hist_shrinking_and_volume_dry" if vol_dry else "momentum_warning:hist_shrinking"
@@ -465,18 +467,18 @@ def _trendok_one(
             else:
                 # If volume averages are unavailable, still warn based on MACD histogram shrinking (best-effort).
                 if len(hist) >= 4:
-                    h = [float(x) for x in hist[-4:]]
+                    hist4 = [float(x) for x in hist[-4:]]
                     shrink_cnt = 0
-                    if h[1] < h[0]:
+                    if hist4[1] < hist4[0]:
                         shrink_cnt += 1
-                    if h[2] < h[1]:
+                    if hist4[2] < hist4[1]:
                         shrink_cnt += 1
-                    if h[3] < h[2]:
+                    if hist4[3] < hist4[2]:
                         shrink_cnt += 1
-                    stop_parts["warn_hist4"] = [round(x, 6) for x in h]
+                    stop_parts["warn_hist4"] = [round(x, 6) for x in hist4]
                     stop_parts["warn_hist_shrink_cnt_3"] = shrink_cnt
                     stop_parts["warn_vol_ratio_5_30"] = None
-                    if h[3] > 0.0 and shrink_cnt >= 2:
+                    if hist4[3] > 0.0 and shrink_cnt >= 2:
                         warn_reduce_half = True
                         warn_reasons.append("momentum_warning:hist_shrinking_volume_unknown")
 
