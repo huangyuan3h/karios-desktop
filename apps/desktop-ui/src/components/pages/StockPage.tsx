@@ -217,7 +217,8 @@ export function StockPage({
     setBusy(true);
     try {
       const [d, c] = await Promise.all([
-        apiGetJson<BarsResp>(
+        apiGetJsonFrom<BarsResp>(
+          DATA_SYNC_BASE_URL,
           `/market/stocks/${encodeURIComponent(symbol)}/bars?days=60${force ? '&force=true' : ''}`,
         ),
         apiGetJson<ChipsResp>(

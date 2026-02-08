@@ -213,3 +213,41 @@ def update_adj_factor_from_dataframe(df: pd.DataFrame) -> int:
             )
         conn.commit()
     return len(rows)
+
+
+def fetch_last_bars(ts_code: str, days: int = 60) -> list[dict[str, Any]]:
+    """
+    Return last N daily bars for a single ts_code, ordered by date ASC.
+    Fields: date, open, high, low, close, volume, amount (all strings).
+    """
+    ensure_table()
+    days2 = max(1, min(int(days), 400))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT trade_date, open, high, low, close, vol, amount
+                FROM {TABLE_NAME}
+                WHERE ts_code = %s
+                ORDER BY trade_date DESC
+                LIMIT %s
+                """,
+                (ts_code, days2),
+            )
+            rows = cur.fetchall()
+    # Reverse to ASC
+    out: list[dict[str, Any]] = []
+    for r in reversed(rows):
+        d = r[0].strftime("%Y-%m-%d") if r and hasattr(r[0], "strftime") else str(r[0])
+        out.append(
+            {
+                "date": d,
+                "open": str(r[1] or ""),
+                "high": str(r[2] or ""),
+                "low": str(r[3] or ""),
+                "close": str(r[4] or ""),
+                "volume": str(r[5] or ""),
+                "amount": str(r[6] or ""),
+            }
+        )
+    return out

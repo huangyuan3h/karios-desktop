@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from data_sync_service.db import check_db
 from data_sync_service.service.adj_factor import get_adj_factor_sync_status
 from data_sync_service.service.close_sync import get_close_sync_status
 from data_sync_service.service.daily import get_daily_from_db, get_daily_sync_status
+from data_sync_service.service.market_bars import get_market_bars
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 from data_sync_service.service.stock_basic import get_stock_basic_list
 
@@ -76,3 +77,14 @@ def get_quote_endpoint(
     if ts_codes:
         codes.extend([c.strip() for c in ts_codes.split(",") if c.strip()])
     return fetch_realtime_quotes(codes)
+
+
+@router.get("/market/stocks/{symbol}/bars")
+def get_market_bars_endpoint(symbol: str, days: int = Query(60, ge=10, le=200), force: bool = False) -> dict:
+    # Purpose: compatibility endpoint for StockPage candlestick chart.
+    # Inputs: symbol like CN:000001, days; force is accepted for compatibility but ignored (query-only).
+    _ = force
+    try:
+        return get_market_bars(symbol=symbol, days=days)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(e)) from e
