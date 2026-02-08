@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from data_sync_service.scheduler import adj_factor_job, daily_sync_job, stock_basic_job
+from data_sync_service.scheduler import adj_factor_job, close_sync_job, daily_sync_job, stock_basic_job
 
 
 def create_scheduler() -> BackgroundScheduler:
@@ -26,6 +26,12 @@ def create_scheduler() -> BackgroundScheduler:
         adj_factor_job.run,
         adj_factor_job.build_trigger(),
         id=adj_factor_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        close_sync_job.run,
+        close_sync_job.build_trigger(),
+        id=close_sync_job.JOB_ID,
         replace_existing=True,
     )
     return scheduler

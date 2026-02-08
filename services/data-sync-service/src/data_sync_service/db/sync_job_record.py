@@ -76,3 +76,28 @@ def insert_record(
                 (job_type, success, last_ts_code, error_message),
             )
         conn.commit()
+
+
+def get_last_success(job_type: str) -> dict[str, Any] | None:
+    """Return the latest successful run for job_type, or None."""
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id, job_type, sync_at, success, last_ts_code, error_message
+                FROM {TABLE_NAME}
+                WHERE job_type = %s AND success = TRUE
+                ORDER BY sync_at DESC
+                LIMIT 1
+                """,
+                (job_type,),
+            )
+            row = cur.fetchone()
+    if not row:
+        return None
+    cols = ("id", "job_type", "sync_at", "success", "last_ts_code", "error_message")
+    rec = dict(zip(cols, row))
+    if rec.get("sync_at") and hasattr(rec["sync_at"], "isoformat"):
+        rec["sync_at"] = rec["sync_at"].isoformat()
+    return rec

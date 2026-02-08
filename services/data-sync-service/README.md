@@ -35,6 +35,9 @@ pnpm dev
 - `POST /sync/daily` — trigger full sync of daily bars (2023-01-01 to today; skip if today ok, resume from failure)
 - `GET /sync/adj-factor/status` — today's adj_factor sync run (success/fail, last_ts_code on failure)
 - `POST /sync/adj-factor` — trigger full sync of adj_factor into daily table (skip/resume like daily)
+- `POST /sync/trade-cal` — manually sync trade calendar into DB (query params: exchange, start_date, end_date)
+- `GET /sync/close/status` — close-sync status (today run + last success)
+- `POST /sync/close` — close-time sync by trade_date window (daily + adj_factor, paged)
 
 ## Scheduler
 
@@ -43,6 +46,7 @@ One Python file per cron job under `scheduler/`, with `JOB_ID`, `build_trigger()
 - `stock_basic_job`: every Friday 18:00 (Asia/Shanghai). Failures are logged only.
 - `daily_sync_job`: full daily sync every Friday 17:00 (Asia/Shanghai), fallback only. Failures are logged only.
 - `adj_factor_job`: full adj_factor sync every Friday 17:00 (Asia/Shanghai), fallback only. Failures are logged only.
+- `close_sync_job`: runs daily 17:10 (Asia/Shanghai); checks trade calendar and skips on non-trading days.
 
 ## Sync job record
 

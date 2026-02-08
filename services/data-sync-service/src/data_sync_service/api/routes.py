@@ -4,8 +4,10 @@ from fastapi import APIRouter, Query
 
 from data_sync_service.db import check_db
 from data_sync_service.service.adj_factor import get_adj_factor_sync_status, sync_adj_factor_full
+from data_sync_service.service.close_sync import get_close_sync_status, sync_close
 from data_sync_service.service.daily import get_daily_from_db, get_daily_sync_status, sync_daily_full
 from data_sync_service.service.stock_basic import get_stock_basic_list, sync_stock_basic
+from data_sync_service.service.trade_calendar import sync_trade_calendar
 
 router = APIRouter()
 
@@ -65,3 +67,25 @@ def get_adj_factor_status_endpoint() -> dict:
 def sync_adj_factor_endpoint() -> dict:
     """Trigger full sync of adj_factor into daily table. Skips if today already succeeded; resumes from failure."""
     return sync_adj_factor_full()
+
+
+@router.post("/sync/trade-cal")
+def sync_trade_cal_endpoint(
+    exchange: str = Query("SSE"),
+    start_date: str | None = Query(None, description="Start date YYYYMMDD"),
+    end_date: str | None = Query(None, description="End date YYYYMMDD"),
+) -> dict:
+    """Manually sync trade calendar into DB."""
+    return sync_trade_calendar(exchange=exchange, start_date=start_date, end_date=end_date)
+
+
+@router.get("/sync/close/status")
+def get_close_status_endpoint() -> dict:
+    """Return close-sync status (today run + last success)."""
+    return get_close_sync_status()
+
+
+@router.post("/sync/close")
+def sync_close_endpoint(exchange: str = Query("SSE")) -> dict:
+    """Close-time sync by trade_date window: daily + adj_factor (paged)."""
+    return sync_close(exchange=exchange)
