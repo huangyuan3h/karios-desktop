@@ -28,15 +28,15 @@ pnpm dev
 ## Endpoints
 
 - `GET /healthz`
-- `GET /sync/stock-basic` — return all stock_basic rows from DB (~5k)
+- `GET /stock-basic` — return all stock_basic rows from DB (~5k)
 - `POST /sync/stock-basic` — trigger sync from tushare into DB (upsert by ts_code)
-- `GET /sync/daily` — return daily bars from DB (query params: ts_code, start_date, end_date, limit)
-- `GET /sync/daily/status` — today's full sync run (success/fail, last_ts_code on failure)
+- `GET /daily` — return daily bars from DB (query params: ts_code, start_date, end_date, limit)
+- `GET /daily/status` — today's full sync run (success/fail, last_ts_code on failure)
 - `POST /sync/daily` — trigger full sync of daily bars (2023-01-01 to today; skip if today ok, resume from failure)
-- `GET /sync/adj-factor/status` — today's adj_factor sync run (success/fail, last_ts_code on failure)
+- `GET /adj-factor/status` — today's adj_factor sync run (success/fail, last_ts_code on failure)
 - `POST /sync/adj-factor` — trigger full sync of adj_factor into daily table (skip/resume like daily)
 - `POST /sync/trade-cal` — manually sync trade calendar into DB (query params: exchange, start_date, end_date)
-- `GET /sync/close/status` — close-sync status (today run + last success)
+- `GET /close/status` — close-sync status (today run + last success)
 - `POST /sync/close` — close-time sync by trade_date window (daily + adj_factor, paged)
 
 ## Scheduler
