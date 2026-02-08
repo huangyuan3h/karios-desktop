@@ -19,3 +19,39 @@ def test_market_bars_compat_endpoint_shape() -> None:
     payload = resp.json()
     assert set(payload.keys()) >= {"symbol", "market", "ticker", "name", "currency", "bars"}
     assert isinstance(payload["bars"], list)
+
+
+def test_trendok_endpoint_shape() -> None:
+    client = TestClient(app)
+    resp = client.get("/market/stocks/trendok?symbols=CN:000001")
+    assert resp.status_code == 200
+    arr = resp.json()
+    assert isinstance(arr, list)
+    assert len(arr) == 1
+    assert arr[0]["symbol"] == "CN:000001"
+    assert set(arr[0].keys()) >= {
+        "symbol",
+        "name",
+        "asOfDate",
+        "trendOk",
+        "score",
+        "scoreParts",
+        "stopLossPrice",
+        "stopLossParts",
+        "buyMode",
+        "buyAction",
+        "buyZoneLow",
+        "buyZoneHigh",
+        "buyRefPrice",
+        "buyWhy",
+        "buyChecks",
+        "checks",
+        "values",
+        "missingData",
+    }
+    assert isinstance(arr[0]["scoreParts"], dict)
+    assert isinstance(arr[0]["stopLossParts"], dict)
+    assert isinstance(arr[0]["buyChecks"], dict)
+    assert isinstance(arr[0]["checks"], dict)
+    assert isinstance(arr[0]["values"], dict)
+    assert isinstance(arr[0]["missingData"], list)

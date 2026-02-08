@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, CircleX, ExternalLink, Info, RefreshCw
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
 import { loadJson, saveJson } from '@/lib/storage';
 import { useChatStore } from '@/lib/chat/store';
 
@@ -36,6 +36,24 @@ type MarketStockBasicRow = {
   ticker: string;
   name: string;
   currency: string;
+};
+
+type QuoteResp = {
+  ok: boolean;
+  error?: string;
+  items: Array<{
+    ts_code: string;
+    price: string | null;
+    open: string | null;
+    high: string | null;
+    low: string | null;
+    pre_close: string | null;
+    change: string | null;
+    pct_chg: string | null;
+    volume: string | null;
+    amount: string | null;
+    trade_time: string | null;
+  }>;
 };
 
 type TrendOkChecks = {
@@ -123,6 +141,13 @@ async function apiGetJson<T>(path: string): Promise<T> {
   return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
+async function apiGetJsonFrom<T>(baseUrl: string, path: string): Promise<T> {
+  const res = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
+}
+
 async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, {
     method: 'POST',
@@ -186,6 +211,16 @@ function chunk<T>(arr: T[], n: number): T[][] {
   return out;
 }
 
+function toTsCodeFromSymbol(symbol: string): string | null {
+  // Only handle CN A-shares for now: "CN:000001" -> "000001.SZ/SH"
+  const s = symbol.trim().toUpperCase();
+  if (!s.startsWith('CN:')) return null;
+  const ticker = s.slice('CN:'.length).trim();
+  if (!/^[0-9]{6}$/.test(ticker)) return null;
+  const suffix = ticker.startsWith('6') ? 'SH' : 'SZ';
+  return `${ticker}.${suffix}`;
+}
+
 function fmtPrice(v: number | null | undefined): string {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
   return v.toFixed(2);
@@ -232,6 +267,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
+  const [quotes, setQuotes] = React.useState<Record<string, { price: number | null; tsCode: string }>>({});
   const [trendBusy, setTrendBusy] = React.useState(false);
   const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
   const [syncBusy, setSyncBusy] = React.useState(false);
@@ -301,7 +337,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       try {
         const sp = new URLSearchParams();
         for (const s of missing) sp.append('symbols', s);
-        const rows = await apiGetJson<MarketStockBasicRow[]>(
+        const rows = await apiGetJsonFrom<MarketStockBasicRow[]>(
+          DATA_SYNC_BASE_URL,
           `/market/stocks/resolve?${sp.toString()}`,
         );
         if (cancelled) return;
@@ -332,6 +369,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       const syms = items.map((x) => x.symbol).filter(Boolean);
       if (!syms.length) {
         setTrend({});
+        setQuotes({});
         setTrendUpdatedAt(null);
         return;
       }
@@ -346,7 +384,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           let failures = 0;
           for (const sym of syms) {
             const enc = encodeURIComponent(sym);
-            const ok = await apiGetJson(`/market/stocks/${enc}/bars?days=60&force=true`)
+            const ok = await apiGetJsonFrom(
+              DATA_SYNC_BASE_URL,
+              `/market/stocks/${enc}/bars?days=60&force=true`,
+            )
               .then(() => true)
               .catch(() => false);
             if (!ok) failures += 1;
@@ -362,7 +403,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         // The backend will fall back to cache if upstream is blocked.
         sp.set('refresh', 'true');
         for (const s of syms) sp.append('symbols', s);
-        const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+        const rows = await apiGetJsonFrom<TrendOkResult[]>(
+          DATA_SYNC_BASE_URL,
+          `/market/stocks/trendok?${sp.toString()}`,
+        );
         if (reqId !== trendReqRef.current) return;
         const next: Record<string, TrendOkResult> = {};
         for (const r of Array.isArray(rows) ? rows : []) {
@@ -370,6 +414,33 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         }
         setTrend(next);
         setTrendUpdatedAt(new Date().toISOString());
+
+        // Best-effort realtime quotes (CN only) for the "Current" column.
+        try {
+          const cn = syms.map(toTsCodeFromSymbol).filter(Boolean) as string[];
+          const byTsCode = new Map<string, string>();
+          for (const s of syms) {
+            const tsCode = toTsCodeFromSymbol(s);
+            if (tsCode) byTsCode.set(tsCode, s);
+          }
+          const nextQuotes: Record<string, { price: number | null; tsCode: string }> = {};
+          for (const part of chunk(cn, 50)) {
+            const r = await apiGetJsonFrom<QuoteResp>(
+              DATA_SYNC_BASE_URL,
+              `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
+            ).catch(() => null);
+            for (const it of r?.items ?? []) {
+              const sym = byTsCode.get(it.ts_code);
+              if (!sym) continue;
+              const p = it.price != null ? Number(it.price) : NaN;
+              nextQuotes[sym] = { tsCode: it.ts_code, price: Number.isFinite(p) ? p : null };
+            }
+          }
+          if (reqId === trendReqRef.current) setQuotes(nextQuotes);
+        } catch {
+          // ignore quote failures
+        }
+
         if (reason === 'manual') setError(null);
       } catch (e) {
         if (reqId === trendReqRef.current) console.warn('Watchlist trendok load failed:', e);
@@ -516,7 +587,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         const sp = new URLSearchParams();
         sp.set('refresh', 'true');
         for (const s2 of part) sp.append('symbols', s2);
-        const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+        const rows = await apiGetJsonFrom<TrendOkResult[]>(
+          DATA_SYNC_BASE_URL,
+          `/market/stocks/trendok?${sp.toString()}`,
+        );
         for (const rr of Array.isArray(rows) ? rows : []) {
           if (rr && rr.symbol && rr.trendOk === true) okSymsCached.push(rr.symbol);
         }
@@ -534,7 +608,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         const sym = okUniqCached[i]!;
         setSyncProgress({ cur: i + 1, total: okUniqCached.length });
         const enc = encodeURIComponent(sym);
-        const ok = await apiGetJson(`/market/stocks/${enc}/bars?days=60&force=true`)
+        const ok = await apiGetJsonFrom(DATA_SYNC_BASE_URL, `/market/stocks/${enc}/bars?days=60&force=true`)
           .then(() => true)
           .catch(() => false);
         if (!ok) barFailures += 1;
@@ -547,7 +621,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         const sp = new URLSearchParams();
         sp.set('refresh', 'true');
         for (const s2 of part) sp.append('symbols', s2);
-        const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+        const rows = await apiGetJsonFrom<TrendOkResult[]>(
+          DATA_SYNC_BASE_URL,
+          `/market/stocks/trendok?${sp.toString()}`,
+        );
         for (const rr of Array.isArray(rows) ? rows : []) {
           if (rr && rr.symbol && rr.trendOk === true) okSymsLive.push(rr.symbol);
         }
@@ -1223,7 +1300,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                             : '—'
                       }
                     >
-                      {fmtPrice(trend[it.symbol]?.values?.close)}
+                      {fmtPrice(quotes[it.symbol]?.price ?? trend[it.symbol]?.values?.close)}
                     </td>
                     <td className="px-3 py-2">{renderStopLossCell(it.symbol)}</td>
                     <td className="px-3 py-2">{renderTrendOkCell(it.symbol)}</td>

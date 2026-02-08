@@ -9,6 +9,7 @@ from data_sync_service.service.daily import get_daily_from_db, get_daily_sync_st
 from data_sync_service.service.market_bars import get_market_bars
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 from data_sync_service.service.stock_basic import get_stock_basic_list
+from data_sync_service.service.trendok import compute_trendok_for_symbols
 
 router = APIRouter()
 
@@ -88,3 +89,73 @@ def get_market_bars_endpoint(symbol: str, days: int = Query(60, ge=10, le=200), 
         return get_market_bars(symbol=symbol, days=days)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/market/stocks/trendok")
+def get_trendok_endpoint(
+    symbols: list[str] | None = Query(None),
+    refresh: bool = False,
+) -> list[dict]:
+    # Purpose: TrendOK/Score computation for Watchlist (CN daily only), fully based on data-sync-service DB.
+    syms = symbols if isinstance(symbols, list) else []
+    return compute_trendok_for_symbols(syms, refresh=bool(refresh))
+
+
+@router.get("/market/stocks/resolve")
+def resolve_symbols_endpoint(symbols: list[str] | None = Query(None)) -> list[dict]:
+    """
+    Purpose: Resolve symbols (CN:xxxxxx) to name/ticker/market for Watchlist.
+    Source: data-sync-service stock_basic table (tushare).
+    """
+    syms0 = symbols if isinstance(symbols, list) else []
+    syms = [str(s or "").strip().upper() for s in syms0]
+    syms = [s for s in syms if s]
+    if not syms:
+        return []
+    if len(syms) > 500:
+        syms = syms[:500]
+
+    # Map CN:xxxxxx -> ts_code
+    want: dict[str, str] = {}
+    for sym in syms:
+        if sym.startswith("CN:"):
+            ticker = sym.split(":", 1)[1].strip()
+            if len(ticker) == 6 and ticker.isdigit():
+                suffix = "SH" if ticker.startswith("6") else "SZ"
+                want[sym] = f"{ticker}.{suffix}"
+
+    if not want:
+        return []
+
+    try:
+        from data_sync_service.db import get_connection
+        from data_sync_service.db.stock_basic import ensure_table as ensure_sb
+
+        ensure_sb()
+        ts_codes = list(want.values())
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT ts_code, symbol, name FROM stock_basic WHERE ts_code = ANY(%s)",
+                    (ts_codes,),
+                )
+                rows = cur.fetchall()
+        by_code = {str(r[0]): {"ticker": str(r[1]), "name": str(r[2])} for r in rows if r and r[0]}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    out: list[dict] = []
+    for sym, code in want.items():
+        hit = by_code.get(code)
+        if not hit:
+            continue
+        out.append(
+            {
+                "symbol": sym,
+                "market": "CN",
+                "ticker": hit["ticker"],
+                "name": hit["name"],
+                "currency": "CNY",
+            }
+        )
+    return out

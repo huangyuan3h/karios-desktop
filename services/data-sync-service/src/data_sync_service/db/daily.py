@@ -251,3 +251,54 @@ def fetch_last_bars(ts_code: str, days: int = 60) -> list[dict[str, Any]]:
             }
         )
     return out
+
+
+def fetch_last_ohlcv_batch(ts_codes: list[str], days: int = 120) -> dict[str, list[tuple[str, str, str, str, str, str]]]:
+    """
+    Fetch last N OHLCV rows per ts_code in ONE query.
+
+    Returns mapping:
+      ts_code -> list of tuples (date, open, high, low, close, volume) ordered by date ASC.
+
+    Notes:
+    - Uses window function (row_number over partition).
+    - Values are returned as strings for reuse with existing safe float parser.
+    """
+    ensure_table()
+    codes = [c.strip().upper() for c in ts_codes if c and c.strip()]
+    if not codes:
+        return {}
+    days2 = max(10, min(int(days), 400))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT ts_code, trade_date, open, high, low, close, vol
+                FROM (
+                  SELECT
+                    ts_code, trade_date, open, high, low, close, vol,
+                    row_number() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
+                  FROM {TABLE_NAME}
+                  WHERE ts_code = ANY(%s)
+                ) t
+                WHERE rn <= %s
+                ORDER BY ts_code ASC, trade_date ASC
+                """,
+                (codes, days2),
+            )
+            rows = cur.fetchall()
+    out: dict[str, list[tuple[str, str, str, str, str, str]]] = {}
+    for r in rows:
+        code = str(r[0])
+        d = r[1].strftime("%Y-%m-%d") if hasattr(r[1], "strftime") else str(r[1])
+        out.setdefault(code, []).append(
+            (
+                d,
+                str(r[2] or ""),
+                str(r[3] or ""),
+                str(r[4] or ""),
+                str(r[5] or ""),
+                str(r[6] or ""),
+            )
+        )
+    return out
