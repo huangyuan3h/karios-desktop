@@ -6,6 +6,7 @@ from data_sync_service.db import check_db
 from data_sync_service.service.adj_factor import get_adj_factor_sync_status
 from data_sync_service.service.close_sync import get_close_sync_status
 from data_sync_service.service.daily import get_daily_from_db, get_daily_sync_status
+from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 from data_sync_service.service.stock_basic import get_stock_basic_list
 
 router = APIRouter()
@@ -60,3 +61,18 @@ def get_close_status_endpoint() -> dict:
     # Purpose: return close-sync status (today run + last success).
     """Return close-sync status (today run + last success)."""
     return get_close_sync_status()
+
+
+@router.get("/quote")
+def get_quote_endpoint(
+    ts_code: str | None = Query(None, description="Single ts_code, e.g. 000001.SZ"),
+    ts_codes: str | None = Query(None, description="Comma-separated ts_code list"),
+) -> dict:
+    # Purpose: query realtime quote directly from tushare (query-only; no DB writes).
+    # Inputs: ts_code or ts_codes; Outputs: normalized quote items (strings).
+    codes: list[str] = []
+    if ts_code:
+        codes.append(ts_code)
+    if ts_codes:
+        codes.extend([c.strip() for c in ts_codes.split(",") if c.strip()])
+    return fetch_realtime_quotes(codes)

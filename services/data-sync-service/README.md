@@ -28,6 +28,7 @@ pnpm dev
 ## Endpoints
 
 - `GET /healthz`
+- `GET /quote` — realtime quote from tushare (query params: ts_code or ts_codes)
 - `GET /stock-basic` — return all stock_basic rows from DB (~5k)
 - `POST /sync/stock-basic` — trigger sync from tushare into DB (upsert by ts_code)
 - `GET /daily` — return daily bars from DB (query params: ts_code, start_date, end_date, limit)
