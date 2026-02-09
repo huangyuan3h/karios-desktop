@@ -399,68 +399,6 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       continue;
     }
 
-    if (ref.kind === 'strategyReport') {
-      try {
-        const resp = await fetch(
-          `${QUANT_BASE_URL}/strategy/accounts/${encodeURIComponent(ref.accountId)}/daily?date=${encodeURIComponent(ref.date)}`,
-          { cache: 'no-store' },
-        );
-        if (!resp.ok) throw new Error('failed to load strategy report');
-        const repRaw = (await resp.json()) as unknown;
-        const rep = asRecord(repRaw) ?? {};
-        out += `## Strategy report: ${ref.accountTitle}\n`;
-        out += `- date: ${String(rep['date'] ?? ref.date)}\n`;
-        out += `- model: ${String(rep['model'] ?? '')}\n`;
-        out += `- createdAt: ${String(rep['createdAt'] ?? ref.createdAt)}\n`;
-        if (typeof rep['markdown'] === 'string' && rep['markdown'].trim()) {
-          out += `\nMarkdown report:\n`;
-          out += `${String(rep['markdown']).trim()}\n\n`;
-          continue;
-        }
-        // Leader feature removed - skip leader references
-        // const leader = asRecord(rep['leader']);
-        // if (leader) {
-        //   out += `\nLeader:\n`;
-        //   out += `- symbol: ${String(leader['symbol'] ?? '')}\n`;
-        //   out += `- reason: ${String(leader['reason'] ?? '')}\n`;
-        // }
-        const cands = asArray(rep['candidates']).slice(0, 5);
-        if (cands.length) {
-          out += `\nCandidates (first ${cands.length}):\n`;
-          for (const it of cands) {
-            const c = asRecord(it) ?? {};
-            out +=
-              `- #${getStr(c, 'rank')} ${getStr(c, 'ticker')} ${getStr(c, 'name')} ` +
-              `score=${getStr(c, 'score')} why=${getStr(c, 'why')}\n`;
-          }
-        }
-        const recs = asArray(rep['recommendations']).slice(0, 3);
-        if (recs.length) {
-          out += `\nRecommendations (first ${recs.length}):\n`;
-          for (const it of recs) {
-            const r = asRecord(it) ?? {};
-            out += `- ${getStr(r, 'ticker')} ${getStr(r, 'name')} thesis=${getStr(r, 'thesis')}\n`;
-            const orders = asArray(r['orders']).slice(0, 8);
-            if (orders.length) {
-              out += `  Orders:\n`;
-              for (const it2 of orders) {
-                const o = asRecord(it2) ?? {};
-                out +=
-                  `  - ${getStr(o, 'kind')} ${getStr(o, 'side')} trigger=${getStr(o, 'trigger')} ` +
-                  `qty=${getStr(o, 'qty')} tif=${getStr(o, 'timeInForce')}\n`;
-              }
-            }
-          }
-        }
-        out += `\n`;
-      } catch {
-        out += `## Strategy report: ${ref.accountTitle}\n`;
-        out += `- date: ${ref.date}\n`;
-        out += `- status: failed to load report\n\n`;
-      }
-      continue;
-    }
-
     if (ref.kind === 'industryFundFlow') {
       try {
         const resp = await fetch(

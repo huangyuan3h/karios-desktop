@@ -14,7 +14,6 @@ import { MarketPage } from '@/components/pages/MarketPage';
 import { SchedulerPage } from '@/components/pages/SchedulerPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
-import { StrategyPage } from '@/components/pages/StrategyPage';
 import { StockPage } from '@/components/pages/StockPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
@@ -115,8 +114,6 @@ export function AppShell() {
                 ? 'Watchlist'
               : activePage === 'broker'
                 ? 'Broker'
-              : activePage === 'strategy'
-                ? 'Strategy'
               : activePage === 'journal'
                 ? 'Journal'
               : activePage === 'stock'
@@ -180,8 +177,6 @@ export function AppShell() {
                   setActivePage('stock');
                 }}
               />
-            ) : activePage === 'strategy' ? (
-              <StrategyPage />
             ) : activePage === 'journal' ? (
               journalMode === 'write' ? (
                 <JournalWritePage

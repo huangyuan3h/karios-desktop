@@ -260,14 +260,6 @@ export function DashboardPage({
           size="sm"
           variant="secondary"
           className="h-8 px-3 text-xs"
-          onClick={() => onNavigate?.('strategy')}
-        >
-          Strategy
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs"
           onClick={() => onNavigate?.('screener')}
         >
           Screener
