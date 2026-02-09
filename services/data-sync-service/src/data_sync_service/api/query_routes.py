@@ -95,10 +95,11 @@ def get_market_bars_endpoint(symbol: str, days: int = Query(60, ge=10, le=200), 
 def get_trendok_endpoint(
     symbols: list[str] | None = Query(None),
     refresh: bool = False,
+    realtime: bool = False,
 ) -> list[dict]:
     # Purpose: TrendOK/Score computation for Watchlist (CN daily only), fully based on data-sync-service DB.
     syms = symbols if isinstance(symbols, list) else []
-    return compute_trendok_for_symbols(syms, refresh=bool(refresh))
+    return compute_trendok_for_symbols(syms, bool(refresh), bool(realtime))
 
 
 @router.get("/market/stocks/resolve")

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
+from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 
 def _ema(values: list[float], period: int) -> list[float]:
@@ -95,6 +98,55 @@ def _clip01(x: float) -> float:
     return 0.0 if x <= 0.0 else 1.0 if x >= 1.0 else x
 
 
+def _shanghai_today_iso() -> str:
+    return datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
+
+
+def _quote_trade_date(q: dict[str, Any]) -> str | None:
+    tt = str(q.get("trade_time") or "").strip()
+    if not tt:
+        return None
+    if len(tt) >= 10 and tt[4] == "-" and tt[7] == "-":
+        return tt[:10]
+    if len(tt) >= 8 and tt[:8].isdigit():
+        return f"{tt[:4]}-{tt[4:6]}-{tt[6:8]}"
+    return None
+
+
+def _pick_str(value: Any, fallback: str) -> str:
+    if value is None:
+        return fallback
+    s = str(value).strip()
+    return s if s else fallback
+
+
+def _merge_realtime_bar(
+    bars: list[tuple[str, str, str, str, str, str]],
+    quote: dict[str, Any],
+) -> list[tuple[str, str, str, str, str, str]]:
+    if not bars:
+        return bars
+    price = _parse_float_safe(quote.get("price"))
+    if price is None:
+        return bars
+    date = _quote_trade_date(quote) or _shanghai_today_iso()
+    last = bars[-1]
+    last_date = str(last[0])
+    if date < last_date:
+        return bars
+
+    close_s = _pick_str(quote.get("price"), str(last[4]) if date == last_date else str(price))
+    open_s = _pick_str(quote.get("open"), str(last[1]) if date == last_date else close_s)
+    high_s = _pick_str(quote.get("high"), str(last[2]) if date == last_date else close_s)
+    low_s = _pick_str(quote.get("low"), str(last[3]) if date == last_date else close_s)
+    vol_s = _pick_str(quote.get("volume"), str(last[5]) if date == last_date else "0")
+    next_bar = (date, open_s, high_s, low_s, close_s, vol_s)
+
+    if date == last_date:
+        return [*bars[:-1], next_bar]
+    return [*bars, next_bar]
+
+
 def _symbol_to_ts_code(symbol: str) -> tuple[str, str, str] | None:
     """
     Map UI symbol to (market, ticker, ts_code).
@@ -134,10 +186,15 @@ def _lookup_names(ts_codes: list[str]) -> dict[str, str]:
         return {}
 
 
-def compute_trendok_for_symbols(symbols: list[str], refresh: bool = False) -> list[dict[str, Any]]:
+def compute_trendok_for_symbols(
+    symbols: list[str],
+    refresh: bool = False,
+    realtime: bool = False,
+) -> list[dict[str, Any]]:
     """
     Compute TrendOK for up to 200 symbols using DB-cached daily bars.
     `refresh` is accepted for compatibility but ignored (data-sync-service does not trigger network fetch here).
+    `realtime` enables best-effort quote merge for the latest bar during trading hours.
     """
     _ = refresh
     syms0 = [str(s or "").strip().upper() for s in (symbols or [])]
@@ -157,6 +214,15 @@ def compute_trendok_for_symbols(symbols: list[str], refresh: bool = False) -> li
 
     by_name = _lookup_names(ts_codes)
     bars_by_code = fetch_last_ohlcv_batch(ts_codes, days=120)
+    if realtime and ts_codes:
+        q = fetch_realtime_quotes(ts_codes)
+        items = q.get("items") if isinstance(q, dict) else None
+        if q.get("ok") and isinstance(items, list):
+            by_code = {str(x.get("ts_code")): x for x in items if x and x.get("ts_code")}
+            for code, bars in list(bars_by_code.items()):
+                qt = by_code.get(code)
+                if qt:
+                    bars_by_code[code] = _merge_realtime_bar(bars, qt)
 
     out: list[dict[str, Any]] = []
     for sym in syms:

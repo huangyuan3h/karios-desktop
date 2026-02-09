@@ -211,6 +211,32 @@ function toTsCodeFromSymbol(symbol: string): string | null {
   return `${ticker}.${suffix}`;
 }
 
+function getShanghaiTimeParts(): { weekday: string; hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const map = new Map(parts.map((p) => [p.type, p.value]));
+  return {
+    weekday: map.get('weekday') ?? '',
+    hour: Number(map.get('hour') ?? 0),
+    minute: Number(map.get('minute') ?? 0),
+  };
+}
+
+function isShanghaiTradingTime(): boolean {
+  const { weekday, hour, minute } = getShanghaiTimeParts();
+  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
+  const minutes = hour * 60 + minute;
+  // CN A-share: 09:30-11:30, 13:00-15:00
+  const inMorning = minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30;
+  const inAfternoon = minutes >= 13 * 60 && minutes <= 15 * 60;
+  return inMorning || inAfternoon;
+}
+
 function fmtPrice(v: number | null | undefined): string {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
   return v.toFixed(2);
@@ -404,6 +430,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         // Always request a best-effort refresh so Watchlist is based on the latest daily bar.
         // The backend will fall back to cache if upstream is blocked.
         sp.set('refresh', 'true');
+        sp.set('realtime', isShanghaiTradingTime() ? 'true' : 'false');
         for (const s of syms) sp.append('symbols', s);
         const rows = await apiGetJsonFrom<TrendOkResult[]>(
           DATA_SYNC_BASE_URL,
@@ -599,6 +626,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       for (const part of chunk(uniq, 200)) {
         const sp = new URLSearchParams();
         sp.set('refresh', 'true');
+        sp.set('realtime', isShanghaiTradingTime() ? 'true' : 'false');
         for (const s2 of part) sp.append('symbols', s2);
         const rows = await apiGetJsonFrom<TrendOkResult[]>(
           DATA_SYNC_BASE_URL,
