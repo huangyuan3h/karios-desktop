@@ -205,10 +205,6 @@ export function AppShell() {
             ) : (
               <DashboardPage
                 onNavigate={(id) => setActivePage(id)}
-                onOpenStock={(symbol) => {
-                  setActiveStockSymbol(symbol);
-                  setActivePage('stock');
-                }}
               />
             )}
           </div>

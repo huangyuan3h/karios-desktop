@@ -527,7 +527,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     if (ref.kind === 'marketSentiment') {
       try {
         const resp = await fetch(
-          `${QUANT_BASE_URL}/market/cn/sentiment?days=${encodeURIComponent(String(ref.days))}&asOfDate=${encodeURIComponent(String(ref.asOfDate))}`,
+          `${DATA_SYNC_BASE_URL}/market/cn/sentiment?days=${encodeURIComponent(String(ref.days))}&asOfDate=${encodeURIComponent(String(ref.asOfDate))}`,
           { cache: 'no-store' },
         );
         if (!resp.ok) throw new Error('failed to load market sentiment');

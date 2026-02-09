@@ -120,3 +120,11 @@ def test_industry_fund_flow_endpoint_shape() -> None:
     assert resp.status_code == 200
     payload = resp.json()
     assert set(payload.keys()) >= {"asOfDate", "days", "topN", "dates", "top"}
+
+
+def test_market_sentiment_endpoint_shape() -> None:
+    client = TestClient(app)
+    resp = client.get("/market/cn/sentiment?days=5")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert set(payload.keys()) >= {"asOfDate", "days", "items"}

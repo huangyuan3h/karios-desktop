@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware  # type: ignore[import-not-fo
 
 from .api.broker_routes import router as broker_router
 from .api.industry_flow_routes import router as industry_flow_router
+from .api.market_sentiment_routes import router as market_sentiment_router
 from .api.journal_routes import router as journal_router
 from .api.query_routes import router as query_router
 from .api.sync_routes import router as sync_router
@@ -38,3 +39,4 @@ app.include_router(tv_chrome_router)
 app.include_router(journal_router)
 app.include_router(broker_router)
 app.include_router(industry_flow_router)
+app.include_router(market_sentiment_router)

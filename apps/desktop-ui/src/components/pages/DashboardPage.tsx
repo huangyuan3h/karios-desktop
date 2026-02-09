@@ -5,14 +5,7 @@ import * as React from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 
 type DashboardSummary = any;
@@ -27,6 +20,24 @@ async function apiGetJson<T>(path: string): Promise<T> {
 
 async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
+}
+
+async function apiGetJsonDataSync<T>(path: string): Promise<T> {
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
+}
+
+async function apiPostJsonDataSync<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -90,27 +101,23 @@ function fmtPerfLine(r: any): string {
 
 export function DashboardPage({
   onNavigate,
-  onOpenStock,
 }: {
   onNavigate?: (pageId: string) => void;
-  onOpenStock?: (symbol: string) => void;
 }) {
   const { addReference } = useChatStore();
   const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
+  const [marketSentiment, setMarketSentiment] = React.useState<any | null>(null);
   const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [sentimentBusy, setSentimentBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [accountId, setAccountId] = React.useState<string>('');
   const [editLayout, setEditLayout] = React.useState(false);
 
   const defaultCards = React.useMemo(
     () => [
-      { id: 'account', title: 'Account overview' },
-      { id: 'sentiment', title: 'Market sentiment' },
       { id: 'industry', title: 'Industry fund flow' },
+      { id: 'sentiment', title: 'Market sentiment' },
       { id: 'screeners', title: 'Screener sync' },
-      { id: 'market', title: 'Market status' },
     ],
     [],
   );
@@ -122,28 +129,28 @@ export function DashboardPage({
     const next = loaded
       ? [...loaded.filter((x) => ids.includes(x)), ...ids.filter((x) => !loaded.includes(x))]
       : ids;
-    setCardOrder(next);
+    const nextIds = next.includes('industry')
+      ? ['industry', ...next.filter((x) => x !== 'industry')]
+      : next;
+    setCardOrder(nextIds);
+    saveCardOrder(nextIds);
   }, [defaultCards]);
 
-  const refresh = React.useCallback(
-    async (nextAccountId?: string) => {
-      setError(null);
+  const refresh = React.useCallback(async () => {
+    setError(null);
+    try {
+      const s = await apiGetJson<DashboardSummary>(`/dashboard/summary`);
+      setSummary(s);
       try {
-        const q = nextAccountId
-          ? `?accountId=${encodeURIComponent(nextAccountId)}`
-          : accountId
-            ? `?accountId=${encodeURIComponent(accountId)}`
-            : '';
-        const s = await apiGetJson<DashboardSummary>(`/dashboard/summary${q}`);
-        setSummary(s);
-        const sel = String(s?.selectedAccountId ?? '');
-        if (sel && sel !== accountId) setAccountId(sel);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        const ms = await apiGetJsonDataSync(`/market/cn/sentiment?days=5`);
+        setMarketSentiment(ms);
+      } catch {
+        setMarketSentiment(null);
       }
-    },
-    [accountId],
-  );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
 
   React.useEffect(() => {
     void refresh();
@@ -156,7 +163,7 @@ export function DashboardPage({
     try {
       const r = await apiPostJson<DashboardSyncResp>('/dashboard/sync', { force: true });
       setSyncResp(r);
-      await refresh(accountId);
+      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -168,8 +175,8 @@ export function DashboardPage({
     setSentimentBusy(true);
     setError(null);
     try {
-      await apiPostJson('/market/cn/sentiment/sync', { force: true });
-      await refresh(accountId);
+      await apiPostJsonDataSync('/market/cn/sentiment/sync', { force: true });
+      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -202,9 +209,6 @@ export function DashboardPage({
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <div className="text-lg font-semibold">Dashboard</div>
-          <div className="mt-1 text-sm text-[var(--k-muted)]">
-            One-click sync + monitor key signals (account / flow / holdings).
-          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -231,42 +235,8 @@ export function DashboardPage({
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-[var(--k-muted)]">
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs"
-          onClick={() => onNavigate?.('broker')}
-        >
-          Broker
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs"
-          onClick={() => onNavigate?.('market')}
-        >
-          Market
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs"
-          onClick={() => onNavigate?.('industryFlow')}
-        >
-          Industry Flow
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs"
-          onClick={() => onNavigate?.('screener')}
-        >
-          Screener
-        </Button>
-        <div className="ml-auto">
-          asOfDate: <span className="font-mono">{summary?.asOfDate ?? '—'}</span>
-        </div>
+      <div className="mb-4 text-xs text-[var(--k-muted)]">
+        asOfDate: <span className="font-mono">{summary?.asOfDate ?? '—'}</span>
       </div>
 
       {error ? (
@@ -315,11 +285,9 @@ export function DashboardPage({
 
       {(() => {
         const weightOf = (id: string) => {
-          if (id === 'sentiment') return 3;
           if (id === 'industry') return 6;
-          if (id === 'account') return 4;
+          if (id === 'sentiment') return 3;
           if (id === 'screeners') return 2;
-          if (id === 'market') return 2;
           return 2;
         };
         const left: any[] = [];
@@ -369,135 +337,10 @@ export function DashboardPage({
                 ) : null}
               </div>
 
-              {id === 'account' ? (
-                <div className="text-sm">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-xs text-[var(--k-muted)]">
-                      updatedAt: {fmtDateTime(summary?.accountState?.updatedAt)}
-                    </div>
-                    <Select
-                      value={accountId}
-                      onValueChange={(v) => {
-                        setAccountId(v);
-                        void refresh(v);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-[240px]">
-                        <SelectValue placeholder="Select account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(summary?.accounts ?? []).map((a: any) => (
-                          <SelectItem key={a.id} value={a.id}>
-                            {a.title}
-                            {a.accountMasked ? ` (${a.accountMasked})` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                      <div className="text-xs text-[var(--k-muted)]">Total assets</div>
-                      <div className="mt-1 font-mono">
-                        {fmtAmountCn(summary?.accountState?.totalAssets)}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                      <div className="text-xs text-[var(--k-muted)]">Cash available</div>
-                      <div className="mt-1 font-mono">
-                        {fmtAmountCn(summary?.accountState?.cashAvailable)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-3">
-                    <div className="mb-2 text-xs text-[var(--k-muted)]">Holdings</div>
-                    <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                      <table className="w-full border-collapse text-xs">
-                        <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                          <tr className="text-left">
-                            <th className="px-2 py-2">Ticker</th>
-                            <th className="px-2 py-2">Name</th>
-                            <th className="px-2 py-2 text-right">Price</th>
-                            <th className="px-2 py-2 text-right">Weight</th>
-                            <th className="px-2 py-2 text-right">PnL</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(summary?.holdings ?? []).slice(0, 12).map((h: any, idx: number) => {
-                            const ticker = String(h.ticker ?? '').trim();
-                            const sym = String(h.symbol ?? '').trim();
-                            const inferredSymbol = sym
-                              ? sym
-                              : `${ticker.length === 4 || ticker.length === 5 ? 'HK' : 'CN'}:${ticker}`;
-                            const weight = Number.isFinite(h.weightPct)
-                              ? `${Number(h.weightPct).toFixed(1)}%`
-                              : '—';
-                            return (
-                              <tr key={idx} className="border-t border-[var(--k-border)]">
-                                <td className="px-2 py-2 font-mono">
-                                  <button
-                                    type="button"
-                                    className="text-[var(--k-accent)] hover:underline"
-                                    onClick={() => onOpenStock?.(inferredSymbol)}
-                                    title="Open stock detail"
-                                  >
-                                    {ticker}
-                                  </button>
-                                </td>
-                                <td className="px-2 py-2">{String(h.name ?? '')}</td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {Number.isFinite(h.price) ? Number(h.price).toFixed(2) : '—'}
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">{weight}</td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {fmtAmountCn(h.pnlAmount)}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                          {!(summary?.holdings ?? []).length ? (
-                            <tr>
-                              <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={5}>
-                                No holdings cached yet. Upload broker screenshots in Broker tab.
-                              </td>
-                            </tr>
-                          ) : null}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('broker')}>
-                      Open Broker
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={!summary?.selectedAccountId}
-                      onClick={() => {
-                        if (!summary?.selectedAccountId) return;
-                        const acc = (summary?.accounts ?? []).find(
-                          (a: any) => a.id === summary.selectedAccountId,
-                        );
-                        addReference({
-                          kind: 'brokerState',
-                          refId: summary.selectedAccountId,
-                          broker: 'pingan',
-                          accountId: summary.selectedAccountId,
-                          accountTitle: String(acc?.title ?? 'Account'),
-                          capturedAt: new Date().toISOString(),
-                        } as any);
-                      }}
-                    >
-                      Reference
-                    </Button>
-                  </div>
-                </div>
-              ) : id === 'sentiment' ? (
+              {id === 'sentiment' ? (
                 <div>
                   {(() => {
-                    const ms = summary?.marketSentiment ?? {};
+                    const ms = marketSentiment ?? {};
                     const items: any[] = Array.isArray(ms.items) ? ms.items : [];
                     const latest = items.length ? items[items.length - 1] : null;
                     const risk = String(latest?.riskMode ?? '—');
@@ -872,21 +715,7 @@ export function DashboardPage({
                     </Button>
                   </div>
                 </div>
-              ) : (
-                <div>
-                  <div className="text-sm text-[var(--k-muted)]">
-                    stocks: {String(summary?.marketStatus?.stocks ?? '—')}
-                  </div>
-                  <div className="mt-1 text-xs text-[var(--k-muted)]">
-                    lastSyncAt: {fmtDateTime(summary?.marketStatus?.lastSyncAt)}
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('market')}>
-                      Open Market
-                    </Button>
-                  </div>
-                </div>
-              )}
+              ) : null}
             </section>
           );
         };
