@@ -9907,9 +9907,10 @@ def delete_trade_journal(journal_id: str) -> dict[str, Any]:
     return {"ok": True}
 
 
-@app.post("/leader/daily", response_model=LeaderDailyResponse)
-def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyResponse:
-    d = (req.date or "").strip() or _today_cn_date_str()
+# Leader endpoints removed - page cleanup
+# @app.post("/leader/daily", response_model=LeaderDailyResponse)
+# def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyResponse:
+#     d = (req.date or "").strip() or _today_cn_date_str()
     ts = now_iso()
 
     # If already generated for this date and not forced, return existing.
@@ -10413,203 +10414,206 @@ def generate_leader_daily(req: LeaderDailyGenerateRequest) -> LeaderDailyRespons
                 nowClose=float(now_close) if now_close is not None else None,
                 pctSinceEntry=float(pct) if pct is not None else None,
                 series=series,
-            todayChangePct=float(today_chg_pct) if today_chg_pct is not None else None,
-            trendSeries=trend_series,
+                todayChangePct=float(today_chg_pct) if today_chg_pct is not None else None,
+                trendSeries=trend_series,
             )
         )
 
     return LeaderDailyResponse(date=d, leaders=out, debug={"request": stage_req, "response": stage_resp})
 
 
-@app.get("/leader/mainline", response_model=MainlineSnapshotResponse)
-def leader_mainline(
-    accountId: str | None = None,
-    tradeDate: str | None = None,
-    universeVersion: str = "v0",
-) -> MainlineSnapshotResponse:
-    universe = (universeVersion or "").strip() or "v0"
-    d = (tradeDate or "").strip() or None
-
-    aid = (accountId or "").strip()
-    if not aid:
-        accs = list_broker_accounts(broker="pingan")
-        aid = accs[0].id if accs else ""
-    if not aid:
-        raise HTTPException(status_code=400, detail="accountId is required")
-
-    cached = _get_cn_mainline_snapshot_latest(account_id=aid, trade_date=d, universe_version=universe)
-    if cached is None:
-        now_ts = now_iso()
-        return MainlineSnapshotResponse(
-            id="",
-            tradeDate=d or _today_cn_date_str(),
-            asOfTs=now_ts,
-            accountId=aid,
-            createdAt="",
-            universeVersion=universe,
-            riskMode=None,
-            selected=None,
-            themesTopK=[],
-            debug={"status": "no_snapshot"},
-        )
-    out_raw = cached.get("output")
-    out: dict[str, Any] = out_raw if isinstance(out_raw, dict) else {}
-    themes_raw = out.get("themesTopK")
-    themes0: list[Any] = themes_raw if isinstance(themes_raw, list) else []
-    sel0 = out.get("selected")
-    selected = MainlineTheme(**sel0) if isinstance(sel0, dict) else None
-    return MainlineSnapshotResponse(
-        id=str(cached.get("id") or ""),
-        tradeDate=str(out.get("tradeDate") or d or _today_cn_date_str()),
-        asOfTs=str(out.get("asOfTs") or ""),
-        accountId=aid,
-        createdAt=str(cached.get("createdAt") or ""),
-        universeVersion=str(out.get("universeVersion") or universe),
-        riskMode=str(out.get("riskMode") or "") or None,
-        selected=selected,
-        themesTopK=[MainlineTheme(**x) for x in themes0 if isinstance(x, dict)],
-        debug=out.get("debug") if isinstance(out.get("debug"), dict) else None,
-    )
-
-
-@app.post("/leader/mainline/generate", response_model=MainlineSnapshotResponse)
-def leader_mainline_generate(req: MainlineGenerateRequest) -> MainlineSnapshotResponse:
-    universe = (req.universeVersion or "").strip() or "v0"
-    top_k = max(1, min(int(req.topK), 10))
-    as_of_ts = (req.asOfTs or "").strip() or now_iso()
-    trade_date = (req.tradeDate or "").strip() or _cn_trade_date_from_iso_ts(as_of_ts)
-
-    aid = (req.accountId or "").strip()
-    if not aid:
-        accs = list_broker_accounts(broker="pingan")
-        aid = accs[0].id if accs else ""
-    if not aid:
-        raise HTTPException(status_code=400, detail="accountId is required")
-
-    ts = now_iso()
-    output = _build_mainline_snapshot(
-        account_id=aid,
-        as_of_ts=as_of_ts,
-        universe_version=universe,
-        force=bool(req.force),
-        top_k=top_k,
-    )
-    snap_id = _insert_cn_mainline_snapshot(
-        account_id=aid,
-        trade_date=trade_date,
-        as_of_ts=as_of_ts,
-        universe_version=universe,
-        ts=ts,
-        output=output,
-    )
-    _prune_cn_mainline_snapshots(account_id=aid, keep_days=10)
-
-    themes_raw = output.get("themesTopK")
-    themes0: list[Any] = themes_raw if isinstance(themes_raw, list) else []
-    sel0 = output.get("selected")
-    selected = MainlineTheme(**sel0) if isinstance(sel0, dict) else None
-    return MainlineSnapshotResponse(
-        id=snap_id,
-        tradeDate=str(output.get("tradeDate") or trade_date),
-        asOfTs=str(output.get("asOfTs") or as_of_ts),
-        accountId=aid,
-        createdAt=ts,
-        universeVersion=str(output.get("universeVersion") or universe),
-        riskMode=str(output.get("riskMode") or "") or None,
-        selected=selected,
-        themesTopK=[MainlineTheme(**x) for x in themes0 if isinstance(x, dict)],
-        debug=output.get("debug") if isinstance(output.get("debug"), dict) else None,
-    )
+# Leader endpoints removed - page cleanup
+# @app.get("/leader/mainline", response_model=MainlineSnapshotResponse)
+# def leader_mainline(
+#     accountId: str | None = None,
+#     tradeDate: str | None = None,
+#     universeVersion: str = "v0",
+# ) -> MainlineSnapshotResponse:
+#     universe = (universeVersion or "").strip() or "v0"
+#     d = (tradeDate or "").strip() or None
+#
+#     aid = (accountId or "").strip()
+#     if not aid:
+#         accs = list_broker_accounts(broker="pingan")
+#         aid = accs[0].id if accs else ""
+#     if not aid:
+#         raise HTTPException(status_code=400, detail="accountId is required")
+#
+#     cached = _get_cn_mainline_snapshot_latest(account_id=aid, trade_date=d, universe_version=universe)
+#     if cached is None:
+#         now_ts = now_iso()
+#         return MainlineSnapshotResponse(
+#             id="",
+#             tradeDate=d or _today_cn_date_str(),
+#             asOfTs=now_ts,
+#             accountId=aid,
+#             createdAt="",
+#             universeVersion=universe,
+#             riskMode=None,
+#             selected=None,
+#             themesTopK=[],
+#             debug={"status": "no_snapshot"},
+#         )
+#     out_raw = cached.get("output")
+#     out: dict[str, Any] = out_raw if isinstance(out_raw, dict) else {}
+#     themes_raw = out.get("themesTopK")
+#     themes0: list[Any] = themes_raw if isinstance(themes_raw, list) else []
+#     sel0 = out.get("selected")
+#     selected = MainlineTheme(**sel0) if isinstance(sel0, dict) else None
+#     return MainlineSnapshotResponse(
+#         id=str(cached.get("id") or ""),
+#         tradeDate=str(out.get("tradeDate") or d or _today_cn_date_str()),
+#         asOfTs=str(out.get("asOfTs") or ""),
+#         accountId=aid,
+#         createdAt=str(cached.get("createdAt") or ""),
+#         universeVersion=str(out.get("universeVersion") or universe),
+#         riskMode=str(out.get("riskMode") or "") or None,
+#         selected=selected,
+#         themesTopK=[MainlineTheme(**x) for x in themes0 if isinstance(x, dict)],
+#         debug=out.get("debug") if isinstance(out.get("debug"), dict) else None,
+#     )
 
 
-@app.get("/leader", response_model=LeaderListResponse)
-def list_leader_stocks(days: int = 10, force: bool = False) -> LeaderListResponse:
-    dates, rows = _list_leader_stocks(days=days)
-    # Optional: refresh latest market data for leader symbols so historical leaders' perf is up-to-date.
-    # This can be expensive, so it is opt-in (used by UI refresh / chat reference).
-    if force:
-        # Deduplicate symbols and cap to keep the call cost bounded.
-        syms: list[str] = []
-        seen: set[str] = set()
-        for r in rows:
-            sym = _norm_str(r.get("symbol") or "")
-            if not sym or sym in seen:
-                continue
-            seen.add(sym)
-            syms.append(sym)
-            if len(syms) >= 20:
-                break
-        for sym in syms:
-            try:
-                market_stock_bars(sym, days=60, force=True)
-            except Exception:
-                pass
-        try:
-            _refresh_leader_live_scores(symbols=syms, ts=now_iso(), force_refresh_market=True)
-        except Exception:
-            pass
+# Leader endpoints removed - page cleanup
+# @app.post("/leader/mainline/generate", response_model=MainlineSnapshotResponse)
+# def leader_mainline_generate(req: MainlineGenerateRequest) -> MainlineSnapshotResponse:
+#     universe = (req.universeVersion or "").strip() or "v0"
+#     top_k = max(1, min(int(req.topK), 10))
+#     as_of_ts = (req.asOfTs or "").strip() or now_iso()
+#     trade_date = (req.tradeDate or "").strip() or _cn_trade_date_from_iso_ts(as_of_ts)
+#
+#     aid = (req.accountId or "").strip()
+#     if not aid:
+#         accs = list_broker_accounts(broker="pingan")
+#         aid = accs[0].id if accs else ""
+#     if not aid:
+#         raise HTTPException(status_code=400, detail="accountId is required")
+#
+#     ts = now_iso()
+#     output = _build_mainline_snapshot(
+#         account_id=aid,
+#         as_of_ts=as_of_ts,
+#         universe_version=universe,
+#         force=bool(req.force),
+#         top_k=top_k,
+#     )
+#     snap_id = _insert_cn_mainline_snapshot(
+#         account_id=aid,
+#         trade_date=trade_date,
+#         as_of_ts=as_of_ts,
+#         universe_version=universe,
+#         ts=ts,
+#         output=output,
+#     )
+#     _prune_cn_mainline_snapshots(account_id=aid, keep_days=10)
+#
+#     themes_raw = output.get("themesTopK")
+#     themes0: list[Any] = themes_raw if isinstance(themes_raw, list) else []
+#     sel0 = output.get("selected")
+#     selected = MainlineTheme(**sel0) if isinstance(sel0, dict) else None
+#     return MainlineSnapshotResponse(
+#         id=snap_id,
+#         tradeDate=str(output.get("tradeDate") or trade_date),
+#         asOfTs=str(output.get("asOfTs") or as_of_ts),
+#         accountId=aid,
+#         createdAt=ts,
+#         universeVersion=str(output.get("universeVersion") or universe),
+#         riskMode=str(output.get("riskMode") or "") or None,
+#         selected=selected,
+#         themesTopK=[MainlineTheme(**x) for x in themes0 if isinstance(x, dict)],
+#         debug=output.get("debug") if isinstance(output.get("debug"), dict) else None,
+#     )
 
-    live_map = _get_leader_live_scores([_norm_str(r.get("symbol") or "") for r in rows if isinstance(r, dict)])
-    out: list[LeaderPick] = []
-    for r in rows:
-        sym = str(r["symbol"])
-        series = _bars_series_since_cached(sym, str(r["date"]), limit=60)
-        trend_series = _bars_series_last_cached(sym, limit=20)
-        now_close = (trend_series[-1].get("close") if trend_series else None) or (series[-1].get("close") if series else None)
-        today_chg_pct: float | None = None
-        src2 = trend_series[-2:] if len(trend_series) >= 2 else series[-2:] if len(series) >= 2 else []
-        if len(src2) >= 2:
-            c_prev = _safe_float(src2[0].get("close"))
-            c_last = _safe_float(src2[1].get("close"))
-            if c_prev and c_last and c_prev > 0:
-                today_chg_pct = (c_last / c_prev - 1.0) * 100.0
-        entry = r.get("entryPrice")
-        pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
-        live = live_map.get(_norm_str(r.get("symbol") or ""), {})
-        src0 = r.get("sourceSignals")
-        src = src0 if isinstance(src0, dict) else {}
-        why0 = r.get("whyBullets")
-        why = [str(x) for x in (why0 or [])] if isinstance(why0, list) else []
-        bz0 = r.get("buyZone")
-        bz = bz0 if isinstance(bz0, dict) else {}
-        trg0 = r.get("triggers")
-        trg = trg0 if isinstance(trg0, list) else []
-        tp0 = r.get("targetPrice")
-        tp = tp0 if isinstance(tp0, dict) else {}
-        risks0 = r.get("riskPoints")
-        risks = [str(x) for x in (risks0 or [])] if isinstance(risks0, list) else []
-        out.append(
-            LeaderPick(
-                id=str(r["id"]),
-                date=str(r["date"]),
-                symbol=str(r["symbol"]),
-                market=str(r["market"]),
-                ticker=str(r["ticker"]),
-                name=str(r["name"]),
-                entryPrice=r.get("entryPrice"),
-                score=r.get("score"),
-                liveScore=live.get("liveScore"),
-                liveScoreUpdatedAt=str(live.get("updatedAt") or "") or None,
-                reason=str(r.get("reason") or ""),
-                whyBullets=why,
-                expectedDurationDays=r.get("expectedDurationDays"),
-                buyZone=bz,
-                triggers=trg,
-                invalidation=r.get("invalidation"),
-                targetPrice=tp,
-                probability=r.get("probability"),
-                risks=risks,
-                sourceSignals=src,
-                riskPoints=[str(x) for x in (r.get("riskPoints") or []) if str(x)],
-                createdAt=str(r.get("createdAt") or ""),
-                nowClose=float(now_close) if now_close is not None else None,
-                pctSinceEntry=float(pct) if pct is not None else None,
-                series=series,
-                todayChangePct=float(today_chg_pct) if today_chg_pct is not None else None,
-                trendSeries=trend_series,
-            )
-        )
-    return LeaderListResponse(days=max(1, min(int(days), 30)), dates=dates, leaders=out)
+
+# Leader endpoints removed - page cleanup
+# @app.get("/leader", response_model=LeaderListResponse)
+# def list_leader_stocks(days: int = 10, force: bool = False) -> LeaderListResponse:
+#     dates, rows = _list_leader_stocks(days=days)
+#     # Optional: refresh latest market data for leader symbols so historical leaders' perf is up-to-date.
+#     # This can be expensive, so it is opt-in (used by UI refresh / chat reference).
+#     if force:
+#         # Deduplicate symbols and cap to keep the call cost bounded.
+#         syms: list[str] = []
+#         seen: set[str] = set()
+#         for r in rows:
+#             sym = _norm_str(r.get("symbol") or "")
+#             if not sym or sym in seen:
+#                 continue
+#             seen.add(sym)
+#             syms.append(sym)
+#             if len(syms) >= 20:
+#                 break
+#         for sym in syms:
+#             try:
+#                 market_stock_bars(sym, days=60, force=True)
+#             except Exception:
+#                 pass
+#         try:
+#             _refresh_leader_live_scores(symbols=syms, ts=now_iso(), force_refresh_market=True)
+#         except Exception:
+#             pass
+#
+#     live_map = _get_leader_live_scores([_norm_str(r.get("symbol") or "") for r in rows if isinstance(r, dict)])
+#     out: list[LeaderPick] = []
+#     for r in rows:
+#         sym = str(r["symbol"])
+#         series = _bars_series_since_cached(sym, str(r["date"]), limit=60)
+#         trend_series = _bars_series_last_cached(sym, limit=20)
+#         now_close = (trend_series[-1].get("close") if trend_series else None) or (series[-1].get("close") if series else None)
+#         today_chg_pct: float | None = None
+#         src2 = trend_series[-2:] if len(trend_series) >= 2 else series[-2:] if len(series) >= 2 else []
+#         if len(src2) >= 2:
+#             c_prev = _safe_float(src2[0].get("close"))
+#             c_last = _safe_float(src2[1].get("close"))
+#             if c_prev and c_last and c_prev > 0:
+#                 today_chg_pct = (c_last / c_prev - 1.0) * 100.0
+#         entry = r.get("entryPrice")
+#         pct = ((float(now_close) - float(entry)) / float(entry)) if (now_close and entry) else None
+#         live = live_map.get(_norm_str(r.get("symbol") or ""), {})
+#         src0 = r.get("sourceSignals")
+#         src = src0 if isinstance(src0, dict) else {}
+#         why0 = r.get("whyBullets")
+#         why = [str(x) for x in (why0 or [])] if isinstance(why0, list) else []
+#         bz0 = r.get("buyZone")
+#         bz = bz0 if isinstance(bz0, dict) else {}
+#         trg0 = r.get("triggers")
+#         trg = trg0 if isinstance(trg0, list) else []
+#         tp0 = r.get("targetPrice")
+#         tp = tp0 if isinstance(tp0, dict) else {}
+#         risks0 = r.get("riskPoints")
+#         risks = [str(x) for x in (risks0 or [])] if isinstance(risks0, list) else []
+#         out.append(
+#             LeaderPick(
+#                 id=str(r["id"]),
+#                 date=str(r["date"]),
+#                 symbol=str(r["symbol"]),
+#                 market=str(r["market"]),
+#                 ticker=str(r["ticker"]),
+#                 name=str(r["name"]),
+#                 entryPrice=r.get("entryPrice"),
+#                 score=r.get("score"),
+#                 liveScore=live.get("liveScore"),
+#                 liveScoreUpdatedAt=str(live.get("updatedAt") or "") or None,
+#                 reason=str(r.get("reason") or ""),
+#                 whyBullets=why,
+#                 expectedDurationDays=r.get("expectedDurationDays"),
+#                 buyZone=bz,
+#                 triggers=trg,
+#                 invalidation=r.get("invalidation"),
+#                 targetPrice=tp,
+#                 probability=r.get("probability"),
+#                 risks=risks,
+#                 sourceSignals=src,
+#                 riskPoints=[str(x) for x in (r.get("riskPoints") or []) if str(x)],
+#                 createdAt=str(r.get("createdAt") or ""),
+#                 nowClose=float(now_close) if now_close is not None else None,
+#                 pctSinceEntry=float(pct) if pct is not None else None,
+#                 series=series,
+#                 todayChangePct=float(today_chg_pct) if today_chg_pct is not None else None,
+#                 trendSeries=trend_series,
+#             )
+#         )
+#     return LeaderListResponse(days=max(1, min(int(days), 30)), dates=dates, leaders=out)
 
 
 @app.post("/dashboard/sync", response_model=DashboardSyncResponse)

@@ -17,49 +17,6 @@ import { useChatStore } from '@/lib/chat/store';
 
 type DashboardSummary = any;
 type DashboardSyncResp = any;
-type LeaderListResp = any;
-type MainlineSnapshot = {
-  id?: string;
-  tradeDate?: string;
-  createdAt?: string;
-  riskMode?: string | null;
-  selected?: {
-    kind: string;
-    name: string;
-    compositeScore?: number;
-    structureScore?: number;
-    logicScore?: number;
-    logicGrade?: string | null;
-    logicSummary?: string | null;
-    limitupCount?: number;
-    followersCount?: number;
-    topTickers?: Array<{
-      symbol: string;
-      ticker: string;
-      name: string;
-      chgPct?: number;
-      volRatio?: number;
-      turnover?: number;
-    }>;
-  } | null;
-  themesTopK?: Array<{
-    kind: string;
-    name: string;
-    compositeScore?: number;
-    structureScore?: number;
-    logicScore?: number;
-    logicGrade?: string | null;
-    topTickers?: Array<{
-      symbol: string;
-      ticker: string;
-      name: string;
-      chgPct?: number;
-    }>;
-    limitupCount?: number;
-    followersCount?: number;
-  }>;
-  debug?: unknown;
-};
 
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
@@ -129,31 +86,7 @@ function fmtPerfLine(r: any): string {
   return '—';
 }
 
-function fmtLeaderScore(r: any): string {
-  const live = Number(r?.liveScore);
-  if (Number.isFinite(live)) return String(Math.round(live));
-  const s = Number(r?.score);
-  if (Number.isFinite(s)) return String(Math.round(s));
-  return '—';
-}
 
-function riskModeExplain(riskMode: string | null | undefined): string {
-  const v = String(riskMode ?? '').trim();
-  if (v === 'no_new_positions') return '风险高：不建议开新仓（只处理持仓）';
-  if (v === 'caution') return '谨慎：建议小仓位、等确认（回封/回踩）';
-  if (v === 'normal') return '正常：可以按信号参与（仍需风控）';
-  if (v === 'hot') return '偏热：趋势强、可积极一些（仍建议分批）';
-  if (v === 'euphoric') return '亢奋：极强但波动大，追高需更严格止损';
-  return '—';
-}
-
-function scoreLabel(score: number | null | undefined): string {
-  const n = Number(score);
-  if (!Number.isFinite(n)) return '—';
-  if (n >= 85) return '强';
-  if (n >= 70) return '中等偏强';
-  return '偏弱';
-}
 
 export function DashboardPage({
   onNavigate,
@@ -164,12 +97,9 @@ export function DashboardPage({
 }) {
   const { addReference } = useChatStore();
   const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
-  const [leadersAll, setLeadersAll] = React.useState<LeaderListResp | null>(null);
-  const [mainline, setMainline] = React.useState<MainlineSnapshot | null>(null);
   const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [sentimentBusy, setSentimentBusy] = React.useState(false);
-  const [mainlineBusy, setMainlineBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [accountId, setAccountId] = React.useState<string>('');
   const [editLayout, setEditLayout] = React.useState(false);
@@ -179,8 +109,6 @@ export function DashboardPage({
       { id: 'account', title: 'Account overview' },
       { id: 'sentiment', title: 'Market sentiment' },
       { id: 'industry', title: 'Industry fund flow' },
-      { id: 'mainline', title: 'Mainline' },
-      { id: 'leaders', title: 'Leaders' },
       { id: 'screeners', title: 'Screener sync' },
       { id: 'market', title: 'Market status' },
     ],
@@ -210,27 +138,6 @@ export function DashboardPage({
         setSummary(s);
         const sel = String(s?.selectedAccountId ?? '');
         if (sel && sel !== accountId) setAccountId(sel);
-        const effectiveAccountId = nextAccountId || accountId || sel || '';
-
-        // Fetch all leaders (last 10 trading days) WITHOUT force refresh.
-        // Live score refresh should only happen on "Sync all" (after other modules are synced) or Leader "Generate today".
-        try {
-          const ls = await apiGetJson<LeaderListResp>(`/leader?days=10&force=false`);
-          setLeadersAll(ls);
-        } catch {
-          setLeadersAll(null);
-        }
-
-        // Fetch mainline snapshot (read-only).
-        try {
-          const q2 = effectiveAccountId
-            ? `?accountId=${encodeURIComponent(effectiveAccountId)}`
-            : '';
-          const ml = await apiGetJson<MainlineSnapshot>(`/leader/mainline${q2}`);
-          setMainline(ml);
-        } catch {
-          setMainline(null);
-        }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -270,21 +177,6 @@ export function DashboardPage({
     }
   }
 
-  async function onDetectMainline() {
-    setMainlineBusy(true);
-    setError(null);
-    try {
-      const q = accountId
-        ? { accountId, force: true, topK: 3, universeVersion: 'v0' }
-        : { force: true, topK: 3, universeVersion: 'v0' };
-      await apiPostJson('/leader/mainline/generate', q);
-      await refresh(accountId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setMainlineBusy(false);
-    }
-  }
 
   const cardsById = React.useMemo(
     () => Object.fromEntries(defaultCards.map((c) => [c.id, c])),
@@ -311,7 +203,7 @@ export function DashboardPage({
         <div>
           <div className="text-lg font-semibold">Dashboard</div>
           <div className="mt-1 text-sm text-[var(--k-muted)]">
-            One-click sync + monitor key signals (account / flow / leaders / holdings).
+            One-click sync + monitor key signals (account / flow / holdings).
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -363,14 +255,6 @@ export function DashboardPage({
           onClick={() => onNavigate?.('industryFlow')}
         >
           Industry Flow
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs"
-          onClick={() => onNavigate?.('leaders')}
-        >
-          Leaders
         </Button>
         <Button
           size="sm"
@@ -442,8 +326,6 @@ export function DashboardPage({
           if (id === 'sentiment') return 3;
           if (id === 'industry') return 6;
           if (id === 'account') return 4;
-          if (id === 'mainline') return 3;
-          if (id === 'leaders') return 3;
           if (id === 'screeners') return 2;
           if (id === 'market') return 2;
           return 2;
@@ -619,171 +501,6 @@ export function DashboardPage({
                       Reference
                     </Button>
                   </div>
-                </div>
-              ) : id === 'mainline' ? (
-                <div>
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-xs text-[var(--k-muted)]">
-                      tradeDate: {mainline?.tradeDate ?? '—'} • updatedAt:{' '}
-                      {fmtDateTime(mainline?.createdAt)} • riskMode: {mainline?.riskMode ?? '—'}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="h-8 px-3 text-xs"
-                        disabled={mainlineBusy}
-                        onClick={() => void onDetectMainline()}
-                      >
-                        {mainlineBusy ? (
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-4 w-4" />
-                        )}
-                        <span className="ml-2">{mainlineBusy ? 'Detecting…' : 'Detect'}</span>
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="h-8 px-3 text-xs"
-                        onClick={() => onNavigate?.('leaders')}
-                      >
-                        Open Leaders
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-[var(--k-muted)]">
-                    {riskModeExplain(mainline?.riskMode ?? null)}
-                  </div>
-
-                  {mainline?.selected ? (
-                    <div className="mt-3 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-sm font-semibold">
-                          结论：今天主线是「{mainline.selected.kind} · {mainline.selected.name}」（
-                          {scoreLabel(mainline.selected.compositeScore ?? null)}）
-                        </div>
-                        <div className="text-xs text-[var(--k-muted)]">
-                          composite {Math.round(Number(mainline.selected.compositeScore ?? 0))} •
-                          structure {Math.round(Number(mainline.selected.structureScore ?? 0))} •
-                          logic {Math.round(Number(mainline.selected.logicScore ?? 0))}
-                          {mainline.selected.logicGrade ? ` (${mainline.selected.logicGrade})` : ''}
-                        </div>
-                      </div>
-
-                      <div className="mt-2 text-xs text-[var(--k-muted)]">
-                        涨停（LU）:{' '}
-                        <span className="font-mono">
-                          {Number(mainline.selected.limitupCount ?? 0)}
-                        </span>{' '}
-                        · 跟涨（Followers）:{' '}
-                        <span className="font-mono">
-                          {Number(mainline.selected.followersCount ?? 0)}
-                        </span>
-                      </div>
-
-                      {mainline.selected.logicSummary ? (
-                        <div className="mt-2 text-xs text-[var(--k-muted)]">
-                          AI 逻辑摘要：{mainline.selected.logicSummary}
-                        </div>
-                      ) : null}
-
-                      <div className="mt-3">
-                        <div className="text-xs font-medium">相关股票（点进去验证）</div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {(mainline.selected.topTickers ?? []).slice(0, 12).map((x) => (
-                            <button
-                              key={x.symbol}
-                              type="button"
-                              className="rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-1 text-xs hover:bg-[var(--k-surface-2)]"
-                              onClick={() => onOpenStock?.(x.symbol)}
-                              title={`${x.symbol}${typeof x.chgPct === 'number' ? ` · ${x.chgPct}%` : ''}`}
-                            >
-                              <span className="font-mono">{x.ticker}</span> {x.name}
-                              {typeof x.chgPct === 'number' ? (
-                                <span className="ml-1 font-mono text-[var(--k-muted)]">{`${x.chgPct.toFixed(1)}%`}</span>
-                              ) : null}
-                            </button>
-                          ))}
-                          {!(mainline.selected.topTickers ?? []).length ? (
-                            <div className="text-xs text-[var(--k-muted)]">
-                              暂无成分股列表（数据源可能缺失）。
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-3 text-sm text-[var(--k-muted)]">
-                      结论：暂无明确主线（可能是轮动/多线混战）。你可以先观望，或点 Detect
-                      再跑一次。
-                    </div>
-                  )}
-
-                  {(() => {
-                    const themesTopK = mainline?.themesTopK ?? [];
-                    if (!themesTopK.length) return null;
-                    return (
-                      <div className="mt-3 overflow-auto rounded-lg border border-[var(--k-border)]">
-                        <table className="w-full border-collapse text-xs">
-                          <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                            <tr className="text-left">
-                              <th className="px-2 py-2">备选主线TopK</th>
-                              <th className="px-2 py-2 text-right">综合</th>
-                              <th className="px-2 py-2 text-right">涨停</th>
-                              <th className="px-2 py-2 text-right">跟涨</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {themesTopK.slice(0, 3).map((t) => (
-                              <tr
-                                key={`${t.kind}:${t.name}`}
-                                className="border-t border-[var(--k-border)]"
-                              >
-                                <td className="px-2 py-2">
-                                  <details>
-                                    <summary className="cursor-pointer">
-                                      <span className="font-mono text-[var(--k-muted)]">
-                                        {t.kind}
-                                      </span>{' '}
-                                      {t.name}
-                                    </summary>
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                      {(t.topTickers ?? []).slice(0, 10).map((x) => (
-                                        <button
-                                          key={x.symbol}
-                                          type="button"
-                                          className="rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-1 text-xs hover:bg-[var(--k-surface-2)]"
-                                          onClick={() => onOpenStock?.(x.symbol)}
-                                        >
-                                          <span className="font-mono">{x.ticker}</span> {x.name}
-                                        </button>
-                                      ))}
-                                      {!(t.topTickers ?? []).length ? (
-                                        <div className="text-xs text-[var(--k-muted)]">
-                                          暂无成分股列表。
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  </details>
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {Math.round(Number(t.compositeScore ?? 0))}
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {Number(t.limitupCount ?? 0)}
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {Number(t.followersCount ?? 0)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    );
-                  })()}
                 </div>
               ) : id === 'sentiment' ? (
                 <div>
@@ -1111,125 +828,6 @@ export function DashboardPage({
                       </>
                     );
                   })()}
-                </div>
-              ) : id === 'leaders' ? (
-                <div>
-                  <div className="mb-2 text-xs text-[var(--k-muted)]">
-                    last 10 trading days • latestDate: {summary?.leaders?.latestDate ?? '—'}
-                  </div>
-
-                  {(() => {
-                    const raw = Array.isArray(leadersAll?.leaders) ? leadersAll.leaders : [];
-                    // Consolidated view: dedupe by symbol, keep the latest record per symbol, sorted by score desc.
-                    const m = new Map<string, any>();
-                    for (const it of raw) {
-                      const key = String(it?.symbol ?? it?.ticker ?? '').trim();
-                      if (!key) continue;
-                      const prev = m.get(key);
-                      if (
-                        !prev ||
-                        String(it?.date ?? '').localeCompare(String(prev?.date ?? '')) > 0
-                      ) {
-                        m.set(key, it);
-                      }
-                    }
-                    const rows = Array.from(m.values()).sort((a: any, b: any) => {
-                      const sa = Number.isFinite(Number(a?.liveScore))
-                        ? Number(a.liveScore)
-                        : Number.isFinite(Number(a?.score))
-                          ? Number(a.score)
-                          : -1;
-                      const sb = Number.isFinite(Number(b?.liveScore))
-                        ? Number(b.liveScore)
-                        : Number.isFinite(Number(b?.score))
-                          ? Number(b.score)
-                          : -1;
-                      if (sb !== sa) return sb - sa;
-                      return String(b?.date ?? '').localeCompare(String(a?.date ?? ''));
-                    });
-
-                    if (!rows.length) {
-                      return (
-                        <div className="text-sm text-[var(--k-muted)]">
-                          No leaders yet. Generate in Leaders tab.
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                        <table className="w-full border-collapse text-xs">
-                          <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                            <tr className="text-left">
-                              <th className="px-2 py-2">Ticker</th>
-                              <th className="px-2 py-2">Name</th>
-                              <th className="px-2 py-2 text-right">Live score</th>
-                              <th className="px-2 py-2 text-right">Upside</th>
-                              <th className="px-2 py-2 text-right">Last date</th>
-                              <th className="px-2 py-2 text-right">Today</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rows.slice(0, 24).map((r: any) => (
-                              <tr
-                                key={String(r?.symbol ?? r?.ticker)}
-                                className="border-t border-[var(--k-border)]"
-                              >
-                                <td className="px-2 py-2 font-mono">
-                                  <button
-                                    type="button"
-                                    className="text-[var(--k-accent)] hover:underline"
-                                    onClick={() => onOpenStock?.(String(r?.symbol ?? ''))}
-                                  >
-                                    {String(r?.ticker ?? r?.symbol ?? '')}
-                                  </button>
-                                </td>
-                                <td className="px-2 py-2">{String(r?.name ?? '')}</td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {fmtLeaderScore(r)}
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {Number.isFinite(Number(r?.score))
-                                    ? String(Math.round(Number(r.score)))
-                                    : '—'}
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {String(r?.date ?? '—')}
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">{fmtPerfLine(r)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    );
-                  })()}
-
-                  <div className="mt-2 text-xs text-[var(--k-muted)]">
-                    Live score estimates a 2-day “profit edge” (probability-weighted expected return
-                    with drawdown penalty), computed from recent price history plus the latest
-                    fund-flow/chips when available. It refreshes on “Sync all (force)” or Leader
-                    “Generate today”.
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('leaders')}>
-                      Open Leaders
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        addReference({
-                          kind: 'leaderStocks',
-                          refId: `leaderStocks:10:${Date.now()}`,
-                          days: 10,
-                          createdAt: new Date().toISOString(),
-                        } as any);
-                      }}
-                    >
-                      Reference
-                    </Button>
-                  </div>
                 </div>
               ) : id === 'screeners' ? (
                 <div>

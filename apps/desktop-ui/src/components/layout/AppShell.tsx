@@ -8,7 +8,6 @@ import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
 import { BrokerPage } from '@/components/pages/BrokerPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
-import { LeaderStocksPage } from '@/components/pages/LeaderStocksPage';
 import { JournalReadPage } from '@/components/pages/JournalReadPage';
 import { JournalWritePage } from '@/components/pages/JournalWritePage';
 import { MarketPage } from '@/components/pages/MarketPage';
@@ -120,8 +119,6 @@ export function AppShell() {
                 ? 'Strategy'
               : activePage === 'journal'
                 ? 'Journal'
-              : activePage === 'leaders'
-                ? 'Leaders'
               : activePage === 'stock'
                 ? activeStockSymbol ?? 'Stock'
               : activePage === 'screener'
@@ -201,14 +198,6 @@ export function AppShell() {
                   }}
                 />
               )
-            ) : activePage === 'leaders' ? (
-              <LeaderStocksPage
-                onOpenStock={(symbol) => {
-                  setStockReturnPage('leaders');
-                  setActiveStockSymbol(symbol);
-                  setActivePage('stock');
-                }}
-              />
             ) : activePage === 'stock' && activeStockSymbol ? (
               <StockPage
                 symbol={activeStockSymbol}

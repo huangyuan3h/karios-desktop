@@ -417,12 +417,13 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
           out += `${String(rep['markdown']).trim()}\n\n`;
           continue;
         }
-        const leader = asRecord(rep['leader']);
-        if (leader) {
-          out += `\nLeader:\n`;
-          out += `- symbol: ${String(leader['symbol'] ?? '')}\n`;
-          out += `- reason: ${String(leader['reason'] ?? '')}\n`;
-        }
+        // Leader feature removed - skip leader references
+        // const leader = asRecord(rep['leader']);
+        // if (leader) {
+        //   out += `\nLeader:\n`;
+        //   out += `- symbol: ${String(leader['symbol'] ?? '')}\n`;
+        //   out += `- reason: ${String(leader['reason'] ?? '')}\n`;
+        // }
         const cands = asArray(rep['candidates']).slice(0, 5);
         if (cands.length) {
           out += `\nCandidates (first ${cands.length}):\n`;
@@ -581,62 +582,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     }
 
     if (ref.kind === 'leaderStocks') {
-      try {
-        // Do NOT force refresh here (avoid triggering live score updates from chat reference).
-        const resp = await fetch(
-          `${QUANT_BASE_URL}/leader?days=${encodeURIComponent(String(ref.days))}&force=false`,
-          { cache: 'no-store' },
-        );
-        if (!resp.ok) throw new Error('failed to load leader stocks');
-        const ls = (await resp.json()) as LeaderStocksList;
-        out += `## Leader stocks (last ${String(ls.days ?? ref.days)} trading days)\n`;
-        out += `- days: ${String(ls.days ?? ref.days)}\n`;
-        out += `- dates: ${(Array.isArray(ls.dates) ? ls.dates : []).join(', ')}\n\n`;
-
-        const leaders = Array.isArray(ls.leaders) ? ls.leaders : [];
-        if (leaders.length) {
-          out += `| Date | Ticker | Name | LiveScore | Dur(d) | BuyZone | Target | P | Why |\n`;
-          out += `|---|---|---|---:|---:|---|---|---:|---|\n`;
-          for (const r of leaders) {
-            const date = String(r.date ?? '');
-            const ticker = String(r.ticker ?? r.symbol ?? '');
-            const name = String(r.name ?? '');
-            const liveScore = Number.isFinite(r.liveScore as number)
-              ? String(Math.round(r.liveScore as number))
-              : Number.isFinite(r.score as number)
-                ? String(Math.round(r.score as number))
-                : '—';
-            const dur = Number.isFinite(r.expectedDurationDays as number)
-              ? String(r.expectedDurationDays)
-              : '—';
-            const bz = r.buyZone ?? {};
-            const bzLow = isRecord(bz) ? bz['low'] : null;
-            const bzHigh = isRecord(bz) ? bz['high'] : null;
-            const buyZone =
-              bzLow != null && bzHigh != null ? `${String(bzLow)}-${String(bzHigh)}` : '—';
-            const tp = r.targetPrice ?? {};
-            const target = isRecord(tp) && tp['primary'] != null ? String(tp['primary']) : '—';
-            const pNum = Number.isFinite(r.probability as number)
-              ? Math.max(1, Math.min(5, Math.round(r.probability as number)))
-              : null;
-            const prob = pNum != null ? `${pNum * 20}%` : '—';
-            const why =
-              Array.isArray(r.whyBullets) && r.whyBullets.length
-                ? r.whyBullets
-                    .slice(0, 2)
-                    .map((x) => String(x))
-                    .join(' / ')
-                : String(r.reason ?? '').replaceAll('\n', ' ');
-            out += `| ${date} | ${ticker} | ${name} | ${liveScore} | ${dur} | ${buyZone} | ${target} | ${prob} | ${why} |\n`;
-          }
-          out += `\n`;
-
-          // NOTE: Do not force refresh deep context from chat reference.
-        }
-      } catch {
-        out += `## Leader stocks\n`;
-        out += `- status: failed to load\n\n`;
-      }
+      out += `\n[Note: Leader stocks feature has been removed from the application.]\n`;
       continue;
     }
 
