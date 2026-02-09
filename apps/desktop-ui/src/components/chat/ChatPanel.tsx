@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { ChatMessageList } from '@/components/chat/ChatMessageList';
-import { AI_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
+import { AI_BASE_URL, DATA_SYNC_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
 import { newId } from '@/lib/id';
 import { useChatStore } from '@/lib/chat/store';
 import type { ChatAttachment, ChatMessage, ChatReference } from '@/lib/chat/types';
@@ -266,7 +266,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     if (ref.kind === 'broker') {
       try {
         const resp = await fetch(
-          `${QUANT_BASE_URL}/broker/${encodeURIComponent(ref.broker)}/snapshots/${encodeURIComponent(ref.snapshotId)}`,
+          `${DATA_SYNC_BASE_URL}/broker/${encodeURIComponent(ref.broker)}/snapshots/${encodeURIComponent(ref.snapshotId)}`,
           { cache: 'no-store' },
         );
         if (!resp.ok) throw new Error('failed to load broker snapshot');
@@ -339,7 +339,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     if (ref.kind === 'brokerState') {
       try {
         const resp = await fetch(
-          `${QUANT_BASE_URL}/broker/${encodeURIComponent(ref.broker)}/accounts/${encodeURIComponent(ref.accountId)}/state`,
+          `${DATA_SYNC_BASE_URL}/broker/${encodeURIComponent(ref.broker)}/accounts/${encodeURIComponent(ref.accountId)}/state`,
           { cache: 'no-store' },
         );
         if (!resp.ok) throw new Error('failed to load broker account state');
@@ -402,7 +402,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     if (ref.kind === 'industryFundFlow') {
       try {
         const resp = await fetch(
-          `${QUANT_BASE_URL}/market/cn/industry-fund-flow?days=${encodeURIComponent(String(ref.days))}&topN=${encodeURIComponent(String(ref.topN))}&asOfDate=${encodeURIComponent(ref.asOfDate)}`,
+          `${DATA_SYNC_BASE_URL}/market/cn/industry-fund-flow?days=${encodeURIComponent(String(ref.days))}&topN=${encodeURIComponent(String(ref.topN))}&asOfDate=${encodeURIComponent(ref.asOfDate)}`,
           { cache: 'no-store' },
         );
         if (!resp.ok) throw new Error('failed to load industry fund flow');

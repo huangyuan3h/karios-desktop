@@ -4,7 +4,7 @@ import * as React from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 
 type IndustryFundFlowPoint = {
@@ -29,14 +29,14 @@ type IndustryFundFlowResp = {
 };
 
 async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
   return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
 async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),

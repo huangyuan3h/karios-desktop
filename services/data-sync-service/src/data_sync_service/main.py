@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI  # type: ignore[import-not-found]
+from fastapi.middleware.cors import CORSMiddleware  # type: ignore[import-not-found]
 
+from .api.broker_routes import router as broker_router
+from .api.industry_flow_routes import router as industry_flow_router
 from .api.journal_routes import router as journal_router
 from .api.query_routes import router as query_router
 from .api.sync_routes import router as sync_router
@@ -34,3 +36,5 @@ app.include_router(sync_router)
 app.include_router(tv_router)
 app.include_router(tv_chrome_router)
 app.include_router(journal_router)
+app.include_router(broker_router)
+app.include_router(industry_flow_router)

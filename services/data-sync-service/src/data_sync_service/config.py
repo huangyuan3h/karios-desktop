@@ -24,6 +24,7 @@ class Settings:
     db_password: str
     db_name: str
     tu_share_api_key: str
+    ai_service_base_url: str
 
 
 @lru_cache(maxsize=1)
@@ -36,6 +37,7 @@ def get_settings() -> Settings:
     db_password = os.getenv("DB_PASSWORD", "admin123")
     db_name = os.getenv("DB_NAME", "karios-desktop")
     tu_share_api_key = os.getenv("TU_SHARE_API_KEY", "")
+    ai_service_base_url = os.getenv("AI_SERVICE_BASE_URL", "http://127.0.0.1:4310").rstrip("/")
 
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
@@ -49,4 +51,5 @@ def get_settings() -> Settings:
         db_password=db_password,
         db_name=db_name,
         tu_share_api_key=tu_share_api_key,
+        ai_service_base_url=ai_service_base_url,
     )
