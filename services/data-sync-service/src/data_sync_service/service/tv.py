@@ -321,7 +321,7 @@ def sync_screener(*, screener_id: str) -> dict[str, Any]:
     except Exception as e:  # noqa: BLE001
         # Avoid unhandled exceptions (which bypass CORS due to ServerErrorMiddleware).
         msg = str(e) or e.__class__.__name__
-        if "Cannot locate screener grid/table" in msg:
+        if "Cannot locate screener grid/table" in msg or "TradingView login required" in msg:
             raise HTTPException(status_code=409, detail=msg) from e
         raise HTTPException(status_code=500, detail=msg) from e
 

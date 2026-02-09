@@ -385,6 +385,29 @@ async def _wait_for_grid_data(page, grid, *, tag: str, headers: list[str], key: 
         await page.wait_for_timeout(250)
 
 
+async def _detect_login_required(page) -> bool:
+    """
+    Detect TradingView's 'login required' wall for some community screeners.
+
+    Some screeners use filters that are available to logged-in users only; when the browser
+    profile is not authenticated, TradingView renders the filter pills but replaces the
+    result table with a CTA like 'Log in to see the results'.
+    """
+    selectors = [
+        'text=/Log in to see the results/i',
+        'text=/filters for logged-?in users only/i',
+        # Some locales may not use English consistently; keep a small Chinese fallback.
+        'text=/登录.*查看.*结果/',
+    ]
+    for sel in selectors:
+        try:
+            if await page.locator(sel).first.is_visible(timeout=800):
+                return True
+        except Exception:
+            continue
+    return False
+
+
 async def capture_screener_over_cdp(
     *,
     cdp_url: str,
@@ -407,6 +430,12 @@ async def capture_screener_over_cdp(
         page = await context.new_page()
         try:
             async def _capture_once() -> tuple[list[str], list[str], list[dict[str, str]], str | None]:
+                if await _detect_login_required(page):
+                    raise RuntimeError(
+                        "TradingView login required: this screener hides results for non-authenticated profiles. "
+                        "Please log in to TradingView in the dedicated CDP Chrome profile (disable headless temporarily) "
+                        "and try again.",
+                    )
                 grid = await _find_screener_grid(page)
                 if grid is None:
                     raise RuntimeError(
