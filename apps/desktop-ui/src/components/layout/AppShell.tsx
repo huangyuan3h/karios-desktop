@@ -12,7 +12,6 @@ import { LeaderStocksPage } from '@/components/pages/LeaderStocksPage';
 import { JournalReadPage } from '@/components/pages/JournalReadPage';
 import { JournalWritePage } from '@/components/pages/JournalWritePage';
 import { MarketPage } from '@/components/pages/MarketPage';
-import { RankPage } from '@/components/pages/RankPage';
 import { SchedulerPage } from '@/components/pages/SchedulerPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
@@ -111,8 +110,6 @@ export function AppShell() {
               ? 'Dashboard'
               : activePage === 'market'
                 ? 'Market'
-              : activePage === 'rank'
-                ? 'Quant'
               : activePage === 'industryFlow'
                 ? 'Industry Flow'
               : activePage === 'watchlist'
@@ -176,14 +173,6 @@ export function AppShell() {
               />
             ) : activePage === 'broker' ? (
               <BrokerPage />
-            ) : activePage === 'rank' ? (
-              <RankPage
-                onOpenStock={(symbol) => {
-                  setStockReturnPage('rank');
-                  setActiveStockSymbol(symbol);
-                  setActivePage('stock');
-                }}
-              />
             ) : activePage === 'industryFlow' ? (
               <IndustryFlowPage />
             ) : activePage === 'watchlist' ? (

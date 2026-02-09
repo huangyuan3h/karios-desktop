@@ -689,89 +689,10 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       continue;
     }
 
-    if (ref.kind === 'rankList') {
-      try {
-        const q =
-          `limit=${encodeURIComponent(String(ref.limit ?? 30))}` +
-          (ref.asOfDate ? `&asOfDate=${encodeURIComponent(String(ref.asOfDate))}` : '');
-        const resp = await fetch(`${QUANT_BASE_URL}/rank/cn/next2d?${q}`, { cache: 'no-store' });
-        if (!resp.ok) throw new Error('failed to load rank list');
-        const rk = (await resp.json()) as Record<string, unknown>;
-        const items = asArray(rk['items']).slice(
-          0,
-          Math.max(1, Math.min(200, Number(ref.limit ?? 30))),
-        );
-        out += `## CN rank (next 1-2D)\n`;
-        out += `- asOfDate: ${getStr(rk, 'asOfDate') || String(ref.asOfDate || '')}\n`;
-        out += `- riskMode: ${getStr(rk, 'riskMode')}\n\n`;
-        if (items.length) {
-          out += `| # | Ticker | Name | Score | Prob | Signals |\n`;
-          out += `|---:|---|---|---:|---|---|\n`;
-          items.forEach((it, i) => {
-            const row = asRecord(it) ?? {};
-            const ticker = getStr(row, 'ticker') || getStr(row, 'symbol');
-            const name = getStr(row, 'name');
-            const score = Number.isFinite(Number(row['score']))
-              ? String(Math.round(Number(row['score'])))
-              : '—';
-            const prob = getStr(row, 'probBand');
-            const sig = asArray(row['signals'])
-              .slice(0, 4)
-              .map((x) => String(x))
-              .join(' / ');
-            out += `| ${i + 1} | ${ticker} | ${name} | ${score} | ${prob} | ${sig} |\n`;
-          });
-          out += `\n`;
-        } else {
-          out += `- status: no snapshot\n\n`;
-        }
-      } catch {
-        out += `## CN rank (next 1-2D)\n`;
-        out += `- status: failed to load\n\n`;
-      }
-      continue;
-    }
-
-    if (ref.kind === 'intradayRankList') {
-      try {
-        const q = `limit=${encodeURIComponent(String(ref.limit ?? 30))}`;
-        const resp = await fetch(`${QUANT_BASE_URL}/rank/cn/intraday?${q}`, { cache: 'no-store' });
-        if (!resp.ok) throw new Error('failed to load intraday rank');
-        const rk = (await resp.json()) as Record<string, unknown>;
-        const items = asArray(rk['items']).slice(
-          0,
-          Math.max(1, Math.min(200, Number(ref.limit ?? 30))),
-        );
-        out += `## CN rank (Intraday · DeltaT 1H)\n`;
-        out += `- tradeDate: ${getStr(rk, 'tradeDate')}\n`;
-        out += `- slot: ${getStr(rk, 'slot') || String(ref.slot || '')}\n`;
-        out += `- asOfTs: ${getStr(rk, 'asOfTs') || String(ref.asOfTs || '')}\n`;
-        out += `- riskMode: ${getStr(rk, 'riskMode')}\n\n`;
-        if (items.length) {
-          out += `| # | Ticker | Name | Score | Prob | Signals |\n`;
-          out += `|---:|---|---|---:|---|---|\n`;
-          items.forEach((it, i) => {
-            const row = asRecord(it) ?? {};
-            const ticker = getStr(row, 'ticker') || getStr(row, 'symbol');
-            const name = getStr(row, 'name');
-            const score = Number.isFinite(Number(row['score']))
-              ? String(Math.round(Number(row['score'])))
-              : '—';
-            const prob = getStr(row, 'probBand');
-            const sig = asArray(row['signals'])
-              .slice(0, 4)
-              .map((x) => String(x))
-              .join(' / ');
-            out += `| ${i + 1} | ${ticker} | ${name} | ${score} | ${prob} | ${sig} |\n`;
-          });
-          out += `\n`;
-        } else {
-          out += `- status: no snapshot\n\n`;
-        }
-      } catch {
-        out += `## CN rank (Intraday · DeltaT 1H)\n`;
-        out += `- status: failed to load\n\n`;
-      }
+    // Rank/Quant endpoints removed - page cleanup
+    if (ref.kind === 'rankList' || ref.kind === 'intradayRankList') {
+      out += `## Rank/Quant feature removed\n`;
+      out += `- This feature has been removed.\n\n`;
       continue;
     }
 
