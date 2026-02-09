@@ -103,6 +103,22 @@ function pickColumns(headers: string[]) {
   return [...picked, ...rest].slice(0, 8);
 }
 
+function escapeMarkdownCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>').trim();
+}
+
+function toMarkdownTable(headers: string[], rows: Record<string, string>[]): string {
+  if (!headers.length) return '';
+  const safeHeaders = headers.map((h) => escapeMarkdownCell(h || ''));
+  const headerLine = `| ${safeHeaders.join(' | ')} |`;
+  const dividerLine = `| ${safeHeaders.map(() => '---').join(' | ')} |`;
+  const body = rows.map((r) => {
+    const cells = headers.map((h) => escapeMarkdownCell(r[h] ?? ''));
+    return `| ${cells.join(' | ')} |`;
+  });
+  return [headerLine, dividerLine, ...body].join('\n');
+}
+
 export function ScreenerPage() {
   const { addReference } = useChatStore();
   const [screeners, setScreeners] = React.useState<TvScreener[]>([]);
@@ -111,6 +127,8 @@ export function ScreenerPage() {
   const [historyOpen, setHistoryOpen] = React.useState<Record<string, boolean>>({});
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = React.useState<{ id: string; ok: boolean; text: string } | null>(null);
+  const copyTimerRef = React.useRef<number | null>(null);
 
   const refreshAll = React.useCallback(async () => {
     setError(null);
@@ -144,6 +162,13 @@ export function ScreenerPage() {
     void refreshAll();
   }, [refreshAll]);
 
+  React.useEffect(
+    () => () => {
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    },
+    [],
+  );
+
   async function syncOne(screener: TvScreener) {
     setBusyId(screener.id);
     setError(null);
@@ -169,6 +194,29 @@ export function ScreenerPage() {
     } catch (e) {
       setHistory((prev) => ({ ...prev, [screenerId]: null }));
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function copySnapshotMarkdown(
+    screenerId: string,
+    headers: string[],
+    rows: Record<string, string>[],
+  ) {
+    const md = toMarkdownTable(headers, rows);
+    const setStatus = (ok: boolean, text: string) => {
+      setCopyStatus({ id: screenerId, ok, text });
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopyStatus(null), 2400);
+    };
+    if (!md) {
+      setStatus(false, 'No data to copy.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(md);
+      setStatus(true, 'Copied Markdown table.');
+    } catch {
+      setStatus(false, 'Copy failed. Please allow clipboard access.');
     }
   }
 
@@ -250,6 +298,17 @@ export function ScreenerPage() {
                   <Button
                     size="sm"
                     variant="secondary"
+                    disabled={!snap || cols.length === 0 || snap.rows.length === 0}
+                    onClick={() => {
+                      if (!snap) return;
+                      void copySnapshotMarkdown(it.id, cols, snap.rows);
+                    }}
+                  >
+                    Copy Markdown
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
                     disabled={!snap}
                     onClick={() => {
                       if (!snap) return;
@@ -270,6 +329,11 @@ export function ScreenerPage() {
 
               {snap ? (
                 <div className="mt-4 overflow-hidden rounded-lg border border-[var(--k-border)]">
+                  {copyStatus?.id === it.id ? (
+                    <div className="border-b border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-xs">
+                      <span className={copyStatus.ok ? 'text-emerald-600' : 'text-red-600'}>{copyStatus.text}</span>
+                    </div>
+                  ) : null}
                   {snap.filters?.length ? (
                     <div className="border-b border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
                       <div className="flex flex-wrap gap-2">
