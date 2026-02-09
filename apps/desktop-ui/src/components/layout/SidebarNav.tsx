@@ -4,6 +4,7 @@ import {
   BarChart3,
   ChevronsLeft,
   ChevronsRight,
+  Clock,
   Crown,
   CreditCard,
   LayoutDashboard,
@@ -29,6 +30,7 @@ const items = [
   { id: 'journal', label: 'Journal', icon: NotebookPen },
   { id: 'leaders', label: 'Leaders', icon: Crown },
   { id: 'screener', label: 'Screener', icon: Table2 },
+  { id: 'scheduler', label: 'Scheduler', icon: Clock },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

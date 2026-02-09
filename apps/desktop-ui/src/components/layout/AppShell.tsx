@@ -13,6 +13,7 @@ import { JournalReadPage } from '@/components/pages/JournalReadPage';
 import { JournalWritePage } from '@/components/pages/JournalWritePage';
 import { MarketPage } from '@/components/pages/MarketPage';
 import { RankPage } from '@/components/pages/RankPage';
+import { SchedulerPage } from '@/components/pages/SchedulerPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
 import { StrategyPage } from '@/components/pages/StrategyPage';
@@ -128,6 +129,8 @@ export function AppShell() {
                 ? activeStockSymbol ?? 'Stock'
               : activePage === 'screener'
                 ? 'Screener'
+              : activePage === 'scheduler'
+                ? 'Scheduler'
               : activePage === 'settings'
                 ? 'Settings'
                 : activePage}
@@ -224,6 +227,8 @@ export function AppShell() {
               />
             ) : activePage === 'screener' ? (
               <ScreenerPage />
+            ) : activePage === 'scheduler' ? (
+              <SchedulerPage />
             ) : (
               <DashboardPage
                 onNavigate={(id) => setActivePage(id)}

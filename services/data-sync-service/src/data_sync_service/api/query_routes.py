@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query  # type: ignore[import-not-found]
 
 from data_sync_service.db import check_db
 from data_sync_service.service.adj_factor import get_adj_factor_sync_status
@@ -8,7 +8,7 @@ from data_sync_service.service.close_sync import get_close_sync_status
 from data_sync_service.service.daily import get_daily_from_db, get_daily_sync_status
 from data_sync_service.service.market_bars import get_market_bars
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
-from data_sync_service.service.stock_basic import get_stock_basic_list
+from data_sync_service.service.stock_basic import get_stock_basic_list, get_stock_basic_sync_status
 from data_sync_service.service.trendok import compute_trendok_for_symbols
 
 router = APIRouter()
@@ -30,6 +30,13 @@ def get_stock_basic_endpoint() -> list:
     # Purpose: return full stock basic list from DB (about 5k rows).
     """Return all stock_basic rows from our database (~5k rows)."""
     return get_stock_basic_list()
+
+
+@router.get("/stock-basic/status")
+def get_stock_basic_status_endpoint() -> dict:
+    # Purpose: return today's stock_basic sync status from sync_job_record.
+    """Return today's stock_basic sync run record (success/fail)."""
+    return get_stock_basic_sync_status()
 
 
 @router.get("/daily")
