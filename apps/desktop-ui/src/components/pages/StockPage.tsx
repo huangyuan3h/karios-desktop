@@ -118,9 +118,23 @@ async function apiGetJsonFrom<T>(baseUrl: string, path: string): Promise<T> {
   return (txt ? (JSON.parse(txt) as T) : ({} as T));
 }
 
+function normalizeSymbol(symbol: string): string {
+  // Normalize symbol format: "主板:000001" -> "CN:000001"
+  const s = symbol.trim();
+  if (s.startsWith('主板:') || s.startsWith('中小板:') || s.startsWith('创业板:') || s.startsWith('科创板:')) {
+    const parts = s.split(':', 2);
+    if (parts.length >= 2) {
+      return `CN:${parts[1].trim()}`;
+    }
+  }
+  return s;
+}
+
 function toTsCodeFromSymbol(symbol: string): string | null {
   // Only handle CN A-shares for now: "CN:000001" -> "000001.SZ/SH"
-  const s = symbol.trim();
+  // Also handle normalized symbols like "主板:000001" -> "CN:000001" -> "000001.SZ/SH"
+  const normalized = normalizeSymbol(symbol);
+  const s = normalized.trim();
   if (!s.startsWith('CN:')) return null;
   const ticker = s.slice('CN:'.length).trim();
   if (!/^[0-9]{6}$/.test(ticker)) return null;
@@ -242,19 +256,21 @@ export function StockPage({
     setError(null);
     setBusy(true);
     try {
+      // Normalize symbol format: "主板:000001" -> "CN:000001"
+      const normalizedSymbol = normalizeSymbol(symbol);
       const [d, c] = await Promise.all([
         apiGetJsonFrom<BarsResp>(
           DATA_SYNC_BASE_URL,
-          `/market/stocks/${encodeURIComponent(symbol)}/bars?days=60${force ? '&force=true' : ''}`,
+          `/market/stocks/${encodeURIComponent(normalizedSymbol)}/bars?days=60${force ? '&force=true' : ''}`,
         ),
         apiGetJson<ChipsResp>(
-          `/market/stocks/${encodeURIComponent(symbol)}/chips?days=30${force ? '&force=true' : ''}`,
+          `/market/stocks/${encodeURIComponent(normalizedSymbol)}/chips?days=30${force ? '&force=true' : ''}`,
         ).catch(
           () => null,
         ),
       ]);
       const ff = await apiGetJson<FundFlowResp>(
-        `/market/stocks/${encodeURIComponent(symbol)}/fund-flow?days=30${force ? '&force=true' : ''}`,
+        `/market/stocks/${encodeURIComponent(normalizedSymbol)}/fund-flow?days=30${force ? '&force=true' : ''}`,
       ).catch(() => null);
       let d2 = d;
       if (quote) {

@@ -130,7 +130,10 @@ def fetch_market_stocks(
     params: list[object] = []
 
     # Filter by market (CN/HK)
-    if market2 in {"CN", "HK"}:
+    # Note: Tushare uses "主板", "中小板", "创业板", "科创板" for CN stocks
+    if market2 == "CN":
+        where.append("market IN ('主板', '中小板', '创业板', '科创板', 'CN')")
+    elif market2 == "HK":
         where.append("market = %s")
         params.append(market2)
     # If market is "ALL" or empty, don't filter by market (return all)
@@ -184,21 +187,24 @@ def fetch_market_stocks(
     # Build items with quote data
     items = []
     for ts_code, ticker, name, market_val, list_date in row_data:
+        # Normalize market value: Tushare uses "主板", "中小板", "创业板" etc., map to "CN"
+        market_normalized = "CN" if market_val in ("主板", "中小板", "创业板", "科创板", "CN") else market_val
+        
         # Convert ts_code to symbol format: "000001.SZ" -> "CN:000001"
-        if market_val == "CN" and "." in ts_code:
+        if market_normalized == "CN" and "." in ts_code:
             ticker_part = ts_code.split(".")[0]
             symbol = f"CN:{ticker_part}"
         else:
-            symbol = f"{market_val}:{ticker}"
+            symbol = f"{market_normalized}:{ticker}"
         
         quote = quotes_map.get(ts_code, {})
         
         items.append({
             "symbol": symbol,
-            "market": market_val,
+            "market": market_normalized,  # Use normalized market value
             "ticker": ticker,
             "name": name,
-            "currency": "CNY" if market_val == "CN" else "HKD",
+            "currency": "CNY" if market_normalized == "CN" else "HKD",
             "price": quote.get("price"),
             "changePct": quote.get("changePct"),
             "volume": quote.get("volume"),
