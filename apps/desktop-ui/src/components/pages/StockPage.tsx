@@ -133,6 +133,32 @@ function shanghaiTodayIso(): string {
   return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
 }
 
+function getShanghaiTimeParts(): { weekday: string; hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const map = new Map(parts.map((p) => [p.type, p.value]));
+  return {
+    weekday: map.get('weekday') ?? '',
+    hour: Number(map.get('hour') ?? 0),
+    minute: Number(map.get('minute') ?? 0),
+  };
+}
+
+function isShanghaiTradingTime(): boolean {
+  const { weekday, hour, minute } = getShanghaiTimeParts();
+  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
+  const minutes = hour * 60 + minute;
+  // CN A-share: 09:30-11:30, 13:00-15:00
+  const inMorning = minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30;
+  const inAfternoon = minutes >= 13 * 60 && minutes <= 15 * 60;
+  return inMorning || inAfternoon;
+}
+
 function mergeQuoteIntoBars(d: BarsResp, q: QuoteResp['items'][number]): BarsResp {
   const price = q.price ?? '';
   if (!price) return d;
@@ -261,7 +287,8 @@ export function StockPage({
     setLastSyncMs(prev);
     // Auto-sync at most once every 10 minutes per symbol.
     const age = Date.now() - prev;
-    void refresh({ force: age > 10 * 60 * 1000 });
+    const shouldQuote = isShanghaiTradingTime();
+    void refresh({ force: age > 10 * 60 * 1000, quote: shouldQuote });
   }, [refresh, symbol]);
 
   return (

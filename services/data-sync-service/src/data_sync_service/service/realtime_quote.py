@@ -59,24 +59,40 @@ def fetch_realtime_quotes(ts_codes: list[str]) -> dict[str, Any]:
     if df is None or len(df) == 0:
         return {"ok": True, "items": []}
 
-    # Normalize to list[dict]
+    # Normalize to list[dict] with lower-cased keys (tushare returns upper-case columns).
     rows = df.to_dict(orient="records")
     out: list[dict[str, Any]] = []
     for r in rows:
-        ts_code = _as_str(_get(r, "ts_code", "code"))
+        r2 = {str(k).lower(): v for k, v in r.items()}
+        ts_code = _as_str(_get(r2, "ts_code", "code"))
+        trade_time = _as_str(_get(r2, "trade_time", "time", "datetime"))
+        if not trade_time:
+            date_raw = _as_str(_get(r2, "date"))
+            time_raw = _as_str(_get(r2, "time"))
+            if date_raw and len(date_raw) == 8 and date_raw.isdigit():
+                date_raw = f"{date_raw[:4]}-{date_raw[4:6]}-{date_raw[6:8]}"
+            if date_raw and time_raw:
+                trade_time = f"{date_raw} {time_raw}"
+        else:
+            date_raw = _as_str(_get(r2, "date"))
+            if date_raw and len(date_raw) == 8 and date_raw.isdigit():
+                date_raw = f"{date_raw[:4]}-{date_raw[4:6]}-{date_raw[6:8]}"
+            # If trade_time is time-only (e.g. "11:15:51"), enrich with date.
+            if date_raw and len(trade_time) <= 8 and ":" in trade_time:
+                trade_time = f"{date_raw} {trade_time}"
         out.append(
             {
                 "ts_code": ts_code,
-                "price": _as_str(_get(r, "price", "current", "last")),
-                "open": _as_str(_get(r, "open")),
-                "high": _as_str(_get(r, "high")),
-                "low": _as_str(_get(r, "low")),
-                "pre_close": _as_str(_get(r, "pre_close", "prev_close")),
-                "change": _as_str(_get(r, "change")),
-                "pct_chg": _as_str(_get(r, "pct_chg", "pct_change", "change_pct")),
-                "volume": _as_str(_get(r, "vol", "volume")),
-                "amount": _as_str(_get(r, "amount", "turnover")),
-                "trade_time": _as_str(_get(r, "trade_time", "time", "datetime")),
+                "price": _as_str(_get(r2, "price", "current", "last")),
+                "open": _as_str(_get(r2, "open")),
+                "high": _as_str(_get(r2, "high")),
+                "low": _as_str(_get(r2, "low")),
+                "pre_close": _as_str(_get(r2, "pre_close", "prev_close")),
+                "change": _as_str(_get(r2, "change")),
+                "pct_chg": _as_str(_get(r2, "pct_change", "pct_chg", "change_pct")),
+                "volume": _as_str(_get(r2, "vol", "volume")),
+                "amount": _as_str(_get(r2, "amount", "turnover")),
+                "trade_time": trade_time,
             }
         )
 
