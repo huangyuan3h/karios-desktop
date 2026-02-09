@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query  # type: ignore[import-not-found]
 
 from data_sync_service.service.adj_factor import sync_adj_factor_full
 from data_sync_service.service.close_sync import sync_close
@@ -16,6 +16,29 @@ def sync_stock_basic_endpoint() -> dict:
     # Purpose: pull stock_basic from tushare and upsert into DB.
     """Sync stock basic list from tushare into database. Idempotent upsert by ts_code."""
     return sync_stock_basic()
+
+
+@router.post("/market/sync")
+def market_sync_endpoint() -> dict:
+    # Purpose: compatibility endpoint for MarketPage; calls sync_stock_basic.
+    """Sync market stocks (alias for /sync/stock-basic)."""
+    from datetime import datetime, timezone
+
+    result = sync_stock_basic()
+    synced_at = datetime.now(timezone.utc).isoformat()
+
+    # Return format compatible with quant-service response
+    if result.get("ok"):
+        updated_count = result.get("updated", 0)
+        return {
+            "ok": True,
+            "stocks": updated_count,
+            "syncedAt": synced_at,
+        }
+    return {
+        "ok": False,
+        "error": result.get("error", "Unknown error"),
+    }
 
 
 @router.post("/sync/daily")

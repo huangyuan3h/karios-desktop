@@ -8,6 +8,8 @@ from data_sync_service.service.close_sync import get_close_sync_status
 from data_sync_service.service.daily import get_daily_from_db, get_daily_sync_status
 from data_sync_service.service.market_bars import get_market_bars
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
+from data_sync_service.db.stock_basic import fetch_market_stocks, get_market_status
+from data_sync_service.service.market_quotes import get_market_quotes_batch, symbol_to_ts_code
 from data_sync_service.service.stock_basic import get_stock_basic_list, get_stock_basic_sync_status
 from data_sync_service.service.trendok import compute_trendok_for_symbols
 
@@ -107,6 +109,88 @@ def get_trendok_endpoint(
     # Purpose: TrendOK/Score computation for Watchlist (CN daily only), fully based on data-sync-service DB.
     syms = symbols if isinstance(symbols, list) else []
     return compute_trendok_for_symbols(syms, bool(refresh), bool(realtime))
+
+
+@router.get("/market/status")
+def get_market_status_endpoint() -> dict:
+    """Return market status: total stocks count and last sync time."""
+    return get_market_status()
+
+
+@router.get("/market/stocks")
+def get_market_stocks_endpoint(
+    market: str | None = Query(None, description="Filter by market: CN or HK"),
+    q: str | None = Query(None, description="Search by ticker or name"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    use_realtime: bool = Query(False, description="Use realtime quotes instead of daily close"),
+) -> dict:
+    """
+    List market stocks with pagination and filters.
+    Returns MarketStocksResponse-compatible format.
+    Price and change% are fetched from daily table (latest close) or realtime API.
+    """
+    total, items = fetch_market_stocks(market=market, q=q, offset=offset, limit=limit, use_realtime=use_realtime)
+    return {
+        "items": items,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
+
+
+@router.get("/market/stocks/quotes")
+def get_market_stocks_quotes_endpoint(
+    symbols: list[str] | None = Query(None, description="List of symbols (e.g., CN:000001,CN:600000)"),
+    use_realtime: bool = Query(False, description="Use realtime quotes instead of daily close"),
+) -> dict:
+    """
+    Batch fetch price and change% for multiple symbols.
+    Returns mapping: symbol -> {price, changePct, volume, turnover}.
+    """
+    syms0 = symbols if isinstance(symbols, list) else []
+    syms = [str(s or "").strip() for s in syms0 if s and s.strip()]
+    if not syms:
+        return {"quotes": {}}
+    if len(syms) > 500:
+        syms = syms[:500]
+
+    # Convert symbols to ts_codes
+    ts_codes: list[str] = []
+    symbol_to_code: dict[str, str] = {}
+    for sym in syms:
+        code = symbol_to_ts_code(sym)
+        if code:
+            ts_codes.append(code)
+            symbol_to_code[sym] = code
+
+    if not ts_codes:
+        return {"quotes": {}}
+
+    # Fetch quotes
+    quotes_map = get_market_quotes_batch(ts_codes, use_realtime=use_realtime)
+
+    # Map back to symbols
+    out: dict[str, dict[str, str | None]] = {}
+    for sym in syms:
+        code = symbol_to_code.get(sym)
+        if code:
+            quote = quotes_map.get(code, {})
+            out[sym] = {
+                "price": quote.get("price"),
+                "changePct": quote.get("changePct"),
+                "volume": quote.get("volume"),
+                "turnover": quote.get("turnover"),
+            }
+        else:
+            out[sym] = {
+                "price": None,
+                "changePct": None,
+                "volume": None,
+                "turnover": None,
+            }
+
+    return {"quotes": out}
 
 
 @router.get("/market/stocks/resolve")

@@ -101,3 +101,8 @@ def get_last_success(job_type: str) -> dict[str, Any] | None:
     if rec.get("sync_at") and hasattr(rec["sync_at"], "isoformat"):
         rec["sync_at"] = rec["sync_at"].isoformat()
     return rec
+
+
+def get_last_successful_run(job_type: str) -> dict[str, Any] | None:
+    """Alias for get_last_success for compatibility."""
+    return get_last_success(job_type)
