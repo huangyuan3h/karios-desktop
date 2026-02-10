@@ -599,15 +599,15 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     try {
       const [barsResp, chipsResp, ffResp] = await Promise.all([
         fetch(
-          `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/bars?days=${ref.barsDays}`,
+          `${DATA_SYNC_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/bars?days=${ref.barsDays}`,
           { cache: 'no-store' },
         ),
         fetch(
-          `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/chips?days=${ref.chipsDays}`,
+          `${DATA_SYNC_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/chips?days=${ref.chipsDays}`,
           { cache: 'no-store' },
         ).catch(() => null),
         fetch(
-          `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/fund-flow?days=${ref.fundFlowDays}`,
+          `${DATA_SYNC_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/fund-flow?days=${ref.fundFlowDays}`,
           { cache: 'no-store' },
         ).catch(() => null),
       ]);

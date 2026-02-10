@@ -224,6 +224,24 @@ def get_market_stocks_quotes_endpoint(
     return {"quotes": out}
 
 
+@router.get("/search/stocks")
+def search_stocks_endpoint(
+    q: str | None = Query(None, description="Search query: ticker/name"),
+    market: str | None = Query(None, description="Optional market filter: CN or HK"),
+    limit: int = Query(8, ge=1, le=20),
+    use_realtime: bool = Query(False, description="Use realtime quotes instead of daily close"),
+) -> dict:
+    """
+    Global stock search for AppShell's quick search box.
+    Returns a minimal shape: { items: [...] }.
+    """
+    q2 = (q or "").strip()
+    if not q2:
+        return {"items": []}
+    _total, items = fetch_market_stocks(market=market, q=q2, offset=0, limit=int(limit), use_realtime=use_realtime)
+    return {"items": items}
+
+
 @router.get("/market/stocks/resolve")
 def resolve_symbols_endpoint(symbols: list[str] | None = Query(None)) -> list[dict]:
     """

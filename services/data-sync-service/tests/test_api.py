@@ -221,3 +221,12 @@ def test_market_fund_flow_cn_only(monkeypatch) -> None:
 
     resp = client.get("/market/stocks/HK:00005/fund-flow?days=60")
     assert resp.status_code == 400
+
+
+def test_global_stock_search_endpoint_shape() -> None:
+    client = TestClient(app)
+    resp = client.get("/search/stocks?limit=8&q=000001")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert "items" in payload
+    assert isinstance(payload["items"], list)
