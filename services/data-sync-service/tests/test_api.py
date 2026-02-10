@@ -128,3 +128,29 @@ def test_market_sentiment_endpoint_shape() -> None:
     assert resp.status_code == 200
     payload = resp.json()
     assert set(payload.keys()) >= {"asOfDate", "days", "items"}
+
+
+def test_dashboard_summary_endpoint_shape() -> None:
+    client = TestClient(app)
+    resp = client.get("/dashboard/summary")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert set(payload.keys()) >= {"asOfDate", "industryFundFlow", "marketSentiment", "screeners"}
+    assert isinstance(payload.get("screeners"), list)
+    ind = payload.get("industryFundFlow") or {}
+    assert isinstance(ind, dict)
+    assert set(ind.keys()) >= {"dates", "topByDate", "flow5d"}
+    ms = payload.get("marketSentiment") or {}
+    assert isinstance(ms, dict)
+    assert "items" in ms and isinstance(ms["items"], list)
+
+
+def test_dashboard_sync_endpoint_shape() -> None:
+    client = TestClient(app)
+    # Avoid running TradingView sync in tests (it may require Chrome profile/login).
+    resp = client.post("/dashboard/sync?force=true&screeners=false", json={})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert set(payload.keys()) >= {"ok", "startedAt", "finishedAt", "steps", "screener"}
+    assert isinstance(payload.get("steps"), list)
+    assert isinstance(payload.get("screener"), dict)

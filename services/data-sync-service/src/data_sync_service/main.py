@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI  # type: ignore[import-not-found]
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore[import-not-found]
 
+from .api.dashboard_routes import router as dashboard_router
 from .api.broker_routes import router as broker_router
 from .api.industry_flow_routes import router as industry_flow_router
 from .api.market_sentiment_routes import router as market_sentiment_router
@@ -34,6 +35,7 @@ app.add_middleware(
 )
 app.include_router(query_router)
 app.include_router(sync_router)
+app.include_router(dashboard_router)
 app.include_router(tv_router)
 app.include_router(tv_chrome_router)
 app.include_router(journal_router)

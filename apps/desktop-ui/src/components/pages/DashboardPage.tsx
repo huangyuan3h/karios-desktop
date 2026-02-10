@@ -5,38 +5,20 @@ import * as React from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { DATA_SYNC_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 
 type DashboardSummary = any;
 type DashboardSyncResp = any;
 
 async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiGetJsonDataSync<T>(path: string): Promise<T> {
   const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
   return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
-async function apiPostJsonDataSync<T>(path: string, body: unknown): Promise<T> {
+async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -106,7 +88,6 @@ export function DashboardPage({
 }) {
   const { addReference } = useChatStore();
   const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
-  const [marketSentiment, setMarketSentiment] = React.useState<any | null>(null);
   const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [sentimentBusy, setSentimentBusy] = React.useState(false);
@@ -141,12 +122,6 @@ export function DashboardPage({
     try {
       const s = await apiGetJson<DashboardSummary>(`/dashboard/summary`);
       setSummary(s);
-      try {
-        const ms = await apiGetJsonDataSync(`/market/cn/sentiment?days=5`);
-        setMarketSentiment(ms);
-      } catch {
-        setMarketSentiment(null);
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -161,7 +136,7 @@ export function DashboardPage({
     setBusy(true);
     setError(null);
     try {
-      const r = await apiPostJson<DashboardSyncResp>('/dashboard/sync', { force: true });
+      const r = await apiPostJson<DashboardSyncResp>('/dashboard/sync?force=true', {});
       setSyncResp(r);
       await refresh();
     } catch (e) {
@@ -175,7 +150,7 @@ export function DashboardPage({
     setSentimentBusy(true);
     setError(null);
     try {
-      await apiPostJsonDataSync('/market/cn/sentiment/sync', { force: true });
+      await apiPostJson('/market/cn/sentiment/sync', { force: true });
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -340,7 +315,7 @@ export function DashboardPage({
               {id === 'sentiment' ? (
                 <div>
                   {(() => {
-                    const ms = marketSentiment ?? {};
+                    const ms = summary?.marketSentiment ?? {};
                     const items: any[] = Array.isArray(ms.items) ? ms.items : [];
                     const latest = items.length ? items[items.length - 1] : null;
                     const risk = String(latest?.riskMode ?? '—');
