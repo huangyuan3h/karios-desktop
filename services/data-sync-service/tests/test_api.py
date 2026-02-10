@@ -154,3 +154,70 @@ def test_dashboard_sync_endpoint_shape() -> None:
     assert set(payload.keys()) >= {"ok", "startedAt", "finishedAt", "steps", "screener"}
     assert isinstance(payload.get("steps"), list)
     assert isinstance(payload.get("screener"), dict)
+
+
+def test_market_chips_cn_only(monkeypatch) -> None:
+    import data_sync_service.service.market_detail as market_detail  # type: ignore[import-not-found]
+
+    monkeypatch.setattr(
+        market_detail,
+        "fetch_cn_a_chip_summary",
+        lambda ticker, days=60: [
+            {
+                "date": "2025-12-20",
+                "profitRatio": "0.5",
+                "avgCost": "10.0",
+                "cost90Low": "9.0",
+                "cost90High": "11.0",
+                "cost90Conc": "0.2",
+                "cost70Low": "9.5",
+                "cost70High": "10.5",
+                "cost70Conc": "0.1",
+            }
+        ],
+    )
+    client = TestClient(app)
+    resp = client.get("/market/stocks/CN:000001/chips?days=60&force=true")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["symbol"] == "CN:000001"
+    assert payload["market"] == "CN"
+    assert payload["items"][0]["avgCost"] == "10.0"
+
+    resp = client.get("/market/stocks/HK:00005/chips?days=60")
+    assert resp.status_code == 400
+
+
+def test_market_fund_flow_cn_only(monkeypatch) -> None:
+    import data_sync_service.service.market_detail as market_detail  # type: ignore[import-not-found]
+
+    monkeypatch.setattr(
+        market_detail,
+        "fetch_cn_a_fund_flow",
+        lambda ticker, days=60: [
+            {
+                "date": "2025-12-20",
+                "close": "10.0",
+                "changePct": "1.0",
+                "mainNetAmount": "100",
+                "mainNetRatio": "2.0",
+                "superNetAmount": "40",
+                "superNetRatio": "1.0",
+                "largeNetAmount": "30",
+                "largeNetRatio": "0.8",
+                "mediumNetAmount": "20",
+                "mediumNetRatio": "0.5",
+                "smallNetAmount": "10",
+                "smallNetRatio": "0.2",
+            }
+        ],
+    )
+    client = TestClient(app)
+    resp = client.get("/market/stocks/CN:000001/fund-flow?days=60&force=true")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["symbol"] == "CN:000001"
+    assert payload["items"][0]["mainNetAmount"] == "100"
+
+    resp = client.get("/market/stocks/HK:00005/fund-flow?days=60")
+    assert resp.status_code == 400

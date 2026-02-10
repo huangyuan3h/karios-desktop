@@ -7,6 +7,7 @@ from data_sync_service.service.adj_factor import get_adj_factor_sync_status
 from data_sync_service.service.close_sync import get_close_sync_status
 from data_sync_service.service.daily import get_daily_from_db, get_daily_sync_status
 from data_sync_service.service.market_bars import get_market_bars
+from data_sync_service.service.market_detail import get_market_chips, get_market_fund_flow
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 from data_sync_service.db.stock_basic import fetch_market_stocks, get_market_status
 from data_sync_service.service.market_quotes import get_market_quotes_batch, symbol_to_ts_code
@@ -96,6 +97,36 @@ def get_market_bars_endpoint(symbol: str, days: int = Query(60, ge=10, le=200), 
     _ = force
     try:
         return get_market_bars(symbol=symbol, days=days)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/market/stocks/{symbol}/chips")
+def get_market_chips_endpoint(
+    symbol: str,
+    days: int = Query(60, ge=10, le=200),
+    force: bool = False,
+) -> dict:
+    # Purpose: compatibility endpoint for StockPage "chip distribution" enrichment.
+    try:
+        return get_market_chips(symbol=symbol, days=days, force=bool(force))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/market/stocks/{symbol}/fund-flow")
+def get_market_fund_flow_endpoint(
+    symbol: str,
+    days: int = Query(60, ge=10, le=200),
+    force: bool = False,
+) -> dict:
+    # Purpose: compatibility endpoint for StockPage "fund flow" enrichment.
+    try:
+        return get_market_fund_flow(symbol=symbol, days=days, force=bool(force))
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e)) from e
 
