@@ -86,31 +86,135 @@ def _industry_flow_5d(*, as_of_date: str) -> dict[str, Any]:
     """
     Numeric 5D flow block used by Dashboard under industryFundFlow.flow5d.
     """
-    ff = get_cn_industry_fund_flow(days=5, top_n=30, as_of_date=as_of_date)
-    rows = ff.get("top") if isinstance(ff, dict) else []
-    rows2: list[dict[str, Any]] = rows if isinstance(rows, list) else []
-    rows_sorted = sorted(rows2, key=lambda r: float((r or {}).get("sum10d") or 0.0), reverse=True)[:10]
-    return {
-        "asOfDate": str(ff.get("asOfDate") or as_of_date),
-        "days": int(ff.get("days") or 5),
-        "topN": 10,
-        "dates": ff.get("dates") if isinstance(ff.get("dates"), list) else [],
-        "top": [
+    ensure_industry()
+    # Compute from the DB for accuracy (includes negative outflows).
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH dates AS (
+                  SELECT DISTINCT date
+                  FROM market_cn_industry_fund_flow_daily
+                  WHERE date <= %s
+                  ORDER BY date DESC
+                  LIMIT 5
+                )
+                SELECT d.date, b.industry_code, b.industry_name, b.net_inflow
+                FROM market_cn_industry_fund_flow_daily b
+                JOIN dates d ON d.date = b.date
+                ORDER BY d.date ASC
+                """,
+                (as_of_date,),
+            )
+            rows = cur.fetchall()
+
+    # Build date list (ascending).
+    dates_sorted: list[str] = sorted({str(r[0]) for r in rows if r and r[0]})
+    if not dates_sorted:
+        return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": [], "top": []}
+
+    last_date = dates_sorted[-1]
+    by_code: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        d = str(r[0] or "")
+        code = str(r[1] or "")
+        name = str(r[2] or "")
+        try:
+            v = float(r[3] or 0.0)
+        except Exception:
+            v = 0.0
+        if not code:
+            continue
+        rec = by_code.setdefault(code, {"industryCode": code, "industryName": name, "perDate": {}})
+        if name and not rec.get("industryName"):
+            rec["industryName"] = name
+        rec["perDate"][d] = v
+
+    items: list[dict[str, Any]] = []
+    for code, rec in by_code.items():
+        per: dict[str, float] = rec.get("perDate") or {}
+        series = [{"date": d, "netInflow": float(per.get(d, 0.0) or 0.0)} for d in dates_sorted]
+        sum5d = float(sum(p["netInflow"] for p in series))
+        items.append(
             {
-                "industryCode": str(r.get("industryCode") or ""),
-                "industryName": str(r.get("industryName") or ""),
-                "sum5d": float(r.get("sum10d") or 0.0),
-                "netInflow": float(r.get("netInflow") or 0.0),
-                "series": [
-                    {"date": str(p.get("date") or ""), "netInflow": float(p.get("netInflow") or 0.0)}
-                    for p in (r.get("series10d") or [])
-                    if isinstance(p, dict)
-                ],
+                "industryCode": code,
+                "industryName": str(rec.get("industryName") or ""),
+                "sum5d": sum5d,
+                "netInflow": float(per.get(last_date, 0.0) or 0.0),
+                "series": series,
             }
-            for r in rows_sorted
-            if isinstance(r, dict)
-        ],
-    }
+        )
+
+    # Default block is "inflow": top positive by sum5d.
+    top_in = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0), reverse=True)[:10]
+    return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_in}
+
+
+def _industry_flow_5d_out(*, as_of_date: str) -> dict[str, Any]:
+    """
+    5D outflow block used by Dashboard under industryFundFlow.flow5dOut.
+    """
+    base = _industry_flow_5d(as_of_date=as_of_date)
+    rows = base.get("top") if isinstance(base, dict) else []
+    # Recompute from full universe to ensure we have negative outflows.
+    ensure_industry()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH dates AS (
+                  SELECT DISTINCT date
+                  FROM market_cn_industry_fund_flow_daily
+                  WHERE date <= %s
+                  ORDER BY date DESC
+                  LIMIT 5
+                )
+                SELECT d.date, b.industry_code, b.industry_name, b.net_inflow
+                FROM market_cn_industry_fund_flow_daily b
+                JOIN dates d ON d.date = b.date
+                ORDER BY d.date ASC
+                """,
+                (as_of_date,),
+            )
+            all_rows = cur.fetchall()
+
+    dates_sorted: list[str] = sorted({str(r[0]) for r in all_rows if r and r[0]})
+    if not dates_sorted:
+        return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": [], "top": []}
+    last_date = dates_sorted[-1]
+    by_code: dict[str, dict[str, Any]] = {}
+    for r in all_rows:
+        d = str(r[0] or "")
+        code = str(r[1] or "")
+        name = str(r[2] or "")
+        try:
+            v = float(r[3] or 0.0)
+        except Exception:
+            v = 0.0
+        if not code:
+            continue
+        rec = by_code.setdefault(code, {"industryCode": code, "industryName": name, "perDate": {}})
+        if name and not rec.get("industryName"):
+            rec["industryName"] = name
+        rec["perDate"][d] = v
+
+    items: list[dict[str, Any]] = []
+    for code, rec in by_code.items():
+        per: dict[str, float] = rec.get("perDate") or {}
+        series = [{"date": d, "netInflow": float(per.get(d, 0.0) or 0.0)} for d in dates_sorted]
+        sum5d = float(sum(p["netInflow"] for p in series))
+        items.append(
+            {
+                "industryCode": code,
+                "industryName": str(rec.get("industryName") or ""),
+                "sum5d": sum5d,
+                "netInflow": float(per.get(last_date, 0.0) or 0.0),
+                "series": series,
+            }
+        )
+
+    top_out = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0))[:10]
+    return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_out}
 
 
 def _screeners_status(limit: int = 50) -> list[dict[str, Any]]:
@@ -159,7 +263,8 @@ def dashboard_summary() -> dict[str, Any]:
 
     industry_daily = _industry_top_by_date(as_of_date=as_of, days=5, top_k=5)
     flow5d = _industry_flow_5d(as_of_date=as_of)
-    industry = {**industry_daily, "flow5d": flow5d}
+    flow5d_out = _industry_flow_5d_out(as_of_date=as_of)
+    industry = {**industry_daily, "flow5d": flow5d, "flow5dOut": flow5d_out}
 
     sentiment_items = list_sentiment_days(as_of_date=as_of, days=5)
     market_sentiment = {"asOfDate": as_of, "days": 5, "items": sentiment_items}
