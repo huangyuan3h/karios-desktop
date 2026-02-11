@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -138,6 +139,10 @@ def _eastmoney_board_fund_flow_daykline(*, secid: str) -> list[dict[str, Any]]:
 
 
 def _try_akshare_hist(industry_name: str, *, days: int) -> list[dict[str, Any]]:
+    # AkShare may invoke a JS decoder backed by mini_racer (V8). On macOS it can crash
+    # the whole process (FATAL in libmini_racer). Skip this fallback for stability.
+    if sys.platform == "darwin":
+        raise RuntimeError("akshare_hist_disabled_on_darwin")
     try:
         import akshare as ak  # type: ignore
     except Exception as e:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from datetime import UTC, datetime
 from typing import Any, Tuple
 from zoneinfo import ZoneInfo
@@ -77,6 +78,10 @@ def fetch_cn_a_chip_summary(ticker: str, *, days: int = 60) -> list[dict[str, st
       cost90Low/cost90High/cost90Conc,
       cost70Low/cost70High/cost70Conc
     """
+    # AkShare may invoke a JS decoder backed by mini_racer (V8). On macOS it can crash
+    # the whole process (FATAL in libmini_racer). Prefer cached data for stability.
+    if sys.platform == "darwin":
+        raise RuntimeError("akshare_disabled_on_darwin: use cached chip data")
     try:
         import akshare as ak  # type: ignore[import-not-found]
     except Exception as e:
@@ -125,6 +130,10 @@ def fetch_cn_a_fund_flow(ticker: str, *, days: int = 60) -> list[dict[str, str]]
       mediumNetAmount/mediumNetRatio,
       smallNetAmount/smallNetRatio
     """
+    # AkShare may invoke a JS decoder backed by mini_racer (V8). On macOS it can crash
+    # the whole process (FATAL in libmini_racer). Prefer cached data for stability.
+    if sys.platform == "darwin":
+        raise RuntimeError("akshare_disabled_on_darwin: use cached fund flow data")
     try:
         import akshare as ak  # type: ignore[import-not-found]
     except Exception as e:
@@ -265,7 +274,27 @@ def get_market_fund_flow(*, symbol: str, days: int = 60, force: bool = False) ->
     try:
         items2 = fetch_cn_a_fund_flow(ticker, days=days2)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fund flow fetch failed for {ticker}: {e}") from e
+        # Fund flow is enrichment. Degrade gracefully to cached/empty to avoid crashing the app.
+        if cached:
+            items = [raw for _d, raw in reversed(cached)]
+            return {
+                "symbol": symbol,
+                "market": market,
+                "ticker": ticker,
+                "name": name,
+                "currency": currency,
+                "items": items,
+                "warning": f"using cached fund flow; fetch failed: {type(e).__name__}: {e}",
+            }
+        return {
+            "symbol": symbol,
+            "market": market,
+            "ticker": ticker,
+            "name": name,
+            "currency": currency,
+            "items": [],
+            "warning": f"fund flow unavailable; fetch failed: {type(e).__name__}: {e}",
+        }
 
     upsert_fund_flow(symbol, items2, updated_at=ts)
     return {
