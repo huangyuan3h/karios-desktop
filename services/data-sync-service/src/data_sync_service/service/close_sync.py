@@ -9,6 +9,7 @@ import pandas as pd  # type: ignore[import-not-found]
 import tushare as ts  # type: ignore[import-not-found]
 
 from data_sync_service.config import get_settings
+from data_sync_service.db.daily import count_rows_for_trade_date
 from data_sync_service.db.daily import upsert_from_dataframe as upsert_daily
 from data_sync_service.db.daily import update_adj_factor_from_dataframe
 from data_sync_service.db.sync_job_record import get_last_success, get_today_run, insert_record
@@ -136,13 +137,30 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
         start_date = _parse_yyyymmdd(marker) + timedelta(days=1)
     else:
         last_ok = get_last_success(JOB_TYPE)
-        if last_ok and last_ok.get("sync_at"):
-            # sync_at is ISO; use its date in Asia/Shanghai as a conservative baseline
+        # Prefer last completed trade_date marker (last_ts_code) over sync_at timestamp.
+        marker_ok = str((last_ok or {}).get("last_ts_code") or "").strip()
+        if marker_ok and len(marker_ok) == 8 and marker_ok.isdigit():
+            start_date = _parse_yyyymmdd(marker_ok) + timedelta(days=1)
+        elif last_ok and last_ok.get("sync_at"):
+            # Fallback: sync_at is ISO; use its date in Asia/Shanghai as a conservative baseline
             sync_at = datetime.fromisoformat(str(last_ok["sync_at"]))
             start_date = sync_at.astimezone(ZoneInfo("Asia/Shanghai")).date() + timedelta(days=1)
 
     if start_date > today:
-        return {"ok": True, "skipped": True, "message": "already up to date"}
+        # Verify DB actually has today's data; if not, allow force to heal "false success" records.
+        today_str = today.isoformat()
+        rows_today = count_rows_for_trade_date(today_str)
+        # CN A-share universe is ~5k; treat a very small count as missing/partial.
+        sufficient = rows_today >= 3000
+        if bool(force) and not sufficient:
+            start_date = today
+        else:
+            return {
+                "ok": True,
+                "skipped": True,
+                "message": "already up to date",
+                "meta": {"todayDailyRows": rows_today, "sufficient": sufficient},
+            }
 
     # Guard: avoid marking today's close as synced before market close.
     # If user clicks during trading hours, tushare may return empty/partial rows.

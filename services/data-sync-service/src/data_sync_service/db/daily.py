@@ -106,6 +106,28 @@ def get_last_adj_factor_date(ts_code: str) -> date | None:
     return row[0] if row and row[0] else None
 
 
+def count_rows_for_trade_date(trade_date: str) -> int:
+    """
+    Return number of rows for a given trade_date (YYYY-MM-DD).
+    Used for verifying that a market-wide sync actually landed.
+    """
+    ensure_table()
+    d = _date_str(trade_date)
+    if not d:
+        return 0
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE trade_date = %s",
+                (d,),
+            )
+            row = cur.fetchone()
+    try:
+        return int(row[0] or 0) if row else 0
+    except Exception:
+        return 0
+
+
 def upsert_from_dataframe(df: pd.DataFrame) -> int:
     """Upsert daily bars from tushare DataFrame. Returns number of rows upserted."""
     ensure_table()
