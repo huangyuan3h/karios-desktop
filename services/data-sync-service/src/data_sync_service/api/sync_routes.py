@@ -5,6 +5,7 @@ from fastapi import APIRouter, Query  # type: ignore[import-not-found]
 from data_sync_service.service.adj_factor import sync_adj_factor_full
 from data_sync_service.service.close_sync import sync_close
 from data_sync_service.service.daily import sync_daily_full
+from data_sync_service.service.hk_basic import sync_hk_basic
 from data_sync_service.service.stock_basic import sync_stock_basic
 from data_sync_service.service.trade_calendar import sync_trade_calendar
 
@@ -16,6 +17,17 @@ def sync_stock_basic_endpoint() -> dict:
     # Purpose: pull stock_basic from tushare and upsert into DB.
     """Sync stock basic list from tushare into database. Idempotent upsert by ts_code."""
     return sync_stock_basic()
+
+
+@router.post("/sync/hk-basic")
+def sync_hk_basic_endpoint(
+    ts_code: str | None = Query(None, description="Optional ts_code filter, e.g. 00005.HK"),
+    list_status: str = Query("L", description="Listing status: L listed, D delisted, P suspended"),
+    force: bool = Query(False, description="Force sync even if already synced this month"),
+) -> dict:
+    # Purpose: pull hk_basic from tushare and upsert into stock_basic table.
+    """Sync Hong Kong stock list (hk_basic) from tushare into stock_basic table."""
+    return sync_hk_basic(ts_code=ts_code, list_status=list_status, force=bool(force))
 
 
 @router.post("/market/sync")

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-not-found]
 
 from data_sync_service.scheduler import (
     adj_factor_job,
     close_catchup_job,
     close_sync_job,
     daily_sync_job,
+    hk_basic_job,
     stock_basic_job,
 )
 
@@ -25,6 +26,12 @@ def create_scheduler() -> BackgroundScheduler:
         stock_basic_job.run,
         stock_basic_job.build_trigger(),
         id=stock_basic_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        hk_basic_job.run,
+        hk_basic_job.build_trigger(),
+        id=hk_basic_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(
