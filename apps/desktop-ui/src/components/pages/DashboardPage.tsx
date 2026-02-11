@@ -595,7 +595,42 @@ export function DashboardPage({
                           lines.push('');
                         }
 
-                        if (!dedupedDates.length && !(topRows.length && colDates.length)) {
+                        // Table 3: 5D net outflow.
+                        const flow5dOut: any = (summary?.industryFundFlow as any)?.flow5dOut ?? null;
+                        const outDates: string[] = Array.isArray(flow5dOut?.dates) ? flow5dOut.dates : [];
+                        const outColDates: string[] = outDates.length ? outDates.slice(-5) : dedupedDates;
+                        const outRows: any[] = Array.isArray(flow5dOut?.top) ? flow5dOut.top : [];
+                        if (outRows.length && outColDates.length) {
+                          const headers3 = [
+                            'Industry',
+                            'Sum(5D)',
+                            ...outColDates.map((d) => String(d).slice(5)),
+                          ];
+                          const rows3: unknown[][] = outRows.slice(0, 10).map((r: any) => {
+                            const seriesArr: any[] = Array.isArray(r?.series) ? r.series : [];
+                            const m3: Record<string, number> = {};
+                            for (const p of seriesArr) {
+                              const dd = String(p?.date ?? '');
+                              const nv = Number(p?.netInflow ?? 0);
+                              if (dd) m3[dd] = Number.isFinite(nv) ? nv : 0;
+                            }
+                            return [
+                              String(r?.industryName ?? ''),
+                              fmtAmountCn(r?.sum5d),
+                              ...outColDates.map((d) => fmtAmountCn(m3[d] ?? 0)),
+                            ];
+                          });
+                          lines.push('## 5D net outflow (Top by 5D sum)');
+                          lines.push('');
+                          lines.push(mdTable(headers3, rows3));
+                          lines.push('');
+                        }
+
+                        if (
+                          !dedupedDates.length &&
+                          !(topRows.length && colDates.length) &&
+                          !(outRows.length && outColDates.length)
+                        ) {
                           toastIndustryCopy(false, 'Nothing to copy (no industry fund flow data).');
                           return;
                         }
@@ -656,6 +691,69 @@ export function DashboardPage({
                             <div className="mt-4">
                               <div className="mb-2 text-xs text-[var(--k-muted)]">
                                 5D net inflow (Top by 5D sum)
+                              </div>
+                              <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                                <table className="w-full border-collapse text-xs">
+                                  <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                                    <tr className="text-left">
+                                      <th className="px-2 py-2">Industry</th>
+                                      <th className="px-2 py-2 text-right">Sum(5D)</th>
+                                      {colDates.map((d: string) => (
+                                        <th key={d} className="px-2 py-2 text-right font-mono">
+                                          {String(d).slice(5)}
+                                        </th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {topRows.slice(0, 10).map((r: any, idx: number) => {
+                                      const seriesArr: any[] = Array.isArray(r?.series)
+                                        ? r.series
+                                        : [];
+                                      const map: Record<string, number> = {};
+                                      for (const p of seriesArr) {
+                                        const dd = String(p?.date ?? '');
+                                        const nv = Number(p?.netInflow ?? 0);
+                                        if (dd) map[dd] = Number.isFinite(nv) ? nv : 0;
+                                      }
+                                      return (
+                                        <tr
+                                          key={`${String(r?.industryCode ?? idx)}`}
+                                          className="border-t border-[var(--k-border)]"
+                                        >
+                                          <td className="px-2 py-2">
+                                            {String(r?.industryName ?? '')}
+                                          </td>
+                                          <td className="px-2 py-2 text-right font-mono">
+                                            {fmtAmountCn(r?.sum5d)}
+                                          </td>
+                                          {colDates.map((d: string) => (
+                                            <td key={d} className="px-2 py-2 text-right font-mono">
+                                              {fmtAmountCn(map[d] ?? 0)}
+                                            </td>
+                                          ))}
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                        {(() => {
+                          const flow5dOut: any = (summary?.industryFundFlow as any)?.flow5dOut ?? null;
+                          const flowDates: string[] = Array.isArray(flow5dOut?.dates)
+                            ? flow5dOut.dates
+                            : [];
+                          const cols: string[] = flowDates.length ? flowDates.slice(-5) : dedupedDates;
+                          const topRows: any[] = Array.isArray(flow5dOut?.top) ? flow5dOut.top : [];
+                          if (!topRows.length || !cols.length) return null;
+                          const colDates = cols;
+                          return (
+                            <div className="mt-4">
+                              <div className="mb-2 text-xs text-[var(--k-muted)]">
+                                5D net outflow (Top by 5D sum)
                               </div>
                               <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
                                 <table className="w-full border-collapse text-xs">

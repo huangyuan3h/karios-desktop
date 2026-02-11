@@ -82,12 +82,11 @@ def _industry_top_by_date(*, as_of_date: str, days: int = 5, top_k: int = 5) -> 
     }
 
 
-def _industry_flow_5d(*, as_of_date: str) -> dict[str, Any]:
+def _industry_flow_5d_items(*, as_of_date: str) -> tuple[list[str], list[dict[str, Any]]]:
     """
-    Numeric 5D flow block used by Dashboard under industryFundFlow.flow5d.
+    Compute 5D aggregated flow items from DB for the last 5 cached dates (<= as_of_date).
     """
     ensure_industry()
-    # Compute from the DB for accuracy (includes negative outflows).
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -108,10 +107,9 @@ def _industry_flow_5d(*, as_of_date: str) -> dict[str, Any]:
             )
             rows = cur.fetchall()
 
-    # Build date list (ascending).
     dates_sorted: list[str] = sorted({str(r[0]) for r in rows if r and r[0]})
     if not dates_sorted:
-        return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": [], "top": []}
+        return [], []
 
     last_date = dates_sorted[-1]
     by_code: dict[str, dict[str, Any]] = {}
@@ -144,8 +142,16 @@ def _industry_flow_5d(*, as_of_date: str) -> dict[str, Any]:
                 "series": series,
             }
         )
+    return dates_sorted, items
 
-    # Default block is "inflow": top positive by sum5d.
+
+def _industry_flow_5d(*, as_of_date: str) -> dict[str, Any]:
+    """
+    Numeric 5D inflow block used by Dashboard under industryFundFlow.flow5d.
+    """
+    dates_sorted, items = _industry_flow_5d_items(as_of_date=as_of_date)
+    if not dates_sorted:
+        return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": [], "top": []}
     top_in = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0), reverse=True)[:10]
     return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_in}
 
@@ -154,65 +160,9 @@ def _industry_flow_5d_out(*, as_of_date: str) -> dict[str, Any]:
     """
     5D outflow block used by Dashboard under industryFundFlow.flow5dOut.
     """
-    base = _industry_flow_5d(as_of_date=as_of_date)
-    rows = base.get("top") if isinstance(base, dict) else []
-    # Recompute from full universe to ensure we have negative outflows.
-    ensure_industry()
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                WITH dates AS (
-                  SELECT DISTINCT date
-                  FROM market_cn_industry_fund_flow_daily
-                  WHERE date <= %s
-                  ORDER BY date DESC
-                  LIMIT 5
-                )
-                SELECT d.date, b.industry_code, b.industry_name, b.net_inflow
-                FROM market_cn_industry_fund_flow_daily b
-                JOIN dates d ON d.date = b.date
-                ORDER BY d.date ASC
-                """,
-                (as_of_date,),
-            )
-            all_rows = cur.fetchall()
-
-    dates_sorted: list[str] = sorted({str(r[0]) for r in all_rows if r and r[0]})
+    dates_sorted, items = _industry_flow_5d_items(as_of_date=as_of_date)
     if not dates_sorted:
         return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": [], "top": []}
-    last_date = dates_sorted[-1]
-    by_code: dict[str, dict[str, Any]] = {}
-    for r in all_rows:
-        d = str(r[0] or "")
-        code = str(r[1] or "")
-        name = str(r[2] or "")
-        try:
-            v = float(r[3] or 0.0)
-        except Exception:
-            v = 0.0
-        if not code:
-            continue
-        rec = by_code.setdefault(code, {"industryCode": code, "industryName": name, "perDate": {}})
-        if name and not rec.get("industryName"):
-            rec["industryName"] = name
-        rec["perDate"][d] = v
-
-    items: list[dict[str, Any]] = []
-    for code, rec in by_code.items():
-        per: dict[str, float] = rec.get("perDate") or {}
-        series = [{"date": d, "netInflow": float(per.get(d, 0.0) or 0.0)} for d in dates_sorted]
-        sum5d = float(sum(p["netInflow"] for p in series))
-        items.append(
-            {
-                "industryCode": code,
-                "industryName": str(rec.get("industryName") or ""),
-                "sum5d": sum5d,
-                "netInflow": float(per.get(last_date, 0.0) or 0.0),
-                "series": series,
-            }
-        )
-
     top_out = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0))[:10]
     return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_out}
 
