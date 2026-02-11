@@ -8,6 +8,7 @@ from data_sync_service.scheduler import (
     close_sync_job,
     daily_sync_job,
     hk_basic_job,
+    hk_daily_job,
     stock_basic_job,
 )
 
@@ -32,6 +33,12 @@ def create_scheduler() -> BackgroundScheduler:
         hk_basic_job.run,
         hk_basic_job.build_trigger(),
         id=hk_basic_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        hk_daily_job.run,
+        hk_daily_job.build_trigger(),
+        id=hk_daily_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(

@@ -6,6 +6,7 @@ from data_sync_service.service.adj_factor import sync_adj_factor_full
 from data_sync_service.service.close_sync import sync_close
 from data_sync_service.service.daily import sync_daily_full
 from data_sync_service.service.hk_basic import sync_hk_basic
+from data_sync_service.service.hk_daily import sync_hk_daily_full
 from data_sync_service.service.stock_basic import sync_stock_basic
 from data_sync_service.service.trade_calendar import sync_trade_calendar
 
@@ -58,6 +59,13 @@ def sync_daily_endpoint() -> dict:
     # Purpose: full daily sync from 2023-01-01 to today; skip if today already succeeded.
     """Trigger full sync of daily bars (2023-01-01 to today). Skips if today already succeeded; resumes from failure."""
     return sync_daily_full()
+
+
+@router.post("/sync/hk-daily")
+def sync_hk_daily_endpoint() -> dict:
+    # Purpose: full HK daily sync into daily table; skip if today already succeeded.
+    """Trigger full HK daily sync into daily table. Skips if today already succeeded; resumes from failure."""
+    return sync_hk_daily_full()
 
 
 @router.post("/sync/adj-factor")

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import pandas as pd
+import pandas as pd  # type: ignore[import-not-found, import-untyped]
 
 from data_sync_service.db import get_connection
 
@@ -82,6 +82,22 @@ def fetch_ts_codes() -> list[str]:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(f"SELECT ts_code FROM {TABLE_NAME} ORDER BY ts_code")
+            rows = cur.fetchall()
+    return [r[0] for r in rows if r and r[0]]
+
+
+def fetch_ts_codes_by_market(market: str) -> list[str]:
+    """Return ordered ts_codes filtered by market."""
+    ensure_table()
+    market2 = (market or "").strip().upper()
+    if not market2:
+        return fetch_ts_codes()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT ts_code FROM {TABLE_NAME} WHERE market = %s ORDER BY ts_code",
+                (market2,),
+            )
             rows = cur.fetchall()
     return [r[0] for r in rows if r and r[0]]
 
