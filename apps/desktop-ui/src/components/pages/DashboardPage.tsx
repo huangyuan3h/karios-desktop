@@ -79,6 +79,25 @@ function fmtPerfLine(r: any): string {
   return '—';
 }
 
+function escapeMarkdownCell(x: unknown): string {
+  const s0 = String(x ?? '');
+  // Keep it single-line and avoid breaking Markdown table formatting.
+  const s1 = s0.replaceAll('\r\n', '\n').replaceAll('\r', '\n').replaceAll('\n', '<br/>');
+  return s1.replaceAll('|', '\\|');
+}
+
+function mdRow(cells: unknown[]): string {
+  return `| ${cells.map(escapeMarkdownCell).join(' | ')} |`;
+}
+
+function mdTable(headers: string[], rows: unknown[][]): string {
+  const out: string[] = [];
+  out.push(mdRow(headers));
+  out.push(mdRow(headers.map(() => '---')));
+  for (const r of rows) out.push(mdRow(r));
+  return out.join('\n');
+}
+
 
 
 export function DashboardPage({
@@ -91,8 +110,24 @@ export function DashboardPage({
   const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [sentimentBusy, setSentimentBusy] = React.useState(false);
+  const [industryCopyStatus, setIndustryCopyStatus] = React.useState<{ ok: boolean; text: string } | null>(
+    null,
+  );
   const [error, setError] = React.useState<string | null>(null);
   const [editLayout, setEditLayout] = React.useState(false);
+
+  const industryCopyTimerRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    return () => {
+      if (industryCopyTimerRef.current != null) window.clearTimeout(industryCopyTimerRef.current);
+    };
+  }, []);
+
+  function toastIndustryCopy(ok: boolean, text: string) {
+    setIndustryCopyStatus({ ok, text });
+    if (industryCopyTimerRef.current != null) window.clearTimeout(industryCopyTimerRef.current);
+    industryCopyTimerRef.current = window.setTimeout(() => setIndustryCopyStatus(null), 2400);
+  }
 
   const defaultCards = React.useMemo(
     () => [
@@ -506,6 +541,72 @@ export function DashboardPage({
                       prevSig = sig;
                     }
 
+                    async function copyIndustryMarkdown() {
+                      try {
+                        const asOfDate = String(
+                          summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '',
+                        ).trim();
+
+                        const lines: string[] = [];
+                        lines.push(`# Industry fund flow${asOfDate ? ` (asOfDate: ${asOfDate})` : ''}`);
+                        lines.push('');
+
+                        // Table 1: Top5×Date hotspots.
+                        if (dedupedDates.length) {
+                          const headers1 = ['#', ...dedupedDates.map((d) => String(d).slice(5))];
+                          const rows1: unknown[][] = Array.from({ length: 5 }).map((_, i) => [
+                            i + 1,
+                            ...dedupedDates.map((d) => String((map[d] || [])[i] ?? '')),
+                          ]);
+                          lines.push('## Top5×Date hotspots (names only)');
+                          lines.push('');
+                          lines.push(mdTable(headers1, rows1));
+                          lines.push('');
+                        }
+
+                        // Table 2: 5D net inflow.
+                        const flow5d: any = (summary?.industryFundFlow as any)?.flow5d ?? null;
+                        const flowDates: string[] = Array.isArray(flow5d?.dates) ? flow5d.dates : [];
+                        const colDates: string[] = flowDates.length ? flowDates.slice(-5) : dedupedDates;
+                        const topRows: any[] = Array.isArray(flow5d?.top) ? flow5d.top : [];
+                        if (topRows.length && colDates.length) {
+                          const headers2 = [
+                            'Industry',
+                            'Sum(5D)',
+                            ...colDates.map((d) => String(d).slice(5)),
+                          ];
+                          const rows2: unknown[][] = topRows.slice(0, 10).map((r: any) => {
+                            const seriesArr: any[] = Array.isArray(r?.series) ? r.series : [];
+                            const m2: Record<string, number> = {};
+                            for (const p of seriesArr) {
+                              const dd = String(p?.date ?? '');
+                              const nv = Number(p?.netInflow ?? 0);
+                              if (dd) m2[dd] = Number.isFinite(nv) ? nv : 0;
+                            }
+                            return [
+                              String(r?.industryName ?? ''),
+                              fmtAmountCn(r?.sum5d),
+                              ...colDates.map((d) => fmtAmountCn(m2[d] ?? 0)),
+                            ];
+                          });
+                          lines.push('## 5D net inflow (Top by 5D sum)');
+                          lines.push('');
+                          lines.push(mdTable(headers2, rows2));
+                          lines.push('');
+                        }
+
+                        if (!dedupedDates.length && !(topRows.length && colDates.length)) {
+                          toastIndustryCopy(false, 'Nothing to copy (no industry fund flow data).');
+                          return;
+                        }
+
+                        await navigator.clipboard.writeText(lines.join('\n'));
+                        toastIndustryCopy(true, 'Copied Markdown to clipboard.');
+                      } catch (e) {
+                        toastIndustryCopy(false, e instanceof Error ? e.message : String(e));
+                      }
+                    }
+
                     return (
                       <>
                         {collapsed ? (
@@ -613,6 +714,9 @@ export function DashboardPage({
                           >
                             Open Industry Flow
                           </Button>
+                          <Button size="sm" variant="secondary" onClick={() => void copyIndustryMarkdown()}>
+                            Copy Markdown
+                          </Button>
                           <Button
                             size="sm"
                             variant="secondary"
@@ -635,6 +739,15 @@ export function DashboardPage({
                             Reference
                           </Button>
                         </div>
+                        {industryCopyStatus ? (
+                          <div
+                            className={`mt-2 text-xs ${
+                              industryCopyStatus.ok ? 'text-emerald-600' : 'text-red-600'
+                            }`}
+                          >
+                            {industryCopyStatus.text}
+                          </div>
+                        ) : null}
                       </>
                     );
                   })()}
