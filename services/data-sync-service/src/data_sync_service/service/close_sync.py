@@ -5,14 +5,15 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-import pandas as pd
-import tushare as ts
+import pandas as pd  # type: ignore[import-not-found]
+import tushare as ts  # type: ignore[import-not-found]
 
 from data_sync_service.config import get_settings
 from data_sync_service.db.daily import upsert_from_dataframe as upsert_daily
 from data_sync_service.db.daily import update_adj_factor_from_dataframe
 from data_sync_service.db.sync_job_record import get_last_success, get_today_run, insert_record
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
+from data_sync_service.service.trade_calendar import sync_trade_calendar
 
 JOB_TYPE = "stock_close_sync"
 
@@ -96,10 +97,33 @@ def sync_close(exchange: str = "SSE") -> dict:
 
     today = _cn_today()
     open_flag = is_trading_day(exchange, today)
+    trade_cal_auto: dict | None = None
     if open_flag is None:
-        return {"ok": False, "error": "trade calendar missing for today; sync trade_cal first"}
+        # Auto-heal: sync trade calendar first (include today).
+        # We fetch a window large enough to cover common gaps and near-future dates.
+        start = today - timedelta(days=400)
+        end = today + timedelta(days=30)
+        trade_cal_auto = sync_trade_calendar(
+            exchange=exchange,
+            start_date=_to_yyyymmdd(start),
+            end_date=_to_yyyymmdd(end),
+        )
+        if not trade_cal_auto.get("ok"):
+            return {
+                "ok": False,
+                "error": (
+                    "trade calendar missing for today; auto sync trade_cal failed: "
+                    + str(trade_cal_auto.get("error") or "unknown error")
+                ),
+            }
+        open_flag = is_trading_day(exchange, today)
+        if open_flag is None:
+            return {"ok": False, "error": "trade calendar still missing for today after trade_cal sync"}
     if open_flag is False:
-        return {"ok": True, "skipped": True, "message": "not a trading day"}
+        out = {"ok": True, "skipped": True, "message": "not a trading day"}
+        if trade_cal_auto is not None:
+            out["trade_cal"] = {"autoSynced": True, "result": trade_cal_auto}
+        return out
 
     # Determine start date by resume marker or last success time.
     start_date = today
@@ -118,7 +142,10 @@ def sync_close(exchange: str = "SSE") -> dict:
 
     settings = get_settings()
     if not settings.tu_share_api_key:
-        return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
+        out2 = {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
+        if trade_cal_auto is not None:
+            out2["trade_cal"] = {"autoSynced": True, "result": trade_cal_auto}
+        return out2
     pro = ts.pro_api(settings.tu_share_api_key)
 
     trade_dates = get_open_dates(exchange=exchange, start_date=start_date, end_date=today)
@@ -140,12 +167,15 @@ def sync_close(exchange: str = "SSE") -> dict:
             return {"ok": False, "error": str(e), "last_marker": last_completed}
 
     insert_record(JOB_TYPE, success=True, last_ts_code=last_completed, error_message=None)
-    return {
+    out3 = {
         "ok": True,
         "updated_daily_rows": total_daily,
         "updated_adj_factor_rows": total_factor,
         "trade_dates": [d.isoformat() for d in trade_dates],
     }
+    if trade_cal_auto is not None:
+        out3["trade_cal"] = {"autoSynced": True, "result": trade_cal_auto}
+    return out3
 
 
 def get_close_sync_status() -> dict:
