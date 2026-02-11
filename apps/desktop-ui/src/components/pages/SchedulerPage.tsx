@@ -161,7 +161,8 @@ export function SchedulerPage() {
     setNeedTradeCal(false);
     setBusy(true);
     try {
-      const r = await apiPostJson<CloseSyncResp>('/sync/close');
+      // Use force=true to heal "false success" records (e.g. user clicked before close).
+      const r = await apiPostJson<CloseSyncResp>('/sync/close?force=true');
       if ('ok' in r && r.ok) {
         if (r.skipped) setMsg(r.message || 'Skipped.');
         else

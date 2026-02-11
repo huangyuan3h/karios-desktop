@@ -21,7 +21,7 @@ def build_trigger() -> CronTrigger:
 
 
 def run() -> None:
-    result = sync_close(exchange="SSE")
+    result = sync_close(exchange="SSE", force=False)
     if result.get("ok"):
         if result.get("skipped"):
             logger.info("close_sync skipped: %s", result.get("message", ""))

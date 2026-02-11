@@ -67,7 +67,7 @@ def sync_trade_cal_endpoint(
 
 
 @router.post("/sync/close")
-def sync_close_endpoint(exchange: str = Query("SSE")) -> dict:
+def sync_close_endpoint(exchange: str = Query("SSE"), force: bool = Query(False)) -> dict:
     # Purpose: close-time sync by trade_date window; pulls daily + adj_factor (paged).
     """Close-time sync by trade_date window: daily + adj_factor (paged)."""
-    return sync_close(exchange=exchange)
+    return sync_close(exchange=exchange, force=bool(force))

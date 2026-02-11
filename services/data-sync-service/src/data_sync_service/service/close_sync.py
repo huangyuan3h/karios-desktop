@@ -35,6 +35,9 @@ DAILY_FIELDS = [
 def _cn_today() -> date:
     return datetime.now(ZoneInfo("Asia/Shanghai")).date()
 
+def _cn_now() -> datetime:
+    return datetime.now(ZoneInfo("Asia/Shanghai"))
+
 
 def _parse_yyyymmdd(s: str) -> date:
     return date.fromisoformat(f"{s[:4]}-{s[4:6]}-{s[6:8]}")
@@ -81,7 +84,7 @@ def _fetch_paged_adj_factor(pro, trade_date: str, limit: int = 5000) -> int:
     return total
 
 
-def sync_close(exchange: str = "SSE") -> dict:
+def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
     """
     Close-time sync:
     - Requires trade calendar to be present.
@@ -92,10 +95,11 @@ def sync_close(exchange: str = "SSE") -> dict:
     - For each trading day: pull market-wide daily bars (paged) and adj_factor (paged).
     """
     today_run = get_today_run(JOB_TYPE)
-    if today_run and today_run.get("success"):
+    if today_run and today_run.get("success") and not bool(force):
         return {"ok": True, "skipped": True, "message": "already synced today"}
 
     today = _cn_today()
+    now_cn = _cn_now()
     open_flag = is_trading_day(exchange, today)
     trade_cal_auto: dict | None = None
     if open_flag is None:
@@ -140,6 +144,25 @@ def sync_close(exchange: str = "SSE") -> dict:
     if start_date > today:
         return {"ok": True, "skipped": True, "message": "already up to date"}
 
+    # Guard: avoid marking today's close as synced before market close.
+    # If user clicks during trading hours, tushare may return empty/partial rows.
+    # We allow catching up previous days before close, but never process *today* before close-ready.
+    close_ready_minutes = 17 * 60 + 5  # after market close + data settle buffer
+    now_minutes = now_cn.hour * 60 + now_cn.minute
+    end_date = today
+    if now_cn.date() == today and now_minutes < close_ready_minutes:
+        if start_date >= today:
+            out0 = {
+                "ok": True,
+                "skipped": True,
+                "message": "too early; market close sync is available after 17:05 Asia/Shanghai",
+            }
+            if trade_cal_auto is not None:
+                out0["trade_cal"] = {"autoSynced": True, "result": trade_cal_auto}
+            return out0
+        # Catch up only up to yesterday; do NOT mark today's close as done.
+        end_date = today - timedelta(days=1)
+
     settings = get_settings()
     if not settings.tu_share_api_key:
         out2 = {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
@@ -148,7 +171,7 @@ def sync_close(exchange: str = "SSE") -> dict:
         return out2
     pro = ts.pro_api(settings.tu_share_api_key)
 
-    trade_dates = get_open_dates(exchange=exchange, start_date=start_date, end_date=today)
+    trade_dates = get_open_dates(exchange=exchange, start_date=start_date, end_date=end_date)
     if not trade_dates:
         return {"ok": True, "updated": 0, "message": "no trading dates in range"}
 
@@ -159,20 +182,30 @@ def sync_close(exchange: str = "SSE") -> dict:
     for d in trade_dates:
         td = _to_yyyymmdd(d)
         try:
-            total_daily += _fetch_paged_daily(pro, td)
-            total_factor += _fetch_paged_adj_factor(pro, td)
+            n_daily = _fetch_paged_daily(pro, td)
+            n_factor = _fetch_paged_adj_factor(pro, td)
+            # If today's daily is empty, treat as a transient upstream delay and allow retry later.
+            if d == today and n_daily <= 0:
+                raise RuntimeError("tushare daily returned empty for today; try again later")
+            total_daily += n_daily
+            total_factor += n_factor
             last_completed = td
         except Exception as e:  # noqa: BLE001
             insert_record(JOB_TYPE, success=False, last_ts_code=last_completed, error_message=str(e))
             return {"ok": False, "error": str(e), "last_marker": last_completed}
 
-    insert_record(JOB_TYPE, success=True, last_ts_code=last_completed, error_message=None)
+    # Only mark the close job as "done today" when we actually processed today's trade_date.
+    if end_date == today:
+        insert_record(JOB_TYPE, success=True, last_ts_code=last_completed, error_message=None)
     out3 = {
         "ok": True,
         "updated_daily_rows": total_daily,
         "updated_adj_factor_rows": total_factor,
         "trade_dates": [d.isoformat() for d in trade_dates],
     }
+    if end_date != today:
+        out3["partial"] = True
+        out3["message"] = "pre-close catchup: synced until yesterday; will sync today after close"
     if trade_cal_auto is not None:
         out3["trade_cal"] = {"autoSynced": True, "result": trade_cal_auto}
     return out3
