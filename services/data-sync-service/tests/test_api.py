@@ -230,3 +230,47 @@ def test_global_stock_search_endpoint_shape() -> None:
     payload = resp.json()
     assert "items" in payload
     assert isinstance(payload["items"], list)
+
+
+def test_system_prompt_endpoints_shape_and_roundtrip() -> None:
+    client = TestClient(app)
+
+    # Snapshot previous state (best-effort restore).
+    prev_active = client.get("/system-prompts/active").json()
+    prev_legacy = client.get("/settings/system-prompt").json().get("value", "")
+
+    created_id: str | None = None
+    try:
+        # Create preset (becomes active by default).
+        created = client.post("/system-prompts", json={"title": "Test Prompt", "content": "Hello"})
+        assert created.status_code == 200
+        created_id = created.json().get("id")
+        assert isinstance(created_id, str) and created_id
+
+        # Active should be this preset.
+        active = client.get("/system-prompts/active")
+        assert active.status_code == 200
+        a = active.json()
+        assert a.get("id") == created_id
+        assert isinstance(a.get("title"), str)
+        assert isinstance(a.get("content"), str)
+
+        # Legacy PUT should update active preset content when active exists.
+        resp = client.put("/settings/system-prompt", json={"value": "Updated via legacy"})
+        assert resp.status_code == 200
+        assert resp.json().get("ok") is True
+
+        active2 = client.get("/system-prompts/active").json()
+        assert active2.get("id") == created_id
+        assert active2.get("content") == "Updated via legacy"
+    finally:
+        # Restore active selection
+        if prev_active.get("id"):
+            client.put("/system-prompts/active", json={"id": prev_active.get("id")})
+        else:
+            client.put("/system-prompts/active", json={"id": None})
+            client.put("/settings/system-prompt", json={"value": str(prev_legacy or "")})
+
+        # Cleanup created preset
+        if created_id:
+            client.delete(f"/system-prompts/{created_id}")
