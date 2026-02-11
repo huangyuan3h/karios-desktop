@@ -7,6 +7,7 @@ import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
+import { loadJson } from '@/lib/storage';
 
 type DashboardSummary = any;
 type DashboardSyncResp = any;
@@ -98,6 +99,140 @@ function mdTable(headers: string[], rows: unknown[][]): string {
   return out.join('\n');
 }
 
+function mdBool(v: boolean | null | undefined): string {
+  if (v == null) return '—';
+  return v ? '✅' : '❌';
+}
+
+function mdNum(v: number | null | undefined, digits = 2): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return v.toFixed(digits);
+}
+
+function mdScore(v: number | null | undefined): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return String(Math.round(v));
+}
+
+function mdPrice(v: number | null | undefined): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return v.toFixed(2);
+}
+
+function mdLines(items: string[]): string {
+  return items.filter((x) => String(x || '').trim()).join('\n');
+}
+
+function mdScoreParts(parts: Record<string, number> | undefined): string[] {
+  if (!parts) return [];
+  const entries = Object.entries(parts).filter(([, v]) => typeof v === 'number' && Number.isFinite(v));
+  entries.sort((a, b) => Number(b[1]) - Number(a[1]));
+  return entries.map(([k, v]) => `- ${k}: ${v}`);
+}
+
+const WATCHLIST_STORAGE_KEY = 'karios.watchlist.v1';
+
+type WatchlistItem = {
+  symbol: string;
+  name?: string | null;
+  addedAt: string;
+  color?: string;
+};
+
+type TrendOkResult = {
+  symbol: string;
+  name?: string | null;
+  asOfDate?: string | null;
+  trendOk?: boolean | null;
+  score?: number | null;
+  scoreParts?: Record<string, number>;
+  stopLossPrice?: number | null;
+  buyMode?: string | null;
+  buyAction?: string | null;
+  buyZoneLow?: number | null;
+  buyZoneHigh?: number | null;
+  checks?: Record<string, unknown> | null;
+  values?: Record<string, unknown> | null;
+  missingData?: string[];
+};
+
+type QuoteResp = {
+  ok: boolean;
+  error?: string;
+  items: Array<{
+    ts_code: string;
+    price: string | null;
+    trade_time: string | null;
+  }>;
+};
+
+function chunk<T>(arr: T[], n: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+}
+
+function toTsCodeFromSymbol(symbol: string): string | null {
+  // Only handle CN A-shares for /quote.
+  const s = symbol.trim().toUpperCase();
+  if (!s.startsWith('CN:')) return null;
+  const ticker = s.slice('CN:'.length).trim();
+  if (!/^[0-9]{6}$/.test(ticker)) return null;
+  const suffix = ticker.startsWith('6') ? 'SH' : 'SZ';
+  return `${ticker}.${suffix}`;
+}
+
+function getShanghaiTimeParts(): { weekday: string; hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const map = new Map(parts.map((p) => [p.type, p.value]));
+  return {
+    weekday: map.get('weekday') ?? '',
+    hour: Number(map.get('hour') ?? 0),
+    minute: Number(map.get('minute') ?? 0),
+  };
+}
+
+function getShanghaiTodayIso(): string {
+  // YYYY-MM-DD in Asia/Shanghai
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const map = new Map(parts.map((p) => [p.type, p.value]));
+  const y = map.get('year') ?? '1970';
+  const m = map.get('month') ?? '01';
+  const d = map.get('day') ?? '01';
+  return `${y}-${m}-${d}`;
+}
+
+function tradeDateFromTradeTime(tradeTime: string | null | undefined): string | null {
+  const s = String(tradeTime ?? '').trim();
+  if (!s) return null;
+  const m1 = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m1) return m1[1];
+  const m2 = s.match(/^(\d{8})$/);
+  if (m2) return `${m2[1].slice(0, 4)}-${m2[1].slice(4, 6)}-${m2[1].slice(6, 8)}`;
+  return null;
+}
+
+function isShanghaiTradingTime(): boolean {
+  const { weekday, hour, minute } = getShanghaiTimeParts();
+  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
+  const minutes = hour * 60 + minute;
+  // CN A-share: 09:30-11:30, 13:00-15:00
+  const inMorning = minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30;
+  const inAfternoon = minutes >= 13 * 60 && minutes <= 15 * 60;
+  return inMorning || inAfternoon;
+}
+
 
 
 export function DashboardPage({
@@ -113,13 +248,22 @@ export function DashboardPage({
   const [industryCopyStatus, setIndustryCopyStatus] = React.useState<{ ok: boolean; text: string } | null>(
     null,
   );
+  const [sentimentCopyStatus, setSentimentCopyStatus] = React.useState<{ ok: boolean; text: string } | null>(
+    null,
+  );
+  const [copyAllBusy, setCopyAllBusy] = React.useState(false);
+  const [copyAllStatus, setCopyAllStatus] = React.useState<{ ok: boolean; text: string } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [editLayout, setEditLayout] = React.useState(false);
 
   const industryCopyTimerRef = React.useRef<number | null>(null);
+  const sentimentCopyTimerRef = React.useRef<number | null>(null);
+  const copyAllTimerRef = React.useRef<number | null>(null);
   React.useEffect(() => {
     return () => {
       if (industryCopyTimerRef.current != null) window.clearTimeout(industryCopyTimerRef.current);
+      if (sentimentCopyTimerRef.current != null) window.clearTimeout(sentimentCopyTimerRef.current);
+      if (copyAllTimerRef.current != null) window.clearTimeout(copyAllTimerRef.current);
     };
   }, []);
 
@@ -127,6 +271,18 @@ export function DashboardPage({
     setIndustryCopyStatus({ ok, text });
     if (industryCopyTimerRef.current != null) window.clearTimeout(industryCopyTimerRef.current);
     industryCopyTimerRef.current = window.setTimeout(() => setIndustryCopyStatus(null), 2400);
+  }
+
+  function toastSentimentCopy(ok: boolean, text: string) {
+    setSentimentCopyStatus({ ok, text });
+    if (sentimentCopyTimerRef.current != null) window.clearTimeout(sentimentCopyTimerRef.current);
+    sentimentCopyTimerRef.current = window.setTimeout(() => setSentimentCopyStatus(null), 2400);
+  }
+
+  function toastCopyAll(ok: boolean, text: string) {
+    setCopyAllStatus({ ok, text });
+    if (copyAllTimerRef.current != null) window.clearTimeout(copyAllTimerRef.current);
+    copyAllTimerRef.current = window.setTimeout(() => setCopyAllStatus(null), 2600);
   }
 
   const defaultCards = React.useMemo(
@@ -194,6 +350,369 @@ export function DashboardPage({
     }
   }
 
+  function buildIndustryMarkdown(s: DashboardSummary | null, heading = '##'): string {
+    const summary2: any = s ?? {};
+    const ind: any = summary2?.industryFundFlow ?? {};
+    const asOfDate = String(ind?.asOfDate ?? summary2?.asOfDate ?? '').trim();
+
+    const datesAll: string[] = Array.isArray(ind?.dates) ? ind.dates : [];
+    const rawShownDates = datesAll.slice(-5);
+    const topByDateArr: any[] = Array.isArray(ind?.topByDate) ? ind.topByDate : [];
+    const byDate: Record<string, string[]> = {};
+    for (const it of topByDateArr) {
+      const d = String(it?.date ?? '');
+      const top = Array.isArray(it?.top) ? it.top.map((x: any) => String(x ?? '')) : [];
+      if (d) byDate[d] = top;
+    }
+    const dedupedDates: string[] = [];
+    let prevSig = '';
+    for (const d of rawShownDates) {
+      const sig = (byDate[d] || []).slice(0, 5).join('|');
+      if (sig && sig === prevSig) continue;
+      dedupedDates.push(d);
+      prevSig = sig;
+    }
+
+    const lines: string[] = [];
+    lines.push(`${heading} Industry fund flow`);
+    if (asOfDate) lines.push(`- asOfDate: ${asOfDate}`);
+    lines.push('');
+
+    if (dedupedDates.length) {
+      const headers1 = ['#', ...dedupedDates.map((d) => String(d).slice(5))];
+      const rows1: unknown[][] = Array.from({ length: 5 }).map((_, i) => [
+        i + 1,
+        ...dedupedDates.map((d) => String((byDate[d] || [])[i] ?? '')),
+      ]);
+      lines.push(`${heading}# Top5×Date hotspots (names only)`);
+      lines.push('');
+      lines.push(mdTable(headers1, rows1));
+      lines.push('');
+    }
+
+    const buildFlow = (block: any, title: string) => {
+      const dates: string[] = Array.isArray(block?.dates) ? block.dates : [];
+      const cols: string[] = dates.length ? dates.slice(-5) : dedupedDates;
+      const topRows: any[] = Array.isArray(block?.top) ? block.top : [];
+      if (!topRows.length || !cols.length) return;
+      const headers = ['Industry', 'Sum(5D)', ...cols.map((d) => String(d).slice(5))];
+      const rows: unknown[][] = topRows.slice(0, 10).map((r: any) => {
+        const seriesArr: any[] = Array.isArray(r?.series) ? r.series : [];
+        const m2: Record<string, number> = {};
+        for (const p of seriesArr) {
+          const dd = String(p?.date ?? '');
+          const nv = Number(p?.netInflow ?? 0);
+          if (dd) m2[dd] = Number.isFinite(nv) ? nv : 0;
+        }
+        return [
+          String(r?.industryName ?? ''),
+          fmtAmountCn(r?.sum5d),
+          ...cols.map((d) => fmtAmountCn(m2[d] ?? 0)),
+        ];
+      });
+      lines.push(`${heading}# ${title}`);
+      lines.push('');
+      lines.push(mdTable(headers, rows));
+      lines.push('');
+    };
+
+    buildFlow(ind?.flow5d ?? null, '5D net inflow (Top by 5D sum)');
+    buildFlow(ind?.flow5dOut ?? null, '5D net outflow (Top by 5D sum)');
+
+    return lines.join('\n').trim() + '\n';
+  }
+
+  function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##'): string {
+    const summary2: any = s ?? {};
+    const ms: any = summary2?.marketSentiment ?? {};
+    const items: any[] = Array.isArray(ms?.items) ? ms.items : [];
+    const latest = items.length ? items[items.length - 1] : null;
+    const asOfDate = String(ms?.asOfDate ?? summary2?.asOfDate ?? '').trim();
+
+    const lines: string[] = [];
+    lines.push(`${heading} Market sentiment`);
+    if (asOfDate) lines.push(`- asOfDate: ${asOfDate}`);
+    if (latest) {
+      const risk = String(latest?.riskMode ?? '');
+      if (risk) lines.push(`- risk: ${risk}`);
+      const rules = Array.isArray(latest?.rules) ? latest.rules.map((x: any) => String(x)).filter(Boolean) : [];
+      if (rules.length) lines.push(`- rules: ${rules.slice(0, 6).join(' • ')}${rules.length > 6 ? '…' : ''}`);
+    }
+    lines.push('');
+
+    const last5 = (items || []).slice(-5);
+    const headers = ['date', 'ratio', 'turnover', 'premium%', 'failed%', 'risk'];
+    const rows: unknown[][] = last5.map((it: any) => [
+      String(it?.date ?? ''),
+      Number.isFinite(it?.upDownRatio) ? Number(it.upDownRatio).toFixed(2) : '—',
+      fmtAmountCn(it?.marketTurnoverCny),
+      Number.isFinite(it?.yesterdayLimitUpPremium) ? `${Number(it.yesterdayLimitUpPremium).toFixed(2)}%` : '—',
+      Number.isFinite(it?.failedLimitUpRate) ? `${Number(it.failedLimitUpRate).toFixed(1)}%` : '—',
+      String(it?.riskMode ?? ''),
+    ]);
+    lines.push(mdTable(headers, rows));
+    lines.push('');
+    return lines.join('\n').trim() + '\n';
+  }
+
+  async function buildScreenersMarkdown(s: DashboardSummary | null, heading = '##'): Promise<string> {
+    const summary2: any = s ?? {};
+    const rows: any[] = Array.isArray(summary2?.screeners) ? summary2.screeners : [];
+    const lines: string[] = [];
+    lines.push(`${heading} Screener sync`);
+    lines.push('');
+    const headers = ['Name', 'capturedAt', 'rows', 'filters'];
+    const rows2: unknown[][] = rows.map((r: any) => [
+      String(r?.name ?? r?.id ?? ''),
+      String(r?.capturedAt ?? ''),
+      String(r?.rowCount ?? 0),
+      String(r?.filtersCount ?? 0),
+    ]);
+    lines.push(mdTable(headers, rows2));
+    lines.push('');
+
+    // Also include latest snapshot tables (DB content) for each screener.
+    for (const sc of rows) {
+      const sid = String(sc?.id ?? '').trim();
+      if (!sid) continue;
+      try {
+        const list = await apiGetJson<{ items: Array<{ id: string; capturedAt?: string; rowCount?: number }> }>(
+          `/integrations/tradingview/screeners/${encodeURIComponent(sid)}/snapshots?limit=1`,
+        );
+        const snapId = String(list?.items?.[0]?.id ?? '').trim();
+        if (!snapId) continue;
+        const snap = await apiGetJson<{
+          id: string;
+          screenerId: string;
+          capturedAt: string;
+          rowCount: number;
+          screenTitle: string | null;
+          filters: string[];
+          url: string;
+          headers: string[];
+          rows: Array<Record<string, string>>;
+        }>(`/integrations/tradingview/snapshots/${encodeURIComponent(snapId)}`);
+
+        const title = String(snap?.screenTitle ?? sc?.name ?? sid).trim() || sid;
+        const capturedAt = String(snap?.capturedAt ?? '').trim();
+        const headersTv: string[] = Array.isArray(snap?.headers) ? snap.headers.map((h) => String(h ?? '')) : [];
+        const rowsTv: Array<Record<string, string>> = Array.isArray(snap?.rows) ? snap.rows : [];
+        const limit = 50;
+        const truncated = rowsTv.length > limit;
+        const bodyRows: unknown[][] = rowsTv.slice(0, limit).map((r) => headersTv.map((h) => String(r?.[h] ?? '')));
+
+        lines.push(`${heading}# ${escapeMarkdownCell(title)}`);
+        if (capturedAt) lines.push(`- capturedAt: ${capturedAt}`);
+        lines.push(`- rows: ${String(snap?.rowCount ?? rowsTv.length ?? 0)}`);
+        if (Array.isArray(snap?.filters) && snap.filters.length) {
+          lines.push(`- filters: ${snap.filters.slice(0, 8).map((x) => escapeMarkdownCell(String(x))).join(' • ')}${snap.filters.length > 8 ? '…' : ''}`);
+        }
+        if (truncated) lines.push(`- note: showing first ${limit} rows (truncated)`);
+        lines.push('');
+        if (headersTv.length) lines.push(mdTable(headersTv, bodyRows));
+        else lines.push('_No headers._');
+        lines.push('');
+      } catch (e) {
+        lines.push(`${heading}# ${escapeMarkdownCell(String(sc?.name ?? sid))}`);
+        lines.push(`- error: ${escapeMarkdownCell(e instanceof Error ? e.message : String(e))}`);
+        lines.push('');
+      }
+    }
+
+    return lines.join('\n').trim() + '\n';
+  }
+
+  async function buildWatchlistMarkdown(): Promise<string> {
+    const itemsRaw = loadJson<WatchlistItem[]>(WATCHLIST_STORAGE_KEY, []);
+    const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
+      .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
+      .map((x) => ({ ...x, symbol: String(x.symbol).trim().toUpperCase() }));
+
+    const heading = '##';
+    if (!items.length) return `${heading} Watchlist\n\nNo items.\n`;
+
+    const syms = items.map((x) => x.symbol);
+    const tradingTime = isShanghaiTradingTime();
+    const todaySh = getShanghaiTodayIso();
+
+    // 1) TrendOK
+    const trend: Record<string, TrendOkResult> = {};
+    for (const part of chunk(syms, 200)) {
+      const sp = new URLSearchParams();
+      sp.set('refresh', 'true');
+      sp.set('realtime', tradingTime ? 'true' : 'false');
+      for (const s of part) sp.append('symbols', s);
+      const trendRows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+      for (const r of Array.isArray(trendRows) ? trendRows : []) {
+        if (r && r.symbol) trend[String(r.symbol).toUpperCase()] = r;
+      }
+    }
+
+    // 2) Quotes (CN only)
+    const byTsCode = new Map<string, string>();
+    const tsCodes = syms
+      .map((s) => {
+        const t = toTsCodeFromSymbol(s);
+        if (t) byTsCode.set(t, s);
+        return t;
+      })
+      .filter(Boolean) as string[];
+
+    const quotes: Record<string, { price: number | null; tradeTime: string | null }> = {};
+    for (const part of chunk(tsCodes, 50)) {
+      const r = await apiGetJson<QuoteResp>(`/quote?ts_codes=${encodeURIComponent(part.join(','))}`).catch(
+        () => null,
+      );
+      for (const it of r?.items ?? []) {
+        const sym = byTsCode.get(it.ts_code);
+        if (!sym) continue;
+        const p = it.price != null ? Number(it.price) : NaN;
+        quotes[sym] = {
+          price: Number.isFinite(p) ? p : null,
+          tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
+        };
+      }
+    }
+
+    // 3) Sort by score desc (unknown scores at bottom)
+    const sorted = [...items];
+    sorted.sort((a, b) => {
+      const sa = trend[a.symbol]?.score;
+      const sb = trend[b.symbol]?.score;
+      const va = typeof sa === 'number' && Number.isFinite(sa) ? sa : null;
+      const vb = typeof sb === 'number' && Number.isFinite(sb) ? sb : null;
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      return vb - va;
+    });
+
+    // 4) Strict validation (same spirit as Watchlist page).
+    const missingRealtime: string[] = [];
+    const missingTrend: string[] = [];
+    const missingHistory: string[] = [];
+    for (const it of sorted) {
+      const sym = it.symbol;
+      const t = trend[sym];
+      if (!t) {
+        missingTrend.push(sym);
+        continue;
+      }
+      const md = Array.isArray(t.missingData) ? t.missingData.filter(Boolean) : [];
+      if (md.length) missingHistory.push(sym);
+      if (tradingTime && sym.startsWith('CN:')) {
+        const q = quotes[sym];
+        const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
+        if (!(q && typeof q.price === 'number' && Number.isFinite(q.price) && qDate === todaySh)) {
+          missingRealtime.push(sym);
+        }
+      }
+    }
+    if (missingTrend.length || missingHistory.length || missingRealtime.length) {
+      const parts: string[] = [];
+      if (missingRealtime.length) parts.push(`missing realtime quote (today): ${missingRealtime.slice(0, 6).join(', ')}${missingRealtime.length > 6 ? '…' : ''}`);
+      if (missingHistory.length) parts.push(`missing history/indicators: ${missingHistory.slice(0, 6).join(', ')}${missingHistory.length > 6 ? '…' : ''}`);
+      if (missingTrend.length) parts.push(`missing TrendOK result: ${missingTrend.slice(0, 6).join(', ')}${missingTrend.length > 6 ? '…' : ''}`);
+      throw new Error(`Copy aborted: ${parts.join(' | ')}`);
+    }
+
+    const generatedAt = new Date().toISOString();
+    const lines: string[] = [];
+    lines.push(`${heading} Watchlist`);
+    lines.push(`- generatedAt: ${generatedAt}`);
+    lines.push(`- items: ${sorted.length}`);
+    lines.push(`- shanghaiToday: ${todaySh}`);
+    lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
+    lines.push('');
+
+    const headers = ['Symbol', 'Name', 'Score', 'TrendOK', 'Buy', 'Current', 'StopLoss', 'AsOfDate'];
+    const rows: unknown[][] = [];
+    for (const it of sorted) {
+      const t = trend[it.symbol];
+      const q = quotes[it.symbol];
+      const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
+      const close0 = (t?.values as any)?.close;
+      const current =
+        q?.price ?? (typeof close0 === 'number' && Number.isFinite(close0) ? (close0 as number) : null);
+      const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
+      const buy =
+        t?.buyAction && t?.buyMode ? `${String(t.buyMode)}/${String(t.buyAction)}` : t?.buyAction ? String(t.buyAction) : '—';
+      rows.push([
+        it.symbol,
+        it.name ?? t?.name ?? '—',
+        mdScore(t?.score ?? null),
+        mdBool(t?.trendOk ?? null),
+        buy,
+        mdPrice(typeof current === 'number' ? current : null),
+        mdPrice(t?.stopLossPrice ?? null),
+        asOf,
+      ]);
+    }
+    lines.push(mdTable(headers, rows));
+    lines.push('');
+
+    for (const it of sorted) {
+      const t = trend[it.symbol];
+      const q = quotes[it.symbol];
+      const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
+      lines.push(`${heading}# ${escapeMarkdownCell(it.symbol)}${it.name ? ` ${escapeMarkdownCell(it.name)}` : ''}`);
+      if (it.color) lines.push(`- color: ${String(it.color)}`);
+      if (qDate) lines.push(`- quoteDate: ${qDate}`);
+      if (q?.tradeTime) lines.push(`- quoteTradeTime: ${String(q.tradeTime)}`);
+      if (typeof q?.price === 'number' && Number.isFinite(q.price)) lines.push(`- current(realtime): ${mdPrice(q.price)}`);
+      lines.push(`- trendOk: ${mdBool(t?.trendOk ?? null)}`);
+      lines.push(`- score: ${mdScore(t?.score ?? null)}`);
+      if (t?.asOfDate) lines.push(`- asOfDate: ${String(t.asOfDate)}`);
+      if (t?.buyMode || t?.buyAction) lines.push(`- buy: ${String(t?.buyMode ?? '')} / ${String(t?.buyAction ?? '')}`);
+      if (typeof t?.stopLossPrice === 'number') lines.push(`- stopLossPrice: ${mdNum(t.stopLossPrice, 2)}`);
+
+      const parts = mdScoreParts(t?.scoreParts);
+      if (parts.length) {
+        lines.push('');
+        lines.push('Score parts:');
+        lines.push(mdLines(parts));
+      }
+
+      const missing = (t?.missingData ?? []).filter(Boolean);
+      if (missing.length) {
+        lines.push('');
+        lines.push(`Missing data: ${missing.map((x) => escapeMarkdownCell(String(x))).join(', ')}`);
+      }
+      lines.push('');
+    }
+
+    return lines.join('\n').trim() + '\n';
+  }
+
+  async function copyAllMarkdown() {
+    setCopyAllBusy(true);
+    setError(null);
+    try {
+      const s = await apiGetJson<DashboardSummary>(`/dashboard/summary`);
+      setSummary(s);
+      const generatedAt = new Date().toISOString();
+      const lines: string[] = [];
+      lines.push(`# Copy all (Dashboard)`);
+      lines.push(`- generatedAt: ${generatedAt}`);
+      lines.push(`- asOfDate: ${String((s as any)?.asOfDate ?? '')}`);
+      lines.push('');
+      lines.push(buildIndustryMarkdown(s, '##').trim());
+      lines.push('');
+      lines.push(buildSentimentMarkdown(s, '##').trim());
+      lines.push('');
+      lines.push((await buildScreenersMarkdown(s, '##')).trim());
+      lines.push('');
+      lines.push((await buildWatchlistMarkdown()).trim());
+      lines.push('');
+      await navigator.clipboard.writeText(lines.join('\n').trim() + '\n');
+      toastCopyAll(true, 'Copied all Markdown to clipboard.');
+    } catch (e) {
+      toastCopyAll(false, e instanceof Error ? e.message : String(e));
+    } finally {
+      setCopyAllBusy(false);
+    }
+  }
+
 
   const cardsById = React.useMemo(
     () => Object.fromEntries(defaultCards.map((c) => [c.id, c])),
@@ -225,11 +744,21 @@ export function DashboardPage({
             variant="secondary"
             size="sm"
             className="gap-2"
-            disabled={busy}
+            disabled={busy || copyAllBusy}
             onClick={() => void refresh()}
           >
             <RefreshCw className="h-4 w-4" />
             Refresh
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="gap-2"
+            disabled={busy || copyAllBusy}
+            onClick={() => void copyAllMarkdown()}
+          >
+            {copyAllBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+            Copy all Markdown
           </Button>
           <Button size="sm" className="gap-2" disabled={busy} onClick={() => void onSyncAll()}>
             {busy ? (
@@ -248,6 +777,11 @@ export function DashboardPage({
       <div className="mb-4 text-xs text-[var(--k-muted)]">
         asOfDate: <span className="font-mono">{summary?.asOfDate ?? '—'}</span>
       </div>
+      {copyAllStatus ? (
+        <div className={`mb-4 text-xs ${copyAllStatus.ok ? 'text-emerald-600' : 'text-red-600'}`}>
+          {copyAllStatus.text}
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
@@ -489,6 +1023,23 @@ export function DashboardPage({
                             size="sm"
                             variant="secondary"
                             onClick={() => {
+                              try {
+                                const md = buildSentimentMarkdown(summary, '#');
+                                void navigator.clipboard
+                                  .writeText(md)
+                                  .then(() => toastSentimentCopy(true, 'Copied Markdown.'))
+                                  .catch(() => toastSentimentCopy(false, 'Copy failed. Please allow clipboard access.'));
+                              } catch (e) {
+                                toastSentimentCopy(false, e instanceof Error ? e.message : String(e));
+                              }
+                            }}
+                          >
+                            Copy Markdown
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
                               const asOfDate = String(ms.asOfDate ?? summary?.asOfDate ?? '');
                               addReference({
                                 kind: 'marketSentiment',
@@ -503,6 +1054,15 @@ export function DashboardPage({
                             Reference
                           </Button>
                         </div>
+                        {sentimentCopyStatus ? (
+                          <div
+                            className={`mt-2 text-xs ${
+                              sentimentCopyStatus.ok ? 'text-emerald-600' : 'text-red-600'
+                            }`}
+                          >
+                            {sentimentCopyStatus.text}
+                          </div>
+                        ) : null}
                       </>
                     );
                   })()}
