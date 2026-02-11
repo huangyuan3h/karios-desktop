@@ -126,6 +126,7 @@ export function ScreenerPage() {
   const [history, setHistory] = React.useState<Record<string, TvHistoryResponse | null>>({});
   const [historyOpen, setHistoryOpen] = React.useState<Record<string, boolean>>({});
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [busyAll, setBusyAll] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [copyStatus, setCopyStatus] = React.useState<{ id: string; ok: boolean; text: string } | null>(null);
   const copyTimerRef = React.useRef<number | null>(null);
@@ -184,6 +185,41 @@ export function ScreenerPage() {
     }
   }
 
+  async function syncAll() {
+    setBusyAll(true);
+    setBusyId(null);
+    setError(null);
+    const failures: Array<{ id: string; name: string; error: string }> = [];
+    try {
+      // Serial sync to avoid overloading CDP/TradingView.
+      for (const sc of screeners) {
+        try {
+          await apiPostJson<{ snapshotId: string }>(
+            `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/sync`,
+          );
+        } catch (e) {
+          failures.push({
+            id: sc.id,
+            name: sc.name,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+      await refreshAll();
+      if (failures.length) {
+        setError(
+          `Sync all finished with ${failures.length} error(s): ` +
+            failures
+              .slice(0, 3)
+              .map((x) => `${x.name}(${x.id}): ${x.error}`)
+              .join(' | '),
+        );
+      }
+    } finally {
+      setBusyAll(false);
+    }
+  }
+
   async function ensureHistoryLoaded(screenerId: string) {
     if (history[screenerId] !== undefined) return;
     try {
@@ -197,42 +233,90 @@ export function ScreenerPage() {
     }
   }
 
+  function setCopyToast(id: string, ok: boolean, text: string) {
+    setCopyStatus({ id, ok, text });
+    if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = window.setTimeout(() => setCopyStatus(null), 2400);
+  }
+
   async function copySnapshotMarkdown(
     screenerId: string,
     headers: string[],
     rows: Record<string, string>[],
   ) {
     const md = toMarkdownTable(headers, rows);
-    const setStatus = (ok: boolean, text: string) => {
-      setCopyStatus({ id: screenerId, ok, text });
-      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = window.setTimeout(() => setCopyStatus(null), 2400);
-    };
     if (!md) {
-      setStatus(false, 'No data to copy.');
+      setCopyToast(screenerId, false, 'No data to copy.');
       return;
     }
     try {
       await navigator.clipboard.writeText(md);
-      setStatus(true, 'Copied Markdown table.');
+      setCopyToast(screenerId, true, 'Copied Markdown table.');
     } catch {
-      setStatus(false, 'Copy failed. Please allow clipboard access.');
+      setCopyToast(screenerId, false, 'Copy failed. Please allow clipboard access.');
+    }
+  }
+
+  async function copyAllMarkdown() {
+    const parts: string[] = [];
+    for (const sc of screeners) {
+      const snap = snapshots[sc.id] ?? null;
+      if (!snap) continue;
+      const cols = pickColumns(snap.headers);
+      if (!cols.length || !snap.rows.length) continue;
+      parts.push(`## ${sc.name}`);
+      parts.push(`- capturedAt: ${new Date(snap.capturedAt).toLocaleString()}`);
+      parts.push(`- url: ${sc.url}`);
+      parts.push('');
+      parts.push(toMarkdownTable(cols, snap.rows));
+      parts.push('');
+    }
+    const md = parts.join('\n').trim();
+    if (!md) {
+      setCopyToast('__all__', false, 'No tables to copy.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(md);
+      setCopyToast('__all__', true, 'Copied all Markdown tables.');
+    } catch {
+      setCopyToast('__all__', false, 'Copy failed. Please allow clipboard access.');
     }
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-6">
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div>
+    <div className="mx-auto w-full max-w-6xl p-6">
+      <div className="mb-6 flex w-full items-start gap-3">
+        <div className="min-w-0 flex-1">
           <div className="text-lg font-semibold">Screener</div>
           <div className="mt-1 text-sm text-[var(--k-muted)]">
             Sync TradingView screeners and review latest snapshots.
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => void refreshAll()}>
-          Refresh
-        </Button>
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="secondary" size="sm" onClick={() => void refreshAll()} disabled={busyAll}>
+            Refresh
+          </Button>
+          <Button size="sm" onClick={() => void syncAll()} disabled={busyAll || screeners.length === 0} className="gap-2">
+            <RefreshCw className={busyAll ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+            {busyAll ? 'Syncing…' : 'Sync all'}
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void copyAllMarkdown()}
+            disabled={screeners.length === 0}
+          >
+            Copy Markdown all
+          </Button>
+        </div>
       </div>
+
+      {copyStatus?.id === '__all__' ? (
+        <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-sm">
+          <span className={copyStatus.ok ? 'text-emerald-600' : 'text-red-600'}>{copyStatus.text}</span>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
@@ -244,7 +328,7 @@ export function ScreenerPage() {
         {screeners.map((it) => {
           const snap = snapshots[it.id] ?? null;
           const cols = snap ? pickColumns(snap.headers) : [];
-          const busy = busyId === it.id;
+          const busy = busyAll || busyId === it.id;
           const showHist = Boolean(historyOpen[it.id]);
           const hist = history[it.id] ?? undefined;
           return (
@@ -292,6 +376,7 @@ export function ScreenerPage() {
                       setHistoryOpen((prev) => ({ ...prev, [it.id]: !prev[it.id] }));
                       void ensureHistoryLoaded(it.id);
                     }}
+                    disabled={busyAll}
                   >
                     {showHist ? 'Hide history' : 'History'}
                   </Button>
