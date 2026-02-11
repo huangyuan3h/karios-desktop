@@ -62,6 +62,63 @@ function sumLastN(series: IndustryFundFlowPoint[], n: number): number {
   return s;
 }
 
+function escapeMarkdownCell(x: unknown): string {
+  const s0 = String(x ?? '');
+  // Keep it single-line and avoid breaking Markdown table formatting.
+  const s1 = s0.replaceAll('\r\n', '\n').replaceAll('\r', '\n').replaceAll('\n', '<br/>');
+  return s1.replaceAll('|', '\\|');
+}
+
+function mdRow(cells: unknown[]): string {
+  return `| ${cells.map(escapeMarkdownCell).join(' | ')} |`;
+}
+
+function mdTable(headers: string[], rows: unknown[][]): string {
+  const out: string[] = [];
+  out.push(mdRow(headers));
+  out.push(mdRow(headers.map(() => '---')));
+  for (const r of rows) out.push(mdRow(r));
+  return out.join('\n');
+}
+
+function formatSeries10d(series: IndustryFundFlowPoint[]): string {
+  const xs = Array.isArray(series) ? series : [];
+  if (!xs.length) return '';
+  // Use multi-line string; it will be escaped to <br/> to keep Markdown table valid.
+  return xs.map((p) => `${String(p.date).slice(5)}: ${fmtCny(p.netInflow)}`).join('\n');
+}
+
+function CopyMarkdownButton({ getMarkdown }: { getMarkdown: () => string }) {
+  const [state, setState] = React.useState<'idle' | 'ok' | 'err'>('idle');
+  const timerRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  async function onCopy() {
+    try {
+      const md = getMarkdown();
+      if (!md.trim()) throw new Error('No data');
+      await navigator.clipboard.writeText(md);
+      setState('ok');
+    } catch {
+      setState('err');
+    } finally {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => setState('idle'), 1400);
+    }
+  }
+
+  const label = state === 'idle' ? 'Copy Markdown' : state === 'ok' ? 'Copied' : 'Copy failed';
+  return (
+    <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => void onCopy()}>
+      {label}
+    </Button>
+  );
+}
+
 function Sparkline({ series }: { series: IndustryFundFlowPoint[] }) {
   const vals = series.map((p) => (Number.isFinite(p.netInflow) ? p.netInflow : 0));
   const maxAbs = Math.max(1, ...vals.map((v) => Math.abs(v)));
@@ -132,9 +189,28 @@ function DailyTopByDateTable({
             </span>
           ) : null}
         </div>
-        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
-          Reference
-        </Button>
+        <div className="flex items-center gap-2">
+          <CopyMarkdownButton
+            getMarkdown={() => {
+              const headers = ['#', ...shownDates.map((d) => String(d).slice(5))];
+              const rows = Array.from({ length: topK }).map((_, idx) => [
+                idx + 1,
+                ...shownDates.map((d) => {
+                  const it = (topByDate[d] || [])[idx];
+                  const name = String(it?.industryName ?? '').trim();
+                  const v = Number(it?.value ?? 0);
+                  if (!name) return '—';
+                  if (Number.isFinite(v) && Math.abs(v) > 0) return `${name} (${fmtCny(v)})`;
+                  return name;
+                }),
+              ]);
+              return [`# ${title}`, '', mdTable(headers, rows)].join('\n');
+            }}
+          />
+          <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
+            Reference
+          </Button>
+        </div>
       </div>
       <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
         <table className="w-full border-collapse text-xs">
@@ -193,9 +269,23 @@ function MiniTable({
     <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="text-sm font-medium">{title}</div>
-        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
-          Reference
-        </Button>
+        <div className="flex items-center gap-2">
+          <CopyMarkdownButton
+            getMarkdown={() => {
+              const headers = ['#', 'Industry', valueLabel, 'Trend (10D)'];
+              const rows2 = rows.map((r, idx) => [
+                idx + 1,
+                String(r.industryName ?? ''),
+                fmtCny(Number(r.value ?? 0)),
+                formatSeries10d(r.series10d ?? []),
+              ]);
+              return [`# ${title}`, '', mdTable(headers, rows2)].join('\n');
+            }}
+          />
+          <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
+            Reference
+          </Button>
+        </div>
       </div>
       <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
         <table className="w-full border-collapse text-xs">
@@ -536,31 +626,49 @@ export function IndustryFlowPage() {
       )}
 
       {detailsOpen && resp?.top?.length ? (
-        <div className="mt-4 overflow-auto rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]">
-          <table className="w-full border-collapse text-xs">
-            <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
-              <tr className="text-left">
-                <th className="px-3 py-2">Rank</th>
-                <th className="px-3 py-2">Industry</th>
-                <th className="px-3 py-2">Net inflow</th>
-                <th className="px-3 py-2">Sum 10D</th>
-                <th className="px-3 py-2">Trend (10D)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {resp.top.slice(0, topN).map((r, idx) => (
-                <tr key={r.industryCode} className="border-t border-[var(--k-border)]">
-                  <td className="px-3 py-2 font-mono">{idx + 1}</td>
-                  <td className="px-3 py-2">{r.industryName}</td>
-                  <td className="px-3 py-2 font-mono">{fmtCny(r.netInflow)}</td>
-                  <td className="px-3 py-2 font-mono">{fmtCny(r.sum10d)}</td>
-                  <td className="px-3 py-2">
-                    <Sparkline series={r.series10d ?? []} />
-                  </td>
+        <div className="mt-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]">
+          <div className="flex items-center justify-between gap-2 px-4 py-3">
+            <div className="text-sm font-medium">Details</div>
+            <CopyMarkdownButton
+              getMarkdown={() => {
+                const headers = ['Rank', 'Industry', 'Net inflow', 'Sum 10D', 'Trend (10D)'];
+                const rows3 = resp.top.slice(0, topN).map((r, idx) => [
+                  idx + 1,
+                  String(r.industryName ?? ''),
+                  fmtCny(Number(r.netInflow ?? 0)),
+                  fmtCny(Number(r.sum10d ?? 0)),
+                  formatSeries10d(r.series10d ?? []),
+                ]);
+                return ['# Details', '', mdTable(headers, rows3)].join('\n');
+              }}
+            />
+          </div>
+          <div className="overflow-auto">
+            <table className="w-full border-collapse text-xs">
+              <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                <tr className="text-left">
+                  <th className="px-3 py-2">Rank</th>
+                  <th className="px-3 py-2">Industry</th>
+                  <th className="px-3 py-2">Net inflow</th>
+                  <th className="px-3 py-2">Sum 10D</th>
+                  <th className="px-3 py-2">Trend (10D)</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {resp.top.slice(0, topN).map((r, idx) => (
+                  <tr key={r.industryCode} className="border-t border-[var(--k-border)]">
+                    <td className="px-3 py-2 font-mono">{idx + 1}</td>
+                    <td className="px-3 py-2">{r.industryName}</td>
+                    <td className="px-3 py-2 font-mono">{fmtCny(r.netInflow)}</td>
+                    <td className="px-3 py-2 font-mono">{fmtCny(r.sum10d)}</td>
+                    <td className="px-3 py-2">
+                      <Sparkline series={r.series10d ?? []} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
     </div>
