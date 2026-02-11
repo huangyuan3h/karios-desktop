@@ -10,7 +10,7 @@
     "predev": "pnpm ensure-ports",
     "dev": "turbo dev",
     "predev:tauri": "pnpm ensure-ports",
-    "dev:tauri": "concurrently -k -n BE,TAURI -c auto \"turbo dev --filter=ai-service --filter=quant-service\" \"pnpm -C apps/desktop-ui tauri dev\"",
+    "dev:tauri": "concurrently -k -n BE,TAURI -c auto \"turbo dev --filter=ai-service --filter=data-sync-service\" \"pnpm -C apps/desktop-ui tauri dev\"",
     "install:all": "pnpm install && uv sync --project services/quant-service",
     "build": "turbo build",
     "test": "turbo test",

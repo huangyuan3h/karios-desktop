@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { ChatMessageList } from '@/components/chat/ChatMessageList';
-import { AI_BASE_URL, DATA_SYNC_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
+import { AI_BASE_URL, DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { newId } from '@/lib/id';
 import { useChatStore } from '@/lib/chat/store';
 import type { ChatAttachment, ChatMessage, ChatReference } from '@/lib/chat/types';
@@ -186,7 +186,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     if (ref.kind === 'tv') {
       try {
         const resp = await fetch(
-          `${QUANT_BASE_URL}/integrations/tradingview/snapshots/${encodeURIComponent(ref.snapshotId)}`,
+          `${DATA_SYNC_BASE_URL}/integrations/tradingview/snapshots/${encodeURIComponent(ref.snapshotId)}`,
           { cache: 'no-store' },
         );
         if (!resp.ok) throw new Error('failed to load snapshot');

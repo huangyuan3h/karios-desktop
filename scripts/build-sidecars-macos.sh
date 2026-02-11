@@ -7,8 +7,8 @@ set -euo pipefail
 #
 # Notes:
 # - This script assumes you already installed the required packagers:
-#   - ai-service: `pkg` (npm) or `bun` (choose one, see TODO below)
-#   - quant-service: `pyinstaller` (python)
+#   - ai-service: `bun` (compile to a single binary)
+#   - data-sync-service: `pyinstaller` (python)
 # - You may need to adjust commands based on your environment.
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,7 +26,7 @@ esac
 echo "Target: $TARGET_TRIPLE"
 
 AI_OUT="$SIDECARS_DIR/karios-ai-service-$TARGET_TRIPLE"
-QUANT_OUT="$SIDECARS_DIR/karios-quant-service-$TARGET_TRIPLE"
+DATA_SYNC_OUT="$SIDECARS_DIR/karios-data-sync-service-$TARGET_TRIPLE"
 
 echo "==> Building ai-service sidecar -> $AI_OUT"
 if ! command -v bun >/dev/null 2>&1; then
@@ -39,9 +39,9 @@ pnpm -s build
 bun build dist/index.js --compile --outfile "$AI_OUT"
 chmod +x "$AI_OUT"
 
-echo "==> Building quant-service sidecar -> $QUANT_OUT"
+echo "==> Building data-sync-service sidecar -> $DATA_SYNC_OUT"
 # Example using PyInstaller:
-cd "$ROOT/services/quant-service"
+cd "$ROOT/services/data-sync-service"
 # Ensure deps are present (uv.lock is committed).
 uv sync --project .
 
@@ -52,13 +52,13 @@ uv run --with pyinstaller pyinstaller \
   --noconfirm \
   --onefile \
   server_entry.py \
-  --name "karios-quant-service-$TARGET_TRIPLE" \
+  --name "karios-data-sync-service-$TARGET_TRIPLE" \
   --distpath "$SIDECARS_DIR"
 
-chmod +x "$QUANT_OUT"
+chmod +x "$DATA_SYNC_OUT"
 
 echo "==> Sidecars built:"
-ls -al "$AI_OUT" "$QUANT_OUT"
+ls -al "$AI_OUT" "$DATA_SYNC_OUT"
 echo "Done."
 
 
