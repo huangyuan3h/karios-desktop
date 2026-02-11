@@ -30,6 +30,41 @@ const FLAG_COLORS: Array<{ label: string; hex: string }> = [
   { label: 'Gray', hex: '#f4f4f5' },
 ];
 
+function escapeMarkdownCell(value: string): string {
+  return String(value ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>').trim();
+}
+
+function mdBool(v: boolean | null | undefined): string {
+  if (v == null) return '—';
+  return v ? '✅' : '❌';
+}
+
+function mdNum(v: number | null | undefined, digits = 2): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return v.toFixed(digits);
+}
+
+function mdScore(v: number | null | undefined): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return String(Math.round(v));
+}
+
+function mdPrice(v: number | null | undefined): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return v.toFixed(2);
+}
+
+function mdLines(items: string[]): string {
+  return items.filter((x) => String(x || '').trim()).join('\n');
+}
+
+function mdScoreParts(parts: Record<string, number> | undefined): string[] {
+  if (!parts) return [];
+  const entries = Object.entries(parts).filter(([, v]) => typeof v === 'number' && Number.isFinite(v));
+  entries.sort((a, b) => Number(b[1]) - Number(a[1]));
+  return entries.map(([k, v]) => `- ${k}: ${v}`);
+}
+
 type MarketStockBasicRow = {
   symbol: string;
   market: string;
@@ -291,6 +326,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [syncStage, setSyncStage] = React.useState<string | null>(null);
   const [syncProgress, setSyncProgress] = React.useState<{ cur: number; total: number } | null>(null);
   const [syncLogs, setSyncLogs] = React.useState<string[]>([]);
+  const [copyMdStatus, setCopyMdStatus] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const copyMdTimerRef = React.useRef<number | null>(null);
 
   // Keep the last screener import inspection table visible for manual follow-ups.
   const [importDebugOpen, setImportDebugOpen] = React.useState(true);
@@ -318,8 +355,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     open: boolean;
     x: number;
     y: number;
+    placement: 'top-end' | 'bottom-end';
     symbol: string | null;
-  }>({ open: false, x: 0, y: 0, symbol: null });
+  }>({ open: false, x: 0, y: 0, placement: 'bottom-end', symbol: null });
 
   const trendReqRef = React.useRef(0);
 
@@ -348,6 +386,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     setItems(migrated);
     saveJson(STORAGE_KEY, migrated);
   }, []);
+
+  React.useEffect(
+    () => () => {
+      if (copyMdTimerRef.current) window.clearTimeout(copyMdTimerRef.current);
+    },
+    [],
+  );
 
   function persist(next: WatchlistItem[]) {
     setItems(next);
@@ -708,12 +753,29 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   }
 
   function showColorPicker(el: HTMLElement, sym: string) {
+    // Anchor near the clicked button, but clamp within viewport.
+    // Flip to open upward when near the bottom to keep all items clickable.
     const r = el.getBoundingClientRect();
     const pad = 10;
     const panelW = 220;
-    const x = Math.max(pad, Math.min(window.innerWidth - panelW - pad, r.left));
-    const y = Math.min(window.innerHeight - pad, r.bottom + 8);
-    setColorPicker({ open: true, x, y, symbol: sym });
+    const panelH = 220; // heuristic, enough for header + 2 rows of 4 color buttons
+
+    const x0 = r.right - panelW;
+    const x = Math.max(pad, Math.min(window.innerWidth - panelW - pad, x0));
+
+    const shouldOpenDown = r.bottom + 8 + panelH <= window.innerHeight - pad;
+    const placement: 'top-end' | 'bottom-end' = shouldOpenDown ? 'bottom-end' : 'top-end';
+
+    // y is the anchor point. For top-end, we use translateY(-100%) so y refers to the bottom edge.
+    let y = placement === 'bottom-end' ? r.bottom + 8 : r.top - 8;
+    if (placement === 'bottom-end') {
+      y = Math.max(pad, Math.min(window.innerHeight - panelH - pad, y));
+    } else {
+      // Ensure y is not so small that the panel would go above the viewport when translated.
+      y = Math.max(pad + panelH, Math.min(window.innerHeight - pad, y));
+    }
+
+    setColorPicker({ open: true, x, y, placement, symbol: sym });
   }
 
   function hideColorPicker() {
@@ -1068,6 +1130,100 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     });
   }
 
+  function toastCopyMd(ok: boolean, text: string) {
+    setCopyMdStatus({ ok, text });
+    if (copyMdTimerRef.current) window.clearTimeout(copyMdTimerRef.current);
+    copyMdTimerRef.current = window.setTimeout(() => setCopyMdStatus(null), 2400);
+  }
+
+  async function copyWatchlistMarkdown() {
+    if (!sortedItems.length) {
+      toastCopyMd(false, 'No items to copy.');
+      return;
+    }
+    const generatedAt = new Date().toISOString();
+    const lines: string[] = [];
+    lines.push('## Watchlist');
+    lines.push(`- generatedAt: ${generatedAt}`);
+    lines.push(`- items: ${sortedItems.length}`);
+    lines.push(`- scoresUpdatedAt: ${trendUpdatedAt ? new Date(trendUpdatedAt).toLocaleString() : '—'}`);
+    lines.push('');
+
+    // Summary table
+    const headers = ['Symbol', 'Name', 'Score', 'TrendOK', 'Buy', 'Current', 'StopLoss', 'AsOfDate'];
+    lines.push(`| ${headers.join(' | ')} |`);
+    lines.push(`| ${headers.map(() => '---').join(' | ')} |`);
+    for (const it of sortedItems) {
+      const t = trend[it.symbol];
+      const buy = fmtBuyCell(t).text;
+      const current = quotes[it.symbol]?.price ?? t?.values?.close ?? null;
+      const row = [
+        escapeMarkdownCell(it.symbol),
+        escapeMarkdownCell(it.name || '—'),
+        escapeMarkdownCell(mdScore(t?.score ?? null)),
+        escapeMarkdownCell(mdBool(t?.trendOk ?? null)),
+        escapeMarkdownCell(buy),
+        escapeMarkdownCell(mdPrice(typeof current === 'number' ? current : null)),
+        escapeMarkdownCell(mdPrice(t?.stopLossPrice ?? null)),
+        escapeMarkdownCell(String(t?.asOfDate ?? '')),
+      ];
+      lines.push(`| ${row.join(' | ')} |`);
+    }
+    lines.push('');
+
+    // Detailed blocks
+    for (const it of sortedItems) {
+      const t = trend[it.symbol];
+      const colorHex = (it.color || '#ffffff').trim().toLowerCase();
+      const colorLabel = FLAG_COLORS.find((c) => c.hex === colorHex)?.label ?? 'Custom';
+
+      lines.push(`### ${escapeMarkdownCell(it.symbol)}${it.name ? ` ${escapeMarkdownCell(it.name)}` : ''}`);
+      lines.push(`- color: ${colorLabel} (${colorHex})`);
+      lines.push(`- trendOk: ${mdBool(t?.trendOk ?? null)}`);
+      lines.push(`- score: ${mdScore(t?.score ?? null)}`);
+      if (t?.asOfDate) lines.push(`- asOfDate: ${String(t.asOfDate)}`);
+      if (t?.buyMode || t?.buyAction) {
+        lines.push(`- buy: ${String(t.buyMode ?? '')} / ${String(t.buyAction ?? '')}`);
+      }
+      if (typeof t?.stopLossPrice === 'number') lines.push(`- stopLossPrice: ${mdNum(t.stopLossPrice, 2)}`);
+
+      const parts = mdScoreParts(t?.scoreParts);
+      if (parts.length) {
+        lines.push('');
+        lines.push('Score parts:');
+        lines.push(mdLines(parts));
+      }
+
+      const checks = t?.checks;
+      if (checks) {
+        lines.push('');
+        lines.push('TrendOK checks:');
+        lines.push(`- EMA order: ${mdBool(checks.emaOrder ?? null)}`);
+        lines.push(`- MACD positive: ${mdBool(checks.macdPositive ?? null)}`);
+        lines.push(`- MACD hist expanding: ${mdBool(checks.macdHistExpanding ?? null)}`);
+        lines.push(`- Close near 20D high: ${mdBool(checks.closeNear20dHigh ?? null)}`);
+        lines.push(`- RSI in range: ${mdBool(checks.rsiInRange ?? null)}`);
+        lines.push(`- Volume surge: ${mdBool(checks.volumeSurge ?? null)}`);
+      }
+
+      const missing = (t?.missingData ?? []).filter(Boolean);
+      if (missing.length) {
+        lines.push('');
+        lines.push(`Missing data: ${missing.map((x) => escapeMarkdownCell(String(x))).join(', ')}`);
+      }
+
+      lines.push('');
+    }
+
+    const md = lines.join('\n').trim() + '\n';
+    try {
+      await navigator.clipboard.writeText(md);
+      toastCopyMd(true, 'Copied Markdown.');
+    } catch {
+      toastCopyMd(false, 'Copy failed. Please allow clipboard access.');
+    }
+  }
+
   const watchlistSet = React.useMemo(() => new Set(items.map((x) => x.symbol)), [items]);
   const importDebugRows = React.useMemo(() => {
     const q = importDebugFilter.trim().toUpperCase();
@@ -1314,6 +1470,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           </div>
 
           {syncMsg ? <div className="mt-2 text-xs text-[var(--k-muted)]">{syncMsg}</div> : null}
+          {copyMdStatus ? (
+            <div className="mt-2 text-xs">
+              <span className={copyMdStatus.ok ? 'text-emerald-600' : 'text-red-600'}>
+                {copyMdStatus.text}
+              </span>
+            </div>
+          ) : null}
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
         <div className="flex items-center gap-2">
@@ -1338,6 +1501,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           >
             <ExternalLink className="h-4 w-4" />
             Reference table
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void copyWatchlistMarkdown()}
+            disabled={!sortedItems.length}
+          >
+            Copy Markdown
           </Button>
           <Button
             size="sm"
@@ -1578,8 +1749,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         ? createPortal(
             <div className="fixed inset-0 z-[9999]" onMouseDown={hideColorPicker}>
               <div
-                className="fixed rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs text-[var(--k-text)] shadow-lg"
-                style={{ left: colorPicker.x, top: colorPicker.y, width: 220 }}
+                className="fixed w-[220px] rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs text-[var(--k-text)] shadow-lg"
+                style={{
+                  left: colorPicker.x,
+                  top: colorPicker.y,
+                  transform: colorPicker.placement === 'top-end' ? 'translateY(-100%)' : undefined,
+                }}
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 <div className="mb-2 flex items-center justify-between">
