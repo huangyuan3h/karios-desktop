@@ -392,9 +392,38 @@ def sync_cn_sentiment(*, date_str: str, force: bool) -> dict[str, Any]:
     except Exception as e:
         cached2 = list_days(as_of_date=d, days=1)
         if cached2:
-            last = cached2[-1]
+            # Persist a "stale" row for today so Dashboard can move forward.
+            last = dict(cached2[-1])
+            last_date = str(last.get("date") or "")
             last_rules = (last.get("rules") if isinstance(last.get("rules"), list) else []) or []
-            last["rules"] = [*last_rules, f"stale_sync_failed: {type(e).__name__}: {e}"]
+            last["date"] = d
+            last["updatedAt"] = now_iso()
+            last["rules"] = [
+                *[str(x) for x in last_rules],
+                f"stale_from: {last_date}" if last_date else "stale_from: unknown",
+                f"sync_failed: {type(e).__name__}: {e}",
+            ]
+            row2 = {
+                "date": d,
+                "as_of_date": d,
+                "up_count": int(last.get("upCount") or 0),
+                "down_count": int(last.get("downCount") or 0),
+                "flat_count": int(last.get("flatCount") or 0),
+                "total_count": int(last.get("totalCount") or 0),
+                "up_down_ratio": float(last.get("upDownRatio") or 0.0),
+                "market_turnover_cny": float(last.get("marketTurnoverCny") or 0.0),
+                "market_volume": float(last.get("marketVolume") or 0.0),
+                "yesterday_limitup_premium": float(last.get("yesterdayLimitUpPremium") or 0.0),
+                "failed_limitup_rate": float(last.get("failedLimitUpRate") or 0.0),
+                "risk_mode": str(last.get("riskMode") or "caution"),
+                "rules": last.get("rules") if isinstance(last.get("rules"), list) else [],
+                "updated_at": str(last.get("updatedAt") or now_iso()),
+                "raw": {"stale": True, "error": str(e), "sourceDate": last_date},
+            }
+            upsert_daily_rows([row2])
+            cached3 = list_days(as_of_date=d, days=1)
+            if cached3:
+                return {"asOfDate": d, "days": 1, "items": [cached3[-1]]}
             return {"asOfDate": d, "days": 1, "items": [last]}
         out = {
             "date": d,
@@ -413,33 +442,29 @@ def sync_cn_sentiment(*, date_str: str, force: bool) -> dict[str, Any]:
 
     rules_raw = out.get("rules") or []
     rules_list = [str(x) for x in rules_raw] if isinstance(rules_raw, list) else [str(rules_raw)]
-    breadth_failed = any(("breadth_failed" in r) for r in rules_list)
-    compute_failed = any(("compute_failed" in r) for r in rules_list)
-    premium_failed = any(("yesterday_limitup_premium_failed" in r) for r in rules_list)
-    failed_rate_failed = any(("failed_limitup_rate_failed" in r) for r in rules_list)
-    should_persist = not compute_failed and not breadth_failed and not (premium_failed or failed_rate_failed)
-    if should_persist:
-        row = {
-            "date": out.get("date") or d,
-            "as_of_date": out.get("asOfDate") or d,
-            "up_count": out.get("up") or 0,
-            "down_count": out.get("down") or 0,
-            "flat_count": out.get("flat") or 0,
-            "total_count": int(out.get("up", 0)) + int(out.get("down", 0)) + int(out.get("flat", 0)),
-            "up_down_ratio": out.get("ratio") or 0.0,
-            "market_turnover_cny": out.get("marketTurnoverCny") or 0.0,
-            "market_volume": out.get("marketVolume") or 0.0,
-            "yesterday_limitup_premium": out.get("premium") or 0.0,
-            "failed_limitup_rate": out.get("failedRate") or 0.0,
-            "risk_mode": out.get("riskMode") or "caution",
-            "rules": rules_list,
-            "updated_at": out.get("updatedAt") or now_iso(),
-            "raw": out.get("raw") if isinstance(out.get("raw"), dict) else {"raw": out.get("raw")},
-        }
-        upsert_daily_rows([row])
-        cached = list_days(as_of_date=d, days=1)
-        if cached:
-            return {"asOfDate": d, "days": 1, "items": [cached[-1]]}
+    # Always persist a row for the requested date so the dashboard can advance.
+    # If some sub-components failed, we keep the partial values and attach failure rules.
+    row = {
+        "date": out.get("date") or d,
+        "as_of_date": out.get("asOfDate") or d,
+        "up_count": out.get("up") or 0,
+        "down_count": out.get("down") or 0,
+        "flat_count": out.get("flat") or 0,
+        "total_count": int(out.get("up", 0)) + int(out.get("down", 0)) + int(out.get("flat", 0)),
+        "up_down_ratio": out.get("ratio") or 0.0,
+        "market_turnover_cny": out.get("marketTurnoverCny") or 0.0,
+        "market_volume": out.get("marketVolume") or 0.0,
+        "yesterday_limitup_premium": out.get("premium") or 0.0,
+        "failed_limitup_rate": out.get("failedRate") or 0.0,
+        "risk_mode": out.get("riskMode") or "caution",
+        "rules": rules_list,
+        "updated_at": out.get("updatedAt") or now_iso(),
+        "raw": out.get("raw") if isinstance(out.get("raw"), dict) else {"raw": out.get("raw")},
+    }
+    upsert_daily_rows([row])
+    cached = list_days(as_of_date=d, days=1)
+    if cached:
+        return {"asOfDate": d, "days": 1, "items": [cached[-1]]}
 
     items = [
         {

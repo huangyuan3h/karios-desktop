@@ -262,6 +262,31 @@ function getShanghaiTimeParts(): { weekday: string; hour: number; minute: number
   };
 }
 
+function getShanghaiTodayIso(): string {
+  // YYYY-MM-DD in Asia/Shanghai
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const map = new Map(parts.map((p) => [p.type, p.value]));
+  const y = map.get('year') ?? '1970';
+  const m = map.get('month') ?? '01';
+  const d = map.get('day') ?? '01';
+  return `${y}-${m}-${d}`;
+}
+
+function tradeDateFromTradeTime(tradeTime: string | null | undefined): string | null {
+  const s = String(tradeTime ?? '').trim();
+  if (!s) return null;
+  const m1 = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m1) return m1[1];
+  const m2 = s.match(/^(\d{8})$/);
+  if (m2) return `${m2[1].slice(0, 4)}-${m2[1].slice(4, 6)}-${m2[1].slice(6, 8)}`;
+  return null;
+}
+
 function isShanghaiTradingTime(): boolean {
   const { weekday, hour, minute } = getShanghaiTimeParts();
   if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
@@ -318,7 +343,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
-  const [quotes, setQuotes] = React.useState<Record<string, { price: number | null; tsCode: string }>>({});
+  const [quotes, setQuotes] = React.useState<
+    Record<string, { price: number | null; tsCode: string; tradeTime: string | null }>
+  >({});
   const [trendBusy, setTrendBusy] = React.useState(false);
   const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
   const [syncBusy, setSyncBusy] = React.useState(false);
@@ -497,7 +524,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             const tsCode = toTsCodeFromSymbol(s);
             if (tsCode) byTsCode.set(tsCode, s);
           }
-          const nextQuotes: Record<string, { price: number | null; tsCode: string }> = {};
+          const nextQuotes: Record<string, { price: number | null; tsCode: string; tradeTime: string | null }> = {};
           for (const part of chunk(cn, 50)) {
             const r = await apiGetJsonFrom<QuoteResp>(
               DATA_SYNC_BASE_URL,
@@ -507,7 +534,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               const sym = byTsCode.get(it.ts_code);
               if (!sym) continue;
               const p = it.price != null ? Number(it.price) : NaN;
-              nextQuotes[sym] = { tsCode: it.ts_code, price: Number.isFinite(p) ? p : null };
+              nextQuotes[sym] = {
+                tsCode: it.ts_code,
+                price: Number.isFinite(p) ? p : null,
+                tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
+              };
             }
           }
           if (reqId === trendReqRef.current) setQuotes(nextQuotes);
@@ -1141,12 +1172,64 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       toastCopyMd(false, 'No items to copy.');
       return;
     }
+    const tradingTime = isShanghaiTradingTime();
+    const todaySh = getShanghaiTodayIso();
+    const missingRealtime: string[] = [];
+    const missingTrend: string[] = [];
+    const missingHistory: string[] = [];
+    for (const it of sortedItems) {
+      const sym = it.symbol;
+      const t = trend[sym];
+      if (!t) {
+        missingTrend.push(sym);
+        continue;
+      }
+      const md = Array.isArray(t.missingData) ? t.missingData.filter(Boolean) : [];
+      if (md.length) {
+        missingHistory.push(sym);
+      }
+      if (tradingTime && sym.toUpperCase().startsWith('CN:')) {
+        const q = quotes[sym];
+        const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
+        if (!(q && typeof q.price === 'number' && Number.isFinite(q.price) && qDate === todaySh)) {
+          missingRealtime.push(sym);
+        }
+      }
+    }
+    if (missingTrend.length || missingHistory.length || missingRealtime.length) {
+      const parts: string[] = [];
+      if (missingRealtime.length) {
+        parts.push(
+          `missing realtime quote (today): ${missingRealtime.slice(0, 6).join(', ')}${
+            missingRealtime.length > 6 ? '…' : ''
+          }`,
+        );
+      }
+      if (missingHistory.length) {
+        parts.push(
+          `missing history/indicators: ${missingHistory.slice(0, 6).join(', ')}${
+            missingHistory.length > 6 ? '…' : ''
+          }`,
+        );
+      }
+      if (missingTrend.length) {
+        parts.push(
+          `missing TrendOK result: ${missingTrend.slice(0, 6).join(', ')}${
+            missingTrend.length > 6 ? '…' : ''
+          }`,
+        );
+      }
+      toastCopyMd(false, `Copy aborted: ${parts.join(' | ')}`);
+      return;
+    }
     const generatedAt = new Date().toISOString();
     const lines: string[] = [];
     lines.push('## Watchlist');
     lines.push(`- generatedAt: ${generatedAt}`);
     lines.push(`- items: ${sortedItems.length}`);
     lines.push(`- scoresUpdatedAt: ${trendUpdatedAt ? new Date(trendUpdatedAt).toLocaleString() : '—'}`);
+    lines.push(`- shanghaiToday: ${todaySh}`);
+    lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
     lines.push('');
 
     // Summary table
@@ -1156,7 +1239,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     for (const it of sortedItems) {
       const t = trend[it.symbol];
       const buy = fmtBuyCell(t).text;
-      const current = quotes[it.symbol]?.price ?? t?.values?.close ?? null;
+      const q = quotes[it.symbol];
+      const current = q?.price ?? t?.values?.close ?? null;
+      const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
+      const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
       const row = [
         escapeMarkdownCell(it.symbol),
         escapeMarkdownCell(it.name || '—'),
@@ -1165,7 +1251,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         escapeMarkdownCell(buy),
         escapeMarkdownCell(mdPrice(typeof current === 'number' ? current : null)),
         escapeMarkdownCell(mdPrice(t?.stopLossPrice ?? null)),
-        escapeMarkdownCell(String(t?.asOfDate ?? '')),
+        escapeMarkdownCell(asOf),
       ];
       lines.push(`| ${row.join(' | ')} |`);
     }
@@ -1176,9 +1262,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       const t = trend[it.symbol];
       const colorHex = (it.color || '#ffffff').trim().toLowerCase();
       const colorLabel = FLAG_COLORS.find((c) => c.hex === colorHex)?.label ?? 'Custom';
+      const q = quotes[it.symbol];
+      const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
 
       lines.push(`### ${escapeMarkdownCell(it.symbol)}${it.name ? ` ${escapeMarkdownCell(it.name)}` : ''}`);
       lines.push(`- color: ${colorLabel} (${colorHex})`);
+      if (qDate) lines.push(`- quoteDate: ${qDate}`);
+      if (q?.tradeTime) lines.push(`- quoteTradeTime: ${String(q.tradeTime)}`);
+      if (typeof q?.price === 'number' && Number.isFinite(q.price)) lines.push(`- current(realtime): ${mdPrice(q.price)}`);
       lines.push(`- trendOk: ${mdBool(t?.trendOk ?? null)}`);
       lines.push(`- score: ${mdScore(t?.score ?? null)}`);
       if (t?.asOfDate) lines.push(`- asOfDate: ${String(t.asOfDate)}`);
