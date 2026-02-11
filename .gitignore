@@ -25,12 +25,9 @@ __pycache__/
 *.sqlite3-wal
 *.sqlite3-shm
 
-# Local captured data (screenshots/snapshots)
-services/quant-service/data/
-
-# PyInstaller (quant-service sidecar build artifacts)
-services/quant-service/build/
-services/quant-service/*.spec
+# PyInstaller (data-sync-service sidecar build artifacts)
+services/data-sync-service/build/
+services/data-sync-service/*.spec
 
 # Tauri / Rust
 target/

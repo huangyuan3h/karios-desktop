@@ -319,7 +319,7 @@ Tauri will be the single entry point that bootstraps both services.
     desktop-ui/         # Next.js UI (Tauri WebView)
     ai-service/         # TS/Node service using Vercel AI SDK
   services/
-    quant-service/      # Python analytics service
+    data-sync-service/  # Python data service (Postgres)
   packages/
     shared/             # shared types/schemas, prompt policies
   docs/
