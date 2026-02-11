@@ -6,8 +6,14 @@ import sys
 import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
+from data_sync_service.db import get_connection
+from data_sync_service.db.daily import ensure_table as ensure_daily
+from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.market_sentiment import get_latest_date, list_days, upsert_daily_rows
+from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
+from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 
 def now_iso() -> str:
@@ -443,6 +449,204 @@ def _finite_float(v: Any, default: float = 0.0) -> float:
         return default
 
 
+def _is_shanghai_trading_time() -> bool:
+    """
+    Best-effort CN A-share trading time check in Asia/Shanghai.
+    """
+    now = datetime.now(tz=ZoneInfo("Asia/Shanghai"))
+    if now.weekday() >= 5:  # 5/6 = weekend
+        return False
+    minutes = now.hour * 60 + now.minute
+    in_morning = minutes >= 9 * 60 + 30 and minutes <= 11 * 60 + 30
+    in_afternoon = minutes >= 13 * 60 and minutes <= 15 * 60
+    return in_morning or in_afternoon
+
+
+def _limit_pct_for(ts_code: str, name: str | None) -> float:
+    n = (name or "").upper()
+    if "ST" in n:
+        return 5.0
+    t = (ts_code or "").upper()
+    if t.endswith(".BJ"):
+        return 30.0
+    code = t.split(".", 1)[0]
+    if code.startswith(("300", "301", "688")):
+        return 20.0
+    return 10.0
+
+
+def _prev_open_date(exchange: str, d0: date) -> date | None:
+    """
+    Return previous open trading date before d0, or None if calendar missing.
+    """
+    # Prefer trade calendar when available.
+    if is_trading_day(exchange, d0) is not None:
+        xs = get_open_dates(exchange=exchange, start_date=d0 - timedelta(days=40), end_date=d0)
+        xs2 = [x for x in xs if x < d0]
+        if xs2:
+            return xs2[-1]
+
+    # Fallback: derive from daily table.
+    ensure_daily()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT MAX(trade_date) FROM daily WHERE trade_date < %s",
+                (d0.isoformat(),),
+            )
+            row = cur.fetchone()
+    return row[0] if row and row[0] else None
+
+
+def _daily_rows_for_date(d0: date) -> list[tuple[str, float | None, float | None, float | None, float | None, str | None]]:
+    """
+    Return tuples: (ts_code, pre_close, high, close, pct_chg, name).
+    """
+    ensure_daily()
+    ensure_stock_basic()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT d.ts_code, d.pre_close, d.high, d.close, d.pct_chg, b.name
+                FROM daily d
+                LEFT JOIN stock_basic b ON b.ts_code = d.ts_code
+                WHERE d.trade_date = %s
+                """,
+                (d0.isoformat(),),
+            )
+            rows = cur.fetchall()
+    out: list[tuple[str, float | None, float | None, float | None, float | None, str | None]] = []
+    for r in rows:
+        ts_code = str(r[0] or "")
+        if not ts_code:
+            continue
+        out.append((ts_code, r[1], r[2], r[3], r[4], str(r[5]) if r[5] is not None else None))
+    return out
+
+
+def _close_limit_up_pool_codes(d0: date) -> list[str]:
+    """
+    Derive "close-at-limit-up" pool from daily table (DB-first).
+    """
+    rows = _daily_rows_for_date(d0)
+    codes: list[str] = []
+    for ts_code, pre_close, _high, close, pct_chg, name in rows:
+        if pre_close is None or close is None:
+            continue
+        try:
+            pre = float(pre_close)
+            c = float(close)
+        except Exception:
+            continue
+        if not (pre > 0.0 and math.isfinite(pre) and math.isfinite(c)):
+            continue
+        limit_pct = _limit_pct_for(ts_code, name)
+        limit_price = pre * (1.0 + limit_pct / 100.0)
+        tol = max(0.01, abs(limit_price) * 0.0015)
+        if abs(c - limit_price) <= tol:
+            codes.append(ts_code)
+            continue
+        # Fallback: some data sources round pct_chg; allow a pct-based check.
+        try:
+            p = float(pct_chg) if pct_chg is not None else None
+        except Exception:
+            p = None
+        if p is not None and math.isfinite(p) and p >= (limit_pct - 0.2):
+            codes.append(ts_code)
+    return codes
+
+
+def _avg_pct_chg_from_db(trade_date: date, ts_codes: list[str]) -> tuple[float, int]:
+    if not ts_codes:
+        return 0.0, 0
+    ensure_daily()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT ts_code, pct_chg
+                FROM daily
+                WHERE trade_date = %s AND ts_code = ANY(%s)
+                """,
+                (trade_date.isoformat(), ts_codes),
+            )
+            rows = cur.fetchall()
+    vals: list[float] = []
+    for _ts, pct in rows:
+        try:
+            v = float(pct)
+        except Exception:
+            continue
+        if math.isfinite(v):
+            vals.append(v)
+    return (float(sum(vals) / len(vals)) if vals else 0.0), len(vals)
+
+
+def _avg_pct_chg_from_realtime(ts_codes: list[str]) -> tuple[float, int]:
+    if not ts_codes:
+        return 0.0, 0
+    vals: list[float] = []
+    # Keep batch size conservative.
+    for i in range(0, len(ts_codes), 50):
+        part = ts_codes[i : i + 50]
+        r = fetch_realtime_quotes(part)
+        if not isinstance(r, dict) or not bool(r.get("ok")):
+            continue
+        for it in r.get("items", []) or []:
+            try:
+                v = float(it.get("pct_chg"))
+            except Exception:
+                continue
+            if math.isfinite(v):
+                vals.append(v)
+        time.sleep(0.08)
+    return (float(sum(vals) / len(vals)) if vals else 0.0), len(vals)
+
+
+def _failed_limitup_rate_from_db(trade_date: date) -> tuple[float, int, int]:
+    """
+    Approximate failed limit-up rate using daily table:
+      ever = high touched limit price
+      close = close at limit price
+    """
+    rows = _daily_rows_for_date(trade_date)
+    ever = 0
+    close = 0
+    for ts_code, pre_close, high, close0, pct_chg, name in rows:
+        if pre_close is None or high is None or close0 is None:
+            continue
+        try:
+            pre = float(pre_close)
+            h = float(high)
+            c = float(close0)
+        except Exception:
+            continue
+        if not (pre > 0.0 and math.isfinite(pre) and math.isfinite(h) and math.isfinite(c)):
+            continue
+        limit_pct = _limit_pct_for(ts_code, name)
+        limit_price = pre * (1.0 + limit_pct / 100.0)
+        tol = max(0.01, abs(limit_price) * 0.0015)
+        touched = h >= (limit_price - tol)
+        closed = abs(c - limit_price) <= tol
+        if touched:
+            ever += 1
+            if closed:
+                close += 1
+            continue
+        # Fallback: pct-based touched check (weaker).
+        try:
+            p = float(pct_chg) if pct_chg is not None else None
+        except Exception:
+            p = None
+        if p is not None and math.isfinite(p) and p >= (limit_pct - 0.2):
+            ever += 1
+            close += 1
+    failed = max(0, ever - close)
+    rate = (float(failed) / float(ever) * 100.0) if ever > 0 else 0.0
+    return rate, ever, close
+
+
 def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
     ts = now_iso()
     as_of = d
@@ -469,22 +673,72 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
         errors.append(f"breadth_failed: {e}")
         raw["breadthError"] = str(e)
 
+    # Premium%: DB-first. Derive yesterday close-limit-up pool from DB, then:
+    # - If today's daily pct_chg exists in DB: use it
+    # - If trading time and today's daily is not ready: use realtime_quote
     premium = 0.0
     try:
-        premium_obj = fetch_cn_yesterday_limitup_premium(dt)
-        raw["yesterdayLimitUpPremium"] = premium_obj
-        premium_raw = premium_obj.get("premium")
-        premium = _finite_float(premium_raw, 0.0)
+        y = _prev_open_date("SSE", dt)
+        if y is None:
+            raise RuntimeError("trade calendar missing for premium computation")
+        pool = _close_limit_up_pool_codes(y)
+        premium_db, matched_db = _avg_pct_chg_from_db(dt, pool)
+        if matched_db > 0:
+            premium = premium_db
+            raw["yesterdayLimitUpPremium"] = {
+                "date": dt.isoformat(),
+                "premium": premium,
+                "count": len(pool),
+                "matched": matched_db,
+                "y": y.isoformat(),
+                "source": "db.daily",
+            }
+        else:
+            # Intraday realtime fallback (only for "today").
+            now_cn = datetime.now(tz=ZoneInfo("Asia/Shanghai"))
+            if now_cn.date() == dt and _is_shanghai_trading_time():
+                premium_rt, matched_rt = _avg_pct_chg_from_realtime(pool)
+                premium = premium_rt
+                raw["yesterdayLimitUpPremium"] = {
+                    "date": dt.isoformat(),
+                    "premium": premium,
+                    "count": len(pool),
+                    "matched": matched_rt,
+                    "y": y.isoformat(),
+                    "source": "tushare.realtime_quote",
+                }
+                errors.append(f"premium_realtime_from: {y.isoformat()}")
+            else:
+                raw["yesterdayLimitUpPremium"] = {
+                    "date": dt.isoformat(),
+                    "premium": 0.0,
+                    "count": len(pool),
+                    "matched": 0,
+                    "y": y.isoformat(),
+                    "source": "db.daily",
+                }
+                errors.append(f"premium_missing_daily_for: {dt.isoformat()}")
     except Exception as e:
         errors.append(f"yesterday_limitup_premium_failed: {e}")
         raw["yesterdayLimitUpPremiumError"] = str(e)
 
     failed_rate = 0.0
     try:
-        failed_obj = fetch_cn_failed_limitup_rate(dt)
-        raw["failedLimitUpRate"] = failed_obj
-        failed_raw = failed_obj.get("failed_rate")
-        failed_rate = _finite_float(failed_raw, 0.0)
+        # Failed% (炸板率): DB-first from daily table. Intraday not reliable; keep 0 and mark.
+        # If daily rows for today are not ready, return 0 with a rule so UI doesn't misinterpret it.
+        rate, ever_cnt, close_cnt = _failed_limitup_rate_from_db(dt)
+        failed_rate = _finite_float(rate, 0.0)
+        raw["failedLimitUpRate"] = {
+            "date": dt.isoformat(),
+            "failed_rate": failed_rate,
+            "ever_count": ever_cnt,
+            "close_count": close_cnt,
+            "source": "db.daily",
+        }
+        if ever_cnt == 0:
+            now_cn = datetime.now(tz=ZoneInfo("Asia/Shanghai"))
+            if now_cn.date() == dt and _is_shanghai_trading_time():
+                errors.append("failed_rate_intraday_unavailable")
     except Exception as e:
         errors.append(f"failed_limitup_rate_failed: {e}")
         raw["failedLimitUpRateError"] = str(e)
