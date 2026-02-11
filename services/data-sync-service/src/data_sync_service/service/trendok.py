@@ -8,6 +8,12 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
+from data_sync_service.db.industry_fund_flow import (
+    get_dates_upto,
+    get_latest_date as get_latest_industry_date,
+    get_rows_by_date,
+    get_sum_by_industry_for_dates,
+)
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
@@ -186,6 +192,141 @@ def _lookup_names(ts_codes: list[str]) -> dict[str, str]:
         return {}
 
 
+def _lookup_industries(ts_codes: list[str]) -> dict[str, str]:
+    """
+    Best-effort industry lookup from stock_basic (ts_code -> industry).
+    """
+    ensure_stock_basic()
+    if not ts_codes:
+        return {}
+    try:
+        from data_sync_service.db import get_connection
+
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT ts_code, industry FROM stock_basic WHERE ts_code = ANY(%s)",
+                    (ts_codes,),
+                )
+                rows = cur.fetchall()
+        return {str(r[0]): str(r[1]) for r in rows if r and r[0] and r[1]}
+    except Exception:
+        return {}
+
+
+def _pick_flow_as_of_date(as_of_date: str | None) -> str | None:
+    latest = get_latest_industry_date()
+    if latest and as_of_date:
+        return latest if latest <= as_of_date else as_of_date
+    return latest or as_of_date
+
+
+def _build_industry_flow_context(as_of_date: str | None) -> dict[str, Any]:
+    """
+    Build industry flow context for scoring adjustments.
+    """
+    flow_date = _pick_flow_as_of_date(as_of_date)
+    if not flow_date:
+        return {"asOfDate": None, "ok": False}
+
+    dates_2 = get_dates_upto(flow_date, 2)
+    dates_5 = get_dates_upto(flow_date, 5)
+    today = dates_2[-1] if dates_2 else flow_date
+    yesterday = dates_2[-2] if len(dates_2) >= 2 else None
+
+    rows_today = get_rows_by_date(today)
+    rows_yesterday = get_rows_by_date(yesterday) if yesterday else []
+
+    top_today = sorted(rows_today, key=lambda x: float(x.get("net_inflow") or 0.0), reverse=True)
+    top_today_5 = [str(x.get("industry_name") or "") for x in top_today[:5] if x.get("industry_name")]
+    top_today_3 = top_today_5[:3]
+
+    top_yesterday = sorted(rows_yesterday, key=lambda x: float(x.get("net_inflow") or 0.0), reverse=True)
+    top_yesterday_3 = [str(x.get("industry_name") or "") for x in top_yesterday[:3] if x.get("industry_name")]
+
+    net_today = {str(x.get("industry_name") or ""): float(x.get("net_inflow") or 0.0) for x in rows_today}
+    net_yesterday = {str(x.get("industry_name") or ""): float(x.get("net_inflow") or 0.0) for x in rows_yesterday}
+
+    sums_5d = get_sum_by_industry_for_dates(dates_5) if dates_5 else []
+    top_5d_3 = [str(x.get("industry_name") or "") for x in sums_5d[:3] if x.get("industry_name")]
+    bottom_5d_5 = [
+        str(x.get("industry_name") or "") for x in reversed(sums_5d[-5:]) if x.get("industry_name")
+    ]
+
+    return {
+        "ok": True,
+        "asOfDate": flow_date,
+        "today": today,
+        "yesterday": yesterday,
+        "top_today_3": set(top_today_3),
+        "top_today_5": set(top_today_5),
+        "top_yesterday_3": set(top_yesterday_3),
+        "net_today": net_today,
+        "net_yesterday": net_yesterday,
+        "top_5d_3": set(top_5d_3),
+        "bottom_5d_5": set(bottom_5d_5),
+    }
+
+
+def _industry_flow_score_adjustment(industry: str, ctx: dict[str, Any]) -> tuple[float, dict[str, float], list[str]]:
+    """
+    Compute industry-flow-based score adjustments.
+    """
+    if not industry or not ctx.get("ok"):
+        return 0.0, {}, []
+
+    large_outflow = -1.0e8
+    delta = 0.0
+    parts: dict[str, float] = {}
+    reasons: list[str] = []
+
+    top_today_3 = ctx.get("top_today_3") or set()
+    top_today_5 = ctx.get("top_today_5") or set()
+    top_yesterday_3 = ctx.get("top_yesterday_3") or set()
+    top_5d_3 = ctx.get("top_5d_3") or set()
+    bottom_5d_5 = ctx.get("bottom_5d_5") or set()
+    net_today = ctx.get("net_today") or {}
+    net_yesterday = ctx.get("net_yesterday") or {}
+
+    # 5D flow ranking
+    if industry in top_5d_3:
+        delta += 10.0
+        parts["industry_flow_5d_top3"] = 10.0
+        reasons.append("industry_flow_5d_top3")
+    if industry in bottom_5d_5:
+        delta -= 20.0
+        parts["industry_flow_5d_bottom5"] = -20.0
+        reasons.append("industry_flow_5d_bottom5")
+
+    # Today's hotspots (top inflow)
+    if industry in top_today_3:
+        delta += 5.0
+        parts["hotspots_today_top3"] = 5.0
+        reasons.append("hotspots_today_top3")
+    elif industry in top_today_5:
+        delta += 3.0
+        parts["hotspots_today_top4_5"] = 3.0
+        reasons.append("hotspots_today_top4_5")
+
+    today_inflow = float(net_today.get(industry) or 0.0)
+    yesterday_inflow = float(net_yesterday.get(industry) or 0.0)
+    in_hot_today = industry in top_today_5
+
+    # Yesterday top3, today falls out of top5 and has large negative inflow
+    if industry in top_yesterday_3 and not in_hot_today and today_inflow <= large_outflow:
+        delta -= 15.0
+        parts["hotspot_falloff_big_outflow"] = -15.0
+        reasons.append("hotspot_falloff_big_outflow")
+
+    # Not in hotspots and 2-day large outflow
+    if not in_hot_today and today_inflow <= large_outflow and yesterday_inflow <= large_outflow:
+        delta -= 10.0
+        parts["hotspot_absent_2d_big_outflow"] = -10.0
+        reasons.append("hotspot_absent_2d_big_outflow")
+
+    return delta, parts, reasons
+
+
 def compute_trendok_for_symbols(
     symbols: list[str],
     refresh: bool = False,
@@ -213,6 +354,7 @@ def compute_trendok_for_symbols(
             ts_codes.append(m[2])
 
     by_name = _lookup_names(ts_codes)
+    by_industry = _lookup_industries(ts_codes)
     bars_by_code = fetch_last_ohlcv_batch(ts_codes, days=120)
     if realtime and ts_codes:
         q = fetch_realtime_quotes(ts_codes)
@@ -225,6 +367,14 @@ def compute_trendok_for_symbols(
                     bars_by_code[code] = _merge_realtime_bar(bars, qt)
 
     out: list[dict[str, Any]] = []
+    latest_bar_date: str | None = None
+    for bars in bars_by_code.values():
+        if not bars:
+            continue
+        d = str(bars[-1][0])
+        if not latest_bar_date or d > latest_bar_date:
+            latest_bar_date = d
+    flow_ctx = _build_industry_flow_context(latest_bar_date)
     for sym in syms:
         market_ticker_ts = parsed.get(sym)
         if not market_ticker_ts:
@@ -232,8 +382,9 @@ def compute_trendok_for_symbols(
             continue
         _, ticker, ts_code = market_ticker_ts
         name = by_name.get(ts_code)
+        industry = by_industry.get(ts_code)
         bars = bars_by_code.get(ts_code, [])
-        out.append(_trendok_one(symbol=sym, name=name, bars=bars))
+        out.append(_trendok_one(symbol=sym, name=name, industry=industry, bars=bars, flow_ctx=flow_ctx))
     return out
 
 
@@ -241,7 +392,9 @@ def _trendok_one(
     *,
     symbol: str,
     name: str | None,
+    industry: str | None,
     bars: list[tuple[str, str, str, str, str, str]],
+    flow_ctx: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Ported from quant-service `_market_stock_trendok_one` with the same checks/score behavior.
@@ -301,6 +454,8 @@ def _trendok_one(
 
     res["asOfDate"] = dates[-1]
     res["values"]["close"] = closes[-1]
+    if industry:
+        res["values"]["industry"] = industry
 
     if len(closes) < 60:
         res["missingData"].append("bars_lt_60")
@@ -446,6 +601,14 @@ def _trendok_one(
             total2 = max(0.0, min(100.0, total))
             res["score"] = round(total2, 3)
             res["scoreParts"] = parts
+            if industry and flow_ctx:
+                delta, flow_parts, flow_reasons = _industry_flow_score_adjustment(industry, flow_ctx)
+                if flow_parts:
+                    res["scoreParts"].update(flow_parts)
+                    res["values"]["industryFlowAsOfDate"] = flow_ctx.get("asOfDate")
+                    res["values"]["industryFlowReasons"] = flow_reasons
+                if delta != 0.0 and res.get("score") is not None:
+                    res["score"] = round(max(0.0, min(100.0, float(res["score"]) + delta)), 3)
     except Exception:
         res["score"] = None
 

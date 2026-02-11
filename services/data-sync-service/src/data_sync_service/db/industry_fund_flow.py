@@ -125,6 +125,57 @@ def get_top_rows(as_of_date: str, top_n: int) -> list[dict[str, Any]]:
     ]
 
 
+def get_rows_by_date(as_of_date: str) -> list[dict[str, Any]]:
+    """Return all industry flow rows for a given date."""
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT industry_code, industry_name, net_inflow
+                FROM {TABLE_NAME}
+                WHERE date = %s
+                """,
+                (as_of_date,),
+            )
+            rows = cur.fetchall()
+    return [
+        {
+            "industry_code": str(r[0]),
+            "industry_name": str(r[1]),
+            "net_inflow": float(r[2] or 0.0),
+        }
+        for r in rows
+    ]
+
+
+def get_sum_by_industry_for_dates(dates: list[str]) -> list[dict[str, Any]]:
+    """Return per-industry sum of net_inflow for given dates."""
+    ensure_table()
+    if not dates:
+        return []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT industry_name, SUM(net_inflow) AS sum_inflow
+                FROM {TABLE_NAME}
+                WHERE date = ANY(%s)
+                GROUP BY industry_name
+                ORDER BY sum_inflow DESC
+                """,
+                (dates,),
+            )
+            rows = cur.fetchall()
+    return [
+        {
+            "industry_name": str(r[0]),
+            "sum_inflow": float(r[1] or 0.0),
+        }
+        for r in rows
+    ]
+
+
 def get_series_for_industry(*, industry_name: str, dates: list[str]) -> list[dict[str, Any]]:
     ensure_table()
     if not dates:
