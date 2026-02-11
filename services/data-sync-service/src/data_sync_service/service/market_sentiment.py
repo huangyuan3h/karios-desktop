@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import random
+import sys
 import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -93,58 +94,58 @@ def _parse_money_to_cny(value: Any) -> float:
 
 
 def fetch_cn_market_breadth_eod(as_of: date) -> dict[str, Any]:
-    ak = _akshare()
     d = as_of.strftime("%Y-%m-%d")
-    if not hasattr(ak, "stock_zh_a_spot_em"):
-        raise RuntimeError("AkShare missing stock_zh_a_spot_em. Please upgrade AkShare.")
-    try:
-        df = _with_retry(lambda: ak.stock_zh_a_spot_em(), tries=3)
-    except Exception:
-        if not hasattr(ak, "stock_zh_a_spot"):
-            raise
-        df = _with_retry(lambda: ak.stock_zh_a_spot(), tries=2, base_sleep_s=0.8)
-    rows = _to_records(df)
+    # Use tushare to avoid native crashes from AkShare's JS decoder (mini_racer).
+    # This is EOD breadth, so tushare daily is sufficient and more stable.
+    pro = _tushare_pro()
+    td = _safe_trade_date(as_of)
+    limit = 5000
+    offset = 0
     up = 0
     down = 0
     flat = 0
     total_turnover_cny = 0.0
     total_volume = 0.0
+    rows_n = 0
+    while True:
+        df = _with_retry(
+            lambda: pro.daily(trade_date=td, limit=limit, offset=offset, fields="ts_code,pct_chg,vol,amount"),
+            tries=2,
+            base_sleep_s=0.6,
+        )
+        if df is None or getattr(df, "empty", False):
+            break
+        rows = _to_records(df)
+        rows_n += len(rows)
+        for r in rows:
+            try:
+                pct = float(r.get("pct_chg"))
+            except Exception:
+                pct = 0.0
+            if pct > 0:
+                up += 1
+            elif pct < 0:
+                down += 1
+            else:
+                flat += 1
 
-    def _to_float0(v: Any) -> float:
-        if v is None:
-            return 0.0
-        if isinstance(v, (int, float)):
-            return float(v) if float(v) == float(v) else 0.0
-        s = str(v).strip().replace(",", "").replace("%", "")
-        if not s or s in ("-", "—", "N/A", "None"):
-            return 0.0
-        keep = []
-        for ch in s:
-            if ch.isdigit() or ch in (".", "-", "+"):
-                keep.append(ch)
-        try:
-            return float("".join(keep))
-        except Exception:
-            return 0.0
+            try:
+                vol = float(r.get("vol") or 0.0)
+            except Exception:
+                vol = 0.0
+            try:
+                amt = float(r.get("amount") or 0.0)
+            except Exception:
+                amt = 0.0
+            # Tushare daily.amount is in thousand RMB (K CNY).
+            if math.isfinite(amt):
+                total_turnover_cny += float(amt) * 1000.0
+            if math.isfinite(vol):
+                total_volume += float(vol)
+        if len(rows) < limit:
+            break
+        offset += limit
 
-    for r in rows:
-        turnover0 = r.get("成交额") or r.get("turnover") or r.get("成交额(元)") or ""
-        vol0 = r.get("成交量") or r.get("volume") or ""
-        total_turnover_cny += _parse_money_to_cny(turnover0)
-        total_volume += _to_float0(vol0)
-
-        chg = r.get("涨跌幅") or r.get("change_pct") or r.get("涨跌幅%") or ""
-        s = str(chg).strip().replace("%", "")
-        try:
-            v = float(s)
-        except Exception:
-            continue
-        if v > 0:
-            up += 1
-        elif v < 0:
-            down += 1
-        else:
-            flat += 1
     total = up + down + flat
     ratio = float(up) / float(down) if down > 0 else float(up)
     return {
@@ -156,7 +157,7 @@ def fetch_cn_market_breadth_eod(as_of: date) -> dict[str, Any]:
         "up_down_ratio": ratio,
         "total_turnover_cny": total_turnover_cny,
         "total_volume": total_volume,
-        "raw": {"source": "stock_zh_a_spot_em", "rows": len(rows)},
+        "raw": {"source": "tushare.daily", "trade_date": td, "rows": rows_n},
     }
 
 
@@ -292,6 +293,10 @@ def _fetch_cn_a_spot_change_pct() -> dict[str, float]:
 
 def fetch_cn_yesterday_limitup_premium(as_of: date) -> dict[str, Any]:
     d = as_of.strftime("%Y-%m-%d")
+    # On macOS, AkShare's JS decoder may crash the whole process (mini_racer / V8 fatal).
+    # Prefer tushare to keep the backend stable.
+    if sys.platform == "darwin":
+        return fetch_cn_yesterday_limitup_premium_tushare(as_of)
     try:
         ak = _akshare()
         if not hasattr(ak, "stock_zt_pool_em"):
@@ -362,6 +367,9 @@ def fetch_cn_failed_limitup_rate(as_of: date) -> dict[str, Any]:
         return s
 
     try:
+        # Same safety consideration as premium: avoid AkShare on macOS to prevent native crashes.
+        if sys.platform == "darwin":
+            raise RuntimeError("akshare_disabled_on_darwin")
         ak = _akshare()
         if not hasattr(ak, "stock_zt_pool_em"):
             raise RuntimeError("AkShare missing stock_zt_pool_em. Please upgrade AkShare.")
