@@ -916,7 +916,6 @@ export function DashboardPage({
                       ? `${Number(latest.failedLimitUpRate).toFixed(1)}%`
                       : '—';
                     const turnover = fmtAmountCn(latest?.marketTurnoverCny);
-                    const totalVolume = fmtAmountCn(latest?.marketTurnoverCny);
                     const ratio = Number.isFinite(latest?.upDownRatio)
                       ? Number(latest.upDownRatio).toFixed(2)
                       : '—';
@@ -958,9 +957,6 @@ export function DashboardPage({
                             <div className="mt-1 text-xs text-[var(--k-muted)]">ratio: {ratio}</div>
                             <div className="mt-1 text-xs text-[var(--k-muted)]">
                               turnover: {turnover}
-                            </div>
-                            <div className="mt-1 text-xs text-[var(--k-muted)]">
-                              total volume: {totalVolume}
                             </div>
                           </div>
                           <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
