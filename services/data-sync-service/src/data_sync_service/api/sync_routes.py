@@ -7,6 +7,7 @@ from data_sync_service.service.close_sync import sync_close
 from data_sync_service.service.daily import sync_daily_full
 from data_sync_service.service.hk_basic import sync_hk_basic
 from data_sync_service.service.hk_daily import sync_hk_daily_full
+from data_sync_service.service.index_daily import sync_index_daily_full
 from data_sync_service.service.stock_basic import sync_stock_basic
 from data_sync_service.service.trade_calendar import sync_trade_calendar
 
@@ -75,6 +76,13 @@ def sync_adj_factor_endpoint() -> dict:
     return sync_adj_factor_full()
 
 
+@router.post("/sync/index-daily")
+def sync_index_daily_endpoint() -> dict:
+    # Purpose: full index daily sync for selected indices; skip if today already succeeded.
+    """Trigger full sync of index daily bars. Skips if today already succeeded; resumes from failure."""
+    return sync_index_daily_full()
+
+
 @router.post("/sync/trade-cal")
 def sync_trade_cal_endpoint(
     exchange: str = Query("SSE"),
@@ -90,4 +98,8 @@ def sync_trade_cal_endpoint(
 def sync_close_endpoint(exchange: str = Query("SSE"), force: bool = Query(False)) -> dict:
     # Purpose: close-time sync by trade_date window; pulls daily + adj_factor (paged).
     """Close-time sync by trade_date window: daily + adj_factor (paged)."""
-    return sync_close(exchange=exchange, force=bool(force))
+    result = sync_close(exchange=exchange, force=bool(force))
+    index_result = sync_index_daily_full()
+    if isinstance(result, dict):
+        return {**result, "indexDaily": index_result}
+    return {"ok": True, "result": result, "indexDaily": index_result}
