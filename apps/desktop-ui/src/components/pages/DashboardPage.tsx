@@ -428,6 +428,7 @@ export function DashboardPage({
     const items: any[] = Array.isArray(ms?.items) ? ms.items : [];
     const latest = items.length ? items[items.length - 1] : null;
     const asOfDate = String(ms?.asOfDate ?? summary2?.asOfDate ?? '').trim();
+  const indexSignals: any[] = Array.isArray(ms?.indexSignals) ? ms.indexSignals : [];
 
     const lines: string[] = [];
     lines.push(`${heading} Market sentiment`);
@@ -435,10 +436,29 @@ export function DashboardPage({
     if (latest) {
       const risk = String(latest?.riskMode ?? '');
       if (risk) lines.push(`- risk: ${risk}`);
+    const total = fmtAmountCn(latest?.marketTurnoverCny);
+    if (total && total !== '—') lines.push(`- totalTurnover: ${total}`);
       const rules = Array.isArray(latest?.rules) ? latest.rules.map((x: any) => String(x)).filter(Boolean) : [];
       if (rules.length) lines.push(`- rules: ${rules.slice(0, 6).join(' • ')}${rules.length > 6 ? '…' : ''}`);
     }
     lines.push('');
+
+  if (indexSignals.length) {
+    const headers0 = ['Index', 'Signal', 'Position', 'Close', 'MA5', 'MA20', 'AsOfDate'];
+    const rows0: unknown[][] = indexSignals.map((it: any) => [
+      String(it?.name ?? it?.tsCode ?? ''),
+      String(it?.signal ?? ''),
+      String(it?.positionRange ?? ''),
+      Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
+      Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
+      Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
+      String(it?.asOfDate ?? ''),
+    ]);
+    lines.push(`${heading}# Index traffic lights`);
+    lines.push('');
+    lines.push(mdTable(headers0, rows0));
+    lines.push('');
+  }
 
     const last5 = (items || []).slice(-5);
     const headers = ['date', 'ratio', 'turnover', 'premium%', 'failed%', 'risk'];
@@ -887,6 +907,7 @@ export function DashboardPage({
                     const ms = summary?.marketSentiment ?? {};
                     const items: any[] = Array.isArray(ms.items) ? ms.items : [];
                     const latest = items.length ? items[items.length - 1] : null;
+                    const indexSignals: any[] = Array.isArray(ms.indexSignals) ? ms.indexSignals : [];
                     const risk = String(latest?.riskMode ?? '—');
                     const premium = Number.isFinite(latest?.yesterdayLimitUpPremium)
                       ? `${Number(latest.yesterdayLimitUpPremium).toFixed(2)}%`
@@ -895,6 +916,7 @@ export function DashboardPage({
                       ? `${Number(latest.failedLimitUpRate).toFixed(1)}%`
                       : '—';
                     const turnover = fmtAmountCn(latest?.marketTurnoverCny);
+                    const totalVolume = fmtAmountCn(latest?.marketTurnoverCny);
                     const ratio = Number.isFinite(latest?.upDownRatio)
                       ? Number(latest.upDownRatio).toFixed(2)
                       : '—';
@@ -937,6 +959,9 @@ export function DashboardPage({
                             <div className="mt-1 text-xs text-[var(--k-muted)]">
                               turnover: {turnover}
                             </div>
+                            <div className="mt-1 text-xs text-[var(--k-muted)]">
+                              total volume: {totalVolume}
+                            </div>
                           </div>
                           <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
                             <div className="text-xs text-[var(--k-muted)]">Sentiment</div>
@@ -950,6 +975,42 @@ export function DashboardPage({
                             <div className="mt-0.5 font-mono">{failed}</div>
                           </div>
                         </div>
+
+                        {indexSignals.length ? (
+                          <div className="mt-3">
+                            <div className="mb-2 text-xs text-[var(--k-muted)]">Index traffic lights</div>
+                            <div className="grid gap-2 md:grid-cols-2">
+                              {indexSignals.map((it: any) => {
+                                const signal = String(it?.signal ?? 'unknown');
+                                const badge =
+                                  signal === 'green'
+                                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+                                    : signal === 'red'
+                                      ? 'border-red-500/30 bg-red-500/10 text-red-600'
+                                      : signal === 'yellow'
+                                        ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
+                                        : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
+                                return (
+                                  <div
+                                    key={String(it?.tsCode ?? it?.name)}
+                                    className={`rounded-lg border px-3 py-2 text-xs ${badge}`}
+                                  >
+                                    <div className="font-medium">
+                                      {String(it?.name ?? it?.tsCode ?? '')}
+                                    </div>
+                                    <div className="mt-1 font-mono">
+                                      {signal} • pos {String(it?.positionRange ?? '—')}
+                                    </div>
+                                    <div className="mt-1 text-[var(--k-muted)]">
+                                      close {Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—'} • MA20{' '}
+                                      {Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—'}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
 
                         <div className="mt-3">
                           <div className="mb-2 text-xs text-[var(--k-muted)]">Last 5 days</div>

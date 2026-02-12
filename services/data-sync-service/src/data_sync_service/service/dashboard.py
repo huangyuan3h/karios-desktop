@@ -6,6 +6,7 @@ from typing import Any
 
 from data_sync_service.db import get_connection
 from data_sync_service.db.industry_fund_flow import ensure_table as ensure_industry
+from data_sync_service.db.index_daily import fetch_last_closes
 from data_sync_service.db.market_sentiment import get_latest_date as get_latest_sentiment_date
 from data_sync_service.db.market_sentiment import list_days as list_sentiment_days
 from data_sync_service.db.tv import list_snapshots_for_screener_full
@@ -132,7 +133,7 @@ def _industry_flow_5d_items(*, as_of_date: str) -> tuple[list[str], list[dict[st
     for code, rec in by_code.items():
         per: dict[str, float] = rec.get("perDate") or {}
         series = [{"date": d, "netInflow": float(per.get(d, 0.0) or 0.0)} for d in dates_sorted]
-        sum5d = float(sum(p["netInflow"] for p in series))
+        sum5d = float(sum(float(p.get("netInflow") or 0.0) for p in series))
         items.append(
             {
                 "industryCode": code,
@@ -200,6 +201,78 @@ def _screeners_status(limit: int = 50) -> list[dict[str, Any]]:
     return rows
 
 
+def _index_signal_items(*, as_of_date: str) -> list[dict[str, Any]]:
+    """
+    Build index traffic-light signals for selected indices using MA20/MA5.
+    """
+    indices = [
+        {"ts_code": "000001.SH", "name": "上证指数"},
+        {"ts_code": "399006.SZ", "name": "创业板指"},
+    ]
+    out: list[dict[str, Any]] = []
+    for it in indices:
+        ts_code = it["ts_code"]
+        name = it["name"]
+        series = fetch_last_closes(ts_code, days=30)
+        if len(series) < 21:
+            out.append(
+                {
+                    "tsCode": ts_code,
+                    "name": name,
+                    "asOfDate": series[-1][0] if series else None,
+                    "close": series[-1][1] if series else None,
+                    "ma5": None,
+                    "ma20": None,
+                    "ma20Prev": None,
+                    "signal": "unknown",
+                    "positionRange": "—",
+                    "rules": ["insufficient data for MA20"],
+                }
+            )
+            continue
+
+        closes = [c for _, c in series]
+        ma5 = sum(closes[-5:]) / 5.0
+        ma20 = sum(closes[-20:]) / 20.0
+        ma20_prev = sum(closes[-21:-1]) / 20.0
+        close = closes[-1]
+        signal = "yellow"
+        position = "40%-50%"
+        rules: list[str] = []
+
+        if close > ma20 and ma20 > ma20_prev:
+            signal = "green"
+            position = "80%-100%"
+            rules.append("close>MA20 && MA20 up")
+        elif close < ma20 and ma20 < ma20_prev:
+            signal = "red"
+            position = "0%-20%"
+            rules.append("close<MA20 && MA20 down")
+        else:
+            if close < ma5 and close >= ma20:
+                rules.append("close<MA5 but hold MA20")
+            elif abs(close - ma20) / ma20 <= 0.01:
+                rules.append("close near MA20")
+            else:
+                rules.append("range/sideways")
+
+        out.append(
+            {
+                "tsCode": ts_code,
+                "name": name,
+                "asOfDate": series[-1][0],
+                "close": close,
+                "ma5": ma5,
+                "ma20": ma20,
+                "ma20Prev": ma20_prev,
+                "signal": signal,
+                "positionRange": position,
+                "rules": rules,
+            }
+        )
+    return out
+
+
 def dashboard_summary() -> dict[str, Any]:
     """
     Minimal Dashboard summary for UI:
@@ -217,7 +290,12 @@ def dashboard_summary() -> dict[str, Any]:
     industry = {**industry_daily, "flow5d": flow5d, "flow5dOut": flow5d_out}
 
     sentiment_items = list_sentiment_days(as_of_date=as_of, days=5)
-    market_sentiment = {"asOfDate": as_of, "days": 5, "items": sentiment_items}
+    market_sentiment = {
+        "asOfDate": as_of,
+        "days": 5,
+        "items": sentiment_items,
+        "indexSignals": _index_signal_items(as_of_date=as_of),
+    }
 
     screeners = _screeners_status(limit=50)
     return {
@@ -282,7 +360,8 @@ def dashboard_sync(*, force: bool = True, screeners: bool = True) -> dict[str, A
     def _sync_screeners() -> dict[str, Any]:
         scr = list_screeners()
         items = scr.get("items") if isinstance(scr, dict) else []
-        enabled = [x for x in items if isinstance(x, dict) and bool(x.get("enabled"))]
+        items_list = items if isinstance(items, list) else []
+        enabled = [x for x in items_list if isinstance(x, dict) and bool(x.get("enabled"))]
         if not bool(screeners):
             return {"enabled": len(enabled), "skipped": True, "failed": 0, "missing": 0}
         for sc in enabled:
