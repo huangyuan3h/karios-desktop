@@ -28,6 +28,55 @@ type IndustryFundFlowResp = {
   top: IndustryFundFlowRow[];
 };
 
+type MainlineFlowFlags = {
+  sum20d: number;
+  sum5d: number;
+  rank20d: number;
+  rank5d: number;
+  positiveDays10d: number;
+  midAccumulation: boolean;
+  shortIntensity: boolean;
+  consistency: boolean;
+};
+
+type MainlineBreadthFlags = {
+  limitUpCount: number;
+  limitUpRank: number;
+  limitUpQualified: boolean;
+  dragonCount: number;
+  dragonQualified: boolean;
+  surgeRatio: number;
+  surgeQualified: boolean;
+};
+
+type MainlineTrendFlags = {
+  indexAboveMa20: boolean;
+  ma20Up: boolean;
+  rps: number;
+  rpsQualified: boolean;
+};
+
+type MainlineScoreRow = {
+  industryName: string;
+  flowScore: number;
+  breadthScore: number;
+  trendScore: number;
+  totalScore: number;
+  isMainline: boolean;
+  flags: {
+    flow: MainlineFlowFlags;
+    breadth: MainlineBreadthFlags;
+    trend: MainlineTrendFlags;
+  };
+};
+
+type MainlineResp = {
+  asOfDate: string;
+  dates: string[];
+  allScores: MainlineScoreRow[];
+  currentMainline: MainlineScoreRow[];
+};
+
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
@@ -52,6 +101,11 @@ function fmtCny(x: number): string {
   if (abs >= 1e8) return `${(v / 1e8).toFixed(2)}亿`;
   if (abs >= 1e4) return `${(v / 1e4).toFixed(1)}万`;
   return `${v.toFixed(0)}`;
+}
+
+function fmtScore(x: number): string {
+  const v = Number.isFinite(x) ? x : 0;
+  return v.toFixed(1);
 }
 
 function sumLastN(series: IndustryFundFlowPoint[], n: number): number {
@@ -148,6 +202,93 @@ function Sparkline({ series }: { series: IndustryFundFlowPoint[] }) {
         </title>
       ) : null}
     </svg>
+  );
+}
+
+function MainlineSection({ resp }: { resp: MainlineResp | null }) {
+  const current = resp?.currentMainline ?? [];
+  const all = resp?.allScores ?? [];
+  const top = [...all].sort((a, b) => b.totalScore - a.totalScore).slice(0, 10);
+  return (
+    <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+      <div className="mb-2 text-sm font-medium">Mainline (主线)</div>
+      <div className="mb-1 text-xs text-[var(--k-muted)]">As of: {resp?.asOfDate ?? '—'}</div>
+      <div className="mb-3 text-xs text-[var(--k-muted)]">
+        Mainline Score = Flow + Breadth + Trend. Current mainline requires score &gt; 80 for 3+ trading days.
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-[var(--k-border)]">
+          <div className="border-b border-[var(--k-border)] px-3 py-2 text-xs font-medium">Current Mainline</div>
+          <div className="overflow-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[var(--k-muted)]">
+                  <th className="px-2 py-2">#</th>
+                  <th className="px-2 py-2">Industry</th>
+                  <th className="px-2 py-2">Total</th>
+                  <th className="px-2 py-2">F/B/T</th>
+                </tr>
+              </thead>
+              <tbody>
+                {current.length ? (
+                  current.map((r, idx) => (
+                    <tr key={r.industryName} className="border-t border-[var(--k-border)]">
+                      <td className="px-2 py-1 font-mono">{idx + 1}</td>
+                      <td className="px-2 py-1">{r.industryName}</td>
+                      <td className="px-2 py-1 font-mono">{fmtScore(r.totalScore)}</td>
+                      <td className="px-2 py-1 font-mono">
+                        {fmtScore(r.flowScore)}/{fmtScore(r.breadthScore)}/{fmtScore(r.trendScore)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="px-2 py-6 text-center text-[var(--k-muted)]">
+                      No mainline yet
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="rounded-lg border border-[var(--k-border)]">
+          <div className="border-b border-[var(--k-border)] px-3 py-2 text-xs font-medium">Top Scores</div>
+          <div className="overflow-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[var(--k-muted)]">
+                  <th className="px-2 py-2">#</th>
+                  <th className="px-2 py-2">Industry</th>
+                  <th className="px-2 py-2">Total</th>
+                  <th className="px-2 py-2">F/B/T</th>
+                </tr>
+              </thead>
+              <tbody>
+                {top.length ? (
+                  top.map((r, idx) => (
+                    <tr key={r.industryName} className="border-t border-[var(--k-border)]">
+                      <td className="px-2 py-1 font-mono">{idx + 1}</td>
+                      <td className="px-2 py-1">{r.industryName}</td>
+                      <td className="px-2 py-1 font-mono">{fmtScore(r.totalScore)}</td>
+                      <td className="px-2 py-1 font-mono">
+                        {fmtScore(r.flowScore)}/{fmtScore(r.breadthScore)}/{fmtScore(r.trendScore)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="px-2 py-6 text-center text-[var(--k-muted)]">
+                      No data
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -326,21 +467,39 @@ function MiniTable({
 export function IndustryFlowPage() {
   const { addReference } = useChatStore();
   const [resp, setResp] = React.useState<IndustryFundFlowResp | null>(null);
+  const [mainlineResp, setMainlineResp] = React.useState<MainlineResp | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [mainlineError, setMainlineError] = React.useState<string | null>(null);
   const [topN, setTopN] = React.useState(30);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [lastSyncMsg, setLastSyncMsg] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     setError(null);
+    setMainlineError(null);
     try {
       // Always load full universe for accurate per-day ranking widgets.
       const universeTopN = 200;
-      const r = await apiGetJson<IndustryFundFlowResp>(
-        `/market/cn/industry-fund-flow?days=10&topN=${encodeURIComponent(String(universeTopN))}`,
-      );
-      setResp(r);
+      const [flowRes, mainlineRes] = await Promise.allSettled([
+        apiGetJson<IndustryFundFlowResp>(
+          `/market/cn/industry-fund-flow?days=10&topN=${encodeURIComponent(String(universeTopN))}`,
+        ),
+        apiGetJson<MainlineResp>('/market/cn/industry-mainline'),
+      ]);
+      if (flowRes.status === 'fulfilled') {
+        setResp(flowRes.value);
+      } else {
+        throw flowRes.reason;
+      }
+      if (mainlineRes.status === 'fulfilled') {
+        setMainlineResp(mainlineRes.value);
+      } else {
+        setMainlineError(
+          mainlineRes.reason instanceof Error ? mainlineRes.reason.message : String(mainlineRes.reason),
+        );
+        setMainlineResp(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setResp(null);
@@ -423,6 +582,11 @@ export function IndustryFlowPage() {
           {lastSyncMsg}
         </div>
       ) : null}
+      {mainlineError ? (
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+          Mainline data unavailable: {mainlineError}
+        </div>
+      ) : null}
 
       <div className="mb-3 flex items-center justify-between">
         <div className="text-xs text-[var(--k-muted)]">
@@ -448,6 +612,7 @@ export function IndustryFlowPage() {
 
       {resp?.top?.length ? (
         <div className="grid gap-4">
+          <MainlineSection resp={mainlineResp} />
           {(() => {
             const rows = resp.top.slice(0, 500);
             const asOfDate = resp.asOfDate || new Date().toISOString().slice(0, 10);
