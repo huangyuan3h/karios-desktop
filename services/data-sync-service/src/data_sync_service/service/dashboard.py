@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import time
+import math
 from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from data_sync_service.db import get_connection
 from data_sync_service.db.industry_fund_flow import ensure_table as ensure_industry
@@ -12,6 +14,7 @@ from data_sync_service.db.market_sentiment import list_days as list_sentiment_da
 from data_sync_service.db.tv import list_snapshots_for_screener_full
 from data_sync_service.service.industry_fund_flow import get_cn_industry_fund_flow, sync_cn_industry_fund_flow
 from data_sync_service.service.market_sentiment import sync_cn_sentiment
+from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 from data_sync_service.service.tv import list_screeners, sync_screener
 
 
@@ -21,6 +24,40 @@ def _now_iso() -> str:
 
 def _today_iso_date() -> str:
     return datetime.now(tz=UTC).date().isoformat()
+
+
+def _is_shanghai_trading_time() -> bool:
+    """
+    Best-effort CN A-share trading time check in Asia/Shanghai.
+    """
+    now = datetime.now(tz=ZoneInfo("Asia/Shanghai"))
+    if now.weekday() >= 5:
+        return False
+    minutes = now.hour * 60 + now.minute
+    in_morning = minutes >= 9 * 60 + 30 and minutes <= 11 * 60 + 30
+    in_afternoon = minutes >= 13 * 60 and minutes <= 15 * 60
+    return in_morning or in_afternoon
+
+
+def _trade_date_from_trade_time(trade_time: str | None) -> str | None:
+    if not trade_time:
+        return None
+    s = str(trade_time).strip()
+    if not s:
+        return None
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return s[:10]
+    if len(s) == 8 and s.isdigit():
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+    return None
+
+
+def _safe_float(v: Any) -> float | None:
+    try:
+        f = float(v)
+        return f if math.isfinite(f) else None
+    except Exception:
+        return None
 
 
 def _industry_top_by_date(*, as_of_date: str, days: int = 5, top_k: int = 5) -> dict[str, Any]:
@@ -204,16 +241,47 @@ def _screeners_status(limit: int = 50) -> list[dict[str, Any]]:
 def _index_signal_items(*, as_of_date: str) -> list[dict[str, Any]]:
     """
     Build index traffic-light signals for selected indices using MA20/MA5.
+    During trading hours, try to use realtime quotes from tushare.
     """
     indices = [
         {"ts_code": "000001.SH", "name": "上证指数"},
         {"ts_code": "399006.SZ", "name": "创业板指"},
     ]
+    rt_price: dict[str, float] = {}
+    rt_time: dict[str, str | None] = {}
+    if _is_shanghai_trading_time():
+        res = fetch_realtime_quotes([x["ts_code"] for x in indices])
+        if isinstance(res, dict) and bool(res.get("ok")):
+            for it in res.get("items", []) or []:
+                ts_code = str(it.get("ts_code") or "").strip()
+                if not ts_code:
+                    continue
+                price = _safe_float(it.get("price"))
+                if price is None:
+                    continue
+                rt_price[ts_code] = price
+                rt_time[ts_code] = it.get("trade_time")
     out: list[dict[str, Any]] = []
     for it in indices:
         ts_code = it["ts_code"]
         name = it["name"]
         series = fetch_last_closes(ts_code, days=30)
+        used_realtime = False
+        trade_time = rt_time.get(ts_code)
+        rt_close = rt_price.get(ts_code)
+        if rt_close is not None:
+            rt_date = _trade_date_from_trade_time(trade_time) or _today_iso_date()
+            if series:
+                last_date = series[-1][0]
+                if last_date == rt_date:
+                    series = [*series[:-1], (rt_date, rt_close)]
+                    used_realtime = True
+                elif last_date < rt_date:
+                    series = [*series, (rt_date, rt_close)]
+                    used_realtime = True
+            else:
+                series = [(rt_date, rt_close)]
+                used_realtime = True
         if len(series) < 21:
             out.append(
                 {
@@ -227,6 +295,9 @@ def _index_signal_items(*, as_of_date: str) -> list[dict[str, Any]]:
                     "signal": "unknown",
                     "positionRange": "—",
                     "rules": ["insufficient data for MA20"],
+                    "realtime": used_realtime,
+                    "tradeTime": trade_time if used_realtime else None,
+                    "source": "tushare.realtime_quote" if used_realtime else "db.index_daily",
                 }
             )
             continue
@@ -268,6 +339,9 @@ def _index_signal_items(*, as_of_date: str) -> list[dict[str, Any]]:
                 "signal": signal,
                 "positionRange": position,
                 "rules": rules,
+                "realtime": used_realtime,
+                "tradeTime": trade_time if used_realtime else None,
+                "source": "tushare.realtime_quote" if used_realtime else "db.index_daily",
             }
         )
     return out

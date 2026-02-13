@@ -323,6 +323,13 @@ export function DashboardPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      if (isShanghaiTradingTime()) void refresh();
+    }, 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [refresh]);
+
   async function onSyncAll() {
     setBusy(true);
     setError(null);
