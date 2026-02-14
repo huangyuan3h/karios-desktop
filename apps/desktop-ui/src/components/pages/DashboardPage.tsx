@@ -123,6 +123,51 @@ function mdLines(items: string[]): string {
   return items.filter((x) => String(x || '').trim()).join('\n');
 }
 
+function signalRank(x: string): number {
+  if (x === 'green') return 3;
+  if (x === 'yellow') return 2;
+  if (x === 'red') return 1;
+  return 0;
+}
+
+function buildIndexTrafficSummary(indexSignals: any[]): { title: string; detail: string } {
+  const items = Array.isArray(indexSignals) ? indexSignals : [];
+  if (items.length < 2) {
+    return {
+      title: '⚠️ 当前行情：弱势 (Weak)',
+      detail: '缺少完整指数信号，保持防守。',
+    };
+  }
+  const byName = new Map(items.map((x) => [String(x?.name ?? x?.tsCode ?? ''), String(x?.signal ?? '')]));
+  const sse = byName.get('上证指数') || String(items[0]?.signal ?? '');
+  const cyb = byName.get('创业板指') || String(items[1]?.signal ?? '');
+  const g1 = sse === 'green';
+  const g2 = cyb === 'green';
+
+  if (g1 && g2) {
+    return {
+      title: '✅ 当前行情：强势 (Strong)',
+      detail: '双绿确认，顺势为主，控制仓位与回撤。',
+    };
+  }
+
+  if (g1 || g2) {
+    const r1 = signalRank(sse);
+    const r2 = signalRank(cyb);
+    const bias =
+      r1 === r2 ? '分化' : r1 > r2 ? '主强创弱' : '创强主弱';
+    return {
+      title: '⚠️ 当前行情：震荡/分化 (Diverging)',
+      detail: `震荡分化（${bias}），严禁追高，仅限防守型回踩；买入仅用反弹买入策略单。`,
+    };
+  }
+
+  return {
+    title: '⚠️ 当前行情：弱势 (Weak)',
+    detail: '非绿环境，防守为主，严格控制风险；买入仅用反弹买入策略单。',
+  };
+}
+
 function mdScoreParts(parts: Record<string, number> | undefined): string[] {
   if (!parts) return [];
   const entries = Object.entries(parts).filter(([, v]) => typeof v === 'number' && Number.isFinite(v));
@@ -915,6 +960,7 @@ export function DashboardPage({
                     const items: any[] = Array.isArray(ms.items) ? ms.items : [];
                     const latest = items.length ? items[items.length - 1] : null;
                     const indexSignals: any[] = Array.isArray(ms.indexSignals) ? ms.indexSignals : [];
+                    const summaryLine = buildIndexTrafficSummary(indexSignals);
                     const risk = String(latest?.riskMode ?? '—');
                     const premium = Number.isFinite(latest?.yesterdayLimitUpPremium)
                       ? `${Number(latest.yesterdayLimitUpPremium).toFixed(2)}%`
@@ -953,6 +999,11 @@ export function DashboardPage({
                                 .join(' • ')}
                             </div>
                           ) : null}
+                        </div>
+
+                        <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                          <div className="text-sm font-semibold text-amber-700">{summaryLine.title}</div>
+                          <div className="mt-1 text-xs text-amber-800">{summaryLine.detail}</div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 text-sm">

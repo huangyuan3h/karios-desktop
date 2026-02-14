@@ -13,11 +13,12 @@ def _series_const(start_day: int = 1, days: int = 21, close: float = 100.0) -> l
 
 def test_index_signal_realtime_overrides_close(monkeypatch) -> None:
     import data_sync_service.service.dashboard as dashboard  # type: ignore[import-not-found]
+    import data_sync_service.service.market_regime as market_regime  # type: ignore[import-not-found]
 
     series = _series_const(days=21, close=100.0)
-    monkeypatch.setattr(dashboard, "fetch_last_closes", lambda ts_code, days=30: list(series))
-    monkeypatch.setattr(dashboard, "_is_shanghai_trading_time", lambda: True)
-    monkeypatch.setattr(dashboard, "_today_iso_date", lambda: "2025-02-21")
+    monkeypatch.setattr(market_regime, "fetch_last_closes", lambda ts_code, days=30: list(series))
+    monkeypatch.setattr(market_regime, "_is_shanghai_trading_time", lambda: True)
+    monkeypatch.setattr(market_regime, "_today_iso_date", lambda: "2025-02-21")
 
     def _rt(_codes: list[str]) -> dict[str, Any]:
         return {
@@ -28,7 +29,7 @@ def test_index_signal_realtime_overrides_close(monkeypatch) -> None:
             ],
         }
 
-    monkeypatch.setattr(dashboard, "fetch_realtime_quotes", _rt)
+    monkeypatch.setattr(market_regime, "fetch_realtime_quotes", _rt)
 
     items = dashboard._index_signal_items(as_of_date="2025-02-21")
     assert len(items) == 2
@@ -41,10 +42,11 @@ def test_index_signal_realtime_overrides_close(monkeypatch) -> None:
 
 def test_index_signal_uses_db_when_not_trading(monkeypatch) -> None:
     import data_sync_service.service.dashboard as dashboard  # type: ignore[import-not-found]
+    import data_sync_service.service.market_regime as market_regime  # type: ignore[import-not-found]
 
     series = _series_const(days=21, close=100.0)
-    monkeypatch.setattr(dashboard, "fetch_last_closes", lambda ts_code, days=30: list(series))
-    monkeypatch.setattr(dashboard, "_is_shanghai_trading_time", lambda: False)
+    monkeypatch.setattr(market_regime, "fetch_last_closes", lambda ts_code, days=30: list(series))
+    monkeypatch.setattr(market_regime, "_is_shanghai_trading_time", lambda: False)
 
     items = dashboard._index_signal_items(as_of_date="2025-02-21")
     assert len(items) == 2

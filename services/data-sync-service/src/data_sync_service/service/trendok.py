@@ -15,6 +15,7 @@ from data_sync_service.db.industry_fund_flow import (
     get_sum_by_industry_for_dates,
 )
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
+from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 
@@ -375,6 +376,12 @@ def compute_trendok_for_symbols(
         if not latest_bar_date or d > latest_bar_date:
             latest_bar_date = d
     flow_ctx = _build_industry_flow_context(latest_bar_date)
+    market_regime: str | None = None
+    try:
+        regime_info = get_market_regime(as_of_date=latest_bar_date)
+        market_regime = str(regime_info.get("regime") or "Unknown")
+    except Exception:
+        market_regime = "Unknown"
     for sym in syms:
         market_ticker_ts = parsed.get(sym)
         if not market_ticker_ts:
@@ -384,7 +391,16 @@ def compute_trendok_for_symbols(
         name = by_name.get(ts_code)
         industry = by_industry.get(ts_code)
         bars = bars_by_code.get(ts_code, [])
-        out.append(_trendok_one(symbol=sym, name=name, industry=industry, bars=bars, flow_ctx=flow_ctx))
+        out.append(
+            _trendok_one(
+                symbol=sym,
+                name=name,
+                industry=industry,
+                bars=bars,
+                flow_ctx=flow_ctx,
+                market_regime=market_regime,
+            )
+        )
     return out
 
 
@@ -395,6 +411,7 @@ def _trendok_one(
     industry: str | None,
     bars: list[tuple[str, str, str, str, str, str]],
     flow_ctx: dict[str, Any] | None = None,
+    market_regime: str | None = None,
 ) -> dict[str, Any]:
     """
     Ported from quant-service `_market_stock_trendok_one` with the same checks/score behavior.
@@ -416,6 +433,7 @@ def _trendok_one(
         "buyRefPrice": None,
         "buyWhy": None,
         "buyChecks": {},
+        "marketRegime": market_regime,
         "checks": {},
         "values": {},
         "missingData": [],
@@ -820,6 +838,11 @@ def _trendok_one(
                     and ema20_rising
                     and macd_hist_now > 0.0
                 )
+                allow_mode_b = str(market_regime or "").strip() == "Strong"
+                buy_checks["mode_b_allowed"] = allow_mode_b
+                if in_trend and not allow_mode_b:
+                    buy_checks["mode_b_blocked"] = True
+                    in_trend = False
                 buy_checks["in_trend"] = in_trend
                 buy_checks["ema20_rising"] = ema20_rising
                 buy_checks["macd_hist_now"] = round(macd_hist_now, 6)
@@ -891,8 +914,17 @@ def _trendok_one(
                             buy_action = "wait"
                             buy_why = "模式A：未在回踩窗口"
                     else:
-                        buy_action = "wait"
-                        buy_why = "模式A：数据不足（需要≥20日平台/EMA）"
+                        if breakout_level is None:
+                            buy_checks["a_breakout_missing"] = True
+                            buy_action = "wait"
+                            buy_why = "模式A：未找到近5日突破日"
+                        elif ema20_now is None:
+                            buy_checks["a_ema20_missing"] = True
+                            buy_action = "wait"
+                            buy_why = "模式A：EMA20 数据不足"
+                        else:
+                            buy_action = "wait"
+                            buy_why = "模式A：数据不足（需要≥20日平台/EMA）"
             else:
                 buy_mode = "none"
                 buy_action = "wait"
