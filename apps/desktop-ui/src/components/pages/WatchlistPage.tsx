@@ -337,6 +337,19 @@ function fmtBuyCell(t: TrendOkResult | undefined | null): {
   return { text: '无', tone: 'none' };
 }
 
+function rowTone(t: TrendOkResult | undefined | null): 'green' | 'red' | 'none' {
+  if (!t) return 'none';
+  const stopParts = t.stopLossParts as Record<string, unknown> | null | undefined;
+  const exitNow = Boolean(stopParts && typeof stopParts === 'object' && stopParts['exit_now']);
+  if (exitNow || t.buyAction === 'avoid') return 'red';
+  const score = typeof t.score === 'number' && Number.isFinite(t.score) ? t.score : null;
+  const buyModeOk = t.buyMode === 'A_pullback' || t.buyMode === 'B_momentum';
+  if (t.trendOk === true && t.buyAction === 'buy' && buyModeOk && score != null && score >= 85) {
+    return 'green';
+  }
+  return 'none';
+}
+
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const { addReference } = useChatStore();
   const [items, setItems] = React.useState<WatchlistItem[]>([]);
@@ -1716,9 +1729,19 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               </thead>
               <tbody>
                 {sortedItems.map((it) => (
+                  (() => {
+                    const t = trend[it.symbol];
+                    const tone = rowTone(t);
+                    const rowClass =
+                      tone === 'green'
+                        ? 'border-t border-[var(--k-border)] bg-emerald-50/60 hover:bg-emerald-100/60'
+                        : tone === 'red'
+                          ? 'border-t border-[var(--k-border)] bg-red-50/60 hover:bg-red-100/60'
+                          : 'border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)]';
+                    return (
                   <tr
                     key={it.symbol}
-                    className="border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)]"
+                    className={rowClass}
                   >
                     <td className="px-3 py-2">
                       <button
@@ -1810,6 +1833,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       </div>
                     </td>
                   </tr>
+                    );
+                  })()
                 ))}
               </tbody>
             </table>
