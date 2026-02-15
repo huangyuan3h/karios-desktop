@@ -15,6 +15,7 @@ type WatchlistItem = {
   nameStatus?: 'resolved' | 'not_found';
   addedAt: string; // ISO
   color?: string; // hex color for lightweight flag, default white (#ffffff)
+  positionPct?: number | null; // 0..100 (%)
 };
 
 const STORAGE_KEY = 'karios.watchlist.v1';
@@ -136,6 +137,20 @@ type TrendOkResult = {
   missingData?: string[];
 };
 
+type V5AlertResult = {
+  symbol: string;
+  asOfDate?: string | null;
+  regime?: string | null;
+  currentPct?: number | null;
+  baseTarget?: number | null;
+  targetPct?: number | null;
+  action?: string | null;
+  reason?: string | null;
+  breakoutOk?: boolean | null;
+  sellOk?: boolean | null;
+  missingData?: string[];
+};
+
 type ScreenerImportDebugState = {
   updatedAt: string | null;
   scanned: number;
@@ -179,6 +194,17 @@ async function apiGetJson<T>(path: string): Promise<T> {
 
 async function apiGetJsonFrom<T>(baseUrl: string, path: string): Promise<T> {
   const res = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
+}
+
+async function apiPostJsonFrom<T>(baseUrl: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
   const txt = await res.text().catch(() => '');
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
   return txt ? (JSON.parse(txt) as T) : ({} as T);
@@ -361,6 +387,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   >({});
   const [trendBusy, setTrendBusy] = React.useState(false);
   const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
+  const [alerts, setAlerts] = React.useState<Record<string, V5AlertResult>>({});
+  const [alertsUpdatedAt, setAlertsUpdatedAt] = React.useState<string | null>(null);
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [syncStage, setSyncStage] = React.useState<string | null>(null);
@@ -420,6 +448,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               : undefined,
           addedAt: String(it.addedAt ?? new Date().toISOString()),
           color,
+          positionPct:
+            typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
+              ? Math.max(0, Math.min(100, it.positionPct))
+              : null,
         };
       })
       .filter((x) => Boolean(x.symbol));
@@ -528,6 +560,33 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         }
         setTrend(next);
         setTrendUpdatedAt(new Date().toISOString());
+
+        try {
+          const payload = {
+            items: items.map((it) => ({
+              symbol: it.symbol,
+              position_pct:
+                typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
+                  ? Math.max(0, Math.min(100, it.positionPct)) / 100.0
+                  : null,
+            })),
+          };
+          const rows = await apiPostJsonFrom<V5AlertResult[]>(
+            DATA_SYNC_BASE_URL,
+            '/market/stocks/watchlist/v5-alerts',
+            payload,
+          );
+          if (reqId === trendReqRef.current) {
+            const nextAlerts: Record<string, V5AlertResult> = {};
+            for (const r of Array.isArray(rows) ? rows : []) {
+              if (r && r.symbol) nextAlerts[r.symbol] = r;
+            }
+            setAlerts(nextAlerts);
+            setAlertsUpdatedAt(new Date().toISOString());
+          }
+        } catch {
+          if (reqId === trendReqRef.current) setAlerts({});
+        }
 
         // Best-effort realtime quotes (CN only) for the "Current" column.
         try {
@@ -831,6 +890,15 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     persist(next);
   }
 
+  function setItemPositionPct(symbol: string, value: string) {
+    const raw = value.trim();
+    const num = raw === '' ? null : Number(raw);
+    const nextVal =
+      typeof num === 'number' && Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : null;
+    const next = items.map((it) => (it.symbol === symbol ? { ...it, positionPct: nextVal } : it));
+    persist(next);
+  }
+
   React.useEffect(() => {
     if (!colorPicker.open) return;
     function onKeyDown(e: KeyboardEvent) {
@@ -1130,6 +1198,80 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     );
   }
 
+  function renderAlertCell(sym: string) {
+    const a = alerts[sym];
+    if (!a) return <span className="text-[var(--k-muted)]">—</span>;
+    const missing = (a.missingData ?? []).filter(Boolean);
+    if (missing.length) {
+      return (
+        <span className="font-mono text-[var(--k-muted)]" title={missing.join(', ')}>
+          数据不足
+        </span>
+      );
+    }
+    const targetPct = typeof a.targetPct === 'number' ? a.targetPct : null;
+    const pctText = targetPct != null ? `${(targetPct * 100).toFixed(0)}%` : '';
+    const action = a.action ?? 'hold';
+    const text =
+      action === 'exit'
+        ? '清仓'
+        : action === 'trim'
+          ? `减仓至 ${pctText || '—'}`
+          : action === 'buy_add'
+            ? `加仓至 ${pctText || '—'}`
+            : '观望';
+    const tone =
+      action === 'exit'
+        ? 'text-red-600'
+        : action === 'trim'
+          ? 'text-amber-700'
+          : action === 'buy_add'
+            ? 'text-emerald-700'
+            : 'text-[var(--k-muted)]';
+    const tip = (
+      <>
+        <div className="mb-2 flex items-center justify-between">
+          <div className="font-medium">V5提醒</div>
+          <div className="font-mono text-[var(--k-muted)]">{sym}</div>
+        </div>
+        <div className="text-[var(--k-muted)]">
+          regime={a.regime ?? '—'} baseTarget={a.baseTarget ?? '—'} currentPct={a.currentPct ?? '—'}
+        </div>
+        <div className="mt-2 space-y-1">
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">Action</div>
+            <div className="font-mono">{text}</div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">Breakout</div>
+            <div className="font-mono">{a.breakoutOk ? '✅' : '❌'}</div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">Sell</div>
+            <div className="font-mono">{a.sellOk ? '✅' : '❌'}</div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="text-[var(--k-muted)]">Reason</div>
+            <div className="font-mono">{a.reason ?? '—'}</div>
+          </div>
+        </div>
+      </>
+    );
+    return (
+      <button
+        type="button"
+        className={`inline-flex items-center font-mono ${tone}`}
+        onMouseEnter={(e) => showTooltip(e.currentTarget, tip, 360)}
+        onMouseLeave={hideTooltip}
+        onFocus={(e) => showTooltip(e.currentTarget, tip, 360)}
+        onBlur={hideTooltip}
+        aria-label="V5 alert details"
+      >
+        {text}
+      </button>
+    );
+  }
+
   const sortedItems = React.useMemo(() => {
     if (!scoreSortEnabled) return items;
     const arr = [...items];
@@ -1386,6 +1528,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             {trendUpdatedAt
               ? `Scores updated at ${new Date(trendUpdatedAt).toLocaleString()} (auto refresh: 10 min)`
               : 'Scores not loaded yet.'}
+          </div>
+          <div className="mt-1 text-xs text-[var(--k-muted)]">
+            {alertsUpdatedAt
+              ? `V5 alerts updated at ${new Date(alertsUpdatedAt).toLocaleString()}`
+              : 'V5 alerts not loaded yet.'}
           </div>
           {syncBusy && syncStage ? (
             <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
@@ -1705,6 +1852,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     </button>
                   </th>
                   <th className="px-3 py-2">买入</th>
+                  <th className="px-3 py-2">仓位%</th>
+                  <th className="px-3 py-2">V5提醒</th>
                   <th className="px-3 py-2">Current</th>
                   <th className="px-3 py-2">止损</th>
                   <th className="px-3 py-2">
@@ -1774,6 +1923,19 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     <td className="px-3 py-2">{it.name || '—'}</td>
                     <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
                     <td className="px-3 py-2">{renderBuyCell(it.symbol)}</td>
+                    <td className="px-3 py-2">
+                      <input
+                        className="h-8 w-20 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
+                        placeholder="0"
+                        value={
+                          typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
+                            ? String(it.positionPct)
+                            : ''
+                        }
+                        onChange={(e) => setItemPositionPct(it.symbol, e.target.value)}
+                      />
+                    </td>
+                    <td className="px-3 py-2">{renderAlertCell(it.symbol)}</td>
                     <td
                       className="px-3 py-2 font-mono"
                       title={

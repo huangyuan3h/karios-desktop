@@ -16,7 +16,7 @@ from data_sync_service.testback.strategies import get_strategy_class
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run backtest with default settings.")
-    parser.add_argument("--strategy", default="ma_crossover")
+    parser.add_argument("--strategy", default="watchlist_trend_v6")
     parser.add_argument("--start", default="2023-02-01")
     parser.add_argument("--end", default="2026-01-01")
     parser.add_argument("--initial-cash", type=float, default=1_000_000)

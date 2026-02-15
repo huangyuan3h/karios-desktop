@@ -14,6 +14,7 @@ from data_sync_service.db.stock_basic import fetch_market_stocks, get_market_sta
 from data_sync_service.service.market_quotes import get_market_quotes_batch, symbol_to_ts_code
 from data_sync_service.service.stock_basic import get_stock_basic_list, get_stock_basic_sync_status
 from data_sync_service.service.trendok import compute_trendok_for_symbols
+from data_sync_service.service.watchlist_v5_alerts import compute_watchlist_v5_alerts
 from data_sync_service.db.index_daily import fetch_index_daily
 from data_sync_service.testback.engine import (
     BacktestParams as EngineParams,
@@ -74,6 +75,15 @@ class BacktestRunRequest(BaseModel):
     rules: BacktestRules | None = None
     scoring: BacktestScoring | None = None
     params: BacktestParams | None = None
+
+
+class WatchlistAlertItem(BaseModel):
+    symbol: str
+    position_pct: float | None = None
+
+
+class WatchlistAlertsRequest(BaseModel):
+    items: list[WatchlistAlertItem] = []
 
 router = APIRouter()
 
@@ -372,6 +382,12 @@ def resolve_symbols_endpoint(symbols: list[str] | None = Query(None)) -> list[di
             }
         )
     return out
+
+
+@router.post("/market/stocks/watchlist/v5-alerts")
+def watchlist_v5_alerts_endpoint(req: WatchlistAlertsRequest) -> list[dict]:
+    items = [x.model_dump() for x in (req.items or [])]
+    return compute_watchlist_v5_alerts(items)
 
 
 @router.post("/backtest/run")
