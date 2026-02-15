@@ -89,6 +89,8 @@ const STRATEGY_OPTIONS = [
   { value: 'ma_crossover', label: '均线交叉' },
   { value: 'watchlist_trend', label: 'Watchlist趋势' },
   { value: 'watchlist_trend_v2', label: 'Watchlist趋势V2' },
+  { value: 'watchlist_trend_v3', label: 'Watchlist趋势V3' },
+  { value: 'watchlist_trend_v4', label: 'Watchlist趋势V4' },
   { value: 'sample_momentum', label: '样例动量' },
 ];
 
