@@ -256,6 +256,7 @@ def run_backtest(
     cash = max(0.0, params.initial_cash)
     positions: Dict[str, float] = {}
     last_prices: Dict[str, float] = {}
+    last_buy_date: Dict[str, str] = {}
     equity_curve: list[dict[str, Any]] = []
     drawdown_curve: list[dict[str, Any]] = []
     positions_curve: list[dict[str, Any]] = []
@@ -272,10 +273,36 @@ def run_backtest(
         equity = cash + sum(positions.get(code, 0.0) * last_prices.get(code, 0.0) for code in positions)
         snapshot = PortfolioSnapshot(cash=cash, equity=equity, positions=dict(positions))
         orders = strategy.on_bar(d, selected, snapshot)
+        order_by_code: Dict[str, Order] = {}
+        for o in orders:
+            if o.ts_code:
+                order_by_code[o.ts_code] = o
         day_orders: list[dict[str, Any]] = []
-        for order in orders:
-            bar = bars.get(order.ts_code)
-            if not bar:
+        for order in order_by_code.values():
+            bar_opt = bars.get(order.ts_code)
+            if bar_opt is None:
+                continue
+            bar = bar_opt
+            intended_action = (order.action or "").lower().strip()
+            if order.target_pct is not None:
+                target_pct = min(max(order.target_pct, 0.0), 1.0)
+                current_qty = positions.get(order.ts_code, 0.0)
+                desired_qty = (equity * target_pct) / max(bar.avg_price, 0.000001)
+                if desired_qty < current_qty:
+                    intended_action = "sell"
+                elif desired_qty > current_qty:
+                    intended_action = "buy"
+            if intended_action == "sell" and last_buy_date.get(order.ts_code) == d:
+                day_orders.append(
+                    {
+                        "ts_code": order.ts_code,
+                        "action": order.action,
+                        "qty": order.qty,
+                        "target_pct": order.target_pct,
+                        "reason": "t+1: same-day sell blocked",
+                        "status": "skipped",
+                    }
+                )
                 continue
             cash, positions, trade = _execute_order(
                 order,
@@ -293,10 +320,13 @@ def run_backtest(
                     "qty": order.qty,
                     "target_pct": order.target_pct,
                     "reason": order.reason,
+                    "status": "executed" if trade else "ignored",
                 }
             )
             if trade:
                 trade_log.append(trade)
+                if trade.get("action") == "buy":
+                    last_buy_date[order.ts_code] = d
         equity = cash + sum(positions.get(code, 0.0) * last_prices.get(code, 0.0) for code in positions)
         peak_equity = max(peak_equity, equity)
         drawdown = 0.0 if peak_equity <= 0 else (equity / peak_equity) - 1.0
