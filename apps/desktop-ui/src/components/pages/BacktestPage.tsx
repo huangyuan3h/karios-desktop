@@ -35,7 +35,7 @@ type DailyLogEntry = {
     exec_qty?: number | null;
     exec_price?: number | null;
   }>;
-  positions: Array<{ ts_code: string; qty: number }>;
+  positions?: Array<{ ts_code: string; qty: number }>;
   strategy_stats?: {
     date?: string;
     regime?: string;
@@ -405,7 +405,7 @@ export function BacktestPage() {
         .filter((o) => o.status === 'executed')
         .map((o) => `${o.action === 'buy' ? '买入' : o.action === 'sell' ? '卖出' : o.action} ${o.ts_code} ${o.reason ?? ''}`)
         .join(' ');
-      const positions = d.positions.map((p) => `${p.ts_code} ${p.qty}`).join(' ');
+      const positions = (d.positions ?? []).map((p) => `${p.ts_code} ${p.qty}`).join(' ');
       const stats = d.strategy_stats
         ? `regime=${d.strategy_stats.regime} bars=${d.strategy_stats.bars} breakout=${d.strategy_stats.breakout_ok} pullback=${d.strategy_stats.pullback_ok} buy=${d.strategy_stats.buy_signal}`
         : '';
@@ -586,14 +586,14 @@ export function BacktestPage() {
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex flex-col gap-1">
-                      {d.positions.length === 0 ? (
-                        <div className="text-[var(--k-muted)]">—</div>
-                      ) : (
-                        d.positions.slice(0, 5).map((p) => (
+                      {((d.positions ?? []).length > 0) ? (
+                        (d.positions ?? []).slice(0, 5).map((p) => (
                           <div key={p.ts_code} className="font-mono">
                             {p.ts_code} qty {fmtNum(p.qty)}
                           </div>
                         ))
+                      ) : (
+                        <div className="text-[var(--k-muted)]">—</div>
                       )}
                     </div>
                   </td>
