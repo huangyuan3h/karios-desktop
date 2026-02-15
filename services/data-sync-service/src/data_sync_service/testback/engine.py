@@ -226,8 +226,12 @@ def _execute_order(
             cost = qty * exec_price
             fee = cost * fee_rate
             total_cost = cost + fee
+        qty = (qty // 100) * 100
         if qty <= 0:
             return cash, positions, None
+        cost = qty * exec_price
+        fee = cost * fee_rate
+        total_cost = cost + fee
         cash -= total_cost
         cash = _normalize_cash(cash)
         positions[bar.ts_code] = current_qty + qty
@@ -243,6 +247,7 @@ def _execute_order(
         }
     exec_price = price * (1.0 - slippage_rate)
     qty2 = min(qty, current_qty)
+    qty2 = (qty2 // 100) * 100
     if qty2 <= 0:
         return cash, positions, None
     proceeds = qty2 * exec_price

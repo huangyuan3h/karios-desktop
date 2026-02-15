@@ -238,7 +238,7 @@ export function BacktestPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<BacktestResultResponse | null>(null);
   const [filter, setFilter] = React.useState('');
-  const [onlyActive, setOnlyActive] = React.useState(false);
+  const [onlyActive, setOnlyActive] = React.useState(true);
 
   const summary = result?.run?.summary ?? null;
   const dailyLog = result?.run?.daily_log ?? [];
