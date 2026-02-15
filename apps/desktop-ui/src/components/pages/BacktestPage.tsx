@@ -88,6 +88,7 @@ const defaultForm: RunFormState = {
 const STRATEGY_OPTIONS = [
   { value: 'ma_crossover', label: '均线交叉' },
   { value: 'watchlist_trend', label: 'Watchlist趋势' },
+  { value: 'watchlist_trend_v2', label: 'Watchlist趋势V2' },
   { value: 'sample_momentum', label: '样例动量' },
 ];
 
