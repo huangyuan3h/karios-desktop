@@ -59,7 +59,7 @@ class BacktestScoring(BaseModel):
 class BacktestParams(BaseModel):
     initial_cash: float = 1.0
     fee_rate: float = 0.0
-    slippage_rate: float = 0.0
+    slippage_rate: float = 0.0005
     adj_mode: str = "qfq"
     warmup_days: int = 20
 

@@ -87,7 +87,7 @@ const defaultForm: RunFormState = {
   end_date: '2026-01-01',
   initial_cash: '100',
   fee_rate: '0.0005',
-  slippage_rate: '0',
+  slippage_rate: '0.0005',
   adj_mode: 'qfq',
   top_n: '1000',
   min_price: '2',

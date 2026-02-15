@@ -21,7 +21,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--end", default="2026-01-01")
     parser.add_argument("--initial-cash", type=float, default=1_000_000)
     parser.add_argument("--fee-rate", type=float, default=0.0005)
-    parser.add_argument("--slippage-rate", type=float, default=0.0)
+    parser.add_argument("--slippage-rate", type=float, default=0.0005)
     parser.add_argument("--adj-mode", default="qfq")
     parser.add_argument("--warmup-days", type=int, default=20)
     parser.add_argument("--top-n", type=int, default=1000)
