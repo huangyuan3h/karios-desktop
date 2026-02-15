@@ -102,6 +102,7 @@ const STRATEGY_OPTIONS = [
   { value: 'watchlist_trend_v2', label: 'Watchlist趋势V2' },
   { value: 'watchlist_trend_v3', label: 'Watchlist趋势V3' },
   { value: 'watchlist_trend_v4', label: 'Watchlist趋势V4' },
+  { value: 'watchlist_trend_v5', label: 'Watchlist趋势V5' },
   { value: 'sample_momentum', label: '样例动量' },
 ];
 
@@ -151,6 +152,7 @@ function DailyTooltip({
     equity?: number;
     cash?: number;
     cash_before?: number;
+    index?: number;
     orders?: string;
     strategyStats?: string;
   };
@@ -170,6 +172,12 @@ function DailyTooltip({
           <span className="text-[var(--k-muted)]">现金(收盘)</span>
           <span className="font-mono">{fmtNum(data.cash)}</span>
         </div>
+        {data.index !== undefined ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[var(--k-muted)]">指数(归一)</span>
+            <span className="font-mono">{fmtNum(data.index)}</span>
+          </div>
+        ) : null}
         {data.orders ? (
           <div className="mt-2 text-[var(--k-muted)]">
             <div className="font-medium">指令</div>
@@ -295,16 +303,20 @@ export function BacktestPage() {
   const [onlyActive, setOnlyActive] = React.useState(true);
   const [runs, setRuns] = React.useState<BacktestRunListItem[]>([]);
   const [selectedRunId, setSelectedRunId] = React.useState<string>('');
+  const [indexSeries, setIndexSeries] = React.useState<Array<{ date: string; close: number }>>([]);
 
   const summary = result?.run?.summary ?? null;
   const dailyLog = React.useMemo(() => result?.run?.daily_log ?? [], [result]);
 
   const chartData = React.useMemo(() => {
+    const indexMap = new Map(indexSeries.map((x) => [x.date, x.close]));
+    const indexBase = indexSeries.length > 0 ? indexSeries[0].close : 0;
     return dailyLog.map((d) => ({
       date: d.date,
       equity: d.equity,
       cash: d.cash,
       cash_before: d.cash_before,
+      index: indexBase > 0 && indexMap.has(d.date) ? (indexMap.get(d.date) as number) / indexBase * 100 : undefined,
       strategyStats: d.strategy_stats
         ? `regime=${d.strategy_stats.regime} bars=${d.strategy_stats.bars} breakout=${d.strategy_stats.breakout_ok} pullback=${d.strategy_stats.pullback_ok} buy=${d.strategy_stats.buy_signal}`
         : '',
@@ -314,7 +326,7 @@ export function BacktestPage() {
         .slice(0, 4)
         .join('\n'),
     }));
-  }, [dailyLog]);
+  }, [dailyLog, indexSeries]);
 
   const drawdownData = React.useMemo(() => {
     return (result?.run?.drawdown_curve ?? []).map((d) => ({
@@ -395,6 +407,27 @@ export function BacktestPage() {
     void loadRuns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  React.useEffect(() => {
+    async function loadIndex() {
+      if (!result?.run?.start_date || !result?.run?.end_date) return;
+      try {
+        const items = await apiGetJson<Array<Record<string, unknown>>>(
+          `/index-daily?ts_code=000001.SH&start_date=${result.run.start_date}&end_date=${result.run.end_date}&limit=10000`,
+        );
+        const series = items
+          .map((x) => ({
+            date: String(x.trade_date || ''),
+            close: Number(x.close || 0),
+          }))
+          .filter((x) => x.date && Number.isFinite(x.close) && x.close > 0);
+        setIndexSeries(series);
+      } catch (e) {
+        setIndexSeries([]);
+      }
+    }
+    void loadIndex();
+  }, [result]);
 
   async function deleteRun(runId: string) {
     if (!runId) return;
@@ -522,6 +555,7 @@ export function BacktestPage() {
             config={{
               equity: { label: '权益', color: 'hsl(215, 85%, 55%)' },
               cash: { label: '现金', color: 'hsl(145, 65%, 40%)' },
+              index: { label: '指数(归一)', color: 'hsl(32, 85%, 50%)' },
             }}
             className="h-[280px]"
           >
@@ -529,9 +563,11 @@ export function BacktestPage() {
               <CartesianGrid stroke="var(--k-border)" strokeDasharray="3 3" />
               <XAxis dataKey="date" tickMargin={8} />
               <YAxis tickMargin={8} />
+              <YAxis yAxisId="index" orientation="right" tickMargin={8} />
               <ChartTooltip content={<DailyTooltip />} />
               <Area type="monotone" dataKey="equity" stroke="var(--color-equity)" fill="var(--color-equity)" fillOpacity={0.2} />
               <Area type="monotone" dataKey="cash" stroke="var(--color-cash)" fill="var(--color-cash)" fillOpacity={0.15} />
+              <Line type="monotone" dataKey="index" yAxisId="index" stroke="var(--color-index)" strokeWidth={2} dot={false} />
             </AreaChart>
           </ChartContainer>
         </div>

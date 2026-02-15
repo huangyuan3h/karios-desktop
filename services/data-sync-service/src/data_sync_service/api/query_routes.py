@@ -14,6 +14,7 @@ from data_sync_service.db.stock_basic import fetch_market_stocks, get_market_sta
 from data_sync_service.service.market_quotes import get_market_quotes_batch, symbol_to_ts_code
 from data_sync_service.service.stock_basic import get_stock_basic_list, get_stock_basic_sync_status
 from data_sync_service.service.trendok import compute_trendok_for_symbols
+from data_sync_service.db.index_daily import fetch_index_daily
 from data_sync_service.testback.engine import (
     BacktestParams as EngineParams,
     DailyRuleFilter as EngineRules,
@@ -112,6 +113,17 @@ def get_daily_endpoint(
     # Purpose: query daily bars from DB; filters by ts_code/date range; limit caps result size.
     """Return daily bars from our database. Optional filters; default limit 5000."""
     return get_daily_from_db(ts_code=ts_code, start_date=start_date, end_date=end_date, limit=limit)
+
+
+@router.get("/index-daily")
+def get_index_daily_endpoint(
+    ts_code: str | None = Query(None, description="Filter by ts_code"),
+    start_date: str | None = Query(None, description="Start date YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="End date YYYY-MM-DD"),
+    limit: int = Query(5000, ge=1, le=50000),
+) -> list:
+    """Return index daily bars from our database. Optional filters; default limit 5000."""
+    return fetch_index_daily(ts_code=ts_code, start_date=start_date, end_date=end_date, limit=limit)
 
 
 @router.get("/daily/status")
