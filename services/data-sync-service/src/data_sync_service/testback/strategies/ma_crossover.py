@@ -5,8 +5,10 @@ from typing import Deque, Dict, List
 
 from .base import Bar, BaseStrategy, Order, PortfolioSnapshot
 
-
+# 最终资金
+# 40.42万
 class MovingAverageCrossoverStrategy(BaseStrategy):
+    # Baseline strategy: buy when fast MA crosses above slow MA, sell when it crosses below.
     name = "ma_crossover"
 
     def __init__(self, fast_window: int = 5, slow_window: int = 20) -> None:

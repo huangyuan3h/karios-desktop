@@ -76,6 +76,12 @@ const defaultForm: RunFormState = {
   min_list_days: '60',
 };
 
+const STRATEGY_OPTIONS = [
+  { value: 'ma_crossover', label: '均线交叉' },
+  { value: 'watchlist_trend', label: 'Watchlist趋势' },
+  { value: 'sample_momentum', label: '样例动量' },
+];
+
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
@@ -168,7 +174,17 @@ function RunModal({
         <div className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-1 text-sm">
             策略
-            <input className="rounded-md border border-[var(--k-border)] px-3 py-2" value={form.strategy} onChange={update('strategy')} />
+            <select
+              className="rounded-md border border-[var(--k-border)] px-3 py-2"
+              value={form.strategy}
+              onChange={update('strategy')}
+            >
+              {STRATEGY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="grid gap-1 text-sm">
             复权方式
