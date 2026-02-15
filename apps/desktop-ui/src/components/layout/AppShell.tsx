@@ -16,6 +16,7 @@ import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
 import { StockPage } from '@/components/pages/StockPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
+import { BacktestPage } from '@/components/pages/BacktestPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
@@ -122,6 +123,8 @@ export function AppShell() {
                 ? 'Screener'
               : activePage === 'scheduler'
                 ? 'Scheduler'
+              : activePage === 'backtest'
+                ? 'Backtest'
               : activePage === 'settings'
                 ? 'Settings'
                 : activePage}
@@ -202,6 +205,8 @@ export function AppShell() {
               <ScreenerPage />
             ) : activePage === 'scheduler' ? (
               <SchedulerPage />
+            ) : activePage === 'backtest' ? (
+              <BacktestPage />
             ) : (
               <DashboardPage
                 onNavigate={(id) => setActivePage(id)}

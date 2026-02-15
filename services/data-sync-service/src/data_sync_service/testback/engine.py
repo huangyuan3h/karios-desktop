@@ -308,6 +308,20 @@ def run_backtest(
                     }
                 )
                 continue
+            if intended_action == "buy" and cash <= 0:
+                day_orders.append(
+                    {
+                        "ts_code": order.ts_code,
+                        "action": order.action,
+                        "qty": order.qty,
+                        "target_pct": order.target_pct,
+                        "reason": "no cash: buy blocked",
+                        "status": "skipped",
+                        "exec_qty": None,
+                        "exec_price": None,
+                    }
+                )
+                continue
             cash, positions, trade = _execute_order(
                 order,
                 bar,
@@ -357,6 +371,10 @@ def run_backtest(
                     if code in bars
                 ],
                 "orders": day_orders,
+                "positions": [
+                    {"ts_code": code, "qty": qty}
+                    for code, qty in sorted(positions.items(), key=lambda x: (-x[1], x[0]))
+                ],
                 "cash": cash,
                 "equity": equity,
             }

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from data_sync_service.db import get_connection
+from psycopg.types.json import Json
 
 RUN_TABLE = "backtest_run"
 TRADE_TABLE = "backtest_trade"
@@ -72,7 +73,7 @@ def insert_run(
                 VALUES
                     (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (run_id, strategy_name, start_date, end_date, "running", _now_utc(), params),
+                (run_id, strategy_name, start_date, end_date, "running", _now_utc(), Json(params)),
             )
         conn.commit()
 
@@ -100,7 +101,15 @@ def update_run_success(
                     error_message = NULL
                 WHERE id = %s
                 """,
-                ("success", summary, equity_curve, drawdown_curve, positions_curve, daily_log, run_id),
+                (
+                    "success",
+                    Json(summary),
+                    Json(equity_curve),
+                    Json(drawdown_curve),
+                    Json(positions_curve),
+                    Json(daily_log),
+                    run_id,
+                ),
             )
         conn.commit()
 

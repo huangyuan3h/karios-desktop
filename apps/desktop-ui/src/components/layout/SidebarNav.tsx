@@ -11,6 +11,7 @@ import {
   Star,
   Settings,
   Table2,
+  Activity,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ const items = [
   { id: 'journal', label: 'Journal', icon: NotebookPen },
   { id: 'screener', label: 'Screener', icon: Table2 },
   { id: 'scheduler', label: 'Scheduler', icon: Clock },
+  { id: 'backtest', label: 'Backtest', icon: Activity },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

@@ -17,7 +17,7 @@ from data_sync_service.testback.strategies import get_strategy_class
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run backtest with default settings.")
     parser.add_argument("--strategy", default="ma_crossover")
-    parser.add_argument("--start", default="2023-01-01")
+    parser.add_argument("--start", default="2023-02-01")
     parser.add_argument("--end", default="2026-01-01")
     parser.add_argument("--initial-cash", type=float, default=1_000_000)
     parser.add_argument("--fee-rate", type=float, default=0.0005)
@@ -30,7 +30,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--min-list-days", type=int, default=60)
     parser.add_argument("--out", default="backtest_log.txt")
     parser.add_argument("--out-html", default="backtest_log.html")
-    parser.add_argument("--max-selected", type=int, default=10)
+    parser.add_argument("--max-selected", type=int, default=3)
     parser.add_argument("--max-days", type=int, default=0)
     return parser.parse_args()
 
@@ -94,6 +94,7 @@ def main() -> None:
             f"qty={_fmt_num(o.get('exec_qty') or o.get('qty'))}:"
             f"price={_fmt_num(o.get('exec_price'))}:{o.get('reason') or ''}"
             for o in orders
+            if o.get("status") == "executed"
         )
         lines.append(
             f"{day.get('date')} 现金={day.get('cash'):.2f} 权益={day.get('equity'):.2f} "
@@ -133,6 +134,7 @@ def _write_html(
             f"qty={_fmt_num(o.get('exec_qty') or o.get('qty'))} "
             f"price={_fmt_num(o.get('exec_price'))} {o.get('reason') or ''}"
             for o in orders
+            if o.get("status") == "executed"
         )
         rows.append(
             "<tr>"
