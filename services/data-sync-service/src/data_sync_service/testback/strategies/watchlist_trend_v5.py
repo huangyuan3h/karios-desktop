@@ -12,13 +12,14 @@ class WatchlistTrendV5Strategy(BaseStrategy):
     # V5 strategy: 3-tranche allocation with stop-loss and strength filtering.
     name = "watchlist_trend_v5"
     use_full_bars = True
+    top_k = 50
 
     def __init__(
         self,
         fast_window: int = 5,
         mid_window: int = 20,
         slow_window: int = 30,
-        stop_loss_pct: float = 0.08,
+        stop_loss_pct: float = 0.12,
     ) -> None:
         self.fast_window = max(2, int(fast_window))
         self.mid_window = max(self.fast_window + 1, int(mid_window))
@@ -37,8 +38,17 @@ class WatchlistTrendV5Strategy(BaseStrategy):
         self._regime_cache[trade_date] = regime
         return regime
 
+    def _next_tranche(self, current_pct: float, base_target: float) -> float:
+        if base_target <= 0:
+            return 0.0
+        step = base_target / 3.0
+        if current_pct < step:
+            return step
+        if current_pct < 2 * step:
+            return 2 * step
+        return base_target
+
     def on_bar(self, trade_date: str, bars: Dict[str, Bar], portfolio: PortfolioSnapshot) -> List[Order]:
-        _ = portfolio
         if not bars:
             return []
         regime = self._get_regime(trade_date)
@@ -53,7 +63,7 @@ class WatchlistTrendV5Strategy(BaseStrategy):
         elif regime == "Diverging":
             base_target = 0.66
         elif regime == "Weak":
-            base_target = 0.33
+            base_target = 0.3
 
         for code, bar in bars.items():
             history = self._history[code]
@@ -103,12 +113,18 @@ class WatchlistTrendV5Strategy(BaseStrategy):
                 self._entry_price.pop(code, None)
                 continue
 
+            current_qty = portfolio.positions.get(code, 0.0)
+            current_value = current_qty * bar.close
+            current_pct = current_value / portfolio.equity if portfolio.equity > 0 else 0.0
+
             if breakout_ok:
-                orders.append(Order(ts_code=code, action="buy", target_pct=base_target, reason="breakout tranche"))
-                self._entry_price[code] = bar.close
-                buy_count += 1
+                target = self._next_tranche(current_pct, base_target)
+                if target > current_pct:
+                    orders.append(Order(ts_code=code, action="buy", target_pct=target, reason="breakout tranche"))
+                    self._entry_price[code] = bar.close
+                    buy_count += 1
             else:
-                if base_target < 0.66:
+                if base_target < 0.66 and current_pct > base_target:
                     orders.append(Order(ts_code=code, action="sell", target_pct=base_target, reason="trim weak"))
 
         self._last_stats = {

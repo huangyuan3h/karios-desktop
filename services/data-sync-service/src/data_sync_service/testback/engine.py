@@ -307,6 +307,12 @@ def run_backtest(
         bars_signal = bars_by_date.get(signal_date, {})
         prev_map = prev_close_map.get(signal_date, {})
         selected, scored = _pick_top_n(bars_signal, prev_map, daily_rules, score_cfg)
+        scored_filtered = [(code, score) for code, score in scored if code in bars_signal]
+        ordered_selected = {code: bars_signal[code] for code, _ in scored_filtered}
+        top_k = getattr(strategy, "top_k", None)
+        if isinstance(top_k, int) and top_k > 0:
+            limited_codes = [code for code, _ in scored_filtered[:top_k]]
+            ordered_selected = {code: bars_signal[code] for code in limited_codes if code in bars_signal}
         for code, bar in bars_today.items():
             last_prices[code] = bar.close
         cash_before = cash
@@ -314,12 +320,15 @@ def run_backtest(
         snapshot = PortfolioSnapshot(cash=cash, equity=equity, positions=dict(positions))
         if d < params.start_date:
             # Warmup: feed bars to strategy, but do not trade or log.
-            ordered_selected = {code: selected[code] for code in sorted(selected)}
+            # Keep score order to make top-k selection deterministic.
+            if not ordered_selected:
+                ordered_selected = {code: selected[code] for code in sorted(selected)}
             use_full = bool(getattr(strategy, "use_full_bars", False))
             bars_for_strategy = bars_signal if use_full else ordered_selected
             _ = strategy.on_bar(signal_date, bars_for_strategy, snapshot)
             continue
-        ordered_selected = {code: selected[code] for code in sorted(selected)}
+        if not ordered_selected:
+            ordered_selected = {code: selected[code] for code in sorted(selected)}
         use_full = bool(getattr(strategy, "use_full_bars", False))
         bars_for_strategy = bars_signal if use_full else ordered_selected
         orders = strategy.on_bar(signal_date, bars_for_strategy, snapshot)
