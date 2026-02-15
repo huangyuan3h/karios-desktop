@@ -155,10 +155,10 @@ def _pick_top_n(
         scored.append((code, _score_bar(bar, prev_close, score_cfg)))
     if not scored:
         return {}, []
-    scored.sort(key=lambda x: x[1], reverse=True)
+    scored.sort(key=lambda x: (-x[1], x[0]))
     top_n = max(1, int(score_cfg.top_n))
     keep = set(code for code, _ in scored[:top_n])
-    selected = {code: bars[code] for code in keep if code in bars}
+    selected = {code: bars[code] for code in sorted(keep) if code in bars}
     return selected, scored
 
 
@@ -272,13 +272,15 @@ def run_backtest(
             last_prices[code] = bar.close
         equity = cash + sum(positions.get(code, 0.0) * last_prices.get(code, 0.0) for code in positions)
         snapshot = PortfolioSnapshot(cash=cash, equity=equity, positions=dict(positions))
-        orders = strategy.on_bar(d, selected, snapshot)
+        ordered_selected = {code: selected[code] for code in sorted(selected)}
+        orders = strategy.on_bar(d, ordered_selected, snapshot)
         order_by_code: Dict[str, Order] = {}
         for o in orders:
             if o.ts_code:
                 order_by_code[o.ts_code] = o
         day_orders: list[dict[str, Any]] = []
-        for order in order_by_code.values():
+        for key in sorted(order_by_code.keys()):
+            order = order_by_code[key]
             bar_opt = bars.get(order.ts_code)
             if bar_opt is None:
                 continue
@@ -301,6 +303,8 @@ def run_backtest(
                         "target_pct": order.target_pct,
                         "reason": "t+1: same-day sell blocked",
                         "status": "skipped",
+                        "exec_qty": None,
+                        "exec_price": None,
                     }
                 )
                 continue
@@ -321,6 +325,8 @@ def run_backtest(
                     "target_pct": order.target_pct,
                     "reason": order.reason,
                     "status": "executed" if trade else "ignored",
+                    "exec_qty": trade.get("qty") if trade else None,
+                    "exec_price": trade.get("price") if trade else None,
                 }
             )
             if trade:

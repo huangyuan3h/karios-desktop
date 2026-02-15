@@ -90,7 +90,9 @@ def main() -> None:
         )
         orders = day.get("orders", [])
         orders_str = ",".join(
-            f"{o.get('action')}:{o.get('ts_code')}:{o.get('reason') or ''}"
+            f"{o.get('status')}:{o.get('action')}:{o.get('ts_code')}:"
+            f"qty={_fmt_num(o.get('exec_qty') or o.get('qty'))}:"
+            f"price={_fmt_num(o.get('exec_price'))}:{o.get('reason') or ''}"
             for o in orders
         )
         lines.append(
@@ -127,7 +129,9 @@ def _write_html(
         )
         orders = day.get("orders", [])
         orders_str = "<br/>".join(
-            f"{o.get('action')} {o.get('ts_code')} {o.get('reason') or ''}"
+            f"{o.get('status')} {o.get('action')} {o.get('ts_code')} "
+            f"qty={_fmt_num(o.get('exec_qty') or o.get('qty'))} "
+            f"price={_fmt_num(o.get('exec_price'))} {o.get('reason') or ''}"
             for o in orders
         )
         rows.append(
@@ -191,6 +195,15 @@ def _write_html(
 </html>
 """
     html_path.write_text(html, encoding="utf-8")
+
+
+def _fmt_num(val) -> str:
+    if val is None:
+        return "-"
+    try:
+        return f"{float(val):.4f}"
+    except Exception:
+        return str(val)
 
 
 if __name__ == "__main__":
