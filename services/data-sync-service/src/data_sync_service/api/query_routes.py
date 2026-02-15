@@ -60,6 +60,7 @@ class BacktestParams(BaseModel):
     fee_rate: float = 0.0
     slippage_rate: float = 0.0
     adj_mode: str = "qfq"
+    warmup_days: int = 20
 
 
 class BacktestRunRequest(BaseModel):
@@ -398,6 +399,7 @@ def run_backtest_endpoint(req: BacktestRunRequest) -> dict:
                 fee_rate=params.fee_rate,
                 slippage_rate=params.slippage_rate,
                 adj_mode=params.adj_mode,
+                warmup_days=params.warmup_days,
             ),
             universe_filter=EngineUniverse(
                 market=universe.market,

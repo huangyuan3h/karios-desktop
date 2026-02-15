@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from math import log1p
 from typing import Any, Dict, List, Tuple
 
@@ -17,6 +18,7 @@ class BacktestParams:
     fee_rate: float = 0.0
     slippage_rate: float = 0.0
     adj_mode: str = "qfq"
+    warmup_days: int = 20
 
 
 @dataclass
@@ -48,9 +50,29 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
     try:
         if val is None:
             return default
-        return float(val)
     except Exception:
         return default
+    return float(val)
+
+
+def _parse_date(date_str: str) -> datetime | None:
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d")
+    except Exception:
+        return None
+
+
+def _format_date(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%d")
+
+
+def _warmup_start_date(start_date: str, warmup_days: int) -> str:
+    dt = _parse_date(start_date)
+    if not dt:
+        return start_date
+    days = max(0, int(warmup_days))
+    # Use calendar days to approximate 20 trading days.
+    return _format_date(dt - timedelta(days=days * 2))
 
 
 def _adjust_factor_ratio(rows: list[dict[str, Any]], adj_mode: str) -> float:
@@ -244,13 +266,14 @@ def run_backtest(
     score_cfg: ScoreConfig,
 ) -> dict[str, Any]:
     strategy = strategy_cls()
+    warmup_start = _warmup_start_date(params.start_date, params.warmup_days)
     universe = build_universe(
         as_of_date=params.start_date,
         market=universe_filter.market,
         exclude_keywords=universe_filter.exclude_keywords,
         min_list_days=universe_filter.min_list_days,
     )
-    rows = fetch_daily_for_codes(universe, params.start_date, params.end_date)
+    rows = fetch_daily_for_codes(universe, warmup_start, params.end_date)
     bars_by_date, prev_close_map = _build_bar_maps(rows, params.adj_mode)
     dates = sorted(bars_by_date.keys())
     cash = max(0.0, params.initial_cash)
@@ -272,6 +295,10 @@ def run_backtest(
             last_prices[code] = bar.close
         equity = cash + sum(positions.get(code, 0.0) * last_prices.get(code, 0.0) for code in positions)
         snapshot = PortfolioSnapshot(cash=cash, equity=equity, positions=dict(positions))
+        if d < params.start_date:
+            # Warmup: feed bars to strategy, but do not trade or log.
+            _ = strategy.on_bar(d, selected, snapshot)
+            continue
         ordered_selected = {code: selected[code] for code in sorted(selected)}
         orders = strategy.on_bar(d, ordered_selected, snapshot)
         order_by_code: Dict[str, Order] = {}

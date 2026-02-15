@@ -23,6 +23,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--fee-rate", type=float, default=0.0005)
     parser.add_argument("--slippage-rate", type=float, default=0.0)
     parser.add_argument("--adj-mode", default="qfq")
+    parser.add_argument("--warmup-days", type=int, default=20)
     parser.add_argument("--top-n", type=int, default=1000)
     parser.add_argument("--min-price", type=float, default=2.0)
     parser.add_argument("--min-volume", type=float, default=100000)
@@ -45,6 +46,7 @@ def main() -> None:
         fee_rate=args.fee_rate,
         slippage_rate=args.slippage_rate,
         adj_mode=args.adj_mode,
+        warmup_days=args.warmup_days,
     )
     universe = UniverseFilter(
         market="CN",

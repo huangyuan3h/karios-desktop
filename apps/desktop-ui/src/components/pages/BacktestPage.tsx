@@ -35,6 +35,7 @@ type DailyLogEntry = {
     exec_qty?: number | null;
     exec_price?: number | null;
   }>;
+  positions: Array<{ ts_code: string; qty: number }>;
   cash: number;
   equity: number;
 };
@@ -227,6 +228,7 @@ export function BacktestPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<BacktestResultResponse | null>(null);
   const [filter, setFilter] = React.useState('');
+  const [onlyActive, setOnlyActive] = React.useState(false);
 
   const summary = result?.run?.summary ?? null;
   const dailyLog = result?.run?.daily_log ?? [];
@@ -301,9 +303,15 @@ export function BacktestPage() {
         .filter((o) => o.status === 'executed')
         .map((o) => `${o.action} ${o.ts_code} ${o.reason ?? ''}`)
         .join(' ');
-      return `${d.date} ${selected} ${orders}`.toLowerCase().includes(q);
+      const positions = d.positions.map((p) => `${p.ts_code} ${p.qty}`).join(' ');
+      return `${d.date} ${selected} ${orders} ${positions}`.toLowerCase().includes(q);
     });
   }, [dailyLog, filter]);
+
+  const visibleLog = React.useMemo(() => {
+    if (!onlyActive) return filteredLog;
+    return filteredLog.filter((d) => d.orders.some((o) => o.status === 'executed'));
+  }, [filteredLog, onlyActive]);
 
   return (
     <div className="mx-auto w-full max-w-6xl p-6">
@@ -393,12 +401,23 @@ export function BacktestPage() {
       <div className="mt-6 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm font-medium">每日日志</div>
-          <input
-            className="h-9 w-full max-w-xs rounded-md border border-[var(--k-border)] bg-transparent px-3 text-sm"
-            placeholder="筛选股票代码/原因"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
+          <div className="flex w-full flex-wrap items-center justify-end gap-3 md:w-auto">
+            <label className="flex items-center gap-2 text-xs text-[var(--k-muted)]">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-[var(--k-text)]"
+                checked={onlyActive}
+                onChange={(e) => setOnlyActive(e.target.checked)}
+              />
+              只看有操作
+            </label>
+            <input
+              className="h-9 w-full max-w-xs rounded-md border border-[var(--k-border)] bg-transparent px-3 text-sm"
+              placeholder="筛选股票代码/原因"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+          </div>
         </div>
         <div className="max-h-[420px] overflow-auto rounded-lg border border-[var(--k-border)]">
           <table className="w-full border-collapse text-xs">
@@ -408,11 +427,12 @@ export function BacktestPage() {
                 <th className="px-3 py-2">现金</th>
                 <th className="px-3 py-2">权益</th>
                 <th className="px-3 py-2">选股</th>
+                <th className="px-3 py-2">持仓</th>
                 <th className="px-3 py-2">指令</th>
               </tr>
             </thead>
             <tbody>
-              {filteredLog.map((d) => (
+              {visibleLog.map((d) => (
                 <tr key={d.date} className="border-t border-[var(--k-border)]">
                   <td className="px-3 py-2 font-mono">{d.date}</td>
                   <td className="px-3 py-2 font-mono">{fmtNum(d.cash)}</td>
@@ -424,6 +444,19 @@ export function BacktestPage() {
                           {s.ts_code} 分数 {fmtNum(s.score)} 均价 {fmtNum(s.avg_price)}
                         </div>
                       ))}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-col gap-1">
+                      {d.positions.length === 0 ? (
+                        <div className="text-[var(--k-muted)]">—</div>
+                      ) : (
+                        d.positions.slice(0, 5).map((p) => (
+                          <div key={p.ts_code} className="font-mono">
+                            {p.ts_code} qty {fmtNum(p.qty)}
+                          </div>
+                        ))
+                      )}
                     </div>
                   </td>
                   <td className="px-3 py-2">
@@ -440,9 +473,9 @@ export function BacktestPage() {
                   </td>
                 </tr>
               ))}
-              {filteredLog.length === 0 ? (
+              {visibleLog.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-sm text-[var(--k-muted)]" colSpan={5}>
+                  <td className="px-3 py-6 text-center text-sm text-[var(--k-muted)]" colSpan={6}>
                     无日志记录
                   </td>
                 </tr>
