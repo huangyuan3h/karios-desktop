@@ -333,7 +333,7 @@ def run_backtest(
         day_orders: list[dict[str, Any]] = []
         ordered_codes: list[tuple[int, str]] = []
         for code, order in order_by_code.items():
-            bar_opt = bars.get(code)
+            bar_opt = bars_signal.get(code)
             if bar_opt is None:
                 continue
             intended_action = (order.action or "").lower().strip()

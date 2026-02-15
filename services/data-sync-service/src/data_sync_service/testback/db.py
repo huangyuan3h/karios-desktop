@@ -248,3 +248,14 @@ def fetch_runs(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
                 obj[col] = val
         out.append(obj)
     return out
+
+
+def delete_run(run_id: str) -> bool:
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"DELETE FROM {TRADE_TABLE} WHERE run_id = %s", (run_id,))
+            cur.execute(f"DELETE FROM {RUN_TABLE} WHERE id = %s", (run_id,))
+            deleted = cur.rowcount
+        conn.commit()
+    return deleted > 0

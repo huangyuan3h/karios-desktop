@@ -396,6 +396,26 @@ export function BacktestPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function deleteRun(runId: string) {
+    if (!runId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await fetch(`${DATA_SYNC_BASE_URL}/backtest/run/${runId}`, { method: 'DELETE' });
+      await loadRuns();
+      if (selectedRunId === runId) {
+        const next = runs.find((r) => r.id !== runId)?.id ?? '';
+        setSelectedRunId(next);
+        if (next) await openRun(next);
+        else setResult(null);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const filteredLog = React.useMemo(() => {
     if (!filter.trim()) return dailyLog;
     const q = filter.trim().toLowerCase();
@@ -446,6 +466,14 @@ export function BacktestPage() {
             <Button variant="secondary" size="sm" onClick={() => void loadRuns()} disabled={busy}>
               刷新历史
             </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={busy || !selectedRunId}
+                onClick={() => void deleteRun(selectedRunId)}
+              >
+                删除
+              </Button>
           </div>
           <Button variant="secondary" size="sm" onClick={() => setModalOpen(true)}>
             运行回测
