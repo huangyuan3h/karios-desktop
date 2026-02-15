@@ -355,7 +355,7 @@ def run_backtest(
                 day_orders.append(
                     {
                         "ts_code": order.ts_code,
-                        "action": order.action,
+                        "action": intended_action,
                         "qty": order.qty,
                         "target_pct": order.target_pct,
                         "reason": "t+1: same-day sell blocked",
@@ -369,7 +369,7 @@ def run_backtest(
                 day_orders.append(
                     {
                         "ts_code": order.ts_code,
-                        "action": order.action,
+                        "action": intended_action,
                         "qty": order.qty,
                         "target_pct": order.target_pct,
                         "reason": "no cash: buy blocked",
@@ -388,22 +388,35 @@ def run_backtest(
                 params.slippage_rate,
                 equity,
             )
-            day_orders.append(
-                {
-                    "ts_code": order.ts_code,
-                    "action": order.action,
-                    "qty": order.qty,
-                    "target_pct": order.target_pct,
-                    "reason": order.reason,
-                    "status": "executed" if trade else "ignored",
-                    "exec_qty": trade.get("qty") if trade else None,
-                    "exec_price": trade.get("price") if trade else None,
-                }
-            )
             if trade:
                 trade_log.append(trade)
                 if trade.get("action") == "buy":
                     last_buy_date[order.ts_code] = d
+                day_orders.append(
+                    {
+                        "ts_code": order.ts_code,
+                        "action": trade.get("action") or intended_action,
+                        "qty": order.qty,
+                        "target_pct": order.target_pct,
+                        "reason": order.reason,
+                        "status": "executed",
+                        "exec_qty": trade.get("qty"),
+                        "exec_price": trade.get("price"),
+                    }
+                )
+            else:
+                day_orders.append(
+                    {
+                        "ts_code": order.ts_code,
+                        "action": intended_action,
+                        "qty": order.qty,
+                        "target_pct": order.target_pct,
+                        "reason": order.reason,
+                        "status": "ignored",
+                        "exec_qty": None,
+                        "exec_price": None,
+                    }
+                )
         equity = cash + sum(positions.get(code, 0.0) * last_prices.get(code, 0.0) for code in positions)
         peak_equity = max(peak_equity, equity)
         drawdown = 0.0 if peak_equity <= 0 else (equity / peak_equity) - 1.0
