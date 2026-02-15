@@ -55,6 +55,17 @@ type BacktestResultResponse = {
   trades: Array<Record<string, unknown>>;
 };
 
+type BacktestRunListItem = {
+  id: string;
+  strategy_name: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+  created_at: string;
+  summary: Record<string, number> | null;
+  error_message: string | null;
+};
+
 type RunFormState = {
   strategy: string;
   start_date: string;
@@ -282,6 +293,8 @@ export function BacktestPage() {
   const [result, setResult] = React.useState<BacktestResultResponse | null>(null);
   const [filter, setFilter] = React.useState('');
   const [onlyActive, setOnlyActive] = React.useState(true);
+  const [runs, setRuns] = React.useState<BacktestRunListItem[]>([]);
+  const [selectedRunId, setSelectedRunId] = React.useState<string>('');
 
   const summary = result?.run?.summary ?? null;
   const dailyLog = React.useMemo(() => result?.run?.daily_log ?? [], [result]);
@@ -344,12 +357,44 @@ export function BacktestPage() {
       const full = await apiGetJson<BacktestResultResponse>(`/backtest/result/${run.runId}`);
       setResult(full);
       setModalOpen(false);
+      await loadRuns();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   }
+
+  async function loadRuns() {
+    try {
+      const resp = await apiGetJson<{ items: BacktestRunListItem[] }>('/backtest/runs?limit=50');
+      setRuns(resp.items ?? []);
+      if (!selectedRunId && resp.items?.length) {
+        setSelectedRunId(resp.items[0].id);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function openRun(runId: string) {
+    if (!runId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const full = await apiGetJson<BacktestResultResponse>(`/backtest/result/${runId}`);
+      setResult(full);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  React.useEffect(() => {
+    void loadRuns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filteredLog = React.useMemo(() => {
     if (!filter.trim()) return dailyLog;
@@ -381,6 +426,27 @@ export function BacktestPage() {
           <div className="mt-1 text-sm text-[var(--k-muted)]">运行策略并查看资金曲线与日志。</div>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <select
+              className="h-9 rounded-md border border-[var(--k-border)] bg-transparent px-2 text-xs"
+              value={selectedRunId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setSelectedRunId(id);
+                void openRun(id);
+              }}
+            >
+              {runs.length === 0 ? <option value="">暂无历史</option> : null}
+              {runs.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.created_at} · {r.strategy_name} · {r.start_date}~{r.end_date}
+                </option>
+              ))}
+            </select>
+            <Button variant="secondary" size="sm" onClick={() => void loadRuns()} disabled={busy}>
+              刷新历史
+            </Button>
+          </div>
           <Button variant="secondary" size="sm" onClick={() => setModalOpen(true)}>
             运行回测
           </Button>

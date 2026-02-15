@@ -25,6 +25,7 @@ from data_sync_service.testback.strategies import get_strategy_class
 from data_sync_service.testback.db import (
     fetch_run as fetch_backtest_run,
     fetch_trades as fetch_backtest_trades,
+    fetch_runs as fetch_backtest_runs,
     insert_run as insert_backtest_run,
     insert_trades as insert_backtest_trades,
     update_run_failed as update_backtest_failed,
@@ -443,3 +444,9 @@ def get_backtest_result_endpoint(run_id: str) -> dict:
         raise HTTPException(status_code=404, detail="backtest run not found")
     trades = fetch_backtest_trades(run_id)
     return {"run": run, "trades": trades}
+
+
+@router.get("/backtest/runs")
+def list_backtest_runs(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> dict:
+    items = fetch_backtest_runs(limit=limit, offset=offset)
+    return {"items": items, "limit": limit, "offset": offset}

@@ -8,6 +8,16 @@ from data_sync_service.service.trendok import _ema, _macd, _rsi
 from data_sync_service.testback.strategies.base import Bar, BaseStrategy, Order, PortfolioSnapshot
 
 
+ """
+ Watchlist趋势V4
+累计收益
+62.64%
+最大回撤
+-30.89%
+交易次数
+765
+最终资金
+162.64万"""
 class WatchlistTrendV4Strategy(BaseStrategy):
     # V4 strategy: position smoothing via 3 tranches, keep strong and cut weak.
     name = "watchlist_trend_v4"

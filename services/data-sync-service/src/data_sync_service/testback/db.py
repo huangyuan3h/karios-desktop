@@ -219,3 +219,32 @@ def fetch_trades(run_id: str) -> list[dict[str, Any]]:
                 obj[col] = val
         out.append(obj)
     return out
+
+
+def fetch_runs(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    ensure_tables()
+    limit2 = max(1, min(int(limit), 200))
+    offset2 = max(0, int(offset))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id, strategy_name, start_date, end_date, status, created_at, summary, error_message
+                FROM {RUN_TABLE}
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (limit2, offset2),
+            )
+            rows = cur.fetchall()
+            cols = [d.name for d in cur.description]
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        obj: dict[str, Any] = {}
+        for col, val in zip(cols, row):
+            if hasattr(val, "strftime"):
+                obj[col] = val.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                obj[col] = val
+        out.append(obj)
+    return out
