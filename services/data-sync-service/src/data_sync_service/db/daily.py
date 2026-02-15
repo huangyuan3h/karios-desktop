@@ -54,7 +54,7 @@ def ensure_table() -> None:
         conn.commit()
 
 
-def _numeric(val: object) -> float | None:
+def _numeric(val: Any) -> float | None:
     if pd.isna(val) or val is None:
         return None
     try:
@@ -162,8 +162,8 @@ def fetch_daily(
 ) -> list[dict[str, Any]]:
     """Return daily bars from DB with optional filters. Dates as YYYY-MM-DD."""
     ensure_table()
-    conditions = []
-    params = []
+    conditions: list[str] = []
+    params: list[object] = []
     if ts_code:
         conditions.append("ts_code = %s")
         params.append(ts_code)
@@ -189,9 +189,60 @@ def fetch_daily(
             )
             rows = cur.fetchall()
             columns = [d.name for d in cur.description]
-    out = []
+    out: list[dict[str, Any]] = []
     for row in rows:
-        obj = {}
+        obj: dict[str, Any] = {}
+        for col, val in zip(columns, row):
+            if val is None:
+                obj[col] = None
+            elif hasattr(val, "strftime"):
+                obj[col] = val.strftime("%Y-%m-%d")
+            elif hasattr(val, "__float__") and col != "ts_code":
+                try:
+                    obj[col] = float(val)
+                except (TypeError, ValueError):
+                    obj[col] = val
+            else:
+                obj[col] = val
+        out.append(obj)
+    return out
+
+
+def fetch_daily_for_codes(
+    ts_codes: list[str],
+    start_date: str,
+    end_date: str,
+) -> list[dict[str, Any]]:
+    """
+    Return daily bars for multiple ts_codes in a date range (inclusive).
+    Dates should be YYYY-MM-DD.
+    """
+    ensure_table()
+    codes = [c.strip().upper() for c in ts_codes if c and c.strip()]
+    if not codes:
+        return []
+    start2 = _date_str(start_date)
+    end2 = _date_str(end_date)
+    if not start2 or not end2:
+        return []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT ts_code, trade_date, open, high, low, close, pre_close, change, pct_chg, vol, amount, adj_factor
+                FROM {TABLE_NAME}
+                WHERE ts_code = ANY(%s)
+                  AND trade_date >= %s
+                  AND trade_date <= %s
+                ORDER BY ts_code, trade_date
+                """,
+                (codes, start2, end2),
+            )
+            rows = cur.fetchall()
+            columns = [d.name for d in cur.description]
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        obj: dict[str, Any] = {}
         for col, val in zip(columns, row):
             if val is None:
                 obj[col] = None

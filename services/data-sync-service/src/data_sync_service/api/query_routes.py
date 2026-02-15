@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query  # type: ignore[import-not-found]
+from pydantic import BaseModel  # type: ignore[import-not-found]
 
 from data_sync_service.db import check_db
 from data_sync_service.service.adj_factor import get_adj_factor_sync_status
@@ -13,6 +14,62 @@ from data_sync_service.db.stock_basic import fetch_market_stocks, get_market_sta
 from data_sync_service.service.market_quotes import get_market_quotes_batch, symbol_to_ts_code
 from data_sync_service.service.stock_basic import get_stock_basic_list, get_stock_basic_sync_status
 from data_sync_service.service.trendok import compute_trendok_for_symbols
+from data_sync_service.testback.engine import (
+    BacktestParams as EngineParams,
+    DailyRuleFilter as EngineRules,
+    ScoreConfig as EngineScore,
+    UniverseFilter as EngineUniverse,
+    run_backtest,
+)
+from data_sync_service.testback.strategies import get_strategy_class
+from data_sync_service.testback.db import (
+    fetch_run as fetch_backtest_run,
+    fetch_trades as fetch_backtest_trades,
+    insert_run as insert_backtest_run,
+    insert_trades as insert_backtest_trades,
+    update_run_failed as update_backtest_failed,
+    update_run_success as update_backtest_success,
+)
+from uuid import uuid4
+
+
+class BacktestUniverse(BaseModel):
+    market: str | None = "CN"
+    exclude_keywords: list[str] = []
+    min_list_days: int = 0
+
+
+class BacktestRules(BaseModel):
+    min_price: float | None = None
+    max_price: float | None = None
+    min_volume: float | None = None
+    max_volume: float | None = None
+    min_amount: float | None = None
+    max_amount: float | None = None
+
+
+class BacktestScoring(BaseModel):
+    top_n: int = 1000
+    momentum_weight: float = 1.0
+    volume_weight: float = 0.0
+    amount_weight: float = 0.0
+
+
+class BacktestParams(BaseModel):
+    initial_cash: float = 1.0
+    fee_rate: float = 0.0
+    slippage_rate: float = 0.0
+    adj_mode: str = "qfq"
+
+
+class BacktestRunRequest(BaseModel):
+    strategy: str
+    start_date: str
+    end_date: str
+    universe: BacktestUniverse | None = None
+    rules: BacktestRules | None = None
+    scoring: BacktestScoring | None = None
+    params: BacktestParams | None = None
 
 router = APIRouter()
 
@@ -300,3 +357,87 @@ def resolve_symbols_endpoint(symbols: list[str] | None = Query(None)) -> list[di
             }
         )
     return out
+
+
+@router.post("/backtest/run")
+def run_backtest_endpoint(req: BacktestRunRequest) -> dict:
+    """
+    Run a backtest in one call and return run_id + summary.
+    """
+    try:
+        strategy_cls = get_strategy_class(req.strategy)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    run_id = str(uuid4())
+    params = req.params or BacktestParams()
+    universe = req.universe or BacktestUniverse()
+    rules = req.rules or BacktestRules()
+    scoring = req.scoring or BacktestScoring()
+    insert_backtest_run(
+        run_id=run_id,
+        strategy_name=req.strategy,
+        start_date=req.start_date,
+        end_date=req.end_date,
+        params={
+            "strategy": req.strategy,
+            "start_date": req.start_date,
+            "end_date": req.end_date,
+            "params": params.model_dump(),
+            "universe": universe.model_dump(),
+            "rules": rules.model_dump(),
+            "scoring": scoring.model_dump(),
+        },
+    )
+    try:
+        result = run_backtest(
+            strategy_cls=strategy_cls,
+            params=EngineParams(
+                start_date=req.start_date,
+                end_date=req.end_date,
+                initial_cash=params.initial_cash,
+                fee_rate=params.fee_rate,
+                slippage_rate=params.slippage_rate,
+                adj_mode=params.adj_mode,
+            ),
+            universe_filter=EngineUniverse(
+                market=universe.market,
+                exclude_keywords=universe.exclude_keywords,
+                min_list_days=universe.min_list_days,
+            ),
+            daily_rules=EngineRules(
+                min_price=rules.min_price,
+                max_price=rules.max_price,
+                min_volume=rules.min_volume,
+                max_volume=rules.max_volume,
+                min_amount=rules.min_amount,
+                max_amount=rules.max_amount,
+            ),
+            score_cfg=EngineScore(
+                top_n=scoring.top_n,
+                momentum_weight=scoring.momentum_weight,
+                volume_weight=scoring.volume_weight,
+                amount_weight=scoring.amount_weight,
+            ),
+        )
+        insert_backtest_trades(run_id, result["trade_log"])
+        update_backtest_success(
+            run_id,
+            summary=result["summary"],
+            equity_curve=result["equity_curve"],
+            drawdown_curve=result["drawdown_curve"],
+            positions_curve=result["positions_curve"],
+            daily_log=result["daily_log"],
+        )
+        return {"ok": True, "runId": run_id, "summary": result["summary"]}
+    except Exception as e:  # noqa: BLE001
+        update_backtest_failed(run_id, str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/backtest/result/{run_id}")
+def get_backtest_result_endpoint(run_id: str) -> dict:
+    run = fetch_backtest_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="backtest run not found")
+    trades = fetch_backtest_trades(run_id)
+    return {"run": run, "trades": trades}
