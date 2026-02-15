@@ -25,6 +25,10 @@ class WatchlistTrendV6Strategy(BaseStrategy):
         trailing_atr_mult: float = 3.0,
         max_extension_pct: float = 0.18,
         cooldown_bars: int = 5,
+        min_trend_strength: float = 0.003,
+        breakout_vol_ratio: float = 1.1,
+        pullback_vol_ratio: float = 0.8,
+        pullback_window: int = 8,
     ) -> None:
         self.fast_window = max(2, int(fast_window))
         self.mid_window = max(self.fast_window + 1, int(mid_window))
@@ -35,12 +39,18 @@ class WatchlistTrendV6Strategy(BaseStrategy):
         self.trailing_atr_mult = max(0.5, float(trailing_atr_mult))
         self.max_extension_pct = max(0.05, float(max_extension_pct))
         self.cooldown_bars = max(0, int(cooldown_bars))
+        self.min_trend_strength = max(0.0, float(min_trend_strength))
+        self.breakout_vol_ratio = max(0.5, float(breakout_vol_ratio))
+        self.pullback_vol_ratio = max(0.3, float(pullback_vol_ratio))
+        self.pullback_window = max(1, int(pullback_window))
         self._history: Dict[str, Deque[Bar]] = defaultdict(lambda: deque(maxlen=260))
         self._regime_cache: Dict[str, str] = {}
         self._entry_price: Dict[str, float] = {}
         self._entry_atr: Dict[str, float] = {}
         self._peak_price: Dict[str, float] = {}
         self._cooldown: Dict[str, int] = {}
+        self._bar_index: Dict[str, int] = {}
+        self._last_breakout_index: Dict[str, int] = {}
         self._last_stats: Dict[str, int | str] = {}
 
     def _get_regime(self, trade_date: str) -> str:
@@ -114,9 +124,12 @@ class WatchlistTrendV6Strategy(BaseStrategy):
             history.append(bar)
             if len(history) < self.slow_window:
                 continue
+            self._bar_index[code] = self._bar_index.get(code, 0) + 1
+            bar_index = self._bar_index[code]
 
             closes = [b.close for b in history]
             highs = [b.high for b in history]
+            vols = [b.volume for b in history]
 
             ema_fast_series = _ema(closes, self.fast_window)
             ema20_series = _ema(closes, self.mid_window)
@@ -134,25 +147,44 @@ class WatchlistTrendV6Strategy(BaseStrategy):
             atr_now = self._calc_atr(history)
             atr_pct = atr_now / bar.close if bar.close > 0 and atr_now > 0 else 0.0
 
+            avg_vol5 = sum(vols[-5:]) / 5.0 if len(vols) >= 5 else None
+            avg_vol20 = sum(vols[-20:]) / 20.0 if len(vols) >= 20 else None
+            volume_ok_breakout = True
+            volume_ok_pullback = True
+            if avg_vol5 is not None and avg_vol20 is not None and avg_vol20 > 0:
+                volume_ok_breakout = avg_vol5 >= avg_vol20 * self.breakout_vol_ratio
+                volume_ok_pullback = avg_vol5 >= avg_vol20 * self.pullback_vol_ratio
+
             high20 = max(highs[-20:])
             over_extended = bar.close > ema20 * (1.0 + self.max_extension_pct)
             trend_up = ema20 > ema30 and ema20_up and ema30_up
+            trend_strength = (ema20 - ema30) / max(ema30, 1e-6)
+            trend_strength_ok = trend_strength >= self.min_trend_strength
+            last_breakout_idx = self._last_breakout_index.get(code)
+            recent_breakout = (
+                last_breakout_idx is not None and (bar_index - last_breakout_idx) <= self.pullback_window
+            )
             breakout_ok = (
                 bar.close >= 0.98 * high20
                 and trend_up
+                and trend_strength_ok
                 and macd_last > 0.0
                 and hist_last > 0.0
                 and hist_last >= hist_prev
                 and 58.0 <= rsi14 <= 85.0
                 and not over_extended
+                and volume_ok_breakout
             )
             pullback_ok = (
                 trend_up
+                and trend_strength_ok
                 and ema_fast >= ema20
                 and 0.98 * ema20 <= bar.close <= 1.03 * ema20
                 and macd_last >= 0.0
                 and 45.0 <= rsi14 <= 65.0
                 and not over_extended
+                and volume_ok_pullback
+                and recent_breakout
             )
 
             entry_price = self._entry_price.get(code)
@@ -178,6 +210,7 @@ class WatchlistTrendV6Strategy(BaseStrategy):
                 self._entry_price.pop(code, None)
                 self._entry_atr.pop(code, None)
                 self._peak_price.pop(code, None)
+                self._last_breakout_index.pop(code, None)
                 if self.cooldown_bars > 0:
                     self._cooldown[code] = self.cooldown_bars
                 continue
@@ -204,6 +237,8 @@ class WatchlistTrendV6Strategy(BaseStrategy):
                     if atr_now > 0:
                         self._entry_atr[code] = atr_now
                     self._peak_price[code] = max(self._peak_price.get(code, 0.0), bar.close)
+                    if breakout_ok:
+                        self._last_breakout_index[code] = bar_index
                     buy_count += 1
             else:
                 if adj_target < 0.66 and current_pct > adj_target:
