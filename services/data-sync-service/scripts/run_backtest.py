@@ -99,7 +99,7 @@ def main() -> None:
             if o.get("status") == "executed"
         )
         lines.append(
-            f"{day.get('date')} 现金={day.get('cash'):.2f} 权益={day.get('equity'):.2f} "
+            f"{day.get('date')} 现金(开盘)={day.get('cash_before'):.2f} 现金(收盘)={day.get('cash'):.2f} 权益={day.get('equity'):.2f} "
             f"选股=[{selected_str}] 指令=[{orders_str}]"
         )
     out_path.write_text("\n".join(lines), encoding="utf-8")
@@ -141,6 +141,7 @@ def _write_html(
         rows.append(
             "<tr>"
             f"<td>{day.get('date')}</td>"
+            f"<td>{day.get('cash_before'):.2f}</td>"
             f"<td>{day.get('cash'):.2f}</td>"
             f"<td>{day.get('equity'):.2f}</td>"
             f"<td>{selected_str}</td>"
@@ -173,7 +174,8 @@ def _write_html(
     <thead>
       <tr>
         <th>日期</th>
-        <th>现金</th>
+        <th>现金(开盘)</th>
+        <th>现金(收盘)</th>
         <th>权益</th>
         <th>选股(Top{max_selected})</th>
         <th>指令</th>

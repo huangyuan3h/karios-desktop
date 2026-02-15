@@ -301,6 +301,7 @@ def run_backtest(
         selected, scored = _pick_top_n(bars, prev_map, daily_rules, score_cfg)
         for code, bar in bars.items():
             last_prices[code] = bar.close
+        cash_before = cash
         equity = cash + sum(positions.get(code, 0.0) * last_prices.get(code, 0.0) for code in positions)
         snapshot = PortfolioSnapshot(cash=cash, equity=equity, positions=dict(positions))
         if d < params.start_date:
@@ -314,7 +315,28 @@ def run_backtest(
             if o.ts_code:
                 order_by_code[o.ts_code] = o
         day_orders: list[dict[str, Any]] = []
-        for key in sorted(order_by_code.keys()):
+        ordered_codes: list[tuple[int, str]] = []
+        for code, order in order_by_code.items():
+            bar_opt = bars.get(code)
+            if bar_opt is None:
+                continue
+            intended_action = (order.action or "").lower().strip()
+            if order.target_pct is not None:
+                target_pct = min(max(order.target_pct, 0.0), 1.0)
+                current_qty = positions.get(code, 0.0)
+                desired_qty = (equity * target_pct) / max(bar_opt.avg_price, 0.000001)
+                if desired_qty < current_qty:
+                    intended_action = "sell"
+                elif desired_qty > current_qty:
+                    intended_action = "buy"
+            priority = 2
+            if intended_action == "sell":
+                priority = 0
+            elif intended_action == "buy":
+                priority = 1
+            ordered_codes.append((priority, code))
+        ordered_codes.sort(key=lambda x: (x[0], x[1]))
+        for _priority, key in ordered_codes:
             order = order_by_code[key]
             bar_opt = bars.get(order.ts_code)
             if bar_opt is None:
@@ -410,6 +432,7 @@ def run_backtest(
                     {"ts_code": code, "qty": qty}
                     for code, qty in sorted(positions.items(), key=lambda x: (-x[1], x[0]))
                 ],
+                "cash_before": cash_before,
                 "cash": cash,
                 "equity": equity,
             }

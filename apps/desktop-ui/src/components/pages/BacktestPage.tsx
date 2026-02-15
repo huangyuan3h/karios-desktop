@@ -36,6 +36,7 @@ type DailyLogEntry = {
     exec_price?: number | null;
   }>;
   positions: Array<{ ts_code: string; qty: number }>;
+  cash_before: number;
   cash: number;
   equity: number;
 };
@@ -114,17 +115,21 @@ function DailyTooltip({
   label,
 }: TooltipProps<number, string>) {
   if (!active || !payload?.length) return null;
-  const data = payload[0]?.payload as { equity?: number; cash?: number; orders?: string };
+  const data = payload[0]?.payload as { equity?: number; cash?: number; cash_before?: number; orders?: string };
   return (
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 text-xs shadow-sm">
       <div className="mb-1 font-medium">{label}</div>
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-3">
+          <span className="text-[var(--k-muted)]">现金(开盘)</span>
+          <span className="font-mono">{fmtNum(data.cash_before)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
           <span className="text-[var(--k-muted)]">权益</span>
           <span className="font-mono">{fmtNum(data.equity)}</span>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[var(--k-muted)]">现金</span>
+          <span className="text-[var(--k-muted)]">现金(收盘)</span>
           <span className="font-mono">{fmtNum(data.cash)}</span>
         </div>
         {data.orders ? (
@@ -243,6 +248,7 @@ export function BacktestPage() {
       date: d.date,
       equity: d.equity,
       cash: d.cash,
+      cash_before: d.cash_before,
       orders: d.orders
         .filter((o) => o.status === 'executed')
         .map((o) => `${o.action === 'buy' ? '买入' : o.action === 'sell' ? '卖出' : o.action} ${o.ts_code}${o.reason ? ` (${o.reason})` : ''}`)
@@ -429,7 +435,8 @@ export function BacktestPage() {
             <thead className="sticky top-0 bg-[var(--k-surface-2)] text-[var(--k-muted)]">
               <tr className="text-left">
                 <th className="px-3 py-2">日期</th>
-                <th className="px-3 py-2">现金</th>
+                <th className="px-3 py-2">现金(开盘)</th>
+                <th className="px-3 py-2">现金(收盘)</th>
                 <th className="px-3 py-2">权益</th>
                 <th className="px-3 py-2">选股</th>
                 <th className="px-3 py-2">持仓</th>
@@ -440,6 +447,7 @@ export function BacktestPage() {
               {visibleLog.map((d) => (
                 <tr key={d.date} className="border-t border-[var(--k-border)]">
                   <td className="px-3 py-2 font-mono">{d.date}</td>
+                  <td className="px-3 py-2 font-mono">{fmtNum(d.cash_before)}</td>
                   <td className="px-3 py-2 font-mono">{fmtNum(d.cash)}</td>
                   <td className="px-3 py-2 font-mono">{fmtNum(d.equity)}</td>
                   <td className="px-3 py-2">
@@ -481,7 +489,7 @@ export function BacktestPage() {
               ))}
               {visibleLog.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-sm text-[var(--k-muted)]" colSpan={6}>
+                  <td className="px-3 py-6 text-center text-sm text-[var(--k-muted)]" colSpan={7}>
                     无日志记录
                   </td>
                 </tr>
