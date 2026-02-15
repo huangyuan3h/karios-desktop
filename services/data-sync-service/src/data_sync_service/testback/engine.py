@@ -314,11 +314,16 @@ def run_backtest(
             _ = strategy.on_bar(d, selected, snapshot)
             continue
         ordered_selected = {code: selected[code] for code in sorted(selected)}
-        orders = strategy.on_bar(d, ordered_selected, snapshot)
+        use_full = bool(getattr(strategy, "use_full_bars", False))
+        bars_for_strategy = bars if use_full else ordered_selected
+        orders = strategy.on_bar(d, bars_for_strategy, snapshot)
         order_by_code: Dict[str, Order] = {}
         for o in orders:
             if o.ts_code:
                 order_by_code[o.ts_code] = o
+        if use_full:
+            selected_codes = set(ordered_selected.keys())
+            order_by_code = {code: o for code, o in order_by_code.items() if code in selected_codes}
         day_orders: list[dict[str, Any]] = []
         ordered_codes: list[tuple[int, str]] = []
         for code, order in order_by_code.items():
@@ -450,6 +455,7 @@ def run_backtest(
                     {"ts_code": code, "qty": qty}
                     for code, qty in sorted(positions.items(), key=lambda x: (-x[1], x[0]))
                 ],
+                "strategy_stats": getattr(strategy, "_last_stats", None),
                 "cash_before": cash_before,
                 "cash": cash,
                 "equity": equity,

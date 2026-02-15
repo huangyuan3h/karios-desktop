@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from data_sync_service.db.index_daily import fetch_last_closes
+from data_sync_service.db.index_daily import fetch_last_closes, fetch_last_closes_upto
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 INDEX_SIGNALS = [
@@ -57,10 +57,10 @@ def get_index_signals(*, as_of_date: str | None = None) -> list[dict[str, Any]]:
     Return index traffic-light signals using MA20/MA5.
     During trading hours, try to use realtime quotes from tushare.
     """
-    _ = as_of_date
+    use_as_of = str(as_of_date).strip() if as_of_date else None
     rt_price: dict[str, float] = {}
     rt_time: dict[str, str | None] = {}
-    if _is_shanghai_trading_time():
+    if _is_shanghai_trading_time() and not use_as_of:
         res = fetch_realtime_quotes([x["ts_code"] for x in INDEX_SIGNALS])
         if isinstance(res, dict) and bool(res.get("ok")):
             for it in res.get("items", []) or []:
@@ -77,7 +77,10 @@ def get_index_signals(*, as_of_date: str | None = None) -> list[dict[str, Any]]:
     for it in INDEX_SIGNALS:
         ts_code = it["ts_code"]
         name = it["name"]
-        series = fetch_last_closes(ts_code, days=30)
+        if use_as_of:
+            series = fetch_last_closes_upto(ts_code, use_as_of, days=30)
+        else:
+            series = fetch_last_closes(ts_code, days=30)
         used_realtime = False
         trade_time = rt_time.get(ts_code)
         rt_close = rt_price.get(ts_code)

@@ -98,9 +98,17 @@ def main() -> None:
             for o in orders
             if o.get("status") == "executed"
         )
+        stats = day.get("strategy_stats") or {}
+        stats_str = (
+            f"regime={stats.get('regime')} "
+            f"bars={stats.get('bars')} "
+            f"breakout={stats.get('breakout_ok')} "
+            f"pullback={stats.get('pullback_ok')} "
+            f"buy={stats.get('buy_signal')}"
+        )
         lines.append(
             f"{day.get('date')} 现金(开盘)={day.get('cash_before'):.2f} 现金(收盘)={day.get('cash'):.2f} 权益={day.get('equity'):.2f} "
-            f"选股=[{selected_str}] 指令=[{orders_str}]"
+            f"选股=[{selected_str}] 指令=[{orders_str}] 诊断=[{stats_str}]"
         )
     out_path.write_text("\n".join(lines), encoding="utf-8")
     _write_html(
@@ -138,6 +146,14 @@ def _write_html(
             for o in orders
             if o.get("status") == "executed"
         )
+        stats = day.get("strategy_stats") or {}
+        stats_str = (
+            f"regime={stats.get('regime')} "
+            f"bars={stats.get('bars')} "
+            f"breakout={stats.get('breakout_ok')} "
+            f"pullback={stats.get('pullback_ok')} "
+            f"buy={stats.get('buy_signal')}"
+        )
         rows.append(
             "<tr>"
             f"<td>{day.get('date')}</td>"
@@ -146,6 +162,7 @@ def _write_html(
             f"<td>{day.get('equity'):.2f}</td>"
             f"<td>{selected_str}</td>"
             f"<td>{orders_str}</td>"
+            f"<td>{stats_str}</td>"
             "</tr>"
         )
     html = f"""<!doctype html>
@@ -179,6 +196,7 @@ def _write_html(
         <th>权益</th>
         <th>选股(Top{max_selected})</th>
         <th>指令</th>
+        <th>诊断</th>
       </tr>
     </thead>
     <tbody>

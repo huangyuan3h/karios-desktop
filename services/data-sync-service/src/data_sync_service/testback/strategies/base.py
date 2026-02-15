@@ -36,6 +36,7 @@ class PortfolioSnapshot:
 
 class BaseStrategy(ABC):
     name = "base"
+    use_full_bars = False
 
     def on_start(self, start_date: str, end_date: str) -> None:
         _ = start_date

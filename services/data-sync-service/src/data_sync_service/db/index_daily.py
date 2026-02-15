@@ -200,3 +200,33 @@ def fetch_last_closes(ts_code: str, days: int = 60) -> list[tuple[str, float]]:
             close = 0.0
         out.append((d, close))
     return out
+
+
+def fetch_last_closes_upto(ts_code: str, as_of_date: str, days: int = 60) -> list[tuple[str, float]]:
+    """
+    Return last N (date, close) rows up to as_of_date (inclusive), ordered by date ASC.
+    """
+    ensure_table()
+    days2 = max(1, min(int(days), 400))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT trade_date, close
+                FROM {TABLE_NAME}
+                WHERE ts_code = %s AND trade_date <= %s
+                ORDER BY trade_date DESC
+                LIMIT %s
+                """,
+                (ts_code, as_of_date, days2),
+            )
+            rows = cur.fetchall()
+    out: list[tuple[str, float]] = []
+    for r in reversed(rows):
+        d = r[0].strftime("%Y-%m-%d") if r and hasattr(r[0], "strftime") else str(r[0])
+        try:
+            close = float(r[1] or 0.0)
+        except Exception:
+            close = 0.0
+        out.append((d, close))
+    return out

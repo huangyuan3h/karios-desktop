@@ -36,6 +36,15 @@ type DailyLogEntry = {
     exec_price?: number | null;
   }>;
   positions: Array<{ ts_code: string; qty: number }>;
+  strategy_stats?: {
+    date?: string;
+    regime?: string;
+    bars?: number;
+    breakout_ok?: number;
+    pullback_ok?: number;
+    sell_ok?: number;
+    buy_signal?: number;
+  } | null;
   cash_before: number;
   cash: number;
   equity: number;
@@ -119,9 +128,18 @@ function DailyTooltip({
   active,
   payload,
   label,
-}: TooltipProps<number, string>) {
+}: TooltipProps<number, string> & {
+  payload?: Array<{ payload?: Record<string, unknown> }>;
+  label?: string;
+}) {
   if (!active || !payload?.length) return null;
-  const data = payload[0]?.payload as { equity?: number; cash?: number; cash_before?: number; orders?: string };
+  const data = payload[0]?.payload as {
+    equity?: number;
+    cash?: number;
+    cash_before?: number;
+    orders?: string;
+    strategyStats?: string;
+  };
   return (
     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 text-xs shadow-sm">
       <div className="mb-1 font-medium">{label}</div>
@@ -142,6 +160,12 @@ function DailyTooltip({
           <div className="mt-2 text-[var(--k-muted)]">
             <div className="font-medium">指令</div>
             <div className="mt-1 whitespace-pre-wrap font-mono">{data.orders}</div>
+          </div>
+        ) : null}
+        {data.strategyStats ? (
+          <div className="mt-2 text-[var(--k-muted)]">
+            <div className="font-medium">诊断</div>
+            <div className="mt-1 whitespace-pre-wrap font-mono">{data.strategyStats}</div>
           </div>
         ) : null}
       </div>
@@ -257,7 +281,7 @@ export function BacktestPage() {
   const [onlyActive, setOnlyActive] = React.useState(true);
 
   const summary = result?.run?.summary ?? null;
-  const dailyLog = result?.run?.daily_log ?? [];
+  const dailyLog = React.useMemo(() => result?.run?.daily_log ?? [], [result]);
 
   const chartData = React.useMemo(() => {
     return dailyLog.map((d) => ({
@@ -265,6 +289,9 @@ export function BacktestPage() {
       equity: d.equity,
       cash: d.cash,
       cash_before: d.cash_before,
+      strategyStats: d.strategy_stats
+        ? `regime=${d.strategy_stats.regime} bars=${d.strategy_stats.bars} breakout=${d.strategy_stats.breakout_ok} pullback=${d.strategy_stats.pullback_ok} buy=${d.strategy_stats.buy_signal}`
+        : '',
       orders: d.orders
         .filter((o) => o.status === 'executed')
         .map((o) => `${o.action === 'buy' ? '买入' : o.action === 'sell' ? '卖出' : o.action} ${o.ts_code}${o.reason ? ` (${o.reason})` : ''}`)
@@ -331,7 +358,10 @@ export function BacktestPage() {
         .map((o) => `${o.action === 'buy' ? '买入' : o.action === 'sell' ? '卖出' : o.action} ${o.ts_code} ${o.reason ?? ''}`)
         .join(' ');
       const positions = d.positions.map((p) => `${p.ts_code} ${p.qty}`).join(' ');
-      return `${d.date} ${selected} ${orders} ${positions}`.toLowerCase().includes(q);
+      const stats = d.strategy_stats
+        ? `regime=${d.strategy_stats.regime} bars=${d.strategy_stats.bars} breakout=${d.strategy_stats.breakout_ok} pullback=${d.strategy_stats.pullback_ok} buy=${d.strategy_stats.buy_signal}`
+        : '';
+      return `${d.date} ${selected} ${orders} ${positions} ${stats}`.toLowerCase().includes(q);
     });
   }, [dailyLog, filter]);
 
@@ -361,6 +391,15 @@ export function BacktestPage() {
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-4">
+        <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+          <div className="text-xs text-[var(--k-muted)]">当前策略</div>
+          <div className="mt-2 text-xl font-semibold">
+            {result?.run?.strategy_name
+              ? STRATEGY_OPTIONS.find((opt) => opt.value === result.run.strategy_name)?.label ||
+                result.run.strategy_name
+              : '—'}
+          </div>
+        </div>
         <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="text-xs text-[var(--k-muted)]">累计收益</div>
           <div className="mt-2 text-xl font-semibold">{fmtPct(summary?.total_return)}</div>
@@ -457,6 +496,7 @@ export function BacktestPage() {
                 <th className="px-3 py-2">选股</th>
                 <th className="px-3 py-2">持仓</th>
                 <th className="px-3 py-2">指令</th>
+                <th className="px-3 py-2">诊断</th>
               </tr>
             </thead>
             <tbody>
@@ -501,11 +541,22 @@ export function BacktestPage() {
                       ))}
                     </div>
                   </td>
+                  <td className="px-3 py-2">
+                    {d.strategy_stats ? (
+                      <div className="font-mono text-xs text-[var(--k-muted)]">
+                        regime={d.strategy_stats.regime} bars={d.strategy_stats.bars} breakout=
+                        {d.strategy_stats.breakout_ok} pullback={d.strategy_stats.pullback_ok} buy=
+                        {d.strategy_stats.buy_signal}
+                      </div>
+                    ) : (
+                      <div className="text-[var(--k-muted)]">—</div>
+                    )}
+                  </td>
                 </tr>
               ))}
               {visibleLog.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-sm text-[var(--k-muted)]" colSpan={7}>
+                  <td className="px-3 py-6 text-center text-sm text-[var(--k-muted)]" colSpan={8}>
                     无日志记录
                   </td>
                 </tr>
