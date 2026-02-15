@@ -300,23 +300,29 @@ def run_backtest(
     trade_log: list[dict[str, Any]] = []
     peak_equity = cash
     strategy.on_start(params.start_date, params.end_date)
-    for d in dates:
-        bars = bars_by_date.get(d, {})
-        prev_map = prev_close_map.get(d, {})
-        selected, scored = _pick_top_n(bars, prev_map, daily_rules, score_cfg)
-        for code, bar in bars.items():
+    for i in range(1, len(dates)):
+        d = dates[i]
+        signal_date = dates[i - 1]
+        bars_today = bars_by_date.get(d, {})
+        bars_signal = bars_by_date.get(signal_date, {})
+        prev_map = prev_close_map.get(signal_date, {})
+        selected, scored = _pick_top_n(bars_signal, prev_map, daily_rules, score_cfg)
+        for code, bar in bars_today.items():
             last_prices[code] = bar.close
         cash_before = cash
         equity = cash + sum(positions.get(code, 0.0) * last_prices.get(code, 0.0) for code in positions)
         snapshot = PortfolioSnapshot(cash=cash, equity=equity, positions=dict(positions))
         if d < params.start_date:
             # Warmup: feed bars to strategy, but do not trade or log.
-            _ = strategy.on_bar(d, selected, snapshot)
+            ordered_selected = {code: selected[code] for code in sorted(selected)}
+            use_full = bool(getattr(strategy, "use_full_bars", False))
+            bars_for_strategy = bars_signal if use_full else ordered_selected
+            _ = strategy.on_bar(signal_date, bars_for_strategy, snapshot)
             continue
         ordered_selected = {code: selected[code] for code in sorted(selected)}
         use_full = bool(getattr(strategy, "use_full_bars", False))
-        bars_for_strategy = bars if use_full else ordered_selected
-        orders = strategy.on_bar(d, bars_for_strategy, snapshot)
+        bars_for_strategy = bars_signal if use_full else ordered_selected
+        orders = strategy.on_bar(signal_date, bars_for_strategy, snapshot)
         order_by_code: Dict[str, Order] = {}
         for o in orders:
             if o.ts_code:
@@ -348,7 +354,7 @@ def run_backtest(
         ordered_codes.sort(key=lambda x: (x[0], x[1]))
         for _priority, key in ordered_codes:
             order = order_by_code[key]
-            bar_opt = bars.get(order.ts_code)
+            bar_opt = bars_today.get(order.ts_code)
             if bar_opt is None:
                 continue
             bar = bar_opt
@@ -444,12 +450,13 @@ def run_backtest(
                     {
                         "ts_code": code,
                         "score": score,
-                        "close": bars[code].close,
-                        "avg_price": bars[code].avg_price,
+                        "close": bars_signal[code].close,
+                        "avg_price": bars_signal[code].avg_price,
                     }
                     for code, score in scored[: max(1, int(score_cfg.top_n))]
-                    if code in bars
+                    if code in bars_signal
                 ],
+                "signal_date": signal_date,
                 "orders": day_orders,
                 "positions": [
                     {"ts_code": code, "qty": qty}
