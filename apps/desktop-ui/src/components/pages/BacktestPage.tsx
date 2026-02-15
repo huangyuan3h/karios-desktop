@@ -64,7 +64,7 @@ const defaultForm: RunFormState = {
   strategy: 'ma_crossover',
   start_date: '2023-02-01',
   end_date: '2026-01-01',
-  initial_cash: '1000000',
+  initial_cash: '100',
   fee_rate: '0.0005',
   slippage_rate: '0',
   adj_mode: 'qfq',
@@ -96,6 +96,11 @@ async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
 function fmtNum(val: number | undefined | null) {
   if (val === undefined || val === null || Number.isNaN(val)) return '-';
   return val.toLocaleString('en-US', { maximumFractionDigits: 4 });
+}
+
+function fmtWan(val: number | undefined | null) {
+  if (val === undefined || val === null || Number.isNaN(val)) return '-';
+  return `${(val / 10000).toFixed(2)}万`;
 }
 
 function fmtPct(val: number | undefined | null) {
@@ -176,7 +181,7 @@ function RunModal({
             <input className="rounded-md border border-[var(--k-border)] px-3 py-2" value={form.end_date} onChange={update('end_date')} />
           </label>
           <label className="grid gap-1 text-sm">
-            初始资金
+            初始资金(万)
             <input className="rounded-md border border-[var(--k-border)] px-3 py-2" value={form.initial_cash} onChange={update('initial_cash')} />
           </label>
           <label className="grid gap-1 text-sm">
@@ -240,7 +245,7 @@ export function BacktestPage() {
       cash: d.cash,
       orders: d.orders
         .filter((o) => o.status === 'executed')
-        .map((o) => `${o.action} ${o.ts_code}${o.reason ? ` (${o.reason})` : ''}`)
+        .map((o) => `${o.action === 'buy' ? '买入' : o.action === 'sell' ? '卖出' : o.action} ${o.ts_code}${o.reason ? ` (${o.reason})` : ''}`)
         .slice(0, 4)
         .join('\n'),
     }));
@@ -262,7 +267,7 @@ export function BacktestPage() {
         start_date: form.start_date,
         end_date: form.end_date,
         params: {
-          initial_cash: Number(form.initial_cash),
+          initial_cash: Number(form.initial_cash) * 10000,
           fee_rate: Number(form.fee_rate),
           slippage_rate: Number(form.slippage_rate),
           adj_mode: form.adj_mode,
@@ -301,7 +306,7 @@ export function BacktestPage() {
       const selected = d.selected.map((s) => s.ts_code).join(' ');
       const orders = d.orders
         .filter((o) => o.status === 'executed')
-        .map((o) => `${o.action} ${o.ts_code} ${o.reason ?? ''}`)
+        .map((o) => `${o.action === 'buy' ? '买入' : o.action === 'sell' ? '卖出' : o.action} ${o.ts_code} ${o.reason ?? ''}`)
         .join(' ');
       const positions = d.positions.map((p) => `${p.ts_code} ${p.qty}`).join(' ');
       return `${d.date} ${selected} ${orders} ${positions}`.toLowerCase().includes(q);
@@ -348,7 +353,7 @@ export function BacktestPage() {
         </div>
         <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="text-xs text-[var(--k-muted)]">最终资金</div>
-          <div className="mt-2 text-xl font-semibold">{fmtNum(summary?.final_equity)}</div>
+          <div className="mt-2 text-xl font-semibold">{fmtWan(summary?.final_equity)}</div>
         </div>
       </div>
 
@@ -465,8 +470,9 @@ export function BacktestPage() {
                         .filter((o) => o.status === 'executed')
                         .map((o, idx) => (
                         <div key={`${o.ts_code}-${idx}`} className="font-mono">
-                          {o.status ?? '-'} {o.action} {o.ts_code} qty {fmtNum(o.exec_qty ?? null)} price{' '}
-                          {fmtNum(o.exec_price ?? null)} {o.reason ?? ''}
+                          {o.status ?? '-'} {o.action === 'buy' ? '买入' : o.action === 'sell' ? '卖出' : o.action}{' '}
+                          {o.ts_code} 数量 {fmtNum(o.exec_qty ?? null)} 价格 {fmtNum(o.exec_price ?? null)}{' '}
+                          {o.reason ?? ''}
                         </div>
                       ))}
                     </div>

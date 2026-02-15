@@ -55,6 +55,12 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
     return float(val)
 
 
+def _normalize_cash(cash: float) -> float:
+    if abs(cash) < 1e-8:
+        return 0.0
+    return cash
+
+
 def _parse_date(date_str: str) -> datetime | None:
     try:
         return datetime.strptime(date_str, "%Y-%m-%d")
@@ -223,6 +229,7 @@ def _execute_order(
         if qty <= 0:
             return cash, positions, None
         cash -= total_cost
+        cash = _normalize_cash(cash)
         positions[bar.ts_code] = current_qty + qty
         return cash, positions, {
             "ts_code": bar.ts_code,
@@ -241,6 +248,7 @@ def _execute_order(
     proceeds = qty2 * exec_price
     fee = proceeds * fee_rate
     cash += proceeds - fee
+    cash = _normalize_cash(cash)
     new_qty = current_qty - qty2
     if new_qty <= 0:
         positions.pop(bar.ts_code, None)
@@ -335,7 +343,7 @@ def run_backtest(
                     }
                 )
                 continue
-            if intended_action == "buy" and cash <= 0:
+            if intended_action == "buy" and cash <= 1e-8:
                 day_orders.append(
                     {
                         "ts_code": order.ts_code,

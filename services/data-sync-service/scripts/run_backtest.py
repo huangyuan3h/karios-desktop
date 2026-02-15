@@ -92,9 +92,9 @@ def main() -> None:
         )
         orders = day.get("orders", [])
         orders_str = ",".join(
-            f"{o.get('status')}:{o.get('action')}:{o.get('ts_code')}:"
-            f"qty={_fmt_num(o.get('exec_qty') or o.get('qty'))}:"
-            f"price={_fmt_num(o.get('exec_price'))}:{o.get('reason') or ''}"
+            f"{_zh_status(o.get('status'))}{_zh_action(o.get('action'))} {o.get('ts_code')} "
+            f"数量={_fmt_num(o.get('exec_qty') or o.get('qty'))} "
+            f"价格={_fmt_num(o.get('exec_price'))} {o.get('reason') or ''}"
             for o in orders
             if o.get("status") == "executed"
         )
@@ -132,9 +132,9 @@ def _write_html(
         )
         orders = day.get("orders", [])
         orders_str = "<br/>".join(
-            f"{o.get('status')} {o.get('action')} {o.get('ts_code')} "
-            f"qty={_fmt_num(o.get('exec_qty') or o.get('qty'))} "
-            f"price={_fmt_num(o.get('exec_price'))} {o.get('reason') or ''}"
+            f"{_zh_status(o.get('status'))}{_zh_action(o.get('action'))} {o.get('ts_code')} "
+            f"数量={_fmt_num(o.get('exec_qty') or o.get('qty'))} "
+            f"价格={_fmt_num(o.get('exec_price'))} {o.get('reason') or ''}"
             for o in orders
             if o.get("status") == "executed"
         )
@@ -208,6 +208,27 @@ def _fmt_num(val) -> str:
         return f"{float(val):.4f}"
     except Exception:
         return str(val)
+
+
+def _zh_action(action: str | None) -> str:
+    if not action:
+        return ""
+    a = action.lower()
+    if a == "buy":
+        return "买入"
+    if a == "sell":
+        return "卖出"
+    return action
+
+
+def _zh_status(status: str | None) -> str:
+    if status == "executed":
+        return "已执行"
+    if status == "skipped":
+        return "已跳过"
+    if status == "ignored":
+        return "已忽略"
+    return ""
 
 
 if __name__ == "__main__":
