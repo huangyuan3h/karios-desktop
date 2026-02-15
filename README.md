@@ -6,7 +6,7 @@ Family investment analyzer desktop app (AI-first).
 
 - `apps/desktop-ui`: Next.js UI (embedded in Tauri WebView)
 - `apps/ai-service`: Node/TypeScript AI service (Vercel AI SDK)
-- `services/quant-service`: Python quant/data service (uv-managed)
+- `services/data-sync-service`: Python data service (uv-managed, Postgres)
 - `packages/shared`: shared schemas/types
 - `docs`: architecture and requirements
 
@@ -26,7 +26,7 @@ Family investment analyzer desktop app (AI-first).
 pnpm dev
 ```
 
-This will auto-kill any processes listening on ports 3000/3001/4310/4320 before starting.
+This will auto-kill any processes listening on ports 3000/3001/4310/4330 before starting.
 
 ### Install all dependencies (Node + Python)
 

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Search } from 'lucide-react';
 
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 
 type MarketStockRow = {
   symbol: string;
@@ -20,7 +20,7 @@ type MarketStocksResponse = {
 };
 
 async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
   if (!res.ok) {
     try {
@@ -72,7 +72,7 @@ export function GlobalStockSearch({
       setOpen(true);
       try {
         const data = await apiGetJson<MarketStocksResponse>(
-          `/market/stocks?limit=8&offset=0&q=${encodeURIComponent(q)}`,
+          `/search/stocks?limit=8&q=${encodeURIComponent(q)}`,
         );
         if (cancelled) return;
         setItems(Array.isArray(data.items) ? data.items : []);

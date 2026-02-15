@@ -100,15 +100,6 @@ export type ChatReference =
       capturedAt: string;
     }
   | {
-      kind: 'strategyReport';
-      refId: string; // reportId
-      reportId: string;
-      accountId: string;
-      accountTitle: string;
-      date: string; // YYYY-MM-DD
-      createdAt: string;
-    }
-  | {
       kind: 'industryFundFlow';
       refId: string; // stable key: `${asOfDate}:${days}:${topN}`
       asOfDate: string; // YYYY-MM-DD
