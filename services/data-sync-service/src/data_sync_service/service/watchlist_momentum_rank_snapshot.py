@@ -66,21 +66,33 @@ def compute_watchlist_momentum_rank_snapshot(
     daily_log = result.get("daily_log", [])
     recent_days = daily_log[-30:] if isinstance(daily_log, list) else []
     recent_orders: list[dict[str, Any]] = []
+    last_buy_price: dict[str, float] = {}
     for day in recent_days:
         date = day.get("date")
         orders = day.get("orders") or []
         for o in orders:
             if o.get("status") != "executed":
                 continue
+            action = o.get("action")
+            ts_code = o.get("ts_code")
+            price = o.get("exec_price")
+            pnl_pct = None
+            if action == "sell" and ts_code and ts_code in last_buy_price:
+                base_price = last_buy_price.get(ts_code, 0.0)
+                if base_price and price:
+                    pnl_pct = (float(price) - float(base_price)) / float(base_price)
+            if action == "buy" and ts_code and price:
+                last_buy_price[ts_code] = float(price)
             recent_orders.append(
                 {
                     "date": date,
-                    "ts_code": o.get("ts_code"),
-                    "action": o.get("action"),
+                    "ts_code": ts_code,
+                    "action": action,
                     "qty": o.get("exec_qty") or o.get("qty"),
-                    "price": o.get("exec_price"),
+                    "price": price,
                     "target_pct": o.get("target_pct"),
                     "reason": o.get("reason"),
+                    "pnl_pct": pnl_pct,
                 }
             )
 

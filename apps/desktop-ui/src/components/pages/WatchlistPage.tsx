@@ -206,6 +206,7 @@ type MomentumRankSnapshot = {
     price?: number | null;
     target_pct?: number | null;
     reason?: string | null;
+    pnl_pct?: number | null;
   }> | null;
   error?: string | null;
 };
@@ -470,6 +471,21 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
   const [costPriceDrafts, setCostPriceDrafts] = React.useState<Record<string, string>>({});
+  const tsCodeToSymbol = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const it of items) {
+      const code = toTsCodeFromSymbol(it.symbol);
+      if (code) map.set(code, it.symbol);
+    }
+    return map;
+  }, [items]);
+  const nameBySymbol = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const it of items) {
+      if (it.symbol) map.set(it.symbol, it.name || '');
+    }
+    return map;
+  }, [items]);
   const [tooltip, setTooltip] = React.useState<{
     open: boolean;
     x: number;
@@ -1864,26 +1880,26 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
       {rankSnapshot ? (
         <div className="mb-6 rounded border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs">
-          <div className="mb-1 font-medium">Momentum Rank Snapshot (watchlist universe)</div>
+          <div className="mb-1 font-medium">动量突破回测快照（Watchlist 股票池）</div>
           <div className="mb-2 text-[var(--k-muted)]">
-            Backtest replay on watchlist pool to infer current holdings and allocation.
+            使用 watchlist_momentum_rank 策略回放，推断当前持仓与仓位分配。
           </div>
           {rankSnapshot.error ? (
             <div className="mb-2 text-[var(--k-muted)]">
-              Snapshot not available ({rankSnapshot.error}). Make sure data-sync-service is running.
+              快照不可用（{rankSnapshot.error}）。请确认 data-sync-service 已启动。
             </div>
           ) : null}
           <div className="mb-2 grid grid-cols-2 gap-2 text-[var(--k-muted)] md:grid-cols-4">
-            <div>asOfDate: {rankSnapshot.asOfDate ?? '—'}</div>
-            <div>totalTrades: {rankSnapshot.summary?.total_trades ?? '—'}</div>
+            <div>截止日期: {rankSnapshot.asOfDate ?? '—'}</div>
+            <div>成交次数: {rankSnapshot.summary?.total_trades ?? '—'}</div>
             <div>
-              totalReturn:{' '}
+              总收益:{' '}
               {typeof rankSnapshot.summary?.total_return === 'number'
                 ? `${(rankSnapshot.summary.total_return * 100).toFixed(2)}%`
                 : '—'}
             </div>
             <div>
-              maxDrawdown:{' '}
+              最大回撤:{' '}
               {typeof rankSnapshot.summary?.max_drawdown === 'number'
                 ? `${(rankSnapshot.summary.max_drawdown * 100).toFixed(2)}%`
                 : '—'}
@@ -1894,61 +1910,82 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               <table className="w-full border-collapse text-xs">
                 <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                   <tr className="text-left">
-                    <th className="px-2 py-1">ts_code</th>
-                    <th className="px-2 py-1">Position%</th>
-                    <th className="px-2 py-1">Qty</th>
-                    <th className="px-2 py-1">Price</th>
-                    <th className="px-2 py-1">Value</th>
+                    <th className="px-2 py-1">代码</th>
+                    <th className="px-2 py-1">名称</th>
+                    <th className="px-2 py-1">仓位%</th>
+                    <th className="px-2 py-1">数量</th>
+                    <th className="px-2 py-1">价格</th>
+                    <th className="px-2 py-1">市值</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rankSnapshot.positions?.map((p) => (
-                    <tr key={p.ts_code} className="border-t border-[var(--k-border)]">
-                      <td className="px-2 py-1 font-mono">{p.ts_code}</td>
-                      <td className="px-2 py-1 font-mono">{(p.pct * 100).toFixed(1)}%</td>
-                      <td className="px-2 py-1 font-mono">{Number(p.qty).toFixed(0)}</td>
-                      <td className="px-2 py-1 font-mono">{Number(p.price).toFixed(2)}</td>
-                      <td className="px-2 py-1 font-mono">{Number(p.value).toFixed(2)}</td>
-                    </tr>
-                  ))}
+                  {rankSnapshot.positions?.map((p) => {
+                    const sym = tsCodeToSymbol.get(p.ts_code) ?? p.ts_code;
+                    const name = nameBySymbol.get(sym) ?? '—';
+                    return (
+                      <tr key={p.ts_code} className="border-t border-[var(--k-border)]">
+                        <td className="px-2 py-1 font-mono">{sym}</td>
+                        <td className="px-2 py-1">{name}</td>
+                        <td className="px-2 py-1 font-mono">{(p.pct * 100).toFixed(1)}%</td>
+                        <td className="px-2 py-1 font-mono">{Number(p.qty).toFixed(0)}</td>
+                        <td className="px-2 py-1 font-mono">{Number(p.price).toFixed(2)}</td>
+                        <td className="px-2 py-1 font-mono">{Number(p.value).toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           ) : (
             <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)] p-2 text-[var(--k-muted)]">
-              No holdings from momentum-rank snapshot.
+              当前没有持仓。
             </div>
           )}
           {rankSnapshot.recentOrders?.length ? (
             <div className="mt-3">
-              <div className="mb-1 text-[var(--k-muted)]">Recent executed orders (last 30 days)</div>
+              <div className="mb-1 text-[var(--k-muted)]">最近 30 天执行记录</div>
               <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
                 <table className="w-full border-collapse text-xs">
                   <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                     <tr className="text-left">
-                      <th className="px-2 py-1">Date</th>
-                      <th className="px-2 py-1">ts_code</th>
-                      <th className="px-2 py-1">Action</th>
-                      <th className="px-2 py-1">Qty</th>
-                      <th className="px-2 py-1">Price</th>
-                      <th className="px-2 py-1">Reason</th>
+                      <th className="px-2 py-1">日期</th>
+                      <th className="px-2 py-1">代码</th>
+                      <th className="px-2 py-1">名称</th>
+                      <th className="px-2 py-1">动作</th>
+                      <th className="px-2 py-1">收益%</th>
+                      <th className="px-2 py-1">数量</th>
+                      <th className="px-2 py-1">价格</th>
+                      <th className="px-2 py-1">原因</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rankSnapshot.recentOrders?.slice(-20).map((o, idx) => (
-                      <tr key={`${o.ts_code}-${o.date}-${idx}`} className="border-t border-[var(--k-border)]">
-                        <td className="px-2 py-1 font-mono">{o.date ?? '—'}</td>
-                        <td className="px-2 py-1 font-mono">{o.ts_code ?? '—'}</td>
-                        <td className="px-2 py-1 font-mono">{o.action ?? '—'}</td>
-                        <td className="px-2 py-1 font-mono">
-                          {typeof o.qty === 'number' ? o.qty.toFixed(0) : '—'}
-                        </td>
-                        <td className="px-2 py-1 font-mono">
-                          {typeof o.price === 'number' ? o.price.toFixed(2) : '—'}
-                        </td>
-                        <td className="px-2 py-1 text-[var(--k-muted)]">{o.reason ?? '—'}</td>
-                      </tr>
-                    ))}
+                    {rankSnapshot.recentOrders?.slice(-20).map((o, idx) => {
+                      const sym = o.ts_code ? tsCodeToSymbol.get(o.ts_code) ?? o.ts_code : '—';
+                      const name = nameBySymbol.get(sym) ?? '—';
+                      const actionText = o.action === 'buy' ? '买入' : o.action === 'sell' ? '卖出' : '—';
+                      const reasonText =
+                        o.reason === 'v6_breakout' ? '动量突破' : o.reason === 'v6_exit' ? '趋势转弱/止损' : o.reason ?? '—';
+                      const pnlText =
+                        o.action === 'sell' && typeof o.pnl_pct === 'number'
+                          ? `${(o.pnl_pct * 100).toFixed(2)}%`
+                          : '—';
+                      return (
+                        <tr key={`${o.ts_code}-${o.date}-${idx}`} className="border-t border-[var(--k-border)]">
+                          <td className="px-2 py-1 font-mono">{o.date ?? '—'}</td>
+                          <td className="px-2 py-1 font-mono">{sym}</td>
+                          <td className="px-2 py-1">{name}</td>
+                          <td className="px-2 py-1 font-mono">{actionText}</td>
+                          <td className="px-2 py-1 font-mono">{pnlText}</td>
+                          <td className="px-2 py-1 font-mono">
+                            {typeof o.qty === 'number' ? o.qty.toFixed(0) : '—'}
+                          </td>
+                          <td className="px-2 py-1 font-mono">
+                            {typeof o.price === 'number' ? o.price.toFixed(2) : '—'}
+                          </td>
+                          <td className="px-2 py-1 text-[var(--k-muted)]">{reasonText}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
