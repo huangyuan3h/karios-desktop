@@ -614,6 +614,7 @@ export function DashboardPage({
       rows?: Array<{
         symbol: string;
         action?: string | null;
+        sellOk?: boolean | null;
         targetPct?: number | null;
         reason?: string | null;
       }> | null;
@@ -723,14 +724,14 @@ export function DashboardPage({
 
     if (v5Plan?.rows?.length) {
       lines.push(`${heading} Signals (realtime on trading days)`);
-      lines.push('推荐基于 Watchlist Momentum Plan 策略（market regime + breakout checks）。');
+      lines.push('推荐基于 Watchlist Momentum Plan 策略（market regime + breakout checks），逻辑对齐 watchlist_momentum_rank。');
       if (v5Plan.summary?.regime) lines.push(`- regime: ${String(v5Plan.summary.regime)}`);
       lines.push('');
-      const signalHeaders = ['Symbol', 'Action', 'Target%', 'Reason'];
+      const signalHeaders = ['Symbol', 'Action', 'Target%', 'Sell?', 'Reason'];
       const signalRows: unknown[][] = [];
       for (const r of v5Plan.rows) {
         const targetPct = typeof r.targetPct === 'number' ? (r.targetPct * 100).toFixed(0) + '%' : '—';
-        signalRows.push([r.symbol, r.action ?? '—', targetPct, r.reason ?? '—']);
+        signalRows.push([r.symbol, r.action ?? '—', targetPct, r.sellOk ? 'yes' : 'no', r.reason ?? '—']);
       }
       lines.push(mdTable(signalHeaders, signalRows));
       lines.push('');

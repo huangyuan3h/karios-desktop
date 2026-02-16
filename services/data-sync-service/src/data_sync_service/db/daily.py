@@ -306,6 +306,33 @@ def fetch_last_adj_factors(
         if f > 0:
             out[code] = f
     return out
+
+
+def fetch_latest_trade_date_for_codes(ts_codes: list[str]) -> str | None:
+    """
+    Return the latest trade_date across ts_codes, as YYYY-MM-DD.
+    """
+    ensure_table()
+    codes = [c.strip().upper() for c in ts_codes if c and c.strip()]
+    if not codes:
+        return None
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT MAX(trade_date)
+                FROM {TABLE_NAME}
+                WHERE ts_code = ANY(%s)
+                """,
+                (codes,),
+            )
+            row = cur.fetchone()
+    if not row or not row[0]:
+        return None
+    d = row[0]
+    if hasattr(d, "strftime"):
+        return d.strftime("%Y-%m-%d")
+    return str(d)
 def fetch_trade_dates_for_codes(
     ts_codes: list[str],
     start_date: str,

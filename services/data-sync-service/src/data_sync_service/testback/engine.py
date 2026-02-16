@@ -276,17 +276,21 @@ def run_backtest(
     universe_filter: UniverseFilter,
     daily_rules: DailyRuleFilter,
     score_cfg: ScoreConfig | None,
+    universe_override: list[str] | None = None,
 ) -> dict[str, Any]:
     strategy = strategy_cls()
     if score_cfg is None:
         score_cfg = strategy.default_score_config()
     warmup_start = _warmup_start_date(params.start_date, params.warmup_days)
-    universe = build_universe(
-        as_of_date=params.start_date,
-        market=universe_filter.market,
-        exclude_keywords=universe_filter.exclude_keywords,
-        min_list_days=universe_filter.min_list_days,
-    )
+    if universe_override is not None:
+        universe = [u.strip().upper() for u in universe_override if u and u.strip()]
+    else:
+        universe = build_universe(
+            as_of_date=params.start_date,
+            market=universe_filter.market,
+            exclude_keywords=universe_filter.exclude_keywords,
+            min_list_days=universe_filter.min_list_days,
+        )
     dates = fetch_trade_dates_for_codes(universe, warmup_start, params.end_date)
     ratio_by_code: Dict[str, float] | None = None
     if params.adj_mode == "qfq":
@@ -302,6 +306,7 @@ def run_backtest(
     daily_log: list[dict[str, Any]] = []
     trade_log: list[dict[str, Any]] = []
     peak_equity = cash
+    equity = cash
     strategy.on_start(params.start_date, params.end_date)
     chunk_size = 120
     last_close_map: Dict[str, float] = {}
@@ -509,6 +514,20 @@ def run_backtest(
     if params.initial_cash > 0 and equity_curve:
         total_return = (equity_curve[-1]["equity"] / params.initial_cash) - 1.0
     max_drawdown = min((item["drawdown"] for item in drawdown_curve), default=0.0)
+    final_positions: list[dict[str, Any]] = []
+    if equity > 0:
+        for code, qty in sorted(positions.items(), key=lambda x: (-x[1], x[0])):
+            price = last_prices.get(code, 0.0)
+            value = qty * price
+            final_positions.append(
+                {
+                    "ts_code": code,
+                    "qty": qty,
+                    "price": price,
+                    "value": value,
+                    "pct": value / equity if equity > 0 else 0.0,
+                }
+            )
     summary = {
         "total_return": total_return,
         "max_drawdown": max_drawdown,
@@ -522,4 +541,6 @@ def run_backtest(
         "positions_curve": positions_curve,
         "daily_log": daily_log,
         "trade_log": trade_log,
+        "final_positions": final_positions,
+        "as_of_date": equity_curve[-1]["date"] if equity_curve else None,
     }

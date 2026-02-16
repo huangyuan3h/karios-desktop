@@ -157,20 +157,6 @@ type TrendOkResult = {
   missingData?: string[];
 };
 
-type V5AlertResult = {
-  symbol: string;
-  asOfDate?: string | null;
-  regime?: string | null;
-  currentPct?: number | null;
-  baseTarget?: number | null;
-  targetPct?: number | null;
-  action?: string | null;
-  reason?: string | null;
-  breakoutOk?: boolean | null;
-  sellOk?: boolean | null;
-  missingData?: string[];
-};
-
 type V5PlanSummary = {
   regime?: string | null;
   totalCurrentPct?: number | null;
@@ -191,9 +177,37 @@ type V5PlanResponse = {
   rows?: Array<{
     symbol: string;
     action?: string | null;
+    sellOk?: boolean | null;
     targetPct?: number | null;
     reason?: string | null;
   }> | null;
+};
+
+type MomentumRankSnapshot = {
+  asOfDate?: string | null;
+  summary?: {
+    total_return?: number | null;
+    max_drawdown?: number | null;
+    total_trades?: number | null;
+    final_equity?: number | null;
+  } | null;
+  positions?: Array<{
+    ts_code: string;
+    qty: number;
+    price: number;
+    value: number;
+    pct: number;
+  }> | null;
+  recentOrders?: Array<{
+    date?: string | null;
+    ts_code?: string | null;
+    action?: string | null;
+    qty?: number | null;
+    price?: number | null;
+    target_pct?: number | null;
+    reason?: string | null;
+  }> | null;
+  error?: string | null;
 };
 
 type ScreenerImportDebugState = {
@@ -432,9 +446,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   >({});
   const [trendBusy, setTrendBusy] = React.useState(false);
   const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
-  const [alerts, setAlerts] = React.useState<Record<string, V5AlertResult>>({});
-  const [alertsUpdatedAt, setAlertsUpdatedAt] = React.useState<string | null>(null);
   const [v5Plan, setV5Plan] = React.useState<V5PlanResponse | null>(null);
+  const [rankSnapshot, setRankSnapshot] = React.useState<MomentumRankSnapshot | null>(null);
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [syncStage, setSyncStage] = React.useState<string | null>(null);
@@ -627,19 +640,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             })),
           };
           const realtimeFlag = isShanghaiTradingTime() ? 'true' : 'false';
-          const rows = await apiPostJsonFrom<V5AlertResult[]>(
-            DATA_SYNC_BASE_URL,
-            `/market/stocks/watchlist/momentum-alerts?realtime=${realtimeFlag}`,
-            payload,
-          );
-          if (reqId === trendReqRef.current) {
-            const nextAlerts: Record<string, V5AlertResult> = {};
-            for (const r of Array.isArray(rows) ? rows : []) {
-              if (r && r.symbol) nextAlerts[r.symbol] = r;
-            }
-            setAlerts(nextAlerts);
-            setAlertsUpdatedAt(new Date().toISOString());
-          }
           const plan = await apiPostJsonFrom<V5PlanResponse>(
             DATA_SYNC_BASE_URL,
             `/market/stocks/watchlist/momentum-plan?realtime=${realtimeFlag}`,
@@ -648,10 +648,18 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           if (reqId === trendReqRef.current) {
             setV5Plan(plan || null);
           }
+          const snapshot = await apiPostJsonFrom<MomentumRankSnapshot>(
+            DATA_SYNC_BASE_URL,
+            `/market/stocks/watchlist/momentum-rank-snapshot`,
+            { items: items.map((it) => ({ symbol: it.symbol })) },
+          );
+          if (reqId === trendReqRef.current) {
+            setRankSnapshot(snapshot || null);
+          }
         } catch {
           if (reqId === trendReqRef.current) {
-            setAlerts({});
             setV5Plan(null);
+            setRankSnapshot({ error: 'fetch_failed' });
           }
         }
 
@@ -1317,80 +1325,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     );
   }
 
-  function renderAlertCell(sym: string) {
-    const a = alerts[sym];
-    if (!a) return <span className="text-[var(--k-muted)]">—</span>;
-    const missing = (a.missingData ?? []).filter(Boolean);
-    if (missing.length) {
-      return (
-        <span className="font-mono text-[var(--k-muted)]" title={missing.join(', ')}>
-          数据不足
-        </span>
-      );
-    }
-    const targetPct = typeof a.targetPct === 'number' ? a.targetPct : null;
-    const pctText = targetPct != null ? `${(targetPct * 100).toFixed(0)}%` : '';
-    const action = a.action ?? 'hold';
-    const text =
-      action === 'exit'
-        ? '清仓'
-        : action === 'trim'
-          ? `减仓至 ${pctText || '—'}`
-          : action === 'buy_add'
-            ? `加仓至 ${pctText || '—'}`
-            : '观望';
-    const tone =
-      action === 'exit'
-        ? 'text-red-600'
-        : action === 'trim'
-          ? 'text-amber-700'
-          : action === 'buy_add'
-            ? 'text-emerald-700'
-            : 'text-[var(--k-muted)]';
-    const tip = (
-      <>
-        <div className="mb-2 flex items-center justify-between">
-          <div className="font-medium">V5提醒</div>
-          <div className="font-mono text-[var(--k-muted)]">{sym}</div>
-        </div>
-        <div className="text-[var(--k-muted)]">
-          regime={a.regime ?? '—'} baseTarget={a.baseTarget ?? '—'} currentPct={a.currentPct ?? '—'}
-        </div>
-        <div className="mt-2 space-y-1">
-          <div className="flex items-center justify-between">
-            <div className="text-[var(--k-muted)]">Action</div>
-            <div className="font-mono">{text}</div>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="text-[var(--k-muted)]">Breakout</div>
-            <div className="font-mono">{a.breakoutOk ? '✅' : '❌'}</div>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="text-[var(--k-muted)]">Sell</div>
-            <div className="font-mono">{a.sellOk ? '✅' : '❌'}</div>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="text-[var(--k-muted)]">Reason</div>
-            <div className="font-mono">{a.reason ?? '—'}</div>
-          </div>
-        </div>
-      </>
-    );
-    return (
-      <button
-        type="button"
-        className={`inline-flex items-center font-mono ${tone}`}
-        onMouseEnter={(e) => showTooltip(e.currentTarget, tip, 360)}
-        onMouseLeave={hideTooltip}
-        onFocus={(e) => showTooltip(e.currentTarget, tip, 360)}
-        onBlur={hideTooltip}
-        aria-label="V5 alert details"
-      >
-        {text}
-      </button>
-    );
-  }
-
   const sortedItems = React.useMemo(() => {
     if (!scoreSortEnabled) return items;
     const arr = [...items];
@@ -1407,27 +1341,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     });
     return arr;
   }, [items, trend, scoreSortEnabled, scoreSortDir]);
-
-  const alertRegime = React.useMemo(() => {
-    const counts = new Map<string, number>();
-    Object.values(alerts).forEach((a) => {
-      const r = a?.regime;
-      if (!r) return;
-      counts.set(r, (counts.get(r) ?? 0) + 1);
-    });
-    let best: string | null = null;
-    let bestCount = 0;
-    counts.forEach((count, key) => {
-      if (count > bestCount) {
-        best = key;
-        bestCount = count;
-      }
-    });
-    return best;
-  }, [alerts]);
-
-  const displayRegime = v5Plan?.summary?.regime ?? alertRegime;
-
 
   function referenceTable() {
     const capturedAt = new Date().toISOString();
@@ -1668,11 +1581,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             {trendUpdatedAt
               ? `Scores updated at ${new Date(trendUpdatedAt).toLocaleString()} (auto refresh: 10 min)`
               : 'Scores not loaded yet.'}
-          </div>
-          <div className="mt-1 text-xs text-[var(--k-muted)]">
-            {alertsUpdatedAt
-              ? `Momentum alerts updated at ${new Date(alertsUpdatedAt).toLocaleString()}`
-              : 'Momentum alerts not loaded yet.'}
           </div>
           {syncBusy && syncStage ? (
             <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
@@ -1917,7 +1825,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         <div className="mb-6 rounded border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs">
           <div className="mb-1 font-medium">Signals (realtime on trading days)</div>
           <div className="mb-2 text-[var(--k-muted)]">
-            推荐基于 Watchlist Momentum Plan 策略（market regime + breakout checks）。
+            推荐基于 Watchlist Momentum Plan 策略（market regime + breakout checks），逻辑对齐
+            watchlist_momentum_rank。
           </div>
           <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
             <table className="w-full border-collapse text-xs">
@@ -1926,6 +1835,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   <th className="px-2 py-1">Symbol</th>
                   <th className="px-2 py-1">Action</th>
                   <th className="px-2 py-1">Target%</th>
+                  <th className="px-2 py-1">Sell?</th>
                   <th className="px-2 py-1">Reason</th>
                 </tr>
               </thead>
@@ -1942,12 +1852,108 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     <td className="px-2 py-1 font-mono">
                       {typeof r.targetPct === 'number' ? `${(r.targetPct * 100).toFixed(0)}%` : '—'}
                     </td>
+                    <td className="px-2 py-1 font-mono">{r.sellOk ? '✅' : '—'}</td>
                     <td className="px-2 py-1 text-[var(--k-muted)]">{r.reason ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
+      ) : null}
+
+      {rankSnapshot ? (
+        <div className="mb-6 rounded border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs">
+          <div className="mb-1 font-medium">Momentum Rank Snapshot (watchlist universe)</div>
+          <div className="mb-2 text-[var(--k-muted)]">
+            Backtest replay on watchlist pool to infer current holdings and allocation.
+          </div>
+          {rankSnapshot.error ? (
+            <div className="mb-2 text-[var(--k-muted)]">
+              Snapshot not available ({rankSnapshot.error}). Make sure data-sync-service is running.
+            </div>
+          ) : null}
+          <div className="mb-2 grid grid-cols-2 gap-2 text-[var(--k-muted)] md:grid-cols-4">
+            <div>asOfDate: {rankSnapshot.asOfDate ?? '—'}</div>
+            <div>totalTrades: {rankSnapshot.summary?.total_trades ?? '—'}</div>
+            <div>
+              totalReturn:{' '}
+              {typeof rankSnapshot.summary?.total_return === 'number'
+                ? `${(rankSnapshot.summary.total_return * 100).toFixed(2)}%`
+                : '—'}
+            </div>
+            <div>
+              maxDrawdown:{' '}
+              {typeof rankSnapshot.summary?.max_drawdown === 'number'
+                ? `${(rankSnapshot.summary.max_drawdown * 100).toFixed(2)}%`
+                : '—'}
+            </div>
+          </div>
+          {rankSnapshot.positions?.length ? (
+            <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
+              <table className="w-full border-collapse text-xs">
+                <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                  <tr className="text-left">
+                    <th className="px-2 py-1">ts_code</th>
+                    <th className="px-2 py-1">Position%</th>
+                    <th className="px-2 py-1">Qty</th>
+                    <th className="px-2 py-1">Price</th>
+                    <th className="px-2 py-1">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rankSnapshot.positions?.map((p) => (
+                    <tr key={p.ts_code} className="border-t border-[var(--k-border)]">
+                      <td className="px-2 py-1 font-mono">{p.ts_code}</td>
+                      <td className="px-2 py-1 font-mono">{(p.pct * 100).toFixed(1)}%</td>
+                      <td className="px-2 py-1 font-mono">{Number(p.qty).toFixed(0)}</td>
+                      <td className="px-2 py-1 font-mono">{Number(p.price).toFixed(2)}</td>
+                      <td className="px-2 py-1 font-mono">{Number(p.value).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)] p-2 text-[var(--k-muted)]">
+              No holdings from momentum-rank snapshot.
+            </div>
+          )}
+          {rankSnapshot.recentOrders?.length ? (
+            <div className="mt-3">
+              <div className="mb-1 text-[var(--k-muted)]">Recent executed orders (last 30 days)</div>
+              <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
+                <table className="w-full border-collapse text-xs">
+                  <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                    <tr className="text-left">
+                      <th className="px-2 py-1">Date</th>
+                      <th className="px-2 py-1">ts_code</th>
+                      <th className="px-2 py-1">Action</th>
+                      <th className="px-2 py-1">Qty</th>
+                      <th className="px-2 py-1">Price</th>
+                      <th className="px-2 py-1">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankSnapshot.recentOrders?.slice(-20).map((o, idx) => (
+                      <tr key={`${o.ts_code}-${o.date}-${idx}`} className="border-t border-[var(--k-border)]">
+                        <td className="px-2 py-1 font-mono">{o.date ?? '—'}</td>
+                        <td className="px-2 py-1 font-mono">{o.ts_code ?? '—'}</td>
+                        <td className="px-2 py-1 font-mono">{o.action ?? '—'}</td>
+                        <td className="px-2 py-1 font-mono">
+                          {typeof o.qty === 'number' ? o.qty.toFixed(0) : '—'}
+                        </td>
+                        <td className="px-2 py-1 font-mono">
+                          {typeof o.price === 'number' ? o.price.toFixed(2) : '—'}
+                        </td>
+                        <td className="px-2 py-1 text-[var(--k-muted)]">{o.reason ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
