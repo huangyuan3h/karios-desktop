@@ -401,15 +401,15 @@ def watchlist_v5_plan_endpoint(req: WatchlistAlertsRequest) -> dict:
 
 
 @router.post("/market/stocks/watchlist/momentum-alerts")
-def watchlist_momentum_alerts_endpoint(req: WatchlistAlertsRequest) -> list[dict]:
+def watchlist_momentum_alerts_endpoint(req: WatchlistAlertsRequest, realtime: bool = False) -> list[dict]:
     items = [x.model_dump() for x in (req.items or [])]
-    return compute_watchlist_momentum_alerts(items)
+    return compute_watchlist_momentum_alerts(items, bool(realtime))  # type: ignore[call-arg]
 
 
 @router.post("/market/stocks/watchlist/momentum-plan")
-def watchlist_momentum_plan_endpoint(req: WatchlistAlertsRequest) -> dict:
+def watchlist_momentum_plan_endpoint(req: WatchlistAlertsRequest, realtime: bool = False) -> dict:
     items = [x.model_dump() for x in (req.items or [])]
-    return compute_watchlist_momentum_plan(items)
+    return compute_watchlist_momentum_plan(items, bool(realtime))  # type: ignore[call-arg]
 
 
 @router.post("/backtest/run")

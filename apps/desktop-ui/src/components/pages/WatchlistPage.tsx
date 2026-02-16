@@ -16,6 +16,8 @@ type WatchlistItem = {
   addedAt: string; // ISO
   color?: string; // hex color for lightweight flag, default white (#ffffff)
   positionPct?: number | null; // 0..100 (%)
+  costPrice?: number | null;
+  maxPrice?: number | null;
 };
 
 const STORAGE_KEY = 'karios.watchlist.v1';
@@ -168,6 +170,12 @@ type V5PlanHolding = {
 type V5PlanResponse = {
   summary?: V5PlanSummary | null;
   holdings?: V5PlanHolding[] | null;
+  rows?: Array<{
+    symbol: string;
+    action?: string | null;
+    targetPct?: number | null;
+    reason?: string | null;
+  }> | null;
 };
 
 type ScreenerImportDebugState = {
@@ -472,6 +480,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
               ? Math.max(0, Math.min(100, it.positionPct))
               : null,
+          costPrice:
+            typeof it.costPrice === 'number' && Number.isFinite(it.costPrice) ? it.costPrice : null,
+          maxPrice:
+            typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice) ? it.maxPrice : null,
         };
       })
       .filter((x) => Boolean(x.symbol));
@@ -589,11 +601,16 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
                   ? Math.max(0, Math.min(100, it.positionPct)) / 100.0
                   : null,
+              entry_price:
+                typeof it.costPrice === 'number' && Number.isFinite(it.costPrice) ? it.costPrice : null,
+              max_price:
+                typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice) ? it.maxPrice : null,
             })),
           };
+          const realtimeFlag = isShanghaiTradingTime() ? 'true' : 'false';
           const rows = await apiPostJsonFrom<V5AlertResult[]>(
             DATA_SYNC_BASE_URL,
-            '/market/stocks/watchlist/momentum-alerts',
+            `/market/stocks/watchlist/momentum-alerts?realtime=${realtimeFlag}`,
             payload,
           );
           if (reqId === trendReqRef.current) {
@@ -606,7 +623,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           }
           const plan = await apiPostJsonFrom<V5PlanResponse>(
             DATA_SYNC_BASE_URL,
-            '/market/stocks/watchlist/momentum-plan',
+            `/market/stocks/watchlist/momentum-plan?realtime=${realtimeFlag}`,
             payload,
           );
           if (reqId === trendReqRef.current) {
@@ -644,7 +661,26 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               };
             }
           }
-          if (reqId === trendReqRef.current) setQuotes(nextQuotes);
+          if (reqId === trendReqRef.current) {
+            setQuotes(nextQuotes);
+            const nextItems = items.map((it) => {
+              if (!(it.positionPct && it.positionPct > 0)) return it;
+              if (!it.costPrice) return it;
+              const q = nextQuotes[it.symbol];
+              const price =
+                (typeof q?.price === 'number' && Number.isFinite(q.price))
+                  ? q.price
+                  : (typeof next[it.symbol]?.values?.close === 'number' ? next[it.symbol]?.values?.close : null);
+              if (price == null) return it;
+              const maxPrice = typeof it.maxPrice === 'number' ? it.maxPrice : 0;
+              if (price > maxPrice) return { ...it, maxPrice: price };
+              if (!it.maxPrice) return { ...it, maxPrice: price };
+              return it;
+            });
+            if (nextItems.some((x, i) => x.maxPrice !== items[i]?.maxPrice)) {
+              persist(nextItems);
+            }
+          }
         } catch {
           // ignore quote failures
         }
@@ -927,6 +963,16 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     const nextVal =
       typeof num === 'number' && Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : null;
     const next = items.map((it) => (it.symbol === symbol ? { ...it, positionPct: nextVal } : it));
+    persist(next);
+  }
+
+  function setItemCostPrice(symbol: string, value: string) {
+    const raw = value.trim();
+    const num = raw === '' ? null : Number(raw);
+    const nextVal = typeof num === 'number' && Number.isFinite(num) ? num : null;
+    const next = items.map((it) =>
+      it.symbol === symbol ? { ...it, costPrice: nextVal, maxPrice: nextVal ?? it.maxPrice } : it,
+    );
     persist(next);
   }
 
@@ -1321,11 +1367,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     return arr;
   }, [items, trend, scoreSortEnabled, scoreSortDir]);
 
-  const totalByItemsPct = React.useMemo(() => {
-    const sum = items.reduce((acc, it) => acc + (it.positionPct ?? 0), 0);
-    return Math.max(0, Math.min(100, sum));
-  }, [items]);
-
   const alertRegime = React.useMemo(() => {
     const counts = new Map<string, number>();
     Object.values(alerts).forEach((a) => {
@@ -1346,20 +1387,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
   const displayRegime = v5Plan?.summary?.regime ?? alertRegime;
 
-  const totalTargetPct = React.useMemo(() => {
-    if (!displayRegime) return null;
-    if (displayRegime === 'Strong') return 100;
-    if (displayRegime === 'Diverging') return 66;
-    if (displayRegime === 'Weak') return 30;
-    return null;
-  }, [displayRegime]);
-
-  const totalAction = React.useMemo(() => {
-    if (totalTargetPct == null) return null;
-    if (totalByItemsPct > totalTargetPct + 0.5) return `减仓至 ${totalTargetPct}%`;
-    if (totalByItemsPct + 0.5 < totalTargetPct) return `加仓至 ${totalTargetPct}%`;
-    return '保持';
-  }, [totalByItemsPct, totalTargetPct]);
 
   function referenceTable() {
     const capturedAt = new Date().toISOString();
@@ -1606,18 +1633,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               ? `Momentum alerts updated at ${new Date(alertsUpdatedAt).toLocaleString()}`
               : 'Momentum alerts not loaded yet.'}
           </div>
-          <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[var(--k-muted)]">
-                情绪={displayRegime ?? '—'} 总仓位目标={totalTargetPct != null ? `${totalTargetPct}%` : '—'}
-              </div>
-              <div className="text-[var(--k-muted)]">
-                当前总仓位={totalByItemsPct.toFixed(1)}% 建议={totalAction ?? '—'}
-              </div>
-            </div>
-            <div className="mt-2 text-[var(--k-muted)]">总仓位来自下表各股票仓位之和。</div>
-            {v5Plan?.holdings?.length ? (
-              <div className="mt-2 rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
+          {v5Plan?.rows?.length ? (
+            <div className="mt-2 rounded border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
+              <div className="mb-2 font-medium">Signals (realtime on trading days)</div>
+              <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
                 <table className="w-full border-collapse text-xs">
                   <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                     <tr className="text-left">
@@ -1628,26 +1647,26 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     </tr>
                   </thead>
                   <tbody>
-                    {v5Plan.holdings.slice(0, 12).map((h) => (
-                      <tr key={h.symbol} className="border-t border-[var(--k-border)]">
-                        <td className="px-2 py-1 font-mono">{h.symbol}</td>
-                        <td className="px-2 py-1 font-mono">{h.action ?? 'hold'}</td>
+                    {v5Plan.rows
+                      .filter((r) => {
+                        const targetPct = typeof r.targetPct === 'number' ? r.targetPct : 0;
+                        return (r.action && r.action !== 'hold') || targetPct > 0;
+                      })
+                      .map((r) => (
+                      <tr key={r.symbol} className="border-t border-[var(--k-border)]">
+                        <td className="px-2 py-1 font-mono">{r.symbol}</td>
+                        <td className="px-2 py-1 font-mono">{r.action ?? 'hold'}</td>
                         <td className="px-2 py-1 font-mono">
-                          {typeof h.targetPct === 'number' ? `${(h.targetPct * 100).toFixed(0)}%` : '—'}
+                          {typeof r.targetPct === 'number' ? `${(r.targetPct * 100).toFixed(0)}%` : '—'}
                         </td>
-                        <td className="px-2 py-1 text-[var(--k-muted)]">{h.reason ?? '—'}</td>
+                        <td className="px-2 py-1 text-[var(--k-muted)]">{r.reason ?? '—'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {v5Plan.holdings.length > 12 ? (
-                  <div className="px-2 py-1 text-[var(--k-muted)]">
-                    Showing top 12 by target pct.
-                  </div>
-                ) : null}
               </div>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
           {syncBusy && syncStage ? (
             <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
               <div className="flex items-center justify-between gap-2">
@@ -1938,6 +1957,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   </th>
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2">成本价</th>
+                  <th className="px-3 py-2">最高价</th>
                   <th className="px-3 py-2">
                     <button
                       type="button"
@@ -2035,6 +2056,23 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       </button>
                     </td>
                     <td className="px-3 py-2">{it.name || '—'}</td>
+                    <td className="px-3 py-2">
+                      <input
+                        className="h-8 w-24 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
+                        placeholder="成本"
+                        value={
+                          typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)
+                            ? String(it.costPrice)
+                            : ''
+                        }
+                        onChange={(e) => setItemCostPrice(it.symbol, e.target.value)}
+                      />
+                    </td>
+                    <td className="px-3 py-2 font-mono">
+                      {typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice)
+                        ? it.maxPrice.toFixed(2)
+                        : '—'}
+                    </td>
                     <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
                     <td className="px-3 py-2">{renderBuyCell(it.symbol)}</td>
                     <td className="px-3 py-2">
