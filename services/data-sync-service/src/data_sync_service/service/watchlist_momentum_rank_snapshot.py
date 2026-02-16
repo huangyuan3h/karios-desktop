@@ -18,7 +18,7 @@ def _parse_date(date_str: str) -> datetime | None:
 
 def compute_watchlist_momentum_rank_snapshot(
     items: list[dict[str, Any]],
-    lookback_days: int = 730,
+    lookback_days: int = 30,
     warmup_days: int = 20,
 ) -> dict[str, Any]:
     symbols = []
@@ -43,7 +43,9 @@ def compute_watchlist_momentum_rank_snapshot(
     if not end_dt:
         return {"asOfDate": None, "positions": [], "recentOrders": [], "summary": {}, "error": "bad_trade_date"}
 
-    start_dt = end_dt - timedelta(days=max(60, int(lookback_days)))
+    lookback_days = max(1, int(lookback_days))
+    warmup_days = max(0, int(warmup_days))
+    start_dt = end_dt - timedelta(days=lookback_days)
     start_date = start_dt.strftime("%Y-%m-%d")
 
     result = run_backtest(
@@ -64,7 +66,12 @@ def compute_watchlist_momentum_rank_snapshot(
     )
 
     daily_log = result.get("daily_log", [])
-    recent_days = daily_log[-30:] if isinstance(daily_log, list) else []
+    recent_days = []
+    if isinstance(daily_log, list):
+        for day in daily_log:
+            date = day.get("date")
+            if isinstance(date, str) and date >= start_date:
+                recent_days.append(day)
     recent_orders: list[dict[str, Any]] = []
     last_buy_price: dict[str, float] = {}
     for day in recent_days:
