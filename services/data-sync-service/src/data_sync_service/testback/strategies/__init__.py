@@ -8,6 +8,8 @@ from .watchlist_trend_v4 import WatchlistTrendV4Strategy
 from .watchlist_trend_v5 import WatchlistTrendV5Strategy
 from .watchlist_trend_v5_1 import WatchlistTrendV5_1Strategy
 from .watchlist_trend_v6 import WatchlistTrendV6Strategy
+from .watchlist_momentum_rank import WatchlistMomentumRankStrategy
+from .watchlist_momentum_v1_1 import MomentumRankStrategyV1_1
 
 STRATEGY_REGISTRY: dict[str, Type[BaseStrategy]] = {
     WatchlistTrendV3Strategy.name: WatchlistTrendV3Strategy,
@@ -15,6 +17,8 @@ STRATEGY_REGISTRY: dict[str, Type[BaseStrategy]] = {
     WatchlistTrendV5Strategy.name: WatchlistTrendV5Strategy,
     WatchlistTrendV5_1Strategy.name: WatchlistTrendV5_1Strategy,
     WatchlistTrendV6Strategy.name: WatchlistTrendV6Strategy,
+    WatchlistMomentumRankStrategy.name: WatchlistMomentumRankStrategy,
+    MomentumRankStrategyV1_1.name: MomentumRankStrategyV1_1,
 }
 
 

@@ -593,7 +593,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           };
           const rows = await apiPostJsonFrom<V5AlertResult[]>(
             DATA_SYNC_BASE_URL,
-            '/market/stocks/watchlist/v5-alerts',
+            '/market/stocks/watchlist/momentum-alerts',
             payload,
           );
           if (reqId === trendReqRef.current) {
@@ -606,7 +606,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           }
           const plan = await apiPostJsonFrom<V5PlanResponse>(
             DATA_SYNC_BASE_URL,
-            '/market/stocks/watchlist/v5-plan',
+            '/market/stocks/watchlist/momentum-plan',
             payload,
           );
           if (reqId === trendReqRef.current) {
@@ -1603,8 +1603,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           </div>
           <div className="mt-1 text-xs text-[var(--k-muted)]">
             {alertsUpdatedAt
-              ? `V5 alerts updated at ${new Date(alertsUpdatedAt).toLocaleString()}`
-              : 'V5 alerts not loaded yet.'}
+              ? `Momentum alerts updated at ${new Date(alertsUpdatedAt).toLocaleString()}`
+              : 'Momentum alerts not loaded yet.'}
           </div>
           <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-2">
