@@ -136,7 +136,7 @@ class WatchlistTrendV5_1Strategy(BaseStrategy):
         elif regime == "Diverging":
             base_target = 0.66
         elif regime == "Weak":
-            base_target = 0.3
+            base_target = 1.0
 
         stats_by_code: dict[str, dict[str, float | bool]] = {}
         scored_breakouts: list[tuple[str, float]] = []
