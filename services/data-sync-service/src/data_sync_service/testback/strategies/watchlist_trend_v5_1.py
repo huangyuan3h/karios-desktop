@@ -26,6 +26,7 @@ class WatchlistTrendV5_1Strategy(BaseStrategy):
         volatility_weight: float = 0.2,
         volume_window: int = 20,
         volatility_window: int = 20,
+        weak_target: float = 0.5,
     ) -> None:
         self.fast_window = max(2, int(fast_window))
         self.mid_window = max(self.fast_window + 1, int(mid_window))
@@ -37,6 +38,7 @@ class WatchlistTrendV5_1Strategy(BaseStrategy):
         self.volatility_weight = max(0.0, float(volatility_weight))
         self.volume_window = max(5, int(volume_window))
         self.volatility_window = max(5, int(volatility_window))
+        self.weak_target = max(0.0, min(1.0, float(weak_target)))
         self._history: Dict[str, Deque[Bar]] = defaultdict(lambda: deque(maxlen=200))
         self._regime_cache: Dict[str, str] = {}
         self._entry_price: Dict[str, float] = {}
@@ -134,9 +136,9 @@ class WatchlistTrendV5_1Strategy(BaseStrategy):
         if regime == "Strong":
             base_target = 1.0
         elif regime == "Diverging":
-            base_target = 0.66
+            base_target = 0.8
         elif regime == "Weak":
-            base_target = 1.0
+            base_target = 0.66
 
         stats_by_code: dict[str, dict[str, float | bool]] = {}
         scored_breakouts: list[tuple[str, float]] = []
