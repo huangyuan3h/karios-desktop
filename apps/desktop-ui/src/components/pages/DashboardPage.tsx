@@ -182,6 +182,9 @@ type WatchlistItem = {
   name?: string | null;
   addedAt: string;
   color?: string;
+  positionPct?: number | null;
+  costPrice?: number | null;
+  maxPrice?: number | null;
 };
 
 type TrendOkResult = {
@@ -691,7 +694,9 @@ export function DashboardPage({
       }
       const md = Array.isArray(t.missingData) ? t.missingData.filter(Boolean) : [];
       if (md.length) missingHistory.push(sym);
-      if (tradingTime && sym.startsWith('CN:')) {
+      const trendDate = String(t?.asOfDate ?? '');
+      const requireRealtime = tradingTime && trendDate === todaySh;
+      if (requireRealtime && sym.startsWith('CN:')) {
         const q = quotes[sym];
         const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
         if (!(q && typeof q.price === 'number' && Number.isFinite(q.price) && qDate === todaySh)) {

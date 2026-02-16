@@ -259,6 +259,49 @@ def fetch_daily_for_codes(
     return out
 
 
+def fetch_trade_dates_for_codes(
+    ts_codes: list[str],
+    start_date: str,
+    end_date: str,
+) -> list[str]:
+    """
+    Return distinct trade_date values for the given ts_codes in a date range.
+    Dates are returned as YYYY-MM-DD, ordered ascending.
+    """
+    ensure_table()
+    codes = [c.strip().upper() for c in ts_codes if c and c.strip()]
+    if not codes:
+        return []
+    start2 = _date_str(start_date)
+    end2 = _date_str(end_date)
+    if not start2 or not end2:
+        return []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT DISTINCT trade_date
+                FROM {TABLE_NAME}
+                WHERE ts_code = ANY(%s)
+                  AND trade_date >= %s
+                  AND trade_date <= %s
+                ORDER BY trade_date
+                """,
+                (codes, start2, end2),
+            )
+            rows = cur.fetchall()
+    out: list[str] = []
+    for row in rows:
+        if not row:
+            continue
+        d = row[0]
+        if hasattr(d, "strftime"):
+            out.append(d.strftime("%Y-%m-%d"))
+        else:
+            out.append(str(d))
+    return out
+
+
 def update_adj_factor_from_dataframe(df: pd.DataFrame) -> int:
     """
     Update daily.adj_factor from a DataFrame with columns: ts_code, trade_date, adj_factor.
