@@ -1,21 +1,19 @@
 from __future__ import annotations
-
 from collections import defaultdict, deque
 from typing import Deque, Dict, List
-import math
 
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.trendok import _ema, _macd, _rsi
 from data_sync_service.testback.strategies.base import Bar, BaseStrategy, Order, PortfolioSnapshot
 
 
-class MomentumRankStrategyV1_1(BaseStrategy):
+class WatchlistTrendV6_1Strategy(BaseStrategy):
     """
-    V1.1 strategy: quality momentum with ranking buffer.
-    Goal: reduce churn and focus on stable momentum leaders.
+    V6.1 strategy: evolve the best V6 logic.
+    Improvements: ATR risk control and profit-based trailing stop tightening.
     """
 
-    name = "momentum_rank_v1_1"
+    name = "watchlist_trend_v6_1"
     use_full_bars = True
     top_k = 50
 
@@ -23,24 +21,20 @@ class MomentumRankStrategyV1_1(BaseStrategy):
         self,
         fast_window: int = 5,
         mid_window: int = 20,
-        slow_window: int = 60,
+        slow_window: int = 30,
         stop_loss_pct: float = 0.10,
-        max_positions: int = 6,
-        hold_buffer: int = 4,
-        momentum_window: int = 20,
+        atr_period: int = 14,
     ) -> None:
         self.fast_window = max(2, int(fast_window))
         self.mid_window = max(self.fast_window + 1, int(mid_window))
         self.slow_window = max(self.mid_window + 1, int(slow_window))
         self.stop_loss_pct = max(0.01, float(stop_loss_pct))
-        self.max_positions = max(1, int(max_positions))
-        self.exit_rank = max(self.max_positions + max(0, int(hold_buffer)), self.max_positions)
-        self.momentum_window = max(10, int(momentum_window))
+        self.atr_period = max(5, int(atr_period))
 
         self._history: Dict[str, Deque[Bar]] = defaultdict(lambda: deque(maxlen=200))
         self._regime_cache: Dict[str, str] = {}
         self._entry_price: Dict[str, float] = {}
-        self._max_price: Dict[str, float] = {}
+        self._max_price_since_entry: Dict[str, float] = {}
 
     def _get_regime(self, trade_date: str) -> str:
         if trade_date in self._regime_cache:
@@ -50,97 +44,100 @@ class MomentumRankStrategyV1_1(BaseStrategy):
         self._regime_cache[trade_date] = regime
         return regime
 
-    @staticmethod
-    def _linear_fit_slope_r2(values: list[float]) -> tuple[float, float]:
-        n = len(values)
-        if n < 2:
-            return 0.0, 0.0
-        x_mean = (n - 1) / 2.0
-        y_mean = sum(values) / float(n)
-        sxy = 0.0
-        sxx = 0.0
-        for i, y in enumerate(values):
-            dx = i - x_mean
-            dy = y - y_mean
-            sxy += dx * dy
-            sxx += dx * dx
-        if sxx == 0:
-            return 0.0, 0.0
-        slope = sxy / sxx
-        ss_tot = sum((y - y_mean) ** 2 for y in values)
-        ss_res = sum((values[i] - (slope * (i - x_mean) + y_mean)) ** 2 for i in range(n))
-        r2 = 0.0 if ss_tot == 0 else max(0.0, 1.0 - ss_res / ss_tot)
-        return slope, r2
+    def _calculate_atr(self, history: Deque[Bar]) -> float:
+        if len(history) < self.atr_period + 1:
+            return 0.0
+        trs: List[float] = []
+        bars = list(history)
+        for i in range(1, len(bars)):
+            high = bars[i].high
+            low = bars[i].low
+            prev_close = bars[i - 1].close
+            tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+            trs.append(tr)
+        return sum(trs[-self.atr_period :]) / float(self.atr_period)
 
-    def _quality_momentum(self, closes: list[float]) -> float:
-        if len(closes) < self.momentum_window:
+    def _next_tranche(self, current_pct: float, base_target: float) -> float:
+        if base_target <= 0:
             return 0.0
-        window = closes[-self.momentum_window :]
-        if any(c <= 0 for c in window):
-            return 0.0
-        log_prices = [math.log(c) for c in window]
-        slope, r2 = self._linear_fit_slope_r2(log_prices)
-        annualized = (math.exp(slope) ** 252) - 1.0
-        return annualized * r2
+        step = base_target / 3.0
+        if current_pct < step * 0.9:
+            return step
+        if current_pct < step * 1.9:
+            return step * 2.0
+        return base_target
 
     def on_bar(self, trade_date: str, bars: Dict[str, Bar], portfolio: PortfolioSnapshot) -> List[Order]:
         if not bars:
             return []
-
         regime = self._get_regime(trade_date)
         orders: List[Order] = []
 
-        exposure_limit = 1.0 if regime == "Strong" else (0.6 if regime == "Diverging" else 0.3)
-        target_per_stock = exposure_limit / float(self.max_positions)
-
-        scored_list: list[tuple[str, float]] = []
-        trend_ok_by_code: dict[str, bool] = {}
+        if regime == "Strong":
+            base_target = 0.25
+        elif regime == "Diverging":
+            base_target = 0.15
+        else:
+            base_target = 0.05
 
         for code, bar in bars.items():
+            self._history[code].append(bar)
             history = self._history[code]
-            history.append(bar)
             if len(history) < self.slow_window:
                 continue
 
             closes = [b.close for b in history]
+            vols = [b.volume for b in history]
+            highs = [b.high for b in history]
+
             ema20 = _ema(closes, self.mid_window)[-1]
-            ema60 = _ema(closes, self.slow_window)[-1]
-            macd_line, _signal, _hist = _macd(closes)
+            ema30 = _ema(closes, self.slow_window)[-1]
+            macd_line, _, macd_hist = _macd(closes)
             rsi14 = _rsi(closes, 14)[-1] if len(closes) >= 14 else 50.0
 
-            trend_ok = bar.close > ema20 and ema20 > ema60 and macd_line[-1] > 0 and 50.0 <= rsi14 <= 85.0
-            trend_ok_by_code[code] = trend_ok
+            vol_short = sum(vols[-3:]) / 3.0 if len(vols) >= 3 else 0.0
+            vol_long = sum(vols[-20:]) / 20.0 if len(vols) >= 20 else vol_short
+            vol_ok = vol_long > 0 and vol_short > vol_long * 1.2
 
-            is_holding = code in portfolio.positions and portfolio.positions[code] > 0
-            if is_holding:
-                self._max_price[code] = max(self._max_price.get(code, 0), bar.close)
-                trailing_stop = self._max_price[code] * (1.0 - self.stop_loss_pct)
-                if bar.close < trailing_stop or bar.close < ema20 * 0.96:
-                    orders.append(Order(ts_code=code, action="sell", target_pct=0.0, reason="v1_1_stop"))
+            high20 = max(highs[-20:])
+            breakout_ok = (
+                bar.close >= 0.985 * high20
+                and ema20 > ema30
+                and macd_hist[-1] > 0
+                and 55 <= rsi14 <= 85
+                and vol_ok
+            )
+
+            if code in self._entry_price:
+                self._max_price_since_entry[code] = max(self._max_price_since_entry.get(code, 0), bar.close)
+                profit_pct = (bar.close - self._entry_price[code]) / self._entry_price[code]
+                current_stop_pct = 0.05 if profit_pct > 0.15 else self.stop_loss_pct
+                trailing_stop = self._max_price_since_entry[code] * (1 - current_stop_pct)
+
+                stop_ok = bar.close <= trailing_stop
+                trend_broken = bar.close < ema20 * 0.97 or macd_line[-1] < 0
+
+                if stop_ok or trend_broken:
+                    orders.append(Order(ts_code=code, action="sell", target_pct=0.0, reason="v6_1_exit"))
                     self._entry_price.pop(code, None)
-                    self._max_price.pop(code, None)
+                    self._max_price_since_entry.pop(code, None)
                     continue
 
-            if trend_ok:
-                score = self._quality_momentum(closes)
-                scored_list.append((code, score))
+            current_qty = portfolio.positions.get(code, 0.0)
+            current_pct = (current_qty * bar.close / portfolio.equity) if portfolio.equity > 0 else 0.0
 
-        scored_list.sort(key=lambda x: (-x[1], x[0]))
-        top_codes = [x[0] for x in scored_list]
+            if breakout_ok:
+                atr = self._calculate_atr(history)
+                if atr > bar.close * 0.05:
+                    adj_target = base_target * 0.6
+                else:
+                    adj_target = base_target
 
-        current_holdings = [c for c, q in portfolio.positions.items() if q > 0]
-
-        for code in current_holdings:
-            if code not in top_codes[: self.exit_rank] and not trend_ok_by_code.get(code, False):
-                if not any(o.ts_code == code and o.action == "sell" for o in orders):
-                    orders.append(Order(ts_code=code, action="sell", target_pct=0.0, reason="rank_out"))
-                    self._max_price.pop(code, None)
-
-        pending_sells = len([o for o in orders if o.action == "sell"])
-        for code in top_codes[: self.max_positions]:
-            if code not in current_holdings:
-                if len(current_holdings) - pending_sells < self.max_positions:
-                    orders.append(Order(ts_code=code, action="buy", target_pct=target_per_stock, reason="top_rank"))
-                    self._max_price[code] = bars[code].close
+                target = self._next_tranche(current_pct, adj_target)
+                if target > current_pct:
+                    orders.append(Order(ts_code=code, action="buy", target_pct=target, reason="v6_1_breakout"))
+                    if code not in self._entry_price:
+                        self._entry_price[code] = bar.close
+                        self._max_price_since_entry[code] = bar.close
 
         return orders
