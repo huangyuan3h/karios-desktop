@@ -5,7 +5,8 @@ import { ArrowDown, ArrowUp, ArrowUpDown, CircleX, ExternalLink, Info, RefreshCw
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { Switch } from '@/components/ui/switch';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { loadJson, saveJson } from '@/lib/storage';
 import { useChatStore } from '@/lib/chat/store';
 
@@ -15,9 +16,13 @@ type WatchlistItem = {
   nameStatus?: 'resolved' | 'not_found';
   addedAt: string; // ISO
   color?: string; // hex color for lightweight flag, default white (#ffffff)
+  positionPct?: number | null; // 0..100 (%)
+  costPrice?: number | null;
+  maxPrice?: number | null;
 };
 
 const STORAGE_KEY = 'karios.watchlist.v1';
+const COST_PRICE_RE = /^\d+(\.\d{0,2})?$/;
 
 const FLAG_COLORS: Array<{ label: string; hex: string }> = [
   { label: 'White', hex: '#ffffff' },
@@ -30,12 +35,81 @@ const FLAG_COLORS: Array<{ label: string; hex: string }> = [
   { label: 'Gray', hex: '#f4f4f5' },
 ];
 
+function escapeMarkdownCell(value: string): string {
+  return String(value ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>').trim();
+}
+
+function mdBool(v: boolean | null | undefined): string {
+  if (v == null) return '—';
+  return v ? '✅' : '❌';
+}
+
+function mdNum(v: number | null | undefined, digits = 2): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return v.toFixed(digits);
+}
+
+function mdScore(v: number | null | undefined): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return String(Math.round(v));
+}
+
+function mdPrice(v: number | null | undefined): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return v.toFixed(2);
+}
+
+function mdLines(items: string[]): string {
+  return items.filter((x) => String(x || '').trim()).join('\n');
+}
+
+function VisibilitySection({
+  visible,
+  className,
+  children,
+}: {
+  visible: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={className} style={{ display: visible ? 'block' : 'none' }} aria-hidden={!visible}>
+      {children}
+    </div>
+  );
+}
+
+function mdScoreParts(parts: Record<string, number> | undefined): string[] {
+  if (!parts) return [];
+  const entries = Object.entries(parts).filter(([, v]) => typeof v === 'number' && Number.isFinite(v));
+  entries.sort((a, b) => Number(b[1]) - Number(a[1]));
+  return entries.map(([k, v]) => `- ${k}: ${v}`);
+}
+
 type MarketStockBasicRow = {
   symbol: string;
   market: string;
   ticker: string;
   name: string;
   currency: string;
+};
+
+type QuoteResp = {
+  ok: boolean;
+  error?: string;
+  items: Array<{
+    ts_code: string;
+    price: string | null;
+    open: string | null;
+    high: string | null;
+    low: string | null;
+    pre_close: string | null;
+    change: string | null;
+    pct_chg: string | null;
+    volume: string | null;
+    amount: string | null;
+    trade_time: string | null;
+  }>;
 };
 
 type TrendOkChecks = {
@@ -83,6 +157,68 @@ type TrendOkResult = {
   missingData?: string[];
 };
 
+type V5PlanSummary = {
+  regime?: string | null;
+  totalCurrentPct?: number | null;
+  totalTargetPct?: number | null;
+};
+
+type V5PlanHolding = {
+  symbol: string;
+  action?: string | null;
+  currentPct?: number | null;
+  targetPct?: number | null;
+  reason?: string | null;
+};
+
+type V5PlanResponse = {
+  summary?: V5PlanSummary | null;
+  holdings?: V5PlanHolding[] | null;
+  rows?: Array<{
+    symbol: string;
+    action?: string | null;
+    sellOk?: boolean | null;
+    targetPct?: number | null;
+    reason?: string | null;
+  }> | null;
+};
+
+type MomentumRankSnapshot = {
+  asOfDate?: string | null;
+  summary?: {
+    total_return?: number | null;
+    max_drawdown?: number | null;
+    total_trades?: number | null;
+    final_equity?: number | null;
+  } | null;
+  positions?: Array<{
+    ts_code: string;
+    qty: number;
+    price: number;
+    value: number;
+    pct: number;
+  }> | null;
+  recentOrders?: Array<{
+    date?: string | null;
+    ts_code?: string | null;
+    action?: string | null;
+    qty?: number | null;
+    price?: number | null;
+    target_pct?: number | null;
+    reason?: string | null;
+    pnl_pct?: number | null;
+    position_pct?: number | null;
+  }> | null;
+  error?: string | null;
+};
+
+type ScreenerImportDebugState = {
+  updatedAt: string | null;
+  scanned: number;
+  trendOkCount: number;
+  rows: TrendOkResult[];
+};
+
 type TvScreener = {
   id: string;
   name: string;
@@ -110,24 +246,25 @@ type TvSnapshotDetail = {
   rows: Record<string, string>[];
 };
 
-type TvScreenerSyncResponse = {
-  snapshotId: string;
-  capturedAt: string;
-  rowCount: number;
-};
-
 async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
   return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
-async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
+async function apiGetJsonFrom<T>(baseUrl: string, path: string): Promise<T> {
+  const res = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  return txt ? (JSON.parse(txt) as T) : ({} as T);
+}
+
+async function apiPostJsonFrom<T>(baseUrl: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
-    headers: body != null ? { 'content-type': 'application/json' } : undefined,
-    body: body != null ? JSON.stringify(body) : undefined,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
   });
   const txt = await res.text().catch(() => '');
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
@@ -186,6 +323,67 @@ function chunk<T>(arr: T[], n: number): T[][] {
   return out;
 }
 
+function toTsCodeFromSymbol(symbol: string): string | null {
+  // Only handle CN A-shares for now: "CN:000001" -> "000001.SZ/SH"
+  const s = symbol.trim().toUpperCase();
+  if (!s.startsWith('CN:')) return null;
+  const ticker = s.slice('CN:'.length).trim();
+  if (!/^[0-9]{6}$/.test(ticker)) return null;
+  const suffix = ticker.startsWith('6') ? 'SH' : 'SZ';
+  return `${ticker}.${suffix}`;
+}
+
+function getShanghaiTimeParts(): { weekday: string; hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const map = new Map(parts.map((p) => [p.type, p.value]));
+  return {
+    weekday: map.get('weekday') ?? '',
+    hour: Number(map.get('hour') ?? 0),
+    minute: Number(map.get('minute') ?? 0),
+  };
+}
+
+function getShanghaiTodayIso(): string {
+  // YYYY-MM-DD in Asia/Shanghai
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const map = new Map(parts.map((p) => [p.type, p.value]));
+  const y = map.get('year') ?? '1970';
+  const m = map.get('month') ?? '01';
+  const d = map.get('day') ?? '01';
+  return `${y}-${m}-${d}`;
+}
+
+function tradeDateFromTradeTime(tradeTime: string | null | undefined): string | null {
+  const s = String(tradeTime ?? '').trim();
+  if (!s) return null;
+  const m1 = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m1) return m1[1];
+  const m2 = s.match(/^(\d{8})$/);
+  if (m2) return `${m2[1].slice(0, 4)}-${m2[1].slice(4, 6)}-${m2[1].slice(6, 8)}`;
+  return null;
+}
+
+function isShanghaiTradingTime(): boolean {
+  const { weekday, hour, minute } = getShanghaiTimeParts();
+  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
+  const minutes = hour * 60 + minute;
+  // CN A-share: 09:30-11:30, 13:00-15:00
+  const inMorning = minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30;
+  const inAfternoon = minutes >= 13 * 60 && minutes <= 15 * 60;
+  return inMorning || inAfternoon;
+}
+
 function fmtPrice(v: number | null | undefined): string {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
   return v.toFixed(2);
@@ -226,21 +424,69 @@ function fmtBuyCell(t: TrendOkResult | undefined | null): {
   return { text: '无', tone: 'none' };
 }
 
+function rowTone(t: TrendOkResult | undefined | null): 'green' | 'red' | 'none' {
+  if (!t) return 'none';
+  const stopParts = t.stopLossParts as Record<string, unknown> | null | undefined;
+  const exitNow = Boolean(stopParts && typeof stopParts === 'object' && stopParts['exit_now']);
+  if (exitNow || t.buyAction === 'avoid') return 'red';
+  const score = typeof t.score === 'number' && Number.isFinite(t.score) ? t.score : null;
+  const buyModeOk = t.buyMode === 'A_pullback' || t.buyMode === 'B_momentum';
+  if (t.trendOk === true && t.buyAction === 'buy' && buyModeOk && score != null && score >= 85) {
+    return 'green';
+  }
+  return 'none';
+}
+
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const { addReference } = useChatStore();
   const [items, setItems] = React.useState<WatchlistItem[]>([]);
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
+  const [quotes, setQuotes] = React.useState<
+    Record<string, { price: number | null; tsCode: string; tradeTime: string | null }>
+  >({});
   const [trendBusy, setTrendBusy] = React.useState(false);
   const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
+  const [v5Plan, setV5Plan] = React.useState<V5PlanResponse | null>(null);
+  const [rankSnapshot, setRankSnapshot] = React.useState<MomentumRankSnapshot | null>(null);
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [syncStage, setSyncStage] = React.useState<string | null>(null);
   const [syncProgress, setSyncProgress] = React.useState<{ cur: number; total: number } | null>(null);
   const [syncLogs, setSyncLogs] = React.useState<string[]>([]);
+  const [copyMdStatus, setCopyMdStatus] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const copyMdTimerRef = React.useRef<number | null>(null);
+
+  // Keep the last screener import inspection table visible for manual follow-ups.
+  const [importDebugOpen, setImportDebugOpen] = React.useState(true);
+  const [importDebugFilter, setImportDebugFilter] = React.useState('');
+  const [importDebugScoreSortDir, setImportDebugScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
+  const [importDebug, setImportDebug] = React.useState<ScreenerImportDebugState>({
+    updatedAt: null,
+    scanned: 0,
+    trendOkCount: 0,
+    rows: [],
+  });
+
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
+  const [costPriceDrafts, setCostPriceDrafts] = React.useState<Record<string, string>>({});
+  const tsCodeToSymbol = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const it of items) {
+      const code = toTsCodeFromSymbol(it.symbol);
+      if (code) map.set(code, it.symbol);
+    }
+    return map;
+  }, [items]);
+  const nameBySymbol = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const it of items) {
+      if (it.symbol) map.set(it.symbol, it.name || '');
+    }
+    return map;
+  }, [items]);
   const [tooltip, setTooltip] = React.useState<{
     open: boolean;
     x: number;
@@ -254,8 +500,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     open: boolean;
     x: number;
     y: number;
+    placement: 'top-end' | 'bottom-end';
     symbol: string | null;
-  }>({ open: false, x: 0, y: 0, symbol: null });
+  }>({ open: false, x: 0, y: 0, placement: 'bottom-end', symbol: null });
 
   const trendReqRef = React.useRef(0);
 
@@ -278,12 +525,27 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               : undefined,
           addedAt: String(it.addedAt ?? new Date().toISOString()),
           color,
+          positionPct:
+            typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
+              ? Math.max(0, Math.min(100, it.positionPct))
+              : null,
+          costPrice:
+            typeof it.costPrice === 'number' && Number.isFinite(it.costPrice) ? it.costPrice : null,
+          maxPrice:
+            typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice) ? it.maxPrice : null,
         };
       })
       .filter((x) => Boolean(x.symbol));
     setItems(migrated);
     saveJson(STORAGE_KEY, migrated);
   }, []);
+
+  React.useEffect(
+    () => () => {
+      if (copyMdTimerRef.current) window.clearTimeout(copyMdTimerRef.current);
+    },
+    [],
+  );
 
   function persist(next: WatchlistItem[]) {
     setItems(next);
@@ -301,7 +563,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       try {
         const sp = new URLSearchParams();
         for (const s of missing) sp.append('symbols', s);
-        const rows = await apiGetJson<MarketStockBasicRow[]>(
+        const rows = await apiGetJsonFrom<MarketStockBasicRow[]>(
+          DATA_SYNC_BASE_URL,
           `/market/stocks/resolve?${sp.toString()}`,
         );
         if (cancelled) return;
@@ -332,6 +595,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       const syms = items.map((x) => x.symbol).filter(Boolean);
       if (!syms.length) {
         setTrend({});
+        setQuotes({});
         setTrendUpdatedAt(null);
         return;
       }
@@ -346,7 +610,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           let failures = 0;
           for (const sym of syms) {
             const enc = encodeURIComponent(sym);
-            const ok = await apiGetJson(`/market/stocks/${enc}/bars?days=60&force=true`)
+            const ok = await apiGetJsonFrom(
+              DATA_SYNC_BASE_URL,
+              `/market/stocks/${enc}/bars?days=60&force=true`,
+            )
               .then(() => true)
               .catch(() => false);
             if (!ok) failures += 1;
@@ -361,8 +628,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         // Always request a best-effort refresh so Watchlist is based on the latest daily bar.
         // The backend will fall back to cache if upstream is blocked.
         sp.set('refresh', 'true');
+        sp.set('realtime', isShanghaiTradingTime() ? 'true' : 'false');
         for (const s of syms) sp.append('symbols', s);
-        const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+        const rows = await apiGetJsonFrom<TrendOkResult[]>(
+          DATA_SYNC_BASE_URL,
+          `/market/stocks/trendok?${sp.toString()}`,
+        );
         if (reqId !== trendReqRef.current) return;
         const next: Record<string, TrendOkResult> = {};
         for (const r of Array.isArray(rows) ? rows : []) {
@@ -370,6 +641,94 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         }
         setTrend(next);
         setTrendUpdatedAt(new Date().toISOString());
+
+        try {
+          const payload = {
+            items: items.map((it) => ({
+              symbol: it.symbol,
+              position_pct:
+                typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
+                  ? Math.max(0, Math.min(100, it.positionPct)) / 100.0
+                  : null,
+              entry_price:
+                typeof it.costPrice === 'number' && Number.isFinite(it.costPrice) ? it.costPrice : null,
+              max_price:
+                typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice) ? it.maxPrice : null,
+            })),
+          };
+          const realtimeFlag = isShanghaiTradingTime() ? 'true' : 'false';
+          const plan = await apiPostJsonFrom<V5PlanResponse>(
+            DATA_SYNC_BASE_URL,
+            `/market/stocks/watchlist/momentum-plan?realtime=${realtimeFlag}`,
+            payload,
+          );
+          if (reqId === trendReqRef.current) {
+            setV5Plan(plan || null);
+          }
+          const snapshot = await apiPostJsonFrom<MomentumRankSnapshot>(
+            DATA_SYNC_BASE_URL,
+            `/market/stocks/watchlist/momentum-rank-snapshot`,
+            { items: items.map((it) => ({ symbol: it.symbol })) },
+          );
+          if (reqId === trendReqRef.current) {
+            setRankSnapshot(snapshot || null);
+          }
+        } catch {
+          if (reqId === trendReqRef.current) {
+            setV5Plan(null);
+            setRankSnapshot({ error: 'fetch_failed' });
+          }
+        }
+
+        // Best-effort realtime quotes (CN only) for the "Current" column.
+        try {
+          const cn = syms.map(toTsCodeFromSymbol).filter(Boolean) as string[];
+          const byTsCode = new Map<string, string>();
+          for (const s of syms) {
+            const tsCode = toTsCodeFromSymbol(s);
+            if (tsCode) byTsCode.set(tsCode, s);
+          }
+          const nextQuotes: Record<string, { price: number | null; tsCode: string; tradeTime: string | null }> = {};
+          for (const part of chunk(cn, 50)) {
+            const r = await apiGetJsonFrom<QuoteResp>(
+              DATA_SYNC_BASE_URL,
+              `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
+            ).catch(() => null);
+            for (const it of r?.items ?? []) {
+              const sym = byTsCode.get(it.ts_code);
+              if (!sym) continue;
+              const p = it.price != null ? Number(it.price) : NaN;
+              nextQuotes[sym] = {
+                tsCode: it.ts_code,
+                price: Number.isFinite(p) ? p : null,
+                tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
+              };
+            }
+          }
+          if (reqId === trendReqRef.current) {
+            setQuotes(nextQuotes);
+            const nextItems = items.map((it) => {
+              if (!(it.positionPct && it.positionPct > 0)) return it;
+              if (!it.costPrice) return it;
+              const q = nextQuotes[it.symbol];
+              const price =
+                (typeof q?.price === 'number' && Number.isFinite(q.price))
+                  ? q.price
+                  : (typeof next[it.symbol]?.values?.close === 'number' ? next[it.symbol]?.values?.close : null);
+              if (price == null) return it;
+              const maxPrice = typeof it.maxPrice === 'number' ? it.maxPrice : 0;
+              if (price > maxPrice) return { ...it, maxPrice: price };
+              if (!it.maxPrice) return { ...it, maxPrice: price };
+              return it;
+            });
+            if (nextItems.some((x, i) => x.maxPrice !== items[i]?.maxPrice)) {
+              persist(nextItems);
+            }
+          }
+        } catch {
+          // ignore quote failures
+        }
+
         if (reason === 'manual') setError(null);
       } catch (e) {
         if (reqId === trendReqRef.current) console.warn('Watchlist trendok load failed:', e);
@@ -393,6 +752,28 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     }, 10 * 60 * 1000);
     return () => window.clearInterval(id);
   }, [items.length, refreshTrend]);
+
+  function addSymbolToWatchlist(symRaw: string) {
+    setError(null);
+    setSyncMsg(null);
+    const parsed = normalizeSymbolInput(symRaw);
+    if ('error' in parsed) {
+      setError(parsed.error);
+      return;
+    }
+    const sym = parsed.symbol;
+    if (items.some((x) => x.symbol === sym)) return;
+    const next: WatchlistItem[] = [
+      {
+        symbol: sym,
+        name: null,
+        addedAt: new Date().toISOString(),
+        color: '#ffffff',
+      },
+      ...items,
+    ];
+    persist(next);
+  }
 
   function onAdd() {
     setError(null);
@@ -432,6 +813,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     setSyncStage('Loading enabled screeners');
     setSyncProgress(null);
     setSyncLogs([]);
+    setImportDebugFilter('');
 
     // UI-only helpers: show progress & last few steps.
     const pushLog = (line: string) => {
@@ -451,33 +833,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         return;
       }
 
-      setStep('Capturing TradingView snapshots', 0, enabled.length);
-      // 1) Capture a fresh snapshot from each enabled screener (best-effort; sequential to avoid CDP conflicts).
-      const freshSnapshotIds: string[] = [];
-      let screenerFailures = 0;
-      for (let i = 0; i < enabled.length; i++) {
-        const sc = enabled[i]!;
-        setSyncProgress({ cur: i + 1, total: enabled.length });
-        try {
-          const r = await apiPostJson<TvScreenerSyncResponse>(
-            `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/sync`,
-          );
-          if (r?.snapshotId) freshSnapshotIds.push(String(r.snapshotId));
-        } catch {
-          screenerFailures += 1;
-        }
-      }
-
-      setStep('Loading snapshot details', 0, enabled.length);
-      // 2) Load snapshot details (prefer fresh; fall back to latest saved if sync failed).
+      setStep('Loading latest snapshots (DB)', 0, enabled.length);
+      // Load snapshot details from DB (no TradingView sync).
       const snapshotDetails: TvSnapshotDetail[] = [];
       for (let i = 0; i < enabled.length; i++) {
         const sc = enabled[i]!;
         setSyncProgress({ cur: i + 1, total: enabled.length });
         try {
-          // Prefer the newest snapshot for this screener.
           let snapId: string | null = null;
-          // If we captured fresh snapshots, pick the newest one from list (simple: query latest).
           const list = await apiGetJson<{ items: TvSnapshotSummary[] }>(
             `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/snapshots?limit=1`,
           );
@@ -506,19 +869,32 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       const uniq = Array.from(new Set(candidates)).slice(0, 2000);
       if (!uniq.length) {
         setSyncMsg('No symbols found in latest screener snapshots.');
+        setImportDebug({
+          updatedAt: new Date().toISOString(),
+          scanned: 0,
+          trendOkCount: 0,
+          rows: [],
+        });
         return;
       }
 
-      setStep('TrendOK prefilter (cache)', 0, uniq.length);
-      // 3) Pre-filter by cached TrendOK (fast, no external fetch).
+      setStep('TrendOK check', 0, uniq.length);
+      // Check TrendOK from data-sync-service DB cache (no network fetch in data-sync-service).
       const okSymsCached: string[] = [];
+      const debugBySym: Record<string, TrendOkResult> = {};
       for (const part of chunk(uniq, 200)) {
         const sp = new URLSearchParams();
         sp.set('refresh', 'true');
+        sp.set('realtime', isShanghaiTradingTime() ? 'true' : 'false');
         for (const s2 of part) sp.append('symbols', s2);
-        const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+        const rows = await apiGetJsonFrom<TrendOkResult[]>(
+          DATA_SYNC_BASE_URL,
+          `/market/stocks/trendok?${sp.toString()}`,
+        );
         for (const rr of Array.isArray(rows) ? rows : []) {
-          if (rr && rr.symbol && rr.trendOk === true) okSymsCached.push(rr.symbol);
+          if (!rr || !rr.symbol) continue;
+          debugBySym[rr.symbol] = rr;
+          if (rr.trendOk === true) okSymsCached.push(rr.symbol);
         }
         setSyncProgress((p) => {
           const prev = p?.cur ?? 0;
@@ -526,37 +902,23 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         });
       }
       const okUniqCached = Array.from(new Set(okSymsCached));
+      const okUniq = okUniqCached;
 
-      setStep('Refreshing latest daily bars', 0, okUniqCached.length);
-      // 4) Force-refresh daily bars from network for the cached-OK subset, then re-check TrendOK to make it "live".
-      let barFailures = 0;
-      for (let i = 0; i < okUniqCached.length; i++) {
-        const sym = okUniqCached[i]!;
-        setSyncProgress({ cur: i + 1, total: okUniqCached.length });
-        const enc = encodeURIComponent(sym);
-        const ok = await apiGetJson(`/market/stocks/${enc}/bars?days=60&force=true`)
-          .then(() => true)
-          .catch(() => false);
-        if (!ok) barFailures += 1;
-        await new Promise((r) => window.setTimeout(r, 120));
-      }
-
-      setStep('TrendOK re-check (live)', 0, okUniqCached.length);
-      const okSymsLive: string[] = [];
-      for (const part of chunk(okUniqCached, 200)) {
-        const sp = new URLSearchParams();
-        sp.set('refresh', 'true');
-        for (const s2 of part) sp.append('symbols', s2);
-        const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
-        for (const rr of Array.isArray(rows) ? rows : []) {
-          if (rr && rr.symbol && rr.trendOk === true) okSymsLive.push(rr.symbol);
-        }
-        setSyncProgress((p) => {
-          const prev = p?.cur ?? 0;
-          return { cur: Math.min(okUniqCached.length, prev + part.length), total: okUniqCached.length };
-        });
-      }
-      const okUniq = Array.from(new Set(okSymsLive));
+      // Persist debug table for manual review (never auto-cleared).
+      setImportDebug({
+        updatedAt: new Date().toISOString(),
+        scanned: uniq.length,
+        trendOkCount: okUniq.length,
+        rows: uniq.map(
+          (sym) =>
+            debugBySym[sym] ?? ({
+              symbol: sym,
+              trendOk: null,
+              score: null,
+              missingData: ['no_result'],
+            } satisfies TrendOkResult),
+        ),
+      });
 
       const existing = new Set(items.map((x) => x.symbol));
       const now = new Date().toISOString();
@@ -566,18 +928,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
       if (!added.length) {
         setSyncMsg(
-          `Screener scanned ${uniq.length} symbols; TrendOK ✅ (live): ${okUniq.length}; nothing new to add.` +
-            (screenerFailures ? ` (${screenerFailures} screener sync failed)` : '') +
-            (barFailures ? ` (${barFailures} bar sync failed, used cache)` : ''),
+          `Screener scanned ${uniq.length} symbols (latest snapshots); TrendOK ✅: ${okUniq.length}; nothing new to add.`,
         );
         return;
       }
 
       persist([...added, ...items]);
       setSyncMsg(
-        `Added ${added.length} TrendOK ✅ stocks from screener (scanned ${uniq.length}).` +
-          (screenerFailures ? ` (${screenerFailures} screener sync failed)` : '') +
-          (barFailures ? ` (${barFailures} bar sync failed, used cache)` : ''),
+        `Added ${added.length} TrendOK ✅ stocks from screener (latest snapshots; scanned ${uniq.length}).`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -609,12 +967,29 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   }
 
   function showColorPicker(el: HTMLElement, sym: string) {
+    // Anchor near the clicked button, but clamp within viewport.
+    // Flip to open upward when near the bottom to keep all items clickable.
     const r = el.getBoundingClientRect();
     const pad = 10;
     const panelW = 220;
-    const x = Math.max(pad, Math.min(window.innerWidth - panelW - pad, r.left));
-    const y = Math.min(window.innerHeight - pad, r.bottom + 8);
-    setColorPicker({ open: true, x, y, symbol: sym });
+    const panelH = 220; // heuristic, enough for header + 2 rows of 4 color buttons
+
+    const x0 = r.right - panelW;
+    const x = Math.max(pad, Math.min(window.innerWidth - panelW - pad, x0));
+
+    const shouldOpenDown = r.bottom + 8 + panelH <= window.innerHeight - pad;
+    const placement: 'top-end' | 'bottom-end' = shouldOpenDown ? 'bottom-end' : 'top-end';
+
+    // y is the anchor point. For top-end, we use translateY(-100%) so y refers to the bottom edge.
+    let y = placement === 'bottom-end' ? r.bottom + 8 : r.top - 8;
+    if (placement === 'bottom-end') {
+      y = Math.max(pad, Math.min(window.innerHeight - panelH - pad, y));
+    } else {
+      // Ensure y is not so small that the panel would go above the viewport when translated.
+      y = Math.max(pad + panelH, Math.min(window.innerHeight - pad, y));
+    }
+
+    setColorPicker({ open: true, x, y, placement, symbol: sym });
   }
 
   function hideColorPicker() {
@@ -625,6 +1000,48 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     const next = items.map((it) => (it.symbol === symbol ? { ...it, color } : it));
     persist(next);
   }
+
+  function setItemPositionPct(symbol: string, value: string) {
+    const raw = value.trim();
+    const num = raw === '' ? null : Number(raw);
+    const nextVal =
+      typeof num === 'number' && Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : null;
+    const next = items.map((it) => (it.symbol === symbol ? { ...it, positionPct: nextVal } : it));
+    persist(next);
+  }
+
+  function setItemCostPriceValue(symbol: string, value: number | null) {
+    const nextVal =
+      typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+    const next = items.map((it) =>
+      it.symbol === symbol ? { ...it, costPrice: nextVal, maxPrice: nextVal ?? it.maxPrice } : it,
+    );
+    persist(next);
+  }
+
+  function setItemCostPriceDraft(symbol: string, value: string) {
+    setCostPriceDrafts((prev) => ({ ...prev, [symbol]: value }));
+  }
+
+  function commitItemCostPriceDraft(symbol: string) {
+    const raw = costPriceDrafts[symbol];
+    setCostPriceDrafts((prev) => {
+      const next = { ...prev };
+      delete next[symbol];
+      return next;
+    });
+    if (raw == null) return;
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      setItemCostPriceValue(symbol, null);
+      return;
+    }
+    const num = Number(trimmed);
+    if (Number.isFinite(num)) {
+      setItemCostPriceValue(symbol, num);
+    }
+  }
+
 
   React.useEffect(() => {
     if (!colorPicker.open) return;
@@ -665,20 +1082,20 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           .join(', ')})`
       : 'need last 4 histogram values';
     const lines = [
-      checkLine('EMA order', t?.checks?.emaOrder ?? null, 'EMA(5) > EMA(20) > EMA(60)'),
+      checkLine('EMA trend', t?.checks?.emaOrder ?? null, 'Close > EMA(20) AND EMA(20) > EMA(60)'),
       checkLine('MACD > 0', t?.checks?.macdPositive ?? null, 'macdLine > 0'),
       checkLine(
         'MACD hist',
         t?.checks?.macdHistExpanding ?? null,
-        `last 4 days: (hist>0) and >=2 increases (positive-part); ${macdHistDetail}`,
+        `histogram > 0 (red bar above zero axis). Expansion is scored separately; ${macdHistDetail}`,
       ),
       checkLine('Near 20D high', t?.checks?.closeNear20dHigh ?? null, 'Close >= 0.95 * High(20)'),
       checkLine(
         'RSI(14)',
         t?.checks?.rsiInRange ?? null,
-        `50 <= RSI <= 75${rsiNow == null ? '' : ` (now: ${rsiNow.toFixed(1)})`}`,
+        `50 <= RSI <= 82${rsiNow == null ? '' : ` (now: ${rsiNow.toFixed(1)})`}`,
       ),
-      checkLine('Volume surge', t?.checks?.volumeSurge ?? null, 'AvgVol(5) > 1.2 * AvgVol(30)'),
+      checkLine('Volume', t?.checks?.volumeSurge ?? null, 'AvgVol(5) > 0.9 * AvgVol(30)'),
     ];
     const missing = (t?.missingData ?? []).filter(Boolean);
     const tip = (
@@ -969,6 +1386,184 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     });
   }
 
+  function toastCopyMd(ok: boolean, text: string) {
+    setCopyMdStatus({ ok, text });
+    if (copyMdTimerRef.current) window.clearTimeout(copyMdTimerRef.current);
+    copyMdTimerRef.current = window.setTimeout(() => setCopyMdStatus(null), 2400);
+  }
+
+  async function copyWatchlistMarkdown() {
+    if (!sortedItems.length) {
+      toastCopyMd(false, 'No items to copy.');
+      return;
+    }
+    const tradingTime = isShanghaiTradingTime();
+    const todaySh = getShanghaiTodayIso();
+    const missingRealtime: string[] = [];
+    const missingTrend: string[] = [];
+    const missingHistory: string[] = [];
+    for (const it of sortedItems) {
+      const sym = it.symbol;
+      const t = trend[sym];
+      if (!t) {
+        missingTrend.push(sym);
+        continue;
+      }
+      const md = Array.isArray(t.missingData) ? t.missingData.filter(Boolean) : [];
+      if (md.length) {
+        missingHistory.push(sym);
+      }
+      if (tradingTime && sym.toUpperCase().startsWith('CN:')) {
+        const q = quotes[sym];
+        const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
+        if (!(q && typeof q.price === 'number' && Number.isFinite(q.price) && qDate === todaySh)) {
+          missingRealtime.push(sym);
+        }
+      }
+    }
+    if (missingTrend.length || missingHistory.length || missingRealtime.length) {
+      const parts: string[] = [];
+      if (missingRealtime.length) {
+        parts.push(
+          `missing realtime quote (today): ${missingRealtime.slice(0, 6).join(', ')}${
+            missingRealtime.length > 6 ? '…' : ''
+          }`,
+        );
+      }
+      if (missingHistory.length) {
+        parts.push(
+          `missing history/indicators: ${missingHistory.slice(0, 6).join(', ')}${
+            missingHistory.length > 6 ? '…' : ''
+          }`,
+        );
+      }
+      if (missingTrend.length) {
+        parts.push(
+          `missing TrendOK result: ${missingTrend.slice(0, 6).join(', ')}${
+            missingTrend.length > 6 ? '…' : ''
+          }`,
+        );
+      }
+      toastCopyMd(false, `Copy aborted: ${parts.join(' | ')}`);
+      return;
+    }
+    const generatedAt = new Date().toISOString();
+    const lines: string[] = [];
+    lines.push('## Watchlist');
+    lines.push(`- generatedAt: ${generatedAt}`);
+    lines.push(`- items: ${sortedItems.length}`);
+    lines.push(`- scoresUpdatedAt: ${trendUpdatedAt ? new Date(trendUpdatedAt).toLocaleString() : '—'}`);
+    lines.push(`- shanghaiToday: ${todaySh}`);
+    lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
+    lines.push('');
+
+    // Summary table
+    const headers = ['Symbol', 'Name', 'Score', 'TrendOK', 'Buy', 'Current', 'StopLoss', 'AsOfDate'];
+    lines.push(`| ${headers.join(' | ')} |`);
+    lines.push(`| ${headers.map(() => '---').join(' | ')} |`);
+    for (const it of sortedItems) {
+      const t = trend[it.symbol];
+      const buy = fmtBuyCell(t).text;
+      const q = quotes[it.symbol];
+      const current = q?.price ?? t?.values?.close ?? null;
+      const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
+      const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
+      const row = [
+        escapeMarkdownCell(it.symbol),
+        escapeMarkdownCell(it.name || '—'),
+        escapeMarkdownCell(mdScore(t?.score ?? null)),
+        escapeMarkdownCell(mdBool(t?.trendOk ?? null)),
+        escapeMarkdownCell(buy),
+        escapeMarkdownCell(mdPrice(typeof current === 'number' ? current : null)),
+        escapeMarkdownCell(mdPrice(t?.stopLossPrice ?? null)),
+        escapeMarkdownCell(asOf),
+      ];
+      lines.push(`| ${row.join(' | ')} |`);
+    }
+    lines.push('');
+
+    // Detailed blocks
+    for (const it of sortedItems) {
+      const t = trend[it.symbol];
+      const colorHex = (it.color || '#ffffff').trim().toLowerCase();
+      const colorLabel = FLAG_COLORS.find((c) => c.hex === colorHex)?.label ?? 'Custom';
+      const q = quotes[it.symbol];
+      const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
+
+      lines.push(`### ${escapeMarkdownCell(it.symbol)}${it.name ? ` ${escapeMarkdownCell(it.name)}` : ''}`);
+      lines.push(`- color: ${colorLabel} (${colorHex})`);
+      if (qDate) lines.push(`- quoteDate: ${qDate}`);
+      if (q?.tradeTime) lines.push(`- quoteTradeTime: ${String(q.tradeTime)}`);
+      if (typeof q?.price === 'number' && Number.isFinite(q.price)) lines.push(`- current(realtime): ${mdPrice(q.price)}`);
+      lines.push(`- trendOk: ${mdBool(t?.trendOk ?? null)}`);
+      lines.push(`- score: ${mdScore(t?.score ?? null)}`);
+      if (t?.asOfDate) lines.push(`- asOfDate: ${String(t.asOfDate)}`);
+      if (t?.buyMode || t?.buyAction) {
+        lines.push(`- buy: ${String(t.buyMode ?? '')} / ${String(t.buyAction ?? '')}`);
+      }
+      if (typeof t?.stopLossPrice === 'number') lines.push(`- stopLossPrice: ${mdNum(t.stopLossPrice, 2)}`);
+
+      const parts = mdScoreParts(t?.scoreParts);
+      if (parts.length) {
+        lines.push('');
+        lines.push('Score parts:');
+        lines.push(mdLines(parts));
+      }
+
+      const checks = t?.checks;
+      if (checks) {
+        lines.push('');
+        lines.push('TrendOK checks:');
+        lines.push(`- EMA order: ${mdBool(checks.emaOrder ?? null)}`);
+        lines.push(`- MACD positive: ${mdBool(checks.macdPositive ?? null)}`);
+        lines.push(`- MACD hist expanding: ${mdBool(checks.macdHistExpanding ?? null)}`);
+        lines.push(`- Close near 20D high: ${mdBool(checks.closeNear20dHigh ?? null)}`);
+        lines.push(`- RSI in range: ${mdBool(checks.rsiInRange ?? null)}`);
+        lines.push(`- Volume surge: ${mdBool(checks.volumeSurge ?? null)}`);
+      }
+
+      const missing = (t?.missingData ?? []).filter(Boolean);
+      if (missing.length) {
+        lines.push('');
+        lines.push(`Missing data: ${missing.map((x) => escapeMarkdownCell(String(x))).join(', ')}`);
+      }
+
+      lines.push('');
+    }
+
+    const md = lines.join('\n').trim() + '\n';
+    try {
+      await navigator.clipboard.writeText(md);
+      toastCopyMd(true, 'Copied Markdown.');
+    } catch {
+      toastCopyMd(false, 'Copy failed. Please allow clipboard access.');
+    }
+  }
+
+  const watchlistSet = React.useMemo(() => new Set(items.map((x) => x.symbol)), [items]);
+  const importDebugRows = React.useMemo(() => {
+    const q = importDebugFilter.trim().toUpperCase();
+    const base = (importDebug.rows || []).filter((r) => {
+      if (!q) return true;
+      const sym = String(r?.symbol || '').toUpperCase();
+      const name = String(r?.name || '').toUpperCase();
+      return sym.includes(q) || name.includes(q);
+    });
+    const arr = [...base];
+    arr.sort((a, b) => {
+      const sa = a?.score;
+      const sb = b?.score;
+      const va = typeof sa === 'number' && Number.isFinite(sa) ? sa : null;
+      const vb = typeof sb === 'number' && Number.isFinite(sb) ? sb : null;
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      const d = va - vb;
+      return importDebugScoreSortDir === 'asc' ? d : -d;
+    });
+    return arr;
+  }, [importDebug.rows, importDebugFilter, importDebugScoreSortDir]);
+
   const headerTip = (
     <>
       <div className="mb-2 font-medium">Definition (CN daily)</div>
@@ -977,18 +1572,18 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         <div>— when data/indicators are insufficient.</div>
       </div>
       <div className="mt-2 space-y-1">
-        <div>1) EMA(5) &gt; EMA(20) &gt; EMA(60)</div>
+        <div>1) Close &gt; EMA(20) and EMA(20) &gt; EMA(60)</div>
         <div>2) MACD line &gt; 0</div>
-        <div>3) MACD histogram expanding: last 4 days, at least 2 day-over-day increases</div>
+        <div>3) MACD histogram &gt; 0</div>
         <div>4) Close ≥ 0.95 × High(20)</div>
-        <div>5) RSI(14) in [50, 75]</div>
-        <div>6) AvgVol(5) &gt; 1.2 × AvgVol(30)</div>
+        <div>5) RSI(14) in [50, 82]</div>
+        <div>6) AvgVol(5) &gt; 0.9 × AvgVol(30)</div>
       </div>
     </>
   );
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-6">
+    <div className="mx-auto w-full max-w-none p-6">
       <div className="mb-6 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-lg font-semibold">Watchlist</div>
@@ -1007,7 +1602,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           {syncBusy && syncStage ? (
             <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <div className="font-medium">Sync from screener</div>
+                <div className="font-medium">Import from screener</div>
                 <div className="text-[var(--k-muted)]">
                   {syncProgress ? `${syncProgress.cur}/${syncProgress.total}` : '…'}
                 </div>
@@ -1037,7 +1632,166 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               ) : null}
             </div>
           ) : null}
+
+          <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="font-medium">Import debug table</div>
+                <Switch
+                  checked={importDebugOpen}
+                  onCheckedChange={setImportDebugOpen}
+                  aria-label="Toggle import debug table"
+                />
+              </div>
+              <div className="text-[var(--k-muted)]">
+                {importDebug.updatedAt ? new Date(importDebug.updatedAt).toLocaleString() : 'No import yet'}
+              </div>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[var(--k-muted)]">
+                Scanned {importDebug.scanned} • TrendOK ✅ {importDebug.trendOkCount} • Showing {importDebugRows.length}
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  className="h-8 w-[220px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
+                  placeholder="Filter (symbol/name)"
+                  value={importDebugFilter}
+                  onChange={(e) => setImportDebugFilter(e.target.value)}
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setImportDebugFilter('')}
+                  disabled={!importDebugFilter.trim()}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+
+            <VisibilitySection
+              visible={importDebugOpen}
+              className="mt-2 max-h-[520px] overflow-auto rounded border border-[var(--k-border)]"
+            >
+              <table className="w-full border-collapse text-sm">
+                <thead className="sticky top-0 bg-[var(--k-surface)] text-[var(--k-muted)]">
+                  <tr className="text-left">
+                    <th className="px-3 py-2 w-[150px]">Symbol</th>
+                    <th className="px-3 py-2 w-[140px]">Name</th>
+                    <th className="px-3 py-2 w-[80px]">TrendOK</th>
+                    <th className="px-3 py-2 w-[90px]">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 hover:text-[var(--k-text)]"
+                        onClick={() =>
+                          setImportDebugScoreSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+                        }
+                        aria-label="Sort by score"
+                        title="Sort by score"
+                      >
+                        <span>Score</span>
+                        {importDebugScoreSortDir === 'desc' ? (
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </th>
+                    <th className="px-3 py-2 w-[180px]">Buy</th>
+                    <th className="px-3 py-2 w-[110px]">StopLoss</th>
+                    <th className="px-3 py-2 w-[120px]">Action</th>
+                    <th className="px-3 py-2 min-w-[320px]">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importDebugRows.length ? (
+                    importDebugRows.map((r) => {
+                      const sym = String(r?.symbol || '');
+                      const ok = r?.trendOk ?? null;
+                      const icon = ok == null ? '—' : ok ? '✅' : '❌';
+                      const buy = fmtBuyCell(r);
+                      const notes =
+                        (typeof r?.buyWhy === 'string' && r.buyWhy) ||
+                        (Array.isArray(r?.missingData) && r.missingData.length ? r.missingData.join(', ') : '');
+                      const inWl = sym ? watchlistSet.has(sym) : false;
+                      return (
+                        <tr key={sym} className="border-t border-[var(--k-border)]">
+                          <td className="px-3 py-2 font-mono">
+                            <button
+                              type="button"
+                              className="hover:underline"
+                              onClick={() => {
+                                setCode(sym);
+                                setError(null);
+                              }}
+                              title="Fill the Add input with this symbol"
+                            >
+                              {sym || '—'}
+                            </button>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="truncate" title={String(r?.name || '')}>
+                              {r?.name || '—'}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 font-mono">{icon}</td>
+                          <td className="px-3 py-2 font-mono">{fmtScore(r?.score ?? null)}</td>
+                          <td
+                            className={
+                              buy.tone === 'buy'
+                                ? 'px-3 py-2 font-mono text-emerald-700'
+                                : buy.tone === 'avoid'
+                                  ? 'px-3 py-2 font-mono text-red-600'
+                                  : buy.tone === 'wait'
+                                    ? 'px-3 py-2 font-mono text-[var(--k-muted)]'
+                                    : 'px-3 py-2 font-mono'
+                            }
+                          >
+                            {buy.text}
+                          </td>
+                          <td className="px-3 py-2 font-mono">{fmtPrice(r?.stopLossPrice ?? null)}</td>
+                          <td className="px-3 py-2">
+                            {inWl ? (
+                              <span className="text-[var(--k-muted)]">In watchlist</span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => sym && addSymbolToWatchlist(sym)}
+                                disabled={!sym}
+                              >
+                                Add
+                              </Button>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-[var(--k-muted)]">
+                            <div className="truncate" title={notes}>
+                              {notes || '—'}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td className="px-3 py-3 text-[var(--k-muted)]" colSpan={8}>
+                        No import results yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </VisibilitySection>
+          </div>
+
           {syncMsg ? <div className="mt-2 text-xs text-[var(--k-muted)]">{syncMsg}</div> : null}
+          {copyMdStatus ? (
+            <div className="mt-2 text-xs">
+              <span className={copyMdStatus.ok ? 'text-emerald-600' : 'text-red-600'}>
+                {copyMdStatus.text}
+              </span>
+            </div>
+          ) : null}
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
         <div className="flex items-center gap-2">
@@ -1066,15 +1820,189 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           <Button
             size="sm"
             variant="secondary"
+            onClick={() => void copyWatchlistMarkdown()}
+            disabled={!sortedItems.length}
+          >
+            Copy Markdown
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={() => void onSyncFromScreener()}
             disabled={syncBusy}
             className="gap-2"
           >
             <RefreshCw className="h-4 w-4" />
-            Sync from screener
+            Import from screener
           </Button>
         </div>
       </div>
+
+      {v5Plan?.rows?.length ? (
+        <div className="mb-6 rounded border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs">
+          <div className="mb-1 font-medium">Signals (realtime on trading days)</div>
+          <div className="mb-2 text-[var(--k-muted)]">
+            推荐基于 Watchlist Momentum Plan 策略（market regime + breakout checks），逻辑对齐
+            watchlist_momentum_rank。
+          </div>
+          <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
+            <table className="w-full border-collapse text-xs">
+              <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                <tr className="text-left">
+                  <th className="px-2 py-1">Symbol</th>
+                  <th className="px-2 py-1">名称</th>
+                  <th className="px-2 py-1">Action</th>
+                  <th className="px-2 py-1">Target%</th>
+                  <th className="px-2 py-1">Sell?</th>
+                  <th className="px-2 py-1">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {v5Plan.rows
+                  .filter((r) => {
+                    const targetPct = typeof r.targetPct === 'number' ? r.targetPct : 0;
+                    return (r.action && r.action !== 'hold') || targetPct > 0;
+                  })
+                  .map((r) => {
+                    const name = nameBySymbol.get(r.symbol) ?? '—';
+                    return (
+                      <tr key={r.symbol} className="border-t border-[var(--k-border)]">
+                        <td className="px-2 py-1 font-mono">{r.symbol}</td>
+                        <td className="px-2 py-1">{name}</td>
+                        <td className="px-2 py-1 font-mono">{r.action ?? 'hold'}</td>
+                        <td className="px-2 py-1 font-mono">
+                          {typeof r.targetPct === 'number' ? `${(r.targetPct * 100).toFixed(0)}%` : '—'}
+                        </td>
+                        <td className="px-2 py-1 font-mono">{r.sellOk ? '✅' : '—'}</td>
+                        <td className="px-2 py-1 text-[var(--k-muted)]">{r.reason ?? '—'}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {rankSnapshot ? (
+        <div className="mb-6 rounded border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs">
+          <div className="mb-1 font-medium">动量突破回测快照（Watchlist 股票池）</div>
+          <div className="mb-2 text-[var(--k-muted)]">
+            使用 watchlist_momentum_rank 策略回放，推断当前持仓与仓位分配。
+          </div>
+          {rankSnapshot.error ? (
+            <div className="mb-2 text-[var(--k-muted)]">
+              快照不可用（{rankSnapshot.error}）。请确认 data-sync-service 已启动。
+            </div>
+          ) : null}
+          <div className="mb-2 grid grid-cols-2 gap-2 text-[var(--k-muted)] md:grid-cols-4">
+            <div>截止日期: {rankSnapshot.asOfDate ?? '—'}</div>
+            <div>成交次数: {rankSnapshot.summary?.total_trades ?? '—'}</div>
+            <div>
+              总收益:{' '}
+              {typeof rankSnapshot.summary?.total_return === 'number'
+                ? `${(rankSnapshot.summary.total_return * 100).toFixed(2)}%`
+                : '—'}
+            </div>
+            <div>
+              最大回撤:{' '}
+              {typeof rankSnapshot.summary?.max_drawdown === 'number'
+                ? `${(rankSnapshot.summary.max_drawdown * 100).toFixed(2)}%`
+                : '—'}
+            </div>
+          </div>
+          {rankSnapshot.positions?.length ? (
+            <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
+              <table className="w-full border-collapse text-xs">
+                <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                  <tr className="text-left">
+                    <th className="px-2 py-1">代码</th>
+                    <th className="px-2 py-1">名称</th>
+                    <th className="px-2 py-1">仓位%</th>
+                    <th className="px-2 py-1">数量</th>
+                    <th className="px-2 py-1">价格</th>
+                    <th className="px-2 py-1">市值</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rankSnapshot.positions?.map((p) => {
+                    const sym = tsCodeToSymbol.get(p.ts_code) ?? p.ts_code;
+                    const name = nameBySymbol.get(sym) ?? '—';
+                    return (
+                      <tr key={p.ts_code} className="border-t border-[var(--k-border)]">
+                        <td className="px-2 py-1 font-mono">{sym}</td>
+                        <td className="px-2 py-1">{name}</td>
+                        <td className="px-2 py-1 font-mono">{(p.pct * 100).toFixed(1)}%</td>
+                        <td className="px-2 py-1 font-mono">{Number(p.qty).toFixed(0)}</td>
+                        <td className="px-2 py-1 font-mono">{Number(p.price).toFixed(2)}</td>
+                        <td className="px-2 py-1 font-mono">{Number(p.value).toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)] p-2 text-[var(--k-muted)]">
+              当前没有持仓。
+            </div>
+          )}
+          {rankSnapshot.recentOrders?.length ? (
+            <div className="mt-3">
+              <div className="mb-1 text-[var(--k-muted)]">最近 30 天执行记录</div>
+              <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
+                <table className="w-full border-collapse text-xs">
+                  <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                    <tr className="text-left">
+                      <th className="px-2 py-1">日期</th>
+                      <th className="px-2 py-1">代码</th>
+                      <th className="px-2 py-1">名称</th>
+                      <th className="px-2 py-1">动作</th>
+                      <th className="px-2 py-1">收益%</th>
+                      <th className="px-2 py-1">仓位%</th>
+                      <th className="px-2 py-1">数量</th>
+                      <th className="px-2 py-1">价格</th>
+                      <th className="px-2 py-1">原因</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankSnapshot.recentOrders?.slice(-20).map((o, idx) => {
+                      const sym = o.ts_code ? tsCodeToSymbol.get(o.ts_code) ?? o.ts_code : '—';
+                      const name = nameBySymbol.get(sym) ?? '—';
+                      const actionText = o.action === 'buy' ? '买入' : o.action === 'sell' ? '卖出' : '—';
+                      const reasonText =
+                        o.reason === 'v6_breakout' ? '动量突破' : o.reason === 'v6_exit' ? '趋势转弱/止损' : o.reason ?? '—';
+                      const pnlText =
+                        o.action === 'sell' && typeof o.pnl_pct === 'number'
+                          ? `${(o.pnl_pct * 100).toFixed(2)}%`
+                          : '—';
+                      const positionText =
+                        typeof o.position_pct === 'number' ? `${(o.position_pct * 100).toFixed(2)}%` : '—';
+                      return (
+                        <tr key={`${o.ts_code}-${o.date}-${idx}`} className="border-t border-[var(--k-border)]">
+                          <td className="px-2 py-1 font-mono">{o.date ?? '—'}</td>
+                          <td className="px-2 py-1 font-mono">{sym}</td>
+                          <td className="px-2 py-1">{name}</td>
+                          <td className="px-2 py-1 font-mono">{actionText}</td>
+                          <td className="px-2 py-1 font-mono">{pnlText}</td>
+                          <td className="px-2 py-1 font-mono">{positionText}</td>
+                          <td className="px-2 py-1 font-mono">
+                            {typeof o.qty === 'number' ? o.qty.toFixed(0) : '—'}
+                          </td>
+                          <td className="px-2 py-1 font-mono">
+                            {typeof o.price === 'number' ? o.price.toFixed(2) : '—'}
+                          </td>
+                          <td className="px-2 py-1 text-[var(--k-muted)]">{reasonText}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="mb-2 text-sm font-medium">Add</div>
@@ -1126,6 +2054,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   </th>
                   <th className="px-3 py-2">Symbol</th>
                   <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2">成本价</th>
+                  <th className="px-3 py-2">最高价</th>
                   <th className="px-3 py-2">
                     <button
                       type="button"
@@ -1154,6 +2084,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     </button>
                   </th>
                   <th className="px-3 py-2">买入</th>
+                  <th className="px-3 py-2">仓位%</th>
                   <th className="px-3 py-2">Current</th>
                   <th className="px-3 py-2">止损</th>
                   <th className="px-3 py-2">
@@ -1178,9 +2109,19 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               </thead>
               <tbody>
                 {sortedItems.map((it) => (
+                  (() => {
+                    const t = trend[it.symbol];
+                    const tone = rowTone(t);
+                    const rowClass =
+                      tone === 'green'
+                        ? 'border-t border-[var(--k-border)] bg-emerald-50/60 hover:bg-emerald-100/60'
+                        : tone === 'red'
+                          ? 'border-t border-[var(--k-border)] bg-red-50/60 hover:bg-red-100/60'
+                          : 'border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)]';
+                    return (
                   <tr
                     key={it.symbol}
-                    className="border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)]"
+                    className={rowClass}
                   >
                     <td className="px-3 py-2">
                       <button
@@ -1211,8 +2152,51 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       </button>
                     </td>
                     <td className="px-3 py-2">{it.name || '—'}</td>
+                    <td className="px-3 py-2">
+                      <input
+                        className="h-8 w-24 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
+                        placeholder="成本"
+                        inputMode="decimal"
+                        value={
+                          costPriceDrafts[it.symbol] ??
+                          (typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)
+                            ? it.costPrice.toFixed(2)
+                            : '')
+                        }
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '' || COST_PRICE_RE.test(raw)) {
+                            setItemCostPriceDraft(it.symbol, raw);
+                          }
+                        }}
+                        onFocus={() => {
+                          if (costPriceDrafts[it.symbol] != null) return;
+                          if (typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)) {
+                            setItemCostPriceDraft(it.symbol, it.costPrice.toFixed(2));
+                          }
+                        }}
+                        onBlur={() => commitItemCostPriceDraft(it.symbol)}
+                      />
+                    </td>
+                    <td className="px-3 py-2 font-mono">
+                      {typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice)
+                        ? it.maxPrice.toFixed(2)
+                        : '—'}
+                    </td>
                     <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
                     <td className="px-3 py-2">{renderBuyCell(it.symbol)}</td>
+                    <td className="px-3 py-2">
+                      <input
+                        className="h-8 w-20 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
+                        placeholder="0"
+                        value={
+                          typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
+                            ? String(it.positionPct)
+                            : ''
+                        }
+                        onChange={(e) => setItemPositionPct(it.symbol, e.target.value)}
+                      />
+                    </td>
                     <td
                       className="px-3 py-2 font-mono"
                       title={
@@ -1223,7 +2207,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                             : '—'
                       }
                     >
-                      {fmtPrice(trend[it.symbol]?.values?.close)}
+                      {fmtPrice(quotes[it.symbol]?.price ?? trend[it.symbol]?.values?.close)}
                     </td>
                     <td className="px-3 py-2">{renderStopLossCell(it.symbol)}</td>
                     <td className="px-3 py-2">{renderTrendOkCell(it.symbol)}</td>
@@ -1272,6 +2256,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       </div>
                     </td>
                   </tr>
+                    );
+                  })()
                 ))}
               </tbody>
             </table>
@@ -1302,8 +2288,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         ? createPortal(
             <div className="fixed inset-0 z-[9999]" onMouseDown={hideColorPicker}>
               <div
-                className="fixed rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs text-[var(--k-text)] shadow-lg"
-                style={{ left: colorPicker.x, top: colorPicker.y, width: 220 }}
+                className="fixed w-[220px] rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs text-[var(--k-text)] shadow-lg"
+                style={{
+                  left: colorPicker.x,
+                  top: colorPicker.y,
+                  transform: colorPicker.placement === 'top-end' ? 'translateY(-100%)' : undefined,
+                }}
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 <div className="mb-2 flex items-center justify-between">
