@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from math import log1p
 from typing import Any, Dict, List, Tuple
 
-from data_sync_service.db.daily import fetch_daily_for_codes, fetch_trade_dates_for_codes
+from data_sync_service.db.daily import fetch_daily_for_codes, fetch_last_adj_factors, fetch_trade_dates_for_codes
 from data_sync_service.testback.universe import build_universe
 from data_sync_service.testback.strategies.base import Bar, Order, PortfolioSnapshot, ScoreConfig
 
@@ -91,6 +91,7 @@ def _build_bar_maps(
     rows: list[dict[str, Any]],
     adj_mode: str,
     prev_close_seed: Dict[str, float] | None = None,
+    ratio_by_code: Dict[str, float] | None = None,
 ) -> Tuple[Dict[str, Dict[str, Bar]], Dict[str, Dict[str, float]], Dict[str, float]]:
     by_code: Dict[str, List[dict[str, Any]]] = {}
     for r in rows:
@@ -103,7 +104,9 @@ def _build_bar_maps(
     last_close_map: Dict[str, float] = dict(prev_close_seed or {})
     for code, items in by_code.items():
         items_sorted = sorted(items, key=lambda x: str(x.get("trade_date") or ""))
-        ratio = _adjust_factor_ratio(items_sorted, adj_mode)
+        ratio = ratio_by_code.get(code) if ratio_by_code else None
+        if ratio is None:
+            ratio = _adjust_factor_ratio(items_sorted, adj_mode)
         prev_close = prev_close_seed.get(code) if prev_close_seed else None
         for r in items_sorted:
             trade_date = str(r.get("trade_date") or "")
@@ -285,6 +288,10 @@ def run_backtest(
         min_list_days=universe_filter.min_list_days,
     )
     dates = fetch_trade_dates_for_codes(universe, warmup_start, params.end_date)
+    ratio_by_code: Dict[str, float] | None = None
+    if params.adj_mode == "qfq":
+        last_factors = fetch_last_adj_factors(universe, params.end_date)
+        ratio_by_code = {code: 1.0 / f for code, f in last_factors.items() if f > 0}
     cash = max(0.0, params.initial_cash)
     positions: Dict[str, float] = {}
     last_prices: Dict[str, float] = {}
@@ -307,7 +314,12 @@ def run_backtest(
         if len(chunk_dates) < 2:
             continue
         rows = fetch_daily_for_codes(universe, chunk_dates[0], chunk_dates[-1])
-        bars_by_date, prev_close_map, last_close_map = _build_bar_maps(rows, params.adj_mode, last_close_map)
+        bars_by_date, prev_close_map, last_close_map = _build_bar_maps(
+            rows,
+            params.adj_mode,
+            last_close_map,
+            ratio_by_code,
+        )
         if prev_close_override_date and prev_close_override_map:
             if prev_close_override_date in prev_close_map:
                 prev_close_map[prev_close_override_date].update(prev_close_override_map)

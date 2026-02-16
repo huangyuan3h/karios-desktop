@@ -259,6 +259,53 @@ def fetch_daily_for_codes(
     return out
 
 
+def fetch_last_adj_factors(
+    ts_codes: list[str],
+    end_date: str,
+) -> dict[str, float]:
+    """
+    Return latest adj_factor per ts_code up to end_date.
+    Missing or non-positive factors are omitted.
+    """
+    ensure_table()
+    codes = [c.strip().upper() for c in ts_codes if c and c.strip()]
+    if not codes:
+        return {}
+    end2 = _date_str(end_date)
+    if not end2:
+        return {}
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT ts_code, adj_factor
+                FROM (
+                  SELECT
+                    ts_code, adj_factor,
+                    row_number() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
+                  FROM {TABLE_NAME}
+                  WHERE ts_code = ANY(%s)
+                    AND trade_date <= %s
+                    AND adj_factor IS NOT NULL
+                ) t
+                WHERE rn = 1
+                """,
+                (codes, end2),
+            )
+            rows = cur.fetchall()
+    out: dict[str, float] = {}
+    for row in rows:
+        if not row:
+            continue
+        code = str(row[0] or "").strip().upper()
+        factor = row[1]
+        try:
+            f = float(factor)
+        except (TypeError, ValueError):
+            continue
+        if f > 0:
+            out[code] = f
+    return out
 def fetch_trade_dates_for_codes(
     ts_codes: list[str],
     start_date: str,
