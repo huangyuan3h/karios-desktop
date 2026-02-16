@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, CircleX, ExternalLink, Info, RefreshCw
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { loadJson, saveJson } from '@/lib/storage';
 import { useChatStore } from '@/lib/chat/store';
@@ -21,6 +22,7 @@ type WatchlistItem = {
 };
 
 const STORAGE_KEY = 'karios.watchlist.v1';
+const COST_PRICE_RE = /^\d+(\.\d{0,2})?$/;
 
 const FLAG_COLORS: Array<{ label: string; hex: string }> = [
   { label: 'White', hex: '#ffffff' },
@@ -59,6 +61,22 @@ function mdPrice(v: number | null | undefined): string {
 
 function mdLines(items: string[]): string {
   return items.filter((x) => String(x || '').trim()).join('\n');
+}
+
+function VisibilitySection({
+  visible,
+  className,
+  children,
+}: {
+  visible: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={className} style={{ display: visible ? 'block' : 'none' }} aria-hidden={!visible}>
+      {children}
+    </div>
+  );
 }
 
 function mdScoreParts(parts: Record<string, number> | undefined): string[] {
@@ -438,6 +456,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
+  const [costPriceDrafts, setCostPriceDrafts] = React.useState<Record<string, string>>({});
   const [tooltip, setTooltip] = React.useState<{
     open: boolean;
     x: number;
@@ -966,14 +985,36 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     persist(next);
   }
 
-  function setItemCostPrice(symbol: string, value: string) {
-    const raw = value.trim();
-    const num = raw === '' ? null : Number(raw);
-    const nextVal = typeof num === 'number' && Number.isFinite(num) ? num : null;
+  function setItemCostPriceValue(symbol: string, value: number | null) {
+    const nextVal =
+      typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
     const next = items.map((it) =>
       it.symbol === symbol ? { ...it, costPrice: nextVal, maxPrice: nextVal ?? it.maxPrice } : it,
     );
     persist(next);
+  }
+
+  function setItemCostPriceDraft(symbol: string, value: string) {
+    setCostPriceDrafts((prev) => ({ ...prev, [symbol]: value }));
+  }
+
+  function commitItemCostPriceDraft(symbol: string) {
+    const raw = costPriceDrafts[symbol];
+    setCostPriceDrafts((prev) => {
+      const next = { ...prev };
+      delete next[symbol];
+      return next;
+    });
+    if (raw == null) return;
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      setItemCostPriceValue(symbol, null);
+      return;
+    }
+    const num = Number(trimmed);
+    if (Number.isFinite(num)) {
+      setItemCostPriceValue(symbol, num);
+    }
   }
 
 
@@ -1612,7 +1653,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   );
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-6">
+    <div className="mx-auto w-full max-w-none p-6">
       <div className="mb-6 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-lg font-semibold">Watchlist</div>
@@ -1633,40 +1674,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               ? `Momentum alerts updated at ${new Date(alertsUpdatedAt).toLocaleString()}`
               : 'Momentum alerts not loaded yet.'}
           </div>
-          {v5Plan?.rows?.length ? (
-            <div className="mt-2 rounded border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
-              <div className="mb-2 font-medium">Signals (realtime on trading days)</div>
-              <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
-                <table className="w-full border-collapse text-xs">
-                  <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
-                    <tr className="text-left">
-                      <th className="px-2 py-1">Symbol</th>
-                      <th className="px-2 py-1">Action</th>
-                      <th className="px-2 py-1">Target%</th>
-                      <th className="px-2 py-1">Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {v5Plan.rows
-                      .filter((r) => {
-                        const targetPct = typeof r.targetPct === 'number' ? r.targetPct : 0;
-                        return (r.action && r.action !== 'hold') || targetPct > 0;
-                      })
-                      .map((r) => (
-                      <tr key={r.symbol} className="border-t border-[var(--k-border)]">
-                        <td className="px-2 py-1 font-mono">{r.symbol}</td>
-                        <td className="px-2 py-1 font-mono">{r.action ?? 'hold'}</td>
-                        <td className="px-2 py-1 font-mono">
-                          {typeof r.targetPct === 'number' ? `${(r.targetPct * 100).toFixed(0)}%` : '—'}
-                        </td>
-                        <td className="px-2 py-1 text-[var(--k-muted)]">{r.reason ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
           {syncBusy && syncStage ? (
             <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
               <div className="flex items-center justify-between gap-2">
@@ -1703,14 +1710,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
           <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
             <div className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                className="font-medium hover:underline"
-                onClick={() => setImportDebugOpen((v) => !v)}
-                aria-label="Toggle import debug table"
-              >
-                Import debug table
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="font-medium">Import debug table</div>
+                <Switch
+                  checked={importDebugOpen}
+                  onCheckedChange={setImportDebugOpen}
+                  aria-label="Toggle import debug table"
+                />
+              </div>
               <div className="text-[var(--k-muted)]">
                 {importDebug.updatedAt ? new Date(importDebug.updatedAt).toLocaleString() : 'No import yet'}
               </div>
@@ -1737,120 +1744,119 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               </div>
             </div>
 
-            {importDebugOpen ? (
-              <div className="mt-2 max-h-[520px] overflow-auto rounded border border-[var(--k-border)]">
-                <table className="w-full border-collapse text-sm">
-                  <thead className="sticky top-0 bg-[var(--k-surface)] text-[var(--k-muted)]">
-                    <tr className="text-left">
-                      <th className="px-3 py-2 w-[150px]">Symbol</th>
-                      <th className="px-3 py-2 w-[140px]">Name</th>
-                      <th className="px-3 py-2 w-[80px]">TrendOK</th>
-                      <th className="px-3 py-2 w-[90px]">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 hover:text-[var(--k-text)]"
-                          onClick={() =>
-                            setImportDebugScoreSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
-                          }
-                          aria-label="Sort by score"
-                          title="Sort by score"
-                        >
-                          <span>Score</span>
-                          {importDebugScoreSortDir === 'desc' ? (
-                            <ArrowDown className="h-3.5 w-3.5" />
-                          ) : (
-                            <ArrowUp className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      </th>
-                      <th className="px-3 py-2 w-[180px]">Buy</th>
-                      <th className="px-3 py-2 w-[110px]">StopLoss</th>
-                      <th className="px-3 py-2 w-[120px]">Action</th>
-                      <th className="px-3 py-2 min-w-[320px]">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importDebugRows.length ? (
-                      importDebugRows.map((r) => {
-                        const sym = String(r?.symbol || '');
-                        const ok = r?.trendOk ?? null;
-                        const icon = ok == null ? '—' : ok ? '✅' : '❌';
-                        const buy = fmtBuyCell(r);
-                        const notes =
-                          (typeof r?.buyWhy === 'string' && r.buyWhy) ||
-                          (Array.isArray(r?.missingData) && r.missingData.length ? r.missingData.join(', ') : '');
-                        const inWl = sym ? watchlistSet.has(sym) : false;
-                        return (
-                          <tr key={sym} className="border-t border-[var(--k-border)]">
-                            <td className="px-3 py-2 font-mono">
-                              <button
-                                type="button"
-                                className="hover:underline"
-                                onClick={() => {
-                                  setCode(sym);
-                                  setError(null);
-                                }}
-                                title="Fill the Add input with this symbol"
-                              >
-                                {sym || '—'}
-                              </button>
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="truncate" title={String(r?.name || '')}>
-                                {r?.name || '—'}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2 font-mono">{icon}</td>
-                            <td className="px-3 py-2 font-mono">{fmtScore(r?.score ?? null)}</td>
-                            <td
-                              className={
-                                buy.tone === 'buy'
-                                  ? 'px-3 py-2 font-mono text-emerald-700'
-                                  : buy.tone === 'avoid'
-                                    ? 'px-3 py-2 font-mono text-red-600'
-                                    : buy.tone === 'wait'
-                                      ? 'px-3 py-2 font-mono text-[var(--k-muted)]'
-                                      : 'px-3 py-2 font-mono'
-                              }
+            <VisibilitySection
+              visible={importDebugOpen}
+              className="mt-2 max-h-[520px] overflow-auto rounded border border-[var(--k-border)]"
+            >
+              <table className="w-full border-collapse text-sm">
+                <thead className="sticky top-0 bg-[var(--k-surface)] text-[var(--k-muted)]">
+                  <tr className="text-left">
+                    <th className="px-3 py-2 w-[150px]">Symbol</th>
+                    <th className="px-3 py-2 w-[140px]">Name</th>
+                    <th className="px-3 py-2 w-[80px]">TrendOK</th>
+                    <th className="px-3 py-2 w-[90px]">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 hover:text-[var(--k-text)]"
+                        onClick={() =>
+                          setImportDebugScoreSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+                        }
+                        aria-label="Sort by score"
+                        title="Sort by score"
+                      >
+                        <span>Score</span>
+                        {importDebugScoreSortDir === 'desc' ? (
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </th>
+                    <th className="px-3 py-2 w-[180px]">Buy</th>
+                    <th className="px-3 py-2 w-[110px]">StopLoss</th>
+                    <th className="px-3 py-2 w-[120px]">Action</th>
+                    <th className="px-3 py-2 min-w-[320px]">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importDebugRows.length ? (
+                    importDebugRows.map((r) => {
+                      const sym = String(r?.symbol || '');
+                      const ok = r?.trendOk ?? null;
+                      const icon = ok == null ? '—' : ok ? '✅' : '❌';
+                      const buy = fmtBuyCell(r);
+                      const notes =
+                        (typeof r?.buyWhy === 'string' && r.buyWhy) ||
+                        (Array.isArray(r?.missingData) && r.missingData.length ? r.missingData.join(', ') : '');
+                      const inWl = sym ? watchlistSet.has(sym) : false;
+                      return (
+                        <tr key={sym} className="border-t border-[var(--k-border)]">
+                          <td className="px-3 py-2 font-mono">
+                            <button
+                              type="button"
+                              className="hover:underline"
+                              onClick={() => {
+                                setCode(sym);
+                                setError(null);
+                              }}
+                              title="Fill the Add input with this symbol"
                             >
-                              {buy.text}
-                            </td>
-                            <td className="px-3 py-2 font-mono">{fmtPrice(r?.stopLossPrice ?? null)}</td>
-                            <td className="px-3 py-2">
-                              {inWl ? (
-                                <span className="text-[var(--k-muted)]">In watchlist</span>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => sym && addSymbolToWatchlist(sym)}
-                                  disabled={!sym}
-                                >
-                                  Add
-                                </Button>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-[var(--k-muted)]">
-                              <div className="truncate" title={notes}>
-                                {notes || '—'}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td className="px-3 py-3 text-[var(--k-muted)]" colSpan={8}>
-                          No import results yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="mt-2 text-[var(--k-muted)]">Collapsed.</div>
-            )}
+                              {sym || '—'}
+                            </button>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="truncate" title={String(r?.name || '')}>
+                              {r?.name || '—'}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 font-mono">{icon}</td>
+                          <td className="px-3 py-2 font-mono">{fmtScore(r?.score ?? null)}</td>
+                          <td
+                            className={
+                              buy.tone === 'buy'
+                                ? 'px-3 py-2 font-mono text-emerald-700'
+                                : buy.tone === 'avoid'
+                                  ? 'px-3 py-2 font-mono text-red-600'
+                                  : buy.tone === 'wait'
+                                    ? 'px-3 py-2 font-mono text-[var(--k-muted)]'
+                                    : 'px-3 py-2 font-mono'
+                            }
+                          >
+                            {buy.text}
+                          </td>
+                          <td className="px-3 py-2 font-mono">{fmtPrice(r?.stopLossPrice ?? null)}</td>
+                          <td className="px-3 py-2">
+                            {inWl ? (
+                              <span className="text-[var(--k-muted)]">In watchlist</span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => sym && addSymbolToWatchlist(sym)}
+                                disabled={!sym}
+                              >
+                                Add
+                              </Button>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-[var(--k-muted)]">
+                            <div className="truncate" title={notes}>
+                              {notes || '—'}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td className="px-3 py-3 text-[var(--k-muted)]" colSpan={8}>
+                        No import results yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </VisibilitySection>
           </div>
 
           {syncMsg ? <div className="mt-2 text-xs text-[var(--k-muted)]">{syncMsg}</div> : null}
@@ -1906,6 +1912,44 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           </Button>
         </div>
       </div>
+
+      {v5Plan?.rows?.length ? (
+        <div className="mb-6 rounded border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs">
+          <div className="mb-1 font-medium">Signals (realtime on trading days)</div>
+          <div className="mb-2 text-[var(--k-muted)]">
+            推荐基于 Watchlist Momentum Plan 策略（market regime + breakout checks）。
+          </div>
+          <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
+            <table className="w-full border-collapse text-xs">
+              <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                <tr className="text-left">
+                  <th className="px-2 py-1">Symbol</th>
+                  <th className="px-2 py-1">Action</th>
+                  <th className="px-2 py-1">Target%</th>
+                  <th className="px-2 py-1">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {v5Plan.rows
+                  .filter((r) => {
+                    const targetPct = typeof r.targetPct === 'number' ? r.targetPct : 0;
+                    return (r.action && r.action !== 'hold') || targetPct > 0;
+                  })
+                  .map((r) => (
+                  <tr key={r.symbol} className="border-t border-[var(--k-border)]">
+                    <td className="px-2 py-1 font-mono">{r.symbol}</td>
+                    <td className="px-2 py-1 font-mono">{r.action ?? 'hold'}</td>
+                    <td className="px-2 py-1 font-mono">
+                      {typeof r.targetPct === 'number' ? `${(r.targetPct * 100).toFixed(0)}%` : '—'}
+                    </td>
+                    <td className="px-2 py-1 text-[var(--k-muted)]">{r.reason ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
 
       <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="mb-2 text-sm font-medium">Add</div>
@@ -1988,7 +2032,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   </th>
                   <th className="px-3 py-2">买入</th>
                   <th className="px-3 py-2">仓位%</th>
-                  <th className="px-3 py-2">V5提醒</th>
                   <th className="px-3 py-2">Current</th>
                   <th className="px-3 py-2">止损</th>
                   <th className="px-3 py-2">
@@ -2060,12 +2103,26 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       <input
                         className="h-8 w-24 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
                         placeholder="成本"
+                        inputMode="decimal"
                         value={
-                          typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)
-                            ? String(it.costPrice)
-                            : ''
+                          costPriceDrafts[it.symbol] ??
+                          (typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)
+                            ? it.costPrice.toFixed(2)
+                            : '')
                         }
-                        onChange={(e) => setItemCostPrice(it.symbol, e.target.value)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '' || COST_PRICE_RE.test(raw)) {
+                            setItemCostPriceDraft(it.symbol, raw);
+                          }
+                        }}
+                        onFocus={() => {
+                          if (costPriceDrafts[it.symbol] != null) return;
+                          if (typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)) {
+                            setItemCostPriceDraft(it.symbol, it.costPrice.toFixed(2));
+                          }
+                        }}
+                        onBlur={() => commitItemCostPriceDraft(it.symbol)}
                       />
                     </td>
                     <td className="px-3 py-2 font-mono">
@@ -2087,7 +2144,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                         onChange={(e) => setItemPositionPct(it.symbol, e.target.value)}
                       />
                     </td>
-                    <td className="px-3 py-2">{renderAlertCell(it.symbol)}</td>
                     <td
                       className="px-3 py-2 font-mono"
                       title={

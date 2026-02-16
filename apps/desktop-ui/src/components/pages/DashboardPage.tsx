@@ -606,6 +606,25 @@ export function DashboardPage({
     const syms = items.map((x) => x.symbol);
     const tradingTime = isShanghaiTradingTime();
     const todaySh = getShanghaiTodayIso();
+    const v5Plan = await apiPostJson<{
+      summary?: { regime?: string | null } | null;
+      rows?: Array<{
+        symbol: string;
+        action?: string | null;
+        targetPct?: number | null;
+        reason?: string | null;
+      }> | null;
+    }>(`/market/stocks/watchlist/momentum-plan?realtime=${tradingTime ? 'true' : 'false'}`, {
+      items: items.map((it) => ({
+        symbol: it.symbol,
+        position_pct:
+          typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
+            ? Math.max(0, Math.min(100, it.positionPct)) / 100.0
+            : null,
+        entry_price: typeof it.costPrice === 'number' && Number.isFinite(it.costPrice) ? it.costPrice : null,
+        max_price: typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice) ? it.maxPrice : null,
+      })),
+    }).catch(() => null);
 
     // 1) TrendOK
     const trend: Record<string, TrendOkResult> = {};
@@ -697,7 +716,34 @@ export function DashboardPage({
     lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
     lines.push('');
 
-    const headers = ['Symbol', 'Name', 'Score', 'TrendOK', 'Buy', 'Current', 'StopLoss', 'AsOfDate'];
+    if (v5Plan?.rows?.length) {
+      lines.push(`${heading} Signals (realtime on trading days)`);
+      lines.push('推荐基于 Watchlist Momentum Plan 策略（market regime + breakout checks）。');
+      if (v5Plan.summary?.regime) lines.push(`- regime: ${String(v5Plan.summary.regime)}`);
+      lines.push('');
+      const signalHeaders = ['Symbol', 'Action', 'Target%', 'Reason'];
+      const signalRows: unknown[][] = [];
+      for (const r of v5Plan.rows) {
+        const targetPct = typeof r.targetPct === 'number' ? (r.targetPct * 100).toFixed(0) + '%' : '—';
+        signalRows.push([r.symbol, r.action ?? '—', targetPct, r.reason ?? '—']);
+      }
+      lines.push(mdTable(signalHeaders, signalRows));
+      lines.push('');
+    }
+
+    const headers = [
+      'Symbol',
+      'Name',
+      'Position%',
+      'CostPrice',
+      'MaxPrice',
+      'Score',
+      'TrendOK',
+      'Buy',
+      'Current',
+      'StopLoss',
+      'AsOfDate',
+    ];
     const rows: unknown[][] = [];
     for (const it of sorted) {
       const t = trend[it.symbol];
@@ -712,6 +758,9 @@ export function DashboardPage({
       rows.push([
         it.symbol,
         it.name ?? t?.name ?? '—',
+        mdNum(it.positionPct ?? null, 1),
+        mdPrice(it.costPrice ?? null),
+        mdPrice(it.maxPrice ?? null),
         mdScore(t?.score ?? null),
         mdBool(t?.trendOk ?? null),
         buy,
@@ -732,6 +781,15 @@ export function DashboardPage({
       if (qDate) lines.push(`- quoteDate: ${qDate}`);
       if (q?.tradeTime) lines.push(`- quoteTradeTime: ${String(q.tradeTime)}`);
       if (typeof q?.price === 'number' && Number.isFinite(q.price)) lines.push(`- current(realtime): ${mdPrice(q.price)}`);
+      if (typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)) {
+        lines.push(`- positionPct: ${mdNum(it.positionPct, 1)}%`);
+      }
+      if (typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)) {
+        lines.push(`- costPrice: ${mdPrice(it.costPrice)}`);
+      }
+      if (typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice)) {
+        lines.push(`- maxPrice: ${mdPrice(it.maxPrice)}`);
+      }
       lines.push(`- trendOk: ${mdBool(t?.trendOk ?? null)}`);
       lines.push(`- score: ${mdScore(t?.score ?? null)}`);
       if (t?.asOfDate) lines.push(`- asOfDate: ${String(t.asOfDate)}`);
