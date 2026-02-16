@@ -100,7 +100,7 @@ def _build_bar_maps(
         by_code.setdefault(code, []).append(r)
     bars_by_date: Dict[str, Dict[str, Bar]] = {}
     prev_close_map: Dict[str, Dict[str, float]] = {}
-    last_close_map: Dict[str, float] = {}
+    last_close_map: Dict[str, float] = dict(prev_close_seed or {})
     for code, items in by_code.items():
         items_sorted = sorted(items, key=lambda x: str(x.get("trade_date") or ""))
         ratio = _adjust_factor_ratio(items_sorted, adj_mode)
