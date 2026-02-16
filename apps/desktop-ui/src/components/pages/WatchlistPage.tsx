@@ -207,6 +207,7 @@ type MomentumRankSnapshot = {
     target_pct?: number | null;
     reason?: string | null;
     pnl_pct?: number | null;
+    position_pct?: number | null;
   }> | null;
   error?: string | null;
 };
@@ -1849,6 +1850,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                 <tr className="text-left">
                   <th className="px-2 py-1">Symbol</th>
+                  <th className="px-2 py-1">名称</th>
                   <th className="px-2 py-1">Action</th>
                   <th className="px-2 py-1">Target%</th>
                   <th className="px-2 py-1">Sell?</th>
@@ -1861,17 +1863,21 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     const targetPct = typeof r.targetPct === 'number' ? r.targetPct : 0;
                     return (r.action && r.action !== 'hold') || targetPct > 0;
                   })
-                  .map((r) => (
-                  <tr key={r.symbol} className="border-t border-[var(--k-border)]">
-                    <td className="px-2 py-1 font-mono">{r.symbol}</td>
-                    <td className="px-2 py-1 font-mono">{r.action ?? 'hold'}</td>
-                    <td className="px-2 py-1 font-mono">
-                      {typeof r.targetPct === 'number' ? `${(r.targetPct * 100).toFixed(0)}%` : '—'}
-                    </td>
-                    <td className="px-2 py-1 font-mono">{r.sellOk ? '✅' : '—'}</td>
-                    <td className="px-2 py-1 text-[var(--k-muted)]">{r.reason ?? '—'}</td>
-                  </tr>
-                ))}
+                  .map((r) => {
+                    const name = nameBySymbol.get(r.symbol) ?? '—';
+                    return (
+                      <tr key={r.symbol} className="border-t border-[var(--k-border)]">
+                        <td className="px-2 py-1 font-mono">{r.symbol}</td>
+                        <td className="px-2 py-1">{name}</td>
+                        <td className="px-2 py-1 font-mono">{r.action ?? 'hold'}</td>
+                        <td className="px-2 py-1 font-mono">
+                          {typeof r.targetPct === 'number' ? `${(r.targetPct * 100).toFixed(0)}%` : '—'}
+                        </td>
+                        <td className="px-2 py-1 font-mono">{r.sellOk ? '✅' : '—'}</td>
+                        <td className="px-2 py-1 text-[var(--k-muted)]">{r.reason ?? '—'}</td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
@@ -1953,6 +1959,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       <th className="px-2 py-1">名称</th>
                       <th className="px-2 py-1">动作</th>
                       <th className="px-2 py-1">收益%</th>
+                      <th className="px-2 py-1">仓位%</th>
                       <th className="px-2 py-1">数量</th>
                       <th className="px-2 py-1">价格</th>
                       <th className="px-2 py-1">原因</th>
@@ -1969,6 +1976,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                         o.action === 'sell' && typeof o.pnl_pct === 'number'
                           ? `${(o.pnl_pct * 100).toFixed(2)}%`
                           : '—';
+                      const positionText =
+                        typeof o.position_pct === 'number' ? `${(o.position_pct * 100).toFixed(2)}%` : '—';
                       return (
                         <tr key={`${o.ts_code}-${o.date}-${idx}`} className="border-t border-[var(--k-border)]">
                           <td className="px-2 py-1 font-mono">{o.date ?? '—'}</td>
@@ -1976,6 +1985,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                           <td className="px-2 py-1">{name}</td>
                           <td className="px-2 py-1 font-mono">{actionText}</td>
                           <td className="px-2 py-1 font-mono">{pnlText}</td>
+                          <td className="px-2 py-1 font-mono">{positionText}</td>
                           <td className="px-2 py-1 font-mono">
                             {typeof o.qty === 'number' ? o.qty.toFixed(0) : '—'}
                           </td>

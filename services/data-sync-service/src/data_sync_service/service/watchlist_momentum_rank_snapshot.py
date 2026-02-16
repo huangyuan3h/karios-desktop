@@ -69,6 +69,7 @@ def compute_watchlist_momentum_rank_snapshot(
     last_buy_price: dict[str, float] = {}
     for day in recent_days:
         date = day.get("date")
+        equity = day.get("equity")
         orders = day.get("orders") or []
         for o in orders:
             if o.get("status") != "executed":
@@ -76,6 +77,7 @@ def compute_watchlist_momentum_rank_snapshot(
             action = o.get("action")
             ts_code = o.get("ts_code")
             price = o.get("exec_price")
+            qty = o.get("exec_qty") or o.get("qty")
             pnl_pct = None
             if action == "sell" and ts_code and ts_code in last_buy_price:
                 base_price = last_buy_price.get(ts_code, 0.0)
@@ -83,16 +85,23 @@ def compute_watchlist_momentum_rank_snapshot(
                     pnl_pct = (float(price) - float(base_price)) / float(base_price)
             if action == "buy" and ts_code and price:
                 last_buy_price[ts_code] = float(price)
+            position_pct = None
+            if equity and price and qty:
+                try:
+                    position_pct = (float(qty) * float(price)) / float(equity)
+                except (TypeError, ValueError, ZeroDivisionError):
+                    position_pct = None
             recent_orders.append(
                 {
                     "date": date,
                     "ts_code": ts_code,
                     "action": action,
-                    "qty": o.get("exec_qty") or o.get("qty"),
+                    "qty": qty,
                     "price": price,
                     "target_pct": o.get("target_pct"),
                     "reason": o.get("reason"),
                     "pnl_pct": pnl_pct,
+                    "position_pct": position_pct,
                 }
             )
 
