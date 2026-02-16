@@ -51,11 +51,7 @@ def _regime_target(regime: str) -> float:
     return 0.0
 
 
-def compute_watchlist_v5_alerts(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """
-    Compute V5-style alerts for watchlist items with optional position percentage.
-    This mirrors the core logic of watchlist_trend_v5 without entry-price stop.
-    """
+def _compute_v5_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     cleaned: list[dict[str, Any]] = []
     ts_codes: list[str] = []
     for it in items or []:
@@ -181,3 +177,59 @@ def compute_watchlist_v5_alerts(items: list[dict[str, Any]]) -> list[dict[str, A
             }
         )
     return out
+
+
+def compute_watchlist_v5_alerts(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Compute V5-style alerts for watchlist items with optional position percentage.
+    This mirrors the core logic of watchlist_trend_v5 without entry-price stop.
+    """
+    return _compute_v5_rows(items)
+
+
+def compute_watchlist_v5_plan(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    Compute V5 plan for the current account based on watchlist as universe.
+    Returns per-symbol target_pct (including holds) and summary totals.
+    """
+    rows = _compute_v5_rows(items)
+    holdings: list[dict[str, Any]] = []
+    total_current = 0.0
+    total_target = 0.0
+    regime_counts: dict[str, int] = {}
+    for r in rows:
+        if r.get("missingData"):
+            continue
+        current_pct = float(r.get("currentPct") or 0.0)
+        total_current += current_pct
+        action = str(r.get("action") or "hold")
+        target_pct = r.get("targetPct")
+        if target_pct is None:
+            target_pct = current_pct
+        total_target += float(target_pct)
+        regime = str(r.get("regime") or "")
+        if regime:
+            regime_counts[regime] = regime_counts.get(regime, 0) + 1
+        if target_pct and float(target_pct) > 0:
+            holdings.append(
+                {
+                    "symbol": r.get("symbol"),
+                    "action": action,
+                    "currentPct": round(current_pct, 4),
+                    "targetPct": round(float(target_pct), 4),
+                    "reason": r.get("reason"),
+                }
+            )
+    holdings.sort(key=lambda x: (-float(x.get("targetPct") or 0.0), str(x.get("symbol") or "")))
+    dominant_regime = None
+    if regime_counts:
+        dominant_regime = max(regime_counts.items(), key=lambda x: x[1])[0]
+    return {
+        "summary": {
+            "regime": dominant_regime,
+            "totalCurrentPct": round(total_current, 4),
+            "totalTargetPct": round(total_target, 4),
+        },
+        "holdings": holdings,
+        "rows": rows,
+    }

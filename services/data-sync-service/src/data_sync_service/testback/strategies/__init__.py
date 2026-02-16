@@ -6,12 +6,14 @@ from .base import BaseStrategy
 from .watchlist_trend_v3 import WatchlistTrendV3Strategy
 from .watchlist_trend_v4 import WatchlistTrendV4Strategy
 from .watchlist_trend_v5 import WatchlistTrendV5Strategy
+from .watchlist_trend_v5_1 import WatchlistTrendV5_1Strategy
 from .watchlist_trend_v6 import WatchlistTrendV6Strategy
 
 STRATEGY_REGISTRY: dict[str, Type[BaseStrategy]] = {
     WatchlistTrendV3Strategy.name: WatchlistTrendV3Strategy,
     WatchlistTrendV4Strategy.name: WatchlistTrendV4Strategy,
     WatchlistTrendV5Strategy.name: WatchlistTrendV5Strategy,
+    WatchlistTrendV5_1Strategy.name: WatchlistTrendV5_1Strategy,
     WatchlistTrendV6Strategy.name: WatchlistTrendV6Strategy,
 }
 

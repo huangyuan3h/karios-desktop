@@ -82,3 +82,29 @@ def test_v5_alert_trim_in_weak_regime(monkeypatch) -> None:
     res = alerts.compute_watchlist_v5_alerts([{"symbol": "CN:000001", "position_pct": 0.8}])
     assert res[0]["action"] == "trim"
     assert abs(res[0]["targetPct"] - 0.3) < 1e-6
+
+
+def test_v5_plan_keeps_holdings_when_no_signal(monkeypatch) -> None:
+    def fake_ema(values, period):
+        if period == 20:
+            return [100.0, 100.0]
+        if period == 30:
+            return [90.0, 90.0]
+        return [100.0, 100.0]
+
+    def fake_macd(values):
+        return ([0.1, 0.1], [0.0, 0.0], [0.05, 0.05])
+
+    def fake_rsi(values, period=14):
+        return [60.0]
+
+    monkeypatch.setattr(alerts, "_ema", fake_ema)
+    monkeypatch.setattr(alerts, "_macd", fake_macd)
+    monkeypatch.setattr(alerts, "_rsi", fake_rsi)
+    monkeypatch.setattr(alerts, "fetch_last_ohlcv_batch", lambda *_args, **_kwargs: {"000001.SZ": _bars(98, 120, 95)})
+    monkeypatch.setattr(alerts, "get_market_regime", lambda **_kwargs: {"regime": "Strong"})
+
+    plan = alerts.compute_watchlist_v5_plan([{"symbol": "CN:000001", "position_pct": 0.4}])
+    holdings = plan["holdings"]
+    assert holdings
+    assert abs(holdings[0]["targetPct"] - 0.4) < 1e-6

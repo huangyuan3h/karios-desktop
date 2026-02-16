@@ -100,6 +100,7 @@ const STRATEGY_OPTIONS = [
   { value: 'watchlist_trend_v3', label: 'Watchlist趋势V3' },
   { value: 'watchlist_trend_v4', label: 'Watchlist趋势V4' },
   { value: 'watchlist_trend_v5', label: 'Watchlist趋势V5' },
+  { value: 'watchlist_trend_v5_1', label: 'Watchlist趋势V5.1' },
   { value: 'watchlist_trend_v6', label: 'Watchlist趋势V6' },
 ];
 

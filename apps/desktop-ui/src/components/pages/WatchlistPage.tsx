@@ -151,6 +151,25 @@ type V5AlertResult = {
   missingData?: string[];
 };
 
+type V5PlanSummary = {
+  regime?: string | null;
+  totalCurrentPct?: number | null;
+  totalTargetPct?: number | null;
+};
+
+type V5PlanHolding = {
+  symbol: string;
+  action?: string | null;
+  currentPct?: number | null;
+  targetPct?: number | null;
+  reason?: string | null;
+};
+
+type V5PlanResponse = {
+  summary?: V5PlanSummary | null;
+  holdings?: V5PlanHolding[] | null;
+};
+
 type ScreenerImportDebugState = {
   updatedAt: string | null;
   scanned: number;
@@ -389,6 +408,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
   const [alerts, setAlerts] = React.useState<Record<string, V5AlertResult>>({});
   const [alertsUpdatedAt, setAlertsUpdatedAt] = React.useState<string | null>(null);
+  const [v5Plan, setV5Plan] = React.useState<V5PlanResponse | null>(null);
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [syncStage, setSyncStage] = React.useState<string | null>(null);
@@ -584,8 +604,19 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             setAlerts(nextAlerts);
             setAlertsUpdatedAt(new Date().toISOString());
           }
+          const plan = await apiPostJsonFrom<V5PlanResponse>(
+            DATA_SYNC_BASE_URL,
+            '/market/stocks/watchlist/v5-plan',
+            payload,
+          );
+          if (reqId === trendReqRef.current) {
+            setV5Plan(plan || null);
+          }
         } catch {
-          if (reqId === trendReqRef.current) setAlerts({});
+          if (reqId === trendReqRef.current) {
+            setAlerts({});
+            setV5Plan(null);
+          }
         }
 
         // Best-effort realtime quotes (CN only) for the "Current" column.
@@ -898,6 +929,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     const next = items.map((it) => (it.symbol === symbol ? { ...it, positionPct: nextVal } : it));
     persist(next);
   }
+
 
   React.useEffect(() => {
     if (!colorPicker.open) return;
@@ -1289,6 +1321,46 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     return arr;
   }, [items, trend, scoreSortEnabled, scoreSortDir]);
 
+  const totalByItemsPct = React.useMemo(() => {
+    const sum = items.reduce((acc, it) => acc + (it.positionPct ?? 0), 0);
+    return Math.max(0, Math.min(100, sum));
+  }, [items]);
+
+  const alertRegime = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    Object.values(alerts).forEach((a) => {
+      const r = a?.regime;
+      if (!r) return;
+      counts.set(r, (counts.get(r) ?? 0) + 1);
+    });
+    let best: string | null = null;
+    let bestCount = 0;
+    counts.forEach((count, key) => {
+      if (count > bestCount) {
+        best = key;
+        bestCount = count;
+      }
+    });
+    return best;
+  }, [alerts]);
+
+  const displayRegime = v5Plan?.summary?.regime ?? alertRegime;
+
+  const totalTargetPct = React.useMemo(() => {
+    if (!displayRegime) return null;
+    if (displayRegime === 'Strong') return 100;
+    if (displayRegime === 'Diverging') return 66;
+    if (displayRegime === 'Weak') return 30;
+    return null;
+  }, [displayRegime]);
+
+  const totalAction = React.useMemo(() => {
+    if (totalTargetPct == null) return null;
+    if (totalByItemsPct > totalTargetPct + 0.5) return `减仓至 ${totalTargetPct}%`;
+    if (totalByItemsPct + 0.5 < totalTargetPct) return `加仓至 ${totalTargetPct}%`;
+    return '保持';
+  }, [totalByItemsPct, totalTargetPct]);
+
   function referenceTable() {
     const capturedAt = new Date().toISOString();
     const rows = sortedItems.slice(0, 50).map((it) => {
@@ -1533,6 +1605,48 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             {alertsUpdatedAt
               ? `V5 alerts updated at ${new Date(alertsUpdatedAt).toLocaleString()}`
               : 'V5 alerts not loaded yet.'}
+          </div>
+          <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[var(--k-muted)]">
+                情绪={displayRegime ?? '—'} 总仓位目标={totalTargetPct != null ? `${totalTargetPct}%` : '—'}
+              </div>
+              <div className="text-[var(--k-muted)]">
+                当前总仓位={totalByItemsPct.toFixed(1)}% 建议={totalAction ?? '—'}
+              </div>
+            </div>
+            <div className="mt-2 text-[var(--k-muted)]">总仓位来自下表各股票仓位之和。</div>
+            {v5Plan?.holdings?.length ? (
+              <div className="mt-2 rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
+                <table className="w-full border-collapse text-xs">
+                  <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                    <tr className="text-left">
+                      <th className="px-2 py-1">Symbol</th>
+                      <th className="px-2 py-1">Action</th>
+                      <th className="px-2 py-1">Target%</th>
+                      <th className="px-2 py-1">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {v5Plan.holdings.slice(0, 12).map((h) => (
+                      <tr key={h.symbol} className="border-t border-[var(--k-border)]">
+                        <td className="px-2 py-1 font-mono">{h.symbol}</td>
+                        <td className="px-2 py-1 font-mono">{h.action ?? 'hold'}</td>
+                        <td className="px-2 py-1 font-mono">
+                          {typeof h.targetPct === 'number' ? `${(h.targetPct * 100).toFixed(0)}%` : '—'}
+                        </td>
+                        <td className="px-2 py-1 text-[var(--k-muted)]">{h.reason ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {v5Plan.holdings.length > 12 ? (
+                  <div className="px-2 py-1 text-[var(--k-muted)]">
+                    Showing top 12 by target pct.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           {syncBusy && syncStage ? (
             <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
