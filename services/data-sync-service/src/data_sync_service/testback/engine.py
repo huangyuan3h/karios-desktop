@@ -298,6 +298,8 @@ def run_backtest(
     strategy.on_start(params.start_date, params.end_date)
     chunk_size = 120
     last_close_map: Dict[str, float] = {}
+    prev_close_override_date: str | None = None
+    prev_close_override_map: Dict[str, float] | None = None
     for start in range(0, len(dates), chunk_size):
         chunk_dates = dates[start : start + chunk_size]
         if start > 0:
@@ -306,6 +308,9 @@ def run_backtest(
             continue
         rows = fetch_daily_for_codes(universe, chunk_dates[0], chunk_dates[-1])
         bars_by_date, prev_close_map, last_close_map = _build_bar_maps(rows, params.adj_mode, last_close_map)
+        if prev_close_override_date and prev_close_override_map:
+            if prev_close_override_date in prev_close_map:
+                prev_close_map[prev_close_override_date].update(prev_close_override_map)
         chunk_dates = [d for d in chunk_dates if d in bars_by_date]
         if len(chunk_dates) < 2:
             continue
@@ -486,6 +491,8 @@ def run_backtest(
                     "equity": equity,
                 }
             )
+        prev_close_override_date = chunk_dates[-1]
+        prev_close_override_map = prev_close_map.get(prev_close_override_date, {}).copy()
     total_return = 0.0
     if params.initial_cash > 0 and equity_curve:
         total_return = (equity_curve[-1]["equity"] / params.initial_cash) - 1.0
