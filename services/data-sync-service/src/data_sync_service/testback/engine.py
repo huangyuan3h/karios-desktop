@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Tuple
 
 from data_sync_service.db.daily import fetch_daily_for_codes, fetch_trade_dates_for_codes
 from data_sync_service.testback.universe import build_universe
-from data_sync_service.testback.strategies.base import Bar, Order, PortfolioSnapshot
+from data_sync_service.testback.strategies.base import Bar, Order, PortfolioSnapshot, ScoreConfig
 
 
 @dataclass
@@ -36,14 +36,6 @@ class DailyRuleFilter:
     max_volume: float | None = None
     min_amount: float | None = None
     max_amount: float | None = None
-
-
-@dataclass
-class ScoreConfig:
-    top_n: int = 1000
-    momentum_weight: float = 1.0
-    volume_weight: float = 0.0
-    amount_weight: float = 0.0
 
 
 def _safe_float(val: Any, default: float = 0.0) -> float:
@@ -280,9 +272,11 @@ def run_backtest(
     params: BacktestParams,
     universe_filter: UniverseFilter,
     daily_rules: DailyRuleFilter,
-    score_cfg: ScoreConfig,
+    score_cfg: ScoreConfig | None,
 ) -> dict[str, Any]:
     strategy = strategy_cls()
+    if score_cfg is None:
+        score_cfg = strategy.default_score_config()
     warmup_start = _warmup_start_date(params.start_date, params.warmup_days)
     universe = build_universe(
         as_of_date=params.start_date,

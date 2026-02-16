@@ -34,6 +34,14 @@ class PortfolioSnapshot:
     positions: Dict[str, float]
 
 
+@dataclass
+class ScoreConfig:
+    top_n: int = 1000
+    momentum_weight: float = 1.0
+    volume_weight: float = 0.0
+    amount_weight: float = 0.0
+
+
 class BaseStrategy(ABC):
     name = "base"
     use_full_bars = False
@@ -50,6 +58,10 @@ class BaseStrategy(ABC):
         portfolio: PortfolioSnapshot,
     ) -> List[Order]:
         raise NotImplementedError
+
+    @classmethod
+    def default_score_config(cls) -> ScoreConfig:
+        return ScoreConfig()
 
     def on_finish(self, portfolio: PortfolioSnapshot) -> None:
         _ = portfolio

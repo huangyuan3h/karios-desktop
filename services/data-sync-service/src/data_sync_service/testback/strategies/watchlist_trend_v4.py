@@ -5,13 +5,17 @@ from typing import Deque, Dict, List
 
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.trendok import _ema, _macd, _rsi
-from data_sync_service.testback.strategies.base import Bar, BaseStrategy, Order, PortfolioSnapshot
+from data_sync_service.testback.strategies.base import Bar, BaseStrategy, Order, PortfolioSnapshot, ScoreConfig
 
 
 class WatchlistTrendV4Strategy(BaseStrategy):
     # V4 strategy: position smoothing via 3 tranches, keep strong and cut weak.
     name = "watchlist_trend_v4"
     use_full_bars = True
+
+    @classmethod
+    def default_score_config(cls) -> ScoreConfig:
+        return ScoreConfig()
 
     def __init__(self, fast_window: int = 5, mid_window: int = 20, slow_window: int = 30) -> None:
         self.fast_window = max(2, int(fast_window))

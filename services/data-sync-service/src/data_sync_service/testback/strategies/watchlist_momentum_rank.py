@@ -4,7 +4,7 @@ from typing import Deque, Dict, List
 
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.trendok import _ema, _macd, _rsi
-from data_sync_service.testback.strategies.base import Bar, BaseStrategy, Order, PortfolioSnapshot
+from data_sync_service.testback.strategies.base import Bar, BaseStrategy, Order, PortfolioSnapshot, ScoreConfig
 
 
 class WatchlistMomentumRankStrategy(BaseStrategy):
@@ -15,6 +15,10 @@ class WatchlistMomentumRankStrategy(BaseStrategy):
     name = "watchlist_momentum_rank"
     use_full_bars = True
     top_k = 50
+
+    @classmethod
+    def default_score_config(cls) -> ScoreConfig:
+        return ScoreConfig()
 
     def __init__(
         self,

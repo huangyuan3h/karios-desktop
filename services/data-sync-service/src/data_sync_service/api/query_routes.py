@@ -20,13 +20,8 @@ from data_sync_service.service.watchlist_momentum_alerts import (
     compute_watchlist_momentum_plan,
 )
 from data_sync_service.db.index_daily import fetch_index_daily
-from data_sync_service.testback.engine import (
-    BacktestParams as EngineParams,
-    DailyRuleFilter as EngineRules,
-    ScoreConfig as EngineScore,
-    UniverseFilter as EngineUniverse,
-    run_backtest,
-)
+from data_sync_service.testback.engine import BacktestParams as EngineParams, DailyRuleFilter as EngineRules, UniverseFilter as EngineUniverse, run_backtest
+from data_sync_service.testback.strategies.base import ScoreConfig as EngineScore
 from data_sync_service.testback.strategies import get_strategy_class
 from data_sync_service.testback.db import (
     fetch_run as fetch_backtest_run,

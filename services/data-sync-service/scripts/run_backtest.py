@@ -4,13 +4,8 @@ import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 
-from data_sync_service.testback.engine import (
-    BacktestParams,
-    DailyRuleFilter,
-    ScoreConfig,
-    UniverseFilter,
-    run_backtest,
-)
+from data_sync_service.testback.engine import BacktestParams, DailyRuleFilter, UniverseFilter, run_backtest
+from data_sync_service.testback.strategies.base import ScoreConfig
 from data_sync_service.testback.strategies import get_strategy_class
 
 
