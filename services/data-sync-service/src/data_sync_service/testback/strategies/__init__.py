@@ -3,10 +3,12 @@ from __future__ import annotations
 from typing import Type
 
 from .base import BaseStrategy
+from .watchlist_relvol_momentum_v1 import WatchlistRelVolumeMomentumV2Strategy
 from .watchlist_trend_v8 import WatchlistTrendV8Strategy
 from .watchlist_trend_v9 import WatchlistTrendV9Strategy
 
 STRATEGY_REGISTRY: dict[str, Type[BaseStrategy]] = {
+    WatchlistRelVolumeMomentumV2Strategy.name: WatchlistRelVolumeMomentumV2Strategy,
     WatchlistTrendV8Strategy.name: WatchlistTrendV8Strategy,
     WatchlistTrendV9Strategy.name: WatchlistTrendV9Strategy,
 }
