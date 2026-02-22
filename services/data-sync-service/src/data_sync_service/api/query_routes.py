@@ -19,7 +19,6 @@ from data_sync_service.service.watchlist_momentum_alerts import (
     compute_watchlist_momentum_alerts,
     compute_watchlist_momentum_plan,
 )
-from data_sync_service.service.watchlist_momentum_rank_snapshot import compute_watchlist_momentum_rank_snapshot
 from data_sync_service.db.index_daily import fetch_index_daily
 from data_sync_service.testback.engine import BacktestParams as EngineParams, DailyRuleFilter as EngineRules, UniverseFilter as EngineUniverse, run_backtest
 from data_sync_service.testback.strategies.base import ScoreConfig as EngineScore
@@ -406,12 +405,6 @@ def watchlist_momentum_alerts_endpoint(req: WatchlistAlertsRequest, realtime: bo
 def watchlist_momentum_plan_endpoint(req: WatchlistAlertsRequest, realtime: bool = False) -> dict:
     items = [x.model_dump() for x in (req.items or [])]
     return compute_watchlist_momentum_plan(items, bool(realtime))  # type: ignore[call-arg]
-
-
-@router.post("/market/stocks/watchlist/momentum-rank-snapshot")
-def watchlist_momentum_rank_snapshot_endpoint(req: WatchlistAlertsRequest) -> dict:
-    items = [x.model_dump() for x in (req.items or [])]
-    return compute_watchlist_momentum_rank_snapshot(items)
 
 
 @router.post("/backtest/run")

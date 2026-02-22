@@ -82,7 +82,7 @@ type RunFormState = {
 };
 
 const defaultForm: RunFormState = {
-  strategy: 'watchlist_trend_v6',
+  strategy: 'watchlist_trend_v6_5',
   start_date: '2023-02-01',
   end_date: '2026-01-01',
   initial_cash: '100',
@@ -97,14 +97,6 @@ const defaultForm: RunFormState = {
 };
 
 const STRATEGY_OPTIONS = [
-  { value: 'watchlist_trend_v3', label: 'Watchlist趋势V3' },
-  { value: 'watchlist_trend_v4', label: 'Watchlist趋势V4' },
-  { value: 'watchlist_trend_v5', label: 'Watchlist趋势V5' },
-  { value: 'watchlist_trend_v5_1', label: 'Watchlist趋势V5.1' },
-  { value: 'watchlist_trend_v6', label: 'Watchlist趋势V6' },
-  { value: 'watchlist_momentum_rank', label: '动能排名' },
-  { value: 'watchlist_trend_v6_3', label: 'Watchlist趋势V6.3' },
-  { value: 'watchlist_trend_v6_4', label: 'Watchlist趋势V6.4(集中/止损)' },
   { value: 'watchlist_trend_v6_5', label: 'Watchlist趋势V6.5(低换手/风控)' },
 ];
 
@@ -424,7 +416,7 @@ export function BacktestPage() {
           }))
           .filter((x) => x.date && Number.isFinite(x.close) && x.close > 0);
         setIndexSeries(series);
-      } catch (e) {
+      } catch {
         setIndexSeries([]);
       }
     }
