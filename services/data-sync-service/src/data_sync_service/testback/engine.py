@@ -368,8 +368,32 @@ def run_backtest(
                 if o.ts_code:
                     order_by_code[o.ts_code] = o
             if use_full:
+                # When the strategy sees full bars, it may emit sell/stop orders for existing holdings
+                # that are no longer in today's selected universe due to scoring/rules. We must allow
+                # those sells to go through, otherwise positions can become "stuck" and stops can't work.
                 selected_codes = set(ordered_selected.keys())
-                order_by_code = {code: o for code, o in order_by_code.items() if code in selected_codes}
+                filtered: Dict[str, Order] = {}
+                for code, o in order_by_code.items():
+                    if code in selected_codes:
+                        filtered[code] = o
+                        continue
+                    current_qty = positions.get(code, 0.0)
+                    if current_qty <= 0:
+                        continue
+                    bar_opt = bars_signal.get(code)
+                    if bar_opt is None:
+                        continue
+                    intended_action = (o.action or "").lower().strip()
+                    if o.target_pct is not None:
+                        target_pct = min(max(o.target_pct, 0.0), 1.0)
+                        desired_qty = (equity * target_pct) / max(bar_opt.avg_price, 0.000001)
+                        if desired_qty < current_qty:
+                            intended_action = "sell"
+                        elif desired_qty > current_qty:
+                            intended_action = "buy"
+                    if intended_action == "sell":
+                        filtered[code] = o
+                order_by_code = filtered
             day_orders: list[dict[str, Any]] = []
             ordered_codes: list[tuple[int, str]] = []
             for code, order in order_by_code.items():

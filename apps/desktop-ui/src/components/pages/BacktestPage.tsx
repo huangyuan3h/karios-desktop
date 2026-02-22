@@ -104,6 +104,8 @@ const STRATEGY_OPTIONS = [
   { value: 'watchlist_trend_v6', label: 'Watchlist趋势V6' },
   { value: 'watchlist_momentum_rank', label: '动能排名' },
   { value: 'watchlist_trend_v6_3', label: 'Watchlist趋势V6.3' },
+  { value: 'watchlist_trend_v6_4', label: 'Watchlist趋势V6.4(集中/止损)' },
+  { value: 'watchlist_trend_v6_5', label: 'Watchlist趋势V6.5(低换手/风控)' },
 ];
 
 async function apiGetJson<T>(path: string): Promise<T> {
