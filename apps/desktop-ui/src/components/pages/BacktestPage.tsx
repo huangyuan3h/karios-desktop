@@ -82,7 +82,7 @@ type RunFormState = {
 };
 
 const defaultForm: RunFormState = {
-  strategy: 'watchlist_trend_v6_5',
+  strategy: 'watchlist_trend_v8',
   start_date: '2023-02-01',
   end_date: '2026-01-01',
   initial_cash: '100',
@@ -97,7 +97,8 @@ const defaultForm: RunFormState = {
 };
 
 const STRATEGY_OPTIONS = [
-  { value: 'watchlist_trend_v6_5', label: 'Watchlist趋势V6.5(低换手/风控)' },
+  { value: 'watchlist_trend_v8', label: 'Watchlist趋势V8(收敛突破/趋势质量)' },
+  { value: 'watchlist_trend_v9', label: 'Watchlist趋势V9(质量优先/收敛突破)' },
 ];
 
 async function apiGetJson<T>(path: string): Promise<T> {
