@@ -97,9 +97,8 @@ const defaultForm: RunFormState = {
 };
 
 const STRATEGY_OPTIONS = [
-  { value: 'watchlist_relvol_momentum_v2', label: 'RelVol动量V2(异动/回踩)' },
+  { value: 'alpha_hunter_v1', label: 'AlphaHunter V1' },
   { value: 'watchlist_trend_v8', label: 'Watchlist趋势V8(收敛突破/趋势质量)' },
-  { value: 'watchlist_trend_v9', label: 'Watchlist趋势V9(质量优先/收敛突破)' },
 ];
 
 async function apiGetJson<T>(path: string): Promise<T> {

@@ -371,6 +371,7 @@ def run_backtest(
                 # When the strategy sees full bars, it may emit sell/stop orders for existing holdings
                 # that are no longer in today's selected universe due to scoring/rules. We must allow
                 # those sells to go through, otherwise positions can become "stuck" and stops can't work.
+                allow_buy_outside_selected = bool(getattr(strategy, "allow_buy_outside_selected", False))
                 selected_codes = set(ordered_selected.keys())
                 filtered: Dict[str, Order] = {}
                 for code, o in order_by_code.items():
@@ -379,7 +380,9 @@ def run_backtest(
                         continue
                     current_qty = positions.get(code, 0.0)
                     if current_qty <= 0:
-                        continue
+                        # Only allow new buys outside the selected universe when explicitly enabled.
+                        if not allow_buy_outside_selected:
+                            continue
                     bar_opt = bars_signal.get(code)
                     if bar_opt is None:
                         continue
@@ -393,6 +396,9 @@ def run_backtest(
                             intended_action = "buy"
                     if intended_action == "sell":
                         filtered[code] = o
+                    elif intended_action == "buy" and allow_buy_outside_selected:
+                        if _apply_daily_rules(bar_opt, daily_rules):
+                            filtered[code] = o
                 order_by_code = filtered
             day_orders: list[dict[str, Any]] = []
             ordered_codes: list[tuple[int, str]] = []
