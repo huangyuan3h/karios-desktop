@@ -70,6 +70,12 @@ function formatVol(v: string): string {
   return n.toLocaleString();
 }
 
+function parseVol(v: string | null | undefined): number | null {
+  if (v == null) return null;
+  const n = parseFloat(String(v).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
 const DEFAULT_START_DATE = '2023-02-01';
 const DEFAULT_END_DATE = '2026-01-01';
 const WAN = 10_000; // 1 万 = 10000 元
@@ -100,6 +106,8 @@ export function SimTradePage() {
   const [filterPriceMax, setFilterPriceMax] = React.useState<string>('');
   const [filterChangeMin, setFilterChangeMin] = React.useState<string>('');
   const [filterChangeMax, setFilterChangeMax] = React.useState<string>('');
+  const [filterVolMin, setFilterVolMin] = React.useState<string>('');
+  const [filterVolMax, setFilterVolMax] = React.useState<string>('');
 
   const [indexData, setIndexData] = React.useState<IndexBar[]>([]);
   const [indexCandleData, setIndexCandleData] = React.useState<Record<string, OHLCV[]>>({});
@@ -428,6 +436,8 @@ export function SimTradePage() {
     const items = stockList?.items ?? [];
     const q = stockQ.trim().toLowerCase();
     return items.filter((it) => {
+      const nameUpper = String(it.name || '').toUpperCase();
+      if (nameUpper.includes('ST')) return false;
       if (stockMarket !== 'ALL') {
         if (stockMarket === 'CN') {
           const cnMarkets = ['主板', '中小板', '创业板', '科创板', 'CN'];
@@ -444,6 +454,7 @@ export function SimTradePage() {
       }
       const pct = it.changePct != null ? parseFloat(String(it.changePct).replace('%', '')) : null;
       const price = it.price != null ? parseFloat(String(it.price)) : null;
+      const vol = parseVol(it.volume);
       if (filterChange === 'up' && (pct == null || pct < 0)) return false;
       if (filterChange === 'down' && (pct == null || pct >= 0)) return false;
       if (filterPriceMin.trim() !== '') {
@@ -462,6 +473,14 @@ export function SimTradePage() {
         const max = parseFloat(filterChangeMax);
         if (!Number.isFinite(max) || pct == null || pct > max) return false;
       }
+      if (filterVolMin.trim() !== '') {
+        const min = parseFloat(filterVolMin);
+        if (!Number.isFinite(min) || vol == null || vol < min) return false;
+      }
+      if (filterVolMax.trim() !== '') {
+        const max = parseFloat(filterVolMax);
+        if (!Number.isFinite(max) || vol == null || vol > max) return false;
+      }
       return true;
     });
   }, [
@@ -473,6 +492,8 @@ export function SimTradePage() {
     filterPriceMax,
     filterChangeMin,
     filterChangeMax,
+    filterVolMin,
+    filterVolMax,
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filteredStockItems.length / stockPageSize));
@@ -747,6 +768,30 @@ export function SimTradePage() {
                 value={filterPriceMax}
                 onChange={(e) => {
                   setFilterPriceMax(e.target.value);
+                  setStockPage(0);
+                }}
+              />
+              <span className="ml-1 text-[var(--k-muted)]">成交量</span>
+              <input
+                type="number"
+                step={1}
+                className="h-6 w-20 rounded border border-[var(--k-border)] bg-[var(--k-bg)] px-1.5 text-xs"
+                placeholder="vol min"
+                value={filterVolMin}
+                onChange={(e) => {
+                  setFilterVolMin(e.target.value);
+                  setStockPage(0);
+                }}
+              />
+              <span className="text-[var(--k-muted)]">~</span>
+              <input
+                type="number"
+                step={1}
+                className="h-6 w-20 rounded border border-[var(--k-border)] bg-[var(--k-bg)] px-1.5 text-xs"
+                placeholder="vol max"
+                value={filterVolMax}
+                onChange={(e) => {
+                  setFilterVolMax(e.target.value);
                   setStockPage(0);
                 }}
               />
