@@ -23,6 +23,8 @@ type MarketStockRow = {
   name: string;
   price: string | null;
   changePct: string | null;
+  volume: string | null;
+  turnover: string | null;
 };
 
 type MarketStocksResponse = {
@@ -60,6 +62,14 @@ function roundDownTo100(n: number): number {
   return Math.max(0, Math.floor(n / 100) * 100);
 }
 
+function formatVol(v: string): string {
+  const n = parseFloat(String(v).replace(/,/g, ''));
+  if (!Number.isFinite(n)) return '—';
+  if (n >= 1e8) return (n / 1e8).toFixed(2) + '亿';
+  if (n >= 1e4) return (n / 1e4).toFixed(2) + '万';
+  return n.toLocaleString();
+}
+
 const DEFAULT_START_DATE = '2023-02-01';
 const DEFAULT_END_DATE = '2026-01-01';
 const WAN = 10_000; // 1 万 = 10000 元
@@ -83,8 +93,13 @@ export function SimTradePage() {
   const [stockList, setStockList] = React.useState<MarketStocksResponse | null>(null);
   const [stockQ, setStockQ] = React.useState('');
   const [stockMarket, setStockMarket] = React.useState<'ALL' | 'CN' | 'HK'>('CN');
-  const [stockOffset, setStockOffset] = React.useState(0);
-  const stockLimit = 50;
+  const [stockPage, setStockPage] = React.useState(0);
+  const stockPageSize = 50;
+  const [filterChange, setFilterChange] = React.useState<'all' | 'up' | 'down'>('all');
+  const [filterPriceMin, setFilterPriceMin] = React.useState<string>('');
+  const [filterPriceMax, setFilterPriceMax] = React.useState<string>('');
+  const [filterChangeMin, setFilterChangeMin] = React.useState<string>('');
+  const [filterChangeMax, setFilterChangeMax] = React.useState<string>('');
 
   const [indexData, setIndexData] = React.useState<IndexBar[]>([]);
   const [indexCandleData, setIndexCandleData] = React.useState<Record<string, OHLCV[]>>({});
@@ -123,17 +138,23 @@ export function SimTradePage() {
   const fetchStockList = React.useCallback(async () => {
     setError(null);
     try {
-      const data = await apiGetJson<MarketStocksResponse>(
-        `/market/stocks?limit=${stockLimit}&offset=${stockOffset}` +
-          `${stockMarket !== 'ALL' ? `&market=${stockMarket}` : ''}` +
-          `${stockQ.trim() ? `&q=${encodeURIComponent(stockQ.trim())}` : ''}`,
-      );
-      setStockList(data);
+      const all: MarketStockRow[] = [];
+      const limit = 200;
+      let offset = 0;
+      let total = 0;
+      while (true) {
+        const data = await apiGetJson<MarketStocksResponse>(`/market/stocks?limit=${limit}&offset=${offset}`);
+        all.push(...(data.items ?? []));
+        total = Number.isFinite(data.total) ? data.total : all.length;
+        offset += limit;
+        if (all.length >= total || (data.items?.length ?? 0) < limit) break;
+      }
+      setStockList({ items: all, total: all.length, offset: 0, limit: all.length });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setStockList(null);
     }
-  }, [stockLimit, stockOffset, stockMarket, stockQ]);
+  }, []);
 
   const fetchIndexForDate = React.useCallback(async (dateStr: string) => {
     setError(null);
@@ -175,7 +196,7 @@ export function SimTradePage() {
     let cancelled = false;
     const next: Record<string, OHLCV[]> = {};
     Promise.all(
-      INDEX_CODES.map(async ({ ts_code, name }) => {
+      INDEX_CODES.map(async ({ ts_code }) => {
         try {
           const list = await apiGetJson<
             Array<{ trade_date?: string; open?: number; high?: number; low?: number; close?: number; vol?: number }>
@@ -264,7 +285,7 @@ export function SimTradePage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedStocks.join(',')]);
+  }, [selectedStocks]);
 
   async function handleStartSim() {
     if (!startDate || !endDate || startDate > endDate) {
@@ -298,7 +319,7 @@ export function SimTradePage() {
     setError(null);
     try {
       let newCash = cash;
-      let newPositions = new Map(positions);
+      const newPositions = new Map(positions);
 
       if (symbolsToFetch.length > 0) {
         const res = await apiGetJson<{ bars: Record<string, DailyBar[]> }>(
@@ -403,6 +424,64 @@ export function SimTradePage() {
 
   const positionSymbols = Array.from(positions.keys());
 
+  const filteredStockItems = React.useMemo(() => {
+    const items = stockList?.items ?? [];
+    const q = stockQ.trim().toLowerCase();
+    return items.filter((it) => {
+      if (stockMarket !== 'ALL') {
+        if (stockMarket === 'CN') {
+          const cnMarkets = ['主板', '中小板', '创业板', '科创板', 'CN'];
+          if (!cnMarkets.includes(it.market)) return false;
+        } else if (stockMarket === 'HK') {
+          if (it.market !== 'HK') return false;
+        } else if (it.market !== stockMarket) {
+          return false;
+        }
+      }
+      if (q) {
+        const hay = `${it.ticker} ${it.name}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      const pct = it.changePct != null ? parseFloat(String(it.changePct).replace('%', '')) : null;
+      const price = it.price != null ? parseFloat(String(it.price)) : null;
+      if (filterChange === 'up' && (pct == null || pct < 0)) return false;
+      if (filterChange === 'down' && (pct == null || pct >= 0)) return false;
+      if (filterPriceMin.trim() !== '') {
+        const min = parseFloat(filterPriceMin);
+        if (!Number.isFinite(min) || price == null || price < min) return false;
+      }
+      if (filterPriceMax.trim() !== '') {
+        const max = parseFloat(filterPriceMax);
+        if (!Number.isFinite(max) || price == null || price > max) return false;
+      }
+      if (filterChangeMin.trim() !== '') {
+        const min = parseFloat(filterChangeMin);
+        if (!Number.isFinite(min) || pct == null || pct < min) return false;
+      }
+      if (filterChangeMax.trim() !== '') {
+        const max = parseFloat(filterChangeMax);
+        if (!Number.isFinite(max) || pct == null || pct > max) return false;
+      }
+      return true;
+    });
+  }, [
+    stockList?.items,
+    stockMarket,
+    stockQ,
+    filterChange,
+    filterPriceMin,
+    filterPriceMax,
+    filterChangeMin,
+    filterChangeMax,
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredStockItems.length / stockPageSize));
+  const currentPage = Math.min(stockPage, totalPages - 1);
+  const pagedStockItems = React.useMemo(() => {
+    const start = currentPage * stockPageSize;
+    return filteredStockItems.slice(start, start + stockPageSize);
+  }, [filteredStockItems, currentPage, stockPageSize]);
+
   return (
     <div className="flex h-full flex-col gap-3 p-4 overflow-hidden">
       {error ? (
@@ -504,8 +583,62 @@ export function SimTradePage() {
         ) : null}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-12">
+      <div className="mt-3 shrink-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+        <div className="mb-2 text-sm font-medium">持仓与收益</div>
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="text-xs">
+            <span className="text-[var(--k-muted)]">现金 </span>
+            <span className="font-mono font-semibold">{cash.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div className="text-xs">
+            <span className="text-[var(--k-muted)]">持仓市值 </span>
+            <span className="font-mono font-semibold">{marketValue.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div className="text-xs">
+            <span className="text-[var(--k-muted)]">总资产 </span>
+            <span className="font-mono font-semibold">{totalEquity.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div className="text-xs">
+            <span className="text-[var(--k-muted)]">收益率 </span>
+            <span className={`font-mono font-semibold ${yieldPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {yieldPct >= 0 ? '+' : ''}
+              {yieldPct.toFixed(2)}%
+            </span>
+          </div>
+        </div>
+        {positionSymbols.length > 0 ? (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[var(--k-muted)]">
+                  <th className="px-2 py-1">标的</th>
+                  <th className="px-2 py-1 text-right">数量</th>
+                  <th className="px-2 py-1 text-right">成本</th>
+                  <th className="px-2 py-1 text-right">市值</th>
+                </tr>
+              </thead>
+              <tbody>
+                {positionSymbols.map((sym) => {
+                  const pos = positions.get(sym)!;
+                  const mv = pos.qty * pos.cost;
+                  return (
+                    <tr key={sym} className="border-t border-[var(--k-border)]">
+                      <td className="px-2 py-1 font-mono">{sym}</td>
+                      <td className="px-2 py-1 text-right">{pos.qty}</td>
+                      <td className="px-2 py-1 text-right">{pos.cost.toFixed(2)}</td>
+                      <td className="px-2 py-1 text-right">{mv.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="grid min-h-0 grid-cols-1 gap-3 lg:grid-cols-12">
         <div className="flex flex-col rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] lg:col-span-4">
           <div className="border-b border-[var(--k-border)] px-3 py-2 text-sm font-medium">股票列表</div>
           {INDEX_CODES.map(({ ts_code, name }) => {
@@ -520,34 +653,103 @@ export function SimTradePage() {
               </div>
             );
           })}
-          <div className="flex flex-wrap gap-2 p-2">
-            <div className="relative flex-1 min-w-[120px]">
-              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--k-muted)]" />
-              <input
-                className="h-8 w-full rounded border border-[var(--k-border)] bg-[var(--k-bg)] pl-8 pr-2 text-xs"
-                placeholder="代码/名称..."
-                value={stockQ}
+          <div className="space-y-2 border-b border-[var(--k-border)] p-2">
+            <div className="text-xs font-medium text-[var(--k-muted)]">筛选</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[100px]">
+                <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--k-muted)]" />
+                <input
+                  className="h-7 w-full rounded border border-[var(--k-border)] bg-[var(--k-bg)] pl-7 pr-2 text-xs"
+                  placeholder="代码/名称"
+                  value={stockQ}
                 onChange={(e) => {
-                  setStockQ(e.target.value);
-                  setStockOffset(0);
+                    setStockQ(e.target.value);
+                    setStockPage(0);
+                  }}
+                />
+              </div>
+              <div className="flex gap-0.5">
+                {(['ALL', 'CN', 'HK'] as const).map((m) => (
+                  <Button
+                    key={m}
+                    variant={stockMarket === m ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      setStockMarket(m);
+                      setStockPage(0);
+                    }}
+                  >
+                    {m}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-[var(--k-muted)]">涨跌</span>
+              <div className="flex gap-0.5">
+                {(['all', 'up', 'down'] as const).map((x) => (
+                  <Button
+                    key={x}
+                    variant={filterChange === x ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => {
+                      setFilterChange(x);
+                      setStockPage(0);
+                    }}
+                  >
+                    {x === 'all' ? '全部' : x === 'up' ? '涨' : '跌'}
+                  </Button>
+                ))}
+              </div>
+              <input
+                type="number"
+                step={0.1}
+                className="h-6 w-16 rounded border border-[var(--k-border)] bg-[var(--k-bg)] px-1.5 text-xs"
+                placeholder="涨%min"
+                value={filterChangeMin}
+                onChange={(e) => {
+                  setFilterChangeMin(e.target.value);
+                  setStockPage(0);
                 }}
               />
-            </div>
-            <div className="flex gap-1">
-              {(['ALL', 'CN', 'HK'] as const).map((m) => (
-                <Button
-                  key={m}
-                  variant={stockMarket === m ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() => {
-                    setStockMarket(m);
-                    setStockOffset(0);
-                  }}
-                >
-                  {m}
-                </Button>
-              ))}
+              <span className="text-[var(--k-muted)]">~</span>
+              <input
+                type="number"
+                step={0.1}
+                className="h-6 w-16 rounded border border-[var(--k-border)] bg-[var(--k-bg)] px-1.5 text-xs"
+                placeholder="涨%max"
+                value={filterChangeMax}
+                onChange={(e) => {
+                  setFilterChangeMax(e.target.value);
+                  setStockPage(0);
+                }}
+              />
+              <span className="ml-1 text-[var(--k-muted)]">价格</span>
+              <input
+                type="number"
+                step={0.01}
+                className="h-6 w-16 rounded border border-[var(--k-border)] bg-[var(--k-bg)] px-1.5 text-xs"
+                placeholder="min"
+                value={filterPriceMin}
+                onChange={(e) => {
+                  setFilterPriceMin(e.target.value);
+                  setStockPage(0);
+                }}
+              />
+              <span className="text-[var(--k-muted)]">~</span>
+              <input
+                type="number"
+                step={0.01}
+                className="h-6 w-16 rounded border border-[var(--k-border)] bg-[var(--k-bg)] px-1.5 text-xs"
+                placeholder="max"
+                value={filterPriceMax}
+                onChange={(e) => {
+                  setFilterPriceMax(e.target.value);
+                  setStockPage(0);
+                }}
+              />
             </div>
           </div>
           <div className="flex-1 overflow-auto">
@@ -556,16 +758,34 @@ export function SimTradePage() {
                 <tr>
                   <th className="px-2 py-1.5 text-left font-medium text-[var(--k-muted)]">代码</th>
                   <th className="px-2 py-1.5 text-left font-medium text-[var(--k-muted)]">名称</th>
+                  <th className="px-2 py-1.5 text-right font-medium text-[var(--k-muted)]">涨跌</th>
+                  <th className="px-2 py-1.5 text-right font-medium text-[var(--k-muted)]">成交量</th>
+                  <th className="px-2 py-1.5 text-right font-medium text-[var(--k-muted)]">相对量</th>
                   <th className="px-2 py-1.5 text-right font-medium text-[var(--k-muted)]">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {(stockList?.items ?? []).map((it) => (
+                {pagedStockItems.map((it) => {
+                  const pct = it.changePct != null ? String(it.changePct) : '—';
+                  const volStr = it.volume != null && it.volume !== '' ? formatVol(it.volume) : '—';
+                  const relVol = '—';
+                  return (
                   <tr key={it.symbol} className="border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)]">
                     <td className="px-2 py-1 font-mono">{it.ticker}</td>
-                    <td className="max-w-[80px] truncate px-2 py-1" title={it.name}>
+                    <td className="max-w-[72px] truncate px-2 py-1" title={it.name}>
                       {it.name}
                     </td>
+                    <td className="px-2 py-1 text-right font-mono">
+                      {pct !== '—' ? (
+                        <span className={parseFloat(pct.replace('%', '')) >= 0 ? 'text-green-600' : 'text-red-600'}>
+                          {pct}
+                        </span>
+                      ) : (
+                        pct
+                      )}
+                    </td>
+                    <td className="px-2 py-1 text-right font-mono">{volStr}</td>
+                    <td className="px-2 py-1 text-right font-mono text-[var(--k-muted)]">{relVol}</td>
                     <td className="px-2 py-1 text-right">
                       <Button
                         variant="secondary"
@@ -578,20 +798,28 @@ export function SimTradePage() {
                       </Button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
+                {filteredStockItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-2 py-4 text-center text-xs text-[var(--k-muted)]">
+                      无匹配结果
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
           <div className="flex items-center justify-between border-t border-[var(--k-border)] px-2 py-1.5">
             <span className="text-xs text-[var(--k-muted)]">
-              {stockList?.total ?? 0} 只
-              {stockOffset > 0 ? (
-                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setStockOffset((o) => Math.max(0, o - stockLimit))}>
+              {filteredStockItems.length} / {stockList?.total ?? 0} 只 · Page {currentPage + 1}/{totalPages}
+              {currentPage > 0 ? (
+                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setStockPage((p) => Math.max(0, p - 1))}>
                   Prev
                 </Button>
               ) : null}
-              {stockOffset + stockLimit < (stockList?.total ?? 0) ? (
-                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setStockOffset((o) => o + stockLimit)}>
+              {currentPage + 1 < totalPages ? (
+                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setStockPage((p) => Math.min(totalPages - 1, p + 1))}>
                   Next
                 </Button>
               ) : null}
@@ -743,59 +971,7 @@ export function SimTradePage() {
           </div>
         </div>
         </div>
-
-        <div className="sticky bottom-0 z-10 mt-3 shrink-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 shadow-[0_-2px 8px rgba(0,0,0,0.06)]">
-        <div className="mb-2 text-sm font-medium">持仓与收益</div>
-        <div className="flex flex-wrap items-center gap-6">
-          <div className="text-xs">
-            <span className="text-[var(--k-muted)]">现金 </span>
-            <span className="font-mono font-semibold">{cash.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
-          </div>
-          <div className="text-xs">
-            <span className="text-[var(--k-muted)]">持仓市值 </span>
-            <span className="font-mono font-semibold">{marketValue.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
-          </div>
-          <div className="text-xs">
-            <span className="text-[var(--k-muted)]">总资产 </span>
-            <span className="font-mono font-semibold">{totalEquity.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</span>
-          </div>
-          <div className="text-xs">
-            <span className="text-[var(--k-muted)]">收益率 </span>
-            <span className={`font-mono font-semibold ${yieldPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {yieldPct >= 0 ? '+' : ''}
-              {yieldPct.toFixed(2)}%
-            </span>
-          </div>
-        </div>
-        {positionSymbols.length > 0 ? (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-[var(--k-muted)]">
-                  <th className="px-2 py-1">标的</th>
-                  <th className="px-2 py-1 text-right">数量</th>
-                  <th className="px-2 py-1 text-right">成本</th>
-                  <th className="px-2 py-1 text-right">市值</th>
-                </tr>
-              </thead>
-              <tbody>
-                {positionSymbols.map((sym) => {
-                  const pos = positions.get(sym)!;
-                  const mv = pos.qty * pos.cost;
-                  return (
-                    <tr key={sym} className="border-t border-[var(--k-border)]">
-                      <td className="px-2 py-1 font-mono">{sym}</td>
-                      <td className="px-2 py-1 text-right">{pos.qty}</td>
-                      <td className="px-2 py-1 text-right">{pos.cost.toFixed(2)}</td>
-                      <td className="px-2 py-1 text-right">{mv.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-        </div>
+      </div>
       </div>
     </div>
   );
