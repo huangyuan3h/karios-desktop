@@ -15,10 +15,7 @@ from data_sync_service.service.market_quotes import get_market_quotes_batch, sym
 from data_sync_service.service.stock_basic import get_stock_basic_list, get_stock_basic_sync_status
 from data_sync_service.service.trendok import compute_trendok_for_symbols
 from data_sync_service.service.watchlist_v5_alerts import compute_watchlist_v5_alerts, compute_watchlist_v5_plan
-from data_sync_service.service.watchlist_momentum_alerts import (
-    compute_watchlist_momentum_alerts,
-    compute_watchlist_momentum_plan,
-)
+from data_sync_service.service.watchlist_momentum_alerts import compute_watchlist_momentum_alerts
 from data_sync_service.db.index_daily import fetch_index_daily
 from data_sync_service.testback.engine import BacktestParams as EngineParams, DailyRuleFilter as EngineRules, UniverseFilter as EngineUniverse, run_backtest
 from data_sync_service.testback.strategies.base import ScoreConfig as EngineScore
@@ -399,12 +396,6 @@ def watchlist_v5_plan_endpoint(req: WatchlistAlertsRequest) -> dict:
 def watchlist_momentum_alerts_endpoint(req: WatchlistAlertsRequest, realtime: bool = False) -> list[dict]:
     items = [x.model_dump() for x in (req.items or [])]
     return compute_watchlist_momentum_alerts(items, bool(realtime))  # type: ignore[call-arg]
-
-
-@router.post("/market/stocks/watchlist/momentum-plan")
-def watchlist_momentum_plan_endpoint(req: WatchlistAlertsRequest, realtime: bool = False) -> dict:
-    items = [x.model_dump() for x in (req.items or [])]
-    return compute_watchlist_momentum_plan(items, bool(realtime))  # type: ignore[call-arg]
 
 
 @router.post("/backtest/run")

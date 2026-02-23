@@ -71,15 +71,6 @@ function fmtAmountCn(x: unknown): string {
   return `${n.toFixed(0)}`;
 }
 
-function fmtPerfLine(r: any): string {
-  const p = Number(r?.todayChangePct);
-  if (Number.isFinite(p)) {
-    const sign = p > 0 ? '+' : '';
-    return `${sign}${p.toFixed(2)}%`;
-  }
-  return '—';
-}
-
 function escapeMarkdownCell(x: unknown): string {
   const s0 = String(x ?? '');
   // Keep it single-line and avoid breaking Markdown table formatting.
@@ -97,11 +88,6 @@ function mdTable(headers: string[], rows: unknown[][]): string {
   out.push(mdRow(headers.map(() => '---')));
   for (const r of rows) out.push(mdRow(r));
   return out.join('\n');
-}
-
-function mdBool(v: boolean | null | undefined): string {
-  if (v == null) return '—';
-  return v ? '✅' : '❌';
 }
 
 function mdNum(v: number | null | undefined, digits = 2): string {
@@ -168,11 +154,48 @@ function buildIndexTrafficSummary(indexSignals: any[]): { title: string; detail:
   };
 }
 
-function mdScoreParts(parts: Record<string, number> | undefined): string[] {
-  if (!parts) return [];
-  const entries = Object.entries(parts).filter(([, v]) => typeof v === 'number' && Number.isFinite(v));
-  entries.sort((a, b) => Number(b[1]) - Number(a[1]));
-  return entries.map(([k, v]) => `- ${k}: ${v}`);
+const TREND_OK_CHECKS: Array<{ key: keyof TrendOkChecks; failText: string }> = [
+  { key: 'emaOrder', failText: 'EMA order broken (Close <= EMA20 or EMA20 <= EMA60)' },
+  { key: 'macdPositive', failText: 'MACD <= 0' },
+  { key: 'macdHistExpanding', failText: 'MACD hist <= 0' },
+  { key: 'closeNear20dHigh', failText: 'Close < 0.95 * High(20)' },
+  { key: 'rsiInRange', failText: 'RSI(14) out of 50..82' },
+  { key: 'volumeSurge', failText: 'AvgVol(5) < 0.9 * AvgVol(30)' },
+];
+
+function trendOkSummary(t?: TrendOkResult | null): string {
+  if (!t) return '—';
+  if (t.trendOk === true) return '✅';
+  const checks = t.checks ?? null;
+  if (!checks || typeof checks !== 'object') return t.trendOk === false ? '❌' : '—';
+  const failed: string[] = [];
+  for (const rule of TREND_OK_CHECKS) {
+    const val = (checks as TrendOkChecks)[rule.key];
+    if (val === false) failed.push(rule.failText);
+  }
+  if (failed.length) return failed.join('; ');
+  return t.trendOk === false ? '❌' : '—';
+}
+
+function trendOkRuleLines(): string[] {
+  return [
+    '- Close > EMA20 and EMA20 > EMA60',
+    '- MACD line > 0',
+    '- MACD histogram > 0',
+    '- Close >= 0.95 * High(20)',
+    '- RSI(14) in [50, 82]',
+    '- AvgVol(5) >= 0.9 * AvgVol(30)',
+  ];
+}
+
+function scoreRuleLines(): string[] {
+  return [
+    '- Deterministic 0–100 score (CN daily, no LLM).',
+    '- Subscores: EMA trend 25%, MACD strength 15%, breakout 25%, RSI 15%, volume 20%.',
+    '- Bonus: +3 when Close >= High(20).',
+    '- Penalties: high ATR/close (>3%) and Close < EMA20.',
+    '- Optional industry flow adjustment when available.',
+  ];
 }
 
 const WATCHLIST_STORAGE_KEY = 'karios.watchlist.v1';
@@ -187,6 +210,15 @@ type WatchlistItem = {
   maxPrice?: number | null;
 };
 
+type TrendOkChecks = {
+  emaOrder?: boolean | null;
+  macdPositive?: boolean | null;
+  macdHistExpanding?: boolean | null;
+  closeNear20dHigh?: boolean | null;
+  rsiInRange?: boolean | null;
+  volumeSurge?: boolean | null;
+};
+
 type TrendOkResult = {
   symbol: string;
   name?: string | null;
@@ -199,7 +231,7 @@ type TrendOkResult = {
   buyAction?: string | null;
   buyZoneLow?: number | null;
   buyZoneHigh?: number | null;
-  checks?: Record<string, unknown> | null;
+  checks?: TrendOkChecks | null;
   values?: Record<string, unknown> | null;
   missingData?: string[];
 };
@@ -609,26 +641,6 @@ export function DashboardPage({
     const syms = items.map((x) => x.symbol);
     const tradingTime = isShanghaiTradingTime();
     const todaySh = getShanghaiTodayIso();
-    const v5Plan = await apiPostJson<{
-      summary?: { regime?: string | null } | null;
-      rows?: Array<{
-        symbol: string;
-        action?: string | null;
-        sellOk?: boolean | null;
-        targetPct?: number | null;
-        reason?: string | null;
-      }> | null;
-    }>(`/market/stocks/watchlist/momentum-plan?realtime=${tradingTime ? 'true' : 'false'}`, {
-      items: items.map((it) => ({
-        symbol: it.symbol,
-        position_pct:
-          typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
-            ? Math.max(0, Math.min(100, it.positionPct)) / 100.0
-            : null,
-        entry_price: typeof it.costPrice === 'number' && Number.isFinite(it.costPrice) ? it.costPrice : null,
-        max_price: typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice) ? it.maxPrice : null,
-      })),
-    }).catch(() => null);
 
     // 1) TrendOK
     const trend: Record<string, TrendOkResult> = {};
@@ -722,20 +734,12 @@ export function DashboardPage({
     lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
     lines.push('');
 
-    if (v5Plan?.rows?.length) {
-      lines.push(`${heading} Signals (realtime on trading days)`);
-      lines.push('推荐基于 Watchlist Momentum Plan 策略（market regime + breakout checks）。');
-      if (v5Plan.summary?.regime) lines.push(`- regime: ${String(v5Plan.summary.regime)}`);
-      lines.push('');
-      const signalHeaders = ['Symbol', 'Action', 'Target%', 'Sell?', 'Reason'];
-      const signalRows: unknown[][] = [];
-      for (const r of v5Plan.rows) {
-        const targetPct = typeof r.targetPct === 'number' ? (r.targetPct * 100).toFixed(0) + '%' : '—';
-        signalRows.push([r.symbol, r.action ?? '—', targetPct, r.sellOk ? 'yes' : 'no', r.reason ?? '—']);
-      }
-      lines.push(mdTable(signalHeaders, signalRows));
-      lines.push('');
-    }
+    lines.push(`${heading}# TrendOK rules`);
+    lines.push(mdLines(trendOkRuleLines()));
+    lines.push('');
+    lines.push(`${heading}# Score rules`);
+    lines.push(mdLines(scoreRuleLines()));
+    lines.push('');
 
     const headers = [
       'Symbol',
@@ -768,7 +772,7 @@ export function DashboardPage({
         mdPrice(it.costPrice ?? null),
         mdPrice(it.maxPrice ?? null),
         mdScore(t?.score ?? null),
-        mdBool(t?.trendOk ?? null),
+        trendOkSummary(t),
         buy,
         mdPrice(typeof current === 'number' ? current : null),
         mdPrice(t?.stopLossPrice ?? null),
@@ -777,45 +781,6 @@ export function DashboardPage({
     }
     lines.push(mdTable(headers, rows));
     lines.push('');
-
-    for (const it of sorted) {
-      const t = trend[it.symbol];
-      const q = quotes[it.symbol];
-      const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
-      lines.push(`${heading}# ${escapeMarkdownCell(it.symbol)}${it.name ? ` ${escapeMarkdownCell(it.name)}` : ''}`);
-      if (it.color) lines.push(`- color: ${String(it.color)}`);
-      if (qDate) lines.push(`- quoteDate: ${qDate}`);
-      if (q?.tradeTime) lines.push(`- quoteTradeTime: ${String(q.tradeTime)}`);
-      if (typeof q?.price === 'number' && Number.isFinite(q.price)) lines.push(`- current(realtime): ${mdPrice(q.price)}`);
-      if (typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)) {
-        lines.push(`- positionPct: ${mdNum(it.positionPct, 1)}%`);
-      }
-      if (typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)) {
-        lines.push(`- costPrice: ${mdPrice(it.costPrice)}`);
-      }
-      if (typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice)) {
-        lines.push(`- maxPrice: ${mdPrice(it.maxPrice)}`);
-      }
-      lines.push(`- trendOk: ${mdBool(t?.trendOk ?? null)}`);
-      lines.push(`- score: ${mdScore(t?.score ?? null)}`);
-      if (t?.asOfDate) lines.push(`- asOfDate: ${String(t.asOfDate)}`);
-      if (t?.buyMode || t?.buyAction) lines.push(`- buy: ${String(t?.buyMode ?? '')} / ${String(t?.buyAction ?? '')}`);
-      if (typeof t?.stopLossPrice === 'number') lines.push(`- stopLossPrice: ${mdNum(t.stopLossPrice, 2)}`);
-
-      const parts = mdScoreParts(t?.scoreParts);
-      if (parts.length) {
-        lines.push('');
-        lines.push('Score parts:');
-        lines.push(mdLines(parts));
-      }
-
-      const missing = (t?.missingData ?? []).filter(Boolean);
-      if (missing.length) {
-        lines.push('');
-        lines.push(`Missing data: ${missing.map((x) => escapeMarkdownCell(String(x))).join(', ')}`);
-      }
-      lines.push('');
-    }
 
     return lines.join('\n').trim() + '\n';
   }

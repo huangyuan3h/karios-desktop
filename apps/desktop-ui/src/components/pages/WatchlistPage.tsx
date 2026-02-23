@@ -79,11 +79,48 @@ function VisibilitySection({
   );
 }
 
-function mdScoreParts(parts: Record<string, number> | undefined): string[] {
-  if (!parts) return [];
-  const entries = Object.entries(parts).filter(([, v]) => typeof v === 'number' && Number.isFinite(v));
-  entries.sort((a, b) => Number(b[1]) - Number(a[1]));
-  return entries.map(([k, v]) => `- ${k}: ${v}`);
+const TREND_OK_CHECKS: Array<{ key: keyof TrendOkChecks; failText: string }> = [
+  { key: 'emaOrder', failText: 'EMA order broken (Close <= EMA20 or EMA20 <= EMA60)' },
+  { key: 'macdPositive', failText: 'MACD <= 0' },
+  { key: 'macdHistExpanding', failText: 'MACD hist <= 0' },
+  { key: 'closeNear20dHigh', failText: 'Close < 0.95 * High(20)' },
+  { key: 'rsiInRange', failText: 'RSI(14) out of 50..82' },
+  { key: 'volumeSurge', failText: 'AvgVol(5) < 0.9 * AvgVol(30)' },
+];
+
+function trendOkSummary(t?: TrendOkResult | null): string {
+  if (!t) return '—';
+  if (t.trendOk === true) return '✅';
+  const checks = t.checks ?? null;
+  if (!checks || typeof checks !== 'object') return t.trendOk === false ? '❌' : '—';
+  const failed: string[] = [];
+  for (const rule of TREND_OK_CHECKS) {
+    const val = (checks as TrendOkChecks)[rule.key];
+    if (val === false) failed.push(rule.failText);
+  }
+  if (failed.length) return failed.join('; ');
+  return t.trendOk === false ? '❌' : '—';
+}
+
+function trendOkRuleLines(): string[] {
+  return [
+    '- Close > EMA20 and EMA20 > EMA60',
+    '- MACD line > 0',
+    '- MACD histogram > 0',
+    '- Close >= 0.95 * High(20)',
+    '- RSI(14) in [50, 82]',
+    '- AvgVol(5) >= 0.9 * AvgVol(30)',
+  ];
+}
+
+function scoreRuleLines(): string[] {
+  return [
+    '- Deterministic 0–100 score (CN daily, no LLM).',
+    '- Subscores: EMA trend 25%, MACD strength 15%, breakout 25%, RSI 15%, volume 20%.',
+    '- Bonus: +3 when Close >= High(20).',
+    '- Penalties: high ATR/close (>3%) and Close < EMA20.',
+    '- Optional industry flow adjustment when available.',
+  ];
 }
 
 type MarketStockBasicRow = {
@@ -155,32 +192,6 @@ type TrendOkResult = {
   checks?: TrendOkChecks;
   values?: TrendOkValues;
   missingData?: string[];
-};
-
-type V5PlanSummary = {
-  regime?: string | null;
-  totalCurrentPct?: number | null;
-  totalTargetPct?: number | null;
-};
-
-type V5PlanHolding = {
-  symbol: string;
-  action?: string | null;
-  currentPct?: number | null;
-  targetPct?: number | null;
-  reason?: string | null;
-};
-
-type V5PlanResponse = {
-  summary?: V5PlanSummary | null;
-  holdings?: V5PlanHolding[] | null;
-  rows?: Array<{
-    symbol: string;
-    action?: string | null;
-    sellOk?: boolean | null;
-    targetPct?: number | null;
-    reason?: string | null;
-  }> | null;
 };
 
 type ScreenerImportDebugState = {
@@ -419,7 +430,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   >({});
   const [trendBusy, setTrendBusy] = React.useState(false);
   const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
-  const [v5Plan, setV5Plan] = React.useState<V5PlanResponse | null>(null);
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [syncStage, setSyncStage] = React.useState<string | null>(null);
@@ -603,35 +613,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         }
         setTrend(next);
         setTrendUpdatedAt(new Date().toISOString());
-
-        try {
-          const payload = {
-            items: items.map((it) => ({
-              symbol: it.symbol,
-              position_pct:
-                typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
-                  ? Math.max(0, Math.min(100, it.positionPct)) / 100.0
-                  : null,
-              entry_price:
-                typeof it.costPrice === 'number' && Number.isFinite(it.costPrice) ? it.costPrice : null,
-              max_price:
-                typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice) ? it.maxPrice : null,
-            })),
-          };
-          const realtimeFlag = isShanghaiTradingTime() ? 'true' : 'false';
-          const plan = await apiPostJsonFrom<V5PlanResponse>(
-            DATA_SYNC_BASE_URL,
-            `/market/stocks/watchlist/momentum-plan?realtime=${realtimeFlag}`,
-            payload,
-          );
-          if (reqId === trendReqRef.current) {
-            setV5Plan(plan || null);
-          }
-        } catch {
-          if (reqId === trendReqRef.current) {
-            setV5Plan(null);
-          }
-        }
 
         // Best-effort realtime quotes (CN only) for the "Current" column.
         try {
@@ -1410,6 +1391,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
     lines.push('');
 
+    lines.push('### TrendOK rules');
+    lines.push(mdLines(trendOkRuleLines()));
+    lines.push('');
+    lines.push('### Score rules');
+    lines.push(mdLines(scoreRuleLines()));
+    lines.push('');
+
     // Summary table
     const headers = ['Symbol', 'Name', 'Score', 'TrendOK', 'Buy', 'Current', 'StopLoss', 'AsOfDate'];
     lines.push(`| ${headers.join(' | ')} |`);
@@ -1425,7 +1413,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         escapeMarkdownCell(it.symbol),
         escapeMarkdownCell(it.name || '—'),
         escapeMarkdownCell(mdScore(t?.score ?? null)),
-        escapeMarkdownCell(mdBool(t?.trendOk ?? null)),
+        escapeMarkdownCell(trendOkSummary(t)),
         escapeMarkdownCell(buy),
         escapeMarkdownCell(mdPrice(typeof current === 'number' ? current : null)),
         escapeMarkdownCell(mdPrice(t?.stopLossPrice ?? null)),
@@ -1434,55 +1422,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       lines.push(`| ${row.join(' | ')} |`);
     }
     lines.push('');
-
-    // Detailed blocks
-    for (const it of sortedItems) {
-      const t = trend[it.symbol];
-      const colorHex = (it.color || '#ffffff').trim().toLowerCase();
-      const colorLabel = FLAG_COLORS.find((c) => c.hex === colorHex)?.label ?? 'Custom';
-      const q = quotes[it.symbol];
-      const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
-
-      lines.push(`### ${escapeMarkdownCell(it.symbol)}${it.name ? ` ${escapeMarkdownCell(it.name)}` : ''}`);
-      lines.push(`- color: ${colorLabel} (${colorHex})`);
-      if (qDate) lines.push(`- quoteDate: ${qDate}`);
-      if (q?.tradeTime) lines.push(`- quoteTradeTime: ${String(q.tradeTime)}`);
-      if (typeof q?.price === 'number' && Number.isFinite(q.price)) lines.push(`- current(realtime): ${mdPrice(q.price)}`);
-      lines.push(`- trendOk: ${mdBool(t?.trendOk ?? null)}`);
-      lines.push(`- score: ${mdScore(t?.score ?? null)}`);
-      if (t?.asOfDate) lines.push(`- asOfDate: ${String(t.asOfDate)}`);
-      if (t?.buyMode || t?.buyAction) {
-        lines.push(`- buy: ${String(t.buyMode ?? '')} / ${String(t.buyAction ?? '')}`);
-      }
-      if (typeof t?.stopLossPrice === 'number') lines.push(`- stopLossPrice: ${mdNum(t.stopLossPrice, 2)}`);
-
-      const parts = mdScoreParts(t?.scoreParts);
-      if (parts.length) {
-        lines.push('');
-        lines.push('Score parts:');
-        lines.push(mdLines(parts));
-      }
-
-      const checks = t?.checks;
-      if (checks) {
-        lines.push('');
-        lines.push('TrendOK checks:');
-        lines.push(`- EMA order: ${mdBool(checks.emaOrder ?? null)}`);
-        lines.push(`- MACD positive: ${mdBool(checks.macdPositive ?? null)}`);
-        lines.push(`- MACD hist expanding: ${mdBool(checks.macdHistExpanding ?? null)}`);
-        lines.push(`- Close near 20D high: ${mdBool(checks.closeNear20dHigh ?? null)}`);
-        lines.push(`- RSI in range: ${mdBool(checks.rsiInRange ?? null)}`);
-        lines.push(`- Volume surge: ${mdBool(checks.volumeSurge ?? null)}`);
-      }
-
-      const missing = (t?.missingData ?? []).filter(Boolean);
-      if (missing.length) {
-        lines.push('');
-        lines.push(`Missing data: ${missing.map((x) => escapeMarkdownCell(String(x))).join(', ')}`);
-      }
-
-      lines.push('');
-    }
 
     const md = lines.join('\n').trim() + '\n';
     try {
@@ -1790,51 +1729,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           </Button>
         </div>
       </div>
-
-      {v5Plan?.rows?.length ? (
-        <div className="mb-6 rounded border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-xs">
-          <div className="mb-1 font-medium">Signals (realtime on trading days)</div>
-          <div className="mb-2 text-[var(--k-muted)]">
-            推荐基于 Watchlist Momentum Plan 策略（market regime + breakout checks）。
-          </div>
-          <div className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)]">
-            <table className="w-full border-collapse text-xs">
-              <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
-                <tr className="text-left">
-                  <th className="px-2 py-1">Symbol</th>
-                  <th className="px-2 py-1">名称</th>
-                  <th className="px-2 py-1">Action</th>
-                  <th className="px-2 py-1">Target%</th>
-                  <th className="px-2 py-1">Sell?</th>
-                  <th className="px-2 py-1">Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {v5Plan.rows
-                  .filter((r) => {
-                    const targetPct = typeof r.targetPct === 'number' ? r.targetPct : 0;
-                    return (r.action && r.action !== 'hold') || targetPct > 0;
-                  })
-                  .map((r) => {
-                    const name = nameBySymbol.get(r.symbol) ?? '—';
-                    return (
-                      <tr key={r.symbol} className="border-t border-[var(--k-border)]">
-                        <td className="px-2 py-1 font-mono">{r.symbol}</td>
-                        <td className="px-2 py-1">{name}</td>
-                        <td className="px-2 py-1 font-mono">{r.action ?? 'hold'}</td>
-                        <td className="px-2 py-1 font-mono">
-                          {typeof r.targetPct === 'number' ? `${(r.targetPct * 100).toFixed(0)}%` : '—'}
-                        </td>
-                        <td className="px-2 py-1 font-mono">{r.sellOk ? '✅' : '—'}</td>
-                        <td className="px-2 py-1 text-[var(--k-muted)]">{r.reason ?? '—'}</td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
 
       <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="mb-2 text-sm font-medium">Add</div>
