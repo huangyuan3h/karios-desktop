@@ -17,6 +17,7 @@ import { SettingsPage } from '@/components/pages/SettingsPage';
 import { StockPage } from '@/components/pages/StockPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
 import { BacktestPage } from '@/components/pages/BacktestPage';
+import { SimTradePage } from '@/components/pages/SimTradePage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
@@ -125,6 +126,8 @@ export function AppShell() {
                 ? 'Scheduler'
               : activePage === 'backtest'
                 ? 'Backtest'
+              : activePage === 'simtrade'
+                ? 'Sim Trade'
               : activePage === 'settings'
                 ? 'Settings'
                 : activePage}
@@ -207,6 +210,8 @@ export function AppShell() {
               <SchedulerPage />
             ) : activePage === 'backtest' ? (
               <BacktestPage />
+            ) : activePage === 'simtrade' ? (
+              <SimTradePage />
             ) : (
               <DashboardPage
                 onNavigate={(id) => setActivePage(id)}

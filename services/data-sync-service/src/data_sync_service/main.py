@@ -11,6 +11,7 @@ from .api.industry_flow_routes import router as industry_flow_router
 from .api.market_sentiment_routes import router as market_sentiment_router
 from .api.journal_routes import router as journal_router
 from .api.query_routes import router as query_router
+from .api.simtrade_routes import router as simtrade_router
 from .api.system_prompts_routes import router as system_prompts_router
 from .api.sync_routes import router as sync_router
 from .api.tv_chrome_routes import router as tv_chrome_router
@@ -35,6 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(query_router)
+app.include_router(simtrade_router)
 app.include_router(sync_router)
 app.include_router(system_prompts_router)
 app.include_router(dashboard_router)

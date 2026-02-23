@@ -6,6 +6,7 @@ import {
   ChevronsRight,
   Clock,
   CreditCard,
+  Gamepad2,
   LayoutDashboard,
   NotebookPen,
   Star,
@@ -27,6 +28,7 @@ const items = [
   { id: 'screener', label: 'Screener', icon: Table2 },
   { id: 'scheduler', label: 'Scheduler', icon: Clock },
   { id: 'backtest', label: 'Backtest', icon: Activity },
+  { id: 'simtrade', label: 'Sim Trade', icon: Gamepad2 },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
