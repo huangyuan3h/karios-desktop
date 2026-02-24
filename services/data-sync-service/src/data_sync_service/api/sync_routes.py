@@ -99,7 +99,12 @@ def sync_close_endpoint(exchange: str = Query("SSE"), force: bool = Query(False)
     # Purpose: close-time sync by trade_date window; pulls daily + adj_factor (paged).
     """Close-time sync by trade_date window: daily + adj_factor (paged)."""
     result = sync_close(exchange=exchange, force=bool(force))
-    index_result = sync_index_daily_full()
     if isinstance(result, dict):
+        if not result.get("ok"):
+            return result
+        if result.get("skipped"):
+            return result
+        index_result = sync_index_daily_full()
         return {**result, "indexDaily": index_result}
+    index_result = sync_index_daily_full()
     return {"ok": True, "result": result, "indexDaily": index_result}

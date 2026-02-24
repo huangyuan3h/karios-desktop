@@ -191,7 +191,23 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
 
     trade_dates = get_open_dates(exchange=exchange, start_date=start_date, end_date=end_date)
     if not trade_dates:
-        return {"ok": True, "updated": 0, "message": "no trading dates in range"}
+        if trade_cal_auto is None:
+            # Auto-heal if calendar is missing for the requested range.
+            start = start_date - timedelta(days=400)
+            end = end_date + timedelta(days=30)
+            trade_cal_auto = sync_trade_calendar(
+                exchange=exchange,
+                start_date=_to_yyyymmdd(start),
+                end_date=_to_yyyymmdd(end),
+            )
+            if trade_cal_auto.get("ok"):
+                trade_dates = get_open_dates(exchange=exchange, start_date=start_date, end_date=end_date)
+        if not trade_dates:
+            return {
+                "ok": False,
+                "error": "trade calendar missing for requested range; sync trade calendar and retry",
+                "meta": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+            }
 
     total_daily = 0
     total_factor = 0

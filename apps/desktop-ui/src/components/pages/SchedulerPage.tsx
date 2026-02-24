@@ -62,6 +62,24 @@ function statusTone(ok: boolean | null | undefined): string {
   return 'text-[var(--k-muted)]';
 }
 
+function friendlyCloseMessage(message: string | null | undefined): string | null {
+  if (!message) return null;
+  const m = String(message).toLowerCase();
+  if (m.includes('too early') && m.includes('17:05')) {
+    return '今日尚未收盘，收盘同步将在 17:05 后可用。';
+  }
+  if (m.includes('not a trading day')) {
+    return '今天不是交易日，已跳过收盘同步。';
+  }
+  if (m.includes('already synced today') || m.includes('already up to date')) {
+    return '今天已同步，无需重复操作。';
+  }
+  if (m.includes('no trading dates in range')) {
+    return '交易日区间为空，请先同步交易日历。';
+  }
+  return message;
+}
+
 function StatusCard({
   title,
   schedule,
@@ -130,7 +148,6 @@ export function SchedulerPage() {
 
   const refresh = React.useCallback(async () => {
     setError(null);
-    setMsg(null);
     setNeedTradeCal(false);
     setBusy(true);
     try {
@@ -157,14 +174,16 @@ export function SchedulerPage() {
 
   async function syncTodayAll() {
     setError(null);
-    setMsg(null);
+    setMsg('Syncing...');
     setNeedTradeCal(false);
     setBusy(true);
     try {
       // Use force=true to heal "false success" records (e.g. user clicked before close).
       const r = await apiPostJson<CloseSyncResp>('/sync/close?force=true');
       if ('ok' in r && r.ok) {
-        if (r.skipped) setMsg(r.message || 'Skipped.');
+        if (r.skipped) setMsg(friendlyCloseMessage(r.message) || 'Skipped.');
+        else if ('partial' in r && r.partial)
+          setMsg('已同步到昨日，今日收盘后可再同步。');
         else
           setMsg(
             `OK: daily=${r.updated_daily_rows ?? 0}, adj_factor=${r.updated_adj_factor_rows ?? 0}${
