@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from data_sync_service.db import get_connection
 from data_sync_service.db.daily import ensure_table as ensure_daily
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
-from data_sync_service.db.stock_basic import fetch_ts_codes_by_market
+from data_sync_service.db.stock_basic import fetch_ts_codes
 from data_sync_service.db.market_sentiment import get_latest_date, list_days, upsert_daily_rows
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
@@ -174,7 +174,8 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
     """
     d = as_of.strftime("%Y-%m-%d")
     ensure_stock_basic()
-    ts_codes = fetch_ts_codes_by_market("CN")
+    ts_codes_all = fetch_ts_codes()
+    ts_codes = [c for c in ts_codes_all if c.endswith((".SZ", ".SH", ".BJ"))]
     requested = len(ts_codes)
     if not ts_codes:
         return {
@@ -208,11 +209,8 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
         items = r.get("items", []) or []
         for it in items:
             matched += 1
-            try:
-                pct = float(it.get("pct_chg"))
-            except Exception:
-                pct = None
-            if pct is not None and math.isfinite(pct):
+            pct = _realtime_pct_chg(it)
+            if pct is not None:
                 if pct > 0:
                     up += 1
                 elif pct < 0:
@@ -530,6 +528,25 @@ def _finite_float(v: Any, default: float = 0.0) -> float:
         return default
 
 
+def _try_float(v: Any) -> float | None:
+    try:
+        f = float(v)
+        return f if math.isfinite(f) else None
+    except Exception:
+        return None
+
+
+def _realtime_pct_chg(item: dict[str, Any]) -> float | None:
+    pct = _try_float(item.get("pct_chg"))
+    if pct is not None:
+        return pct
+    price = _try_float(item.get("price"))
+    pre_close = _try_float(item.get("pre_close"))
+    if price is None or pre_close is None or pre_close == 0:
+        return None
+    return (price - pre_close) / pre_close * 100.0
+
+
 def _is_shanghai_trading_time() -> bool:
     """
     Best-effort CN A-share trading time check in Asia/Shanghai.
@@ -675,11 +692,8 @@ def _avg_pct_chg_from_realtime(ts_codes: list[str]) -> tuple[float, int]:
         if not isinstance(r, dict) or not bool(r.get("ok")):
             continue
         for it in r.get("items", []) or []:
-            try:
-                v = float(it.get("pct_chg"))
-            except Exception:
-                continue
-            if math.isfinite(v):
+            v = _realtime_pct_chg(it)
+            if v is not None:
                 vals.append(v)
         time.sleep(0.08)
     return (float(sum(vals) / len(vals)) if vals else 0.0), len(vals)
@@ -757,7 +771,9 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
     if should_try_intraday:
         try:
             breadth_rt = fetch_cn_market_breadth_intraday(dt)
-            if int(breadth_rt.get("total_count") or 0) > 0:
+            if int(breadth_rt.get("total_count") or 0) > 0 or _finite_float(
+                breadth_rt.get("total_turnover_cny"), 0.0
+            ) > 0.0:
                 breadth = breadth_rt
         except Exception as e:
             errors.append(f"breadth_intraday_failed: {e}")

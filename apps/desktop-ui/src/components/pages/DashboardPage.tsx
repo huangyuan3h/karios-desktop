@@ -110,7 +110,7 @@ function mdLines(items: string[]): string {
 }
 
 function signalRank(x: string): number {
-  if (x === 'green') return 3;
+  if (x === 'green' || x === 'light_green' || x === 'deep_green') return 3;
   if (x === 'yellow') return 2;
   if (x === 'red') return 1;
   return 0;
@@ -127,8 +127,8 @@ function buildIndexTrafficSummary(indexSignals: any[]): { title: string; detail:
   const byName = new Map(items.map((x) => [String(x?.name ?? x?.tsCode ?? ''), String(x?.signal ?? '')]));
   const sse = byName.get('上证指数') || String(items[0]?.signal ?? '');
   const cyb = byName.get('创业板指') || String(items[1]?.signal ?? '');
-  const g1 = sse === 'green';
-  const g2 = cyb === 'green';
+  const g1 = sse === 'green' || sse === 'light_green' || sse === 'deep_green';
+  const g2 = cyb === 'green' || cyb === 'light_green' || cyb === 'deep_green';
 
   if (g1 && g2) {
     return {
@@ -1066,13 +1066,15 @@ export function DashboardPage({
                               {indexSignals.map((it: any) => {
                                 const signal = String(it?.signal ?? 'unknown');
                                 const badge =
-                                  signal === 'green'
-                                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
-                                    : signal === 'red'
-                                      ? 'border-red-500/30 bg-red-500/10 text-red-600'
-                                      : signal === 'yellow'
-                                        ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
-                                        : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
+                                  signal === 'deep_green'
+                                    ? 'border-emerald-600/40 bg-emerald-600/15 text-emerald-800'
+                                    : signal === 'light_green' || signal === 'green'
+                                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+                                      : signal === 'red'
+                                        ? 'border-red-500/30 bg-red-500/10 text-red-600'
+                                        : signal === 'yellow'
+                                          ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
+                                          : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
                                 return (
                                   <div
                                     key={String(it?.tsCode ?? it?.name)}

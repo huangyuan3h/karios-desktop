@@ -230,3 +230,73 @@ def fetch_last_closes_upto(ts_code: str, as_of_date: str, days: int = 60) -> lis
             close = 0.0
         out.append((d, close))
     return out
+
+
+def fetch_last_closes_vol(ts_code: str, days: int = 80) -> list[tuple[str, float, float]]:
+    """
+    Return last N (date, close, vol) rows for a single index, ordered by date ASC.
+    """
+    ensure_table()
+    days2 = max(1, min(int(days), 400))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT trade_date, close, vol
+                FROM {TABLE_NAME}
+                WHERE ts_code = %s
+                ORDER BY trade_date DESC
+                LIMIT %s
+                """,
+                (ts_code, days2),
+            )
+            rows = cur.fetchall()
+    out: list[tuple[str, float, float]] = []
+    for r in reversed(rows):
+        d = r[0].strftime("%Y-%m-%d") if r and hasattr(r[0], "strftime") else str(r[0])
+        try:
+            close = float(r[1] or 0.0)
+        except Exception:
+            close = 0.0
+        try:
+            vol = float(r[2] or 0.0)
+        except Exception:
+            vol = 0.0
+        out.append((d, close, vol))
+    return out
+
+
+def fetch_last_closes_vol_upto(
+    ts_code: str, as_of_date: str, days: int = 80
+) -> list[tuple[str, float, float]]:
+    """
+    Return last N (date, close, vol) rows up to as_of_date (inclusive), ordered by date ASC.
+    """
+    ensure_table()
+    days2 = max(1, min(int(days), 400))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT trade_date, close, vol
+                FROM {TABLE_NAME}
+                WHERE ts_code = %s AND trade_date <= %s
+                ORDER BY trade_date DESC
+                LIMIT %s
+                """,
+                (ts_code, as_of_date, days2),
+            )
+            rows = cur.fetchall()
+    out: list[tuple[str, float, float]] = []
+    for r in reversed(rows):
+        d = r[0].strftime("%Y-%m-%d") if r and hasattr(r[0], "strftime") else str(r[0])
+        try:
+            close = float(r[1] or 0.0)
+        except Exception:
+            close = 0.0
+        try:
+            vol = float(r[2] or 0.0)
+        except Exception:
+            vol = 0.0
+        out.append((d, close, vol))
+    return out

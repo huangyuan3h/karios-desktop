@@ -5,15 +5,15 @@ from zoneinfo import ZoneInfo
 def test_fetch_cn_market_breadth_intraday_aggregates(monkeypatch) -> None:
     import data_sync_service.service.market_sentiment as ms  # type: ignore[import-not-found]
 
-    monkeypatch.setattr(ms, "fetch_ts_codes_by_market", lambda market: ["000001.SZ", "000002.SZ"])
+    monkeypatch.setattr(ms, "fetch_ts_codes", lambda: ["000001.SZ", "000002.SZ"])
     monkeypatch.setattr(
         ms,
         "fetch_realtime_quotes",
         lambda codes: {
             "ok": True,
             "items": [
-                {"ts_code": "000001.SZ", "pct_chg": "1.2", "volume": "100", "amount": "1200"},
-                {"ts_code": "000002.SZ", "pct_chg": "-0.6", "volume": "200", "amount": "1800"},
+                {"ts_code": "000001.SZ", "price": "10.12", "pre_close": "10.00", "volume": "100", "amount": "1200"},
+                {"ts_code": "000002.SZ", "price": "9.94", "pre_close": "10.00", "volume": "200", "amount": "1800"},
             ],
         },
     )
@@ -26,6 +26,26 @@ def test_fetch_cn_market_breadth_intraday_aggregates(monkeypatch) -> None:
     assert out["total_turnover_cny"] == 3000.0
     assert out["total_volume"] == 300.0
     assert out["raw"]["source"] == "tushare.realtime_quote"
+
+
+def test_avg_pct_chg_from_realtime_fallback(monkeypatch) -> None:
+    import data_sync_service.service.market_sentiment as ms  # type: ignore[import-not-found]
+
+    monkeypatch.setattr(
+        ms,
+        "fetch_realtime_quotes",
+        lambda codes: {
+            "ok": True,
+            "items": [
+                {"ts_code": "000001.SZ", "price": "10.10", "pre_close": "10.00"},
+                {"ts_code": "000002.SZ", "price": "9.80", "pre_close": "10.00"},
+            ],
+        },
+    )
+
+    avg, matched = ms._avg_pct_chg_from_realtime(["000001.SZ", "000002.SZ"])
+    assert matched == 2
+    assert round(avg, 2) == -0.5
 
 
 def test_compute_sentiment_uses_intraday_when_eod_empty(monkeypatch) -> None:
