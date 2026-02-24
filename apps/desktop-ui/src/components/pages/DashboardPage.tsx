@@ -1422,7 +1422,7 @@ export function DashboardPage({
                                       }
                                       return (
                                         <tr
-                                          key={`${String(r?.industryCode ?? idx)}`}
+                                          key={`${String(r?.industryCode ?? 'unknown')}-${idx}`}
                                           className="border-t border-[var(--k-border)]"
                                         >
                                           <td className="px-2 py-2">
@@ -1485,7 +1485,7 @@ export function DashboardPage({
                                       }
                                       return (
                                         <tr
-                                          key={`${String(r?.industryCode ?? idx)}`}
+                                          key={`${String(r?.industryCode ?? 'unknown')}-${idx}`}
                                           className="border-t border-[var(--k-border)]"
                                         >
                                           <td className="px-2 py-2">

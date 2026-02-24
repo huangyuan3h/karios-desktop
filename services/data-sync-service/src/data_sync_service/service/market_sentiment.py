@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from data_sync_service.db import get_connection
 from data_sync_service.db.daily import ensure_table as ensure_daily
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
+from data_sync_service.db.stock_basic import fetch_ts_codes_by_market
 from data_sync_service.db.market_sentiment import get_latest_date, list_days, upsert_daily_rows
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
@@ -164,6 +165,86 @@ def fetch_cn_market_breadth_eod(as_of: date) -> dict[str, Any]:
         "total_turnover_cny": total_turnover_cny,
         "total_volume": total_volume,
         "raw": {"source": "tushare.daily", "trade_date": td, "rows": rows_n},
+    }
+
+
+def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
+    """
+    Best-effort intraday breadth using realtime quotes (Tushare).
+    """
+    d = as_of.strftime("%Y-%m-%d")
+    ensure_stock_basic()
+    ts_codes = fetch_ts_codes_by_market("CN")
+    requested = len(ts_codes)
+    if not ts_codes:
+        return {
+            "date": d,
+            "up_count": 0,
+            "down_count": 0,
+            "flat_count": 0,
+            "total_count": 0,
+            "up_down_ratio": 0.0,
+            "total_turnover_cny": 0.0,
+            "total_volume": 0.0,
+            "raw": {"source": "tushare.realtime_quote", "requested": 0, "matched": 0},
+        }
+
+    up = 0
+    down = 0
+    flat = 0
+    total_turnover_cny = 0.0
+    total_volume = 0.0
+    matched = 0
+    batches = 0
+    errors: list[str] = []
+    for i in range(0, len(ts_codes), 50):
+        part = ts_codes[i : i + 50]
+        batches += 1
+        r = fetch_realtime_quotes(part)
+        if not isinstance(r, dict) or not bool(r.get("ok")):
+            err = r.get("error") if isinstance(r, dict) else "realtime_quote_failed"
+            errors.append(str(err))
+            continue
+        items = r.get("items", []) or []
+        for it in items:
+            matched += 1
+            try:
+                pct = float(it.get("pct_chg"))
+            except Exception:
+                pct = None
+            if pct is not None and math.isfinite(pct):
+                if pct > 0:
+                    up += 1
+                elif pct < 0:
+                    down += 1
+                else:
+                    flat += 1
+            vol = _finite_float(it.get("volume"), 0.0)
+            amt = _finite_float(it.get("amount"), 0.0)
+            total_volume += vol
+            total_turnover_cny += amt
+        time.sleep(0.08)
+
+    total = up + down + flat
+    ratio = float(up) / float(down) if down > 0 else float(up)
+    raw = {
+        "source": "tushare.realtime_quote",
+        "requested": requested,
+        "matched": matched,
+        "batches": batches,
+    }
+    if errors:
+        raw["errors"] = errors[:3]
+    return {
+        "date": d,
+        "up_count": up,
+        "down_count": down,
+        "flat_count": flat,
+        "total_count": total,
+        "up_down_ratio": ratio,
+        "total_turnover_cny": total_turnover_cny,
+        "total_volume": total_volume,
+        "raw": raw,
     }
 
 
@@ -660,8 +741,28 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
     market_turnover_cny = 0.0
     market_volume = 0.0
 
+    breadth: dict[str, Any] | None = None
     try:
         breadth = fetch_cn_market_breadth_eod(dt)
+    except Exception as e:
+        errors.append(f"breadth_failed: {e}")
+        raw["breadthError"] = str(e)
+
+    today_cn = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date()
+    should_try_intraday = dt == today_cn and (
+        not breadth
+        or int(breadth.get("total_count") or 0) == 0
+        or _finite_float(breadth.get("total_turnover_cny"), 0.0) == 0.0
+    )
+    if should_try_intraday:
+        try:
+            breadth_rt = fetch_cn_market_breadth_intraday(dt)
+            if int(breadth_rt.get("total_count") or 0) > 0:
+                breadth = breadth_rt
+        except Exception as e:
+            errors.append(f"breadth_intraday_failed: {e}")
+
+    if breadth:
         raw["breadth"] = breadth
         up = int(breadth.get("up_count") or 0)
         down = int(breadth.get("down_count") or 0)
@@ -669,13 +770,10 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
         ratio = _finite_float(breadth.get("up_down_ratio"), 0.0)
         market_turnover_cny = _finite_float(breadth.get("total_turnover_cny"), 0.0)
         market_volume = _finite_float(breadth.get("total_volume"), 0.0)
-    except Exception as e:
-        errors.append(f"breadth_failed: {e}")
-        raw["breadthError"] = str(e)
 
     # Premium%: DB-first. Derive yesterday close-limit-up pool from DB, then:
     # - If today's daily pct_chg exists in DB: use it
-    # - If trading time and today's daily is not ready: use realtime_quote
+    # - If today's daily is not ready: use realtime_quote
     premium = 0.0
     try:
         y = _prev_open_date("SSE", dt)
@@ -694,9 +792,9 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
                 "source": "db.daily",
             }
         else:
-            # Intraday realtime fallback (only for "today").
+            # Intraday/near-close realtime fallback for "today" when daily is not ready.
             now_cn = datetime.now(tz=ZoneInfo("Asia/Shanghai"))
-            if now_cn.date() == dt and _is_shanghai_trading_time():
+            if now_cn.date() == dt:
                 premium_rt, matched_rt = _avg_pct_chg_from_realtime(pool)
                 premium = premium_rt
                 raw["yesterdayLimitUpPremium"] = {

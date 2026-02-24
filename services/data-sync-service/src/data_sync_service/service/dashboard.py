@@ -134,11 +134,15 @@ def _industry_flow_5d_items(*, as_of_date: str) -> tuple[list[str], list[dict[st
         per: dict[str, float] = rec.get("perDate") or {}
         series = [{"date": d, "netInflow": float(per.get(d, 0.0) or 0.0)} for d in dates_sorted]
         sum5d = 0.0
-        for p in series:
+    for p in series:
+        net = p.get("netInflow")
+        if isinstance(net, (int, float, str)):
             try:
-                sum5d += float(p.get("netInflow") or 0.0)
+                sum5d += float(net)
             except Exception:
                 sum5d += 0.0
+        else:
+            sum5d += 0.0
         items.append(
             {
                 "industryCode": code,
@@ -206,7 +210,7 @@ def _screeners_status(limit: int = 50) -> list[dict[str, Any]]:
     return rows
 
 
-def _index_signal_items(*, as_of_date: str) -> list[dict[str, Any]]:
+def _index_signal_items(*, as_of_date: str | None) -> list[dict[str, Any]]:
     """
     Build index traffic-light signals for selected indices using MA20/MA5.
     During trading hours, try to use realtime quotes from tushare.
@@ -232,11 +236,12 @@ def dashboard_summary() -> dict[str, Any]:
     industry = {**industry_daily, "flow5d": flow5d, "flow5dOut": flow5d_out}
 
     sentiment_items = list_sentiment_days(as_of_date=as_of, days=5)
+    use_realtime_index = as_of == _today_iso_date()
     market_sentiment = {
         "asOfDate": as_of,
         "days": 5,
         "items": sentiment_items,
-        "indexSignals": _index_signal_items(as_of_date=as_of),
+        "indexSignals": _index_signal_items(as_of_date=None if use_realtime_index else as_of),
     }
 
     screeners = _screeners_status(limit=50)

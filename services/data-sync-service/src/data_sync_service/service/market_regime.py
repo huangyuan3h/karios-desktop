@@ -18,17 +18,35 @@ def _today_iso_date() -> str:
     return datetime.now(tz=UTC).date().isoformat()
 
 
-def _is_shanghai_trading_time() -> bool:
+def _is_shanghai_trading_time_at(now: datetime) -> bool:
     """
     Best-effort CN A-share trading time check in Asia/Shanghai.
     """
-    now = datetime.now(tz=ZoneInfo("Asia/Shanghai"))
     if now.weekday() >= 5:
         return False
     minutes = now.hour * 60 + now.minute
     in_morning = minutes >= 9 * 60 + 30 and minutes <= 11 * 60 + 30
     in_afternoon = minutes >= 13 * 60 and minutes <= 15 * 60
     return in_morning or in_afternoon
+
+
+def _is_shanghai_sync_window_at(now: datetime) -> bool:
+    """
+    Sync window includes trading time and lunch break.
+    """
+    if now.weekday() >= 5:
+        return False
+    minutes = now.hour * 60 + now.minute
+    in_lunch = minutes > 11 * 60 + 30 and minutes < 13 * 60
+    return _is_shanghai_trading_time_at(now) or in_lunch
+
+
+def _is_shanghai_trading_time() -> bool:
+    return _is_shanghai_trading_time_at(datetime.now(tz=ZoneInfo("Asia/Shanghai")))
+
+
+def _is_shanghai_sync_window() -> bool:
+    return _is_shanghai_sync_window_at(datetime.now(tz=ZoneInfo("Asia/Shanghai")))
 
 
 def _trade_date_from_trade_time(trade_time: str | None) -> str | None:
@@ -60,7 +78,7 @@ def get_index_signals(*, as_of_date: str | None = None) -> list[dict[str, Any]]:
     use_as_of = str(as_of_date).strip() if as_of_date else None
     rt_price: dict[str, float] = {}
     rt_time: dict[str, str | None] = {}
-    if _is_shanghai_trading_time() and not use_as_of:
+    if _is_shanghai_sync_window() and not use_as_of:
         res = fetch_realtime_quotes([x["ts_code"] for x in INDEX_SIGNALS])
         if isinstance(res, dict) and bool(res.get("ok")):
             for it in res.get("items", []) or []:
