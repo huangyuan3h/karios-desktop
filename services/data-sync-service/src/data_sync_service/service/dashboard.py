@@ -134,15 +134,15 @@ def _industry_flow_5d_items(*, as_of_date: str) -> tuple[list[str], list[dict[st
         per: dict[str, float] = rec.get("perDate") or {}
         series = [{"date": d, "netInflow": float(per.get(d, 0.0) or 0.0)} for d in dates_sorted]
         sum5d = 0.0
-    for p in series:
-        net = p.get("netInflow")
-        if isinstance(net, (int, float, str)):
-            try:
-                sum5d += float(net)
-            except Exception:
+        for p in series:
+            net = p.get("netInflow")
+            if isinstance(net, (int, float, str)):
+                try:
+                    sum5d += float(net)
+                except Exception:
+                    sum5d += 0.0
+            else:
                 sum5d += 0.0
-        else:
-            sum5d += 0.0
         items.append(
             {
                 "industryCode": code,

@@ -1062,6 +1062,21 @@ export function DashboardPage({
                         {indexSignals.length ? (
                           <div className="mt-3">
                             <div className="mb-2 text-xs text-[var(--k-muted)]">Index traffic lights</div>
+                            <div className="mb-3 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-xs text-[var(--k-muted)]">
+                              <div className="font-medium text-[var(--k-fg)]">信号规则（简版）</div>
+                              <div className="mt-1">
+                                🔴 Red: Price &lt; MA20 或 MA5 &lt; MA20，仓位 0%-10%。
+                              </div>
+                              <div className="mt-1">
+                                🟡 Yellow: Price &gt; MA20 但 MA20 斜率向下 或 Vol &lt; MA5_Vol 或 MA5 &lt; MA20，仓位 30%。
+                              </div>
+                              <div className="mt-1">
+                                🟢 Green: Price &gt; MA20 且 MA5 &gt; MA20 且 MA20 向上，且实时量比 &gt; 1.0，仓位 50%-60%。
+                              </div>
+                              <div className="mt-1">
+                                ❇️ Deep Green: MA5 &gt; MA20 &gt; MA60 且 Price &gt; MA5，Breadth &gt; 60%，且 Vol &gt; MA5_Vol * 1.2，仓位 80%-100%。
+                              </div>
+                            </div>
                             <div className="grid gap-2 md:grid-cols-2">
                               {indexSignals.map((it: any) => {
                                 const signal = String(it?.signal ?? 'unknown');

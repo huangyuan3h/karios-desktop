@@ -18,7 +18,7 @@ INDEX_SIGNALS = [
 ]
 
 HISTORY_DAYS = 80
-BREADTH_MIN_RATIO = 0.5
+BREADTH_DEEP_GREEN_MIN_RATIO = 0.6
 
 
 def _today_iso_date() -> str:
@@ -127,9 +127,9 @@ def _get_breadth_above_ma20_ratio(*, as_of_date: str | None = None) -> dict[str,
             part = [c for c in ts_codes[i : i + 50] if c in ma20_by_code]
             if not part:
                 continue
-            r = fetch_realtime_quotes(part)
-            if isinstance(r, dict) and bool(r.get("ok")):
-                for it in r.get("items", []) or []:
+            resp = fetch_realtime_quotes(part)
+            if isinstance(resp, dict) and bool(resp.get("ok")):
+                for it in resp.get("items", []) or []:
                     code = str(it.get("ts_code") or "").strip()
                     if not code:
                         continue
@@ -174,7 +174,7 @@ def get_index_signals(*, as_of_date: str | None = None) -> list[dict[str, Any]]:
                 rt_time[ts_code] = it.get("trade_time")
 
     breadth = _get_breadth_above_ma20_ratio(as_of_date=use_as_of)
-    breadth_ok = breadth["ratio"] >= BREADTH_MIN_RATIO
+    breadth_ok_deep = breadth["ratio"] >= BREADTH_DEEP_GREEN_MIN_RATIO
 
     out: list[dict[str, Any]] = []
     for it in INDEX_SIGNALS:
@@ -238,65 +238,53 @@ def get_index_signals(*, as_of_date: str | None = None) -> list[dict[str, Any]]:
         ma60 = sum(closes[-60:]) / 60.0 if len(closes) >= 60 else None
         close = closes[-1]
 
-        ma20_3d_ago = sum(closes[-23:-3]) / 20.0
-        ma20_2d_ago = sum(closes[-22:-2]) / 20.0
-        ma20_1d_ago = sum(closes[-21:-1]) / 20.0
-        ma20_today = ma20
-        confirm_3day = (
-            closes[-3] > ma20_3d_ago and closes[-2] > ma20_2d_ago and closes[-1] > ma20_today
-        )
-
         ma20_slope_up = ma20 > ma20_prev
         ma5_above_ma20 = ma5 > ma20
-        ma5_above_ma60 = ma60 is not None and ma5 > ma60
         ma20_above_ma60 = ma60 is not None and ma20 > ma60
         ma_full_bull = ma5_above_ma20 and ma20_above_ma60
 
-        vol_ok = False
+        vol_ratio = None
+        vol_above_ma5 = False
+        vol_above_ma5_strong = False
         if len(series_vol) >= 20:
             avg_vol_5 = sum(series_vol[-5:]) / 5.0
             avg_vol_20 = sum(series_vol[-20:]) / 20.0
-            vol_inc_3 = (
-                series_vol[-1] > series_vol[-2]
-                and series_vol[-2] > series_vol[-3]
-                if len(series_vol) >= 3
-                else False
-            )
-            vol_ok = avg_vol_5 > avg_vol_20 and vol_inc_3
+            current_vol = series_vol[-1] if series_vol else 0.0
+            if avg_vol_5 > 0:
+                vol_ratio = current_vol / avg_vol_5
+            vol_above_ma5 = current_vol > avg_vol_5
+            vol_above_ma5_strong = current_vol > avg_vol_5 * 1.2
 
         signal = "yellow"
-        position = "30%-40%"
+        position = "30%"
         rules: list[str] = []
 
-        if close < ma20 and ma20 < ma20_prev:
+        if close < ma20 or not ma5_above_ma20:
             signal = "red"
-            position = "0%-20%"
-            rules.append("close<MA20 && MA20 down")
+            position = "0%-10%"
+            if close < ma20:
+                rules.append("price<MA20")
+            if not ma5_above_ma20:
+                rules.append("MA5<MA20")
         elif close > ma20:
-            if not confirm_3day:
+            if (not ma20_slope_up) or (not vol_above_ma5) or (not ma5_above_ma20):
                 signal = "yellow"
-                position = "30%-40%"
-                rules.append("break above MA20 first day (3d confirm pending)")
-            elif not ma20_slope_up or not ma5_above_ma20:
-                signal = "yellow"
-                position = "30%-40%"
+                position = "30%"
                 if not ma20_slope_up:
-                    rules.append("MA20 not yet turning up")
+                    rules.append("MA20 slope down")
+                if not vol_above_ma5:
+                    rules.append("Vol<MA5Vol")
                 if not ma5_above_ma20:
-                    rules.append("MA5<=MA20")
-            elif ma_full_bull and vol_ok:
+                    rules.append("MA5<MA20")
+            else:
+                signal = "green"
+                position = "50%-60%"
+                rules.append("price>MA20 && MA5>MA20 && MA20 up && volRatio>1.0")
+
+            if ma_full_bull and ma60 is not None and close > ma5 and vol_above_ma5_strong and breadth_ok_deep:
                 signal = "deep_green"
                 position = "80%-100%"
-                rules.append("MA5>MA20>MA60 && volume expansion")
-            else:
-                signal = "light_green"
-                position = "60%-70%"
-                rules.append("3d confirm && MA20 up && MA5>MA20")
-
-            if signal in ("light_green", "deep_green") and not breadth_ok:
-                signal = "yellow"
-                position = "30%-40%"
-                rules.append("breadth<50% (structural market)")
+                rules.append("MA5>MA20>MA60 && price>MA5 && breadth>60% && vol>MA5Vol*1.2")
         else:
             if close < ma5 and close >= ma20:
                 rules.append("close<MA5 but hold MA20")
