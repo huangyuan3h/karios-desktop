@@ -1893,6 +1893,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                           const raw = e.target.value;
                           if (raw === '' || COST_PRICE_RE.test(raw)) {
                             setItemCostPriceDraft(it.symbol, raw);
+                            if (!raw) {
+                              setItemCostPriceValue(it.symbol, null);
+                            } else {
+                              const num = Number(raw);
+                              if (Number.isFinite(num)) setItemCostPriceValue(it.symbol, num);
+                            }
                           }
                         }}
                         onFocus={() => {
