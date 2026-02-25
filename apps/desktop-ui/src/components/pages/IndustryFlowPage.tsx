@@ -4,6 +4,7 @@ import * as React from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { HotIndustryWorkflowCard, type HotIndustryPick } from '@/components/pages/HotIndustryWorkflowCard';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 
@@ -114,6 +115,45 @@ function sumLastN(series: IndustryFundFlowPoint[], n: number): number {
   let s = 0;
   for (const p of tail) s += Number.isFinite(p.netInflow) ? p.netInflow : 0;
   return s;
+}
+
+function buildHotIndustryPicks(rows: IndustryFundFlowRow[]): HotIndustryPick[] {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const dailyRanked = [...safeRows]
+    .filter((r) => Number.isFinite(r.netInflow) && r.netInflow > 0)
+    .sort((a, b) => b.netInflow - a.netInflow)
+    .slice(0, 30);
+  const fiveDayRanked = [...safeRows]
+    .map((r) => ({ row: r, sum5d: sumLastN(r.series10d ?? [], 5) }))
+    .filter((x) => Number.isFinite(x.sum5d) && x.sum5d > 0)
+    .sort((a, b) => b.sum5d - a.sum5d)
+    .slice(0, 30);
+
+  const fiveRankByName = new Map<string, { rank: number; sum5d: number }>();
+  for (let i = 0; i < fiveDayRanked.length; i += 1) {
+    const it = fiveDayRanked[i];
+    const key = String(it.row.industryName ?? '').trim();
+    if (!key || fiveRankByName.has(key)) continue;
+    fiveRankByName.set(key, { rank: i + 1, sum5d: it.sum5d });
+  }
+
+  const picked: HotIndustryPick[] = [];
+  for (let i = 0; i < dailyRanked.length; i += 1) {
+    const r = dailyRanked[i];
+    const key = String(r.industryName ?? '').trim();
+    if (!key) continue;
+    const five = fiveRankByName.get(key);
+    if (!five) continue;
+    picked.push({
+      industryName: key,
+      dailyRank: i + 1,
+      fiveDayRank: five.rank,
+      netInflow: r.netInflow,
+      sum5d: five.sum5d,
+    });
+    if (picked.length >= 3) break;
+  }
+  return picked;
 }
 
 function escapeMarkdownCell(x: unknown): string {
@@ -620,6 +660,7 @@ export function IndustryFlowPage() {
             const top = 10;
             const dates = resp.dates ?? rows[0]?.series10d?.map((p) => p.date) ?? [];
             const topK = 5;
+            const hotPicks = buildHotIndustryPicks(rows);
 
             // Build daily top inflow list for each date using full universe rows.
             const topByDate: Record<string, Array<{ industryName: string; value: number }>> = {};
@@ -682,6 +723,7 @@ export function IndustryFlowPage() {
                     })
                   }
                 />
+                <HotIndustryWorkflowCard picks={hotPicks} asOfDate={asOfDate} />
 
                 <div className="grid gap-4 md:grid-cols-2">
                 <MiniTable

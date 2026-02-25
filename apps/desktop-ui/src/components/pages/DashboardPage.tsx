@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { RefreshCw } from 'lucide-react';
 
+import { HotIndustryWorkflowCard, type HotIndustryPick } from '@/components/pages/HotIndustryWorkflowCard';
 import { Button } from '@/components/ui/button';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
@@ -198,6 +199,56 @@ function scoreRuleLines(): string[] {
   ];
 }
 
+function buildDashboardHotIndustryPicks(summary: DashboardSummary | null): HotIndustryPick[] {
+  const ind: any = summary?.industryFundFlow ?? {};
+  const datesAll: string[] = Array.isArray(ind?.dates) ? ind.dates : [];
+  const latestDate = datesAll.length ? String(datesAll[datesAll.length - 1] ?? '') : '';
+
+  const topByDateArr: any[] = Array.isArray(ind?.topByDate) ? ind.topByDate : [];
+  const namesByDate = new Map<string, string[]>();
+  for (const it of topByDateArr) {
+    const d = String(it?.date ?? '');
+    const names = Array.isArray(it?.top) ? it.top.map((x: any) => String(x ?? '').trim()).filter(Boolean) : [];
+    if (d && names.length) namesByDate.set(d, names);
+  }
+  const dailyNames = (namesByDate.get(latestDate) ?? []).slice(0, 30);
+
+  const flow5d: any = ind?.flow5d ?? null;
+  const rows5d: any[] = Array.isArray(flow5d?.top) ? flow5d.top : [];
+  const fiveRank = new Map<string, { rank: number; sum5d: number | null; latestNet: number | null }>();
+  for (let i = 0; i < rows5d.length; i += 1) {
+    const r = rows5d[i];
+    const name = String(r?.industryName ?? '').trim();
+    if (!name || fiveRank.has(name)) continue;
+    const sum5dRaw = Number(r?.sum5d);
+    const sum5d = Number.isFinite(sum5dRaw) ? sum5dRaw : null;
+    const seriesArr: any[] = Array.isArray(r?.series) ? r.series : [];
+    let latestNet: number | null = null;
+    if (latestDate) {
+      const p = seriesArr.find((x) => String(x?.date ?? '') === latestDate);
+      const v = Number(p?.netInflow);
+      latestNet = Number.isFinite(v) ? v : null;
+    }
+    fiveRank.set(name, { rank: i + 1, sum5d, latestNet });
+  }
+
+  const picks: HotIndustryPick[] = [];
+  for (let i = 0; i < dailyNames.length; i += 1) {
+    const name = dailyNames[i];
+    const five = fiveRank.get(name);
+    if (!five) continue;
+    picks.push({
+      industryName: name,
+      dailyRank: i + 1,
+      fiveDayRank: five.rank,
+      netInflow: five.latestNet,
+      sum5d: five.sum5d,
+    });
+    if (picks.length >= 3) break;
+  }
+  return picks;
+}
+
 const WATCHLIST_STORAGE_KEY = 'karios.watchlist.v1';
 
 type WatchlistItem = {
@@ -335,6 +386,7 @@ export function DashboardPage({
   const [copyAllStatus, setCopyAllStatus] = React.useState<{ ok: boolean; text: string } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [editLayout, setEditLayout] = React.useState(false);
+  const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
 
   const industryCopyTimerRef = React.useRef<number | null>(null);
   const sentimentCopyTimerRef = React.useRef<number | null>(null);
@@ -1230,6 +1282,15 @@ export function DashboardPage({
                 </div>
               ) : id === 'industry' ? (
                 <div>
+                  <div className="mb-4">
+                    <HotIndustryWorkflowCard
+                      picks={hotIndustryPicks}
+                      asOfDate={String(summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '')}
+                      compact
+                      onOpenScreener={() => onNavigate?.('screener')}
+                      onOpenWatchlist={() => onNavigate?.('watchlist')}
+                    />
+                  </div>
                   <div className="mb-2 text-xs text-[var(--k-muted)]">
                     Top5×Date hotspots (names only)
                   </div>

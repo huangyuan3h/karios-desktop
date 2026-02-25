@@ -363,7 +363,8 @@ function isShanghaiTradingTime(): boolean {
   // CN A-share: 09:30-11:30, 13:00-15:00
   const inMorning = minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30;
   const inAfternoon = minutes >= 13 * 60 && minutes <= 15 * 60;
-  return inMorning || inAfternoon;
+  const inLunch = minutes > 11 * 60 + 30 && minutes < 13 * 60;
+  return inMorning || inAfternoon || inLunch;
 }
 
 function fmtPrice(v: number | null | undefined): string {
@@ -381,11 +382,73 @@ function fmtNum(v: unknown, digits = 2): string {
   return v.toFixed(digits);
 }
 
+function isGreenZoneSignal(x: unknown): boolean {
+  const s = String(x ?? '').trim();
+  return s === 'green' || s === 'light_green' || s === 'deep_green';
+}
+
+function isHotspotTop3Industry(t: TrendOkResult | undefined | null): boolean {
+  if (!t) return false;
+  const reasonsRaw = (t.values as Record<string, unknown> | undefined)?.industryFlowReasons;
+  const reasons = Array.isArray(reasonsRaw) ? reasonsRaw.map((x) => String(x ?? '')) : [];
+  if (reasons.includes('hotspots_today_top3')) return true;
+  const parts = t.scoreParts as Record<string, unknown> | null | undefined;
+  const v = parts?.hotspots_today_top3;
+  return typeof v === 'number' && Number.isFinite(v) && v > 0;
+}
+
+function isGreenZoneMarket(t: TrendOkResult | undefined | null): boolean {
+  if (!t) return false;
+  // TrendOK service always returns marketRegime (Strong/Diverging/Weak).
+  const regime = String((t as TrendOkResult & { marketRegime?: unknown }).marketRegime ?? '').trim();
+  if (regime === 'Strong') return true;
+
+  // Forward-compatible fallback in case backend later passes raw index signals in buyChecks.
+  const checks = t.buyChecks as Record<string, unknown> | null | undefined;
+  if (!checks || typeof checks !== 'object') return false;
+  const directCandidates = [
+    checks.marketSignal,
+    checks.signal,
+    checks.sseSignal,
+    checks.cybSignal,
+    checks.sse_signal,
+    checks.cyb_signal,
+  ];
+  if (directCandidates.some((x) => isGreenZoneSignal(x))) return true;
+  const indexSignals = checks.indexSignals;
+  if (Array.isArray(indexSignals)) {
+    for (const it of indexSignals) {
+      if (isGreenZoneSignal((it as Record<string, unknown>)?.signal)) return true;
+    }
+  }
+  return false;
+}
+
+function shouldForceNoAPullbackWait(t: TrendOkResult | undefined | null): boolean {
+  if (!t) return false;
+  const score = typeof t.score === 'number' && Number.isFinite(t.score) ? t.score : null;
+  if (score == null || score <= 90) return false;
+  if (t.buyMode !== 'A_pullback' || t.buyAction !== 'wait') return false;
+  if (!isGreenZoneMarket(t)) return false;
+  if (!isHotspotTop3Industry(t)) return false;
+  return true;
+}
+
 function fmtBuyCell(t: TrendOkResult | undefined | null): {
   text: string;
   tone: 'buy' | 'wait' | 'avoid' | 'none';
+  forced?: boolean;
+  forcedReason?: string;
 } {
   if (!t || !t.buyMode || !t.buyAction) return { text: '—', tone: 'none' };
+  if (shouldForceNoAPullbackWait(t)) {
+    return {
+      text: 'B 买 强势热点',
+      tone: 'buy',
+      forced: true,
+      forcedReason: 'Green zone + score>90 + industry in today top3: A_pullback/wait is blocked.',
+    };
+  }
   if (t.buyAction === 'avoid') return { text: '回避', tone: 'avoid' };
   const zl = typeof t.buyZoneLow === 'number' ? t.buyZoneLow : null;
   const zh = typeof t.buyZoneHigh === 'number' ? t.buyZoneHigh : null;
@@ -412,8 +475,9 @@ function rowTone(t: TrendOkResult | undefined | null): 'green' | 'red' | 'none' 
   const exitNow = Boolean(stopParts && typeof stopParts === 'object' && stopParts['exit_now']);
   if (exitNow || t.buyAction === 'avoid') return 'red';
   const score = typeof t.score === 'number' && Number.isFinite(t.score) ? t.score : null;
+  const buy = fmtBuyCell(t);
   const buyModeOk = t.buyMode === 'A_pullback' || t.buyMode === 'B_momentum';
-  if (t.trendOk === true && t.buyAction === 'buy' && buyModeOk && score != null && score >= 85) {
+  if (t.trendOk === true && buy.tone === 'buy' && buyModeOk && score != null && score >= 85) {
     return 'green';
   }
   return 'none';
@@ -1234,7 +1298,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
   function renderBuyCell(sym: string) {
     const t = trend[sym];
-    const { text, tone } = fmtBuyCell(t);
+    const { text, tone, forced, forcedReason } = fmtBuyCell(t);
     const why = typeof t?.buyWhy === 'string' ? t.buyWhy : null;
     const tip = (
       <>
@@ -1247,6 +1311,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           <div className="text-[var(--k-muted)]">建议</div>
           <div className="font-mono">{text}</div>
         </div>
+        {forced ? (
+          <div className="mt-2 text-emerald-700">
+            {forcedReason || 'A_pullback/wait was overridden by hard rule.'}
+          </div>
+        ) : null}
       </>
     );
     return (
