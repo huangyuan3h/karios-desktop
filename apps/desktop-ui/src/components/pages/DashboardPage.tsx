@@ -249,6 +249,35 @@ function buildDashboardHotIndustryPicks(summary: DashboardSummary | null): HotIn
   return picks;
 }
 
+function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'): string {
+  const asOfDate = String((s as any)?.industryFundFlow?.asOfDate ?? (s as any)?.asOfDate ?? '').trim();
+  const picks = buildDashboardHotIndustryPicks(s);
+  const lines: string[] = [];
+  lines.push(`${heading} Hot industries workflow`);
+  if (asOfDate) lines.push(`- asOfDate: ${asOfDate}`);
+  lines.push(
+    '- Rule: daily net inflow top sectors intersected with strong 5D inflow ranking; keep top 3 for TV screener cross-filter.',
+  );
+  lines.push(
+    '- Action: only stocks from these 3 sectors and passing technical checks should be added to Watchlist.',
+  );
+  lines.push('');
+
+  const headers = ['#', 'Industry', '1D rank', '5D rank', '1D net', '5D sum'];
+  const rows: unknown[][] = picks.slice(0, 3).map((p, idx) => [
+    idx + 1,
+    p.industryName || '—',
+    typeof p.dailyRank === 'number' ? `#${p.dailyRank}` : '—',
+    typeof p.fiveDayRank === 'number' ? `#${p.fiveDayRank}` : '—',
+    fmtAmountCn(p.netInflow ?? null),
+    fmtAmountCn(p.sum5d ?? null),
+  ]);
+  if (!rows.length) rows.push([1, '—', '—', '—', '—', '—']);
+  lines.push(mdTable(headers, rows));
+  lines.push('');
+  return lines.join('\n').trim() + '\n';
+}
+
 const WATCHLIST_STORAGE_KEY = 'karios.watchlist.v1';
 
 type WatchlistItem = {
@@ -850,6 +879,8 @@ export function DashboardPage({
       lines.push(`- asOfDate: ${String((s as any)?.asOfDate ?? '')}`);
       lines.push('');
       lines.push(buildIndustryMarkdown(s, '##').trim());
+      lines.push('');
+      lines.push(buildHotIndustriesMarkdown(s, '##').trim());
       lines.push('');
       lines.push(buildSentimentMarkdown(s, '##').trim());
       lines.push('');

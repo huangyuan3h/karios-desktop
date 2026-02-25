@@ -299,6 +299,38 @@ function normalizeScreenerSymbol(raw: string): string | null {
   return null;
 }
 
+function parseScreenerNumber(raw: unknown): number | null {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  const m = s.match(/-?\d+(?:,\d{3})*(?:\.\d+)?/);
+  if (!m) return null;
+  const n = Number(m[0].replaceAll(',', ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+function pickFirstRowValue(row: Record<string, string>, keys: string[]): string {
+  for (const k of keys) {
+    const v = row[k];
+    if (typeof v === 'string' && v.trim()) return v;
+  }
+  return '';
+}
+
+function getRetracementRatioFromScreenerRow(row: Record<string, string>): number | null {
+  const priceRaw = pickFirstRowValue(row, ['Price', 'Last', 'Close']);
+  const high52wRaw = pickFirstRowValue(row, [
+    'High 52W',
+    'High | Interval52Weeks',
+    '52 Week High',
+    'High 52 week',
+    'High 52Wk',
+  ]);
+  const price = parseScreenerNumber(priceRaw);
+  const high52w = parseScreenerNumber(high52wRaw);
+  if (price == null || high52w == null || high52w <= 0) return null;
+  return (price - high52w) / high52w;
+}
+
 function chunk<T>(arr: T[], n: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
@@ -855,12 +887,19 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       }
 
       const candidates: string[] = [];
+      const retracementBySymbol = new Map<string, number[]>();
       for (const snap of snapshotDetails) {
         if (!snap) continue;
         for (const r of snap.rows || []) {
           const raw = String(r['Ticker'] || r['Symbol'] || '').trim();
           const sym = normalizeScreenerSymbol(raw);
-          if (sym) candidates.push(sym);
+          if (!sym) continue;
+          candidates.push(sym);
+          const ratio = getRetracementRatioFromScreenerRow(r);
+          if (ratio == null) continue;
+          const arr = retracementBySymbol.get(sym) ?? [];
+          arr.push(ratio);
+          retracementBySymbol.set(sym, arr);
         }
       }
 
@@ -876,11 +915,32 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         return;
       }
 
-      setStep('TrendOK check', 0, uniq.length);
+      // Hard filter: keep only pullback ratio in [-0.15, -0.05].
+      const minPullback = -0.15;
+      const maxPullback = -0.05;
+      const filtered = uniq.filter((sym) => {
+        const rs = retracementBySymbol.get(sym) ?? [];
+        return rs.some((x) => x >= minPullback && x <= maxPullback);
+      });
+      const droppedByPullback = uniq.length - filtered.length;
+      if (!filtered.length) {
+        setSyncMsg(
+          `Screener scanned ${uniq.length} symbols, but 0 passed pullback ratio filter ((Current-52WHigh)/52WHigh in [-0.15, -0.05]).`,
+        );
+        setImportDebug({
+          updatedAt: new Date().toISOString(),
+          scanned: uniq.length,
+          trendOkCount: 0,
+          rows: [],
+        });
+        return;
+      }
+
+      setStep('TrendOK check', 0, filtered.length);
       // Check TrendOK from data-sync-service DB cache (no network fetch in data-sync-service).
       const okSymsCached: string[] = [];
       const debugBySym: Record<string, TrendOkResult> = {};
-      for (const part of chunk(uniq, 200)) {
+      for (const part of chunk(filtered, 200)) {
         const sp = new URLSearchParams();
         sp.set('refresh', 'true');
         sp.set('realtime', isShanghaiTradingTime() ? 'true' : 'false');
@@ -896,7 +956,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         }
         setSyncProgress((p) => {
           const prev = p?.cur ?? 0;
-          return { cur: Math.min(uniq.length, prev + part.length), total: uniq.length };
+          return { cur: Math.min(filtered.length, prev + part.length), total: filtered.length };
         });
       }
       const okUniqCached = Array.from(new Set(okSymsCached));
@@ -905,9 +965,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       // Persist debug table for manual review (never auto-cleared).
       setImportDebug({
         updatedAt: new Date().toISOString(),
-        scanned: uniq.length,
+        scanned: filtered.length,
         trendOkCount: okUniq.length,
-        rows: uniq.map(
+        rows: filtered.map(
           (sym) =>
             debugBySym[sym] ?? ({
               symbol: sym,
@@ -926,14 +986,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
       if (!added.length) {
         setSyncMsg(
-          `Screener scanned ${uniq.length} symbols (latest snapshots); TrendOK ✅: ${okUniq.length}; nothing new to add.`,
+          `Screener scanned ${uniq.length} symbols; pullback-filter kept ${filtered.length} (dropped ${droppedByPullback}); TrendOK ✅: ${okUniq.length}; nothing new to add.`,
         );
         return;
       }
 
       persist([...added, ...items]);
       setSyncMsg(
-        `Added ${added.length} TrendOK ✅ stocks from screener (latest snapshots; scanned ${uniq.length}).`,
+        `Added ${added.length} TrendOK ✅ stocks from screener (scanned ${uniq.length}; pullback-filter kept ${filtered.length}, dropped ${droppedByPullback}).`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

@@ -84,23 +84,42 @@ async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
 }
 
 function pickColumns(headers: string[]) {
-  const preferred = [
-    'Ticker',
-    'Name',
-    'Symbol',
-    'Price',
-    'Change %',
-    'Rel Volume',
-    'Rel Volume 1W',
-    'Market cap',
-    'Sector',
-    'Analyst Rating',
-    'RSI (14)',
-  ];
-  const set = new Set(headers);
-  const picked = preferred.filter((h) => set.has(h));
-  const rest = headers.filter((h) => !picked.includes(h));
-  return [...picked, ...rest].slice(0, 8);
+  const aliases: Record<string, string[]> = {
+    ticker: ['Ticker'],
+    name: ['Name'],
+    price: ['Price'],
+    changePct: ['Change %', 'Price Change % 1 day'],
+    relVolume: ['Rel Volume', 'Relative Volume 1 day', 'Relative Volume'],
+    sector: ['Sector'],
+    analystRating: ['Analyst Rating'],
+    high52w: ['High 52W', 'High | Interval52Weeks', '52 Week High', 'High 52 week', 'High 52Wk'],
+  };
+  const byNorm = new Map(headers.map((h) => [String(h).trim().toLowerCase(), h]));
+  const used = new Set<string>();
+
+  const pickOne = (candidates: string[]): string | null => {
+    for (const c of candidates) {
+      const hit = byNorm.get(c.trim().toLowerCase());
+      if (hit && !used.has(hit)) {
+        used.add(hit);
+        return hit;
+      }
+    }
+    return null;
+  };
+
+  const orderedPreferred: string[] = [];
+  for (const key of ['ticker', 'name', 'price', 'changePct', 'relVolume', 'sector', 'analystRating', 'high52w']) {
+    const hit = pickOne(aliases[key] ?? []);
+    if (hit) orderedPreferred.push(hit);
+  }
+
+  // Explicitly hide the raw "Symbol" column in UI/Markdown, because Ticker+Name are already derived.
+  const rest = headers.filter(
+    (h) => !used.has(h) && String(h).trim().toLowerCase() !== 'symbol',
+  );
+
+  return [...orderedPreferred, ...rest].slice(0, 8);
 }
 
 function escapeMarkdownCell(value: string): string {
