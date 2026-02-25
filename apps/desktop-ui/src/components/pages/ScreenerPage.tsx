@@ -5,7 +5,7 @@ import { ExternalLink, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 
 type TvScreener = {
   id: string;
@@ -56,13 +56,13 @@ type TvHistoryResponse = {
 };
 
 async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return (await res.json()) as T;
 }
 
 async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
     method: 'POST',
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
@@ -84,23 +84,58 @@ async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
 }
 
 function pickColumns(headers: string[]) {
-  const preferred = [
-    'Ticker',
-    'Name',
-    'Symbol',
-    'Price',
-    'Change %',
-    'Rel Volume',
-    'Rel Volume 1W',
-    'Market cap',
-    'Sector',
-    'Analyst Rating',
-    'RSI (14)',
-  ];
-  const set = new Set(headers);
-  const picked = preferred.filter((h) => set.has(h));
-  const rest = headers.filter((h) => !picked.includes(h));
-  return [...picked, ...rest].slice(0, 8);
+  const aliases: Record<string, string[]> = {
+    ticker: ['Ticker'],
+    name: ['Name'],
+    price: ['Price'],
+    changePct: ['Change %', 'Price Change % 1 day'],
+    relVolume: ['Rel Volume', 'Relative Volume 1 day', 'Relative Volume'],
+    sector: ['Sector'],
+    analystRating: ['Analyst Rating'],
+    high52w: ['High 52W', 'High | Interval52Weeks', '52 Week High', 'High 52 week', 'High 52Wk'],
+  };
+  const byNorm = new Map(headers.map((h) => [String(h).trim().toLowerCase(), h]));
+  const used = new Set<string>();
+
+  const pickOne = (candidates: string[]): string | null => {
+    for (const c of candidates) {
+      const hit = byNorm.get(c.trim().toLowerCase());
+      if (hit && !used.has(hit)) {
+        used.add(hit);
+        return hit;
+      }
+    }
+    return null;
+  };
+
+  const orderedPreferred: string[] = [];
+  for (const key of ['ticker', 'name', 'price', 'changePct', 'relVolume', 'sector', 'analystRating', 'high52w']) {
+    const hit = pickOne(aliases[key] ?? []);
+    if (hit) orderedPreferred.push(hit);
+  }
+
+  // Explicitly hide the raw "Symbol" column in UI/Markdown, because Ticker+Name are already derived.
+  const rest = headers.filter(
+    (h) => !used.has(h) && String(h).trim().toLowerCase() !== 'symbol',
+  );
+
+  return [...orderedPreferred, ...rest].slice(0, 8);
+}
+
+function escapeMarkdownCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>').trim();
+}
+
+function toMarkdownTable(headers: string[], rows: Record<string, string>[]): string {
+  if (!headers.length) return '';
+  const safeHeaders = headers.map((h) => escapeMarkdownCell(h || ''));
+  const headerLine = `| ${safeHeaders.join(' | ')} |`;
+  const dividerLine = `| ${safeHeaders.map(() => '---').join(' | ')} |`;
+  const body = rows.map((r) => {
+    const cells = headers.map((h) => escapeMarkdownCell(r[h] ?? ''));
+    return `| ${cells.join(' | ')} |`;
+  });
+  return [headerLine, dividerLine, ...body].join('\n');
 }
 
 export function ScreenerPage() {
@@ -110,7 +145,10 @@ export function ScreenerPage() {
   const [history, setHistory] = React.useState<Record<string, TvHistoryResponse | null>>({});
   const [historyOpen, setHistoryOpen] = React.useState<Record<string, boolean>>({});
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [busyAll, setBusyAll] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = React.useState<{ id: string; ok: boolean; text: string } | null>(null);
+  const copyTimerRef = React.useRef<number | null>(null);
 
   const refreshAll = React.useCallback(async () => {
     setError(null);
@@ -144,6 +182,13 @@ export function ScreenerPage() {
     void refreshAll();
   }, [refreshAll]);
 
+  React.useEffect(
+    () => () => {
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    },
+    [],
+  );
+
   async function syncOne(screener: TvScreener) {
     setBusyId(screener.id);
     setError(null);
@@ -156,6 +201,41 @@ export function ScreenerPage() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function syncAll() {
+    setBusyAll(true);
+    setBusyId(null);
+    setError(null);
+    const failures: Array<{ id: string; name: string; error: string }> = [];
+    try {
+      // Serial sync to avoid overloading CDP/TradingView.
+      for (const sc of screeners) {
+        try {
+          await apiPostJson<{ snapshotId: string }>(
+            `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/sync`,
+          );
+        } catch (e) {
+          failures.push({
+            id: sc.id,
+            name: sc.name,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+      await refreshAll();
+      if (failures.length) {
+        setError(
+          `Sync all finished with ${failures.length} error(s): ` +
+            failures
+              .slice(0, 3)
+              .map((x) => `${x.name}(${x.id}): ${x.error}`)
+              .join(' | '),
+        );
+      }
+    } finally {
+      setBusyAll(false);
     }
   }
 
@@ -172,19 +252,90 @@ export function ScreenerPage() {
     }
   }
 
+  function setCopyToast(id: string, ok: boolean, text: string) {
+    setCopyStatus({ id, ok, text });
+    if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = window.setTimeout(() => setCopyStatus(null), 2400);
+  }
+
+  async function copySnapshotMarkdown(
+    screenerId: string,
+    headers: string[],
+    rows: Record<string, string>[],
+  ) {
+    const md = toMarkdownTable(headers, rows);
+    if (!md) {
+      setCopyToast(screenerId, false, 'No data to copy.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(md);
+      setCopyToast(screenerId, true, 'Copied Markdown table.');
+    } catch {
+      setCopyToast(screenerId, false, 'Copy failed. Please allow clipboard access.');
+    }
+  }
+
+  async function copyAllMarkdown() {
+    const parts: string[] = [];
+    for (const sc of screeners) {
+      const snap = snapshots[sc.id] ?? null;
+      if (!snap) continue;
+      const cols = pickColumns(snap.headers);
+      if (!cols.length || !snap.rows.length) continue;
+      parts.push(`## ${sc.name}`);
+      parts.push(`- capturedAt: ${new Date(snap.capturedAt).toLocaleString()}`);
+      parts.push(`- url: ${sc.url}`);
+      parts.push('');
+      parts.push(toMarkdownTable(cols, snap.rows));
+      parts.push('');
+    }
+    const md = parts.join('\n').trim();
+    if (!md) {
+      setCopyToast('__all__', false, 'No tables to copy.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(md);
+      setCopyToast('__all__', true, 'Copied all Markdown tables.');
+    } catch {
+      setCopyToast('__all__', false, 'Copy failed. Please allow clipboard access.');
+    }
+  }
+
   return (
-    <div className="mx-auto w-full max-w-5xl p-6">
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div>
+    <div className="mx-auto w-full max-w-6xl p-6">
+      <div className="mb-6 flex w-full items-start gap-3">
+        <div className="min-w-0 flex-1">
           <div className="text-lg font-semibold">Screener</div>
           <div className="mt-1 text-sm text-[var(--k-muted)]">
             Sync TradingView screeners and review latest snapshots.
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => void refreshAll()}>
-          Refresh
-        </Button>
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="secondary" size="sm" onClick={() => void refreshAll()} disabled={busyAll}>
+            Refresh
+          </Button>
+          <Button size="sm" onClick={() => void syncAll()} disabled={busyAll || screeners.length === 0} className="gap-2">
+            <RefreshCw className={busyAll ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+            {busyAll ? 'Syncing…' : 'Sync all'}
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void copyAllMarkdown()}
+            disabled={screeners.length === 0}
+          >
+            Copy Markdown all
+          </Button>
+        </div>
       </div>
+
+      {copyStatus?.id === '__all__' ? (
+        <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-sm">
+          <span className={copyStatus.ok ? 'text-emerald-600' : 'text-red-600'}>{copyStatus.text}</span>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
@@ -196,7 +347,7 @@ export function ScreenerPage() {
         {screeners.map((it) => {
           const snap = snapshots[it.id] ?? null;
           const cols = snap ? pickColumns(snap.headers) : [];
-          const busy = busyId === it.id;
+          const busy = busyAll || busyId === it.id;
           const showHist = Boolean(historyOpen[it.id]);
           const hist = history[it.id] ?? undefined;
           return (
@@ -244,8 +395,20 @@ export function ScreenerPage() {
                       setHistoryOpen((prev) => ({ ...prev, [it.id]: !prev[it.id] }));
                       void ensureHistoryLoaded(it.id);
                     }}
+                    disabled={busyAll}
                   >
                     {showHist ? 'Hide history' : 'History'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!snap || cols.length === 0 || snap.rows.length === 0}
+                    onClick={() => {
+                      if (!snap) return;
+                      void copySnapshotMarkdown(it.id, cols, snap.rows);
+                    }}
+                  >
+                    Copy Markdown
                   </Button>
                   <Button
                     size="sm"
@@ -270,6 +433,11 @@ export function ScreenerPage() {
 
               {snap ? (
                 <div className="mt-4 overflow-hidden rounded-lg border border-[var(--k-border)]">
+                  {copyStatus?.id === it.id ? (
+                    <div className="border-b border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-xs">
+                      <span className={copyStatus.ok ? 'text-emerald-600' : 'text-red-600'}>{copyStatus.text}</span>
+                    </div>
+                  ) : null}
                   {snap.filters?.length ? (
                     <div className="border-b border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2">
                       <div className="flex flex-wrap gap-2">

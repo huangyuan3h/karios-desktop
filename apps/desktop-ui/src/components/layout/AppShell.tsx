@@ -8,16 +8,16 @@ import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
 import { BrokerPage } from '@/components/pages/BrokerPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
-import { LeaderStocksPage } from '@/components/pages/LeaderStocksPage';
 import { JournalReadPage } from '@/components/pages/JournalReadPage';
 import { JournalWritePage } from '@/components/pages/JournalWritePage';
 import { MarketPage } from '@/components/pages/MarketPage';
-import { RankPage } from '@/components/pages/RankPage';
+import { SchedulerPage } from '@/components/pages/SchedulerPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
-import { StrategyPage } from '@/components/pages/StrategyPage';
 import { StockPage } from '@/components/pages/StockPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
+import { BacktestPage } from '@/components/pages/BacktestPage';
+import { SimTradePage } from '@/components/pages/SimTradePage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
@@ -110,24 +110,24 @@ export function AppShell() {
               ? 'Dashboard'
               : activePage === 'market'
                 ? 'Market'
-              : activePage === 'rank'
-                ? 'Quant'
               : activePage === 'industryFlow'
                 ? 'Industry Flow'
               : activePage === 'watchlist'
                 ? 'Watchlist'
               : activePage === 'broker'
                 ? 'Broker'
-              : activePage === 'strategy'
-                ? 'Strategy'
               : activePage === 'journal'
                 ? 'Journal'
-              : activePage === 'leaders'
-                ? 'Leaders'
               : activePage === 'stock'
                 ? activeStockSymbol ?? 'Stock'
               : activePage === 'screener'
                 ? 'Screener'
+              : activePage === 'scheduler'
+                ? 'Scheduler'
+              : activePage === 'backtest'
+                ? 'Backtest'
+              : activePage === 'simtrade'
+                ? 'Sim Trade'
               : activePage === 'settings'
                 ? 'Settings'
                 : activePage}
@@ -173,14 +173,6 @@ export function AppShell() {
               />
             ) : activePage === 'broker' ? (
               <BrokerPage />
-            ) : activePage === 'rank' ? (
-              <RankPage
-                onOpenStock={(symbol) => {
-                  setStockReturnPage('rank');
-                  setActiveStockSymbol(symbol);
-                  setActivePage('stock');
-                }}
-              />
             ) : activePage === 'industryFlow' ? (
               <IndustryFlowPage />
             ) : activePage === 'watchlist' ? (
@@ -191,8 +183,6 @@ export function AppShell() {
                   setActivePage('stock');
                 }}
               />
-            ) : activePage === 'strategy' ? (
-              <StrategyPage />
             ) : activePage === 'journal' ? (
               journalMode === 'write' ? (
                 <JournalWritePage
@@ -209,14 +199,6 @@ export function AppShell() {
                   }}
                 />
               )
-            ) : activePage === 'leaders' ? (
-              <LeaderStocksPage
-                onOpenStock={(symbol) => {
-                  setStockReturnPage('leaders');
-                  setActiveStockSymbol(symbol);
-                  setActivePage('stock');
-                }}
-              />
             ) : activePage === 'stock' && activeStockSymbol ? (
               <StockPage
                 symbol={activeStockSymbol}
@@ -224,13 +206,15 @@ export function AppShell() {
               />
             ) : activePage === 'screener' ? (
               <ScreenerPage />
+            ) : activePage === 'scheduler' ? (
+              <SchedulerPage />
+            ) : activePage === 'backtest' ? (
+              <BacktestPage />
+            ) : activePage === 'simtrade' ? (
+              <SimTradePage />
             ) : (
               <DashboardPage
                 onNavigate={(id) => setActivePage(id)}
-                onOpenStock={(symbol) => {
-                  setActiveStockSymbol(symbol);
-                  setActivePage('stock');
-                }}
               />
             )}
           </div>

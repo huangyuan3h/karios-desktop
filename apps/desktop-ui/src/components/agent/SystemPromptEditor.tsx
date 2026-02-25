@@ -6,7 +6,7 @@ import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 
 type PresetSummary = { id: string; title: string; updatedAt: string };
@@ -46,7 +46,7 @@ export function SystemPromptEditor() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch(`${QUANT_BASE_URL}/system-prompts`);
+      const resp = await fetch(`${DATA_SYNC_BASE_URL}/system-prompts`);
       if (!resp.ok) return;
       const data = (await resp.json()) as { items?: PresetSummary[] };
       const next = Array.isArray(data.items) ? data.items : [];
@@ -61,7 +61,7 @@ export function SystemPromptEditor() {
   async function refreshActive() {
     setError(null);
     try {
-      const resp = await fetch(`${QUANT_BASE_URL}/system-prompts/active`);
+      const resp = await fetch(`${DATA_SYNC_BASE_URL}/system-prompts/active`);
       if (!resp.ok) return;
       const data = (await resp.json()) as { id?: string | null; title?: string; content?: string };
       const id = data.id === null || typeof data.id === 'string' ? (data.id ?? null) : null;
@@ -120,7 +120,7 @@ export function SystemPromptEditor() {
                   setSaving(true);
                   setError(null);
                   try {
-                    await fetch(`${QUANT_BASE_URL}/system-prompts/active`, {
+                    await fetch(`${DATA_SYNC_BASE_URL}/system-prompts/active`, {
                       method: 'PUT',
                       headers: { 'content-type': 'application/json' },
                       body: JSON.stringify({ id }),
@@ -160,7 +160,7 @@ export function SystemPromptEditor() {
                   setSaving(true);
                   setError(null);
                   try {
-                    const resp = await fetch(`${QUANT_BASE_URL}/system-prompts`, {
+                    const resp = await fetch(`${DATA_SYNC_BASE_URL}/system-prompts`, {
                       method: 'POST',
                       headers: { 'content-type': 'application/json' },
                       body: JSON.stringify({ title: 'New prompt', content: '' }),
@@ -193,7 +193,7 @@ export function SystemPromptEditor() {
                   setSaving(true);
                   setError(null);
                   try {
-                    const resp = await fetch(`${QUANT_BASE_URL}/system-prompts/${selectedId}`, {
+                    const resp = await fetch(`${DATA_SYNC_BASE_URL}/system-prompts/${selectedId}`, {
                       method: 'DELETE',
                     });
                     if (!resp.ok) {
@@ -201,7 +201,7 @@ export function SystemPromptEditor() {
                       return;
                     }
                     await refreshList();
-                    await fetch(`${QUANT_BASE_URL}/system-prompts/active`, {
+                    await fetch(`${DATA_SYNC_BASE_URL}/system-prompts/active`, {
                       method: 'PUT',
                       headers: { 'content-type': 'application/json' },
                       body: JSON.stringify({ id: null }),
@@ -244,7 +244,7 @@ export function SystemPromptEditor() {
 
           <div className="flex items-center justify-between">
             <div className="text-xs text-[var(--k-muted)]">
-              {loading ? 'Loading presets…' : 'Stored in local SQLite via quant-service.'}
+              {loading ? 'Loading presets…' : 'Stored in Postgres via data-sync-service.'}
             </div>
             <Button
               size="sm"
@@ -255,7 +255,7 @@ export function SystemPromptEditor() {
                 setError(null);
                 try {
                   if (selectedValue === NEW_VALUE) {
-                    const resp = await fetch(`${QUANT_BASE_URL}/system-prompts`, {
+                    const resp = await fetch(`${DATA_SYNC_BASE_URL}/system-prompts`, {
                       method: 'POST',
                       headers: { 'content-type': 'application/json' },
                       body: JSON.stringify({ title: title.trim() || 'Untitled', content: draft }),
@@ -273,7 +273,7 @@ export function SystemPromptEditor() {
                   }
 
                   if (selectedId) {
-                    const resp = await fetch(`${QUANT_BASE_URL}/system-prompts/${selectedId}`, {
+                    const resp = await fetch(`${DATA_SYNC_BASE_URL}/system-prompts/${selectedId}`, {
                       method: 'PUT',
                       headers: { 'content-type': 'application/json' },
                       body: JSON.stringify({ title: title.trim() || 'Untitled', content: draft }),
@@ -287,7 +287,7 @@ export function SystemPromptEditor() {
                     return;
                   }
 
-                  const resp = await fetch(`${QUANT_BASE_URL}/settings/system-prompt`, {
+                  const resp = await fetch(`${DATA_SYNC_BASE_URL}/settings/system-prompt`, {
                     method: 'PUT',
                     headers: { 'content-type': 'application/json' },
                     body: JSON.stringify({ value: draft }),

@@ -4,7 +4,8 @@ import * as React from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { HotIndustryWorkflowCard, type HotIndustryPick } from '@/components/pages/HotIndustryWorkflowCard';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 
 type IndustryFundFlowPoint = {
@@ -28,15 +29,64 @@ type IndustryFundFlowResp = {
   top: IndustryFundFlowRow[];
 };
 
+type MainlineFlowFlags = {
+  sum20d: number;
+  sum5d: number;
+  rank20d: number;
+  rank5d: number;
+  positiveDays10d: number;
+  midAccumulation: boolean;
+  shortIntensity: boolean;
+  consistency: boolean;
+};
+
+type MainlineBreadthFlags = {
+  limitUpCount: number;
+  limitUpRank: number;
+  limitUpQualified: boolean;
+  dragonCount: number;
+  dragonQualified: boolean;
+  surgeRatio: number;
+  surgeQualified: boolean;
+};
+
+type MainlineTrendFlags = {
+  indexAboveMa20: boolean;
+  ma20Up: boolean;
+  rps: number;
+  rpsQualified: boolean;
+};
+
+type MainlineScoreRow = {
+  industryName: string;
+  flowScore: number;
+  breadthScore: number;
+  trendScore: number;
+  totalScore: number;
+  isMainline: boolean;
+  flags: {
+    flow: MainlineFlowFlags;
+    breadth: MainlineBreadthFlags;
+    trend: MainlineTrendFlags;
+  };
+};
+
+type MainlineResp = {
+  asOfDate: string;
+  dates: string[];
+  allScores: MainlineScoreRow[];
+  currentMainline: MainlineScoreRow[];
+};
+
 async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
   return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
 async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -54,12 +104,113 @@ function fmtCny(x: number): string {
   return `${v.toFixed(0)}`;
 }
 
+function fmtScore(x: number): string {
+  const v = Number.isFinite(x) ? x : 0;
+  return v.toFixed(1);
+}
+
 function sumLastN(series: IndustryFundFlowPoint[], n: number): number {
   const xs = Array.isArray(series) ? series : [];
   const tail = xs.slice(-Math.max(1, n));
   let s = 0;
   for (const p of tail) s += Number.isFinite(p.netInflow) ? p.netInflow : 0;
   return s;
+}
+
+function buildHotIndustryPicks(rows: IndustryFundFlowRow[]): HotIndustryPick[] {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const dailyRanked = [...safeRows]
+    .filter((r) => Number.isFinite(r.netInflow) && r.netInflow > 0)
+    .sort((a, b) => b.netInflow - a.netInflow)
+    .slice(0, 30);
+  const fiveDayRanked = [...safeRows]
+    .map((r) => ({ row: r, sum5d: sumLastN(r.series10d ?? [], 5) }))
+    .filter((x) => Number.isFinite(x.sum5d) && x.sum5d > 0)
+    .sort((a, b) => b.sum5d - a.sum5d)
+    .slice(0, 30);
+
+  const fiveRankByName = new Map<string, { rank: number; sum5d: number }>();
+  for (let i = 0; i < fiveDayRanked.length; i += 1) {
+    const it = fiveDayRanked[i];
+    const key = String(it.row.industryName ?? '').trim();
+    if (!key || fiveRankByName.has(key)) continue;
+    fiveRankByName.set(key, { rank: i + 1, sum5d: it.sum5d });
+  }
+
+  const picked: HotIndustryPick[] = [];
+  for (let i = 0; i < dailyRanked.length; i += 1) {
+    const r = dailyRanked[i];
+    const key = String(r.industryName ?? '').trim();
+    if (!key) continue;
+    const five = fiveRankByName.get(key);
+    if (!five) continue;
+    picked.push({
+      industryName: key,
+      dailyRank: i + 1,
+      fiveDayRank: five.rank,
+      netInflow: r.netInflow,
+      sum5d: five.sum5d,
+    });
+    if (picked.length >= 3) break;
+  }
+  return picked;
+}
+
+function escapeMarkdownCell(x: unknown): string {
+  const s0 = String(x ?? '');
+  // Keep it single-line and avoid breaking Markdown table formatting.
+  const s1 = s0.replaceAll('\r\n', '\n').replaceAll('\r', '\n').replaceAll('\n', '<br/>');
+  return s1.replaceAll('|', '\\|');
+}
+
+function mdRow(cells: unknown[]): string {
+  return `| ${cells.map(escapeMarkdownCell).join(' | ')} |`;
+}
+
+function mdTable(headers: string[], rows: unknown[][]): string {
+  const out: string[] = [];
+  out.push(mdRow(headers));
+  out.push(mdRow(headers.map(() => '---')));
+  for (const r of rows) out.push(mdRow(r));
+  return out.join('\n');
+}
+
+function formatSeries10d(series: IndustryFundFlowPoint[]): string {
+  const xs = Array.isArray(series) ? series : [];
+  if (!xs.length) return '';
+  // Use multi-line string; it will be escaped to <br/> to keep Markdown table valid.
+  return xs.map((p) => `${String(p.date).slice(5)}: ${fmtCny(p.netInflow)}`).join('\n');
+}
+
+function CopyMarkdownButton({ getMarkdown }: { getMarkdown: () => string }) {
+  const [state, setState] = React.useState<'idle' | 'ok' | 'err'>('idle');
+  const timerRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  async function onCopy() {
+    try {
+      const md = getMarkdown();
+      if (!md.trim()) throw new Error('No data');
+      await navigator.clipboard.writeText(md);
+      setState('ok');
+    } catch {
+      setState('err');
+    } finally {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => setState('idle'), 1400);
+    }
+  }
+
+  const label = state === 'idle' ? 'Copy Markdown' : state === 'ok' ? 'Copied' : 'Copy failed';
+  return (
+    <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => void onCopy()}>
+      {label}
+    </Button>
+  );
 }
 
 function Sparkline({ series }: { series: IndustryFundFlowPoint[] }) {
@@ -91,6 +242,93 @@ function Sparkline({ series }: { series: IndustryFundFlowPoint[] }) {
         </title>
       ) : null}
     </svg>
+  );
+}
+
+function MainlineSection({ resp }: { resp: MainlineResp | null }) {
+  const current = resp?.currentMainline ?? [];
+  const all = resp?.allScores ?? [];
+  const top = [...all].sort((a, b) => b.totalScore - a.totalScore).slice(0, 10);
+  return (
+    <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+      <div className="mb-2 text-sm font-medium">Mainline (主线)</div>
+      <div className="mb-1 text-xs text-[var(--k-muted)]">As of: {resp?.asOfDate ?? '—'}</div>
+      <div className="mb-3 text-xs text-[var(--k-muted)]">
+        Mainline Score = Flow + Breadth + Trend. Current mainline requires score &gt; 80 for 3+ trading days.
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-[var(--k-border)]">
+          <div className="border-b border-[var(--k-border)] px-3 py-2 text-xs font-medium">Current Mainline</div>
+          <div className="overflow-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[var(--k-muted)]">
+                  <th className="px-2 py-2">#</th>
+                  <th className="px-2 py-2">Industry</th>
+                  <th className="px-2 py-2">Total</th>
+                  <th className="px-2 py-2">F/B/T</th>
+                </tr>
+              </thead>
+              <tbody>
+                {current.length ? (
+                  current.map((r, idx) => (
+                    <tr key={r.industryName} className="border-t border-[var(--k-border)]">
+                      <td className="px-2 py-1 font-mono">{idx + 1}</td>
+                      <td className="px-2 py-1">{r.industryName}</td>
+                      <td className="px-2 py-1 font-mono">{fmtScore(r.totalScore)}</td>
+                      <td className="px-2 py-1 font-mono">
+                        {fmtScore(r.flowScore)}/{fmtScore(r.breadthScore)}/{fmtScore(r.trendScore)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="px-2 py-6 text-center text-[var(--k-muted)]">
+                      No mainline yet
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="rounded-lg border border-[var(--k-border)]">
+          <div className="border-b border-[var(--k-border)] px-3 py-2 text-xs font-medium">Top Scores</div>
+          <div className="overflow-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[var(--k-muted)]">
+                  <th className="px-2 py-2">#</th>
+                  <th className="px-2 py-2">Industry</th>
+                  <th className="px-2 py-2">Total</th>
+                  <th className="px-2 py-2">F/B/T</th>
+                </tr>
+              </thead>
+              <tbody>
+                {top.length ? (
+                  top.map((r, idx) => (
+                    <tr key={r.industryName} className="border-t border-[var(--k-border)]">
+                      <td className="px-2 py-1 font-mono">{idx + 1}</td>
+                      <td className="px-2 py-1">{r.industryName}</td>
+                      <td className="px-2 py-1 font-mono">{fmtScore(r.totalScore)}</td>
+                      <td className="px-2 py-1 font-mono">
+                        {fmtScore(r.flowScore)}/{fmtScore(r.breadthScore)}/{fmtScore(r.trendScore)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="px-2 py-6 text-center text-[var(--k-muted)]">
+                      No data
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -132,9 +370,28 @@ function DailyTopByDateTable({
             </span>
           ) : null}
         </div>
-        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
-          Reference
-        </Button>
+        <div className="flex items-center gap-2">
+          <CopyMarkdownButton
+            getMarkdown={() => {
+              const headers = ['#', ...shownDates.map((d) => String(d).slice(5))];
+              const rows = Array.from({ length: topK }).map((_, idx) => [
+                idx + 1,
+                ...shownDates.map((d) => {
+                  const it = (topByDate[d] || [])[idx];
+                  const name = String(it?.industryName ?? '').trim();
+                  const v = Number(it?.value ?? 0);
+                  if (!name) return '—';
+                  if (Number.isFinite(v) && Math.abs(v) > 0) return `${name} (${fmtCny(v)})`;
+                  return name;
+                }),
+              ]);
+              return [`# ${title}`, '', mdTable(headers, rows)].join('\n');
+            }}
+          />
+          <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
+            Reference
+          </Button>
+        </div>
       </div>
       <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
         <table className="w-full border-collapse text-xs">
@@ -193,9 +450,23 @@ function MiniTable({
     <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="text-sm font-medium">{title}</div>
-        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
-          Reference
-        </Button>
+        <div className="flex items-center gap-2">
+          <CopyMarkdownButton
+            getMarkdown={() => {
+              const headers = ['#', 'Industry', valueLabel, 'Trend (10D)'];
+              const rows2 = rows.map((r, idx) => [
+                idx + 1,
+                String(r.industryName ?? ''),
+                fmtCny(Number(r.value ?? 0)),
+                formatSeries10d(r.series10d ?? []),
+              ]);
+              return [`# ${title}`, '', mdTable(headers, rows2)].join('\n');
+            }}
+          />
+          <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
+            Reference
+          </Button>
+        </div>
       </div>
       <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
         <table className="w-full border-collapse text-xs">
@@ -236,21 +507,39 @@ function MiniTable({
 export function IndustryFlowPage() {
   const { addReference } = useChatStore();
   const [resp, setResp] = React.useState<IndustryFundFlowResp | null>(null);
+  const [mainlineResp, setMainlineResp] = React.useState<MainlineResp | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [mainlineError, setMainlineError] = React.useState<string | null>(null);
   const [topN, setTopN] = React.useState(30);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [lastSyncMsg, setLastSyncMsg] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     setError(null);
+    setMainlineError(null);
     try {
       // Always load full universe for accurate per-day ranking widgets.
       const universeTopN = 200;
-      const r = await apiGetJson<IndustryFundFlowResp>(
-        `/market/cn/industry-fund-flow?days=10&topN=${encodeURIComponent(String(universeTopN))}`,
-      );
-      setResp(r);
+      const [flowRes, mainlineRes] = await Promise.allSettled([
+        apiGetJson<IndustryFundFlowResp>(
+          `/market/cn/industry-fund-flow?days=10&topN=${encodeURIComponent(String(universeTopN))}`,
+        ),
+        apiGetJson<MainlineResp>('/market/cn/industry-mainline'),
+      ]);
+      if (flowRes.status === 'fulfilled') {
+        setResp(flowRes.value);
+      } else {
+        throw flowRes.reason;
+      }
+      if (mainlineRes.status === 'fulfilled') {
+        setMainlineResp(mainlineRes.value);
+      } else {
+        setMainlineError(
+          mainlineRes.reason instanceof Error ? mainlineRes.reason.message : String(mainlineRes.reason),
+        );
+        setMainlineResp(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setResp(null);
@@ -333,6 +622,11 @@ export function IndustryFlowPage() {
           {lastSyncMsg}
         </div>
       ) : null}
+      {mainlineError ? (
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+          Mainline data unavailable: {mainlineError}
+        </div>
+      ) : null}
 
       <div className="mb-3 flex items-center justify-between">
         <div className="text-xs text-[var(--k-muted)]">
@@ -358,6 +652,7 @@ export function IndustryFlowPage() {
 
       {resp?.top?.length ? (
         <div className="grid gap-4">
+          <MainlineSection resp={mainlineResp} />
           {(() => {
             const rows = resp.top.slice(0, 500);
             const asOfDate = resp.asOfDate || new Date().toISOString().slice(0, 10);
@@ -365,6 +660,7 @@ export function IndustryFlowPage() {
             const top = 10;
             const dates = resp.dates ?? rows[0]?.series10d?.map((p) => p.date) ?? [];
             const topK = 5;
+            const hotPicks = buildHotIndustryPicks(rows);
 
             // Build daily top inflow list for each date using full universe rows.
             const topByDate: Record<string, Array<{ industryName: string; value: number }>> = {};
@@ -427,6 +723,7 @@ export function IndustryFlowPage() {
                     })
                   }
                 />
+                <HotIndustryWorkflowCard picks={hotPicks} asOfDate={asOfDate} />
 
                 <div className="grid gap-4 md:grid-cols-2">
                 <MiniTable
@@ -536,31 +833,49 @@ export function IndustryFlowPage() {
       )}
 
       {detailsOpen && resp?.top?.length ? (
-        <div className="mt-4 overflow-auto rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]">
-          <table className="w-full border-collapse text-xs">
-            <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
-              <tr className="text-left">
-                <th className="px-3 py-2">Rank</th>
-                <th className="px-3 py-2">Industry</th>
-                <th className="px-3 py-2">Net inflow</th>
-                <th className="px-3 py-2">Sum 10D</th>
-                <th className="px-3 py-2">Trend (10D)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {resp.top.slice(0, topN).map((r, idx) => (
-                <tr key={r.industryCode} className="border-t border-[var(--k-border)]">
-                  <td className="px-3 py-2 font-mono">{idx + 1}</td>
-                  <td className="px-3 py-2">{r.industryName}</td>
-                  <td className="px-3 py-2 font-mono">{fmtCny(r.netInflow)}</td>
-                  <td className="px-3 py-2 font-mono">{fmtCny(r.sum10d)}</td>
-                  <td className="px-3 py-2">
-                    <Sparkline series={r.series10d ?? []} />
-                  </td>
+        <div className="mt-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]">
+          <div className="flex items-center justify-between gap-2 px-4 py-3">
+            <div className="text-sm font-medium">Details</div>
+            <CopyMarkdownButton
+              getMarkdown={() => {
+                const headers = ['Rank', 'Industry', 'Net inflow', 'Sum 10D', 'Trend (10D)'];
+                const rows3 = resp.top.slice(0, topN).map((r, idx) => [
+                  idx + 1,
+                  String(r.industryName ?? ''),
+                  fmtCny(Number(r.netInflow ?? 0)),
+                  fmtCny(Number(r.sum10d ?? 0)),
+                  formatSeries10d(r.series10d ?? []),
+                ]);
+                return ['# Details', '', mdTable(headers, rows3)].join('\n');
+              }}
+            />
+          </div>
+          <div className="overflow-auto">
+            <table className="w-full border-collapse text-xs">
+              <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                <tr className="text-left">
+                  <th className="px-3 py-2">Rank</th>
+                  <th className="px-3 py-2">Industry</th>
+                  <th className="px-3 py-2">Net inflow</th>
+                  <th className="px-3 py-2">Sum 10D</th>
+                  <th className="px-3 py-2">Trend (10D)</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {resp.top.slice(0, topN).map((r, idx) => (
+                  <tr key={r.industryCode} className="border-t border-[var(--k-border)]">
+                    <td className="px-3 py-2 font-mono">{idx + 1}</td>
+                    <td className="px-3 py-2">{r.industryName}</td>
+                    <td className="px-3 py-2 font-mono">{fmtCny(r.netInflow)}</td>
+                    <td className="px-3 py-2 font-mono">{fmtCny(r.sum10d)}</td>
+                    <td className="px-3 py-2">
+                      <Sparkline series={r.series10d ?? []} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
     </div>

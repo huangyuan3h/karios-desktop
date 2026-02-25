@@ -4,7 +4,7 @@ import * as React from 'react';
 import { RefreshCw, Search } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 
 type MarketStatus = {
@@ -34,13 +34,13 @@ type MarketStocksResponse = {
 };
 
 async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return (await res.json()) as T;
 }
 
 async function apiPostJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { method: 'POST' });
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { method: 'POST' });
   const txt = await res.text().catch(() => '');
   if (!res.ok) {
     try {

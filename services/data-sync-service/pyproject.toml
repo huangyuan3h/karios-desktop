@@ -1,0 +1,39 @@
+[project]
+name = "data-sync-service"
+version = "0.1.0"
+description = "Data sync service for Karios Desktop"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "akshare>=1.18.23",
+    "apscheduler>=3.11.0",
+    "fastapi>=0.125.0",
+    "pandas>=2.2.0",
+    "playwright>=1.58.0",
+    "psycopg[binary]>=3.2.10",
+    "python-dotenv>=1.1.1",
+    "tushare>=1.4.0",
+    "uvicorn>=0.38.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    "E501",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pyright>=1.1.407",
+    "pytest>=9.0.2",
+    "ruff>=0.14.10",
+]
