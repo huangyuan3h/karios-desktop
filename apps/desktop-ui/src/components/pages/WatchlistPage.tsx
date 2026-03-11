@@ -1,7 +1,16 @@
 'use client';
 
 import * as React from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, CircleX, ExternalLink, Info, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  CircleX,
+  ExternalLink,
+  Info,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
@@ -36,7 +45,10 @@ const FLAG_COLORS: Array<{ label: string; hex: string }> = [
 ];
 
 function escapeMarkdownCell(value: string): string {
-  return String(value ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>').trim();
+  return String(value ?? '')
+    .replace(/\|/g, '\\|')
+    .replace(/\r?\n/g, '<br>')
+    .trim();
 }
 
 function mdBool(v: boolean | null | undefined): string {
@@ -73,7 +85,11 @@ function VisibilitySection({
   children: React.ReactNode;
 }) {
   return (
-    <div className={className} style={{ display: visible ? 'block' : 'none' }} aria-hidden={!visible}>
+    <div
+      className={className}
+      style={{ display: visible ? 'block' : 'none' }}
+      aria-hidden={!visible}
+    >
       {children}
     </div>
   );
@@ -432,7 +448,9 @@ function isHotspotTop3Industry(t: TrendOkResult | undefined | null): boolean {
 function isGreenZoneMarket(t: TrendOkResult | undefined | null): boolean {
   if (!t) return false;
   // TrendOK service always returns marketRegime (Strong/Diverging/Weak).
-  const regime = String((t as TrendOkResult & { marketRegime?: unknown }).marketRegime ?? '').trim();
+  const regime = String(
+    (t as TrendOkResult & { marketRegime?: unknown }).marketRegime ?? '',
+  ).trim();
   if (regime === 'Strong') return true;
 
   // Forward-compatible fallback in case backend later passes raw index signals in buyChecks.
@@ -529,15 +547,21 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [syncStage, setSyncStage] = React.useState<string | null>(null);
-  const [syncProgress, setSyncProgress] = React.useState<{ cur: number; total: number } | null>(null);
+  const [syncProgress, setSyncProgress] = React.useState<{ cur: number; total: number } | null>(
+    null,
+  );
   const [syncLogs, setSyncLogs] = React.useState<string[]>([]);
-  const [copyMdStatus, setCopyMdStatus] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const [copyMdStatus, setCopyMdStatus] = React.useState<{ ok: boolean; text: string } | null>(
+    null,
+  );
   const copyMdTimerRef = React.useRef<number | null>(null);
 
   // Keep the last screener import inspection table visible for manual follow-ups.
   const [importDebugOpen, setImportDebugOpen] = React.useState(true);
   const [importDebugFilter, setImportDebugFilter] = React.useState('');
-  const [importDebugScoreSortDir, setImportDebugScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
+  const [importDebugScoreSortDir, setImportDebugScoreSortDir] = React.useState<'desc' | 'asc'>(
+    'desc',
+  );
   const [importDebug, setImportDebug] = React.useState<ScreenerImportDebugState>({
     updatedAt: null,
     scanned: 0,
@@ -688,7 +712,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             await new Promise((r) => window.setTimeout(r, 120));
           }
           if (reason === 'manual' && failures > 0) {
-            setSyncMsg(`Network sync failed for ${failures}/${syms.length} symbols; using cached data.`);
+            setSyncMsg(
+              `Network sync failed for ${failures}/${syms.length} symbols; using cached data.`,
+            );
           }
         }
 
@@ -718,7 +744,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             const tsCode = toTsCodeFromSymbol(s);
             if (tsCode) byTsCode.set(tsCode, s);
           }
-          const nextQuotes: Record<string, { price: number | null; tsCode: string; tradeTime: string | null }> = {};
+          const nextQuotes: Record<
+            string,
+            { price: number | null; tsCode: string; tradeTime: string | null }
+          > = {};
           for (const part of chunk(cn, 50)) {
             const r = await apiGetJsonFrom<QuoteResp>(
               DATA_SYNC_BASE_URL,
@@ -742,9 +771,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               if (!it.costPrice) return it;
               const q = nextQuotes[it.symbol];
               const price =
-                (typeof q?.price === 'number' && Number.isFinite(q.price))
+                typeof q?.price === 'number' && Number.isFinite(q.price)
                   ? q.price
-                  : (typeof next[it.symbol]?.values?.close === 'number' ? next[it.symbol]?.values?.close : null);
+                  : typeof next[it.symbol]?.values?.close === 'number'
+                    ? next[it.symbol]?.values?.close
+                    : null;
               if (price == null) return it;
               const maxPrice = typeof it.maxPrice === 'number' ? it.maxPrice : 0;
               if (price > maxPrice) return { ...it, maxPrice: price };
@@ -776,10 +807,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   React.useEffect(() => {
     // Auto refresh every 10 minutes to reflect DB updates without reloading the app.
     if (!items.length) return;
-    const id = window.setInterval(() => {
-      // Auto refresh only recomputes from cache; manual refresh can force network sync.
-      void refreshTrend('timer', { forceMarket: false });
-    }, 10 * 60 * 1000);
+    const id = window.setInterval(
+      () => {
+        // Auto refresh only recomputes from cache; manual refresh can force network sync.
+        void refreshTrend('timer', { forceMarket: false });
+      },
+      10 * 60 * 1000,
+    );
     return () => window.clearInterval(id);
   }, [items.length, refreshTrend]);
 
@@ -853,7 +887,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       setSyncStage(label);
       if (typeof cur === 'number' && typeof total === 'number') setSyncProgress({ cur, total });
       else setSyncProgress(null);
-      pushLog(label + (typeof cur === 'number' && typeof total === 'number' ? ` (${cur}/${total})` : ''));
+      pushLog(
+        label + (typeof cur === 'number' && typeof total === 'number' ? ` (${cur}/${total})` : ''),
+      );
     };
     try {
       const s = await apiGetJson<{ items: TvScreener[] }>('/integrations/tradingview/screeners');
@@ -969,7 +1005,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         trendOkCount: okUniq.length,
         rows: filtered.map(
           (sym) =>
-            debugBySym[sym] ?? ({
+            debugBySym[sym] ??
+            ({
               symbol: sym,
               trendOk: null,
               score: null,
@@ -1100,7 +1137,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     }
   }
 
-
   React.useEffect(() => {
     if (!colorPicker.open) return;
     function onKeyDown(e: KeyboardEvent) {
@@ -1207,6 +1243,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     const warnHalf = Boolean(get('warn_reduce_half'));
     const warnDisplay =
       typeof get('warn_display') === 'string' ? String(get('warn_display')) : null;
+    const usedStoredHigher = Boolean(get('used_stored_higher'));
+    const computedStopLoss = get('computed_stop_loss');
     const exitChecks = {
       ema5_lt_ema20: Boolean(get('exit_check_ema5_lt_ema20')),
       close_lt_ema20: Boolean(get('exit_check_close_lt_ema20')),
@@ -1259,6 +1297,17 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             <div className="text-[var(--k-muted)]">StopLoss</div>
             <div className="font-mono">{fmtPrice(p)}</div>
           </div>
+          {usedStoredHigher ? (
+            <div className="mb-1 rounded border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-blue-700">
+              使用存储的历史止损价（高于计算值）
+            </div>
+          ) : null}
+          {typeof computedStopLoss === 'number' && computedStopLoss !== p ? (
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--k-muted)]">computed_stop_loss</div>
+              <div className="font-mono">{fmtNum(computedStopLoss, 2)}</div>
+            </div>
+          ) : null}
           <div className="flex items-center justify-between">
             <div className="text-[var(--k-muted)]">final_support</div>
             <div className="font-mono">{fmtNum(get('final_support'), 2)}</div>
@@ -1515,7 +1564,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     lines.push('## Watchlist');
     lines.push(`- generatedAt: ${generatedAt}`);
     lines.push(`- items: ${sortedItems.length}`);
-    lines.push(`- scoresUpdatedAt: ${trendUpdatedAt ? new Date(trendUpdatedAt).toLocaleString() : '—'}`);
+    lines.push(
+      `- scoresUpdatedAt: ${trendUpdatedAt ? new Date(trendUpdatedAt).toLocaleString() : '—'}`,
+    );
     lines.push(`- shanghaiToday: ${todaySh}`);
     lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
     lines.push('');
@@ -1528,7 +1579,16 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     lines.push('');
 
     // Summary table
-    const headers = ['Symbol', 'Name', 'Score', 'TrendOK', 'Buy', 'Current', 'StopLoss', 'AsOfDate'];
+    const headers = [
+      'Symbol',
+      'Name',
+      'Score',
+      'TrendOK',
+      'Buy',
+      'Current',
+      'StopLoss',
+      'AsOfDate',
+    ];
     lines.push(`| ${headers.join(' | ')} |`);
     lines.push(`| ${headers.map(() => '---').join(' | ')} |`);
     for (const it of sortedItems) {
@@ -1665,12 +1725,15 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 />
               </div>
               <div className="text-[var(--k-muted)]">
-                {importDebug.updatedAt ? new Date(importDebug.updatedAt).toLocaleString() : 'No import yet'}
+                {importDebug.updatedAt
+                  ? new Date(importDebug.updatedAt).toLocaleString()
+                  : 'No import yet'}
               </div>
             </div>
             <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
               <div className="text-[var(--k-muted)]">
-                Scanned {importDebug.scanned} • TrendOK ✅ {importDebug.trendOkCount} • Showing {importDebugRows.length}
+                Scanned {importDebug.scanned} • TrendOK ✅ {importDebug.trendOkCount} • Showing{' '}
+                {importDebugRows.length}
               </div>
               <div className="flex items-center gap-2">
                 <input
@@ -1733,7 +1796,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       const buy = fmtBuyCell(r);
                       const notes =
                         (typeof r?.buyWhy === 'string' && r.buyWhy) ||
-                        (Array.isArray(r?.missingData) && r.missingData.length ? r.missingData.join(', ') : '');
+                        (Array.isArray(r?.missingData) && r.missingData.length
+                          ? r.missingData.join(', ')
+                          : '');
                       const inWl = sym ? watchlistSet.has(sym) : false;
                       return (
                         <tr key={sym} className="border-t border-[var(--k-border)]">
@@ -1770,7 +1835,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                           >
                             {buy.text}
                           </td>
-                          <td className="px-3 py-2 font-mono">{fmtPrice(r?.stopLossPrice ?? null)}</td>
+                          <td className="px-3 py-2 font-mono">
+                            {fmtPrice(r?.stopLossPrice ?? null)}
+                          </td>
                           <td className="px-3 py-2">
                             {inWl ? (
                               <span className="text-[var(--k-muted)]">In watchlist</span>
@@ -1963,7 +2030,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 </tr>
               </thead>
               <tbody>
-                {sortedItems.map((it) => (
+                {sortedItems.map((it) =>
                   (() => {
                     const t = trend[it.symbol];
                     const tone = rowTone(t);
@@ -1974,152 +2041,152 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                           ? 'border-t border-[var(--k-border)] bg-red-50/60 hover:bg-red-100/60'
                           : 'border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)]';
                     return (
-                  <tr
-                    key={it.symbol}
-                    className={rowClass}
-                  >
-                    <td className="px-3 py-2">
-                      <button
-                        type="button"
-                        className="grid h-6 w-6 place-items-center rounded hover:bg-[var(--k-surface-2)]"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          showColorPicker(e.currentTarget, it.symbol);
-                        }}
-                        aria-label="Set color flag"
-                        title="Set color flag"
-                      >
-                        <span
-                          className="h-3.5 w-3.5 rounded-sm border border-[var(--k-border)]"
-                          style={{ backgroundColor: it.color || '#ffffff' }}
-                        />
-                      </button>
-                    </td>
-                    <td className="px-3 py-2 font-mono">
-                      <button
-                        type="button"
-                        className="inline-flex items-center rounded px-1 py-0.5 hover:underline"
-                        onClick={() => onOpenStock?.(it.symbol)}
-                        disabled={!onOpenStock}
-                        aria-label={`Open ${it.symbol}`}
-                      >
-                        {it.symbol}
-                      </button>
-                    </td>
-                    <td className="px-3 py-2">{it.name || '—'}</td>
-                    <td className="px-3 py-2">
-                      <input
-                        className="h-8 w-24 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
-                        placeholder="成本"
-                        inputMode="decimal"
-                        value={
-                          costPriceDrafts[it.symbol] ??
-                          (typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)
-                            ? it.costPrice.toFixed(2)
-                            : '')
-                        }
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          if (raw === '' || COST_PRICE_RE.test(raw)) {
-                            setItemCostPriceDraft(it.symbol, raw);
-                            if (!raw) {
-                              setItemCostPriceValue(it.symbol, null);
-                            } else {
-                              const num = Number(raw);
-                              if (Number.isFinite(num)) setItemCostPriceValue(it.symbol, num);
+                      <tr key={it.symbol} className={rowClass}>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            className="grid h-6 w-6 place-items-center rounded hover:bg-[var(--k-surface-2)]"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              showColorPicker(e.currentTarget, it.symbol);
+                            }}
+                            aria-label="Set color flag"
+                            title="Set color flag"
+                          >
+                            <span
+                              className="h-3.5 w-3.5 rounded-sm border border-[var(--k-border)]"
+                              style={{ backgroundColor: it.color || '#ffffff' }}
+                            />
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 font-mono">
+                          <button
+                            type="button"
+                            className="inline-flex items-center rounded px-1 py-0.5 hover:underline"
+                            onClick={() => onOpenStock?.(it.symbol)}
+                            disabled={!onOpenStock}
+                            aria-label={`Open ${it.symbol}`}
+                          >
+                            {it.symbol}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2">{it.name || '—'}</td>
+                        <td className="px-3 py-2">
+                          <input
+                            className="h-8 w-24 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
+                            placeholder="成本"
+                            inputMode="decimal"
+                            value={
+                              costPriceDrafts[it.symbol] ??
+                              (typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)
+                                ? it.costPrice.toFixed(2)
+                                : '')
                             }
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === '' || COST_PRICE_RE.test(raw)) {
+                                setItemCostPriceDraft(it.symbol, raw);
+                                if (!raw) {
+                                  setItemCostPriceValue(it.symbol, null);
+                                } else {
+                                  const num = Number(raw);
+                                  if (Number.isFinite(num)) setItemCostPriceValue(it.symbol, num);
+                                }
+                              }
+                            }}
+                            onFocus={() => {
+                              if (costPriceDrafts[it.symbol] != null) return;
+                              if (
+                                typeof it.costPrice === 'number' &&
+                                Number.isFinite(it.costPrice)
+                              ) {
+                                setItemCostPriceDraft(it.symbol, it.costPrice.toFixed(2));
+                              }
+                            }}
+                            onBlur={() => commitItemCostPriceDraft(it.symbol)}
+                          />
+                        </td>
+                        <td className="px-3 py-2 font-mono">
+                          {typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice)
+                            ? it.maxPrice.toFixed(2)
+                            : '—'}
+                        </td>
+                        <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
+                        <td className="px-3 py-2">{renderBuyCell(it.symbol)}</td>
+                        <td className="px-3 py-2">
+                          <input
+                            className="h-8 w-20 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
+                            placeholder="0"
+                            value={
+                              typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
+                                ? String(it.positionPct)
+                                : ''
+                            }
+                            onChange={(e) => setItemPositionPct(it.symbol, e.target.value)}
+                          />
+                        </td>
+                        <td
+                          className="px-3 py-2 font-mono"
+                          title={
+                            trend[it.symbol]?.asOfDate
+                              ? `as of ${trend[it.symbol]?.asOfDate}`
+                              : trend[it.symbol]
+                                ? 'as of latest cached daily bar'
+                                : '—'
                           }
-                        }}
-                        onFocus={() => {
-                          if (costPriceDrafts[it.symbol] != null) return;
-                          if (typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)) {
-                            setItemCostPriceDraft(it.symbol, it.costPrice.toFixed(2));
-                          }
-                        }}
-                        onBlur={() => commitItemCostPriceDraft(it.symbol)}
-                      />
-                    </td>
-                    <td className="px-3 py-2 font-mono">
-                      {typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice)
-                        ? it.maxPrice.toFixed(2)
-                        : '—'}
-                    </td>
-                    <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
-                    <td className="px-3 py-2">{renderBuyCell(it.symbol)}</td>
-                    <td className="px-3 py-2">
-                      <input
-                        className="h-8 w-20 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
-                        placeholder="0"
-                        value={
-                          typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
-                            ? String(it.positionPct)
-                            : ''
-                        }
-                        onChange={(e) => setItemPositionPct(it.symbol, e.target.value)}
-                      />
-                    </td>
-                    <td
-                      className="px-3 py-2 font-mono"
-                      title={
-                        trend[it.symbol]?.asOfDate
-                          ? `as of ${trend[it.symbol]?.asOfDate}`
-                          : trend[it.symbol]
-                            ? 'as of latest cached daily bar'
-                            : '—'
-                      }
-                    >
-                      {fmtPrice(quotes[it.symbol]?.price ?? trend[it.symbol]?.values?.close)}
-                    </td>
-                    <td className="px-3 py-2">{renderStopLossCell(it.symbol)}</td>
-                    <td className="px-3 py-2">{renderTrendOkCell(it.symbol)}</td>
-                    <td className="px-3 py-2 text-right">
-                      <div className="flex justify-end">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => {
-                            const t = trend[it.symbol];
-                            const capturedAt = new Date().toISOString();
-                            addReference({
-                              kind: 'watchlistStock',
-                              refId: `${it.symbol}:${capturedAt}`,
-                              symbol: it.symbol,
-                              name: it.name ?? null,
-                              capturedAt,
-                              asOfDate: t?.asOfDate ?? null,
-                              close: t?.values?.close ?? null,
-                              trendOk: t?.trendOk ?? null,
-                              score: t?.score ?? null,
-                              stopLossPrice: t?.stopLossPrice ?? null,
-                              buyMode: t?.buyMode ?? null,
-                              buyAction: t?.buyAction ?? null,
-                              buyZoneLow: t?.buyZoneLow ?? null,
-                              buyZoneHigh: t?.buyZoneHigh ?? null,
-                              buyWhy: t?.buyWhy ?? null,
-                            });
-                          }}
-                          aria-label="Reference to chat"
-                          title="Reference to chat"
                         >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => onRemove(it.symbol)}
-                          aria-label="Remove"
-                          title="Remove"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
+                          {fmtPrice(quotes[it.symbol]?.price ?? trend[it.symbol]?.values?.close)}
+                        </td>
+                        <td className="px-3 py-2">{renderStopLossCell(it.symbol)}</td>
+                        <td className="px-3 py-2">{renderTrendOkCell(it.symbol)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex justify-end">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => {
+                                const t = trend[it.symbol];
+                                const capturedAt = new Date().toISOString();
+                                addReference({
+                                  kind: 'watchlistStock',
+                                  refId: `${it.symbol}:${capturedAt}`,
+                                  symbol: it.symbol,
+                                  name: it.name ?? null,
+                                  capturedAt,
+                                  asOfDate: t?.asOfDate ?? null,
+                                  close: t?.values?.close ?? null,
+                                  trendOk: t?.trendOk ?? null,
+                                  score: t?.score ?? null,
+                                  stopLossPrice: t?.stopLossPrice ?? null,
+                                  buyMode: t?.buyMode ?? null,
+                                  buyAction: t?.buyAction ?? null,
+                                  buyZoneLow: t?.buyZoneLow ?? null,
+                                  buyZoneHigh: t?.buyZoneHigh ?? null,
+                                  buyWhy: t?.buyWhy ?? null,
+                                });
+                              }}
+                              aria-label="Reference to chat"
+                              title="Reference to chat"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => onRemove(it.symbol)}
+                              aria-label="Remove"
+                              title="Remove"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
                     );
-                  })()
-                ))}
+                  })(),
+                )}
               </tbody>
             </table>
           </div>

@@ -14,6 +14,7 @@ from data_sync_service.db.industry_fund_flow import (
     get_rows_by_date,
     get_sum_by_industry_for_dates,
 )
+from data_sync_service.db.stoploss import compute_effective_stoploss
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
@@ -742,8 +743,19 @@ def _trendok_one(
 
             if exit_now:
                 # Immediate exit: stop at current price.
-                res["stopLossPrice"] = round(current, 6)
-                stop_parts["final_stop_loss"] = round(current, 6)
+                computed_stop = round(current, 6)
+                ts_code = _symbol_to_ts_code(symbol)
+                if ts_code:
+                    effective_stop, used_stored = compute_effective_stoploss(
+                        ts_code[2], computed_stop, res.get("asOfDate")
+                    )
+                    res["stopLossPrice"] = effective_stop
+                    stop_parts["final_stop_loss"] = effective_stop
+                    stop_parts["computed_stop_loss"] = computed_stop
+                    stop_parts["used_stored_higher"] = used_stored
+                else:
+                    res["stopLossPrice"] = computed_stop
+                    stop_parts["final_stop_loss"] = computed_stop
                 stop_parts["exit_display"] = "立刻离场"
                 res["stopLossParts"] = stop_parts
             else:
@@ -792,12 +804,23 @@ def _trendok_one(
                     stop_loss_support = final_support - buffer
                     final_stop = max(stop_loss_support, hard_stop)
                     final_stop = min(final_stop, current)  # never above current
+                    computed_stop = round(final_stop, 6)
                     stop_parts["atr14"] = round(atr14, 6)
                     stop_parts["buffer"] = round(buffer, 6)
                     stop_parts["hard_stop"] = round(hard_stop, 6)
                     stop_parts["stop_loss_support_minus_buffer"] = round(stop_loss_support, 6)
-                    stop_parts["final_stop_loss"] = round(final_stop, 6)
-                    res["stopLossPrice"] = round(final_stop, 6)
+                    stop_parts["computed_stop_loss"] = computed_stop
+                    ts_code_tuple = _symbol_to_ts_code(symbol)
+                    if ts_code_tuple:
+                        effective_stop, used_stored = compute_effective_stoploss(
+                            ts_code_tuple[2], computed_stop, res.get("asOfDate")
+                        )
+                        stop_parts["final_stop_loss"] = effective_stop
+                        stop_parts["used_stored_higher"] = used_stored
+                        res["stopLossPrice"] = effective_stop
+                    else:
+                        stop_parts["final_stop_loss"] = computed_stop
+                        res["stopLossPrice"] = computed_stop
                     res["stopLossParts"] = stop_parts
     except Exception:
         res["stopLossPrice"] = None
