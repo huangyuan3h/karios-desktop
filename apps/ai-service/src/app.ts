@@ -67,7 +67,10 @@ function toIndentedText(v: unknown, indent = 0): string {
     for (const k of keys.sort()) {
       const val = obj[k];
       const isScalar =
-        val == null || typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean';
+        val == null ||
+        typeof val === 'string' ||
+        typeof val === 'number' ||
+        typeof val === 'boolean';
       if (isScalar) {
         lines.push(`${pad}${k}: ${val == null ? '—' : String(val)}`);
         continue;
@@ -147,7 +150,14 @@ function buildPromptDebug({
     '## Context (segmented)\n\n' +
     contextMarkdown;
 
-  return { system, promptText, contextJsonCompact, contextJsonPretty, contextMarkdown, promptMarkdown };
+  return {
+    system,
+    promptText,
+    contextJsonCompact,
+    contextJsonPretty,
+    contextMarkdown,
+    promptMarkdown,
+  };
 }
 
 function normalizeOptionalString(v: unknown): string | undefined {
@@ -178,7 +188,11 @@ function pickActiveProfile(
   return store.profiles.find((p) => p.id === id) ?? null;
 }
 
-function modelFromProfile(p: z.infer<typeof AiProfileSchema>): { model: AiModel; provider: string; modelId: string } {
+function modelFromProfile(p: z.infer<typeof AiProfileSchema>): {
+  model: AiModel;
+  provider: string;
+  modelId: string;
+} {
   if (p.provider === 'google') {
     applyProviderEnv(p);
     return { model: google(p.modelId), provider: 'google', modelId: p.modelId };
@@ -199,9 +213,8 @@ function modelFromProfile(p: z.infer<typeof AiProfileSchema>): { model: AiModel;
   const apiKey = p.openai?.apiKey?.trim() || '';
   const baseURL = p.openai?.baseUrl?.trim() || undefined;
   // Use explicit client to avoid relying on env var naming differences.
-  const openaiClient =
-    apiKey || baseURL ? createOpenAI({ apiKey, baseURL }) : openai;
-  return { model: openaiClient(p.modelId), provider: 'openai', modelId: p.modelId };
+  const openaiClient = apiKey || baseURL ? createOpenAI({ apiKey, baseURL }) : openai;
+  return { model: openaiClient.chat(p.modelId), provider: 'openai', modelId: p.modelId };
 }
 
 async function getResolvedModel(): Promise<{ model: AiModel; modelId: string; provider: string }> {
@@ -214,7 +227,7 @@ async function getResolvedModel(): Promise<{ model: AiModel; modelId: string; pr
   if (!active) {
     if (!envModelId) throw new Error('Missing AI_MODEL');
     if (provider === 'google') return { model: google(envModelId), modelId: envModelId, provider };
-    return { model: openai(envModelId), modelId: envModelId, provider };
+    return { model: openai.chat(envModelId), modelId: envModelId, provider };
   }
 
   return modelFromProfile(active);
@@ -532,7 +545,11 @@ app.post('/config/profiles', async (c) => {
   }
 
   const req = parsed.data;
-  const store = (await loadConfigStore()) ?? { version: 2 as const, activeProfileId: null, profiles: [] };
+  const store = (await loadConfigStore()) ?? {
+    version: 2 as const,
+    activeProfileId: null,
+    profiles: [],
+  };
 
   const id = newProfileId();
   if (req.provider === 'openai' && !normalizeOptionalString(req.openai?.apiKey)) {
@@ -562,8 +579,7 @@ app.post('/config/profiles', async (c) => {
     ollama:
       req.provider === 'ollama'
         ? {
-            baseUrl:
-              normalizeOptionalString(req.ollama?.baseUrl) ?? 'http://127.0.0.1:11434/v1',
+            baseUrl: normalizeOptionalString(req.ollama?.baseUrl) ?? 'http://127.0.0.1:11434/v1',
             apiKey: normalizeOptionalString(req.ollama?.apiKey),
           }
         : undefined,
@@ -613,9 +629,7 @@ app.put('/config/profiles/:id', async (c) => {
         ? {
             apiKey: normalizeOptionalString(req.openai?.apiKey) ?? prev.openai?.apiKey ?? '',
             baseUrl:
-              normalizeOptionalString(req.openai?.baseUrl) ??
-              prev.openai?.baseUrl ??
-              undefined,
+              normalizeOptionalString(req.openai?.baseUrl) ?? prev.openai?.baseUrl ?? undefined,
           }
         : undefined,
     google:
@@ -701,7 +715,7 @@ app.post('/config/test', async (c) => {
   const store = await loadConfigStore();
   const profile = store
     ? parsed.data.profileId
-      ? store.profiles.find((p) => p.id === parsed.data.profileId) ?? null
+      ? (store.profiles.find((p) => p.id === parsed.data.profileId) ?? null)
       : pickActiveProfile(store)
     : null;
 
@@ -906,17 +920,32 @@ async function getStrategyPrimaryAndFallbackModels(): Promise<{
 
   // If user configured a runtime config file, keep behavior fully global (no per-feature fallback).
   if (store && store.activeProfileId) {
-    return { model: primary.model, modelId: primary.modelId, fallbackModel: null, fallbackModelId: null };
+    return {
+      model: primary.model,
+      modelId: primary.modelId,
+      fallbackModel: null,
+      fallbackModelId: null,
+    };
   }
 
   const fbId = getStrategyFallbackModelId();
   if (!fbId) {
-    return { model: primary.model, modelId: primary.modelId, fallbackModel: null, fallbackModelId: null };
+    return {
+      model: primary.model,
+      modelId: primary.modelId,
+      fallbackModel: null,
+      fallbackModelId: null,
+    };
   }
 
   const provider = asTrimmedString(process.env.AI_PROVIDER).toLowerCase() || 'openai';
-  const fb = provider === 'google' ? google(fbId) : openai(fbId);
-  return { model: primary.model, modelId: primary.modelId, fallbackModel: fb, fallbackModelId: fbId };
+  const fb = provider === 'google' ? google(fbId) : openai.chat(fbId);
+  return {
+    model: primary.model,
+    modelId: primary.modelId,
+    fallbackModel: fb,
+    fallbackModelId: fbId,
+  };
 }
 
 async function tryRepairStrategyJson({
@@ -1645,4 +1674,3 @@ app.post('/strategy/daily-markdown', async (c) => {
     );
   }
 });
-

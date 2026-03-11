@@ -681,13 +681,15 @@ export function ChatPanel() {
   } = useChatStore();
   const scrollerRef = React.useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = React.useRef(true);
+  const isPendingRef = React.useRef(false);
+  const sessionCreatedRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (!activeSession) {
+    if (!activeSession && !sessionCreatedRef.current) {
+      sessionCreatedRef.current = true;
       createSession();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activeSession, createSession]);
 
   const messages: ChatMessage[] = activeSession?.messages ?? [];
   const lastMessageId = messages[messages.length - 1]?.id ?? '';
@@ -721,6 +723,8 @@ export function ChatPanel() {
         onClearReferences={clearReferences}
         onSend={(text: string, attachments: ChatAttachment[]) => {
           if (!activeSession) return;
+          if (isPendingRef.current) return;
+          isPendingRef.current = true;
           const shouldInferTitle =
             activeSession.title === 'New chat' && messages.every((m) => m.role !== 'user');
           const now = new Date().toISOString();
@@ -812,6 +816,8 @@ export function ChatPanel() {
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
               updateMessageContent(activeSession.id, assistantId, `**Error**: ${message}`);
+            } finally {
+              isPendingRef.current = false;
             }
           })();
         }}

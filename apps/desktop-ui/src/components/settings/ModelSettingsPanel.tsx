@@ -6,6 +6,13 @@ import { Check, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { AI_BASE_URL } from '@/lib/endpoints';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 type Provider = 'openai' | 'ollama';
@@ -506,41 +513,29 @@ export function ModelSettingsPanel() {
                 </div>
                 <div>
                   <div className="mb-1 text-xs text-[var(--k-muted)]">类型</div>
-                  <div className="flex rounded-lg border border-[var(--k-border)]">
-                    <button
-                      type="button"
-                      className={cn(
-                        'flex-1 rounded-l-lg px-3 py-2 text-sm transition-colors',
-                        formData.provider === 'openai'
-                          ? 'bg-[var(--k-text)] text-[var(--k-surface)]'
-                          : 'hover:bg-[var(--k-surface-2)]',
-                      )}
-                      onClick={() =>
-                        setFormData({ ...formData, provider: 'openai', modelId: 'gpt-4o' })
-                      }
-                    >
-                      OpenAI
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        'flex-1 rounded-r-lg px-3 py-2 text-sm transition-colors',
-                        formData.provider === 'ollama'
-                          ? 'bg-[var(--k-text)] text-[var(--k-surface)]'
-                          : 'hover:bg-[var(--k-surface-2)]',
-                      )}
-                      onClick={() =>
+                  <Select
+                    value={formData.provider}
+                    onValueChange={(value: Provider) => {
+                      if (value === 'openai') {
+                        setFormData({ ...formData, provider: 'openai', modelId: 'gpt-4o' });
+                      } else {
                         setFormData({
                           ...formData,
                           provider: 'ollama',
                           modelId: '',
                           ollamaBaseUrl: 'http://127.0.0.1:11434/v1',
-                        })
+                        });
                       }
-                    >
-                      Ollama
-                    </button>
-                  </div>
+                    }}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="openai">OpenAI</SelectItem>
+                      <SelectItem value="ollama">Ollama</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
