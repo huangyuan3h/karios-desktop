@@ -513,7 +513,7 @@ def _trendok_one(
     if len(closes) >= 20:
         high20 = max(closes[-20:])
         res["values"]["high20"] = high20
-        res["checks"]["closeNear20dHigh"] = bool(closes[-1] >= 0.95 * high20)
+        res["checks"]["closeNear20dHigh"] = bool(closes[-1] >= 0.90 * high20)
 
     if len(vols) >= 30:
         avg5 = sum(vols[-5:]) / 5.0

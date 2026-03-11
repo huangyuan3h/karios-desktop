@@ -99,7 +99,7 @@ const TREND_OK_CHECKS: Array<{ key: keyof TrendOkChecks; failText: string }> = [
   { key: 'emaOrder', failText: 'EMA order broken (Close <= EMA20 or EMA20 <= EMA60)' },
   { key: 'macdPositive', failText: 'MACD <= 0' },
   { key: 'macdHistExpanding', failText: 'MACD hist <= 0' },
-  { key: 'closeNear20dHigh', failText: 'Close < 0.95 * High(20)' },
+  { key: 'closeNear20dHigh', failText: 'Close < 0.90 * High(20)' },
   { key: 'rsiInRange', failText: 'RSI(14) out of 50..90' },
   { key: 'volumeSurge', failText: 'AvgVol(5) < 0.9 * AvgVol(30)' },
 ];
@@ -123,7 +123,7 @@ function trendOkRuleLines(): string[] {
     '- Close > EMA20 and EMA20 > EMA60',
     '- MACD line > 0',
     '- MACD histogram > 0',
-    '- Close >= 0.95 * High(20)',
+    '- Close >= 0.90 * High(20)',
     '- RSI(14) in [50, 90]',
     '- AvgVol(5) >= 0.9 * AvgVol(30)',
   ];
@@ -1183,7 +1183,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         t?.checks?.macdHistExpanding ?? null,
         `histogram > 0 (red bar above zero axis). Expansion is scored separately; ${macdHistDetail}`,
       ),
-      checkLine('Near 20D high', t?.checks?.closeNear20dHigh ?? null, 'Close >= 0.95 * High(20)'),
+      checkLine('Near 20D high', t?.checks?.closeNear20dHigh ?? null, 'Close >= 0.90 * High(20)'),
       checkLine(
         'RSI(14)',
         t?.checks?.rsiInRange ?? null,
@@ -1656,7 +1656,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         <div>1) Close &gt; EMA(20) and EMA(20) &gt; EMA(60)</div>
         <div>2) MACD line &gt; 0</div>
         <div>3) MACD histogram &gt; 0</div>
-        <div>4) Close ≥ 0.95 × High(20)</div>
+        <div>4) Close ≥ 0.90 × High(20)</div>
         <div>5) RSI(14) in [50, 90]</div>
         <div>6) AvgVol(5) &gt; 0.9 × AvgVol(30)</div>
       </div>

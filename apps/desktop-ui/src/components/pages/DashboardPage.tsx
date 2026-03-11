@@ -163,7 +163,7 @@ const TREND_OK_CHECKS: Array<{ key: keyof TrendOkChecks; failText: string }> = [
   { key: 'emaOrder', failText: 'EMA order broken (Close <= EMA20 or EMA20 <= EMA60)' },
   { key: 'macdPositive', failText: 'MACD <= 0' },
   { key: 'macdHistExpanding', failText: 'MACD hist <= 0' },
-  { key: 'closeNear20dHigh', failText: 'Close < 0.95 * High(20)' },
+  { key: 'closeNear20dHigh', failText: 'Close < 0.90 * High(20)' },
   { key: 'rsiInRange', failText: 'RSI(14) out of 50..90' },
   { key: 'volumeSurge', failText: 'AvgVol(5) < 0.9 * AvgVol(30)' },
 ];
@@ -187,7 +187,7 @@ function trendOkRuleLines(): string[] {
     '- Close > EMA20 and EMA20 > EMA60',
     '- MACD line > 0',
     '- MACD histogram > 0',
-    '- Close >= 0.95 * High(20)',
+    '- Close >= 0.90 * High(20)',
     '- RSI(14) in [50, 90]',
     '- AvgVol(5) >= 0.9 * AvgVol(30)',
   ];
