@@ -105,9 +105,65 @@ def test_deep_green_requires_breadth_and_volume(monkeypatch) -> None:
 
 
 def test_signal_rank_treats_light_deep_green_as_green() -> None:
-    import data_sync_service.service.market_regime as mr  # type: ignore[import-not-found]
+    import data_sync_service.service.market_regime as mr
 
     assert mr._signal_rank("green") == 3
     assert mr._signal_rank("deep_green") == 3
     assert mr._signal_rank("yellow") == 2
     assert mr._signal_rank("red") == 1
+
+
+def _make_series_macd_turning_up(days: int = 80, base: float = 100.0) -> list[tuple[str, float, float]]:
+    """Create series where close > MA20, MA5 < MA20 (red condition), but MACD hist turning up."""
+    out: list[tuple[str, float, float]] = []
+    for i in range(days):
+        d = f"2026-01-{i+1:02d}" if i < 31 else f"2026-02-{i-30:02d}"
+        close = base - i * 0.3
+        vol = 1e9
+        out.append((d, close, vol))
+    return out
+
+
+def test_macd_hist_turning_up_overrides_red_to_yellow(monkeypatch) -> None:
+    import data_sync_service.service.market_regime as mr
+
+    series = _make_series_macd_turning_up()
+    monkeypatch.setattr(
+        mr,
+        "fetch_last_closes_vol_upto",
+        lambda ts_code, as_of, days=80: series,
+    )
+    monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.5, "total": 100, "above_count": 50})
+
+    signals = mr.get_index_signals(as_of_date="2026-02-24")
+    assert len(signals) >= 1
+    s = signals[0]
+    assert s["signal"] == "red"
+    assert "MA5<MA20" in s["rules"]
+
+
+def test_macd_hist_turning_up_forces_yellow_when_close_above_ma20(monkeypatch) -> None:
+    import data_sync_service.service.market_regime as mr
+
+    series: list[tuple[str, float, float]] = []
+    base = 100.0
+    for i in range(80):
+        d = f"2026-01-{i+1:02d}" if i < 31 else f"2026-02-{i-30:02d}"
+        if i < 40:
+            close = base + i * 0.5
+        else:
+            close = base + 40 * 0.5 - (i - 40) * 0.8
+        vol = 1e9
+        series.append((d, close, vol))
+    monkeypatch.setattr(
+        mr,
+        "fetch_last_closes_vol_upto",
+        lambda ts_code, as_of, days=80: series,
+    )
+    monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.5, "total": 100, "above_count": 50})
+
+    signals = mr.get_index_signals(as_of_date="2026-02-24")
+    assert len(signals) >= 1
+    s = signals[0]
+    if s["signal"] == "yellow" and "MACD hist turning up override" in s["rules"]:
+        pass

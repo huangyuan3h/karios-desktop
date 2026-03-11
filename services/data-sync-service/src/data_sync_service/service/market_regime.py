@@ -21,6 +21,35 @@ HISTORY_DAYS = 80
 BREADTH_DEEP_GREEN_MIN_RATIO = 0.6
 
 
+def _ema(values: list[float], period: int) -> list[float]:
+    if not values or len(values) < period:
+        return []
+    multiplier = 2.0 / (period + 1)
+    ema_vals: list[float] = []
+    sma = sum(values[:period]) / period
+    ema_vals.append(sma)
+    for v in values[period:]:
+        ema_vals.append((v - ema_vals[-1]) * multiplier + ema_vals[-1])
+    return ema_vals
+
+
+def _macd_histogram(closes: list[float], fast: int = 12, slow: int = 26, signal: int = 9) -> list[float]:
+    if len(closes) < slow + signal:
+        return []
+    ema_fast = _ema(closes, fast)
+    ema_slow = _ema(closes, slow)
+    if not ema_fast or not ema_slow:
+        return []
+    offset = slow - fast
+    dif = [ema_fast[i + offset] - ema_slow[i] for i in range(len(ema_slow))]
+    if len(dif) < signal:
+        return []
+    dea = _ema(dif, signal)
+    offset_dif = len(dif) - len(dea)
+    hist = [dif[i + offset_dif] - dea[i] for i in range(len(dea))]
+    return hist
+
+
 def _today_iso_date() -> str:
     return datetime.now(tz=UTC).date().isoformat()
 
@@ -238,6 +267,11 @@ def get_index_signals(*, as_of_date: str | None = None) -> list[dict[str, Any]]:
         ma60 = sum(closes[-60:]) / 60.0 if len(closes) >= 60 else None
         close = closes[-1]
 
+        macd_hist = _macd_histogram(closes)
+        macd_hist_turning_up = False
+        if len(macd_hist) >= 2:
+            macd_hist_turning_up = macd_hist[-1] > macd_hist[-2]
+
         ma20_slope_up = ma20 > ma20_prev
         ma5_above_ma20 = ma5 > ma20
         ma20_above_ma60 = ma60 is not None and ma20 > ma60
@@ -266,6 +300,10 @@ def get_index_signals(*, as_of_date: str | None = None) -> list[dict[str, Any]]:
                 rules.append("price<MA20")
             if not ma5_above_ma20:
                 rules.append("MA5<MA20")
+            if close > ma20 and macd_hist_turning_up:
+                signal = "yellow"
+                position = "30%"
+                rules.append("MACD hist turning up override")
         elif close > ma20:
             if (not ma20_slope_up) or (not vol_above_ma5) or (not ma5_above_ma20):
                 signal = "yellow"
