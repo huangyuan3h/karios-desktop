@@ -4,7 +4,10 @@ import * as React from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { HotIndustryWorkflowCard, type HotIndustryPick } from '@/components/pages/HotIndustryWorkflowCard';
+import {
+  HotIndustryWorkflowCard,
+  type HotIndustryPick,
+} from '@/components/pages/HotIndustryWorkflowCard';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 
@@ -119,15 +122,20 @@ function sumLastN(series: IndustryFundFlowPoint[], n: number): number {
 
 function buildHotIndustryPicks(rows: IndustryFundFlowRow[]): HotIndustryPick[] {
   const safeRows = Array.isArray(rows) ? rows : [];
+  const dates = safeRows[0]?.series10d?.map((p) => p.date) ?? [];
+  const latestDate = dates.length ? String(dates[dates.length - 1] ?? '') : '';
+  const prevDate = dates.length >= 2 ? String(dates[dates.length - 2] ?? '') : '';
+
   const dailyRanked = [...safeRows]
     .filter((r) => Number.isFinite(r.netInflow) && r.netInflow > 0)
     .sort((a, b) => b.netInflow - a.netInflow)
-    .slice(0, 30);
+    .slice(0, 50);
+
   const fiveDayRanked = [...safeRows]
     .map((r) => ({ row: r, sum5d: sumLastN(r.series10d ?? [], 5) }))
     .filter((x) => Number.isFinite(x.sum5d) && x.sum5d > 0)
     .sort((a, b) => b.sum5d - a.sum5d)
-    .slice(0, 30);
+    .slice(0, 50);
 
   const fiveRankByName = new Map<string, { rank: number; sum5d: number }>();
   for (let i = 0; i < fiveDayRanked.length; i += 1) {
@@ -137,23 +145,73 @@ function buildHotIndustryPicks(rows: IndustryFundFlowRow[]): HotIndustryPick[] {
     fiveRankByName.set(key, { rank: i + 1, sum5d: it.sum5d });
   }
 
-  const picked: HotIndustryPick[] = [];
+  const prevDayRanked = new Map<string, number>();
+  if (prevDate) {
+    const prevScores = safeRows
+      .map((r) => ({
+        name: String(r.industryName ?? '').trim(),
+        value: (r.series10d ?? []).find((p) => p.date === prevDate)?.netInflow ?? 0,
+      }))
+      .filter((x) => x.name && Number.isFinite(x.value) && x.value > 0)
+      .sort((a, b) => b.value - a.value);
+    for (let i = 0; i < prevScores.length; i += 1) {
+      prevDayRanked.set(prevScores[i].name, i + 1);
+    }
+  }
+
+  const MOMENTUM_THRESHOLD_YI = 20e8;
+  const MOMENTUM_RANK_CHANGE = 10;
+
+  const momentumPicks: HotIndustryPick[] = [];
+  const intersectionPicks: HotIndustryPick[] = [];
+
   for (let i = 0; i < dailyRanked.length; i += 1) {
     const r = dailyRanked[i];
     const key = String(r.industryName ?? '').trim();
     if (!key) continue;
+
     const five = fiveRankByName.get(key);
-    if (!five) continue;
-    picked.push({
+    const todayRank = i + 1;
+    const yesterdayRank = prevDayRanked.get(key) ?? null;
+    const rankChange = yesterdayRank != null ? yesterdayRank - todayRank : null;
+    const isMomentumSignal =
+      r.netInflow >= MOMENTUM_THRESHOLD_YI &&
+      rankChange != null &&
+      rankChange >= MOMENTUM_RANK_CHANGE;
+
+    const pick: HotIndustryPick = {
       industryName: key,
-      dailyRank: i + 1,
-      fiveDayRank: five.rank,
+      dailyRank: todayRank,
+      fiveDayRank: five?.rank ?? null,
       netInflow: r.netInflow,
-      sum5d: five.sum5d,
-    });
-    if (picked.length >= 3) break;
+      sum5d: five?.sum5d ?? null,
+      yesterdayRank,
+      rankChange,
+      momentumSignal: isMomentumSignal,
+    };
+
+    if (isMomentumSignal) {
+      momentumPicks.push(pick);
+    } else if (five) {
+      intersectionPicks.push(pick);
+    }
   }
-  return picked;
+
+  const result: HotIndustryPick[] = [];
+  const seen = new Set<string>();
+  for (const p of momentumPicks) {
+    if (seen.has(p.industryName)) continue;
+    seen.add(p.industryName);
+    result.push(p);
+    if (result.length >= 3) return result;
+  }
+  for (const p of intersectionPicks) {
+    if (seen.has(p.industryName)) continue;
+    seen.add(p.industryName);
+    result.push(p);
+    if (result.length >= 3) break;
+  }
+  return result;
 }
 
 function escapeMarkdownCell(x: unknown): string {
@@ -207,7 +265,12 @@ function CopyMarkdownButton({ getMarkdown }: { getMarkdown: () => string }) {
 
   const label = state === 'idle' ? 'Copy Markdown' : state === 'ok' ? 'Copied' : 'Copy failed';
   return (
-    <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={() => void onCopy()}>
+    <Button
+      size="sm"
+      variant="secondary"
+      className="h-8 px-3 text-xs"
+      onClick={() => void onCopy()}
+    >
       {label}
     </Button>
   );
@@ -235,11 +298,7 @@ function Sparkline({ series }: { series: IndustryFundFlowPoint[] }) {
         <circle cx={w / 2} cy={mid} r="2" fill={stroke} />
       )}
       {series.length ? (
-        <title>
-          {series
-            .map((p, i) => `${p.date}: ${fmtCny(vals[i] ?? 0)}`)
-            .join(' | ')}
-        </title>
+        <title>{series.map((p, i) => `${p.date}: ${fmtCny(vals[i] ?? 0)}`).join(' | ')}</title>
       ) : null}
     </svg>
   );
@@ -254,11 +313,14 @@ function MainlineSection({ resp }: { resp: MainlineResp | null }) {
       <div className="mb-2 text-sm font-medium">Mainline (主线)</div>
       <div className="mb-1 text-xs text-[var(--k-muted)]">As of: {resp?.asOfDate ?? '—'}</div>
       <div className="mb-3 text-xs text-[var(--k-muted)]">
-        Mainline Score = Flow + Breadth + Trend. Current mainline requires score &gt; 80 for 3+ trading days.
+        Mainline Score = Flow + Breadth + Trend. Current mainline requires score &gt; 80 for 3+
+        trading days.
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-[var(--k-border)]">
-          <div className="border-b border-[var(--k-border)] px-3 py-2 text-xs font-medium">Current Mainline</div>
+          <div className="border-b border-[var(--k-border)] px-3 py-2 text-xs font-medium">
+            Current Mainline
+          </div>
           <div className="overflow-auto">
             <table className="w-full text-xs">
               <thead>
@@ -293,7 +355,9 @@ function MainlineSection({ resp }: { resp: MainlineResp | null }) {
           </div>
         </div>
         <div className="rounded-lg border border-[var(--k-border)]">
-          <div className="border-b border-[var(--k-border)] px-3 py-2 text-xs font-medium">Top Scores</div>
+          <div className="border-b border-[var(--k-border)] px-3 py-2 text-xs font-medium">
+            Top Scores
+          </div>
           <div className="overflow-auto">
             <table className="w-full text-xs">
               <thead>
@@ -350,7 +414,10 @@ function DailyTopByDateTable({
   let collapsed = 0;
   let prevSig = '';
   for (const d of rawShownDates) {
-    const sig = (topByDate[d] || []).slice(0, topK).map((x) => x.industryName || '').join('|');
+    const sig = (topByDate[d] || [])
+      .slice(0, topK)
+      .map((x) => x.industryName || '')
+      .join('|');
     if (sig && sig === prevSig) {
       collapsed += 1;
       continue;
@@ -423,7 +490,10 @@ function DailyTopByDateTable({
             ))}
             {!shownDates.length ? (
               <tr>
-                <td colSpan={1 + shownDates.length} className="px-2 py-6 text-center text-[var(--k-muted)]">
+                <td
+                  colSpan={1 + shownDates.length}
+                  className="px-2 py-6 text-center text-[var(--k-muted)]"
+                >
                   No data
                 </td>
               </tr>
@@ -442,7 +512,12 @@ function MiniTable({
   onReference,
 }: {
   title: string;
-  rows: Array<{ industryCode: string; industryName: string; value: number; series10d?: IndustryFundFlowPoint[] }>;
+  rows: Array<{
+    industryCode: string;
+    industryName: string;
+    value: number;
+    series10d?: IndustryFundFlowPoint[];
+  }>;
   valueLabel: string;
   onReference: () => void;
 }) {
@@ -536,7 +611,9 @@ export function IndustryFlowPage() {
         setMainlineResp(mainlineRes.value);
       } else {
         setMainlineError(
-          mainlineRes.reason instanceof Error ? mainlineRes.reason.message : String(mainlineRes.reason),
+          mainlineRes.reason instanceof Error
+            ? mainlineRes.reason.message
+            : String(mainlineRes.reason),
         );
         setMainlineResp(null);
       }
@@ -589,7 +666,13 @@ export function IndustryFlowPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void refresh()} className="gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={busy}
+            onClick={() => void refresh()}
+            className="gap-2"
+          >
             <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
@@ -726,101 +809,101 @@ export function IndustryFlowPage() {
                 <HotIndustryWorkflowCard picks={hotPicks} asOfDate={asOfDate} />
 
                 <div className="grid gap-4 md:grid-cols-2">
-                <MiniTable
-                  title="Top inflow (1D)"
-                  valueLabel="Net inflow"
-                  rows={in1d}
-                  onReference={() =>
-                    addReference({
-                      kind: 'industryFundFlow',
-                      refId: `${asOfDate}:${baseDays}:in1d:${top}`,
-                      asOfDate,
-                      days: baseDays,
-                      topN: top,
-                      metric: 'netInflow',
-                      windowDays: 1,
-                      direction: 'in',
-                      title: 'Top inflow (1D)',
-                      createdAt: new Date().toISOString(),
-                    })
-                  }
-                />
-                <MiniTable
-                  title="Top outflow (1D)"
-                  valueLabel="Net inflow"
-                  rows={out1d}
-                  onReference={() =>
-                    addReference({
-                      kind: 'industryFundFlow',
-                      refId: `${asOfDate}:${baseDays}:out1d:${top}`,
-                      asOfDate,
-                      days: baseDays,
-                      topN: top,
-                      metric: 'netInflow',
-                      windowDays: 1,
-                      direction: 'out',
-                      title: 'Top outflow (1D)',
-                      createdAt: new Date().toISOString(),
-                    })
-                  }
-                />
-                <MiniTable
-                  title="Top inflow (5D sum)"
-                  valueLabel="Sum 5D"
-                  rows={in5d}
-                  onReference={() =>
-                    addReference({
-                      kind: 'industryFundFlow',
-                      refId: `${asOfDate}:${baseDays}:in5d:${top}`,
-                      asOfDate,
-                      days: baseDays,
-                      topN: top,
-                      metric: 'sum',
-                      windowDays: 5,
-                      direction: 'in',
-                      title: 'Top inflow (5D sum)',
-                      createdAt: new Date().toISOString(),
-                    })
-                  }
-                />
-                <MiniTable
-                  title="Top outflow (5D sum)"
-                  valueLabel="Sum 5D"
-                  rows={out5d}
-                  onReference={() =>
-                    addReference({
-                      kind: 'industryFundFlow',
-                      refId: `${asOfDate}:${baseDays}:out5d:${top}`,
-                      asOfDate,
-                      days: baseDays,
-                      topN: top,
-                      metric: 'sum',
-                      windowDays: 5,
-                      direction: 'out',
-                      title: 'Top outflow (5D sum)',
-                      createdAt: new Date().toISOString(),
-                    })
-                  }
-                />
-                <MiniTable
-                  title="Top inflow (10D sum)"
-                  valueLabel="Sum 10D"
-                  rows={in10d}
-                  onReference={() =>
-                    addReference({
-                      kind: 'industryFundFlow',
-                      refId: `${asOfDate}:${baseDays}:in10d:${top}`,
-                      asOfDate,
-                      days: baseDays,
-                      topN: top,
-                      metric: 'sum',
-                      windowDays: 10,
-                      direction: 'in',
-                      title: 'Top inflow (10D sum)',
-                      createdAt: new Date().toISOString(),
-                    })
-                  }
-                />
+                  <MiniTable
+                    title="Top inflow (1D)"
+                    valueLabel="Net inflow"
+                    rows={in1d}
+                    onReference={() =>
+                      addReference({
+                        kind: 'industryFundFlow',
+                        refId: `${asOfDate}:${baseDays}:in1d:${top}`,
+                        asOfDate,
+                        days: baseDays,
+                        topN: top,
+                        metric: 'netInflow',
+                        windowDays: 1,
+                        direction: 'in',
+                        title: 'Top inflow (1D)',
+                        createdAt: new Date().toISOString(),
+                      })
+                    }
+                  />
+                  <MiniTable
+                    title="Top outflow (1D)"
+                    valueLabel="Net inflow"
+                    rows={out1d}
+                    onReference={() =>
+                      addReference({
+                        kind: 'industryFundFlow',
+                        refId: `${asOfDate}:${baseDays}:out1d:${top}`,
+                        asOfDate,
+                        days: baseDays,
+                        topN: top,
+                        metric: 'netInflow',
+                        windowDays: 1,
+                        direction: 'out',
+                        title: 'Top outflow (1D)',
+                        createdAt: new Date().toISOString(),
+                      })
+                    }
+                  />
+                  <MiniTable
+                    title="Top inflow (5D sum)"
+                    valueLabel="Sum 5D"
+                    rows={in5d}
+                    onReference={() =>
+                      addReference({
+                        kind: 'industryFundFlow',
+                        refId: `${asOfDate}:${baseDays}:in5d:${top}`,
+                        asOfDate,
+                        days: baseDays,
+                        topN: top,
+                        metric: 'sum',
+                        windowDays: 5,
+                        direction: 'in',
+                        title: 'Top inflow (5D sum)',
+                        createdAt: new Date().toISOString(),
+                      })
+                    }
+                  />
+                  <MiniTable
+                    title="Top outflow (5D sum)"
+                    valueLabel="Sum 5D"
+                    rows={out5d}
+                    onReference={() =>
+                      addReference({
+                        kind: 'industryFundFlow',
+                        refId: `${asOfDate}:${baseDays}:out5d:${top}`,
+                        asOfDate,
+                        days: baseDays,
+                        topN: top,
+                        metric: 'sum',
+                        windowDays: 5,
+                        direction: 'out',
+                        title: 'Top outflow (5D sum)',
+                        createdAt: new Date().toISOString(),
+                      })
+                    }
+                  />
+                  <MiniTable
+                    title="Top inflow (10D sum)"
+                    valueLabel="Sum 10D"
+                    rows={in10d}
+                    onReference={() =>
+                      addReference({
+                        kind: 'industryFundFlow',
+                        refId: `${asOfDate}:${baseDays}:in10d:${top}`,
+                        asOfDate,
+                        days: baseDays,
+                        topN: top,
+                        metric: 'sum',
+                        windowDays: 10,
+                        direction: 'in',
+                        title: 'Top inflow (10D sum)',
+                        createdAt: new Date().toISOString(),
+                      })
+                    }
+                  />
                 </div>
               </>
             );
@@ -839,13 +922,15 @@ export function IndustryFlowPage() {
             <CopyMarkdownButton
               getMarkdown={() => {
                 const headers = ['Rank', 'Industry', 'Net inflow', 'Sum 10D', 'Trend (10D)'];
-                const rows3 = resp.top.slice(0, topN).map((r, idx) => [
-                  idx + 1,
-                  String(r.industryName ?? ''),
-                  fmtCny(Number(r.netInflow ?? 0)),
-                  fmtCny(Number(r.sum10d ?? 0)),
-                  formatSeries10d(r.series10d ?? []),
-                ]);
+                const rows3 = resp.top
+                  .slice(0, topN)
+                  .map((r, idx) => [
+                    idx + 1,
+                    String(r.industryName ?? ''),
+                    fmtCny(Number(r.netInflow ?? 0)),
+                    fmtCny(Number(r.sum10d ?? 0)),
+                    formatSeries10d(r.series10d ?? []),
+                  ]);
                 return ['# Details', '', mdTable(headers, rows3)].join('\n');
               }}
             />
@@ -881,5 +966,3 @@ export function IndustryFlowPage() {
     </div>
   );
 }
-
-

@@ -325,7 +325,7 @@ function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'):
   lines.push(`${heading} Hot industries workflow`);
   if (asOfDate) lines.push(`- asOfDate: ${asOfDate}`);
   lines.push(
-    '- Rule V4.0: prioritize "momentum breakout" (今日净流入>3亿 且 排名提升>10名); fallback to daily top ∩ strong 5D ranking.',
+    '- Rule V4.0: prioritize "momentum breakout" (今日净流入>20亿 且 排名提升>10名); fallback to daily top ∩ strong 5D ranking.',
   );
   lines.push(
     '- Momentum breakout sectors are often the first day of a new mainline, more explosive than sectors already in 5D ranking.',

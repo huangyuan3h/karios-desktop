@@ -86,7 +86,7 @@ export function HotIndustryWorkflowCard({
       </div>
       <div className="mb-3 text-xs text-[var(--k-muted)]">
         1) Read Industry fund flow (intraday/EOD). 2) V4.0: prioritize momentum breakout (今日净流入
-        {'>'}3亿 且 排名提升{'>'}10名). 3) Fallback to daily top ∩ strong 5D rank. 4) Cross-filter
+        {'>'}20亿 且 排名提升{'>'}10名). 3) Fallback to daily top ∩ strong 5D rank. 4) Cross-filter
         in TV Screener, add only technical-qualified stocks to Watchlist.
       </div>
 
@@ -135,46 +135,6 @@ export function HotIndustryWorkflowCard({
                 <td
                   className="px-2 py-4 text-center text-[var(--k-muted)]"
                   colSpan={compact ? 4 : 8}
-                >
-                  No hotspot industry candidates yet
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-        <table className="w-full border-collapse text-xs">
-          <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-            <tr className="text-left">
-              <th className="px-2 py-2">#</th>
-              <th className="px-2 py-2">Industry</th>
-              <th className="px-2 py-2">1D rank</th>
-              <th className="px-2 py-2">5D rank</th>
-              {!compact ? <th className="px-2 py-2">1D net</th> : null}
-              {!compact ? <th className="px-2 py-2">5D sum</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {picks.length ? (
-              picks.slice(0, 3).map((p, idx) => (
-                <tr key={`${p.industryName}-${idx}`} className="border-t border-[var(--k-border)]">
-                  <td className="px-2 py-2 font-mono">{idx + 1}</td>
-                  <td className="px-2 py-2">{p.industryName || '—'}</td>
-                  <td className="px-2 py-2 font-mono">{rankText(p.dailyRank)}</td>
-                  <td className="px-2 py-2 font-mono">{rankText(p.fiveDayRank)}</td>
-                  {!compact ? (
-                    <td className="px-2 py-2 font-mono">{amountText(p.netInflow)}</td>
-                  ) : null}
-                  {!compact ? <td className="px-2 py-2 font-mono">{amountText(p.sum5d)}</td> : null}
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td
-                  className="px-2 py-4 text-center text-[var(--k-muted)]"
-                  colSpan={compact ? 4 : 6}
                 >
                   No hotspot industry candidates yet
                 </td>
