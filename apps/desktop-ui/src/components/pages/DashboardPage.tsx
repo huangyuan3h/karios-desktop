@@ -4,7 +4,10 @@
 import * as React from 'react';
 import { RefreshCw } from 'lucide-react';
 
-import { HotIndustryWorkflowCard, type HotIndustryPick } from '@/components/pages/HotIndustryWorkflowCard';
+import {
+  HotIndustryWorkflowCard,
+  type HotIndustryPick,
+} from '@/components/pages/HotIndustryWorkflowCard';
 import { Button } from '@/components/ui/button';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
@@ -125,7 +128,9 @@ function buildIndexTrafficSummary(indexSignals: any[]): { title: string; detail:
       detail: '缺少完整指数信号，保持防守。',
     };
   }
-  const byName = new Map(items.map((x) => [String(x?.name ?? x?.tsCode ?? ''), String(x?.signal ?? '')]));
+  const byName = new Map(
+    items.map((x) => [String(x?.name ?? x?.tsCode ?? ''), String(x?.signal ?? '')]),
+  );
   const sse = byName.get('上证指数') || String(items[0]?.signal ?? '');
   const cyb = byName.get('创业板指') || String(items[1]?.signal ?? '');
   const g1 = sse === 'green' || sse === 'light_green' || sse === 'deep_green';
@@ -141,8 +146,7 @@ function buildIndexTrafficSummary(indexSignals: any[]): { title: string; detail:
   if (g1 || g2) {
     const r1 = signalRank(sse);
     const r2 = signalRank(cyb);
-    const bias =
-      r1 === r2 ? '分化' : r1 > r2 ? '主强创弱' : '创强主弱';
+    const bias = r1 === r2 ? '分化' : r1 > r2 ? '主强创弱' : '创强主弱';
     return {
       title: '⚠️ 当前行情：震荡/分化 (Diverging)',
       detail: `震荡分化（${bias}），严禁追高，仅限防守型回踩；买入仅用反弹买入策略单。`,
@@ -208,14 +212,19 @@ function buildDashboardHotIndustryPicks(summary: DashboardSummary | null): HotIn
   const namesByDate = new Map<string, string[]>();
   for (const it of topByDateArr) {
     const d = String(it?.date ?? '');
-    const names = Array.isArray(it?.top) ? it.top.map((x: any) => String(x ?? '').trim()).filter(Boolean) : [];
+    const names = Array.isArray(it?.top)
+      ? it.top.map((x: any) => String(x ?? '').trim()).filter(Boolean)
+      : [];
     if (d && names.length) namesByDate.set(d, names);
   }
   const dailyNames = (namesByDate.get(latestDate) ?? []).slice(0, 30);
 
   const flow5d: any = ind?.flow5d ?? null;
   const rows5d: any[] = Array.isArray(flow5d?.top) ? flow5d.top : [];
-  const fiveRank = new Map<string, { rank: number; sum5d: number | null; latestNet: number | null }>();
+  const fiveRank = new Map<
+    string,
+    { rank: number; sum5d: number | null; latestNet: number | null }
+  >();
   for (let i = 0; i < rows5d.length; i += 1) {
     const r = rows5d[i];
     const name = String(r?.industryName ?? '').trim();
@@ -250,7 +259,9 @@ function buildDashboardHotIndustryPicks(summary: DashboardSummary | null): HotIn
 }
 
 function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'): string {
-  const asOfDate = String((s as any)?.industryFundFlow?.asOfDate ?? (s as any)?.asOfDate ?? '').trim();
+  const asOfDate = String(
+    (s as any)?.industryFundFlow?.asOfDate ?? (s as any)?.asOfDate ?? '',
+  ).trim();
   const picks = buildDashboardHotIndustryPicks(s);
   const lines: string[] = [];
   lines.push(`${heading} Hot industries workflow`);
@@ -264,14 +275,16 @@ function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'):
   lines.push('');
 
   const headers = ['#', 'Industry', '1D rank', '5D rank', '1D net', '5D sum'];
-  const rows: unknown[][] = picks.slice(0, 3).map((p, idx) => [
-    idx + 1,
-    p.industryName || '—',
-    typeof p.dailyRank === 'number' ? `#${p.dailyRank}` : '—',
-    typeof p.fiveDayRank === 'number' ? `#${p.fiveDayRank}` : '—',
-    fmtAmountCn(p.netInflow ?? null),
-    fmtAmountCn(p.sum5d ?? null),
-  ]);
+  const rows: unknown[][] = picks
+    .slice(0, 3)
+    .map((p, idx) => [
+      idx + 1,
+      p.industryName || '—',
+      typeof p.dailyRank === 'number' ? `#${p.dailyRank}` : '—',
+      typeof p.fiveDayRank === 'number' ? `#${p.fiveDayRank}` : '—',
+      fmtAmountCn(p.netInflow ?? null),
+      fmtAmountCn(p.sum5d ?? null),
+    ]);
   if (!rows.length) rows.push([1, '—', '—', '—', '—', '—']);
   lines.push(mdTable(headers, rows));
   lines.push('');
@@ -393,26 +406,24 @@ function isShanghaiTradingTime(): boolean {
   return inMorning || inAfternoon;
 }
 
-
-
-export function DashboardPage({
-  onNavigate,
-}: {
-  onNavigate?: (pageId: string) => void;
-}) {
+export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) => void }) {
   const { addReference } = useChatStore();
   const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
   const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [sentimentBusy, setSentimentBusy] = React.useState(false);
-  const [industryCopyStatus, setIndustryCopyStatus] = React.useState<{ ok: boolean; text: string } | null>(
-    null,
-  );
-  const [sentimentCopyStatus, setSentimentCopyStatus] = React.useState<{ ok: boolean; text: string } | null>(
-    null,
-  );
+  const [industryCopyStatus, setIndustryCopyStatus] = React.useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
+  const [sentimentCopyStatus, setSentimentCopyStatus] = React.useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
   const [copyAllBusy, setCopyAllBusy] = React.useState(false);
-  const [copyAllStatus, setCopyAllStatus] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const [copyAllStatus, setCopyAllStatus] = React.useState<{ ok: boolean; text: string } | null>(
+    null,
+  );
   const [error, setError] = React.useState<string | null>(null);
   const [editLayout, setEditLayout] = React.useState(false);
   const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
@@ -596,7 +607,7 @@ export function DashboardPage({
     const items: any[] = Array.isArray(ms?.items) ? ms.items : [];
     const latest = items.length ? items[items.length - 1] : null;
     const asOfDate = String(ms?.asOfDate ?? summary2?.asOfDate ?? '').trim();
-  const indexSignals: any[] = Array.isArray(ms?.indexSignals) ? ms.indexSignals : [];
+    const indexSignals: any[] = Array.isArray(ms?.indexSignals) ? ms.indexSignals : [];
 
     const lines: string[] = [];
     lines.push(`${heading} Market sentiment`);
@@ -604,29 +615,32 @@ export function DashboardPage({
     if (latest) {
       const risk = String(latest?.riskMode ?? '');
       if (risk) lines.push(`- risk: ${risk}`);
-    const total = fmtAmountCn(latest?.marketTurnoverCny);
-    if (total && total !== '—') lines.push(`- totalTurnover: ${total}`);
-      const rules = Array.isArray(latest?.rules) ? latest.rules.map((x: any) => String(x)).filter(Boolean) : [];
-      if (rules.length) lines.push(`- rules: ${rules.slice(0, 6).join(' • ')}${rules.length > 6 ? '…' : ''}`);
+      const total = fmtAmountCn(latest?.marketTurnoverCny);
+      if (total && total !== '—') lines.push(`- totalTurnover: ${total}`);
+      const rules = Array.isArray(latest?.rules)
+        ? latest.rules.map((x: any) => String(x)).filter(Boolean)
+        : [];
+      if (rules.length)
+        lines.push(`- rules: ${rules.slice(0, 6).join(' • ')}${rules.length > 6 ? '…' : ''}`);
     }
     lines.push('');
 
-  if (indexSignals.length) {
-    const headers0 = ['Index', 'Signal', 'Position', 'Close', 'MA5', 'MA20', 'AsOfDate'];
-    const rows0: unknown[][] = indexSignals.map((it: any) => [
-      String(it?.name ?? it?.tsCode ?? ''),
-      String(it?.signal ?? ''),
-      String(it?.positionRange ?? ''),
-      Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
-      Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
-      Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
-      String(it?.asOfDate ?? ''),
-    ]);
-    lines.push(`${heading}# Index traffic lights`);
-    lines.push('');
-    lines.push(mdTable(headers0, rows0));
-    lines.push('');
-  }
+    if (indexSignals.length) {
+      const headers0 = ['Index', 'Signal', 'Position', 'Close', 'MA5', 'MA20', 'AsOfDate'];
+      const rows0: unknown[][] = indexSignals.map((it: any) => [
+        String(it?.name ?? it?.tsCode ?? ''),
+        String(it?.signal ?? ''),
+        String(it?.positionRange ?? ''),
+        Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
+        Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
+        Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
+        String(it?.asOfDate ?? ''),
+      ]);
+      lines.push(`${heading}# Index traffic lights`);
+      lines.push('');
+      lines.push(mdTable(headers0, rows0));
+      lines.push('');
+    }
 
     const last5 = (items || []).slice(-5);
     const headers = ['date', 'ratio', 'turnover', 'premium%', 'failed%', 'risk'];
@@ -634,7 +648,9 @@ export function DashboardPage({
       String(it?.date ?? ''),
       Number.isFinite(it?.upDownRatio) ? Number(it.upDownRatio).toFixed(2) : '—',
       fmtAmountCn(it?.marketTurnoverCny),
-      Number.isFinite(it?.yesterdayLimitUpPremium) ? `${Number(it.yesterdayLimitUpPremium).toFixed(2)}%` : '—',
+      Number.isFinite(it?.yesterdayLimitUpPremium)
+        ? `${Number(it.yesterdayLimitUpPremium).toFixed(2)}%`
+        : '—',
       Number.isFinite(it?.failedLimitUpRate) ? `${Number(it.failedLimitUpRate).toFixed(1)}%` : '—',
       String(it?.riskMode ?? ''),
     ]);
@@ -643,7 +659,10 @@ export function DashboardPage({
     return lines.join('\n').trim() + '\n';
   }
 
-  async function buildScreenersMarkdown(s: DashboardSummary | null, heading = '##'): Promise<string> {
+  async function buildScreenersMarkdown(
+    s: DashboardSummary | null,
+    heading = '##',
+  ): Promise<string> {
     const summary2: any = s ?? {};
     const rows: any[] = Array.isArray(summary2?.screeners) ? summary2.screeners : [];
     const lines: string[] = [];
@@ -664,9 +683,9 @@ export function DashboardPage({
       const sid = String(sc?.id ?? '').trim();
       if (!sid) continue;
       try {
-        const list = await apiGetJson<{ items: Array<{ id: string; capturedAt?: string; rowCount?: number }> }>(
-          `/integrations/tradingview/screeners/${encodeURIComponent(sid)}/snapshots?limit=1`,
-        );
+        const list = await apiGetJson<{
+          items: Array<{ id: string; capturedAt?: string; rowCount?: number }>;
+        }>(`/integrations/tradingview/screeners/${encodeURIComponent(sid)}/snapshots?limit=1`);
         const snapId = String(list?.items?.[0]?.id ?? '').trim();
         if (!snapId) continue;
         const snap = await apiGetJson<{
@@ -683,17 +702,26 @@ export function DashboardPage({
 
         const title = String(snap?.screenTitle ?? sc?.name ?? sid).trim() || sid;
         const capturedAt = String(snap?.capturedAt ?? '').trim();
-        const headersTv: string[] = Array.isArray(snap?.headers) ? snap.headers.map((h) => String(h ?? '')) : [];
+        const headersTv: string[] = Array.isArray(snap?.headers)
+          ? snap.headers.map((h) => String(h ?? ''))
+          : [];
         const rowsTv: Array<Record<string, string>> = Array.isArray(snap?.rows) ? snap.rows : [];
         const limit = 50;
         const truncated = rowsTv.length > limit;
-        const bodyRows: unknown[][] = rowsTv.slice(0, limit).map((r) => headersTv.map((h) => String(r?.[h] ?? '')));
+        const bodyRows: unknown[][] = rowsTv
+          .slice(0, limit)
+          .map((r) => headersTv.map((h) => String(r?.[h] ?? '')));
 
         lines.push(`${heading}# ${escapeMarkdownCell(title)}`);
         if (capturedAt) lines.push(`- capturedAt: ${capturedAt}`);
         lines.push(`- rows: ${String(snap?.rowCount ?? rowsTv.length ?? 0)}`);
         if (Array.isArray(snap?.filters) && snap.filters.length) {
-          lines.push(`- filters: ${snap.filters.slice(0, 8).map((x) => escapeMarkdownCell(String(x))).join(' • ')}${snap.filters.length > 8 ? '…' : ''}`);
+          lines.push(
+            `- filters: ${snap.filters
+              .slice(0, 8)
+              .map((x) => escapeMarkdownCell(String(x)))
+              .join(' • ')}${snap.filters.length > 8 ? '…' : ''}`,
+          );
         }
         if (truncated) lines.push(`- note: showing first ${limit} rows (truncated)`);
         lines.push('');
@@ -730,7 +758,9 @@ export function DashboardPage({
       sp.set('refresh', 'true');
       sp.set('realtime', tradingTime ? 'true' : 'false');
       for (const s of part) sp.append('symbols', s);
-      const trendRows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+      const trendRows = await apiGetJson<TrendOkResult[]>(
+        `/market/stocks/trendok?${sp.toString()}`,
+      );
       for (const r of Array.isArray(trendRows) ? trendRows : []) {
         if (r && r.symbol) trend[String(r.symbol).toUpperCase()] = r;
       }
@@ -748,9 +778,9 @@ export function DashboardPage({
 
     const quotes: Record<string, { price: number | null; tradeTime: string | null }> = {};
     for (const part of chunk(tsCodes, 50)) {
-      const r = await apiGetJson<QuoteResp>(`/quote?ts_codes=${encodeURIComponent(part.join(','))}`).catch(
-        () => null,
-      );
+      const r = await apiGetJson<QuoteResp>(
+        `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
+      ).catch(() => null);
       for (const it of r?.items ?? []) {
         const sym = byTsCode.get(it.ts_code);
         if (!sym) continue;
@@ -800,9 +830,18 @@ export function DashboardPage({
     }
     if (missingTrend.length || missingHistory.length || missingRealtime.length) {
       const parts: string[] = [];
-      if (missingRealtime.length) parts.push(`missing realtime quote (today): ${missingRealtime.slice(0, 6).join(', ')}${missingRealtime.length > 6 ? '…' : ''}`);
-      if (missingHistory.length) parts.push(`missing history/indicators: ${missingHistory.slice(0, 6).join(', ')}${missingHistory.length > 6 ? '…' : ''}`);
-      if (missingTrend.length) parts.push(`missing TrendOK result: ${missingTrend.slice(0, 6).join(', ')}${missingTrend.length > 6 ? '…' : ''}`);
+      if (missingRealtime.length)
+        parts.push(
+          `missing realtime quote (today): ${missingRealtime.slice(0, 6).join(', ')}${missingRealtime.length > 6 ? '…' : ''}`,
+        );
+      if (missingHistory.length)
+        parts.push(
+          `missing history/indicators: ${missingHistory.slice(0, 6).join(', ')}${missingHistory.length > 6 ? '…' : ''}`,
+        );
+      if (missingTrend.length)
+        parts.push(
+          `missing TrendOK result: ${missingTrend.slice(0, 6).join(', ')}${missingTrend.length > 6 ? '…' : ''}`,
+        );
       throw new Error(`Copy aborted: ${parts.join(' | ')}`);
     }
 
@@ -842,10 +881,15 @@ export function DashboardPage({
       const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
       const close0 = (t?.values as any)?.close;
       const current =
-        q?.price ?? (typeof close0 === 'number' && Number.isFinite(close0) ? (close0 as number) : null);
+        q?.price ??
+        (typeof close0 === 'number' && Number.isFinite(close0) ? (close0 as number) : null);
       const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
       const buy =
-        t?.buyAction && t?.buyMode ? `${String(t.buyMode)}/${String(t.buyAction)}` : t?.buyAction ? String(t.buyAction) : '—';
+        t?.buyAction && t?.buyMode
+          ? `${String(t.buyMode)}/${String(t.buyAction)}`
+          : t?.buyAction
+            ? String(t.buyAction)
+            : '—';
       rows.push([
         it.symbol,
         it.name ?? t?.name ?? '—',
@@ -896,7 +940,6 @@ export function DashboardPage({
       setCopyAllBusy(false);
     }
   }
-
 
   const cardsById = React.useMemo(
     () => Object.fromEntries(defaultCards.map((c) => [c.id, c])),
@@ -1071,7 +1114,9 @@ export function DashboardPage({
                     const ms = summary?.marketSentiment ?? {};
                     const items: any[] = Array.isArray(ms.items) ? ms.items : [];
                     const latest = items.length ? items[items.length - 1] : null;
-                    const indexSignals: any[] = Array.isArray(ms.indexSignals) ? ms.indexSignals : [];
+                    const indexSignals: any[] = Array.isArray(ms.indexSignals)
+                      ? ms.indexSignals
+                      : [];
                     const summaryLine = buildIndexTrafficSummary(indexSignals);
                     const risk = String(latest?.riskMode ?? '—');
                     const premium = Number.isFinite(latest?.yesterdayLimitUpPremium)
@@ -1114,7 +1159,9 @@ export function DashboardPage({
                         </div>
 
                         <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                          <div className="text-sm font-semibold text-amber-700">{summaryLine.title}</div>
+                          <div className="text-sm font-semibold text-amber-700">
+                            {summaryLine.title}
+                          </div>
                           <div className="mt-1 text-xs text-amber-800">{summaryLine.detail}</div>
                         </div>
 
@@ -1144,20 +1191,25 @@ export function DashboardPage({
 
                         {indexSignals.length ? (
                           <div className="mt-3">
-                            <div className="mb-2 text-xs text-[var(--k-muted)]">Index traffic lights</div>
+                            <div className="mb-2 text-xs text-[var(--k-muted)]">
+                              Index traffic lights
+                            </div>
                             <div className="mb-3 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-xs text-[var(--k-muted)]">
                               <div className="font-medium text-[var(--k-fg)]">信号规则（简版）</div>
                               <div className="mt-1">
                                 🔴 Red: Price &lt; MA20 或 MA5 &lt; MA20，仓位 0%-10%。
                               </div>
                               <div className="mt-1">
-                                🟡 Yellow: Price &gt; MA20 但 MA20 斜率向下 或 Vol &lt; MA5_Vol 或 MA5 &lt; MA20，仓位 30%。
+                                🟡 Yellow: Price &gt; MA20 但 MA20 斜率向下 或 Vol &lt; MA5_Vol 或
+                                MA5 &lt; MA20，仓位 30%。
                               </div>
                               <div className="mt-1">
-                                🟢 Green: Price &gt; MA20 且 MA5 &gt; MA20 且 MA20 向上，且实时量比 &gt; 1.0，仓位 50%-60%。
+                                🟢 Green: Price &gt; MA20 且 MA5 &gt; MA20 且 MA20 向上，且实时量比
+                                &gt; 1.0，仓位 50%-60%。
                               </div>
                               <div className="mt-1">
-                                ❇️ Deep Green: MA5 &gt; MA20 &gt; MA60 且 Price &gt; MA5，Breadth &gt; 60%，且 Vol &gt; MA5_Vol * 1.2，仓位 80%-100%。
+                                ❇️ Deep Green: MA5 &gt; MA20 &gt; MA60 且 Price &gt; MA5，Breadth
+                                &gt; 60%，且 Vol &gt; MA5_Vol * 1.2，仓位 80%-100%。
                               </div>
                             </div>
                             <div className="grid gap-2 md:grid-cols-2">
@@ -1185,7 +1237,13 @@ export function DashboardPage({
                                       {signal} • pos {String(it?.positionRange ?? '—')}
                                     </div>
                                     <div className="mt-1 text-[var(--k-muted)]">
-                                      close {Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—'} • MA20{' '}
+                                      close{' '}
+                                      {Number.isFinite(it?.close)
+                                        ? Number(it.close).toFixed(2)
+                                        : '—'}{' '}
+                                      • MA5{' '}
+                                      {Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—'} •
+                                      MA20{' '}
                                       {Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—'}
                                     </div>
                                   </div>
@@ -1272,9 +1330,17 @@ export function DashboardPage({
                                 void navigator.clipboard
                                   .writeText(md)
                                   .then(() => toastSentimentCopy(true, 'Copied Markdown.'))
-                                  .catch(() => toastSentimentCopy(false, 'Copy failed. Please allow clipboard access.'));
+                                  .catch(() =>
+                                    toastSentimentCopy(
+                                      false,
+                                      'Copy failed. Please allow clipboard access.',
+                                    ),
+                                  );
                               } catch (e) {
-                                toastSentimentCopy(false, e instanceof Error ? e.message : String(e));
+                                toastSentimentCopy(
+                                  false,
+                                  e instanceof Error ? e.message : String(e),
+                                );
                               }
                             }}
                           >
@@ -1316,7 +1382,9 @@ export function DashboardPage({
                   <div className="mb-4">
                     <HotIndustryWorkflowCard
                       picks={hotIndustryPicks}
-                      asOfDate={String(summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '')}
+                      asOfDate={String(
+                        summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '',
+                      )}
                       compact
                       onOpenScreener={() => onNavigate?.('screener')}
                       onOpenWatchlist={() => onNavigate?.('watchlist')}
@@ -1361,7 +1429,9 @@ export function DashboardPage({
                         ).trim();
 
                         const lines: string[] = [];
-                        lines.push(`# Industry fund flow${asOfDate ? ` (asOfDate: ${asOfDate})` : ''}`);
+                        lines.push(
+                          `# Industry fund flow${asOfDate ? ` (asOfDate: ${asOfDate})` : ''}`,
+                        );
                         lines.push('');
 
                         // Table 1: Top5×Date hotspots.
@@ -1379,8 +1449,12 @@ export function DashboardPage({
 
                         // Table 2: 5D net inflow.
                         const flow5d: any = (summary?.industryFundFlow as any)?.flow5d ?? null;
-                        const flowDates: string[] = Array.isArray(flow5d?.dates) ? flow5d.dates : [];
-                        const colDates: string[] = flowDates.length ? flowDates.slice(-5) : dedupedDates;
+                        const flowDates: string[] = Array.isArray(flow5d?.dates)
+                          ? flow5d.dates
+                          : [];
+                        const colDates: string[] = flowDates.length
+                          ? flowDates.slice(-5)
+                          : dedupedDates;
                         const topRows: any[] = Array.isArray(flow5d?.top) ? flow5d.top : [];
                         if (topRows.length && colDates.length) {
                           const headers2 = [
@@ -1409,9 +1483,14 @@ export function DashboardPage({
                         }
 
                         // Table 3: 5D net outflow.
-                        const flow5dOut: any = (summary?.industryFundFlow as any)?.flow5dOut ?? null;
-                        const outDates: string[] = Array.isArray(flow5dOut?.dates) ? flow5dOut.dates : [];
-                        const outColDates: string[] = outDates.length ? outDates.slice(-5) : dedupedDates;
+                        const flow5dOut: any =
+                          (summary?.industryFundFlow as any)?.flow5dOut ?? null;
+                        const outDates: string[] = Array.isArray(flow5dOut?.dates)
+                          ? flow5dOut.dates
+                          : [];
+                        const outColDates: string[] = outDates.length
+                          ? outDates.slice(-5)
+                          : dedupedDates;
                         const outRows: any[] = Array.isArray(flow5dOut?.top) ? flow5dOut.top : [];
                         if (outRows.length && outColDates.length) {
                           const headers3 = [
@@ -1555,11 +1634,14 @@ export function DashboardPage({
                           );
                         })()}
                         {(() => {
-                          const flow5dOut: any = (summary?.industryFundFlow as any)?.flow5dOut ?? null;
+                          const flow5dOut: any =
+                            (summary?.industryFundFlow as any)?.flow5dOut ?? null;
                           const flowDates: string[] = Array.isArray(flow5dOut?.dates)
                             ? flow5dOut.dates
                             : [];
-                          const cols: string[] = flowDates.length ? flowDates.slice(-5) : dedupedDates;
+                          const cols: string[] = flowDates.length
+                            ? flowDates.slice(-5)
+                            : dedupedDates;
                           const topRows: any[] = Array.isArray(flow5dOut?.top) ? flow5dOut.top : [];
                           if (!topRows.length || !cols.length) return null;
                           const colDates = cols;
@@ -1625,7 +1707,11 @@ export function DashboardPage({
                           >
                             Open Industry Flow
                           </Button>
-                          <Button size="sm" variant="secondary" onClick={() => void copyIndustryMarkdown()}>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => void copyIndustryMarkdown()}
+                          >
                             Copy Markdown
                           </Button>
                           <Button
