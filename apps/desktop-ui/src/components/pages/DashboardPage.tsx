@@ -207,17 +207,40 @@ function buildDashboardHotIndustryPicks(summary: DashboardSummary | null): HotIn
   const ind: any = summary?.industryFundFlow ?? {};
   const datesAll: string[] = Array.isArray(ind?.dates) ? ind.dates : [];
   const latestDate = datesAll.length ? String(datesAll[datesAll.length - 1] ?? '') : '';
+  const prevDate = datesAll.length >= 2 ? String(datesAll[datesAll.length - 2] ?? '') : '';
 
   const topByDateArr: any[] = Array.isArray(ind?.topByDate) ? ind.topByDate : [];
   const namesByDate = new Map<string, string[]>();
+  const rankByDate = new Map<string, Map<string, number>>();
+  const valueByDate = new Map<string, Map<string, number>>();
+
   for (const it of topByDateArr) {
     const d = String(it?.date ?? '');
-    const names = Array.isArray(it?.top)
-      ? it.top.map((x: any) => String(x ?? '').trim()).filter(Boolean)
-      : [];
-    if (d && names.length) namesByDate.set(d, names);
+    const topArr: any[] = Array.isArray(it?.top) ? it.top : [];
+    const names: string[] = [];
+    const rankMap = new Map<string, number>();
+    const valueMap = new Map<string, number>();
+    for (let i = 0; i < topArr.length; i += 1) {
+      const entry = topArr[i];
+      const name =
+        typeof entry === 'string' ? String(entry).trim() : String(entry?.industryName ?? '').trim();
+      const val = typeof entry === 'object' && entry != null ? Number(entry?.value ?? 0) : 0;
+      if (name) {
+        names.push(name);
+        rankMap.set(name, i + 1);
+        valueMap.set(name, Number.isFinite(val) ? val : 0);
+      }
+    }
+    if (d && names.length) {
+      namesByDate.set(d, names);
+      rankByDate.set(d, rankMap);
+      valueByDate.set(d, valueMap);
+    }
   }
-  const dailyNames = (namesByDate.get(latestDate) ?? []).slice(0, 30);
+
+  const dailyNames = (namesByDate.get(latestDate) ?? []).slice(0, 50);
+  const yesterdayRankMap = prevDate ? (rankByDate.get(prevDate) ?? null) : null;
+  const todayValueMap = valueByDate.get(latestDate) ?? new Map();
 
   const flow5d: any = ind?.flow5d ?? null;
   const rows5d: any[] = Array.isArray(flow5d?.top) ? flow5d.top : [];
@@ -241,21 +264,56 @@ function buildDashboardHotIndustryPicks(summary: DashboardSummary | null): HotIn
     fiveRank.set(name, { rank: i + 1, sum5d, latestNet });
   }
 
+  const MOMENTUM_THRESHOLD_YI = 20e8;
+  const MOMENTUM_RANK_CHANGE = 10;
   const picks: HotIndustryPick[] = [];
+  const momentumPicks: HotIndustryPick[] = [];
+
   for (let i = 0; i < dailyNames.length; i += 1) {
     const name = dailyNames[i];
     const five = fiveRank.get(name);
-    if (!five) continue;
-    picks.push({
+    const todayNetInflow = todayValueMap.get(name) ?? 0;
+    const yesterdayRank = yesterdayRankMap?.get(name) ?? null;
+    const todayRank = i + 1;
+    const rankChange = yesterdayRank != null ? yesterdayRank - todayRank : null;
+    const isMomentumSignal =
+      todayNetInflow >= MOMENTUM_THRESHOLD_YI &&
+      rankChange != null &&
+      rankChange >= MOMENTUM_RANK_CHANGE;
+
+    const pick: HotIndustryPick = {
       industryName: name,
-      dailyRank: i + 1,
-      fiveDayRank: five.rank,
-      netInflow: five.latestNet,
-      sum5d: five.sum5d,
-    });
-    if (picks.length >= 3) break;
+      dailyRank: todayRank,
+      fiveDayRank: five?.rank ?? null,
+      netInflow: five?.latestNet ?? todayNetInflow,
+      sum5d: five?.sum5d ?? null,
+      yesterdayRank,
+      rankChange,
+      momentumSignal: isMomentumSignal,
+    };
+
+    if (isMomentumSignal) {
+      momentumPicks.push(pick);
+    } else if (five) {
+      picks.push(pick);
+    }
   }
-  return picks;
+
+  const result: HotIndustryPick[] = [];
+  const seen = new Set<string>();
+  for (const p of momentumPicks) {
+    if (seen.has(p.industryName)) continue;
+    seen.add(p.industryName);
+    result.push(p);
+    if (result.length >= 3) return result;
+  }
+  for (const p of picks) {
+    if (seen.has(p.industryName)) continue;
+    seen.add(p.industryName);
+    result.push(p);
+    if (result.length >= 3) break;
+  }
+  return result;
 }
 
 function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'): string {
@@ -267,14 +325,17 @@ function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'):
   lines.push(`${heading} Hot industries workflow`);
   if (asOfDate) lines.push(`- asOfDate: ${asOfDate}`);
   lines.push(
-    '- Rule: daily net inflow top sectors intersected with strong 5D inflow ranking; keep top 3 for TV screener cross-filter.',
+    '- Rule V4.0: prioritize "momentum breakout" (今日净流入>3亿 且 排名提升>10名); fallback to daily top ∩ strong 5D ranking.',
+  );
+  lines.push(
+    '- Momentum breakout sectors are often the first day of a new mainline, more explosive than sectors already in 5D ranking.',
   );
   lines.push(
     '- Action: only stocks from these 3 sectors and passing technical checks should be added to Watchlist.',
   );
   lines.push('');
 
-  const headers = ['#', 'Industry', '1D rank', '5D rank', '1D net', '5D sum'];
+  const headers = ['#', 'Industry', '1D rank', '5D rank', '1D net', '5D sum', 'RankΔ', 'Signal'];
   const rows: unknown[][] = picks
     .slice(0, 3)
     .map((p, idx) => [
@@ -284,8 +345,14 @@ function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'):
       typeof p.fiveDayRank === 'number' ? `#${p.fiveDayRank}` : '—',
       fmtAmountCn(p.netInflow ?? null),
       fmtAmountCn(p.sum5d ?? null),
+      typeof p.rankChange === 'number'
+        ? p.rankChange > 0
+          ? `+${p.rankChange}`
+          : String(p.rankChange)
+        : '—',
+      p.momentumSignal ? '🚀 MOMENTUM' : '—',
     ]);
-  if (!rows.length) rows.push([1, '—', '—', '—', '—', '—']);
+  if (!rows.length) rows.push([1, '—', '—', '—', '—', '—', '—', '—']);
   lines.push(mdTable(headers, rows));
   lines.push('');
   return lines.join('\n').trim() + '\n';
