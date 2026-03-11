@@ -507,8 +507,8 @@ def _trendok_one(
     rsi14s = _rsi(closes, 14)
     if rsi14s:
         res["values"]["rsi14"] = rsi14s[-1]
-        # Rule 5 (optimized): allow strong trend RSI up to 82.
-        res["checks"]["rsiInRange"] = bool(50.0 <= rsi14s[-1] <= 82.0)
+        # Rule 5 (optimized): allow strong trend RSI up to 90.
+        res["checks"]["rsiInRange"] = bool(50.0 <= rsi14s[-1] <= 90.0)
 
     if len(closes) >= 20:
         high20 = max(closes[-20:])
