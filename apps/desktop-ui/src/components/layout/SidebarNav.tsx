@@ -8,6 +8,7 @@ import {
   CreditCard,
   Gamepad2,
   LayoutDashboard,
+  Newspaper,
   NotebookPen,
   Star,
   Settings,
@@ -20,6 +21,7 @@ import { cn } from '@/lib/utils';
 
 const items = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'news', label: 'News', icon: Newspaper },
   { id: 'market', label: 'Market', icon: Table2 },
   { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
   { id: 'watchlist', label: 'Watchlist', icon: Star },

@@ -8,6 +8,7 @@ dependencies = [
     "akshare>=1.18.23",
     "apscheduler>=3.11.0",
     "fastapi>=0.125.0",
+    "feedparser>=6.0.12",
     "pandas>=2.2.0",
     "playwright>=1.58.0",
     "psycopg[binary]>=3.2.10",

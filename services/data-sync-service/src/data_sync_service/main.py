@@ -10,6 +10,7 @@ from .api.broker_routes import router as broker_router
 from .api.industry_flow_routes import router as industry_flow_router
 from .api.market_sentiment_routes import router as market_sentiment_router
 from .api.journal_routes import router as journal_router
+from .api.news_routes import router as news_router
 from .api.query_routes import router as query_router
 from .api.simtrade_routes import router as simtrade_router
 from .api.system_prompts_routes import router as system_prompts_router
@@ -46,3 +47,4 @@ app.include_router(journal_router)
 app.include_router(broker_router)
 app.include_router(industry_flow_router)
 app.include_router(market_sentiment_router)
+app.include_router(news_router)

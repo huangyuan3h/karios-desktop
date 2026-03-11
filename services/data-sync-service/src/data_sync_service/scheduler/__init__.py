@@ -9,6 +9,7 @@ from data_sync_service.scheduler import (
     daily_sync_job,
     hk_basic_job,
     hk_daily_job,
+    news_fetch_job,
     stock_basic_job,
 )
 
@@ -63,6 +64,12 @@ def create_scheduler() -> BackgroundScheduler:
         close_catchup_job.run,
         close_catchup_job.build_trigger(),
         id=close_catchup_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        news_fetch_job.run,
+        news_fetch_job.build_trigger(),
+        id=news_fetch_job.JOB_ID,
         replace_existing=True,
     )
     return scheduler
