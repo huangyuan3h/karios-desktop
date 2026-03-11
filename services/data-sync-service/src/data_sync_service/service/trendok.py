@@ -606,8 +606,8 @@ def _trendok_one(
             if atr14 is not None and close > 0:
                 atr_ratio = float(atr14) / float(close)
                 # Volatility penalty: tolerate high ATR in strong themes.
-                # New rule: start penalizing above 3% ATR/close, softer slope, half max penalty.
-                p_vol = _clip01((atr_ratio - 0.03) / 0.05) * 5.0
+                # New rule: start penalizing above 7% ATR/close, softer slope, half max penalty.
+                p_vol = _clip01((atr_ratio - 0.07) / 0.05) * 5.0
                 penalty += p_vol
                 parts["penalty_volatility_atr"] = -round(p_vol, 3)
             if ema20 > 0 and close < ema20:

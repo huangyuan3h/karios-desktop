@@ -198,7 +198,7 @@ function scoreRuleLines(): string[] {
     '- Deterministic 0–100 score (CN daily, no LLM).',
     '- Subscores: EMA trend 25%, MACD strength 15%, breakout 25%, RSI 15%, volume 20%.',
     '- Bonus: +3 when Close >= High(20).',
-    '- Penalties: high ATR/close (>3%) and Close < EMA20.',
+    '- Penalties: high ATR/close (>7%) and Close < EMA20.',
     '- Optional industry flow adjustment when available.',
   ];
 }
