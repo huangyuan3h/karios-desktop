@@ -9,10 +9,12 @@ from data_sync_service.db.industry_fund_flow import ensure_table as ensure_indus
 from data_sync_service.db.market_sentiment import get_latest_date as get_latest_sentiment_date
 from data_sync_service.db.market_sentiment import list_days as list_sentiment_days
 from data_sync_service.db.tv import list_snapshots_for_screener_full
+from data_sync_service.db.news import fetch_items, ensure_tables as ensure_news_tables
 from data_sync_service.service.industry_fund_flow import get_cn_industry_fund_flow, sync_cn_industry_fund_flow
 from data_sync_service.service.market_regime import get_index_signals
 from data_sync_service.service.market_sentiment import sync_cn_sentiment
 from data_sync_service.service.tv import list_screeners, sync_screener
+from data_sync_service.service.news import fetch_all_sources
 
 
 def _now_iso() -> str:
@@ -219,6 +221,28 @@ def _index_signal_items(*, as_of_date: str | None) -> list[dict[str, Any]]:
     return get_index_signals(as_of_date=as_of_date)
 
 
+def _news_items(hours: int = 24, limit: int = 50) -> dict[str, Any]:
+    """
+    Fetch recent news items for the dashboard.
+    """
+    ensure_news_tables()
+    total, items = fetch_items(limit=limit, hours=hours)
+    return {
+        "hours": hours,
+        "total": total,
+        "items": [
+            {
+                "id": item["id"],
+                "sourceId": item["sourceId"],
+                "title": item["title"],
+                "link": item["link"],
+                "publishedAt": item["publishedAt"],
+            }
+            for item in items
+        ],
+    }
+
+
 def dashboard_summary() -> dict[str, Any]:
     """
     Minimal Dashboard summary for UI:
@@ -245,11 +269,13 @@ def dashboard_summary() -> dict[str, Any]:
     }
 
     screeners = _screeners_status(limit=50)
+    news = _news_items(hours=24, limit=50)
     return {
         "asOfDate": as_of,
         "industryFundFlow": industry,
         "marketSentiment": market_sentiment,
         "screeners": screeners,
+        "news": news,
     }
 
 
@@ -325,6 +351,15 @@ def dashboard_sync(*, force: bool = True, screeners: bool = True) -> dict[str, A
         return {"enabled": len(enabled), "skipped": False, "failed": len(screener_failed), "missing": len(screener_missing)}
 
     step("screeners", _sync_screeners)
+
+    # 4) News
+    def _sync_news() -> dict[str, Any]:
+        results = fetch_all_sources()
+        total = sum(v for v in results.values() if v > 0)
+        failed = sum(1 for v in results.values() if v < 0)
+        return {"total": total, "failed": failed, "sources": len(results)}
+
+    step("news", _sync_news)
 
     finished_at = _now_iso()
     ok = all(bool(s.get("ok")) for s in steps)

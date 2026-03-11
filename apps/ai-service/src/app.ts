@@ -1674,3 +1674,78 @@ app.post('/strategy/daily-markdown', async (c) => {
     );
   }
 });
+
+const NewsSummaryRequestSchema = z.object({
+  items: z.array(
+    z.object({
+      title: z.string(),
+      sourceId: z.string().optional(),
+      publishedAt: z.string().optional(),
+    }),
+  ),
+  hours: z.number().optional(),
+});
+
+app.post('/news/summary', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = NewsSummaryRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+  }
+
+  const items = parsed.data.items || [];
+  const hours = parsed.data.hours || 24;
+
+  if (!items.length) {
+    return c.json({ summary: '', itemsCount: 0 });
+  }
+
+  let model: AiModel;
+  let modelId: string;
+  try {
+    const r = await getResolvedModel();
+    model = r.model;
+    modelId = r.modelId;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid AI configuration';
+    return c.json({ error: message }, 500);
+  }
+
+  const newsTitles = items
+    .slice(0, 50)
+    .map((item, idx) => `${idx + 1}. ${item.title}`)
+    .join('\n');
+
+  const system = `你是一个财经新闻分析师。你的任务是从过去${hours}小时的新闻中，总结出与财经、股票市场相关的关键信息。
+要求：
+1. 只挑选最重要的、与财经/股票相关的新闻
+2. 总结控制在200字以内
+3. 用简洁的中文表达
+4. 如果没有重要财经新闻，简要说明即可
+5. 不需要列出具体新闻条目，只需要总结关键信息`;
+
+  const prompt = `以下是过去${hours}小时的新闻标题：
+
+${newsTitles}
+
+请总结其中的财经/股票相关重要信息（200字以内）：`;
+
+  try {
+    const { text } = await generateText({
+      model,
+      prompt: `${system}\n\n${prompt}`,
+      temperature: 0,
+      maxOutputTokens: 500,
+    });
+    return c.json({
+      summary: text.trim(),
+      itemsCount: items.length,
+      model: modelId,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
+});
+
+export default app;

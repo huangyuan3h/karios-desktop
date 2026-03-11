@@ -9,7 +9,7 @@ import {
   type HotIndustryPick,
 } from '@/components/pages/HotIndustryWorkflowCard';
 import { Button } from '@/components/ui/button';
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL, AI_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 import { loadJson } from '@/lib/storage';
 
@@ -493,6 +493,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   );
   const [error, setError] = React.useState<string | null>(null);
   const [editLayout, setEditLayout] = React.useState(false);
+  const [newsSummary, setNewsSummary] = React.useState<string | null>(null);
+  const [newsSummaryBusy, setNewsSummaryBusy] = React.useState(false);
   const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
 
   const industryCopyTimerRef = React.useRef<number | null>(null);
@@ -528,6 +530,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     () => [
       { id: 'industry', title: 'Industry fund flow' },
       { id: 'sentiment', title: 'Market sentiment' },
+      { id: 'news', title: 'News brief' },
       { id: 'screeners', title: 'Screener sync' },
     ],
     [],
@@ -575,7 +578,38 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     try {
       const r = await apiPostJson<DashboardSyncResp>('/dashboard/sync?force=true', {});
       setSyncResp(r);
-      await refresh();
+      const s = await apiGetJson<DashboardSummary>(`/dashboard/summary`);
+      setSummary(s);
+
+      // Generate news summary using AI
+      const newsData = (s as any)?.news;
+      console.log('[Dashboard] newsData:', newsData);
+      if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
+        setNewsSummaryBusy(true);
+        try {
+          console.log('[Dashboard] Calling AI service for news summary...');
+          const aiRes = await fetch(`${AI_BASE_URL}/news/summary`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: newsData.items, hours: 24 }),
+          });
+          console.log('[Dashboard] AI response status:', aiRes.status);
+          if (aiRes.ok) {
+            const aiData = await aiRes.json();
+            console.log('[Dashboard] AI summary:', aiData);
+            setNewsSummary(aiData.summary || null);
+          } else {
+            const errText = await aiRes.text();
+            console.error('[Dashboard] AI error:', errText);
+          }
+        } catch (err) {
+          console.error('[Dashboard] AI summary error:', err);
+        } finally {
+          setNewsSummaryBusy(false);
+        }
+      } else {
+        console.log('[Dashboard] No news items found');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1125,6 +1159,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         const weightOf = (id: string) => {
           if (id === 'industry') return 6;
           if (id === 'sentiment') return 3;
+          if (id === 'news') return 2;
           if (id === 'screeners') return 2;
           return 2;
         };
@@ -1815,6 +1850,31 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                       </>
                     );
                   })()}
+                </div>
+              ) : id === 'news' ? (
+                <div>
+                  <div className="mb-2 text-xs text-[var(--k-muted)]">
+                    24-hour news summary (AI-generated, finance/stock focused)
+                  </div>
+                  {newsSummaryBusy ? (
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
+                      <RefreshCw className="mr-2 inline h-4 w-4 animate-spin" />
+                      Generating AI summary...
+                    </div>
+                  ) : newsSummary ? (
+                    <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-4 text-sm">
+                      {newsSummary}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
+                      No summary yet. Click "Sync all" to fetch news and generate summary.
+                    </div>
+                  )}
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('news')}>
+                      Open News
+                    </Button>
+                  </div>
                 </div>
               ) : id === 'screeners' ? (
                 <div>
