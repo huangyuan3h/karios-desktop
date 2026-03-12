@@ -1029,6 +1029,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       lines.push('');
       lines.push(buildSentimentMarkdown(s, '##').trim());
       lines.push('');
+      if (newsSummary) {
+        lines.push('## News brief');
+        lines.push('');
+        lines.push(newsSummary.trim());
+        lines.push('');
+      }
       lines.push((await buildScreenersMarkdown(s, '##')).trim());
       lines.push('');
       lines.push((await buildWatchlistMarkdown()).trim());
