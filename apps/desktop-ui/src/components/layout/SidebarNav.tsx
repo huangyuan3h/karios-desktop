@@ -4,15 +4,16 @@ import {
   BarChart3,
   ChevronsLeft,
   ChevronsRight,
-  Crown,
+  Clock,
   CreditCard,
+  Gamepad2,
   LayoutDashboard,
-  ListOrdered,
+  Newspaper,
   NotebookPen,
-  Sparkles,
   Star,
   Settings,
   Table2,
+  Activity,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -20,15 +21,16 @@ import { cn } from '@/lib/utils';
 
 const items = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'news', label: 'News', icon: Newspaper },
   { id: 'market', label: 'Market', icon: Table2 },
-  { id: 'rank', label: 'Quant', icon: ListOrdered },
   { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
   { id: 'broker', label: 'Broker', icon: CreditCard },
-  { id: 'strategy', label: 'Strategy', icon: Sparkles },
   { id: 'journal', label: 'Journal', icon: NotebookPen },
-  { id: 'leaders', label: 'Leaders', icon: Crown },
   { id: 'screener', label: 'Screener', icon: Table2 },
+  { id: 'scheduler', label: 'Scheduler', icon: Clock },
+  { id: 'backtest', label: 'Backtest', icon: Activity },
+  { id: 'simtrade', label: 'Sim Trade', icon: Gamepad2 },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

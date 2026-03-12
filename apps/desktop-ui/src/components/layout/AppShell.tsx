@@ -8,21 +8,45 @@ import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
 import { BrokerPage } from '@/components/pages/BrokerPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
-import { LeaderStocksPage } from '@/components/pages/LeaderStocksPage';
 import { JournalReadPage } from '@/components/pages/JournalReadPage';
 import { JournalWritePage } from '@/components/pages/JournalWritePage';
 import { MarketPage } from '@/components/pages/MarketPage';
-import { RankPage } from '@/components/pages/RankPage';
+import { NewsPage } from '@/components/pages/NewsPage';
+import { SchedulerPage } from '@/components/pages/SchedulerPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
-import { StrategyPage } from '@/components/pages/StrategyPage';
 import { StockPage } from '@/components/pages/StockPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
+import { BacktestPage } from '@/components/pages/BacktestPage';
+import { SimTradePage } from '@/components/pages/SimTradePage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
 import { cn } from '@/lib/utils';
+
+const PAGE_TITLES: Record<string, string> = {
+  dashboard: 'Dashboard',
+  news: 'News',
+  market: 'Market',
+  industryFlow: 'Industry Flow',
+  watchlist: 'Watchlist',
+  broker: 'Broker',
+  journal: 'Journal',
+  screener: 'Screener',
+  scheduler: 'Scheduler',
+  backtest: 'Backtest',
+  simtrade: 'Sim Trade',
+  settings: 'Settings',
+  stock: 'Stock',
+};
+
+function getPageTitle(page: string, activeStockSymbol: string | null): string {
+  if (page === 'stock' && activeStockSymbol) {
+    return activeStockSymbol;
+  }
+  return PAGE_TITLES[page] ?? page;
+}
 
 export function AppShell() {
   const { state, setAgent } = useChatStore();
@@ -105,33 +129,7 @@ export function AppShell() {
 
       <main className="flex flex-1 flex-col">
         <header className="flex items-center border-b border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
-          <div className="text-sm font-semibold">
-            {activePage === 'dashboard'
-              ? 'Dashboard'
-              : activePage === 'market'
-                ? 'Market'
-              : activePage === 'rank'
-                ? 'Quant'
-              : activePage === 'industryFlow'
-                ? 'Industry Flow'
-              : activePage === 'watchlist'
-                ? 'Watchlist'
-              : activePage === 'broker'
-                ? 'Broker'
-              : activePage === 'strategy'
-                ? 'Strategy'
-              : activePage === 'journal'
-                ? 'Journal'
-              : activePage === 'leaders'
-                ? 'Leaders'
-              : activePage === 'stock'
-                ? activeStockSymbol ?? 'Stock'
-              : activePage === 'screener'
-                ? 'Screener'
-              : activePage === 'settings'
-                ? 'Settings'
-                : activePage}
-          </div>
+          <div className="text-sm font-semibold">{getPageTitle(activePage, activeStockSymbol)}</div>
 
           <div className="flex-1" />
 
@@ -148,7 +146,9 @@ export function AppShell() {
               variant="secondary"
               size="sm"
               className="h-9 w-9 rounded-full p-0"
-              onClick={() => setAgent((prev) => ({ ...prev, visible: !prev.visible, mode: 'docked' }))}
+              onClick={() =>
+                setAgent((prev) => ({ ...prev, visible: !prev.visible, mode: 'docked' }))
+              }
               title={agentVisible ? 'Hide agent' : 'Show agent'}
             >
               <Bot className="h-4 w-4" />
@@ -163,6 +163,8 @@ export function AppShell() {
           <div className="min-w-0 flex-1 overflow-auto">
             {activePage === 'settings' ? (
               <SettingsPage />
+            ) : activePage === 'news' ? (
+              <NewsPage />
             ) : activePage === 'market' ? (
               <MarketPage
                 onOpenStock={(symbol) => {
@@ -173,14 +175,6 @@ export function AppShell() {
               />
             ) : activePage === 'broker' ? (
               <BrokerPage />
-            ) : activePage === 'rank' ? (
-              <RankPage
-                onOpenStock={(symbol) => {
-                  setStockReturnPage('rank');
-                  setActiveStockSymbol(symbol);
-                  setActivePage('stock');
-                }}
-              />
             ) : activePage === 'industryFlow' ? (
               <IndustryFlowPage />
             ) : activePage === 'watchlist' ? (
@@ -191,8 +185,6 @@ export function AppShell() {
                   setActivePage('stock');
                 }}
               />
-            ) : activePage === 'strategy' ? (
-              <StrategyPage />
             ) : activePage === 'journal' ? (
               journalMode === 'write' ? (
                 <JournalWritePage
@@ -209,14 +201,6 @@ export function AppShell() {
                   }}
                 />
               )
-            ) : activePage === 'leaders' ? (
-              <LeaderStocksPage
-                onOpenStock={(symbol) => {
-                  setStockReturnPage('leaders');
-                  setActiveStockSymbol(symbol);
-                  setActivePage('stock');
-                }}
-              />
             ) : activePage === 'stock' && activeStockSymbol ? (
               <StockPage
                 symbol={activeStockSymbol}
@@ -224,14 +208,14 @@ export function AppShell() {
               />
             ) : activePage === 'screener' ? (
               <ScreenerPage />
+            ) : activePage === 'scheduler' ? (
+              <SchedulerPage />
+            ) : activePage === 'backtest' ? (
+              <BacktestPage />
+            ) : activePage === 'simtrade' ? (
+              <SimTradePage />
             ) : (
-              <DashboardPage
-                onNavigate={(id) => setActivePage(id)}
-                onOpenStock={(symbol) => {
-                  setActiveStockSymbol(symbol);
-                  setActivePage('stock');
-                }}
-              />
+              <DashboardPage onNavigate={(id) => setActivePage(id)} />
             )}
           </div>
 
@@ -250,10 +234,7 @@ export function AppShell() {
           ) : null}
 
           {agentVisible && agentMode !== 'maximized' ? (
-            <div
-              className="shrink-0"
-              style={{ width: agentWidth }}
-            >
+            <div className="shrink-0" style={{ width: agentWidth }}>
               <div className="h-full border-l border-[var(--k-border)]">
                 <AgentPanel />
               </div>
@@ -288,5 +269,3 @@ export function AppShell() {
     </div>
   );
 }
-
-
