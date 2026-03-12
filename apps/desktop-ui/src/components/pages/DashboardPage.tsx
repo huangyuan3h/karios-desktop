@@ -359,6 +359,8 @@ function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'):
 }
 
 const WATCHLIST_STORAGE_KEY = 'karios.watchlist.v1';
+const NEWS_BRIEF_CACHE_KEY = 'karios.dashboard.newsBrief.v1';
+const NEWS_BRIEF_MIN_REFRESH_MS = 4 * 60 * 60 * 1000;
 
 type WatchlistItem = {
   symbol: string;
@@ -404,6 +406,13 @@ type QuoteResp = {
     price: string | null;
     trade_time: string | null;
   }>;
+};
+
+type NewsBriefCache = {
+  summary?: string;
+  updatedAt?: string;
+  fallback?: string;
+  fallbackUpdatedAt?: string;
 };
 
 function chunk<T>(arr: T[], n: number): T[][] {
@@ -494,6 +503,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const [error, setError] = React.useState<string | null>(null);
   const [editLayout, setEditLayout] = React.useState(false);
   const [newsSummary, setNewsSummary] = React.useState<string | null>(null);
+  const [newsSummaryUpdatedAt, setNewsSummaryUpdatedAt] = React.useState<string | null>(null);
+  const [newsFallback, setNewsFallback] = React.useState<string | null>(null);
   const [newsSummaryBusy, setNewsSummaryBusy] = React.useState(false);
   const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
 
@@ -507,6 +518,58 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       if (copyAllTimerRef.current != null) window.clearTimeout(copyAllTimerRef.current);
     };
   }, []);
+
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(NEWS_BRIEF_CACHE_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw) as NewsBriefCache;
+      const summary = typeof obj?.summary === 'string' ? obj.summary.trim() : '';
+      const updatedAt = typeof obj?.updatedAt === 'string' ? obj.updatedAt.trim() : '';
+      const fallback = typeof obj?.fallback === 'string' ? obj.fallback.trim() : '';
+      if (summary) setNewsSummary(summary);
+      if (updatedAt) setNewsSummaryUpdatedAt(updatedAt);
+      if (fallback) setNewsFallback(fallback);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  function saveNewsBriefCache(patch: NewsBriefCache) {
+    try {
+      const raw = window.localStorage.getItem(NEWS_BRIEF_CACHE_KEY);
+      const prev = raw ? (JSON.parse(raw) as NewsBriefCache) : {};
+      window.localStorage.setItem(
+        NEWS_BRIEF_CACHE_KEY,
+        JSON.stringify({ ...prev, ...patch }),
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  function buildNewsFallback(items: any[]): string | null {
+    const rows = (Array.isArray(items) ? items : [])
+      .slice(0, 8)
+      .map((it: any, idx: number) => {
+        const title = String(it?.title ?? '').trim();
+        if (!title) return null;
+        const source = String(it?.sourceId ?? '').trim();
+        const publishedAt = String(it?.publishedAt ?? '').trim();
+        const meta = [source, publishedAt].filter(Boolean).join(' | ');
+        return `${idx + 1}. ${title}${meta ? ` (${meta})` : ''}`;
+      })
+      .filter(Boolean) as string[];
+    if (!rows.length) return null;
+    return ['Latest headlines:', ...rows].join('\n');
+  }
+
+  function shouldRefreshNewsBrief(lastUpdatedAt: string | null): boolean {
+    if (!lastUpdatedAt) return true;
+    const t = new Date(lastUpdatedAt).getTime();
+    if (!Number.isFinite(t)) return true;
+    return Date.now() - t >= NEWS_BRIEF_MIN_REFRESH_MS;
+  }
 
   function toastIndustryCopy(ok: boolean, text: string) {
     setIndustryCopyStatus({ ok, text });
@@ -555,6 +618,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     try {
       const s = await apiGetJson<DashboardSummary>(`/dashboard/summary`);
       setSummary(s);
+      const fallback = buildNewsFallback((s as any)?.news?.items ?? []);
+      if (fallback) {
+        const fallbackUpdatedAt = new Date().toISOString();
+        setNewsFallback(fallback);
+        saveNewsBriefCache({ fallback, fallbackUpdatedAt });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -585,6 +654,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       const newsData = (s as any)?.news;
       console.log('[Dashboard] newsData:', newsData);
       if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
+        if (!shouldRefreshNewsBrief(newsSummaryUpdatedAt) && newsSummary?.trim()) return;
         setNewsSummaryBusy(true);
         try {
           console.log('[Dashboard] Calling AI service for news summary...');
@@ -597,7 +667,14 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
           if (aiRes.ok) {
             const aiData = await aiRes.json();
             console.log('[Dashboard] AI summary:', aiData);
-            setNewsSummary(aiData.summary || null);
+            const summaryText =
+              typeof aiData?.summary === 'string' ? aiData.summary.trim() : '';
+            if (summaryText) {
+              const updatedAt = new Date().toISOString();
+              setNewsSummary(summaryText);
+              setNewsSummaryUpdatedAt(updatedAt);
+              saveNewsBriefCache({ summary: summaryText, updatedAt });
+            }
           } else {
             const errText = await aiRes.text();
             console.error('[Dashboard] AI error:', errText);
@@ -1029,12 +1106,16 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       lines.push('');
       lines.push(buildSentimentMarkdown(s, '##').trim());
       lines.push('');
-      if (newsSummary) {
-        lines.push('## News brief');
-        lines.push('');
-        lines.push(newsSummary.trim());
-        lines.push('');
-      }
+      lines.push('## News brief');
+      lines.push('');
+      lines.push(`- hours: ${String((s as any)?.news?.hours ?? 24)}`);
+      lines.push(`- total: ${String((s as any)?.news?.total ?? 0)}`);
+      if (newsSummaryUpdatedAt) lines.push(`- summaryUpdatedAt: ${newsSummaryUpdatedAt}`);
+      lines.push('');
+      if (newsSummary?.trim()) lines.push(newsSummary.trim());
+      else if (newsFallback?.trim()) lines.push(newsFallback.trim());
+      else lines.push('No summary yet. Last news records are included above.');
+      lines.push('');
       lines.push((await buildScreenersMarkdown(s, '##')).trim());
       lines.push('');
       lines.push((await buildWatchlistMarkdown()).trim());
@@ -1867,9 +1948,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                       <RefreshCw className="mr-2 inline h-4 w-4 animate-spin" />
                       Generating AI summary...
                     </div>
-                  ) : newsSummary ? (
+                  ) : newsSummary || newsFallback ? (
                     <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-4 text-sm">
-                      {newsSummary}
+                      {newsSummary?.trim() || newsFallback?.trim()}
                     </div>
                   ) : (
                     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">

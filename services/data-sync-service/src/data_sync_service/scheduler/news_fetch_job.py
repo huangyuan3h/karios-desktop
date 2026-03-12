@@ -10,7 +10,7 @@ JOB_ID = "news_fetch_job"
 
 
 def build_trigger():
-    return IntervalTrigger(hours=1)
+    return IntervalTrigger(hours=4)
 
 
 def run():
