@@ -25,7 +25,7 @@ const items = [
   { id: 'market', label: 'Market', icon: Table2 },
   { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
-  { id: 'broker', label: 'Broker', icon: CreditCard },
+  // { id: 'broker', label: 'Broker', icon: CreditCard },
   { id: 'journal', label: 'Journal', icon: NotebookPen },
   { id: 'screener', label: 'Screener', icon: Table2 },
   { id: 'scheduler', label: 'Scheduler', icon: Clock },
