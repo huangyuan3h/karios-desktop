@@ -159,7 +159,9 @@ export function ChatComposer({
                                     ? `CN rank (Intraday) · ${r.slot || 'auto'} (top ${r.limit})`
                                     : r.kind === 'journal'
                                       ? `${r.title} @ ${new Date(r.capturedAt).toLocaleString()}`
-                                      : 'Unknown reference'}
+                                      : r.kind === 'dashboardAll'
+                                        ? `${r.title || 'Dashboard overview'} · ${r.asOfDate || '—'} @ ${new Date(r.capturedAt).toLocaleString()}`
+                                        : 'Unknown reference'}
               </span>
               <Button
                 variant="ghost"

@@ -20,7 +20,6 @@ import { WatchlistPage } from '@/components/pages/WatchlistPage';
 import { BacktestPage } from '@/components/pages/BacktestPage';
 import { SimTradePage } from '@/components/pages/SimTradePage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
-import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
 import { cn } from '@/lib/utils';
@@ -141,7 +140,6 @@ export function AppShell() {
                 setActivePage('stock');
               }}
             />
-            <ThemeToggle />
             <Button
               variant="secondary"
               size="sm"
@@ -153,9 +151,6 @@ export function AppShell() {
             >
               <Bot className="h-4 w-4" />
             </Button>
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-[var(--k-accent)] text-sm font-semibold text-white">
-              U
-            </div>
           </div>
         </header>
 
