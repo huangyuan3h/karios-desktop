@@ -160,6 +160,12 @@ function getNum(obj: Record<string, unknown>, key: string, fallback = 0): number
   return Number.isFinite(n) ? n : fallback;
 }
 
+function getNumStr(obj: Record<string, unknown>, key: string, digits = 2): string {
+  const v = obj[key];
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(digits) : '—';
+}
+
 function pickColumns(headers: string[]) {
   const preferred = [
     'Ticker',
@@ -586,6 +592,166 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       out += `- capturedAt: ${ref.capturedAt}\n`;
       out += `\nContent:\n`;
       out += `${ref.content}\n\n`;
+      continue;
+    }
+
+    if (ref.kind === 'dashboardAll') {
+      try {
+        const summaryResp = await fetch(`${DATA_SYNC_BASE_URL}/dashboard/summary`, {
+          cache: 'no-store',
+        });
+        if (!summaryResp.ok) throw new Error('failed to load dashboard summary');
+        const s = (await summaryResp.json()) as Record<string, unknown>;
+
+        out += `## ${ref.title || 'Dashboard Overview'}\n`;
+        out += `- asOfDate: ${ref.asOfDate}\n`;
+        out += `- capturedAt: ${ref.capturedAt}\n\n`;
+
+        // Industry fund flow
+        const ind = asRecord(s['industryFundFlow']) ?? {};
+        const datesAll: string[] = asStringArray(ind['dates']);
+        const topByDateArr: unknown[] = asArray(ind['topByDate']);
+        const byDate: Record<string, string[]> = {};
+        for (const it of topByDateArr) {
+          const r = asRecord(it) ?? {};
+          const d = getStr(r, 'date');
+          const top = asStringArray(r['top']);
+          if (d) byDate[d] = top;
+        }
+        const shownDates = datesAll.slice(-5);
+        if (shownDates.length) {
+          out += `### Industry fund flow - Top5×Date hotspots\n\n`;
+          out += `| # | ${shownDates.map((d) => d.slice(5)).join(' | ')} |\n`;
+          out += `|---|${shownDates.map(() => '---').join('|')}|\n`;
+          for (let i = 0; i < 5; i += 1) {
+            out += `| ${i + 1} | ${shownDates.map((d) => (byDate[d] ?? [])[i] ?? '—').join(' | ')} |\n`;
+          }
+          out += `\n`;
+        }
+
+        // 5D net inflow
+        const flow5d = asRecord(ind['flow5d']) ?? null;
+        const flowDates: string[] = flow5d ? asStringArray(flow5d['dates']) : [];
+        const colDates = flowDates.length ? flowDates.slice(-5) : shownDates;
+        const topRows: unknown[] = flow5d ? asArray(flow5d['top']) : [];
+        if (topRows.length && colDates.length) {
+          out += `### 5D net inflow (Top by 5D sum)\n\n`;
+          out += `| Industry | Sum(5D) | ${colDates.map((d) => d.slice(5)).join(' | ')} |\n`;
+          out += `|---|---:|${colDates.map(() => '---:').join('|')}|\n`;
+          for (const r of topRows.slice(0, 10)) {
+            const row = asRecord(r) ?? {};
+            const name = getStr(row, 'industryName');
+            const sum5d = getStr(row, 'sum5d');
+            const seriesArr: unknown[] = asArray(row['series']);
+            const m: Record<string, string> = {};
+            for (const p of seriesArr) {
+              const pt = asRecord(p) ?? {};
+              const dd = getStr(pt, 'date');
+              const nv = getStr(pt, 'netInflow');
+              if (dd) m[dd] = nv;
+            }
+            out += `| ${name} | ${sum5d} | ${colDates.map((d) => m[d] ?? '0').join(' | ')} |\n`;
+          }
+          out += `\n`;
+        }
+
+        // Market sentiment
+        const ms = asRecord(s['marketSentiment']) ?? {};
+        const items: unknown[] = asArray(ms['items']);
+        const latest = items.length ? items[items.length - 1] : null;
+        const latestRec = asRecord(latest) ?? {};
+        out += `### Market sentiment (CN A-share)\n`;
+        out += `- riskMode: ${getStr(latestRec, 'riskMode') || '—'}\n`;
+        const rules = asStringArray(latestRec['rules']);
+        if (rules.length) {
+          out += `- rules: ${rules.join(' | ')}\n`;
+        }
+        out += `\n`;
+
+        const indexSignals: unknown[] = asArray(ms['indexSignals']);
+        if (indexSignals.length) {
+          out += `#### Index traffic lights\n\n`;
+          out += `| Index | Signal | Position | Close | MA5 | MA20 |\n`;
+          out += `|---|---|---|---:|---:|---:|\n`;
+          for (const it of indexSignals) {
+            const sig = asRecord(it) ?? {};
+            out += `| ${getStr(sig, 'name') || getStr(sig, 'tsCode')} | ${getStr(sig, 'signal')} | ${getStr(sig, 'positionRange')} | ${getNumStr(sig, 'close')} | ${getNumStr(sig, 'ma5')} | ${getNumStr(sig, 'ma20')} |\n`;
+          }
+          out += `\n`;
+        }
+
+        if (items.length) {
+          out += `| Date | Ratio | Turnover | Premium% | Failed% | Risk |\n`;
+          out += `|---|---:|---:|---:|---:|---|\n`;
+          for (const it of items.slice(-5)) {
+            const row = asRecord(it) ?? {};
+            const ratio = Number.isFinite(Number(row['upDownRatio']))
+              ? Number(row['upDownRatio']).toFixed(2)
+              : '—';
+            const prem = Number.isFinite(Number(row['yesterdayLimitUpPremium']))
+              ? `${Number(row['yesterdayLimitUpPremium']).toFixed(2)}%`
+              : '—';
+            const failed = Number.isFinite(Number(row['failedLimitUpRate']))
+              ? `${Number(row['failedLimitUpRate']).toFixed(1)}%`
+              : '—';
+            out += `| ${getStr(row, 'date')} | ${ratio} | ${getStr(row, 'marketTurnoverCny') || '—'} | ${prem} | ${failed} | ${getStr(row, 'riskMode')} |\n`;
+          }
+          out += `\n`;
+        }
+
+        // News brief
+        const news = asRecord(s['news']) ?? {};
+        const newsItems: unknown[] = asArray(news['items']);
+        if (newsItems.length) {
+          out += `### News brief\n`;
+          out += `- hours: ${getStr(news, 'hours') || '24'}\n`;
+          out += `- total: ${getStr(news, 'total') || '0'}\n\n`;
+          for (const it of newsItems.slice(0, 8)) {
+            const n = asRecord(it) ?? {};
+            const title = getStr(n, 'title');
+            const source = getStr(n, 'sourceId');
+            const publishedAt = getStr(n, 'publishedAt');
+            out += `- ${title}${source ? ` (${source}` : ''}${publishedAt ? ` | ${publishedAt}` : ''}${source ? ')' : ''}\n`;
+          }
+          out += `\n`;
+        }
+
+        // Watchlist summary
+        try {
+          const watchlistResp = await fetch(`${DATA_SYNC_BASE_URL}/market/stocks/trendok`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ limit: 10 }),
+          });
+          if (watchlistResp.ok) {
+            const wlData = (await watchlistResp.json()) as unknown;
+            const wlItems = asArray(wlData);
+            if (wlItems.length) {
+              out += `### Top Watchlist items (by score)\n\n`;
+              out += `| Symbol | Name | Score | TrendOK | Buy |\n`;
+              out += `|---|---|---:|---|---|\n`;
+              for (const it of wlItems.slice(0, 10)) {
+                const r = asRecord(it) ?? {};
+                const trendOkVal = r['trendOk'];
+                const trendOkStr =
+                  trendOkVal === true ? '✅' : trendOkVal === false ? '❌' : '—';
+                const buy =
+                  getStr(r, 'buyMode') && getStr(r, 'buyAction')
+                    ? `${getStr(r, 'buyMode')}/${getStr(r, 'buyAction')}`
+                    : getStr(r, 'buyAction') || '—';
+                out += `| ${getStr(r, 'symbol')} | ${getStr(r, 'name') || '—'} | ${getNumStr(r, 'score')} | ${trendOkStr} | ${buy} |\n`;
+              }
+              out += `\n`;
+            }
+          }
+        } catch {
+          // ignore watchlist errors
+        }
+      } catch {
+        out += `## ${ref.title || 'Dashboard Overview'}\n`;
+        out += `- asOfDate: ${ref.asOfDate}\n`;
+        out += `- status: failed to load\n\n`;
+      }
       continue;
     }
 

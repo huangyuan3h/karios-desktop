@@ -1175,6 +1175,24 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             {copyAllBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
             Copy all Markdown
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={busy || copyAllBusy}
+            onClick={() => {
+              const asOfDate = String(summary?.asOfDate ?? '');
+              const capturedAt = new Date().toISOString();
+              addReference({
+                kind: 'dashboardAll',
+                refId: `dashboardAll:${asOfDate}:${Date.now()}`,
+                asOfDate,
+                title: 'Dashboard Overview',
+                capturedAt,
+              } as any);
+            }}
+          >
+            Reference all
+          </Button>
           <Button size="sm" className="gap-2" disabled={busy} onClick={() => void onSyncAll()}>
             {busy ? (
               <RefreshCw className="h-4 w-4 animate-spin" />

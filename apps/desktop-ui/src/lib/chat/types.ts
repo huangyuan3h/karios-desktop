@@ -149,6 +149,13 @@ export type ChatReference =
       title: string;
       content: string; // markdown content
       capturedAt: string;
+    }
+  | {
+      kind: 'dashboardAll';
+      refId: string; // stable key: `dashboardAll:${asOfDate}:${timestamp}`
+      asOfDate: string;
+      title?: string;
+      capturedAt: string;
     };
 
 export type AppSettings = {
