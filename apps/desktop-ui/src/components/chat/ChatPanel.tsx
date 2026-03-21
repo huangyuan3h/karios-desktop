@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { ChatMessageList } from '@/components/chat/ChatMessageList';
-import { AI_BASE_URL, QUANT_BASE_URL } from '@/lib/endpoints';
+import { AI_BASE_URL, DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { newId } from '@/lib/id';
 import { useChatStore } from '@/lib/chat/store';
 import type { ChatAttachment, ChatMessage, ChatReference } from '@/lib/chat/types';
@@ -160,6 +160,12 @@ function getNum(obj: Record<string, unknown>, key: string, fallback = 0): number
   return Number.isFinite(n) ? n : fallback;
 }
 
+function getNumStr(obj: Record<string, unknown>, key: string, digits = 2): string {
+  const v = obj[key];
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(digits) : '—';
+}
+
 function pickColumns(headers: string[]) {
   const preferred = [
     'Ticker',
@@ -186,7 +192,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     if (ref.kind === 'tv') {
       try {
         const resp = await fetch(
-          `${QUANT_BASE_URL}/integrations/tradingview/snapshots/${encodeURIComponent(ref.snapshotId)}`,
+          `${DATA_SYNC_BASE_URL}/integrations/tradingview/snapshots/${encodeURIComponent(ref.snapshotId)}`,
           { cache: 'no-store' },
         );
         if (!resp.ok) throw new Error('failed to load snapshot');
@@ -266,7 +272,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     if (ref.kind === 'broker') {
       try {
         const resp = await fetch(
-          `${QUANT_BASE_URL}/broker/${encodeURIComponent(ref.broker)}/snapshots/${encodeURIComponent(ref.snapshotId)}`,
+          `${DATA_SYNC_BASE_URL}/broker/${encodeURIComponent(ref.broker)}/snapshots/${encodeURIComponent(ref.snapshotId)}`,
           { cache: 'no-store' },
         );
         if (!resp.ok) throw new Error('failed to load broker snapshot');
@@ -339,7 +345,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     if (ref.kind === 'brokerState') {
       try {
         const resp = await fetch(
-          `${QUANT_BASE_URL}/broker/${encodeURIComponent(ref.broker)}/accounts/${encodeURIComponent(ref.accountId)}/state`,
+          `${DATA_SYNC_BASE_URL}/broker/${encodeURIComponent(ref.broker)}/accounts/${encodeURIComponent(ref.accountId)}/state`,
           { cache: 'no-store' },
         );
         if (!resp.ok) throw new Error('failed to load broker account state');
@@ -399,71 +405,10 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       continue;
     }
 
-    if (ref.kind === 'strategyReport') {
-      try {
-        const resp = await fetch(
-          `${QUANT_BASE_URL}/strategy/accounts/${encodeURIComponent(ref.accountId)}/daily?date=${encodeURIComponent(ref.date)}`,
-          { cache: 'no-store' },
-        );
-        if (!resp.ok) throw new Error('failed to load strategy report');
-        const repRaw = (await resp.json()) as unknown;
-        const rep = asRecord(repRaw) ?? {};
-        out += `## Strategy report: ${ref.accountTitle}\n`;
-        out += `- date: ${String(rep['date'] ?? ref.date)}\n`;
-        out += `- model: ${String(rep['model'] ?? '')}\n`;
-        out += `- createdAt: ${String(rep['createdAt'] ?? ref.createdAt)}\n`;
-        if (typeof rep['markdown'] === 'string' && rep['markdown'].trim()) {
-          out += `\nMarkdown report:\n`;
-          out += `${String(rep['markdown']).trim()}\n\n`;
-          continue;
-        }
-        const leader = asRecord(rep['leader']);
-        if (leader) {
-          out += `\nLeader:\n`;
-          out += `- symbol: ${String(leader['symbol'] ?? '')}\n`;
-          out += `- reason: ${String(leader['reason'] ?? '')}\n`;
-        }
-        const cands = asArray(rep['candidates']).slice(0, 5);
-        if (cands.length) {
-          out += `\nCandidates (first ${cands.length}):\n`;
-          for (const it of cands) {
-            const c = asRecord(it) ?? {};
-            out +=
-              `- #${getStr(c, 'rank')} ${getStr(c, 'ticker')} ${getStr(c, 'name')} ` +
-              `score=${getStr(c, 'score')} why=${getStr(c, 'why')}\n`;
-          }
-        }
-        const recs = asArray(rep['recommendations']).slice(0, 3);
-        if (recs.length) {
-          out += `\nRecommendations (first ${recs.length}):\n`;
-          for (const it of recs) {
-            const r = asRecord(it) ?? {};
-            out += `- ${getStr(r, 'ticker')} ${getStr(r, 'name')} thesis=${getStr(r, 'thesis')}\n`;
-            const orders = asArray(r['orders']).slice(0, 8);
-            if (orders.length) {
-              out += `  Orders:\n`;
-              for (const it2 of orders) {
-                const o = asRecord(it2) ?? {};
-                out +=
-                  `  - ${getStr(o, 'kind')} ${getStr(o, 'side')} trigger=${getStr(o, 'trigger')} ` +
-                  `qty=${getStr(o, 'qty')} tif=${getStr(o, 'timeInForce')}\n`;
-              }
-            }
-          }
-        }
-        out += `\n`;
-      } catch {
-        out += `## Strategy report: ${ref.accountTitle}\n`;
-        out += `- date: ${ref.date}\n`;
-        out += `- status: failed to load report\n\n`;
-      }
-      continue;
-    }
-
     if (ref.kind === 'industryFundFlow') {
       try {
         const resp = await fetch(
-          `${QUANT_BASE_URL}/market/cn/industry-fund-flow?days=${encodeURIComponent(String(ref.days))}&topN=${encodeURIComponent(String(ref.topN))}&asOfDate=${encodeURIComponent(ref.asOfDate)}`,
+          `${DATA_SYNC_BASE_URL}/market/cn/industry-fund-flow?days=${encodeURIComponent(String(ref.days))}&topN=${encodeURIComponent(String(ref.topN))}&asOfDate=${encodeURIComponent(ref.asOfDate)}`,
           { cache: 'no-store' },
         );
         if (!resp.ok) throw new Error('failed to load industry fund flow');
@@ -581,69 +526,14 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     }
 
     if (ref.kind === 'leaderStocks') {
-      try {
-        // Do NOT force refresh here (avoid triggering live score updates from chat reference).
-        const resp = await fetch(
-          `${QUANT_BASE_URL}/leader?days=${encodeURIComponent(String(ref.days))}&force=false`,
-          { cache: 'no-store' },
-        );
-        if (!resp.ok) throw new Error('failed to load leader stocks');
-        const ls = (await resp.json()) as LeaderStocksList;
-        out += `## Leader stocks (last ${String(ls.days ?? ref.days)} trading days)\n`;
-        out += `- days: ${String(ls.days ?? ref.days)}\n`;
-        out += `- dates: ${(Array.isArray(ls.dates) ? ls.dates : []).join(', ')}\n\n`;
-
-        const leaders = Array.isArray(ls.leaders) ? ls.leaders : [];
-        if (leaders.length) {
-          out += `| Date | Ticker | Name | LiveScore | Dur(d) | BuyZone | Target | P | Why |\n`;
-          out += `|---|---|---|---:|---:|---|---|---:|---|\n`;
-          for (const r of leaders) {
-            const date = String(r.date ?? '');
-            const ticker = String(r.ticker ?? r.symbol ?? '');
-            const name = String(r.name ?? '');
-            const liveScore = Number.isFinite(r.liveScore as number)
-              ? String(Math.round(r.liveScore as number))
-              : Number.isFinite(r.score as number)
-                ? String(Math.round(r.score as number))
-                : '—';
-            const dur = Number.isFinite(r.expectedDurationDays as number)
-              ? String(r.expectedDurationDays)
-              : '—';
-            const bz = r.buyZone ?? {};
-            const bzLow = isRecord(bz) ? bz['low'] : null;
-            const bzHigh = isRecord(bz) ? bz['high'] : null;
-            const buyZone =
-              bzLow != null && bzHigh != null ? `${String(bzLow)}-${String(bzHigh)}` : '—';
-            const tp = r.targetPrice ?? {};
-            const target = isRecord(tp) && tp['primary'] != null ? String(tp['primary']) : '—';
-            const pNum = Number.isFinite(r.probability as number)
-              ? Math.max(1, Math.min(5, Math.round(r.probability as number)))
-              : null;
-            const prob = pNum != null ? `${pNum * 20}%` : '—';
-            const why =
-              Array.isArray(r.whyBullets) && r.whyBullets.length
-                ? r.whyBullets
-                    .slice(0, 2)
-                    .map((x) => String(x))
-                    .join(' / ')
-                : String(r.reason ?? '').replaceAll('\n', ' ');
-            out += `| ${date} | ${ticker} | ${name} | ${liveScore} | ${dur} | ${buyZone} | ${target} | ${prob} | ${why} |\n`;
-          }
-          out += `\n`;
-
-          // NOTE: Do not force refresh deep context from chat reference.
-        }
-      } catch {
-        out += `## Leader stocks\n`;
-        out += `- status: failed to load\n\n`;
-      }
+      out += `\n[Note: Leader stocks feature has been removed from the application.]\n`;
       continue;
     }
 
     if (ref.kind === 'marketSentiment') {
       try {
         const resp = await fetch(
-          `${QUANT_BASE_URL}/market/cn/sentiment?days=${encodeURIComponent(String(ref.days))}&asOfDate=${encodeURIComponent(String(ref.asOfDate))}`,
+          `${DATA_SYNC_BASE_URL}/market/cn/sentiment?days=${encodeURIComponent(String(ref.days))}&asOfDate=${encodeURIComponent(String(ref.asOfDate))}`,
           { cache: 'no-store' },
         );
         if (!resp.ok) throw new Error('failed to load market sentiment');
@@ -689,89 +579,10 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       continue;
     }
 
-    if (ref.kind === 'rankList') {
-      try {
-        const q =
-          `limit=${encodeURIComponent(String(ref.limit ?? 30))}` +
-          (ref.asOfDate ? `&asOfDate=${encodeURIComponent(String(ref.asOfDate))}` : '');
-        const resp = await fetch(`${QUANT_BASE_URL}/rank/cn/next2d?${q}`, { cache: 'no-store' });
-        if (!resp.ok) throw new Error('failed to load rank list');
-        const rk = (await resp.json()) as Record<string, unknown>;
-        const items = asArray(rk['items']).slice(
-          0,
-          Math.max(1, Math.min(200, Number(ref.limit ?? 30))),
-        );
-        out += `## CN rank (next 1-2D)\n`;
-        out += `- asOfDate: ${getStr(rk, 'asOfDate') || String(ref.asOfDate || '')}\n`;
-        out += `- riskMode: ${getStr(rk, 'riskMode')}\n\n`;
-        if (items.length) {
-          out += `| # | Ticker | Name | Score | Prob | Signals |\n`;
-          out += `|---:|---|---|---:|---|---|\n`;
-          items.forEach((it, i) => {
-            const row = asRecord(it) ?? {};
-            const ticker = getStr(row, 'ticker') || getStr(row, 'symbol');
-            const name = getStr(row, 'name');
-            const score = Number.isFinite(Number(row['score']))
-              ? String(Math.round(Number(row['score'])))
-              : '—';
-            const prob = getStr(row, 'probBand');
-            const sig = asArray(row['signals'])
-              .slice(0, 4)
-              .map((x) => String(x))
-              .join(' / ');
-            out += `| ${i + 1} | ${ticker} | ${name} | ${score} | ${prob} | ${sig} |\n`;
-          });
-          out += `\n`;
-        } else {
-          out += `- status: no snapshot\n\n`;
-        }
-      } catch {
-        out += `## CN rank (next 1-2D)\n`;
-        out += `- status: failed to load\n\n`;
-      }
-      continue;
-    }
-
-    if (ref.kind === 'intradayRankList') {
-      try {
-        const q = `limit=${encodeURIComponent(String(ref.limit ?? 30))}`;
-        const resp = await fetch(`${QUANT_BASE_URL}/rank/cn/intraday?${q}`, { cache: 'no-store' });
-        if (!resp.ok) throw new Error('failed to load intraday rank');
-        const rk = (await resp.json()) as Record<string, unknown>;
-        const items = asArray(rk['items']).slice(
-          0,
-          Math.max(1, Math.min(200, Number(ref.limit ?? 30))),
-        );
-        out += `## CN rank (Intraday · DeltaT 1H)\n`;
-        out += `- tradeDate: ${getStr(rk, 'tradeDate')}\n`;
-        out += `- slot: ${getStr(rk, 'slot') || String(ref.slot || '')}\n`;
-        out += `- asOfTs: ${getStr(rk, 'asOfTs') || String(ref.asOfTs || '')}\n`;
-        out += `- riskMode: ${getStr(rk, 'riskMode')}\n\n`;
-        if (items.length) {
-          out += `| # | Ticker | Name | Score | Prob | Signals |\n`;
-          out += `|---:|---|---|---:|---|---|\n`;
-          items.forEach((it, i) => {
-            const row = asRecord(it) ?? {};
-            const ticker = getStr(row, 'ticker') || getStr(row, 'symbol');
-            const name = getStr(row, 'name');
-            const score = Number.isFinite(Number(row['score']))
-              ? String(Math.round(Number(row['score'])))
-              : '—';
-            const prob = getStr(row, 'probBand');
-            const sig = asArray(row['signals'])
-              .slice(0, 4)
-              .map((x) => String(x))
-              .join(' / ');
-            out += `| ${i + 1} | ${ticker} | ${name} | ${score} | ${prob} | ${sig} |\n`;
-          });
-          out += `\n`;
-        } else {
-          out += `- status: no snapshot\n\n`;
-        }
-      } catch {
-        out += `## CN rank (Intraday · DeltaT 1H)\n`;
-        out += `- status: failed to load\n\n`;
-      }
+    // Rank/Quant endpoints removed - page cleanup
+    if (ref.kind === 'rankList' || ref.kind === 'intradayRankList') {
+      out += `## Rank/Quant feature removed\n`;
+      out += `- This feature has been removed.\n\n`;
       continue;
     }
 
@@ -781,6 +592,166 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       out += `- capturedAt: ${ref.capturedAt}\n`;
       out += `\nContent:\n`;
       out += `${ref.content}\n\n`;
+      continue;
+    }
+
+    if (ref.kind === 'dashboardAll') {
+      try {
+        const summaryResp = await fetch(`${DATA_SYNC_BASE_URL}/dashboard/summary`, {
+          cache: 'no-store',
+        });
+        if (!summaryResp.ok) throw new Error('failed to load dashboard summary');
+        const s = (await summaryResp.json()) as Record<string, unknown>;
+
+        out += `## ${ref.title || 'Dashboard Overview'}\n`;
+        out += `- asOfDate: ${ref.asOfDate}\n`;
+        out += `- capturedAt: ${ref.capturedAt}\n\n`;
+
+        // Industry fund flow
+        const ind = asRecord(s['industryFundFlow']) ?? {};
+        const datesAll: string[] = asStringArray(ind['dates']);
+        const topByDateArr: unknown[] = asArray(ind['topByDate']);
+        const byDate: Record<string, string[]> = {};
+        for (const it of topByDateArr) {
+          const r = asRecord(it) ?? {};
+          const d = getStr(r, 'date');
+          const top = asStringArray(r['top']);
+          if (d) byDate[d] = top;
+        }
+        const shownDates = datesAll.slice(-5);
+        if (shownDates.length) {
+          out += `### Industry fund flow - Top5×Date hotspots\n\n`;
+          out += `| # | ${shownDates.map((d) => d.slice(5)).join(' | ')} |\n`;
+          out += `|---|${shownDates.map(() => '---').join('|')}|\n`;
+          for (let i = 0; i < 5; i += 1) {
+            out += `| ${i + 1} | ${shownDates.map((d) => (byDate[d] ?? [])[i] ?? '—').join(' | ')} |\n`;
+          }
+          out += `\n`;
+        }
+
+        // 5D net inflow
+        const flow5d = asRecord(ind['flow5d']) ?? null;
+        const flowDates: string[] = flow5d ? asStringArray(flow5d['dates']) : [];
+        const colDates = flowDates.length ? flowDates.slice(-5) : shownDates;
+        const topRows: unknown[] = flow5d ? asArray(flow5d['top']) : [];
+        if (topRows.length && colDates.length) {
+          out += `### 5D net inflow (Top by 5D sum)\n\n`;
+          out += `| Industry | Sum(5D) | ${colDates.map((d) => d.slice(5)).join(' | ')} |\n`;
+          out += `|---|---:|${colDates.map(() => '---:').join('|')}|\n`;
+          for (const r of topRows.slice(0, 10)) {
+            const row = asRecord(r) ?? {};
+            const name = getStr(row, 'industryName');
+            const sum5d = getStr(row, 'sum5d');
+            const seriesArr: unknown[] = asArray(row['series']);
+            const m: Record<string, string> = {};
+            for (const p of seriesArr) {
+              const pt = asRecord(p) ?? {};
+              const dd = getStr(pt, 'date');
+              const nv = getStr(pt, 'netInflow');
+              if (dd) m[dd] = nv;
+            }
+            out += `| ${name} | ${sum5d} | ${colDates.map((d) => m[d] ?? '0').join(' | ')} |\n`;
+          }
+          out += `\n`;
+        }
+
+        // Market sentiment
+        const ms = asRecord(s['marketSentiment']) ?? {};
+        const items: unknown[] = asArray(ms['items']);
+        const latest = items.length ? items[items.length - 1] : null;
+        const latestRec = asRecord(latest) ?? {};
+        out += `### Market sentiment (CN A-share)\n`;
+        out += `- riskMode: ${getStr(latestRec, 'riskMode') || '—'}\n`;
+        const rules = asStringArray(latestRec['rules']);
+        if (rules.length) {
+          out += `- rules: ${rules.join(' | ')}\n`;
+        }
+        out += `\n`;
+
+        const indexSignals: unknown[] = asArray(ms['indexSignals']);
+        if (indexSignals.length) {
+          out += `#### Index traffic lights\n\n`;
+          out += `| Index | Signal | Position | Close | MA5 | MA20 |\n`;
+          out += `|---|---|---|---:|---:|---:|\n`;
+          for (const it of indexSignals) {
+            const sig = asRecord(it) ?? {};
+            out += `| ${getStr(sig, 'name') || getStr(sig, 'tsCode')} | ${getStr(sig, 'signal')} | ${getStr(sig, 'positionRange')} | ${getNumStr(sig, 'close')} | ${getNumStr(sig, 'ma5')} | ${getNumStr(sig, 'ma20')} |\n`;
+          }
+          out += `\n`;
+        }
+
+        if (items.length) {
+          out += `| Date | Ratio | Turnover | Premium% | Failed% | Risk |\n`;
+          out += `|---|---:|---:|---:|---:|---|\n`;
+          for (const it of items.slice(-5)) {
+            const row = asRecord(it) ?? {};
+            const ratio = Number.isFinite(Number(row['upDownRatio']))
+              ? Number(row['upDownRatio']).toFixed(2)
+              : '—';
+            const prem = Number.isFinite(Number(row['yesterdayLimitUpPremium']))
+              ? `${Number(row['yesterdayLimitUpPremium']).toFixed(2)}%`
+              : '—';
+            const failed = Number.isFinite(Number(row['failedLimitUpRate']))
+              ? `${Number(row['failedLimitUpRate']).toFixed(1)}%`
+              : '—';
+            out += `| ${getStr(row, 'date')} | ${ratio} | ${getStr(row, 'marketTurnoverCny') || '—'} | ${prem} | ${failed} | ${getStr(row, 'riskMode')} |\n`;
+          }
+          out += `\n`;
+        }
+
+        // News brief
+        const news = asRecord(s['news']) ?? {};
+        const newsItems: unknown[] = asArray(news['items']);
+        if (newsItems.length) {
+          out += `### News brief\n`;
+          out += `- hours: ${getStr(news, 'hours') || '24'}\n`;
+          out += `- total: ${getStr(news, 'total') || '0'}\n\n`;
+          for (const it of newsItems.slice(0, 8)) {
+            const n = asRecord(it) ?? {};
+            const title = getStr(n, 'title');
+            const source = getStr(n, 'sourceId');
+            const publishedAt = getStr(n, 'publishedAt');
+            out += `- ${title}${source ? ` (${source}` : ''}${publishedAt ? ` | ${publishedAt}` : ''}${source ? ')' : ''}\n`;
+          }
+          out += `\n`;
+        }
+
+        // Watchlist summary
+        try {
+          const watchlistResp = await fetch(`${DATA_SYNC_BASE_URL}/market/stocks/trendok`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ limit: 10 }),
+          });
+          if (watchlistResp.ok) {
+            const wlData = (await watchlistResp.json()) as unknown;
+            const wlItems = asArray(wlData);
+            if (wlItems.length) {
+              out += `### Top Watchlist items (by score)\n\n`;
+              out += `| Symbol | Name | Score | TrendOK | Buy |\n`;
+              out += `|---|---|---:|---|---|\n`;
+              for (const it of wlItems.slice(0, 10)) {
+                const r = asRecord(it) ?? {};
+                const trendOkVal = r['trendOk'];
+                const trendOkStr =
+                  trendOkVal === true ? '✅' : trendOkVal === false ? '❌' : '—';
+                const buy =
+                  getStr(r, 'buyMode') && getStr(r, 'buyAction')
+                    ? `${getStr(r, 'buyMode')}/${getStr(r, 'buyAction')}`
+                    : getStr(r, 'buyAction') || '—';
+                out += `| ${getStr(r, 'symbol')} | ${getStr(r, 'name') || '—'} | ${getNumStr(r, 'score')} | ${trendOkStr} | ${buy} |\n`;
+              }
+              out += `\n`;
+            }
+          }
+        } catch {
+          // ignore watchlist errors
+        }
+      } catch {
+        out += `## ${ref.title || 'Dashboard Overview'}\n`;
+        out += `- asOfDate: ${ref.asOfDate}\n`;
+        out += `- status: failed to load\n\n`;
+      }
       continue;
     }
 
@@ -794,15 +765,15 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     try {
       const [barsResp, chipsResp, ffResp] = await Promise.all([
         fetch(
-          `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/bars?days=${ref.barsDays}`,
+          `${DATA_SYNC_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/bars?days=${ref.barsDays}`,
           { cache: 'no-store' },
         ),
         fetch(
-          `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/chips?days=${ref.chipsDays}`,
+          `${DATA_SYNC_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/chips?days=${ref.chipsDays}`,
           { cache: 'no-store' },
         ).catch(() => null),
         fetch(
-          `${QUANT_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/fund-flow?days=${ref.fundFlowDays}`,
+          `${DATA_SYNC_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/fund-flow?days=${ref.fundFlowDays}`,
           { cache: 'no-store' },
         ).catch(() => null),
       ]);
@@ -876,13 +847,15 @@ export function ChatPanel() {
   } = useChatStore();
   const scrollerRef = React.useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = React.useRef(true);
+  const isPendingRef = React.useRef(false);
+  const sessionCreatedRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (!activeSession) {
+    if (!activeSession && !sessionCreatedRef.current) {
+      sessionCreatedRef.current = true;
       createSession();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activeSession, createSession]);
 
   const messages: ChatMessage[] = activeSession?.messages ?? [];
   const lastMessageId = messages[messages.length - 1]?.id ?? '';
@@ -916,6 +889,8 @@ export function ChatPanel() {
         onClearReferences={clearReferences}
         onSend={(text: string, attachments: ChatAttachment[]) => {
           if (!activeSession) return;
+          if (isPendingRef.current) return;
+          isPendingRef.current = true;
           const shouldInferTitle =
             activeSession.title === 'New chat' && messages.every((m) => m.role !== 'user');
           const now = new Date().toISOString();
@@ -1007,6 +982,8 @@ export function ChatPanel() {
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
               updateMessageContent(activeSession.id, assistantId, `**Error**: ${message}`);
+            } finally {
+              isPendingRef.current = false;
             }
           })();
         }}

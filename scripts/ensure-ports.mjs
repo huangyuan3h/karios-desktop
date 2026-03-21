@@ -1,6 +1,6 @@
 import { execSync } from 'node:child_process';
 
-const ports = (process.env.KARIOS_PORTS ?? '3000,3001,4310,4320')
+const ports = (process.env.KARIOS_PORTS ?? '3000,3001,4310,4330')
   .split(',')
   .map((p) => Number(p.trim()))
   .filter((n) => Number.isFinite(n) && n > 0);

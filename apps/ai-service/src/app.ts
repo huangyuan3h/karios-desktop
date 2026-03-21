@@ -67,7 +67,10 @@ function toIndentedText(v: unknown, indent = 0): string {
     for (const k of keys.sort()) {
       const val = obj[k];
       const isScalar =
-        val == null || typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean';
+        val == null ||
+        typeof val === 'string' ||
+        typeof val === 'number' ||
+        typeof val === 'boolean';
       if (isScalar) {
         lines.push(`${pad}${k}: ${val == null ? '—' : String(val)}`);
         continue;
@@ -147,7 +150,14 @@ function buildPromptDebug({
     '## Context (segmented)\n\n' +
     contextMarkdown;
 
-  return { system, promptText, contextJsonCompact, contextJsonPretty, contextMarkdown, promptMarkdown };
+  return {
+    system,
+    promptText,
+    contextJsonCompact,
+    contextJsonPretty,
+    contextMarkdown,
+    promptMarkdown,
+  };
 }
 
 function normalizeOptionalString(v: unknown): string | undefined {
@@ -178,7 +188,11 @@ function pickActiveProfile(
   return store.profiles.find((p) => p.id === id) ?? null;
 }
 
-function modelFromProfile(p: z.infer<typeof AiProfileSchema>): { model: AiModel; provider: string; modelId: string } {
+function modelFromProfile(p: z.infer<typeof AiProfileSchema>): {
+  model: AiModel;
+  provider: string;
+  modelId: string;
+} {
   if (p.provider === 'google') {
     applyProviderEnv(p);
     return { model: google(p.modelId), provider: 'google', modelId: p.modelId };
@@ -199,9 +213,8 @@ function modelFromProfile(p: z.infer<typeof AiProfileSchema>): { model: AiModel;
   const apiKey = p.openai?.apiKey?.trim() || '';
   const baseURL = p.openai?.baseUrl?.trim() || undefined;
   // Use explicit client to avoid relying on env var naming differences.
-  const openaiClient =
-    apiKey || baseURL ? createOpenAI({ apiKey, baseURL }) : openai;
-  return { model: openaiClient(p.modelId), provider: 'openai', modelId: p.modelId };
+  const openaiClient = apiKey || baseURL ? createOpenAI({ apiKey, baseURL }) : openai;
+  return { model: openaiClient.chat(p.modelId), provider: 'openai', modelId: p.modelId };
 }
 
 async function getResolvedModel(): Promise<{ model: AiModel; modelId: string; provider: string }> {
@@ -214,7 +227,7 @@ async function getResolvedModel(): Promise<{ model: AiModel; modelId: string; pr
   if (!active) {
     if (!envModelId) throw new Error('Missing AI_MODEL');
     if (provider === 'google') return { model: google(envModelId), modelId: envModelId, provider };
-    return { model: openai(envModelId), modelId: envModelId, provider };
+    return { model: openai.chat(envModelId), modelId: envModelId, provider };
   }
 
   return modelFromProfile(active);
@@ -532,7 +545,11 @@ app.post('/config/profiles', async (c) => {
   }
 
   const req = parsed.data;
-  const store = (await loadConfigStore()) ?? { version: 2 as const, activeProfileId: null, profiles: [] };
+  const store = (await loadConfigStore()) ?? {
+    version: 2 as const,
+    activeProfileId: null,
+    profiles: [],
+  };
 
   const id = newProfileId();
   if (req.provider === 'openai' && !normalizeOptionalString(req.openai?.apiKey)) {
@@ -562,8 +579,7 @@ app.post('/config/profiles', async (c) => {
     ollama:
       req.provider === 'ollama'
         ? {
-            baseUrl:
-              normalizeOptionalString(req.ollama?.baseUrl) ?? 'http://127.0.0.1:11434/v1',
+            baseUrl: normalizeOptionalString(req.ollama?.baseUrl) ?? 'http://127.0.0.1:11434/v1',
             apiKey: normalizeOptionalString(req.ollama?.apiKey),
           }
         : undefined,
@@ -613,9 +629,7 @@ app.put('/config/profiles/:id', async (c) => {
         ? {
             apiKey: normalizeOptionalString(req.openai?.apiKey) ?? prev.openai?.apiKey ?? '',
             baseUrl:
-              normalizeOptionalString(req.openai?.baseUrl) ??
-              prev.openai?.baseUrl ??
-              undefined,
+              normalizeOptionalString(req.openai?.baseUrl) ?? prev.openai?.baseUrl ?? undefined,
           }
         : undefined,
     google:
@@ -701,7 +715,7 @@ app.post('/config/test', async (c) => {
   const store = await loadConfigStore();
   const profile = store
     ? parsed.data.profileId
-      ? store.profiles.find((p) => p.id === parsed.data.profileId) ?? null
+      ? (store.profiles.find((p) => p.id === parsed.data.profileId) ?? null)
       : pickActiveProfile(store)
     : null;
 
@@ -906,17 +920,32 @@ async function getStrategyPrimaryAndFallbackModels(): Promise<{
 
   // If user configured a runtime config file, keep behavior fully global (no per-feature fallback).
   if (store && store.activeProfileId) {
-    return { model: primary.model, modelId: primary.modelId, fallbackModel: null, fallbackModelId: null };
+    return {
+      model: primary.model,
+      modelId: primary.modelId,
+      fallbackModel: null,
+      fallbackModelId: null,
+    };
   }
 
   const fbId = getStrategyFallbackModelId();
   if (!fbId) {
-    return { model: primary.model, modelId: primary.modelId, fallbackModel: null, fallbackModelId: null };
+    return {
+      model: primary.model,
+      modelId: primary.modelId,
+      fallbackModel: null,
+      fallbackModelId: null,
+    };
   }
 
   const provider = asTrimmedString(process.env.AI_PROVIDER).toLowerCase() || 'openai';
-  const fb = provider === 'google' ? google(fbId) : openai(fbId);
-  return { model: primary.model, modelId: primary.modelId, fallbackModel: fb, fallbackModelId: fbId };
+  const fb = provider === 'google' ? google(fbId) : openai.chat(fbId);
+  return {
+    model: primary.model,
+    modelId: primary.modelId,
+    fallbackModel: fb,
+    fallbackModelId: fbId,
+  };
 }
 
 async function tryRepairStrategyJson({
@@ -1646,3 +1675,80 @@ app.post('/strategy/daily-markdown', async (c) => {
   }
 });
 
+const NewsSummaryRequestSchema = z.object({
+  items: z.array(
+    z.object({
+      title: z.string(),
+      sourceId: z.string().optional(),
+      publishedAt: z.string().optional(),
+    }),
+  ),
+  hours: z.number().optional(),
+});
+
+app.post('/news/summary', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = NewsSummaryRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+  }
+
+  const items = parsed.data.items || [];
+  const hours = parsed.data.hours || 24;
+
+  if (!items.length) {
+    return c.json({ summary: '', itemsCount: 0 });
+  }
+
+  let model: AiModel;
+  let modelId: string;
+  try {
+    const r = await getResolvedModel();
+    model = r.model;
+    modelId = r.modelId;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid AI configuration';
+    return c.json({ error: message }, 500);
+  }
+
+  const newsTitles = items
+    .slice(0, 50)
+    .map((item, idx) => `${idx + 1}. ${item.title}`)
+    .join('\n');
+
+  const system = `你是一个财经新闻分析师。你的任务是从过去${hours}小时的新闻中，总结出与财经、股票市场相关的关键信息。
+
+输出格式要求：
+1. 使用数字列表格式（1. 2. 3. ...）列出要点
+2. 每个要点用一句话概括，简洁明了
+3. 总字数控制在 300-400 字
+4. 只挑选最重要的、与财经/股票相关的新闻
+5. 按重要性排序，最重要的放在前面
+6. 如果没有重要财经新闻，简要说明即可
+7. 使用简洁专业的中文表达`;
+
+  const prompt = `以下是过去${hours}小时的新闻标题：
+
+${newsTitles}
+
+请用数字列表格式（1. 2. 3. ...）总结其中的财经/股票相关重要信息（300-400字）：`;
+
+  try {
+    const { text } = await generateText({
+      model,
+      prompt: `${system}\n\n${prompt}`,
+      temperature: 0,
+      maxOutputTokens: 500,
+    });
+    return c.json({
+      summary: text.trim(),
+      itemsCount: items.length,
+      model: modelId,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
+});
+
+export default app;

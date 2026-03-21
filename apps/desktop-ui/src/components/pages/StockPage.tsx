@@ -5,7 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { StockChart } from '@/components/stock/StockChart';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 import type { OHLCV } from '@/lib/indicators';
 
@@ -68,8 +68,26 @@ type FundFlowResp = {
   }>;
 };
 
+type QuoteResp = {
+  ok: boolean;
+  error?: string;
+  items: Array<{
+    ts_code: string;
+    price: string | null;
+    open: string | null;
+    high: string | null;
+    low: string | null;
+    pre_close: string | null;
+    change: string | null;
+    pct_chg: string | null;
+    volume: string | null;
+    amount: string | null;
+    trade_time: string | null;
+  }>;
+};
+
 async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
+  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
   const txt = await res.text().catch(() => '');
   if (!res.ok) {
     try {
@@ -82,6 +100,100 @@ async function apiGetJson<T>(path: string): Promise<T> {
     throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
   }
   return (txt ? (JSON.parse(txt) as T) : ({} as T));
+}
+
+async function apiGetJsonFrom<T>(baseUrl: string, path: string): Promise<T> {
+  const res = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
+  const txt = await res.text().catch(() => '');
+  if (!res.ok) {
+    try {
+      const j = JSON.parse(txt) as { detail?: string; error?: string };
+      const msg = (j && (j.detail || j.error)) || '';
+      if (msg) throw new Error(msg);
+    } catch {
+      // ignore
+    }
+    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  }
+  return (txt ? (JSON.parse(txt) as T) : ({} as T));
+}
+
+function normalizeSymbol(symbol: string): string {
+  // Normalize symbol format: "主板:000001" -> "CN:000001"
+  const s = symbol.trim();
+  if (s.startsWith('主板:') || s.startsWith('中小板:') || s.startsWith('创业板:') || s.startsWith('科创板:')) {
+    const parts = s.split(':', 2);
+    if (parts.length >= 2) {
+      return `CN:${parts[1].trim()}`;
+    }
+  }
+  return s;
+}
+
+function toTsCodeFromSymbol(symbol: string): string | null {
+  // Only handle CN A-shares for now: "CN:000001" -> "000001.SZ/SH"
+  // Also handle normalized symbols like "主板:000001" -> "CN:000001" -> "000001.SZ/SH"
+  const normalized = normalizeSymbol(symbol);
+  const s = normalized.trim();
+  if (!s.startsWith('CN:')) return null;
+  const ticker = s.slice('CN:'.length).trim();
+  if (!/^[0-9]{6}$/.test(ticker)) return null;
+  const suffix = ticker.startsWith('6') ? 'SH' : 'SZ';
+  return `${ticker}.${suffix}`;
+}
+
+function shanghaiTodayIso(): string {
+  // "sv-SE" returns YYYY-MM-DD format.
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+}
+
+function getShanghaiTimeParts(): { weekday: string; hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const map = new Map(parts.map((p) => [p.type, p.value]));
+  return {
+    weekday: map.get('weekday') ?? '',
+    hour: Number(map.get('hour') ?? 0),
+    minute: Number(map.get('minute') ?? 0),
+  };
+}
+
+function isShanghaiTradingTime(): boolean {
+  const { weekday, hour, minute } = getShanghaiTimeParts();
+  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
+  const minutes = hour * 60 + minute;
+  // CN A-share: 09:30-11:30, 13:00-15:00
+  const inMorning = minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30;
+  const inAfternoon = minutes >= 13 * 60 && minutes <= 15 * 60;
+  return inMorning || inAfternoon;
+}
+
+function mergeQuoteIntoBars(d: BarsResp, q: QuoteResp['items'][number]): BarsResp {
+  const price = q.price ?? '';
+  if (!price) return d;
+  const date = (q.trade_time && q.trade_time.slice(0, 10)) || shanghaiTodayIso();
+  const nextBar = {
+    date,
+    open: q.open ?? price,
+    high: q.high ?? price,
+    low: q.low ?? price,
+    close: price,
+    volume: q.volume ?? '',
+    amount: q.amount ?? '',
+  };
+  const bars = [...(d.bars ?? [])];
+  const last = bars[bars.length - 1];
+  if (last && last.date === date) {
+    bars[bars.length - 1] = nextBar;
+  } else {
+    bars.push(nextBar);
+  }
+  return { ...d, bars };
 }
 
 function getLastDetailSyncMs(symbol: string): number {
@@ -140,24 +252,38 @@ export function StockPage({
       .filter(Boolean) as OHLCV[];
   }, [data]);
 
-  const refresh = React.useCallback(async ({ force }: { force?: boolean } = {}) => {
+  const refresh = React.useCallback(async ({ force, quote }: { force?: boolean; quote?: boolean } = {}) => {
     setError(null);
     setBusy(true);
     try {
+      // Normalize symbol format: "主板:000001" -> "CN:000001"
+      const normalizedSymbol = normalizeSymbol(symbol);
       const [d, c] = await Promise.all([
-        apiGetJson<BarsResp>(
-          `/market/stocks/${encodeURIComponent(symbol)}/bars?days=60${force ? '&force=true' : ''}`,
+        apiGetJsonFrom<BarsResp>(
+          DATA_SYNC_BASE_URL,
+          `/market/stocks/${encodeURIComponent(normalizedSymbol)}/bars?days=60${force ? '&force=true' : ''}`,
         ),
         apiGetJson<ChipsResp>(
-          `/market/stocks/${encodeURIComponent(symbol)}/chips?days=30${force ? '&force=true' : ''}`,
+          `/market/stocks/${encodeURIComponent(normalizedSymbol)}/chips?days=30${force ? '&force=true' : ''}`,
         ).catch(
           () => null,
         ),
       ]);
       const ff = await apiGetJson<FundFlowResp>(
-        `/market/stocks/${encodeURIComponent(symbol)}/fund-flow?days=30${force ? '&force=true' : ''}`,
+        `/market/stocks/${encodeURIComponent(normalizedSymbol)}/fund-flow?days=30${force ? '&force=true' : ''}`,
       ).catch(() => null);
-      setData(d);
+      let d2 = d;
+      if (quote) {
+        const tsCode = toTsCodeFromSymbol(symbol);
+        if (tsCode) {
+          const qr = await apiGetJsonFrom<QuoteResp>(DATA_SYNC_BASE_URL, `/quote?ts_code=${encodeURIComponent(tsCode)}`).catch(
+            () => null,
+          );
+          const item = qr?.items?.[0];
+          if (item) d2 = mergeQuoteIntoBars(d2, item);
+        }
+      }
+      setData(d2);
       setChips(c);
       setFundFlow(ff);
       if (force) {
@@ -177,7 +303,8 @@ export function StockPage({
     setLastSyncMs(prev);
     // Auto-sync at most once every 10 minutes per symbol.
     const age = Date.now() - prev;
-    void refresh({ force: age > 10 * 60 * 1000 });
+    const shouldQuote = isShanghaiTradingTime();
+    void refresh({ force: age > 10 * 60 * 1000, quote: shouldQuote });
   }, [refresh, symbol]);
 
   return (
@@ -196,10 +323,10 @@ export function StockPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={busy}>
+          <Button variant="secondary" size="sm" onClick={() => void refresh({ quote: true })} disabled={busy}>
             Refresh
           </Button>
-          <Button size="sm" onClick={() => void refresh({ force: true })} disabled={busy}>
+          <Button size="sm" onClick={() => void refresh({ force: true, quote: true })} disabled={busy}>
             Sync detail
           </Button>
           <Button
