@@ -457,6 +457,7 @@ export function NewsPage() {
               <NewsItemCard
                 key={item.id}
                 item={item}
+                sources={sources}
                 onToggleImportant={toggleImportant}
                 onOpen={openLink}
               />
@@ -471,6 +472,7 @@ export function NewsPage() {
           <NewsItemCard
             key={item.id}
             item={item}
+            sources={sources}
             onToggleImportant={toggleImportant}
             onOpen={openLink}
           />
@@ -487,14 +489,17 @@ export function NewsPage() {
 
 function NewsItemCard({
   item,
+  sources,
   onToggleImportant,
   onOpen,
 }: {
   item: NewsItem;
+  sources: NewsSource[];
   onToggleImportant: (item: NewsItem) => void;
   onOpen: (link: string) => void;
 }) {
-  const sourceName = item.sourceId;
+  const source = sources.find((s) => s.id === item.sourceId);
+  const sourceName = source?.name ?? item.sourceId;
   const time = item.publishedAt
     ? new Date(item.publishedAt).toLocaleString(undefined, {
         month: 'short',
@@ -517,8 +522,11 @@ function NewsItemCard({
           {item.summary ? (
             <div className="mt-1 line-clamp-2 text-xs text-[var(--k-muted)]">{item.summary}</div>
           ) : null}
-          <div className="mt-1 text-xs text-[var(--k-muted)]">
-            {sourceName} • {time}
+          <div className="mt-1 flex items-center gap-2 text-xs text-[var(--k-muted)]">
+            <span className="inline-flex items-center rounded-md bg-[var(--k-accent)]/10 px-1.5 py-0.5 text-xs font-medium text-[var(--k-accent)]">
+              {sourceName}
+            </span>
+            <span>{time}</span>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">

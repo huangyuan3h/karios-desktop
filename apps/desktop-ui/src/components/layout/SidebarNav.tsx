@@ -29,8 +29,8 @@ const items = [
   { id: 'journal', label: 'Journal', icon: NotebookPen },
   { id: 'screener', label: 'Screener', icon: Table2 },
   { id: 'scheduler', label: 'Scheduler', icon: Clock },
-  { id: 'backtest', label: 'Backtest', icon: Activity },
-  { id: 'simtrade', label: 'Sim Trade', icon: Gamepad2 },
+  // { id: 'backtest', label: 'Backtest', icon: Activity },
+  // { id: 'simtrade', label: 'Sim Trade', icon: Gamepad2 },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
