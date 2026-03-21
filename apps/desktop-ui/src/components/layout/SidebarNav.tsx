@@ -111,14 +111,6 @@ export function SidebarNav({
         })}
       </nav>
 
-      <div
-        className={cn(
-          'mt-auto border-t border-[var(--k-border)] px-4 py-3 text-xs text-[var(--k-muted)]',
-          isCollapsed ? 'px-2 text-center' : '',
-        )}
-      >
-        {!isCollapsed ? 'Local-first • SQLite-only (v0)' : 'v0'}
-      </div>
-    </aside>
+      </aside>
   );
 }
