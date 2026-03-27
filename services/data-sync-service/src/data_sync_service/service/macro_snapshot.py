@@ -15,6 +15,10 @@ from data_sync_service.service.macro_daily import (
     SID_NVDA,
     SID_USDCNH,
 )
+from data_sync_service.service.macro_snapshot_on_demand import (
+    enrich_macro_items_on_demand,
+    macro_snapshot_warning,
+)
 from data_sync_service.service.market_regime import get_index_signals
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
@@ -117,7 +121,8 @@ def _macro_item_from_db(meta: dict[str, Any], closes: list[tuple[str, float]]) -
 
 def build_macro_snapshot() -> dict[str, Any]:
     ensure_table()
-    cn_index_signals = get_index_signals()
+    # Skip full-market breadth (very slow); Index page needs a fast response.
+    cn_index_signals = get_index_signals(include_breadth=False)
     macro_items: list[dict[str, Any]] = []
     for meta in MACRO_CARDS:
         sid = str(meta["seriesId"])
@@ -194,4 +199,11 @@ def build_macro_snapshot() -> dict[str, Any]:
                             m["pctChg"] = pct
                         break
 
-    return {"cnIndexSignals": cn_index_signals, "macro": macro_items}
+    # DB empty + realtime_quote often has no US/FX ticks: query Tushare daily on demand (no DB write).
+    macro_items = enrich_macro_items_on_demand(macro_items)
+
+    out: dict[str, Any] = {"cnIndexSignals": cn_index_signals, "macro": macro_items}
+    warn = macro_snapshot_warning()
+    if warn:
+        out["warning"] = warn
+    return out

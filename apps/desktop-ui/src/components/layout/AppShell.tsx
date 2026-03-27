@@ -27,7 +27,7 @@ import { cn } from '@/lib/utils';
 
 const PAGE_TITLES: Record<string, string> = {
   dashboard: 'Dashboard',
-  index: '指数',
+  index: 'index',
   news: 'News',
   market: 'Market',
   industryFlow: 'Industry Flow',

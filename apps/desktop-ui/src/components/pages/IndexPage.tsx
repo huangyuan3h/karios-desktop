@@ -38,15 +38,31 @@ type MacroItem = {
 type MacroSnapshot = {
   cnIndexSignals?: CnIndexSignal[];
   macro?: MacroItem[];
+  warning?: string;
 };
 
 const POLL_MS = 45_000;
+const FETCH_TIMEOUT_MS = 30_000;
 
 async function fetchSnapshot(): Promise<MacroSnapshot> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}/macro/snapshot`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return (txt ? (JSON.parse(txt) as MacroSnapshot) : {}) as MacroSnapshot;
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${DATA_SYNC_BASE_URL}/macro/snapshot`, {
+      cache: 'no-store',
+      signal: ctrl.signal,
+    });
+    const txt = await res.text().catch(() => '');
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+    return (txt ? (JSON.parse(txt) as MacroSnapshot) : {}) as MacroSnapshot;
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s (check data-sync-service)`);
+    }
+    throw e;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 function signalBadgeClass(signal: string): string {
@@ -117,7 +133,7 @@ function Section({
 export function IndexPage() {
   const [data, setData] = React.useState<MacroSnapshot | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  const [pending, setPending] = React.useState(true);
 
   const load = React.useCallback(async () => {
     try {
@@ -127,7 +143,7 @@ export function IndexPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      setPending(false);
     }
   }, []);
 
@@ -146,25 +162,33 @@ export function IndexPage() {
     <div className="mx-auto max-w-4xl space-y-4 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold">指数与宏观</h1>
           <p className="mt-1 text-xs text-[var(--k-muted)]">
-            CN index traffic lights + global macro (refreshes ~every {POLL_MS / 1000}s). EOD sync runs after
-            close.
+            CN index traffic lights + global macro (poll ~every {POLL_MS / 1000}s). Post-close EOD sync; quotes
+            merge when Tushare realtime supports the symbol.
           </p>
         </div>
         <button
           type="button"
           className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-1.5 text-xs"
-          onClick={() => void load()}
+          onClick={() => {
+            setPending(true);
+            void load();
+          }}
         >
           Refresh
         </button>
       </div>
 
-      {loading ? <div className="text-sm text-[var(--k-muted)]">Loading…</div> : null}
+      {pending ? <div className="text-xs text-[var(--k-muted)]">Updating snapshot…</div> : null}
+      {data?.warning ? (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900">{data.warning}</div>
+      ) : null}
       {error ? <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700">{error}</div> : null}
 
-      <Section title="CN index traffic lights" subtitle="Same rules as Dashboard — MA20 / MA5 / breadth & volume.">
+      <Section
+        title="CN index traffic lights"
+        subtitle="Same MA/volume rules as Dashboard. Full-market breadth (deep green) is omitted here for fast load; use Dashboard for that gate."
+      >
         {cn.length ? (
           <div className="grid gap-2 md:grid-cols-2">
             {cn.map((it) => {

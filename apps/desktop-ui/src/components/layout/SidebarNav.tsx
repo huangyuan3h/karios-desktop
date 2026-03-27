@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 
 const items = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'index', label: '指数', icon: LineChart },
+  { id: 'index', label: 'index', icon: LineChart },
   { id: 'news', label: 'News', icon: Newspaper },
   { id: 'market', label: 'Market', icon: Table2 },
   { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },

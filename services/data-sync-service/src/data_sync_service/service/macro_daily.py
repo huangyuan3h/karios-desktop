@@ -52,6 +52,18 @@ def _tushare_pro() -> Any:
     return ts.pro_api(settings.tu_share_api_key)
 
 
+def try_tushare_pro() -> Any | None:
+    """Return pro API client or None if token missing (non-raising)."""
+    settings = get_settings()
+    if not settings.tu_share_api_key:
+        return None
+    try:
+        ts.set_token(settings.tu_share_api_key)
+        return ts.pro_api(settings.tu_share_api_key)
+    except Exception:
+        return None
+
+
 def _normalize_us_daily_df(df: pd.DataFrame | None) -> pd.DataFrame | None:
     if df is None or df.empty:
         return df

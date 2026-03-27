@@ -181,10 +181,15 @@ def _get_breadth_above_ma20_ratio(*, as_of_date: str | None = None) -> dict[str,
     return {"ratio": ratio, "total": total, "above_count": above}
 
 
-def get_index_signals(*, as_of_date: str | None = None) -> list[dict[str, Any]]:
+def get_index_signals(
+    *, as_of_date: str | None = None, include_breadth: bool = True
+) -> list[dict[str, Any]]:
     """
     Return index traffic-light signals using MA20/MA5/MA60, 3-day confirmation,
     volume expansion, and breadth gating.
+
+    When include_breadth is False, skips the all-market breadth scan (slow) and
+    never emits deep_green; use for lightweight APIs such as GET /macro/snapshot.
     """
     use_as_of = str(as_of_date).strip() if as_of_date else None
     rt_price: dict[str, float] = {}
@@ -202,7 +207,10 @@ def get_index_signals(*, as_of_date: str | None = None) -> list[dict[str, Any]]:
                 rt_price[ts_code] = price
                 rt_time[ts_code] = it.get("trade_time")
 
-    breadth = _get_breadth_above_ma20_ratio(as_of_date=use_as_of)
+    if include_breadth:
+        breadth = _get_breadth_above_ma20_ratio(as_of_date=use_as_of)
+    else:
+        breadth = {"ratio": 0.0, "total": 0, "above_count": 0}
     breadth_ok_deep = breadth["ratio"] >= BREADTH_DEEP_GREEN_MIN_RATIO
 
     out: list[dict[str, Any]] = []
