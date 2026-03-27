@@ -102,8 +102,8 @@ def sync_close_endpoint(exchange: str = Query("SSE"), force: bool = Query(False)
     if isinstance(result, dict):
         if not result.get("ok"):
             return result
-        if result.get("skipped"):
-            return result
+        # Always sync index daily regardless of close sync status
+        # (index_daily has its own skip-if-already-synced logic)
         index_result = sync_index_daily_full()
         return {**result, "indexDaily": index_result}
     index_result = sync_index_daily_full()
