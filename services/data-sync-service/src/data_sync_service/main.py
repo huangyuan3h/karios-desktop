@@ -15,6 +15,7 @@ from .api.query_routes import router as query_router
 from .api.simtrade_routes import router as simtrade_router
 from .api.system_prompts_routes import router as system_prompts_router
 from .api.sync_routes import router as sync_router
+from .api.trade_review_routes import router as trade_review_router
 from .api.tv_chrome_routes import router as tv_chrome_router
 from .api.tv_routes import router as tv_router
 from .scheduler import create_scheduler
@@ -44,6 +45,7 @@ app.include_router(dashboard_router)
 app.include_router(tv_router)
 app.include_router(tv_chrome_router)
 app.include_router(journal_router)
+app.include_router(trade_review_router)
 app.include_router(broker_router)
 app.include_router(industry_flow_router)
 app.include_router(market_sentiment_router)

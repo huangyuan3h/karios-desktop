@@ -32,6 +32,11 @@ pnpm dev
 - `GET /market/stocks/{symbol}/bars` — StockPage-compatible bars (query params: days, force ignored)
 - `GET /market/stocks/trendok` — Watchlist TrendOK/score computed from data-sync DB (query params: symbols, refresh ignored)
 - `GET /market/stocks/resolve` — Resolve symbols to names from stock_basic (query params: symbols)
+- `GET /trade-reviews` — list trade review records (query params: limit, offset, symbol)
+- `GET /trade-reviews/{review_id}` — get a single trade review
+- `POST /trade-reviews` — create a trade review record
+- `PUT /trade-reviews/{review_id}` — update a trade review record
+- `DELETE /trade-reviews/{review_id}` — delete a trade review record
 - `GET /stock-basic` — return all stock_basic rows from DB (~5k)
 - `POST /sync/stock-basic` — trigger sync from tushare into DB (upsert by ts_code)
 - `GET /daily` — return daily bars from DB (query params: ts_code, start_date, end_date, limit)
