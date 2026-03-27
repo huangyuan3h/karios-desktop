@@ -9,6 +9,7 @@ import { DashboardPage } from '@/components/pages/DashboardPage';
 import { BrokerPage } from '@/components/pages/BrokerPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
 import { JournalReadPage } from '@/components/pages/JournalReadPage';
+import { JournalTradeReviewPage } from '@/components/pages/JournalTradeReviewPage';
 import { JournalWritePage } from '@/components/pages/JournalWritePage';
 import { MarketPage } from '@/components/pages/MarketPage';
 import { NewsPage } from '@/components/pages/NewsPage';
@@ -61,7 +62,7 @@ export function AppShell() {
   const [activeStockSymbol, setActiveStockSymbol] = React.useState<string | null>(null);
   const [stockReturnPage, setStockReturnPage] = React.useState<string>('market');
   const [activeJournalId, setActiveJournalId] = React.useState<string | null>(null);
-  const [journalMode, setJournalMode] = React.useState<'read' | 'write'>('read');
+  const [journalMode, setJournalMode] = React.useState<'read' | 'write' | 'review'>('read');
   const draggingRef = React.useRef(false);
   const agentVisibleRef = React.useRef(agentVisible);
   const agentModeRef = React.useRef(agentMode);
@@ -189,6 +190,8 @@ export function AppShell() {
                   onJournalIdChange={setActiveJournalId}
                   onExit={() => setJournalMode('read')}
                 />
+              ) : journalMode === 'review' ? (
+                <JournalTradeReviewPage onBack={() => setJournalMode('read')} />
               ) : (
                 <JournalReadPage
                   activeId={activeJournalId}
@@ -196,6 +199,7 @@ export function AppShell() {
                     setActiveJournalId(id);
                     setJournalMode('write');
                   }}
+                  onOpenTradeReview={() => setJournalMode('review')}
                 />
               )
             ) : activePage === 'stock' && activeStockSymbol ? (

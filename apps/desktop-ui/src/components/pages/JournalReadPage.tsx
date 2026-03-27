@@ -55,9 +55,11 @@ function fmtTsSimple(ts: string | null | undefined): string {
 export function JournalReadPage({
   activeId,
   onEdit,
+  onOpenTradeReview,
 }: {
   activeId: string | null;
   onEdit: (id: string) => void;
+  onOpenTradeReview: () => void;
 }) {
   const [items, setItems] = React.useState<TradeJournal[]>([]);
   const [selectedId, setSelectedId] = React.useState<string | null>(activeId);
@@ -148,6 +150,9 @@ export function JournalReadPage({
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={onOpenTradeReview} disabled={busy} className="gap-2">
+            Trade Review
+          </Button>
           <Button size="sm" variant="secondary" onClick={() => void onCreate()} disabled={busy} className="gap-2">
             <Plus className="h-4 w-4" />
             New
