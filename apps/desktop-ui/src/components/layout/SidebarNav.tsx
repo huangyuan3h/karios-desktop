@@ -5,15 +5,13 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Clock,
-  CreditCard,
-  Gamepad2,
   LayoutDashboard,
+  LineChart,
   Newspaper,
   NotebookPen,
   Star,
   Settings,
   Table2,
-  Activity,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -21,6 +19,7 @@ import { cn } from '@/lib/utils';
 
 const items = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'index', label: '指数', icon: LineChart },
   { id: 'news', label: 'News', icon: Newspaper },
   { id: 'market', label: 'Market', icon: Table2 },
   { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },

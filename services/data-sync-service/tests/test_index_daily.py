@@ -16,7 +16,14 @@ def test_sync_close_endpoint_includes_index_daily(monkeypatch) -> None:
     import data_sync_service.api.sync_routes as sync_routes  # type: ignore[import-not-found]
 
     monkeypatch.setattr(sync_routes, "sync_close", lambda exchange, force: {"ok": True, "updated": 1})
-    monkeypatch.setattr(sync_routes, "sync_index_daily_full", lambda: {"ok": True, "updated": 2})
+
+    def _post() -> dict:
+        return {
+            "indexDaily": {"ok": True, "updated": 2},
+            "macroDaily": {"ok": True, "updated": 3},
+        }
+
+    monkeypatch.setattr(sync_routes, "run_post_close_sync", _post)
 
     client = TestClient(app)
     resp = client.post("/sync/close")
@@ -26,3 +33,5 @@ def test_sync_close_endpoint_includes_index_daily(monkeypatch) -> None:
     assert payload["updated"] == 1
     assert payload["indexDaily"]["ok"] is True
     assert payload["indexDaily"]["updated"] == 2
+    assert payload["macroDaily"]["ok"] is True
+    assert payload["macroDaily"]["updated"] == 3

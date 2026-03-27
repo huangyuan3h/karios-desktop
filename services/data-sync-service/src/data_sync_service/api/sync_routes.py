@@ -8,6 +8,8 @@ from data_sync_service.service.daily import sync_daily_full
 from data_sync_service.service.hk_basic import sync_hk_basic
 from data_sync_service.service.hk_daily import sync_hk_daily_full
 from data_sync_service.service.index_daily import sync_index_daily_full
+from data_sync_service.service.macro_daily import sync_macro_daily_full
+from data_sync_service.service.post_close_sync import run_post_close_sync
 from data_sync_service.service.stock_basic import sync_stock_basic
 from data_sync_service.service.trade_calendar import sync_trade_calendar
 
@@ -83,6 +85,12 @@ def sync_index_daily_endpoint() -> dict:
     return sync_index_daily_full()
 
 
+@router.post("/sync/macro-daily")
+def sync_macro_daily_endpoint() -> dict:
+    """Trigger full sync of macro/global daily series. Skips if today already succeeded; resumes from failure."""
+    return sync_macro_daily_full()
+
+
 @router.post("/sync/trade-cal")
 def sync_trade_cal_endpoint(
     exchange: str = Query("SSE"),
@@ -102,9 +110,7 @@ def sync_close_endpoint(exchange: str = Query("SSE"), force: bool = Query(False)
     if isinstance(result, dict):
         if not result.get("ok"):
             return result
-        # Always sync index daily regardless of close sync status
-        # (index_daily has its own skip-if-already-synced logic)
-        index_result = sync_index_daily_full()
-        return {**result, "indexDaily": index_result}
-    index_result = sync_index_daily_full()
-    return {"ok": True, "result": result, "indexDaily": index_result}
+        post = run_post_close_sync()
+        return {**result, **post}
+    post = run_post_close_sync()
+    return {"ok": True, "result": result, **post}

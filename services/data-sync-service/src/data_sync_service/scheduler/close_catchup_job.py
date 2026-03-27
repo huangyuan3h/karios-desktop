@@ -11,6 +11,7 @@ from apscheduler.triggers.cron import CronTrigger
 from data_sync_service.db.sync_job_record import get_today_run
 from data_sync_service.service.close_sync import JOB_TYPE as CLOSE_JOB_TYPE
 from data_sync_service.service.close_sync import sync_close
+from data_sync_service.service.post_close_sync import run_post_close_sync
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ def run() -> None:
                 result.get("updated_adj_factor_rows", 0),
                 result.get("trade_dates", []),
             )
+        post = run_post_close_sync()
+        logger.info("close_sync_catchup post_close_sync: %s", post)
     else:
         logger.warning("close_sync_catchup failed: %s", result.get("error", "unknown"))
 

@@ -19,6 +19,7 @@ import { StockPage } from '@/components/pages/StockPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
 import { BacktestPage } from '@/components/pages/BacktestPage';
 import { SimTradePage } from '@/components/pages/SimTradePage';
+import { IndexPage } from '@/components/pages/IndexPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
@@ -26,6 +27,7 @@ import { cn } from '@/lib/utils';
 
 const PAGE_TITLES: Record<string, string> = {
   dashboard: 'Dashboard',
+  index: '指数',
   news: 'News',
   market: 'Market',
   industryFlow: 'Industry Flow',
@@ -209,6 +211,8 @@ export function AppShell() {
               <BacktestPage />
             ) : activePage === 'simtrade' ? (
               <SimTradePage />
+            ) : activePage === 'index' ? (
+              <IndexPage />
             ) : (
               <DashboardPage onNavigate={(id) => setActivePage(id)} />
             )}

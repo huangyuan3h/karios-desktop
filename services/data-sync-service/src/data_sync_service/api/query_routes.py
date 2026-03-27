@@ -17,6 +17,7 @@ from data_sync_service.service.trendok import compute_trendok_for_symbols
 from data_sync_service.service.watchlist_v5_alerts import compute_watchlist_v5_alerts, compute_watchlist_v5_plan
 from data_sync_service.service.watchlist_momentum_alerts import compute_watchlist_momentum_alerts
 from data_sync_service.db.index_daily import fetch_index_daily
+from data_sync_service.service.macro_snapshot import build_macro_snapshot
 from data_sync_service.testback.engine import BacktestParams as EngineParams, DailyRuleFilter as EngineRules, UniverseFilter as EngineUniverse, run_backtest
 from data_sync_service.testback.strategies.base import ScoreConfig as EngineScore
 from data_sync_service.testback.strategies import get_strategy_class
@@ -130,6 +131,12 @@ def get_index_daily_endpoint(
 ) -> list:
     """Return index daily bars from our database. Optional filters; default limit 5000."""
     return fetch_index_daily(ts_code=ts_code, start_date=start_date, end_date=end_date, limit=limit)
+
+
+@router.get("/macro/snapshot")
+def get_macro_snapshot_endpoint() -> dict:
+    """Index page: CN index traffic lights + macro series (EOD + best-effort realtime)."""
+    return build_macro_snapshot()
 
 
 @router.get("/daily/status")
