@@ -79,54 +79,36 @@ function MacroCard({ item }: { item: MacroItem }) {
   const live = Boolean(item.realtime);
   const pct = item.pctChg;
   return (
-    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-xs">
-      <div className="flex items-start justify-between gap-2">
+    <div className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 py-1.5 text-[11px] leading-tight">
+      <div className="flex items-start justify-between gap-1.5">
         <div className="font-medium text-[var(--k-fg)]">{item.name ?? item.seriesId}</div>
-        <div className="shrink-0 text-[10px] uppercase text-[var(--k-muted)]">
+        <div className="shrink-0 text-[9px] uppercase text-[var(--k-muted)]">
           {live ? 'live' : 'eod'}
         </div>
       </div>
-      {item.why ? <div className="mt-1 text-[11px] leading-snug text-[var(--k-muted)]">{item.why}</div> : null}
+      {item.why ? <div className="mt-0.5 text-[10px] leading-snug text-[var(--k-muted)]">{item.why}</div> : null}
       {item.source === 'index_global' && item.underlyingTsCode === 'XIN9' ? (
-        <div className="mt-1 text-[10px] text-amber-700/90">Spot index (XIN9) when SGX futures unavailable</div>
+        <div className="mt-0.5 text-[9px] text-amber-700/90">Spot index (XIN9) when SGX futures unavailable</div>
       ) : null}
-      <div className="mt-2 font-mono text-[var(--k-fg)]">
+      <div className="mt-1 font-mono text-[11px] text-[var(--k-fg)]">
         {item.close != null && Number.isFinite(item.close) ? Number(item.close).toFixed(2) : '—'}
         {pct != null && Number.isFinite(pct) ? (
-          <span className={pct >= 0 ? 'ml-2 text-emerald-600' : 'ml-2 text-red-600'}>
+          <span className={pct >= 0 ? 'ml-1.5 text-emerald-600' : 'ml-1.5 text-red-600'}>
             {pct >= 0 ? '+' : ''}
             {pct.toFixed(2)}%
           </span>
         ) : null}
       </div>
-      <div className="mt-1 text-[var(--k-muted)]">
+      <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
         MA5 {item.ma5 != null && Number.isFinite(item.ma5) ? Number(item.ma5).toFixed(2) : '—'} • MA20{' '}
         {item.ma20 != null && Number.isFinite(item.ma20) ? Number(item.ma20).toFixed(2) : '—'}
       </div>
-      <div className="mt-1 text-[10px] text-[var(--k-muted)]">
+      <div className="mt-0.5 text-[9px] text-[var(--k-muted)]">
         {item.asOfDate ? `as of ${item.asOfDate}` : 'no data'}
         {item.tradeTime ? ` • ${item.tradeTime}` : ''}
         {item.underlyingTsCode ? ` • ${item.underlyingTsCode}` : ''}
       </div>
     </div>
-  );
-}
-
-function Section({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-      <div className="mb-1 text-sm font-semibold">{title}</div>
-      {subtitle ? <div className="mb-3 text-xs text-[var(--k-muted)]">{subtitle}</div> : null}
-      {children}
-    </section>
   );
 }
 
@@ -156,20 +138,15 @@ export function IndexPage() {
   const cn = Array.isArray(data?.cnIndexSignals) ? data!.cnIndexSignals! : [];
   const macro = Array.isArray(data?.macro) ? data!.macro! : [];
 
-  const byCat = (c: string) => macro.filter((m) => m.category === c);
-
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="mt-1 text-xs text-[var(--k-muted)]">
-            CN index traffic lights + global macro (poll ~every {POLL_MS / 1000}s). Post-close EOD sync; quotes
-            merge when Tushare realtime supports the symbol.
-          </p>
-        </div>
+    <div className="mx-auto max-w-5xl space-y-2 p-2.5">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[10px] leading-snug text-[var(--k-muted)]">
+          CN indices + macro · ~{POLL_MS / 1000}s · EOD unless live; offshore mostly T+0 close.
+        </p>
         <button
           type="button"
-          className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-1.5 text-xs"
+          className="shrink-0 rounded border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 py-1 text-[10px]"
           onClick={() => {
             setPending(true);
             void load();
@@ -179,73 +156,42 @@ export function IndexPage() {
         </button>
       </div>
 
-      {pending ? <div className="text-xs text-[var(--k-muted)]">Updating snapshot…</div> : null}
+      {pending ? <div className="text-[10px] text-[var(--k-muted)]">Updating…</div> : null}
       {data?.warning ? (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900">{data.warning}</div>
+        <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-900">{data.warning}</div>
       ) : null}
-      {error ? <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700">{error}</div> : null}
+      {error ? <div className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-700">{error}</div> : null}
 
-      <Section
-        title="CN index traffic lights"
-        subtitle="Same MA/volume rules as Dashboard. Full-market breadth (deep green) is omitted here for fast load; use Dashboard for that gate."
-      >
-        {cn.length ? (
-          <div className="grid gap-2 md:grid-cols-2">
-            {cn.map((it) => {
-              const signal = String(it?.signal ?? 'unknown');
-              return (
-                <div key={String(it?.tsCode ?? it?.name)} className={`rounded-lg border px-3 py-2 text-xs ${signalBadgeClass(signal)}`}>
-                  <div className="font-medium">{String(it?.name ?? it?.tsCode ?? '')}</div>
-                  <div className="mt-1 font-mono">
-                    {signal} • pos {String(it?.positionRange ?? '—')}
-                  </div>
-                  <div className="mt-1 text-[var(--k-muted)]">
-                    close{' '}
-                    {Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—'} • MA5{' '}
-                    {Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—'} • MA20{' '}
-                    {Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—'}
-                  </div>
-                  {it.realtime ? <div className="mt-1 text-[10px] text-[var(--k-muted)]">live {it.tradeTime ?? ''}</div> : null}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-xs text-[var(--k-muted)]">No CN index signals (sync index daily / market data).</div>
-        )}
-      </Section>
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+        {cn.map((it) => {
+          const signal = String(it?.signal ?? 'unknown');
+          return (
+            <div
+              key={String(it?.tsCode ?? it?.name)}
+              className={`rounded-md border px-2 py-1.5 text-[11px] leading-tight ${signalBadgeClass(signal)}`}
+            >
+              <div className="font-medium">{String(it?.name ?? it?.tsCode ?? '')}</div>
+              <div className="mt-0.5 font-mono text-[10px]">
+                {signal} • pos {String(it?.positionRange ?? '—')}
+              </div>
+              <div className="mt-0.5 text-[10px] text-[var(--k-muted)]">
+                close {Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—'} • MA5{' '}
+                {Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—'} • MA20{' '}
+                {Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—'}
+              </div>
+              {it.realtime ? <div className="mt-0.5 text-[9px] text-[var(--k-muted)]">live {it.tradeTime ?? ''}</div> : null}
+            </div>
+          );
+        })}
 
-      <Section title="US tech linkage" subtitle="Overnight US tech drives CN TMT / AI themes.">
-        <div className="grid gap-2 md:grid-cols-2">
-          {byCat('us_tech').map((m) => (
-            <MacroCard key={m.seriesId ?? m.name} item={m} />
-          ))}
-        </div>
-      </Section>
+        {macro.map((m) => (
+          <MacroCard key={m.seriesId ?? m.name} item={m} />
+        ))}
+      </div>
 
-      <Section title="FX" subtitle="USD/CNH is a key valve for foreign flows.">
-        <div className="grid gap-2 md:grid-cols-2">
-          {byCat('fx').map((m) => (
-            <MacroCard key={m.seriesId ?? m.name} item={m} />
-          ))}
-        </div>
-      </Section>
-
-      <Section title="FTSE China A50" subtitle="A50 futures preferred; XIN9 spot when futures unavailable.">
-        <div className="grid gap-2 md:grid-cols-2">
-          {byCat('a50').map((m) => (
-            <MacroCard key={m.seriesId ?? m.name} item={m} />
-          ))}
-        </div>
-      </Section>
-
-      <Section title="Commodities (proxies)" subtitle="INE crude / SHFE gold & copper (main contracts).">
-        <div className="grid gap-2 md:grid-cols-2">
-          {byCat('commodity').map((m) => (
-            <MacroCard key={m.seriesId ?? m.name} item={m} />
-          ))}
-        </div>
-      </Section>
+      {!cn.length && !macro.length ? (
+        <div className="text-[10px] text-[var(--k-muted)]">No data — sync index/macro or check Tushare token.</div>
+      ) : null}
     </div>
   );
 }

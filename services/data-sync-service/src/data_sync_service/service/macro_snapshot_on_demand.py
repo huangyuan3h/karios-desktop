@@ -15,10 +15,9 @@ from data_sync_service.service.macro_daily import (
     SID_COMM_ENERGY,
     SID_COMM_GOLD,
     SID_IXIC,
-    SID_NVDA,
     SID_USDCNH,
     _normalize_fx_daily_df,
-    _normalize_us_daily_df,
+    resolve_ine_sc_main,
     resolve_main_fut_by_prefix,
     resolve_sgx_a50_main,
     try_tushare_pro,
@@ -32,9 +31,17 @@ def _lookback_range(days: int = 120) -> tuple[str, str]:
 
 
 def _df_to_metrics(df: pd.DataFrame | None) -> dict[str, Any]:
-    if df is None or df.empty or "close" not in df.columns:
+    if df is None or df.empty:
         return {}
     d = df.copy()
+    # Futures often use settle when close is empty
+    if "settle" in d.columns:
+        if "close" not in d.columns:
+            d["close"] = d["settle"]
+        else:
+            d["close"] = d["close"].fillna(d["settle"])
+    if "close" not in d.columns:
+        return {}
     if "trade_date" not in d.columns:
         return {}
     raw_td = d["trade_date"].astype(str)
@@ -89,11 +96,6 @@ def _fetch_on_demand_series(pro: Any, series_id: str) -> tuple[dict[str, Any], s
             df = pro.index_global(ts_code="IXIC", start_date=sd, end_date=ed)
             m = _df_to_metrics(df)
             return m, "tushare.index_global.on_demand" if m else None, "IXIC"
-        if series_id == SID_NVDA:
-            df = pro.us_daily(ts_code="NVDA", start_date=sd, end_date=ed)
-            df = _normalize_us_daily_df(df)
-            m = _df_to_metrics(df)
-            return m, "tushare.us_daily.on_demand" if m else None, "NVDA"
         if series_id == SID_USDCNH:
             df = pro.fx_daily(ts_code="USDCNH.FXCM", start_date=sd, end_date=ed)
             df = _normalize_fx_daily_df(df)
@@ -109,7 +111,7 @@ def _fetch_on_demand_series(pro: Any, series_id: str) -> tuple[dict[str, Any], s
             m = _df_to_metrics(df)
             return m, "tushare.index_global.on_demand" if m else None, "XIN9"
         if series_id == SID_COMM_ENERGY:
-            und = resolve_main_fut_by_prefix(pro, "INE", "SC")
+            und = resolve_ine_sc_main(pro)
             if not und:
                 return {}, None, None
             df = pro.fut_daily(ts_code=und, start_date=sd, end_date=ed)

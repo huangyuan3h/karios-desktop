@@ -42,6 +42,23 @@ def test_resolve_sgx_a50_main_empty() -> None:
     assert resolve_sgx_a50_main(_Pro()) is None
 
 
+def test_df_to_metrics_uses_settle_when_close_na() -> None:
+    import pandas as pd  # type: ignore[import-not-found]
+
+    from data_sync_service.service.macro_snapshot_on_demand import _df_to_metrics  # type: ignore[import-not-found]
+
+    df = pd.DataFrame(
+        {
+            "trade_date": ["20260101", "20260102"],
+            "close": [float("nan"), float("nan")],
+            "settle": [500.0, 510.0],
+            "pct_chg": [0.0, 2.0],
+        }
+    )
+    m = _df_to_metrics(df)
+    assert m["close"] == 510.0
+
+
 def test_df_to_metrics_parses_tushare_dates() -> None:
     import pandas as pd  # type: ignore[import-not-found]
 

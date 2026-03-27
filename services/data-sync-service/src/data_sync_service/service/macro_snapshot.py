@@ -12,7 +12,6 @@ from data_sync_service.service.macro_daily import (
     SID_COMM_ENERGY,
     SID_COMM_GOLD,
     SID_IXIC,
-    SID_NVDA,
     SID_USDCNH,
 )
 from data_sync_service.service.macro_snapshot_on_demand import (
@@ -29,13 +28,6 @@ MACRO_CARDS: list[dict[str, Any]] = [
         "category": "us_tech",
         "why": "Overnight US tech drives CN tech sentiment; watch before the A-share open.",
         "realtimeTsCode": "IXIC",
-    },
-    {
-        "seriesId": SID_NVDA,
-        "name": "NVIDIA",
-        "category": "us_tech",
-        "why": "Leading US AI / GPU name; often correlates with CN compute / optics names.",
-        "realtimeTsCode": "NVDA",
     },
     {
         "seriesId": SID_USDCNH,

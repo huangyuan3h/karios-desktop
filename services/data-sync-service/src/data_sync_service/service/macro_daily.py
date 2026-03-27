@@ -18,7 +18,6 @@ FULL_START_DATE = "20230101"
 
 # Logical series ids (stable keys in macro_daily.series_id)
 SID_IXIC = "IXIC"
-SID_NVDA = "NVDA"
 SID_USDCNH = "USDCNH.FXCM"
 SID_A50 = "A50"
 SID_COMM_ENERGY = "COMM_ENERGY"
@@ -27,7 +26,6 @@ SID_COMM_COPPER = "COMM_COPPER"
 
 SERIES_ORDER: list[str] = [
     SID_IXIC,
-    SID_NVDA,
     SID_USDCNH,
     SID_A50,
     SID_COMM_ENERGY,
@@ -164,6 +162,34 @@ def resolve_sgx_a50_main(pro: Any) -> str | None:
     return str(ts_c).strip() or None
 
 
+def resolve_ine_sc_main(pro: Any) -> str | None:
+    """
+    INE crude oil (SC) main contract. fut_basic may list SCxxxx.INE; fall back to name filter.
+    """
+    und = resolve_main_fut_by_prefix(pro, "INE", "SC")
+    if und:
+        return und
+    try:
+        df = pro.fut_basic(exchange="INE", fut_type="1", fields="ts_code,name,list_date")
+    except Exception:
+        return None
+    if df is None or df.empty or "ts_code" not in df.columns:
+        return None
+    tc = df["ts_code"].astype(str)
+    sub = df[tc.str.upper().str.startswith("SC")]
+    if sub.empty and "name" in df.columns:
+        sub = df[df["name"].astype(str).str.contains("原油", na=False)]
+    if sub.empty:
+        return None
+    if "list_date" in sub.columns:
+        try:
+            sub = sub.sort_values("list_date", ascending=False)
+        except Exception:
+            pass
+    ts_c = sub.iloc[0].get("ts_code")
+    return str(ts_c).strip() if ts_c else None
+
+
 def resolve_main_fut_by_prefix(pro: Any, exchange: str, symbol_prefix: str) -> str | None:
     """Pick latest listed main contract whose ts_code starts with symbol_prefix (e.g. CU, AU, SC)."""
     try:
@@ -223,21 +249,6 @@ def sync_macro_daily_full() -> dict[str, Any]:
             return 0
         return upsert_from_dataframe(df, series_id=SID_IXIC, source="index_global", underlying_ts_code="IXIC")
 
-    def sync_nvda() -> int:
-        last = get_last_trade_date(SID_NVDA)
-        start = FULL_START_DATE if last is None else _date_to_yyyymmdd(last + timedelta(days=1))
-        end = _today_yyyymmdd()
-        if start > end:
-            return 0
-        try:
-            df = pro.us_daily(ts_code="NVDA", start_date=start, end_date=end)
-        except Exception:
-            df = None
-        df = _normalize_us_daily_df(df)
-        if df is None or df.empty:
-            return 0
-        return upsert_from_dataframe(df, series_id=SID_NVDA, source="us_daily", underlying_ts_code="NVDA")
-
     def sync_fx_usdcnh() -> int:
         last = get_last_trade_date(SID_USDCNH)
         start = FULL_START_DATE if last is None else _date_to_yyyymmdd(last + timedelta(days=1))
@@ -282,7 +293,7 @@ def sync_macro_daily_full() -> dict[str, Any]:
         end = _today_yyyymmdd()
         if start > end:
             return 0
-        und = resolve_main_fut_by_prefix(pro, exchange, prefix)
+        und = resolve_ine_sc_main(pro) if exchange == "INE" else resolve_main_fut_by_prefix(pro, exchange, prefix)
         if not und:
             return 0
         df = _paged_fut_daily(pro, und, start, end)
@@ -292,7 +303,6 @@ def sync_macro_daily_full() -> dict[str, Any]:
 
     sync_funcs: dict[str, Callable[[], int]] = {
         SID_IXIC: sync_ixic,
-        SID_NVDA: sync_nvda,
         SID_USDCNH: sync_fx_usdcnh,
         SID_A50: sync_a50,
         SID_COMM_ENERGY: lambda: sync_comm("INE", "SC", "fut_daily"),

@@ -120,6 +120,9 @@ def upsert_from_dataframe(
         pct = _numeric(row.get("pct_chg"))
         if pct is None:
             pct = _numeric(row.get("pct_change"))
+        close_v = _numeric(row.get("close"))
+        if close_v is None:
+            close_v = _numeric(row.get("settle"))
         rows.append(
             (
                 series_id,
@@ -129,7 +132,7 @@ def upsert_from_dataframe(
                 _numeric(row.get("open")),
                 _numeric(row.get("high")),
                 _numeric(row.get("low")),
-                _numeric(row.get("close")),
+                close_v,
                 _numeric(row.get("pre_close")),
                 _numeric(row.get("change")),
                 pct,
