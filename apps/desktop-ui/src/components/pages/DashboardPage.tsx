@@ -811,16 +811,24 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     lines.push('');
 
     if (indexSignals.length) {
-      const headers0 = ['Index', 'Signal', 'Position', 'Close', 'MA5', 'MA20', 'AsOfDate'];
-      const rows0: unknown[][] = indexSignals.map((it: any) => [
-        String(it?.name ?? it?.tsCode ?? ''),
-        String(it?.signal ?? ''),
-        String(it?.positionRange ?? ''),
-        Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
-        Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
-        Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
-        String(it?.asOfDate ?? ''),
-      ]);
+      const headers0 = ['Index', 'Signal', 'Position', 'chg%', 'Close', 'MA5', 'MA20', 'AsOfDate'];
+      const rows0: unknown[][] = indexSignals.map((it: any) => {
+        const pc = it?.pctChg;
+        const chg =
+          typeof pc === 'number' && Number.isFinite(pc)
+            ? `${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%`
+            : '—';
+        return [
+          String(it?.name ?? it?.tsCode ?? ''),
+          String(it?.signal ?? ''),
+          String(it?.positionRange ?? ''),
+          chg,
+          Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
+          Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
+          Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
+          String(it?.asOfDate ?? ''),
+        ];
+      });
       lines.push(`${heading}# Index traffic lights`);
       lines.push('');
       lines.push(mdTable(headers0, rows0));
@@ -1451,7 +1459,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                       {signal} • pos {String(it?.positionRange ?? '—')}
                                     </div>
                                     <div className="mt-1 text-[var(--k-muted)]">
-                                      close{' '}
+                                      chg{' '}
+                                      {Number.isFinite(it?.pctChg)
+                                        ? `${Number(it.pctChg) >= 0 ? '+' : ''}${Number(it.pctChg).toFixed(2)}%`
+                                        : '—'}{' '}
+                                      • close{' '}
                                       {Number.isFinite(it?.close)
                                         ? Number(it.close).toFixed(2)
                                         : '—'}{' '}

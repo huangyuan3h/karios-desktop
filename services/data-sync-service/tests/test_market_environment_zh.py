@@ -18,6 +18,7 @@ def test_format_market_environment_zh_full_shape() -> None:
                 "name": "上证指数",
                 "tsCode": "000001.SH",
                 "close": 3916.12,
+                "pctChg": 0.15,
                 "signal": "red",
                 "positionRange": "0%-10%",
             },
@@ -25,6 +26,7 @@ def test_format_market_environment_zh_full_shape() -> None:
                 "name": "创业板指",
                 "tsCode": "399006.SZ",
                 "close": 3309.59,
+                "pctChg": -0.32,
                 "signal": "yellow",
                 "positionRange": "30%",
             },
@@ -70,13 +72,11 @@ def test_format_market_environment_zh_full_shape() -> None:
     }
     out = format_market_environment_zh(snap)
     assert out.startswith("市场环境摘要：")
-    assert "上证指数收报3916.12" in out
-    assert "创业板指收报3309.59" in out
-    assert "纳指收报21929.83" in out
-    assert "涨0.77%" in out
+    assert "上证指数涨0.15%，收报3916.12" in out
+    assert "创业板指跌0.32%，收报3309.59" in out
+    assert "纳指涨0.77%，收报21929.83" in out
     assert "离岸人民币报6.92" in out
-    assert "富时A50收报14563.82" in out
-    assert "跌0.82%" in out
+    assert "富时A50跌0.82%，收报14563.82" in out
     assert "INE原油主力收报702.80" in out
     assert "沪金主力收报1009.38" in out
     assert "沪铜主力收报94740" in out

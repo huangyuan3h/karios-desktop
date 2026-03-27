@@ -607,6 +607,12 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         out += `- asOfDate: ${ref.asOfDate}\n`;
         out += `- capturedAt: ${ref.capturedAt}\n\n`;
 
+        const envZh = String(s['marketEnvironmentZh'] ?? '').trim();
+        if (envZh) {
+          out += `### 市场环境摘要\n\n`;
+          out += `${envZh}\n\n`;
+        }
+
         // Industry fund flow
         const ind = asRecord(s['industryFundFlow']) ?? {};
         const datesAll: string[] = asStringArray(ind['dates']);
@@ -671,11 +677,16 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
         const indexSignals: unknown[] = asArray(ms['indexSignals']);
         if (indexSignals.length) {
           out += `#### Index traffic lights\n\n`;
-          out += `| Index | Signal | Position | Close | MA5 | MA20 |\n`;
-          out += `|---|---|---|---:|---:|---:|\n`;
+          out += `| Index | Signal | Position | chg% | Close | MA5 | MA20 |\n`;
+          out += `|---|---|---|---:|---:|---:|---:|\n`;
           for (const it of indexSignals) {
             const sig = asRecord(it) ?? {};
-            out += `| ${getStr(sig, 'name') || getStr(sig, 'tsCode')} | ${getStr(sig, 'signal')} | ${getStr(sig, 'positionRange')} | ${getNumStr(sig, 'close')} | ${getNumStr(sig, 'ma5')} | ${getNumStr(sig, 'ma20')} |\n`;
+            const pc = sig['pctChg'];
+            const chg =
+              typeof pc === 'number' && Number.isFinite(pc)
+                ? `${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%`
+                : '—';
+            out += `| ${getStr(sig, 'name') || getStr(sig, 'tsCode')} | ${getStr(sig, 'signal')} | ${getStr(sig, 'positionRange')} | ${chg} | ${getNumStr(sig, 'close')} | ${getNumStr(sig, 'ma5')} | ${getNumStr(sig, 'ma20')} |\n`;
           }
           out += `\n`;
         }
