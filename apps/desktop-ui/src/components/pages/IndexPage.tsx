@@ -11,6 +11,8 @@ type CnIndexSignal = {
   signal?: string;
   positionRange?: string;
   close?: number | null;
+  /** vs prior trading day close (realtime uses quote pct_chg when available) */
+  pctChg?: number | null;
   ma5?: number | null;
   ma20?: number | null;
   realtime?: boolean;
@@ -193,6 +195,8 @@ function cnToCardProps(it: CnIndexSignal): IndexCardProps {
   const signal = String(it?.signal ?? 'unknown');
   const live = Boolean(it.realtime);
   const footnote = it.realtime && it.tradeTime ? `live ${it.tradeTime}` : '—';
+  const pc = it?.pctChg;
+  const pctChg = Number.isFinite(pc) ? Number(pc) : null;
 
   return {
     title: String(it?.name ?? it?.tsCode ?? ''),
@@ -200,7 +204,7 @@ function cnToCardProps(it: CnIndexSignal): IndexCardProps {
     metaLine: `${signal} • pos ${String(it?.positionRange ?? '—')}`,
     cnSignalClass: signalSurfaceClass(signal),
     close: Number.isFinite(it?.close) ? Number(it.close) : null,
-    pctChg: undefined,
+    pctChg,
     ma5: Number.isFinite(it?.ma5) ? Number(it.ma5) : null,
     ma20: Number.isFinite(it?.ma20) ? Number(it.ma20) : null,
     footnote,

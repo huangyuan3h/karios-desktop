@@ -92,6 +92,10 @@ def _macro_item_from_db(meta: dict[str, Any], closes: list[tuple[str, float]]) -
     pct = None
     if latest and latest.get("pct_chg") is not None:
         pct = _safe_float(latest.get("pct_chg"))
+    if pct is None and len(close_vals) >= 2:
+        prev_c, last_c = close_vals[-2], close_vals[-1]
+        if prev_c > 0:
+            pct = (last_c - prev_c) / prev_c * 100.0
     return {
         "seriesId": series_id,
         "name": meta["name"],
@@ -109,6 +113,31 @@ def _macro_item_from_db(meta: dict[str, Any], closes: list[tuple[str, float]]) -
         "quotePrice": None,
         "quotePctChg": None,
     }
+
+
+def _backfill_macro_pct_chg(m: dict[str, Any]) -> None:
+    """
+    Fill pctChg when still missing: vs prior session/DB bar for realtime, else prior day from history.
+    """
+    if _safe_float(m.get("pctChg")) is not None:
+        return
+    close = _safe_float(m.get("close"))
+    sid = str(m.get("seriesId") or "")
+    if close is None or not sid:
+        return
+    hist = fetch_last_closes(sid, days=20)
+    if len(hist) < 2:
+        return
+    last_c = float(hist[-1][1])
+    prev_c = float(hist[-2][1])
+    if not math.isfinite(last_c) or not math.isfinite(prev_c) or prev_c <= 0:
+        return
+    if m.get("realtime"):
+        if last_c > 0:
+            m["pctChg"] = (close - last_c) / last_c * 100.0
+        return
+    if last_c > 0:
+        m["pctChg"] = (last_c - prev_c) / prev_c * 100.0
 
 
 def build_macro_snapshot() -> dict[str, Any]:
@@ -193,6 +222,9 @@ def build_macro_snapshot() -> dict[str, Any]:
 
     # DB empty + realtime_quote often has no US/FX ticks: query Tushare daily on demand (no DB write).
     macro_items = enrich_macro_items_on_demand(macro_items)
+
+    for m in macro_items:
+        _backfill_macro_pct_chg(m)
 
     out: dict[str, Any] = {"cnIndexSignals": cn_index_signals, "macro": macro_items}
     warn = macro_snapshot_warning()

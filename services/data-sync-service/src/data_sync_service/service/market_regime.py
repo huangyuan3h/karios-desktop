@@ -194,6 +194,7 @@ def get_index_signals(
     use_as_of = str(as_of_date).strip() if as_of_date else None
     rt_price: dict[str, float] = {}
     rt_time: dict[str, str | None] = {}
+    rt_pct: dict[str, float | None] = {}
     if _is_shanghai_sync_window() and not use_as_of:
         res = fetch_realtime_quotes([x["ts_code"] for x in INDEX_SIGNALS])
         if isinstance(res, dict) and bool(res.get("ok")):
@@ -201,10 +202,11 @@ def get_index_signals(
                 ts_code = str(it.get("ts_code") or "").strip()
                 if not ts_code:
                     continue
-                price = _safe_float(it.get("price"))
+                pct_rt, price = _realtime_pct_or_price(it)
                 if price is None:
                     continue
                 rt_price[ts_code] = price
+                rt_pct[ts_code] = pct_rt
                 rt_time[ts_code] = it.get("trade_time")
 
     if include_breadth:
@@ -248,6 +250,14 @@ def get_index_signals(
                 used_realtime = True
 
         if len(series) < 23:
+            closes_short = [c for _, c in series]
+            pct_short = None
+            if used_realtime and ts_code in rt_pct and rt_pct[ts_code] is not None:
+                pct_short = rt_pct[ts_code]
+            elif len(closes_short) >= 2:
+                p0, p1 = closes_short[-2], closes_short[-1]
+                if p0 is not None and p0 > 0 and p1 is not None:
+                    pct_short = (p1 - p0) / p0 * 100.0
             out.append(
                 {
                     "tsCode": ts_code,
@@ -264,6 +274,7 @@ def get_index_signals(
                     "realtime": used_realtime,
                     "tradeTime": trade_time if used_realtime else None,
                     "source": "tushare.realtime_quote" if used_realtime else "db.index_daily",
+                    "pctChg": pct_short,
                 }
             )
             continue
@@ -339,6 +350,14 @@ def get_index_signals(
             else:
                 rules.append("range/sideways")
 
+        pct_chg: float | None = None
+        if used_realtime and rt_pct.get(ts_code) is not None:
+            pct_chg = rt_pct[ts_code]
+        if pct_chg is None and len(closes) >= 2:
+            prev_c, cur_c = closes[-2], closes[-1]
+            if prev_c is not None and prev_c > 0 and cur_c is not None:
+                pct_chg = (cur_c - prev_c) / prev_c * 100.0
+
         out.append(
             {
                 "tsCode": ts_code,
@@ -355,6 +374,7 @@ def get_index_signals(
                 "realtime": used_realtime,
                 "tradeTime": trade_time if used_realtime else None,
                 "source": "tushare.realtime_quote" if used_realtime else "db.index_daily",
+                "pctChg": pct_chg,
             }
         )
     return out

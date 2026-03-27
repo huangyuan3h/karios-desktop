@@ -75,6 +75,10 @@ def _df_to_metrics(df: pd.DataFrame | None) -> dict[str, Any]:
                     break
             except Exception:
                 pass
+    if pct is None and len(closes) >= 2:
+        prev_c, last_c = closes[-2], closes[-1]
+        if prev_c > 0:
+            pct = (last_c - prev_c) / prev_c * 100.0
     ma5 = sum(closes[-5:]) / 5.0 if len(closes) >= 5 else None
     ma20 = sum(closes[-20:]) / 20.0 if len(closes) >= 20 else None
     return {
