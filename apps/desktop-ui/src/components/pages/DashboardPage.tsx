@@ -788,6 +788,13 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     const indexSignals: any[] = Array.isArray(ms?.indexSignals) ? ms.indexSignals : [];
 
     const lines: string[] = [];
+    const envZh = String(summary2?.marketEnvironmentZh ?? '').trim();
+    if (envZh) {
+      lines.push(`${heading} 市场环境摘要`);
+      lines.push('');
+      lines.push(envZh);
+      lines.push('');
+    }
     lines.push(`${heading} Market sentiment`);
     if (asOfDate) lines.push(`- asOfDate: ${asOfDate}`);
     if (latest) {

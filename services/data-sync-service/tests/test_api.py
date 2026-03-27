@@ -135,7 +135,13 @@ def test_dashboard_summary_endpoint_shape() -> None:
     resp = client.get("/dashboard/summary")
     assert resp.status_code == 200
     payload = resp.json()
-    assert set(payload.keys()) >= {"asOfDate", "industryFundFlow", "marketSentiment", "screeners"}
+    assert set(payload.keys()) >= {
+        "asOfDate",
+        "industryFundFlow",
+        "marketSentiment",
+        "screeners",
+        "marketEnvironmentZh",
+    }
     assert isinstance(payload.get("screeners"), list)
     ind = payload.get("industryFundFlow") or {}
     assert isinstance(ind, dict)

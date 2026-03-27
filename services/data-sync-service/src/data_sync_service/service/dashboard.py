@@ -11,6 +11,8 @@ from data_sync_service.db.market_sentiment import list_days as list_sentiment_da
 from data_sync_service.db.tv import list_snapshots_for_screener_full
 from data_sync_service.db.news import fetch_items, ensure_tables as ensure_news_tables
 from data_sync_service.service.industry_fund_flow import get_cn_industry_fund_flow, sync_cn_industry_fund_flow
+from data_sync_service.service.macro_snapshot import build_macro_snapshot
+from data_sync_service.service.market_environment_zh import format_market_environment_zh
 from data_sync_service.service.market_regime import get_index_signals
 from data_sync_service.service.market_sentiment import sync_cn_sentiment
 from data_sync_service.service.tv import list_screeners, sync_screener
@@ -270,12 +272,20 @@ def dashboard_summary() -> dict[str, Any]:
 
     screeners = _screeners_status(limit=50)
     news = _news_items(hours=24, limit=50)
+
+    market_env_zh = ""
+    try:
+        market_env_zh = format_market_environment_zh(build_macro_snapshot())
+    except Exception:
+        market_env_zh = ""
+
     return {
         "asOfDate": as_of,
         "industryFundFlow": industry,
         "marketSentiment": market_sentiment,
         "screeners": screeners,
         "news": news,
+        "marketEnvironmentZh": market_env_zh,
     }
 
 
