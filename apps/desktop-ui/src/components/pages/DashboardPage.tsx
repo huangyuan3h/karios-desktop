@@ -539,10 +539,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     try {
       const raw = window.localStorage.getItem(NEWS_BRIEF_CACHE_KEY);
       const prev = raw ? (JSON.parse(raw) as NewsBriefCache) : {};
-      window.localStorage.setItem(
-        NEWS_BRIEF_CACHE_KEY,
-        JSON.stringify({ ...prev, ...patch }),
-      );
+      window.localStorage.setItem(NEWS_BRIEF_CACHE_KEY, JSON.stringify({ ...prev, ...patch }));
     } catch {
       // ignore
     }
@@ -667,8 +664,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
           if (aiRes.ok) {
             const aiData = await aiRes.json();
             console.log('[Dashboard] AI summary:', aiData);
-            const summaryText =
-              typeof aiData?.summary === 'string' ? aiData.summary.trim() : '';
+            const summaryText = typeof aiData?.summary === 'string' ? aiData.summary.trim() : '';
             if (summaryText) {
               const updatedAt = new Date().toISOString();
               setNewsSummary(summaryText);
@@ -847,6 +843,40 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       Number.isFinite(it?.failedLimitUpRate) ? `${Number(it.failedLimitUpRate).toFixed(1)}%` : '—',
       String(it?.riskMode ?? ''),
     ]);
+    lines.push(mdTable(headers, rows));
+    lines.push('');
+    return lines.join('\n').trim() + '\n';
+  }
+
+  function buildMacroMarkdown(s: DashboardSummary | null, heading = '##'): string {
+    const summary2: any = s ?? {};
+    const macroSnapshot: any = summary2?.macroSnapshot ?? {};
+    const macroItems: any[] = Array.isArray(macroSnapshot?.macro) ? macroSnapshot.macro : [];
+
+    if (!macroItems.length) return '';
+
+    const lines: string[] = [];
+    lines.push(`${heading} Macro indices`);
+    lines.push('');
+
+    const headers = ['Name', 'Close', 'Chg%', 'MA5', 'MA20', 'AsOfDate', 'Source'];
+    const rows: unknown[][] = macroItems.map((it: any) => {
+      const pct = it?.pctChg;
+      const chg =
+        typeof pct === 'number' && Number.isFinite(pct)
+          ? `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`
+          : '—';
+      return [
+        String(it?.name ?? it?.seriesId ?? ''),
+        Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
+        chg,
+        Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
+        Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
+        String(it?.asOfDate ?? ''),
+        String(it?.source ?? ''),
+      ];
+    });
+
     lines.push(mdTable(headers, rows));
     lines.push('');
     return lines.join('\n').trim() + '\n';
@@ -1120,6 +1150,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       lines.push(buildHotIndustriesMarkdown(s, '##').trim());
       lines.push('');
       lines.push(buildSentimentMarkdown(s, '##').trim());
+      lines.push('');
+      lines.push(buildMacroMarkdown(s, '##').trim());
       lines.push('');
       lines.push('## News brief');
       lines.push('');

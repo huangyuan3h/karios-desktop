@@ -11,7 +11,9 @@ from data_sync_service.service.macro_daily import (
     SID_COMM_COPPER,
     SID_COMM_ENERGY,
     SID_COMM_GOLD,
+    SID_DJI,
     SID_IXIC,
+    SID_SPX,
     SID_USDCNH,
 )
 from data_sync_service.service.macro_snapshot_on_demand import (
@@ -28,6 +30,20 @@ MACRO_CARDS: list[dict[str, Any]] = [
         "category": "us_tech",
         "why": "Overnight US tech drives CN tech sentiment; watch before the A-share open.",
         "realtimeTsCode": "IXIC",
+    },
+    {
+        "seriesId": SID_DJI,
+        "name": "Dow Jones Industrial",
+        "category": "us_equity",
+        "why": "Dow Jones reflects broad US market health; impacts global sentiment.",
+        "realtimeTsCode": "DJI",
+    },
+    {
+        "seriesId": SID_SPX,
+        "name": "S&P 500",
+        "category": "us_equity",
+        "why": "S&P 500 is the benchmark for US large-cap; key for global risk appetite.",
+        "realtimeTsCode": "SPX",
     },
     {
         "seriesId": SID_USDCNH,

@@ -18,6 +18,8 @@ FULL_START_DATE = "20230101"
 
 # Logical series ids (stable keys in macro_daily.series_id)
 SID_IXIC = "IXIC"
+SID_DJI = "DJI"
+SID_SPX = "SPX"
 SID_USDCNH = "USDCNH.FXCM"
 SID_A50 = "A50"
 SID_COMM_ENERGY = "COMM_ENERGY"
@@ -26,6 +28,8 @@ SID_COMM_COPPER = "COMM_COPPER"
 
 SERIES_ORDER: list[str] = [
     SID_IXIC,
+    SID_DJI,
+    SID_SPX,
     SID_USDCNH,
     SID_A50,
     SID_COMM_ENERGY,

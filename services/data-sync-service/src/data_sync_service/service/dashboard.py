@@ -250,8 +250,11 @@ def dashboard_summary() -> dict[str, Any]:
     Minimal Dashboard summary for UI:
       - asOfDate
       - industryFundFlow: {dates, topByDate, flow5d}
-      - marketSentiment: {asOfDate, days, items}
+      - marketSentiment: {asOfDate, days, items, indexSignals}
       - screeners: list
+      - news: list
+      - marketEnvironmentZh: text
+      - macroSnapshot: {cnIndexSignals, macro}
     """
     # Prefer sentiment latest date as asOfDate, otherwise today.
     as_of = get_latest_sentiment_date() or _today_iso_date()
@@ -273,9 +276,11 @@ def dashboard_summary() -> dict[str, Any]:
     screeners = _screeners_status(limit=50)
     news = _news_items(hours=24, limit=50)
 
+    macro_snapshot = None
     market_env_zh = ""
     try:
-        market_env_zh = format_market_environment_zh(build_macro_snapshot())
+        macro_snapshot = build_macro_snapshot()
+        market_env_zh = format_market_environment_zh(macro_snapshot)
     except Exception:
         market_env_zh = ""
 
@@ -286,6 +291,7 @@ def dashboard_summary() -> dict[str, Any]:
         "screeners": screeners,
         "news": news,
         "marketEnvironmentZh": market_env_zh,
+        "macroSnapshot": macro_snapshot,
     }
 
 
