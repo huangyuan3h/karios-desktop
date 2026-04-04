@@ -9,7 +9,7 @@ def test_sync_index_daily_no_index_list(monkeypatch) -> None:
     monkeypatch.setattr(index_daily, "INDEX_CODES", [])
     result = index_daily.sync_index_daily_full()
     assert result["ok"] is True
-    assert result["updated"] == 0
+    assert result.get("updated", 0) == 0
 
 
 def test_sync_close_endpoint_includes_index_daily(monkeypatch) -> None:

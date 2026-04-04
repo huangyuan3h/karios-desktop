@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">5.55% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>1/18</span>
+                <span class='fraction'>18/18</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/0</span>
+                <span class='fraction'>7/7</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/1</span>
+                <span class='fraction'>1/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">5.55% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>1/18</span>
+                <span class='fraction'>18/18</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -86,47 +86,47 @@
 <a name='L21'></a><a href='#L21'>21</a>
 <a name='L22'></a><a href='#L22'>22</a>
 <a name='L23'></a><a href='#L23'>23</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">export <span class="fstat-no" title="function not covered" >function tryParseJsonObject(text: string): unknown {</span>
-<span class="cstat-no" title="statement not covered" >  const t0 = text.trim();</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">export function tryParseJsonObject(text: string): unknown {
+  const t0 = text.trim();
   // Strip common markdown code fences if present.
-<span class="cstat-no" title="statement not covered" >  const t =</span>
-<span class="cstat-no" title="statement not covered" >    t0.startsWith('```') &amp;&amp; t0.endsWith('```')</span>
-<span class="cstat-no" title="statement not covered" >      ? t0.replace(/^```[a-zA-Z0-9_-]*\s*/m, '').replace(/```$/m, '').trim()</span>
-<span class="cstat-no" title="statement not covered" >      : t0;</span>
-<span class="cstat-no" title="statement not covered" >  try {</span>
-<span class="cstat-no" title="statement not covered" >    return JSON.parse(t);</span>
-<span class="cstat-no" title="statement not covered" >  } catch {</span>
+  const t =
+    t0.startsWith('```') &amp;&amp; t0.endsWith('```')
+      ? t0.replace(/^```[a-zA-Z0-9_-]*\s*/m, '').replace(/```$/m, '').trim()
+      : t0;
+  try {
+    return JSON.parse(t);
+  } catch {
     // Try to extract the first JSON object block.
-<span class="cstat-no" title="statement not covered" >    const start = t.indexOf('{');</span>
-<span class="cstat-no" title="statement not covered" >    const end = t.lastIndexOf('}');</span>
-<span class="cstat-no" title="statement not covered" >    if (start &gt;= 0 &amp;&amp; end &gt; start) {</span>
-<span class="cstat-no" title="statement not covered" >      const slice = t.slice(start, end + 1).trim();</span>
-<span class="cstat-no" title="statement not covered" >      return JSON.parse(slice);</span>
-<span class="cstat-no" title="statement not covered" >    }</span>
-<span class="cstat-no" title="statement not covered" >    throw new Error('Failed to parse JSON');</span>
-<span class="cstat-no" title="statement not covered" >  }</span>
-<span class="cstat-no" title="statement not covered" >}</span>
+    const start = t.indexOf('{');
+    const end = t.lastIndexOf('}');
+    if (start &gt;= 0 &amp;&amp; end &gt; start) {
+      const slice = t.slice(start, end + 1).trim();
+      return JSON.parse(slice);
+    }
+    throw new Error('Failed to parse JSON');
+  }
+}
 &nbsp;
 &nbsp;
 &nbsp;</pre></td></tr></table></pre>
@@ -136,7 +136,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-04T11:52:45.875Z
+                at 2026-04-04T12:10:20.185Z
             </div>
         <script src="prettify.js"></script>
         <script>

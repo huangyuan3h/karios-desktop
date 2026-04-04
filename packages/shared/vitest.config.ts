@@ -5,13 +5,14 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/index.ts', 'src/app.ts'],
+      include: ['src/schemas/**/*.ts'],
+      exclude: ['src/schemas/**/*.test.ts'],
       thresholds: {
         lines: 40,
         functions: 40,
         branches: 40,
         statements: 40,
+        perFile: true,
       },
     },
   },

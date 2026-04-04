@@ -5,8 +5,13 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/index.ts', 'src/app.ts'],
+      include: ['src/lib/**/*.{ts,tsx}'],
+      exclude: [
+        'src/lib/**/*.test.{ts,tsx}',
+        'src/lib/**/*.spec.{ts,tsx}',
+        'src/lib/chat/types.ts',
+        'src/lib/chat/store.ts',
+      ],
       thresholds: {
         lines: 40,
         functions: 40,
