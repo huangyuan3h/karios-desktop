@@ -14,6 +14,7 @@
     "install:all": "pnpm install && uv sync --project services/data-sync-service",
     "build": "turbo build",
     "test": "turbo test",
+    "coverage": "turbo coverage && cd services/data-sync-service && uv run pytest",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "format": "prettier -w ."
