@@ -1664,7 +1664,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   );
 
   return (
-    <div className="mx-auto w-full max-w-none p-6">
+    <div className="mx-auto p-6">
       <div className="mb-6 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-lg font-semibold">Watchlist</div>
@@ -1713,164 +1713,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               ) : null}
             </div>
           ) : null}
-
-          <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <div className="font-medium">Import debug table</div>
-                <Switch
-                  checked={importDebugOpen}
-                  onCheckedChange={setImportDebugOpen}
-                  aria-label="Toggle import debug table"
-                />
-              </div>
-              <div className="text-[var(--k-muted)]">
-                {importDebug.updatedAt
-                  ? new Date(importDebug.updatedAt).toLocaleString()
-                  : 'No import yet'}
-              </div>
-            </div>
-            <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[var(--k-muted)]">
-                Scanned {importDebug.scanned} • TrendOK ✅ {importDebug.trendOkCount} • Showing{' '}
-                {importDebugRows.length}
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  className="h-8 w-[220px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
-                  placeholder="Filter (symbol/name)"
-                  value={importDebugFilter}
-                  onChange={(e) => setImportDebugFilter(e.target.value)}
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setImportDebugFilter('')}
-                  disabled={!importDebugFilter.trim()}
-                >
-                  Clear
-                </Button>
-              </div>
-            </div>
-
-            <VisibilitySection
-              visible={importDebugOpen}
-              className="mt-2 max-h-[520px] overflow-auto rounded border border-[var(--k-border)]"
-            >
-              <table className="w-full border-collapse text-sm">
-                <thead className="sticky top-0 bg-[var(--k-surface)] text-[var(--k-muted)]">
-                  <tr className="text-left">
-                    <th className="px-3 py-2 w-[150px]">Symbol</th>
-                    <th className="px-3 py-2 w-[140px]">Name</th>
-                    <th className="px-3 py-2 w-[80px]">TrendOK</th>
-                    <th className="px-3 py-2 w-[90px]">
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 hover:text-[var(--k-text)]"
-                        onClick={() =>
-                          setImportDebugScoreSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
-                        }
-                        aria-label="Sort by score"
-                        title="Sort by score"
-                      >
-                        <span>Score</span>
-                        {importDebugScoreSortDir === 'desc' ? (
-                          <ArrowDown className="h-3.5 w-3.5" />
-                        ) : (
-                          <ArrowUp className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-3 py-2 w-[180px]">Buy</th>
-                    <th className="px-3 py-2 w-[110px]">StopLoss</th>
-                    <th className="px-3 py-2 w-[120px]">Action</th>
-                    <th className="px-3 py-2 min-w-[320px]">Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {importDebugRows.length ? (
-                    importDebugRows.map((r) => {
-                      const sym = String(r?.symbol || '');
-                      const ok = r?.trendOk ?? null;
-                      const icon = ok == null ? '—' : ok ? '✅' : '❌';
-                      const buy = fmtBuyCell(r);
-                      const notes =
-                        (typeof r?.buyWhy === 'string' && r.buyWhy) ||
-                        (Array.isArray(r?.missingData) && r.missingData.length
-                          ? r.missingData.join(', ')
-                          : '');
-                      const inWl = sym ? watchlistSet.has(sym) : false;
-                      return (
-                        <tr key={sym} className="border-t border-[var(--k-border)]">
-                          <td className="px-3 py-2 font-mono">
-                            <button
-                              type="button"
-                              className="hover:underline"
-                              onClick={() => {
-                                setCode(sym);
-                                setError(null);
-                              }}
-                              title="Fill the Add input with this symbol"
-                            >
-                              {sym || '—'}
-                            </button>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="truncate" title={String(r?.name || '')}>
-                              {r?.name || '—'}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 font-mono">{icon}</td>
-                          <td className="px-3 py-2 font-mono">{fmtScore(r?.score ?? null)}</td>
-                          <td
-                            className={
-                              buy.tone === 'buy'
-                                ? 'px-3 py-2 font-mono text-emerald-700'
-                                : buy.tone === 'avoid'
-                                  ? 'px-3 py-2 font-mono text-red-600'
-                                  : buy.tone === 'wait'
-                                    ? 'px-3 py-2 font-mono text-[var(--k-muted)]'
-                                    : 'px-3 py-2 font-mono'
-                            }
-                          >
-                            {buy.text}
-                          </td>
-                          <td className="px-3 py-2 font-mono">
-                            {fmtPrice(r?.stopLossPrice ?? null)}
-                          </td>
-                          <td className="px-3 py-2">
-                            {inWl ? (
-                              <span className="text-[var(--k-muted)]">In watchlist</span>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => sym && addSymbolToWatchlist(sym)}
-                                disabled={!sym}
-                              >
-                                Add
-                              </Button>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-[var(--k-muted)]">
-                            <div className="truncate" title={notes}>
-                              {notes || '—'}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td className="px-3 py-3 text-[var(--k-muted)]" colSpan={8}>
-                        No import results yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </VisibilitySection>
-          </div>
 
           {syncMsg ? <div className="mt-2 text-xs text-[var(--k-muted)]">{syncMsg}</div> : null}
           {copyMdStatus ? (
@@ -1926,6 +1768,162 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         </div>
       </div>
 
+      <div className="mb-4 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="font-medium">Import debug table</div>
+            <Switch
+              checked={importDebugOpen}
+              onCheckedChange={setImportDebugOpen}
+              aria-label="Toggle import debug table"
+            />
+          </div>
+          <div className="text-[var(--k-muted)]">
+            {importDebug.updatedAt
+              ? new Date(importDebug.updatedAt).toLocaleString()
+              : 'No import yet'}
+          </div>
+        </div>
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-[var(--k-muted)]">
+            Scanned {importDebug.scanned} • TrendOK ✅ {importDebug.trendOkCount} • Showing{' '}
+            {importDebugRows.length}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              className="h-8 w-[220px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
+              placeholder="Filter (symbol/name)"
+              value={importDebugFilter}
+              onChange={(e) => setImportDebugFilter(e.target.value)}
+            />
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setImportDebugFilter('')}
+              disabled={!importDebugFilter.trim()}
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
+
+        <VisibilitySection
+          visible={importDebugOpen}
+          className="mt-2 max-h-[520px] overflow-auto rounded border border-[var(--k-border)]"
+        >
+          <table className="w-full border-collapse text-sm">
+            <thead className="sticky top-0 bg-[var(--k-surface)] text-[var(--k-muted)]">
+              <tr className="text-left">
+                <th className="px-3 py-2 w-[150px]">Symbol</th>
+                <th className="px-3 py-2 w-[140px]">Name</th>
+                <th className="px-3 py-2 w-[80px]">TrendOK</th>
+                <th className="px-3 py-2 w-[90px]">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 hover:text-[var(--k-text)]"
+                    onClick={() =>
+                      setImportDebugScoreSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+                    }
+                    aria-label="Sort by score"
+                    title="Sort by score"
+                  >
+                    <span>Score</span>
+                    {importDebugScoreSortDir === 'desc' ? (
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </th>
+                <th className="px-3 py-2 w-[180px]">Buy</th>
+                <th className="px-3 py-2 w-[110px]">StopLoss</th>
+                <th className="px-3 py-2 w-[120px]">Action</th>
+                <th className="px-3 py-2 min-w-[320px]">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {importDebugRows.length ? (
+                importDebugRows.map((r) => {
+                  const sym = String(r?.symbol || '');
+                  const ok = r?.trendOk ?? null;
+                  const icon = ok == null ? '—' : ok ? '✅' : '❌';
+                  const buy = fmtBuyCell(r);
+                  const notes =
+                    (typeof r?.buyWhy === 'string' && r.buyWhy) ||
+                    (Array.isArray(r?.missingData) && r.missingData.length
+                      ? r.missingData.join(', ')
+                      : '');
+                  const inWl = sym ? watchlistSet.has(sym) : false;
+                  return (
+                    <tr key={sym} className="border-t border-[var(--k-border)]">
+                      <td className="px-3 py-2 font-mono">
+                        <button
+                          type="button"
+                          className="hover:underline"
+                          onClick={() => {
+                            setCode(sym);
+                            setError(null);
+                          }}
+                          title="Fill the Add input with this symbol"
+                        >
+                          {sym || '—'}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="truncate" title={String(r?.name || '')}>
+                          {r?.name || '—'}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 font-mono">{icon}</td>
+                      <td className="px-3 py-2 font-mono">{fmtScore(r?.score ?? null)}</td>
+                      <td
+                        className={
+                          buy.tone === 'buy'
+                            ? 'px-3 py-2 font-mono text-emerald-700'
+                            : buy.tone === 'avoid'
+                              ? 'px-3 py-2 font-mono text-red-600'
+                              : buy.tone === 'wait'
+                                ? 'px-3 py-2 font-mono text-[var(--k-muted)]'
+                                : 'px-3 py-2 font-mono'
+                        }
+                      >
+                        {buy.text}
+                      </td>
+                      <td className="px-3 py-2 font-mono">{fmtPrice(r?.stopLossPrice ?? null)}</td>
+                      <td className="px-3 py-2">
+                        {inWl ? (
+                          <span className="text-[var(--k-muted)]">In watchlist</span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => sym && addSymbolToWatchlist(sym)}
+                            disabled={!sym}
+                          >
+                            Add
+                          </Button>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-[var(--k-muted)]">
+                        <div className="truncate" title={notes}>
+                          {notes || '—'}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td className="px-3 py-3 text-[var(--k-muted)]" colSpan={8}>
+                    No import results yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </VisibilitySection>
+      </div>
+
       <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="mb-2 text-sm font-medium">Add</div>
         <div className="grid gap-2 md:grid-cols-12">
@@ -1960,25 +1958,25 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         </div>
       </section>
 
-      <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-        <div className="mb-2 flex items-center justify-between">
+      <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 overflow-x-auto">
+        <div className="mb-2 flex items-center justify-between min-w-[700px]">
           <div className="text-sm font-medium">List</div>
           <div className="text-xs text-[var(--k-muted)]">{items.length} items</div>
         </div>
 
         {items.length ? (
-          <div className="overflow-auto rounded border border-[var(--k-border)]">
-            <table className="w-full border-collapse text-sm">
+          <div className="rounded border border-[var(--k-border)]">
+            <table className="border-collapse text-sm min-w-[920px]">
               <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                 <tr className="text-left">
-                  <th className="px-3 py-2 w-[44px]" title="Color flag">
+                  <th className="px-3 py-2 w-[40px]" title="Color flag">
                     <span className="sr-only">Color</span>
                   </th>
-                  <th className="px-3 py-2">Symbol</th>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">成本价</th>
-                  <th className="px-3 py-2">最高价</th>
-                  <th className="px-3 py-2">
+                  <th className="px-3 py-2 w-[110px]">Symbol</th>
+                  <th className="px-3 py-2 w-[120px] max-w-[120px]">Name</th>
+                  <th className="px-3 py-2 w-[90px]">成本价</th>
+                  <th className="px-3 py-2 w-[90px]">最高价</th>
+                  <th className="px-3 py-2 w-[80px]">
                     <button
                       type="button"
                       className="inline-flex items-center gap-1"
@@ -2005,11 +2003,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       )}
                     </button>
                   </th>
-                  <th className="px-3 py-2">买入</th>
-                  <th className="px-3 py-2">仓位%</th>
-                  <th className="px-3 py-2">Current</th>
-                  <th className="px-3 py-2">止损</th>
-                  <th className="px-3 py-2">
+                  <th className="px-3 py-2 w-[130px] max-w-[130px]">买入</th>
+                  <th className="px-3 py-2 w-[70px]">仓位%</th>
+                  <th className="px-3 py-2 w-[90px]">Current</th>
+                  <th className="px-3 py-2 w-[90px]">止损</th>
+                  <th className="px-3 py-2 w-[80px]">
                     <div className="inline-flex items-center gap-2">
                       <span>TrendOK</span>
                       <Button
@@ -2070,7 +2068,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                             {it.symbol}
                           </button>
                         </td>
-                        <td className="px-3 py-2">{it.name || '—'}</td>
+                        <td className="px-3 py-2 max-w-[120px] truncate" title={it.name || ''}>
+                          {it.name || '—'}
+                        </td>
                         <td className="px-3 py-2">
                           <input
                             className="h-8 w-24 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
@@ -2112,7 +2112,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                             : '—'}
                         </td>
                         <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
-                        <td className="px-3 py-2">{renderBuyCell(it.symbol)}</td>
+                        <td className="px-3 py-2 max-w-[130px] truncate">
+                          {renderBuyCell(it.symbol)}
+                        </td>
                         <td className="px-3 py-2">
                           <input
                             className="h-8 w-20 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
