@@ -1454,16 +1454,16 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                 🔴 Red: Price &lt; MA20 或 MA5 &lt; MA20，仓位 0%-10%。
                               </div>
                               <div className="mt-1">
-                                🟡 Yellow: Price &gt; MA20 但 MA20 斜率向下 或 Vol &lt; MA5_Vol 或
-                                MA5 &lt; MA20，仓位 30%。
+                                🟡 Yellow: Price &gt; MA20 但 MA20 斜率向下 或 预估全天量 &lt;
+                                MA5_Vol * 0.8 或 MA5 &lt; MA20，仓位 30%。
                               </div>
                               <div className="mt-1">
-                                🟢 Green: Price &gt; MA20 且 MA5 &gt; MA20 且 MA20 向上，且实时量比
-                                &gt; 1.0，仓位 50%-60%。
+                                🟢 Green: Price &gt; MA20 且 MA5 &gt; MA20 且 MA20
+                                向上，且预估全天量 &gt; MA5_Vol * 0.8，仓位 50%-60%。
                               </div>
                               <div className="mt-1">
                                 ❇️ Deep Green: MA5 &gt; MA20 &gt; MA60 且 Price &gt; MA5，Breadth
-                                &gt; 60%，且 Vol &gt; MA5_Vol * 1.2，仓位 80%-100%。
+                                &gt; 60%，且预估全天量 &gt; MA5_Vol * 1.3，仓位 80%-100%。
                               </div>
                             </div>
                             <div className="grid gap-2 md:grid-cols-2">

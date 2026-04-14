@@ -85,6 +85,31 @@ def _is_shanghai_sync_window() -> bool:
     return _is_shanghai_sync_window_at(datetime.now(tz=ZoneInfo("Asia/Shanghai")))
 
 
+def _get_trade_minutes(now: datetime) -> int:
+    """
+    Get elapsed trading minutes in Shanghai timezone.
+    Morning: 9:30-11:30 (120 min), Afternoon: 13:00-15:00 (120 min).
+    Total: 240 minutes.
+    """
+    minutes = now.hour * 60 + now.minute
+    if minutes <= 9 * 60 + 30:
+        return 0
+    if minutes <= 11 * 60 + 30:
+        return minutes - (9 * 60 + 30)
+    if minutes < 13 * 60:
+        return 120
+    if minutes <= 15 * 60:
+        return 120 + (minutes - 13 * 60)
+    return 240
+
+
+def _estimate_full_day_volume(current_vol: float, trade_minutes: int) -> float | None:
+    """Estimate full-day volume from current partial volume."""
+    if trade_minutes <= 0:
+        return None
+    return current_vol * 240.0 / trade_minutes
+
+
 def _trade_date_from_trade_time(trade_time: str | None) -> str | None:
     if not trade_time:
         return None
@@ -195,6 +220,7 @@ def get_index_signals(
     rt_price: dict[str, float] = {}
     rt_time: dict[str, str | None] = {}
     rt_pct: dict[str, float | None] = {}
+    rt_vol: dict[str, float] = {}
     if _is_shanghai_sync_window() and not use_as_of:
         res = fetch_realtime_quotes([x["ts_code"] for x in INDEX_SIGNALS])
         if isinstance(res, dict) and bool(res.get("ok")):
@@ -208,6 +234,12 @@ def get_index_signals(
                 rt_price[ts_code] = price
                 rt_pct[ts_code] = pct_rt
                 rt_time[ts_code] = it.get("trade_time")
+                vol_str = it.get("volume")
+                if vol_str:
+                    try:
+                        rt_vol[ts_code] = float(vol_str)
+                    except (ValueError, TypeError):
+                        pass
 
     if include_breadth:
         breadth = _get_breadth_above_ma20_ratio(as_of_date=use_as_of)
@@ -299,14 +331,27 @@ def get_index_signals(
         vol_ratio = None
         vol_above_ma5 = False
         vol_above_ma5_strong = False
+        estimated_vol: float | None = None
         if len(series_vol) >= 20:
             avg_vol_5 = sum(series_vol[-5:]) / 5.0
             avg_vol_20 = sum(series_vol[-20:]) / 20.0
             current_vol = series_vol[-1] if series_vol else 0.0
-            if avg_vol_5 > 0:
-                vol_ratio = current_vol / avg_vol_5
-            vol_above_ma5 = current_vol > avg_vol_5
-            vol_above_ma5_strong = current_vol > avg_vol_5 * 1.2
+            if used_realtime and ts_code in rt_vol and rt_vol[ts_code] > 0:
+                now_sh = datetime.now(tz=ZoneInfo("Asia/Shanghai"))
+                trade_minutes = _get_trade_minutes(now_sh)
+                estimated_vol = _estimate_full_day_volume(rt_vol[ts_code], trade_minutes)
+                if estimated_vol is not None and avg_vol_5 > 0:
+                    vol_ratio = estimated_vol / avg_vol_5
+                    vol_above_ma5 = estimated_vol > avg_vol_5 * 0.8
+                    vol_above_ma5_strong = estimated_vol > avg_vol_5 * 1.3
+                else:
+                    vol_above_ma5 = False
+                    vol_above_ma5_strong = False
+            else:
+                if avg_vol_5 > 0:
+                    vol_ratio = current_vol / avg_vol_5
+                vol_above_ma5 = current_vol > avg_vol_5
+                vol_above_ma5_strong = current_vol > avg_vol_5 * 1.2
 
         signal = "yellow"
         position = "30%"
@@ -330,18 +375,18 @@ def get_index_signals(
                 if not ma20_slope_up:
                     rules.append("MA20 slope down")
                 if not vol_above_ma5:
-                    rules.append("Vol<MA5Vol")
+                    rules.append("Vol<MA5Vol*0.8(est)")
                 if not ma5_above_ma20:
                     rules.append("MA5<MA20")
             else:
                 signal = "green"
                 position = "50%-60%"
-                rules.append("price>MA20 && MA5>MA20 && MA20 up && volRatio>1.0")
+                rules.append("price>MA20 && MA5>MA20 && MA20 up && volRatio>0.8(est)")
 
             if ma_full_bull and ma60 is not None and close > ma5 and vol_above_ma5_strong and breadth_ok_deep:
                 signal = "deep_green"
                 position = "80%-100%"
-                rules.append("MA5>MA20>MA60 && price>MA5 && breadth>60% && vol>MA5Vol*1.2")
+                rules.append("MA5>MA20>MA60 && price>MA5 && breadth>60% && vol>MA5Vol*1.3(est)")
         else:
             if close < ma5 and close >= ma20:
                 rules.append("close<MA5 but hold MA20")
@@ -375,6 +420,8 @@ def get_index_signals(
                 "tradeTime": trade_time if used_realtime else None,
                 "source": "tushare.realtime_quote" if used_realtime else "db.index_daily",
                 "pctChg": pct_chg,
+                "volRatio": vol_ratio,
+                "estimatedVol": estimated_vol,
             }
         )
     return out
