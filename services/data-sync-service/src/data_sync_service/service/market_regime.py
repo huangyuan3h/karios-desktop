@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.db.index_daily import fetch_last_closes_vol, fetch_last_closes_vol_upto
+from data_sync_service.db.macro_daily import fetch_last_closes as fetch_macro_last_closes
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_basic import fetch_ts_codes
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
@@ -15,6 +16,11 @@ from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 INDEX_SIGNALS = [
     {"ts_code": "000001.SH", "name": "上证指数"},
     {"ts_code": "399006.SZ", "name": "创业板指"},
+]
+
+HK_INDEX_SIGNALS = [
+    {"series_id": "HSI", "name": "恒生指数"},
+    {"series_id": "HSTECH", "name": "恒生科技"},
 ]
 
 HISTORY_DAYS = 80
@@ -222,7 +228,7 @@ def get_index_signals(
     rt_pct: dict[str, float | None] = {}
     rt_vol: dict[str, float] = {}
     if _is_shanghai_sync_window() and not use_as_of:
-        res = fetch_realtime_quotes([x["ts_code"] for x in INDEX_SIGNALS])
+        res = fetch_realtime_quotes([x["ts_code"] for x in INDEX_SIGNALS] + [x["series_id"] for x in HK_INDEX_SIGNALS])
         if isinstance(res, dict) and bool(res.get("ok")):
             for it in res.get("items", []) or []:
                 ts_code = str(it.get("ts_code") or "").strip()
@@ -422,6 +428,170 @@ def get_index_signals(
                 "pctChg": pct_chg,
                 "volRatio": vol_ratio,
                 "estimatedVol": estimated_vol,
+            }
+        )
+
+    for it in HK_INDEX_SIGNALS:
+        series_id = it["series_id"]
+        name = it["name"]
+        series_raw = fetch_macro_last_closes(series_id, days=HISTORY_DAYS)
+        if not series_raw:
+            out.append(
+                {
+                    "tsCode": series_id,
+                    "name": name,
+                    "asOfDate": None,
+                    "close": None,
+                    "ma5": None,
+                    "ma20": None,
+                    "ma60": None,
+                    "ma20Prev": None,
+                    "signal": "unknown",
+                    "positionRange": "—",
+                    "rules": ["no data in macro_daily"],
+                    "realtime": False,
+                    "tradeTime": None,
+                    "source": "db.macro_daily",
+                    "pctChg": None,
+                    "volRatio": None,
+                    "estimatedVol": None,
+                }
+            )
+            continue
+
+        used_realtime = False
+        trade_time = rt_time.get(series_id)
+        rt_close = rt_price.get(series_id)
+        series = series_raw
+        if rt_close is not None:
+            rt_date = _trade_date_from_trade_time(trade_time) or _today_iso_date()
+            if series:
+                last_date = series[-1][0]
+                if last_date == rt_date:
+                    series = [*series[:-1], (rt_date, rt_close)]
+                    used_realtime = True
+                elif last_date < rt_date:
+                    series = [*series, (rt_date, rt_close)]
+                    used_realtime = True
+            else:
+                series = [(rt_date, rt_close)]
+                used_realtime = True
+
+        if len(series) < 23:
+            closes_short = [c for _, c in series]
+            pct_short = None
+            if used_realtime and series_id in rt_pct and rt_pct[series_id] is not None:
+                pct_short = rt_pct[series_id]
+            elif len(closes_short) >= 2:
+                p0, p1 = closes_short[-2], closes_short[-1]
+                if p0 is not None and p0 > 0 and p1 is not None:
+                    pct_short = (p1 - p0) / p0 * 100.0
+            out.append(
+                {
+                    "tsCode": series_id,
+                    "name": name,
+                    "asOfDate": series[-1][0] if series else None,
+                    "close": series[-1][1] if series else None,
+                    "ma5": None,
+                    "ma20": None,
+                    "ma60": None,
+                    "ma20Prev": None,
+                    "signal": "unknown",
+                    "positionRange": "—",
+                    "rules": ["insufficient data for MA20"],
+                    "realtime": used_realtime,
+                    "tradeTime": trade_time if used_realtime else None,
+                    "source": "tushare.realtime_quote" if used_realtime else "db.macro_daily",
+                    "pctChg": pct_short,
+                    "volRatio": None,
+                    "estimatedVol": None,
+                }
+            )
+            continue
+
+        closes = [c for _, c in series]
+        ma5 = sum(closes[-5:]) / 5.0
+        ma20 = sum(closes[-20:]) / 20.0
+        ma20_prev = sum(closes[-21:-1]) / 20.0
+        ma60 = sum(closes[-60:]) / 60.0 if len(closes) >= 60 else None
+        close = closes[-1]
+
+        macd_hist = _macd_histogram(closes)
+        macd_hist_turning_up = False
+        if len(macd_hist) >= 2:
+            macd_hist_turning_up = macd_hist[-1] > macd_hist[-2]
+
+        ma20_slope_up = ma20 > ma20_prev
+        ma5_above_ma20 = ma5 > ma20
+        ma20_above_ma60 = ma60 is not None and ma20 > ma60
+
+        signal = "yellow"
+        position = "30%"
+        rules: list[str] = []
+
+        if close < ma20 or not ma5_above_ma20:
+            signal = "red"
+            position = "0%-10%"
+            if close < ma20:
+                rules.append("price<MA20")
+            if not ma5_above_ma20:
+                rules.append("MA5<MA20")
+            if close > ma20 and macd_hist_turning_up:
+                signal = "yellow"
+                position = "30%"
+                rules.append("MACD hist turning up override")
+        elif close > ma20:
+            if not ma20_slope_up or not ma5_above_ma20:
+                signal = "yellow"
+                position = "30%"
+                if not ma20_slope_up:
+                    rules.append("MA20 slope down")
+                if not ma5_above_ma20:
+                    rules.append("MA5<MA20")
+            else:
+                signal = "green"
+                position = "50%-60%"
+                rules.append("price>MA20 && MA5>MA20 && MA20 up")
+
+            if ma20_above_ma60 and ma60 is not None and close > ma5:
+                signal = "green"
+                position = "60%-80%"
+                rules.append("MA5>MA20>MA60 && price>MA5")
+        else:
+            if close < ma5 and close >= ma20:
+                rules.append("close<MA5 but hold MA20")
+            elif abs(close - ma20) / ma20 <= 0.01:
+                rules.append("close near MA20")
+            else:
+                rules.append("range/sideways")
+
+        pct_chg: float | None = None
+        if used_realtime and rt_pct.get(series_id) is not None:
+            pct_chg = rt_pct[series_id]
+        if pct_chg is None and len(closes) >= 2:
+            prev_c, cur_c = closes[-2], closes[-1]
+            if prev_c is not None and prev_c > 0 and cur_c is not None:
+                pct_chg = (cur_c - prev_c) / prev_c * 100.0
+
+        out.append(
+            {
+                "tsCode": series_id,
+                "name": name,
+                "asOfDate": series[-1][0],
+                "close": close,
+                "ma5": ma5,
+                "ma20": ma20,
+                "ma60": ma60,
+                "ma20Prev": ma20_prev,
+                "signal": signal,
+                "positionRange": position,
+                "rules": rules,
+                "realtime": used_realtime,
+                "tradeTime": trade_time if used_realtime else None,
+                "source": "tushare.realtime_quote" if used_realtime else "db.macro_daily",
+                "pctChg": pct_chg,
+                "volRatio": None,
+                "estimatedVol": None,
             }
         )
     return out

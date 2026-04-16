@@ -25,6 +25,8 @@ SID_A50 = "A50"
 SID_COMM_ENERGY = "COMM_ENERGY"
 SID_COMM_GOLD = "COMM_GOLD"
 SID_COMM_COPPER = "COMM_COPPER"
+SID_HSI = "HSI"
+SID_HSTECH = "HSTECH"
 
 SERIES_ORDER: list[str] = [
     SID_IXIC,
@@ -35,6 +37,8 @@ SERIES_ORDER: list[str] = [
     SID_COMM_ENERGY,
     SID_COMM_GOLD,
     SID_COMM_COPPER,
+    SID_HSI,
+    SID_HSTECH,
 ]
 
 
@@ -305,6 +309,28 @@ def sync_macro_daily_full() -> dict[str, Any]:
             return 0
         return upsert_from_dataframe(df, series_id=series_id, source=source_label, underlying_ts_code=und)
 
+    def sync_hsi() -> int:
+        last = get_last_trade_date(SID_HSI)
+        start = FULL_START_DATE if last is None else _date_to_yyyymmdd(last + timedelta(days=1))
+        end = _today_yyyymmdd()
+        if start > end:
+            return 0
+        df = _paged_index_global(pro, "HSI", start, end)
+        if df is None or df.empty:
+            return 0
+        return upsert_from_dataframe(df, series_id=SID_HSI, source="index_global", underlying_ts_code="HSI")
+
+    def sync_hstech() -> int:
+        last = get_last_trade_date(SID_HSTECH)
+        start = FULL_START_DATE if last is None else _date_to_yyyymmdd(last + timedelta(days=1))
+        end = _today_yyyymmdd()
+        if start > end:
+            return 0
+        df = _paged_index_global(pro, "HSTECH", start, end)
+        if df is None or df.empty:
+            return 0
+        return upsert_from_dataframe(df, series_id=SID_HSTECH, source="index_global", underlying_ts_code="HSTECH")
+
     sync_funcs: dict[str, Callable[[], int]] = {
         SID_IXIC: sync_ixic,
         SID_USDCNH: sync_fx_usdcnh,
@@ -312,6 +338,8 @@ def sync_macro_daily_full() -> dict[str, Any]:
         SID_COMM_ENERGY: lambda: sync_comm("INE", "SC", "fut_daily"),
         SID_COMM_GOLD: lambda: sync_comm("SHFE", "AU", "fut_daily"),
         SID_COMM_COPPER: lambda: sync_comm("SHFE", "CU", "fut_daily"),
+        SID_HSI: sync_hsi,
+        SID_HSTECH: sync_hstech,
     }
 
     for i in range(start_index, len(SERIES_ORDER)):
