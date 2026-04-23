@@ -73,13 +73,16 @@ def _is_shanghai_trading_time_at(now: datetime) -> bool:
 
 def _is_shanghai_sync_window_at(now: datetime) -> bool:
     """
-    Sync window includes trading time and lunch break.
+    Sync window: trading hours + lunch break + after-hours until 20:00.
+    Realtime quotes remain available after market close.
     """
     if now.weekday() >= 5:
         return False
     minutes = now.hour * 60 + now.minute
+    in_trading = _is_shanghai_trading_time_at(now)
     in_lunch = minutes > 11 * 60 + 30 and minutes < 13 * 60
-    return _is_shanghai_trading_time_at(now) or in_lunch
+    in_after_hours = minutes > 15 * 60 and minutes <= 20 * 60
+    return in_trading or in_lunch or in_after_hours
 
 
 def _is_shanghai_trading_time() -> bool:

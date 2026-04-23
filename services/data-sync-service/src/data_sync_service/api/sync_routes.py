@@ -86,8 +86,15 @@ def sync_index_daily_endpoint() -> dict:
 
 
 @router.post("/sync/macro-daily")
-def sync_macro_daily_endpoint() -> dict:
+def sync_macro_daily_endpoint(force: bool = Query(False, description="Force sync even if already synced today")) -> dict:
     """Trigger full sync of macro/global daily series. Skips if today already succeeded; resumes from failure."""
+    from data_sync_service.db.sync_job_record import ensure_table, get_connection
+    if force:
+        ensure_table()
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM sync_job_record WHERE job_type = 'macro_daily_full'")
+            conn.commit()
     return sync_macro_daily_full()
 
 

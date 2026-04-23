@@ -17,7 +17,9 @@ from data_sync_service.service.trendok import compute_trendok_for_symbols
 from data_sync_service.service.watchlist_v5_alerts import compute_watchlist_v5_alerts, compute_watchlist_v5_plan
 from data_sync_service.service.watchlist_momentum_alerts import compute_watchlist_momentum_alerts
 from data_sync_service.db.index_daily import fetch_index_daily
+from data_sync_service.db.macro_daily import fetch_macro_daily
 from data_sync_service.service.macro_snapshot import build_macro_snapshot
+from data_sync_service.service.market_regime import get_index_signals
 from data_sync_service.testback.engine import BacktestParams as EngineParams, DailyRuleFilter as EngineRules, UniverseFilter as EngineUniverse, run_backtest
 from data_sync_service.testback.strategies.base import ScoreConfig as EngineScore
 from data_sync_service.testback.strategies import get_strategy_class
@@ -137,6 +139,30 @@ def get_index_daily_endpoint(
 def get_macro_snapshot_endpoint() -> dict:
     """Index page: CN index traffic lights + macro series (EOD + best-effort realtime)."""
     return build_macro_snapshot()
+
+
+@router.get("/macro/history")
+def get_macro_history_endpoint(
+    series_id: str = Query(..., description="Macro series ID"),
+    start_date: str | None = Query(None, description="Start date YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="End date YYYY-MM-DD"),
+    limit: int = Query(500, ge=1, le=5000),
+) -> dict:
+    """Return macro daily history for a specific series (OHLCV)."""
+    rows = fetch_macro_daily(series_id=series_id, start_date=start_date, end_date=end_date, limit=limit)
+    return {"seriesId": series_id, "data": rows}
+
+
+@router.get("/index/signals/history")
+def get_index_signals_history_endpoint(
+    ts_code: str = Query(..., description="Index ts_code, e.g. 000001.SH"),
+    start_date: str | None = Query(None, description="Start date YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="End date YYYY-MM-DD"),
+    limit: int = Query(500, ge=1, le=5000),
+) -> dict:
+    """Return index daily history for a specific ts_code (OHLCV)."""
+    rows = fetch_index_daily(ts_code=ts_code, start_date=start_date, end_date=end_date, limit=limit)
+    return {"tsCode": ts_code, "data": rows}
 
 
 @router.get("/daily/status")

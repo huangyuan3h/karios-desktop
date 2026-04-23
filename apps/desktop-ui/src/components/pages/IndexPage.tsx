@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { cn } from '@/lib/utils';
+import { IndexDetailPage } from '@/components/pages/IndexDetailPage';
 
 type CnIndexSignal = {
   tsCode?: string;
@@ -86,18 +87,16 @@ function fmtPrice(n: unknown): string {
 type IndexCardProps = {
   title: string;
   mode: 'live' | 'eod';
-  /** CN: signal • pos */
   metaLine?: string;
-  /** Macro: short description */
   description?: string;
   spotHint?: boolean;
-  /** Colored border for CN traffic light */
   cnSignalClass?: string;
   close: number | null;
   pctChg?: number | null;
   ma5: number | null;
   ma20: number | null;
   footnote: React.ReactNode;
+  onClick?: () => void;
 };
 
 function IndexCard({
@@ -112,14 +111,20 @@ function IndexCard({
   ma5,
   ma20,
   footnote,
+  onClick,
 }: IndexCardProps) {
   const hasPct = pctChg != null && Number.isFinite(pctChg);
   return (
     <article
       className={cn(
         'flex flex-col rounded-2xl border p-4 shadow-sm',
+        onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : '',
         cnSignalClass ?? 'border-[var(--k-border)] bg-[var(--k-surface)]',
       )}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}
     >
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-base font-semibold leading-tight tracking-tight text-[var(--k-fg)]">{title}</h3>
@@ -215,6 +220,7 @@ export function IndexPage() {
   const [data, setData] = React.useState<MacroSnapshot | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(true);
+  const [detail, setDetail] = React.useState<{ type: 'cn' | 'macro'; code: string; name: string } | null>(null);
 
   const load = React.useCallback(async () => {
     try {
@@ -236,6 +242,17 @@ export function IndexPage() {
 
   const cn = Array.isArray(data?.cnIndexSignals) ? data!.cnIndexSignals! : [];
   const macro = Array.isArray(data?.macro) ? data!.macro! : [];
+
+  if (detail) {
+    return (
+      <IndexDetailPage
+        type={detail.type}
+        code={detail.code}
+        name={detail.name}
+        onBack={() => setDetail(null)}
+      />
+    );
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4">
@@ -268,11 +285,27 @@ export function IndexPage() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {cn.map((it) => (
-          <IndexCard key={String(it?.tsCode ?? it?.name)} {...cnToCardProps(it)} />
-        ))}
+        {cn.map((it) => {
+          const tsCode = String(it?.tsCode ?? '');
+          const isMacroIndex = tsCode === 'HSI';
+          return (
+            <IndexCard
+              key={String(it?.tsCode ?? it?.name)}
+              {...cnToCardProps(it)}
+              onClick={() => setDetail({
+                type: isMacroIndex ? 'macro' : 'cn',
+                code: tsCode,
+                name: String(it?.name ?? ''),
+              })}
+            />
+          );
+        })}
         {macro.map((m) => (
-          <IndexCard key={m.seriesId ?? m.name} {...macroToCardProps(m)} />
+          <IndexCard
+            key={m.seriesId ?? m.name}
+            {...macroToCardProps(m)}
+            onClick={() => setDetail({ type: 'macro', code: String(m?.seriesId ?? ''), name: String(m?.name ?? '') })}
+          />
         ))}
       </div>
 

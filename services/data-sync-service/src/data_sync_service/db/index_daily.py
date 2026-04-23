@@ -146,7 +146,7 @@ def fetch_index_daily(
                 SELECT ts_code, trade_date, open, high, low, close, pre_close, change, pct_chg, vol, amount
                 FROM {TABLE_NAME}
                 {where_sql}
-                ORDER BY ts_code, trade_date
+                ORDER BY ts_code, trade_date DESC
                 LIMIT %s
                 """,
                 params,
@@ -154,7 +154,7 @@ def fetch_index_daily(
             rows = cur.fetchall()
             columns = [d.name for d in cur.description]
     out: list[dict[str, Any]] = []
-    for row in rows:
+    for row in reversed(rows):
         obj: dict[str, Any] = {}
         for col, val in zip(columns, row):
             if val is None:

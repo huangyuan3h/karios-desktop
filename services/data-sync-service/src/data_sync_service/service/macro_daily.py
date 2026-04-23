@@ -255,6 +255,28 @@ def sync_macro_daily_full() -> dict[str, Any]:
             return 0
         return upsert_from_dataframe(df, series_id=SID_IXIC, source="index_global", underlying_ts_code="IXIC")
 
+    def sync_dji() -> int:
+        last = get_last_trade_date(SID_DJI)
+        start = FULL_START_DATE if last is None else _date_to_yyyymmdd(last + timedelta(days=1))
+        end = _today_yyyymmdd()
+        if start > end:
+            return 0
+        df = _paged_index_global(pro, "DJI", start, end)
+        if df is None or df.empty:
+            return 0
+        return upsert_from_dataframe(df, series_id=SID_DJI, source="index_global", underlying_ts_code="DJI")
+
+    def sync_spx() -> int:
+        last = get_last_trade_date(SID_SPX)
+        start = FULL_START_DATE if last is None else _date_to_yyyymmdd(last + timedelta(days=1))
+        end = _today_yyyymmdd()
+        if start > end:
+            return 0
+        df = _paged_index_global(pro, "SPX", start, end)
+        if df is None or df.empty:
+            return 0
+        return upsert_from_dataframe(df, series_id=SID_SPX, source="index_global", underlying_ts_code="SPX")
+
     def sync_fx_usdcnh() -> int:
         last = get_last_trade_date(SID_USDCNH)
         start = FULL_START_DATE if last is None else _date_to_yyyymmdd(last + timedelta(days=1))
@@ -320,6 +342,8 @@ def sync_macro_daily_full() -> dict[str, Any]:
 
     sync_funcs: dict[str, Callable[[], int]] = {
         SID_IXIC: sync_ixic,
+        SID_DJI: sync_dji,
+        SID_SPX: sync_spx,
         SID_USDCNH: sync_fx_usdcnh,
         SID_A50: sync_a50,
         SID_COMM_ENERGY: lambda: sync_comm("INE", "SC", "fut_daily"),

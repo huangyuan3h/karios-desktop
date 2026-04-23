@@ -179,7 +179,7 @@ def fetch_macro_daily(
                        open, high, low, close, pre_close, change, pct_chg, vol, amount
                 FROM {TABLE_NAME}
                 {where_sql}
-                ORDER BY series_id, trade_date
+                ORDER BY series_id, trade_date DESC
                 LIMIT %s
                 """,
                 params,
@@ -187,7 +187,7 @@ def fetch_macro_daily(
             raw = cur.fetchall()
             columns = [d.name for d in cur.description]
     out: list[dict[str, Any]] = []
-    for row in raw:
+    for row in reversed(raw):
         obj: dict[str, Any] = {}
         for col, val in zip(columns, row, strict=True):
             if val is None:
