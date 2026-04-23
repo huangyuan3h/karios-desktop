@@ -20,7 +20,6 @@ INDEX_SIGNALS = [
 
 HK_INDEX_SIGNALS = [
     {"series_id": "HSI", "name": "恒生指数"},
-    {"series_id": "HSTECH", "name": "恒生科技"},
 ]
 
 HISTORY_DAYS = 80
@@ -228,9 +227,11 @@ def get_index_signals(
     rt_pct: dict[str, float | None] = {}
     rt_vol: dict[str, float] = {}
     if _is_shanghai_sync_window() and not use_as_of:
-        res = fetch_realtime_quotes([x["ts_code"] for x in INDEX_SIGNALS] + [x["series_id"] for x in HK_INDEX_SIGNALS])
-        if isinstance(res, dict) and bool(res.get("ok")):
-            for it in res.get("items", []) or []:
+        cn_codes = [x["ts_code"] for x in INDEX_SIGNALS]
+        hk_codes = [x["series_id"] for x in HK_INDEX_SIGNALS]
+        cn_res = fetch_realtime_quotes(cn_codes)
+        if isinstance(cn_res, dict) and bool(cn_res.get("ok")):
+            for it in cn_res.get("items", []) or []:
                 ts_code = str(it.get("ts_code") or "").strip()
                 if not ts_code:
                     continue

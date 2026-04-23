@@ -703,6 +703,42 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     }
   }
 
+  async function regenerateNewsSummary() {
+    setNewsSummaryBusy(true);
+    setError(null);
+    try {
+      const s = await apiGetJson<DashboardSummary>(`/dashboard/summary`);
+      setSummary(s);
+      const newsData = (s as any)?.news;
+      if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
+        const aiRes = await fetch(`${AI_BASE_URL}/news/summary`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: newsData.items, hours: 24 }),
+        });
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          const summaryText = typeof aiData?.summary === 'string' ? aiData.summary.trim() : '';
+          if (summaryText) {
+            const updatedAt = new Date().toISOString();
+            setNewsSummary(summaryText);
+            setNewsSummaryUpdatedAt(updatedAt);
+            saveNewsBriefCache({ summary: summaryText, updatedAt });
+          }
+        } else {
+          const errText = await aiRes.text();
+          setError(`AI error: ${errText}`);
+        }
+      } else {
+        setError('No news items available');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setNewsSummaryBusy(false);
+    }
+  }
+
   function buildIndustryMarkdown(s: DashboardSummary | null, heading = '##'): string {
     const summary2: any = s ?? {};
     const ind: any = summary2?.industryFundFlow ?? {};
@@ -2009,8 +2045,15 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                 </div>
               ) : id === 'news' ? (
                 <div>
-                  <div className="mb-2 text-xs text-[var(--k-muted)]">
-                    24-hour news summary (AI-generated, finance/stock focused)
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="text-xs text-[var(--k-muted)]">
+                      24-hour news summary (AI-generated, finance/stock focused)
+                    </div>
+                    {newsSummaryUpdatedAt ? (
+                      <div className="text-xs text-[var(--k-muted)]">
+                        Generated: {fmtDateTime(newsSummaryUpdatedAt)}
+                      </div>
+                    ) : null}
                   </div>
                   {newsSummaryBusy ? (
                     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
@@ -2029,6 +2072,19 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   <div className="mt-3 flex items-center gap-2">
                     <Button size="sm" variant="secondary" onClick={() => onNavigate?.('news')}>
                       Open News
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={newsSummaryBusy}
+                      onClick={() => void regenerateNewsSummary()}
+                    >
+                      {newsSummaryBusy ? (
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      Regenerate
                     </Button>
                   </div>
                 </div>
