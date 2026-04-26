@@ -7,6 +7,7 @@ from data_sync_service.service.close_sync import sync_close
 from data_sync_service.service.daily import sync_daily_full
 from data_sync_service.service.hk_basic import sync_hk_basic
 from data_sync_service.service.hk_daily import sync_hk_daily_full
+from data_sync_service.service.index_basic import sync_index_basic_full
 from data_sync_service.service.index_daily import sync_index_daily_full
 from data_sync_service.service.macro_daily import sync_macro_daily_full
 from data_sync_service.service.post_close_sync import run_post_close_sync
@@ -83,6 +84,12 @@ def sync_index_daily_endpoint() -> dict:
     # Purpose: full index daily sync for selected indices; skip if today already succeeded.
     """Trigger full sync of index daily bars. Skips if today already succeeded; resumes from failure."""
     return sync_index_daily_full()
+
+
+@router.post("/sync/index-basic")
+def sync_index_basic_endpoint() -> dict:
+    """Trigger full sync of index_dailybasic (market breadth indicators)."""
+    return sync_index_basic_full()
 
 
 @router.post("/sync/macro-daily")

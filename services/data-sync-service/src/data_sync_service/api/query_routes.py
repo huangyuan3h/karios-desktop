@@ -16,6 +16,7 @@ from data_sync_service.service.stock_basic import get_stock_basic_list, get_stoc
 from data_sync_service.service.trendok import compute_trendok_for_symbols
 from data_sync_service.service.watchlist_v5_alerts import compute_watchlist_v5_alerts, compute_watchlist_v5_plan
 from data_sync_service.service.watchlist_momentum_alerts import compute_watchlist_momentum_alerts
+from data_sync_service.db.index_basic import fetch_index_basic
 from data_sync_service.db.index_daily import fetch_index_daily
 from data_sync_service.db.macro_daily import fetch_macro_daily
 from data_sync_service.service.macro_snapshot import build_macro_snapshot
@@ -162,6 +163,18 @@ def get_index_signals_history_endpoint(
 ) -> dict:
     """Return index daily history for a specific ts_code (OHLCV)."""
     rows = fetch_index_daily(ts_code=ts_code, start_date=start_date, end_date=end_date, limit=limit)
+    return {"tsCode": ts_code, "data": rows}
+
+
+@router.get("/index/basic/history")
+def get_index_basic_history_endpoint(
+    ts_code: str = Query(..., description="Index ts_code, e.g. 000001.SH"),
+    start_date: str | None = Query(None, description="Start date YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="End date YYYY-MM-DD"),
+    limit: int = Query(500, ge=1, le=5000),
+) -> dict:
+    """Return index_dailybasic history (float_mv, turnover_rate, etc.)."""
+    rows = fetch_index_basic(ts_code=ts_code, start_date=start_date, end_date=end_date, limit=limit)
     return {"tsCode": ts_code, "data": rows}
 
 
