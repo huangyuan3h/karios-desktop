@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import math
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.db.index_daily import fetch_last_closes_vol, fetch_last_closes_vol_upto
+from data_sync_service.db.industry_fund_flow import get_rows_by_date
 from data_sync_service.db.macro_daily import fetch_last_closes as fetch_macro_last_closes
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_basic import fetch_ts_codes
+from data_sync_service.service.market_sentiment import (
+    fetch_cn_market_breadth_eod,
+    fetch_cn_market_breadth_intraday,
+)
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 INDEX_SIGNALS = [
@@ -214,6 +219,63 @@ def _get_breadth_above_ma20_ratio(*, as_of_date: str | None = None) -> dict[str,
     return {"ratio": ratio, "total": total, "above_count": above}
 
 
+def _get_market_liquidity_and_mainline(
+    *, as_of_date: str | None = None, breadth_ratio: float
+) -> dict[str, Any]:
+    """
+    Fetch total market turnover and max industry inflow for deep green criteria.
+    Returns {total_turnover_cny, max_industry_inflow, turnover_above_1_5T, mainline_inflow_above_5B}.
+    """
+    dt: date | None = None
+    if as_of_date:
+        try:
+            dt = date.fromisoformat(as_of_date)
+        except Exception:
+            dt = None
+    if dt is None:
+        dt = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date()
+
+    total_turnover_cny = 0.0
+    max_industry_inflow = 0.0
+
+    try:
+        breadth = fetch_cn_market_breadth_eod(dt)
+        if breadth and "total_turnover_cny" in breadth:
+            total_turnover_cny = float(breadth.get("total_turnover_cny") or 0.0)
+    except Exception:
+        pass
+
+    today_cn = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date()
+    if dt == today_cn and total_turnover_cny == 0.0:
+        try:
+            breadth_rt = fetch_cn_market_breadth_intraday(dt)
+            if breadth_rt and "total_turnover_cny" in breadth_rt:
+                turnover_rt = float(breadth_rt.get("total_turnover_cny") or 0.0)
+                if turnover_rt > 0.0:
+                    total_turnover_cny = turnover_rt
+        except Exception:
+            pass
+
+    date_str = dt.isoformat()
+    try:
+        rows = get_rows_by_date(date_str)
+        if rows:
+            inflows = [float(r.get("net_inflow") or 0.0) for r in rows]
+            max_industry_inflow = max(inflows) if inflows else 0.0
+    except Exception:
+        pass
+
+    turnover_above_1_5T = total_turnover_cny >= 1.5e12
+    mainline_inflow_above_5B = max_industry_inflow >= 5e9
+
+    return {
+        "total_turnover_cny": total_turnover_cny,
+        "max_industry_inflow": max_industry_inflow,
+        "turnover_above_1_5T": turnover_above_1_5T,
+        "mainline_inflow_above_5B": mainline_inflow_above_5B,
+    }
+
+
 def get_index_signals(
     *, as_of_date: str | None = None, include_breadth: bool = True
 ) -> list[dict[str, Any]]:
@@ -253,9 +315,20 @@ def get_index_signals(
 
     if include_breadth:
         breadth = _get_breadth_above_ma20_ratio(as_of_date=use_as_of)
+        liquidity = _get_market_liquidity_and_mainline(
+            as_of_date=use_as_of, breadth_ratio=breadth["ratio"]
+        )
     else:
         breadth = {"ratio": 0.0, "total": 0, "above_count": 0}
-    breadth_ok_deep = breadth["ratio"] >= BREADTH_DEEP_GREEN_MIN_RATIO
+        liquidity = {
+            "total_turnover_cny": 0.0,
+            "max_industry_inflow": 0.0,
+            "turnover_above_1_5T": False,
+            "mainline_inflow_above_5B": False,
+        }
+    breadth_ok_deep = breadth["ratio"] >= 0.5
+    liquidity_ok = liquidity["turnover_above_1_5T"]
+    mainline_ok = liquidity["mainline_inflow_above_5B"]
 
     out: list[dict[str, Any]] = []
     for it in INDEX_SIGNALS:
@@ -328,6 +401,10 @@ def get_index_signals(
         ma60 = sum(closes[-60:]) / 60.0 if len(closes) >= 60 else None
         close = closes[-1]
 
+        ema10_vals = _ema(closes, 10) if len(closes) >= 10 else []
+        ema10 = ema10_vals[-1] if ema10_vals else None
+        close_above_ema10 = ema10 is not None and close > ema10
+
         macd_hist = _macd_histogram(closes)
         macd_hist_turning_up = False
         if len(macd_hist) >= 2:
@@ -393,10 +470,17 @@ def get_index_signals(
                 position = "50%-60%"
                 rules.append("price>MA20 && MA5>MA20 && MA20 up && volRatio>0.8(est)")
 
-            if ma_full_bull and ma60 is not None and close > ma5 and vol_above_ma5_strong and breadth_ok_deep:
+            if (
+                ma_full_bull
+                and close_above_ema10
+                and liquidity_ok
+                and (breadth_ok_deep or mainline_ok)
+            ):
                 signal = "deep_green"
                 position = "80%-100%"
-                rules.append("MA5>MA20>MA60 && price>MA5 && breadth>60% && vol>MA5Vol*1.3(est)")
+                rules.append(
+                    "MA5>MA20>MA60 && price>EMA10 && turnover>=1.5T && (breadth>=50% || mainline>=5B)"
+                )
         else:
             if close < ma5 and close >= ma20:
                 rules.append("close<MA5 but hold MA20")
@@ -423,6 +507,7 @@ def get_index_signals(
                 "ma20": ma20,
                 "ma60": ma60,
                 "ma20Prev": ma20_prev,
+                "ema10": ema10,
                 "signal": signal,
                 "positionRange": position,
                 "rules": rules,
@@ -432,6 +517,8 @@ def get_index_signals(
                 "pctChg": pct_chg,
                 "volRatio": vol_ratio,
                 "estimatedVol": estimated_vol,
+                "totalTurnover": liquidity["total_turnover_cny"],
+                "maxIndustryInflow": liquidity["max_industry_inflow"],
             }
         )
 

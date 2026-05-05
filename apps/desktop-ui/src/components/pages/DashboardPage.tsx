@@ -1620,8 +1620,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                 向上，且预估全天量 &gt; MA5_Vol * 0.8，仓位 50%-60%。
                               </div>
                               <div className="mt-1">
-                                ❇️ Deep Green: MA5 &gt; MA20 &gt; MA60 且 Price &gt; MA5，Breadth
-                                &gt; 60%，且预估全天量 &gt; MA5_Vol * 1.3，仓位 80%-100%。
+                                ❇️ Deep Green: MA5 &gt; MA20 &gt; MA60 且 Price &gt; EMA10，全市场成交额连续
+                                &gt; 1.5万亿，Breadth &gt; 50% 或 单一板块流入 &gt; 50亿，仓位
+                                80%-100%。
                               </div>
                             </div>
                             <div className="grid gap-2 md:grid-cols-2">

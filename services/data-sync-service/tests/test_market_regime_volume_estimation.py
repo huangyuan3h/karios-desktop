@@ -10,6 +10,24 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 
+def _mock_liquidity_not_ok(**kwargs):
+    return {
+        "total_turnover_cny": 0.0,
+        "max_industry_inflow": 0.0,
+        "turnover_above_1_5T": False,
+        "mainline_inflow_above_5B": False,
+    }
+
+
+def _mock_liquidity_ok(**kwargs):
+    return {
+        "total_turnover_cny": 2.0e12,
+        "max_industry_inflow": 6e9,
+        "turnover_above_1_5T": True,
+        "mainline_inflow_above_5B": True,
+    }
+
+
 class TestGetTradeMinutes:
     """Test _get_trade_minutes() at various time points."""
 
@@ -241,6 +259,7 @@ class TestSignalWithEstimatedVolumeOffline:
             lambda ts_code, as_of, days=80: series,
         )
         monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70})
+        monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_not_ok)
 
         signals = mr.get_index_signals(as_of_date=last_date)
         assert len(signals) >= 1
@@ -249,7 +268,7 @@ class TestSignalWithEstimatedVolumeOffline:
         assert s["realtime"] is False
 
     def test_deep_green_when_db_vol_above_1_2x(self, monkeypatch) -> None:
-        """Deep green when DB volume > MA5_Vol * 1.2 and breadth ok (offline mode)."""
+        """Deep green when liquidity ok and breadth ok (offline mode)."""
         import data_sync_service.service.market_regime as mr
 
         series = self._make_series_uptrend(base_vol=1e9)
@@ -265,6 +284,7 @@ class TestSignalWithEstimatedVolumeOffline:
             lambda ts_code, as_of, days=80: series,
         )
         monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.75, "total": 100, "above_count": 75})
+        monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_ok)
 
         signals = mr.get_index_signals(as_of_date=last_date)
         assert len(signals) >= 1
