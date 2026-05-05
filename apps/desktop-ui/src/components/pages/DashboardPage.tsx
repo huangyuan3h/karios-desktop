@@ -9,6 +9,7 @@ import {
   type HotIndustryPick,
 } from '@/components/pages/HotIndustryWorkflowCard';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { DATA_SYNC_BASE_URL, AI_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 import { loadJson } from '@/lib/storage';
@@ -482,12 +483,21 @@ function isShanghaiTradingTime(): boolean {
   return inMorning || inAfternoon;
 }
 
+type SyncStep = {
+  name: string;
+  ok: boolean | null;
+  durationMs: number | null;
+  message?: string | null;
+};
+
 export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) => void }) {
   const { addReference } = useChatStore();
   const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
   const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [sentimentBusy, setSentimentBusy] = React.useState(false);
+  const [syncSteps, setSyncSteps] = React.useState<SyncStep[]>([]);
+  const [syncProgress, setSyncProgress] = React.useState(0);
   const [industryCopyStatus, setIndustryCopyStatus] = React.useState<{
     ok: boolean;
     text: string;
@@ -641,53 +651,98 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   async function onSyncAll() {
     setBusy(true);
     setError(null);
-    try {
-      const r = await apiPostJson<DashboardSyncResp>('/dashboard/sync?force=true', {});
-      setSyncResp(r);
-      const s = await apiGetJson<DashboardSummary>(`/dashboard/summary`);
-      setSummary(s);
+    setSyncSteps([]);
+    setSyncProgress(0);
 
-      // Generate news summary using AI
-      const newsData = (s as any)?.news;
-      console.log('[Dashboard] newsData:', newsData);
-      if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
-        if (!shouldRefreshNewsBrief(newsSummaryUpdatedAt) && newsSummary?.trim()) return;
-        setNewsSummaryBusy(true);
+    const stepNames = ['industryFundFlow', 'marketSentiment', 'screeners', 'news'];
+
+    return new Promise<void>((resolve) => {
+      const es = new EventSource(`${DATA_SYNC_BASE_URL}/dashboard/sync/stream?force=true`);
+
+      es.onmessage = (event) => {
         try {
-          console.log('[Dashboard] Calling AI service for news summary...');
-          const aiRes = await fetch(`${AI_BASE_URL}/news/summary`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: newsData.items, hours: 24 }),
-          });
-          console.log('[Dashboard] AI response status:', aiRes.status);
-          if (aiRes.ok) {
-            const aiData = await aiRes.json();
-            console.log('[Dashboard] AI summary:', aiData);
-            const summaryText = typeof aiData?.summary === 'string' ? aiData.summary.trim() : '';
-            if (summaryText) {
-              const updatedAt = new Date().toISOString();
-              setNewsSummary(summaryText);
-              setNewsSummaryUpdatedAt(updatedAt);
-              saveNewsBriefCache({ summary: summaryText, updatedAt });
+          const data = JSON.parse(event.data);
+          if (data.type === 'start') {
+            setSyncSteps(
+              stepNames.map((name) => ({
+                name,
+                ok: null,
+                durationMs: null,
+                message: null,
+              })),
+            );
+          } else if (data.type === 'step') {
+            const step = data.step as { name: string; ok: boolean; durationMs: number; message?: string };
+            setSyncSteps((prev) => {
+              const updated = prev.map((s) => (s.name === step.name ? { ...step } : s));
+              const completed = updated.filter((s) => s.ok !== null).length;
+              setSyncProgress(Math.round((completed / stepNames.length) * 100));
+              return updated;
+            });
+          } else if (data.type === 'done') {
+            es.close();
+            const result = data.result as DashboardSyncResp;
+            setSyncResp(result);
+            setSyncProgress(100);
+
+            const s = data.summary as DashboardSummary;
+            if (s) {
+              setSummary(s);
+              const newsData = (s as any)?.news;
+              if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
+                if (!shouldRefreshNewsBrief(newsSummaryUpdatedAt) && newsSummary?.trim()) {
+                  setBusy(false);
+                  resolve();
+                  return;
+                }
+                setNewsSummaryBusy(true);
+                fetch(`${AI_BASE_URL}/news/summary`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ items: newsData.items, hours: 24 }),
+                })
+                  .then((aiRes) => {
+                    if (aiRes.ok) {
+                      return aiRes.json();
+                    }
+                    return null;
+                  })
+                  .then((aiData) => {
+                    const summaryText = typeof aiData?.summary === 'string' ? aiData.summary.trim() : '';
+                    if (summaryText) {
+                      const updatedAt = new Date().toISOString();
+                      setNewsSummary(summaryText);
+                      setNewsSummaryUpdatedAt(updatedAt);
+                      saveNewsBriefCache({ summary: summaryText, updatedAt });
+                    }
+                  })
+                  .catch(() => {})
+                  .finally(() => {
+                    setNewsSummaryBusy(false);
+                    setBusy(false);
+                    resolve();
+                  });
+              } else {
+                setBusy(false);
+                resolve();
+              }
+            } else {
+              setBusy(false);
+              resolve();
             }
-          } else {
-            const errText = await aiRes.text();
-            console.error('[Dashboard] AI error:', errText);
           }
-        } catch (err) {
-          console.error('[Dashboard] AI summary error:', err);
-        } finally {
-          setNewsSummaryBusy(false);
+        } catch {
+          // ignore parse errors
         }
-      } else {
-        console.log('[Dashboard] No news items found');
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+      };
+
+      es.onerror = () => {
+        es.close();
+        setError('Connection error during sync');
+        setBusy(false);
+        resolve();
+      };
+    });
   }
 
   async function onSyncSentiment() {
@@ -937,61 +992,73 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     lines.push(mdTable(headers, rows2));
     lines.push('');
 
-    // Also include latest snapshot tables (DB content) for each screener.
-    for (const sc of rows) {
-      const sid = String(sc?.id ?? '').trim();
-      if (!sid) continue;
-      try {
-        const list = await apiGetJson<{
-          items: Array<{ id: string; capturedAt?: string; rowCount?: number }>;
-        }>(`/integrations/tradingview/screeners/${encodeURIComponent(sid)}/snapshots?limit=1`);
-        const snapId = String(list?.items?.[0]?.id ?? '').trim();
-        if (!snapId) continue;
-        const snap = await apiGetJson<{
-          id: string;
-          screenerId: string;
-          capturedAt: string;
-          rowCount: number;
-          screenTitle: string | null;
-          filters: string[];
-          url: string;
-          headers: string[];
-          rows: Array<Record<string, string>>;
-        }>(`/integrations/tradingview/snapshots/${encodeURIComponent(snapId)}`);
+    const screenerIds = rows
+      .map((sc: any) => String(sc?.id ?? '').trim())
+      .filter((sid: string) => sid);
 
-        const title = String(snap?.screenTitle ?? sc?.name ?? sid).trim() || sid;
-        const capturedAt = String(snap?.capturedAt ?? '').trim();
-        const headersTv: string[] = Array.isArray(snap?.headers)
-          ? snap.headers.map((h) => String(h ?? ''))
-          : [];
-        const rowsTv: Array<Record<string, string>> = Array.isArray(snap?.rows) ? snap.rows : [];
-        const limit = 50;
-        const truncated = rowsTv.length > limit;
-        const bodyRows: unknown[][] = rowsTv
-          .slice(0, limit)
-          .map((r) => headersTv.map((h) => String(r?.[h] ?? '')));
-
-        lines.push(`${heading}# ${escapeMarkdownCell(title)}`);
-        if (capturedAt) lines.push(`- capturedAt: ${capturedAt}`);
-        lines.push(`- rows: ${String(snap?.rowCount ?? rowsTv.length ?? 0)}`);
-        if (Array.isArray(snap?.filters) && snap.filters.length) {
-          lines.push(
-            `- filters: ${snap.filters
-              .slice(0, 8)
-              .map((x) => escapeMarkdownCell(String(x)))
-              .join(' • ')}${snap.filters.length > 8 ? '…' : ''}`,
-          );
+    const screenerResults = await Promise.all(
+      screenerIds.map(async (sid) => {
+        try {
+          const list = await apiGetJson<{
+            items: Array<{ id: string; capturedAt?: string; rowCount?: number }>;
+          }>(`/integrations/tradingview/screeners/${encodeURIComponent(sid)}/snapshots?limit=1`);
+          const snapId = String(list?.items?.[0]?.id ?? '').trim();
+          if (!snapId) return { sid, error: 'No snapshot found' };
+          const snap = await apiGetJson<{
+            id: string;
+            screenerId: string;
+            capturedAt: string;
+            rowCount: number;
+            screenTitle: string | null;
+            filters: string[];
+            url: string;
+            headers: string[];
+            rows: Array<Record<string, string>>;
+          }>(`/integrations/tradingview/snapshots/${encodeURIComponent(snapId)}`);
+          return { sid, snap, sc: rows.find((r: any) => String(r?.id ?? '').trim() === sid) };
+        } catch (e) {
+          return { sid, error: e instanceof Error ? e.message : String(e) };
         }
-        if (truncated) lines.push(`- note: showing first ${limit} rows (truncated)`);
+      }),
+    );
+
+    for (const result of screenerResults) {
+      if ('error' in result) {
+        const sc = rows.find((r: any) => String(r?.id ?? '').trim() === result.sid);
+        lines.push(`${heading}# ${escapeMarkdownCell(String(sc?.name ?? result.sid))}`);
+        lines.push(`- error: ${escapeMarkdownCell(result.error)}`);
         lines.push('');
-        if (headersTv.length) lines.push(mdTable(headersTv, bodyRows));
-        else lines.push('_No headers._');
-        lines.push('');
-      } catch (e) {
-        lines.push(`${heading}# ${escapeMarkdownCell(String(sc?.name ?? sid))}`);
-        lines.push(`- error: ${escapeMarkdownCell(e instanceof Error ? e.message : String(e))}`);
-        lines.push('');
+        continue;
       }
+      const { sid, snap, sc } = result;
+      const title = String(snap?.screenTitle ?? sc?.name ?? sid).trim() || sid;
+      const capturedAt = String(snap?.capturedAt ?? '').trim();
+      const headersTv: string[] = Array.isArray(snap?.headers)
+        ? snap.headers.map((h) => String(h ?? ''))
+        : [];
+      const rowsTv: Array<Record<string, string>> = Array.isArray(snap?.rows) ? snap.rows : [];
+      const limit = 50;
+      const truncated = rowsTv.length > limit;
+      const bodyRows: unknown[][] = rowsTv
+        .slice(0, limit)
+        .map((r) => headersTv.map((h) => String(r?.[h] ?? '')));
+
+      lines.push(`${heading}# ${escapeMarkdownCell(title)}`);
+      if (capturedAt) lines.push(`- capturedAt: ${capturedAt}`);
+      lines.push(`- rows: ${String(snap?.rowCount ?? rowsTv.length ?? 0)}`);
+      if (Array.isArray(snap?.filters) && snap.filters.length) {
+        lines.push(
+          `- filters: ${snap.filters
+            .slice(0, 8)
+            .map((x) => escapeMarkdownCell(String(x)))
+            .join(' • ')}${snap.filters.length > 8 ? '…' : ''}`,
+        );
+      }
+      if (truncated) lines.push(`- note: showing first ${limit} rows (truncated)`);
+      lines.push('');
+      if (headersTv.length) lines.push(mdTable(headersTv, bodyRows));
+      else lines.push('_No headers._');
+      lines.push('');
     }
 
     return lines.join('\n').trim() + '\n';
@@ -1010,22 +1077,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     const tradingTime = isShanghaiTradingTime();
     const todaySh = getShanghaiTodayIso();
 
-    // 1) TrendOK
-    const trend: Record<string, TrendOkResult> = {};
-    for (const part of chunk(syms, 200)) {
-      const sp = new URLSearchParams();
-      sp.set('refresh', 'true');
-      sp.set('realtime', tradingTime ? 'true' : 'false');
-      for (const s of part) sp.append('symbols', s);
-      const trendRows = await apiGetJson<TrendOkResult[]>(
-        `/market/stocks/trendok?${sp.toString()}`,
-      );
-      for (const r of Array.isArray(trendRows) ? trendRows : []) {
-        if (r && r.symbol) trend[String(r.symbol).toUpperCase()] = r;
-      }
-    }
+    const symsChunks = chunk(syms, 200);
 
-    // 2) Quotes (CN only)
     const byTsCode = new Map<string, string>();
     const tsCodes = syms
       .map((s) => {
@@ -1034,12 +1087,36 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         return t;
       })
       .filter(Boolean) as string[];
+    const tsCodesChunks = chunk(tsCodes, 50);
+
+    const [trendResults, quoteResults] = await Promise.all([
+      Promise.all(
+        symsChunks.map(async (part) => {
+          const sp = new URLSearchParams();
+          sp.set('refresh', 'true');
+          sp.set('realtime', tradingTime ? 'true' : 'false');
+          for (const s of part) sp.append('symbols', s);
+          return apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+        }),
+      ),
+      Promise.all(
+        tsCodesChunks.map(async (part) => {
+          return apiGetJson<QuoteResp>(
+            `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
+          ).catch(() => null);
+        }),
+      ),
+    ]);
+
+    const trend: Record<string, TrendOkResult> = {};
+    for (const trendRows of trendResults) {
+      for (const r of Array.isArray(trendRows) ? trendRows : []) {
+        if (r && r.symbol) trend[String(r.symbol).toUpperCase()] = r;
+      }
+    }
 
     const quotes: Record<string, { price: number | null; tradeTime: string | null }> = {};
-    for (const part of chunk(tsCodes, 50)) {
-      const r = await apiGetJson<QuoteResp>(
-        `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
-      ).catch(() => null);
+    for (const r of quoteResults) {
       for (const it of r?.items ?? []) {
         const sym = byTsCode.get(it.ts_code);
         if (!sym) continue;
@@ -1051,7 +1128,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       }
     }
 
-    // 3) Sort by score desc (unknown scores at bottom)
     const sorted = [...items];
     sorted.sort((a, b) => {
       const sa = trend[a.symbol]?.score;
@@ -1064,7 +1140,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       return vb - va;
     });
 
-    // 4) Strict validation (same spirit as Watchlist page).
     const missingRealtime: string[] = [];
     const missingTrend: string[] = [];
     const missingHistory: string[] = [];
@@ -1173,9 +1248,16 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setCopyAllBusy(true);
     setError(null);
     try {
-      const s = await apiGetJson<DashboardSummary>(`/dashboard/summary`);
-      setSummary(s);
+      const s = summary;
+      if (!s) {
+        toastCopyAll(false, 'No data available. Please refresh first.');
+        return;
+      }
       const generatedAt = new Date().toISOString();
+      const [screenersMd, watchlistMd] = await Promise.all([
+        buildScreenersMarkdown(s, '##'),
+        buildWatchlistMarkdown(),
+      ]);
       const lines: string[] = [];
       lines.push(`# Copy all (Dashboard)`);
       lines.push(`- generatedAt: ${generatedAt}`);
@@ -1199,9 +1281,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       else if (newsFallback?.trim()) lines.push(newsFallback.trim());
       else lines.push('No summary yet. Last news records are included above.');
       lines.push('');
-      lines.push((await buildScreenersMarkdown(s, '##')).trim());
+      lines.push(screenersMd.trim());
       lines.push('');
-      lines.push((await buildWatchlistMarkdown()).trim());
+      lines.push(watchlistMd.trim());
       lines.push('');
       await navigator.clipboard.writeText(lines.join('\n').trim() + '\n');
       toastCopyAll(true, 'Copied all Markdown to clipboard.');
@@ -1302,6 +1384,46 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       {error ? (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
           {error}
+        </div>
+      ) : null}
+
+      {busy && syncSteps.length > 0 ? (
+        <div className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-sm font-medium">Syncing…</div>
+            <div className="text-xs text-[var(--k-muted)]">{syncProgress}%</div>
+          </div>
+          <Progress value={syncProgress} className="mb-4" />
+          <div className="space-y-2">
+            {syncSteps.map((s) => (
+              <div key={s.name} className="flex items-center gap-3 text-xs">
+                {s.ok === null ? (
+                  <span className="h-4 w-4 rounded-full bg-[var(--k-muted)]/30 animate-pulse" />
+                ) : s.ok ? (
+                  <span className="h-4 w-4 rounded-full bg-emerald-500" />
+                ) : (
+                  <span className="h-4 w-4 rounded-full bg-red-500" />
+                )}
+                <span className="font-mono">
+                  {s.name === 'industryFundFlow'
+                    ? 'Industry Fund Flow'
+                    : s.name === 'marketSentiment'
+                      ? 'Market Sentiment'
+                      : s.name === 'screeners'
+                        ? 'Screeners'
+                        : s.name === 'news'
+                          ? 'News'
+                          : s.name}
+                </span>
+                {s.durationMs !== null ? (
+                  <span className="text-[var(--k-muted)]">{s.durationMs}ms</span>
+                ) : null}
+                {s.message ? (
+                  <span className="text-red-600 truncate">{s.message}</span>
+                ) : null}
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
 

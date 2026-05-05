@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import time
+from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,15 +11,18 @@ from data_sync_service.db import get_connection
 from data_sync_service.db.industry_fund_flow import ensure_table as ensure_industry
 from data_sync_service.db.market_sentiment import get_latest_date as get_latest_sentiment_date
 from data_sync_service.db.market_sentiment import list_days as list_sentiment_days
+from data_sync_service.db.news import ensure_tables as ensure_news_tables
+from data_sync_service.db.news import fetch_items
 from data_sync_service.db.tv import list_snapshots_for_screener_full
-from data_sync_service.db.news import fetch_items, ensure_tables as ensure_news_tables
-from data_sync_service.service.industry_fund_flow import get_cn_industry_fund_flow, sync_cn_industry_fund_flow
+from data_sync_service.service.industry_fund_flow import (
+    sync_cn_industry_fund_flow,
+)
 from data_sync_service.service.macro_snapshot import build_macro_snapshot
 from data_sync_service.service.market_environment_zh import format_market_environment_zh
 from data_sync_service.service.market_regime import get_index_signals
 from data_sync_service.service.market_sentiment import sync_cn_sentiment
-from data_sync_service.service.tv import list_screeners, sync_screener
 from data_sync_service.service.news import fetch_all_sources
+from data_sync_service.service.tv import list_screeners, sync_screener
 
 
 def _now_iso() -> str:
@@ -295,94 +301,180 @@ def dashboard_summary() -> dict[str, Any]:
     }
 
 
-def dashboard_sync(*, force: bool = True, screeners: bool = True) -> dict[str, Any]:
-    """
-    Minimal Dashboard sync:
-      - industry fund flow sync
-      - market sentiment sync
-      - TradingView screeners sync (all enabled)
-    """
-    started_at = _now_iso()
-    steps: list[dict[str, Any]] = []
+def _run_step(name: str, fn: callable) -> dict[str, Any]:
+    st = time.perf_counter()
+    ok = True
+    msg: str | None = None
+    meta: dict[str, Any] = {}
+    try:
+        out = fn()
+        if isinstance(out, dict):
+            meta = out
+    except Exception as exc:
+        ok = False
+        msg = str(exc)
+    dur = int((time.perf_counter() - st) * 1000)
+    return {"name": name, "ok": ok, "durationMs": dur, "message": msg, "meta": meta}
 
-    def step(name: str, fn) -> None:
-        st = time.perf_counter()
-        ok = True
-        msg: str | None = None
-        meta: dict[str, Any] = {}
-        try:
-            out = fn()
-            if isinstance(out, dict):
-                meta = out
-        except Exception as exc:  # noqa: BLE001
-            ok = False
-            msg = str(exc)
-        dur = int((time.perf_counter() - st) * 1000)
-        steps.append({"name": name, "ok": ok, "durationMs": dur, "message": msg, "meta": meta})
 
-    # 1) Industry
-    def _sync_industry() -> dict[str, Any]:
-        out = sync_cn_industry_fund_flow(days=10, top_n=10)
-        return out if isinstance(out, dict) else {"ok": True}
+def _sync_industry_step() -> dict[str, Any]:
+    out = sync_cn_industry_fund_flow(days=10, top_n=10)
+    return out if isinstance(out, dict) else {"ok": True}
 
-    step("industryFundFlow", _sync_industry)
 
-    # 2) Sentiment
-    def _sync_sentiment() -> dict[str, Any]:
-        d = datetime.now(tz=UTC).date().isoformat()
-        out = sync_cn_sentiment(date_str=d, force=bool(force))
-        items = out.get("items") if isinstance(out, dict) else []
-        last = items[-1] if isinstance(items, list) and items else {}
-        return {
-            "asOfDate": out.get("asOfDate") if isinstance(out, dict) else d,
-            "riskMode": str((last or {}).get("riskMode") or ""),
-            "premium": (last or {}).get("yesterdayLimitUpPremium"),
-            "failedRate": (last or {}).get("failedLimitUpRate"),
-        }
+def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
+    d = datetime.now(tz=UTC).date().isoformat()
+    out = sync_cn_sentiment(date_str=d, force=bool(force))
+    items = out.get("items") if isinstance(out, dict) else []
+    last = items[-1] if isinstance(items, list) and items else {}
+    return {
+        "asOfDate": out.get("asOfDate") if isinstance(out, dict) else d,
+        "riskMode": str((last or {}).get("riskMode") or ""),
+        "premium": (last or {}).get("yesterdayLimitUpPremium"),
+        "failedRate": (last or {}).get("failedLimitUpRate"),
+    }
 
-    step("marketSentiment", _sync_sentiment)
 
-    # 3) Screeners
+def _sync_screeners_step(*, screeners_enabled: bool) -> dict[str, Any]:
     screener_failed: list[str] = []
     screener_missing: list[str] = []
+    scr = list_screeners()
+    items = scr.get("items") if isinstance(scr, dict) else []
+    items_list = items if isinstance(items, list) else []
+    enabled = [x for x in items_list if isinstance(x, dict) and bool(x.get("enabled"))]
+    if not bool(screeners_enabled):
+        return {"enabled": len(enabled), "skipped": True, "failed": 0, "missing": 0}
+    for sc in enabled:
+        sid = str(sc.get("id") or "").strip()
+        if not sid:
+            continue
+        try:
+            res = sync_screener(screener_id=sid)
+            rc = int(res.get("rowCount") or 0) if isinstance(res, dict) else 0
+            if rc <= 0:
+                screener_missing.append(sid)
+        except Exception:
+            screener_failed.append(sid)
+    return {
+        "enabled": len(enabled),
+        "skipped": False,
+        "failed": len(screener_failed),
+        "missing": len(screener_missing),
+        "failedIds": screener_failed,
+        "missingIds": screener_missing,
+    }
 
-    def _sync_screeners() -> dict[str, Any]:
-        scr = list_screeners()
-        items = scr.get("items") if isinstance(scr, dict) else []
-        items_list = items if isinstance(items, list) else []
-        enabled = [x for x in items_list if isinstance(x, dict) and bool(x.get("enabled"))]
-        if not bool(screeners):
-            return {"enabled": len(enabled), "skipped": True, "failed": 0, "missing": 0}
-        for sc in enabled:
-            sid = str(sc.get("id") or "").strip()
-            if not sid:
-                continue
-            try:
-                res = sync_screener(screener_id=sid)
-                rc = int(res.get("rowCount") or 0) if isinstance(res, dict) else 0
-                if rc <= 0:
-                    screener_missing.append(sid)
-            except Exception:
-                screener_failed.append(sid)
-        return {"enabled": len(enabled), "skipped": False, "failed": len(screener_failed), "missing": len(screener_missing)}
 
-    step("screeners", _sync_screeners)
+def _sync_news_step() -> dict[str, Any]:
+    results = fetch_all_sources()
+    total = sum(v for v in results.values() if v > 0)
+    failed = sum(1 for v in results.values() if v < 0)
+    return {"total": total, "failed": failed, "sources": len(results)}
 
-    # 4) News
-    def _sync_news() -> dict[str, Any]:
-        results = fetch_all_sources()
-        total = sum(v for v in results.values() if v > 0)
-        failed = sum(1 for v in results.values() if v < 0)
-        return {"total": total, "failed": failed, "sources": len(results)}
 
-    step("news", _sync_news)
-
+def dashboard_sync(*, force: bool = True, screeners: bool = True) -> dict[str, Any]:
+    started_at = _now_iso()
+    steps: list[dict[str, Any]] = []
+    steps.append(_run_step("industryFundFlow", _sync_industry_step))
+    steps.append(_run_step("marketSentiment", lambda: _sync_sentiment_step(force=force)))
+    screener_result = _run_step("screeners", lambda: _sync_screeners_step(screeners_enabled=screeners))
+    steps.append(screener_result)
+    steps.append(_run_step("news", _sync_news_step))
     finished_at = _now_iso()
     ok = all(bool(s.get("ok")) for s in steps)
+    screener_meta = screener_result.get("meta") or {}
     return {
         "ok": ok,
         "startedAt": started_at,
         "finishedAt": finished_at,
         "steps": steps,
-        "screener": {"failed": screener_failed, "missing": screener_missing},
+        "screener": {
+            "failed": screener_meta.get("failedIds", []),
+            "missing": screener_meta.get("missingIds", []),
+        },
     }
+
+
+def dashboard_sync_parallel(*, force: bool = True, screeners: bool = True) -> dict[str, Any]:
+    started_at = _now_iso()
+    step_fns = {
+        "industryFundFlow": _sync_industry_step,
+        "marketSentiment": lambda: _sync_sentiment_step(force=force),
+        "screeners": lambda: _sync_screeners_step(screeners_enabled=screeners),
+        "news": _sync_news_step,
+    }
+    steps: list[dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(_run_step, name, fn): name for name, fn in step_fns.items()}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                result = future.result()
+                steps.append(result)
+            except Exception as exc:
+                steps.append({"name": name, "ok": False, "durationMs": 0, "message": str(exc), "meta": {}})
+    step_order = ["industryFundFlow", "marketSentiment", "screeners", "news"]
+    steps.sort(key=lambda s: step_order.index(s.get("name", "")))
+    finished_at = _now_iso()
+    ok = all(bool(s.get("ok")) for s in steps)
+    screener_step = next((s for s in steps if s.get("name") == "screeners"), {})
+    screener_meta = screener_step.get("meta") or {}
+    return {
+        "ok": ok,
+        "startedAt": started_at,
+        "finishedAt": finished_at,
+        "steps": steps,
+        "screener": {
+            "failed": screener_meta.get("failedIds", []),
+            "missing": screener_meta.get("missingIds", []),
+        },
+    }
+
+
+def dashboard_sync_stream(
+    *, force: bool = True, screeners: bool = True
+) -> Generator[str]:
+    started_at = _now_iso()
+    yield json.dumps({"type": "start", "startedAt": started_at}) + "\n"
+    step_fns = {
+        "industryFundFlow": _sync_industry_step,
+        "marketSentiment": lambda: _sync_sentiment_step(force=force),
+        "screeners": lambda: _sync_screeners_step(screeners_enabled=screeners),
+        "news": _sync_news_step,
+    }
+    steps: list[dict[str, Any]] = []
+    screener_meta: dict[str, Any] = {}
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(_run_step, name, fn): name for name, fn in step_fns.items()}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                result = future.result()
+                steps.append(result)
+                yield json.dumps({"type": "step", "step": result}) + "\n"
+                if name == "screeners":
+                    screener_meta = result.get("meta") or {}
+            except Exception as exc:
+                result = {"name": name, "ok": False, "durationMs": 0, "message": str(exc), "meta": {}}
+                steps.append(result)
+                yield json.dumps({"type": "step", "step": result}) + "\n"
+    step_order = ["industryFundFlow", "marketSentiment", "screeners", "news"]
+    steps.sort(key=lambda s: step_order.index(s.get("name", "")))
+    finished_at = _now_iso()
+    ok = all(bool(s.get("ok")) for s in steps)
+    final = {
+        "ok": ok,
+        "startedAt": started_at,
+        "finishedAt": finished_at,
+        "steps": steps,
+        "screener": {
+            "failed": screener_meta.get("failedIds", []),
+            "missing": screener_meta.get("missingIds", []),
+        },
+    }
+    summary_data: dict[str, Any] = {}
+    try:
+        summary_data = dashboard_summary()
+    except Exception:
+        pass
+    yield json.dumps({"type": "done", "result": final, "summary": summary_data}) + "\n"
