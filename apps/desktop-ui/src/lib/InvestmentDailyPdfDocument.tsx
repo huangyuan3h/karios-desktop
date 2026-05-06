@@ -23,14 +23,17 @@ function ensureChineseFont(): void {
   fontRegistered = true;
 }
 
+/** Fixed header is out of flow; reserve enough top padding so body never draws under it (incl. line-height slack). */
+const PAGE_TOP_RESERVED_FOR_HEADER = 84;
+
 const styles = StyleSheet.create({
   page: {
     fontFamily: 'NotoSansSC',
     fontSize: 9.5,
     lineHeight: 1.45,
     color: '#111',
-    paddingTop: 52,
-    paddingBottom: 40,
+    paddingTop: PAGE_TOP_RESERVED_FOR_HEADER,
+    paddingBottom: 48,
     paddingHorizontal: 40,
     flexDirection: 'column',
     alignItems: 'stretch',
@@ -40,29 +43,38 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     flexDirection: 'column',
     alignSelf: 'stretch',
+    paddingTop: 2,
   },
   headerBand: {
     position: 'absolute',
-    top: 22,
+    top: 20,
     left: 40,
     right: 40,
-    paddingBottom: 6,
+    paddingBottom: 8,
     borderBottomWidth: 1.5,
     borderBottomColor: '#1a1a1a',
   },
-  headerTitle: { fontSize: 9.5, fontWeight: 700, color: '#222' },
-  headerSub: { fontSize: 8.5, color: '#555', marginTop: 2 },
+  headerTitle: { fontSize: 9.5, fontWeight: 700, color: '#222', lineHeight: 1.35 },
+  headerSub: { fontSize: 8.5, color: '#555', marginTop: 3, lineHeight: 1.35 },
   footerText: {
     position: 'absolute',
-    bottom: 18,
+    bottom: 22,
     left: 40,
     right: 40,
     fontSize: 8,
     color: '#666',
     textAlign: 'center',
   },
-  docTitle: { fontSize: 18, fontWeight: 700, marginBottom: 4, width: '100%', maxWidth: '100%' },
-  metaLine: { fontSize: 10, color: '#333', marginBottom: 14, width: '100%', maxWidth: '100%' },
+  docTitle: {
+    fontSize: 18,
+    fontWeight: 700,
+    marginTop: 2,
+    marginBottom: 6,
+    width: '100%',
+    maxWidth: '100%',
+    lineHeight: 1.25,
+  },
+  metaLine: { fontSize: 10, color: '#333', marginBottom: 16, width: '100%', maxWidth: '100%', lineHeight: 1.35 },
   h2: {
     fontSize: 12,
     fontWeight: 700,

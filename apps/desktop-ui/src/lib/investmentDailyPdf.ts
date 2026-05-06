@@ -327,9 +327,11 @@ export function parseInvestmentDailyReportResponse(data: unknown): InvestmentDai
 }
 
 /**
- * Vector PDF via @react-pdf/renderer (multi-page text flow, smaller than rasterized HTML).
+ * Renders the investment daily report to a PDF Blob (browser). Use for tests or custom download UX.
  */
-export async function downloadInvestmentDailyPdf(args: DownloadInvestmentDailyPdfArgs): Promise<void> {
+export async function renderInvestmentDailyPdfToBlob(
+  args: DownloadInvestmentDailyPdfArgs,
+): Promise<Blob> {
   const layout = buildInvestmentDailyPdfLayout({
     report: args.report,
     subtitleTimeZh: args.subtitleTimeZh,
@@ -339,12 +341,18 @@ export async function downloadInvestmentDailyPdf(args: DownloadInvestmentDailyPd
 
   const [rpdf, docMod] = await Promise.all([
     import('@react-pdf/renderer'),
-    import('@/lib/InvestmentDailyPdfDocument'),
+    // Relative path so Vitest resolves without Next.js `paths` alias.
+    import('./InvestmentDailyPdfDocument'),
   ]);
   const doc = React.createElement(docMod.InvestmentDailyPdfDocument, { layout });
-  const blob = await rpdf
-    .pdf(doc as Parameters<typeof rpdf.pdf>[0])
-    .toBlob();
+  return rpdf.pdf(doc as Parameters<typeof rpdf.pdf>[0]).toBlob();
+}
+
+/**
+ * Vector PDF via @react-pdf/renderer (multi-page text flow, smaller than rasterized HTML).
+ */
+export async function downloadInvestmentDailyPdf(args: DownloadInvestmentDailyPdfArgs): Promise<void> {
+  const blob = await renderInvestmentDailyPdfToBlob(args);
   const name = args.filename.endsWith('.pdf') ? args.filename : `${args.filename}.pdf`;
   const url = URL.createObjectURL(blob);
   try {
