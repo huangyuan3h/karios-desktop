@@ -2,7 +2,11 @@ import { Hono } from 'hono';
 import { generateObject } from 'ai';
 
 import { QuantRankExplainRequestSchema, QuantRankExplainResponseSchema } from '../schemas';
-import { getStrategyPrimaryAndFallbackModels, AiModel } from '../model';
+import {
+  getStrategyPrimaryAndFallbackModels,
+  AiModel,
+  generateObjectCompatOptions,
+} from '../model';
 
 export const quantRoutes = new Hono();
 
@@ -17,12 +21,14 @@ quantRoutes.post('/rank/explain', async (c) => {
   let fallbackModel: AiModel | null = null;
   let modelId = '';
   let fallbackModelId: string | null = null;
+  let looseStructuredOutputs = false;
   try {
     const r = await getStrategyPrimaryAndFallbackModels();
     model = r.model;
     modelId = r.modelId;
     fallbackModel = r.fallbackModel;
     fallbackModelId = r.fallbackModelId;
+    looseStructuredOutputs = r.looseStructuredOutputs;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invalid AI configuration';
     return c.json({ error: message }, 500);
@@ -58,6 +64,7 @@ quantRoutes.post('/rank/explain', async (c) => {
       prompt: instruction,
       temperature: 0,
       maxOutputTokens: 1400,
+      ...generateObjectCompatOptions(looseStructuredOutputs),
     });
     return object;
   }

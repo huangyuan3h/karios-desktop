@@ -9,6 +9,7 @@ import { quantRoutes } from './routes/quant';
 import { titleRoutes } from './routes/title';
 import { brokerRoutes } from './routes/broker';
 import { newsRoutes } from './routes/news';
+import { reportRoutes } from './routes/report';
 import { chatRoutes } from './routes/chat';
 
 export const app = new Hono();
@@ -32,6 +33,7 @@ app.route('/quant', quantRoutes);
 app.route('/title', titleRoutes);
 app.route('/extract/broker', brokerRoutes);
 app.route('/news', newsRoutes);
+app.route('/report', reportRoutes);
 app.route('/chat', chatRoutes);
 
 export default app;

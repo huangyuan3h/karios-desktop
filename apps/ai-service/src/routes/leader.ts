@@ -3,7 +3,11 @@ import { generateObject } from 'ai';
 
 import { LeaderDailyRequestSchema, LeaderDailyResponseSchema } from '../schemas';
 import { buildContextMarkdown } from '../utils';
-import { getStrategyPrimaryAndFallbackModels, AiModel } from '../model';
+import {
+  getStrategyPrimaryAndFallbackModels,
+  AiModel,
+  generateObjectCompatOptions,
+} from '../model';
 
 export const leaderRoutes = new Hono();
 
@@ -18,12 +22,14 @@ leaderRoutes.post('/daily', async (c) => {
   let fallbackModel: AiModel | null = null;
   let modelId = '';
   let fallbackModelId: string | null = null;
+  let looseStructuredOutputs = false;
   try {
     const r = await getStrategyPrimaryAndFallbackModels();
     model = r.model;
     modelId = r.modelId;
     fallbackModel = r.fallbackModel;
     fallbackModelId = r.fallbackModelId;
+    looseStructuredOutputs = r.looseStructuredOutputs;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invalid AI configuration';
     return c.json({ error: message }, 500);
@@ -78,6 +84,7 @@ leaderRoutes.post('/daily', async (c) => {
       prompt: instruction,
       temperature: 0,
       maxOutputTokens: 1400,
+      ...generateObjectCompatOptions(looseStructuredOutputs),
     });
     return object;
   }

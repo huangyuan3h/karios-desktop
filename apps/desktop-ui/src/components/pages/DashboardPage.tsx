@@ -13,6 +13,11 @@ import { Progress } from '@/components/ui/progress';
 import { DATA_SYNC_BASE_URL, AI_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 import { loadJson } from '@/lib/storage';
+import {
+  downloadInvestmentDailyPdf,
+  parseInvestmentDailyReportResponse,
+  truncateMarkdownForReport,
+} from '@/lib/investmentDailyPdf';
 
 type DashboardSummary = any;
 type DashboardSyncResp = any;
@@ -510,6 +515,10 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const [copyAllStatus, setCopyAllStatus] = React.useState<{ ok: boolean; text: string } | null>(
     null,
   );
+  const [pdfReportBusy, setPdfReportBusy] = React.useState(false);
+  const [pdfReportStatus, setPdfReportStatus] = React.useState<{ ok: boolean; text: string } | null>(
+    null,
+  );
   const [error, setError] = React.useState<string | null>(null);
   const [editLayout, setEditLayout] = React.useState(false);
   const [newsSummary, setNewsSummary] = React.useState<string | null>(null);
@@ -521,11 +530,13 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const industryCopyTimerRef = React.useRef<number | null>(null);
   const sentimentCopyTimerRef = React.useRef<number | null>(null);
   const copyAllTimerRef = React.useRef<number | null>(null);
+  const pdfReportTimerRef = React.useRef<number | null>(null);
   React.useEffect(() => {
     return () => {
       if (industryCopyTimerRef.current != null) window.clearTimeout(industryCopyTimerRef.current);
       if (sentimentCopyTimerRef.current != null) window.clearTimeout(sentimentCopyTimerRef.current);
       if (copyAllTimerRef.current != null) window.clearTimeout(copyAllTimerRef.current);
+      if (pdfReportTimerRef.current != null) window.clearTimeout(pdfReportTimerRef.current);
     };
   }, []);
 
@@ -594,6 +605,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setCopyAllStatus({ ok, text });
     if (copyAllTimerRef.current != null) window.clearTimeout(copyAllTimerRef.current);
     copyAllTimerRef.current = window.setTimeout(() => setCopyAllStatus(null), 2600);
+  }
+
+  function toastPdfReport(ok: boolean, text: string) {
+    setPdfReportStatus({ ok, text });
+    if (pdfReportTimerRef.current != null) window.clearTimeout(pdfReportTimerRef.current);
+    pdfReportTimerRef.current = window.setTimeout(() => setPdfReportStatus(null), 3200);
   }
 
   const defaultCards = React.useMemo(
@@ -1244,53 +1261,110 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     return lines.join('\n').trim() + '\n';
   }
 
+  async function buildDashboardCopyAllMarkdown(): Promise<string> {
+    const s = summary;
+    if (!s) {
+      throw new Error('No data available. Please refresh first.');
+    }
+    const generatedAt = new Date().toISOString();
+    const [screenersMd, watchlistMd] = await Promise.all([
+      buildScreenersMarkdown(s, '##'),
+      buildWatchlistMarkdown(),
+    ]);
+    const lines: string[] = [];
+    lines.push(`# Copy all (Dashboard)`);
+    lines.push(`- generatedAt: ${generatedAt}`);
+    lines.push(`- asOfDate: ${String((s as any)?.asOfDate ?? '')}`);
+    lines.push('');
+    lines.push(buildIndustryMarkdown(s, '##').trim());
+    lines.push('');
+    lines.push(buildHotIndustriesMarkdown(s, '##').trim());
+    lines.push('');
+    lines.push(buildSentimentMarkdown(s, '##').trim());
+    lines.push('');
+    lines.push(buildMacroMarkdown(s, '##').trim());
+    lines.push('');
+    lines.push('## News brief');
+    lines.push('');
+    lines.push(`- hours: ${String((s as any)?.news?.hours ?? 24)}`);
+    lines.push(`- total: ${String((s as any)?.news?.total ?? 0)}`);
+    if (newsSummaryUpdatedAt) lines.push(`- summaryUpdatedAt: ${newsSummaryUpdatedAt}`);
+    lines.push('');
+    if (newsSummary?.trim()) lines.push(newsSummary.trim());
+    else if (newsFallback?.trim()) lines.push(newsFallback.trim());
+    else lines.push('No summary yet. Last news records are included above.');
+    lines.push('');
+    lines.push(screenersMd.trim());
+    lines.push('');
+    lines.push(watchlistMd.trim());
+    lines.push('');
+    return lines.join('\n').trim() + '\n';
+  }
+
   async function copyAllMarkdown() {
     setCopyAllBusy(true);
     setError(null);
     try {
-      const s = summary;
-      if (!s) {
+      if (!summary) {
         toastCopyAll(false, 'No data available. Please refresh first.');
         return;
       }
-      const generatedAt = new Date().toISOString();
-      const [screenersMd, watchlistMd] = await Promise.all([
-        buildScreenersMarkdown(s, '##'),
-        buildWatchlistMarkdown(),
-      ]);
-      const lines: string[] = [];
-      lines.push(`# Copy all (Dashboard)`);
-      lines.push(`- generatedAt: ${generatedAt}`);
-      lines.push(`- asOfDate: ${String((s as any)?.asOfDate ?? '')}`);
-      lines.push('');
-      lines.push(buildIndustryMarkdown(s, '##').trim());
-      lines.push('');
-      lines.push(buildHotIndustriesMarkdown(s, '##').trim());
-      lines.push('');
-      lines.push(buildSentimentMarkdown(s, '##').trim());
-      lines.push('');
-      lines.push(buildMacroMarkdown(s, '##').trim());
-      lines.push('');
-      lines.push('## News brief');
-      lines.push('');
-      lines.push(`- hours: ${String((s as any)?.news?.hours ?? 24)}`);
-      lines.push(`- total: ${String((s as any)?.news?.total ?? 0)}`);
-      if (newsSummaryUpdatedAt) lines.push(`- summaryUpdatedAt: ${newsSummaryUpdatedAt}`);
-      lines.push('');
-      if (newsSummary?.trim()) lines.push(newsSummary.trim());
-      else if (newsFallback?.trim()) lines.push(newsFallback.trim());
-      else lines.push('No summary yet. Last news records are included above.');
-      lines.push('');
-      lines.push(screenersMd.trim());
-      lines.push('');
-      lines.push(watchlistMd.trim());
-      lines.push('');
-      await navigator.clipboard.writeText(lines.join('\n').trim() + '\n');
+      const text = await buildDashboardCopyAllMarkdown();
+      await navigator.clipboard.writeText(text);
       toastCopyAll(true, 'Copied all Markdown to clipboard.');
     } catch (e) {
       toastCopyAll(false, e instanceof Error ? e.message : String(e));
     } finally {
       setCopyAllBusy(false);
+    }
+  }
+
+  async function onDownloadInvestmentDailyPdf() {
+    setPdfReportBusy(true);
+    setError(null);
+    try {
+      if (!summary) {
+        toastPdfReport(false, 'No data available. Please refresh first.');
+        return;
+      }
+      const rawMd = await buildDashboardCopyAllMarkdown();
+      const markdown = truncateMarkdownForReport(rawMd);
+      const aiRes = await fetch(`${AI_BASE_URL}/report/investment-daily`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ markdown }),
+      });
+      const rawText = await aiRes.text();
+      let data: unknown = null;
+      try {
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        throw new Error(rawText || `AI error (${aiRes.status})`);
+      }
+      if (!aiRes.ok) {
+        const errMsg =
+          data && typeof data === 'object' && 'error' in data
+            ? String((data as { error?: unknown }).error)
+            : rawText;
+        throw new Error(errMsg || `AI error (${aiRes.status})`);
+      }
+      const report = parseInvestmentDailyReportResponse(data);
+      const subtitleTimeZh = new Date().toLocaleString('zh-CN', { hour12: false });
+      const datePart = new Date().toISOString().slice(0, 10);
+      await downloadInvestmentDailyPdf({
+        report,
+        subtitleTimeZh,
+        filename: `投资要点日报-${datePart}.pdf`,
+        summary,
+        hotIndustryPicks,
+      });
+      toastPdfReport(true, 'PDF downloaded.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      toastPdfReport(false, msg);
+    } finally {
+      setPdfReportBusy(false);
     }
   }
 
@@ -1324,7 +1398,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             variant="secondary"
             size="sm"
             className="gap-2"
-            disabled={busy || copyAllBusy}
+            disabled={busy || copyAllBusy || pdfReportBusy}
             onClick={() => void refresh()}
           >
             <RefreshCw className="h-4 w-4" />
@@ -1334,7 +1408,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             variant="secondary"
             size="sm"
             className="gap-2"
-            disabled={busy || copyAllBusy}
+            disabled={busy || copyAllBusy || pdfReportBusy}
             onClick={() => void copyAllMarkdown()}
           >
             {copyAllBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
@@ -1343,7 +1417,17 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
           <Button
             variant="secondary"
             size="sm"
-            disabled={busy || copyAllBusy}
+            className="gap-2"
+            disabled={busy || copyAllBusy || pdfReportBusy}
+            onClick={() => void onDownloadInvestmentDailyPdf()}
+          >
+            {pdfReportBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+            下载 PDF
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={busy || copyAllBusy || pdfReportBusy}
             onClick={() => {
               const asOfDate = String(summary?.asOfDate ?? '');
               const capturedAt = new Date().toISOString();
@@ -1378,6 +1462,13 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       {copyAllStatus ? (
         <div className={`mb-4 text-xs ${copyAllStatus.ok ? 'text-emerald-600' : 'text-red-600'}`}>
           {copyAllStatus.text}
+        </div>
+      ) : null}
+      {pdfReportStatus ? (
+        <div
+          className={`mb-4 text-xs ${pdfReportStatus.ok ? 'text-emerald-600' : 'text-red-600'}`}
+        >
+          {pdfReportStatus.text}
         </div>
       ) : null}
 

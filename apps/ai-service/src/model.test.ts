@@ -4,6 +4,7 @@ import {
   pickActiveProfile,
   modelFromProfile,
   getStrategyFallbackModelId,
+  rewriteDeveloperMessageRolesInJsonString,
 } from './model';
 import { AiProfileSchema, AiConfigStoreSchema } from './config';
 
@@ -141,6 +142,7 @@ describe('modelFromProfile', () => {
     const result = modelFromProfile(profile);
     expect(result.provider).toBe('google');
     expect(result.modelId).toBe('gemini-pro');
+    expect(result.looseStructuredOutputs).toBe(false);
   });
 
   it('returns ollama model for ollama provider', () => {
@@ -154,6 +156,7 @@ describe('modelFromProfile', () => {
     const result = modelFromProfile(profile);
     expect(result.provider).toBe('ollama');
     expect(result.modelId).toBe('llama2');
+    expect(result.looseStructuredOutputs).toBe(true);
   });
 
   it('returns openai model for openai provider', () => {
@@ -167,6 +170,18 @@ describe('modelFromProfile', () => {
     const result = modelFromProfile(profile);
     expect(result.provider).toBe('openai');
     expect(result.modelId).toBe('gpt-4');
+    expect(result.looseStructuredOutputs).toBe(false);
+  });
+
+  it('sets looseStructuredOutputs when openai profile has custom baseUrl', () => {
+    const profile = AiProfileSchema.parse({
+      id: 'test',
+      name: 'Test',
+      provider: 'openai',
+      modelId: 'local-model',
+      openai: { apiKey: 'x', baseUrl: 'http://127.0.0.1:1234/v1' },
+    });
+    expect(modelFromProfile(profile).looseStructuredOutputs).toBe(true);
   });
 
   it('uses default baseUrl for ollama when not provided', () => {
@@ -179,6 +194,35 @@ describe('modelFromProfile', () => {
     });
     const result = modelFromProfile(profile);
     expect(result.provider).toBe('ollama');
+    expect(result.looseStructuredOutputs).toBe(true);
+  });
+});
+
+describe('rewriteDeveloperMessageRolesInJsonString', () => {
+  it('rewrites developer role to system in messages array', () => {
+    const raw = JSON.stringify({
+      model: 'llama3',
+      messages: [
+        { role: 'developer', content: 'sys' },
+        { role: 'user', content: 'hi' },
+      ],
+    });
+    const out = JSON.parse(rewriteDeveloperMessageRolesInJsonString(raw)) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(out.messages[0]?.role).toBe('system');
+    expect(out.messages[0]?.content).toBe('sys');
+    expect(out.messages[1]?.role).toBe('user');
+  });
+
+  it('returns original string when no messages key', () => {
+    const raw = JSON.stringify({ foo: 1 });
+    expect(rewriteDeveloperMessageRolesInJsonString(raw)).toBe(raw);
+  });
+
+  it('returns original string on invalid JSON', () => {
+    const raw = 'not-json';
+    expect(rewriteDeveloperMessageRolesInJsonString(raw)).toBe(raw);
   });
 });
 

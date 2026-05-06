@@ -9,7 +9,11 @@ import {
   StrategyDailyMarkdownResponseSchema,
 } from '../schemas';
 import { buildContextMarkdown, buildPromptDebug, asTrimmedString } from '../utils';
-import { getStrategyPrimaryAndFallbackModels, AiModel } from '../model';
+import {
+  getStrategyPrimaryAndFallbackModels,
+  AiModel,
+  generateObjectCompatOptions,
+} from '../model';
 import { tryParseJsonObject } from '../json_parse';
 
 export const strategyRoutes = new Hono();
@@ -56,12 +60,14 @@ strategyRoutes.post('/daily', async (c) => {
   let fallbackModel: AiModel | null = null;
   let modelId = '';
   let fallbackModelId: string | null = null;
+  let looseStructuredOutputs = false;
   try {
     const r = await getStrategyPrimaryAndFallbackModels();
     model = r.model;
     modelId = r.modelId;
     fallbackModel = r.fallbackModel;
     fallbackModelId = r.fallbackModelId;
+    looseStructuredOutputs = r.looseStructuredOutputs;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invalid AI configuration';
     return c.json({ error: message }, 500);
@@ -111,6 +117,7 @@ strategyRoutes.post('/daily', async (c) => {
       prompt: instruction,
       temperature: 0,
       maxOutputTokens: 2400,
+      ...generateObjectCompatOptions(looseStructuredOutputs),
     });
     return object;
   }
@@ -220,12 +227,14 @@ strategyRoutes.post('/candidates', async (c) => {
   let fallbackModel: AiModel | null = null;
   let modelId = '';
   let fallbackModelId: string | null = null;
+  let looseStructuredOutputs = false;
   try {
     const r = await getStrategyPrimaryAndFallbackModels();
     model = r.model;
     modelId = r.modelId;
     fallbackModel = r.fallbackModel;
     fallbackModelId = r.fallbackModelId;
+    looseStructuredOutputs = r.looseStructuredOutputs;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invalid AI configuration';
     return c.json({ error: message }, 500);
@@ -277,6 +286,7 @@ strategyRoutes.post('/candidates', async (c) => {
       prompt: instruction,
       temperature: 0,
       maxOutputTokens: 1800,
+      ...generateObjectCompatOptions(looseStructuredOutputs),
     });
     return object;
   }

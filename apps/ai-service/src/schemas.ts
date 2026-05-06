@@ -280,3 +280,33 @@ export const NewsSummaryRequestSchema = z.object({
   ),
   hours: z.number().optional(),
 });
+
+/** Dashboard "Copy all Markdown" payload for AI investment daily report. */
+export const InvestmentDailyReportRequestSchema = z.object({
+  markdown: z.string().min(1).max(100_000),
+});
+
+export const InvestmentDailyReportStockItemSchema = z.object({
+  symbol: z.string().min(1).max(32),
+  name: z.string().min(1).max(64),
+  rationale: z.string().min(1).max(2000),
+});
+
+export const InvestmentDailyReportNewsItemSchema = z.object({
+  title: z.string().min(1).max(500),
+  summary: z.string().min(1).max(1200),
+});
+
+/** Structured sections for PDF rendering (Chinese prose + fixed counts). */
+export const InvestmentDailyReportResponseSchema = z.object({
+  /** Narrative after dashboard traffic-light tables (仓位与情绪解读). */
+  trafficLightPositionAndSentiment: z.string().min(1).max(8000),
+  /** 3–8 bullet lines (Markdown "- " ok) distilling 市场环境摘要. */
+  marketEnvironmentHighlights: z.string().min(1).max(4000),
+  /** Formal written analysis of Hot industries workflow (书面化). */
+  hotIndustriesFormalAnalysis: z.string().min(1).max(10000),
+  /** Mainline + fund flow synthesis referencing industry tables. */
+  capitalFlowAndMainline: z.string().min(1).max(12000),
+  topStocks: z.array(InvestmentDailyReportStockItemSchema).length(3),
+  topNews: z.array(InvestmentDailyReportNewsItemSchema).length(5),
+});

@@ -12,6 +12,8 @@ import {
   MainlineExplainRequestSchema,
   QuantRankExplainRequestSchema,
   NewsSummaryRequestSchema,
+  InvestmentDailyReportRequestSchema,
+  InvestmentDailyReportResponseSchema,
 } from './schemas';
 
 describe('ConfigProfileCreateSchema', () => {
@@ -362,5 +364,53 @@ describe('NewsSummaryRequestSchema', () => {
   it('accepts empty items array', () => {
     const result = NewsSummaryRequestSchema.safeParse({ items: [] });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('InvestmentDailyReportRequestSchema', () => {
+  it('accepts markdown within max length', () => {
+    const result = InvestmentDailyReportRequestSchema.safeParse({ markdown: '# hello\n' });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects empty markdown', () => {
+    const result = InvestmentDailyReportRequestSchema.safeParse({ markdown: '' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects markdown over 100k chars', () => {
+    const result = InvestmentDailyReportRequestSchema.safeParse({
+      markdown: 'x'.repeat(100_001),
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('InvestmentDailyReportResponseSchema', () => {
+  const stock = (i: number) => ({ symbol: `S${i}`, name: `N${i}`, rationale: `r${i}` });
+  const news = (i: number) => ({ title: `t${i}`, summary: `s${i}` });
+
+  it('parses object with three stocks and five news items', () => {
+    const result = InvestmentDailyReportResponseSchema.safeParse({
+      trafficLightPositionAndSentiment: 'a',
+      marketEnvironmentHighlights: 'mh',
+      hotIndustriesFormalAnalysis: 'hi',
+      capitalFlowAndMainline: 'b',
+      topStocks: [0, 1, 2].map(stock),
+      topNews: [0, 1, 2, 3, 4].map(news),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects wrong stock array length', () => {
+    const result = InvestmentDailyReportResponseSchema.safeParse({
+      trafficLightPositionAndSentiment: 'a',
+      marketEnvironmentHighlights: 'mh',
+      hotIndustriesFormalAnalysis: 'hi',
+      capitalFlowAndMainline: 'b',
+      topStocks: [0, 1].map(stock),
+      topNews: [0, 1, 2, 3, 4].map(news),
+    });
+    expect(result.success).toBe(false);
   });
 });

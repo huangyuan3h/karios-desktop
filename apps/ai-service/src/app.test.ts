@@ -16,3 +16,14 @@ describe('app error handling', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('report routes', () => {
+  it('POST /report/investment-daily returns 400 for invalid body', async () => {
+    const res = await app.request('/report/investment-daily', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+});
