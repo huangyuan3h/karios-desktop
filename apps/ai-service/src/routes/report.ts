@@ -42,16 +42,18 @@ reportRoutes.post('/investment-daily', async (c) => {
 你必须只依据 Markdown 中的事实写作：不得编造未出现的股票代码/名称、行业金额、指数点位。可引用表中具体行业名与资金数字。信息不足时明确写「依据不足」。
 
 语言与去重（必须遵守）：
-- 全文使用**简体中文**撰写；可保留常见英文缩写（如 MA、ETF、risk 档位名 hot/normal/caution），但不要整段英文论述。
+- 全文使用**简体中文**撰写；可保留常见英文缩写（如 MA、ETF），但不要整段英文论述。
+- 凡描述指数信号灯，请用中文档位名，勿写英文枚举：深绿灯、浅绿灯、绿灯、黄灯、红灯、深红灯（对应 deep_green / light_green / green / yellow / red / deep_red 等）。
+- 凡描述全市场风险档位，请用中文：过热、常态、谨慎、狂热、暂停新开仓等（对应 hot / normal / caution / euphoric / no_new_positions 等），勿直接粘贴英文枚举。
 - **禁止在不同字段重复同一观点**：「红绿灯/情绪」段落只写信号灯、广度、成交额与仓位建议；「主线与资金流向」只写 5D 行业净流入/流出与热点矩阵、与主线的关系，不要再复述红绿灯结论；「热点书面分析」只写工作流规则与观测行业逻辑，不要再次给出泛泛的仓位口号。
 - 「市场环境要点提炼」用 4–8 条 Markdown 列表（每条以 "- " 开头），**压缩提炼**即可，不要整段照抄 Markdown 里「市场环境摘要」原文句子。
 
 输出必须严格匹配 JSON schema：
-- trafficLightPositionAndSentiment：在读者已看到指数红绿灯与情绪表的前提下，写 2–4 段中文解读：仓位建议、风险状态（hot/normal/caution 等）、与前一两个交易日的对比、操作纪律。语气专业、可执行。
+- trafficLightPositionAndSentiment：在读者已看到指数红绿灯与情绪表的前提下，写 2–4 段中文解读：仓位建议、风险状态（用中文表述如过热、常态、谨慎）、与前一两个交易日的对比、操作纪律。语气专业、可执行。
 - marketEnvironmentHighlights：把「市场环境摘要」压缩为 4–8 条要点，每条一行，以 "- " 开头（Markdown 列表），只保留对 A 股与资产配置最关键的信息（指数、汇率、商品、外盘对风险偏好影响等）。
-- hotIndustriesFormalAnalysis：针对「Hot industries workflow」表格与规则，写一段正式书面分析（不少于 300 字）：动量突破 vs 5D 强势的含义、当前入选行业的资金与排名逻辑、对主线持续性的判断、与 Watchlist 动作纪律的衔接。
+- hotIndustriesFormalAnalysis：针对「Hot industries workflow」表格与规则，写一段正式书面分析（不少于 300 字）：动量突破 vs 5D 强势的含义、当前入选行业的资金与排名逻辑、对主线持续性的判断、与读者可自行执行的交易/风控纪律的衔接（勿使用 Dashboard 英文模块名）。
 - capitalFlowAndMainline：综合「5D net inflow / outflow」与 Top5×Date 热点矩阵，写 3–6 段中文：主线与支线、流入/流出对立面、与热点行业工作流的一致性或不一致、短期风险。可分段落或小标题（纯文本）。
-- topStocks：恰好 3 条，从筛选器与自选中择优；symbol 与 Markdown 一致；name 为中文简称且须与表中 Name 列或自选 Name 一致；rationale 每条 3–6 句，须引用分数/趋势/行业等已有字段。
+- topStocks：恰好 3 条，从 Markdown 中的筛选结果与自选列表择优；symbol 与 Markdown 一致；name 为中文简称且须与表中 Name 列或名称列一致。**rationale 必须写成面向任意读者的通用投研推荐**（行业景气、资金、技术位、风险点、与主线的关系等），每条 3–6 句，须引用分数/趋势/行业等已有字段。**禁止**：提及「该股已持有 X% 仓位」「当前持仓」「本人仓位」等个人化仓位表述；禁止出现「该股入选 Institutional」「Trend」「Watchlist」等 Dashboard 或产品化英文模块名；可用「技术面筛选结果」「资金与排名证据」「与热点主线一致性」等中性表述替代。
 - topNews：恰好 5 条；title 精简；summary 每条 2–3 句中文。`;
 
   const prompt = `以下为用户 Dashboard Markdown（可能已截断，文末会有说明）：

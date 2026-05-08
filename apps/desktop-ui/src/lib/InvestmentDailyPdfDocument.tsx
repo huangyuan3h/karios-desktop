@@ -223,7 +223,7 @@ export function InvestmentDailyPdfDocument({ layout }: { layout: InvestmentDaily
         </Text>
 
         <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
-          一、市场环境摘要
+          一、市场环境与宏观外盘
         </Text>
         {envZh ? (
           <View style={styles.envBox}>
@@ -242,6 +242,7 @@ export function InvestmentDailyPdfDocument({ layout }: { layout: InvestmentDaily
         <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
           {report.marketEnvironmentHighlights}
         </Text>
+        {layout.macroTable ? <PdfTableView block={layout.macroTable} /> : null}
 
         <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
           二、红绿灯 · 仓位与情绪
@@ -271,9 +272,9 @@ export function InvestmentDailyPdfDocument({ layout }: { layout: InvestmentDaily
         </Text>
         {hasIndustrySection ? (
           <>
-            {layout.industryTopByDate ? <PdfTableView block={layout.industryTopByDate} /> : null}
             {layout.industryInflow ? <PdfTableView block={layout.industryInflow} /> : null}
             {layout.industryOutflow ? <PdfTableView block={layout.industryOutflow} /> : null}
+            {layout.industryTopByDate ? <PdfTableView block={layout.industryTopByDate} /> : null}
           </>
         ) : (
           <Text style={styles.muted} hyphenationCallback={hyphenateCjkWord}>
@@ -299,15 +300,6 @@ export function InvestmentDailyPdfDocument({ layout }: { layout: InvestmentDaily
         <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
           {report.hotIndustriesFormalAnalysis}
         </Text>
-
-        {layout.macroTable ? (
-          <>
-            <Text style={styles.h2} minPresenceAhead={72} hyphenationCallback={hyphenateCjkWord}>
-              宏观与外盘
-            </Text>
-            <PdfTableView block={layout.macroTable} />
-          </>
-        ) : null}
 
         <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
           五、主线与资金流向（综合评述）

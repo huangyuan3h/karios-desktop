@@ -5,7 +5,9 @@
  *   WRITE_SAMPLE_PDF=1 pnpm --filter desktop-ui exec vitest run src/lib/investmentDailyPdf.manual.test.ts
  *
  * Output: OS temp dir file `karios-investment-daily-manual.pdf` (path printed to stdout).
- * Requires network once to load Noto Sans SC from CDN.
+ * First run may need network to load Noto Sans SC from CDN (can take tens of seconds).
+ *
+ * Keep sample text moderate: very long CJK + many page breaks can make @react-pdf/renderer slow.
  */
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -19,13 +21,15 @@ import { parseInvestmentDailyReportResponse, renderInvestmentDailyPdfToBlob } fr
 const longCn =
   '这是一段用于测试中文换行与版面是否越界的长文本，包含沪深指数收报与北向资金等常见表述，重复以占满一行并触发自动折行。';
 
+/** ~2× longCn — enough to stress-wrap without exploding layout time */
+const mediumBlock = longCn.repeat(2);
+
 function buildSampleReport() {
-  const block = longCn.repeat(4);
   return parseInvestmentDailyReportResponse({
-    trafficLightPositionAndSentiment: `【红绿灯测试】${block}\n\n第二段：情绪偏热时控制仓位，避免与主线段落重复表述。`,
-    marketEnvironmentHighlights: `- 要点A：${longCn.slice(0, 120)}\n- 要点B：汇率与商品对风险偏好影响\n- 要点C：${longCn.slice(0, 80)}`,
-    hotIndustriesFormalAnalysis: `【热点书面分析测试】${block.repeat(2)}动量突破与五日强势排名的含义说明，字数拉长用于分页测试。`,
-    capitalFlowAndMainline: `【主线资金测试】${block}\n\n与上段不同的侧重点：行业五日净流入矩阵、支线轮动，不写红绿灯结论。`,
+    trafficLightPositionAndSentiment: `【红绿灯测试】${mediumBlock}\n\n第二段：情绪偏热时控制仓位，避免与主线段落重复表述。`,
+    marketEnvironmentHighlights: `- 要点A：${longCn.slice(0, 100)}\n- 要点B：汇率与商品对风险偏好影响\n- 要点C：${longCn.slice(0, 60)}`,
+    hotIndustriesFormalAnalysis: `【热点书面分析测试】${mediumBlock}动量突破与五日强势排名的含义说明。`,
+    capitalFlowAndMainline: `【主线资金测试】${mediumBlock}\n\n与上段不同的侧重点：行业五日净流入矩阵、支线轮动。`,
     topStocks: [
       {
         symbol: '600000.SH',
@@ -35,17 +39,17 @@ function buildSampleReport() {
       {
         symbol: '000001.SZ',
         name: '平安银行',
-        rationale: `${longCn.slice(0, 200)} 第二只标的测试。`,
+        rationale: `${longCn.slice(0, 120)} 第二只标的测试。`,
       },
       {
         symbol: '601318.SH',
         name: '中国平安',
-        rationale: `${longCn.slice(0, 200)} 第三只标的测试。`,
+        rationale: `${longCn.slice(0, 120)} 第三只标的测试。`,
       },
     ],
     topNews: Array.from({ length: 5 }, (_, i) => ({
-      title: `测试新闻标题 ${i + 1}：${longCn.slice(0, 40)}`,
-      summary: `${longCn.slice(0, 160)} 摘要句二。`,
+      title: `测试新闻标题 ${i + 1}：${longCn.slice(0, 30)}`,
+      summary: `${longCn.slice(0, 100)} 摘要句二。`,
     })),
   });
 }
@@ -54,7 +58,7 @@ function buildSampleReport() {
 function buildSampleSummary(): unknown {
   return {
     asOfDate: '2026-05-06',
-    marketEnvironmentZh: `${longCn.repeat(3)}收报与成交额等数据用于灰框折行测试。`,
+    marketEnvironmentZh: `${mediumBlock}收报与成交额等数据用于灰框折行测试。`,
     marketSentiment: {
       asOfDate: '2026-05-06',
       indexSignals: [
@@ -171,6 +175,9 @@ function buildSampleHotPicks(): HotIndustryPick[] {
   ];
 }
 
+/** Font CDN + layout can exceed 2m on slow networks; keep generous cap. */
+const MANUAL_PDF_TEST_TIMEOUT_MS = 300_000;
+
 describe('investmentDailyPdf manual sample', () => {
   it.skipIf(process.env.WRITE_SAMPLE_PDF !== '1')(
     'WRITE_SAMPLE_PDF=1: writes karios-investment-daily-manual.pdf under OS tmpdir',
@@ -182,7 +189,7 @@ describe('investmentDailyPdf manual sample', () => {
         summary: buildSampleSummary(),
         hotIndustryPicks: buildSampleHotPicks(),
       });
-      expect(blob.size).toBeGreaterThan(5000);
+      expect(blob.size).toBeGreaterThan(2000);
 
       const buf = Buffer.from(await blob.arrayBuffer());
       const outPath = path.join(os.tmpdir(), 'karios-investment-daily-manual.pdf');
@@ -190,6 +197,6 @@ describe('investmentDailyPdf manual sample', () => {
       // eslint-disable-next-line no-console -- manual test artifact path
       console.info(`[investmentDailyPdf.manual] wrote ${outPath} (${buf.length} bytes)`);
     },
-    120_000,
+    MANUAL_PDF_TEST_TIMEOUT_MS,
   );
 });

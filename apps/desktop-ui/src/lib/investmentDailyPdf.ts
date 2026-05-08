@@ -52,7 +52,72 @@ const HOT_INDUSTRY_STATIC_RULES_ZH = [
 
 const SENTIMENT_STATIC_NOTES_ZH =
   '说明：上表为各主要指数「信号灯」与建议仓位区间；下表为全市场近五个交易日的涨跌家数比、成交额、涨停溢价与炸板率。' +
-  'risk 字段为系统根据成交额与广度等规则判定的情绪档位（如 hot / normal / caution）。';
+  '「风险评价」列为系统根据成交额、广度等规则给出的情绪档位（常见取值为过热、常态、谨慎、狂热等）。';
+
+const INDEX_SIGNAL_ZH: Record<string, string> = {
+  deep_green: '深绿灯',
+  light_green: '浅绿灯',
+  green: '绿灯',
+  yellow: '黄灯',
+  red: '红灯',
+  deep_red: '深红灯',
+  grey: '灰灯',
+  gray: '灰灯',
+  unknown: '未知',
+};
+
+const RISK_MODE_ZH: Record<string, string> = {
+  hot: '过热',
+  normal: '常态',
+  caution: '谨慎',
+  euphoric: '狂热',
+  no_new_positions: '暂停新开仓',
+  no_new_position: '暂停新开仓',
+};
+
+function normalizeTokenKey(raw: unknown): string {
+  return String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .replaceAll('-', '_');
+}
+
+/** Index traffic-light cell for PDF (no snake_case like deep_green). */
+export function translateIndexSignalForPdf(raw: unknown): string {
+  const k = normalizeTokenKey(raw);
+  if (!k) return '—';
+  return INDEX_SIGNAL_ZH[k] ?? String(raw ?? '').trim();
+}
+
+/** Market-wide riskMode cell for PDF. */
+export function translateRiskModeForPdf(raw: unknown): string {
+  const k = normalizeTokenKey(raw);
+  if (!k) return '—';
+  return RISK_MODE_ZH[k] ?? String(raw ?? '').trim();
+}
+
+/**
+ * Best-effort Chinese for mixed system rule lines (ASCII tokens from backend).
+ * Longer tokens first to avoid partial replacements.
+ */
+export function translateSentimentSnippetForPdf(text: string): string {
+  let s = text;
+  const repl: Array<[RegExp, string]> = [
+    [/\bno_new_positions\b/gi, '暂停新开仓'],
+    [/\bdeep_green\b/gi, '深绿灯'],
+    [/\blight_green\b/gi, '浅绿灯'],
+    [/\beuphoric\b/gi, '狂热'],
+    [/\bcaution\b/gi, '谨慎'],
+    [/\bnormal\b/gi, '常态'],
+    [/\bhot\b/gi, '过热'],
+    [/\briskmode\b/gi, '风险评价'],
+    [/\brisk\b/gi, '风险评价'],
+  ];
+  for (const [re, to] of repl) {
+    s = s.replace(re, to);
+  }
+  return s;
+}
 
 function asRecord(x: unknown): Record<string, unknown> {
   return x && typeof x === 'object' ? (x as Record<string, unknown>) : {};
@@ -134,7 +199,7 @@ function buildMacroTable(summary: unknown): PdfTableBlock | null {
   const macroSnapshot = asRecord(s.macroSnapshot);
   const macroItems: unknown[] = Array.isArray(macroSnapshot.macro) ? (macroSnapshot.macro as unknown[]) : [];
   if (!macroItems.length) return null;
-  const headers = ['名称', '收盘', '涨跌%', 'MA5', 'MA20', '日期', '来源'];
+  const headers = ['名称', '收盘', '涨跌%', 'MA5', 'MA20', '日期'];
   const rows: string[][] = macroItems.map((it) => {
     const x = asRecord(it);
     const pct = x.pctChg;
@@ -149,10 +214,9 @@ function buildMacroTable(summary: unknown): PdfTableBlock | null {
       Number.isFinite(x.ma5 as number) ? Number(x.ma5).toFixed(2) : '—',
       Number.isFinite(x.ma20 as number) ? Number(x.ma20).toFixed(2) : '—',
       String(x.asOfDate ?? ''),
-      String(x.source ?? ''),
     ];
   });
-  return { headers, rows };
+  return { title: '宏观与外盘', headers, rows };
 }
 
 function buildSentimentLayout(summary: unknown): {
@@ -179,7 +243,7 @@ function buildSentimentLayout(summary: unknown): {
           : '—';
       return [
         String(x.name ?? x.tsCode ?? ''),
-        String(x.signal ?? ''),
+        translateIndexSignalForPdf(x.signal),
         String(x.positionRange ?? ''),
         chg,
         Number.isFinite(x.close as number) ? Number(x.close).toFixed(2) : '—',
@@ -194,7 +258,7 @@ function buildSentimentLayout(summary: unknown): {
   let sentimentDailyTable: PdfTableBlock | null = null;
   const last5 = items.slice(-5);
   if (last5.length) {
-    const headers = ['日期', '涨跌比', '成交额', '涨停溢价%', '炸板率%', 'risk'];
+    const headers = ['日期', '涨跌比', '成交额', '涨停溢价%', '炸板率%', '风险评价'];
     const rows: string[][] = last5.map((it) => {
       const x = asRecord(it);
       return [
@@ -205,7 +269,7 @@ function buildSentimentLayout(summary: unknown): {
           ? `${Number(x.yesterdayLimitUpPremium).toFixed(2)}%`
           : '—',
         Number.isFinite(x.failedLimitUpRate as number) ? `${Number(x.failedLimitUpRate).toFixed(1)}%` : '—',
-        String(x.riskMode ?? ''),
+        translateRiskModeForPdf(x.riskMode),
       ];
     });
     sentimentDailyTable = { title: '全市场日度情绪', headers, rows };
@@ -215,13 +279,16 @@ function buildSentimentLayout(summary: unknown): {
   if (asOfDate) sentimentRuleLines.push(`数据截至：${asOfDate}`);
   if (latest) {
     const risk = String(latest.riskMode ?? '');
-    if (risk) sentimentRuleLines.push(`最新 risk 档位：${risk}`);
+    if (risk) sentimentRuleLines.push(`最新风险评价档位：${translateRiskModeForPdf(risk)}`);
     const total = fmtAmountCn(latest.marketTurnoverCny);
     if (total && total !== '—') sentimentRuleLines.push(`最新全市场成交额：${total}`);
     const rules = Array.isArray(latest.rules)
       ? (latest.rules as unknown[]).map((x) => String(x)).filter(Boolean)
       : [];
-    if (rules.length) sentimentRuleLines.push(`系统规则摘要：${rules.slice(0, 8).join(' · ')}`);
+    if (rules.length) {
+      const zhRules = rules.slice(0, 8).map((t) => translateSentimentSnippetForPdf(t));
+      sentimentRuleLines.push(`系统规则摘要：${zhRules.join(' · ')}`);
+    }
   }
 
   return { sentimentIndexTable, sentimentDailyTable, sentimentRuleLines };
