@@ -223,26 +223,14 @@ export function InvestmentDailyPdfDocument({ layout }: { layout: InvestmentDaily
         </Text>
 
         <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
-          一、市场环境与宏观外盘
+          一、市场环境要点
         </Text>
-        {envZh ? (
-          <View style={styles.envBox}>
-            <Text style={styles.envText} wrap hyphenationCallback={hyphenateCjkWord}>
-              {envZh}
-            </Text>
-          </View>
-        ) : (
-          <Text style={styles.prose} hyphenationCallback={hyphenateCjkWord}>
-            （暂无市场环境摘要原文）
-          </Text>
-        )}
         <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
           要点提炼
         </Text>
         <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
           {report.marketEnvironmentHighlights}
         </Text>
-        {layout.macroTable ? <PdfTableView block={layout.macroTable} /> : null}
 
         <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
           二、红绿灯 · 仓位与情绪
@@ -268,22 +256,7 @@ export function InvestmentDailyPdfDocument({ layout }: { layout: InvestmentDaily
         </Text>
 
         <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
-          三、行业资金（原始表）
-        </Text>
-        {hasIndustrySection ? (
-          <>
-            {layout.industryInflow ? <PdfTableView block={layout.industryInflow} /> : null}
-            {layout.industryOutflow ? <PdfTableView block={layout.industryOutflow} /> : null}
-            {layout.industryTopByDate ? <PdfTableView block={layout.industryTopByDate} /> : null}
-          </>
-        ) : (
-          <Text style={styles.muted} hyphenationCallback={hyphenateCjkWord}>
-            暂无行业日期矩阵 / 五日流向表数据。
-          </Text>
-        )}
-
-        <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
-          四、热点行业工作流
+          三、热点行业与主线资金流向
         </Text>
         <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
           工作流规则（V4.0）
@@ -295,21 +268,20 @@ export function InvestmentDailyPdfDocument({ layout }: { layout: InvestmentDaily
         ))}
         <PdfTableView block={layout.hotPicksTable} />
         <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
-          书面分析
+          热点书面分析
         </Text>
         <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
           {report.hotIndustriesFormalAnalysis}
         </Text>
-
-        <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
-          五、主线与资金流向（综合评述）
+        <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
+          主线与资金综合评述
         </Text>
         <Text style={styles.prose} wrap hyphenationCallback={hyphenateCjkWord}>
           {report.capitalFlowAndMainline}
         </Text>
 
         <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
-          六、本期重点标的（3）
+          四、本期重点标的（3）
         </Text>
         {report.topStocks.map((s, i) => (
           <View key={`st-${i}`} style={{ marginBottom: 8, width: '100%', maxWidth: '100%' }}>
@@ -327,7 +299,7 @@ export function InvestmentDailyPdfDocument({ layout }: { layout: InvestmentDaily
         ))}
 
         <Text style={styles.h2} minPresenceAhead={80} hyphenationCallback={hyphenateCjkWord}>
-          七、重要资讯摘要（5）
+          五、重要资讯摘要（5）
         </Text>
         {report.topNews.map((n, i) => (
           <View key={`nw-${i}`} style={{ marginBottom: 8, width: '100%', maxWidth: '100%' }}>
@@ -343,6 +315,42 @@ export function InvestmentDailyPdfDocument({ layout }: { layout: InvestmentDaily
             </Text>
           </View>
         ))}
+
+        <Text style={styles.h2} minPresenceAhead={72} hyphenationCallback={hyphenateCjkWord}>
+          附录：环境与行业原始数据
+        </Text>
+        <Text style={styles.muted} wrap hyphenationCallback={hyphenateCjkWord}>
+          以下为 Dashboard 摘录的原文与原始表，便于核对；正文结论请以第一节「要点提炼」及后文分析为准。
+        </Text>
+        <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
+          市场环境摘要（原文）
+        </Text>
+        {envZh ? (
+          <View style={styles.envBox}>
+            <Text style={styles.envText} wrap hyphenationCallback={hyphenateCjkWord}>
+              {envZh}
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.prose} hyphenationCallback={hyphenateCjkWord}>
+            （暂无市场环境摘要原文）
+          </Text>
+        )}
+        {layout.macroTable ? <PdfTableView block={layout.macroTable} /> : null}
+        <Text style={styles.h3} hyphenationCallback={hyphenateCjkWord}>
+          行业资金（原始表）
+        </Text>
+        {hasIndustrySection ? (
+          <>
+            {layout.industryInflow ? <PdfTableView block={layout.industryInflow} /> : null}
+            {layout.industryOutflow ? <PdfTableView block={layout.industryOutflow} /> : null}
+            {layout.industryTopByDate ? <PdfTableView block={layout.industryTopByDate} /> : null}
+          </>
+        ) : (
+          <Text style={styles.muted} hyphenationCallback={hyphenateCjkWord}>
+            暂无行业日期矩阵 / 五日流向表数据。
+          </Text>
+        )}
         </View>
       </Page>
     </Document>
