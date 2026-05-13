@@ -129,13 +129,23 @@ function trendOkRuleLines(): string[] {
   ];
 }
 
-function scoreRuleLines(): string[] {
+/**
+ * Score (0–100) rules for UI / Markdown; aligned with
+ * `services/data-sync-service/.../trendok.py` (`_trendok_one` score block).
+ */
+function scoreExplainZhLines(): string[] {
   return [
-    '- Deterministic 0–100 score (CN daily, no LLM).',
-    '- Subscores: EMA trend 25%, MACD strength 15%, breakout 25%, RSI 15%, volume 20%.',
-    '- Bonus: +3 when Close >= High(20).',
-    '- Penalties: high ATR/close (>7%) and Close < EMA20.',
-    '- Optional industry flow adjustment when available.',
+    'Score 为 0～100 的确定性公式分（A 股日线、无 LLM）。先算「基础分」并限制在 0～100；若有行业资金流上下文，再累加行业调整 delta，再次限制在 0～100。',
+    '基础分 = 五项加权子分之和 + 新高奖励 − 波动扣分 − 跌破 EMA20 扣分。每项子分先把信号压到 0～1，再乘以「100 × 该项权重」。',
+    '权重：EMA 结构 25%；MACD 动能 15%；贴近/突破近 20 日高 25%；RSI(14) 15%；5 日均量/30 日均量 20%。',
+    'EMA：EMA5>EMA20 与 EMA20>EMA60 各占一半权重，两档取 0 或 1 后平均得到 0～1，再乘 25 分。',
+    'MACD：MACD 线 ≤0 时该项为 0；否则用近 4 根 MACD 柱（均为正且最后一根有最小幅度）上的递增步数得到 0～1，再按 0.5+0.5×该值映射并 clip 后乘 15 分。',
+    'Breakout：收盘价 ÷ 近 20 日最高价，从约 0.85～1.0 线性映射到 0～1（clip）后乘 25 分。',
+    'RSI：以 RSI=70 为最高分，随 |RSI−70| 增大线性衰减（按 15 点尺度 clip）后乘 15 分。',
+    'Volume：AvgVol5÷AvgVol30，从比值 1.0 起按 (比值−1)/0.30 映射并 clip 后乘 20 分。',
+    '新高奖励：收盘 ≥ 近 20 日最高价 → +3（scoreParts 中 bonus_new_high20）。',
+    '扣分：① ATR14/收盘价 >7% 起按斜率扣，单项最多约 5 分（penalty_volatility_atr）。② 收盘低于 EMA20 时按相对偏离 clip 后最多扣 10 分（penalty_below_ema20）。',
+    '行业资金流（可选）：如 5 日净流入行业 Top3 +10、当日热点 Top3 +5、Top4–5 +3；5 日弱势榜等可 −10～−20；细节以返回的 scoreParts 与 industryFlowReasons 为准。',
   ];
 }
 
@@ -1574,8 +1584,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     lines.push('### TrendOK rules');
     lines.push(mdLines(trendOkRuleLines()));
     lines.push('');
-    lines.push('### Score rules');
-    lines.push(mdLines(scoreRuleLines()));
+    lines.push('### Score（0–100）计分说明');
+    lines.push(
+      mdLines(
+        scoreExplainZhLines().map((line) => (line.startsWith('-') ? line : `- ${line}`)),
+      ),
+    );
     lines.push('');
 
     // Summary table
@@ -1955,6 +1969,18 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         </div>
         <div className="mt-2 text-xs text-[var(--k-muted)]">
           Supported inputs: CN 6-digit ticker, HK 4-5 digit ticker, or prefixed symbol (CN:/HK:).
+        </div>
+      </section>
+
+      <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+        <div className="text-sm font-medium">Score（0–100）计分说明</div>
+        <div className="mt-2 space-y-1.5 text-xs leading-relaxed text-[var(--k-text)]">
+          {scoreExplainZhLines().map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
+        </div>
+        <div className="mt-3 text-[11px] leading-relaxed text-[var(--k-muted)]">
+          鼠标悬停在列表「Score」数字上可查看该股各项得分（ema / macd / breakout / rsi / volume 及加扣分）。
         </div>
       </section>
 
