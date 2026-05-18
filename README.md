@@ -1,41 +1,197 @@
 # Karios Desktop
 
-Family investment analyzer desktop app (AI-first).
+家庭投资分析桌面应用（AI 驱动）。
 
-## Repo structure
+---
 
-- `apps/desktop-ui`: Next.js UI (embedded in Tauri WebView)
-- `apps/ai-service`: Node/TypeScript AI service (Vercel AI SDK)
-- `services/quant-service`: Python quant/data service (uv-managed)
-- `packages/shared`: shared schemas/types
-- `docs`: architecture and requirements
+## 项目定位
 
-## Local development
+Karios Desktop 是一款 **AI 驱动** 的个人及家庭投资分析工具。它以桌面应用的形式运行，帮助用户：
 
-### Prerequisites
+- 整合家庭投资数据（持仓、现金流、资产、负债）
+- 提供投资洞察（收益分析、资产配置、风险评估）
+- 通过自然语言与 AI 对话，获得透明的投资建议
 
-- Node.js (LTS recommended)
+---
+
+## 核心设计理念
+
+### 本地优先
+
+用户数据默认存储在本地，保护隐私。云端同步为可选功能。
+
+### AI 优先交互
+
+自然语言是主要的交互方式，界面作为结构化的「事实视图」呈现。
+
+### 可解释性
+
+AI 的输出会尽可能引用底层的计算结果和数据来源，让用户知道「为什么」。
+
+---
+
+## 主要功能模块
+
+### 1. Screener（股票筛选器同步）
+
+**用途**：同步 TradingView 的股票筛选器结果
+
+Screener 模块从 TradingView 网站抓取用户自定义的股票筛选器数据，实现本地数据的同步与历史记录管理。
+
+**核心功能**：
+- 动态抓取 TradingView Screener 的筛选结果
+- 自动提取并保存筛选条件（Filter Pills），保留数据上下文
+- 按 AM/PM 两个时段记录快照，支持回溯分析
+- 抓取的数据可直接作为 AI 对话的上下文引用
+
+**使用场景**：
+- 每日开盘前同步昨天的筛选结果，对比变化
+- 发现新进入筛选列表的股票，及时关注
+- 追踪筛选条件下的股票数量变化趋势
+
+---
+
+### 2. Industry Flow（行业资金流）
+
+**用途**：追踪资金在不同行业间的流动方向
+
+**核心功能**：
+- 展示各行业的资金流入/流出情况
+- 识别资金集中流入的热门板块
+- 发现资金撤离的冷门板块
+
+**使用场景**：
+- 判断市场热点轮动方向
+- 辅助行业配置决策
+- 发现潜在的趋势反转信号
+
+---
+
+### 3. Watchlist（股票关注列表）
+
+**用途**：管理关注的股票以及买入卖出情况
+
+**核心功能**：
+- 维护个人关注的股票清单
+- 记录买入价格、数量、时间
+- 追踪持仓盈亏情况
+- 设置提醒条件（价格突破、技术指标等）
+
+**使用场景**：
+- 集中管理从 Screener 筛选出的潜力股
+- 记录交易想法，避免遗忘
+- 追踪观察股票的后续表现
+
+---
+
+### 4. Market Sentiment（市场情绪分析）
+
+**用途**：计算建议仓位，提供市场红绿灯信号
+
+**核心功能**：
+- 综合多个指标计算市场情绪分数
+- 提供「红绿灯」式的情绪指示（绿=乐观，黄=中性，红=谨慎）
+- 根据情绪分数给出建议仓位比例
+
+**使用场景**：
+- 决定当前应该激进还是保守
+- 在市场极端情绪时逆向思考
+- 系统性地管理仓位风险
+
+---
+
+### 5. News Brief（新闻摘要）
+
+**用途**：总结最近的财经新闻
+
+**核心功能**：
+- 自动抓取并整理财经新闻
+- AI 生成新闻要点摘要
+- 识别可能影响持仓的重要事件
+
+**使用场景**：
+- 快速了解市场重大事件
+- 发现持仓股票的相关新闻
+- 作为交易决策的辅助信息
+
+---
+
+## 模块间的协作关系
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Karios 模块协作                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   Screener ──────► Watchlist ──────► 建仓/交易决策              │
+│       │                │                                         │
+│       │                │                                         │
+│       ▼                ▼                                         │
+│   Industry Flow    Market Sentiment                              │
+│   (行业资金流)      (市场情绪)                                    │
+│       │                │                                         │
+│       │                │                                         │
+│       └───────► 仓位管理 ◄───────┘                               │
+│                    │                                             │
+│                    ▼                                             │
+│               News Brief                                         │
+│              (新闻摘要)                                           │
+│                    │                                             │
+│                    ▼                                             │
+│               AI 分析报告                                         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**协作示例**：
+
+1. **Screener** 发现一批符合条件的股票
+2. 筛选结果导入 **Watchlist** 进行追踪
+3. 参考 **Industry Flow** 判断股票所在行业的资金流向
+4. 结合 **Market Sentiment** 决定当前仓位比例
+5. 关注 **News Brief** 中的重要新闻事件
+6. 通过 AI 对话综合分析，做出交易决策
+
+---
+
+## 项目结构
+
+| 目录 | 说明 |
+|------|------|
+| `apps/desktop-ui` | 前端界面（Next.js，运行在 Tauri WebView 中）|
+| `apps/ai-service` | AI 服务（Node/TypeScript，使用 Vercel AI SDK）|
+| `services/data-sync-service` | 数据服务（Python，负责数据采集与分析）|
+| `packages/shared` | 共享的类型定义和 Schema |
+| `docs` | 架构文档和需求说明 |
+
+---
+
+## 开发环境
+
+### 前置要求
+
+- Node.js（推荐 LTS 版本）
 - pnpm
 - Python 3.13+
-- uv
-- Rust toolchain (for Tauri). Rust >= 1.83 is required.
+- uv（Python 包管理器）
+- Rust 工具链（用于 Tauri，需要 Rust >= 1.83）
 
-### Run everything (dev)
+### 启动开发环境
 
 ```bash
 pnpm dev
 ```
 
-This will auto-kill any processes listening on ports 3000/3001/4310/4320 before starting.
+此命令会自动终止占用 3000/3001/4310/4330 端口的进程，然后启动所有服务。
 
-### Install all dependencies (Node + Python)
+### 安装所有依赖
 
 ```bash
 pnpm install:all
 ```
 
-## Docs
+---
 
-See `docs/architecture-and-requirements.md`.
+## 更多文档
 
-
+详细的架构设计和需求说明请参阅 `docs/architecture-and-requirements.md`。

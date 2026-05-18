@@ -7,6 +7,7 @@ node_modules/
 .next/
 out/
 dist/
+coverage/
 
 # Logs
 *.log
@@ -19,18 +20,17 @@ dist/
 __pycache__/
 *.pyc
 .venv/
+.coverage
+coverage.json
 
 # Local databases
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
 
-# Local captured data (screenshots/snapshots)
-services/quant-service/data/
-
-# PyInstaller (quant-service sidecar build artifacts)
-services/quant-service/build/
-services/quant-service/*.spec
+# PyInstaller (data-sync-service sidecar build artifacts)
+services/data-sync-service/build/
+services/data-sync-service/*.spec
 
 # Tauri / Rust
 target/
@@ -38,5 +38,7 @@ src-tauri/target/
 
 # OS
 .DS_Store
+
+.cursor/
 
 

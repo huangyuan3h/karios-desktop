@@ -164,9 +164,9 @@ impl BackendManager {
       return;
     }
 
-    // Start ai-service first (quant-service depends on it).
+    // Start ai-service first (data-sync-service may depend on it for broker parsing).
     let ai_port: u16 = 4310;
-    let quant_port: u16 = 4320;
+    let data_sync_port: u16 = 4330;
 
     let mut spawned: Vec<BackendChild> = vec![];
 
@@ -205,47 +205,37 @@ impl BackendManager {
       }
       Err(err) => {
         eprintln!("[karios] failed to start ai-service sidecar: {err}");
-        // If AI is unavailable, quant-service will still run but strategy features will fail.
+        // If AI is unavailable, data-sync-service can still run but broker AI features may fail.
       }
     }
 
-    let quant_envs = [
+    let data_sync_envs = [
       ("HOST", "127.0.0.1".to_string()),
-      ("PORT", quant_port.to_string()),
+      ("PORT", data_sync_port.to_string()),
       ("AI_SERVICE_BASE_URL", format!("http://127.0.0.1:{ai_port}")),
       ("PYTHONUNBUFFERED", "1".to_string()),
-      (
-        "DATABASE_PATH",
-        app
-          .path()
-          .app_data_dir()
-          .ok()
-          .and_then(|p| {
-            let _ = std::fs::create_dir_all(&p);
-            Some(p.join("karios.sqlite3").to_string_lossy().to_string())
-          })
-          .unwrap_or_else(|| "karios.sqlite3".to_string()),
-      ),
     ];
 
-    let quant = spawn_backend(
+    let data_sync = spawn_backend(
       app,
-      "karios-quant-service",
-      quant_port,
+      "karios-data-sync-service",
+      data_sync_port,
       Duration::from_secs(25),
-      &quant_envs,
+      &data_sync_envs,
     );
-    match quant {
+    match data_sync {
       Ok(child) => {
-        eprintln!("[karios] started sidecar: karios-quant-service on 127.0.0.1:{quant_port}");
+        eprintln!(
+          "[karios] started sidecar: karios-data-sync-service on 127.0.0.1:{data_sync_port}"
+        );
         spawned.push(BackendChild {
-          name: "karios-quant-service",
-          port: quant_port,
+          name: "karios-data-sync-service",
+          port: data_sync_port,
           child,
         });
       }
       Err(err) => {
-        eprintln!("[karios] failed to start quant-service sidecar: {err}");
+        eprintln!("[karios] failed to start data-sync-service sidecar: {err}");
       }
     }
 

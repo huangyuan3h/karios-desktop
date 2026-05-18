@@ -147,8 +147,6 @@ export function ChatComposer({
                       ? `${r.accountTitle} · ${r.snapshotKind} @ ${new Date(r.capturedAt).toLocaleString()}`
                       : r.kind === 'brokerState'
                         ? `${r.accountTitle} · account state @ ${new Date(r.capturedAt).toLocaleString()}`
-                        : r.kind === 'strategyReport'
-                          ? `${r.accountTitle} · strategy ${r.date}`
                           : r.kind === 'industryFundFlow'
                             ? `${r.title || 'CN industry fund flow'} · ${r.asOfDate}`
                             : r.kind === 'leaderStocks'
@@ -161,7 +159,9 @@ export function ChatComposer({
                                     ? `CN rank (Intraday) · ${r.slot || 'auto'} (top ${r.limit})`
                                     : r.kind === 'journal'
                                       ? `${r.title} @ ${new Date(r.capturedAt).toLocaleString()}`
-                                      : 'Unknown reference'}
+                                      : r.kind === 'dashboardAll'
+                                        ? `${r.title || 'Dashboard overview'} · ${r.asOfDate || '—'} @ ${new Date(r.capturedAt).toLocaleString()}`
+                                        : 'Unknown reference'}
               </span>
               <Button
                 variant="ghost"

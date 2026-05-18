@@ -3,7 +3,7 @@
   "bundle": {
     "externalBin": [
       "sidecars/karios-ai-service",
-      "sidecars/karios-quant-service"
+      "sidecars/karios-data-sync-service"
     ]
   }
 }

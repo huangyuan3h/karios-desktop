@@ -4,12 +4,11 @@ import {
   BarChart3,
   ChevronsLeft,
   ChevronsRight,
-  Crown,
-  CreditCard,
+  Clock,
   LayoutDashboard,
-  ListOrdered,
+  LineChart,
+  Newspaper,
   NotebookPen,
-  Sparkles,
   Star,
   Settings,
   Table2,
@@ -20,15 +19,17 @@ import { cn } from '@/lib/utils';
 
 const items = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'index', label: 'Index', icon: LineChart },
+  { id: 'news', label: 'News', icon: Newspaper },
   { id: 'market', label: 'Market', icon: Table2 },
-  { id: 'rank', label: 'Quant', icon: ListOrdered },
   { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
-  { id: 'broker', label: 'Broker', icon: CreditCard },
-  { id: 'strategy', label: 'Strategy', icon: Sparkles },
+  // { id: 'broker', label: 'Broker', icon: CreditCard },
   { id: 'journal', label: 'Journal', icon: NotebookPen },
-  { id: 'leaders', label: 'Leaders', icon: Crown },
   { id: 'screener', label: 'Screener', icon: Table2 },
+  { id: 'scheduler', label: 'Scheduler', icon: Clock },
+  // { id: 'backtest', label: 'Backtest', icon: Activity },
+  // { id: 'simtrade', label: 'Sim Trade', icon: Gamepad2 },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -109,14 +110,6 @@ export function SidebarNav({
         })}
       </nav>
 
-      <div
-        className={cn(
-          'mt-auto border-t border-[var(--k-border)] px-4 py-3 text-xs text-[var(--k-muted)]',
-          isCollapsed ? 'px-2 text-center' : '',
-        )}
-      >
-        {!isCollapsed ? 'Local-first • SQLite-only (v0)' : 'v0'}
-      </div>
-    </aside>
+      </aside>
   );
 }

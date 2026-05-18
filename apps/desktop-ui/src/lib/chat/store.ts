@@ -4,7 +4,7 @@ import * as React from 'react';
 
 import { newId } from '@/lib/id';
 import { loadJson, saveJson } from '@/lib/storage';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import type {
   AgentPanelState,
   AppSettings,
@@ -209,7 +209,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
           settings: { ...prev.settings, systemPrompt: value },
         }));
         try {
-          await fetch(`${QUANT_BASE_URL}/settings/system-prompt`, {
+          await fetch(`${DATA_SYNC_BASE_URL}/settings/system-prompt`, {
             method: 'PUT',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ value }),
@@ -254,7 +254,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
     async function loadFromBackend() {
       try {
         // Prefer presets API (v0.2+). Fall back to legacy single-value API.
-        const resp = await fetch(`${QUANT_BASE_URL}/system-prompts/active`);
+        const resp = await fetch(`${DATA_SYNC_BASE_URL}/system-prompts/active`);
         if (resp.ok) {
           const data = (await resp.json()) as {
             id?: string | null;
@@ -277,7 +277,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const legacy = await fetch(`${QUANT_BASE_URL}/settings/system-prompt`);
+        const legacy = await fetch(`${DATA_SYNC_BASE_URL}/settings/system-prompt`);
         if (!legacy.ok) return;
         const legacyData = (await legacy.json()) as { value?: string };
         const value = typeof legacyData.value === 'string' ? legacyData.value : '';
