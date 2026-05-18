@@ -6,6 +6,7 @@ from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from data_sync_service.db import get_connection
 from data_sync_service.db.industry_fund_flow import ensure_table as ensure_industry
@@ -19,7 +20,10 @@ from data_sync_service.service.industry_fund_flow import (
 )
 from data_sync_service.service.macro_snapshot import build_macro_snapshot
 from data_sync_service.service.market_environment_zh import format_market_environment_zh
-from data_sync_service.service.market_regime import get_index_signals
+from data_sync_service.service.market_regime import (
+    _is_shanghai_sync_window,
+    get_index_signals,
+)
 from data_sync_service.service.market_sentiment import sync_cn_sentiment
 from data_sync_service.service.news import fetch_all_sources
 from data_sync_service.service.tv import list_screeners, sync_screener
@@ -187,6 +191,35 @@ def _industry_flow_5d_out(*, as_of_date: str) -> dict[str, Any]:
     return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_out}
 
 
+def _build_industry_bundle(*, as_of_date: str) -> dict[str, Any]:
+    """Industry fund-flow block; one 5D query for both inflow/outflow tops."""
+    industry_daily = _industry_top_by_date(as_of_date=as_of_date, days=5, top_k=5)
+    dates_sorted, items = _industry_flow_5d_items(as_of_date=as_of_date)
+    if not dates_sorted:
+        empty = {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": [], "top": []}
+        return {**industry_daily, "flow5d": empty, "flow5dOut": empty}
+    top_in = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0), reverse=True)[:10]
+    top_out = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0))[:10]
+    flow5d = {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_in}
+    flow5d_out = {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_out}
+    return {**industry_daily, "flow5d": flow5d, "flow5dOut": flow5d_out}
+
+
+def _build_market_sentiment_bundle(*, as_of_date: str, use_realtime_index: bool) -> dict[str, Any]:
+    sentiment_items = list_sentiment_days(as_of_date=as_of_date, days=5)
+    index_as_of = None if use_realtime_index else as_of_date
+    return {
+        "asOfDate": as_of_date,
+        "days": 5,
+        "items": sentiment_items,
+        "indexSignals": get_index_signals(as_of_date=index_as_of, include_breadth=False),
+    }
+
+
+def _shanghai_today_iso() -> str:
+    return datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
+
+
 def _screeners_status(limit: int = 50) -> list[dict[str, Any]]:
     """
     Return enabled screeners + latest snapshot meta.
@@ -223,10 +256,9 @@ def _screeners_status(limit: int = 50) -> list[dict[str, Any]]:
 def _index_signal_items(*, as_of_date: str | None) -> list[dict[str, Any]]:
     """
     Build index traffic-light signals for selected indices using MA20/MA5.
-    During trading hours, try to use realtime quotes from tushare.
+    During sync window, try to use realtime quotes from tushare.
     """
-    _ = as_of_date
-    return get_index_signals(as_of_date=as_of_date)
+    return get_index_signals(as_of_date=as_of_date, include_breadth=False)
 
 
 def _news_items(hours: int = 24, limit: int = 50) -> dict[str, Any]:
@@ -251,7 +283,7 @@ def _news_items(hours: int = 24, limit: int = 50) -> dict[str, Any]:
     }
 
 
-def dashboard_summary() -> dict[str, Any]:
+def dashboard_summary(*, include_macro: bool = True) -> dict[str, Any]:
     """
     Minimal Dashboard summary for UI:
       - asOfDate
@@ -264,31 +296,37 @@ def dashboard_summary() -> dict[str, Any]:
     """
     # Prefer sentiment latest date as asOfDate, otherwise today.
     as_of = get_latest_sentiment_date() or _today_iso_date()
+    in_sync_window = _is_shanghai_sync_window()
+    use_realtime_index = as_of == _today_iso_date() and in_sync_window
 
-    industry_daily = _industry_top_by_date(as_of_date=as_of, days=5, top_k=5)
-    flow5d = _industry_flow_5d(as_of_date=as_of)
-    flow5d_out = _industry_flow_5d_out(as_of_date=as_of)
-    industry = {**industry_daily, "flow5d": flow5d, "flow5dOut": flow5d_out}
-
-    sentiment_items = list_sentiment_days(as_of_date=as_of, days=5)
-    use_realtime_index = as_of == _today_iso_date()
-    market_sentiment = {
-        "asOfDate": as_of,
-        "days": 5,
-        "items": sentiment_items,
-        "indexSignals": _index_signal_items(as_of_date=None if use_realtime_index else as_of),
-    }
-
-    screeners = _screeners_status(limit=50)
-    news = _news_items(hours=24, limit=50)
-
+    industry: dict[str, Any] = {}
+    market_sentiment: dict[str, Any] = {}
+    screeners: list[dict[str, Any]] = []
+    news: dict[str, Any] = {"hours": 24, "total": 0, "items": []}
     macro_snapshot = None
     market_env_zh = ""
-    try:
-        macro_snapshot = build_macro_snapshot()
-        market_env_zh = format_market_environment_zh(macro_snapshot)
-    except Exception:
-        market_env_zh = ""
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        f_industry = executor.submit(_build_industry_bundle, as_of_date=as_of)
+        f_sentiment = executor.submit(
+            _build_market_sentiment_bundle,
+            as_of_date=as_of,
+            use_realtime_index=use_realtime_index,
+        )
+        f_screeners = executor.submit(_screeners_status, 50)
+        f_news = executor.submit(_news_items, 24, 50)
+        f_macro = executor.submit(build_macro_snapshot) if include_macro else None
+
+        industry = f_industry.result()
+        market_sentiment = f_sentiment.result()
+        screeners = f_screeners.result()
+        news = f_news.result()
+        if f_macro is not None:
+            try:
+                macro_snapshot = f_macro.result()
+                market_env_zh = format_market_environment_zh(macro_snapshot)
+            except Exception:
+                market_env_zh = ""
 
     return {
         "asOfDate": as_of,
@@ -298,6 +336,10 @@ def dashboard_summary() -> dict[str, Any]:
         "news": news,
         "marketEnvironmentZh": market_env_zh,
         "macroSnapshot": macro_snapshot,
+        "meta": {
+            "inSyncWindow": in_sync_window,
+            "useRealtimeIndex": use_realtime_index,
+        },
     }
 
 
@@ -338,16 +380,27 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
 def _sync_screeners_step(*, screeners_enabled: bool) -> dict[str, Any]:
     screener_failed: list[str] = []
     screener_missing: list[str] = []
+    screener_skipped: list[str] = []
     scr = list_screeners()
     items = scr.get("items") if isinstance(scr, dict) else []
     items_list = items if isinstance(items, list) else []
     enabled = [x for x in items_list if isinstance(x, dict) and bool(x.get("enabled"))]
     if not bool(screeners_enabled):
         return {"enabled": len(enabled), "skipped": True, "failed": 0, "missing": 0}
+    skip_after_close = not _is_shanghai_sync_window()
+    today_sh = _shanghai_today_iso()
     for sc in enabled:
         sid = str(sc.get("id") or "").strip()
         if not sid:
             continue
+        if skip_after_close:
+            latest = list_snapshots_for_screener_full(sid, limit=1)
+            meta = latest[0] if latest else {}
+            captured = str(meta.get("capturedAt") or "")[:10]
+            row_count = int(meta.get("rowCount") or 0) if isinstance(meta, dict) else 0
+            if captured == today_sh and row_count > 0:
+                screener_skipped.append(sid)
+                continue
         try:
             res = sync_screener(screener_id=sid)
             rc = int(res.get("rowCount") or 0) if isinstance(res, dict) else 0
@@ -360,6 +413,7 @@ def _sync_screeners_step(*, screeners_enabled: bool) -> dict[str, Any]:
         "skipped": False,
         "failed": len(screener_failed),
         "missing": len(screener_missing),
+        "skippedIds": screener_skipped,
         "failedIds": screener_failed,
         "missingIds": screener_missing,
     }

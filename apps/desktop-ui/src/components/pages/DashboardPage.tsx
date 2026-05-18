@@ -366,7 +366,37 @@ function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'):
 
 const WATCHLIST_STORAGE_KEY = 'karios.watchlist.v1';
 const NEWS_BRIEF_CACHE_KEY = 'karios.dashboard.newsBrief.v1';
+const DASHBOARD_SUMMARY_CACHE_KEY = 'karios.dashboard.summary.v0';
 const NEWS_BRIEF_MIN_REFRESH_MS = 4 * 60 * 60 * 1000;
+
+type DashboardSummaryCache = {
+  summary?: DashboardSummary;
+  cachedAt?: string;
+};
+
+function loadDashboardSummaryCache(): DashboardSummary | null {
+  try {
+    const raw = window.localStorage.getItem(DASHBOARD_SUMMARY_CACHE_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw) as DashboardSummaryCache;
+    const summary = obj?.summary;
+    return summary && typeof summary === 'object' ? summary : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDashboardSummaryCache(summary: DashboardSummary) {
+  try {
+    const payload: DashboardSummaryCache = {
+      summary,
+      cachedAt: new Date().toISOString(),
+    };
+    window.localStorage.setItem(DASHBOARD_SUMMARY_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore
+  }
+}
 
 type WatchlistItem = {
   symbol: string;
@@ -488,6 +518,17 @@ function isShanghaiTradingTime(): boolean {
   return inMorning || inAfternoon;
 }
 
+/** Trading hours + lunch + after-hours until 20:00 (matches data-sync-service). */
+function isShanghaiSyncWindow(): boolean {
+  const { weekday, hour, minute } = getShanghaiTimeParts();
+  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
+  const minutes = hour * 60 + minute;
+  if (isShanghaiTradingTime()) return true;
+  const inLunch = minutes > 11 * 60 + 30 && minutes < 13 * 60;
+  const inAfterHours = minutes > 15 * 60 && minutes <= 20 * 60;
+  return inLunch || inAfterHours;
+}
+
 type SyncStep = {
   name: string;
   ok: boolean | null;
@@ -497,7 +538,10 @@ type SyncStep = {
 
 export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) => void }) {
   const { addReference } = useChatStore();
-  const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
+  const [summary, setSummary] = React.useState<DashboardSummary | null>(() =>
+    typeof window !== 'undefined' ? loadDashboardSummaryCache() : null,
+  );
+  const [summaryLoading, setSummaryLoading] = React.useState(false);
   const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [sentimentBusy, setSentimentBusy] = React.useState(false);
@@ -639,9 +683,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
   const refresh = React.useCallback(async () => {
     setError(null);
+    setSummaryLoading(true);
     try {
-      const s = await apiGetJson<DashboardSummary>(`/dashboard/summary`);
+      const lite = isShanghaiSyncWindow() ? '' : '?include_macro=false';
+      const s = await apiGetJson<DashboardSummary>(`/dashboard/summary${lite}`);
       setSummary(s);
+      saveDashboardSummaryCache(s);
       const fallback = buildNewsFallback((s as any)?.news?.items ?? []);
       if (fallback) {
         const fallbackUpdatedAt = new Date().toISOString();
@@ -650,6 +697,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSummaryLoading(false);
     }
   }, []);
 
@@ -672,9 +721,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setSyncProgress(0);
 
     const stepNames = ['industryFundFlow', 'marketSentiment', 'screeners', 'news'];
+    const forceSync = isShanghaiSyncWindow();
 
     return new Promise<void>((resolve) => {
-      const es = new EventSource(`${DATA_SYNC_BASE_URL}/dashboard/sync/stream?force=true`);
+      const es = new EventSource(
+        `${DATA_SYNC_BASE_URL}/dashboard/sync/stream?force=${forceSync ? 'true' : 'false'}`,
+      );
 
       es.onmessage = (event) => {
         try {
@@ -705,6 +757,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             const s = data.summary as DashboardSummary;
             if (s) {
               setSummary(s);
+              saveDashboardSummaryCache(s);
               const newsData = (s as any)?.news;
               if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
                 if (!shouldRefreshNewsBrief(newsSummaryUpdatedAt) && newsSummary?.trim()) {
@@ -766,7 +819,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setSentimentBusy(true);
     setError(null);
     try {
-      await apiPostJson('/market/cn/sentiment/sync', { force: true });
+      await apiPostJson('/market/cn/sentiment/sync', { force: isShanghaiSyncWindow() });
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1448,7 +1501,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             ) : (
               <RefreshCw className="h-4 w-4" />
             )}
-            {busy ? 'Syncing…' : 'Sync all (force)'}
+            {busy
+              ? 'Syncing…'
+              : isShanghaiSyncWindow()
+                ? 'Sync all (force)'
+                : 'Sync all (cached)'}
           </Button>
           <Button size="sm" variant="secondary" onClick={() => setEditLayout((v) => !v)}>
             {editLayout ? 'Done' : 'Edit layout'}
@@ -1456,8 +1513,19 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         </div>
       </div>
 
-      <div className="mb-4 text-xs text-[var(--k-muted)]">
-        asOfDate: <span className="font-mono">{summary?.asOfDate ?? '—'}</span>
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--k-muted)]">
+        <span>
+          asOfDate: <span className="font-mono">{summary?.asOfDate ?? '—'}</span>
+        </span>
+        {summaryLoading ? (
+          <span className="inline-flex items-center gap-1">
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            Updating…
+          </span>
+        ) : null}
+        {!summaryLoading && summary && !isShanghaiSyncWindow() ? (
+          <span>盘后模式：仅读缓存，同步跳过实时抓取</span>
+        ) : null}
       </div>
       {copyAllStatus ? (
         <div className={`mb-4 text-xs ${copyAllStatus.ok ? 'text-emerald-600' : 'text-red-600'}`}>
