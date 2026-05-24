@@ -97,6 +97,42 @@ def _industry_top_by_date(*, as_of_date: str, days: int = 5, top_k: int = 5) -> 
     }
 
 
+def _daily_rankings_by_date_from_items(
+    items: list[dict[str, Any]], dates: list[str]
+) -> list[dict[str, Any]]:
+    """
+    Full net-inflow rankings per date for hot-industry rank-delta logic.
+    Includes all industries (positive and negative net inflow) so rank delta
+    stays defined when a sector re-enters the daily top after a weak day.
+    Shape: [{date, ranked:[{industryName, value, rank}]}]
+    """
+    out: list[dict[str, Any]] = []
+    for d in dates:
+        scored: list[dict[str, Any]] = []
+        for it in items:
+            name = str(it.get("industryName") or "").strip()
+            if not name:
+                continue
+            series = it.get("series") if isinstance(it.get("series"), list) else []
+            v = 0.0
+            for p in series:
+                if not isinstance(p, dict) or str(p.get("date") or "") != d:
+                    continue
+                try:
+                    v = float(p.get("netInflow") or 0.0)
+                except Exception:
+                    v = 0.0
+                break
+            scored.append({"industryName": name, "value": v})
+        scored.sort(key=lambda x: float(x.get("value") or 0.0), reverse=True)
+        ranked = [
+            {"industryName": x["industryName"], "value": x["value"], "rank": i + 1}
+            for i, x in enumerate(scored)
+        ]
+        out.append({"date": d, "ranked": ranked})
+    return out
+
+
 def _industry_flow_5d_items(*, as_of_date: str) -> tuple[list[str], list[dict[str, Any]]]:
     """
     Compute 5D aggregated flow items from DB for the last 5 cached dates (<= as_of_date).
@@ -195,14 +231,20 @@ def _build_industry_bundle(*, as_of_date: str) -> dict[str, Any]:
     """Industry fund-flow block; one 5D query for both inflow/outflow tops."""
     industry_daily = _industry_top_by_date(as_of_date=as_of_date, days=5, top_k=5)
     dates_sorted, items = _industry_flow_5d_items(as_of_date=as_of_date)
+    daily_rankings = _daily_rankings_by_date_from_items(items, dates_sorted) if dates_sorted else []
     if not dates_sorted:
         empty = {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": [], "top": []}
-        return {**industry_daily, "flow5d": empty, "flow5dOut": empty}
+        return {**industry_daily, "dailyRankings": daily_rankings, "flow5d": empty, "flow5dOut": empty}
     top_in = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0), reverse=True)[:10]
     top_out = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0))[:10]
     flow5d = {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_in}
     flow5d_out = {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_out}
-    return {**industry_daily, "flow5d": flow5d, "flow5dOut": flow5d_out}
+    return {
+        **industry_daily,
+        "dailyRankings": daily_rankings,
+        "flow5d": flow5d,
+        "flow5dOut": flow5d_out,
+    }
 
 
 def _build_market_sentiment_bundle(*, as_of_date: str, use_realtime_index: bool) -> dict[str, Any]:

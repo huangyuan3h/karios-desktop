@@ -8,6 +8,7 @@ import {
   HotIndustryWorkflowCard,
   type HotIndustryPick,
 } from '@/components/pages/HotIndustryWorkflowCard';
+import { buildDashboardHotIndustryPicks } from '@/lib/hot-industry-picks';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { DATA_SYNC_BASE_URL, AI_BASE_URL } from '@/lib/endpoints';
@@ -227,119 +228,6 @@ function scoreRuleLines(): string[] {
   ];
 }
 
-function buildDashboardHotIndustryPicks(summary: DashboardSummary | null): HotIndustryPick[] {
-  const ind: any = summary?.industryFundFlow ?? {};
-  const datesAll: string[] = Array.isArray(ind?.dates) ? ind.dates : [];
-  const latestDate = datesAll.length ? String(datesAll[datesAll.length - 1] ?? '') : '';
-  const prevDate = datesAll.length >= 2 ? String(datesAll[datesAll.length - 2] ?? '') : '';
-
-  const topByDateArr: any[] = Array.isArray(ind?.topByDate) ? ind.topByDate : [];
-  const namesByDate = new Map<string, string[]>();
-  const rankByDate = new Map<string, Map<string, number>>();
-  const valueByDate = new Map<string, Map<string, number>>();
-
-  for (const it of topByDateArr) {
-    const d = String(it?.date ?? '');
-    const topArr: any[] = Array.isArray(it?.top) ? it.top : [];
-    const names: string[] = [];
-    const rankMap = new Map<string, number>();
-    const valueMap = new Map<string, number>();
-    for (let i = 0; i < topArr.length; i += 1) {
-      const entry = topArr[i];
-      const name =
-        typeof entry === 'string' ? String(entry).trim() : String(entry?.industryName ?? '').trim();
-      const val = typeof entry === 'object' && entry != null ? Number(entry?.value ?? 0) : 0;
-      if (name) {
-        names.push(name);
-        rankMap.set(name, i + 1);
-        valueMap.set(name, Number.isFinite(val) ? val : 0);
-      }
-    }
-    if (d && names.length) {
-      namesByDate.set(d, names);
-      rankByDate.set(d, rankMap);
-      valueByDate.set(d, valueMap);
-    }
-  }
-
-  const dailyNames = (namesByDate.get(latestDate) ?? []).slice(0, 50);
-  const yesterdayRankMap = prevDate ? (rankByDate.get(prevDate) ?? null) : null;
-  const todayValueMap = valueByDate.get(latestDate) ?? new Map();
-
-  const flow5d: any = ind?.flow5d ?? null;
-  const rows5d: any[] = Array.isArray(flow5d?.top) ? flow5d.top : [];
-  const fiveRank = new Map<
-    string,
-    { rank: number; sum5d: number | null; latestNet: number | null }
-  >();
-  for (let i = 0; i < rows5d.length; i += 1) {
-    const r = rows5d[i];
-    const name = String(r?.industryName ?? '').trim();
-    if (!name || fiveRank.has(name)) continue;
-    const sum5dRaw = Number(r?.sum5d);
-    const sum5d = Number.isFinite(sum5dRaw) ? sum5dRaw : null;
-    const seriesArr: any[] = Array.isArray(r?.series) ? r.series : [];
-    let latestNet: number | null = null;
-    if (latestDate) {
-      const p = seriesArr.find((x) => String(x?.date ?? '') === latestDate);
-      const v = Number(p?.netInflow);
-      latestNet = Number.isFinite(v) ? v : null;
-    }
-    fiveRank.set(name, { rank: i + 1, sum5d, latestNet });
-  }
-
-  const MOMENTUM_THRESHOLD_YI = 20e8;
-  const MOMENTUM_RANK_CHANGE = 10;
-  const picks: HotIndustryPick[] = [];
-  const momentumPicks: HotIndustryPick[] = [];
-
-  for (let i = 0; i < dailyNames.length; i += 1) {
-    const name = dailyNames[i];
-    const five = fiveRank.get(name);
-    const todayNetInflow = todayValueMap.get(name) ?? 0;
-    const yesterdayRank = yesterdayRankMap?.get(name) ?? null;
-    const todayRank = i + 1;
-    const rankChange = yesterdayRank != null ? yesterdayRank - todayRank : null;
-    const isMomentumSignal =
-      todayNetInflow >= MOMENTUM_THRESHOLD_YI &&
-      rankChange != null &&
-      rankChange >= MOMENTUM_RANK_CHANGE;
-
-    const pick: HotIndustryPick = {
-      industryName: name,
-      dailyRank: todayRank,
-      fiveDayRank: five?.rank ?? null,
-      netInflow: five?.latestNet ?? todayNetInflow,
-      sum5d: five?.sum5d ?? null,
-      yesterdayRank,
-      rankChange,
-      momentumSignal: isMomentumSignal,
-    };
-
-    if (isMomentumSignal) {
-      momentumPicks.push(pick);
-    } else if (five) {
-      picks.push(pick);
-    }
-  }
-
-  const result: HotIndustryPick[] = [];
-  const seen = new Set<string>();
-  for (const p of momentumPicks) {
-    if (seen.has(p.industryName)) continue;
-    seen.add(p.industryName);
-    result.push(p);
-    if (result.length >= 3) return result;
-  }
-  for (const p of picks) {
-    if (seen.has(p.industryName)) continue;
-    seen.add(p.industryName);
-    result.push(p);
-    if (result.length >= 3) break;
-  }
-  return result;
-}
-
 function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'): string {
   const asOfDate = String(
     (s as any)?.industryFundFlow?.asOfDate ?? (s as any)?.asOfDate ?? '',
@@ -384,7 +272,7 @@ function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'):
 
 const WATCHLIST_STORAGE_KEY = 'karios.watchlist.v1';
 const NEWS_BRIEF_CACHE_KEY = 'karios.dashboard.newsBrief.v1';
-const DASHBOARD_SUMMARY_CACHE_KEY = 'karios.dashboard.summary.v0';
+const DASHBOARD_SUMMARY_CACHE_KEY = 'karios.dashboard.summary.v1';
 const NEWS_BRIEF_MIN_REFRESH_MS = 4 * 60 * 60 * 1000;
 
 type DashboardSummaryCache = {

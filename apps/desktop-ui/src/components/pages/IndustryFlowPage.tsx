@@ -131,6 +131,13 @@ function buildHotIndustryPicks(rows: IndustryFundFlowRow[]): HotIndustryPick[] {
     .sort((a, b) => b.netInflow - a.netInflow)
     .slice(0, 50);
 
+  const todayRankByName = new Map<string, number>();
+  const allTodayRanked = [...safeRows].sort((a, b) => b.netInflow - a.netInflow);
+  for (let i = 0; i < allTodayRanked.length; i += 1) {
+    const key = String(allTodayRanked[i].industryName ?? '').trim();
+    if (key && !todayRankByName.has(key)) todayRankByName.set(key, i + 1);
+  }
+
   const fiveDayRanked = [...safeRows]
     .map((r) => ({ row: r, sum5d: sumLastN(r.series10d ?? [], 5) }))
     .filter((x) => Number.isFinite(x.sum5d) && x.sum5d > 0)
@@ -152,7 +159,7 @@ function buildHotIndustryPicks(rows: IndustryFundFlowRow[]): HotIndustryPick[] {
         name: String(r.industryName ?? '').trim(),
         value: (r.series10d ?? []).find((p) => p.date === prevDate)?.netInflow ?? 0,
       }))
-      .filter((x) => x.name && Number.isFinite(x.value) && x.value > 0)
+      .filter((x) => x.name && Number.isFinite(x.value))
       .sort((a, b) => b.value - a.value);
     for (let i = 0; i < prevScores.length; i += 1) {
       prevDayRanked.set(prevScores[i].name, i + 1);
@@ -171,7 +178,7 @@ function buildHotIndustryPicks(rows: IndustryFundFlowRow[]): HotIndustryPick[] {
     if (!key) continue;
 
     const five = fiveRankByName.get(key);
-    const todayRank = i + 1;
+    const todayRank = todayRankByName.get(key) ?? i + 1;
     const yesterdayRank = prevDayRanked.get(key) ?? null;
     const rankChange = yesterdayRank != null ? yesterdayRank - todayRank : null;
     const isMomentumSignal =
