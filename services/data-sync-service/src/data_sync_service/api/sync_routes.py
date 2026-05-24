@@ -17,6 +17,25 @@ from data_sync_service.service.trade_calendar import sync_trade_calendar
 router = APIRouter()
 
 
+@router.post("/sync/eastmoney-industry")
+def sync_eastmoney_industry_endpoint(
+    symbols: list[str] | None = Query(
+        None,
+        description="Optional CN symbols, e.g. CN:000021. Fast smoke-test path.",
+    ),
+    limit: int | None = Query(
+        200,
+        ge=1,
+        le=5000,
+        description="When symbols omitted, number of CN stocks from stock_basic to refresh.",
+    ),
+) -> dict:
+    """Sync East Money industry labels (per-stock lookup; use symbols= for quick tests)."""
+    from data_sync_service.service.eastmoney_industry import sync_eastmoney_industry
+
+    return sync_eastmoney_industry(symbols=symbols, limit=limit)
+
+
 @router.post("/sync/stock-basic")
 def sync_stock_basic_endpoint() -> dict:
     # Purpose: pull stock_basic from tushare and upsert into DB.

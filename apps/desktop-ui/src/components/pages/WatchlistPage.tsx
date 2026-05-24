@@ -16,8 +16,20 @@ import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { normalizeScreenerSymbol } from '@/lib/screenerExport';
 import { loadJson, saveJson } from '@/lib/storage';
 import { useChatStore } from '@/lib/chat/store';
+import {
+  WATCHLIST_MD_HEADERS,
+  computePnLPct,
+  computeVwap,
+  formatHotTop3,
+  formatPnLPct,
+  formatVwap,
+  industryDisplayName,
+  parseQuoteNumber,
+  tushareIndustryTooltip,
+} from '@/lib/watchlist-metrics';
 
 type WatchlistItem = {
   symbol: string; // e.g. "CN:600000" or "HK:0700"
@@ -197,6 +209,9 @@ type TrendOkValues = {
   high20?: number | null;
   avgVol5?: number | null;
   avgVol30?: number | null;
+  industry?: string | null;
+  emIndustry?: string | null;
+  industryFlowReasons?: string[];
 };
 
 type TrendOkResult = {
@@ -303,26 +318,6 @@ function normalizeSymbolInput(input: string): { symbol: string } | { error: stri
     error:
       'Unsupported code format. Use 6-digit CN ticker, 4-5 digit HK ticker, or CN:/HK: prefixed symbol.',
   };
-}
-
-function normalizeScreenerSymbol(raw: string): string | null {
-  const s = String(raw || '')
-    .trim()
-    .toUpperCase();
-  if (!s) return null;
-
-  // Try the same rules as manual input first.
-  const parsed = normalizeSymbolInput(s);
-  if (!('error' in parsed)) return parsed.symbol;
-
-  // TradingView forms like "SSE:600000" / "SZSE:000001" / "HKEX:0700"
-  const m = s.match(/^[A-Z]+:(\d{4,6})$/);
-  if (m) {
-    const code = m[1];
-    if (/^\d{6}$/.test(code)) return `CN:${code}`;
-    if (/^\d{4,5}$/.test(code)) return `HK:${code.padStart(4, '0')}`;
-  }
-  return null;
 }
 
 function parseScreenerNumber(raw: unknown): number | null {
@@ -550,7 +545,16 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [error, setError] = React.useState<string | null>(null);
   const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
   const [quotes, setQuotes] = React.useState<
-    Record<string, { price: number | null; tsCode: string; tradeTime: string | null }>
+    Record<
+      string,
+      {
+        price: number | null;
+        tsCode: string;
+        tradeTime: string | null;
+        amount: number | null;
+        volume: number | null;
+      }
+    >
   >({});
   const [trendBusy, setTrendBusy] = React.useState(false);
   const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
@@ -756,7 +760,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           }
           const nextQuotes: Record<
             string,
-            { price: number | null; tsCode: string; tradeTime: string | null }
+            {
+              price: number | null;
+              tsCode: string;
+              tradeTime: string | null;
+              amount: number | null;
+              volume: number | null;
+            }
           > = {};
           for (const part of chunk(cn, 50)) {
             const r = await apiGetJsonFrom<QuoteResp>(
@@ -771,6 +781,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 tsCode: it.ts_code,
                 price: Number.isFinite(p) ? p : null,
                 tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
+                amount: parseQuoteNumber(it.amount),
+                volume: parseQuoteNumber(it.volume),
               };
             }
           }
@@ -1593,16 +1605,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     lines.push('');
 
     // Summary table
-    const headers = [
-      'Symbol',
-      'Name',
-      'Score',
-      'TrendOK',
-      'Buy',
-      'Current',
-      'StopLoss',
-      'AsOfDate',
-    ];
+    const headers = [...WATCHLIST_MD_HEADERS];
     lines.push(`| ${headers.join(' | ')} |`);
     lines.push(`| ${headers.map(() => '---').join(' | ')} |`);
     for (const it of sortedItems) {
@@ -1610,15 +1613,28 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       const buy = fmtBuyCell(t).text;
       const q = quotes[it.symbol];
       const current = q?.price ?? t?.values?.close ?? null;
+      const vwap = computeVwap(q?.amount ?? null, q?.volume ?? null, 'realtime');
+      const pnl = computePnLPct(it.costPrice ?? null, typeof current === 'number' ? current : null);
       const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
       const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
+      const values = (t?.values ?? {}) as Record<string, unknown>;
       const row = [
         escapeMarkdownCell(it.symbol),
         escapeMarkdownCell(it.name || '—'),
+        escapeMarkdownCell(industryDisplayName(values)),
+        escapeMarkdownCell(formatHotTop3(t)),
+        escapeMarkdownCell(
+          typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
+            ? it.positionPct.toFixed(1)
+            : '—',
+        ),
+        escapeMarkdownCell(mdPrice(it.costPrice ?? null)),
+        escapeMarkdownCell(mdPrice(typeof current === 'number' ? current : null)),
+        escapeMarkdownCell(formatVwap(vwap)),
+        escapeMarkdownCell(formatPnLPct(pnl)),
         escapeMarkdownCell(mdScore(t?.score ?? null)),
         escapeMarkdownCell(trendOkSummary(t)),
         escapeMarkdownCell(buy),
-        escapeMarkdownCell(mdPrice(typeof current === 'number' ? current : null)),
         escapeMarkdownCell(mdPrice(t?.stopLossPrice ?? null)),
         escapeMarkdownCell(asOf),
       ];
@@ -1992,7 +2008,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
         {items.length ? (
           <div className="rounded border border-[var(--k-border)]">
-            <table className="border-collapse text-sm min-w-[920px]">
+            <table className="border-collapse text-sm min-w-[1180px]">
               <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                 <tr className="text-left">
                   <th className="px-3 py-2 w-[40px]" title="Color flag">
@@ -2000,8 +2016,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   </th>
                   <th className="px-3 py-2 w-[110px]">Symbol</th>
                   <th className="px-3 py-2 w-[120px] max-w-[120px]">Name</th>
+                  <th className="px-3 py-2 w-[120px] max-w-[140px]">Industry</th>
+                  <th className="px-3 py-2 w-[70px]">HotTop3</th>
+                  <th className="px-3 py-2 w-[70px]">仓位%</th>
                   <th className="px-3 py-2 w-[90px]">成本价</th>
-                  <th className="px-3 py-2 w-[90px]">最高价</th>
+                  <th className="px-3 py-2 w-[90px]">Current</th>
+                  <th className="px-3 py-2 w-[80px]">VWAP</th>
+                  <th className="px-3 py-2 w-[72px]">P&L%</th>
                   <th className="px-3 py-2 w-[80px]">
                     <button
                       type="button"
@@ -2030,8 +2051,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     </button>
                   </th>
                   <th className="px-3 py-2 w-[130px] max-w-[130px]">买入</th>
-                  <th className="px-3 py-2 w-[70px]">仓位%</th>
-                  <th className="px-3 py-2 w-[90px]">Current</th>
                   <th className="px-3 py-2 w-[90px]">止损</th>
                   <th className="px-3 py-2 w-[80px]">
                     <div className="inline-flex items-center gap-2">
@@ -2097,6 +2116,37 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                         <td className="px-3 py-2 max-w-[120px] truncate" title={it.name || ''}>
                           {it.name || '—'}
                         </td>
+                        <td
+                          className="px-3 py-2 max-w-[140px] truncate"
+                          title={
+                            tushareIndustryTooltip(
+                              (t?.values ?? null) as Record<string, unknown> | null,
+                            ) ?? industryDisplayName((t?.values ?? {}) as Record<string, unknown>)
+                          }
+                        >
+                          {industryDisplayName((t?.values ?? {}) as Record<string, unknown>)}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {formatHotTop3(t) === '✓' ? (
+                            <span className="text-emerald-600 font-medium" title="Industry in today fund-flow Top3">
+                              ✓
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            className="h-8 w-20 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
+                            placeholder="0"
+                            value={
+                              typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
+                                ? String(it.positionPct)
+                                : ''
+                            }
+                            onChange={(e) => setItemPositionPct(it.symbol, e.target.value)}
+                          />
+                        </td>
                         <td className="px-3 py-2">
                           <input
                             className="h-8 w-24 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
@@ -2132,27 +2182,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                             onBlur={() => commitItemCostPriceDraft(it.symbol)}
                           />
                         </td>
-                        <td className="px-3 py-2 font-mono">
-                          {typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice)
-                            ? it.maxPrice.toFixed(2)
-                            : '—'}
-                        </td>
-                        <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
-                        <td className="px-3 py-2 max-w-[130px] truncate">
-                          {renderBuyCell(it.symbol)}
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            className="h-8 w-20 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
-                            placeholder="0"
-                            value={
-                              typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
-                                ? String(it.positionPct)
-                                : ''
-                            }
-                            onChange={(e) => setItemPositionPct(it.symbol, e.target.value)}
-                          />
-                        </td>
                         <td
                           className="px-3 py-2 font-mono"
                           title={
@@ -2164,6 +2193,39 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                           }
                         >
                           {fmtPrice(quotes[it.symbol]?.price ?? trend[it.symbol]?.values?.close)}
+                        </td>
+                        <td className="px-3 py-2 font-mono">
+                          {formatVwap(
+                            computeVwap(
+                              quotes[it.symbol]?.amount ?? null,
+                              quotes[it.symbol]?.volume ?? null,
+                              'realtime',
+                            ),
+                          )}
+                        </td>
+                        <td
+                          className={`px-3 py-2 font-mono ${
+                            (() => {
+                              const current =
+                                quotes[it.symbol]?.price ?? trend[it.symbol]?.values?.close ?? null;
+                              const pnl = computePnLPct(it.costPrice ?? null, current);
+                              if (pnl == null) return '';
+                              if (pnl >= 5) return 'text-emerald-600';
+                              if (pnl <= 0) return 'text-red-600';
+                              return '';
+                            })()
+                          }`}
+                        >
+                          {formatPnLPct(
+                            computePnLPct(
+                              it.costPrice ?? null,
+                              quotes[it.symbol]?.price ?? trend[it.symbol]?.values?.close ?? null,
+                            ),
+                          )}
+                        </td>
+                        <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
+                        <td className="px-3 py-2 max-w-[130px] truncate">
+                          {renderBuyCell(it.symbol)}
                         </td>
                         <td className="px-3 py-2">{renderStopLossCell(it.symbol)}</td>
                         <td className="px-3 py-2">{renderTrendOkCell(it.symbol)}</td>

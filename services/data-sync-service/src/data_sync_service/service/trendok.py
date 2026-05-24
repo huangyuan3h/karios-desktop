@@ -16,6 +16,8 @@ from data_sync_service.db.industry_fund_flow import (
 )
 from data_sync_service.db.stoploss import compute_effective_stoploss
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
+from data_sync_service.db.stock_eastmoney_industry import lookup_by_ts_codes as lookup_em_industries
+from data_sync_service.service.eastmoney_industry import ensure_em_industries_for_ts_codes
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
@@ -196,7 +198,7 @@ def _lookup_names(ts_codes: list[str]) -> dict[str, str]:
 
 def _lookup_industries(ts_codes: list[str]) -> dict[str, str]:
     """
-    Best-effort industry lookup from stock_basic (ts_code -> industry).
+    Best-effort Tushare industry lookup from stock_basic (ts_code -> industry).
     """
     ensure_stock_basic()
     if not ts_codes:
@@ -212,6 +214,16 @@ def _lookup_industries(ts_codes: list[str]) -> dict[str, str]:
                 )
                 rows = cur.fetchall()
         return {str(r[0]): str(r[1]) for r in rows if r and r[0] and r[1]}
+    except Exception:
+        return {}
+
+
+def _lookup_em_industry_boards(ts_codes: list[str]) -> dict[str, str]:
+    """East Money industry board name (ts_code -> industry_name)."""
+    if not ts_codes:
+        return {}
+    try:
+        return lookup_em_industries(ts_codes)
     except Exception:
         return {}
 
@@ -356,7 +368,9 @@ def compute_trendok_for_symbols(
             ts_codes.append(m[2])
 
     by_name = _lookup_names(ts_codes)
-    by_industry = _lookup_industries(ts_codes)
+    ensure_em_industries_for_ts_codes(ts_codes)
+    by_tushare_industry = _lookup_industries(ts_codes)
+    by_em_industry = _lookup_em_industry_boards(ts_codes)
     bars_by_code = fetch_last_ohlcv_batch(ts_codes, days=120)
     if realtime and ts_codes:
         q = fetch_realtime_quotes(ts_codes)
@@ -390,13 +404,17 @@ def compute_trendok_for_symbols(
             continue
         _, ticker, ts_code = market_ticker_ts
         name = by_name.get(ts_code)
-        industry = by_industry.get(ts_code)
+        tushare_industry = by_tushare_industry.get(ts_code)
+        em_industry = by_em_industry.get(ts_code)
+        industry_for_flow = em_industry or tushare_industry
         bars = bars_by_code.get(ts_code, [])
         out.append(
             _trendok_one(
                 symbol=sym,
                 name=name,
-                industry=industry,
+                industry=industry_for_flow,
+                tushare_industry=tushare_industry,
+                em_industry=em_industry,
                 bars=bars,
                 flow_ctx=flow_ctx,
                 market_regime=market_regime,
@@ -410,6 +428,8 @@ def _trendok_one(
     symbol: str,
     name: str | None,
     industry: str | None,
+    tushare_industry: str | None = None,
+    em_industry: str | None = None,
     bars: list[tuple[str, str, str, str, str, str]],
     flow_ctx: dict[str, Any] | None = None,
     market_regime: str | None = None,
@@ -473,7 +493,11 @@ def _trendok_one(
 
     res["asOfDate"] = dates[-1]
     res["values"]["close"] = closes[-1]
-    if industry:
+    if tushare_industry:
+        res["values"]["industry"] = tushare_industry
+    if em_industry:
+        res["values"]["emIndustry"] = em_industry
+    elif industry and not tushare_industry:
         res["values"]["industry"] = industry
 
     if len(closes) < 60:

@@ -18,6 +18,24 @@ import {
   parseInvestmentDailyReportResponse,
   truncateMarkdownForReport,
 } from '@/lib/investmentDailyPdf';
+import {
+  SCREENER_MARKDOWN_HEADERS,
+  buildScreenerMarkdownRows,
+  countMissingScores,
+  extractSymbolsFromSnapshotRows,
+  fetchTrendOkMap,
+  screenerMarkdownRowsToTable,
+} from '@/lib/screenerExport';
+import {
+  WATCHLIST_MD_HEADERS,
+  computePnLPct,
+  computeVwap,
+  formatHotTop3,
+  formatPnLPct,
+  formatVwap,
+  industryDisplayName,
+  parseQuoteNumber,
+} from '@/lib/watchlist-metrics';
 
 type DashboardSummary = any;
 type DashboardSyncResp = any;
@@ -440,6 +458,8 @@ type QuoteResp = {
   items: Array<{
     ts_code: string;
     price: string | null;
+    amount: string | null;
+    volume: string | null;
     trade_time: string | null;
   }>;
 };
@@ -1109,9 +1129,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       const rowsTv: Array<Record<string, string>> = Array.isArray(snap?.rows) ? snap.rows : [];
       const limit = 50;
       const truncated = rowsTv.length > limit;
-      const bodyRows: unknown[][] = rowsTv
-        .slice(0, limit)
-        .map((r) => headersTv.map((h) => String(r?.[h] ?? '')));
+      const rowsSlice = rowsTv.slice(0, limit);
 
       lines.push(`${heading}# ${escapeMarkdownCell(title)}`);
       if (capturedAt) lines.push(`- capturedAt: ${capturedAt}`);
@@ -1125,9 +1143,26 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         );
       }
       if (truncated) lines.push(`- note: showing first ${limit} rows (truncated)`);
-      lines.push('');
-      if (headersTv.length) lines.push(mdTable(headersTv, bodyRows));
-      else lines.push('_No headers._');
+      lines.push(
+        '- scoreSource: TrendOK (same as Watchlist); Score>90 = candidate for forced research',
+      );
+
+      if (headersTv.length && rowsSlice.length) {
+        const symbols = extractSymbolsFromSnapshotRows(rowsSlice, headersTv);
+        const trendMap = await fetchTrendOkMap(symbols, {
+          realtime: isShanghaiTradingTime(),
+        });
+        const enrichedRows = buildScreenerMarkdownRows(rowsSlice, headersTv, trendMap);
+        const missingScore = countMissingScores(enrichedRows);
+        if (missingScore > 0) lines.push(`- missingScore: ${missingScore}`);
+        lines.push('');
+        lines.push(
+          mdTable([...SCREENER_MARKDOWN_HEADERS], screenerMarkdownRowsToTable(enrichedRows)),
+        );
+      } else {
+        lines.push('');
+        lines.push('_No rows._');
+      }
       lines.push('');
     }
 
@@ -1185,7 +1220,15 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       }
     }
 
-    const quotes: Record<string, { price: number | null; tradeTime: string | null }> = {};
+    const quotes: Record<
+      string,
+      {
+        price: number | null;
+        tradeTime: string | null;
+        amount: number | null;
+        volume: number | null;
+      }
+    > = {};
     for (const r of quoteResults) {
       for (const it of r?.items ?? []) {
         const sym = byTsCode.get(it.ts_code);
@@ -1194,6 +1237,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         quotes[sym] = {
           price: Number.isFinite(p) ? p : null,
           tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
+          amount: parseQuoteNumber(it.amount),
+          volume: parseQuoteNumber(it.volume),
         };
       }
     }
@@ -1265,19 +1310,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     lines.push(mdLines(scoreRuleLines()));
     lines.push('');
 
-    const headers = [
-      'Symbol',
-      'Name',
-      'Position%',
-      'CostPrice',
-      'MaxPrice',
-      'Score',
-      'TrendOK',
-      'Buy',
-      'Current',
-      'StopLoss',
-      'AsOfDate',
-    ];
+    const headers = [...WATCHLIST_MD_HEADERS];
     const rows: unknown[][] = [];
     for (const it of sorted) {
       const t = trend[it.symbol];
@@ -1287,6 +1320,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       const current =
         q?.price ??
         (typeof close0 === 'number' && Number.isFinite(close0) ? (close0 as number) : null);
+      const vwap = computeVwap(q?.amount ?? null, q?.volume ?? null, 'realtime');
+      const pnl = computePnLPct(it.costPrice ?? null, typeof current === 'number' ? current : null);
       const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
       const buy =
         t?.buyAction && t?.buyMode
@@ -1294,16 +1329,20 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
           : t?.buyAction
             ? String(t.buyAction)
             : '—';
+      const values = (t?.values ?? {}) as Record<string, unknown>;
       rows.push([
         it.symbol,
         it.name ?? t?.name ?? '—',
+        industryDisplayName(values),
+        formatHotTop3(t),
         mdNum(it.positionPct ?? null, 1),
         mdPrice(it.costPrice ?? null),
-        mdPrice(it.maxPrice ?? null),
+        mdPrice(typeof current === 'number' ? current : null),
+        formatVwap(vwap),
+        formatPnLPct(pnl),
         mdScore(t?.score ?? null),
         trendOkSummary(t),
         buy,
-        mdPrice(typeof current === 'number' ? current : null),
         mdPrice(t?.stopLossPrice ?? null),
         asOf,
       ]);

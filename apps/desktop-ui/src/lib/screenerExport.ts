@@ -1,0 +1,225 @@
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+
+export type TrendOkResult = {
+  symbol: string;
+  name?: string | null;
+  asOfDate?: string | null;
+  trendOk?: boolean | null;
+  score?: number | null;
+  scoreParts?: Record<string, number>;
+  values?: Record<string, unknown> | null;
+  missingData?: string[];
+};
+
+export type ScreenerMarkdownRow = {
+  symbol: string;
+  name: string;
+  industry: string;
+  price: string;
+  changePct: string;
+  relVolume: string;
+  score: number | null;
+  flags: string;
+};
+
+const TV_FIELD_ALIASES: Record<string, string[]> = {
+  ticker: ['Ticker', 'Symbol'],
+  name: ['Name'],
+  price: ['Price', 'Last', 'Close'],
+  changePct: ['Change %', 'Price Change % 1 day'],
+  relVolume: ['Rel Volume', 'Relative Volume 1 day', 'Relative Volume'],
+  flags: ['Flags'],
+};
+
+export const SCREENER_MARKDOWN_HEADERS = [
+  'Symbol',
+  'Name',
+  'Industry',
+  'Price',
+  'Chg %',
+  'Rel vol',
+  'Score',
+  'Flags',
+] as const;
+
+function chunk<T>(arr: T[], n: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+}
+
+function normalizeSymbolInput(input: string): { symbol: string } | { error: string } {
+  const raw = (input || '').trim().toUpperCase();
+  if (!raw) return { error: 'Empty input' };
+
+  if (/^(CN|HK):[0-9A-Z.\-]{1,16}$/.test(raw)) {
+    return { symbol: raw };
+  }
+
+  if (/^\d{6}$/.test(raw)) {
+    return { symbol: `CN:${raw}` };
+  }
+
+  if (/^\d{4,5}$/.test(raw)) {
+    return { symbol: `HK:${raw.padStart(4, '0')}` };
+  }
+
+  return { error: 'Unsupported code format' };
+}
+
+export function normalizeScreenerSymbol(raw: string): string | null {
+  const s = String(raw || '')
+    .trim()
+    .toUpperCase();
+  if (!s) return null;
+
+  const parsed = normalizeSymbolInput(s);
+  if (!('error' in parsed)) return parsed.symbol;
+
+  const m = s.match(/^[A-Z]+:(\d{4,6})$/);
+  if (m) {
+    const code = m[1];
+    if (/^\d{6}$/.test(code)) return `CN:${code}`;
+    if (/^\d{4,5}$/.test(code)) return `HK:${code.padStart(4, '0')}`;
+  }
+  return null;
+}
+
+function resolveHeaderKey(headers: string[], aliases: string[]): string | null {
+  const byNorm = new Map(headers.map((h) => [String(h).trim().toLowerCase(), h]));
+  for (const alias of aliases) {
+    const hit = byNorm.get(alias.trim().toLowerCase());
+    if (hit) return hit;
+  }
+  return null;
+}
+
+export function pickScreenerField(
+  row: Record<string, string>,
+  headers: string[],
+  field: keyof typeof TV_FIELD_ALIASES,
+): string {
+  const key = resolveHeaderKey(headers, TV_FIELD_ALIASES[field] ?? []);
+  if (!key) return '';
+  return String(row[key] ?? '').trim();
+}
+
+export function extractSymbolsFromSnapshotRows(
+  rows: Array<Record<string, string>>,
+  headers: string[],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const raw = pickScreenerField(row, headers, 'ticker');
+    const sym = normalizeScreenerSymbol(raw);
+    if (!sym || seen.has(sym)) continue;
+    seen.add(sym);
+    out.push(sym);
+  }
+  return out;
+}
+
+export function isHotspotTop3Industry(t: TrendOkResult | undefined | null): boolean {
+  if (!t) return false;
+  const reasonsRaw = (t.values as Record<string, unknown> | undefined)?.industryFlowReasons;
+  const reasons = Array.isArray(reasonsRaw) ? reasonsRaw.map((x) => String(x ?? '')) : [];
+  if (reasons.includes('hotspots_today_top3')) return true;
+  const parts = t.scoreParts as Record<string, unknown> | null | undefined;
+  const v = parts?.hotspots_today_top3;
+  return typeof v === 'number' && Number.isFinite(v) && v > 0;
+}
+
+function formatFlags(tvFlags: string, trend: TrendOkResult | undefined): string {
+  const parts = tvFlags.trim() ? [tvFlags.trim()] : [];
+  if (isHotspotTop3Industry(trend)) parts.push('Top3');
+  return parts.join(' ');
+}
+
+export function buildScreenerMarkdownRows(
+  rows: Array<Record<string, string>>,
+  headers: string[],
+  trendMap: Map<string, TrendOkResult>,
+): ScreenerMarkdownRow[] {
+  const enriched: ScreenerMarkdownRow[] = [];
+
+  for (const row of rows) {
+    const rawTicker = pickScreenerField(row, headers, 'ticker');
+    const sym = normalizeScreenerSymbol(rawTicker);
+    const trend = sym ? trendMap.get(sym) : undefined;
+    const industryRaw = (trend?.values as Record<string, unknown> | undefined)?.industry;
+    const industry = typeof industryRaw === 'string' && industryRaw.trim() ? industryRaw.trim() : '—';
+    const score =
+      typeof trend?.score === 'number' && Number.isFinite(trend.score) ? trend.score : null;
+
+    enriched.push({
+      symbol: sym ?? rawTicker,
+      name: pickScreenerField(row, headers, 'name') || trend?.name || '—',
+      industry,
+      price: pickScreenerField(row, headers, 'price') || '—',
+      changePct: pickScreenerField(row, headers, 'changePct') || '—',
+      relVolume: pickScreenerField(row, headers, 'relVolume') || '—',
+      score,
+      flags: formatFlags(pickScreenerField(row, headers, 'flags'), trend),
+    });
+  }
+
+  enriched.sort((a, b) => {
+    const va = a.score;
+    const vb = b.score;
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return vb - va;
+  });
+
+  return enriched;
+}
+
+export function countMissingScores(rows: ScreenerMarkdownRow[]): number {
+  return rows.filter((r) => r.score == null).length;
+}
+
+export async function fetchTrendOkMap(
+  symbols: string[],
+  options: { realtime: boolean },
+): Promise<Map<string, TrendOkResult>> {
+  const trendMap = new Map<string, TrendOkResult>();
+  if (!symbols.length) return trendMap;
+
+  const parts = chunk(symbols, 200);
+  const results = await Promise.all(
+    parts.map(async (batch) => {
+      const sp = new URLSearchParams();
+      sp.set('refresh', 'true');
+      sp.set('realtime', options.realtime ? 'true' : 'false');
+      for (const sym of batch) sp.append('symbols', sym);
+      const res = await fetch(`${DATA_SYNC_BASE_URL}/market/stocks/trendok?${sp.toString()}`, {
+        cache: 'no-store',
+      });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return (await res.json()) as TrendOkResult[];
+    }),
+  );
+
+  for (const batch of results) {
+    for (const item of Array.isArray(batch) ? batch : []) {
+      if (item?.symbol) trendMap.set(String(item.symbol).toUpperCase(), item);
+    }
+  }
+
+  return trendMap;
+}
+
+export function screenerMarkdownRowsToTable(rows: ScreenerMarkdownRow[]): unknown[][] {
+  return rows.map((r) => [
+    r.symbol,
+    r.name,
+    r.industry,
+    r.price,
+    r.changePct,
+    r.relVolume,
+    r.score != null ? String(Math.round(r.score)) : '—',
+    r.flags || '—',
+  ]);
+}
