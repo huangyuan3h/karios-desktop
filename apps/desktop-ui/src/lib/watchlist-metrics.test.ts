@@ -6,6 +6,8 @@ import {
   formatHotTop3,
   industryDisplayName,
   isHotTop3Industry,
+  resolveWatchlistCurrentPrice,
+  shouldRequireRealtimeQuote,
 } from './watchlist-metrics';
 
 describe('computePnLPct', () => {
@@ -32,6 +34,73 @@ describe('computeVwap', () => {
   it('returns null for invalid inputs', () => {
     expect(computeVwap(null, 100)).toBeNull();
     expect(computeVwap(1000, 0)).toBeNull();
+  });
+});
+
+describe('resolveWatchlistCurrentPrice', () => {
+  const today = '2026-05-28';
+
+  it('uses realtime quote during CN session when trend is for today', () => {
+    expect(
+      resolveWatchlistCurrentPrice({
+        tradingTime: true,
+        todaySh: today,
+        symbol: 'CN:600000',
+        trendAsOfDate: today,
+        quotePrice: 10.5,
+        quoteTradeTime: `${today} 14:30:00`,
+        trendClose: 10.0,
+      }),
+    ).toBe(10.5);
+  });
+
+  it('prefers daily close after hours even if stale quote remains in state', () => {
+    expect(
+      resolveWatchlistCurrentPrice({
+        tradingTime: false,
+        todaySh: today,
+        symbol: 'CN:600000',
+        trendAsOfDate: today,
+        quotePrice: 10.2,
+        quoteTradeTime: `${today} 15:00:00`,
+        trendClose: 10.8,
+      }),
+    ).toBe(10.8);
+  });
+
+  it('falls back to close when realtime quote is missing during session', () => {
+    expect(
+      resolveWatchlistCurrentPrice({
+        tradingTime: true,
+        todaySh: today,
+        symbol: 'CN:600000',
+        trendAsOfDate: today,
+        quotePrice: null,
+        quoteTradeTime: null,
+        trendClose: 9.9,
+      }),
+    ).toBe(9.9);
+  });
+});
+
+describe('shouldRequireRealtimeQuote', () => {
+  it('is false outside session and when trend bar is not today', () => {
+    expect(
+      shouldRequireRealtimeQuote({
+        tradingTime: false,
+        symbol: 'CN:600000',
+        trendAsOfDate: '2026-05-28',
+        todaySh: '2026-05-28',
+      }),
+    ).toBe(false);
+    expect(
+      shouldRequireRealtimeQuote({
+        tradingTime: true,
+        symbol: 'CN:600000',
+        trendAsOfDate: '2026-05-27',
+        todaySh: '2026-05-28',
+      }),
+    ).toBe(false);
   });
 });
 

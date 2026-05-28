@@ -28,6 +28,9 @@ import {
   formatVwap,
   industryDisplayName,
   parseQuoteNumber,
+  resolveWatchlistCurrentPrice,
+  shouldRequireRealtimeQuote,
+  tradeDateFromTradeTime,
   tushareIndustryTooltip,
 } from '@/lib/watchlist-metrics';
 
@@ -399,16 +402,6 @@ function getShanghaiTodayIso(): string {
   return `${y}-${m}-${d}`;
 }
 
-function tradeDateFromTradeTime(tradeTime: string | null | undefined): string | null {
-  const s = String(tradeTime ?? '').trim();
-  if (!s) return null;
-  const m1 = s.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (m1) return m1[1];
-  const m2 = s.match(/^(\d{8})$/);
-  if (m2) return `${m2[1].slice(0, 4)}-${m2[1].slice(4, 6)}-${m2[1].slice(6, 8)}`;
-  return null;
-}
-
 function isShanghaiTradingTime(): boolean {
   const { weekday, hour, minute } = getShanghaiTimeParts();
   if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
@@ -418,6 +411,69 @@ function isShanghaiTradingTime(): boolean {
   const inAfternoon = minutes >= 13 * 60 && minutes <= 15 * 60;
   const inLunch = minutes > 11 * 60 + 30 && minutes < 13 * 60;
   return inMorning || inAfternoon || inLunch;
+}
+
+type WatchlistQuote = {
+  price: number | null;
+  tsCode: string;
+  tradeTime: string | null;
+  amount: number | null;
+  volume: number | null;
+};
+
+async function fetchFreshWatchlistSnapshot(symbols: string[]): Promise<{
+  trend: Record<string, TrendOkResult>;
+  quotes: Record<string, WatchlistQuote>;
+}> {
+  const syms = symbols.filter(Boolean);
+  const tradingTime = isShanghaiTradingTime();
+  const trend: Record<string, TrendOkResult> = {};
+  const quotes: Record<string, WatchlistQuote> = {};
+  if (!syms.length) return { trend, quotes };
+
+  const sp = new URLSearchParams();
+  sp.set('refresh', 'true');
+  sp.set('realtime', tradingTime ? 'true' : 'false');
+  for (const s of syms) sp.append('symbols', s);
+
+  const byTsCode = new Map<string, string>();
+  const tsCodes = syms
+    .map((s) => {
+      const t = toTsCodeFromSymbol(s);
+      if (t) byTsCode.set(t, s);
+      return t;
+    })
+    .filter(Boolean) as string[];
+
+  const [trendRows, ...quoteParts] = await Promise.all([
+    apiGetJsonFrom<TrendOkResult[]>(DATA_SYNC_BASE_URL, `/market/stocks/trendok?${sp.toString()}`),
+    ...chunk(tsCodes, 50).map((part) =>
+      apiGetJsonFrom<QuoteResp>(
+        DATA_SYNC_BASE_URL,
+        `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
+      ).catch(() => null),
+    ),
+  ]);
+
+  for (const r of Array.isArray(trendRows) ? trendRows : []) {
+    if (r && r.symbol) trend[r.symbol] = r;
+  }
+  for (const r of quoteParts) {
+    for (const it of r?.items ?? []) {
+      const sym = byTsCode.get(it.ts_code);
+      if (!sym) continue;
+      const p = it.price != null ? Number(it.price) : NaN;
+      quotes[sym] = {
+        tsCode: it.ts_code,
+        price: Number.isFinite(p) ? p : null,
+        tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
+        amount: parseQuoteNumber(it.amount),
+        volume: parseQuoteNumber(it.volume),
+      };
+    }
+  }
+
+  return { trend, quotes };
 }
 
 function fmtPrice(v: number | null | undefined): string {
@@ -568,6 +624,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [copyMdStatus, setCopyMdStatus] = React.useState<{ ok: boolean; text: string } | null>(
     null,
   );
+  const [copyMdBusy, setCopyMdBusy] = React.useState(false);
   const copyMdTimerRef = React.useRef<number | null>(null);
 
   // Keep the last screener import inspection table visible for manual follow-ups.
@@ -1531,123 +1588,169 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       toastCopyMd(false, 'No items to copy.');
       return;
     }
-    const tradingTime = isShanghaiTradingTime();
-    const todaySh = getShanghaiTodayIso();
-    const missingRealtime: string[] = [];
-    const missingTrend: string[] = [];
-    const missingHistory: string[] = [];
-    for (const it of sortedItems) {
-      const sym = it.symbol;
-      const t = trend[sym];
-      if (!t) {
-        missingTrend.push(sym);
-        continue;
+    setCopyMdBusy(true);
+    try {
+      const tradingTime = isShanghaiTradingTime();
+      const todaySh = getShanghaiTodayIso();
+      const syms = sortedItems.map((x) => x.symbol);
+      let trendSnap: Record<string, TrendOkResult>;
+      let quotesSnap: Record<string, WatchlistQuote>;
+      try {
+        const fresh = await fetchFreshWatchlistSnapshot(syms);
+        trendSnap = fresh.trend;
+        quotesSnap = fresh.quotes;
+        setTrend(fresh.trend);
+        setQuotes(fresh.quotes);
+        setTrendUpdatedAt(new Date().toISOString());
+      } catch (e) {
+        console.warn('Watchlist copy refresh failed, using cached data:', e);
+        trendSnap = trend;
+        quotesSnap = quotes;
       }
-      const md = Array.isArray(t.missingData) ? t.missingData.filter(Boolean) : [];
-      if (md.length) {
-        missingHistory.push(sym);
-      }
-      if (tradingTime && sym.toUpperCase().startsWith('CN:')) {
-        const q = quotes[sym];
-        const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
-        if (!(q && typeof q.price === 'number' && Number.isFinite(q.price) && qDate === todaySh)) {
-          missingRealtime.push(sym);
+
+      const missingRealtime: string[] = [];
+      const missingTrend: string[] = [];
+      const missingHistory: string[] = [];
+      for (const it of sortedItems) {
+        const sym = it.symbol;
+        const t = trendSnap[sym];
+        if (!t) {
+          missingTrend.push(sym);
+          continue;
+        }
+        const md = Array.isArray(t.missingData) ? t.missingData.filter(Boolean) : [];
+        if (md.length) {
+          missingHistory.push(sym);
+        }
+        if (
+          shouldRequireRealtimeQuote({
+            tradingTime,
+            symbol: sym,
+            trendAsOfDate: t?.asOfDate ?? null,
+            todaySh,
+          })
+        ) {
+          const q = quotesSnap[sym];
+          const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
+          if (!(q && typeof q.price === 'number' && Number.isFinite(q.price) && qDate === todaySh)) {
+            missingRealtime.push(sym);
+          }
         }
       }
-    }
-    if (missingTrend.length || missingHistory.length || missingRealtime.length) {
-      const parts: string[] = [];
-      if (missingRealtime.length) {
-        parts.push(
-          `missing realtime quote (today): ${missingRealtime.slice(0, 6).join(', ')}${
-            missingRealtime.length > 6 ? '…' : ''
-          }`,
-        );
+      if (missingTrend.length || missingHistory.length || missingRealtime.length) {
+        const parts: string[] = [];
+        if (missingRealtime.length) {
+          parts.push(
+            `missing realtime quote (today): ${missingRealtime.slice(0, 6).join(', ')}${
+              missingRealtime.length > 6 ? '…' : ''
+            }`,
+          );
+        }
+        if (missingHistory.length) {
+          parts.push(
+            `missing history/indicators: ${missingHistory.slice(0, 6).join(', ')}${
+              missingHistory.length > 6 ? '…' : ''
+            }`,
+          );
+        }
+        if (missingTrend.length) {
+          parts.push(
+            `missing TrendOK result: ${missingTrend.slice(0, 6).join(', ')}${
+              missingTrend.length > 6 ? '…' : ''
+            }`,
+          );
+        }
+        toastCopyMd(false, `Copy aborted: ${parts.join(' | ')}`);
+        return;
       }
-      if (missingHistory.length) {
-        parts.push(
-          `missing history/indicators: ${missingHistory.slice(0, 6).join(', ')}${
-            missingHistory.length > 6 ? '…' : ''
-          }`,
-        );
-      }
-      if (missingTrend.length) {
-        parts.push(
-          `missing TrendOK result: ${missingTrend.slice(0, 6).join(', ')}${
-            missingTrend.length > 6 ? '…' : ''
-          }`,
-        );
-      }
-      toastCopyMd(false, `Copy aborted: ${parts.join(' | ')}`);
-      return;
-    }
-    const generatedAt = new Date().toISOString();
-    const lines: string[] = [];
-    lines.push('## Watchlist');
-    lines.push(`- generatedAt: ${generatedAt}`);
-    lines.push(`- items: ${sortedItems.length}`);
-    lines.push(
-      `- scoresUpdatedAt: ${trendUpdatedAt ? new Date(trendUpdatedAt).toLocaleString() : '—'}`,
-    );
-    lines.push(`- shanghaiToday: ${todaySh}`);
-    lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
-    lines.push('');
+      const generatedAt = new Date().toISOString();
+      const lines: string[] = [];
+      lines.push('## Watchlist');
+      lines.push(`- generatedAt: ${generatedAt}`);
+      lines.push(`- items: ${sortedItems.length}`);
+      lines.push(
+        `- scoresUpdatedAt: ${trendUpdatedAt ? new Date(trendUpdatedAt).toLocaleString() : '—'}`,
+      );
+      lines.push(`- shanghaiToday: ${todaySh}`);
+      lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
+      lines.push('');
 
-    lines.push('### TrendOK rules');
-    lines.push(mdLines(trendOkRuleLines()));
-    lines.push('');
-    lines.push('### Score（0–100）计分说明');
-    lines.push(
-      mdLines(
-        scoreExplainZhLines().map((line) => (line.startsWith('-') ? line : `- ${line}`)),
-      ),
-    );
-    lines.push('');
-
-    // Summary table
-    const headers = [...WATCHLIST_MD_HEADERS];
-    lines.push(`| ${headers.join(' | ')} |`);
-    lines.push(`| ${headers.map(() => '---').join(' | ')} |`);
-    for (const it of sortedItems) {
-      const t = trend[it.symbol];
-      const buy = fmtBuyCell(t).text;
-      const q = quotes[it.symbol];
-      const current = q?.price ?? t?.values?.close ?? null;
-      const vwap = computeVwap(q?.amount ?? null, q?.volume ?? null, 'realtime');
-      const pnl = computePnLPct(it.costPrice ?? null, typeof current === 'number' ? current : null);
-      const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
-      const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
-      const values = (t?.values ?? {}) as Record<string, unknown>;
-      const row = [
-        escapeMarkdownCell(it.symbol),
-        escapeMarkdownCell(it.name || '—'),
-        escapeMarkdownCell(industryDisplayName(values)),
-        escapeMarkdownCell(formatHotTop3(t)),
-        escapeMarkdownCell(
-          typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
-            ? it.positionPct.toFixed(1)
-            : '—',
+      lines.push('### TrendOK rules');
+      lines.push(mdLines(trendOkRuleLines()));
+      lines.push('');
+      lines.push('### Score（0–100）计分说明');
+      lines.push(
+        mdLines(
+          scoreExplainZhLines().map((line) => (line.startsWith('-') ? line : `- ${line}`)),
         ),
-        escapeMarkdownCell(mdPrice(it.costPrice ?? null)),
-        escapeMarkdownCell(mdPrice(typeof current === 'number' ? current : null)),
-        escapeMarkdownCell(formatVwap(vwap)),
-        escapeMarkdownCell(formatPnLPct(pnl)),
-        escapeMarkdownCell(mdScore(t?.score ?? null)),
-        escapeMarkdownCell(trendOkSummary(t)),
-        escapeMarkdownCell(buy),
-        escapeMarkdownCell(mdPrice(t?.stopLossPrice ?? null)),
-        escapeMarkdownCell(asOf),
-      ];
-      lines.push(`| ${row.join(' | ')} |`);
-    }
-    lines.push('');
+      );
+      lines.push('');
 
-    const md = lines.join('\n').trim() + '\n';
-    try {
-      await navigator.clipboard.writeText(md);
-      toastCopyMd(true, 'Copied Markdown.');
-    } catch {
-      toastCopyMd(false, 'Copy failed. Please allow clipboard access.');
+      const headers = [...WATCHLIST_MD_HEADERS];
+      lines.push(`| ${headers.join(' | ')} |`);
+      lines.push(`| ${headers.map(() => '---').join(' | ')} |`);
+      for (const it of sortedItems) {
+        const t = trendSnap[it.symbol];
+        const buy = fmtBuyCell(t).text;
+        const q = quotesSnap[it.symbol];
+        const close0 = t?.values?.close;
+        const trendClose =
+          typeof close0 === 'number' && Number.isFinite(close0) ? (close0 as number) : null;
+        const current = resolveWatchlistCurrentPrice({
+          tradingTime,
+          todaySh,
+          symbol: it.symbol,
+          trendAsOfDate: t?.asOfDate ?? null,
+          quotePrice: q?.price ?? null,
+          quoteTradeTime: q?.tradeTime ?? null,
+          trendClose,
+        });
+        const useRealtimeVwap = shouldRequireRealtimeQuote({
+          tradingTime,
+          symbol: it.symbol,
+          trendAsOfDate: t?.asOfDate ?? null,
+          todaySh,
+        });
+        const vwap = useRealtimeVwap
+          ? computeVwap(q?.amount ?? null, q?.volume ?? null, 'realtime')
+          : null;
+        const pnl = computePnLPct(it.costPrice ?? null, current);
+        const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
+        const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
+        const values = (t?.values ?? {}) as Record<string, unknown>;
+        const row = [
+          escapeMarkdownCell(it.symbol),
+          escapeMarkdownCell(it.name || '—'),
+          escapeMarkdownCell(industryDisplayName(values)),
+          escapeMarkdownCell(formatHotTop3(t)),
+          escapeMarkdownCell(
+            typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
+              ? it.positionPct.toFixed(1)
+              : '—',
+          ),
+          escapeMarkdownCell(mdPrice(it.costPrice ?? null)),
+          escapeMarkdownCell(mdPrice(current)),
+          escapeMarkdownCell(formatVwap(vwap)),
+          escapeMarkdownCell(formatPnLPct(pnl)),
+          escapeMarkdownCell(mdScore(t?.score ?? null)),
+          escapeMarkdownCell(trendOkSummary(t)),
+          escapeMarkdownCell(buy),
+          escapeMarkdownCell(mdPrice(t?.stopLossPrice ?? null)),
+          escapeMarkdownCell(asOf),
+        ];
+        lines.push(`| ${row.join(' | ')} |`);
+      }
+      lines.push('');
+
+      const md = lines.join('\n').trim() + '\n';
+      try {
+        await navigator.clipboard.writeText(md);
+        toastCopyMd(true, 'Copied Markdown.');
+      } catch {
+        toastCopyMd(false, 'Copy failed. Please allow clipboard access.');
+      }
+    } finally {
+      setCopyMdBusy(false);
     }
   }
 
@@ -1781,9 +1884,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             size="sm"
             variant="secondary"
             onClick={() => void copyWatchlistMarkdown()}
-            disabled={!sortedItems.length}
+            disabled={!sortedItems.length || copyMdBusy}
           >
-            Copy Markdown
+            {copyMdBusy ? 'Copying…' : 'Copy Markdown'}
           </Button>
           <Button
             size="sm"
@@ -2192,22 +2295,61 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                                 : '—'
                           }
                         >
-                          {fmtPrice(quotes[it.symbol]?.price ?? trend[it.symbol]?.values?.close)}
+                          {(() => {
+                            const t = trend[it.symbol];
+                            const q = quotes[it.symbol];
+                            const close0 = t?.values?.close;
+                            const trendClose =
+                              typeof close0 === 'number' && Number.isFinite(close0)
+                                ? (close0 as number)
+                                : null;
+                            const current = resolveWatchlistCurrentPrice({
+                              tradingTime: isShanghaiTradingTime(),
+                              todaySh: getShanghaiTodayIso(),
+                              symbol: it.symbol,
+                              trendAsOfDate: t?.asOfDate ?? null,
+                              quotePrice: q?.price ?? null,
+                              quoteTradeTime: q?.tradeTime ?? null,
+                              trendClose,
+                            });
+                            return fmtPrice(current);
+                          })()}
                         </td>
                         <td className="px-3 py-2 font-mono">
-                          {formatVwap(
-                            computeVwap(
-                              quotes[it.symbol]?.amount ?? null,
-                              quotes[it.symbol]?.volume ?? null,
-                              'realtime',
-                            ),
-                          )}
+                          {(() => {
+                            const t = trend[it.symbol];
+                            const q = quotes[it.symbol];
+                            const useRealtimeVwap = shouldRequireRealtimeQuote({
+                              tradingTime: isShanghaiTradingTime(),
+                              symbol: it.symbol,
+                              trendAsOfDate: t?.asOfDate ?? null,
+                              todaySh: getShanghaiTodayIso(),
+                            });
+                            if (!useRealtimeVwap) return '—';
+                            return formatVwap(
+                              computeVwap(q?.amount ?? null, q?.volume ?? null, 'realtime'),
+                            );
+                          })()}
                         </td>
                         <td
                           className={`px-3 py-2 font-mono ${
                             (() => {
-                              const current =
-                                quotes[it.symbol]?.price ?? trend[it.symbol]?.values?.close ?? null;
+                              const t = trend[it.symbol];
+                              const q = quotes[it.symbol];
+                              const close0 = t?.values?.close;
+                              const trendClose =
+                                typeof close0 === 'number' && Number.isFinite(close0)
+                                  ? (close0 as number)
+                                  : null;
+                              const current = resolveWatchlistCurrentPrice({
+                                tradingTime: isShanghaiTradingTime(),
+                                todaySh: getShanghaiTodayIso(),
+                                symbol: it.symbol,
+                                trendAsOfDate: t?.asOfDate ?? null,
+                                quotePrice: q?.price ?? null,
+                                quoteTradeTime: q?.tradeTime ?? null,
+                                trendClose,
+                              });
                               const pnl = computePnLPct(it.costPrice ?? null, current);
                               if (pnl == null) return '';
                               if (pnl >= 5) return 'text-emerald-600';
@@ -2217,10 +2359,25 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                           }`}
                         >
                           {formatPnLPct(
-                            computePnLPct(
-                              it.costPrice ?? null,
-                              quotes[it.symbol]?.price ?? trend[it.symbol]?.values?.close ?? null,
-                            ),
+                            (() => {
+                              const t = trend[it.symbol];
+                              const q = quotes[it.symbol];
+                              const close0 = t?.values?.close;
+                              const trendClose =
+                                typeof close0 === 'number' && Number.isFinite(close0)
+                                  ? (close0 as number)
+                                  : null;
+                              const current = resolveWatchlistCurrentPrice({
+                                tradingTime: isShanghaiTradingTime(),
+                                todaySh: getShanghaiTodayIso(),
+                                symbol: it.symbol,
+                                trendAsOfDate: t?.asOfDate ?? null,
+                                quotePrice: q?.price ?? null,
+                                quoteTradeTime: q?.tradeTime ?? null,
+                                trendClose,
+                              });
+                              return computePnLPct(it.costPrice ?? null, current);
+                            })(),
                           )}
                         </td>
                         <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>

@@ -36,6 +36,9 @@ import {
   formatVwap,
   industryDisplayName,
   parseQuoteNumber,
+  resolveWatchlistCurrentPrice,
+  shouldRequireRealtimeQuote,
+  tradeDateFromTradeTime,
 } from '@/lib/watchlist-metrics';
 
 type DashboardSummary = any;
@@ -404,16 +407,6 @@ function getShanghaiTodayIso(): string {
   const m = map.get('month') ?? '01';
   const d = map.get('day') ?? '01';
   return `${y}-${m}-${d}`;
-}
-
-function tradeDateFromTradeTime(tradeTime: string | null | undefined): string | null {
-  const s = String(tradeTime ?? '').trim();
-  if (!s) return null;
-  const m1 = s.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (m1) return m1[1];
-  const m2 = s.match(/^(\d{8})$/);
-  if (m2) return `${m2[1].slice(0, 4)}-${m2[1].slice(4, 6)}-${m2[1].slice(6, 8)}`;
-  return null;
 }
 
 function isShanghaiTradingTime(): boolean {
@@ -1155,9 +1148,14 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       }
       const md = Array.isArray(t.missingData) ? t.missingData.filter(Boolean) : [];
       if (md.length) missingHistory.push(sym);
-      const trendDate = String(t?.asOfDate ?? '');
-      const requireRealtime = tradingTime && trendDate === todaySh;
-      if (requireRealtime && sym.startsWith('CN:')) {
+      if (
+        shouldRequireRealtimeQuote({
+          tradingTime,
+          symbol: sym,
+          trendAsOfDate: t?.asOfDate ?? null,
+          todaySh,
+        })
+      ) {
         const q = quotes[sym];
         const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
         if (!(q && typeof q.price === 'number' && Number.isFinite(q.price) && qDate === todaySh)) {
@@ -1205,11 +1203,27 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       const q = quotes[it.symbol];
       const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
       const close0 = (t?.values as any)?.close;
-      const current =
-        q?.price ??
-        (typeof close0 === 'number' && Number.isFinite(close0) ? (close0 as number) : null);
-      const vwap = computeVwap(q?.amount ?? null, q?.volume ?? null, 'realtime');
-      const pnl = computePnLPct(it.costPrice ?? null, typeof current === 'number' ? current : null);
+      const trendClose =
+        typeof close0 === 'number' && Number.isFinite(close0) ? (close0 as number) : null;
+      const current = resolveWatchlistCurrentPrice({
+        tradingTime,
+        todaySh,
+        symbol: it.symbol,
+        trendAsOfDate: t?.asOfDate ?? null,
+        quotePrice: q?.price ?? null,
+        quoteTradeTime: q?.tradeTime ?? null,
+        trendClose,
+      });
+      const useRealtimeVwap = shouldRequireRealtimeQuote({
+        tradingTime,
+        symbol: it.symbol,
+        trendAsOfDate: t?.asOfDate ?? null,
+        todaySh,
+      });
+      const vwap = useRealtimeVwap
+        ? computeVwap(q?.amount ?? null, q?.volume ?? null, 'realtime')
+        : null;
+      const pnl = computePnLPct(it.costPrice ?? null, current);
       const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
       const buy =
         t?.buyAction && t?.buyMode
@@ -1225,7 +1239,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         formatHotTop3(t),
         mdNum(it.positionPct ?? null, 1),
         mdPrice(it.costPrice ?? null),
-        mdPrice(typeof current === 'number' ? current : null),
+        mdPrice(current),
         formatVwap(vwap),
         formatPnLPct(pnl),
         mdScore(t?.score ?? null),
