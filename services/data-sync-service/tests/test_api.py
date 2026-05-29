@@ -300,7 +300,12 @@ def test_alpha_radar_endpoints_shape() -> None:
 
     trends = client.get("/api/alpha-radar/trends?limit=5")
     assert trends.status_code == 200
-    assert isinstance(trends.json().get("items"), list)
+    trend_items = trends.json().get("items")
+    assert isinstance(trend_items, list)
+    if trend_items:
+        sample = trend_items[0]
+        assert "macroTheme" in sample
+        assert "catalystGrade" in sample
 
     catalyst = client.get("/api/alpha-radar/catalyst-stocks?limit=5")
     assert catalyst.status_code == 200

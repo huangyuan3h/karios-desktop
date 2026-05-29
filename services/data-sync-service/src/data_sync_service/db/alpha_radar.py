@@ -87,6 +87,12 @@ def ensure_tables() -> None:
             cur.execute(CREATE_DOCUMENTS_SQL)
             cur.execute(CREATE_TRENDS_SQL)
             cur.execute(CREATE_META_SQL)
+            cur.execute(
+                f"ALTER TABLE {TRENDS_TABLE} ADD COLUMN IF NOT EXISTS macro_theme TEXT"
+            )
+            cur.execute(
+                f"ALTER TABLE {TRENDS_TABLE} ADD COLUMN IF NOT EXISTS catalyst_grade TEXT"
+            )
         conn.commit()
 
 
@@ -440,11 +446,16 @@ def update_document_status(doc_id: str, processing_status: str) -> bool:
     return ok
 
 
+_TREND_SELECT_COLS = 14
+
+
 def insert_trend(
     *,
     trend_id: str,
     document_id: str,
     trend_name: str,
+    macro_theme: str | None,
+    catalyst_grade: str | None,
     catalyst: str | None,
     global_target: str | None,
     urgency_level: str,
@@ -461,19 +472,22 @@ def insert_trend(
             cur.execute(
                 f"""
                 INSERT INTO {TRENDS_TABLE}(
-                    id, document_id, trend_name, catalyst, global_target, urgency_level,
-                    keywords_for_mapping, cn_symbols, mapping_confidence, risk_status,
-                    trend_json, created_at
+                    id, document_id, trend_name, macro_theme, catalyst_grade, catalyst,
+                    global_target, urgency_level, keywords_for_mapping, cn_symbols,
+                    mapping_confidence, risk_status, trend_json, created_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, document_id, trend_name, catalyst, global_target, urgency_level,
-                          keywords_for_mapping, cn_symbols, mapping_confidence, risk_status,
-                          trend_json, created_at
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, document_id, trend_name, catalyst, global_target,
+                          urgency_level, macro_theme, catalyst_grade,
+                          keywords_for_mapping, cn_symbols, mapping_confidence,
+                          risk_status, trend_json, created_at
                 """,
                 (
                     trend_id,
                     document_id,
                     trend_name,
+                    macro_theme,
+                    catalyst_grade,
                     catalyst,
                     global_target,
                     urgency_level,
@@ -512,7 +526,8 @@ def delete_trends_for_document(document_id: str) -> int:
 
 _TREND_DOC_SELECT = f"""
     SELECT t.id, t.document_id, t.trend_name, t.catalyst, t.global_target,
-           t.urgency_level, t.keywords_for_mapping, t.cn_symbols,
+           t.urgency_level, t.macro_theme, t.catalyst_grade,
+           t.keywords_for_mapping, t.cn_symbols,
            t.mapping_confidence, t.risk_status, t.trend_json, t.created_at,
            d.title, d.url, d.category, d.published_at, d.fetched_at, d.summary
     FROM {TRENDS_TABLE} t
@@ -521,12 +536,12 @@ _TREND_DOC_SELECT = f"""
 
 
 def _attach_document_fields(item: dict[str, Any], row: tuple[Any, ...]) -> dict[str, Any]:
-    item["documentTitle"] = str(row[12])
-    item["documentUrl"] = str(row[13])
-    item["documentCategory"] = str(row[14])
-    item["documentPublishedAt"] = str(row[15]) if row[15] else None
-    item["documentFetchedAt"] = str(row[16]) if row[16] else None
-    item["documentSummary"] = str(row[17]) if row[17] else None
+    item["documentTitle"] = str(row[14])
+    item["documentUrl"] = str(row[15])
+    item["documentCategory"] = str(row[16])
+    item["documentPublishedAt"] = str(row[17]) if row[17] else None
+    item["documentFetchedAt"] = str(row[18]) if row[18] else None
+    item["documentSummary"] = str(row[19]) if row[19] else None
     return item
 
 
@@ -544,7 +559,7 @@ def fetch_trend_by_id(trend_id: str) -> dict[str, Any] | None:
             row = cur.fetchone()
     if not row:
         return None
-    item = _trend_row(row[:12])
+    item = _trend_row(row[:_TREND_SELECT_COLS])
     return _attach_document_fields(item, row)
 
 
@@ -596,7 +611,7 @@ def fetch_trends(
             rows = cur.fetchall()
     items = []
     for r in rows:
-        item = _trend_row(r[:12])
+        item = _trend_row(r[:_TREND_SELECT_COLS])
         _attach_document_fields(item, r)
         items.append(item)
     return total, items
@@ -623,7 +638,7 @@ def fetch_trends_for_catalyst(*, max_age_days: int = 30) -> list[dict[str, Any]]
             rows = cur.fetchall()
     items: list[dict[str, Any]] = []
     for r in rows:
-        item = _trend_row(r[:12])
+        item = _trend_row(r[:_TREND_SELECT_COLS])
         _attach_document_fields(item, r)
         if item.get("cnSymbols"):
             items.append(item)
@@ -700,9 +715,9 @@ def _document_row(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def _trend_row(row: tuple[Any, ...]) -> dict[str, Any]:
-    keywords_raw = row[6]
-    cn_raw = row[7]
-    trend_json_raw = row[10]
+    keywords_raw = row[8]
+    cn_raw = row[9]
+    trend_json_raw = row[12]
     keywords: list[str] = []
     cn_symbols: list[dict[str, Any]] = []
     trend_json: dict[str, Any] = {}
@@ -721,17 +736,25 @@ def _trend_row(row: tuple[Any, ...]) -> dict[str, Any]:
             trend_json = json.loads(str(trend_json_raw))
     except Exception:
         trend_json = {}
+    trend_name = str(row[2])
+    urgency_level = str(row[5])
+    macro_theme_raw = row[6]
+    catalyst_grade_raw = row[7]
+    macro_theme = str(macro_theme_raw) if macro_theme_raw else trend_name
+    catalyst_grade = str(catalyst_grade_raw) if catalyst_grade_raw else urgency_level
     return {
         "id": str(row[0]),
         "documentId": str(row[1]),
-        "trendName": str(row[2]),
+        "trendName": trend_name,
+        "macroTheme": macro_theme,
+        "catalystGrade": catalyst_grade,
         "catalyst": str(row[3]) if row[3] else None,
         "globalTarget": str(row[4]) if row[4] else None,
-        "urgencyLevel": str(row[5]),
+        "urgencyLevel": urgency_level,
         "keywordsForMapping": keywords,
         "cnSymbols": cn_symbols,
-        "mappingConfidence": float(row[8]) if row[8] is not None else None,
-        "riskStatus": str(row[9]),
+        "mappingConfidence": float(row[10]) if row[10] is not None else None,
+        "riskStatus": str(row[11]),
         "trendJson": trend_json,
-        "createdAt": str(row[11]),
+        "createdAt": str(row[13]),
     }

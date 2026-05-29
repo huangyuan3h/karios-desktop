@@ -24,6 +24,8 @@ def _trend(
     name: str = "GigaDevice",
     confidence: float = 0.4,
     urgency: str = "A",
+    catalyst_grade: str | None = None,
+    macro_theme: str | None = None,
     days_ago: float = 1.0,
     title: str = "News headline",
 ) -> dict:
@@ -32,6 +34,8 @@ def _trend(
         "id": trend_id,
         "documentId": document_id,
         "trendName": "Memory demand surge",
+        "macroTheme": macro_theme or "Memory demand surge",
+        "catalystGrade": catalyst_grade or urgency,
         "catalyst": "AI memory demand rising",
         "urgencyLevel": urgency,
         "documentTitle": title,
@@ -124,3 +128,20 @@ def test_aggregate_sorts_by_catalyst_score_desc():
     rows = aggregate_catalyst_stocks(trends, now=now)
     assert rows[0]["symbol"] == "222222"
     assert rows[0]["catalystScore"] >= rows[1]["catalystScore"]
+
+
+def test_aggregate_includes_macro_theme_and_catalyst_grade_in_articles():
+    now = _now()
+    trends = [
+        _trend(
+            trend_id="t1",
+            document_id="d1",
+            macro_theme="HBM Supply Chain",
+            catalyst_grade="S",
+            urgency="B",
+        )
+    ]
+    rows = aggregate_catalyst_stocks(trends, now=now)
+    article = rows[0]["articles"][0]
+    assert article["macroTheme"] == "HBM Supply Chain"
+    assert article["catalystGrade"] == "S"

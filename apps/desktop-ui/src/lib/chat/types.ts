@@ -167,6 +167,8 @@ export type ChatReference =
       refId: string;
       trendId: string;
       trendName: string;
+      macroTheme?: string;
+      catalystGrade?: string;
       catalyst?: string | null;
       cnSymbols?: Array<{
         symbol: string;

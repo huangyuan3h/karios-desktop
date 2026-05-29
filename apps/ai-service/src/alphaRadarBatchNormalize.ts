@@ -29,21 +29,49 @@ function normalizeSourceIndex(value: unknown, fallback: number): number {
   return Math.min(49, Math.max(0, fallback));
 }
 
+export function normalizeAlphaRadarTrendRow(
+  item: unknown,
+  idx = 0,
+): Record<string, unknown> {
+  const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+  const macroTheme = asString(
+    row.macro_theme ?? row.macroTheme ?? row.trend_name ?? row.trendName,
+    'Unknown trend',
+  );
+  const trendName = asString(row.trend_name ?? row.trendName, macroTheme) || macroTheme;
+  const catalystGrade = normalizeUrgency(
+    row.catalyst_grade ?? row.catalystGrade ?? row.urgency_level ?? row.urgencyLevel,
+  );
+  const catalyst = asString(row.catalyst, trendName);
+  return {
+    macro_theme: macroTheme.slice(0, 120),
+    catalyst_grade: catalystGrade,
+    trend_name: trendName.slice(0, 200),
+    catalyst: catalyst.slice(0, 2000),
+    global_target: asString(row.global_target ?? row.globalTarget, 'N/A').slice(0, 120),
+    urgency_level: catalystGrade,
+    keywords_for_mapping: normalizeKeywords(row.keywords_for_mapping ?? row.keywordsForMapping),
+    source_index: normalizeSourceIndex(row.source_index ?? row.sourceIndex, idx),
+  };
+}
+
 export function normalizeAlphaRadarBatchExtract(raw: unknown): unknown {
   const root = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const trendsRaw = Array.isArray(root.trends) ? root.trends : [];
-  const trends = trendsRaw.slice(0, 8).map((item, idx) => {
-    const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
-    const trendName = asString(row.trend_name ?? row.trendName, 'Unknown trend');
-    const catalyst = asString(row.catalyst, trendName);
-    return {
-      trend_name: trendName.slice(0, 200),
-      catalyst: catalyst.slice(0, 2000),
-      global_target: asString(row.global_target ?? row.globalTarget, 'N/A').slice(0, 120),
-      urgency_level: normalizeUrgency(row.urgency_level ?? row.urgencyLevel),
-      keywords_for_mapping: normalizeKeywords(row.keywords_for_mapping ?? row.keywordsForMapping),
-      source_index: normalizeSourceIndex(row.source_index ?? row.sourceIndex, idx),
-    };
+  const trends = trendsRaw.slice(0, 8).map((item, idx) => normalizeAlphaRadarTrendRow(item, idx));
+  return {
+    trends,
+    model: asString(root.model) || undefined,
+  };
+}
+
+export function normalizeAlphaRadarExtract(raw: unknown): unknown {
+  const root = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const trendsRaw = Array.isArray(root.trends) ? root.trends : [];
+  const trends = trendsRaw.slice(0, 5).map((item, idx) => {
+    const row = normalizeAlphaRadarTrendRow(item, idx);
+    const { source_index: _sourceIndex, ...rest } = row;
+    return rest;
   });
   return {
     trends,

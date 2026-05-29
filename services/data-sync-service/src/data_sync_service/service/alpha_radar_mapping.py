@@ -156,6 +156,8 @@ def map_trend_to_cn(
             raise ValueError(f"trend not found: {trend_id}")
         trend = dict(row.get("trendJson") or {})
         trend.setdefault("trend_name", row.get("trendName"))
+        trend.setdefault("macro_theme", row.get("macroTheme"))
+        trend.setdefault("catalyst_grade", row.get("catalystGrade"))
         trend.setdefault("keywords_for_mapping", row.get("keywordsForMapping") or [])
 
     keywords = list(trend.get("keywords_for_mapping") or trend.get("keywordsForMapping") or [])

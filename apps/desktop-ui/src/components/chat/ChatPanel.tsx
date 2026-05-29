@@ -769,6 +769,8 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
     if (ref.kind === 'alphaRadar') {
       out += `## Alpha Incubator Trend: ${ref.trendName}\n`;
       out += `- trendId: ${ref.trendId}\n`;
+      if (ref.macroTheme) out += `- macroTheme: ${ref.macroTheme}\n`;
+      if (ref.catalystGrade) out += `- catalystGrade: ${ref.catalystGrade}\n`;
       out += `- riskStatus: ${ref.riskStatus}\n`;
       if (ref.documentTitle) out += `- source: ${ref.documentTitle}\n`;
       if (ref.catalyst) out += `- catalyst: ${ref.catalyst}\n`;

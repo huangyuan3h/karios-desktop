@@ -62,6 +62,30 @@ def _ai_extract_trends(*, text: str, title: str, category: str, source_url: str)
         raise RuntimeError(f"ai-service extract error: {msg}") from exc
 
 
+def _resolve_trend_storage_fields(trend: dict[str, Any]) -> dict[str, str]:
+    macro_theme = str(
+        trend.get("macro_theme")
+        or trend.get("macroTheme")
+        or trend.get("trend_name")
+        or trend.get("trendName")
+        or "Unknown"
+    )
+    trend_name = str(trend.get("trend_name") or trend.get("trendName") or macro_theme)
+    catalyst_grade = str(
+        trend.get("catalyst_grade")
+        or trend.get("catalystGrade")
+        or trend.get("urgency_level")
+        or trend.get("urgencyLevel")
+        or "B"
+    )
+    return {
+        "trend_name": trend_name,
+        "macro_theme": macro_theme,
+        "catalyst_grade": catalyst_grade,
+        "urgency_level": catalyst_grade,
+    }
+
+
 def _load_risk_context() -> tuple[list[str], dict[str, float]]:
     hot_names: list[str] = []
     mainline_map: dict[str, float] = {}
@@ -112,13 +136,16 @@ def process_document(
         trend_id = str(uuid.uuid4())
         keywords = list(trend.get("keywords_for_mapping") or [])
         risk_status = "waiting_v2_flow"
+        fields = _resolve_trend_storage_fields(trend)
         row = insert_trend(
             trend_id=trend_id,
             document_id=doc_id,
-            trend_name=str(trend.get("trend_name") or trend.get("trendName") or "Unknown"),
+            trend_name=fields["trend_name"],
+            macro_theme=fields["macro_theme"],
+            catalyst_grade=fields["catalyst_grade"],
             catalyst=str(trend.get("catalyst") or "") or None,
             global_target=str(trend.get("global_target") or trend.get("globalTarget") or "") or None,
-            urgency_level=str(trend.get("urgency_level") or trend.get("urgencyLevel") or "B"),
+            urgency_level=fields["urgency_level"],
             keywords_for_mapping=keywords,
             cn_symbols=[],
             mapping_confidence=None,
@@ -223,13 +250,16 @@ def process_document_batch(
 
         trend_id = str(uuid.uuid4())
         keywords = list(trend.get("keywords_for_mapping") or [])
+        fields = _resolve_trend_storage_fields(trend)
         row = insert_trend(
             trend_id=trend_id,
             document_id=doc_id,
-            trend_name=str(trend.get("trend_name") or trend.get("trendName") or "Unknown"),
+            trend_name=fields["trend_name"],
+            macro_theme=fields["macro_theme"],
+            catalyst_grade=fields["catalyst_grade"],
             catalyst=str(trend.get("catalyst") or "") or None,
             global_target=str(trend.get("global_target") or trend.get("globalTarget") or "") or None,
-            urgency_level=str(trend.get("urgency_level") or trend.get("urgencyLevel") or "B"),
+            urgency_level=fields["urgency_level"],
             keywords_for_mapping=keywords,
             cn_symbols=[],
             mapping_confidence=None,

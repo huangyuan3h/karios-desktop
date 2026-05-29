@@ -37,6 +37,8 @@ type AlphaTrend = {
   id: string;
   documentId: string;
   trendName: string;
+  macroTheme?: string | null;
+  catalystGrade?: string | null;
   catalyst: string | null;
   globalTarget: string | null;
   urgencyLevel: string;
@@ -52,6 +54,14 @@ type AlphaTrend = {
   documentFetchedAt?: string | null;
   documentSummary?: string | null;
 };
+
+function trendDisplayTitle(t: AlphaTrend): string {
+  return (t.macroTheme || t.trendName || '').trim() || '—';
+}
+
+function trendCatalystGrade(t: AlphaTrend): string {
+  return (t.catalystGrade || t.urgencyLevel || 'B').trim() || 'B';
+}
 
 type PipelineStatus = {
   lastRunAt?: string | null;
@@ -380,16 +390,17 @@ export function AlphaIncubatorPage() {
                       <span
                         className={cn(
                           'rounded px-1.5 py-0.5 text-xs font-semibold',
-                          urgencyTone(t.urgencyLevel),
+                          urgencyTone(trendCatalystGrade(t)),
                         )}
+                        title="Catalyst grade"
                       >
-                        {t.urgencyLevel}
+                        {trendCatalystGrade(t)}
                       </span>
-                      <h3 className="font-semibold">{t.trendName}</h3>
+                      <h3 className="font-semibold">{trendDisplayTitle(t)}</h3>
                     </div>
                     <div className="mt-2 text-sm text-[var(--k-muted)]">
-                      <span className="font-medium text-[var(--k-text)]">【全球趋势】</span>
-                      {t.trendName}
+                      <span className="font-medium text-[var(--k-text)]">【宏观主题】</span>
+                      {trendDisplayTitle(t)}
                     </div>
                     <div className="mt-1 text-sm">
                       <span className="font-medium">【催化剂源】</span>
@@ -469,7 +480,7 @@ export function AlphaIncubatorPage() {
                     variant="outline"
                     size="sm"
                     disabled={busy}
-                    onClick={() => void deleteTrend(t.id, t.trendName)}
+                    onClick={() => void deleteTrend(t.id, trendDisplayTitle(t))}
                   >
                     <Trash2 className="mr-1 h-4 w-4" />
                     Delete
@@ -503,7 +514,9 @@ export function AlphaIncubatorPage() {
                         kind: 'alphaRadar',
                         refId: `alphaRadar:${t.id}`,
                         trendId: t.id,
-                        trendName: t.trendName,
+                        trendName: trendDisplayTitle(t),
+                        macroTheme: t.macroTheme ?? trendDisplayTitle(t),
+                        catalystGrade: trendCatalystGrade(t),
                         catalyst: t.catalyst,
                         cnSymbols: t.cnSymbols,
                         riskStatus: t.riskStatus,
@@ -565,12 +578,13 @@ export function AlphaIncubatorPage() {
                         <span
                           className={cn(
                             'rounded px-1.5 py-0.5 text-xs font-semibold',
-                            urgencyTone(article.urgencyLevel),
+                            urgencyTone(article.catalystGrade || article.urgencyLevel),
                           )}
+                          title="Catalyst grade"
                         >
-                          {article.urgencyLevel}
+                          {article.catalystGrade || article.urgencyLevel}
                         </span>
-                        <span className="font-medium">{article.documentTitle || article.trendName}</span>
+                        <span className="font-medium">{article.documentTitle || article.macroTheme || article.trendName}</span>
                         <span className="text-xs text-[var(--k-muted)]">
                           相关度 {formatRelevancePct(article.relevance)}
                         </span>
@@ -585,7 +599,9 @@ export function AlphaIncubatorPage() {
                           </a>
                         ) : null}
                       </div>
-                      <div className="mt-1 text-xs text-[var(--k-muted)]">{article.trendName}</div>
+                      <div className="mt-1 text-xs text-[var(--k-muted)]">
+                        {article.macroTheme || article.trendName}
+                      </div>
                       {article.summary ? (
                         <p className="mt-2 text-sm leading-relaxed text-[var(--k-text)]">{article.summary}</p>
                       ) : null}

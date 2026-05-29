@@ -1,6 +1,7 @@
 export type CatalystArticle = {
   trendId: string;
   trendName: string;
+  macroTheme?: string | null;
   documentId: string;
   relevance: number;
   contribution: number;
@@ -9,6 +10,7 @@ export type CatalystArticle = {
   summary?: string | null;
   publishedAt?: string | null;
   urgencyLevel: string;
+  catalystGrade?: string | null;
 };
 
 export type CatalystStock = {

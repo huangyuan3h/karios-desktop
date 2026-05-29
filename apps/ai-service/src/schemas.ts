@@ -319,6 +319,8 @@ export const AlphaRadarExtractRequestSchema = z.object({
 });
 
 export const AlphaRadarTrendSchema = z.object({
+  macro_theme: z.string().min(1).max(120),
+  catalyst_grade: z.enum(['S', 'A', 'B', 'C']),
   trend_name: z.string().min(1).max(200),
   catalyst: z.string().min(1).max(2000),
   global_target: z.string().min(1).max(120),
