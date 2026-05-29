@@ -51,7 +51,7 @@ describe('buildScreenerMarkdownRows', () => {
     expect(enriched[0]?.industry).toBe('白酒');
     expect(enriched[0]?.score).toBe(94);
     expect(enriched[0]?.intradayPct).toBe('+3.2%');
-    expect(enriched[0]?.gapUp).toBe('—');
+    expect(enriched[0]?.gapUp).toBe('No');
     expect(enriched[0]?.flags).toBe('D Top3');
   });
 

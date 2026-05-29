@@ -372,11 +372,34 @@ type QuoteResp = {
   items: Array<{
     ts_code: string;
     price: string | null;
+    pre_close: string | null;
+    pct_chg: string | null;
     amount: string | null;
     volume: string | null;
     trade_time: string | null;
   }>;
 };
+
+function parseDashboardQuoteItem(it: QuoteResp['items'][number]): {
+  price: number | null;
+  tradeTime: string | null;
+  amount: number | null;
+  volume: number | null;
+  preClose: number | null;
+  pctChg: number | null;
+} {
+  const p = it.price != null ? Number(it.price) : NaN;
+  const pre = it.pre_close != null ? Number(it.pre_close) : NaN;
+  const pct = it.pct_chg != null ? Number(it.pct_chg) : NaN;
+  return {
+    price: Number.isFinite(p) ? p : null,
+    tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
+    amount: parseQuoteNumber(it.amount),
+    volume: parseQuoteNumber(it.volume),
+    preClose: Number.isFinite(pre) ? pre : null,
+    pctChg: Number.isFinite(pct) ? pct : null,
+  };
+}
 
 type NewsBriefCache = {
   summary?: string;
@@ -512,19 +535,15 @@ async function fetchWatchlistRiskRows(): Promise<WatchlistRiskRow[]> {
       tradeTime: string | null;
       amount: number | null;
       volume: number | null;
+      preClose: number | null;
+      pctChg: number | null;
     }
   > = {};
   for (const r of quoteResults) {
     for (const it of r?.items ?? []) {
       const sym = byTsCode.get(it.ts_code);
       if (!sym) continue;
-      const p = it.price != null ? Number(it.price) : NaN;
-      quotes[sym] = {
-        price: Number.isFinite(p) ? p : null,
-        tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
-        amount: parseQuoteNumber(it.amount),
-        volume: parseQuoteNumber(it.volume),
-      };
+      quotes[sym] = parseDashboardQuoteItem(it);
     }
   }
 
@@ -542,8 +561,8 @@ async function fetchWatchlistRiskRows(): Promise<WatchlistRiskRow[]> {
     out.push({
       symbol: it.symbol,
       name: it.name ?? t?.name ?? '—',
-      intradayChgPct: t?.intradayChgPct ?? null,
-      gapUp: t?.gapUp ?? null,
+      intradayChgPct: rowMetrics.intradayChgPct,
+      gapUp: rowMetrics.gapUp,
       alerts: rowMetrics.alerts,
     });
   }
@@ -1262,19 +1281,15 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         tradeTime: string | null;
         amount: number | null;
         volume: number | null;
+        preClose: number | null;
+        pctChg: number | null;
       }
     > = {};
     for (const r of quoteResults) {
       for (const it of r?.items ?? []) {
         const sym = byTsCode.get(it.ts_code);
         if (!sym) continue;
-        const p = it.price != null ? Number(it.price) : NaN;
-        quotes[sym] = {
-          price: Number.isFinite(p) ? p : null,
-          tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
-          amount: parseQuoteNumber(it.amount),
-          volume: parseQuoteNumber(it.volume),
-        };
+        quotes[sym] = parseDashboardQuoteItem(it);
       }
     }
 
@@ -1375,11 +1390,13 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             ? String(t.buyAction)
             : '—';
       const values = (t?.values ?? {}) as Record<string, unknown>;
-      const intradayCell = isIntradaySurge(t?.intradayChgPct)
-        ? `⚠️ ${formatIntradayChgPct(t?.intradayChgPct ?? null)}`
-        : formatIntradayChgPct(t?.intradayChgPct ?? null);
+      const intradayCell = isIntradaySurge(rowMetrics.intradayChgPct)
+        ? `⚠️ ${formatIntradayChgPct(rowMetrics.intradayChgPct)}`
+        : formatIntradayChgPct(rowMetrics.intradayChgPct);
       const gapCell =
-        t?.gapUp === true ? `⚠️ ${formatGapUp(true)}` : formatGapUp(t?.gapUp ?? null);
+        rowMetrics.gapUp === true
+          ? `⚠️ ${formatGapUp(true)}`
+          : formatGapUp(rowMetrics.gapUp);
       for (const alert of rowMetrics.alerts) {
         if (alert.severity === 'block') blockAlerts.push(`${it.symbol}: ${alert.message}`);
       }

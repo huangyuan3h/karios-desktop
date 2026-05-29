@@ -4,13 +4,16 @@ import {
   collectWatchlistRiskAlerts,
   computePnLPct,
   computeVwap,
+  formatGapUp,
   formatHotTop3,
   hasBlockingWatchlistRisk,
   industryDisplayName,
   isAboveVwapPremium,
   isHotTop3Industry,
   isIntradaySurge,
+  resolveIntradayChgPct,
   resolveWatchlistCurrentPrice,
+  resolveWatchlistVwap,
   shouldRequireRealtimeQuote,
 } from './watchlist-metrics';
 
@@ -129,6 +132,34 @@ describe('risk alerts', () => {
   it('detects price above VWAP premium band', () => {
     expect(isAboveVwapPremium(10.6, 10)).toBe(true);
     expect(isAboveVwapPremium(10.4, 10)).toBe(false);
+  });
+
+  it('formats gap-up false as No', () => {
+    expect(formatGapUp(false)).toBe('No');
+    expect(formatGapUp(true)).toBe('✓');
+  });
+
+  it('resolves intraday change from trend bars', () => {
+    expect(
+      resolveIntradayChgPct({
+        fromTrend: 2.5,
+        asOfDate: '2026-05-28',
+      }),
+    ).toBe(2.5);
+  });
+
+  it('resolves vwap when quote date matches as-of date', () => {
+    expect(
+      resolveWatchlistVwap({
+        tradingTime: false,
+        todaySh: '2026-05-29',
+        symbol: 'CN:600000',
+        trendAsOfDate: '2026-05-28',
+        quoteAmount: 101200,
+        quoteVolume: 100,
+        quoteTradeTime: '2026-05-28 15:00:00',
+      }),
+    ).toBeCloseTo(10.12);
   });
 
   it('aggregates server and client alerts without duplicates', () => {

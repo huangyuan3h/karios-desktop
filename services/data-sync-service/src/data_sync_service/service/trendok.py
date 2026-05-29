@@ -125,11 +125,12 @@ def _compute_day_risk_metrics(
     today: str,
 ) -> dict[str, Any]:
     """
-    Intraday change % and gap-up for the latest bar when it is today's session.
-    Gap-up: today's low > yesterday's high.
+    Session change % and gap-up on the latest daily bar.
+    Gap-up: latest low > previous high.
+    riskMetricsLive is True only when the latest bar is for calendar today (Shanghai).
     """
-    if len(closes) < 2 or not dates or str(dates[-1]) != str(today):
-        return {"intradayChgPct": None, "gapUp": None}
+    if len(closes) < 2 or not dates:
+        return {"intradayChgPct": None, "gapUp": None, "riskMetricsLive": False}
 
     pre_close = closes[-2]
     current = closes[-1]
@@ -140,9 +141,11 @@ def _compute_day_risk_metrics(
             intraday = None
 
     gap_up = bool(lows[-1] > highs[-2])
+    live = str(dates[-1]) == str(today)
     return {
         "intradayChgPct": round(intraday, 3) if intraday is not None else None,
         "gapUp": gap_up,
+        "riskMetricsLive": live,
     }
 
 
@@ -153,11 +156,16 @@ def _build_server_risk_alerts(
     market_regime: str | None,
     buy_checks: dict[str, Any] | None,
     buy_action: str | None = None,
+    risk_metrics_live: bool = False,
 ) -> list[dict[str, str]]:
     alerts: list[dict[str, str]] = []
     checks = buy_checks if isinstance(buy_checks, dict) else {}
 
-    if intraday_chg_pct is not None and intraday_chg_pct > INTRADAY_SURGE_THRESHOLD_PCT:
+    if (
+        risk_metrics_live
+        and intraday_chg_pct is not None
+        and intraday_chg_pct > INTRADAY_SURGE_THRESHOLD_PCT
+    ):
         alerts.append(
             {
                 "code": "intraday_surge",
@@ -186,6 +194,8 @@ def _apply_intraday_risk_buy_blocks(
 ) -> None:
     """Override buy recommendation when intraday surge or gap-up in weak/diverging market."""
     if bool((res.get("stopLossParts") or {}).get("exit_now")):
+        return
+    if not bool(res.get("riskMetricsLive")):
         return
 
     intraday = res.get("intradayChgPct")
@@ -562,6 +572,7 @@ def _trendok_one(
         "marketRegime": market_regime,
         "intradayChgPct": None,
         "gapUp": None,
+        "riskMetricsLive": False,
         "riskAlerts": [],
         "checks": {},
         "values": {},
@@ -614,6 +625,7 @@ def _trendok_one(
     day_risk = _compute_day_risk_metrics(dates, highs, lows, closes, today=_shanghai_today_iso())
     res["intradayChgPct"] = day_risk.get("intradayChgPct")
     res["gapUp"] = day_risk.get("gapUp")
+    res["riskMetricsLive"] = bool(day_risk.get("riskMetricsLive"))
 
     # Checks + values
     ema5s = _ema(closes, 5)
@@ -1108,6 +1120,7 @@ def _trendok_one(
             market_regime=market_regime,
             buy_checks=res.get("buyChecks"),
             buy_action=str(res.get("buyAction") or ""),
+            risk_metrics_live=bool(res.get("riskMetricsLive")),
         )
     except Exception:
         res["riskAlerts"] = []

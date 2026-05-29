@@ -72,11 +72,11 @@ def test_compute_day_risk_metrics_normal() -> None:
     assert metrics["gapUp"] is False
 
 
-def test_compute_day_risk_metrics_null_when_not_today() -> None:
+def test_compute_day_risk_metrics_stale_bar_still_computes() -> None:
     import data_sync_service.service.trendok as trendok  # type: ignore[import-not-found]
 
     bars = _bars_with_today(
-        today="2099-01-01",
+        today="2026-05-28",
         prev_close=100.0,
         today_close=107.0,
         prev_high=101.0,
@@ -87,13 +87,38 @@ def test_compute_day_risk_metrics_null_when_not_today() -> None:
     lows = [float(b[3]) for b in bars]
     closes = [float(b[4]) for b in bars]
 
-    metrics = trendok._compute_day_risk_metrics(dates, highs, lows, closes, today="2099-01-01")  # type: ignore[attr-defined]
+    metrics = trendok._compute_day_risk_metrics(  # type: ignore[attr-defined]
+        dates, highs, lows, closes, today="2026-05-29"
+    )
     assert metrics["intradayChgPct"] == 7.0
     assert metrics["gapUp"] is True
+    assert metrics["riskMetricsLive"] is False
 
-    metrics2 = trendok._compute_day_risk_metrics(dates, highs, lows, closes, today="2099-01-02")  # type: ignore[attr-defined]
-    assert metrics2["intradayChgPct"] is None
-    assert metrics2["gapUp"] is None
+
+def test_stale_surge_does_not_block_buy() -> None:
+    import data_sync_service.service.trendok as trendok  # type: ignore[import-not-found]
+
+    today = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
+    bars = _bars_with_today(
+        today="2026-05-28",
+        prev_close=100.0,
+        today_close=107.0,
+        prev_high=101.0,
+        today_low=106.0,
+    )
+    if today == "2026-05-28":
+        return
+    res = trendok._trendok_one(  # type: ignore[attr-defined]
+        symbol="CN:000001",
+        name="Test",
+        industry=None,
+        bars=bars,
+        flow_ctx=None,
+        market_regime="Strong",
+    )
+    assert res.get("intradayChgPct") == 7.0
+    assert res.get("riskMetricsLive") is False
+    assert res.get("buyAction") != "avoid"
 
 
 def test_intraday_surge_blocks_buy() -> None:

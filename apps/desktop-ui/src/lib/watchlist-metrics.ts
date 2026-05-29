@@ -60,6 +60,7 @@ export function collectWatchlistRiskAlerts(opts: {
   marketRegime?: string | null;
   current?: number | null;
   vwap?: number | null;
+  riskMetricsLive?: boolean | null;
   serverAlerts?: WatchlistRiskAlert[] | null;
 }): WatchlistRiskAlert[] {
   const out: WatchlistRiskAlert[] = [];
@@ -75,7 +76,7 @@ export function collectWatchlistRiskAlerts(opts: {
     if (alert?.code && alert.message) push(alert);
   }
 
-  if (isIntradaySurge(opts.intradayChgPct)) {
+  if (isIntradaySurge(opts.intradayChgPct) && opts.riskMetricsLive !== false) {
     push({
       code: 'intraday_surge',
       severity: 'block',
@@ -111,7 +112,70 @@ export function formatIntradayChgPct(value: number | null | undefined): string {
 
 export function formatGapUp(value: boolean | null | undefined): string {
   if (value == null) return '—';
-  return value ? '✓' : '—';
+  return value ? '✓' : 'No';
+}
+
+export function resolveIntradayChgPct(opts: {
+  fromTrend?: number | null;
+  quotePrice?: number | null;
+  quotePreClose?: number | null;
+  quotePctChg?: number | null;
+  quoteTradeDate?: string | null;
+  asOfDate?: string | null;
+}): number | null {
+  if (typeof opts.fromTrend === 'number' && Number.isFinite(opts.fromTrend)) {
+    return opts.fromTrend;
+  }
+  const asOf = String(opts.asOfDate ?? '').trim();
+  const qDate = opts.quoteTradeDate ?? null;
+  if (!asOf || !qDate || qDate !== asOf) return null;
+
+  const pct = opts.quotePctChg;
+  if (typeof pct === 'number' && Number.isFinite(pct)) return pct;
+
+  const price = opts.quotePrice;
+  const preClose = opts.quotePreClose;
+  if (
+    typeof price === 'number' &&
+    Number.isFinite(price) &&
+    typeof preClose === 'number' &&
+    Number.isFinite(preClose) &&
+    preClose > 0
+  ) {
+    return ((price - preClose) / preClose) * 100;
+  }
+  return null;
+}
+
+export function resolveWatchlistVwap(opts: {
+  tradingTime: boolean;
+  todaySh: string;
+  symbol: string;
+  trendAsOfDate: string | null | undefined;
+  quoteAmount?: number | null;
+  quoteVolume?: number | null;
+  quoteTradeTime?: string | null;
+}): number | null {
+  const asOf = String(opts.trendAsOfDate ?? '').trim();
+  const qDate = tradeDateFromTradeTime(opts.quoteTradeTime ?? null);
+
+  if (opts.symbol.toUpperCase().startsWith('CN:') && asOf && qDate === asOf) {
+    const vwap = computeVwap(opts.quoteAmount ?? null, opts.quoteVolume ?? null, 'realtime');
+    if (vwap != null) return vwap;
+  }
+
+  if (
+    shouldRequireRealtimeQuote({
+      tradingTime: opts.tradingTime,
+      symbol: opts.symbol,
+      trendAsOfDate: opts.trendAsOfDate,
+      todaySh: opts.todaySh,
+    })
+  ) {
+    return computeVwap(opts.quoteAmount ?? null, opts.quoteVolume ?? null, 'realtime');
+  }
+
+  return null;
 }
 
 export function formatRiskAlerts(alerts: WatchlistRiskAlert[]): string {
@@ -128,6 +192,8 @@ export type WatchlistQuoteSlice = {
   tradeTime: string | null;
   amount: number | null;
   volume: number | null;
+  preClose?: number | null;
+  pctChg?: number | null;
 };
 
 export type WatchlistTrendRiskSlice = {
@@ -136,6 +202,7 @@ export type WatchlistTrendRiskSlice = {
   intradayChgPct?: number | null;
   gapUp?: boolean | null;
   marketRegime?: string | null;
+  riskMetricsLive?: boolean | null;
   riskAlerts?: WatchlistRiskAlert[] | null;
 };
 
@@ -148,39 +215,53 @@ export function buildWatchlistRowMetrics(opts: {
 }): {
   current: number | null;
   vwap: number | null;
+  intradayChgPct: number | null;
+  gapUp: boolean | null;
   alerts: WatchlistRiskAlert[];
 } {
   const t = opts.trend;
   const q = opts.quote;
   const close0 = t?.values?.close;
   const trendClose = typeof close0 === 'number' && Number.isFinite(close0) ? close0 : null;
+  const asOfDate = t?.asOfDate ?? null;
+  const quoteTradeDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
   const current = resolveWatchlistCurrentPrice({
     tradingTime: opts.tradingTime,
     todaySh: opts.todaySh,
     symbol: opts.symbol,
-    trendAsOfDate: t?.asOfDate ?? null,
+    trendAsOfDate: asOfDate,
     quotePrice: q?.price ?? null,
     quoteTradeTime: q?.tradeTime ?? null,
     trendClose,
   });
-  const useRealtimeVwap = shouldRequireRealtimeQuote({
+  const vwap = resolveWatchlistVwap({
     tradingTime: opts.tradingTime,
-    symbol: opts.symbol,
-    trendAsOfDate: t?.asOfDate ?? null,
     todaySh: opts.todaySh,
+    symbol: opts.symbol,
+    trendAsOfDate: asOfDate,
+    quoteAmount: q?.amount ?? null,
+    quoteVolume: q?.volume ?? null,
+    quoteTradeTime: q?.tradeTime ?? null,
   });
-  const vwap = useRealtimeVwap
-    ? computeVwap(q?.amount ?? null, q?.volume ?? null, 'realtime')
-    : null;
+  const intradayChgPct = resolveIntradayChgPct({
+    fromTrend: t?.intradayChgPct,
+    quotePrice: q?.price ?? current,
+    quotePreClose: q?.preClose ?? null,
+    quotePctChg: q?.pctChg ?? null,
+    quoteTradeDate,
+    asOfDate,
+  });
+  const gapUp = typeof t?.gapUp === 'boolean' ? t.gapUp : null;
   const alerts = collectWatchlistRiskAlerts({
-    intradayChgPct: t?.intradayChgPct,
-    gapUp: t?.gapUp,
+    intradayChgPct,
+    gapUp,
     marketRegime: t?.marketRegime,
     current,
     vwap,
+    riskMetricsLive: t?.riskMetricsLive,
     serverAlerts: t?.riskAlerts,
   });
-  return { current, vwap, alerts };
+  return { current, vwap, intradayChgPct, gapUp, alerts };
 }
 
 export function rowHasWatchlistRiskHighlight(alerts: WatchlistRiskAlert[]): boolean {

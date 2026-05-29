@@ -245,6 +245,7 @@ type TrendOkResult = {
   intradayChgPct?: number | null;
   gapUp?: boolean | null;
   riskAlerts?: WatchlistRiskAlert[];
+  riskMetricsLive?: boolean | null;
   checks?: TrendOkChecks;
   values?: TrendOkValues;
   missingData?: string[];
@@ -431,6 +432,8 @@ type WatchlistQuote = {
   tradeTime: string | null;
   amount: number | null;
   volume: number | null;
+  preClose: number | null;
+  pctChg: number | null;
 };
 
 async function fetchFreshWatchlistSnapshot(symbols: string[]): Promise<{
@@ -475,12 +478,16 @@ async function fetchFreshWatchlistSnapshot(symbols: string[]): Promise<{
       const sym = byTsCode.get(it.ts_code);
       if (!sym) continue;
       const p = it.price != null ? Number(it.price) : NaN;
+      const pre = it.pre_close != null ? Number(it.pre_close) : NaN;
+      const pct = it.pct_chg != null ? Number(it.pct_chg) : NaN;
       quotes[sym] = {
         tsCode: it.ts_code,
         price: Number.isFinite(p) ? p : null,
         tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
         amount: parseQuoteNumber(it.amount),
         volume: parseQuoteNumber(it.volume),
+        preClose: Number.isFinite(pre) ? pre : null,
+        pctChg: Number.isFinite(pct) ? pct : null,
       };
     }
   }
@@ -616,18 +623,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
-  const [quotes, setQuotes] = React.useState<
-    Record<
-      string,
-      {
-        price: number | null;
-        tsCode: string;
-        tradeTime: string | null;
-        amount: number | null;
-        volume: number | null;
-      }
-    >
-  >({});
+  const [quotes, setQuotes] = React.useState<Record<string, WatchlistQuote>>({});
   const [trendBusy, setTrendBusy] = React.useState(false);
   const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
   const [syncBusy, setSyncBusy] = React.useState(false);
@@ -831,16 +827,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             const tsCode = toTsCodeFromSymbol(s);
             if (tsCode) byTsCode.set(tsCode, s);
           }
-          const nextQuotes: Record<
-            string,
-            {
-              price: number | null;
-              tsCode: string;
-              tradeTime: string | null;
-              amount: number | null;
-              volume: number | null;
-            }
-          > = {};
+          const nextQuotes: Record<string, WatchlistQuote> = {};
           for (const part of chunk(cn, 50)) {
             const r = await apiGetJsonFrom<QuoteResp>(
               DATA_SYNC_BASE_URL,
@@ -850,12 +837,16 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               const sym = byTsCode.get(it.ts_code);
               if (!sym) continue;
               const p = it.price != null ? Number(it.price) : NaN;
+              const pre = it.pre_close != null ? Number(it.pre_close) : NaN;
+              const pct = it.pct_chg != null ? Number(it.pct_chg) : NaN;
               nextQuotes[sym] = {
                 tsCode: it.ts_code,
                 price: Number.isFinite(p) ? p : null,
                 tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
                 amount: parseQuoteNumber(it.amount),
                 volume: parseQuoteNumber(it.volume),
+                preClose: Number.isFinite(pre) ? pre : null,
+                pctChg: Number.isFinite(pct) ? pct : null,
               };
             }
           }
@@ -1721,11 +1712,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
         const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
         const values = (t?.values ?? {}) as Record<string, unknown>;
-        const intradayCell = isIntradaySurge(t?.intradayChgPct)
-          ? `⚠️ ${formatIntradayChgPct(t?.intradayChgPct ?? null)}`
-          : formatIntradayChgPct(t?.intradayChgPct ?? null);
+        const intradayCell = isIntradaySurge(rowMetrics.intradayChgPct)
+          ? `⚠️ ${formatIntradayChgPct(rowMetrics.intradayChgPct)}`
+          : formatIntradayChgPct(rowMetrics.intradayChgPct);
         const gapCell =
-          t?.gapUp === true ? `⚠️ ${formatGapUp(true)}` : formatGapUp(t?.gapUp ?? null);
+          rowMetrics.gapUp === true
+            ? `⚠️ ${formatGapUp(true)}`
+            : formatGapUp(rowMetrics.gapUp);
         const alertsCell = formatRiskAlerts(rowMetrics.alerts);
         for (const alert of rowMetrics.alerts) {
           if (alert.severity === 'block') {
@@ -2391,31 +2384,22 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                             return fmtPrice(current);
                           })()}
                         </td>
-                        <td className="px-3 py-2 font-mono">
-                          {(() => {
-                            const useRealtimeVwap = shouldRequireRealtimeQuote({
-                              tradingTime,
-                              symbol: it.symbol,
-                              trendAsOfDate: t?.asOfDate ?? null,
-                              todaySh,
-                            });
-                            if (!useRealtimeVwap) return '—';
-                            return formatVwap(rowMetrics.vwap);
-                          })()}
+                        <td className="px-3 py-2 font-mono">{formatVwap(rowMetrics.vwap)}</td>
+                        <td
+                          className={`px-3 py-2 font-mono ${
+                            isIntradaySurge(rowMetrics.intradayChgPct)
+                              ? 'font-semibold text-red-600'
+                              : ''
+                          }`}
+                        >
+                          {formatIntradayChgPct(rowMetrics.intradayChgPct)}
                         </td>
                         <td
                           className={`px-3 py-2 font-mono ${
-                            isIntradaySurge(t?.intradayChgPct) ? 'font-semibold text-red-600' : ''
+                            rowMetrics.gapUp === true ? 'font-semibold text-red-600' : ''
                           }`}
                         >
-                          {formatIntradayChgPct(t?.intradayChgPct ?? null)}
-                        </td>
-                        <td
-                          className={`px-3 py-2 font-mono ${
-                            t?.gapUp === true ? 'font-semibold text-red-600' : ''
-                          }`}
-                        >
-                          {formatGapUp(t?.gapUp ?? null)}
+                          {formatGapUp(rowMetrics.gapUp)}
                         </td>
                         <td className="px-3 py-2 text-xs">
                           {rowMetrics.alerts.length ? (
