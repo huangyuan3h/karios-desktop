@@ -310,3 +310,71 @@ export const InvestmentDailyReportResponseSchema = z.object({
   topStocks: z.array(InvestmentDailyReportStockItemSchema).length(3),
   topNews: z.array(InvestmentDailyReportNewsItemSchema).length(5),
 });
+
+export const AlphaRadarExtractRequestSchema = z.object({
+  text: z.string().min(40).max(200_000),
+  title: z.string().min(1).max(500),
+  category: z.enum(['academic', 'earnings', 'research']),
+  sourceUrl: z.string().min(1).max(2000),
+});
+
+export const AlphaRadarTrendSchema = z.object({
+  trend_name: z.string().min(1).max(200),
+  catalyst: z.string().min(1).max(2000),
+  global_target: z.string().min(1).max(120),
+  urgency_level: z.enum(['S', 'A', 'B', 'C']),
+  keywords_for_mapping: z.array(z.string().min(1).max(80)).min(1).max(8),
+});
+
+export const AlphaRadarBatchTrendSchema = AlphaRadarTrendSchema.extend({
+  source_index: z.number().int().min(0).max(49),
+});
+
+export const AlphaRadarBatchDocumentSchema = z.object({
+  documentId: z.string().min(1).max(64),
+  title: z.string().min(1).max(500),
+  url: z.string().min(1).max(2000),
+  category: z.enum(['academic', 'earnings', 'research']),
+  summary: z.string().max(4000).optional().nullable(),
+});
+
+export const AlphaRadarExtractBatchRequestSchema = z.object({
+  documents: z.array(AlphaRadarBatchDocumentSchema).min(2).max(15),
+});
+
+export const AlphaRadarExtractBatchResponseSchema = z.object({
+  trends: z.array(AlphaRadarBatchTrendSchema).max(8),
+  model: z.string().optional(),
+});
+
+export const AlphaRadarExtractResponseSchema = z.object({
+  trends: z.array(AlphaRadarTrendSchema).max(5),
+  model: z.string().optional(),
+});
+
+export const AlphaRadarMapCnCandidateSchema = z.object({
+  symbol: z.string().min(1),
+  ticker: z.string().optional(),
+  name: z.string().optional(),
+  market: z.string().optional(),
+});
+
+export const AlphaRadarMapCnRequestSchema = z.object({
+  trend: z.record(z.any()),
+  candidates: z.array(AlphaRadarMapCnCandidateSchema).max(30),
+  externalContext: z.string().max(8000).optional().nullable(),
+  allowKnowledgeFallback: z.boolean().optional(),
+});
+
+export const AlphaRadarCnSymbolSchema = z.object({
+  symbol: z.string().min(1),
+  name: z.string().min(1),
+  confidence: z.number().min(0).max(1),
+  rationale: z.string().min(1).max(1000),
+});
+
+export const AlphaRadarMapCnResponseSchema = z.object({
+  cnSymbols: z.array(AlphaRadarCnSymbolSchema).max(2),
+  mappingConfidence: z.number().min(0).max(1).optional(),
+  model: z.string().optional(),
+});

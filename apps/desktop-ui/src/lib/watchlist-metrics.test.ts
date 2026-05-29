@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  collectWatchlistRiskAlerts,
   computePnLPct,
   computeVwap,
   formatHotTop3,
+  hasBlockingWatchlistRisk,
   industryDisplayName,
+  isAboveVwapPremium,
   isHotTop3Industry,
+  isIntradaySurge,
   resolveWatchlistCurrentPrice,
   shouldRequireRealtimeQuote,
 } from './watchlist-metrics';
@@ -113,5 +117,37 @@ describe('industry helpers', () => {
     const t = { values: { industryFlowReasons: ['hotspots_today_top3'] } };
     expect(isHotTop3Industry(t)).toBe(true);
     expect(formatHotTop3(t)).toBe('✓');
+  });
+});
+
+describe('risk alerts', () => {
+  it('detects intraday surge above threshold', () => {
+    expect(isIntradaySurge(6.0)).toBe(false);
+    expect(isIntradaySurge(6.1)).toBe(true);
+  });
+
+  it('detects price above VWAP premium band', () => {
+    expect(isAboveVwapPremium(10.6, 10)).toBe(true);
+    expect(isAboveVwapPremium(10.4, 10)).toBe(false);
+  });
+
+  it('aggregates server and client alerts without duplicates', () => {
+    const alerts = collectWatchlistRiskAlerts({
+      intradayChgPct: 7.2,
+      gapUp: true,
+      marketRegime: 'Weak',
+      current: 11,
+      vwap: 10,
+      serverAlerts: [
+        {
+          code: 'intraday_surge',
+          severity: 'block',
+          message: 'Intraday change 7.2% exceeds 6.0%; no new positions',
+        },
+      ],
+    });
+    expect(alerts).toHaveLength(3);
+    expect(hasBlockingWatchlistRisk(alerts)).toBe(true);
+    expect(alerts.some((a) => a.code === 'above_vwap_premium')).toBe(true);
   });
 });

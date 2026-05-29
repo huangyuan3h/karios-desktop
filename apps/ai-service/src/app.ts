@@ -11,6 +11,7 @@ import { brokerRoutes } from './routes/broker';
 import { newsRoutes } from './routes/news';
 import { reportRoutes } from './routes/report';
 import { chatRoutes } from './routes/chat';
+import { alphaRadarRoutes } from './routes/alpha_radar';
 
 export const app = new Hono();
 app.use('*', cors());
@@ -35,5 +36,6 @@ app.route('/extract/broker', brokerRoutes);
 app.route('/news', newsRoutes);
 app.route('/report', reportRoutes);
 app.route('/chat', chatRoutes);
+app.route('/alpha-radar', alphaRadarRoutes);
 
 export default app;

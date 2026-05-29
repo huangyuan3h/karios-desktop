@@ -38,6 +38,8 @@ describe('buildScreenerMarkdownRows', () => {
         {
           symbol: 'CN:600519',
           score: 94,
+          intradayChgPct: 3.2,
+          gapUp: false,
           values: { industry: '白酒', industryFlowReasons: ['hotspots_today_top3'] },
         },
       ],
@@ -48,6 +50,8 @@ describe('buildScreenerMarkdownRows', () => {
     expect(enriched[0]?.symbol).toBe('CN:600519');
     expect(enriched[0]?.industry).toBe('白酒');
     expect(enriched[0]?.score).toBe(94);
+    expect(enriched[0]?.intradayPct).toBe('+3.2%');
+    expect(enriched[0]?.gapUp).toBe('—');
     expect(enriched[0]?.flags).toBe('D Top3');
   });
 
@@ -87,9 +91,12 @@ describe('screenerMarkdownRowsToTable', () => {
         changePct: '2.1%',
         relVolume: '1.8',
         score: 94.2,
+        intradayPct: '+3.2%',
+        gapUp: '—',
         flags: 'D Top3',
       },
     ]);
     expect(table[0]?.[6]).toBe('94');
+    expect(table[0]?.[7]).toBe('+3.2%');
   });
 });

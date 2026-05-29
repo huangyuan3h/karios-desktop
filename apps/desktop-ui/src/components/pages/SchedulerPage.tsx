@@ -135,6 +135,13 @@ function StatusCard({
   );
 }
 
+type AlphaRadarStatusResp = {
+  ok?: boolean;
+  todayRun?: SyncJobRecord | null;
+  lastSuccess?: SyncJobRecord | null;
+  lastIngestStats?: { fetched?: number; filteredOut?: number; stored?: number } | null;
+};
+
 export function SchedulerPage() {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -145,22 +152,25 @@ export function SchedulerPage() {
   const [dailyStatus, setDailyStatus] = React.useState<SimpleStatusResp | null>(null);
   const [adjStatus, setAdjStatus] = React.useState<SimpleStatusResp | null>(null);
   const [basicStatus, setBasicStatus] = React.useState<SimpleStatusResp | null>(null);
+  const [alphaRadarStatus, setAlphaRadarStatus] = React.useState<AlphaRadarStatusResp | null>(null);
 
   const refresh = React.useCallback(async () => {
     setError(null);
     setNeedTradeCal(false);
     setBusy(true);
     try {
-      const [c, d, a, b] = await Promise.all([
+      const [c, d, a, b, ar] = await Promise.all([
         apiGetJson<CloseStatusResp>('/close/status'),
         apiGetJson<SimpleStatusResp>('/daily/status'),
         apiGetJson<SimpleStatusResp>('/adj-factor/status'),
         apiGetJson<SimpleStatusResp>('/stock-basic/status'),
+        apiGetJson<AlphaRadarStatusResp>('/api/alpha-radar/status'),
       ]);
       setCloseStatus(c);
       setDailyStatus(d);
       setAdjStatus(a);
       setBasicStatus(b);
+      setAlphaRadarStatus(ar);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -263,6 +273,72 @@ export function SchedulerPage() {
         <StatusCard title="Daily full sync" schedule="Fri 17:00 Asia/Shanghai (fallback)" status={dailyStatus} />
         <StatusCard title="Adj factor full sync" schedule="Fri 17:00 Asia/Shanghai (fallback)" status={adjStatus} />
         <StatusCard title="Stock basic sync" schedule="Fri 18:00 Asia/Shanghai" status={basicStatus} />
+        <StatusCard
+          title="Alpha Radar pipeline"
+          schedule="Every 12 hours (RSS + filter + fulltext + batch LLM + A-share map)"
+          status={
+            alphaRadarStatus?.todayRun
+              ? {
+                  job_type: 'alpha_radar_pipeline',
+                  today_run: alphaRadarStatus.todayRun,
+                  last_success: alphaRadarStatus.lastSuccess ?? undefined,
+                }
+              : alphaRadarStatus?.lastSuccess
+                ? {
+                    job_type: 'alpha_radar_pipeline',
+                    today_run: null,
+                    last_success: alphaRadarStatus.lastSuccess,
+                  }
+                : null
+          }
+          extra={
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={busy}
+              onClick={async () => {
+                setError(null);
+                setMsg('Alpha Radar pipeline running...');
+                setBusy(true);
+                try {
+                  const r = await apiPostJson<{
+                    ok?: boolean;
+                    skipped?: boolean;
+                    trendCount?: number;
+                    ingestStats?: { stored?: number; filteredOut?: number };
+                    keptPreviousTrends?: boolean;
+                    errors?: Array<{ error?: string }>;
+                  }>('/api/alpha-radar/run-pipeline', { force: true });
+                  const stored = r.ingestStats?.stored ?? 0;
+                  const filtered = r.ingestStats?.filteredOut ?? 0;
+                  if (r.skipped) {
+                    setMsg(`Skipped (12h cooldown) · ${r.trendCount ?? 0} card(s)`);
+                  } else if (r.ok === false) {
+                    setMsg(
+                      `Pipeline failed · stored ${stored}, filtered ${filtered}` +
+                        (r.keptPreviousTrends ? ' · kept previous cards' : ''),
+                    );
+                    if (r.errors?.length) {
+                      setError(r.errors.map((e) => e.error).filter(Boolean).join('\n'));
+                    }
+                  } else {
+                    setMsg(
+                      `Pipeline OK · stored ${stored} → ${r.trendCount ?? 0} trend card(s)` +
+                        (filtered ? ` · filtered ${filtered}` : ''),
+                    );
+                  }
+                  await refresh();
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : String(e));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Run pipeline (force)
+            </Button>
+          }
+        />
       </div>
     </div>
   );

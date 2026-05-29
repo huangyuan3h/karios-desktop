@@ -12,6 +12,7 @@ import {
   Star,
   Settings,
   Table2,
+  Rocket,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ const items = [
   { id: 'news', label: 'News', icon: Newspaper },
   { id: 'market', label: 'Market', icon: Table2 },
   { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
+  { id: 'alphaIncubator', label: 'Alpha Incubator', icon: Rocket },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
   // { id: 'broker', label: 'Broker', icon: CreditCard },
   { id: 'journal', label: 'Journal', icon: NotebookPen },

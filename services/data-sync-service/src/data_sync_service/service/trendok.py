@@ -112,6 +112,111 @@ def _shanghai_today_iso() -> str:
     return datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
 
 
+INTRADAY_SURGE_THRESHOLD_PCT = 6.0
+_GAP_UP_WEAK_REGIMES = frozenset({"Weak", "Diverging"})
+
+
+def _compute_day_risk_metrics(
+    dates: list[str],
+    highs: list[float],
+    lows: list[float],
+    closes: list[float],
+    *,
+    today: str,
+) -> dict[str, Any]:
+    """
+    Intraday change % and gap-up for the latest bar when it is today's session.
+    Gap-up: today's low > yesterday's high.
+    """
+    if len(closes) < 2 or not dates or str(dates[-1]) != str(today):
+        return {"intradayChgPct": None, "gapUp": None}
+
+    pre_close = closes[-2]
+    current = closes[-1]
+    intraday: float | None = None
+    if pre_close > 0:
+        intraday = ((current - pre_close) / pre_close) * 100.0
+        if not math.isfinite(intraday):
+            intraday = None
+
+    gap_up = bool(lows[-1] > highs[-2])
+    return {
+        "intradayChgPct": round(intraday, 3) if intraday is not None else None,
+        "gapUp": gap_up,
+    }
+
+
+def _build_server_risk_alerts(
+    *,
+    intraday_chg_pct: float | None,
+    gap_up: bool | None,
+    market_regime: str | None,
+    buy_checks: dict[str, Any] | None,
+    buy_action: str | None = None,
+) -> list[dict[str, str]]:
+    alerts: list[dict[str, str]] = []
+    checks = buy_checks if isinstance(buy_checks, dict) else {}
+
+    if intraday_chg_pct is not None and intraday_chg_pct > INTRADAY_SURGE_THRESHOLD_PCT:
+        alerts.append(
+            {
+                "code": "intraday_surge",
+                "severity": "block",
+                "message": f"Intraday change {intraday_chg_pct:.1f}% exceeds 6.0%; no new positions",
+            }
+        )
+    if gap_up is True and str(market_regime or "").strip() in _GAP_UP_WEAK_REGIMES:
+        regime = str(market_regime or "").strip()
+        gap_blocked = bool(checks.get("blocked_gap_up_weak_market"))
+        severity = "block" if gap_blocked and str(buy_action or "") == "avoid" else "warn"
+        alerts.append(
+            {
+                "code": "gap_up_weak_market",
+                "severity": severity,
+                "message": f"Gap-up with {regime} market; do not chase highs",
+            }
+        )
+    return alerts
+
+
+def _apply_intraday_risk_buy_blocks(
+    res: dict[str, Any],
+    *,
+    market_regime: str | None,
+) -> None:
+    """Override buy recommendation when intraday surge or gap-up in weak/diverging market."""
+    if bool((res.get("stopLossParts") or {}).get("exit_now")):
+        return
+
+    intraday = res.get("intradayChgPct")
+    gap_up = res.get("gapUp")
+    buy_checks = res.get("buyChecks")
+    if not isinstance(buy_checks, dict):
+        buy_checks = {}
+        res["buyChecks"] = buy_checks
+
+    if isinstance(intraday, (int, float)) and float(intraday) > INTRADAY_SURGE_THRESHOLD_PCT:
+        res["buyAction"] = "avoid"
+        res["buyWhy"] = "风险：日内涨幅超过6%，禁止建仓"
+        buy_checks["blocked_intraday_surge"] = True
+        return
+
+    regime = str(market_regime or "").strip()
+    if gap_up is True and regime in _GAP_UP_WEAK_REGIMES:
+        buy_mode = str(res.get("buyMode") or "")
+        buy_action = str(res.get("buyAction") or "")
+        if buy_mode == "B_momentum" or buy_action == "buy":
+            res["buyAction"] = "avoid"
+            res["buyWhy"] = "风险：跳空缺口+震荡/弱势大盘，禁止追高"
+            buy_checks["blocked_gap_up_weak_market"] = True
+        else:
+            buy_checks["blocked_gap_up_weak_market"] = True
+            if buy_action != "avoid":
+                prev_why = str(res.get("buyWhy") or "").strip()
+                gap_msg = "风险：跳空缺口+震荡/弱势大盘，禁止追高"
+                res["buyWhy"] = gap_msg if not prev_why else f"{prev_why}；{gap_msg}"
+
+
 def _quote_trade_date(q: dict[str, Any]) -> str | None:
     tt = str(q.get("trade_time") or "").strip()
     if not tt:
@@ -455,6 +560,9 @@ def _trendok_one(
         "buyWhy": None,
         "buyChecks": {},
         "marketRegime": market_regime,
+        "intradayChgPct": None,
+        "gapUp": None,
+        "riskAlerts": [],
         "checks": {},
         "values": {},
         "missingData": [],
@@ -502,6 +610,10 @@ def _trendok_one(
 
     if len(closes) < 60:
         res["missingData"].append("bars_lt_60")
+
+    day_risk = _compute_day_risk_metrics(dates, highs, lows, closes, today=_shanghai_today_iso())
+    res["intradayChgPct"] = day_risk.get("intradayChgPct")
+    res["gapUp"] = day_risk.get("gapUp")
 
     # Checks + values
     ema5s = _ema(closes, 5)
@@ -987,6 +1099,18 @@ def _trendok_one(
     except Exception:
         res["buyMode"] = None
         res["buyAction"] = None
+
+    try:
+        _apply_intraday_risk_buy_blocks(res, market_regime=market_regime)
+        res["riskAlerts"] = _build_server_risk_alerts(
+            intraday_chg_pct=res.get("intradayChgPct"),
+            gap_up=res.get("gapUp"),
+            market_regime=market_regime,
+            buy_checks=res.get("buyChecks"),
+            buy_action=str(res.get("buyAction") or ""),
+        )
+    except Exception:
+        res["riskAlerts"] = []
 
     # Decide final TrendOK
     required = [

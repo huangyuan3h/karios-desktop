@@ -21,17 +21,25 @@ import { loadJson, saveJson } from '@/lib/storage';
 import { useChatStore } from '@/lib/chat/store';
 import {
   WATCHLIST_MD_HEADERS,
+  buildWatchlistRowMetrics,
+  collectWatchlistRiskAlerts,
   computePnLPct,
-  computeVwap,
+  formatGapUp,
   formatHotTop3,
+  formatIntradayChgPct,
   formatPnLPct,
+  formatRiskAlerts,
   formatVwap,
+  hasBlockingWatchlistRisk,
   industryDisplayName,
+  isIntradaySurge,
   parseQuoteNumber,
   resolveWatchlistCurrentPrice,
+  rowHasWatchlistRiskHighlight,
   shouldRequireRealtimeQuote,
   tradeDateFromTradeTime,
   tushareIndustryTooltip,
+  type WatchlistRiskAlert,
 } from '@/lib/watchlist-metrics';
 
 type WatchlistItem = {
@@ -233,6 +241,10 @@ type TrendOkResult = {
   buyRefPrice?: number | null;
   buyWhy?: string | null;
   buyChecks?: Record<string, unknown>;
+  marketRegime?: string | null;
+  intradayChgPct?: number | null;
+  gapUp?: boolean | null;
+  riskAlerts?: WatchlistRiskAlert[];
   checks?: TrendOkChecks;
   values?: TrendOkValues;
   missingData?: string[];
@@ -580,11 +592,15 @@ function fmtBuyCell(t: TrendOkResult | undefined | null): {
   return { text: '无', tone: 'none' };
 }
 
-function rowTone(t: TrendOkResult | undefined | null): 'green' | 'red' | 'none' {
+function rowTone(
+  t: TrendOkResult | undefined | null,
+  alerts: WatchlistRiskAlert[] = [],
+): 'green' | 'red' | 'none' {
   if (!t) return 'none';
   const stopParts = t.stopLossParts as Record<string, unknown> | null | undefined;
   const exitNow = Boolean(stopParts && typeof stopParts === 'object' && stopParts['exit_now']);
-  if (exitNow || t.buyAction === 'avoid') return 'red';
+  if (exitNow || t.buyAction === 'avoid' || hasBlockingWatchlistRisk(alerts)) return 'red';
+  if (rowHasWatchlistRiskHighlight(alerts)) return 'red';
   const score = typeof t.score === 'number' && Number.isFinite(t.score) ? t.score : null;
   const buy = fmtBuyCell(t);
   const buyModeOk = t.buyMode === 'A_pullback' || t.buyMode === 'B_momentum';
@@ -1687,37 +1703,35 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       lines.push('');
 
       const headers = [...WATCHLIST_MD_HEADERS];
+      const blockAlerts: string[] = [];
       lines.push(`| ${headers.join(' | ')} |`);
       lines.push(`| ${headers.map(() => '---').join(' | ')} |`);
       for (const it of sortedItems) {
         const t = trendSnap[it.symbol];
         const buy = fmtBuyCell(t).text;
         const q = quotesSnap[it.symbol];
-        const close0 = t?.values?.close;
-        const trendClose =
-          typeof close0 === 'number' && Number.isFinite(close0) ? (close0 as number) : null;
-        const current = resolveWatchlistCurrentPrice({
+        const rowMetrics = buildWatchlistRowMetrics({
+          symbol: it.symbol,
+          trend: t,
+          quote: q,
           tradingTime,
           todaySh,
-          symbol: it.symbol,
-          trendAsOfDate: t?.asOfDate ?? null,
-          quotePrice: q?.price ?? null,
-          quoteTradeTime: q?.tradeTime ?? null,
-          trendClose,
         });
-        const useRealtimeVwap = shouldRequireRealtimeQuote({
-          tradingTime,
-          symbol: it.symbol,
-          trendAsOfDate: t?.asOfDate ?? null,
-          todaySh,
-        });
-        const vwap = useRealtimeVwap
-          ? computeVwap(q?.amount ?? null, q?.volume ?? null, 'realtime')
-          : null;
-        const pnl = computePnLPct(it.costPrice ?? null, current);
+        const pnl = computePnLPct(it.costPrice ?? null, rowMetrics.current);
         const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
         const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
         const values = (t?.values ?? {}) as Record<string, unknown>;
+        const intradayCell = isIntradaySurge(t?.intradayChgPct)
+          ? `⚠️ ${formatIntradayChgPct(t?.intradayChgPct ?? null)}`
+          : formatIntradayChgPct(t?.intradayChgPct ?? null);
+        const gapCell =
+          t?.gapUp === true ? `⚠️ ${formatGapUp(true)}` : formatGapUp(t?.gapUp ?? null);
+        const alertsCell = formatRiskAlerts(rowMetrics.alerts);
+        for (const alert of rowMetrics.alerts) {
+          if (alert.severity === 'block') {
+            blockAlerts.push(`${it.symbol}: ${alert.message}`);
+          }
+        }
         const row = [
           escapeMarkdownCell(it.symbol),
           escapeMarkdownCell(it.name || '—'),
@@ -1729,8 +1743,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               : '—',
           ),
           escapeMarkdownCell(mdPrice(it.costPrice ?? null)),
-          escapeMarkdownCell(mdPrice(current)),
-          escapeMarkdownCell(formatVwap(vwap)),
+          escapeMarkdownCell(mdPrice(rowMetrics.current)),
+          escapeMarkdownCell(formatVwap(rowMetrics.vwap)),
+          escapeMarkdownCell(intradayCell),
+          escapeMarkdownCell(gapCell),
+          escapeMarkdownCell(alertsCell),
           escapeMarkdownCell(formatPnLPct(pnl)),
           escapeMarkdownCell(mdScore(t?.score ?? null)),
           escapeMarkdownCell(trendOkSummary(t)),
@@ -1741,6 +1758,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         lines.push(`| ${row.join(' | ')} |`);
       }
       lines.push('');
+      if (blockAlerts.length) {
+        lines.push('### Risk alerts');
+        lines.push(mdLines(blockAlerts.map((line) => `- ${line}`)));
+        lines.push('');
+      }
 
       const md = lines.join('\n').trim() + '\n';
       try {
@@ -1969,6 +1991,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   </button>
                 </th>
                 <th className="px-3 py-2 w-[180px]">Buy</th>
+                <th className="px-3 py-2 w-[80px]">Intraday%</th>
+                <th className="px-3 py-2 w-[52px]">Gap</th>
+                <th className="px-3 py-2 w-[180px]">Alerts</th>
                 <th className="px-3 py-2 w-[110px]">StopLoss</th>
                 <th className="px-3 py-2 w-[120px]">Action</th>
                 <th className="px-3 py-2 min-w-[320px]">Notes</th>
@@ -1981,6 +2006,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   const ok = r?.trendOk ?? null;
                   const icon = ok == null ? '—' : ok ? '✅' : '❌';
                   const buy = fmtBuyCell(r);
+                  const importAlerts = collectWatchlistRiskAlerts({
+                    intradayChgPct: r?.intradayChgPct,
+                    gapUp: r?.gapUp,
+                    marketRegime: r?.marketRegime,
+                    serverAlerts: r?.riskAlerts,
+                  });
                   const notes =
                     (typeof r?.buyWhy === 'string' && r.buyWhy) ||
                     (Array.isArray(r?.missingData) && r.missingData.length
@@ -2022,6 +2053,38 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       >
                         {buy.text}
                       </td>
+                      <td
+                        className={`px-3 py-2 font-mono ${
+                          isIntradaySurge(r?.intradayChgPct) ? 'text-red-600 font-semibold' : ''
+                        }`}
+                      >
+                        {formatIntradayChgPct(r?.intradayChgPct ?? null)}
+                      </td>
+                      <td
+                        className={`px-3 py-2 font-mono ${
+                          r?.gapUp === true ? 'text-red-600 font-semibold' : ''
+                        }`}
+                      >
+                        {formatGapUp(r?.gapUp ?? null)}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {importAlerts.length ? (
+                          <div className="truncate" title={formatRiskAlerts(importAlerts)}>
+                            {importAlerts.map((alert) => (
+                              <div
+                                key={alert.code}
+                                className={
+                                  alert.severity === 'block' ? 'text-red-600' : 'text-amber-700'
+                                }
+                              >
+                                {alert.message}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                       <td className="px-3 py-2 font-mono">{fmtPrice(r?.stopLossPrice ?? null)}</td>
                       <td className="px-3 py-2">
                         {inWl ? (
@@ -2047,7 +2110,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 })
               ) : (
                 <tr>
-                  <td className="px-3 py-3 text-[var(--k-muted)]" colSpan={8}>
+                  <td className="px-3 py-3 text-[var(--k-muted)]" colSpan={11}>
                     No import results yet.
                   </td>
                 </tr>
@@ -2111,7 +2174,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
         {items.length ? (
           <div className="rounded border border-[var(--k-border)]">
-            <table className="border-collapse text-sm min-w-[1180px]">
+            <table className="border-collapse text-sm min-w-[1420px]">
               <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                 <tr className="text-left">
                   <th className="px-3 py-2 w-[40px]" title="Color flag">
@@ -2125,6 +2188,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   <th className="px-3 py-2 w-[90px]">成本价</th>
                   <th className="px-3 py-2 w-[90px]">Current</th>
                   <th className="px-3 py-2 w-[80px]">VWAP</th>
+                  <th className="px-3 py-2 w-[76px]">Intraday%</th>
+                  <th className="px-3 py-2 w-[52px]">Gap</th>
+                  <th className="px-3 py-2 w-[180px]">Alerts</th>
                   <th className="px-3 py-2 w-[72px]">P&L%</th>
                   <th className="px-3 py-2 w-[80px]">
                     <button
@@ -2179,7 +2245,17 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 {sortedItems.map((it) =>
                   (() => {
                     const t = trend[it.symbol];
-                    const tone = rowTone(t);
+                    const q = quotes[it.symbol];
+                    const tradingTime = isShanghaiTradingTime();
+                    const todaySh = getShanghaiTodayIso();
+                    const rowMetrics = buildWatchlistRowMetrics({
+                      symbol: it.symbol,
+                      trend: t,
+                      quote: q,
+                      tradingTime,
+                      todaySh,
+                    });
+                    const tone = rowTone(t, rowMetrics.alerts);
                     const rowClass =
                       tone === 'green'
                         ? 'border-t border-[var(--k-border)] bg-emerald-50/60 hover:bg-emerald-100/60'
@@ -2317,40 +2393,57 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                         </td>
                         <td className="px-3 py-2 font-mono">
                           {(() => {
-                            const t = trend[it.symbol];
-                            const q = quotes[it.symbol];
                             const useRealtimeVwap = shouldRequireRealtimeQuote({
-                              tradingTime: isShanghaiTradingTime(),
+                              tradingTime,
                               symbol: it.symbol,
                               trendAsOfDate: t?.asOfDate ?? null,
-                              todaySh: getShanghaiTodayIso(),
+                              todaySh,
                             });
                             if (!useRealtimeVwap) return '—';
-                            return formatVwap(
-                              computeVwap(q?.amount ?? null, q?.volume ?? null, 'realtime'),
-                            );
+                            return formatVwap(rowMetrics.vwap);
                           })()}
                         </td>
                         <td
                           className={`px-3 py-2 font-mono ${
+                            isIntradaySurge(t?.intradayChgPct) ? 'font-semibold text-red-600' : ''
+                          }`}
+                        >
+                          {formatIntradayChgPct(t?.intradayChgPct ?? null)}
+                        </td>
+                        <td
+                          className={`px-3 py-2 font-mono ${
+                            t?.gapUp === true ? 'font-semibold text-red-600' : ''
+                          }`}
+                        >
+                          {formatGapUp(t?.gapUp ?? null)}
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          {rowMetrics.alerts.length ? (
+                            <div
+                              className="truncate"
+                              title={formatRiskAlerts(rowMetrics.alerts)}
+                            >
+                              {rowMetrics.alerts.map((alert) => (
+                                <div
+                                  key={alert.code}
+                                  className={
+                                    alert.severity === 'block'
+                                      ? 'text-red-600'
+                                      : 'text-amber-700'
+                                  }
+                                >
+                                  {alert.message}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td
+                          className={`px-3 py-2 font-mono ${
                             (() => {
-                              const t = trend[it.symbol];
-                              const q = quotes[it.symbol];
-                              const close0 = t?.values?.close;
-                              const trendClose =
-                                typeof close0 === 'number' && Number.isFinite(close0)
-                                  ? (close0 as number)
-                                  : null;
-                              const current = resolveWatchlistCurrentPrice({
-                                tradingTime: isShanghaiTradingTime(),
-                                todaySh: getShanghaiTodayIso(),
-                                symbol: it.symbol,
-                                trendAsOfDate: t?.asOfDate ?? null,
-                                quotePrice: q?.price ?? null,
-                                quoteTradeTime: q?.tradeTime ?? null,
-                                trendClose,
-                              });
-                              const pnl = computePnLPct(it.costPrice ?? null, current);
+                              const pnl = computePnLPct(it.costPrice ?? null, rowMetrics.current);
                               if (pnl == null) return '';
                               if (pnl >= 5) return 'text-emerald-600';
                               if (pnl <= 0) return 'text-red-600';
@@ -2358,27 +2451,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                             })()
                           }`}
                         >
-                          {formatPnLPct(
-                            (() => {
-                              const t = trend[it.symbol];
-                              const q = quotes[it.symbol];
-                              const close0 = t?.values?.close;
-                              const trendClose =
-                                typeof close0 === 'number' && Number.isFinite(close0)
-                                  ? (close0 as number)
-                                  : null;
-                              const current = resolveWatchlistCurrentPrice({
-                                tradingTime: isShanghaiTradingTime(),
-                                todaySh: getShanghaiTodayIso(),
-                                symbol: it.symbol,
-                                trendAsOfDate: t?.asOfDate ?? null,
-                                quotePrice: q?.price ?? null,
-                                quoteTradeTime: q?.tradeTime ?? null,
-                                trendClose,
-                              });
-                              return computePnLPct(it.costPrice ?? null, current);
-                            })(),
-                          )}
+                          {formatPnLPct(computePnLPct(it.costPrice ?? null, rowMetrics.current))}
                         </td>
                         <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
                         <td className="px-3 py-2 max-w-[130px] truncate">
@@ -2411,6 +2484,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                                   buyZoneLow: t?.buyZoneLow ?? null,
                                   buyZoneHigh: t?.buyZoneHigh ?? null,
                                   buyWhy: t?.buyWhy ?? null,
+                                  intradayChgPct: t?.intradayChgPct ?? null,
+                                  gapUp: t?.gapUp ?? null,
+                                  riskAlerts: t?.riskAlerts ?? [],
                                 });
                               }}
                               aria-label="Reference to chat"

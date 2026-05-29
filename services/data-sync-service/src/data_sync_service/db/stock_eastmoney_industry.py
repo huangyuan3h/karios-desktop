@@ -83,3 +83,50 @@ def count_rows() -> int:
             cur.execute(f"SELECT COUNT(*) FROM {TABLE_NAME}")
             row = cur.fetchone()
     return int(row[0] or 0) if row else 0
+
+
+def search_stocks_by_industry_keyword(keyword: str, *, limit: int = 12) -> list[dict[str, Any]]:
+    """Find CN stocks whose East Money industry board name matches keyword."""
+    ensure_table()
+    kw = str(keyword or "").strip()
+    if not kw:
+        return []
+    lim = max(1, min(int(limit), 30))
+    try:
+        from data_sync_service.db.stock_basic import ensure_table as ensure_sb
+
+        ensure_sb()
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT sb.ts_code, sb.symbol, sb.name
+                    FROM {TABLE_NAME} em
+                    JOIN stock_basic sb ON sb.ts_code = em.ts_code
+                    WHERE em.industry_name LIKE %s
+                      AND (sb.delist_date IS NULL OR sb.delist_date > CURRENT_DATE)
+                    ORDER BY sb.symbol ASC
+                    LIMIT %s
+                    """,
+                    (f"%{kw}%", lim),
+                )
+                rows = cur.fetchall()
+    except Exception:
+        return []
+
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        ticker = str(r[1] or "")
+        if not ticker.isdigit() or len(ticker) != 6:
+            continue
+        suffix = "SH" if ticker.startswith("6") else "SZ"
+        out.append(
+            {
+                "symbol": f"CN:{ticker}",
+                "ticker": ticker,
+                "name": str(r[2] or ""),
+                "market": "CN",
+                "source": "emIndustry",
+            }
+        )
+    return out

@@ -71,6 +71,7 @@ const RISK_MODE_ZH: Record<string, string> = {
   normal: '常态',
   caution: '谨慎',
   euphoric: '狂热',
+  extreme_caution: '极度谨慎',
   no_new_positions: '暂停新开仓',
   no_new_position: '暂停新开仓',
 };
@@ -104,6 +105,7 @@ export function translateSentimentSnippetForPdf(text: string): string {
   let s = text;
   const repl: Array<[RegExp, string]> = [
     [/\bno_new_positions\b/gi, '暂停新开仓'],
+    [/\bextreme_caution\b/gi, '极度谨慎'],
     [/\bdeep_green\b/gi, '深绿灯'],
     [/\blight_green\b/gi, '浅绿灯'],
     [/\beuphoric\b/gi, '狂热'],

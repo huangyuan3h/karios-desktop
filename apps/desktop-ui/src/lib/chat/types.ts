@@ -49,6 +49,9 @@ export type ChatReference =
       buyZoneLow?: number | null;
       buyZoneHigh?: number | null;
       buyWhy?: string | null;
+      intradayChgPct?: number | null;
+      gapUp?: boolean | null;
+      riskAlerts?: Array<{ code: string; severity: 'block' | 'warn'; message: string }>;
     }
   | {
       kind: 'watchlistTable';
@@ -67,6 +70,8 @@ export type ChatReference =
         buyAction?: string | null;
         buyZoneLow?: number | null;
         buyZoneHigh?: number | null;
+        intradayChgPct?: number | null;
+        gapUp?: boolean | null;
       }>;
     }
   | {
@@ -155,6 +160,22 @@ export type ChatReference =
       refId: string; // stable key: `dashboardAll:${asOfDate}:${timestamp}`
       asOfDate: string;
       title?: string;
+      capturedAt: string;
+    }
+  | {
+      kind: 'alphaRadar';
+      refId: string;
+      trendId: string;
+      trendName: string;
+      catalyst?: string | null;
+      cnSymbols?: Array<{
+        symbol: string;
+        name: string;
+        confidence: number;
+        rationale: string;
+      }>;
+      riskStatus: string;
+      documentTitle?: string;
       capturedAt: string;
     };
 

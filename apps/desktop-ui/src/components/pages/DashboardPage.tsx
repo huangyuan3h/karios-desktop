@@ -12,6 +12,11 @@ import { buildDashboardHotIndustryPicks } from '@/lib/hot-industry-picks';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { DATA_SYNC_BASE_URL, AI_BASE_URL } from '@/lib/endpoints';
+import {
+  buildCatalystStocksMarkdown,
+  DEFAULT_CATALYST_MAX_AGE_DAYS,
+  fetchCatalystStocks,
+} from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
 import { loadJson } from '@/lib/storage';
 import {
@@ -29,16 +34,20 @@ import {
 } from '@/lib/screenerExport';
 import {
   WATCHLIST_MD_HEADERS,
+  buildWatchlistRowMetrics,
   computePnLPct,
-  computeVwap,
+  formatGapUp,
   formatHotTop3,
+  formatIntradayChgPct,
   formatPnLPct,
+  formatRiskAlerts,
   formatVwap,
   industryDisplayName,
+  isIntradaySurge,
   parseQuoteNumber,
-  resolveWatchlistCurrentPrice,
   shouldRequireRealtimeQuote,
   tradeDateFromTradeTime,
+  type WatchlistRiskAlert,
 } from '@/lib/watchlist-metrics';
 
 type DashboardSummary = any;
@@ -140,6 +149,8 @@ function mdPrice(v: number | null | undefined): string {
 function mdLines(items: string[]): string {
   return items.filter((x) => String(x || '').trim()).join('\n');
 }
+
+const BREADTH_PANIC_DOWN_THRESHOLD = 3000;
 
 function signalRank(x: string): number {
   if (x === 'green' || x === 'light_green' || x === 'deep_green') return 3;
@@ -338,9 +349,21 @@ type TrendOkResult = {
   buyAction?: string | null;
   buyZoneLow?: number | null;
   buyZoneHigh?: number | null;
+  marketRegime?: string | null;
+  intradayChgPct?: number | null;
+  gapUp?: boolean | null;
+  riskAlerts?: WatchlistRiskAlert[];
   checks?: TrendOkChecks | null;
   values?: Record<string, unknown> | null;
   missingData?: string[];
+};
+
+type WatchlistRiskRow = {
+  symbol: string;
+  name: string;
+  intradayChgPct: number | null;
+  gapUp: boolean | null;
+  alerts: WatchlistRiskAlert[];
 };
 
 type QuoteResp = {
@@ -437,11 +460,109 @@ type SyncStep = {
   message?: string | null;
 };
 
+async function fetchWatchlistRiskRows(): Promise<WatchlistRiskRow[]> {
+  const itemsRaw = loadJson<WatchlistItem[]>(WATCHLIST_STORAGE_KEY, []);
+  const items = (Array.isArray(itemsRaw) ? itemsRaw : [])
+    .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
+    .map((x) => ({ ...x, symbol: String(x.symbol).trim().toUpperCase() }));
+  if (!items.length) return [];
+
+  const tradingTime = isShanghaiTradingTime();
+  const todaySh = getShanghaiTodayIso();
+  const syms = items.map((x) => x.symbol);
+  const byTsCode = new Map<string, string>();
+  const tsCodes = syms
+    .map((s) => {
+      const t = toTsCodeFromSymbol(s);
+      if (t) byTsCode.set(t, s);
+      return t;
+    })
+    .filter(Boolean) as string[];
+
+  const [trendResults, quoteResults] = await Promise.all([
+    Promise.all(
+      chunk(syms, 200).map(async (part) => {
+        const sp = new URLSearchParams();
+        sp.set('refresh', 'true');
+        sp.set('realtime', tradingTime ? 'true' : 'false');
+        for (const s of part) sp.append('symbols', s);
+        return apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+      }),
+    ),
+    Promise.all(
+      chunk(tsCodes, 50).map(async (part) => {
+        return apiGetJson<QuoteResp>(`/quote?ts_codes=${encodeURIComponent(part.join(','))}`).catch(
+          () => null,
+        );
+      }),
+    ),
+  ]);
+
+  const trend: Record<string, TrendOkResult> = {};
+  for (const trendRows of trendResults) {
+    for (const r of Array.isArray(trendRows) ? trendRows : []) {
+      if (r && r.symbol) trend[String(r.symbol).toUpperCase()] = r;
+    }
+  }
+
+  const quotes: Record<
+    string,
+    {
+      price: number | null;
+      tradeTime: string | null;
+      amount: number | null;
+      volume: number | null;
+    }
+  > = {};
+  for (const r of quoteResults) {
+    for (const it of r?.items ?? []) {
+      const sym = byTsCode.get(it.ts_code);
+      if (!sym) continue;
+      const p = it.price != null ? Number(it.price) : NaN;
+      quotes[sym] = {
+        price: Number.isFinite(p) ? p : null,
+        tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
+        amount: parseQuoteNumber(it.amount),
+        volume: parseQuoteNumber(it.volume),
+      };
+    }
+  }
+
+  const out: WatchlistRiskRow[] = [];
+  for (const it of items) {
+    const t = trend[it.symbol];
+    const rowMetrics = buildWatchlistRowMetrics({
+      symbol: it.symbol,
+      trend: t,
+      quote: quotes[it.symbol],
+      tradingTime,
+      todaySh,
+    });
+    if (!rowMetrics.alerts.length) continue;
+    out.push({
+      symbol: it.symbol,
+      name: it.name ?? t?.name ?? '—',
+      intradayChgPct: t?.intradayChgPct ?? null,
+      gapUp: t?.gapUp ?? null,
+      alerts: rowMetrics.alerts,
+    });
+  }
+
+  out.sort((a, b) => {
+    const ab = a.alerts.some((x) => x.severity === 'block');
+    const bb = b.alerts.some((x) => x.severity === 'block');
+    if (ab !== bb) return ab ? -1 : 1;
+    const ia = a.intradayChgPct ?? -Infinity;
+    const ib = b.intradayChgPct ?? -Infinity;
+    return ib - ia;
+  });
+  return out;
+}
+
 export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) => void }) {
   const { addReference } = useChatStore();
-  const [summary, setSummary] = React.useState<DashboardSummary | null>(() =>
-    typeof window !== 'undefined' ? loadDashboardSummaryCache() : null,
-  );
+  // Do not read localStorage during initial render — avoids SSR/CSR hydration mismatch.
+  const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = React.useState(false);
   const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -470,6 +591,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const [newsSummaryUpdatedAt, setNewsSummaryUpdatedAt] = React.useState<string | null>(null);
   const [newsFallback, setNewsFallback] = React.useState<string | null>(null);
   const [newsSummaryBusy, setNewsSummaryBusy] = React.useState(false);
+  const [watchlistRiskRows, setWatchlistRiskRows] = React.useState<WatchlistRiskRow[]>([]);
+  const [watchlistRiskBusy, setWatchlistRiskBusy] = React.useState(false);
+  const [watchlistRiskUpdatedAt, setWatchlistRiskUpdatedAt] = React.useState<string | null>(null);
   const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
 
   const industryCopyTimerRef = React.useRef<number | null>(null);
@@ -483,6 +607,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       if (copyAllTimerRef.current != null) window.clearTimeout(copyAllTimerRef.current);
       if (pdfReportTimerRef.current != null) window.clearTimeout(pdfReportTimerRef.current);
     };
+  }, []);
+
+  React.useEffect(() => {
+    const cached = loadDashboardSummaryCache();
+    if (cached) setSummary(cached);
   }, []);
 
   React.useEffect(() => {
@@ -562,6 +691,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     () => [
       { id: 'industry', title: 'Industry fund flow' },
       { id: 'sentiment', title: 'Market sentiment' },
+      { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
       { id: 'news', title: 'News brief' },
       { id: 'screeners', title: 'Screener sync' },
     ],
@@ -581,6 +711,30 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setCardOrder(nextIds);
     saveCardOrder(nextIds);
   }, [defaultCards]);
+
+  const refreshWatchlistRisk = React.useCallback(async () => {
+    setWatchlistRiskBusy(true);
+    try {
+      const rows = await fetchWatchlistRiskRows();
+      setWatchlistRiskRows(rows);
+      setWatchlistRiskUpdatedAt(new Date().toISOString());
+    } catch {
+      // Keep last good snapshot on transient errors.
+    } finally {
+      setWatchlistRiskBusy(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void refreshWatchlistRisk();
+  }, [refreshWatchlistRisk]);
+
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      if (isShanghaiTradingTime()) void refreshWatchlistRisk();
+    }, 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [refreshWatchlistRisk]);
 
   const refresh = React.useCallback(async () => {
     setError(null);
@@ -1198,33 +1352,22 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
     const headers = [...WATCHLIST_MD_HEADERS];
     const rows: unknown[][] = [];
+    const blockAlerts: string[] = [];
     for (const it of sorted) {
       const t = trend[it.symbol];
       const q = quotes[it.symbol];
-      const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
-      const close0 = (t?.values as any)?.close;
-      const trendClose =
-        typeof close0 === 'number' && Number.isFinite(close0) ? (close0 as number) : null;
-      const current = resolveWatchlistCurrentPrice({
+      const rowMetrics = buildWatchlistRowMetrics({
+        symbol: it.symbol,
+        trend: t,
+        quote: q,
         tradingTime,
         todaySh,
-        symbol: it.symbol,
-        trendAsOfDate: t?.asOfDate ?? null,
-        quotePrice: q?.price ?? null,
-        quoteTradeTime: q?.tradeTime ?? null,
-        trendClose,
       });
-      const useRealtimeVwap = shouldRequireRealtimeQuote({
-        tradingTime,
-        symbol: it.symbol,
-        trendAsOfDate: t?.asOfDate ?? null,
-        todaySh,
-      });
-      const vwap = useRealtimeVwap
-        ? computeVwap(q?.amount ?? null, q?.volume ?? null, 'realtime')
-        : null;
-      const pnl = computePnLPct(it.costPrice ?? null, current);
-      const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
+      const pnl = computePnLPct(it.costPrice ?? null, rowMetrics.current);
+      const asOf =
+        tradingTime && tradeDateFromTradeTime(q?.tradeTime ?? null)
+          ? tradeDateFromTradeTime(q?.tradeTime ?? null)
+          : String(t?.asOfDate ?? '');
       const buy =
         t?.buyAction && t?.buyMode
           ? `${String(t.buyMode)}/${String(t.buyAction)}`
@@ -1232,6 +1375,14 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             ? String(t.buyAction)
             : '—';
       const values = (t?.values ?? {}) as Record<string, unknown>;
+      const intradayCell = isIntradaySurge(t?.intradayChgPct)
+        ? `⚠️ ${formatIntradayChgPct(t?.intradayChgPct ?? null)}`
+        : formatIntradayChgPct(t?.intradayChgPct ?? null);
+      const gapCell =
+        t?.gapUp === true ? `⚠️ ${formatGapUp(true)}` : formatGapUp(t?.gapUp ?? null);
+      for (const alert of rowMetrics.alerts) {
+        if (alert.severity === 'block') blockAlerts.push(`${it.symbol}: ${alert.message}`);
+      }
       rows.push([
         it.symbol,
         it.name ?? t?.name ?? '—',
@@ -1239,8 +1390,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         formatHotTop3(t),
         mdNum(it.positionPct ?? null, 1),
         mdPrice(it.costPrice ?? null),
-        mdPrice(current),
-        formatVwap(vwap),
+        mdPrice(rowMetrics.current),
+        formatVwap(rowMetrics.vwap),
+        intradayCell,
+        gapCell,
+        formatRiskAlerts(rowMetrics.alerts),
         formatPnLPct(pnl),
         mdScore(t?.score ?? null),
         trendOkSummary(t),
@@ -1251,6 +1405,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     }
     lines.push(mdTable(headers, rows));
     lines.push('');
+    if (blockAlerts.length) {
+      lines.push(`${heading}# Risk alerts`);
+      lines.push(mdLines(blockAlerts.map((line) => `- ${line}`)));
+      lines.push('');
+    }
 
     return lines.join('\n').trim() + '\n';
   }
@@ -1261,9 +1420,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       throw new Error('No data available. Please refresh first.');
     }
     const generatedAt = new Date().toISOString();
-    const [screenersMd, watchlistMd] = await Promise.all([
+    const [screenersMd, watchlistMd, catalystMd] = await Promise.all([
       buildScreenersMarkdown(s, '##'),
       buildWatchlistMarkdown(),
+      fetchCatalystStocks(DATA_SYNC_BASE_URL, 10, DEFAULT_CATALYST_MAX_AGE_DAYS)
+        .then((resp) => buildCatalystStocksMarkdown(resp, { headingLevel: '##' }))
+        .catch(() => '## Alpha Radar · Top Catalyst Stocks\n\n- Alpha Radar: unavailable\n'),
     ]);
     const lines: string[] = [];
     lines.push(`# Copy all (Dashboard)`);
@@ -1289,6 +1451,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     else lines.push('No summary yet. Last news records are included above.');
     lines.push('');
     lines.push(screenersMd.trim());
+    lines.push('');
+    lines.push(catalystMd.trim());
     lines.push('');
     lines.push(watchlistMd.trim());
     lines.push('');
@@ -1569,6 +1733,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         const weightOf = (id: string) => {
           if (id === 'industry') return 6;
           if (id === 'sentiment') return 3;
+          if (id === 'watchlistRisk') return 2;
           if (id === 'news') return 2;
           if (id === 'screeners') return 2;
           return 2;
@@ -1644,16 +1809,19 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                     const up = Number(latest?.upCount ?? 0);
                     const down = Number(latest?.downCount ?? 0);
                     const flat = Number(latest?.flatCount ?? 0);
+                    const breadthPanic = down >= BREADTH_PANIC_DOWN_THRESHOLD;
                     const badge =
-                      risk === 'no_new_positions'
-                        ? 'border-red-500/30 bg-red-500/10 text-red-600'
-                        : risk === 'caution'
-                          ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
-                          : risk === 'hot'
-                            ? 'border-green-500/30 bg-green-500/10 text-green-700'
-                            : risk === 'euphoric'
-                              ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700'
-                              : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
+                      risk === 'extreme_caution' || breadthPanic
+                        ? 'border-red-600/40 bg-red-600/15 text-red-700'
+                        : risk === 'no_new_positions'
+                          ? 'border-red-500/30 bg-red-500/10 text-red-600'
+                          : risk === 'caution'
+                            ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
+                            : risk === 'hot'
+                              ? 'border-green-500/30 bg-green-500/10 text-green-700'
+                              : risk === 'euphoric'
+                                ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700'
+                                : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
                     return (
                       <>
                         <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -1666,6 +1834,29 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                 .slice(0, 2)
                                 .map((x: any) => String(x))
                                 .join(' • ')}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div
+                          className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
+                            breadthPanic
+                              ? 'border-red-500/40 bg-red-500/10'
+                              : 'border-[var(--k-border)] bg-[var(--k-surface-2)]'
+                          }`}
+                        >
+                          <div
+                            className={`font-medium ${
+                              breadthPanic ? 'text-red-700' : 'text-[var(--k-fg)]'
+                            }`}
+                          >
+                            Market Breadth: {up.toLocaleString()} Up / {down.toLocaleString()}{' '}
+                            Down
+                          </div>
+                          {breadthPanic ? (
+                            <div className="mt-1 text-xs text-red-700">
+                              Down &ge; {BREADTH_PANIC_DOWN_THRESHOLD.toLocaleString()}: force red
+                              lights and extreme caution.
                             </div>
                           ) : null}
                         </div>
@@ -2308,6 +2499,109 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                         <RefreshCw className="mr-2 h-4 w-4" />
                       )}
                       Regenerate
+                    </Button>
+                  </div>
+                </div>
+              ) : id === 'watchlistRisk' ? (
+                <div>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--k-muted)]">
+                    <span>
+                      Intraday &gt;6%、跳空缺口（弱势/震荡）、VWAP 溢价等建仓风险预警
+                    </span>
+                    <span>
+                      {watchlistRiskUpdatedAt
+                        ? `Updated ${fmtDateTime(watchlistRiskUpdatedAt)}`
+                        : '—'}
+                    </span>
+                  </div>
+                  {watchlistRiskBusy && !watchlistRiskRows.length ? (
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
+                      <RefreshCw className="mr-2 inline h-4 w-4 animate-spin" />
+                      Loading watchlist risk alerts...
+                    </div>
+                  ) : watchlistRiskRows.length ? (
+                    <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                      <table className="w-full border-collapse text-xs">
+                        <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                          <tr className="text-left">
+                            <th className="px-2 py-2">Symbol</th>
+                            <th className="px-2 py-2">Name</th>
+                            <th className="px-2 py-2">Intraday%</th>
+                            <th className="px-2 py-2">Gap</th>
+                            <th className="px-2 py-2">Alerts</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {watchlistRiskRows.map((row) => {
+                            const hasBlock = row.alerts.some((a) => a.severity === 'block');
+                            return (
+                              <tr
+                                key={row.symbol}
+                                className={`border-t border-[var(--k-border)] ${
+                                  hasBlock
+                                    ? 'bg-red-50/70'
+                                    : 'bg-amber-50/50'
+                                }`}
+                              >
+                                <td className="px-2 py-2 font-mono text-red-700">{row.symbol}</td>
+                                <td className="px-2 py-2">{row.name}</td>
+                                <td
+                                  className={`px-2 py-2 font-mono ${
+                                    isIntradaySurge(row.intradayChgPct)
+                                      ? 'font-semibold text-red-600'
+                                      : ''
+                                  }`}
+                                >
+                                  {formatIntradayChgPct(row.intradayChgPct)}
+                                </td>
+                                <td
+                                  className={`px-2 py-2 font-mono ${
+                                    row.gapUp === true ? 'font-semibold text-red-600' : ''
+                                  }`}
+                                >
+                                  {formatGapUp(row.gapUp)}
+                                </td>
+                                <td className="px-2 py-2">
+                                  {row.alerts.map((alert) => (
+                                    <div
+                                      key={alert.code}
+                                      className={
+                                        alert.severity === 'block'
+                                          ? 'text-red-600'
+                                          : 'text-amber-700'
+                                      }
+                                    >
+                                      {alert.message}
+                                    </div>
+                                  ))}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
+                      No watchlist risk alerts. Add symbols to Watchlist or refresh during session.
+                    </div>
+                  )}
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={watchlistRiskBusy}
+                      onClick={() => void refreshWatchlistRisk()}
+                    >
+                      {watchlistRiskBusy ? (
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      Refresh alerts
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('watchlist')}>
+                      Open Watchlist
                     </Button>
                   </div>
                 </div>

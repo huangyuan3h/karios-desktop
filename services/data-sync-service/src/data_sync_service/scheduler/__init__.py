@@ -4,6 +4,7 @@ from apscheduler.schedulers.background import BackgroundScheduler  # type: ignor
 
 from data_sync_service.scheduler import (
     adj_factor_job,
+    alpha_radar_fetch_job,
     close_catchup_job,
     close_sync_job,
     daily_sync_job,
@@ -72,6 +73,12 @@ def create_scheduler() -> BackgroundScheduler:
         news_fetch_job.run,
         news_fetch_job.build_trigger(),
         id=news_fetch_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        alpha_radar_fetch_job.run,
+        alpha_radar_fetch_job.build_trigger(),
+        id=alpha_radar_fetch_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(

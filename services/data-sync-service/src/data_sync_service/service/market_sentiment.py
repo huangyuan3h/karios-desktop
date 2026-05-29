@@ -17,8 +17,69 @@ from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 
+BREADTH_DECLINE_RED_THRESHOLD = 3000
+CN_INDEX_TRAFFIC_LIGHT_NAMES = frozenset({"上证指数", "创业板指"})
+
+
 def now_iso() -> str:
     return datetime.now(tz=UTC).isoformat()
+
+
+def breadth_panic_active(down_count: int) -> bool:
+    return int(down_count) >= BREADTH_DECLINE_RED_THRESHOLD
+
+
+def breadth_panic_rule(down_count: int) -> str:
+    return (
+        f"breadth_panic(down>={BREADTH_DECLINE_RED_THRESHOLD} => red + extreme_caution)"
+        f"[down={int(down_count)}]"
+    )
+
+
+def apply_breadth_panic_risk_mode(risk_mode: str, down_count: int, rules: list[str]) -> str:
+    if not breadth_panic_active(down_count):
+        return risk_mode
+    rule = breadth_panic_rule(down_count)
+    if rule not in rules:
+        rules.append(rule)
+    return "extreme_caution"
+
+
+def apply_breadth_panic_index_signals(
+    index_signals: list[dict[str, Any]], down_count: int
+) -> list[dict[str, Any]]:
+    if not breadth_panic_active(down_count):
+        return index_signals
+    out: list[dict[str, Any]] = []
+    for sig in index_signals:
+        s = dict(sig)
+        if str(s.get("name") or "") in CN_INDEX_TRAFFIC_LIGHT_NAMES:
+            s["signal"] = "red"
+            s["positionRange"] = "0%-10%"
+            r = [str(x) for x in (s.get("rules") or [])]
+            override = f"breadth_panic override(down={int(down_count)})"
+            if override not in r:
+                r.append(override)
+            s["rules"] = r
+        out.append(s)
+    return out
+
+
+def apply_breadth_panic_sentiment_items(
+    items: list[dict[str, Any]], down_count: int
+) -> list[dict[str, Any]]:
+    if not items or not breadth_panic_active(down_count):
+        return items
+    out = [dict(x) for x in items]
+    latest = dict(out[-1])
+    latest["riskMode"] = "extreme_caution"
+    rules = [str(x) for x in (latest.get("rules") or [])]
+    rule = breadth_panic_rule(down_count)
+    if rule not in rules:
+        rules.append(rule)
+    latest["rules"] = rules
+    out[-1] = latest
+    return out
 
 
 def _with_retry(fn, *, tries: int = 3, base_sleep_s: float = 0.4, max_sleep_s: float = 2.0):
@@ -893,6 +954,8 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
         risk_mode = "caution"
     if errors:
         rules.extend(errors[:3])
+
+    risk_mode = apply_breadth_panic_risk_mode(risk_mode, down, rules)
 
     return {
         "date": d,

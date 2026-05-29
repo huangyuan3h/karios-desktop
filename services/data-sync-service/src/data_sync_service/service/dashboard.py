@@ -24,7 +24,11 @@ from data_sync_service.service.market_regime import (
     _is_shanghai_sync_window,
     get_index_signals,
 )
-from data_sync_service.service.market_sentiment import sync_cn_sentiment
+from data_sync_service.service.market_sentiment import (
+    apply_breadth_panic_index_signals,
+    apply_breadth_panic_sentiment_items,
+    sync_cn_sentiment,
+)
 from data_sync_service.service.news import fetch_all_sources
 from data_sync_service.service.tv import list_screeners, sync_screener
 
@@ -249,12 +253,17 @@ def _build_industry_bundle(*, as_of_date: str) -> dict[str, Any]:
 
 def _build_market_sentiment_bundle(*, as_of_date: str, use_realtime_index: bool) -> dict[str, Any]:
     sentiment_items = list_sentiment_days(as_of_date=as_of_date, days=5)
+    latest = sentiment_items[-1] if sentiment_items else {}
+    down_count = int((latest or {}).get("downCount") or 0)
+    sentiment_items = apply_breadth_panic_sentiment_items(sentiment_items, down_count)
     index_as_of = None if use_realtime_index else as_of_date
+    index_signals = get_index_signals(as_of_date=index_as_of, include_breadth=False)
+    index_signals = apply_breadth_panic_index_signals(index_signals, down_count)
     return {
         "asOfDate": as_of_date,
         "days": 5,
         "items": sentiment_items,
-        "indexSignals": get_index_signals(as_of_date=index_as_of, include_breadth=False),
+        "indexSignals": index_signals,
     }
 
 

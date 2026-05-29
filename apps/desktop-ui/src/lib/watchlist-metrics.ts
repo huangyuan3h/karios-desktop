@@ -7,6 +7,9 @@ export const WATCHLIST_MD_HEADERS = [
   'CostPrice',
   'Current',
   'VWAP',
+  'Intraday%',
+  'GapUp',
+  'Alerts',
   'P&L%',
   'Score',
   'TrendOK',
@@ -14,6 +17,175 @@ export const WATCHLIST_MD_HEADERS = [
   'StopLoss',
   'AsOfDate',
 ] as const;
+
+export const INTRADAY_SURGE_THRESHOLD_PCT = 6.0;
+export const VWAP_PREMIUM_MULTIPLIER = 1.05;
+
+const GAP_UP_WEAK_REGIMES = new Set(['Weak', 'Diverging']);
+
+export type WatchlistRiskAlert = {
+  code: string;
+  severity: 'block' | 'warn';
+  message: string;
+};
+
+export function isIntradaySurge(intradayChgPct: number | null | undefined): boolean {
+  return (
+    typeof intradayChgPct === 'number' &&
+    Number.isFinite(intradayChgPct) &&
+    intradayChgPct > INTRADAY_SURGE_THRESHOLD_PCT
+  );
+}
+
+export function isAboveVwapPremium(
+  current: number | null | undefined,
+  vwap: number | null | undefined,
+  multiplier: number = VWAP_PREMIUM_MULTIPLIER,
+): boolean {
+  if (
+    typeof current !== 'number' ||
+    !Number.isFinite(current) ||
+    typeof vwap !== 'number' ||
+    !Number.isFinite(vwap) ||
+    vwap <= 0
+  ) {
+    return false;
+  }
+  return current > vwap * multiplier;
+}
+
+export function collectWatchlistRiskAlerts(opts: {
+  intradayChgPct?: number | null;
+  gapUp?: boolean | null;
+  marketRegime?: string | null;
+  current?: number | null;
+  vwap?: number | null;
+  serverAlerts?: WatchlistRiskAlert[] | null;
+}): WatchlistRiskAlert[] {
+  const out: WatchlistRiskAlert[] = [];
+  const seen = new Set<string>();
+
+  const push = (alert: WatchlistRiskAlert) => {
+    if (seen.has(alert.code)) return;
+    seen.add(alert.code);
+    out.push(alert);
+  };
+
+  for (const alert of opts.serverAlerts ?? []) {
+    if (alert?.code && alert.message) push(alert);
+  }
+
+  if (isIntradaySurge(opts.intradayChgPct)) {
+    push({
+      code: 'intraday_surge',
+      severity: 'block',
+      message: `Intraday change ${opts.intradayChgPct!.toFixed(1)}% exceeds 6.0%; no new positions`,
+    });
+  }
+
+  const regime = String(opts.marketRegime ?? '').trim();
+  if (opts.gapUp === true && GAP_UP_WEAK_REGIMES.has(regime)) {
+    push({
+      code: 'gap_up_weak_market',
+      severity: 'block',
+      message: `Gap-up with ${regime} market; do not chase highs`,
+    });
+  }
+
+  if (isAboveVwapPremium(opts.current, opts.vwap)) {
+    push({
+      code: 'above_vwap_premium',
+      severity: 'warn',
+      message: `Price above VWAP x${VWAP_PREMIUM_MULTIPLIER}; extended from average`,
+    });
+  }
+
+  return out;
+}
+
+export function formatIntradayChgPct(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(1)}%`;
+}
+
+export function formatGapUp(value: boolean | null | undefined): string {
+  if (value == null) return '—';
+  return value ? '✓' : '—';
+}
+
+export function formatRiskAlerts(alerts: WatchlistRiskAlert[]): string {
+  if (!alerts.length) return '—';
+  return alerts.map((a) => a.message).join('; ');
+}
+
+export function hasBlockingWatchlistRisk(alerts: WatchlistRiskAlert[]): boolean {
+  return alerts.some((a) => a.severity === 'block');
+}
+
+export type WatchlistQuoteSlice = {
+  price: number | null;
+  tradeTime: string | null;
+  amount: number | null;
+  volume: number | null;
+};
+
+export type WatchlistTrendRiskSlice = {
+  asOfDate?: string | null;
+  values?: { close?: number | null } | null;
+  intradayChgPct?: number | null;
+  gapUp?: boolean | null;
+  marketRegime?: string | null;
+  riskAlerts?: WatchlistRiskAlert[] | null;
+};
+
+export function buildWatchlistRowMetrics(opts: {
+  symbol: string;
+  trend: WatchlistTrendRiskSlice | null | undefined;
+  quote?: WatchlistQuoteSlice | null;
+  tradingTime: boolean;
+  todaySh: string;
+}): {
+  current: number | null;
+  vwap: number | null;
+  alerts: WatchlistRiskAlert[];
+} {
+  const t = opts.trend;
+  const q = opts.quote;
+  const close0 = t?.values?.close;
+  const trendClose = typeof close0 === 'number' && Number.isFinite(close0) ? close0 : null;
+  const current = resolveWatchlistCurrentPrice({
+    tradingTime: opts.tradingTime,
+    todaySh: opts.todaySh,
+    symbol: opts.symbol,
+    trendAsOfDate: t?.asOfDate ?? null,
+    quotePrice: q?.price ?? null,
+    quoteTradeTime: q?.tradeTime ?? null,
+    trendClose,
+  });
+  const useRealtimeVwap = shouldRequireRealtimeQuote({
+    tradingTime: opts.tradingTime,
+    symbol: opts.symbol,
+    trendAsOfDate: t?.asOfDate ?? null,
+    todaySh: opts.todaySh,
+  });
+  const vwap = useRealtimeVwap
+    ? computeVwap(q?.amount ?? null, q?.volume ?? null, 'realtime')
+    : null;
+  const alerts = collectWatchlistRiskAlerts({
+    intradayChgPct: t?.intradayChgPct,
+    gapUp: t?.gapUp,
+    marketRegime: t?.marketRegime,
+    current,
+    vwap,
+    serverAlerts: t?.riskAlerts,
+  });
+  return { current, vwap, alerts };
+}
+
+export function rowHasWatchlistRiskHighlight(alerts: WatchlistRiskAlert[]): boolean {
+  return alerts.length > 0;
+}
 
 export function computePnLPct(
   costPrice: number | null | undefined,

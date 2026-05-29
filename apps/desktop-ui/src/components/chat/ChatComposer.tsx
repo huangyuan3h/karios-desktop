@@ -161,7 +161,9 @@ export function ChatComposer({
                                       ? `${r.title} @ ${new Date(r.capturedAt).toLocaleString()}`
                                       : r.kind === 'dashboardAll'
                                         ? `${r.title || 'Dashboard overview'} · ${r.asOfDate || '—'} @ ${new Date(r.capturedAt).toLocaleString()}`
-                                        : 'Unknown reference'}
+                                        : r.kind === 'alphaRadar'
+                                          ? `Alpha: ${r.trendName} · ${r.riskStatus}`
+                                          : 'Unknown reference'}
               </span>
               <Button
                 variant="ghost"

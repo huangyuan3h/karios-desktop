@@ -766,6 +766,22 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       continue;
     }
 
+    if (ref.kind === 'alphaRadar') {
+      out += `## Alpha Incubator Trend: ${ref.trendName}\n`;
+      out += `- trendId: ${ref.trendId}\n`;
+      out += `- riskStatus: ${ref.riskStatus}\n`;
+      if (ref.documentTitle) out += `- source: ${ref.documentTitle}\n`;
+      if (ref.catalyst) out += `- catalyst: ${ref.catalyst}\n`;
+      if (ref.cnSymbols?.length) {
+        out += `- A-share mapping:\n`;
+        for (const s of ref.cnSymbols) {
+          out += `  - ${s.name} (${s.symbol}) confidence=${s.confidence} · ${s.rationale}\n`;
+        }
+      }
+      out += `\n`;
+      continue;
+    }
+
     if (ref.kind !== 'stock') {
       out += `## Unknown reference\n`;
       out += `- kind: ${String((ref as unknown as { kind?: unknown })?.kind ?? '')}\n\n`;

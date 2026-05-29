@@ -1,4 +1,11 @@
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { formatGapUp, formatIntradayChgPct } from '@/lib/watchlist-metrics';
+
+export type WatchlistRiskAlert = {
+  code: string;
+  severity: 'block' | 'warn';
+  message: string;
+};
 
 export type TrendOkResult = {
   symbol: string;
@@ -9,6 +16,10 @@ export type TrendOkResult = {
   scoreParts?: Record<string, number>;
   values?: Record<string, unknown> | null;
   missingData?: string[];
+  marketRegime?: string | null;
+  intradayChgPct?: number | null;
+  gapUp?: boolean | null;
+  riskAlerts?: WatchlistRiskAlert[];
 };
 
 export type ScreenerMarkdownRow = {
@@ -19,6 +30,8 @@ export type ScreenerMarkdownRow = {
   changePct: string;
   relVolume: string;
   score: number | null;
+  intradayPct: string;
+  gapUp: string;
   flags: string;
 };
 
@@ -39,6 +52,8 @@ export const SCREENER_MARKDOWN_HEADERS = [
   'Chg %',
   'Rel vol',
   'Score',
+  'Intraday%',
+  'GapUp',
   'Flags',
 ] as const;
 
@@ -160,6 +175,8 @@ export function buildScreenerMarkdownRows(
       changePct: pickScreenerField(row, headers, 'changePct') || '—',
       relVolume: pickScreenerField(row, headers, 'relVolume') || '—',
       score,
+      intradayPct: formatIntradayChgPct(trend?.intradayChgPct ?? null),
+      gapUp: formatGapUp(trend?.gapUp ?? null),
       flags: formatFlags(pickScreenerField(row, headers, 'flags'), trend),
     });
   }
@@ -220,6 +237,8 @@ export function screenerMarkdownRowsToTable(rows: ScreenerMarkdownRow[]): unknow
     r.changePct,
     r.relVolume,
     r.score != null ? String(Math.round(r.score)) : '—',
+    r.intradayPct,
+    r.gapUp,
     r.flags || '—',
   ]);
 }

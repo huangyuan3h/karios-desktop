@@ -280,3 +280,42 @@ def test_system_prompt_endpoints_shape_and_roundtrip() -> None:
         # Cleanup created preset
         if created_id:
             client.delete(f"/system-prompts/{created_id}")
+
+
+def test_alpha_radar_endpoints_shape() -> None:
+    client = TestClient(app)
+    init = client.post("/api/alpha-radar/init-defaults")
+    assert init.status_code == 200
+    assert init.json().get("ok") is True
+
+    sources = client.get("/api/alpha-radar/sources")
+    assert sources.status_code == 200
+    assert isinstance(sources.json().get("sources"), list)
+
+    docs = client.get("/api/alpha-radar/documents?limit=5")
+    assert docs.status_code == 200
+    payload = docs.json()
+    assert "total" in payload
+    assert isinstance(payload.get("items"), list)
+
+    trends = client.get("/api/alpha-radar/trends?limit=5")
+    assert trends.status_code == 200
+    assert isinstance(trends.json().get("items"), list)
+
+    catalyst = client.get("/api/alpha-radar/catalyst-stocks?limit=5")
+    assert catalyst.status_code == 200
+    catalyst_body = catalyst.json()
+    assert catalyst_body.get("stalenessBasis") == "published_then_fetched"
+    assert "maxAgeDays" in catalyst_body
+    assert isinstance(catalyst_body.get("items"), list)
+
+    status = client.get("/api/alpha-radar/status")
+    assert status.status_code == 200
+    body = status.json()
+    assert "lastRunAt" in body
+    assert "cooldownHours" in body
+    assert "jobType" in body
+
+    missing = client.delete("/api/alpha-radar/trends/nonexistent-trend-id")
+    assert missing.status_code == 200
+    assert missing.json().get("ok") is False

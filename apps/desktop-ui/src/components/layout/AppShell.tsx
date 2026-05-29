@@ -21,6 +21,7 @@ import { WatchlistPage } from '@/components/pages/WatchlistPage';
 import { BacktestPage } from '@/components/pages/BacktestPage';
 import { SimTradePage } from '@/components/pages/SimTradePage';
 import { IndexPage } from '@/components/pages/IndexPage';
+import { AlphaIncubatorPage } from '@/components/pages/AlphaIncubatorPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
@@ -32,6 +33,7 @@ const PAGE_TITLES: Record<string, string> = {
   news: 'News',
   market: 'Market',
   industryFlow: 'Industry Flow',
+  alphaIncubator: 'Alpha Incubator',
   watchlist: 'Watchlist',
   broker: 'Broker',
   journal: 'Journal',
@@ -175,6 +177,8 @@ export function AppShell() {
               <BrokerPage />
             ) : activePage === 'industryFlow' ? (
               <IndustryFlowPage />
+            ) : activePage === 'alphaIncubator' ? (
+              <AlphaIncubatorPage />
             ) : activePage === 'watchlist' ? (
               <WatchlistPage
                 onOpenStock={(symbol) => {

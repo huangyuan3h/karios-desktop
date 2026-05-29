@@ -16,6 +16,7 @@ dependencies = [
     "tushare>=1.4.0",
     "uvicorn>=0.38.0",
     "yfinance>=1.2.0",
+    "youtube-transcript-api>=0.6.3",
 ]
 
 [tool.pytest.ini_options]
