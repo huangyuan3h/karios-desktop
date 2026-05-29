@@ -14,7 +14,9 @@ import { Progress } from '@/components/ui/progress';
 import { DATA_SYNC_BASE_URL, AI_BASE_URL } from '@/lib/endpoints';
 import {
   buildCatalystStocksMarkdown,
+  buildAlphaRadarTrendsMarkdown,
   DEFAULT_CATALYST_MAX_AGE_DAYS,
+  fetchAlphaRadarTrends,
   fetchCatalystStocks,
 } from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
@@ -1437,12 +1439,15 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       throw new Error('No data available. Please refresh first.');
     }
     const generatedAt = new Date().toISOString();
-    const [screenersMd, watchlistMd, catalystMd] = await Promise.all([
+    const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd] = await Promise.all([
       buildScreenersMarkdown(s, '##'),
       buildWatchlistMarkdown(),
       fetchCatalystStocks(DATA_SYNC_BASE_URL, 10, DEFAULT_CATALYST_MAX_AGE_DAYS)
         .then((resp) => buildCatalystStocksMarkdown(resp, { headingLevel: '##' }))
         .catch(() => '## Alpha Radar · Top Catalyst Stocks\n\n- Alpha Radar: unavailable\n'),
+      fetchAlphaRadarTrends(DATA_SYNC_BASE_URL, 20, true)
+        .then((items) => buildAlphaRadarTrendsMarkdown(items, { headingLevel: '##' }))
+        .catch(() => '## Alpha Radar · Structured Trends\n\n- Alpha Radar trends: unavailable\n'),
     ]);
     const lines: string[] = [];
     lines.push(`# Copy all (Dashboard)`);
@@ -1468,6 +1473,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     else lines.push('No summary yet. Last news records are included above.');
     lines.push('');
     lines.push(screenersMd.trim());
+    lines.push('');
+    lines.push(alphaTrendsMd.trim());
     lines.push('');
     lines.push(catalystMd.trim());
     lines.push('');

@@ -149,6 +149,11 @@ def aggregate_catalyst_stocks(
                 "trendId": str(trend.get("id") or ""),
                 "trendName": str(trend.get("trendName") or ""),
                 "macroTheme": str(trend.get("macroTheme") or trend.get("trendName") or ""),
+                "catalystGrade": str(
+                    trend.get("catalystGrade") or trend.get("urgencyLevel") or "B"
+                ),
+                "catalyst": str(trend.get("catalyst") or "").strip() or None,
+                "globalTarget": str(trend.get("globalTarget") or "").strip() or None,
                 "documentId": document_id,
                 "relevance": round(confidence, 4),
                 "contribution": round(contribution, 4),
@@ -157,9 +162,6 @@ def aggregate_catalyst_stocks(
                 "summary": _article_summary(trend),
                 "publishedAt": trend.get("documentPublishedAt") or trend.get("documentFetchedAt"),
                 "urgencyLevel": str(trend.get("urgencyLevel") or "B"),
-                "catalystGrade": str(
-                    trend.get("catalystGrade") or trend.get("urgencyLevel") or "B"
-                ),
                 "_dedupeKey": dedupe_key,
                 "_eventAt": event_at,
             }
@@ -192,6 +194,9 @@ def aggregate_catalyst_stocks(
                     "trendId": a["trendId"],
                     "trendName": a["trendName"],
                     "macroTheme": a["macroTheme"],
+                    "catalystGrade": a["catalystGrade"],
+                    "catalyst": a.get("catalyst"),
+                    "globalTarget": a.get("globalTarget"),
                     "documentId": a["documentId"],
                     "relevance": a["relevance"],
                     "contribution": a["contribution"],
@@ -200,7 +205,6 @@ def aggregate_catalyst_stocks(
                     "summary": a["summary"],
                     "publishedAt": a["publishedAt"],
                     "urgencyLevel": a["urgencyLevel"],
-                    "catalystGrade": a["catalystGrade"],
                 }
             )
         results.append(

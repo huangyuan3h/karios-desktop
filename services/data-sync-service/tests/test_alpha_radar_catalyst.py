@@ -37,6 +37,7 @@ def _trend(
         "macroTheme": macro_theme or "Memory demand surge",
         "catalystGrade": catalyst_grade or urgency,
         "catalyst": "AI memory demand rising",
+        "globalTarget": "NVDA",
         "urgencyLevel": urgency,
         "documentTitle": title,
         "documentUrl": f"https://example.com/{document_id}",
@@ -145,3 +146,4 @@ def test_aggregate_includes_macro_theme_and_catalyst_grade_in_articles():
     article = rows[0]["articles"][0]
     assert article["macroTheme"] == "HBM Supply Chain"
     assert article["catalystGrade"] == "S"
+    assert article["catalyst"] == "AI memory demand rising"
