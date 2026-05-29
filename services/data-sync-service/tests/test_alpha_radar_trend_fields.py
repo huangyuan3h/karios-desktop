@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from data_sync_service.db.alpha_radar import _trend_row
+import threading
+
+from data_sync_service.db.alpha_radar import _trend_row, ensure_tables
 from data_sync_service.service.alpha_radar_process import _resolve_trend_storage_fields
 
 
@@ -76,3 +78,21 @@ def test_trend_row_falls_back_when_macro_fields_null():
     item = _trend_row(row)
     assert item["macroTheme"] == "Legacy Name"
     assert item["catalystGrade"] == "B"
+
+
+def test_ensure_tables_is_safe_under_concurrent_calls():
+    errors: list[BaseException] = []
+
+    def worker() -> None:
+        try:
+            ensure_tables()
+        except BaseException as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []

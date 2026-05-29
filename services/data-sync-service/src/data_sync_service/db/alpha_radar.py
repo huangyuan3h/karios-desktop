@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -14,6 +15,14 @@ DOCUMENTS_TABLE = "alpha_radar_documents"
 TRENDS_TABLE = "alpha_radar_trends"
 META_TABLE = "alpha_radar_meta"
 SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
+_SCHEMA_ADVISORY_LOCK_KEY = 58_239_001
+_SCHEMA_LOCK = threading.Lock()
+_SCHEMA_READY = False
+
+TREND_COLUMN_MIGRATIONS: tuple[tuple[str, str], ...] = (
+    ("macro_theme", "TEXT"),
+    ("catalyst_grade", "TEXT"),
+)
 
 CREATE_SOURCES_SQL = f"""
 CREATE TABLE IF NOT EXISTS {SOURCES_TABLE} (
@@ -55,6 +64,8 @@ CREATE TABLE IF NOT EXISTS {TRENDS_TABLE} (
     id                  TEXT PRIMARY KEY,
     document_id         TEXT NOT NULL REFERENCES {DOCUMENTS_TABLE}(id) ON DELETE CASCADE,
     trend_name          TEXT NOT NULL,
+    macro_theme         TEXT,
+    catalyst_grade      TEXT,
     catalyst            TEXT,
     global_target       TEXT,
     urgency_level       TEXT NOT NULL DEFAULT 'B',
@@ -80,20 +91,54 @@ CREATE TABLE IF NOT EXISTS {META_TABLE} (
 """
 
 
-def ensure_tables() -> None:
+def _trend_column_exists(cur: Any, column_name: str) -> bool:
+    cur.execute(
+        """
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = %s
+          AND column_name = %s
+        LIMIT 1
+        """,
+        (TRENDS_TABLE, column_name),
+    )
+    return cur.fetchone() is not None
+
+
+def _migrate_trend_columns(cur: Any) -> None:
+    for column_name, column_type in TREND_COLUMN_MIGRATIONS:
+        if _trend_column_exists(cur, column_name):
+            continue
+        cur.execute(
+            f"ALTER TABLE {TRENDS_TABLE} ADD COLUMN {column_name} {column_type}"
+        )
+
+
+def _ensure_tables_once() -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(CREATE_SOURCES_SQL)
-            cur.execute(CREATE_DOCUMENTS_SQL)
-            cur.execute(CREATE_TRENDS_SQL)
-            cur.execute(CREATE_META_SQL)
-            cur.execute(
-                f"ALTER TABLE {TRENDS_TABLE} ADD COLUMN IF NOT EXISTS macro_theme TEXT"
-            )
-            cur.execute(
-                f"ALTER TABLE {TRENDS_TABLE} ADD COLUMN IF NOT EXISTS catalyst_grade TEXT"
-            )
+            cur.execute("SELECT pg_advisory_lock(%s)", (_SCHEMA_ADVISORY_LOCK_KEY,))
+            try:
+                cur.execute(CREATE_SOURCES_SQL)
+                cur.execute(CREATE_DOCUMENTS_SQL)
+                cur.execute(CREATE_TRENDS_SQL)
+                cur.execute(CREATE_META_SQL)
+                _migrate_trend_columns(cur)
+            finally:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (_SCHEMA_ADVISORY_LOCK_KEY,))
         conn.commit()
+
+
+def ensure_tables() -> None:
+    global _SCHEMA_READY
+    if _SCHEMA_READY:
+        return
+    with _SCHEMA_LOCK:
+        if _SCHEMA_READY:
+            return
+        _ensure_tables_once()
+        _SCHEMA_READY = True
 
 
 def shanghai_today() -> str:
