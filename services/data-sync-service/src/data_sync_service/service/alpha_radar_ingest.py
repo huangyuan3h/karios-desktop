@@ -256,6 +256,7 @@ def fetch_all_sources(
     *,
     enrich_fulltext: bool | None = None,
     apply_filter: bool = True,
+    force_reprocess: bool = False,
 ) -> dict[str, Any]:
     ensure_tables()
     add_default_sources()
@@ -267,6 +268,9 @@ def fetch_all_sources(
     total_fetched = 0
     total_filtered_out = 0
     total_stored = 0
+    ingest_new = 0
+    ingest_requeued = 0
+    ingest_unchanged = 0
     fulltext_attempted = 0
     fulltext_ok = 0
     priority_fulltext_used: dict[str, int] = {}
@@ -306,7 +310,7 @@ def fetch_all_sources(
                         fulltext_ok += 1
                         priority_fulltext_used[source_id] = used_for_source + 1
 
-                upsert_document(
+                row = upsert_document(
                     doc_id=item["id"],
                     source_id=source_id,
                     title=item["title"],
@@ -317,7 +321,14 @@ def fetch_all_sources(
                     published_at=item["published_at"],
                     fetched_at=fetched_at,
                     processing_status="raw",
+                    force_reprocess=force_reprocess,
                 )
+                if row.get("_inserted"):
+                    ingest_new += 1
+                elif row.get("_requeued"):
+                    ingest_requeued += 1
+                else:
+                    ingest_unchanged += 1
                 count += 1
             total_stored += count
             update_source_last_fetch(source_id, fetched_at)
@@ -344,5 +355,8 @@ def fetch_all_sources(
             "fetched": total_fetched,
             "filteredOut": total_filtered_out,
             "stored": total_stored,
+            "new": ingest_new,
+            "requeued": ingest_requeued,
+            "unchanged": ingest_unchanged,
         },
     }

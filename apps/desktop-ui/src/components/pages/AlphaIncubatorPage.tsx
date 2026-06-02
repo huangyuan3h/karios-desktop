@@ -66,11 +66,21 @@ function trendCatalystGrade(t: AlphaTrend): string {
 
 type PipelineStatus = {
   lastRunAt?: string | null;
+  lastIngestAt?: string | null;
+  lastProcessAt?: string | null;
   lastBatchStartedAt?: string | null;
   lastTrendCount?: number;
   currentTrendCount?: number;
   accumulatedTrendCount?: number;
-  lastIngestStats?: { fetched?: number; filteredOut?: number; stored?: number } | null;
+  rawBacklogCount?: number;
+  lastIngestStats?: {
+    fetched?: number;
+    filteredOut?: number;
+    stored?: number;
+    new?: number;
+    requeued?: number;
+    unchanged?: number;
+  } | null;
   withinCooldown?: boolean;
   cooldownHours?: number;
 };
@@ -359,6 +369,8 @@ export function AlphaIncubatorPage() {
             {status.accumulatedTrendCount != null
               ? ` · 库内共 ${status.accumulatedTrendCount} 张趋势`
               : ''}
+            {status.lastIngestAt ? ` · RSS 同步 ${fmtWhen(status.lastIngestAt)}` : ''}
+            {status.rawBacklogCount != null ? ` · raw 待处理 ${status.rawBacklogCount}` : ''}
             {ingest?.stored != null ? ` · 入库 ${ingest.stored} 条` : ''}
             {ingest?.filteredOut ? ` · 过滤 ${ingest.filteredOut} 条` : ''}
           </p>

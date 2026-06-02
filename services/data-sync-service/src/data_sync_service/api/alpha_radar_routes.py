@@ -16,7 +16,12 @@ from data_sync_service.db.alpha_radar import (
 )
 from data_sync_service.service.alpha_radar_ingest import add_default_sources, fetch_all_sources
 from data_sync_service.service.alpha_radar_process import process_document, process_pending_documents
-from data_sync_service.service.alpha_radar_pipeline import pipeline_status, run_alpha_radar_pipeline
+from data_sync_service.service.alpha_radar_pipeline import (
+    pipeline_status,
+    run_alpha_radar_ingest,
+    run_alpha_radar_pipeline,
+    run_alpha_radar_process,
+)
 from data_sync_service.service.alpha_radar_risk import build_mainline_score_map, compute_risk_status
 from data_sync_service.service.mainline import get_cn_industry_mainline
 from data_sync_service.service.alpha_radar_mapping import remap_trend_by_id
@@ -61,6 +66,25 @@ def list_documents(
 def alpha_radar_status():
     ensure_tables()
     return {"ok": True, **pipeline_status()}
+
+
+@router.post("/run-ingest")
+def run_ingest(body: dict | None = None):
+    ensure_tables()
+    body = body or {}
+    force_reprocess = bool(body.get("forceReprocess", False))
+    result = run_alpha_radar_ingest(trigger="manual", force_reprocess=force_reprocess)
+    return {"ok": True, **result}
+
+
+@router.post("/run-process")
+def run_process(body: dict | None = None):
+    ensure_tables()
+    body = body or {}
+    max_rounds = body.get("maxRounds")
+    rounds = int(max_rounds) if max_rounds is not None else None
+    result = run_alpha_radar_process(trigger="manual", max_rounds=rounds)
+    return {"ok": True, **result}
 
 
 @router.post("/run-pipeline")
@@ -133,7 +157,12 @@ def sync_feeds(body: dict | None = None):
     else:
         enrich_opt = bool(enrich)
     apply_filter = bool(body.get("applyFilter", True))
-    ingest_result = fetch_all_sources(enrich_fulltext=enrich_opt, apply_filter=apply_filter)
+    force_reprocess = bool(body.get("forceReprocess", False))
+    ingest_result = fetch_all_sources(
+        enrich_fulltext=enrich_opt,
+        apply_filter=apply_filter,
+        force_reprocess=force_reprocess,
+    )
     return {"ok": True, **ingest_result}
 
 

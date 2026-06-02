@@ -287,7 +287,9 @@ def upsert_document(
     published_at: str | None,
     fetched_at: str,
     processing_status: str = "raw",
+    force_reprocess: bool = False,
 ) -> dict[str, Any]:
+    """Insert or update a document. On conflict, reset to raw only when content changed or force_reprocess."""
     ensure_tables()
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -303,9 +305,20 @@ def upsert_document(
                     summary = COALESCE(EXCLUDED.summary, {DOCUMENTS_TABLE}.summary),
                     full_text_md = COALESCE(EXCLUDED.full_text_md, {DOCUMENTS_TABLE}.full_text_md),
                     fetched_at = EXCLUDED.fetched_at,
-                    processing_status = 'raw'
+                    processing_status = CASE
+                        WHEN %s THEN 'raw'
+                        WHEN {DOCUMENTS_TABLE}.title IS DISTINCT FROM EXCLUDED.title
+                          OR COALESCE({DOCUMENTS_TABLE}.summary, '') IS DISTINCT FROM COALESCE(EXCLUDED.summary, '')
+                          OR (
+                            EXCLUDED.full_text_md IS NOT NULL
+                            AND COALESCE({DOCUMENTS_TABLE}.full_text_md, '') IS DISTINCT FROM EXCLUDED.full_text_md
+                          )
+                        THEN 'raw'
+                        ELSE {DOCUMENTS_TABLE}.processing_status
+                    END
                 RETURNING id, source_id, title, url, category, summary, full_text_md,
-                          published_at, fetched_at, processing_status
+                          published_at, fetched_at, processing_status,
+                          (xmax = 0) AS inserted
                 """,
                 (
                     doc_id,
@@ -318,11 +331,28 @@ def upsert_document(
                     published_at,
                     fetched_at,
                     processing_status,
+                    force_reprocess,
                 ),
             )
             row = cur.fetchone()
         conn.commit()
-    return _document_row(row)
+    item = _document_row(row[:10])
+    inserted = bool(row[10]) if row and len(row) > 10 else False
+    item["_inserted"] = inserted
+    item["_requeued"] = not inserted and str(item.get("processingStatus") or "") == "raw"
+    return item
+
+
+def count_documents_by_status(processing_status: str) -> int:
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT COUNT(*) FROM {DOCUMENTS_TABLE} WHERE processing_status = %s",
+                (processing_status,),
+            )
+            row = cur.fetchone()
+    return int(row[0] or 0) if row else 0
 
 
 def fetch_documents(
