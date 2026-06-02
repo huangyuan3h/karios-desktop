@@ -97,12 +97,14 @@ def list_trends(
     day: str | None = None,
     since: str | None = None,
     latest_batch: bool = True,
+    maxAgeDays: int | None = None,
 ):
     ensure_tables()
     day_filter = day if day != "all" else None
     since_filter = since
-    if latest_batch and since_filter is None and day_filter is None:
+    if latest_batch and since_filter is None and day_filter is None and maxAgeDays is None:
         since_filter = get_meta("last_batch_started_at")
+    max_age = maxAgeDays
     total, items = fetch_trends(
         limit=limit,
         offset=offset,
@@ -110,12 +112,14 @@ def list_trends(
         risk_status=risk_status,
         day=day_filter,
         since=since_filter,
+        max_age_days=max_age,
     )
     return {
         "total": total,
         "items": items,
         "day": day_filter,
         "since": since_filter,
+        "maxAgeDays": max_age,
     }
 
 

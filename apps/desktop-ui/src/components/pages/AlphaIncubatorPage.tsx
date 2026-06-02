@@ -4,6 +4,7 @@ import * as React from 'react';
 import {
   Bot,
   ExternalLink,
+  FileText,
   Rocket,
   Sparkles,
   Star,
@@ -68,9 +69,27 @@ type PipelineStatus = {
   lastBatchStartedAt?: string | null;
   lastTrendCount?: number;
   currentTrendCount?: number;
+  accumulatedTrendCount?: number;
   lastIngestStats?: { fetched?: number; filteredOut?: number; stored?: number } | null;
   withinCooldown?: boolean;
   cooldownHours?: number;
+};
+
+type RssDocument = {
+  id: string;
+  sourceId: string;
+  title: string;
+  url: string;
+  category: string;
+  summary: string | null;
+  publishedAt: string | null;
+  fetchedAt: string;
+  processingStatus: string;
+};
+
+type AlphaSource = {
+  id: string;
+  name: string;
 };
 
 type WatchlistItem = {
@@ -81,7 +100,8 @@ type WatchlistItem = {
 
 const WATCHLIST_STORAGE_KEY = 'karios.watchlist.v1';
 
-type ViewTab = 'trends' | 'catalyst';
+type ViewTab = 'trends' | 'catalyst' | 'rss';
+type TrendsScope = 'batch' | 'all';
 
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
@@ -159,7 +179,12 @@ function addSymbolsToWatchlist(symbols: CnSymbol[]) {
 export function AlphaIncubatorPage() {
   const { addReference } = useChatStore();
   const [viewTab, setViewTab] = React.useState<ViewTab>('trends');
+  const [trendsScope, setTrendsScope] = React.useState<TrendsScope>('batch');
   const [trends, setTrends] = React.useState<AlphaTrend[]>([]);
+  const [trendsTotal, setTrendsTotal] = React.useState(0);
+  const [rssDocuments, setRssDocuments] = React.useState<RssDocument[]>([]);
+  const [rssTotal, setRssTotal] = React.useState(0);
+  const [sourceNames, setSourceNames] = React.useState<Record<string, string>>({});
   const [catalystStocks, setCatalystStocks] = React.useState<CatalystStock[]>([]);
   const [catalystMeta, setCatalystMeta] = React.useState<{ maxAgeDays: number; total: number }>({
     maxAgeDays: DEFAULT_CATALYST_MAX_AGE_DAYS,
@@ -170,14 +195,35 @@ export function AlphaIncubatorPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [msg, setMsg] = React.useState<string | null>(null);
 
+  const refreshTrends = React.useCallback(async (scope: TrendsScope) => {
+    const path =
+      scope === 'batch'
+        ? '/api/alpha-radar/trends?limit=50&latest_batch=true'
+        : '/api/alpha-radar/trends?limit=100&latest_batch=false';
+    const trendResp = await apiGetJson<{ total: number; items: AlphaTrend[] }>(path);
+    setTrends(trendResp.items || []);
+    setTrendsTotal(trendResp.total ?? trendResp.items?.length ?? 0);
+  }, []);
+
+  const refreshRss = React.useCallback(async () => {
+    const [docResp, srcResp] = await Promise.all([
+      apiGetJson<{ total: number; items: RssDocument[] }>('/api/alpha-radar/documents?limit=100'),
+      apiGetJson<{ sources: AlphaSource[] }>('/api/alpha-radar/sources'),
+    ]);
+    setRssDocuments(docResp.items || []);
+    setRssTotal(docResp.total ?? docResp.items?.length ?? 0);
+    const map: Record<string, string> = {};
+    for (const s of srcResp.sources || []) {
+      map[s.id] = s.name;
+    }
+    setSourceNames(map);
+  }, []);
+
   const refresh = React.useCallback(async () => {
     setError(null);
     try {
-      const [statusResp, trendResp, catalystResp] = await Promise.all([
+      const [statusResp, catalystResp] = await Promise.all([
         apiGetJson<{ ok?: boolean } & PipelineStatus>('/api/alpha-radar/status'),
-        apiGetJson<{ total: number; items: AlphaTrend[] }>(
-          '/api/alpha-radar/trends?limit=50&latest_batch=true',
-        ),
         apiGetJson<{ total: number; maxAgeDays: number; items: CatalystStock[] }>(
           `/api/alpha-radar/catalyst-stocks?limit=50&maxAgeDays=${DEFAULT_CATALYST_MAX_AGE_DAYS}`,
         ),
@@ -188,20 +234,32 @@ export function AlphaIncubatorPage() {
         maxAgeDays: catalystResp.maxAgeDays ?? DEFAULT_CATALYST_MAX_AGE_DAYS,
         total: catalystResp.total ?? 0,
       });
-      let items = trendResp.items || [];
-      if (items.length === 0) {
-        const all = await apiGetJson<{ items: AlphaTrend[] }>('/api/alpha-radar/trends?limit=50&latest_batch=false');
-        items = all.items || [];
+      await refreshTrends(trendsScope);
+      if (viewTab === 'rss') {
+        await refreshRss();
       }
-      setTrends(items);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [refreshTrends, refreshRss, trendsScope, viewTab]);
 
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  React.useEffect(() => {
+    if (viewTab !== 'trends') return;
+    void refreshTrends(trendsScope).catch((e) => {
+      setError(e instanceof Error ? e.message : String(e));
+    });
+  }, [trendsScope, viewTab, refreshTrends]);
+
+  React.useEffect(() => {
+    if (viewTab !== 'rss') return;
+    void refreshRss().catch((e) => {
+      setError(e instanceof Error ? e.message : String(e));
+    });
+  }, [viewTab, refreshRss]);
 
   async function runPipeline(force = false) {
     setError(null);
@@ -297,7 +355,10 @@ export function AlphaIncubatorPage() {
           </p>
           <p className="mt-1 text-xs text-[var(--k-muted)]">
             {status.lastRunAt ? `上次生成 ${fmtWhen(status.lastRunAt)}` : '尚未生成'}
-            {status.lastTrendCount != null ? ` · 本批 ${status.lastTrendCount} 张卡片` : ''}
+            {status.lastTrendCount != null ? ` · 本批 ${status.lastTrendCount} 张` : ''}
+            {status.accumulatedTrendCount != null
+              ? ` · 库内共 ${status.accumulatedTrendCount} 张趋势`
+              : ''}
             {ingest?.stored != null ? ` · 入库 ${ingest.stored} 条` : ''}
             {ingest?.filteredOut ? ` · 过滤 ${ingest.filteredOut} 条` : ''}
           </p>
@@ -356,14 +417,58 @@ export function AlphaIncubatorPage() {
             <span className="ml-1 text-xs text-[var(--k-muted)]">({catalystMeta.total})</span>
           ) : null}
         </button>
+        <button
+          type="button"
+          className={cn(
+            'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+            viewTab === 'rss'
+              ? 'bg-[var(--k-surface-2)] text-[var(--k-text)]'
+              : 'text-[var(--k-muted)] hover:text-[var(--k-text)]',
+          )}
+          onClick={() => setViewTab('rss')}
+        >
+          <FileText className="mr-1 inline h-3.5 w-3.5" />
+          RSS 原文
+          {rssTotal ? (
+            <span className="ml-1 text-xs text-[var(--k-muted)]">({rssTotal})</span>
+          ) : null}
+        </button>
         {viewTab === 'catalyst' ? (
           <span className="self-center text-xs text-[var(--k-muted)]">
-            有效期 {catalystMeta.maxAgeDays} 天 · 按文章发布时间（无则入库时间）
+            打分窗口 {catalystMeta.maxAgeDays} 天 · 历史趋势仍保存在库
           </span>
         ) : null}
       </div>
 
       {viewTab === 'trends' ? (
+      <>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={cn(
+            'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+            trendsScope === 'batch'
+              ? 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-text)]'
+              : 'border-transparent text-[var(--k-muted)] hover:text-[var(--k-text)]',
+          )}
+          onClick={() => setTrendsScope('batch')}
+        >
+          本批
+          {status.lastTrendCount != null ? ` (${status.lastTrendCount})` : ''}
+        </button>
+        <button
+          type="button"
+          className={cn(
+            'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+            trendsScope === 'all'
+              ? 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-text)]'
+              : 'border-transparent text-[var(--k-muted)] hover:text-[var(--k-text)]',
+          )}
+          onClick={() => setTrendsScope('all')}
+        >
+          全部历史 ({trendsTotal})
+        </button>
+      </div>
       <div className="grid grid-cols-1 gap-3">
         {trends.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--k-border)] p-8 text-center text-sm text-[var(--k-muted)]">
@@ -535,6 +640,57 @@ export function AlphaIncubatorPage() {
           })
         )}
       </div>
+      </>
+      ) : viewTab === 'rss' ? (
+        <div className="grid grid-cols-1 gap-3">
+          {rssDocuments.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[var(--k-border)] p-8 text-center text-sm text-[var(--k-muted)]">
+              暂无 RSS 入库记录。运行「生成趋势」或等待 12h 定时任务同步信源。
+            </div>
+          ) : (
+            rssDocuments.map((doc) => (
+              <section
+                key={doc.id}
+                className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--k-muted)]">
+                      <span className="rounded border border-[var(--k-border)] px-1.5 py-0.5">
+                        {sourceNames[doc.sourceId] || doc.sourceId}
+                      </span>
+                      <span className="rounded border border-[var(--k-border)] px-1.5 py-0.5">
+                        {doc.processingStatus}
+                      </span>
+                      <span>{doc.category}</span>
+                    </div>
+                    <h3 className="mt-2 font-semibold">{doc.title}</h3>
+                    {doc.summary ? (
+                      <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-[var(--k-text)]">
+                        {doc.summary}
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-sm text-[var(--k-muted)]">无 RSS 摘要</p>
+                    )}
+                    <p className="mt-2 text-xs text-[var(--k-muted)]">
+                      发布 {fmtWhen(doc.publishedAt)} · 入库 {fmtWhen(doc.fetchedAt)}
+                    </p>
+                  </div>
+                  {doc.url ? (
+                    <a
+                      href={doc.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex shrink-0 items-center text-sm text-blue-600 hover:underline"
+                    >
+                      打开链接 <ExternalLink className="ml-1 h-3.5 w-3.5" />
+                    </a>
+                  ) : null}
+                </div>
+              </section>
+            ))
+          )}
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-3">
           {catalystStocks.length === 0 ? (

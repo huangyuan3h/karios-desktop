@@ -237,6 +237,10 @@ def process_document_batch(
     saved: list[dict[str, Any]] = []
     doc_ids = [str(d.get("id") or "") for d in docs]
 
+    for doc_id in doc_ids:
+        if doc_id:
+            delete_trends_for_document(doc_id)
+
     for trend in trends[:8]:
         idx_raw = trend.get("source_index", trend.get("sourceIndex", 0))
         try:

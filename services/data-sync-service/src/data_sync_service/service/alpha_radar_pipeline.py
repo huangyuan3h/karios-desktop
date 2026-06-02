@@ -8,7 +8,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from data_sync_service.db.alpha_radar import (
-    delete_trends_before,
+    count_trends_total,
+    delete_trends_older_than_days,
     delete_trends_since,
     fetch_trends,
     get_meta,
@@ -32,6 +33,15 @@ def max_batch_rounds() -> int:
         return max(1, min(int(raw), 10))
     except ValueError:
         return 3
+
+
+def trend_retention_days() -> int:
+    """0 = keep trends forever (default). >0 = optional ops prune after pipeline success."""
+    raw = os.getenv("ALPHA_RADAR_TREND_RETENTION_DAYS", "0").strip()
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 0
 
 
 def _parse_iso(value: str | None) -> datetime | None:
@@ -72,15 +82,17 @@ def pipeline_status() -> dict[str, Any]:
     except ValueError:
         last_trend_count = 0
 
-    trend_total = last_trend_count
+    current_batch_count = last_trend_count
     if batch_started_at:
-        trend_total, _ = fetch_trends(limit=1, since=batch_started_at)
+        current_batch_count, _ = fetch_trends(limit=1, since=batch_started_at)
 
     return {
         "lastRunAt": last_at,
         "lastBatchStartedAt": batch_started_at,
         "lastTrendCount": last_trend_count,
-        "currentTrendCount": trend_total,
+        "currentTrendCount": current_batch_count,
+        "accumulatedTrendCount": count_trends_total(),
+        "trendRetentionDays": trend_retention_days(),
         "lastIngestStats": _load_ingest_stats(),
         "withinCooldown": _within_cooldown(last_at),
         "cooldownHours": COOLDOWN_HOURS,
@@ -105,6 +117,7 @@ def run_alpha_radar_pipeline(*, force: bool = False, trigger: str = "manual") ->
             "processedHeadlines": 0,
             "errors": [],
             "keptPreviousTrends": True,
+            "accumulatedTrendCount": count_trends_total(),
         }
 
     batch_started_at = datetime.now(timezone.utc).isoformat()
@@ -134,6 +147,7 @@ def run_alpha_radar_pipeline(*, force: bool = False, trigger: str = "manual") ->
             "processedHeadlines": 0,
             "errors": [{"error": msg, "sourceErrors": source_errors}],
             "keptPreviousTrends": True,
+            "accumulatedTrendCount": count_trends_total(),
         }
 
     total_processed = 0
@@ -163,18 +177,20 @@ def run_alpha_radar_pipeline(*, force: bool = False, trigger: str = "manual") ->
 
     _, new_trends = fetch_trends(limit=50, since=batch_started_at)
     trend_count = len(new_trends)
+    pruned_old = 0
 
     if trend_count > 0:
-        removed_old = delete_trends_before(batch_started_at)
         kept_previous = False
         success = True
         error_message = None
+        retention = trend_retention_days()
+        if retention > 0:
+            pruned_old = delete_trends_older_than_days(retention)
     else:
         delete_trends_since(batch_started_at)
         _, new_trends = fetch_trends(limit=50)
         trend_count = len(new_trends)
         kept_previous = True
-        removed_old = 0
         success = False
         if errors:
             error_message = str(errors[0].get("error") or "LLM produced 0 trends; kept previous cards")
@@ -199,6 +215,8 @@ def run_alpha_radar_pipeline(*, force: bool = False, trigger: str = "manual") ->
         last_ts_code=str(trend_count),
     )
 
+    accumulated = count_trends_total()
+
     return {
         "skipped": False,
         "ok": success,
@@ -210,7 +228,8 @@ def run_alpha_radar_pipeline(*, force: bool = False, trigger: str = "manual") ->
         "ingest": ingest_result,
         "ingestStats": ingest_stats,
         "processedHeadlines": total_processed,
-        "removedOldTrends": removed_old,
+        "prunedOldTrends": pruned_old,
+        "accumulatedTrendCount": accumulated,
         "errors": errors,
         "keptPreviousTrends": kept_previous,
     }

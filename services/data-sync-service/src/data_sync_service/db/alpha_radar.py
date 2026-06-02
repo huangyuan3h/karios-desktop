@@ -434,6 +434,36 @@ def delete_trends_before(iso_timestamp: str) -> int:
     return deleted
 
 
+def delete_trends_older_than_days(days: int) -> int:
+    """Delete trends whose source document event time is older than days (optional ops prune)."""
+    ensure_tables()
+    age_days = max(1, int(days))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=age_days)).isoformat()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                DELETE FROM {TRENDS_TABLE} t
+                USING {DOCUMENTS_TABLE} d
+                WHERE t.document_id = d.id
+                  AND COALESCE(d.published_at, d.fetched_at) < %s
+                """,
+                (cutoff,),
+            )
+            deleted = cur.rowcount or 0
+        conn.commit()
+    return deleted
+
+
+def count_trends_total() -> int:
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT COUNT(*) FROM {TRENDS_TABLE}")
+            row = cur.fetchone()
+    return int(row[0] or 0) if row else 0
+
+
 def delete_trends_since(iso_timestamp: str) -> int:
     """Delete trends created at or after iso_timestamp (rollback failed batch)."""
     ensure_tables()
@@ -616,6 +646,7 @@ def fetch_trends(
     risk_status: str | None = None,
     day: str | None = None,
     since: str | None = None,
+    max_age_days: int | None = None,
 ) -> tuple[int, list[dict[str, Any]]]:
     ensure_tables()
     lim = max(1, min(int(limit), 200))
@@ -639,10 +670,16 @@ def fetch_trends(
         ).astimezone(timezone.utc).isoformat()
         conditions.append("t.created_at >= %s AND t.created_at < %s")
         params.extend([day_start, day_end])
+    if max_age_days is not None:
+        days = max(1, int(max_age_days))
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        conditions.append("COALESCE(d.published_at, d.fetched_at) >= %s")
+        params.append(cutoff)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    count_from = f"{TRENDS_TABLE} t JOIN {DOCUMENTS_TABLE} d ON d.id = t.document_id"
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT COUNT(*) FROM {TRENDS_TABLE} t {where}", params)
+            cur.execute(f"SELECT COUNT(*) FROM {count_from} {where}", params)
             total = int(cur.fetchone()[0] or 0)
             cur.execute(
                 f"""

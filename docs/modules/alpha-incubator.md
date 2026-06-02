@@ -21,18 +21,29 @@ RSS (7 feeds) → Filter (regex) → RSS summary (optional Jina) → Batch LLM �
 | Filter | `alpha_radar_filter.py` |
 | LLM | `POST /alpha-radar/extract-batch` |
 | Map | `alpha_radar_mapping.py` |
-| UI | `AlphaIncubatorPage.tsx`（趋势视图 + 催化股票 Tab） |
+| UI | `AlphaIncubatorPage.tsx`（趋势 / 催化股票 / RSS 原文） |
 
-## 双视图
+## 数据存储
+
+| 表 | 策略 |
+|----|------|
+| `alpha_radar_documents` | **默认永久** upsert，按 URL 去重 |
+| `alpha_radar_trends` | **默认永久**；流水线成功时 **不再** 批量删除历史批次 |
+| 可选修剪 | `ALPHA_RADAR_TREND_RETENTION_DAYS`：`0` 或未设置 = 不删；`>0` 时在流水线成功后按文档事件时间修剪 |
+
+同一文档 re-ingest 后 batch/single 处理会先 `delete_trends_for_document` 再写入，避免重复叠卡。
+
+## 三视图
 
 | 视图 | 说明 |
 |------|------|
-| **趋势视图** | 以全球趋势卡片为主，保留全部批次卡片供交叉验证；卡片 footer 显示文章年龄，超出催化窗口会标注 |
-| **催化股票** | 以 A 股为主，聚合 30 天内相关文章、相关度与综合催化分，按分数降序 |
+| **趋势视图** | 默认 **本批**（`latest_batch=true`）；可切换 **全部历史**（`latest_batch=false`）。卡片 footer 显示文章年龄，超出催化窗口会标注 |
+| **催化股票** | 以 A 股为主，**打分窗口** 默认 30 天（`ALPHA_RADAR_CATALYST_MAX_AGE_DAYS`）；仅影响聚合与排序，**不删库** |
+| **RSS 原文** | 展示 `alpha_radar_documents` 入库记录（标题、摘要、状态、时间、外链） |
 
 ## 催化打分
 
-- **有效期**：`COALESCE(published_at, fetched_at)`，默认 **30 天**（`ALPHA_RADAR_CATALYST_MAX_AGE_DAYS`）
+- **展示窗口**：`COALESCE(published_at, fetched_at)`，默认 **30 天**（`ALPHA_RADAR_CATALYST_MAX_AGE_DAYS`）
 - **单篇贡献**：`confidence × urgency_weight × recency_decay`（半衰期 14 天）
 - **综合分（0–100）**：`0.55×primary + 0.30×min(secondary, 2×primary) + 0.15×breadth`，非线性，避免「篇数越多分越高」
 - 同一 `(symbol, document_id)` 去重，保留最高贡献
@@ -59,8 +70,11 @@ RSS (7 feeds) → Filter (regex) → RSS summary (optional Jina) → Batch LLM �
 
 ## API
 
-- `GET /api/alpha-radar/status` — 上次运行、ingest 统计、Scheduler job 记录
+- `GET /api/alpha-radar/status` — 上次运行、本批/库内趋势数（`accumulatedTrendCount`）、ingest 统计
 - `GET /api/alpha-radar/trends?latest_batch=true` — 最新一批趋势卡片
+- `GET /api/alpha-radar/trends?latest_batch=false&limit=100` — 全部历史（分页 `offset`）
+- `GET /api/alpha-radar/trends?maxAgeDays=30` — 仅查询过滤，不删数据
+- `GET /api/alpha-radar/documents?limit=100` — RSS 入库原文列表
 - `GET /api/alpha-radar/catalyst-stocks?limit=50&maxAgeDays=30` — 催化股票排行（含文章列表）
 - `POST /api/alpha-radar/run-pipeline` — 完整流水线（`force: true` 跳过 12h 冷却）
 - `POST /api/alpha-radar/generate-daily` — 兼容别名
@@ -73,7 +87,8 @@ Dashboard **Copy all Markdown** 会追加 **Top 10 催化股票** 表格与摘�
 
 | 变量 | 说明 |
 |------|------|
-| `ALPHA_RADAR_CATALYST_MAX_AGE_DAYS` | 催化有效期（天），默认 30 |
+| `ALPHA_RADAR_CATALYST_MAX_AGE_DAYS` | 催化打分展示窗口（天），默认 30 |
+| `ALPHA_RADAR_TREND_RETENTION_DAYS` | 可选库内趋势修剪（天）；`0` = 永久，默认不删 |
 | `JINA_API_KEY` | 可选；默认 RSS 摘要即可 batch LLM |
 | `ALPHA_RADAR_ENRICH_FULLTEXT` | `0`（默认）关闭 Jina；`1` 仅 Stratechery 短摘要时尝试 |
 | `ALPHA_RADAR_FULLTEXT_MAX_PER_SOURCE` | 优先源每轮 Jina 上限，默认 2 |
@@ -87,7 +102,7 @@ Dashboard **Copy all Markdown** 会追加 **Top 10 催化股票** 表格与摘�
 ## 失败保护
 
 - **stored=0**：不删旧卡片，返回详细 sourceErrors
-- **LLM=0 trends**：rollback 本批，保留上一批卡片
+- **LLM=0 trends**：`delete_trends_since` 回滚本批失败写入，保留历史趋势
 
 ## 定时任务
 
