@@ -461,10 +461,11 @@ function isShanghaiTradingTime(): boolean {
   const { weekday, hour, minute } = getShanghaiTimeParts();
   if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
   const minutes = hour * 60 + minute;
-  // CN A-share: 09:30-11:30, 13:00-15:00
+  // CN A-share: 09:30-11:30, 13:00-15:00; lunch break still uses morning session quotes.
   const inMorning = minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30;
   const inAfternoon = minutes >= 13 * 60 && minutes <= 15 * 60;
-  return inMorning || inAfternoon;
+  const inLunch = minutes > 11 * 60 + 30 && minutes < 13 * 60;
+  return inMorning || inAfternoon || inLunch;
 }
 
 /** Trading hours + lunch + after-hours until 20:00 (matches data-sync-service). */
