@@ -4,7 +4,10 @@ import {
   buildScreenerMarkdownRows,
   countMissingScores,
   extractSymbolsFromSnapshotRows,
+  fetchTodayScreenerSymbolsByTitle,
   isHotspotTop3Industry,
+  isTodayShanghai,
+  matchesScreenerTitlePattern,
   normalizeScreenerSymbol,
   screenerMarkdownRowsToTable,
 } from './screenerExport';
@@ -98,5 +101,60 @@ describe('screenerMarkdownRowsToTable', () => {
     ]);
     expect(table[0]?.[6]).toBe('94');
     expect(table[0]?.[7]).toBe('+3.2%');
+  });
+});
+
+describe('matchesScreenerTitlePattern', () => {
+  it('matches Falcon Launch and Institutional Trend titles case-insensitively', () => {
+    expect(matchesScreenerTitlePattern('Falcon Launch Filter')).toBe(true);
+    expect(matchesScreenerTitlePattern('institutional trend screener')).toBe(true);
+    expect(matchesScreenerTitlePattern('Black Horse Filter')).toBe(false);
+  });
+});
+
+describe('isTodayShanghai', () => {
+  it('compares capturedAt against Shanghai local date', () => {
+    expect(isTodayShanghai('2026-06-15T02:00:00+00:00', '2026-06-15')).toBe(true);
+    expect(isTodayShanghai('2026-06-14T15:00:00+00:00', '2026-06-15')).toBe(false);
+  });
+});
+
+describe('fetchTodayScreenerSymbolsByTitle', () => {
+  it('returns symbols only for today snapshots with matching titles', async () => {
+    const symbols = await fetchTodayScreenerSymbolsByTitle([{ id: 'falcon' }, { id: 'other' }], {
+      todayIso: '2026-06-15',
+      apiGetJson: async (path) => {
+        if (path.includes('/snapshots?limit=1')) {
+          const sid = path.split('/screeners/')[1]?.split('/')[0];
+          return { items: [{ id: `snap-${sid}`, capturedAt: '2026-06-15T08:00:00+00:00' }] };
+        }
+        if (path.includes('/snapshots/snap-falcon')) {
+          return {
+            id: 'snap-falcon',
+            screenerId: 'falcon',
+            capturedAt: '2026-06-15T08:00:00+00:00',
+            rowCount: 1,
+            screenTitle: 'Falcon Launch',
+            filters: [],
+            url: 'https://example.com',
+            headers: ['Ticker', 'Name'],
+            rows: [{ Ticker: '300308', Name: '中际旭创' }],
+          };
+        }
+        return {
+          id: 'snap-other',
+          screenerId: 'other',
+          capturedAt: '2026-06-15T08:00:00+00:00',
+          rowCount: 1,
+          screenTitle: 'Other Filter',
+          filters: [],
+          url: 'https://example.com',
+          headers: ['Ticker', 'Name'],
+          rows: [{ Ticker: '600519', Name: '贵州茅台' }],
+        };
+      },
+    });
+
+    expect([...symbols]).toEqual(['CN:300308']);
   });
 });

@@ -57,6 +57,126 @@ export const SCREENER_MARKDOWN_HEADERS = [
   'Flags',
 ] as const;
 
+export const SCREENER_TITLE_PATTERNS = ['falcon launch', 'institutional trend'] as const;
+
+export function getShanghaiTodayIso(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const map = new Map(parts.map((p) => [p.type, p.value]));
+  const y = map.get('year') ?? '1970';
+  const m = map.get('month') ?? '01';
+  const d = map.get('day') ?? '01';
+  return `${y}-${m}-${d}`;
+}
+
+export function shanghaiDateFromIso(iso: string): string | null {
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(dt);
+  const map = new Map(parts.map((p) => [p.type, p.value]));
+  const y = map.get('year');
+  const m = map.get('month');
+  const d = map.get('day');
+  if (!y || !m || !d) return null;
+  return `${y}-${m}-${d}`;
+}
+
+export function isTodayShanghai(iso: string, todayIso = getShanghaiTodayIso()): boolean {
+  const localDate = shanghaiDateFromIso(iso);
+  return localDate != null && localDate === todayIso;
+}
+
+export function matchesScreenerTitlePattern(
+  screenTitle: string | null | undefined,
+  patterns: readonly string[] = SCREENER_TITLE_PATTERNS,
+): boolean {
+  const title = String(screenTitle ?? '').trim().toLowerCase();
+  if (!title) return false;
+  return patterns.some((pattern) => title.includes(pattern.toLowerCase()));
+}
+
+type ScreenerSummaryRow = { id?: string; name?: string };
+
+type ScreenerSnapshotListItem = { id: string; capturedAt?: string; rowCount?: number };
+
+type ScreenerSnapshotDetail = {
+  id: string;
+  screenerId: string;
+  capturedAt: string;
+  rowCount: number;
+  screenTitle: string | null;
+  filters: string[];
+  url: string;
+  headers: string[];
+  rows: Array<Record<string, string>>;
+};
+
+export async function fetchTodayScreenerSymbolsByTitle(
+  screeners: ScreenerSummaryRow[],
+  options?: {
+    patterns?: readonly string[];
+    todayIso?: string;
+    apiGetJson?: <T>(path: string) => Promise<T>;
+  },
+): Promise<Set<string>> {
+  const patterns = options?.patterns ?? SCREENER_TITLE_PATTERNS;
+  const todayIso = options?.todayIso ?? getShanghaiTodayIso();
+  const apiGetJson =
+    options?.apiGetJson ??
+    (async <T,>(path: string): Promise<T> => {
+      const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
+      const txt = await res.text().catch(() => '');
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+      return txt ? (JSON.parse(txt) as T) : ({} as T);
+    });
+
+  const out = new Set<string>();
+  const rows = Array.isArray(screeners) ? screeners : [];
+  const screenerIds = rows
+    .map((sc) => String(sc?.id ?? '').trim())
+    .filter((sid) => sid);
+
+  const results = await Promise.all(
+    screenerIds.map(async (sid) => {
+      try {
+        const list = await apiGetJson<{ items: ScreenerSnapshotListItem[] }>(
+          `/integrations/tradingview/screeners/${encodeURIComponent(sid)}/snapshots?limit=1`,
+        );
+        const snapId = String(list?.items?.[0]?.id ?? '').trim();
+        if (!snapId) return null;
+        const snap = await apiGetJson<ScreenerSnapshotDetail>(
+          `/integrations/tradingview/snapshots/${encodeURIComponent(snapId)}`,
+        );
+        return snap;
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  for (const snap of results) {
+    if (!snap) continue;
+    if (!isTodayShanghai(String(snap.capturedAt ?? ''), todayIso)) continue;
+    if (!matchesScreenerTitlePattern(snap.screenTitle, patterns)) continue;
+    const headers = Array.isArray(snap.headers) ? snap.headers.map((h) => String(h ?? '')) : [];
+    const rowsTv = Array.isArray(snap.rows) ? snap.rows : [];
+    for (const sym of extractSymbolsFromSnapshotRows(rowsTv, headers)) {
+      out.add(sym);
+    }
+  }
+
+  return out;
+}
+
 function chunk<T>(arr: T[], n: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));

@@ -56,7 +56,25 @@ export type CatalystStocksResponse = {
   items: CatalystStock[];
 };
 
+export type CatalystTrendOkSnapshot = {
+  symbol: string;
+  trendOk?: boolean | null;
+  score?: number | null;
+};
+
+export type CatalystCopyContext = {
+  watchlistSymbols: Set<string>;
+  watchlistScores: Map<string, number>;
+  screenerTrendOkSymbols: Set<string>;
+  trendMap: Map<string, CatalystTrendOkSnapshot>;
+};
+
 export const DEFAULT_CATALYST_MAX_AGE_DAYS = 30;
+export const CATALYST_NEWS_MAX_HOURS = 72;
+export const CATALYST_NEWS_MAX_ITEMS = 3;
+export const WATCHLIST_CATALYST_SCORE_THRESHOLD = 80;
+
+const GRADE_RANK: Record<string, number> = { S: 4, A: 3, B: 2, C: 1 };
 
 export function formatCatalystScore(score: number): string {
   return Number.isFinite(score) ? score.toFixed(1) : '—';
@@ -69,6 +87,102 @@ export function formatRelevancePct(relevance: number): string {
 export function displaySymbol(symbol: string): string {
   const text = String(symbol || '').trim();
   return text.startsWith('CN:') ? text.slice(3) : text;
+}
+
+export function normalizeCatalystSymbol(symbol: string): string {
+  const text = String(symbol || '').trim().toUpperCase();
+  if (!text) return '';
+  if (text.startsWith('CN:') || text.startsWith('HK:')) return text;
+  if (/^\d{6}$/.test(text)) return `CN:${text}`;
+  if (/^\d{4,5}$/.test(text)) return `HK:${text.padStart(4, '0')}`;
+  return text;
+}
+
+export function maxGradeArticle(
+  articles: CatalystArticle[],
+): { grade: string; theme: string } | null {
+  if (!articles.length) return null;
+  let best: CatalystArticle | null = null;
+  let bestRank = -1;
+  for (const article of articles) {
+    const grade = trendCatalystGrade(article);
+    const rank = GRADE_RANK[grade.toUpperCase()] ?? 0;
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = article;
+    }
+  }
+  if (!best) return null;
+  return { grade: trendCatalystGrade(best), theme: trendMacroTheme(best) };
+}
+
+export function formatCatalystStockSummaryLine(stock: CatalystStock): string {
+  const sym = normalizeCatalystSymbol(stock.symbol);
+  const maxGrade = maxGradeArticle(stock.articles);
+  const gradePart = maxGrade ? `Max Grade: ${maxGrade.grade} (${maxGrade.theme})` : 'Max Grade: —';
+  return `${sym} ${stock.name} | Score: ${formatCatalystScore(stock.catalystScore)} | ${gradePart}`;
+}
+
+export function articleAgeHours(publishedAt?: string | null, now = Date.now()): number | null {
+  const eventAt = parseEventDate(publishedAt);
+  if (!eventAt) return null;
+  return Math.max(0, (now - eventAt.getTime()) / 3_600_000);
+}
+
+export function filterRecentArticles(
+  articles: CatalystArticle[],
+  maxHours = CATALYST_NEWS_MAX_HOURS,
+  limit = CATALYST_NEWS_MAX_ITEMS,
+  now = Date.now(),
+): CatalystArticle[] {
+  const recent = articles.filter((article) => {
+    const ageHours = articleAgeHours(article.publishedAt, now);
+    return ageHours != null && ageHours <= maxHours;
+  });
+  recent.sort((a, b) => floatOrZero(b.contribution) - floatOrZero(a.contribution));
+  return recent.slice(0, Math.max(0, limit));
+}
+
+function floatOrZero(value: number | undefined | null): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+export function formatCatalystNewsLine(article: CatalystArticle): string {
+  const grade = trendCatalystGrade(article);
+  const theme = trendMacroTheme(article);
+  const body =
+    (article.catalyst && String(article.catalyst).trim()) ||
+    (article.summary && String(article.summary).trim()) ||
+    (article.documentTitle && String(article.documentTitle).trim()) ||
+    '—';
+  return `- ${grade} · ${theme} · ${body}`;
+}
+
+export function isTechnicallyBroken(trend: CatalystTrendOkSnapshot | undefined | null): boolean {
+  return trend?.trendOk === false;
+}
+
+export function isCatalystEligible(
+  symbol: string,
+  ctx: CatalystCopyContext,
+): boolean {
+  const sym = normalizeCatalystSymbol(symbol);
+  if (ctx.watchlistSymbols.has(sym)) {
+    const score = ctx.watchlistScores.get(sym);
+    if (typeof score === 'number' && Number.isFinite(score) && score > WATCHLIST_CATALYST_SCORE_THRESHOLD) {
+      return true;
+    }
+  }
+  if (ctx.screenerTrendOkSymbols.has(sym)) return true;
+  return false;
+}
+
+export function shouldShowCatalystNews(symbol: string, ctx: CatalystCopyContext): boolean {
+  const sym = normalizeCatalystSymbol(symbol);
+  if (!isCatalystEligible(sym, ctx)) return false;
+  const trend = ctx.trendMap.get(sym);
+  if (isTechnicallyBroken(trend)) return false;
+  return true;
 }
 
 export function parseEventDate(iso: string | null | undefined): Date | null {
@@ -133,10 +247,11 @@ function formatCnSymbols(
 
 export function buildAlphaRadarTrendsMarkdown(
   trends: AlphaRadarTrendExport[],
-  opts?: { headingLevel?: '##' | '###'; limit?: number },
+  opts?: { headingLevel?: '##' | '###'; limit?: number; mode?: 'full' | 'compact' },
 ): string {
   const heading = opts?.headingLevel ?? '##';
   const limit = opts?.limit ?? trends.length;
+  const mode = opts?.mode ?? 'full';
   const rows = trends.slice(0, Math.max(0, limit));
   const lines: string[] = [];
   lines.push(`${heading} Alpha Radar · Structured Trends`);
@@ -158,6 +273,10 @@ export function buildAlphaRadarTrendsMarkdown(
     );
   }
   lines.push('');
+
+  if (mode === 'compact') {
+    return lines.join('\n').trim() + '\n';
+  }
 
   for (const trend of rows) {
     const theme = trendMacroTheme(trend);
@@ -188,19 +307,45 @@ export function buildAlphaRadarTrendsMarkdown(
 
 export function buildCatalystStocksMarkdown(
   resp: CatalystStocksResponse,
-  opts?: { headingLevel?: '##' | '###'; includeDetails?: boolean },
+  opts?: {
+    headingLevel?: '##' | '###';
+    includeDetails?: boolean;
+    mode?: 'full' | 'compact';
+    context?: CatalystCopyContext;
+    now?: number;
+  },
 ): string {
   const heading = opts?.headingLevel ?? '##';
-  const includeDetails = opts?.includeDetails ?? true;
+  const mode = opts?.mode ?? 'full';
+  const includeDetails = opts?.includeDetails ?? mode === 'full';
+  const now = opts?.now ?? Date.now();
   const lines: string[] = [];
   lines.push(`${heading} Alpha Radar · Top Catalyst Stocks`);
   lines.push(`- maxAgeDays: ${resp.maxAgeDays}`);
-  lines.push(`- stalenessBasis: ${resp.stalenessBasis}`);
+  if (mode === 'full') lines.push(`- stalenessBasis: ${resp.stalenessBasis}`);
   lines.push(`- total: ${resp.total}`);
   lines.push('');
 
   if (!resp.items.length) {
     lines.push('No catalyst stocks in the current window.');
+    return lines.join('\n').trim() + '\n';
+  }
+
+  if (mode === 'compact') {
+    for (const row of resp.items) {
+      lines.push(formatCatalystStockSummaryLine(row));
+      const ctx = opts?.context;
+      if (ctx && shouldShowCatalystNews(row.symbol, ctx)) {
+        const recent = filterRecentArticles(row.articles, CATALYST_NEWS_MAX_HOURS, CATALYST_NEWS_MAX_ITEMS, now);
+        if (recent.length) {
+          lines.push('====');
+          for (const article of recent) {
+            lines.push(formatCatalystNewsLine(article));
+          }
+        }
+      }
+      lines.push('');
+    }
     return lines.join('\n').trim() + '\n';
   }
 

@@ -18,6 +18,9 @@ import {
   DEFAULT_CATALYST_MAX_AGE_DAYS,
   fetchAlphaRadarTrends,
   fetchCatalystStocks,
+  normalizeCatalystSymbol,
+  type CatalystCopyContext,
+  type CatalystStocksResponse,
 } from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
 import { loadJson } from '@/lib/storage';
@@ -31,6 +34,7 @@ import {
   buildScreenerMarkdownRows,
   countMissingScores,
   extractSymbolsFromSnapshotRows,
+  fetchTodayScreenerSymbolsByTitle,
   fetchTrendOkMap,
   screenerMarkdownRowsToTable,
 } from '@/lib/screenerExport';
@@ -1434,6 +1438,77 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     return lines.join('\n').trim() + '\n';
   }
 
+  function loadWatchlistSymbols(): Set<string> {
+    const itemsRaw = loadJson<WatchlistItem[]>(WATCHLIST_STORAGE_KEY, []);
+    const items = (Array.isArray(itemsRaw) ? itemsRaw : [])
+      .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
+      .map((x) => String(x.symbol).trim().toUpperCase());
+    return new Set(items);
+  }
+
+  async function buildAlphaRadarCopyContext(
+    s: DashboardSummary,
+    catalystResp: CatalystStocksResponse,
+  ): Promise<CatalystCopyContext> {
+    const watchlistSymbols = loadWatchlistSymbols();
+    const screeners: any[] = Array.isArray((s as any)?.screeners) ? (s as any).screeners : [];
+    const todayScreenerSymbols = await fetchTodayScreenerSymbolsByTitle(screeners, {
+      apiGetJson,
+    });
+
+    const catalystSymbols = catalystResp.items.map((row) => normalizeCatalystSymbol(row.symbol));
+    const allSymbols = [
+      ...new Set<string>([...watchlistSymbols, ...todayScreenerSymbols, ...catalystSymbols]),
+    ];
+
+    const trendMapRaw = await fetchTrendOkMap(allSymbols, {
+      realtime: isShanghaiTradingTime(),
+    });
+
+    const trendMap: CatalystCopyContext['trendMap'] = new Map();
+    for (const [sym, trend] of trendMapRaw) {
+      trendMap.set(sym, {
+        symbol: sym,
+        trendOk: trend.trendOk,
+        score: trend.score ?? null,
+      });
+    }
+
+    const watchlistScores = new Map<string, number>();
+    for (const sym of watchlistSymbols) {
+      const score = trendMap.get(sym)?.score;
+      if (typeof score === 'number' && Number.isFinite(score)) {
+        watchlistScores.set(sym, score);
+      }
+    }
+
+    const screenerTrendOkSymbols = new Set<string>();
+    for (const sym of todayScreenerSymbols) {
+      if (trendMap.get(sym)?.trendOk === true) screenerTrendOkSymbols.add(sym);
+    }
+
+    return {
+      watchlistSymbols,
+      watchlistScores,
+      screenerTrendOkSymbols,
+      trendMap,
+    };
+  }
+
+  async function buildCompactCatalystMarkdown(s: DashboardSummary): Promise<string> {
+    try {
+      const resp = await fetchCatalystStocks(DATA_SYNC_BASE_URL, 10, DEFAULT_CATALYST_MAX_AGE_DAYS);
+      const ctx = await buildAlphaRadarCopyContext(s, resp);
+      return buildCatalystStocksMarkdown(resp, {
+        headingLevel: '##',
+        mode: 'compact',
+        context: ctx,
+      });
+    } catch {
+      return '## Alpha Radar · Top Catalyst Stocks\n\n- Alpha Radar: unavailable\n';
+    }
+  }
+
   async function buildDashboardCopyAllMarkdown(): Promise<string> {
     const s = summary;
     if (!s) {
@@ -1443,11 +1518,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd] = await Promise.all([
       buildScreenersMarkdown(s, '##'),
       buildWatchlistMarkdown(),
-      fetchCatalystStocks(DATA_SYNC_BASE_URL, 10, DEFAULT_CATALYST_MAX_AGE_DAYS)
-        .then((resp) => buildCatalystStocksMarkdown(resp, { headingLevel: '##' }))
-        .catch(() => '## Alpha Radar · Top Catalyst Stocks\n\n- Alpha Radar: unavailable\n'),
+      buildCompactCatalystMarkdown(s),
       fetchAlphaRadarTrends(DATA_SYNC_BASE_URL, 20, true)
-        .then((items) => buildAlphaRadarTrendsMarkdown(items, { headingLevel: '##' }))
+        .then((items) =>
+          buildAlphaRadarTrendsMarkdown(items, { headingLevel: '##', mode: 'compact' }),
+        )
         .catch(() => '## Alpha Radar · Structured Trends\n\n- Alpha Radar trends: unavailable\n'),
     ]);
     const lines: string[] = [];
