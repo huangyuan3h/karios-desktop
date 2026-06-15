@@ -1039,6 +1039,13 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     if (latest) {
       const risk = String(latest?.riskMode ?? '');
       if (risk) lines.push(`- risk: ${risk}`);
+      const up = Number(latest?.upCount ?? 0);
+      const down = Number(latest?.downCount ?? 0);
+      if (up > 0 || down > 0) {
+        lines.push(
+          `- Market Breadth: ${up.toLocaleString()} Up / ${down.toLocaleString()} Down`,
+        );
+      }
       const total = fmtAmountCn(latest?.marketTurnoverCny);
       if (total && total !== '—') lines.push(`- totalTurnover: ${total}`);
       const rules = Array.isArray(latest?.rules)
@@ -1075,9 +1082,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     }
 
     const last5 = (items || []).slice(-5);
-    const headers = ['date', 'ratio', 'turnover', 'premium%', 'failed%', 'risk'];
+    const headers = ['date', 'up', 'down', 'flat', 'ratio', 'turnover', 'premium%', 'failed%', 'risk'];
     const rows: unknown[][] = last5.map((it: any) => [
       String(it?.date ?? ''),
+      Number(it?.upCount ?? 0).toLocaleString(),
+      Number(it?.downCount ?? 0).toLocaleString(),
+      Number(it?.flatCount ?? 0).toLocaleString(),
       Number.isFinite(it?.upDownRatio) ? Number(it.upDownRatio).toFixed(2) : '—',
       fmtAmountCn(it?.marketTurnoverCny),
       Number.isFinite(it?.yesterdayLimitUpPremium)
