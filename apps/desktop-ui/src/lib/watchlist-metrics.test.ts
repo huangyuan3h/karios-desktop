@@ -119,6 +119,21 @@ describe('resolveWatchlistCurrentPrice', () => {
   });
 });
 
+describe('resolveIntradayChgPct', () => {
+  it('uses closing quote when trend bar is stale', () => {
+    expect(
+      resolveIntradayChgPct({
+        fromTrend: -1.2,
+        quotePrice: 10.5,
+        quotePreClose: 10.0,
+        quotePctChg: 5.0,
+        quoteTradeDate: '2026-05-28',
+        asOfDate: '2026-05-27',
+      }),
+    ).toBe(5.0);
+  });
+});
+
 describe('shouldRequireRealtimeQuote', () => {
   it('is false outside session and true for CN symbols during session', () => {
     expect(

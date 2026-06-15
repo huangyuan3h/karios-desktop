@@ -123,28 +123,39 @@ export function resolveIntradayChgPct(opts: {
   quoteTradeDate?: string | null;
   asOfDate?: string | null;
 }): number | null {
+  const asOf = String(opts.asOfDate ?? '').trim();
+  const qDate = opts.quoteTradeDate ?? null;
+
+  const pctFromQuote = (): number | null => {
+    const pct = opts.quotePctChg;
+    if (typeof pct === 'number' && Number.isFinite(pct)) return pct;
+    const price = opts.quotePrice;
+    const preClose = opts.quotePreClose;
+    if (
+      typeof price === 'number' &&
+      Number.isFinite(price) &&
+      typeof preClose === 'number' &&
+      Number.isFinite(preClose) &&
+      preClose > 0
+    ) {
+      return ((price - preClose) / preClose) * 100;
+    }
+    return null;
+  };
+
+  // Trend bar stale but closing quote is for today (typical 15:00–17:10 gap).
+  if (qDate && asOf && qDate !== asOf) {
+    const fromQuote = pctFromQuote();
+    if (fromQuote != null) return fromQuote;
+  }
+
   if (typeof opts.fromTrend === 'number' && Number.isFinite(opts.fromTrend)) {
     return opts.fromTrend;
   }
-  const asOf = String(opts.asOfDate ?? '').trim();
-  const qDate = opts.quoteTradeDate ?? null;
+
   if (!asOf || !qDate || qDate !== asOf) return null;
 
-  const pct = opts.quotePctChg;
-  if (typeof pct === 'number' && Number.isFinite(pct)) return pct;
-
-  const price = opts.quotePrice;
-  const preClose = opts.quotePreClose;
-  if (
-    typeof price === 'number' &&
-    Number.isFinite(price) &&
-    typeof preClose === 'number' &&
-    Number.isFinite(preClose) &&
-    preClose > 0
-  ) {
-    return ((price - preClose) / preClose) * 100;
-  }
-  return null;
+  return pctFromQuote();
 }
 
 export function resolveWatchlistVwap(opts: {

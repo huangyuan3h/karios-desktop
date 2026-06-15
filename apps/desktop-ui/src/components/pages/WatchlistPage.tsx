@@ -1720,7 +1720,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         });
         const pnl = computePnLPct(it.costPrice ?? null, rowMetrics.current);
         const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
-        const asOf = tradingTime && qDate ? qDate : String(t?.asOfDate ?? '');
+        const asOf = qDate === todaySh ? qDate : String(t?.asOfDate ?? '');
         const values = (t?.values ?? {}) as Record<string, unknown>;
         const intradayCell = isIntradaySurge(rowMetrics.intradayChgPct)
           ? `⚠️ ${formatIntradayChgPct(rowMetrics.intradayChgPct)}`

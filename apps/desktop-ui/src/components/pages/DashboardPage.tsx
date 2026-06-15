@@ -498,6 +498,7 @@ async function fetchWatchlistRiskRows(): Promise<WatchlistRiskRow[]> {
   if (!items.length) return [];
 
   const tradingTime = isShanghaiTradingTime();
+  const quoteWindow = isShanghaiSyncWindow();
   const todaySh = getShanghaiTodayIso();
   const syms = items.map((x) => x.symbol);
   const byTsCode = new Map<string, string>();
@@ -514,7 +515,7 @@ async function fetchWatchlistRiskRows(): Promise<WatchlistRiskRow[]> {
       chunk(syms, 200).map(async (part) => {
         const sp = new URLSearchParams();
         sp.set('refresh', 'true');
-        sp.set('realtime', tradingTime ? 'true' : 'false');
+        sp.set('realtime', quoteWindow ? 'true' : 'false');
         for (const s of part) sp.append('symbols', s);
         return apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
       }),
@@ -1241,6 +1242,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
     const syms = items.map((x) => x.symbol);
     const tradingTime = isShanghaiTradingTime();
+    const quoteWindow = isShanghaiSyncWindow();
     const todaySh = getShanghaiTodayIso();
 
     const symsChunks = chunk(syms, 200);
@@ -1260,7 +1262,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         symsChunks.map(async (part) => {
           const sp = new URLSearchParams();
           sp.set('refresh', 'true');
-          sp.set('realtime', tradingTime ? 'true' : 'false');
+          sp.set('realtime', quoteWindow ? 'true' : 'false');
           for (const s of part) sp.append('symbols', s);
           return apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
         }),
@@ -1363,6 +1365,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     lines.push(`- items: ${sorted.length}`);
     lines.push(`- shanghaiToday: ${todaySh}`);
     lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
+    lines.push(`- quoteWindow: ${quoteWindow ? 'true' : 'false'}`);
     lines.push('');
 
     lines.push(`${heading}# TrendOK rules`);
@@ -1386,10 +1389,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         todaySh,
       });
       const pnl = computePnLPct(it.costPrice ?? null, rowMetrics.current);
-      const asOf =
-        tradingTime && tradeDateFromTradeTime(q?.tradeTime ?? null)
-          ? tradeDateFromTradeTime(q?.tradeTime ?? null)
-          : String(t?.asOfDate ?? '');
+      const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
+      const asOf = qDate === todaySh ? qDate : String(t?.asOfDate ?? '');
       const buy =
         t?.buyAction && t?.buyMode
           ? `${String(t.buyMode)}/${String(t.buyAction)}`
