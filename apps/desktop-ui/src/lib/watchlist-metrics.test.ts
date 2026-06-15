@@ -46,6 +46,7 @@ describe('computeVwap', () => {
 
 describe('resolveWatchlistCurrentPrice', () => {
   const today = '2026-05-28';
+  const yesterday = '2026-05-27';
 
   it('uses realtime quote during CN session when trend is for today', () => {
     expect(
@@ -61,7 +62,21 @@ describe('resolveWatchlistCurrentPrice', () => {
     ).toBe(10.5);
   });
 
-  it('prefers daily close after hours even if stale quote remains in state', () => {
+  it('uses realtime quote during CN session even when trend bar is stale', () => {
+    expect(
+      resolveWatchlistCurrentPrice({
+        tradingTime: true,
+        todaySh: today,
+        symbol: 'CN:600000',
+        trendAsOfDate: yesterday,
+        quotePrice: 10.5,
+        quoteTradeTime: `${today} 14:30:00`,
+        trendClose: 10.0,
+      }),
+    ).toBe(10.5);
+  });
+
+  it('prefers daily close after hours when trend bar is for today', () => {
     expect(
       resolveWatchlistCurrentPrice({
         tradingTime: false,
@@ -73,6 +88,20 @@ describe('resolveWatchlistCurrentPrice', () => {
         trendClose: 10.8,
       }),
     ).toBe(10.8);
+  });
+
+  it('uses closing quote after hours when daily bar is still stale', () => {
+    expect(
+      resolveWatchlistCurrentPrice({
+        tradingTime: false,
+        todaySh: today,
+        symbol: 'CN:600000',
+        trendAsOfDate: yesterday,
+        quotePrice: 10.2,
+        quoteTradeTime: `${today} 15:00:00`,
+        trendClose: 10.0,
+      }),
+    ).toBe(10.2);
   });
 
   it('falls back to close when realtime quote is missing during session', () => {
@@ -91,7 +120,7 @@ describe('resolveWatchlistCurrentPrice', () => {
 });
 
 describe('shouldRequireRealtimeQuote', () => {
-  it('is false outside session and when trend bar is not today', () => {
+  it('is false outside session and true for CN symbols during session', () => {
     expect(
       shouldRequireRealtimeQuote({
         tradingTime: false,
@@ -105,6 +134,14 @@ describe('shouldRequireRealtimeQuote', () => {
         tradingTime: true,
         symbol: 'CN:600000',
         trendAsOfDate: '2026-05-27',
+        todaySh: '2026-05-28',
+      }),
+    ).toBe(true);
+    expect(
+      shouldRequireRealtimeQuote({
+        tradingTime: true,
+        symbol: 'HK:0700',
+        trendAsOfDate: '2026-05-28',
         todaySh: '2026-05-28',
       }),
     ).toBe(false);

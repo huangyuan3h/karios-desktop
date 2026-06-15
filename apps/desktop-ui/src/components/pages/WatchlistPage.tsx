@@ -426,6 +426,15 @@ function isShanghaiTradingTime(): boolean {
   return inMorning || inAfternoon || inLunch;
 }
 
+/** Trading hours + after-hours until 20:00 (matches data-sync-service sync window). */
+function isShanghaiQuoteWindow(): boolean {
+  const { weekday, hour, minute } = getShanghaiTimeParts();
+  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
+  const minutes = hour * 60 + minute;
+  if (isShanghaiTradingTime()) return true;
+  return minutes > 15 * 60 && minutes <= 20 * 60;
+}
+
 type WatchlistQuote = {
   price: number | null;
   tsCode: string;
@@ -442,13 +451,14 @@ async function fetchFreshWatchlistSnapshot(symbols: string[]): Promise<{
 }> {
   const syms = symbols.filter(Boolean);
   const tradingTime = isShanghaiTradingTime();
+  const quoteWindow = isShanghaiQuoteWindow();
   const trend: Record<string, TrendOkResult> = {};
   const quotes: Record<string, WatchlistQuote> = {};
   if (!syms.length) return { trend, quotes };
 
   const sp = new URLSearchParams();
   sp.set('refresh', 'true');
-  sp.set('realtime', tradingTime ? 'true' : 'false');
+  sp.set('realtime', quoteWindow ? 'true' : 'false');
   for (const s of syms) sp.append('symbols', s);
 
   const byTsCode = new Map<string, string>();
@@ -805,7 +815,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         // Always request a best-effort refresh so Watchlist is based on the latest daily bar.
         // The backend will fall back to cache if upstream is blocked.
         sp.set('refresh', 'true');
-        sp.set('realtime', isShanghaiTradingTime() ? 'true' : 'false');
+        sp.set('realtime', isShanghaiQuoteWindow() ? 'true' : 'false');
         for (const s of syms) sp.append('symbols', s);
         const rows = await apiGetJsonFrom<TrendOkResult[]>(
           DATA_SYNC_BASE_URL,
@@ -1065,7 +1075,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       for (const part of chunk(filtered, 200)) {
         const sp = new URLSearchParams();
         sp.set('refresh', 'true');
-        sp.set('realtime', isShanghaiTradingTime() ? 'true' : 'false');
+        sp.set('realtime', isShanghaiQuoteWindow() ? 'true' : 'false');
         for (const s2 of part) sp.append('symbols', s2);
         const rows = await apiGetJsonFrom<TrendOkResult[]>(
           DATA_SYNC_BASE_URL,

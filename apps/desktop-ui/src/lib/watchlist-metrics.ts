@@ -158,20 +158,14 @@ export function resolveWatchlistVwap(opts: {
 }): number | null {
   const asOf = String(opts.trendAsOfDate ?? '').trim();
   const qDate = tradeDateFromTradeTime(opts.quoteTradeTime ?? null);
+  const isCn = opts.symbol.toUpperCase().startsWith('CN:');
 
-  if (opts.symbol.toUpperCase().startsWith('CN:') && asOf && qDate === asOf) {
+  if (isCn && asOf && qDate === asOf) {
     const vwap = computeVwap(opts.quoteAmount ?? null, opts.quoteVolume ?? null, 'realtime');
     if (vwap != null) return vwap;
   }
 
-  if (
-    shouldRequireRealtimeQuote({
-      tradingTime: opts.tradingTime,
-      symbol: opts.symbol,
-      trendAsOfDate: opts.trendAsOfDate,
-      todaySh: opts.todaySh,
-    })
-  ) {
+  if (isCn && qDate === opts.todaySh && (opts.tradingTime || asOf !== opts.todaySh)) {
     return computeVwap(opts.quoteAmount ?? null, opts.quoteVolume ?? null, 'realtime');
   }
 
@@ -316,22 +310,23 @@ export function tradeDateFromTradeTime(tradeTime: string | null | undefined): st
   return null;
 }
 
-/** CN A-share realtime quote is required only when session is open and trend bar is for today. */
+/** CN A-share realtime quote is required during the session for display and risk metrics. */
 export function shouldRequireRealtimeQuote(opts: {
   tradingTime: boolean;
   symbol: string;
   trendAsOfDate: string | null | undefined;
   todaySh: string;
 }): boolean {
+  void opts.trendAsOfDate;
+  void opts.todaySh;
   if (!opts.tradingTime) return false;
-  if (!opts.symbol.toUpperCase().startsWith('CN:')) return false;
-  const trendDate = String(opts.trendAsOfDate ?? '').trim();
-  return trendDate === opts.todaySh;
+  return opts.symbol.toUpperCase().startsWith('CN:');
 }
 
 /**
  * Pick the best "current" price for watchlist display / markdown export.
- * Prefer today's realtime quote during an active CN session; otherwise use latest daily close.
+ * Prefer today's realtime quote during session; after close prefer synced daily bar,
+ * but fall back to today's closing quote while daily sync is still pending.
  */
 export function resolveWatchlistCurrentPrice(opts: {
   tradingTime: boolean;
@@ -347,25 +342,23 @@ export function resolveWatchlistCurrentPrice(opts: {
   const qPrice =
     typeof opts.quotePrice === 'number' && Number.isFinite(opts.quotePrice) ? opts.quotePrice : null;
   const qDate = tradeDateFromTradeTime(opts.quoteTradeTime ?? null);
+  const trendDate = String(opts.trendAsOfDate ?? '').trim();
+  const isCn = opts.symbol.toUpperCase().startsWith('CN:');
+  const hasTodayQuote = qPrice != null && qDate === opts.todaySh;
 
-  if (
-    shouldRequireRealtimeQuote({
-      tradingTime: opts.tradingTime,
-      symbol: opts.symbol,
-      trendAsOfDate: opts.trendAsOfDate,
-      todaySh: opts.todaySh,
-    }) &&
-    qPrice != null &&
-    qDate === opts.todaySh
-  ) {
+  if (opts.tradingTime && isCn && hasTodayQuote) {
     return qPrice;
   }
 
-  if (close != null) return close;
+  if (trendDate === opts.todaySh && close != null) {
+    return close;
+  }
 
-  if (qPrice != null && qDate === opts.todaySh) return qPrice;
+  if (hasTodayQuote) {
+    return qPrice;
+  }
 
-  return qPrice ?? close;
+  return close ?? qPrice ?? null;
 }
 
 export function parseQuoteNumber(raw: string | null | undefined): number | null {
