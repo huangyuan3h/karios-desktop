@@ -159,15 +159,15 @@ function trendOkRuleLines(): string[] {
 function scoreExplainZhLines(): string[] {
   return [
     'Score 为 0～100 的确定性公式分（A 股日线、无 LLM）。先算「基础分」并限制在 0～100；若有行业资金流上下文，再累加行业调整 delta，再次限制在 0～100。',
-    '基础分 = 五项加权子分之和 + 新高奖励 − 波动扣分 − 跌破 EMA20 扣分。每项子分先把信号压到 0～1，再乘以「100 × 该项权重」。',
-    '权重：EMA 结构 25%；MACD 动能 15%；贴近/突破近 20 日高 25%；RSI(14) 15%；5 日均量/30 日均量 20%。',
-    'EMA：EMA5>EMA20 与 EMA20>EMA60 各占一半权重，两档取 0 或 1 后平均得到 0～1，再乘 25 分。',
-    'MACD：MACD 线 ≤0 时该项为 0；否则用近 4 根 MACD 柱（均为正且最后一根有最小幅度）上的递增步数得到 0～1，再按 0.5+0.5×该值映射并 clip 后乘 15 分。',
-    'Breakout：收盘价 ÷ 近 20 日最高价，从约 0.85～1.0 线性映射到 0～1（clip）后乘 25 分。',
-    'RSI：以 RSI=70 为最高分，随 |RSI−70| 增大线性衰减（按 15 点尺度 clip）后乘 15 分。',
-    'Volume：AvgVol5÷AvgVol30，从比值 1.0 起按 (比值−1)/0.30 映射并 clip 后乘 20 分。',
-    '新高奖励：收盘 ≥ 近 20 日最高价 → +3（scoreParts 中 bonus_new_high20）。',
-    '扣分：① ATR14/收盘价 >7% 起按斜率扣，单项最多约 5 分（penalty_volatility_atr）。② 收盘低于 EMA20 时按相对偏离 clip 后最多扣 10 分（penalty_below_ema20）。',
+    '基础分 = 五项加权子分之和 + EMA20 五日正斜率奖励 − Anti-Spike 剥离惩罚。每项子分先把信号压到 0～1，再乘以「100 × 该项权重」。',
+    '权重：EMA 趋势连贯 40%；MACD 动能稳定 20%；量能一致性 20%；突破平滑 10%；RSI 舒适带 10%。',
+    'EMA：EMA5>EMA20（0.4）+ EMA20>EMA60（0.4）+ EMA20 日斜率>0.1%（0.2），合计 0～1 后乘 40 分。',
+    'MACD：MACD 线 <0 时该项为 0；否则需 MACD 柱连续 2 日为正且今日柱>昨日柱，满分映射后乘 20 分。',
+    'Breakout：收盘价 ÷ 近 20 日最高价，从约 0.85～1.0 线性映射到 0～1（clip）后乘 10 分。',
+    'RSI：以 RSI=65 为最高分，随 |RSI−65| 增大线性衰减（15 点尺度 clip）后乘 10 分；RSI>80 额外加速衰减。',
+    'Volume：AvgVol5÷AvgVol30，[1.2, 2.0] 满分 20；<1.0 按比例衰减；>3.0 子分为 0。',
+    '右侧加分：EMA20 连续 5 日上升 → +5（scoreParts 中 bonus_ema20_slope_5d）。',
+    'Anti-Spike 剥离：① 日内涨幅>6% → −20（penalty_intraday_spike）。② ATR14/收盘价>5% 起按 (ratio−0.05)×1000  steep 扣分（penalty_volatility_atr）。③ 当日量/AvgVol30>3 → −15（penalty_volume_climax）。④ 收盘<EMA20 → −30（penalty_below_ema20）。',
     '行业资金流（可选）：如 5 日净流入行业 Top3 +10、当日热点 Top3 +5、Top4–5 +3；5 日弱势榜等可 −10～−20；细节以返回的 scoreParts 与 industryFlowReasons 为准。',
   ];
 }

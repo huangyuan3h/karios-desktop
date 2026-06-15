@@ -108,6 +108,167 @@ def _clip01(x: float) -> float:
     return 0.0 if x <= 0.0 else 1.0 if x >= 1.0 else x
 
 
+# V4.0 Watchlist Score weights
+_W_EMA = 0.40
+_W_MACD = 0.20
+_W_BREAK = 0.10
+_W_RSI = 0.10
+_W_VOL = 0.20
+
+
+def _score_sub_ema(ema5: float, ema20: float, ema60: float, ema20_prev: float) -> tuple[float, float]:
+    s_ema = 0.0
+    if ema5 > ema20:
+        s_ema += 0.4
+    if ema20 > ema60:
+        s_ema += 0.4
+    if ema20_prev > 0 and (ema20 - ema20_prev) / ema20_prev > 0.001:
+        s_ema += 0.2
+    return s_ema, 100.0 * _W_EMA * s_ema
+
+
+def _score_sub_macd(macd_last: float, hist: list[float]) -> tuple[float, float]:
+    s_macd = 0.0
+    if macd_last >= 0 and len(hist) >= 2:
+        h0, h1 = hist[-2], hist[-1]
+        if h0 > 0 and h1 > 0 and h1 > h0:
+            s_macd = 1.0
+    return s_macd, 100.0 * _W_MACD * s_macd
+
+
+def _score_sub_breakout(close: float, high20_high: float) -> tuple[float, float]:
+    ratio_hi = close / high20_high if high20_high > 0 else 0.0
+    s_break = _clip01((ratio_hi - 0.85) / 0.10)
+    return s_break, 100.0 * _W_BREAK * s_break
+
+
+def _score_sub_rsi(rsi14: float) -> tuple[float, float]:
+    s_rsi = _clip01(1.0 - abs(rsi14 - 65.0) / 15.0)
+    if rsi14 > 80.0:
+        s_rsi *= _clip01(1.0 - (rsi14 - 80.0) / 10.0)
+    return s_rsi, 100.0 * _W_RSI * s_rsi
+
+
+def _score_sub_volume(ratio_vol: float) -> tuple[float, float]:
+    if ratio_vol < 1.0:
+        s_vol = ratio_vol
+    elif ratio_vol < 1.2:
+        s_vol = 0.5 + 0.5 * (ratio_vol - 1.0) / 0.2
+    elif ratio_vol <= 2.0:
+        s_vol = 1.0
+    elif ratio_vol <= 3.0:
+        s_vol = 1.0 - (ratio_vol - 2.0) / 1.0
+    else:
+        s_vol = 0.0
+    s_vol = _clip01(s_vol)
+    return s_vol, 100.0 * _W_VOL * s_vol
+
+
+def _score_bonus_ema20_slope_5d(ema20s: list[float]) -> float:
+    if len(ema20s) < 6:
+        return 0.0
+    for i in range(-5, 0):
+        if ema20s[i] <= ema20s[i - 1]:
+            return 0.0
+    return 5.0
+
+
+def _score_anti_spike_penalties(
+    *,
+    close: float,
+    ema20: float,
+    intraday_chg_pct: float | None,
+    atr14: float | None,
+    vol_today: float,
+    avg_vol30: float,
+) -> tuple[float, dict[str, float]]:
+    penalty = 0.0
+    parts: dict[str, float] = {}
+
+    if intraday_chg_pct is not None and intraday_chg_pct > INTRADAY_SURGE_THRESHOLD_PCT:
+        p = 20.0
+        penalty += p
+        parts["penalty_intraday_spike"] = -round(p, 3)
+
+    if atr14 is not None and close > 0:
+        atr_ratio = float(atr14) / float(close)
+        if atr_ratio > 0.05:
+            p = (atr_ratio - 0.05) * 1000.0
+            penalty += p
+            parts["penalty_volatility_atr"] = -round(p, 3)
+
+    if avg_vol30 > 0 and vol_today / avg_vol30 > 3.0:
+        p = 15.0
+        penalty += p
+        parts["penalty_volume_climax"] = -round(p, 3)
+
+    if close < ema20:
+        p = 30.0
+        penalty += p
+        parts["penalty_below_ema20"] = -round(p, 3)
+
+    return penalty, parts
+
+
+def _compute_watchlist_score_v4(
+    *,
+    close: float,
+    ema5: float,
+    ema20: float,
+    ema60: float,
+    ema20s: list[float],
+    rsi14: float,
+    avg5: float,
+    avg30: float,
+    macd_last: float,
+    hist: list[float],
+    high20_high: float,
+    highs: list[float],
+    lows: list[float],
+    closes: list[float],
+    vols: list[float],
+    intraday_chg_pct: float | None,
+) -> tuple[float, dict[str, float]]:
+    ema20_prev = ema20s[-2] if len(ema20s) >= 2 else 0.0
+    _, pts_ema = _score_sub_ema(ema5, ema20, ema60, ema20_prev)
+    _, pts_macd = _score_sub_macd(macd_last, hist)
+    _, pts_break = _score_sub_breakout(close, high20_high)
+    _, pts_rsi = _score_sub_rsi(rsi14)
+    ratio_vol = (avg5 / avg30) if avg30 > 0 else (1.0 if avg5 > 0 else 0.0)
+    _, pts_vol = _score_sub_volume(ratio_vol)
+
+    parts: dict[str, float] = {
+        "ema": round(pts_ema, 3),
+        "macd": round(pts_macd, 3),
+        "breakout": round(pts_break, 3),
+        "rsi": round(pts_rsi, 3),
+        "volume": round(pts_vol, 3),
+    }
+
+    total = pts_ema + pts_macd + pts_break + pts_rsi + pts_vol
+
+    bonus = _score_bonus_ema20_slope_5d(ema20s)
+    if bonus > 0:
+        parts["bonus_ema20_slope_5d"] = round(bonus, 3)
+        total += bonus
+
+    atr14 = _atr14(highs, lows, closes, 14)
+    vol_today = vols[-1] if vols else 0.0
+    penalty, pen_parts = _score_anti_spike_penalties(
+        close=close,
+        ema20=ema20,
+        intraday_chg_pct=intraday_chg_pct,
+        atr14=atr14,
+        vol_today=vol_today,
+        avg_vol30=avg30,
+    )
+    parts.update(pen_parts)
+    total -= penalty
+
+    score = max(0.0, min(100.0, total))
+    return round(score, 3), parts
+
+
 def _shanghai_today_iso() -> str:
     return datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
 
@@ -672,7 +833,7 @@ def _trendok_one(
         # Volume "surge" is moved to the Score system; TrendOK only blocks volume cliffs.
         res["checks"]["volumeSurge"] = bool(avg5 > 0.9 * avg30) if avg30 > 0 else bool(avg5 > 0)
 
-    # Score (ported; see quant-service for rationale)
+    # Score V4.0: trend continuity + anti-spike penalties
     try:
         v = res["values"]
         if (
@@ -685,88 +846,36 @@ def _trendok_one(
             or v.get("avgVol5") is None
             or v.get("avgVol30") is None
             or v.get("macd") is None
-            or not v.get("macdHist4")
+            or v.get("macdHist") is None
+            or not ema20s
+            or len(hist) < 2
         ):
             res["score"] = None
         else:
             close = float(v["close"])
-            ema5 = float(v["ema5"])
-            ema20 = float(v["ema20"])
-            ema60 = float(v["ema60"])
-            rsi14 = float(v["rsi14"])
-            avg5 = float(v["avgVol5"])
-            avg30 = float(v["avgVol30"])
-            macd_last = float(v["macd"])
-            h4 = [float(x) for x in (v.get("macdHist4") or [])]
-
-            ema_pairs = 0
-            if ema5 > ema20:
-                ema_pairs += 1
-            if ema20 > ema60:
-                ema_pairs += 1
-            s_ema = float(ema_pairs) / 2.0
-
-            hpos = [max(0.0, x) for x in h4] if len(h4) == 4 else [0.0, 0.0, 0.0, 0.0]
-            inc = 0
-            if hpos[1] > hpos[0]:
-                inc += 1
-            if hpos[2] > hpos[1]:
-                inc += 1
-            if hpos[3] > hpos[2]:
-                inc += 1
-            hist_min = 0.0005 * close if close > 0 else 0.0
-            has_hist_strength = bool(hpos[3] >= hist_min and hpos[3] > 0.0)
-            s_hist = (float(inc) / 3.0) if has_hist_strength else 0.0
-            s_macd = 0.0 if macd_last <= 0.0 else _clip01(0.5 + 0.5 * s_hist)
-
             high20_high = max(highs[-20:]) if len(highs) >= 20 else float(v["high20"])
-            ratio_hi = close / high20_high if high20_high > 0 else 0.0
-            s_break = _clip01((ratio_hi - 0.85) / 0.10)
-            bonus_new_high = 3.0 if (high20_high > 0 and close >= high20_high) else 0.0
+            intraday_raw = res.get("intradayChgPct")
+            intraday_chg_pct = float(intraday_raw) if isinstance(intraday_raw, (int, float)) else None
 
-            # RSI subscore: momentum-friendly (do not penalize strong uptrends).
-            # Center at 70, linearly decays to 0 at 55/85 (then clipped).
-            s_rsi = _clip01(1.0 - (abs(rsi14 - 70.0) / 15.0))
-
-            ratio_vol = (avg5 / avg30) if avg30 > 0 else (1.0 if avg5 > 0 else 0.0)
-            s_vol = _clip01((ratio_vol - 1.0) / 0.30)
-
-            # Weights: emphasize breakout/new-high as primary right-side signal.
-            w_ema, w_macd, w_break, w_rsi, w_vol = 0.25, 0.15, 0.25, 0.15, 0.20
-            pts_ema = 100.0 * w_ema * s_ema
-            pts_macd = 100.0 * w_macd * s_macd
-            pts_break = 100.0 * w_break * s_break
-            pts_rsi = 100.0 * w_rsi * s_rsi
-            pts_vol = 100.0 * w_vol * s_vol
-
-            parts: dict[str, float] = {
-                "ema": round(pts_ema, 3),
-                "macd": round(pts_macd, 3),
-                "breakout": round(pts_break, 3),
-                "rsi": round(pts_rsi, 3),
-                "volume": round(pts_vol, 3),
-            }
-            if bonus_new_high > 0:
-                parts["bonus_new_high20"] = round(bonus_new_high, 3)
-
-            penalty = 0.0
-            atr14 = _atr14(highs, lows, closes, 14)
-            if atr14 is not None and close > 0:
-                atr_ratio = float(atr14) / float(close)
-                # Volatility penalty: tolerate high ATR in strong themes.
-                # New rule: start penalizing above 7% ATR/close, softer slope, half max penalty.
-                p_vol = _clip01((atr_ratio - 0.07) / 0.05) * 5.0
-                penalty += p_vol
-                parts["penalty_volatility_atr"] = -round(p_vol, 3)
-            if ema20 > 0 and close < ema20:
-                dd = (ema20 - close) / ema20
-                p_below = _clip01(dd / 0.05) * 10.0
-                penalty += p_below
-                parts["penalty_below_ema20"] = -round(p_below, 3)
-
-            total = pts_ema + pts_macd + pts_break + pts_rsi + pts_vol + bonus_new_high - penalty
-            total2 = max(0.0, min(100.0, total))
-            res["score"] = round(total2, 3)
+            score, parts = _compute_watchlist_score_v4(
+                close=close,
+                ema5=float(v["ema5"]),
+                ema20=float(v["ema20"]),
+                ema60=float(v["ema60"]),
+                ema20s=ema20s,
+                rsi14=float(v["rsi14"]),
+                avg5=float(v["avgVol5"]),
+                avg30=float(v["avgVol30"]),
+                macd_last=float(v["macd"]),
+                hist=hist,
+                high20_high=high20_high,
+                highs=highs,
+                lows=lows,
+                closes=closes,
+                vols=vols,
+                intraday_chg_pct=intraday_chg_pct,
+            )
+            res["score"] = score
             res["scoreParts"] = parts
             if industry and flow_ctx:
                 delta, flow_parts, flow_reasons = _industry_flow_score_adjustment(industry, flow_ctx)
