@@ -60,8 +60,11 @@ CYCLE_REVERSAL_RE = re.compile(
 
 CONSENSUS_RE = re.compile(
     r"(产能出清|反转|历史底部|左侧|右侧|景气拐点|"
-    r"行业深度|研报|出清|底部)",
+    r"行业深度|研报|出清|底部|深度|前瞻|产业链|主题前瞻)",
 )
+
+# Official gov RSS feeds are pre-curated; only apply global exclude rules.
+GOV_CURATED_SOURCE_IDS = frozenset({"gov-miit-policy", "gov-ndrc-policy"})
 
 
 def filter_strict_enabled() -> bool:
@@ -100,10 +103,11 @@ def _filter_consensus(title: str, summary: str | None) -> bool:
 
 SOURCE_FILTER_PROFILES: dict[str, Callable[[str, str | None], bool]] = {
     "cls-policy": _filter_cls_policy,
-    "xinhua-policy": _filter_policy,
+    "gov-miit-policy": _filter_policy,
+    "gov-ndrc-policy": _filter_policy,
     "wallstreetcn-commodity": _filter_commodity,
-    "smm-industry": _filter_cycle_reversal,
-    "huibo-research": _filter_consensus,
+    "eastmoney-copper": _filter_commodity,
+    "cls-depth": _filter_consensus,
 }
 
 
@@ -118,6 +122,11 @@ def passes_topic_filter(
         return False
     if not _passes_exclude(title, summary):
         return False
+
+    if source_id in GOV_CURATED_SOURCE_IDS:
+        if not filter_strict_enabled():
+            return True
+        return True
 
     profile = SOURCE_FILTER_PROFILES.get(source_id)
     if profile is not None:

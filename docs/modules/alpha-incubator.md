@@ -6,16 +6,16 @@
 
 ## 模块定位
 
-Alpha Incubator 从 **7 路英文 + 5 路中文 RSSHub** 采集硬核信号，经 **per-source 严苛过滤 → batch LLM V4 提纯（仅 S/A）→ 混合 A 股映射**。
+Alpha Incubator 从 **7 路英文 + 6 路中文 RSSHub** 采集硬核信号，经 **per-source 严苛过滤 → batch LLM V4 提纯（仅 S/A）→ 混合 A 股映射**。
 
 ### 驱动核心 (Driver_Type)
 
 | 类型 | 数据源示例 |
 |------|------------|
 | `Global_Tech` | Stratechery、SemiAnalysis、TrendForce 等 7 路英文源 |
-| `Domestic_Policy` | 财联社宏观电报、新华社/政府网政策 |
-| `Cycle_Reversal` | 华尔街见闻大宗、上海有色产业动态 |
-| `consensus` 源 | 慧博行业研报（过滤后归入 Cycle 逻辑） |
+| `Domestic_Policy` | 财联社宏观电报、工信部/发改委官方 RSS |
+| `Cycle_Reversal` | 华尔街见闻大宗、东方财富铜产业检索 |
+| `consensus` 源 | 财联社深度研判（过滤后归入 Cycle 逻辑） |
 
 ## 调度架构（RSS 与 LLM 解耦）
 
@@ -50,10 +50,13 @@ DB 额外列：`driver_type`、`event_focus`、`logic_summary`
 | source_id | category | 默认路由 |
 |-----------|----------|----------|
 | `cls-policy` | policy | `/cls/telegraph` |
-| `xinhua-policy` | policy | `/gov/zhengce/zuixin` |
-| `wallstreetcn-commodity` | cycle | `/wallstreetcn/news/global` |
-| `smm-industry` | cycle | `/smm/news` |
-| `huibo-research` | consensus | `/hbreport/report` |
+| `gov-miit-policy` | policy | `/gov/miit/zcjd` |
+| `gov-ndrc-policy` | policy | `/gov/ndrc/xwdt` |
+| `wallstreetcn-commodity` | cycle | `/wallstreetcn/live/global` |
+| `eastmoney-copper` | cycle | `/eastmoney/search/铜` |
+| `cls-depth` | consensus | `/cls/depth` |
+
+> 旧路由 `/gov/zhengce/zuixin`、`/smm/news`、`/hbreport/report` 在 RSSHub 中已失效（503），启动时会自动禁用 legacy source_id。
 
 URL = `{ALPHA_RADAR_RSSHUB_BASE_URL}{route}`，各源可用独立 env 覆盖。
 

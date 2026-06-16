@@ -35,6 +35,22 @@ services:
       - postgres
     restart: unless-stopped
 
+  rsshub:
+    image: diygod/rsshub:latest
+    container_name: karios-rsshub
+    ports:
+      - '1200:1200'
+    environment:
+      NODE_ENV: production
+      CACHE_TYPE: memory
+      HTTP_PROXY: ${RSSHUB_HTTP_PROXY:-${http_proxy:-}}
+      HTTPS_PROXY: ${RSSHUB_HTTP_PROXY:-${https_proxy:-}}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    networks:
+      - pg-network
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   pgadmin-data:

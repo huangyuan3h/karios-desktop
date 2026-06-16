@@ -50,14 +50,22 @@ def test_cls_policy_filter() -> None:
 
 def test_cycle_reversal_filter() -> None:
     assert passes_topic_filter(
-        title="锂行业库存拐点出现，现货提价",
-        summary="",
-        source_id="smm-industry",
+        title="铜价突破历史新高，现货提价",
+        summary="全球铜供给紧缺",
+        source_id="eastmoney-copper",
     )
     assert not passes_topic_filter(
         title="日常设备检修公告",
         summary="",
-        source_id="smm-industry",
+        source_id="eastmoney-copper",
+    )
+
+
+def test_gov_curated_source_skips_keyword_gate() -> None:
+    assert passes_topic_filter(
+        title="2026年6月4日国内成品油价格调整",
+        summary="",
+        source_id="gov-ndrc-policy",
     )
 
 
@@ -78,7 +86,12 @@ def test_consensus_filter() -> None:
     assert passes_topic_filter(
         title="光伏行业深度：产能出清与历史底部",
         summary="",
-        source_id="huibo-research",
+        source_id="cls-depth",
+    )
+    assert passes_topic_filter(
+        title="【明日主题前瞻】AI硬件迭代推动PCB价值量攀升",
+        summary="",
+        source_id="cls-depth",
     )
 
 

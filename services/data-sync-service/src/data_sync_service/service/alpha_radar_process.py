@@ -251,6 +251,19 @@ def process_document(
     return {"documentId": doc_id, "trends": saved, "processingStatus": final_status}
 
 
+def _batch_document_summary(doc: dict[str, Any]) -> str | None:
+    summary = doc.get("summary")
+    if summary and str(summary).strip():
+        return str(summary).strip()
+    for key in ("fullTextMd", "full_text_md"):
+        full = doc.get(key)
+        if full and str(full).strip():
+            text = str(full).strip()
+            return text[:3000]
+    title = str(doc.get("title") or "").strip()
+    return title or None
+
+
 def _ai_extract_batch(*, documents: list[dict[str, Any]]) -> dict[str, Any]:
     payload_docs = []
     for doc in documents:
@@ -260,7 +273,7 @@ def _ai_extract_batch(*, documents: list[dict[str, Any]]) -> dict[str, Any]:
                 "title": str(doc.get("title") or ""),
                 "url": str(doc.get("url") or ""),
                 "category": str(doc.get("category") or "academic"),
-                "summary": doc.get("summary"),
+                "summary": _batch_document_summary(doc),
             }
         )
     payload = json.dumps({"documents": payload_docs}).encode("utf-8")
