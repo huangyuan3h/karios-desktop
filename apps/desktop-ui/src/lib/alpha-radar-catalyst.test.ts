@@ -53,13 +53,20 @@ function makeContext(overrides: Partial<CatalystCopyContext> = {}): CatalystCopy
 }
 
 describe('formatStructuredTrendJson', () => {
-  it('emits Macro_Theme and Catalyst_Grade keys', () => {
-    expect(
+  it('emits V4 structured keys', () => {
+    const parsed = JSON.parse(
       formatStructuredTrendJson({
         macroTheme: 'Next-Gen Energy',
         catalystGrade: 'S',
+        driverType: 'Domestic_Policy',
+        eventFocus: '万亿国债落地',
+        logicSummary: '政策驱动设备更新',
       }),
-    ).toBe('{"Macro_Theme":"Next-Gen Energy","Catalyst_Grade":"S"}');
+    );
+    expect(parsed.Macro_Theme).toBe('Next-Gen Energy');
+    expect(parsed.Driver_Type).toBe('Domestic_Policy');
+    expect(parsed.Catalyst_Grade).toBe('S');
+    expect(parsed.Event_Focus).toBe('万亿国债落地');
   });
 });
 
@@ -97,7 +104,7 @@ describe('buildAlphaRadarTrendsMarkdown', () => {
     const md = buildAlphaRadarTrendsMarkdown([trend]);
 
     expect(md).toContain('## Alpha Radar · Structured Trends');
-    expect(md).toContain('{"Macro_Theme":"Next-Gen Energy","Catalyst_Grade":"S"}');
+    expect(md).toContain('"Macro_Theme":"Next-Gen Energy"');
     expect(md).toContain('- catalyst: Grid storage orders accelerate.');
     expect(md).toContain('英维克');
   });
@@ -105,9 +112,8 @@ describe('buildAlphaRadarTrendsMarkdown', () => {
   it('omits detail blocks in compact mode', () => {
     const md = buildAlphaRadarTrendsMarkdown([trend], { mode: 'compact' });
 
-    expect(md).toContain('| Macro Theme | Catalyst Grade | Global Target | A-share Mapping |');
+    expect(md).toContain('| Macro Theme | Driver | Grade | A-share Mapping |');
     expect(md).not.toContain('### Next-Gen Energy');
-    expect(md).not.toContain('{"Macro_Theme":"Next-Gen Energy","Catalyst_Grade":"S"}');
     expect(md).not.toContain('- url: https://example.com/post');
   });
 });
@@ -150,7 +156,8 @@ describe('buildCatalystStocksMarkdown', () => {
       { includeDetails: true },
     );
 
-    expect(md).toContain('{"Macro_Theme":"Next-Gen Energy","Catalyst_Grade":"S"}');
+    expect(md).toContain('"Macro_Theme":"Next-Gen Energy"');
+    expect(md).toContain('"Catalyst_Grade":"S"');
     expect(md).toContain('- catalyst: Hyperscaler liquid-cooling demand rises.');
     expect(md).not.toContain('sourceSummary: Raw RSS paragraph');
   });

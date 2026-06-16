@@ -169,6 +169,9 @@ export type ChatReference =
       trendName: string;
       macroTheme?: string;
       catalystGrade?: string;
+      driverType?: string;
+      eventFocus?: string | null;
+      logicSummary?: string | null;
       catalyst?: string | null;
       cnSymbols?: Array<{
         symbol: string;

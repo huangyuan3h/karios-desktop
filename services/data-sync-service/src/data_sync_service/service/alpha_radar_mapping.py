@@ -120,6 +120,7 @@ def _ai_map_cn_symbols(
     trend: dict[str, Any],
     candidates: list[dict[str, Any]],
     external_context: str | None,
+    seed_symbols: list[str] | None = None,
 ) -> dict[str, Any]:
     payload = json.dumps(
         {
@@ -127,6 +128,7 @@ def _ai_map_cn_symbols(
             "candidates": candidates,
             "externalContext": external_context,
             "allowKnowledgeFallback": len(candidates) == 0,
+            "seedSymbols": seed_symbols or [],
         }
     ).encode("utf-8")
     req = urllib.request.Request(
@@ -149,6 +151,7 @@ def map_trend_to_cn(
     trend: dict[str, Any] | None = None,
     hot_industry_names: list[str] | None = None,
     mainline_by_industry: dict[str, float] | None = None,
+    seed_symbols: list[str] | None = None,
 ) -> dict[str, Any]:
     row = fetch_trend_by_id(trend_id) if trend is None else None
     if trend is None:
@@ -161,9 +164,15 @@ def map_trend_to_cn(
         trend.setdefault("keywords_for_mapping", row.get("keywordsForMapping") or [])
 
     keywords = list(trend.get("keywords_for_mapping") or trend.get("keywordsForMapping") or [])
-    candidates = search_cn_candidates(keywords)
+    seeds = list(seed_symbols or trend.get("a_share_mapping") or trend.get("aShareMapping") or [])
+    candidates = search_cn_candidates(keywords + seeds[:3])
     external = tavily_search_cn_context(keywords)
-    ai_result = _ai_map_cn_symbols(trend=trend, candidates=candidates, external_context=external)
+    ai_result = _ai_map_cn_symbols(
+        trend=trend,
+        candidates=candidates,
+        external_context=external,
+        seed_symbols=seeds[:3] or None,
+    )
     cn_symbols = ai_result.get("cnSymbols") or ai_result.get("cn_symbols") or []
     confidence = ai_result.get("mappingConfidence") or ai_result.get("mapping_confidence")
     risk_status = compute_risk_status(
@@ -188,10 +197,19 @@ def map_trend_to_cn(
 
 def remap_trend_by_id(trend_id: str) -> dict[str, Any]:
     from data_sync_service.service.alpha_radar_process import _load_risk_context
+    from data_sync_service.service.alpha_radar_symbol_resolve import map_trend_hybrid
 
     hot_names, mainline_map = _load_risk_context()
-    return map_trend_to_cn(
+    row = fetch_trend_by_id(trend_id)
+    if not row:
+        raise ValueError(f"trend not found: {trend_id}")
+    trend = dict(row.get("trendJson") or {})
+    trend.setdefault("macro_theme", row.get("macroTheme"))
+    trend.setdefault("catalyst_grade", row.get("catalystGrade"))
+    trend.setdefault("a_share_mapping", row.get("keywordsForMapping") or [])
+    return map_trend_hybrid(
         trend_id=trend_id,
+        trend=trend,
         hot_industry_names=hot_names,
         mainline_by_industry=mainline_map,
     )

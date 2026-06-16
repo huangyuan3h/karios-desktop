@@ -16,7 +16,7 @@ import {
   buildCatalystStocksMarkdown,
   buildAlphaRadarTrendsMarkdown,
   DEFAULT_CATALYST_MAX_AGE_DAYS,
-  fetchAlphaRadarTrends,
+  fetchAlphaRadarTrendsForCopy,
   fetchCatalystStocks,
   normalizeCatalystSymbol,
   type CatalystCopyContext,
@@ -1530,9 +1530,16 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       buildScreenersMarkdown(s, '##'),
       buildWatchlistMarkdown(),
       buildCompactCatalystMarkdown(s),
-      fetchAlphaRadarTrends(DATA_SYNC_BASE_URL, 20, true)
-        .then((items) =>
-          buildAlphaRadarTrendsMarkdown(items, { headingLevel: '##', mode: 'compact' }),
+      fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
+        .then(({ items, scope }) =>
+          buildAlphaRadarTrendsMarkdown(items, {
+            headingLevel: '##',
+            mode: 'compact',
+            scopeNote:
+              scope === 'recent'
+                ? `recent ${DEFAULT_CATALYST_MAX_AGE_DAYS}d (latest batch empty)`
+                : 'latest batch',
+          }),
         )
         .catch(() => '## Alpha Radar · Structured Trends\n\n- Alpha Radar trends: unavailable\n'),
     ]);

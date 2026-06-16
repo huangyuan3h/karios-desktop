@@ -17,9 +17,18 @@ from data_sync_service.db.alpha_radar import (
     insert_trend,
     update_document_status,
 )
-from data_sync_service.service.alpha_radar_mapping import map_trend_to_cn
 from data_sync_service.service.alpha_radar_risk import build_mainline_score_map
+from data_sync_service.service.alpha_radar_symbol_resolve import map_trend_hybrid
 from data_sync_service.service.mainline import get_cn_industry_mainline
+
+_CATEGORY_DRIVER_DEFAULT: dict[str, str] = {
+    "academic": "Global_Tech",
+    "earnings": "Global_Tech",
+    "research": "Global_Tech",
+    "policy": "Domestic_Policy",
+    "cycle": "Cycle_Reversal",
+    "consensus": "Cycle_Reversal",
+}
 
 
 def _ai_service_base_url() -> str:
@@ -62,7 +71,11 @@ def _ai_extract_trends(*, text: str, title: str, category: str, source_url: str)
         raise RuntimeError(f"ai-service extract error: {msg}") from exc
 
 
-def _resolve_trend_storage_fields(trend: dict[str, Any]) -> dict[str, str]:
+def _resolve_trend_storage_fields(
+    trend: dict[str, Any],
+    *,
+    category_hint: str | None = None,
+) -> dict[str, str] | None:
     macro_theme = str(
         trend.get("macro_theme")
         or trend.get("macroTheme")
@@ -70,20 +83,108 @@ def _resolve_trend_storage_fields(trend: dict[str, Any]) -> dict[str, str]:
         or trend.get("trendName")
         or "Unknown"
     )
-    trend_name = str(trend.get("trend_name") or trend.get("trendName") or macro_theme)
     catalyst_grade = str(
         trend.get("catalyst_grade")
         or trend.get("catalystGrade")
         or trend.get("urgency_level")
         or trend.get("urgencyLevel")
         or "B"
+    ).upper()
+    if catalyst_grade not in ("S", "A"):
+        return None
+
+    driver_type = str(
+        trend.get("driver_type")
+        or trend.get("driverType")
+        or _CATEGORY_DRIVER_DEFAULT.get(str(category_hint or "").lower(), "Global_Tech")
     )
+    event_focus = str(
+        trend.get("event_focus")
+        or trend.get("eventFocus")
+        or trend.get("catalyst")
+        or macro_theme
+    )
+    logic_summary = str(
+        trend.get("logic_summary") or trend.get("logicSummary") or event_focus
+    )[:30]
+
     return {
-        "trend_name": trend_name,
+        "trend_name": macro_theme,
         "macro_theme": macro_theme,
         "catalyst_grade": catalyst_grade,
         "urgency_level": catalyst_grade,
+        "driver_type": driver_type,
+        "event_focus": event_focus,
+        "logic_summary": logic_summary,
     }
+
+
+def _keywords_from_trend(trend: dict[str, Any], fields: dict[str, str]) -> list[str]:
+    raw = list(
+        trend.get("a_share_mapping")
+        or trend.get("aShareMapping")
+        or trend.get("keywords_for_mapping")
+        or trend.get("keywordsForMapping")
+        or []
+    )
+    keywords = [str(k).strip() for k in raw if str(k).strip()]
+    macro = fields.get("macro_theme") or ""
+    if macro and macro not in keywords:
+        keywords.insert(0, macro)
+    return keywords[:8] if keywords else [macro or "产业趋势"]
+
+
+def _save_trend_row(
+    *,
+    doc_id: str,
+    trend: dict[str, Any],
+    category_hint: str | None,
+    map_cn: bool,
+    hot_names: list[str],
+    mainline_map: dict[str, float],
+    batch_meta: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    fields = _resolve_trend_storage_fields(trend, category_hint=category_hint)
+    if fields is None:
+        return None
+
+    trend_id = str(uuid.uuid4())
+    keywords = _keywords_from_trend(trend, fields)
+    trend_payload = {**trend, **(batch_meta or {})}
+
+    row = insert_trend(
+        trend_id=trend_id,
+        document_id=doc_id,
+        trend_name=fields["trend_name"],
+        macro_theme=fields["macro_theme"],
+        catalyst_grade=fields["catalyst_grade"],
+        catalyst=fields["event_focus"],
+        global_target=None,
+        urgency_level=fields["urgency_level"],
+        driver_type=fields["driver_type"],
+        event_focus=fields["event_focus"],
+        logic_summary=fields["logic_summary"],
+        keywords_for_mapping=keywords,
+        cn_symbols=[],
+        mapping_confidence=None,
+        risk_status="waiting_v2_flow",
+        trend_json=trend_payload,
+    )
+
+    if map_cn:
+        try:
+            mapped = map_trend_hybrid(
+                trend_id=trend_id,
+                trend=trend_payload,
+                hot_industry_names=hot_names,
+                mainline_by_industry=mainline_map,
+            )
+            row["cnSymbols"] = mapped.get("cnSymbols") or []
+            row["mappingConfidence"] = mapped.get("mappingConfidence")
+            row["riskStatus"] = mapped.get("riskStatus")
+        except Exception as exc:
+            print(f"[alpha_radar] mapping failed for {trend_id}: {exc}")
+    return row
 
 
 def _load_risk_context() -> tuple[list[str], dict[str, float]]:
@@ -115,10 +216,11 @@ def process_document(
     if len(text.strip()) < 40:
         raise ValueError("document text too short for extraction")
 
+    category = str(doc.get("category") or "academic")
     extracted = _ai_extract_trends(
         text=text,
         title=str(doc.get("title") or ""),
-        category=str(doc.get("category") or "academic"),
+        category=category,
         source_url=str(doc.get("url") or ""),
     )
     trends = extracted.get("trends") or []
@@ -132,40 +234,17 @@ def process_document(
         mainline_map = mainline_map if mainline_map is not None else ctx_mainline
 
     saved: list[dict[str, Any]] = []
-    for trend in trends[:5]:
-        trend_id = str(uuid.uuid4())
-        keywords = list(trend.get("keywords_for_mapping") or [])
-        risk_status = "waiting_v2_flow"
-        fields = _resolve_trend_storage_fields(trend)
-        row = insert_trend(
-            trend_id=trend_id,
-            document_id=doc_id,
-            trend_name=fields["trend_name"],
-            macro_theme=fields["macro_theme"],
-            catalyst_grade=fields["catalyst_grade"],
-            catalyst=str(trend.get("catalyst") or "") or None,
-            global_target=str(trend.get("global_target") or trend.get("globalTarget") or "") or None,
-            urgency_level=fields["urgency_level"],
-            keywords_for_mapping=keywords,
-            cn_symbols=[],
-            mapping_confidence=None,
-            risk_status=risk_status,
-            trend_json=trend,
+    for trend in trends[:3]:
+        row = _save_trend_row(
+            doc_id=doc_id,
+            trend=trend,
+            category_hint=category,
+            map_cn=map_cn,
+            hot_names=hot_names,
+            mainline_map=mainline_map,
         )
-        if map_cn:
-            try:
-                mapped = map_trend_to_cn(
-                    trend_id=trend_id,
-                    trend=trend,
-                    hot_industry_names=hot_names,
-                    mainline_by_industry=mainline_map,
-                )
-                row["cnSymbols"] = mapped.get("cnSymbols") or []
-                row["mappingConfidence"] = mapped.get("mappingConfidence")
-                row["riskStatus"] = mapped.get("riskStatus")
-            except Exception as exc:
-                print(f"[alpha_radar] mapping failed for {trend_id}: {exc}")
-        saved.append(row)
+        if row:
+            saved.append(row)
 
     final_status = "mapped" if map_cn and saved else "extracted"
     update_document_status(doc_id, final_status)
@@ -236,6 +315,7 @@ def process_document_batch(
     trends = extracted.get("trends") or []
     saved: list[dict[str, Any]] = []
     doc_ids = [str(d.get("id") or "") for d in docs]
+    doc_categories = {str(d.get("id") or ""): str(d.get("category") or "academic") for d in docs}
 
     for doc_id in doc_ids:
         if doc_id:
@@ -252,42 +332,21 @@ def process_document_batch(
         if not doc_id:
             continue
 
-        trend_id = str(uuid.uuid4())
-        keywords = list(trend.get("keywords_for_mapping") or [])
-        fields = _resolve_trend_storage_fields(trend)
-        row = insert_trend(
-            trend_id=trend_id,
-            document_id=doc_id,
-            trend_name=fields["trend_name"],
-            macro_theme=fields["macro_theme"],
-            catalyst_grade=fields["catalyst_grade"],
-            catalyst=str(trend.get("catalyst") or "") or None,
-            global_target=str(trend.get("global_target") or trend.get("globalTarget") or "") or None,
-            urgency_level=fields["urgency_level"],
-            keywords_for_mapping=keywords,
-            cn_symbols=[],
-            mapping_confidence=None,
-            risk_status="waiting_v2_flow",
-            trend_json={**trend, "batch_mode": True, "batch_size": len(docs)},
+        row = _save_trend_row(
+            doc_id=doc_id,
+            trend=trend,
+            category_hint=doc_categories.get(doc_id),
+            map_cn=map_cn,
+            hot_names=hot_names,
+            mainline_map=mainline_map,
+            batch_meta={"batch_mode": True, "batch_size": len(docs)},
         )
-        if map_cn:
-            try:
-                mapped = map_trend_to_cn(
-                    trend_id=trend_id,
-                    trend=trend,
-                    hot_industry_names=hot_names,
-                    mainline_by_industry=mainline_map,
-                )
-                row["cnSymbols"] = mapped.get("cnSymbols") or []
-                row["mappingConfidence"] = mapped.get("mappingConfidence")
-                row["riskStatus"] = mapped.get("riskStatus")
-            except Exception as exc:
-                print(f"[alpha_radar] batch mapping failed for {trend_id}: {exc}")
-        saved.append(row)
+        if row:
+            saved.append(row)
 
     for doc_id in doc_ids:
         if doc_id:
-            status = "mapped" if map_cn and saved else "extracted" if saved else "raw"
+            status = "mapped" if map_cn and saved else "extracted"
             update_document_status(doc_id, status)
 
     if not saved:
@@ -295,7 +354,7 @@ def process_document_batch(
             "processed": len(docs),
             "batchSize": len(docs),
             "trends": [],
-            "errors": [{"error": "LLM returned 0 trends"}],
+            "errors": [],
             "mode": "batch",
         }
 

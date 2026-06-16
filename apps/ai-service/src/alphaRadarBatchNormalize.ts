@@ -1,26 +1,66 @@
 import { z } from 'zod';
 
-import { AlphaRadarExtractBatchResponseSchema } from './schemas';
+import { AlphaRadarExtractBatchResponseSchema, AlphaRadarDriverTypeSchema } from './schemas';
 
-const URGENCY = new Set(['S', 'A', 'B', 'C']);
+const GRADES = new Set(['S', 'A', 'B', 'C']);
+
+const CATEGORY_DRIVER_DEFAULT: Record<string, z.infer<typeof AlphaRadarDriverTypeSchema>> = {
+  academic: 'Global_Tech',
+  earnings: 'Global_Tech',
+  research: 'Global_Tech',
+  policy: 'Domestic_Policy',
+  cycle: 'Cycle_Reversal',
+  consensus: 'Cycle_Reversal',
+};
 
 function asString(value: unknown, fallback = ''): string {
   if (value == null) return fallback;
   return String(value).trim();
 }
 
-function normalizeUrgency(value: unknown): 'S' | 'A' | 'B' | 'C' {
+function normalizeGrade(value: unknown): 'S' | 'A' | 'B' | null {
   const raw = asString(value, 'B').toUpperCase();
-  if (URGENCY.has(raw)) return raw as 'S' | 'A' | 'B' | 'C';
+  if (raw === 'S' || raw === 'A') return raw;
+  if (GRADES.has(raw)) return 'B';
   return 'B';
 }
 
-function normalizeKeywords(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    const out = value.map((x) => asString(x)).filter(Boolean).slice(0, 8);
-    if (out.length) return out;
+function normalizeDriverType(
+  value: unknown,
+  categoryHint?: string,
+): z.infer<typeof AlphaRadarDriverTypeSchema> {
+  const raw = asString(value);
+  if (raw === 'Global_Tech' || raw === 'Domestic_Policy' || raw === 'Cycle_Reversal') {
+    return raw;
   }
-  return ['产业趋势'];
+  const camel = raw.replace(/\s+/g, '_');
+  if (camel === 'Global_Tech' || camel === 'Domestic_Policy' || camel === 'Cycle_Reversal') {
+    return camel;
+  }
+  const hint = asString(categoryHint).toLowerCase();
+  return CATEGORY_DRIVER_DEFAULT[hint] ?? 'Global_Tech';
+}
+
+function normalizeShareMapping(value: unknown, macroTheme: string): string[] {
+  const raw = value ?? [];
+  const items: string[] = [];
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      const text = asString(entry);
+      if (text) items.push(text);
+    }
+  } else {
+    const text = asString(raw);
+    if (text) items.push(text);
+  }
+  const deduped = [...new Set(items)].slice(0, 3);
+  if (deduped.length) return deduped;
+  return macroTheme ? [macroTheme.slice(0, 40)] : ['产业趋势'];
+}
+
+function normalizeLogicSummary(value: unknown, fallback: string): string {
+  const text = asString(value, fallback) || fallback;
+  return text.slice(0, 30);
 }
 
 function normalizeSourceIndex(value: unknown, fallback: number): number {
@@ -32,54 +72,74 @@ function normalizeSourceIndex(value: unknown, fallback: number): number {
 export function normalizeAlphaRadarTrendRow(
   item: unknown,
   idx = 0,
-): Record<string, unknown> {
+  categoryHint?: string,
+): Record<string, unknown> | null {
   const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+  const catalystGrade = normalizeGrade(
+    row.catalyst_grade ?? row.catalystGrade ?? row.urgency_level ?? row.urgencyLevel,
+  );
+  if (catalystGrade === 'B' || catalystGrade === null) {
+    return null;
+  }
+
   const macroTheme = asString(
     row.macro_theme ?? row.macroTheme ?? row.trend_name ?? row.trendName,
     'Unknown trend',
   );
-  const trendName = asString(row.trend_name ?? row.trendName, macroTheme) || macroTheme;
-  const catalystGrade = normalizeUrgency(
-    row.catalyst_grade ?? row.catalystGrade ?? row.urgency_level ?? row.urgencyLevel,
+  const eventFocus = asString(
+    row.event_focus ?? row.eventFocus ?? row.catalyst,
+    macroTheme,
   );
-  const catalyst = asString(row.catalyst, trendName);
+  const logicSummary = normalizeLogicSummary(
+    row.logic_summary ?? row.logicSummary,
+    eventFocus.slice(0, 30),
+  );
+
   return {
     macro_theme: macroTheme.slice(0, 120),
+    driver_type: normalizeDriverType(row.driver_type ?? row.driverType, categoryHint),
     catalyst_grade: catalystGrade,
-    trend_name: trendName.slice(0, 200),
-    catalyst: catalyst.slice(0, 2000),
-    global_target: asString(row.global_target ?? row.globalTarget, 'N/A').slice(0, 120),
-    urgency_level: catalystGrade,
-    keywords_for_mapping: normalizeKeywords(row.keywords_for_mapping ?? row.keywordsForMapping),
+    event_focus: eventFocus.slice(0, 2000),
+    a_share_mapping: normalizeShareMapping(
+      row.a_share_mapping ?? row.aShareMapping ?? row.keywords_for_mapping ?? row.keywordsForMapping,
+      macroTheme,
+    ),
+    logic_summary: logicSummary,
     source_index: normalizeSourceIndex(row.source_index ?? row.sourceIndex, idx),
   };
 }
 
-export function normalizeAlphaRadarBatchExtract(raw: unknown): unknown {
+export function normalizeAlphaRadarBatchExtract(raw: unknown, categoryHint?: string): unknown {
   const root = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const trendsRaw = Array.isArray(root.trends) ? root.trends : [];
-  const trends = trendsRaw.slice(0, 8).map((item, idx) => normalizeAlphaRadarTrendRow(item, idx));
+  const trends = trendsRaw
+    .slice(0, 8)
+    .map((item, idx) => normalizeAlphaRadarTrendRow(item, idx, categoryHint))
+    .filter((row): row is Record<string, unknown> => row !== null);
   return {
     trends,
     model: asString(root.model) || undefined,
   };
 }
 
-export function normalizeAlphaRadarExtract(raw: unknown): unknown {
+export function normalizeAlphaRadarExtract(raw: unknown, categoryHint?: string): unknown {
   const root = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const trendsRaw = Array.isArray(root.trends) ? root.trends : [];
-  const trends = trendsRaw.slice(0, 5).map((item, idx) => {
-    const row = normalizeAlphaRadarTrendRow(item, idx);
-    const { source_index: _sourceIndex, ...rest } = row;
-    return rest;
-  });
+  const trends = trendsRaw
+    .slice(0, 3)
+    .map((item, idx) => normalizeAlphaRadarTrendRow(item, idx, categoryHint))
+    .filter((row): row is Record<string, unknown> => row !== null)
+    .map((row) => {
+      const { source_index: _sourceIndex, ...rest } = row;
+      return rest;
+    });
   return {
     trends,
     model: asString(root.model) || undefined,
   };
 }
 
-export function parseAlphaRadarBatchExtract(raw: unknown) {
-  const normalized = normalizeAlphaRadarBatchExtract(raw);
+export function parseAlphaRadarBatchExtract(raw: unknown, categoryHint?: string) {
+  const normalized = normalizeAlphaRadarBatchExtract(raw, categoryHint);
   return AlphaRadarExtractBatchResponseSchema.safeParse(normalized);
 }

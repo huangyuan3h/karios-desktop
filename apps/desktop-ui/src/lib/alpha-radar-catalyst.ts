@@ -3,6 +3,9 @@ export type CatalystArticle = {
   trendName: string;
   macroTheme?: string | null;
   catalystGrade?: string | null;
+  driverType?: string | null;
+  eventFocus?: string | null;
+  logicSummary?: string | null;
   catalyst?: string | null;
   globalTarget?: string | null;
   documentId: string;
@@ -20,6 +23,9 @@ export type AlphaRadarTrendExport = {
   trendName: string;
   macroTheme?: string | null;
   catalystGrade?: string | null;
+  driverType?: string | null;
+  eventFocus?: string | null;
+  logicSummary?: string | null;
   catalyst?: string | null;
   globalTarget?: string | null;
   keywordsForMapping?: string[];
@@ -150,12 +156,15 @@ function floatOrZero(value: number | undefined | null): number {
 export function formatCatalystNewsLine(article: CatalystArticle): string {
   const grade = trendCatalystGrade(article);
   const theme = trendMacroTheme(article);
+  const driver = article.driverType ? `${article.driverType} · ` : '';
   const body =
+    (article.eventFocus && String(article.eventFocus).trim()) ||
     (article.catalyst && String(article.catalyst).trim()) ||
     (article.summary && String(article.summary).trim()) ||
     (article.documentTitle && String(article.documentTitle).trim()) ||
     '—';
-  return `- ${grade} · ${theme} · ${body}`;
+  const logic = article.logicSummary ? ` (${article.logicSummary})` : '';
+  return `- ${grade} · ${driver}${theme} · ${body}${logic}`;
 }
 
 export function isTechnicallyBroken(trend: CatalystTrendOkSnapshot | undefined | null): boolean {
@@ -229,10 +238,16 @@ export function formatStructuredTrendJson(trend: {
   trendName?: string | null;
   catalystGrade?: string | null;
   urgencyLevel?: string | null;
+  driverType?: string | null;
+  eventFocus?: string | null;
+  logicSummary?: string | null;
 }): string {
   return JSON.stringify({
     Macro_Theme: trendMacroTheme(trend),
+    Driver_Type: trend.driverType || 'Global_Tech',
     Catalyst_Grade: trendCatalystGrade(trend),
+    Event_Focus: trend.eventFocus || null,
+    Logic_Summary: trend.logicSummary || null,
   });
 }
 
@@ -247,7 +262,12 @@ function formatCnSymbols(
 
 export function buildAlphaRadarTrendsMarkdown(
   trends: AlphaRadarTrendExport[],
-  opts?: { headingLevel?: '##' | '###'; limit?: number; mode?: 'full' | 'compact' },
+  opts?: {
+    headingLevel?: '##' | '###';
+    limit?: number;
+    mode?: 'full' | 'compact';
+    scopeNote?: string;
+  },
 ): string {
   const heading = opts?.headingLevel ?? '##';
   const limit = opts?.limit ?? trends.length;
@@ -256,6 +276,7 @@ export function buildAlphaRadarTrendsMarkdown(
   const lines: string[] = [];
   lines.push(`${heading} Alpha Radar · Structured Trends`);
   lines.push(`- count: ${rows.length}`);
+  if (opts?.scopeNote) lines.push(`- scope: ${opts.scopeNote}`);
   lines.push('');
 
   if (!rows.length) {
@@ -263,13 +284,14 @@ export function buildAlphaRadarTrendsMarkdown(
     return lines.join('\n').trim() + '\n';
   }
 
-  lines.push('| Macro Theme | Catalyst Grade | Global Target | A-share Mapping |');
-  lines.push('| --- | :---: | --- | --- |');
+  lines.push('| Macro Theme | Driver | Grade | A-share Mapping |');
+  lines.push('| --- | --- | :---: | --- |');
   for (const trend of rows) {
     const theme = trendMacroTheme(trend);
     const grade = trendCatalystGrade(trend);
+    const driver = trend.driverType || 'Global_Tech';
     lines.push(
-      `| ${theme} | ${grade} | ${trend.globalTarget || 'N/A'} | ${formatCnSymbols(trend.cnSymbols)} |`,
+      `| ${theme} | ${driver} | ${grade} | ${formatCnSymbols(trend.cnSymbols)} |`,
     );
   }
   lines.push('');
@@ -283,8 +305,10 @@ export function buildAlphaRadarTrendsMarkdown(
     const grade = trendCatalystGrade(trend);
     lines.push(`### ${theme} (${grade})`);
     lines.push(`- structured: \`${formatStructuredTrendJson(trend)}\``);
-    if (trend.catalyst) lines.push(`- catalyst: ${trend.catalyst}`);
-    if (trend.globalTarget) lines.push(`- globalTarget: ${trend.globalTarget}`);
+    if (trend.driverType) lines.push(`- driverType: ${trend.driverType}`);
+    if (trend.eventFocus) lines.push(`- eventFocus: ${trend.eventFocus}`);
+    else if (trend.catalyst) lines.push(`- catalyst: ${trend.catalyst}`);
+    if (trend.logicSummary) lines.push(`- logicSummary: ${trend.logicSummary}`);
     if (trend.keywordsForMapping?.length) {
       lines.push(`- keywords: ${trend.keywordsForMapping.join(', ')}`);
     }
@@ -370,9 +394,11 @@ export function buildCatalystStocksMarkdown(
         const title = article.documentTitle || theme;
         lines.push(`- **${theme}** | Grade **${grade}** | ${title} (${formatRelevancePct(article.relevance)})`);
         lines.push(`  - structured: \`${formatStructuredTrendJson(article)}\``);
-        if (article.catalyst) lines.push(`  - catalyst: ${article.catalyst}`);
+        if (article.driverType) lines.push(`  - driverType: ${article.driverType}`);
+        if (article.eventFocus) lines.push(`  - eventFocus: ${article.eventFocus}`);
+        else if (article.catalyst) lines.push(`  - catalyst: ${article.catalyst}`);
         else if (article.summary) lines.push(`  - sourceSummary: ${article.summary}`);
-        if (article.globalTarget) lines.push(`  - globalTarget: ${article.globalTarget}`);
+        if (article.logicSummary) lines.push(`  - logicSummary: ${article.logicSummary}`);
         if (article.documentUrl) lines.push(`  - url: ${article.documentUrl}`);
       }
       lines.push('');
@@ -402,11 +428,15 @@ export async function fetchAlphaRadarTrends(
   baseUrl: string,
   limit = 20,
   latestBatch = true,
+  maxAgeDays?: number,
 ): Promise<AlphaRadarTrendExport[]> {
   const params = new URLSearchParams({
     limit: String(limit),
     latest_batch: String(latestBatch),
   });
+  if (maxAgeDays != null) {
+    params.set('maxAgeDays', String(maxAgeDays));
+  }
   const res = await fetch(`${baseUrl}/api/alpha-radar/trends?${params.toString()}`, {
     cache: 'no-store',
     signal: AbortSignal.timeout(60_000),
@@ -417,4 +447,18 @@ export async function fetchAlphaRadarTrends(
   }
   const body = txt ? (JSON.parse(txt) as AlphaRadarTrendsResponse) : { total: 0, items: [] };
   return Array.isArray(body.items) ? body.items : [];
+}
+
+/** Prefer latest batch; fall back to recent window when the batch marker is empty. */
+export async function fetchAlphaRadarTrendsForCopy(
+  baseUrl: string,
+  limit = 20,
+  maxAgeDays = DEFAULT_CATALYST_MAX_AGE_DAYS,
+): Promise<{ items: AlphaRadarTrendExport[]; scope: 'latest_batch' | 'recent' }> {
+  const latest = await fetchAlphaRadarTrends(baseUrl, limit, true);
+  if (latest.length > 0) {
+    return { items: latest, scope: 'latest_batch' };
+  }
+  const recent = await fetchAlphaRadarTrends(baseUrl, limit, false, maxAgeDays);
+  return { items: recent, scope: 'recent' };
 }

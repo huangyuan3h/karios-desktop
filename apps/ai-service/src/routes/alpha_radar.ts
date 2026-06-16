@@ -5,6 +5,14 @@ import {
   normalizeAlphaRadarExtract,
   parseAlphaRadarBatchExtract,
 } from '../alphaRadarBatchNormalize';
+import {
+  ALPHA_RADAR_V4_JSON_SUFFIX,
+  ALPHA_RADAR_V4_SYSTEM_PROMPT,
+  buildExtractBatchInstruction,
+  buildExtractInstruction,
+  buildMapCnInstruction,
+  buildMapCnSystemPrompt,
+} from '../alphaRadarPrompts';
 import { tryParseJsonObject } from '../json_parse';
 import {
   AlphaRadarExtractRequestSchema,
@@ -75,37 +83,21 @@ alphaRadarRoutes.post('/extract', async (c) => {
           .join('\n\n')
           .slice(0, 48000);
 
-  const system =
-    'You are a top-tier global macro and technology analyst. ' +
-    'Extract incremental technology/industry trends from source documents. ' +
-    'Ignore routine financial metrics unless they imply a structural tech shift. ' +
-    'Base ONLY on provided text. Do NOT fabricate facts, numbers, or policy documents. ' +
-    'macro_theme and catalyst_grade are REQUIRED for every trend. ' +
-    'Return valid JSON matching the schema. No markdown fences.';
-
-  const instruction =
-    `Source category: ${category}\n` +
-    `Title: ${title}\n` +
-    `URL: ${sourceUrl}\n\n` +
-    'Task: Extract up to 3 highest-signal incremental trends.\n' +
-    'For each trend return JSON fields:\n' +
-    '- macro_theme: standardized English theme bucket (e.g. "Next-Gen Energy", "HBM Supply Chain")\n' +
-    '- catalyst_grade: S|A|B|C (S = imminent structural catalyst)\n' +
-    '- trend_name: optional display title (English, optionally with Chinese in parentheses); defaults to macro_theme\n' +
-    '- catalyst: 1-2 evidence sentences\n' +
-    '- global_target: US/global ticker or company if applicable, else "N/A"\n' +
-    '- keywords_for_mapping: 2-5 Chinese keywords targeting upstream components/materials (NOT system integrators)\n\n' +
-    'Document text:\n' +
-    condensed;
+  const instruction = buildExtractInstruction({
+    category,
+    title,
+    sourceUrl,
+    text: condensed,
+  });
 
   async function run(m: AiModel): Promise<unknown> {
     const { object } = await generateObject({
       model: m,
       schema: AlphaRadarExtractResponseSchema,
-      system,
+      system: ALPHA_RADAR_V4_SYSTEM_PROMPT,
       prompt: instruction,
       temperature: 0,
-      maxOutputTokens: 2000,
+      maxOutputTokens: 2500,
       ...generateObjectCompatOptions(looseStructuredOutputs),
     });
     return object;
@@ -113,13 +105,17 @@ alphaRadarRoutes.post('/extract', async (c) => {
 
   try {
     const obj = await run(model);
-    const out = AlphaRadarExtractResponseSchema.parse(normalizeAlphaRadarExtract(obj));
+    const out = AlphaRadarExtractResponseSchema.parse(
+      normalizeAlphaRadarExtract(obj, category),
+    );
     return c.json({ ...out, model: modelId || out.model });
   } catch (e) {
     if (fallbackModel) {
       try {
         const obj = await run(fallbackModel);
-        const out = AlphaRadarExtractResponseSchema.parse(normalizeAlphaRadarExtract(obj));
+        const out = AlphaRadarExtractResponseSchema.parse(
+          normalizeAlphaRadarExtract(obj, category),
+        );
         return c.json({ ...out, model: fallbackModelId || out.model });
       } catch (fallbackErr) {
         const msg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
@@ -156,40 +152,7 @@ alphaRadarRoutes.post('/extract-batch', async (c) => {
   }
 
   const docs = parsed.data.documents;
-  const digest = docs
-    .map(
-      (d, idx) =>
-        `### Item ${idx}\n` +
-        `DocumentId: ${d.documentId}\n` +
-        `Category: ${d.category}\n` +
-        `Title: ${d.title}\n` +
-        `URL: ${d.url}\n` +
-        `Summary: ${(d.summary || '').trim() || '(none)'}\n`,
-    )
-    .join('\n');
-
-  const system =
-    'You are a top-tier global semiconductor and AI infrastructure analyst. ' +
-    'Read a batch of headlines/summaries and extract the highest-signal incremental industry trends. ' +
-    'Prioritize: semiconductors, AI datacenter, HBM/memory, advanced packaging, optical modules, ' +
-    'hyperscaler capex, earnings call transcripts, and supply-chain shifts. ' +
-    'Deprioritize pure biomedical, consumer lifestyle, crypto, and politics unless directly tied to chip supply. ' +
-    'Merge duplicate themes across items. Base ONLY on provided text. ' +
-    'macro_theme and catalyst_grade are REQUIRED for every trend. ' +
-    'Return valid JSON. No markdown fences.';
-
-  const instruction =
-    `Batch size: ${docs.length} items\n\n` +
-    'Task: Extract up to 8 distinct trends across ALL items (deduplicate similar themes).\n' +
-    'Return JSON: {"trends":[{"macro_theme","catalyst_grade","catalyst","global_target","keywords_for_mapping","source_index"}]}\n' +
-    'macro_theme = standardized English theme bucket (e.g. "Next-Gen Energy").\n' +
-    'catalyst_grade = S|A|B|C (S = imminent structural catalyst).\n' +
-    'source_index = 0-based item number.\n' +
-    'keywords_for_mapping = 2-5 Chinese strings targeting upstream components/materials (NOT system integrators).\n\n' +
-    digest;
-
-  const jsonSuffix =
-    '\n\nOutput ONLY one JSON object with key "trends" (array). No markdown fences.';
+  const instruction = buildExtractBatchInstruction(docs);
 
   async function finalize(label: string, raw: unknown, mid: string) {
     const parsedOut = parseAlphaRadarBatchExtract(raw);
@@ -203,10 +166,10 @@ alphaRadarRoutes.post('/extract-batch', async (c) => {
     const { object } = await generateObject({
       model: m,
       schema: AlphaRadarExtractBatchResponseSchema,
-      system,
+      system: ALPHA_RADAR_V4_SYSTEM_PROMPT,
       prompt: instruction,
       temperature: 0,
-      maxOutputTokens: 3500,
+      maxOutputTokens: 4000,
       ...generateObjectCompatOptions(looseStructuredOutputs),
     });
     return finalize('generateObject', object, mid);
@@ -215,10 +178,10 @@ alphaRadarRoutes.post('/extract-batch', async (c) => {
   async function runText(m: AiModel, mid: string) {
     const { text } = await generateText({
       model: m,
-      system,
-      prompt: instruction + jsonSuffix,
+      system: ALPHA_RADAR_V4_SYSTEM_PROMPT,
+      prompt: instruction + ALPHA_RADAR_V4_JSON_SUFFIX,
       temperature: 0,
-      maxOutputTokens: 3500,
+      maxOutputTokens: 4000,
       ...generateTextJsonObjectModeOptions(looseStructuredOutputs),
     });
     return finalize('generateText', tryParseJsonObject(text), mid);
@@ -280,34 +243,20 @@ alphaRadarRoutes.post('/map-cn', async (c) => {
     return c.json({ error: message }, 500);
   }
 
-  const { trend, candidates, externalContext, allowKnowledgeFallback } = parsed.data;
+  const { trend, candidates, externalContext, allowKnowledgeFallback, seedSymbols } = parsed.data;
   const knowledgeFallback = Boolean(allowKnowledgeFallback) || candidates.length === 0;
-  const system =
-    'You map global technology trends to pure-play A-share leaders. ' +
-    (candidates.length > 0
-      ? 'Pick at most 2 symbols ONLY from the candidate list unless external context strongly supports a listed name. '
-      : 'No local candidates were found. You MAY suggest up to 2 well-known A-share leaders using your knowledge, but confidence must be <= 0.45 and rationale must say manual review required. ') +
-    'Symbol format must be CN:xxxxxx (6-digit ticker). ' +
-    'Prefer industry purity over size. Mark low confidence when evidence is weak. ' +
-    'When mapping A-share leaders, AVOID system integrators / OEM assemblers (e.g. Inspur 浪潮, Sugon 中科曙光, generic server brands). ' +
-    'Drill down one supply-chain layer to pure-play component/material leaders, such as: ' +
-    'liquid cooling (Envicool 英维克), CPO / optical modules (Zhongji Innolight 中际旭创), ' +
-    'advanced packaging materials, high-frequency high-speed PCB. ' +
-    'Prefer highest industry purity and direct revenue exposure to the trend. ' +
-    'If candidates include both integrators and component suppliers, always pick suppliers. ' +
-    'Return valid JSON. No markdown fences.';
-
-  const instruction =
-    'Trend JSON:\n' +
-    JSON.stringify(trend) +
-    '\n\nCandidate A-shares:\n' +
-    (candidates.length ? JSON.stringify(candidates) : '(empty — use cautious knowledge fallback if allowed)') +
-    (externalContext ? `\n\nExternal search context:\n${externalContext}` : '') +
-    (knowledgeFallback
-      ? '\n\nIf candidates are empty, return best-effort CN: symbols with confidence <= 0.45.'
-      : '') +
-    '\n\nReturn cnSymbols (max 2) with symbol (CN:xxxxxx), name, confidence (0-1), rationale (Chinese). ' +
-    'Rationale must explain why component/material suppliers were chosen over system integrators when applicable.';
+  const seeds = Array.isArray(seedSymbols) ? seedSymbols : [];
+  const system = buildMapCnSystemPrompt({
+    candidateCount: candidates.length,
+    seedSymbols: seeds,
+  });
+  const instruction = buildMapCnInstruction({
+    trend,
+    candidates,
+    externalContext,
+    knowledgeFallback,
+    seedSymbols: seeds,
+  });
 
   async function run(m: AiModel): Promise<unknown> {
     const { object } = await generateObject({

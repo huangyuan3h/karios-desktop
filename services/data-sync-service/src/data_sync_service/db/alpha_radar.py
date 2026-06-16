@@ -22,6 +22,9 @@ _SCHEMA_READY = False
 TREND_COLUMN_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("macro_theme", "TEXT"),
     ("catalyst_grade", "TEXT"),
+    ("driver_type", "TEXT"),
+    ("event_focus", "TEXT"),
+    ("logic_summary", "TEXT"),
 )
 
 CREATE_SOURCES_SQL = f"""
@@ -551,7 +554,7 @@ def update_document_status(doc_id: str, processing_status: str) -> bool:
     return ok
 
 
-_TREND_SELECT_COLS = 14
+_TREND_SELECT_COLS = 17
 
 
 def insert_trend(
@@ -564,6 +567,9 @@ def insert_trend(
     catalyst: str | None,
     global_target: str | None,
     urgency_level: str,
+    driver_type: str | None = None,
+    event_focus: str | None = None,
+    logic_summary: str | None = None,
     keywords_for_mapping: list[str],
     cn_symbols: list[dict[str, Any]] | None,
     mapping_confidence: float | None,
@@ -578,13 +584,14 @@ def insert_trend(
                 f"""
                 INSERT INTO {TRENDS_TABLE}(
                     id, document_id, trend_name, macro_theme, catalyst_grade, catalyst,
-                    global_target, urgency_level, keywords_for_mapping, cn_symbols,
+                    global_target, urgency_level, driver_type, event_focus, logic_summary,
+                    keywords_for_mapping, cn_symbols,
                     mapping_confidence, risk_status, trend_json, created_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, document_id, trend_name, catalyst, global_target,
-                          urgency_level, macro_theme, catalyst_grade,
-                          keywords_for_mapping, cn_symbols, mapping_confidence,
+                          urgency_level, macro_theme, catalyst_grade, driver_type, event_focus,
+                          logic_summary, keywords_for_mapping, cn_symbols, mapping_confidence,
                           risk_status, trend_json, created_at
                 """,
                 (
@@ -596,6 +603,9 @@ def insert_trend(
                     catalyst,
                     global_target,
                     urgency_level,
+                    driver_type,
+                    event_focus,
+                    logic_summary,
                     json.dumps(keywords_for_mapping, ensure_ascii=False),
                     json.dumps(cn_symbols or [], ensure_ascii=False),
                     mapping_confidence,
@@ -631,8 +641,8 @@ def delete_trends_for_document(document_id: str) -> int:
 
 _TREND_DOC_SELECT = f"""
     SELECT t.id, t.document_id, t.trend_name, t.catalyst, t.global_target,
-           t.urgency_level, t.macro_theme, t.catalyst_grade,
-           t.keywords_for_mapping, t.cn_symbols,
+           t.urgency_level, t.macro_theme, t.catalyst_grade, t.driver_type,
+           t.event_focus, t.logic_summary, t.keywords_for_mapping, t.cn_symbols,
            t.mapping_confidence, t.risk_status, t.trend_json, t.created_at,
            d.title, d.url, d.category, d.published_at, d.fetched_at, d.summary
     FROM {TRENDS_TABLE} t
@@ -641,12 +651,12 @@ _TREND_DOC_SELECT = f"""
 
 
 def _attach_document_fields(item: dict[str, Any], row: tuple[Any, ...]) -> dict[str, Any]:
-    item["documentTitle"] = str(row[14])
-    item["documentUrl"] = str(row[15])
-    item["documentCategory"] = str(row[16])
-    item["documentPublishedAt"] = str(row[17]) if row[17] else None
-    item["documentFetchedAt"] = str(row[18]) if row[18] else None
-    item["documentSummary"] = str(row[19]) if row[19] else None
+    item["documentTitle"] = str(row[17])
+    item["documentUrl"] = str(row[18])
+    item["documentCategory"] = str(row[19])
+    item["documentPublishedAt"] = str(row[20]) if row[20] else None
+    item["documentFetchedAt"] = str(row[21]) if row[21] else None
+    item["documentSummary"] = str(row[22]) if row[22] else None
     return item
 
 
@@ -827,9 +837,22 @@ def _document_row(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def _trend_row(row: tuple[Any, ...]) -> dict[str, Any]:
-    keywords_raw = row[8]
-    cn_raw = row[9]
-    trend_json_raw = row[12]
+    if len(row) >= _TREND_SELECT_COLS:
+        keywords_raw = row[11]
+        cn_raw = row[12]
+        trend_json_raw = row[15]
+        driver_type_raw = row[8]
+        event_focus_raw = row[9]
+        logic_summary_raw = row[10]
+    else:
+        # Legacy 14-column layout (pre-V4 migration)
+        keywords_raw = row[8]
+        cn_raw = row[9]
+        trend_json_raw = row[12]
+        driver_type_raw = None
+        event_focus_raw = None
+        logic_summary_raw = None
+
     keywords: list[str] = []
     cn_symbols: list[dict[str, Any]] = []
     trend_json: dict[str, Any] = {}
@@ -848,25 +871,36 @@ def _trend_row(row: tuple[Any, ...]) -> dict[str, Any]:
             trend_json = json.loads(str(trend_json_raw))
     except Exception:
         trend_json = {}
+
     trend_name = str(row[2])
     urgency_level = str(row[5])
     macro_theme_raw = row[6]
     catalyst_grade_raw = row[7]
     macro_theme = str(macro_theme_raw) if macro_theme_raw else trend_name
     catalyst_grade = str(catalyst_grade_raw) if catalyst_grade_raw else urgency_level
+    event_focus = str(event_focus_raw) if event_focus_raw else (str(row[3]) if row[3] else None)
+    driver_type = str(driver_type_raw) if driver_type_raw else None
+    if not driver_type:
+        driver_type = str(trend_json.get("driver_type") or trend_json.get("driverType") or "Global_Tech")
+
     return {
         "id": str(row[0]),
         "documentId": str(row[1]),
         "trendName": trend_name,
         "macroTheme": macro_theme,
         "catalystGrade": catalyst_grade,
+        "driverType": driver_type,
+        "eventFocus": event_focus,
+        "logicSummary": str(logic_summary_raw) if logic_summary_raw else None,
         "catalyst": str(row[3]) if row[3] else None,
         "globalTarget": str(row[4]) if row[4] else None,
         "urgencyLevel": urgency_level,
         "keywordsForMapping": keywords,
         "cnSymbols": cn_symbols,
-        "mappingConfidence": float(row[10]) if row[10] is not None else None,
-        "riskStatus": str(row[11]),
+        "mappingConfidence": float(row[13] if len(row) >= _TREND_SELECT_COLS else row[10])
+        if (row[13] if len(row) >= _TREND_SELECT_COLS else row[10]) is not None
+        else None,
+        "riskStatus": str(row[14] if len(row) >= _TREND_SELECT_COLS else row[11]),
         "trendJson": trend_json,
-        "createdAt": str(row[13]),
+        "createdAt": str(row[16] if len(row) >= _TREND_SELECT_COLS else row[13]),
     }

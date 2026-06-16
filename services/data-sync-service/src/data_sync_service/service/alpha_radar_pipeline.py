@@ -274,7 +274,7 @@ def run_alpha_radar_pipeline(*, force: bool = False, trigger: str = "manual") ->
         }
 
     batch_started_at = datetime.now(timezone.utc).isoformat()
-    set_meta(META_LAST_BATCH_STARTED_AT, batch_started_at)
+    previous_batch_started_at = get_meta(META_LAST_BATCH_STARTED_AT)
 
     ingest_out = run_alpha_radar_ingest(trigger=trigger)
     ingest_result = ingest_out.get("ingest") or {}
@@ -311,6 +311,7 @@ def run_alpha_radar_pipeline(*, force: bool = False, trigger: str = "manual") ->
     pruned_old = 0
 
     if trend_count > 0:
+        set_meta(META_LAST_BATCH_STARTED_AT, batch_started_at)
         kept_previous = False
         success = True
         error_message = None
@@ -319,8 +320,11 @@ def run_alpha_radar_pipeline(*, force: bool = False, trigger: str = "manual") ->
             pruned_old = delete_trends_older_than_days(retention)
     else:
         delete_trends_since(batch_started_at)
-        _, new_trends = fetch_trends(limit=50)
-        trend_count = len(new_trends)
+        _, new_trends = fetch_trends(
+            limit=50,
+            since=previous_batch_started_at,
+        )
+        trend_count = 0
         kept_previous = True
         success = False
         if errors:

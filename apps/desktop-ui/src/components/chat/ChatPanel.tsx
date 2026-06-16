@@ -770,10 +770,13 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
       out += `## Alpha Incubator Trend: ${ref.trendName}\n`;
       out += `- trendId: ${ref.trendId}\n`;
       if (ref.macroTheme) out += `- macroTheme: ${ref.macroTheme}\n`;
+      if (ref.driverType) out += `- driverType: ${ref.driverType}\n`;
       if (ref.catalystGrade) out += `- catalystGrade: ${ref.catalystGrade}\n`;
       out += `- riskStatus: ${ref.riskStatus}\n`;
       if (ref.documentTitle) out += `- source: ${ref.documentTitle}\n`;
-      if (ref.catalyst) out += `- catalyst: ${ref.catalyst}\n`;
+      if (ref.eventFocus) out += `- eventFocus: ${ref.eventFocus}\n`;
+      else if (ref.catalyst) out += `- catalyst: ${ref.catalyst}\n`;
+      if (ref.logicSummary) out += `- logicSummary: ${ref.logicSummary}\n`;
       if (ref.cnSymbols?.length) {
         out += `- A-share mapping:\n`;
         for (const s of ref.cnSymbols) {

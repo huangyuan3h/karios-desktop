@@ -311,24 +311,40 @@ export const InvestmentDailyReportResponseSchema = z.object({
   topNews: z.array(InvestmentDailyReportNewsItemSchema).length(5),
 });
 
+export const AlphaRadarCategorySchema = z.enum([
+  'academic',
+  'earnings',
+  'research',
+  'policy',
+  'cycle',
+  'consensus',
+]);
+
+export const AlphaRadarDriverTypeSchema = z.enum([
+  'Global_Tech',
+  'Domestic_Policy',
+  'Cycle_Reversal',
+]);
+
+export const AlphaRadarCatalystGradeSchema = z.enum(['S', 'A']);
+
 export const AlphaRadarExtractRequestSchema = z.object({
   text: z.string().min(40).max(200_000),
   title: z.string().min(1).max(500),
-  category: z.enum(['academic', 'earnings', 'research']),
+  category: AlphaRadarCategorySchema,
   sourceUrl: z.string().min(1).max(2000),
 });
 
-export const AlphaRadarTrendSchema = z.object({
+export const AlphaRadarTrendV4Schema = z.object({
   macro_theme: z.string().min(1).max(120),
-  catalyst_grade: z.enum(['S', 'A', 'B', 'C']),
-  trend_name: z.string().min(1).max(200),
-  catalyst: z.string().min(1).max(2000),
-  global_target: z.string().min(1).max(120),
-  urgency_level: z.enum(['S', 'A', 'B', 'C']),
-  keywords_for_mapping: z.array(z.string().min(1).max(80)).min(1).max(8),
+  driver_type: AlphaRadarDriverTypeSchema,
+  catalyst_grade: AlphaRadarCatalystGradeSchema,
+  event_focus: z.string().min(1).max(2000),
+  a_share_mapping: z.array(z.string().min(1).max(80)).min(1).max(3),
+  logic_summary: z.string().min(1).max(30),
 });
 
-export const AlphaRadarBatchTrendSchema = AlphaRadarTrendSchema.extend({
+export const AlphaRadarBatchTrendV4Schema = AlphaRadarTrendV4Schema.extend({
   source_index: z.number().int().min(0).max(49),
 });
 
@@ -336,7 +352,7 @@ export const AlphaRadarBatchDocumentSchema = z.object({
   documentId: z.string().min(1).max(64),
   title: z.string().min(1).max(500),
   url: z.string().min(1).max(2000),
-  category: z.enum(['academic', 'earnings', 'research']),
+  category: AlphaRadarCategorySchema,
   summary: z.string().max(4000).optional().nullable(),
 });
 
@@ -345,12 +361,12 @@ export const AlphaRadarExtractBatchRequestSchema = z.object({
 });
 
 export const AlphaRadarExtractBatchResponseSchema = z.object({
-  trends: z.array(AlphaRadarBatchTrendSchema).max(8),
+  trends: z.array(AlphaRadarBatchTrendV4Schema).max(8),
   model: z.string().optional(),
 });
 
 export const AlphaRadarExtractResponseSchema = z.object({
-  trends: z.array(AlphaRadarTrendSchema).max(5),
+  trends: z.array(AlphaRadarTrendV4Schema).max(3),
   model: z.string().optional(),
 });
 
@@ -366,6 +382,7 @@ export const AlphaRadarMapCnRequestSchema = z.object({
   candidates: z.array(AlphaRadarMapCnCandidateSchema).max(30),
   externalContext: z.string().max(8000).optional().nullable(),
   allowKnowledgeFallback: z.boolean().optional(),
+  seedSymbols: z.array(z.string().min(1).max(80)).max(3).optional(),
 });
 
 export const AlphaRadarCnSymbolSchema = z.object({

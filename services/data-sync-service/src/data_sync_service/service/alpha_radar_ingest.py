@@ -56,7 +56,47 @@ DEFAULT_SOURCES: list[tuple[str, str, str, str]] = [
     ),
 ]
 
-DEFAULT_SOURCE_IDS = {sid for sid, _, _, _ in DEFAULT_SOURCES}
+CHINESE_SOURCE_DEFAULTS: list[tuple[str, str, str, str, str]] = [
+    (
+        "cls-policy",
+        "财联社·宏观产业电报",
+        "/cls/telegraph",
+        "policy",
+        "ALPHA_RADAR_RSS_CLS_POLICY",
+    ),
+    (
+        "xinhua-policy",
+        "新华社/政府网政策",
+        "/gov/zhengce/zuixin",
+        "policy",
+        "ALPHA_RADAR_RSS_XINHUA_POLICY",
+    ),
+    (
+        "wallstreetcn-commodity",
+        "华尔街见闻·大宗",
+        "/wallstreetcn/news/global",
+        "cycle",
+        "ALPHA_RADAR_RSS_WALLSTREETCN",
+    ),
+    (
+        "smm-industry",
+        "上海有色·产业动态",
+        "/smm/news",
+        "cycle",
+        "ALPHA_RADAR_RSS_SMM",
+    ),
+    (
+        "huibo-research",
+        "慧博·行业研报",
+        "/hbreport/report",
+        "consensus",
+        "ALPHA_RADAR_RSS_HUIBO",
+    ),
+]
+
+DEFAULT_SOURCE_IDS = {sid for sid, _, _, _ in DEFAULT_SOURCES} | {
+    sid for sid, _, _, _, _ in CHINESE_SOURCE_DEFAULTS
+}
 FULLTEXT_PRIORITY_SOURCE_IDS = frozenset({"stratechery"})
 YOUTUBE_HOSTS = ("youtube.com", "youtu.be", "www.youtube.com", "m.youtube.com")
 
@@ -125,11 +165,35 @@ def _urlopen(req: urllib.request.Request, *, timeout: int) -> Any:
     return _opener().open(req, timeout=timeout)
 
 
+def rsshub_base_url() -> str:
+    return os.getenv("ALPHA_RADAR_RSSHUB_BASE_URL", "http://127.0.0.1:1200").rstrip("/")
+
+
+def _chinese_source_url(route: str, env_key: str) -> str:
+    override = os.getenv(env_key, "").strip()
+    if override:
+        return override
+    base = rsshub_base_url()
+    path = route if route.startswith("/") else f"/{route}"
+    return f"{base}{path}"
+
+
 def add_default_sources() -> None:
     ensure_tables()
     for sid, name, url, category in DEFAULT_SOURCES:
         try:
             create_source(source_id=sid, name=name, url=url, category=category, enabled=True)
+        except Exception:
+            pass
+    for sid, name, route, category, env_key in CHINESE_SOURCE_DEFAULTS:
+        try:
+            create_source(
+                source_id=sid,
+                name=name,
+                url=_chinese_source_url(route, env_key),
+                category=category,
+                enabled=True,
+            )
         except Exception:
             pass
     try:

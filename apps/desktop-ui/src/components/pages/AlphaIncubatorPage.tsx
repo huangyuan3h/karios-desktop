@@ -40,6 +40,9 @@ type AlphaTrend = {
   trendName: string;
   macroTheme?: string | null;
   catalystGrade?: string | null;
+  driverType?: string | null;
+  eventFocus?: string | null;
+  logicSummary?: string | null;
   catalyst: string | null;
   globalTarget: string | null;
   urgencyLevel: string;
@@ -112,6 +115,7 @@ const WATCHLIST_STORAGE_KEY = 'karios.watchlist.v1';
 
 type ViewTab = 'trends' | 'catalyst' | 'rss';
 type TrendsScope = 'batch' | 'all';
+type DriverFilter = 'all' | 'Global_Tech' | 'Domestic_Policy' | 'Cycle_Reversal';
 
 async function apiGetJson<T>(path: string): Promise<T> {
   const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
@@ -159,6 +163,20 @@ function urgencyTone(level: string): string {
   return 'bg-[var(--k-muted)] text-white';
 }
 
+function driverTone(driver: string): string {
+  if (driver === 'Global_Tech') return 'bg-blue-600/90 text-white';
+  if (driver === 'Domestic_Policy') return 'bg-violet-600/90 text-white';
+  if (driver === 'Cycle_Reversal') return 'bg-emerald-600/90 text-white';
+  return 'bg-[var(--k-muted)] text-white';
+}
+
+function driverLabel(driver: string | null | undefined): string {
+  const d = (driver || 'Global_Tech').trim();
+  if (d === 'Domestic_Policy') return '政策';
+  if (d === 'Cycle_Reversal') return '周期';
+  return '科技';
+}
+
 function riskLabel(status: string): { text: string; className: string } {
   if (status === 'armed') {
     return {
@@ -190,6 +208,7 @@ export function AlphaIncubatorPage() {
   const { addReference } = useChatStore();
   const [viewTab, setViewTab] = React.useState<ViewTab>('trends');
   const [trendsScope, setTrendsScope] = React.useState<TrendsScope>('batch');
+  const [driverFilter, setDriverFilter] = React.useState<DriverFilter>('all');
   const [trends, setTrends] = React.useState<AlphaTrend[]>([]);
   const [trendsTotal, setTrendsTotal] = React.useState(0);
   const [rssDocuments, setRssDocuments] = React.useState<RssDocument[]>([]);
@@ -204,6 +223,11 @@ export function AlphaIncubatorPage() {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [msg, setMsg] = React.useState<string | null>(null);
+
+  const visibleTrends = React.useMemo(() => {
+    if (driverFilter === 'all') return trends;
+    return trends.filter((t) => (t.driverType || 'Global_Tech') === driverFilter);
+  }, [trends, driverFilter]);
 
   const refreshTrends = React.useCallback(async (scope: TrendsScope) => {
     const path =
@@ -480,14 +504,29 @@ export function AlphaIncubatorPage() {
         >
           全部历史 ({trendsTotal})
         </button>
+        {(['all', 'Global_Tech', 'Domestic_Policy', 'Cycle_Reversal'] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            className={cn(
+              'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+              driverFilter === key
+                ? 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-text)]'
+                : 'border-transparent text-[var(--k-muted)] hover:text-[var(--k-text)]',
+            )}
+            onClick={() => setDriverFilter(key)}
+          >
+            {key === 'all' ? '全部驱动' : driverLabel(key)}
+          </button>
+        ))}
       </div>
       <div className="grid grid-cols-1 gap-3">
-        {trends.length === 0 ? (
+        {visibleTrends.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--k-border)] p-8 text-center text-sm text-[var(--k-muted)]">
             暂无趋势卡片。点击「生成趋势」开始（约 1–3 分钟，需 ai-service + 网络）。
           </div>
         ) : (
-          trends.map((t) => {
+          visibleTrends.map((t) => {
             const risk = riskLabel(t.riskStatus);
             const ageDays = articleAgeDays(t.documentPublishedAt, t.documentFetchedAt);
             const stale = isStaleArticle(t.documentPublishedAt, t.documentFetchedAt, catalystMeta.maxAgeDays);
@@ -513,6 +552,15 @@ export function AlphaIncubatorPage() {
                       >
                         {trendCatalystGrade(t)}
                       </span>
+                      <span
+                        className={cn(
+                          'rounded px-1.5 py-0.5 text-xs font-medium',
+                          driverTone(t.driverType || 'Global_Tech'),
+                        )}
+                        title="Driver type"
+                      >
+                        {driverLabel(t.driverType)}
+                      </span>
                       <h3 className="font-semibold">{trendDisplayTitle(t)}</h3>
                     </div>
                     <div className="mt-2 text-sm text-[var(--k-muted)]">
@@ -533,13 +581,15 @@ export function AlphaIncubatorPage() {
                         </a>
                       ) : null}
                     </div>
-                    {t.catalyst ? (
-                      <p className="mt-2 text-sm leading-relaxed text-[var(--k-text)]">{t.catalyst}</p>
+                    {t.eventFocus || t.catalyst ? (
+                      <p className="mt-2 text-sm leading-relaxed text-[var(--k-text)]">
+                        {t.eventFocus || t.catalyst}
+                      </p>
                     ) : null}
-                    {t.globalTarget ? (
-                      <div className="mt-1 text-xs text-[var(--k-muted)]">
-                        Global target: {t.globalTarget}
-                      </div>
+                    {t.logicSummary ? (
+                      <p className="mt-1 text-xs font-medium text-[var(--k-muted)]">
+                        逻辑：{t.logicSummary}
+                      </p>
                     ) : null}
                     <div className="mt-2 text-sm">
                       <span className="font-medium">【A股映射龙头】</span>
@@ -634,6 +684,9 @@ export function AlphaIncubatorPage() {
                         trendName: trendDisplayTitle(t),
                         macroTheme: t.macroTheme ?? trendDisplayTitle(t),
                         catalystGrade: trendCatalystGrade(t),
+                        driverType: t.driverType ?? undefined,
+                        eventFocus: t.eventFocus ?? t.catalyst ?? undefined,
+                        logicSummary: t.logicSummary ?? undefined,
                         catalyst: t.catalyst,
                         cnSymbols: t.cnSymbols,
                         riskStatus: t.riskStatus,

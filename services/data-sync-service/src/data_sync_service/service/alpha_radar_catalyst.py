@@ -104,6 +104,9 @@ def _normalize_symbol(symbol: str) -> str:
 
 
 def _article_summary(trend: dict[str, Any]) -> str | None:
+    event_focus = trend.get("eventFocus") or trend.get("event_focus")
+    if event_focus and str(event_focus).strip():
+        return str(event_focus).strip()
     doc_summary = trend.get("documentSummary")
     if doc_summary and str(doc_summary).strip():
         return str(doc_summary).strip()
@@ -152,6 +155,13 @@ def aggregate_catalyst_stocks(
                 "catalystGrade": str(
                     trend.get("catalystGrade") or trend.get("urgencyLevel") or "B"
                 ),
+                "driverType": str(
+                    trend.get("driverType") or trend.get("driver_type") or "Global_Tech"
+                ),
+                "eventFocus": str(trend.get("eventFocus") or trend.get("event_focus") or "").strip()
+                or None,
+                "logicSummary": str(trend.get("logicSummary") or trend.get("logic_summary") or "").strip()
+                or None,
                 "catalyst": str(trend.get("catalyst") or "").strip() or None,
                 "globalTarget": str(trend.get("globalTarget") or "").strip() or None,
                 "documentId": document_id,
@@ -195,6 +205,9 @@ def aggregate_catalyst_stocks(
                     "trendName": a["trendName"],
                     "macroTheme": a["macroTheme"],
                     "catalystGrade": a["catalystGrade"],
+                    "driverType": a.get("driverType"),
+                    "eventFocus": a.get("eventFocus"),
+                    "logicSummary": a.get("logicSummary"),
                     "catalyst": a.get("catalyst"),
                     "globalTarget": a.get("globalTarget"),
                     "documentId": a["documentId"],
