@@ -190,6 +190,9 @@ async def _read_visible_grid_rows(grid, headers: list[str]) -> list[dict[str, st
     return out
 
 
+MAX_SCROLL_STEPS = 120
+
+
 async def _scroll_grid(page, grid, *, steps: int = 1) -> None:
     box = await grid.bounding_box()
     if not box:
@@ -452,7 +455,7 @@ async def capture_screener_over_cdp(
 
                 seen: set[str] = set()
                 rows: list[dict[str, str]] = []
-                for _ in range(200):
+                for _ in range(MAX_SCROLL_STEPS):
                     visible = (
                         await _read_visible_table_rows(grid, headers)
                         if tag == "TABLE"

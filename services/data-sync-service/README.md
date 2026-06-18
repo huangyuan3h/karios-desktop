@@ -70,6 +70,17 @@ Alembic reads `DATABASE_URL` from the repo root `.env` (same as the app). SQLAlc
 - `GET /close/status` — close-sync status (today run + last success)
 - `POST /sync/close` — close-time sync by trade_date window (daily + adj_factor, paged)
 
+### TradingView screeners (async capture jobs)
+
+Requires migration `0002_tv_capture_jobs` (`PYTHONPATH=src alembic upgrade head`).
+
+- `GET /integrations/tradingview/screeners` — list screeners
+- `POST /integrations/tradingview/screeners/{id}/sync` — **202** enqueue capture job (`{ jobId, status, screenerId }`)
+- `GET /integrations/tradingview/capture-jobs/{job_id}` — poll job status (`queued` / `running` / `done` / `failed`)
+- `GET /integrations/tradingview/capture-jobs?screener_id=` — list recent jobs
+
+Background worker (max 2 concurrent) runs in-process; dedupes active jobs per screener.
+
 ## Scheduler
 
 One Python file per cron job under `scheduler/`, with `JOB_ID`, `build_trigger()`, and `run()`. Register in `scheduler/__init__.py`.

@@ -5,7 +5,8 @@ import { ExternalLink, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
-import { apiGetJson, apiPostJson } from '@/lib/api/client';
+import { apiGetJson } from '@/lib/api/client';
+import { syncTvScreenerAndWait } from '@/lib/api/tvCapture';
 
 type TvScreener = {
   id: string;
@@ -165,9 +166,7 @@ export function ScreenerPage() {
     setBusyId(screener.id);
     setError(null);
     try {
-      await apiPostJson<{ snapshotId: string }>(
-        `/integrations/tradingview/screeners/${encodeURIComponent(screener.id)}/sync`,
-      );
+      await syncTvScreenerAndWait(screener.id);
       await refreshAll();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -182,17 +181,17 @@ export function ScreenerPage() {
     setError(null);
     const failures: Array<{ id: string; name: string; error: string }> = [];
     try {
-      // Serial sync to avoid overloading CDP/TradingView.
-      for (const sc of screeners) {
-        try {
-          await apiPostJson<{ snapshotId: string }>(
-            `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/sync`,
-          );
-        } catch (e) {
+      // Enqueue all screeners in parallel; backend worker limits CDP concurrency.
+      const results = await Promise.allSettled(
+        screeners.map((sc) => syncTvScreenerAndWait(sc.id)),
+      );
+      for (let i = 0; i < screeners.length; i++) {
+        const r = results[i];
+        if (r.status === 'rejected') {
           failures.push({
-            id: sc.id,
-            name: sc.name,
-            error: e instanceof Error ? e.message : String(e),
+            id: screeners[i].id,
+            name: screeners[i].name,
+            error: r.reason instanceof Error ? r.reason.message : String(r.reason),
           });
         }
       }

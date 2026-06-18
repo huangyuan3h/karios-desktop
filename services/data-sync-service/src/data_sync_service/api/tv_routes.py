@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from data_sync_service.service import tv as tvsvc
@@ -61,12 +62,25 @@ def tv_screener_history(screener_id: str, days: int = Query(10, ge=1, le=30)) ->
     return tvsvc.screener_history(screener_id=screener_id, days=int(days))
 
 
-@router.post("/integrations/tradingview/screeners/{screener_id}/sync")
-def sync_tv_screener(screener_id: str) -> dict[str, Any]:
-    return tvsvc.sync_screener(screener_id=screener_id)
+@router.post("/integrations/tradingview/screeners/{screener_id}/sync", status_code=202)
+def sync_tv_screener(screener_id: str) -> JSONResponse:
+    payload = tvsvc.enqueue_screener_capture(screener_id=screener_id, trigger="api")
+    return JSONResponse(content=payload, status_code=202)
+
+
+@router.get("/integrations/tradingview/capture-jobs/{job_id}")
+def get_tv_capture_job(job_id: str) -> dict[str, Any]:
+    return tvsvc.get_capture_job(job_id)
+
+
+@router.get("/integrations/tradingview/capture-jobs")
+def list_tv_capture_jobs(
+    screener_id: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+) -> dict[str, Any]:
+    return tvsvc.list_capture_jobs(screener_id=screener_id, limit=int(limit))
 
 
 @router.post("/integrations/tradingview/migrate/sqlite")
 def migrate_tv_from_sqlite(req: MigrateTvFromSqliteRequest) -> dict[str, Any]:
     return tvsvc.migrate_from_sqlite(sqlite_path=req.sqlitePath)
-

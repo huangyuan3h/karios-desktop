@@ -8,6 +8,8 @@ import pytest
 from data_sync_service.db import check_db, get_connection  # type: ignore[import-not-found]
 from data_sync_service.db.schema_baseline import BASELINE_REVISION, baseline_ddl_statements
 
+HEAD_REVISION = "0002_tv_capture_jobs"
+
 
 def _postgres_available() -> bool:
     if os.getenv("SKIP_DB_TESTS", "").lower() in {"1", "true", "yes"}:
@@ -31,6 +33,15 @@ def test_baseline_ddl_includes_core_tables() -> None:
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
 def test_alembic_baseline_revision_applied() -> None:
+    from alembic import command
+    from alembic.config import Config
+
+    service_root = Path(__file__).resolve().parents[1]
+    cfg = Config(str(service_root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(service_root / "alembic"))
+    cfg.set_main_option("prepend_sys_path", str(service_root / "src"))
+    cfg.set_main_option("path_separator", "os")
+    command.upgrade(cfg, "head")
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -42,7 +53,7 @@ def test_alembic_baseline_revision_applied() -> None:
             )
             row = cur.fetchone()
     assert row is not None
-    assert str(row[0]) == BASELINE_REVISION
+    assert str(row[0]) == HEAD_REVISION
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
@@ -84,4 +95,4 @@ def test_alembic_upgrade_head_is_idempotent() -> None:
             cur.execute("SELECT version_num FROM alembic_version LIMIT 1")
             row = cur.fetchone()
     assert row is not None
-    assert str(row[0]) == BASELINE_REVISION
+    assert str(row[0]) == HEAD_REVISION

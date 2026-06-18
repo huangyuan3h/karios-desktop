@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,8 +16,11 @@ from fastapi import HTTPException
 
 from data_sync_service.config import ROOT_ENV_PATH
 from data_sync_service.db import tv as tvdb
+from data_sync_service.db import tv_capture_jobs as jobdb
 from data_sync_service.service import tv_chrome
 from data_sync_service.tv.capture import capture_screener_over_cdp_sync
+
+CAPTURE_JOB_DEFAULT_TIMEOUT_S = 180
 
 
 def _now_iso() -> str:
@@ -269,10 +274,7 @@ def migrate_from_sqlite(*, sqlite_path: str | None = None) -> dict[str, Any]:
     }
 
 
-def sync_screener(*, screener_id: str) -> dict[str, Any]:
-    """
-    Capture a fresh snapshot for a screener via CDP-attached Chrome and persist to Postgres.
-    """
+def _validate_screener_for_capture(screener_id: str) -> dict[str, Any]:
     ensure_seeded()
     sid = (screener_id or "").strip()
     if not sid:
@@ -287,10 +289,12 @@ def sync_screener(*, screener_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Screener URL is empty")
     if not (url.startswith("http://") or url.startswith("https://")):
         raise HTTPException(status_code=400, detail="Screener URL must start with http(s)://")
+    return screener
 
+
+def _ensure_cdp_ready() -> str:
     st = tv_chrome.status()
     if not st.cdpOk:
-        # Auto-start a headless Chrome for silent sync (same behavior as quant-service).
         src_ud = (tv_chrome.get_setting("tv_bootstrap_src_user_data_dir") or "").strip()
         src_profile = (tv_chrome.get_setting("tv_bootstrap_src_profile_dir") or "").strip()
         desired_profile_dir = src_profile or tv_chrome.TV_PROFILE_DIR_DEFAULT
@@ -314,12 +318,17 @@ def sync_screener(*, screener_id: str) -> dict[str, Any]:
                     "or configure the bootstrap paths in Settings."
                 ),
             )
+    return f"http://{st.host}:{st.port}"
 
-    cdp_url = f"http://{st.host}:{st.port}"
+
+def _capture_and_persist_screener(*, screener_id: str) -> dict[str, Any]:
+    screener = _validate_screener_for_capture(screener_id)
+    sid = str(screener.get("id") or "").strip()
+    url = str(screener.get("url") or "").strip()
+    cdp_url = _ensure_cdp_ready()
     try:
         result = capture_screener_over_cdp_sync(cdp_url=cdp_url, url=url)
     except Exception as e:  # noqa: BLE001
-        # Avoid unhandled exceptions (which bypass CORS due to ServerErrorMiddleware).
         msg = str(e) or e.__class__.__name__
         if "Cannot locate screener grid/table" in msg or "TradingView login required" in msg:
             raise HTTPException(status_code=409, detail=msg) from e
@@ -340,5 +349,120 @@ def sync_screener(*, screener_id: str) -> dict[str, Any]:
         row_count=len(result.rows),
         payload=payload,
     )
-    return {"snapshotId": snapshot_id, "capturedAt": result.captured_at, "rowCount": len(result.rows)}
+    return {
+        "snapshotId": snapshot_id,
+        "capturedAt": result.captured_at,
+        "rowCount": len(result.rows),
+        "screenerId": sid,
+    }
+
+
+def job_to_api(job: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "jobId": str(job.get("id") or ""),
+        "screenerId": str(job.get("screener_id") or ""),
+        "status": str(job.get("status") or ""),
+        "trigger": str(job.get("trigger_source") or ""),
+        "createdAt": job.get("created_at"),
+        "startedAt": job.get("started_at"),
+        "finishedAt": job.get("finished_at"),
+        "snapshotId": job.get("snapshot_id"),
+        "rowCount": job.get("row_count"),
+        "error": job.get("error_message"),
+    }
+
+
+def enqueue_screener_capture(*, screener_id: str, trigger: str = "api") -> dict[str, Any]:
+    _validate_screener_for_capture(screener_id)
+    job = jobdb.enqueue_or_get_active(screener_id=screener_id, trigger_source=trigger)
+    from data_sync_service.service.tv_capture_worker import wake_tv_capture_worker
+
+    wake_tv_capture_worker()
+    return job_to_api(job)
+
+
+def get_capture_job(job_id: str) -> dict[str, Any]:
+    job = jobdb.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Capture job not found")
+    return job_to_api(job)
+
+
+def list_capture_jobs(*, screener_id: str | None = None, limit: int = 20) -> dict[str, Any]:
+    items = jobdb.list_jobs(screener_id=screener_id, limit=limit)
+    return {"items": [job_to_api(j) for j in items]}
+
+
+def process_capture_job(job_id: str) -> dict[str, Any]:
+    job = jobdb.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Capture job not found")
+    sid = str(job.get("screener_id") or "").strip()
+    try:
+        result = _capture_and_persist_screener(screener_id=sid)
+        jobdb.mark_done(
+            job_id=job_id,
+            snapshot_id=str(result.get("snapshotId") or ""),
+            row_count=int(result.get("rowCount") or 0),
+        )
+        return result
+    except HTTPException as exc:
+        err = str(exc.detail) if exc.detail is not None else str(exc)
+        jobdb.mark_failed(job_id=job_id, error_message=err)
+        raise
+    except Exception as exc:
+        jobdb.mark_failed(job_id=job_id, error_message=str(exc) or exc.__class__.__name__)
+        raise
+
+
+def wait_for_capture_jobs(
+    job_ids: list[str],
+    *,
+    timeout_s: float | None = None,
+    poll_s: float = 1.0,
+    on_update: Callable[[dict[str, Any]], None] | None = None,
+) -> list[dict[str, Any]]:
+    ids = [str(j or "").strip() for j in job_ids if str(j or "").strip()]
+    if not ids:
+        return []
+    timeout = float(
+        timeout_s if timeout_s is not None else CAPTURE_JOB_DEFAULT_TIMEOUT_S * max(len(ids), 1)
+    )
+    deadline = time.time() + timeout
+    last_status: dict[str, str] = {}
+    while time.time() < deadline:
+        jobs: list[dict[str, Any]] = []
+        all_terminal = True
+        for jid in ids:
+            raw = jobdb.get_job(jid)
+            if raw is None:
+                raise HTTPException(status_code=404, detail=f"Capture job not found: {jid}")
+            api = job_to_api(raw)
+            jobs.append(api)
+            status = str(api.get("status") or "")
+            if on_update is not None and last_status.get(jid) != status:
+                last_status[jid] = status
+                on_update(api)
+            if status not in jobdb.TERMINAL_STATUSES:
+                all_terminal = False
+        if all_terminal:
+            return jobs
+        time.sleep(max(0.2, float(poll_s)))
+    raise HTTPException(status_code=504, detail="Capture job wait timed out")
+
+
+def sync_screener(*, screener_id: str) -> dict[str, Any]:
+    """Blocking helper for legacy callers; prefer enqueue + wait."""
+    out = enqueue_screener_capture(screener_id=screener_id, trigger="api")
+    jobs = wait_for_capture_jobs([str(out.get("jobId") or "")], timeout_s=CAPTURE_JOB_DEFAULT_TIMEOUT_S)
+    job = jobs[0] if jobs else out
+    if str(job.get("status") or "") == "failed":
+        raise HTTPException(status_code=500, detail=str(job.get("error") or "capture failed"))
+    if str(job.get("status") or "") != "done":
+        raise HTTPException(status_code=504, detail="capture did not complete")
+    return {
+        "snapshotId": job.get("snapshotId"),
+        "capturedAt": job.get("finishedAt"),
+        "rowCount": int(job.get("rowCount") or 0),
+    }
 

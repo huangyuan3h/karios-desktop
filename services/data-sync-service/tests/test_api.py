@@ -151,6 +151,49 @@ def test_dashboard_summary_endpoint_shape() -> None:
     assert "items" in ms and isinstance(ms["items"], list)
 
 
+def test_tv_screener_sync_returns_202_with_job(monkeypatch) -> None:
+    import data_sync_service.service.tv as tvsvc  # type: ignore[import-not-found]
+
+    monkeypatch.setattr(
+        tvsvc,
+        "enqueue_screener_capture",
+        lambda *, screener_id, trigger="api": {
+            "jobId": "job-123",
+            "screenerId": screener_id,
+            "status": "queued",
+        },
+    )
+    client = TestClient(app)
+    resp = client.post("/integrations/tradingview/screeners/falcon/sync")
+    assert resp.status_code == 202
+    payload = resp.json()
+    assert payload["jobId"] == "job-123"
+    assert payload["screenerId"] == "falcon"
+    assert payload["status"] == "queued"
+
+
+def test_tv_capture_job_get_endpoint(monkeypatch) -> None:
+    import data_sync_service.service.tv as tvsvc  # type: ignore[import-not-found]
+
+    monkeypatch.setattr(
+        tvsvc,
+        "get_capture_job",
+        lambda job_id: {
+            "jobId": job_id,
+            "screenerId": "falcon",
+            "status": "done",
+            "rowCount": 12,
+            "snapshotId": "snap-1",
+        },
+    )
+    client = TestClient(app)
+    resp = client.get("/integrations/tradingview/capture-jobs/job-123")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "done"
+    assert payload["rowCount"] == 12
+
+
 def test_dashboard_sync_endpoint_shape() -> None:
     client = TestClient(app)
     # Avoid running TradingView sync in tests (it may require Chrome profile/login).

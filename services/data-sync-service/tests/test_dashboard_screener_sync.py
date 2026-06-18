@@ -25,24 +25,45 @@ def _enabled_screeners(*ids: str) -> dict:
     }
 
 
+def _job(screener_id: str, *, status: str = "done", row_count: int = 10, error: str | None = None) -> dict:
+    return {
+        "jobId": screener_id,
+        "screenerId": screener_id,
+        "status": status,
+        "rowCount": row_count,
+        "snapshotId": "s",
+        "error": error,
+    }
+
+
 def test_sync_screeners_parallel_faster_than_serial(monkeypatch) -> None:
     lock = threading.Lock()
     active = {"count": 0, "max": 0}
 
-    def fake_sync(*, screener_id: str) -> dict:
-        _ = screener_id
+    def fake_enqueue(*, screener_id: str, trigger: str = "api") -> dict:
+        return _job(screener_id, status="queued", row_count=0)
+
+    def fake_wait(
+        job_ids: list[str],
+        *,
+        timeout_s: float | None = None,
+        poll_s: float = 1.0,
+        on_update=None,
+    ) -> list[dict]:
+        _ = timeout_s, poll_s, on_update
         with lock:
             active["count"] += 1
             active["max"] = max(active["max"], active["count"])
         try:
             time.sleep(0.15)
-            return {"rowCount": 10, "snapshotId": "s", "capturedAt": "2026-06-18"}
+            return [_job(jid, status="done", row_count=10) for jid in job_ids]
         finally:
             with lock:
                 active["count"] -= 1
 
     monkeypatch.setattr(dashboard_svc, "list_screeners", lambda: _enabled_screeners("a", "b", "c"))
-    monkeypatch.setattr(dashboard_svc, "sync_screener", fake_sync)
+    monkeypatch.setattr(dashboard_svc, "enqueue_screener_capture", fake_enqueue)
+    monkeypatch.setattr(dashboard_svc, "wait_for_capture_jobs", fake_wait)
     monkeypatch.setattr(dashboard_svc, "_is_shanghai_sync_window", lambda: True)
 
     start = time.perf_counter()
@@ -57,13 +78,28 @@ def test_sync_screeners_parallel_faster_than_serial(monkeypatch) -> None:
 
 
 def test_sync_screeners_failure_isolation(monkeypatch) -> None:
-    def fake_sync(*, screener_id: str) -> dict:
-        if screener_id == "bad":
-            raise RuntimeError("capture failed")
-        return {"rowCount": 5, "snapshotId": "s", "capturedAt": "2026-06-18"}
+    def fake_enqueue(*, screener_id: str, trigger: str = "api") -> dict:
+        return _job(screener_id, status="queued")
+
+    def fake_wait(
+        job_ids: list[str],
+        *,
+        timeout_s: float | None = None,
+        poll_s: float = 1.0,
+        on_update=None,
+    ) -> list[dict]:
+        _ = timeout_s, poll_s, on_update
+        out: list[dict] = []
+        for jid in job_ids:
+            if jid == "bad":
+                out.append(_job(jid, status="failed", row_count=0, error="capture failed"))
+            else:
+                out.append(_job(jid, status="done", row_count=5))
+        return out
 
     monkeypatch.setattr(dashboard_svc, "list_screeners", lambda: _enabled_screeners("ok", "bad", "ok2"))
-    monkeypatch.setattr(dashboard_svc, "sync_screener", fake_sync)
+    monkeypatch.setattr(dashboard_svc, "enqueue_screener_capture", fake_enqueue)
+    monkeypatch.setattr(dashboard_svc, "wait_for_capture_jobs", fake_wait)
     monkeypatch.setattr(dashboard_svc, "_is_shanghai_sync_window", lambda: True)
 
     out = dashboard_svc._sync_screeners_step(screeners_enabled=True)
@@ -78,11 +114,11 @@ def test_sync_screeners_failure_isolation(monkeypatch) -> None:
 
 def test_sync_screeners_skip_after_close(monkeypatch) -> None:
     today = dashboard_svc._shanghai_today_iso()
-    sync_calls: list[str] = []
+    enqueue_calls: list[str] = []
 
-    def fake_sync(*, screener_id: str) -> dict:
-        sync_calls.append(screener_id)
-        return {"rowCount": 1, "snapshotId": "s", "capturedAt": today}
+    def fake_enqueue(*, screener_id: str, trigger: str = "api") -> dict:
+        enqueue_calls.append(screener_id)
+        return _job(screener_id, status="queued")
 
     def fake_snapshots(sid: str, limit: int = 1) -> list[dict]:
         _ = limit
@@ -91,13 +127,18 @@ def test_sync_screeners_skip_after_close(monkeypatch) -> None:
         return []
 
     monkeypatch.setattr(dashboard_svc, "list_screeners", lambda: _enabled_screeners("skip-me", "run-me"))
-    monkeypatch.setattr(dashboard_svc, "sync_screener", fake_sync)
+    monkeypatch.setattr(dashboard_svc, "enqueue_screener_capture", fake_enqueue)
+    monkeypatch.setattr(
+        dashboard_svc,
+        "wait_for_capture_jobs",
+        lambda job_ids, **_: [_job(j, status="done", row_count=1) for j in job_ids],
+    )
     monkeypatch.setattr(dashboard_svc, "list_snapshots_for_screener_full", fake_snapshots)
     monkeypatch.setattr(dashboard_svc, "_is_shanghai_sync_window", lambda: False)
 
     out = dashboard_svc._sync_screeners_step(screeners_enabled=True)
     assert out["skippedIds"] == ["skip-me"]
-    assert sync_calls == ["run-me"]
+    assert enqueue_calls == ["run-me"]
     skipped = next(r for r in out["screenerResults"] if r["id"] == "skip-me")
     assert skipped["status"] == "skipped"
 
@@ -106,8 +147,13 @@ def test_sync_screeners_missing_row_count(monkeypatch) -> None:
     monkeypatch.setattr(dashboard_svc, "list_screeners", lambda: _enabled_screeners("empty"))
     monkeypatch.setattr(
         dashboard_svc,
-        "sync_screener",
-        lambda *, screener_id: {"rowCount": 0, "snapshotId": "s", "capturedAt": "2026-06-18"},
+        "enqueue_screener_capture",
+        lambda *, screener_id, trigger="api": _job(screener_id, status="queued"),
+    )
+    monkeypatch.setattr(
+        dashboard_svc,
+        "wait_for_capture_jobs",
+        lambda job_ids, **_: [_job("empty", status="done", row_count=0)],
     )
     monkeypatch.setattr(dashboard_svc, "_is_shanghai_sync_window", lambda: True)
 
@@ -124,12 +170,13 @@ def test_dashboard_sync_stream_emits_screener_events(monkeypatch) -> None:
     monkeypatch.setattr(dashboard_svc, "list_screeners", lambda: _enabled_screeners("falcon", "blackhorse"))
     monkeypatch.setattr(
         dashboard_svc,
-        "sync_screener",
-        lambda *, screener_id: {
-            "rowCount": 3,
-            "snapshotId": "s",
-            "capturedAt": "2026-06-18",
-        },
+        "enqueue_screener_capture",
+        lambda *, screener_id, trigger="api": _job(screener_id, status="queued"),
+    )
+    monkeypatch.setattr(
+        dashboard_svc,
+        "wait_for_capture_jobs",
+        lambda job_ids, **_: [_job(j, status="done", row_count=3) for j in job_ids],
     )
     monkeypatch.setattr(dashboard_svc, "_is_shanghai_sync_window", lambda: True)
     monkeypatch.setattr(dashboard_svc, "dashboard_summary", lambda **_: {"asOfDate": "2026-06-18"})
@@ -150,7 +197,11 @@ def test_dashboard_sync_stream_emits_screener_events(monkeypatch) -> None:
     assert "step" in types
     screener_events = [e for e in events if e["type"] == "screener"]
     assert len(screener_events) >= 2
-    assert all(e["screener"]["status"] == "ok" for e in screener_events)
+    final_status = {}
+    for e in screener_events:
+        final_status[e["screener"]["id"]] = e["screener"]["status"]
+    assert final_status.get("falcon") == "ok"
+    assert final_status.get("blackhorse") == "ok"
 
 
 def test_tv_chrome_start_uses_lock() -> None:

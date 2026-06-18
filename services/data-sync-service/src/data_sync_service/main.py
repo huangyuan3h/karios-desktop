@@ -21,14 +21,17 @@ from .api.tv_chrome_routes import router as tv_chrome_router
 from .api.tv_routes import router as tv_router
 from .api.watchlist_routes import router as watchlist_router
 from .scheduler import create_scheduler
+from .service.tv_capture_worker import start_tv_capture_worker, stop_tv_capture_worker
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    start_tv_capture_worker()
     scheduler = create_scheduler()
     scheduler.start()
     yield
     scheduler.shutdown(wait=False)
+    stop_tv_capture_worker()
 
 
 app = FastAPI(lifespan=lifespan)

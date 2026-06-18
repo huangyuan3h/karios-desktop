@@ -33,7 +33,12 @@ from data_sync_service.service.market_sentiment import (
     sync_cn_sentiment,
 )
 from data_sync_service.service.news import fetch_all_sources
-from data_sync_service.service.tv import list_screeners, sync_screener
+from data_sync_service.service.tv import (
+    CAPTURE_JOB_DEFAULT_TIMEOUT_S,
+    enqueue_screener_capture,
+    list_screeners,
+    wait_for_capture_jobs,
+)
 
 TV_SCREENER_SYNC_MAX_WORKERS = 2
 
@@ -441,11 +446,83 @@ def _should_skip_screener_after_close(*, sid: str, today_sh: str) -> tuple[bool,
     return captured == today_sh and row_count > 0, row_count
 
 
+def _job_to_screener_result(
+    job: dict[str, Any],
+    *,
+    name: str,
+    duration_ms: int,
+) -> dict[str, Any]:
+    sid = str(job.get("screenerId") or "")
+    status = str(job.get("status") or "")
+    rc = int(job.get("rowCount") or 0) if job.get("rowCount") is not None else 0
+    if status == "done" and rc > 0:
+        return {
+            "id": sid,
+            "name": name,
+            "status": "ok",
+            "ok": True,
+            "rowCount": rc,
+            "durationMs": duration_ms,
+            "error": None,
+            "jobId": job.get("jobId"),
+            "jobStatus": status,
+        }
+    if status == "done":
+        return {
+            "id": sid,
+            "name": name,
+            "status": "missing",
+            "ok": False,
+            "rowCount": rc,
+            "durationMs": duration_ms,
+            "error": None,
+            "jobId": job.get("jobId"),
+            "jobStatus": status,
+        }
+    return {
+        "id": sid,
+        "name": name,
+        "status": "failed",
+        "ok": False,
+        "rowCount": 0,
+        "durationMs": duration_ms,
+        "error": str(job.get("error") or status or "capture failed"),
+        "jobId": job.get("jobId"),
+        "jobStatus": status,
+    }
+
+
+def _progress_from_job(job: dict[str, Any], *, name: str) -> dict[str, Any]:
+    sid = str(job.get("screenerId") or "")
+    status = str(job.get("status") or "")
+    if status == "done":
+        rc = int(job.get("rowCount") or 0)
+        mapped = "ok" if rc > 0 else "missing"
+    elif status == "failed":
+        mapped = "failed"
+    elif status == "running":
+        mapped = "running"
+    else:
+        mapped = "queued"
+    return {
+        "id": sid,
+        "name": name,
+        "status": mapped,
+        "ok": mapped in {"ok", "queued", "running"},
+        "rowCount": int(job.get("rowCount") or 0) if job.get("rowCount") is not None else 0,
+        "durationMs": 0,
+        "error": job.get("error"),
+        "jobId": job.get("jobId"),
+        "jobStatus": status,
+    }
+
+
 def _sync_one_screener(
     sc: dict[str, Any],
     *,
     skip_after_close: bool,
     today_sh: str,
+    on_screener_progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     sid = str(sc.get("id") or "").strip()
     name = str(sc.get("name") or sid).strip()
@@ -475,28 +552,25 @@ def _sync_one_screener(
 
     st = time.perf_counter()
     try:
-        res = sync_screener(screener_id=sid)
-        rc = int(res.get("rowCount") or 0) if isinstance(res, dict) else 0
+        enqueued = enqueue_screener_capture(screener_id=sid, trigger="dashboard")
+        job_id = str(enqueued.get("jobId") or "")
+        _emit_screener_progress(
+            on_screener_progress,
+            _progress_from_job(enqueued, name=name),
+        )
+
+        def on_job(job: dict[str, Any]) -> None:
+            _emit_screener_progress(on_screener_progress, _progress_from_job(job, name=name))
+
+        jobs = wait_for_capture_jobs(
+            [job_id],
+            timeout_s=CAPTURE_JOB_DEFAULT_TIMEOUT_S,
+            poll_s=1.0,
+            on_update=on_job,
+        )
+        job = jobs[0] if jobs else enqueued
         dur = int((time.perf_counter() - st) * 1000)
-        if rc <= 0:
-            return {
-                "id": sid,
-                "name": name,
-                "status": "missing",
-                "ok": False,
-                "rowCount": rc,
-                "durationMs": dur,
-                "error": None,
-            }
-        return {
-            "id": sid,
-            "name": name,
-            "status": "ok",
-            "ok": True,
-            "rowCount": rc,
-            "durationMs": dur,
-            "error": None,
-        }
+        return _job_to_screener_result(job, name=name, duration_ms=dur)
     except HTTPException as exc:
         dur = int((time.perf_counter() - st) * 1000)
         err = str(exc.detail) if exc.detail is not None else str(exc)
@@ -508,6 +582,7 @@ def _sync_one_screener(
             "rowCount": 0,
             "durationMs": dur,
             "error": err,
+            "jobStatus": "failed",
         }
     except Exception as exc:
         dur = int((time.perf_counter() - st) * 1000)
@@ -519,6 +594,7 @@ def _sync_one_screener(
             "rowCount": 0,
             "durationMs": dur,
             "error": str(exc) or exc.__class__.__name__,
+            "jobStatus": "failed",
         }
 
 
@@ -578,6 +654,7 @@ def _sync_screeners_step(
                     sc,
                     skip_after_close=False,
                     today_sh=today_sh,
+                    on_screener_progress=on_screener_progress,
                 )
                 for sc in to_sync
             ]

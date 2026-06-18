@@ -77,6 +77,23 @@ More detail: `services/data-sync-service/README.md` → **Database Migrations**.
 
 ---
 
+## TV Capture jobs (OPT-008)
+
+TradingView screener capture is **async** via Postgres job queue `tv_capture_jobs`:
+
+| Endpoint | Behavior |
+|----------|----------|
+| `POST /integrations/tradingview/screeners/{id}/sync` | **202** — enqueue job, returns `{ jobId, status, screenerId }` |
+| `GET /integrations/tradingview/capture-jobs/{job_id}` | Poll job status until `done` / `failed` |
+| `GET /integrations/tradingview/capture-jobs?screener_id=` | List recent jobs (optional) |
+
+- In-process worker (`tv_capture_worker.py`): max **2** concurrent captures; dedupe active jobs per screener.
+- Dashboard Sync All: enqueue all screeners, then `wait_for_capture_jobs` (SSE emits `jobId` / `jobStatus`).
+- Screener UI: POST → poll job → refresh snapshots.
+- Migration: `0002_tv_capture_jobs` — run `PYTHONPATH=src alembic upgrade head`.
+
+---
+
 ## Scoped optimization tasks
 
 For structural work, use `docs/optimization-checklist.md`:
