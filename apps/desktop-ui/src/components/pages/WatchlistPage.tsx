@@ -7,7 +7,6 @@ import {
   ArrowUpDown,
   CircleX,
   ExternalLink,
-  Info,
   Play,
   RefreshCw,
   Trash2,
@@ -71,13 +70,12 @@ const FLAG_COLORS: Array<{ label: string; hex: string }> = [
 ];
 
 type WatchlistRowTone = 'green' | 'red' | 'none';
-type WatchlistStickyColumn = 'buy' | 'score' | 'trendOk' | 'action';
+type WatchlistStickyColumn = 'score' | 'trendOk' | 'action';
 
 const WATCHLIST_STICKY_COLUMN_LAYOUT: Record<
   WatchlistStickyColumn,
   { width: number; right: number; zHeader: number; zBody: number }
 > = {
-  buy: { width: 130, right: 248, zHeader: 24, zBody: 14 },
   score: { width: 80, right: 168, zHeader: 23, zBody: 13 },
   trendOk: { width: 80, right: 88, zHeader: 22, zBody: 12 },
   action: { width: 88, right: 0, zHeader: 25, zBody: 15 },
@@ -85,8 +83,13 @@ const WATCHLIST_STICKY_COLUMN_LAYOUT: Record<
 
 function watchlistStickyRowBg(tone: WatchlistRowTone, header = false): string {
   if (header) return 'bg-[var(--k-surface)]';
-  if (tone === 'green') return 'bg-emerald-50/60 group-hover:bg-emerald-100/60';
-  if (tone === 'red') return 'bg-red-50/60 group-hover:bg-red-100/60';
+  // Sticky cells must be fully opaque so scrolled columns do not show through.
+  if (tone === 'green') {
+    return 'bg-emerald-50 group-hover:bg-emerald-100 dark:bg-emerald-950 dark:group-hover:bg-emerald-900';
+  }
+  if (tone === 'red') {
+    return 'bg-red-50 group-hover:bg-red-100 dark:bg-red-950 dark:group-hover:bg-red-900';
+  }
   return 'bg-[var(--k-surface)] group-hover:bg-[var(--k-surface-2)]';
 }
 
@@ -99,7 +102,7 @@ function watchlistStickyCellClass(
     'sticky',
     watchlistStickyRowBg(tone, opts.header),
     'px-3 py-2',
-    column === 'buy' ? 'shadow-[-4px_0_8px_rgba(0,0,0,0.06)]' : '',
+    column === 'score' ? 'shadow-[-4px_0_8px_rgba(0,0,0,0.06)]' : '',
     opts.extra ?? '',
   ];
   return parts.filter(Boolean).join(' ');
@@ -2169,18 +2172,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   <th className="px-2 py-2 w-[80px]">成本价</th>
                   <th className="px-2 py-2 w-[72px]">Current</th>
                   <th className="px-2 py-2 w-[80px]">止损</th>
+                  <th className="max-w-[130px] px-2 py-2 w-[120px]">买入</th>
                   <th className="px-2 py-2 w-[64px]">HotTop3</th>
                   <th className="px-2 py-2 w-[68px]">VWAP</th>
                   <th className="px-2 py-2 w-[72px]">Intraday%</th>
                   <th className="px-2 py-2 w-[48px]">Gap</th>
                   <th className="px-2 py-2 w-[140px]">Alerts</th>
                   <th className="px-2 py-2 w-[64px]">P&L%</th>
-                  <th
-                    className={watchlistStickyCellClass('buy', { header: true, extra: 'max-w-[130px]' })}
-                    style={watchlistStickyCellStyle('buy', { header: true })}
-                  >
-                    买入
-                  </th>
                   <th
                     className={watchlistStickyCellClass('score', { header: true })}
                     style={watchlistStickyCellStyle('score', { header: true })}
@@ -2215,21 +2213,17 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     className={watchlistStickyCellClass('trendOk', { header: true })}
                     style={watchlistStickyCellStyle('trendOk', { header: true })}
                   >
-                    <div className="inline-flex items-center gap-2">
-                      <span>TrendOK</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 rounded-full"
-                        onMouseEnter={(e) => showTooltip(e.currentTarget, headerTip, 380)}
-                        onMouseLeave={hideTooltip}
-                        onFocus={(e) => showTooltip(e.currentTarget, headerTip, 380)}
-                        onBlur={hideTooltip}
-                        aria-label="TrendOK definition"
-                      >
-                        <Info className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <button
+                      type="button"
+                      className="inline-flex items-center hover:text-[var(--k-text)]"
+                      onMouseEnter={(e) => showTooltip(e.currentTarget, headerTip, 380)}
+                      onMouseLeave={hideTooltip}
+                      onFocus={(e) => showTooltip(e.currentTarget, headerTip, 380)}
+                      onBlur={hideTooltip}
+                      aria-label="TrendOK definition"
+                    >
+                      TrendOK
+                    </button>
                   </th>
                   <th
                     className={watchlistStickyCellClass('action', { header: true, extra: 'text-right' })}
@@ -2380,8 +2374,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                             return fmtPrice(current);
                           })()}
                         </td>
-                        <td className="px-3 py-2">{renderStopLossCell(it.symbol)}</td>
-                        <td className="px-3 py-2 text-center">
+                        <td className="px-2 py-2">{renderStopLossCell(it.symbol)}</td>
+                        <td className="max-w-[130px] truncate px-2 py-2">
+                          {renderBuyCell(it.symbol)}
+                        </td>
+                        <td className="px-2 py-2 text-center">
                           {formatHotTop3(t) === '✓' ? (
                             <span className="text-emerald-600 font-medium" title="Industry in today fund-flow Top3">
                               ✓
@@ -2442,15 +2439,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                           }`}
                         >
                           {formatPnLPct(computePnLPct(it.costPrice ?? null, rowMetrics.current))}
-                        </td>
-                        <td
-                          className={watchlistStickyCellClass('buy', {
-                            tone,
-                            extra: 'max-w-[130px] truncate',
-                          })}
-                          style={watchlistStickyCellStyle('buy')}
-                        >
-                          {renderBuyCell(it.symbol)}
                         </td>
                         <td
                           className={watchlistStickyCellClass('score', { tone })}
