@@ -76,6 +76,10 @@ def sync_daily_for_ts_code(ts_code: str) -> dict[str, Any]:
         updated = 0
         if df is not None and not df.empty:
             updated = upsert_from_dataframe(df)
+        if updated > 0:
+            from data_sync_service.service.trendok import clear_trendok_cache
+
+            clear_trendok_cache()
         return {"ok": True, "updated": updated, "ts_code": code}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e), "ts_code": code}

@@ -35,10 +35,21 @@ def _next_tranche(current_pct: float, base_target: float) -> float:
 
 def _get_regime(as_of_date: str | None) -> str:
     try:
-        info = get_market_regime(as_of_date=as_of_date or "")
+        info = get_market_regime(as_of_date=as_of_date or "", include_breadth=False)
         return str(info.get("regime") or "Weak")
     except Exception:
         return "Weak"
+
+
+def _latest_bar_date(bars_by_code: dict[str, list[tuple[str, str, str, str, str, str]]]) -> str | None:
+    latest: str | None = None
+    for bars in bars_by_code.values():
+        if not bars:
+            continue
+        d = str(bars[-1][0])
+        if not latest or d > latest:
+            latest = d
+    return latest
 
 
 def _regime_target(regime: str) -> float:
@@ -67,6 +78,8 @@ def _compute_v5_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return []
 
     bars_by_code = fetch_last_ohlcv_batch(ts_codes, days=120)
+    regime = _get_regime(_latest_bar_date(bars_by_code))
+    base_target = _regime_target(regime)
     out: list[dict[str, Any]] = []
     for it in cleaned:
         sym = it["symbol"]
@@ -135,8 +148,6 @@ def _compute_v5_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         )
 
         sell_ok = close < ema20 * 0.97 or ema20 < ema30 or macd_last < 0.0
-        regime = _get_regime(dates[-1] if dates else None)
-        base_target = _regime_target(regime)
 
         action = "hold"
         reason = "no_action"

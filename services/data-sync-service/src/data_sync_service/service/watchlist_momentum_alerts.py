@@ -24,10 +24,21 @@ def _safe_float(val: Any) -> float | None:
 
 def _get_regime(as_of_date: str | None) -> str:
     try:
-        info = get_market_regime(as_of_date=as_of_date or "")
+        info = get_market_regime(as_of_date=as_of_date or "", include_breadth=False)
         return str(info.get("regime") or "Weak")
     except Exception:
         return "Weak"
+
+
+def _latest_bar_date(bars_by_code: dict[str, list[tuple[str, str, str, str, str, str]]]) -> str | None:
+    latest: str | None = None
+    for bars in bars_by_code.values():
+        if not bars:
+            continue
+        d = str(bars[-1][0])
+        if not latest or d > latest:
+            latest = d
+    return latest
 
 
 def _regime_target(regime: str) -> float:
@@ -122,8 +133,8 @@ def _compute_rows(items: list[dict[str, Any]], realtime: bool) -> list[dict[str,
                 qt = by_code.get(code)
                 if qt:
                     bars_by_code[code] = _merge_realtime_bar(bars, qt)
+    regime = _get_regime(_latest_bar_date(bars_by_code))
     out: list[dict[str, Any]] = []
-    regime_by_symbol: dict[str, str] = {}
     for it in cleaned:
         sym = it["symbol"]
         ts_code = it["ts_code"]
@@ -191,9 +202,6 @@ def _compute_rows(items: list[dict[str, Any]], realtime: bool) -> list[dict[str,
         trend_broken = closes[-1] < ema20 * 0.98 or macd_last < 0.0
         sell_ok = bool(stop_ok or trend_broken)
 
-        regime = _get_regime(dates[-1] if dates else None)
-        regime_by_symbol[sym] = regime
-
         out.append(
             {
                 "symbol": sym,
@@ -206,8 +214,6 @@ def _compute_rows(items: list[dict[str, Any]], realtime: bool) -> list[dict[str,
         )
 
     for r in out:
-        sym = str(r.get("symbol") or "")
-        regime = regime_by_symbol.get(sym, "Weak")
         base_target = _regime_target(regime)
         if r.get("sellOk"):
             r["action"] = "exit"

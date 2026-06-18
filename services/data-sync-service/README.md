@@ -52,7 +52,7 @@ Alembic reads `DATABASE_URL` from the repo root `.env` (same as the app). SQLAlc
 - `GET /healthz`
 - `GET /quote` — realtime quote from tushare (query params: ts_code or ts_codes)
 - `GET /market/stocks/{symbol}/bars` — StockPage-compatible bars (query params: days, force ignored)
-- `GET /market/stocks/trendok` — Watchlist TrendOK/score from DB-cached daily bars (query params: symbols, realtime). For network K-line refresh use `/market/stocks/{symbol}/bars?force=true` first. Uses lightweight market regime (`include_breadth=False`) with a 10-minute in-process cache; East Money industry is DB-only on this path (no HTTP).
+- `GET /market/stocks/trendok` — Watchlist TrendOK/score from DB-cached daily bars (query params: symbols, realtime). For network K-line refresh use `/market/stocks/{symbol}/bars?force=true` first. Uses lightweight market regime (`include_breadth=False`) with a 60-second in-process TTL cache (`clear_trendok_cache` on bars force sync); East Money industry is DB-only on this path (no HTTP).
 - `GET /market/stocks/resolve` — Resolve symbols to names from stock_basic (query params: symbols)
 - `GET /trade-reviews` — list trade review records (query params: limit, offset, symbol)
 - `GET /trade-reviews/{review_id}` — get a single trade review

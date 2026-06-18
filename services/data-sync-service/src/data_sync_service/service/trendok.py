@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import math
+import time
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -19,6 +21,29 @@ from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_eastmoney_industry import lookup_by_ts_codes as lookup_em_industries
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
+
+TRENDOK_CACHE_TTL_SECONDS = 60
+_trendok_cache: dict[tuple[frozenset[str], bool, str], tuple[list[dict[str, Any]], float]] = {}
+
+
+def clear_trendok_cache() -> None:
+    """Clear in-process TrendOK TTL cache (after bars force sync or tests)."""
+    _trendok_cache.clear()
+
+
+def _trendok_cache_key(symbols: list[str], realtime: bool, latest_bar_date: str | None) -> tuple[frozenset[str], bool, str]:
+    return (frozenset(symbols), bool(realtime), str(latest_bar_date or ""))
+
+
+def _trendok_from_cache(key: tuple[frozenset[str], bool, str]) -> list[dict[str, Any]] | None:
+    entry = _trendok_cache.get(key)
+    if not entry:
+        return None
+    rows, expire_at = entry
+    if time.time() >= expire_at:
+        _trendok_cache.pop(key, None)
+        return None
+    return copy.deepcopy(rows)
 
 
 def _ema(values: list[float], period: int) -> list[float]:
@@ -597,8 +622,6 @@ def compute_trendok_for_symbols(
             parsed[s] = m
             ts_codes.append(m[2])
 
-    by_name, by_tushare_industry = _lookup_stock_basic(ts_codes)
-    by_em_industry = _lookup_em_industry_boards(ts_codes)
     bars_by_code = fetch_last_ohlcv_batch(ts_codes, days=120)
     if realtime and ts_codes:
         q = fetch_realtime_quotes(ts_codes)
@@ -610,7 +633,6 @@ def compute_trendok_for_symbols(
                 if qt:
                     bars_by_code[code] = _merge_realtime_bar(bars, qt)
 
-    out: list[dict[str, Any]] = []
     latest_bar_date: str | None = None
     for bars in bars_by_code.values():
         if not bars:
@@ -618,6 +640,15 @@ def compute_trendok_for_symbols(
         d = str(bars[-1][0])
         if not latest_bar_date or d > latest_bar_date:
             latest_bar_date = d
+
+    cache_key = _trendok_cache_key(syms, realtime, latest_bar_date)
+    cached = _trendok_from_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    by_name, by_tushare_industry = _lookup_stock_basic(ts_codes)
+    by_em_industry = _lookup_em_industry_boards(ts_codes)
+    out: list[dict[str, Any]] = []
     flow_ctx = _build_industry_flow_context(latest_bar_date)
     market_regime: str | None = None
     try:
@@ -648,6 +679,7 @@ def compute_trendok_for_symbols(
                 market_regime=market_regime,
             )
         )
+    _trendok_cache[cache_key] = (copy.deepcopy(out), time.time() + TRENDOK_CACHE_TTL_SECONDS)
     return out
 
 

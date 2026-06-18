@@ -446,9 +446,15 @@ def get_cn_industry_mainline(*, as_of_date: str | None = None) -> dict[str, Any]
     if not d:
         return {"asOfDate": "", "dates": [], "allScores": [], "currentMainline": []}
     dates_for_trend = _trade_dates_upto(d, 21)
-    ensure_metrics_for_dates(dates_for_trend)
-    ensure_scores_for_dates(dates_for_trend[-max(MAINLINE_STREAK_DAYS, 1) :])
     scores_today = scores_rows_by_date(d)
+    if not scores_today:
+        return {
+            "asOfDate": d,
+            "dates": dates_for_trend,
+            "allScores": [],
+            "currentMainline": [],
+            "warning": "scores_not_ready",
+        }
 
     recent_dates = _trade_dates_upto(d, MAINLINE_STREAK_DAYS)
     recent_rows = scores_rows_for_dates(recent_dates)

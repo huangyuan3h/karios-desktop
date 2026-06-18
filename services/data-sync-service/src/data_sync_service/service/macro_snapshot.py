@@ -5,7 +5,13 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from data_sync_service.db.macro_daily import ensure_table, fetch_last_closes, get_latest_row
+from data_sync_service.db.macro_daily import (
+    ensure_table,
+    fetch_last_closes,
+    fetch_last_closes_batch,
+    get_latest_row,
+    get_latest_rows_batch,
+)
 from data_sync_service.service.macro_daily import (
     SID_A50,
     SID_COMM_COPPER,
@@ -97,14 +103,19 @@ def _ma(closes: list[float], n: int) -> float | None:
     return sum(closes[-n:]) / float(n)
 
 
-def _macro_item_from_db(meta: dict[str, Any], closes: list[tuple[str, float]]) -> dict[str, Any]:
+def _macro_item_from_db(
+    meta: dict[str, Any],
+    closes: list[tuple[str, float]],
+    latest: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     series_id = str(meta["seriesId"])
     close_vals = [c for _, c in closes if c is not None and math.isfinite(c)]
     as_of = closes[-1][0] if closes else None
     last_close = close_vals[-1] if close_vals else None
     ma5 = _ma(close_vals, 5) if len(close_vals) >= 5 else None
     ma20 = _ma(close_vals, 20) if len(close_vals) >= 20 else None
-    latest = get_latest_row(series_id)
+    if latest is None:
+        latest = get_latest_row(series_id)
     pct = None
     if latest and latest.get("pct_chg") is not None:
         pct = _safe_float(latest.get("pct_chg"))
@@ -131,7 +142,7 @@ def _macro_item_from_db(meta: dict[str, Any], closes: list[tuple[str, float]]) -
     }
 
 
-def _backfill_macro_pct_chg(m: dict[str, Any]) -> None:
+def _backfill_macro_pct_chg(m: dict[str, Any], hist: list[tuple[str, float]] | None = None) -> None:
     """
     Fill pctChg when still missing: vs prior session/DB bar for realtime, else prior day from history.
     """
@@ -141,7 +152,8 @@ def _backfill_macro_pct_chg(m: dict[str, Any]) -> None:
     sid = str(m.get("seriesId") or "")
     if close is None or not sid:
         return
-    hist = fetch_last_closes(sid, days=20)
+    if hist is None:
+        hist = fetch_last_closes(sid, days=20)
     if len(hist) < 2:
         return
     last_c = float(hist[-1][1])
@@ -161,10 +173,13 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
     # Skip full-market breadth (very slow); Index page needs a fast response.
     if cn_index_signals is None:
         cn_index_signals = get_index_signals(include_breadth=False)
+    all_sids = [str(meta["seriesId"]) for meta in MACRO_CARDS]
+    closes_by_sid = fetch_last_closes_batch(all_sids, days=80)
+    latest_by_sid = get_latest_rows_batch(all_sids)
     macro_items: list[dict[str, Any]] = []
     for meta in MACRO_CARDS:
         sid = str(meta["seriesId"])
-        closes = fetch_last_closes(sid, days=80)
+        closes = closes_by_sid.get(sid, [])
         if not closes:
             macro_items.append(
                 {
@@ -186,7 +201,7 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
                 }
             )
             continue
-        item = _macro_item_from_db(meta, closes)
+        item = _macro_item_from_db(meta, closes, latest_by_sid.get(sid))
         macro_items.append(item)
 
     # Realtime overlay (best-effort; unsupported codes return empty)
@@ -200,7 +215,7 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
             rt_codes.append(c)
             code_to_series[c] = sid
             continue
-        latest = get_latest_row(sid)
+        latest = latest_by_sid.get(sid)
         und = latest.get("underlying_ts_code") if latest else None
         if und and str(und).strip():
             c = str(und).strip()
@@ -241,7 +256,8 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
     macro_items = enrich_macro_items_on_demand(macro_items)
 
     for m in macro_items:
-        _backfill_macro_pct_chg(m)
+        sid = str(m.get("seriesId") or "")
+        _backfill_macro_pct_chg(m, closes_by_sid.get(sid))
 
     out: dict[str, Any] = {"cnIndexSignals": cn_index_signals, "macro": macro_items}
     warn = macro_snapshot_warning()

@@ -233,6 +233,98 @@ def fetch_last_closes(series_id: str, days: int = 80) -> list[tuple[str, float]]
     return out
 
 
+def _row_to_dict(columns: list[str], row: tuple[Any, ...]) -> dict[str, Any]:
+    obj: dict[str, Any] = {}
+    for col, val in zip(columns, row, strict=True):
+        if val is None:
+            obj[col] = None
+        elif hasattr(val, "strftime") and col == "trade_date":
+            obj[col] = val.strftime("%Y-%m-%d")
+        elif hasattr(val, "__float__") and col not in (
+            "series_id",
+            "trade_date",
+            "source",
+            "underlying_ts_code",
+        ):
+            try:
+                obj[col] = float(val)
+            except (TypeError, ValueError):
+                obj[col] = val
+        else:
+            obj[col] = val
+    return obj
+
+
+def fetch_last_closes_batch(
+    series_ids: list[str],
+    days: int = 80,
+) -> dict[str, list[tuple[str, float]]]:
+    """Return last N (date, close) per series_id in one query, ordered ASC per series."""
+    ensure_table()
+    sids = [s.strip() for s in series_ids if s and s.strip()]
+    if not sids:
+        return {}
+    days2 = max(1, min(int(days), 500))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT series_id, trade_date, close
+                FROM (
+                  SELECT
+                    series_id, trade_date, close,
+                    row_number() OVER (PARTITION BY series_id ORDER BY trade_date DESC) AS rn
+                  FROM {TABLE_NAME}
+                  WHERE series_id = ANY(%s) AND close IS NOT NULL
+                ) t
+                WHERE rn <= %s
+                ORDER BY series_id ASC, trade_date ASC
+                """,
+                (sids, days2),
+            )
+            rows = cur.fetchall()
+    out: dict[str, list[tuple[str, float]]] = {sid: [] for sid in sids}
+    for series_id, trade_date, close in rows:
+        sid = str(series_id)
+        d = trade_date.strftime("%Y-%m-%d") if hasattr(trade_date, "strftime") else str(trade_date)
+        try:
+            c = float(close or 0.0)
+        except Exception:
+            c = 0.0
+        out.setdefault(sid, []).append((d, c))
+    return out
+
+
+def get_latest_rows_batch(series_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Latest row per series_id in one query."""
+    ensure_table()
+    sids = [s.strip() for s in series_ids if s and s.strip()]
+    if not sids:
+        return {}
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT DISTINCT ON (series_id)
+                       series_id, trade_date, source, underlying_ts_code,
+                       open, high, low, close, pre_close, change, pct_chg, vol, amount
+                FROM {TABLE_NAME}
+                WHERE series_id = ANY(%s)
+                ORDER BY series_id, trade_date DESC
+                """,
+                (sids,),
+            )
+            rows = cur.fetchall()
+            columns = [d.name for d in cur.description] if cur.description else []
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        obj = _row_to_dict(columns, row)
+        sid = str(obj.get("series_id") or "")
+        if sid:
+            out[sid] = obj
+    return out
+
+
 def get_latest_row(series_id: str) -> dict[str, Any] | None:
     """Latest non-null close row for snapshot and realtime mapping."""
     ensure_table()

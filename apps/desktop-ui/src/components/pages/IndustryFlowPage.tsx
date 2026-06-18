@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -8,78 +9,16 @@ import {
   HotIndustryWorkflowCard,
   type HotIndustryPick,
 } from '@/components/pages/HotIndustryWorkflowCard';
-import { apiGetJson, apiPostJson } from '@/lib/api/client';
+import {
+  type IndustryFundFlowPoint,
+  type IndustryFundFlowRow,
+  type MainlineResp,
+  type MainlineScoreRow,
+  runIndustryFlowSync,
+  useIndustryFundFlowQuery,
+  useIndustryMainlineQuery,
+} from '@/lib/queries/industryFlow';
 import { useChatStore } from '@/lib/chat/store';
-
-type IndustryFundFlowPoint = {
-  date: string;
-  netInflow: number;
-};
-
-type IndustryFundFlowRow = {
-  industryCode: string;
-  industryName: string;
-  netInflow: number;
-  sum10d: number;
-  series10d: IndustryFundFlowPoint[];
-};
-
-type IndustryFundFlowResp = {
-  asOfDate: string;
-  days: number;
-  topN: number;
-  dates: string[];
-  top: IndustryFundFlowRow[];
-};
-
-type MainlineFlowFlags = {
-  sum20d: number;
-  sum5d: number;
-  rank20d: number;
-  rank5d: number;
-  positiveDays10d: number;
-  midAccumulation: boolean;
-  shortIntensity: boolean;
-  consistency: boolean;
-};
-
-type MainlineBreadthFlags = {
-  limitUpCount: number;
-  limitUpRank: number;
-  limitUpQualified: boolean;
-  dragonCount: number;
-  dragonQualified: boolean;
-  surgeRatio: number;
-  surgeQualified: boolean;
-};
-
-type MainlineTrendFlags = {
-  indexAboveMa20: boolean;
-  ma20Up: boolean;
-  rps: number;
-  rpsQualified: boolean;
-};
-
-type MainlineScoreRow = {
-  industryName: string;
-  flowScore: number;
-  breadthScore: number;
-  trendScore: number;
-  totalScore: number;
-  isMainline: boolean;
-  flags: {
-    flow: MainlineFlowFlags;
-    breadth: MainlineBreadthFlags;
-    trend: MainlineTrendFlags;
-  };
-};
-
-type MainlineResp = {
-  asOfDate: string;
-  dates: string[];
-  allScores: MainlineScoreRow[];
-  currentMainline: MainlineScoreRow[];
-};
 
 function fmtCny(x: number): string {
   const v = Number.isFinite(x) ? x : 0;
@@ -569,63 +508,42 @@ function MiniTable({
 }
 
 export function IndustryFlowPage() {
+  const queryClient = useQueryClient();
   const { addReference } = useChatStore();
-  const [resp, setResp] = React.useState<IndustryFundFlowResp | null>(null);
-  const [mainlineResp, setMainlineResp] = React.useState<MainlineResp | null>(null);
+  const {
+    data: resp,
+    error: flowError,
+    isFetching: flowFetching,
+    refetch: refetchFlow,
+  } = useIndustryFundFlowQuery();
+  const {
+    data: mainlineResp,
+    error: mainlineQueryError,
+    isFetching: mainlineFetching,
+    refetch: refetchMainline,
+  } = useIndustryMainlineQuery();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [mainlineError, setMainlineError] = React.useState<string | null>(null);
   const [topN, setTopN] = React.useState(30);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [lastSyncMsg, setLastSyncMsg] = React.useState<string | null>(null);
 
-  const refresh = React.useCallback(async () => {
-    setError(null);
-    setMainlineError(null);
-    try {
-      // Always load full universe for accurate per-day ranking widgets.
-      const universeTopN = 200;
-      const [flowRes, mainlineRes] = await Promise.allSettled([
-        apiGetJson<IndustryFundFlowResp>(
-          `/market/cn/industry-fund-flow?days=10&topN=${encodeURIComponent(String(universeTopN))}`,
-        ),
-        apiGetJson<MainlineResp>('/market/cn/industry-mainline'),
-      ]);
-      if (flowRes.status === 'fulfilled') {
-        setResp(flowRes.value);
-      } else {
-        throw flowRes.reason;
-      }
-      if (mainlineRes.status === 'fulfilled') {
-        setMainlineResp(mainlineRes.value);
-      } else {
-        setMainlineError(
-          mainlineRes.reason instanceof Error
-            ? mainlineRes.reason.message
-            : String(mainlineRes.reason),
-        );
-        setMainlineResp(null);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setResp(null);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const mainlineError =
+    mainlineQueryError instanceof Error
+      ? mainlineQueryError.message
+      : mainlineQueryError
+        ? String(mainlineQueryError)
+        : null;
+  const displayError =
+    error ?? (flowError instanceof Error ? flowError.message : flowError ? String(flowError) : null);
+  const refreshing = flowFetching || mainlineFetching;
 
   async function onSync(force: boolean) {
     setBusy(true);
     setError(null);
     setLastSyncMsg(null);
     try {
-      const r = await apiPostJson<Record<string, unknown>>('/market/cn/industry-fund-flow/sync', {
-        days: 10,
-        topN: 10,
-        force,
-      });
+      const r = await runIndustryFlowSync(queryClient, { force });
       if (r && typeof r === 'object') {
         const msg = [
           `rowsUpserted=${String(r.rowsUpserted ?? '')}`,
@@ -637,7 +555,6 @@ export function IndustryFlowPage() {
           .join(' • ');
         setLastSyncMsg(msg || null);
       }
-      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -658,8 +575,8 @@ export function IndustryFlowPage() {
           <Button
             variant="secondary"
             size="sm"
-            disabled={busy}
-            onClick={() => void refresh()}
+            disabled={busy || refreshing}
+            onClick={() => void Promise.all([refetchFlow(), refetchMainline()])}
             className="gap-2"
           >
             <RefreshCw className="h-4 w-4" />
@@ -684,9 +601,9 @@ export function IndustryFlowPage() {
         </div>
       </div>
 
-      {error ? (
+      {displayError ? (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
-          {error}
+          {displayError}
         </div>
       ) : null}
       {lastSyncMsg ? (

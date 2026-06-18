@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -350,40 +351,54 @@ def _is_data_stale(as_of_date: str | None) -> bool:
 
 def enrich_macro_items_on_demand(macro_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Fill missing close/MA rows using Tushare daily APIs (no DB writes).
-    
+
     For offshore series (IXIC, USDCNH, A50), always fetch latest data regardless
     of DB status, since their trading hours differ from CN market and DB data may be stale.
     """
     pro = try_tushare_pro()
     if pro is None:
         return macro_items
-    for m in macro_items:
+
+    to_fetch: list[tuple[int, str]] = []
+    for idx, m in enumerate(macro_items):
         sid = str(m.get("seriesId") or "")
         should_fetch = False
-        
+
         if m.get("close") is None:
             should_fetch = True
         elif sid in ALWAYS_REFRESH_SERIES:
             should_fetch = True
         elif m.get("realtime") is not True and _is_data_stale(m.get("asOfDate")):
             should_fetch = True
-        
-        if not should_fetch:
-            continue
-            
+
+        if should_fetch:
+            to_fetch.append((idx, sid))
+
+    if not to_fetch:
+        return macro_items
+
+    def _fetch_one(item: tuple[int, str]) -> tuple[int, dict[str, Any], str | None, str | None]:
+        idx, sid = item
         metrics, src, und = _fetch_on_demand_series(pro, sid)
-        if not metrics:
-            continue
-        m["close"] = metrics.get("close")
-        m["pctChg"] = metrics.get("pctChg")
-        m["asOfDate"] = metrics.get("asOfDate")
-        m["ma5"] = metrics.get("ma5")
-        m["ma20"] = metrics.get("ma20")
-        if src:
-            m["source"] = src
-        if und:
-            m["underlyingTsCode"] = und
-        m["dataSource"] = "tushare_on_demand"
+        return idx, metrics, src, und
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [pool.submit(_fetch_one, item) for item in to_fetch]
+        for fut in as_completed(futures):
+            idx, metrics, src, und = fut.result()
+            if not metrics:
+                continue
+            m = macro_items[idx]
+            m["close"] = metrics.get("close")
+            m["pctChg"] = metrics.get("pctChg")
+            m["asOfDate"] = metrics.get("asOfDate")
+            m["ma5"] = metrics.get("ma5")
+            m["ma20"] = metrics.get("ma20")
+            if src:
+                m["source"] = src
+            if und:
+                m["underlyingTsCode"] = und
+            m["dataSource"] = "tushare_on_demand"
     return macro_items
 
 
