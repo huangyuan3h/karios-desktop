@@ -11,9 +11,9 @@ from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.db.industry_fund_flow import (
     get_dates_upto,
     get_latest_date as get_latest_industry_date,
-    get_rows_by_date,
-    get_sum_by_industry_for_dates,
+    get_rows_for_dates,
 )
+from data_sync_service.service.industry_fund_flow_read import build_trendok_flow_context_from_rows
 from data_sync_service.db.stoploss import compute_effective_stoploss
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_eastmoney_industry import lookup_by_ts_codes as lookup_em_industries
@@ -449,48 +449,36 @@ def _symbol_to_ts_code(symbol: str) -> tuple[str, str, str] | None:
     return None
 
 
-def _lookup_names(ts_codes: list[str]) -> dict[str, str]:
+def _lookup_stock_basic(ts_codes: list[str]) -> tuple[dict[str, str], dict[str, str]]:
     """
-    Best-effort name lookup from stock_basic (ts_code -> name).
+    Best-effort name + Tushare industry lookup from stock_basic (single query).
     """
     ensure_stock_basic()
     if not ts_codes:
-        return {}
+        return {}, {}
     try:
         from data_sync_service.db import get_connection
 
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT ts_code, name FROM stock_basic WHERE ts_code = ANY(%s)",
+                    "SELECT ts_code, name, industry FROM stock_basic WHERE ts_code = ANY(%s)",
                     (ts_codes,),
                 )
                 rows = cur.fetchall()
-        return {str(r[0]): str(r[1]) for r in rows if r and r[0] and r[1]}
+        by_name: dict[str, str] = {}
+        by_industry: dict[str, str] = {}
+        for r in rows:
+            if not r or not r[0]:
+                continue
+            code = str(r[0])
+            if r[1]:
+                by_name[code] = str(r[1])
+            if len(r) > 2 and r[2]:
+                by_industry[code] = str(r[2])
+        return by_name, by_industry
     except Exception:
-        return {}
-
-
-def _lookup_industries(ts_codes: list[str]) -> dict[str, str]:
-    """
-    Best-effort Tushare industry lookup from stock_basic (ts_code -> industry).
-    """
-    ensure_stock_basic()
-    if not ts_codes:
-        return {}
-    try:
-        from data_sync_service.db import get_connection
-
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT ts_code, industry FROM stock_basic WHERE ts_code = ANY(%s)",
-                    (ts_codes,),
-                )
-                rows = cur.fetchall()
-        return {str(r[0]): str(r[1]) for r in rows if r and r[0] and r[1]}
-    except Exception:
-        return {}
+        return {}, {}
 
 
 def _lookup_em_industry_boards(ts_codes: list[str]) -> dict[str, str]:
@@ -518,43 +506,12 @@ def _build_industry_flow_context(as_of_date: str | None) -> dict[str, Any]:
     if not flow_date:
         return {"asOfDate": None, "ok": False}
 
-    dates_2 = get_dates_upto(flow_date, 2)
     dates_5 = get_dates_upto(flow_date, 5)
-    today = dates_2[-1] if dates_2 else flow_date
-    yesterday = dates_2[-2] if len(dates_2) >= 2 else None
+    if not dates_5:
+        return {"asOfDate": flow_date, "ok": False}
 
-    rows_today = get_rows_by_date(today)
-    rows_yesterday = get_rows_by_date(yesterday) if yesterday else []
-
-    top_today = sorted(rows_today, key=lambda x: float(x.get("net_inflow") or 0.0), reverse=True)
-    top_today_5 = [str(x.get("industry_name") or "") for x in top_today[:5] if x.get("industry_name")]
-    top_today_3 = top_today_5[:3]
-
-    top_yesterday = sorted(rows_yesterday, key=lambda x: float(x.get("net_inflow") or 0.0), reverse=True)
-    top_yesterday_3 = [str(x.get("industry_name") or "") for x in top_yesterday[:3] if x.get("industry_name")]
-
-    net_today = {str(x.get("industry_name") or ""): float(x.get("net_inflow") or 0.0) for x in rows_today}
-    net_yesterday = {str(x.get("industry_name") or ""): float(x.get("net_inflow") or 0.0) for x in rows_yesterday}
-
-    sums_5d = get_sum_by_industry_for_dates(dates_5) if dates_5 else []
-    top_5d_3 = [str(x.get("industry_name") or "") for x in sums_5d[:3] if x.get("industry_name")]
-    bottom_5d_5 = [
-        str(x.get("industry_name") or "") for x in reversed(sums_5d[-5:]) if x.get("industry_name")
-    ]
-
-    return {
-        "ok": True,
-        "asOfDate": flow_date,
-        "today": today,
-        "yesterday": yesterday,
-        "top_today_3": set(top_today_3),
-        "top_today_5": set(top_today_5),
-        "top_yesterday_3": set(top_yesterday_3),
-        "net_today": net_today,
-        "net_yesterday": net_yesterday,
-        "top_5d_3": set(top_5d_3),
-        "bottom_5d_5": set(bottom_5d_5),
-    }
+    rows = get_rows_for_dates(dates_5)
+    return build_trendok_flow_context_from_rows(flow_date=flow_date, dates_5=dates_5, rows=rows)
 
 
 def _industry_flow_score_adjustment(industry: str, ctx: dict[str, Any]) -> tuple[float, dict[str, float], list[str]]:
@@ -640,8 +597,7 @@ def compute_trendok_for_symbols(
             parsed[s] = m
             ts_codes.append(m[2])
 
-    by_name = _lookup_names(ts_codes)
-    by_tushare_industry = _lookup_industries(ts_codes)
+    by_name, by_tushare_industry = _lookup_stock_basic(ts_codes)
     by_em_industry = _lookup_em_industry_boards(ts_codes)
     bars_by_code = fetch_last_ohlcv_batch(ts_codes, days=120)
     if realtime and ts_codes:

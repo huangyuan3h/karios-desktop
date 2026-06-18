@@ -261,13 +261,19 @@ def _build_industry_bundle(*, as_of_date: str) -> dict[str, Any]:
     }
 
 
-def _build_market_sentiment_bundle(*, as_of_date: str, use_realtime_index: bool) -> dict[str, Any]:
+def _build_market_sentiment_bundle(
+    *,
+    as_of_date: str,
+    use_realtime_index: bool,
+    index_signals: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     sentiment_items = list_sentiment_days(as_of_date=as_of_date, days=5)
     latest = sentiment_items[-1] if sentiment_items else {}
     down_count = int((latest or {}).get("downCount") or 0)
     sentiment_items = apply_breadth_panic_sentiment_items(sentiment_items, down_count)
-    index_as_of = None if use_realtime_index else as_of_date
-    index_signals = get_index_signals(as_of_date=index_as_of, include_breadth=False)
+    if index_signals is None:
+        index_as_of = None if use_realtime_index else as_of_date
+        index_signals = get_index_signals(as_of_date=index_as_of, include_breadth=False)
     index_signals = apply_breadth_panic_index_signals(index_signals, down_count)
     return {
         "asOfDate": as_of_date,
@@ -360,6 +366,14 @@ def dashboard_summary(*, include_macro: bool = True) -> dict[str, Any]:
     in_sync_window = _is_shanghai_sync_window()
     use_realtime_index = as_of == _today_iso_date() and in_sync_window
 
+    if use_realtime_index:
+        shared_index_signals = get_index_signals(as_of_date=None, include_breadth=False)
+        sentiment_signals_in = shared_index_signals
+        macro_signals_in = shared_index_signals
+    else:
+        sentiment_signals_in = get_index_signals(as_of_date=as_of, include_breadth=False)
+        macro_signals_in = get_index_signals(as_of_date=None, include_breadth=False)
+
     industry: dict[str, Any] = {}
     market_sentiment: dict[str, Any] = {}
     screeners: list[dict[str, Any]] = []
@@ -373,10 +387,15 @@ def dashboard_summary(*, include_macro: bool = True) -> dict[str, Any]:
             _build_market_sentiment_bundle,
             as_of_date=as_of,
             use_realtime_index=use_realtime_index,
+            index_signals=sentiment_signals_in,
         )
         f_screeners = executor.submit(_screeners_status, 50)
         f_news = executor.submit(_news_items, 24, 50)
-        f_macro = executor.submit(build_macro_snapshot) if include_macro else None
+        f_macro = (
+            executor.submit(build_macro_snapshot, cn_index_signals=macro_signals_in)
+            if include_macro
+            else None
+        )
 
         industry = f_industry.result()
         market_sentiment = f_sentiment.result()

@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from data_sync_service.service.industry_fund_flow import get_cn_industry_fund_flow
 from data_sync_service.service.industry_fund_flow_read import (
+    build_trendok_flow_context_from_rows,
     positive_days_from_rows,
     series_map_from_rows,
     sum_by_industry_from_rows,
@@ -173,3 +174,50 @@ def test_flow_context_uses_batch_read_and_memory_agg() -> None:
     assert ctx["dates_5"] == dates_20[-5:]
     assert ctx["sum20"]["电子"] == 4.0
     assert ctx["pos10"]["电子"] == 1
+
+
+def test_build_trendok_flow_context_from_rows_hotspots_and_5d_ranks() -> None:
+    dates_5 = ["2024-01-16", "2024-01-17", "2024-01-18", "2024-01-19", "2024-01-20"]
+    rows = [
+        {"date": "2024-01-19", "industry_name": "电子", "net_inflow": 50.0},
+        {"date": "2024-01-19", "industry_name": "计算机", "net_inflow": 30.0},
+        {"date": "2024-01-19", "industry_name": "医药", "net_inflow": 10.0},
+        {"date": "2024-01-20", "industry_name": "电子", "net_inflow": 100.0},
+        {"date": "2024-01-20", "industry_name": "计算机", "net_inflow": 80.0},
+        {"date": "2024-01-20", "industry_name": "医药", "net_inflow": 60.0},
+        {"date": "2024-01-20", "industry_name": "银行", "net_inflow": 40.0},
+        {"date": "2024-01-20", "industry_name": "地产", "net_inflow": 20.0},
+        {"date": "2024-01-16", "industry_name": "电子", "net_inflow": 1.0},
+        {"date": "2024-01-16", "industry_name": "垫底A", "net_inflow": -100.0},
+        {"date": "2024-01-17", "industry_name": "垫底B", "net_inflow": -90.0},
+        {"date": "2024-01-18", "industry_name": "垫底C", "net_inflow": -80.0},
+    ]
+    ctx = build_trendok_flow_context_from_rows(
+        flow_date="2024-01-20",
+        dates_5=dates_5,
+        rows=rows,
+    )
+    assert ctx["ok"] is True
+    assert ctx["today"] == "2024-01-20"
+    assert ctx["yesterday"] == "2024-01-19"
+    assert ctx["top_today_3"] == {"电子", "计算机", "医药"}
+    assert ctx["top_today_5"] == {"电子", "计算机", "医药", "银行", "地产"}
+    assert ctx["top_yesterday_3"] == {"电子", "计算机", "医药"}
+    assert ctx["net_today"]["电子"] == 100.0
+    assert ctx["net_yesterday"]["电子"] == 50.0
+    assert "电子" in ctx["top_5d_3"]
+    assert "垫底A" in ctx["bottom_5d_5"]
+
+
+def test_build_trendok_flow_context_from_rows_single_day_no_yesterday() -> None:
+    dates_5 = ["2024-01-20"]
+    rows = [{"date": "2024-01-20", "industry_name": "电子", "net_inflow": 5.0}]
+    ctx = build_trendok_flow_context_from_rows(
+        flow_date="2024-01-20",
+        dates_5=dates_5,
+        rows=rows,
+    )
+    assert ctx["today"] == "2024-01-20"
+    assert ctx["yesterday"] is None
+    assert ctx["top_yesterday_3"] == set()
+    assert ctx["net_yesterday"] == {}

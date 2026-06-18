@@ -3,8 +3,11 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from data_sync_service.service.market_regime import (  # type: ignore[import-not-found]
+    INDEX_SIGNALS_CACHE_TTL_SECONDS,
     REGIME_CACHE_TTL_SECONDS,
+    clear_index_signals_cache,
     clear_market_regime_cache,
+    get_index_signals,
     get_market_regime,
 )
 
@@ -76,3 +79,49 @@ def test_clear_market_regime_cache() -> None:
         clear_market_regime_cache()
         get_market_regime(include_breadth=False)
     assert get_signals.call_count == 2
+
+
+def test_get_index_signals_ttl_cache_hits_on_second_call() -> None:
+    clear_index_signals_cache()
+    with patch(
+        "data_sync_service.service.market_regime._compute_index_signals",
+        return_value=[
+            {"name": "上证指数", "signal": "green"},
+            {"name": "创业板指", "signal": "yellow"},
+        ],
+    ) as compute:
+        first = get_index_signals(include_breadth=False)
+        second = get_index_signals(include_breadth=False)
+    assert len(first) == 2
+    assert second == first
+    assert compute.call_count == 1
+
+
+def test_get_index_signals_cache_expires() -> None:
+    clear_index_signals_cache()
+    t = 2000.0
+    with (
+        patch(
+            "data_sync_service.service.market_regime._compute_index_signals",
+            return_value=[{"name": "上证指数", "signal": "red"}],
+        ) as compute,
+        patch(
+            "data_sync_service.service.market_regime.time.time",
+            side_effect=[t, t + INDEX_SIGNALS_CACHE_TTL_SECONDS + 1],
+        ),
+    ):
+        get_index_signals(as_of_date="2026-06-18", include_breadth=False)
+        get_index_signals(as_of_date="2026-06-18", include_breadth=False)
+    assert compute.call_count == 2
+
+
+def test_clear_index_signals_cache() -> None:
+    clear_index_signals_cache()
+    with patch(
+        "data_sync_service.service.market_regime._compute_index_signals",
+        return_value=[{"name": "上证指数", "signal": "green"}],
+    ) as compute:
+        get_index_signals(include_breadth=False)
+        clear_index_signals_cache()
+        get_index_signals(include_breadth=False)
+    assert compute.call_count == 2

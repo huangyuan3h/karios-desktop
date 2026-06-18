@@ -18,15 +18,21 @@ export function watchlistMarketKey(symbols: string[]) {
   return ['watchlist', 'market', sorted.join(',')] as const;
 }
 
-export function useWatchlistMarketQuery(symbols: string[]) {
-  const key = watchlistMarketKey(symbols);
-  return useQuery({
-    queryKey: key,
+export function watchlistMarketQueryOptions(symbols: string[]) {
+  return {
+    queryKey: watchlistMarketKey(symbols),
     queryFn: () =>
       fetchWatchlistMarketSnapshot(symbols, {
         forceMarket: false,
         realtime: isShanghaiQuoteWindow(),
       }),
+  };
+}
+
+export function useWatchlistMarketQuery(symbols: string[]) {
+  const options = watchlistMarketQueryOptions(symbols);
+  return useQuery({
+    ...options,
     enabled: symbols.length > 0,
     refetchInterval: symbols.length > 0 ? WATCHLIST_POLL_MS : false,
     refetchIntervalInBackground: false,

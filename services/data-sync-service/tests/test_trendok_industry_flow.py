@@ -1,4 +1,11 @@
-from data_sync_service.service.trendok import _industry_flow_score_adjustment  # type: ignore[import-not-found]
+from __future__ import annotations
+
+from unittest.mock import patch
+
+from data_sync_service.service.trendok import (  # type: ignore[import-not-found]
+    _build_industry_flow_context,
+    _industry_flow_score_adjustment,
+)
 
 
 def _ctx() -> dict:
@@ -54,4 +61,39 @@ def test_hotspot_absent_two_day_outflow() -> None:
     delta, parts, _ = _industry_flow_score_adjustment("G", _ctx())
     assert delta == -10.0
     assert parts["hotspot_absent_2d_big_outflow"] == -10.0
+
+
+def test_build_industry_flow_context_uses_batch_read_only() -> None:
+    dates_5 = ["2024-01-19", "2024-01-20"]
+    batch_rows = [
+        {"date": "2024-01-20", "industry_name": "电子", "net_inflow": 10.0},
+    ]
+    with (
+        patch(
+            "data_sync_service.service.trendok._pick_flow_as_of_date",
+            return_value="2024-01-20",
+        ),
+        patch(
+            "data_sync_service.service.trendok.get_dates_upto",
+            return_value=dates_5,
+        ) as mock_dates,
+        patch(
+            "data_sync_service.service.trendok.get_rows_for_dates",
+            return_value=batch_rows,
+        ) as mock_batch,
+        patch(
+            "data_sync_service.db.industry_fund_flow.get_rows_by_date",
+        ) as mock_by_date,
+        patch(
+            "data_sync_service.db.industry_fund_flow.get_sum_by_industry_for_dates",
+        ) as mock_sum,
+    ):
+        ctx = _build_industry_flow_context("2024-01-20")
+
+    mock_dates.assert_called_once_with("2024-01-20", 5)
+    mock_batch.assert_called_once_with(dates_5)
+    mock_by_date.assert_not_called()
+    mock_sum.assert_not_called()
+    assert ctx["ok"] is True
+    assert ctx["today"] == "2024-01-20"
 

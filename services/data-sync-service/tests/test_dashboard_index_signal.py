@@ -58,3 +58,66 @@ def test_index_signal_uses_db_when_not_trading(monkeypatch) -> None:
         assert it["close"] == 100.0
         assert it["signal"] == "yellow"
         assert it["source"] == "db.index_daily"
+
+
+def _patch_dashboard_summary_deps(monkeypatch, *, as_of: str, today: str, in_sync: bool) -> None:
+    import data_sync_service.service.dashboard as dashboard  # type: ignore[import-not-found]
+
+    monkeypatch.setattr(dashboard, "get_latest_sentiment_date", lambda: as_of)
+    monkeypatch.setattr(dashboard, "_today_iso_date", lambda: today)
+    monkeypatch.setattr(dashboard, "_is_shanghai_sync_window", lambda: in_sync)
+    monkeypatch.setattr(dashboard, "_build_industry_bundle", lambda **_: {"dates": [], "topByDate": {}, "flow5d": {}})
+    monkeypatch.setattr(dashboard, "_screeners_status", lambda *a, **k: [])
+    monkeypatch.setattr(dashboard, "_news_items", lambda *a, **k: {"hours": 24, "total": 0, "items": []})
+    monkeypatch.setattr(
+        dashboard,
+        "build_macro_snapshot",
+        lambda **_: {"cnIndexSignals": [], "macro": []},
+    )
+    monkeypatch.setattr(dashboard, "format_market_environment_zh", lambda _: "")
+
+
+def test_dashboard_summary_calls_get_index_signals_once_in_realtime_window(monkeypatch) -> None:
+    import data_sync_service.service.dashboard as dashboard  # type: ignore[import-not-found]
+
+    _patch_dashboard_summary_deps(
+        monkeypatch,
+        as_of="2026-06-18",
+        today="2026-06-18",
+        in_sync=True,
+    )
+    calls: list[dict] = []
+
+    def _track(**kwargs):
+        calls.append(kwargs)
+        return [{"name": "上证指数", "signal": "green"}]
+
+    monkeypatch.setattr(dashboard, "get_index_signals", _track)
+    out = dashboard.dashboard_summary(include_macro=True)
+    assert out["asOfDate"] == "2026-06-18"
+    assert len(calls) == 1
+    assert calls[0]["as_of_date"] is None
+    assert calls[0]["include_breadth"] is False
+
+
+def test_dashboard_summary_calls_get_index_signals_twice_when_historical_as_of(monkeypatch) -> None:
+    import data_sync_service.service.dashboard as dashboard  # type: ignore[import-not-found]
+
+    _patch_dashboard_summary_deps(
+        monkeypatch,
+        as_of="2026-06-17",
+        today="2026-06-18",
+        in_sync=True,
+    )
+    calls: list[dict] = []
+
+    def _track(**kwargs):
+        calls.append(kwargs)
+        return [{"name": "上证指数", "signal": "yellow"}]
+
+    monkeypatch.setattr(dashboard, "get_index_signals", _track)
+    out = dashboard.dashboard_summary(include_macro=True)
+    assert out["asOfDate"] == "2026-06-17"
+    assert len(calls) == 2
+    assert calls[0]["as_of_date"] == "2026-06-17"
+    assert calls[1]["as_of_date"] is None

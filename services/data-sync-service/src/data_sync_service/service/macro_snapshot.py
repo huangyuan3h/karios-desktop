@@ -156,10 +156,11 @@ def _backfill_macro_pct_chg(m: dict[str, Any]) -> None:
         m["pctChg"] = (last_c - prev_c) / prev_c * 100.0
 
 
-def build_macro_snapshot() -> dict[str, Any]:
+def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     ensure_table()
     # Skip full-market breadth (very slow); Index page needs a fast response.
-    cn_index_signals = get_index_signals(include_breadth=False)
+    if cn_index_signals is None:
+        cn_index_signals = get_index_signals(include_breadth=False)
     macro_items: list[dict[str, Any]] = []
     for meta in MACRO_CARDS:
         sid = str(meta["seriesId"])

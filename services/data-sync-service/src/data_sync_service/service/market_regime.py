@@ -29,13 +29,23 @@ HK_INDEX_SIGNALS = [
 
 HISTORY_DAYS = 80
 REGIME_CACHE_TTL_SECONDS = 600
+INDEX_SIGNALS_CACHE_TTL_SECONDS = 60
 
 _regime_cache: dict[tuple[str, bool], tuple[dict[str, Any], float]] = {}
+_index_signals_cache: dict[tuple[str, bool], tuple[list[dict[str, Any]], float]] = {}
+
+
+def clear_index_signals_cache() -> None:
+    """Clear in-process index signals TTL cache (for tests)."""
+    _index_signals_cache.clear()
 
 
 def clear_market_regime_cache() -> None:
     """Clear in-process market regime TTL cache (for tests)."""
     _regime_cache.clear()
+    clear_index_signals_cache()
+
+
 BREADTH_DEEP_GREEN_MIN_RATIO = 0.6
 
 
@@ -293,7 +303,26 @@ def get_index_signals(
 
     When include_breadth is False, skips the all-market breadth scan (slow) and
     never emits deep_green; use for lightweight APIs such as GET /macro/snapshot.
+
+    Results are cached in-process for INDEX_SIGNALS_CACHE_TTL_SECONDS per
+    (as_of_date, include_breadth).
     """
+    key = (str(as_of_date or "").strip(), bool(include_breadth))
+    now = time.time()
+    cached = _index_signals_cache.get(key)
+    if cached is not None:
+        result, expires_at = cached
+        if now < expires_at:
+            return result
+
+    out = _compute_index_signals(as_of_date=as_of_date, include_breadth=include_breadth)
+    _index_signals_cache[key] = (out, now + INDEX_SIGNALS_CACHE_TTL_SECONDS)
+    return out
+
+
+def _compute_index_signals(
+    *, as_of_date: str | None = None, include_breadth: bool = True
+) -> list[dict[str, Any]]:
     use_as_of = str(as_of_date).strip() if as_of_date else None
     rt_price: dict[str, float] = {}
     rt_time: dict[str, str | None] = {}

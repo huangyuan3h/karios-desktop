@@ -2,7 +2,8 @@
 
 > 记录架构审查结论与优化方案，供后续逐个 Agent 任务执行。  
 > 创建日期：2026-06-18（第二轮）  
-> 背景：OPT-001 ~ OPT-010 已完成；功能稳定，本轮聚焦剩余最高 ROI 项。
+> 第三轮审查：2026-06-18  
+> 背景：OPT-001 ~ OPT-015 已完成；功能稳定，第三轮聚焦 **热路径 DB/计算去重** 与 **前端 Query 缓存打通**。
 
 ---
 
@@ -35,6 +36,11 @@
 | OPT-013 | Dashboard / Watchlist God Page 拆分（阶段二） | P1 | 3–5 天 | [x] |
 | OPT-014 | Industry Fund Flow 读路径 N+1 消除 | P1 | 1–2 天 | [x] |
 | OPT-015 | Watchlist Automation 去重 TrendOK 计算 | P1 | 0.5–1 天 | [x] |
+| OPT-016 | TrendOK 行业资金流上下文批量化 | P0 | 1 天 | [x] |
+| OPT-017 | Dashboard 去重 `get_index_signals` + TTL | P0 | 0.5–1 天 | [x] |
+| OPT-018 | Watchlist Risk 复用 `watchlist-market` Query 缓存 | P1 | 0.5–1 天 | [x] |
+| OPT-019 | TV Screener 最新快照 N+1 → 批量查询 | P1 | 0.5–1 天 | [ ] |
+| OPT-020 | ScreenerPage React Query + 并行 snapshot 加载 | P1 | 1–1.5 天 | [ ] |
 
 ---
 
@@ -157,7 +163,213 @@
 
 ---
 
+## P0 — 第三轮最高收益
+
+### OPT-016：TrendOK 行业资金流上下文批量化
+
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
+
+#### 实施摘要
+
+- **纯函数**：[`build_trendok_flow_context_from_rows`](services/data-sync-service/src/data_sync_service/service/industry_fund_flow_read.py) — 从 batch rows 内存聚合 today/yesterday hotspot 与 5d top/bottom
+- **`_build_industry_flow_context`**：`get_dates_upto(5)` + `get_rows_for_dates` 一次 batch；移除 `get_dates_upto(2)`、`get_rows_by_date` ×2、`get_sum_by_industry_for_dates`
+- **`_lookup_stock_basic`**：合并 name + industry 单次 `stock_basic` 查询；`compute_trendok_for_symbols` 改用之
+- **测试**：`test_industry_fund_flow_read.py`（+2）、`test_trendok_industry_flow.py`（batch read 断言）、`test_trendok_performance_path.py`（stock_basic 单次）；pytest trendok **49 passed**
+
+#### 背景
+
+OPT-014 已在 `get_cn_industry_fund_flow()` 与 `mainline._flow_context()` 使用 `get_rows_for_dates()` + `industry_fund_flow_read.py` 聚合，但 **TrendOK 热路径未迁移**。
+
+`compute_trendok_for_symbols()` 每次请求调用 `_build_industry_flow_context()`，产生 **4–5 次独立 DB 读**（`get_dates_upto` ×2、`get_rows_by_date` ×2、`get_sum_by_industry_for_dates`）。该函数被高频调用：
+
+- `GET /market/stocks/trendok`
+- Dashboard `fetchWatchlistRiskRows`（60s 轮询）
+- Watchlist 10 min 轮询、Automation、Screener 导入
+
+附带：`_lookup_names()` 与 `_lookup_industries()` 对 `stock_basic` 各一次 `WHERE ts_code = ANY`，可合并为单次查询。
+
+#### 目标
+
+- `_build_industry_flow_context()` 改为 `get_rows_for_dates(dates_5)` 一次拉取 + `industry_fund_flow_read` 内存聚合
+- 合并 `_lookup_names` / `_lookup_industries` 为单次 `stock_basic` batch read
+- 批量化后 `_industry_flow_score_adjustment` 输出 **bit-identical**（分数逻辑不变）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/trendok.py` — `_build_industry_flow_context`, `_lookup_names`, `_lookup_industries` |
+| 复用 | `service/industry_fund_flow_read.py`（已有） |
+| DB | `db/industry_fund_flow.py` — `get_rows_for_dates`（已有，无需 schema 变更） |
+| 测试 | `tests/test_trendok_industry_flow.py`（扩展）、`tests/test_trendok_performance_path.py` |
+
+#### 验证
+
+- [x] mock 下 `_build_industry_flow_context` 仅 `get_dates_upto(5)` + `get_rows_for_dates`；不再调用 `get_rows_by_date` / `get_sum_by_industry_for_dates`
+- [x] `_industry_flow_score_adjustment` 既有 6 个用例通过；纯函数 golden fixture 覆盖 hotspot / 5d rank
+- [x] pytest trendok 相关用例通过（49 passed）
+
+---
+
+### OPT-017：Dashboard 去重 `get_index_signals` + TTL
+
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
+
+#### 实施摘要
+
+- **`get_index_signals`**：60s TTL cache（`INDEX_SIGNALS_CACHE_TTL_SECONDS`）；计算逻辑下沉 `_compute_index_signals`；`clear_index_signals_cache()` + `clear_market_regime_cache()` 联动清理
+- **`dashboard_summary`**：ThreadPool 前预取 signals；交易时段 1 次共享注入 sentiment + macro；盘后 historical as_of 仍 2 次（语义不变）
+- **`build_macro_snapshot(cn_index_signals=...)`** / **`_build_market_sentiment_bundle(index_signals=...)`** 支持注入
+- **测试**：`test_market_regime_cache.py`（+3 TTL）、`test_dashboard_index_signal.py`（realtime=1 / historical=2 调用）；**10 passed**
+
+#### 背景
+
+`dashboard_summary()` 在 `ThreadPoolExecutor` 内并行构建 sentiment 与 macro，**各自独立调用** `get_index_signals(include_breadth=False)`：
+
+- `_build_market_sentiment_bundle()` → L270
+- `build_macro_snapshot()` → `macro_snapshot.py` L162
+
+`get_index_signals()`（`market_regime.py` ~751 行）每次含 realtime quotes、80 日 K 线 fetch、MA/MACD 计算。`get_market_regime()` 有 600s TTL，但 **`get_index_signals` 无缓存**。交易时段 Dashboard 每 **60s** 轮询 → **每次 summary 算两遍** index signals；响应还重复携带 `marketSentiment.indexSignals` 与 `macroSnapshot.cnIndexSignals`。
+
+#### 目标
+
+- `dashboard_summary()` 内 **单次** 计算 index signals，注入 sentiment bundle 与 macro snapshot
+- 可选：为 `get_index_signals(as_of_date, include_breadth)` 加短 TTL（如 30–60s），供独立 endpoint 复用
+- 保留盘后 `as_of_date` vs 交易时段 realtime 的语义差异
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `service/dashboard.py` — `dashboard_summary`, `_build_market_sentiment_bundle` |
+| Service | `service/macro_snapshot.py` — `build_macro_snapshot`（接受预计算 signals 或共享 cache） |
+| Service | `service/market_regime.py` — `get_index_signals`（可选 TTL） |
+| 测试 | `tests/test_dashboard_index_signal.py`、`tests/test_market_regime_cache.py` |
+
+#### 验证
+
+- [x] mock 下交易时段 `dashboard_summary()` 中 `get_index_signals` 调用 = 1；盘后 historical as_of = 2
+- [x] JSON shape 不变（`test_dashboard_summary_endpoint_shape` 通过）
+- [x] pytest dashboard / market_regime cache 相关用例通过
+
+---
+
+## P1 — 第三轮高价值
+
+### OPT-018：Watchlist Risk 复用 `watchlist-market` Query 缓存
+
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
+
+#### 实施摘要
+
+- **`watchlistMarketQueryOptions`**：共享 queryKey + queryFn；`useWatchlistMarketQuery` / `refetchWatchlistMarket` 复用
+- **`fetchWatchlistRiskRows(queryClient)`**：`queryClient.fetchQuery(watchlistMarketQueryOptions(symbols))`；删除独立 trendok/quote chunk 与 `parseDashboardQuoteItem`
+- **`buildWatchlistRiskRowsFromSnapshot`**：纯函数，从 snapshot 构建 risk rows
+- **`useWatchlistAutomation`**：apply 后 invalidate `watchlistMarketKey` + `watchlistRiskQueryKey`
+- **测试**：`dashboard.test.ts`（+2）、`watchlist.test.ts`（+1）；vitest **128 passed**
+
+#### 背景
+
+OPT-012 后 Watchlist 走 `useWatchlistMarketQuery` + `fetchWatchlistMarketSnapshot`（含 `fetchTrendOkMap` inflight 去重），但 Dashboard **`fetchWatchlistRiskRows` 仍独立** chunk 请求 trendok + quote，query key 不共享。同一 watchlist 在 Dashboard ↔ Watchlist 切换时 **重复打 API**；quote 解析在 `dashboard.ts` 与 `watchlist-market.ts` 各写一份。
+
+#### 目标
+
+- `fetchWatchlistRiskRows` 改为 `queryClient.fetchQuery(watchlistMarketKey(symbols))` 或共用 `fetchWatchlistMarketSnapshot`
+- 对齐 `isShanghaiSyncWindow()`（risk）与 `isShanghaiQuoteWindow()`（watchlist）的 realtime 语义，避免 alert 行为漂移
+- `applyAutomationRun` 完成后 invalidate `watchlistMarketKey`（可与 OPT-012 阶段 B 一并做）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Query | `apps/desktop-ui/src/lib/queries/dashboard.ts` — `fetchWatchlistRiskRows`, `useWatchlistRiskQuery` |
+| 复用 | `lib/watchlist-market.ts`, `lib/queries/watchlist.ts`, `lib/watchlist-metrics.ts` |
+| Hook | `hooks/useWatchlistRisk.ts` |
+| 测试 | `lib/queries/dashboard.test.ts`（扩展 cache 共享用例） |
+
+#### 验证
+
+- [x] `fetchWatchlistRiskRows` 使用 `watchlistMarketKey`（单测 mock fetchQuery）
+- [x] risk alert 逻辑仍走 `buildWatchlistRowMetrics`（`riskAlerts` golden 单测）
+- [x] vitest 通过（128 passed）
+
+---
+
+### OPT-019：TV Screener 最新快照 N+1 → 批量查询
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 背景
+
+`_screeners_status()`（`dashboard.py` L284–314）对每个 enabled screener 循环 `list_snapshots_for_screener_full(sid, limit=1)` — **N 次 DB round-trip**，且 SELECT 含 `payload` JSONB（只为 `filtersCount`）。发生在每次 `GET /dashboard/summary`。Sync 预检 `_should_skip_screener_after_close()` 与 `_sync_screeners_step()` 同样循环。
+
+#### 目标
+
+- 新增 `list_latest_snapshots_for_screeners(screener_ids)`（`DISTINCT ON (screener_id)`；meta-only 列或轻量 JSON 抽取 `filters`）
+- `_screeners_status` / skip 预检 / sync 预检改为 **1 次 batch 读**
+- 响应字段不变：`capturedAt`, `rowCount`, `filtersCount`
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| DB | `services/data-sync-service/src/data_sync_service/db/tv.py` — 新增 batch 函数 |
+| Service | `service/dashboard.py` — `_screeners_status`, `_should_skip_screener_after_close`, `_sync_screeners_step` |
+| 测试 | `tests/test_dashboard_screener_sync.py` |
+
+#### 验证
+
+- [ ] mock 下 N 个 screener 的 status 构建 DB 调用 = 1
+- [ ] `_screeners_status` 返回 shape 不变
+- [ ] pytest dashboard screener 用例通过
+
+---
+
+### OPT-020：ScreenerPage React Query + 并行 snapshot 加载
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 背景
+
+`ScreenerPage.tsx`（553 行）mount 时 `refreshAll` 对 **每个** enabled screener **串行** 两次 API（list latest + detail）— 典型 N+1；5 个 screener ≈ 10 次串行请求。无 React Query 缓存，Dashboard screener 卡片 ↔ Screener 页切换必重拉。`@karios/shared` 已有 `tvCapture.ts`，页面仍 inline 类型。
+
+#### 目标
+
+- 新建 `lib/queries/screener.ts`：`useScreenerListQuery` + `useScreenerSnapshotsQuery`
+- `refreshAll` 改为 `Promise.all` 并行 per-screener fetch（或 list-only + 按需 detail）
+- 复用/扩展 `packages/shared/src/schemas/tvCapture.ts` snapshot list/detail schemas
+- sync 仍走已有 `syncTvScreenerAndWait`；完成后 invalidate screener queries
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Page | `apps/desktop-ui/src/components/pages/ScreenerPage.tsx` |
+| Query | 新建 `apps/desktop-ui/src/lib/queries/screener.ts` |
+| Shared | `packages/shared/src/schemas/tvCapture.ts`（扩展 snapshot schemas） |
+| 测试 | `lib/queries/screener.test.ts` |
+
+#### 验证
+
+- [ ] N screener 加载改为并行（Network waterfall 无串行阶梯）
+- [ ] 离开再进入 Screener 页命中 React Query cache（staleTime 内无 refetch）
+- [ ] vitest query key / parallel fetch 单测通过
+
+---
+
 ## 推荐执行顺序
+
+### 第二轮（已完成）
 
 ```
 Week 1:  OPT-011（Watchlist 刷新）→ 立刻改善手动刷新体验
@@ -165,6 +377,16 @@ Week 2:  OPT-015（Automation 去重）→ 小改动、后端立刻省一半 Tre
 Week 3:  OPT-014（Industry N+1）→ Dashboard / 行业页加载加速
 Week 4:  OPT-012（React Query）→ 系统性前端数据层
 Later:   OPT-013（God Page 拆分）→ 与 OPT-012 可并行，但 hooks 边界在 Query 之后更清晰
+```
+
+### 第三轮（待执行）
+
+```
+Week 1:  OPT-016（TrendOK 行业流 batch）→ 全站 TrendOK  latency ↓，延续 OPT-014 模式
+Week 2:  OPT-017（index signals 去重）→ Dashboard 60s 轮询 CPU/IO 减半
+Week 3:  OPT-018（Risk ↔ Watchlist cache）→ 前端重复请求消除
+Week 4:  OPT-019 + OPT-020（Screener batch）→ Dashboard summary + Screener 页加载加速
+Later:   useWatchlistAutomation → React Query（OPT-012 阶段 B）、Dashboard Sentiment 卡片拆分（OPT-013 阶段三）
 ```
 
 ---
@@ -177,6 +399,7 @@ Later:   OPT-013（God Page 拆分）→ 与 OPT-012 可并行，但 hooks 边�
 | 2026-06-18 | OPT-013 完成：Dashboard/Watchlist God Page 拆分为 hooks + components + lib |
 | 2026-06-18 | OPT-014 完成：Industry Fund Flow 读路径 N+1 消除（batch `get_rows_for_dates`） |
 | 2026-06-18 | OPT-015 完成：Watchlist Automation 去重 TrendOK 计算 |
+| 2026-06-18 | OPT-018 完成：Watchlist Risk 复用 `watchlist-market` Query 缓存 + Automation invalidate |
 
 ---
 
