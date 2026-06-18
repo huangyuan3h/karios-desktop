@@ -39,7 +39,7 @@
 | OPT-016 | TrendOK 行业资金流上下文批量化 | P0 | 1 天 | [x] |
 | OPT-017 | Dashboard 去重 `get_index_signals` + TTL | P0 | 0.5–1 天 | [x] |
 | OPT-018 | Watchlist Risk 复用 `watchlist-market` Query 缓存 | P1 | 0.5–1 天 | [x] |
-| OPT-019 | TV Screener 最新快照 N+1 → 批量查询 | P1 | 0.5–1 天 | [ ] |
+| OPT-019 | TV Screener 最新快照 N+1 → 批量查询 | P1 | 0.5–1 天 | [x] |
 | OPT-020 | ScreenerPage React Query + 并行 snapshot 加载 | P1 | 1–1.5 天 | [ ] |
 
 ---
@@ -303,9 +303,15 @@ OPT-012 后 Watchlist 走 `useWatchlistMarketQuery` + `fetchWatchlistMarketSnaps
 
 ### OPT-019：TV Screener 最新快照 N+1 → 批量查询
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
+
+#### 实施摘要
+
+- **DB**：[`list_latest_snapshots_for_screeners`](services/data-sync-service/src/data_sync_service/db/tv.py) — `DISTINCT ON (screener_id)` 一次 batch；`_snapshot_meta_from_row` 共用 payload 解析
+- **Dashboard**：`_screeners_status` / `_sync_screeners_step` skip 预检改为 batch；`_skip_screener_after_close_from_meta` 纯函数
+- **测试**：`test_dashboard_screener_sync.py`（+3 batch/shape）；**9 passed**
 
 #### 背景
 
@@ -327,9 +333,9 @@ OPT-012 后 Watchlist 走 `useWatchlistMarketQuery` + `fetchWatchlistMarketSnaps
 
 #### 验证
 
-- [ ] mock 下 N 个 screener 的 status 构建 DB 调用 = 1
-- [ ] `_screeners_status` 返回 shape 不变
-- [ ] pytest dashboard screener 用例通过
+- [x] mock 下 `_screeners_status` batch 调用 = 1（3 screener 单测）
+- [x] 返回 shape 不变（`filtersCount` / `capturedAt` / `rowCount`）
+- [x] pytest dashboard screener 用例通过（9 passed）
 
 ---
 
@@ -399,7 +405,7 @@ Later:   useWatchlistAutomation → React Query（OPT-012 阶段 B）、Dashboar
 | 2026-06-18 | OPT-013 完成：Dashboard/Watchlist God Page 拆分为 hooks + components + lib |
 | 2026-06-18 | OPT-014 完成：Industry Fund Flow 读路径 N+1 消除（batch `get_rows_for_dates`） |
 | 2026-06-18 | OPT-015 完成：Watchlist Automation 去重 TrendOK 计算 |
-| 2026-06-18 | OPT-018 完成：Watchlist Risk 复用 `watchlist-market` Query 缓存 + Automation invalidate |
+| 2026-06-18 | OPT-019 完成：TV Screener 最新快照 `DISTINCT ON` batch 查询 |
 
 ---
 

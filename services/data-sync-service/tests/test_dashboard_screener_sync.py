@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient  # type: ignore[import-not-found]
 
 from data_sync_service.main import app  # type: ignore[import-not-found]
 from data_sync_service.service import dashboard as dashboard_svc  # type: ignore[import-not-found]
+from data_sync_service.db import tv as tvdb  # type: ignore[import-not-found]
 
 
 def _enabled_screeners(*ids: str) -> dict:
@@ -112,6 +113,56 @@ def test_sync_screeners_failure_isolation(monkeypatch) -> None:
     assert statuses["ok2"] == "ok"
 
 
+def test_screeners_status_uses_batch_snapshot_read(monkeypatch) -> None:
+    batch_calls: list[list[str]] = []
+
+    def fake_list_screeners() -> dict:
+        return _enabled_screeners("a", "b", "c")
+
+    def fake_latest(screener_ids: list[str]) -> dict:
+        batch_calls.append(list(screener_ids))
+        return {
+            "a": {
+                "capturedAt": "2026-06-18T10:00:00",
+                "rowCount": 3,
+                "filters": ["f1", "f2"],
+            },
+            "b": {},
+            "c": {
+                "capturedAt": "2026-06-17T10:00:00",
+                "rowCount": 1,
+                "filters": ["x"],
+            },
+        }
+
+    monkeypatch.setattr(dashboard_svc, "list_screeners", fake_list_screeners)
+    monkeypatch.setattr(dashboard_svc, "list_latest_snapshots_for_screeners", fake_latest)
+
+    rows = dashboard_svc._screeners_status(limit=50)
+    assert len(batch_calls) == 1
+    assert set(batch_calls[0]) == {"a", "b", "c"}
+    by_id = {r["id"]: r for r in rows}
+    assert by_id["a"]["filtersCount"] == 2
+    assert by_id["a"]["rowCount"] == 3
+    assert by_id["a"]["capturedAt"] == "2026-06-18T10:00:00"
+    assert by_id["b"]["filtersCount"] == 0
+    assert by_id["c"]["filtersCount"] == 1
+
+
+def test_list_latest_snapshots_for_screeners_empty() -> None:
+    assert tvdb.list_latest_snapshots_for_screeners([]) == {}
+
+
+def test_snapshot_meta_from_row_extracts_filters() -> None:
+    meta = tvdb._snapshot_meta_from_row(
+        ("snap-1", "falcon", "2026-06-18T12:00:00", 7, {"filters": ["a", " b ", ""], "screenTitle": "X"}),
+    )
+    assert meta["snapshotId"] == "snap-1"
+    assert meta["screenerId"] == "falcon"
+    assert meta["filters"] == ["a", " b "]
+    assert meta["screenTitle"] == "X"
+
+
 def test_sync_screeners_skip_after_close(monkeypatch) -> None:
     today = dashboard_svc._shanghai_today_iso()
     enqueue_calls: list[str] = []
@@ -120,11 +171,11 @@ def test_sync_screeners_skip_after_close(monkeypatch) -> None:
         enqueue_calls.append(screener_id)
         return _job(screener_id, status="queued")
 
-    def fake_snapshots(sid: str, limit: int = 1) -> list[dict]:
-        _ = limit
-        if sid == "skip-me":
-            return [{"capturedAt": f"{today}T10:00:00", "rowCount": 5}]
-        return []
+    def fake_latest(screener_ids: list[str]) -> dict:
+        _ = screener_ids
+        return {
+            "skip-me": {"capturedAt": f"{today}T10:00:00", "rowCount": 5},
+        }
 
     monkeypatch.setattr(dashboard_svc, "list_screeners", lambda: _enabled_screeners("skip-me", "run-me"))
     monkeypatch.setattr(dashboard_svc, "enqueue_screener_capture", fake_enqueue)
@@ -133,7 +184,7 @@ def test_sync_screeners_skip_after_close(monkeypatch) -> None:
         "wait_for_capture_jobs",
         lambda job_ids, **_: [_job(j, status="done", row_count=1) for j in job_ids],
     )
-    monkeypatch.setattr(dashboard_svc, "list_snapshots_for_screener_full", fake_snapshots)
+    monkeypatch.setattr(dashboard_svc, "list_latest_snapshots_for_screeners", fake_latest)
     monkeypatch.setattr(dashboard_svc, "_is_shanghai_sync_window", lambda: False)
 
     out = dashboard_svc._sync_screeners_step(screeners_enabled=True)

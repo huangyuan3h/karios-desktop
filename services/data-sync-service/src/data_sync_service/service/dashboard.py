@@ -17,7 +17,7 @@ from data_sync_service.db.market_sentiment import get_latest_date as get_latest_
 from data_sync_service.db.market_sentiment import list_days as list_sentiment_days
 from data_sync_service.db.news import ensure_tables as ensure_news_tables
 from data_sync_service.db.news import fetch_items
-from data_sync_service.db.tv import list_snapshots_for_screener_full
+from data_sync_service.db.tv import list_latest_snapshots_for_screeners
 from data_sync_service.service.industry_fund_flow import (
     sync_cn_industry_fund_flow,
 )
@@ -293,7 +293,7 @@ def _screeners_status(limit: int = 50) -> list[dict[str, Any]]:
     """
     scr = list_screeners()
     items = scr.get("items") if isinstance(scr, dict) else []
-    rows: list[dict[str, Any]] = []
+    enabled_items: list[tuple[dict[str, Any], str]] = []
     for it in (items if isinstance(items, list) else [])[: max(1, min(int(limit), 200))]:
         if not isinstance(it, dict):
             continue
@@ -302,8 +302,12 @@ def _screeners_status(limit: int = 50) -> list[dict[str, Any]]:
         sid = str(it.get("id") or "").strip()
         if not sid:
             continue
-        latest = list_snapshots_for_screener_full(sid, limit=1)
-        meta = latest[0] if latest else {}
+        enabled_items.append((it, sid))
+
+    latest_by_sid = list_latest_snapshots_for_screeners([sid for _, sid in enabled_items])
+    rows: list[dict[str, Any]] = []
+    for it, sid in enabled_items:
+        meta = latest_by_sid.get(sid, {})
         filters = meta.get("filters") if isinstance(meta, dict) else []
         filters_count = len(filters) if isinstance(filters, list) else 0
         rows.append(
@@ -457,12 +461,15 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
     }
 
 
-def _should_skip_screener_after_close(*, sid: str, today_sh: str) -> tuple[bool, int]:
-    latest = list_snapshots_for_screener_full(sid, limit=1)
-    meta = latest[0] if latest else {}
+def _skip_screener_after_close_from_meta(meta: dict[str, Any], today_sh: str) -> tuple[bool, int]:
     captured = str(meta.get("capturedAt") or "")[:10]
     row_count = int(meta.get("rowCount") or 0) if isinstance(meta, dict) else 0
     return captured == today_sh and row_count > 0, row_count
+
+
+def _should_skip_screener_after_close(*, sid: str, today_sh: str) -> tuple[bool, int]:
+    latest_by_sid = list_latest_snapshots_for_screeners([sid])
+    return _skip_screener_after_close_from_meta(latest_by_sid.get(sid, {}), today_sh)
 
 
 def _job_to_screener_result(
@@ -642,13 +649,21 @@ def _sync_screeners_step(
         return {"enabled": len(enabled), "skipped": True, "failed": 0, "missing": 0}
     skip_after_close = not _is_shanghai_sync_window()
     today_sh = _shanghai_today_iso()
+    enabled_sids = [str(sc.get("id") or "").strip() for sc in enabled]
+    enabled_sids = [sid for sid in enabled_sids if sid]
+    latest_by_sid = (
+        list_latest_snapshots_for_screeners(enabled_sids) if skip_after_close else {}
+    )
     to_sync: list[dict[str, Any]] = []
     for sc in enabled:
         sid = str(sc.get("id") or "").strip()
         if not sid:
             continue
         if skip_after_close:
-            should_skip, row_count = _should_skip_screener_after_close(sid=sid, today_sh=today_sh)
+            should_skip, row_count = _skip_screener_after_close_from_meta(
+                latest_by_sid.get(sid, {}),
+                today_sh,
+            )
             if should_skip:
                 screener_skipped.append(sid)
                 result = {

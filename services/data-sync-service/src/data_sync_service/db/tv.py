@@ -216,6 +216,21 @@ def list_snapshots_for_screener(screener_id: str, *, limit: int = 10) -> list[di
     ]
 
 
+def _snapshot_meta_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
+    payload = row[4] if isinstance(row[4], dict) else (row[4] or {})
+    screen_title = str(payload.get("screenTitle") or "") or None
+    filters = payload.get("filters") or []
+    filters2 = [str(x) for x in filters if str(x).strip()] if isinstance(filters, list) else []
+    return {
+        "snapshotId": str(row[0]),
+        "screenerId": str(row[1]),
+        "capturedAt": str(row[2]),
+        "rowCount": int(row[3]),
+        "screenTitle": screen_title,
+        "filters": filters2,
+    }
+
+
 def list_snapshots_for_screener_full(screener_id: str, *, limit: int = 200) -> list[dict[str, Any]]:
     """
     Return snapshot rows with minimal payload extraction (screenTitle/filters) for history view.
@@ -236,22 +251,34 @@ def list_snapshots_for_screener_full(screener_id: str, *, limit: int = 200) -> l
             )
             rows = cur.fetchall()
 
-    out: list[dict[str, Any]] = []
+    return [_snapshot_meta_from_row(r) for r in rows]
+
+
+def list_latest_snapshots_for_screeners(
+    screener_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Latest snapshot per screener_id (one DB round-trip)."""
+    ids = sorted({str(s or "").strip() for s in screener_ids if str(s or "").strip()})
+    if not ids:
+        return {}
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT DISTINCT ON (screener_id)
+                    id, screener_id, captured_at, row_count, payload
+                FROM {SNAPSHOTS_TABLE}
+                WHERE screener_id = ANY(%s)
+                ORDER BY screener_id, captured_at DESC
+                """,
+                (ids,),
+            )
+            rows = cur.fetchall()
+    out: dict[str, dict[str, Any]] = {}
     for r in rows:
-        payload = r[4] if isinstance(r[4], dict) else (r[4] or {})
-        screen_title = str(payload.get("screenTitle") or "") or None
-        filters = payload.get("filters") or []
-        filters2 = [str(x) for x in filters if str(x).strip()] if isinstance(filters, list) else []
-        out.append(
-            {
-                "snapshotId": str(r[0]),
-                "screenerId": str(r[1]),
-                "capturedAt": str(r[2]),
-                "rowCount": int(r[3]),
-                "screenTitle": screen_title,
-                "filters": filters2,
-            },
-        )
+        meta = _snapshot_meta_from_row(r)
+        out[str(meta["screenerId"])] = meta
     return out
 
 
