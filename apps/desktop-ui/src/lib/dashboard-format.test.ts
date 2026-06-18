@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { fmtAmountCn, mdTable } from './dashboard-format';
+import { fmtAmountCn, fmtSignedAmountCn, mdTable } from './dashboard-format';
 
 describe('fmtAmountCn', () => {
   it('formats 亿 and 万', () => {
@@ -12,6 +12,14 @@ describe('fmtAmountCn', () => {
   it('returns dash for invalid input', () => {
     expect(fmtAmountCn(null)).toBe('—');
     expect(fmtAmountCn('')).toBe('—');
+  });
+});
+
+describe('fmtSignedAmountCn', () => {
+  it('prefixes positive and negative amounts', () => {
+    expect(fmtSignedAmountCn(5_230_000_000)).toBe('+52.30亿');
+    expect(fmtSignedAmountCn(-1_240_000_000)).toBe('-12.40亿');
+    expect(fmtSignedAmountCn(null)).toBe('—');
   });
 });
 

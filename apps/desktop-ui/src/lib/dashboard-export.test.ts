@@ -122,6 +122,28 @@ describe('buildSentimentMarkdown', () => {
             rules: ['rule-a', 'rule-b'],
           },
         ],
+        etfFundFlow: {
+          asOfDate: '2026-06-18',
+          shareLag: false,
+          items: [
+            {
+              name: '沪深300 ETF',
+              symbol: '510300',
+              netFlow1d: 5_230_000_000,
+              netFlow3d: 12_050_000_000,
+              signal: 'National Team Buy',
+              signalDisplay: '🛡️ National Team Buy',
+            },
+            {
+              name: '半导体 ETF',
+              symbol: '512480',
+              netFlow1d: -1_240_000_000,
+              netFlow3d: -3_520_000_000,
+              signal: 'Inst Outflow',
+              signalDisplay: '⚠️ Inst Outflow',
+            },
+          ],
+        },
       },
     };
 
@@ -135,6 +157,10 @@ describe('buildSentimentMarkdown', () => {
     expect(md).toContain('上证指数');
     expect(md).toContain('+0.35%');
     expect(md).toContain('| date | up | down |');
+    expect(md).toContain('## ETF Fund Flow (Top Watchlist)');
+    expect(md).toContain('| 沪深300 ETF | 510300 | +52.30亿 | +120.50亿 |');
+    expect(md).toContain('🛡️ National Team Buy');
+    expect(md).toContain('⚠️ Inst Outflow');
   });
 
   it('omits environment section when absent', () => {

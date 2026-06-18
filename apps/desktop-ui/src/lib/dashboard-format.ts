@@ -44,6 +44,16 @@ export function fmtAmountCn(x: unknown): string {
   return `${n.toFixed(0)}`;
 }
 
+export function fmtSignedAmountCn(x: unknown): string {
+  const n = parseNum(x);
+  if (n == null) return '—';
+  const body = fmtAmountCn(n);
+  if (body === '—') return body;
+  if (n > 0) return `+${body}`;
+  if (n < 0) return `-${body.replace(/^-/, '')}`;
+  return body;
+}
+
 export function escapeMarkdownCell(x: unknown): string {
   const s0 = String(x ?? '');
   const s1 = s0.replaceAll('\r\n', '\n').replaceAll('\r', '\n').replaceAll('\n', '<br/>');

@@ -22,6 +22,10 @@ from data_sync_service.db.tv import list_latest_snapshots_for_screeners
 from data_sync_service.service.industry_fund_flow import (
     sync_cn_industry_fund_flow,
 )
+from data_sync_service.service.etf_fund_flow import (
+    build_etf_fund_flow_bundle,
+    sync_etf_fund_flow_watchlist,
+)
 from data_sync_service.service.industry_fund_flow_read import build_dashboard_industry_bundle
 from data_sync_service.service.macro_snapshot import build_macro_snapshot
 from data_sync_service.service.market_environment_zh import format_market_environment_zh
@@ -75,11 +79,13 @@ def _build_market_sentiment_bundle(
         index_as_of = None if use_realtime_index else as_of_date
         index_signals = get_index_signals(as_of_date=index_as_of, include_breadth=False)
     index_signals = apply_breadth_panic_index_signals(index_signals, down_count)
+    etf_fund_flow = build_etf_fund_flow_bundle(as_of_date=as_of_date)
     return {
         "asOfDate": as_of_date,
         "days": 5,
         "items": sentiment_items,
         "indexSignals": index_signals,
+        "etfFundFlow": etf_fund_flow,
     }
 
 
@@ -272,6 +278,7 @@ def _sync_industry_step() -> dict[str, Any]:
 def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
     d = datetime.now(tz=UTC).date().isoformat()
     out = sync_cn_sentiment(date_str=d, force=bool(force))
+    etf_out = sync_etf_fund_flow_watchlist(force=bool(force))
     items = out.get("items") if isinstance(out, dict) else []
     last = items[-1] if isinstance(items, list) and items else {}
     return {
@@ -279,6 +286,7 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
         "riskMode": str((last or {}).get("riskMode") or ""),
         "premium": (last or {}).get("yesterdayLimitUpPremium"),
         "failedRate": (last or {}).get("failedLimitUpRate"),
+        "etfFundFlow": etf_out,
     }
 
 

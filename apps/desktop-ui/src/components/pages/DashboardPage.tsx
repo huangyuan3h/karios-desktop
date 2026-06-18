@@ -21,6 +21,7 @@ import {
   BREADTH_PANIC_DOWN_THRESHOLD,
   buildIndexTrafficSummary,
   fmtAmountCn,
+  fmtSignedAmountCn,
   fmtDateTime,
   loadCardOrder,
   saveCardOrder,
@@ -757,6 +758,69 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                             </table>
                           </div>
                         </div>
+
+                        {(() => {
+                          const etfFlow: any = ms?.etfFundFlow ?? {};
+                          const etfItems: any[] = Array.isArray(etfFlow?.items)
+                            ? etfFlow.items
+                            : [];
+                          return (
+                            <div className="mt-3">
+                              <div className="mb-2 text-xs font-medium text-[var(--k-muted)]">
+                                ETF Fund Flow (Top Watchlist)
+                              </div>
+                              {etfFlow?.shareLag ? (
+                                <div className="mb-2 text-xs text-amber-600 dark:text-amber-400">
+                                  Share data may lag (T+1 morning). 1D flow can be incomplete until
+                                  fund_share updates.
+                                </div>
+                              ) : null}
+                              <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                                <table className="w-full border-collapse text-xs">
+                                  <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                                    <tr className="text-left">
+                                      <th className="px-2 py-2">ETF Name</th>
+                                      <th className="px-2 py-2 font-mono">Symbol</th>
+                                      <th className="px-2 py-2 text-right">1D Net Flow</th>
+                                      <th className="px-2 py-2 text-right">3D Net Flow</th>
+                                      <th className="px-2 py-2">Signal</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {etfItems.map((it: any, idx: number) => (
+                                      <tr key={idx} className="border-t border-[var(--k-border)]">
+                                        <td className="px-2 py-2">{String(it?.name ?? '')}</td>
+                                        <td className="px-2 py-2 font-mono">
+                                          {String(it?.symbol ?? '')}
+                                        </td>
+                                        <td className="px-2 py-2 text-right font-mono">
+                                          {fmtSignedAmountCn(it?.netFlow1d)}
+                                        </td>
+                                        <td className="px-2 py-2 text-right font-mono">
+                                          {fmtSignedAmountCn(it?.netFlow3d)}
+                                        </td>
+                                        <td className="px-2 py-2">
+                                          {String(it?.signalDisplay ?? it?.signal ?? '—')}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                    {!etfItems.length ? (
+                                      <tr>
+                                        <td
+                                          className="px-2 py-3 text-sm text-[var(--k-muted)]"
+                                          colSpan={5}
+                                        >
+                                          No ETF fund flow cached yet. Click &quot;Sync
+                                          sentiment&quot;.
+                                        </td>
+                                      </tr>
+                                    ) : null}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         <div className="mt-3 flex items-center gap-2">
                           <Button

@@ -16,6 +16,7 @@ import {
 import { chunk } from '@/lib/chunk';
 import {
   fmtAmountCn,
+  fmtSignedAmountCn,
   mdTable,
   escapeMarkdownCell,
   mdLines,
@@ -258,6 +259,24 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
   ]);
   lines.push(mdTable(headers, rows));
   lines.push('');
+
+  const etfFlow: any = ms?.etfFundFlow ?? {};
+  const etfItems: any[] = Array.isArray(etfFlow?.items) ? etfFlow.items : [];
+  if (etfItems.length) {
+    const etfHeaders = ['ETF Name', 'Symbol', '1D Net Flow', '3D Net Flow', 'Signal'];
+    const etfRows: unknown[][] = etfItems.map((it: any) => [
+      String(it?.name ?? ''),
+      String(it?.symbol ?? ''),
+      fmtSignedAmountCn(it?.netFlow1d),
+      fmtSignedAmountCn(it?.netFlow3d),
+      String(it?.signalDisplay ?? it?.signal ?? '—'),
+    ]);
+    lines.push(`${heading} ETF Fund Flow (Top Watchlist)`);
+    lines.push('');
+    lines.push(mdTable(etfHeaders, etfRows));
+    lines.push('');
+  }
+
   return lines.join('\n').trim() + '\n';
 }
 

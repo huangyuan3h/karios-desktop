@@ -38,15 +38,21 @@ def test_run_post_close_sync(monkeypatch) -> None:
         called.append("em")
         return {"ok": True, "updated": 3}
 
+    def _etf() -> dict:
+        called.append("etf")
+        return {"ok": True, "updated": 4}
+
     monkeypatch.setattr(pcs, "sync_index_daily_full", _index)
     monkeypatch.setattr(pcs, "sync_macro_daily_full", _macro)
     monkeypatch.setattr(pcs, "sync_eastmoney_industry_incremental", _em)
+    monkeypatch.setattr(pcs, "sync_etf_fund_flow_watchlist", _etf)
 
     out = pcs.run_post_close_sync()
     assert out["indexDaily"]["ok"] is True
     assert out["macroDaily"]["updated"] == 2
     assert out["eastmoneyIndustry"]["updated"] == 3
-    assert set(called) == {"index", "macro", "em"}
+    assert out["etfFundFlow"]["updated"] == 4
+    assert set(called) == {"index", "macro", "em", "etf"}
 
 
 def test_resolve_sgx_a50_main_empty() -> None:
