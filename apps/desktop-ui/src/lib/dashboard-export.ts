@@ -710,7 +710,10 @@ export async function buildDashboardCopyAllMarkdown(
   if (!s) {
     throw new Error('No data available. Please refresh first.');
   }
-  const generatedAt = new Date().toISOString();
+  const generatedAt = new Date().toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    hour12: false,
+  });
   const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd] = await Promise.all([
     buildScreenersMarkdown(s, '##', queryClient),
     buildWatchlistMarkdown(queryClient),
