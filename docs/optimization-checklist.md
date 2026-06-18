@@ -40,7 +40,7 @@
 | OPT-017 | Dashboard 去重 `get_index_signals` + TTL | P0 | 0.5–1 天 | [x] |
 | OPT-018 | Watchlist Risk 复用 `watchlist-market` Query 缓存 | P1 | 0.5–1 天 | [x] |
 | OPT-019 | TV Screener 最新快照 N+1 → 批量查询 | P1 | 0.5–1 天 | [x] |
-| OPT-020 | ScreenerPage React Query + 并行 snapshot 加载 | P1 | 1–1.5 天 | [ ] |
+| OPT-020 | ScreenerPage React Query + 并行 snapshot 加载 | P1 | 1–1.5 天 | [x] |
 
 ---
 
@@ -341,35 +341,22 @@ OPT-012 后 Watchlist 走 `useWatchlistMarketQuery` + `fetchWatchlistMarketSnaps
 
 ### OPT-020：ScreenerPage React Query + 并行 snapshot 加载
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 背景
+#### 实施摘要
 
-`ScreenerPage.tsx`（553 行）mount 时 `refreshAll` 对 **每个** enabled screener **串行** 两次 API（list latest + detail）— 典型 N+1；5 个 screener ≈ 10 次串行请求。无 React Query 缓存，Dashboard screener 卡片 ↔ Screener 页切换必重拉。`@karios/shared` 已有 `tvCapture.ts`，页面仍 inline 类型。
-
-#### 目标
-
-- 新建 `lib/queries/screener.ts`：`useScreenerListQuery` + `useScreenerSnapshotsQuery`
-- `refreshAll` 改为 `Promise.all` 并行 per-screener fetch（或 list-only + 按需 detail）
-- 复用/扩展 `packages/shared/src/schemas/tvCapture.ts` snapshot list/detail schemas
-- sync 仍走已有 `syncTvScreenerAndWait`；完成后 invalidate screener queries
-
-#### 文件范围
-
-| 层 | 文件 |
-|----|------|
-| Page | `apps/desktop-ui/src/components/pages/ScreenerPage.tsx` |
-| Query | 新建 `apps/desktop-ui/src/lib/queries/screener.ts` |
-| Shared | `packages/shared/src/schemas/tvCapture.ts`（扩展 snapshot schemas） |
-| 测试 | `lib/queries/screener.test.ts` |
+- **Shared**：扩展 `tvCapture.ts` — `TvScreener` / `TvSnapshotSummary` / `TvSnapshotDetail` + list response schemas
+- **Query**：新建 `lib/queries/screener.ts` — `useScreenerListQuery` + `useScreenerSnapshotsQuery`；`fetchScreenerSnapshotsMap` 用 `Promise.all` 并行 per-screener fetch；`SCREENER_STALE_MS=5min`
+- **Page**：`ScreenerPage` 移除串行 `refreshAll` + inline types；sync 后 `invalidateScreenerQueries`；History 仍按需本地 fetch
+- 测试：`tvCapture.test.ts` snapshot schemas；`screener.test.ts` query key + parallel fetch
 
 #### 验证
 
-- [ ] N screener 加载改为并行（Network waterfall 无串行阶梯）
-- [ ] 离开再进入 Screener 页命中 React Query cache（staleTime 内无 refetch）
-- [ ] vitest query key / parallel fetch 单测通过
+- [ ] N screener 加载改为并行（Network waterfall 无串行阶梯 — 需 UI 手动 benchmark）
+- [x] staleTime 5min 内复进页面命中 React Query cache（逻辑已实现）
+- [x] vitest query key / parallel fetch 单测通过
 
 ---
 
@@ -406,6 +393,7 @@ Later:   useWatchlistAutomation → React Query（OPT-012 阶段 B）、Dashboar
 | 2026-06-18 | OPT-014 完成：Industry Fund Flow 读路径 N+1 消除（batch `get_rows_for_dates`） |
 | 2026-06-18 | OPT-015 完成：Watchlist Automation 去重 TrendOK 计算 |
 | 2026-06-18 | OPT-019 完成：TV Screener 最新快照 `DISTINCT ON` batch 查询 |
+| 2026-06-18 | OPT-020 完成：ScreenerPage React Query + 并行 snapshot 加载 |
 
 ---
 

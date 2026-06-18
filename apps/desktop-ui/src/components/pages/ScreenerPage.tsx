@@ -2,38 +2,18 @@
 
 import * as React from 'react';
 import { ExternalLink, RefreshCw } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import type { TvScreener } from '@karios/shared';
 
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
 import { apiGetJson } from '@/lib/api/client';
 import { syncTvScreenerAndWait } from '@/lib/api/tvCapture';
-
-type TvScreener = {
-  id: string;
-  name: string;
-  url: string;
-  enabled: boolean;
-  updatedAt: string;
-};
-
-type TvSnapshotSummary = {
-  id: string;
-  screenerId: string;
-  capturedAt: string;
-  rowCount: number;
-};
-
-type TvSnapshotDetail = {
-  id: string;
-  screenerId: string;
-  capturedAt: string;
-  rowCount: number;
-  screenTitle: string | null;
-  filters: string[];
-  url: string;
-  headers: string[];
-  rows: Record<string, string>[];
-};
+import {
+  invalidateScreenerQueries,
+  useScreenerListQuery,
+  useScreenerSnapshotsQuery,
+} from '@/lib/queries/screener';
 
 type TvHistoryCell = {
   snapshotId: string;
@@ -112,48 +92,31 @@ function toMarkdownTable(headers: string[], rows: Record<string, string>[]): str
 }
 
 export function ScreenerPage() {
+  const queryClient = useQueryClient();
   const { addReference } = useChatStore();
-  const [screeners, setScreeners] = React.useState<TvScreener[]>([]);
-  const [snapshots, setSnapshots] = React.useState<Record<string, TvSnapshotDetail | null>>({});
+  const listQuery = useScreenerListQuery();
+  const screeners = listQuery.data ?? [];
+  const screenerIds = React.useMemo(() => screeners.map((sc) => sc.id), [screeners]);
+  const snapshotsQuery = useScreenerSnapshotsQuery(screenerIds);
+  const snapshots = snapshotsQuery.data ?? {};
   const [history, setHistory] = React.useState<Record<string, TvHistoryResponse | null>>({});
   const [historyOpen, setHistoryOpen] = React.useState<Record<string, boolean>>({});
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [busyAll, setBusyAll] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [syncError, setSyncError] = React.useState<string | null>(null);
   const [copyStatus, setCopyStatus] = React.useState<{ id: string; ok: boolean; text: string } | null>(null);
   const copyTimerRef = React.useRef<number | null>(null);
 
+  const queryError = listQuery.error ?? snapshotsQuery.error;
+  const error =
+    syncError ??
+    (queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null);
+  const isRefreshing = listQuery.isFetching || snapshotsQuery.isFetching;
+
   const refreshAll = React.useCallback(async () => {
-    setError(null);
-    try {
-      const s = await apiGetJson<{ items: TvScreener[] }>('/integrations/tradingview/screeners');
-      const enabled = s.items.filter((x) => x.enabled);
-      setScreeners(enabled);
-
-      const next: Record<string, TvSnapshotDetail | null> = {};
-      for (const it of enabled) {
-        const list = await apiGetJson<{ items: TvSnapshotSummary[] }>(
-          `/integrations/tradingview/screeners/${encodeURIComponent(it.id)}/snapshots?limit=1`,
-        );
-        const latest = list.items[0];
-        if (!latest) {
-          next[it.id] = null;
-          continue;
-        }
-        next[it.id] = await apiGetJson<TvSnapshotDetail>(
-          `/integrations/tradingview/snapshots/${encodeURIComponent(latest.id)}`,
-        );
-      }
-      setSnapshots(next);
-      // Keep history cache; user can open on demand.
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void refreshAll();
-  }, [refreshAll]);
+    setSyncError(null);
+    await invalidateScreenerQueries(queryClient);
+  }, [queryClient]);
 
   React.useEffect(
     () => () => {
@@ -164,12 +127,12 @@ export function ScreenerPage() {
 
   async function syncOne(screener: TvScreener) {
     setBusyId(screener.id);
-    setError(null);
+    setSyncError(null);
     try {
       await syncTvScreenerAndWait(screener.id);
       await refreshAll();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setSyncError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyId(null);
     }
@@ -178,7 +141,7 @@ export function ScreenerPage() {
   async function syncAll() {
     setBusyAll(true);
     setBusyId(null);
-    setError(null);
+    setSyncError(null);
     const failures: Array<{ id: string; name: string; error: string }> = [];
     try {
       // Enqueue all screeners in parallel; backend worker limits CDP concurrency.
@@ -197,7 +160,7 @@ export function ScreenerPage() {
       }
       await refreshAll();
       if (failures.length) {
-        setError(
+        setSyncError(
           `Sync all finished with ${failures.length} error(s): ` +
             failures
               .slice(0, 3)
@@ -219,7 +182,7 @@ export function ScreenerPage() {
       setHistory((prev) => ({ ...prev, [screenerId]: h }));
     } catch (e) {
       setHistory((prev) => ({ ...prev, [screenerId]: null }));
-      setError(e instanceof Error ? e.message : String(e));
+      setSyncError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -284,7 +247,7 @@ export function ScreenerPage() {
           </div>
         </div>
         <div className="flex items-center justify-end gap-2">
-          <Button variant="secondary" size="sm" onClick={() => void refreshAll()} disabled={busyAll}>
+          <Button variant="secondary" size="sm" onClick={() => void refreshAll()} disabled={busyAll || isRefreshing}>
             Refresh
           </Button>
           <Button size="sm" onClick={() => void syncAll()} disabled={busyAll || screeners.length === 0} className="gap-2">
