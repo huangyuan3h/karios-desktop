@@ -31,7 +31,7 @@
 | ID | 标题 | 优先级 | 预估工时 | 状态 |
 |----|------|--------|----------|------|
 | OPT-001 | TrendOK 热路径性能修复 | P0 | 1–2 天 | [x] |
-| OPT-002 | Watchlist 存储权威源明确化 | P0 | 2–3 天 | [ ] |
+| OPT-002 | Watchlist 存储权威源明确化 | P0 | 2–3 天 | [x] |
 | OPT-003 | 前端 API 层 + God Page 拆分（阶段一） | P1 | 3–5 天 | [ ] |
 | OPT-004 | 东财行业预热脱离请求路径 | P1 | 1–2 天 | [ ] |
 | OPT-005 | TV Screener Sync 并行化 | P1 | 1–2 天 | [ ] |
@@ -69,65 +69,38 @@
 
 ### OPT-002：Watchlist 存储权威源明确化
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 问题
+#### 实施摘要
 
-- Watchlist **权威数据在浏览器 `localStorage`**（`karios.watchlist.v1`）。
-- Postgres `/watchlist/registry` 只是镜像，可能漂移。
-- 重装应用、换设备、清缓存 → **持仓/成本数据丢失**。
-- 与「本地优先桌面投资工具」定位不符。
-
-#### 目标
-
-- 启动时从 backend hydrate，写操作以 Postgres 为准。
-- localStorage 降级为读缓存 / 离线 fallback。
-- 现有用户数据平滑迁移，不丢数据。
-
-#### 方案（阶段 A — 推荐先做）
-
-**读写顺序变更：**
-
-```
-启动:
-  1. GET /watchlist/registry → 若有数据，写入 localStorage + 内存 state
-  2. 若 registry 空但 localStorage 有数据 → POST registry（一次性 uplift）
-
-写入:
-  1. POST /watchlist/registry（权威）
-  2. 成功后 saveJson localStorage（缓存）
-  3. dispatch WATCHLIST_UPDATED_EVENT
-```
-
-**冲突策略（v1 简单版）：**
-
-- registry 有数据且 localStorage 也有 → **以 registry 为准**，localStorage 覆盖。
-- 首次 uplift 成功后打 flag `karios.watchlist.registrySynced.v1`。
-
-#### 涉及文件
-
-| 文件 | 改动 |
-|------|------|
-| `apps/desktop-ui/src/lib/watchlist-storage.ts` | hydrate / uplift / 双写顺序 |
-| `apps/desktop-ui/src/components/pages/WatchlistPage.tsx` | 启动时 await hydrate |
-| `apps/desktop-ui/src/lib/watchlist-screener-import.ts` | 导入后走统一 save 路径 |
-| `apps/desktop-ui/src/lib/watchlist-automation.ts` | 同上 |
-| `services/data-sync-service/src/data_sync_service/api/watchlist_routes.py` | 确认 GET registry 存在；若无则补 |
-| `services/data-sync-service/src/data_sync_service/db/watchlist_automation.py` | 确认 schema 够用 |
+- 后端新增 `GET /watchlist/registry`（`list_registry()`）
+- 前端重构 [`watchlist-storage.ts`](apps/desktop-ui/src/lib/watchlist-storage.ts)：`hydrateWatchlist` / `persistWatchlist` / `ensureWatchlistHydrated` / `pendingSync`
+- `saveWatchlist` 改为 async，POST-first 再写 localStorage
+- AppShell 启动 hydrate；WatchlistPage 等待 hydrate；清理 automation 冗余 sync
+- 测试：`test_watchlist_registry.py`（4）、`watchlist-storage.test.ts`（7）
 
 #### 验证
 
-- [ ] 新安装：空 registry → 手动加票 → 重启后仍在
-- [ ] 老用户：localStorage 有数据、registry 空 → 自动 uplift
-- [ ] Screener 导入后 registry 与 UI 一致
-- [ ] Settings 无报错
+- [x] pytest `test_watchlist_registry.py` 通过
+- [x] vitest `watchlist-storage.test.ts` 通过
+- [ ] 新安装：加票 → 重启后仍在（需 UI 手动确认）
+- [ ] 老用户 localStorage uplift（需 UI 手动确认）
+- [ ] POST 失败 pendingSync 重试（需 UI 手动确认）
 
 #### 后续（阶段 B，另开任务）
 
 - Tauri `tauri-plugin-store` 或本地 SQLite 替代 localStorage
 - 多设备冲突检测 UI
+
+#### 读写顺序（设计备忘）
+
+```
+启动: GET registry → 有则覆盖 local；空则 uplift local → POST
+写入: POST registry → 成功则 local + 清 pendingSync；失败则 local + pendingSync
+冲突: registry 非空时以 registry 为准
+```
 
 ---
 
@@ -426,6 +399,7 @@ Later:   OPT-007 ~ OPT-010
 |------|------|
 | 2026-06-18 | 初始版本：全栈架构审查，功能正常，识别 P0–P3 共 10 项优化 |
 | 2026-06-18 | OPT-001 完成：TrendOK 热路径 skip breadth + regime TTL cache + EM DB-only；benchmark ~0.21s |
+| 2026-06-18 | OPT-002 完成：Watchlist registry 权威源 + GET API + hydrate/persist + 11 项自动化测试 |
 
 ---
 

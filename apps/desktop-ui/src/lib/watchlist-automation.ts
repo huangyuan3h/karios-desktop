@@ -1,9 +1,9 @@
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { importFromScreener } from '@/lib/watchlist-screener-import';
 import {
+  ensureWatchlistHydrated,
   loadWatchlist,
   saveWatchlist,
-  syncRegistryToBackend,
   type WatchlistItem,
 } from '@/lib/watchlist-storage';
 
@@ -127,7 +127,7 @@ export async function applyAutomationRun(
   const before = items.length;
   items = items.filter((x) => !removeSet.has(x.symbol));
   const removed = before - items.length;
-  saveWatchlist(items);
+  await saveWatchlist(items);
 
   onStage?.('Importing from screener…');
   const screener = await importFromScreener({
@@ -154,7 +154,7 @@ export async function applyAutomationRun(
     });
     alphaAdded += 1;
   }
-  if (alphaAdded > 0) saveWatchlist(items);
+  if (alphaAdded > 0) await saveWatchlist(items);
 
   onStage?.('Acknowledging automation run…');
   await ackAutomationRun(run.runId, screener.addedCount);
@@ -178,8 +178,8 @@ export async function runManualAutomation(options?: {
   force?: boolean;
   onStage?: (label: string) => void;
 }): Promise<{ run: AutomationRun; result?: ApplyAutomationResult }> {
-  options?.onStage?.('Syncing registry…');
-  await syncRegistryToBackend();
+  options?.onStage?.('Ensuring registry is synced…');
+  await ensureWatchlistHydrated();
   options?.onStage?.('Running backend automation…');
   const run = await triggerAutomationRun(options?.force ?? true);
   if (run.skipped) {

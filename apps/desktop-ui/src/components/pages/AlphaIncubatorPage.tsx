@@ -182,7 +182,7 @@ function riskLabel(status: string): { text: string; className: string } {
   };
 }
 
-function addSymbolsToWatchlist(symbols: CnSymbol[]) {
+async function addSymbolsToWatchlist(symbols: CnSymbol[]) {
   const existing = loadWatchlist();
   const seen = new Set(existing.map((x) => x.symbol));
   const now = new Date().toISOString();
@@ -193,7 +193,7 @@ function addSymbolsToWatchlist(symbols: CnSymbol[]) {
     seen.add(sym);
     next.push({ symbol: sym, name: s.name, addedAt: now, source: 'alpha_radar' });
   }
-  saveWatchlist(next);
+  await saveWatchlist(next);
 }
 
 export function AlphaIncubatorPage() {
@@ -657,8 +657,9 @@ export function AlphaIncubatorPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        addSymbolsToWatchlist(t.cnSymbols);
-                        setMsg(`Added ${t.cnSymbols.length} symbol(s) to Watchlist`);
+                        void addSymbolsToWatchlist(t.cnSymbols).then(() => {
+                          setMsg(`Added ${t.cnSymbols.length} symbol(s) to Watchlist`);
+                        });
                       }}
                     >
                       <Star className="mr-1 h-4 w-4" />
@@ -832,15 +833,16 @@ export function AlphaIncubatorPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      addSymbolsToWatchlist([
+                      void addSymbolsToWatchlist([
                         {
                           symbol: stock.symbol.startsWith('CN:') ? stock.symbol : `CN:${stock.symbol}`,
                           name: stock.name,
                           confidence: stock.catalystScore / 100,
                           rationale: `Catalyst score ${formatCatalystScore(stock.catalystScore)}`,
                         },
-                      ]);
-                      setMsg(`Added ${stock.name} to Watchlist`);
+                      ]).then(() => {
+                        setMsg(`Added ${stock.name} to Watchlist`);
+                      });
                     }}
                   >
                     <Star className="mr-1 h-4 w-4" />

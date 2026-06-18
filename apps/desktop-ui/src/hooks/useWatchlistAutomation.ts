@@ -7,7 +7,6 @@ import {
   fetchAutomationPending,
   isAutomationPollWindow,
 } from '@/lib/watchlist-automation';
-import { syncRegistryToBackend, WATCHLIST_UPDATED_EVENT } from '@/lib/watchlist-storage';
 
 const ACK_STORAGE_KEY = 'karios.watchlist.automation.ackedRunId';
 
@@ -31,21 +30,6 @@ function setAckedRunId(runId: string): void {
 
 export function useWatchlistAutomation(): void {
   const applyingRef = React.useRef(false);
-
-  React.useEffect(() => {
-    void syncRegistryToBackend().catch(() => {
-      // best-effort on mount
-    });
-
-    function onWatchlistUpdated() {
-      void syncRegistryToBackend().catch(() => {
-        // ignore
-      });
-    }
-
-    window.addEventListener(WATCHLIST_UPDATED_EVENT, onWatchlistUpdated);
-    return () => window.removeEventListener(WATCHLIST_UPDATED_EVENT, onWatchlistUpdated);
-  }, []);
 
   React.useEffect(() => {
     let cancelled = false;

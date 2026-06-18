@@ -270,7 +270,7 @@ export async function importFromScreener(options: ScreenerImportOptions = {}): P
     };
   }
 
-  saveWatchlist([...added, ...existingItems]);
+  await saveWatchlist([...added, ...existingItems]);
   return {
     message: `Added ${added.length} TrendOK ✅ stocks from screener (scanned ${uniq.length}; pullback-filter kept ${filtered.length}, dropped ${droppedByPullback}).`,
     addedCount: added.length,

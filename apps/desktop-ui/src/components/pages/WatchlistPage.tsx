@@ -24,13 +24,12 @@ import {
 } from '@/lib/watchlist-automation';
 import { importFromScreener } from '@/lib/watchlist-screener-import';
 import {
+  ensureWatchlistHydrated,
   loadWatchlist,
   saveWatchlist,
-  WATCHLIST_STORAGE_KEY,
   WATCHLIST_UPDATED_EVENT,
   type WatchlistItem,
 } from '@/lib/watchlist-storage';
-import { loadJson, saveJson } from '@/lib/storage';
 import { useChatStore } from '@/lib/chat/store';
 import {
   WATCHLIST_MD_HEADERS,
@@ -626,6 +625,7 @@ function rowTone(
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const { addReference } = useChatStore();
   const [items, setItems] = React.useState<WatchlistItem[]>([]);
+  const [watchlistHydrating, setWatchlistHydrating] = React.useState(true);
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
@@ -712,37 +712,17 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   }, []);
 
   React.useEffect(() => {
-    const saved = loadJson<WatchlistItem[]>(WATCHLIST_STORAGE_KEY, []);
-    // Backward-compatible migration: drop deprecated fields (e.g. note).
-    const arr = Array.isArray(saved) ? saved : [];
-    const migrated: WatchlistItem[] = arr
-      .filter((x) => x && typeof x === 'object')
-      .map((x) => {
-        const it = x as Partial<WatchlistItem> & { note?: unknown };
-        const rawColor = typeof it.color === 'string' ? it.color.trim().toLowerCase() : '';
-        const color = FLAG_COLORS.some((c) => c.hex === rawColor) ? rawColor : '#ffffff';
-        return {
-          symbol: String(it.symbol ?? '').trim(),
-          name: it.name ?? null,
-          nameStatus:
-            it.nameStatus === 'resolved' || it.nameStatus === 'not_found'
-              ? it.nameStatus
-              : undefined,
-          addedAt: String(it.addedAt ?? new Date().toISOString()),
-          color,
-          positionPct:
-            typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
-              ? Math.max(0, Math.min(100, it.positionPct))
-              : null,
-          costPrice:
-            typeof it.costPrice === 'number' && Number.isFinite(it.costPrice) ? it.costPrice : null,
-          maxPrice:
-            typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice) ? it.maxPrice : null,
-        };
+    let cancelled = false;
+    void ensureWatchlistHydrated()
+      .then(() => {
+        if (!cancelled) setItems(loadWatchlist());
       })
-      .filter((x) => Boolean(x.symbol));
-    setItems(migrated);
-    saveWatchlist(migrated);
+      .finally(() => {
+        if (!cancelled) setWatchlistHydrating(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   React.useEffect(
@@ -754,7 +734,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
   function persist(next: WatchlistItem[]) {
     setItems(next);
-    saveWatchlist(next);
+    void saveWatchlist(next);
   }
 
   React.useEffect(() => {
@@ -1755,6 +1735,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
   return (
     <div className="box-border min-w-0 w-full max-w-full overflow-x-hidden p-6">
+      {watchlistHydrating ? (
+        <div className="text-sm text-[var(--k-muted)]">Loading watchlist…</div>
+      ) : null}
+      <div className={watchlistHydrating ? 'hidden' : undefined}>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-lg font-semibold">Watchlist</div>
@@ -2583,6 +2567,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             document.body,
           )
         : null}
+      </div>
     </div>
   );
 }

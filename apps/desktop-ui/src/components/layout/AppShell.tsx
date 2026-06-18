@@ -26,6 +26,7 @@ import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { Button } from '@/components/ui/button';
 import { useWatchlistAutomation } from '@/hooks/useWatchlistAutomation';
 import { useChatStore } from '@/lib/chat/store';
+import { ensureWatchlistHydrated } from '@/lib/watchlist-storage';
 import { cn } from '@/lib/utils';
 
 const PAGE_TITLES: Record<string, string> = {
@@ -55,6 +56,11 @@ function getPageTitle(page: string, activeStockSymbol: string | null): string {
 
 export function AppShell() {
   const { state, setAgent } = useChatStore();
+
+  React.useEffect(() => {
+    void ensureWatchlistHydrated();
+  }, []);
+
   useWatchlistAutomation();
   const agentVisible = state.agent.visible;
   const agentMode = state.agent.mode;

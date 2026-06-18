@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query  # type: ignore[import-not-found]
 from pydantic import BaseModel
 
-from data_sync_service.db.watchlist_automation import upsert_registry
+from data_sync_service.db.watchlist_automation import list_registry, upsert_registry
 from data_sync_service.service.watchlist_automation import (
     ack_automation_run,
     get_automation_latest,
@@ -32,6 +32,15 @@ class WatchlistRegistryRequest(BaseModel):
 
 class WatchlistAckRequest(BaseModel):
     screenerAdded: int | None = None
+
+
+@router.get("/watchlist/registry")
+def get_watchlist_registry() -> dict:
+    try:
+        items = list_registry()
+        return {"ok": True, "items": items, "count": len(items)}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/watchlist/registry")
