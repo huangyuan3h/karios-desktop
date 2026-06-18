@@ -19,6 +19,7 @@ from .api.sync_routes import router as sync_router
 from .api.trade_review_routes import router as trade_review_router
 from .api.tv_chrome_routes import router as tv_chrome_router
 from .api.tv_routes import router as tv_router
+from .api.watchlist_routes import router as watchlist_router
 from .scheduler import create_scheduler
 
 
@@ -52,3 +53,4 @@ app.include_router(industry_flow_router)
 app.include_router(market_sentiment_router)
 app.include_router(news_router)
 app.include_router(alpha_radar_router)
+app.include_router(watchlist_router)

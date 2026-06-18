@@ -24,7 +24,7 @@ import {
   type CatalystStock,
 } from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
-import { loadJson, saveJson } from '@/lib/storage';
+import { loadWatchlist, saveWatchlist } from '@/lib/watchlist-storage';
 import { cn } from '@/lib/utils';
 
 type CnSymbol = {
@@ -105,14 +105,6 @@ type AlphaSource = {
   name: string;
 };
 
-type WatchlistItem = {
-  symbol: string;
-  name?: string | null;
-  addedAt: string;
-};
-
-const WATCHLIST_STORAGE_KEY = 'karios.watchlist.v1';
-
 type ViewTab = 'trends' | 'catalyst' | 'rss';
 type TrendsScope = 'batch' | 'all';
 type DriverFilter = 'all' | 'Global_Tech' | 'Domestic_Policy' | 'Cycle_Reversal';
@@ -191,7 +183,7 @@ function riskLabel(status: string): { text: string; className: string } {
 }
 
 function addSymbolsToWatchlist(symbols: CnSymbol[]) {
-  const existing = loadJson<WatchlistItem[]>(WATCHLIST_STORAGE_KEY, []);
+  const existing = loadWatchlist();
   const seen = new Set(existing.map((x) => x.symbol));
   const now = new Date().toISOString();
   const next = [...existing];
@@ -199,9 +191,9 @@ function addSymbolsToWatchlist(symbols: CnSymbol[]) {
     const sym = String(s.symbol || '').trim();
     if (!sym || seen.has(sym)) continue;
     seen.add(sym);
-    next.push({ symbol: sym, name: s.name, addedAt: now });
+    next.push({ symbol: sym, name: s.name, addedAt: now, source: 'alpha_radar' });
   }
-  saveJson(WATCHLIST_STORAGE_KEY, next);
+  saveWatchlist(next);
 }
 
 export function AlphaIncubatorPage() {

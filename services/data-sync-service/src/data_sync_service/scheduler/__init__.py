@@ -16,6 +16,7 @@ from data_sync_service.scheduler import (
     macro_daily_job,
     news_fetch_job,
     stock_basic_job,
+    watchlist_automation_job,
 )
 
 
@@ -105,6 +106,12 @@ def create_scheduler() -> BackgroundScheduler:
         macro_daily_job.run,
         macro_daily_job.build_trigger(),
         id=macro_daily_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        watchlist_automation_job.run,
+        watchlist_automation_job.build_trigger(),
+        id=watchlist_automation_job.JOB_ID,
         replace_existing=True,
     )
     return scheduler

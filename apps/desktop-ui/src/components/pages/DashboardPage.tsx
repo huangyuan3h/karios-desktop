@@ -24,6 +24,7 @@ import {
 } from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
 import { loadJson } from '@/lib/storage';
+import { loadWatchlist, type WatchlistItem } from '@/lib/watchlist-storage';
 import {
   downloadInvestmentDailyPdf,
   parseInvestmentDailyReportResponse,
@@ -290,7 +291,6 @@ function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'):
   return lines.join('\n').trim() + '\n';
 }
 
-const WATCHLIST_STORAGE_KEY = 'karios.watchlist.v1';
 const NEWS_BRIEF_CACHE_KEY = 'karios.dashboard.newsBrief.v1';
 const DASHBOARD_SUMMARY_CACHE_KEY = 'karios.dashboard.summary.v1';
 const NEWS_BRIEF_MIN_REFRESH_MS = 4 * 60 * 60 * 1000;
@@ -323,16 +323,6 @@ function saveDashboardSummaryCache(summary: DashboardSummary) {
     // ignore
   }
 }
-
-type WatchlistItem = {
-  symbol: string;
-  name?: string | null;
-  addedAt: string;
-  color?: string;
-  positionPct?: number | null;
-  costPrice?: number | null;
-  maxPrice?: number | null;
-};
 
 type TrendOkChecks = {
   emaOrder?: boolean | null;
@@ -491,7 +481,7 @@ type SyncStep = {
 };
 
 async function fetchWatchlistRiskRows(): Promise<WatchlistRiskRow[]> {
-  const itemsRaw = loadJson<WatchlistItem[]>(WATCHLIST_STORAGE_KEY, []);
+  const itemsRaw = loadWatchlist();
   const items = (Array.isArray(itemsRaw) ? itemsRaw : [])
     .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
     .map((x) => ({ ...x, symbol: String(x.symbol).trim().toUpperCase() }));
@@ -1242,7 +1232,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   }
 
   async function buildWatchlistMarkdown(): Promise<string> {
-    const itemsRaw = loadJson<WatchlistItem[]>(WATCHLIST_STORAGE_KEY, []);
+    const itemsRaw = loadWatchlist();
     const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
       .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
       .map((x) => ({ ...x, symbol: String(x.symbol).trim().toUpperCase() }));
@@ -1450,7 +1440,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   }
 
   function loadWatchlistSymbols(): Set<string> {
-    const itemsRaw = loadJson<WatchlistItem[]>(WATCHLIST_STORAGE_KEY, []);
+    const itemsRaw = loadWatchlist();
     const items = (Array.isArray(itemsRaw) ? itemsRaw : [])
       .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
       .map((x) => String(x.symbol).trim().toUpperCase());

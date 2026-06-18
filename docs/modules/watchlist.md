@@ -308,6 +308,16 @@ B_momentum 模式：
 - 只刷新缓存数据，不强制网络请求
 - 手动 Refresh 才会强制更新网络数据
 
+### 盘后自动化（17:30）
+
+每个 A 股交易日 **17:30（Asia/Shanghai）** 自动运行（也可在 Watchlist 页点击 **Run automation** 手动触发）：
+
+1. **移除**：连续 3 日 Score &lt; 30 且行业不在 5D 净流入 Top5 的股票（`alpha_radar` 来源豁免）
+2. **Screener 导入**：与「Import from screener」相同逻辑（回撤过滤 + TrendOK）
+3. **Alpha Radar**：catalystScore &gt; 85 且评级 S 的股票 append 到列表底部
+
+前端在 17:30–20:00 轮询后端 pending run 并落地到 localStorage。
+
 ---
 
 ## 注意事项

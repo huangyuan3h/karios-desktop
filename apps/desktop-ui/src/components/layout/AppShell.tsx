@@ -24,6 +24,7 @@ import { IndexPage } from '@/components/pages/IndexPage';
 import { AlphaIncubatorPage } from '@/components/pages/AlphaIncubatorPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { Button } from '@/components/ui/button';
+import { useWatchlistAutomation } from '@/hooks/useWatchlistAutomation';
 import { useChatStore } from '@/lib/chat/store';
 import { cn } from '@/lib/utils';
 
@@ -54,6 +55,7 @@ function getPageTitle(page: string, activeStockSymbol: string | null): string {
 
 export function AppShell() {
   const { state, setAgent } = useChatStore();
+  useWatchlistAutomation();
   const agentVisible = state.agent.visible;
   const agentMode = state.agent.mode;
   const agentWidth = state.agent.width;

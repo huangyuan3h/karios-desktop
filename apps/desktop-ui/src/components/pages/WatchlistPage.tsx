@@ -8,6 +8,7 @@ import {
   CircleX,
   ExternalLink,
   Info,
+  Play,
   RefreshCw,
   Trash2,
 } from 'lucide-react';
@@ -16,7 +17,20 @@ import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
-import { normalizeScreenerSymbol } from '@/lib/screenerExport';
+import {
+  fetchAutomationLatest,
+  formatAutomationSummary,
+  runManualAutomation,
+  type AutomationRun,
+} from '@/lib/watchlist-automation';
+import { importFromScreener } from '@/lib/watchlist-screener-import';
+import {
+  loadWatchlist,
+  saveWatchlist,
+  WATCHLIST_STORAGE_KEY,
+  WATCHLIST_UPDATED_EVENT,
+  type WatchlistItem,
+} from '@/lib/watchlist-storage';
 import { loadJson, saveJson } from '@/lib/storage';
 import { useChatStore } from '@/lib/chat/store';
 import {
@@ -42,18 +56,7 @@ import {
   type WatchlistRiskAlert,
 } from '@/lib/watchlist-metrics';
 
-type WatchlistItem = {
-  symbol: string; // e.g. "CN:600000" or "HK:0700"
-  name?: string | null;
-  nameStatus?: 'resolved' | 'not_found';
-  addedAt: string; // ISO
-  color?: string; // hex color for lightweight flag, default white (#ffffff)
-  positionPct?: number | null; // 0..100 (%)
-  costPrice?: number | null;
-  maxPrice?: number | null;
-};
 
-const STORAGE_KEY = 'karios.watchlist.v1';
 const COST_PRICE_RE = /^\d+(\.\d{0,2})?$/;
 
 const FLAG_COLORS: Array<{ label: string; hex: string }> = [
@@ -251,38 +254,12 @@ type TrendOkResult = {
   missingData?: string[];
 };
 
+
 type ScreenerImportDebugState = {
   updatedAt: string | null;
   scanned: number;
   trendOkCount: number;
   rows: TrendOkResult[];
-};
-
-type TvScreener = {
-  id: string;
-  name: string;
-  url: string;
-  enabled: boolean;
-  updatedAt: string;
-};
-
-type TvSnapshotSummary = {
-  id: string;
-  screenerId: string;
-  capturedAt: string;
-  rowCount: number;
-};
-
-type TvSnapshotDetail = {
-  id: string;
-  screenerId: string;
-  capturedAt: string;
-  rowCount: number;
-  screenTitle: string | null;
-  filters: string[];
-  url: string;
-  headers: string[];
-  rows: Record<string, string>[];
 };
 
 async function apiGetJson<T>(path: string): Promise<T> {
@@ -334,38 +311,6 @@ function normalizeSymbolInput(input: string): { symbol: string } | { error: stri
     error:
       'Unsupported code format. Use 6-digit CN ticker, 4-5 digit HK ticker, or CN:/HK: prefixed symbol.',
   };
-}
-
-function parseScreenerNumber(raw: unknown): number | null {
-  const s = String(raw ?? '').trim();
-  if (!s) return null;
-  const m = s.match(/-?\d+(?:,\d{3})*(?:\.\d+)?/);
-  if (!m) return null;
-  const n = Number(m[0].replaceAll(',', ''));
-  return Number.isFinite(n) ? n : null;
-}
-
-function pickFirstRowValue(row: Record<string, string>, keys: string[]): string {
-  for (const k of keys) {
-    const v = row[k];
-    if (typeof v === 'string' && v.trim()) return v;
-  }
-  return '';
-}
-
-function getRetracementRatioFromScreenerRow(row: Record<string, string>): number | null {
-  const priceRaw = pickFirstRowValue(row, ['Price', 'Last', 'Close']);
-  const high52wRaw = pickFirstRowValue(row, [
-    'High 52W',
-    'High | Interval52Weeks',
-    '52 Week High',
-    'High 52 week',
-    'High 52Wk',
-  ]);
-  const price = parseScreenerNumber(priceRaw);
-  const high52w = parseScreenerNumber(high52wRaw);
-  if (price == null || high52w == null || high52w <= 0) return null;
-  return (price - high52w) / high52w;
 }
 
 function chunk<T>(arr: T[], n: number): T[][] {
@@ -643,6 +588,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     null,
   );
   const [syncLogs, setSyncLogs] = React.useState<string[]>([]);
+  const [automationBusy, setAutomationBusy] = React.useState(false);
+  const [automationStage, setAutomationStage] = React.useState<string | null>(null);
+  const [automationLogs, setAutomationLogs] = React.useState<string[]>([]);
+  const [automationMsg, setAutomationMsg] = React.useState<string | null>(null);
+  const [latestAutomation, setLatestAutomation] = React.useState<AutomationRun | null>(null);
+  const [automationSkipRun, setAutomationSkipRun] = React.useState<AutomationRun | null>(null);
   const [copyMdStatus, setCopyMdStatus] = React.useState<{ ok: boolean; text: string } | null>(
     null,
   );
@@ -692,7 +643,25 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const trendReqRef = React.useRef(0);
 
   React.useEffect(() => {
-    const saved = loadJson<WatchlistItem[]>(STORAGE_KEY, []);
+    void fetchAutomationLatest()
+      .then((run) => {
+        if (run) setLatestAutomation(run);
+      })
+      .catch(() => {
+        // ignore
+      });
+  }, []);
+
+  React.useEffect(() => {
+    function onExternalUpdate() {
+      setItems(loadWatchlist());
+    }
+    window.addEventListener(WATCHLIST_UPDATED_EVENT, onExternalUpdate);
+    return () => window.removeEventListener(WATCHLIST_UPDATED_EVENT, onExternalUpdate);
+  }, []);
+
+  React.useEffect(() => {
+    const saved = loadJson<WatchlistItem[]>(WATCHLIST_STORAGE_KEY, []);
     // Backward-compatible migration: drop deprecated fields (e.g. note).
     const arr = Array.isArray(saved) ? saved : [];
     const migrated: WatchlistItem[] = arr
@@ -722,7 +691,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       })
       .filter((x) => Boolean(x.symbol));
     setItems(migrated);
-    saveJson(STORAGE_KEY, migrated);
+    saveWatchlist(migrated);
   }, []);
 
   React.useEffect(
@@ -734,7 +703,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
   function persist(next: WatchlistItem[]) {
     setItems(next);
-    saveJson(STORAGE_KEY, next);
+    saveWatchlist(next);
   }
 
   React.useEffect(() => {
@@ -776,7 +745,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   }, [items]);
 
   const refreshTrend = React.useCallback(
-    async (reason: 'items_changed' | 'manual' | 'timer', opts: { forceMarket?: boolean } = {}) => {
+    async (reason: 'items_changed' | 'manual' | 'timer' | 'automation', opts: { forceMarket?: boolean } = {}) => {
       const syms = items.map((x) => x.symbol).filter(Boolean);
       if (!syms.length) {
         setTrend({});
@@ -975,159 +944,30 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     setSyncLogs([]);
     setImportDebugFilter('');
 
-    // UI-only helpers: show progress & last few steps.
     const pushLog = (line: string) => {
       setSyncLogs((prev) => [...prev, line].slice(-6));
     };
-    const setStep = (label: string, cur?: number, total?: number) => {
-      setSyncStage(label);
-      if (typeof cur === 'number' && typeof total === 'number') setSyncProgress({ cur, total });
-      else setSyncProgress(null);
-      pushLog(
-        label + (typeof cur === 'number' && typeof total === 'number' ? ` (${cur}/${total})` : ''),
-      );
-    };
     try {
-      const s = await apiGetJson<{ items: TvScreener[] }>('/integrations/tradingview/screeners');
-      const enabled = (s.items || []).filter((x) => x && x.enabled);
-      if (!enabled.length) {
-        setSyncMsg('No enabled screeners.');
-        return;
-      }
-
-      setStep('Loading latest snapshots (DB)', 0, enabled.length);
-      // Load snapshot details from DB (no TradingView sync).
-      const snapshotDetails: TvSnapshotDetail[] = [];
-      for (let i = 0; i < enabled.length; i++) {
-        const sc = enabled[i]!;
-        setSyncProgress({ cur: i + 1, total: enabled.length });
-        try {
-          let snapId: string | null = null;
-          const list = await apiGetJson<{ items: TvSnapshotSummary[] }>(
-            `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/snapshots?limit=1`,
+      const result = await importFromScreener({
+        existingItems: items,
+        onStage: (label, cur, total) => {
+          setSyncStage(label);
+          if (typeof cur === 'number' && typeof total === 'number') {
+            setSyncProgress({ cur, total });
+          } else {
+            setSyncProgress(null);
+          }
+          pushLog(
+            label +
+              (typeof cur === 'number' && typeof total === 'number' ? ` (${cur}/${total})` : ''),
           );
-          const latest = list.items?.[0];
-          if (latest?.id) snapId = String(latest.id);
-          if (!snapId) continue;
-          const d = await apiGetJson<TvSnapshotDetail>(
-            `/integrations/tradingview/snapshots/${encodeURIComponent(snapId)}`,
-          );
-          snapshotDetails.push(d);
-        } catch {
-          // ignore per-screener
-        }
-      }
-
-      const candidates: string[] = [];
-      const retracementBySymbol = new Map<string, number[]>();
-      for (const snap of snapshotDetails) {
-        if (!snap) continue;
-        for (const r of snap.rows || []) {
-          const raw = String(r['Ticker'] || r['Symbol'] || '').trim();
-          const sym = normalizeScreenerSymbol(raw);
-          if (!sym) continue;
-          candidates.push(sym);
-          const ratio = getRetracementRatioFromScreenerRow(r);
-          if (ratio == null) continue;
-          const arr = retracementBySymbol.get(sym) ?? [];
-          arr.push(ratio);
-          retracementBySymbol.set(sym, arr);
-        }
-      }
-
-      const uniq = Array.from(new Set(candidates)).slice(0, 2000);
-      if (!uniq.length) {
-        setSyncMsg('No symbols found in latest screener snapshots.');
-        setImportDebug({
-          updatedAt: new Date().toISOString(),
-          scanned: 0,
-          trendOkCount: 0,
-          rows: [],
-        });
-        return;
-      }
-
-      // Hard filter: keep only pullback ratio in [-0.15, -0.05].
-      const minPullback = -0.15;
-      const maxPullback = -0.05;
-      const filtered = uniq.filter((sym) => {
-        const rs = retracementBySymbol.get(sym) ?? [];
-        return rs.some((x) => x >= minPullback && x <= maxPullback);
+        },
       });
-      const droppedByPullback = uniq.length - filtered.length;
-      if (!filtered.length) {
-        setSyncMsg(
-          `Screener scanned ${uniq.length} symbols, but 0 passed pullback ratio filter ((Current-52WHigh)/52WHigh in [-0.15, -0.05]).`,
-        );
-        setImportDebug({
-          updatedAt: new Date().toISOString(),
-          scanned: uniq.length,
-          trendOkCount: 0,
-          rows: [],
-        });
-        return;
+      setImportDebug(result.debug as ScreenerImportDebugState);
+      setSyncMsg(result.message);
+      if (result.addedCount > 0) {
+        setItems(loadWatchlist());
       }
-
-      setStep('TrendOK check', 0, filtered.length);
-      // Check TrendOK from data-sync-service DB cache (no network fetch in data-sync-service).
-      const okSymsCached: string[] = [];
-      const debugBySym: Record<string, TrendOkResult> = {};
-      for (const part of chunk(filtered, 200)) {
-        const sp = new URLSearchParams();
-        sp.set('refresh', 'true');
-        sp.set('realtime', isShanghaiQuoteWindow() ? 'true' : 'false');
-        for (const s2 of part) sp.append('symbols', s2);
-        const rows = await apiGetJsonFrom<TrendOkResult[]>(
-          DATA_SYNC_BASE_URL,
-          `/market/stocks/trendok?${sp.toString()}`,
-        );
-        for (const rr of Array.isArray(rows) ? rows : []) {
-          if (!rr || !rr.symbol) continue;
-          debugBySym[rr.symbol] = rr;
-          if (rr.trendOk === true) okSymsCached.push(rr.symbol);
-        }
-        setSyncProgress((p) => {
-          const prev = p?.cur ?? 0;
-          return { cur: Math.min(filtered.length, prev + part.length), total: filtered.length };
-        });
-      }
-      const okUniqCached = Array.from(new Set(okSymsCached));
-      const okUniq = okUniqCached;
-
-      // Persist debug table for manual review (never auto-cleared).
-      setImportDebug({
-        updatedAt: new Date().toISOString(),
-        scanned: filtered.length,
-        trendOkCount: okUniq.length,
-        rows: filtered.map(
-          (sym) =>
-            debugBySym[sym] ??
-            ({
-              symbol: sym,
-              trendOk: null,
-              score: null,
-              missingData: ['no_result'],
-            } satisfies TrendOkResult),
-        ),
-      });
-
-      const existing = new Set(items.map((x) => x.symbol));
-      const now = new Date().toISOString();
-      const added: WatchlistItem[] = okUniq
-        .filter((sym) => !existing.has(sym))
-        .map((sym) => ({ symbol: sym, name: null, addedAt: now, color: '#ffffff' }));
-
-      if (!added.length) {
-        setSyncMsg(
-          `Screener scanned ${uniq.length} symbols; pullback-filter kept ${filtered.length} (dropped ${droppedByPullback}); TrendOK ✅: ${okUniq.length}; nothing new to add.`,
-        );
-        return;
-      }
-
-      persist([...added, ...items]);
-      setSyncMsg(
-        `Added ${added.length} TrendOK ✅ stocks from screener (scanned ${uniq.length}; pullback-filter kept ${filtered.length}, dropped ${droppedByPullback}).`,
-      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1135,6 +975,47 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       setSyncStage(null);
       setSyncProgress(null);
     }
+  }
+
+  async function onRunAutomation(force = true) {
+    setError(null);
+    setAutomationMsg(null);
+    setAutomationBusy(true);
+    setAutomationStage('Starting automation…');
+    setAutomationLogs([]);
+    const pushLog = (line: string) => {
+      setAutomationLogs((prev) => [...prev, line].slice(-6));
+    };
+    try {
+      const { run, result } = await runManualAutomation({
+        force,
+        onStage: (label) => {
+          setAutomationStage(label);
+          pushLog(label);
+        },
+      });
+      setLatestAutomation(run);
+      if (run.skipped) {
+        setAutomationMsg(`Skipped: ${run.skipReason || 'unknown'}`);
+        setAutomationSkipRun(run);
+        return;
+      }
+      setAutomationSkipRun(null);
+      setItems(loadWatchlist());
+      void refreshTrend('automation', { forceMarket: false });
+      const summary = formatAutomationSummary(run, result ?? null);
+      setAutomationMsg(summary);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAutomationBusy(false);
+      setAutomationStage(null);
+    }
+  }
+
+  async function onForceAutomationFromSkip() {
+    if (!automationSkipRun) return;
+    void onRunAutomation(true);
   }
 
   function showTooltip(el: HTMLElement, content: React.ReactNode, width = 360) {
@@ -1838,6 +1719,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               ? `Scores updated at ${new Date(trendUpdatedAt).toLocaleString()} (auto refresh: 10 min)`
               : 'Scores not loaded yet.'}
           </div>
+          <div className="mt-1 text-xs text-[var(--k-muted)]">
+            {formatAutomationSummary(latestAutomation) ?? 'Last automation: —'}
+            {' · '}
+            Next scheduled: weekdays 17:30 (Asia/Shanghai)
+          </div>
           {syncBusy && syncStage ? (
             <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
               <div className="flex items-center justify-between gap-2">
@@ -1869,6 +1755,39 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   ))}
                 </div>
               ) : null}
+            </div>
+          ) : null}
+
+          {automationBusy && automationStage ? (
+            <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-medium">Run automation</div>
+                <div className="text-[var(--k-muted)]">…</div>
+              </div>
+              <div className="mt-1 text-[var(--k-muted)]">{automationStage}</div>
+              {automationLogs.length ? (
+                <div className="mt-2 space-y-0.5 text-[var(--k-muted)]">
+                  {automationLogs.slice(-4).map((l, i) => (
+                    <div key={i} className="truncate">
+                      {l}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {automationMsg ? (
+            <div className="mt-2 text-xs text-[var(--k-muted)]">{automationMsg}</div>
+          ) : null}
+          {automationSkipRun ? (
+            <div className="mt-2 flex items-center gap-2 text-xs">
+              <span className="text-[var(--k-muted)]">
+                Automation skipped ({automationSkipRun.skipReason || 'unknown'}).
+              </span>
+              <Button size="sm" variant="secondary" onClick={() => void onForceAutomationFromSkip()}>
+                Force run
+              </Button>
             </div>
           ) : null}
 
@@ -1917,11 +1836,22 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             size="sm"
             variant="secondary"
             onClick={() => void onSyncFromScreener()}
-            disabled={syncBusy}
+            disabled={syncBusy || automationBusy}
             className="gap-2"
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className={syncBusy ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
             Import from screener
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void onRunAutomation(true)}
+            disabled={automationBusy || syncBusy}
+            className="gap-2"
+            title="Run watchlist automation (remove weak, screener import, Alpha Radar S append)"
+          >
+            <Play className={automationBusy ? 'h-4 w-4 animate-pulse' : 'h-4 w-4'} />
+            Run automation
           </Button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { formatAutomationSummary, type AutomationRun } from '@/lib/watchlist-automation';
 
 type SyncJobRecord = {
   id: number;
@@ -153,24 +154,27 @@ export function SchedulerPage() {
   const [adjStatus, setAdjStatus] = React.useState<SimpleStatusResp | null>(null);
   const [basicStatus, setBasicStatus] = React.useState<SimpleStatusResp | null>(null);
   const [alphaRadarStatus, setAlphaRadarStatus] = React.useState<AlphaRadarStatusResp | null>(null);
+  const [watchlistAutomation, setWatchlistAutomation] = React.useState<AutomationRun | null>(null);
 
   const refresh = React.useCallback(async () => {
     setError(null);
     setNeedTradeCal(false);
     setBusy(true);
     try {
-      const [c, d, a, b, ar] = await Promise.all([
+      const [c, d, a, b, ar, wl] = await Promise.all([
         apiGetJson<CloseStatusResp>('/close/status'),
         apiGetJson<SimpleStatusResp>('/daily/status'),
         apiGetJson<SimpleStatusResp>('/adj-factor/status'),
         apiGetJson<SimpleStatusResp>('/stock-basic/status'),
         apiGetJson<AlphaRadarStatusResp>('/api/alpha-radar/status'),
+        apiGetJson<{ found: boolean } & AutomationRun>('/watchlist/automation/latest'),
       ]);
       setCloseStatus(c);
       setDailyStatus(d);
       setAdjStatus(a);
       setBasicStatus(b);
       setAlphaRadarStatus(ar);
+      setWatchlistAutomation(wl.found && wl.runId ? wl : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -339,6 +343,24 @@ export function SchedulerPage() {
             </Button>
           }
         />
+        <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 md:col-span-2">
+          <div className="font-medium">Watchlist automation</div>
+          <div className="mt-1 text-xs text-[var(--k-muted)]">
+            Weekdays 17:30 Asia/Shanghai · remove weak / screener import / Alpha Radar S append
+          </div>
+          <div className="mt-3 text-sm">
+            {watchlistAutomation ? (
+              <div className="space-y-1">
+                <div>{formatAutomationSummary(watchlistAutomation)}</div>
+                <div className="text-xs text-[var(--k-muted)]">
+                  Applied: {watchlistAutomation.appliedAt ? fmtWhen(watchlistAutomation.appliedAt) : 'pending'}
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-[var(--k-muted)]">No automation run recorded yet.</div>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );
