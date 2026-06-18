@@ -165,6 +165,14 @@ def sync_eastmoney_industry(
     }
 
 
+def lookup_em_industries_for_ts_codes(ts_codes: list[str]) -> dict[str, str]:
+    """DB lookup only; never HTTP. Use on TrendOK hot path."""
+    codes = [str(c or "").strip() for c in ts_codes if c and str(c).strip()]
+    if not codes:
+        return {}
+    return lookup_by_ts_codes(codes)
+
+
 def ensure_em_industries_for_ts_codes(ts_codes: list[str]) -> None:
     """Fetch and cache East Money industry labels for missing ts_codes only."""
     codes = [str(c or "").strip() for c in ts_codes if c and str(c).strip()]

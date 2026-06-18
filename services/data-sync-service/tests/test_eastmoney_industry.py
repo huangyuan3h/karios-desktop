@@ -7,6 +7,7 @@ from data_sync_service.service.eastmoney_industry import (  # type: ignore[impor
     _ts_code_to_secid,
     ensure_em_industries_for_ts_codes,
     fetch_em_industries_for_ts_codes,
+    lookup_em_industries_for_ts_codes,
     sync_eastmoney_industry,
 )
 
@@ -43,6 +44,22 @@ def test_sync_eastmoney_industry_symbols_path() -> None:
     assert out["ok"] is True
     assert out["resolved"] == 1
     assert upsert.call_count == 1
+
+
+def test_lookup_em_industries_for_ts_codes_db_only() -> None:
+    with (
+        patch(
+            "data_sync_service.service.eastmoney_industry.lookup_by_ts_codes",
+            return_value={"600000.SH": "银行"},
+        ) as lookup,
+        patch(
+            "data_sync_service.service.eastmoney_industry.fetch_em_industries_for_ts_codes",
+        ) as fetch,
+    ):
+        out = lookup_em_industries_for_ts_codes(["600000.SH", "000021.SZ"])
+    assert out == {"600000.SH": "银行"}
+    lookup.assert_called_once_with(["600000.SH", "000021.SZ"])
+    fetch.assert_not_called()
 
 
 def test_ensure_em_industries_for_ts_codes_only_missing() -> None:

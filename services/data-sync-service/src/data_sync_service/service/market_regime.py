@@ -28,6 +28,14 @@ HK_INDEX_SIGNALS = [
 ]
 
 HISTORY_DAYS = 80
+REGIME_CACHE_TTL_SECONDS = 600
+
+_regime_cache: dict[tuple[str, bool], tuple[dict[str, Any], float]] = {}
+
+
+def clear_market_regime_cache() -> None:
+    """Clear in-process market regime TTL cache (for tests)."""
+    _regime_cache.clear()
 BREADTH_DEEP_GREEN_MIN_RATIO = 0.6
 
 
@@ -717,10 +725,27 @@ def _regime_from_signals(index_signals: list[dict[str, Any]]) -> tuple[str, str 
     return "Weak", None
 
 
-def get_market_regime(*, as_of_date: str | None = None) -> dict[str, Any]:
+def get_market_regime(
+    *,
+    as_of_date: str | None = None,
+    include_breadth: bool = True,
+) -> dict[str, Any]:
     """
     Return market regime derived from index traffic lights.
+
+    When include_breadth is False, skips the all-market breadth scan (use on TrendOK hot path).
+    Results are cached in-process for REGIME_CACHE_TTL_SECONDS per (as_of_date, include_breadth).
     """
-    signals = get_index_signals(as_of_date=as_of_date)
+    key = (str(as_of_date or "").strip(), bool(include_breadth))
+    now = time.time()
+    cached = _regime_cache.get(key)
+    if cached is not None:
+        result, expires_at = cached
+        if now < expires_at:
+            return result
+
+    signals = get_index_signals(as_of_date=as_of_date, include_breadth=include_breadth)
     regime, bias = _regime_from_signals(signals)
-    return {"regime": regime, "bias": bias, "indexSignals": signals}
+    result: dict[str, Any] = {"regime": regime, "bias": bias, "indexSignals": signals}
+    _regime_cache[key] = (result, now + REGIME_CACHE_TTL_SECONDS)
+    return result

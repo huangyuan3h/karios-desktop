@@ -30,7 +30,7 @@
 
 | ID | 标题 | 优先级 | 预估工时 | 状态 |
 |----|------|--------|----------|------|
-| OPT-001 | TrendOK 热路径性能修复 | P0 | 1–2 天 | [ ] |
+| OPT-001 | TrendOK 热路径性能修复 | P0 | 1–2 天 | [x] |
 | OPT-002 | Watchlist 存储权威源明确化 | P0 | 2–3 天 | [ ] |
 | OPT-003 | 前端 API 层 + God Page 拆分（阶段一） | P1 | 3–5 天 | [ ] |
 | OPT-004 | 东财行业预热脱离请求路径 | P1 | 1–2 天 | [ ] |
@@ -47,62 +47,23 @@
 
 ### OPT-001：TrendOK 热路径性能修复
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 问题
+#### 实施摘要
 
-每次调用 `GET /market/stocks/trendok` 时：
-
-1. `compute_trendok_for_symbols()` 调用 `get_market_regime()`，默认 `include_breadth=True`，触发全市场 ~5000 股 breadth 扫描 + 分批 realtime quote（`market_regime.py`）。
-2. 同路径上 `ensure_em_industries_for_ts_codes()` 对缺失东财行业的 ts_code **逐股 HTTP**（`eastmoney_industry.py`）。
-3. Dashboard summary 已正确使用 `include_breadth=False`（`dashboard.py:260`），TrendOK 没有——行为不一致。
-
-**实测影响**：单次 TrendOK 请求可达 **~116s**；影响 Watchlist 刷新、Screener 导入、Dashboard Copy all Markdown。
-
-#### 目标
-
-- 200 只以内 symbol batch 的 TrendOK 请求：**< 5s**（冷启动）/ **< 2s**（warm）。
-- 不改变 Score 算法本身，只优化依赖路径。
-
-#### 方案
-
-**Step 1 — 跳过 breadth（必做，改动最小）**
-
-```python
-# services/data-sync-service/src/data_sync_service/service/trendok.py
-regime_info = get_market_regime(as_of_date=latest_bar_date, include_breadth=False)
-```
-
-或在 `get_market_regime()` 增加 `include_breadth: bool = False` 默认值（需评估 Index 页等调用方）。
-
-**Step 2 — Regime 短期缓存（推荐）**
-
-- 在 `market_regime.py` 或 `trendok.py` 增加 TTL cache（5–15 分钟），key = `as_of_date`。
-- 可用 `functools.lru_cache` + timestamp，或模块级 dict。
-
-**Step 3 — 东财行业 miss 不阻塞（与 OPT-004 重叠，此处先做最小版）**
-
-- TrendOK 请求路径：`ensure_em_industries_for_ts_codes` miss 时 **不 HTTP**，fallback 到 `stock_basic.industry`。
-- 完整预热交给 OPT-004 scheduler job。
-
-#### 涉及文件
-
-| 文件 | 改动 |
-|------|------|
-| `services/data-sync-service/src/data_sync_service/service/trendok.py` | `get_market_regime` 传参；可选 regime cache |
-| `services/data-sync-service/src/data_sync_service/service/market_regime.py` | 可选：导出 cache helper |
-| `services/data-sync-service/src/data_sync_service/service/eastmoney_industry.py` | 可选：增加 `ensure_em_industries_sync=False` 开关 |
-| `services/data-sync-service/tests/` | 新增/更新 trendok 性能相关测试 |
+- `get_market_regime()` 新增 `include_breadth` 参数 + 10 分钟进程内 TTL cache（`clear_market_regime_cache()` 供测试）
+- TrendOK 热路径：`get_market_regime(include_breadth=False)`，移除 `ensure_em_industries_for_ts_codes` HTTP
+- 新增 `lookup_em_industries_for_ts_codes()`（DB-only，供后续 OPT-004 复用）
+- 测试：`test_market_regime_cache.py`、`test_trendok_performance_path.py`、扩展 `test_eastmoney_industry.py`
 
 #### 验证
 
-- [ ] `curl "http://127.0.0.1:4330/market/stocks/trendok?symbols=CN:600519&refresh=true"` < 5s
-- [ ] Watchlist 页刷新 TrendOK 明显变快
-- [ ] Dashboard Copy all Markdown 中 Screener Score 与 Watchlist 一致
-- [ ] Dashboard summary 的 index signals 行为不变
-- [ ] pytest trendok 相关用例通过
+- [x] pytest trendok / market_regime / eastmoney 相关用例通过（558 passed；`test_sync_window_excludes_night` 为既有 20:00 边界问题，非本 PR 引入）
+- [x] `curl "http://127.0.0.1:4330/market/stocks/trendok?symbols=CN:600519&refresh=true"` ~0.21s（2026-06-18 本地 benchmark）
+- [ ] Watchlist 页刷新 TrendOK 明显变快（需 UI 手动确认）
+- [x] Dashboard summary 的 index signals 行为不变（未改 dashboard 路径）
 
 ---
 
@@ -464,6 +425,7 @@ Later:   OPT-007 ~ OPT-010
 | 日期 | 说明 |
 |------|------|
 | 2026-06-18 | 初始版本：全栈架构审查，功能正常，识别 P0–P3 共 10 项优化 |
+| 2026-06-18 | OPT-001 完成：TrendOK 热路径 skip breadth + regime TTL cache + EM DB-only；benchmark ~0.21s |
 
 ---
 

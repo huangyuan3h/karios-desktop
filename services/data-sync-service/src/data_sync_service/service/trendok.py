@@ -17,7 +17,6 @@ from data_sync_service.db.industry_fund_flow import (
 from data_sync_service.db.stoploss import compute_effective_stoploss
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_eastmoney_industry import lookup_by_ts_codes as lookup_em_industries
-from data_sync_service.service.eastmoney_industry import ensure_em_industries_for_ts_codes
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
@@ -644,7 +643,6 @@ def compute_trendok_for_symbols(
             ts_codes.append(m[2])
 
     by_name = _lookup_names(ts_codes)
-    ensure_em_industries_for_ts_codes(ts_codes)
     by_tushare_industry = _lookup_industries(ts_codes)
     by_em_industry = _lookup_em_industry_boards(ts_codes)
     bars_by_code = fetch_last_ohlcv_batch(ts_codes, days=120)
@@ -669,7 +667,7 @@ def compute_trendok_for_symbols(
     flow_ctx = _build_industry_flow_context(latest_bar_date)
     market_regime: str | None = None
     try:
-        regime_info = get_market_regime(as_of_date=latest_bar_date)
+        regime_info = get_market_regime(as_of_date=latest_bar_date, include_breadth=False)
         market_regime = str(regime_info.get("regime") or "Unknown")
     except Exception:
         market_regime = "Unknown"
