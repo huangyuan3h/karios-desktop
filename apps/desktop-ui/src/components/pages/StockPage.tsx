@@ -8,6 +8,7 @@ import { StockChart } from '@/components/stock/StockChart';
 import { apiGetJson } from '@/lib/api/client';
 import { useChatStore } from '@/lib/chat/store';
 import type { OHLCV } from '@/lib/indicators';
+import { toTsCodeFromSymbol } from '@/lib/symbols';
 
 type BarsResp = {
   symbol: string;
@@ -96,18 +97,6 @@ function normalizeSymbol(symbol: string): string {
     }
   }
   return s;
-}
-
-function toTsCodeFromSymbol(symbol: string): string | null {
-  // Only handle CN A-shares for now: "CN:000001" -> "000001.SZ/SH"
-  // Also handle normalized symbols like "主板:000001" -> "CN:000001" -> "000001.SZ/SH"
-  const normalized = normalizeSymbol(symbol);
-  const s = normalized.trim();
-  if (!s.startsWith('CN:')) return null;
-  const ticker = s.slice('CN:'.length).trim();
-  if (!/^[0-9]{6}$/.test(ticker)) return null;
-  const suffix = ticker.startsWith('6') ? 'SH' : 'SZ';
-  return `${ticker}.${suffix}`;
 }
 
 function shanghaiTodayIso(): string {
@@ -241,7 +230,7 @@ export function StockPage({
       ).catch(() => null);
       let d2 = d;
       if (quote) {
-        const tsCode = toTsCodeFromSymbol(symbol);
+        const tsCode = toTsCodeFromSymbol(normalizedSymbol);
         if (tsCode) {
           const qr = await apiGetJson<QuoteResp>(`/quote?ts_code=${encodeURIComponent(tsCode)}`).catch(
             () => null,

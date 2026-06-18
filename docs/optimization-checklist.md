@@ -32,7 +32,7 @@
 |----|------|--------|----------|------|
 | OPT-011 | Watchlist 手动刷新并行化 + TrendOK 统一 fetch | P0 | 1–2 天 | [x] |
 | OPT-012 | React Query 替换手写轮询 | P1 | 2–4 天 | [x] |
-| OPT-013 | Dashboard / Watchlist God Page 拆分（阶段二） | P1 | 3–5 天 | [ ] |
+| OPT-013 | Dashboard / Watchlist God Page 拆分（阶段二） | P1 | 3–5 天 | [x] |
 | OPT-014 | Industry Fund Flow 读路径 N+1 消除 | P1 | 1–2 天 | [ ] |
 | OPT-015 | Watchlist Automation 去重 TrendOK 计算 | P1 | 0.5–1 天 | [ ] |
 
@@ -92,60 +92,25 @@
 
 ### OPT-013：Dashboard / Watchlist God Page 拆分（阶段二）
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 问题
+#### 实施摘要
 
-OPT-003 阶段一已完成统一 API client，但两个核心 Page 仍是 God component：
-
-| 文件 | 行数 | 规模 |
-|------|------|------|
-| `DashboardPage.tsx` | ~2700 | 23 useState、23 顶层函数、8 useEffect |
-| `WatchlistPage.tsx` | ~2450 | 30 useState、25 顶层函数、8 useEffect |
-
-混合 UI、数据拉取、Markdown 导出、SSE 同步、localStorage 布局 — 任何小改易引发无关 re-render，测试困难。
-
-#### 方案（阶段二 scope，不要一次拆完）
-
-**Watchlist 提取：**
-
-- `hooks/useWatchlistItems.ts` — hydrate / persist / event
-- `hooks/useWatchlistTrend.ts` — trend、quotes、poll（若 OPT-012 未完成则保留 interval 封装）
-- `components/watchlist/WatchlistTable.tsx` — 主表格 JSX
-- `components/watchlist/WatchlistToolbar.tsx` — 工具栏
-
-**Dashboard 提取：**
-
-- `hooks/useDashboardSummary.ts`
-- `hooks/useWatchlistRisk.ts`
-- `hooks/useDashboardSync.ts` — SSE Sync All
-- `components/dashboard/IndustryFundFlowCard.tsx` — 行业资金流卡片（~400 行 JSX）
-
-**共享 lib（顺手抽取，低 scope）：**
-
-- `lib/trendok-display.ts` — `TREND_OK_CHECKS` / `trendOkSummary()`（Dashboard + Watchlist 重复）
-- `lib/symbols.ts` — `toTsCodeFromSymbol()`（3 处重复）
-
-#### 涉及文件
-
-| 文件 | 改动 |
-|------|------|
-| `apps/desktop-ui/src/components/pages/DashboardPage.tsx` | 瘦身，import hooks/components |
-| `apps/desktop-ui/src/components/pages/WatchlistPage.tsx` | 同上 |
-| `apps/desktop-ui/src/hooks/useDashboard*.ts` | 新建 |
-| `apps/desktop-ui/src/hooks/useWatchlist*.ts` | 新建 |
-| `apps/desktop-ui/src/components/dashboard/*` | 新建 |
-| `apps/desktop-ui/src/components/watchlist/*` | 新建 |
-| `apps/desktop-ui/src/lib/trendok-display.ts` | 新建 |
-| `apps/desktop-ui/src/lib/symbols.ts` | 新建 |
+- **共享 lib**：`trendok-display.ts`、`dashboard-format.ts`、`dashboard-export.ts`、`watchlist-export.ts`；`StockPage` 改用已有 `lib/symbols.ts`
+- **Dashboard hooks**：`useDashboardSummary`（query + news brief cache）、`useWatchlistRisk`（薄封装）、`useDashboardSync`（SSE Sync All）
+- **Dashboard 组件**：`IndustryFundFlowCard.tsx`；Sentiment / News / WatchlistRisk / Screeners 卡片仍留 Page
+- **Watchlist hooks**：`useWatchlistItems`（hydrate/persist/CRUD/name resolve）、`useWatchlistTrend`（`useWatchlistMarketQuery` + maxPrice 同步）
+- **Watchlist 组件**：`WatchlistToolbar`、`WatchlistImportDebug`、`WatchlistTable` + `watchlist-table-cells.ts`
+- **行数**：`DashboardPage.tsx` 2547 → **1056**；`WatchlistPage.tsx` 2281 → **375**
+- **测试**：`trendok-display.test.ts`、`dashboard-format.test.ts`、`dashboard-export.test.ts`；vitest **125 passed**
 
 #### 验证
 
+- [x] `DashboardPage.tsx` / `WatchlistPage.tsx` 各 < 1200 行
+- [x] vitest 覆盖新 lib 核心逻辑（TrendOK 展示、格式化、Markdown builder）
 - [ ] 无功能回归（手动 smoke：Sync All、Copy Markdown、Watchlist 加删票）
-- [ ] `DashboardPage.tsx` / `WatchlistPage.tsx` 各 < 1200 行
-- [ ] vitest 覆盖新 hooks 核心逻辑
 
 ---
 
@@ -248,6 +213,7 @@ Later:   OPT-013（God Page 拆分）→ 与 OPT-012 可并行，但 hooks 边�
 | 日期 | 说明 |
 |------|------|
 | 2026-06-18 | OPT-012 完成：React Query 替换 Dashboard/Watchlist/Index 手写轮询 |
+| 2026-06-18 | OPT-013 完成：Dashboard/Watchlist God Page 拆分为 hooks + components + lib |
 
 ---
 

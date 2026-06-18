@@ -2,382 +2,85 @@
 'use client';
 
 import * as React from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 
-import {
-  HotIndustryWorkflowCard,
-  type HotIndustryPick,
-} from '@/components/pages/HotIndustryWorkflowCard';
-import { buildDashboardHotIndustryPicks } from '@/lib/hot-industry-picks';
+import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { DATA_SYNC_BASE_URL, AI_BASE_URL } from '@/lib/endpoints';
-import { apiGetJson, apiPostJson } from '@/lib/api/client';
-import type { TrendOkResult } from '@/lib/api/types';
-import { chunk } from '@/lib/chunk';
+import { useDashboardSummary } from '@/hooks/useDashboardSummary';
+import { useDashboardSync } from '@/hooks/useDashboardSync';
+import { useWatchlistRisk } from '@/hooks/useWatchlistRisk';
+import { buildDashboardHotIndustryPicks } from '@/lib/hot-industry-picks';
 import {
-  getShanghaiTodayIso,
-  isShanghaiSyncWindow,
-  isShanghaiTradingTime,
-} from '@/lib/market-hours';
+  buildDashboardCopyAllMarkdown,
+  buildIndustryMarkdown,
+  buildSentimentMarkdown,
+} from '@/lib/dashboard-export';
 import {
-  buildCatalystStocksMarkdown,
-  buildAlphaRadarTrendsMarkdown,
-  DEFAULT_CATALYST_MAX_AGE_DAYS,
-  fetchAlphaRadarTrendsForCopy,
-  fetchCatalystStocks,
-  normalizeCatalystSymbol,
-  type CatalystCopyContext,
-  type CatalystStocksResponse,
-} from '@/lib/alpha-radar-catalyst';
-import { useChatStore } from '@/lib/chat/store';
-import { loadJson } from '@/lib/storage';
-import { ensureWatchlistHydrated, loadWatchlist, type WatchlistItem } from '@/lib/watchlist-storage';
+  BREADTH_PANIC_DOWN_THRESHOLD,
+  buildIndexTrafficSummary,
+  fmtAmountCn,
+  fmtDateTime,
+  loadCardOrder,
+  saveCardOrder,
+} from '@/lib/dashboard-format';
+import { AI_BASE_URL } from '@/lib/endpoints';
 import {
   downloadInvestmentDailyPdf,
   parseInvestmentDailyReportResponse,
   truncateMarkdownForReport,
 } from '@/lib/investmentDailyPdf';
+import { isShanghaiSyncWindow } from '@/lib/market-hours';
+import { useChatStore } from '@/lib/chat/store';
 import {
-  SCREENER_MARKDOWN_HEADERS,
-  buildScreenerMarkdownRows,
-  countMissingScores,
-  extractSymbolsFromSnapshotRows,
-  fetchTodayScreenerSymbolsByTitle,
-  fetchTrendOkMap,
-  screenerMarkdownRowsToTable,
-} from '@/lib/screenerExport';
-import {
-  dashboardSummaryQueryKey,
-  fetchDashboardSummary,
-  saveDashboardSummaryCache,
-  useDashboardSummaryQuery,
-  useWatchlistRiskQuery,
-  type WatchlistRiskRow,
-} from '@/lib/queries/dashboard';
-import {
-  WATCHLIST_MD_HEADERS,
-  buildWatchlistRowMetrics,
-  computePnLPct,
   formatGapUp,
-  formatHotTop3,
   formatIntradayChgPct,
-  formatPnLPct,
-  formatRiskAlerts,
-  formatVwap,
-  industryDisplayName,
   isIntradaySurge,
-  parseQuoteNumber,
-  shouldRequireRealtimeQuote,
-  tradeDateFromTradeTime,
-  type WatchlistRiskAlert,
 } from '@/lib/watchlist-metrics';
-
-type DashboardSummary = any;
-type DashboardSyncResp = any;
-
-function loadCardOrder(): string[] | null {
-  try {
-    const raw = window.localStorage.getItem('karios.dashboard.cardOrder.v0');
-    if (!raw) return null;
-    const arr = JSON.parse(raw) as unknown;
-    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveCardOrder(ids: string[]) {
-  try {
-    window.localStorage.setItem('karios.dashboard.cardOrder.v0', JSON.stringify(ids));
-  } catch {
-    // ignore
-  }
-}
-
-function fmtDateTime(x: string | null | undefined) {
-  if (!x) return '—';
-  const d = new Date(x);
-  return Number.isNaN(d.getTime()) ? x : d.toLocaleString();
-}
-
-function parseNum(x: unknown): number | null {
-  const s = String(x ?? '').trim();
-  if (!s) return null;
-  const n = Number(s.replaceAll(',', ''));
-  return Number.isFinite(n) ? n : null;
-}
-
-function fmtAmountCn(x: unknown): string {
-  const n = parseNum(x);
-  if (n == null) return '—';
-  const abs = Math.abs(n);
-  if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿`;
-  if (abs >= 1e4) return `${(n / 1e4).toFixed(1)}万`;
-  return `${n.toFixed(0)}`;
-}
-
-function escapeMarkdownCell(x: unknown): string {
-  const s0 = String(x ?? '');
-  // Keep it single-line and avoid breaking Markdown table formatting.
-  const s1 = s0.replaceAll('\r\n', '\n').replaceAll('\r', '\n').replaceAll('\n', '<br/>');
-  return s1.replaceAll('|', '\\|');
-}
-
-function mdRow(cells: unknown[]): string {
-  return `| ${cells.map(escapeMarkdownCell).join(' | ')} |`;
-}
-
-function mdTable(headers: string[], rows: unknown[][]): string {
-  const out: string[] = [];
-  out.push(mdRow(headers));
-  out.push(mdRow(headers.map(() => '---')));
-  for (const r of rows) out.push(mdRow(r));
-  return out.join('\n');
-}
-
-function mdNum(v: number | null | undefined, digits = 2): string {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
-  return v.toFixed(digits);
-}
-
-function mdScore(v: number | null | undefined): string {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
-  return String(Math.round(v));
-}
-
-function mdPrice(v: number | null | undefined): string {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
-  return v.toFixed(2);
-}
-
-function mdLines(items: string[]): string {
-  return items.filter((x) => String(x || '').trim()).join('\n');
-}
-
-const BREADTH_PANIC_DOWN_THRESHOLD = 3000;
-
-function signalRank(x: string): number {
-  if (x === 'green' || x === 'light_green' || x === 'deep_green') return 3;
-  if (x === 'yellow') return 2;
-  if (x === 'red') return 1;
-  return 0;
-}
-
-function buildIndexTrafficSummary(indexSignals: any[]): { title: string; detail: string } {
-  const items = Array.isArray(indexSignals) ? indexSignals : [];
-  if (items.length < 2) {
-    return {
-      title: '⚠️ 当前行情：弱势 (Weak)',
-      detail: '缺少完整指数信号，保持防守。',
-    };
-  }
-  const byName = new Map(
-    items.map((x) => [String(x?.name ?? x?.tsCode ?? ''), String(x?.signal ?? '')]),
-  );
-  const sse = byName.get('上证指数') || String(items[0]?.signal ?? '');
-  const cyb = byName.get('创业板指') || String(items[1]?.signal ?? '');
-  const g1 = sse === 'green' || sse === 'light_green' || sse === 'deep_green';
-  const g2 = cyb === 'green' || cyb === 'light_green' || cyb === 'deep_green';
-
-  if (g1 && g2) {
-    return {
-      title: '✅ 当前行情：强势 (Strong)',
-      detail: '双绿确认，顺势为主，控制仓位与回撤。',
-    };
-  }
-
-  if (g1 || g2) {
-    const r1 = signalRank(sse);
-    const r2 = signalRank(cyb);
-    const bias = r1 === r2 ? '分化' : r1 > r2 ? '主强创弱' : '创强主弱';
-    return {
-      title: '⚠️ 当前行情：震荡/分化 (Diverging)',
-      detail: `震荡分化（${bias}），严禁追高，仅限防守型回踩；买入仅用反弹买入策略单。`,
-    };
-  }
-
-  return {
-    title: '⚠️ 当前行情：弱势 (Weak)',
-    detail: '非绿环境，防守为主，严格控制风险；买入仅用反弹买入策略单。',
-  };
-}
-
-const TREND_OK_CHECKS: Array<{ key: keyof TrendOkChecks; failText: string }> = [
-  { key: 'emaOrder', failText: 'EMA order broken (Close <= EMA20 or EMA20 <= EMA60)' },
-  { key: 'macdPositive', failText: 'MACD <= 0' },
-  { key: 'macdHistExpanding', failText: 'MACD hist <= 0' },
-  { key: 'closeNear20dHigh', failText: 'Close < 0.90 * High(20)' },
-  { key: 'rsiInRange', failText: 'RSI(14) out of 50..90' },
-  { key: 'volumeSurge', failText: 'AvgVol(5) < 0.9 * AvgVol(30)' },
-];
-
-function trendOkSummary(t?: TrendOkResult | null): string {
-  if (!t) return '—';
-  if (t.trendOk === true) return '✅';
-  const checks = t.checks ?? null;
-  if (!checks || typeof checks !== 'object') return t.trendOk === false ? '❌' : '—';
-  const failed: string[] = [];
-  for (const rule of TREND_OK_CHECKS) {
-    const val = (checks as TrendOkChecks)[rule.key];
-    if (val === false) failed.push(rule.failText);
-  }
-  if (failed.length) return failed.join('; ');
-  return t.trendOk === false ? '❌' : '—';
-}
-
-function trendOkRuleLines(): string[] {
-  return [
-    '- Close > EMA20 and EMA20 > EMA60',
-    '- MACD line > 0',
-    '- MACD histogram > 0',
-    '- Close >= 0.90 * High(20)',
-    '- RSI(14) in [50, 90]',
-    '- AvgVol(5) >= 0.9 * AvgVol(30)',
-  ];
-}
-
-function scoreRuleLines(): string[] {
-  return [
-    '- Deterministic 0–100 score (CN daily, no LLM).',
-    '- Subscores: EMA trend 25%, MACD strength 15%, breakout 25%, RSI 15%, volume 20%.',
-    '- Bonus: +3 when Close >= High(20).',
-    '- Penalties: high ATR/close (>7%) and Close < EMA20.',
-    '- Optional industry flow adjustment when available.',
-  ];
-}
-
-function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'): string {
-  const asOfDate = String(
-    (s as any)?.industryFundFlow?.asOfDate ?? (s as any)?.asOfDate ?? '',
-  ).trim();
-  const picks = buildDashboardHotIndustryPicks(s);
-  const lines: string[] = [];
-  lines.push(`${heading} Hot industries workflow`);
-  if (asOfDate) lines.push(`- asOfDate: ${asOfDate}`);
-  lines.push(
-    '- Rule V4.0: prioritize "momentum breakout" (今日净流入>20亿 且 排名提升>10名); fallback to daily top ∩ strong 5D ranking.',
-  );
-  lines.push(
-    '- Momentum breakout sectors are often the first day of a new mainline, more explosive than sectors already in 5D ranking.',
-  );
-  lines.push(
-    '- Action: only stocks from these 3 sectors and passing technical checks should be added to Watchlist.',
-  );
-  lines.push('');
-
-  const headers = ['#', 'Industry', '1D rank', '5D rank', '1D net', '5D sum', 'RankΔ', 'Signal'];
-  const rows: unknown[][] = picks
-    .slice(0, 3)
-    .map((p, idx) => [
-      idx + 1,
-      p.industryName || '—',
-      typeof p.dailyRank === 'number' ? `#${p.dailyRank}` : '—',
-      typeof p.fiveDayRank === 'number' ? `#${p.fiveDayRank}` : '—',
-      fmtAmountCn(p.netInflow ?? null),
-      fmtAmountCn(p.sum5d ?? null),
-      typeof p.rankChange === 'number'
-        ? p.rankChange > 0
-          ? `+${p.rankChange}`
-          : String(p.rankChange)
-        : '—',
-      p.momentumSignal ? '🚀 MOMENTUM' : '—',
-    ]);
-  if (!rows.length) rows.push([1, '—', '—', '—', '—', '—', '—', '—']);
-  lines.push(mdTable(headers, rows));
-  lines.push('');
-  return lines.join('\n').trim() + '\n';
-}
-
-const NEWS_BRIEF_CACHE_KEY = 'karios.dashboard.newsBrief.v1';
-const NEWS_BRIEF_MIN_REFRESH_MS = 4 * 60 * 60 * 1000;
-
-type TrendOkChecks = {
-  emaOrder?: boolean | null;
-  macdPositive?: boolean | null;
-  macdHistExpanding?: boolean | null;
-  closeNear20dHigh?: boolean | null;
-  rsiInRange?: boolean | null;
-  volumeSurge?: boolean | null;
-};
-
-type QuoteResp = {
-  ok: boolean;
-  error?: string;
-  items: Array<{
-    ts_code: string;
-    price: string | null;
-    pre_close: string | null;
-    pct_chg: string | null;
-    amount: string | null;
-    volume: string | null;
-    trade_time: string | null;
-  }>;
-};
-
-function parseDashboardQuoteItem(it: QuoteResp['items'][number]): {
-  price: number | null;
-  tradeTime: string | null;
-  amount: number | null;
-  volume: number | null;
-  preClose: number | null;
-  pctChg: number | null;
-} {
-  const p = it.price != null ? Number(it.price) : NaN;
-  const pre = it.pre_close != null ? Number(it.pre_close) : NaN;
-  const pct = it.pct_chg != null ? Number(it.pct_chg) : NaN;
-  return {
-    price: Number.isFinite(p) ? p : null,
-    tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
-    amount: parseQuoteNumber(it.amount),
-    volume: parseQuoteNumber(it.volume),
-    preClose: Number.isFinite(pre) ? pre : null,
-    pctChg: Number.isFinite(pct) ? pct : null,
-  };
-}
-
-type NewsBriefCache = {
-  summary?: string;
-  updatedAt?: string;
-  fallback?: string;
-  fallbackUpdatedAt?: string;
-};
-
-function toTsCodeFromSymbol(symbol: string): string | null {
-  // Only handle CN A-shares for /quote.
-  const s = symbol.trim().toUpperCase();
-  if (!s.startsWith('CN:')) return null;
-  const ticker = s.slice('CN:'.length).trim();
-  if (!/^[0-9]{6}$/.test(ticker)) return null;
-  const suffix = ticker.startsWith('6') ? 'SH' : 'SZ';
-  return `${ticker}.${suffix}`;
-}
-
-type SyncStep = {
-  name: string;
-  ok: boolean | null;
-  durationMs: number | null;
-  message?: string | null;
-};
 
 export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) => void }) {
   const { addReference } = useChatStore();
-  const queryClient = useQueryClient();
-  const summaryQuery = useDashboardSummaryQuery();
-  const watchlistRiskQuery = useWatchlistRiskQuery();
-  const summary = summaryQuery.data ?? null;
-  const summaryLoading = summaryQuery.isFetching && !summaryQuery.data;
-  const watchlistRiskRows = watchlistRiskQuery.data ?? [];
-  const watchlistRiskBusy = watchlistRiskQuery.isFetching;
-  const watchlistRiskUpdatedAt = watchlistRiskQuery.dataUpdatedAt
-    ? new Date(watchlistRiskQuery.dataUpdatedAt).toISOString()
-    : null;
-  const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
-  const [busy, setBusy] = React.useState(false);
-  const [sentimentBusy, setSentimentBusy] = React.useState(false);
-  const [syncSteps, setSyncSteps] = React.useState<SyncStep[]>([]);
-  const [syncProgress, setSyncProgress] = React.useState(0);
+
+  const {
+    summary,
+    summaryLoading,
+    refetchSummary,
+    error,
+    setError,
+    applySummaryToCache,
+    newsSummary,
+    newsSummaryUpdatedAt,
+    newsFallback,
+    newsSummaryBusy,
+    sentimentBusy,
+    onSyncSentiment,
+    regenerateNewsSummary,
+    shouldRefreshNewsBrief,
+    saveNewsBriefCache,
+    setNewsSummary,
+    setNewsSummaryUpdatedAt,
+    setNewsSummaryBusy,
+  } = useDashboardSummary();
+
+  const { syncResp, busy, syncSteps, syncProgress, onSyncAll } = useDashboardSync({
+    applySummaryToCache,
+    shouldRefreshNewsBrief,
+    newsSummary,
+    newsSummaryUpdatedAt,
+    setNewsSummary,
+    setNewsSummaryUpdatedAt,
+    setNewsSummaryBusy,
+    saveNewsBriefCache,
+    setError,
+  });
+
+  const {
+    rows: watchlistRiskRows,
+    busy: watchlistRiskBusy,
+    updatedAt: watchlistRiskUpdatedAt,
+    refetch: refetchWatchlistRisk,
+  } = useWatchlistRisk();
+
   const [industryCopyStatus, setIndustryCopyStatus] = React.useState<{
     ok: boolean;
     text: string;
@@ -394,18 +97,18 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const [pdfReportStatus, setPdfReportStatus] = React.useState<{ ok: boolean; text: string } | null>(
     null,
   );
-  const [error, setError] = React.useState<string | null>(null);
   const [editLayout, setEditLayout] = React.useState(false);
-  const [newsSummary, setNewsSummary] = React.useState<string | null>(null);
-  const [newsSummaryUpdatedAt, setNewsSummaryUpdatedAt] = React.useState<string | null>(null);
-  const [newsFallback, setNewsFallback] = React.useState<string | null>(null);
-  const [newsSummaryBusy, setNewsSummaryBusy] = React.useState(false);
+
   const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
+
+  // Loose JSON schema from API; cast for nested card rendering.
+  const dash = summary as any;
 
   const industryCopyTimerRef = React.useRef<number | null>(null);
   const sentimentCopyTimerRef = React.useRef<number | null>(null);
   const copyAllTimerRef = React.useRef<number | null>(null);
   const pdfReportTimerRef = React.useRef<number | null>(null);
+
   React.useEffect(() => {
     return () => {
       if (industryCopyTimerRef.current != null) window.clearTimeout(industryCopyTimerRef.current);
@@ -414,75 +117,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       if (pdfReportTimerRef.current != null) window.clearTimeout(pdfReportTimerRef.current);
     };
   }, []);
-
-  React.useEffect(() => {
-    if (!summaryQuery.data) return;
-    saveDashboardSummaryCache(summaryQuery.data);
-    const fallback = buildNewsFallback((summaryQuery.data as any)?.news?.items ?? []);
-    if (fallback) {
-      const fallbackUpdatedAt = new Date().toISOString();
-      setNewsFallback(fallback);
-      saveNewsBriefCache({ fallback, fallbackUpdatedAt });
-    }
-  }, [summaryQuery.data]);
-
-  React.useEffect(() => {
-    if (!summaryQuery.error) return;
-    setError(
-      summaryQuery.error instanceof Error
-        ? summaryQuery.error.message
-        : String(summaryQuery.error),
-    );
-  }, [summaryQuery.error]);
-
-  React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(NEWS_BRIEF_CACHE_KEY);
-      if (!raw) return;
-      const obj = JSON.parse(raw) as NewsBriefCache;
-      const summary = typeof obj?.summary === 'string' ? obj.summary.trim() : '';
-      const updatedAt = typeof obj?.updatedAt === 'string' ? obj.updatedAt.trim() : '';
-      const fallback = typeof obj?.fallback === 'string' ? obj.fallback.trim() : '';
-      if (summary) setNewsSummary(summary);
-      if (updatedAt) setNewsSummaryUpdatedAt(updatedAt);
-      if (fallback) setNewsFallback(fallback);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  function saveNewsBriefCache(patch: NewsBriefCache) {
-    try {
-      const raw = window.localStorage.getItem(NEWS_BRIEF_CACHE_KEY);
-      const prev = raw ? (JSON.parse(raw) as NewsBriefCache) : {};
-      window.localStorage.setItem(NEWS_BRIEF_CACHE_KEY, JSON.stringify({ ...prev, ...patch }));
-    } catch {
-      // ignore
-    }
-  }
-
-  function buildNewsFallback(items: any[]): string | null {
-    const rows = (Array.isArray(items) ? items : [])
-      .slice(0, 8)
-      .map((it: any, idx: number) => {
-        const title = String(it?.title ?? '').trim();
-        if (!title) return null;
-        const source = String(it?.sourceId ?? '').trim();
-        const publishedAt = String(it?.publishedAt ?? '').trim();
-        const meta = [source, publishedAt].filter(Boolean).join(' | ');
-        return `${idx + 1}. ${title}${meta ? ` (${meta})` : ''}`;
-      })
-      .filter(Boolean) as string[];
-    if (!rows.length) return null;
-    return ['Latest headlines:', ...rows].join('\n');
-  }
-
-  function shouldRefreshNewsBrief(lastUpdatedAt: string | null): boolean {
-    if (!lastUpdatedAt) return true;
-    const t = new Date(lastUpdatedAt).getTime();
-    if (!Number.isFinite(t)) return true;
-    return Date.now() - t >= NEWS_BRIEF_MIN_REFRESH_MS;
-  }
 
   function toastIndustryCopy(ok: boolean, text: string) {
     setIndustryCopyStatus({ ok, text });
@@ -508,817 +142,22 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     pdfReportTimerRef.current = window.setTimeout(() => setPdfReportStatus(null), 3200);
   }
 
-  const defaultCards = React.useMemo(
-    () => [
-      { id: 'industry', title: 'Industry fund flow' },
-      { id: 'sentiment', title: 'Market sentiment' },
-      { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
-      { id: 'news', title: 'News brief' },
-      { id: 'screeners', title: 'Screener sync' },
-    ],
-    [],
-  );
-
-  const [cardOrder, setCardOrder] = React.useState<string[]>(() => []);
-  React.useEffect(() => {
-    const loaded = loadCardOrder();
-    const ids = defaultCards.map((c) => c.id);
-    const next = loaded
-      ? [...loaded.filter((x) => ids.includes(x)), ...ids.filter((x) => !loaded.includes(x))]
-      : ids;
-    const nextIds = next.includes('industry')
-      ? ['industry', ...next.filter((x) => x !== 'industry')]
-      : next;
-    setCardOrder(nextIds);
-    saveCardOrder(nextIds);
-  }, [defaultCards]);
-
-  function applySummaryToCache(next: DashboardSummary) {
-    const includeMacro = isShanghaiSyncWindow();
-    queryClient.setQueryData(dashboardSummaryQueryKey(includeMacro), next);
-    saveDashboardSummaryCache(next);
-  }
-
-  async function onSyncAll() {
-    setBusy(true);
-    setError(null);
-    setSyncSteps([]);
-    setSyncProgress(0);
-
-    const stepNames = ['industryFundFlow', 'marketSentiment', 'screeners', 'news'];
-    const forceSync = isShanghaiSyncWindow();
-
-    return new Promise<void>((resolve) => {
-      const es = new EventSource(
-        `${DATA_SYNC_BASE_URL}/dashboard/sync/stream?force=${forceSync ? 'true' : 'false'}`,
-      );
-
-      es.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'start') {
-            setSyncSteps(
-              stepNames.map((name) => ({
-                name,
-                ok: null,
-                durationMs: null,
-                message: null,
-              })),
-            );
-          } else if (data.type === 'step') {
-            const step = data.step as { name: string; ok: boolean; durationMs: number; message?: string };
-            setSyncSteps((prev) => {
-              const updated = prev.map((s) => (s.name === step.name ? { ...step } : s));
-              const completed = updated.filter((s) => s.ok !== null).length;
-              setSyncProgress(Math.round((completed / stepNames.length) * 100));
-              return updated;
-            });
-          } else if (data.type === 'done') {
-            es.close();
-            const result = data.result as DashboardSyncResp;
-            setSyncResp(result);
-            setSyncProgress(100);
-
-            const s = data.summary as DashboardSummary;
-            if (s) {
-              applySummaryToCache(s);
-              const newsData = (s as any)?.news;
-              if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
-                if (!shouldRefreshNewsBrief(newsSummaryUpdatedAt) && newsSummary?.trim()) {
-                  setBusy(false);
-                  resolve();
-                  return;
-                }
-                setNewsSummaryBusy(true);
-                fetch(`${AI_BASE_URL}/news/summary`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ items: newsData.items, hours: 24 }),
-                })
-                  .then((aiRes) => {
-                    if (aiRes.ok) {
-                      return aiRes.json();
-                    }
-                    return null;
-                  })
-                  .then((aiData) => {
-                    const summaryText = typeof aiData?.summary === 'string' ? aiData.summary.trim() : '';
-                    if (summaryText) {
-                      const updatedAt = new Date().toISOString();
-                      setNewsSummary(summaryText);
-                      setNewsSummaryUpdatedAt(updatedAt);
-                      saveNewsBriefCache({ summary: summaryText, updatedAt });
-                    }
-                  })
-                  .catch(() => {})
-                  .finally(() => {
-                    setNewsSummaryBusy(false);
-                    setBusy(false);
-                    resolve();
-                  });
-              } else {
-                setBusy(false);
-                resolve();
-              }
-            } else {
-              setBusy(false);
-              resolve();
-            }
-          }
-        } catch {
-          // ignore parse errors
-        }
-      };
-
-      es.onerror = () => {
-        es.close();
-        setError('Connection error during sync');
-        setBusy(false);
-        resolve();
-      };
-    });
-  }
-
-  async function onSyncSentiment() {
-    setSentimentBusy(true);
-    setError(null);
+  async function onCopyIndustryMarkdown() {
     try {
-      await apiPostJson('/market/cn/sentiment/sync', { force: isShanghaiSyncWindow() });
-      await queryClient.invalidateQueries({
-        queryKey: dashboardSummaryQueryKey(isShanghaiSyncWindow()),
-      });
+      const ind = summary?.industryFundFlow as any;
+      const hasTopByDate = Array.isArray(ind?.topByDate) && ind.topByDate.length > 0;
+      const hasFlow5d = Array.isArray(ind?.flow5d?.top) && ind.flow5d.top.length > 0;
+      const hasFlow5dOut = Array.isArray(ind?.flow5dOut?.top) && ind.flow5dOut.top.length > 0;
+      if (!hasTopByDate && !hasFlow5d && !hasFlow5dOut) {
+        toastIndustryCopy(false, 'Nothing to copy (no industry fund flow data).');
+        return;
+      }
+      const md = buildIndustryMarkdown(summary, '#').trim();
+      await navigator.clipboard.writeText(md);
+      toastIndustryCopy(true, 'Copied Markdown to clipboard.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSentimentBusy(false);
+      toastIndustryCopy(false, e instanceof Error ? e.message : String(e));
     }
-  }
-
-  async function regenerateNewsSummary() {
-    setNewsSummaryBusy(true);
-    setError(null);
-    try {
-      const s = await fetchDashboardSummary(true);
-      applySummaryToCache(s);
-      const newsData = (s as any)?.news;
-      if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
-        const aiRes = await fetch(`${AI_BASE_URL}/news/summary`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: newsData.items, hours: 24 }),
-        });
-        if (aiRes.ok) {
-          const aiData = await aiRes.json();
-          const summaryText = typeof aiData?.summary === 'string' ? aiData.summary.trim() : '';
-          if (summaryText) {
-            const updatedAt = new Date().toISOString();
-            setNewsSummary(summaryText);
-            setNewsSummaryUpdatedAt(updatedAt);
-            saveNewsBriefCache({ summary: summaryText, updatedAt });
-          }
-        } else {
-          const errText = await aiRes.text();
-          setError(`AI error: ${errText}`);
-        }
-      } else {
-        setError('No news items available');
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setNewsSummaryBusy(false);
-    }
-  }
-
-  function buildIndustryMarkdown(s: DashboardSummary | null, heading = '##'): string {
-    const summary2: any = s ?? {};
-    const ind: any = summary2?.industryFundFlow ?? {};
-    const asOfDate = String(ind?.asOfDate ?? summary2?.asOfDate ?? '').trim();
-
-    const datesAll: string[] = Array.isArray(ind?.dates) ? ind.dates : [];
-    const rawShownDates = datesAll.slice(-5);
-    const topByDateArr: any[] = Array.isArray(ind?.topByDate) ? ind.topByDate : [];
-    const byDate: Record<string, string[]> = {};
-    for (const it of topByDateArr) {
-      const d = String(it?.date ?? '');
-      const top = Array.isArray(it?.top) ? it.top.map((x: any) => String(x ?? '')) : [];
-      if (d) byDate[d] = top;
-    }
-    const dedupedDates: string[] = [];
-    let prevSig = '';
-    for (const d of rawShownDates) {
-      const sig = (byDate[d] || []).slice(0, 5).join('|');
-      if (sig && sig === prevSig) continue;
-      dedupedDates.push(d);
-      prevSig = sig;
-    }
-
-    const lines: string[] = [];
-    lines.push(`${heading} Industry fund flow`);
-    if (asOfDate) lines.push(`- asOfDate: ${asOfDate}`);
-    lines.push('');
-
-    if (dedupedDates.length) {
-      const headers1 = ['#', ...dedupedDates.map((d) => String(d).slice(5))];
-      const rows1: unknown[][] = Array.from({ length: 5 }).map((_, i) => [
-        i + 1,
-        ...dedupedDates.map((d) => String((byDate[d] || [])[i] ?? '')),
-      ]);
-      lines.push(`${heading}# Top5×Date hotspots (names only)`);
-      lines.push('');
-      lines.push(mdTable(headers1, rows1));
-      lines.push('');
-    }
-
-    const buildFlow = (block: any, title: string) => {
-      const dates: string[] = Array.isArray(block?.dates) ? block.dates : [];
-      const cols: string[] = dates.length ? dates.slice(-5) : dedupedDates;
-      const topRows: any[] = Array.isArray(block?.top) ? block.top : [];
-      if (!topRows.length || !cols.length) return;
-      const headers = ['Industry', 'Sum(5D)', ...cols.map((d) => String(d).slice(5))];
-      const rows: unknown[][] = topRows.slice(0, 10).map((r: any) => {
-        const seriesArr: any[] = Array.isArray(r?.series) ? r.series : [];
-        const m2: Record<string, number> = {};
-        for (const p of seriesArr) {
-          const dd = String(p?.date ?? '');
-          const nv = Number(p?.netInflow ?? 0);
-          if (dd) m2[dd] = Number.isFinite(nv) ? nv : 0;
-        }
-        return [
-          String(r?.industryName ?? ''),
-          fmtAmountCn(r?.sum5d),
-          ...cols.map((d) => fmtAmountCn(m2[d] ?? 0)),
-        ];
-      });
-      lines.push(`${heading}# ${title}`);
-      lines.push('');
-      lines.push(mdTable(headers, rows));
-      lines.push('');
-    };
-
-    buildFlow(ind?.flow5d ?? null, '5D net inflow (Top by 5D sum)');
-    buildFlow(ind?.flow5dOut ?? null, '5D net outflow (Top by 5D sum)');
-
-    return lines.join('\n').trim() + '\n';
-  }
-
-  function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##'): string {
-    const summary2: any = s ?? {};
-    const ms: any = summary2?.marketSentiment ?? {};
-    const items: any[] = Array.isArray(ms?.items) ? ms.items : [];
-    const latest = items.length ? items[items.length - 1] : null;
-    const asOfDate = String(ms?.asOfDate ?? summary2?.asOfDate ?? '').trim();
-    const indexSignals: any[] = Array.isArray(ms?.indexSignals) ? ms.indexSignals : [];
-
-    const lines: string[] = [];
-    const envZh = String(summary2?.marketEnvironmentZh ?? '').trim();
-    if (envZh) {
-      lines.push(`${heading} 市场环境摘要`);
-      lines.push('');
-      lines.push(envZh);
-      lines.push('');
-    }
-    lines.push(`${heading} Market sentiment`);
-    if (asOfDate) lines.push(`- asOfDate: ${asOfDate}`);
-    if (latest) {
-      const risk = String(latest?.riskMode ?? '');
-      if (risk) lines.push(`- risk: ${risk}`);
-      const up = Number(latest?.upCount ?? 0);
-      const down = Number(latest?.downCount ?? 0);
-      if (up > 0 || down > 0) {
-        lines.push(
-          `- Market Breadth: ${up.toLocaleString()} Up / ${down.toLocaleString()} Down`,
-        );
-      }
-      const total = fmtAmountCn(latest?.marketTurnoverCny);
-      if (total && total !== '—') lines.push(`- totalTurnover: ${total}`);
-      const rules = Array.isArray(latest?.rules)
-        ? latest.rules.map((x: any) => String(x)).filter(Boolean)
-        : [];
-      if (rules.length)
-        lines.push(`- rules: ${rules.slice(0, 6).join(' • ')}${rules.length > 6 ? '…' : ''}`);
-    }
-    lines.push('');
-
-    if (indexSignals.length) {
-      const headers0 = ['Index', 'Signal', 'Position', 'chg%', 'Close', 'MA5', 'MA20', 'AsOfDate'];
-      const rows0: unknown[][] = indexSignals.map((it: any) => {
-        const pc = it?.pctChg;
-        const chg =
-          typeof pc === 'number' && Number.isFinite(pc)
-            ? `${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%`
-            : '—';
-        return [
-          String(it?.name ?? it?.tsCode ?? ''),
-          String(it?.signal ?? ''),
-          String(it?.positionRange ?? ''),
-          chg,
-          Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
-          Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
-          Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
-          String(it?.asOfDate ?? ''),
-        ];
-      });
-      lines.push(`${heading}# Index traffic lights`);
-      lines.push('');
-      lines.push(mdTable(headers0, rows0));
-      lines.push('');
-    }
-
-    const last5 = (items || []).slice(-5);
-    const headers = ['date', 'up', 'down', 'flat', 'ratio', 'turnover', 'premium%', 'failed%', 'risk'];
-    const rows: unknown[][] = last5.map((it: any) => [
-      String(it?.date ?? ''),
-      Number(it?.upCount ?? 0).toLocaleString(),
-      Number(it?.downCount ?? 0).toLocaleString(),
-      Number(it?.flatCount ?? 0).toLocaleString(),
-      Number.isFinite(it?.upDownRatio) ? Number(it.upDownRatio).toFixed(2) : '—',
-      fmtAmountCn(it?.marketTurnoverCny),
-      Number.isFinite(it?.yesterdayLimitUpPremium)
-        ? `${Number(it.yesterdayLimitUpPremium).toFixed(2)}%`
-        : '—',
-      Number.isFinite(it?.failedLimitUpRate) ? `${Number(it.failedLimitUpRate).toFixed(1)}%` : '—',
-      String(it?.riskMode ?? ''),
-    ]);
-    lines.push(mdTable(headers, rows));
-    lines.push('');
-    return lines.join('\n').trim() + '\n';
-  }
-
-  function buildMacroMarkdown(s: DashboardSummary | null, heading = '##'): string {
-    const summary2: any = s ?? {};
-    const macroSnapshot: any = summary2?.macroSnapshot ?? {};
-    const macroItems: any[] = Array.isArray(macroSnapshot?.macro) ? macroSnapshot.macro : [];
-
-    if (!macroItems.length) return '';
-
-    const lines: string[] = [];
-    lines.push(`${heading} Macro indices`);
-    lines.push('');
-
-    const headers = ['Name', 'Close', 'Chg%', 'MA5', 'MA20', 'AsOfDate', 'Source'];
-    const rows: unknown[][] = macroItems.map((it: any) => {
-      const pct = it?.pctChg;
-      const chg =
-        typeof pct === 'number' && Number.isFinite(pct)
-          ? `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`
-          : '—';
-      return [
-        String(it?.name ?? it?.seriesId ?? ''),
-        Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
-        chg,
-        Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
-        Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
-        String(it?.asOfDate ?? ''),
-        String(it?.source ?? ''),
-      ];
-    });
-
-    lines.push(mdTable(headers, rows));
-    lines.push('');
-    return lines.join('\n').trim() + '\n';
-  }
-
-  async function buildScreenersMarkdown(
-    s: DashboardSummary | null,
-    heading = '##',
-  ): Promise<string> {
-    const summary2: any = s ?? {};
-    const rows: any[] = Array.isArray(summary2?.screeners) ? summary2.screeners : [];
-    const lines: string[] = [];
-    lines.push(`${heading} Screener sync`);
-    lines.push('');
-    const headers = ['Name', 'capturedAt', 'rows', 'filters'];
-    const rows2: unknown[][] = rows.map((r: any) => [
-      String(r?.name ?? r?.id ?? ''),
-      String(r?.capturedAt ?? ''),
-      String(r?.rowCount ?? 0),
-      String(r?.filtersCount ?? 0),
-    ]);
-    lines.push(mdTable(headers, rows2));
-    lines.push('');
-
-    const screenerIds = rows
-      .map((sc: any) => String(sc?.id ?? '').trim())
-      .filter((sid: string) => sid);
-
-    const screenerResults = await Promise.all(
-      screenerIds.map(async (sid) => {
-        try {
-          const list = await apiGetJson<{
-            items: Array<{ id: string; capturedAt?: string; rowCount?: number }>;
-          }>(`/integrations/tradingview/screeners/${encodeURIComponent(sid)}/snapshots?limit=1`);
-          const snapId = String(list?.items?.[0]?.id ?? '').trim();
-          if (!snapId) return { sid, error: 'No snapshot found' };
-          const snap = await apiGetJson<{
-            id: string;
-            screenerId: string;
-            capturedAt: string;
-            rowCount: number;
-            screenTitle: string | null;
-            filters: string[];
-            url: string;
-            headers: string[];
-            rows: Array<Record<string, string>>;
-          }>(`/integrations/tradingview/snapshots/${encodeURIComponent(snapId)}`);
-          return { sid, snap, sc: rows.find((r: any) => String(r?.id ?? '').trim() === sid) };
-        } catch (e) {
-          return { sid, error: e instanceof Error ? e.message : String(e) };
-        }
-      }),
-    );
-
-    for (const result of screenerResults) {
-      if ('error' in result) {
-        const sc = rows.find((r: any) => String(r?.id ?? '').trim() === result.sid);
-        lines.push(`${heading}# ${escapeMarkdownCell(String(sc?.name ?? result.sid))}`);
-        lines.push(`- error: ${escapeMarkdownCell(result.error)}`);
-        lines.push('');
-        continue;
-      }
-      const { sid, snap, sc } = result;
-      const title = String(snap?.screenTitle ?? sc?.name ?? sid).trim() || sid;
-      const capturedAt = String(snap?.capturedAt ?? '').trim();
-      const headersTv: string[] = Array.isArray(snap?.headers)
-        ? snap.headers.map((h) => String(h ?? ''))
-        : [];
-      const rowsTv: Array<Record<string, string>> = Array.isArray(snap?.rows) ? snap.rows : [];
-      const limit = 50;
-      const truncated = rowsTv.length > limit;
-      const rowsSlice = rowsTv.slice(0, limit);
-
-      lines.push(`${heading}# ${escapeMarkdownCell(title)}`);
-      if (capturedAt) lines.push(`- capturedAt: ${capturedAt}`);
-      lines.push(`- rows: ${String(snap?.rowCount ?? rowsTv.length ?? 0)}`);
-      if (Array.isArray(snap?.filters) && snap.filters.length) {
-        lines.push(
-          `- filters: ${snap.filters
-            .slice(0, 8)
-            .map((x) => escapeMarkdownCell(String(x)))
-            .join(' • ')}${snap.filters.length > 8 ? '…' : ''}`,
-        );
-      }
-      if (truncated) lines.push(`- note: showing first ${limit} rows (truncated)`);
-      lines.push(
-        '- scoreSource: TrendOK (same as Watchlist); Score>90 = candidate for forced research',
-      );
-
-      if (headersTv.length && rowsSlice.length) {
-        const symbols = extractSymbolsFromSnapshotRows(rowsSlice, headersTv);
-        const trendMap = await fetchTrendOkMap(symbols, {
-          realtime: isShanghaiTradingTime(),
-        });
-        const enrichedRows = buildScreenerMarkdownRows(rowsSlice, headersTv, trendMap);
-        const missingScore = countMissingScores(enrichedRows);
-        if (missingScore > 0) lines.push(`- missingScore: ${missingScore}`);
-        lines.push('');
-        lines.push(
-          mdTable([...SCREENER_MARKDOWN_HEADERS], screenerMarkdownRowsToTable(enrichedRows)),
-        );
-      } else {
-        lines.push('');
-        lines.push('_No rows._');
-      }
-      lines.push('');
-    }
-
-    return lines.join('\n').trim() + '\n';
-  }
-
-  async function buildWatchlistMarkdown(): Promise<string> {
-    const itemsRaw = loadWatchlist();
-    const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
-      .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
-      .map((x) => ({ ...x, symbol: String(x.symbol).trim().toUpperCase() }));
-
-    const heading = '##';
-    if (!items.length) return `${heading} Watchlist\n\nNo items.\n`;
-
-    const syms = items.map((x) => x.symbol);
-    const tradingTime = isShanghaiTradingTime();
-    const quoteWindow = isShanghaiSyncWindow();
-    const todaySh = getShanghaiTodayIso();
-
-    const symsChunks = chunk(syms, 200);
-
-    const byTsCode = new Map<string, string>();
-    const tsCodes = syms
-      .map((s) => {
-        const t = toTsCodeFromSymbol(s);
-        if (t) byTsCode.set(t, s);
-        return t;
-      })
-      .filter(Boolean) as string[];
-    const tsCodesChunks = chunk(tsCodes, 50);
-
-    const [trendResults, quoteResults] = await Promise.all([
-      Promise.all(
-        symsChunks.map(async (part) => {
-          const sp = new URLSearchParams();
-          sp.set('realtime', quoteWindow ? 'true' : 'false');
-          for (const s of part) sp.append('symbols', s);
-          return apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
-        }),
-      ),
-      Promise.all(
-        tsCodesChunks.map(async (part) => {
-          return apiGetJson<QuoteResp>(
-            `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
-          ).catch(() => null);
-        }),
-      ),
-    ]);
-
-    const trend: Record<string, TrendOkResult> = {};
-    for (const trendRows of trendResults) {
-      for (const r of Array.isArray(trendRows) ? trendRows : []) {
-        if (r && r.symbol) trend[String(r.symbol).toUpperCase()] = r;
-      }
-    }
-
-    const quotes: Record<
-      string,
-      {
-        price: number | null;
-        tradeTime: string | null;
-        amount: number | null;
-        volume: number | null;
-        preClose: number | null;
-        pctChg: number | null;
-      }
-    > = {};
-    for (const r of quoteResults) {
-      for (const it of r?.items ?? []) {
-        const sym = byTsCode.get(it.ts_code);
-        if (!sym) continue;
-        quotes[sym] = parseDashboardQuoteItem(it);
-      }
-    }
-
-    const sorted = [...items];
-    sorted.sort((a, b) => {
-      const sa = trend[a.symbol]?.score;
-      const sb = trend[b.symbol]?.score;
-      const va = typeof sa === 'number' && Number.isFinite(sa) ? sa : null;
-      const vb = typeof sb === 'number' && Number.isFinite(sb) ? sb : null;
-      if (va == null && vb == null) return 0;
-      if (va == null) return 1;
-      if (vb == null) return -1;
-      return vb - va;
-    });
-
-    const missingRealtime: string[] = [];
-    const missingTrend: string[] = [];
-    const missingHistory: string[] = [];
-    for (const it of sorted) {
-      const sym = it.symbol;
-      const t = trend[sym];
-      if (!t) {
-        missingTrend.push(sym);
-        continue;
-      }
-      const md = Array.isArray(t.missingData) ? t.missingData.filter(Boolean) : [];
-      if (md.length) missingHistory.push(sym);
-      if (
-        shouldRequireRealtimeQuote({
-          tradingTime,
-          symbol: sym,
-          trendAsOfDate: t?.asOfDate ?? null,
-          todaySh,
-        })
-      ) {
-        const q = quotes[sym];
-        const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
-        if (!(q && typeof q.price === 'number' && Number.isFinite(q.price) && qDate === todaySh)) {
-          missingRealtime.push(sym);
-        }
-      }
-    }
-    if (missingTrend.length || missingHistory.length || missingRealtime.length) {
-      const parts: string[] = [];
-      if (missingRealtime.length)
-        parts.push(
-          `missing realtime quote (today): ${missingRealtime.slice(0, 6).join(', ')}${missingRealtime.length > 6 ? '…' : ''}`,
-        );
-      if (missingHistory.length)
-        parts.push(
-          `missing history/indicators: ${missingHistory.slice(0, 6).join(', ')}${missingHistory.length > 6 ? '…' : ''}`,
-        );
-      if (missingTrend.length)
-        parts.push(
-          `missing TrendOK result: ${missingTrend.slice(0, 6).join(', ')}${missingTrend.length > 6 ? '…' : ''}`,
-        );
-      throw new Error(`Copy aborted: ${parts.join(' | ')}`);
-    }
-
-    const generatedAt = new Date().toISOString();
-    const lines: string[] = [];
-    lines.push(`${heading} Watchlist`);
-    lines.push(`- generatedAt: ${generatedAt}`);
-    lines.push(`- items: ${sorted.length}`);
-    lines.push(`- shanghaiToday: ${todaySh}`);
-    lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
-    lines.push(`- quoteWindow: ${quoteWindow ? 'true' : 'false'}`);
-    lines.push('');
-
-    lines.push(`${heading}# TrendOK rules`);
-    lines.push(mdLines(trendOkRuleLines()));
-    lines.push('');
-    lines.push(`${heading}# Score rules`);
-    lines.push(mdLines(scoreRuleLines()));
-    lines.push('');
-
-    const headers = [...WATCHLIST_MD_HEADERS];
-    const rows: unknown[][] = [];
-    const blockAlerts: string[] = [];
-    for (const it of sorted) {
-      const t = trend[it.symbol];
-      const q = quotes[it.symbol];
-      const rowMetrics = buildWatchlistRowMetrics({
-        symbol: it.symbol,
-        trend: t,
-        quote: q,
-        tradingTime,
-        todaySh,
-      });
-      const pnl = computePnLPct(it.costPrice ?? null, rowMetrics.current);
-      const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
-      const asOf = qDate === todaySh ? qDate : String(t?.asOfDate ?? '');
-      const buy =
-        t?.buyAction && t?.buyMode
-          ? `${String(t.buyMode)}/${String(t.buyAction)}`
-          : t?.buyAction
-            ? String(t.buyAction)
-            : '—';
-      const values = (t?.values ?? {}) as Record<string, unknown>;
-      const intradayCell = isIntradaySurge(rowMetrics.intradayChgPct)
-        ? `⚠️ ${formatIntradayChgPct(rowMetrics.intradayChgPct)}`
-        : formatIntradayChgPct(rowMetrics.intradayChgPct);
-      const gapCell =
-        rowMetrics.gapUp === true
-          ? `⚠️ ${formatGapUp(true)}`
-          : formatGapUp(rowMetrics.gapUp);
-      for (const alert of rowMetrics.alerts) {
-        if (alert.severity === 'block') blockAlerts.push(`${it.symbol}: ${alert.message}`);
-      }
-      rows.push([
-        it.symbol,
-        it.name ?? t?.name ?? '—',
-        industryDisplayName(values),
-        formatHotTop3(t),
-        mdNum(it.positionPct ?? null, 1),
-        mdPrice(it.costPrice ?? null),
-        mdPrice(rowMetrics.current),
-        formatVwap(rowMetrics.vwap),
-        intradayCell,
-        gapCell,
-        formatRiskAlerts(rowMetrics.alerts),
-        formatPnLPct(pnl),
-        mdScore(t?.score ?? null),
-        trendOkSummary(t),
-        buy,
-        mdPrice(t?.stopLossPrice ?? null),
-        asOf,
-      ]);
-    }
-    lines.push(mdTable(headers, rows));
-    lines.push('');
-    if (blockAlerts.length) {
-      lines.push(`${heading}# Risk alerts`);
-      lines.push(mdLines(blockAlerts.map((line) => `- ${line}`)));
-      lines.push('');
-    }
-
-    return lines.join('\n').trim() + '\n';
-  }
-
-  function loadWatchlistSymbols(): Set<string> {
-    const itemsRaw = loadWatchlist();
-    const items = (Array.isArray(itemsRaw) ? itemsRaw : [])
-      .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
-      .map((x) => String(x.symbol).trim().toUpperCase());
-    return new Set(items);
-  }
-
-  async function buildAlphaRadarCopyContext(
-    s: DashboardSummary,
-    catalystResp: CatalystStocksResponse,
-  ): Promise<CatalystCopyContext> {
-    const watchlistSymbols = loadWatchlistSymbols();
-    const screeners: any[] = Array.isArray((s as any)?.screeners) ? (s as any).screeners : [];
-    const todayScreenerSymbols = await fetchTodayScreenerSymbolsByTitle(screeners, {
-      apiGetJson,
-    });
-
-    const catalystSymbols = catalystResp.items.map((row) => normalizeCatalystSymbol(row.symbol));
-    const allSymbols = [
-      ...new Set<string>([...watchlistSymbols, ...todayScreenerSymbols, ...catalystSymbols]),
-    ];
-
-    const trendMapRaw = await fetchTrendOkMap(allSymbols, {
-      realtime: isShanghaiTradingTime(),
-    });
-
-    const trendMap: CatalystCopyContext['trendMap'] = new Map();
-    for (const [sym, trend] of trendMapRaw) {
-      trendMap.set(sym, {
-        symbol: sym,
-        trendOk: trend.trendOk,
-        score: trend.score ?? null,
-      });
-    }
-
-    const watchlistScores = new Map<string, number>();
-    for (const sym of watchlistSymbols) {
-      const score = trendMap.get(sym)?.score;
-      if (typeof score === 'number' && Number.isFinite(score)) {
-        watchlistScores.set(sym, score);
-      }
-    }
-
-    const screenerTrendOkSymbols = new Set<string>();
-    for (const sym of todayScreenerSymbols) {
-      if (trendMap.get(sym)?.trendOk === true) screenerTrendOkSymbols.add(sym);
-    }
-
-    return {
-      watchlistSymbols,
-      watchlistScores,
-      screenerTrendOkSymbols,
-      trendMap,
-    };
-  }
-
-  async function buildCompactCatalystMarkdown(s: DashboardSummary): Promise<string> {
-    try {
-      const resp = await fetchCatalystStocks(DATA_SYNC_BASE_URL, 10, DEFAULT_CATALYST_MAX_AGE_DAYS);
-      const ctx = await buildAlphaRadarCopyContext(s, resp);
-      return buildCatalystStocksMarkdown(resp, {
-        headingLevel: '##',
-        mode: 'compact',
-        context: ctx,
-      });
-    } catch {
-      return '## Alpha Radar · Top Catalyst Stocks\n\n- Alpha Radar: unavailable\n';
-    }
-  }
-
-  async function buildDashboardCopyAllMarkdown(): Promise<string> {
-    await ensureWatchlistHydrated();
-    const s = summary;
-    if (!s) {
-      throw new Error('No data available. Please refresh first.');
-    }
-    const generatedAt = new Date().toISOString();
-    const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd] = await Promise.all([
-      buildScreenersMarkdown(s, '##'),
-      buildWatchlistMarkdown(),
-      buildCompactCatalystMarkdown(s),
-      fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
-        .then(({ items, scope }) =>
-          buildAlphaRadarTrendsMarkdown(items, {
-            headingLevel: '##',
-            mode: 'compact',
-            scopeNote:
-              scope === 'recent'
-                ? `recent ${DEFAULT_CATALYST_MAX_AGE_DAYS}d (latest batch empty)`
-                : 'latest batch',
-          }),
-        )
-        .catch(() => '## Alpha Radar · Structured Trends\n\n- Alpha Radar trends: unavailable\n'),
-    ]);
-    const lines: string[] = [];
-    lines.push(`# Copy all (Dashboard)`);
-    lines.push(`- generatedAt: ${generatedAt}`);
-    lines.push(`- asOfDate: ${String((s as any)?.asOfDate ?? '')}`);
-    lines.push('');
-    lines.push(buildIndustryMarkdown(s, '##').trim());
-    lines.push('');
-    lines.push(buildHotIndustriesMarkdown(s, '##').trim());
-    lines.push('');
-    lines.push(buildSentimentMarkdown(s, '##').trim());
-    lines.push('');
-    lines.push(buildMacroMarkdown(s, '##').trim());
-    lines.push('');
-    lines.push('## News brief');
-    lines.push('');
-    lines.push(`- hours: ${String((s as any)?.news?.hours ?? 24)}`);
-    lines.push(`- total: ${String((s as any)?.news?.total ?? 0)}`);
-    if (newsSummaryUpdatedAt) lines.push(`- summaryUpdatedAt: ${newsSummaryUpdatedAt}`);
-    lines.push('');
-    if (newsSummary?.trim()) lines.push(newsSummary.trim());
-    else if (newsFallback?.trim()) lines.push(newsFallback.trim());
-    else lines.push('No summary yet. Last news records are included above.');
-    lines.push('');
-    lines.push(screenersMd.trim());
-    lines.push('');
-    lines.push(alphaTrendsMd.trim());
-    lines.push('');
-    lines.push(catalystMd.trim());
-    lines.push('');
-    lines.push(watchlistMd.trim());
-    lines.push('');
-    return lines.join('\n').trim() + '\n';
   }
 
   async function copyAllMarkdown() {
@@ -1329,7 +168,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         toastCopyAll(false, 'No data available. Please refresh first.');
         return;
       }
-      const text = await buildDashboardCopyAllMarkdown();
+      const text = await buildDashboardCopyAllMarkdown({
+        summary,
+        newsSummary,
+        newsSummaryUpdatedAt,
+        newsFallback,
+      });
       await navigator.clipboard.writeText(text);
       toastCopyAll(true, 'Copied all Markdown to clipboard.');
     } catch (e) {
@@ -1347,7 +191,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         toastPdfReport(false, 'No data available. Please refresh first.');
         return;
       }
-      const rawMd = await buildDashboardCopyAllMarkdown();
+      const rawMd = await buildDashboardCopyAllMarkdown({
+        summary,
+        newsSummary,
+        newsSummaryUpdatedAt,
+        newsFallback,
+      });
       const markdown = truncateMarkdownForReport(rawMd);
       const aiRes = await fetch(`${AI_BASE_URL}/report/investment-daily`, {
         method: 'POST',
@@ -1388,6 +237,31 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     }
   }
 
+  const defaultCards = React.useMemo(
+    () => [
+      { id: 'industry', title: 'Industry fund flow' },
+      { id: 'sentiment', title: 'Market sentiment' },
+      { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
+      { id: 'news', title: 'News brief' },
+      { id: 'screeners', title: 'Screener sync' },
+    ],
+    [],
+  );
+
+  const [cardOrder, setCardOrder] = React.useState<string[]>(() => []);
+  React.useEffect(() => {
+    const loaded = loadCardOrder();
+    const ids = defaultCards.map((c) => c.id);
+    const next = loaded
+      ? [...loaded.filter((x) => ids.includes(x)), ...ids.filter((x) => !loaded.includes(x))]
+      : ids;
+    const nextIds = next.includes('industry')
+      ? ['industry', ...next.filter((x) => x !== 'industry')]
+      : next;
+    setCardOrder(nextIds);
+    saveCardOrder(nextIds);
+  }, [defaultCards]);
+
   const cardsById = React.useMemo(
     () => Object.fromEntries(defaultCards.map((c) => [c.id, c])),
     [defaultCards],
@@ -1421,7 +295,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             disabled={busy || copyAllBusy || pdfReportBusy}
             onClick={() => {
               setError(null);
-              void summaryQuery.refetch();
+              void refetchSummary();
             }}
           >
             <RefreshCw className="h-4 w-4" />
@@ -1485,7 +359,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--k-muted)]">
         <span>
-          asOfDate: <span className="font-mono">{summary?.asOfDate ?? '—'}</span>
+          asOfDate: <span className="font-mono">{String(dash?.asOfDate ?? '—')}</span>
         </span>
         {summaryLoading ? (
           <span className="inline-flex items-center gap-1">
@@ -1560,8 +434,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         <div className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="mb-2 text-sm font-medium">Last sync result</div>
           <div className="text-xs text-[var(--k-muted)]">
-            started: {fmtDateTime(syncResp.startedAt)} • finished:{' '}
-            {fmtDateTime(syncResp.finishedAt)} • ok: {String(Boolean(syncResp.ok))}
+            started: {fmtDateTime(syncResp.startedAt as string)} • finished:{' '}
+            {fmtDateTime(syncResp.finishedAt as string)} • ok: {String(Boolean(syncResp.ok))}
           </div>
           <div className="mt-3 overflow-auto rounded-lg border border-[var(--k-border)]">
             <table className="w-full border-collapse text-xs">
@@ -1574,7 +448,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                 </tr>
               </thead>
               <tbody>
-                {(syncResp.steps ?? []).map((s: any) => (
+                {((syncResp.steps as any[]) ?? []).map((s: any) => (
                   <tr key={String(s.name)} className="border-t border-[var(--k-border)]">
                     <td className="px-3 py-2 font-mono">{String(s.name)}</td>
                     <td className="px-3 py-2">{String(Boolean(s.ok))}</td>
@@ -1585,10 +459,10 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
               </tbody>
             </table>
           </div>
-          {syncResp.screener?.failed?.length || syncResp.screener?.missing?.length ? (
+          {(syncResp.screener as any)?.failed?.length || (syncResp.screener as any)?.missing?.length ? (
             <div className="mt-3 text-xs text-red-600">
-              Screener issues: failed={syncResp.screener?.failed?.length ?? 0} missing=
-              {syncResp.screener?.missing?.length ?? 0}
+              Screener issues: failed={(syncResp.screener as any)?.failed?.length ?? 0} missing=
+              {(syncResp.screener as any)?.missing?.length ?? 0}
             </div>
           ) : null}
         </div>
@@ -1653,7 +527,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
               {id === 'sentiment' ? (
                 <div>
                   {(() => {
-                    const ms = summary?.marketSentiment ?? {};
+                    const ms = dash?.marketSentiment ?? {};
                     const items: any[] = Array.isArray(ms.items) ? ms.items : [];
                     const latest = items.length ? items[items.length - 1] : null;
                     const indexSignals: any[] = Array.isArray(ms.indexSignals)
@@ -1784,7 +658,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                             <div className="grid gap-2 md:grid-cols-2">
                               {indexSignals.map((it: any) => {
                                 const signal = String(it?.signal ?? 'unknown');
-                                const badge =
+                                const signalBadge =
                                   signal === 'deep_green'
                                     ? 'border-emerald-600/40 bg-emerald-600/15 text-emerald-800'
                                     : signal === 'light_green' || signal === 'green'
@@ -1797,7 +671,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                 return (
                                   <div
                                     key={String(it?.tsCode ?? it?.name)}
-                                    className={`rounded-lg border px-3 py-2 text-xs ${badge}`}
+                                    className={`rounded-lg border px-3 py-2 text-xs ${signalBadge}`}
                                   >
                                     <div className="font-medium">
                                       {String(it?.name ?? it?.tsCode ?? '')}
@@ -1923,7 +797,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                             size="sm"
                             variant="secondary"
                             onClick={() => {
-                              const asOfDate = String(ms.asOfDate ?? summary?.asOfDate ?? '');
+                              const asOfDate = String(ms.asOfDate ?? dash?.asOfDate ?? '');
                               addReference({
                                 kind: 'marketSentiment',
                                 refId: `${asOfDate}:5`,
@@ -1951,377 +825,14 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   })()}
                 </div>
               ) : id === 'industry' ? (
-                <div>
-                  <div className="mb-4">
-                    <HotIndustryWorkflowCard
-                      picks={hotIndustryPicks}
-                      asOfDate={String(
-                        summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '',
-                      )}
-                      compact
-                      onOpenScreener={() => onNavigate?.('screener')}
-                      onOpenWatchlist={() => onNavigate?.('watchlist')}
-                    />
-                  </div>
-                  <div className="mb-2 text-xs text-[var(--k-muted)]">
-                    Top5×Date hotspots (names only)
-                  </div>
-                  {(() => {
-                    const datesAll: string[] = Array.isArray(summary?.industryFundFlow?.dates)
-                      ? summary.industryFundFlow.dates
-                      : [];
-                    const rawShownDates = datesAll.slice(-5);
-                    const topByDateArr: any[] = Array.isArray(summary?.industryFundFlow?.topByDate)
-                      ? summary.industryFundFlow.topByDate
-                      : [];
-                    const map: Record<string, string[]> = {};
-                    for (const it of topByDateArr) {
-                      const d = String(it?.date ?? '');
-                      const top = Array.isArray(it?.top)
-                        ? it.top.map((x: any) => String(x ?? ''))
-                        : [];
-                      if (d) map[d] = top;
-                    }
-                    const dedupedDates: string[] = [];
-                    let prevSig = '';
-                    let collapsed = 0;
-                    for (const d of rawShownDates) {
-                      const sig = (map[d] || []).slice(0, 5).join('|');
-                      if (sig && sig === prevSig) {
-                        collapsed += 1;
-                        continue;
-                      }
-                      dedupedDates.push(d);
-                      prevSig = sig;
-                    }
-
-                    async function copyIndustryMarkdown() {
-                      try {
-                        const asOfDate = String(
-                          summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '',
-                        ).trim();
-
-                        const lines: string[] = [];
-                        lines.push(
-                          `# Industry fund flow${asOfDate ? ` (asOfDate: ${asOfDate})` : ''}`,
-                        );
-                        lines.push('');
-
-                        // Table 1: Top5×Date hotspots.
-                        if (dedupedDates.length) {
-                          const headers1 = ['#', ...dedupedDates.map((d) => String(d).slice(5))];
-                          const rows1: unknown[][] = Array.from({ length: 5 }).map((_, i) => [
-                            i + 1,
-                            ...dedupedDates.map((d) => String((map[d] || [])[i] ?? '')),
-                          ]);
-                          lines.push('## Top5×Date hotspots (names only)');
-                          lines.push('');
-                          lines.push(mdTable(headers1, rows1));
-                          lines.push('');
-                        }
-
-                        // Table 2: 5D net inflow.
-                        const flow5d: any = (summary?.industryFundFlow as any)?.flow5d ?? null;
-                        const flowDates: string[] = Array.isArray(flow5d?.dates)
-                          ? flow5d.dates
-                          : [];
-                        const colDates: string[] = flowDates.length
-                          ? flowDates.slice(-5)
-                          : dedupedDates;
-                        const topRows: any[] = Array.isArray(flow5d?.top) ? flow5d.top : [];
-                        if (topRows.length && colDates.length) {
-                          const headers2 = [
-                            'Industry',
-                            'Sum(5D)',
-                            ...colDates.map((d) => String(d).slice(5)),
-                          ];
-                          const rows2: unknown[][] = topRows.slice(0, 10).map((r: any) => {
-                            const seriesArr: any[] = Array.isArray(r?.series) ? r.series : [];
-                            const m2: Record<string, number> = {};
-                            for (const p of seriesArr) {
-                              const dd = String(p?.date ?? '');
-                              const nv = Number(p?.netInflow ?? 0);
-                              if (dd) m2[dd] = Number.isFinite(nv) ? nv : 0;
-                            }
-                            return [
-                              String(r?.industryName ?? ''),
-                              fmtAmountCn(r?.sum5d),
-                              ...colDates.map((d) => fmtAmountCn(m2[d] ?? 0)),
-                            ];
-                          });
-                          lines.push('## 5D net inflow (Top by 5D sum)');
-                          lines.push('');
-                          lines.push(mdTable(headers2, rows2));
-                          lines.push('');
-                        }
-
-                        // Table 3: 5D net outflow.
-                        const flow5dOut: any =
-                          (summary?.industryFundFlow as any)?.flow5dOut ?? null;
-                        const outDates: string[] = Array.isArray(flow5dOut?.dates)
-                          ? flow5dOut.dates
-                          : [];
-                        const outColDates: string[] = outDates.length
-                          ? outDates.slice(-5)
-                          : dedupedDates;
-                        const outRows: any[] = Array.isArray(flow5dOut?.top) ? flow5dOut.top : [];
-                        if (outRows.length && outColDates.length) {
-                          const headers3 = [
-                            'Industry',
-                            'Sum(5D)',
-                            ...outColDates.map((d) => String(d).slice(5)),
-                          ];
-                          const rows3: unknown[][] = outRows.slice(0, 10).map((r: any) => {
-                            const seriesArr: any[] = Array.isArray(r?.series) ? r.series : [];
-                            const m3: Record<string, number> = {};
-                            for (const p of seriesArr) {
-                              const dd = String(p?.date ?? '');
-                              const nv = Number(p?.netInflow ?? 0);
-                              if (dd) m3[dd] = Number.isFinite(nv) ? nv : 0;
-                            }
-                            return [
-                              String(r?.industryName ?? ''),
-                              fmtAmountCn(r?.sum5d),
-                              ...outColDates.map((d) => fmtAmountCn(m3[d] ?? 0)),
-                            ];
-                          });
-                          lines.push('## 5D net outflow (Top by 5D sum)');
-                          lines.push('');
-                          lines.push(mdTable(headers3, rows3));
-                          lines.push('');
-                        }
-
-                        if (
-                          !dedupedDates.length &&
-                          !(topRows.length && colDates.length) &&
-                          !(outRows.length && outColDates.length)
-                        ) {
-                          toastIndustryCopy(false, 'Nothing to copy (no industry fund flow data).');
-                          return;
-                        }
-
-                        await navigator.clipboard.writeText(lines.join('\n'));
-                        toastIndustryCopy(true, 'Copied Markdown to clipboard.');
-                      } catch (e) {
-                        toastIndustryCopy(false, e instanceof Error ? e.message : String(e));
-                      }
-                    }
-
-                    return (
-                      <>
-                        {collapsed ? (
-                          <div className="mb-2 text-xs text-[var(--k-muted)]">
-                            collapsed {collapsed} duplicate non-trading snapshot
-                            {collapsed > 1 ? 's' : ''}
-                          </div>
-                        ) : null}
-                        <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                          <table className="w-full border-collapse text-xs">
-                            <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                              <tr className="text-left">
-                                <th className="px-2 py-2">#</th>
-                                {dedupedDates.map((d: string) => (
-                                  <th key={d} className="px-2 py-2 font-mono">
-                                    {String(d).slice(5)}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {Array.from({ length: 5 }).map((_, i) => (
-                                <tr key={i} className="border-t border-[var(--k-border)]">
-                                  <td className="px-2 py-2 font-mono">{i + 1}</td>
-                                  {dedupedDates.map((d: string, j: number) => (
-                                    <td key={j} className="px-2 py-2">
-                                      {String((map[d] || [])[i] ?? '')}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        {(() => {
-                          const flow5d: any = (summary?.industryFundFlow as any)?.flow5d ?? null;
-                          const flowDates: string[] = Array.isArray(flow5d?.dates)
-                            ? flow5d.dates
-                            : [];
-                          const cols: string[] = flowDates.length
-                            ? flowDates.slice(-5)
-                            : dedupedDates;
-                          const topRows: any[] = Array.isArray(flow5d?.top) ? flow5d.top : [];
-                          if (!topRows.length || !cols.length) return null;
-                          const colDates = cols;
-                          return (
-                            <div className="mt-4">
-                              <div className="mb-2 text-xs text-[var(--k-muted)]">
-                                5D net inflow (Top by 5D sum)
-                              </div>
-                              <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                                <table className="w-full border-collapse text-xs">
-                                  <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                                    <tr className="text-left">
-                                      <th className="px-2 py-2">Industry</th>
-                                      <th className="px-2 py-2 text-right">Sum(5D)</th>
-                                      {colDates.map((d: string) => (
-                                        <th key={d} className="px-2 py-2 text-right font-mono">
-                                          {String(d).slice(5)}
-                                        </th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {topRows.slice(0, 10).map((r: any, idx: number) => {
-                                      const seriesArr: any[] = Array.isArray(r?.series)
-                                        ? r.series
-                                        : [];
-                                      const map: Record<string, number> = {};
-                                      for (const p of seriesArr) {
-                                        const dd = String(p?.date ?? '');
-                                        const nv = Number(p?.netInflow ?? 0);
-                                        if (dd) map[dd] = Number.isFinite(nv) ? nv : 0;
-                                      }
-                                      return (
-                                        <tr
-                                          key={`${String(r?.industryCode ?? 'unknown')}-${idx}`}
-                                          className="border-t border-[var(--k-border)]"
-                                        >
-                                          <td className="px-2 py-2">
-                                            {String(r?.industryName ?? '')}
-                                          </td>
-                                          <td className="px-2 py-2 text-right font-mono">
-                                            {fmtAmountCn(r?.sum5d)}
-                                          </td>
-                                          {colDates.map((d: string) => (
-                                            <td key={d} className="px-2 py-2 text-right font-mono">
-                                              {fmtAmountCn(map[d] ?? 0)}
-                                            </td>
-                                          ))}
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                        {(() => {
-                          const flow5dOut: any =
-                            (summary?.industryFundFlow as any)?.flow5dOut ?? null;
-                          const flowDates: string[] = Array.isArray(flow5dOut?.dates)
-                            ? flow5dOut.dates
-                            : [];
-                          const cols: string[] = flowDates.length
-                            ? flowDates.slice(-5)
-                            : dedupedDates;
-                          const topRows: any[] = Array.isArray(flow5dOut?.top) ? flow5dOut.top : [];
-                          if (!topRows.length || !cols.length) return null;
-                          const colDates = cols;
-                          return (
-                            <div className="mt-4">
-                              <div className="mb-2 text-xs text-[var(--k-muted)]">
-                                5D net outflow (Top by 5D sum)
-                              </div>
-                              <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                                <table className="w-full border-collapse text-xs">
-                                  <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                                    <tr className="text-left">
-                                      <th className="px-2 py-2">Industry</th>
-                                      <th className="px-2 py-2 text-right">Sum(5D)</th>
-                                      {colDates.map((d: string) => (
-                                        <th key={d} className="px-2 py-2 text-right font-mono">
-                                          {String(d).slice(5)}
-                                        </th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {topRows.slice(0, 10).map((r: any, idx: number) => {
-                                      const seriesArr: any[] = Array.isArray(r?.series)
-                                        ? r.series
-                                        : [];
-                                      const map: Record<string, number> = {};
-                                      for (const p of seriesArr) {
-                                        const dd = String(p?.date ?? '');
-                                        const nv = Number(p?.netInflow ?? 0);
-                                        if (dd) map[dd] = Number.isFinite(nv) ? nv : 0;
-                                      }
-                                      return (
-                                        <tr
-                                          key={`${String(r?.industryCode ?? 'unknown')}-${idx}`}
-                                          className="border-t border-[var(--k-border)]"
-                                        >
-                                          <td className="px-2 py-2">
-                                            {String(r?.industryName ?? '')}
-                                          </td>
-                                          <td className="px-2 py-2 text-right font-mono">
-                                            {fmtAmountCn(r?.sum5d)}
-                                          </td>
-                                          {colDates.map((d: string) => (
-                                            <td key={d} className="px-2 py-2 text-right font-mono">
-                                              {fmtAmountCn(map[d] ?? 0)}
-                                            </td>
-                                          ))}
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                        <div className="mt-3 flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => onNavigate?.('industryFlow')}
-                          >
-                            Open Industry Flow
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => void copyIndustryMarkdown()}
-                          >
-                            Copy Markdown
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              const asOfDate = String(
-                                summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '',
-                              );
-                              addReference({
-                                kind: 'industryFundFlow',
-                                refId: `${asOfDate}:5:10`,
-                                asOfDate,
-                                days: 5,
-                                topN: 10,
-                                view: 'dailyTopByDate',
-                                title: 'CN industry fund flow (Top by date)',
-                                createdAt: new Date().toISOString(),
-                              } as any);
-                            }}
-                          >
-                            Reference
-                          </Button>
-                        </div>
-                        {industryCopyStatus ? (
-                          <div
-                            className={`mt-2 text-xs ${
-                              industryCopyStatus.ok ? 'text-emerald-600' : 'text-red-600'
-                            }`}
-                          >
-                            {industryCopyStatus.text}
-                          </div>
-                        ) : null}
-                      </>
-                    );
-                  })()}
-                </div>
+                <IndustryFundFlowCard
+                  summary={dash}
+                  hotIndustryPicks={hotIndustryPicks}
+                  onNavigate={onNavigate}
+                  onAddReference={addReference}
+                  copyStatus={industryCopyStatus}
+                  onCopyIndustryMarkdown={onCopyIndustryMarkdown}
+                />
               ) : id === 'news' ? (
                 <div>
                   <div className="mb-2 flex items-center justify-between gap-2">
@@ -2403,9 +914,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                               <tr
                                 key={row.symbol}
                                 className={`border-t border-[var(--k-border)] ${
-                                  hasBlock
-                                    ? 'bg-red-50/70'
-                                    : 'bg-amber-50/50'
+                                  hasBlock ? 'bg-red-50/70' : 'bg-amber-50/50'
                                 }`}
                               >
                                 <td className="px-2 py-2 font-mono text-red-700">{row.symbol}</td>
@@ -2456,7 +965,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                       size="sm"
                       variant="secondary"
                       disabled={watchlistRiskBusy}
-                      onClick={() => void watchlistRiskQuery.refetch()}
+                      onClick={() => void refetchWatchlistRisk()}
                     >
                       {watchlistRiskBusy ? (
                         <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
@@ -2486,7 +995,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                         </tr>
                       </thead>
                       <tbody>
-                        {(summary?.screeners ?? []).map((s: any) => {
+                        {(dash?.screeners ?? []).map((s: any) => {
                           const bad = !s.capturedAt || Number(s.rowCount ?? 0) <= 0;
                           return (
                             <tr key={String(s.id)} className="border-t border-[var(--k-border)]">
@@ -2505,7 +1014,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                             </tr>
                           );
                         })}
-                        {!(summary?.screeners ?? []).length ? (
+                        {!(dash?.screeners ?? []).length ? (
                           <tr>
                             <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={4}>
                               No enabled screeners.
