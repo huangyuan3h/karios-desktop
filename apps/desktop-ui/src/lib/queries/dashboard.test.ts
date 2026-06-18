@@ -8,6 +8,7 @@ import {
   buildWatchlistRiskRowsFromSnapshot,
   dashboardSummaryQueryKey,
   fetchWatchlistRiskRows,
+  mergeDashboardSummaryParts,
 } from './dashboard';
 import { watchlistMarketKey } from './watchlist';
 
@@ -49,6 +50,36 @@ describe('buildDashboardSummaryPath', () => {
     ).toBe(
       '/dashboard/summary?include_macro=false&include_sentiment=false&include_industry=false&include_screeners=false',
     );
+  });
+});
+
+describe('mergeDashboardSummaryParts', () => {
+  it('does not let empty partial sections overwrite populated lite/sentiment data', () => {
+    const lite = {
+      asOfDate: '2026-06-18',
+      industryFundFlow: { topByDate: [{ date: '2026-06-18', top: ['Bank'] }] },
+      screeners: [{ id: 's1' }],
+      marketSentiment: {},
+    };
+    const sentiment = {
+      asOfDate: '2026-06-18',
+      industryFundFlow: {},
+      marketSentiment: {
+        items: [{ riskMode: 'caution' }],
+        indexSignals: [{ tsCode: '000001.SH' }],
+      },
+    };
+    const news = {
+      industryFundFlow: {},
+      marketSentiment: {},
+      news: { hours: 24, total: 1, items: [{ id: 'n1', title: 'Headline' }] },
+    };
+
+    const merged = mergeDashboardSummaryParts(lite, sentiment, news);
+    expect(merged?.industryFundFlow).toEqual(lite.industryFundFlow);
+    expect(merged?.marketSentiment).toEqual(sentiment.marketSentiment);
+    expect(merged?.news).toEqual(news.news);
+    expect(merged?.screeners).toEqual(lite.screeners);
   });
 });
 

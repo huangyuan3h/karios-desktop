@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import { apiGetJson } from '@/lib/api/client';
@@ -174,6 +175,81 @@ export function loadDashboardSummaryCache(): DashboardSummary | null {
   }
 }
 
+function isPopulatedRecord(value: unknown): boolean {
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value as object).length > 0
+  );
+}
+
+/** Merge split dashboard queries without empty partial sections overwriting real data. */
+export function mergeDashboardSummaryParts(
+  lite?: DashboardSummary,
+  sentiment?: DashboardSummary,
+  news?: DashboardSummary,
+): DashboardSummary | null {
+  if (!lite && !sentiment && !news) return null;
+
+  const merged: DashboardSummary = {};
+  const asOfDate = lite?.asOfDate ?? sentiment?.asOfDate ?? news?.asOfDate;
+  if (asOfDate != null) merged.asOfDate = asOfDate;
+
+  if (lite) {
+    if (isPopulatedRecord(lite.industryFundFlow)) merged.industryFundFlow = lite.industryFundFlow;
+    if (Array.isArray(lite.screeners)) merged.screeners = lite.screeners;
+  }
+
+  if (sentiment) {
+    if (isPopulatedRecord(sentiment.marketSentiment)) {
+      merged.marketSentiment = sentiment.marketSentiment;
+    }
+    if (sentiment.macroSnapshot != null) merged.macroSnapshot = sentiment.macroSnapshot;
+  }
+
+  const envZh = lite?.marketEnvironmentZh ?? sentiment?.marketEnvironmentZh;
+  if (typeof envZh === 'string' && envZh.trim()) merged.marketEnvironmentZh = envZh;
+
+  if (news?.news != null) merged.news = news.news;
+
+  const meta = lite?.meta ?? sentiment?.meta ?? news?.meta;
+  if (meta != null) merged.meta = meta;
+
+  return merged;
+}
+
+export function seedDashboardSummaryCaches(
+  queryClient: QueryClient,
+  cached: DashboardSummary,
+): void {
+  queryClient.setQueryData(dashboardLiteQueryKey(), (prev) =>
+    prev !== undefined
+      ? prev
+      : {
+          asOfDate: cached.asOfDate,
+          industryFundFlow: cached.industryFundFlow,
+          screeners: cached.screeners,
+          marketEnvironmentZh: cached.marketEnvironmentZh,
+          meta: cached.meta,
+        },
+  );
+  queryClient.setQueryData(dashboardSummaryQueryKey(DASHBOARD_SENTIMENT_INCLUDES), (prev) =>
+    prev !== undefined
+      ? prev
+      : {
+          asOfDate: cached.asOfDate,
+          marketSentiment: cached.marketSentiment,
+          macroSnapshot: cached.macroSnapshot,
+          marketEnvironmentZh: cached.marketEnvironmentZh,
+          meta: cached.meta,
+        },
+  );
+  queryClient.setQueryData(dashboardSummaryQueryKey(DASHBOARD_NEWS_INCLUDES), (prev) =>
+    prev !== undefined ? prev : { news: cached.news },
+  );
+}
+
 export function saveDashboardSummaryCache(summary: DashboardSummary): void {
   if (typeof window === 'undefined') return;
   try {
@@ -244,12 +320,20 @@ export async function fetchDashboardSummaryCached(
 }
 
 export function useDashboardSummaryQuery() {
+  const queryClient = useQueryClient();
+
+  // Seed local cache after mount only — reading localStorage during render causes SSR hydration mismatches.
+  React.useEffect(() => {
+    const cached = loadDashboardSummaryCache();
+    if (!cached) return;
+    seedDashboardSummaryCaches(queryClient, cached);
+  }, [queryClient]);
+
   return useQuery({
     queryKey: dashboardLiteQueryKey(),
     queryFn: () => fetchDashboardLiteSummary(),
     refetchInterval: dashboardRefetchIntervalMs,
     refetchIntervalInBackground: false,
-    placeholderData: () => loadDashboardSummaryCache() ?? undefined,
   });
 }
 

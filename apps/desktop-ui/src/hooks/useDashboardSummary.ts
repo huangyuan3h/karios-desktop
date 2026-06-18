@@ -9,6 +9,7 @@ import { AI_BASE_URL } from '@/lib/endpoints';
 import { isShanghaiSyncWindow } from '@/lib/market-hours';
 import {
   dashboardLiteQueryKey,
+  mergeDashboardSummaryParts,
   saveDashboardSummaryCache,
   useDashboardSummaryQuery,
   type DashboardSummary,
@@ -54,13 +55,7 @@ function mergeDashboardSummary(
   sentiment: DashboardSummary | undefined,
   news: DashboardSummary | undefined,
 ): DashboardSummary | null {
-  if (!lite && !sentiment && !news) return null;
-  return {
-    ...(lite ?? {}),
-    ...(sentiment ?? {}),
-    ...(news ?? {}),
-    asOfDate: lite?.asOfDate ?? sentiment?.asOfDate ?? news?.asOfDate,
-  };
+  return mergeDashboardSummaryParts(lite, sentiment, news);
 }
 
 export function useDashboardSummary() {
