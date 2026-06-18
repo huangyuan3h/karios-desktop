@@ -23,11 +23,9 @@ export const VWAP_PREMIUM_MULTIPLIER = 1.05;
 
 const GAP_UP_WEAK_REGIMES = new Set(['Weak', 'Diverging']);
 
-export type WatchlistRiskAlert = {
-  code: string;
-  severity: 'block' | 'warn';
-  message: string;
-};
+import type { WatchlistRiskAlert } from '@karios/shared';
+
+export type { WatchlistRiskAlert };
 
 export function isIntradaySurge(intradayChgPct: number | null | undefined): boolean {
   return (

@@ -1,17 +1,7 @@
+import type { TvCaptureJob } from '@karios/shared';
 import { apiGetJson, apiPostJson } from './client';
 
-export type TvCaptureJob = {
-  jobId: string;
-  screenerId: string;
-  status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | string;
-  trigger?: string;
-  createdAt?: string | null;
-  startedAt?: string | null;
-  finishedAt?: string | null;
-  snapshotId?: string | null;
-  rowCount?: number | null;
-  error?: string | null;
-};
+export type { TvCaptureJob };
 
 export async function enqueueTvScreenerSync(screenerId: string): Promise<TvCaptureJob> {
   return apiPostJson<TvCaptureJob>(

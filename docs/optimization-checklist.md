@@ -38,7 +38,7 @@
 | OPT-006 | TrendOK `refresh` 语义对齐 | P2 | 0.5–1 天 | [x] |
 | OPT-007 | DB Migration 工具（Alembic） | P2 | 2–3 天 | [x] |
 | OPT-008 | TV Capture 异步化 / Job Queue | P2 | 2–4 天 | [x] |
-| OPT-009 | packages/shared 类型共享 | P2 | 1–2 天 | [ ] |
+| OPT-009 | packages/shared 类型共享 | P2 | 1–2 天 | [x] |
 | OPT-010 | 过时 UI 文案清理（SQLite → Postgres） | P3 | 0.5 天 | [ ] |
 
 ---

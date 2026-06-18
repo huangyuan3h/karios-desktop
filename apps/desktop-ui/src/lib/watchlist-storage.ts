@@ -1,3 +1,5 @@
+import type { WatchlistItem, WatchlistSource } from '@karios/shared';
+import { WatchlistItemSchema } from '@karios/shared';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { loadJson, saveJson } from '@/lib/storage';
 
@@ -6,19 +8,7 @@ export const WATCHLIST_UPDATED_EVENT = 'karios:watchlist-updated';
 export const WATCHLIST_REGISTRY_SYNCED_KEY = 'karios.watchlist.registrySynced.v1';
 export const WATCHLIST_PENDING_SYNC_KEY = 'karios.watchlist.pendingSync.v1';
 
-export type WatchlistSource = 'manual' | 'screener' | 'alpha_radar';
-
-export type WatchlistItem = {
-  symbol: string;
-  name?: string | null;
-  nameStatus?: 'resolved' | 'not_found';
-  addedAt: string;
-  color?: string;
-  positionPct?: number | null;
-  costPrice?: number | null;
-  maxPrice?: number | null;
-  source?: WatchlistSource;
-};
+export type { WatchlistItem, WatchlistSource };
 
 export type HydrateWatchlistResult = {
   source: 'registry' | 'local_uplift' | 'local_fallback' | 'empty';
@@ -94,7 +84,7 @@ export function normalizeWatchlistItems(raw: unknown): WatchlistItem[] {
       const rawColor = typeof it.color === 'string' ? it.color.trim().toLowerCase() : '';
       const color = ALLOWED_FLAG_COLORS.has(rawColor) ? rawColor : '#ffffff';
       const symbol = String(it.symbol ?? '').trim();
-      return {
+      const normalized = {
         symbol,
         name: it.name ?? null,
         nameStatus:
@@ -114,6 +104,8 @@ export function normalizeWatchlistItems(raw: unknown): WatchlistItem[] {
             ? it.source
             : 'manual',
       } satisfies WatchlistItem;
+      const parsed = WatchlistItemSchema.safeParse(normalized);
+      return parsed.success ? parsed.data : normalized;
     })
     .filter((x) => Boolean(x.symbol));
 }

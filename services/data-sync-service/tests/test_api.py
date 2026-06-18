@@ -45,6 +45,11 @@ def test_trendok_endpoint_shape() -> None:
         "buyRefPrice",
         "buyWhy",
         "buyChecks",
+        "marketRegime",
+        "intradayChgPct",
+        "gapUp",
+        "riskMetricsLive",
+        "riskAlerts",
         "checks",
         "values",
         "missingData",
@@ -55,6 +60,7 @@ def test_trendok_endpoint_shape() -> None:
     assert isinstance(arr[0]["checks"], dict)
     assert isinstance(arr[0]["values"], dict)
     assert isinstance(arr[0]["missingData"], list)
+    assert isinstance(arr[0]["riskAlerts"], list)
 
 
 def test_tv_screeners_endpoint_shape() -> None:

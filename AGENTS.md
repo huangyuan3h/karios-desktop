@@ -94,6 +94,28 @@ TradingView screener capture is **async** via Postgres job queue `tv_capture_job
 
 ---
 
+## Shared API types (OPT-009)
+
+Cross-layer JSON contracts live in [`packages/shared`](packages/shared) as **Zod schemas** + inferred TS types.
+
+| Schema module | Used for |
+|---------------|----------|
+| `schemas/trendok.ts` | `GET /market/stocks/trendok` |
+| `schemas/watchlist.ts` | `GET/POST /watchlist/registry` |
+| `schemas/tvCapture.ts` | TV capture job API (OPT-008) |
+
+**Workflow for new API fields:**
+
+1. Add/update Zod schema in `packages/shared/src/schemas/`.
+2. Export from `packages/shared/src/index.ts`; add schema test.
+3. Import types in `desktop-ui` via `@karios/shared` (thin re-exports in `lib/api/types.ts` etc. are OK).
+4. Align Python Pydantic / dict responses manually; extend `tests/test_api.py` shape assertions.
+5. Run `pnpm -C packages/shared build` before first `desktop-ui` dev session (or `turbo build --filter=@karios/shared`).
+
+Python does **not** import `@karios/shared` at runtime. Field-name comments in route modules are the drift guard.
+
+---
+
 ## Scoped optimization tasks
 
 For structural work, use `docs/optimization-checklist.md`:

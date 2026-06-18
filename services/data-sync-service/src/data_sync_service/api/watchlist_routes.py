@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query  # type: ignore[import-not-found]
 from pydantic import BaseModel
 
+# Field names must match @karios/shared WatchlistRegistryItemSchema
 from data_sync_service.db.watchlist_automation import list_registry, upsert_registry
 from data_sync_service.service.watchlist_automation import (
     ack_automation_run,
