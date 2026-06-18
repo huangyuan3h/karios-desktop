@@ -1751,7 +1751,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   );
 
   return (
-    <div className="min-w-0 w-full max-w-full p-6">
+    <div className="box-border min-w-0 w-full max-w-full overflow-x-hidden p-6">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-lg font-semibold">Watchlist</div>
@@ -2147,15 +2147,16 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         </div>
       </section>
 
-      <section className="min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+      <section className="box-border grid min-w-0 w-full grid-cols-1 overflow-hidden rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="mb-2 flex items-center justify-between">
           <div className="text-sm font-medium">List</div>
           <div className="text-xs text-[var(--k-muted)]">{items.length} items</div>
         </div>
 
         {items.length ? (
-          <div className="min-w-0 w-full max-w-full overflow-x-auto rounded border border-[var(--k-border)]">
-            <table className="w-max border-separate border-spacing-0 text-sm">
+          <div className="min-w-0 w-full overflow-hidden rounded border border-[var(--k-border)]">
+            <div className="overflow-x-auto overscroll-x-contain">
+              <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
               <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                 <tr className="text-left">
                   <th className="px-3 py-2 w-[40px]" title="Color flag">
@@ -2164,16 +2165,16 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   <th className="px-3 py-2 w-[110px]">Symbol</th>
                   <th className="px-3 py-2 w-[120px] max-w-[120px]">Name</th>
                   <th className="px-3 py-2 w-[120px] max-w-[140px]">Industry</th>
-                  <th className="px-3 py-2 w-[70px]">仓位%</th>
-                  <th className="px-3 py-2 w-[90px]">成本价</th>
-                  <th className="px-3 py-2 w-[90px]">Current</th>
-                  <th className="px-3 py-2 w-[90px]">止损</th>
-                  <th className="px-3 py-2 w-[70px]">HotTop3</th>
-                  <th className="px-3 py-2 w-[80px]">VWAP</th>
-                  <th className="px-3 py-2 w-[76px]">Intraday%</th>
-                  <th className="px-3 py-2 w-[52px]">Gap</th>
-                  <th className="px-3 py-2 w-[180px]">Alerts</th>
-                  <th className="px-3 py-2 w-[72px]">P&L%</th>
+                  <th className="px-2 py-2 w-[58px]">仓位%</th>
+                  <th className="px-2 py-2 w-[80px]">成本价</th>
+                  <th className="px-2 py-2 w-[72px]">Current</th>
+                  <th className="px-2 py-2 w-[80px]">止损</th>
+                  <th className="px-2 py-2 w-[64px]">HotTop3</th>
+                  <th className="px-2 py-2 w-[68px]">VWAP</th>
+                  <th className="px-2 py-2 w-[72px]">Intraday%</th>
+                  <th className="px-2 py-2 w-[48px]">Gap</th>
+                  <th className="px-2 py-2 w-[140px]">Alerts</th>
+                  <th className="px-2 py-2 w-[64px]">P&L%</th>
                   <th
                     className={watchlistStickyCellClass('buy', { header: true, extra: 'max-w-[130px]' })}
                     style={watchlistStickyCellStyle('buy', { header: true })}
@@ -2302,9 +2303,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                         >
                           {industryDisplayName((t?.values ?? {}) as Record<string, unknown>)}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-2 py-2">
                           <input
-                            className="h-8 w-20 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
+                            className="h-8 w-full min-w-0 max-w-[52px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-1.5 font-mono text-xs outline-none"
                             placeholder="0"
                             value={
                               typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
@@ -2314,9 +2315,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                             onChange={(e) => setItemPositionPct(it.symbol, e.target.value)}
                           />
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-2 py-2">
                           <input
-                            className="h-8 w-24 rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 font-mono text-xs outline-none"
+                            className="h-8 w-full min-w-0 max-w-[72px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-1.5 font-mono text-xs outline-none"
                             placeholder="成本"
                             inputMode="decimal"
                             value={
@@ -2406,7 +2407,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                         >
                           {formatGapUp(rowMetrics.gapUp)}
                         </td>
-                        <td className="px-3 py-2 text-xs">
+                        <td className="max-w-[140px] px-2 py-2 text-xs">
                           {rowMetrics.alerts.length ? (
                             <div
                               className="truncate"
@@ -2519,6 +2520,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         ) : (
           <div className="text-sm text-[var(--k-muted)]">No items yet. Add a ticker above.</div>
