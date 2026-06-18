@@ -9,9 +9,11 @@ from data_sync_service.db.daily import ensure_table as ensure_daily
 from data_sync_service.db.industry_fund_flow import (
     get_dates_upto as flow_dates_upto,
     get_latest_date as flow_latest_date,
-    get_rows_by_date as flow_rows_by_date,
-    get_series_for_industry,
-    get_sum_by_industry_for_dates,
+    get_rows_for_dates as flow_rows_for_dates,
+)
+from data_sync_service.service.industry_fund_flow_read import (
+    positive_days_from_rows,
+    sum_by_industry_from_rows,
 )
 from data_sync_service.db.industry_mainline_metrics import (
     get_dates_upto as metrics_dates_upto,
@@ -246,21 +248,14 @@ def _rank_map(values: dict[str, float], *, desc: bool = True) -> dict[str, int]:
 
 def _flow_context(as_of_date: str) -> dict[str, Any]:
     dates_20 = flow_dates_upto(as_of_date, 20)
-    dates_10 = flow_dates_upto(as_of_date, 10)
-    dates_5 = flow_dates_upto(as_of_date, 5)
-    sums_20 = {r["industry_name"]: float(r["sum_inflow"]) for r in get_sum_by_industry_for_dates(dates_20)}
-    sums_5 = {r["industry_name"]: float(r["sum_inflow"]) for r in get_sum_by_industry_for_dates(dates_5)}
+    dates_10 = dates_20[-10:] if len(dates_20) >= 10 else list(dates_20)
+    dates_5 = dates_20[-5:] if len(dates_20) >= 5 else list(dates_20)
+    rows = flow_rows_for_dates(dates_20)
+    sums_20 = sum_by_industry_from_rows(rows, dates_20)
+    sums_5 = sum_by_industry_from_rows(rows, dates_5)
     rank_20 = _rank_map(sums_20, desc=True)
     rank_5 = _rank_map(sums_5, desc=True)
-
-    pos_days: dict[str, int] = {}
-    for d in dates_10:
-        for row in flow_rows_by_date(d):
-            name = str(row.get("industry_name") or "")
-            if not name:
-                continue
-            if float(row.get("net_inflow") or 0.0) > 0:
-                pos_days[name] = pos_days.get(name, 0) + 1
+    pos_days = positive_days_from_rows(rows, dates_10)
 
     return {
         "dates_20": dates_20,

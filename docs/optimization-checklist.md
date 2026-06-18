@@ -33,7 +33,7 @@
 | OPT-011 | Watchlist 手动刷新并行化 + TrendOK 统一 fetch | P0 | 1–2 天 | [x] |
 | OPT-012 | React Query 替换手写轮询 | P1 | 2–4 天 | [x] |
 | OPT-013 | Dashboard / Watchlist God Page 拆分（阶段二） | P1 | 3–5 天 | [x] |
-| OPT-014 | Industry Fund Flow 读路径 N+1 消除 | P1 | 1–2 天 | [ ] |
+| OPT-014 | Industry Fund Flow 读路径 N+1 消除 | P1 | 1–2 天 | [x] |
 | OPT-015 | Watchlist Automation 去重 TrendOK 计算 | P1 | 0.5–1 天 | [ ] |
 
 ---
@@ -116,45 +116,24 @@
 
 ### OPT-014：Industry Fund Flow 读路径 N+1 消除
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 问题
+#### 实施摘要
 
-`get_cn_industry_fund_flow()`（`industry_fund_flow.py:305-325`）对 top_n 个行业**逐条**调用 `get_series_for_industry()`：
-
-```python
-for r in top_rows:
-    series = get_series_for_industry(industry_name=name, dates=dates)
-```
-
-`top_n=30`、`days=10` 时 → **30 次**独立 DB 往返。该 API 被 Dashboard summary、IndustryFlowPage 高频读取。
-
-同类问题：`mainline.py` 的 `_flow_context` 对 10 个交易日循环 `flow_rows_by_date(d)`（~10 次查询）。可在本 OPT 一并合并为 `WHERE date = ANY(%s)` 批量查询，或拆为 OPT-014b。
-
-#### 方案
-
-1. 在 `db/industry_fund_flow.py` 新增 `get_series_for_industries(industry_names, dates)` 或 `get_rows_for_dates(dates)` 一次拉取后在 Python group。
-2. `get_cn_industry_fund_flow` 改为单次（或 2 次）查询 + 内存聚合。
-3. 可选：读路径 30–60s 进程内 TTL cache（key = `as_of_date + days + top_n`）。
-4. Mainline `_flow_context` 同样改为批量 date 查询。
-
-#### 涉及文件
-
-| 文件 | 改动 |
-|------|------|
-| `services/data-sync-service/src/data_sync_service/db/industry_fund_flow.py` | 批量查询函数 |
-| `services/data-sync-service/src/data_sync_service/service/industry_fund_flow.py` | 消除 N+1 |
-| `services/data-sync-service/src/data_sync_service/service/mainline.py` | `_flow_context` 批量化 |
-| `services/data-sync-service/tests/test_industry_fund_flow.py` | 查询次数断言 / 回归 |
+- **DB**：[`get_rows_for_dates(dates)`](services/data-sync-service/src/data_sync_service/db/industry_fund_flow.py) — `WHERE date = ANY(%s)` 一次拉取全量行业行
+- **聚合 lib**：[`industry_fund_flow_read.py`](services/data-sync-service/src/data_sync_service/service/industry_fund_flow_read.py) — `series_map_from_rows` / `sum_by_industry_from_rows` / `positive_days_from_rows`
+- **`get_cn_industry_fund_flow`**：3 次 DB 读（`dates_upto` + `top_rows` + `get_rows_for_dates`），移除循环 `get_series_for_industry`
+- **`mainline._flow_context`**：`dates_20` 一次 batch + slice 得 `dates_10/5`；移除 10× `flow_rows_by_date` 与 2× `get_sum_by_industry_for_dates`
+- **测试**：`test_industry_fund_flow_read.py`（7 用例：聚合、JSON shape、查询次数、mainline batch）
 
 #### 验证
 
-- [ ] pytest industry / mainline 相关用例通过
-- [ ] `get_cn_industry_fund_flow(top_n=30)` DB 查询次数 ≤ 3（mock/spy 或 query log）
-- [ ] API 响应 JSON shape 不变
-- [ ] Dashboard / IndustryFlow 页加载变快（curl benchmark 记录）
+- [x] pytest industry / mainline 相关用例通过
+- [x] `get_cn_industry_fund_flow(top_n=30, as_of_date=固定)` mock 下 DB 调用 = 3
+- [x] API 响应 JSON shape 不变（单元 + `test_api` endpoint shape）
+- [ ] Dashboard / IndustryFlow 页加载变快（curl benchmark 需手动）
 
 ---
 
@@ -214,6 +193,7 @@ Later:   OPT-013（God Page 拆分）→ 与 OPT-012 可并行，但 hooks 边�
 |------|------|
 | 2026-06-18 | OPT-012 完成：React Query 替换 Dashboard/Watchlist/Index 手写轮询 |
 | 2026-06-18 | OPT-013 完成：Dashboard/Watchlist God Page 拆分为 hooks + components + lib |
+| 2026-06-18 | OPT-014 完成：Industry Fund Flow 读路径 N+1 消除（batch `get_rows_for_dates`） |
 
 ---
 

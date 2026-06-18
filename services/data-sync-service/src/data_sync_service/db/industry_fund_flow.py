@@ -149,6 +149,34 @@ def get_rows_by_date(as_of_date: str) -> list[dict[str, Any]]:
     ]
 
 
+def get_rows_for_dates(dates: list[str]) -> list[dict[str, Any]]:
+    """Return all industry flow rows for the given dates."""
+    ensure_table()
+    if not dates:
+        return []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT date, industry_code, industry_name, net_inflow
+                FROM {TABLE_NAME}
+                WHERE date = ANY(%s)
+                ORDER BY date ASC, industry_name ASC
+                """,
+                (dates,),
+            )
+            rows = cur.fetchall()
+    return [
+        {
+            "date": str(r[0]),
+            "industry_code": str(r[1]),
+            "industry_name": str(r[2]),
+            "net_inflow": float(r[3] or 0.0),
+        }
+        for r in rows
+    ]
+
+
 def get_sum_by_industry_for_dates(dates: list[str]) -> list[dict[str, Any]]:
     """Return per-industry sum of net_inflow for given dates."""
     ensure_table()
