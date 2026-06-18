@@ -35,7 +35,7 @@
 | OPT-003 | 前端 API 层 + God Page 拆分（阶段一） | P1 | 3–5 天 | [x] |
 | OPT-004 | 东财行业预热脱离请求路径 | P1 | 1–2 天 | [x] |
 | OPT-005 | TV Screener Sync 并行化 | P1 | 1–2 天 | [x] |
-| OPT-006 | TrendOK `refresh` 语义对齐 | P2 | 0.5–1 天 | [ ] |
+| OPT-006 | TrendOK `refresh` 语义对齐 | P2 | 0.5–1 天 | [x] |
 | OPT-007 | DB Migration 工具（Alembic） | P2 | 2–3 天 | [ ] |
 | OPT-008 | TV Capture 异步化 / Job Queue | P2 | 2–4 天 | [ ] |
 | OPT-009 | packages/shared 类型共享 | P2 | 1–2 天 | [ ] |
@@ -263,9 +263,15 @@ Dashboard Sync All 对 enabled screeners **串行**调用 `sync_screener()`（`d
 
 ### OPT-006：TrendOK `refresh` 语义对齐
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
+
+#### 实施摘要（方案 B）
+
+- 前后端删除 `refresh` 参数；TrendOK 明确为 DB-only 计算
+- Watchlist 手动刷新保留 `/bars?force=true` → trendok 两步路径
+- 测试：`test_trendok_performance_path.py`、`trendok.test.ts`
 
 #### 问题
 
@@ -285,9 +291,16 @@ Dashboard Sync All 对 enabled screeners **串行**调用 `sync_screener()`（`d
 
 - `services/data-sync-service/src/data_sync_service/service/trendok.py`
 - `services/data-sync-service/src/data_sync_service/api/query_routes.py`
-- `apps/desktop-ui/src/lib/screenerExport.ts`
+- `apps/desktop-ui/src/lib/api/trendok.ts`
 - `apps/desktop-ui/src/components/pages/WatchlistPage.tsx`
+- `apps/desktop-ui/src/components/pages/DashboardPage.tsx`
 - `apps/desktop-ui/src/lib/watchlist-screener-import.ts`
+
+#### 验证
+
+- [x] pytest trendok 相关用例通过
+- [x] vitest `trendok.test.ts` 通过
+- [x] trendok URL 不再含 `refresh=` query param
 
 ---
 

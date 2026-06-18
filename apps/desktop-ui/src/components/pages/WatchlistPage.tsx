@@ -340,7 +340,6 @@ async function fetchFreshWatchlistSnapshot(symbols: string[]): Promise<{
   if (!syms.length) return { trend, quotes };
 
   const sp = new URLSearchParams();
-  sp.set('refresh', 'true');
   sp.set('realtime', quoteWindow ? 'true' : 'false');
   for (const s of syms) sp.append('symbols', s);
 
@@ -697,9 +696,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         }
 
         const sp = new URLSearchParams();
-        // Always request a best-effort refresh so Watchlist is based on the latest daily bar.
-        // The backend will fall back to cache if upstream is blocked.
-        sp.set('refresh', 'true');
+        // TrendOK reads DB-cached daily bars; forceMarket above refreshes bars from network first.
         sp.set('realtime', isShanghaiQuoteWindow() ? 'true' : 'false');
         for (const s of syms) sp.append('symbols', s);
         const rows = await apiGetJson<TrendOkResult[]>(

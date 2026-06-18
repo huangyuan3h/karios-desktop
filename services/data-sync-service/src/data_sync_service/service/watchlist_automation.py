@@ -89,7 +89,7 @@ def _industry_from_trendok(row: dict[str, Any]) -> str | None:
 def record_score_snapshots(symbols: list[str]) -> tuple[str | None, int]:
     if not symbols:
         return None, 0
-    rows_out = compute_trendok_for_symbols(symbols, refresh=True, realtime=False)
+    rows_out = compute_trendok_for_symbols(symbols, realtime=False)
     score_rows: list[dict[str, Any]] = []
     trade_date: str | None = None
     for row in rows_out:
@@ -268,7 +268,7 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
         trade_date = score_trade_date
     meta["scoreSnapshots"] = score_count
 
-    trendok_rows = compute_trendok_for_symbols(symbols, refresh=False, realtime=False) if symbols else []
+    trendok_rows = compute_trendok_for_symbols(symbols, realtime=False) if symbols else []
     trendok_by_symbol = {
         str(r.get("symbol")): r for r in trendok_rows if isinstance(r, dict) and r.get("symbol")
     }

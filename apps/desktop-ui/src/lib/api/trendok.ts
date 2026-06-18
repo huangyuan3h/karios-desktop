@@ -5,18 +5,17 @@ import type { TrendOkResult } from './types';
 
 const inflight = new Map<string, Promise<TrendOkResult[]>>();
 
-function trendOkRequestKey(symbols: string[], realtime: boolean, refresh: boolean): string {
+function trendOkRequestKey(symbols: string[], realtime: boolean): string {
   const sorted = [...symbols].map((s) => s.trim().toUpperCase()).filter(Boolean).sort();
-  return `${realtime ? 'rt1' : 'rt0'}:${refresh ? 'rf1' : 'rf0'}:${sorted.join(',')}`;
+  return `${realtime ? 'rt1' : 'rt0'}:${sorted.join(',')}`;
 }
 
 async function fetchTrendOkBatch(
   symbols: string[],
-  options: { realtime: boolean; refresh: boolean },
+  options: { realtime: boolean },
 ): Promise<TrendOkResult[]> {
   if (!symbols.length) return [];
   const sp = new URLSearchParams();
-  sp.set('refresh', options.refresh ? 'true' : 'false');
   sp.set('realtime', options.realtime ? 'true' : 'false');
   for (const sym of symbols) sp.append('symbols', sym);
   return apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
@@ -29,19 +28,18 @@ export function resetTrendOkInflightForTests(): void {
 
 export async function fetchTrendOkMap(
   symbols: string[],
-  options: { realtime: boolean; refresh?: boolean },
+  options: { realtime: boolean },
 ): Promise<Map<string, TrendOkResult>> {
   const trendMap = new Map<string, TrendOkResult>();
   const syms = symbols.map((s) => s.trim().toUpperCase()).filter(Boolean);
   if (!syms.length) return trendMap;
 
-  const refresh = options.refresh ?? true;
-  const key = trendOkRequestKey(syms, options.realtime, refresh);
+  const key = trendOkRequestKey(syms, options.realtime);
   let request = inflight.get(key);
   if (!request) {
     const parts = chunk(syms, 200);
     request = Promise.all(
-      parts.map((batch) => fetchTrendOkBatch(batch, { realtime: options.realtime, refresh })),
+      parts.map((batch) => fetchTrendOkBatch(batch, { realtime: options.realtime })),
     ).then((batches) => batches.flat());
     inflight.set(key, request);
     void request.finally(() => {

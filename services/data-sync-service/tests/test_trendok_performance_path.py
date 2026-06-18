@@ -26,7 +26,7 @@ def test_compute_trendok_uses_lightweight_market_regime() -> None:
             "data_sync_service.service.eastmoney_industry.fetch_em_industries_for_ts_codes",
         ) as fetch_em,
     ):
-        out = compute_trendok_for_symbols(["CN:999999"], refresh=True, realtime=False)
+        out = compute_trendok_for_symbols(["CN:999999"], realtime=False)
     assert isinstance(out, list)
     get_regime.assert_called_once()
     assert get_regime.call_args.kwargs.get("include_breadth") is False

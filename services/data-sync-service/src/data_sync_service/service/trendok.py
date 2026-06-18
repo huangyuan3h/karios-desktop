@@ -618,15 +618,13 @@ def _industry_flow_score_adjustment(industry: str, ctx: dict[str, Any]) -> tuple
 
 def compute_trendok_for_symbols(
     symbols: list[str],
-    refresh: bool = False,
     realtime: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Compute TrendOK for up to 200 symbols using DB-cached daily bars.
-    `refresh` is accepted for compatibility but ignored (data-sync-service does not trigger network fetch here).
+    Data freshness depends on scheduled close sync or manual `/bars?force=true` refresh.
     `realtime` enables best-effort quote merge for the latest bar during trading hours.
     """
-    _ = refresh
     syms0 = [str(s or "").strip().upper() for s in (symbols or [])]
     syms = [s for s in syms0 if s]
     if not syms:

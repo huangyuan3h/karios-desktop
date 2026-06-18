@@ -258,12 +258,11 @@ def get_market_fund_flow_endpoint(
 @router.get("/market/stocks/trendok")
 def get_trendok_endpoint(
     symbols: list[str] | None = Query(None),
-    refresh: bool = False,
     realtime: bool = False,
 ) -> list[dict]:
     # Purpose: TrendOK/Score computation for Watchlist (CN daily only), fully based on data-sync-service DB.
     syms = symbols if isinstance(symbols, list) else []
-    return compute_trendok_for_symbols(syms, bool(refresh), bool(realtime))
+    return compute_trendok_for_symbols(syms, bool(realtime))
 
 
 @router.get("/market/status")

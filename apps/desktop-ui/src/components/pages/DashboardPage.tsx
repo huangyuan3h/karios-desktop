@@ -414,7 +414,6 @@ async function fetchWatchlistRiskRows(): Promise<WatchlistRiskRow[]> {
     Promise.all(
       chunk(syms, 200).map(async (part) => {
         const sp = new URLSearchParams();
-        sp.set('refresh', 'true');
         sp.set('realtime', quoteWindow ? 'true' : 'false');
         for (const s of part) sp.append('symbols', s);
         return apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
@@ -1171,7 +1170,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       Promise.all(
         symsChunks.map(async (part) => {
           const sp = new URLSearchParams();
-          sp.set('refresh', 'true');
           sp.set('realtime', quoteWindow ? 'true' : 'false');
           for (const s of part) sp.append('symbols', s);
           return apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);

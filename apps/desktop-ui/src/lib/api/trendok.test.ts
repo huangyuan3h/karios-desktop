@@ -47,6 +47,14 @@ describe('fetchTrendOkMap', () => {
     expect(apiGetJson).toHaveBeenCalledTimes(2);
   });
 
+  it('does not send refresh query param', async () => {
+    vi.mocked(apiGetJson).mockResolvedValue([{ symbol: 'CN:600519', score: 90 }]);
+    await fetchTrendOkMap(['CN:600519'], { realtime: true });
+    const url = String(vi.mocked(apiGetJson).mock.calls[0]?.[0] ?? '');
+    expect(url).not.toContain('refresh=');
+    expect(url).toContain('realtime=true');
+  });
+
   it('normalizes map keys to uppercase', async () => {
     vi.mocked(apiGetJson).mockResolvedValue([{ symbol: 'cn:600519', score: 88 }]);
     const map = await fetchTrendOkMap(['CN:600519'], { realtime: false });

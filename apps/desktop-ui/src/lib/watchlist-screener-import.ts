@@ -172,7 +172,6 @@ export async function importFromScreener(options: ScreenerImportOptions = {}): P
   const debugBySym: Record<string, TrendOkResult> = {};
   for (const part of chunk(filtered, 200)) {
     const sp = new URLSearchParams();
-    sp.set('refresh', 'true');
     sp.set('realtime', isShanghaiQuoteWindow() ? 'true' : 'false');
     for (const s2 of part) sp.append('symbols', s2);
     const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
