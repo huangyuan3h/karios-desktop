@@ -70,6 +70,54 @@ const FLAG_COLORS: Array<{ label: string; hex: string }> = [
   { label: 'Gray', hex: '#f4f4f5' },
 ];
 
+type WatchlistRowTone = 'green' | 'red' | 'none';
+type WatchlistStickyColumn = 'buy' | 'score' | 'trendOk' | 'action';
+
+const WATCHLIST_STICKY_COLUMN_LAYOUT: Record<
+  WatchlistStickyColumn,
+  { width: number; right: number; zHeader: number; zBody: number }
+> = {
+  buy: { width: 130, right: 248, zHeader: 24, zBody: 14 },
+  score: { width: 80, right: 168, zHeader: 23, zBody: 13 },
+  trendOk: { width: 80, right: 88, zHeader: 22, zBody: 12 },
+  action: { width: 88, right: 0, zHeader: 25, zBody: 15 },
+};
+
+function watchlistStickyRowBg(tone: WatchlistRowTone, header = false): string {
+  if (header) return 'bg-[var(--k-surface)]';
+  if (tone === 'green') return 'bg-emerald-50/60 group-hover:bg-emerald-100/60';
+  if (tone === 'red') return 'bg-red-50/60 group-hover:bg-red-100/60';
+  return 'bg-[var(--k-surface)] group-hover:bg-[var(--k-surface-2)]';
+}
+
+function watchlistStickyCellClass(
+  column: WatchlistStickyColumn,
+  opts: { header?: boolean; tone?: WatchlistRowTone; extra?: string } = {},
+): string {
+  const tone = opts.tone ?? 'none';
+  const parts = [
+    'sticky',
+    watchlistStickyRowBg(tone, opts.header),
+    'px-3 py-2',
+    column === 'buy' ? 'shadow-[-4px_0_8px_rgba(0,0,0,0.06)]' : '',
+    opts.extra ?? '',
+  ];
+  return parts.filter(Boolean).join(' ');
+}
+
+function watchlistStickyCellStyle(
+  column: WatchlistStickyColumn,
+  opts: { header?: boolean } = {},
+): React.CSSProperties {
+  const layout = WATCHLIST_STICKY_COLUMN_LAYOUT[column];
+  return {
+    right: layout.right,
+    minWidth: layout.width,
+    width: layout.width,
+    zIndex: opts.header ? layout.zHeader : layout.zBody,
+  };
+}
+
 function escapeMarkdownCell(value: string): string {
   return String(value ?? '')
     .replace(/\|/g, '\\|')
@@ -1703,9 +1751,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   );
 
   return (
-    <div className="mx-auto p-6">
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div className="min-w-0">
+    <div className="min-w-0 w-full max-w-full p-6">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <div className="text-lg font-semibold">Watchlist</div>
           <div className="mt-1 text-sm text-[var(--k-muted)]">
             Manage the stocks you are watching.
@@ -1801,7 +1849,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           ) : null}
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           <Button
             size="sm"
             variant="secondary"
@@ -1856,7 +1904,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         </div>
       </div>
 
-      <div className="mb-4 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
+      <div className="mb-4 min-w-0 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <div className="font-medium">Import debug table</div>
@@ -1897,7 +1945,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
         <VisibilitySection
           visible={importDebugOpen}
-          className="mt-2 max-h-[520px] overflow-auto rounded border border-[var(--k-border)]"
+          className="mt-2 max-h-[520px] min-w-0 overflow-auto rounded border border-[var(--k-border)]"
         >
           <table className="w-full border-collapse text-sm">
             <thead className="sticky top-0 bg-[var(--k-surface)] text-[var(--k-muted)]">
@@ -2053,7 +2101,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         </VisibilitySection>
       </div>
 
-      <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+      <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="mb-2 text-sm font-medium">Add</div>
         <div className="grid gap-2 md:grid-cols-12">
           <input
@@ -2087,7 +2135,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         </div>
       </section>
 
-      <section className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+      <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="text-sm font-medium">Score（0–100）计分说明</div>
         <div className="mt-2 space-y-1.5 text-xs leading-relaxed text-[var(--k-text)]">
           {scoreExplainZhLines().map((line, i) => (
@@ -2099,15 +2147,15 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         </div>
       </section>
 
-      <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 overflow-x-auto">
-        <div className="mb-2 flex items-center justify-between min-w-[700px]">
+      <section className="min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+        <div className="mb-2 flex items-center justify-between">
           <div className="text-sm font-medium">List</div>
           <div className="text-xs text-[var(--k-muted)]">{items.length} items</div>
         </div>
 
         {items.length ? (
-          <div className="rounded border border-[var(--k-border)]">
-            <table className="border-collapse text-sm min-w-[1420px]">
+          <div className="min-w-0 w-full max-w-full overflow-x-auto rounded border border-[var(--k-border)]">
+            <table className="w-max border-separate border-spacing-0 text-sm">
               <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                 <tr className="text-left">
                   <th className="px-3 py-2 w-[40px]" title="Color flag">
@@ -2116,16 +2164,26 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                   <th className="px-3 py-2 w-[110px]">Symbol</th>
                   <th className="px-3 py-2 w-[120px] max-w-[120px]">Name</th>
                   <th className="px-3 py-2 w-[120px] max-w-[140px]">Industry</th>
-                  <th className="px-3 py-2 w-[70px]">HotTop3</th>
                   <th className="px-3 py-2 w-[70px]">仓位%</th>
                   <th className="px-3 py-2 w-[90px]">成本价</th>
                   <th className="px-3 py-2 w-[90px]">Current</th>
+                  <th className="px-3 py-2 w-[90px]">止损</th>
+                  <th className="px-3 py-2 w-[70px]">HotTop3</th>
                   <th className="px-3 py-2 w-[80px]">VWAP</th>
                   <th className="px-3 py-2 w-[76px]">Intraday%</th>
                   <th className="px-3 py-2 w-[52px]">Gap</th>
                   <th className="px-3 py-2 w-[180px]">Alerts</th>
                   <th className="px-3 py-2 w-[72px]">P&L%</th>
-                  <th className="px-3 py-2 w-[80px]">
+                  <th
+                    className={watchlistStickyCellClass('buy', { header: true, extra: 'max-w-[130px]' })}
+                    style={watchlistStickyCellStyle('buy', { header: true })}
+                  >
+                    买入
+                  </th>
+                  <th
+                    className={watchlistStickyCellClass('score', { header: true })}
+                    style={watchlistStickyCellStyle('score', { header: true })}
+                  >
                     <button
                       type="button"
                       className="inline-flex items-center gap-1"
@@ -2152,9 +2210,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       )}
                     </button>
                   </th>
-                  <th className="px-3 py-2 w-[130px] max-w-[130px]">买入</th>
-                  <th className="px-3 py-2 w-[90px]">止损</th>
-                  <th className="px-3 py-2 w-[80px]">
+                  <th
+                    className={watchlistStickyCellClass('trendOk', { header: true })}
+                    style={watchlistStickyCellStyle('trendOk', { header: true })}
+                  >
                     <div className="inline-flex items-center gap-2">
                       <span>TrendOK</span>
                       <Button
@@ -2171,7 +2230,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                       </Button>
                     </div>
                   </th>
-                  <th className="px-3 py-2 w-[54px] text-right"> </th>
+                  <th
+                    className={watchlistStickyCellClass('action', { header: true, extra: 'text-right' })}
+                    style={watchlistStickyCellStyle('action', { header: true })}
+                  >
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -2191,10 +2255,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                     const tone = rowTone(t, rowMetrics.alerts);
                     const rowClass =
                       tone === 'green'
-                        ? 'border-t border-[var(--k-border)] bg-emerald-50/60 hover:bg-emerald-100/60'
+                        ? 'group border-t border-[var(--k-border)] bg-emerald-50/60 hover:bg-emerald-100/60'
                         : tone === 'red'
-                          ? 'border-t border-[var(--k-border)] bg-red-50/60 hover:bg-red-100/60'
-                          : 'border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)]';
+                          ? 'group border-t border-[var(--k-border)] bg-red-50/60 hover:bg-red-100/60'
+                          : 'group border-t border-[var(--k-border)] hover:bg-[var(--k-surface-2)]';
                     return (
                       <tr key={it.symbol} className={rowClass}>
                         <td className="px-3 py-2">
@@ -2237,15 +2301,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                           }
                         >
                           {industryDisplayName((t?.values ?? {}) as Record<string, unknown>)}
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          {formatHotTop3(t) === '✓' ? (
-                            <span className="text-emerald-600 font-medium" title="Industry in today fund-flow Top3">
-                              ✓
-                            </span>
-                          ) : (
-                            '—'
-                          )}
                         </td>
                         <td className="px-3 py-2">
                           <input
@@ -2324,6 +2379,16 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                             return fmtPrice(current);
                           })()}
                         </td>
+                        <td className="px-3 py-2">{renderStopLossCell(it.symbol)}</td>
+                        <td className="px-3 py-2 text-center">
+                          {formatHotTop3(t) === '✓' ? (
+                            <span className="text-emerald-600 font-medium" title="Industry in today fund-flow Top3">
+                              ✓
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td className="px-3 py-2 font-mono">{formatVwap(rowMetrics.vwap)}</td>
                         <td
                           className={`px-3 py-2 font-mono ${
@@ -2377,13 +2442,31 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                         >
                           {formatPnLPct(computePnLPct(it.costPrice ?? null, rowMetrics.current))}
                         </td>
-                        <td className="px-3 py-2">{renderScoreCell(it.symbol)}</td>
-                        <td className="px-3 py-2 max-w-[130px] truncate">
+                        <td
+                          className={watchlistStickyCellClass('buy', {
+                            tone,
+                            extra: 'max-w-[130px] truncate',
+                          })}
+                          style={watchlistStickyCellStyle('buy')}
+                        >
                           {renderBuyCell(it.symbol)}
                         </td>
-                        <td className="px-3 py-2">{renderStopLossCell(it.symbol)}</td>
-                        <td className="px-3 py-2">{renderTrendOkCell(it.symbol)}</td>
-                        <td className="px-3 py-2 text-right">
+                        <td
+                          className={watchlistStickyCellClass('score', { tone })}
+                          style={watchlistStickyCellStyle('score')}
+                        >
+                          {renderScoreCell(it.symbol)}
+                        </td>
+                        <td
+                          className={watchlistStickyCellClass('trendOk', { tone })}
+                          style={watchlistStickyCellStyle('trendOk')}
+                        >
+                          {renderTrendOkCell(it.symbol)}
+                        </td>
+                        <td
+                          className={watchlistStickyCellClass('action', { tone, extra: 'text-right' })}
+                          style={watchlistStickyCellStyle('action')}
+                        >
                           <div className="flex justify-end">
                             <Button
                               variant="ghost"
