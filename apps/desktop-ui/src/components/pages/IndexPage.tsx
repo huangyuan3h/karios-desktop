@@ -2,72 +2,14 @@
 
 import * as React from 'react';
 
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { cn } from '@/lib/utils';
 import { IndexDetailPage } from '@/components/pages/IndexDetailPage';
-
-type CnIndexSignal = {
-  tsCode?: string;
-  name?: string;
-  signal?: string;
-  positionRange?: string;
-  close?: number | null;
-  /** vs prior trading day close (realtime uses quote pct_chg when available) */
-  pctChg?: number | null;
-  ma5?: number | null;
-  ma20?: number | null;
-  realtime?: boolean;
-  tradeTime?: string | null;
-  source?: string | null;
-};
-
-type MacroItem = {
-  seriesId?: string;
-  name?: string;
-  category?: string;
-  why?: string;
-  asOfDate?: string | null;
-  close?: number | null;
-  pctChg?: number | null;
-  ma5?: number | null;
-  ma20?: number | null;
-  source?: string | null;
-  underlyingTsCode?: string | null;
-  realtime?: boolean;
-  tradeTime?: string | null;
-  quotePrice?: number | null;
-  quotePctChg?: number | null;
-};
-
-type MacroSnapshot = {
-  cnIndexSignals?: CnIndexSignal[];
-  macro?: MacroItem[];
-  warning?: string;
-};
-
-const POLL_MS = 45_000;
-const FETCH_TIMEOUT_MS = 30_000;
-
-async function fetchSnapshot(): Promise<MacroSnapshot> {
-  const ctrl = new AbortController();
-  const timer = window.setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${DATA_SYNC_BASE_URL}/macro/snapshot`, {
-      cache: 'no-store',
-      signal: ctrl.signal,
-    });
-    const txt = await res.text().catch(() => '');
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-    return (txt ? (JSON.parse(txt) as MacroSnapshot) : {}) as MacroSnapshot;
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') {
-      throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s (check data-sync-service)`);
-    }
-    throw e;
-  } finally {
-    window.clearTimeout(timer);
-  }
-}
+import {
+  useMacroSnapshotQuery,
+  type CnIndexSignal,
+  type MacroItem,
+} from '@/lib/queries/macro';
+import { MACRO_POLL_MS } from '@/lib/queries/intervals';
 
 function signalSurfaceClass(signal: string): string {
   const s = String(signal || 'unknown');
@@ -217,28 +159,16 @@ function cnToCardProps(it: CnIndexSignal): IndexCardProps {
 }
 
 export function IndexPage() {
-  const [data, setData] = React.useState<MacroSnapshot | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  const [pending, setPending] = React.useState(true);
+  const snapshotQuery = useMacroSnapshotQuery();
+  const data = snapshotQuery.data ?? null;
+  const pending = snapshotQuery.isPending;
+  const error =
+    snapshotQuery.error instanceof Error
+      ? snapshotQuery.error.message
+      : snapshotQuery.error
+        ? String(snapshotQuery.error)
+        : null;
   const [detail, setDetail] = React.useState<{ type: 'cn' | 'macro'; code: string; name: string } | null>(null);
-
-  const load = React.useCallback(async () => {
-    try {
-      setError(null);
-      const snap = await fetchSnapshot();
-      setData(snap);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPending(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void load();
-    const t = window.setInterval(() => void load(), POLL_MS);
-    return () => window.clearInterval(t);
-  }, [load]);
 
   const cn = Array.isArray(data?.cnIndexSignals) ? data!.cnIndexSignals! : [];
   const macro = Array.isArray(data?.macro) ? data!.macro! : [];
@@ -258,15 +188,12 @@ export function IndexPage() {
     <div className="mx-auto max-w-6xl space-y-4 p-4">
       <div className="flex items-start justify-between gap-3">
         <p className="max-w-prose text-xs leading-relaxed text-[var(--k-muted)]">
-          CN indices + macro · poll ~{POLL_MS / 1000}s · offshore series are typically prior session EOD.
+          CN indices + macro · poll ~{MACRO_POLL_MS / 1000}s · offshore series are typically prior session EOD.
         </p>
         <button
           type="button"
           className="shrink-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-1.5 text-xs font-medium shadow-sm"
-          onClick={() => {
-            setPending(true);
-            void load();
-          }}
+          onClick={() => void snapshotQuery.refetch()}
         >
           Refresh
         </button>

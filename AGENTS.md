@@ -94,6 +94,14 @@ TradingView screener capture is **async** via Postgres job queue `tv_capture_job
 
 ---
 
+## Frontend data fetching (OPT-012)
+
+- Polling pages use **`@tanstack/react-query`** via `lib/queries/*` hooks (`useDashboardSummaryQuery`, `useWatchlistMarketQuery`, `useMacroSnapshotQuery`, etc.).
+- `QueryClientProvider` wraps the app in `AppShell.tsx`.
+- New page data fetch: add a query module under `apps/desktop-ui/src/lib/queries/` rather than raw `setInterval`.
+
+---
+
 ## Shared API types (OPT-009)
 
 Cross-layer JSON contracts live in [`packages/shared`](packages/shared) as **Zod schemas** + inferred TS types.

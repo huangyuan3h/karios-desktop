@@ -31,7 +31,7 @@
 | ID | 标题 | 优先级 | 预估工时 | 状态 |
 |----|------|--------|----------|------|
 | OPT-011 | Watchlist 手动刷新并行化 + TrendOK 统一 fetch | P0 | 1–2 天 | [x] |
-| OPT-012 | React Query 替换手写轮询 | P1 | 2–4 天 | [ ] |
+| OPT-012 | React Query 替换手写轮询 | P1 | 2–4 天 | [x] |
 | OPT-013 | Dashboard / Watchlist God Page 拆分（阶段二） | P1 | 3–5 天 | [ ] |
 | OPT-014 | Industry Fund Flow 读路径 N+1 消除 | P1 | 1–2 天 | [ ] |
 | OPT-015 | Watchlist Automation 去重 TrendOK 计算 | P1 | 0.5–1 天 | [ ] |
@@ -67,54 +67,26 @@
 
 ### OPT-012：React Query 替换手写轮询
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 问题
+#### 实施摘要
 
-项目**未使用** `@tanstack/react-query`，全靠 `useEffect` + `setInterval` 手工轮询：
-
-| 位置 | 间隔 | 行为 |
-|------|------|------|
-| `DashboardPage.tsx` ~658, ~691 | 60s | summary + watchlist risk（交易时段 gating） |
-| `WatchlistPage.tsx` ~783 | 10 min | `refreshTrend('timer')` |
-| `IndexPage.tsx` ~237 | 45s | macro snapshot，无 tab 可见性控制 |
-| `hooks/useWatchlistAutomation.ts` ~54 | 60s | 全局 automation tick |
-
-缺失能力：请求 dedupe、staleTime 缓存、后台 tab 暂停、统一 error/retry、loading 状态组合。
-
-#### 方案（分阶段，本任务 scope = 阶段 A）
-
-**阶段 A（本 OPT）：**
-
-1. 添加 `@tanstack/react-query` + `QueryClientProvider`（`AppShell` 或 root layout）。
-2. 迁移 **Dashboard summary** 与 **Watchlist trend** 两条最热路径为 `useQuery` + `refetchInterval`。
-3. 交易时段 gating 放入 `refetchInterval` 动态函数或 `enabled` 条件。
-4. `refetchOnWindowFocus` 默认 true；IndexPage 一并迁移。
-
-**阶段 B（后续，不在本 scope）：**
-
-- TV capture job poll、SSE sync 状态、Chat reference 预取。
-
-#### 涉及文件
-
-| 文件 | 改动 |
-|------|------|
-| `apps/desktop-ui/package.json` | 添加 `@tanstack/react-query` |
-| `apps/desktop-ui/src/components/layout/AppShell.tsx` | QueryClientProvider |
-| `apps/desktop-ui/src/lib/queries/dashboard.ts` | 新建 query hooks |
-| `apps/desktop-ui/src/lib/queries/watchlist.ts` | 新建 query hooks |
-| `apps/desktop-ui/src/components/pages/DashboardPage.tsx` | 移除 setInterval，用 hooks |
-| `apps/desktop-ui/src/components/pages/WatchlistPage.tsx` | 同上 |
-| `apps/desktop-ui/src/components/pages/IndexPage.tsx` | 同上 |
+- 添加 `@tanstack/react-query` + [`query-client.ts`](apps/desktop-ui/src/lib/query-client.ts) + `AppShell` `QueryClientProvider`
+- 新建 `lib/queries/{intervals,dashboard,watchlist,macro}.ts`
+- **Dashboard**：`useDashboardSummaryQuery` + `useWatchlistRiskQuery`（60s 交易时段 gating）；SSE done / sentiment sync 写 query cache
+- **Watchlist**：`useWatchlistMarketQuery`（10 min）；manual force / copy / automation 走 `refetchWatchlistMarket` / `invalidateQueries`
+- **Index**：`useMacroSnapshotQuery`（45s）
+- 未迁移：`useWatchlistAutomation` 60s tick（阶段 B）
+- 测试：`intervals.test.ts`、`dashboard.test.ts`、`watchlist.test.ts`
 
 #### 验证
 
-- [ ] vitest + 可选 `@testing-library/react` query 测试
-- [ ] Dashboard / Watchlist 切换 tab 无重复 inflight 请求（Network 面板）
-- [ ] 后台 tab 不触发 60s 轮询（或仅 focus 时 refetch）
-- [ ] 行为与改造前一致（数据 freshness、交易时段逻辑）
+- [x] vitest 通过（query key / interval 单测）
+- [ ] Dashboard / Watchlist 切换 tab 无重复 inflight（需 Network 手动确认）
+- [x] `refetchIntervalInBackground: false`（隐藏 tab 暂停 interval 轮询）
+- [ ] 行为与改造前一致（需 UI smoke：Sync All、Manual Refresh、Index Refresh）
 
 ---
 
@@ -275,7 +247,7 @@ Later:   OPT-013（God Page 拆分）→ 与 OPT-012 可并行，但 hooks 边�
 
 | 日期 | 说明 |
 |------|------|
-| 2026-06-18 | OPT-011 完成：bars force 单股 sync + Watchlist 并行 refresh + fetchTrendOkMap |
+| 2026-06-18 | OPT-012 完成：React Query 替换 Dashboard/Watchlist/Index 手写轮询 |
 
 ---
 

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown,
   ArrowUp,
@@ -19,10 +20,13 @@ import { apiGetJson } from '@/lib/api/client';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import {
   getShanghaiTodayIso,
-  isShanghaiQuoteWindow,
   isShanghaiTradingTime,
 } from '@/lib/market-hours';
-import { fetchWatchlistMarketSnapshot } from '@/lib/watchlist-market';
+import {
+  refetchWatchlistMarket,
+  useWatchlistMarketQuery,
+  watchlistMarketKey,
+} from '@/lib/queries/watchlist';
 import {
   fetchAutomationLatest,
   formatAutomationSummary,
@@ -423,14 +427,22 @@ function rowTone(
 
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const { addReference } = useChatStore();
+  const queryClient = useQueryClient();
   const [items, setItems] = React.useState<WatchlistItem[]>([]);
   const [watchlistHydrating, setWatchlistHydrating] = React.useState(true);
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
-  const [trend, setTrend] = React.useState<Record<string, TrendOkResult>>({});
-  const [quotes, setQuotes] = React.useState<Record<string, WatchlistQuote>>({});
-  const [trendBusy, setTrendBusy] = React.useState(false);
-  const [trendUpdatedAt, setTrendUpdatedAt] = React.useState<string | null>(null);
+  const symbols = React.useMemo(
+    () => items.map((x) => x.symbol).filter(Boolean),
+    [items],
+  );
+  const marketQuery = useWatchlistMarketQuery(symbols);
+  const trend = marketQuery.data?.trend ?? {};
+  const quotes = marketQuery.data?.quotes ?? {};
+  const trendBusy = marketQuery.isFetching;
+  const trendUpdatedAt = marketQuery.dataUpdatedAt
+    ? new Date(marketQuery.dataUpdatedAt).toISOString()
+    : null;
   const [syncBusy, setSyncBusy] = React.useState(false);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [syncStage, setSyncStage] = React.useState<string | null>(null);
@@ -489,8 +501,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     placement: 'top-end' | 'bottom-end';
     symbol: string | null;
   }>({ open: false, x: 0, y: 0, placement: 'bottom-end', symbol: null });
-
-  const trendReqRef = React.useRef(0);
 
   React.useEffect(() => {
     void fetchAutomationLatest()
@@ -573,86 +583,46 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     };
   }, [items]);
 
-  const refreshTrend = React.useCallback(
-    async (reason: 'items_changed' | 'manual' | 'timer' | 'automation', opts: { forceMarket?: boolean } = {}) => {
-      const syms = items.map((x) => x.symbol).filter(Boolean);
-      if (!syms.length) {
-        setTrend({});
-        setQuotes({});
-        setTrendUpdatedAt(null);
-        return;
-      }
-
-      const reqId = (trendReqRef.current += 1);
-      setTrendBusy(true);
-      try {
-        const snapshot = await fetchWatchlistMarketSnapshot(syms, {
-          forceMarket: Boolean(opts.forceMarket),
-          realtime: isShanghaiQuoteWindow(),
-        });
-        if (reqId !== trendReqRef.current) return;
-
-        const next = snapshot.trend;
-        const nextQuotes = snapshot.quotes;
-        setTrend(next);
-        setTrendUpdatedAt(new Date().toISOString());
-        setQuotes(nextQuotes);
-
-        if (opts.forceMarket && snapshot.barSync && snapshot.barSync.failures > 0) {
-          const { failures, total } = snapshot.barSync;
-          if (reason === 'manual') {
-            setSyncMsg(
-              `Network sync failed for ${failures}/${total} symbols; using cached data.`,
-            );
-          }
-        }
-
-        const nextItems = items.map((it) => {
-          if (!(it.positionPct && it.positionPct > 0)) return it;
-          if (!it.costPrice) return it;
-          const q = nextQuotes[it.symbol];
-          const price =
-            typeof q?.price === 'number' && Number.isFinite(q.price)
-              ? q.price
-              : typeof next[it.symbol]?.values?.close === 'number'
-                ? next[it.symbol]?.values?.close
-                : null;
-          if (price == null) return it;
-          const maxPrice = typeof it.maxPrice === 'number' ? it.maxPrice : 0;
-          if (price > maxPrice) return { ...it, maxPrice: price };
-          if (!it.maxPrice) return { ...it, maxPrice: price };
-          return it;
-        });
-        if (nextItems.some((x, i) => x.maxPrice !== items[i]?.maxPrice)) {
-          persist(nextItems);
-        }
-
-        if (reason === 'manual') setError(null);
-      } catch (e) {
-        if (reqId === trendReqRef.current) console.warn('Watchlist trendok load failed:', e);
-      } finally {
-        if (reqId === trendReqRef.current) setTrendBusy(false);
-      }
-    },
-    [items],
-  );
-
   React.useEffect(() => {
-    void refreshTrend('items_changed');
-  }, [refreshTrend]);
+    if (!marketQuery.data) return;
+    const nextQuotes = marketQuery.data.quotes;
+    const next = marketQuery.data.trend;
+    const nextItems = items.map((it) => {
+      if (!(it.positionPct && it.positionPct > 0)) return it;
+      if (!it.costPrice) return it;
+      const q = nextQuotes[it.symbol];
+      const price =
+        typeof q?.price === 'number' && Number.isFinite(q.price)
+          ? q.price
+          : typeof next[it.symbol]?.values?.close === 'number'
+            ? next[it.symbol]?.values?.close
+            : null;
+      if (price == null) return it;
+      const maxPrice = typeof it.maxPrice === 'number' ? it.maxPrice : 0;
+      if (price > maxPrice) return { ...it, maxPrice: price };
+      if (!it.maxPrice) return { ...it, maxPrice: price };
+      return it;
+    });
+    if (nextItems.some((x, i) => x.maxPrice !== items[i]?.maxPrice)) {
+      persist(nextItems);
+    }
+  }, [marketQuery.data, items]);
 
-  React.useEffect(() => {
-    // Auto refresh every 10 minutes to reflect DB updates without reloading the app.
-    if (!items.length) return;
-    const id = window.setInterval(
-      () => {
-        // Auto refresh only recomputes from cache; manual refresh can force network sync.
-        void refreshTrend('timer', { forceMarket: false });
-      },
-      10 * 60 * 1000,
-    );
-    return () => window.clearInterval(id);
-  }, [items.length, refreshTrend]);
+  async function onManualRefreshTrend() {
+    if (!symbols.length) return;
+    setSyncMsg(null);
+    try {
+      const snapshot = await refetchWatchlistMarket(queryClient, symbols, { forceMarket: true });
+      if (snapshot.barSync && snapshot.barSync.failures > 0) {
+        setSyncMsg(
+          `Network sync failed for ${snapshot.barSync.failures}/${snapshot.barSync.total} symbols; using cached data.`,
+        );
+      }
+      setError(null);
+    } catch (e) {
+      console.warn('Watchlist trendok load failed:', e);
+    }
+  }
 
   function addSymbolToWatchlist(symRaw: string) {
     setError(null);
@@ -774,7 +744,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       }
       setAutomationSkipRun(null);
       setItems(loadWatchlist());
-      void refreshTrend('automation', { forceMarket: false });
+      void queryClient.invalidateQueries({ queryKey: watchlistMarketKey(symbols) });
       const summary = formatAutomationSummary(run, result ?? null);
       setAutomationMsg(summary);
     } catch (e) {
@@ -1266,15 +1236,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       let trendSnap: Record<string, TrendOkResult>;
       let quotesSnap: Record<string, WatchlistQuote>;
       try {
-        const fresh = await fetchWatchlistMarketSnapshot(syms, {
-          forceMarket: false,
-          realtime: isShanghaiQuoteWindow(),
-        });
+        const fresh = await refetchWatchlistMarket(queryClient, syms, { forceMarket: false });
         trendSnap = fresh.trend;
         quotesSnap = fresh.quotes;
-        setTrend(fresh.trend);
-        setQuotes(fresh.quotes);
-        setTrendUpdatedAt(new Date().toISOString());
       } catch (e) {
         console.warn('Watchlist copy refresh failed, using cached data:', e);
         trendSnap = trend;
@@ -1584,7 +1548,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => void refreshTrend('manual', { forceMarket: true })}
+            onClick={() => void onManualRefreshTrend()}
             disabled={trendBusy || !items.length}
             className="gap-2"
             aria-label="Refresh watchlist scores"

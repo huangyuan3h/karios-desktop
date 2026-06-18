@@ -2,6 +2,7 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 
 import {
@@ -47,6 +48,14 @@ import {
   fetchTrendOkMap,
   screenerMarkdownRowsToTable,
 } from '@/lib/screenerExport';
+import {
+  dashboardSummaryQueryKey,
+  fetchDashboardSummary,
+  saveDashboardSummaryCache,
+  useDashboardSummaryQuery,
+  useWatchlistRiskQuery,
+  type WatchlistRiskRow,
+} from '@/lib/queries/dashboard';
 import {
   WATCHLIST_MD_HEADERS,
   buildWatchlistRowMetrics,
@@ -282,37 +291,7 @@ function buildHotIndustriesMarkdown(s: DashboardSummary | null, heading = '##'):
 }
 
 const NEWS_BRIEF_CACHE_KEY = 'karios.dashboard.newsBrief.v1';
-const DASHBOARD_SUMMARY_CACHE_KEY = 'karios.dashboard.summary.v1';
 const NEWS_BRIEF_MIN_REFRESH_MS = 4 * 60 * 60 * 1000;
-
-type DashboardSummaryCache = {
-  summary?: DashboardSummary;
-  cachedAt?: string;
-};
-
-function loadDashboardSummaryCache(): DashboardSummary | null {
-  try {
-    const raw = window.localStorage.getItem(DASHBOARD_SUMMARY_CACHE_KEY);
-    if (!raw) return null;
-    const obj = JSON.parse(raw) as DashboardSummaryCache;
-    const summary = obj?.summary;
-    return summary && typeof summary === 'object' ? summary : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveDashboardSummaryCache(summary: DashboardSummary) {
-  try {
-    const payload: DashboardSummaryCache = {
-      summary,
-      cachedAt: new Date().toISOString(),
-    };
-    window.localStorage.setItem(DASHBOARD_SUMMARY_CACHE_KEY, JSON.stringify(payload));
-  } catch {
-    // ignore
-  }
-}
 
 type TrendOkChecks = {
   emaOrder?: boolean | null;
@@ -321,14 +300,6 @@ type TrendOkChecks = {
   closeNear20dHigh?: boolean | null;
   rsiInRange?: boolean | null;
   volumeSurge?: boolean | null;
-};
-
-type WatchlistRiskRow = {
-  symbol: string;
-  name: string;
-  intradayChgPct: number | null;
-  gapUp: boolean | null;
-  alerts: WatchlistRiskAlert[];
 };
 
 type QuoteResp = {
@@ -390,106 +361,18 @@ type SyncStep = {
   message?: string | null;
 };
 
-async function fetchWatchlistRiskRows(): Promise<WatchlistRiskRow[]> {
-  const itemsRaw = loadWatchlist();
-  const items = (Array.isArray(itemsRaw) ? itemsRaw : [])
-    .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
-    .map((x) => ({ ...x, symbol: String(x.symbol).trim().toUpperCase() }));
-  if (!items.length) return [];
-
-  const tradingTime = isShanghaiTradingTime();
-  const quoteWindow = isShanghaiSyncWindow();
-  const todaySh = getShanghaiTodayIso();
-  const syms = items.map((x) => x.symbol);
-  const byTsCode = new Map<string, string>();
-  const tsCodes = syms
-    .map((s) => {
-      const t = toTsCodeFromSymbol(s);
-      if (t) byTsCode.set(t, s);
-      return t;
-    })
-    .filter(Boolean) as string[];
-
-  const [trendResults, quoteResults] = await Promise.all([
-    Promise.all(
-      chunk(syms, 200).map(async (part) => {
-        const sp = new URLSearchParams();
-        sp.set('realtime', quoteWindow ? 'true' : 'false');
-        for (const s of part) sp.append('symbols', s);
-        return apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
-      }),
-    ),
-    Promise.all(
-      chunk(tsCodes, 50).map(async (part) => {
-        return apiGetJson<QuoteResp>(`/quote?ts_codes=${encodeURIComponent(part.join(','))}`).catch(
-          () => null,
-        );
-      }),
-    ),
-  ]);
-
-  const trend: Record<string, TrendOkResult> = {};
-  for (const trendRows of trendResults) {
-    for (const r of Array.isArray(trendRows) ? trendRows : []) {
-      if (r && r.symbol) trend[String(r.symbol).toUpperCase()] = r;
-    }
-  }
-
-  const quotes: Record<
-    string,
-    {
-      price: number | null;
-      tradeTime: string | null;
-      amount: number | null;
-      volume: number | null;
-      preClose: number | null;
-      pctChg: number | null;
-    }
-  > = {};
-  for (const r of quoteResults) {
-    for (const it of r?.items ?? []) {
-      const sym = byTsCode.get(it.ts_code);
-      if (!sym) continue;
-      quotes[sym] = parseDashboardQuoteItem(it);
-    }
-  }
-
-  const out: WatchlistRiskRow[] = [];
-  for (const it of items) {
-    const t = trend[it.symbol];
-    const rowMetrics = buildWatchlistRowMetrics({
-      symbol: it.symbol,
-      trend: t,
-      quote: quotes[it.symbol],
-      tradingTime,
-      todaySh,
-    });
-    if (!rowMetrics.alerts.length) continue;
-    out.push({
-      symbol: it.symbol,
-      name: it.name ?? t?.name ?? '—',
-      intradayChgPct: rowMetrics.intradayChgPct,
-      gapUp: rowMetrics.gapUp,
-      alerts: rowMetrics.alerts,
-    });
-  }
-
-  out.sort((a, b) => {
-    const ab = a.alerts.some((x) => x.severity === 'block');
-    const bb = b.alerts.some((x) => x.severity === 'block');
-    if (ab !== bb) return ab ? -1 : 1;
-    const ia = a.intradayChgPct ?? -Infinity;
-    const ib = b.intradayChgPct ?? -Infinity;
-    return ib - ia;
-  });
-  return out;
-}
-
 export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) => void }) {
   const { addReference } = useChatStore();
-  // Do not read localStorage during initial render — avoids SSR/CSR hydration mismatch.
-  const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
-  const [summaryLoading, setSummaryLoading] = React.useState(false);
+  const queryClient = useQueryClient();
+  const summaryQuery = useDashboardSummaryQuery();
+  const watchlistRiskQuery = useWatchlistRiskQuery();
+  const summary = summaryQuery.data ?? null;
+  const summaryLoading = summaryQuery.isFetching && !summaryQuery.data;
+  const watchlistRiskRows = watchlistRiskQuery.data ?? [];
+  const watchlistRiskBusy = watchlistRiskQuery.isFetching;
+  const watchlistRiskUpdatedAt = watchlistRiskQuery.dataUpdatedAt
+    ? new Date(watchlistRiskQuery.dataUpdatedAt).toISOString()
+    : null;
   const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [sentimentBusy, setSentimentBusy] = React.useState(false);
@@ -517,9 +400,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const [newsSummaryUpdatedAt, setNewsSummaryUpdatedAt] = React.useState<string | null>(null);
   const [newsFallback, setNewsFallback] = React.useState<string | null>(null);
   const [newsSummaryBusy, setNewsSummaryBusy] = React.useState(false);
-  const [watchlistRiskRows, setWatchlistRiskRows] = React.useState<WatchlistRiskRow[]>([]);
-  const [watchlistRiskBusy, setWatchlistRiskBusy] = React.useState(false);
-  const [watchlistRiskUpdatedAt, setWatchlistRiskUpdatedAt] = React.useState<string | null>(null);
   const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
 
   const industryCopyTimerRef = React.useRef<number | null>(null);
@@ -536,9 +416,24 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   }, []);
 
   React.useEffect(() => {
-    const cached = loadDashboardSummaryCache();
-    if (cached) setSummary(cached);
-  }, []);
+    if (!summaryQuery.data) return;
+    saveDashboardSummaryCache(summaryQuery.data);
+    const fallback = buildNewsFallback((summaryQuery.data as any)?.news?.items ?? []);
+    if (fallback) {
+      const fallbackUpdatedAt = new Date().toISOString();
+      setNewsFallback(fallback);
+      saveNewsBriefCache({ fallback, fallbackUpdatedAt });
+    }
+  }, [summaryQuery.data]);
+
+  React.useEffect(() => {
+    if (!summaryQuery.error) return;
+    setError(
+      summaryQuery.error instanceof Error
+        ? summaryQuery.error.message
+        : String(summaryQuery.error),
+    );
+  }, [summaryQuery.error]);
 
   React.useEffect(() => {
     try {
@@ -638,62 +533,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     saveCardOrder(nextIds);
   }, [defaultCards]);
 
-  const refreshWatchlistRisk = React.useCallback(async () => {
-    setWatchlistRiskBusy(true);
-    try {
-      const rows = await fetchWatchlistRiskRows();
-      setWatchlistRiskRows(rows);
-      setWatchlistRiskUpdatedAt(new Date().toISOString());
-    } catch {
-      // Keep last good snapshot on transient errors.
-    } finally {
-      setWatchlistRiskBusy(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void refreshWatchlistRisk();
-  }, [refreshWatchlistRisk]);
-
-  React.useEffect(() => {
-    const id = window.setInterval(() => {
-      if (isShanghaiTradingTime()) void refreshWatchlistRisk();
-    }, 60 * 1000);
-    return () => window.clearInterval(id);
-  }, [refreshWatchlistRisk]);
-
-  const refresh = React.useCallback(async () => {
-    setError(null);
-    setSummaryLoading(true);
-    try {
-      const lite = isShanghaiSyncWindow() ? '' : '?include_macro=false';
-      const s = await apiGetJson<DashboardSummary>(`/dashboard/summary${lite}`);
-      setSummary(s);
-      saveDashboardSummaryCache(s);
-      const fallback = buildNewsFallback((s as any)?.news?.items ?? []);
-      if (fallback) {
-        const fallbackUpdatedAt = new Date().toISOString();
-        setNewsFallback(fallback);
-        saveNewsBriefCache({ fallback, fallbackUpdatedAt });
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSummaryLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  React.useEffect(() => {
-    const id = window.setInterval(() => {
-      if (isShanghaiTradingTime()) void refresh();
-    }, 60 * 1000);
-    return () => window.clearInterval(id);
-  }, [refresh]);
+  function applySummaryToCache(next: DashboardSummary) {
+    const includeMacro = isShanghaiSyncWindow();
+    queryClient.setQueryData(dashboardSummaryQueryKey(includeMacro), next);
+    saveDashboardSummaryCache(next);
+  }
 
   async function onSyncAll() {
     setBusy(true);
@@ -737,8 +581,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
             const s = data.summary as DashboardSummary;
             if (s) {
-              setSummary(s);
-              saveDashboardSummaryCache(s);
+              applySummaryToCache(s);
               const newsData = (s as any)?.news;
               if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
                 if (!shouldRefreshNewsBrief(newsSummaryUpdatedAt) && newsSummary?.trim()) {
@@ -801,7 +644,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setError(null);
     try {
       await apiPostJson('/market/cn/sentiment/sync', { force: isShanghaiSyncWindow() });
-      await refresh();
+      await queryClient.invalidateQueries({
+        queryKey: dashboardSummaryQueryKey(isShanghaiSyncWindow()),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -813,8 +658,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setNewsSummaryBusy(true);
     setError(null);
     try {
-      const s = await apiGetJson<DashboardSummary>(`/dashboard/summary`);
-      setSummary(s);
+      const s = await fetchDashboardSummary(true);
+      applySummaryToCache(s);
       const newsData = (s as any)?.news;
       if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
         const aiRes = await fetch(`${AI_BASE_URL}/news/summary`, {
@@ -1574,7 +1419,10 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             size="sm"
             className="gap-2"
             disabled={busy || copyAllBusy || pdfReportBusy}
-            onClick={() => void refresh()}
+            onClick={() => {
+              setError(null);
+              void summaryQuery.refetch();
+            }}
           >
             <RefreshCw className="h-4 w-4" />
             Refresh
@@ -2608,7 +2456,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                       size="sm"
                       variant="secondary"
                       disabled={watchlistRiskBusy}
-                      onClick={() => void refreshWatchlistRisk()}
+                      onClick={() => void watchlistRiskQuery.refetch()}
                     >
                       {watchlistRiskBusy ? (
                         <RefreshCw className="mr-2 h-4 w-4 animate-spin" />

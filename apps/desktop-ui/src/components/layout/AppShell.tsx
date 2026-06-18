@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Bot } from 'lucide-react';
 
 import { AgentPanel } from '@/components/agent/AgentPanel';
@@ -26,6 +27,7 @@ import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { Button } from '@/components/ui/button';
 import { useWatchlistAutomation } from '@/hooks/useWatchlistAutomation';
 import { useChatStore } from '@/lib/chat/store';
+import { createQueryClient } from '@/lib/query-client';
 import { ensureWatchlistHydrated } from '@/lib/watchlist-storage';
 import { cn } from '@/lib/utils';
 
@@ -56,6 +58,7 @@ function getPageTitle(page: string, activeStockSymbol: string | null): string {
 
 export function AppShell() {
   const { state, setAgent } = useChatStore();
+  const [queryClient] = React.useState(() => createQueryClient());
 
   React.useEffect(() => {
     void ensureWatchlistHydrated();
@@ -128,6 +131,7 @@ export function AppShell() {
   }, [agentMaximized, overlayMounted]);
 
   return (
+    <QueryClientProvider client={queryClient}>
     <div className="flex h-screen w-screen bg-[var(--k-bg)] text-[var(--k-text)]">
       <SidebarNav
         activeId={activePage}
@@ -282,5 +286,6 @@ export function AppShell() {
         </div>
       ) : null}
     </div>
+    </QueryClientProvider>
   );
 }
