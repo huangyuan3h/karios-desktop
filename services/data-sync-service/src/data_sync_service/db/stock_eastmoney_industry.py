@@ -85,6 +85,111 @@ def count_rows() -> int:
     return int(row[0] or 0) if row else 0
 
 
+_CN_STOCK_WHERE = """
+    (sb.market IN ('主板', '中小板', '创业板', '科创板', 'CN') OR sb.ts_code ~ '^[0-9]{6}\\.(SH|SZ)$')
+    AND (sb.ts_code LIKE '%.SH' OR sb.ts_code LIKE '%.SZ')
+    AND (sb.delist_date IS NULL OR sb.delist_date > CURRENT_DATE)
+"""
+
+
+def coverage_stats() -> dict[str, int]:
+    """Return CN A-share counts: total, em_mapped, missing."""
+    ensure_table()
+    from data_sync_service.db.stock_basic import ensure_table as ensure_sb
+
+    ensure_sb()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT COUNT(*) AS total_cn
+                FROM stock_basic sb
+                WHERE {_CN_STOCK_WHERE}
+                """
+            )
+            total_row = cur.fetchone()
+            cur.execute(
+                f"""
+                SELECT COUNT(*) AS em_mapped
+                FROM stock_basic sb
+                INNER JOIN {TABLE_NAME} em ON sb.ts_code = em.ts_code
+                WHERE {_CN_STOCK_WHERE}
+                """
+            )
+            mapped_row = cur.fetchone()
+    total_cn = int(total_row[0] or 0) if total_row else 0
+    em_mapped = int(mapped_row[0] or 0) if mapped_row else 0
+    missing = max(0, total_cn - em_mapped)
+    return {"totalCnStocks": total_cn, "emMapped": em_mapped, "missingCount": missing}
+
+
+def list_missing_cn_ts_codes(*, after_ts_code: str | None = None, limit: int = 500) -> list[str]:
+    """CN A-shares in stock_basic without an East Money industry row."""
+    ensure_table()
+    from data_sync_service.db.stock_basic import ensure_table as ensure_sb
+
+    ensure_sb()
+    lim = max(1, min(int(limit), 5000))
+    params: list[Any] = []
+    after_clause = ""
+    if after_ts_code:
+        after_clause = "AND sb.ts_code > %s"
+        params.append(after_ts_code)
+    params.append(lim)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT sb.ts_code
+                FROM stock_basic sb
+                LEFT JOIN {TABLE_NAME} em ON sb.ts_code = em.ts_code
+                WHERE {_CN_STOCK_WHERE}
+                  AND em.ts_code IS NULL
+                  {after_clause}
+                ORDER BY sb.ts_code
+                LIMIT %s
+                """,
+                tuple(params),
+            )
+            rows = cur.fetchall()
+    return [str(r[0]) for r in rows if r and r[0]]
+
+
+def list_stale_cn_ts_codes(
+    *,
+    after_ts_code: str | None = None,
+    limit: int = 500,
+    max_stale_days: int = 30,
+) -> list[str]:
+    """EM industry rows older than max_stale_days (CN A-shares only)."""
+    ensure_table()
+    lim = max(1, min(int(limit), 5000))
+    days = max(1, int(max_stale_days))
+    params: list[Any] = [days]
+    after_clause = ""
+    if after_ts_code:
+        after_clause = "AND em.ts_code > %s"
+        params.append(after_ts_code)
+    params.append(lim)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT em.ts_code
+                FROM {TABLE_NAME} em
+                INNER JOIN stock_basic sb ON sb.ts_code = em.ts_code
+                WHERE {_CN_STOCK_WHERE}
+                  AND em.updated_at::timestamptz < NOW() - (%s || ' days')::interval
+                  {after_clause}
+                ORDER BY em.ts_code
+                LIMIT %s
+                """,
+                tuple(params),
+            )
+            rows = cur.fetchall()
+    return [str(r[0]) for r in rows if r and r[0]]
+
+
 def search_stocks_by_industry_keyword(keyword: str, *, limit: int = 12) -> list[dict[str, Any]]:
     """Find CN stocks whose East Money industry board name matches keyword."""
     ensure_table()

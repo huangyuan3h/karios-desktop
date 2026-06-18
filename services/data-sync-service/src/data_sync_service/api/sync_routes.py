@@ -17,22 +17,46 @@ from data_sync_service.service.trade_calendar import sync_trade_calendar
 router = APIRouter()
 
 
+@router.get("/sync/eastmoney-industry/status")
+def eastmoney_industry_status_endpoint() -> dict:
+    """Coverage and latest sync job record for East Money industry mapping."""
+    from data_sync_service.service.eastmoney_industry import get_eastmoney_industry_sync_status
+
+    return get_eastmoney_industry_sync_status()
+
+
 @router.post("/sync/eastmoney-industry")
 def sync_eastmoney_industry_endpoint(
+    mode: str = Query(
+        "symbols",
+        description="symbols: explicit list or stock_basic slice; missing|stale: incremental offline sync",
+    ),
     symbols: list[str] | None = Query(
         None,
-        description="Optional CN symbols, e.g. CN:000021. Fast smoke-test path.",
+        description="Optional CN symbols, e.g. CN:000021. Used when mode=symbols.",
     ),
     limit: int | None = Query(
-        200,
+        500,
         ge=1,
         le=5000,
-        description="When symbols omitted, number of CN stocks from stock_basic to refresh.",
+        description="Batch size for missing/stale modes, or stock_basic slice when mode=symbols without symbols.",
     ),
+    max_stale_days: int = Query(30, ge=1, le=365, description="Stale threshold when mode=stale"),
 ) -> dict:
-    """Sync East Money industry labels (per-stock lookup; use symbols= for quick tests)."""
-    from data_sync_service.service.eastmoney_industry import sync_eastmoney_industry
+    """Sync East Money industry labels (offline HTTP; not for TrendOK hot path)."""
+    from data_sync_service.service.eastmoney_industry import (
+        sync_eastmoney_industry,
+        sync_eastmoney_industry_incremental,
+    )
 
+    mode_norm = (mode or "symbols").strip().lower()
+    if mode_norm in ("missing", "stale"):
+        return sync_eastmoney_industry_incremental(
+            mode=mode_norm,  # type: ignore[arg-type]
+            batch_size=limit or 500,
+            max_batches=1,
+            max_stale_days=max_stale_days,
+        )
     return sync_eastmoney_industry(symbols=symbols, limit=limit)
 
 

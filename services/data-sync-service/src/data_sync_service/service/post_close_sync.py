@@ -6,6 +6,7 @@ from typing import Any
 
 from data_sync_service.service.index_daily import sync_index_daily_full
 from data_sync_service.service.macro_daily import sync_macro_daily_full
+from data_sync_service.service.eastmoney_industry import sync_eastmoney_industry_incremental
 
 
 def run_post_close_sync() -> dict[str, Any]:
@@ -15,4 +16,9 @@ def run_post_close_sync() -> dict[str, Any]:
     """
     index_result = sync_index_daily_full()
     macro_result = sync_macro_daily_full()
-    return {"indexDaily": index_result, "macroDaily": macro_result}
+    em_result = sync_eastmoney_industry_incremental(
+        mode="missing",
+        batch_size=500,
+        max_batches=1,
+    )
+    return {"indexDaily": index_result, "macroDaily": macro_result, "eastmoneyIndustry": em_result}

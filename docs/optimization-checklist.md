@@ -33,7 +33,7 @@
 | OPT-001 | TrendOK 热路径性能修复 | P0 | 1–2 天 | [x] |
 | OPT-002 | Watchlist 存储权威源明确化 | P0 | 2–3 天 | [x] |
 | OPT-003 | 前端 API 层 + God Page 拆分（阶段一） | P1 | 3–5 天 | [x] |
-| OPT-004 | 东财行业预热脱离请求路径 | P1 | 1–2 天 | [ ] |
+| OPT-004 | 东财行业预热脱离请求路径 | P1 | 1–2 天 | [x] |
 | OPT-005 | TV Screener Sync 并行化 | P1 | 1–2 天 | [ ] |
 | OPT-006 | TrendOK `refresh` 语义对齐 | P2 | 0.5–1 天 | [ ] |
 | OPT-007 | DB Migration 工具（Alembic） | P2 | 2–3 天 | [ ] |
@@ -185,34 +185,37 @@ apps/desktop-ui/src/lib/chunk.ts          # chunk 工具
 
 ### OPT-004：东财行业预热脱离请求路径
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 问题
+#### 实施摘要
 
-`ensure_em_industries_for_ts_codes()` 在 TrendOK 热路径同步拉东财 HTTP，200 个 miss × (~400ms + 40ms sleep) ≈ **70–100s**。
+- **OPT-001 已完成热路径**：TrendOK 仅 DB `lookup_by_ts_codes`，miss → `stock_basic.industry` fallback，禁止 HTTP
+- 新增 `sync_eastmoney_industry_incremental`（missing/stale 模式 + `sync_job_record` resume）
+- 新增 `coverage_stats()`、`GET /sync/eastmoney-industry/status`
+- `post_close_sync` 挂接 1 批 missing sync（batch_size=500）
+- 新建 `eastmoney_industry_job`（工作日 18:00 Asia/Shanghai）
+- `ensure_em_industries_for_ts_codes` 标记 deprecated；离线同步走 incremental API / scheduler
+- 测试：扩展 `test_eastmoney_industry.py`（9 用例）+ 保持 `test_trendok_performance_path.py`
 
-#### 方案
+#### 问题（历史背景）
 
-1. **Scheduler job**：每日收盘后 / Sync All 的 industry step 后，批量预热 `stock_eastmoney_industry` 表。
-2. **TrendOK 路径**：只 `lookup_by_ts_codes`，miss 时用 `stock_basic.industry` fallback，**禁止 HTTP**。
-3. 可选：admin endpoint `POST /sync/eastmoney-industry` 手动触发全量。
-
-#### 涉及文件
-
-| 文件 | 改动 |
-|------|------|
-| `services/data-sync-service/src/data_sync_service/service/eastmoney_industry.py` | 拆分 sync vs lookup-only |
-| `services/data-sync-service/src/data_sync_service/service/trendok.py` | 改用 lookup-only |
-| `services/data-sync-service/src/data_sync_service/scheduler/` | 新增或挂接 job |
-| `services/data-sync-service/src/data_sync_service/api/sync_routes.py` | 可选手动触发 |
+改造前 TrendOK 热路径对 miss 逐股东财 HTTP，200 miss ≈ 70–100s；miss 时 Tushare industry fallback 与行业资金流板块名不一致，加分失真。
 
 #### 验证
 
-- [ ] TrendOK 对新 symbol（已在 stock_basic）不再触发东财 HTTP
-- [ ] Scheduler job 后 `stock_eastmoney_industry` 覆盖率上升
-- [ ] Score 中行业相关加分仍正常
+- [x] TrendOK 热路径不触发东财 HTTP（`test_trendok_performance_path.py`）
+- [x] incremental sync / coverage / status 单元测试通过
+- [ ] 稳定运行 1–2 周后 watchlist EM 覆盖率 > 99%（需生产观察）
+- [ ] Score 行业加分在 EM 命中时正常（需 UI/spot check）
+
+```bash
+pytest services/data-sync-service/tests/test_eastmoney_industry.py \
+  services/data-sync-service/tests/test_trendok_performance_path.py -q
+curl -s http://127.0.0.1:4330/sync/eastmoney-industry/status
+curl -X POST "http://127.0.0.1:4330/sync/eastmoney-industry?mode=missing&limit=500"
+```
 
 ---
 
@@ -410,6 +413,7 @@ Later:   OPT-007 ~ OPT-010
 | 2026-06-18 | OPT-001 完成：TrendOK 热路径 skip breadth + regime TTL cache + EM DB-only；benchmark ~0.21s |
 | 2026-06-18 | OPT-002 完成：Watchlist registry 权威源 + GET API + hydrate/persist + 11 项自动化测试 |
 | 2026-06-18 | OPT-003 阶段一完成：统一 API client + 共享 types/utils + TrendOK inflight 去重；全 Page 迁移 |
+| 2026-06-18 | OPT-004 完成：EM 行业 offline incremental sync + post_close/scheduler job + status API |
 
 ---
 
