@@ -194,4 +194,9 @@ pnpm install:all
 
 ## 更多文档
 
-详细的架构设计和需求说明请参阅 `docs/architecture-and-requirements.md`。
+- **[AGENTS.md](./AGENTS.md)** — AI Agent / 维护者必读（Alembic、schema 变更、OPT 任务约定）
+- [docs/modules/README.md](./docs/modules/README.md) — 业务模块与工作流
+- [docs/optimization-checklist.md](./docs/optimization-checklist.md) — 架构优化与 Agent 任务清单
+- [services/data-sync-service/README.md](./services/data-sync-service/README.md) — 后端 API、调度、数据库迁移
+
+详细的架构设计和需求说明请参阅 `docs/architecture-and-requirements.md`（待补充）。
