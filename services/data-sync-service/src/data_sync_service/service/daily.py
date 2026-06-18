@@ -38,6 +38,49 @@ def _date_to_yyyymmdd(d: date) -> str:
     return d.strftime("%Y%m%d")
 
 
+def _incremental_start_date(ts_code: str) -> tuple[str, str]:
+    """Return (start_date, end_date) YYYYMMDD for incremental daily sync."""
+    end_date = _today_yyyymmdd()
+    last_date = get_last_trade_date(ts_code)
+    if last_date is None:
+        return FULL_START_DATE, end_date
+    start_date = _date_to_yyyymmdd(last_date + timedelta(days=1))
+    return start_date, end_date
+
+
+def sync_daily_for_ts_code(ts_code: str) -> dict[str, Any]:
+    """
+    Incremental tushare daily sync for one ts_code.
+    Does not write sync_job_record (used by bars?force=true hot path).
+    """
+    code = (ts_code or "").strip().upper()
+    if not code:
+        return {"ok": False, "error": "ts_code is required"}
+
+    settings = get_settings()
+    if not settings.tu_share_api_key:
+        return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
+
+    start_date, end_date = _incremental_start_date(code)
+    if start_date > end_date:
+        return {"ok": True, "updated": 0, "skipped": True, "ts_code": code}
+
+    try:
+        pro = ts.pro_api(settings.tu_share_api_key)
+        df: pd.DataFrame = pro.daily(
+            ts_code=code,
+            start_date=start_date,
+            end_date=end_date,
+            fields=",".join(DAILY_FIELDS),
+        )
+        updated = 0
+        if df is not None and not df.empty:
+            updated = upsert_from_dataframe(df)
+        return {"ok": True, "updated": updated, "ts_code": code}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e), "ts_code": code}
+
+
 def sync_daily_full() -> dict[str, Any]:
     """
     Full sync for all stocks:

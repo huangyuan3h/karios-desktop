@@ -217,10 +217,9 @@ def get_quote_endpoint(
 @router.get("/market/stocks/{symbol}/bars")
 def get_market_bars_endpoint(symbol: str, days: int = Query(60, ge=10, le=200), force: bool = False) -> dict:
     # Purpose: compatibility endpoint for StockPage candlestick chart.
-    # Inputs: symbol like CN:000001, days; force is accepted for compatibility but ignored (query-only).
-    _ = force
+    # Inputs: symbol like CN:000001, days; force triggers incremental tushare sync then DB read.
     try:
-        return get_market_bars(symbol=symbol, days=days)
+        return get_market_bars(symbol=symbol, days=days, force=bool(force))
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e)) from e
 

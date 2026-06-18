@@ -6,6 +6,7 @@ from typing import Any, Tuple
 
 from data_sync_service.db.daily import fetch_last_bars
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
+from data_sync_service.service.daily import sync_daily_for_ts_code
 
 
 def _parse_symbol(symbol: str) -> Tuple[str, str, str] | None:
@@ -49,11 +50,14 @@ def _lookup_name(ts_code: str) -> str | None:
     return None
 
 
-def get_market_bars(symbol: str, days: int = 60) -> dict[str, Any]:
+def get_market_bars(symbol: str, days: int = 60, *, force: bool = False) -> dict[str, Any]:
     """
     Return a response compatible with quant-service `MarketBarsResponse`.
+    When force=True, best-effort incremental tushare sync runs before reading DB.
     """
     parsed = _parse_symbol(symbol)
+    if force and parsed:
+        sync_daily_for_ts_code(parsed[2])
     if not parsed:
         return {
             "symbol": symbol,

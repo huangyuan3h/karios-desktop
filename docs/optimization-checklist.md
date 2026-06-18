@@ -30,7 +30,7 @@
 
 | ID | 标题 | 优先级 | 预估工时 | 状态 |
 |----|------|--------|----------|------|
-| OPT-011 | Watchlist 手动刷新并行化 + TrendOK 统一 fetch | P0 | 1–2 天 | [ ] |
+| OPT-011 | Watchlist 手动刷新并行化 + TrendOK 统一 fetch | P0 | 1–2 天 | [x] |
 | OPT-012 | React Query 替换手写轮询 | P1 | 2–4 天 | [ ] |
 | OPT-013 | Dashboard / Watchlist God Page 拆分（阶段二） | P1 | 3–5 天 | [ ] |
 | OPT-014 | Industry Fund Flow 读路径 N+1 消除 | P1 | 1–2 天 | [ ] |
@@ -42,37 +42,24 @@
 
 ### OPT-011：Watchlist 手动刷新并行化 + TrendOK 统一 fetch
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 问题
+#### 实施摘要
 
-1. **Force bars 完全串行**：`WatchlistPage.tsx` 手动刷新时对每只股票依次 `GET /bars?force=true`，并固定 `sleep(120ms)`。50 只股票约 **6–15s**，100 只可达 **12–30s+**。
-2. **TrendOK 未走统一 API**：Dashboard 已用 `fetchTrendOkMap`（chunk 200 + inflight 去重），Watchlist 仍直接 `apiGetJson` 一次 append 全部 symbols — 大列表可能 URL 过长、无去重、无 chunk。
-3. **同文件逻辑重复**：`refreshTrend` 与 `fetchFreshWatchlistSnapshot` 大量重复（quotes、trendok、maxPrice persist）。
-
-#### 方案
-
-1. Force bars 改为**有界并发**（建议 concurrency 3–5，`p-limit` 或手写 semaphore）；去掉固定 120ms delay，仅在 429/限流时指数退避。
-2. `refreshTrend` / snapshot 路径统一调用 `lib/api/trendok.ts` 的 `fetchTrendOkMap`。
-3. 抽取 `fetchWatchlistMarketSnapshot(symbols, opts)` 到 `lib/watchlist-market.ts`，供 refresh / copy markdown / dashboard risk 复用（本任务只做 Watchlist 两条路径，Dashboard 迁移可留注释）。
-
-#### 涉及文件
-
-| 文件 | 改动 |
-|------|------|
-| `apps/desktop-ui/src/components/pages/WatchlistPage.tsx` | 并行 force bars；改用 `fetchTrendOkMap` |
-| `apps/desktop-ui/src/lib/watchlist-market.ts` | 新建（可选，推荐） |
-| `apps/desktop-ui/src/lib/api/trendok.ts` | 如需，暴露 batch bars helper 或文档说明 |
-| `apps/desktop-ui/src/lib/watchlist-market.test.ts` | 新建单元测试 |
+- **后端**：`sync_daily_for_ts_code()` 单股 tushare 增量 sync；`GET /bars?force=true` 接通 force 语义
+- **前端**：新建 `lib/watchlist-market.ts`（`forceRefreshWatchlistBars` concurrency=4、`fetchWatchlistQuotes`、`fetchWatchlistMarketSnapshot` + `fetchTrendOkMap`）；`lib/concurrency.ts`、`lib/symbols.ts`
+- `WatchlistPage` 删除串行 force bars + 120ms sleep；`refreshTrend` / Copy Markdown 共用 snapshot helper
+- 测试：`test_daily_symbol_sync.py`（4）、`test_api.py` force 用例、`watchlist-market.test.ts`（4）、`concurrency.test.ts`（2）
 
 #### 验证
 
-- [ ] vitest 通过（含并发/去重用例）
-- [ ] 50 股 manual refresh 耗时 < 5s（本地 benchmark）
-- [ ] 100+ 股 watchlist TrendOK 正常（chunk 生效）
-- [ ] 单股 force 失败不阻塞其余
+- [x] vitest 通过（105 passed；含并发/去重/chunk 用例）
+- [x] pytest `test_daily_symbol_sync.py` + bars force API 用例通过
+- [ ] 50 股 manual refresh 耗时 < 5s（需 UI 手动 benchmark）
+- [x] 100+ 股 watchlist TrendOK chunk 生效（单测 250 symbols → 2 batch）
+- [x] 单股 force 失败不阻塞其余（单测 failures 计数）
 
 ---
 
@@ -288,7 +275,7 @@ Later:   OPT-013（God Page 拆分）→ 与 OPT-012 可并行，但 hooks 边�
 
 | 日期 | 说明 |
 |------|------|
-| 2026-06-18 | 第二轮审查：OPT-001~010 已完成；识别 P0×1 + P1×4 共 5 项 |
+| 2026-06-18 | OPT-011 完成：bars force 单股 sync + Watchlist 并行 refresh + fetchTrendOkMap |
 
 ---
 

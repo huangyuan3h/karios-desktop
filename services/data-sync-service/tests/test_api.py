@@ -21,6 +21,17 @@ def test_market_bars_compat_endpoint_shape() -> None:
     assert isinstance(payload["bars"], list)
 
 
+def test_market_bars_force_triggers_symbol_sync() -> None:
+    from unittest.mock import patch
+
+    client = TestClient(app)
+    with patch("data_sync_service.service.market_bars.sync_daily_for_ts_code") as mock_sync:
+        mock_sync.return_value = {"ok": True, "updated": 0, "skipped": True}
+        resp = client.get("/market/stocks/CN:000001/bars?days=60&force=true")
+    assert resp.status_code == 200
+    mock_sync.assert_called_once_with("000001.SZ")
+
+
 def test_trendok_endpoint_shape() -> None:
     client = TestClient(app)
     resp = client.get("/market/stocks/trendok?symbols=CN:000001")

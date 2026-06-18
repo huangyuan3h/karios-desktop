@@ -17,12 +17,12 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { apiGetJson } from '@/lib/api/client';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
-import { chunk } from '@/lib/chunk';
 import {
   getShanghaiTodayIso,
   isShanghaiQuoteWindow,
   isShanghaiTradingTime,
 } from '@/lib/market-hours';
+import { fetchWatchlistMarketSnapshot } from '@/lib/watchlist-market';
 import {
   fetchAutomationLatest,
   formatAutomationSummary,
@@ -52,7 +52,6 @@ import {
   hasBlockingWatchlistRisk,
   industryDisplayName,
   isIntradaySurge,
-  parseQuoteNumber,
   resolveWatchlistCurrentPrice,
   rowHasWatchlistRiskHighlight,
   shouldRequireRealtimeQuote,
@@ -240,24 +239,6 @@ type MarketStockBasicRow = {
   currency: string;
 };
 
-type QuoteResp = {
-  ok: boolean;
-  error?: string;
-  items: Array<{
-    ts_code: string;
-    price: string | null;
-    open: string | null;
-    high: string | null;
-    low: string | null;
-    pre_close: string | null;
-    change: string | null;
-    pct_chg: string | null;
-    volume: string | null;
-    amount: string | null;
-    trade_time: string | null;
-  }>;
-};
-
 type TrendOkChecks = {
   emaOrder?: boolean | null;
   macdPositive?: boolean | null;
@@ -316,74 +297,6 @@ function normalizeSymbolInput(input: string): { symbol: string } | { error: stri
     error:
       'Unsupported code format. Use 6-digit CN ticker, 4-5 digit HK ticker, or CN:/HK: prefixed symbol.',
   };
-}
-
-function toTsCodeFromSymbol(symbol: string): string | null {
-  // Only handle CN A-shares for now: "CN:000001" -> "000001.SZ/SH"
-  const s = symbol.trim().toUpperCase();
-  if (!s.startsWith('CN:')) return null;
-  const ticker = s.slice('CN:'.length).trim();
-  if (!/^[0-9]{6}$/.test(ticker)) return null;
-  const suffix = ticker.startsWith('6') ? 'SH' : 'SZ';
-  return `${ticker}.${suffix}`;
-}
-
-async function fetchFreshWatchlistSnapshot(symbols: string[]): Promise<{
-  trend: Record<string, TrendOkResult>;
-  quotes: Record<string, WatchlistQuote>;
-}> {
-  const syms = symbols.filter(Boolean);
-  const tradingTime = isShanghaiTradingTime();
-  const quoteWindow = isShanghaiQuoteWindow();
-  const trend: Record<string, TrendOkResult> = {};
-  const quotes: Record<string, WatchlistQuote> = {};
-  if (!syms.length) return { trend, quotes };
-
-  const sp = new URLSearchParams();
-  sp.set('realtime', quoteWindow ? 'true' : 'false');
-  for (const s of syms) sp.append('symbols', s);
-
-  const byTsCode = new Map<string, string>();
-  const tsCodes = syms
-    .map((s) => {
-      const t = toTsCodeFromSymbol(s);
-      if (t) byTsCode.set(t, s);
-      return t;
-    })
-    .filter(Boolean) as string[];
-
-  const [trendRows, ...quoteParts] = await Promise.all([
-    apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`),
-    ...chunk(tsCodes, 50).map((part) =>
-      apiGetJson<QuoteResp>(
-        `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
-      ).catch(() => null),
-    ),
-  ]);
-
-  for (const r of Array.isArray(trendRows) ? trendRows : []) {
-    if (r && r.symbol) trend[r.symbol] = r;
-  }
-  for (const r of quoteParts) {
-    for (const it of r?.items ?? []) {
-      const sym = byTsCode.get(it.ts_code);
-      if (!sym) continue;
-      const p = it.price != null ? Number(it.price) : NaN;
-      const pre = it.pre_close != null ? Number(it.pre_close) : NaN;
-      const pct = it.pct_chg != null ? Number(it.pct_chg) : NaN;
-      quotes[sym] = {
-        tsCode: it.ts_code,
-        price: Number.isFinite(p) ? p : null,
-        tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
-        amount: parseQuoteNumber(it.amount),
-        volume: parseQuoteNumber(it.volume),
-        preClose: Number.isFinite(pre) ? pre : null,
-        pctChg: Number.isFinite(pct) ? pct : null,
-      };
-    }
-  }
-
-  return { trend, quotes };
 }
 
 function fmtPrice(v: number | null | undefined): string {
@@ -673,97 +586,45 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       const reqId = (trendReqRef.current += 1);
       setTrendBusy(true);
       try {
-        // If requested, force-refresh latest daily bars (and optional chips) from network first.
-        if (opts.forceMarket) {
-          // Keep it lightweight: daily bars are sufficient for score/trend/buy/stoploss.
-          // Also, do sequential requests to avoid spiky traffic / upstream throttling.
-          let failures = 0;
-          for (const sym of syms) {
-            const enc = encodeURIComponent(sym);
-            const ok = await apiGetJson(
-              `/market/stocks/${enc}/bars?days=60&force=true`,
-            )
-              .then(() => true)
-              .catch(() => false);
-            if (!ok) failures += 1;
-            await new Promise((r) => window.setTimeout(r, 120));
-          }
-          if (reason === 'manual' && failures > 0) {
+        const snapshot = await fetchWatchlistMarketSnapshot(syms, {
+          forceMarket: Boolean(opts.forceMarket),
+          realtime: isShanghaiQuoteWindow(),
+        });
+        if (reqId !== trendReqRef.current) return;
+
+        const next = snapshot.trend;
+        const nextQuotes = snapshot.quotes;
+        setTrend(next);
+        setTrendUpdatedAt(new Date().toISOString());
+        setQuotes(nextQuotes);
+
+        if (opts.forceMarket && snapshot.barSync && snapshot.barSync.failures > 0) {
+          const { failures, total } = snapshot.barSync;
+          if (reason === 'manual') {
             setSyncMsg(
-              `Network sync failed for ${failures}/${syms.length} symbols; using cached data.`,
+              `Network sync failed for ${failures}/${total} symbols; using cached data.`,
             );
           }
         }
 
-        const sp = new URLSearchParams();
-        // TrendOK reads DB-cached daily bars; forceMarket above refreshes bars from network first.
-        sp.set('realtime', isShanghaiQuoteWindow() ? 'true' : 'false');
-        for (const s of syms) sp.append('symbols', s);
-        const rows = await apiGetJson<TrendOkResult[]>(
-          `/market/stocks/trendok?${sp.toString()}`,
-        );
-        if (reqId !== trendReqRef.current) return;
-        const next: Record<string, TrendOkResult> = {};
-        for (const r of Array.isArray(rows) ? rows : []) {
-          if (r && r.symbol) next[r.symbol] = r;
-        }
-        setTrend(next);
-        setTrendUpdatedAt(new Date().toISOString());
-
-        // Best-effort realtime quotes (CN only) for the "Current" column.
-        try {
-          const cn = syms.map(toTsCodeFromSymbol).filter(Boolean) as string[];
-          const byTsCode = new Map<string, string>();
-          for (const s of syms) {
-            const tsCode = toTsCodeFromSymbol(s);
-            if (tsCode) byTsCode.set(tsCode, s);
-          }
-          const nextQuotes: Record<string, WatchlistQuote> = {};
-          for (const part of chunk(cn, 50)) {
-            const r = await apiGetJson<QuoteResp>(
-              `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
-            ).catch(() => null);
-            for (const it of r?.items ?? []) {
-              const sym = byTsCode.get(it.ts_code);
-              if (!sym) continue;
-              const p = it.price != null ? Number(it.price) : NaN;
-              const pre = it.pre_close != null ? Number(it.pre_close) : NaN;
-              const pct = it.pct_chg != null ? Number(it.pct_chg) : NaN;
-              nextQuotes[sym] = {
-                tsCode: it.ts_code,
-                price: Number.isFinite(p) ? p : null,
-                tradeTime: typeof it.trade_time === 'string' ? it.trade_time : null,
-                amount: parseQuoteNumber(it.amount),
-                volume: parseQuoteNumber(it.volume),
-                preClose: Number.isFinite(pre) ? pre : null,
-                pctChg: Number.isFinite(pct) ? pct : null,
-              };
-            }
-          }
-          if (reqId === trendReqRef.current) {
-            setQuotes(nextQuotes);
-            const nextItems = items.map((it) => {
-              if (!(it.positionPct && it.positionPct > 0)) return it;
-              if (!it.costPrice) return it;
-              const q = nextQuotes[it.symbol];
-              const price =
-                typeof q?.price === 'number' && Number.isFinite(q.price)
-                  ? q.price
-                  : typeof next[it.symbol]?.values?.close === 'number'
-                    ? next[it.symbol]?.values?.close
-                    : null;
-              if (price == null) return it;
-              const maxPrice = typeof it.maxPrice === 'number' ? it.maxPrice : 0;
-              if (price > maxPrice) return { ...it, maxPrice: price };
-              if (!it.maxPrice) return { ...it, maxPrice: price };
-              return it;
-            });
-            if (nextItems.some((x, i) => x.maxPrice !== items[i]?.maxPrice)) {
-              persist(nextItems);
-            }
-          }
-        } catch {
-          // ignore quote failures
+        const nextItems = items.map((it) => {
+          if (!(it.positionPct && it.positionPct > 0)) return it;
+          if (!it.costPrice) return it;
+          const q = nextQuotes[it.symbol];
+          const price =
+            typeof q?.price === 'number' && Number.isFinite(q.price)
+              ? q.price
+              : typeof next[it.symbol]?.values?.close === 'number'
+                ? next[it.symbol]?.values?.close
+                : null;
+          if (price == null) return it;
+          const maxPrice = typeof it.maxPrice === 'number' ? it.maxPrice : 0;
+          if (price > maxPrice) return { ...it, maxPrice: price };
+          if (!it.maxPrice) return { ...it, maxPrice: price };
+          return it;
+        });
+        if (nextItems.some((x, i) => x.maxPrice !== items[i]?.maxPrice)) {
+          persist(nextItems);
         }
 
         if (reason === 'manual') setError(null);
@@ -1405,7 +1266,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       let trendSnap: Record<string, TrendOkResult>;
       let quotesSnap: Record<string, WatchlistQuote>;
       try {
-        const fresh = await fetchFreshWatchlistSnapshot(syms);
+        const fresh = await fetchWatchlistMarketSnapshot(syms, {
+          forceMarket: false,
+          realtime: isShanghaiQuoteWindow(),
+        });
         trendSnap = fresh.trend;
         quotesSnap = fresh.quotes;
         setTrend(fresh.trend);

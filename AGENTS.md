@@ -72,7 +72,7 @@ More detail: `services/data-sync-service/README.md` → **Database Migrations**.
 ## TrendOK / refresh (OPT-006)
 
 - `GET /market/stocks/trendok` is **DB-only** (no `refresh` query param).
-- To refresh K-lines from network first: `GET /market/stocks/{symbol}/bars?force=true`, then call trendok.
+- To refresh K-lines from network first: `GET /market/stocks/{symbol}/bars?force=true` (incremental tushare sync per CN symbol), then call trendok.
 - Watchlist manual refresh already follows this pattern (`forceMarket`).
 
 ---
