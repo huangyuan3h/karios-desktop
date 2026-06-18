@@ -4,7 +4,6 @@ from fastapi import APIRouter, Query  # type: ignore[import-not-found]
 
 from data_sync_service.service.adj_factor import sync_adj_factor_full
 from data_sync_service.service.close_sync import sync_close
-from data_sync_service.service.daily import sync_daily_full
 from data_sync_service.service.hk_basic import sync_hk_basic
 from data_sync_service.service.hk_daily import sync_hk_daily_full
 from data_sync_service.service.index_basic import sync_index_basic_full
@@ -103,9 +102,12 @@ def market_sync_endpoint() -> dict:
 
 @router.post("/sync/daily")
 def sync_daily_endpoint() -> dict:
-    # Purpose: full daily sync from 2023-01-01 to today; skip if today already succeeded.
-    """Trigger full sync of daily bars (2023-01-01 to today). Skips if today already succeeded; resumes from failure."""
-    return sync_daily_full()
+    # Deprecated: per-stock full sync replaced by close_sync (market-wide by trade_date).
+    """Trigger close-time daily sync (replaces legacy per-stock sync_daily_full)."""
+    result = sync_close(exchange="SSE", force=False)
+    if isinstance(result, dict):
+        return {**result, "deprecated": "use /sync/close", "legacy": "sync_daily_full"}
+    return {"ok": True, "result": result, "deprecated": "use /sync/close", "legacy": "sync_daily_full"}
 
 
 @router.post("/sync/hk-daily")

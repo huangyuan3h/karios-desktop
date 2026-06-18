@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd  # type: ignore[import-not-found, import-untyped]
 
 from data_sync_service.db import get_connection
+from data_sync_service.db._ensure_guard import ensure_once
 
 TABLE_NAME = "macro_daily"
 
@@ -32,11 +33,15 @@ CREATE INDEX IF NOT EXISTS ix_macro_daily_series_date ON {TABLE_NAME} (series_id
 """
 
 
-def ensure_table() -> None:
+def _ensure_table_impl() -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(CREATE_SQL)
         conn.commit()
+
+
+def ensure_table() -> None:
+    ensure_once("macro_daily", _ensure_table_impl)
 
 
 def _numeric(val: Any) -> float | None:

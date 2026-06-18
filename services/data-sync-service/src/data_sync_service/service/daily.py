@@ -91,7 +91,16 @@ def sync_daily_full() -> dict[str, Any]:
     - If today's run already succeeded: skip.
     - If today's run failed: resume from the ts_code after last_ts_code.
     - If we already have today's data for a stock, skip that stock.
+
+    Deprecated: prefer sync_close() for market-wide incremental sync.
     """
+    import warnings
+
+    warnings.warn(
+        "sync_daily_full is deprecated; use sync_close() instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     run = get_today_run(JOB_TYPE)
     if run and run.get("success"):
         return {"ok": True, "skipped": True, "message": "already synced today"}

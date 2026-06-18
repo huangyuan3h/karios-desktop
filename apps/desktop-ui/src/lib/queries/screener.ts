@@ -4,7 +4,6 @@ import { useQuery, type QueryClient } from '@tanstack/react-query';
 import {
   TvScreenerListResponseSchema,
   TvSnapshotDetailSchema,
-  TvSnapshotListResponseSchema,
   type TvScreener,
   type TvSnapshotDetail,
 } from '@karios/shared';
@@ -32,30 +31,24 @@ export async function fetchEnabledScreeners(): Promise<TvScreener[]> {
   return resp.items.filter((item) => item.enabled);
 }
 
-export async function fetchLatestSnapshotDetail(
-  screenerId: string,
-): Promise<TvSnapshotDetail | null> {
-  const list = TvSnapshotListResponseSchema.parse(
-    await apiGetJson<unknown>(
-      `/integrations/tradingview/screeners/${encodeURIComponent(screenerId)}/snapshots?limit=1`,
-    ),
-  );
-  const latest = list.items[0];
-  if (!latest) return null;
-  return TvSnapshotDetailSchema.parse(
-    await apiGetJson<unknown>(
-      `/integrations/tradingview/snapshots/${encodeURIComponent(latest.id)}`,
-    ),
-  );
-}
-
 export async function fetchScreenerSnapshotsMap(
   screenerIds: string[],
 ): Promise<Record<string, TvSnapshotDetail | null>> {
-  const entries = await Promise.all(
-    screenerIds.map(async (id) => [id, await fetchLatestSnapshotDetail(id)] as const),
+  const ids = [...screenerIds].map((id) => id.trim()).filter(Boolean);
+  if (!ids.length) return {};
+
+  const params = new URLSearchParams();
+  for (const id of ids) params.append('ids', id);
+  const resp = await apiGetJson<{ items?: Record<string, unknown> }>(
+    `/integrations/tradingview/screeners/snapshots/latest?${params.toString()}`,
   );
-  return Object.fromEntries(entries);
+  const items = resp.items ?? {};
+  const out: Record<string, TvSnapshotDetail | null> = {};
+  for (const id of ids) {
+    const raw = items[id];
+    out[id] = raw ? TvSnapshotDetailSchema.parse(raw) : null;
+  }
+  return out;
 }
 
 export function screenerListQueryOptions() {

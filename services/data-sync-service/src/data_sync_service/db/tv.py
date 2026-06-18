@@ -282,6 +282,56 @@ def list_latest_snapshots_for_screeners(
     return out
 
 
+def _snapshot_detail_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
+    payload = row[4] if isinstance(row[4], dict) else (row[4] or {})
+    screen_title = str(payload.get("screenTitle") or "") or None
+    filters = payload.get("filters") or []
+    filters2 = [str(x) for x in filters if str(x).strip()] if isinstance(filters, list) else []
+    headers = payload.get("headers") or []
+    headers2 = [str(x) for x in headers] if isinstance(headers, list) else []
+    rows0 = payload.get("rows") or []
+    rows2 = [{str(k): str(v) for k, v in (r or {}).items()} for r in rows0] if isinstance(rows0, list) else []
+    return {
+        "id": str(row[0]),
+        "screenerId": str(row[1]),
+        "capturedAt": str(row[2]),
+        "rowCount": int(row[3]),
+        "screenTitle": screen_title,
+        "filters": filters2,
+        "url": str(payload.get("url") or ""),
+        "headers": headers2,
+        "rows": rows2,
+    }
+
+
+def list_latest_snapshot_details_for_screeners(
+    screener_ids: list[str],
+) -> dict[str, dict[str, Any] | None]:
+    """Latest snapshot detail per screener_id (single DB round-trip)."""
+    ids = sorted({str(s or "").strip() for s in screener_ids if str(s or "").strip()})
+    if not ids:
+        return {}
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT DISTINCT ON (screener_id)
+                    id, screener_id, captured_at, row_count, payload
+                FROM {SNAPSHOTS_TABLE}
+                WHERE screener_id = ANY(%s)
+                ORDER BY screener_id, captured_at DESC
+                """,
+                (ids,),
+            )
+            rows = cur.fetchall()
+    out: dict[str, dict[str, Any] | None] = {sid: None for sid in ids}
+    for r in rows:
+        detail = _snapshot_detail_from_row(r)
+        out[str(detail["screenerId"])] = detail
+    return out
+
+
 def fetch_snapshot_detail(snapshot_id: str) -> dict[str, Any] | None:
     ensure_tables()
     sid = (snapshot_id or "").strip()

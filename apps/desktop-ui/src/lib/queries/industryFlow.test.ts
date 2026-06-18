@@ -97,7 +97,7 @@ describe('invalidateIndustryFlowQueries', () => {
 
     expect(invalidateQueries).toHaveBeenCalledTimes(2);
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['industry'] });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['dashboard', 'summary', 'full'] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['dashboard', 'summary'] });
   });
 });
 

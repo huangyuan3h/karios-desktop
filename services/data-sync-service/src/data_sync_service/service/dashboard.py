@@ -154,7 +154,14 @@ def _news_items(hours: int = 24, limit: int = 50) -> dict[str, Any]:
     }
 
 
-def dashboard_summary(*, include_macro: bool = True) -> dict[str, Any]:
+def dashboard_summary(
+    *,
+    include_macro: bool = True,
+    include_sentiment: bool = True,
+    include_news: bool = True,
+    include_industry: bool = True,
+    include_screeners: bool = True,
+) -> dict[str, Any]:
     """
     Minimal Dashboard summary for UI:
       - asOfDate
@@ -174,9 +181,13 @@ def dashboard_summary(*, include_macro: bool = True) -> dict[str, Any]:
         shared_index_signals = get_index_signals(as_of_date=None, include_breadth=False)
         sentiment_signals_in = shared_index_signals
         macro_signals_in = shared_index_signals
+    elif include_sentiment or include_macro:
+        shared_index_signals = get_index_signals(as_of_date=as_of, include_breadth=False)
+        sentiment_signals_in = shared_index_signals
+        macro_signals_in = shared_index_signals
     else:
-        sentiment_signals_in = get_index_signals(as_of_date=as_of, include_breadth=False)
-        macro_signals_in = get_index_signals(as_of_date=None, include_breadth=False)
+        sentiment_signals_in = []
+        macro_signals_in = []
 
     industry: dict[str, Any] = {}
     market_sentiment: dict[str, Any] = {}
@@ -186,25 +197,35 @@ def dashboard_summary(*, include_macro: bool = True) -> dict[str, Any]:
     market_env_zh = ""
 
     with ThreadPoolExecutor(max_workers=5) as executor:
-        f_industry = executor.submit(_build_industry_bundle, as_of_date=as_of)
-        f_sentiment = executor.submit(
-            _build_market_sentiment_bundle,
-            as_of_date=as_of,
-            use_realtime_index=use_realtime_index,
-            index_signals=sentiment_signals_in,
+        f_industry = (
+            executor.submit(_build_industry_bundle, as_of_date=as_of) if include_industry else None
         )
-        f_screeners = executor.submit(_screeners_status, 50)
-        f_news = executor.submit(_news_items, 24, 50)
+        f_sentiment = (
+            executor.submit(
+                _build_market_sentiment_bundle,
+                as_of_date=as_of,
+                use_realtime_index=use_realtime_index,
+                index_signals=sentiment_signals_in,
+            )
+            if include_sentiment
+            else None
+        )
+        f_screeners = executor.submit(_screeners_status, 50) if include_screeners else None
+        f_news = executor.submit(_news_items, 24, 50) if include_news else None
         f_macro = (
             executor.submit(build_macro_snapshot, cn_index_signals=macro_signals_in)
             if include_macro
             else None
         )
 
-        industry = f_industry.result()
-        market_sentiment = f_sentiment.result()
-        screeners = f_screeners.result()
-        news = f_news.result()
+        if f_industry is not None:
+            industry = f_industry.result()
+        if f_sentiment is not None:
+            market_sentiment = f_sentiment.result()
+        if f_screeners is not None:
+            screeners = f_screeners.result()
+        if f_news is not None:
+            news = f_news.result()
         if f_macro is not None:
             try:
                 macro_snapshot = f_macro.result()

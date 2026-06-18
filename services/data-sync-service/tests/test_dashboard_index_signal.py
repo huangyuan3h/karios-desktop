@@ -100,7 +100,7 @@ def test_dashboard_summary_calls_get_index_signals_once_in_realtime_window(monke
     assert calls[0]["include_breadth"] is False
 
 
-def test_dashboard_summary_calls_get_index_signals_twice_when_historical_as_of(monkeypatch) -> None:
+def test_dashboard_summary_calls_get_index_signals_once_when_historical_as_of(monkeypatch) -> None:
     import data_sync_service.service.dashboard as dashboard  # type: ignore[import-not-found]
 
     _patch_dashboard_summary_deps(
@@ -118,6 +118,6 @@ def test_dashboard_summary_calls_get_index_signals_twice_when_historical_as_of(m
     monkeypatch.setattr(dashboard, "get_index_signals", _track)
     out = dashboard.dashboard_summary(include_macro=True)
     assert out["asOfDate"] == "2026-06-17"
-    assert len(calls) == 2
+    assert len(calls) == 1
     assert calls[0]["as_of_date"] == "2026-06-17"
-    assert calls[1]["as_of_date"] is None
+    assert calls[0]["include_breadth"] is False

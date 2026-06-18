@@ -17,6 +17,38 @@ import { dashboardRefetchIntervalMs } from './intervals';
 
 export type DashboardSummary = Record<string, unknown>;
 
+export type DashboardSummaryIncludes = {
+  includeMacro?: boolean;
+  includeSentiment?: boolean;
+  includeNews?: boolean;
+  includeIndustry?: boolean;
+  includeScreeners?: boolean;
+};
+
+export const DASHBOARD_LITE_INCLUDES: DashboardSummaryIncludes = {
+  includeMacro: false,
+  includeSentiment: false,
+  includeNews: false,
+  includeIndustry: true,
+  includeScreeners: true,
+};
+
+export const DASHBOARD_SENTIMENT_INCLUDES: DashboardSummaryIncludes = {
+  includeMacro: false,
+  includeSentiment: true,
+  includeNews: false,
+  includeIndustry: false,
+  includeScreeners: false,
+};
+
+export const DASHBOARD_NEWS_INCLUDES: DashboardSummaryIncludes = {
+  includeMacro: false,
+  includeSentiment: false,
+  includeNews: true,
+  includeIndustry: false,
+  includeScreeners: false,
+};
+
 const DASHBOARD_SUMMARY_CACHE_KEY = 'karios.dashboard.summary.v1';
 
 type DashboardSummaryCache = {
@@ -31,6 +63,65 @@ export type WatchlistRiskRow = {
   gapUp: boolean | null;
   alerts: WatchlistRiskAlert[];
 };
+
+function normalizeIncludes(includes: DashboardSummaryIncludes): DashboardSummaryIncludes {
+  return {
+    includeMacro: includes.includeMacro ?? true,
+    includeSentiment: includes.includeSentiment ?? true,
+    includeNews: includes.includeNews ?? true,
+    includeIndustry: includes.includeIndustry ?? true,
+    includeScreeners: includes.includeScreeners ?? true,
+  };
+}
+
+function resolveFullIncludes(includeMacro?: boolean): DashboardSummaryIncludes {
+  return {
+    includeMacro: includeMacro ?? isShanghaiSyncWindow(),
+    includeSentiment: true,
+    includeNews: true,
+    includeIndustry: true,
+    includeScreeners: true,
+  };
+}
+
+function includesMatch(
+  a: DashboardSummaryIncludes,
+  b: DashboardSummaryIncludes,
+): boolean {
+  const na = normalizeIncludes(a);
+  const nb = normalizeIncludes(b);
+  return (
+    na.includeMacro === nb.includeMacro &&
+    na.includeSentiment === nb.includeSentiment &&
+    na.includeNews === nb.includeNews &&
+    na.includeIndustry === nb.includeIndustry &&
+    na.includeScreeners === nb.includeScreeners
+  );
+}
+
+function includesCacheKey(includes: DashboardSummaryIncludes): string {
+  const n = normalizeIncludes(includes);
+  if (includesMatch(n, DASHBOARD_LITE_INCLUDES)) return 'lite';
+  if (includesMatch(n, DASHBOARD_SENTIMENT_INCLUDES)) return 'sentiment';
+  if (includesMatch(n, DASHBOARD_NEWS_INCLUDES)) return 'news';
+  if (includesMatch(n, resolveFullIncludes(true))) return 'full';
+  if (includesMatch(n, resolveFullIncludes(false))) return 'no-macro';
+  const coreLite: DashboardSummaryIncludes = {
+    includeMacro: true,
+    includeSentiment: false,
+    includeNews: false,
+    includeIndustry: true,
+    includeScreeners: true,
+  };
+  if (includesMatch(n, normalizeIncludes(coreLite))) return 'core-lite';
+  return [
+    n.includeMacro ? 'm1' : 'm0',
+    n.includeSentiment ? 's1' : 's0',
+    n.includeNews ? 'n1' : 'n0',
+    n.includeIndustry ? 'i1' : 'i0',
+    n.includeScreeners ? 'sc1' : 'sc0',
+  ].join('');
+}
 
 export function buildWatchlistRiskRowsFromSnapshot(
   items: Array<{ symbol: string; name?: string }>,
@@ -96,17 +187,49 @@ export function saveDashboardSummaryCache(summary: DashboardSummary): void {
   }
 }
 
-export function dashboardSummaryQueryKey(includeMacro: boolean) {
-  return ['dashboard', 'summary', includeMacro ? 'full' : 'lite'] as const;
+export function dashboardSummaryQueryKey(
+  includeOrOptions: boolean | DashboardSummaryIncludes = true,
+) {
+  const includes =
+    typeof includeOrOptions === 'boolean'
+      ? resolveFullIncludes(includeOrOptions)
+      : normalizeIncludes(includeOrOptions);
+  return ['dashboard', 'summary', includesCacheKey(includes)] as const;
 }
 
-export function buildDashboardSummaryPath(includeMacro: boolean): string {
-  return includeMacro ? '/dashboard/summary' : '/dashboard/summary?include_macro=false';
+export function dashboardLiteQueryKey() {
+  return dashboardSummaryQueryKey(DASHBOARD_LITE_INCLUDES);
+}
+
+export function buildDashboardSummaryPath(
+  includeOrOptions: boolean | DashboardSummaryIncludes = true,
+): string {
+  const includes =
+    typeof includeOrOptions === 'boolean'
+      ? resolveFullIncludes(includeOrOptions)
+      : normalizeIncludes(includeOrOptions);
+  const params = new URLSearchParams();
+  if (!includes.includeMacro) params.set('include_macro', 'false');
+  if (!includes.includeSentiment) params.set('include_sentiment', 'false');
+  if (!includes.includeNews) params.set('include_news', 'false');
+  if (!includes.includeIndustry) params.set('include_industry', 'false');
+  if (!includes.includeScreeners) params.set('include_screeners', 'false');
+  const qs = params.toString();
+  return qs ? `/dashboard/summary?${qs}` : '/dashboard/summary';
+}
+
+export async function fetchDashboardSummaryPartial(
+  includes: DashboardSummaryIncludes,
+): Promise<DashboardSummary> {
+  return apiGetJson<DashboardSummary>(buildDashboardSummaryPath(includes));
+}
+
+export async function fetchDashboardLiteSummary(): Promise<DashboardSummary> {
+  return fetchDashboardSummaryPartial(DASHBOARD_LITE_INCLUDES);
 }
 
 export async function fetchDashboardSummary(includeMacro?: boolean): Promise<DashboardSummary> {
-  const macro = includeMacro ?? isShanghaiSyncWindow();
-  return apiGetJson<DashboardSummary>(buildDashboardSummaryPath(macro));
+  return fetchDashboardSummaryPartial(resolveFullIncludes(includeMacro));
 }
 
 export async function fetchDashboardSummaryCached(
@@ -121,10 +244,9 @@ export async function fetchDashboardSummaryCached(
 }
 
 export function useDashboardSummaryQuery() {
-  const includeMacro = isShanghaiSyncWindow();
   return useQuery({
-    queryKey: dashboardSummaryQueryKey(includeMacro),
-    queryFn: () => fetchDashboardSummary(includeMacro),
+    queryKey: dashboardLiteQueryKey(),
+    queryFn: () => fetchDashboardLiteSummary(),
     refetchInterval: dashboardRefetchIntervalMs,
     refetchIntervalInBackground: false,
     placeholderData: () => loadDashboardSummaryCache() ?? undefined,

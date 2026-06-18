@@ -15,10 +15,16 @@ vi.mock('@/lib/watchlist-storage', () => ({
   loadWatchlist: vi.fn(() => [{ symbol: 'CN:600519', name: 'Moutai' }]),
 }));
 
+vi.mock('@/lib/market-hours', () => ({
+  getShanghaiTodayIso: () => '2026-06-18',
+  isShanghaiSyncWindow: () => true,
+  isShanghaiTradingTime: () => false,
+}));
+
 describe('dashboardSummaryQueryKey', () => {
-  it('distinguishes macro full vs lite', () => {
+  it('distinguishes macro full vs no-macro full', () => {
     expect(dashboardSummaryQueryKey(true)).toEqual(['dashboard', 'summary', 'full']);
-    expect(dashboardSummaryQueryKey(false)).toEqual(['dashboard', 'summary', 'lite']);
+    expect(dashboardSummaryQueryKey(false)).toEqual(['dashboard', 'summary', 'no-macro']);
   });
 });
 
@@ -29,6 +35,20 @@ describe('buildDashboardSummaryPath', () => {
 
   it('uses full path when includeMacro is true', () => {
     expect(buildDashboardSummaryPath(true)).toBe('/dashboard/summary');
+  });
+
+  it('supports partial include flags', () => {
+    expect(
+      buildDashboardSummaryPath({
+        includeMacro: false,
+        includeSentiment: false,
+        includeNews: true,
+        includeIndustry: false,
+        includeScreeners: false,
+      }),
+    ).toBe(
+      '/dashboard/summary?include_macro=false&include_sentiment=false&include_industry=false&include_screeners=false',
+    );
   });
 });
 

@@ -6,12 +6,12 @@ import logging
 
 from apscheduler.triggers.cron import CronTrigger
 
-from data_sync_service.service.daily import sync_daily_full
+from data_sync_service.service.close_sync import sync_close
 
 logger = logging.getLogger(__name__)
 
 JOB_ID = "daily_full_sync"
-# Every Friday 17:00 Asia/Shanghai (fallback; other sync strategy will be used normally)
+# Redirected to close_sync (legacy per-stock daily_full deprecated).
 CRON_EXPRESSION = "0 17 * * 5"
 TIMEZONE = "Asia/Shanghai"
 
@@ -21,11 +21,13 @@ def build_trigger() -> CronTrigger:
 
 
 def run() -> None:
-    result = sync_daily_full()
-    if result.get("ok"):
+    result = sync_close(exchange="SSE", force=False)
+    if isinstance(result, dict) and result.get("ok"):
         if result.get("skipped"):
-            logger.info("daily_full_sync skipped: already synced today")
+            logger.info("daily_full_sync (close_sync) skipped: already synced today")
         else:
-            logger.info("daily_full_sync ok: updated=%s", result.get("updated", 0))
+            logger.info("daily_full_sync (close_sync) ok: %s", result)
+    elif isinstance(result, dict):
+        logger.warning("daily_full_sync (close_sync) failed: %s", result.get("error", "unknown"))
     else:
-        logger.warning("daily_full_sync failed: %s", result.get("error", "unknown"))
+        logger.info("daily_full_sync (close_sync) completed")

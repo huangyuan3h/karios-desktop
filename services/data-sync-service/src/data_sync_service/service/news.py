@@ -65,11 +65,12 @@ def fetch_rss_feed(url: str) -> list[dict]:
 
 
 def fetch_all_sources() -> dict[str, int]:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     ensure_tables()
     sources = fetch_sources(enabled_only=True)
-    results = {}
 
-    for source in sources:
+    def _fetch_one(source: dict) -> tuple[str, int]:
         source_id = source["id"]
         url = source["url"]
         try:
@@ -88,10 +89,17 @@ def fetch_all_sources() -> dict[str, int]:
                 )
                 count += 1
             update_source_last_fetch(source_id, fetched_at)
-            results[source_id] = count
+            return source_id, count
         except Exception as e:
-            results[source_id] = -1
             print(f"[news] Failed to fetch {url}: {e}")
+            return source_id, -1
+
+    results: dict[str, int] = {}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {pool.submit(_fetch_one, s): s["id"] for s in sources}
+        for future in as_completed(futures):
+            source_id, count = future.result()
+            results[source_id] = count
 
     delete_old_items(hours=72)
     return results

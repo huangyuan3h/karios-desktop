@@ -7,7 +7,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
-from data_sync_service.db.index_daily import fetch_last_closes_vol, fetch_last_closes_vol_upto
+from data_sync_service.db.index_daily import fetch_last_closes_vol_batch
 from data_sync_service.db.industry_fund_flow import get_rows_by_date
 from data_sync_service.db.macro_daily import fetch_last_closes as fetch_macro_last_closes
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
@@ -368,17 +368,18 @@ def _compute_index_signals(
     mainline_ok = liquidity["mainline_inflow_above_5B"]
 
     out: list[dict[str, Any]] = []
+    index_codes = [it["ts_code"] for it in INDEX_SIGNALS]
+    series_by_code = fetch_last_closes_vol_batch(
+        index_codes,
+        days=HISTORY_DAYS,
+        as_of_date=use_as_of,
+    )
     for it in INDEX_SIGNALS:
         ts_code = it["ts_code"]
         name = it["name"]
-        if use_as_of:
-            series_cv = fetch_last_closes_vol_upto(ts_code, use_as_of, days=HISTORY_DAYS)
-            series = [(d, c) for d, c, _ in series_cv]
-            series_vol = [v for _, _, v in series_cv]
-        else:
-            series_cv = fetch_last_closes_vol(ts_code, days=HISTORY_DAYS)
-            series = [(d, c) for d, c, _ in series_cv]
-            series_vol = [v for _, _, v in series_cv]
+        series_cv = series_by_code.get(ts_code, [])
+        series = [(d, c) for d, c, _ in series_cv]
+        series_vol = [v for _, _, v in series_cv]
 
         used_realtime = False
         trade_time = rt_time.get(ts_code)

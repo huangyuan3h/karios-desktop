@@ -323,12 +323,104 @@ def _needs_jina_fallback(summary: str | None, *, min_chars: int = 280) -> bool:
     return len((summary or "").strip()) < min_chars
 
 
+def _fetch_one_alpha_source(
+    source: dict[str, Any],
+    *,
+    fetched_at: str,
+    use_fulltext: bool,
+    apply_filter: bool,
+    force_reprocess: bool,
+    jina_semaphore: Any | None = None,
+) -> dict[str, Any]:
+    source_id = source["id"]
+    url = source["url"]
+    category = source["category"]
+    out: dict[str, Any] = {
+        "source_id": source_id,
+        "count": -1,
+        "error": None,
+        "fetched": 0,
+        "filtered_out": 0,
+        "stored": 0,
+        "ingest_new": 0,
+        "ingest_requeued": 0,
+        "ingest_unchanged": 0,
+        "fulltext_attempted": 0,
+        "fulltext_ok": 0,
+    }
+    try:
+        items = fetch_rss_feed(url)
+        cap = max_items_per_source()
+        capped = items[:cap]
+        out["fetched"] = len(capped)
+
+        if apply_filter:
+            kept, filter_stats = filter_feed_items(capped, source_id=source_id)
+            out["filtered_out"] = filter_stats["filteredOut"]
+        else:
+            kept = capped
+
+        count = 0
+        priority_fulltext_used = 0
+        priority_cap = fulltext_max_per_priority_source()
+        for item in kept:
+            summary = item.get("summary")
+            full_text_md = None
+
+            should_try_jina = use_fulltext and (
+                source_id in FULLTEXT_PRIORITY_SOURCE_IDS
+                and priority_fulltext_used < priority_cap
+                and _needs_jina_fallback(summary)
+            )
+            if should_try_jina:
+                out["fulltext_attempted"] += 1
+                if jina_semaphore is not None:
+                    with jina_semaphore:
+                        full_text_md = fetch_jina_markdown(str(item["link"]))
+                else:
+                    full_text_md = fetch_jina_markdown(str(item["link"]))
+                if full_text_md:
+                    out["fulltext_ok"] += 1
+                    priority_fulltext_used += 1
+
+            row = upsert_document(
+                doc_id=item["id"],
+                source_id=source_id,
+                title=item["title"],
+                url=item["link"],
+                category=category,
+                summary=summary,
+                full_text_md=full_text_md,
+                published_at=item["published_at"],
+                fetched_at=fetched_at,
+                processing_status="raw",
+                force_reprocess=force_reprocess,
+            )
+            if row.get("_inserted"):
+                out["ingest_new"] += 1
+            elif row.get("_requeued"):
+                out["ingest_requeued"] += 1
+            else:
+                out["ingest_unchanged"] += 1
+            count += 1
+        out["stored"] = count
+        out["count"] = count
+        update_source_last_fetch(source_id, fetched_at)
+    except Exception as exc:
+        out["error"] = str(exc)[:300]
+        print(f"[alpha_radar] Failed to fetch RSS {url}: {exc}")
+    return out
+
+
 def fetch_all_sources(
     *,
     enrich_fulltext: bool | None = None,
     apply_filter: bool = True,
     force_reprocess: bool = False,
 ) -> dict[str, Any]:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from threading import Semaphore
+
     ensure_tables()
     add_default_sources()
     use_fulltext = enrich_fulltext_enabled() if enrich_fulltext is None else enrich_fulltext
@@ -344,70 +436,37 @@ def fetch_all_sources(
     ingest_unchanged = 0
     fulltext_attempted = 0
     fulltext_ok = 0
-    priority_fulltext_used: dict[str, int] = {}
+    jina_semaphore = Semaphore(2) if use_fulltext else None
 
-    for source in sources:
-        source_id = source["id"]
-        url = source["url"]
-        category = source["category"]
-        try:
-            items = fetch_rss_feed(url)
-            cap = max_items_per_source()
-            capped = items[:cap]
-            total_fetched += len(capped)
-
-            if apply_filter:
-                kept, filter_stats = filter_feed_items(capped, source_id=source_id)
-                total_filtered_out += filter_stats["filteredOut"]
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {
+            pool.submit(
+                _fetch_one_alpha_source,
+                source,
+                fetched_at=fetched_at,
+                use_fulltext=use_fulltext,
+                apply_filter=apply_filter,
+                force_reprocess=force_reprocess,
+                jina_semaphore=jina_semaphore,
+            ): source["id"]
+            for source in sources
+        }
+        for future in as_completed(futures):
+            row = future.result()
+            source_id = row["source_id"]
+            if row["error"]:
+                results[source_id] = -1
+                source_errors[source_id] = row["error"]
             else:
-                kept = capped
-
-            count = 0
-            for item in kept:
-                summary = item.get("summary")
-                full_text_md = None
-                priority_cap = fulltext_max_per_priority_source()
-                used_for_source = priority_fulltext_used.get(source_id, 0)
-
-                should_try_jina = use_fulltext and (
-                    source_id in FULLTEXT_PRIORITY_SOURCE_IDS
-                    and used_for_source < priority_cap
-                    and _needs_jina_fallback(summary)
-                )
-                if should_try_jina:
-                    fulltext_attempted += 1
-                    full_text_md = fetch_jina_markdown(str(item["link"]))
-                    if full_text_md:
-                        fulltext_ok += 1
-                        priority_fulltext_used[source_id] = used_for_source + 1
-
-                row = upsert_document(
-                    doc_id=item["id"],
-                    source_id=source_id,
-                    title=item["title"],
-                    url=item["link"],
-                    category=category,
-                    summary=summary,
-                    full_text_md=full_text_md,
-                    published_at=item["published_at"],
-                    fetched_at=fetched_at,
-                    processing_status="raw",
-                    force_reprocess=force_reprocess,
-                )
-                if row.get("_inserted"):
-                    ingest_new += 1
-                elif row.get("_requeued"):
-                    ingest_requeued += 1
-                else:
-                    ingest_unchanged += 1
-                count += 1
-            total_stored += count
-            update_source_last_fetch(source_id, fetched_at)
-            results[source_id] = count
-        except Exception as exc:
-            results[source_id] = -1
-            source_errors[source_id] = str(exc)[:300]
-            print(f"[alpha_radar] Failed to fetch RSS {url}: {exc}")
+                results[source_id] = row["count"]
+            total_fetched += row["fetched"]
+            total_filtered_out += row["filtered_out"]
+            total_stored += row["stored"]
+            ingest_new += row["ingest_new"]
+            ingest_requeued += row["ingest_requeued"]
+            ingest_unchanged += row["ingest_unchanged"]
+            fulltext_attempted += row["fulltext_attempted"]
+            fulltext_ok += row["fulltext_ok"]
 
     if use_fulltext and fulltext_attempted and fulltext_ok == 0:
         print(

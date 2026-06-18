@@ -1,8 +1,8 @@
 import { apiGetJson } from '@/lib/api/client';
 import type { TrendOkResult } from '@/lib/api/types';
-import { chunk } from '@/lib/chunk';
 import { isShanghaiQuoteWindow } from '@/lib/market-hours';
-import { normalizeScreenerSymbol } from '@/lib/screenerExport';
+import { fetchTrendOkMap, normalizeScreenerSymbol } from '@/lib/screenerExport';
+import { fetchScreenerSnapshotsMap } from '@/lib/queries/screener';
 import {
   loadWatchlist,
   saveWatchlist,
@@ -28,10 +28,6 @@ type TvScreener = {
   id: string;
   name: string;
   enabled: boolean;
-};
-
-type TvSnapshotSummary = {
-  id: string;
 };
 
 type TvSnapshotDetail = {
@@ -97,25 +93,11 @@ export async function importFromScreener(options: ScreenerImportOptions = {}): P
   }
 
   setStep('Loading latest snapshots (DB)', 0, enabled.length);
+  const snapshotMap = await fetchScreenerSnapshotsMap(enabled.map((sc) => sc.id));
   const snapshotDetails: TvSnapshotDetail[] = [];
-  for (let i = 0; i < enabled.length; i++) {
-    const sc = enabled[i]!;
-    setStep('Loading latest snapshots (DB)', i + 1, enabled.length);
-    try {
-      let snapId: string | null = null;
-      const list = await apiGetJson<{ items: TvSnapshotSummary[] }>(
-        `/integrations/tradingview/screeners/${encodeURIComponent(sc.id)}/snapshots?limit=1`,
-      );
-      const latest = list.items?.[0];
-      if (latest?.id) snapId = String(latest.id);
-      if (!snapId) continue;
-      const d = await apiGetJson<TvSnapshotDetail>(
-        `/integrations/tradingview/snapshots/${encodeURIComponent(snapId)}`,
-      );
-      snapshotDetails.push(d);
-    } catch {
-      // ignore per-screener
-    }
+  for (const sc of enabled) {
+    const detail = snapshotMap[sc.id];
+    if (detail?.rows) snapshotDetails.push({ rows: detail.rows });
   }
 
   const candidates: string[] = [];
@@ -168,20 +150,18 @@ export async function importFromScreener(options: ScreenerImportOptions = {}): P
   }
 
   setStep('TrendOK check', 0, filtered.length);
+  const trendMap = await fetchTrendOkMap(filtered, {
+    realtime: isShanghaiQuoteWindow(),
+  });
   const okSymsCached: string[] = [];
   const debugBySym: Record<string, TrendOkResult> = {};
-  for (const part of chunk(filtered, 200)) {
-    const sp = new URLSearchParams();
-    sp.set('realtime', isShanghaiQuoteWindow() ? 'true' : 'false');
-    for (const s2 of part) sp.append('symbols', s2);
-    const rows = await apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
-    for (const rr of Array.isArray(rows) ? rows : []) {
-      if (!rr || !rr.symbol) continue;
-      debugBySym[rr.symbol] = rr;
-      if (rr.trendOk === true) okSymsCached.push(rr.symbol);
-    }
-    setStep('TrendOK check', Math.min(filtered.length, (okSymsCached.length || part.length)), filtered.length);
+  for (const sym of filtered) {
+    const rr = trendMap.get(sym);
+    if (!rr?.symbol) continue;
+    debugBySym[rr.symbol] = rr;
+    if (rr.trendOk === true) okSymsCached.push(rr.symbol);
   }
+  setStep('TrendOK check', filtered.length, filtered.length);
   const okUniq = Array.from(new Set(okSymsCached));
 
   const debug: ScreenerImportDebugState = {

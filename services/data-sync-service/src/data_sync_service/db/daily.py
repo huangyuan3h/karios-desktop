@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 from data_sync_service.db import get_connection
+from data_sync_service.db._ensure_guard import ensure_once
 
 TABLE_NAME = "daily"
 
@@ -45,13 +46,17 @@ ON CONFLICT (ts_code, trade_date) DO UPDATE SET
 """
 
 
-def ensure_table() -> None:
+def _ensure_table_impl() -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(CREATE_SQL)
             # Backfill schema change for existing databases.
             cur.execute(f"ALTER TABLE {TABLE_NAME} ADD COLUMN IF NOT EXISTS adj_factor NUMERIC")
         conn.commit()
+
+
+def ensure_table() -> None:
+    ensure_once("daily", _ensure_table_impl)
 
 
 def _numeric(val: Any) -> float | None:

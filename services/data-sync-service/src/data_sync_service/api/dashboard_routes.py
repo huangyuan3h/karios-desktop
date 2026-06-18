@@ -15,9 +15,21 @@ router = APIRouter()
 
 
 @router.get("/dashboard/summary")
-def get_dashboard_summary(include_macro: bool = Query(True)) -> dict[str, Any]:
+def get_dashboard_summary(
+    include_macro: bool = Query(True),
+    include_sentiment: bool = Query(True),
+    include_news: bool = Query(True),
+    include_industry: bool = Query(True),
+    include_screeners: bool = Query(True),
+) -> dict[str, Any]:
     try:
-        return dashboard_summary(include_macro=bool(include_macro))
+        return dashboard_summary(
+            include_macro=bool(include_macro),
+            include_sentiment=bool(include_sentiment),
+            include_news=bool(include_news),
+            include_industry=bool(include_industry),
+            include_screeners=bool(include_screeners),
+        )
     except HTTPException:
         raise
     except Exception as e:

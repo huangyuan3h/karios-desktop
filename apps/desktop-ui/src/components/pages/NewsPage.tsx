@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   RefreshCw,
   ExternalLink,
@@ -16,42 +17,19 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { apiDeleteJson, apiGetJson, apiPatchJson, apiPostJson } from '@/lib/api/client';
+import { apiDeleteJson, apiPatchJson, apiPostJson } from '@/lib/api/client';
+import {
+  invalidateNewsPageQueries,
+  useNewsItemsQuery,
+  useNewsSourcesQuery,
+  type DashboardNewsItem,
+  type NewsSource,
+} from '@/lib/queries/news';
 
-type NewsSource = {
-  id: string;
-  name: string;
-  url: string;
-  enabled: boolean;
-  lastFetch: string | null;
-  createdAt: string;
-};
-
-type NewsItem = {
-  id: string;
-  sourceId: string;
-  title: string;
-  link: string;
-  summary: string | null;
-  publishedAt: string | null;
-  fetchedAt: string;
-  isRead: boolean;
-  isImportant: boolean;
-};
-
-type NewsItemsResponse = {
-  total: number;
-  items: NewsItem[];
-};
-
-type SourcesResponse = {
-  sources: NewsSource[];
-};
+type NewsItem = DashboardNewsItem & { id: string };
 
 export function NewsPage() {
-  const [items, setItems] = React.useState<NewsItem[]>([]);
-  const [total, setTotal] = React.useState(0);
-  const [sources, setSources] = React.useState<NewsSource[]>([]);
+  const queryClient = useQueryClient();
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
@@ -61,24 +39,20 @@ export function NewsPage() {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editForm, setEditForm] = React.useState({ name: '', url: '' });
 
+  const itemsQuery = useNewsItemsQuery(hours);
+  const sourcesQuery = useNewsSourcesQuery();
+  const items = (itemsQuery.data?.items ?? []) as NewsItem[];
+  const total = itemsQuery.data?.total ?? 0;
+  const sources = sourcesQuery.data?.sources ?? [];
+
   const refresh = React.useCallback(async () => {
     setError(null);
     try {
-      const [itemsRes, sourcesRes] = await Promise.all([
-        apiGetJson<NewsItemsResponse>(`/api/news/items?limit=100&hours=${hours}`),
-        apiGetJson<SourcesResponse>('/api/news/sources'),
-      ]);
-      setItems(itemsRes.items);
-      setTotal(itemsRes.total);
-      setSources(sourcesRes.sources);
+      await invalidateNewsPageQueries(queryClient);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [hours]);
-
-  React.useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  }, [queryClient]);
 
   async function fetchNews() {
     setBusy(true);
@@ -109,7 +83,7 @@ export function NewsPage() {
   async function toggleSource(sourceId: string, enabled: boolean) {
     try {
       await apiPatchJson(`/api/news/sources/${sourceId}`, { enabled });
-      setSources((prev) => prev.map((s) => (s.id === sourceId ? { ...s, enabled } : s)));
+      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -119,14 +93,14 @@ export function NewsPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await apiPostJson<{ source: NewsSource }>('/api/news/sources', {
+      await apiPostJson<{ source: NewsSource }>('/api/news/sources', {
         name,
         url,
         enabled: true,
       });
-      setSources((prev) => [...prev, res.source]);
       setAddForm({ name: '', url: '' });
       setShowAddForm(false);
+      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -137,7 +111,7 @@ export function NewsPage() {
   async function deleteSource(sourceId: string) {
     try {
       await apiDeleteJson(`/api/news/sources/${sourceId}`);
-      setSources((prev) => prev.filter((s) => s.id !== sourceId));
+      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -146,8 +120,8 @@ export function NewsPage() {
   async function updateSource(sourceId: string, name: string) {
     try {
       await apiPatchJson(`/api/news/sources/${sourceId}`, { name });
-      setSources((prev) => prev.map((s) => (s.id === sourceId ? { ...s, name } : s)));
       setEditingId(null);
+      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -166,9 +140,7 @@ export function NewsPage() {
   async function toggleImportant(item: NewsItem) {
     try {
       await apiPostJson(`/api/news/items/${item.id}/important`, { important: !item.isImportant });
-      setItems((prev) =>
-        prev.map((i) => (i.id === item.id ? { ...i, isImportant: !i.isImportant } : i)),
-      );
+      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }

@@ -1,9 +1,8 @@
 # Karios Desktop 优化 Checklist
 
 > 记录架构审查结论与优化方案，供后续逐个 Agent 任务执行。  
-> 创建日期：2026-06-18（第二轮）  
-> 第四轮审查：2026-06-18  
-> 背景：OPT-011 ~ OPT-020 已完成；第四轮聚焦 **读路径去重算**、**后端热路径缓存**、**前端 Query 覆盖剩余页面**。
+> **第六轮审查**：2026-06-18  
+> **背景**：OPT-001 ~ OPT-030 已全部完成；本轮聚焦 **Sentiment Sync 全市场扫股**、**ensure_table 热路径**、**指数信号 batch/dedup**、**遗留 sync 退役**、**前端 Query 全覆盖收尾**。
 
 ---
 
@@ -31,282 +30,373 @@
 
 | ID | 标题 | 优先级 | 预估工时 | 状态 |
 |----|------|--------|----------|------|
-| OPT-021 | Watchlist Alerts 禁用全市场 Breadth 扫描 | P0 | 0.5 天 | [x] |
-| OPT-022 | Mainline 读路径去 compute-on-read | P0 | 1–2 天 | [x] |
-| OPT-023 | TrendOK 进程内 TTL 缓存 | P0 | 1 天 | [x] |
-| OPT-024 | Macro Snapshot DB 批量读 + on-demand 并行 | P0 | 1 天 | [x] |
-| OPT-025 | IndustryFlowPage React Query + Dashboard 缓存种子 | P0 | 1–2 天 | [x] |
-| OPT-026 | Dashboard Industry Bundle 重复 SQL 合并 | P1 | 0.5–1 天 | [x] |
-| OPT-027 | Sync All / Post-Close 串行步骤并行化 | P1 | 0.5–1 天 | [x] |
-| OPT-028 | useWatchlistAutomation → React Query | P1 | 0.5–1 天 | [x] |
-| OPT-029 | StockPage React Query 按 symbol 缓存 | P1 | 1–2 天 | [x] |
-| OPT-030 | ChatPanel / Markdown Export 复用 Query 缓存 | P1 | 1–2 天 | [x] |
+| OPT-031 | Market Sentiment Sync 全市场 intraday breadth 降载 | P0 | 1–2 天 | [x] |
+| OPT-032 | ensure_table() 热路径一次性 guard | P0 | 0.5–1 天 | [x] |
+| OPT-033 | market_regime 指数 K 线批量读 | P0 | 1 天 | [x] |
+| OPT-034 | Index ↔ Dashboard 指数信号跨端去重 | P0 | 1–2 天 | [x] |
+| OPT-035 | 废弃 sync_daily_full 逐股串行兜底 | P0 | 1–2 天 | [x] |
+| OPT-036 | Screener 快照 2N 请求与 import 串行 | P1 | 1–2 天 | [x] |
+| OPT-037 | Dashboard 阶段三拆分（Sentiment/News 子 Query） | P1 | 2–3 天 | [x] |
+| OPT-038 | News / Alpha Radar RSS ingest 并行化 | P1 | 1 天 | [x] |
+| OPT-039 | AlphaIncubator / NewsPage React Query 迁移 | P1 | 1–2 天 | [x] |
+| OPT-040 | ChatPanel 残留 trendok 与 Export fallback 统一 Query | P1 | 0.5–1 天 | [x] |
 
 ---
 
 ## P0 — 最高收益
 
-### OPT-021：Watchlist Alerts 禁用全市场 Breadth 扫描
+### OPT-031：Market Sentiment Sync 全市场 intraday breadth 降载
 
 **状态**：[x]  
 **完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
+**PR/Commit**：round6 (local)
 
-#### 实施摘要
+> **注**：原候选 OPT-031（SimTradePage 全市场预加载）已忽略——`SidebarNav.tsx` 中 simtrade 入口已注释，用户无法进入该页。
 
-- `_get_regime()` 改为 `include_breadth=False`；新增 `_latest_bar_date()` hoist 一次 regime
-- v5 / momentum alerts 循环内不再重复调用 `get_market_regime`
-- 测试：`test_watchlist_alerts_performance_path.py`（2 用例）
+#### 背景
+
+`market_sentiment.py` 的 `compute_cn_sentiment_for_date()` 在当日 EOD breadth 缺失时，会调用 `fetch_cn_market_breadth_intraday()`：对 `fetch_ts_codes()` 返回的 **全 A 股**（~5000+）按 50 只一批 **串行** 调 Tushare realtime quote。该路径在 Dashboard **Sync All** 的 `marketSentiment` step（`sync_cn_sentiment`）触发，交易日上午一次 Sync 即可产生 **100+ 次** 外部 API 调用，是真实用户路径上的重瓶颈。
+
+#### 目标
+
+- intraday breadth 结果加 **进程内 TTL 缓存**（如 5–10min），Sync All 与重复 sync 不重复扫全市场
+- quote batch 请求改为 **并行**（`ThreadPoolExecutor`，concurrency 4–6），单 batch 失败 isolation
+- 可选：EOD breadth 已足够时跳过 intraday fallback（可配置）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/market_sentiment.py` |
+| Service | `services/data-sync-service/src/data_sync_service/service/dashboard.py`（`_sync_sentiment_step`） |
+| 测试 | `tests/test_market_sentiment_breadth_cache.py` |
 
 #### 验证
 
-- [x] mock 下 alert 路径 `get_market_regime` 调用 `include_breadth=False`
-- [x] pytest alert 相关用例通过
-- [x] v5 / momentum 响应 JSON shape 不变
+- [ ] 10min 内第二次 `sync_cn_sentiment` 不重复调用 `fetch_cn_market_breadth_intraday`
+- [ ] mock 下 intraday breadth quote batch 并行 inflight > 1
+- [ ] pytest 通过；Sync All sentiment step 耗时显著下降
 
 ---
 
-### OPT-022：Mainline 读路径去 compute-on-read
+### OPT-032：ensure_table() 热路径一次性 guard
 
 **状态**：[x]  
 **完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
+**PR/Commit**：round6 (local)
 
-#### 实施摘要
+#### 背景
 
-- `get_cn_industry_mainline()` 移除 `ensure_metrics_for_dates` / `ensure_scores_for_dates`，纯读 scores 表
-- scores 缺失时返回 `warning: "scores_not_ready"` + 空列表
-- `sync_cn_industry_mainline()` 不变；IndustryFlow `onSync` 追加 mainline sync（OPT-025）
-- 测试：`test_mainline_read_path.py`
+Alembic 已接管 schema 后，`ensure_table()` 仍挂在几乎所有 DB 读路径。典型：`db/daily.py` 的 `fetch_last_ohlcv_batch()` 每次 TrendOK 计算都执行 `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE ... ADD COLUMN`；`index_daily.py`、`news.py`、`macro_daily.py` 等同理。TrendOK / Dashboard / Watchlist 高频路径每次都付 DDL 检查成本。
+
+#### 目标
+
+- 模块级 `_TABLE_ENSURED: set[str]` 或 startup 一次性 ensure
+- Alembic 环境下读路径默认 skip DDL；`ensure_table()` 保留供 local dev 空库 bootstrap
+- 同步更新 `CREATE_SQL` 与 migration parity（不新增 ad-hoc runtime ALTER）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| DB | `services/data-sync-service/src/data_sync_service/db/daily.py`、`index_daily.py`、`news.py`、`macro_daily.py` 等高频 `db/*.py` |
+| 测试 | `tests/test_ensure_table_guard.py`（mock 下第二次读不执行 DDL） |
 
 #### 验证
 
-- [x] mock 下 GET 路径不调用 `_compute_industry_metrics_for_date`
-- [x] sync 路径仍调用 ensure
-- [x] pytest mainline 相关用例通过
+- [ ] mock 下同一进程第二次 `fetch_last_ohlcv_batch` 不调用 `ensure_table`
+- [ ] fresh empty DB + `alembic upgrade head` 仍可用
+- [ ] pytest 通过
 
 ---
 
-### OPT-023：TrendOK 进程内 TTL 缓存
+### OPT-033：market_regime 指数 K 线批量读
 
 **状态**：[x]  
 **完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
+**PR/Commit**：round6 (local)
 
-#### 实施摘要
+#### 背景
 
-- `TRENDOK_CACHE_TTL_SECONDS=60`；key=`(frozenset(symbols), realtime, latest_bar_date)`
-- `clear_trendok_cache()` 在 `sync_daily_for_ts_code` upsert 后调用
-- 测试：`test_trendok_performance_path.py`（+3 cache 用例）
+`market_regime.py` 的 `_compute_index_signals()`（L371–381）对 `INDEX_SIGNALS`（上证 + 创业板）逐个调用 `fetch_last_closes_vol()` / `fetch_last_closes_vol_upto()`（各 80 日）。该函数经 `get_index_signals()` 被 Dashboard summary（60s 轮询）和 Macro snapshot 高频触发；虽有 60s TTL，仍是重复 SQL round-trip。
+
+#### 目标
+
+- `index_daily.py` 新增 `fetch_last_closes_vol_batch(ts_codes, days, as_of_date?)`
+- `_compute_index_signals` 改为 **一次 batch 读** + 内存组装
+- JSON shape 不变
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| DB | `services/data-sync-service/src/data_sync_service/db/index_daily.py` |
+| Service | `services/data-sync-service/src/data_sync_service/service/market_regime.py` |
+| 测试 | `tests/test_market_regime_signals.py` 或 `test_index_daily_batch.py` |
 
 #### 验证
 
-- [x] 相同 symbol set 60s 内第二次调用命中 cache（lookup/regime 仅 1 次）
-- [x] `clear_trendok_cache()` 后下次 miss
-- [x] pytest trendok performance 用例通过
+- [ ] mock 下 `_compute_index_signals` 指数 DB 读 = 1（非 N 次单码）
+- [ ] `test_dashboard_summary_endpoint_shape` 通过
+- [ ] pytest 通过
 
 ---
 
-### OPT-024：Macro Snapshot DB 批量读 + on-demand 并行
+### OPT-034：Index ↔ Dashboard 指数信号跨端去重
 
 **状态**：[x]  
 **完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
+**PR/Commit**：round6 (local)
 
-#### 实施摘要
+#### 背景
 
-- DB：`fetch_last_closes_batch` + `get_latest_rows_batch`（`macro_daily.py`）
-- `build_macro_snapshot` 改为 2 次 batch 读；`_backfill_macro_pct_chg` 复用 batch closes
-- `enrich_macro_items_on_demand` 用 `ThreadPoolExecutor(max_workers=4)` 并行
-- 测试：`test_macro_snapshot_batch.py`
+**前端**：`IndexPage.tsx` 用 `useMacroSnapshotQuery()`（45s 轮询）；`DashboardPage` 用 `useDashboardSummaryQuery()`（60s 轮询）——两者都含 `cnIndexSignals`/`indexSignals`，无 Query 共享。
+
+**后端**：`dashboard.py` 的 `dashboard_summary()` 在非 realtime 窗口对 `get_index_signals()` 调 **两次**（`as_of_date=as_of` 与 `as_of_date=None`）；`test_dashboard_summary_calls_get_index_signals_twice_when_historical_as_of` 已 documenting 此行为。
+
+#### 目标
+
+- 后端统一 as_of 语义，sentiment 与 macro **共用同一 signals 列表**
+- 前端 macro query 从 dashboard summary cache seed（类似 OPT-025/030），或合并为单一 `indexSignals` query key
+- 消除盘后 historical as_of 路径双倍 `_compute_index_signals`
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/dashboard.py` |
+| Query | `apps/desktop-ui/src/lib/queries/macro.ts`、`dashboard.ts` |
+| Page | `apps/desktop-ui/src/components/pages/IndexPage.tsx` |
+| 测试 | `test_dashboard_index_signal.py`、前端 macro query 单测 |
 
 #### 验证
 
-- [x] mock 下 `build_macro_snapshot` 仅 batch closes + batch latest（无单条 fetch）
-- [x] JSON shape 不变
-- [x] pytest macro batch 用例通过
+- [ ] mock 下 historical as_of summary 仅 1 次 `get_index_signals`
+- [ ] Index 页与 Dashboard 切换不重复打 macro/summary 指数块
+- [ ] pytest + vitest 通过
 
 ---
 
-### OPT-025：IndustryFlowPage React Query + Dashboard 缓存种子
+### OPT-035：废弃 sync_daily_full 逐股串行兜底
 
 **状态**：[x]  
 **完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
+**PR/Commit**：round6 (local)
 
-#### 实施摘要
+#### 背景
 
-- 新建 `lib/queries/industryFlow.ts` — `useIndustryFundFlowQuery` / `useIndustryMainlineQuery`，`staleTime: 5min`
-- `IndustryFlowPage` 移除 `useEffect` 手写 fetch；`runIndustryFlowSync` 含 fund-flow + mainline sync + invalidate dashboard
-- 测试：`industryFlow.test.ts`（7 passed）
+`service/daily.py` 的 `sync_daily_full()` 对 `fetch_ts_codes()` 全量列表 **逐股** 调用 `pro.daily()`；仍被 `sync_routes.py` 和 `scheduler/daily_sync_job.py` 暴露。Meanwhile `close_sync.py` 已用 `_fetch_paged_daily(pro, trade_date)` 按交易日 market-wide 分页同步，效率差几个数量级。
+
+#### 目标
+
+- `/sync/daily` endpoint 与 cron job **重定向至** `sync_close()` 或等价 close_sync 路径
+- `sync_daily_full` 标记 deprecated 或仅作 manual recovery CLI
+- 更新 README / scheduler 文档，避免 ops 误触发逐股 job
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `service/daily.py`、`service/close_sync.py` |
+| API | `api/sync_routes.py` |
+| Scheduler | `scheduler/daily_sync_job.py`、`scheduler/close_sync_job.py` |
+| 测试 | sync route 重定向 / deprecated 警告测试 |
 
 #### 验证
 
-- [x] query key / parallel fetch 单测通过
-- [x] sync 后 invalidate industry + dashboard summary
-- [x] vitest 通过
+- [ ] 默认 daily sync job 不再逐股 loop
+- [ ] close_sync 路径仍覆盖全市场增量
+- [ ] pytest 通过
 
 ---
 
 ## P1 — 高价值
 
-### OPT-026：Dashboard Industry Bundle 重复 SQL 合并
+### OPT-036：Screener 快照 2N 请求与 import 串行
 
 **状态**：[x]  
 **完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
+**PR/Commit**：round6 (local)
 
-#### 实施摘要
+#### 背景
 
-- `industry_fund_flow_read.py` 新增 `build_dashboard_industry_bundle` 及 helper 纯函数
-- `_build_industry_bundle()` 改为 `get_dates_upto` + `get_rows_for_dates` 单次 batch read
-- 删除 `_industry_top_by_date` / `_industry_flow_5d_items` 等重复 SQL
-- 测试：`test_dashboard_industry_bundle.py`
+- `lib/queries/screener.ts` 的 `fetchLatestSnapshotDetail()`：每个 screener **list + detail** 两次请求；N 个 screener = 2N
+- `lib/watchlist-screener-import.ts`：`for` 循环 **串行** 拉 snapshot；TrendOK 阶段 chunk 200 但 **串行** await 各 chunk
+- Dashboard screener 状态已 batch 化（OPT-019），前端读/import 路径仍 2N 不对称
+
+#### 目标
+
+- 后端新增「latest snapshot + rows」批量 endpoint（或扩展 `list_latest_snapshots_for_screeners` 含 row payload）
+- 前端 screener query 改为单次 batch；import 用 `Promise.all` + 复用 `fetchTrendOkMap`
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| DB/API | `db/tv.py`、TV integration routes |
+| Query | `apps/desktop-ui/src/lib/queries/screener.ts` |
+| Import | `apps/desktop-ui/src/lib/watchlist-screener-import.ts` |
+| 测试 | screener batch + import parallel 单测 |
 
 #### 验证
 
-- [x] mock 下 `_build_industry_bundle` 行业流 DB 调用 = 1
-- [x] `test_dashboard_summary_endpoint_shape` 通过
-- [x] pytest dashboard 相关用例通过
+- [ ] N screener 快照加载 ≤ 1 batch API（非 2N）
+- [ ] import 并行 inflight > 1（mock 断言）
+- [ ] vitest 通过
 
 ---
 
-### OPT-027：Sync All / Post-Close 串行步骤并行化
+### OPT-037：Dashboard 阶段三拆分（Sentiment/News 子 Query）
 
 **状态**：[x]  
 **完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
+**PR/Commit**：round6 (local)
 
-#### 实施摘要
+#### 背景
 
-- `post_close_sync.py`：`ThreadPoolExecutor(max_workers=3)` 并行 index / macro / eastmoney
-- `industry_fund_flow.py`：`_hist_rows_for_top_row` + hist fetch `ThreadPoolExecutor(max_workers=4)`，单行业失败 isolation
-- 修复 `test_run_post_close_sync` mock 缺失 eastmoney
-- 测试：`test_industry_fund_flow_sync_parallel.py`
+`DashboardPage.tsx` 仍 **~1060 行** God Page；`useDashboardSummary()` 每 60s 拉取 **整包** summary（industry + sentiment + news + macro + screeners meta），即使用户只关心部分卡片。News AI brief 另走 `regenerateNewsSummary()` → raw fetch + AI service，与 Query 缓存未统一。
+
+#### 目标
+
+- 按卡片拆分子 Query（sentiment、news、macro 可选 include）；主 query 仅 asOfDate + industry + screeners meta
+- News brief 独立 staleTime；组件文件拆分（延续 OPT-013 阶段三）
+- Copy/PDF 只 refetch 所需块
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Page | `apps/desktop-ui/src/components/pages/DashboardPage.tsx` |
+| Hook | `apps/desktop-ui/src/hooks/useDashboardSummary.ts` |
+| Query | 新建 `lib/queries/sentiment.ts`、`lib/queries/news.ts` |
+| 测试 | dashboard query key + partial refetch 单测 |
 
 #### 验证
 
-- [x] mock 下 post-close 三步同时启动
-- [x] industry sync 单行业失败不阻塞其余
-- [x] pytest sync 相关用例通过
+- [ ] summary lite query 不含 macro/news 重块（或 `include_*` 参数化）
+- [ ] News regenerate 不重复打 full summary
+- [ ] vitest 通过
 
 ---
 
-### OPT-028：useWatchlistAutomation → React Query
+### OPT-038：News / Alpha Radar RSS ingest 并行化
 
 **状态**：[x]  
 **完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
+**PR/Commit**：round6 (local)
 
-#### 实施摘要
+#### 背景
 
-- 新建 `lib/queries/automation.ts` — `useAutomationPendingQuery`（60s `refetchInterval`，`enabled: isAutomationPollWindow()`）
-- `useWatchlistAutomation.ts` 移除 `setInterval`，保留 apply + invalidate 语义
-- 测试：`automation.test.ts`
+- `service/news.py` 的 `fetch_all_sources()`：**串行** `for source in sources` 拉 RSS + upsert
+- `service/alpha_radar_ingest.py` 的 `fetch_all_sources()`：同样串行；priority source 的 Jina fulltext 亦串行
+- 两者均在 `dashboard_sync_parallel()` 的 news step 和 Alpha pipeline ingest 中调用，Sync All 被最慢 source 拖住
+
+#### 目标
+
+- `ThreadPoolExecutor(max_workers=4–6)` 并行 fetch RSS
+- Jina fulltext 限并发；单 source 失败 isolation（与 OPT-027 模式一致）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `service/news.py`、`service/alpha_radar_ingest.py` |
+| Service | `service/dashboard.py`（news sync step，若需调整聚合） |
+| 测试 | `tests/test_news_ingest_parallel.py` |
 
 #### 验证
 
-- [x] 全项目无 `setInterval`（grep 确认）
-- [x] apply 后 watchlist / risk cache invalidate
-- [x] vitest 通过
+- [ ] mock 下多 source 并行启动（max inflight > 1）
+- [ ] 单 source raise 不阻塞其余
+- [ ] pytest 通过
 
 ---
 
-### OPT-029：StockPage React Query 按 symbol 缓存
+### OPT-039：AlphaIncubator / NewsPage React Query 迁移
 
 **状态**：[x]  
 **完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
+**PR/Commit**：round6 (local)
 
-#### 实施摘要
+#### 背景
 
-- 新建 `lib/queries/stock.ts` — `stockDetailQueryKey` / `fetchStockDetail` / `useStockDetailQuery`（`staleTime: 10min`）
-- fund-flow 与 quote 并行；localStorage force 节流保留在 `queryFn`
-- `StockPage.tsx` 移除 `useEffect` 手写 fetch
-- 测试：`stock.test.ts`
+OPT-012 阶段 B 仍有 major page 未覆盖：
+
+- `AlphaIncubatorPage.tsx`（~835 行）：`refresh()` 手写 fetch；tab/scope 切换时 **重复** 拉 trends/documents/catalyst
+- `NewsPage.tsx`：`useEffect` + `refresh()` 无 cache/dedup/staleTime
+- 同类：`BacktestPage.tsx`（手写 loadRuns/index）、`BrokerPage.tsx`（无 Query）
+
+#### 目标
+
+- 新建 `lib/queries/alphaRadar.ts`、`news.ts`、`backtest.ts`、`broker.ts`
+- 统一 staleTime / refetchOnWindowFocus；Alpha 页 tab 切换读 cache 而非全量 refresh
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Query | 新建 `apps/desktop-ui/src/lib/queries/alphaRadar.ts`、`news.ts`、`backtest.ts`、`broker.ts` |
+| Page | `AlphaIncubatorPage.tsx`、`NewsPage.tsx`、`BacktestPage.tsx`、`BrokerPage.tsx` |
+| 测试 | 各 query module 单测 |
 
 #### 验证
 
-- [x] 同一 symbol 10min 内 remount 命中 cache
-- [x] manual refresh 强制 refetch
-- [x] vitest 通过
+- [ ] 上述页面无 mount-only raw fetch loop（grep `useEffect.*refresh` 收敛）
+- [ ] tab 切换命中 cache（mock 断言 fetch 次数）
+- [ ] vitest 通过
 
 ---
 
-### OPT-030：ChatPanel / Markdown Export 复用 Query 缓存
+### OPT-040：ChatPanel 残留 trendok 与 Export fallback 统一 Query
 
 **状态**：[x]  
 **完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
+**PR/Commit**：round6 (local)
 
-#### 实施摘要
+#### 背景
 
-- `fetchDashboardSummaryCached`（`lib/queries/dashboard.ts`）
-- `buildWatchlistMarkdown` / `buildScreenersMarkdown` / `buildDashboardCopyAllMarkdown` 接受可选 `queryClient`，优先 `fetchQuery` 读 cache
-- `ChatPanel`：`dashboardAll` / `industryFundFlow` 引用改用 Query；`DashboardPage` Copy/PDF 注入 `queryClient`
-- `industryFundFlowQueryOptions` 支持可选 `asOfDate`
-- 测试：`dashboard-export.test.ts`（cache hit 断言）
+OPT-030 未完全收口：
+
+- `ChatPanel.tsx`（L729）dashboard context 构建时仍 **raw `fetch` POST `/market/stocks/trendok`**，绕过 `watchlistMarketQueryOptions` 缓存
+- `dashboard-export.ts` 无 `queryClient` 时仍 chunk 多次 trendok + quote
+- `watchlist-screener-import.ts` 串行 chunk trendok，未复用 `fetchTrendOkMap`（`lib/api/trendok.ts` 有 inflight dedupe）
+
+#### 目标
+
+- ChatPanel 注入 `queryClient`，watchlist 块用 `fetchQuery(watchlistMarketQueryOptions)`
+- export/import 统一走 `fetchTrendOkMap`；消除 POST trendok 特殊路径
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Chat | `apps/desktop-ui/src/components/chat/ChatPanel.tsx` |
+| Export | `apps/desktop-ui/src/lib/dashboard-export.ts` |
+| Import | `apps/desktop-ui/src/lib/watchlist-screener-import.ts` |
+| API | `apps/desktop-ui/src/lib/api/trendok.ts` |
+| 测试 | 扩展 `dashboard-export.test.ts`、ChatPanel trendok cache 单测 |
 
 #### 验证
 
-- [x] Dashboard 已加载时 Copy Markdown 不重复打 summary API（mock 断言）
-- [x] cache miss 仍正确 fallback fetch（无 queryClient 路径保留）
-- [x] vitest 通过
+- [ ] Chat dashboard context 不 POST trendok（mock 断言）
+- [ ] export fallback 走 `fetchTrendOkMap`
+- [ ] vitest 通过
 
 ---
 
 ## 推荐执行顺序
 
 ```
-Week 1:  OPT-021（Alerts breadth）→ 一行级修复，立刻消除隐藏 P0
-         OPT-023（TrendOK cache）→ 全站最高频计算降载
-Week 2:  OPT-022（Mainline read-only）→ Industry / Alpha Radar latency
-         OPT-024（Macro batch）→ Index / Dashboard IO
-Week 3:  OPT-025（IndustryFlow Query）→ 前端热路径缓存
-         OPT-026（Dashboard industry SQL）→ 60s 轮询 DB 减半
-Week 4:  OPT-027（Sync 并行）→ Sync All / 盘后 job 加速
-         OPT-028（Automation Query）→ 完成 OPT-012 阶段 B
-Later:   OPT-029 + OPT-030（Stock / Export 缓存）→ 导航与 Copy 体验
+Week 1: OPT-032（ensure_table guard）→ OPT-033（index batch）→ OPT-034（信号 dedup）
+Week 2: OPT-031（Sentiment breadth）→ OPT-035（sync_daily_full 退役）
+Week 3: OPT-036（Screener 2N）→ OPT-038（RSS 并行）
+Week 4: OPT-037（Dashboard 拆分）→ OPT-039 + OPT-040（Query 收尾）
 ```
 
-### 后续候选（未列入本轮 Top 10）
+**建议 PR 拆分**：
 
-| 主题 | 说明 |
-|------|------|
-| Index signals K 线 batch | `market_regime._compute_index_signals` 对 3 指数各查 80 日 K 线 |
-| Screener 2N 请求 | 每个 screener list + detail 两次请求；`importFromScreener` 串行 |
-| Dashboard 阶段三 | Sentiment + News 卡片拆分（`DashboardPage` 仍 1056 行） |
-| Index ↔ Dashboard 信号 dedup | `indexSignals` 双端点双轮询 |
-| `ensure_table()` 热路径 once | Alembic 已接管 schema 后冗余 DDL 检查 |
-| `sync_daily_full` 遗留串行 | fallback job 逐股 Tushare，应迁移至 close_sync |
-| SimTradePage 拆分 | 1017 行，串行分页 + 指数 loop |
-
----
-
-## 已完成归档（OPT-011 ~ OPT-025）
-
-| ID | 标题 | 完成日期 |
-|----|------|----------|
-| OPT-011 | Watchlist 手动刷新并行化 + TrendOK 统一 fetch | 2026-06-18 |
-| OPT-012 | React Query 替换手写轮询 | 2026-06-18 |
-| OPT-013 | Dashboard / Watchlist God Page 拆分（阶段二） | 2026-06-18 |
-| OPT-014 | Industry Fund Flow 读路径 N+1 消除 | 2026-06-18 |
-| OPT-015 | Watchlist Automation 去重 TrendOK 计算 | 2026-06-18 |
-| OPT-016 | TrendOK 行业资金流上下文批量化 | 2026-06-18 |
-| OPT-017 | Dashboard 去重 `get_index_signals` + TTL | 2026-06-18 |
-| OPT-018 | Watchlist Risk 复用 `watchlist-market` Query 缓存 | 2026-06-18 |
-| OPT-019 | TV Screener 最新快照 N+1 → 批量查询 | 2026-06-18 |
-| OPT-020 | ScreenerPage React Query + 并行 snapshot 加载 | 2026-06-18 |
-| OPT-021 | Watchlist Alerts 禁用全市场 Breadth 扫描 | 2026-06-18 |
-| OPT-022 | Mainline 读路径去 compute-on-read | 2026-06-18 |
-| OPT-023 | TrendOK 进程内 TTL 缓存 | 2026-06-18 |
-| OPT-024 | Macro Snapshot DB 批量读 + on-demand 并行 | 2026-06-18 |
-| OPT-025 | IndustryFlowPage React Query + Dashboard 缓存种子 | 2026-06-18 |
-| OPT-026 | Dashboard Industry Bundle 重复 SQL 合并 | 2026-06-18 |
-| OPT-027 | Sync All / Post-Close 串行步骤并行化 | 2026-06-18 |
-| OPT-028 | useWatchlistAutomation → React Query | 2026-06-18 |
-| OPT-029 | StockPage React Query 按 symbol 缓存 | 2026-06-18 |
-| OPT-030 | ChatPanel / Markdown Export 复用 Query 缓存 | 2026-06-18 |
+- **PR-A（backend P0）**：OPT-032 + OPT-033 + OPT-034 + OPT-035 + OPT-038
+- **PR-B（frontend P1）**：OPT-036 + OPT-037 + OPT-039 + OPT-040
 
 ---
 
@@ -314,11 +404,8 @@ Later:   OPT-029 + OPT-030（Stock / Export 缓存）→ 导航与 Copy 体验
 
 | 日期 | 说明 |
 |------|------|
-| 2026-06-18 | 第二轮：OPT-011 ~ OPT-015 完成 |
-| 2026-06-18 | 第三轮：OPT-016 ~ OPT-020 完成 |
-| 2026-06-18 | 第四轮审查：新增 OPT-021 ~ OPT-030；归档已完成项 |
-| 2026-06-18 | 第四轮 P0 完成：OPT-021 ~ OPT-025 |
-| 2026-06-18 | 第五轮 P1 完成：OPT-026 ~ OPT-030 |
+| 2026-06-18 | 第六轮审查：OPT-001 ~ OPT-030 全部完成；新增 OPT-031 ~ OPT-040 |
+| 2026-06-18 | 第六轮实施完成：OPT-031 ~ OPT-040（backend P0 + frontend P1 Query 收尾） |
 
 ---
 

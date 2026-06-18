@@ -8,12 +8,20 @@ import { apiPostJson } from '@/lib/api/client';
 import { AI_BASE_URL } from '@/lib/endpoints';
 import { isShanghaiSyncWindow } from '@/lib/market-hours';
 import {
-  dashboardSummaryQueryKey,
-  fetchDashboardSummary,
+  dashboardLiteQueryKey,
   saveDashboardSummaryCache,
   useDashboardSummaryQuery,
   type DashboardSummary,
 } from '@/lib/queries/dashboard';
+import {
+  fetchDashboardNews,
+  dashboardNewsQueryKey,
+  useDashboardNewsQuery,
+} from '@/lib/queries/news';
+import {
+  dashboardSentimentQueryKey,
+  useDashboardSentimentQuery,
+} from '@/lib/queries/sentiment';
 
 const NEWS_BRIEF_CACHE_KEY = 'karios.dashboard.newsBrief.v1';
 const NEWS_BRIEF_MIN_REFRESH_MS = 4 * 60 * 60 * 1000;
@@ -41,11 +49,35 @@ function buildNewsFallback(items: any[]): string | null {
   return ['Latest headlines:', ...rows].join('\n');
 }
 
+function mergeDashboardSummary(
+  lite: DashboardSummary | undefined,
+  sentiment: DashboardSummary | undefined,
+  news: DashboardSummary | undefined,
+): DashboardSummary | null {
+  if (!lite && !sentiment && !news) return null;
+  return {
+    ...(lite ?? {}),
+    ...(sentiment ?? {}),
+    ...(news ?? {}),
+    asOfDate: lite?.asOfDate ?? sentiment?.asOfDate ?? news?.asOfDate,
+  };
+}
+
 export function useDashboardSummary() {
   const queryClient = useQueryClient();
-  const summaryQuery = useDashboardSummaryQuery();
-  const summary = summaryQuery.data ?? null;
-  const summaryLoading = summaryQuery.isFetching && !summaryQuery.data;
+  const liteQuery = useDashboardSummaryQuery();
+  const sentimentQuery = useDashboardSentimentQuery();
+  const newsQuery = useDashboardNewsQuery();
+
+  const summary = React.useMemo(
+    () => mergeDashboardSummary(liteQuery.data, sentimentQuery.data, newsQuery.data),
+    [liteQuery.data, sentimentQuery.data, newsQuery.data],
+  );
+
+  const summaryLoading =
+    (liteQuery.isFetching && !liteQuery.data) ||
+    (sentimentQuery.isFetching && !sentimentQuery.data) ||
+    (newsQuery.isFetching && !newsQuery.data);
 
   const [error, setError] = React.useState<string | null>(null);
   const [sentimentBusy, setSentimentBusy] = React.useState(false);
@@ -72,30 +104,42 @@ export function useDashboardSummary() {
   }
 
   function applySummaryToCache(next: DashboardSummary) {
-    const includeMacro = isShanghaiSyncWindow();
-    queryClient.setQueryData(dashboardSummaryQueryKey(includeMacro), next);
+    queryClient.setQueryData(dashboardLiteQueryKey(), (prev: DashboardSummary | undefined) => ({
+      ...(prev ?? {}),
+      asOfDate: next.asOfDate,
+      industryFundFlow: next.industryFundFlow,
+      screeners: next.screeners,
+      marketEnvironmentZh: next.marketEnvironmentZh,
+    }));
+    queryClient.setQueryData(dashboardSentimentQueryKey(), (prev: DashboardSummary | undefined) => ({
+      ...(prev ?? {}),
+      asOfDate: next.asOfDate,
+      marketSentiment: next.marketSentiment,
+      macroSnapshot: next.macroSnapshot,
+      marketEnvironmentZh: next.marketEnvironmentZh,
+    }));
+    queryClient.setQueryData(dashboardNewsQueryKey(), (prev: DashboardSummary | undefined) => ({
+      ...(prev ?? {}),
+      news: next.news,
+    }));
     saveDashboardSummaryCache(next);
   }
 
   React.useEffect(() => {
-    if (!summaryQuery.data) return;
-    saveDashboardSummaryCache(summaryQuery.data);
-    const fallback = buildNewsFallback((summaryQuery.data as any)?.news?.items ?? []);
+    if (!newsQuery.data) return;
+    const fallback = buildNewsFallback((newsQuery.data as any)?.news?.items ?? []);
     if (fallback) {
       const fallbackUpdatedAt = new Date().toISOString();
       setNewsFallback(fallback);
       saveNewsBriefCache({ fallback, fallbackUpdatedAt });
     }
-  }, [summaryQuery.data]);
+  }, [newsQuery.data]);
 
   React.useEffect(() => {
-    if (!summaryQuery.error) return;
-    setError(
-      summaryQuery.error instanceof Error
-        ? summaryQuery.error.message
-        : String(summaryQuery.error),
-    );
-  }, [summaryQuery.error]);
+    const err = liteQuery.error ?? sentimentQuery.error ?? newsQuery.error;
+    if (!err) return;
+    setError(err instanceof Error ? err.message : String(err));
+  }, [liteQuery.error, sentimentQuery.error, newsQuery.error]);
 
   React.useEffect(() => {
     try {
@@ -113,14 +157,21 @@ export function useDashboardSummary() {
     }
   }, []);
 
+  async function refetchSummary() {
+    await Promise.all([
+      liteQuery.refetch(),
+      sentimentQuery.refetch(),
+      newsQuery.refetch(),
+    ]);
+  }
+
   async function onSyncSentiment() {
     setSentimentBusy(true);
     setError(null);
     try {
       await apiPostJson('/market/cn/sentiment/sync', { force: isShanghaiSyncWindow() });
-      await queryClient.invalidateQueries({
-        queryKey: dashboardSummaryQueryKey(isShanghaiSyncWindow()),
-      });
+      await queryClient.invalidateQueries({ queryKey: dashboardSentimentQueryKey() });
+      await queryClient.invalidateQueries({ queryKey: dashboardLiteQueryKey() });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -132,8 +183,8 @@ export function useDashboardSummary() {
     setNewsSummaryBusy(true);
     setError(null);
     try {
-      const s = await fetchDashboardSummary(true);
-      applySummaryToCache(s);
+      const s = await fetchDashboardNews();
+      queryClient.setQueryData(dashboardNewsQueryKey(), s);
       const newsData = (s as any)?.news;
       if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
         const aiRes = await fetch(`${AI_BASE_URL}/news/summary`, {
@@ -167,7 +218,7 @@ export function useDashboardSummary() {
   return {
     summary,
     summaryLoading,
-    refetchSummary: summaryQuery.refetch,
+    refetchSummary,
     error,
     setError,
     applySummaryToCache,

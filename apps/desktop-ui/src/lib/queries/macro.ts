@@ -1,9 +1,10 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 
+import { dashboardSummaryQueryKey, type DashboardSummary } from './dashboard';
 import { MACRO_POLL_MS } from './intervals';
 
 export type CnIndexSignal = {
@@ -50,6 +51,12 @@ export function macroSnapshotQueryKey() {
   return ['macro', 'snapshot'] as const;
 }
 
+function macroFromDashboardSummary(summary: DashboardSummary | undefined): MacroSnapshot | null {
+  const snap = summary?.macroSnapshot;
+  if (!snap || typeof snap !== 'object') return null;
+  return snap as MacroSnapshot;
+}
+
 export async function fetchMacroSnapshot(): Promise<MacroSnapshot> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
@@ -71,10 +78,25 @@ export async function fetchMacroSnapshot(): Promise<MacroSnapshot> {
   }
 }
 
+export async function fetchMacroSnapshotCached(
+  queryClient: QueryClient,
+): Promise<MacroSnapshot> {
+  const candidates = [
+    queryClient.getQueryData<DashboardSummary>(dashboardSummaryQueryKey(true)),
+    queryClient.getQueryData<DashboardSummary>(dashboardSummaryQueryKey(false)),
+  ];
+  for (const cached of candidates) {
+    const fromSummary = macroFromDashboardSummary(cached);
+    if (fromSummary) return fromSummary;
+  }
+  return fetchMacroSnapshot();
+}
+
 export function useMacroSnapshotQuery() {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: macroSnapshotQueryKey(),
-    queryFn: fetchMacroSnapshot,
+    queryFn: () => fetchMacroSnapshotCached(queryClient),
     refetchInterval: MACRO_POLL_MS,
     refetchIntervalInBackground: false,
   });

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Image from 'next/image';
+import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, UploadCloud, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,14 @@ import {
 } from '@/components/ui/select';
 import { newId } from '@/lib/id';
 import { apiGetJson, apiPostJson, apiPutJson } from '@/lib/api/client';
+import {
+  brokerAccountStateQueryKey,
+  invalidateBrokerQueries,
+  useBrokerAccountStateQuery,
+  useBrokerAccountsQuery,
+  type BrokerAccount,
+  type BrokerAccountState,
+} from '@/lib/queries/broker';
 import { useChatStore } from '@/lib/chat/store';
 
 type ImportImage = {
@@ -21,25 +30,6 @@ type ImportImage = {
   name: string;
   mediaType: string;
   dataUrl: string;
-};
-
-type BrokerAccountState = {
-  accountId: string;
-  broker: string;
-  updatedAt: string;
-  overview: Record<string, unknown>;
-  positions: Array<Record<string, unknown>>;
-  conditionalOrders: Array<Record<string, unknown>>;
-  trades: Array<Record<string, unknown>>;
-  counts: Record<string, number>;
-};
-
-type BrokerAccount = {
-  id: string;
-  broker: string;
-  title: string;
-  accountMasked: string | null;
-  updatedAt: string;
 };
 
 function toNum(v: unknown): number | null {
@@ -69,11 +59,10 @@ function pickStr(obj: Record<string, unknown>, keys: string[]): string {
 
 export function BrokerPage() {
   const { addReference } = useChatStore();
+  const queryClient = useQueryClient();
   const [images, setImages] = React.useState<ImportImage[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [state, setState] = React.useState<BrokerAccountState | null>(null);
-  const [accounts, setAccounts] = React.useState<BrokerAccount[]>([]);
   const [accountId, setAccountId] = React.useState<string>('');
   const [showNewAccount, setShowNewAccount] = React.useState(false);
   const [newAccountTitle, setNewAccountTitle] = React.useState('');
@@ -82,29 +71,24 @@ export function BrokerPage() {
   const [renameAccountTitle, setRenameAccountTitle] = React.useState('');
   const [showAllPositions, setShowAllPositions] = React.useState(false);
 
+  const accountsQuery = useBrokerAccountsQuery('pingan');
+  const accounts = accountsQuery.data ?? [];
+  const effectiveAccountId = accountId || accounts[0]?.id || '';
+  const stateQuery = useBrokerAccountStateQuery('pingan', effectiveAccountId);
+  const state = stateQuery.data ?? null;
+
+  React.useEffect(() => {
+    if (!accountId && accounts[0]?.id) setAccountId(accounts[0].id);
+  }, [accountId, accounts]);
+
   const refresh = React.useCallback(async () => {
     setError(null);
     try {
-      const acc = await apiGetJson<BrokerAccount[]>('/broker/accounts?broker=pingan');
-      setAccounts(acc);
-      const effectiveAccountId = accountId || acc[0]?.id || '';
-      if (!accountId && effectiveAccountId) setAccountId(effectiveAccountId);
-      if (effectiveAccountId) {
-        const st = await apiGetJson<BrokerAccountState>(
-          `/broker/pingan/accounts/${encodeURIComponent(effectiveAccountId)}/state`,
-        );
-        setState(st);
-      } else {
-        setState(null);
-      }
+      await invalidateBrokerQueries(queryClient);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [accountId]);
-
-  React.useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  }, [queryClient]);
 
   React.useEffect(() => {
     if (!showRenameAccount) return;
@@ -149,7 +133,11 @@ export function BrokerPage() {
         },
       );
       setImages([]);
-      setState(st);
+      queryClient.setQueryData(
+        brokerAccountStateQueryKey('pingan', accountId),
+        st,
+      );
+      await invalidateBrokerQueries(queryClient);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

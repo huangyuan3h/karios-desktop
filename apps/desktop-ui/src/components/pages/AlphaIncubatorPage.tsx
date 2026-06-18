@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Bot,
   ExternalLink,
@@ -13,7 +14,6 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { apiDeleteJson, apiGetJson, apiPostJson } from '@/lib/api/client';
 import {
   articleAgeDays,
   DEFAULT_CATALYST_MAX_AGE_DAYS,
@@ -24,40 +24,24 @@ import {
   type CatalystStock,
 } from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
+import {
+  deleteAlphaRadarTrend,
+  invalidateAlphaRadarQueries,
+  remapAlphaRadarTrend,
+  runAlphaRadarPipeline,
+  useAlphaRadarCatalystQuery,
+  useAlphaRadarRssQuery,
+  useAlphaRadarStatusQuery,
+  useAlphaRadarTrendsQuery,
+  type AlphaTrend,
+  type DriverFilter,
+  type PipelineStatus,
+  type RssDocument,
+  type TrendsScope,
+  type ViewTab,
+} from '@/lib/queries/alphaRadar';
 import { loadWatchlist, saveWatchlist } from '@/lib/watchlist-storage';
 import { cn } from '@/lib/utils';
-
-type CnSymbol = {
-  symbol: string;
-  name: string;
-  confidence: number;
-  rationale: string;
-};
-
-type AlphaTrend = {
-  id: string;
-  documentId: string;
-  trendName: string;
-  macroTheme?: string | null;
-  catalystGrade?: string | null;
-  driverType?: string | null;
-  eventFocus?: string | null;
-  logicSummary?: string | null;
-  catalyst: string | null;
-  globalTarget: string | null;
-  urgencyLevel: string;
-  keywordsForMapping: string[];
-  cnSymbols: CnSymbol[];
-  mappingConfidence: number | null;
-  riskStatus: string;
-  createdAt: string;
-  documentTitle?: string;
-  documentUrl?: string;
-  documentCategory?: string;
-  documentPublishedAt?: string | null;
-  documentFetchedAt?: string | null;
-  documentSummary?: string | null;
-};
 
 function trendDisplayTitle(t: AlphaTrend): string {
   return (t.macroTheme || t.trendName || '').trim() || '—';
@@ -66,52 +50,6 @@ function trendDisplayTitle(t: AlphaTrend): string {
 function trendCatalystGrade(t: AlphaTrend): string {
   return (t.catalystGrade || t.urgencyLevel || 'B').trim() || 'B';
 }
-
-type PipelineStatus = {
-  lastRunAt?: string | null;
-  lastIngestAt?: string | null;
-  lastProcessAt?: string | null;
-  lastBatchStartedAt?: string | null;
-  lastTrendCount?: number;
-  currentTrendCount?: number;
-  accumulatedTrendCount?: number;
-  rawBacklogCount?: number;
-  lastIngestStats?: {
-    fetched?: number;
-    filteredOut?: number;
-    stored?: number;
-    new?: number;
-    requeued?: number;
-    unchanged?: number;
-  } | null;
-  withinCooldown?: boolean;
-  cooldownHours?: number;
-};
-
-type RssDocument = {
-  id: string;
-  sourceId: string;
-  title: string;
-  url: string;
-  category: string;
-  summary: string | null;
-  publishedAt: string | null;
-  fetchedAt: string;
-  processingStatus: string;
-};
-
-type AlphaSource = {
-  id: string;
-  name: string;
-};
-
-type ViewTab = 'trends' | 'catalyst' | 'rss';
-type TrendsScope = 'batch' | 'all';
-type DriverFilter = 'all' | 'Global_Tech' | 'Domestic_Policy' | 'Cycle_Reversal';
-
-const ALPHA_GET_OPTS = { timeoutMs: 60_000 } as const;
-const ALPHA_POST_OPTS = { timeoutMs: 300_000 } as const;
-const ALPHA_DELETE_OPTS = { timeoutMs: 60_000 } as const;
 
 function fmtWhen(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -154,7 +92,7 @@ function riskLabel(status: string): { text: string; className: string } {
   };
 }
 
-async function addSymbolsToWatchlist(symbols: CnSymbol[]) {
+async function addSymbolsToWatchlist(symbols: AlphaTrend['cnSymbols']) {
   const existing = loadWatchlist();
   const seen = new Set(existing.map((x) => x.symbol));
   const now = new Date().toISOString();
@@ -170,111 +108,51 @@ async function addSymbolsToWatchlist(symbols: CnSymbol[]) {
 
 export function AlphaIncubatorPage() {
   const { addReference } = useChatStore();
+  const queryClient = useQueryClient();
   const [viewTab, setViewTab] = React.useState<ViewTab>('trends');
   const [trendsScope, setTrendsScope] = React.useState<TrendsScope>('batch');
   const [driverFilter, setDriverFilter] = React.useState<DriverFilter>('all');
-  const [trends, setTrends] = React.useState<AlphaTrend[]>([]);
-  const [trendsTotal, setTrendsTotal] = React.useState(0);
-  const [rssDocuments, setRssDocuments] = React.useState<RssDocument[]>([]);
-  const [rssTotal, setRssTotal] = React.useState(0);
-  const [sourceNames, setSourceNames] = React.useState<Record<string, string>>({});
-  const [catalystStocks, setCatalystStocks] = React.useState<CatalystStock[]>([]);
-  const [catalystMeta, setCatalystMeta] = React.useState<{ maxAgeDays: number; total: number }>({
-    maxAgeDays: DEFAULT_CATALYST_MAX_AGE_DAYS,
-    total: 0,
-  });
-  const [status, setStatus] = React.useState<PipelineStatus>({});
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [msg, setMsg] = React.useState<string | null>(null);
+
+  const statusQuery = useAlphaRadarStatusQuery();
+  const trendsQuery = useAlphaRadarTrendsQuery(trendsScope);
+  const catalystQuery = useAlphaRadarCatalystQuery(DEFAULT_CATALYST_MAX_AGE_DAYS);
+  const rssQuery = useAlphaRadarRssQuery({ enabled: viewTab === 'rss' });
+
+  const status = (statusQuery.data ?? {}) as PipelineStatus;
+  const trends = trendsQuery.data?.items ?? [];
+  const trendsTotal = trendsQuery.data?.total ?? trends.length;
+  const catalystStocks = (catalystQuery.data?.items ?? []) as CatalystStock[];
+  const catalystMeta = {
+    maxAgeDays: catalystQuery.data?.maxAgeDays ?? DEFAULT_CATALYST_MAX_AGE_DAYS,
+    total: catalystQuery.data?.total ?? 0,
+  };
+  const rssDocuments = rssQuery.data?.documents ?? [];
+  const rssTotal = rssQuery.data?.total ?? rssDocuments.length;
+  const sourceNames = rssQuery.data?.sourceNames ?? {};
+
+  const refresh = React.useCallback(async () => {
+    setError(null);
+    try {
+      await invalidateAlphaRadarQueries(queryClient);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [queryClient]);
 
   const visibleTrends = React.useMemo(() => {
     if (driverFilter === 'all') return trends;
     return trends.filter((t) => (t.driverType || 'Global_Tech') === driverFilter);
   }, [trends, driverFilter]);
 
-  const refreshTrends = React.useCallback(async (scope: TrendsScope) => {
-    const path =
-      scope === 'batch'
-        ? '/api/alpha-radar/trends?limit=50&latest_batch=true'
-        : '/api/alpha-radar/trends?limit=100&latest_batch=false';
-    const trendResp = await apiGetJson<{ total: number; items: AlphaTrend[] }>(path, ALPHA_GET_OPTS);
-    setTrends(trendResp.items || []);
-    setTrendsTotal(trendResp.total ?? trendResp.items?.length ?? 0);
-  }, []);
-
-  const refreshRss = React.useCallback(async () => {
-    const [docResp, srcResp] = await Promise.all([
-      apiGetJson<{ total: number; items: RssDocument[] }>('/api/alpha-radar/documents?limit=100', ALPHA_GET_OPTS),
-      apiGetJson<{ sources: AlphaSource[] }>('/api/alpha-radar/sources', ALPHA_GET_OPTS),
-    ]);
-    setRssDocuments(docResp.items || []);
-    setRssTotal(docResp.total ?? docResp.items?.length ?? 0);
-    const map: Record<string, string> = {};
-    for (const s of srcResp.sources || []) {
-      map[s.id] = s.name;
-    }
-    setSourceNames(map);
-  }, []);
-
-  const refresh = React.useCallback(async () => {
-    setError(null);
-    try {
-      const [statusResp, catalystResp] = await Promise.all([
-        apiGetJson<{ ok?: boolean } & PipelineStatus>('/api/alpha-radar/status', ALPHA_GET_OPTS),
-        apiGetJson<{ total: number; maxAgeDays: number; items: CatalystStock[] }>(
-          `/api/alpha-radar/catalyst-stocks?limit=50&maxAgeDays=${DEFAULT_CATALYST_MAX_AGE_DAYS}`,
-          ALPHA_GET_OPTS,
-        ),
-      ]);
-      setStatus(statusResp);
-      setCatalystStocks(catalystResp.items || []);
-      setCatalystMeta({
-        maxAgeDays: catalystResp.maxAgeDays ?? DEFAULT_CATALYST_MAX_AGE_DAYS,
-        total: catalystResp.total ?? 0,
-      });
-      await refreshTrends(trendsScope);
-      if (viewTab === 'rss') {
-        await refreshRss();
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [refreshTrends, refreshRss, trendsScope, viewTab]);
-
-  React.useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  React.useEffect(() => {
-    if (viewTab !== 'trends') return;
-    void refreshTrends(trendsScope).catch((e) => {
-      setError(e instanceof Error ? e.message : String(e));
-    });
-  }, [trendsScope, viewTab, refreshTrends]);
-
-  React.useEffect(() => {
-    if (viewTab !== 'rss') return;
-    void refreshRss().catch((e) => {
-      setError(e instanceof Error ? e.message : String(e));
-    });
-  }, [viewTab, refreshRss]);
-
   async function runPipeline(force = false) {
     setError(null);
     setMsg(null);
     setBusy(true);
     try {
-      const r = await apiPostJson<{
-        skipped?: boolean;
-        ok?: boolean;
-        trendCount?: number;
-        processedHeadlines?: number;
-        ingestStats?: { fetched?: number; filteredOut?: number; stored?: number };
-        keptPreviousTrends?: boolean;
-        lastRunAt?: string;
-        errors?: Array<{ error?: string }>;
-      }>('/api/alpha-radar/run-pipeline', { force }, ALPHA_POST_OPTS);
+      const r = await runAlphaRadarPipeline(force);
       if (r.skipped) {
         setMsg(`12h 冷却中 · 当前 ${r.trendCount ?? 0} 张卡片`);
       } else if (r.ok === false) {
@@ -306,10 +184,7 @@ export function AlphaIncubatorPage() {
     setMsg(null);
     setBusy(true);
     try {
-      const r = await apiDeleteJson<{ ok?: boolean; error?: string }>(
-        `/api/alpha-radar/trends/${encodeURIComponent(trendId)}`,
-        ALPHA_DELETE_OPTS,
-      );
+      const r = await deleteAlphaRadarTrend(trendId);
       if (!r.ok) throw new Error(r.error || 'Delete failed');
       setMsg('Trend card deleted');
       await refresh();
@@ -325,11 +200,7 @@ export function AlphaIncubatorPage() {
     setMsg(null);
     setBusy(true);
     try {
-      const r = await apiPostJson<{ ok?: boolean; cnSymbols?: CnSymbol[]; error?: string }>(
-        `/api/alpha-radar/trends/${encodeURIComponent(trendId)}/remap`,
-        undefined,
-        ALPHA_POST_OPTS,
-      );
+      const r = await remapAlphaRadarTrend(trendId);
       if (!r.ok) throw new Error(r.error || 'Remap failed');
       const n = r.cnSymbols?.length ?? 0;
       setMsg(n ? `Mapped ${n} A-share symbol(s)` : 'Remap done (no symbols — try Tavily or manual review)');

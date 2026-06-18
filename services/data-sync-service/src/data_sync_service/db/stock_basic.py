@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd  # type: ignore[import-not-found, import-untyped]
 
 from data_sync_service.db import get_connection
+from data_sync_service.db._ensure_guard import ensure_once
 
 TABLE_NAME = "stock_basic"
 
@@ -33,11 +34,15 @@ ON CONFLICT (ts_code) DO UPDATE SET
 """
 
 
-def ensure_table() -> None:
+def _ensure_table_impl() -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(CREATE_SQL)
         conn.commit()
+
+
+def ensure_table() -> None:
+    ensure_once("stock_basic", _ensure_table_impl)
 
 
 def _scalar(val: object) -> str | None:

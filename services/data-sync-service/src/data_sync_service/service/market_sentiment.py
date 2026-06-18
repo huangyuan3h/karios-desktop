@@ -19,6 +19,8 @@ from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 BREADTH_DECLINE_RED_THRESHOLD = 3000
 CN_INDEX_TRAFFIC_LIGHT_NAMES = frozenset({"上证指数", "创业板指"})
+INTRADAY_BREADTH_CACHE_TTL_SECONDS = 600
+_INTRADAY_BREADTH_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
 
 
 def now_iso() -> str:
@@ -233,13 +235,20 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
     """
     Best-effort intraday breadth using realtime quotes (Tushare).
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     d = as_of.strftime("%Y-%m-%d")
+    now = time.time()
+    cached = _INTRADAY_BREADTH_CACHE.get(d)
+    if cached and cached[1] > now:
+        return cached[0]
+
     ensure_stock_basic()
     ts_codes_all = fetch_ts_codes()
     ts_codes = [c for c in ts_codes_all if c.endswith((".SZ", ".SH", ".BJ"))]
     requested = len(ts_codes)
     if not ts_codes:
-        return {
+        empty = {
             "date": d,
             "up_count": 0,
             "down_count": 0,
@@ -250,6 +259,40 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
             "total_volume": 0.0,
             "raw": {"source": "tushare.realtime_quote", "requested": 0, "matched": 0},
         }
+        _INTRADAY_BREADTH_CACHE[d] = (empty, now + INTRADAY_BREADTH_CACHE_TTL_SECONDS)
+        return empty
+
+    parts = [ts_codes[i : i + 50] for i in range(0, len(ts_codes), 50)]
+
+    def _fetch_part(part: list[str]) -> tuple[int, int, int, int, float, float, list[str]]:
+        local_up = 0
+        local_down = 0
+        local_flat = 0
+        local_matched = 0
+        local_turnover = 0.0
+        local_volume = 0.0
+        local_errors: list[str] = []
+        try:
+            r = fetch_realtime_quotes(part)
+            if not isinstance(r, dict) or not bool(r.get("ok")):
+                err = r.get("error") if isinstance(r, dict) else "realtime_quote_failed"
+                local_errors.append(str(err))
+                return 0, 0, 0, 0, 0.0, 0.0, local_errors
+            for it in r.get("items", []) or []:
+                local_matched += 1
+                pct = _realtime_pct_chg(it)
+                if pct is not None:
+                    if pct > 0:
+                        local_up += 1
+                    elif pct < 0:
+                        local_down += 1
+                    else:
+                        local_flat += 1
+                local_volume += _finite_float(it.get("volume"), 0.0)
+                local_turnover += _finite_float(it.get("amount"), 0.0)
+        except Exception as exc:
+            local_errors.append(str(exc))
+        return local_up, local_down, local_flat, local_matched, local_turnover, local_volume, local_errors
 
     up = 0
     down = 0
@@ -257,32 +300,19 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
     total_turnover_cny = 0.0
     total_volume = 0.0
     matched = 0
-    batches = 0
+    batches = len(parts)
     errors: list[str] = []
-    for i in range(0, len(ts_codes), 50):
-        part = ts_codes[i : i + 50]
-        batches += 1
-        r = fetch_realtime_quotes(part)
-        if not isinstance(r, dict) or not bool(r.get("ok")):
-            err = r.get("error") if isinstance(r, dict) else "realtime_quote_failed"
-            errors.append(str(err))
-            continue
-        items = r.get("items", []) or []
-        for it in items:
-            matched += 1
-            pct = _realtime_pct_chg(it)
-            if pct is not None:
-                if pct > 0:
-                    up += 1
-                elif pct < 0:
-                    down += 1
-                else:
-                    flat += 1
-            vol = _finite_float(it.get("volume"), 0.0)
-            amt = _finite_float(it.get("amount"), 0.0)
-            total_volume += vol
-            total_turnover_cny += amt
-        time.sleep(0.08)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = [pool.submit(_fetch_part, part) for part in parts]
+        for future in as_completed(futures):
+            pu, pd, pf, pm, pt, pv, pe = future.result()
+            up += pu
+            down += pd
+            flat += pf
+            matched += pm
+            total_turnover_cny += pt
+            total_volume += pv
+            errors.extend(pe)
 
     total = up + down + flat
     ratio = float(up) / float(down) if down > 0 else float(up)
@@ -294,7 +324,7 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
     }
     if errors:
         raw["errors"] = errors[:3]
-    return {
+    result = {
         "date": d,
         "up_count": up,
         "down_count": down,
@@ -305,6 +335,8 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
         "total_volume": total_volume,
         "raw": raw,
     }
+    _INTRADAY_BREADTH_CACHE[d] = (result, now + INTRADAY_BREADTH_CACHE_TTL_SECONDS)
+    return result
 
 
 def _safe_trade_date(x: date) -> str:

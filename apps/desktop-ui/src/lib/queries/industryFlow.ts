@@ -5,7 +5,6 @@ import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { apiGetJson, apiPostJson } from '@/lib/api/client';
 import { isShanghaiSyncWindow } from '@/lib/market-hours';
 
-import { dashboardSummaryQueryKey } from './dashboard';
 import { SCREENER_STALE_MS } from './intervals';
 
 export type IndustryFundFlowPoint = {
@@ -172,10 +171,9 @@ export async function syncIndustryMainline(force = false): Promise<Record<string
 }
 
 export async function invalidateIndustryFlowQueries(queryClient: QueryClient): Promise<void> {
-  const includeMacro = isShanghaiSyncWindow();
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ['industry'] }),
-    queryClient.invalidateQueries({ queryKey: dashboardSummaryQueryKey(includeMacro) }),
+    queryClient.invalidateQueries({ queryKey: ['dashboard', 'summary'] }),
   ]);
 }
 

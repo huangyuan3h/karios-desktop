@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd  # type: ignore[import-not-found, import-untyped]
 
 from data_sync_service.db import get_connection
+from data_sync_service.db._ensure_guard import ensure_once
 
 TABLE_NAME = "index_daily"
 
@@ -44,11 +45,15 @@ ON CONFLICT (ts_code, trade_date) DO UPDATE SET
 """
 
 
-def ensure_table() -> None:
+def _ensure_table_impl() -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(CREATE_SQL)
         conn.commit()
+
+
+def ensure_table() -> None:
+    ensure_once("index_daily", _ensure_table_impl)
 
 
 def _numeric(val: Any) -> float | None:
@@ -299,4 +304,61 @@ def fetch_last_closes_vol_upto(
         except Exception:
             vol = 0.0
         out.append((d, close, vol))
+    return out
+
+
+def fetch_last_closes_vol_batch(
+    ts_codes: list[str],
+    *,
+    days: int = 80,
+    as_of_date: str | None = None,
+) -> dict[str, list[tuple[str, float, float]]]:
+    """
+    Return last N (date, close, vol) rows per ts_code, ordered by date ASC.
+    Single query for all codes (window per ts_code).
+    """
+    codes = [str(c).strip() for c in ts_codes if str(c).strip()]
+    if not codes:
+        return {}
+    ensure_table()
+    days2 = max(1, min(int(days), 400))
+    date_filter = ""
+    params: list[object] = [codes, days2]
+    if as_of_date:
+        date_filter = " AND trade_date <= %s"
+        params = [codes, as_of_date, days2]
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT ts_code, trade_date, close, vol
+                FROM (
+                    SELECT ts_code, trade_date, close, vol,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY ts_code ORDER BY trade_date DESC
+                           ) AS rn
+                    FROM {TABLE_NAME}
+                    WHERE ts_code = ANY(%s){date_filter}
+                ) ranked
+                WHERE rn <= %s
+                ORDER BY ts_code, trade_date ASC
+                """,
+                tuple(params),
+            )
+            rows = cur.fetchall()
+
+    out: dict[str, list[tuple[str, float, float]]] = {c: [] for c in codes}
+    for r in rows:
+        code = str(r[0])
+        d = r[1].strftime("%Y-%m-%d") if r[1] and hasattr(r[1], "strftime") else str(r[1])
+        try:
+            close = float(r[2] or 0.0)
+        except Exception:
+            close = 0.0
+        try:
+            vol = float(r[3] or 0.0)
+        except Exception:
+            vol = 0.0
+        out.setdefault(code, []).append((d, close, vol))
     return out

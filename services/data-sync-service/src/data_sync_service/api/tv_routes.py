@@ -52,6 +52,13 @@ def list_tv_screener_snapshots(screener_id: str, limit: int = Query(10, ge=1, le
     return tvsvc.list_snapshots(screener_id=screener_id, limit=int(limit))
 
 
+@router.get("/integrations/tradingview/screeners/snapshots/latest")
+def list_tv_latest_snapshots_batch(
+    ids: list[str] = Query(default=[], alias="ids"),
+) -> dict[str, Any]:
+    return tvsvc.list_latest_snapshots_batch(screener_ids=ids)
+
+
 @router.get("/integrations/tradingview/snapshots/{snapshot_id}")
 def get_tv_screener_snapshot(snapshot_id: str) -> dict[str, Any]:
     return tvsvc.get_snapshot(snapshot_id=snapshot_id)

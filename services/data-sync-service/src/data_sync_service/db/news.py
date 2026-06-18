@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from data_sync_service.db import get_connection
+from data_sync_service.db._ensure_guard import ensure_once
 
 SOURCES_TABLE = "news_sources"
 ITEMS_TABLE = "news_items"
@@ -41,12 +42,16 @@ CREATE INDEX IF NOT EXISTS idx_news_items_fetched ON {ITEMS_TABLE}(fetched_at DE
 """
 
 
-def ensure_tables() -> None:
+def _ensure_tables_impl() -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(CREATE_SOURCES_SQL)
             cur.execute(CREATE_ITEMS_SQL)
         conn.commit()
+
+
+def ensure_tables() -> None:
+    ensure_once("news", _ensure_tables_impl)
 
 
 def fetch_sources(enabled_only: bool = True) -> list[dict[str, Any]]:

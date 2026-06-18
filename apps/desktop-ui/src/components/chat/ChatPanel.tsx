@@ -12,6 +12,8 @@ import { useChatStore } from '@/lib/chat/store';
 import type { ChatAttachment, ChatMessage, ChatReference } from '@/lib/chat/types';
 import { fetchDashboardSummaryCached } from '@/lib/queries/dashboard';
 import { industryFundFlowQueryOptions } from '@/lib/queries/industryFlow';
+import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
+import { loadWatchlist } from '@/lib/watchlist-storage';
 
 type TvSnapshotDetail = {
   id: string;
@@ -726,28 +728,37 @@ async function buildReferenceBlock(refs: ChatReference[], queryClient: QueryClie
 
         // Watchlist summary
         try {
-          const watchlistResp = await fetch(`${DATA_SYNC_BASE_URL}/market/stocks/trendok`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ limit: 10 }),
-          });
-          if (watchlistResp.ok) {
-            const wlData = (await watchlistResp.json()) as unknown;
-            const wlItems = asArray(wlData);
-            if (wlItems.length) {
+          const wlItems = loadWatchlist();
+          const symbols = (Array.isArray(wlItems) ? wlItems : [])
+            .map((it) => String(it?.symbol ?? '').trim().toUpperCase())
+            .filter(Boolean);
+          if (symbols.length) {
+            const snapshot = await queryClient.fetchQuery(watchlistMarketQueryOptions(symbols));
+            const wlRows = symbols
+              .map((sym) => snapshot.trend[sym])
+              .filter((row): row is NonNullable<typeof row> => Boolean(row))
+              .sort((a, b) => {
+                const sa = typeof a.score === 'number' && Number.isFinite(a.score) ? a.score : null;
+                const sb = typeof b.score === 'number' && Number.isFinite(b.score) ? b.score : null;
+                if (sa == null && sb == null) return 0;
+                if (sa == null) return 1;
+                if (sb == null) return -1;
+                return sb - sa;
+              })
+              .slice(0, 10);
+            if (wlRows.length) {
               out += `### Top Watchlist items (by score)\n\n`;
               out += `| Symbol | Name | Score | TrendOK | Buy |\n`;
               out += `|---|---|---:|---|---|\n`;
-              for (const it of wlItems.slice(0, 10)) {
-                const r = asRecord(it) ?? {};
-                const trendOkVal = r['trendOk'];
+              for (const r of wlRows) {
+                const trendOkVal = r.trendOk;
                 const trendOkStr =
                   trendOkVal === true ? '✅' : trendOkVal === false ? '❌' : '—';
                 const buy =
-                  getStr(r, 'buyMode') && getStr(r, 'buyAction')
-                    ? `${getStr(r, 'buyMode')}/${getStr(r, 'buyAction')}`
-                    : getStr(r, 'buyAction') || '—';
-                out += `| ${getStr(r, 'symbol')} | ${getStr(r, 'name') || '—'} | ${getNumStr(r, 'score')} | ${trendOkStr} | ${buy} |\n`;
+                  r.buyMode && r.buyAction
+                    ? `${r.buyMode}/${r.buyAction}`
+                    : r.buyAction || '—';
+                out += `| ${r.symbol} | ${r.name || '—'} | ${typeof r.score === 'number' && Number.isFinite(r.score) ? r.score.toFixed(2) : '—'} | ${trendOkStr} | ${buy} |\n`;
               }
               out += `\n`;
             }

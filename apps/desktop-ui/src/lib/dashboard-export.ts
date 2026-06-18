@@ -462,8 +462,6 @@ export async function buildWatchlistMarkdown(queryClient?: QueryClient): Promise
     trend = snapshot.trend;
     quotes = snapshot.quotes;
   } else {
-    const symsChunks = chunk(syms, 200);
-
     const byTsCode = new Map<string, string>();
     const tsCodes = syms
       .map((s) => {
@@ -474,15 +472,8 @@ export async function buildWatchlistMarkdown(queryClient?: QueryClient): Promise
       .filter(Boolean) as string[];
     const tsCodesChunks = chunk(tsCodes, 50);
 
-    const [trendResults, quoteResults] = await Promise.all([
-      Promise.all(
-        symsChunks.map(async (part) => {
-          const sp = new URLSearchParams();
-          sp.set('realtime', quoteWindow ? 'true' : 'false');
-          for (const s of part) sp.append('symbols', s);
-          return apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
-        }),
-      ),
+    const [trendMap, quoteResults] = await Promise.all([
+      fetchTrendOkMap(syms, { realtime: quoteWindow }),
       Promise.all(
         tsCodesChunks.map(async (part) => {
           return apiGetJson<QuoteResp>(
@@ -492,13 +483,7 @@ export async function buildWatchlistMarkdown(queryClient?: QueryClient): Promise
       ),
     ]);
 
-    trend = {};
-    for (const trendRows of trendResults) {
-      for (const r of Array.isArray(trendRows) ? trendRows : []) {
-        if (r && r.symbol) trend[String(r.symbol).toUpperCase()] = r;
-      }
-    }
-
+    trend = Object.fromEntries(trendMap);
     quotes = {};
     for (const r of quoteResults) {
       for (const it of r?.items ?? []) {

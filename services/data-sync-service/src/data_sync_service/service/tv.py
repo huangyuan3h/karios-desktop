@@ -113,6 +113,12 @@ def get_snapshot(*, snapshot_id: str) -> dict[str, Any]:
     return out
 
 
+def list_latest_snapshots_batch(*, screener_ids: list[str]) -> dict[str, Any]:
+    ensure_seeded()
+    details = tvdb.list_latest_snapshot_details_for_screeners(screener_ids)
+    return {"items": details}
+
+
 def _parse_iso_datetime(value: str) -> datetime | None:
     s = (value or "").strip()
     if not s:

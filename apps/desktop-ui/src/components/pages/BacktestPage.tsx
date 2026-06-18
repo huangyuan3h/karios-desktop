@@ -1,28 +1,20 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Area, AreaChart, CartesianGrid, Line, LineChart, TooltipProps, XAxis, YAxis } from 'recharts';
 
 import { Button } from '@/components/ui/button';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { apiGetJson, apiPostJson } from '@/lib/api/client';
+import { apiGetJson, apiPostJson, apiDeleteJson } from '@/lib/api/client';
+import {
+  invalidateBacktestQueries,
+  useBacktestIndexQuery,
+  useBacktestResultQuery,
+  useBacktestRunsQuery,
+} from '@/lib/queries/backtest';
 
 type BacktestRunResponse = { ok: boolean; runId: string; summary: Record<string, number> };
-type BacktestRunRecord = {
-  id: string;
-  strategy_name: string;
-  start_date: string;
-  end_date: string;
-  status: string;
-  created_at: string;
-  params: unknown;
-  summary: Record<string, number> | null;
-  equity_curve: Array<{ date: string; equity: number }> | null;
-  drawdown_curve: Array<{ date: string; drawdown: number }> | null;
-  positions_curve: Array<{ date: string; invested_ratio: number }> | null;
-  daily_log: Array<DailyLogEntry> | null;
-  error_message: string | null;
-};
 
 type DailyLogEntry = {
   date: string;
@@ -48,6 +40,22 @@ type DailyLogEntry = {
   cash_before: number;
   cash: number;
   equity: number;
+};
+
+type BacktestRunRecord = {
+  id: string;
+  strategy_name: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+  created_at: string;
+  params: unknown;
+  summary: Record<string, number> | null;
+  equity_curve: Array<{ date: string; equity: number }> | null;
+  drawdown_curve: Array<{ date: string; drawdown: number }> | null;
+  positions_curve: Array<{ date: string; invested_ratio: number }> | null;
+  daily_log: Array<DailyLogEntry> | null;
+  error_message: string | null;
 };
 
 type BacktestResultResponse = {
@@ -271,16 +279,28 @@ function RunModal({
 }
 
 export function BacktestPage() {
+  const queryClient = useQueryClient();
   const [form, setForm] = React.useState<RunFormState>(defaultForm);
   const [modalOpen, setModalOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [result, setResult] = React.useState<BacktestResultResponse | null>(null);
   const [filter, setFilter] = React.useState('');
   const [onlyActive, setOnlyActive] = React.useState(true);
-  const [runs, setRuns] = React.useState<BacktestRunListItem[]>([]);
   const [selectedRunId, setSelectedRunId] = React.useState<string>('');
-  const [indexSeries, setIndexSeries] = React.useState<Array<{ date: string; close: number }>>([]);
+
+  const runsQuery = useBacktestRunsQuery();
+  const runs = (runsQuery.data ?? []) as BacktestRunListItem[];
+  const resultQuery = useBacktestResultQuery(selectedRunId);
+  const result = (resultQuery.data ?? null) as BacktestResultResponse | null;
+  const indexQuery = useBacktestIndexQuery(
+    result?.run?.start_date ?? '',
+    result?.run?.end_date ?? '',
+  );
+  const indexSeries = indexQuery.data ?? [];
+
+  React.useEffect(() => {
+    if (!selectedRunId && runs.length) setSelectedRunId(runs[0].id);
+  }, [selectedRunId, runs]);
 
   const summary = result?.run?.summary ?? null;
   const dailyLog = React.useMemo(() => result?.run?.daily_log ?? [], [result]);
@@ -343,10 +363,9 @@ export function BacktestPage() {
         },
       };
       const run = await apiPostJson<BacktestRunResponse>('/backtest/run', body);
-      const full = await apiGetJson<BacktestResultResponse>(`/backtest/result/${run.runId}`);
-      setResult(full);
+      setSelectedRunId(run.runId);
       setModalOpen(false);
-      await loadRuns();
+      await invalidateBacktestQueries(queryClient);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -354,70 +373,21 @@ export function BacktestPage() {
     }
   }
 
-  async function loadRuns() {
-    try {
-      const resp = await apiGetJson<{ items: BacktestRunListItem[] }>('/backtest/runs?limit=50');
-      setRuns(resp.items ?? []);
-      if (!selectedRunId && resp.items?.length) {
-        setSelectedRunId(resp.items[0].id);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  async function openRun(runId: string) {
+  function openRun(runId: string) {
     if (!runId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const full = await apiGetJson<BacktestResultResponse>(`/backtest/result/${runId}`);
-      setResult(full);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+    setSelectedRunId(runId);
   }
-
-  React.useEffect(() => {
-    void loadRuns();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  React.useEffect(() => {
-    async function loadIndex() {
-      if (!result?.run?.start_date || !result?.run?.end_date) return;
-      try {
-        const items = await apiGetJson<Array<Record<string, unknown>>>(
-          `/index-daily?ts_code=000001.SH&start_date=${result.run.start_date}&end_date=${result.run.end_date}&limit=10000`,
-        );
-        const series = items
-          .map((x) => ({
-            date: String(x.trade_date || ''),
-            close: Number(x.close || 0),
-          }))
-          .filter((x) => x.date && Number.isFinite(x.close) && x.close > 0);
-        setIndexSeries(series);
-      } catch {
-        setIndexSeries([]);
-      }
-    }
-    void loadIndex();
-  }, [result]);
 
   async function deleteRun(runId: string) {
     if (!runId) return;
     setBusy(true);
     setError(null);
     try {
-      await fetch(`${DATA_SYNC_BASE_URL}/backtest/run/${runId}`, { method: 'DELETE' });
-      await loadRuns();
+      await apiDeleteJson(`/backtest/run/${runId}`);
+      await invalidateBacktestQueries(queryClient);
       if (selectedRunId === runId) {
         const next = runs.find((r) => r.id !== runId)?.id ?? '';
         setSelectedRunId(next);
-        if (next) await openRun(next);
-        else setResult(null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -473,7 +443,12 @@ export function BacktestPage() {
                 </option>
               ))}
             </select>
-            <Button variant="secondary" size="sm" onClick={() => void loadRuns()} disabled={busy}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void invalidateBacktestQueries(queryClient)}
+              disabled={busy || runsQuery.isFetching}
+            >
               刷新历史
             </Button>
               <Button
