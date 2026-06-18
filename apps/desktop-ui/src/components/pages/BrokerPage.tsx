@@ -262,7 +262,7 @@ export function BrokerPage() {
           <div className="w-full max-w-md rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 shadow-xl">
             <div className="mb-2 text-sm font-medium">Rename account</div>
             <div className="text-xs text-[var(--k-muted)]">
-              This updates the account title in SQLite and affects all modules.
+              This updates the account title in Postgres and affects all modules.
             </div>
             <div className="mt-3 grid gap-2">
               <input

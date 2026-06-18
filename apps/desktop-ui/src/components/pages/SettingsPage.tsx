@@ -50,11 +50,9 @@ export function SettingsPage() {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editName, setEditName] = React.useState('');
   const [editUrl, setEditUrl] = React.useState('');
-  const [tvMsg, setTvMsg] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     setError(null);
-    setTvMsg(null);
     try {
       const [s, st] = await Promise.all([
         apiGetJson<{ items: TvScreener[] }>('/integrations/tradingview/screeners'),
@@ -114,7 +112,6 @@ export function SettingsPage() {
     if (!newUrl.trim()) return;
     setBusy(true);
     setError(null);
-    setTvMsg(null);
     try {
       await apiPostJson<{ id: string }>(
         '/integrations/tradingview/screeners',
@@ -137,7 +134,6 @@ export function SettingsPage() {
   async function saveScreener(it: TvScreener, next: Partial<TvScreener>) {
     setBusy(true);
     setError(null);
-    setTvMsg(null);
     try {
       await apiPutJson<{ ok: boolean }>(
         `/integrations/tradingview/screeners/${encodeURIComponent(it.id)}`,
@@ -158,32 +154,9 @@ export function SettingsPage() {
   async function deleteScreener(it: TvScreener) {
     setBusy(true);
     setError(null);
-    setTvMsg(null);
     try {
       await apiDeleteJson<{ ok: boolean }>(
         `/integrations/tradingview/screeners/${encodeURIComponent(it.id)}`,
-      );
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function migrateTradingViewFromSqlite() {
-    setBusy(true);
-    setError(null);
-    setTvMsg(null);
-    try {
-      const out = await apiPostJson<{
-        ok: boolean;
-        sqlitePath: string;
-        screenersUpserted: number;
-        snapshotsUpserted: number;
-      }>('/integrations/tradingview/migrate/sqlite', {});
-      setTvMsg(
-        `Migrated from SQLite: ${out.screenersUpserted} screeners, ${out.snapshotsUpserted} snapshots (${out.sqlitePath}).`,
       );
       await refresh();
     } catch (e) {
@@ -207,11 +180,6 @@ export function SettingsPage() {
           {error ? (
             <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
               {error}
-            </div>
-          ) : null}
-          {tvMsg ? (
-            <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
-              {tvMsg}
             </div>
           ) : null}
 
@@ -363,19 +331,11 @@ export function SettingsPage() {
                 <div>
                   <div className="font-medium">Screeners</div>
                   <div className="text-sm text-[var(--k-muted)]">
-                    Manage TradingView screener URLs (targets) persisted in data-sync-service DB
-                    (migratable from SQLite).
+                    Manage TradingView screener URLs (targets) persisted in Postgres via
+                    data-sync-service.
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => void migrateTradingViewFromSqlite()}
-                    disabled={busy}
-                  >
-                    Migrate
-                  </Button>
                   <Button
                     variant="secondary"
                     size="sm"

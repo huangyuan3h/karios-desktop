@@ -651,7 +651,7 @@ export function IndustryFlowPage() {
         <div>
           <div className="text-lg font-semibold">CN Industry Fund Flow (10D)</div>
           <div className="mt-1 text-sm text-[var(--k-muted)]">
-            EOD net inflow by industry. Cached in SQLite and reusable by Strategy.
+            EOD net inflow by industry. Cached in Postgres and reusable by Strategy.
           </div>
         </div>
         <div className="flex items-center gap-2">

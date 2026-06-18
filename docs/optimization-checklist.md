@@ -39,7 +39,7 @@
 | OPT-007 | DB Migration 工具（Alembic） | P2 | 2–3 天 | [x] |
 | OPT-008 | TV Capture 异步化 / Job Queue | P2 | 2–4 天 | [x] |
 | OPT-009 | packages/shared 类型共享 | P2 | 1–2 天 | [x] |
-| OPT-010 | 过时 UI 文案清理（SQLite → Postgres） | P3 | 0.5 天 | [ ] |
+| OPT-010 | 过时 UI 文案清理（SQLite → Postgres） | P3 | 0.5 天 | [x] |
 
 ---
 
@@ -377,7 +377,7 @@ Schema 分散在 24 个 `db/*.py` 的 `ensure_table()` / `CREATE TABLE IF NOT EX
 
 ### OPT-010：过时 UI 文案清理
 
-**状态**：[ ]  
+**状态**：[x]  
 **完成日期**：  
 **PR/Commit**：
 
