@@ -56,9 +56,8 @@ function getPageTitle(page: string, activeStockSymbol: string | null): string {
   return PAGE_TITLES[page] ?? page;
 }
 
-export function AppShell() {
+function AppShellInner() {
   const { state, setAgent } = useChatStore();
-  const [queryClient] = React.useState(() => createQueryClient());
 
   React.useEffect(() => {
     void ensureWatchlistHydrated();
@@ -131,7 +130,6 @@ export function AppShell() {
   }, [agentMaximized, overlayMounted]);
 
   return (
-    <QueryClientProvider client={queryClient}>
     <div className="flex h-screen w-screen bg-[var(--k-bg)] text-[var(--k-text)]">
       <SidebarNav
         activeId={activePage}
@@ -286,6 +284,15 @@ export function AppShell() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export function AppShell() {
+  const [queryClient] = React.useState(() => createQueryClient());
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppShellInner />
     </QueryClientProvider>
   );
 }
