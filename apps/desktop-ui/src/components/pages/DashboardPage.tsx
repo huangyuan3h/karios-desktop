@@ -12,6 +12,14 @@ import { buildDashboardHotIndustryPicks } from '@/lib/hot-industry-picks';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { DATA_SYNC_BASE_URL, AI_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson, apiPostJson } from '@/lib/api/client';
+import type { TrendOkResult } from '@/lib/api/types';
+import { chunk } from '@/lib/chunk';
+import {
+  getShanghaiTodayIso,
+  isShanghaiSyncWindow,
+  isShanghaiTradingTime,
+} from '@/lib/market-hours';
 import {
   buildCatalystStocksMarkdown,
   buildAlphaRadarTrendsMarkdown,
@@ -24,7 +32,7 @@ import {
 } from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
 import { loadJson } from '@/lib/storage';
-import { loadWatchlist, type WatchlistItem } from '@/lib/watchlist-storage';
+import { ensureWatchlistHydrated, loadWatchlist, type WatchlistItem } from '@/lib/watchlist-storage';
 import {
   downloadInvestmentDailyPdf,
   parseInvestmentDailyReportResponse,
@@ -59,24 +67,6 @@ import {
 
 type DashboardSummary = any;
 type DashboardSyncResp = any;
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
 
 function loadCardOrder(): string[] | null {
   try {
@@ -333,27 +323,6 @@ type TrendOkChecks = {
   volumeSurge?: boolean | null;
 };
 
-type TrendOkResult = {
-  symbol: string;
-  name?: string | null;
-  asOfDate?: string | null;
-  trendOk?: boolean | null;
-  score?: number | null;
-  scoreParts?: Record<string, number>;
-  stopLossPrice?: number | null;
-  buyMode?: string | null;
-  buyAction?: string | null;
-  buyZoneLow?: number | null;
-  buyZoneHigh?: number | null;
-  marketRegime?: string | null;
-  intradayChgPct?: number | null;
-  gapUp?: boolean | null;
-  riskAlerts?: WatchlistRiskAlert[];
-  checks?: TrendOkChecks | null;
-  values?: Record<string, unknown> | null;
-  missingData?: string[];
-};
-
 type WatchlistRiskRow = {
   symbol: string;
   name: string;
@@ -404,12 +373,6 @@ type NewsBriefCache = {
   fallbackUpdatedAt?: string;
 };
 
-function chunk<T>(arr: T[], n: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-  return out;
-}
-
 function toTsCodeFromSymbol(symbol: string): string | null {
   // Only handle CN A-shares for /quote.
   const s = symbol.trim().toUpperCase();
@@ -418,59 +381,6 @@ function toTsCodeFromSymbol(symbol: string): string | null {
   if (!/^[0-9]{6}$/.test(ticker)) return null;
   const suffix = ticker.startsWith('6') ? 'SH' : 'SZ';
   return `${ticker}.${suffix}`;
-}
-
-function getShanghaiTimeParts(): { weekday: string; hour: number; minute: number } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai',
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date());
-  const map = new Map(parts.map((p) => [p.type, p.value]));
-  return {
-    weekday: map.get('weekday') ?? '',
-    hour: Number(map.get('hour') ?? 0),
-    minute: Number(map.get('minute') ?? 0),
-  };
-}
-
-function getShanghaiTodayIso(): string {
-  // YYYY-MM-DD in Asia/Shanghai
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const map = new Map(parts.map((p) => [p.type, p.value]));
-  const y = map.get('year') ?? '1970';
-  const m = map.get('month') ?? '01';
-  const d = map.get('day') ?? '01';
-  return `${y}-${m}-${d}`;
-}
-
-function isShanghaiTradingTime(): boolean {
-  const { weekday, hour, minute } = getShanghaiTimeParts();
-  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
-  const minutes = hour * 60 + minute;
-  // CN A-share: 09:30-11:30, 13:00-15:00; lunch break still uses morning session quotes.
-  const inMorning = minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30;
-  const inAfternoon = minutes >= 13 * 60 && minutes <= 15 * 60;
-  const inLunch = minutes > 11 * 60 + 30 && minutes < 13 * 60;
-  return inMorning || inAfternoon || inLunch;
-}
-
-/** Trading hours + lunch + after-hours until 20:00 (matches data-sync-service). */
-function isShanghaiSyncWindow(): boolean {
-  const { weekday, hour, minute } = getShanghaiTimeParts();
-  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
-  const minutes = hour * 60 + minute;
-  if (isShanghaiTradingTime()) return true;
-  const inLunch = minutes > 11 * 60 + 30 && minutes < 13 * 60;
-  const inAfterHours = minutes > 15 * 60 && minutes <= 20 * 60;
-  return inLunch || inAfterHours;
 }
 
 type SyncStep = {
@@ -1511,6 +1421,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   }
 
   async function buildDashboardCopyAllMarkdown(): Promise<string> {
+    await ensureWatchlistHydrated();
     const s = summary;
     if (!s) {
       throw new Error('No data available. Please refresh first.');

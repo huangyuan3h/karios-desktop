@@ -1,3 +1,5 @@
+import { apiFetchJson } from '@/lib/api/client';
+
 export type CatalystArticle = {
   trendId: string;
   trendName: string;
@@ -413,15 +415,10 @@ export async function fetchCatalystStocks(
   limit = 50,
   maxAgeDays = DEFAULT_CATALYST_MAX_AGE_DAYS,
 ): Promise<CatalystStocksResponse> {
-  const res = await fetch(
-    `${baseUrl}/api/alpha-radar/catalyst-stocks?limit=${limit}&maxAgeDays=${maxAgeDays}`,
-    { cache: 'no-store', signal: AbortSignal.timeout(60_000) },
+  return apiFetchJson<CatalystStocksResponse>(
+    `/api/alpha-radar/catalyst-stocks?limit=${limit}&maxAgeDays=${maxAgeDays}`,
+    { baseUrl, signal: AbortSignal.timeout(60_000) },
   );
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  }
-  return txt ? (JSON.parse(txt) as CatalystStocksResponse) : { stalenessBasis: '', maxAgeDays, total: 0, items: [] };
 }
 
 export async function fetchAlphaRadarTrends(
@@ -437,15 +434,10 @@ export async function fetchAlphaRadarTrends(
   if (maxAgeDays != null) {
     params.set('maxAgeDays', String(maxAgeDays));
   }
-  const res = await fetch(`${baseUrl}/api/alpha-radar/trends?${params.toString()}`, {
-    cache: 'no-store',
-    signal: AbortSignal.timeout(60_000),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  }
-  const body = txt ? (JSON.parse(txt) as AlphaRadarTrendsResponse) : { total: 0, items: [] };
+  const body = await apiFetchJson<AlphaRadarTrendsResponse>(
+    `/api/alpha-radar/trends?${params.toString()}`,
+    { baseUrl, signal: AbortSignal.timeout(60_000) },
+  );
   return Array.isArray(body.items) ? body.items : [];
 }
 

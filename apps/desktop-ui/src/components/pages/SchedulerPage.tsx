@@ -3,7 +3,7 @@
 import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson, apiPostJson } from '@/lib/api/client';
 import { formatAutomationSummary, type AutomationRun } from '@/lib/watchlist-automation';
 
 type SyncJobRecord = {
@@ -31,24 +31,6 @@ type CloseSyncResp =
   | { ok: false; error: string; last_marker?: string };
 
 type TradeCalResp = { ok: boolean; updated?: number; error?: string };
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
-}
-
-async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
-}
 
 function fmtWhen(iso: string | null | undefined): string {
   if (!iso) return '—';

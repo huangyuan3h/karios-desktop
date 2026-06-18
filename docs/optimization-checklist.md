@@ -32,7 +32,7 @@
 |----|------|--------|----------|------|
 | OPT-001 | TrendOK 热路径性能修复 | P0 | 1–2 天 | [x] |
 | OPT-002 | Watchlist 存储权威源明确化 | P0 | 2–3 天 | [x] |
-| OPT-003 | 前端 API 层 + God Page 拆分（阶段一） | P1 | 3–5 天 | [ ] |
+| OPT-003 | 前端 API 层 + God Page 拆分（阶段一） | P1 | 3–5 天 | [x] |
 | OPT-004 | 东财行业预热脱离请求路径 | P1 | 1–2 天 | [ ] |
 | OPT-005 | TV Screener Sync 并行化 | P1 | 1–2 天 | [ ] |
 | OPT-006 | TrendOK `refresh` 语义对齐 | P2 | 0.5–1 天 | [ ] |
@@ -108,9 +108,18 @@
 
 ### OPT-003：前端 API 层 + God Page 拆分（阶段一）
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
+
+#### 实施摘要
+
+- 新建 `lib/api/client.ts`（`apiGetJson` / `apiPostJson` / `apiPutJson` / `apiPatchJson` / `apiDeleteJson` / `apiFetchJson`，支持 `baseUrl`、`timeoutMs`）
+- 新建 `lib/api/types.ts`（`TrendOkResult`、`WatchlistQuote`）、`lib/chunk.ts`、`lib/market-hours.ts`
+- 新建 `lib/api/trendok.ts`：`fetchTrendOkMap` + inflight 去重；`screenerExport.ts` re-export 保持兼容
+- 迁移全部 Page/lib callsite（Dashboard、Watchlist、15+ Page、`watchlist-screener-import`、`watchlist-automation`、`alpha-radar-catalyst`）
+- Dashboard Copy all Markdown 前 `await ensureWatchlistHydrated()` 避免 hydrate 竞态
+- 单元测试：`client.test.ts`、`trendok.test.ts`、`chunk.test.ts`、`market-hours.test.ts`（98 passed）
 
 #### 问题
 
@@ -163,9 +172,9 @@ apps/desktop-ui/src/lib/chunk.ts          # chunk 工具
 
 #### 验证
 
-- [ ] `npm run typecheck` 通过
-- [ ] 现有 vitest 通过
-- [ ] grep 确认 `async function apiGetJson` 仅剩 `lib/api/client.ts` 一处
+- [x] 现有 vitest 通过（`cd apps/desktop-ui && npm run test`）
+- [x] grep 确认无 Page/lib 本地 `apiGetJson` 副本（统一走 `lib/api/client`）
+- [ ] `npm run typecheck` 通过（仍有 pre-existing 错误：AlphaIncubator `outline` variant、chart.tsx recharts 等，非本任务引入）
 
 #### 阶段二（后续任务，不在本 scope）
 
@@ -400,6 +409,7 @@ Later:   OPT-007 ~ OPT-010
 | 2026-06-18 | 初始版本：全栈架构审查，功能正常，识别 P0–P3 共 10 项优化 |
 | 2026-06-18 | OPT-001 完成：TrendOK 热路径 skip breadth + regime TTL cache + EM DB-only；benchmark ~0.21s |
 | 2026-06-18 | OPT-002 完成：Watchlist registry 权威源 + GET API + hydrate/persist + 11 项自动化测试 |
+| 2026-06-18 | OPT-003 阶段一完成：统一 API client + 共享 types/utils + TrendOK inflight 去重；全 Page 迁移 |
 
 ---
 

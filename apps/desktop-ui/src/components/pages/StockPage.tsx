@@ -5,7 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { StockChart } from '@/components/stock/StockChart';
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson } from '@/lib/api/client';
 import { useChatStore } from '@/lib/chat/store';
 import type { OHLCV } from '@/lib/indicators';
 
@@ -85,38 +85,6 @@ type QuoteResp = {
     trade_time: string | null;
   }>;
 };
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) {
-    try {
-      const j = JSON.parse(txt) as { detail?: string; error?: string };
-      const msg = (j && (j.detail || j.error)) || '';
-      if (msg) throw new Error(msg);
-    } catch {
-      // ignore
-    }
-    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  }
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
-}
-
-async function apiGetJsonFrom<T>(baseUrl: string, path: string): Promise<T> {
-  const res = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) {
-    try {
-      const j = JSON.parse(txt) as { detail?: string; error?: string };
-      const msg = (j && (j.detail || j.error)) || '';
-      if (msg) throw new Error(msg);
-    } catch {
-      // ignore
-    }
-    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  }
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
-}
 
 function normalizeSymbol(symbol: string): string {
   // Normalize symbol format: "主板:000001" -> "CN:000001"
@@ -259,8 +227,7 @@ export function StockPage({
       // Normalize symbol format: "主板:000001" -> "CN:000001"
       const normalizedSymbol = normalizeSymbol(symbol);
       const [d, c] = await Promise.all([
-        apiGetJsonFrom<BarsResp>(
-          DATA_SYNC_BASE_URL,
+        apiGetJson<BarsResp>(
           `/market/stocks/${encodeURIComponent(normalizedSymbol)}/bars?days=60${force ? '&force=true' : ''}`,
         ),
         apiGetJson<ChipsResp>(
@@ -276,7 +243,7 @@ export function StockPage({
       if (quote) {
         const tsCode = toTsCodeFromSymbol(symbol);
         if (tsCode) {
-          const qr = await apiGetJsonFrom<QuoteResp>(DATA_SYNC_BASE_URL, `/quote?ts_code=${encodeURIComponent(tsCode)}`).catch(
+          const qr = await apiGetJson<QuoteResp>(`/quote?ts_code=${encodeURIComponent(tsCode)}`).catch(
             () => null,
           );
           const item = qr?.items?.[0];

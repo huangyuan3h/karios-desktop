@@ -5,7 +5,7 @@ import { Search, ChevronRight, X, Plus } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { SimCandleChart } from '@/components/stock/SimCandleChart';
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson } from '@/lib/api/client';
 import type { OHLCV } from '@/lib/indicators';
 import { computeMacd } from '@/lib/indicators';
 
@@ -51,12 +51,6 @@ type IndexBar = {
   close: number | null;
   pct_chg: number | null;
 };
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return (await res.json()) as T;
-}
 
 function roundDownTo100(n: number): number {
   return Math.max(0, Math.floor(n / 100) * 100);

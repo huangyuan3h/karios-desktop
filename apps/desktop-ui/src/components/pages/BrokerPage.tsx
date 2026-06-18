@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { newId } from '@/lib/id';
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson, apiPostJson, apiPutJson } from '@/lib/api/client';
 import { useChatStore } from '@/lib/chat/store';
 
 type ImportImage = {
@@ -65,35 +65,6 @@ function pickStr(obj: Record<string, unknown>, keys: string[]): string {
     if (s) return s;
   }
   return '';
-}
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPutJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
 export function BrokerPage() {

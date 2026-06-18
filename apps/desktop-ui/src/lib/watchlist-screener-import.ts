@@ -1,4 +1,7 @@
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson } from '@/lib/api/client';
+import type { TrendOkResult } from '@/lib/api/types';
+import { chunk } from '@/lib/chunk';
+import { isShanghaiQuoteWindow } from '@/lib/market-hours';
 import { normalizeScreenerSymbol } from '@/lib/screenerExport';
 import {
   loadWatchlist,
@@ -6,12 +9,7 @@ import {
   type WatchlistItem,
 } from '@/lib/watchlist-storage';
 
-export type TrendOkResult = {
-  symbol: string;
-  trendOk?: boolean | null;
-  score?: number | null;
-  missingData?: string[];
-};
+export type { TrendOkResult };
 
 export type ScreenerImportDebugState = {
   updatedAt: string | null;
@@ -46,12 +44,6 @@ export type ScreenerImportOptions = {
   onStage?: (label: string, cur?: number, total?: number) => void;
 };
 
-function chunk<T>(arr: T[], n: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-  return out;
-}
-
 function parseScreenerNumber(raw: unknown): number | null {
   const s = String(raw ?? '').trim();
   if (!s) return null;
@@ -82,47 +74,6 @@ function getRetracementRatioFromScreenerRow(row: Record<string, string>): number
   const high52w = parseScreenerNumber(high52wRaw);
   if (price == null || high52w == null || high52w <= 0) return null;
   return (price - high52w) / high52w;
-}
-
-function getShanghaiTimeParts(): { weekday: string; hour: number; minute: number } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai',
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date());
-  const map = new Map(parts.map((p) => [p.type, p.value]));
-  return {
-    weekday: map.get('weekday') ?? '',
-    hour: Number(map.get('hour') ?? 0),
-    minute: Number(map.get('minute') ?? 0),
-  };
-}
-
-function isShanghaiTradingTime(): boolean {
-  const { weekday, hour, minute } = getShanghaiTimeParts();
-  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
-  const minutes = hour * 60 + minute;
-  const inMorning = minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30;
-  const inAfternoon = minutes >= 13 * 60 && minutes <= 15 * 60;
-  const inLunch = minutes > 11 * 60 + 30 && minutes < 13 * 60;
-  return inMorning || inAfternoon || inLunch;
-}
-
-function isShanghaiQuoteWindow(): boolean {
-  const { weekday, hour, minute } = getShanghaiTimeParts();
-  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
-  const minutes = hour * 60 + minute;
-  if (isShanghaiTradingTime()) return true;
-  return minutes > 15 * 60 && minutes <= 20 * 60;
-}
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
 }
 
 export async function importFromScreener(options: ScreenerImportOptions = {}): Promise<ScreenerImportResult> {

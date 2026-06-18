@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiDeleteJson, apiGetJson, apiPostJson, apiPutJson } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -28,30 +28,6 @@ type TvChromeStatus = {
   profileDirectory: string;
   headless: boolean;
 };
-
-async function apiGetJsonFrom<T>(baseUrl: string, path: string): Promise<T> {
-  const res = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return (await res.json()) as T;
-}
-
-async function apiSendJsonTo<T>(
-  baseUrl: string,
-  path: string,
-  method: 'POST' | 'PUT' | 'DELETE',
-  body?: unknown,
-): Promise<T> {
-  const res = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  }
-  return (await res.json()) as T;
-}
 
 export function SettingsPage() {
   const [tab, setTab] = React.useState<'tradingview' | 'models'>('tradingview');
@@ -81,11 +57,8 @@ export function SettingsPage() {
     setTvMsg(null);
     try {
       const [s, st] = await Promise.all([
-        apiGetJsonFrom<{ items: TvScreener[] }>(
-          DATA_SYNC_BASE_URL,
-          '/integrations/tradingview/screeners',
-        ),
-        apiGetJsonFrom<TvChromeStatus>(DATA_SYNC_BASE_URL, '/integrations/tradingview/status'),
+        apiGetJson<{ items: TvScreener[] }>('/integrations/tradingview/screeners'),
+        apiGetJson<TvChromeStatus>('/integrations/tradingview/status'),
       ]);
       setScreeners(s.items);
       setStatus(st);
@@ -103,10 +76,8 @@ export function SettingsPage() {
     setError(null);
     try {
       const needsForce = !!status && status.profileDirectory !== sourceProfileDir;
-      const st = await apiSendJsonTo<TvChromeStatus>(
-        DATA_SYNC_BASE_URL,
+      const st = await apiPostJson<TvChromeStatus>(
         '/integrations/tradingview/chrome/start',
-        'POST',
         {
           headless,
           // Use a dedicated user-data-dir for CDP. Keep it stable so cookies persist.
@@ -130,11 +101,7 @@ export function SettingsPage() {
     setBusy(true);
     setError(null);
     try {
-      const st = await apiSendJsonTo<TvChromeStatus>(
-        DATA_SYNC_BASE_URL,
-        '/integrations/tradingview/chrome/stop',
-        'POST',
-      );
+      const st = await apiPostJson<TvChromeStatus>('/integrations/tradingview/chrome/stop');
       setStatus(st);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -149,10 +116,8 @@ export function SettingsPage() {
     setError(null);
     setTvMsg(null);
     try {
-      await apiSendJsonTo<{ id: string }>(
-        DATA_SYNC_BASE_URL,
+      await apiPostJson<{ id: string }>(
         '/integrations/tradingview/screeners',
-        'POST',
         {
           name: newName.trim() || 'Untitled',
           url: newUrl.trim(),
@@ -174,10 +139,8 @@ export function SettingsPage() {
     setError(null);
     setTvMsg(null);
     try {
-      await apiSendJsonTo<{ ok: boolean }>(
-        DATA_SYNC_BASE_URL,
+      await apiPutJson<{ ok: boolean }>(
         `/integrations/tradingview/screeners/${encodeURIComponent(it.id)}`,
-        'PUT',
         {
           name: (next.name ?? it.name).trim() || 'Untitled',
           url: (next.url ?? it.url).trim(),
@@ -197,10 +160,8 @@ export function SettingsPage() {
     setError(null);
     setTvMsg(null);
     try {
-      await apiSendJsonTo<{ ok: boolean }>(
-        DATA_SYNC_BASE_URL,
+      await apiDeleteJson<{ ok: boolean }>(
         `/integrations/tradingview/screeners/${encodeURIComponent(it.id)}`,
-        'DELETE',
       );
       await refresh();
     } catch (e) {
@@ -215,12 +176,12 @@ export function SettingsPage() {
     setError(null);
     setTvMsg(null);
     try {
-      const out = await apiSendJsonTo<{
+      const out = await apiPostJson<{
         ok: boolean;
         sqlitePath: string;
         screenersUpserted: number;
         snapshotsUpserted: number;
-      }>(DATA_SYNC_BASE_URL, '/integrations/tradingview/migrate/sqlite', 'POST', {});
+      }>('/integrations/tradingview/migrate/sqlite', {});
       setTvMsg(
         `Migrated from SQLite: ${out.screenersUpserted} screeners, ${out.snapshotsUpserted} snapshots (${out.sqlitePath}).`,
       );

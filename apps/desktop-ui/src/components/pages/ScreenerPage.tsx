@@ -5,7 +5,7 @@ import { ExternalLink, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/lib/chat/store';
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson, apiPostJson } from '@/lib/api/client';
 
 type TvScreener = {
   id: string;
@@ -54,34 +54,6 @@ type TvHistoryResponse = {
   days: number;
   rows: TvHistoryDayRow[];
 };
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return (await res.json()) as T;
-}
-
-async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    const maybeDetail = (() => {
-      try {
-        const j = JSON.parse(txt) as { detail?: string };
-        return j && typeof j.detail === "string" ? j.detail : null;
-      } catch {
-        return null;
-      }
-    })();
-    if (maybeDetail) throw new Error(maybeDetail);
-    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  }
-  return (await res.json()) as T;
-}
 
 function pickColumns(headers: string[]) {
   const aliases: Record<string, string[]> = {

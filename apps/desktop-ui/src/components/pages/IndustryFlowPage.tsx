@@ -8,7 +8,7 @@ import {
   HotIndustryWorkflowCard,
   type HotIndustryPick,
 } from '@/components/pages/HotIndustryWorkflowCard';
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson, apiPostJson } from '@/lib/api/client';
 import { useChatStore } from '@/lib/chat/store';
 
 type IndustryFundFlowPoint = {
@@ -80,24 +80,6 @@ type MainlineResp = {
   allScores: MainlineScoreRow[];
   currentMainline: MainlineScoreRow[];
 };
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
 
 function fmtCny(x: number): string {
   const v = Number.isFinite(x) ? x : 0;

@@ -15,7 +15,14 @@ import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson } from '@/lib/api/client';
+import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
+import { chunk } from '@/lib/chunk';
+import {
+  getShanghaiTodayIso,
+  isShanghaiQuoteWindow,
+  isShanghaiTradingTime,
+} from '@/lib/market-hours';
 import {
   fetchAutomationLatest,
   formatAutomationSummary,
@@ -278,64 +285,12 @@ type TrendOkValues = {
   industryFlowReasons?: string[];
 };
 
-type TrendOkResult = {
-  symbol: string;
-  name?: string | null;
-  asOfDate?: string | null;
-  trendOk?: boolean | null;
-  score?: number | null; // 0..100, formula-based (no LLM)
-  scoreParts?: Record<string, number>; // points breakdown (positive parts and penalties)
-  stopLossPrice?: number | null;
-  stopLossParts?: Record<string, unknown>;
-  buyMode?: string | null;
-  buyAction?: string | null;
-  buyZoneLow?: number | null;
-  buyZoneHigh?: number | null;
-  buyRefPrice?: number | null;
-  buyWhy?: string | null;
-  buyChecks?: Record<string, unknown>;
-  marketRegime?: string | null;
-  intradayChgPct?: number | null;
-  gapUp?: boolean | null;
-  riskAlerts?: WatchlistRiskAlert[];
-  riskMetricsLive?: boolean | null;
-  checks?: TrendOkChecks;
-  values?: TrendOkValues;
-  missingData?: string[];
-};
-
-
 type ScreenerImportDebugState = {
   updatedAt: string | null;
   scanned: number;
   trendOkCount: number;
   rows: TrendOkResult[];
 };
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiGetJsonFrom<T>(baseUrl: string, path: string): Promise<T> {
-  const res = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJsonFrom<T>(baseUrl: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${baseUrl}${path}`, {
-    method: 'POST',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
 
 function normalizeSymbolInput(input: string): { symbol: string } | { error: string } {
   const raw = (input || '').trim().toUpperCase();
@@ -363,12 +318,6 @@ function normalizeSymbolInput(input: string): { symbol: string } | { error: stri
   };
 }
 
-function chunk<T>(arr: T[], n: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-  return out;
-}
-
 function toTsCodeFromSymbol(symbol: string): string | null {
   // Only handle CN A-shares for now: "CN:000001" -> "000001.SZ/SH"
   const s = symbol.trim().toUpperCase();
@@ -378,67 +327,6 @@ function toTsCodeFromSymbol(symbol: string): string | null {
   const suffix = ticker.startsWith('6') ? 'SH' : 'SZ';
   return `${ticker}.${suffix}`;
 }
-
-function getShanghaiTimeParts(): { weekday: string; hour: number; minute: number } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai',
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date());
-  const map = new Map(parts.map((p) => [p.type, p.value]));
-  return {
-    weekday: map.get('weekday') ?? '',
-    hour: Number(map.get('hour') ?? 0),
-    minute: Number(map.get('minute') ?? 0),
-  };
-}
-
-function getShanghaiTodayIso(): string {
-  // YYYY-MM-DD in Asia/Shanghai
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const map = new Map(parts.map((p) => [p.type, p.value]));
-  const y = map.get('year') ?? '1970';
-  const m = map.get('month') ?? '01';
-  const d = map.get('day') ?? '01';
-  return `${y}-${m}-${d}`;
-}
-
-function isShanghaiTradingTime(): boolean {
-  const { weekday, hour, minute } = getShanghaiTimeParts();
-  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
-  const minutes = hour * 60 + minute;
-  // CN A-share: 09:30-11:30, 13:00-15:00
-  const inMorning = minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30;
-  const inAfternoon = minutes >= 13 * 60 && minutes <= 15 * 60;
-  const inLunch = minutes > 11 * 60 + 30 && minutes < 13 * 60;
-  return inMorning || inAfternoon || inLunch;
-}
-
-/** Trading hours + after-hours until 20:00 (matches data-sync-service sync window). */
-function isShanghaiQuoteWindow(): boolean {
-  const { weekday, hour, minute } = getShanghaiTimeParts();
-  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
-  const minutes = hour * 60 + minute;
-  if (isShanghaiTradingTime()) return true;
-  return minutes > 15 * 60 && minutes <= 20 * 60;
-}
-
-type WatchlistQuote = {
-  price: number | null;
-  tsCode: string;
-  tradeTime: string | null;
-  amount: number | null;
-  volume: number | null;
-  preClose: number | null;
-  pctChg: number | null;
-};
 
 async function fetchFreshWatchlistSnapshot(symbols: string[]): Promise<{
   trend: Record<string, TrendOkResult>;
@@ -466,10 +354,9 @@ async function fetchFreshWatchlistSnapshot(symbols: string[]): Promise<{
     .filter(Boolean) as string[];
 
   const [trendRows, ...quoteParts] = await Promise.all([
-    apiGetJsonFrom<TrendOkResult[]>(DATA_SYNC_BASE_URL, `/market/stocks/trendok?${sp.toString()}`),
+    apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`),
     ...chunk(tsCodes, 50).map((part) =>
-      apiGetJsonFrom<QuoteResp>(
-        DATA_SYNC_BASE_URL,
+      apiGetJson<QuoteResp>(
         `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
       ).catch(() => null),
     ),
@@ -748,8 +635,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       try {
         const sp = new URLSearchParams();
         for (const s of missing) sp.append('symbols', s);
-        const rows = await apiGetJsonFrom<MarketStockBasicRow[]>(
-          DATA_SYNC_BASE_URL,
+        const rows = await apiGetJson<MarketStockBasicRow[]>(
           `/market/stocks/resolve?${sp.toString()}`,
         );
         if (cancelled) return;
@@ -795,8 +681,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           let failures = 0;
           for (const sym of syms) {
             const enc = encodeURIComponent(sym);
-            const ok = await apiGetJsonFrom(
-              DATA_SYNC_BASE_URL,
+            const ok = await apiGetJson(
               `/market/stocks/${enc}/bars?days=60&force=true`,
             )
               .then(() => true)
@@ -817,8 +702,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         sp.set('refresh', 'true');
         sp.set('realtime', isShanghaiQuoteWindow() ? 'true' : 'false');
         for (const s of syms) sp.append('symbols', s);
-        const rows = await apiGetJsonFrom<TrendOkResult[]>(
-          DATA_SYNC_BASE_URL,
+        const rows = await apiGetJson<TrendOkResult[]>(
           `/market/stocks/trendok?${sp.toString()}`,
         );
         if (reqId !== trendReqRef.current) return;
@@ -839,8 +723,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           }
           const nextQuotes: Record<string, WatchlistQuote> = {};
           for (const part of chunk(cn, 50)) {
-            const r = await apiGetJsonFrom<QuoteResp>(
-              DATA_SYNC_BASE_URL,
+            const r = await apiGetJson<QuoteResp>(
               `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
             ).catch(() => null);
             for (const it of r?.items ?? []) {

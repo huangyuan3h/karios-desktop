@@ -5,7 +5,7 @@ import { Plus, Save, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiDeleteJson, apiGetJson, apiPostJson, apiPutJson } from '@/lib/api/client';
 
 type TradeReview = {
   id: string;
@@ -120,39 +120,8 @@ const EXAMPLE_FORM: TradeReviewForm = {
   improvementAreas: 'Need to add macro hedge checks when US futures drop sharply.',
 };
 
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPutJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
 async function apiDelete(path: string): Promise<void> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { method: 'DELETE' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  await apiDeleteJson(path);
 }
 
 function asText(v: string | null | undefined): string {

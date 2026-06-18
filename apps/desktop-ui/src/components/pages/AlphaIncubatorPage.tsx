@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiDeleteJson, apiGetJson, apiPostJson } from '@/lib/api/client';
 import {
   articleAgeDays,
   DEFAULT_CATALYST_MAX_AGE_DAYS,
@@ -109,37 +109,9 @@ type ViewTab = 'trends' | 'catalyst' | 'rss';
 type TrendsScope = 'batch' | 'all';
 type DriverFilter = 'all' | 'Global_Tech' | 'Domestic_Policy' | 'Cycle_Reversal';
 
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    cache: 'no-store',
-    signal: AbortSignal.timeout(60_000),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(300_000),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiDeleteJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    method: 'DELETE',
-    signal: AbortSignal.timeout(60_000),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
+const ALPHA_GET_OPTS = { timeoutMs: 60_000 } as const;
+const ALPHA_POST_OPTS = { timeoutMs: 300_000 } as const;
+const ALPHA_DELETE_OPTS = { timeoutMs: 60_000 } as const;
 
 function fmtWhen(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -226,15 +198,15 @@ export function AlphaIncubatorPage() {
       scope === 'batch'
         ? '/api/alpha-radar/trends?limit=50&latest_batch=true'
         : '/api/alpha-radar/trends?limit=100&latest_batch=false';
-    const trendResp = await apiGetJson<{ total: number; items: AlphaTrend[] }>(path);
+    const trendResp = await apiGetJson<{ total: number; items: AlphaTrend[] }>(path, ALPHA_GET_OPTS);
     setTrends(trendResp.items || []);
     setTrendsTotal(trendResp.total ?? trendResp.items?.length ?? 0);
   }, []);
 
   const refreshRss = React.useCallback(async () => {
     const [docResp, srcResp] = await Promise.all([
-      apiGetJson<{ total: number; items: RssDocument[] }>('/api/alpha-radar/documents?limit=100'),
-      apiGetJson<{ sources: AlphaSource[] }>('/api/alpha-radar/sources'),
+      apiGetJson<{ total: number; items: RssDocument[] }>('/api/alpha-radar/documents?limit=100', ALPHA_GET_OPTS),
+      apiGetJson<{ sources: AlphaSource[] }>('/api/alpha-radar/sources', ALPHA_GET_OPTS),
     ]);
     setRssDocuments(docResp.items || []);
     setRssTotal(docResp.total ?? docResp.items?.length ?? 0);
@@ -249,9 +221,10 @@ export function AlphaIncubatorPage() {
     setError(null);
     try {
       const [statusResp, catalystResp] = await Promise.all([
-        apiGetJson<{ ok?: boolean } & PipelineStatus>('/api/alpha-radar/status'),
+        apiGetJson<{ ok?: boolean } & PipelineStatus>('/api/alpha-radar/status', ALPHA_GET_OPTS),
         apiGetJson<{ total: number; maxAgeDays: number; items: CatalystStock[] }>(
           `/api/alpha-radar/catalyst-stocks?limit=50&maxAgeDays=${DEFAULT_CATALYST_MAX_AGE_DAYS}`,
+          ALPHA_GET_OPTS,
         ),
       ]);
       setStatus(statusResp);
@@ -301,7 +274,7 @@ export function AlphaIncubatorPage() {
         keptPreviousTrends?: boolean;
         lastRunAt?: string;
         errors?: Array<{ error?: string }>;
-      }>('/api/alpha-radar/run-pipeline', { force });
+      }>('/api/alpha-radar/run-pipeline', { force }, ALPHA_POST_OPTS);
       if (r.skipped) {
         setMsg(`12h 冷却中 · 当前 ${r.trendCount ?? 0} 张卡片`);
       } else if (r.ok === false) {
@@ -335,6 +308,7 @@ export function AlphaIncubatorPage() {
     try {
       const r = await apiDeleteJson<{ ok?: boolean; error?: string }>(
         `/api/alpha-radar/trends/${encodeURIComponent(trendId)}`,
+        ALPHA_DELETE_OPTS,
       );
       if (!r.ok) throw new Error(r.error || 'Delete failed');
       setMsg('Trend card deleted');
@@ -353,6 +327,8 @@ export function AlphaIncubatorPage() {
     try {
       const r = await apiPostJson<{ ok?: boolean; cnSymbols?: CnSymbol[]; error?: string }>(
         `/api/alpha-radar/trends/${encodeURIComponent(trendId)}/remap`,
+        undefined,
+        ALPHA_POST_OPTS,
       );
       if (!r.ok) throw new Error(r.error || 'Remap failed');
       const n = r.cnSymbols?.length ?? 0;

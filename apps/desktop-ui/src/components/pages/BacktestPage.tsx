@@ -5,7 +5,7 @@ import { Area, AreaChart, CartesianGrid, Line, LineChart, TooltipProps, XAxis, Y
 
 import { Button } from '@/components/ui/button';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson, apiPostJson } from '@/lib/api/client';
 
 type BacktestRunResponse = { ok: boolean; runId: string; summary: Record<string, number> };
 type BacktestRunRecord = {
@@ -100,24 +100,6 @@ const STRATEGY_OPTIONS = [
   { value: 'alpha_hunter_v1', label: 'AlphaHunter V1' },
   { value: 'watchlist_trend_v8', label: 'Watchlist趋势V8(收敛突破/趋势质量)' },
 ];
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
-}
-
-async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
-}
 
 function fmtNum(val: number | undefined | null) {
   if (val === undefined || val === null || Number.isNaN(val)) return '-';

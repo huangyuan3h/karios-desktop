@@ -4,7 +4,7 @@ import * as React from 'react';
 import { RefreshCw, Search } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson, apiPostJson } from '@/lib/api/client';
 import { useChatStore } from '@/lib/chat/store';
 
 type MarketStatus = {
@@ -32,28 +32,6 @@ type MarketStocksResponse = {
   offset: number;
   limit: number;
 };
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return (await res.json()) as T;
-}
-
-async function apiPostJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { method: 'POST' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) {
-    try {
-      const j = JSON.parse(txt) as { error?: string; detail?: string };
-      const msg = (j && (j.error || j.detail)) || '';
-      if (msg) throw new Error(msg);
-    } catch {
-      // ignore
-    }
-    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  }
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
-}
 
 export function MarketPage({
   onOpenStock,

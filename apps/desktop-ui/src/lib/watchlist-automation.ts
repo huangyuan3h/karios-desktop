@@ -1,4 +1,4 @@
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson, apiPostJson } from '@/lib/api/client';
 import { importFromScreener } from '@/lib/watchlist-screener-import';
 import {
   ensureWatchlistHydrated,
@@ -38,48 +38,7 @@ export type ApplyAutomationResult = {
   alphaAdded: number;
 };
 
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJson<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-export function getShanghaiMinutes(): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai',
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date());
-  const map = new Map(parts.map((p) => [p.type, p.value]));
-  const hour = Number(map.get('hour') ?? 0);
-  const minute = Number(map.get('minute') ?? 0);
-  return hour * 60 + minute;
-}
-
-export function isAutomationPollWindow(): boolean {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai',
-    weekday: 'short',
-  }).formatToParts(new Date());
-  const weekday = parts.find((p) => p.type === 'weekday')?.value ?? '';
-  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) return false;
-  const minutes = getShanghaiMinutes();
-  return minutes >= 17 * 60 + 30 && minutes <= 20 * 60;
-}
+export { isAutomationPollWindow } from '@/lib/market-hours';
 
 export async function fetchAutomationPending(tradeDate?: string): Promise<AutomationRun | null> {
   const q = tradeDate ? `?tradeDate=${encodeURIComponent(tradeDate)}` : '';

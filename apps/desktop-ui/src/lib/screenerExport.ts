@@ -1,26 +1,11 @@
-import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson } from '@/lib/api/client';
+import type { TrendOkResult } from '@/lib/api/types';
+import { getShanghaiTodayIso } from '@/lib/market-hours';
 import { formatGapUp, formatIntradayChgPct } from '@/lib/watchlist-metrics';
 
-export type WatchlistRiskAlert = {
-  code: string;
-  severity: 'block' | 'warn';
-  message: string;
-};
-
-export type TrendOkResult = {
-  symbol: string;
-  name?: string | null;
-  asOfDate?: string | null;
-  trendOk?: boolean | null;
-  score?: number | null;
-  scoreParts?: Record<string, number>;
-  values?: Record<string, unknown> | null;
-  missingData?: string[];
-  marketRegime?: string | null;
-  intradayChgPct?: number | null;
-  gapUp?: boolean | null;
-  riskAlerts?: WatchlistRiskAlert[];
-};
+export type { TrendOkResult } from '@/lib/api/types';
+export { fetchTrendOkMap } from '@/lib/api/trendok';
+export { getShanghaiTodayIso } from '@/lib/market-hours';
 
 export type ScreenerMarkdownRow = {
   symbol: string;
@@ -58,20 +43,6 @@ export const SCREENER_MARKDOWN_HEADERS = [
 ] as const;
 
 export const SCREENER_TITLE_PATTERNS = ['falcon launch', 'institutional trend'] as const;
-
-export function getShanghaiTodayIso(now = new Date()): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const map = new Map(parts.map((p) => [p.type, p.value]));
-  const y = map.get('year') ?? '1970';
-  const m = map.get('month') ?? '01';
-  const d = map.get('day') ?? '01';
-  return `${y}-${m}-${d}`;
-}
 
 export function shanghaiDateFromIso(iso: string): string | null {
   const dt = new Date(iso);
@@ -130,14 +101,7 @@ export async function fetchTodayScreenerSymbolsByTitle(
 ): Promise<Set<string>> {
   const patterns = options?.patterns ?? SCREENER_TITLE_PATTERNS;
   const todayIso = options?.todayIso ?? getShanghaiTodayIso();
-  const apiGetJson =
-    options?.apiGetJson ??
-    (async <T,>(path: string): Promise<T> => {
-      const res = await fetch(`${DATA_SYNC_BASE_URL}${path}`, { cache: 'no-store' });
-      const txt = await res.text().catch(() => '');
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-      return txt ? (JSON.parse(txt) as T) : ({} as T);
-    });
+  const fetchJson = options?.apiGetJson ?? apiGetJson;
 
   const out = new Set<string>();
   const rows = Array.isArray(screeners) ? screeners : [];
@@ -148,12 +112,12 @@ export async function fetchTodayScreenerSymbolsByTitle(
   const results = await Promise.all(
     screenerIds.map(async (sid) => {
       try {
-        const list = await apiGetJson<{ items: ScreenerSnapshotListItem[] }>(
+        const list = await fetchJson<{ items: ScreenerSnapshotListItem[] }>(
           `/integrations/tradingview/screeners/${encodeURIComponent(sid)}/snapshots?limit=1`,
         );
         const snapId = String(list?.items?.[0]?.id ?? '').trim();
         if (!snapId) return null;
-        const snap = await apiGetJson<ScreenerSnapshotDetail>(
+        const snap = await fetchJson<ScreenerSnapshotDetail>(
           `/integrations/tradingview/snapshots/${encodeURIComponent(snapId)}`,
         );
         return snap;
@@ -174,12 +138,6 @@ export async function fetchTodayScreenerSymbolsByTitle(
     }
   }
 
-  return out;
-}
-
-function chunk<T>(arr: T[], n: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
   return out;
 }
 
@@ -315,37 +273,6 @@ export function buildScreenerMarkdownRows(
 
 export function countMissingScores(rows: ScreenerMarkdownRow[]): number {
   return rows.filter((r) => r.score == null).length;
-}
-
-export async function fetchTrendOkMap(
-  symbols: string[],
-  options: { realtime: boolean },
-): Promise<Map<string, TrendOkResult>> {
-  const trendMap = new Map<string, TrendOkResult>();
-  if (!symbols.length) return trendMap;
-
-  const parts = chunk(symbols, 200);
-  const results = await Promise.all(
-    parts.map(async (batch) => {
-      const sp = new URLSearchParams();
-      sp.set('refresh', 'true');
-      sp.set('realtime', options.realtime ? 'true' : 'false');
-      for (const sym of batch) sp.append('symbols', sym);
-      const res = await fetch(`${DATA_SYNC_BASE_URL}/market/stocks/trendok?${sp.toString()}`, {
-        cache: 'no-store',
-      });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      return (await res.json()) as TrendOkResult[];
-    }),
-  );
-
-  for (const batch of results) {
-    for (const item of Array.isArray(batch) ? batch : []) {
-      if (item?.symbol) trendMap.set(String(item.symbol).toUpperCase(), item);
-    }
-  }
-
-  return trendMap;
 }
 
 export function screenerMarkdownRowsToTable(rows: ScreenerMarkdownRow[]): unknown[][] {
