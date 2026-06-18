@@ -1,0 +1,474 @@
+# Karios Desktop 优化 Checklist
+
+> 记录架构审查结论与优化方案，供后续逐个 Agent 任务执行。  
+> 创建日期：2026-06-18  
+> 背景：功能可用，但存在性能、数据持久化、可维护性方面的结构性问题。
+
+---
+
+## 如何使用
+
+1. 按 **优先级（P0 → P1 → P2）** 顺序执行，不要跳 P0。
+2. 每个任务开独立 Agent 会话，把对应章节整段粘贴给 Agent 作为 scope。
+3. 完成后将 `[ ]` 改为 `[x]`，填写 **完成日期** 和 **PR/Commit**。
+4. 若实施过程中方案有变，在本文件更新，不要另起文档。
+
+### Agent 任务模板
+
+```text
+请实现 docs/optimization-checklist.md 中的 OPT-XXX。
+要求：
+- 只改 checklist 列出的文件范围
+- 完成后更新 checklist 状态
+- 补充/更新相关测试
+- 不要扩大 scope
+```
+
+---
+
+## 优先级总览
+
+| ID | 标题 | 优先级 | 预估工时 | 状态 |
+|----|------|--------|----------|------|
+| OPT-001 | TrendOK 热路径性能修复 | P0 | 1–2 天 | [ ] |
+| OPT-002 | Watchlist 存储权威源明确化 | P0 | 2–3 天 | [ ] |
+| OPT-003 | 前端 API 层 + God Page 拆分（阶段一） | P1 | 3–5 天 | [ ] |
+| OPT-004 | 东财行业预热脱离请求路径 | P1 | 1–2 天 | [ ] |
+| OPT-005 | TV Screener Sync 并行化 | P1 | 1–2 天 | [ ] |
+| OPT-006 | TrendOK `refresh` 语义对齐 | P2 | 0.5–1 天 | [ ] |
+| OPT-007 | DB Migration 工具（Alembic） | P2 | 2–3 天 | [ ] |
+| OPT-008 | TV Capture 异步化 / Job Queue | P2 | 2–4 天 | [ ] |
+| OPT-009 | packages/shared 类型共享 | P2 | 1–2 天 | [ ] |
+| OPT-010 | 过时 UI 文案清理（SQLite → Postgres） | P3 | 0.5 天 | [ ] |
+
+---
+
+## P0 — 最高收益
+
+### OPT-001：TrendOK 热路径性能修复
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 问题
+
+每次调用 `GET /market/stocks/trendok` 时：
+
+1. `compute_trendok_for_symbols()` 调用 `get_market_regime()`，默认 `include_breadth=True`，触发全市场 ~5000 股 breadth 扫描 + 分批 realtime quote（`market_regime.py`）。
+2. 同路径上 `ensure_em_industries_for_ts_codes()` 对缺失东财行业的 ts_code **逐股 HTTP**（`eastmoney_industry.py`）。
+3. Dashboard summary 已正确使用 `include_breadth=False`（`dashboard.py:260`），TrendOK 没有——行为不一致。
+
+**实测影响**：单次 TrendOK 请求可达 **~116s**；影响 Watchlist 刷新、Screener 导入、Dashboard Copy all Markdown。
+
+#### 目标
+
+- 200 只以内 symbol batch 的 TrendOK 请求：**< 5s**（冷启动）/ **< 2s**（warm）。
+- 不改变 Score 算法本身，只优化依赖路径。
+
+#### 方案
+
+**Step 1 — 跳过 breadth（必做，改动最小）**
+
+```python
+# services/data-sync-service/src/data_sync_service/service/trendok.py
+regime_info = get_market_regime(as_of_date=latest_bar_date, include_breadth=False)
+```
+
+或在 `get_market_regime()` 增加 `include_breadth: bool = False` 默认值（需评估 Index 页等调用方）。
+
+**Step 2 — Regime 短期缓存（推荐）**
+
+- 在 `market_regime.py` 或 `trendok.py` 增加 TTL cache（5–15 分钟），key = `as_of_date`。
+- 可用 `functools.lru_cache` + timestamp，或模块级 dict。
+
+**Step 3 — 东财行业 miss 不阻塞（与 OPT-004 重叠，此处先做最小版）**
+
+- TrendOK 请求路径：`ensure_em_industries_for_ts_codes` miss 时 **不 HTTP**，fallback 到 `stock_basic.industry`。
+- 完整预热交给 OPT-004 scheduler job。
+
+#### 涉及文件
+
+| 文件 | 改动 |
+|------|------|
+| `services/data-sync-service/src/data_sync_service/service/trendok.py` | `get_market_regime` 传参；可选 regime cache |
+| `services/data-sync-service/src/data_sync_service/service/market_regime.py` | 可选：导出 cache helper |
+| `services/data-sync-service/src/data_sync_service/service/eastmoney_industry.py` | 可选：增加 `ensure_em_industries_sync=False` 开关 |
+| `services/data-sync-service/tests/` | 新增/更新 trendok 性能相关测试 |
+
+#### 验证
+
+- [ ] `curl "http://127.0.0.1:4330/market/stocks/trendok?symbols=CN:600519&refresh=true"` < 5s
+- [ ] Watchlist 页刷新 TrendOK 明显变快
+- [ ] Dashboard Copy all Markdown 中 Screener Score 与 Watchlist 一致
+- [ ] Dashboard summary 的 index signals 行为不变
+- [ ] pytest trendok 相关用例通过
+
+---
+
+### OPT-002：Watchlist 存储权威源明确化
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 问题
+
+- Watchlist **权威数据在浏览器 `localStorage`**（`karios.watchlist.v1`）。
+- Postgres `/watchlist/registry` 只是镜像，可能漂移。
+- 重装应用、换设备、清缓存 → **持仓/成本数据丢失**。
+- 与「本地优先桌面投资工具」定位不符。
+
+#### 目标
+
+- 启动时从 backend hydrate，写操作以 Postgres 为准。
+- localStorage 降级为读缓存 / 离线 fallback。
+- 现有用户数据平滑迁移，不丢数据。
+
+#### 方案（阶段 A — 推荐先做）
+
+**读写顺序变更：**
+
+```
+启动:
+  1. GET /watchlist/registry → 若有数据，写入 localStorage + 内存 state
+  2. 若 registry 空但 localStorage 有数据 → POST registry（一次性 uplift）
+
+写入:
+  1. POST /watchlist/registry（权威）
+  2. 成功后 saveJson localStorage（缓存）
+  3. dispatch WATCHLIST_UPDATED_EVENT
+```
+
+**冲突策略（v1 简单版）：**
+
+- registry 有数据且 localStorage 也有 → **以 registry 为准**，localStorage 覆盖。
+- 首次 uplift 成功后打 flag `karios.watchlist.registrySynced.v1`。
+
+#### 涉及文件
+
+| 文件 | 改动 |
+|------|------|
+| `apps/desktop-ui/src/lib/watchlist-storage.ts` | hydrate / uplift / 双写顺序 |
+| `apps/desktop-ui/src/components/pages/WatchlistPage.tsx` | 启动时 await hydrate |
+| `apps/desktop-ui/src/lib/watchlist-screener-import.ts` | 导入后走统一 save 路径 |
+| `apps/desktop-ui/src/lib/watchlist-automation.ts` | 同上 |
+| `services/data-sync-service/src/data_sync_service/api/watchlist_routes.py` | 确认 GET registry 存在；若无则补 |
+| `services/data-sync-service/src/data_sync_service/db/watchlist_automation.py` | 确认 schema 够用 |
+
+#### 验证
+
+- [ ] 新安装：空 registry → 手动加票 → 重启后仍在
+- [ ] 老用户：localStorage 有数据、registry 空 → 自动 uplift
+- [ ] Screener 导入后 registry 与 UI 一致
+- [ ] Settings 无报错
+
+#### 后续（阶段 B，另开任务）
+
+- Tauri `tauri-plugin-store` 或本地 SQLite 替代 localStorage
+- 多设备冲突检测 UI
+
+---
+
+## P1 — 高价值，次优先
+
+### OPT-003：前端 API 层 + God Page 拆分（阶段一）
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 问题
+
+- **20+ 文件**各自定义 `apiGetJson` / `apiPostJson`，无统一错误处理、retry、类型。
+- `DashboardPage.tsx` (~2790 行)、`WatchlistPage.tsx` (~2588 行) 混合 UI + 数据 + 导出 + SSE。
+- `TrendOkResult`、`chunk()`、`isShanghaiTradingTime()` 多处重复定义。
+- 无 React Query/SWR，全靠 `useEffect` + `setInterval(60s)` 轮询。
+
+#### 目标（阶段一 scope，不要一次拆完）
+
+1. 新建统一 API client。
+2. 抽取共享 types 与工具函数。
+3. TrendOK fetch 去重（同 symbol 集合并发请求合并）。
+4. **不**在本阶段大规模拆 UI 组件（留给阶段二）。
+
+#### 方案
+
+**新建文件：**
+
+```
+apps/desktop-ui/src/lib/api/
+  client.ts       # apiGetJson, apiPostJson, apiFetch
+  trendok.ts      # fetchTrendOkMap（从 screenerExport 迁入或 re-export）
+  types.ts        # TrendOkResult, DashboardSummary 等
+
+apps/desktop-ui/src/lib/market-hours.ts   # isShanghaiTradingTime（从 Page 抽出）
+apps/desktop-ui/src/lib/chunk.ts          # chunk 工具
+```
+
+**迁移顺序：**
+
+1. 创建 `client.ts`，从 `DashboardPage.tsx` 复制并增强。
+2. `screenerExport.ts`、`watchlist-screener-import.ts` 改用 client。
+3. 其余 Page 逐个替换（可分批 PR）。
+4. `TrendOkResult` 统一到 `api/types.ts`，删除重复定义。
+
+**TrendOK 去重（可选在本任务或单独 PR）：**
+
+- 模块级 `inflight Map<string, Promise<TrendOkResult[]>>`，key = sorted symbols + realtime flag。
+
+#### 涉及文件
+
+| 文件 | 改动 |
+|------|------|
+| `apps/desktop-ui/src/lib/api/*` | 新建 |
+| `apps/desktop-ui/src/lib/screenerExport.ts` | 改用 api client |
+| `apps/desktop-ui/src/components/pages/DashboardPage.tsx` | 删除本地 apiGetJson |
+| `apps/desktop-ui/src/components/pages/WatchlistPage.tsx` | 同上 |
+| 其他 15+ Page/lib | 分批迁移 |
+
+#### 验证
+
+- [ ] `npm run typecheck` 通过
+- [ ] 现有 vitest 通过
+- [ ] grep 确认 `async function apiGetJson` 仅剩 `lib/api/client.ts` 一处
+
+#### 阶段二（后续任务，不在本 scope）
+
+- 拆 `useDashboardSync`、`useWatchlistTrend` hooks
+- 拆 `components/dashboard/*`、`components/watchlist/*`
+
+---
+
+### OPT-004：东财行业预热脱离请求路径
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 问题
+
+`ensure_em_industries_for_ts_codes()` 在 TrendOK 热路径同步拉东财 HTTP，200 个 miss × (~400ms + 40ms sleep) ≈ **70–100s**。
+
+#### 方案
+
+1. **Scheduler job**：每日收盘后 / Sync All 的 industry step 后，批量预热 `stock_eastmoney_industry` 表。
+2. **TrendOK 路径**：只 `lookup_by_ts_codes`，miss 时用 `stock_basic.industry` fallback，**禁止 HTTP**。
+3. 可选：admin endpoint `POST /sync/eastmoney-industry` 手动触发全量。
+
+#### 涉及文件
+
+| 文件 | 改动 |
+|------|------|
+| `services/data-sync-service/src/data_sync_service/service/eastmoney_industry.py` | 拆分 sync vs lookup-only |
+| `services/data-sync-service/src/data_sync_service/service/trendok.py` | 改用 lookup-only |
+| `services/data-sync-service/src/data_sync_service/scheduler/` | 新增或挂接 job |
+| `services/data-sync-service/src/data_sync_service/api/sync_routes.py` | 可选手动触发 |
+
+#### 验证
+
+- [ ] TrendOK 对新 symbol（已在 stock_basic）不再触发东财 HTTP
+- [ ] Scheduler job 后 `stock_eastmoney_industry` 覆盖率上升
+- [ ] Score 中行业相关加分仍正常
+
+---
+
+### OPT-005：TV Screener Sync 并行化
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 问题
+
+Dashboard Sync All 对 enabled screeners **串行**调用 `sync_screener()`（`dashboard.py:443-461`）。  
+单个 CDP capture 可达 60s+，多个 screener 叠加线性变慢。
+
+#### 方案
+
+1. 使用 `ThreadPoolExecutor` 或 `asyncio.gather` 限流并行（建议 `max_workers=2`，避免 CDP 争抢）。
+2. 单个 screener 失败不阻塞其余（已有 try/except，确认 error 汇总完整）。
+3. SSE progress 事件增加 per-screener 状态。
+
+#### 涉及文件
+
+| 文件 | 改动 |
+|------|------|
+| `services/data-sync-service/src/data_sync_service/service/dashboard.py` | `_sync_screeners_step` 并行 |
+| `services/data-sync-service/src/data_sync_service/service/tv.py` | 可选：超时隔离 |
+
+#### 验证
+
+- [ ] 2+ enabled screener 时 Sync All 总耗时 < 串行之和
+- [ ] 一个 screener 失败，其余仍成功
+- [ ] SSE stream 仍正确结束
+
+---
+
+## P2 — 中期改进
+
+### OPT-006：TrendOK `refresh` 语义对齐
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 问题
+
+前端普遍传 `refresh=true`，后端 `compute_trendok_for_symbols` 直接 `_ = refresh` 忽略。  
+用户/开发者误以为会触发网络拉取最新 K 线。
+
+#### 方案（二选一）
+
+| 选项 | 做法 |
+|------|------|
+| A | 实现 refresh：对请求的 ts_codes 先 trigger bars sync 再计算 |
+| B | 删除参数：前后端去掉 `refresh`，文档说明 TrendOK 只读 DB |
+
+推荐 **B**（简单）+ Watchlist 手动刷新走独立 `/bars?force=true` 路径（已存在）。
+
+#### 涉及文件
+
+- `services/data-sync-service/src/data_sync_service/service/trendok.py`
+- `services/data-sync-service/src/data_sync_service/api/query_routes.py`
+- `apps/desktop-ui/src/lib/screenerExport.ts`
+- `apps/desktop-ui/src/components/pages/WatchlistPage.tsx`
+- `apps/desktop-ui/src/lib/watchlist-screener-import.ts`
+
+---
+
+### OPT-007：DB Migration 工具（Alembic）
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 问题
+
+Schema 分散在 24 个 `db/*.py` 的 `ensure_table()` / `CREATE TABLE IF NOT EXISTS`，无版本追踪，演进风险高。
+
+#### 方案
+
+1. 引入 Alembic，baseline migration 对应当前 schema。
+2. 新表/列变更走 migration，保留 `ensure_table()` 作为 dev 便利（或逐步移除）。
+3. 文档补充 `alembic upgrade head` 到 README。
+
+---
+
+### OPT-008：TV Capture 异步化 / Job Queue
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 问题
+
+- `tv/capture.py` 在 sync FastAPI route 内 `asyncio.run()`，阻塞 worker。
+- Scroll 循环最多 200 步 × 200ms，单任务耗时长。
+
+#### 方案
+
+1. Sync endpoint 改为「提交 job → 返回 job_id」。
+2. 后台 worker 执行 capture，完成后写 snapshot。
+3. UI 轮询或 SSE 查 job 状态。
+4. 可选：减少 scroll 步数 / 智能停止条件优化。
+
+---
+
+### OPT-009：packages/shared 类型共享
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 问题
+
+`packages/shared` 仅有 portfolio/artifact schema，desktop-ui 未引用。TrendOK、Watchlist 类型前后端各写一份。
+
+#### 方案
+
+1. 在 shared 增加 `TrendOkResult`、`WatchlistItem` 等 Zod schema + 导出 TS type。
+2. desktop-ui 引用 `@karios/shared`。
+3. 长期：OpenAPI → 生成 Python pydantic（可选）。
+
+---
+
+## P3 — 清理类
+
+### OPT-010：过时 UI 文案清理
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 问题
+
+部分 Page 仍写「Cached in SQLite」，实际已是 Postgres。
+
+#### 涉及文件（grep 确认）
+
+- `apps/desktop-ui/src/components/pages/IndustryFlowPage.tsx`
+- `apps/desktop-ui/src/components/pages/BrokerPage.tsx`
+- `apps/desktop-ui/src/components/pages/SettingsPage.tsx`（SQLite 迁移按钮是否仍需要）
+
+---
+
+## 模块级问题备忘（不单独开任务，合并到上述 OPT）
+
+### data-sync-service
+
+| 模块 | 优点 | 待优化 | 关联 OPT |
+|------|------|--------|----------|
+| `trendok.py` | 算法集中、有测试 | God file 1252 行；热路径性能 | OPT-001, OPT-004 |
+| `market_regime.py` | breadth 可开关 | TrendOK 未用开关 | OPT-001 |
+| `dashboard.py` | 并行 summary | screener 串行 | OPT-005 |
+| `eastmoney_industry.py` | DB 缓存 | 请求路径 HTTP | OPT-004 |
+| `tv/capture.py` | DOM 启发式完整 | 阻塞 worker | OPT-008 |
+| `db/*.py` | JSONB upsert 幂等 | 无 migration | OPT-007 |
+
+### desktop-ui
+
+| 模块 | 优点 | 待优化 | 关联 OPT |
+|------|------|--------|----------|
+| `DashboardPage.tsx` | 功能完整 | 2790 行 God file | OPT-003 |
+| `WatchlistPage.tsx` | 功能完整 | 2588 行；串行 force bars | OPT-002, OPT-003 |
+| `watchlist-storage.ts` | API 清晰 | localStorage 权威 | OPT-002 |
+| `screenerExport.ts` | 近期抽取良好 | TrendOK 重复 fetch | OPT-001, OPT-003 |
+| `storage.ts` | 极简 | 无 quota 处理 | OPT-002 |
+
+### Watchlist 串行 force bars（可并入 OPT-003 或单独小 PR）
+
+`WatchlistPage.tsx:816-826`：手动刷新时对每只股票串行 `GET /bars?force=true` + 120ms sleep。
+
+**建议：**
+
+- 改为 batch endpoint 或并行度限制（如 p-limit 3）。
+- 去掉固定 120ms sleep，改指数退避仅在 429 时触发。
+
+---
+
+## 推荐执行顺序
+
+```
+Week 1:  OPT-001（TrendOK 性能）→ 立刻改善日常使用
+Week 2:  OPT-002（Watchlist 存储）→ 数据安全
+Week 3:  OPT-004（东财预热）+ OPT-003 阶段一（API client）
+Week 4:  OPT-005（Screener 并行）+ OPT-006（refresh 语义）
+Later:   OPT-007 ~ OPT-010
+```
+
+---
+
+## 审查记录
+
+| 日期 | 说明 |
+|------|------|
+| 2026-06-18 | 初始版本：全栈架构审查，功能正常，识别 P0–P3 共 10 项优化 |
+
+---
+
+## 相关文档
+
+- [模块文档索引](./modules/README.md)
+- [Screener 模块](./modules/screener.md)
+- [Watchlist 模块](./modules/watchlist.md)

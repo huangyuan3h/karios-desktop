@@ -153,5 +153,6 @@ Market Sentiment 的红绿灯帮助判断市场状态，控制仓位风险。
 
 ## 相关文档
 
+- [优化 Checklist（架构债务 & Agent 任务）](../optimization-checklist.md)
 - [项目整体架构](../architecture-and-requirements.md)
 - [Screener 模块设计](../design/screener-module.md)
