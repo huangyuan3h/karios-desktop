@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import type { QueryClient } from '@tanstack/react-query';
+
 import { apiGetJson } from '@/lib/api/client';
 import type { TrendOkResult } from '@/lib/api/types';
 import {
@@ -38,6 +40,8 @@ import {
   screenerMarkdownRowsToTable,
 } from '@/lib/screenerExport';
 import { toTsCodeFromSymbol } from '@/lib/symbols';
+import { screenerSnapshotsQueryOptions } from '@/lib/queries/screener';
+import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
 import { trendOkSummary, trendOkRuleLines, scoreRuleLines } from '@/lib/trendok-display';
 import {
   WATCHLIST_MD_HEADERS,
@@ -294,6 +298,7 @@ export function buildMacroMarkdown(s: DashboardSummary | null, heading = '##'): 
 export async function buildScreenersMarkdown(
   s: DashboardSummary | null,
   heading = '##',
+  queryClient?: QueryClient,
 ): Promise<string> {
   const summary2: any = s ?? {};
   const rows: any[] = Array.isArray(summary2?.screeners) ? summary2.screeners : [];
@@ -314,15 +319,11 @@ export async function buildScreenersMarkdown(
     .map((sc: any) => String(sc?.id ?? '').trim())
     .filter((sid: string) => sid);
 
-  const screenerResults = await Promise.all(
-    screenerIds.map(async (sid) => {
-      try {
-        const list = await apiGetJson<{
-          items: Array<{ id: string; capturedAt?: string; rowCount?: number }>;
-        }>(`/integrations/tradingview/screeners/${encodeURIComponent(sid)}/snapshots?limit=1`);
-        const snapId = String(list?.items?.[0]?.id ?? '').trim();
-        if (!snapId) return { sid, error: 'No snapshot found' };
-        const snap = await apiGetJson<{
+  let resolvedScreenerResults: Array<
+    | { sid: string; error: string }
+    | {
+        sid: string;
+        snap: {
           id: string;
           screenerId: string;
           capturedAt: string;
@@ -332,15 +333,47 @@ export async function buildScreenersMarkdown(
           url: string;
           headers: string[];
           rows: Array<Record<string, string>>;
-        }>(`/integrations/tradingview/snapshots/${encodeURIComponent(snapId)}`);
-        return { sid, snap, sc: rows.find((r: any) => String(r?.id ?? '').trim() === sid) };
-      } catch (e) {
-        return { sid, error: e instanceof Error ? e.message : String(e) };
+        };
+        sc: any;
       }
-    }),
-  );
+  >;
 
-  for (const result of screenerResults) {
+  if (queryClient && screenerIds.length) {
+    const snapMap = await queryClient.fetchQuery(screenerSnapshotsQueryOptions(screenerIds));
+    resolvedScreenerResults = screenerIds.map((sid) => {
+      const snap = snapMap[sid];
+      if (!snap) return { sid, error: 'No snapshot found' };
+      return { sid, snap, sc: rows.find((r: any) => String(r?.id ?? '').trim() === sid) };
+    });
+  } else {
+    resolvedScreenerResults = await Promise.all(
+      screenerIds.map(async (sid) => {
+        try {
+          const list = await apiGetJson<{
+            items: Array<{ id: string; capturedAt?: string; rowCount?: number }>;
+          }>(`/integrations/tradingview/screeners/${encodeURIComponent(sid)}/snapshots?limit=1`);
+          const snapId = String(list?.items?.[0]?.id ?? '').trim();
+          if (!snapId) return { sid, error: 'No snapshot found' };
+          const snap = await apiGetJson<{
+            id: string;
+            screenerId: string;
+            capturedAt: string;
+            rowCount: number;
+            screenTitle: string | null;
+            filters: string[];
+            url: string;
+            headers: string[];
+            rows: Array<Record<string, string>>;
+          }>(`/integrations/tradingview/snapshots/${encodeURIComponent(snapId)}`);
+          return { sid, snap, sc: rows.find((r: any) => String(r?.id ?? '').trim() === sid) };
+        } catch (e) {
+          return { sid, error: e instanceof Error ? e.message : String(e) };
+        }
+      }),
+    );
+  }
+
+  for (const result of resolvedScreenerResults) {
     if ('error' in result) {
       const sc = rows.find((r: any) => String(r?.id ?? '').trim() === result.sid);
       lines.push(`${heading}# ${escapeMarkdownCell(String(sc?.name ?? result.sid))}`);
@@ -397,7 +430,7 @@ export async function buildScreenersMarkdown(
   return lines.join('\n').trim() + '\n';
 }
 
-export async function buildWatchlistMarkdown(): Promise<string> {
+export async function buildWatchlistMarkdown(queryClient?: QueryClient): Promise<string> {
   const itemsRaw = loadWatchlist();
   const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
     .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
@@ -411,44 +444,8 @@ export async function buildWatchlistMarkdown(): Promise<string> {
   const quoteWindow = isShanghaiSyncWindow();
   const todaySh = getShanghaiTodayIso();
 
-  const symsChunks = chunk(syms, 200);
-
-  const byTsCode = new Map<string, string>();
-  const tsCodes = syms
-    .map((s) => {
-      const t = toTsCodeFromSymbol(s);
-      if (t) byTsCode.set(t, s);
-      return t;
-    })
-    .filter(Boolean) as string[];
-  const tsCodesChunks = chunk(tsCodes, 50);
-
-  const [trendResults, quoteResults] = await Promise.all([
-    Promise.all(
-      symsChunks.map(async (part) => {
-        const sp = new URLSearchParams();
-        sp.set('realtime', quoteWindow ? 'true' : 'false');
-        for (const s of part) sp.append('symbols', s);
-        return apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
-      }),
-    ),
-    Promise.all(
-      tsCodesChunks.map(async (part) => {
-        return apiGetJson<QuoteResp>(
-          `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
-        ).catch(() => null);
-      }),
-    ),
-  ]);
-
-  const trend: Record<string, TrendOkResult> = {};
-  for (const trendRows of trendResults) {
-    for (const r of Array.isArray(trendRows) ? trendRows : []) {
-      if (r && r.symbol) trend[String(r.symbol).toUpperCase()] = r;
-    }
-  }
-
-  const quotes: Record<
+  let trend: Record<string, TrendOkResult>;
+  let quotes: Record<
     string,
     {
       price: number | null;
@@ -458,12 +455,57 @@ export async function buildWatchlistMarkdown(): Promise<string> {
       preClose: number | null;
       pctChg: number | null;
     }
-  > = {};
-  for (const r of quoteResults) {
-    for (const it of r?.items ?? []) {
-      const sym = byTsCode.get(it.ts_code);
-      if (!sym) continue;
-      quotes[sym] = parseDashboardQuoteItem(it);
+  >;
+
+  if (queryClient) {
+    const snapshot = await queryClient.fetchQuery(watchlistMarketQueryOptions(syms));
+    trend = snapshot.trend;
+    quotes = snapshot.quotes;
+  } else {
+    const symsChunks = chunk(syms, 200);
+
+    const byTsCode = new Map<string, string>();
+    const tsCodes = syms
+      .map((s) => {
+        const t = toTsCodeFromSymbol(s);
+        if (t) byTsCode.set(t, s);
+        return t;
+      })
+      .filter(Boolean) as string[];
+    const tsCodesChunks = chunk(tsCodes, 50);
+
+    const [trendResults, quoteResults] = await Promise.all([
+      Promise.all(
+        symsChunks.map(async (part) => {
+          const sp = new URLSearchParams();
+          sp.set('realtime', quoteWindow ? 'true' : 'false');
+          for (const s of part) sp.append('symbols', s);
+          return apiGetJson<TrendOkResult[]>(`/market/stocks/trendok?${sp.toString()}`);
+        }),
+      ),
+      Promise.all(
+        tsCodesChunks.map(async (part) => {
+          return apiGetJson<QuoteResp>(
+            `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
+          ).catch(() => null);
+        }),
+      ),
+    ]);
+
+    trend = {};
+    for (const trendRows of trendResults) {
+      for (const r of Array.isArray(trendRows) ? trendRows : []) {
+        if (r && r.symbol) trend[String(r.symbol).toUpperCase()] = r;
+      }
+    }
+
+    quotes = {};
+    for (const r of quoteResults) {
+      for (const it of r?.items ?? []) {
+        const sym = byTsCode.get(it.ts_code);
+        if (!sym) continue;
+        quotes[sym] = parseDashboardQuoteItem(it);
+      }
     }
   }
 
@@ -672,20 +714,21 @@ export type DashboardCopyAllOptions = {
   newsSummary?: string | null;
   newsSummaryUpdatedAt?: string | null;
   newsFallback?: string | null;
+  queryClient?: QueryClient;
 };
 
 export async function buildDashboardCopyAllMarkdown(
   options: DashboardCopyAllOptions,
 ): Promise<string> {
   await ensureWatchlistHydrated();
-  const { summary: s, newsSummary, newsSummaryUpdatedAt, newsFallback } = options;
+  const { summary: s, newsSummary, newsSummaryUpdatedAt, newsFallback, queryClient } = options;
   if (!s) {
     throw new Error('No data available. Please refresh first.');
   }
   const generatedAt = new Date().toISOString();
   const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd] = await Promise.all([
-    buildScreenersMarkdown(s, '##'),
-    buildWatchlistMarkdown(),
+    buildScreenersMarkdown(s, '##', queryClient),
+    buildWatchlistMarkdown(queryClient),
     buildCompactCatalystMarkdown(s),
     fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
       .then(({ items, scope }) =>

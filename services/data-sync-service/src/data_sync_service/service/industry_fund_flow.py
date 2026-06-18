@@ -7,6 +7,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -251,6 +252,32 @@ def fetch_cn_industry_fund_flow_hist(
     return _try_akshare_hist(name, days=days2)
 
 
+def _hist_rows_for_top_row(
+    row: dict[str, Any],
+    *,
+    days: int,
+    updated_at: str,
+) -> list[dict[str, Any]]:
+    hist = fetch_cn_industry_fund_flow_hist(
+        row.get("industry_name") or "",
+        industry_code=row.get("industry_code") or None,
+        days=days,
+    )
+    out: list[dict[str, Any]] = []
+    for h in hist:
+        out.append(
+            {
+                "date": h.get("date") or "",
+                "industry_code": row.get("industry_code") or "",
+                "industry_name": row.get("industry_name") or "",
+                "net_inflow": h.get("net_inflow") or 0.0,
+                "updated_at": updated_at,
+                "raw": h.get("raw") or {},
+            }
+        )
+    return out
+
+
 def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10) -> dict[str, Any]:
     as_of = date.today()
     items = fetch_cn_industry_fund_flow_eod(as_of)
@@ -271,27 +298,17 @@ def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10) -> dict[str, 
     top_rows = sorted(items, key=lambda x: float(x.get("net_inflow") or 0.0), reverse=True)[: max(1, int(top_n))]
     hist_rows: list[dict[str, Any]] = []
     hist_failures = 0
-    for r in top_rows:
-        try:
-            hist = fetch_cn_industry_fund_flow_hist(
-                r.get("industry_name") or "",
-                industry_code=r.get("industry_code") or None,
-                days=days,
-            )
-            for h in hist:
-                hist_rows.append(
-                    {
-                        "date": h.get("date") or "",
-                        "industry_code": r.get("industry_code") or "",
-                        "industry_name": r.get("industry_name") or "",
-                        "net_inflow": h.get("net_inflow") or 0.0,
-                        "updated_at": updated_at,
-                        "raw": h.get("raw") or {},
-                    }
-                )
-        except Exception:
-            hist_failures += 1
-            continue
+    if top_rows:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {
+                pool.submit(_hist_rows_for_top_row, r, days=days, updated_at=updated_at): r
+                for r in top_rows
+            }
+            for fut in as_completed(futures):
+                try:
+                    hist_rows.extend(fut.result())
+                except Exception:
+                    hist_failures += 1
 
     if hist_rows:
         upsert_daily_rows(hist_rows)

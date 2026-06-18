@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import type { QueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { ChatMessageList } from '@/components/chat/ChatMessageList';
@@ -8,6 +10,8 @@ import { AI_BASE_URL, DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { newId } from '@/lib/id';
 import { useChatStore } from '@/lib/chat/store';
 import type { ChatAttachment, ChatMessage, ChatReference } from '@/lib/chat/types';
+import { fetchDashboardSummaryCached } from '@/lib/queries/dashboard';
+import { industryFundFlowQueryOptions } from '@/lib/queries/industryFlow';
 
 type TvSnapshotDetail = {
   id: string;
@@ -186,7 +190,7 @@ function pickColumns(headers: string[]) {
   return [...picked, ...rest].slice(0, 8);
 }
 
-async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
+async function buildReferenceBlock(refs: ChatReference[], queryClient: QueryClient): Promise<string> {
   let out = '# Reference Context\n\n';
   for (const ref of refs) {
     if (ref.kind === 'tv') {
@@ -407,12 +411,9 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 
     if (ref.kind === 'industryFundFlow') {
       try {
-        const resp = await fetch(
-          `${DATA_SYNC_BASE_URL}/market/cn/industry-fund-flow?days=${encodeURIComponent(String(ref.days))}&topN=${encodeURIComponent(String(ref.topN))}&asOfDate=${encodeURIComponent(ref.asOfDate)}`,
-          { cache: 'no-store' },
+        const ffRaw = await queryClient.fetchQuery(
+          industryFundFlowQueryOptions(ref.days, ref.topN, ref.asOfDate),
         );
-        if (!resp.ok) throw new Error('failed to load industry fund flow');
-        const ffRaw = (await resp.json()) as unknown;
         const ff = asRecord(ffRaw) ?? {};
         const title = String(ref.title ?? 'CN industry fund flow');
         out += `## ${title}\n`;
@@ -597,11 +598,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 
     if (ref.kind === 'dashboardAll') {
       try {
-        const summaryResp = await fetch(`${DATA_SYNC_BASE_URL}/dashboard/summary`, {
-          cache: 'no-store',
-        });
-        if (!summaryResp.ok) throw new Error('failed to load dashboard summary');
-        const s = (await summaryResp.json()) as Record<string, unknown>;
+        const s = await fetchDashboardSummaryCached(queryClient, true);
 
         out += `## ${ref.title || 'Dashboard Overview'}\n`;
         out += `- asOfDate: ${ref.asOfDate}\n`;
@@ -867,6 +864,7 @@ async function buildReferenceBlock(refs: ChatReference[]): Promise<string> {
 }
 
 export function ChatPanel() {
+  const queryClient = useQueryClient();
   const {
     activeSession,
     createSession,
@@ -977,7 +975,8 @@ export function ChatPanel() {
                 }
               }
 
-              const referenceText = refs.length > 0 ? await buildReferenceBlock(refs) : '';
+              const referenceText =
+                refs.length > 0 ? await buildReferenceBlock(refs, queryClient) : '';
               const payload = {
                 messages: [
                   ...(sp ? [{ role: 'system' as const, content: sp }] : []),

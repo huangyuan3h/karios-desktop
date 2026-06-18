@@ -83,7 +83,9 @@ export type MainlineResp = {
 export const INDUSTRY_FLOW_UNIVERSE_TOP_N = 200;
 export const INDUSTRY_FLOW_DAYS = 10;
 
-export function industryFundFlowQueryKey(days: number, topN: number) {
+export function industryFundFlowQueryKey(days: number, topN: number, asOfDate?: string) {
+  const trimmed = asOfDate?.trim();
+  if (trimmed) return ['industry', 'fundFlow', days, topN, trimmed] as const;
   return ['industry', 'fundFlow', days, topN] as const;
 }
 
@@ -94,10 +96,15 @@ export function industryMainlineQueryKey() {
 export async function fetchIndustryFundFlow(
   days: number = INDUSTRY_FLOW_DAYS,
   topN: number = INDUSTRY_FLOW_UNIVERSE_TOP_N,
+  asOfDate?: string,
 ): Promise<IndustryFundFlowResp> {
-  return apiGetJson<IndustryFundFlowResp>(
-    `/market/cn/industry-fund-flow?days=${encodeURIComponent(String(days))}&topN=${encodeURIComponent(String(topN))}`,
-  );
+  const params = new URLSearchParams({
+    days: String(days),
+    topN: String(topN),
+  });
+  const trimmedAsOf = asOfDate?.trim();
+  if (trimmedAsOf) params.set('asOfDate', trimmedAsOf);
+  return apiGetJson<IndustryFundFlowResp>(`/market/cn/industry-fund-flow?${params.toString()}`);
 }
 
 export async function fetchIndustryMainline(): Promise<MainlineResp> {
@@ -118,10 +125,11 @@ export async function fetchIndustryFlowBundle(
 export function industryFundFlowQueryOptions(
   days: number = INDUSTRY_FLOW_DAYS,
   topN: number = INDUSTRY_FLOW_UNIVERSE_TOP_N,
+  asOfDate?: string,
 ) {
   return {
-    queryKey: industryFundFlowQueryKey(days, topN),
-    queryFn: () => fetchIndustryFundFlow(days, topN),
+    queryKey: industryFundFlowQueryKey(days, topN, asOfDate),
+    queryFn: () => fetchIndustryFundFlow(days, topN, asOfDate),
     staleTime: SCREENER_STALE_MS,
   };
 }

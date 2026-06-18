@@ -13,6 +13,7 @@ from fastapi import HTTPException
 
 from data_sync_service.db import get_connection
 from data_sync_service.db.industry_fund_flow import ensure_table as ensure_industry
+from data_sync_service.db.industry_fund_flow import get_dates_upto, get_rows_for_dates
 from data_sync_service.db.market_sentiment import get_latest_date as get_latest_sentiment_date
 from data_sync_service.db.market_sentiment import list_days as list_sentiment_days
 from data_sync_service.db.news import ensure_tables as ensure_news_tables
@@ -21,6 +22,7 @@ from data_sync_service.db.tv import list_latest_snapshots_for_screeners
 from data_sync_service.service.industry_fund_flow import (
     sync_cn_industry_fund_flow,
 )
+from data_sync_service.service.industry_fund_flow_read import build_dashboard_industry_bundle
 from data_sync_service.service.macro_snapshot import build_macro_snapshot
 from data_sync_service.service.market_environment_zh import format_market_environment_zh
 from data_sync_service.service.market_regime import (
@@ -51,214 +53,12 @@ def _today_iso_date() -> str:
     return datetime.now(tz=UTC).date().isoformat()
 
 
-def _industry_top_by_date(*, as_of_date: str, days: int = 5, top_k: int = 5) -> dict[str, Any]:
-    """
-    Return TopK industry names per date for the last N days (<= as_of_date).
-
-    Shape:
-      { asOfDate, days, topK, dates, topByDate: [{date, top:[name...]}] }
-    """
-    ensure_industry()
-    days2 = max(1, min(int(days), 30))
-    topk2 = max(1, min(int(top_k), 20))
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                WITH base AS (
-                  SELECT date, industry_name, net_inflow
-                  FROM market_cn_industry_fund_flow_daily
-                  WHERE date <= %s
-                ),
-                ranked AS (
-                  SELECT
-                    date,
-                    industry_name,
-                    ROW_NUMBER() OVER (PARTITION BY date ORDER BY net_inflow DESC) AS rn
-                  FROM base
-                ),
-                dates AS (
-                  SELECT DISTINCT date
-                  FROM base
-                  ORDER BY date DESC
-                  LIMIT %s
-                )
-                SELECT r.date, r.rn, r.industry_name
-                FROM ranked r
-                JOIN dates d ON d.date = r.date
-                WHERE r.rn <= %s
-                ORDER BY r.date ASC, r.rn ASC
-                """,
-                (as_of_date, days2, topk2),
-            )
-            rows = cur.fetchall()
-
-    by_date: dict[str, list[str]] = {}
-    for r in rows:
-        d = str(r[0])
-        name = str(r[2] or "")
-        if not name:
-            continue
-        by_date.setdefault(d, []).append(name)
-    dates_sorted = sorted(by_date.keys())
-    top_by_date = [{"date": d, "top": by_date.get(d, [])[:topk2]} for d in dates_sorted]
-    return {
-        "asOfDate": as_of_date,
-        "days": days2,
-        "topK": topk2,
-        "dates": dates_sorted,
-        "topByDate": top_by_date,
-    }
-
-
-def _daily_rankings_by_date_from_items(
-    items: list[dict[str, Any]], dates: list[str]
-) -> list[dict[str, Any]]:
-    """
-    Full net-inflow rankings per date for hot-industry rank-delta logic.
-    Includes all industries (positive and negative net inflow) so rank delta
-    stays defined when a sector re-enters the daily top after a weak day.
-    Shape: [{date, ranked:[{industryName, value, rank}]}]
-    """
-    out: list[dict[str, Any]] = []
-    for d in dates:
-        scored: list[dict[str, Any]] = []
-        for it in items:
-            name = str(it.get("industryName") or "").strip()
-            if not name:
-                continue
-            series = it.get("series") if isinstance(it.get("series"), list) else []
-            v = 0.0
-            for p in series:
-                if not isinstance(p, dict) or str(p.get("date") or "") != d:
-                    continue
-                try:
-                    v = float(p.get("netInflow") or 0.0)
-                except Exception:
-                    v = 0.0
-                break
-            scored.append({"industryName": name, "value": v})
-        scored.sort(key=lambda x: float(x.get("value") or 0.0), reverse=True)
-        ranked = [
-            {"industryName": x["industryName"], "value": x["value"], "rank": i + 1}
-            for i, x in enumerate(scored)
-        ]
-        out.append({"date": d, "ranked": ranked})
-    return out
-
-
-def _industry_flow_5d_items(*, as_of_date: str) -> tuple[list[str], list[dict[str, Any]]]:
-    """
-    Compute 5D aggregated flow items from DB for the last 5 cached dates (<= as_of_date).
-    """
-    ensure_industry()
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                WITH dates AS (
-                  SELECT DISTINCT date
-                  FROM market_cn_industry_fund_flow_daily
-                  WHERE date <= %s
-                  ORDER BY date DESC
-                  LIMIT 5
-                )
-                SELECT d.date, b.industry_code, b.industry_name, b.net_inflow
-                FROM market_cn_industry_fund_flow_daily b
-                JOIN dates d ON d.date = b.date
-                ORDER BY d.date ASC
-                """,
-                (as_of_date,),
-            )
-            rows = cur.fetchall()
-
-    dates_sorted: list[str] = sorted({str(r[0]) for r in rows if r and r[0]})
-    if not dates_sorted:
-        return [], []
-
-    last_date = dates_sorted[-1]
-    by_code: dict[str, dict[str, Any]] = {}
-    for r in rows:
-        d = str(r[0] or "")
-        code = str(r[1] or "")
-        name = str(r[2] or "")
-        try:
-            v = float(r[3] or 0.0)
-        except Exception:
-            v = 0.0
-        if not code:
-            continue
-        rec = by_code.setdefault(code, {"industryCode": code, "industryName": name, "perDate": {}})
-        if name and not rec.get("industryName"):
-            rec["industryName"] = name
-        rec["perDate"][d] = v
-
-    items: list[dict[str, Any]] = []
-    for code, rec in by_code.items():
-        per: dict[str, float] = rec.get("perDate") or {}
-        series = [{"date": d, "netInflow": float(per.get(d, 0.0) or 0.0)} for d in dates_sorted]
-        sum5d = 0.0
-        for p in series:
-            net = p.get("netInflow")
-            if isinstance(net, (int, float, str)):
-                try:
-                    sum5d += float(net)
-                except Exception:
-                    sum5d += 0.0
-            else:
-                sum5d += 0.0
-        items.append(
-            {
-                "industryCode": code,
-                "industryName": str(rec.get("industryName") or ""),
-                "sum5d": sum5d,
-                "netInflow": float(per.get(last_date, 0.0) or 0.0),
-                "series": series,
-            }
-        )
-    return dates_sorted, items
-
-
-def _industry_flow_5d(*, as_of_date: str) -> dict[str, Any]:
-    """
-    Numeric 5D inflow block used by Dashboard under industryFundFlow.flow5d.
-    """
-    dates_sorted, items = _industry_flow_5d_items(as_of_date=as_of_date)
-    if not dates_sorted:
-        return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": [], "top": []}
-    top_in = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0), reverse=True)[:10]
-    return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_in}
-
-
-def _industry_flow_5d_out(*, as_of_date: str) -> dict[str, Any]:
-    """
-    5D outflow block used by Dashboard under industryFundFlow.flow5dOut.
-    """
-    dates_sorted, items = _industry_flow_5d_items(as_of_date=as_of_date)
-    if not dates_sorted:
-        return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": [], "top": []}
-    top_out = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0))[:10]
-    return {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_out}
-
-
 def _build_industry_bundle(*, as_of_date: str) -> dict[str, Any]:
-    """Industry fund-flow block; one 5D query for both inflow/outflow tops."""
-    industry_daily = _industry_top_by_date(as_of_date=as_of_date, days=5, top_k=5)
-    dates_sorted, items = _industry_flow_5d_items(as_of_date=as_of_date)
-    daily_rankings = _daily_rankings_by_date_from_items(items, dates_sorted) if dates_sorted else []
-    if not dates_sorted:
-        empty = {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": [], "top": []}
-        return {**industry_daily, "dailyRankings": daily_rankings, "flow5d": empty, "flow5dOut": empty}
-    top_in = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0), reverse=True)[:10]
-    top_out = sorted(items, key=lambda x: float(x.get("sum5d") or 0.0))[:10]
-    flow5d = {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_in}
-    flow5d_out = {"asOfDate": as_of_date, "days": 5, "topN": 10, "dates": dates_sorted, "top": top_out}
-    return {
-        **industry_daily,
-        "dailyRankings": daily_rankings,
-        "flow5d": flow5d,
-        "flow5dOut": flow5d_out,
-    }
+    """Industry fund-flow block from one batch DB read + in-memory aggregation."""
+    ensure_industry()
+    dates = get_dates_upto(as_of_date, 5)
+    rows = get_rows_for_dates(dates)
+    return build_dashboard_industry_bundle(as_of_date=as_of_date, dates=dates, rows=rows)
 
 
 def _build_market_sentiment_bundle(

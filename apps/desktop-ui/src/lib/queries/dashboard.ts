@@ -109,6 +109,17 @@ export async function fetchDashboardSummary(includeMacro?: boolean): Promise<Das
   return apiGetJson<DashboardSummary>(buildDashboardSummaryPath(macro));
 }
 
+export async function fetchDashboardSummaryCached(
+  queryClient: QueryClient,
+  includeMacro?: boolean,
+): Promise<DashboardSummary> {
+  const macro = includeMacro ?? isShanghaiSyncWindow();
+  return queryClient.fetchQuery({
+    queryKey: dashboardSummaryQueryKey(macro),
+    queryFn: () => fetchDashboardSummary(macro),
+  });
+}
+
 export function useDashboardSummaryQuery() {
   const includeMacro = isShanghaiSyncWindow();
   return useQuery({

@@ -24,12 +24,29 @@ def test_get_macro_snapshot_endpoint(monkeypatch) -> None:
 def test_run_post_close_sync(monkeypatch) -> None:
     import data_sync_service.service.post_close_sync as pcs  # type: ignore[import-not-found]
 
-    monkeypatch.setattr(pcs, "sync_index_daily_full", lambda: {"ok": True, "updated": 1})
-    monkeypatch.setattr(pcs, "sync_macro_daily_full", lambda: {"ok": True, "updated": 2})
+    called: list[str] = []
+
+    def _index() -> dict:
+        called.append("index")
+        return {"ok": True, "updated": 1}
+
+    def _macro() -> dict:
+        called.append("macro")
+        return {"ok": True, "updated": 2}
+
+    def _em(**kwargs) -> dict:  # noqa: ANN003
+        called.append("em")
+        return {"ok": True, "updated": 3}
+
+    monkeypatch.setattr(pcs, "sync_index_daily_full", _index)
+    monkeypatch.setattr(pcs, "sync_macro_daily_full", _macro)
+    monkeypatch.setattr(pcs, "sync_eastmoney_industry_incremental", _em)
 
     out = pcs.run_post_close_sync()
     assert out["indexDaily"]["ok"] is True
     assert out["macroDaily"]["updated"] == 2
+    assert out["eastmoneyIndustry"]["updated"] == 3
+    assert set(called) == {"index", "macro", "em"}
 
 
 def test_resolve_sgx_a50_main_empty() -> None:

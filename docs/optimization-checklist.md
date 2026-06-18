@@ -36,11 +36,11 @@
 | OPT-023 | TrendOK 进程内 TTL 缓存 | P0 | 1 天 | [x] |
 | OPT-024 | Macro Snapshot DB 批量读 + on-demand 并行 | P0 | 1 天 | [x] |
 | OPT-025 | IndustryFlowPage React Query + Dashboard 缓存种子 | P0 | 1–2 天 | [x] |
-| OPT-026 | Dashboard Industry Bundle 重复 SQL 合并 | P1 | 0.5–1 天 | [ ] |
-| OPT-027 | Sync All / Post-Close 串行步骤并行化 | P1 | 0.5–1 天 | [ ] |
-| OPT-028 | useWatchlistAutomation → React Query | P1 | 0.5–1 天 | [ ] |
-| OPT-029 | StockPage React Query 按 symbol 缓存 | P1 | 1–2 天 | [ ] |
-| OPT-030 | ChatPanel / Markdown Export 复用 Query 缓存 | P1 | 1–2 天 | [ ] |
+| OPT-026 | Dashboard Industry Bundle 重复 SQL 合并 | P1 | 0.5–1 天 | [x] |
+| OPT-027 | Sync All / Post-Close 串行步骤并行化 | P1 | 0.5–1 天 | [x] |
+| OPT-028 | useWatchlistAutomation → React Query | P1 | 0.5–1 天 | [x] |
+| OPT-029 | StockPage React Query 按 symbol 缓存 | P1 | 1–2 天 | [x] |
+| OPT-030 | ChatPanel / Markdown Export 复用 Query 缓存 | P1 | 1–2 天 | [x] |
 
 ---
 
@@ -152,166 +152,106 @@
 
 ### OPT-026：Dashboard Industry Bundle 重复 SQL 合并
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 背景
+#### 实施摘要
 
-OPT-014 已优化独立 industry API 读路径，但 `dashboard_summary()`（60s 轮询）内 `_build_industry_bundle()` 仍对 `market_cn_industry_fund_flow_daily` 跑 **两次独立复杂查询**（`_industry_top_by_date` window + `_industry_flow_5d_items` JOIN）。
-
-#### 目标
-
-- 合并为单次 batch read 或复用 `get_cn_industry_fund_flow` + `industry_fund_flow_read` 纯函数
-- 一次读取派生 `topByDate`、`flow5d`、`flow5dOut`、`dailyRankings`
-- dashboard summary JSON shape 不变
-
-#### 文件范围
-
-| 层 | 文件 |
-|----|------|
-| Service | `service/dashboard.py` — `_build_industry_bundle`, `_industry_top_by_date`, `_industry_flow_5d_items` |
-| 复用 | `service/industry_fund_flow_read.py` |
-| 测试 | `tests/test_dashboard*.py`（industry bundle shape + DB 调用次数） |
+- `industry_fund_flow_read.py` 新增 `build_dashboard_industry_bundle` 及 helper 纯函数
+- `_build_industry_bundle()` 改为 `get_dates_upto` + `get_rows_for_dates` 单次 batch read
+- 删除 `_industry_top_by_date` / `_industry_flow_5d_items` 等重复 SQL
+- 测试：`test_dashboard_industry_bundle.py`
 
 #### 验证
 
-- [ ] mock 下 `_build_industry_bundle` 行业流 DB 调用 = 1
-- [ ] `test_dashboard_summary_endpoint_shape` 通过
-- [ ] pytest dashboard 相关用例通过
+- [x] mock 下 `_build_industry_bundle` 行业流 DB 调用 = 1
+- [x] `test_dashboard_summary_endpoint_shape` 通过
+- [x] pytest dashboard 相关用例通过
 
 ---
 
 ### OPT-027：Sync All / Post-Close 串行步骤并行化
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 背景
+#### 实施摘要
 
-两处独立串行瓶颈：
-
-1. **`run_post_close_sync()`**：`sync_index_daily_full` → `sync_macro_daily_full` → `sync_eastmoney_industry_incremental` 完全串行，三者互不依赖
-2. **`sync_cn_industry_fund_flow()`**：Dashboard Sync All 第一步对 top 10 行业 **串行** 调 Eastmoney/AkShare 历史接口
-
-#### 目标
-
-- post-close：`ThreadPoolExecutor(max_workers=3)` 并行三步，聚合 `{indexDaily, macroDaily, eastmoneyIndustry}`
-- industry fund flow sync：并行 hist fetch（concurrency 3–4），失败 isolation
-- 保留各子 job 内部 skip-if-today-ok 逻辑
-
-#### 文件范围
-
-| 层 | 文件 |
-|----|------|
-| Service | `service/post_close_sync.py` |
-| Service | `service/industry_fund_flow.py` — `sync_cn_industry_fund_flow` |
-| Service | `service/dashboard.py` — `_sync_industry_step`（若需调整） |
-| 测试 | 扩展 sync 单测：并行调用 + failure isolation |
+- `post_close_sync.py`：`ThreadPoolExecutor(max_workers=3)` 并行 index / macro / eastmoney
+- `industry_fund_flow.py`：`_hist_rows_for_top_row` + hist fetch `ThreadPoolExecutor(max_workers=4)`，单行业失败 isolation
+- 修复 `test_run_post_close_sync` mock 缺失 eastmoney
+- 测试：`test_industry_fund_flow_sync_parallel.py`
 
 #### 验证
 
-- [ ] mock 下 post-close 三步同时启动
-- [ ] industry sync 单行业失败不阻塞其余
-- [ ] pytest sync 相关用例通过
+- [x] mock 下 post-close 三步同时启动
+- [x] industry sync 单行业失败不阻塞其余
+- [x] pytest sync 相关用例通过
 
 ---
 
 ### OPT-028：useWatchlistAutomation → React Query
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 背景
+#### 实施摘要
 
-OPT-012 遗留：**全项目唯一 `setInterval`** 在 `useWatchlistAutomation.ts`（60s tick）。无法复用 `refetchIntervalInBackground`、inflight 去重；与 Query 数据层不一致。
-
-#### 目标
-
-- 新建 `lib/queries/automation.ts` — `useAutomationPendingQuery({ refetchInterval: 60_000, enabled: isAutomationPollWindow() })`
-- `onSuccess` 执行 `applyAutomationRun` + invalidate `watchlistMarketKey` / `watchlistRiskQueryKey`
-- 移除手写 `setInterval`
-
-#### 文件范围
-
-| 层 | 文件 |
-|----|------|
-| Query | 新建 `apps/desktop-ui/src/lib/queries/automation.ts` |
-| Hook | `hooks/useWatchlistAutomation.ts` |
-| 测试 | `lib/queries/automation.test.ts` |
+- 新建 `lib/queries/automation.ts` — `useAutomationPendingQuery`（60s `refetchInterval`，`enabled: isAutomationPollWindow()`）
+- `useWatchlistAutomation.ts` 移除 `setInterval`，保留 apply + invalidate 语义
+- 测试：`automation.test.ts`
 
 #### 验证
 
-- [ ] 全项目无 `setInterval`（grep 确认）
-- [ ] apply 后 watchlist / risk cache invalidate
-- [ ] vitest 通过
+- [x] 全项目无 `setInterval`（grep 确认）
+- [x] apply 后 watchlist / risk cache invalidate
+- [x] vitest 通过
 
 ---
 
 ### OPT-029：StockPage React Query 按 symbol 缓存
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 背景
+#### 实施摘要
 
-`StockPage.tsx` 用 `useEffect → refresh()`，每次打开/返回同一股票重复打 bars / chips / fund-flow / quote。虽有 localStorage 10min force 节流，但 **无跨挂载 Query 缓存**，导航往返浪费 RTT。
-
-#### 目标
-
-- 新建 `lib/queries/stock.ts` — `queryKey: ['stock', symbol, 'detail']`，`staleTime: 10min`
-- `queryFn` 保留现有逻辑；fund-flow 与 quote **并行**（小优化并入）
-- 手动 Refresh / Sync 用 `refetch` 或 `invalidateQueries`
-
-#### 文件范围
-
-| 层 | 文件 |
-|----|------|
-| Query | 新建 `apps/desktop-ui/src/lib/queries/stock.ts` |
-| Page | `components/pages/StockPage.tsx` |
-| 测试 | `lib/queries/stock.test.ts` |
+- 新建 `lib/queries/stock.ts` — `stockDetailQueryKey` / `fetchStockDetail` / `useStockDetailQuery`（`staleTime: 10min`）
+- fund-flow 与 quote 并行；localStorage force 节流保留在 `queryFn`
+- `StockPage.tsx` 移除 `useEffect` 手写 fetch
+- 测试：`stock.test.ts`
 
 #### 验证
 
-- [ ] 同一 symbol 10min 内 remount 命中 cache
-- [ ] manual refresh 强制 refetch
-- [ ] vitest 通过
+- [x] 同一 symbol 10min 内 remount 命中 cache
+- [x] manual refresh 强制 refetch
+- [x] vitest 通过
 
 ---
 
 ### OPT-030：ChatPanel / Markdown Export 复用 Query 缓存
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 背景
+#### 实施摘要
 
-`ChatPanel.tsx` 引用 `dashboardAll` 时 raw fetch `/dashboard/summary`；`dashboard-export.ts` 的 `buildScreenerMarkdown` / `buildWatchlistMarkdown` 绕过 screener / watchlist Query，重复 trendok / quote / screener 请求。Copy Markdown 是高频用户操作。
-
-#### 目标
-
-- export / chat 函数接受 `QueryClient`，优先 `fetchQuery` 读 cache（`dashboardSummaryQueryKey`、`watchlistMarketQueryOptions`、`screenerSnapshotsQueryOptions`）
-- cache miss 再 network fetch
-- AI news summary 可顺带抽到 `lib/ai/newsSummary.ts`（与 Dashboard regenerate 去重，可选本 PR 或 follow-up）
-
-#### 文件范围
-
-| 层 | 文件 |
-|----|------|
-| Chat | `components/chat/ChatPanel.tsx` |
-| Export | `lib/dashboard-export.ts`, `lib/watchlist-export.ts` |
-| Query | `lib/queries/dashboard.ts`, `watchlist.ts`, `screener.ts` |
-| 测试 | export cache hit 单测 |
+- `fetchDashboardSummaryCached`（`lib/queries/dashboard.ts`）
+- `buildWatchlistMarkdown` / `buildScreenersMarkdown` / `buildDashboardCopyAllMarkdown` 接受可选 `queryClient`，优先 `fetchQuery` 读 cache
+- `ChatPanel`：`dashboardAll` / `industryFundFlow` 引用改用 Query；`DashboardPage` Copy/PDF 注入 `queryClient`
+- `industryFundFlowQueryOptions` 支持可选 `asOfDate`
+- 测试：`dashboard-export.test.ts`（cache hit 断言）
 
 #### 验证
 
-- [ ] Dashboard 已加载时 Copy Markdown 不重复打 summary API（mock 断言）
-- [ ] cache miss 仍正确 fallback fetch
-- [ ] vitest 通过
+- [x] Dashboard 已加载时 Copy Markdown 不重复打 summary API（mock 断言）
+- [x] cache miss 仍正确 fallback fetch（无 queryClient 路径保留）
+- [x] vitest 通过
 
 ---
 
@@ -362,6 +302,11 @@ Later:   OPT-029 + OPT-030（Stock / Export 缓存）→ 导航与 Copy 体验
 | OPT-023 | TrendOK 进程内 TTL 缓存 | 2026-06-18 |
 | OPT-024 | Macro Snapshot DB 批量读 + on-demand 并行 | 2026-06-18 |
 | OPT-025 | IndustryFlowPage React Query + Dashboard 缓存种子 | 2026-06-18 |
+| OPT-026 | Dashboard Industry Bundle 重复 SQL 合并 | 2026-06-18 |
+| OPT-027 | Sync All / Post-Close 串行步骤并行化 | 2026-06-18 |
+| OPT-028 | useWatchlistAutomation → React Query | 2026-06-18 |
+| OPT-029 | StockPage React Query 按 symbol 缓存 | 2026-06-18 |
+| OPT-030 | ChatPanel / Markdown Export 复用 Query 缓存 | 2026-06-18 |
 
 ---
 
@@ -373,6 +318,7 @@ Later:   OPT-029 + OPT-030（Stock / Export 缓存）→ 导航与 Copy 体验
 | 2026-06-18 | 第三轮：OPT-016 ~ OPT-020 完成 |
 | 2026-06-18 | 第四轮审查：新增 OPT-021 ~ OPT-030；归档已完成项 |
 | 2026-06-18 | 第四轮 P0 完成：OPT-021 ~ OPT-025 |
+| 2026-06-18 | 第五轮 P1 完成：OPT-026 ~ OPT-030 |
 
 ---
 

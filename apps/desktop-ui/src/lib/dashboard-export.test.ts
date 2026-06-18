@@ -1,6 +1,52 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
 
-import { buildIndustryMarkdown, buildSentimentMarkdown } from './dashboard-export';
+import { apiGetJson } from '@/lib/api/client';
+import { fetchDashboardSummary } from '@/lib/queries/dashboard';
+import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
+
+import {
+  buildDashboardCopyAllMarkdown,
+  buildIndustryMarkdown,
+  buildSentimentMarkdown,
+  buildWatchlistMarkdown,
+} from './dashboard-export';
+
+vi.mock('@/lib/api/client', () => ({
+  apiGetJson: vi.fn(),
+}));
+
+vi.mock('@/lib/queries/dashboard', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/queries/dashboard')>();
+  return {
+    ...actual,
+    fetchDashboardSummary: vi.fn(),
+  };
+});
+
+vi.mock('@/lib/alpha-radar-catalyst', () => ({
+  buildCatalystStocksMarkdown: vi.fn(() => '## Catalyst\n'),
+  buildAlphaRadarTrendsMarkdown: vi.fn(() => '## Trends\n'),
+  DEFAULT_CATALYST_MAX_AGE_DAYS: 7,
+  fetchAlphaRadarTrendsForCopy: vi.fn(async () => ({ items: [], scope: 'latest' })),
+  fetchCatalystStocks: vi.fn(async () => ({ items: [] })),
+  normalizeCatalystSymbol: vi.fn((s: string) => s),
+}));
+
+vi.mock('@/lib/watchlist-storage', () => ({
+  loadWatchlist: vi.fn(() => [{ symbol: 'CN:000001', name: 'Test' }]),
+  ensureWatchlistHydrated: vi.fn(async () => ({ ok: true, imported: 0 })),
+}));
+
+vi.mock('@/lib/market-hours', () => ({
+  getShanghaiTodayIso: vi.fn(() => '2026-06-18'),
+  isShanghaiSyncWindow: vi.fn(() => false),
+  isShanghaiTradingTime: vi.fn(() => false),
+  isShanghaiQuoteWindow: vi.fn(() => false),
+}));
+
+const mockedApiGetJson = vi.mocked(apiGetJson);
+const mockedFetchDashboardSummary = vi.mocked(fetchDashboardSummary);
 
 describe('buildIndustryMarkdown', () => {
   it('renders industry fund flow sections from fixture', () => {
@@ -95,5 +141,82 @@ describe('buildSentimentMarkdown', () => {
     const md = buildSentimentMarkdown({ marketSentiment: { items: [] } });
     expect(md).not.toContain('市场环境摘要');
     expect(md).toContain('## Market sentiment');
+  });
+});
+
+describe('buildWatchlistMarkdown with QueryClient cache', () => {
+  it('uses fetchQuery cache instead of raw trendok requests', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const snapshot = {
+      trend: {
+        'CN:000001': {
+          symbol: 'CN:000001',
+          name: 'Test',
+          score: 90,
+          asOfDate: '2026-06-18',
+          values: {},
+          missingData: [],
+        },
+      },
+      quotes: {
+        'CN:000001': {
+          price: 10,
+          tsCode: '000001.SZ',
+          tradeTime: '2026-06-18 15:00:00',
+          amount: 1000,
+          volume: 100,
+          preClose: 9.8,
+          pctChg: 2,
+        },
+      },
+    };
+
+    await queryClient.setQueryData(watchlistMarketQueryOptions(['CN:000001']).queryKey, snapshot);
+
+    const md = await buildWatchlistMarkdown(queryClient);
+
+    expect(md).toContain('## Watchlist');
+    expect(mockedApiGetJson).not.toHaveBeenCalledWith(expect.stringContaining('/market/stocks/trendok'));
+  });
+});
+
+describe('buildDashboardCopyAllMarkdown cache', () => {
+  it('does not call raw dashboard summary when queryClient prefetched', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const summary = {
+      asOfDate: '2026-06-18',
+      industryFundFlow: { asOfDate: '2026-06-18', dates: [], topByDate: [] },
+      screeners: [],
+      news: { hours: 24, total: 0 },
+    };
+
+    mockedFetchDashboardSummary.mockResolvedValue(summary);
+
+    await queryClient.setQueryData(['dashboard', 'summary', 'full'], summary);
+    await queryClient.setQueryData(watchlistMarketQueryOptions(['CN:000001']).queryKey, {
+      trend: {
+        'CN:000001': {
+          symbol: 'CN:000001',
+          name: 'Test',
+          score: 90,
+          asOfDate: '2026-06-18',
+          values: {},
+          missingData: [],
+        },
+      },
+      quotes: {},
+    });
+
+    await buildDashboardCopyAllMarkdown({
+      summary,
+      queryClient,
+    });
+
+    expect(mockedFetchDashboardSummary).not.toHaveBeenCalled();
+    expect(mockedApiGetJson).not.toHaveBeenCalledWith('/dashboard/summary');
   });
 });

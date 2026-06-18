@@ -2,6 +2,7 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 
 import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
@@ -39,6 +40,7 @@ import {
 } from '@/lib/watchlist-metrics';
 
 export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) => void }) {
+  const queryClient = useQueryClient();
   const { addReference } = useChatStore();
 
   const {
@@ -173,6 +175,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         newsSummary,
         newsSummaryUpdatedAt,
         newsFallback,
+        queryClient,
       });
       await navigator.clipboard.writeText(text);
       toastCopyAll(true, 'Copied all Markdown to clipboard.');
@@ -196,6 +199,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         newsSummary,
         newsSummaryUpdatedAt,
         newsFallback,
+        queryClient,
       });
       const markdown = truncateMarkdownForReport(rawMd);
       const aiRes = await fetch(`${AI_BASE_URL}/report/investment-daily`, {

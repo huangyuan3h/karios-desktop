@@ -3,11 +3,11 @@
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { useAutomationPendingQuery } from '@/lib/queries/automation';
 import { watchlistRiskQueryKey } from '@/lib/queries/dashboard';
 import { watchlistMarketKey } from '@/lib/queries/watchlist';
 import {
   applyAutomationRun,
-  fetchAutomationPending,
   isAutomationPollWindow,
 } from '@/lib/watchlist-automation';
 import { loadWatchlist } from '@/lib/watchlist-storage';
@@ -42,19 +42,20 @@ function watchlistSymbolsFromStorage(): string[] {
 export function useWatchlistAutomation(): void {
   const queryClient = useQueryClient();
   const applyingRef = React.useRef(false);
+  const { data: pending } = useAutomationPendingQuery();
 
   React.useEffect(() => {
-    let cancelled = false;
+    if (!isAutomationPollWindow()) return;
+    if (!pending || pending.skipped) return;
+    if (getAckedRunId() === pending.runId) return;
+    if (applyingRef.current) return;
 
-    async function tick() {
-      if (cancelled || applyingRef.current) return;
-      if (!isAutomationPollWindow()) return;
+    let cancelled = false;
+    applyingRef.current = true;
+    void (async () => {
       try {
-        const pending = await fetchAutomationPending();
-        if (!pending || pending.skipped) return;
-        if (getAckedRunId() === pending.runId) return;
-        applyingRef.current = true;
         await applyAutomationRun(pending, { silent: true });
+        if (cancelled) return;
         setAckedRunId(pending.runId);
         const symbols = watchlistSymbolsFromStorage();
         if (symbols.length) {
@@ -66,13 +67,10 @@ export function useWatchlistAutomation(): void {
       } finally {
         applyingRef.current = false;
       }
-    }
+    })();
 
-    void tick();
-    const id = window.setInterval(() => void tick(), 60_000);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
     };
-  }, [queryClient]);
+  }, [pending, queryClient]);
 }
