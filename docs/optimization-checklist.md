@@ -34,7 +34,7 @@
 | OPT-012 | React Query 替换手写轮询 | P1 | 2–4 天 | [x] |
 | OPT-013 | Dashboard / Watchlist God Page 拆分（阶段二） | P1 | 3–5 天 | [x] |
 | OPT-014 | Industry Fund Flow 读路径 N+1 消除 | P1 | 1–2 天 | [x] |
-| OPT-015 | Watchlist Automation 去重 TrendOK 计算 | P1 | 0.5–1 天 | [ ] |
+| OPT-015 | Watchlist Automation 去重 TrendOK 计算 | P1 | 0.5–1 天 | [x] |
 
 ---
 
@@ -139,39 +139,21 @@
 
 ### OPT-015：Watchlist Automation 去重 TrendOK 计算
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
 
-#### 问题
+#### 实施摘要
 
-`run_watchlist_automation()` 对同一 symbol 列表**连续两次**调用 `compute_trendok_for_symbols`：
-
-| 调用点 | 行号 | 用途 |
-|--------|------|------|
-| `record_score_snapshots()` | ~92 | 写入 score snapshot |
-| `run_watchlist_automation()` 主体 | ~271 | 构建 `trendok_by_symbol` 供 removal 逻辑 |
-
-TrendOK 是 CPU + DB 最重路径之一（~1250 行算法 + 批量 K 线）。自动化每日/手动触发时 **计算量近似翻倍**。
-
-#### 方案
-
-1. `record_score_snapshots` 返回 `(trade_date, count, rows_out)` 或完整 `list[dict]`。
-2. `run_watchlist_automation` 复用该结果构建 `trendok_by_symbol`，删除第二次 `compute_trendok_for_symbols`。
-3. 保持 score snapshot 写入与 removal 判定行为不变。
-
-#### 涉及文件
-
-| 文件 | 改动 |
-|------|------|
-| `services/data-sync-service/src/data_sync_service/service/watchlist_automation.py` | 去重 TrendOK |
-| `services/data-sync-service/tests/test_watchlist_automation.py` | 断言只调用一次 compute |
+- `record_score_snapshots` 返回 `(trade_date, count, rows_out)`，单次 `compute_trendok_for_symbols` 后同时写 snapshot 并返回原始 TrendOK rows
+- `run_watchlist_automation` 复用 `rows_out` 构建 `trendok_by_symbol`，删除第二次 compute
+- 测试：`test_record_score_snapshots_returns_rows`、`test_run_watchlist_automation_computes_trendok_once`
 
 #### 验证
 
-- [ ] pytest `test_watchlist_automation.py` 通过
-- [ ] mock `compute_trendok_for_symbols` 在单次 run 中调用次数 = 1
-- [ ] score snapshot 条数与 removal 结果与改造前一致
+- [x] pytest `test_watchlist_automation.py` 通过
+- [x] mock 下单次 run 中 `compute_trendok_for_symbols` 调用 = 1
+- [x] score snapshot 与 removal 路径仍执行（单元 mock 覆盖）
 
 ---
 
@@ -194,6 +176,7 @@ Later:   OPT-013（God Page 拆分）→ 与 OPT-012 可并行，但 hooks 边�
 | 2026-06-18 | OPT-012 完成：React Query 替换 Dashboard/Watchlist/Index 手写轮询 |
 | 2026-06-18 | OPT-013 完成：Dashboard/Watchlist God Page 拆分为 hooks + components + lib |
 | 2026-06-18 | OPT-014 完成：Industry Fund Flow 读路径 N+1 消除（batch `get_rows_for_dates`） |
+| 2026-06-18 | OPT-015 完成：Watchlist Automation 去重 TrendOK 计算 |
 
 ---
 

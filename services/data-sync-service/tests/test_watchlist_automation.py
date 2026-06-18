@@ -151,3 +151,78 @@ def test_precheck_force_bypasses(monkeypatch) -> None:
 def test_normalize_trade_date() -> None:
     assert wa._normalize_trade_date("20260618") == "2026-06-18"
     assert wa._normalize_trade_date("2026-06-18") == "2026-06-18"
+
+
+def test_record_score_snapshots_returns_rows(monkeypatch) -> None:
+    fixture_rows = [
+        {
+            "symbol": "CN:600000",
+            "asOfDate": "2026-06-18",
+            "score": 72.0,
+            "values": {"emIndustry": "Banking"},
+        }
+    ]
+    monkeypatch.setattr(wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: fixture_rows)
+    monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: len(rows))
+
+    trade_date, count, rows = wa.record_score_snapshots(["CN:600000"])
+
+    assert trade_date == "2026-06-18"
+    assert count == 1
+    assert rows == fixture_rows
+
+
+def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
+    compute_calls: list[tuple[list[str], bool]] = []
+
+    def fake_compute(symbols: list[str], realtime: bool = False) -> list[dict]:
+        compute_calls.append((symbols, realtime))
+        return [
+            {
+                "symbol": "CN:600000",
+                "asOfDate": "2026-06-18",
+                "score": 20.0,
+                "values": {"emIndustry": "Coal"},
+            },
+            {
+                "symbol": "CN:600001",
+                "asOfDate": "2026-06-18",
+                "score": 85.0,
+                "values": {"emIndustry": "Tech"},
+            },
+        ]
+
+    monkeypatch.setattr(wa, "compute_trendok_for_symbols", fake_compute)
+    monkeypatch.setattr(wa, "sync_cn_industry_fund_flow", lambda **kwargs: {"ok": True})
+    monkeypatch.setattr(wa, "_sync_screeners_step", lambda **kwargs: {"ok": True})
+    monkeypatch.setattr(
+        wa,
+        "list_registry",
+        lambda: [
+            {"symbol": "CN:600000", "source": "manual"},
+            {"symbol": "CN:600001", "source": "manual"},
+        ],
+    )
+    monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: len(rows))
+    monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: "run-1")
+    monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None: set())
+    monkeypatch.setattr(
+        wa,
+        "get_last_n_trading_dates",
+        lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"],
+    )
+    monkeypatch.setattr(wa, "compute_alpha_additions", lambda limit=200: [])
+
+    def fake_scores(symbol: str, trade_dates: list[str]) -> list[dict]:
+        return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
+
+    monkeypatch.setattr(wa, "get_scores_for_symbol", fake_scores)
+
+    result = wa.run_watchlist_automation(trigger="manual", force=True)
+
+    assert len(compute_calls) == 1
+    assert compute_calls[0][0] == ["CN:600000", "CN:600001"]
+    assert compute_calls[0][1] is False
+    assert result["meta"]["scoreSnapshots"] == 2
+    assert "remove" in result
+    assert isinstance(result["remove"], list)

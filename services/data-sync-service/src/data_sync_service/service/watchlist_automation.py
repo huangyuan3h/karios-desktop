@@ -86,9 +86,9 @@ def _industry_from_trendok(row: dict[str, Any]) -> str | None:
     return None
 
 
-def record_score_snapshots(symbols: list[str]) -> tuple[str | None, int]:
+def record_score_snapshots(symbols: list[str]) -> tuple[str | None, int, list[dict[str, Any]]]:
     if not symbols:
-        return None, 0
+        return None, 0, []
     rows_out = compute_trendok_for_symbols(symbols, realtime=False)
     score_rows: list[dict[str, Any]] = []
     trade_date: str | None = None
@@ -112,7 +112,7 @@ def record_score_snapshots(symbols: list[str]) -> tuple[str | None, int]:
             }
         )
     count = upsert_score_daily(score_rows)
-    return trade_date, count
+    return trade_date, count, rows_out
 
 
 def should_remove_symbol(
@@ -263,12 +263,11 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
     symbols = [str(x.get("symbol") or "").strip() for x in registry if x.get("symbol")]
     symbols = [s for s in symbols if s]
 
-    score_trade_date, score_count = record_score_snapshots(symbols)
+    score_trade_date, score_count, trendok_rows = record_score_snapshots(symbols)
     if score_trade_date:
         trade_date = score_trade_date
     meta["scoreSnapshots"] = score_count
 
-    trendok_rows = compute_trendok_for_symbols(symbols, realtime=False) if symbols else []
     trendok_by_symbol = {
         str(r.get("symbol")): r for r in trendok_rows if isinstance(r, dict) and r.get("symbol")
     }
