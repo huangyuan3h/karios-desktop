@@ -1,14 +1,14 @@
 # Karios Desktop 优化 Checklist
 
 > 记录架构审查结论与优化方案，供后续逐个 Agent 任务执行。  
-> 创建日期：2026-06-18  
-> 背景：功能可用，但存在性能、数据持久化、可维护性方面的结构性问题。
+> 创建日期：2026-06-18（第二轮）  
+> 背景：OPT-001 ~ OPT-010 已完成；功能稳定，本轮聚焦剩余最高 ROI 项。
 
 ---
 
 ## 如何使用
 
-1. 按 **优先级（P0 → P1 → P2）** 顺序执行，不要跳 P0。
+1. 按 **优先级（P0 → P1）** 顺序执行。
 2. 每个任务开独立 Agent 会话，把对应章节整段粘贴给 Agent 作为 scope。
 3. 完成后将 `[ ]` 改为 `[x]`，填写 **完成日期** 和 **PR/Commit**。
 4. 若实施过程中方案有变，在本文件更新，不要另起文档。
@@ -30,312 +30,211 @@
 
 | ID | 标题 | 优先级 | 预估工时 | 状态 |
 |----|------|--------|----------|------|
-| OPT-001 | TrendOK 热路径性能修复 | P0 | 1–2 天 | [x] |
-| OPT-002 | Watchlist 存储权威源明确化 | P0 | 2–3 天 | [x] |
-| OPT-003 | 前端 API 层 + God Page 拆分（阶段一） | P1 | 3–5 天 | [x] |
-| OPT-004 | 东财行业预热脱离请求路径 | P1 | 1–2 天 | [x] |
-| OPT-005 | TV Screener Sync 并行化 | P1 | 1–2 天 | [x] |
-| OPT-006 | TrendOK `refresh` 语义对齐 | P2 | 0.5–1 天 | [x] |
-| OPT-007 | DB Migration 工具（Alembic） | P2 | 2–3 天 | [x] |
-| OPT-008 | TV Capture 异步化 / Job Queue | P2 | 2–4 天 | [x] |
-| OPT-009 | packages/shared 类型共享 | P2 | 1–2 天 | [x] |
-| OPT-010 | 过时 UI 文案清理（SQLite → Postgres） | P3 | 0.5 天 | [x] |
+| OPT-011 | Watchlist 手动刷新并行化 + TrendOK 统一 fetch | P0 | 1–2 天 | [ ] |
+| OPT-012 | React Query 替换手写轮询 | P1 | 2–4 天 | [ ] |
+| OPT-013 | Dashboard / Watchlist God Page 拆分（阶段二） | P1 | 3–5 天 | [ ] |
+| OPT-014 | Industry Fund Flow 读路径 N+1 消除 | P1 | 1–2 天 | [ ] |
+| OPT-015 | Watchlist Automation 去重 TrendOK 计算 | P1 | 0.5–1 天 | [ ] |
 
 ---
 
 ## P0 — 最高收益
 
-### OPT-001：TrendOK 热路径性能修复
+### OPT-011：Watchlist 手动刷新并行化 + TrendOK 统一 fetch
 
-**状态**：[x]  
-**完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
-
-#### 实施摘要
-
-- `get_market_regime()` 新增 `include_breadth` 参数 + 10 分钟进程内 TTL cache（`clear_market_regime_cache()` 供测试）
-- TrendOK 热路径：`get_market_regime(include_breadth=False)`，移除 `ensure_em_industries_for_ts_codes` HTTP
-- 新增 `lookup_em_industries_for_ts_codes()`（DB-only，供后续 OPT-004 复用）
-- 测试：`test_market_regime_cache.py`、`test_trendok_performance_path.py`、扩展 `test_eastmoney_industry.py`
-
-#### 验证
-
-- [x] pytest trendok / market_regime / eastmoney 相关用例通过（558 passed；`test_sync_window_excludes_night` 为既有 20:00 边界问题，非本 PR 引入）
-- [x] `curl "http://127.0.0.1:4330/market/stocks/trendok?symbols=CN:600519&refresh=true"` ~0.21s（2026-06-18 本地 benchmark）
-- [ ] Watchlist 页刷新 TrendOK 明显变快（需 UI 手动确认）
-- [x] Dashboard summary 的 index signals 行为不变（未改 dashboard 路径）
-
----
-
-### OPT-002：Watchlist 存储权威源明确化
-
-**状态**：[x]  
-**完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
-
-#### 实施摘要
-
-- 后端新增 `GET /watchlist/registry`（`list_registry()`）
-- 前端重构 [`watchlist-storage.ts`](apps/desktop-ui/src/lib/watchlist-storage.ts)：`hydrateWatchlist` / `persistWatchlist` / `ensureWatchlistHydrated` / `pendingSync`
-- `saveWatchlist` 改为 async，POST-first 再写 localStorage
-- AppShell 启动 hydrate；WatchlistPage 等待 hydrate；清理 automation 冗余 sync
-- 测试：`test_watchlist_registry.py`（4）、`watchlist-storage.test.ts`（7）
-
-#### 验证
-
-- [x] pytest `test_watchlist_registry.py` 通过
-- [x] vitest `watchlist-storage.test.ts` 通过
-- [ ] 新安装：加票 → 重启后仍在（需 UI 手动确认）
-- [ ] 老用户 localStorage uplift（需 UI 手动确认）
-- [ ] POST 失败 pendingSync 重试（需 UI 手动确认）
-
-#### 后续（阶段 B，另开任务）
-
-- Tauri `tauri-plugin-store` 或本地 SQLite 替代 localStorage
-- 多设备冲突检测 UI
-
-#### 读写顺序（设计备忘）
-
-```
-启动: GET registry → 有则覆盖 local；空则 uplift local → POST
-写入: POST registry → 成功则 local + 清 pendingSync；失败则 local + pendingSync
-冲突: registry 非空时以 registry 为准
-```
-
----
-
-## P1 — 高价值，次优先
-
-### OPT-003：前端 API 层 + God Page 拆分（阶段一）
-
-**状态**：[x]  
-**完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
-
-#### 实施摘要
-
-- 新建 `lib/api/client.ts`（`apiGetJson` / `apiPostJson` / `apiPutJson` / `apiPatchJson` / `apiDeleteJson` / `apiFetchJson`，支持 `baseUrl`、`timeoutMs`）
-- 新建 `lib/api/types.ts`（`TrendOkResult`、`WatchlistQuote`）、`lib/chunk.ts`、`lib/market-hours.ts`
-- 新建 `lib/api/trendok.ts`：`fetchTrendOkMap` + inflight 去重；`screenerExport.ts` re-export 保持兼容
-- 迁移全部 Page/lib callsite（Dashboard、Watchlist、15+ Page、`watchlist-screener-import`、`watchlist-automation`、`alpha-radar-catalyst`）
-- Dashboard Copy all Markdown 前 `await ensureWatchlistHydrated()` 避免 hydrate 竞态
-- 单元测试：`client.test.ts`、`trendok.test.ts`、`chunk.test.ts`、`market-hours.test.ts`（98 passed）
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
 
 #### 问题
 
-- **20+ 文件**各自定义 `apiGetJson` / `apiPostJson`，无统一错误处理、retry、类型。
-- `DashboardPage.tsx` (~2790 行)、`WatchlistPage.tsx` (~2588 行) 混合 UI + 数据 + 导出 + SSE。
-- `TrendOkResult`、`chunk()`、`isShanghaiTradingTime()` 多处重复定义。
-- 无 React Query/SWR，全靠 `useEffect` + `setInterval(60s)` 轮询。
-
-#### 目标（阶段一 scope，不要一次拆完）
-
-1. 新建统一 API client。
-2. 抽取共享 types 与工具函数。
-3. TrendOK fetch 去重（同 symbol 集合并发请求合并）。
-4. **不**在本阶段大规模拆 UI 组件（留给阶段二）。
+1. **Force bars 完全串行**：`WatchlistPage.tsx` 手动刷新时对每只股票依次 `GET /bars?force=true`，并固定 `sleep(120ms)`。50 只股票约 **6–15s**，100 只可达 **12–30s+**。
+2. **TrendOK 未走统一 API**：Dashboard 已用 `fetchTrendOkMap`（chunk 200 + inflight 去重），Watchlist 仍直接 `apiGetJson` 一次 append 全部 symbols — 大列表可能 URL 过长、无去重、无 chunk。
+3. **同文件逻辑重复**：`refreshTrend` 与 `fetchFreshWatchlistSnapshot` 大量重复（quotes、trendok、maxPrice persist）。
 
 #### 方案
 
-**新建文件：**
-
-```
-apps/desktop-ui/src/lib/api/
-  client.ts       # apiGetJson, apiPostJson, apiFetch
-  trendok.ts      # fetchTrendOkMap（从 screenerExport 迁入或 re-export）
-  types.ts        # TrendOkResult, DashboardSummary 等
-
-apps/desktop-ui/src/lib/market-hours.ts   # isShanghaiTradingTime（从 Page 抽出）
-apps/desktop-ui/src/lib/chunk.ts          # chunk 工具
-```
-
-**迁移顺序：**
-
-1. 创建 `client.ts`，从 `DashboardPage.tsx` 复制并增强。
-2. `screenerExport.ts`、`watchlist-screener-import.ts` 改用 client。
-3. 其余 Page 逐个替换（可分批 PR）。
-4. `TrendOkResult` 统一到 `api/types.ts`，删除重复定义。
-
-**TrendOK 去重（可选在本任务或单独 PR）：**
-
-- 模块级 `inflight Map<string, Promise<TrendOkResult[]>>`，key = sorted symbols + realtime flag。
+1. Force bars 改为**有界并发**（建议 concurrency 3–5，`p-limit` 或手写 semaphore）；去掉固定 120ms delay，仅在 429/限流时指数退避。
+2. `refreshTrend` / snapshot 路径统一调用 `lib/api/trendok.ts` 的 `fetchTrendOkMap`。
+3. 抽取 `fetchWatchlistMarketSnapshot(symbols, opts)` 到 `lib/watchlist-market.ts`，供 refresh / copy markdown / dashboard risk 复用（本任务只做 Watchlist 两条路径，Dashboard 迁移可留注释）。
 
 #### 涉及文件
 
 | 文件 | 改动 |
 |------|------|
-| `apps/desktop-ui/src/lib/api/*` | 新建 |
-| `apps/desktop-ui/src/lib/screenerExport.ts` | 改用 api client |
-| `apps/desktop-ui/src/components/pages/DashboardPage.tsx` | 删除本地 apiGetJson |
+| `apps/desktop-ui/src/components/pages/WatchlistPage.tsx` | 并行 force bars；改用 `fetchTrendOkMap` |
+| `apps/desktop-ui/src/lib/watchlist-market.ts` | 新建（可选，推荐） |
+| `apps/desktop-ui/src/lib/api/trendok.ts` | 如需，暴露 batch bars helper 或文档说明 |
+| `apps/desktop-ui/src/lib/watchlist-market.test.ts` | 新建单元测试 |
+
+#### 验证
+
+- [ ] vitest 通过（含并发/去重用例）
+- [ ] 50 股 manual refresh 耗时 < 5s（本地 benchmark）
+- [ ] 100+ 股 watchlist TrendOK 正常（chunk 生效）
+- [ ] 单股 force 失败不阻塞其余
+
+---
+
+## P1 — 高价值
+
+### OPT-012：React Query 替换手写轮询
+
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
+
+#### 问题
+
+项目**未使用** `@tanstack/react-query`，全靠 `useEffect` + `setInterval` 手工轮询：
+
+| 位置 | 间隔 | 行为 |
+|------|------|------|
+| `DashboardPage.tsx` ~658, ~691 | 60s | summary + watchlist risk（交易时段 gating） |
+| `WatchlistPage.tsx` ~783 | 10 min | `refreshTrend('timer')` |
+| `IndexPage.tsx` ~237 | 45s | macro snapshot，无 tab 可见性控制 |
+| `hooks/useWatchlistAutomation.ts` ~54 | 60s | 全局 automation tick |
+
+缺失能力：请求 dedupe、staleTime 缓存、后台 tab 暂停、统一 error/retry、loading 状态组合。
+
+#### 方案（分阶段，本任务 scope = 阶段 A）
+
+**阶段 A（本 OPT）：**
+
+1. 添加 `@tanstack/react-query` + `QueryClientProvider`（`AppShell` 或 root layout）。
+2. 迁移 **Dashboard summary** 与 **Watchlist trend** 两条最热路径为 `useQuery` + `refetchInterval`。
+3. 交易时段 gating 放入 `refetchInterval` 动态函数或 `enabled` 条件。
+4. `refetchOnWindowFocus` 默认 true；IndexPage 一并迁移。
+
+**阶段 B（后续，不在本 scope）：**
+
+- TV capture job poll、SSE sync 状态、Chat reference 预取。
+
+#### 涉及文件
+
+| 文件 | 改动 |
+|------|------|
+| `apps/desktop-ui/package.json` | 添加 `@tanstack/react-query` |
+| `apps/desktop-ui/src/components/layout/AppShell.tsx` | QueryClientProvider |
+| `apps/desktop-ui/src/lib/queries/dashboard.ts` | 新建 query hooks |
+| `apps/desktop-ui/src/lib/queries/watchlist.ts` | 新建 query hooks |
+| `apps/desktop-ui/src/components/pages/DashboardPage.tsx` | 移除 setInterval，用 hooks |
 | `apps/desktop-ui/src/components/pages/WatchlistPage.tsx` | 同上 |
-| 其他 15+ Page/lib | 分批迁移 |
+| `apps/desktop-ui/src/components/pages/IndexPage.tsx` | 同上 |
 
 #### 验证
 
-- [x] 现有 vitest 通过（`cd apps/desktop-ui && npm run test`）
-- [x] grep 确认无 Page/lib 本地 `apiGetJson` 副本（统一走 `lib/api/client`）
-- [ ] `npm run typecheck` 通过（仍有 pre-existing 错误：AlphaIncubator `outline` variant、chart.tsx recharts 等，非本任务引入）
-
-#### 阶段二（后续任务，不在本 scope）
-
-- 拆 `useDashboardSync`、`useWatchlistTrend` hooks
-- 拆 `components/dashboard/*`、`components/watchlist/*`
+- [ ] vitest + 可选 `@testing-library/react` query 测试
+- [ ] Dashboard / Watchlist 切换 tab 无重复 inflight 请求（Network 面板）
+- [ ] 后台 tab 不触发 60s 轮询（或仅 focus 时 refetch）
+- [ ] 行为与改造前一致（数据 freshness、交易时段逻辑）
 
 ---
 
-### OPT-004：东财行业预热脱离请求路径
+### OPT-013：Dashboard / Watchlist God Page 拆分（阶段二）
 
-**状态**：[x]  
-**完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
-
-#### 实施摘要
-
-- **OPT-001 已完成热路径**：TrendOK 仅 DB `lookup_by_ts_codes`，miss → `stock_basic.industry` fallback，禁止 HTTP
-- 新增 `sync_eastmoney_industry_incremental`（missing/stale 模式 + `sync_job_record` resume）
-- 新增 `coverage_stats()`、`GET /sync/eastmoney-industry/status`
-- `post_close_sync` 挂接 1 批 missing sync（batch_size=500）
-- 新建 `eastmoney_industry_job`（工作日 18:00 Asia/Shanghai）
-- `ensure_em_industries_for_ts_codes` 标记 deprecated；离线同步走 incremental API / scheduler
-- 测试：扩展 `test_eastmoney_industry.py`（9 用例）+ 保持 `test_trendok_performance_path.py`
-
-#### 问题（历史背景）
-
-改造前 TrendOK 热路径对 miss 逐股东财 HTTP，200 miss ≈ 70–100s；miss 时 Tushare industry fallback 与行业资金流板块名不一致，加分失真。
-
-#### 验证
-
-- [x] TrendOK 热路径不触发东财 HTTP（`test_trendok_performance_path.py`）
-- [x] incremental sync / coverage / status 单元测试通过
-- [ ] 稳定运行 1–2 周后 watchlist EM 覆盖率 > 99%（需生产观察）
-- [ ] Score 行业加分在 EM 命中时正常（需 UI/spot check）
-
-```bash
-pytest services/data-sync-service/tests/test_eastmoney_industry.py \
-  services/data-sync-service/tests/test_trendok_performance_path.py -q
-curl -s http://127.0.0.1:4330/sync/eastmoney-industry/status
-curl -X POST "http://127.0.0.1:4330/sync/eastmoney-industry?mode=missing&limit=500"
-```
-
----
-
-### OPT-005：TV Screener Sync 并行化
-
-**状态**：[x]  
-**完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
-
-#### 实施摘要
-
-- `_sync_screeners_step` 改为 `ThreadPoolExecutor(max_workers=2)` 限流并行；新增 `_sync_one_screener`、`screenerResults` 明细
-- `dashboard_sync_stream` 通过 `queue.Queue` 推送 `type: screener` 进度事件
-- `tv_chrome.start()` 加 `threading.Lock`，避免并行 auto-start 竞态
-- 测试：`tests/test_dashboard_screener_sync.py`（6 cases）
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
 
 #### 问题
 
-Dashboard Sync All 对 enabled screeners **串行**调用 `sync_screener()`（`dashboard.py:443-461`）。  
-单个 CDP capture 可达 60s+，多个 screener 叠加线性变慢。
+OPT-003 阶段一已完成统一 API client，但两个核心 Page 仍是 God component：
 
-#### 方案
+| 文件 | 行数 | 规模 |
+|------|------|------|
+| `DashboardPage.tsx` | ~2700 | 23 useState、23 顶层函数、8 useEffect |
+| `WatchlistPage.tsx` | ~2450 | 30 useState、25 顶层函数、8 useEffect |
 
-1. 使用 `ThreadPoolExecutor` 或 `asyncio.gather` 限流并行（建议 `max_workers=2`，避免 CDP 争抢）。
-2. 单个 screener 失败不阻塞其余（已有 try/except，确认 error 汇总完整）。
-3. SSE progress 事件增加 per-screener 状态。
+混合 UI、数据拉取、Markdown 导出、SSE 同步、localStorage 布局 — 任何小改易引发无关 re-render，测试困难。
+
+#### 方案（阶段二 scope，不要一次拆完）
+
+**Watchlist 提取：**
+
+- `hooks/useWatchlistItems.ts` — hydrate / persist / event
+- `hooks/useWatchlistTrend.ts` — trend、quotes、poll（若 OPT-012 未完成则保留 interval 封装）
+- `components/watchlist/WatchlistTable.tsx` — 主表格 JSX
+- `components/watchlist/WatchlistToolbar.tsx` — 工具栏
+
+**Dashboard 提取：**
+
+- `hooks/useDashboardSummary.ts`
+- `hooks/useWatchlistRisk.ts`
+- `hooks/useDashboardSync.ts` — SSE Sync All
+- `components/dashboard/IndustryFundFlowCard.tsx` — 行业资金流卡片（~400 行 JSX）
+
+**共享 lib（顺手抽取，低 scope）：**
+
+- `lib/trendok-display.ts` — `TREND_OK_CHECKS` / `trendOkSummary()`（Dashboard + Watchlist 重复）
+- `lib/symbols.ts` — `toTsCodeFromSymbol()`（3 处重复）
 
 #### 涉及文件
 
 | 文件 | 改动 |
 |------|------|
-| `services/data-sync-service/src/data_sync_service/service/dashboard.py` | `_sync_screeners_step` 并行 + SSE screener 事件 |
-| `services/data-sync-service/src/data_sync_service/service/tv_chrome.py` | `start()` 加锁 |
-| `services/data-sync-service/tests/test_dashboard_screener_sync.py` | 新增 |
+| `apps/desktop-ui/src/components/pages/DashboardPage.tsx` | 瘦身，import hooks/components |
+| `apps/desktop-ui/src/components/pages/WatchlistPage.tsx` | 同上 |
+| `apps/desktop-ui/src/hooks/useDashboard*.ts` | 新建 |
+| `apps/desktop-ui/src/hooks/useWatchlist*.ts` | 新建 |
+| `apps/desktop-ui/src/components/dashboard/*` | 新建 |
+| `apps/desktop-ui/src/components/watchlist/*` | 新建 |
+| `apps/desktop-ui/src/lib/trendok-display.ts` | 新建 |
+| `apps/desktop-ui/src/lib/symbols.ts` | 新建 |
 
 #### 验证
 
-- [x] 2+ enabled screener 时 Sync All 总耗时 < 串行之和（单测 mock 3 screener 并行 < 0.42s vs 串行 ~0.45s）
-- [x] 一个 screener 失败，其余仍成功
-- [x] SSE stream 仍正确结束（含 `type: screener` 与 `type: done`）
+- [ ] 无功能回归（手动 smoke：Sync All、Copy Markdown、Watchlist 加删票）
+- [ ] `DashboardPage.tsx` / `WatchlistPage.tsx` 各 < 1200 行
+- [ ] vitest 覆盖新 hooks 核心逻辑
 
 ---
 
-## P2 — 中期改进
+### OPT-014：Industry Fund Flow 读路径 N+1 消除
 
-### OPT-006：TrendOK `refresh` 语义对齐
-
-**状态**：[x]  
-**完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
-
-#### 实施摘要（方案 B）
-
-- 前后端删除 `refresh` 参数；TrendOK 明确为 DB-only 计算
-- Watchlist 手动刷新保留 `/bars?force=true` → trendok 两步路径
-- 测试：`test_trendok_performance_path.py`、`trendok.test.ts`
+**状态**：[ ]  
+**完成日期**：  
+**PR/Commit**：
 
 #### 问题
 
-前端普遍传 `refresh=true`，后端 `compute_trendok_for_symbols` 直接 `_ = refresh` 忽略。  
-用户/开发者误以为会触发网络拉取最新 K 线。
+`get_cn_industry_fund_flow()`（`industry_fund_flow.py:305-325`）对 top_n 个行业**逐条**调用 `get_series_for_industry()`：
 
-#### 方案（二选一）
+```python
+for r in top_rows:
+    series = get_series_for_industry(industry_name=name, dates=dates)
+```
 
-| 选项 | 做法 |
-|------|------|
-| A | 实现 refresh：对请求的 ts_codes 先 trigger bars sync 再计算 |
-| B | 删除参数：前后端去掉 `refresh`，文档说明 TrendOK 只读 DB |
+`top_n=30`、`days=10` 时 → **30 次**独立 DB 往返。该 API 被 Dashboard summary、IndustryFlowPage 高频读取。
 
-推荐 **B**（简单）+ Watchlist 手动刷新走独立 `/bars?force=true` 路径（已存在）。
+同类问题：`mainline.py` 的 `_flow_context` 对 10 个交易日循环 `flow_rows_by_date(d)`（~10 次查询）。可在本 OPT 一并合并为 `WHERE date = ANY(%s)` 批量查询，或拆为 OPT-014b。
+
+#### 方案
+
+1. 在 `db/industry_fund_flow.py` 新增 `get_series_for_industries(industry_names, dates)` 或 `get_rows_for_dates(dates)` 一次拉取后在 Python group。
+2. `get_cn_industry_fund_flow` 改为单次（或 2 次）查询 + 内存聚合。
+3. 可选：读路径 30–60s 进程内 TTL cache（key = `as_of_date + days + top_n`）。
+4. Mainline `_flow_context` 同样改为批量 date 查询。
 
 #### 涉及文件
 
-- `services/data-sync-service/src/data_sync_service/service/trendok.py`
-- `services/data-sync-service/src/data_sync_service/api/query_routes.py`
-- `apps/desktop-ui/src/lib/api/trendok.ts`
-- `apps/desktop-ui/src/components/pages/WatchlistPage.tsx`
-- `apps/desktop-ui/src/components/pages/DashboardPage.tsx`
-- `apps/desktop-ui/src/lib/watchlist-screener-import.ts`
+| 文件 | 改动 |
+|------|------|
+| `services/data-sync-service/src/data_sync_service/db/industry_fund_flow.py` | 批量查询函数 |
+| `services/data-sync-service/src/data_sync_service/service/industry_fund_flow.py` | 消除 N+1 |
+| `services/data-sync-service/src/data_sync_service/service/mainline.py` | `_flow_context` 批量化 |
+| `services/data-sync-service/tests/test_industry_fund_flow.py` | 查询次数断言 / 回归 |
 
 #### 验证
 
-- [x] pytest trendok 相关用例通过
-- [x] vitest `trendok.test.ts` 通过
-- [x] trendok URL 不再含 `refresh=` query param
+- [ ] pytest industry / mainline 相关用例通过
+- [ ] `get_cn_industry_fund_flow(top_n=30)` DB 查询次数 ≤ 3（mock/spy 或 query log）
+- [ ] API 响应 JSON shape 不变
+- [ ] Dashboard / IndustryFlow 页加载变快（curl benchmark 记录）
 
 ---
 
-### OPT-007：DB Migration 工具（Alembic）
-
-**状态**：[x]  
-**完成日期**：2026-06-18  
-**PR/Commit**：_(local — pending commit)_
-
-#### 实施摘要
-
-- 新增 `alembic/` + `0001_baseline`（`schema_baseline.py` 汇总 24 模块 CREATE SQL + testback）
-- `alembic/env.py` 接 `DATABASE_URL`，使用 `postgresql+psycopg://` 驱动
-- 保留各模块 `ensure_table()`；新 schema 变更需加 Alembic revision
-- 测试：`tests/test_alembic_baseline.py`
-
-#### 问题
-
-Schema 分散在 24 个 `db/*.py` 的 `ensure_table()` / `CREATE TABLE IF NOT EXISTS`，无版本追踪，演进风险高。
-
-#### 方案
-
-1. 引入 Alembic，baseline migration 对应当前 schema。
-2. 新表/列变更走 migration，保留 `ensure_table()` 作为 dev 便利（或逐步移除）。
-3. 文档补充 `alembic upgrade head` 到 README。
-
-#### 验证
-
-- [x] 空库 / 已有库 `alembic upgrade head` 或 `stamp head` 流程文档化
-- [x] `alembic current` 显示 `0001_baseline`
-- [x] pytest `test_alembic_baseline.py`（有 Postgres 时）
-
----
-
-### OPT-008：TV Capture 异步化 / Job Queue
+### OPT-015：Watchlist Automation 去重 TrendOK 计算
 
 **状态**：[ ]  
 **完成日期**：  
@@ -343,98 +242,44 @@ Schema 分散在 24 个 `db/*.py` 的 `ensure_table()` / `CREATE TABLE IF NOT EX
 
 #### 问题
 
-- `tv/capture.py` 在 sync FastAPI route 内 `asyncio.run()`，阻塞 worker。
-- Scroll 循环最多 200 步 × 200ms，单任务耗时长。
+`run_watchlist_automation()` 对同一 symbol 列表**连续两次**调用 `compute_trendok_for_symbols`：
+
+| 调用点 | 行号 | 用途 |
+|--------|------|------|
+| `record_score_snapshots()` | ~92 | 写入 score snapshot |
+| `run_watchlist_automation()` 主体 | ~271 | 构建 `trendok_by_symbol` 供 removal 逻辑 |
+
+TrendOK 是 CPU + DB 最重路径之一（~1250 行算法 + 批量 K 线）。自动化每日/手动触发时 **计算量近似翻倍**。
 
 #### 方案
 
-1. Sync endpoint 改为「提交 job → 返回 job_id」。
-2. 后台 worker 执行 capture，完成后写 snapshot。
-3. UI 轮询或 SSE 查 job 状态。
-4. 可选：减少 scroll 步数 / 智能停止条件优化。
+1. `record_score_snapshots` 返回 `(trade_date, count, rows_out)` 或完整 `list[dict]`。
+2. `run_watchlist_automation` 复用该结果构建 `trendok_by_symbol`，删除第二次 `compute_trendok_for_symbols`。
+3. 保持 score snapshot 写入与 removal 判定行为不变。
 
----
+#### 涉及文件
 
-### OPT-009：packages/shared 类型共享
+| 文件 | 改动 |
+|------|------|
+| `services/data-sync-service/src/data_sync_service/service/watchlist_automation.py` | 去重 TrendOK |
+| `services/data-sync-service/tests/test_watchlist_automation.py` | 断言只调用一次 compute |
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+#### 验证
 
-#### 问题
-
-`packages/shared` 仅有 portfolio/artifact schema，desktop-ui 未引用。TrendOK、Watchlist 类型前后端各写一份。
-
-#### 方案
-
-1. 在 shared 增加 `TrendOkResult`、`WatchlistItem` 等 Zod schema + 导出 TS type。
-2. desktop-ui 引用 `@karios/shared`。
-3. 长期：OpenAPI → 生成 Python pydantic（可选）。
-
----
-
-## P3 — 清理类
-
-### OPT-010：过时 UI 文案清理
-
-**状态**：[x]  
-**完成日期**：  
-**PR/Commit**：
-
-#### 问题
-
-部分 Page 仍写「Cached in SQLite」，实际已是 Postgres。
-
-#### 涉及文件（grep 确认）
-
-- `apps/desktop-ui/src/components/pages/IndustryFlowPage.tsx`
-- `apps/desktop-ui/src/components/pages/BrokerPage.tsx`
-- `apps/desktop-ui/src/components/pages/SettingsPage.tsx`（SQLite 迁移按钮是否仍需要）
-
----
-
-## 模块级问题备忘（不单独开任务，合并到上述 OPT）
-
-### data-sync-service
-
-| 模块 | 优点 | 待优化 | 关联 OPT |
-|------|------|--------|----------|
-| `trendok.py` | 算法集中、有测试 | God file 1252 行；热路径性能 | OPT-001, OPT-004 |
-| `market_regime.py` | breadth 可开关 | TrendOK 未用开关 | OPT-001 |
-| `dashboard.py` | 并行 summary | screener 串行 | OPT-005 |
-| `eastmoney_industry.py` | DB 缓存 | 请求路径 HTTP | OPT-004 |
-| `tv/capture.py` | DOM 启发式完整 | 阻塞 worker | OPT-008 |
-| `db/*.py` | JSONB upsert 幂等 | 无 migration | OPT-007 |
-
-### desktop-ui
-
-| 模块 | 优点 | 待优化 | 关联 OPT |
-|------|------|--------|----------|
-| `DashboardPage.tsx` | 功能完整 | 2790 行 God file | OPT-003 |
-| `WatchlistPage.tsx` | 功能完整 | 2588 行；串行 force bars | OPT-002, OPT-003 |
-| `watchlist-storage.ts` | API 清晰 | localStorage 权威 | OPT-002 |
-| `screenerExport.ts` | 近期抽取良好 | TrendOK 重复 fetch | OPT-001, OPT-003 |
-| `storage.ts` | 极简 | 无 quota 处理 | OPT-002 |
-
-### Watchlist 串行 force bars（可并入 OPT-003 或单独小 PR）
-
-`WatchlistPage.tsx:816-826`：手动刷新时对每只股票串行 `GET /bars?force=true` + 120ms sleep。
-
-**建议：**
-
-- 改为 batch endpoint 或并行度限制（如 p-limit 3）。
-- 去掉固定 120ms sleep，改指数退避仅在 429 时触发。
+- [ ] pytest `test_watchlist_automation.py` 通过
+- [ ] mock `compute_trendok_for_symbols` 在单次 run 中调用次数 = 1
+- [ ] score snapshot 条数与 removal 结果与改造前一致
 
 ---
 
 ## 推荐执行顺序
 
 ```
-Week 1:  OPT-001（TrendOK 性能）→ 立刻改善日常使用
-Week 2:  OPT-002（Watchlist 存储）→ 数据安全
-Week 3:  OPT-004（东财预热）+ OPT-003 阶段一（API client）
-Week 4:  OPT-005（Screener 并行）+ OPT-006（refresh 语义）
-Later:   OPT-007 ~ OPT-010
+Week 1:  OPT-011（Watchlist 刷新）→ 立刻改善手动刷新体验
+Week 2:  OPT-015（Automation 去重）→ 小改动、后端立刻省一半 TrendOK
+Week 3:  OPT-014（Industry N+1）→ Dashboard / 行业页加载加速
+Week 4:  OPT-012（React Query）→ 系统性前端数据层
+Later:   OPT-013（God Page 拆分）→ 与 OPT-012 可并行，但 hooks 边界在 Query 之后更清晰
 ```
 
 ---
@@ -443,16 +288,11 @@ Later:   OPT-007 ~ OPT-010
 
 | 日期 | 说明 |
 |------|------|
-| 2026-06-18 | 初始版本：全栈架构审查，功能正常，识别 P0–P3 共 10 项优化 |
-| 2026-06-18 | OPT-001 完成：TrendOK 热路径 skip breadth + regime TTL cache + EM DB-only；benchmark ~0.21s |
-| 2026-06-18 | OPT-002 完成：Watchlist registry 权威源 + GET API + hydrate/persist + 11 项自动化测试 |
-| 2026-06-18 | OPT-003 阶段一完成：统一 API client + 共享 types/utils + TrendOK inflight 去重；全 Page 迁移 |
-| 2026-06-18 | OPT-004 完成：EM 行业 offline incremental sync + post_close/scheduler job + status API |
+| 2026-06-18 | 第二轮审查：OPT-001~010 已完成；识别 P0×1 + P1×4 共 5 项 |
 
 ---
 
 ## 相关文档
 
 - [模块文档索引](./modules/README.md)
-- [Screener 模块](./modules/screener.md)
-- [Watchlist 模块](./modules/watchlist.md)
+- [Agent 指南](../AGENTS.md)
