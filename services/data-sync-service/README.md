@@ -25,6 +25,28 @@ From repo root:
 pnpm dev
 ```
 
+## Database Migrations (Alembic)
+
+Schema baseline lives in `alembic/versions/0001_baseline.py` (DDL aggregated from `db/*.py` via `schema_baseline.py`).
+
+Per-module `ensure_table()` remains for local dev convenience; **new schema changes must add an Alembic revision**.
+
+```bash
+cd services/data-sync-service
+
+# Fresh empty Postgres
+PYTHONPATH=src alembic upgrade head
+
+# Existing DB (tables already created by ensure_table)
+PYTHONPATH=src alembic stamp head
+
+# New change after baseline
+PYTHONPATH=src alembic revision -m "describe_change"
+PYTHONPATH=src alembic upgrade head
+```
+
+Alembic reads `DATABASE_URL` from the repo root `.env` (same as the app). SQLAlchemy uses the `postgresql+psycopg://` driver (psycopg v3).
+
 ## Endpoints
 
 - `GET /healthz`

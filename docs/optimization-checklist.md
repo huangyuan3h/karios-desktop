@@ -36,7 +36,7 @@
 | OPT-004 | 东财行业预热脱离请求路径 | P1 | 1–2 天 | [x] |
 | OPT-005 | TV Screener Sync 并行化 | P1 | 1–2 天 | [x] |
 | OPT-006 | TrendOK `refresh` 语义对齐 | P2 | 0.5–1 天 | [x] |
-| OPT-007 | DB Migration 工具（Alembic） | P2 | 2–3 天 | [ ] |
+| OPT-007 | DB Migration 工具（Alembic） | P2 | 2–3 天 | [x] |
 | OPT-008 | TV Capture 异步化 / Job Queue | P2 | 2–4 天 | [ ] |
 | OPT-009 | packages/shared 类型共享 | P2 | 1–2 天 | [ ] |
 | OPT-010 | 过时 UI 文案清理（SQLite → Postgres） | P3 | 0.5 天 | [ ] |
@@ -306,9 +306,16 @@ Dashboard Sync All 对 enabled screeners **串行**调用 `sync_screener()`（`d
 
 ### OPT-007：DB Migration 工具（Alembic）
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
+
+#### 实施摘要
+
+- 新增 `alembic/` + `0001_baseline`（`schema_baseline.py` 汇总 24 模块 CREATE SQL + testback）
+- `alembic/env.py` 接 `DATABASE_URL`，使用 `postgresql+psycopg://` 驱动
+- 保留各模块 `ensure_table()`；新 schema 变更需加 Alembic revision
+- 测试：`tests/test_alembic_baseline.py`
 
 #### 问题
 
@@ -319,6 +326,12 @@ Schema 分散在 24 个 `db/*.py` 的 `ensure_table()` / `CREATE TABLE IF NOT EX
 1. 引入 Alembic，baseline migration 对应当前 schema。
 2. 新表/列变更走 migration，保留 `ensure_table()` 作为 dev 便利（或逐步移除）。
 3. 文档补充 `alembic upgrade head` 到 README。
+
+#### 验证
+
+- [x] 空库 / 已有库 `alembic upgrade head` 或 `stamp head` 流程文档化
+- [x] `alembic current` 显示 `0001_baseline`
+- [x] pytest `test_alembic_baseline.py`（有 Postgres 时）
 
 ---
 
