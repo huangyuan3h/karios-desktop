@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import queue
 import time
-from collections.abc import Generator
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections.abc import Callable, Generator
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
+
+from fastapi import HTTPException
 
 from data_sync_service.db import get_connection
 from data_sync_service.db.industry_fund_flow import ensure_table as ensure_industry
@@ -31,6 +34,8 @@ from data_sync_service.service.market_sentiment import (
 )
 from data_sync_service.service.news import fetch_all_sources
 from data_sync_service.service.tv import list_screeners, sync_screener
+
+TV_SCREENER_SYNC_MAX_WORKERS = 2
 
 
 def _now_iso() -> str:
@@ -428,10 +433,112 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
     }
 
 
-def _sync_screeners_step(*, screeners_enabled: bool) -> dict[str, Any]:
+def _should_skip_screener_after_close(*, sid: str, today_sh: str) -> tuple[bool, int]:
+    latest = list_snapshots_for_screener_full(sid, limit=1)
+    meta = latest[0] if latest else {}
+    captured = str(meta.get("capturedAt") or "")[:10]
+    row_count = int(meta.get("rowCount") or 0) if isinstance(meta, dict) else 0
+    return captured == today_sh and row_count > 0, row_count
+
+
+def _sync_one_screener(
+    sc: dict[str, Any],
+    *,
+    skip_after_close: bool,
+    today_sh: str,
+) -> dict[str, Any]:
+    sid = str(sc.get("id") or "").strip()
+    name = str(sc.get("name") or sid).strip()
+    if not sid:
+        return {
+            "id": "",
+            "name": name,
+            "status": "failed",
+            "ok": False,
+            "rowCount": 0,
+            "durationMs": 0,
+            "error": "missing screener id",
+        }
+
+    if skip_after_close:
+        should_skip, row_count = _should_skip_screener_after_close(sid=sid, today_sh=today_sh)
+        if should_skip:
+            return {
+                "id": sid,
+                "name": name,
+                "status": "skipped",
+                "ok": True,
+                "rowCount": row_count,
+                "durationMs": 0,
+                "error": None,
+            }
+
+    st = time.perf_counter()
+    try:
+        res = sync_screener(screener_id=sid)
+        rc = int(res.get("rowCount") or 0) if isinstance(res, dict) else 0
+        dur = int((time.perf_counter() - st) * 1000)
+        if rc <= 0:
+            return {
+                "id": sid,
+                "name": name,
+                "status": "missing",
+                "ok": False,
+                "rowCount": rc,
+                "durationMs": dur,
+                "error": None,
+            }
+        return {
+            "id": sid,
+            "name": name,
+            "status": "ok",
+            "ok": True,
+            "rowCount": rc,
+            "durationMs": dur,
+            "error": None,
+        }
+    except HTTPException as exc:
+        dur = int((time.perf_counter() - st) * 1000)
+        err = str(exc.detail) if exc.detail is not None else str(exc)
+        return {
+            "id": sid,
+            "name": name,
+            "status": "failed",
+            "ok": False,
+            "rowCount": 0,
+            "durationMs": dur,
+            "error": err,
+        }
+    except Exception as exc:
+        dur = int((time.perf_counter() - st) * 1000)
+        return {
+            "id": sid,
+            "name": name,
+            "status": "failed",
+            "ok": False,
+            "rowCount": 0,
+            "durationMs": dur,
+            "error": str(exc) or exc.__class__.__name__,
+        }
+
+
+def _emit_screener_progress(
+    on_screener_progress: Callable[[dict[str, Any]], None] | None,
+    result: dict[str, Any],
+) -> None:
+    if on_screener_progress is not None:
+        on_screener_progress(result)
+
+
+def _sync_screeners_step(
+    *,
+    screeners_enabled: bool,
+    on_screener_progress: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
     screener_failed: list[str] = []
     screener_missing: list[str] = []
     screener_skipped: list[str] = []
+    screener_results: list[dict[str, Any]] = []
     scr = list_screeners()
     items = scr.get("items") if isinstance(scr, dict) else []
     items_list = items if isinstance(items, list) else []
@@ -440,25 +547,51 @@ def _sync_screeners_step(*, screeners_enabled: bool) -> dict[str, Any]:
         return {"enabled": len(enabled), "skipped": True, "failed": 0, "missing": 0}
     skip_after_close = not _is_shanghai_sync_window()
     today_sh = _shanghai_today_iso()
+    to_sync: list[dict[str, Any]] = []
     for sc in enabled:
         sid = str(sc.get("id") or "").strip()
         if not sid:
             continue
         if skip_after_close:
-            latest = list_snapshots_for_screener_full(sid, limit=1)
-            meta = latest[0] if latest else {}
-            captured = str(meta.get("capturedAt") or "")[:10]
-            row_count = int(meta.get("rowCount") or 0) if isinstance(meta, dict) else 0
-            if captured == today_sh and row_count > 0:
+            should_skip, row_count = _should_skip_screener_after_close(sid=sid, today_sh=today_sh)
+            if should_skip:
                 screener_skipped.append(sid)
+                result = {
+                    "id": sid,
+                    "name": str(sc.get("name") or sid).strip(),
+                    "status": "skipped",
+                    "ok": True,
+                    "rowCount": row_count,
+                    "durationMs": 0,
+                    "error": None,
+                }
+                screener_results.append(result)
+                _emit_screener_progress(on_screener_progress, result)
                 continue
-        try:
-            res = sync_screener(screener_id=sid)
-            rc = int(res.get("rowCount") or 0) if isinstance(res, dict) else 0
-            if rc <= 0:
-                screener_missing.append(sid)
-        except Exception:
-            screener_failed.append(sid)
+        to_sync.append(sc)
+
+    if to_sync:
+        with ThreadPoolExecutor(max_workers=TV_SCREENER_SYNC_MAX_WORKERS) as executor:
+            futures = [
+                executor.submit(
+                    _sync_one_screener,
+                    sc,
+                    skip_after_close=False,
+                    today_sh=today_sh,
+                )
+                for sc in to_sync
+            ]
+            for future in as_completed(futures):
+                result = future.result()
+                screener_results.append(result)
+                _emit_screener_progress(on_screener_progress, result)
+                sid = str(result.get("id") or "").strip()
+                status = str(result.get("status") or "")
+                if status == "failed" and sid:
+                    screener_failed.append(sid)
+                elif status == "missing" and sid:
+                    screener_missing.append(sid)
+
     return {
         "enabled": len(enabled),
         "skipped": False,
@@ -467,7 +600,34 @@ def _sync_screeners_step(*, screeners_enabled: bool) -> dict[str, Any]:
         "skippedIds": screener_skipped,
         "failedIds": screener_failed,
         "missingIds": screener_missing,
+        "screenerResults": screener_results,
     }
+
+
+def _run_screeners_step_with_progress(
+    *,
+    screeners_enabled: bool,
+    progress_queue: queue.Queue[dict[str, Any]],
+) -> dict[str, Any]:
+    def on_progress(evt: dict[str, Any]) -> None:
+        progress_queue.put(evt)
+
+    return _run_step(
+        "screeners",
+        lambda: _sync_screeners_step(
+            screeners_enabled=screeners_enabled,
+            on_screener_progress=on_progress,
+        ),
+    )
+
+
+def _drain_screener_progress_events(q: queue.Queue[dict[str, Any]]) -> Generator[str, None, None]:
+    while True:
+        try:
+            evt = q.get_nowait()
+        except queue.Empty:
+            break
+        yield json.dumps({"type": "screener", "screener": evt}) + "\n"
 
 
 def _sync_news_step() -> dict[str, Any]:
@@ -544,25 +704,50 @@ def dashboard_sync_stream(
     step_fns = {
         "industryFundFlow": _sync_industry_step,
         "marketSentiment": lambda: _sync_sentiment_step(force=force),
-        "screeners": lambda: _sync_screeners_step(screeners_enabled=screeners),
         "news": _sync_news_step,
     }
     steps: list[dict[str, Any]] = []
     screener_meta: dict[str, Any] = {}
+    progress_queue: queue.Queue[dict[str, Any]] = queue.Queue()
     with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {executor.submit(_run_step, name, fn): name for name, fn in step_fns.items()}
-        for future in as_completed(futures):
-            name = futures[future]
-            try:
-                result = future.result()
-                steps.append(result)
-                yield json.dumps({"type": "step", "step": result}) + "\n"
-                if name == "screeners":
-                    screener_meta = result.get("meta") or {}
-            except Exception as exc:
-                result = {"name": name, "ok": False, "durationMs": 0, "message": str(exc), "meta": {}}
-                steps.append(result)
-                yield json.dumps({"type": "step", "step": result}) + "\n"
+        futures: dict[Any, str] = {
+            executor.submit(_run_step, name, fn): name for name, fn in step_fns.items()
+        }
+        if screeners:
+            futures[
+                executor.submit(
+                    _run_screeners_step_with_progress,
+                    screeners_enabled=True,
+                    progress_queue=progress_queue,
+                )
+            ] = "screeners"
+        else:
+            futures[
+                executor.submit(
+                    _run_step,
+                    "screeners",
+                    lambda: _sync_screeners_step(screeners_enabled=False),
+                )
+            ] = "screeners"
+
+        pending = set(futures.keys())
+        while pending:
+            yield from _drain_screener_progress_events(progress_queue)
+            done, pending = wait(pending, timeout=0.3, return_when=FIRST_COMPLETED)
+            for future in done:
+                name = futures[future]
+                try:
+                    result = future.result()
+                    steps.append(result)
+                    yield json.dumps({"type": "step", "step": result}) + "\n"
+                    if name == "screeners":
+                        screener_meta = result.get("meta") or {}
+                except Exception as exc:
+                    result = {"name": name, "ok": False, "durationMs": 0, "message": str(exc), "meta": {}}
+                    steps.append(result)
+                    yield json.dumps({"type": "step", "step": result}) + "\n"
+
+        yield from _drain_screener_progress_events(progress_queue)
     step_order = ["industryFundFlow", "marketSentiment", "screeners", "news"]
     steps.sort(key=lambda s: step_order.index(s.get("name", "")))
     finished_at = _now_iso()

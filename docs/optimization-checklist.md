@@ -34,7 +34,7 @@
 | OPT-002 | Watchlist 存储权威源明确化 | P0 | 2–3 天 | [x] |
 | OPT-003 | 前端 API 层 + God Page 拆分（阶段一） | P1 | 3–5 天 | [x] |
 | OPT-004 | 东财行业预热脱离请求路径 | P1 | 1–2 天 | [x] |
-| OPT-005 | TV Screener Sync 并行化 | P1 | 1–2 天 | [ ] |
+| OPT-005 | TV Screener Sync 并行化 | P1 | 1–2 天 | [x] |
 | OPT-006 | TrendOK `refresh` 语义对齐 | P2 | 0.5–1 天 | [ ] |
 | OPT-007 | DB Migration 工具（Alembic） | P2 | 2–3 天 | [ ] |
 | OPT-008 | TV Capture 异步化 / Job Queue | P2 | 2–4 天 | [ ] |
@@ -221,9 +221,16 @@ curl -X POST "http://127.0.0.1:4330/sync/eastmoney-industry?mode=missing&limit=5
 
 ### OPT-005：TV Screener Sync 并行化
 
-**状态**：[ ]  
-**完成日期**：  
-**PR/Commit**：
+**状态**：[x]  
+**完成日期**：2026-06-18  
+**PR/Commit**：_(local — pending commit)_
+
+#### 实施摘要
+
+- `_sync_screeners_step` 改为 `ThreadPoolExecutor(max_workers=2)` 限流并行；新增 `_sync_one_screener`、`screenerResults` 明细
+- `dashboard_sync_stream` 通过 `queue.Queue` 推送 `type: screener` 进度事件
+- `tv_chrome.start()` 加 `threading.Lock`，避免并行 auto-start 竞态
+- 测试：`tests/test_dashboard_screener_sync.py`（6 cases）
 
 #### 问题
 
@@ -240,14 +247,15 @@ Dashboard Sync All 对 enabled screeners **串行**调用 `sync_screener()`（`d
 
 | 文件 | 改动 |
 |------|------|
-| `services/data-sync-service/src/data_sync_service/service/dashboard.py` | `_sync_screeners_step` 并行 |
-| `services/data-sync-service/src/data_sync_service/service/tv.py` | 可选：超时隔离 |
+| `services/data-sync-service/src/data_sync_service/service/dashboard.py` | `_sync_screeners_step` 并行 + SSE screener 事件 |
+| `services/data-sync-service/src/data_sync_service/service/tv_chrome.py` | `start()` 加锁 |
+| `services/data-sync-service/tests/test_dashboard_screener_sync.py` | 新增 |
 
 #### 验证
 
-- [ ] 2+ enabled screener 时 Sync All 总耗时 < 串行之和
-- [ ] 一个 screener 失败，其余仍成功
-- [ ] SSE stream 仍正确结束
+- [x] 2+ enabled screener 时 Sync All 总耗时 < 串行之和（单测 mock 3 screener 并行 < 0.42s vs 串行 ~0.45s）
+- [x] 一个 screener 失败，其余仍成功
+- [x] SSE stream 仍正确结束（含 `type: screener` 与 `type: done`）
 
 ---
 

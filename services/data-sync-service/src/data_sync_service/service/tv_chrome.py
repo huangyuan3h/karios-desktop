@@ -9,6 +9,7 @@ import os
 import shutil
 import signal
 import subprocess
+import threading
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -24,6 +25,8 @@ TV_CDP_PORT_DEFAULT = 9222
 TV_USER_DATA_DIR_DEFAULT = "~/.karios/chrome-tv-cdp"
 TV_PROFILE_DIR_DEFAULT = "Default"
 TV_CHROME_BIN_DEFAULT = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+_start_lock = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -232,6 +235,30 @@ def status() -> TvChromeStatus:
 
 
 def start(
+    *,
+    port: int = TV_CDP_PORT_DEFAULT,
+    userDataDir: str = TV_USER_DATA_DIR_DEFAULT,
+    profileDirectory: str = TV_PROFILE_DIR_DEFAULT,
+    chromeBin: str = TV_CHROME_BIN_DEFAULT,
+    headless: bool = False,
+    bootstrapFromChromeUserDataDir: str | None = None,
+    bootstrapFromProfileDirectory: str | None = None,
+    forceBootstrap: bool = False,
+) -> TvChromeStatus:
+    with _start_lock:
+        return _start_unlocked(
+            port=port,
+            userDataDir=userDataDir,
+            profileDirectory=profileDirectory,
+            chromeBin=chromeBin,
+            headless=headless,
+            bootstrapFromChromeUserDataDir=bootstrapFromChromeUserDataDir,
+            bootstrapFromProfileDirectory=bootstrapFromProfileDirectory,
+            forceBootstrap=forceBootstrap,
+        )
+
+
+def _start_unlocked(
     *,
     port: int = TV_CDP_PORT_DEFAULT,
     userDataDir: str = TV_USER_DATA_DIR_DEFAULT,
