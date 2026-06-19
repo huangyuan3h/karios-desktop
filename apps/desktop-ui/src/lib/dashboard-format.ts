@@ -54,6 +54,36 @@ export function fmtSignedAmountCn(x: unknown): string {
   return body;
 }
 
+export type SrvIndexLike = {
+  level?: string | null;
+  overlapCount?: number | null;
+  overlapSectors?: string[] | null;
+  labelZh?: string | null;
+};
+
+export function formatSrvIndexLine(srv: SrvIndexLike | null | undefined): string {
+  const level = String(srv?.level ?? '').trim();
+  const overlap = srv?.overlapCount;
+  if (!level || typeof overlap !== 'number' || !Number.isFinite(overlap)) {
+    return 'SRV_Index (Sector Rotation): —';
+  }
+  return `SRV_Index (Sector Rotation): ${level} (3D Overlap = ${overlap})`;
+}
+
+export function srvIndexBadgeClass(level: string | null | undefined): string {
+  const lv = String(level ?? '').trim();
+  if (lv === 'Stable') {
+    return 'border-green-500/30 bg-green-500/10 text-green-700';
+  }
+  if (lv === 'Elevated') {
+    return 'border-amber-500/30 bg-amber-500/10 text-amber-700';
+  }
+  if (lv === 'Extreme_High') {
+    return 'border-red-600/40 bg-red-600/15 text-red-700';
+  }
+  return 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
+}
+
 export function escapeMarkdownCell(x: unknown): string {
   const s0 = String(x ?? '');
   const s1 = s0.replaceAll('\r\n', '\n').replaceAll('\r', '\n').replaceAll('\n', '<br/>');

@@ -8,6 +8,7 @@ export const WATCHLIST_MD_HEADERS = [
   'Current',
   'VWAP',
   'Intraday%',
+  'Inst_Flow',
   'GapUp',
   'Alerts',
   'P&L%',
@@ -23,9 +24,9 @@ export const VWAP_PREMIUM_MULTIPLIER = 1.05;
 
 const GAP_UP_WEAK_REGIMES = new Set(['Weak', 'Diverging']);
 
-import type { WatchlistRiskAlert } from '@karios/shared';
+import type { WatchlistRiskAlert, InstFlow } from '@karios/shared';
 
-export type { WatchlistRiskAlert };
+export type { WatchlistRiskAlert, InstFlow };
 
 export function isIntradaySurge(intradayChgPct: number | null | undefined): boolean {
   return (
@@ -207,6 +208,7 @@ export type WatchlistTrendRiskSlice = {
   marketRegime?: string | null;
   riskMetricsLive?: boolean | null;
   riskAlerts?: WatchlistRiskAlert[] | null;
+  instFlow?: InstFlow | null;
 };
 
 export function buildWatchlistRowMetrics(opts: {
@@ -414,4 +416,16 @@ export function tushareIndustryTooltip(values: Record<string, unknown> | undefin
   if (typeof em === 'string' && em.trim()) return null;
   if (typeof ts === 'string' && ts.trim()) return 'Tushare classification; may differ from East Money hotspot boards';
   return null;
+}
+
+export function formatInstFlow(instFlow: InstFlow | null | undefined): string {
+  const display = instFlow?.display?.trim();
+  return display || '—';
+}
+
+export function isInstFlowRisk(instFlow: InstFlow | null | undefined): boolean {
+  if (!instFlow?.onBoard) return false;
+  const yi = instFlow.instNetBuyYi;
+  if (typeof yi === 'number' && Number.isFinite(yi) && yi < 0) return true;
+  return Boolean(instFlow.lhasaDominant);
 }

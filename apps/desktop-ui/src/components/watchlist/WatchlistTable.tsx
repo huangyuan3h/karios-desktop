@@ -20,12 +20,14 @@ import {
   computePnLPct,
   formatGapUp,
   formatHotTop3,
+  formatInstFlow,
   formatIntradayChgPct,
   formatPnLPct,
   formatRiskAlerts,
   formatVwap,
   industryDisplayName,
   isIntradaySurge,
+  isInstFlowRisk,
   resolveWatchlistCurrentPrice,
   tushareIndustryTooltip,
 } from '@/lib/watchlist-metrics';
@@ -595,6 +597,7 @@ export function WatchlistTable({
                     <th className="px-2 py-2 w-[64px]">HotTop3</th>
                     <th className="px-2 py-2 w-[68px]">VWAP</th>
                     <th className="px-2 py-2 w-[72px]">Intraday%</th>
+                    <th className="px-2 py-2 w-[120px]">Inst_Flow</th>
                     <th className="px-2 py-2 w-[48px]">Gap</th>
                     <th className="px-2 py-2 w-[140px]">Alerts</th>
                     <th className="px-2 py-2 w-[64px]">P&L%</th>
@@ -820,6 +823,14 @@ export function WatchlistTable({
                           }`}
                         >
                           {formatIntradayChgPct(rowMetrics.intradayChgPct)}
+                        </td>
+                        <td
+                          className={`max-w-[120px] truncate px-2 py-2 text-xs font-mono ${
+                            isInstFlowRisk(t?.instFlow) ? 'font-semibold text-red-600' : ''
+                          }`}
+                          title={t?.instFlow?.label ?? undefined}
+                        >
+                          {formatInstFlow(t?.instFlow)}
                         </td>
                         <td
                           className={`px-3 py-2 font-mono ${

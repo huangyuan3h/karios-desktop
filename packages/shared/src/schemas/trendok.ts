@@ -10,6 +10,16 @@ export const WatchlistRiskAlertSchema = z.object({
 });
 export type WatchlistRiskAlert = z.infer<typeof WatchlistRiskAlertSchema>;
 
+export const InstFlowSchema = z.object({
+  tradeDate: z.string().optional(),
+  onBoard: z.boolean(),
+  instNetBuyYi: z.number(),
+  label: z.string(),
+  lhasaDominant: z.boolean().optional(),
+  display: z.string(),
+});
+export type InstFlow = z.infer<typeof InstFlowSchema>;
+
 export const TrendOkResultSchema = z.object({
   symbol: z.string(),
   name: z.string().nullable().optional(),
@@ -31,6 +41,7 @@ export const TrendOkResultSchema = z.object({
   gapUp: z.boolean().nullable().optional(),
   riskAlerts: z.array(WatchlistRiskAlertSchema).optional(),
   riskMetricsLive: z.boolean().nullable().optional(),
+  instFlow: InstFlowSchema.nullable().optional(),
   checks: z.record(z.unknown()).nullable().optional(),
   values: z.record(z.unknown()).nullable().optional(),
   missingData: z.array(z.string()).optional(),

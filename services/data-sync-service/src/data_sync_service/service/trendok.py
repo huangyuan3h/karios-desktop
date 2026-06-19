@@ -19,8 +19,10 @@ from data_sync_service.service.industry_fund_flow_read import build_trendok_flow
 from data_sync_service.db.stoploss import compute_effective_stoploss
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_eastmoney_industry import lookup_by_ts_codes as lookup_em_industries
+from data_sync_service.db.top_inst import fetch_summaries_for_codes
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
+from data_sync_service.service.top_inst_flow import build_inst_flow_payload
 
 TRENDOK_CACHE_TTL_SECONDS = 60
 _trendok_cache: dict[tuple[frozenset[str], bool, str], tuple[list[dict[str, Any]], float]] = {}
@@ -342,6 +344,7 @@ def _build_server_risk_alerts(
     buy_checks: dict[str, Any] | None,
     buy_action: str | None = None,
     risk_metrics_live: bool = False,
+    inst_flow: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     alerts: list[dict[str, str]] = []
     checks = buy_checks if isinstance(buy_checks, dict) else {}
@@ -369,7 +372,57 @@ def _build_server_risk_alerts(
                 "message": f"Gap-up with {regime} market; do not chase highs",
             }
         )
+    if (
+        risk_metrics_live
+        and isinstance(inst_flow, dict)
+        and inst_flow.get("onBoard") is True
+        and inst_flow.get("lhasaDominant") is True
+        and isinstance(inst_flow.get("instNetBuyYi"), (int, float))
+        and float(inst_flow["instNetBuyYi"]) < 0
+        and intraday_chg_pct is not None
+        and intraday_chg_pct > INTRADAY_SURGE_THRESHOLD_PCT
+    ):
+        yi = float(inst_flow["instNetBuyYi"])
+        alerts.append(
+            {
+                "code": "inst_retail_chase",
+                "severity": "block",
+                "message": (
+                    f"Institutional net sell {yi:.1f}亿 with Lhasa-dominated buying "
+                    f"and intraday +{intraday_chg_pct:.1f}%; veto"
+                ),
+            }
+        )
     return alerts
+
+
+def _apply_inst_flow_risk_buy_blocks(
+    res: dict[str, Any],
+    *,
+    inst_flow: dict[str, Any] | None,
+) -> None:
+    """Block buy when institutions net-sell while Lhasa retail dominates on a surge day."""
+    if bool((res.get("stopLossParts") or {}).get("exit_now")):
+        return
+    if not bool(res.get("riskMetricsLive")):
+        return
+    if not isinstance(inst_flow, dict) or inst_flow.get("onBoard") is not True:
+        return
+    if not inst_flow.get("lhasaDominant"):
+        return
+    yi = inst_flow.get("instNetBuyYi")
+    if not isinstance(yi, (int, float)) or float(yi) >= 0:
+        return
+    intraday = res.get("intradayChgPct")
+    if not isinstance(intraday, (int, float)) or float(intraday) <= INTRADAY_SURGE_THRESHOLD_PCT:
+        return
+    buy_checks = res.get("buyChecks")
+    if not isinstance(buy_checks, dict):
+        buy_checks = {}
+        res["buyChecks"] = buy_checks
+    res["buyAction"] = "avoid"
+    res["buyWhy"] = "风险：机构净卖且拉萨主买，禁止追高"
+    buy_checks["blocked_inst_retail_chase"] = True
 
 
 def _apply_intraday_risk_buy_blocks(
@@ -648,6 +701,10 @@ def compute_trendok_for_symbols(
 
     by_name, by_tushare_industry = _lookup_stock_basic(ts_codes)
     by_em_industry = _lookup_em_industry_boards(ts_codes)
+    inst_by_code = fetch_summaries_for_codes(
+        ts_codes,
+        trade_date=latest_bar_date if latest_bar_date else None,
+    )
     out: list[dict[str, Any]] = []
     flow_ctx = _build_industry_flow_context(latest_bar_date)
     market_regime: str | None = None
@@ -677,6 +734,7 @@ def compute_trendok_for_symbols(
                 bars=bars,
                 flow_ctx=flow_ctx,
                 market_regime=market_regime,
+                inst_summary=inst_by_code.get(ts_code),
             )
         )
     _trendok_cache[cache_key] = (copy.deepcopy(out), time.time() + TRENDOK_CACHE_TTL_SECONDS)
@@ -693,6 +751,7 @@ def _trendok_one(
     bars: list[tuple[str, str, str, str, str, str]],
     flow_ctx: dict[str, Any] | None = None,
     market_regime: str | None = None,
+    inst_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Ported from quant-service `_market_stock_trendok_one` with the same checks/score behavior.
@@ -719,6 +778,7 @@ def _trendok_one(
         "gapUp": None,
         "riskMetricsLive": False,
         "riskAlerts": [],
+        "instFlow": None,
         "checks": {},
         "values": {},
         "missingData": [],
@@ -869,6 +929,24 @@ def _trendok_one(
                     res["values"]["industryFlowReasons"] = flow_reasons
                 if delta != 0.0 and res.get("score") is not None:
                     res["score"] = round(max(0.0, min(100.0, float(res["score"]) + delta)), 3)
+            inst_flow = build_inst_flow_payload(inst_summary)
+            if inst_flow is not None:
+                res["instFlow"] = inst_flow
+            elif inst_summary and inst_summary.get("on_board") is False:
+                res["instFlow"] = None
+            if (
+                inst_flow
+                and inst_flow.get("lhasaDominant")
+                and isinstance(inst_flow.get("instNetBuyYi"), (int, float))
+                and float(inst_flow["instNetBuyYi"]) < 0
+                and isinstance(intraday_chg_pct, (int, float))
+                and float(intraday_chg_pct) > INTRADAY_SURGE_THRESHOLD_PCT
+                and res.get("score") is not None
+            ):
+                res["score"] = round(min(float(res["score"]), 60.0), 3)
+                parts2 = res.get("scoreParts")
+                if isinstance(parts2, dict):
+                    parts2["inst_retail_chase_cap"] = 60.0
     except Exception:
         res["score"] = None
 
@@ -1206,7 +1284,9 @@ def _trendok_one(
         res["buyAction"] = None
 
     try:
+        inst_flow_payload = res.get("instFlow") if isinstance(res.get("instFlow"), dict) else None
         _apply_intraday_risk_buy_blocks(res, market_regime=market_regime)
+        _apply_inst_flow_risk_buy_blocks(res, inst_flow=inst_flow_payload)
         res["riskAlerts"] = _build_server_risk_alerts(
             intraday_chg_pct=res.get("intradayChgPct"),
             gap_up=res.get("gapUp"),
@@ -1214,6 +1294,7 @@ def _trendok_one(
             buy_checks=res.get("buyChecks"),
             buy_action=str(res.get("buyAction") or ""),
             risk_metrics_live=bool(res.get("riskMetricsLive")),
+            inst_flow=inst_flow_payload,
         )
     except Exception:
         res["riskAlerts"] = []

@@ -22,8 +22,10 @@ function signalSurfaceClass(signal: string): string {
   return 'border-[var(--k-border)] bg-[var(--k-surface)] shadow-black/5';
 }
 
-function fmtPrice(n: unknown): string {
-  return Number.isFinite(n) ? Number(n).toFixed(2) : '—';
+function fmtPrice(n: unknown, unit?: string): string {
+  if (!Number.isFinite(n)) return '—';
+  const suffix = unit === '%' ? '%' : '';
+  return `${Number(n).toFixed(unit === '%' ? 1 : 2)}${suffix}`;
 }
 
 type IndexCardProps = {
@@ -34,6 +36,7 @@ type IndexCardProps = {
   spotHint?: boolean;
   cnSignalClass?: string;
   close: number | null;
+  closeUnit?: string;
   pctChg?: number | null;
   ma5: number | null;
   ma20: number | null;
@@ -49,6 +52,7 @@ function IndexCard({
   spotHint,
   cnSignalClass,
   close,
+  closeUnit,
   pctChg,
   ma5,
   ma20,
@@ -91,7 +95,7 @@ function IndexCard({
 
       <div className="mt-4 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
         <span className="text-2xl font-semibold tabular-nums tracking-tight text-[var(--k-fg)]">
-          {close != null && Number.isFinite(close) ? close.toFixed(2) : '—'}
+          {close != null && Number.isFinite(close) ? fmtPrice(close, closeUnit) : '—'}
         </span>
         {hasPct ? (
           <span
@@ -119,10 +123,12 @@ function IndexCard({
 
 function macroToCardProps(item: MacroItem): IndexCardProps {
   const live = Boolean(item.realtime);
+  const isVol = item.category === 'volatility';
   const footParts: string[] = [];
   if (item.asOfDate) footParts.push(`as of ${item.asOfDate}`);
   if (item.tradeTime) footParts.push(String(item.tradeTime));
   if (item.underlyingTsCode) footParts.push(String(item.underlyingTsCode));
+  if (item.signalLabel) footParts.push(String(item.signalLabel));
   const footnote = footParts.length ? footParts.join(' • ') : '—';
 
   return {
@@ -130,7 +136,9 @@ function macroToCardProps(item: MacroItem): IndexCardProps {
     mode: live ? 'live' : 'eod',
     description: item.why,
     spotHint: item.source === 'index_global' && item.underlyingTsCode === 'XIN9',
+    cnSignalClass: isVol && item.signal ? signalSurfaceClass(String(item.signal)) : undefined,
     close: Number.isFinite(item.close) ? Number(item.close) : null,
+    closeUnit: isVol ? '%' : undefined,
     pctChg: Number.isFinite(item.pctChg) ? Number(item.pctChg) : null,
     ma5: Number.isFinite(item.ma5) ? Number(item.ma5) : null,
     ma20: Number.isFinite(item.ma20) ? Number(item.ma20) : null,

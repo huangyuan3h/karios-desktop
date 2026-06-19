@@ -37,6 +37,9 @@ export type MacroItem = {
   tradeTime?: string | null;
   quotePrice?: number | null;
   quotePctChg?: number | null;
+  signal?: string;
+  signalLabel?: string;
+  unit?: string;
 };
 
 export type MacroSnapshot = {

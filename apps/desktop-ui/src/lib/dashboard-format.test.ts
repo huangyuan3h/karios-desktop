@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { fmtAmountCn, fmtSignedAmountCn, mdTable } from './dashboard-format';
+import { fmtAmountCn, fmtSignedAmountCn, formatSrvIndexLine, mdTable } from './dashboard-format';
 
 describe('fmtAmountCn', () => {
   it('formats 亿 and 万', () => {
@@ -20,6 +20,15 @@ describe('fmtSignedAmountCn', () => {
     expect(fmtSignedAmountCn(5_230_000_000)).toBe('+52.30亿');
     expect(fmtSignedAmountCn(-1_240_000_000)).toBe('-12.40亿');
     expect(fmtSignedAmountCn(null)).toBe('—');
+  });
+});
+
+describe('formatSrvIndexLine', () => {
+  it('formats level and overlap count', () => {
+    expect(
+      formatSrvIndexLine({ level: 'Extreme_High', overlapCount: 0 }),
+    ).toBe('SRV_Index (Sector Rotation): Extreme_High (3D Overlap = 0)');
+    expect(formatSrvIndexLine(null)).toBe('SRV_Index (Sector Rotation): —');
   });
 });
 

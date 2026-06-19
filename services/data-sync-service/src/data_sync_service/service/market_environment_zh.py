@@ -12,6 +12,7 @@ _SID_A50 = "A50"
 _SID_COMM_ENERGY = "COMM_ENERGY"
 _SID_COMM_GOLD = "COMM_GOLD"
 _SID_COMM_COPPER = "COMM_COPPER"
+_SID_510300_PUT_IV = "510300_PUT_IV"
 
 
 def _finite_float(v: Any) -> float | None:
@@ -110,12 +111,17 @@ def format_market_environment_zh(snapshot: dict[str, Any] | None) -> str:
         _SID_COMM_ENERGY: "INE原油主力",
         _SID_COMM_GOLD: "沪金主力",
         _SID_COMM_COPPER: "沪铜主力",
+        _SID_510300_PUT_IV: "300ETF认沽IV",
     }
 
     for m in snapshot.get("macro") or []:
         if not isinstance(m, dict):
             continue
-        parts.append(_macro_sentence(m, macro_labels))
+        sid = str(m.get("seriesId") or "")
+        sentence = _macro_sentence(m, macro_labels)
+        if sid == _SID_510300_PUT_IV and str(m.get("signalLabel") or "") == "Deep Panic":
+            sentence += "，期权恐慌偏高"
+        parts.append(sentence)
 
     if not parts:
         return ""

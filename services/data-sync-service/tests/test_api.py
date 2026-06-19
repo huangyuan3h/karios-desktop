@@ -61,6 +61,7 @@ def test_trendok_endpoint_shape() -> None:
         "gapUp",
         "riskMetricsLive",
         "riskAlerts",
+        "instFlow",
         "checks",
         "values",
         "missingData",

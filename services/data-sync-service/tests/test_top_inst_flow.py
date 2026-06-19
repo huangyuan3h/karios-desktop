@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+import pandas as pd
+
+from data_sync_service.service.option_iv import (
+    classify_iv_signal,
+    compute_iv_pct_chg,
+    select_atm_put_iv,
+)
+from data_sync_service.service.top_inst_flow import (
+    build_inst_flow_payload,
+    classify_seat_label,
+    detect_lhasa_dominant,
+    format_inst_flow_display,
+)
+
+
+def test_detect_lhasa_dominant_top_seat() -> None:
+    seats = [
+        {"exalter": "东方财富证券股份有限公司拉萨团结路第二证券营业部", "buy": 50_000_000},
+        {"exalter": "机构专用", "buy": 10_000_000},
+    ]
+    assert detect_lhasa_dominant(seats) is True
+
+
+def test_detect_lhasa_dominant_false() -> None:
+    seats = [
+        {"exalter": "机构专用", "buy": 50_000_000},
+        {"exalter": "中信证券上海分公司", "buy": 10_000_000},
+    ]
+    assert detect_lhasa_dominant(seats) is False
+
+
+def test_classify_seat_label() -> None:
+    assert classify_seat_label(inst_net_buy=1e8, lhasa_dominant=False) == "机构主买"
+    assert classify_seat_label(inst_net_buy=-1e8, lhasa_dominant=True) == "机构净卖/拉萨主买"
+    assert classify_seat_label(inst_net_buy=-1e8, lhasa_dominant=False) == "机构净卖"
+
+
+def test_format_inst_flow_display() -> None:
+    assert format_inst_flow_display(inst_net_buy_yi=3.2, label="机构主买") == "+3.2亿 (机构主买)"
+    assert format_inst_flow_display(inst_net_buy_yi=-1.5, label="机构净卖/拉萨主买") == "-1.5亿 (机构净卖/拉萨主买)"
+
+
+def test_build_inst_flow_payload() -> None:
+    payload = build_inst_flow_payload(
+        {
+            "trade_date": "2026-06-19",
+            "on_board": True,
+            "inst_net_buy_yi": 3.2,
+            "seat_label": "机构主买",
+            "lhasa_dominant": False,
+        }
+    )
+    assert payload is not None
+    assert payload["display"] == "+3.2亿 (机构主买)"
+    assert payload["instNetBuyYi"] == 3.2
+
+
+def test_select_atm_put_iv_from_analysis_df() -> None:
+    df = pd.DataFrame(
+        [
+            {
+                "期权名称": "300ETF沽6月4000",
+                "隐含波动率": 28.5,
+                "到期日": "2026-06-25",
+                "标的最新价": 4.02,
+            },
+            {
+                "期权名称": "300ETF沽7月3800",
+                "隐含波动率": 24.0,
+                "到期日": "2026-07-24",
+                "标的最新价": 4.02,
+            },
+            {
+                "期权名称": "50ETF沽6月2900",
+                "隐含波动率": 19.0,
+                "到期日": "2026-06-25",
+                "标的最新价": 2.74,
+            },
+        ]
+    )
+    picked = select_atm_put_iv(df)
+    assert picked is not None
+    assert picked["ivPct"] == 28.5
+    assert "300ETF" in picked["contractName"]
+
+
+def test_classify_iv_signal_deep_panic() -> None:
+    signal, label = classify_iv_signal(iv_pct=29.0, pct_chg=5.0)
+    assert signal == "red"
+    assert label == "Deep Panic"
+
+
+def test_classify_iv_signal_complacent() -> None:
+    signal, label = classify_iv_signal(iv_pct=12.0, pct_chg=None)
+    assert signal == "light_green"
+    assert label == "Complacent"
+
+
+def test_compute_iv_pct_chg() -> None:
+    assert compute_iv_pct_chg(28.5, 24.0) == 18.75

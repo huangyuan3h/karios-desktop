@@ -26,7 +26,11 @@ from data_sync_service.service.etf_fund_flow import (
     build_etf_fund_flow_bundle,
     sync_etf_fund_flow_watchlist,
 )
-from data_sync_service.service.industry_fund_flow_read import build_dashboard_industry_bundle
+from data_sync_service.service.industry_fund_flow_read import (
+    build_dashboard_industry_bundle,
+    top_by_date_from_rows,
+)
+from data_sync_service.service.sector_rotation_index import compute_srv_index
 from data_sync_service.service.macro_snapshot import build_macro_snapshot
 from data_sync_service.service.market_environment_zh import format_market_environment_zh
 from data_sync_service.service.market_regime import (
@@ -65,6 +69,14 @@ def _build_industry_bundle(*, as_of_date: str) -> dict[str, Any]:
     return build_dashboard_industry_bundle(as_of_date=as_of_date, dates=dates, rows=rows)
 
 
+def _industry_top_by_date(*, as_of_date: str, days: int = 5) -> list[dict[str, Any]]:
+    """Lightweight Top-K-by-date read for SRV (no full industry bundle)."""
+    ensure_industry()
+    dates = get_dates_upto(as_of_date, days)
+    rows = get_rows_for_dates(dates)
+    return top_by_date_from_rows(rows, dates, top_k=5)
+
+
 def _build_market_sentiment_bundle(
     *,
     as_of_date: str,
@@ -80,12 +92,17 @@ def _build_market_sentiment_bundle(
         index_signals = get_index_signals(as_of_date=index_as_of, include_breadth=False)
     index_signals = apply_breadth_panic_index_signals(index_signals, down_count)
     etf_fund_flow = build_etf_fund_flow_bundle(as_of_date=as_of_date)
+    srv_index = compute_srv_index(
+        top_by_date=_industry_top_by_date(as_of_date=as_of_date, days=5),
+        as_of_date=as_of_date,
+    )
     return {
         "asOfDate": as_of_date,
         "days": 5,
         "items": sentiment_items,
         "indexSignals": index_signals,
         "etfFundFlow": etf_fund_flow,
+        "srvIndex": srv_index,
     }
 
 

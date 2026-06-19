@@ -6,8 +6,10 @@ import {
   computeVwap,
   formatGapUp,
   formatHotTop3,
+  formatInstFlow,
   hasBlockingWatchlistRisk,
   industryDisplayName,
+  isInstFlowRisk,
   isAboveVwapPremium,
   isHotTop3Industry,
   isIntradaySurge,
@@ -232,5 +234,39 @@ describe('risk alerts', () => {
     expect(alerts).toHaveLength(3);
     expect(hasBlockingWatchlistRisk(alerts)).toBe(true);
     expect(alerts.some((a) => a.code === 'above_vwap_premium')).toBe(true);
+  });
+});
+
+describe('formatInstFlow', () => {
+  it('formats display string from instFlow payload', () => {
+    expect(
+      formatInstFlow({
+        onBoard: true,
+        instNetBuyYi: 3.2,
+        label: '机构主买',
+        display: '+3.2亿 (机构主买)',
+      }),
+    ).toBe('+3.2亿 (机构主买)');
+    expect(formatInstFlow(null)).toBe('—');
+  });
+
+  it('flags negative or lhasa-dominant flows as risk', () => {
+    expect(
+      isInstFlowRisk({
+        onBoard: true,
+        instNetBuyYi: -1.5,
+        label: '机构净卖/拉萨主买',
+        lhasaDominant: true,
+        display: '-1.5亿 (机构净卖/拉萨主买)',
+      }),
+    ).toBe(true);
+    expect(
+      isInstFlowRisk({
+        onBoard: true,
+        instNetBuyYi: 2.0,
+        label: '机构主买',
+        display: '+2.0亿 (机构主买)',
+      }),
+    ).toBe(false);
   });
 });

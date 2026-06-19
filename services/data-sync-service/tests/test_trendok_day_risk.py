@@ -195,3 +195,75 @@ def test_gap_up_strong_does_not_force_avoid() -> None:
     assert res.get("gapUp") is True
     assert not (res.get("buyChecks") or {}).get("blocked_gap_up_weak_market")
     assert not any(a.get("code") == "gap_up_weak_market" for a in (res.get("riskAlerts") or []))
+
+
+def test_inst_retail_chase_blocks_buy(monkeypatch) -> None:
+    import data_sync_service.service.trendok as trendok  # type: ignore[import-not-found]
+
+    today = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
+    monkeypatch.setattr(trendok, "_shanghai_today_iso", lambda: today)
+    bars = _bars_with_today(
+        today=today,
+        prev_close=100.0,
+        today_close=107.0,
+        prev_high=101.0,
+        today_low=106.0,
+    )
+    inst_summary = {
+        "trade_date": today,
+        "on_board": True,
+        "inst_net_buy_yi": -1.5,
+        "seat_label": "机构净卖/拉萨主买",
+        "lhasa_dominant": True,
+    }
+    res = trendok._trendok_one(  # type: ignore[attr-defined]
+        symbol="CN:300308",
+        name="Test",
+        industry=None,
+        bars=bars,
+        flow_ctx=None,
+        market_regime="Strong",
+        inst_summary=inst_summary,
+    )
+    assert res.get("instFlow", {}).get("display") == "-1.5亿 (机构净卖/拉萨主买)"
+    assert res.get("buyAction") == "avoid"
+    assert (res.get("buyChecks") or {}).get("blocked_inst_retail_chase") is True
+    assert any(a.get("code") == "inst_retail_chase" for a in (res.get("riskAlerts") or []))
+    if res.get("score") is not None:
+        assert float(res["score"]) <= 60.0
+
+
+def test_inst_retail_chase_blocks_buy(monkeypatch) -> None:
+    import data_sync_service.service.trendok as trendok  # type: ignore[import-not-found]
+
+    today = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
+    monkeypatch.setattr(trendok, "_shanghai_today_iso", lambda: today)
+    bars = _bars_with_today(
+        today=today,
+        prev_close=100.0,
+        today_close=107.0,
+        prev_high=101.0,
+        today_low=106.0,
+    )
+    inst_summary = {
+        "trade_date": today,
+        "on_board": True,
+        "inst_net_buy_yi": -1.5,
+        "seat_label": "机构净卖/拉萨主买",
+        "lhasa_dominant": True,
+    }
+    res = trendok._trendok_one(  # type: ignore[attr-defined]
+        symbol="CN:300308",
+        name="Test",
+        industry=None,
+        bars=bars,
+        flow_ctx=None,
+        market_regime="Strong",
+        inst_summary=inst_summary,
+    )
+    assert res.get("instFlow", {}).get("display") == "-1.5亿 (机构净卖/拉萨主买)"
+    assert res.get("buyAction") == "avoid"
+    assert (res.get("buyChecks") or {}).get("blocked_inst_retail_chase") is True
+    assert any(a.get("code") == "inst_retail_chase" for a in (res.get("riskAlerts") or []))
+    if res.get("score") is not None:
+        assert float(res["score"]) <= 60.0

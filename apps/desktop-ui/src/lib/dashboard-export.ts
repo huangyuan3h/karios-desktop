@@ -17,6 +17,7 @@ import { chunk } from '@/lib/chunk';
 import {
   fmtAmountCn,
   fmtSignedAmountCn,
+  formatSrvIndexLine,
   mdTable,
   escapeMarkdownCell,
   mdLines,
@@ -50,6 +51,7 @@ import {
   computePnLPct,
   formatGapUp,
   formatHotTop3,
+  formatInstFlow,
   formatIntradayChgPct,
   formatPnLPct,
   formatRiskAlerts,
@@ -200,6 +202,7 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
   if (latest) {
     const risk = String(latest?.riskMode ?? '');
     if (risk) lines.push(`- risk: ${risk}`);
+    lines.push(`- ${formatSrvIndexLine(ms?.srvIndex)}`);
     const up = Number(latest?.upCount ?? 0);
     const down = Number(latest?.downCount ?? 0);
     if (up > 0 || down > 0) {
@@ -291,17 +294,29 @@ export function buildMacroMarkdown(s: DashboardSummary | null, heading = '##'): 
   lines.push(`${heading} Macro indices`);
   lines.push('');
 
-  const headers = ['Name', 'Close', 'Chg%', 'MA5', 'MA20', 'AsOfDate', 'Source'];
+  const headers = ['Name', 'Close', 'Chg%', 'Signal', 'MA5', 'MA20', 'AsOfDate', 'Source'];
   const rows: unknown[][] = macroItems.map((it: any) => {
     const pct = it?.pctChg;
     const chg =
       typeof pct === 'number' && Number.isFinite(pct)
         ? `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`
         : '—';
+    const isVol = it?.category === 'volatility';
+    const closeStr = Number.isFinite(it?.close)
+      ? isVol
+        ? `${Number(it.close).toFixed(1)}%`
+        : Number(it.close).toFixed(2)
+      : '—';
+    const signalStr = it?.signalLabel
+      ? it.signalLabel
+      : it?.signal
+        ? String(it.signal)
+        : '—';
     return [
       String(it?.name ?? it?.seriesId ?? ''),
-      Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
+      closeStr,
       chg,
+      signalStr,
       Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
       Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
       String(it?.asOfDate ?? ''),
@@ -629,6 +644,7 @@ export async function buildWatchlistMarkdown(queryClient?: QueryClient): Promise
       mdPrice(rowMetrics.current),
       formatVwap(rowMetrics.vwap),
       intradayCell,
+      formatInstFlow(t?.instFlow),
       gapCell,
       formatRiskAlerts(rowMetrics.alerts),
       formatPnLPct(pnl),

@@ -13,6 +13,7 @@ from data_sync_service.db.macro_daily import (
     get_latest_rows_batch,
 )
 from data_sync_service.service.macro_daily import (
+    SID_510300_PUT_IV,
     SID_A50,
     SID_COMM_COPPER,
     SID_COMM_ENERGY,
@@ -27,6 +28,7 @@ from data_sync_service.service.macro_snapshot_on_demand import (
     macro_snapshot_warning,
 )
 from data_sync_service.service.market_regime import get_index_signals
+from data_sync_service.service.option_iv import classify_iv_signal
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 MACRO_CARDS: list[dict[str, Any]] = [
@@ -84,6 +86,13 @@ MACRO_CARDS: list[dict[str, Any]] = [
         "name": "Copper (SHFE CU main)",
         "category": "commodity",
         "why": "Copper is a cyclical macro bellwether; relevant for basic materials.",
+        "realtimeTsCode": None,
+    },
+    {
+        "seriesId": SID_510300_PUT_IV,
+        "name": "300ETF Put IV",
+        "category": "volatility",
+        "why": "A-share fear gauge; rising put IV signals panic.",
         "realtimeTsCode": None,
     },
 ]
@@ -258,6 +267,14 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
     for m in macro_items:
         sid = str(m.get("seriesId") or "")
         _backfill_macro_pct_chg(m, closes_by_sid.get(sid))
+        if str(m.get("category") or "") == "volatility":
+            iv = _safe_float(m.get("close"))
+            pct = _safe_float(m.get("pctChg"))
+            if iv is not None:
+                signal, label = classify_iv_signal(iv_pct=iv, pct_chg=pct)
+                m["signal"] = signal
+                m["signalLabel"] = label
+                m["unit"] = "%"
 
     out: dict[str, Any] = {"cnIndexSignals": cn_index_signals, "macro": macro_items}
     warn = macro_snapshot_warning()

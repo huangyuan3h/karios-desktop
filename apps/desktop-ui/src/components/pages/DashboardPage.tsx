@@ -22,6 +22,8 @@ import {
   buildIndexTrafficSummary,
   fmtAmountCn,
   fmtSignedAmountCn,
+  formatSrvIndexLine,
+  srvIndexBadgeClass,
   fmtDateTime,
   loadCardOrder,
   saveCardOrder,
@@ -554,6 +556,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                     const down = Number(latest?.downCount ?? 0);
                     const flat = Number(latest?.flatCount ?? 0);
                     const breadthPanic = down >= BREADTH_PANIC_DOWN_THRESHOLD;
+                    const srvIndex: any = ms?.srvIndex ?? null;
+                    const srvLine = formatSrvIndexLine(srvIndex);
+                    const srvBadge = srvIndexBadgeClass(srvIndex?.level);
+                    const overlapSectors: string[] = Array.isArray(srvIndex?.overlapSectors)
+                      ? srvIndex.overlapSectors.map((x: any) => String(x)).filter(Boolean)
+                      : [];
                     const badge =
                       risk === 'extreme_caution' || breadthPanic
                         ? 'border-red-600/40 bg-red-600/15 text-red-700'
@@ -578,6 +586,18 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                 .slice(0, 2)
                                 .map((x: any) => String(x))
                                 .join(' • ')}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${srvBadge}`}>
+                          <div className="font-medium">{srvLine}</div>
+                          {srvIndex?.labelZh ? (
+                            <div className="mt-1 text-xs opacity-90">{String(srvIndex.labelZh)}</div>
+                          ) : null}
+                          {overlapSectors.length ? (
+                            <div className="mt-1 text-xs opacity-90">
+                              Overlap: {overlapSectors.join(', ')}
                             </div>
                           ) : null}
                         </div>

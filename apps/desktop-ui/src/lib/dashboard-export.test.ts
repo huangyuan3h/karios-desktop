@@ -144,6 +144,14 @@ describe('buildSentimentMarkdown', () => {
             },
           ],
         },
+        srvIndex: {
+          asOfDate: '2026-06-18',
+          dates: ['2026-06-16', '2026-06-17', '2026-06-18'],
+          overlapCount: 0,
+          overlapSectors: [],
+          level: 'Extreme_High',
+          labelZh: '恶性电风扇绞肉机',
+        },
       },
     };
 
@@ -153,6 +161,9 @@ describe('buildSentimentMarkdown', () => {
     expect(md).toContain('市场震荡，控制仓位。');
     expect(md).toContain('## Market sentiment');
     expect(md).toContain('- risk: neutral');
+    expect(md).toContain(
+      '- SRV_Index (Sector Rotation): Extreme_High (3D Overlap = 0)',
+    );
     expect(md).toContain('## Index traffic lights');
     expect(md).toContain('上证指数');
     expect(md).toContain('+0.35%');
