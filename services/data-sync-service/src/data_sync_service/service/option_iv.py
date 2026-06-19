@@ -183,11 +183,21 @@ def sync_option_iv_daily(*, force: bool = False, trade_date: str | None = None) 
     try:
         picked = fetch_510300_atm_put_iv_live()
     except Exception as e:
-        insert_record(job_type=JOB_TYPE, success=False, message=str(e)[:500], last_ts_code=None)
+        insert_record(
+            job_type=JOB_TYPE,
+            success=False,
+            last_ts_code=None,
+            error_message=str(e)[:500],
+        )
         return {"ok": False, "error": str(e), "jobType": JOB_TYPE}
 
     if not picked:
-        insert_record(job_type=JOB_TYPE, success=False, message="no_iv_data", last_ts_code=None)
+        insert_record(
+            job_type=JOB_TYPE,
+            success=False,
+            last_ts_code=None,
+            error_message="no_iv_data",
+        )
         return {"ok": False, "error": "no_iv_data", "jobType": JOB_TYPE}
 
     iv_pct = float(picked["ivPct"])
@@ -220,8 +230,8 @@ def sync_option_iv_daily(*, force: bool = False, trade_date: str | None = None) 
     insert_record(
         job_type=JOB_TYPE,
         success=True,
-        message=f"iv={iv_pct} contract={picked.get('contractName')}",
         last_ts_code=None,
+        error_message=None,
     )
     return {
         "ok": True,

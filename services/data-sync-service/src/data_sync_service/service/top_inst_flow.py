@@ -1,4 +1,4 @@
-"""Sync dragon-tiger institutional flow for watchlist symbols (Tushare + East Money)."""
+"""Sync dragon-tiger institutional flow for watchlist symbols (East Money HTTP only)."""
 
 from __future__ import annotations
 
@@ -10,10 +10,6 @@ import urllib.request
 from datetime import UTC, date, datetime
 from typing import Any
 
-import pandas as pd  # type: ignore[import-not-found, import-untyped]
-import tushare as ts  # type: ignore[import-not-found]
-
-from data_sync_service.config import get_settings
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
 from data_sync_service.db.top_inst import (
     ensure_table,
@@ -26,7 +22,14 @@ from data_sync_service.db.watchlist_automation import list_registry
 JOB_TYPE = "top_inst_watchlist"
 YI = 100_000_000.0  # 1亿 CNY
 LHASA_KEYWORDS = ("拉萨",)
+INST_SEAT_KEYWORDS = ("机构专用",)
 EM_DATACENTER_URL = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+EM_REPORT_ORG_TRADE = "RPT_ORGANIZATION_TRADE_DETAILSNEW"
+EM_REPORT_LHB_LIST = "RPT_DAILYBILLBOARD_DETAILSNEW"
+EM_REPORT_BUY_SEATS = "RPT_BILLBOARD_DAILYDETAILSBUY"
+EM_REPORT_SELL_SEATS = "RPT_BILLBOARD_DAILYDETAILSSELL"
+EM_PAGE_SIZE = 500
+EM_MAX_PAGES = 20
 
 
 def _now_iso() -> str:
@@ -41,13 +44,6 @@ def _yyyymmdd_to_iso(s: str) -> str:
     s2 = str(s).strip()
     if len(s2) == 8 and s2.isdigit():
         return f"{s2[:4]}-{s2[4:6]}-{s2[6:8]}"
-    return s2
-
-
-def _iso_to_yyyymmdd(s: str) -> str:
-    s2 = str(s).strip()
-    if len(s2) == 10 and s2[4] == "-":
-        return s2.replace("-", "")
     return s2
 
 
@@ -68,6 +64,28 @@ def _ts_code_to_ticker(ts_code: str) -> str | None:
         return None
     ticker = parts[0].strip()
     return ticker if len(ticker) == 6 and ticker.isdigit() else None
+
+
+def _ticker_to_ts_code(ticker: str) -> str:
+    t = str(ticker or "").strip()
+    suffix = "SH" if t.startswith("6") else "SZ"
+    return f"{t}.{suffix}"
+
+
+def _parse_cal_date(s: str) -> date:
+    s2 = str(s).strip()
+    if len(s2) == 8 and s2.isdigit():
+        return date(int(s2[:4]), int(s2[4:6]), int(s2[6:8]))
+    if len(s2) == 10 and s2[4] == "-":
+        y, m, d = s2.split("-")
+        return date(int(y), int(m), int(d))
+    raise ValueError(f"invalid cal_date: {s}")
+
+
+def _em_trade_date_filter(trade_date_iso: str) -> str:
+    """East Money filter for exact trade date (date part only)."""
+    d = trade_date_iso[:10]
+    return f"(TRADE_DATE='{d}')"
 
 
 def _with_retry(fn, *, tries: int = 3, base_sleep_s: float = 0.5, max_sleep_s: float = 3.0):
@@ -93,16 +111,9 @@ def _is_lhasa_seat(exalter: str) -> bool:
     return any(k in name for k in LHASA_KEYWORDS)
 
 
-def _fetch_top_inst_df(pro: Any, trade_date: str) -> pd.DataFrame:
-    df = _with_retry(
-        lambda: pro.top_inst(
-            trade_date=trade_date,
-            fields="trade_date,ts_code,exalter,buy,sell,net_buy,side,reason",
-        )
-    )
-    if df is None or not isinstance(df, pd.DataFrame):
-        return pd.DataFrame()
-    return df
+def _is_inst_seat(exalter: str) -> bool:
+    name = str(exalter or "")
+    return any(k in name for k in INST_SEAT_KEYWORDS)
 
 
 def _em_request(params: dict[str, str]) -> dict[str, Any]:
@@ -119,55 +130,180 @@ def _em_request(params: dict[str, str]) -> dict[str, Any]:
             "Connection": "close",
         },
     )
-    with urllib.request.urlopen(req, timeout=20) as resp:
+    with urllib.request.urlopen(req, timeout=25) as resp:
         raw = resp.read()
     j = json.loads(raw.decode("utf-8", errors="replace"))
     if not isinstance(j, dict):
         return {}
+    if not j.get("success"):
+        msg = str(j.get("message") or "eastmoney_request_failed")
+        code = j.get("code")
+        if code in (9201,):  # empty result
+            return {"success": True, "result": {"data": [], "pages": 0, "count": 0}}
+        raise RuntimeError(f"eastmoney_error: {msg} (code={code})")
     return j
 
 
-def fetch_em_lhb_buy_seats(*, ts_code: str, trade_date_iso: str) -> list[dict[str, Any]]:
-    """Fetch top buy seats from East Money for one symbol on one trade date."""
+def _em_fetch_pages(
+    *,
+    report_name: str,
+    filter_expr: str,
+    sort_columns: str = "TRADE_DATE",
+    sort_types: str = "-1",
+    page_size: int = EM_PAGE_SIZE,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    page_number = 1
+    total_pages = 1
+    while page_number <= total_pages and page_number <= EM_MAX_PAGES:
+        params = {
+            "reportName": report_name,
+            "columns": "ALL",
+            "pageSize": str(page_size),
+            "pageNumber": str(page_number),
+            "sortColumns": sort_columns,
+            "sortTypes": sort_types,
+            "source": "WEB",
+            "client": "WEB",
+            "filter": filter_expr,
+        }
+
+        def _fetch() -> dict[str, Any]:
+            return _em_request(params)
+
+        j = _with_retry(_fetch)
+        result = j.get("result") if isinstance(j, dict) else None
+        data = result.get("data") if isinstance(result, dict) else None
+        if not isinstance(data, list) or not data:
+            break
+        for row in data:
+            if isinstance(row, dict):
+                rows.append(row)
+        try:
+            total_pages = int((result or {}).get("pages") or 1)
+        except (TypeError, ValueError):
+            total_pages = 1
+        page_number += 1
+        time.sleep(0.04 + random.random() * 0.02)
+    return rows
+
+
+def fetch_em_lhb_tickers_on_date(trade_date_iso: str) -> set[str]:
+    """All A-share tickers on dragon-tiger list for trade_date."""
+    date_filter = _em_trade_date_filter(trade_date_iso)
+    rows = _em_fetch_pages(report_name=EM_REPORT_LHB_LIST, filter_expr=date_filter)
+    out: set[str] = set()
+    for row in rows:
+        code = str(row.get("SECURITY_CODE") or "").strip()
+        if len(code) == 6 and code.isdigit():
+            out.add(code)
+    return out
+
+
+def fetch_em_org_trades_on_date(trade_date_iso: str) -> dict[str, dict[str, Any]]:
+    """Map SECURITY_CODE -> org trade row for trade_date."""
+    date_filter = _em_trade_date_filter(trade_date_iso)
+    rows = _em_fetch_pages(
+        report_name=EM_REPORT_ORG_TRADE,
+        filter_expr=date_filter,
+        sort_columns="NET_BUY_AMT",
+        sort_types="-1",
+    )
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        code = str(row.get("SECURITY_CODE") or "").strip()
+        if code:
+            out[code] = row
+    return out
+
+
+def _seat_rows_from_report(
+    *,
+    report_name: str,
+    ts_code: str,
+    trade_date_iso: str,
+    side: str,
+) -> list[dict[str, Any]]:
     ticker = _ts_code_to_ticker(ts_code)
     if not ticker:
         return []
-    params = {
-        "sortColumns": "BUY",
-        "sortTypes": "-1",
-        "pageSize": "10",
-        "pageNumber": "1",
-        "reportName": "RPT_BILLBOARD_DAILYDETAILSBUY",
-        "columns": "ALL",
-        "source": "WEB",
-        "client": "WEB",
-        "filter": f'(SECURITY_CODE="{ticker}")(TRADE_DATE=\'{trade_date_iso}\')',
-    }
+    filter_expr = (
+        f'(SECURITY_CODE="{ticker}")'
+        f"{_em_trade_date_filter(trade_date_iso)}"
+    )
+    sort_col = "BUY" if side == "buy" else "SELL"
     try:
-        j = _em_request(params)
+        rows = _em_fetch_pages(
+            report_name=report_name,
+            filter_expr=filter_expr,
+            sort_columns=sort_col,
+            sort_types="-1",
+            page_size=50,
+        )
     except Exception:
         return []
-    result = j.get("result") if isinstance(j, dict) else None
-    data = result.get("data") if isinstance(result, dict) else None
-    if not isinstance(data, list):
-        return []
     out: list[dict[str, Any]] = []
-    for row in data:
-        if not isinstance(row, dict):
+    for row in rows:
+        exalter = str(row.get("OPERATEDEPT_NAME") or row.get("OPERATEDEPT_NAME_ABBR") or "").strip()
+        if not exalter:
             continue
-        exalter = str(
-            row.get("OPERATEDEPT_NAME")
-            or row.get("OPERATEDEPT_NAME_ABBR")
-            or row.get("DEPT_NAME")
-            or ""
-        ).strip()
-        buy = row.get("BUY") or row.get("BUY_AMT") or row.get("BUY_AMOUNT")
+        buy = row.get("BUY")
+        sell = row.get("SELL")
+        net = row.get("NET")
         try:
-            buy_val = float(buy) if buy is not None else 0.0
+            buy_v = float(buy) if buy is not None else None
         except (TypeError, ValueError):
-            buy_val = 0.0
-        if exalter:
-            out.append({"exalter": exalter, "buy": buy_val})
+            buy_v = None
+        try:
+            sell_v = float(sell) if sell is not None else None
+        except (TypeError, ValueError):
+            sell_v = None
+        try:
+            net_v = float(net) if net is not None else None
+        except (TypeError, ValueError):
+            net_v = None
+        out.append(
+            {
+                "exalter": exalter,
+                "buy": buy_v,
+                "sell": sell_v,
+                "net_buy": net_v,
+                "side": side,
+                "reason": str(row.get("EXPLANATION") or row.get("EXPLAIN") or "") or None,
+            }
+        )
+    return out
+
+
+def fetch_em_lhb_buy_seats(*, ts_code: str, trade_date_iso: str) -> list[dict[str, Any]]:
+    """Top buy seats from East Money for one symbol on one trade date."""
+    rows = _seat_rows_from_report(
+        report_name=EM_REPORT_BUY_SEATS,
+        ts_code=ts_code,
+        trade_date_iso=trade_date_iso,
+        side="buy",
+    )
+    return [{"exalter": r["exalter"], "buy": r.get("buy") or 0.0} for r in rows if r.get("exalter")]
+
+
+def fetch_em_inst_seat_rows(*, ts_code: str, trade_date_iso: str) -> list[dict[str, Any]]:
+    """Institutional seat rows (机构专用) for daily table persistence."""
+    buy_rows = _seat_rows_from_report(
+        report_name=EM_REPORT_BUY_SEATS,
+        ts_code=ts_code,
+        trade_date_iso=trade_date_iso,
+        side="buy",
+    )
+    sell_rows = _seat_rows_from_report(
+        report_name=EM_REPORT_SELL_SEATS,
+        ts_code=ts_code,
+        trade_date_iso=trade_date_iso,
+        side="sell",
+    )
+    out: list[dict[str, Any]] = []
+    for row in buy_rows + sell_rows:
+        if _is_inst_seat(str(row.get("exalter") or "")):
+            out.append(row)
     return out
 
 
@@ -225,22 +361,13 @@ def build_inst_flow_payload(summary: dict[str, Any] | None) -> dict[str, Any] | 
     }
 
 
-def _parse_cal_date(s: str) -> date:
-    s2 = str(s).strip()
-    if len(s2) == 8 and s2.isdigit():
-        return date(int(s2[:4]), int(s2[4:6]), int(s2[6:8]))
-    if len(s2) == 10 and s2[4] == "-":
-        y, m, d = s2.split("-")
-        return date(int(y), int(m), int(d))
-    raise ValueError(f"invalid cal_date: {s}")
-
-
 def _latest_cn_trade_date_yyyymmdd() -> str | None:
     today = _parse_cal_date(_today_yyyymmdd())
     open_dates = get_open_dates(exchange="SSE", start_date=date(2020, 1, 1), end_date=today)
     if not open_dates:
         return None
-    return str(open_dates[-1])
+    last = open_dates[-1]
+    return last.strftime("%Y%m%d") if hasattr(last, "strftime") else str(last)
 
 
 def _watchlist_ts_codes() -> list[str]:
@@ -255,15 +382,20 @@ def _watchlist_ts_codes() -> list[str]:
     return codes
 
 
+def _safe_float(v: Any) -> float | None:
+    try:
+        f = float(v)
+        return f if f == f else None
+    except (TypeError, ValueError):
+        return None
+
+
 def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = None) -> dict[str, Any]:
     """
-    Sync top_inst rows + summaries for watchlist CN symbols on trade_date.
-    Requires TU_SHARE_API_KEY; East Money used for Lhasa seat detection.
+    Sync dragon-tiger institutional flow for watchlist CN symbols via East Money.
+    No Tushare dependency; amounts are CNY yuan from EM org-trade report.
     """
     ensure_table()
-    settings = get_settings()
-    if not settings.tu_share_api_key:
-        return {"ok": False, "error": "missing_tu_share_api_key", "jobType": JOB_TYPE}
 
     if not force:
         existing = get_today_run(JOB_TYPE)
@@ -290,78 +422,37 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
         insert_record(
             job_type=JOB_TYPE,
             success=True,
-            message="empty_watchlist",
             last_ts_code=None,
+            error_message=None,
         )
         return {"ok": True, "skipped": True, "reason": "empty_watchlist", "tradeDate": td_iso}
 
-    watch_set = set(watchlist_codes)
-    pro = ts.pro_api(settings.tu_share_api_key)
-
     try:
-        df = _fetch_top_inst_df(pro, td)
+        lhb_tickers = fetch_em_lhb_tickers_on_date(td_iso)
+        org_by_ticker = fetch_em_org_trades_on_date(td_iso)
     except Exception as e:
         insert_record(
             job_type=JOB_TYPE,
             success=False,
-            message=str(e)[:500],
             last_ts_code=None,
+            error_message=str(e)[:500],
         )
-        return {"ok": False, "error": str(e), "jobType": JOB_TYPE, "tradeDate": td_iso}
-
-    if df.empty:
-        summaries = [
-            {
-                "trade_date": td_iso,
-                "ts_code": code,
-                "inst_net_buy": None,
-                "inst_net_buy_yi": None,
-                "seat_label": None,
-                "lhasa_dominant": False,
-                "on_board": False,
-            }
-            for code in watchlist_codes
-        ]
-        upsert_summary_rows(summaries)
-        insert_record(job_type=JOB_TYPE, success=True, message="no_top_inst_rows", last_ts_code=None)
-        return {
-            "ok": True,
-            "tradeDate": td_iso,
-            "onBoardCount": 0,
-            "dailyRows": 0,
-            "summaryRows": len(summaries),
-        }
+        return {"ok": False, "error": str(e), "jobType": JOB_TYPE, "tradeDate": td_iso, "source": "eastmoney"}
 
     daily_rows: list[dict[str, Any]] = []
-    on_board_codes: set[str] = set()
-    grouped = df.groupby("ts_code") if "ts_code" in df.columns else []
-
-    for ts_code, group in grouped:
-        code = str(ts_code).strip()
-        if code not in watch_set:
-            continue
-        on_board_codes.add(code)
-        for _, row in group.iterrows():
-            daily_rows.append(
-                {
-                    "trade_date": td_iso,
-                    "ts_code": code,
-                    "exalter": str(row.get("exalter") or "").strip(),
-                    "buy": row.get("buy"),
-                    "sell": row.get("sell"),
-                    "net_buy": row.get("net_buy"),
-                    "side": row.get("side"),
-                    "reason": row.get("reason"),
-                }
-            )
-
     summary_rows: list[dict[str, Any]] = []
-    for code in watchlist_codes:
-        if code not in on_board_codes:
+    on_board_count = 0
+
+    for ts_code in watchlist_codes:
+        ticker = _ts_code_to_ticker(ts_code)
+        if not ticker:
+            continue
+        on_board = ticker in lhb_tickers
+        if not on_board:
             summary_rows.append(
                 {
                     "trade_date": td_iso,
-                    "ts_code": code,
+                    "ts_code": ts_code,
                     "inst_net_buy": None,
                     "inst_net_buy_yi": None,
                     "seat_label": None,
@@ -371,26 +462,44 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
             )
             continue
 
-        group = df[df["ts_code"] == code]
-        inst_net = 0.0
-        for _, row in group.iterrows():
-            try:
-                inst_net += float(row.get("net_buy") or 0.0)
-            except (TypeError, ValueError):
-                pass
+        on_board_count += 1
+        org_row = org_by_ticker.get(ticker) or {}
+        inst_net = _safe_float(org_row.get("NET_BUY_AMT"))
+        if inst_net is None:
+            inst_net = 0.0
         inst_net_yi = inst_net / YI
 
         buy_seats: list[dict[str, Any]] = []
+        inst_seats: list[dict[str, Any]] = []
         try:
-            buy_seats = fetch_em_lhb_buy_seats(ts_code=code, trade_date_iso=td_iso)
+            buy_seats = fetch_em_lhb_buy_seats(ts_code=ts_code, trade_date_iso=td_iso)
+            inst_seats = fetch_em_inst_seat_rows(ts_code=ts_code, trade_date_iso=td_iso)
         except Exception:
             buy_seats = []
+            inst_seats = []
+
         lhasa = detect_lhasa_dominant(buy_seats)
         label = classify_seat_label(inst_net_buy=inst_net, lhasa_dominant=lhasa)
+        reason = str(org_row.get("EXPLANATION") or "") or None
+
+        for seat in inst_seats:
+            daily_rows.append(
+                {
+                    "trade_date": td_iso,
+                    "ts_code": ts_code,
+                    "exalter": seat.get("exalter"),
+                    "buy": seat.get("buy"),
+                    "sell": seat.get("sell"),
+                    "net_buy": seat.get("net_buy"),
+                    "side": seat.get("side"),
+                    "reason": seat.get("reason") or reason,
+                }
+            )
+
         summary_rows.append(
             {
                 "trade_date": td_iso,
-                "ts_code": code,
+                "ts_code": ts_code,
                 "inst_net_buy": inst_net,
                 "inst_net_buy_yi": round(inst_net_yi, 2),
                 "seat_label": label,
@@ -405,13 +514,16 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
     insert_record(
         job_type=JOB_TYPE,
         success=True,
-        message=f"daily={daily_n} summary={summary_n}",
         last_ts_code=None,
+        error_message=None,
     )
     return {
         "ok": True,
         "tradeDate": td_iso,
-        "onBoardCount": len(on_board_codes),
+        "source": "eastmoney",
+        "onBoardCount": on_board_count,
+        "lhbCount": len(lhb_tickers),
+        "orgTradeCount": len(org_by_ticker),
         "dailyRows": daily_n,
         "summaryRows": summary_n,
     }

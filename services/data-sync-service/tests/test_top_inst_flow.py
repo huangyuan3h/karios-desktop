@@ -8,10 +8,12 @@ from data_sync_service.service.option_iv import (
     select_atm_put_iv,
 )
 from data_sync_service.service.top_inst_flow import (
+    _is_inst_seat,
     build_inst_flow_payload,
     classify_seat_label,
     detect_lhasa_dominant,
     format_inst_flow_display,
+    _safe_float,
 )
 
 
@@ -100,3 +102,20 @@ def test_classify_iv_signal_complacent() -> None:
 
 def test_compute_iv_pct_chg() -> None:
     assert compute_iv_pct_chg(28.5, 24.0) == 18.75
+
+
+def test_is_inst_seat() -> None:
+    assert _is_inst_seat("机构专用") is True
+    assert _is_inst_seat("东方财富拉萨团结路") is False
+
+
+def test_safe_float() -> None:
+    assert _safe_float("816710018.96") == 816710018.96
+    assert _safe_float(None) is None
+
+
+def test_org_net_from_em_row() -> None:
+    inst_net = _safe_float(816710018.96) or 0.0
+    assert round(inst_net / 100_000_000.0, 2) == 8.17
+    label = classify_seat_label(inst_net_buy=inst_net, lhasa_dominant=False)
+    assert label == "机构主买"
