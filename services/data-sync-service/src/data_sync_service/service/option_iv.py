@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import sys
+import time
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -20,6 +21,9 @@ UNDERLYING_TS_CODE = "510300.SH"
 EM_OPTION_VALUE_URL = "https://push2.eastmoney.com/api/qt/clist/get"
 EM_OPTION_PAGE_SIZE = 100
 EM_OPTION_MAX_PAGES = 20
+PUT_IV_SNAPSHOT_CACHE_TTL_SECONDS = 120.0
+_PUT_IV_SNAPSHOT_CACHE: dict[str, Any] = {"ts": 0.0, "value": None}
+_LAST_PUT_IV_DIAGNOSTICS: dict[str, Any] = {}
 
 
 def _now_iso() -> str:
@@ -212,30 +216,71 @@ def select_atm_put_iv(df: pd.DataFrame) -> dict[str, Any] | None:
     return best
 
 
+def _count_510300_put_rows(df: pd.DataFrame) -> int:
+    if df is None or df.empty or "期权名称" not in df.columns:
+        return 0
+    try:
+        return int(df["期权名称"].astype(str).map(_is_510300_put_row).sum())
+    except Exception:
+        return 0
+
+
+def _compact_diagnostics(diag: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in diag.items() if v is not None}
+
+
 def fetch_510300_atm_put_iv_live(*, source: str | None = None) -> dict[str, Any] | None:
     """Fetch ATM put IV; prefer East Money HTTP, AkShare as fallback."""
+    global _LAST_PUT_IV_DIAGNOSTICS
     picked: dict[str, Any] | None = None
     used_source = "eastmoney"
+    diagnostics: dict[str, Any] = {
+        "eastmoneyRows": 0,
+        "eastmoneyPutRows": 0,
+        "eastmoneySelected": False,
+        "akshareAttempted": False,
+        "akshareRows": None,
+        "aksharePutRows": None,
+        "akshareSelected": False,
+        "akshareSkippedReason": None,
+        "error": None,
+    }
     try:
         em_rows = _fetch_em_option_value_rows()
-        picked = select_atm_put_iv(_em_rows_to_analysis_df(em_rows))
-    except Exception:
+        diagnostics["eastmoneyRows"] = len(em_rows)
+        em_df = _em_rows_to_analysis_df(em_rows)
+        diagnostics["eastmoneyPutRows"] = _count_510300_put_rows(em_df)
+        picked = select_atm_put_iv(em_df)
+        diagnostics["eastmoneySelected"] = picked is not None
+    except Exception as e:
+        diagnostics["eastmoneyError"] = str(e)[:200]
         picked = None
-    if picked is None and sys.platform != "darwin":
-        try:
-            ak = _akshare()
-            df = ak.option_value_analysis_em()
-            picked = select_atm_put_iv(df)
-            used_source = "akshare"
-        except Exception:
-            picked = None
+
     if picked is None:
+        if sys.platform == "darwin":
+            diagnostics["akshareSkippedReason"] = "akshare_disabled_on_darwin"
+        else:
+            diagnostics["akshareAttempted"] = True
+            try:
+                ak = _akshare()
+                df = ak.option_value_analysis_em()
+                diagnostics["akshareRows"] = int(len(df)) if hasattr(df, "__len__") else None
+                diagnostics["aksharePutRows"] = _count_510300_put_rows(df)
+                picked = select_atm_put_iv(df)
+                diagnostics["akshareSelected"] = picked is not None
+                used_source = "akshare"
+            except Exception as e:
+                diagnostics["akshareError"] = str(e)[:200]
+                picked = None
+
+    if picked is None:
+        diagnostics["error"] = "no_510300_put_iv_candidate"
+        _LAST_PUT_IV_DIAGNOSTICS = _compact_diagnostics(diagnostics)
         return None
-    if source is not None:
-        picked = {**picked, "source": source}
-    else:
-        picked = {**picked, "source": used_source}
-    return picked
+
+    data_source = source if source is not None else used_source
+    _LAST_PUT_IV_DIAGNOSTICS = _compact_diagnostics(diagnostics)
+    return {**picked, "source": data_source, "diagnostics": _LAST_PUT_IV_DIAGNOSTICS}
 
 
 def _shanghai_today_iso() -> str:
@@ -244,12 +289,17 @@ def _shanghai_today_iso() -> str:
     return datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
 
 
-def resolve_put_iv_for_snapshot(*, write_db: bool = True) -> dict[str, Any]:
+def resolve_put_iv_for_snapshot(*, write_db: bool = True, use_cache: bool = True) -> dict[str, Any]:
     """
     Live-first Put IV for macro snapshot; optional best-effort DB upsert.
     Falls back to latest macro_daily row when live fetch fails.
     """
-    warning: str | None = None
+    now = time.monotonic()
+    cached = _PUT_IV_SNAPSHOT_CACHE.get("value")
+    cached_ts = float(_PUT_IV_SNAPSHOT_CACHE.get("ts") or 0.0)
+    if use_cache and isinstance(cached, dict) and now - cached_ts < PUT_IV_SNAPSHOT_CACHE_TTL_SECONDS:
+        return {**cached, "cached": True}
+
     prev_row = get_latest_row(SID_510300_PUT_IV)
     prev_close = None
     if prev_row and prev_row.get("close") is not None:
@@ -260,10 +310,17 @@ def resolve_put_iv_for_snapshot(*, write_db: bool = True) -> dict[str, Any]:
 
     picked: dict[str, Any] | None = None
     fetch_error: str | None = None
+    diagnostics: dict[str, Any] | None = None
     try:
         picked = fetch_510300_atm_put_iv_live()
+        if picked and isinstance(picked.get("diagnostics"), dict):
+            diagnostics = picked.get("diagnostics")
+        elif _LAST_PUT_IV_DIAGNOSTICS:
+            diagnostics = dict(_LAST_PUT_IV_DIAGNOSTICS)
     except Exception as e:
         fetch_error = str(e)[:200]
+        if _LAST_PUT_IV_DIAGNOSTICS:
+            diagnostics = dict(_LAST_PUT_IV_DIAGNOSTICS)
 
     if picked:
         iv_pct = float(picked["ivPct"])
@@ -292,7 +349,7 @@ def resolve_put_iv_for_snapshot(*, write_db: bool = True) -> dict[str, Any]:
                 )
             except Exception:
                 pass
-        return {
+        out = {
             "close": iv_pct,
             "asOfDate": as_of,
             "pctChg": pct_chg,
@@ -302,8 +359,13 @@ def resolve_put_iv_for_snapshot(*, write_db: bool = True) -> dict[str, Any]:
             "underlyingTsCode": UNDERLYING_TS_CODE,
             "realtime": True,
             "warning": None,
+            "diagnostics": diagnostics or {},
+            "cached": False,
         }
+        _PUT_IV_SNAPSHOT_CACHE.update({"ts": now, "value": out})
+        return out
 
+    warning = fetch_error or "put_iv_fetch_failed"
     if prev_row and prev_row.get("close") is not None:
         try:
             iv_pct = float(prev_row["close"])
@@ -317,7 +379,7 @@ def resolve_put_iv_for_snapshot(*, write_db: bool = True) -> dict[str, Any]:
                 iv_pct=iv_pct,
                 pct_chg=float(pct_chg) if pct_chg is not None else None,
             )
-            return {
+            out = {
                 "close": iv_pct,
                 "asOfDate": str(prev_row.get("trade_date") or ""),
                 "pctChg": pct_chg,
@@ -326,10 +388,14 @@ def resolve_put_iv_for_snapshot(*, write_db: bool = True) -> dict[str, Any]:
                 "signalLabel": signal_label,
                 "underlyingTsCode": UNDERLYING_TS_CODE,
                 "realtime": False,
-                "warning": fetch_error or "put_iv_live_fetch_failed_using_db",
+                "warning": "put_iv_live_fetch_failed_using_db" if warning == "put_iv_fetch_failed" else warning,
+                "diagnostics": diagnostics or {},
+                "cached": False,
             }
+            _PUT_IV_SNAPSHOT_CACHE.update({"ts": now, "value": out})
+            return out
 
-    return {
+    out = {
         "close": None,
         "asOfDate": None,
         "pctChg": None,
@@ -338,8 +404,12 @@ def resolve_put_iv_for_snapshot(*, write_db: bool = True) -> dict[str, Any]:
         "signalLabel": None,
         "underlyingTsCode": UNDERLYING_TS_CODE,
         "realtime": False,
-        "warning": fetch_error or "put_iv_fetch_failed",
+        "warning": warning,
+        "diagnostics": diagnostics or {},
+        "cached": False,
     }
+    _PUT_IV_SNAPSHOT_CACHE.update({"ts": now, "value": out})
+    return out
 
 
 def _safe_float(v: Any) -> float | None:
@@ -411,13 +481,14 @@ def sync_option_iv_daily(*, force: bool = False, trade_date: str | None = None) 
         return {"ok": False, "error": str(e), "jobType": JOB_TYPE}
 
     if not picked:
+        diag = dict(_LAST_PUT_IV_DIAGNOSTICS)
         insert_record(
             job_type=JOB_TYPE,
             success=False,
             last_ts_code=None,
             error_message="no_iv_data",
         )
-        return {"ok": False, "error": "no_iv_data", "jobType": JOB_TYPE}
+        return {"ok": False, "error": "no_iv_data", "jobType": JOB_TYPE, "diagnostics": diag}
 
     iv_pct = float(picked["ivPct"])
     data_source = str(picked.get("source") or "eastmoney")
@@ -463,4 +534,5 @@ def sync_option_iv_daily(*, force: bool = False, trade_date: str | None = None) 
         "contractName": picked.get("contractName"),
         "source": data_source,
         "rowsUpserted": n,
+        "diagnostics": picked.get("diagnostics") if isinstance(picked.get("diagnostics"), dict) else {},
     }

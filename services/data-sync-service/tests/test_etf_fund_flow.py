@@ -5,6 +5,7 @@ from datetime import date
 import pytest
 
 from data_sync_service.service import etf_fund_flow as svc
+from data_sync_service.service.etf_fund_flow_em import EM_ETF_FLOW_SOURCE
 
 
 def test_compute_avg_price_vwap() -> None:
@@ -195,6 +196,120 @@ def test_build_etf_fund_flow_bundle_em_read_path(monkeypatch: pytest.MonkeyPatch
     hs300 = next(x for x in out["items"] if x["symbol"] == "510300")
     assert hs300["netFlow1d"] == pytest.approx(12_000_000.0)
     assert hs300["flowAsOfDate"] is None
-    assert hs300["source"] == "eastmoney"
+    assert hs300["source"] == EM_ETF_FLOW_SOURCE
     assert hs300["signal"] == "National Team Buy"
     assert out["intradaySafe"] is False
+
+
+def test_build_etf_fund_flow_bundle_realtime_row_not_lagged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [
+        {
+            "ts_code": "510300.SH",
+            "trade_date": "2026-06-18",
+            "fd_share": 102.0,
+            "close": 4.2,
+            "avg_price": 4.2,
+            "net_inflow": 52_300_000.0,
+            "updated_at": "t",
+        },
+        {
+            "ts_code": "510300.SH",
+            "trade_date": "2026-06-19",
+            "fd_share": 103.0,
+            "close": 4.25,
+            "avg_price": 4.25,
+            "net_inflow": 30_000_000.0,
+            "updated_at": "t",
+        },
+        {
+            "ts_code": "510300.SH",
+            "trade_date": "2026-06-22",
+            "fd_share": None,
+            "close": 4.3,
+            "avg_price": 4.3,
+            "net_inflow": 12_000_000.0,
+            "updated_at": "t",
+            "source": EM_ETF_FLOW_SOURCE,
+            "trade_time": "2026-06-22T06:30:00+00:00",
+            "main_net_inflow": 12_000_000.0,
+            "super_large_net_inflow": 7_000_000.0,
+            "large_net_inflow": 5_000_000.0,
+            "medium_net_inflow": -1_000_000.0,
+            "small_net_inflow": -11_000_000.0,
+        },
+    ]
+    open_dates = [date(2026, 6, 18), date(2026, 6, 19), date(2026, 6, 22)]
+
+    monkeypatch.setattr(svc, "ensure_table", lambda: None)
+    monkeypatch.setattr(svc, "get_latest_date", lambda: "2026-06-22")
+    monkeypatch.setattr(svc, "fetch_rows_for_codes", lambda *_a, **_k: rows)
+    monkeypatch.setattr(svc, "get_open_dates", lambda *_a, **_k: open_dates)
+
+    out = svc.build_etf_fund_flow_bundle(as_of_date="2026-06-22")
+    hs300 = next(x for x in out["items"] if x["symbol"] == "510300")
+    assert out["shareLag"] is True
+    assert hs300["netFlow1d"] == pytest.approx(12_000_000.0)
+    assert hs300["flowAsOfDate"] is None
+    assert hs300["source"] == EM_ETF_FLOW_SOURCE
+    assert hs300["tradeTime"] == "2026-06-22T06:30:00+00:00"
+    assert hs300["superLargeNetInflow"] == pytest.approx(7_000_000.0)
+    assert hs300["largeNetInflow"] == pytest.approx(5_000_000.0)
+    assert hs300["signal"] == "National Team Buy"
+
+
+def test_sync_etf_fund_flow_watchlist_uses_eastmoney_primary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[dict] = []
+    records: list[dict] = []
+
+    monkeypatch.setattr(svc, "_should_skip_etf_sync_today", lambda *, force: False)
+    monkeypatch.setattr(svc, "ensure_table", lambda: None)
+    monkeypatch.setattr(svc, "_today_yyyymmdd", lambda: "20260622")
+    monkeypatch.setattr(svc, "_now_iso", lambda: "now")
+    monkeypatch.setattr(svc, "_sync_tushare_history_if_available", lambda **_kw: 0)
+    monkeypatch.setattr(
+        svc,
+        "fetch_em_etf_realtime_flow_for_symbols",
+        lambda _symbols: {
+            "510300": {
+                "fdShareWan": None,
+                "latestPrice": 4.3,
+                "mainNetInflow": 12_000_000.0,
+                "superLargeNetInflow": 7_000_000.0,
+                "largeNetInflow": 5_000_000.0,
+                "mediumNetInflow": -1_000_000.0,
+                "smallNetInflow": -11_000_000.0,
+                "tradeTime": "2026-06-22T06:30:00+00:00",
+                "source": EM_ETF_FLOW_SOURCE,
+            }
+        },
+    )
+    monkeypatch.setattr(
+        svc,
+        "upsert_daily_rows",
+        lambda rows: captured.extend(rows) or len(rows),
+    )
+    monkeypatch.setattr(
+        svc,
+        "insert_record",
+        lambda **kwargs: records.append(kwargs),
+    )
+
+    out = svc.sync_etf_fund_flow_watchlist(force=True)
+
+    assert out["ok"] is True
+    assert out["source"] == EM_ETF_FLOW_SOURCE
+    assert captured
+    row = captured[0]
+    assert row["ts_code"] == "510300.SH"
+    assert row["trade_date"] == "2026-06-22"
+    assert row["fd_share"] is None
+    assert row["net_inflow"] == pytest.approx(12_000_000.0)
+    assert row["main_net_inflow"] == pytest.approx(12_000_000.0)
+    assert row["super_large_net_inflow"] == pytest.approx(7_000_000.0)
+    assert row["large_net_inflow"] == pytest.approx(5_000_000.0)
+    assert row["source"] == EM_ETF_FLOW_SOURCE
+    assert records and records[0]["success"] is True

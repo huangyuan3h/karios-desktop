@@ -130,7 +130,11 @@ describe('buildSentimentMarkdown', () => {
               name: '沪深300 ETF',
               symbol: '510300',
               netFlow1d: 5_230_000_000,
+              superLargeNetInflow: 3_100_000_000,
+              largeNetInflow: 2_130_000_000,
               netFlow3d: 12_050_000_000,
+              tradeTime: '2026-06-18T06:30:00+00:00',
+              source: 'eastmoney.realtime_flow',
               signal: 'National Team Buy',
               signalDisplay: '🛡️ National Team Buy',
             },
@@ -138,7 +142,11 @@ describe('buildSentimentMarkdown', () => {
               name: '半导体 ETF',
               symbol: '512480',
               netFlow1d: -1_240_000_000,
+              superLargeNetInflow: -800_000_000,
+              largeNetInflow: -440_000_000,
               netFlow3d: -3_520_000_000,
+              tradeTime: '2026-06-18T06:30:00+00:00',
+              source: 'eastmoney.realtime_flow',
               signal: 'Inst Outflow',
               signalDisplay: '⚠️ Inst Outflow',
             },
@@ -169,7 +177,9 @@ describe('buildSentimentMarkdown', () => {
     expect(md).toContain('+0.35%');
     expect(md).toContain('| date | up | down |');
     expect(md).toContain('## ETF Fund Flow (Top Watchlist)');
-    expect(md).toContain('| 沪深300 ETF | 510300 | +52.30亿 | +120.50亿 | — | — |');
+    expect(md).toContain(
+      '| 沪深300 ETF | 510300 | +52.30亿 | +31.00亿 | +21.30亿 | +120.50亿 | 2026-06-18T06:30:00+00:00 | eastmoney.realtime_flow |',
+    );
     expect(md).toContain('🛡️ National Team Buy');
     expect(md).toContain('⚠️ Inst Outflow');
   });

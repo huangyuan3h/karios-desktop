@@ -791,7 +791,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                               </div>
                               {etfFlow?.shareLag ? (
                                 <div className="mb-2 text-xs text-amber-600 dark:text-amber-400">
-                                  Share data may lag (T+1). Stale 1D flows are not used for signals
+                                  Realtime East Money flow is incomplete. Missing rows are excluded from intraday signals
                                   {etfFlow?.intradaySafe === false ? ' — not safe for intraday decisions' : ''}.
                                 </div>
                               ) : null}
@@ -801,25 +801,34 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                     <tr className="text-left">
                                       <th className="px-2 py-2">ETF Name</th>
                                       <th className="px-2 py-2 font-mono">Symbol</th>
-                                      <th className="px-2 py-2 text-right">1D Net Flow</th>
+                                      <th className="px-2 py-2 text-right">Main Flow</th>
+                                      <th className="px-2 py-2 text-right">Super/Large</th>
                                       <th className="px-2 py-2 text-right">3D Net Flow</th>
-                                      <th className="px-2 py-2">Flow AsOf</th>
+                                      <th className="px-2 py-2">Realtime AsOf</th>
                                       <th className="px-2 py-2">Source</th>
                                       <th className="px-2 py-2">Signal</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {etfItems.map((it: any, idx: number) => {
+                                      const source = String(it?.source ?? '');
+                                      const isRealtime = source === 'eastmoney.realtime_flow';
                                       const flow1dStale =
+                                        !isRealtime &&
                                         it?.netFlow1d == null &&
                                         (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
                                       const flow1dDisplay = flow1dStale
-                                        ? '— (T-1)'
+                                        ? '— (stale)'
                                         : fmtSignedAmountCn(it?.netFlow1d);
+                                      const superLargeFlow = fmtSignedAmountCn(it?.superLargeNetInflow);
+                                      const largeFlow = fmtSignedAmountCn(it?.largeNetInflow);
                                       const signalText = String(
                                         it?.signalDisplay ?? it?.signal ?? '—',
                                       );
                                       const isDataLag = String(it?.signal ?? '') === 'Data Lag';
+                                      const realtimeAsOf = String(
+                                        it?.tradeTime ?? it?.flowAsOfDate ?? etfFlow?.asOfDate ?? '—',
+                                      );
                                       return (
                                       <tr key={idx} className="border-t border-[var(--k-border)]">
                                         <td className="px-2 py-2">{String(it?.name ?? '')}</td>
@@ -830,10 +839,13 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                           {flow1dDisplay}
                                         </td>
                                         <td className="px-2 py-2 text-right font-mono">
+                                          {superLargeFlow}/{largeFlow}
+                                        </td>
+                                        <td className="px-2 py-2 text-right font-mono">
                                           {fmtSignedAmountCn(it?.netFlow3d)}
                                         </td>
                                         <td className="px-2 py-2 font-mono">
-                                          {String(it?.flowAsOfDate ?? '—')}
+                                          {realtimeAsOf}
                                         </td>
                                         <td className="px-2 py-2 font-mono">
                                           {String(it?.source ?? '—')}
@@ -853,7 +865,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                       <tr>
                                         <td
                                           className="px-2 py-3 text-sm text-[var(--k-muted)]"
-                                          colSpan={7}
+                                          colSpan={8}
                                         >
                                           No ETF fund flow cached yet. Click &quot;Sync
                                           sentiment&quot;.

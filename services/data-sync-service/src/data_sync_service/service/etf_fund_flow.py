@@ -1,4 +1,4 @@
-"""ETF fund-flow sync via Tushare fund_daily + fund_share for dashboard watchlist."""
+"""ETF fund-flow sync via East Money realtime flows for dashboard watchlist."""
 
 from __future__ import annotations
 
@@ -19,7 +19,11 @@ from data_sync_service.db.etf_fund_flow import (
     get_latest_date,
     upsert_daily_rows,
 )
-from data_sync_service.service.etf_fund_flow_em import fetch_em_etf_spot_for_symbols
+from data_sync_service.service.etf_fund_flow_em import (
+    EM_ETF_FLOW_SOURCE,
+    fetch_em_etf_realtime_flow_for_symbols,
+    fetch_em_etf_spot_for_symbols,
+)
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
 from data_sync_service.db.trade_calendar import get_open_dates
 from data_sync_service.service.market_regime import _is_shanghai_sync_window
@@ -191,11 +195,15 @@ def _recompute_net_inflows_for_code(ts_code: str, *, updated_at: str) -> int:
         prev_row = by_date.get(prev_d.isoformat())
         if not prev_row:
             prev_row = fetch_row(ts_code, prev_d.isoformat())
-        net = compute_net_inflow_1d(
-            fd_share_today=row.get("fd_share"),
-            fd_share_prev=(prev_row or {}).get("fd_share"),
-            avg_price=row.get("avg_price"),
-        )
+        source = str(row.get("source") or "")
+        if source == EM_ETF_FLOW_SOURCE and row.get("main_net_inflow") is not None:
+            net = row.get("main_net_inflow")
+        else:
+            net = compute_net_inflow_1d(
+                fd_share_today=row.get("fd_share"),
+                fd_share_prev=(prev_row or {}).get("fd_share"),
+                avg_price=row.get("avg_price"),
+            )
         updates.append(
             {
                 "ts_code": ts_code,
@@ -205,6 +213,13 @@ def _recompute_net_inflows_for_code(ts_code: str, *, updated_at: str) -> int:
                 "avg_price": row.get("avg_price"),
                 "net_inflow": net,
                 "updated_at": updated_at,
+                "source": row.get("source"),
+                "trade_time": row.get("trade_time"),
+                "main_net_inflow": row.get("main_net_inflow"),
+                "super_large_net_inflow": row.get("super_large_net_inflow"),
+                "large_net_inflow": row.get("large_net_inflow"),
+                "medium_net_inflow": row.get("medium_net_inflow"),
+                "small_net_inflow": row.get("small_net_inflow"),
             }
         )
     return upsert_daily_rows(updates)
@@ -275,117 +290,149 @@ def _merge_tushare_frames(
 
 
 def _should_skip_etf_sync_today(*, force: bool) -> bool:
-    """Skip when already synced today, except in sync window while share data still lags."""
+    """Skip when a successful realtime snapshot already exists outside the active sync window."""
     if force:
         return False
     run = get_today_run(JOB_TYPE)
     if not run or not run.get("success"):
         return False
-    if not _is_shanghai_sync_window():
-        return True
-    as_of = _yyyymmdd_to_iso(_today_yyyymmdd())
-    bundle = build_etf_fund_flow_bundle(as_of_date=as_of)
-    return not bool(bundle.get("shareLag"))
+    return not _is_shanghai_sync_window()
+
+
+def _em_flow_to_daily_row(
+    *,
+    ts_code: str,
+    trade_date_iso: str,
+    flow: dict[str, Any],
+    updated_at: str,
+) -> dict[str, Any] | None:
+    main_net = flow.get("mainNetInflow")
+    if main_net is None:
+        return None
+    return {
+        "ts_code": ts_code,
+        "trade_date": trade_date_iso,
+        "fd_share": flow.get("fdShareWan"),
+        "close": flow.get("latestPrice"),
+        "avg_price": flow.get("latestPrice"),
+        "net_inflow": main_net,
+        "updated_at": updated_at,
+        "source": flow.get("source") or EM_ETF_FLOW_SOURCE,
+        "trade_time": flow.get("tradeTime"),
+        "main_net_inflow": main_net,
+        "super_large_net_inflow": flow.get("superLargeNetInflow"),
+        "large_net_inflow": flow.get("largeNetInflow"),
+        "medium_net_inflow": flow.get("mediumNetInflow"),
+        "small_net_inflow": flow.get("smallNetInflow"),
+    }
+
+
+def _sync_tushare_history_if_available(
+    *,
+    ts_code: str,
+    end_date: str,
+    updated_at: str,
+) -> int:
+    settings = get_settings()
+    if not settings.tu_share_api_key:
+        return 0
+    pro = ts.pro_api(settings.tu_share_api_key)
+    last_date = get_last_trade_date(ts_code)
+    row_count = len(fetch_rows_for_codes([ts_code]))
+    if last_date is None or row_count < 5:
+        start_date = FULL_START_DATE
+    else:
+        start_date = _date_to_yyyymmdd(last_date + timedelta(days=1))
+    if start_date > end_date:
+        return 0
+    share_df = _with_retry(
+        lambda: pro.fund_share(ts_code=ts_code, start_date=start_date, end_date=end_date)
+    )
+    daily_df = _with_retry(
+        lambda: pro.fund_daily(
+            ts_code=ts_code,
+            start_date=start_date,
+            end_date=end_date,
+            fields=FUND_DAILY_FIELDS,
+        )
+    )
+    merged = _merge_tushare_frames(
+        ts_code,
+        share_df=share_df,
+        daily_df=daily_df,
+        updated_at=updated_at,
+    )
+    updated = upsert_daily_rows(merged) if merged else 0
+    return updated + _recompute_net_inflows_for_code(ts_code, updated_at=updated_at)
 
 
 def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
-    """
-    Incremental sync for hardcoded ETF watchlist via fund_share + fund_daily.
-    Skip if today's job already succeeded unless force=True or shareLag persists in sync window.
-    """
+    """Sync hardcoded ETF watchlist with East Money realtime fund-flow as the primary source."""
     if _should_skip_etf_sync_today(force=force):
         return {"ok": True, "skipped": True, "message": "already synced today"}
 
-    settings = get_settings()
-    if not settings.tu_share_api_key:
-        return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
-
     ensure_table()
-    pro = ts.pro_api(settings.tu_share_api_key)
     end_date = _today_yyyymmdd()
     end_iso = _yyyymmdd_to_iso(end_date)
     updated_at = _now_iso()
-    total_rows = 0
-    last_successful_ts_code: str | None = None
-    em_fallback_count = 0
+    symbols = [w["symbol"] for w in ETF_WATCHLIST]
+    realtime = fetch_em_etf_realtime_flow_for_symbols(symbols)
+    rows: list[dict[str, Any]] = []
+    missing_symbols: list[str] = []
 
-    start_index = 0
-    if not force:
-        run = get_today_run(JOB_TYPE)
-        if run and run.get("success") is False and run.get("last_ts_code"):
-            codes = [w["ts_code"] for w in ETF_WATCHLIST]
-            try:
-                start_index = codes.index(run["last_ts_code"]) + 1
-            except ValueError:
-                pass
-
-    for spec in ETF_WATCHLIST[start_index:]:
-        ts_code = spec["ts_code"]
+    for spec in ETF_WATCHLIST:
         symbol = spec["symbol"]
-        try:
-            last_date = get_last_trade_date(ts_code)
-            row_count = len(fetch_rows_for_codes([ts_code]))
-            if last_date is None or row_count < 5:
-                start_date = FULL_START_DATE
-            else:
-                start_date = _date_to_yyyymmdd(last_date + timedelta(days=1))
+        flow = realtime.get(symbol)
+        if not flow:
+            missing_symbols.append(symbol)
+            continue
+        row = _em_flow_to_daily_row(
+            ts_code=spec["ts_code"],
+            trade_date_iso=end_iso,
+            flow=flow,
+            updated_at=updated_at,
+        )
+        if row is None:
+            missing_symbols.append(symbol)
+            continue
+        rows.append(row)
 
-            if start_date > end_date:
-                last_successful_ts_code = ts_code
-                continue
-
-            share_df = _with_retry(
-                lambda: pro.fund_share(ts_code=ts_code, start_date=start_date, end_date=end_date)
-            )
-            daily_df = _with_retry(
-                lambda: pro.fund_daily(
-                    ts_code=ts_code,
-                    start_date=start_date,
-                    end_date=end_date,
-                    fields=FUND_DAILY_FIELDS,
-                )
-            )
-
-            merged = _merge_tushare_frames(
-                ts_code,
-                share_df=share_df,
-                daily_df=daily_df,
+    history_rows = 0
+    history_error: str | None = None
+    try:
+        for spec in ETF_WATCHLIST:
+            history_rows += _sync_tushare_history_if_available(
+                ts_code=spec["ts_code"],
+                end_date=end_date,
                 updated_at=updated_at,
             )
-            if merged:
-                total_rows += upsert_daily_rows(merged)
-            total_rows += _recompute_net_inflows_for_code(ts_code, updated_at=updated_at)
+    except Exception as e:  # noqa: BLE001
+        history_error = str(e)
 
-            rows_by_date = {
-                str(r.get("trade_date") or ""): dict(r)
-                for r in fetch_rows_for_codes([ts_code], end_date=end_iso)
-                if r.get("trade_date")
-            }
-            as_of_row = rows_by_date.get(end_iso)
-            if as_of_row is None or as_of_row.get("fd_share") is None or as_of_row.get("net_inflow") is None:
-                if _apply_em_spot_fallback(
-                    ts_code=ts_code,
-                    symbol=symbol,
-                    trade_date_iso=end_iso,
-                    rows_by_date=rows_by_date,
-                    updated_at=updated_at,
-                ):
-                    em_fallback_count += 1
-                    total_rows += _recompute_net_inflows_for_code(ts_code, updated_at=updated_at)
-
-            last_successful_ts_code = ts_code
-            time.sleep(0.35)
-        except Exception as e:  # noqa: BLE001
-            insert_record(
-                job_type=JOB_TYPE,
-                success=False,
-                last_ts_code=last_successful_ts_code,
-                error_message=str(e),
-            )
-            return {"ok": False, "error": str(e), "last_ts_code": last_successful_ts_code}
-
-    insert_record(job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None)
-    return {"ok": True, "updated": total_rows, "emFallbackCount": em_fallback_count}
+    total_rows = upsert_daily_rows(rows)
+    success = bool(rows)
+    insert_record(
+        job_type=JOB_TYPE,
+        success=success,
+        last_ts_code=None,
+        error_message=None if success else "no realtime ETF flow rows from East Money",
+    )
+    if not success:
+        return {
+            "ok": False,
+            "error": "no realtime ETF flow rows from East Money",
+            "missingSymbols": missing_symbols,
+            "historyUpdated": history_rows,
+            "historyError": history_error,
+        }
+    return {
+        "ok": True,
+        "updated": total_rows,
+        "source": EM_ETF_FLOW_SOURCE,
+        "missingSymbols": missing_symbols,
+        "historyUpdated": history_rows,
+        "historyError": history_error,
+    }
 
 
 def _sum_net_inflow_for_dates(
@@ -544,7 +591,9 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
         symbol = spec["symbol"]
         rows_by_date = by_code_date.get(code, {})
         as_of_row = rows_by_date.get(as_of)
-        if as_of_row is None or as_of_row.get("fd_share") is None:
+        row_source = str((as_of_row or {}).get("source") or "")
+        has_realtime_flow = row_source == EM_ETF_FLOW_SOURCE and (as_of_row or {}).get("net_inflow") is not None
+        if (as_of_row is None or as_of_row.get("fd_share") is None) and not has_realtime_flow:
             share_lag = True
 
         net_1d = None
@@ -578,6 +627,7 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
             if em_net is not None:
                 net_1d = em_net
                 flow_as_of = as_of
+                row_source = EM_ETF_FLOW_SOURCE
 
         net_3d = _sum_net_inflow_for_dates(rows_by_date, last_3) if last_3 else None
         if net_3d is None and last_3:
@@ -591,10 +641,15 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
             net_3d = sum(vals) if vals else None
 
         stale_flow = flow_as_of != as_of or (
-            as_of_row is not None and as_of_row.get("fd_share") is None and net_1d is None
+            as_of_row is not None
+            and as_of_row.get("fd_share") is None
+            and net_1d is None
+            and not has_realtime_flow
         )
-        if net_1d is not None and flow_as_of == as_of and em_spot and em_spot.get(symbol):
-            data_source = "eastmoney"
+        if row_source == EM_ETF_FLOW_SOURCE or (
+            net_1d is not None and flow_as_of == as_of and em_spot and em_spot.get(symbol)
+        ):
+            data_source = EM_ETF_FLOW_SOURCE
         elif as_of_row and as_of_row.get("fd_share") is not None:
             data_source = "tushare"
         elif as_of_row and as_of_row.get("net_inflow") is not None and as_of_row.get("fd_share") is None:
@@ -624,6 +679,12 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
                 "netFlow3d": net_3d,
                 "flowAsOfDate": flow_as_of if flow_as_of != as_of else None,
                 "source": source,
+                "tradeTime": (as_of_row or {}).get("trade_time"),
+                "mainNetInflow": (as_of_row or {}).get("main_net_inflow"),
+                "superLargeNetInflow": (as_of_row or {}).get("super_large_net_inflow"),
+                "largeNetInflow": (as_of_row or {}).get("large_net_inflow"),
+                "mediumNetInflow": (as_of_row or {}).get("medium_net_inflow"),
+                "smallNetInflow": (as_of_row or {}).get("small_net_inflow"),
                 "signal": signal,
                 "signalDisplay": signal_display(signal),
             }

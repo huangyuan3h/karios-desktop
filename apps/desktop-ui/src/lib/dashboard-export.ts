@@ -269,28 +269,36 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
   if (etfItems.length) {
     if (etfFlow?.shareLag) {
       lines.push(
-        `- ETF shareLag: true (Tushare fund_share T+1; stale 1D not used for signals; intradaySafe: ${String(etfFlow?.intradaySafe ?? false)})`,
+        `- ETF realtime flow incomplete; missing rows are excluded from intraday signals (intradaySafe: ${String(etfFlow?.intradaySafe ?? false)})`,
       );
     }
     const etfHeaders = [
       'ETF Name',
       'Symbol',
-      '1D Net Flow',
+      'Main Flow',
+      'Super Large',
+      'Large',
       '3D Net Flow',
-      'Flow AsOf',
+      'Realtime AsOf',
       'Source',
       'Signal',
     ];
     const etfRows: unknown[][] = etfItems.map((it: any) => {
+      const source = String(it?.source ?? '');
+      const isRealtime = source === 'eastmoney.realtime_flow';
       const flow1dStale =
-        it?.netFlow1d == null && (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
-      const flow1d = flow1dStale ? '— (T-1)' : fmtSignedAmountCn(it?.netFlow1d);
+        !isRealtime &&
+        it?.netFlow1d == null &&
+        (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
+      const flow1d = flow1dStale ? '— (stale)' : fmtSignedAmountCn(it?.netFlow1d);
       return [
         String(it?.name ?? ''),
         String(it?.symbol ?? ''),
         flow1d,
+        fmtSignedAmountCn(it?.superLargeNetInflow),
+        fmtSignedAmountCn(it?.largeNetInflow),
         fmtSignedAmountCn(it?.netFlow3d),
-        String(it?.flowAsOfDate ?? '—'),
+        String(it?.tradeTime ?? it?.flowAsOfDate ?? etfFlow?.asOfDate ?? '—'),
         String(it?.source ?? '—'),
         String(it?.signalDisplay ?? it?.signal ?? '—'),
       ];

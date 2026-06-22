@@ -129,6 +129,7 @@ function macroToCardProps(item: MacroItem): IndexCardProps {
   if (item.tradeTime) footParts.push(String(item.tradeTime));
   if (item.underlyingTsCode) footParts.push(String(item.underlyingTsCode));
   if (item.signalLabel) footParts.push(String(item.signalLabel));
+  if (item.warning) footParts.push(String(item.warning));
   const footnote = footParts.length ? footParts.join(' • ') : '—';
 
   return {

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 import time
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -31,6 +33,22 @@ EM_REPORT_BUY_SEATS = "RPT_BILLBOARD_DAILYDETAILSBUY"
 EM_REPORT_SELL_SEATS = "RPT_BILLBOARD_DAILYDETAILSSELL"
 EM_PAGE_SIZE = 500
 EM_MAX_PAGES = 20
+TOP_INST_PROVIDER_ENV = "TOP_INST_PROVIDER"
+TUSHARE_TOKEN_ENV = "TUSHARE_TOKEN"
+DEFAULT_TOP_INST_PROVIDERS = ("tushare", "eastmoney")
+SUPPORTED_TOP_INST_PROVIDERS = {"tushare", "eastmoney"}
+
+
+@dataclass(frozen=True)
+class TopInstProviderResult:
+    source: str
+    lhb_tickers: set[str]
+    org_by_ticker: dict[str, dict[str, Any]] = field(default_factory=dict)
+    buy_seats_by_ts_code: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    inst_seats_by_ts_code: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    lhb_count: int | None = None
+    org_trade_count: int | None = None
+    seat_fetch_failures: int = 0
 
 
 def _now_iso() -> str:
@@ -169,8 +187,8 @@ def _em_fetch_pages(
             "filter": filter_expr,
         }
 
-        def _fetch() -> dict[str, Any]:
-            return _em_request(params)
+        def _fetch(request_params: dict[str, str] = params) -> dict[str, Any]:
+            return _em_request(request_params)
 
         j = _with_retry(_fetch)
         result = j.get("result") if isinstance(j, dict) else None
@@ -306,6 +324,157 @@ def fetch_em_inst_seat_rows(*, ts_code: str, trade_date_iso: str) -> list[dict[s
         if _is_inst_seat(str(row.get("exalter") or "")):
             out.append(row)
     return out
+
+
+def _df_records(df: Any) -> list[dict[str, Any]]:
+    if df is None:
+        return []
+    if hasattr(df, "to_dict"):
+        records = df.to_dict("records")
+    elif isinstance(df, list):
+        records = df
+    else:
+        return []
+    return [r for r in records if isinstance(r, dict)]
+
+
+def _side_label(value: Any) -> str:
+    raw = str(value if value is not None else "").strip()
+    if raw in {"0", "买入", "buy", "BUY"}:
+        return "buy"
+    if raw in {"1", "卖出", "sell", "SELL"}:
+        return "sell"
+    return raw or "buy"
+
+
+def _tushare_trade_date(trade_date_iso: str) -> str:
+    d = str(trade_date_iso or "").strip()
+    if len(d) == 10 and d[4] == "-":
+        return d.replace("-", "")
+    return d[:8]
+
+
+def _tushare_code_to_ticker(ts_code: Any) -> str | None:
+    code = str(ts_code or "").strip().upper()
+    ticker = code.split(".", 1)[0]
+    return ticker if len(ticker) == 6 and ticker.isdigit() else None
+
+
+def normalize_tushare_top_list_rows(rows: list[dict[str, Any]]) -> set[str]:
+    out: set[str] = set()
+    for row in rows:
+        ticker = _tushare_code_to_ticker(row.get("ts_code") or row.get("code"))
+        if ticker:
+            out.add(ticker)
+    return out
+
+
+def normalize_tushare_top_inst_rows(
+    rows: list[dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
+    org_net_by_ticker: dict[str, float] = {}
+    reasons_by_ticker: dict[str, str] = {}
+    buy_seats_by_ts_code: dict[str, list[dict[str, Any]]] = {}
+    inst_seats_by_ts_code: dict[str, list[dict[str, Any]]] = {}
+
+    for row in rows:
+        ticker = _tushare_code_to_ticker(row.get("ts_code") or row.get("code"))
+        if not ticker:
+            continue
+        ts_code = str(row.get("ts_code") or _ticker_to_ts_code(ticker)).strip().upper()
+        exalter = str(row.get("exalter") or row.get("营业部名称") or "").strip()
+        if not exalter:
+            continue
+        side = _side_label(row.get("side") or row.get("买卖类型"))
+        buy = _safe_float(row.get("buy") or row.get("买入额") or row.get("买入金额"))
+        sell = _safe_float(row.get("sell") or row.get("卖出额") or row.get("卖出金额"))
+        net_buy = _safe_float(row.get("net_buy") or row.get("net") or row.get("净额"))
+        reason = str(row.get("reason") or row.get("上榜理由") or "").strip() or None
+        normalized = {
+            "exalter": exalter,
+            "buy": buy,
+            "sell": sell,
+            "net_buy": net_buy,
+            "side": side,
+            "reason": reason,
+        }
+        if side == "buy":
+            buy_seats_by_ts_code.setdefault(ts_code, []).append(normalized)
+        if _is_inst_seat(exalter):
+            inst_seats_by_ts_code.setdefault(ts_code, []).append(normalized)
+            org_net_by_ticker[ticker] = org_net_by_ticker.get(ticker, 0.0) + float(net_buy or 0.0)
+            if reason and ticker not in reasons_by_ticker:
+                reasons_by_ticker[ticker] = reason
+
+    org_by_ticker = {
+        ticker: {"NET_BUY_AMT": net, "EXPLANATION": reasons_by_ticker.get(ticker)}
+        for ticker, net in org_net_by_ticker.items()
+    }
+    return org_by_ticker, buy_seats_by_ts_code, inst_seats_by_ts_code
+
+
+def fetch_tushare_top_inst_on_date(trade_date_iso: str) -> TopInstProviderResult:
+    token = os.getenv(TUSHARE_TOKEN_ENV, "").strip()
+    try:
+        import tushare as ts  # type: ignore[import-not-found]
+    except Exception as e:
+        raise RuntimeError(f"tushare_import_failed: {e}") from e
+
+    if token:
+        pro = ts.pro_api(token)
+    else:
+        pro = ts.pro_api()
+    trade_date = _tushare_trade_date(trade_date_iso)
+    top_list_rows = _df_records(pro.top_list(trade_date=trade_date))
+    top_inst_rows = _df_records(pro.top_inst(trade_date=trade_date))
+    lhb_tickers = normalize_tushare_top_list_rows(top_list_rows)
+    org_by_ticker, buy_seats_by_ts_code, inst_seats_by_ts_code = normalize_tushare_top_inst_rows(
+        top_inst_rows
+    )
+    return TopInstProviderResult(
+        source="tushare",
+        lhb_tickers=lhb_tickers,
+        org_by_ticker=org_by_ticker,
+        buy_seats_by_ts_code=buy_seats_by_ts_code,
+        inst_seats_by_ts_code=inst_seats_by_ts_code,
+        lhb_count=len(lhb_tickers),
+        org_trade_count=len(org_by_ticker),
+    )
+
+
+def fetch_eastmoney_top_inst_on_date(trade_date_iso: str) -> TopInstProviderResult:
+    lhb_tickers = fetch_em_lhb_tickers_on_date(trade_date_iso)
+    org_by_ticker = fetch_em_org_trades_on_date(trade_date_iso)
+    return TopInstProviderResult(
+        source="eastmoney",
+        lhb_tickers=lhb_tickers,
+        org_by_ticker=org_by_ticker,
+        lhb_count=len(lhb_tickers),
+        org_trade_count=len(org_by_ticker),
+    )
+
+
+def _configured_top_inst_providers() -> list[str]:
+    raw = os.getenv(TOP_INST_PROVIDER_ENV, "").strip()
+    names = [p.strip().lower() for p in raw.split(",") if p.strip()] if raw else list(DEFAULT_TOP_INST_PROVIDERS)
+    out: list[str] = []
+    for name in names:
+        if name in SUPPORTED_TOP_INST_PROVIDERS and name not in out:
+            out.append(name)
+    return out or ["eastmoney"]
+
+
+def fetch_top_inst_provider_result(trade_date_iso: str) -> tuple[TopInstProviderResult, list[str]]:
+    errors: list[str] = []
+    for provider in _configured_top_inst_providers():
+        try:
+            if provider == "tushare":
+                return fetch_tushare_top_inst_on_date(trade_date_iso), errors
+            if provider == "eastmoney":
+                return fetch_eastmoney_top_inst_on_date(trade_date_iso), errors
+        except Exception as e:
+            errors.append(f"{provider}: {e}")
+    raise RuntimeError("; ".join(errors) or "top_inst_provider_unavailable")
 
 
 def detect_lhasa_dominant(buy_seats: list[dict[str, Any]]) -> bool:
@@ -481,10 +650,7 @@ def _missing_summary_codes(ts_codes: list[str], *, trade_date_iso: str) -> list[
 
 
 def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = None) -> dict[str, Any]:
-    """
-    Sync dragon-tiger institutional flow for watchlist CN symbols via East Money.
-    No Tushare dependency; amounts are CNY yuan from EM org-trade report.
-    """
+    """Sync dragon-tiger institutional flow for watchlist CN symbols."""
     ensure_table()
 
     td = str(trade_date or _latest_cn_trade_date_yyyymmdd() or "").strip()
@@ -521,8 +687,7 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
             }
 
     try:
-        lhb_tickers = fetch_em_lhb_tickers_on_date(td_iso)
-        org_by_ticker = fetch_em_org_trades_on_date(td_iso)
+        provider_result, provider_errors = fetch_top_inst_provider_result(td_iso)
     except Exception as e:
         insert_record(
             job_type=JOB_TYPE,
@@ -530,11 +695,45 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
             last_ts_code=None,
             error_message=str(e)[:500],
         )
-        return {"ok": False, "error": str(e), "jobType": JOB_TYPE, "tradeDate": td_iso, "source": "eastmoney"}
+        return {
+            "ok": False,
+            "error": str(e),
+            "jobType": JOB_TYPE,
+            "tradeDate": td_iso,
+            "source": "provider",
+        }
+
+    lhb_tickers = provider_result.lhb_tickers
+    org_by_ticker = provider_result.org_by_ticker
+    if not lhb_tickers:
+        error = "suspicious_empty_lhb"
+        msg = f"{error}: source={provider_result.source}, tradeDate={td_iso}"
+        insert_record(
+            job_type=JOB_TYPE,
+            success=False,
+            last_ts_code=None,
+            error_message=msg[:500],
+        )
+        return {
+            "ok": False,
+            "skipped": True,
+            "reason": error,
+            "jobType": JOB_TYPE,
+            "tradeDate": td_iso,
+            "source": provider_result.source,
+            "provider": provider_result.source,
+            "fallbackUsed": bool(provider_errors),
+            "providerErrors": provider_errors,
+            "lhbCount": 0,
+            "orgTradeCount": provider_result.org_trade_count or len(org_by_ticker),
+            "summaryRows": 0,
+            "dailyRows": 0,
+        }
 
     daily_rows: list[dict[str, Any]] = []
     summary_rows: list[dict[str, Any]] = []
     on_board_count = 0
+    seat_fetch_failures = provider_result.seat_fetch_failures
 
     for ts_code in watchlist_codes:
         ticker = _ts_code_to_ticker(ts_code)
@@ -562,14 +761,16 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
             inst_net = 0.0
         inst_net_yi = inst_net / YI
 
-        buy_seats: list[dict[str, Any]] = []
-        inst_seats: list[dict[str, Any]] = []
-        try:
-            buy_seats = fetch_em_lhb_buy_seats(ts_code=ts_code, trade_date_iso=td_iso)
-            inst_seats = fetch_em_inst_seat_rows(ts_code=ts_code, trade_date_iso=td_iso)
-        except Exception:
-            buy_seats = []
-            inst_seats = []
+        buy_seats = provider_result.buy_seats_by_ts_code.get(ts_code, [])
+        inst_seats = provider_result.inst_seats_by_ts_code.get(ts_code, [])
+        if provider_result.source == "eastmoney":
+            try:
+                buy_seats = fetch_em_lhb_buy_seats(ts_code=ts_code, trade_date_iso=td_iso)
+                inst_seats = fetch_em_inst_seat_rows(ts_code=ts_code, trade_date_iso=td_iso)
+            except Exception:
+                seat_fetch_failures += 1
+                buy_seats = []
+                inst_seats = []
 
         lhasa = detect_lhasa_dominant(buy_seats)
         label = classify_seat_label(inst_net_buy=inst_net, lhasa_dominant=lhasa)
@@ -600,7 +801,8 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
                 "on_board": True,
             }
         )
-        time.sleep(0.05 + random.random() * 0.03)
+        if provider_result.source == "eastmoney":
+            time.sleep(0.05 + random.random() * 0.03)
 
     daily_n = upsert_daily_rows(daily_rows)
     summary_n = upsert_summary_rows(summary_rows)
@@ -613,10 +815,18 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
     return {
         "ok": True,
         "tradeDate": td_iso,
-        "source": "eastmoney",
+        "source": provider_result.source,
+        "provider": provider_result.source,
+        "fallbackUsed": bool(provider_errors),
+        "providerErrors": provider_errors,
         "onBoardCount": on_board_count,
-        "lhbCount": len(lhb_tickers),
-        "orgTradeCount": len(org_by_ticker),
+        "lhbCount": provider_result.lhb_count if provider_result.lhb_count is not None else len(lhb_tickers),
+        "orgTradeCount": (
+            provider_result.org_trade_count
+            if provider_result.org_trade_count is not None
+            else len(org_by_ticker)
+        ),
+        "seatFetchFailures": seat_fetch_failures,
         "dailyRows": daily_n,
         "summaryRows": summary_n,
     }

@@ -220,32 +220,34 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
         item = _macro_item_from_db(meta, closes, latest_by_sid.get(sid))
         macro_items.append(item)
 
-    if any(m.get("seriesId") == SID_510300_PUT_IV and m.get("close") is None for m in macro_items):
-        resolved = resolve_put_iv_for_snapshot(write_db=True)
-        put_warning = resolved.get("warning")
-        if resolved.get("close") is not None:
-            for i, m in enumerate(macro_items):
-                if m.get("seriesId") == SID_510300_PUT_IV:
-                    macro_items[i] = {
-                        **m,
-                        "asOfDate": resolved.get("asOfDate"),
-                        "close": resolved.get("close"),
-                        "pctChg": resolved.get("pctChg"),
-                        "source": resolved.get("source"),
-                        "underlyingTsCode": resolved.get("underlyingTsCode"),
-                        "realtime": bool(resolved.get("realtime")),
-                        "signal": resolved.get("signal"),
-                        "signalLabel": resolved.get("signalLabel"),
-                    }
-                    break
-        elif put_warning:
-            put_iv_warning = str(put_warning)
+    resolved = resolve_put_iv_for_snapshot(write_db=True)
+    put_warning = resolved.get("warning")
+    for i, m in enumerate(macro_items):
+        if m.get("seriesId") == SID_510300_PUT_IV:
+            macro_items[i] = {
+                **m,
+                "asOfDate": resolved.get("asOfDate"),
+                "close": resolved.get("close"),
+                "pctChg": resolved.get("pctChg"),
+                "source": resolved.get("source"),
+                "underlyingTsCode": resolved.get("underlyingTsCode"),
+                "realtime": bool(resolved.get("realtime")),
+                "signal": resolved.get("signal"),
+                "signalLabel": resolved.get("signalLabel"),
+                "warning": put_warning,
+                "diagnostics": resolved.get("diagnostics") if isinstance(resolved.get("diagnostics"), dict) else {},
+            }
+            break
+    if put_warning:
+        put_iv_warning = str(put_warning)
 
     # Realtime overlay (best-effort; unsupported codes return empty)
     rt_codes: list[str] = []
     code_to_series: dict[str, str] = {}
     for meta in MACRO_CARDS:
         sid = str(meta["seriesId"])
+        if sid == SID_510300_PUT_IV:
+            continue
         explicit = meta.get("realtimeTsCode")
         if explicit:
             c = str(explicit).strip()

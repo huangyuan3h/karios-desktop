@@ -1,7 +1,8 @@
-"""East Money ETF spot fallback for share / main-net-inflow when Tushare lags."""
+"""East Money ETF realtime fund-flow helpers."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import math
 from typing import Any
 
@@ -10,6 +11,28 @@ from data_sync_service.service.em_push2_http import em_get_json
 EM_ETF_SPOT_URL = "https://push2delay.eastmoney.com/api/qt/clist/get"
 EM_ETF_PAGE_SIZE = 500
 EM_ETF_MAX_PAGES = 30
+EM_ETF_FLOW_SOURCE = "eastmoney.realtime_flow"
+EM_ETF_FLOW_FIELDS = ",".join(
+    [
+        "f12",
+        "f14",
+        "f2",
+        "f3",
+        "f38",
+        "f62",
+        "f66",
+        "f69",
+        "f72",
+        "f75",
+        "f78",
+        "f81",
+        "f84",
+        "f87",
+        "f124",
+        "f184",
+        "f297",
+    ]
+)
 
 
 def _market_id_for_symbol(symbol: str) -> int:
@@ -41,7 +64,7 @@ def _fetch_all_etf_spot_rows() -> list[dict[str, Any]]:
             "wbp2u": "|0|0|0|web",
             "fid": "f12",
             "fs": "b:MK0021,b:MK0022,b:MK0023,b:MK0024,b:MK0827",
-            "fields": "f12,f14,f2,f38,f62,f297",
+            "fields": EM_ETF_FLOW_FIELDS,
         }
         j = _em_etf_spot_request(params)
         data = j.get("data") if isinstance(j, dict) else None
@@ -68,12 +91,56 @@ def _safe_float(v: Any) -> float | None:
         return None
 
 
-def fetch_em_etf_spot_for_symbols(symbols: list[str]) -> dict[str, dict[str, Any]]:
-    """
-    Return map symbol -> {fdShareWan, mainNetInflow, dataDate}.
-    fdShareWan is 万份 (same unit as Tushare fund_share).
-    mainNetInflow is CNY yuan (East Money 主力净流入-净额).
-    """
+def _date_from_yyyymmdd(v: Any) -> str | None:
+    if v is None:
+        return None
+    s = str(v).strip()
+    if len(s) == 8 and s.isdigit():
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+    return None
+
+
+def _trade_time_from_timestamp(v: Any) -> str | None:
+    try:
+        ts = int(v)
+    except (TypeError, ValueError):
+        return None
+    if ts <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(ts, tz=UTC).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _normalize_em_flow_row(row: dict[str, Any]) -> dict[str, Any]:
+    fd_share = _safe_float(row.get("f38"))
+    fd_share_wan = fd_share / 10_000.0 if fd_share is not None else None
+    quote_ts = row.get("f124")
+    return {
+        "name": str(row.get("f14") or "").strip() or None,
+        "latestPrice": _safe_float(row.get("f2")),
+        "pctChange": _safe_float(row.get("f3")),
+        "fdShareWan": fd_share_wan,
+        "mainNetInflow": _safe_float(row.get("f62")),
+        "superLargeNetInflow": _safe_float(row.get("f66")),
+        "superLargeNetInflowRatio": _safe_float(row.get("f69")),
+        "largeNetInflow": _safe_float(row.get("f72")),
+        "largeNetInflowRatio": _safe_float(row.get("f75")),
+        "mediumNetInflow": _safe_float(row.get("f78")),
+        "mediumNetInflowRatio": _safe_float(row.get("f81")),
+        "smallNetInflow": _safe_float(row.get("f84")),
+        "smallNetInflowRatio": _safe_float(row.get("f87")),
+        "mainNetInflowRatio": _safe_float(row.get("f184")),
+        "tradeTime": _trade_time_from_timestamp(quote_ts),
+        "dataDate": _date_from_yyyymmdd(row.get("f297")),
+        "marketId": _market_id_for_symbol(str(row.get("f12") or "")),
+        "source": EM_ETF_FLOW_SOURCE,
+    }
+
+
+def fetch_em_etf_realtime_flow_for_symbols(symbols: list[str]) -> dict[str, dict[str, Any]]:
+    """Return realtime East Money ETF fund-flow rows keyed by plain symbol."""
     wanted = {str(s).strip() for s in symbols if str(s).strip()}
     if not wanted:
         return {}
@@ -86,20 +153,14 @@ def fetch_em_etf_spot_for_symbols(symbols: list[str]) -> dict[str, dict[str, Any
         code = str(row.get("f12") or "").strip()
         if code not in wanted:
             continue
-        fd_share = _safe_float(row.get("f38"))
-        # f38 is 最新份额 in 份; convert to 万份 for Tushare parity
-        fd_share_wan = fd_share / 10_000.0 if fd_share is not None else None
-        main_net = _safe_float(row.get("f62"))
-        data_date_raw = row.get("f297")
-        data_date: str | None = None
-        if data_date_raw is not None:
-            s = str(data_date_raw).strip()
-            if len(s) == 8 and s.isdigit():
-                data_date = f"{s[:4]}-{s[4:6]}-{s[6:8]}"
-        out[code] = {
-            "fdShareWan": fd_share_wan,
-            "mainNetInflow": main_net,
-            "dataDate": data_date,
-            "marketId": _market_id_for_symbol(code),
-        }
+        out[code] = _normalize_em_flow_row(row)
     return out
+
+
+def fetch_em_etf_spot_for_symbols(symbols: list[str]) -> dict[str, dict[str, Any]]:
+    """
+    Return map symbol -> {fdShareWan, mainNetInflow, dataDate}.
+    fdShareWan is 万份 (same unit as Tushare fund_share).
+    mainNetInflow is CNY yuan (East Money 主力净流入-净额).
+    """
+    return fetch_em_etf_realtime_flow_for_symbols(symbols)

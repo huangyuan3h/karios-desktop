@@ -54,9 +54,25 @@ def test_build_macro_snapshot_uses_batch_db_reads() -> None:
             "data_sync_service.service.macro_snapshot.macro_snapshot_warning",
             return_value=None,
         ),
+        patch(
+            "data_sync_service.service.macro_snapshot.resolve_put_iv_for_snapshot",
+            return_value={
+                "close": 24.0,
+                "asOfDate": "2024-06-18",
+                "pctChg": 2.0,
+                "source": "eastmoney",
+                "underlyingTsCode": "510300.SH",
+                "realtime": True,
+                "signal": "yellow",
+                "signalLabel": "Elevated Fear",
+                "warning": None,
+                "diagnostics": {},
+            },
+        ) as resolve_put_iv,
     ):
         out = build_macro_snapshot()
 
+    resolve_put_iv.assert_called_once_with(write_db=True)
     fetch_batch.assert_called_once()
     latest_batch.assert_called_once()
     fetch_single.assert_not_called()

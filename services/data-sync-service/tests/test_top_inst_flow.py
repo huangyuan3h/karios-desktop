@@ -9,11 +9,13 @@ from data_sync_service.service.option_iv import (
 )
 from data_sync_service.service.top_inst_flow import (
     _is_inst_seat,
+    _safe_float,
     build_inst_flow_payload,
     classify_seat_label,
     detect_lhasa_dominant,
     format_inst_flow_display,
-    _safe_float,
+    normalize_tushare_top_inst_rows,
+    normalize_tushare_top_list_rows,
 )
 
 
@@ -135,6 +137,48 @@ def test_is_inst_seat() -> None:
 def test_safe_float() -> None:
     assert _safe_float("816710018.96") == 816710018.96
     assert _safe_float(None) is None
+
+
+def test_normalize_tushare_top_list_rows() -> None:
+    rows = [
+        {"ts_code": "603588.SH", "name": "高能环境"},
+        {"ts_code": "603986.SH", "name": "兆易创新"},
+        {"ts_code": "bad"},
+    ]
+    assert normalize_tushare_top_list_rows(rows) == {"603588", "603986"}
+
+
+def test_normalize_tushare_top_inst_rows() -> None:
+    rows = [
+        {
+            "trade_date": "20260622",
+            "ts_code": "603588.SH",
+            "exalter": "东方财富证券股份有限公司拉萨团结路第二证券营业部",
+            "side": "0",
+            "buy": 80_000_000.0,
+            "sell": 1_000_000.0,
+            "net_buy": 79_000_000.0,
+            "reason": "日涨幅偏离值达到7%的前五只证券",
+        },
+        {
+            "trade_date": "20260622",
+            "ts_code": "603588.SH",
+            "exalter": "机构专用",
+            "side": "1",
+            "buy": 5_000_000.0,
+            "sell": 45_000_000.0,
+            "net_buy": -40_000_000.0,
+            "reason": "日涨幅偏离值达到7%的前五只证券",
+        },
+    ]
+
+    org_by_ticker, buy_seats_by_ts_code, inst_seats_by_ts_code = normalize_tushare_top_inst_rows(rows)
+
+    assert org_by_ticker["603588"]["NET_BUY_AMT"] == -40_000_000.0
+    assert len(buy_seats_by_ts_code["603588.SH"]) == 1
+    assert detect_lhasa_dominant(buy_seats_by_ts_code["603588.SH"]) is True
+    assert len(inst_seats_by_ts_code["603588.SH"]) == 1
+    assert inst_seats_by_ts_code["603588.SH"][0]["side"] == "sell"
 
 
 def test_org_net_from_em_row() -> None:

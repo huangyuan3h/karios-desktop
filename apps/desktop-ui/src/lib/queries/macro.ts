@@ -40,6 +40,7 @@ export type MacroItem = {
   signal?: string;
   signalLabel?: string;
   unit?: string;
+  warning?: string | null;
 };
 
 export type MacroSnapshot = {
