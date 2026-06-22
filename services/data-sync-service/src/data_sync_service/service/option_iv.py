@@ -182,6 +182,7 @@ def select_atm_put_iv(df: pd.DataFrame) -> dict[str, Any] | None:
 
     best: dict[str, Any] | None = None
     best_dist = float("inf")
+    fallback_candidates: list[dict[str, Any]] = []
     for _, row in subset.iterrows():
         try:
             iv = float(row[iv_col])
@@ -190,16 +191,24 @@ def select_atm_put_iv(df: pd.DataFrame) -> dict[str, Any] | None:
         if iv != iv or iv <= 0:
             continue
         strike = _parse_strike_from_name(str(row.get(name_col) or ""))
+        candidate = {
+            "ivPct": iv,
+            "contractName": str(row.get(name_col) or ""),
+            "expiry": str(row.get(expiry_col) or "") if expiry_col else None,
+            "strike": strike,
+            "spot": spot,
+        }
+        fallback_candidates.append(candidate)
         dist = abs(strike - spot) if strike is not None and spot is not None else float("inf")
         if dist < best_dist:
             best_dist = dist
-            best = {
-                "ivPct": iv,
-                "contractName": str(row.get(name_col) or ""),
-                "expiry": str(row.get(expiry_col) or "") if expiry_col else None,
-                "strike": strike,
-                "spot": spot,
-            }
+            best = candidate
+
+    if best is None and fallback_candidates:
+        with_strike = [c for c in fallback_candidates if c.get("strike") is not None]
+        pool = with_strike if with_strike else fallback_candidates
+        pool.sort(key=lambda c: float(c.get("strike") or 0.0))
+        best = pool[len(pool) // 2]
     return best
 
 
@@ -227,6 +236,118 @@ def fetch_510300_atm_put_iv_live(*, source: str | None = None) -> dict[str, Any]
     else:
         picked = {**picked, "source": used_source}
     return picked
+
+
+def _shanghai_today_iso() -> str:
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
+
+
+def resolve_put_iv_for_snapshot(*, write_db: bool = True) -> dict[str, Any]:
+    """
+    Live-first Put IV for macro snapshot; optional best-effort DB upsert.
+    Falls back to latest macro_daily row when live fetch fails.
+    """
+    warning: str | None = None
+    prev_row = get_latest_row(SID_510300_PUT_IV)
+    prev_close = None
+    if prev_row and prev_row.get("close") is not None:
+        try:
+            prev_close = float(prev_row["close"])
+        except (TypeError, ValueError):
+            prev_close = None
+
+    picked: dict[str, Any] | None = None
+    fetch_error: str | None = None
+    try:
+        picked = fetch_510300_atm_put_iv_live()
+    except Exception as e:
+        fetch_error = str(e)[:200]
+
+    if picked:
+        iv_pct = float(picked["ivPct"])
+        data_source = str(picked.get("source") or "eastmoney")
+        pct_chg = compute_iv_pct_chg(iv_pct, prev_close)
+        signal, signal_label = classify_iv_signal(iv_pct=iv_pct, pct_chg=pct_chg)
+        as_of = _shanghai_today_iso()
+        if write_db:
+            try:
+                td_yyyymmdd = as_of.replace("-", "")
+                row_df = pd.DataFrame(
+                    [
+                        {
+                            "trade_date": td_yyyymmdd,
+                            "close": iv_pct,
+                            "pre_close": prev_close,
+                            "pct_chg": pct_chg,
+                        }
+                    ]
+                )
+                upsert_from_dataframe(
+                    row_df,
+                    series_id=SID_510300_PUT_IV,
+                    source=data_source,
+                    underlying_ts_code=UNDERLYING_TS_CODE,
+                )
+            except Exception:
+                pass
+        return {
+            "close": iv_pct,
+            "asOfDate": as_of,
+            "pctChg": pct_chg,
+            "source": data_source,
+            "signal": signal,
+            "signalLabel": signal_label,
+            "underlyingTsCode": UNDERLYING_TS_CODE,
+            "realtime": True,
+            "warning": None,
+        }
+
+    if prev_row and prev_row.get("close") is not None:
+        try:
+            iv_pct = float(prev_row["close"])
+        except (TypeError, ValueError):
+            iv_pct = None
+        if iv_pct is not None and iv_pct == iv_pct:
+            pct_chg = _safe_float(prev_row.get("pct_chg"))
+            if pct_chg is None:
+                pct_chg = compute_iv_pct_chg(iv_pct, prev_close)
+            signal, signal_label = classify_iv_signal(
+                iv_pct=iv_pct,
+                pct_chg=float(pct_chg) if pct_chg is not None else None,
+            )
+            return {
+                "close": iv_pct,
+                "asOfDate": str(prev_row.get("trade_date") or ""),
+                "pctChg": pct_chg,
+                "source": str(prev_row.get("source") or "macro_daily"),
+                "signal": signal,
+                "signalLabel": signal_label,
+                "underlyingTsCode": UNDERLYING_TS_CODE,
+                "realtime": False,
+                "warning": fetch_error or "put_iv_live_fetch_failed_using_db",
+            }
+
+    return {
+        "close": None,
+        "asOfDate": None,
+        "pctChg": None,
+        "source": None,
+        "signal": None,
+        "signalLabel": None,
+        "underlyingTsCode": UNDERLYING_TS_CODE,
+        "realtime": False,
+        "warning": fetch_error or "put_iv_fetch_failed",
+    }
+
+
+def _safe_float(v: Any) -> float | None:
+    try:
+        f = float(v)
+        return f if f == f else None
+    except (TypeError, ValueError):
+        return None
 
 
 def compute_iv_pct_chg(iv_pct: float, prev_close: float | None) -> float | None:

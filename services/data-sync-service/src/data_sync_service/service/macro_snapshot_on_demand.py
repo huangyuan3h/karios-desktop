@@ -16,6 +16,7 @@ from data_sync_service.service.macro_daily import (
     SID_COMM_ENERGY,
     SID_COMM_GOLD,
     SID_DJI,
+    SID_HSI,
     SID_IXIC,
     SID_SPX,
     SID_USDCNH,
@@ -33,40 +34,37 @@ def _lookback_range(days: int = 120) -> tuple[str, str]:
     return start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
 
 
-def _fetch_ixic_via_yfinance() -> dict[str, Any] | None:
-    """Fetch IXIC (Nasdaq) data via Yahoo Finance API for real-time updates."""
+def _fetch_yfinance_index(ticker: str) -> dict[str, Any] | None:
+    """Fetch index OHLC history via Yahoo Finance."""
     try:
-        import yfinance as yf  # type: ignore[import-not-found
-        
-        ticker = yf.Ticker("^IXIC")
-        hist = ticker.history(period="25d")
-        
+        import yfinance as yf  # type: ignore[import-not-found]
+
+        hist = yf.Ticker(ticker).history(period="25d")
         if hist.empty or len(hist) < 5:
             return None
-        
+
         closes: list[float] = []
-        for idx, row in hist.iterrows():
+        for _, row in hist.iterrows():
             try:
                 c = float(row["Close"])
                 if math.isfinite(c):
                     closes.append(c)
             except Exception:
                 pass
-        
+
         if not closes:
             return None
-        
+
         as_of_date = hist.index[-1].strftime("%Y-%m-%d")
         pct_chg = None
-        
         if len(closes) >= 2:
             prev_c, last_c = closes[-2], closes[-1]
             if prev_c > 0:
                 pct_chg = (last_c - prev_c) / prev_c * 100.0
-        
+
         ma5 = sum(closes[-5:]) / 5.0 if len(closes) >= 5 else None
         ma20 = sum(closes[-20:]) / 20.0 if len(closes) >= 20 else None
-        
+
         return {
             "close": closes[-1],
             "pctChg": pct_chg,
@@ -76,129 +74,22 @@ def _fetch_ixic_via_yfinance() -> dict[str, Any] | None:
         }
     except Exception:
         return None
+
+
+def _fetch_ixic_via_yfinance() -> dict[str, Any] | None:
+    return _fetch_yfinance_index("^IXIC")
 
 
 def _fetch_dji_via_yfinance() -> dict[str, Any] | None:
-    """Fetch DJI (Dow Jones) data via Yahoo Finance API for real-time updates."""
-    try:
-        import yfinance as yf  # type: ignore[import-not-found
-        
-        ticker = yf.Ticker("^DJI")
-        hist = ticker.history(period="25d")
-        
-        if hist.empty or len(hist) < 5:
-            return None
-        
-        closes: list[float] = []
-        for idx, row in hist.iterrows():
-            try:
-                c = float(row["Close"])
-                if math.isfinite(c):
-                    closes.append(c)
-            except Exception:
-                pass
-        
-        if not closes:
-            return None
-        
-        as_of_date = hist.index[-1].strftime("%Y-%m-%d")
-        pct_chg = None
-        
-        if len(closes) >= 2:
-            prev_c, last_c = closes[-2], closes[-1]
-            if prev_c > 0:
-                pct_chg = (last_c - prev_c) / prev_c * 100.0
-        
-        ma5 = sum(closes[-5:]) / 5.0 if len(closes) >= 5 else None
-        ma20 = sum(closes[-20:]) / 20.0 if len(closes) >= 20 else None
-        
-        return {
-            "close": closes[-1],
-            "pctChg": pct_chg,
-            "asOfDate": as_of_date,
-            "ma5": ma5,
-            "ma20": ma20,
-        }
-    except Exception:
-        return None
+    return _fetch_yfinance_index("^DJI")
 
 
 def _fetch_spx_via_yfinance() -> dict[str, Any] | None:
-    """Fetch SPX (S&P 500) data via Yahoo Finance API for real-time updates."""
-    try:
-        import yfinance as yf  # type: ignore[import-not-found
-        
-        ticker = yf.Ticker("^GSPC")
-        hist = ticker.history(period="25d")
-        
-        if hist.empty or len(hist) < 5:
-            return None
-        
-        closes: list[float] = []
-        for idx, row in hist.iterrows():
-            try:
-                c = float(row["Close"])
-                if math.isfinite(c):
-                    closes.append(c)
-            except Exception:
-                pass
-        
-        if not closes:
-            return None
-        
-        as_of_date = hist.index[-1].strftime("%Y-%m-%d")
-        pct_chg = None
-        
-        if len(closes) >= 2:
-            prev_c, last_c = closes[-2], closes[-1]
-            if prev_c > 0:
-                pct_chg = (last_c - prev_c) / prev_c * 100.0
-        
-        ma5 = sum(closes[-5:]) / 5.0 if len(closes) >= 5 else None
-        ma20 = sum(closes[-20:]) / 20.0 if len(closes) >= 20 else None
-        
-        return {
-            "close": closes[-1],
-            "pctChg": pct_chg,
-            "asOfDate": as_of_date,
-            "ma5": ma5,
-            "ma20": ma20,
-        }
-    except Exception:
-        return None
-        
-        closes: list[float] = []
-        for idx, row in hist.iterrows():
-            try:
-                c = float(row["Close"])
-                if math.isfinite(c):
-                    closes.append(c)
-            except Exception:
-                pass
-        
-        if not closes:
-            return None
-        
-        as_of_date = hist.index[-1].strftime("%Y-%m-%d")
-        pct_chg = None
-        
-        if len(closes) >= 2:
-            prev_c, last_c = closes[-2], closes[-1]
-            if prev_c > 0:
-                pct_chg = (last_c - prev_c) / prev_c * 100.0
-        
-        ma5 = sum(closes[-5:]) / 5.0 if len(closes) >= 5 else None
-        ma20 = sum(closes[-20:]) / 20.0 if len(closes) >= 20 else None
-        
-        return {
-            "close": closes[-1],
-            "pctChg": pct_chg,
-            "asOfDate": as_of_date,
-            "ma5": ma5,
-            "ma20": ma20,
-        }
-    except Exception:
-        return None
+    return _fetch_yfinance_index("^GSPC")
+
+
+def _fetch_hsi_via_yfinance() -> dict[str, Any] | None:
+    return _fetch_yfinance_index("^HSI")
 
 
 def _df_to_metrics(df: pd.DataFrame | None) -> dict[str, Any]:
@@ -261,40 +152,51 @@ def _df_to_metrics(df: pd.DataFrame | None) -> dict[str, Any]:
     }
 
 
-def _fetch_on_demand_series(pro: Any, series_id: str) -> tuple[dict[str, Any], str | None, str | None]:
+def _fetch_on_demand_series(pro: Any | None, series_id: str) -> tuple[dict[str, Any], str | None, str | None]:
     """
     Returns (metrics, source_label, underlying_ts_code).
-    For US indices (IXIC, DJI, SPX), prefer yfinance (real-time) over Tushare (delayed).
+    US/HK indices prefer yfinance (works without Tushare token).
     """
     sd, ed = _lookback_range(120)
     try:
         if series_id == SID_IXIC:
-            # Prefer yfinance for real-time Nasdaq data
             yf_metrics = _fetch_ixic_via_yfinance()
             if yf_metrics:
                 return yf_metrics, "yfinance.on_demand", "IXIC"
-            # Fallback to Tushare if yfinance fails
+            if pro is None:
+                return {}, None, None
             df = pro.index_global(ts_code="IXIC", start_date=sd, end_date=ed)
             m = _df_to_metrics(df)
             return m, "tushare.index_global.on_demand" if m else None, "IXIC"
         if series_id == SID_DJI:
-            # Prefer yfinance for real-time Dow Jones data
             yf_metrics = _fetch_dji_via_yfinance()
             if yf_metrics:
                 return yf_metrics, "yfinance.on_demand", "DJI"
-            # Fallback to Tushare if yfinance fails
+            if pro is None:
+                return {}, None, None
             df = pro.index_global(ts_code="DJI", start_date=sd, end_date=ed)
             m = _df_to_metrics(df)
             return m, "tushare.index_global.on_demand" if m else None, "DJI"
         if series_id == SID_SPX:
-            # Prefer yfinance for real-time S&P 500 data
             yf_metrics = _fetch_spx_via_yfinance()
             if yf_metrics:
                 return yf_metrics, "yfinance.on_demand", "SPX"
-            # Fallback to Tushare if yfinance fails
+            if pro is None:
+                return {}, None, None
             df = pro.index_global(ts_code="SPX", start_date=sd, end_date=ed)
             m = _df_to_metrics(df)
             return m, "tushare.index_global.on_demand" if m else None, "SPX"
+        if series_id == SID_HSI:
+            yf_metrics = _fetch_hsi_via_yfinance()
+            if yf_metrics:
+                return yf_metrics, "yfinance.on_demand", "HSI"
+            if pro is None:
+                return {}, None, None
+            df = pro.index_global(ts_code="HSI", start_date=sd, end_date=ed)
+            m = _df_to_metrics(df)
+            return m, "tushare.index_global.on_demand" if m else None, "HSI"
+        if pro is None:
+            return {}, None, None
         if series_id == SID_USDCNH:
             df = pro.fx_daily(ts_code="USDCNH.FXCM", start_date=sd, end_date=ed)
             df = _normalize_fx_daily_df(df)
@@ -335,7 +237,7 @@ def _fetch_on_demand_series(pro: Any, series_id: str) -> tuple[dict[str, Any], s
     return {}, None, None
 
 
-ALWAYS_REFRESH_SERIES = [SID_IXIC, SID_DJI, SID_SPX, SID_USDCNH, SID_A50]
+ALWAYS_REFRESH_SERIES = [SID_IXIC, SID_DJI, SID_SPX, SID_USDCNH, SID_A50, SID_HSI]
 
 def _is_data_stale(as_of_date: str | None) -> bool:
     """Check if data is stale (older than 2 days for offshore series)."""
@@ -350,14 +252,8 @@ def _is_data_stale(as_of_date: str | None) -> bool:
         return True
 
 def enrich_macro_items_on_demand(macro_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Fill missing close/MA rows using Tushare daily APIs (no DB writes).
-
-    For offshore series (IXIC, USDCNH, A50), always fetch latest data regardless
-    of DB status, since their trading hours differ from CN market and DB data may be stale.
-    """
+    """Fill missing/stale macro rows using yfinance and/or Tushare daily APIs (no DB writes)."""
     pro = try_tushare_pro()
-    if pro is None:
-        return macro_items
 
     to_fetch: list[tuple[int, str]] = []
     for idx, m in enumerate(macro_items):
@@ -398,11 +294,20 @@ def enrich_macro_items_on_demand(macro_items: list[dict[str, Any]]) -> list[dict
                 m["source"] = src
             if und:
                 m["underlyingTsCode"] = und
-            m["dataSource"] = "tushare_on_demand"
+            m["dataSource"] = "on_demand"
     return macro_items
+
+
+def fetch_hsi_on_demand() -> tuple[dict[str, Any], str | None]:
+    """Public helper for index signals HSI refresh."""
+    pro = try_tushare_pro()
+    metrics, src, _ = _fetch_on_demand_series(pro, SID_HSI)
+    return metrics, src
 
 
 def macro_snapshot_warning() -> str | None:
     if not get_settings().tu_share_api_key:
-        return "TU_SHARE_API_KEY is not set; configure token for macro series."
+        return (
+            "TU_SHARE_API_KEY is not set; US/HK macro may still refresh via yfinance on demand."
+        )
     return None

@@ -169,7 +169,7 @@ describe('buildSentimentMarkdown', () => {
     expect(md).toContain('+0.35%');
     expect(md).toContain('| date | up | down |');
     expect(md).toContain('## ETF Fund Flow (Top Watchlist)');
-    expect(md).toContain('| 沪深300 ETF | 510300 | +52.30亿 | +120.50亿 |');
+    expect(md).toContain('| 沪深300 ETF | 510300 | +52.30亿 | +120.50亿 | — | — |');
     expect(md).toContain('🛡️ National Team Buy');
     expect(md).toContain('⚠️ Inst Outflow');
   });

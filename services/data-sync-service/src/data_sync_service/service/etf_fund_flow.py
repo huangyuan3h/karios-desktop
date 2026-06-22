@@ -22,6 +22,7 @@ from data_sync_service.db.etf_fund_flow import (
 from data_sync_service.service.etf_fund_flow_em import fetch_em_etf_spot_for_symbols
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
 from data_sync_service.db.trade_calendar import get_open_dates
+from data_sync_service.service.market_regime import _is_shanghai_sync_window
 
 JOB_TYPE = "etf_fund_flow_watchlist"
 FULL_START_DATE = "20230101"
@@ -150,6 +151,7 @@ def signal_display(signal: str) -> str:
         "Sector Momentum": "📈 Sector Momentum",
         "Inst Outflow": "⚠️ Inst Outflow",
         "Neutral": "➖ Neutral",
+        "Data Lag": "⏳ Data Lag",
     }
     return mapping.get(signal, f"➖ {signal}")
 
@@ -272,15 +274,27 @@ def _merge_tushare_frames(
     return out
 
 
+def _should_skip_etf_sync_today(*, force: bool) -> bool:
+    """Skip when already synced today, except in sync window while share data still lags."""
+    if force:
+        return False
+    run = get_today_run(JOB_TYPE)
+    if not run or not run.get("success"):
+        return False
+    if not _is_shanghai_sync_window():
+        return True
+    as_of = _yyyymmdd_to_iso(_today_yyyymmdd())
+    bundle = build_etf_fund_flow_bundle(as_of_date=as_of)
+    return not bool(bundle.get("shareLag"))
+
+
 def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
     """
     Incremental sync for hardcoded ETF watchlist via fund_share + fund_daily.
-    Skip if today's job already succeeded unless force=True.
+    Skip if today's job already succeeded unless force=True or shareLag persists in sync window.
     """
-    if not force:
-        run = get_today_run(JOB_TYPE)
-        if run and run.get("success"):
-            return {"ok": True, "skipped": True, "message": "already synced today"}
+    if _should_skip_etf_sync_today(force=force):
+        return {"ok": True, "skipped": True, "message": "already synced today"}
 
     settings = get_settings()
     if not settings.tu_share_api_key:
@@ -450,17 +464,59 @@ def _latest_net_inflow_row(
     return None, None
 
 
+def _prev_open_iso(open_iso: list[str], as_of: str) -> str | None:
+    prior = [d for d in open_iso if d < as_of]
+    return prior[-1] if prior else None
+
+
+def _estimate_net_1d_from_em(
+    *,
+    symbol: str,
+    as_of: str,
+    rows_by_date: dict[str, dict[str, Any]],
+    open_iso: list[str],
+    em_spot: dict[str, dict[str, Any]] | None,
+) -> float | None:
+    """Best-effort same-day net inflow from East Money spot (read path, no DB write)."""
+    em = (em_spot or {}).get(symbol)
+    if not em:
+        return None
+    data_date = em.get("dataDate")
+    if data_date and str(data_date) != as_of:
+        return None
+    main_net = em.get("mainNetInflow")
+    if main_net is not None:
+        try:
+            return float(main_net)
+        except (TypeError, ValueError):
+            pass
+    fd_share_wan = em.get("fdShareWan")
+    if fd_share_wan is None:
+        return None
+    prev_iso = _prev_open_iso(open_iso, as_of)
+    if not prev_iso:
+        return None
+    prev_row = rows_by_date.get(prev_iso) or {}
+    as_of_row = rows_by_date.get(as_of) or {}
+    avg_price = as_of_row.get("avg_price") or as_of_row.get("close") or prev_row.get("avg_price")
+    return compute_net_inflow_1d(
+        fd_share_today=fd_share_wan,
+        fd_share_prev=prev_row.get("fd_share"),
+        avg_price=avg_price,
+    )
+
+
 def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
     """Build dashboard etfFundFlow block from cached DB rows."""
     ensure_table()
     as_of = str(as_of_date or "").strip() or (get_latest_date() or "")
     if not as_of:
-        return {"asOfDate": "", "shareLag": False, "items": []}
+        return {"asOfDate": "", "shareLag": False, "intradaySafe": True, "items": []}
 
     try:
         as_of_d = date.fromisoformat(as_of)
     except ValueError:
-        return {"asOfDate": as_of, "shareLag": False, "items": []}
+        return {"asOfDate": as_of, "shareLag": False, "intradaySafe": True, "items": []}
 
     start = as_of_d - timedelta(days=30)
     open_dates = get_open_dates("SSE", start, as_of_d)
@@ -481,6 +537,7 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
             by_code_date.setdefault(code, {})[td] = row
 
     share_lag = False
+    em_spot: dict[str, dict[str, Any]] | None = None
     items: list[dict[str, Any]] = []
     for spec in ETF_WATCHLIST:
         code = spec["ts_code"]
@@ -500,11 +557,27 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
                 except (TypeError, ValueError):
                     net_1d = None
 
+        net_1d_lagged: float | None = None
         if net_1d is None:
             lag_date, lag_net = _latest_net_inflow_row(rows_by_date, open_iso, up_to=as_of)
-            if lag_net is not None:
-                net_1d = lag_net
-                flow_as_of = lag_date or as_of
+            if lag_net is not None and lag_date and lag_date != as_of:
+                net_1d_lagged = lag_net
+                flow_as_of = lag_date
+
+        if net_1d is None and (as_of_row is None or as_of_row.get("fd_share") is None):
+            if em_spot is None and _is_shanghai_sync_window():
+                symbols = [w["symbol"] for w in ETF_WATCHLIST]
+                em_spot = fetch_em_etf_spot_for_symbols(symbols)
+            em_net = _estimate_net_1d_from_em(
+                symbol=symbol,
+                as_of=as_of,
+                rows_by_date=rows_by_date,
+                open_iso=open_iso,
+                em_spot=em_spot,
+            )
+            if em_net is not None:
+                net_1d = em_net
+                flow_as_of = as_of
 
         net_3d = _sum_net_inflow_for_dates(rows_by_date, last_3) if last_3 else None
         if net_3d is None and last_3:
@@ -517,20 +590,28 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
                 vals.append(v)
             net_3d = sum(vals) if vals else None
 
-        if as_of_row and as_of_row.get("fd_share") is not None:
+        stale_flow = flow_as_of != as_of or (
+            as_of_row is not None and as_of_row.get("fd_share") is None and net_1d is None
+        )
+        if net_1d is not None and flow_as_of == as_of and em_spot and em_spot.get(symbol):
+            data_source = "eastmoney"
+        elif as_of_row and as_of_row.get("fd_share") is not None:
             data_source = "tushare"
         elif as_of_row and as_of_row.get("net_inflow") is not None and as_of_row.get("fd_share") is None:
             data_source = "eastmoney"
-        elif flow_as_of != as_of:
+        elif stale_flow:
             data_source = "tushare"
         else:
             data_source = "mixed" if net_1d is not None else "tushare"
 
-        signal = classify_signal(
-            category=spec["category"],
-            net_flow_1d=net_1d,
-            net_flow_3d=net_3d,
-        )
+        if net_1d is None:
+            signal = "Data Lag"
+        else:
+            signal = classify_signal(
+                category=spec["category"],
+                net_flow_1d=net_1d,
+                net_flow_3d=net_3d,
+            )
         source = data_source
         items.append(
             {
@@ -539,6 +620,7 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
                 "tsCode": code,
                 "category": spec["category"],
                 "netFlow1d": net_1d,
+                "netFlow1dLagged": net_1d_lagged,
                 "netFlow3d": net_3d,
                 "flowAsOfDate": flow_as_of if flow_as_of != as_of else None,
                 "source": source,
@@ -547,4 +629,10 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
             }
         )
 
-    return {"asOfDate": as_of, "shareLag": share_lag, "items": items}
+    intraday_safe = not any(str(it.get("signal") or "") == "Data Lag" for it in items)
+    return {
+        "asOfDate": as_of,
+        "shareLag": share_lag,
+        "intradaySafe": intraday_safe,
+        "items": items,
+    }

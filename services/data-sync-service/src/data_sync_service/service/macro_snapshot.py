@@ -27,8 +27,8 @@ from data_sync_service.service.macro_snapshot_on_demand import (
     enrich_macro_items_on_demand,
     macro_snapshot_warning,
 )
-from data_sync_service.service.market_regime import get_index_signals
-from data_sync_service.service.option_iv import classify_iv_signal
+from data_sync_service.service.market_regime import _trade_date_from_trade_time, get_index_signals
+from data_sync_service.service.option_iv import classify_iv_signal, resolve_put_iv_for_snapshot
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 MACRO_CARDS: list[dict[str, Any]] = [
@@ -112,6 +112,12 @@ def _ma(closes: list[float], n: int) -> float | None:
     return sum(closes[-n:]) / float(n)
 
 
+def _macro_as_of_stale(as_of_date: str) -> bool:
+    from data_sync_service.service.macro_snapshot_on_demand import _is_data_stale
+
+    return _is_data_stale(as_of_date)
+
+
 def _macro_item_from_db(
     meta: dict[str, Any],
     closes: list[tuple[str, float]],
@@ -179,6 +185,7 @@ def _backfill_macro_pct_chg(m: dict[str, Any], hist: list[tuple[str, float]] | N
 
 def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     ensure_table()
+    put_iv_warning: str | None = None
     # Skip full-market breadth (very slow); Index page needs a fast response.
     if cn_index_signals is None:
         cn_index_signals = get_index_signals(include_breadth=False)
@@ -214,25 +221,25 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
         macro_items.append(item)
 
     if any(m.get("seriesId") == SID_510300_PUT_IV and m.get("close") is None for m in macro_items):
-        try:
-            from data_sync_service.service.option_iv import sync_option_iv_daily
-
-            sync_option_iv_daily(force=True)
-            closes_by_sid[SID_510300_PUT_IV] = fetch_last_closes(SID_510300_PUT_IV, days=80)
-            latest_by_sid[SID_510300_PUT_IV] = get_latest_row(SID_510300_PUT_IV)
-            put_meta = next(m for m in MACRO_CARDS if m["seriesId"] == SID_510300_PUT_IV)
-            put_closes = closes_by_sid.get(SID_510300_PUT_IV, [])
-            if put_closes:
-                for i, m in enumerate(macro_items):
-                    if m.get("seriesId") == SID_510300_PUT_IV:
-                        macro_items[i] = _macro_item_from_db(
-                            put_meta,
-                            put_closes,
-                            latest_by_sid.get(SID_510300_PUT_IV),
-                        )
-                        break
-        except Exception:
-            pass
+        resolved = resolve_put_iv_for_snapshot(write_db=True)
+        put_warning = resolved.get("warning")
+        if resolved.get("close") is not None:
+            for i, m in enumerate(macro_items):
+                if m.get("seriesId") == SID_510300_PUT_IV:
+                    macro_items[i] = {
+                        **m,
+                        "asOfDate": resolved.get("asOfDate"),
+                        "close": resolved.get("close"),
+                        "pctChg": resolved.get("pctChg"),
+                        "source": resolved.get("source"),
+                        "underlyingTsCode": resolved.get("underlyingTsCode"),
+                        "realtime": bool(resolved.get("realtime")),
+                        "signal": resolved.get("signal"),
+                        "signalLabel": resolved.get("signalLabel"),
+                    }
+                    break
+        elif put_warning:
+            put_iv_warning = str(put_warning)
 
     # Realtime overlay (best-effort; unsupported codes return empty)
     rt_codes: list[str] = []
@@ -270,6 +277,7 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
                     if pre is not None and pre > 0:
                         pct = (price - pre) / pre * 100.0
                 tt = it.get("trade_time")
+                rt_date = _trade_date_from_trade_time(str(tt) if tt else None)
                 for m in macro_items:
                     if m.get("seriesId") == sid:
                         m["realtime"] = True
@@ -280,6 +288,8 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
                             m["close"] = price
                         if pct is not None:
                             m["pctChg"] = pct
+                        if rt_date:
+                            m["asOfDate"] = rt_date
                         break
 
     # DB empty + realtime_quote often has no US/FX ticks: query Tushare daily on demand (no DB write).
@@ -298,7 +308,22 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
                 m["unit"] = "%"
 
     out: dict[str, Any] = {"cnIndexSignals": cn_index_signals, "macro": macro_items}
+    warnings: list[str] = []
+    if put_iv_warning:
+        warnings.append(put_iv_warning)
     warn = macro_snapshot_warning()
     if warn:
-        out["warning"] = warn
+        warnings.append(warn)
+    stale_macro = [
+        str(m.get("seriesId") or "")
+        for m in macro_items
+        if m.get("asOfDate")
+        and _macro_as_of_stale(str(m.get("asOfDate")))
+        and str(m.get("seriesId") or "") in {SID_IXIC, SID_SPX, SID_DJI, "HSI"}
+    ]
+    if stale_macro:
+        warnings.append(f"macro_data_stale: {','.join(sorted(set(stale_macro)))}")
+    if warnings:
+        out["warnings"] = warnings
+        out["warning"] = "; ".join(warnings)
     return out

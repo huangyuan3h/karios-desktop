@@ -55,6 +55,56 @@ def test_run_post_close_sync(monkeypatch) -> None:
     assert set(called) == {"index", "macro", "em", "etf"}
 
 
+def test_enrich_macro_items_on_demand_without_tushare(monkeypatch) -> None:
+    from data_sync_service.service import macro_snapshot_on_demand as mod
+
+    monkeypatch.setattr(mod, "try_tushare_pro", lambda: None)
+    monkeypatch.setattr(
+        mod,
+        "_fetch_ixic_via_yfinance",
+        lambda: {
+            "close": 17000.0,
+            "pctChg": 1.2,
+            "asOfDate": "2026-06-20",
+            "ma5": 16900.0,
+            "ma20": 16800.0,
+        },
+    )
+
+    items = [
+        {
+            "seriesId": mod.SID_IXIC,
+            "name": "Nasdaq",
+            "close": 16000.0,
+            "asOfDate": "2026-06-10",
+            "pctChg": 0.5,
+        }
+    ]
+    out = mod.enrich_macro_items_on_demand(items)
+    assert out[0]["close"] == 17000.0
+    assert out[0]["asOfDate"] == "2026-06-20"
+    assert out[0]["source"] == "yfinance.on_demand"
+
+
+def test_fetch_hsi_on_demand(monkeypatch) -> None:
+    from data_sync_service.service import macro_snapshot_on_demand as mod
+
+    monkeypatch.setattr(
+        mod,
+        "_fetch_hsi_via_yfinance",
+        lambda: {
+            "close": 24000.0,
+            "pctChg": -0.5,
+            "asOfDate": "2026-06-22",
+            "ma5": 24100.0,
+            "ma20": 24500.0,
+        },
+    )
+    metrics, src = mod.fetch_hsi_on_demand()
+    assert metrics["close"] == 24000.0
+    assert src == "yfinance.on_demand"
+
+
 def test_resolve_sgx_a50_main_empty() -> None:
     from data_sync_service.service.macro_daily import resolve_sgx_a50_main  # type: ignore[import-not-found]
 

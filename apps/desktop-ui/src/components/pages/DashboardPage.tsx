@@ -791,8 +791,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                               </div>
                               {etfFlow?.shareLag ? (
                                 <div className="mb-2 text-xs text-amber-600 dark:text-amber-400">
-                                  Share data may lag (T+1 morning). 1D flow can be incomplete until
-                                  fund_share updates.
+                                  Share data may lag (T+1). Stale 1D flows are not used for signals
+                                  {etfFlow?.intradaySafe === false ? ' — not safe for intraday decisions' : ''}.
                                 </div>
                               ) : null}
                               <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
@@ -803,32 +803,57 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                       <th className="px-2 py-2 font-mono">Symbol</th>
                                       <th className="px-2 py-2 text-right">1D Net Flow</th>
                                       <th className="px-2 py-2 text-right">3D Net Flow</th>
+                                      <th className="px-2 py-2">Flow AsOf</th>
+                                      <th className="px-2 py-2">Source</th>
                                       <th className="px-2 py-2">Signal</th>
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {etfItems.map((it: any, idx: number) => (
+                                    {etfItems.map((it: any, idx: number) => {
+                                      const flow1dStale =
+                                        it?.netFlow1d == null &&
+                                        (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
+                                      const flow1dDisplay = flow1dStale
+                                        ? '— (T-1)'
+                                        : fmtSignedAmountCn(it?.netFlow1d);
+                                      const signalText = String(
+                                        it?.signalDisplay ?? it?.signal ?? '—',
+                                      );
+                                      const isDataLag = String(it?.signal ?? '') === 'Data Lag';
+                                      return (
                                       <tr key={idx} className="border-t border-[var(--k-border)]">
                                         <td className="px-2 py-2">{String(it?.name ?? '')}</td>
                                         <td className="px-2 py-2 font-mono">
                                           {String(it?.symbol ?? '')}
                                         </td>
                                         <td className="px-2 py-2 text-right font-mono">
-                                          {fmtSignedAmountCn(it?.netFlow1d)}
+                                          {flow1dDisplay}
                                         </td>
                                         <td className="px-2 py-2 text-right font-mono">
                                           {fmtSignedAmountCn(it?.netFlow3d)}
                                         </td>
-                                        <td className="px-2 py-2">
-                                          {String(it?.signalDisplay ?? it?.signal ?? '—')}
+                                        <td className="px-2 py-2 font-mono">
+                                          {String(it?.flowAsOfDate ?? '—')}
+                                        </td>
+                                        <td className="px-2 py-2 font-mono">
+                                          {String(it?.source ?? '—')}
+                                        </td>
+                                        <td
+                                          className={
+                                            isDataLag
+                                              ? 'px-2 py-2 text-[var(--k-muted)]'
+                                              : 'px-2 py-2'
+                                          }
+                                        >
+                                          {signalText}
                                         </td>
                                       </tr>
-                                    ))}
+                                    );})}
                                     {!etfItems.length ? (
                                       <tr>
                                         <td
                                           className="px-2 py-3 text-sm text-[var(--k-muted)]"
-                                          colSpan={5}
+                                          colSpan={7}
                                         >
                                           No ETF fund flow cached yet. Click &quot;Sync
                                           sentiment&quot;.

@@ -34,6 +34,7 @@ from data_sync_service.service.industry_fund_flow_read import (
 )
 from data_sync_service.service.sector_rotation_index import compute_srv_index
 from data_sync_service.service.macro_snapshot import build_macro_snapshot
+from data_sync_service.service.macro_daily import sync_macro_daily_full
 from data_sync_service.service.market_environment_zh import format_market_environment_zh
 from data_sync_service.service.market_regime import (
     _is_shanghai_sync_window,
@@ -287,6 +288,11 @@ def _run_step(name: str, fn: callable) -> dict[str, Any]:
         msg = str(exc)
     dur = int((time.perf_counter() - st) * 1000)
     return {"name": name, "ok": ok, "durationMs": dur, "message": msg, "meta": meta}
+
+
+def _sync_macro_step() -> dict[str, Any]:
+    out = sync_macro_daily_full()
+    return out if isinstance(out, dict) else {"ok": True}
 
 
 def _sync_industry_step() -> dict[str, Any]:
@@ -605,6 +611,7 @@ def dashboard_sync(*, force: bool = True, screeners: bool = True) -> dict[str, A
     steps: list[dict[str, Any]] = []
     steps.append(_run_step("industryFundFlow", _sync_industry_step))
     steps.append(_run_step("marketSentiment", lambda: _sync_sentiment_step(force=force)))
+    steps.append(_run_step("macroDaily", _sync_macro_step))
     screener_result = _run_step("screeners", lambda: _sync_screeners_step(screeners_enabled=screeners))
     steps.append(screener_result)
     steps.append(_run_step("news", _sync_news_step))
@@ -628,6 +635,7 @@ def dashboard_sync_parallel(*, force: bool = True, screeners: bool = True) -> di
     step_fns = {
         "industryFundFlow": _sync_industry_step,
         "marketSentiment": lambda: _sync_sentiment_step(force=force),
+        "macroDaily": _sync_macro_step,
         "screeners": lambda: _sync_screeners_step(screeners_enabled=screeners),
         "news": _sync_news_step,
     }
@@ -641,7 +649,7 @@ def dashboard_sync_parallel(*, force: bool = True, screeners: bool = True) -> di
                 steps.append(result)
             except Exception as exc:
                 steps.append({"name": name, "ok": False, "durationMs": 0, "message": str(exc), "meta": {}})
-    step_order = ["industryFundFlow", "marketSentiment", "screeners", "news"]
+    step_order = ["industryFundFlow", "marketSentiment", "macroDaily", "screeners", "news"]
     steps.sort(key=lambda s: step_order.index(s.get("name", "")))
     finished_at = _now_iso()
     ok = all(bool(s.get("ok")) for s in steps)
@@ -667,6 +675,7 @@ def dashboard_sync_stream(
     step_fns = {
         "industryFundFlow": _sync_industry_step,
         "marketSentiment": lambda: _sync_sentiment_step(force=force),
+        "macroDaily": _sync_macro_step,
         "news": _sync_news_step,
     }
     steps: list[dict[str, Any]] = []
@@ -711,7 +720,7 @@ def dashboard_sync_stream(
                     yield json.dumps({"type": "step", "step": result}) + "\n"
 
         yield from _drain_screener_progress_events(progress_queue)
-    step_order = ["industryFundFlow", "marketSentiment", "screeners", "news"]
+    step_order = ["industryFundFlow", "marketSentiment", "macroDaily", "screeners", "news"]
     steps.sort(key=lambda s: step_order.index(s.get("name", "")))
     finished_at = _now_iso()
     ok = all(bool(s.get("ok")) for s in steps)

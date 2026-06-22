@@ -268,17 +268,33 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
   const etfItems: any[] = Array.isArray(etfFlow?.items) ? etfFlow.items : [];
   if (etfItems.length) {
     if (etfFlow?.shareLag) {
-      lines.push(`- ETF shareLag: true (Tushare fund_share T+1; 1D may use prior trade date)`);
+      lines.push(
+        `- ETF shareLag: true (Tushare fund_share T+1; stale 1D not used for signals; intradaySafe: ${String(etfFlow?.intradaySafe ?? false)})`,
+      );
     }
-    const etfHeaders = ['ETF Name', 'Symbol', '1D Net Flow', '3D Net Flow', 'Flow AsOf', 'Signal'];
-    const etfRows: unknown[][] = etfItems.map((it: any) => [
-      String(it?.name ?? ''),
-      String(it?.symbol ?? ''),
-      fmtSignedAmountCn(it?.netFlow1d),
-      fmtSignedAmountCn(it?.netFlow3d),
-      String(it?.flowAsOfDate ?? '—'),
-      String(it?.signalDisplay ?? it?.signal ?? '—'),
-    ]);
+    const etfHeaders = [
+      'ETF Name',
+      'Symbol',
+      '1D Net Flow',
+      '3D Net Flow',
+      'Flow AsOf',
+      'Source',
+      'Signal',
+    ];
+    const etfRows: unknown[][] = etfItems.map((it: any) => {
+      const flow1dStale =
+        it?.netFlow1d == null && (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
+      const flow1d = flow1dStale ? '— (T-1)' : fmtSignedAmountCn(it?.netFlow1d);
+      return [
+        String(it?.name ?? ''),
+        String(it?.symbol ?? ''),
+        flow1d,
+        fmtSignedAmountCn(it?.netFlow3d),
+        String(it?.flowAsOfDate ?? '—'),
+        String(it?.source ?? '—'),
+        String(it?.signalDisplay ?? it?.signal ?? '—'),
+      ];
+    });
     lines.push(`${heading} ETF Fund Flow (Top Watchlist)`);
     lines.push('');
     lines.push(mdTable(etfHeaders, etfRows));

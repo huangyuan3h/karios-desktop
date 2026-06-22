@@ -16,6 +16,10 @@ from data_sync_service.service.market_sentiment import (
     fetch_cn_market_breadth_eod,
     fetch_cn_market_breadth_intraday,
 )
+from data_sync_service.service.macro_snapshot_on_demand import (
+    _is_data_stale,
+    fetch_hsi_on_demand,
+)
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 INDEX_SIGNALS = [
@@ -152,6 +156,41 @@ def _trade_date_from_trade_time(trade_time: str | None) -> str | None:
     if len(s) == 8 and s.isdigit():
         return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
     return None
+
+
+def _hsi_series_stale(series_raw: list[tuple[str, float]]) -> bool:
+    if not series_raw:
+        return True
+    return _is_data_stale(series_raw[-1][0])
+
+
+def _merge_on_demand_into_series(
+    series_raw: list[tuple[str, float]],
+    metrics: dict[str, Any],
+) -> list[tuple[str, float]]:
+    as_of = str(metrics.get("asOfDate") or "")
+    close = metrics.get("close")
+    if not as_of or close is None:
+        return series_raw
+    try:
+        c = float(close)
+    except (TypeError, ValueError):
+        return series_raw
+    if not math.isfinite(c):
+        return series_raw
+    if series_raw and series_raw[-1][0] == as_of:
+        return [*series_raw[:-1], (as_of, c)]
+    if not series_raw or series_raw[-1][0] < as_of:
+        return [*series_raw, (as_of, c)]
+    return series_raw
+
+
+def _hsi_source_label(*, used_realtime: bool, on_demand_src: str | None) -> str:
+    if used_realtime:
+        return "tushare.realtime_quote"
+    if on_demand_src:
+        return on_demand_src
+    return "db.macro_daily"
 
 
 def _safe_float(v: Any) -> float | None:
@@ -331,7 +370,7 @@ def _compute_index_signals(
     if _is_shanghai_sync_window() and not use_as_of:
         cn_codes = [x["ts_code"] for x in INDEX_SIGNALS]
         hk_codes = [x["series_id"] for x in HK_INDEX_SIGNALS]
-        cn_res = fetch_realtime_quotes(cn_codes)
+        cn_res = fetch_realtime_quotes(cn_codes + hk_codes)
         if isinstance(cn_res, dict) and bool(cn_res.get("ok")):
             for it in cn_res.get("items", []) or []:
                 ts_code = str(it.get("ts_code") or "").strip()
@@ -564,6 +603,15 @@ def _compute_index_signals(
         series_id = it["series_id"]
         name = it["name"]
         series_raw = fetch_macro_last_closes(series_id, days=HISTORY_DAYS)
+        if not series_raw or _hsi_series_stale(series_raw):
+            metrics, src = fetch_hsi_on_demand()
+            if metrics.get("close") is not None and metrics.get("asOfDate"):
+                series_raw = _merge_on_demand_into_series(series_raw, metrics)
+                hsi_on_demand_source = src
+            else:
+                hsi_on_demand_source = None
+        else:
+            hsi_on_demand_source = None
         if not series_raw:
             out.append(
                 {
@@ -630,7 +678,10 @@ def _compute_index_signals(
                     "rules": ["insufficient data for MA20"],
                     "realtime": used_realtime,
                     "tradeTime": trade_time if used_realtime else None,
-                    "source": "tushare.realtime_quote" if used_realtime else "db.macro_daily",
+                    "source": _hsi_source_label(
+                        used_realtime=used_realtime,
+                        on_demand_src=hsi_on_demand_source,
+                    ),
                     "pctChg": pct_short,
                     "volRatio": None,
                     "estimatedVol": None,
@@ -717,7 +768,10 @@ def _compute_index_signals(
                 "rules": rules,
                 "realtime": used_realtime,
                 "tradeTime": trade_time if used_realtime else None,
-                "source": "tushare.realtime_quote" if used_realtime else "db.macro_daily",
+                "source": _hsi_source_label(
+                    used_realtime=used_realtime,
+                    on_demand_src=hsi_on_demand_source,
+                ),
                 "pctChg": pct_chg,
                 "volRatio": None,
                 "estimatedVol": None,
