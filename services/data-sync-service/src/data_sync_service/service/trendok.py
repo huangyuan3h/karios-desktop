@@ -924,12 +924,35 @@ def _trendok_one(
             res["scoreParts"] = parts
             if industry and flow_ctx:
                 delta, flow_parts, flow_reasons = _industry_flow_score_adjustment(industry, flow_ctx)
+                checks = res.get("checks") if isinstance(res.get("checks"), dict) else {}
+                positive_bonus_allowed = all(
+                    bool(checks.get(k))
+                    for k in (
+                        "emaOrder",
+                        "macdPositive",
+                        "macdHistExpanding",
+                        "closeNear20dHigh",
+                        "rsiInRange",
+                        "volumeSurge",
+                    )
+                )
+                effective_flow_parts = {
+                    k: v
+                    for k, v in flow_parts.items()
+                    if float(v) < 0.0 or positive_bonus_allowed
+                }
                 if flow_parts:
-                    res["scoreParts"].update(flow_parts)
+                    if effective_flow_parts:
+                        res["scoreParts"].update(effective_flow_parts)
                     res["values"]["industryFlowAsOfDate"] = flow_ctx.get("asOfDate")
                     res["values"]["industryFlowReasons"] = flow_reasons
                 if delta != 0.0 and res.get("score") is not None:
-                    res["score"] = round(max(0.0, min(100.0, float(res["score"]) + delta)), 3)
+                    negative_delta = min(delta, 0.0)
+                    positive_delta = max(delta, 0.0)
+                    allowed_positive_delta = positive_delta if positive_bonus_allowed else 0.0
+                    effective_delta = negative_delta + allowed_positive_delta
+                    if effective_delta != 0.0:
+                        res["score"] = round(max(0.0, min(100.0, float(res["score"]) + effective_delta)), 3)
             buy_seats: list[dict[str, Any]] | None = None
             if inst_summary and inst_summary.get("on_board"):
                 td = str(inst_summary.get("trade_date") or "")
@@ -1319,5 +1342,7 @@ def _trendok_one(
         res["missingData"].append("insufficient_indicators")
     else:
         res["trendOk"] = bool(all(bool(x) for x in required))
+    if res.get("score") is not None and res.get("trendOk") is not True:
+        res["score"] = round(min(float(res["score"]), 79.9), 3)
     return res
 

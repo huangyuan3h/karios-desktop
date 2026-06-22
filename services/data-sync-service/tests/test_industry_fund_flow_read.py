@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from data_sync_service.service.industry_fund_flow import get_cn_industry_fund_flow
+from data_sync_service.service.industry_fund_flow import get_cn_industry_fund_flow, sync_cn_industry_fund_flow
 from data_sync_service.service.industry_fund_flow_read import (
     build_trendok_flow_context_from_rows,
     positive_days_from_rows,
@@ -221,3 +221,28 @@ def test_build_trendok_flow_context_from_rows_single_day_no_yesterday() -> None:
     assert ctx["yesterday"] is None
     assert ctx["top_yesterday_3"] == set()
     assert ctx["net_yesterday"] == {}
+
+
+def test_sync_cn_industry_fund_flow_fetches_history_for_all_industries() -> None:
+    items = [
+        {"date": "2024-01-20", "industry_code": "c1", "industry_name": "A", "net_inflow": 30.0, "raw": {}},
+        {"date": "2024-01-20", "industry_code": "c2", "industry_name": "B", "net_inflow": 20.0, "raw": {}},
+        {"date": "2024-01-20", "industry_code": "c3", "industry_name": "C", "net_inflow": 10.0, "raw": {}},
+    ]
+    calls: list[str] = []
+
+    def fake_hist(name: str, *, industry_code: str | None = None, days: int = 10) -> list[dict]:
+        calls.append(name)
+        return [{"date": "2024-01-19", "net_inflow": 1.0, "raw": {"name": name}}]
+
+    with (
+        patch("data_sync_service.service.industry_fund_flow.is_cn_trading_day", return_value=True),
+        patch("data_sync_service.service.industry_fund_flow.fetch_cn_industry_fund_flow_eod", return_value=items),
+        patch("data_sync_service.service.industry_fund_flow.fetch_cn_industry_fund_flow_hist", side_effect=fake_hist),
+        patch("data_sync_service.service.industry_fund_flow.upsert_daily_rows") as upsert,
+    ):
+        out = sync_cn_industry_fund_flow(days=2, top_n=1)
+
+    assert sorted(calls) == ["A", "B", "C"]
+    assert out["histRows"] == 3
+    assert upsert.call_count == 2

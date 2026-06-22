@@ -309,14 +309,14 @@ def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10) -> dict[str, 
     ]
     upsert_daily_rows(daily_rows)
 
-    top_rows = sorted(items, key=lambda x: float(x.get("net_inflow") or 0.0), reverse=True)[: max(1, int(top_n))]
+    hist_source_rows = [r for r in items if r.get("industry_name")]
     hist_rows: list[dict[str, Any]] = []
     hist_failures = 0
-    if top_rows:
+    if hist_source_rows:
         with ThreadPoolExecutor(max_workers=4) as pool:
             futures = {
                 pool.submit(_hist_rows_for_top_row, r, days=days, updated_at=updated_at): r
-                for r in top_rows
+                for r in hist_source_rows
             }
             for fut in as_completed(futures):
                 try:
