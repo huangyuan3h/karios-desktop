@@ -44,7 +44,7 @@ def test_format_inst_flow_display() -> None:
     assert format_inst_flow_display(inst_net_buy_yi=-1.5, label="机构净卖/拉萨主买") == "-1.5亿 (机构净卖/拉萨主买)"
 
 
-def test_build_inst_flow_payload() -> None:
+def test_build_inst_flow_payload_on_board() -> None:
     payload = build_inst_flow_payload(
         {
             "trade_date": "2026-06-19",
@@ -52,11 +52,34 @@ def test_build_inst_flow_payload() -> None:
             "inst_net_buy_yi": 3.2,
             "seat_label": "机构主买",
             "lhasa_dominant": False,
+        },
+        buy_seats=[
+            {"exalter": "机构专用", "buy": 50_000_000},
+            {"exalter": "东方财富证券股份有限公司拉萨团结路第二证券营业部", "buy": 10_000_000},
+        ],
+    )
+    assert payload["display"].startswith("+3.2亿 (机构主买)")
+    assert payload["instNetBuyYi"] == 3.2
+    assert len(payload["topBuySeats"]) == 2
+    assert payload["topBuySeats"][0]["isInst"] is True
+
+
+def test_build_inst_flow_payload_off_board() -> None:
+    payload = build_inst_flow_payload(
+        {
+            "trade_date": "2026-06-22",
+            "on_board": False,
         }
     )
-    assert payload is not None
-    assert payload["display"] == "+3.2亿 (机构主买)"
-    assert payload["instNetBuyYi"] == 3.2
+    assert payload["display"] == "未上榜"
+    assert payload["synced"] is True
+    assert payload["onBoard"] is False
+
+
+def test_build_inst_flow_payload_not_synced() -> None:
+    payload = build_inst_flow_payload(None)
+    assert payload["display"] == "未同步"
+    assert payload["synced"] is False
 
 
 def test_select_atm_put_iv_from_analysis_df() -> None:

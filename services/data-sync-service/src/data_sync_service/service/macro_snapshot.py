@@ -213,6 +213,27 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
         item = _macro_item_from_db(meta, closes, latest_by_sid.get(sid))
         macro_items.append(item)
 
+    if any(m.get("seriesId") == SID_510300_PUT_IV and m.get("close") is None for m in macro_items):
+        try:
+            from data_sync_service.service.option_iv import sync_option_iv_daily
+
+            sync_option_iv_daily(force=True)
+            closes_by_sid[SID_510300_PUT_IV] = fetch_last_closes(SID_510300_PUT_IV, days=80)
+            latest_by_sid[SID_510300_PUT_IV] = get_latest_row(SID_510300_PUT_IV)
+            put_meta = next(m for m in MACRO_CARDS if m["seriesId"] == SID_510300_PUT_IV)
+            put_closes = closes_by_sid.get(SID_510300_PUT_IV, [])
+            if put_closes:
+                for i, m in enumerate(macro_items):
+                    if m.get("seriesId") == SID_510300_PUT_IV:
+                        macro_items[i] = _macro_item_from_db(
+                            put_meta,
+                            put_closes,
+                            latest_by_sid.get(SID_510300_PUT_IV),
+                        )
+                        break
+        except Exception:
+            pass
+
     # Realtime overlay (best-effort; unsupported codes return empty)
     rt_codes: list[str] = []
     code_to_series: dict[str, str] = {}

@@ -52,6 +52,7 @@ describe('sub query keys', () => {
 describe('partial include presets', () => {
   it('defines sentiment-only and news-only presets', () => {
     expect(DASHBOARD_SENTIMENT_INCLUDES.includeSentiment).toBe(true);
+    expect(DASHBOARD_SENTIMENT_INCLUDES.includeMacro).toBe(true);
     expect(DASHBOARD_NEWS_INCLUDES.includeNews).toBe(true);
     expect(DASHBOARD_LITE_INCLUDES.includeSentiment).toBe(false);
   });

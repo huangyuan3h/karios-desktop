@@ -1,21 +1,25 @@
-"""300ETF ATM Put implied volatility sync via AkShare."""
+"""300ETF ATM Put implied volatility sync via East Money HTTP (AkShare fallback)."""
 
 from __future__ import annotations
 
+import math
 import sys
 from datetime import UTC, date, datetime
 from typing import Any
 
 import pandas as pd  # type: ignore[import-not-found, import-untyped]
 
-from data_sync_service.db.macro_daily import get_last_trade_date, get_latest_row, upsert_from_dataframe
+from data_sync_service.db.macro_daily import get_latest_row, upsert_from_dataframe
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
 from data_sync_service.db.trade_calendar import is_trading_day
+from data_sync_service.service.em_push2_http import em_get_json
 from data_sync_service.service.macro_daily import SID_510300_PUT_IV
 
 JOB_TYPE = "option_iv_daily"
 UNDERLYING_TS_CODE = "510300.SH"
-OPTION_BOARD_NAME = "华泰柏瑞沪深300ETF期权"
+EM_OPTION_VALUE_URL = "https://push2.eastmoney.com/api/qt/clist/get"
+EM_OPTION_PAGE_SIZE = 100
+EM_OPTION_MAX_PAGES = 20
 
 
 def _now_iso() -> str:
@@ -26,13 +30,7 @@ def _today_yyyymmdd() -> str:
     return datetime.now(tz=UTC).strftime("%Y%m%d")
 
 
-def _today_iso() -> str:
-    return datetime.now(tz=UTC).strftime("%Y-%m-%d")
-
-
 def _akshare() -> Any:
-    if sys.platform == "darwin":
-        raise RuntimeError("akshare_disabled_on_darwin")
     try:
         import akshare as ak  # type: ignore[import-not-found]
     except ImportError as e:
@@ -69,8 +67,91 @@ def _is_510300_put_row(name: str) -> bool:
     return "沽" in s or "认沽" in s
 
 
+def _em_option_value_request(params: dict[str, str]) -> dict[str, Any]:
+    return em_get_json(
+        EM_OPTION_VALUE_URL,
+        params=params,
+        referer="https://data.eastmoney.com/other/valueAnal.html",
+    )
+
+
+def _fetch_em_option_value_rows() -> list[dict[str, Any]]:
+    """Paginated fetch matching akshare option_value_analysis_em field layout."""
+    fields = (
+        "f1,f2,f3,f12,f13,f14,f298,f299,f249,f300,f330,f331,f332,f333,f334,f335,f336,f301,f152"
+    )
+    rows: list[dict[str, Any]] = []
+    page_number = 1
+    total_pages = 1
+    while page_number <= total_pages and page_number <= EM_OPTION_MAX_PAGES:
+        params = {
+            "fid": "f301",
+            "po": "1",
+            "pz": str(EM_OPTION_PAGE_SIZE),
+            "pn": str(page_number),
+            "np": "1",
+            "fltt": "2",
+            "invt": "2",
+            "ut": "b2884a393a59ad64002292a3e90d46a5",
+            "fields": fields,
+            "fs": "m:10",
+        }
+        j = _em_option_value_request(params)
+        data = j.get("data") if isinstance(j, dict) else None
+        diff = data.get("diff") if isinstance(data, dict) else None
+        if not isinstance(diff, list) or not diff:
+            break
+        for row in diff:
+            if isinstance(row, dict):
+                rows.append(row)
+        try:
+            total = int((data or {}).get("total") or 0)
+            total_pages = max(1, math.ceil(total / EM_OPTION_PAGE_SIZE))
+        except (TypeError, ValueError):
+            total_pages = page_number
+        page_number += 1
+    return rows
+
+
+def _em_rows_to_analysis_df(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    out_rows: list[dict[str, Any]] = []
+    for row in rows:
+        name = str(row.get("f14") or "")
+        if not name:
+            continue
+        try:
+            iv = float(row.get("f249"))
+        except (TypeError, ValueError):
+            iv = float("nan")
+        expiry_raw = row.get("f301")
+        expiry: str | None = None
+        if expiry_raw is not None:
+            s = str(expiry_raw).strip()
+            if len(s) == 8 and s.isdigit():
+                expiry = f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+            else:
+                expiry = s or None
+        spot = None
+        for key in ("f334", "f335"):
+            try:
+                spot = float(row.get(key))
+                if spot == spot and spot > 0:
+                    break
+            except (TypeError, ValueError):
+                spot = None
+        out_rows.append(
+            {
+                "期权名称": name,
+                "隐含波动率": iv,
+                "到期日": expiry,
+                "标的最新价": spot,
+            }
+        )
+    return pd.DataFrame(out_rows)
+
+
 def select_atm_put_iv(df: pd.DataFrame) -> dict[str, Any] | None:
-    """Pick nearest-expiry ATM put IV for 510300 from option_value_analysis_em."""
+    """Pick nearest-expiry ATM put IV for 510300 from option value analysis rows."""
     if df is None or df.empty:
         return None
     name_col = "期权名称" if "期权名称" in df.columns else None
@@ -122,12 +203,29 @@ def select_atm_put_iv(df: pd.DataFrame) -> dict[str, Any] | None:
     return best
 
 
-def fetch_510300_atm_put_iv_live() -> dict[str, Any] | None:
-    ak = _akshare()
-    df = ak.option_value_analysis_em()
-    picked = select_atm_put_iv(df)
-    if not picked:
+def fetch_510300_atm_put_iv_live(*, source: str | None = None) -> dict[str, Any] | None:
+    """Fetch ATM put IV; prefer East Money HTTP, AkShare as fallback."""
+    picked: dict[str, Any] | None = None
+    used_source = "eastmoney"
+    try:
+        em_rows = _fetch_em_option_value_rows()
+        picked = select_atm_put_iv(_em_rows_to_analysis_df(em_rows))
+    except Exception:
+        picked = None
+    if picked is None and sys.platform != "darwin":
+        try:
+            ak = _akshare()
+            df = ak.option_value_analysis_em()
+            picked = select_atm_put_iv(df)
+            used_source = "akshare"
+        except Exception:
+            picked = None
+    if picked is None:
         return None
+    if source is not None:
+        picked = {**picked, "source": source}
+    else:
+        picked = {**picked, "source": used_source}
     return picked
 
 
@@ -201,6 +299,7 @@ def sync_option_iv_daily(*, force: bool = False, trade_date: str | None = None) 
         return {"ok": False, "error": "no_iv_data", "jobType": JOB_TYPE}
 
     iv_pct = float(picked["ivPct"])
+    data_source = str(picked.get("source") or "eastmoney")
     prev_row = get_latest_row(SID_510300_PUT_IV)
     prev_close = None
     if prev_row and prev_row.get("close") is not None:
@@ -223,7 +322,7 @@ def sync_option_iv_daily(*, force: bool = False, trade_date: str | None = None) 
     n = upsert_from_dataframe(
         row_df,
         series_id=SID_510300_PUT_IV,
-        source="akshare",
+        source=data_source,
         underlying_ts_code=UNDERLYING_TS_CODE,
     )
     signal, signal_label = classify_iv_signal(iv_pct=iv_pct, pct_chg=pct_chg)
@@ -241,5 +340,6 @@ def sync_option_iv_daily(*, force: bool = False, trade_date: str | None = None) 
         "signal": signal,
         "signalLabel": signal_label,
         "contractName": picked.get("contractName"),
+        "source": data_source,
         "rowsUpserted": n,
     }

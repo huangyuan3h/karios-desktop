@@ -19,7 +19,7 @@ from data_sync_service.service.industry_fund_flow_read import build_trendok_flow
 from data_sync_service.db.stoploss import compute_effective_stoploss
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_eastmoney_industry import lookup_by_ts_codes as lookup_em_industries
-from data_sync_service.db.top_inst import fetch_summaries_for_codes
+from data_sync_service.db.top_inst import fetch_daily_seats, fetch_summaries_for_codes
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 from data_sync_service.service.top_inst_flow import build_inst_flow_payload
@@ -929,11 +929,16 @@ def _trendok_one(
                     res["values"]["industryFlowReasons"] = flow_reasons
                 if delta != 0.0 and res.get("score") is not None:
                     res["score"] = round(max(0.0, min(100.0, float(res["score"]) + delta)), 3)
-            inst_flow = build_inst_flow_payload(inst_summary)
-            if inst_flow is not None:
-                res["instFlow"] = inst_flow
-            elif inst_summary and inst_summary.get("on_board") is False:
-                res["instFlow"] = None
+            buy_seats: list[dict[str, Any]] | None = None
+            if inst_summary and inst_summary.get("on_board"):
+                td = str(inst_summary.get("trade_date") or "")
+                ts_tuple = _symbol_to_ts_code(symbol)
+                if td and ts_tuple:
+                    buy_seats = fetch_daily_seats(ts_tuple[2], td)
+            inst_flow = build_inst_flow_payload(inst_summary, buy_seats=buy_seats)
+            res["instFlow"] = inst_flow
+            if inst_flow.get("synced") is False:
+                res.setdefault("missingData", []).append("instFlow")
             if (
                 inst_flow
                 and inst_flow.get("lhasaDominant")

@@ -13,6 +13,7 @@ from data_sync_service.service.post_close_sync import run_post_close_sync
 from data_sync_service.service.stock_basic import sync_stock_basic
 from data_sync_service.service.top_inst_flow import sync_top_inst_watchlist
 from data_sync_service.service.option_iv import sync_option_iv_daily
+from data_sync_service.service.etf_fund_flow import sync_etf_fund_flow_watchlist
 from data_sync_service.service.trade_calendar import sync_trade_calendar
 
 router = APIRouter()
@@ -161,6 +162,14 @@ def sync_trade_cal_endpoint(
     # Purpose: manually sync trade calendar into DB for given exchange/date range.
     """Manually sync trade calendar into DB."""
     return sync_trade_calendar(exchange=exchange, start_date=start_date, end_date=end_date)
+
+
+@router.post("/sync/etf-fund-flow-watchlist")
+def sync_etf_fund_flow_watchlist_endpoint(
+    force: bool = Query(False, description="Force sync even if already synced today"),
+) -> dict:
+    """Sync ETF fund share / net inflow for dashboard watchlist."""
+    return sync_etf_fund_flow_watchlist(force=bool(force))
 
 
 @router.post("/sync/option-iv-daily")

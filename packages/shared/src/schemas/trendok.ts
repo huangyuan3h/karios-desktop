@@ -10,13 +10,23 @@ export const WatchlistRiskAlertSchema = z.object({
 });
 export type WatchlistRiskAlert = z.infer<typeof WatchlistRiskAlertSchema>;
 
+export const InstFlowSeatSchema = z.object({
+  name: z.string(),
+  buyAmt: z.number().optional(),
+  isLhasa: z.boolean().optional(),
+  isInst: z.boolean().optional(),
+});
+export type InstFlowSeat = z.infer<typeof InstFlowSeatSchema>;
+
 export const InstFlowSchema = z.object({
   tradeDate: z.string().optional(),
   onBoard: z.boolean(),
-  instNetBuyYi: z.number(),
-  label: z.string(),
+  synced: z.boolean().optional(),
+  instNetBuyYi: z.number().optional(),
+  label: z.string().optional(),
   lhasaDominant: z.boolean().optional(),
   display: z.string(),
+  topBuySeats: z.array(InstFlowSeatSchema).optional(),
 });
 export type InstFlow = z.infer<typeof InstFlowSchema>;
 

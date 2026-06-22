@@ -108,3 +108,38 @@ def test_build_etf_fund_flow_bundle_shape(monkeypatch: pytest.MonkeyPatch) -> No
     assert hs300["netFlow3d"] == pytest.approx(82_300_000.0)
     assert hs300["signal"] == "National Team Buy"
     assert "National Team Buy" in hs300["signalDisplay"]
+
+
+def test_build_etf_fund_flow_bundle_t1_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [
+        {
+            "ts_code": "510300.SH",
+            "trade_date": "2026-06-18",
+            "fd_share": 102.0,
+            "close": 4.2,
+            "avg_price": 4.2,
+            "net_inflow": 52_300_000.0,
+            "updated_at": "t",
+        },
+        {
+            "ts_code": "510300.SH",
+            "trade_date": "2026-06-22",
+            "fd_share": None,
+            "close": 4.3,
+            "avg_price": 4.3,
+            "net_inflow": None,
+            "updated_at": "t",
+        },
+    ]
+    open_dates = [date(2026, 6, 18), date(2026, 6, 19), date(2026, 6, 22)]
+
+    monkeypatch.setattr(svc, "ensure_table", lambda: None)
+    monkeypatch.setattr(svc, "get_latest_date", lambda: "2026-06-22")
+    monkeypatch.setattr(svc, "fetch_rows_for_codes", lambda *_a, **_k: rows)
+    monkeypatch.setattr(svc, "get_open_dates", lambda *_a, **_k: open_dates)
+
+    out = svc.build_etf_fund_flow_bundle(as_of_date="2026-06-22")
+    hs300 = next(x for x in out["items"] if x["symbol"] == "510300")
+    assert out["shareLag"] is True
+    assert hs300["netFlow1d"] == pytest.approx(52_300_000.0)
+    assert hs300["flowAsOfDate"] == "2026-06-18"

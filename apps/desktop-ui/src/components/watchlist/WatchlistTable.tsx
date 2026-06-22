@@ -21,6 +21,7 @@ import {
   formatGapUp,
   formatHotTop3,
   formatInstFlow,
+  formatInstFlowTooltip,
   formatIntradayChgPct,
   formatPnLPct,
   formatRiskAlerts,
@@ -828,7 +829,7 @@ export function WatchlistTable({
                           className={`max-w-[120px] truncate px-2 py-2 text-xs font-mono ${
                             isInstFlowRisk(t?.instFlow) ? 'font-semibold text-red-600' : ''
                           }`}
-                          title={t?.instFlow?.label ?? undefined}
+                          title={formatInstFlowTooltip(t?.instFlow) ?? t?.instFlow?.label ?? undefined}
                         >
                           {formatInstFlow(t?.instFlow)}
                         </td>

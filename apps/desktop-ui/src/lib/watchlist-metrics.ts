@@ -423,6 +423,21 @@ export function formatInstFlow(instFlow: InstFlow | null | undefined): string {
   return display || '—';
 }
 
+export function formatInstFlowTooltip(instFlow: InstFlow | null | undefined): string | undefined {
+  if (!instFlow?.display) return undefined;
+  const seats = instFlow.topBuySeats;
+  if (!Array.isArray(seats) || !seats.length) return instFlow.display;
+  const seatLines = seats.map((s) => {
+    const tag = s.isLhasa ? '拉萨' : s.isInst ? '机构' : '席位';
+    const amt =
+      typeof s.buyAmt === 'number' && Number.isFinite(s.buyAmt)
+        ? `${(s.buyAmt / 1e8).toFixed(2)}亿`
+        : '';
+    return `${tag}: ${s.name}${amt ? ` (${amt})` : ''}`;
+  });
+  return `${instFlow.display}\n${seatLines.join('\n')}`;
+}
+
 export function isInstFlowRisk(instFlow: InstFlow | null | undefined): boolean {
   if (!instFlow?.onBoard) return false;
   const yi = instFlow.instNetBuyYi;

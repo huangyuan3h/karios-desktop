@@ -43,6 +43,7 @@ import {
 } from '@/lib/screenerExport';
 import { toTsCodeFromSymbol } from '@/lib/symbols';
 import { screenerSnapshotsQueryOptions } from '@/lib/queries/screener';
+import { fetchDashboardSummaryPartial } from '@/lib/queries/dashboard';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
 import { trendOkSummary, trendOkRuleLines, scoreRuleLines } from '@/lib/trendok-display';
 import {
@@ -266,17 +267,39 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
   const etfFlow: any = ms?.etfFundFlow ?? {};
   const etfItems: any[] = Array.isArray(etfFlow?.items) ? etfFlow.items : [];
   if (etfItems.length) {
-    const etfHeaders = ['ETF Name', 'Symbol', '1D Net Flow', '3D Net Flow', 'Signal'];
+    if (etfFlow?.shareLag) {
+      lines.push(`- ETF shareLag: true (Tushare fund_share T+1; 1D may use prior trade date)`);
+    }
+    const etfHeaders = ['ETF Name', 'Symbol', '1D Net Flow', '3D Net Flow', 'Flow AsOf', 'Signal'];
     const etfRows: unknown[][] = etfItems.map((it: any) => [
       String(it?.name ?? ''),
       String(it?.symbol ?? ''),
       fmtSignedAmountCn(it?.netFlow1d),
       fmtSignedAmountCn(it?.netFlow3d),
+      String(it?.flowAsOfDate ?? '—'),
       String(it?.signalDisplay ?? it?.signal ?? '—'),
     ]);
     lines.push(`${heading} ETF Fund Flow (Top Watchlist)`);
     lines.push('');
     lines.push(mdTable(etfHeaders, etfRows));
+    lines.push('');
+  }
+
+  const macroSnapshot: any = summary2?.macroSnapshot ?? {};
+  const macroItems: any[] = Array.isArray(macroSnapshot?.macro) ? macroSnapshot.macro : [];
+  const putIv = macroItems.find((it: any) => it?.category === 'volatility');
+  if (putIv) {
+    const ivClose =
+      typeof putIv?.close === 'number' && Number.isFinite(putIv.close)
+        ? `${putIv.close.toFixed(1)}%`
+        : '—';
+    const ivSignal = String(putIv?.signalLabel ?? putIv?.signal ?? '—');
+    lines.push(`${heading} 300ETF Put IV (panic gauge)`);
+    lines.push('');
+    lines.push(`- close: ${ivClose}`);
+    lines.push(`- signal: ${ivSignal}`);
+    lines.push(`- asOfDate: ${String(putIv?.asOfDate ?? '')}`);
+    lines.push(`- source: ${String(putIv?.source ?? '')}`);
     lines.push('');
   }
 
@@ -741,9 +764,26 @@ export async function buildDashboardCopyAllMarkdown(
   options: DashboardCopyAllOptions,
 ): Promise<string> {
   await ensureWatchlistHydrated();
-  const { summary: s, newsSummary, newsSummaryUpdatedAt, newsFallback, queryClient } = options;
+  let { summary: s, newsSummary, newsSummaryUpdatedAt, newsFallback, queryClient } = options;
   if (!s) {
     throw new Error('No data available. Please refresh first.');
+  }
+  const macroItems = (s as any)?.macroSnapshot?.macro;
+  if (!Array.isArray(macroItems) || macroItems.length === 0) {
+    try {
+      const macroPartial = await fetchDashboardSummaryPartial({
+        includeMacro: true,
+        includeSentiment: false,
+        includeNews: false,
+        includeIndustry: false,
+        includeScreeners: false,
+      });
+      if (macroPartial?.macroSnapshot) {
+        s = { ...s, macroSnapshot: macroPartial.macroSnapshot };
+      }
+    } catch {
+      // keep existing summary
+    }
   }
   const generatedAt = new Date().toLocaleString('zh-CN', {
     timeZone: 'Asia/Shanghai',

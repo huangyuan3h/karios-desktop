@@ -26,6 +26,8 @@ from data_sync_service.service.etf_fund_flow import (
     build_etf_fund_flow_bundle,
     sync_etf_fund_flow_watchlist,
 )
+from data_sync_service.service.option_iv import sync_option_iv_daily
+from data_sync_service.service.top_inst_flow import sync_top_inst_watchlist
 from data_sync_service.service.industry_fund_flow_read import (
     build_dashboard_industry_bundle,
     top_by_date_from_rows,
@@ -296,6 +298,8 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
     d = datetime.now(tz=UTC).date().isoformat()
     out = sync_cn_sentiment(date_str=d, force=bool(force))
     etf_out = sync_etf_fund_flow_watchlist(force=bool(force))
+    top_inst_out = sync_top_inst_watchlist(force=bool(force))
+    option_iv_out = sync_option_iv_daily(force=bool(force))
     items = out.get("items") if isinstance(out, dict) else []
     last = items[-1] if isinstance(items, list) and items else {}
     return {
@@ -304,6 +308,8 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
         "premium": (last or {}).get("yesterdayLimitUpPremium"),
         "failedRate": (last or {}).get("failedLimitUpRate"),
         "etfFundFlow": etf_out,
+        "topInstWatchlist": top_inst_out,
+        "optionIvDaily": option_iv_out,
     }
 
 

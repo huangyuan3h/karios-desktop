@@ -19,6 +19,7 @@ from data_sync_service.db.etf_fund_flow import (
     get_latest_date,
     upsert_daily_rows,
 )
+from data_sync_service.service.etf_fund_flow_em import fetch_em_etf_spot_for_symbols
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
 from data_sync_service.db.trade_calendar import get_open_dates
 
@@ -288,9 +289,11 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
     ensure_table()
     pro = ts.pro_api(settings.tu_share_api_key)
     end_date = _today_yyyymmdd()
+    end_iso = _yyyymmdd_to_iso(end_date)
     updated_at = _now_iso()
     total_rows = 0
     last_successful_ts_code: str | None = None
+    em_fallback_count = 0
 
     start_index = 0
     if not force:
@@ -304,9 +307,11 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
 
     for spec in ETF_WATCHLIST[start_index:]:
         ts_code = spec["ts_code"]
+        symbol = spec["symbol"]
         try:
             last_date = get_last_trade_date(ts_code)
-            if last_date is None:
+            row_count = len(fetch_rows_for_codes([ts_code]))
+            if last_date is None or row_count < 5:
                 start_date = FULL_START_DATE
             else:
                 start_date = _date_to_yyyymmdd(last_date + timedelta(days=1))
@@ -337,6 +342,23 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
                 total_rows += upsert_daily_rows(merged)
             total_rows += _recompute_net_inflows_for_code(ts_code, updated_at=updated_at)
 
+            rows_by_date = {
+                str(r.get("trade_date") or ""): dict(r)
+                for r in fetch_rows_for_codes([ts_code], end_date=end_iso)
+                if r.get("trade_date")
+            }
+            as_of_row = rows_by_date.get(end_iso)
+            if as_of_row is None or as_of_row.get("fd_share") is None or as_of_row.get("net_inflow") is None:
+                if _apply_em_spot_fallback(
+                    ts_code=ts_code,
+                    symbol=symbol,
+                    trade_date_iso=end_iso,
+                    rows_by_date=rows_by_date,
+                    updated_at=updated_at,
+                ):
+                    em_fallback_count += 1
+                    total_rows += _recompute_net_inflows_for_code(ts_code, updated_at=updated_at)
+
             last_successful_ts_code = ts_code
             time.sleep(0.35)
         except Exception as e:  # noqa: BLE001
@@ -349,7 +371,7 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
             return {"ok": False, "error": str(e), "last_ts_code": last_successful_ts_code}
 
     insert_record(job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None)
-    return {"ok": True, "updated": total_rows}
+    return {"ok": True, "updated": total_rows, "emFallbackCount": em_fallback_count}
 
 
 def _sum_net_inflow_for_dates(
@@ -369,6 +391,63 @@ def _sum_net_inflow_for_dates(
         except (TypeError, ValueError):
             return None
     return sum(vals) if vals else None
+
+
+def _apply_em_spot_fallback(
+    *,
+    ts_code: str,
+    symbol: str,
+    trade_date_iso: str,
+    rows_by_date: dict[str, dict[str, Any]],
+    updated_at: str,
+) -> bool:
+    """Fill missing fd_share / net_inflow for trade_date_iso from East Money spot."""
+    em = fetch_em_etf_spot_for_symbols([symbol]).get(symbol)
+    if not em:
+        return False
+    fd_share_wan = em.get("fdShareWan")
+    main_net = em.get("mainNetInflow")
+    if fd_share_wan is None and main_net is None:
+        return False
+
+    row = dict(rows_by_date.get(trade_date_iso) or {})
+    row["ts_code"] = ts_code
+    row["trade_date"] = trade_date_iso
+    row["updated_at"] = updated_at
+    if fd_share_wan is not None:
+        row["fd_share"] = fd_share_wan
+    if main_net is not None and row.get("net_inflow") is None:
+        row["net_inflow"] = main_net
+        row["emMainNetInflow"] = True
+    rows_by_date[trade_date_iso] = row
+    upsert_daily_rows([row])
+    return True
+
+
+def _latest_net_inflow_row(
+    rows_by_date: dict[str, dict[str, Any]],
+    open_iso: list[str],
+    *,
+    up_to: str,
+) -> tuple[str | None, float | None]:
+    """Walk open dates backward from up_to and return latest date with net_inflow."""
+    if up_to in open_iso:
+        idx = open_iso.index(up_to)
+        candidates = open_iso[: idx + 1]
+    else:
+        candidates = [d for d in open_iso if d <= up_to]
+    for td in reversed(candidates):
+        row = rows_by_date.get(td)
+        if not row:
+            continue
+        v = row.get("net_inflow")
+        if v is None:
+            continue
+        try:
+            return td, float(v)
+        except (TypeError, ValueError):
+            continue
+    return None, None
 
 
 def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
@@ -405,12 +484,14 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
     items: list[dict[str, Any]] = []
     for spec in ETF_WATCHLIST:
         code = spec["ts_code"]
+        symbol = spec["symbol"]
         rows_by_date = by_code_date.get(code, {})
         as_of_row = rows_by_date.get(as_of)
         if as_of_row is None or as_of_row.get("fd_share") is None:
             share_lag = True
 
         net_1d = None
+        flow_as_of = as_of
         if as_of_row is not None:
             net_1d = as_of_row.get("net_inflow")
             if net_1d is not None:
@@ -419,20 +500,48 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
                 except (TypeError, ValueError):
                     net_1d = None
 
+        if net_1d is None:
+            lag_date, lag_net = _latest_net_inflow_row(rows_by_date, open_iso, up_to=as_of)
+            if lag_net is not None:
+                net_1d = lag_net
+                flow_as_of = lag_date or as_of
+
         net_3d = _sum_net_inflow_for_dates(rows_by_date, last_3) if last_3 else None
+        if net_3d is None and last_3:
+            vals: list[float] = []
+            for d in last_3:
+                _, v = _latest_net_inflow_row(rows_by_date, open_iso, up_to=d)
+                if v is None:
+                    vals = []
+                    break
+                vals.append(v)
+            net_3d = sum(vals) if vals else None
+
+        if as_of_row and as_of_row.get("fd_share") is not None:
+            data_source = "tushare"
+        elif as_of_row and as_of_row.get("net_inflow") is not None and as_of_row.get("fd_share") is None:
+            data_source = "eastmoney"
+        elif flow_as_of != as_of:
+            data_source = "tushare"
+        else:
+            data_source = "mixed" if net_1d is not None else "tushare"
+
         signal = classify_signal(
             category=spec["category"],
             net_flow_1d=net_1d,
             net_flow_3d=net_3d,
         )
+        source = data_source
         items.append(
             {
                 "name": spec["name"],
-                "symbol": spec["symbol"],
+                "symbol": symbol,
                 "tsCode": code,
                 "category": spec["category"],
                 "netFlow1d": net_1d,
                 "netFlow3d": net_3d,
+                "flowAsOfDate": flow_as_of if flow_as_of != as_of else None,
+                "source": source,
                 "signal": signal,
                 "signalDisplay": signal_display(signal),
             }

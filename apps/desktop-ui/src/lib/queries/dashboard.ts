@@ -35,7 +35,7 @@ export const DASHBOARD_LITE_INCLUDES: DashboardSummaryIncludes = {
 };
 
 export const DASHBOARD_SENTIMENT_INCLUDES: DashboardSummaryIncludes = {
-  includeMacro: false,
+  includeMacro: true,
   includeSentiment: true,
   includeNews: false,
   includeIndustry: false,

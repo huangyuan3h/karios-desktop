@@ -340,24 +340,108 @@ def format_inst_flow_display(*, inst_net_buy_yi: float, label: str) -> str:
     return f"{sign}{inst_net_buy_yi:.1f}亿 ({label})"
 
 
-def build_inst_flow_payload(summary: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not summary or not summary.get("on_board"):
-        return None
+def build_top_buy_seats_payload(
+    seats: list[dict[str, Any]] | None,
+    *,
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    """Top buy-side LHB seats for API payload (name + tags)."""
+    if not seats:
+        return []
+    ranked = sorted(
+        [s for s in seats if isinstance(s, dict)],
+        key=lambda s: float(s.get("buy") or 0.0),
+        reverse=True,
+    )
+    out: list[dict[str, Any]] = []
+    for seat in ranked[:limit]:
+        exalter = str(seat.get("exalter") or "").strip()
+        if not exalter:
+            continue
+        try:
+            buy_amt = float(seat.get("buy") or 0.0)
+        except (TypeError, ValueError):
+            buy_amt = 0.0
+        out.append(
+            {
+                "name": exalter,
+                "buyAmt": buy_amt,
+                "isLhasa": _is_lhasa_seat(exalter),
+                "isInst": _is_inst_seat(exalter),
+            }
+        )
+    return out
+
+
+def _format_seats_summary(seats: list[dict[str, Any]]) -> str:
+    if not seats:
+        return ""
+    parts: list[str] = []
+    for seat in seats:
+        name = str(seat.get("name") or "")
+        short = "拉萨" if seat.get("isLhasa") else ("机构" if seat.get("isInst") else name[:8])
+        parts.append(short)
+    return " | 买: " + ", ".join(parts)
+
+
+def build_inst_flow_payload(
+    summary: dict[str, Any] | None,
+    *,
+    buy_seats: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Build instFlow JSON; distinguish synced-off-board vs not-synced."""
+    if summary is None:
+        return {
+            "onBoard": False,
+            "synced": False,
+            "display": "未同步",
+        }
+
+    trade_date = str(summary.get("trade_date") or "")
+    if not summary.get("on_board"):
+        return {
+            "tradeDate": trade_date,
+            "onBoard": False,
+            "synced": True,
+            "lhasaDominant": False,
+            "display": "未上榜",
+            "topBuySeats": [],
+        }
+
     yi = summary.get("inst_net_buy_yi")
     label = str(summary.get("seat_label") or "").strip()
     if yi is None or not label:
-        return None
+        return {
+            "tradeDate": trade_date,
+            "onBoard": True,
+            "synced": True,
+            "display": "上榜(数据不完整)",
+            "topBuySeats": build_top_buy_seats_payload(buy_seats),
+        }
     try:
         yi_f = float(yi)
     except (TypeError, ValueError):
-        return None
+        return {
+            "tradeDate": trade_date,
+            "onBoard": True,
+            "synced": True,
+            "display": "上榜(数据不完整)",
+            "topBuySeats": build_top_buy_seats_payload(buy_seats),
+        }
+
+    top_seats = build_top_buy_seats_payload(buy_seats)
+    display = format_inst_flow_display(inst_net_buy_yi=yi_f, label=label)
+    if top_seats:
+        display += _format_seats_summary(top_seats)
     return {
-        "tradeDate": str(summary.get("trade_date") or ""),
+        "tradeDate": trade_date,
         "onBoard": True,
+        "synced": True,
         "instNetBuyYi": round(yi_f, 2),
         "label": label,
         "lhasaDominant": bool(summary.get("lhasa_dominant")),
-        "display": format_inst_flow_display(inst_net_buy_yi=yi_f, label=label),
+        "display": display,
+        "topBuySeats": top_seats,
     }
 
 

@@ -164,9 +164,17 @@ export function useDashboardSummary() {
     setSentimentBusy(true);
     setError(null);
     try {
-      await apiPostJson('/market/cn/sentiment/sync', { force: isShanghaiSyncWindow() });
+      const force = isShanghaiSyncWindow();
+      const q = force ? 'true' : 'false';
+      await Promise.all([
+        apiPostJson('/market/cn/sentiment/sync', { force }),
+        apiPostJson(`/sync/etf-fund-flow-watchlist?force=${q}`, {}),
+        apiPostJson(`/sync/top-inst-watchlist?force=${q}`, {}),
+        apiPostJson(`/sync/option-iv-daily?force=${q}`, {}),
+      ]);
       await queryClient.invalidateQueries({ queryKey: dashboardSentimentQueryKey() });
       await queryClient.invalidateQueries({ queryKey: dashboardLiteQueryKey() });
+      await queryClient.invalidateQueries({ queryKey: ['macro', 'snapshot'] });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
