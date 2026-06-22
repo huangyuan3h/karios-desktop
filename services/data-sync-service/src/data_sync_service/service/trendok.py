@@ -16,6 +16,7 @@ from data_sync_service.db.industry_fund_flow import (
     get_rows_for_dates,
 )
 from data_sync_service.service.industry_fund_flow_read import build_trendok_flow_context_from_rows
+from data_sync_service.service.trade_calendar_utils import trade_dates_upto
 from data_sync_service.db.stoploss import compute_effective_stoploss
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_eastmoney_industry import lookup_by_ts_codes as lookup_em_industries
@@ -584,7 +585,7 @@ def _build_industry_flow_context(as_of_date: str | None) -> dict[str, Any]:
     if not flow_date:
         return {"asOfDate": None, "ok": False}
 
-    dates_5 = get_dates_upto(flow_date, 5)
+    dates_5 = trade_dates_upto(flow_date, 5, fallback_dates_fn=get_dates_upto)
     if not dates_5:
         return {"asOfDate": flow_date, "ok": False}
 

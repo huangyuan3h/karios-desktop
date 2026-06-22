@@ -19,6 +19,12 @@ from data_sync_service.db.industry_fund_flow import (
     upsert_daily_rows,
 )
 from data_sync_service.service.industry_fund_flow_read import series_map_from_rows
+from data_sync_service.service.trade_calendar_utils import (
+    is_cn_trading_day,
+    resolve_effective_as_of,
+    shanghai_today,
+    trade_dates_upto,
+)
 
 
 def _now_iso() -> str:
@@ -279,7 +285,15 @@ def _hist_rows_for_top_row(
 
 
 def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10) -> dict[str, Any]:
-    as_of = date.today()
+    as_of = shanghai_today()
+    open_flag = is_cn_trading_day(as_of)
+    if open_flag is False:
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "not_trading_day",
+            "asOfDate": as_of.isoformat(),
+        }
     items = fetch_cn_industry_fund_flow_eod(as_of)
     updated_at = _now_iso()
     daily_rows = [
@@ -321,10 +335,11 @@ def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10) -> dict[str, 
 
 
 def get_cn_industry_fund_flow(*, days: int = 10, top_n: int = 30, as_of_date: str | None = None) -> dict[str, Any]:
-    d = (as_of_date or "").strip() or (get_latest_date() or "")
+    raw = (as_of_date or "").strip() or (get_latest_date() or "")
+    d = resolve_effective_as_of(raw) if raw else ""
     if not d:
         return {"asOfDate": "", "days": days, "topN": top_n, "dates": [], "top": []}
-    dates = get_dates_upto(d, days)
+    dates = trade_dates_upto(d, days, fallback_dates_fn=get_dates_upto)
     top_rows = get_top_rows(d, top_n)
     all_rows = get_rows_for_dates(dates)
     series_map = series_map_from_rows(all_rows, dates)

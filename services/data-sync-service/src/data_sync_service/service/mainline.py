@@ -100,14 +100,11 @@ def _prev_open_date(exchange: str, d0: date) -> date | None:
     return row[0] if row and row[0] else None
 
 
+from data_sync_service.service.trade_calendar_utils import trade_dates_upto as shared_trade_dates_upto
+
+
 def _trade_dates_upto(d0: str, days: int) -> list[str]:
-    d = date.fromisoformat(d0)
-    if is_trading_day("SSE", d) is not None:
-        xs = get_open_dates(exchange="SSE", start_date=d - timedelta(days=120), end_date=d)
-        if xs:
-            xs2 = [x.isoformat() for x in xs][-max(1, min(int(days), 60)) :]
-            return xs2
-    return flow_dates_upto(d0, days)
+    return shared_trade_dates_upto(d0, days, fallback_dates_fn=flow_dates_upto)
 
 
 def _fetch_daily_rows_by_dates(dates: list[str]) -> dict[str, list[dict[str, Any]]]:

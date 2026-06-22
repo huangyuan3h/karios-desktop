@@ -15,6 +15,7 @@ from data_sync_service.db.stock_basic import fetch_ts_codes
 from data_sync_service.db.market_sentiment import get_latest_date, list_days, upsert_daily_rows
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
+from data_sync_service.service.trade_calendar_utils import is_cn_trading_day, shanghai_today
 
 
 BREADTH_DECLINE_RED_THRESHOLD = 3000
@@ -1009,6 +1010,22 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
 
 def sync_cn_sentiment(*, date_str: str, force: bool) -> dict[str, Any]:
     d = date_str
+    try:
+        cal_d = date.fromisoformat(str(d).strip()[:10])
+    except ValueError:
+        cal_d = shanghai_today()
+    open_flag = is_cn_trading_day(cal_d)
+    if open_flag is False:
+        cached = list_days(as_of_date=d, days=5)
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "not_trading_day",
+            "asOfDate": d,
+            "days": len(cached),
+            "items": cached,
+        }
+
     if not force:
         cached = list_days(as_of_date=d, days=1)
         if cached and str(cached[-1].get("date") or "") == d:
@@ -1017,54 +1034,15 @@ def sync_cn_sentiment(*, date_str: str, force: bool) -> dict[str, Any]:
     try:
         out = compute_cn_sentiment_for_date(d)
     except Exception as e:
-        cached2 = list_days(as_of_date=d, days=1)
-        if cached2:
-            # Persist a "stale" row for today so Dashboard can move forward.
-            last = dict(cached2[-1])
-            last_date = str(last.get("date") or "")
-            last_rules = (last.get("rules") if isinstance(last.get("rules"), list) else []) or []
-            last["date"] = d
-            last["updatedAt"] = now_iso()
-            last["rules"] = [
-                *[str(x) for x in last_rules],
-                f"stale_from: {last_date}" if last_date else "stale_from: unknown",
-                f"sync_failed: {type(e).__name__}: {e}",
-            ]
-            row2 = {
-                "date": d,
-                "as_of_date": d,
-                "up_count": int(last.get("upCount") or 0),
-                "down_count": int(last.get("downCount") or 0),
-                "flat_count": int(last.get("flatCount") or 0),
-                "total_count": int(last.get("totalCount") or 0),
-                "up_down_ratio": float(last.get("upDownRatio") or 0.0),
-                "market_turnover_cny": float(last.get("marketTurnoverCny") or 0.0),
-                "market_volume": float(last.get("marketVolume") or 0.0),
-                "yesterday_limitup_premium": float(last.get("yesterdayLimitUpPremium") or 0.0),
-                "failed_limitup_rate": float(last.get("failedLimitUpRate") or 0.0),
-                "risk_mode": str(last.get("riskMode") or "caution"),
-                "rules": last.get("rules") if isinstance(last.get("rules"), list) else [],
-                "updated_at": str(last.get("updatedAt") or now_iso()),
-                "raw": {"stale": True, "error": str(e), "sourceDate": last_date},
-            }
-            upsert_daily_rows([row2])
-            cached3 = list_days(as_of_date=d, days=1)
-            if cached3:
-                return {"asOfDate": d, "days": 1, "items": [cached3[-1]]}
-            return {"asOfDate": d, "days": 1, "items": [last]}
-        out = {
-            "date": d,
-            "asOfDate": d,
-            "up": 0,
-            "down": 0,
-            "flat": 0,
-            "ratio": 0.0,
-            "premium": 0.0,
-            "failedRate": 0.0,
-            "riskMode": "caution",
-            "rules": [f"compute_failed: {type(e).__name__}: {e}"],
-            "updatedAt": now_iso(),
-            "raw": {"error": str(e)},
+        cached2 = list_days(as_of_date=d, days=5)
+        return {
+            "ok": False,
+            "skipped": True,
+            "reason": "compute_failed",
+            "error": str(e),
+            "asOfDate": str(cached2[-1].get("date") or d) if cached2 else d,
+            "days": len(cached2),
+            "items": cached2,
         }
 
     rules_raw = out.get("rules") or []

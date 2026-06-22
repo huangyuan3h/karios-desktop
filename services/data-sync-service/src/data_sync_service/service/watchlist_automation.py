@@ -27,6 +27,7 @@ from data_sync_service.service.close_sync import JOB_TYPE as CLOSE_JOB_TYPE
 from data_sync_service.service.close_sync import _cn_today
 from data_sync_service.service.dashboard import _sync_screeners_step
 from data_sync_service.service.industry_fund_flow import sync_cn_industry_fund_flow
+from data_sync_service.service.trade_calendar_utils import resolve_effective_as_of, trade_dates_upto
 from data_sync_service.service.trendok import compute_trendok_for_symbols
 
 logger = logging.getLogger(__name__)
@@ -56,10 +57,10 @@ def _shanghai_today_iso() -> str:
 
 
 def get_top_5d_industry_names(as_of_date: str | None = None) -> set[str]:
-    flow_date = (as_of_date or "").strip() or get_latest_industry_date()
+    flow_date = resolve_effective_as_of((as_of_date or "").strip() or get_latest_industry_date())
     if not flow_date:
         return set()
-    dates_5 = get_dates_upto(flow_date, 5)
+    dates_5 = trade_dates_upto(flow_date, 5, fallback_dates_fn=get_dates_upto)
     if not dates_5:
         return set()
     sums = get_sum_by_industry_for_dates(dates_5)

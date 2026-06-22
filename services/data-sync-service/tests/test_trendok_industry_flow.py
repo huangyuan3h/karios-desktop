@@ -74,7 +74,7 @@ def test_build_industry_flow_context_uses_batch_read_only() -> None:
             return_value="2024-01-20",
         ),
         patch(
-            "data_sync_service.service.trendok.get_dates_upto",
+            "data_sync_service.service.trendok.trade_dates_upto",
             return_value=dates_5,
         ) as mock_dates,
         patch(
@@ -90,7 +90,7 @@ def test_build_industry_flow_context_uses_batch_read_only() -> None:
     ):
         ctx = _build_industry_flow_context("2024-01-20")
 
-    mock_dates.assert_called_once_with("2024-01-20", 5)
+    assert mock_dates.call_args[0] == ("2024-01-20", 5)
     mock_batch.assert_called_once_with(dates_5)
     mock_by_date.assert_not_called()
     mock_sum.assert_not_called()

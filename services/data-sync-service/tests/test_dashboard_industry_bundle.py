@@ -34,7 +34,7 @@ def test_build_industry_bundle_single_batch_read() -> None:
     dates = ["2024-06-14", "2024-06-15"]
     with (
         patch(
-            "data_sync_service.service.dashboard.get_dates_upto",
+            "data_sync_service.service.dashboard.trade_dates_upto",
             return_value=dates,
         ) as mock_dates,
         patch(
@@ -44,7 +44,32 @@ def test_build_industry_bundle_single_batch_read() -> None:
     ):
         out = _build_industry_bundle(as_of_date="2024-06-15")
 
-    mock_dates.assert_called_once_with("2024-06-15", 5)
+    mock_dates.assert_called_once()
+    assert mock_dates.call_args[0] == ("2024-06-15", 5)
     mock_rows.assert_called_once_with(dates)
     assert out["asOfDate"] == "2024-06-15"
     assert out["flow5d"]["dates"] == dates
+
+
+def test_build_industry_bundle_excludes_ghost_holiday_dates() -> None:
+    open_dates = ["2026-06-17", "2026-06-18", "2026-06-22"]
+    rows = [
+        {"date": "2026-06-18", "industry_code": "c1", "industry_name": "半导体", "net_inflow": 36.69e8},
+        {"date": "2026-06-19", "industry_code": "c1", "industry_name": "半导体", "net_inflow": 36.69e8},
+    ]
+    with (
+        patch(
+            "data_sync_service.service.dashboard.trade_dates_upto",
+            return_value=open_dates,
+        ),
+        patch(
+            "data_sync_service.service.dashboard.get_rows_for_dates",
+            return_value=rows,
+        ),
+    ):
+        out = _build_industry_bundle(as_of_date="2026-06-22")
+
+    assert out["dates"] == open_dates
+    assert "2026-06-19" not in out["dates"]
+    semi = next(x for x in out["flow5d"]["top"] if x["industryName"] == "半导体")
+    assert semi["sum5d"] == 36.69e8

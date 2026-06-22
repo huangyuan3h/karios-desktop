@@ -14,8 +14,12 @@ from fastapi import HTTPException
 from data_sync_service.db import get_connection
 from data_sync_service.db.industry_fund_flow import ensure_table as ensure_industry
 from data_sync_service.db.industry_fund_flow import get_dates_upto, get_rows_for_dates
+from data_sync_service.db.industry_fund_flow import get_latest_date as get_latest_industry_date
 from data_sync_service.db.market_sentiment import get_latest_date as get_latest_sentiment_date
-from data_sync_service.db.market_sentiment import list_days as list_sentiment_days
+from data_sync_service.db.market_sentiment import (
+    get_dates_upto as get_sentiment_dates_upto,
+    list_days_for_dates as list_sentiment_days_for_dates,
+)
 from data_sync_service.db.news import ensure_tables as ensure_news_tables
 from data_sync_service.db.news import fetch_items
 from data_sync_service.db.tv import list_latest_snapshots_for_screeners
@@ -52,6 +56,11 @@ from data_sync_service.service.tv import (
     list_screeners,
     wait_for_capture_jobs,
 )
+from data_sync_service.service.trade_calendar_utils import (
+    resolve_effective_as_of,
+    shanghai_today_iso,
+    trade_dates_upto,
+)
 
 TV_SCREENER_SYNC_MAX_WORKERS = 2
 
@@ -67,7 +76,7 @@ def _today_iso_date() -> str:
 def _build_industry_bundle(*, as_of_date: str) -> dict[str, Any]:
     """Industry fund-flow block from one batch DB read + in-memory aggregation."""
     ensure_industry()
-    dates = get_dates_upto(as_of_date, 5)
+    dates = trade_dates_upto(as_of_date, 5, fallback_dates_fn=get_dates_upto)
     rows = get_rows_for_dates(dates)
     return build_dashboard_industry_bundle(as_of_date=as_of_date, dates=dates, rows=rows)
 
@@ -75,7 +84,7 @@ def _build_industry_bundle(*, as_of_date: str) -> dict[str, Any]:
 def _industry_top_by_date(*, as_of_date: str, days: int = 5) -> list[dict[str, Any]]:
     """Lightweight Top-K-by-date read for SRV (no full industry bundle)."""
     ensure_industry()
-    dates = get_dates_upto(as_of_date, days)
+    dates = trade_dates_upto(as_of_date, days, fallback_dates_fn=get_dates_upto)
     rows = get_rows_for_dates(dates)
     return top_by_date_from_rows(rows, dates, top_k=5)
 
@@ -86,7 +95,12 @@ def _build_market_sentiment_bundle(
     use_realtime_index: bool,
     index_signals: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    sentiment_items = list_sentiment_days(as_of_date=as_of_date, days=5)
+    trade_dates = trade_dates_upto(
+        as_of_date,
+        5,
+        fallback_dates_fn=get_sentiment_dates_upto,
+    )
+    sentiment_items = list_sentiment_days_for_dates(trade_dates)
     latest = sentiment_items[-1] if sentiment_items else {}
     down_count = int((latest or {}).get("downCount") or 0)
     sentiment_items = apply_breadth_panic_sentiment_items(sentiment_items, down_count)
@@ -198,10 +212,11 @@ def dashboard_summary(
       - marketEnvironmentZh: text
       - macroSnapshot: {cnIndexSignals, macro}
     """
-    # Prefer sentiment latest date as asOfDate, otherwise today.
-    as_of = get_latest_sentiment_date() or _today_iso_date()
+    # Prefer sentiment latest date (clamped to last open day), otherwise Shanghai today.
+    raw_as_of = get_latest_sentiment_date() or get_latest_industry_date() or shanghai_today_iso()
+    as_of = resolve_effective_as_of(raw_as_of)
     in_sync_window = _is_shanghai_sync_window()
-    use_realtime_index = as_of == _today_iso_date() and in_sync_window
+    use_realtime_index = as_of == shanghai_today_iso() and in_sync_window
 
     if use_realtime_index:
         shared_index_signals = get_index_signals(as_of_date=None, include_breadth=False)
@@ -301,7 +316,7 @@ def _sync_industry_step() -> dict[str, Any]:
 
 
 def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
-    d = datetime.now(tz=UTC).date().isoformat()
+    d = shanghai_today_iso()
     out = sync_cn_sentiment(date_str=d, force=bool(force))
     etf_out = sync_etf_fund_flow_watchlist(force=bool(force))
     top_inst_out = sync_top_inst_watchlist(force=bool(force))

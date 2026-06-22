@@ -141,6 +141,50 @@ def list_days(*, as_of_date: str, days: int) -> list[dict[str, Any]]:
     return list(reversed(items))
 
 
+def list_days_for_dates(dates: list[str]) -> list[dict[str, Any]]:
+    """Fetch sentiment rows for explicit dates (e.g. trade-calendar open days only)."""
+    ensure_table()
+    iso_dates = [str(d).strip()[:10] for d in dates if str(d).strip()]
+    if not iso_dates:
+        return []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT date, up_count, down_count, flat_count, total_count,
+                       up_down_ratio, market_turnover_cny, market_volume,
+                       yesterday_limitup_premium, failed_limitup_rate,
+                       risk_mode, rules_json, updated_at
+                FROM {TABLE_NAME}
+                WHERE date = ANY(%s)
+                ORDER BY date
+                """,
+                (iso_dates,),
+            )
+            rows = cur.fetchall()
+    items: list[dict[str, Any]] = []
+    for r in rows:
+        rules = r[11] if isinstance(r[11], list) else json.loads(str(r[11]) or "[]")
+        items.append(
+            {
+                "date": str(r[0]),
+                "upCount": int(r[1] or 0),
+                "downCount": int(r[2] or 0),
+                "flatCount": int(r[3] or 0),
+                "totalCount": int(r[4] or 0),
+                "upDownRatio": float(r[5] or 0.0),
+                "marketTurnoverCny": float(r[6] or 0.0),
+                "marketVolume": float(r[7] or 0.0),
+                "yesterdayLimitUpPremium": float(r[8] or 0.0),
+                "failedLimitUpRate": float(r[9] or 0.0),
+                "riskMode": str(r[10] or "normal"),
+                "rules": [str(x) for x in rules] if isinstance(rules, list) else [],
+                "updatedAt": str(r[12] or ""),
+            }
+        )
+    return items
+
+
 def get_latest_date() -> str | None:
     ensure_table()
     with get_connection() as conn:
@@ -150,3 +194,24 @@ def get_latest_date() -> str | None:
     if not row or not row[0]:
         return None
     return str(row[0])
+
+
+def get_dates_upto(as_of_date: str, days: int) -> list[str]:
+    """Distinct dates from sentiment table (fallback when trade_calendar missing)."""
+    ensure_table()
+    lim = max(1, min(int(days), 60))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT DISTINCT date
+                FROM {TABLE_NAME}
+                WHERE date <= %s
+                ORDER BY date DESC
+                LIMIT %s
+                """,
+                (as_of_date, lim),
+            )
+            rows = cur.fetchall()
+    dates = [str(r[0]) for r in rows if r and r[0]]
+    return list(reversed(dates))
