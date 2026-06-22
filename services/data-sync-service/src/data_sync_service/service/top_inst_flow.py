@@ -13,6 +13,7 @@ from typing import Any
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
 from data_sync_service.db.top_inst import (
     ensure_table,
+    fetch_summaries_for_codes,
     upsert_daily_rows,
     upsert_summary_rows,
 )
@@ -474,22 +475,17 @@ def _safe_float(v: Any) -> float | None:
         return None
 
 
+def _missing_summary_codes(ts_codes: list[str], *, trade_date_iso: str) -> list[str]:
+    existing = fetch_summaries_for_codes(ts_codes, trade_date=trade_date_iso)
+    return [code for code in ts_codes if code not in existing]
+
+
 def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = None) -> dict[str, Any]:
     """
     Sync dragon-tiger institutional flow for watchlist CN symbols via East Money.
     No Tushare dependency; amounts are CNY yuan from EM org-trade report.
     """
     ensure_table()
-
-    if not force:
-        existing = get_today_run(JOB_TYPE)
-        if existing and existing.get("success"):
-            return {
-                "ok": True,
-                "skipped": True,
-                "reason": "already_synced_today",
-                "jobType": JOB_TYPE,
-            }
 
     td = str(trade_date or _latest_cn_trade_date_yyyymmdd() or "").strip()
     if not td:
@@ -510,6 +506,19 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
             error_message=None,
         )
         return {"ok": True, "skipped": True, "reason": "empty_watchlist", "tradeDate": td_iso}
+
+    if not force:
+        existing = get_today_run(JOB_TYPE)
+        missing_codes = _missing_summary_codes(watchlist_codes, trade_date_iso=td_iso)
+        if existing and existing.get("success") and not missing_codes:
+            return {
+                "ok": True,
+                "skipped": True,
+                "reason": "already_synced_today",
+                "jobType": JOB_TYPE,
+                "tradeDate": td_iso,
+                "covered": len(watchlist_codes),
+            }
 
     try:
         lhb_tickers = fetch_em_lhb_tickers_on_date(td_iso)
