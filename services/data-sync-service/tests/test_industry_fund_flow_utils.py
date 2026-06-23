@@ -3,8 +3,10 @@ from data_sync_service.service.industry_fund_flow import (
     _parse_money_to_cny,
     _stable_industry_code,
 )
+from data_sync_service.db.industry_fund_flow import _sw_l1_industry_names_array
 from data_sync_service.service.industry_taxonomy import (
     SW_L1_INDUSTRIES,
+    SW_L1_INDUSTRY_NAMES,
     classify_sw_l1_industry,
     is_sw_l1_industry_name,
 )
@@ -82,6 +84,13 @@ def test_sw_l1_taxonomy_contains_expected_universe_size():
     assert len(SW_L1_INDUSTRIES) == 31
     assert is_sw_l1_industry_name("非银金融") is True
     assert is_sw_l1_industry_name("有色金属") is True
+
+
+def test_sw_l1_sql_array_param_is_list():
+    names = _sw_l1_industry_names_array()
+    assert isinstance(SW_L1_INDUSTRY_NAMES, tuple)
+    assert isinstance(names, list)
+    assert names == list(SW_L1_INDUSTRY_NAMES)
 
 
 def test_sw_l1_taxonomy_rejects_child_industries():

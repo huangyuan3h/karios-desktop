@@ -5,6 +5,7 @@ from unittest.mock import patch
 from data_sync_service.service.trendok import (  # type: ignore[import-not-found]
     clear_trendok_cache,
     compute_trendok_for_symbols,
+    _resolve_inst_summaries_for_trendok,
 )
 
 
@@ -167,3 +168,32 @@ def test_compute_trendok_realtime_flag_separate_cache() -> None:
         compute_trendok_for_symbols(["CN:999999"], realtime=True)
 
     assert flow_ctx.call_count == 2
+
+
+def test_compute_trendok_inst_summary_falls_back_when_latest_bar_date_missing() -> None:
+    clear_trendok_cache()
+    prior_summary = {
+        "trade_date": "2026-06-22",
+        "on_board": False,
+        "inst_net_buy_yi": None,
+        "seat_label": "",
+        "lhasa_dominant": False,
+    }
+
+    def fake_fetch(codes: list[str], *, trade_date: str | None = None) -> dict[str, dict]:
+        if trade_date == "2026-06-23":
+            return {}
+        if trade_date is None:
+            return {"002185.SZ": prior_summary}
+        return {}
+
+    with (
+        patch(
+            "data_sync_service.service.trendok.fetch_summaries_for_codes",
+            side_effect=fake_fetch,
+        ) as fetch_inst,
+    ):
+        resolved = _resolve_inst_summaries_for_trendok(["002185.SZ"], latest_bar_date="2026-06-23")
+
+    assert fetch_inst.call_count == 2
+    assert resolved["002185.SZ"]["trade_date"] == "2026-06-22"

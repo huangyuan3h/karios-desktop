@@ -62,6 +62,10 @@ def _metadata_filter_sql() -> str:
     """
 
 
+def _sw_l1_industry_names_array() -> list[str]:
+    return list(SW_L1_INDUSTRY_NAMES)
+
+
 def _row_with_metadata(
     *,
     date_value: Any | None = None,
@@ -177,7 +181,7 @@ def get_top_rows(as_of_date: str, top_n: int) -> list[dict[str, Any]]:
                 ORDER BY net_inflow DESC
                 LIMIT %s
                 """,
-                (as_of_date, SW_L1_INDUSTRY_NAMES, lim),
+                (as_of_date, _sw_l1_industry_names_array(), lim),
             )
             rows = cur.fetchall()
     out = [
@@ -206,7 +210,7 @@ def get_rows_by_date(as_of_date: str) -> list[dict[str, Any]]:
                 WHERE date = %s
                 {_metadata_filter_sql()}
                 """,
-                (as_of_date, SW_L1_INDUSTRY_NAMES),
+                (as_of_date, _sw_l1_industry_names_array()),
             )
             rows = cur.fetchall()
     out = [
@@ -238,7 +242,7 @@ def get_rows_for_dates(dates: list[str]) -> list[dict[str, Any]]:
                 {_metadata_filter_sql()}
                 ORDER BY date ASC, industry_name ASC
                 """,
-                (dates, SW_L1_INDUSTRY_NAMES),
+                (dates, _sw_l1_industry_names_array()),
             )
             rows = cur.fetchall()
     out = [
@@ -272,7 +276,7 @@ def get_sum_by_industry_for_dates(dates: list[str]) -> list[dict[str, Any]]:
                 GROUP BY industry_name
                 ORDER BY sum_inflow DESC
                 """,
-                (dates, SW_L1_INDUSTRY_NAMES),
+                (dates, _sw_l1_industry_names_array()),
             )
             rows = cur.fetchall()
     return [
@@ -298,7 +302,7 @@ def get_series_for_industry(*, industry_name: str, dates: list[str]) -> list[dic
                 {_metadata_filter_sql()}
                 ORDER BY date ASC
                 """,
-                (industry_name, dates, SW_L1_INDUSTRY_NAMES),
+                (industry_name, dates, _sw_l1_industry_names_array()),
             )
             rows = cur.fetchall()
     return [{"date": str(r[0]), "net_inflow": float(r[1] or 0.0)} for r in rows]

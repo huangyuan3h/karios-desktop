@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 
 import { apiGetJson } from '@/lib/api/client';
 import { fetchDashboardSummary } from '@/lib/queries/dashboard';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
+import { fetchWatchlistMarketSnapshot } from '@/lib/watchlist-market';
 
 import {
   buildDashboardCopyAllMarkdown,
@@ -11,6 +12,7 @@ import {
   buildSentimentMarkdown,
   buildWatchlistMarkdown,
 } from './dashboard-export';
+import { copyBlockingMissingData } from './watchlist-export';
 
 vi.mock('@/lib/api/client', () => ({
   apiGetJson: vi.fn(),
@@ -38,6 +40,14 @@ vi.mock('@/lib/watchlist-storage', () => ({
   ensureWatchlistHydrated: vi.fn(async () => ({ ok: true, imported: 0 })),
 }));
 
+vi.mock('@/lib/watchlist-market', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/watchlist-market')>();
+  return {
+    ...actual,
+    fetchWatchlistMarketSnapshot: vi.fn(),
+  };
+});
+
 vi.mock('@/lib/market-hours', () => ({
   getShanghaiTodayIso: vi.fn(() => '2026-06-18'),
   isShanghaiSyncWindow: vi.fn(() => false),
@@ -47,6 +57,7 @@ vi.mock('@/lib/market-hours', () => ({
 
 const mockedApiGetJson = vi.mocked(apiGetJson);
 const mockedFetchDashboardSummary = vi.mocked(fetchDashboardSummary);
+const mockedFetchWatchlistMarketSnapshot = vi.mocked(fetchWatchlistMarketSnapshot);
 
 describe('buildIndustryMarkdown', () => {
   it('renders industry fund flow sections from fixture', () => {
@@ -192,6 +203,10 @@ describe('buildSentimentMarkdown', () => {
 });
 
 describe('buildWatchlistMarkdown with QueryClient cache', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('uses fetchQuery cache instead of raw trendok requests', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
@@ -225,7 +240,51 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
     const md = await buildWatchlistMarkdown(queryClient);
 
     expect(md).toContain('## Watchlist');
+    expect(mockedFetchWatchlistMarketSnapshot).not.toHaveBeenCalled();
     expect(mockedApiGetJson).not.toHaveBeenCalledWith(expect.stringContaining('/market/stocks/trendok'));
+  });
+
+  it('force refreshes watchlist bars when cached TrendOK has missing inputs', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const key = watchlistMarketQueryOptions(['CN:000001']).queryKey;
+    await queryClient.setQueryData(key, {
+      trend: {
+        'CN:000001': {
+          symbol: 'CN:000001',
+          name: 'Test',
+          score: null,
+          asOfDate: null,
+          values: {},
+          missingData: ['no_bars'],
+        },
+      },
+      quotes: {},
+    });
+    mockedFetchWatchlistMarketSnapshot.mockResolvedValue({
+      trend: {
+        'CN:000001': {
+          symbol: 'CN:000001',
+          name: 'Test',
+          score: 91,
+          asOfDate: '2026-06-18',
+          values: {},
+          missingData: [],
+        } as any,
+      },
+      quotes: {},
+      barSync: { failures: 0, total: 1 },
+    });
+
+    const md = await buildWatchlistMarkdown(queryClient);
+
+    expect(mockedFetchWatchlistMarketSnapshot).toHaveBeenCalledWith(['CN:000001'], {
+      forceMarket: true,
+      realtime: false,
+    });
+    expect(queryClient.getQueryData(key)).toMatchObject({ barSync: { failures: 0, total: 1 } });
+    expect(md).toContain('| CN:000001 | Test |');
   });
 });
 
@@ -265,5 +324,13 @@ describe('buildDashboardCopyAllMarkdown cache', () => {
 
     expect(mockedFetchDashboardSummary).not.toHaveBeenCalled();
     expect(mockedApiGetJson).not.toHaveBeenCalledWith('/dashboard/summary');
+  });
+});
+
+describe('copyBlockingMissingData', () => {
+  it('blocks only hard missing inputs, not optional instFlow', () => {
+    expect(copyBlockingMissingData(['instFlow', 'stoploss_missing_inputs'])).toEqual([]);
+    expect(copyBlockingMissingData(['no_bars', 'instFlow'])).toEqual(['no_bars']);
+    expect(copyBlockingMissingData(['bars_lt_60'])).toEqual(['bars_lt_60']);
   });
 });

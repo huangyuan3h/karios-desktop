@@ -23,6 +23,19 @@ import {
 } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 
+const COPY_BLOCKING_MISSING_DATA = new Set([
+  'no_bars',
+  'bars_lt_60',
+  'insufficient_indicators',
+  'unsupported_market',
+  'no_result',
+]);
+
+export function copyBlockingMissingData(missingData: string[] | undefined | null): string[] {
+  const md = Array.isArray(missingData) ? missingData.filter(Boolean) : [];
+  return md.filter((reason) => COPY_BLOCKING_MISSING_DATA.has(reason));
+}
+
 export type WatchlistCopyValidationError = {
   ok: false;
   message: string;
@@ -54,9 +67,9 @@ export function validateWatchlistCopyData(options: {
       missingTrend.push(sym);
       continue;
     }
-    const md = Array.isArray(t.missingData) ? t.missingData.filter(Boolean) : [];
-    if (md.length) {
-      missingHistory.push(sym);
+    const blockingMd = copyBlockingMissingData(t.missingData);
+    if (blockingMd.length) {
+      missingHistory.push(`${sym} (${blockingMd.join(', ')})`);
     }
     if (
       shouldRequireRealtimeQuote({

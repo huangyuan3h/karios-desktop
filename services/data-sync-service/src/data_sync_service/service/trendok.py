@@ -653,6 +653,30 @@ def _industry_flow_score_adjustment(industry: str, ctx: dict[str, Any]) -> tuple
     return delta, parts, reasons
 
 
+def _resolve_inst_summaries_for_trendok(
+    ts_codes: list[str],
+    *,
+    latest_bar_date: str | None,
+) -> dict[str, dict[str, Any]]:
+    """
+    Resolve dragon-tiger inst-flow rows for TrendOK.
+
+    During realtime/intraday the merged bar date may be today while LHB inst
+    summaries are only synced for completed trade dates. Fall back to the latest
+    stored summary instead of treating the symbol as never synced.
+    """
+    if not ts_codes:
+        return {}
+    inst_by_code = fetch_summaries_for_codes(
+        ts_codes,
+        trade_date=latest_bar_date if latest_bar_date else None,
+    )
+    missing = [code for code in ts_codes if code not in inst_by_code]
+    if missing:
+        inst_by_code.update(fetch_summaries_for_codes(missing, trade_date=None))
+    return inst_by_code
+
+
 def compute_trendok_for_symbols(
     symbols: list[str],
     realtime: bool = False,
@@ -703,9 +727,9 @@ def compute_trendok_for_symbols(
 
     by_name, by_tushare_industry = _lookup_stock_basic(ts_codes)
     by_em_industry = _lookup_em_industry_boards(ts_codes)
-    inst_by_code = fetch_summaries_for_codes(
+    inst_by_code = _resolve_inst_summaries_for_trendok(
         ts_codes,
-        trade_date=latest_bar_date if latest_bar_date else None,
+        latest_bar_date=latest_bar_date,
     )
     out: list[dict[str, Any]] = []
     flow_ctx = _build_industry_flow_context(latest_bar_date)

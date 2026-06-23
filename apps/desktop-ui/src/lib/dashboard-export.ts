@@ -29,6 +29,7 @@ import {
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import {
   getShanghaiTodayIso,
+  isShanghaiQuoteWindow,
   isShanghaiSyncWindow,
   isShanghaiTradingTime,
 } from '@/lib/market-hours';
@@ -45,6 +46,7 @@ import { toTsCodeFromSymbol } from '@/lib/symbols';
 import { screenerSnapshotsQueryOptions } from '@/lib/queries/screener';
 import { fetchDashboardSummaryPartial } from '@/lib/queries/dashboard';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
+import { fetchWatchlistMarketSnapshot, type WatchlistMarketSnapshot } from '@/lib/watchlist-market';
 import { trendOkSummary, trendOkRuleLines, scoreRuleLines } from '@/lib/trendok-display';
 import {
   WATCHLIST_MD_HEADERS,
@@ -63,6 +65,7 @@ import {
   shouldRequireRealtimeQuote,
   tradeDateFromTradeTime,
 } from '@/lib/watchlist-metrics';
+import { copyBlockingMissingData } from '@/lib/watchlist-export';
 import { loadWatchlist, ensureWatchlistHydrated, type WatchlistItem } from '@/lib/watchlist-storage';
 
 type DashboardSummary = any;
@@ -108,6 +111,43 @@ function loadWatchlistSymbols(): Set<string> {
     .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
     .map((x) => String(x.symbol).trim().toUpperCase());
   return new Set(items);
+}
+
+function symbolsWithMissingTrendInputs(
+  symbols: string[],
+  trend: Record<string, TrendOkResult>,
+): string[] {
+  const missing: string[] = [];
+  for (const sym of symbols) {
+    const row = trend[sym];
+    const blocking = copyBlockingMissingData(row?.missingData);
+    if (blocking.length) missing.push(sym);
+  }
+  return missing;
+}
+
+async function fetchWatchlistSnapshotForCopy(
+  symbols: string[],
+  queryClient?: QueryClient,
+): Promise<WatchlistMarketSnapshot> {
+  if (!queryClient) {
+    return fetchWatchlistMarketSnapshot(symbols, {
+      forceMarket: false,
+      realtime: isShanghaiQuoteWindow(),
+    });
+  }
+
+  const options = watchlistMarketQueryOptions(symbols);
+  const snapshot = await queryClient.fetchQuery(options);
+  const missingInputs = symbolsWithMissingTrendInputs(symbols, snapshot.trend);
+  if (!missingInputs.length) return snapshot;
+
+  const refreshed = await fetchWatchlistMarketSnapshot(symbols, {
+    forceMarket: true,
+    realtime: isShanghaiQuoteWindow(),
+  });
+  queryClient.setQueryData(options.queryKey, refreshed);
+  return refreshed;
 }
 
 export function buildIndustryMarkdown(s: DashboardSummary | null, heading = '##'): string {
@@ -539,7 +579,7 @@ export async function buildWatchlistMarkdown(queryClient?: QueryClient): Promise
   >;
 
   if (queryClient) {
-    const snapshot = await queryClient.fetchQuery(watchlistMarketQueryOptions(syms));
+    const snapshot = await fetchWatchlistSnapshotForCopy(syms, queryClient);
     trend = snapshot.trend;
     quotes = snapshot.quotes;
   } else {
@@ -597,8 +637,10 @@ export async function buildWatchlistMarkdown(queryClient?: QueryClient): Promise
       missingTrend.push(sym);
       continue;
     }
-    const md = Array.isArray(t.missingData) ? t.missingData.filter(Boolean) : [];
-    if (md.length) missingHistory.push(sym);
+    const blockingMd = copyBlockingMissingData(t.missingData);
+    if (blockingMd.length) {
+      missingHistory.push(`${sym} (${blockingMd.join(', ')})`);
+    }
     if (
       shouldRequireRealtimeQuote({
         tradingTime,
