@@ -698,6 +698,31 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
         else:
             data_source = "mixed" if net_1d is not None else "tushare"
 
+        has_live_main_flow = bool(
+            data_source == EM_ETF_FLOW_SOURCE
+            and net_1d is not None
+            and flow_as_of == as_of
+            and (
+                (as_of_row or {}).get("main_net_inflow") is not None
+                or (em_realtime_row or {}).get("mainNetInflow") is not None
+            )
+        )
+        if has_live_main_flow:
+            flow_status = "Live"
+            flow_provider = "eastmoney"
+        elif net_1d is None:
+            flow_status = "Stale" if net_1d_lagged is not None else "Missing"
+            flow_provider = "tushare" if net_1d_lagged is not None else "mixed"
+        elif data_source == "tushare":
+            flow_status = "Historical"
+            flow_provider = "tushare"
+        elif data_source == EM_ETF_FLOW_SOURCE or data_source == "eastmoney":
+            flow_status = "Stale" if stale_flow else "Live"
+            flow_provider = "eastmoney"
+        else:
+            flow_status = "Historical"
+            flow_provider = "mixed"
+
         if net_1d is None:
             signal = "Data Lag"
         else:
@@ -718,6 +743,9 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
                 "netFlow3d": net_3d,
                 "flowAsOfDate": flow_as_of if flow_as_of != as_of else None,
                 "source": source,
+                "live": has_live_main_flow,
+                "flowStatus": flow_status,
+                "flowProvider": flow_provider,
                 "tradeTime": (as_of_row or {}).get("trade_time") or (em_realtime_row or {}).get("tradeTime"),
                 "mainNetInflow": (as_of_row or {}).get("main_net_inflow")
                 if (as_of_row or {}).get("main_net_inflow") is not None

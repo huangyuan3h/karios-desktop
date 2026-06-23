@@ -8,6 +8,7 @@ export const WATCHLIST_MD_HEADERS = [
   'Current',
   'VWAP',
   'Intraday%',
+  'VR',
   'Inst_Flow',
   'GapUp',
   'Alerts',
@@ -114,6 +115,44 @@ export function formatGapUp(value: boolean | null | undefined): string {
   return value ? '✓' : 'No';
 }
 
+function finiteNumber(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return value;
+}
+
+export function resolveVolumeRatio(
+  values: Record<string, unknown> | null | undefined,
+): number | null {
+  const direct = finiteNumber(values?.volumeRatio);
+  if (direct != null) return direct;
+  const avg5 = finiteNumber(values?.avgVol5);
+  const avg30 = finiteNumber(values?.avgVol30);
+  if (avg5 == null || avg30 == null) return null;
+  if (avg30 > 0) return avg5 / avg30;
+  return avg5 > 0 ? 1.0 : 0.0;
+}
+
+export function formatVolumeRatio(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  return `${value.toFixed(2)}x`;
+}
+
+export type VolumeRatioTone = 'strong' | 'weak' | 'neutral';
+
+export function volumeRatioTone(value: number | null | undefined): VolumeRatioTone {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'neutral';
+  if (value >= 1.5) return 'strong';
+  if (value < 1.0) return 'weak';
+  return 'neutral';
+}
+
+export function volumeRatioClassName(value: number | null | undefined): string {
+  const tone = volumeRatioTone(value);
+  if (tone === 'strong') return 'font-semibold text-emerald-600';
+  if (tone === 'weak') return 'font-semibold text-red-600';
+  return '';
+}
+
 export function resolveIntradayChgPct(opts: {
   fromTrend?: number | null;
   quotePrice?: number | null;
@@ -202,7 +241,7 @@ export type WatchlistQuoteSlice = {
 
 export type WatchlistTrendRiskSlice = {
   asOfDate?: string | null;
-  values?: { close?: number | null } | null;
+  values?: (Record<string, unknown> & { close?: number | null }) | null;
   intradayChgPct?: number | null;
   gapUp?: boolean | null;
   marketRegime?: string | null;
@@ -221,6 +260,7 @@ export function buildWatchlistRowMetrics(opts: {
   current: number | null;
   vwap: number | null;
   intradayChgPct: number | null;
+  volumeRatio: number | null;
   gapUp: boolean | null;
   alerts: WatchlistRiskAlert[];
 } {
@@ -256,6 +296,7 @@ export function buildWatchlistRowMetrics(opts: {
     quoteTradeDate,
     asOfDate,
   });
+  const volumeRatio = resolveVolumeRatio((t?.values ?? null) as Record<string, unknown> | null);
   const gapUp = typeof t?.gapUp === 'boolean' ? t.gapUp : null;
   const alerts = collectWatchlistRiskAlerts({
     intradayChgPct,
@@ -266,7 +307,7 @@ export function buildWatchlistRowMetrics(opts: {
     riskMetricsLive: t?.riskMetricsLive,
     serverAlerts: t?.riskAlerts,
   });
-  return { current, vwap, intradayChgPct, gapUp, alerts };
+  return { current, vwap, intradayChgPct, volumeRatio, gapUp, alerts };
 }
 
 export function rowHasWatchlistRiskHighlight(alerts: WatchlistRiskAlert[]): boolean {

@@ -39,7 +39,9 @@ import { useChatStore } from '@/lib/chat/store';
 import {
   formatGapUp,
   formatIntradayChgPct,
+  formatVolumeRatio,
   isIntradaySurge,
+  volumeRatioClassName,
 } from '@/lib/watchlist-metrics';
 
 export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) => void }) {
@@ -806,15 +808,18 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                       <th className="px-2 py-2 text-right">3D Net Flow</th>
                                       <th className="px-2 py-2">Realtime AsOf</th>
                                       <th className="px-2 py-2">Source</th>
+                                      <th className="px-2 py-2">Status</th>
                                       <th className="px-2 py-2">Signal</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {etfItems.map((it: any, idx: number) => {
-                                      const source = String(it?.source ?? '');
-                                      const isRealtime = source === 'eastmoney.realtime_flow';
+                                      const flowStatus = String(
+                                        it?.flowStatus ?? (it?.live === true ? 'Live' : '—'),
+                                      );
+                                      const live = it?.live === true || flowStatus === 'Live';
                                       const flow1dStale =
-                                        !isRealtime &&
+                                        !live &&
                                         it?.netFlow1d == null &&
                                         (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
                                       const flow1dDisplay = flow1dStale
@@ -851,6 +856,17 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                           {String(it?.source ?? '—')}
                                         </td>
                                         <td
+                                          className={`px-2 py-2 font-mono ${
+                                            flowStatus === 'Live'
+                                              ? 'font-semibold text-emerald-600'
+                                              : flowStatus === 'Stale' || flowStatus === 'Missing'
+                                                ? 'text-amber-600'
+                                                : 'text-[var(--k-muted)]'
+                                          }`}
+                                        >
+                                          {flowStatus}
+                                        </td>
+                                        <td
                                           className={
                                             isDataLag
                                               ? 'px-2 py-2 text-[var(--k-muted)]'
@@ -865,7 +881,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                       <tr>
                                         <td
                                           className="px-2 py-3 text-sm text-[var(--k-muted)]"
-                                          colSpan={8}
+                                          colSpan={9}
                                         >
                                           No ETF fund flow cached yet. Click &quot;Sync
                                           sentiment&quot;.
@@ -1028,6 +1044,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                             <th className="px-2 py-2">Symbol</th>
                             <th className="px-2 py-2">Name</th>
                             <th className="px-2 py-2">Intraday%</th>
+                            <th className="px-2 py-2">VR</th>
                             <th className="px-2 py-2">Gap</th>
                             <th className="px-2 py-2">Alerts</th>
                           </tr>
@@ -1052,6 +1069,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                   }`}
                                 >
                                   {formatIntradayChgPct(row.intradayChgPct)}
+                                </td>
+                                <td
+                                  className={`px-2 py-2 font-mono ${volumeRatioClassName(row.volumeRatio)}`}
+                                >
+                                  {formatVolumeRatio(row.volumeRatio)}
                                 </td>
                                 <td
                                   className={`px-2 py-2 font-mono ${

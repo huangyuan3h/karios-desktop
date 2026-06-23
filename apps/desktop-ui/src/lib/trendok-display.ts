@@ -53,7 +53,7 @@ export function scoreExplainZhLines(): string[] {
     'MACD：MACD 线 <0 时该项为 0；否则需 MACD 柱连续 2 日为正且今日柱>昨日柱，满分映射后乘 20 分。',
     'Breakout：收盘价 ÷ 近 20 日最高价，从约 0.85～1.0 线性映射到 0～1（clip）后乘 10 分。',
     'RSI：以 RSI=65 为最高分，随 |RSI−65| 增大线性衰减（15 点尺度 clip）后乘 10 分；RSI>80 额外加速衰减。',
-    'Volume：AvgVol5÷AvgVol30，[1.2, 2.0] 满分 20；<1.0 按比例衰减；>3.0 子分为 0。',
+    'Volume：VR=AvgVol5÷AvgVol30，[1.2, 2.0] 满分 20；<1.0 按比例衰减；>3.0 子分为 0。VR<1.2 触发日内低量比硬风控：TrendOK=False，最终 Score 封顶 79。',
     '右侧加分：EMA20 连续 5 日上升 → +5（scoreParts 中 bonus_ema20_slope_5d）。',
     'Anti-Spike 剥离：① 日内涨幅>6% → −20（penalty_intraday_spike）。② ATR14/收盘价>5% 起按 (ratio−0.05)×1000  steep 扣分（penalty_volatility_atr）。③ 当日量/AvgVol30>3 → −15（penalty_volume_climax）。④ 收盘<EMA20 → −30（penalty_below_ema20）。',
     '行业资金流（可选）：如 5 日净流入行业 Top3 +10、当日热点 Top3 +5、Top4–5 +3；5 日弱势榜等可 −10～−20；细节以返回的 scoreParts 与 industryFlowReasons 为准。',
@@ -66,6 +66,6 @@ export function scoreRuleLines(): string[] {
     '- Subscores: EMA trend 25%, MACD strength 15%, breakout 25%, RSI 15%, volume 20%.',
     '- Bonus: +3 when Close >= High(20).',
     '- Penalties: high ATR/close (>7%) and Close < EMA20.',
-    '- Optional industry flow adjustment when available.',
+    '- Optional industry flow adjustment when available; VR<1.2 hard-caps final score at 79 and forces TrendOK=false.',
   ];
 }

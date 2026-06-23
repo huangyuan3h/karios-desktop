@@ -146,6 +146,9 @@ describe('buildSentimentMarkdown', () => {
               netFlow3d: 12_050_000_000,
               tradeTime: '2026-06-18T06:30:00+00:00',
               source: 'eastmoney.realtime_flow',
+              live: true,
+              flowStatus: 'Live',
+              flowProvider: 'eastmoney',
               signal: 'National Team Buy',
               signalDisplay: '🛡️ National Team Buy',
             },
@@ -158,6 +161,9 @@ describe('buildSentimentMarkdown', () => {
               netFlow3d: -3_520_000_000,
               tradeTime: '2026-06-18T06:30:00+00:00',
               source: 'eastmoney.realtime_flow',
+              live: true,
+              flowStatus: 'Live',
+              flowProvider: 'eastmoney',
               signal: 'Inst Outflow',
               signalDisplay: '⚠️ Inst Outflow',
             },
@@ -189,7 +195,7 @@ describe('buildSentimentMarkdown', () => {
     expect(md).toContain('| date | up | down |');
     expect(md).toContain('## ETF Fund Flow (Top Watchlist)');
     expect(md).toContain(
-      '| 沪深300 ETF | 510300 | +52.30亿 | +31.00亿 | +21.30亿 | +120.50亿 | 2026-06-18T06:30:00+00:00 | eastmoney.realtime_flow |',
+      '| 沪深300 ETF | 510300 | +52.30亿 | +31.00亿 | +21.30亿 | +120.50亿 | 2026-06-18T06:30:00+00:00 | eastmoney.realtime_flow | Live |',
     );
     expect(md).toContain('🛡️ National Team Buy');
     expect(md).toContain('⚠️ Inst Outflow');
@@ -218,7 +224,7 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
           name: 'Test',
           score: 90,
           asOfDate: '2026-06-18',
-          values: {},
+          values: { volumeRatio: 1.58 },
           missingData: [],
         },
       },
@@ -240,6 +246,8 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
     const md = await buildWatchlistMarkdown(queryClient);
 
     expect(md).toContain('## Watchlist');
+    expect(md).toContain('| VR |');
+    expect(md).toContain('1.58x');
     expect(mockedFetchWatchlistMarketSnapshot).not.toHaveBeenCalled();
     expect(mockedApiGetJson).not.toHaveBeenCalledWith(expect.stringContaining('/market/stocks/trendok'));
   });
@@ -271,7 +279,7 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
           asOfDate: '2026-06-18',
           values: {},
           missingData: [],
-        } as any,
+        },
       },
       quotes: {},
       barSync: { failures: 0, total: 1 },

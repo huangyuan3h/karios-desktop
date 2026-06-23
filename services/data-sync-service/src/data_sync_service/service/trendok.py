@@ -27,6 +27,9 @@ from data_sync_service.service.top_inst_flow import build_inst_flow_payload
 
 TRENDOK_CACHE_TTL_SECONDS = 60
 TRENDOK_FAILED_SCORE_CAP = 79.0
+LOW_VOLUME_RATIO_THRESHOLD = 1.2
+LOW_VOLUME_RATIO_SCORE_CAP = 79.0
+LOW_VOLUME_RATIO_SCORE_PART = "low_volume_ratio_cap"
 _trendok_cache: dict[tuple[frozenset[str], bool, str], tuple[list[dict[str, Any]], float]] = {}
 
 
@@ -248,6 +251,7 @@ def _compute_watchlist_score_v4(
     rsi14: float,
     avg5: float,
     avg30: float,
+    volume_ratio: float,
     macd_last: float,
     hist: list[float],
     high20_high: float,
@@ -262,8 +266,7 @@ def _compute_watchlist_score_v4(
     _, pts_macd = _score_sub_macd(macd_last, hist)
     _, pts_break = _score_sub_breakout(close, high20_high)
     _, pts_rsi = _score_sub_rsi(rsi14)
-    ratio_vol = (avg5 / avg30) if avg30 > 0 else (1.0 if avg5 > 0 else 0.0)
-    _, pts_vol = _score_sub_volume(ratio_vol)
+    _, pts_vol = _score_sub_volume(volume_ratio)
 
     parts: dict[str, float] = {
         "ema": round(pts_ema, 3),
@@ -897,8 +900,10 @@ def _trendok_one(
     if len(vols) >= 30:
         avg5 = sum(vols[-5:]) / 5.0
         avg30 = sum(vols[-30:]) / 30.0
+        volume_ratio = (avg5 / avg30) if avg30 > 0 else (1.0 if avg5 > 0 else 0.0)
         res["values"]["avgVol5"] = avg5
         res["values"]["avgVol30"] = avg30
+        res["values"]["volumeRatio"] = round(volume_ratio, 6)
         # Rule 6 (optimized): avoid filtering strong "tight volume" trends.
         # Volume "surge" is moved to the Score system; TrendOK only blocks volume cliffs.
         res["checks"]["volumeSurge"] = bool(avg5 > 0.9 * avg30) if avg30 > 0 else bool(avg5 > 0)
@@ -936,6 +941,7 @@ def _trendok_one(
                 rsi14=float(v["rsi14"]),
                 avg5=float(v["avgVol5"]),
                 avg30=float(v["avgVol30"]),
+                volume_ratio=float(v.get("volumeRatio", 0.0)),
                 macd_last=float(v["macd"]),
                 hist=hist,
                 high20_high=high20_high,
@@ -1367,6 +1373,18 @@ def _trendok_one(
         res["missingData"].append("insufficient_indicators")
     else:
         res["trendOk"] = bool(all(bool(x) for x in required))
+
+    volume_ratio_raw = (res.get("values") or {}).get("volumeRatio") if isinstance(res.get("values"), dict) else None
+    low_volume_ratio = False
+    if isinstance(volume_ratio_raw, (int, float)):
+        low_volume_ratio = float(volume_ratio_raw) < LOW_VOLUME_RATIO_THRESHOLD
+    if low_volume_ratio:
+        res["trendOk"] = False
+        if res.get("score") is not None:
+            res["score"] = round(min(float(res["score"]), LOW_VOLUME_RATIO_SCORE_CAP), 3)
+            parts2 = res.get("scoreParts")
+            if isinstance(parts2, dict):
+                parts2[LOW_VOLUME_RATIO_SCORE_PART] = LOW_VOLUME_RATIO_SCORE_CAP
     if res.get("score") is not None and res.get("trendOk") is not True:
         res["score"] = round(min(float(res["score"]), TRENDOK_FAILED_SCORE_CAP), 3)
     return res

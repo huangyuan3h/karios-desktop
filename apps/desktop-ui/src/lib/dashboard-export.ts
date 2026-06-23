@@ -59,6 +59,7 @@ import {
   formatPnLPct,
   formatRiskAlerts,
   formatVwap,
+  formatVolumeRatio,
   industryDisplayName,
   isIntradaySurge,
   parseQuoteNumber,
@@ -321,15 +322,14 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
       '3D Net Flow',
       'Realtime AsOf',
       'Source',
+      'Status',
       'Signal',
     ];
     const etfRows: unknown[][] = etfItems.map((it: any) => {
-      const source = String(it?.source ?? '');
-      const isRealtime = source === 'eastmoney.realtime_flow';
+      const status = String(it?.flowStatus ?? (it?.live === true ? 'Live' : '—'));
+      const live = it?.live === true || status === 'Live';
       const flow1dStale =
-        !isRealtime &&
-        it?.netFlow1d == null &&
-        (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
+        !live && it?.netFlow1d == null && (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
       const flow1d = flow1dStale ? '— (stale)' : fmtSignedAmountCn(it?.netFlow1d);
       return [
         String(it?.name ?? ''),
@@ -340,6 +340,7 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
         fmtSignedAmountCn(it?.netFlow3d),
         String(it?.tradeTime ?? it?.flowAsOfDate ?? etfFlow?.asOfDate ?? '—'),
         String(it?.source ?? '—'),
+        status,
         String(it?.signalDisplay ?? it?.signal ?? '—'),
       ];
     });
@@ -733,6 +734,7 @@ export async function buildWatchlistMarkdown(queryClient?: QueryClient): Promise
       mdPrice(rowMetrics.current),
       formatVwap(rowMetrics.vwap),
       intradayCell,
+      formatVolumeRatio(rowMetrics.volumeRatio),
       formatInstFlow(t?.instFlow),
       gapCell,
       formatRiskAlerts(rowMetrics.alerts),

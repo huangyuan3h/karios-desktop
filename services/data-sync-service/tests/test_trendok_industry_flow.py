@@ -155,6 +155,62 @@ def test_positive_industry_bonus_requires_full_trendok_and_volume() -> None:
     assert round(res["score"]) < 80
 
 
+def _strong_bars_with_low_but_passing_volume_ratio() -> list[tuple[str, str, str, str, str, str]]:
+    out: list[tuple[str, str, str, str, str, str]] = []
+    start = date(2025, 1, 1)
+    for i in range(70):
+        close = 20.0 + i * 0.08 + (0.15 if i % 3 else -0.15) + max(0, i - 50) * 0.02
+        open_p = close - 0.1
+        high = close + 0.3
+        low = close - 0.4
+        vol = 1100.0 if i >= 65 else 1000.0
+        out.append(
+            (
+                (start + timedelta(days=i)).isoformat(),
+                f"{open_p:.3f}",
+                f"{high:.3f}",
+                f"{low:.3f}",
+                f"{close:.3f}",
+                f"{vol:.3f}",
+            )
+        )
+    return out
+
+
+def test_low_volume_ratio_caps_after_positive_industry_bonus() -> None:
+    from data_sync_service.service.trendok import _trendok_one  # type: ignore[import-not-found]
+
+    with patch(
+        "data_sync_service.service.trendok._compute_watchlist_score_v4",
+        return_value=(95.0, {"base": 95.0}),
+    ):
+        res = _trendok_one(
+            symbol="CN:000001",
+            name="Test",
+            industry="半导体",
+            bars=_strong_bars_with_low_but_passing_volume_ratio(),
+            flow_ctx={
+                "ok": True,
+                "asOfDate": "2025-03-11",
+                "top_today_3": set(),
+                "top_today_5": set(),
+                "top_yesterday_3": set(),
+                "top_5d_3": {"半导体"},
+                "bottom_5d_5": set(),
+                "net_today": {},
+                "net_yesterday": {},
+            },
+            market_regime="Strong",
+        )
+
+    assert res["checks"]["volumeSurge"] is True
+    assert res["values"]["volumeRatio"] < 1.2
+    assert res["trendOk"] is False
+    assert res["score"] == 79.0
+    assert res["scoreParts"]["industry_flow_5d_top3"] == 10.0
+    assert res["scoreParts"]["low_volume_ratio_cap"] == 79.0
+
+
 def test_negative_industry_penalty_applies_even_when_trendok_fails() -> None:
     from data_sync_service.service.trendok import _trendok_one  # type: ignore[import-not-found]
 

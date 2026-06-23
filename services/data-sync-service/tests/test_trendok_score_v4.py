@@ -98,6 +98,7 @@ def test_compute_watchlist_score_v4_spike_pulls_below_80() -> None:
         rsi14=68.0,
         avg5=150.0,
         avg30=100.0,
+        volume_ratio=1.5,
         macd_last=1.0,
         hist=[0.5, 0.8, 1.0, 1.2],
         high20_high=110.0,
@@ -124,15 +125,60 @@ def test_compute_watchlist_score_v4_smooth_right_side_can_reach_80() -> None:
         rsi14=66.0,
         avg5=150.0,
         avg30=100.0,
+        volume_ratio=1.5,
         macd_last=1.0,
         hist=[0.5, 0.8, 1.0, 1.2],
         high20_high=105.0,
-        highs=[100.0] * 19 + [105.0],
+        highs=[100.0] * 19 + [101.0],
         lows=[99.0] * 20,
-        closes=[100.0] * 19 + [105.0],
+        closes=[100.0] * 19 + [101.0],
         vols=[100.0] * 29 + [150.0],
         intraday_chg_pct=3.0,
     )
     assert "penalty_intraday_spike" not in parts
     assert "bonus_ema20_slope_5d" in parts
     assert score >= 80.0
+
+
+def test_compute_watchlist_score_v4_uses_explicit_volume_ratio() -> None:
+    ema20s = [98.0, 98.5, 99.0, 99.5, 100.0, 100.5, 101.0]
+    _, parts_low = _compute_watchlist_score_v4(
+        close=101.0,
+        ema5=102.0,
+        ema20=100.0,
+        ema60=98.0,
+        ema20s=ema20s,
+        rsi14=66.0,
+        avg5=150.0,
+        avg30=100.0,
+        volume_ratio=0.8,
+        macd_last=1.0,
+        hist=[0.5, 0.8, 1.0, 1.2],
+        high20_high=105.0,
+        highs=[100.0] * 19 + [101.0],
+        lows=[99.0] * 20,
+        closes=[100.0] * 19 + [101.0],
+        vols=[100.0] * 29 + [150.0],
+        intraday_chg_pct=3.0,
+    )
+    _, parts_full = _compute_watchlist_score_v4(
+        close=101.0,
+        ema5=102.0,
+        ema20=100.0,
+        ema60=98.0,
+        ema20s=ema20s,
+        rsi14=66.0,
+        avg5=150.0,
+        avg30=100.0,
+        volume_ratio=1.5,
+        macd_last=1.0,
+        hist=[0.5, 0.8, 1.0, 1.2],
+        high20_high=105.0,
+        highs=[100.0] * 19 + [101.0],
+        lows=[99.0] * 20,
+        closes=[100.0] * 19 + [101.0],
+        vols=[100.0] * 29 + [150.0],
+        intraday_chg_pct=3.0,
+    )
+
+    assert parts_low["volume"] < parts_full["volume"]

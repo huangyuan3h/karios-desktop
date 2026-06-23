@@ -7,6 +7,7 @@ import {
   formatGapUp,
   formatHotTop3,
   formatInstFlow,
+  formatVolumeRatio,
   hasBlockingWatchlistRisk,
   industryDisplayName,
   isInstFlowRisk,
@@ -14,9 +15,11 @@ import {
   isHotTop3Industry,
   isIntradaySurge,
   resolveIntradayChgPct,
+  resolveVolumeRatio,
   resolveWatchlistCurrentPrice,
   resolveWatchlistVwap,
   shouldRequireRealtimeQuote,
+  volumeRatioTone,
 } from './watchlist-metrics';
 
 describe('computePnLPct', () => {
@@ -133,6 +136,21 @@ describe('resolveIntradayChgPct', () => {
         asOfDate: '2026-05-27',
       }),
     ).toBe(5.0);
+  });
+});
+
+describe('volume ratio helpers', () => {
+  it('resolves direct volumeRatio before avg volume fallback', () => {
+    expect(resolveVolumeRatio({ volumeRatio: 1.34, avgVol5: 1, avgVol30: 10 })).toBe(1.34);
+    expect(resolveVolumeRatio({ avgVol5: 150, avgVol30: 100 })).toBeCloseTo(1.5);
+  });
+
+  it('formats and tones volume ratio for risk display', () => {
+    expect(formatVolumeRatio(1.234)).toBe('1.23x');
+    expect(formatVolumeRatio(null)).toBe('—');
+    expect(volumeRatioTone(1.5)).toBe('strong');
+    expect(volumeRatioTone(0.99)).toBe('weak');
+    expect(volumeRatioTone(1.2)).toBe('neutral');
   });
 });
 

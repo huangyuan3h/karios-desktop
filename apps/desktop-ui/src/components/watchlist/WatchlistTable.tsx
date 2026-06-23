@@ -24,6 +24,7 @@ import {
   formatInstFlowTooltip,
   formatIntradayChgPct,
   formatPnLPct,
+  formatVolumeRatio,
   formatRiskAlerts,
   formatVwap,
   industryDisplayName,
@@ -31,6 +32,7 @@ import {
   isInstFlowRisk,
   resolveWatchlistCurrentPrice,
   tushareIndustryTooltip,
+  volumeRatioClassName,
 } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 import {
@@ -598,6 +600,7 @@ export function WatchlistTable({
                     <th className="px-2 py-2 w-[64px]">HotTop3</th>
                     <th className="px-2 py-2 w-[68px]">VWAP</th>
                     <th className="px-2 py-2 w-[72px]">Intraday%</th>
+                    <th className="px-2 py-2 w-[72px]">VR(量比)</th>
                     <th className="px-2 py-2 w-[120px]">Inst_Flow</th>
                     <th className="px-2 py-2 w-[48px]">Gap</th>
                     <th className="px-2 py-2 w-[140px]">Alerts</th>
@@ -824,6 +827,11 @@ export function WatchlistTable({
                           }`}
                         >
                           {formatIntradayChgPct(rowMetrics.intradayChgPct)}
+                        </td>
+                        <td
+                          className={`px-3 py-2 font-mono ${volumeRatioClassName(rowMetrics.volumeRatio)}`}
+                        >
+                          {formatVolumeRatio(rowMetrics.volumeRatio)}
                         </td>
                         <td
                           className={`max-w-[120px] truncate px-2 py-2 text-xs font-mono ${

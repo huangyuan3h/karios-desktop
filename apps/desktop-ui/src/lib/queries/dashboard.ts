@@ -61,6 +61,7 @@ export type WatchlistRiskRow = {
   symbol: string;
   name: string;
   intradayChgPct: number | null;
+  volumeRatio: number | null;
   gapUp: boolean | null;
   alerts: WatchlistRiskAlert[];
 };
@@ -125,7 +126,7 @@ function includesCacheKey(includes: DashboardSummaryIncludes): string {
 }
 
 export function buildWatchlistRiskRowsFromSnapshot(
-  items: Array<{ symbol: string; name?: string }>,
+  items: Array<{ symbol: string; name?: string | null }>,
   snapshot: WatchlistMarketSnapshot,
 ): WatchlistRiskRow[] {
   const tradingTime = isShanghaiTradingTime();
@@ -146,6 +147,7 @@ export function buildWatchlistRiskRowsFromSnapshot(
       symbol: it.symbol,
       name: it.name ?? t?.name ?? '—',
       intradayChgPct: rowMetrics.intradayChgPct,
+      volumeRatio: rowMetrics.volumeRatio,
       gapUp: rowMetrics.gapUp,
       alerts: rowMetrics.alerts,
     });

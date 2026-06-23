@@ -165,6 +165,9 @@ def test_build_etf_fund_flow_bundle_t1_fallback(monkeypatch: pytest.MonkeyPatch)
     assert hs300["netFlow1dLagged"] == pytest.approx(52_300_000.0)
     assert hs300["flowAsOfDate"] == "2026-06-18"
     assert hs300["signal"] == "Data Lag"
+    assert hs300["live"] is False
+    assert hs300["flowStatus"] == "Stale"
+    assert hs300["flowProvider"] == "tushare"
     assert "Data Lag" in hs300["signalDisplay"]
     assert out["intradaySafe"] is False
 
@@ -221,6 +224,9 @@ def test_build_etf_fund_flow_bundle_em_read_path(monkeypatch: pytest.MonkeyPatch
     assert hs300["superLargeNetInflow"] == pytest.approx(7_000_000.0)
     assert hs300["largeNetInflow"] == pytest.approx(5_000_000.0)
     assert hs300["signal"] == "National Team Buy"
+    assert hs300["live"] is True
+    assert hs300["flowStatus"] == "Live"
+    assert hs300["flowProvider"] == "eastmoney"
     assert out["intradaySafe"] is False
 
 
@@ -280,6 +286,9 @@ def test_build_etf_fund_flow_bundle_realtime_row_not_lagged(
     assert hs300["superLargeNetInflow"] == pytest.approx(7_000_000.0)
     assert hs300["largeNetInflow"] == pytest.approx(5_000_000.0)
     assert hs300["signal"] == "National Team Buy"
+    assert hs300["live"] is True
+    assert hs300["flowStatus"] == "Live"
+    assert hs300["flowProvider"] == "eastmoney"
 
 
 def test_sync_etf_fund_flow_watchlist_uses_eastmoney_primary(
@@ -419,6 +428,8 @@ def test_build_etf_fund_flow_bundle_full_realtime_watchlist_intraday_safe(
     assert len(out["items"]) == len(svc.ETF_WATCHLIST)
     assert {it["source"] for it in out["items"]} == {EM_ETF_FLOW_SOURCE}
     assert all(it["netFlow1d"] is not None for it in out["items"])
+    assert all(it["live"] is True for it in out["items"])
+    assert {it["flowStatus"] for it in out["items"]} == {"Live"}
 
 
 def test_em_etf_fetcher_host_fallback_and_normalization(monkeypatch: pytest.MonkeyPatch) -> None:
