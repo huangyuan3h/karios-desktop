@@ -8,7 +8,7 @@ import pytest
 from data_sync_service.db import check_db, get_connection  # type: ignore[import-not-found]
 from data_sync_service.db.schema_baseline import BASELINE_REVISION, baseline_ddl_statements
 
-HEAD_REVISION = "0005_purge_non_trading_daily"
+HEAD_REVISION = "0007_industry_fund_flow_taxonomy"
 
 
 def _postgres_available() -> bool:
@@ -29,6 +29,14 @@ def test_baseline_ddl_includes_core_tables() -> None:
         "tv_screeners",
     ):
         assert name in ddl
+
+
+def test_baseline_ddl_includes_industry_fund_flow_taxonomy_fields() -> None:
+    ddl = "\n".join(baseline_ddl_statements()).lower()
+    assert "market_cn_industry_fund_flow_daily" in ddl
+    assert "taxonomy" in ddl
+    assert "industry_level" in ddl
+    assert "idx_cn_industry_fund_flow_taxonomy_level_date" in ddl
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")

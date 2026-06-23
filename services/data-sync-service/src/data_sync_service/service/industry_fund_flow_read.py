@@ -2,6 +2,30 @@ from __future__ import annotations
 
 from typing import Any
 
+from data_sync_service.service.industry_taxonomy import row_is_sw_l1
+
+
+def filter_sw_l1_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [row for row in rows if isinstance(row, dict) and row_is_sw_l1(row)]
+
+
+def _dedupe_rows_by_date_name(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    best: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in filter_sw_l1_rows(rows):
+        d = str(row.get("date") or "")
+        name = str(row.get("industry_name") or "").strip()
+        if not d or not name:
+            continue
+        key = (d, name)
+        try:
+            v = float(row.get("net_inflow") or 0.0)
+        except Exception:
+            v = 0.0
+        prev = best.get(key)
+        if prev is None or v > float(prev.get("net_inflow") or 0.0):
+            best[key] = row
+    return list(best.values())
+
 
 def series_map_from_rows(
     rows: list[dict[str, Any]],
@@ -10,6 +34,7 @@ def series_map_from_rows(
     """Group rows into per-industry series ordered by date ASC (dates filter only)."""
     if not dates:
         return {}
+    rows = _dedupe_rows_by_date_name(rows)
     allowed = set(dates)
     by_name: dict[str, dict[str, float]] = {}
     for row in rows:
@@ -33,6 +58,7 @@ def sum_by_industry_from_rows(
     """Per-industry sum of net_inflow over dates_subset."""
     if not dates_subset:
         return {}
+    rows = _dedupe_rows_by_date_name(rows)
     allowed = set(dates_subset)
     sums: dict[str, float] = {}
     for row in rows:
@@ -53,6 +79,7 @@ def positive_days_from_rows(
     """Count days with net_inflow > 0 per industry within dates_subset."""
     if not dates_subset:
         return {}
+    rows = _dedupe_rows_by_date_name(rows)
     allowed = set(dates_subset)
     pos: dict[str, int] = {}
     for row in rows:
@@ -78,6 +105,7 @@ def build_trendok_flow_context_from_rows(
     rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Build TrendOK industry-flow context from a batch of industry fund-flow rows."""
+    rows = _dedupe_rows_by_date_name(rows)
     dates_2 = dates_5[-2:] if dates_5 else []
     today = dates_2[-1] if dates_2 else flow_date
     yesterday = dates_2[-2] if len(dates_2) >= 2 else None
@@ -124,28 +152,29 @@ def flow_items_from_rows(
     """Build dashboard 5D flow items (per industry series + sum5d) from batch rows."""
     if not dates_sorted:
         return []
+    rows = _dedupe_rows_by_date_name(rows)
     last_date = dates_sorted[-1]
-    by_code: dict[str, dict[str, Any]] = {}
+    by_name: dict[str, dict[str, Any]] = {}
     allowed = set(dates_sorted)
     for row in rows:
         d = str(row.get("date") or "")
         if d not in allowed:
             continue
         code = str(row.get("industry_code") or "")
-        name = str(row.get("industry_name") or "")
-        if not code:
+        name = str(row.get("industry_name") or "").strip()
+        if not name:
             continue
         try:
             v = float(row.get("net_inflow") or 0.0)
         except Exception:
             v = 0.0
-        rec = by_code.setdefault(code, {"industryCode": code, "industryName": name, "perDate": {}})
-        if name and not rec.get("industryName"):
-            rec["industryName"] = name
+        rec = by_name.setdefault(name, {"industryCode": code, "industryName": name, "perDate": {}})
+        if code and not rec.get("industryCode"):
+            rec["industryCode"] = code
         rec["perDate"][d] = v
 
     items: list[dict[str, Any]] = []
-    for rec in by_code.values():
+    for rec in by_name.values():
         per: dict[str, float] = rec.get("perDate") or {}
         series = [{"date": d, "netInflow": float(per.get(d, 0.0) or 0.0)} for d in dates_sorted]
         sum5d = sum(float(p.get("netInflow") or 0.0) for p in series)
@@ -200,6 +229,7 @@ def top_by_date_from_rows(
     top_k: int = 5,
 ) -> list[dict[str, Any]]:
     """Top-K industry names per date by net_inflow DESC."""
+    rows = _dedupe_rows_by_date_name(rows)
     topk2 = max(1, min(int(top_k), 20))
     by_date: dict[str, list[tuple[str, float]]] = {d: [] for d in dates_sorted}
     allowed = set(dates_sorted)

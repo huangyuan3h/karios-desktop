@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import math
+import time
 from typing import Any
 
 from data_sync_service.service.em_push2_http import em_get_json
 
-EM_ETF_SPOT_URL = "https://push2delay.eastmoney.com/api/qt/clist/get"
+EM_ETF_SPOT_URLS = (
+    "https://push2.eastmoney.com/api/qt/clist/get",
+    "https://push2delay.eastmoney.com/api/qt/clist/get",
+)
+EM_ETF_SPOT_URL = EM_ETF_SPOT_URLS[1]
 EM_ETF_PAGE_SIZE = 500
 EM_ETF_MAX_PAGES = 30
 EM_ETF_FLOW_SOURCE = "eastmoney.realtime_flow"
@@ -33,6 +38,17 @@ EM_ETF_FLOW_FIELDS = ",".join(
         "f297",
     ]
 )
+EM_ETF_REFERER = "https://quote.eastmoney.com/center/gridlist.html#fund_etf"
+_LAST_FETCH_ERROR: str | None = None
+
+
+def get_last_em_etf_fetch_error() -> str | None:
+    return _LAST_FETCH_ERROR
+
+
+def _set_last_fetch_error(error: str | None) -> None:
+    global _LAST_FETCH_ERROR
+    _LAST_FETCH_ERROR = error
 
 
 def _market_id_for_symbol(symbol: str) -> int:
@@ -41,11 +57,31 @@ def _market_id_for_symbol(symbol: str) -> int:
 
 
 def _em_etf_spot_request(params: dict[str, str]) -> dict[str, Any]:
-    return em_get_json(
-        EM_ETF_SPOT_URL,
-        params=params,
-        referer="https://quote.eastmoney.com/center/gridlist.html#fund_etf",
-    )
+    errors: list[str] = []
+    for url in EM_ETF_SPOT_URLS:
+        try:
+            return em_get_json(url, params=params, referer=EM_ETF_REFERER)
+        except Exception as e:  # noqa: BLE001
+            host = url.split("//", 1)[-1].split("/", 1)[0]
+            errors.append(f"{host}:{e}")
+    raise RuntimeError("; ".join(errors))
+
+
+def _em_etf_spot_params(page_number: int) -> dict[str, str]:
+    return {
+        "pn": str(page_number),
+        "pz": str(EM_ETF_PAGE_SIZE),
+        "po": "1",
+        "np": "1",
+        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+        "fltt": "2",
+        "invt": "2",
+        "wbp2u": "|0|0|0|web",
+        "fid": "f12",
+        "fs": "b:MK0021,b:MK0022,b:MK0023,b:MK0024,b:MK0827",
+        "fields": EM_ETF_FLOW_FIELDS,
+        "_": str(int(time.time() * 1000)),
+    }
 
 
 def _fetch_all_etf_spot_rows() -> list[dict[str, Any]]:
@@ -53,33 +89,28 @@ def _fetch_all_etf_spot_rows() -> list[dict[str, Any]]:
     page_number = 1
     total_pages = 1
     while page_number <= total_pages and page_number <= EM_ETF_MAX_PAGES:
-        params = {
-            "pn": str(page_number),
-            "pz": str(EM_ETF_PAGE_SIZE),
-            "po": "1",
-            "np": "1",
-            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-            "fltt": "2",
-            "invt": "2",
-            "wbp2u": "|0|0|0|web",
-            "fid": "f12",
-            "fs": "b:MK0021,b:MK0022,b:MK0023,b:MK0024,b:MK0827",
-            "fields": EM_ETF_FLOW_FIELDS,
-        }
-        j = _em_etf_spot_request(params)
+        j = _em_etf_spot_request(_em_etf_spot_params(page_number))
         data = j.get("data") if isinstance(j, dict) else None
-        diff = data.get("diff") if isinstance(data, dict) else None
-        if not isinstance(diff, list) or not diff:
+        if not isinstance(data, dict):
+            raise RuntimeError(f"eastmoney_etf_missing_data:page={page_number}")
+        diff = data.get("diff")
+        if not isinstance(diff, list):
+            raise RuntimeError(f"eastmoney_etf_missing_diff:page={page_number}")
+        if not diff:
+            if page_number == 1:
+                raise RuntimeError("eastmoney_etf_empty_diff:page=1")
             break
         for row in diff:
             if isinstance(row, dict):
                 rows.append(row)
         try:
-            total = int((data or {}).get("total") or 0)
+            total = int(data.get("total") or 0)
             total_pages = max(1, math.ceil(total / EM_ETF_PAGE_SIZE))
         except (TypeError, ValueError):
             total_pages = page_number
         page_number += 1
+    if not rows:
+        raise RuntimeError("eastmoney_etf_no_rows")
     return rows
 
 
@@ -143,10 +174,12 @@ def fetch_em_etf_realtime_flow_for_symbols(symbols: list[str]) -> dict[str, dict
     """Return realtime East Money ETF fund-flow rows keyed by plain symbol."""
     wanted = {str(s).strip() for s in symbols if str(s).strip()}
     if not wanted:
+        _set_last_fetch_error(None)
         return {}
     try:
         rows = _fetch_all_etf_spot_rows()
-    except Exception:
+    except Exception as e:  # noqa: BLE001
+        _set_last_fetch_error(str(e) or e.__class__.__name__)
         return {}
     out: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -154,6 +187,11 @@ def fetch_em_etf_realtime_flow_for_symbols(symbols: list[str]) -> dict[str, dict
         if code not in wanted:
             continue
         out[code] = _normalize_em_flow_row(row)
+    missing = sorted(wanted - set(out))
+    if missing:
+        _set_last_fetch_error(f"eastmoney_etf_missing_symbols:{','.join(missing)}")
+    else:
+        _set_last_fetch_error(None)
     return out
 
 

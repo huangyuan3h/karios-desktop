@@ -54,8 +54,8 @@ def test_build_industry_bundle_single_batch_read() -> None:
 def test_build_industry_bundle_excludes_ghost_holiday_dates() -> None:
     open_dates = ["2026-06-17", "2026-06-18", "2026-06-22"]
     rows = [
-        {"date": "2026-06-18", "industry_code": "c1", "industry_name": "半导体", "net_inflow": 36.69e8},
-        {"date": "2026-06-19", "industry_code": "c1", "industry_name": "半导体", "net_inflow": 36.69e8},
+        {"date": "2026-06-18", "industry_code": "c1", "industry_name": "电子", "net_inflow": 36.69e8},
+        {"date": "2026-06-19", "industry_code": "c1", "industry_name": "电子", "net_inflow": 36.69e8},
     ]
     with (
         patch(
@@ -71,5 +71,5 @@ def test_build_industry_bundle_excludes_ghost_holiday_dates() -> None:
 
     assert out["dates"] == open_dates
     assert "2026-06-19" not in out["dates"]
-    semi = next(x for x in out["flow5d"]["top"] if x["industryName"] == "半导体")
-    assert semi["sum5d"] == 36.69e8
+    electronics = next(x for x in out["flow5d"]["top"] if x["industryName"] == "电子")
+    assert electronics["sum5d"] == 36.69e8

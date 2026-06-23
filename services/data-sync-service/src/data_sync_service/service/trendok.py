@@ -26,6 +26,7 @@ from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 from data_sync_service.service.top_inst_flow import build_inst_flow_payload
 
 TRENDOK_CACHE_TTL_SECONDS = 60
+TRENDOK_FAILED_SCORE_CAP = 79.0
 _trendok_cache: dict[tuple[frozenset[str], bool, str], tuple[list[dict[str, Any]], float]] = {}
 
 
@@ -1343,6 +1344,6 @@ def _trendok_one(
     else:
         res["trendOk"] = bool(all(bool(x) for x in required))
     if res.get("score") is not None and res.get("trendOk") is not True:
-        res["score"] = round(min(float(res["score"]), 79.9), 3)
+        res["score"] = round(min(float(res["score"]), TRENDOK_FAILED_SCORE_CAP), 3)
     return res
 

@@ -8,6 +8,7 @@ from data_sync_service.service.industry_fund_flow_read import (
     positive_days_from_rows,
     series_map_from_rows,
     sum_by_industry_from_rows,
+    top_by_date_from_rows,
 )
 from data_sync_service.service.mainline import _flow_context
 
@@ -181,16 +182,16 @@ def test_build_trendok_flow_context_from_rows_hotspots_and_5d_ranks() -> None:
     rows = [
         {"date": "2024-01-19", "industry_name": "电子", "net_inflow": 50.0},
         {"date": "2024-01-19", "industry_name": "计算机", "net_inflow": 30.0},
-        {"date": "2024-01-19", "industry_name": "医药", "net_inflow": 10.0},
+        {"date": "2024-01-19", "industry_name": "医药生物", "net_inflow": 10.0},
         {"date": "2024-01-20", "industry_name": "电子", "net_inflow": 100.0},
         {"date": "2024-01-20", "industry_name": "计算机", "net_inflow": 80.0},
-        {"date": "2024-01-20", "industry_name": "医药", "net_inflow": 60.0},
+        {"date": "2024-01-20", "industry_name": "医药生物", "net_inflow": 60.0},
         {"date": "2024-01-20", "industry_name": "银行", "net_inflow": 40.0},
-        {"date": "2024-01-20", "industry_name": "地产", "net_inflow": 20.0},
+        {"date": "2024-01-20", "industry_name": "房地产", "net_inflow": 20.0},
         {"date": "2024-01-16", "industry_name": "电子", "net_inflow": 1.0},
-        {"date": "2024-01-16", "industry_name": "垫底A", "net_inflow": -100.0},
-        {"date": "2024-01-17", "industry_name": "垫底B", "net_inflow": -90.0},
-        {"date": "2024-01-18", "industry_name": "垫底C", "net_inflow": -80.0},
+        {"date": "2024-01-16", "industry_name": "环保", "net_inflow": -100.0},
+        {"date": "2024-01-17", "industry_name": "煤炭", "net_inflow": -90.0},
+        {"date": "2024-01-18", "industry_name": "钢铁", "net_inflow": -80.0},
     ]
     ctx = build_trendok_flow_context_from_rows(
         flow_date="2024-01-20",
@@ -200,13 +201,13 @@ def test_build_trendok_flow_context_from_rows_hotspots_and_5d_ranks() -> None:
     assert ctx["ok"] is True
     assert ctx["today"] == "2024-01-20"
     assert ctx["yesterday"] == "2024-01-19"
-    assert ctx["top_today_3"] == {"电子", "计算机", "医药"}
-    assert ctx["top_today_5"] == {"电子", "计算机", "医药", "银行", "地产"}
-    assert ctx["top_yesterday_3"] == {"电子", "计算机", "医药"}
+    assert ctx["top_today_3"] == {"电子", "计算机", "医药生物"}
+    assert ctx["top_today_5"] == {"电子", "计算机", "医药生物", "银行", "房地产"}
+    assert ctx["top_yesterday_3"] == {"电子", "计算机", "医药生物"}
     assert ctx["net_today"]["电子"] == 100.0
     assert ctx["net_yesterday"]["电子"] == 50.0
     assert "电子" in ctx["top_5d_3"]
-    assert "垫底A" in ctx["bottom_5d_5"]
+    assert "环保" in ctx["bottom_5d_5"]
 
 
 def test_build_trendok_flow_context_from_rows_single_day_no_yesterday() -> None:
@@ -223,11 +224,49 @@ def test_build_trendok_flow_context_from_rows_single_day_no_yesterday() -> None:
     assert ctx["net_yesterday"] == {}
 
 
+def test_top_by_date_filters_nested_sw_child_industries() -> None:
+    rows = [
+        {"date": "2026-06-18", "industry_code": "l1-a", "industry_name": "非银金融", "net_inflow": 123.77e8},
+        {"date": "2026-06-18", "industry_code": "l2-a", "industry_name": "证券Ⅱ", "net_inflow": 105.61e8},
+        {"date": "2026-06-18", "industry_code": "l3-a", "industry_name": "证券Ⅲ", "net_inflow": 99.0e8},
+        {"date": "2026-06-18", "industry_code": "l1-b", "industry_name": "有色金属", "net_inflow": 112.10e8},
+        {"date": "2026-06-18", "industry_code": "l1-c", "industry_name": "电子", "net_inflow": 70.0e8},
+    ]
+    out = top_by_date_from_rows(rows, ["2026-06-18"], top_k=5)
+    assert out == [{"date": "2026-06-18", "top": ["非银金融", "有色金属", "电子"]}]
+
+
+def test_top_by_date_dedupes_same_industry_name_slots() -> None:
+    rows = [
+        {"date": "2026-06-18", "industry_code": "c1", "industry_name": "非银金融", "net_inflow": 100.0},
+        {"date": "2026-06-18", "industry_code": "c2", "industry_name": "非银金融", "net_inflow": 90.0},
+        {"date": "2026-06-18", "industry_code": "c3", "industry_name": "有色金属", "net_inflow": 80.0},
+    ]
+    out = top_by_date_from_rows(rows, ["2026-06-18"], top_k=2)
+    assert out == [{"date": "2026-06-18", "top": ["非银金融", "有色金属"]}]
+
+
+def test_trendok_flow_context_filters_nested_sw_child_industries() -> None:
+    dates_5 = ["2026-06-16", "2026-06-17", "2026-06-18"]
+    rows = [
+        {"date": "2026-06-18", "industry_name": "非银金融", "net_inflow": 123.77e8},
+        {"date": "2026-06-18", "industry_name": "有色金属", "net_inflow": 112.10e8},
+        {"date": "2026-06-18", "industry_name": "证券Ⅱ", "net_inflow": 105.61e8},
+        {"date": "2026-06-18", "industry_name": "证券Ⅲ", "net_inflow": 99.0e8},
+        {"date": "2026-06-17", "industry_name": "非银金融", "net_inflow": 50.0},
+        {"date": "2026-06-16", "industry_name": "电子", "net_inflow": 10.0},
+    ]
+    ctx = build_trendok_flow_context_from_rows(flow_date="2026-06-18", dates_5=dates_5, rows=rows)
+    assert "证券Ⅱ" not in ctx["top_today_5"]
+    assert "证券Ⅲ" not in ctx["top_today_5"]
+    assert ctx["top_today_3"] == {"非银金融", "有色金属"}
+
+
 def test_sync_cn_industry_fund_flow_fetches_history_for_all_industries() -> None:
     items = [
-        {"date": "2024-01-20", "industry_code": "c1", "industry_name": "A", "net_inflow": 30.0, "raw": {}},
-        {"date": "2024-01-20", "industry_code": "c2", "industry_name": "B", "net_inflow": 20.0, "raw": {}},
-        {"date": "2024-01-20", "industry_code": "c3", "industry_name": "C", "net_inflow": 10.0, "raw": {}},
+        {"date": "2024-01-20", "industry_code": "c1", "industry_name": "电子", "net_inflow": 30.0, "raw": {}},
+        {"date": "2024-01-20", "industry_code": "c2", "industry_name": "计算机", "net_inflow": 20.0, "raw": {}},
+        {"date": "2024-01-20", "industry_code": "c3", "industry_name": "有色金属", "net_inflow": 10.0, "raw": {}},
     ]
     calls: list[str] = []
 
@@ -243,6 +282,36 @@ def test_sync_cn_industry_fund_flow_fetches_history_for_all_industries() -> None
     ):
         out = sync_cn_industry_fund_flow(days=2, top_n=1)
 
-    assert sorted(calls) == ["A", "B", "C"]
+    assert sorted(calls) == ["有色金属", "电子", "计算机"]
     assert out["histRows"] == 3
+    assert out["filteredRows"] == 0
     assert upsert.call_count == 2
+
+
+def test_sync_cn_industry_fund_flow_filters_nested_child_industries() -> None:
+    items = [
+        {"date": "2026-06-18", "industry_code": "l1-a", "industry_name": "非银金融", "net_inflow": 123.77e8, "raw": {}},
+        {"date": "2026-06-18", "industry_code": "l2-a", "industry_name": "证券Ⅱ", "net_inflow": 105.61e8, "raw": {}},
+        {"date": "2026-06-18", "industry_code": "l3-a", "industry_name": "证券Ⅲ", "net_inflow": 99.0e8, "raw": {}},
+        {"date": "2026-06-18", "industry_code": "l1-b", "industry_name": "有色金属", "net_inflow": 112.10e8, "raw": {}},
+    ]
+    calls: list[str] = []
+
+    def fake_hist(name: str, *, industry_code: str | None = None, days: int = 10) -> list[dict]:
+        calls.append(name)
+        return [{"date": "2026-06-17", "net_inflow": 1.0, "raw": {}}]
+
+    with (
+        patch("data_sync_service.service.industry_fund_flow.is_cn_trading_day", return_value=True),
+        patch("data_sync_service.service.industry_fund_flow.fetch_cn_industry_fund_flow_eod", return_value=items),
+        patch("data_sync_service.service.industry_fund_flow.fetch_cn_industry_fund_flow_hist", side_effect=fake_hist),
+        patch("data_sync_service.service.industry_fund_flow.upsert_daily_rows") as upsert,
+    ):
+        out = sync_cn_industry_fund_flow(days=2, top_n=10)
+
+    daily_rows = upsert.call_args_list[0].args[0]
+    assert [r["industry_name"] for r in daily_rows] == ["非银金融", "有色金属"]
+    assert sorted(calls) == ["有色金属", "非银金融"]
+    assert out["rows"] == 2
+    assert out["filteredRows"] == 2
+    assert out["histRows"] == 2

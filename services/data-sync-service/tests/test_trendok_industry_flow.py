@@ -151,7 +151,8 @@ def test_positive_industry_bonus_requires_full_trendok_and_volume() -> None:
     assert res["trendOk"] is False
     assert "industry_flow_5d_top3" not in res["scoreParts"]
     assert res["values"]["industryFlowReasons"] == ["industry_flow_5d_top3"]
-    assert res["score"] == 79.9
+    assert res["score"] == 79.0
+    assert round(res["score"]) < 80
 
 
 def test_negative_industry_penalty_applies_even_when_trendok_fails() -> None:
@@ -183,5 +184,5 @@ def test_negative_industry_penalty_applies_even_when_trendok_fails() -> None:
     assert res["checks"]["volumeSurge"] is False
     assert res["trendOk"] is False
     assert res["scoreParts"]["industry_flow_5d_bottom5"] == -20.0
-    assert res["score"] < 79.9
+    assert res["score"] < 79.0
 

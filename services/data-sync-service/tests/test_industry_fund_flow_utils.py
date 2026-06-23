@@ -3,6 +3,11 @@ from data_sync_service.service.industry_fund_flow import (
     _parse_money_to_cny,
     _stable_industry_code,
 )
+from data_sync_service.service.industry_taxonomy import (
+    SW_L1_INDUSTRIES,
+    classify_sw_l1_industry,
+    is_sw_l1_industry_name,
+)
 
 
 def test_parse_money_to_cny_none():
@@ -71,3 +76,27 @@ def test_stable_industry_code_empty():
 
 def test_stable_industry_code_whitespace():
     assert _stable_industry_code(" 电子 ") == _stable_industry_code("电子")
+
+
+def test_sw_l1_taxonomy_contains_expected_universe_size():
+    assert len(SW_L1_INDUSTRIES) == 31
+    assert is_sw_l1_industry_name("非银金融") is True
+    assert is_sw_l1_industry_name("有色金属") is True
+
+
+def test_sw_l1_taxonomy_rejects_child_industries():
+    assert is_sw_l1_industry_name("证券Ⅱ") is False
+    assert is_sw_l1_industry_name("证券Ⅲ") is False
+
+
+def test_classify_sw_l1_industry_metadata():
+    allowed = classify_sw_l1_industry(" 非银金融 ")
+    assert allowed["is_allowed"] is True
+    assert allowed["taxonomy"] == "SW"
+    assert allowed["industry_level"] == 1
+    assert allowed["industry_name"] == "非银金融"
+
+    rejected = classify_sw_l1_industry("证券Ⅱ")
+    assert rejected["is_allowed"] is False
+    assert rejected["taxonomy"] == "UNKNOWN"
+    assert rejected["industry_level"] is None

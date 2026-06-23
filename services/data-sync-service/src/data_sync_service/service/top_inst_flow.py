@@ -8,6 +8,7 @@ import random
 import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
@@ -33,6 +34,7 @@ EM_REPORT_BUY_SEATS = "RPT_BILLBOARD_DAILYDETAILSBUY"
 EM_REPORT_SELL_SEATS = "RPT_BILLBOARD_DAILYDETAILSSELL"
 EM_PAGE_SIZE = 500
 EM_MAX_PAGES = 20
+EM_SEAT_FETCH_MAX_WORKERS = 4
 TOP_INST_PROVIDER_ENV = "TOP_INST_PROVIDER"
 TUSHARE_TOKEN_ENV = "TUSHARE_TOKEN"
 DEFAULT_TOP_INST_PROVIDERS = ("tushare", "eastmoney")
@@ -49,6 +51,13 @@ class TopInstProviderResult:
     lhb_count: int | None = None
     org_trade_count: int | None = None
     seat_fetch_failures: int = 0
+
+
+@dataclass(frozen=True)
+class EastMoneySeatBundle:
+    buy_seats: list[dict[str, Any]] = field(default_factory=list)
+    inst_seats: list[dict[str, Any]] = field(default_factory=list)
+    error: str | None = None
 
 
 def _now_iso() -> str:
@@ -323,6 +332,41 @@ def fetch_em_inst_seat_rows(*, ts_code: str, trade_date_iso: str) -> list[dict[s
     for row in buy_rows + sell_rows:
         if _is_inst_seat(str(row.get("exalter") or "")):
             out.append(row)
+    return out
+
+
+def fetch_em_seat_bundle(*, ts_code: str, trade_date_iso: str) -> EastMoneySeatBundle:
+    try:
+        return EastMoneySeatBundle(
+            buy_seats=fetch_em_lhb_buy_seats(ts_code=ts_code, trade_date_iso=trade_date_iso),
+            inst_seats=fetch_em_inst_seat_rows(ts_code=ts_code, trade_date_iso=trade_date_iso),
+        )
+    except Exception as e:  # noqa: BLE001
+        return EastMoneySeatBundle(error=str(e)[:300])
+
+
+def fetch_em_seat_bundles_parallel(
+    ts_codes: list[str],
+    *,
+    trade_date_iso: str,
+    max_workers: int = EM_SEAT_FETCH_MAX_WORKERS,
+) -> dict[str, EastMoneySeatBundle]:
+    wanted = [str(code).strip() for code in ts_codes if str(code).strip()]
+    if not wanted:
+        return {}
+    workers = max(1, min(int(max_workers), len(wanted)))
+    out: dict[str, EastMoneySeatBundle] = {}
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(fetch_em_seat_bundle, ts_code=ts_code, trade_date_iso=trade_date_iso): ts_code
+            for ts_code in wanted
+        }
+        for future in as_completed(futures):
+            ts_code = futures[future]
+            try:
+                out[ts_code] = future.result()
+            except Exception as e:  # noqa: BLE001
+                out[ts_code] = EastMoneySeatBundle(error=str(e)[:300])
     return out
 
 
@@ -734,6 +778,16 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
     summary_rows: list[dict[str, Any]] = []
     on_board_count = 0
     seat_fetch_failures = provider_result.seat_fetch_failures
+    on_board_codes = [
+        ts_code
+        for ts_code in watchlist_codes
+        if (ticker := _ts_code_to_ticker(ts_code)) and ticker in lhb_tickers
+    ]
+    em_seat_bundles = (
+        fetch_em_seat_bundles_parallel(on_board_codes, trade_date_iso=td_iso)
+        if provider_result.source == "eastmoney"
+        else {}
+    )
 
     for ts_code in watchlist_codes:
         ticker = _ts_code_to_ticker(ts_code)
@@ -764,13 +818,14 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
         buy_seats = provider_result.buy_seats_by_ts_code.get(ts_code, [])
         inst_seats = provider_result.inst_seats_by_ts_code.get(ts_code, [])
         if provider_result.source == "eastmoney":
-            try:
-                buy_seats = fetch_em_lhb_buy_seats(ts_code=ts_code, trade_date_iso=td_iso)
-                inst_seats = fetch_em_inst_seat_rows(ts_code=ts_code, trade_date_iso=td_iso)
-            except Exception:
+            bundle = em_seat_bundles.get(ts_code, EastMoneySeatBundle(error="missing_seat_bundle"))
+            if bundle.error:
                 seat_fetch_failures += 1
                 buy_seats = []
                 inst_seats = []
+            else:
+                buy_seats = bundle.buy_seats
+                inst_seats = bundle.inst_seats
 
         lhasa = detect_lhasa_dominant(buy_seats)
         label = classify_seat_label(inst_net_buy=inst_net, lhasa_dominant=lhasa)
@@ -801,8 +856,6 @@ def sync_top_inst_watchlist(*, force: bool = False, trade_date: str | None = Non
                 "on_board": True,
             }
         )
-        if provider_result.source == "eastmoney":
-            time.sleep(0.05 + random.random() * 0.03)
 
     daily_n = upsert_daily_rows(daily_rows)
     summary_n = upsert_summary_rows(summary_rows)

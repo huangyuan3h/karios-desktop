@@ -18,6 +18,9 @@ export type IndustryFundFlowRow = {
   netInflow: number;
   sum10d: number;
   series10d: IndustryFundFlowPoint[];
+  taxonomy?: string;
+  industryLevel?: number | null;
+  source?: string;
 };
 
 export type IndustryFundFlowResp = {

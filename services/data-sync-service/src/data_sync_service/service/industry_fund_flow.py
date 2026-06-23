@@ -19,6 +19,11 @@ from data_sync_service.db.industry_fund_flow import (
     upsert_daily_rows,
 )
 from data_sync_service.service.industry_fund_flow_read import series_map_from_rows
+from data_sync_service.service.industry_taxonomy import (
+    DEFAULT_INDUSTRY_FLOW_SOURCE,
+    classify_sw_l1_industry,
+    row_is_sw_l1,
+)
 from data_sync_service.service.trade_calendar_utils import (
     is_cn_trading_day,
     resolve_effective_as_of,
@@ -198,6 +203,10 @@ def fetch_cn_industry_fund_flow_eod(as_of: date) -> list[dict[str, Any]]:
             or r.get("f14")
             or ""
         ).strip()
+        meta = classify_sw_l1_industry(name, r if isinstance(r, dict) else None)
+        if not meta["is_allowed"]:
+            continue
+        name = meta["industry_name"]
         if not name:
             continue
         code = str(
@@ -229,6 +238,9 @@ def fetch_cn_industry_fund_flow_eod(as_of: date) -> list[dict[str, Any]]:
                 "industry_name": name,
                 "net_inflow": _parse_money_to_cny(net),
                 "raw": r,
+                "taxonomy": meta["taxonomy"],
+                "industry_level": meta["industry_level"],
+                "source": DEFAULT_INDUSTRY_FLOW_SOURCE,
             }
         )
     return out
@@ -279,6 +291,9 @@ def _hist_rows_for_top_row(
                 "net_inflow": h.get("net_inflow") or 0.0,
                 "updated_at": updated_at,
                 "raw": h.get("raw") or {},
+                "taxonomy": row.get("taxonomy"),
+                "industry_level": row.get("industry_level"),
+                "source": row.get("source") or DEFAULT_INDUSTRY_FLOW_SOURCE,
             }
         )
     return out
@@ -294,7 +309,8 @@ def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10) -> dict[str, 
             "reason": "not_trading_day",
             "asOfDate": as_of.isoformat(),
         }
-    items = fetch_cn_industry_fund_flow_eod(as_of)
+    fetched_items = fetch_cn_industry_fund_flow_eod(as_of)
+    items = [it for it in fetched_items if row_is_sw_l1(it)]
     updated_at = _now_iso()
     daily_rows = [
         {
@@ -304,6 +320,9 @@ def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10) -> dict[str, 
             "net_inflow": it["net_inflow"],
             "updated_at": updated_at,
             "raw": it.get("raw") or {},
+            "taxonomy": it.get("taxonomy"),
+            "industry_level": it.get("industry_level"),
+            "source": it.get("source") or DEFAULT_INDUSTRY_FLOW_SOURCE,
         }
         for it in items
     ]
@@ -329,6 +348,7 @@ def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10) -> dict[str, 
     return {
         "asOfDate": as_of.strftime("%Y-%m-%d"),
         "rows": len(daily_rows),
+        "filteredRows": max(0, len(fetched_items) - len(items)),
         "histRows": len(hist_rows),
         "histFailures": hist_failures,
     }
@@ -355,6 +375,9 @@ def get_cn_industry_fund_flow(*, days: int = 10, top_n: int = 30, as_of_date: st
                 "netInflow": float(r.get("net_inflow") or 0.0),
                 "sum10d": float(sum10d),
                 "series10d": [{"date": x["date"], "netInflow": float(x["net_inflow"])} for x in series],
+                "taxonomy": r.get("taxonomy") or "SW",
+                "industryLevel": r.get("industry_level"),
+                "source": r.get("source") or DEFAULT_INDUSTRY_FLOW_SOURCE,
             }
         )
     return {"asOfDate": d, "days": days, "topN": top_n, "dates": dates, "top": top}

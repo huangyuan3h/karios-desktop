@@ -9,46 +9,78 @@ import urllib.request
 from typing import Any
 
 
-def _curl_get_json(url: str, *, params: dict[str, str], referer: str, timeout: float) -> dict[str, Any]:
-    full_url = f"{url}?{urllib.parse.urlencode(params)}"
-    proc = subprocess.run(
-        [
-            "curl",
-            "-s",
-            "-H",
-            "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            "-H",
-            f"Referer: {referer}",
-            full_url,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=max(5, int(timeout)),
-        check=False,
-    )
-    if proc.returncode != 0 or not proc.stdout.strip():
-        raise RuntimeError(proc.stderr.strip() or "curl_failed")
-    j = json.loads(proc.stdout)
-    return j if isinstance(j, dict) else {}
-
-
-def _urllib_get_json(url: str, *, params: dict[str, str], referer: str, timeout: float) -> dict[str, Any]:
-    headers = {
+def _em_headers(referer: str) -> dict[str, str]:
+    parsed = urllib.parse.urlparse(referer)
+    origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else "https://quote.eastmoney.com"
+    return {
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         ),
         "Accept": "application/json,text/plain,*/*",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
         "Referer": referer,
+        "Origin": origin,
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-site",
         "Connection": "keep-alive",
     }
+
+
+def _json_dict_from_text(text: str, *, source: str) -> dict[str, Any]:
+    body = str(text or "").strip()
+    if not body:
+        raise RuntimeError(f"{source}_empty_body")
+    try:
+        j = json.loads(body)
+    except json.JSONDecodeError as e:
+        preview = body[:160].replace("\n", " ")
+        raise RuntimeError(f"{source}_invalid_json:{e.msg}:{preview}") from e
+    if not isinstance(j, dict):
+        raise RuntimeError(f"{source}_non_object_json:{type(j).__name__}")
+    return j
+
+
+def _curl_get_json(url: str, *, params: dict[str, str], referer: str, timeout: float) -> dict[str, Any]:
     full_url = f"{url}?{urllib.parse.urlencode(params)}"
-    req = urllib.request.Request(full_url, headers=headers)
+    headers = _em_headers(referer)
+    args = ["curl", "-sS", "--compressed", "-w", "\n%{http_code}"]
+    for name, value in headers.items():
+        args.extend(["-H", f"{name}: {value}"])
+    args.append(full_url)
+    proc = subprocess.run(
+        args,
+        capture_output=True,
+        text=True,
+        timeout=max(5, int(timeout)),
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or "curl_failed")
+    stdout = proc.stdout or ""
+    body, sep, status = stdout.rpartition("\n")
+    if not sep:
+        body = stdout
+        status = "000"
+    if status and status.isdigit() and int(status) >= 400:
+        preview = body[:160].replace("\n", " ")
+        raise RuntimeError(f"curl_http_{status}:{preview}")
+    return _json_dict_from_text(body, source="curl")
+
+
+def _urllib_get_json(url: str, *, params: dict[str, str], referer: str, timeout: float) -> dict[str, Any]:
+    full_url = f"{url}?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(full_url, headers=_em_headers(referer))
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         raw = resp.read()
-    j = json.loads(raw.decode("utf-8", errors="replace"))
-    return j if isinstance(j, dict) else {}
+        status = getattr(resp, "status", 200)
+    if int(status) >= 400:
+        preview = raw[:160].decode("utf-8", errors="replace").replace("\n", " ")
+        raise RuntimeError(f"urllib_http_{status}:{preview}")
+    return _json_dict_from_text(raw.decode("utf-8", errors="replace"), source="urllib")
 
 
 def em_get_json(
@@ -58,16 +90,6 @@ def em_get_json(
     referer: str,
     timeout: float = 25.0,
 ) -> dict[str, Any]:
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        ),
-        "Accept": "application/json,text/plain,*/*",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Referer": referer,
-        "Connection": "keep-alive",
-    }
     errors: list[str] = []
     try:
         import requests  # type: ignore[import-not-found]
@@ -75,14 +97,17 @@ def em_get_json(
         resp = requests.get(
             url,
             params=params,
-            headers=headers,
+            headers=_em_headers(referer),
             timeout=timeout,
             proxies={"http": None, "https": None},
         )
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            preview = resp.text[:160].replace("\n", " ")
+            raise RuntimeError(f"http_{resp.status_code}:{preview}")
         j = resp.json()
-        if isinstance(j, dict):
-            return j
+        if not isinstance(j, dict):
+            raise RuntimeError(f"non_object_json:{type(j).__name__}")
+        return j
     except Exception as e:  # noqa: BLE001
         errors.append(f"requests:{e}")
 

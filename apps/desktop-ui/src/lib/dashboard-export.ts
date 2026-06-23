@@ -788,7 +788,8 @@ export async function buildDashboardCopyAllMarkdown(
   options: DashboardCopyAllOptions,
 ): Promise<string> {
   await ensureWatchlistHydrated();
-  let { summary: s, newsSummary, newsSummaryUpdatedAt, newsFallback, queryClient } = options;
+  let { summary: s } = options;
+  const { newsSummary, newsSummaryUpdatedAt, newsFallback, queryClient } = options;
   if (!s) {
     throw new Error('No data available. Please refresh first.');
   }

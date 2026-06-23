@@ -23,10 +23,12 @@ from data_sync_service.service.etf_fund_flow_em import (
     EM_ETF_FLOW_SOURCE,
     fetch_em_etf_realtime_flow_for_symbols,
     fetch_em_etf_spot_for_symbols,
+    get_last_em_etf_fetch_error,
 )
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
 from data_sync_service.db.trade_calendar import get_open_dates
 from data_sync_service.service.market_regime import _is_shanghai_sync_window
+from data_sync_service.service.trade_calendar_utils import last_open_date_on_or_before, shanghai_today
 
 JOB_TYPE = "etf_fund_flow_watchlist"
 FULL_START_DATE = "20230101"
@@ -50,6 +52,10 @@ def _now_iso() -> str:
 
 def _today_yyyymmdd() -> str:
     return datetime.now(tz=UTC).strftime("%Y%m%d")
+
+
+def _shanghai_today_yyyymmdd() -> str:
+    return shanghai_today().strftime("%Y%m%d")
 
 
 def _date_to_yyyymmdd(d: date) -> str:
@@ -299,6 +305,26 @@ def _should_skip_etf_sync_today(*, force: bool) -> bool:
     return not _is_shanghai_sync_window()
 
 
+def _em_flow_trade_date(flow: dict[str, Any], *, fallback_iso: str) -> str:
+    data_date = str(flow.get("dataDate") or "").strip()
+    if data_date:
+        try:
+            return date.fromisoformat(data_date[:10]).isoformat()
+        except ValueError:
+            pass
+    return fallback_iso
+
+
+def _is_current_realtime_trade_date(trade_date_iso: str, *, fallback_iso: str) -> bool:
+    try:
+        trade_date = date.fromisoformat(str(trade_date_iso)[:10])
+        fallback_date = date.fromisoformat(str(fallback_iso)[:10])
+    except ValueError:
+        return trade_date_iso == fallback_iso
+    last_open = last_open_date_on_or_before(fallback_date) or fallback_date
+    return trade_date >= last_open
+
+
 def _em_flow_to_daily_row(
     *,
     ts_code: str,
@@ -372,13 +398,15 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
         return {"ok": True, "skipped": True, "message": "already synced today"}
 
     ensure_table()
-    end_date = _today_yyyymmdd()
+    end_date = _shanghai_today_yyyymmdd()
     end_iso = _yyyymmdd_to_iso(end_date)
     updated_at = _now_iso()
     symbols = [w["symbol"] for w in ETF_WATCHLIST]
     realtime = fetch_em_etf_realtime_flow_for_symbols(symbols)
+    fetch_error = get_last_em_etf_fetch_error()
     rows: list[dict[str, Any]] = []
     missing_symbols: list[str] = []
+    stale_symbols: list[str] = []
 
     for spec in ETF_WATCHLIST:
         symbol = spec["symbol"]
@@ -386,9 +414,14 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
         if not flow:
             missing_symbols.append(symbol)
             continue
+        trade_date_iso = _em_flow_trade_date(flow, fallback_iso=end_iso)
+        if not _is_current_realtime_trade_date(trade_date_iso, fallback_iso=end_iso):
+            stale_symbols.append(symbol)
+            missing_symbols.append(symbol)
+            continue
         row = _em_flow_to_daily_row(
             ts_code=spec["ts_code"],
-            trade_date_iso=end_iso,
+            trade_date_iso=trade_date_iso,
             flow=flow,
             updated_at=updated_at,
         )
@@ -411,17 +444,19 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
 
     total_rows = upsert_daily_rows(rows)
     success = bool(rows)
+    error_message = None if success else (fetch_error or "no realtime ETF flow rows from East Money")
     insert_record(
         job_type=JOB_TYPE,
         success=success,
         last_ts_code=None,
-        error_message=None if success else "no realtime ETF flow rows from East Money",
+        error_message=error_message,
     )
     if not success:
         return {
             "ok": False,
-            "error": "no realtime ETF flow rows from East Money",
+            "error": error_message,
             "missingSymbols": missing_symbols,
+            "staleSymbols": stale_symbols,
             "historyUpdated": history_rows,
             "historyError": history_error,
         }
@@ -430,6 +465,8 @@ def sync_etf_fund_flow_watchlist(*, force: bool = False) -> dict[str, Any]:
         "updated": total_rows,
         "source": EM_ETF_FLOW_SOURCE,
         "missingSymbols": missing_symbols,
+        "staleSymbols": stale_symbols,
+        "fetchError": fetch_error,
         "historyUpdated": history_rows,
         "historyError": history_error,
     }
@@ -598,6 +635,7 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
 
         net_1d = None
         flow_as_of = as_of
+        em_realtime_row: dict[str, Any] | None = None
         if as_of_row is not None:
             net_1d = as_of_row.get("net_inflow")
             if net_1d is not None:
@@ -628,6 +666,7 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
                 net_1d = em_net
                 flow_as_of = as_of
                 row_source = EM_ETF_FLOW_SOURCE
+                em_realtime_row = (em_spot or {}).get(symbol)
 
         net_3d = _sum_net_inflow_for_dates(rows_by_date, last_3) if last_3 else None
         if net_3d is None and last_3:
@@ -679,12 +718,22 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
                 "netFlow3d": net_3d,
                 "flowAsOfDate": flow_as_of if flow_as_of != as_of else None,
                 "source": source,
-                "tradeTime": (as_of_row or {}).get("trade_time"),
-                "mainNetInflow": (as_of_row or {}).get("main_net_inflow"),
-                "superLargeNetInflow": (as_of_row or {}).get("super_large_net_inflow"),
-                "largeNetInflow": (as_of_row or {}).get("large_net_inflow"),
-                "mediumNetInflow": (as_of_row or {}).get("medium_net_inflow"),
-                "smallNetInflow": (as_of_row or {}).get("small_net_inflow"),
+                "tradeTime": (as_of_row or {}).get("trade_time") or (em_realtime_row or {}).get("tradeTime"),
+                "mainNetInflow": (as_of_row or {}).get("main_net_inflow")
+                if (as_of_row or {}).get("main_net_inflow") is not None
+                else (em_realtime_row or {}).get("mainNetInflow"),
+                "superLargeNetInflow": (as_of_row or {}).get("super_large_net_inflow")
+                if (as_of_row or {}).get("super_large_net_inflow") is not None
+                else (em_realtime_row or {}).get("superLargeNetInflow"),
+                "largeNetInflow": (as_of_row or {}).get("large_net_inflow")
+                if (as_of_row or {}).get("large_net_inflow") is not None
+                else (em_realtime_row or {}).get("largeNetInflow"),
+                "mediumNetInflow": (as_of_row or {}).get("medium_net_inflow")
+                if (as_of_row or {}).get("medium_net_inflow") is not None
+                else (em_realtime_row or {}).get("mediumNetInflow"),
+                "smallNetInflow": (as_of_row or {}).get("small_net_inflow")
+                if (as_of_row or {}).get("small_net_inflow") is not None
+                else (em_realtime_row or {}).get("smallNetInflow"),
                 "signal": signal,
                 "signalDisplay": signal_display(signal),
             }
