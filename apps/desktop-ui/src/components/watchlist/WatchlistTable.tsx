@@ -24,8 +24,8 @@ import {
   formatInstFlowTooltip,
   formatIntradayChgPct,
   formatPnLPct,
-  formatVolumeRatio,
   formatRiskAlerts,
+  formatVolumeRatio,
   formatVwap,
   industryDisplayName,
   isIntradaySurge,
@@ -260,6 +260,12 @@ export function WatchlistTable({
           .map((x) => (Number.isFinite(Number(x)) ? Number(x).toFixed(3) : '—'))
           .join(', ')})`
       : 'need last 4 histogram values';
+    const volumeRatio =
+      typeof t?.values?.volumeRatio === 'number' && Number.isFinite(t.values.volumeRatio)
+        ? t.values.volumeRatio
+        : null;
+    const lowVolumeRatio = t?.checks?.lowVolumeRatio as boolean | null | undefined;
+    const lowVolumeRatioOk = lowVolumeRatio == null ? null : !lowVolumeRatio;
     const lines = [
       checkLine(
         'EMA trend',
@@ -290,6 +296,11 @@ export function WatchlistTable({
         'Volume',
         (t?.checks?.volumeSurge as boolean | null | undefined) ?? null,
         'AvgVol(5) > 0.9 * AvgVol(30)',
+      ),
+      checkLine(
+        'VR hard cap',
+        lowVolumeRatioOk,
+        `VR >= 1.2${volumeRatio == null ? '' : ` (now: ${formatVolumeRatio(volumeRatio)})`}`,
       ),
     ];
     const missing = (t?.missingData ?? []).filter(Boolean);

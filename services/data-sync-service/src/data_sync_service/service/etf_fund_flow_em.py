@@ -10,8 +10,8 @@ from typing import Any
 from data_sync_service.service.em_push2_http import em_get_json
 
 EM_ETF_SPOT_URLS = (
-    "https://push2.eastmoney.com/api/qt/clist/get",
     "https://push2delay.eastmoney.com/api/qt/clist/get",
+    "https://push2.eastmoney.com/api/qt/clist/get",
 )
 EM_ETF_SPOT_URL = EM_ETF_SPOT_URLS[1]
 EM_ETF_PAGE_SIZE = 500
@@ -92,11 +92,11 @@ def _fetch_all_etf_spot_rows() -> list[dict[str, Any]]:
         j = _em_etf_spot_request(_em_etf_spot_params(page_number))
         data = j.get("data") if isinstance(j, dict) else None
         if not isinstance(data, dict):
-            raise RuntimeError(f"eastmoney_etf_missing_data:page={page_number}")
+            if page_number == 1:
+                raise RuntimeError(f"eastmoney_etf_missing_data:page={page_number}")
+            break
         diff = data.get("diff")
-        if not isinstance(diff, list):
-            raise RuntimeError(f"eastmoney_etf_missing_diff:page={page_number}")
-        if not diff:
+        if not isinstance(diff, list) or not diff:
             if page_number == 1:
                 raise RuntimeError("eastmoney_etf_empty_diff:page=1")
             break
@@ -105,7 +105,8 @@ def _fetch_all_etf_spot_rows() -> list[dict[str, Any]]:
                 rows.append(row)
         try:
             total = int(data.get("total") or 0)
-            total_pages = max(1, math.ceil(total / EM_ETF_PAGE_SIZE))
+            actual_page_size = max(1, len(diff))
+            total_pages = max(1, math.ceil(total / actual_page_size))
         except (TypeError, ValueError):
             total_pages = page_number
         page_number += 1

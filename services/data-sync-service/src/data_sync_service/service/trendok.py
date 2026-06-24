@@ -907,6 +907,7 @@ def _trendok_one(
         # Rule 6 (optimized): avoid filtering strong "tight volume" trends.
         # Volume "surge" is moved to the Score system; TrendOK only blocks volume cliffs.
         res["checks"]["volumeSurge"] = bool(avg5 > 0.9 * avg30) if avg30 > 0 else bool(avg5 > 0)
+        res["checks"]["lowVolumeRatio"] = bool(volume_ratio < LOW_VOLUME_RATIO_THRESHOLD)
 
     # Score V4.0: trend continuity + anti-spike penalties
     try:

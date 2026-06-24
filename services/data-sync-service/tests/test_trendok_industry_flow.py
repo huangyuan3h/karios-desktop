@@ -204,6 +204,7 @@ def test_low_volume_ratio_caps_after_positive_industry_bonus() -> None:
         )
 
     assert res["checks"]["volumeSurge"] is True
+    assert res["checks"]["lowVolumeRatio"] is True
     assert res["values"]["volumeRatio"] < 1.2
     assert res["trendOk"] is False
     assert res["score"] == 79.0

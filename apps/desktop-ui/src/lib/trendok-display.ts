@@ -7,15 +7,21 @@ export type TrendOkChecks = {
   closeNear20dHigh?: boolean | null;
   rsiInRange?: boolean | null;
   volumeSurge?: boolean | null;
+  lowVolumeRatio?: boolean | null;
 };
 
-export const TREND_OK_CHECKS: Array<{ key: keyof TrendOkChecks; failText: string }> = [
+export const TREND_OK_CHECKS: Array<{
+  key: keyof TrendOkChecks;
+  failText: string;
+  failedWhen?: boolean;
+}> = [
   { key: 'emaOrder', failText: 'EMA order broken (Close <= EMA20 or EMA20 <= EMA60)' },
   { key: 'macdPositive', failText: 'MACD <= 0' },
   { key: 'macdHistExpanding', failText: 'MACD hist <= 0' },
   { key: 'closeNear20dHigh', failText: 'Close < 0.90 * High(20)' },
   { key: 'rsiInRange', failText: 'RSI(14) out of 50..90' },
   { key: 'volumeSurge', failText: 'AvgVol(5) < 0.9 * AvgVol(30)' },
+  { key: 'lowVolumeRatio', failText: 'VR < 1.2 hard cap', failedWhen: true },
 ];
 
 export function trendOkSummary(t?: TrendOkResult | null): string {
@@ -26,7 +32,8 @@ export function trendOkSummary(t?: TrendOkResult | null): string {
   const failed: string[] = [];
   for (const rule of TREND_OK_CHECKS) {
     const val = (checks as TrendOkChecks)[rule.key];
-    if (val === false) failed.push(rule.failText);
+    const failedWhen = rule.failedWhen ?? false;
+    if (val === failedWhen) failed.push(rule.failText);
   }
   if (failed.length) return failed.join('; ');
   return t.trendOk === false ? '❌' : '—';
@@ -40,6 +47,7 @@ export function trendOkRuleLines(): string[] {
     '- Close >= 0.90 * High(20)',
     '- RSI(14) in [50, 90]',
     '- AvgVol(5) >= 0.9 * AvgVol(30)',
+    '- VR >= 1.2; otherwise hard-cap final score at 79 and force TrendOK=false',
   ];
 }
 

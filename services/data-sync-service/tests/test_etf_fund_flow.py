@@ -438,7 +438,8 @@ def test_em_etf_fetcher_host_fallback_and_normalization(monkeypatch: pytest.Monk
     def fake_get_json(url: str, *, params: dict[str, str], referer: str) -> dict[str, Any]:
         calls.append(url)
         assert params["_"]
-        if "push2.eastmoney.com" in url:
+        # Primary host (push2delay) fails, fallback to push2 succeeds
+        if "push2delay.eastmoney.com" in url:
             raise RuntimeError("blocked")
         return {
             "data": {
@@ -472,6 +473,8 @@ def test_em_etf_fetcher_host_fallback_and_normalization(monkeypatch: pytest.Monk
     out = em.fetch_em_etf_realtime_flow_for_symbols(["510300"])
 
     assert len(calls) == 2
+    assert "push2delay" in calls[0]
+    assert "push2.eastmoney.com" in calls[1]
     assert out["510300"]["fdShareWan"] == pytest.approx(103.0)
     assert out["510300"]["mainNetInflow"] == pytest.approx(12_000_000.0)
     assert out["510300"]["superLargeNetInflow"] == pytest.approx(7_000_000.0)
@@ -493,3 +496,58 @@ def test_em_etf_fetcher_empty_diff_exposes_diagnostic(monkeypatch: pytest.Monkey
     assert out == {}
     assert em.get_last_em_etf_fetch_error()
     assert "empty_diff" in str(em.get_last_em_etf_fetch_error())
+
+
+def test_em_etf_fetcher_handles_page_size_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Server caps pz=500 to 100 rows/page but reports total=1516.
+
+    The target symbol lives on page 10, so the fetcher must compute
+    total_pages from the *actual* page size (100), not the requested
+    page size (500). Otherwise it stops at page 4 and misses the symbol.
+    """
+    requested_pages: list[int] = []
+    target_symbol = "510300"
+    target_page = 10
+    total = 1516
+
+    def fake_get_json(_url: str, *, params: dict[str, str], referer: str) -> dict[str, Any]:
+        pn = int(params["pn"])
+        requested_pages.append(pn)
+        diff: list[dict[str, Any]] = []
+        if pn == target_page:
+            diff.append(
+                {
+                    "f12": target_symbol,
+                    "f14": "沪深300ETF",
+                    "f2": 4.3,
+                    "f3": 1.2,
+                    "f38": 1030000,
+                    "f62": 12000000,
+                    "f66": 7000000,
+                    "f69": 2.1,
+                    "f72": 5000000,
+                    "f75": 1.5,
+                    "f78": -1000000,
+                    "f81": -0.3,
+                    "f84": -11000000,
+                    "f87": -3.3,
+                    "f124": 1782119400,
+                    "f184": 3.6,
+                    "f297": 20260622,
+                }
+            )
+        else:
+            for i in range(100):
+                diff.append({"f12": f"filler{pn}_{i}", "f14": "filler", "f62": 0})
+        return {"data": {"total": total, "diff": diff}}
+
+    monkeypatch.setattr(em, "em_get_json", fake_get_json)
+
+    out = em.fetch_em_etf_realtime_flow_for_symbols([target_symbol])
+
+    assert target_symbol in out
+    assert out[target_symbol]["mainNetInflow"] == pytest.approx(12_000_000.0)
+    assert out[target_symbol]["dataDate"] == "2026-06-22"
+    # Must have fetched at least 10 pages (target lives on page 10)
+    assert max(requested_pages) >= target_page
+    assert em.get_last_em_etf_fetch_error() is None

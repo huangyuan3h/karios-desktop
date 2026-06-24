@@ -25,9 +25,27 @@ describe('trendOkSummary', () => {
         closeNear20dHigh: true,
         rsiInRange: true,
         volumeSurge: true,
+        lowVolumeRatio: false,
       },
     } as TrendOkResult;
     expect(trendOkSummary(t)).toContain('EMA order broken');
+  });
+
+  it('explains low volume ratio hard cap when base checks pass', () => {
+    const t = {
+      symbol: 'CN:600000',
+      trendOk: false,
+      checks: {
+        emaOrder: true,
+        macdPositive: true,
+        macdHistExpanding: true,
+        closeNear20dHigh: true,
+        rsiInRange: true,
+        volumeSurge: true,
+        lowVolumeRatio: true,
+      },
+    } as TrendOkResult;
+    expect(trendOkSummary(t)).toContain('VR < 1.2 hard cap');
   });
 
   it('returns cross when trendOk false without check details', () => {
@@ -36,7 +54,7 @@ describe('trendOkSummary', () => {
 });
 
 describe('trendOkRuleLines', () => {
-  it('returns six rules', () => {
-    expect(trendOkRuleLines()).toHaveLength(6);
+  it('returns seven rules', () => {
+    expect(trendOkRuleLines()).toHaveLength(7);
   });
 });
