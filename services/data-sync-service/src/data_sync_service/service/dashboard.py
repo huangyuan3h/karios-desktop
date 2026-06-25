@@ -5,7 +5,7 @@ import queue
 import time
 from collections.abc import Callable, Generator
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -57,6 +57,8 @@ from data_sync_service.service.tv import (
     wait_for_capture_jobs,
 )
 from data_sync_service.service.trade_calendar_utils import (
+    compute_market_status,
+    previous_open_date,
     resolve_effective_as_of,
     shanghai_today_iso,
     trade_dates_upto,
@@ -215,6 +217,17 @@ def dashboard_summary(
     # Prefer sentiment latest date (clamped to last open day), otherwise Shanghai today.
     raw_as_of = get_latest_sentiment_date() or get_latest_industry_date() or shanghai_today_iso()
     as_of = resolve_effective_as_of(raw_as_of)
+    market_status = compute_market_status()
+    # Pre-market on a trading day: no intraday data exists for today yet, so clamp
+    # as_of back to the previous open day to avoid an empty/duplicated "today" column.
+    if market_status.get("isPreMarket") and as_of == shanghai_today_iso():
+        try:
+            today_d = date.fromisoformat(as_of)
+            prev = previous_open_date(today_d)
+            if prev is not None:
+                as_of = prev.isoformat()
+        except ValueError:
+            pass
     in_sync_window = _is_shanghai_sync_window()
     use_realtime_index = as_of == shanghai_today_iso() and in_sync_window
 
@@ -285,6 +298,7 @@ def dashboard_summary(
         "meta": {
             "inSyncWindow": in_sync_window,
             "useRealtimeIndex": use_realtime_index,
+            "marketStatus": market_status,
         },
     }
 

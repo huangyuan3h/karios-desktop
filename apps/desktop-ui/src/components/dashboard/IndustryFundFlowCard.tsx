@@ -6,7 +6,11 @@ import {
   type HotIndustryPick,
 } from '@/components/pages/HotIndustryWorkflowCard';
 import { Button } from '@/components/ui/button';
-import { fmtAmountCn } from '@/lib/dashboard-format';
+import {
+  buildTopByDateMap,
+  dedupeShownDates,
+  fmtAmountCn,
+} from '@/lib/dashboard-format';
 
 type CopyStatus = { ok: boolean; text: string } | null;
 
@@ -19,49 +23,17 @@ type IndustryFundFlowCardProps = {
   onCopyIndustryMarkdown: () => void | Promise<void>;
 };
 
-function buildTopByDateMap(summary: any): Record<string, string[]> {
-  const topByDateArr: any[] = Array.isArray(summary?.industryFundFlow?.topByDate)
-    ? summary.industryFundFlow.topByDate
-    : [];
-  const map: Record<string, string[]> = {};
-  for (const it of topByDateArr) {
-    const d = String(it?.date ?? '');
-    const top = Array.isArray(it?.top) ? it.top.map((x: any) => String(x ?? '')) : [];
-    if (d) map[d] = top;
-  }
-  return map;
-}
-
-function dedupeShownDates(rawShownDates: string[], map: Record<string, string[]>): {
-  dedupedDates: string[];
-  collapsed: number;
-} {
-  const dedupedDates: string[] = [];
-  let prevSig = '';
-  let collapsed = 0;
-  for (const d of rawShownDates) {
-    const sig = (map[d] || []).slice(0, 5).join('|');
-    if (sig && sig === prevSig) {
-      collapsed += 1;
-      continue;
-    }
-    dedupedDates.push(d);
-    prevSig = sig;
-  }
-  return { dedupedDates, collapsed };
-}
-
 function FlowTable({
   title,
   block,
-  fallbackDates,
+  dedupedDates,
 }: {
   title: string;
   block: any;
-  fallbackDates: string[];
+  dedupedDates: string[];
 }) {
   const flowDates: string[] = Array.isArray(block?.dates) ? block.dates : [];
-  const cols: string[] = flowDates.length ? flowDates.slice(-5) : fallbackDates;
+  const cols: string[] = flowDates.length ? flowDates.slice(-5) : dedupedDates;
   const topRows: any[] = Array.isArray(block?.top) ? block.top : [];
   if (!topRows.length || !cols.length) return null;
   const colDates = cols;
@@ -176,12 +148,12 @@ export function IndustryFundFlowCard({
       <FlowTable
         title="5D net inflow (Top by 5D sum)"
         block={(summary?.industryFundFlow as any)?.flow5d ?? null}
-        fallbackDates={dedupedDates}
+        dedupedDates={dedupedDates}
       />
       <FlowTable
         title="5D net outflow (Top by 5D sum)"
         block={(summary?.industryFundFlow as any)?.flow5dOut ?? null}
-        fallbackDates={dedupedDates}
+        dedupedDates={dedupedDates}
       />
       <div className="mt-3 flex items-center gap-2">
         <Button size="sm" variant="secondary" onClick={() => onNavigate?.('industryFlow')}>

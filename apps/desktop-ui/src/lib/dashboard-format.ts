@@ -121,6 +121,43 @@ export function mdLines(items: string[]): string {
   return items.filter((x) => String(x || '').trim()).join('\n');
 }
 
+/**
+ * Collapse consecutive dates whose Top5 industry signature is identical.
+ * Used by both the UI card and copy-all-markdown so they stay consistent.
+ */
+export function dedupeShownDates(
+  rawShownDates: string[],
+  topByDateMap: Record<string, string[]>,
+): { dedupedDates: string[]; collapsed: number } {
+  const dedupedDates: string[] = [];
+  let prevSig = '';
+  let collapsed = 0;
+  for (const d of rawShownDates) {
+    const sig = (topByDateMap[d] || []).slice(0, 5).join('|');
+    if (sig && sig === prevSig) {
+      collapsed += 1;
+      continue;
+    }
+    dedupedDates.push(d);
+    prevSig = sig;
+  }
+  return { dedupedDates, collapsed };
+}
+
+/** Build a {date -> top industry names[]} map from the dashboard topByDate array. */
+export function buildTopByDateMap(summary: unknown): Record<string, string[]> {
+  const arr: any[] = Array.isArray((summary as any)?.industryFundFlow?.topByDate)
+    ? (summary as any).industryFundFlow.topByDate
+    : [];
+  const map: Record<string, string[]> = {};
+  for (const it of arr) {
+    const d = String(it?.date ?? '');
+    const top = Array.isArray(it?.top) ? it.top.map((x: any) => String(x ?? '')) : [];
+    if (d) map[d] = top;
+  }
+  return map;
+}
+
 function signalRank(x: string): number {
   if (x === 'green' || x === 'light_green' || x === 'deep_green') return 3;
   if (x === 'yellow') return 2;

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import Callable
+from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
@@ -47,6 +47,14 @@ def clamp_to_last_open_date(d0: str, *, exchange: str = DEFAULT_EXCHANGE) -> str
         return str(d0)
     last = last_open_date_on_or_before(d, exchange=exchange)
     return last.isoformat() if last else d.isoformat()
+
+
+def previous_open_date(d: date, *, exchange: str = DEFAULT_EXCHANGE) -> date | None:
+    """Most recent open day strictly before d; None if calendar has no earlier rows."""
+    start = d - timedelta(days=30)
+    opens = get_open_dates(exchange=exchange, start_date=start, end_date=d)
+    prior = [x for x in opens if x < d]
+    return prior[-1] if prior else None
 
 
 def trade_dates_upto(
@@ -96,3 +104,61 @@ def resolve_effective_as_of(raw: str | None) -> str:
     if last is None:
         return s
     return min(s, last.isoformat())
+
+
+# --- Market phase (pre-market / open / closed) ---
+
+MORNING_OPEN_MIN = 9 * 60 + 30      # 09:30
+MORNING_CLOSE_MIN = 11 * 60 + 30    # 11:30
+AFTERNOON_OPEN_MIN = 13 * 60        # 13:00
+AFTERNOON_CLOSE_MIN = 15 * 60       # 15:00
+AFTER_HOURS_END_MIN = 20 * 60       # 20:00
+
+
+def compute_market_status(now: datetime | None = None) -> dict[str, Any]:
+    """
+    Single source of truth for the CN A-share market phase.
+
+    Returns a dict with:
+      - phase: "PreOpen" | "Open" | "LunchBreak" | "Closed" | "Weekend"
+      - isTradingDay: True if a weekday (best-effort; holiday calendar not consulted here)
+      - isPreMarket: True on a weekday before 09:30 (market not yet open)
+      - isMarketOpen: True inside 09:30-11:30 or 13:00-15:00
+      - asOfTime: "HH:MM" in Asia/Shanghai
+    """
+    n = now or datetime.now(tz=SHANGHAI_TZ)
+    minutes = n.hour * 60 + n.minute
+    is_weekday = n.weekday() < 5
+
+    if not is_weekday:
+        phase = "Weekend"
+        is_pre_market = False
+        is_market_open = False
+    elif minutes < MORNING_OPEN_MIN:
+        phase = "PreOpen"
+        is_pre_market = True
+        is_market_open = False
+    elif minutes <= MORNING_CLOSE_MIN:
+        phase = "Open"
+        is_pre_market = False
+        is_market_open = True
+    elif minutes < AFTERNOON_OPEN_MIN:
+        phase = "LunchBreak"
+        is_pre_market = False
+        is_market_open = False
+    elif minutes <= AFTERNOON_CLOSE_MIN:
+        phase = "Open"
+        is_pre_market = False
+        is_market_open = True
+    else:
+        phase = "Closed"
+        is_pre_market = False
+        is_market_open = False
+
+    return {
+        "phase": phase,
+        "isTradingDay": is_weekday,
+        "isPreMarket": is_pre_market,
+        "isMarketOpen": is_market_open,
+        "asOfTime": f"{n.hour:02d}:{n.minute:02d}",
+    }

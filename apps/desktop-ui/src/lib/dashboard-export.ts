@@ -15,6 +15,8 @@ import {
 } from '@/lib/alpha-radar-catalyst';
 import { chunk } from '@/lib/chunk';
 import {
+  buildTopByDateMap,
+  dedupeShownDates,
   fmtAmountCn,
   fmtSignedAmountCn,
   formatSrvIndexLine,
@@ -158,21 +160,8 @@ export function buildIndustryMarkdown(s: DashboardSummary | null, heading = '##'
 
   const datesAll: string[] = Array.isArray(ind?.dates) ? ind.dates : [];
   const rawShownDates = datesAll.slice(-5);
-  const topByDateArr: any[] = Array.isArray(ind?.topByDate) ? ind.topByDate : [];
-  const byDate: Record<string, string[]> = {};
-  for (const it of topByDateArr) {
-    const d = String(it?.date ?? '');
-    const top = Array.isArray(it?.top) ? it.top.map((x: any) => String(x ?? '')) : [];
-    if (d) byDate[d] = top;
-  }
-  const dedupedDates: string[] = [];
-  let prevSig = '';
-  for (const d of rawShownDates) {
-    const sig = (byDate[d] || []).slice(0, 5).join('|');
-    if (sig && sig === prevSig) continue;
-    dedupedDates.push(d);
-    prevSig = sig;
-  }
+  const byDate = buildTopByDateMap(summary2);
+  const { dedupedDates } = dedupeShownDates(rawShownDates, byDate);
 
   const lines: string[] = [];
   lines.push(`${heading} Industry fund flow`);
@@ -192,10 +181,9 @@ export function buildIndustryMarkdown(s: DashboardSummary | null, heading = '##'
   }
 
   const buildFlow = (block: any, title: string) => {
-    const dates: string[] = Array.isArray(block?.dates) ? block.dates : [];
-    const cols: string[] = dates.length ? dates.slice(-5) : dedupedDates;
     const topRows: any[] = Array.isArray(block?.top) ? block.top : [];
-    if (!topRows.length || !cols.length) return;
+    if (!topRows.length || !dedupedDates.length) return;
+    const cols = dedupedDates;
     const headers = ['Industry', 'Sum(5D)', ...cols.map((d) => String(d).slice(5))];
     const rows: unknown[][] = topRows.slice(0, 10).map((r: any) => {
       const seriesArr: any[] = Array.isArray(r?.series) ? r.series : [];
@@ -328,8 +316,12 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
     const etfRows: unknown[][] = etfItems.map((it: any) => {
       const status = String(it?.flowStatus ?? (it?.live === true ? 'Live' : '—'));
       const live = it?.live === true || status === 'Live';
+      const isMarketClosed = status === 'MarketClosed';
       const flow1dStale =
-        !live && it?.netFlow1d == null && (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
+        !live &&
+        !isMarketClosed &&
+        it?.netFlow1d == null &&
+        (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
       const flow1d = flow1dStale ? '— (stale)' : fmtSignedAmountCn(it?.netFlow1d);
       return [
         String(it?.name ?? ''),
@@ -340,7 +332,7 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
         fmtSignedAmountCn(it?.netFlow3d),
         String(it?.tradeTime ?? it?.flowAsOfDate ?? etfFlow?.asOfDate ?? '—'),
         String(it?.source ?? '—'),
-        status,
+        isMarketClosed ? 'Market Closed' : status,
         String(it?.signalDisplay ?? it?.signal ?? '—'),
       ];
     });

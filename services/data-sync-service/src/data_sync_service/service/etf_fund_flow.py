@@ -28,7 +28,11 @@ from data_sync_service.service.etf_fund_flow_em import (
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
 from data_sync_service.db.trade_calendar import get_open_dates
 from data_sync_service.service.market_regime import _is_shanghai_sync_window
-from data_sync_service.service.trade_calendar_utils import last_open_date_on_or_before, shanghai_today
+from data_sync_service.service.trade_calendar_utils import (
+    compute_market_status,
+    last_open_date_on_or_before,
+    shanghai_today,
+)
 
 JOB_TYPE = "etf_fund_flow_watchlist"
 FULL_START_DATE = "20230101"
@@ -611,6 +615,10 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
         open_iso = [d for d in open_iso if d <= as_of]
     last_3 = open_iso[-3:] if open_iso else []
 
+    # Market phase: distinguish "no data because market is closed" from "data error".
+    market_status = compute_market_status()
+    market_closed = not market_status.get("isMarketOpen", False)
+
     ts_codes = [w["ts_code"] for w in ETF_WATCHLIST]
     rows = fetch_rows_for_codes(ts_codes, end_date=as_of)
     by_code_date: dict[str, dict[str, dict[str, Any]]] = {c: {} for c in ts_codes}
@@ -711,8 +719,12 @@ def build_etf_fund_flow_bundle(*, as_of_date: str) -> dict[str, Any]:
             flow_status = "Live"
             flow_provider = "eastmoney"
         elif net_1d is None:
-            flow_status = "Stale" if net_1d_lagged is not None else "Missing"
-            flow_provider = "tushare" if net_1d_lagged is not None else "mixed"
+            if market_closed and net_1d_lagged is not None:
+                flow_status = "MarketClosed"
+                flow_provider = "tushare"
+            else:
+                flow_status = "Stale" if net_1d_lagged is not None else "Missing"
+                flow_provider = "tushare" if net_1d_lagged is not None else "mixed"
         elif data_source == "tushare":
             flow_status = "Historical"
             flow_provider = "tushare"

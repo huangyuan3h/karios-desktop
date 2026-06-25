@@ -818,8 +818,10 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                         it?.flowStatus ?? (it?.live === true ? 'Live' : '—'),
                                       );
                                       const live = it?.live === true || flowStatus === 'Live';
+                                      const isMarketClosed = flowStatus === 'MarketClosed';
                                       const flow1dStale =
                                         !live &&
+                                        !isMarketClosed &&
                                         it?.netFlow1d == null &&
                                         (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
                                       const flow1dDisplay = flow1dStale
@@ -859,12 +861,14 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                           className={`px-2 py-2 font-mono ${
                                             flowStatus === 'Live'
                                               ? 'font-semibold text-emerald-600'
-                                              : flowStatus === 'Stale' || flowStatus === 'Missing'
-                                                ? 'text-amber-600'
-                                                : 'text-[var(--k-muted)]'
+                                              : isMarketClosed
+                                                ? 'text-[var(--k-muted)]'
+                                                : flowStatus === 'Stale' || flowStatus === 'Missing'
+                                                  ? 'text-amber-600'
+                                                  : 'text-[var(--k-muted)]'
                                           }`}
                                         >
-                                          {flowStatus}
+                                          {isMarketClosed ? 'Market Closed' : flowStatus}
                                         </td>
                                         <td
                                           className={

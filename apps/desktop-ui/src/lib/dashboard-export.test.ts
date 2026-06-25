@@ -98,6 +98,43 @@ describe('buildIndustryMarkdown', () => {
     expect(md).toContain('## Industry fund flow');
     expect(md).not.toContain('Top5×Date');
   });
+
+  it('dedupes duplicate-date columns in 5D flow table (forward-fill guard)', () => {
+    // Two consecutive dates with identical Top5 signature should collapse to one column.
+    const summary = {
+      asOfDate: '2026-06-25',
+      industryFundFlow: {
+        asOfDate: '2026-06-25',
+        dates: ['2026-06-19', '2026-06-22', '2026-06-24', '2026-06-25'],
+        topByDate: [
+          { date: '2026-06-24', top: ['Electronics', 'Pharma', 'AI', 'Banking', 'EV'] },
+          { date: '2026-06-25', top: ['Electronics', 'Pharma', 'AI', 'Banking', 'EV'] },
+        ],
+        flow5d: {
+          dates: ['2026-06-19', '2026-06-22', '2026-06-24', '2026-06-25'],
+          top: [
+            {
+              industryName: 'Electronics',
+              sum5d: 28_223_000_000,
+              series: [
+                { date: '2026-06-24', netInflow: 28_223_000_000 },
+                { date: '2026-06-25', netInflow: 28_223_000_000 },
+              ],
+            },
+          ],
+        },
+        flow5dOut: { dates: [], top: [] },
+      },
+    };
+
+    const md = buildIndustryMarkdown(summary);
+
+    // The 5D flow table header should NOT contain both 06-24 and 06-25
+    // because their Top5 signatures are identical (forward-fill duplicate).
+    const flowSection = md.split('5D net inflow (Top by 5D sum)')[1] ?? '';
+    expect(flowSection).toContain('06-24');
+    expect(flowSection).not.toContain('06-25');
+  });
 });
 
 describe('buildSentimentMarkdown', () => {

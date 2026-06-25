@@ -64,6 +64,12 @@ export function isShanghaiQuoteWindow(now: Date = new Date()): boolean {
 /** Alias used by Dashboard sync/refresh logic. */
 export const isShanghaiSyncWindow = isShanghaiQuoteWindow;
 
+/** Weekday before 09:30 — market has not opened yet (pre-market). */
+export function isShanghaiPreMarket(now: Date = new Date()): boolean {
+  if (!isWeekdayShanghai(now)) return false;
+  return getShanghaiMinutes(now) < 9 * 60 + 30;
+}
+
 /** Weekday 17:30–20:00 automation poll window. */
 export function isAutomationPollWindow(now: Date = new Date()): boolean {
   if (!isWeekdayShanghai(now)) return false;

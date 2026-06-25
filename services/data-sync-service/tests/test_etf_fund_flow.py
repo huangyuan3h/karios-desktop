@@ -156,6 +156,12 @@ def test_build_etf_fund_flow_bundle_t1_fallback(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(svc, "fetch_rows_for_codes", lambda *_a, **_k: rows)
     monkeypatch.setattr(svc, "get_open_dates", lambda *_a, **_k: open_dates)
     monkeypatch.setattr(svc, "_is_shanghai_sync_window", lambda: False)
+    # Market is closed (after hours / pre-market) -> should report MarketClosed, not Stale.
+    monkeypatch.setattr(
+        svc,
+        "compute_market_status",
+        lambda: {"phase": "Closed", "isMarketOpen": False, "isPreMarket": False},
+    )
 
     out = svc.build_etf_fund_flow_bundle(as_of_date="2026-06-22")
     hs300 = next(x for x in out["items"] if x["symbol"] == "510300")
@@ -166,8 +172,50 @@ def test_build_etf_fund_flow_bundle_t1_fallback(monkeypatch: pytest.MonkeyPatch)
     assert hs300["flowAsOfDate"] == "2026-06-18"
     assert hs300["signal"] == "Data Lag"
     assert hs300["live"] is False
-    assert hs300["flowStatus"] == "Stale"
+    assert hs300["flowStatus"] == "MarketClosed"
     assert hs300["flowProvider"] == "tushare"
+
+
+def test_build_etf_fund_flow_bundle_stale_when_market_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When market is OPEN but today's net_inflow is missing, status is Stale (data error)."""
+    rows = [
+        {
+            "ts_code": "510300.SH",
+            "trade_date": "2026-06-18",
+            "fd_share": 102.0,
+            "close": 4.2,
+            "avg_price": 4.2,
+            "net_inflow": 52_300_000.0,
+            "updated_at": "t",
+        },
+        {
+            "ts_code": "510300.SH",
+            "trade_date": "2026-06-22",
+            "fd_share": None,
+            "close": 4.3,
+            "avg_price": 4.3,
+            "net_inflow": None,
+            "updated_at": "t",
+        },
+    ]
+    open_dates = [date(2026, 6, 18), date(2026, 6, 19), date(2026, 6, 22)]
+
+    monkeypatch.setattr(svc, "ensure_table", lambda: None)
+    monkeypatch.setattr(svc, "get_latest_date", lambda: "2026-06-22")
+    monkeypatch.setattr(svc, "fetch_rows_for_codes", lambda *_a, **_k: rows)
+    monkeypatch.setattr(svc, "get_open_dates", lambda *_a, **_k: open_dates)
+    monkeypatch.setattr(svc, "_is_shanghai_sync_window", lambda: True)
+    monkeypatch.setattr(
+        svc,
+        "compute_market_status",
+        lambda: {"phase": "Open", "isMarketOpen": True, "isPreMarket": False},
+    )
+
+    out = svc.build_etf_fund_flow_bundle(as_of_date="2026-06-22")
+    hs300 = next(x for x in out["items"] if x["symbol"] == "510300")
+    assert hs300["netFlow1d"] is None
+    assert hs300["netFlow1dLagged"] == pytest.approx(52_300_000.0)
+    assert hs300["flowStatus"] == "Stale"
     assert "Data Lag" in hs300["signalDisplay"]
     assert out["intradaySafe"] is False
 
