@@ -760,7 +760,7 @@ def compute_trendok_for_symbols(
 
         idx_closes = fetch_last_closes("000300.SH", days=25)
         if len(idx_closes) >= 21:
-            idx_20d_ret = (idx_closes[-1][1] - idx_closes[-21][1]) / idx_closes[-21][1] * 100.0
+            index_20d_ret = (idx_closes[-1][1] - idx_closes[-21][1]) / idx_closes[-21][1] * 100.0
             idx_ema = _ema([c for _, c in idx_closes], 20)
             if len(idx_ema) >= 2:
                 index_ema20_down = idx_ema[-1] < idx_ema[-2]

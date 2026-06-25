@@ -57,6 +57,7 @@ def test_trendok_endpoint_shape() -> None:
         "buyWhy",
         "buyChecks",
         "marketRegime",
+        "rs",
         "intradayChgPct",
         "gapUp",
         "riskMetricsLive",

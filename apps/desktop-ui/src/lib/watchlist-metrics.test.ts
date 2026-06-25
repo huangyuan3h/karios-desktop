@@ -7,6 +7,7 @@ import {
   formatGapUp,
   formatHotTop3,
   formatInstFlow,
+  formatRs,
   formatVolumeRatio,
   hasBlockingWatchlistRisk,
   industryDisplayName,
@@ -47,6 +48,14 @@ describe('computeVwap', () => {
   it('returns null for invalid inputs', () => {
     expect(computeVwap(null, 100)).toBeNull();
     expect(computeVwap(1000, 0)).toBeNull();
+  });
+});
+
+describe('formatRs', () => {
+  it('formats positive and negative RS values', () => {
+    expect(formatRs({ rs: 12.345 })).toBe('+12.3%');
+    expect(formatRs({ values: { rsValue: -3.21 } })).toBe('-3.2%');
+    expect(formatRs(null)).toBe('—');
   });
 });
 
