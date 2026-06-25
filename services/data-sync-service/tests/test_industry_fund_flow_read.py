@@ -262,6 +262,25 @@ def test_trendok_flow_context_filters_nested_sw_child_industries() -> None:
     assert ctx["top_today_3"] == {"非银金融", "有色金属"}
 
 
+def test_build_trendok_flow_context_includes_outflow_today_3() -> None:
+    """V5.6: outflow_today_3 should contain industries with lowest (most negative) net_inflow."""
+    dates_5 = ["2026-06-16", "2026-06-17", "2026-06-18"]
+    rows = [
+        {"date": "2026-06-18", "industry_name": "电子", "net_inflow": 100.0},  # Top inflow
+        {"date": "2026-06-18", "industry_name": "计算机", "net_inflow": 80.0},
+        {"date": "2026-06-18", "industry_name": "医药生物", "net_inflow": -50.0},  # Outflow #3
+        {"date": "2026-06-18", "industry_name": "银行", "net_inflow": -100.0},  # Outflow #2
+        {"date": "2026-06-18", "industry_name": "房地产", "net_inflow": -200.0},  # Outflow #1
+    ]
+    ctx = build_trendok_flow_context_from_rows(flow_date="2026-06-18", dates_5=dates_5, rows=rows)
+
+    assert ctx["ok"] is True
+    # outflow_today_3 should have the 3 industries with the LOWEST net_inflow (biggest outflows)
+    assert ctx["outflow_today_3"] == {"房地产", "银行", "医药生物"}
+    # top_today_3: highest inflows - includes 医药生物 since it's the 3rd highest (100, 80, -50)
+    assert ctx["top_today_3"] == {"电子", "计算机", "医药生物"}
+
+
 def test_sync_cn_industry_fund_flow_fetches_history_for_all_industries() -> None:
     items = [
         {"date": "2024-01-20", "industry_code": "c1", "industry_name": "电子", "net_inflow": 30.0, "raw": {}},

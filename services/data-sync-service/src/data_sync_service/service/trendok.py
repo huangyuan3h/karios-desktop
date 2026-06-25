@@ -1360,6 +1360,91 @@ def _trendok_one(
     except Exception:
         res["riskAlerts"] = []
 
+    # ---------- Sector Divergence Rejection (V5.6) ----------
+    # Hard rejection if stock surges > 3% while its industry is in top 3 outflows
+    sector_divergence_triggered = False
+    if (
+        flow_ctx
+        and flow_ctx.get("ok")
+        and industry
+        and isinstance(res.get("intradayChgPct"), (int, float))
+        and isinstance(res.get("score"), (int, float))
+    ):
+        outflow_top_3 = flow_ctx.get("outflow_today_3") or set()
+        intraday_chg = float(res["intradayChgPct"])
+
+        if intraday_chg > 3.0 and industry in outflow_top_3:
+            sector_divergence_triggered = True
+            # Cap score below 80 (hard rejection threshold)
+            res["score"] = round(min(float(res["score"]), 79.0), 3)
+            parts2 = res.get("scoreParts")
+            if isinstance(parts2, dict):
+                parts2["sector_divergence_rejection"] = 79.0
+            # Add risk alert
+            res["riskAlerts"].append(
+                {
+                    "code": "sector_divergence",
+                    "severity": "block",
+                    "message": "⚠️ Sector Divergence: 行业大反核，警惕掩护出货！",
+                }
+            )
+            # Force avoid action
+            res["buyAction"] = "avoid"
+    # Always record divergence check result
+    res["checks"]["sector_divergence"] = sector_divergence_triggered
+
+    # ---------- T+1 Sniper (V5.6) ----------
+    # Pullback buy signal after yesterday's strong surge
+    t1_surge = False
+    t1_strong = False
+    t1_sniper_triggered = False
+    if (
+        len(closes) >= 3
+        and len(ema20s) >= 3
+        and len(vols) >= 30
+        and not sector_divergence_triggered  # Divergence takes priority
+    ):
+        # Calculate T-1 (yesterday) state
+        t1_close = closes[-2]
+        t1_open = float(bars[-2][1]) if len(bars) >= 2 and bars[-2][1] else t1_close
+        t0_close = closes[-3] if len(closes) >= 3 else t1_close
+
+        # T-1 surge detection: > 6% gain OR gap-up
+        t1_chg_pct = ((t1_close - t0_close) / t0_close) * 100.0 if t0_close > 0 else 0.0
+        t1_gap_up = t1_open > t0_close * 1.01  # Gap up by more than 1%
+        t1_surge = t1_chg_pct > 6.0 or t1_gap_up
+
+        # T-1 strong detection: above EMA20 + volume confirmation
+        t1_above_ema20 = closes[-2] > ema20s[-2]
+        avg30_t1 = sum(vols[-32:-2]) / 30.0 if len(vols) >= 32 else vols[-2]
+        t1_volume_ok = vols[-2] > 0.9 * avg30_t1
+        t1_strong = t1_above_ema20 and t1_volume_ok
+
+        # T-day pullback detection: orderly pullback between -1% and -3%
+        intraday_chg = float(res.get("intradayChgPct") or 0.0) if isinstance(
+            res.get("intradayChgPct"), (int, float)
+        ) else 0.0
+        pullback_ok = -3.0 <= intraday_chg <= -1.0
+
+        t1_sniper_triggered = t1_surge and t1_strong and pullback_ok and res.get("buyAction") != "avoid"
+        if t1_sniper_triggered:
+            # Add sniper alert
+            res["riskAlerts"].append(
+                {
+                    "code": "t1_sniper",
+                    "severity": "warn",
+                    "message": "🎯 T+1 缩量良性回踩，狙击位触发",
+                }
+            )
+            # Override buy action for sniper entry
+            res["buyAction"] = "B_pullback"
+            res["buyMode"] = "B_momentum"
+
+    # Always record sniper diagnostics
+    res["checks"]["t1_sniper"] = t1_sniper_triggered
+    res["checks"]["t1_surge"] = t1_surge
+    res["checks"]["t1_strong"] = t1_strong
+
     # Decide final TrendOK
     required = [
         res["checks"].get("emaOrder"),
@@ -1374,6 +1459,10 @@ def _trendok_one(
         res["missingData"].append("insufficient_indicators")
     else:
         res["trendOk"] = bool(all(bool(x) for x in required))
+
+    # Sector Divergence hard override - MUST be false regardless of other checks
+    if sector_divergence_triggered:
+        res["trendOk"] = False
 
     volume_ratio_raw = (res.get("values") or {}).get("volumeRatio") if isinstance(res.get("values"), dict) else None
     low_volume_ratio = False

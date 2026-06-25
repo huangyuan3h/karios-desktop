@@ -117,6 +117,10 @@ def build_trendok_flow_context_from_rows(
     top_today_5 = [str(x.get("industry_name") or "") for x in top_today[:5] if x.get("industry_name")]
     top_today_3 = top_today_5[:3]
 
+    # Calculate top 3 outflow industries today (lowest net_inflow = largest outflow)
+    outflow_today = sorted(rows_today, key=lambda x: float(x.get("net_inflow") or 0.0))
+    outflow_today_3 = [str(x.get("industry_name") or "") for x in outflow_today[:3] if x.get("industry_name")]
+
     top_yesterday = sorted(rows_yesterday, key=lambda x: float(x.get("net_inflow") or 0.0), reverse=True)
     top_yesterday_3 = [str(x.get("industry_name") or "") for x in top_yesterday[:3] if x.get("industry_name")]
 
@@ -137,6 +141,7 @@ def build_trendok_flow_context_from_rows(
         "yesterday": yesterday,
         "top_today_3": set(top_today_3),
         "top_today_5": set(top_today_5),
+        "outflow_today_3": set(outflow_today_3),
         "top_yesterday_3": set(top_yesterday_3),
         "net_today": net_today,
         "net_yesterday": net_yesterday,
