@@ -35,8 +35,9 @@ describe('computePnLPct', () => {
 });
 
 describe('computeVwap', () => {
-  it('computes realtime vwap from amount and volume lots', () => {
-    expect(computeVwap(101200, 100, 'realtime')).toBeCloseTo(10.12);
+  it('computes realtime vwap from amount (CNY) and volume (shares)', () => {
+    // amount=101200 CNY, volume=100 shares => VWAP = 1012.0
+    expect(computeVwap(101200, 100, 'realtime')).toBeCloseTo(1012.0);
   });
 
   it('computes daily vwap with thousand-yuan amount', () => {
@@ -231,7 +232,7 @@ describe('risk alerts', () => {
         quoteVolume: 100,
         quoteTradeTime: '2026-05-28 15:00:00',
       }),
-    ).toBeCloseTo(10.12);
+    ).toBeCloseTo(1012.0);
   });
 
   it('aggregates server and client alerts without duplicates', () => {

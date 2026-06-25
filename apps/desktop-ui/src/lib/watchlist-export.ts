@@ -14,6 +14,7 @@ import {
   formatHotTop3,
   formatIntradayChgPct,
   formatPnLPct,
+  formatRs,
   formatRiskAlerts,
   formatVwap,
   formatInstFlow,
@@ -184,6 +185,7 @@ export function buildWatchlistMarkdown(options: {
       escapeMarkdownCell(it.name || '—'),
       escapeMarkdownCell(industryDisplayName(values)),
       escapeMarkdownCell(formatHotTop3(t)),
+      escapeMarkdownCell(formatRs(t)),
       escapeMarkdownCell(
         typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
           ? it.positionPct.toFixed(1)

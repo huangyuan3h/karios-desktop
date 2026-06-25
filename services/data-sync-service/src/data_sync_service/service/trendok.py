@@ -705,6 +705,7 @@ def compute_trendok_for_symbols(
             ts_codes.append(m[2])
 
     bars_by_code = fetch_last_ohlcv_batch(ts_codes, days=120)
+    rt_vwap_by_code: dict[str, float] = {}
     if realtime and ts_codes:
         q = fetch_realtime_quotes(ts_codes)
         items = q.get("items") if isinstance(q, dict) else None
@@ -714,6 +715,14 @@ def compute_trendok_for_symbols(
                 qt = by_code.get(code)
                 if qt:
                     bars_by_code[code] = _merge_realtime_bar(bars, qt)
+            # Build realtime VWAP map for intraday distribution detection.
+            # Tushare realtime_quote: amount in CNY, volume in shares.
+            for it in items:
+                code = str(it.get("ts_code") or "")
+                amt = _parse_float_safe(it.get("amount"))
+                vol = _parse_float_safe(it.get("volume"))
+                if code and amt is not None and vol is not None and vol > 0:
+                    rt_vwap_by_code[code] = amt / vol
 
     latest_bar_date: str | None = None
     for bars in bars_by_code.values():
@@ -742,6 +751,21 @@ def compute_trendok_for_symbols(
         market_regime = str(regime_info.get("regime") or "Unknown")
     except Exception:
         market_regime = "Unknown"
+
+    # RS benchmark: CSI300 20-day return + EMA20 direction (weak market detection)
+    index_20d_ret: float | None = None
+    index_ema20_down: bool = False
+    try:
+        from data_sync_service.db.index_daily import fetch_last_closes
+
+        idx_closes = fetch_last_closes("000300.SH", days=25)
+        if len(idx_closes) >= 21:
+            idx_20d_ret = (idx_closes[-1][1] - idx_closes[-21][1]) / idx_closes[-21][1] * 100.0
+            idx_ema = _ema([c for _, c in idx_closes], 20)
+            if len(idx_ema) >= 2:
+                index_ema20_down = idx_ema[-1] < idx_ema[-2]
+    except Exception:
+        pass
     for sym in syms:
         market_ticker_ts = parsed.get(sym)
         if not market_ticker_ts:
@@ -764,6 +788,9 @@ def compute_trendok_for_symbols(
                 flow_ctx=flow_ctx,
                 market_regime=market_regime,
                 inst_summary=inst_by_code.get(ts_code),
+                index_20d_ret=index_20d_ret,
+                index_ema20_down=index_ema20_down,
+                rt_vwap=rt_vwap_by_code.get(ts_code),
             )
         )
     _trendok_cache[cache_key] = (copy.deepcopy(out), time.time() + TRENDOK_CACHE_TTL_SECONDS)
@@ -781,6 +808,9 @@ def _trendok_one(
     flow_ctx: dict[str, Any] | None = None,
     market_regime: str | None = None,
     inst_summary: dict[str, Any] | None = None,
+    index_20d_ret: float | None = None,
+    index_ema20_down: bool = False,
+    rt_vwap: float | None = None,
 ) -> dict[str, Any]:
     """
     Ported from quant-service `_market_stock_trendok_one` with the same checks/score behavior.
@@ -896,6 +926,19 @@ def _trendok_one(
         high20 = max(closes[-20:])
         res["values"]["high20"] = high20
         res["checks"]["closeNear20dHigh"] = bool(closes[-1] >= 0.90 * high20)
+
+    # RS (Relative Strength) vs CSI300 benchmark (V5.7)
+    rs_value: float | None = None
+    rs_leader = False
+    if len(closes) >= 21 and index_20d_ret is not None:
+        stock_20d_ret = (closes[-1] - closes[-21]) / closes[-21] * 100.0
+        rs_value = round(stock_20d_ret - index_20d_ret, 3)
+        res["values"]["rsValue"] = rs_value
+        res["values"]["stock20dReturn"] = round(stock_20d_ret, 3)
+        res["values"]["index20dReturn"] = round(index_20d_ret, 3)
+        # RS_Leader flag: weak market (index EMA20 down) + RS > 10% + close > EMA20
+        if index_ema20_down and rs_value > 10.0 and ema20s and closes[-1] > ema20s[-1]:
+            rs_leader = True
 
     if len(vols) >= 30:
         avg5 = sum(vols[-5:]) / 5.0
@@ -1445,6 +1488,35 @@ def _trendok_one(
     res["checks"]["t1_surge"] = t1_surge
     res["checks"]["t1_strong"] = t1_strong
 
+    # ---------- Intraday Distribution Interception (V5.7) ----------
+    # Detect distribution below VWAP: price up >2% intraday but close < true VWAP.
+    # This catches pump-and-dump patterns where price rises on paper but sells
+    # below the intraday average — a classic afternoon lure for retail buyers.
+    intraday_distribution = False
+    intraday_chg_val = res.get("intradayChgPct")
+    close_val = closes[-1] if closes else None
+    if (
+        rt_vwap is not None
+        and rt_vwap > 0
+        and isinstance(intraday_chg_val, (int, float))
+        and isinstance(close_val, (int, float))
+        and intraday_chg_val > 2.0
+        and close_val < rt_vwap
+    ):
+        intraday_distribution = True
+        res["riskAlerts"].append(
+            {
+                "code": "intraday_distribution",
+                "severity": "block",
+                "message": "⚠️ Intraday Distribution (均价线下方出货)",
+            }
+        )
+        # Force avoid to prevent chasing the pump below VWAP
+        res["buyAction"] = "avoid"
+    res["checks"]["intraday_distribution"] = intraday_distribution
+    if rt_vwap is not None and rt_vwap > 0:
+        res["values"]["rtVwap"] = round(rt_vwap, 4)
+
     # Decide final TrendOK
     required = [
         res["checks"].get("emaOrder"),
@@ -1477,5 +1549,17 @@ def _trendok_one(
                 parts2[LOW_VOLUME_RATIO_SCORE_PART] = LOW_VOLUME_RATIO_SCORE_CAP
     if res.get("score") is not None and res.get("trendOk") is not True:
         res["score"] = round(min(float(res["score"]), TRENDOK_FAILED_SCORE_CAP), 3)
+
+    # RS_Leader alert (V5.7): contrarian resilience highlight during weak market
+    if rs_leader:
+        res["riskAlerts"].append(
+            {
+                "code": "rs_leader",
+                "severity": "warn",
+                "message": "💪 RS_Leader (逆势抗跌)",
+            }
+        )
+    res["checks"]["rs_leader"] = rs_leader
+    res["rs"] = rs_value
     return res
 

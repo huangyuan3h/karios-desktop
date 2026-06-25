@@ -47,6 +47,7 @@ export const TrendOkResultSchema = z.object({
   buyWhy: z.string().nullable().optional(),
   buyChecks: z.record(z.unknown()).optional(),
   marketRegime: z.string().nullable().optional(),
+  rs: z.number().nullable().optional(),
   intradayChgPct: z.number().nullable().optional(),
   gapUp: z.boolean().nullable().optional(),
   riskAlerts: z.array(WatchlistRiskAlertSchema).optional(),

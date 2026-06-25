@@ -609,6 +609,9 @@ export function WatchlistTable({
                     <th className="px-2 py-2 w-[80px]">止损</th>
                     <th className="max-w-[130px] px-2 py-2 w-[120px]">买入</th>
                     <th className="px-2 py-2 w-[64px]">HotTop3</th>
+                    <th className="px-2 py-2 w-[64px]" title="RS (Relative Strength) vs CSI300 20-day return">
+                      RS
+                    </th>
                     <th className="px-2 py-2 w-[68px]">VWAP</th>
                     <th className="px-2 py-2 w-[72px]">Intraday%</th>
                     <th className="px-2 py-2 w-[72px]">VR(量比)</th>
@@ -828,6 +831,32 @@ export function WatchlistTable({
                           ) : (
                             '—'
                           )}
+                        </td>
+                        <td className="px-2 py-2 font-mono text-xs">
+                          {(() => {
+                            const rs = t?.rs ?? (t?.values?.rsValue as number | undefined);
+                            if (typeof rs !== 'number' || !Number.isFinite(rs)) return '—';
+                            const isLeader = t?.checks?.rs_leader === true;
+                            return (
+                              <span
+                                className={
+                                  isLeader
+                                    ? 'font-bold text-emerald-600'
+                                    : rs > 0
+                                      ? 'text-emerald-600'
+                                      : 'text-red-600'
+                                }
+                                title={
+                                  isLeader
+                                    ? '💪 RS_Leader (逆势抗跌) — outperforming CSI300 by >10% in weak market'
+                                    : `RS vs CSI300 20D: ${rs > 0 ? '+' : ''}${rs.toFixed(1)}%`
+                                }
+                              >
+                                {rs > 0 ? '+' : ''}
+                                {rs.toFixed(1)}%
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="px-3 py-2 font-mono">{formatVwap(rowMetrics.vwap)}</td>
                         <td

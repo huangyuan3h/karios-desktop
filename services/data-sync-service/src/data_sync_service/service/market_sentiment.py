@@ -85,6 +85,92 @@ def apply_breadth_panic_sentiment_items(
     return out
 
 
+# ---------- Capitulation V-Bottom (V5.7) ----------
+CAPITULATION_DOWN_THRESHOLD = 3500
+CAPITULATION_IV_THRESHOLD = 20.0  # 300ETF Put IV > 20%
+CAPITULATION_FLOW_THRESHOLD_YI = 20.0  # +20亿 CNY
+
+
+def check_capitulation_bottom(*, down: int, as_of: date) -> dict[str, Any]:
+    """
+    Detect extreme capitulation V-bottom resonance.
+
+    All three conditions must be satisfied simultaneously:
+      1. Market breadth extreme panic: down >= 3500
+      2. Panic IV extreme: 300ETF Put IV > 20.0%
+      3. Broad-based national-team inflow: 510300 main or super-large net inflow > +20亿
+    """
+    reasons: list[str] = []
+    triggered = True
+
+    # Condition 1: breadth extreme panic
+    cond_breadth = int(down) >= CAPITULATION_DOWN_THRESHOLD
+    if not cond_breadth:
+        triggered = False
+    reasons.append(f"breadth_down={int(down)}(>={CAPITULATION_DOWN_THRESHOLD}):{cond_breadth}")
+
+    # Condition 2: 300ETF Put IV
+    iv_pct: float | None = None
+    cond_iv = False
+    try:
+        from data_sync_service.db.macro_daily import get_latest_row
+        from data_sync_service.service.macro_daily import SID_510300_PUT_IV
+
+        row = get_latest_row(SID_510300_PUT_IV)
+        if row and row.get("close") is not None:
+            iv_pct = float(row["close"])
+            cond_iv = iv_pct > CAPITULATION_IV_THRESHOLD
+    except Exception:
+        pass
+    if not cond_iv:
+        triggered = False
+    reasons.append(f"put_iv={iv_pct}(>{CAPITULATION_IV_THRESHOLD}):{cond_iv}")
+
+    # Condition 3: 510300 ETF national-team inflow (main or super-large)
+    main_flow_yi: float | None = None
+    super_flow_yi: float | None = None
+    cond_flow = False
+    try:
+        from data_sync_service.db.etf_fund_flow import fetch_row, get_last_trade_date
+
+        last_date = get_last_trade_date("510300.SH")
+        if last_date:
+            fr = fetch_row("510300.SH", last_date.isoformat())
+            if fr:
+                main_yi = (fr.get("main_net_inflow") or 0.0) / 1e8
+                super_yi = (fr.get("super_large_net_inflow") or 0.0) / 1e8
+                main_flow_yi = round(main_yi, 2)
+                super_flow_yi = round(super_yi, 2)
+                cond_flow = (
+                    main_yi > CAPITULATION_FLOW_THRESHOLD_YI
+                    or super_yi > CAPITULATION_FLOW_THRESHOLD_YI
+                )
+    except Exception:
+        pass
+    if not cond_flow:
+        triggered = False
+    reasons.append(
+        f"510300_main={main_flow_yi}亿/super={super_flow_yi}亿"
+        f"(>{CAPITULATION_FLOW_THRESHOLD_YI}亿):{cond_flow}"
+    )
+
+    rule = (
+        "capitulation_v_bottom(breadth>=3500 && put_iv>20% && 510300_flow>+20亿)"
+        f"[{'|'.join(reasons)}]"
+    )
+    return {
+        "triggered": triggered,
+        "rule": rule,
+        "raw": {
+            "down": int(down),
+            "ivPct": iv_pct,
+            "mainFlowYi": main_flow_yi,
+            "superLargeFlowYi": super_flow_yi,
+            "reasons": reasons,
+        },
+    }
+
+
 def _with_retry(fn, *, tries: int = 3, base_sleep_s: float = 0.4, max_sleep_s: float = 2.0):
     tries2 = max(1, min(int(tries), 5))
     last: Exception | None = None
@@ -989,6 +1075,13 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
         rules.extend(errors[:3])
 
     risk_mode = apply_breadth_panic_risk_mode(risk_mode, down, rules)
+
+    # ---------- Capitulation V-Bottom resonance override (V5.7) ----------
+    capitulation = check_capitulation_bottom(down=down, as_of=dt)
+    if capitulation["triggered"]:
+        risk_mode = "capitulation_v_bottom"
+        rules.append(capitulation["rule"])
+        raw["capitulation"] = capitulation["raw"]
 
     return {
         "date": d,

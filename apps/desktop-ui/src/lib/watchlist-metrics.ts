@@ -3,6 +3,7 @@ export const WATCHLIST_MD_HEADERS = [
   'Name',
   'Industry',
   'HotTop3',
+  'RS',
   'Position%',
   'CostPrice',
   'Current',
@@ -348,8 +349,8 @@ export function computeVwap(
     // Tushare daily: amount in 千元, volume in 手 (100 shares).
     return (amount * 1000) / (volume * 100);
   }
-  // Realtime quote: amount in CNY, volume in 手.
-  return amount / (volume * 100);
+  // Realtime quote: amount in CNY, volume in shares (tushare realtime_quote vol unit).
+  return amount / volume;
 }
 
 export function tradeDateFromTradeTime(tradeTime: string | null | undefined): string | null {
@@ -446,6 +447,12 @@ export function isHotTop3Industry(t: { values?: Record<string, unknown> | null }
 
 export function formatHotTop3(t: { values?: Record<string, unknown> | null } | undefined | null): string {
   return isHotTop3Industry(t) ? '✓' : '—';
+}
+
+export function formatRs(t: { rs?: number | null; values?: Record<string, unknown> | null } | undefined | null): string {
+  const rs = t?.rs ?? (t?.values?.rsValue as number | undefined);
+  if (typeof rs !== 'number' || !Number.isFinite(rs)) return '—';
+  return `${rs > 0 ? '+' : ''}${rs.toFixed(1)}%`;
 }
 
 export function tushareIndustryTooltip(values: Record<string, unknown> | undefined | null): string | null {

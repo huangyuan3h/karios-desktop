@@ -68,6 +68,7 @@ describe('TrendOkResultSchema', () => {
     },
     checks: { ema20: true },
     values: { close: 10.8 },
+    rs: 12.5,
     missingData: [],
   };
 
@@ -76,6 +77,7 @@ describe('TrendOkResultSchema', () => {
     expect(result.symbol).toBe('CN:000001');
     expect(result.riskAlerts).toHaveLength(1);
     expect(result.scoreParts?.trend).toBe(30);
+    expect(result.rs).toBe(12.5);
   });
 
   it('validates minimal trendok payload', () => {

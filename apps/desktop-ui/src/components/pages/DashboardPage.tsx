@@ -565,17 +565,19 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                       ? srvIndex.overlapSectors.map((x: any) => String(x)).filter(Boolean)
                       : [];
                     const badge =
-                      risk === 'extreme_caution' || breadthPanic
-                        ? 'border-red-600/40 bg-red-600/15 text-red-700'
-                        : risk === 'no_new_positions'
-                          ? 'border-red-500/30 bg-red-500/10 text-red-600'
-                          : risk === 'caution'
-                            ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
-                            : risk === 'hot'
-                              ? 'border-green-500/30 bg-green-500/10 text-green-700'
-                              : risk === 'euphoric'
-                                ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700'
-                                : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
+                      risk === 'capitulation_v_bottom'
+                        ? 'border-fuchsia-600/40 bg-fuchsia-600/15 text-fuchsia-700'
+                        : risk === 'extreme_caution' || breadthPanic
+                          ? 'border-red-600/40 bg-red-600/15 text-red-700'
+                          : risk === 'no_new_positions'
+                            ? 'border-red-500/30 bg-red-500/10 text-red-600'
+                            : risk === 'caution'
+                              ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
+                              : risk === 'hot'
+                                ? 'border-green-500/30 bg-green-500/10 text-green-700'
+                                : risk === 'euphoric'
+                                  ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700'
+                                  : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
                     return (
                       <>
                         <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -591,6 +593,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                             </div>
                           ) : null}
                         </div>
+
+                        {risk === 'capitulation_v_bottom' && (
+                          <div className="mb-3 rounded-lg border border-fuchsia-600/40 bg-fuchsia-600/15 px-3 py-2 text-sm text-fuchsia-800 dark:text-fuchsia-200">
+                            🚨 Capitulation_V_Bottom (恐慌冰点共振) — 国家队入场 + 恐慌极值，左侧绝佳试错点出现
+                          </div>
+                        )}
 
                         <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${srvBadge}`}>
                           <div className="font-medium">{srvLine}</div>
