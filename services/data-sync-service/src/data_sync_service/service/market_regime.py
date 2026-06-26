@@ -333,6 +333,83 @@ def _get_market_liquidity_and_mainline(
     }
 
 
+def _quote_error_message(resp: dict[str, Any] | None) -> str | None:
+    if not isinstance(resp, dict):
+        return "invalid_quote_response"
+    err = resp.get("error")
+    if err is None:
+        return None
+    msg = str(err).strip()
+    return msg or None
+
+
+def _fetch_realtime_quote_map(codes: list[str]) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+    """Fetch realtime quotes with per-symbol fallback so one bad symbol cannot poison the batch."""
+    clean_codes = [str(c).strip() for c in codes if str(c or "").strip()]
+    if not clean_codes:
+        return {}, {}
+
+    def add_items(resp: dict[str, Any] | None, target: dict[str, dict[str, Any]]) -> None:
+        if not isinstance(resp, dict) or not bool(resp.get("ok")):
+            return
+        for item in resp.get("items", []) or []:
+            if not isinstance(item, dict):
+                continue
+            code = str(item.get("ts_code") or "").strip()
+            if code:
+                target[code] = item
+
+    quotes: dict[str, dict[str, Any]] = {}
+    errors: dict[str, str] = {}
+    batch_resp = fetch_realtime_quotes(clean_codes)
+    if isinstance(batch_resp, dict) and bool(batch_resp.get("ok")):
+        add_items(batch_resp, quotes)
+        missing = [code for code in clean_codes if code not in quotes]
+        if not missing:
+            return quotes, errors
+        for code in missing:
+            one_resp = fetch_realtime_quotes([code])
+            before = len(quotes)
+            add_items(one_resp, quotes)
+            if code not in quotes or len(quotes) == before:
+                errors[code] = _quote_error_message(one_resp) or "missing_from_batch_quote"
+            time.sleep(0.03)
+        return quotes, errors
+
+    batch_error = _quote_error_message(batch_resp) or "batch_quote_failed"
+    for code in clean_codes:
+        one_resp = fetch_realtime_quotes([code])
+        before = len(quotes)
+        add_items(one_resp, quotes)
+        if code not in quotes or len(quotes) == before:
+            errors[code] = _quote_error_message(one_resp) or batch_error
+        time.sleep(0.03)
+    return quotes, errors
+
+
+def _apply_realtime_quotes(
+    quotes: dict[str, dict[str, Any]],
+    rt_price: dict[str, float],
+    rt_time: dict[str, str | None],
+    rt_pct: dict[str, float | None],
+    rt_vol: dict[str, float],
+) -> None:
+    for ts_code, item in quotes.items():
+        pct_rt, price = _realtime_pct_or_price(item)
+        if price is None:
+            continue
+        rt_price[ts_code] = price
+        rt_pct[ts_code] = pct_rt
+        trade_time_raw = item.get("trade_time")
+        rt_time[ts_code] = str(trade_time_raw) if trade_time_raw else None
+        vol_str = item.get("volume")
+        if vol_str:
+            try:
+                rt_vol[ts_code] = float(vol_str)
+            except (ValueError, TypeError):
+                pass
+
+
 def get_index_signals(
     *, as_of_date: str | None = None, include_breadth: bool = True
 ) -> list[dict[str, Any]]:
@@ -367,27 +444,19 @@ def _compute_index_signals(
     rt_time: dict[str, str | None] = {}
     rt_pct: dict[str, float | None] = {}
     rt_vol: dict[str, float] = {}
+    rt_quote_errors: dict[str, str] = {}
     if _is_shanghai_sync_window() and not use_as_of:
         cn_codes = [x["ts_code"] for x in INDEX_SIGNALS]
+        cn_quotes, cn_errors = _fetch_realtime_quote_map(cn_codes)
+        _apply_realtime_quotes(cn_quotes, rt_price, rt_time, rt_pct, rt_vol)
+        rt_quote_errors.update(cn_errors)
+
+        # HK/offshore symbols must not share the CN quote batch. Some providers fail
+        # unsupported offshore symbols with hard errors; isolate them so CN realtime remains usable.
         hk_codes = [x["series_id"] for x in HK_INDEX_SIGNALS]
-        cn_res = fetch_realtime_quotes(cn_codes + hk_codes)
-        if isinstance(cn_res, dict) and bool(cn_res.get("ok")):
-            for it in cn_res.get("items", []) or []:
-                ts_code = str(it.get("ts_code") or "").strip()
-                if not ts_code:
-                    continue
-                pct_rt, price = _realtime_pct_or_price(it)
-                if price is None:
-                    continue
-                rt_price[ts_code] = price
-                rt_pct[ts_code] = pct_rt
-                rt_time[ts_code] = it.get("trade_time")
-                vol_str = it.get("volume")
-                if vol_str:
-                    try:
-                        rt_vol[ts_code] = float(vol_str)
-                    except (ValueError, TypeError):
-                        pass
+        hk_quotes, hk_errors = _fetch_realtime_quote_map(hk_codes)
+        _apply_realtime_quotes(hk_quotes, rt_price, rt_time, rt_pct, rt_vol)
+        rt_quote_errors.update(hk_errors)
 
     if include_breadth:
         breadth = _get_breadth_above_ma20_ratio(as_of_date=use_as_of)
@@ -450,25 +519,26 @@ def _compute_index_signals(
                 p0, p1 = closes_short[-2], closes_short[-1]
                 if p0 is not None and p0 > 0 and p1 is not None:
                     pct_short = (p1 - p0) / p0 * 100.0
-            out.append(
-                {
-                    "tsCode": ts_code,
-                    "name": name,
-                    "asOfDate": series[-1][0] if series else None,
-                    "close": series[-1][1] if series else None,
-                    "ma5": None,
-                    "ma20": None,
-                    "ma60": None,
-                    "ma20Prev": None,
-                    "signal": "unknown",
-                    "positionRange": "—",
-                    "rules": ["insufficient data for MA20"],
-                    "realtime": used_realtime,
-                    "tradeTime": trade_time if used_realtime else None,
-                    "source": "tushare.realtime_quote" if used_realtime else "db.index_daily",
-                    "pctChg": pct_short,
-                }
-            )
+            item_out = {
+                "tsCode": ts_code,
+                "name": name,
+                "asOfDate": series[-1][0] if series else None,
+                "close": series[-1][1] if series else None,
+                "ma5": None,
+                "ma20": None,
+                "ma60": None,
+                "ma20Prev": None,
+                "signal": "unknown",
+                "positionRange": "—",
+                "rules": ["insufficient data for MA20"],
+                "realtime": used_realtime,
+                "tradeTime": trade_time if used_realtime else None,
+                "source": "tushare.realtime_quote" if used_realtime else "db.index_daily",
+                "pctChg": pct_short,
+            }
+            if not used_realtime and ts_code in rt_quote_errors:
+                item_out["quoteError"] = rt_quote_errors[ts_code]
+            out.append(item_out)
             continue
 
         closes = [c for _, c in series]
@@ -574,30 +644,31 @@ def _compute_index_signals(
             if prev_c is not None and prev_c > 0 and cur_c is not None:
                 pct_chg = (cur_c - prev_c) / prev_c * 100.0
 
-        out.append(
-            {
-                "tsCode": ts_code,
-                "name": name,
-                "asOfDate": series[-1][0],
-                "close": close,
-                "ma5": ma5,
-                "ma20": ma20,
-                "ma60": ma60,
-                "ma20Prev": ma20_prev,
-                "ema10": ema10,
-                "signal": signal,
-                "positionRange": position,
-                "rules": rules,
-                "realtime": used_realtime,
-                "tradeTime": trade_time if used_realtime else None,
-                "source": "tushare.realtime_quote" if used_realtime else "db.index_daily",
-                "pctChg": pct_chg,
-                "volRatio": vol_ratio,
-                "estimatedVol": estimated_vol,
-                "totalTurnover": liquidity["total_turnover_cny"],
-                "maxIndustryInflow": liquidity["max_industry_inflow"],
-            }
-        )
+        item_out = {
+            "tsCode": ts_code,
+            "name": name,
+            "asOfDate": series[-1][0],
+            "close": close,
+            "ma5": ma5,
+            "ma20": ma20,
+            "ma60": ma60,
+            "ma20Prev": ma20_prev,
+            "ema10": ema10,
+            "signal": signal,
+            "positionRange": position,
+            "rules": rules,
+            "realtime": used_realtime,
+            "tradeTime": trade_time if used_realtime else None,
+            "source": "tushare.realtime_quote" if used_realtime else "db.index_daily",
+            "pctChg": pct_chg,
+            "volRatio": vol_ratio,
+            "estimatedVol": estimated_vol,
+            "totalTurnover": liquidity["total_turnover_cny"],
+            "maxIndustryInflow": liquidity["max_industry_inflow"],
+        }
+        if not used_realtime and ts_code in rt_quote_errors:
+            item_out["quoteError"] = rt_quote_errors[ts_code]
+        out.append(item_out)
 
     for it in HK_INDEX_SIGNALS:
         series_id = it["series_id"]
@@ -613,27 +684,28 @@ def _compute_index_signals(
         else:
             hsi_on_demand_source = None
         if not series_raw:
-            out.append(
-                {
-                    "tsCode": series_id,
-                    "name": name,
-                    "asOfDate": None,
-                    "close": None,
-                    "ma5": None,
-                    "ma20": None,
-                    "ma60": None,
-                    "ma20Prev": None,
-                    "signal": "unknown",
-                    "positionRange": "—",
-                    "rules": ["no data in macro_daily"],
-                    "realtime": False,
-                    "tradeTime": None,
-                    "source": "db.macro_daily",
-                    "pctChg": None,
-                    "volRatio": None,
-                    "estimatedVol": None,
-                }
-            )
+            item_out = {
+                "tsCode": series_id,
+                "name": name,
+                "asOfDate": None,
+                "close": None,
+                "ma5": None,
+                "ma20": None,
+                "ma60": None,
+                "ma20Prev": None,
+                "signal": "unknown",
+                "positionRange": "—",
+                "rules": ["no data in macro_daily"],
+                "realtime": False,
+                "tradeTime": None,
+                "source": "db.macro_daily",
+                "pctChg": None,
+                "volRatio": None,
+                "estimatedVol": None,
+            }
+            if series_id in rt_quote_errors:
+                item_out["quoteError"] = rt_quote_errors[series_id]
+            out.append(item_out)
             continue
 
         used_realtime = False
@@ -663,30 +735,31 @@ def _compute_index_signals(
                 p0, p1 = closes_short[-2], closes_short[-1]
                 if p0 is not None and p0 > 0 and p1 is not None:
                     pct_short = (p1 - p0) / p0 * 100.0
-            out.append(
-                {
-                    "tsCode": series_id,
-                    "name": name,
-                    "asOfDate": series[-1][0] if series else None,
-                    "close": series[-1][1] if series else None,
-                    "ma5": None,
-                    "ma20": None,
-                    "ma60": None,
-                    "ma20Prev": None,
-                    "signal": "unknown",
-                    "positionRange": "—",
-                    "rules": ["insufficient data for MA20"],
-                    "realtime": used_realtime,
-                    "tradeTime": trade_time if used_realtime else None,
-                    "source": _hsi_source_label(
-                        used_realtime=used_realtime,
-                        on_demand_src=hsi_on_demand_source,
-                    ),
-                    "pctChg": pct_short,
-                    "volRatio": None,
-                    "estimatedVol": None,
-                }
-            )
+            item_out = {
+                "tsCode": series_id,
+                "name": name,
+                "asOfDate": series[-1][0] if series else None,
+                "close": series[-1][1] if series else None,
+                "ma5": None,
+                "ma20": None,
+                "ma60": None,
+                "ma20Prev": None,
+                "signal": "unknown",
+                "positionRange": "—",
+                "rules": ["insufficient data for MA20"],
+                "realtime": used_realtime,
+                "tradeTime": trade_time if used_realtime else None,
+                "source": _hsi_source_label(
+                    used_realtime=used_realtime,
+                    on_demand_src=hsi_on_demand_source,
+                ),
+                "pctChg": pct_short,
+                "volRatio": None,
+                "estimatedVol": None,
+            }
+            if not used_realtime and series_id in rt_quote_errors:
+                item_out["quoteError"] = rt_quote_errors[series_id]
+            out.append(item_out)
             continue
 
         closes = [c for _, c in series]
@@ -753,30 +826,31 @@ def _compute_index_signals(
             if prev_c is not None and prev_c > 0 and cur_c is not None:
                 pct_chg = (cur_c - prev_c) / prev_c * 100.0
 
-        out.append(
-            {
-                "tsCode": series_id,
-                "name": name,
-                "asOfDate": series[-1][0],
-                "close": close,
-                "ma5": ma5,
-                "ma20": ma20,
-                "ma60": ma60,
-                "ma20Prev": ma20_prev,
-                "signal": signal,
-                "positionRange": position,
-                "rules": rules,
-                "realtime": used_realtime,
-                "tradeTime": trade_time if used_realtime else None,
-                "source": _hsi_source_label(
-                    used_realtime=used_realtime,
-                    on_demand_src=hsi_on_demand_source,
-                ),
-                "pctChg": pct_chg,
-                "volRatio": None,
-                "estimatedVol": None,
-            }
-        )
+        item_out = {
+            "tsCode": series_id,
+            "name": name,
+            "asOfDate": series[-1][0],
+            "close": close,
+            "ma5": ma5,
+            "ma20": ma20,
+            "ma60": ma60,
+            "ma20Prev": ma20_prev,
+            "signal": signal,
+            "positionRange": position,
+            "rules": rules,
+            "realtime": used_realtime,
+            "tradeTime": trade_time if used_realtime else None,
+            "source": _hsi_source_label(
+                used_realtime=used_realtime,
+                on_demand_src=hsi_on_demand_source,
+            ),
+            "pctChg": pct_chg,
+            "volRatio": None,
+            "estimatedVol": None,
+        }
+        if not used_realtime and series_id in rt_quote_errors:
+            item_out["quoteError"] = rt_quote_errors[series_id]
+        out.append(item_out)
     return out
 
 

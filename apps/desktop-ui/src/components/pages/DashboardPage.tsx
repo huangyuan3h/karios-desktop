@@ -693,6 +693,13 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                             <div className="grid gap-2 md:grid-cols-2">
                               {indexSignals.map((it: any) => {
                                 const signal = String(it?.signal ?? 'unknown');
+                                const source = String(it?.source ?? 'unknown');
+                                const tradeTime = String(it?.tradeTime ?? '').trim();
+                                const asOfDate = String(it?.asOfDate ?? '').trim();
+                                const realtime = it?.realtime === true;
+                                const freshness = realtime ? 'realtime' : 'EOD';
+                                const asOfDisplay = tradeTime || asOfDate || '—';
+                                const quoteError = String(it?.quoteError ?? '').trim();
                                 const signalBadge =
                                   signal === 'deep_green'
                                     ? 'border-emerald-600/40 bg-emerald-600/15 text-emerald-800'
@@ -728,6 +735,14 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                       MA20{' '}
                                       {Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—'}
                                     </div>
+                                    <div className="mt-1 font-mono text-[10px] text-[var(--k-muted)]">
+                                      asOf {asOfDisplay} • {freshness} • {source}
+                                    </div>
+                                    {quoteError ? (
+                                      <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
+                                        quote fallback: {quoteError}
+                                      </div>
+                                    ) : null}
                                   </div>
                                 );
                               })}
