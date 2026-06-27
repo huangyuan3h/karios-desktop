@@ -656,6 +656,17 @@ def _industry_flow_score_adjustment(industry: str, ctx: dict[str, Any]) -> tuple
     return delta, parts, reasons
 
 
+def _normalize_yyyy_mm_dd(value: Any) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d")
+    s = str(value).strip()
+    if len(s) == 8 and s.isdigit():
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+    return s or None
+
+
 def _resolve_inst_summaries_for_trendok(
     ts_codes: list[str],
     *,
@@ -770,7 +781,7 @@ def compute_trendok_for_symbols(
     for ts_code, summary in inst_by_code.items():
         if not summary or not summary.get("on_board"):
             continue
-        td = str(summary.get("trade_date") or "")
+        td = _normalize_yyyy_mm_dd(summary.get("trade_date"))
         if td:
             buy_seats_keys.append((ts_code, td))
     buy_seats_by_key = fetch_daily_seats_batch(buy_seats_keys) if buy_seats_keys else {}
@@ -1086,7 +1097,7 @@ def _trendok_one(
                         res["score"] = round(max(0.0, min(100.0, float(res["score"]) + effective_delta)), 3)
             buy_seats: list[dict[str, Any]] | None = None
             if inst_summary and inst_summary.get("on_board"):
-                td = str(inst_summary.get("trade_date") or "")
+                td = _normalize_yyyy_mm_dd(inst_summary.get("trade_date"))
                 ts_tuple = _symbol_to_ts_code(symbol)
                 if td and ts_tuple:
                     buy_seats = (buy_seats_by_key or {}).get((ts_tuple[2], td), [])
