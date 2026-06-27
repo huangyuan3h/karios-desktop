@@ -17,10 +17,10 @@ from data_sync_service.db.industry_fund_flow import (
 )
 from data_sync_service.service.industry_fund_flow_read import build_trendok_flow_context_from_rows
 from data_sync_service.service.trade_calendar_utils import trade_dates_upto
-from data_sync_service.db.stoploss import compute_effective_stoploss
+from data_sync_service.db.stoploss import get_stoploss_batch, upsert_stoploss_batch
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_eastmoney_industry import lookup_by_ts_codes as lookup_em_industries
-from data_sync_service.db.top_inst import fetch_daily_seats, fetch_summaries_for_codes
+from data_sync_service.db.top_inst import fetch_daily_seats_batch, fetch_summaries_for_codes
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 from data_sync_service.service.top_inst_flow import build_inst_flow_payload
@@ -766,6 +766,32 @@ def compute_trendok_for_symbols(
                 index_ema20_down = idx_ema[-1] < idx_ema[-2]
     except Exception:
         pass
+    buy_seats_keys = []
+    for ts_code, summary in inst_by_code.items():
+        if not summary or not summary.get("on_board"):
+            continue
+        td = str(summary.get("trade_date") or "")
+        if td:
+            buy_seats_keys.append((ts_code, td))
+    buy_seats_by_key = fetch_daily_seats_batch(buy_seats_keys) if buy_seats_keys else {}
+
+    stored_stoploss_by_code = get_stoploss_batch(ts_codes)
+    stoploss_upserts_by_code: dict[str, dict[str, Any]] = {}
+
+    def resolve_stoploss(ts_code: str, newly_computed: float, as_of_date: str | None) -> tuple[float, bool]:
+        stored = stored_stoploss_by_code.get(ts_code)
+        stored_price = stored.get("stop_loss_price") if stored else None
+        if stored_price is not None and float(stored_price) >= newly_computed:
+            return float(stored_price), True
+        upsert_row = {
+            "ts_code": ts_code,
+            "stop_loss_price": newly_computed,
+            "as_of_date": as_of_date,
+        }
+        stoploss_upserts_by_code[ts_code] = upsert_row
+        stored_stoploss_by_code[ts_code] = upsert_row
+        return newly_computed, False
+
     for sym in syms:
         market_ticker_ts = parsed.get(sym)
         if not market_ticker_ts:
@@ -788,13 +814,41 @@ def compute_trendok_for_symbols(
                 flow_ctx=flow_ctx,
                 market_regime=market_regime,
                 inst_summary=inst_by_code.get(ts_code),
+                buy_seats_by_key=buy_seats_by_key,
+                resolve_stoploss=resolve_stoploss,
                 index_20d_ret=index_20d_ret,
                 index_ema20_down=index_ema20_down,
                 rt_vwap=rt_vwap_by_code.get(ts_code),
             )
         )
+    if stoploss_upserts_by_code:
+        upsert_stoploss_batch(list(stoploss_upserts_by_code.values()))
     _trendok_cache[cache_key] = (copy.deepcopy(out), time.time() + TRENDOK_CACHE_TTL_SECONDS)
     return out
+
+
+def _resolve_effective_stoploss(
+    ts_code: str,
+    newly_computed: float,
+    as_of_date: str | None,
+    resolver: Any | None,
+) -> tuple[float, bool]:
+    if resolver is not None:
+        return resolver(ts_code, newly_computed, as_of_date)
+    stored = get_stoploss_batch([ts_code]).get(ts_code)
+    stored_price = stored.get("stop_loss_price") if stored else None
+    if stored_price is not None and float(stored_price) >= newly_computed:
+        return float(stored_price), True
+    upsert_stoploss_batch(
+        [
+            {
+                "ts_code": ts_code,
+                "stop_loss_price": newly_computed,
+                "as_of_date": as_of_date,
+            }
+        ]
+    )
+    return newly_computed, False
 
 
 def _trendok_one(
@@ -808,6 +862,8 @@ def _trendok_one(
     flow_ctx: dict[str, Any] | None = None,
     market_regime: str | None = None,
     inst_summary: dict[str, Any] | None = None,
+    buy_seats_by_key: dict[tuple[str, str], list[dict[str, Any]]] | None = None,
+    resolve_stoploss: Any | None = None,
     index_20d_ret: float | None = None,
     index_ema20_down: bool = False,
     rt_vwap: float | None = None,
@@ -1033,7 +1089,7 @@ def _trendok_one(
                 td = str(inst_summary.get("trade_date") or "")
                 ts_tuple = _symbol_to_ts_code(symbol)
                 if td and ts_tuple:
-                    buy_seats = fetch_daily_seats(ts_tuple[2], td)
+                    buy_seats = (buy_seats_by_key or {}).get((ts_tuple[2], td), [])
             inst_flow = build_inst_flow_payload(inst_summary, buy_seats=buy_seats)
             res["instFlow"] = inst_flow
             if inst_flow.get("synced") is False:
@@ -1169,8 +1225,8 @@ def _trendok_one(
                 computed_stop = round(current, 6)
                 ts_code = _symbol_to_ts_code(symbol)
                 if ts_code:
-                    effective_stop, used_stored = compute_effective_stoploss(
-                        ts_code[2], computed_stop, res.get("asOfDate")
+                    effective_stop, used_stored = _resolve_effective_stoploss(
+                        ts_code[2], computed_stop, res.get("asOfDate"), resolve_stoploss
                     )
                     res["stopLossPrice"] = effective_stop
                     stop_parts["final_stop_loss"] = effective_stop
@@ -1235,8 +1291,8 @@ def _trendok_one(
                     stop_parts["computed_stop_loss"] = computed_stop
                     ts_code_tuple = _symbol_to_ts_code(symbol)
                     if ts_code_tuple:
-                        effective_stop, used_stored = compute_effective_stoploss(
-                            ts_code_tuple[2], computed_stop, res.get("asOfDate")
+                        effective_stop, used_stored = _resolve_effective_stoploss(
+                            ts_code_tuple[2], computed_stop, res.get("asOfDate"), resolve_stoploss
                         )
                         stop_parts["final_stop_loss"] = effective_stop
                         stop_parts["used_stored_higher"] = used_stored

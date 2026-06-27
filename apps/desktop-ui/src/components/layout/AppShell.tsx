@@ -1,26 +1,21 @@
 'use client';
 
 import * as React from 'react';
+import dynamic from 'next/dynamic';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Bot } from 'lucide-react';
 
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
-import { BrokerPage } from '@/components/pages/BrokerPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
 import { JournalReadPage } from '@/components/pages/JournalReadPage';
-import { JournalTradeReviewPage } from '@/components/pages/JournalTradeReviewPage';
-import { JournalWritePage } from '@/components/pages/JournalWritePage';
 import { MarketPage } from '@/components/pages/MarketPage';
 import { NewsPage } from '@/components/pages/NewsPage';
 import { SchedulerPage } from '@/components/pages/SchedulerPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
-import { StockPage } from '@/components/pages/StockPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
-import { BacktestPage } from '@/components/pages/BacktestPage';
-import { SimTradePage } from '@/components/pages/SimTradePage';
 import { IndexPage } from '@/components/pages/IndexPage';
 import { AlphaIncubatorPage } from '@/components/pages/AlphaIncubatorPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
@@ -30,6 +25,37 @@ import { useChatStore } from '@/lib/chat/store';
 import { createQueryClient } from '@/lib/query-client';
 import { ensureWatchlistHydrated } from '@/lib/watchlist-storage';
 import { cn } from '@/lib/utils';
+
+const LazyPageFallback = () => (
+  <div className="flex h-full items-center justify-center p-6 text-sm text-[var(--k-muted)]">
+    Loading page…
+  </div>
+);
+
+const BrokerPage = dynamic(
+  () => import('@/components/pages/BrokerPage').then((mod) => mod.BrokerPage),
+  { loading: LazyPageFallback },
+);
+const JournalTradeReviewPage = dynamic(
+  () => import('@/components/pages/JournalTradeReviewPage').then((mod) => mod.JournalTradeReviewPage),
+  { loading: LazyPageFallback },
+);
+const JournalWritePage = dynamic(
+  () => import('@/components/pages/JournalWritePage').then((mod) => mod.JournalWritePage),
+  { loading: LazyPageFallback },
+);
+const StockPage = dynamic(
+  () => import('@/components/pages/StockPage').then((mod) => mod.StockPage),
+  { loading: LazyPageFallback },
+);
+const BacktestPage = dynamic(
+  () => import('@/components/pages/BacktestPage').then((mod) => mod.BacktestPage),
+  { loading: LazyPageFallback },
+);
+const SimTradePage = dynamic(
+  () => import('@/components/pages/SimTradePage').then((mod) => mod.SimTradePage),
+  { loading: LazyPageFallback },
+);
 
 const PAGE_TITLES: Record<string, string> = {
   dashboard: 'Dashboard',

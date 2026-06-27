@@ -228,25 +228,36 @@ def fetch_summaries_for_codes(
     return out
 
 
-def fetch_daily_seats(ts_code: str, trade_date: str) -> list[dict[str, Any]]:
+def fetch_daily_seats_batch(keys: list[tuple[str, str]]) -> dict[tuple[str, str], list[dict[str, Any]]]:
     ensure_table()
-    td = _date_str(trade_date)
-    if not td:
-        return []
+    normalized: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for ts_code_raw, trade_date_raw in keys:
+        ts_code = str(ts_code_raw or "").strip()
+        td = _date_str(trade_date_raw)
+        if not ts_code or not td:
+            continue
+        key = (ts_code, td)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(key)
+    if not normalized:
+        return {}
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 f"""
                 SELECT trade_date, ts_code, exalter, buy, sell, net_buy, side, reason
                 FROM {DAILY_TABLE}
-                WHERE ts_code = %s AND trade_date = %s
-                ORDER BY net_buy DESC NULLS LAST
+                WHERE (ts_code, trade_date) IN (SELECT * FROM unnest(%s::text[], %s::date[]))
+                ORDER BY ts_code, trade_date, net_buy DESC NULLS LAST
                 """,
-                (ts_code, td),
+                ([ts_code for ts_code, _ in normalized], [td for _, td in normalized]),
             )
             rows = cur.fetchall()
             columns = [d.name for d in cur.description]
-    out: list[dict[str, Any]] = []
+    out: dict[tuple[str, str], list[dict[str, Any]]] = {key: [] for key in normalized}
     for row in rows:
         obj: dict[str, Any] = {}
         for col, val in zip(columns, row):
@@ -259,5 +270,15 @@ def fetch_daily_seats(ts_code: str, trade_date: str) -> list[dict[str, Any]]:
                     obj[col] = val
             else:
                 obj[col] = val
-        out.append(obj)
+        ts_code = str(obj.get("ts_code") or "")
+        td = str(obj.get("trade_date") or "")
+        if ts_code and td:
+            out.setdefault((ts_code, td), []).append(obj)
     return out
+
+
+def fetch_daily_seats(ts_code: str, trade_date: str) -> list[dict[str, Any]]:
+    td = _date_str(trade_date)
+    if not td:
+        return []
+    return fetch_daily_seats_batch([(ts_code, td)]).get((ts_code, td), [])

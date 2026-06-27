@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any
 
 from data_sync_service.db import get_connection
+from data_sync_service.db._ensure_guard import ensure_once
 
 TABLE_NAME = "stock_stoploss"
 
@@ -27,12 +28,16 @@ CREATE INDEX IF NOT EXISTS idx_stock_stoploss_updated_at ON {TABLE_NAME} (update
 """
 
 
-def ensure_table() -> None:
+def _ensure_table_impl() -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(CREATE_SQL)
             cur.execute(CREATE_INDEX_SQL)
         conn.commit()
+
+
+def ensure_table() -> None:
+    ensure_once(TABLE_NAME, _ensure_table_impl)
 
 
 def get_stoploss(ts_code: str) -> dict[str, Any] | None:
@@ -97,6 +102,38 @@ def upsert_stoploss(ts_code: str, stop_loss_price: float, as_of_date: str | None
                 (ts_code, stop_loss_price, now, as_of_date),
             )
         conn.commit()
+
+
+def upsert_stoploss_batch(rows: list[dict[str, Any]]) -> int:
+    """Upsert multiple stoploss rows. Values must already respect monotonic semantics."""
+    if not rows:
+        return 0
+    ensure_table()
+    now = datetime.utcnow()
+    values = []
+    for row in rows:
+        ts_code = str(row.get("ts_code") or "").strip()
+        stop_loss_price = row.get("stop_loss_price")
+        if not ts_code or stop_loss_price is None:
+            continue
+        values.append((ts_code, float(stop_loss_price), now, row.get("as_of_date")))
+    if not values:
+        return 0
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                f"""
+                INSERT INTO {TABLE_NAME} (ts_code, stop_loss_price, updated_at, as_of_date)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (ts_code) DO UPDATE SET
+                    stop_loss_price = EXCLUDED.stop_loss_price,
+                    updated_at = EXCLUDED.updated_at,
+                    as_of_date = EXCLUDED.as_of_date
+                """,
+                values,
+            )
+        conn.commit()
+    return len(values)
 
 
 def compute_effective_stoploss(

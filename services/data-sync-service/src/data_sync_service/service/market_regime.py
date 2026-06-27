@@ -34,14 +34,25 @@ HK_INDEX_SIGNALS = [
 HISTORY_DAYS = 80
 REGIME_CACHE_TTL_SECONDS = 600
 INDEX_SIGNALS_CACHE_TTL_SECONDS = 60
+BREADTH_CACHE_TTL_SECONDS = 60
+HISTORICAL_BREADTH_CACHE_TTL_SECONDS = 3600
 
 _regime_cache: dict[tuple[str, bool], tuple[dict[str, Any], float]] = {}
 _index_signals_cache: dict[tuple[str, bool], tuple[list[dict[str, Any]], float]] = {}
+_breadth_cache: dict[tuple[str, str], tuple[dict[str, Any], float]] = {}
+_liquidity_cache: dict[tuple[str, str], tuple[dict[str, Any], float]] = {}
 
 
 def clear_index_signals_cache() -> None:
     """Clear in-process index signals TTL cache (for tests)."""
     _index_signals_cache.clear()
+    clear_market_breadth_cache()
+
+
+def clear_market_breadth_cache() -> None:
+    """Clear all-market breadth and liquidity TTL caches (for tests and force refresh)."""
+    _breadth_cache.clear()
+    _liquidity_cache.clear()
 
 
 def clear_market_regime_cache() -> None:
@@ -213,7 +224,28 @@ def _realtime_pct_or_price(item: dict[str, Any]) -> tuple[float | None, float | 
     return None, price
 
 
+def _market_data_cache_ttl(as_of_date: str | None) -> int:
+    return HISTORICAL_BREADTH_CACHE_TTL_SECONDS if as_of_date else BREADTH_CACHE_TTL_SECONDS
+
+
+def _market_data_cache_key(kind: str, as_of_date: str | None) -> tuple[str, str]:
+    return (kind, str(as_of_date or "").strip())
+
+
 def _get_breadth_above_ma20_ratio(*, as_of_date: str | None = None) -> dict[str, Any]:
+    key = _market_data_cache_key("ma20", as_of_date)
+    now = time.time()
+    cached = _breadth_cache.get(key)
+    if cached is not None:
+        result, expires_at = cached
+        if now < expires_at:
+            return dict(result)
+    result = _compute_breadth_above_ma20_ratio(as_of_date=as_of_date)
+    _breadth_cache[key] = (dict(result), now + _market_data_cache_ttl(as_of_date))
+    return result
+
+
+def _compute_breadth_above_ma20_ratio(*, as_of_date: str | None = None) -> dict[str, Any]:
     """
     Compute realtime breadth: ratio of CN A-shares with price above MA20.
     Returns {ratio, total, above_count}; caches per-request via single call.
@@ -277,6 +309,21 @@ def _get_breadth_above_ma20_ratio(*, as_of_date: str | None = None) -> dict[str,
 
 
 def _get_market_liquidity_and_mainline(
+    *, as_of_date: str | None = None, breadth_ratio: float
+) -> dict[str, Any]:
+    key = _market_data_cache_key("liquidity", as_of_date)
+    now = time.time()
+    cached = _liquidity_cache.get(key)
+    if cached is not None:
+        result, expires_at = cached
+        if now < expires_at:
+            return dict(result)
+    result = _compute_market_liquidity_and_mainline(as_of_date=as_of_date, breadth_ratio=breadth_ratio)
+    _liquidity_cache[key] = (dict(result), now + _market_data_cache_ttl(as_of_date))
+    return result
+
+
+def _compute_market_liquidity_and_mainline(
     *, as_of_date: str | None = None, breadth_ratio: float
 ) -> dict[str, Any]:
     """

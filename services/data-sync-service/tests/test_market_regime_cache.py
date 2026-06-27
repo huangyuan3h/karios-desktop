@@ -6,6 +6,7 @@ from data_sync_service.service.market_regime import (  # type: ignore[import-not
     INDEX_SIGNALS_CACHE_TTL_SECONDS,
     REGIME_CACHE_TTL_SECONDS,
     clear_index_signals_cache,
+    clear_market_breadth_cache,
     clear_market_regime_cache,
     get_index_signals,
     get_market_regime,
@@ -124,4 +125,69 @@ def test_clear_index_signals_cache() -> None:
         get_index_signals(include_breadth=False)
         clear_index_signals_cache()
         get_index_signals(include_breadth=False)
+    assert compute.call_count == 2
+
+
+def test_breadth_ma20_ttl_cache_hits_on_second_call() -> None:
+    import data_sync_service.service.market_regime as market_regime  # type: ignore[import-not-found]
+
+    clear_market_breadth_cache()
+    with patch(
+        "data_sync_service.service.market_regime._compute_breadth_above_ma20_ratio",
+        return_value={"ratio": 0.5, "total": 2, "above_count": 1},
+    ) as compute:
+        first = market_regime._get_breadth_above_ma20_ratio(as_of_date="2026-06-18")
+        second = market_regime._get_breadth_above_ma20_ratio(as_of_date="2026-06-18")
+
+    assert first == second
+    assert compute.call_count == 1
+
+
+def test_liquidity_ttl_cache_hits_on_second_call() -> None:
+    import data_sync_service.service.market_regime as market_regime  # type: ignore[import-not-found]
+
+    clear_market_breadth_cache()
+    with patch(
+        "data_sync_service.service.market_regime._compute_market_liquidity_and_mainline",
+        return_value={
+            "total_turnover_cny": 1.6e12,
+            "max_industry_inflow": 6e9,
+            "turnover_above_1_5T": True,
+            "mainline_inflow_above_5B": True,
+        },
+    ) as compute:
+        first = market_regime._get_market_liquidity_and_mainline(as_of_date="2026-06-18", breadth_ratio=0.6)
+        second = market_regime._get_market_liquidity_and_mainline(as_of_date="2026-06-18", breadth_ratio=0.6)
+
+    assert first == second
+    assert compute.call_count == 1
+
+
+def test_clear_market_breadth_cache_forces_recompute() -> None:
+    import data_sync_service.service.market_regime as market_regime  # type: ignore[import-not-found]
+
+    clear_market_breadth_cache()
+    with patch(
+        "data_sync_service.service.market_regime._compute_breadth_above_ma20_ratio",
+        return_value={"ratio": 0.5, "total": 2, "above_count": 1},
+    ) as compute:
+        market_regime._get_breadth_above_ma20_ratio(as_of_date="2026-06-18")
+        clear_market_breadth_cache()
+        market_regime._get_breadth_above_ma20_ratio(as_of_date="2026-06-18")
+
+    assert compute.call_count == 2
+
+
+def test_clear_index_signals_cache_clears_breadth_cache() -> None:
+    import data_sync_service.service.market_regime as market_regime  # type: ignore[import-not-found]
+
+    clear_market_breadth_cache()
+    with patch(
+        "data_sync_service.service.market_regime._compute_breadth_above_ma20_ratio",
+        return_value={"ratio": 0.5, "total": 2, "above_count": 1},
+    ) as compute:
+        market_regime._get_breadth_above_ma20_ratio(as_of_date="2026-06-18")
+        clear_index_signals_cache()
+        market_regime._get_breadth_above_ma20_ratio(as_of_date="2026-06-18")
+
     assert compute.call_count == 2
