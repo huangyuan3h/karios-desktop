@@ -118,39 +118,38 @@ def upsert_from_dataframe(
     """
     ensure_table()
     rows: list[tuple[Any, ...]] = []
-    for _, row in df.iterrows():
-        td = _date_str(row.get("trade_date"))
+    for row in df.itertuples(index=False):
+        td = _date_str(getattr(row, "trade_date", None))
         if not td:
             continue
-        pct = _numeric(row.get("pct_chg"))
+        pct = _numeric(getattr(row, "pct_chg", None))
         if pct is None:
-            pct = _numeric(row.get("pct_change"))
-        close_v = _numeric(row.get("close"))
+            pct = _numeric(getattr(row, "pct_change", None))
+        close_v = _numeric(getattr(row, "close", None))
         if close_v is None:
-            close_v = _numeric(row.get("settle"))
+            close_v = _numeric(getattr(row, "settle", None))
         rows.append(
             (
                 series_id,
                 td,
                 source,
                 underlying_ts_code,
-                _numeric(row.get("open")),
-                _numeric(row.get("high")),
-                _numeric(row.get("low")),
+                _numeric(getattr(row, "open", None)),
+                _numeric(getattr(row, "high", None)),
+                _numeric(getattr(row, "low", None)),
                 close_v,
-                _numeric(row.get("pre_close")),
-                _numeric(row.get("change")),
+                _numeric(getattr(row, "pre_close", None)),
+                _numeric(getattr(row, "change", None)),
                 pct,
-                _numeric(row.get("vol")),
-                _numeric(row.get("amount")),
+                _numeric(getattr(row, "vol", None)),
+                _numeric(getattr(row, "amount", None)),
             )
         )
     if not rows:
         return 0
     with get_connection() as conn:
         with conn.cursor() as cur:
-            for r in rows:
-                cur.execute(UPSERT_SQL, r)
+            cur.executemany(UPSERT_SQL, rows)
         conn.commit()
     return len(rows)
 

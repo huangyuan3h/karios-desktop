@@ -8,20 +8,25 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from cachetools import TTLCache
+
 from data_sync_service.db import get_connection
 from data_sync_service.db.daily import ensure_table as ensure_daily
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_basic import fetch_ts_codes
 from data_sync_service.db.market_sentiment import get_latest_date, list_days, upsert_daily_rows
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
-from data_sync_service.service.realtime_quote import fetch_realtime_quotes
+from data_sync_service.service.realtime_quote import fetch_realtime_quotes, fetch_realtime_quotes_batched
 from data_sync_service.service.trade_calendar_utils import is_cn_trading_day, shanghai_today
 
 
 BREADTH_DECLINE_RED_THRESHOLD = 3000
 CN_INDEX_TRAFFIC_LIGHT_NAMES = frozenset({"上证指数", "创业板指"})
 INTRADAY_BREADTH_CACHE_TTL_SECONDS = 600
-_INTRADAY_BREADTH_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
+_INTRADAY_BREADTH_CACHE: TTLCache[str, dict[str, Any]] = TTLCache(
+    maxsize=64,
+    ttl=INTRADAY_BREADTH_CACHE_TTL_SECONDS,
+)
 
 
 def now_iso() -> str:
@@ -439,10 +444,9 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     d = as_of.strftime("%Y-%m-%d")
-    now = time.time()
     cached = _INTRADAY_BREADTH_CACHE.get(d)
-    if cached and cached[1] > now:
-        return cached[0]
+    if cached is not None:
+        return cached
 
     ensure_stock_basic()
     ts_codes_all = fetch_ts_codes()
@@ -460,7 +464,7 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
             "total_volume": 0.0,
             "raw": {"source": "tushare.realtime_quote", "requested": 0, "matched": 0},
         }
-        _INTRADAY_BREADTH_CACHE[d] = (empty, now + INTRADAY_BREADTH_CACHE_TTL_SECONDS)
+        _INTRADAY_BREADTH_CACHE[d] = empty
         return empty
 
     parts = [ts_codes[i : i + 50] for i in range(0, len(ts_codes), 50)]
@@ -536,7 +540,7 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
         "total_volume": total_volume,
         "raw": raw,
     }
-    _INTRADAY_BREADTH_CACHE[d] = (result, now + INTRADAY_BREADTH_CACHE_TTL_SECONDS)
+    _INTRADAY_BREADTH_CACHE[d] = result
     return result
 
 
@@ -979,17 +983,10 @@ def _avg_pct_chg_from_realtime(ts_codes: list[str]) -> tuple[float, int]:
     if not ts_codes:
         return 0.0, 0
     vals: list[float] = []
-    # Keep batch size conservative.
-    for i in range(0, len(ts_codes), 50):
-        part = ts_codes[i : i + 50]
-        r = fetch_realtime_quotes(part)
-        if not isinstance(r, dict) or not bool(r.get("ok")):
-            continue
-        for it in r.get("items", []) or []:
-            v = _realtime_pct_chg(it)
-            if v is not None:
-                vals.append(v)
-        time.sleep(0.08)
+    for it in fetch_realtime_quotes_batched(ts_codes):
+        v = _realtime_pct_chg(it)
+        if v is not None:
+            vals.append(v)
     return (float(sum(vals) / len(vals)) if vals else 0.0), len(vals)
 
 

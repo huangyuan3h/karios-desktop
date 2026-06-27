@@ -63,20 +63,21 @@ def upsert_from_dataframe(df: pd.DataFrame) -> int:
     """Upsert rows from tushare stock_basic DataFrame. Returns number of rows upserted."""
     ensure_table()
     rows = []
-    for _, row in df.iterrows():
+    for row in df.itertuples(index=False):
         rows.append((
-            _scalar(row.get("ts_code")),
-            _scalar(row.get("symbol")),
-            _scalar(row.get("name")),
-            _scalar(row.get("industry")),
-            _scalar(row.get("market")),
-            _date(row.get("list_date")),
-            _date(row.get("delist_date")),
+            _scalar(getattr(row, "ts_code", None)),
+            _scalar(getattr(row, "symbol", None)),
+            _scalar(getattr(row, "name", None)),
+            _scalar(getattr(row, "industry", None)),
+            _scalar(getattr(row, "market", None)),
+            _date(getattr(row, "list_date", None)),
+            _date(getattr(row, "delist_date", None)),
         ))
+    if not rows:
+        return 0
     with get_connection() as conn:
         with conn.cursor() as cur:
-            for r in rows:
-                cur.execute(UPSERT_SQL, r)
+            cur.executemany(UPSERT_SQL, rows)
         conn.commit()
     return len(rows)
 

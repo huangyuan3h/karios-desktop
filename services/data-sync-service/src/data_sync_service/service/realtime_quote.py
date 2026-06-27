@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import pandas as pd
@@ -99,4 +100,30 @@ def fetch_realtime_quotes(ts_codes: list[str]) -> dict[str, Any]:
     # Filter out rows without ts_code
     out2 = [x for x in out if x.get("ts_code")]
     return {"ok": True, "items": out2}
+
+
+def fetch_realtime_quotes_batched(
+    ts_codes: list[str],
+    *,
+    batch_size: int = 50,
+    max_workers: int = 6,
+) -> list[dict[str, Any]]:
+    """
+    Fetch realtime quotes in parallel batches; returns merged items list.
+
+    Stateless tushare calls are safe to run concurrently; max_workers caps
+    inflight requests (similar rate limit intent as serial sleep between batches).
+    """
+    codes = [c.strip() for c in ts_codes if c and c.strip()]
+    if not codes:
+        return []
+    parts = [codes[i : i + batch_size] for i in range(0, len(codes), batch_size)]
+    items: list[dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = [pool.submit(fetch_realtime_quotes, part) for part in parts if part]
+        for future in as_completed(futures):
+            resp = future.result()
+            if isinstance(resp, dict) and resp.get("ok"):
+                items.extend(resp.get("items") or [])
+    return items
 

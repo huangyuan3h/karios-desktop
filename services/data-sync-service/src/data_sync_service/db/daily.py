@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     adj_factor NUMERIC,
     PRIMARY KEY (ts_code, trade_date)
 );
+CREATE INDEX IF NOT EXISTS idx_daily_trade_date ON {TABLE_NAME} (trade_date DESC);
 """
 
 UPSERT_SQL = f"""
@@ -137,24 +138,25 @@ def upsert_from_dataframe(df: pd.DataFrame) -> int:
     """Upsert daily bars from tushare DataFrame. Returns number of rows upserted."""
     ensure_table()
     rows = []
-    for _, row in df.iterrows():
+    for row in df.itertuples(index=False):
         rows.append((
-            _scalar(row.get("ts_code")),
-            _date_str(row.get("trade_date")),
-            _numeric(row.get("open")),
-            _numeric(row.get("high")),
-            _numeric(row.get("low")),
-            _numeric(row.get("close")),
-            _numeric(row.get("pre_close")),
-            _numeric(row.get("change")),
-            _numeric(row.get("pct_chg")),
-            _numeric(row.get("vol")),
-            _numeric(row.get("amount")),
+            _scalar(getattr(row, "ts_code", None)),
+            _date_str(getattr(row, "trade_date", None)),
+            _numeric(getattr(row, "open", None)),
+            _numeric(getattr(row, "high", None)),
+            _numeric(getattr(row, "low", None)),
+            _numeric(getattr(row, "close", None)),
+            _numeric(getattr(row, "pre_close", None)),
+            _numeric(getattr(row, "change", None)),
+            _numeric(getattr(row, "pct_chg", None)),
+            _numeric(getattr(row, "vol", None)),
+            _numeric(getattr(row, "amount", None)),
         ))
+    if not rows:
+        return 0
     with get_connection() as conn:
         with conn.cursor() as cur:
-            for r in rows:
-                cur.execute(UPSERT_SQL, r)
+            cur.executemany(UPSERT_SQL, rows)
         conn.commit()
     return len(rows)
 
@@ -389,10 +391,10 @@ def update_adj_factor_from_dataframe(df: pd.DataFrame) -> int:
     """
     ensure_table()
     rows = []
-    for _, row in df.iterrows():
-        ts_code = _scalar(row.get("ts_code"))
-        trade_date = _date_str(row.get("trade_date"))
-        adj_factor = _numeric(row.get("adj_factor"))
+    for row in df.itertuples(index=False):
+        ts_code = _scalar(getattr(row, "ts_code", None))
+        trade_date = _date_str(getattr(row, "trade_date", None))
+        adj_factor = _numeric(getattr(row, "adj_factor", None))
         if not ts_code or not trade_date:
             continue
         rows.append((adj_factor, ts_code, trade_date))

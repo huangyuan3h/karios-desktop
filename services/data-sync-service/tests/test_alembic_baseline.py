@@ -8,7 +8,7 @@ import pytest
 from data_sync_service.db import check_db, get_connection  # type: ignore[import-not-found]
 from data_sync_service.db.schema_baseline import BASELINE_REVISION, baseline_ddl_statements
 
-HEAD_REVISION = "0007_industry_fund_flow_taxonomy"
+HEAD_REVISION = "0008_daily_trade_date_index"
 
 
 def _postgres_available() -> bool:
@@ -37,6 +37,38 @@ def test_baseline_ddl_includes_industry_fund_flow_taxonomy_fields() -> None:
     assert "taxonomy" in ddl
     assert "industry_level" in ddl
     assert "idx_cn_industry_fund_flow_taxonomy_level_date" in ddl
+
+
+def test_baseline_ddl_includes_daily_trade_date_indexes() -> None:
+    ddl = "\n".join(baseline_ddl_statements()).lower()
+    assert "idx_daily_trade_date" in ddl
+    assert "idx_index_daily_trade_date" in ddl
+
+
+@pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
+def test_daily_trade_date_indexes_exist() -> None:
+    from alembic import command
+    from alembic.config import Config
+
+    service_root = Path(__file__).resolve().parents[1]
+    cfg = Config(str(service_root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(service_root / "alembic"))
+    cfg.set_main_option("prepend_sys_path", str(service_root / "src"))
+    cfg.set_main_option("path_separator", "os")
+    command.upgrade(cfg, "head")
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND indexname IN ('idx_daily_trade_date', 'idx_index_daily_trade_date')
+                """
+            )
+            names = {str(r[0]) for r in cur.fetchall()}
+    assert "idx_daily_trade_date" in names
+    assert "idx_index_daily_trade_date" in names
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")

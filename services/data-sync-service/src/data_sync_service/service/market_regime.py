@@ -6,6 +6,8 @@ from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from cachetools import TTLCache
+
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.db.index_daily import fetch_last_closes_vol_batch
 from data_sync_service.db.industry_fund_flow import get_rows_by_date
@@ -20,7 +22,7 @@ from data_sync_service.service.macro_snapshot_on_demand import (
     _is_data_stale,
     fetch_hsi_on_demand,
 )
-from data_sync_service.service.realtime_quote import fetch_realtime_quotes
+from data_sync_service.service.realtime_quote import fetch_realtime_quotes, fetch_realtime_quotes_batched
 
 INDEX_SIGNALS = [
     {"ts_code": "000001.SH", "name": "上证指数"},
@@ -37,10 +39,12 @@ INDEX_SIGNALS_CACHE_TTL_SECONDS = 60
 BREADTH_CACHE_TTL_SECONDS = 60
 HISTORICAL_BREADTH_CACHE_TTL_SECONDS = 3600
 
-_regime_cache: dict[tuple[str, bool], tuple[dict[str, Any], float]] = {}
-_index_signals_cache: dict[tuple[str, bool], tuple[list[dict[str, Any]], float]] = {}
-_breadth_cache: dict[tuple[str, str], tuple[dict[str, Any], float]] = {}
-_liquidity_cache: dict[tuple[str, str], tuple[dict[str, Any], float]] = {}
+_regime_cache: TTLCache = TTLCache(maxsize=32, ttl=REGIME_CACHE_TTL_SECONDS)
+_index_signals_cache: TTLCache = TTLCache(maxsize=32, ttl=INDEX_SIGNALS_CACHE_TTL_SECONDS)
+_breadth_cache_live: TTLCache = TTLCache(maxsize=32, ttl=BREADTH_CACHE_TTL_SECONDS)
+_breadth_cache_hist: TTLCache = TTLCache(maxsize=32, ttl=HISTORICAL_BREADTH_CACHE_TTL_SECONDS)
+_liquidity_cache_live: TTLCache = TTLCache(maxsize=32, ttl=BREADTH_CACHE_TTL_SECONDS)
+_liquidity_cache_hist: TTLCache = TTLCache(maxsize=32, ttl=HISTORICAL_BREADTH_CACHE_TTL_SECONDS)
 
 
 def clear_index_signals_cache() -> None:
@@ -51,8 +55,10 @@ def clear_index_signals_cache() -> None:
 
 def clear_market_breadth_cache() -> None:
     """Clear all-market breadth and liquidity TTL caches (for tests and force refresh)."""
-    _breadth_cache.clear()
-    _liquidity_cache.clear()
+    _breadth_cache_live.clear()
+    _breadth_cache_hist.clear()
+    _liquidity_cache_live.clear()
+    _liquidity_cache_hist.clear()
 
 
 def clear_market_regime_cache() -> None:
@@ -224,24 +230,26 @@ def _realtime_pct_or_price(item: dict[str, Any]) -> tuple[float | None, float | 
     return None, price
 
 
-def _market_data_cache_ttl(as_of_date: str | None) -> int:
-    return HISTORICAL_BREADTH_CACHE_TTL_SECONDS if as_of_date else BREADTH_CACHE_TTL_SECONDS
-
-
 def _market_data_cache_key(kind: str, as_of_date: str | None) -> tuple[str, str]:
     return (kind, str(as_of_date or "").strip())
 
 
+def _breadth_cache_for(as_of_date: str | None) -> TTLCache:
+    return _breadth_cache_hist if as_of_date else _breadth_cache_live
+
+
+def _liquidity_cache_for(as_of_date: str | None) -> TTLCache:
+    return _liquidity_cache_hist if as_of_date else _liquidity_cache_live
+
+
 def _get_breadth_above_ma20_ratio(*, as_of_date: str | None = None) -> dict[str, Any]:
     key = _market_data_cache_key("ma20", as_of_date)
-    now = time.time()
-    cached = _breadth_cache.get(key)
+    cache = _breadth_cache_for(as_of_date)
+    cached = cache.get(key)
     if cached is not None:
-        result, expires_at = cached
-        if now < expires_at:
-            return dict(result)
+        return dict(cached)
     result = _compute_breadth_above_ma20_ratio(as_of_date=as_of_date)
-    _breadth_cache[key] = (dict(result), now + _market_data_cache_ttl(as_of_date))
+    cache[key] = dict(result)
     return result
 
 
@@ -279,20 +287,14 @@ def _compute_breadth_above_ma20_ratio(*, as_of_date: str | None = None) -> dict[
     total = 0
     rt_price: dict[str, float] = {}
     if _is_shanghai_sync_window() and not as_of_date:
-        for i in range(0, len(ts_codes), 50):
-            part = [c for c in ts_codes[i : i + 50] if c in ma20_by_code]
-            if not part:
+        eligible = [c for c in ts_codes if c in ma20_by_code]
+        for it in fetch_realtime_quotes_batched(eligible):
+            code = str(it.get("ts_code") or "").strip()
+            if not code:
                 continue
-            resp = fetch_realtime_quotes(part)
-            if isinstance(resp, dict) and bool(resp.get("ok")):
-                for it in resp.get("items", []) or []:
-                    code = str(it.get("ts_code") or "").strip()
-                    if not code:
-                        continue
-                    _, price = _realtime_pct_or_price(it)
-                    if price is not None:
-                        rt_price[code] = price
-            time.sleep(0.08)
+            _, price = _realtime_pct_or_price(it)
+            if price is not None:
+                rt_price[code] = price
 
     for code, ma20 in ma20_by_code.items():
         price = rt_price.get(code) if rt_price else None
@@ -312,14 +314,12 @@ def _get_market_liquidity_and_mainline(
     *, as_of_date: str | None = None, breadth_ratio: float
 ) -> dict[str, Any]:
     key = _market_data_cache_key("liquidity", as_of_date)
-    now = time.time()
-    cached = _liquidity_cache.get(key)
+    cache = _liquidity_cache_for(as_of_date)
+    cached = cache.get(key)
     if cached is not None:
-        result, expires_at = cached
-        if now < expires_at:
-            return dict(result)
+        return dict(cached)
     result = _compute_market_liquidity_and_mainline(as_of_date=as_of_date, breadth_ratio=breadth_ratio)
-    _liquidity_cache[key] = (dict(result), now + _market_data_cache_ttl(as_of_date))
+    cache[key] = dict(result)
     return result
 
 
@@ -471,15 +471,12 @@ def get_index_signals(
     (as_of_date, include_breadth).
     """
     key = (str(as_of_date or "").strip(), bool(include_breadth))
-    now = time.time()
     cached = _index_signals_cache.get(key)
     if cached is not None:
-        result, expires_at = cached
-        if now < expires_at:
-            return result
+        return cached
 
     out = _compute_index_signals(as_of_date=as_of_date, include_breadth=include_breadth)
-    _index_signals_cache[key] = (out, now + INDEX_SIGNALS_CACHE_TTL_SECONDS)
+    _index_signals_cache[key] = out
     return out
 
 
@@ -942,15 +939,12 @@ def get_market_regime(
     Results are cached in-process for REGIME_CACHE_TTL_SECONDS per (as_of_date, include_breadth).
     """
     key = (str(as_of_date or "").strip(), bool(include_breadth))
-    now = time.time()
     cached = _regime_cache.get(key)
     if cached is not None:
-        result, expires_at = cached
-        if now < expires_at:
-            return result
+        return cached
 
     signals = get_index_signals(as_of_date=as_of_date, include_breadth=include_breadth)
     regime, bias = _regime_from_signals(signals)
     result: dict[str, Any] = {"regime": regime, "bias": bias, "indexSignals": signals}
-    _regime_cache[key] = (result, now + REGIME_CACHE_TTL_SECONDS)
+    _regime_cache[key] = result
     return result

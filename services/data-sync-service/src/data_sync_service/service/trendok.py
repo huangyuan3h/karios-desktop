@@ -9,6 +9,8 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from cachetools import TTLCache
+
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.db.market_sentiment import get_latest_date, list_days
 from data_sync_service.db.industry_fund_flow import (
@@ -27,17 +29,20 @@ from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 from data_sync_service.service.top_inst_flow import build_inst_flow_payload
 
 TRENDOK_CACHE_TTL_SECONDS = 60
+MACRO_LOCK_CACHE_TTL_SECONDS = 45.0
 TRENDOK_FAILED_SCORE_CAP = 79.0
 MACRO_LOCK_DOWN_THRESHOLD = 3500
 LOW_VOLUME_RATIO_THRESHOLD = 1.2
 LOW_VOLUME_RATIO_SCORE_CAP = 79.0
 LOW_VOLUME_RATIO_SCORE_PART = "low_volume_ratio_cap"
-_trendok_cache: dict[tuple[frozenset[str], bool, str], tuple[list[dict[str, Any]], float]] = {}
+_trendok_cache: TTLCache = TTLCache(maxsize=128, ttl=TRENDOK_CACHE_TTL_SECONDS)
+_macro_lock_cache: TTLCache = TTLCache(maxsize=1, ttl=MACRO_LOCK_CACHE_TTL_SECONDS)
 
 
 def clear_trendok_cache() -> None:
     """Clear in-process TrendOK TTL cache (after bars force sync or tests)."""
     _trendok_cache.clear()
+    _macro_lock_cache.clear()
 
 
 def macro_override_lock_active(risk_mode: str | None, down_count: int | None) -> bool:
@@ -56,6 +61,9 @@ def macro_override_lock_active(risk_mode: str | None, down_count: int | None) ->
 
 def _read_latest_sentiment_for_macro_lock() -> tuple[str | None, int | None]:
     """Best-effort latest CN sentiment row for macro override lock."""
+    cached = _macro_lock_cache.get("latest")
+    if cached is not None:
+        return cached
     try:
         today = _shanghai_today_iso()
         items = list_days(as_of_date=today, days=1)
@@ -64,13 +72,19 @@ def _read_latest_sentiment_for_macro_lock() -> tuple[str | None, int | None]:
             if latest_date:
                 items = list_days(as_of_date=latest_date, days=1)
         if not items:
-            return None, None
+            result: tuple[str | None, int | None] = (None, None)
+            _macro_lock_cache["latest"] = result
+            return result
         latest = items[-1]
         risk_mode = str(latest.get("riskMode") or "").strip() or None
         down_count = int(latest.get("downCount") or 0)
-        return risk_mode, down_count
+        result = (risk_mode, down_count)
+        _macro_lock_cache["latest"] = result
+        return result
     except Exception:
-        return None, None
+        result = (None, None)
+        _macro_lock_cache["latest"] = result
+        return result
 
 
 def apply_macro_override_lock(
@@ -121,12 +135,8 @@ def _trendok_cache_key(symbols: list[str], realtime: bool, latest_bar_date: str 
 
 
 def _trendok_from_cache(key: tuple[frozenset[str], bool, str]) -> list[dict[str, Any]] | None:
-    entry = _trendok_cache.get(key)
-    if not entry:
-        return None
-    rows, expire_at = entry
-    if time.time() >= expire_at:
-        _trendok_cache.pop(key, None)
+    rows = _trendok_cache.get(key)
+    if rows is None:
         return None
     return copy.deepcopy(rows)
 
@@ -912,7 +922,7 @@ def compute_trendok_for_symbols(
         )
     if stoploss_upserts_by_code:
         upsert_stoploss_batch(list(stoploss_upserts_by_code.values()))
-    _trendok_cache[cache_key] = (copy.deepcopy(out), time.time() + TRENDOK_CACHE_TTL_SECONDS)
+    _trendok_cache[cache_key] = out
     return _finalize_trendok_response(out)
 
 

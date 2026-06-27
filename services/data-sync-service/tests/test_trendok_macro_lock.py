@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from data_sync_service.service.trendok import (
     MACRO_LOCK_DOWN_THRESHOLD,
+    _read_latest_sentiment_for_macro_lock,
     apply_macro_override_lock,
+    clear_trendok_cache,
     macro_override_lock_active,
 )
 
@@ -55,3 +59,17 @@ def test_apply_macro_lock_skips_when_inactive() -> None:
     out = apply_macro_override_lock([row], "normal", 1000)
     assert out[0]["buyAction"] == "buy"
     assert "macroLock" not in out[0]
+
+
+def test_macro_lock_reader_uses_cache_without_repeat_db_calls() -> None:
+    clear_trendok_cache()
+    with patch(
+        "data_sync_service.service.trendok.list_days",
+        return_value=[{"riskMode": "extreme_caution", "downCount": 4000}],
+    ) as list_days:
+        first = _read_latest_sentiment_for_macro_lock()
+        second = _read_latest_sentiment_for_macro_lock()
+    assert first == ("extreme_caution", 4000)
+    assert second == first
+    assert list_days.call_count == 1
+

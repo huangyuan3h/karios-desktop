@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from cachetools import TTLCache
+
 from data_sync_service.service.market_regime import (  # type: ignore[import-not-found]
     INDEX_SIGNALS_CACHE_TTL_SECONDS,
     REGIME_CACHE_TTL_SECONDS,
@@ -49,22 +51,53 @@ def test_get_market_regime_ttl_cache_hits_on_second_call() -> None:
     assert get_signals.call_count == 1
 
 
+def _restore_cache_timer(cache: object) -> None:
+    """Restore cachetools default monotonic timer after a patched test."""
+    fresh = TTLCache(maxsize=1, ttl=1)
+    object.__setattr__(
+        cache,
+        "_TimedCache__timer",
+        object.__getattribute__(fresh, "_TimedCache__timer"),
+    )
+
+
+def _patch_cache_timer(cache: object, start: float) -> dict[str, float]:
+    """Replace cachetools internal timer with a controllable fake."""
+    state = {"t": start}
+
+    class _FakeTimer:
+        def __call__(self) -> float:
+            return state["t"]
+
+        def __enter__(self) -> float:
+            return state["t"]
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    object.__setattr__(cache, "_TimedCache__timer", _FakeTimer())
+    return state
+
+
 def test_get_market_regime_cache_expires() -> None:
     clear_market_regime_cache()
-    t = 1000.0
-    with (
-        patch(
+    from data_sync_service.service.market_regime import _regime_cache
+
+    t = _patch_cache_timer(_regime_cache, 1000.0)
+    try:
+        with patch(
             "data_sync_service.service.market_regime.get_index_signals",
             return_value=[
                 {"name": "上证指数", "signal": "green"},
                 {"name": "创业板指", "signal": "yellow"},
             ],
-        ) as get_signals,
-        patch("data_sync_service.service.market_regime.time.time", side_effect=[t, t + REGIME_CACHE_TTL_SECONDS + 1]),
-    ):
-        get_market_regime(include_breadth=False)
-        get_market_regime(include_breadth=False)
-    assert get_signals.call_count == 2
+        ) as get_signals:
+            get_market_regime(include_breadth=False)
+            t["t"] += REGIME_CACHE_TTL_SECONDS + 1
+            get_market_regime(include_breadth=False)
+        assert get_signals.call_count == 2
+    finally:
+        _restore_cache_timer(_regime_cache)
 
 
 def test_clear_market_regime_cache() -> None:
@@ -100,20 +133,20 @@ def test_get_index_signals_ttl_cache_hits_on_second_call() -> None:
 
 def test_get_index_signals_cache_expires() -> None:
     clear_index_signals_cache()
-    t = 2000.0
-    with (
-        patch(
+    from data_sync_service.service.market_regime import _index_signals_cache
+
+    t = _patch_cache_timer(_index_signals_cache, 2000.0)
+    try:
+        with patch(
             "data_sync_service.service.market_regime._compute_index_signals",
             return_value=[{"name": "上证指数", "signal": "red"}],
-        ) as compute,
-        patch(
-            "data_sync_service.service.market_regime.time.time",
-            side_effect=[t, t + INDEX_SIGNALS_CACHE_TTL_SECONDS + 1],
-        ),
-    ):
-        get_index_signals(as_of_date="2026-06-18", include_breadth=False)
-        get_index_signals(as_of_date="2026-06-18", include_breadth=False)
-    assert compute.call_count == 2
+        ) as compute:
+            get_index_signals(as_of_date="2026-06-18", include_breadth=False)
+            t["t"] += INDEX_SIGNALS_CACHE_TTL_SECONDS + 1
+            get_index_signals(as_of_date="2026-06-18", include_breadth=False)
+        assert compute.call_count == 2
+    finally:
+        _restore_cache_timer(_index_signals_cache)
 
 
 def test_clear_index_signals_cache() -> None:
