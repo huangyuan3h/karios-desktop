@@ -70,6 +70,7 @@ import {
   tradeDateFromTradeTime,
 } from '@/lib/watchlist-metrics';
 import { copyBlockingMissingData } from '@/lib/watchlist-export';
+import { fmtBuyCell } from '@/lib/watchlist-table-cells';
 import { loadWatchlist, ensureWatchlistHydrated, type WatchlistItem } from '@/lib/watchlist-storage';
 
 type DashboardSummary = any;
@@ -233,6 +234,18 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
   if (latest) {
     const risk = String(latest?.riskMode ?? '');
     if (risk) lines.push(`- risk: ${risk}`);
+    if (risk === 'confirmed_uptrend') {
+      lines.push('- ftd: triggered (右侧确立，死锁解除)');
+    }
+    const rulesArr: string[] = Array.isArray(latest?.rules)
+      ? latest.rules.map((x: any) => String(x)).filter(Boolean)
+      : [];
+    if (
+      risk === 'extreme_caution' ||
+      rulesArr.some((r) => r.includes('macro_override_lock') || r.includes('breadth_panic'))
+    ) {
+      lines.push('- macroLock: active');
+    }
     lines.push(`- ${formatSrvIndexLine(ms?.srvIndex)}`);
     const up = Number(latest?.upCount ?? 0);
     const down = Number(latest?.downCount ?? 0);
@@ -243,9 +256,7 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
     }
     const total = fmtAmountCn(latest?.marketTurnoverCny);
     if (total && total !== '—') lines.push(`- totalTurnover: ${total}`);
-    const rules = Array.isArray(latest?.rules)
-      ? latest.rules.map((x: any) => String(x)).filter(Boolean)
-      : [];
+    const rules = rulesArr;
     if (rules.length)
       lines.push(`- rules: ${rules.slice(0, 6).join(' • ')}${rules.length > 6 ? '…' : ''}`);
   }
@@ -700,12 +711,7 @@ export async function buildWatchlistMarkdown(queryClient?: QueryClient): Promise
     const pnl = computePnLPct(it.costPrice ?? null, rowMetrics.current);
     const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
     const asOf = qDate === todaySh ? qDate : String(t?.asOfDate ?? '');
-    const buy =
-      t?.buyAction && t?.buyMode
-        ? `${String(t.buyMode)}/${String(t.buyAction)}`
-        : t?.buyAction
-          ? String(t.buyAction)
-          : '—';
+    const buy = fmtBuyCell(t).text;
     const values = (t?.values ?? {}) as Record<string, unknown>;
     const intradayCell = isIntradaySurge(rowMetrics.intradayChgPct)
       ? `⚠️ ${formatIntradayChgPct(rowMetrics.intradayChgPct)}`

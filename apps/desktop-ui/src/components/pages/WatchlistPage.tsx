@@ -114,6 +114,24 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     [items, trend, scoreSortEnabled, scoreSortDir],
   );
 
+  const macroLockBanner = React.useMemo(() => {
+    for (const t of Object.values(trend)) {
+      if (t?.macroLock?.active) {
+        return t.macroLock;
+      }
+      const checks = t?.buyChecks as Record<string, unknown> | null | undefined;
+      if (checks?.blocked_macro_lock === true) {
+        return {
+          active: true,
+          riskMode: String(checks.macroRiskMode ?? 'extreme_caution'),
+          downCount:
+            typeof checks.macroDownCount === 'number' ? checks.macroDownCount : undefined,
+        };
+      }
+    }
+    return null;
+  }, [trend]);
+
   const watchlistSet = React.useMemo(() => new Set(items.map((x) => x.symbol)), [items]);
 
   async function onSyncFromScreener() {
@@ -263,6 +281,15 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         <div className="text-sm text-[var(--k-muted)]">Loading watchlist…</div>
       ) : null}
       <div className={watchlistHydrating ? 'hidden' : undefined}>
+        {macroLockBanner?.active ? (
+          <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-800 dark:text-red-200">
+            🔒 宏观死锁生效中 — 全市场风险 {String(macroLockBanner.riskMode ?? 'extreme_caution')}
+            {typeof macroLockBanner.downCount === 'number'
+              ? `，下跌 ${macroLockBanner.downCount.toLocaleString()} 家`
+              : ''}
+            ，所有买入已强制拦截
+          </div>
+        ) : null}
         <WatchlistToolbar
           trendUpdatedAt={trendUpdatedAt}
           latestAutomation={latestAutomation}

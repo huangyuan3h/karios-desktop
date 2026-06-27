@@ -74,6 +74,8 @@ const RISK_MODE_ZH: Record<string, string> = {
   extreme_caution: '极度谨慎',
   no_new_positions: '暂停新开仓',
   no_new_position: '暂停新开仓',
+  capitulation_v_bottom: '恐慌冰点共振',
+  confirmed_uptrend: '右侧趋势确立',
 };
 
 function normalizeTokenKey(raw: unknown): string {
@@ -104,6 +106,8 @@ export function translateRiskModeForPdf(raw: unknown): string {
 export function translateSentimentSnippetForPdf(text: string): string {
   let s = text;
   const repl: Array<[RegExp, string]> = [
+    [/\bconfirmed_uptrend\b/gi, '右侧趋势确立'],
+    [/\bcapitulation_v_bottom\b/gi, '恐慌冰点共振'],
     [/\bno_new_positions\b/gi, '暂停新开仓'],
     [/\bextreme_caution\b/gi, '极度谨慎'],
     [/\bdeep_green\b/gi, '深绿灯'],

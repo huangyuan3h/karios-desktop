@@ -565,7 +565,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                       ? srvIndex.overlapSectors.map((x: any) => String(x)).filter(Boolean)
                       : [];
                     const badge =
-                      risk === 'capitulation_v_bottom'
+                      risk === 'confirmed_uptrend'
+                        ? 'border-emerald-600/40 bg-emerald-600/15 text-emerald-700'
+                        : risk === 'capitulation_v_bottom'
                         ? 'border-fuchsia-600/40 bg-fuchsia-600/15 text-fuchsia-700'
                         : risk === 'extreme_caution' || breadthPanic
                           ? 'border-red-600/40 bg-red-600/15 text-red-700'
@@ -597,6 +599,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                         {risk === 'capitulation_v_bottom' && (
                           <div className="mb-3 rounded-lg border border-fuchsia-600/40 bg-fuchsia-600/15 px-3 py-2 text-sm text-fuchsia-800 dark:text-fuchsia-200">
                             🚨 Capitulation_V_Bottom (恐慌冰点共振) — 国家队入场 + 恐慌极值，左侧绝佳试错点出现
+                          </div>
+                        )}
+
+                        {risk === 'confirmed_uptrend' && (
+                          <div className="mb-3 rounded-lg border border-emerald-600/40 bg-emerald-600/15 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-200">
+                            🟢 Follow-Through Day 右侧主升浪确立 — 解除宏观死锁，放开攻击权限
                           </div>
                         )}
 

@@ -30,6 +30,14 @@ export const InstFlowSchema = z.object({
 });
 export type InstFlow = z.infer<typeof InstFlowSchema>;
 
+export const MacroLockSchema = z.object({
+  active: z.boolean(),
+  reason: z.string().optional(),
+  riskMode: z.string().nullable().optional(),
+  downCount: z.number().nullable().optional(),
+});
+export type MacroLock = z.infer<typeof MacroLockSchema>;
+
 export const TrendOkResultSchema = z.object({
   symbol: z.string(),
   name: z.string().nullable().optional(),
@@ -46,6 +54,7 @@ export const TrendOkResultSchema = z.object({
   buyRefPrice: z.number().nullable().optional(),
   buyWhy: z.string().nullable().optional(),
   buyChecks: z.record(z.unknown()).optional(),
+  macroLock: MacroLockSchema.optional(),
   marketRegime: z.string().nullable().optional(),
   rs: z.number().nullable().optional(),
   intradayChgPct: z.number().nullable().optional(),

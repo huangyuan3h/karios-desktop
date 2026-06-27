@@ -243,6 +243,41 @@ describe('buildSentimentMarkdown', () => {
     expect(md).not.toContain('市场环境摘要');
     expect(md).toContain('## Market sentiment');
   });
+
+  it('renders FTD and macro lock lines for confirmed uptrend', () => {
+    const md = buildSentimentMarkdown({
+      marketSentiment: {
+        items: [
+          {
+            date: '2026-06-27',
+            upCount: 3200,
+            downCount: 800,
+            riskMode: 'confirmed_uptrend',
+            rules: ['follow_through_day(...)'],
+          },
+        ],
+      },
+    });
+    expect(md).toContain('- risk: confirmed_uptrend');
+    expect(md).toContain('- ftd: triggered (右侧确立，死锁解除)');
+  });
+
+  it('renders macro lock line for extreme caution', () => {
+    const md = buildSentimentMarkdown({
+      marketSentiment: {
+        items: [
+          {
+            date: '2026-06-27',
+            upCount: 400,
+            downCount: 4600,
+            riskMode: 'extreme_caution',
+            rules: ['breadth_panic(down>=3000 => red + extreme_caution)'],
+          },
+        ],
+      },
+    });
+    expect(md).toContain('- macroLock: active');
+  });
 });
 
 describe('buildWatchlistMarkdown with QueryClient cache', () => {

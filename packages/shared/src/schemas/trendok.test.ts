@@ -89,6 +89,21 @@ describe('TrendOkResultSchema', () => {
     expect(result.missingData).toEqual(['no_bars']);
   });
 
+  it('validates macroLock payload', () => {
+    const result = TrendOkResultSchema.parse({
+      symbol: 'CN:000001',
+      buyAction: 'avoid',
+      buyMode: 'none',
+      macroLock: {
+        active: true,
+        riskMode: 'extreme_caution',
+        downCount: 4600,
+      },
+    });
+    expect(result.macroLock?.active).toBe(true);
+    expect(result.macroLock?.downCount).toBe(4600);
+  });
+
   it('rejects missing symbol', () => {
     expect(() => TrendOkResultSchema.parse({ name: 'x' })).toThrow();
   });

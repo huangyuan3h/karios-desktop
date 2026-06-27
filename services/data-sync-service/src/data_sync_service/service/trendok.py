@@ -10,6 +10,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
+from data_sync_service.db.market_sentiment import get_latest_date, list_days
 from data_sync_service.db.industry_fund_flow import (
     get_dates_upto,
     get_latest_date as get_latest_industry_date,
@@ -27,6 +28,7 @@ from data_sync_service.service.top_inst_flow import build_inst_flow_payload
 
 TRENDOK_CACHE_TTL_SECONDS = 60
 TRENDOK_FAILED_SCORE_CAP = 79.0
+MACRO_LOCK_DOWN_THRESHOLD = 3500
 LOW_VOLUME_RATIO_THRESHOLD = 1.2
 LOW_VOLUME_RATIO_SCORE_CAP = 79.0
 LOW_VOLUME_RATIO_SCORE_PART = "low_volume_ratio_cap"
@@ -36,6 +38,82 @@ _trendok_cache: dict[tuple[frozenset[str], bool, str], tuple[list[dict[str, Any]
 def clear_trendok_cache() -> None:
     """Clear in-process TrendOK TTL cache (after bars force sync or tests)."""
     _trendok_cache.clear()
+
+
+def macro_override_lock_active(risk_mode: str | None, down_count: int | None) -> bool:
+    """
+    V5.8 absolute macro deadlock when the market crashes.
+    Capitulation V-bottom is exempt (left-side trial buy point).
+    """
+    if str(risk_mode or "") == "capitulation_v_bottom":
+        return False
+    if str(risk_mode or "") == "extreme_caution":
+        return True
+    if isinstance(down_count, (int, float)) and int(down_count) >= MACRO_LOCK_DOWN_THRESHOLD:
+        return True
+    return False
+
+
+def _read_latest_sentiment_for_macro_lock() -> tuple[str | None, int | None]:
+    """Best-effort latest CN sentiment row for macro override lock."""
+    try:
+        today = _shanghai_today_iso()
+        items = list_days(as_of_date=today, days=1)
+        if not items:
+            latest_date = get_latest_date()
+            if latest_date:
+                items = list_days(as_of_date=latest_date, days=1)
+        if not items:
+            return None, None
+        latest = items[-1]
+        risk_mode = str(latest.get("riskMode") or "").strip() or None
+        down_count = int(latest.get("downCount") or 0)
+        return risk_mode, down_count
+    except Exception:
+        return None, None
+
+
+def apply_macro_override_lock(
+    results: list[dict[str, Any]],
+    risk_mode: str | None,
+    down_count: int | None,
+) -> list[dict[str, Any]]:
+    """Force all watchlist buy actions to avoid when macro lock is active."""
+    if not macro_override_lock_active(risk_mode, down_count):
+        return results
+    reason = f"macro_override_lock(risk={risk_mode},down={down_count}): all buy blocked"
+    for res in results:
+        if not res.get("buyAction"):
+            continue
+        res["buyAction"] = "avoid"
+        res["buyMode"] = "none"
+        res["buyWhy"] = "宏观死锁：大环境崩盘，禁止任何买入"
+        buy_checks = res.get("buyChecks") if isinstance(res.get("buyChecks"), dict) else {}
+        buy_checks["blocked_macro_lock"] = True
+        res["buyChecks"] = buy_checks
+        res["macroLock"] = {
+            "active": True,
+            "reason": reason,
+            "riskMode": risk_mode,
+            "downCount": down_count,
+        }
+        alerts = res.get("riskAlerts") if isinstance(res.get("riskAlerts"), list) else []
+        alerts.append(
+            {
+                "code": "macro_override_lock",
+                "severity": "block",
+                "message": "🔒 宏观死锁：大环境崩盘，禁止买入",
+            }
+        )
+        res["riskAlerts"] = alerts
+    return results
+
+
+def _finalize_trendok_response(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply macro override lock on a deep copy so cache stays pre-lock."""
+    out = copy.deepcopy(rows)
+    risk_mode, down_count = _read_latest_sentiment_for_macro_lock()
+    return apply_macro_override_lock(out, risk_mode, down_count)
 
 
 def _trendok_cache_key(symbols: list[str], realtime: bool, latest_bar_date: str | None) -> tuple[frozenset[str], bool, str]:
@@ -746,7 +824,7 @@ def compute_trendok_for_symbols(
     cache_key = _trendok_cache_key(syms, realtime, latest_bar_date)
     cached = _trendok_from_cache(cache_key)
     if cached is not None:
-        return cached
+        return _finalize_trendok_response(cached)
 
     by_name, by_tushare_industry = _lookup_stock_basic(ts_codes)
     by_em_industry = _lookup_em_industry_boards(ts_codes)
@@ -835,7 +913,7 @@ def compute_trendok_for_symbols(
     if stoploss_upserts_by_code:
         upsert_stoploss_batch(list(stoploss_upserts_by_code.values()))
     _trendok_cache[cache_key] = (copy.deepcopy(out), time.time() + TRENDOK_CACHE_TTL_SECONDS)
-    return out
+    return _finalize_trendok_response(out)
 
 
 def _resolve_effective_stoploss(

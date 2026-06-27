@@ -63,7 +63,17 @@ export function fmtBuyCell(t: TrendOkResult | undefined | null): {
   forced?: boolean;
   forcedReason?: string;
 } {
-  if (!t || !t.buyMode || !t.buyAction) return { text: '—', tone: 'none' };
+  if (!t) return { text: '—', tone: 'none' };
+  const buyChecks = t.buyChecks as Record<string, unknown> | null | undefined;
+  if (t.macroLock?.active || buyChecks?.blocked_macro_lock === true) {
+    return {
+      text: '宏观死锁',
+      tone: 'avoid',
+      forced: true,
+      forcedReason: 'Macro override lock active.',
+    };
+  }
+  if (!t.buyMode || !t.buyAction) return { text: '—', tone: 'none' };
   if (shouldForceNoAPullbackWait(t)) {
     return {
       text: 'B 买 强势热点',

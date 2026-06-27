@@ -171,6 +171,120 @@ def check_capitulation_bottom(*, down: int, as_of: date) -> dict[str, Any]:
     }
 
 
+# ---------- Follow-Through Day (V5.8) ----------
+FTD_LOOKBACK_TRADING_DAYS = 10
+FTD_INDEX_CHG_THRESHOLD = 1.5  # %
+FTD_INDEX_TS_CODES = ("000001.SH", "399006.SZ")  # SSE Composite, ChiNext
+
+
+def _capitulation_in_lookback(as_of: date, lookback_days: int = FTD_LOOKBACK_TRADING_DAYS) -> bool:
+    """True if capitulation_v_bottom occurred within the lookback window."""
+    try:
+        items = list_days(as_of_date=as_of.isoformat(), days=lookback_days)
+        for item in items:
+            if str(item.get("riskMode") or "") == "capitulation_v_bottom":
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _compute_index_max_chg_pct(as_of: date) -> float | None:
+    """Max daily pct change across SSE / ChiNext indices for as_of date."""
+    max_chg: float | None = None
+    d_str = as_of.isoformat()
+    try:
+        from data_sync_service.db.index_daily import fetch_last_closes_upto
+
+        for ts_code in FTD_INDEX_TS_CODES:
+            closes = fetch_last_closes_upto(ts_code, d_str, days=2)
+            if len(closes) < 2:
+                continue
+            prev_c = closes[-2][1]
+            cur_c = closes[-1][1]
+            if prev_c > 0 and math.isfinite(cur_c):
+                chg = (cur_c - prev_c) / prev_c * 100.0
+                if math.isfinite(chg) and (max_chg is None or chg > max_chg):
+                    max_chg = chg
+    except Exception:
+        pass
+    return max_chg
+
+
+def _read_prev_day_turnover(as_of: date) -> float | None:
+    """Previous open-day market turnover from persisted sentiment rows."""
+    try:
+        from data_sync_service.service.trade_calendar_utils import previous_open_date
+
+        prev = previous_open_date(as_of)
+        if not prev:
+            return None
+        items = list_days(as_of_date=prev.isoformat(), days=1)
+        if items:
+            return float(items[-1].get("marketTurnoverCny") or 0.0)
+    except Exception:
+        pass
+    return None
+
+
+def check_follow_through_day(
+    *,
+    as_of: date,
+    index_chg_max_pct: float | None,
+    today_turnover_cny: float,
+    prev_turnover_cny: float | None,
+) -> dict[str, Any]:
+    """
+    Follow-Through Day (FTD): confirm right-side uptrend after capitulation bottom.
+
+    Requires all three:
+      1. capitulation_v_bottom within past 10 trading days
+      2. SSE or ChiNext index daily gain > +1.5%
+      3. today total turnover > previous trading day
+    """
+    reasons: list[str] = []
+    triggered = True
+
+    cond_cap = _capitulation_in_lookback(as_of)
+    if not cond_cap:
+        triggered = False
+    reasons.append(f"capitulation_10d:{cond_cap}")
+
+    cond_chg = index_chg_max_pct is not None and float(index_chg_max_pct) > FTD_INDEX_CHG_THRESHOLD
+    if not cond_chg:
+        triggered = False
+    reasons.append(
+        f"index_chg={index_chg_max_pct}(>{FTD_INDEX_CHG_THRESHOLD}%):{cond_chg}"
+    )
+
+    cond_vol = (
+        prev_turnover_cny is not None
+        and float(prev_turnover_cny) > 0.0
+        and float(today_turnover_cny) > float(prev_turnover_cny)
+    )
+    if not cond_vol:
+        triggered = False
+    reasons.append(
+        f"turnover={today_turnover_cny}>{prev_turnover_cny}:{cond_vol}"
+    )
+
+    rule = (
+        "follow_through_day(capitulation_10d && index_chg>1.5% && turnover_up)"
+        f"[{'|'.join(reasons)}]"
+    )
+    return {
+        "triggered": triggered,
+        "rule": rule,
+        "raw": {
+            "capitulationInLookback": cond_cap,
+            "indexChgMaxPct": index_chg_max_pct,
+            "todayTurnoverCny": today_turnover_cny,
+            "prevTurnoverCny": prev_turnover_cny,
+            "reasons": reasons,
+        },
+    }
+
+
 def _with_retry(fn, *, tries: int = 3, base_sleep_s: float = 0.4, max_sleep_s: float = 2.0):
     tries2 = max(1, min(int(tries), 5))
     last: Exception | None = None
@@ -1082,6 +1196,20 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
         risk_mode = "capitulation_v_bottom"
         rules.append(capitulation["rule"])
         raw["capitulation"] = capitulation["raw"]
+
+    # ---------- Follow-Through Day (V5.8) — highest priority ----------
+    index_chg_max = _compute_index_max_chg_pct(dt)
+    prev_turnover = _read_prev_day_turnover(dt)
+    ftd = check_follow_through_day(
+        as_of=dt,
+        index_chg_max_pct=index_chg_max,
+        today_turnover_cny=market_turnover_cny,
+        prev_turnover_cny=prev_turnover,
+    )
+    raw["ftd"] = ftd["raw"]
+    if ftd["triggered"]:
+        risk_mode = "confirmed_uptrend"
+        rules.append(ftd["rule"])
 
     return {
         "date": d,
