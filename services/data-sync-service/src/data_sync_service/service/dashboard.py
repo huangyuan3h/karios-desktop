@@ -324,8 +324,8 @@ def _sync_macro_step() -> dict[str, Any]:
     return out if isinstance(out, dict) else {"ok": True}
 
 
-def _sync_industry_step() -> dict[str, Any]:
-    out = sync_cn_industry_fund_flow(days=10, top_n=10)
+def _sync_industry_step(*, force: bool = False) -> dict[str, Any]:
+    out = sync_cn_industry_fund_flow(days=10, top_n=10, force=bool(force))
     return out if isinstance(out, dict) else {"ok": True}
 
 
@@ -638,7 +638,7 @@ def _sync_news_step() -> dict[str, Any]:
 def dashboard_sync(*, force: bool = True, screeners: bool = True) -> dict[str, Any]:
     started_at = _now_iso()
     steps: list[dict[str, Any]] = []
-    steps.append(_run_step("industryFundFlow", _sync_industry_step))
+    steps.append(_run_step("industryFundFlow", lambda: _sync_industry_step(force=force)))
     steps.append(_run_step("marketSentiment", lambda: _sync_sentiment_step(force=force)))
     steps.append(_run_step("macroDaily", _sync_macro_step))
     screener_result = _run_step("screeners", lambda: _sync_screeners_step(screeners_enabled=screeners))
@@ -662,7 +662,7 @@ def dashboard_sync(*, force: bool = True, screeners: bool = True) -> dict[str, A
 def dashboard_sync_parallel(*, force: bool = True, screeners: bool = True) -> dict[str, Any]:
     started_at = _now_iso()
     step_fns = {
-        "industryFundFlow": _sync_industry_step,
+        "industryFundFlow": lambda: _sync_industry_step(force=force),
         "marketSentiment": lambda: _sync_sentiment_step(force=force),
         "macroDaily": _sync_macro_step,
         "screeners": lambda: _sync_screeners_step(screeners_enabled=screeners),
@@ -702,7 +702,7 @@ def dashboard_sync_stream(
     started_at = _now_iso()
     yield json.dumps({"type": "start", "startedAt": started_at}) + "\n"
     step_fns = {
-        "industryFundFlow": _sync_industry_step,
+        "industryFundFlow": lambda: _sync_industry_step(force=force),
         "marketSentiment": lambda: _sync_sentiment_step(force=force),
         "macroDaily": _sync_macro_step,
         "news": _sync_news_step,

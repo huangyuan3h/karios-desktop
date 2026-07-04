@@ -52,7 +52,13 @@ function friendlyCloseMessage(message: string | null | undefined): string | null
     return '今日尚未收盘，收盘同步将在 17:05 后可用。';
   }
   if (m.includes('not a trading day')) {
+    if (m.includes('already up to date')) {
+      return '今天不是交易日，数据已是最新，已跳过。';
+    }
     return '今天不是交易日，已跳过收盘同步。';
+  }
+  if (m.includes('non-trading day catchup')) {
+    return '非交易日补同步完成（已同步至最近一个交易日）。';
   }
   if (m.includes('already synced today') || m.includes('already up to date')) {
     return '今天已同步，无需重复操作。';
@@ -180,6 +186,8 @@ export function SchedulerPage() {
         if (r.skipped) setMsg(friendlyCloseMessage(r.message) || 'Skipped.');
         else if ('partial' in r && r.partial)
           setMsg('已同步到昨日，今日收盘后可再同步。');
+        else if (r.message?.toLowerCase().includes('non-trading day catchup'))
+          setMsg(friendlyCloseMessage(r.message) || r.message);
         else
           setMsg(
             `OK: daily=${r.updated_daily_rows ?? 0}, adj_factor=${r.updated_adj_factor_rows ?? 0}${

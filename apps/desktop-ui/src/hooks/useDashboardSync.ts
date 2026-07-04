@@ -4,7 +4,6 @@
 import * as React from 'react';
 
 import { DATA_SYNC_BASE_URL, AI_BASE_URL } from '@/lib/endpoints';
-import { isShanghaiSyncWindow } from '@/lib/market-hours';
 import type { DashboardSummary } from '@/lib/queries/dashboard';
 
 type DashboardSyncResp = Record<string, unknown>;
@@ -44,7 +43,8 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
     setSyncProgress(0);
 
     const stepNames = ['industryFundFlow', 'marketSentiment', 'screeners', 'news'];
-    const forceSync = isShanghaiSyncWindow();
+    // Sync All is an explicit user action — always force catch-up for stale modules.
+    const forceSync = true;
 
     return new Promise<void>((resolve) => {
       const es = new EventSource(

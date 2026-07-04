@@ -17,7 +17,7 @@ from data_sync_service.db.stock_basic import fetch_ts_codes
 from data_sync_service.db.market_sentiment import get_latest_date, list_days, upsert_daily_rows
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes, fetch_realtime_quotes_batched
-from data_sync_service.service.trade_calendar_utils import is_cn_trading_day, shanghai_today
+from data_sync_service.service.trade_calendar_utils import is_cn_trading_day, last_open_date_on_or_before, shanghai_today
 
 
 BREADTH_DECLINE_RED_THRESHOLD = 3000
@@ -1226,48 +1226,10 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
     }
 
 
-def sync_cn_sentiment(*, date_str: str, force: bool) -> dict[str, Any]:
-    d = date_str
-    try:
-        cal_d = date.fromisoformat(str(d).strip()[:10])
-    except ValueError:
-        cal_d = shanghai_today()
-    open_flag = is_cn_trading_day(cal_d)
-    if open_flag is False:
-        cached = list_days(as_of_date=d, days=5)
-        return {
-            "ok": True,
-            "skipped": True,
-            "reason": "not_trading_day",
-            "asOfDate": d,
-            "days": len(cached),
-            "items": cached,
-        }
-
-    if not force:
-        cached = list_days(as_of_date=d, days=1)
-        if cached and str(cached[-1].get("date") or "") == d:
-            return {"asOfDate": d, "days": 1, "items": [cached[-1]]}
-
-    try:
-        out = compute_cn_sentiment_for_date(d)
-    except Exception as e:
-        cached2 = list_days(as_of_date=d, days=5)
-        return {
-            "ok": False,
-            "skipped": True,
-            "reason": "compute_failed",
-            "error": str(e),
-            "asOfDate": str(cached2[-1].get("date") or d) if cached2 else d,
-            "days": len(cached2),
-            "items": cached2,
-        }
-
+def _sentiment_row_from_compute(out: dict[str, Any], d: str) -> dict[str, Any]:
     rules_raw = out.get("rules") or []
     rules_list = [str(x) for x in rules_raw] if isinstance(rules_raw, list) else [str(rules_raw)]
-    # Always persist a row for the requested date so the dashboard can advance.
-    # If some sub-components failed, we keep the partial values and attach failure rules.
-    row = {
+    return {
         "date": out.get("date") or d,
         "as_of_date": out.get("asOfDate") or d,
         "up_count": out.get("up") or 0,
@@ -1284,29 +1246,142 @@ def sync_cn_sentiment(*, date_str: str, force: bool) -> dict[str, Any]:
         "updated_at": out.get("updatedAt") or now_iso(),
         "raw": out.get("raw") if isinstance(out.get("raw"), dict) else {"raw": out.get("raw")},
     }
+
+
+def _sentiment_item_from_compute(out: dict[str, Any], d: str, *, rules_list: list[str]) -> dict[str, Any]:
+    return {
+        "date": str(out.get("date") or d),
+        "upCount": int(out.get("up") or 0),
+        "downCount": int(out.get("down") or 0),
+        "flatCount": int(out.get("flat") or 0),
+        "totalCount": int(out.get("up", 0)) + int(out.get("down", 0)) + int(out.get("flat", 0)),
+        "upDownRatio": float(out.get("ratio") or 0.0),
+        "marketTurnoverCny": float(out.get("marketTurnoverCny") or 0.0),
+        "marketVolume": float(out.get("marketVolume") or 0.0),
+        "yesterdayLimitUpPremium": float(out.get("premium") or 0.0),
+        "failedLimitUpRate": float(out.get("failedRate") or 0.0),
+        "riskMode": str(out.get("riskMode") or "caution"),
+        "rules": rules_list,
+        "updatedAt": str(out.get("updatedAt") or now_iso()),
+    }
+
+
+def _resolve_sentiment_sync_dates(*, request_date: date, force: bool) -> tuple[list[date], dict[str, Any] | None]:
+    """Return open dates to sync through the latest trading day, or a skip response."""
+    target_end = last_open_date_on_or_before(request_date)
+    if target_end is None:
+        return [], {
+            "ok": False,
+            "error": "trade calendar missing; cannot determine last trading day",
+            "asOfDate": request_date.isoformat(),
+        }
+
+    target_iso = target_end.isoformat()
+    latest_db = (get_latest_date() or "").strip()
+    is_trading = is_cn_trading_day(request_date) is True
+
+    if latest_db >= target_iso:
+        if force:
+            return [target_end], None
+        if is_trading:
+            cached = list_days(as_of_date=request_date.isoformat(), days=1)
+            if cached and str(cached[-1].get("date") or "") == request_date.isoformat():
+                return [], {
+                    "asOfDate": request_date.isoformat(),
+                    "days": 1,
+                    "items": [cached[-1]],
+                }
+            return [target_end], None
+        cached = list_days(as_of_date=target_iso, days=5)
+        return [], {
+            "ok": True,
+            "skipped": True,
+            "reason": "not_trading_day",
+            "message": "not a trading day; data already up to date",
+            "asOfDate": target_iso,
+            "days": len(cached),
+            "items": cached,
+        }
+
+    if latest_db:
+        start = date.fromisoformat(latest_db[:10]) + timedelta(days=1)
+    else:
+        start = target_end
+    dates = get_open_dates(exchange="SSE", start_date=start, end_date=target_end)
+    return (dates if dates else [target_end]), None
+
+
+def _persist_sentiment_for_date(d: str) -> dict[str, Any]:
+    out = compute_cn_sentiment_for_date(d)
+    row = _sentiment_row_from_compute(out, d)
+    rules_list = [str(x) for x in row.get("rules") or []]
     upsert_daily_rows([row])
     cached = list_days(as_of_date=d, days=1)
     if cached:
-        return {"asOfDate": d, "days": 1, "items": [cached[-1]]}
+        return cached[-1]
+    return _sentiment_item_from_compute(out, d, rules_list=rules_list)
 
-    items = [
-        {
-            "date": str(out.get("date") or d),
-            "upCount": int(out.get("up") or 0),
-            "downCount": int(out.get("down") or 0),
-            "flatCount": int(out.get("flat") or 0),
-            "totalCount": int(out.get("up", 0)) + int(out.get("down", 0)) + int(out.get("flat", 0)),
-            "upDownRatio": float(out.get("ratio") or 0.0),
-            "marketTurnoverCny": float(out.get("marketTurnoverCny") or 0.0),
-            "marketVolume": float(out.get("marketVolume") or 0.0),
-            "yesterdayLimitUpPremium": float(out.get("premium") or 0.0),
-            "failedLimitUpRate": float(out.get("failedRate") or 0.0),
-            "riskMode": str(out.get("riskMode") or "caution"),
-            "rules": rules_list,
-            "updatedAt": str(out.get("updatedAt") or now_iso()),
+
+def sync_cn_sentiment(*, date_str: str, force: bool) -> dict[str, Any]:
+    try:
+        cal_d = date.fromisoformat(str(date_str).strip()[:10])
+    except ValueError:
+        cal_d = shanghai_today()
+
+    dates_to_sync, skip_out = _resolve_sentiment_sync_dates(request_date=cal_d, force=bool(force))
+    if skip_out is not None:
+        return skip_out
+    if not dates_to_sync:
+        target_iso = (last_open_date_on_or_before(cal_d) or cal_d).isoformat()
+        cached = list_days(as_of_date=target_iso, days=5)
+        return {
+            "asOfDate": target_iso,
+            "days": len(cached),
+            "items": cached,
         }
-    ]
-    return {"asOfDate": d, "days": 1, "items": items}
+
+    synced_items: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
+    for td in dates_to_sync:
+        d_iso = td.isoformat()
+        try:
+            synced_items.append(_persist_sentiment_for_date(d_iso))
+        except Exception as e:
+            errors.append({"date": d_iso, "error": str(e)})
+            cached = list_days(as_of_date=d_iso, days=1)
+            if cached and str(cached[-1].get("date") or "") == d_iso:
+                synced_items.append(cached[-1])
+            elif synced_items:
+                break
+
+    as_of = dates_to_sync[-1].isoformat()
+    if errors and not synced_items:
+        cached2 = list_days(as_of_date=as_of, days=5)
+        return {
+            "ok": False,
+            "skipped": True,
+            "reason": "compute_failed",
+            "error": errors[0]["error"],
+            "asOfDate": str(cached2[-1].get("date") or as_of) if cached2 else as_of,
+            "days": len(cached2),
+            "items": cached2,
+            "errors": errors,
+        }
+
+    recent = list_days(as_of_date=as_of, days=min(5, len(dates_to_sync)))
+    out: dict[str, Any] = {
+        "asOfDate": as_of,
+        "days": len(recent) if recent else len(synced_items),
+        "items": recent if recent else synced_items,
+    }
+    if len(dates_to_sync) > 1 or (not is_cn_trading_day(cal_d) and synced_items):
+        out["catchup"] = True
+        out["syncedDates"] = [td.isoformat() for td in dates_to_sync]
+        out["message"] = "catchup: synced missing sentiment days through latest open day"
+    if errors:
+        out["ok"] = False
+        out["errors"] = errors
+    return out
 
 
 def get_cn_sentiment(*, days: int = 10, as_of_date: str | None = None) -> dict[str, Any]:

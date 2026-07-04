@@ -26,6 +26,7 @@ from data_sync_service.service.industry_taxonomy import (
 )
 from data_sync_service.service.trade_calendar_utils import (
     is_cn_trading_day,
+    last_open_date_on_or_before,
     resolve_effective_as_of,
     shanghai_today,
     trade_dates_upto,
@@ -299,16 +300,47 @@ def _hist_rows_for_top_row(
     return out
 
 
-def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10) -> dict[str, Any]:
-    as_of = shanghai_today()
-    open_flag = is_cn_trading_day(as_of)
-    if open_flag is False:
-        return {
+def _resolve_sync_as_of(*, today: date, force: bool) -> tuple[date | None, dict[str, Any] | None]:
+    """
+    Pick the effective as-of date for sync.
+
+    On non-trading days: skip only when DB already has the latest open day; otherwise
+    catch up through that day. force=True always proceeds on non-trading days.
+    """
+    open_flag = is_cn_trading_day(today)
+    if open_flag is True:
+        return today, None
+
+    latest_open = last_open_date_on_or_before(today)
+    if latest_open is None:
+        return None, {
+            "ok": False,
+            "error": "trade calendar missing; cannot determine last trading day",
+            "asOfDate": today.isoformat(),
+        }
+
+    target_iso = latest_open.isoformat()
+    latest_db = (get_latest_date() or "").strip()
+    if not force and latest_db >= target_iso:
+        return None, {
             "ok": True,
             "skipped": True,
             "reason": "not_trading_day",
-            "asOfDate": as_of.isoformat(),
+            "message": "not a trading day; data already up to date",
+            "asOfDate": today.isoformat(),
+            "targetDate": target_iso,
         }
+
+    return latest_open, None
+
+
+def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10, force: bool = False) -> dict[str, Any]:
+    today = shanghai_today()
+    as_of, skip_out = _resolve_sync_as_of(today=today, force=bool(force))
+    if skip_out is not None:
+        return skip_out
+    assert as_of is not None
+
     fetched_items = fetch_cn_industry_fund_flow_eod(as_of)
     items = [it for it in fetched_items if row_is_sw_l1(it)]
     updated_at = _now_iso()
@@ -345,13 +377,17 @@ def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10) -> dict[str, 
 
     if hist_rows:
         upsert_daily_rows(hist_rows)
-    return {
+    out: dict[str, Any] = {
         "asOfDate": as_of.strftime("%Y-%m-%d"),
         "rows": len(daily_rows),
         "filteredRows": max(0, len(fetched_items) - len(items)),
         "histRows": len(hist_rows),
         "histFailures": hist_failures,
     }
+    if as_of != today:
+        out["catchup"] = True
+        out["message"] = "non-trading day catchup: synced through latest open day"
+    return out
 
 
 def get_cn_industry_fund_flow(*, days: int = 10, top_n: int = 30, as_of_date: str | None = None) -> dict[str, Any]:

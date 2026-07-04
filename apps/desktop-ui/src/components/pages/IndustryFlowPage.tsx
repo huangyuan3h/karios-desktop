@@ -545,15 +545,26 @@ export function IndustryFlowPage() {
     try {
       const r = await runIndustryFlowSync(queryClient, { force });
       if (r && typeof r === 'object') {
-        const msg = [
-          `rowsUpserted=${String(r.rowsUpserted ?? '')}`,
-          `histRowsUpserted=${String(r.histRowsUpserted ?? '')}`,
-          `histFailures=${String(r.histFailures ?? 0)}`,
-          r.message ? String(r.message) : '',
-        ]
-          .filter(Boolean)
-          .join(' • ');
-        setLastSyncMsg(msg || null);
+        if (r.skipped) {
+          const reason = String(r.message || r.reason || 'Skipped.');
+          setLastSyncMsg(
+            reason.includes('not a trading day')
+              ? reason.includes('already up to date')
+                ? '今天不是交易日，数据已是最新。'
+                : '今天不是交易日，已跳过。'
+              : reason,
+          );
+        } else {
+          const msg = [
+            `rows=${String(r.rows ?? '')}`,
+            `histRows=${String(r.histRows ?? '')}`,
+            `histFailures=${String(r.histFailures ?? 0)}`,
+            r.message ? String(r.message) : '',
+          ]
+            .filter(Boolean)
+            .join(' • ');
+          setLastSyncMsg(msg || null);
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

@@ -15,6 +15,7 @@ from data_sync_service.db.daily import update_adj_factor_from_dataframe
 from data_sync_service.db.sync_job_record import get_last_success, get_today_run, insert_record
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
 from data_sync_service.service.trade_calendar import sync_trade_calendar
+from data_sync_service.service.trade_calendar_utils import last_open_date_on_or_before
 
 JOB_TYPE = "stock_close_sync"
 
@@ -67,6 +68,23 @@ def _fetch_paged_daily(pro, trade_date: str, limit: int = 5000) -> int:
     return total
 
 
+def _resolve_start_date(today: date, today_run: dict | None) -> date:
+    """First trade_date to sync: resume marker, last success marker, or today."""
+    start_date = today
+    if today_run and today_run.get("success") is False and today_run.get("last_ts_code"):
+        marker = str(today_run["last_ts_code"])
+        start_date = _parse_yyyymmdd(marker) + timedelta(days=1)
+    else:
+        last_ok = get_last_success(JOB_TYPE)
+        marker_ok = str((last_ok or {}).get("last_ts_code") or "").strip()
+        if marker_ok and len(marker_ok) == 8 and marker_ok.isdigit():
+            start_date = _parse_yyyymmdd(marker_ok) + timedelta(days=1)
+        elif last_ok and last_ok.get("sync_at"):
+            sync_at = datetime.fromisoformat(str(last_ok["sync_at"]))
+            start_date = sync_at.astimezone(ZoneInfo("Asia/Shanghai")).date() + timedelta(days=1)
+    return start_date
+
+
 def _fetch_paged_adj_factor(pro, trade_date: str, limit: int = 5000) -> int:
     offset = 0
     total = 0
@@ -89,8 +107,9 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
     """
     Close-time sync:
     - Requires trade calendar to be present.
-    - If today is not a trading day: skip.
-    - If today's run already succeeded: skip.
+    - If today is not a trading day and data is already current: skip.
+    - If today is not a trading day but data is stale: catch up through the latest open day.
+    - If today's run already succeeded: skip (unless force).
     - If today's run failed: resume from the next trading date after last_ts_code (stored as YYYYMMDD marker).
     - Otherwise: sync from the next trading day after last successful sync time (usually 1 day).
     - For each trading day: pull market-wide daily bars (paged) and adj_factor (paged).
@@ -124,42 +143,42 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
         open_flag = is_trading_day(exchange, today)
         if open_flag is None:
             return {"ok": False, "error": "trade calendar still missing for today after trade_cal sync"}
-    if open_flag is False:
-        out = {"ok": True, "skipped": True, "message": "not a trading day"}
-        if trade_cal_auto is not None:
-            out["trade_cal"] = {"autoSynced": True, "result": trade_cal_auto}
-        return out
 
-    # Determine start date by resume marker or last success time.
-    start_date = today
-    if today_run and today_run.get("success") is False and today_run.get("last_ts_code"):
-        marker = str(today_run["last_ts_code"])
-        start_date = _parse_yyyymmdd(marker) + timedelta(days=1)
+    is_trading_today = open_flag is True
+    start_date = _resolve_start_date(today, today_run)
+
+    # Non-trading days sync through the latest open day; trading days sync through today (subject to close guard).
+    if is_trading_today:
+        end_date = today
     else:
-        last_ok = get_last_success(JOB_TYPE)
-        # Prefer last completed trade_date marker (last_ts_code) over sync_at timestamp.
-        marker_ok = str((last_ok or {}).get("last_ts_code") or "").strip()
-        if marker_ok and len(marker_ok) == 8 and marker_ok.isdigit():
-            start_date = _parse_yyyymmdd(marker_ok) + timedelta(days=1)
-        elif last_ok and last_ok.get("sync_at"):
-            # Fallback: sync_at is ISO; use its date in Asia/Shanghai as a conservative baseline
-            sync_at = datetime.fromisoformat(str(last_ok["sync_at"]))
-            start_date = sync_at.astimezone(ZoneInfo("Asia/Shanghai")).date() + timedelta(days=1)
+        latest_open = last_open_date_on_or_before(today, exchange=exchange)
+        if latest_open is None:
+            out_na = {
+                "ok": False,
+                "error": "trade calendar missing; cannot determine last trading day",
+            }
+            if trade_cal_auto is not None:
+                out_na["trade_cal"] = {"autoSynced": True, "result": trade_cal_auto}
+            return out_na
+        end_date = latest_open
 
-    if start_date > today:
-        # Verify DB actually has today's data; if not, allow force to heal "false success" records.
-        today_str = today.isoformat()
-        rows_today = count_rows_for_trade_date(today_str)
+    if start_date > end_date:
+        # Verify DB actually has end_date data; if not, allow force to heal "false success" records.
+        end_str = end_date.isoformat()
+        rows_end = count_rows_for_trade_date(end_str)
         # CN A-share universe is ~5k; treat a very small count as missing/partial.
-        sufficient = rows_today >= 3000
+        sufficient = rows_end >= 3000
         if bool(force) and not sufficient:
-            start_date = today
+            start_date = end_date
         else:
+            message = "already up to date"
+            if not is_trading_today:
+                message = "not a trading day; data already up to date"
             return {
                 "ok": True,
                 "skipped": True,
-                "message": "already up to date",
-                "meta": {"todayDailyRows": rows_today, "sufficient": sufficient},
+                "message": message,
+                "meta": {"endDateDailyRows": rows_end, "sufficient": sufficient, "end_date": end_str},
             }
 
     # Guard: avoid marking today's close as synced before market close.
@@ -167,8 +186,7 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
     # We allow catching up previous days before close, but never process *today* before close-ready.
     close_ready_minutes = 17 * 60 + 5  # after market close + data settle buffer
     now_minutes = now_cn.hour * 60 + now_cn.minute
-    end_date = today
-    if now_cn.date() == today and now_minutes < close_ready_minutes:
+    if is_trading_today and now_cn.date() == today and now_minutes < close_ready_minutes:
         if start_date >= today:
             out0 = {
                 "ok": True,
@@ -228,8 +246,9 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
             insert_record(JOB_TYPE, success=False, last_ts_code=last_completed, error_message=str(e))
             return {"ok": False, "error": str(e), "last_marker": last_completed}
 
-    # Only mark the close job as "done today" when we actually processed today's trade_date.
-    if end_date == today:
+    # Mark success when fully caught up through the intended end_date.
+    caught_up = last_completed and last_completed == _to_yyyymmdd(end_date)
+    if caught_up and (end_date == today or not is_trading_today):
         insert_record(JOB_TYPE, success=True, last_ts_code=last_completed, error_message=None)
     out3 = {
         "ok": True,
@@ -237,9 +256,11 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
         "updated_adj_factor_rows": total_factor,
         "trade_dates": [d.isoformat() for d in trade_dates],
     }
-    if end_date != today:
+    if end_date != today and is_trading_today:
         out3["partial"] = True
         out3["message"] = "pre-close catchup: synced until yesterday; will sync today after close"
+    elif not is_trading_today:
+        out3["message"] = "non-trading day catchup: synced through latest open day"
     if trade_cal_auto is not None:
         out3["trade_cal"] = {"autoSynced": True, "result": trade_cal_auto}
     return out3

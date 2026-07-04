@@ -29,8 +29,9 @@ def market_cn_industry_fund_flow_sync(
 ) -> dict:
     days = int(payload.get("days") or 10)
     top_n = int(payload.get("topN") or 10)
+    force = bool(payload.get("force") or False)
     try:
-        return sync_cn_industry_fund_flow(days=days, top_n=top_n)
+        return sync_cn_industry_fund_flow(days=days, top_n=top_n, force=force)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
