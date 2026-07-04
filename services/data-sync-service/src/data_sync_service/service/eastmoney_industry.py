@@ -119,7 +119,7 @@ def _list_cn_ts_codes(*, limit: int | None = None) -> list[str]:
                 SELECT ts_code
                 FROM stock_basic
                 WHERE (market IN ('主板', '中小板', '创业板', '科创板', 'CN') OR ts_code ~ '^[0-9]{6}\\.(SH|SZ)$')
-                  AND (ts_code LIKE '%.SH' OR ts_code LIKE '%.SZ')
+                  AND (ts_code LIKE '%%.SH' OR ts_code LIKE '%%.SZ')
                 ORDER BY ts_code
                 LIMIT %s
                 """,

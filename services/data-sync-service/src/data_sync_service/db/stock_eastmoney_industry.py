@@ -87,7 +87,7 @@ def count_rows() -> int:
 
 _CN_STOCK_WHERE = """
     (sb.market IN ('主板', '中小板', '创业板', '科创板', 'CN') OR sb.ts_code ~ '^[0-9]{6}\\.(SH|SZ)$')
-    AND (sb.ts_code LIKE '%.SH' OR sb.ts_code LIKE '%.SZ')
+    AND (sb.ts_code LIKE '%%.SH' OR sb.ts_code LIKE '%%.SZ')
     AND (sb.delist_date IS NULL OR sb.delist_date > CURRENT_DATE)
 """
 
