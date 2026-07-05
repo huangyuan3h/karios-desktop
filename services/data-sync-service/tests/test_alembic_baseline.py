@@ -8,7 +8,7 @@ import pytest
 from data_sync_service.db import check_db, get_connection  # type: ignore[import-not-found]
 from data_sync_service.db.schema_baseline import BASELINE_REVISION, baseline_ddl_statements
 
-HEAD_REVISION = "0008_daily_trade_date_index"
+HEAD_REVISION = "0009_drop_unused_daily_indexes"
 
 
 def _postgres_available() -> bool:
@@ -39,14 +39,16 @@ def test_baseline_ddl_includes_industry_fund_flow_taxonomy_fields() -> None:
     assert "idx_cn_industry_fund_flow_taxonomy_level_date" in ddl
 
 
-def test_baseline_ddl_includes_daily_trade_date_indexes() -> None:
+def test_baseline_ddl_includes_brin_daily_indexes() -> None:
+    # OPT-009 follow-up: B-tree idx_daily_trade_date/idx_index_daily_trade_date were
+    # replaced with BRIN variants in 0009. Empty-DB parity must reflect the change.
     ddl = "\n".join(baseline_ddl_statements()).lower()
-    assert "idx_daily_trade_date" in ddl
-    assert "idx_index_daily_trade_date" in ddl
+    assert "idx_daily_trade_date_brin" in ddl
+    assert "idx_index_daily_trade_date_brin" in ddl
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
-def test_daily_trade_date_indexes_exist() -> None:
+def test_brin_daily_indexes_exist_and_btree_gone() -> None:
     from alembic import command
     from alembic.config import Config
 
@@ -63,12 +65,19 @@ def test_daily_trade_date_indexes_exist() -> None:
                 SELECT indexname
                 FROM pg_indexes
                 WHERE schemaname = 'public'
-                  AND indexname IN ('idx_daily_trade_date', 'idx_index_daily_trade_date')
+                  AND indexname IN (
+                    'idx_daily_trade_date',
+                    'idx_index_daily_trade_date',
+                    'idx_daily_trade_date_brin',
+                    'idx_index_daily_trade_date_brin'
+                  )
                 """
             )
             names = {str(r[0]) for r in cur.fetchall()}
-    assert "idx_daily_trade_date" in names
-    assert "idx_index_daily_trade_date" in names
+    assert "idx_daily_trade_date" not in names
+    assert "idx_index_daily_trade_date" not in names
+    assert "idx_daily_trade_date_brin" in names
+    assert "idx_index_daily_trade_date_brin" in names
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")

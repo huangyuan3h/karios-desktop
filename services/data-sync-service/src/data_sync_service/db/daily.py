@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     adj_factor NUMERIC,
     PRIMARY KEY (ts_code, trade_date)
 );
-CREATE INDEX IF NOT EXISTS idx_daily_trade_date ON {TABLE_NAME} (trade_date DESC);
+-- Note: idx_daily_trade_date was removed in 0009 (B-tree redundant; PK already covers ts_code-prefixed scans).
+-- BRIN alternative retained as idx_daily_trade_date_brin for occasional date-range scans (e.g. count_rows_for_trade_date).
+CREATE INDEX IF NOT EXISTS idx_daily_trade_date_brin ON {TABLE_NAME} USING BRIN (trade_date) WITH (pages_per_range = 32);
 """
 
 UPSERT_SQL = f"""
