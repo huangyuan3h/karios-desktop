@@ -4,13 +4,16 @@ import { mdPrice, mdScore, mdTable } from '@/lib/dashboard-format';
 import {
   buildSectorExposureFromWatchlist,
   buildSleeveExposurePct,
+  computePnLPct,
   countHeldMissingPositionPct,
   deriveActionCard,
   formatSleeveBudgetLabel,
+  isLockedT1,
+  type CatalystPurgeHint,
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import type { TrendOkResult } from '@/lib/api/types';
-import { formatRs, buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
+import { formatPnLPct, formatRs, buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 
 function formatTrendOkCell(t: TrendOkResult | undefined): string {
@@ -22,6 +25,16 @@ function formatTrendOkCell(t: TrendOkResult | undefined): string {
 
 function formatPosPct(v: number | null | undefined): string {
   return typeof v === 'number' && Number.isFinite(v) ? v.toFixed(1) : '—';
+}
+
+function formatEntryDate(v: string | null | undefined): string {
+  const s = String(v || '').trim();
+  return s || '—';
+}
+
+function formatLockedT1(entryDate: string | null | undefined, todaySh: string): string {
+  if (!String(entryDate || '').trim()) return '—';
+  return isLockedT1(entryDate, todaySh) ? 'True' : 'False';
 }
 
 export type PositionsExecutionMarkdownResult = {
@@ -56,6 +69,7 @@ export function buildPositionsExecutionMarkdown(
   tradingTime = false,
   todaySh = '',
   sectorOutflowBlock = false,
+  catalystBySymbol: Map<string, CatalystPurgeHint> | null = null,
 ): PositionsExecutionMarkdownResult {
   const lines: string[] = [];
   lines.push(`${heading} Combat Positions & Watchlist (Unified)`);
@@ -81,7 +95,10 @@ export function buildPositionsExecutionMarkdown(
     '- note: Dist% flat = (Entry_Trigger-Current)/Current; held = (Current-Exit_Stop)/Current',
   );
   lines.push(
-    '- note: PURGE = Pos%=0 & Score<30 & TrendOK=no (removed from watchlist after this report)',
+    '- note: PURGE = Pos%=0 & Score<30 & TrendOK=no (removed after report); Alpha S + score>80 → WATCH_SILENT (kept)',
+  );
+  lines.push(
+    '- note: Locked_T1=True (entryDate=today) → EXIT/TRIM blocked (Why=T1_LOCK); missing entryDate fail-open',
   );
   if (sectorOutflowBlock) {
     lines.push(
@@ -108,6 +125,10 @@ export function buildPositionsExecutionMarkdown(
     'TrendOK',
     'Current',
     'Pos%',
+    'CostPrice',
+    'P&L%',
+    'EntryDate',
+    'Locked_T1',
     'Action',
     'Suggest%',
     'Entry_Trigger',
@@ -130,6 +151,7 @@ export function buildPositionsExecutionMarkdown(
       tradingTime,
       todaySh,
     });
+    const catalyst = catalystBySymbol?.get(it.symbol) ?? null;
     const card: ExecutionActionCard = deriveActionCard({
       symbol: it.symbol,
       gate,
@@ -143,6 +165,8 @@ export function buildPositionsExecutionMarkdown(
       sectorExposureByIndustry,
       sleeveExposurePct,
       sectorOutflowBlock,
+      catalyst,
+      todaySh,
     });
     if (card.action === 'PURGE') {
       purgeSymbols.push(it.symbol);
@@ -156,6 +180,10 @@ export function buildPositionsExecutionMarkdown(
       typeof card.suggestAddPct === 'number' && Number.isFinite(card.suggestAddPct)
         ? `+${card.suggestAddPct.toFixed(1)}${card.suggestSizeNote ? ` (${card.suggestSizeNote})` : ''}`
         : '—';
+    const pnl = computePnLPct(
+      typeof it.costPrice === 'number' ? it.costPrice : null,
+      rowMetrics.current,
+    );
     rows.push([
       it.symbol,
       it.name ?? t?.name ?? '—',
@@ -164,6 +192,10 @@ export function buildPositionsExecutionMarkdown(
       formatTrendOkCell(t),
       mdPrice(rowMetrics.current),
       formatPosPct(it.positionPct),
+      mdPrice(it.costPrice),
+      formatPnLPct(pnl),
+      formatEntryDate(it.entryDate),
+      formatLockedT1(it.entryDate, todaySh),
       card.action,
       suggest,
       mdPrice(card.entryTrigger ?? null),
@@ -183,7 +215,7 @@ export function buildPositionsExecutionMarkdown(
   lines.push(mdTable(headers, rows));
   if (purgeSymbols.length) {
     lines.push(
-      `- note: Purged ${purgeSymbols.length} symbols (Score<30 & TrendOK=no & flat) — removed after this report`,
+      `- note: Purged ${purgeSymbols.length} symbols (Score<30 & TrendOK=no & flat, not Alpha S) — removed after this report`,
     );
   }
   lines.push('');

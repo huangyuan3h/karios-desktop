@@ -11,6 +11,7 @@ import {
   isHeldPosition,
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
+import { getShanghaiTodayIso } from '@/lib/market-hours';
 import type { ExecutionGate } from '@karios/shared';
 import {
   computePnLPct,
@@ -550,13 +551,16 @@ function WatchlistRowInner({
     sectorExposureByIndustry,
     sleeveExposurePct,
     sectorOutflowBlock,
+    todaySh: getShanghaiTodayIso(),
   });
   const execTone =
     actionCard.action === 'EXIT' || actionCard.action === 'PURGE'
       ? 'text-red-600 font-semibold'
       : actionCard.action === 'BUY' || actionCard.action === 'ADD'
         ? 'text-emerald-700 font-semibold'
-        : actionCard.action === 'TRIM' ||
+        : actionCard.action === 'WATCH_SILENT' ||
+            actionCard.action === 'TRIM' ||
+            actionCard.why === 'T1_LOCK' ||
             actionCard.why === 'NOT_MAINLINE' ||
             actionCard.why === 'SECTOR_OUTFLOW_BLOCK' ||
             actionCard.why === 'DEFENSE_SECTOR_BLOCK' ||

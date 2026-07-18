@@ -69,6 +69,18 @@ describe('ExecutionActionCardSchema', () => {
     expect(parsed.entryTrigger).toBe(55.2);
   });
 
+  it('parses WATCH_SILENT card', () => {
+    const parsed = ExecutionActionCardSchema.parse({
+      symbol: 'CN:002230',
+      action: 'WATCH_SILENT',
+      trailArmed: false,
+      why: 'ALPHA_S_WATCH',
+      mainlineOk: false,
+    });
+    expect(parsed.action).toBe('WATCH_SILENT');
+    expect(parsed.why).toBe('ALPHA_S_WATCH');
+  });
+
   it('parses BUY card with mainline tag', () => {
     const parsed = ExecutionActionCardSchema.parse({
       symbol: 'CN:600519',

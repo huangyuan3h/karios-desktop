@@ -4,6 +4,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { apiGetJson } from '@/lib/api/client';
 import type { TrendOkResult } from '@/lib/api/types';
 import {
+  buildCatalystPurgeMap,
   buildCatalystStocksMarkdown,
   buildAlphaRadarTrendsMarkdown,
   DEFAULT_CATALYST_MAX_AGE_DAYS,
@@ -695,6 +696,13 @@ export async function buildWatchlistMarkdown(
   }
 
   // Unified combat table only — fat Watchlist dump removed for LLM SNR.
+  const catalystBySymbol = await fetchCatalystStocks(
+    DATA_SYNC_BASE_URL,
+    50,
+    DEFAULT_CATALYST_MAX_AGE_DAYS,
+  )
+    .then((resp) => buildCatalystPurgeMap(resp))
+    .catch(() => null);
   const { markdown, purgeSymbols } = buildPositionsExecutionMarkdown(
     sorted,
     trend,
@@ -705,6 +713,7 @@ export async function buildWatchlistMarkdown(
     tradingTime,
     todaySh,
     sectorOutflowBlock,
+    catalystBySymbol,
   );
   // Report still lists PURGE rows; remove them from storage for the next copy.
   if (purgeSymbols.length) {
@@ -806,6 +815,13 @@ async function buildExecutionCopyBundle(opts: {
     try {
       const symbols = items.map((i) => i.symbol);
       const market = await fetchWatchlistSnapshotForCopy(symbols, queryClient);
+      const catalystBySymbol = await fetchCatalystStocks(
+        DATA_SYNC_BASE_URL,
+        50,
+        DEFAULT_CATALYST_MAX_AGE_DAYS,
+      )
+        .then((resp) => buildCatalystPurgeMap(resp))
+        .catch(() => null);
       const payload = buildExecutionSnapshotPayload({
         items,
         trend: market.trend,
@@ -813,6 +829,7 @@ async function buildExecutionCopyBundle(opts: {
         gate,
         mainlineAllow,
         sectorOutflowBlock,
+        catalystBySymbol,
         source: 'poll',
       });
       liveCards = (payload?.cards as CondOrderCard[] | undefined) ?? null;

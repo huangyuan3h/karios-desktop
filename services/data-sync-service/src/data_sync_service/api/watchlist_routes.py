@@ -25,6 +25,7 @@ class WatchlistRegistryItem(BaseModel):
     positionPct: float | None = None
     costPrice: float | None = None
     maxPrice: float | None = None
+    entryDate: str | None = None
 
 
 class WatchlistRegistryRequest(BaseModel):

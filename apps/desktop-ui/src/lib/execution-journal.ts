@@ -11,10 +11,17 @@ import type { QueryClient } from '@tanstack/react-query';
 import { apiGetJson, apiPostJson } from '@/lib/api/client';
 import type { TrendOkResult } from '@/lib/api/types';
 import {
+  buildCatalystPurgeMap,
+  DEFAULT_CATALYST_MAX_AGE_DAYS,
+  fetchCatalystStocks,
+} from '@/lib/alpha-radar-catalyst';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import {
   buildSectorExposureFromWatchlist,
   buildSleeveExposurePct,
   deriveActionCard,
   resolveIndustryName,
+  type CatalystPurgeHint,
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
@@ -77,6 +84,7 @@ export type BuildExecutionSnapshotInput = {
   tradingTime?: boolean;
   todaySh?: string;
   sectorOutflowBlock?: boolean;
+  catalystBySymbol?: Map<string, CatalystPurgeHint> | null;
   source: ExecutionSnapshotSource;
   meta?: Record<string, unknown>;
 };
@@ -89,6 +97,7 @@ export function buildExecutionSnapshotPayload(
   const tradingTime = input.tradingTime ?? isShanghaiTradingTime();
   const todaySh = input.todaySh ?? getShanghaiTodayIso();
   const sectorOutflowBlock = input.sectorOutflowBlock === true;
+  const catalystBySymbol = input.catalystBySymbol ?? null;
   const sectorExposureByIndustry = buildSectorExposureFromWatchlist(items, trend);
   const sleeveExposurePct = buildSleeveExposurePct(items);
   const cards: ExecutionJournalCard[] = [];
@@ -124,6 +133,8 @@ export function buildExecutionSnapshotPayload(
       sectorExposureByIndustry,
       sleeveExposurePct,
       sectorOutflowBlock,
+      catalyst: catalystBySymbol?.get(it.symbol) ?? null,
+      todaySh,
     });
     cards.push({
       ...card,
@@ -239,6 +250,13 @@ export async function captureAndPushExecutionSnapshot(
     trend = snap.trend as Record<string, TrendOkResult | undefined>;
     quotes = snap.quotes;
   }
+  const catalystBySymbol = await fetchCatalystStocks(
+    DATA_SYNC_BASE_URL,
+    50,
+    DEFAULT_CATALYST_MAX_AGE_DAYS,
+  )
+    .then((resp) => buildCatalystPurgeMap(resp))
+    .catch(() => null);
   const payload = buildExecutionSnapshotPayload({
     items: opts.items,
     trend: trend ?? {},
@@ -246,6 +264,7 @@ export async function captureAndPushExecutionSnapshot(
     gate: opts.gate,
     mainlineAllow: opts.mainlineAllow,
     sectorOutflowBlock: opts.sectorOutflowBlock === true,
+    catalystBySymbol,
     source: opts.source,
   });
   if (!payload) return null;

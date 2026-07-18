@@ -155,7 +155,7 @@ Dashboard 与「Copy all Markdown」顶部输出 **Execution Gate**，把分散�
 | HOLD_ONLY | false | 分化或 SRV Elevated：禁止新开，只管理持仓 |
 | DEFEND | false | 广度恐慌 / SRV Extreme_High / Weak / 极端风险：防守 |
 
-Watchlist 每行另有 **Action Card**（Exec / Trigger / Trail）：EXIT、TRIM、HOLD、ADD、BUY、WATCH、**PURGE**。Trigger 列按仓位语义拆分：**空仓**显示 Entry_Trigger（`buyZoneHigh`），**持仓**显示 Exit_Stop（`max(hardStop, trailStop)`）。Dist%：空仓 `(Entry−Current)/Current`，持仓 `(Current−Exit)/Current`。下游 AI 应优先服从 Gate 与 Action，而不是自行重算红绿灯。
+Watchlist 每行另有 **Action Card**（Exec / Trigger / Trail）：EXIT、TRIM、HOLD、ADD、BUY、WATCH、**WATCH_SILENT**、**PURGE**。Trigger 列按仓位语义拆分：**空仓**显示 Entry_Trigger（`buyZoneHigh`），**持仓**显示 Exit_Stop（`max(hardStop, trailStop)`）。Dist%：空仓 `(Entry−Current)/Current`，持仓 `(Current−Exit)/Current`。Unified Copy 表另含 **CostPrice / P&L% / EntryDate / Locked_T1**（A 股 T+1：当日买入禁 EXIT）。下游 AI 应优先服从 Gate 与 Action，而不是自行重算红绿灯。
 
 ### Decision Journal（执行决策闭环）
 
@@ -165,12 +165,12 @@ Dashboard 卡片 **Decision Journal** 把 Gate + Action Card 写成可回放时�
 - **自动采集**：Sync All、盘中 5 分钟 poll、Watchlist 仓位变更 debounce、收盘后 eod、手动 Snapshot now。Action Card 仍由前端 `deriveActionCard` 计算后 POST。
 - **变更流水**：`mode` / `action` / `why` / `trigger` / `entryTrigger` / `exitStop` / `hardStop` / `trailStop` / `positionPct` 变化落库；同决策 content_hash 只心跳更新 `captured_at`。
 - **Latest Actions（delta）**：Journal 只列出当日 Action / Trigger / Entry_Trigger / Exit_Stop / HardStop / TrailStop 变更的标的；静默 WATCH→WATCH 不入表。
-- **Copy all Markdown（忙人包）**：纯数据 Payload（**无**内嵌 AI instructions）。顺序：`## Since last copy` → Gate → Attention → Cond order（休市带 `[Queue for Next Open]`）→ Journal → 宏观原料 → **`## Combat Positions & Watchlist (Unified)`**（含 Entry_Trigger / Exit_Stop；PURGE 行在报告后物理剔除）。行为合同只在 System Prompt。Dashboard 另有 **Sync & Copy** 一键。
+- **Copy all Markdown（忙人包）**：纯数据 Payload（**无**内嵌 AI instructions）。顺序：`## Since last copy` → Gate → Attention → Cond order（休市带 `[Queue for Next Open]`）→ Journal → 宏观原料 → **`## Combat Positions & Watchlist (Unified)`**（含 CostPrice/P&L%/EntryDate/Locked_T1、Entry_Trigger/Exit_Stop；PURGE 行在报告后物理剔除；Alpha S 豁免为 WATCH_SILENT）。行为合同只在 System Prompt。Dashboard 另有 **Sync & Copy** 一键。
 - 迁移：`PYTHONPATH=src alembic upgrade head`（revision `0010_execution_decision_journal`）。
 
 ### 下游判断 AI（Copy → Agent）
 
-外部 / 本仓判断 AI 的 system prompt 见 **[downstream-ai-prompt.md](./downstream-ai-prompt.md)（V7.5 · Entry/Exit · PURGE · 休市挂单）**。
+外部 / 本仓判断 AI 的 system prompt 见 **[downstream-ai-prompt.md](./downstream-ai-prompt.md)（V7.6 · CostPrice/P&L · Alpha S · T+1）**。
 
 要点：硬合同不变；先**操作表**，再**今日焦点≤3条**（写透）+ **战场扫描 7 行短句**防漏报；禁夸张套话与注水。
 
@@ -189,7 +189,9 @@ Watchlist 是**监控池**（TV Screener → 回撤 + TrendOK 导入），**不�
 
 否则 Exec 降为 `WATCH`（候选）或持仓 `HOLD`（不加仓、不 TRIM），Why 为 `NOT_MAINLINE` / `SECTOR_OUTFLOW_BLOCK`（全日板块净流出）/ `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY` / `INTRADAY_SURGE_BLOCK` / `GAP_UP_WEAK_BLOCK` / `SECTOR_CONC_BLOCK` / `SLEEVE_CAP_BLOCK`。与 Import 过滤正交。
 
-空仓且 `Score < 30` 且 `TrendOK=no` → Action=`PURGE`（Why=`PURGE_GC`）；Copy/报告生成后从 Watchlist 物理删除。盘后三日低分自动化仍保留，且仅 `Pos%==0`（或缺失）才移除。
+空仓且 `Score < 30` 且 `TrendOK=no` → Action=`PURGE`（Why=`PURGE_GC`）；Copy/报告生成后从 Watchlist 物理删除。**豁免**：Alpha Radar Max Grade=`S` 且 `catalystScore > 80` → Action=`WATCH_SILENT`（Why=`ALPHA_S_WATCH`），留池静默观察、不物理删。盘后三日低分自动化仍保留，且仅 `Pos%==0`（或缺失）才移除；`source=alpha_radar` 整源豁免三日 GC。
+
+持仓 `entryDate`（上海日历日）等于今日 → `Locked_T1=True`：本应 EXIT/TRIM 时降为 `HOLD`（Why=`T1_LOCK`），Cond 卖单草稿跳过；缺 `entryDate` 的老仓 fail-open（不锁）。首次 `positionPct` 从 0→>0 时自动戳 `entryDate`。
 
 ### 持仓 TRIM（DEFEND + 主线失效）
 

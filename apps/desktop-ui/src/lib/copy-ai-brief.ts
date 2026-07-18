@@ -109,11 +109,19 @@ export function formatCondOrderDraftMarkdown(
     const phase = opts?.phase?.trim() || 'closed';
     lines.push(`- note: phase: ${phase} — orders queue for next open`);
   }
+  const t1Locked = cards.filter((c) => String(c.why || '').toUpperCase() === 'T1_LOCK');
+  if (t1Locked.length) {
+    lines.push(
+      `- note: T1_LOCK — skipped sell/exit drafts for ${t1Locked.length} same-day buy(s)`,
+    );
+  }
 
   const exits: CondOrderCard[] = [];
   const trims: CondOrderCard[] = [];
   const buys: CondOrderCard[] = [];
   for (const c of cards) {
+    const why = String(c.why || '').toUpperCase();
+    if (why === 'T1_LOCK') continue;
     const action = String(c.action || '').toUpperCase();
     if (action === 'EXIT') exits.push(c);
     else if (action === 'TRIM') trims.push(c);

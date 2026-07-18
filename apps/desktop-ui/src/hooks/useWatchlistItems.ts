@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { apiGetJson } from '@/lib/api/client';
+import { getShanghaiTodayIso } from '@/lib/market-hours';
 import {
   ensureWatchlistHydrated,
   loadWatchlist,
@@ -171,7 +172,18 @@ export function useWatchlistItems() {
     const num = raw === '' ? null : Number(raw);
     const nextVal =
       typeof num === 'number' && Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : null;
-    const next = items.map((it) => (it.symbol === symbol ? { ...it, positionPct: nextVal } : it));
+    const todaySh = getShanghaiTodayIso();
+    const next = items.map((it) => {
+      if (it.symbol !== symbol) return it;
+      const prevPct =
+        typeof it.positionPct === 'number' && Number.isFinite(it.positionPct) ? it.positionPct : 0;
+      const opening = prevPct <= 0 && nextVal != null && nextVal > 0;
+      const clearing = nextVal == null || nextVal <= 0;
+      let entryDate = it.entryDate ?? null;
+      if (clearing) entryDate = null;
+      else if (opening && !entryDate) entryDate = todaySh;
+      return { ...it, positionPct: nextVal, entryDate };
+    });
     persist(next);
   }
 

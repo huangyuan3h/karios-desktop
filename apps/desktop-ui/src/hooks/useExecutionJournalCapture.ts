@@ -112,7 +112,10 @@ export function useExecutionJournalCapture(opts: UseExecutionJournalCaptureOpts)
   const itemsSig = React.useMemo(
     () =>
       items
-        .map((i) => `${i.symbol}:${i.positionPct ?? ''}:${i.costPrice ?? ''}:${i.maxPrice ?? ''}`)
+        .map(
+          (i) =>
+            `${i.symbol}:${i.positionPct ?? ''}:${i.costPrice ?? ''}:${i.maxPrice ?? ''}:${i.entryDate ?? ''}`,
+        )
         .join('|'),
     [items],
   );

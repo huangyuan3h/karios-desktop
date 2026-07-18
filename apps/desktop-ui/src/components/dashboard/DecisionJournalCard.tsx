@@ -107,6 +107,7 @@ export function DecisionJournalCard(props: {
       quotes: marketQ.data.quotes,
       gate,
       mainlineAllow,
+      // Catalyst map omitted here (sync UI); Copy/capture paths fetch for PURGE exempt.
       source: 'poll',
     });
     return payload?.cards ?? null;

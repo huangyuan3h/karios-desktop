@@ -14,6 +14,8 @@ export const CHANDELIER_ATR_MULT = 2;
 export const BUY_SCORE_MIN = 80;
 /** Flat names below this score with TrendOK=no are marked PURGE. */
 export const PURGE_SCORE_MAX = 30;
+/** Alpha Radar max grade S + catalystScore above this → PURGE exempt (WATCH_SILENT). */
+export const ALPHA_S_PURGE_EXEMPT_SCORE_MIN = 80;
 /** Max single-name weight inside the satellite sleeve; blocks ADD at or above. */
 export const POSITION_SIZE_CAP_PCT = 15;
 /** Max sum of positionPct in one East Money industry; blocks BUY/ADD at or above. */
@@ -52,6 +54,14 @@ export type PositionLike = {
   costPrice?: number | null;
   maxPrice?: number | null;
   positionPct?: number | null;
+  /** Shanghai calendar YYYY-MM-DD when the live position was opened. */
+  entryDate?: string | null;
+};
+
+/** Catalyst hint for PURGE exemption (from Alpha Radar Top Catalyst Stocks). */
+export type CatalystPurgeHint = {
+  maxGrade?: string | null;
+  catalystScore?: number | null;
 };
 
 function num(v: unknown): number | null {
@@ -319,6 +329,36 @@ export function isPurgeCandidate(opts: {
   return !held && score != null && score < PURGE_SCORE_MAX && trendOk === false;
 }
 
+/**
+ * Alpha Radar S-grade catalyst exemption from instant PURGE.
+ * IF Max Grade == S AND catalystScore > 80 → keep as WATCH_SILENT.
+ */
+export function isAlphaSPurgeExempt(opts: {
+  maxGrade?: string | null;
+  catalystScore?: number | null;
+}): boolean {
+  const grade = String(opts.maxGrade || '')
+    .trim()
+    .toUpperCase();
+  const score = opts.catalystScore;
+  return (
+    grade === 'S' &&
+    typeof score === 'number' &&
+    Number.isFinite(score) &&
+    score > ALPHA_S_PURGE_EXEMPT_SCORE_MIN
+  );
+}
+
+/** A-share T+1: same Shanghai calendar day as entryDate cannot sell. */
+export function isLockedT1(
+  entryDate: string | null | undefined,
+  todaySh: string | null | undefined,
+): boolean {
+  const d = String(entryDate || '').trim();
+  const today = String(todaySh || '').trim();
+  return Boolean(d && today && d === today);
+}
+
 function atrFromParts(parts: Record<string, unknown> | null | undefined): number | null {
   if (!parts) return null;
   return num(parts.atr14);
@@ -445,6 +485,10 @@ export function deriveActionCard(opts: {
   sectorExposureByIndustry?: Map<string, number> | null;
   sleeveExposurePct?: number | null;
   sectorOutflowBlock?: boolean;
+  /** Alpha Radar catalyst hint; when present, may exempt PURGE. */
+  catalyst?: CatalystPurgeHint | null;
+  /** Shanghai YYYY-MM-DD for T+1 lock (entryDate === todaySh). */
+  todaySh?: string | null;
 }): ExecutionActionCard {
   const {
     symbol,
@@ -459,6 +503,8 @@ export function deriveActionCard(opts: {
     sectorExposureByIndustry = null,
     sleeveExposurePct = null,
     sectorOutflowBlock = false,
+    catalyst = null,
+    todaySh = null,
   } = opts;
   const held = isHeldPosition(position);
   const parts = (trendok?.stopLossParts ?? null) as Record<string, unknown> | null;
@@ -536,15 +582,32 @@ export function deriveActionCard(opts: {
   let action: ExecutionAction = 'WATCH';
   let why = 'WATCH';
 
+  const lockedT1 = held && isLockedT1(position.entryDate, todaySh);
+
   if (held && (exitNow || priceAtOrBelowTrigger)) {
-    action = 'EXIT';
-    why = exitNow ? 'EXIT_NOW' : 'TRIGGER_HIT';
+    if (lockedT1) {
+      action = 'HOLD';
+      why = 'T1_LOCK';
+    } else {
+      action = 'EXIT';
+      why = exitNow ? 'EXIT_NOW' : 'TRIGGER_HIT';
+    }
   } else if (held && warnHalf) {
-    action = 'TRIM';
-    why = 'WARN_REDUCE_HALF';
+    if (lockedT1) {
+      action = 'HOLD';
+      why = 'T1_LOCK';
+    } else {
+      action = 'TRIM';
+      why = 'WARN_REDUCE_HALF';
+    }
   } else if (held && heldTrim.trim) {
-    action = 'TRIM';
-    why = heldTrim.why;
+    if (lockedT1) {
+      action = 'HOLD';
+      why = 'T1_LOCK';
+    } else {
+      action = 'TRIM';
+      why = heldTrim.why;
+    }
   } else if (held && allowAttack && wantsBuy) {
     if (!entryGate.ok) {
       action = 'HOLD';
@@ -562,8 +625,13 @@ export function deriveActionCard(opts: {
   } else if (
     isPurgeCandidate({ held: false, score, trendOk: trendOkFlag })
   ) {
-    action = 'PURGE';
-    why = 'PURGE_GC';
+    if (isAlphaSPurgeExempt(catalyst ?? {})) {
+      action = 'WATCH_SILENT';
+      why = 'ALPHA_S_WATCH';
+    } else {
+      action = 'PURGE';
+      why = 'PURGE_GC';
+    }
   } else if (allowAttack && wantsBuy) {
     if (!entryGate.ok) {
       action = 'WATCH';

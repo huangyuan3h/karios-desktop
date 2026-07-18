@@ -16,9 +16,11 @@ describe('WatchlistRegistryItemSchema', () => {
       positionPct: 10,
       costPrice: 10.5,
       maxPrice: 12.0,
+      entryDate: '2026-06-18',
     });
     expect(item.symbol).toBe('CN:000001');
     expect(item.source).toBe('manual');
+    expect(item.entryDate).toBe('2026-06-18');
   });
 
   it('rejects invalid source', () => {

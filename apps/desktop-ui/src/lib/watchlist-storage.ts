@@ -99,6 +99,10 @@ export function normalizeWatchlistItems(raw: unknown): WatchlistItem[] {
           typeof it.costPrice === 'number' && Number.isFinite(it.costPrice) ? it.costPrice : null,
         maxPrice:
           typeof it.maxPrice === 'number' && Number.isFinite(it.maxPrice) ? it.maxPrice : null,
+        entryDate:
+          typeof it.entryDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(it.entryDate.trim())
+            ? it.entryDate.trim()
+            : null,
         source:
           it.source === 'manual' || it.source === 'screener' || it.source === 'alpha_radar'
             ? it.source
@@ -249,6 +253,7 @@ export function normalizeWatchlistItem(item: Partial<WatchlistItem> & { symbol: 
       positionPct: item.positionPct ?? null,
       costPrice: item.costPrice ?? null,
       maxPrice: item.maxPrice ?? null,
+      entryDate: item.entryDate ?? null,
       source: item.source ?? 'manual',
     }
   );

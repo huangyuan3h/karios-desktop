@@ -27,6 +27,7 @@ vi.mock('@/lib/queries/dashboard', async (importOriginal) => {
 });
 
 vi.mock('@/lib/alpha-radar-catalyst', () => ({
+  buildCatalystPurgeMap: vi.fn(() => new Map()),
   buildCatalystStocksMarkdown: vi.fn(() => '## Catalyst\n'),
   buildAlphaRadarTrendsMarkdown: vi.fn(() => '## Trends\n'),
   DEFAULT_CATALYST_MAX_AGE_DAYS: 7,
@@ -318,7 +319,9 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
     const md = await buildWatchlistMarkdown(queryClient);
 
     expect(md).toContain('## Combat Positions & Watchlist (Unified)');
-    expect(md).toContain('| Symbol | Name | RS | Score | TrendOK | Current | Pos% | Action |');
+    expect(md).toContain(
+      '| Symbol | Name | RS | Score | TrendOK | Current | Pos% | CostPrice | P&L% | EntryDate | Locked_T1 | Action |',
+    );
     expect(md).toContain('| CN:000001 | Test |');
     expect(md).not.toContain('## Watchlist\n');
     expect(md).not.toContain('## Positions (execution)');

@@ -42,7 +42,7 @@ describe('buildWatchlistMarkdown', () => {
 
     expect(md).toContain('## Combat Positions & Watchlist (Unified)');
     expect(md).toContain(
-      '| Symbol | Name | RS | Score | TrendOK | Current | Pos% | Action | Suggest% | Entry_Trigger | Exit_Stop | HardStop | TrailStop | Dist% | Mainline | Why |',
+      '| Symbol | Name | RS | Score | TrendOK | Current | Pos% | CostPrice | P&L% | EntryDate | Locked_T1 | Action | Suggest% | Entry_Trigger | Exit_Stop | HardStop | TrailStop | Dist% | Mainline | Why |',
     );
     expect(md).toContain('| CN:000001 | Test |');
     expect(md).toContain('| 82 |');

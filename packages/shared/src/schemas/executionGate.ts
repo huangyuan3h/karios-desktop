@@ -28,6 +28,7 @@ export const ExecutionActionSchema = z.enum([
   'ADD',
   'BUY',
   'WATCH',
+  'WATCH_SILENT',
   'PURGE',
 ]);
 export type ExecutionAction = z.infer<typeof ExecutionActionSchema>;

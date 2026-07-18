@@ -124,6 +124,27 @@ export function maxGradeArticle(
   return { grade: trendCatalystGrade(best), theme: trendMacroTheme(best) };
 }
 
+/** Symbol → maxGrade + catalystScore for PURGE exemption in Action Cards. */
+export function buildCatalystPurgeMap(
+  resp: CatalystStocksResponse | null | undefined,
+): Map<string, { maxGrade: string | null; catalystScore: number | null }> {
+  const out = new Map<string, { maxGrade: string | null; catalystScore: number | null }>();
+  const items = Array.isArray(resp?.items) ? resp!.items : [];
+  for (const row of items) {
+    const sym = normalizeCatalystSymbol(row.symbol);
+    if (!sym) continue;
+    const maxGrade = maxGradeArticle(row.articles);
+    out.set(sym, {
+      maxGrade: maxGrade?.grade ?? null,
+      catalystScore:
+        typeof row.catalystScore === 'number' && Number.isFinite(row.catalystScore)
+          ? row.catalystScore
+          : null,
+    });
+  }
+  return out;
+}
+
 export function formatCatalystStockSummaryLine(stock: CatalystStock): string {
   const sym = normalizeCatalystSymbol(stock.symbol);
   const maxGrade = maxGradeArticle(stock.articles);

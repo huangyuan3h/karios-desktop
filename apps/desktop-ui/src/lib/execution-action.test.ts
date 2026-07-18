@@ -232,6 +232,141 @@ describe('deriveActionCard', () => {
     expect(card.distPct).toBeCloseTo(((55 - 50) / 50) * 100, 6);
   });
 
+  it('exempts PURGE to WATCH_SILENT for Alpha S + score > 80', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:603019',
+      gate: attackGate,
+      trendok: {
+        score: 0,
+        trendOk: false,
+        buyAction: 'avoid',
+        buyZoneHigh: 55,
+        values: { emIndustry: '白酒' },
+      },
+      position: { symbol: 'CN:603019', positionPct: 0 },
+      currentPrice: 50,
+      mainlineAllow: mainline,
+      catalyst: { maxGrade: 'S', catalystScore: 99.7 },
+    });
+    expect(card.action).toBe('WATCH_SILENT');
+    expect(card.why).toBe('ALPHA_S_WATCH');
+  });
+
+  it('still PURGEs when Alpha score is not above 80', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:002230',
+      gate: attackGate,
+      trendok: {
+        score: 10,
+        trendOk: false,
+        buyAction: 'avoid',
+        values: { emIndustry: '软件开发' },
+      },
+      position: { symbol: 'CN:002230', positionPct: 0 },
+      currentPrice: 40,
+      mainlineAllow: mainline,
+      catalyst: { maxGrade: 'S', catalystScore: 80 },
+    });
+    expect(card.action).toBe('PURGE');
+    expect(card.why).toBe('PURGE_GC');
+  });
+
+  it('still PURGEs when Max Grade is not S', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:002230',
+      gate: attackGate,
+      trendok: {
+        score: 10,
+        trendOk: false,
+        buyAction: 'avoid',
+        values: { emIndustry: '软件开发' },
+      },
+      position: { symbol: 'CN:002230', positionPct: 0 },
+      currentPrice: 40,
+      mainlineAllow: mainline,
+      catalyst: { maxGrade: 'A', catalystScore: 99 },
+    });
+    expect(card.action).toBe('PURGE');
+  });
+
+  it('blocks EXIT with T1_LOCK when entryDate is today', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:002821',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        trendOk: true,
+        buyAction: 'wait',
+        stopLossPrice: 100,
+        stopLossParts: { atr14: 1 },
+        values: { emIndustry: '化学制药' },
+      },
+      position: {
+        symbol: 'CN:002821',
+        positionPct: 7,
+        costPrice: 110,
+        entryDate: '2026-07-18',
+      },
+      currentPrice: 95,
+      mainlineAllow: mainline,
+      todaySh: '2026-07-18',
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('T1_LOCK');
+    expect(card.exitStop).toBe(100);
+  });
+
+  it('allows EXIT next calendar day after entryDate', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:002821',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        trendOk: true,
+        buyAction: 'wait',
+        stopLossPrice: 100,
+        stopLossParts: { atr14: 1 },
+        values: { emIndustry: '化学制药' },
+      },
+      position: {
+        symbol: 'CN:002821',
+        positionPct: 7,
+        costPrice: 110,
+        entryDate: '2026-07-17',
+      },
+      currentPrice: 95,
+      mainlineAllow: mainline,
+      todaySh: '2026-07-18',
+    });
+    expect(card.action).toBe('EXIT');
+    expect(card.why).toBe('TRIGGER_HIT');
+  });
+
+  it('fail-opens EXIT when entryDate is missing', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:002821',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        trendOk: true,
+        buyAction: 'wait',
+        stopLossPrice: 100,
+        stopLossParts: { atr14: 1 },
+        values: { emIndustry: '化学制药' },
+      },
+      position: {
+        symbol: 'CN:002821',
+        positionPct: 7,
+        costPrice: 110,
+      },
+      currentPrice: 95,
+      mainlineAllow: mainline,
+      todaySh: '2026-07-18',
+    });
+    expect(card.action).toBe('EXIT');
+    expect(card.why).toBe('TRIGGER_HIT');
+  });
+
   it('computes held Dist% from Exit_Stop cushion', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',

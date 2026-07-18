@@ -16,6 +16,8 @@ export const WatchlistRegistryItemSchema = z.object({
   positionPct: z.number().nullable().optional(),
   costPrice: z.number().nullable().optional(),
   maxPrice: z.number().nullable().optional(),
+  /** Shanghai calendar YYYY-MM-DD when the position was opened (T+1 lock source). */
+  entryDate: z.string().nullable().optional(),
 });
 export type WatchlistRegistryItem = z.infer<typeof WatchlistRegistryItemSchema>;
 

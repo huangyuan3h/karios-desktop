@@ -99,4 +99,27 @@ describe('formatCondOrderDraftMarkdown', () => {
       '[Queue for Next Open] 改单 CN:002821 卖出/清仓条件 @ Exit_Stop=42.1',
     );
   });
+
+  it('skips T1_LOCK sell drafts and notes the skip', () => {
+    const md = formatCondOrderDraftMarkdown(
+      [
+        {
+          symbol: 'CN:002821',
+          action: 'HOLD',
+          why: 'T1_LOCK',
+          exitStop: 42.1,
+        },
+        {
+          symbol: 'CN:600000',
+          action: 'EXIT',
+          why: 'TRIGGER_HIT',
+          exitStop: 10,
+        },
+      ],
+      { allowNewEntries: false },
+    );
+    expect(md).toContain('T1_LOCK — skipped sell/exit drafts for 1 same-day buy(s)');
+    expect(md).not.toContain('CN:002821');
+    expect(md).toContain('改单 CN:600000 卖出/清仓条件 @ Exit_Stop=10');
+  });
 });

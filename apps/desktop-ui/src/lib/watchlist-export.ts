@@ -1,6 +1,12 @@
 import type { QueryClient } from '@tanstack/react-query';
 
+import {
+  buildCatalystPurgeMap,
+  DEFAULT_CATALYST_MAX_AGE_DAYS,
+  fetchCatalystStocks,
+} from '@/lib/alpha-radar-catalyst';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
@@ -12,6 +18,20 @@ import {
 import { applyWatchlistPurgeAfterReport } from '@/lib/watchlist-purge';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 import type { ExecutionGate } from '@karios/shared';
+import type { CatalystPurgeHint } from '@/lib/execution-action';
+
+async function loadCatalystPurgeMap(): Promise<Map<string, CatalystPurgeHint> | null> {
+  try {
+    const resp = await fetchCatalystStocks(
+      DATA_SYNC_BASE_URL,
+      50,
+      DEFAULT_CATALYST_MAX_AGE_DAYS,
+    );
+    return buildCatalystPurgeMap(resp);
+  } catch {
+    return null;
+  }
+}
 
 const COPY_BLOCKING_MISSING_DATA = new Set([
   'no_bars',
@@ -128,6 +148,7 @@ export function buildWatchlistMarkdown(options: {
     sectorOutflowBlock = false,
   } = options;
   // Same unified combat table as Dashboard Copy all (no separate fat Watchlist dump).
+  // Sync helper: no catalyst fetch (PURGE exemption only on Copy / Sync&Copy paths).
   const { markdown } = buildPositionsExecutionMarkdown(
     sortedItems,
     trendSnap,
@@ -138,6 +159,7 @@ export function buildWatchlistMarkdown(options: {
     tradingTime,
     todaySh,
     sectorOutflowBlock,
+    null,
   );
   return markdown.trim() + '\n';
 }
@@ -191,6 +213,7 @@ export async function copyWatchlistMarkdown(options: {
   });
   if (validationError) return validationError;
 
+  const catalystBySymbol = await loadCatalystPurgeMap();
   const { markdown, purgeSymbols } = buildPositionsExecutionMarkdown(
     sortedItems,
     trendSnap,
@@ -201,6 +224,7 @@ export async function copyWatchlistMarkdown(options: {
     tradingTime,
     todaySh,
     sectorOutflowBlock,
+    catalystBySymbol,
   );
   if (purgeSymbols.length) {
     await applyWatchlistPurgeAfterReport(purgeSymbols).catch(() => 0);
