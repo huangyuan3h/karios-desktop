@@ -560,6 +560,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
               {id === 'decisions' ? (
                 <DecisionJournalCard
                   gate={executionGate}
+                  watchlistItems={watchlistItems}
+                  onNavigate={onNavigate}
                   captureBusy={decisionCaptureBusy}
                   onSnapshotNow={() => void captureDecisionSnapshot('manual')}
                 />

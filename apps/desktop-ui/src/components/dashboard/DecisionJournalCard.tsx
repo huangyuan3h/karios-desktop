@@ -1,31 +1,53 @@
 'use client';
 
 import * as React from 'react';
-import type { ExecutionDecisionChange, ExecutionGate, ExecutionSnapshot } from '@karios/shared';
+import type { ExecutionGate, ExecutionSnapshot } from '@karios/shared';
 
 import { Button } from '@/components/ui/button';
 import { executionGateBadgeClass, fmtDateTime } from '@/lib/dashboard-format';
+import {
+  buildExecAttentionQueue,
+  formatDecisionChangeLine,
+  type ExecAttentionLine,
+} from '@/lib/exec-attention';
+import type { PositionLike } from '@/lib/execution-action';
 import {
   useExecutionChangesQuery,
   useExecutionRecentSnapshotsQuery,
   useExecutionSnapshotsQuery,
 } from '@/lib/queries/execution-journal';
 
-function formatChangeLine(c: ExecutionDecisionChange): string {
-  const t = c.changedAt ? fmtDateTime(c.changedAt) : '—';
-  if (c.scope === 'gate') {
-    return `${t}  Gate ${c.field}: ${c.oldValue ?? '—'} → ${c.newValue ?? '—'}`;
+function AttentionLines({
+  lines,
+  empty,
+}: {
+  lines: ExecAttentionLine[];
+  empty: string;
+}) {
+  if (!lines.length) {
+    return <div className="text-[11px] text-[var(--k-muted)]">{empty}</div>;
   }
-  const sym = c.symbol ?? '—';
-  return `${t}  ${sym}  ${c.field}: ${c.oldValue ?? '—'} → ${c.newValue ?? '—'}`;
+  return (
+    <ul className="space-y-0.5 font-mono text-[11px] leading-snug">
+      {lines.map((x) => (
+        <li key={`${x.action}-${x.symbol}`}>
+          <span className="font-semibold">{x.symbol}</span>
+          <span className="mx-1.5">{x.action}</span>
+          <span className="text-[var(--k-muted)]">{x.why ?? '—'}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function DecisionJournalCard(props: {
   gate: ExecutionGate | null;
+  watchlistItems?: PositionLike[];
   captureBusy?: boolean;
   onSnapshotNow?: () => void;
+  onNavigate?: (pageId: string) => void;
 }) {
-  const { gate, captureBusy, onSnapshotNow } = props;
+  const { gate, watchlistItems = [], captureBusy, onSnapshotNow, onNavigate } = props;
   const [showHistory, setShowHistory] = React.useState(false);
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
 
@@ -45,8 +67,70 @@ export function DecisionJournalCard(props: {
 
   const cards = Array.isArray(latest?.cards) ? latest!.cards : [];
 
+  const attention = React.useMemo(
+    () =>
+      buildExecAttentionQueue({
+        gate,
+        watchlistItems,
+        cards,
+        changes,
+      }),
+    [gate, watchlistItems, cards, changes],
+  );
+
+  const mustAct = [...attention.exits, ...attention.trims];
+
   return (
     <div className="space-y-3 text-sm">
+      <div className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)]/40 px-3 py-2">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <div className="text-xs font-medium text-[var(--k-muted)]">Exec Attention</div>
+          {onNavigate ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto h-6 px-2 text-[11px]"
+              onClick={() => onNavigate('watchlist')}
+            >
+              Open Watchlist
+            </Button>
+          ) : null}
+        </div>
+        <div className="text-xs">{attention.sleeveLabel}</div>
+        {attention.missingSize > 0 ? (
+          <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+            {attention.missingSize} held missing size
+          </div>
+        ) : null}
+        <div className="mt-2">
+          <div className="mb-0.5 text-[11px] font-medium text-[var(--k-muted)]">Must act</div>
+          <AttentionLines lines={mustAct} empty="None" />
+        </div>
+        <div className="mt-2">
+          <div className="mb-0.5 text-[11px] font-medium text-[var(--k-muted)]">Fire</div>
+          {attention.fireBlockedByGate ? (
+            <div className="text-[11px] text-[var(--k-muted)]">Gate blocks new entries</div>
+          ) : (
+            <AttentionLines lines={attention.fires} empty="None" />
+          )}
+        </div>
+        {attention.keyChanges.length > 0 ? (
+          <div className="mt-2">
+            <div className="mb-0.5 text-[11px] font-medium text-[var(--k-muted)]">Key changes</div>
+            <ul className="space-y-0.5 font-mono text-[11px] leading-snug text-amber-800 dark:text-amber-200">
+              {attention.keyChanges.map((c) => (
+                <li key={c.id}>{c.line}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {!latest ? (
+          <div className="mt-2 text-[11px] text-[var(--k-muted)]">
+            No snapshot yet — Snapshot now to fill Must act / Fire.
+          </div>
+        ) : null}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         {gate ? (
           <span
@@ -111,7 +195,7 @@ export function DecisionJournalCard(props: {
                     : 'text-[var(--k-fg)]'
                 }
               >
-                {formatChangeLine(c)}
+                {formatDecisionChangeLine(c)}
               </li>
             ))}
           </ul>

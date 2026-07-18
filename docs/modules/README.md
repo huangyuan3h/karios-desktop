@@ -160,6 +160,7 @@ Watchlist 每行另有 **Action Card**（Exec / Trigger / Trail）：EXIT、TRIM
 
 Dashboard 卡片 **Decision Journal** 把 Gate + Action Card 写成可回放时间线（Postgres：`execution_snapshots` / `execution_decision_changes`）。
 
+- **Exec Attention（卡顶）**：`Sleeve` 预算 → Must act（EXIT→TRIM）→ Fire（BUY/ADD，受 Gate）→ 缺仓提示 → 今日关键变更 Top3；方便短时会话按优先级执行。
 - **自动采集**：Sync All、盘中 5 分钟 poll、Watchlist 仓位变更 debounce、收盘后 eod、手动 Snapshot now。Action Card 仍由前端 `deriveActionCard` 计算后 POST。
 - **变更流水**：`mode` / `action` / `why` / `trigger` / `positionPct` 变化落库；同决策 content_hash 只心跳更新 `captured_at`。
 - **Copy all Markdown**：`## Decision Journal`（Changes + Latest Actions），供判断 AI 与人类同读。
