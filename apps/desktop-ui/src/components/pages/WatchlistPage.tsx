@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistTrend } from '@/hooks/useWatchlistTrend';
 import { useChatStore } from '@/lib/chat/store';
+import { executionGateBadgeClass } from '@/lib/dashboard-format';
+import { parseExecutionGate } from '@/lib/execution-action';
+import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { watchlistMarketKey } from '@/lib/queries/watchlist';
 import { scoreExplainZhLines } from '@/lib/trendok-display';
 import {
@@ -23,6 +26,15 @@ import { loadWatchlist } from '@/lib/watchlist-storage';
 
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const { addReference } = useChatStore();
+  const sentimentQuery = useDashboardSentimentQuery();
+  const executionGate = React.useMemo(
+    () =>
+      parseExecutionGate(
+        (sentimentQuery.data as { marketSentiment?: { executionGate?: unknown } } | undefined)
+          ?.marketSentiment?.executionGate,
+      ),
+    [sentimentQuery.data],
+  );
   const {
     items,
     setItems,
@@ -254,6 +266,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         trend,
         quotes,
         trendUpdatedAt,
+        executionGate,
       });
       if (!result.ok) {
         toastCopyMd(false, result.message);
@@ -288,6 +301,21 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
               ? `，下跌 ${macroLockBanner.downCount.toLocaleString()} 家`
               : ''}
             ，所有买入已强制拦截
+          </div>
+        ) : null}
+        {executionGate ? (
+          <div
+            className={`mb-4 rounded-lg border px-4 py-3 text-sm ${executionGateBadgeClass(executionGate.mode)}`}
+          >
+            <div className="font-medium">
+              Execution Gate: {executionGate.mode}
+              <span className="ml-2 text-xs font-normal opacity-90">
+                allowNewEntries={String(executionGate.allowNewEntries)} · {executionGate.marketRegime}
+              </span>
+            </div>
+            {executionGate.satelliteNote ? (
+              <div className="mt-1 text-xs opacity-90">{executionGate.satelliteNote}</div>
+            ) : null}
           </div>
         ) : null}
         <WatchlistToolbar
@@ -395,6 +423,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           commitItemCostPriceDraft={commitItemCostPriceDraft}
           onRemove={onRemove}
           onOpenStock={onOpenStock}
+          executionGate={executionGate}
         />
       </div>
     </div>

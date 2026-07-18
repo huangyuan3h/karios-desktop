@@ -37,6 +37,7 @@ from data_sync_service.service.industry_fund_flow_read import (
     top_by_date_from_rows,
 )
 from data_sync_service.service.sector_rotation_index import compute_srv_index
+from data_sync_service.service.execution_gate import compute_execution_gate
 from data_sync_service.service.macro_snapshot import build_macro_snapshot
 from data_sync_service.service.macro_daily import sync_macro_daily_full
 from data_sync_service.service.market_environment_zh import format_market_environment_zh
@@ -115,6 +116,14 @@ def _build_market_sentiment_bundle(
         top_by_date=_industry_top_by_date(as_of_date=as_of_date, days=5),
         as_of_date=as_of_date,
     )
+    # Re-read latest after breadth-panic mutation
+    latest_after = sentiment_items[-1] if sentiment_items else {}
+    execution_gate = compute_execution_gate(
+        index_signals=index_signals,
+        down_count=int((latest_after or {}).get("downCount") or down_count or 0),
+        risk_mode=str((latest_after or {}).get("riskMode") or "") or None,
+        srv_index=srv_index,
+    )
     return {
         "asOfDate": as_of_date,
         "days": 5,
@@ -122,6 +131,7 @@ def _build_market_sentiment_bundle(
         "indexSignals": index_signals,
         "etfFundFlow": etf_fund_flow,
         "srvIndex": srv_index,
+        "executionGate": execution_gate,
     }
 
 

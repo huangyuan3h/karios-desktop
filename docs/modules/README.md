@@ -125,6 +125,33 @@
 
 ## 投资理念
 
+### 资金定位：卫星仓，而非全家资产
+
+Karios 管理的是家庭资产中的**卫星仓**——专门用来博取更高收益的一部分资金，**不是**全家资产的 all-in 通道。
+
+| 层级 | 典型资产 | 与 Karios 的关系 |
+|------|----------|------------------|
+| 核心仓 | 房产、宽基/债券 ETF、现金等 | 系统外持有，不交给本套波段规则调度 |
+| 卫星仓 | 本系统 Watchlist / Screener / 主线交易 | 在核心仓之外，用纪律化规则追求超额 |
+
+含义：
+
+- 红绿灯仓位、Score、强制买入等规则，只约束**卫星仓内部**怎么打，不决定核心仓配比。
+- Deep Green 时「可积极参与」指卫星仓可提高使用率，**不等于**把房产变现或卖掉 ETF 全仓进场。
+- 卫星仓上限由家庭自行设定（例如占净资产的固定比例）；系统信号再强，也不应突破该预算。
+
+### Execution Gate（下游执行合同）
+
+Dashboard 与「Copy all Markdown」顶部输出 **Execution Gate**，把分散信号收成当日执行模式：
+
+| mode | allowNewEntries | 含义 |
+|------|-----------------|------|
+| ATTACK | true | Strong + SRV Stable（等）时允许开新仓/加仓 |
+| HOLD_ONLY | false | 分化或 SRV Elevated：禁止新开，只管理持仓 |
+| DEFEND | false | 广度恐慌 / SRV Extreme_High / Weak / 极端风险：防守 |
+
+Watchlist 每行另有 **Action Card**（Exec / Trigger / Trail）：EXIT、TRIM、HOLD、ADD、BUY、WATCH，以及吊灯止盈生效价。下游 AI 应优先服从 Gate 与 Action，而不是自行重算红绿灯。
+
 ### 选股先选板块
 
 Industry Flow 模块帮助识别热点板块，Watchlist 会给热点行业的股票额外加分。
@@ -135,7 +162,7 @@ TrendOK 系统确保只关注趋势健康的股票，避免接飞刀。
 
 ### 顺势而为
 
-Market Sentiment 的红绿灯帮助判断市场状态，控制仓位风险。
+Market Sentiment 的红绿灯帮助判断市场状态，控制卫星仓仓位风险。
 
 ### 纪律执行
 

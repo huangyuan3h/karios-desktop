@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
+import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
 import { escapeMarkdownCell, mdLines, mdPrice, mdScore } from '@/lib/dashboard-format';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
 import { refetchWatchlistMarket } from '@/lib/queries/watchlist';
@@ -25,6 +26,7 @@ import {
   tradeDateFromTradeTime,
 } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
+import type { ExecutionGate } from '@karios/shared';
 
 const COPY_BLOCKING_MISSING_DATA = new Set([
   'no_bars',
@@ -126,8 +128,17 @@ export function buildWatchlistMarkdown(options: {
   trendUpdatedAt: string | null;
   tradingTime: boolean;
   todaySh: string;
+  executionGate?: ExecutionGate | null;
 }): string {
-  const { sortedItems, trendSnap, quotesSnap, trendUpdatedAt, tradingTime, todaySh } = options;
+  const {
+    sortedItems,
+    trendSnap,
+    quotesSnap,
+    trendUpdatedAt,
+    tradingTime,
+    todaySh,
+    executionGate = null,
+  } = options;
   const generatedAt = new Date().toISOString();
   const lines: string[] = [];
   lines.push('## Watchlist');
@@ -216,6 +227,17 @@ export function buildWatchlistMarkdown(options: {
     lines.push('');
   }
 
+  lines.push(
+    buildPositionsExecutionMarkdown(
+      sortedItems,
+      trendSnap,
+      quotesSnap,
+      executionGate ?? null,
+      '##',
+    ).trim(),
+  );
+  lines.push('');
+
   return lines.join('\n').trim() + '\n';
 }
 
@@ -225,8 +247,10 @@ export async function copyWatchlistMarkdown(options: {
   trend: Record<string, TrendOkResult>;
   quotes: Record<string, WatchlistQuote>;
   trendUpdatedAt: string | null;
+  executionGate?: ExecutionGate | null;
 }): Promise<WatchlistCopyResult> {
-  const { queryClient, sortedItems, trend, quotes, trendUpdatedAt } = options;
+  const { queryClient, sortedItems, trend, quotes, trendUpdatedAt, executionGate = null } =
+    options;
   if (!sortedItems.length) {
     return { ok: false, message: 'No items to copy.' };
   }
@@ -263,6 +287,7 @@ export async function copyWatchlistMarkdown(options: {
     trendUpdatedAt,
     tradingTime,
     todaySh,
+    executionGate,
   });
   return { ok: true, markdown };
 }

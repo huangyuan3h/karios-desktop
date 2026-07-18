@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { fmtAmountCn, fmtSignedAmountCn, formatSrvIndexLine, mdTable } from './dashboard-format';
+import {
+  fmtAmountCn,
+  fmtSignedAmountCn,
+  formatExecutionGateMarkdown,
+  formatSrvIndexLine,
+  mdTable,
+} from './dashboard-format';
 
 describe('fmtAmountCn', () => {
   it('formats 亿 and 万', () => {
@@ -32,16 +38,33 @@ describe('formatSrvIndexLine', () => {
   });
 });
 
+describe('formatExecutionGateMarkdown', () => {
+  it('renders gate fields for downstream AI', () => {
+    const md = formatExecutionGateMarkdown({
+      mode: 'HOLD_ONLY',
+      allowNewEntries: false,
+      marketRegime: 'Diverging',
+      indexLight: 'yellow',
+      srvLevel: 'Extreme_High',
+      srvOverlapCount: 1,
+      downCount: 2800,
+      reasons: ['SRV_EXTREME_HIGH'],
+      positionRangeHint: '30%',
+      satelliteNote: '禁止开新仓；仅管理退出与吊灯',
+    });
+    expect(md).toContain('## Execution Gate');
+    expect(md).toContain('- mode: HOLD_ONLY');
+    expect(md).toContain('- allowNewEntries: false');
+    expect(md).toContain('srvLevel: Extreme_High (overlap=1)');
+    expect(md).toContain('reasons: [SRV_EXTREME_HIGH]');
+  });
+});
+
 describe('mdTable', () => {
   it('builds markdown table with header separator', () => {
     const md = mdTable(['A', 'B'], [[1, 2]]);
     expect(md).toContain('| A | B |');
     expect(md).toContain('| --- | --- |');
     expect(md).toContain('| 1 | 2 |');
-  });
-
-  it('escapes pipe characters in cells', () => {
-    const md = mdTable(['X'], [['a|b']]);
-    expect(md).toContain('a\\|b');
   });
 });

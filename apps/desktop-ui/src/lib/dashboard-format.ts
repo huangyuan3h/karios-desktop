@@ -84,6 +84,80 @@ export function srvIndexBadgeClass(level: string | null | undefined): string {
   return 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
 }
 
+export type ExecutionGateLike = {
+  mode?: string | null;
+  allowNewEntries?: boolean | null;
+  marketRegime?: string | null;
+  indexLight?: string | null;
+  srvLevel?: string | null;
+  srvOverlapCount?: number | null;
+  downCount?: number | null;
+  riskMode?: string | null;
+  reasons?: string[] | null;
+  positionRangeHint?: string | null;
+  satelliteNote?: string | null;
+};
+
+export function executionGateBadgeClass(mode: string | null | undefined): string {
+  const m = String(mode || '').trim();
+  if (m === 'ATTACK') {
+    return 'border-emerald-600/40 bg-emerald-600/15 text-emerald-800 dark:text-emerald-200';
+  }
+  if (m === 'HOLD_ONLY') {
+    return 'border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-200';
+  }
+  if (m === 'DEFEND') {
+    return 'border-red-600/40 bg-red-600/15 text-red-800 dark:text-red-200';
+  }
+  return 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
+}
+
+/** Markdown block for Copy all / sentiment export (downstream AI contract). */
+export function formatExecutionGateMarkdown(
+  gate: ExecutionGateLike | null | undefined,
+  heading = '##',
+): string {
+  const lines: string[] = [];
+  lines.push(`${heading} Execution Gate`);
+  if (!gate || !gate.mode) {
+    lines.push('- mode: —');
+    lines.push('');
+    return lines.join('\n');
+  }
+  const overlap =
+    typeof gate.srvOverlapCount === 'number' && Number.isFinite(gate.srvOverlapCount)
+      ? gate.srvOverlapCount
+      : null;
+  const srvLevel = gate.srvLevel ? String(gate.srvLevel) : '—';
+  const srvLine =
+    overlap != null ? `${srvLevel} (overlap=${overlap})` : srvLevel;
+  const reasons = Array.isArray(gate.reasons)
+    ? gate.reasons.map((x) => String(x)).filter(Boolean)
+    : [];
+  lines.push(`- mode: ${String(gate.mode)}`);
+  lines.push(`- allowNewEntries: ${gate.allowNewEntries === true}`);
+  lines.push(`- marketRegime: ${String(gate.marketRegime ?? '—')}`);
+  lines.push(`- indexLight: ${String(gate.indexLight ?? '—')}`);
+  lines.push(`- srvLevel: ${srvLine}`);
+  lines.push(
+    `- downCount: ${
+      typeof gate.downCount === 'number' && Number.isFinite(gate.downCount)
+        ? gate.downCount
+        : '—'
+    }`,
+  );
+  if (gate.riskMode) lines.push(`- riskMode: ${String(gate.riskMode)}`);
+  lines.push(`- reasons: [${reasons.join(', ')}]`);
+  if (gate.positionRangeHint) {
+    lines.push(`- positionRangeHint: ${String(gate.positionRangeHint)}`);
+  }
+  if (gate.satelliteNote) {
+    lines.push(`- satelliteNote: ${String(gate.satelliteNote)}`);
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
 export function escapeMarkdownCell(x: unknown): string {
   const s0 = String(x ?? '');
   const s1 = s0.replaceAll('\r\n', '\n').replaceAll('\r', '\n').replaceAll('\n', '<br/>');

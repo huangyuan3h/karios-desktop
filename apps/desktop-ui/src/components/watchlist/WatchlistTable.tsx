@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { WatchlistRow } from '@/components/watchlist/WatchlistRow';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
+import type { ExecutionGate } from '@karios/shared';
 import { useChatStore } from '@/lib/chat/store';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
 import {
@@ -98,6 +99,7 @@ export type WatchlistTableProps = {
   commitItemCostPriceDraft: (symbol: string) => void;
   onRemove: (sym: string) => void;
   onOpenStock?: (symbol: string) => void;
+  executionGate?: ExecutionGate | null;
 };
 
 export function sortWatchlistItems(
@@ -139,6 +141,7 @@ export function WatchlistTable({
   commitItemCostPriceDraft,
   onRemove,
   onOpenStock,
+  executionGate = null,
 }: WatchlistTableProps) {
   const { addReference } = useChatStore();
 
@@ -289,6 +292,15 @@ export function WatchlistTable({
                     <th className="px-2 py-2 w-[80px]">成本价</th>
                     <th className="px-2 py-2 w-[72px]">Current</th>
                     <th className="px-2 py-2 w-[80px]">止损</th>
+                    <th className="px-2 py-2 w-[56px]" title="Execution Action (BUY/HOLD/EXIT/…)">
+                      Exec
+                    </th>
+                    <th className="px-2 py-2 w-[72px]" title="Effective trigger price">
+                      Trigger
+                    </th>
+                    <th className="px-2 py-2 w-[64px]" title="ATR chandelier trail">
+                      Trail
+                    </th>
                     <th className="max-w-[130px] px-2 py-2 w-[120px]">买入</th>
                     <th className="px-2 py-2 w-[64px]">HotTop3</th>
                     <th className="px-2 py-2 w-[64px]" title="RS (Relative Strength) vs CSI300 20-day return">
@@ -372,6 +384,7 @@ export function WatchlistTable({
                         tradingTime={tradingTime}
                         todaySh={todaySh}
                         costPriceDraft={costPriceDrafts[it.symbol]}
+                        executionGate={executionGate ?? null}
                         showTooltip={showTooltip}
                         hideTooltip={hideTooltip}
                         showColorPicker={showColorPicker}

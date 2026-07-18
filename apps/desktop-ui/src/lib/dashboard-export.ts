@@ -20,6 +20,7 @@ import {
   fmtAmountCn,
   fmtSignedAmountCn,
   formatSrvIndexLine,
+  formatExecutionGateMarkdown,
   mdTable,
   escapeMarkdownCell,
   mdLines,
@@ -28,6 +29,9 @@ import {
   mdPrice,
   buildHotIndustriesMarkdown,
 } from '@/lib/dashboard-format';
+import { parseExecutionGate } from '@/lib/execution-action';
+import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
+import type { ExecutionGate } from '@karios/shared';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import {
   getShanghaiTodayIso,
@@ -556,7 +560,10 @@ export async function buildScreenersMarkdown(
   return lines.join('\n').trim() + '\n';
 }
 
-export async function buildWatchlistMarkdown(queryClient?: QueryClient): Promise<string> {
+export async function buildWatchlistMarkdown(
+  queryClient?: QueryClient,
+  gate?: ExecutionGate | null,
+): Promise<string> {
   const itemsRaw = loadWatchlist();
   const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
     .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
@@ -754,6 +761,12 @@ export async function buildWatchlistMarkdown(queryClient?: QueryClient): Promise
     lines.push('');
   }
 
+  const resolvedGate = gate ?? null;
+  lines.push(
+    buildPositionsExecutionMarkdown(sorted, trend, quotes, resolvedGate, heading).trim(),
+  );
+  lines.push('');
+
   return lines.join('\n').trim() + '\n';
 }
 
@@ -860,7 +873,10 @@ export async function buildDashboardCopyAllMarkdown(
   });
   const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd] = await Promise.all([
     buildScreenersMarkdown(s, '##', queryClient),
-    buildWatchlistMarkdown(queryClient),
+    buildWatchlistMarkdown(
+      queryClient,
+      parseExecutionGate((s as any)?.marketSentiment?.executionGate),
+    ),
     buildCompactCatalystMarkdown(s),
     fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
       .then(({ items, scope }) =>
@@ -879,6 +895,14 @@ export async function buildDashboardCopyAllMarkdown(
   lines.push(`# Copy all (Dashboard)`);
   lines.push(`- generatedAt: ${generatedAt}`);
   lines.push(`- asOfDate: ${String((s as any)?.asOfDate ?? '')}`);
+  lines.push('');
+  lines.push(
+    formatExecutionGateMarkdown(
+      parseExecutionGate((s as any)?.marketSentiment?.executionGate) ??
+        (s as any)?.marketSentiment?.executionGate,
+      '##',
+    ).trim(),
+  );
   lines.push('');
   lines.push(buildIndustryMarkdown(s, '##').trim());
   lines.push('');

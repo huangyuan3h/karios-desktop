@@ -5,6 +5,8 @@ import { CircleX, ExternalLink, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
+import { deriveActionCard } from '@/lib/execution-action';
+import type { ExecutionGate } from '@karios/shared';
 import {
   computePnLPct,
   formatGapUp,
@@ -469,6 +471,7 @@ export type WatchlistRowProps = {
   tradingTime: boolean;
   todaySh: string;
   costPriceDraft: string | undefined;
+  executionGate: ExecutionGate | null;
   showTooltip: ShowTooltipFn;
   hideTooltip: () => void;
   showColorPicker: (el: HTMLElement, sym: string) => void;
@@ -489,6 +492,7 @@ function WatchlistRowInner({
   tradingTime,
   todaySh,
   costPriceDraft,
+  executionGate,
   showTooltip,
   hideTooltip,
   showColorPicker,
@@ -520,6 +524,21 @@ function WatchlistRowInner({
     quoteTradeTime: q?.tradeTime ?? null,
     trendClose,
   });
+  const actionCard = deriveActionCard({
+    symbol: it.symbol,
+    gate: executionGate,
+    trendok: t,
+    position: it,
+    currentPrice,
+  });
+  const execTone =
+    actionCard.action === 'EXIT'
+      ? 'text-red-600 font-semibold'
+      : actionCard.action === 'BUY' || actionCard.action === 'ADD'
+        ? 'text-emerald-700 font-semibold'
+        : actionCard.action === 'TRIM'
+          ? 'text-amber-700 font-semibold'
+          : 'text-[var(--k-muted)]';
 
   return (
     <tr className={rowClass}>
@@ -621,6 +640,26 @@ function WatchlistRowInner({
       </td>
       <td className="px-2 py-2">
         <StopLossCell sym={it.symbol} t={t} showTooltip={showTooltip} hideTooltip={hideTooltip} />
+      </td>
+      <td className={`px-2 py-2 font-mono text-xs ${execTone}`} title={actionCard.why}>
+        {actionCard.action}
+      </td>
+      <td className="px-2 py-2 font-mono text-xs" title="Effective trigger (max hardStop, trailStop)">
+        {fmtPrice(actionCard.trigger ?? null)}
+      </td>
+      <td
+        className="px-2 py-2 text-xs"
+        title={
+          actionCard.trailArmed
+            ? `Chandelier armed · peak ${fmtPrice(actionCard.peak ?? null)} · trail ${fmtPrice(actionCard.trailStop ?? null)}`
+            : 'Chandelier not armed (need PnL≥10%)'
+        }
+      >
+        {actionCard.trailArmed ? (
+          <span className="text-emerald-700">已激活↑</span>
+        ) : (
+          <span className="text-[var(--k-muted)]">未激活</span>
+        )}
       </td>
       <td className="max-w-[130px] truncate px-2 py-2">
         <BuyCell sym={it.symbol} t={t} showTooltip={showTooltip} hideTooltip={hideTooltip} />

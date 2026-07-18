@@ -20,6 +20,7 @@ import {
 import {
   BREADTH_PANIC_DOWN_THRESHOLD,
   buildIndexTrafficSummary,
+  executionGateBadgeClass,
   fmtAmountCn,
   fmtSignedAmountCn,
   formatSrvIndexLine,
@@ -28,6 +29,7 @@ import {
   loadCardOrder,
   saveCardOrder,
 } from '@/lib/dashboard-format';
+import { parseExecutionGate } from '@/lib/execution-action';
 import { AI_BASE_URL } from '@/lib/endpoints';
 import {
   downloadInvestmentDailyPdf,
@@ -582,6 +584,33 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                   : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
                     return (
                       <>
+                        {(() => {
+                          const gate = parseExecutionGate(ms?.executionGate);
+                          if (!gate) return null;
+                          const gateBadge = executionGateBadgeClass(gate.mode);
+                          return (
+                            <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${gateBadge}`}>
+                              <div className="flex flex-wrap items-center gap-2 font-medium">
+                                <span>Execution Gate: {gate.mode}</span>
+                                <span className="text-xs opacity-90">
+                                  allowNewEntries={String(gate.allowNewEntries)}
+                                </span>
+                                <span className="text-xs opacity-90">
+                                  {gate.marketRegime} · {gate.indexLight} · pos{' '}
+                                  {gate.positionRangeHint || '—'}
+                                </span>
+                              </div>
+                              {gate.satelliteNote ? (
+                                <div className="mt-1 text-xs opacity-90">{gate.satelliteNote}</div>
+                              ) : null}
+                              {gate.reasons.length ? (
+                                <div className="mt-1 text-xs opacity-80">
+                                  reasons: {gate.reasons.join(' · ')}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <div className={`rounded-md border px-2 py-1 text-xs ${badge}`}>
                             risk: {risk}

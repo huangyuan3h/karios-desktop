@@ -320,6 +320,7 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
     expect(md).toContain('## Watchlist');
     expect(md).toContain('| VR |');
     expect(md).toContain('1.58x');
+    expect(md).toContain('## Positions (execution)');
     expect(mockedFetchWatchlistMarketSnapshot).not.toHaveBeenCalled();
     expect(mockedApiGetJson).not.toHaveBeenCalledWith(expect.stringContaining('/market/stocks/trendok'));
   });
@@ -378,6 +379,20 @@ describe('buildDashboardCopyAllMarkdown cache', () => {
       industryFundFlow: { asOfDate: '2026-06-18', dates: [], topByDate: [] },
       screeners: [],
       news: { hours: 24, total: 0 },
+      marketSentiment: {
+        executionGate: {
+          mode: 'DEFEND',
+          allowNewEntries: false,
+          marketRegime: 'Weak',
+          indexLight: 'red',
+          srvLevel: 'Extreme_High',
+          srvOverlapCount: 0,
+          downCount: 1000,
+          reasons: ['SRV_EXTREME_HIGH'],
+          positionRangeHint: '0%-10%',
+          satelliteNote: '防守优先',
+        },
+      },
     };
 
     mockedFetchDashboardSummary.mockResolvedValue(summary);
@@ -397,13 +412,16 @@ describe('buildDashboardCopyAllMarkdown cache', () => {
       quotes: {},
     });
 
-    await buildDashboardCopyAllMarkdown({
+    const md = await buildDashboardCopyAllMarkdown({
       summary,
       queryClient,
     });
 
     expect(mockedFetchDashboardSummary).not.toHaveBeenCalled();
     expect(mockedApiGetJson).not.toHaveBeenCalledWith('/dashboard/summary');
+    expect(md).toContain('## Execution Gate');
+    expect(md).toContain('- mode: DEFEND');
+    expect(md).toContain('## Positions (execution)');
   });
 });
 
