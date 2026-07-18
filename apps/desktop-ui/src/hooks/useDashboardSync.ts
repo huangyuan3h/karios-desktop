@@ -25,6 +25,8 @@ export type DashboardSyncCallbacks = {
   setNewsSummaryBusy: (v: boolean) => void;
   saveNewsBriefCache: (patch: object) => void;
   setError: (v: string | null) => void;
+  /** Fired after Sync All stream completes (success or soft failure). */
+  onSyncComplete?: () => void;
 };
 
 export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
@@ -90,6 +92,7 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
               if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
                 if (!cb.shouldRefreshNewsBrief(cb.newsSummaryUpdatedAt) && cb.newsSummary?.trim()) {
                   setBusy(false);
+                  cb.onSyncComplete?.();
                   resolve();
                   return;
                 }
@@ -119,14 +122,17 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
                   .finally(() => {
                     cb.setNewsSummaryBusy(false);
                     setBusy(false);
+                    cb.onSyncComplete?.();
                     resolve();
                   });
               } else {
                 setBusy(false);
+                cb.onSyncComplete?.();
                 resolve();
               }
             } else {
               setBusy(false);
+              cb.onSyncComplete?.();
               resolve();
             }
           }

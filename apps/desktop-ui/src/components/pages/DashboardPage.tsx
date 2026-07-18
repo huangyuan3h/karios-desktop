@@ -5,13 +5,16 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 
+import { DecisionJournalCard } from '@/components/dashboard/DecisionJournalCard';
 import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useDashboardSummary } from '@/hooks/useDashboardSummary';
 import { useDashboardSync } from '@/hooks/useDashboardSync';
+import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
+import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistRisk } from '@/hooks/useWatchlistRisk';
-import { buildDashboardHotIndustryPicks } from '@/lib/hot-industry-picks';
+import { buildDashboardHotIndustryPicks, buildMainlineAllowSet } from '@/lib/hot-industry-picks';
 import {
   buildDashboardCopyAllMarkdown,
   buildIndustryMarkdown,
@@ -71,6 +74,20 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setNewsSummaryBusy,
   } = useDashboardSummary();
 
+  const { items: watchlistItems } = useWatchlistItems();
+  const executionGate = React.useMemo(
+    () => parseExecutionGate((summary as any)?.marketSentiment?.executionGate),
+    [summary],
+  );
+  const mainlineAllow = React.useMemo(() => buildMainlineAllowSet(summary), [summary]);
+  const { capture: captureDecisionSnapshot, busy: decisionCaptureBusy } =
+    useExecutionJournalCapture({
+      items: watchlistItems,
+      gate: executionGate,
+      mainlineAllow,
+      enabled: true,
+    });
+
   const { syncResp, busy, syncSteps, syncProgress, onSyncAll } = useDashboardSync({
     applySummaryToCache,
     shouldRefreshNewsBrief,
@@ -81,6 +98,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setNewsSummaryBusy,
     saveNewsBriefCache,
     setError,
+    onSyncComplete: () => {
+      void captureDecisionSnapshot('sync_all');
+    },
   });
 
   const {
@@ -252,6 +272,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     () => [
       { id: 'industry', title: 'Industry fund flow' },
       { id: 'sentiment', title: 'Market sentiment' },
+      { id: 'decisions', title: 'Decision Journal' },
       { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
       { id: 'news', title: 'News brief' },
       { id: 'screeners', title: 'Screener sync' },
@@ -483,6 +504,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         const weightOf = (id: string) => {
           if (id === 'industry') return 6;
           if (id === 'sentiment') return 3;
+          if (id === 'decisions') return 3;
           if (id === 'watchlistRisk') return 2;
           if (id === 'news') return 2;
           if (id === 'screeners') return 2;
@@ -534,6 +556,14 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   </div>
                 ) : null}
               </div>
+
+              {id === 'decisions' ? (
+                <DecisionJournalCard
+                  gate={executionGate}
+                  captureBusy={decisionCaptureBusy}
+                  onSnapshotNow={() => void captureDecisionSnapshot('manual')}
+                />
+              ) : null}
 
               {id === 'sentiment' ? (
                 <div>

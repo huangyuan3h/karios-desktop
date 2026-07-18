@@ -153,6 +153,15 @@ Dashboard 与「Copy all Markdown」顶部输出 **Execution Gate**，把分散�
 
 Watchlist 每行另有 **Action Card**（Exec / Trigger / Trail）：EXIT、TRIM、HOLD、ADD、BUY、WATCH，以及吊灯止盈生效价。下游 AI 应优先服从 Gate 与 Action，而不是自行重算红绿灯。
 
+### Decision Journal（执行决策闭环）
+
+Dashboard 卡片 **Decision Journal** 把 Gate + Action Card 写成可回放时间线（Postgres：`execution_snapshots` / `execution_decision_changes`）。
+
+- **自动采集**：Sync All、盘中 5 分钟 poll、Watchlist 仓位变更 debounce、收盘后 eod、手动 Snapshot now。Action Card 仍由前端 `deriveActionCard` 计算后 POST。
+- **变更流水**：`mode` / `action` / `why` / `trigger` / `positionPct` 变化落库；同决策 content_hash 只心跳更新 `captured_at`。
+- **Copy all Markdown**：`## Decision Journal`（Changes + Latest Actions），供判断 AI 与人类同读。
+- 迁移：`PYTHONPATH=src alembic upgrade head`（revision `0010_execution_decision_journal`）。
+
 ### 主线绑定（BUY/ADD 硬闸）
 
 Watchlist 是**监控池**（TV Screener → 回撤 + TrendOK 导入），**不等于**买单。

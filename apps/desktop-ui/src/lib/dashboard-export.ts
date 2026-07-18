@@ -30,6 +30,7 @@ import {
   buildHotIndustriesMarkdown,
 } from '@/lib/dashboard-format';
 import { parseExecutionGate } from '@/lib/execution-action';
+import { fetchExecutionJournalMarkdown } from '@/lib/execution-journal';
 import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
 import { buildMainlineAllowSet, type MainlineAllowSet } from '@/lib/hot-industry-picks';
 import type { ExecutionGate } from '@karios/shared';
@@ -915,6 +916,20 @@ export async function buildDashboardCopyAllMarkdown(
     ).trim(),
   );
   lines.push('');
+  try {
+    const journalMd = await fetchExecutionJournalMarkdown({
+      tradeDate: getShanghaiTodayIso(),
+      days: 5,
+    });
+    if (journalMd.trim()) {
+      lines.push(journalMd.trim());
+      lines.push('');
+    }
+  } catch {
+    lines.push('## Decision Journal');
+    lines.push('- note: unavailable (capture snapshots via Dashboard Sync All or Snapshot now)');
+    lines.push('');
+  }
   lines.push(buildIndustryMarkdown(s, '##').trim());
   lines.push('');
   lines.push(buildHotIndustriesMarkdown(s, '##').trim());

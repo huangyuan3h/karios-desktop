@@ -5,5 +5,6 @@ export * from './schemas/trendok';
 export * from './schemas/watchlist';
 export * from './schemas/tvCapture';
 export * from './schemas/executionGate';
+export * from './schemas/executionJournal';
 
 

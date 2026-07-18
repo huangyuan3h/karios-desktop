@@ -6,6 +6,7 @@ import { WatchlistImportDebug, type ScreenerImportDebugState } from '@/component
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
 import { WatchlistToolbar } from '@/components/watchlist/WatchlistToolbar';
 import { Button } from '@/components/ui/button';
+import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistTrend } from '@/hooks/useWatchlistTrend';
 import { useChatStore } from '@/lib/chat/store';
@@ -61,6 +62,13 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     setItemCostPriceValue,
     commitItemCostPriceDraft,
   } = useWatchlistItems();
+
+  useExecutionJournalCapture({
+    items,
+    gate: executionGate,
+    mainlineAllow,
+    enabled: true,
+  });
 
   const symbols = React.useMemo(
     () => items.map((x) => x.symbol).filter(Boolean),
