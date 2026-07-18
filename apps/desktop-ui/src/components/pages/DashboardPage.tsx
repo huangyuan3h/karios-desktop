@@ -34,12 +34,6 @@ import {
   saveCardOrder,
 } from '@/lib/dashboard-format';
 import { parseExecutionGate } from '@/lib/execution-action';
-import { AI_BASE_URL } from '@/lib/endpoints';
-import {
-  downloadInvestmentDailyPdf,
-  parseInvestmentDailyReportResponse,
-  truncateMarkdownForReport,
-} from '@/lib/investmentDailyPdf';
 import { isShanghaiSyncWindow } from '@/lib/market-hours';
 import { useChatStore } from '@/lib/chat/store';
 import {
@@ -57,7 +51,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const {
     summary,
     summaryLoading,
-    refetchSummary,
     error,
     setError,
     applySummaryToCache,
@@ -123,10 +116,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const [copyAllStatus, setCopyAllStatus] = React.useState<{ ok: boolean; text: string } | null>(
     null,
   );
-  const [pdfReportBusy, setPdfReportBusy] = React.useState(false);
-  const [pdfReportStatus, setPdfReportStatus] = React.useState<{ ok: boolean; text: string } | null>(
-    null,
-  );
   const [editLayout, setEditLayout] = React.useState(false);
 
   const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
@@ -137,14 +126,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const industryCopyTimerRef = React.useRef<number | null>(null);
   const sentimentCopyTimerRef = React.useRef<number | null>(null);
   const copyAllTimerRef = React.useRef<number | null>(null);
-  const pdfReportTimerRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     return () => {
       if (industryCopyTimerRef.current != null) window.clearTimeout(industryCopyTimerRef.current);
       if (sentimentCopyTimerRef.current != null) window.clearTimeout(sentimentCopyTimerRef.current);
       if (copyAllTimerRef.current != null) window.clearTimeout(copyAllTimerRef.current);
-      if (pdfReportTimerRef.current != null) window.clearTimeout(pdfReportTimerRef.current);
     };
   }, []);
 
@@ -164,12 +151,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setCopyAllStatus({ ok, text });
     if (copyAllTimerRef.current != null) window.clearTimeout(copyAllTimerRef.current);
     copyAllTimerRef.current = window.setTimeout(() => setCopyAllStatus(null), 2600);
-  }
-
-  function toastPdfReport(ok: boolean, text: string) {
-    setPdfReportStatus({ ok, text });
-    if (pdfReportTimerRef.current != null) window.clearTimeout(pdfReportTimerRef.current);
-    pdfReportTimerRef.current = window.setTimeout(() => setPdfReportStatus(null), 3200);
   }
 
   async function onCopyIndustryMarkdown() {
@@ -246,61 +227,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     }
   }
 
-  async function onDownloadInvestmentDailyPdf() {
-    setPdfReportBusy(true);
-    setError(null);
-    try {
-      if (!summary) {
-        toastPdfReport(false, 'No data available. Please refresh first.');
-        return;
-      }
-      const rawMd = await buildDashboardCopyAllMarkdown({
-        summary,
-        newsSummary,
-        newsSummaryUpdatedAt,
-        newsFallback,
-        queryClient,
-      });
-      const markdown = truncateMarkdownForReport(rawMd);
-      const aiRes = await fetch(`${AI_BASE_URL}/report/investment-daily`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ markdown }),
-      });
-      const rawText = await aiRes.text();
-      let data: unknown = null;
-      try {
-        data = rawText ? JSON.parse(rawText) : null;
-      } catch {
-        throw new Error(rawText || `AI error (${aiRes.status})`);
-      }
-      if (!aiRes.ok) {
-        const errMsg =
-          data && typeof data === 'object' && 'error' in data
-            ? String((data as { error?: unknown }).error)
-            : rawText;
-        throw new Error(errMsg || `AI error (${aiRes.status})`);
-      }
-      const report = parseInvestmentDailyReportResponse(data);
-      const subtitleTimeZh = new Date().toLocaleString('zh-CN', { hour12: false });
-      const datePart = new Date().toISOString().slice(0, 10);
-      await downloadInvestmentDailyPdf({
-        report,
-        subtitleTimeZh,
-        filename: `投资要点日报-${datePart}.pdf`,
-        summary,
-        hotIndustryPicks,
-      });
-      toastPdfReport(true, 'PDF downloaded.');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
-      toastPdfReport(false, msg);
-    } finally {
-      setPdfReportBusy(false);
-    }
-  }
-
   const defaultCards = React.useMemo(
     () => [
       { id: 'industry', title: 'Industry fund flow' },
@@ -354,33 +280,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant="secondary"
             size="sm"
             className="gap-2"
-            disabled={busy || copyAllBusy || pdfReportBusy}
-            onClick={() => {
-              setError(null);
-              void refetchSummary();
-            }}
-          >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="gap-2"
-            disabled={busy || copyAllBusy || pdfReportBusy}
-            onClick={() => void copyAllMarkdown()}
-          >
-            {copyAllBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
-            Copy all Markdown
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="gap-2"
-            disabled={busy || copyAllBusy || pdfReportBusy}
+            disabled={busy || copyAllBusy}
             onClick={() => void syncAndCopyMarkdown()}
           >
             {busy || copyAllBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
@@ -390,43 +292,13 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             variant="secondary"
             size="sm"
             className="gap-2"
-            disabled={busy || copyAllBusy || pdfReportBusy}
-            onClick={() => void onDownloadInvestmentDailyPdf()}
+            disabled={busy || copyAllBusy || !summary}
+            onClick={() => void copyAllMarkdown()}
           >
-            {pdfReportBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
-            下载 PDF
+            {copyAllBusy && !busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+            Copy for AI
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={busy || copyAllBusy || pdfReportBusy}
-            onClick={() => {
-              const asOfDate = String(summary?.asOfDate ?? '');
-              const capturedAt = new Date().toISOString();
-              addReference({
-                kind: 'dashboardAll',
-                refId: `dashboardAll:${asOfDate}:${Date.now()}`,
-                asOfDate,
-                title: 'Dashboard Overview',
-                capturedAt,
-              } as any);
-            }}
-          >
-            Reference all
-          </Button>
-          <Button size="sm" className="gap-2" disabled={busy} onClick={() => void onSyncAll()}>
-            {busy ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            {busy
-              ? 'Syncing…'
-              : isShanghaiSyncWindow()
-                ? 'Sync all (force)'
-                : 'Sync all (cached)'}
-          </Button>
-          <Button size="sm" variant="secondary" onClick={() => setEditLayout((v) => !v)}>
+          <Button size="sm" variant="ghost" onClick={() => setEditLayout((v) => !v)}>
             {editLayout ? 'Done' : 'Edit layout'}
           </Button>
         </div>
@@ -449,13 +321,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       {copyAllStatus ? (
         <div className={`mb-4 text-xs ${copyAllStatus.ok ? 'text-emerald-600' : 'text-red-600'}`}>
           {copyAllStatus.text}
-        </div>
-      ) : null}
-      {pdfReportStatus ? (
-        <div
-          className={`mb-4 text-xs ${pdfReportStatus.ok ? 'text-emerald-600' : 'text-red-600'}`}
-        >
-          {pdfReportStatus.text}
         </div>
       ) : null}
 
@@ -908,7 +773,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                       className="px-2 py-3 text-sm text-[var(--k-muted)]"
                                       colSpan={7}
                                     >
-                                      No sentiment cached yet. Click “Sync all (force)”.
+                                      No sentiment cached yet. Click “Sync & Copy”.
                                     </td>
                                   </tr>
                                 ) : null}
@@ -1137,7 +1002,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                     </div>
                   ) : (
                     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
-                      No summary yet. Click &quot;Sync all&quot; to fetch news and generate summary.
+                      No summary yet. Click "Sync & Copy" to fetch news and generate summary.
                     </div>
                   )}
                   <div className="mt-3 flex items-center gap-2">

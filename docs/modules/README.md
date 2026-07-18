@@ -169,9 +169,9 @@ Dashboard 卡片 **Decision Journal** 把 Gate + Action Card 写成可回放时�
 
 ### 下游判断 AI（Copy → Agent）
 
-外部 / 本仓判断 AI 的 system prompt 见 **[downstream-ai-prompt.md](./downstream-ai-prompt.md)（V6.2 Execution Contract）**。
+外部 / 本仓判断 AI 的 system prompt 见 **[downstream-ai-prompt.md](./downstream-ai-prompt.md)（V7.0 Desk + Coach）**。
 
-要点：Gate → Decision Journal → Positions Action/Why 为硬合同；Industry / Sentiment / News 等为解释层。新增 Why 码默认按 `*_BLOCK` / `*_FADE` 硬约束兼容，避免每次功能迭代都改角色定义。
+要点：Gate / Attention / Positions 为硬合同；输出以**操作表**为先，并必须带**市场简报**与止损日的纪律安抚/成长小问。Industry / Sentiment / News / Alpha 为解释层。新增 Why 码默认按 `*_BLOCK` / `*_FADE` 硬约束兼容。
 
 ### 主线绑定（BUY/ADD 硬闸）
 
@@ -230,7 +230,7 @@ Market Sentiment 的红绿灯帮助判断市场状态，控制卫星仓仓位风
 
 ## 相关文档
 
-- [下游判断 AI Prompt（V6）](./downstream-ai-prompt.md)
+- [下游判断 AI Prompt（V7）](./downstream-ai-prompt.md)
 
 - [优化 Checklist（架构债务 & Agent 任务）](../optimization-checklist.md)
 - [项目整体架构](../architecture-and-requirements.md)

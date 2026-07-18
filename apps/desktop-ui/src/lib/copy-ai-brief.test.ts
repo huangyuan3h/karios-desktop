@@ -9,13 +9,14 @@ import {
 } from './copy-ai-brief';
 
 describe('formatAiCopyInstructionHeader', () => {
-  it('includes contract obedience and four output blocks', () => {
+  it('asks for ops table then market brief and coaching', () => {
     const md = formatAiCopyInstructionHeader();
     expect(md).toContain('## AI instructions (embedded)');
-    expect(md).toContain('改单清单');
-    expect(md).toContain('撤单清单');
+    expect(md).toContain('操作表');
+    expect(md).toContain('市场简报');
     expect(md).toContain('Suggest%');
     expect(md).toContain('*_BLOCK');
+    expect(md).not.toContain('只输出四块');
   });
 });
 
@@ -91,6 +92,6 @@ describe('formatCondOrderDraftMarkdown', () => {
       { allowNewEntries: false },
     );
     expect(md).toContain('Gate blocks new entries');
-    expect(md).not.toContain('挂买');
+    expect(md).not.toContain('- 挂买 ');
   });
 });

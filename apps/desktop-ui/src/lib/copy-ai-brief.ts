@@ -26,15 +26,18 @@ export function writeLastCopyAt(iso: string): void {
   }
 }
 
-/** Embedded brief so busy users need little/no free-text prompt. */
+/**
+ * Embedded brief for Copy all.
+ * Complements System Prompt V7: ops table first, then market brief + coaching — not checklist-only.
+ */
 export function formatAiCopyInstructionHeader(heading = '##'): string {
   const lines = [
     `${heading} AI instructions (embedded)`,
-    '- 服从权威层级：Gate → Attention → Cond order draft → Positions；解释层不得推翻合同。',
-    '- 只输出四块：改单清单 / 撤单清单 / 维持不动 / 禁止（勿长篇复盘）。',
-    '- 数量用 Suggest%；止损/退出价用 Trigger（有 Trail 优先 Trail）；不得平反 *_BLOCK / *_FADE。',
-    '- 条件单导向：把建议落成可挂/可改/可撤的价格与仓位；无 Trigger 时标明缺失。',
-    '- 用户可能只补一句近况；缺失口头上下文时按 Markdown 合同执行并标注假设。',
+    '- 服从 Gate → Attention → Cond order → Positions；解释层不得推翻合同 / 不得平反 *_BLOCK。',
+    '- 输出顺序：A 操作表（持仓动作 + 允许的 BUY/ADD）→ B 市场简报（大盘/主线/为何/新闻/Alpha）→ C 纪律安抚与一个成长小问。',
+    '- 操作表用 Markdown 表格；数量用 Suggest%；止损/退出用 Trigger（有 Trail 优先）。',
+    '- 不要把监控池全部 WATCH 逐条写成撤单清单；一句总注即可。不要只输出改单/撤单/维持/禁止四段。',
+    '- 用户可继续追问市场与情绪；仍不得改写操作表方向。缺近况时按合同执行并标注假设。',
     '',
   ];
   return lines.join('\n');
@@ -100,7 +103,9 @@ export function formatCondOrderDraftMarkdown(
   const allowNew = opts?.allowNewEntries === true;
   const lines: string[] = [];
   lines.push(`${heading} Cond order draft`);
-  lines.push('- note: WATCH/HOLD/*_BLOCK：撤销对应买入条件单');
+  lines.push(
+    '- note: 非 BUY/ADD 的监控票若曾挂买入条件单则撤销；勿在回复中逐条罗列全部 WATCH',
+  );
 
   const exits: CondOrderCard[] = [];
   const trims: CondOrderCard[] = [];
