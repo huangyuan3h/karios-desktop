@@ -534,6 +534,7 @@ function WatchlistRowInner({
     position: it,
     currentPrice,
     mainlineAllow,
+    intradayChgPct: rowMetrics.intradayChgPct,
   });
   const execTone =
     actionCard.action === 'EXIT'
@@ -544,7 +545,8 @@ function WatchlistRowInner({
             actionCard.why === 'NOT_MAINLINE' ||
             actionCard.why === 'DEFENSE_SECTOR_BLOCK' ||
             actionCard.why === 'GATE_DEFEND' ||
-            actionCard.why === 'MAINLINE_FADE'
+            actionCard.why === 'MAINLINE_FADE' ||
+            actionCard.why === 'INTRADAY_SURGE_BLOCK'
           ? 'text-amber-700 font-semibold'
           : 'text-[var(--k-muted)]';
 

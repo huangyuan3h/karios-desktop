@@ -238,6 +238,8 @@ export function buildWatchlistMarkdown(options: {
       executionGate ?? null,
       '##',
       mainlineAllow ?? null,
+      tradingTime,
+      todaySh,
     ).trim(),
   );
   lines.push('');

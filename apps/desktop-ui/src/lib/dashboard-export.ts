@@ -773,6 +773,8 @@ export async function buildWatchlistMarkdown(
       resolvedGate,
       heading,
       resolvedMainline,
+      tradingTime,
+      todaySh,
     ).trim(),
   );
   lines.push('');

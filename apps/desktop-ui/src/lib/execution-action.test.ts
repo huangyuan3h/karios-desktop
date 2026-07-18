@@ -101,6 +101,16 @@ describe('evaluateNewEntryGates', () => {
       }).why,
     ).toBe('MAINLINE_DATA_UNAVAILABLE');
   });
+
+  it('blocks intraday surge before mainline check', () => {
+    expect(
+      evaluateNewEntryGates({
+        industryName: '半导体',
+        mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+        intradayChgPct: 6.1,
+      }).why,
+    ).toBe('INTRADAY_SURGE_BLOCK');
+  });
 });
 
 describe('deriveActionCard', () => {
@@ -345,6 +355,107 @@ describe('deriveActionCard', () => {
     });
     expect(card.action).toBe('HOLD');
     expect(card.why).toBe('HOLD');
+  });
+
+  it('blocks BUY to WATCH on intraday surge >6%', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      intradayChgPct: 6.1,
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('INTRADAY_SURGE_BLOCK');
+    expect(card.mainlineOk).toBe(true);
+  });
+
+  it('blocks ADD to HOLD on intraday surge (not TRIM)', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+      intradayChgPct: 6.1,
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('INTRADAY_SURGE_BLOCK');
+  });
+
+  it('allows BUY at exactly 6.0% intraday (strict >)', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      intradayChgPct: 6.0,
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('MAINLINE_5D_TOP3');
+  });
+
+  it('does not surge-block when intradayChgPct is null', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      intradayChgPct: null,
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('MAINLINE_5D_TOP3');
+  });
+
+  it('EXIT on exit_now ignores intraday surge', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        buyAction: 'avoid',
+        stopLossPrice: 9,
+        stopLossParts: { exit_now: true, atr14: 0.2 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+      intradayChgPct: 8,
+    });
+    expect(card.action).toBe('EXIT');
+    expect(card.why).toBe('EXIT_NOW');
   });
 });
 
