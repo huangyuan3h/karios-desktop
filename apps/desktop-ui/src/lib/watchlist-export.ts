@@ -2,27 +2,10 @@ import type { QueryClient } from '@tanstack/react-query';
 
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
-import { escapeMarkdownCell, mdLines, mdPrice, mdScore } from '@/lib/dashboard-format';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
 import { refetchWatchlistMarket } from '@/lib/queries/watchlist';
-import { scoreExplainZhLines, trendOkRuleLines, trendOkSummary } from '@/lib/trendok-display';
-import { fmtBuyCell } from '@/lib/watchlist-table-cells';
 import {
-  WATCHLIST_MD_HEADERS,
-  buildWatchlistRowMetrics,
-  computePnLPct,
-  formatGapUp,
-  formatHotTop3,
-  formatIntradayChgPct,
-  formatPnLPct,
-  formatRs,
-  formatRiskAlerts,
-  formatVwap,
-  formatInstFlow,
-  formatVolumeRatio,
-  industryDisplayName,
-  isIntradaySurge,
   shouldRequireRealtimeQuote,
   tradeDateFromTradeTime,
 } from '@/lib/watchlist-metrics';
@@ -136,101 +119,13 @@ export function buildWatchlistMarkdown(options: {
     sortedItems,
     trendSnap,
     quotesSnap,
-    trendUpdatedAt,
     tradingTime,
     todaySh,
     executionGate = null,
     mainlineAllow = null,
   } = options;
-  const generatedAt = new Date().toISOString();
-  const lines: string[] = [];
-  lines.push('## Watchlist');
-  lines.push(`- generatedAt: ${generatedAt}`);
-  lines.push(`- items: ${sortedItems.length}`);
-  lines.push(
-    `- scoresUpdatedAt: ${trendUpdatedAt ? new Date(trendUpdatedAt).toLocaleString() : '—'}`,
-  );
-  lines.push(`- shanghaiToday: ${todaySh}`);
-  lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
-  lines.push('');
-
-  lines.push('### TrendOK rules');
-  lines.push(mdLines(trendOkRuleLines()));
-  lines.push('');
-  lines.push('### Score（0–100）计分说明');
-  lines.push(
-    mdLines(scoreExplainZhLines().map((line) => (line.startsWith('-') ? line : `- ${line}`))),
-  );
-  lines.push('');
-
-  const headers = [...WATCHLIST_MD_HEADERS];
-  const blockAlerts: string[] = [];
-  lines.push(`| ${headers.join(' | ')} |`);
-  lines.push(`| ${headers.map(() => '---').join(' | ')} |`);
-
-  for (const it of sortedItems) {
-    const t = trendSnap[it.symbol];
-    const buy = fmtBuyCell(t).text;
-    const q = quotesSnap[it.symbol];
-    const rowMetrics = buildWatchlistRowMetrics({
-      symbol: it.symbol,
-      trend: t,
-      quote: q,
-      tradingTime,
-      todaySh,
-    });
-    const pnl = computePnLPct(it.costPrice ?? null, rowMetrics.current);
-    const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
-    const asOf = qDate === todaySh ? qDate : String(t?.asOfDate ?? '');
-    const values = (t?.values ?? {}) as Record<string, unknown>;
-    const intradayCell = isIntradaySurge(rowMetrics.intradayChgPct)
-      ? `⚠️ ${formatIntradayChgPct(rowMetrics.intradayChgPct)}`
-      : formatIntradayChgPct(rowMetrics.intradayChgPct);
-    const gapCell =
-      rowMetrics.gapUp === true ? `⚠️ ${formatGapUp(true)}` : formatGapUp(rowMetrics.gapUp);
-    const alertsCell = formatRiskAlerts(rowMetrics.alerts);
-    for (const alert of rowMetrics.alerts) {
-      if (alert.severity === 'block') {
-        blockAlerts.push(`${it.symbol}: ${alert.message}`);
-      }
-    }
-    const row = [
-      escapeMarkdownCell(it.symbol),
-      escapeMarkdownCell(it.name || '—'),
-      escapeMarkdownCell(industryDisplayName(values)),
-      escapeMarkdownCell(formatHotTop3(t)),
-      escapeMarkdownCell(formatRs(t)),
-      escapeMarkdownCell(
-        typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
-          ? it.positionPct.toFixed(1)
-          : '—',
-      ),
-      escapeMarkdownCell(mdPrice(it.costPrice ?? null)),
-      escapeMarkdownCell(mdPrice(rowMetrics.current)),
-      escapeMarkdownCell(formatVwap(rowMetrics.vwap)),
-      escapeMarkdownCell(intradayCell),
-      escapeMarkdownCell(formatVolumeRatio(rowMetrics.volumeRatio)),
-      escapeMarkdownCell(formatInstFlow(t?.instFlow)),
-      escapeMarkdownCell(gapCell),
-      escapeMarkdownCell(alertsCell),
-      escapeMarkdownCell(formatPnLPct(pnl)),
-      escapeMarkdownCell(mdScore(t?.score ?? null)),
-      escapeMarkdownCell(trendOkSummary(t)),
-      escapeMarkdownCell(buy),
-      escapeMarkdownCell(mdPrice(t?.stopLossPrice ?? null)),
-      escapeMarkdownCell(asOf),
-    ];
-    lines.push(`| ${row.join(' | ')} |`);
-  }
-
-  lines.push('');
-  if (blockAlerts.length) {
-    lines.push('### Risk alerts');
-    lines.push(mdLines(blockAlerts.map((line) => `- ${line}`)));
-    lines.push('');
-  }
-
-  lines.push(
+  // Same unified combat table as Dashboard Copy all (no separate fat Watchlist dump).
+  return (
     buildPositionsExecutionMarkdown(
       sortedItems,
       trendSnap,
@@ -240,11 +135,8 @@ export function buildWatchlistMarkdown(options: {
       mainlineAllow ?? null,
       tradingTime,
       todaySh,
-    ).trim(),
+    ).trim() + '\n'
   );
-  lines.push('');
-
-  return lines.join('\n').trim() + '\n';
 }
 
 export async function copyWatchlistMarkdown(options: {

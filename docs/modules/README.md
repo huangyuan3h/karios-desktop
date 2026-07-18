@@ -163,15 +163,16 @@ Dashboard 卡片 **Decision Journal** 把 Gate + Action Card 写成可回放时�
 
 - **Exec Attention（卡顶）**：`Sleeve` 预算 → Must act（EXIT→TRIM）→ Fire（BUY/ADD，受 Gate）→ 缺仓提示 → 今日关键变更 Top3。Must act / Fire **优先 live**（Watchlist market + `deriveActionCard`），无行情时回退 Journal snapshot。
 - **自动采集**：Sync All、盘中 5 分钟 poll、Watchlist 仓位变更 debounce、收盘后 eod、手动 Snapshot now。Action Card 仍由前端 `deriveActionCard` 计算后 POST。
-- **变更流水**：`mode` / `action` / `why` / `trigger` / `positionPct` 变化落库；同决策 content_hash 只心跳更新 `captured_at`。
-- **Copy all Markdown（忙人包）**：自动带 `## AI instructions`、`## Since last copy`（相对上次成功 Copy 的 Journal 差分）、Gate、Attention、`## Cond order draft`（条件单改/挂/撤草案）再接 Journal / Positions。Dashboard 另有 **Sync & Copy** 一键。
+- **变更流水**：`mode` / `action` / `why` / `trigger` / `hardStop` / `trailStop` / `positionPct` 变化落库；同决策 content_hash 只心跳更新 `captured_at`。
+- **Latest Actions（delta）**：Journal 只列出当日 Action / Trigger / HardStop / TrailStop 变更的标的；静默 WATCH→WATCH 不入表。
+- **Copy all Markdown（忙人包）**：纯数据 Payload（**无**内嵌 AI instructions）。顺序：`## Since last copy` → Gate → Attention → Cond order → Journal → 宏观原料 → **`## Combat Positions & Watchlist (Unified)`**（量化因子 + 执行合同一张表）。行为合同只在 System Prompt。Dashboard 另有 **Sync & Copy** 一键。
 - 迁移：`PYTHONPATH=src alembic upgrade head`（revision `0010_execution_decision_journal`）。
 
 ### 下游判断 AI（Copy → Agent）
 
-外部 / 本仓判断 AI 的 system prompt 见 **[downstream-ai-prompt.md](./downstream-ai-prompt.md)（V7.2 · 操作表 + 战情汇报）**。
+外部 / 本仓判断 AI 的 system prompt 见 **[downstream-ai-prompt.md](./downstream-ai-prompt.md)（V7.4 · 纯 Payload · 焦点先行）**。
 
-要点：Gate / Attention / Positions 为硬合同；先给**操作表**，再强制 **战情汇报 7 项**（指数/大宗/资金流向/市场情绪/我们的策略/Alpha/新闻），称呼指挥官，零容忍违规，少废话无练习题。
+要点：硬合同不变；先**操作表**，再**今日焦点≤3条**（写透）+ **战场扫描 7 行短句**防漏报；禁夸张套话与注水。
 
 ### 主线绑定（BUY/ADD 硬闸）
 

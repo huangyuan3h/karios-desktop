@@ -3,27 +3,9 @@ import { describe, expect, it } from 'vitest';
 import type { ExecutionDecisionChange } from '@karios/shared';
 
 import {
-  formatAiCopyInstructionHeader,
   formatCondOrderDraftMarkdown,
   formatSinceLastCopyMarkdown,
 } from './copy-ai-brief';
-
-describe('formatAiCopyInstructionHeader', () => {
-  it('requires ops table and 7-topic war brief for 指挥官', () => {
-    const md = formatAiCopyInstructionHeader();
-    expect(md).toContain('## AI instructions (embedded)');
-    expect(md).toContain('指挥官');
-    expect(md).toContain('操作表');
-    expect(md).toContain('战情汇报');
-    expect(md).toContain('指数');
-    expect(md).toContain('大宗');
-    expect(md).toContain('资金流向');
-    expect(md).toContain('市场情绪');
-    expect(md).toContain('Alpha');
-    expect(md).toContain('新闻');
-    expect(md).not.toContain('成长小问');
-  });
-});
 
 describe('formatSinceLastCopyMarkdown', () => {
   it('notes missing prior marker and lists action/mode changes', () => {

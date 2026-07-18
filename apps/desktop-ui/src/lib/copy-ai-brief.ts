@@ -26,22 +26,6 @@ export function writeLastCopyAt(iso: string): void {
   }
 }
 
-/**
- * Embedded brief for Copy all.
- * Complements System Prompt V7.2: ops table + mandatory 7-topic war brief for 指挥官.
- */
-export function formatAiCopyInstructionHeader(heading = '##'): string {
-  const lines = [
-    `${heading} AI instructions (embedded)`,
-    '- 称呼指挥官。服从 Gate → Attention → Cond order → Positions；不得平反 *_BLOCK / 不得劝跳过 EXIT。',
-    '- 先给操作表；再给【战情汇报】且必须含 7 项标题：指数 / 大宗 / 资金流向 / 市场情绪 / 我们的策略 / Alpha / 新闻（每项 1～3 句重点，缺则写未提供）。',
-    '- 表格用 Suggest% 与 Trigger。勿刷整池 WATCH 撤单。少废话，无练习题；对违规零容忍，语气像老友。',
-    '- 指挥官可继续追问；缺近况时按合同执行。',
-    '',
-  ];
-  return lines.join('\n');
-}
-
 export function formatSinceLastCopyMarkdown(
   changes: ExecutionDecisionChange[],
   opts: { lastAt: string | null; heading?: string },

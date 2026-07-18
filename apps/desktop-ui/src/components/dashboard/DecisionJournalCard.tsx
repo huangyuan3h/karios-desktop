@@ -12,7 +12,10 @@ import {
   resolveAttentionCards,
   type ExecAttentionLine,
 } from '@/lib/exec-attention';
-import { buildExecutionSnapshotPayload } from '@/lib/execution-journal';
+import {
+  buildExecutionSnapshotPayload,
+  filterLatestActionCards,
+} from '@/lib/execution-journal';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { useWatchlistMarketQuery } from '@/lib/queries/watchlist';
 import {
@@ -130,6 +133,11 @@ export function DecisionJournalCard(props: {
   );
 
   const mustAct = [...attention.exits, ...attention.trims];
+
+  const latestActionCards = React.useMemo(
+    () => filterLatestActionCards(snapshotCards, changes),
+    [snapshotCards, changes],
+  );
 
   return (
     <div className="space-y-3 text-sm">
@@ -273,33 +281,41 @@ export function DecisionJournalCard(props: {
         )}
       </div>
 
-      {snapshotCards.length > 0 ? (
+      {latest ? (
         <div>
-          <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">Latest actions</div>
-          <div className="max-h-40 overflow-auto rounded border border-[var(--k-border)]">
-            <table className="w-full text-left text-[11px]">
-              <thead className="sticky top-0 bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                <tr>
-                  <th className="px-2 py-1">Symbol</th>
-                  <th className="px-2 py-1">Action</th>
-                  <th className="px-2 py-1">Why</th>
-                  <th className="px-2 py-1">Pos%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {snapshotCards.map((c) => (
-                  <tr key={c.symbol} className="border-t border-[var(--k-border)] font-mono">
-                    <td className="px-2 py-1">{c.symbol}</td>
-                    <td className="px-2 py-1 font-semibold">{c.action}</td>
-                    <td className="px-2 py-1 text-[var(--k-muted)]">{c.why ?? '—'}</td>
-                    <td className="px-2 py-1">
-                      {typeof c.positionPct === 'number' ? c.positionPct.toFixed(1) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">
+            Latest actions (delta)
           </div>
+          {latestActionCards.length === 0 ? (
+            <div className="text-xs text-[var(--k-muted)]">
+              No Action / Trigger / Stop deltas today (silent WATCH omitted).
+            </div>
+          ) : (
+            <div className="max-h-40 overflow-auto rounded border border-[var(--k-border)]">
+              <table className="w-full text-left text-[11px]">
+                <thead className="sticky top-0 bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                  <tr>
+                    <th className="px-2 py-1">Symbol</th>
+                    <th className="px-2 py-1">Action</th>
+                    <th className="px-2 py-1">Why</th>
+                    <th className="px-2 py-1">Pos%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {latestActionCards.map((c) => (
+                    <tr key={c.symbol} className="border-t border-[var(--k-border)] font-mono">
+                      <td className="px-2 py-1">{c.symbol}</td>
+                      <td className="px-2 py-1 font-semibold">{c.action}</td>
+                      <td className="px-2 py-1 text-[var(--k-muted)]">{c.why ?? '—'}</td>
+                      <td className="px-2 py-1">
+                        {typeof c.positionPct === 'number' ? c.positionPct.toFixed(1) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       ) : null}
 

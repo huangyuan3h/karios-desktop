@@ -1,6 +1,6 @@
 import type { ExecutionActionCard, ExecutionGate } from '@karios/shared';
 
-import { mdPrice, mdTable } from '@/lib/dashboard-format';
+import { mdPrice, mdScore, mdTable } from '@/lib/dashboard-format';
 import {
   buildSectorExposureFromWatchlist,
   buildSleeveExposurePct,
@@ -10,13 +10,40 @@ import {
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import type { TrendOkResult } from '@/lib/api/types';
-import { buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
+import { formatRs, buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 
+function formatTrendOkCell(t: TrendOkResult | undefined): string {
+  if (!t) return '—';
+  if (t.trendOk === true) return 'ok';
+  if (t.trendOk === false) return 'no';
+  return '—';
+}
+
+function formatPosPct(v: number | null | undefined): string {
+  return typeof v === 'number' && Number.isFinite(v) ? v.toFixed(1) : '—';
+}
+
+/**
+ * Unified combat table for Copy all / Watchlist copy.
+ * Merges quant factors (RS/Score/TrendOK/Current) with execution contract
+ * (Action/Suggest%/Trigger/Stops) into one LLM payload table.
+ */
 export function buildPositionsExecutionMarkdown(
   items: WatchlistItem[],
   trend: Record<string, TrendOkResult | undefined>,
-  quotes: Record<string, { price?: number | null; preClose?: number | null; pctChg?: number | null; tradeTime?: string | null; amount?: number | null; volume?: number | null } | undefined>,
+  quotes: Record<
+    string,
+    | {
+        price?: number | null;
+        preClose?: number | null;
+        pctChg?: number | null;
+        tradeTime?: string | null;
+        amount?: number | null;
+        volume?: number | null;
+      }
+    | undefined
+  >,
   gate: ExecutionGate | null,
   heading = '##',
   mainlineAllow: MainlineAllowSet | null = null,
@@ -24,7 +51,7 @@ export function buildPositionsExecutionMarkdown(
   todaySh = '',
 ): string {
   const lines: string[] = [];
-  lines.push(`${heading} Positions (execution)`);
+  lines.push(`${heading} Combat Positions & Watchlist (Unified)`);
   if (!gate?.allowNewEntries) {
     lines.push('- note: BUY/ADD only valid when Execution Gate allowNewEntries=true');
   }
@@ -57,11 +84,15 @@ export function buildPositionsExecutionMarkdown(
   const sectorExposureByIndustry = buildSectorExposureFromWatchlist(items, trend);
   const headers = [
     'Symbol',
+    'Name',
+    'RS',
+    'Score',
+    'TrendOK',
+    'Current',
+    'Pos%',
     'Action',
     'Suggest%',
     'Trigger',
-    'TrailArmed',
-    'Peak',
     'HardStop',
     'TrailStop',
     'Dist%',
@@ -96,20 +127,22 @@ export function buildPositionsExecutionMarkdown(
       typeof card.distPct === 'number' && Number.isFinite(card.distPct)
         ? card.distPct.toFixed(1)
         : '—';
-    const mainlineCell = card.mainlineOk
-      ? card.mainlineTag || 'ok'
-      : 'no';
+    const mainlineCell = card.mainlineOk ? card.mainlineTag || 'ok' : 'no';
     const suggest =
       typeof card.suggestAddPct === 'number' && Number.isFinite(card.suggestAddPct)
         ? `+${card.suggestAddPct.toFixed(1)}${card.suggestSizeNote ? ` (${card.suggestSizeNote})` : ''}`
         : '—';
     rows.push([
       it.symbol,
+      it.name ?? t?.name ?? '—',
+      formatRs(t),
+      mdScore(t?.score ?? null),
+      formatTrendOkCell(t),
+      mdPrice(rowMetrics.current),
+      formatPosPct(it.positionPct),
       card.action,
       suggest,
       mdPrice(card.trigger ?? null),
-      card.trailArmed ? 'yes' : 'no',
-      mdPrice(card.peak ?? null),
       mdPrice(card.hardStop ?? null),
       mdPrice(card.trailStop ?? null),
       dist,

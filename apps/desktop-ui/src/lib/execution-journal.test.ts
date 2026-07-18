@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { ExecutionGate } from '@karios/shared';
 
-import { buildExecutionSnapshotPayload } from './execution-journal';
+import {
+  buildExecutionSnapshotPayload,
+  filterLatestActionCards,
+  symbolsWithLatestActionDeltas,
+} from './execution-journal';
 import { BUY_SCORE_MIN } from './execution-action';
 import type { MainlineAllowSet } from './hot-industry-picks';
 
@@ -61,5 +65,35 @@ describe('buildExecutionSnapshotPayload', () => {
         source: 'poll',
       }),
     ).toBeNull();
+  });
+});
+
+describe('filterLatestActionCards (delta logging)', () => {
+  it('keeps only Action / Trigger / Stop deltas and drops silent WATCH', () => {
+    const cards = [
+      { symbol: 'CN:A', action: 'WATCH', why: 'WATCH' },
+      { symbol: 'CN:B', action: 'BUY', why: 'MAINLINE_OK' },
+      { symbol: 'CN:C', action: 'HOLD', why: 'HOLD' },
+    ];
+    const changes = [
+      { scope: 'symbol', symbol: 'CN:B', field: 'action' },
+      { scope: 'symbol', symbol: 'CN:C', field: 'hardStop' },
+      { scope: 'symbol', symbol: 'CN:A', field: 'why' },
+      { scope: 'gate', symbol: null, field: 'mode' },
+    ];
+    expect([...symbolsWithLatestActionDeltas(changes)].sort()).toEqual(['CN:B', 'CN:C']);
+    expect(filterLatestActionCards(cards, changes).map((c) => c.symbol)).toEqual([
+      'CN:B',
+      'CN:C',
+    ]);
+  });
+
+  it('returns empty when only silent why/positionPct churn', () => {
+    const cards = [{ symbol: 'CN:A', action: 'WATCH' }];
+    const changes = [
+      { scope: 'symbol', symbol: 'CN:A', field: 'why' },
+      { scope: 'symbol', symbol: 'CN:A', field: 'positionPct' },
+    ];
+    expect(filterLatestActionCards(cards, changes)).toEqual([]);
   });
 });

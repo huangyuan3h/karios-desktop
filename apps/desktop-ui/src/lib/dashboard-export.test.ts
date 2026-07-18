@@ -317,10 +317,11 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
 
     const md = await buildWatchlistMarkdown(queryClient);
 
-    expect(md).toContain('## Watchlist');
-    expect(md).toContain('| VR |');
-    expect(md).toContain('1.58x');
-    expect(md).toContain('## Positions (execution)');
+    expect(md).toContain('## Combat Positions & Watchlist (Unified)');
+    expect(md).toContain('| Symbol | Name | RS | Score | TrendOK | Current | Pos% | Action |');
+    expect(md).toContain('| CN:000001 | Test |');
+    expect(md).not.toContain('## Watchlist\n');
+    expect(md).not.toContain('## Positions (execution)');
     expect(mockedFetchWatchlistMarketSnapshot).not.toHaveBeenCalled();
     expect(mockedApiGetJson).not.toHaveBeenCalledWith(expect.stringContaining('/market/stocks/trendok'));
   });
@@ -444,7 +445,7 @@ describe('buildDashboardCopyAllMarkdown cache', () => {
 
     expect(mockedFetchDashboardSummary).not.toHaveBeenCalled();
     expect(mockedApiGetJson).not.toHaveBeenCalledWith('/dashboard/summary');
-    expect(md).toContain('## AI instructions (embedded)');
+    expect(md).not.toContain('## AI instructions (embedded)');
     expect(md).toContain('## Since last copy');
     expect(md).toContain('## Execution Gate');
     expect(md).toContain('- mode: DEFEND');
@@ -453,9 +454,10 @@ describe('buildDashboardCopyAllMarkdown cache', () => {
     expect(md).toContain('### Fire');
     expect(md).toContain('Gate blocks new entries');
     expect(md).toContain('## Cond order draft');
-    expect(md).toContain('## Positions (execution)');
+    expect(md).toContain('## Combat Positions & Watchlist (Unified)');
     expect(md).toContain('Mainline');
     expect(md).toContain('mainline bind');
+    expect(md).toContain('INTRADAY_SURGE_BLOCK');
   });
 });
 

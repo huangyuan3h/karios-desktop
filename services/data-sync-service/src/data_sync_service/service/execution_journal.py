@@ -8,7 +8,18 @@ from typing import Any
 
 from data_sync_service.db import execution_journal as ej_db
 
-DECISION_CARD_FIELDS = ("symbol", "action", "why", "trigger", "positionPct")
+DECISION_CARD_FIELDS = (
+    "symbol",
+    "action",
+    "why",
+    "trigger",
+    "positionPct",
+    "hardStop",
+    "trailStop",
+)
+
+# Latest Actions table only lists symbols with a meaningful decision delta today.
+LATEST_ACTIONS_DELTA_FIELDS = frozenset({"action", "trigger", "hardStop", "trailStop"})
 
 
 def _norm_str(v: Any) -> str:
@@ -41,6 +52,8 @@ def decision_payload_for_hash(gate: dict[str, Any] | None, cards: list[dict[str,
                 "why": _norm_str(c.get("why")),
                 "trigger": _norm_str(c.get("trigger")),
                 "positionPct": _norm_str(c.get("positionPct")),
+                "hardStop": _norm_str(c.get("hardStop")),
+                "trailStop": _norm_str(c.get("trailStop")),
             }
         )
     card_rows.sort(key=lambda r: r["symbol"])
@@ -165,7 +178,7 @@ def diff_snapshots(
                 }
             )
             continue
-        for field in ("action", "why", "trigger", "positionPct"):
+        for field in ("action", "why", "trigger", "positionPct", "hardStop", "trailStop"):
             ov = _norm_str(p.get(field))
             nv = _norm_str(c.get(field))
             if ov != nv:
@@ -182,6 +195,23 @@ def diff_snapshots(
                     }
                 )
     return changes
+
+
+def symbols_with_latest_action_deltas(day_changes: list[dict[str, Any]]) -> set[str]:
+    """Symbols whose Action / Trigger / HardStop / TrailStop changed today."""
+    out: set[str] = set()
+    for c in day_changes:
+        if not isinstance(c, dict):
+            continue
+        if str(c.get("scope") or "") != "symbol":
+            continue
+        if str(c.get("field") or "") not in LATEST_ACTIONS_DELTA_FIELDS:
+            continue
+        # API rows use camelCase; diff rows use snake_case before persist.
+        sym = str(c.get("symbol") or "").strip()
+        if sym:
+            out.add(sym)
+    return out
 
 
 def ingest_snapshot(
@@ -296,15 +326,25 @@ def build_journal_markdown(
     lines.append("")
 
     lines.append("### Latest Actions")
-    lines.append("| Symbol | Action | Why | Trigger | Pos% | Mainline |")
-    lines.append("| --- | --- | --- | --- | --- | --- |")
+    lines.append(
+        "- note: delta-only — Action / Trigger / HardStop / TrailStop changes; silent WATCH omitted"
+    )
+    lines.append("| Symbol | Action | Why | Trigger | HardStop | TrailStop | Pos% | Mainline |")
+    lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
     cards = (latest or {}).get("cards") or []
-    if not isinstance(cards, list) or not cards:
-        lines.append("| — | — | — | — | — | — |")
-    else:
+    delta_symbols = symbols_with_latest_action_deltas(day_changes)
+    delta_cards: list[dict[str, Any]] = []
+    if isinstance(cards, list) and delta_symbols:
         for c in cards:
             if not isinstance(c, dict):
                 continue
+            sym = str(c.get("symbol") or "").strip()
+            if sym in delta_symbols:
+                delta_cards.append(c)
+    if not delta_cards:
+        lines.append("| — | — | — | — | — | — | — | — |")
+    else:
+        for c in delta_cards:
             ml = "ok" if c.get("mainlineOk") else "no"
             tag = c.get("mainlineTag")
             if tag:
@@ -317,6 +357,8 @@ def build_journal_markdown(
                         _md_cell(c.get("action")),
                         _md_cell(c.get("why")),
                         _md_cell(c.get("trigger")),
+                        _md_cell(c.get("hardStop")),
+                        _md_cell(c.get("trailStop")),
                         _md_cell(c.get("positionPct")),
                         _md_cell(ml),
                     ]

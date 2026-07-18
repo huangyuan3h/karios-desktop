@@ -23,14 +23,9 @@ import {
   formatExecutionGateMarkdown,
   mdTable,
   escapeMarkdownCell,
-  mdLines,
-  mdNum,
-  mdScore,
-  mdPrice,
   buildHotIndustriesMarkdown,
 } from '@/lib/dashboard-format';
 import {
-  formatAiCopyInstructionHeader,
   formatCondOrderDraftMarkdown,
   formatSinceLastCopyMarkdown,
   readLastCopyAt,
@@ -74,28 +69,12 @@ import { screenerSnapshotsQueryOptions } from '@/lib/queries/screener';
 import { fetchDashboardSummaryPartial } from '@/lib/queries/dashboard';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
 import { fetchWatchlistMarketSnapshot, type WatchlistMarketSnapshot } from '@/lib/watchlist-market';
-import { trendOkSummary, trendOkRuleLines, scoreRuleLines } from '@/lib/trendok-display';
 import {
-  WATCHLIST_MD_HEADERS,
-  buildWatchlistRowMetrics,
-  computePnLPct,
-  formatGapUp,
-  formatHotTop3,
-  formatInstFlow,
-  formatIntradayChgPct,
-  formatPnLPct,
-  formatRs,
-  formatRiskAlerts,
-  formatVwap,
-  formatVolumeRatio,
-  industryDisplayName,
-  isIntradaySurge,
   parseQuoteNumber,
   shouldRequireRealtimeQuote,
   tradeDateFromTradeTime,
 } from '@/lib/watchlist-metrics';
 import { copyBlockingMissingData } from '@/lib/watchlist-export';
-import { fmtBuyCell } from '@/lib/watchlist-table-cells';
 import { loadWatchlist, ensureWatchlistHydrated, type WatchlistItem } from '@/lib/watchlist-storage';
 
 type DashboardSummary = any;
@@ -592,7 +571,9 @@ export async function buildWatchlistMarkdown(
     .map((x) => ({ ...x, symbol: String(x.symbol).trim().toUpperCase() }));
 
   const heading = '##';
-  if (!items.length) return `${heading} Watchlist\n\nNo items.\n`;
+  if (!items.length) {
+    return `${heading} Combat Positions & Watchlist (Unified)\n\n- No watchlist items.\n`;
+  }
 
   const syms = items.map((x) => x.symbol);
   const tradingTime = isShanghaiTradingTime();
@@ -707,99 +688,19 @@ export async function buildWatchlistMarkdown(
     throw new Error(`Copy aborted: ${parts.join(' | ')}`);
   }
 
-  const generatedAt = new Date().toISOString();
-  const lines: string[] = [];
-  lines.push(`${heading} Watchlist`);
-  lines.push(`- generatedAt: ${generatedAt}`);
-  lines.push(`- items: ${sorted.length}`);
-  lines.push(`- shanghaiToday: ${todaySh}`);
-  lines.push(`- tradingTime: ${tradingTime ? 'true' : 'false'}`);
-  lines.push(`- quoteWindow: ${quoteWindow ? 'true' : 'false'}`);
-  lines.push('');
-
-  lines.push(`${heading}# TrendOK rules`);
-  lines.push(mdLines(trendOkRuleLines()));
-  lines.push('');
-  lines.push(`${heading}# Score rules`);
-  lines.push(mdLines(scoreRuleLines()));
-  lines.push('');
-
-  const headers = [...WATCHLIST_MD_HEADERS];
-  const rows: unknown[][] = [];
-  const blockAlerts: string[] = [];
-  for (const it of sorted) {
-    const t = trend[it.symbol];
-    const q = quotes[it.symbol];
-    const rowMetrics = buildWatchlistRowMetrics({
-      symbol: it.symbol,
-      trend: t,
-      quote: q,
-      tradingTime,
-      todaySh,
-    });
-    const pnl = computePnLPct(it.costPrice ?? null, rowMetrics.current);
-    const qDate = tradeDateFromTradeTime(q?.tradeTime ?? null);
-    const asOf = qDate === todaySh ? qDate : String(t?.asOfDate ?? '');
-    const buy = fmtBuyCell(t).text;
-    const values = (t?.values ?? {}) as Record<string, unknown>;
-    const intradayCell = isIntradaySurge(rowMetrics.intradayChgPct)
-      ? `⚠️ ${formatIntradayChgPct(rowMetrics.intradayChgPct)}`
-      : formatIntradayChgPct(rowMetrics.intradayChgPct);
-    const gapCell =
-      rowMetrics.gapUp === true
-        ? `⚠️ ${formatGapUp(true)}`
-        : formatGapUp(rowMetrics.gapUp);
-    for (const alert of rowMetrics.alerts) {
-      if (alert.severity === 'block') blockAlerts.push(`${it.symbol}: ${alert.message}`);
-    }
-    rows.push([
-      it.symbol,
-      it.name ?? t?.name ?? '—',
-      industryDisplayName(values),
-      formatHotTop3(t),
-      formatRs(t),
-      mdNum(it.positionPct ?? null, 1),
-      mdPrice(it.costPrice ?? null),
-      mdPrice(rowMetrics.current),
-      formatVwap(rowMetrics.vwap),
-      intradayCell,
-      formatVolumeRatio(rowMetrics.volumeRatio),
-      formatInstFlow(t?.instFlow),
-      gapCell,
-      formatRiskAlerts(rowMetrics.alerts),
-      formatPnLPct(pnl),
-      mdScore(t?.score ?? null),
-      trendOkSummary(t),
-      buy,
-      mdPrice(t?.stopLossPrice ?? null),
-      asOf,
-    ]);
-  }
-  lines.push(mdTable(headers, rows));
-  lines.push('');
-  if (blockAlerts.length) {
-    lines.push(`${heading}# Risk alerts`);
-    lines.push(mdLines(blockAlerts.map((line) => `- ${line}`)));
-    lines.push('');
-  }
-
-  const resolvedGate = gate ?? null;
-  const resolvedMainline = mainlineAllow ?? null;
-  lines.push(
+  // Unified combat table only — fat Watchlist dump removed for LLM SNR.
+  return (
     buildPositionsExecutionMarkdown(
       sorted,
       trend,
       quotes,
-      resolvedGate,
+      gate ?? null,
       heading,
-      resolvedMainline,
+      mainlineAllow ?? null,
       tradingTime,
       todaySh,
-    ).trim(),
+    ).trim() + '\n'
   );
-  lines.push('');
-
-  return lines.join('\n').trim() + '\n';
 }
 
 export async function buildAlphaRadarCopyContext(
@@ -1048,8 +949,7 @@ export async function buildDashboardCopyAllMarkdown(
   lines.push(`- generatedAt: ${generatedAt}`);
   lines.push(`- asOfDate: ${String((s as any)?.asOfDate ?? '')}`);
   lines.push('');
-  lines.push(formatAiCopyInstructionHeader('##').trim());
-  lines.push('');
+  // AI behavior lives in System Prompt (docs/modules/downstream-ai-prompt.md); payload stays data-only.
   lines.push(sinceLastMd.trim());
   lines.push('');
   lines.push(

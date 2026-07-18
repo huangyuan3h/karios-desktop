@@ -1,4 +1,5 @@
 import type {
+  ExecutionDecisionChange,
   ExecutionGate,
   ExecutionJournalCard,
   ExecutionSnapshotIngestRequest,
@@ -21,6 +22,40 @@ import { buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 
 const QUEUE_KEY = 'karios.executionJournal.queue.v1';
+
+/** Fields that qualify a symbol for Latest Actions (delta logging). */
+export const LATEST_ACTIONS_DELTA_FIELDS = new Set([
+  'action',
+  'trigger',
+  'hardStop',
+  'trailStop',
+]);
+
+/**
+ * Symbols whose Action / Trigger / HardStop / TrailStop changed.
+ * Silent WATCH→WATCH with unchanged stops are excluded.
+ */
+export function symbolsWithLatestActionDeltas(
+  changes: Array<Pick<ExecutionDecisionChange, 'scope' | 'symbol' | 'field'>>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const c of changes) {
+    if (c.scope !== 'symbol') continue;
+    if (!LATEST_ACTIONS_DELTA_FIELDS.has(String(c.field || ''))) continue;
+    const sym = String(c.symbol || '').trim();
+    if (sym) out.add(sym);
+  }
+  return out;
+}
+
+export function filterLatestActionCards<T extends { symbol?: string | null }>(
+  cards: T[],
+  changes: Array<Pick<ExecutionDecisionChange, 'scope' | 'symbol' | 'field'>>,
+): T[] {
+  const delta = symbolsWithLatestActionDeltas(changes);
+  if (!delta.size) return [];
+  return cards.filter((c) => delta.has(String(c.symbol || '').trim()));
+}
 
 export type BuildExecutionSnapshotInput = {
   items: WatchlistItem[];
