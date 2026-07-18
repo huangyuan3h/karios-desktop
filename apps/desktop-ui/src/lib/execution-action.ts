@@ -12,6 +12,8 @@ import { isGapUpWeakMarket, isIntradaySurge } from '@/lib/watchlist-metrics';
 export const CHANDELIER_ARM_PNL_PCT = 10;
 export const CHANDELIER_ATR_MULT = 2;
 export const BUY_SCORE_MIN = 80;
+/** Max single-name weight inside the satellite sleeve; blocks ADD at or above. */
+export const POSITION_SIZE_CAP_PCT = 15;
 
 /** Defense sectors blocked from BUY/ADD (East Money industry substring match). */
 export const DEFENSE_SECTOR_KEYWORDS = [
@@ -58,6 +60,14 @@ export function isHeldPosition(pos: PositionLike): boolean {
   if (pct != null && pct > 0) return true;
   const cost = num(pos.costPrice);
   return cost != null && cost > 0;
+}
+
+/** True when positionPct is a finite number at or above the single-name cap. */
+export function isAtOrOverPositionSizeCap(
+  positionPct: number | null | undefined,
+  capPct: number = POSITION_SIZE_CAP_PCT,
+): boolean {
+  return typeof positionPct === 'number' && Number.isFinite(positionPct) && positionPct >= capPct;
 }
 
 export function computePnLPct(cost: number | null, current: number | null): number | null {
@@ -302,6 +312,9 @@ export function deriveActionCard(opts: {
     if (!entryGate.ok) {
       action = 'HOLD';
       why = entryGate.why;
+    } else if (isAtOrOverPositionSizeCap(position.positionPct)) {
+      action = 'HOLD';
+      why = 'SIZE_CAP_BLOCK';
     } else {
       action = 'ADD';
       why = entryGate.why;

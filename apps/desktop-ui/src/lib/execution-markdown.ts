@@ -25,6 +25,9 @@ export function buildPositionsExecutionMarkdown(
   lines.push('- note: BUY/ADD also require mainline bind (5D Top3 or Momentum) and non-defense sector');
   lines.push('- note: BUY/ADD also blocked when intraday >6% (INTRADAY_SURGE_BLOCK)');
   lines.push('- note: BUY/ADD also blocked on gap-up in Weak/Diverging (GAP_UP_WEAK_BLOCK)');
+  lines.push(
+    '- note: ADD blocked when positionPct >= 15% (SIZE_CAP_BLOCK); single-name satellite cap',
+  );
   lines.push('');
   const headers = [
     'Symbol',

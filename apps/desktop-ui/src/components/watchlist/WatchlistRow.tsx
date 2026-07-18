@@ -549,7 +549,8 @@ function WatchlistRowInner({
             actionCard.why === 'GATE_DEFEND' ||
             actionCard.why === 'MAINLINE_FADE' ||
             actionCard.why === 'INTRADAY_SURGE_BLOCK' ||
-            actionCard.why === 'GAP_UP_WEAK_BLOCK'
+            actionCard.why === 'GAP_UP_WEAK_BLOCK' ||
+            actionCard.why === 'SIZE_CAP_BLOCK'
           ? 'text-amber-700 font-semibold'
           : 'text-[var(--k-muted)]';
 

@@ -8,6 +8,7 @@ import {
   deriveTriggerAndTrail,
   evaluateHeldTrimGates,
   evaluateNewEntryGates,
+  isAtOrOverPositionSizeCap,
   isDefenseSector,
   isHeldPosition,
 } from './execution-action';
@@ -649,6 +650,143 @@ describe('deriveActionCard', () => {
     });
     expect(card.action).toBe('EXIT');
     expect(card.why).toBe('EXIT_NOW');
+  });
+
+  it('blocks ADD to HOLD at positionPct 15% (SIZE_CAP_BLOCK)', () => {
+    expect(isAtOrOverPositionSizeCap(15)).toBe(true);
+    expect(isAtOrOverPositionSizeCap(14.9)).toBe(false);
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.2 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 15, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('SIZE_CAP_BLOCK');
+  });
+
+  it('allows ADD below size cap at 14.9%', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.2 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 14.9, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('ADD');
+    expect(card.why).toBe('MAINLINE_5D_TOP3');
+  });
+
+  it('blocks ADD at positionPct 20%', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.2 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 20, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('SIZE_CAP_BLOCK');
+  });
+
+  it('fail-open ADD when held via costPrice only (no positionPct)', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.2 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('ADD');
+    expect(card.why).toBe('MAINLINE_5D_TOP3');
+  });
+
+  it('candidate BUY ignores size cap', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('BUY');
+    expect(isHeldPosition({ symbol: 'CN:600000' })).toBe(false);
+  });
+
+  it('EXIT ignores size cap', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        buyAction: 'avoid',
+        stopLossPrice: 9,
+        stopLossParts: { exit_now: true, atr14: 0.2 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 20, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('EXIT');
+    expect(card.why).toBe('EXIT_NOW');
+  });
+
+  it('entryGate failure takes priority over size cap', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.2 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 20, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+      gapUp: true,
+      marketRegime: 'Weak',
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('GAP_UP_WEAK_BLOCK');
   });
 });
 
