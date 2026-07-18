@@ -4,6 +4,7 @@ import type { ExecutionGate } from '@karios/shared';
 
 import {
   BUY_SCORE_MIN,
+  buildSectorExposureByIndustry,
   deriveActionCard,
   deriveTriggerAndTrail,
   evaluateHeldTrimGates,
@@ -11,6 +12,7 @@ import {
   isAtOrOverPositionSizeCap,
   isDefenseSector,
   isHeldPosition,
+  isSectorConcentrationBlocked,
 } from './execution-action';
 import type { MainlineAllowSet } from './hot-industry-picks';
 
@@ -787,6 +789,122 @@ describe('deriveActionCard', () => {
     });
     expect(card.action).toBe('HOLD');
     expect(card.why).toBe('GAP_UP_WEAK_BLOCK');
+  });
+
+  it('blocks BUY when sector concentration >= 30%', () => {
+    const exposure = buildSectorExposureByIndustry([
+      { industryName: '半导体', position: { symbol: 'CN:1', positionPct: 15 } },
+      { industryName: '半导体', position: { symbol: 'CN:2', positionPct: 15 } },
+    ]);
+    expect(exposure.get('半导体')).toBe(30);
+    expect(isSectorConcentrationBlocked('半导体', exposure)).toBe(true);
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      sectorExposureByIndustry: exposure,
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('SECTOR_CONC_BLOCK');
+    expect(card.mainlineOk).toBe(true);
+  });
+
+  it('blocks ADD to HOLD on sector concentration (not TRIM)', () => {
+    const exposure = new Map([['半导体', 32]]);
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.2 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+      sectorExposureByIndustry: exposure,
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('SECTOR_CONC_BLOCK');
+  });
+
+  it('allows BUY when sector sum is 29.9%', () => {
+    const exposure = new Map([['半导体', 29.9]]);
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      sectorExposureByIndustry: exposure,
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('MAINLINE_5D_TOP3');
+  });
+
+  it('does not sector-block when exposure map omitted', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('BUY');
+  });
+
+  it('excludes holdings without positionPct from sector sum', () => {
+    const exposure = buildSectorExposureByIndustry([
+      { industryName: '半导体', position: { symbol: 'CN:1', costPrice: 10 } },
+      { industryName: '半导体', position: { symbol: 'CN:2', positionPct: 10 } },
+    ]);
+    expect(exposure.get('半导体')).toBe(10);
+    expect(isSectorConcentrationBlocked('半导体', exposure)).toBe(false);
+  });
+
+  it('EXIT ignores sector concentration', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        buyAction: 'avoid',
+        stopLossPrice: 9,
+        stopLossParts: { exit_now: true, atr14: 0.2 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+      sectorExposureByIndustry: new Map([['半导体', 40]]),
+    });
+    expect(card.action).toBe('EXIT');
+    expect(card.why).toBe('EXIT_NOW');
   });
 });
 

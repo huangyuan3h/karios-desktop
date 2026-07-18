@@ -1,7 +1,7 @@
 import type { ExecutionActionCard, ExecutionGate } from '@karios/shared';
 
 import { mdPrice, mdTable } from '@/lib/dashboard-format';
-import { deriveActionCard } from '@/lib/execution-action';
+import { buildSectorExposureFromWatchlist, deriveActionCard } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import type { TrendOkResult } from '@/lib/api/types';
 import { buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
@@ -28,7 +28,11 @@ export function buildPositionsExecutionMarkdown(
   lines.push(
     '- note: ADD blocked when positionPct >= 15% (SIZE_CAP_BLOCK); single-name satellite cap',
   );
+  lines.push(
+    '- note: BUY/ADD blocked when sector positionPct sum >= 30% (SECTOR_CONC_BLOCK)',
+  );
   lines.push('');
+  const sectorExposureByIndustry = buildSectorExposureFromWatchlist(items, trend);
   const headers = [
     'Symbol',
     'Action',
@@ -62,6 +66,7 @@ export function buildPositionsExecutionMarkdown(
       intradayChgPct: rowMetrics.intradayChgPct,
       gapUp: typeof t?.gapUp === 'boolean' ? t.gapUp : null,
       marketRegime: t?.marketRegime ?? null,
+      sectorExposureByIndustry,
     });
     const dist =
       typeof card.distPct === 'number' && Number.isFinite(card.distPct)

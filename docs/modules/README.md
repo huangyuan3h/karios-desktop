@@ -140,6 +140,7 @@ Karios 管理的是家庭资产中的**卫星仓**——专门用来博取更高
 - Deep Green 时「可积极参与」指卫星仓可提高使用率，**不等于**把房产变现或卖掉 ETF 全仓进场。
 - 卫星仓上限由家庭自行设定（例如占净资产的固定比例）；系统信号再强，也不应突破该预算。
 - **单票建议上限 15%（卫星仓内）**：Watchlist `positionPct >= 15` 时 Exec 禁止 `ADD`（→ `HOLD`，Why=`SIZE_CAP_BLOCK`）。不自动 TRIM；候选 `BUY` 不因本规则拦截。
+- **同板块合计上限 30%（卫星仓内）**：同一东财行业持仓 `positionPct` 之和 ≥ 30% 时，禁止对该行业 `BUY`/`ADD`（Why=`SECTOR_CONC_BLOCK`）。不自动 TRIM；无仓位数字的持仓不计入合计。
 
 ### Execution Gate（下游执行合同）
 
@@ -178,8 +179,9 @@ Watchlist 是**监控池**（TV Screener → 回撤 + TrendOK 导入），**不�
 2. **非防守板块**：排除银行、电力、公用事业、中药、煤炭、高速公路
 3. **非见光死**：日内涨幅 ≤6%（`>` 6% 拦截；缺报价/`null` 不拦截）
 4. **非弱市高开**：`gapUp`（真跳空：当日低点 > 前日高点）且市场 `Weak`/`Diverging` → 禁止 BUY/ADD；缺 gap / 非弱市 regime 不拦截。与 Alerts `gap_up_weak_market` 同条件；后端 live 时可能已将 `buyAction` 置 avoid，Action 为合同层双保险。
+5. **非板块过浓**：该东财行业已持仓合计 `positionPct >= 30%` → 禁止 BUY/ADD，`SECTOR_CONC_BLOCK`；未传暴露度映射或无仓位数字不拦截。
 
-否则 Exec 降为 `WATCH`（候选）或持仓 `HOLD`（不加仓、不 TRIM），Why 为 `NOT_MAINLINE` / `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY` / `INTRADAY_SURGE_BLOCK` / `GAP_UP_WEAK_BLOCK`。与 Import 过滤正交。
+否则 Exec 降为 `WATCH`（候选）或持仓 `HOLD`（不加仓、不 TRIM），Why 为 `NOT_MAINLINE` / `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY` / `INTRADAY_SURGE_BLOCK` / `GAP_UP_WEAK_BLOCK` / `SECTOR_CONC_BLOCK`。与 Import 过滤正交。
 
 ### 持仓 TRIM（DEFEND + 主线失效）
 

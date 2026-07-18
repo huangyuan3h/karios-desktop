@@ -14,6 +14,7 @@ import { WatchlistRow } from '@/components/watchlist/WatchlistRow';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import type { ExecutionGate } from '@karios/shared';
 import { useChatStore } from '@/lib/chat/store';
+import { buildSectorExposureFromWatchlist } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
 import {
@@ -170,6 +171,11 @@ export function WatchlistTable({
     }
     return m;
   }, [sortedItems, trend, quotes, tradingTime, todaySh]);
+
+  const sectorExposureByIndustry = React.useMemo(
+    () => buildSectorExposureFromWatchlist(sortedItems, trend),
+    [sortedItems, trend],
+  );
 
   const [tooltip, setTooltip] = React.useState<{
     open: boolean;
@@ -389,6 +395,7 @@ export function WatchlistTable({
                         costPriceDraft={costPriceDrafts[it.symbol]}
                         executionGate={executionGate ?? null}
                         mainlineAllow={mainlineAllow ?? null}
+                        sectorExposureByIndustry={sectorExposureByIndustry}
                         showTooltip={showTooltip}
                         hideTooltip={hideTooltip}
                         showColorPicker={showColorPicker}

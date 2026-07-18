@@ -14,6 +14,8 @@ export const CHANDELIER_ATR_MULT = 2;
 export const BUY_SCORE_MIN = 80;
 /** Max single-name weight inside the satellite sleeve; blocks ADD at or above. */
 export const POSITION_SIZE_CAP_PCT = 15;
+/** Max sum of positionPct in one East Money industry; blocks BUY/ADD at or above. */
+export const SECTOR_CONCENTRATION_CAP_PCT = 30;
 
 /** Defense sectors blocked from BUY/ADD (East Money industry substring match). */
 export const DEFENSE_SECTOR_KEYWORDS = [
@@ -68,6 +70,49 @@ export function isAtOrOverPositionSizeCap(
   capPct: number = POSITION_SIZE_CAP_PCT,
 ): boolean {
   return typeof positionPct === 'number' && Number.isFinite(positionPct) && positionPct >= capPct;
+}
+
+/**
+ * Sum positionPct by East Money industry for held names with a finite positive size.
+ * Positions without positionPct are excluded (fail-open for incomplete books).
+ */
+export function buildSectorExposureByIndustry(
+  rows: Array<{ industryName: string | null; position: PositionLike }>,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const row of rows) {
+    const industry = row.industryName?.trim();
+    if (!industry) continue;
+    const pct = num(row.position.positionPct);
+    if (pct == null || pct <= 0) continue;
+    out.set(industry, (out.get(industry) ?? 0) + pct);
+  }
+  return out;
+}
+
+/** Build exposure map from watchlist items + TrendOK industry fields. */
+export function buildSectorExposureFromWatchlist(
+  items: PositionLike[],
+  trend: Record<string, TrendOkLike | null | undefined>,
+): Map<string, number> {
+  return buildSectorExposureByIndustry(
+    items.map((position) => ({
+      industryName: resolveIndustryName(trend[position.symbol] ?? null),
+      position,
+    })),
+  );
+}
+
+export function isSectorConcentrationBlocked(
+  industryName: string | null | undefined,
+  exposureByIndustry: Map<string, number> | null | undefined,
+  capPct: number = SECTOR_CONCENTRATION_CAP_PCT,
+): boolean {
+  if (!exposureByIndustry) return false;
+  const industry = String(industryName || '').trim();
+  if (!industry) return false;
+  const sum = exposureByIndustry.get(industry);
+  return typeof sum === 'number' && Number.isFinite(sum) && sum >= capPct;
 }
 
 export function computePnLPct(cost: number | null, current: number | null): number | null {
@@ -150,9 +195,9 @@ type NewEntryGateResult =
   | { ok: false; tag: null; why: string };
 
 /**
- * Hard gates for BUY/ADD: defense, intraday surge (>6%), gap-up in Weak/Diverging, mainline.
+ * Hard gates for BUY/ADD: defense, surge, gap-up weak, sector concentration, mainline.
  * Fail-closed when industry missing or mainlineAllow not ready.
- * Surge/gap with null inputs do not block (fail-open).
+ * Surge/gap/concentration with null inputs do not block (fail-open).
  */
 export function evaluateNewEntryGates(opts: {
   industryName: string | null;
@@ -160,6 +205,7 @@ export function evaluateNewEntryGates(opts: {
   intradayChgPct?: number | null;
   gapUp?: boolean | null;
   marketRegime?: string | null;
+  sectorExposureByIndustry?: Map<string, number> | null;
 }): NewEntryGateResult {
   const {
     industryName,
@@ -167,6 +213,7 @@ export function evaluateNewEntryGates(opts: {
     intradayChgPct = null,
     gapUp = null,
     marketRegime = null,
+    sectorExposureByIndustry = null,
   } = opts;
   if (!industryName) {
     return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
@@ -179,6 +226,9 @@ export function evaluateNewEntryGates(opts: {
   }
   if (isGapUpWeakMarket(gapUp, marketRegime)) {
     return { ok: false, tag: null, why: 'GAP_UP_WEAK_BLOCK' };
+  }
+  if (isSectorConcentrationBlocked(industryName, sectorExposureByIndustry)) {
+    return { ok: false, tag: null, why: 'SECTOR_CONC_BLOCK' };
   }
   if (!mainlineAllow || !mainlineAllow.ready) {
     return { ok: false, tag: null, why: 'MAINLINE_DATA_UNAVAILABLE' };
@@ -235,6 +285,7 @@ export function deriveActionCard(opts: {
   intradayChgPct?: number | null;
   gapUp?: boolean | null;
   marketRegime?: string | null;
+  sectorExposureByIndustry?: Map<string, number> | null;
 }): ExecutionActionCard {
   const {
     symbol,
@@ -246,6 +297,7 @@ export function deriveActionCard(opts: {
     intradayChgPct = null,
     gapUp = null,
     marketRegime = null,
+    sectorExposureByIndustry = null,
   } = opts;
   const held = isHeldPosition(position);
   const parts = (trendok?.stopLossParts ?? null) as Record<string, unknown> | null;
@@ -283,8 +335,9 @@ export function deriveActionCard(opts: {
     intradayChgPct,
     gapUp,
     marketRegime,
+    sectorExposureByIndustry,
   });
-  // Mainline column independent of chase vetoes (surge / gap-up)
+  // Mainline column independent of chase / concentration vetoes
   const mainlineOk = Boolean(
     industryName &&
       !isDefenseSector(industryName) &&

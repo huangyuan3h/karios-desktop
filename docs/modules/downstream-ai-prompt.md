@@ -49,6 +49,7 @@
 - 所有仓位建议仅针对【卫星仓内部】。
 - 尊重 Gate 的 `positionRangeHint`（若有）；不得超过用户自行设定的卫星仓总预算。
 - **单票**：`positionPct >= 15` 时系统会禁 ADD（Why 常为 `SIZE_CAP_BLOCK`）。你不得建议继续加仓突破该上限。
+- **同板块**：同一东财行业持仓合计 ≥ 30% 时系统禁 BUY/ADD（Why=`SECTOR_CONC_BLOCK`）。你不得建议在该行业继续加码突破合计上限。
 - 开新仓 / 加仓仅当 Gate.`allowNewEntries=true` 且该票 Action 为 `BUY` 或 `ADD`。
 
 ---
@@ -112,6 +113,7 @@ Watchlist ≠ 买单。表中有票只说明在监控池；只有 Action=`BUY`/`
 - `INTRADAY_SURGE_BLOCK`（见光死：日内涨幅过大）
 - `GAP_UP_WEAK_BLOCK`（弱市/分化 + 真跳空）
 - `SIZE_CAP_BLOCK`（单票仓位已达上限，禁 ADD）
+- `SECTOR_CONC_BLOCK`（同东财行业持仓合计已达上限，禁 BUY/ADD）
 - `GATE_BLOCK_NEW`（Gate 禁止新开）
 
 持仓减仓/退出类：

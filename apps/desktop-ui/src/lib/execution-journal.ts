@@ -9,7 +9,11 @@ import type { QueryClient } from '@tanstack/react-query';
 
 import { apiGetJson, apiPostJson } from '@/lib/api/client';
 import type { TrendOkResult } from '@/lib/api/types';
-import { deriveActionCard, resolveIndustryName } from '@/lib/execution-action';
+import {
+  buildSectorExposureFromWatchlist,
+  deriveActionCard,
+  resolveIndustryName,
+} from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
 import { buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
@@ -47,6 +51,7 @@ export function buildExecutionSnapshotPayload(
   if (!gate) return null;
   const tradingTime = input.tradingTime ?? isShanghaiTradingTime();
   const todaySh = input.todaySh ?? getShanghaiTodayIso();
+  const sectorExposureByIndustry = buildSectorExposureFromWatchlist(items, trend);
   const cards: ExecutionJournalCard[] = [];
   for (const it of items) {
     const t = trend[it.symbol];
@@ -77,6 +82,7 @@ export function buildExecutionSnapshotPayload(
       intradayChgPct: rowMetrics.intradayChgPct,
       gapUp: typeof t?.gapUp === 'boolean' ? t.gapUp : null,
       marketRegime: t?.marketRegime ?? null,
+      sectorExposureByIndustry,
     });
     cards.push({
       ...card,

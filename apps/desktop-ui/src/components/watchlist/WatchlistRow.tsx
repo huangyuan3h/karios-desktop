@@ -474,6 +474,7 @@ export type WatchlistRowProps = {
   costPriceDraft: string | undefined;
   executionGate: ExecutionGate | null;
   mainlineAllow: MainlineAllowSet | null;
+  sectorExposureByIndustry: Map<string, number> | null;
   showTooltip: ShowTooltipFn;
   hideTooltip: () => void;
   showColorPicker: (el: HTMLElement, sym: string) => void;
@@ -496,6 +497,7 @@ function WatchlistRowInner({
   costPriceDraft,
   executionGate,
   mainlineAllow,
+  sectorExposureByIndustry,
   showTooltip,
   hideTooltip,
   showColorPicker,
@@ -537,6 +539,7 @@ function WatchlistRowInner({
     intradayChgPct: rowMetrics.intradayChgPct,
     gapUp: typeof t?.gapUp === 'boolean' ? t.gapUp : null,
     marketRegime: t?.marketRegime ?? null,
+    sectorExposureByIndustry,
   });
   const execTone =
     actionCard.action === 'EXIT'
@@ -550,7 +553,8 @@ function WatchlistRowInner({
             actionCard.why === 'MAINLINE_FADE' ||
             actionCard.why === 'INTRADAY_SURGE_BLOCK' ||
             actionCard.why === 'GAP_UP_WEAK_BLOCK' ||
-            actionCard.why === 'SIZE_CAP_BLOCK'
+            actionCard.why === 'SIZE_CAP_BLOCK' ||
+            actionCard.why === 'SECTOR_CONC_BLOCK'
           ? 'text-amber-700 font-semibold'
           : 'text-[var(--k-muted)]';
 
