@@ -24,6 +24,9 @@ export type ExecutionGate = z.infer<typeof ExecutionGateSchema>;
 export const ExecutionActionSchema = z.enum(['EXIT', 'TRIM', 'HOLD', 'ADD', 'BUY', 'WATCH']);
 export type ExecutionAction = z.infer<typeof ExecutionActionSchema>;
 
+export const MainlineTagSchema = z.enum(['MOMENTUM', '5D_TOP3']);
+export type MainlineTag = z.infer<typeof MainlineTagSchema>;
+
 export const ExecutionActionCardSchema = z.object({
   symbol: z.string(),
   action: ExecutionActionSchema,
@@ -34,5 +37,7 @@ export const ExecutionActionCardSchema = z.object({
   trigger: z.number().nullable().optional(),
   distPct: z.number().nullable().optional(),
   why: z.string().optional(),
+  mainlineOk: z.boolean().optional(),
+  mainlineTag: MainlineTagSchema.nullable().optional(),
 });
 export type ExecutionActionCard = z.infer<typeof ExecutionActionCardSchema>;

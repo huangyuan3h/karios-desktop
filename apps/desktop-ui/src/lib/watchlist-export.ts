@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
 import { escapeMarkdownCell, mdLines, mdPrice, mdScore } from '@/lib/dashboard-format';
+import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
 import { refetchWatchlistMarket } from '@/lib/queries/watchlist';
 import { scoreExplainZhLines, trendOkRuleLines, trendOkSummary } from '@/lib/trendok-display';
@@ -129,6 +130,7 @@ export function buildWatchlistMarkdown(options: {
   tradingTime: boolean;
   todaySh: string;
   executionGate?: ExecutionGate | null;
+  mainlineAllow?: MainlineAllowSet | null;
 }): string {
   const {
     sortedItems,
@@ -138,6 +140,7 @@ export function buildWatchlistMarkdown(options: {
     tradingTime,
     todaySh,
     executionGate = null,
+    mainlineAllow = null,
   } = options;
   const generatedAt = new Date().toISOString();
   const lines: string[] = [];
@@ -234,6 +237,7 @@ export function buildWatchlistMarkdown(options: {
       quotesSnap,
       executionGate ?? null,
       '##',
+      mainlineAllow ?? null,
     ).trim(),
   );
   lines.push('');
@@ -248,9 +252,17 @@ export async function copyWatchlistMarkdown(options: {
   quotes: Record<string, WatchlistQuote>;
   trendUpdatedAt: string | null;
   executionGate?: ExecutionGate | null;
+  mainlineAllow?: MainlineAllowSet | null;
 }): Promise<WatchlistCopyResult> {
-  const { queryClient, sortedItems, trend, quotes, trendUpdatedAt, executionGate = null } =
-    options;
+  const {
+    queryClient,
+    sortedItems,
+    trend,
+    quotes,
+    trendUpdatedAt,
+    executionGate = null,
+    mainlineAllow = null,
+  } = options;
   if (!sortedItems.length) {
     return { ok: false, message: 'No items to copy.' };
   }
@@ -288,6 +300,7 @@ export async function copyWatchlistMarkdown(options: {
     tradingTime,
     todaySh,
     executionGate,
+    mainlineAllow,
   });
   return { ok: true, markdown };
 }

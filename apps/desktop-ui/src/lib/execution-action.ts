@@ -1,8 +1,26 @@
-import type { ExecutionAction, ExecutionActionCard, ExecutionGate, ExecutionGateMode } from '@karios/shared';
+import type {
+  ExecutionAction,
+  ExecutionActionCard,
+  ExecutionGate,
+  ExecutionGateMode,
+  MainlineTag,
+} from '@karios/shared';
+
+import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 
 export const CHANDELIER_ARM_PNL_PCT = 10;
 export const CHANDELIER_ATR_MULT = 2;
 export const BUY_SCORE_MIN = 80;
+
+/** Defense sectors blocked from BUY/ADD (East Money industry substring match). */
+export const DEFENSE_SECTOR_KEYWORDS = [
+  '银行',
+  '电力',
+  '公用事业',
+  '中药',
+  '煤炭',
+  '高速公路',
+] as const;
 
 export type TrendOkLike = {
   symbol?: string;
@@ -10,6 +28,12 @@ export type TrendOkLike = {
   buyAction?: string | null;
   stopLossPrice?: number | null;
   stopLossParts?: Record<string, unknown> | null;
+  values?: {
+    emIndustry?: unknown;
+    industry?: unknown;
+    industryFlowReasons?: unknown;
+    [key: string]: unknown;
+  } | null;
 };
 
 export type PositionLike = {
@@ -38,6 +62,22 @@ export function isHeldPosition(pos: PositionLike): boolean {
 export function computePnLPct(cost: number | null, current: number | null): number | null {
   if (cost == null || cost <= 0 || current == null || !Number.isFinite(current)) return null;
   return ((current - cost) / cost) * 100;
+}
+
+export function resolveIndustryName(trendok: TrendOkLike | null | undefined): string | null {
+  const values = trendok?.values;
+  if (!values) return null;
+  const em = values.emIndustry;
+  if (typeof em === 'string' && em.trim()) return em.trim();
+  const ind = values.industry;
+  if (typeof ind === 'string' && ind.trim()) return ind.trim();
+  return null;
+}
+
+export function isDefenseSector(industryName: string | null | undefined): boolean {
+  const name = String(industryName || '').trim();
+  if (!name) return false;
+  return DEFENSE_SECTOR_KEYWORDS.some((kw) => name.includes(kw));
 }
 
 export function deriveTriggerAndTrail(opts: {
@@ -94,6 +134,41 @@ function gateMode(gate: ExecutionGate | null | undefined): ExecutionGateMode | n
   return gate.mode;
 }
 
+type NewEntryGateResult =
+  | { ok: true; tag: MainlineTag | null; why: string }
+  | { ok: false; tag: null; why: string };
+
+/**
+ * Hard gates for BUY/ADD: defense sector veto + mainline bind.
+ * Fail-closed when industry missing or mainlineAllow not ready.
+ */
+export function evaluateNewEntryGates(opts: {
+  industryName: string | null;
+  mainlineAllow: MainlineAllowSet | null | undefined;
+}): NewEntryGateResult {
+  const { industryName, mainlineAllow } = opts;
+  if (!industryName) {
+    return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
+  }
+  if (isDefenseSector(industryName)) {
+    return { ok: false, tag: null, why: 'DEFENSE_SECTOR_BLOCK' };
+  }
+  if (!mainlineAllow || !mainlineAllow.ready) {
+    return { ok: false, tag: null, why: 'MAINLINE_DATA_UNAVAILABLE' };
+  }
+  if (!mainlineAllow.names.has(industryName)) {
+    return { ok: false, tag: null, why: 'NOT_MAINLINE' };
+  }
+  const tag = mainlineAllow.byName.get(industryName) ?? null;
+  const why =
+    tag === 'MOMENTUM'
+      ? 'MAINLINE_MOMENTUM'
+      : tag === '5D_TOP3'
+        ? 'MAINLINE_5D_TOP3'
+        : 'MAINLINE_OK';
+  return { ok: true, tag, why };
+}
+
 /**
  * Derive a single Action Card for a watchlist symbol.
  */
@@ -103,8 +178,9 @@ export function deriveActionCard(opts: {
   trendok: TrendOkLike | null | undefined;
   position: PositionLike;
   currentPrice: number | null;
+  mainlineAllow?: MainlineAllowSet | null;
 }): ExecutionActionCard {
-  const { symbol, gate, trendok, position, currentPrice } = opts;
+  const { symbol, gate, trendok, position, currentPrice, mainlineAllow = null } = opts;
   const held = isHeldPosition(position);
   const parts = (trendok?.stopLossParts ?? null) as Record<string, unknown> | null;
   const hardStop = num(trendok?.stopLossPrice);
@@ -134,6 +210,11 @@ export function deriveActionCard(opts: {
   const scoreOk = score != null && score >= BUY_SCORE_MIN;
   const wantsBuy = buyAction === 'buy' && scoreOk;
 
+  const industryName = resolveIndustryName(trendok);
+  const entryGate = evaluateNewEntryGates({ industryName, mainlineAllow });
+  const mainlineOk = entryGate.ok;
+  const mainlineTag = entryGate.tag;
+
   let action: ExecutionAction = 'WATCH';
   let why = 'WATCH';
 
@@ -144,14 +225,24 @@ export function deriveActionCard(opts: {
     action = 'TRIM';
     why = 'WARN_REDUCE_HALF';
   } else if (held && allowAttack && wantsBuy) {
-    action = 'ADD';
-    why = 'ATTACK_BUY';
+    if (!entryGate.ok) {
+      action = 'HOLD';
+      why = entryGate.why;
+    } else {
+      action = 'ADD';
+      why = entryGate.why;
+    }
   } else if (held) {
     action = 'HOLD';
     why = allowAttack ? 'HOLD' : 'GATE_BLOCK_NEW';
   } else if (allowAttack && wantsBuy) {
-    action = 'BUY';
-    why = 'ATTACK_BUY';
+    if (!entryGate.ok) {
+      action = 'WATCH';
+      why = entryGate.why;
+    } else {
+      action = 'BUY';
+      why = entryGate.why;
+    }
   } else if (!allowAttack && wantsBuy) {
     action = 'WATCH';
     why = 'GATE_BLOCK_NEW';
@@ -170,6 +261,8 @@ export function deriveActionCard(opts: {
     trigger: trail.trigger,
     distPct: trail.distPct,
     why,
+    mainlineOk,
+    mainlineTag,
   };
 }
 

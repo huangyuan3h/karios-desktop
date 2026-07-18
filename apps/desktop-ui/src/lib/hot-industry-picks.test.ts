@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildDashboardHotIndustryPicks } from '@/lib/hot-industry-picks';
+import {
+  buildDashboardHotIndustryPicks,
+  buildMainlineAllowSet,
+} from '@/lib/hot-industry-picks';
 
 function makeSummary(args: {
   dailyRankings: Array<{
@@ -176,5 +179,121 @@ describe('buildDashboardHotIndustryPicks', () => {
     expect(rebound).toBeDefined();
     expect(rebound?.rankChange).toBe(1);
     expect(rebound?.momentumSignal).toBe(false);
+  });
+});
+
+describe('buildMainlineAllowSet', () => {
+  it('returns not ready for empty summary', () => {
+    const out = buildMainlineAllowSet({});
+    expect(out.ready).toBe(false);
+    expect(out.names.size).toBe(0);
+  });
+
+  it('includes 5D Top3 industries', () => {
+    const summary = makeSummary({
+      dailyRankings: [
+        {
+          date: '2026-05-22',
+          ranked: [
+            { industryName: 'A', value: 10e8, rank: 1 },
+            { industryName: 'B', value: 9e8, rank: 2 },
+            { industryName: 'C', value: 8e8, rank: 3 },
+            { industryName: 'D', value: 7e8, rank: 4 },
+          ],
+        },
+        {
+          date: '2026-05-23',
+          ranked: [
+            { industryName: 'A', value: 10e8, rank: 1 },
+            { industryName: 'B', value: 9e8, rank: 2 },
+            { industryName: 'C', value: 8e8, rank: 3 },
+            { industryName: 'D', value: 7e8, rank: 4 },
+          ],
+        },
+      ],
+      flow5dTop: [
+        { industryName: 'A', sum5d: 50e8 },
+        { industryName: 'B', sum5d: 40e8 },
+        { industryName: 'C', sum5d: 30e8 },
+        { industryName: 'D', sum5d: 20e8 },
+      ],
+    });
+    const out = buildMainlineAllowSet(summary);
+    expect(out.ready).toBe(true);
+    expect(out.names.has('A')).toBe(true);
+    expect(out.names.has('B')).toBe(true);
+    expect(out.names.has('C')).toBe(true);
+    expect(out.names.has('D')).toBe(false);
+    expect(out.byName.get('A')).toBe('5D_TOP3');
+  });
+
+  it('includes momentum breakout even outside 5D Top3', () => {
+    const summary = makeSummary({
+      dailyRankings: [
+        {
+          date: '2026-05-22',
+          ranked: [
+            ...Array.from({ length: 24 }, (_, i) => ({
+              industryName: `Industry-${i + 1}`,
+              value: (25 - i) * 1e8,
+              rank: i + 1,
+            })),
+            { industryName: 'NewMainline', value: 1e8, rank: 25 },
+          ],
+        },
+        {
+          date: '2026-05-23',
+          ranked: [
+            { industryName: 'NewMainline', value: 25e8, rank: 1 },
+            { industryName: 'Keep-A', value: 10e8, rank: 2 },
+            { industryName: 'Keep-B', value: 9e8, rank: 3 },
+            { industryName: 'Keep-C', value: 8e8, rank: 4 },
+          ],
+        },
+      ],
+      flow5dTop: [
+        { industryName: 'Keep-A', sum5d: 40e8 },
+        { industryName: 'Keep-B', sum5d: 30e8 },
+        { industryName: 'Keep-C', sum5d: 20e8 },
+      ],
+    });
+    const out = buildMainlineAllowSet(summary);
+    expect(out.ready).toBe(true);
+    expect(out.names.has('NewMainline')).toBe(true);
+    expect(out.byName.get('NewMainline')).toBe('MOMENTUM');
+    expect(out.names.has('Keep-A')).toBe(true);
+  });
+
+  it('tags MOMENTUM over 5D_TOP3 when both apply', () => {
+    const summary = makeSummary({
+      dailyRankings: [
+        {
+          date: '2026-05-22',
+          ranked: [
+            ...Array.from({ length: 14 }, (_, i) => ({
+              industryName: `Industry-${i + 1}`,
+              value: (20 - i) * 1e8,
+              rank: i + 1,
+            })),
+            { industryName: 'Breakout-B', value: 5e8, rank: 15 },
+          ],
+        },
+        {
+          date: '2026-05-23',
+          ranked: [
+            { industryName: 'Breakout-B', value: 35e8, rank: 1 },
+            { industryName: 'Other-1', value: 10e8, rank: 2 },
+            { industryName: 'Other-2', value: 9e8, rank: 3 },
+          ],
+        },
+      ],
+      flow5dTop: [
+        { industryName: 'Breakout-B', sum5d: 80e8 },
+        { industryName: 'Other-1', sum5d: 40e8 },
+        { industryName: 'Other-2', sum5d: 30e8 },
+      ],
+    });
+    const out = buildMainlineAllowSet(summary);
+    expect(out.byName.get('Breakout-B')).toBe('MOMENTUM');
   });
 });

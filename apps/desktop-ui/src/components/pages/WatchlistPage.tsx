@@ -11,6 +11,8 @@ import { useWatchlistTrend } from '@/hooks/useWatchlistTrend';
 import { useChatStore } from '@/lib/chat/store';
 import { executionGateBadgeClass } from '@/lib/dashboard-format';
 import { parseExecutionGate } from '@/lib/execution-action';
+import { buildMainlineAllowSet } from '@/lib/hot-industry-picks';
+import { useDashboardSummaryQuery } from '@/lib/queries/dashboard';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { watchlistMarketKey } from '@/lib/queries/watchlist';
 import { scoreExplainZhLines } from '@/lib/trendok-display';
@@ -27,6 +29,7 @@ import { loadWatchlist } from '@/lib/watchlist-storage';
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const { addReference } = useChatStore();
   const sentimentQuery = useDashboardSentimentQuery();
+  const liteSummaryQuery = useDashboardSummaryQuery();
   const executionGate = React.useMemo(
     () =>
       parseExecutionGate(
@@ -34,6 +37,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           ?.marketSentiment?.executionGate,
       ),
     [sentimentQuery.data],
+  );
+  const mainlineAllow = React.useMemo(
+    () => buildMainlineAllowSet(liteSummaryQuery.data ?? null),
+    [liteSummaryQuery.data],
   );
   const {
     items,
@@ -267,6 +274,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         quotes,
         trendUpdatedAt,
         executionGate,
+        mainlineAllow,
       });
       if (!result.ok) {
         toastCopyMd(false, result.message);
@@ -424,6 +432,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           onRemove={onRemove}
           onOpenStock={onOpenStock}
           executionGate={executionGate}
+          mainlineAllow={mainlineAllow}
         />
       </div>
     </div>

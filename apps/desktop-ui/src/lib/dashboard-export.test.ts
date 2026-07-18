@@ -376,7 +376,32 @@ describe('buildDashboardCopyAllMarkdown cache', () => {
     });
     const summary = {
       asOfDate: '2026-06-18',
-      industryFundFlow: { asOfDate: '2026-06-18', dates: [], topByDate: [] },
+      industryFundFlow: {
+        asOfDate: '2026-06-18',
+        dates: ['2026-06-17', '2026-06-18'],
+        topByDate: [
+          { date: '2026-06-17', top: ['半导体'] },
+          { date: '2026-06-18', top: ['半导体'] },
+        ],
+        flow5d: {
+          dates: ['2026-06-17', '2026-06-18'],
+          top: [
+            { industryName: '半导体', sum5d: 50e8 },
+            { industryName: 'AI应用', sum5d: 40e8 },
+            { industryName: '消费电子', sum5d: 30e8 },
+          ],
+        },
+        dailyRankings: [
+          {
+            date: '2026-06-17',
+            ranked: [{ industryName: '半导体', value: 10e8, rank: 1 }],
+          },
+          {
+            date: '2026-06-18',
+            ranked: [{ industryName: '半导体', value: 12e8, rank: 1 }],
+          },
+        ],
+      },
       screeners: [],
       news: { hours: 24, total: 0 },
       marketSentiment: {
@@ -422,6 +447,8 @@ describe('buildDashboardCopyAllMarkdown cache', () => {
     expect(md).toContain('## Execution Gate');
     expect(md).toContain('- mode: DEFEND');
     expect(md).toContain('## Positions (execution)');
+    expect(md).toContain('Mainline');
+    expect(md).toContain('mainline bind');
   });
 });
 

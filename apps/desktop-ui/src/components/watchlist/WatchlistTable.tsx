@@ -14,6 +14,7 @@ import { WatchlistRow } from '@/components/watchlist/WatchlistRow';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import type { ExecutionGate } from '@karios/shared';
 import { useChatStore } from '@/lib/chat/store';
+import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
 import {
   buildWatchlistRowMetrics,
@@ -100,6 +101,7 @@ export type WatchlistTableProps = {
   onRemove: (sym: string) => void;
   onOpenStock?: (symbol: string) => void;
   executionGate?: ExecutionGate | null;
+  mainlineAllow?: MainlineAllowSet | null;
 };
 
 export function sortWatchlistItems(
@@ -142,6 +144,7 @@ export function WatchlistTable({
   onRemove,
   onOpenStock,
   executionGate = null,
+  mainlineAllow = null,
 }: WatchlistTableProps) {
   const { addReference } = useChatStore();
 
@@ -385,6 +388,7 @@ export function WatchlistTable({
                         todaySh={todaySh}
                         costPriceDraft={costPriceDrafts[it.symbol]}
                         executionGate={executionGate ?? null}
+                        mainlineAllow={mainlineAllow ?? null}
                         showTooltip={showTooltip}
                         hideTooltip={hideTooltip}
                         showColorPicker={showColorPicker}

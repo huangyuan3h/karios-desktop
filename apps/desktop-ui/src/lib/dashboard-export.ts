@@ -31,6 +31,7 @@ import {
 } from '@/lib/dashboard-format';
 import { parseExecutionGate } from '@/lib/execution-action';
 import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
+import { buildMainlineAllowSet, type MainlineAllowSet } from '@/lib/hot-industry-picks';
 import type { ExecutionGate } from '@karios/shared';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import {
@@ -563,6 +564,7 @@ export async function buildScreenersMarkdown(
 export async function buildWatchlistMarkdown(
   queryClient?: QueryClient,
   gate?: ExecutionGate | null,
+  mainlineAllow?: MainlineAllowSet | null,
 ): Promise<string> {
   const itemsRaw = loadWatchlist();
   const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
@@ -762,8 +764,16 @@ export async function buildWatchlistMarkdown(
   }
 
   const resolvedGate = gate ?? null;
+  const resolvedMainline = mainlineAllow ?? null;
   lines.push(
-    buildPositionsExecutionMarkdown(sorted, trend, quotes, resolvedGate, heading).trim(),
+    buildPositionsExecutionMarkdown(
+      sorted,
+      trend,
+      quotes,
+      resolvedGate,
+      heading,
+      resolvedMainline,
+    ).trim(),
   );
   lines.push('');
 
@@ -871,12 +881,11 @@ export async function buildDashboardCopyAllMarkdown(
     timeZone: 'Asia/Shanghai',
     hour12: false,
   });
+  const executionGate = parseExecutionGate((s as any)?.marketSentiment?.executionGate);
+  const mainlineAllow = buildMainlineAllowSet(s);
   const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd] = await Promise.all([
     buildScreenersMarkdown(s, '##', queryClient),
-    buildWatchlistMarkdown(
-      queryClient,
-      parseExecutionGate((s as any)?.marketSentiment?.executionGate),
-    ),
+    buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow),
     buildCompactCatalystMarkdown(s),
     fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
       .then(({ items, scope }) =>

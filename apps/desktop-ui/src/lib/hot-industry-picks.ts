@@ -129,8 +129,29 @@ function buildRankMapsFromTopByDate(
   };
 }
 
-export function buildDashboardHotIndustryPicks(summary: unknown): HotIndustryPick[] {
-  const ind: any = (summary as any)?.industryFundFlow ?? {};
+export type MainlineTag = 'MOMENTUM' | '5D_TOP3';
+
+export type MainlineAllowSet = {
+  /** True when industryFundFlow data was present enough to evaluate. */
+  ready: boolean;
+  names: Set<string>;
+  byName: Map<string, MainlineTag>;
+};
+
+type IndustryFlowContext = {
+  latestDate: string;
+  dailyNames: string[];
+  yesterdayRankMap: Map<string, number>;
+  todayRankMap: Map<string, number>;
+  todayValueMap: Map<string, number>;
+  fiveRank: Map<string, { rank: number; sum5d: number | null; latestNet: number | null }>;
+  rows5dTopNames: string[];
+};
+
+function resolveIndustryFlowContext(summary: unknown): IndustryFlowContext | null {
+  const ind: any = (summary as any)?.industryFundFlow;
+  if (!ind || typeof ind !== 'object') return null;
+
   const dailyRankingsRaw: unknown[] = Array.isArray(ind?.dailyRankings) ? ind.dailyRankings : [];
   const dailyRankings: DailyRankingByDate[] = dailyRankingsRaw
     .map((it: any) => {
@@ -154,6 +175,10 @@ export function buildDashboardHotIndustryPicks(summary: unknown): HotIndustryPic
   });
 
   const topByDateArr: any[] = Array.isArray(ind?.topByDate) ? ind.topByDate : [];
+  const hasTopByDate = topByDateArr.length > 0;
+  const hasFlow5d = Array.isArray(ind?.flow5d?.top) && ind.flow5d.top.length > 0;
+  if (!dailyRankings.length && !hasTopByDate && !hasFlow5d) return null;
+
   const rankMaps =
     dailyRankings.length > 0
       ? buildRankMapsFromDailyRankings(dailyRankings, latestDate, prevDate)
@@ -167,6 +192,7 @@ export function buildDashboardHotIndustryPicks(summary: unknown): HotIndustryPic
     string,
     { rank: number; sum5d: number | null; latestNet: number | null }
   >();
+  const rows5dTopNames: string[] = [];
   for (let i = 0; i < rows5d.length; i += 1) {
     const r = rows5d[i];
     const name = String(r?.industryName ?? '').trim();
@@ -181,7 +207,71 @@ export function buildDashboardHotIndustryPicks(summary: unknown): HotIndustryPic
       latestNet = Number.isFinite(v) ? v : null;
     }
     fiveRank.set(name, { rank: i + 1, sum5d, latestNet });
+    rows5dTopNames.push(name);
   }
+
+  return {
+    latestDate,
+    dailyNames,
+    yesterdayRankMap,
+    todayRankMap,
+    todayValueMap,
+    fiveRank,
+    rows5dTopNames,
+  };
+}
+
+/**
+ * Mainline allow-set for BUY/ADD: 5D net-inflow Top3 ∪ Momentum Breakout industries.
+ * Wider than Dashboard Hot industries workflow Top3 (which is capped at 3).
+ */
+export function buildMainlineAllowSet(summary: unknown): MainlineAllowSet {
+  const empty: MainlineAllowSet = {
+    ready: false,
+    names: new Set(),
+    byName: new Map(),
+  };
+  const ctx = resolveIndustryFlowContext(summary);
+  if (!ctx) return empty;
+
+  const names = new Set<string>();
+  const byName = new Map<string, MainlineTag>();
+
+  // 5D Top3 first (tag can be overwritten by MOMENTUM below if both apply)
+  for (const name of ctx.rows5dTopNames.slice(0, 3)) {
+    names.add(name);
+    byName.set(name, '5D_TOP3');
+  }
+
+  for (let i = 0; i < ctx.dailyNames.length; i += 1) {
+    const name = ctx.dailyNames[i];
+    const todayNetInflow = ctx.todayValueMap.get(name) ?? 0;
+    const todayRank = ctx.todayRankMap.get(name) ?? i + 1;
+    const yesterdayRank = ctx.yesterdayRankMap.get(name) ?? null;
+    const rankChange = yesterdayRank != null ? yesterdayRank - todayRank : null;
+    const isMomentumSignal =
+      todayNetInflow >= MOMENTUM_THRESHOLD_YI &&
+      rankChange != null &&
+      rankChange >= MOMENTUM_RANK_CHANGE;
+    if (!isMomentumSignal) continue;
+    names.add(name);
+    byName.set(name, 'MOMENTUM');
+  }
+
+  return { ready: true, names, byName };
+}
+
+export function buildDashboardHotIndustryPicks(summary: unknown): HotIndustryPick[] {
+  const ctx = resolveIndustryFlowContext(summary);
+  if (!ctx) return [];
+
+  const {
+    dailyNames,
+    yesterdayRankMap,
+    todayRankMap,
+    todayValueMap,
+    fiveRank,
+  } = ctx;
 
   const picks: HotIndustryPick[] = [];
   const momentumPicks: HotIndustryPick[] = [];

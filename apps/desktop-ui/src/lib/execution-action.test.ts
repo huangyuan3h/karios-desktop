@@ -6,8 +6,11 @@ import {
   BUY_SCORE_MIN,
   deriveActionCard,
   deriveTriggerAndTrail,
+  evaluateNewEntryGates,
+  isDefenseSector,
   isHeldPosition,
 } from './execution-action';
+import type { MainlineAllowSet } from './hot-industry-picks';
 
 const attackGate: ExecutionGate = {
   mode: 'ATTACK',
@@ -30,18 +33,23 @@ const holdGate: ExecutionGate = {
   reasons: ['REGIME_DIVERGING'],
 };
 
+function allowSet(names: Array<[string, 'MOMENTUM' | '5D_TOP3']>): MainlineAllowSet {
+  const byName = new Map(names);
+  return { ready: true, names: new Set(names.map(([n]) => n)), byName };
+}
+
 describe('deriveTriggerAndTrail', () => {
   it('arms chandelier when pnl >= 10% and has atr/peak', () => {
     const out = deriveTriggerAndTrail({
       hardStop: 10,
       costPrice: 10,
       maxPrice: 12,
-      current: 11.5, // +15%
+      current: 11.5,
       atr14: 0.5,
     });
     expect(out.trailArmed).toBe(true);
-    expect(out.trailStop).toBeCloseTo(11, 6); // 12 - 2*0.5
-    expect(out.trigger).toBeCloseTo(11, 6); // max(10, 11)
+    expect(out.trailStop).toBeCloseTo(11, 6);
+    expect(out.trigger).toBeCloseTo(11, 6);
   });
 
   it('uses hardStop only when not armed', () => {
@@ -49,7 +57,7 @@ describe('deriveTriggerAndTrail', () => {
       hardStop: 9.5,
       costPrice: 10,
       maxPrice: 10.5,
-      current: 10.2, // +2%
+      current: 10.2,
       atr14: 0.4,
     });
     expect(out.trailArmed).toBe(false);
@@ -57,8 +65,34 @@ describe('deriveTriggerAndTrail', () => {
   });
 });
 
+describe('evaluateNewEntryGates', () => {
+  it('blocks defense sectors', () => {
+    expect(isDefenseSector('银行')).toBe(true);
+    expect(evaluateNewEntryGates({ industryName: '股份制银行', mainlineAllow: allowSet([['股份制银行', '5D_TOP3']]) }).why).toBe(
+      'DEFENSE_SECTOR_BLOCK',
+    );
+  });
+
+  it('blocks missing industry', () => {
+    expect(evaluateNewEntryGates({ industryName: null, mainlineAllow: allowSet([['半导体', '5D_TOP3']]) }).why).toBe(
+      'MISSING_INDUSTRY',
+    );
+  });
+
+  it('blocks when mainline data unavailable', () => {
+    expect(
+      evaluateNewEntryGates({
+        industryName: '半导体',
+        mainlineAllow: { ready: false, names: new Set(), byName: new Map() },
+      }).why,
+    ).toBe('MAINLINE_DATA_UNAVAILABLE');
+  });
+});
+
 describe('deriveActionCard', () => {
-  it('marks BUY when attack + buy + score', () => {
+  const mainline = allowSet([['半导体', '5D_TOP3'], ['AI应用', 'MOMENTUM']]);
+
+  it('marks BUY when attack + buy + score + mainline', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: attackGate,
@@ -67,27 +101,74 @@ describe('deriveActionCard', () => {
         buyAction: 'buy',
         stopLossPrice: 9,
         stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
       },
       position: { symbol: 'CN:600000' },
       currentPrice: 10,
+      mainlineAllow: mainline,
     });
     expect(card.action).toBe('BUY');
+    expect(card.why).toBe('MAINLINE_5D_TOP3');
+    expect(card.mainlineOk).toBe(true);
     expect(isHeldPosition({ symbol: 'CN:600000' })).toBe(false);
+  });
+
+  it('downgrades BUY to WATCH when not mainline', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: 90,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        values: { emIndustry: '白酒' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('NOT_MAINLINE');
+    expect(card.mainlineOk).toBe(false);
+  });
+
+  it('blocks defense sector even if in mainline set', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:002142',
+      gate: attackGate,
+      trendok: {
+        score: 90,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        values: { emIndustry: '银行' },
+      },
+      position: { symbol: 'CN:002142' },
+      currentPrice: 30,
+      mainlineAllow: allowSet([['银行', '5D_TOP3']]),
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('DEFENSE_SECTOR_BLOCK');
   });
 
   it('downgrades BUY to WATCH when gate blocks new entries', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: holdGate,
-      trendok: { score: 90, buyAction: 'buy', stopLossPrice: 9 },
+      trendok: {
+        score: 90,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        values: { emIndustry: '半导体' },
+      },
       position: { symbol: 'CN:600000' },
       currentPrice: 10,
+      mainlineAllow: mainline,
     });
     expect(card.action).toBe('WATCH');
     expect(card.why).toBe('GATE_BLOCK_NEW');
   });
 
-  it('EXIT on exit_now', () => {
+  it('EXIT on exit_now ignores mainline', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: attackGate,
@@ -96,15 +177,17 @@ describe('deriveActionCard', () => {
         buyAction: 'avoid',
         stopLossPrice: 9,
         stopLossParts: { exit_now: true, atr14: 0.2 },
+        values: { emIndustry: '白酒' },
       },
       position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
       currentPrice: 10.5,
+      mainlineAllow: mainline,
     });
     expect(card.action).toBe('EXIT');
     expect(card.why).toBe('EXIT_NOW');
   });
 
-  it('ADD when held + attack + buy', () => {
+  it('ADD when held + attack + buy + mainline', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: attackGate,
@@ -113,11 +196,32 @@ describe('deriveActionCard', () => {
         buyAction: 'buy',
         stopLossPrice: 9,
         stopLossParts: { atr14: 0.2 },
+        values: { emIndustry: 'AI应用' },
       },
       position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 10.5 },
       currentPrice: 10.2,
+      mainlineAllow: mainline,
     });
     expect(card.action).toBe('ADD');
+    expect(card.why).toBe('MAINLINE_MOMENTUM');
+  });
+
+  it('holds instead of ADD when held but not mainline', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: 85,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        values: { emIndustry: '白酒' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 10.5 },
+      currentPrice: 10.2,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('NOT_MAINLINE');
   });
 
   it('TRIM on warn_reduce_half', () => {
@@ -129,9 +233,11 @@ describe('deriveActionCard', () => {
         buyAction: 'wait',
         stopLossPrice: 9,
         stopLossParts: { warn_reduce_half: true, atr14: 0.2 },
+        values: { emIndustry: '半导体' },
       },
       position: { symbol: 'CN:600000', costPrice: 10, positionPct: 8, maxPrice: 11 },
       currentPrice: 10.5,
+      mainlineAllow: mainline,
     });
     expect(card.action).toBe('TRIM');
   });

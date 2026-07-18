@@ -152,6 +152,17 @@ Dashboard 与「Copy all Markdown」顶部输出 **Execution Gate**，把分散�
 
 Watchlist 每行另有 **Action Card**（Exec / Trigger / Trail）：EXIT、TRIM、HOLD、ADD、BUY、WATCH，以及吊灯止盈生效价。下游 AI 应优先服从 Gate 与 Action，而不是自行重算红绿灯。
 
+### 主线绑定（BUY/ADD 硬闸）
+
+Watchlist 是**监控池**（TV Screener → 回撤 + TrendOK 导入），**不等于**买单。
+
+`BUY` / `ADD` 在 Gate=ATTACK 之外，还必须同时满足：
+
+1. **主线**：所属东财行业 ∈ `5D 净流入 Top3` ∪ `Momentum Breakout`（今日净流入≥20亿且排名升≥10）
+2. **非防守板块**：排除银行、电力、公用事业、中药、煤炭、高速公路
+
+否则 Exec 降为 `WATCH`（候选）或 `HOLD`（已持仓不可加仓），Why 为 `NOT_MAINLINE` / `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY`。持仓的 EXIT/TRIM 不受影响。与 Import 过滤正交。
+
 ### 选股先选板块
 
 Industry Flow 模块帮助识别热点板块，Watchlist 会给热点行业的股票额外加分。

@@ -45,7 +45,22 @@ describe('ExecutionActionCardSchema', () => {
       trigger: 11.2,
       distPct: -0.5,
       why: 'CHANDELIER',
+      mainlineOk: false,
+      mainlineTag: null,
     });
     expect(parsed.trigger).toBe(11.2);
+    expect(parsed.mainlineOk).toBe(false);
+  });
+
+  it('parses BUY card with mainline tag', () => {
+    const parsed = ExecutionActionCardSchema.parse({
+      symbol: 'CN:600519',
+      action: 'BUY',
+      trailArmed: false,
+      why: 'MAINLINE_5D_TOP3',
+      mainlineOk: true,
+      mainlineTag: '5D_TOP3',
+    });
+    expect(parsed.mainlineTag).toBe('5D_TOP3');
   });
 });

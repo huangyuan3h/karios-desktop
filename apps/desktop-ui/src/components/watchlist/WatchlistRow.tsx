@@ -6,6 +6,7 @@ import { CircleX, ExternalLink, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import { deriveActionCard } from '@/lib/execution-action';
+import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import type { ExecutionGate } from '@karios/shared';
 import {
   computePnLPct,
@@ -472,6 +473,7 @@ export type WatchlistRowProps = {
   todaySh: string;
   costPriceDraft: string | undefined;
   executionGate: ExecutionGate | null;
+  mainlineAllow: MainlineAllowSet | null;
   showTooltip: ShowTooltipFn;
   hideTooltip: () => void;
   showColorPicker: (el: HTMLElement, sym: string) => void;
@@ -493,6 +495,7 @@ function WatchlistRowInner({
   todaySh,
   costPriceDraft,
   executionGate,
+  mainlineAllow,
   showTooltip,
   hideTooltip,
   showColorPicker,
@@ -530,6 +533,7 @@ function WatchlistRowInner({
     trendok: t,
     position: it,
     currentPrice,
+    mainlineAllow,
   });
   const execTone =
     actionCard.action === 'EXIT'
@@ -538,7 +542,9 @@ function WatchlistRowInner({
         ? 'text-emerald-700 font-semibold'
         : actionCard.action === 'TRIM'
           ? 'text-amber-700 font-semibold'
-          : 'text-[var(--k-muted)]';
+          : actionCard.why === 'NOT_MAINLINE' || actionCard.why === 'DEFENSE_SECTOR_BLOCK'
+            ? 'text-amber-700'
+            : 'text-[var(--k-muted)]';
 
   return (
     <tr className={rowClass}>
@@ -641,7 +647,17 @@ function WatchlistRowInner({
       <td className="px-2 py-2">
         <StopLossCell sym={it.symbol} t={t} showTooltip={showTooltip} hideTooltip={hideTooltip} />
       </td>
-      <td className={`px-2 py-2 font-mono text-xs ${execTone}`} title={actionCard.why}>
+      <td
+        className={`px-2 py-2 font-mono text-xs ${execTone}`}
+        title={[
+          actionCard.why,
+          actionCard.mainlineOk
+            ? `mainline=${actionCard.mainlineTag || 'ok'}`
+            : 'mainline=no',
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      >
         {actionCard.action}
       </td>
       <td className="px-2 py-2 font-mono text-xs" title="Effective trigger (max hardStop, trailStop)">

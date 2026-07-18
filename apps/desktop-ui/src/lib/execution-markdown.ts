@@ -2,6 +2,7 @@ import type { ExecutionActionCard, ExecutionGate } from '@karios/shared';
 
 import { mdPrice, mdTable } from '@/lib/dashboard-format';
 import { deriveActionCard } from '@/lib/execution-action';
+import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import type { TrendOkResult } from '@/lib/api/types';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 
@@ -11,12 +12,14 @@ export function buildPositionsExecutionMarkdown(
   quotes: Record<string, { price?: number | null } | undefined>,
   gate: ExecutionGate | null,
   heading = '##',
+  mainlineAllow: MainlineAllowSet | null = null,
 ): string {
   const lines: string[] = [];
   lines.push(`${heading} Positions (execution)`);
   if (!gate?.allowNewEntries) {
     lines.push('- note: BUY/ADD only valid when Execution Gate allowNewEntries=true');
   }
+  lines.push('- note: BUY/ADD also require mainline bind (5D Top3 or Momentum) and non-defense sector');
   lines.push('');
   const headers = [
     'Symbol',
@@ -27,6 +30,7 @@ export function buildPositionsExecutionMarkdown(
     'HardStop',
     'TrailStop',
     'Dist%',
+    'Mainline',
     'Why',
   ];
   const rows: unknown[][] = [];
@@ -41,11 +45,15 @@ export function buildPositionsExecutionMarkdown(
       trendok: t ?? null,
       position: it,
       currentPrice,
+      mainlineAllow,
     });
     const dist =
       typeof card.distPct === 'number' && Number.isFinite(card.distPct)
         ? card.distPct.toFixed(1)
         : '—';
+    const mainlineCell = card.mainlineOk
+      ? card.mainlineTag || 'ok'
+      : 'no';
     rows.push([
       it.symbol,
       card.action,
@@ -55,6 +63,7 @@ export function buildPositionsExecutionMarkdown(
       mdPrice(card.hardStop ?? null),
       mdPrice(card.trailStop ?? null),
       dist,
+      mainlineCell,
       card.why ?? '—',
     ]);
   }
