@@ -7,7 +7,7 @@ import type {
 } from '@karios/shared';
 
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
-import { isIntradaySurge } from '@/lib/watchlist-metrics';
+import { isGapUpWeakMarket, isIntradaySurge } from '@/lib/watchlist-metrics';
 
 export const CHANDELIER_ARM_PNL_PCT = 10;
 export const CHANDELIER_ATR_MULT = 2;
@@ -140,16 +140,24 @@ type NewEntryGateResult =
   | { ok: false; tag: null; why: string };
 
 /**
- * Hard gates for BUY/ADD: defense sector, intraday surge (>6%), mainline bind.
+ * Hard gates for BUY/ADD: defense, intraday surge (>6%), gap-up in Weak/Diverging, mainline.
  * Fail-closed when industry missing or mainlineAllow not ready.
- * Surge with null/undefined intradayChgPct does not block (fail-open).
+ * Surge/gap with null inputs do not block (fail-open).
  */
 export function evaluateNewEntryGates(opts: {
   industryName: string | null;
   mainlineAllow: MainlineAllowSet | null | undefined;
   intradayChgPct?: number | null;
+  gapUp?: boolean | null;
+  marketRegime?: string | null;
 }): NewEntryGateResult {
-  const { industryName, mainlineAllow, intradayChgPct = null } = opts;
+  const {
+    industryName,
+    mainlineAllow,
+    intradayChgPct = null,
+    gapUp = null,
+    marketRegime = null,
+  } = opts;
   if (!industryName) {
     return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
   }
@@ -158,6 +166,9 @@ export function evaluateNewEntryGates(opts: {
   }
   if (isIntradaySurge(intradayChgPct)) {
     return { ok: false, tag: null, why: 'INTRADAY_SURGE_BLOCK' };
+  }
+  if (isGapUpWeakMarket(gapUp, marketRegime)) {
+    return { ok: false, tag: null, why: 'GAP_UP_WEAK_BLOCK' };
   }
   if (!mainlineAllow || !mainlineAllow.ready) {
     return { ok: false, tag: null, why: 'MAINLINE_DATA_UNAVAILABLE' };
@@ -212,6 +223,8 @@ export function deriveActionCard(opts: {
   currentPrice: number | null;
   mainlineAllow?: MainlineAllowSet | null;
   intradayChgPct?: number | null;
+  gapUp?: boolean | null;
+  marketRegime?: string | null;
 }): ExecutionActionCard {
   const {
     symbol,
@@ -221,6 +234,8 @@ export function deriveActionCard(opts: {
     currentPrice,
     mainlineAllow = null,
     intradayChgPct = null,
+    gapUp = null,
+    marketRegime = null,
   } = opts;
   const held = isHeldPosition(position);
   const parts = (trendok?.stopLossParts ?? null) as Record<string, unknown> | null;
@@ -252,8 +267,14 @@ export function deriveActionCard(opts: {
   const wantsBuy = buyAction === 'buy' && scoreOk;
 
   const industryName = resolveIndustryName(trendok);
-  const entryGate = evaluateNewEntryGates({ industryName, mainlineAllow, intradayChgPct });
-  // Mainline column independent of surge block (surge is an entry veto, not "off mainline")
+  const entryGate = evaluateNewEntryGates({
+    industryName,
+    mainlineAllow,
+    intradayChgPct,
+    gapUp,
+    marketRegime,
+  });
+  // Mainline column independent of chase vetoes (surge / gap-up)
   const mainlineOk = Boolean(
     industryName &&
       !isDefenseSector(industryName) &&

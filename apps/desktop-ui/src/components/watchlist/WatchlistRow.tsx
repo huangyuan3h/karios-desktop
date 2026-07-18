@@ -535,6 +535,8 @@ function WatchlistRowInner({
     currentPrice,
     mainlineAllow,
     intradayChgPct: rowMetrics.intradayChgPct,
+    gapUp: typeof t?.gapUp === 'boolean' ? t.gapUp : null,
+    marketRegime: t?.marketRegime ?? null,
   });
   const execTone =
     actionCard.action === 'EXIT'
@@ -546,7 +548,8 @@ function WatchlistRowInner({
             actionCard.why === 'DEFENSE_SECTOR_BLOCK' ||
             actionCard.why === 'GATE_DEFEND' ||
             actionCard.why === 'MAINLINE_FADE' ||
-            actionCard.why === 'INTRADAY_SURGE_BLOCK'
+            actionCard.why === 'INTRADAY_SURGE_BLOCK' ||
+            actionCard.why === 'GAP_UP_WEAK_BLOCK'
           ? 'text-amber-700 font-semibold'
           : 'text-[var(--k-muted)]';
 

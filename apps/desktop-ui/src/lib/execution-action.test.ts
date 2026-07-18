@@ -111,6 +111,29 @@ describe('evaluateNewEntryGates', () => {
       }).why,
     ).toBe('INTRADAY_SURGE_BLOCK');
   });
+
+  it('blocks gap-up in Weak before mainline check', () => {
+    expect(
+      evaluateNewEntryGates({
+        industryName: '半导体',
+        mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+        gapUp: true,
+        marketRegime: 'Weak',
+      }).why,
+    ).toBe('GAP_UP_WEAK_BLOCK');
+  });
+
+  it('surge takes priority over gap-up weak', () => {
+    expect(
+      evaluateNewEntryGates({
+        industryName: '半导体',
+        mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+        intradayChgPct: 6.1,
+        gapUp: true,
+        marketRegime: 'Weak',
+      }).why,
+    ).toBe('INTRADAY_SURGE_BLOCK');
+  });
 });
 
 describe('deriveActionCard', () => {
@@ -453,6 +476,176 @@ describe('deriveActionCard', () => {
       currentPrice: 10.5,
       mainlineAllow: mainline,
       intradayChgPct: 8,
+    });
+    expect(card.action).toBe('EXIT');
+    expect(card.why).toBe('EXIT_NOW');
+  });
+
+  it('blocks BUY to WATCH on gap-up in Weak', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      gapUp: true,
+      marketRegime: 'Weak',
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('GAP_UP_WEAK_BLOCK');
+    expect(card.mainlineOk).toBe(true);
+  });
+
+  it('blocks BUY to WATCH on gap-up in Diverging', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      gapUp: true,
+      marketRegime: 'Diverging',
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('GAP_UP_WEAK_BLOCK');
+  });
+
+  it('blocks ADD to HOLD on gap-up weak (not TRIM)', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+      gapUp: true,
+      marketRegime: 'Weak',
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('GAP_UP_WEAK_BLOCK');
+  });
+
+  it('allows BUY on gap-up in Strong', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      gapUp: true,
+      marketRegime: 'Strong',
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('MAINLINE_5D_TOP3');
+  });
+
+  it('allows BUY when gapUp false in Weak', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      gapUp: false,
+      marketRegime: 'Weak',
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('MAINLINE_5D_TOP3');
+  });
+
+  it('does not gap-block when gapUp is null', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      gapUp: null,
+      marketRegime: 'Weak',
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('MAINLINE_5D_TOP3');
+  });
+
+  it('surge Why wins over gap-up weak when both fire', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      intradayChgPct: 6.1,
+      gapUp: true,
+      marketRegime: 'Weak',
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('INTRADAY_SURGE_BLOCK');
+  });
+
+  it('EXIT on exit_now ignores gap-up weak', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        buyAction: 'avoid',
+        stopLossPrice: 9,
+        stopLossParts: { exit_now: true, atr14: 0.2 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+      gapUp: true,
+      marketRegime: 'Weak',
     });
     expect(card.action).toBe('EXIT');
     expect(card.why).toBe('EXIT_NOW');

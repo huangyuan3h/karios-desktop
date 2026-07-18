@@ -24,6 +24,7 @@ export function buildPositionsExecutionMarkdown(
   }
   lines.push('- note: BUY/ADD also require mainline bind (5D Top3 or Momentum) and non-defense sector');
   lines.push('- note: BUY/ADD also blocked when intraday >6% (INTRADAY_SURGE_BLOCK)');
+  lines.push('- note: BUY/ADD also blocked on gap-up in Weak/Diverging (GAP_UP_WEAK_BLOCK)');
   lines.push('');
   const headers = [
     'Symbol',
@@ -56,6 +57,8 @@ export function buildPositionsExecutionMarkdown(
       currentPrice: rowMetrics.current,
       mainlineAllow,
       intradayChgPct: rowMetrics.intradayChgPct,
+      gapUp: typeof t?.gapUp === 'boolean' ? t.gapUp : null,
+      marketRegime: t?.marketRegime ?? null,
     });
     const dist =
       typeof card.distPct === 'number' && Number.isFinite(card.distPct)

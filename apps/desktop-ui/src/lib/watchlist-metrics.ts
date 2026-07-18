@@ -24,7 +24,8 @@ export const WATCHLIST_MD_HEADERS = [
 export const INTRADAY_SURGE_THRESHOLD_PCT = 6.0;
 export const VWAP_PREMIUM_MULTIPLIER = 1.05;
 
-const GAP_UP_WEAK_REGIMES = new Set(['Weak', 'Diverging']);
+/** Market regimes where a true gap-up blocks new entries (Alerts + Action Card). */
+export const GAP_UP_WEAK_REGIMES = new Set(['Weak', 'Diverging']);
 
 import type { WatchlistRiskAlert, InstFlow } from '@karios/shared';
 
@@ -36,6 +37,16 @@ export function isIntradaySurge(intradayChgPct: number | null | undefined): bool
     Number.isFinite(intradayChgPct) &&
     intradayChgPct > INTRADAY_SURGE_THRESHOLD_PCT
   );
+}
+
+/** True gap-up (latest low > prev high) in Weak/Diverging — do not chase. */
+export function isGapUpWeakMarket(
+  gapUp: boolean | null | undefined,
+  marketRegime: string | null | undefined,
+): boolean {
+  if (gapUp !== true) return false;
+  const regime = String(marketRegime ?? '').trim();
+  return GAP_UP_WEAK_REGIMES.has(regime);
 }
 
 export function isAboveVwapPremium(
@@ -85,8 +96,8 @@ export function collectWatchlistRiskAlerts(opts: {
     });
   }
 
-  const regime = String(opts.marketRegime ?? '').trim();
-  if (opts.gapUp === true && GAP_UP_WEAK_REGIMES.has(regime)) {
+  if (isGapUpWeakMarket(opts.gapUp, opts.marketRegime)) {
+    const regime = String(opts.marketRegime ?? '').trim();
     push({
       code: 'gap_up_weak_market',
       severity: 'block',

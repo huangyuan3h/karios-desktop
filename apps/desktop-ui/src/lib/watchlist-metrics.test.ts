@@ -13,6 +13,7 @@ import {
   industryDisplayName,
   isInstFlowRisk,
   isAboveVwapPremium,
+  isGapUpWeakMarket,
   isHotTop3Industry,
   isIntradaySurge,
   resolveIntradayChgPct,
@@ -209,6 +210,14 @@ describe('risk alerts', () => {
   it('detects intraday surge above threshold', () => {
     expect(isIntradaySurge(6.0)).toBe(false);
     expect(isIntradaySurge(6.1)).toBe(true);
+  });
+
+  it('detects gap-up in Weak/Diverging only', () => {
+    expect(isGapUpWeakMarket(true, 'Weak')).toBe(true);
+    expect(isGapUpWeakMarket(true, 'Diverging')).toBe(true);
+    expect(isGapUpWeakMarket(true, 'Strong')).toBe(false);
+    expect(isGapUpWeakMarket(false, 'Weak')).toBe(false);
+    expect(isGapUpWeakMarket(null, 'Weak')).toBe(false);
   });
 
   it('detects price above VWAP premium band', () => {
