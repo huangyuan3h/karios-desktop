@@ -164,12 +164,12 @@ Dashboard 卡片 **Decision Journal** 把 Gate + Action Card 写成可回放时�
 - **Exec Attention（卡顶）**：`Sleeve` 预算 → Must act（EXIT→TRIM）→ Fire（BUY/ADD，受 Gate）→ 缺仓提示 → 今日关键变更 Top3。Must act / Fire **优先 live**（Watchlist market + `deriveActionCard`），无行情时回退 Journal snapshot。
 - **自动采集**：Sync All、盘中 5 分钟 poll、Watchlist 仓位变更 debounce、收盘后 eod、手动 Snapshot now。Action Card 仍由前端 `deriveActionCard` 计算后 POST。
 - **变更流水**：`mode` / `action` / `why` / `trigger` / `positionPct` 变化落库；同决策 content_hash 只心跳更新 `captured_at`。
-- **Copy all Markdown**：`## Exec Attention`（Gate 后）+ `## Decision Journal`（Changes + Latest Actions）+ Positions，供判断 AI 与人类同读。
+- **Copy all Markdown（忙人包）**：自动带 `## AI instructions`、`## Since last copy`（相对上次成功 Copy 的 Journal 差分）、Gate、Attention、`## Cond order draft`（条件单改/挂/撤草案）再接 Journal / Positions。Dashboard 另有 **Sync & Copy** 一键。
 - 迁移：`PYTHONPATH=src alembic upgrade head`（revision `0010_execution_decision_journal`）。
 
 ### 下游判断 AI（Copy → Agent）
 
-外部 / 本仓判断 AI 的 system prompt 见 **[downstream-ai-prompt.md](./downstream-ai-prompt.md)（V6.1 Execution Contract）**。
+外部 / 本仓判断 AI 的 system prompt 见 **[downstream-ai-prompt.md](./downstream-ai-prompt.md)（V6.2 Execution Contract）**。
 
 要点：Gate → Decision Journal → Positions Action/Why 为硬合同；Industry / Sentiment / News 等为解释层。新增 Why 码默认按 `*_BLOCK` / `*_FADE` 硬约束兼容，避免每次功能迭代都改角色定义。
 

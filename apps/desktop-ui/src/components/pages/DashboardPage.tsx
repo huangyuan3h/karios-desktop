@@ -15,6 +15,7 @@ import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistRisk } from '@/hooks/useWatchlistRisk';
 import { buildDashboardHotIndustryPicks, buildMainlineAllowSet } from '@/lib/hot-industry-picks';
+import { writeLastCopyAt } from '@/lib/copy-ai-brief';
 import {
   buildDashboardCopyAllMarkdown,
   buildIndustryMarkdown,
@@ -205,7 +206,39 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         queryClient,
       });
       await navigator.clipboard.writeText(text);
+      writeLastCopyAt(new Date().toISOString());
       toastCopyAll(true, 'Copied all Markdown to clipboard.');
+    } catch (e) {
+      toastCopyAll(false, e instanceof Error ? e.message : String(e));
+    } finally {
+      setCopyAllBusy(false);
+    }
+  }
+
+  async function syncAndCopyMarkdown() {
+    setCopyAllBusy(true);
+    setError(null);
+    try {
+      const syncResult = await onSyncAll();
+      if (!syncResult.ok) {
+        toastCopyAll(false, 'Sync failed. Copy aborted.');
+        return;
+      }
+      const s = syncResult.summary ?? summary;
+      if (!s) {
+        toastCopyAll(false, 'No data available after sync.');
+        return;
+      }
+      const text = await buildDashboardCopyAllMarkdown({
+        summary: s,
+        newsSummary,
+        newsSummaryUpdatedAt,
+        newsFallback,
+        queryClient,
+      });
+      await navigator.clipboard.writeText(text);
+      writeLastCopyAt(new Date().toISOString());
+      toastCopyAll(true, 'Synced and copied Markdown to clipboard.');
     } catch (e) {
       toastCopyAll(false, e instanceof Error ? e.message : String(e));
     } finally {
@@ -342,6 +375,16 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
           >
             {copyAllBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
             Copy all Markdown
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="gap-2"
+            disabled={busy || copyAllBusy || pdfReportBusy}
+            onClick={() => void syncAndCopyMarkdown()}
+          >
+            {busy || copyAllBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+            Sync & Copy
           </Button>
           <Button
             variant="secondary"

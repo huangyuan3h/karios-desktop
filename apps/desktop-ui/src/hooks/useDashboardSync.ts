@@ -38,7 +38,7 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
   const [syncSteps, setSyncSteps] = React.useState<SyncStep[]>([]);
   const [syncProgress, setSyncProgress] = React.useState(0);
 
-  async function onSyncAll() {
+  async function onSyncAll(): Promise<{ ok: boolean; summary: DashboardSummary | null }> {
     setBusy(true);
     callbacksRef.current.setError(null);
     setSyncSteps([]);
@@ -48,7 +48,7 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
     // Sync All is an explicit user action — always force catch-up for stale modules.
     const forceSync = true;
 
-    return new Promise<void>((resolve) => {
+    return new Promise<{ ok: boolean; summary: DashboardSummary | null }>((resolve) => {
       const es = new EventSource(
         `${DATA_SYNC_BASE_URL}/dashboard/sync/stream?force=${forceSync ? 'true' : 'false'}`,
       );
@@ -93,7 +93,7 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
                 if (!cb.shouldRefreshNewsBrief(cb.newsSummaryUpdatedAt) && cb.newsSummary?.trim()) {
                   setBusy(false);
                   cb.onSyncComplete?.();
-                  resolve();
+                  resolve({ ok: true, summary: s });
                   return;
                 }
                 cb.setNewsSummaryBusy(true);
@@ -123,17 +123,17 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
                     cb.setNewsSummaryBusy(false);
                     setBusy(false);
                     cb.onSyncComplete?.();
-                    resolve();
+                    resolve({ ok: true, summary: s });
                   });
               } else {
                 setBusy(false);
                 cb.onSyncComplete?.();
-                resolve();
+                resolve({ ok: true, summary: s });
               }
             } else {
               setBusy(false);
               cb.onSyncComplete?.();
-              resolve();
+              resolve({ ok: true, summary: null });
             }
           }
         } catch {
@@ -145,7 +145,7 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
         es.close();
         callbacksRef.current.setError('Connection error during sync');
         setBusy(false);
-        resolve();
+        resolve({ ok: false, summary: null });
       };
     });
   }

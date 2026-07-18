@@ -30,6 +30,13 @@ import {
   buildHotIndustriesMarkdown,
 } from '@/lib/dashboard-format';
 import {
+  formatAiCopyInstructionHeader,
+  formatCondOrderDraftMarkdown,
+  formatSinceLastCopyMarkdown,
+  readLastCopyAt,
+  type CondOrderCard,
+} from '@/lib/copy-ai-brief';
+import {
   buildExecAttentionQueue,
   formatExecAttentionMarkdown,
   resolveAttentionCards,
@@ -866,18 +873,23 @@ export type DashboardCopyAllOptions = {
   queryClient?: QueryClient;
 };
 
-async function buildExecAttentionCopyMarkdown(opts: {
+type ExecutionCopyBundle = {
+  attentionMd: string;
+  cards: CondOrderCard[];
+};
+
+async function buildExecutionCopyBundle(opts: {
   gate: ExecutionGate | null;
   mainlineAllow: MainlineAllowSet | null;
   queryClient?: QueryClient;
-}): Promise<string> {
+}): Promise<ExecutionCopyBundle> {
   const { gate, mainlineAllow, queryClient } = opts;
   const itemsRaw = loadWatchlist();
   const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
     .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
     .map((x) => ({ ...x, symbol: String(x.symbol).trim().toUpperCase() }));
 
-  let liveCards: Array<{ symbol: string; action: string; why?: string | null }> | null = null;
+  let liveCards: CondOrderCard[] | null = null;
   if (gate && items.length) {
     try {
       const symbols = items.map((i) => i.symbol);
@@ -890,7 +902,7 @@ async function buildExecAttentionCopyMarkdown(opts: {
         mainlineAllow,
         source: 'poll',
       });
-      liveCards = payload?.cards ?? null;
+      liveCards = (payload?.cards as CondOrderCard[] | undefined) ?? null;
     } catch {
       liveCards = null;
     }
@@ -898,7 +910,7 @@ async function buildExecAttentionCopyMarkdown(opts: {
     liveCards = [];
   }
 
-  let snapshotCards: Array<{ symbol: string; action: string; why?: string | null }> = [];
+  let snapshotCards: CondOrderCard[] = [];
   try {
     const td = getShanghaiTodayIso();
     const snaps = await apiGetJson<ExecutionSnapshotListResponse>(
@@ -906,7 +918,7 @@ async function buildExecAttentionCopyMarkdown(opts: {
     );
     const latest = snaps?.items?.[0];
     if (latest && Array.isArray(latest.cards)) {
-      snapshotCards = latest.cards;
+      snapshotCards = latest.cards as CondOrderCard[];
     }
   } catch {
     // ignore
@@ -930,7 +942,29 @@ async function buildExecAttentionCopyMarkdown(opts: {
     cards,
     changes,
   });
-  return formatExecAttentionMarkdown(queue, { heading: '##', source });
+  return {
+    attentionMd: formatExecAttentionMarkdown(queue, { heading: '##', source }),
+    cards: cards as CondOrderCard[],
+  };
+}
+
+async function buildSinceLastCopyMarkdown(): Promise<string> {
+  const lastAt = readLastCopyAt();
+  const td = getShanghaiTodayIso();
+  const params = new URLSearchParams();
+  params.set('trade_date', td);
+  params.set('limit', '100');
+  if (lastAt) params.set('since', lastAt);
+  let changes: ExecutionChangeListResponse['items'] = [];
+  try {
+    const ch = await apiGetJson<ExecutionChangeListResponse>(
+      `/execution/changes?${params.toString()}`,
+    );
+    changes = Array.isArray(ch?.items) ? ch.items : [];
+  } catch {
+    changes = [];
+  }
+  return formatSinceLastCopyMarkdown(changes, { lastAt, heading: '##' });
 }
 
 export async function buildDashboardCopyAllMarkdown(
@@ -965,42 +999,58 @@ export async function buildDashboardCopyAllMarkdown(
   });
   const executionGate = parseExecutionGate((s as any)?.marketSentiment?.executionGate);
   const mainlineAllow = buildMainlineAllowSet(s);
-  const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd, attentionMd] = await Promise.all([
-    buildScreenersMarkdown(s, '##', queryClient),
-    buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow),
-    buildCompactCatalystMarkdown(s),
-    fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
-      .then(({ items, scope }) =>
-        buildAlphaRadarTrendsMarkdown(items, {
-          headingLevel: '##',
-          mode: 'compact',
-          scopeNote:
-            scope === 'recent'
-              ? `recent ${DEFAULT_CATALYST_MAX_AGE_DAYS}d (latest batch empty)`
-              : 'latest batch',
-        }),
-      )
-      .catch(() => '## Alpha Radar · Structured Trends\n\n- Alpha Radar trends: unavailable\n'),
-    buildExecAttentionCopyMarkdown({
-      gate: executionGate,
-      mainlineAllow,
-      queryClient,
-    }).catch(() =>
-      formatExecAttentionMarkdown(
-        buildExecAttentionQueue({
-          gate: executionGate,
-          watchlistItems: [],
+  const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd, execBundle, sinceLastMd] =
+    await Promise.all([
+      buildScreenersMarkdown(s, '##', queryClient),
+      buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow),
+      buildCompactCatalystMarkdown(s),
+      fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
+        .then(({ items, scope }) =>
+          buildAlphaRadarTrendsMarkdown(items, {
+            headingLevel: '##',
+            mode: 'compact',
+            scopeNote:
+              scope === 'recent'
+                ? `recent ${DEFAULT_CATALYST_MAX_AGE_DAYS}d (latest batch empty)`
+                : 'latest batch',
+          }),
+        )
+        .catch(() => '## Alpha Radar · Structured Trends\n\n- Alpha Radar trends: unavailable\n'),
+      buildExecutionCopyBundle({
+        gate: executionGate,
+        mainlineAllow,
+        queryClient,
+      }).catch(
+        (): ExecutionCopyBundle => ({
+          attentionMd: formatExecAttentionMarkdown(
+            buildExecAttentionQueue({
+              gate: executionGate,
+              watchlistItems: [],
+              cards: [],
+              changes: [],
+            }),
+            { source: 'none' },
+          ),
           cards: [],
-          changes: [],
         }),
-        { source: 'none' },
       ),
-    ),
-  ]);
+      buildSinceLastCopyMarkdown().catch(() =>
+        formatSinceLastCopyMarkdown([], { lastAt: readLastCopyAt() }),
+      ),
+    ]);
+  const attentionMd = execBundle.attentionMd;
+  const condOrderMd = formatCondOrderDraftMarkdown(execBundle.cards, {
+    heading: '##',
+    allowNewEntries: executionGate?.allowNewEntries === true,
+  });
   const lines: string[] = [];
   lines.push(`# Copy all (Dashboard)`);
   lines.push(`- generatedAt: ${generatedAt}`);
   lines.push(`- asOfDate: ${String((s as any)?.asOfDate ?? '')}`);
+  lines.push('');
+  lines.push(formatAiCopyInstructionHeader('##').trim());
+  lines.push('');
+  lines.push(sinceLastMd.trim());
   lines.push('');
   lines.push(
     formatExecutionGateMarkdown(
@@ -1011,6 +1061,8 @@ export async function buildDashboardCopyAllMarkdown(
   );
   lines.push('');
   lines.push(attentionMd.trim());
+  lines.push('');
+  lines.push(condOrderMd.trim());
   lines.push('');
   try {
     const journalMd = await fetchExecutionJournalMarkdown({

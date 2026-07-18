@@ -444,12 +444,15 @@ describe('buildDashboardCopyAllMarkdown cache', () => {
 
     expect(mockedFetchDashboardSummary).not.toHaveBeenCalled();
     expect(mockedApiGetJson).not.toHaveBeenCalledWith('/dashboard/summary');
+    expect(md).toContain('## AI instructions (embedded)');
+    expect(md).toContain('## Since last copy');
     expect(md).toContain('## Execution Gate');
     expect(md).toContain('- mode: DEFEND');
     expect(md).toContain('## Exec Attention');
     expect(md).toContain('### Must act');
     expect(md).toContain('### Fire');
     expect(md).toContain('Gate blocks new entries');
+    expect(md).toContain('## Cond order draft');
     expect(md).toContain('## Positions (execution)');
     expect(md).toContain('Mainline');
     expect(md).toContain('mainline bind');
