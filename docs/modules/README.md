@@ -161,7 +161,21 @@ Watchlist 是**监控池**（TV Screener → 回撤 + TrendOK 导入），**不�
 1. **主线**：所属东财行业 ∈ `5D 净流入 Top3` ∪ `Momentum Breakout`（今日净流入≥20亿且排名升≥10）
 2. **非防守板块**：排除银行、电力、公用事业、中药、煤炭、高速公路
 
-否则 Exec 降为 `WATCH`（候选）或 `HOLD`（已持仓不可加仓），Why 为 `NOT_MAINLINE` / `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY`。持仓的 EXIT/TRIM 不受影响。与 Import 过滤正交。
+否则 Exec 降为 `WATCH`（候选），Why 为 `NOT_MAINLINE` / `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY`。与 Import 过滤正交。
+
+### 持仓 TRIM（DEFEND + 主线失效）
+
+对**已持仓**，Action 在 EXIT / 动能警告 TRIM 之后，还有两道减仓硬闸：
+
+| 条件 | Action | Why |
+|------|--------|-----|
+| Gate = DEFEND（含 SRV Extreme_High 电风扇、广度恐慌、Weak 等） | TRIM | `GATE_DEFEND` |
+| 主线集合已就绪，且行业不在集合（或缺行业名） | TRIM | `MAINLINE_FADE` / `MISSING_INDUSTRY` |
+
+优先级：`EXIT` > `WARN_REDUCE_HALF` > `GATE_DEFEND` > `MAINLINE_FADE` > ADD/HOLD。
+
+- **HOLD_ONLY**：不因 Gate 强制 TRIM，仍可因主线失效 TRIM。
+- 主线数据未就绪时：不因失效误 TRIM（避免空洞数据砍仓）。
 
 ### 选股先选板块
 

@@ -169,6 +169,32 @@ export function evaluateNewEntryGates(opts: {
   return { ok: true, tag, why };
 }
 
+type HeldTrimGateResult = { trim: true; why: string } | { trim: false; why: null };
+
+/**
+ * Held-position trim gates (after EXIT / warn_reduce_half).
+ * DEFEND forces TRIM; mainline fade TRIM only when allow-set is ready.
+ */
+export function evaluateHeldTrimGates(opts: {
+  mode: ExecutionGateMode | null;
+  industryName: string | null;
+  mainlineAllow: MainlineAllowSet | null | undefined;
+}): HeldTrimGateResult {
+  const { mode, industryName, mainlineAllow } = opts;
+  if (mode === 'DEFEND') {
+    return { trim: true, why: 'GATE_DEFEND' };
+  }
+  if (mainlineAllow?.ready) {
+    if (!industryName) {
+      return { trim: true, why: 'MISSING_INDUSTRY' };
+    }
+    if (!mainlineAllow.names.has(industryName)) {
+      return { trim: true, why: 'MAINLINE_FADE' };
+    }
+  }
+  return { trim: false, why: null };
+}
+
 /**
  * Derive a single Action Card for a watchlist symbol.
  */
@@ -214,6 +240,7 @@ export function deriveActionCard(opts: {
   const entryGate = evaluateNewEntryGates({ industryName, mainlineAllow });
   const mainlineOk = entryGate.ok;
   const mainlineTag = entryGate.tag;
+  const heldTrim = evaluateHeldTrimGates({ mode, industryName, mainlineAllow });
 
   let action: ExecutionAction = 'WATCH';
   let why = 'WATCH';
@@ -224,6 +251,9 @@ export function deriveActionCard(opts: {
   } else if (held && warnHalf) {
     action = 'TRIM';
     why = 'WARN_REDUCE_HALF';
+  } else if (held && heldTrim.trim) {
+    action = 'TRIM';
+    why = heldTrim.why;
   } else if (held && allowAttack && wantsBuy) {
     if (!entryGate.ok) {
       action = 'HOLD';

@@ -540,11 +540,13 @@ function WatchlistRowInner({
       ? 'text-red-600 font-semibold'
       : actionCard.action === 'BUY' || actionCard.action === 'ADD'
         ? 'text-emerald-700 font-semibold'
-        : actionCard.action === 'TRIM'
+        : actionCard.action === 'TRIM' ||
+            actionCard.why === 'NOT_MAINLINE' ||
+            actionCard.why === 'DEFENSE_SECTOR_BLOCK' ||
+            actionCard.why === 'GATE_DEFEND' ||
+            actionCard.why === 'MAINLINE_FADE'
           ? 'text-amber-700 font-semibold'
-          : actionCard.why === 'NOT_MAINLINE' || actionCard.why === 'DEFENSE_SECTOR_BLOCK'
-            ? 'text-amber-700'
-            : 'text-[var(--k-muted)]';
+          : 'text-[var(--k-muted)]';
 
   return (
     <tr className={rowClass}>

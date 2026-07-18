@@ -6,6 +6,7 @@ import {
   BUY_SCORE_MIN,
   deriveActionCard,
   deriveTriggerAndTrail,
+  evaluateHeldTrimGates,
   evaluateNewEntryGates,
   isDefenseSector,
   isHeldPosition,
@@ -31,6 +32,19 @@ const holdGate: ExecutionGate = {
   allowNewEntries: false,
   marketRegime: 'Diverging',
   reasons: ['REGIME_DIVERGING'],
+};
+
+const defendGate: ExecutionGate = {
+  ...attackGate,
+  mode: 'DEFEND',
+  allowNewEntries: false,
+  marketRegime: 'Weak',
+  indexLight: 'red',
+  srvLevel: 'Extreme_High',
+  srvOverlapCount: 0,
+  reasons: ['SRV_EXTREME_HIGH'],
+  positionRangeHint: '0%-10%',
+  satelliteNote: '防守优先',
 };
 
 function allowSet(names: Array<[string, 'MOMENTUM' | '5D_TOP3']>): MainlineAllowSet {
@@ -206,7 +220,7 @@ describe('deriveActionCard', () => {
     expect(card.why).toBe('MAINLINE_MOMENTUM');
   });
 
-  it('holds instead of ADD when held but not mainline', () => {
+  it('TRIMs held position when industry leaves mainline', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: attackGate,
@@ -220,8 +234,8 @@ describe('deriveActionCard', () => {
       currentPrice: 10.2,
       mainlineAllow: mainline,
     });
-    expect(card.action).toBe('HOLD');
-    expect(card.why).toBe('NOT_MAINLINE');
+    expect(card.action).toBe('TRIM');
+    expect(card.why).toBe('MAINLINE_FADE');
   });
 
   it('TRIM on warn_reduce_half', () => {
@@ -240,5 +254,118 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
     });
     expect(card.action).toBe('TRIM');
+  });
+
+  it('TRIMs held position when Gate is DEFEND', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: defendGate,
+      trendok: {
+        score: 90,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('TRIM');
+    expect(card.why).toBe('GATE_DEFEND');
+  });
+
+  it('EXIT still beats DEFEND TRIM', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: defendGate,
+      trendok: {
+        score: 70,
+        buyAction: 'avoid',
+        stopLossPrice: 9,
+        stopLossParts: { exit_now: true },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('EXIT');
+    expect(card.why).toBe('EXIT_NOW');
+  });
+
+  it('HOLD_ONLY held + still on mainline stays HOLD (no gate TRIM)', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: holdGate,
+      trendok: {
+        score: 70,
+        buyAction: 'wait',
+        stopLossPrice: 9,
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('GATE_BLOCK_NEW');
+  });
+
+  it('HOLD_ONLY held + mainline fade still TRIMs', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: holdGate,
+      trendok: {
+        score: 70,
+        buyAction: 'wait',
+        stopLossPrice: 9,
+        values: { emIndustry: '白酒' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('TRIM');
+    expect(card.why).toBe('MAINLINE_FADE');
+  });
+
+  it('does not mainline-fade TRIM when allow-set not ready', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        buyAction: 'wait',
+        stopLossPrice: 9,
+        values: { emIndustry: '白酒' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: { ready: false, names: new Set(), byName: new Map() },
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('HOLD');
+  });
+});
+
+describe('evaluateHeldTrimGates', () => {
+  it('DEFEND trims first', () => {
+    expect(
+      evaluateHeldTrimGates({
+        mode: 'DEFEND',
+        industryName: '半导体',
+        mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      }),
+    ).toEqual({ trim: true, why: 'GATE_DEFEND' });
+  });
+
+  it('mainline fade when ready and industry out', () => {
+    expect(
+      evaluateHeldTrimGates({
+        mode: 'ATTACK',
+        industryName: '白酒',
+        mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      }),
+    ).toEqual({ trim: true, why: 'MAINLINE_FADE' });
   });
 });
