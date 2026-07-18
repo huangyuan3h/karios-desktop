@@ -14,8 +14,6 @@ export const CHANDELIER_ATR_MULT = 2;
 export const BUY_SCORE_MIN = 80;
 /** Flat names below this score with TrendOK=no are marked PURGE. */
 export const PURGE_SCORE_MAX = 30;
-/** Alpha Radar max grade S + catalystScore above this → PURGE exempt (WATCH_SILENT). */
-export const ALPHA_S_PURGE_EXEMPT_SCORE_MIN = 80;
 /** Max single-name weight inside the satellite sleeve; blocks ADD at or above. */
 export const POSITION_SIZE_CAP_PCT = 15;
 /** Max sum of positionPct in one East Money industry; blocks BUY/ADD at or above. */
@@ -331,7 +329,7 @@ export function isPurgeCandidate(opts: {
 
 /**
  * Alpha Radar S-grade catalyst exemption from instant PURGE.
- * IF Max Grade == S AND catalystScore > 80 → keep as WATCH_SILENT.
+ * IF Max Grade == S → keep as WATCH_SILENT (ignore catalystScore / TrendOK score).
  */
 export function isAlphaSPurgeExempt(opts: {
   maxGrade?: string | null;
@@ -340,13 +338,7 @@ export function isAlphaSPurgeExempt(opts: {
   const grade = String(opts.maxGrade || '')
     .trim()
     .toUpperCase();
-  const score = opts.catalystScore;
-  return (
-    grade === 'S' &&
-    typeof score === 'number' &&
-    Number.isFinite(score) &&
-    score > ALPHA_S_PURGE_EXEMPT_SCORE_MIN
-  );
+  return grade === 'S';
 }
 
 /** A-share T+1: same Shanghai calendar day as entryDate cannot sell. */
@@ -357,6 +349,25 @@ export function isLockedT1(
   const d = String(entryDate || '').trim();
   const today = String(todaySh || '').trim();
   return Boolean(d && today && d === today);
+}
+
+/** Held position with no entryDate — fail-closed for sells (cannot prove T+1 unlock). */
+export function isMissingEntryDate(entryDate: string | null | undefined): boolean {
+  return !String(entryDate || '').trim();
+}
+
+/** True when Entry_Trigger (buyZoneHigh) is at or below HardStop — buy would instant-stop. */
+export function isEntryAtOrBelowHardStop(
+  entryTrigger: number | null | undefined,
+  hardStop: number | null | undefined,
+): boolean {
+  return (
+    typeof entryTrigger === 'number' &&
+    Number.isFinite(entryTrigger) &&
+    typeof hardStop === 'number' &&
+    Number.isFinite(hardStop) &&
+    entryTrigger <= hardStop
+  );
 }
 
 function atrFromParts(parts: Record<string, unknown> | null | undefined): number | null {
@@ -583,27 +594,36 @@ export function deriveActionCard(opts: {
   let why = 'WATCH';
 
   const lockedT1 = held && isLockedT1(position.entryDate, todaySh);
+  const missingEntryDate = held && isMissingEntryDate(position.entryDate);
+  const entryBelowStop =
+    !held && isEntryAtOrBelowHardStop(entryTrigger, hardStop);
+
+  const blockSellWhy = missingEntryDate
+    ? 'ENTRY_DATE_MISSING'
+    : lockedT1
+      ? 'T1_LOCK'
+      : null;
 
   if (held && (exitNow || priceAtOrBelowTrigger)) {
-    if (lockedT1) {
+    if (blockSellWhy) {
       action = 'HOLD';
-      why = 'T1_LOCK';
+      why = blockSellWhy;
     } else {
       action = 'EXIT';
       why = exitNow ? 'EXIT_NOW' : 'TRIGGER_HIT';
     }
   } else if (held && warnHalf) {
-    if (lockedT1) {
+    if (blockSellWhy) {
       action = 'HOLD';
-      why = 'T1_LOCK';
+      why = blockSellWhy;
     } else {
       action = 'TRIM';
       why = 'WARN_REDUCE_HALF';
     }
   } else if (held && heldTrim.trim) {
-    if (lockedT1) {
+    if (blockSellWhy) {
       action = 'HOLD';
-      why = 'T1_LOCK';
+      why = blockSellWhy;
     } else {
       action = 'TRIM';
       why = heldTrim.why;
@@ -633,7 +653,10 @@ export function deriveActionCard(opts: {
       why = 'PURGE_GC';
     }
   } else if (allowAttack && wantsBuy) {
-    if (!entryGate.ok) {
+    if (entryBelowStop) {
+      action = 'WATCH';
+      why = 'ENTRY_BELOW_STOP';
+    } else if (!entryGate.ok) {
       action = 'WATCH';
       why = entryGate.why;
     } else {
@@ -642,7 +665,7 @@ export function deriveActionCard(opts: {
     }
   } else if (!allowAttack && wantsBuy) {
     action = 'WATCH';
-    why = 'GATE_BLOCK_NEW';
+    why = entryBelowStop ? 'ENTRY_BELOW_STOP' : 'GATE_BLOCK_NEW';
   } else {
     action = 'WATCH';
     why =

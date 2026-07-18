@@ -1,5 +1,6 @@
 import type { ExecutionDecisionChange } from '@karios/shared';
 
+import { limitDownPrice } from '@/lib/ashare-limit';
 import { formatDecisionChangeLine } from '@/lib/exec-attention';
 
 export const COPY_ALL_LAST_AT_KEY = 'karios.copyAll.lastAt.v1';
@@ -64,6 +65,12 @@ export type CondOrderCard = {
   suggestSizeNote?: string | null;
 };
 
+/** Quote hints for hard-stop Order_Price (limit-down). */
+export type CondOrderQuoteHint = {
+  preClose?: number | null;
+  name?: string | null;
+};
+
 function fmtPrice(v: number | null | undefined): string {
   return typeof v === 'number' && Number.isFinite(v) ? String(v) : '—';
 }
@@ -82,10 +89,30 @@ function resolveExitStop(card: CondOrderCard): number | null {
   return null;
 }
 
+function formatHardStopExitLine(
+  card: CondOrderCard,
+  queuePrefix: string,
+  quote: CondOrderQuoteHint | undefined,
+): { line: string; missingPreClose: boolean } {
+  const trigger = resolveExitStop(card);
+  const ld = limitDownPrice(card.symbol, quote?.preClose ?? null, quote?.name ?? null);
+  if (ld != null) {
+    return {
+      line: `- ${queuePrefix}改单 ${card.symbol} 卖出/清仓条件 Trigger=${fmtPrice(trigger)} Order_Price=跌停价(${ld}) Why=${card.why ?? '—'}`,
+      missingPreClose: false,
+    };
+  }
+  return {
+    line: `- ${queuePrefix}改单 ${card.symbol} 卖出/清仓条件 Trigger=${fmtPrice(trigger)} Order_Price=LIMIT_DOWN(missing preClose) Why=${card.why ?? '—'}`,
+    missingPreClose: true,
+  };
+}
+
 /**
  * Conditional-order draft from Action cards (not broker API).
  * EXIT/TRIM first, then BUY/ADD when allowNewEntries.
  * When tradingTime=false, lines are prefixed [Queue for Next Open].
+ * TRIGGER_HIT EXIT uses Order_Price=limit-down (not Exit_Stop) to avoid unfillable rests.
  */
 export function formatCondOrderDraftMarkdown(
   cards: CondOrderCard[],
@@ -94,25 +121,42 @@ export function formatCondOrderDraftMarkdown(
     allowNewEntries?: boolean;
     tradingTime?: boolean;
     phase?: string | null;
+    quotes?: Record<string, CondOrderQuoteHint | undefined>;
   },
 ): string {
   const heading = opts?.heading ?? '##';
   const allowNew = opts?.allowNewEntries === true;
   const isClosed = opts?.tradingTime === false;
   const queuePrefix = isClosed ? '[Queue for Next Open] ' : '';
+  const quotes = opts?.quotes ?? {};
   const lines: string[] = [];
   lines.push(`${heading} Cond order draft`);
   lines.push(
     '- note: 非 BUY/ADD 的监控票若曾挂买入条件单则撤销；勿在回复中逐条罗列全部 WATCH',
   );
+  lines.push(
+    '- note: TRIGGER_HIT EXIT → Order_Price=当日跌停价（非 Exit_Stop），确保跳空低开可成交',
+  );
   if (isClosed) {
     const phase = opts?.phase?.trim() || 'closed';
     lines.push(`- note: phase: ${phase} — orders queue for next open`);
   }
-  const t1Locked = cards.filter((c) => String(c.why || '').toUpperCase() === 'T1_LOCK');
+  const sellBlocked = cards.filter((c) => {
+    const why = String(c.why || '').toUpperCase();
+    return why === 'T1_LOCK' || why === 'ENTRY_DATE_MISSING';
+  });
+  const t1Locked = sellBlocked.filter((c) => String(c.why || '').toUpperCase() === 'T1_LOCK');
+  const missingEntry = sellBlocked.filter(
+    (c) => String(c.why || '').toUpperCase() === 'ENTRY_DATE_MISSING',
+  );
   if (t1Locked.length) {
     lines.push(
       `- note: T1_LOCK — skipped sell/exit drafts for ${t1Locked.length} same-day buy(s)`,
+    );
+  }
+  if (missingEntry.length) {
+    lines.push(
+      `- note: ENTRY_DATE_MISSING — skipped sell/exit drafts for ${missingEntry.length} held name(s); fail-closed until entryDate is set`,
     );
   }
 
@@ -121,7 +165,7 @@ export function formatCondOrderDraftMarkdown(
   const buys: CondOrderCard[] = [];
   for (const c of cards) {
     const why = String(c.why || '').toUpperCase();
-    if (why === 'T1_LOCK') continue;
+    if (why === 'T1_LOCK' || why === 'ENTRY_DATE_MISSING') continue;
     const action = String(c.action || '').toUpperCase();
     if (action === 'EXIT') exits.push(c);
     else if (action === 'TRIM') trims.push(c);
@@ -134,12 +178,31 @@ export function formatCondOrderDraftMarkdown(
   buys.sort(bySym);
 
   let wrote = false;
-  for (const c of [...exits, ...trims]) {
-    const kind = String(c.action).toUpperCase() === 'EXIT' ? '卖出/清仓条件' : '减仓条件';
+  let missingPreCloseCount = 0;
+  for (const c of exits) {
+    const why = String(c.why || '').toUpperCase();
+    if (why === 'TRIGGER_HIT') {
+      const { line, missingPreClose } = formatHardStopExitLine(c, queuePrefix, quotes[c.symbol]);
+      if (missingPreClose) missingPreCloseCount += 1;
+      lines.push(line);
+    } else {
+      const kind = '卖出/清仓条件';
+      lines.push(
+        `- ${queuePrefix}改单 ${c.symbol} ${kind} @ Exit_Stop=${fmtPrice(resolveExitStop(c))}  Why=${c.why ?? '—'}`,
+      );
+    }
+    wrote = true;
+  }
+  for (const c of trims) {
     lines.push(
-      `- ${queuePrefix}改单 ${c.symbol} ${kind} @ Exit_Stop=${fmtPrice(resolveExitStop(c))}  Why=${c.why ?? '—'}`,
+      `- ${queuePrefix}改单 ${c.symbol} 减仓条件 @ Exit_Stop=${fmtPrice(resolveExitStop(c))}  Why=${c.why ?? '—'}`,
     );
     wrote = true;
+  }
+  if (missingPreCloseCount > 0) {
+    lines.push(
+      `- note: ${missingPreCloseCount} TRIGGER_HIT EXIT missing preClose — Order_Price not set to Exit_Stop; refresh quotes before broker submit`,
+    );
   }
 
   if (allowNew) {

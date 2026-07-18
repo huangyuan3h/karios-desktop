@@ -232,7 +232,7 @@ describe('deriveActionCard', () => {
     expect(card.distPct).toBeCloseTo(((55 - 50) / 50) * 100, 6);
   });
 
-  it('exempts PURGE to WATCH_SILENT for Alpha S + score > 80', () => {
+  it('exempts PURGE to WATCH_SILENT for Alpha Max Grade S regardless of catalystScore', () => {
     const card = deriveActionCard({
       symbol: 'CN:603019',
       gate: attackGate,
@@ -252,8 +252,8 @@ describe('deriveActionCard', () => {
     expect(card.why).toBe('ALPHA_S_WATCH');
   });
 
-  it('still PURGEs when Alpha score is not above 80', () => {
-    const card = deriveActionCard({
+  it('keeps WATCH_SILENT for Alpha S even when catalystScore is low or null', () => {
+    const low = deriveActionCard({
       symbol: 'CN:002230',
       gate: attackGate,
       trendok: {
@@ -265,10 +265,27 @@ describe('deriveActionCard', () => {
       position: { symbol: 'CN:002230', positionPct: 0 },
       currentPrice: 40,
       mainlineAllow: mainline,
-      catalyst: { maxGrade: 'S', catalystScore: 80 },
+      catalyst: { maxGrade: 'S', catalystScore: 0 },
     });
-    expect(card.action).toBe('PURGE');
-    expect(card.why).toBe('PURGE_GC');
+    expect(low.action).toBe('WATCH_SILENT');
+    expect(low.why).toBe('ALPHA_S_WATCH');
+
+    const missing = deriveActionCard({
+      symbol: 'CN:002230',
+      gate: attackGate,
+      trendok: {
+        score: 10,
+        trendOk: false,
+        buyAction: 'avoid',
+        values: { emIndustry: '软件开发' },
+      },
+      position: { symbol: 'CN:002230', positionPct: 0 },
+      currentPrice: 40,
+      mainlineAllow: mainline,
+      catalyst: { maxGrade: 'S', catalystScore: null },
+    });
+    expect(missing.action).toBe('WATCH_SILENT');
+    expect(missing.why).toBe('ALPHA_S_WATCH');
   });
 
   it('still PURGEs when Max Grade is not S', () => {
@@ -342,7 +359,7 @@ describe('deriveActionCard', () => {
     expect(card.why).toBe('TRIGGER_HIT');
   });
 
-  it('fail-opens EXIT when entryDate is missing', () => {
+  it('fail-closes EXIT when entryDate is missing', () => {
     const card = deriveActionCard({
       symbol: 'CN:002821',
       gate: attackGate,
@@ -363,8 +380,30 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
       todaySh: '2026-07-18',
     });
-    expect(card.action).toBe('EXIT');
-    expect(card.why).toBe('TRIGGER_HIT');
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('ENTRY_DATE_MISSING');
+  });
+
+  it('blocks BUY when Entry_Trigger is at or below HardStop', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:688192',
+      gate: attackGate,
+      trendok: {
+        score: 90,
+        trendOk: true,
+        buyAction: 'buy',
+        buyZoneHigh: 56.89,
+        stopLossPrice: 57.6,
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:688192', positionPct: 0 },
+      currentPrice: 60,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('ENTRY_BELOW_STOP');
+    expect(card.entryTrigger).toBe(56.89);
+    expect(card.hardStop).toBe(57.6);
   });
 
   it('computes held Dist% from Exit_Stop cushion', () => {
@@ -379,7 +418,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.3 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', positionPct: 5, costPrice: 10 },
+      position: { symbol: 'CN:600000', positionPct: 5, costPrice: 10, entryDate: '2026-07-01' },
       currentPrice: 10,
       mainlineAllow: mainline,
     });
@@ -436,7 +475,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true, atr14: 0.2 },
         values: { emIndustry: '白酒' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -455,7 +494,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: 'AI应用' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 10.5 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 10.5, entryDate: '2026-07-01' },
       currentPrice: 10.2,
       mainlineAllow: mainline,
     });
@@ -473,7 +512,7 @@ describe('deriveActionCard', () => {
         stopLossPrice: 9,
         values: { emIndustry: '白酒' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 10.5 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 10.5, entryDate: '2026-07-01' },
       currentPrice: 10.2,
       mainlineAllow: mainline,
     });
@@ -492,7 +531,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { warn_reduce_half: true, atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 8, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 8, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -509,7 +548,7 @@ describe('deriveActionCard', () => {
         stopLossPrice: 9,
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -528,7 +567,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -546,7 +585,7 @@ describe('deriveActionCard', () => {
         stopLossPrice: 9,
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -564,7 +603,7 @@ describe('deriveActionCard', () => {
         stopLossPrice: 9,
         values: { emIndustry: '白酒' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -582,7 +621,7 @@ describe('deriveActionCard', () => {
         stopLossPrice: 9,
         values: { emIndustry: '白酒' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: { ready: false, names: new Set(), byName: new Map() },
     });
@@ -622,7 +661,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.3 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       intradayChgPct: 6.1,
@@ -682,7 +721,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true, atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       intradayChgPct: 8,
@@ -745,7 +784,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.3 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       gapUp: true,
@@ -851,7 +890,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true, atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 5, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       gapUp: true,
@@ -874,7 +913,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 15, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 15, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -893,7 +932,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 14.9, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 14.9, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -912,7 +951,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 20, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 20, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -931,7 +970,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -969,7 +1008,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true, atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 20, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 20, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
@@ -988,7 +1027,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 20, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 20, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       gapUp: true,
@@ -1000,8 +1039,8 @@ describe('deriveActionCard', () => {
 
   it('blocks BUY when sector concentration >= 30%', () => {
     const exposure = buildSectorExposureByIndustry([
-      { industryName: '半导体', position: { symbol: 'CN:1', positionPct: 15 } },
-      { industryName: '半导体', position: { symbol: 'CN:2', positionPct: 15 } },
+      { industryName: '半导体', position: { symbol: 'CN:1', positionPct: 15, entryDate: '2026-07-01' } },
+      { industryName: '半导体', position: { symbol: 'CN:2', positionPct: 15, entryDate: '2026-07-01' } },
     ]);
     expect(exposure.get('半导体')).toBe(30);
     expect(isSectorConcentrationBlocked('半导体', exposure)).toBe(true);
@@ -1037,7 +1076,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       sectorExposureByIndustry: exposure,
@@ -1087,8 +1126,8 @@ describe('deriveActionCard', () => {
 
   it('excludes holdings without positionPct from sector sum', () => {
     const exposure = buildSectorExposureByIndustry([
-      { industryName: '半导体', position: { symbol: 'CN:1', costPrice: 10 } },
-      { industryName: '半导体', position: { symbol: 'CN:2', positionPct: 10 } },
+      { industryName: '半导体', position: { symbol: 'CN:1', costPrice: 10, entryDate: '2026-07-01' } },
+      { industryName: '半导体', position: { symbol: 'CN:2', positionPct: 10, entryDate: '2026-07-01' } },
     ]);
     expect(exposure.get('半导体')).toBe(10);
     expect(isSectorConcentrationBlocked('半导体', exposure)).toBe(false);
@@ -1105,7 +1144,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true, atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       sectorExposureByIndustry: new Map([['半导体', 40]]),
@@ -1168,7 +1207,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       sleeveExposurePct: 60,
@@ -1245,7 +1284,7 @@ describe('deriveActionCard', () => {
         stopLossParts: { exit_now: true, atr14: 0.2 },
         values: { emIndustry: '半导体' },
       },
-      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11 },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11, entryDate: '2026-07-01' },
       currentPrice: 10.5,
       mainlineAllow: mainline,
       sleeveExposurePct: 90,

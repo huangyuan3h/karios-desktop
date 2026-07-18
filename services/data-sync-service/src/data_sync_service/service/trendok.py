@@ -518,6 +518,28 @@ def _apply_inst_flow_risk_buy_blocks(
     buy_checks["blocked_inst_retail_chase"] = True
 
 
+def _block_buy_if_entry_at_or_below_stop(res: dict[str, Any]) -> None:
+    """Disable buy when Entry_Trigger (buyZoneHigh) <= HardStop (stopLossPrice).
+
+    Filling at/below the stop would fire an instant stop on the next tick.
+    """
+    zh = res.get("buyZoneHigh")
+    sl = res.get("stopLossPrice")
+    if not isinstance(zh, (int, float)) or not isinstance(sl, (int, float)):
+        return
+    if not (math.isfinite(float(zh)) and math.isfinite(float(sl))):
+        return
+    if float(zh) > float(sl):
+        return
+    buy_checks = res.get("buyChecks")
+    if not isinstance(buy_checks, dict):
+        buy_checks = {}
+        res["buyChecks"] = buy_checks
+    res["buyAction"] = "avoid"
+    res["buyWhy"] = "风险：狙击位不高于止损，禁止买入"
+    buy_checks["blocked_entry_vs_stop"] = True
+
+
 def _apply_intraday_risk_buy_blocks(
     res: dict[str, Any],
     *,
@@ -1538,6 +1560,7 @@ def _trendok_one(
         res["buyRefPrice"] = round(float(closes[-1]), 6) if closes else None
         res["buyWhy"] = buy_why
         res["buyChecks"] = buy_checks
+        _block_buy_if_entry_at_or_below_stop(res)
     except Exception:
         res["buyMode"] = None
         res["buyAction"] = None

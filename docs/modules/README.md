@@ -189,9 +189,13 @@ Watchlist 是**监控池**（TV Screener → 回撤 + TrendOK 导入），**不�
 
 否则 Exec 降为 `WATCH`（候选）或持仓 `HOLD`（不加仓、不 TRIM），Why 为 `NOT_MAINLINE` / `SECTOR_OUTFLOW_BLOCK`（全日板块净流出）/ `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY` / `INTRADAY_SURGE_BLOCK` / `GAP_UP_WEAK_BLOCK` / `SECTOR_CONC_BLOCK` / `SLEEVE_CAP_BLOCK`。与 Import 过滤正交。
 
-空仓且 `Score < 30` 且 `TrendOK=no` → Action=`PURGE`（Why=`PURGE_GC`）；Copy/报告生成后从 Watchlist 物理删除。**豁免**：Alpha Radar Max Grade=`S` 且 `catalystScore > 80` → Action=`WATCH_SILENT`（Why=`ALPHA_S_WATCH`），留池静默观察、不物理删。盘后三日低分自动化仍保留，且仅 `Pos%==0`（或缺失）才移除；`source=alpha_radar` 整源豁免三日 GC。
+空仓且 `Score < 30` 且 `TrendOK=no` → Action=`PURGE`（Why=`PURGE_GC`）；Copy/报告生成后从 Watchlist 物理删除。**豁免**：Alpha Radar Max Grade=`S` → Action=`WATCH_SILENT`（Why=`ALPHA_S_WATCH`），留池静默观察、不物理删（无视 TrendOK/catalystScore）。盘后三日低分自动化仍保留，且仅 `Pos%==0`（或缺失）才移除；`source=alpha_radar` 整源豁免三日 GC。
 
-持仓 `entryDate`（上海日历日）等于今日 → `Locked_T1=True`：本应 EXIT/TRIM 时降为 `HOLD`（Why=`T1_LOCK`），Cond 卖单草稿跳过；缺 `entryDate` 的老仓 fail-open（不锁）。首次 `positionPct` 从 0→>0 时自动戳 `entryDate`。
+持仓 `entryDate`（上海日历日）等于今日 → `Locked_T1=True`：本应 EXIT/TRIM 时降为 `HOLD`（Why=`T1_LOCK`），Cond 卖单草稿跳过；缺 `entryDate` → `Locked_T1=MISSING` fail-closed（Why=`ENTRY_DATE_MISSING`，禁卖并报警）。首次 `positionPct` 从 0→>0 时自动戳 `entryDate`。
+
+空仓 `Entry_Trigger`（buyZoneHigh）≤ `HardStop`（stopLossPrice）→ 禁 BUY（Why=`ENTRY_BELOW_STOP`）；后端 TrendOK 同步将 `buyAction` 置 `avoid`。
+
+硬止损 `TRIGGER_HIT` 的 Cond 草稿：`Order_Price` = 当日跌停价（非 Exit_Stop），避免跳空低开废单。
 
 ### 持仓 TRIM（DEFEND + 主线失效）
 

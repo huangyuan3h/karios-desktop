@@ -8,7 +8,9 @@ import {
   countHeldMissingPositionPct,
   deriveActionCard,
   formatSleeveBudgetLabel,
+  isHeldPosition,
   isLockedT1,
+  isMissingEntryDate,
   type CatalystPurgeHint,
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
@@ -33,7 +35,7 @@ function formatEntryDate(v: string | null | undefined): string {
 }
 
 function formatLockedT1(entryDate: string | null | undefined, todaySh: string): string {
-  if (!String(entryDate || '').trim()) return '—';
+  if (isMissingEntryDate(entryDate)) return 'MISSING';
   return isLockedT1(entryDate, todaySh) ? 'True' : 'False';
 }
 
@@ -95,10 +97,13 @@ export function buildPositionsExecutionMarkdown(
     '- note: Dist% flat = (Entry_Trigger-Current)/Current; held = (Current-Exit_Stop)/Current',
   );
   lines.push(
-    '- note: PURGE = Pos%=0 & Score<30 & TrendOK=no (removed after report); Alpha S + score>80 → WATCH_SILENT (kept)',
+    '- note: PURGE = Pos%=0 & Score<30 & TrendOK=no (removed after report); Alpha Max Grade=S → WATCH_SILENT (kept, ignore scores)',
   );
   lines.push(
-    '- note: Locked_T1=True (entryDate=today) → EXIT/TRIM blocked (Why=T1_LOCK); missing entryDate fail-open',
+    '- note: Locked_T1=True (entryDate=today) → EXIT/TRIM blocked (Why=T1_LOCK); missing entryDate → Locked_T1=MISSING fail-closed (Why=ENTRY_DATE_MISSING)',
+  );
+  lines.push(
+    '- note: Entry_Trigger <= HardStop → no BUY (Why=ENTRY_BELOW_STOP)',
   );
   if (sectorOutflowBlock) {
     lines.push(
@@ -113,6 +118,14 @@ export function buildPositionsExecutionMarkdown(
   if (missingSize > 0) {
     lines.push(
       `- note: ${missingSize} held missing positionPct (sector/sleeve caps fail-open)`,
+    );
+  }
+  const missingEntryDate = items.filter(
+    (it) => isHeldPosition(it) && isMissingEntryDate(it.entryDate),
+  ).length;
+  if (missingEntryDate > 0) {
+    lines.push(
+      `- note: ALERT ${missingEntryDate} held missing entryDate — sells blocked (fail-closed); set EntryDate before EXIT/TRIM`,
     );
   }
   lines.push('');

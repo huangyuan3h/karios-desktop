@@ -561,6 +561,8 @@ function WatchlistRowInner({
         : actionCard.action === 'WATCH_SILENT' ||
             actionCard.action === 'TRIM' ||
             actionCard.why === 'T1_LOCK' ||
+            actionCard.why === 'ENTRY_DATE_MISSING' ||
+            actionCard.why === 'ENTRY_BELOW_STOP' ||
             actionCard.why === 'NOT_MAINLINE' ||
             actionCard.why === 'SECTOR_OUTFLOW_BLOCK' ||
             actionCard.why === 'DEFENSE_SECTOR_BLOCK' ||

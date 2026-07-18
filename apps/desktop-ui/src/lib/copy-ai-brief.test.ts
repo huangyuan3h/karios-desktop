@@ -73,6 +73,45 @@ describe('formatCondOrderDraftMarkdown', () => {
     expect(exitIdx).toBeLessThan(buyIdx);
   });
 
+  it('prices TRIGGER_HIT EXIT at limit-down Order_Price not Exit_Stop', () => {
+    const md = formatCondOrderDraftMarkdown(
+      [
+        {
+          symbol: 'CN:002821',
+          action: 'EXIT',
+          why: 'TRIGGER_HIT',
+          exitStop: 161.991,
+        },
+      ],
+      {
+        allowNewEntries: false,
+        quotes: {
+          'CN:002821': { preClose: 179.99, name: '凯莱英' },
+        },
+      },
+    );
+    expect(md).toContain('Trigger=161.991');
+    expect(md).toContain('Order_Price=跌停价(161.99)');
+    expect(md).not.toMatch(/TRIGGER_HIT[\s\S]*@ Exit_Stop=161\.991/);
+  });
+
+  it('does not fall back to Exit_Stop when preClose missing', () => {
+    const md = formatCondOrderDraftMarkdown(
+      [
+        {
+          symbol: 'CN:002821',
+          action: 'EXIT',
+          why: 'TRIGGER_HIT',
+          exitStop: 161.991,
+        },
+      ],
+      { allowNewEntries: false },
+    );
+    expect(md).toContain('Order_Price=LIMIT_DOWN(missing preClose)');
+    expect(md).toContain('missing preClose — Order_Price not set to Exit_Stop');
+    expect(md).not.toContain('@ Exit_Stop=161.991');
+  });
+
   it('blocks buy lines when allowNewEntries is false', () => {
     const md = formatCondOrderDraftMarkdown(
       [{ symbol: 'CN:1', action: 'BUY', why: 'MAINLINE_OK', suggestAddPct: 5 }],
@@ -116,10 +155,30 @@ describe('formatCondOrderDraftMarkdown', () => {
           exitStop: 10,
         },
       ],
-      { allowNewEntries: false },
+      {
+        allowNewEntries: false,
+        quotes: { 'CN:600000': { preClose: 11, name: '浦发银行' } },
+      },
     );
     expect(md).toContain('T1_LOCK — skipped sell/exit drafts for 1 same-day buy(s)');
     expect(md).not.toContain('CN:002821');
-    expect(md).toContain('改单 CN:600000 卖出/清仓条件 @ Exit_Stop=10');
+    expect(md).toContain('改单 CN:600000 卖出/清仓条件 Trigger=10 Order_Price=跌停价(9.9)');
+  });
+
+  it('skips ENTRY_DATE_MISSING sell drafts fail-closed', () => {
+    const md = formatCondOrderDraftMarkdown(
+      [
+        {
+          symbol: 'CN:002821',
+          action: 'HOLD',
+          why: 'ENTRY_DATE_MISSING',
+          exitStop: 42.1,
+        },
+      ],
+      { allowNewEntries: false },
+    );
+    expect(md).toContain('ENTRY_DATE_MISSING — skipped sell/exit drafts for 1');
+    expect(md).toContain('fail-closed');
+    expect(md).not.toContain('改单 CN:002821');
   });
 });

@@ -31,6 +31,7 @@ import {
   formatSinceLastCopyMarkdown,
   readLastCopyAt,
   type CondOrderCard,
+  type CondOrderQuoteHint,
 } from '@/lib/copy-ai-brief';
 import {
   buildExecAttentionQueue,
@@ -796,6 +797,7 @@ export type DashboardCopyAllOptions = {
 type ExecutionCopyBundle = {
   attentionMd: string;
   cards: CondOrderCard[];
+  quotes: Record<string, CondOrderQuoteHint>;
 };
 
 async function buildExecutionCopyBundle(opts: {
@@ -811,10 +813,20 @@ async function buildExecutionCopyBundle(opts: {
     .map((x) => ({ ...x, symbol: String(x.symbol).trim().toUpperCase() }));
 
   let liveCards: CondOrderCard[] | null = null;
+  let quotes: Record<string, CondOrderQuoteHint> = {};
   if (gate && items.length) {
     try {
       const symbols = items.map((i) => i.symbol);
       const market = await fetchWatchlistSnapshotForCopy(symbols, queryClient);
+      const nameBySym = new Map(items.map((i) => [i.symbol, i.name ?? null]));
+      quotes = {};
+      for (const sym of symbols) {
+        const q = market.quotes[sym];
+        quotes[sym] = {
+          preClose: q?.preClose ?? null,
+          name: nameBySym.get(sym) ?? null,
+        };
+      }
       const catalystBySymbol = await fetchCatalystStocks(
         DATA_SYNC_BASE_URL,
         50,
@@ -835,6 +847,7 @@ async function buildExecutionCopyBundle(opts: {
       liveCards = (payload?.cards as CondOrderCard[] | undefined) ?? null;
     } catch {
       liveCards = null;
+      quotes = {};
     }
   } else if (gate && !items.length) {
     liveCards = [];
@@ -875,6 +888,7 @@ async function buildExecutionCopyBundle(opts: {
   return {
     attentionMd: formatExecAttentionMarkdown(queue, { heading: '##', source }),
     cards: cards as CondOrderCard[],
+    quotes,
   };
 }
 
@@ -965,6 +979,7 @@ export async function buildDashboardCopyAllMarkdown(
             { source: 'none' },
           ),
           cards: [],
+          quotes: {},
         }),
       ),
       buildSinceLastCopyMarkdown().catch(() =>
@@ -977,6 +992,7 @@ export async function buildDashboardCopyAllMarkdown(
     allowNewEntries: executionGate?.allowNewEntries === true,
     tradingTime,
     phase: tradingTime ? 'Open' : 'Closed',
+    quotes: execBundle.quotes,
   });
   const lines: string[] = [];
   lines.push(`# Copy all (Dashboard)`);

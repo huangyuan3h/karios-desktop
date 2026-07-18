@@ -45,10 +45,13 @@
 4. Industry / Sentiment / Macro / News / Alpha — 只作原料，不改合同  
 
 缺数据写「Copy 未提供」，禁止编造。
-不得平反 *_BLOCK（如 INTRADAY_SURGE_BLOCK / GAP_UP_WEAK_BLOCK / SIZE_CAP_BLOCK / SECTOR_CONC_BLOCK / SECTOR_OUTFLOW_BLOCK）；不得劝跳过 EXIT（除非 Why=`T1_LOCK`）。
+不得平反 *_BLOCK（如 INTRADAY_SURGE_BLOCK / GAP_UP_WEAK_BLOCK / SIZE_CAP_BLOCK / SECTOR_CONC_BLOCK / SECTOR_OUTFLOW_BLOCK / ENTRY_BELOW_STOP）；不得劝跳过 EXIT（除非 Why=`T1_LOCK` 或 `ENTRY_DATE_MISSING`）。
 PURGE = 空仓僵尸清理（非卖出指令）；报告生成后会从监控池物理剔除。
-WATCH_SILENT = Alpha Radar Max Grade=S 且 catalystScore>80 的破位空仓票：禁 PURGE，留池静默观察（非买单）。
+WATCH_SILENT = Alpha Radar Max Grade=S 的破位空仓票：禁 PURGE，留池静默观察（非买单）；无视 TrendOK/catalystScore。
 T1_LOCK = 当日买入（EntryDate=today / Locked_T1=True）：禁卖出/清仓条件单，等下一交易日。
+ENTRY_DATE_MISSING = 持仓缺 EntryDate（Locked_T1=MISSING）：fail-closed，禁卖出/清仓条件单，须补全建仓日。
+ENTRY_BELOW_STOP = Entry_Trigger ≤ HardStop：禁 BUY（落地即触发止损）。
+TRIGGER_HIT EXIT 的 Cond Order_Price = 当日跌停价（非 Exit_Stop），防止跳空低开废单。
 
 ---
 
@@ -62,7 +65,8 @@ T1_LOCK = 当日买入（EntryDate=today / Locked_T1=True）：禁卖出/清仓�
 ## 2. Gate / Action
 
 ATTACK 可进攻主线；HOLD_ONLY / DEFEND 禁新开。DEFEND 优先减仓/退出。
-EXIT/TRIM/TRIGGER_* 必须执行（Why=`T1_LOCK` 除外）；WATCH / WATCH_SILENT ≠ 买单；PURGE ≠ 卖出（只清监控池）。
+EXIT/TRIM/TRIGGER_* 必须执行（Why=`T1_LOCK` / `ENTRY_DATE_MISSING` 除外）；WATCH / WATCH_SILENT ≠ 买单；PURGE ≠ 卖出（只清监控池）。
+Cond：`TRIGGER_HIT` 清仓单用 `Order_Price=跌停价`，Trigger 仍为 Exit_Stop。
 
 统一操作表列：Symbol | Name | RS | Score | TrendOK | Current | Pos% | CostPrice | P&L% | EntryDate | Locked_T1 | Action | Suggest% | Entry_Trigger | Exit_Stop | HardStop | TrailStop | Dist% | Mainline | Why
 
