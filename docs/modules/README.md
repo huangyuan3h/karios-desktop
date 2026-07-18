@@ -169,9 +169,9 @@ Dashboard 卡片 **Decision Journal** 把 Gate + Action Card 写成可回放时�
 
 ### 下游判断 AI（Copy → Agent）
 
-外部 / 本仓判断 AI 的 system prompt 见 **[downstream-ai-prompt.md](./downstream-ai-prompt.md)（V7.0 Desk + Coach）**。
+外部 / 本仓判断 AI 的 system prompt 见 **[downstream-ai-prompt.md](./downstream-ai-prompt.md)（V7.2 · 操作表 + 战情汇报）**。
 
-要点：Gate / Attention / Positions 为硬合同；输出以**操作表**为先，并必须带**市场简报**与止损日的纪律安抚/成长小问。Industry / Sentiment / News / Alpha 为解释层。新增 Why 码默认按 `*_BLOCK` / `*_FADE` 硬约束兼容。
+要点：Gate / Attention / Positions 为硬合同；先给**操作表**，再强制 **战情汇报 7 项**（指数/大宗/资金流向/市场情绪/我们的策略/Alpha/新闻），称呼指挥官，零容忍违规，少废话无练习题。
 
 ### 主线绑定（BUY/ADD 硬闸）
 

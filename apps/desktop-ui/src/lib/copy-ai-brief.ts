@@ -28,16 +28,15 @@ export function writeLastCopyAt(iso: string): void {
 
 /**
  * Embedded brief for Copy all.
- * Complements System Prompt V7: ops table first, then market brief + coaching — not checklist-only.
+ * Complements System Prompt V7.2: ops table + mandatory 7-topic war brief for 指挥官.
  */
 export function formatAiCopyInstructionHeader(heading = '##'): string {
   const lines = [
     `${heading} AI instructions (embedded)`,
-    '- 服从 Gate → Attention → Cond order → Positions；解释层不得推翻合同 / 不得平反 *_BLOCK。',
-    '- 输出顺序：A 操作表（持仓动作 + 允许的 BUY/ADD）→ B 市场简报（大盘/主线/为何/新闻/Alpha）→ C 纪律安抚与一个成长小问。',
-    '- 操作表用 Markdown 表格；数量用 Suggest%；止损/退出用 Trigger（有 Trail 优先）。',
-    '- 不要把监控池全部 WATCH 逐条写成撤单清单；一句总注即可。不要只输出改单/撤单/维持/禁止四段。',
-    '- 用户可继续追问市场与情绪；仍不得改写操作表方向。缺近况时按合同执行并标注假设。',
+    '- 称呼指挥官。服从 Gate → Attention → Cond order → Positions；不得平反 *_BLOCK / 不得劝跳过 EXIT。',
+    '- 先给操作表；再给【战情汇报】且必须含 7 项标题：指数 / 大宗 / 资金流向 / 市场情绪 / 我们的策略 / Alpha / 新闻（每项 1～3 句重点，缺则写未提供）。',
+    '- 表格用 Suggest% 与 Trigger。勿刷整池 WATCH 撤单。少废话，无练习题；对违规零容忍，语气像老友。',
+    '- 指挥官可继续追问；缺近况时按合同执行。',
     '',
   ];
   return lines.join('\n');
