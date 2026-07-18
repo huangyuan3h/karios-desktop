@@ -29,11 +29,23 @@ import {
   mdPrice,
   buildHotIndustriesMarkdown,
 } from '@/lib/dashboard-format';
+import {
+  buildExecAttentionQueue,
+  formatExecAttentionMarkdown,
+  resolveAttentionCards,
+} from '@/lib/exec-attention';
 import { parseExecutionGate } from '@/lib/execution-action';
-import { fetchExecutionJournalMarkdown } from '@/lib/execution-journal';
+import {
+  buildExecutionSnapshotPayload,
+  fetchExecutionJournalMarkdown,
+} from '@/lib/execution-journal';
 import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
 import { buildMainlineAllowSet, type MainlineAllowSet } from '@/lib/hot-industry-picks';
-import type { ExecutionGate } from '@karios/shared';
+import type {
+  ExecutionChangeListResponse,
+  ExecutionGate,
+  ExecutionSnapshotListResponse,
+} from '@karios/shared';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import {
   getShanghaiTodayIso,
@@ -854,6 +866,73 @@ export type DashboardCopyAllOptions = {
   queryClient?: QueryClient;
 };
 
+async function buildExecAttentionCopyMarkdown(opts: {
+  gate: ExecutionGate | null;
+  mainlineAllow: MainlineAllowSet | null;
+  queryClient?: QueryClient;
+}): Promise<string> {
+  const { gate, mainlineAllow, queryClient } = opts;
+  const itemsRaw = loadWatchlist();
+  const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
+    .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
+    .map((x) => ({ ...x, symbol: String(x.symbol).trim().toUpperCase() }));
+
+  let liveCards: Array<{ symbol: string; action: string; why?: string | null }> | null = null;
+  if (gate && items.length) {
+    try {
+      const symbols = items.map((i) => i.symbol);
+      const market = await fetchWatchlistSnapshotForCopy(symbols, queryClient);
+      const payload = buildExecutionSnapshotPayload({
+        items,
+        trend: market.trend,
+        quotes: market.quotes,
+        gate,
+        mainlineAllow,
+        source: 'poll',
+      });
+      liveCards = payload?.cards ?? null;
+    } catch {
+      liveCards = null;
+    }
+  } else if (gate && !items.length) {
+    liveCards = [];
+  }
+
+  let snapshotCards: Array<{ symbol: string; action: string; why?: string | null }> = [];
+  try {
+    const td = getShanghaiTodayIso();
+    const snaps = await apiGetJson<ExecutionSnapshotListResponse>(
+      `/execution/snapshots?trade_date=${encodeURIComponent(td)}&limit=1`,
+    );
+    const latest = snaps?.items?.[0];
+    if (latest && Array.isArray(latest.cards)) {
+      snapshotCards = latest.cards;
+    }
+  } catch {
+    // ignore
+  }
+
+  let changes: ExecutionChangeListResponse['items'] = [];
+  try {
+    const td = getShanghaiTodayIso();
+    const ch = await apiGetJson<ExecutionChangeListResponse>(
+      `/execution/changes?trade_date=${encodeURIComponent(td)}&limit=100`,
+    );
+    changes = Array.isArray(ch?.items) ? ch.items : [];
+  } catch {
+    changes = [];
+  }
+
+  const { cards, source } = resolveAttentionCards({ liveCards, snapshotCards });
+  const queue = buildExecAttentionQueue({
+    gate,
+    watchlistItems: items,
+    cards,
+    changes,
+  });
+  return formatExecAttentionMarkdown(queue, { heading: '##', source });
+}
+
 export async function buildDashboardCopyAllMarkdown(
   options: DashboardCopyAllOptions,
 ): Promise<string> {
@@ -886,7 +965,7 @@ export async function buildDashboardCopyAllMarkdown(
   });
   const executionGate = parseExecutionGate((s as any)?.marketSentiment?.executionGate);
   const mainlineAllow = buildMainlineAllowSet(s);
-  const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd] = await Promise.all([
+  const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd, attentionMd] = await Promise.all([
     buildScreenersMarkdown(s, '##', queryClient),
     buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow),
     buildCompactCatalystMarkdown(s),
@@ -902,6 +981,21 @@ export async function buildDashboardCopyAllMarkdown(
         }),
       )
       .catch(() => '## Alpha Radar · Structured Trends\n\n- Alpha Radar trends: unavailable\n'),
+    buildExecAttentionCopyMarkdown({
+      gate: executionGate,
+      mainlineAllow,
+      queryClient,
+    }).catch(() =>
+      formatExecAttentionMarkdown(
+        buildExecAttentionQueue({
+          gate: executionGate,
+          watchlistItems: [],
+          cards: [],
+          changes: [],
+        }),
+        { source: 'none' },
+      ),
+    ),
   ]);
   const lines: string[] = [];
   lines.push(`# Copy all (Dashboard)`);
@@ -915,6 +1009,8 @@ export async function buildDashboardCopyAllMarkdown(
       '##',
     ).trim(),
   );
+  lines.push('');
+  lines.push(attentionMd.trim());
   lines.push('');
   try {
     const journalMd = await fetchExecutionJournalMarkdown({

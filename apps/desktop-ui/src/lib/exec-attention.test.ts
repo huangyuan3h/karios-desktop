@@ -5,6 +5,7 @@ import type { ExecutionDecisionChange, ExecutionGate } from '@karios/shared';
 import {
   buildExecAttentionQueue,
   formatDecisionChangeLine,
+  formatExecAttentionMarkdown,
   resolveAttentionCards,
 } from './exec-attention';
 
@@ -163,5 +164,25 @@ describe('buildExecAttentionQueue', () => {
     expect(q.keyChanges.map((x) => x.id)).toEqual(['1', '3', '4']);
     expect(q.keyChanges[0].line).toContain('action');
     expect(formatDecisionChangeLine(changes[2])).toContain('Gate mode');
+  });
+
+  it('formats attention markdown for Copy all', () => {
+    const q = buildExecAttentionQueue({
+      gate: attackGate,
+      watchlistItems: [{ symbol: 'CN:1', positionPct: 20 }],
+      cards: [
+        { symbol: 'CN:600000', action: 'EXIT', why: 'EXIT_NOW' },
+        { symbol: 'CN:600001', action: 'BUY', why: 'MAINLINE_OK' },
+      ],
+      changes: [],
+    });
+    const md = formatExecAttentionMarkdown(q, { source: 'live' });
+    expect(md).toContain('## Exec Attention');
+    expect(md).toContain('- source: live');
+    expect(md).toContain('Sleeve 20.0% / 60%');
+    expect(md).toContain('### Must act');
+    expect(md).toContain('CN:600000  EXIT  EXIT_NOW');
+    expect(md).toContain('### Fire');
+    expect(md).toContain('CN:600001  BUY  MAINLINE_OK');
   });
 });

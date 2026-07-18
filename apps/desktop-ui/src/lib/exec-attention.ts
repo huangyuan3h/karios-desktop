@@ -111,3 +111,52 @@ export function buildExecAttentionQueue(opts: {
     keyChanges,
   };
 }
+
+/** Markdown block for Copy all (same shape as Dashboard Exec Attention). */
+export function formatExecAttentionMarkdown(
+  queue: ExecAttentionQueue,
+  opts?: { heading?: string; source?: AttentionCardsSource },
+): string {
+  const heading = opts?.heading ?? '##';
+  const lines: string[] = [];
+  lines.push(`${heading} Exec Attention`);
+  if (opts?.source && opts.source !== 'none') {
+    lines.push(`- source: ${opts.source}`);
+  }
+  lines.push(`- ${queue.sleeveLabel}`);
+  if (queue.missingSize > 0) {
+    lines.push(
+      `- note: ${queue.missingSize} held missing positionPct (sector/sleeve caps fail-open)`,
+    );
+  }
+  lines.push('');
+  lines.push(`${heading}# Must act`);
+  const mustAct = [...queue.exits, ...queue.trims];
+  if (!mustAct.length) {
+    lines.push('- None');
+  } else {
+    for (const x of mustAct) {
+      lines.push(`- ${x.symbol}  ${x.action}  ${x.why ?? '—'}`);
+    }
+  }
+  lines.push('');
+  lines.push(`${heading}# Fire`);
+  if (queue.fireBlockedByGate) {
+    lines.push('- Gate blocks new entries');
+  } else if (!queue.fires.length) {
+    lines.push('- None');
+  } else {
+    for (const x of queue.fires) {
+      lines.push(`- ${x.symbol}  ${x.action}  ${x.why ?? '—'}`);
+    }
+  }
+  if (queue.keyChanges.length) {
+    lines.push('');
+    lines.push(`${heading}# Key changes`);
+    for (const c of queue.keyChanges) {
+      lines.push(`- ${c.line}`);
+    }
+  }
+  lines.push('');
+  return lines.join('\n');
+}
