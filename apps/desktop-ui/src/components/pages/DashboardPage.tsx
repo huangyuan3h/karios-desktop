@@ -561,6 +561,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                 <DecisionJournalCard
                   gate={executionGate}
                   watchlistItems={watchlistItems}
+                  mainlineAllow={mainlineAllow}
                   onNavigate={onNavigate}
                   captureBusy={decisionCaptureBusy}
                   onSnapshotNow={() => void captureDecisionSnapshot('manual')}

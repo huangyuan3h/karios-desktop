@@ -24,6 +24,25 @@ export type ExecAttentionQueue = {
   keyChanges: Array<{ id: string; line: string }>;
 };
 
+export type AttentionCardsSource = 'live' | 'snapshot' | 'none';
+
+/** Prefer live Action cards; fall back to journal snapshot. */
+export function resolveAttentionCards(opts: {
+  liveCards: Array<{ symbol: string; action: string; why?: string | null }> | null | undefined;
+  snapshotCards: Array<{ symbol: string; action: string; why?: string | null }>;
+}): {
+  cards: Array<{ symbol: string; action: string; why?: string | null }>;
+  source: AttentionCardsSource;
+} {
+  if (opts.liveCards != null) {
+    return { cards: opts.liveCards, source: 'live' };
+  }
+  if (opts.snapshotCards.length > 0) {
+    return { cards: opts.snapshotCards, source: 'snapshot' };
+  }
+  return { cards: [], source: 'none' };
+}
+
 export function formatDecisionChangeLine(c: ExecutionDecisionChange): string {
   const t = c.changedAt ? fmtDateTime(c.changedAt) : '—';
   if (c.scope === 'gate') {

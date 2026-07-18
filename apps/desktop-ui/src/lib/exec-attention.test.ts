@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { ExecutionDecisionChange, ExecutionGate } from '@karios/shared';
 
-import { buildExecAttentionQueue, formatDecisionChangeLine } from './exec-attention';
+import {
+  buildExecAttentionQueue,
+  formatDecisionChangeLine,
+  resolveAttentionCards,
+} from './exec-attention';
 
 const attackGate: ExecutionGate = {
   mode: 'ATTACK',
@@ -24,6 +28,32 @@ const holdGate: ExecutionGate = {
   marketRegime: 'Diverging',
   reasons: ['REGIME_DIVERGING'],
 };
+
+describe('resolveAttentionCards', () => {
+  it('prefers live over snapshot', () => {
+    const live = [{ symbol: 'CN:1', action: 'EXIT', why: 'EXIT_NOW' }];
+    const snap = [{ symbol: 'CN:2', action: 'TRIM', why: 'GATE_DEFEND' }];
+    expect(resolveAttentionCards({ liveCards: live, snapshotCards: snap })).toEqual({
+      cards: live,
+      source: 'live',
+    });
+  });
+
+  it('falls back to snapshot when live is null', () => {
+    const snap = [{ symbol: 'CN:2', action: 'TRIM', why: 'GATE_DEFEND' }];
+    expect(resolveAttentionCards({ liveCards: null, snapshotCards: snap })).toEqual({
+      cards: snap,
+      source: 'snapshot',
+    });
+  });
+
+  it('returns none when both empty', () => {
+    expect(resolveAttentionCards({ liveCards: null, snapshotCards: [] })).toEqual({
+      cards: [],
+      source: 'none',
+    });
+  });
+});
 
 describe('buildExecAttentionQueue', () => {
   it('buckets EXIT/TRIM/BUY and sorts by symbol', () => {

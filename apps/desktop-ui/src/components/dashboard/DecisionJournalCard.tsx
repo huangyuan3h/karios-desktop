@@ -8,14 +8,18 @@ import { executionGateBadgeClass, fmtDateTime } from '@/lib/dashboard-format';
 import {
   buildExecAttentionQueue,
   formatDecisionChangeLine,
+  resolveAttentionCards,
   type ExecAttentionLine,
 } from '@/lib/exec-attention';
-import type { PositionLike } from '@/lib/execution-action';
+import { buildExecutionSnapshotPayload } from '@/lib/execution-journal';
+import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
+import { useWatchlistMarketQuery } from '@/lib/queries/watchlist';
 import {
   useExecutionChangesQuery,
   useExecutionRecentSnapshotsQuery,
   useExecutionSnapshotsQuery,
 } from '@/lib/queries/execution-journal';
+import type { WatchlistItem } from '@/lib/watchlist-storage';
 
 function AttentionLines({
   lines,
@@ -42,14 +46,28 @@ function AttentionLines({
 
 export function DecisionJournalCard(props: {
   gate: ExecutionGate | null;
-  watchlistItems?: PositionLike[];
+  watchlistItems?: WatchlistItem[];
+  mainlineAllow?: MainlineAllowSet | null;
   captureBusy?: boolean;
   onSnapshotNow?: () => void;
   onNavigate?: (pageId: string) => void;
 }) {
-  const { gate, watchlistItems = [], captureBusy, onSnapshotNow, onNavigate } = props;
+  const {
+    gate,
+    watchlistItems = [],
+    mainlineAllow = null,
+    captureBusy,
+    onSnapshotNow,
+    onNavigate,
+  } = props;
   const [showHistory, setShowHistory] = React.useState(false);
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
+
+  const symbols = React.useMemo(
+    () => watchlistItems.map((i) => i.symbol).filter(Boolean),
+    [watchlistItems],
+  );
+  const marketQ = useWatchlistMarketQuery(symbols);
 
   const changesQ = useExecutionChangesQuery();
   const snapsQ = useExecutionSnapshotsQuery();
@@ -65,17 +83,41 @@ export function DecisionJournalCard(props: {
   const liveMode = gate?.mode ?? null;
   const modeChanged = Boolean(liveMode && latestGateMode && liveMode !== latestGateMode);
 
-  const cards = Array.isArray(latest?.cards) ? latest!.cards : [];
+  const snapshotCards = Array.isArray(latest?.cards) ? latest!.cards : [];
+
+  const liveCards = React.useMemo(() => {
+    if (!gate) return null;
+    if (!watchlistItems.length) return [];
+    if (!marketQ.data) return null;
+    const payload = buildExecutionSnapshotPayload({
+      items: watchlistItems,
+      trend: marketQ.data.trend,
+      quotes: marketQ.data.quotes,
+      gate,
+      mainlineAllow,
+      source: 'poll',
+    });
+    return payload?.cards ?? null;
+  }, [gate, watchlistItems, marketQ.data, mainlineAllow]);
+
+  const { cards: actionCards, source: cardsSource } = React.useMemo(
+    () =>
+      resolveAttentionCards({
+        liveCards,
+        snapshotCards,
+      }),
+    [liveCards, snapshotCards],
+  );
 
   const attention = React.useMemo(
     () =>
       buildExecAttentionQueue({
         gate,
         watchlistItems,
-        cards,
+        cards: actionCards,
         changes,
       }),
-    [gate, watchlistItems, cards, changes],
+    [gate, watchlistItems, actionCards, changes],
   );
 
   const mustAct = [...attention.exits, ...attention.trims];
@@ -85,6 +127,15 @@ export function DecisionJournalCard(props: {
       <div className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)]/40 px-3 py-2">
         <div className="mb-1 flex flex-wrap items-center gap-2">
           <div className="text-xs font-medium text-[var(--k-muted)]">Exec Attention</div>
+          <span className="text-[10px] text-[var(--k-muted)]">
+            {cardsSource === 'live'
+              ? 'live'
+              : cardsSource === 'snapshot'
+                ? 'from snapshot'
+                : marketQ.isLoading || marketQ.isFetching
+                  ? 'loading…'
+                  : '—'}
+          </span>
           {onNavigate ? (
             <Button
               size="sm"
@@ -104,11 +155,17 @@ export function DecisionJournalCard(props: {
         ) : null}
         <div className="mt-2">
           <div className="mb-0.5 text-[11px] font-medium text-[var(--k-muted)]">Must act</div>
-          <AttentionLines lines={mustAct} empty="None" />
+          {cardsSource === 'none' && (marketQ.isLoading || marketQ.isFetching) ? (
+            <div className="text-[11px] text-[var(--k-muted)]">Loading market…</div>
+          ) : (
+            <AttentionLines lines={mustAct} empty="None" />
+          )}
         </div>
         <div className="mt-2">
           <div className="mb-0.5 text-[11px] font-medium text-[var(--k-muted)]">Fire</div>
-          {attention.fireBlockedByGate ? (
+          {cardsSource === 'none' && (marketQ.isLoading || marketQ.isFetching) ? (
+            <div className="text-[11px] text-[var(--k-muted)]">Loading market…</div>
+          ) : attention.fireBlockedByGate ? (
             <div className="text-[11px] text-[var(--k-muted)]">Gate blocks new entries</div>
           ) : (
             <AttentionLines lines={attention.fires} empty="None" />
@@ -124,9 +181,14 @@ export function DecisionJournalCard(props: {
             </ul>
           </div>
         ) : null}
-        {!latest ? (
+        {cardsSource === 'snapshot' ? (
           <div className="mt-2 text-[11px] text-[var(--k-muted)]">
-            No snapshot yet — Snapshot now to fill Must act / Fire.
+            Actions from last journal snapshot (live market unavailable).
+          </div>
+        ) : null}
+        {cardsSource === 'none' && !marketQ.isLoading && !marketQ.isFetching ? (
+          <div className="mt-2 text-[11px] text-[var(--k-muted)]">
+            No live market or snapshot yet — open Watchlist / Snapshot now.
           </div>
         ) : null}
       </div>
@@ -170,7 +232,7 @@ export function DecisionJournalCard(props: {
       {latest ? (
         <div className="text-xs text-[var(--k-muted)]">
           Latest snapshot: {fmtDateTime(latest.capturedAt ?? null)} · source={latest.source} ·{' '}
-          {cards.length} cards
+          {snapshotCards.length} cards
         </div>
       ) : (
         <div className="text-xs text-[var(--k-muted)]">
@@ -202,7 +264,7 @@ export function DecisionJournalCard(props: {
         )}
       </div>
 
-      {cards.length > 0 ? (
+      {snapshotCards.length > 0 ? (
         <div>
           <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">Latest actions</div>
           <div className="max-h-40 overflow-auto rounded border border-[var(--k-border)]">
@@ -216,7 +278,7 @@ export function DecisionJournalCard(props: {
                 </tr>
               </thead>
               <tbody>
-                {cards.map((c) => (
+                {snapshotCards.map((c) => (
                   <tr key={c.symbol} className="border-t border-[var(--k-border)] font-mono">
                     <td className="px-2 py-1">{c.symbol}</td>
                     <td className="px-2 py-1 font-semibold">{c.action}</td>
