@@ -5,7 +5,7 @@ import { CircleX, ExternalLink, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
-import { deriveActionCard } from '@/lib/execution-action';
+import { deriveActionCard, isHeldMissingPositionPct } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import type { ExecutionGate } from '@karios/shared';
 import {
@@ -606,7 +606,11 @@ function WatchlistRowInner({
       </td>
       <td className="px-2 py-2">
         <input
-          className="h-8 w-full min-w-0 max-w-[52px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-1.5 font-mono text-xs outline-none"
+          className={
+            isHeldMissingPositionPct(it)
+              ? 'h-8 w-full min-w-0 max-w-[52px] rounded-md border border-amber-500/60 bg-[var(--k-surface-2)] px-1.5 font-mono text-xs outline-none'
+              : 'h-8 w-full min-w-0 max-w-[52px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-1.5 font-mono text-xs outline-none'
+          }
           placeholder="0"
           value={
             typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)

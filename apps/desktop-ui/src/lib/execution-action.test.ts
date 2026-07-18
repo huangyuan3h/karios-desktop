@@ -6,12 +6,15 @@ import {
   BUY_SCORE_MIN,
   buildSectorExposureByIndustry,
   buildSleeveExposurePct,
+  countHeldMissingPositionPct,
   deriveActionCard,
   deriveTriggerAndTrail,
   evaluateHeldTrimGates,
   evaluateNewEntryGates,
+  formatSleeveBudgetLabel,
   isAtOrOverPositionSizeCap,
   isDefenseSector,
+  isHeldMissingPositionPct,
   isHeldPosition,
   isSectorConcentrationBlocked,
   isSleeveCapBlocked,
@@ -1059,6 +1062,26 @@ describe('deriveActionCard', () => {
       positionRangeHint: '50%-60%',
     });
     expect(entry).toEqual({ ok: false, tag: null, why: 'SECTOR_CONC_BLOCK' });
+  });
+
+  it('counts held names missing positionPct', () => {
+    expect(
+      countHeldMissingPositionPct([
+        { symbol: 'CN:1', costPrice: 10 },
+        { symbol: 'CN:2', costPrice: 10, positionPct: 15 },
+        { symbol: 'CN:3' },
+        { symbol: 'CN:4', positionPct: 0, costPrice: 8 },
+      ]),
+    ).toBe(2);
+    expect(isHeldMissingPositionPct({ symbol: 'CN:1', costPrice: 10 })).toBe(true);
+    expect(isHeldMissingPositionPct({ symbol: 'CN:2', costPrice: 10, positionPct: 15 })).toBe(false);
+    expect(isHeldMissingPositionPct({ symbol: 'CN:3' })).toBe(false);
+  });
+
+  it('formats sleeve budget label with one decimal', () => {
+    expect(formatSleeveBudgetLabel(45, '50%-60%')).toBe('Sleeve 45.0% / 60%');
+    expect(formatSleeveBudgetLabel(0, '—')).toBe('Sleeve 0.0% / —');
+    expect(formatSleeveBudgetLabel(59.9, '30%')).toBe('Sleeve 59.9% / 30%');
   });
 });
 

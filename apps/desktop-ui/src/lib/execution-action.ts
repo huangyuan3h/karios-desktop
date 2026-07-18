@@ -156,6 +156,35 @@ export function isSleeveCapBlocked(
   return sleeveExposurePct >= maxPct;
 }
 
+/** Held names with no finite positive positionPct (caps fail-open for these). */
+export function countHeldMissingPositionPct(positions: PositionLike[]): number {
+  let n = 0;
+  for (const pos of positions) {
+    if (!isHeldPosition(pos)) continue;
+    const pct = num(pos.positionPct);
+    if (pct == null || pct <= 0) n += 1;
+  }
+  return n;
+}
+
+/** True when held but positionPct is missing / non-positive. */
+export function isHeldMissingPositionPct(pos: PositionLike): boolean {
+  if (!isHeldPosition(pos)) return false;
+  const pct = num(pos.positionPct);
+  return pct == null || pct <= 0;
+}
+
+/** Display: "Sleeve 45.0% / 60%" or "Sleeve 0.0% / —". */
+export function formatSleeveBudgetLabel(
+  sleeveExposurePct: number,
+  positionRangeHint: string | null | undefined,
+): string {
+  const sum = Number.isFinite(sleeveExposurePct) ? sleeveExposurePct : 0;
+  const maxPct = parsePositionRangeHintMaxPct(positionRangeHint);
+  const maxLabel = maxPct == null ? '—' : `${maxPct}%`;
+  return `Sleeve ${sum.toFixed(1)}% / ${maxLabel}`;
+}
+
 export function computePnLPct(cost: number | null, current: number | null): number | null {
   if (cost == null || cost <= 0 || current == null || !Number.isFinite(current)) return null;
   return ((current - cost) / cost) * 100;

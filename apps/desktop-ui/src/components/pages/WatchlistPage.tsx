@@ -11,7 +11,12 @@ import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistTrend } from '@/hooks/useWatchlistTrend';
 import { useChatStore } from '@/lib/chat/store';
 import { executionGateBadgeClass } from '@/lib/dashboard-format';
-import { parseExecutionGate } from '@/lib/execution-action';
+import {
+  buildSleeveExposurePct,
+  countHeldMissingPositionPct,
+  formatSleeveBudgetLabel,
+  parseExecutionGate,
+} from '@/lib/execution-action';
 import { buildMainlineAllowSet } from '@/lib/hot-industry-picks';
 import { useDashboardSummaryQuery } from '@/lib/queries/dashboard';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
@@ -329,6 +334,20 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 allowNewEntries={String(executionGate.allowNewEntries)} · {executionGate.marketRegime}
               </span>
             </div>
+            <div className="mt-1 text-xs opacity-90">
+              {formatSleeveBudgetLabel(
+                buildSleeveExposurePct(items),
+                executionGate.positionRangeHint,
+              )}
+            </div>
+            {(() => {
+              const missingSize = countHeldMissingPositionPct(items);
+              return missingSize > 0 ? (
+                <div className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                  {missingSize} held missing size
+                </div>
+              ) : null;
+            })()}
             {executionGate.satelliteNote ? (
               <div className="mt-1 text-xs opacity-90">{executionGate.satelliteNote}</div>
             ) : null}

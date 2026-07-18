@@ -4,7 +4,9 @@ import { mdPrice, mdTable } from '@/lib/dashboard-format';
 import {
   buildSectorExposureFromWatchlist,
   buildSleeveExposurePct,
+  countHeldMissingPositionPct,
   deriveActionCard,
+  formatSleeveBudgetLabel,
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import type { TrendOkResult } from '@/lib/api/types';
@@ -38,9 +40,18 @@ export function buildPositionsExecutionMarkdown(
   lines.push(
     '- note: BUY/ADD blocked when sleeve positionPct sum >= Gate positionRangeHint max (SLEEVE_CAP_BLOCK)',
   );
+  const sleeveExposurePct = buildSleeveExposurePct(items);
+  lines.push(
+    `- sleeve: ${formatSleeveBudgetLabel(sleeveExposurePct, gate?.positionRangeHint)}`,
+  );
+  const missingSize = countHeldMissingPositionPct(items);
+  if (missingSize > 0) {
+    lines.push(
+      `- note: ${missingSize} held missing positionPct (sector/sleeve caps fail-open)`,
+    );
+  }
   lines.push('');
   const sectorExposureByIndustry = buildSectorExposureFromWatchlist(items, trend);
-  const sleeveExposurePct = buildSleeveExposurePct(items);
   const headers = [
     'Symbol',
     'Action',
