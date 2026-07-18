@@ -43,13 +43,30 @@ describe('ExecutionActionCardSchema', () => {
       hardStop: 11.0,
       trailStop: 11.2,
       trigger: 11.2,
+      exitStop: 11.2,
       distPct: -0.5,
       why: 'CHANDELIER',
       mainlineOk: false,
       mainlineTag: null,
     });
     expect(parsed.trigger).toBe(11.2);
+    expect(parsed.exitStop).toBe(11.2);
     expect(parsed.mainlineOk).toBe(false);
+  });
+
+  it('parses PURGE card with entryTrigger', () => {
+    const parsed = ExecutionActionCardSchema.parse({
+      symbol: 'CN:603019',
+      action: 'PURGE',
+      trailArmed: false,
+      entryTrigger: 55.2,
+      trigger: 55.2,
+      distPct: 3.1,
+      why: 'PURGE_GC',
+      mainlineOk: false,
+    });
+    expect(parsed.action).toBe('PURGE');
+    expect(parsed.entryTrigger).toBe(55.2);
   });
 
   it('parses BUY card with mainline tag', () => {

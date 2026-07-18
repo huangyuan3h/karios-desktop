@@ -66,7 +66,7 @@ describe('formatCondOrderDraftMarkdown', () => {
       { allowNewEntries: true },
     );
     expect(md).toContain('## Cond order draft');
-    expect(md).toContain('改单 CN:600001 卖出/清仓条件 @ Trigger=11.2');
+    expect(md).toContain('改单 CN:600001 卖出/清仓条件 @ Exit_Stop=11.2');
     expect(md).toContain('挂买 CN:600002 条件买入 +5.0% (clip)');
     const exitIdx = md.indexOf('CN:600001');
     const buyIdx = md.indexOf('CN:600002');
@@ -80,5 +80,23 @@ describe('formatCondOrderDraftMarkdown', () => {
     );
     expect(md).toContain('Gate blocks new entries');
     expect(md).not.toContain('- 挂买 ');
+  });
+
+  it('prefixes Queue for Next Open when tradingTime is false', () => {
+    const md = formatCondOrderDraftMarkdown(
+      [
+        {
+          symbol: 'CN:002821',
+          action: 'EXIT',
+          why: 'EXIT_NOW',
+          exitStop: 42.1,
+        },
+      ],
+      { allowNewEntries: false, tradingTime: false, phase: 'Weekend' },
+    );
+    expect(md).toContain('phase: Weekend — orders queue for next open');
+    expect(md).toContain(
+      '[Queue for Next Open] 改单 CN:002821 卖出/清仓条件 @ Exit_Stop=42.1',
+    );
   });
 });

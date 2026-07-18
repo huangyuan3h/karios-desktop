@@ -9,6 +9,7 @@ import {
   shouldRequireRealtimeQuote,
   tradeDateFromTradeTime,
 } from '@/lib/watchlist-metrics';
+import { applyWatchlistPurgeAfterReport } from '@/lib/watchlist-purge';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 import type { ExecutionGate } from '@karios/shared';
 
@@ -114,6 +115,7 @@ export function buildWatchlistMarkdown(options: {
   todaySh: string;
   executionGate?: ExecutionGate | null;
   mainlineAllow?: MainlineAllowSet | null;
+  sectorOutflowBlock?: boolean;
 }): string {
   const {
     sortedItems,
@@ -123,20 +125,21 @@ export function buildWatchlistMarkdown(options: {
     todaySh,
     executionGate = null,
     mainlineAllow = null,
+    sectorOutflowBlock = false,
   } = options;
   // Same unified combat table as Dashboard Copy all (no separate fat Watchlist dump).
-  return (
-    buildPositionsExecutionMarkdown(
-      sortedItems,
-      trendSnap,
-      quotesSnap,
-      executionGate ?? null,
-      '##',
-      mainlineAllow ?? null,
-      tradingTime,
-      todaySh,
-    ).trim() + '\n'
+  const { markdown } = buildPositionsExecutionMarkdown(
+    sortedItems,
+    trendSnap,
+    quotesSnap,
+    executionGate ?? null,
+    '##',
+    mainlineAllow ?? null,
+    tradingTime,
+    todaySh,
+    sectorOutflowBlock,
   );
+  return markdown.trim() + '\n';
 }
 
 export async function copyWatchlistMarkdown(options: {
@@ -147,6 +150,7 @@ export async function copyWatchlistMarkdown(options: {
   trendUpdatedAt: string | null;
   executionGate?: ExecutionGate | null;
   mainlineAllow?: MainlineAllowSet | null;
+  sectorOutflowBlock?: boolean;
 }): Promise<WatchlistCopyResult> {
   const {
     queryClient,
@@ -156,6 +160,7 @@ export async function copyWatchlistMarkdown(options: {
     trendUpdatedAt,
     executionGate = null,
     mainlineAllow = null,
+    sectorOutflowBlock = false,
   } = options;
   if (!sortedItems.length) {
     return { ok: false, message: 'No items to copy.' };
@@ -186,15 +191,19 @@ export async function copyWatchlistMarkdown(options: {
   });
   if (validationError) return validationError;
 
-  const markdown = buildWatchlistMarkdown({
+  const { markdown, purgeSymbols } = buildPositionsExecutionMarkdown(
     sortedItems,
     trendSnap,
     quotesSnap,
-    trendUpdatedAt,
+    executionGate ?? null,
+    '##',
+    mainlineAllow ?? null,
     tradingTime,
     todaySh,
-    executionGate,
-    mainlineAllow,
-  });
-  return { ok: true, markdown };
+    sectorOutflowBlock,
+  );
+  if (purgeSymbols.length) {
+    await applyWatchlistPurgeAfterReport(purgeSymbols).catch(() => 0);
+  }
+  return { ok: true, markdown: markdown.trim() + '\n' };
 }

@@ -95,9 +95,27 @@ def test_should_remove_symbol_all_conditions_met(monkeypatch) -> None:
         trade_dates=["2026-06-16", "2026-06-17", "2026-06-18"],
         top_5d_industries={"Banking", "Tech"},
         current_industry="Coal",
+        position_pct=0,
     )
     assert ok is True
     assert reason == "score_low_3d_and_industry_outside_top5"
+
+
+def test_should_remove_symbol_skips_held_position(monkeypatch) -> None:
+    def fake_scores(symbol: str, trade_dates: list[str]) -> list[dict]:
+        return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
+
+    monkeypatch.setattr(wa, "get_scores_for_symbol", fake_scores)
+    ok, reason = wa.should_remove_symbol(
+        symbol="CN:600000",
+        source="screener",
+        trade_dates=["2026-06-16", "2026-06-17", "2026-06-18"],
+        top_5d_industries={"Banking", "Tech"},
+        current_industry="Coal",
+        position_pct=5.0,
+    )
+    assert ok is False
+    assert reason == "held_position"
 
 
 def test_compute_alpha_additions_filters_score_and_grade(monkeypatch) -> None:

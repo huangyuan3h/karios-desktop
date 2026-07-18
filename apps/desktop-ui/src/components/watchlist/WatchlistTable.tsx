@@ -106,6 +106,7 @@ export type WatchlistTableProps = {
   onOpenStock?: (symbol: string) => void;
   executionGate?: ExecutionGate | null;
   mainlineAllow?: MainlineAllowSet | null;
+  sectorOutflowBlock?: boolean;
 };
 
 export function sortWatchlistItems(
@@ -149,6 +150,7 @@ export function WatchlistTable({
   onOpenStock,
   executionGate = null,
   mainlineAllow = null,
+  sectorOutflowBlock = false,
 }: WatchlistTableProps) {
   const { addReference } = useChatStore();
 
@@ -312,7 +314,10 @@ export function WatchlistTable({
                     <th className="px-2 py-2 w-[56px]" title="Execution Action (BUY/HOLD/EXIT/…)">
                       Exec
                     </th>
-                    <th className="px-2 py-2 w-[72px]" title="Effective trigger price">
+                    <th
+                      className="px-2 py-2 w-[72px]"
+                      title="Held: Exit_Stop · Flat: Entry_Trigger (buyZoneHigh)"
+                    >
                       Trigger
                     </th>
                     <th className="px-2 py-2 w-[64px]" title="ATR chandelier trail">
@@ -403,6 +408,7 @@ export function WatchlistTable({
                         costPriceDraft={costPriceDrafts[it.symbol]}
                         executionGate={executionGate ?? null}
                         mainlineAllow={mainlineAllow ?? null}
+                        sectorOutflowBlock={sectorOutflowBlock}
                         sectorExposureByIndustry={sectorExposureByIndustry}
                         sleeveExposurePct={sleeveExposurePct}
                         showTooltip={showTooltip}

@@ -225,6 +225,20 @@ function resolveIndustryFlowContext(summary: unknown): IndustryFlowContext | nul
  * Mainline allow-set for BUY/ADD: 5D net-inflow Top3 ∪ Momentum Breakout industries.
  * Wider than Dashboard Hot industries workflow Top3 (which is capped at 3).
  */
+/**
+ * True when latest daily industry ranking has data and every net inflow ≤ 0
+ * (no positive sector flow → Mainline stays no; Why uses SECTOR_OUTFLOW_BLOCK).
+ */
+export function isSectorOutflowBlock(summary: unknown): boolean {
+  const ctx = resolveIndustryFlowContext(summary);
+  if (!ctx || !ctx.latestDate) return false;
+  if (ctx.todayValueMap.size === 0) return false;
+  for (const v of ctx.todayValueMap.values()) {
+    if (v > 0) return false;
+  }
+  return true;
+}
+
 export function buildMainlineAllowSet(summary: unknown): MainlineAllowSet {
   const empty: MainlineAllowSet = {
     ready: false,

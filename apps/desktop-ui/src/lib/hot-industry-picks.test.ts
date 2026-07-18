@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildDashboardHotIndustryPicks,
   buildMainlineAllowSet,
+  isSectorOutflowBlock,
 } from '@/lib/hot-industry-picks';
 
 function makeSummary(args: {
@@ -179,6 +180,41 @@ describe('buildDashboardHotIndustryPicks', () => {
     expect(rebound).toBeDefined();
     expect(rebound?.rankChange).toBe(1);
     expect(rebound?.momentumSignal).toBe(false);
+  });
+});
+
+describe('isSectorOutflowBlock', () => {
+  it('is true when every industry net ≤ 0', () => {
+    const summary = makeSummary({
+      dailyRankings: [
+        {
+          date: '2026-05-23',
+          ranked: [
+            { industryName: 'A', value: -1e8, rank: 1 },
+            { industryName: 'B', value: -2e8, rank: 2 },
+            { industryName: 'C', value: 0, rank: 3 },
+          ],
+        },
+      ],
+      flow5dTop: [{ industryName: 'A', sum5d: -5e8 }],
+    });
+    expect(isSectorOutflowBlock(summary)).toBe(true);
+  });
+
+  it('is false when any industry has positive net', () => {
+    const summary = makeSummary({
+      dailyRankings: [
+        {
+          date: '2026-05-23',
+          ranked: [
+            { industryName: 'A', value: 1e8, rank: 1 },
+            { industryName: 'B', value: -2e8, rank: 2 },
+          ],
+        },
+      ],
+      flow5dTop: [{ industryName: 'A', sum5d: 5e8 }],
+    });
+    expect(isSectorOutflowBlock(summary)).toBe(false);
   });
 });
 

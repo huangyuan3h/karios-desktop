@@ -17,7 +17,7 @@ import {
   formatSleeveBudgetLabel,
   parseExecutionGate,
 } from '@/lib/execution-action';
-import { buildMainlineAllowSet } from '@/lib/hot-industry-picks';
+import { buildMainlineAllowSet, isSectorOutflowBlock } from '@/lib/hot-industry-picks';
 import { useDashboardSummaryQuery } from '@/lib/queries/dashboard';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { watchlistMarketKey } from '@/lib/queries/watchlist';
@@ -48,6 +48,10 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     () => buildMainlineAllowSet(liteSummaryQuery.data ?? null),
     [liteSummaryQuery.data],
   );
+  const sectorOutflowBlock = React.useMemo(
+    () => isSectorOutflowBlock(liteSummaryQuery.data ?? null),
+    [liteSummaryQuery.data],
+  );
   const {
     items,
     setItems,
@@ -72,6 +76,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     items,
     gate: executionGate,
     mainlineAllow,
+    sectorOutflowBlock,
     enabled: true,
   });
 
@@ -288,6 +293,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         trendUpdatedAt,
         executionGate,
         mainlineAllow,
+        sectorOutflowBlock,
       });
       if (!result.ok) {
         toastCopyMd(false, result.message);
@@ -460,6 +466,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           onOpenStock={onOpenStock}
           executionGate={executionGate}
           mainlineAllow={mainlineAllow}
+          sectorOutflowBlock={sectorOutflowBlock}
         />
       </div>
     </div>

@@ -42,7 +42,12 @@ import {
   fetchExecutionJournalMarkdown,
 } from '@/lib/execution-journal';
 import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
-import { buildMainlineAllowSet, type MainlineAllowSet } from '@/lib/hot-industry-picks';
+import {
+  buildMainlineAllowSet,
+  isSectorOutflowBlock,
+  type MainlineAllowSet,
+} from '@/lib/hot-industry-picks';
+import { applyWatchlistPurgeAfterReport } from '@/lib/watchlist-purge';
 import type {
   ExecutionChangeListResponse,
   ExecutionGate,
@@ -564,6 +569,7 @@ export async function buildWatchlistMarkdown(
   queryClient?: QueryClient,
   gate?: ExecutionGate | null,
   mainlineAllow?: MainlineAllowSet | null,
+  sectorOutflowBlock = false,
 ): Promise<string> {
   const itemsRaw = loadWatchlist();
   const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
@@ -689,18 +695,22 @@ export async function buildWatchlistMarkdown(
   }
 
   // Unified combat table only — fat Watchlist dump removed for LLM SNR.
-  return (
-    buildPositionsExecutionMarkdown(
-      sorted,
-      trend,
-      quotes,
-      gate ?? null,
-      heading,
-      mainlineAllow ?? null,
-      tradingTime,
-      todaySh,
-    ).trim() + '\n'
+  const { markdown, purgeSymbols } = buildPositionsExecutionMarkdown(
+    sorted,
+    trend,
+    quotes,
+    gate ?? null,
+    heading,
+    mainlineAllow ?? null,
+    tradingTime,
+    todaySh,
+    sectorOutflowBlock,
   );
+  // Report still lists PURGE rows; remove them from storage for the next copy.
+  if (purgeSymbols.length) {
+    await applyWatchlistPurgeAfterReport(purgeSymbols).catch(() => 0);
+  }
+  return markdown.trim() + '\n';
 }
 
 export async function buildAlphaRadarCopyContext(
@@ -782,9 +792,10 @@ type ExecutionCopyBundle = {
 async function buildExecutionCopyBundle(opts: {
   gate: ExecutionGate | null;
   mainlineAllow: MainlineAllowSet | null;
+  sectorOutflowBlock?: boolean;
   queryClient?: QueryClient;
 }): Promise<ExecutionCopyBundle> {
-  const { gate, mainlineAllow, queryClient } = opts;
+  const { gate, mainlineAllow, sectorOutflowBlock = false, queryClient } = opts;
   const itemsRaw = loadWatchlist();
   const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
     .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
@@ -801,6 +812,7 @@ async function buildExecutionCopyBundle(opts: {
         quotes: market.quotes,
         gate,
         mainlineAllow,
+        sectorOutflowBlock,
         source: 'poll',
       });
       liveCards = (payload?.cards as CondOrderCard[] | undefined) ?? null;
@@ -900,10 +912,12 @@ export async function buildDashboardCopyAllMarkdown(
   });
   const executionGate = parseExecutionGate((s as any)?.marketSentiment?.executionGate);
   const mainlineAllow = buildMainlineAllowSet(s);
+  const sectorOutflowBlock = isSectorOutflowBlock(s);
+  const tradingTime = isShanghaiTradingTime();
   const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd, execBundle, sinceLastMd] =
     await Promise.all([
       buildScreenersMarkdown(s, '##', queryClient),
-      buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow),
+      buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow, sectorOutflowBlock),
       buildCompactCatalystMarkdown(s),
       fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
         .then(({ items, scope }) =>
@@ -920,6 +934,7 @@ export async function buildDashboardCopyAllMarkdown(
       buildExecutionCopyBundle({
         gate: executionGate,
         mainlineAllow,
+        sectorOutflowBlock,
         queryClient,
       }).catch(
         (): ExecutionCopyBundle => ({
@@ -943,6 +958,8 @@ export async function buildDashboardCopyAllMarkdown(
   const condOrderMd = formatCondOrderDraftMarkdown(execBundle.cards, {
     heading: '##',
     allowNewEntries: executionGate?.allowNewEntries === true,
+    tradingTime,
+    phase: tradingTime ? 'Open' : 'Closed',
   });
   const lines: string[] = [];
   lines.push(`# Copy all (Dashboard)`);

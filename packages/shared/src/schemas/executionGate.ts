@@ -21,7 +21,15 @@ export const ExecutionGateSchema = z.object({
 });
 export type ExecutionGate = z.infer<typeof ExecutionGateSchema>;
 
-export const ExecutionActionSchema = z.enum(['EXIT', 'TRIM', 'HOLD', 'ADD', 'BUY', 'WATCH']);
+export const ExecutionActionSchema = z.enum([
+  'EXIT',
+  'TRIM',
+  'HOLD',
+  'ADD',
+  'BUY',
+  'WATCH',
+  'PURGE',
+]);
 export type ExecutionAction = z.infer<typeof ExecutionActionSchema>;
 
 export const MainlineTagSchema = z.enum(['MOMENTUM', '5D_TOP3']);
@@ -34,7 +42,19 @@ export const ExecutionActionCardSchema = z.object({
   peak: z.number().nullable().optional(),
   hardStop: z.number().nullable().optional(),
   trailStop: z.number().nullable().optional(),
+  /**
+   * Compat alias: held → exitStop; flat → entryTrigger.
+   * Prefer entryTrigger / exitStop for new consumers.
+   */
   trigger: z.number().nullable().optional(),
+  /** Buy/sniper level for flat (Pos%=0) names — typically TrendOK buyZoneHigh. */
+  entryTrigger: z.number().nullable().optional(),
+  /** Defensive exit (max hardStop, trailStop) for held names. */
+  exitStop: z.number().nullable().optional(),
+  /**
+   * Flat: (entryTrigger - current) / current * 100 (distance to sniper).
+   * Held: (current - exitStop) / current * 100 (cushion to stop).
+   */
   distPct: z.number().nullable().optional(),
   why: z.string().optional(),
   mainlineOk: z.boolean().optional(),

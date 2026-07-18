@@ -73,6 +73,7 @@ describe('deriveTriggerAndTrail', () => {
     });
     expect(out.trailArmed).toBe(true);
     expect(out.trailStop).toBeCloseTo(11, 6);
+    expect(out.exitStop).toBeCloseTo(11, 6);
     expect(out.trigger).toBeCloseTo(11, 6);
   });
 
@@ -85,6 +86,7 @@ describe('deriveTriggerAndTrail', () => {
       atr14: 0.4,
     });
     expect(out.trailArmed).toBe(false);
+    expect(out.exitStop).toBe(9.5);
     expect(out.trigger).toBe(9.5);
   });
 });
@@ -187,6 +189,69 @@ describe('deriveActionCard', () => {
     expect(card.action).toBe('WATCH');
     expect(card.why).toBe('NOT_MAINLINE');
     expect(card.mainlineOk).toBe(false);
+  });
+
+  it('uses SECTOR_OUTFLOW_BLOCK when not mainline and all sectors outflow', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: 90,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        values: { emIndustry: '白酒' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      sectorOutflowBlock: true,
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('SECTOR_OUTFLOW_BLOCK');
+  });
+
+  it('marks PURGE for flat low-score TrendOK=no', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:603019',
+      gate: attackGate,
+      trendok: {
+        score: 0,
+        trendOk: false,
+        buyAction: 'avoid',
+        buyZoneHigh: 55,
+        values: { emIndustry: '白酒' },
+      },
+      position: { symbol: 'CN:603019', positionPct: 0 },
+      currentPrice: 50,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('PURGE');
+    expect(card.why).toBe('PURGE_GC');
+    expect(card.entryTrigger).toBe(55);
+    expect(card.exitStop).toBeNull();
+    expect(card.distPct).toBeCloseTo(((55 - 50) / 50) * 100, 6);
+  });
+
+  it('computes held Dist% from Exit_Stop cushion', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        trendOk: true,
+        buyAction: 'wait',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', positionPct: 5, costPrice: 10 },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.exitStop).toBe(9);
+    expect(card.entryTrigger).toBeNull();
+    expect(card.distPct).toBeCloseTo(((10 - 9) / 10) * 100, 6);
   });
 
   it('blocks defense sector even if in mainline set', () => {

@@ -13,13 +13,17 @@ DECISION_CARD_FIELDS = (
     "action",
     "why",
     "trigger",
+    "entryTrigger",
+    "exitStop",
     "positionPct",
     "hardStop",
     "trailStop",
 )
 
 # Latest Actions table only lists symbols with a meaningful decision delta today.
-LATEST_ACTIONS_DELTA_FIELDS = frozenset({"action", "trigger", "hardStop", "trailStop"})
+LATEST_ACTIONS_DELTA_FIELDS = frozenset(
+    {"action", "trigger", "entryTrigger", "exitStop", "hardStop", "trailStop"}
+)
 
 
 def _norm_str(v: Any) -> str:
@@ -51,6 +55,8 @@ def decision_payload_for_hash(gate: dict[str, Any] | None, cards: list[dict[str,
                 "action": _norm_str(c.get("action")),
                 "why": _norm_str(c.get("why")),
                 "trigger": _norm_str(c.get("trigger")),
+                "entryTrigger": _norm_str(c.get("entryTrigger")),
+                "exitStop": _norm_str(c.get("exitStop")),
                 "positionPct": _norm_str(c.get("positionPct")),
                 "hardStop": _norm_str(c.get("hardStop")),
                 "trailStop": _norm_str(c.get("trailStop")),
@@ -178,7 +184,16 @@ def diff_snapshots(
                 }
             )
             continue
-        for field in ("action", "why", "trigger", "positionPct", "hardStop", "trailStop"):
+        for field in (
+            "action",
+            "why",
+            "trigger",
+            "entryTrigger",
+            "exitStop",
+            "positionPct",
+            "hardStop",
+            "trailStop",
+        ):
             ov = _norm_str(p.get(field))
             nv = _norm_str(c.get(field))
             if ov != nv:

@@ -14,7 +14,11 @@ import { useDashboardSync } from '@/hooks/useDashboardSync';
 import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistRisk } from '@/hooks/useWatchlistRisk';
-import { buildDashboardHotIndustryPicks, buildMainlineAllowSet } from '@/lib/hot-industry-picks';
+import {
+  buildDashboardHotIndustryPicks,
+  buildMainlineAllowSet,
+  isSectorOutflowBlock,
+} from '@/lib/hot-industry-picks';
 import { writeLastCopyAt } from '@/lib/copy-ai-brief';
 import {
   buildDashboardCopyAllMarkdown,
@@ -74,11 +78,13 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     [summary],
   );
   const mainlineAllow = React.useMemo(() => buildMainlineAllowSet(summary), [summary]);
+  const sectorOutflowBlock = React.useMemo(() => isSectorOutflowBlock(summary), [summary]);
   const { capture: captureDecisionSnapshot, busy: decisionCaptureBusy } =
     useExecutionJournalCapture({
       items: watchlistItems,
       gate: executionGate,
       mainlineAllow,
+      sectorOutflowBlock,
       enabled: true,
     });
 

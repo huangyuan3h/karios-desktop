@@ -123,9 +123,13 @@ def should_remove_symbol(
     trade_dates: list[str],
     top_5d_industries: set[str],
     current_industry: str | None,
+    position_pct: float | None = None,
 ) -> tuple[bool, str]:
     if source == "alpha_radar":
         return False, "alpha_radar_exempt"
+    # Do not GC held names (missing/None position treated as flat = 0).
+    if position_pct is not None and float(position_pct) > 0:
+        return False, "held_position"
     if len(trade_dates) < CONSECUTIVE_LOW_SCORE_DAYS:
         return False, "insufficient_history"
 
@@ -166,12 +170,18 @@ def compute_removals(
         source = str(item.get("source") or "manual")
         trend = trendok_by_symbol.get(sym) or {}
         industry = _industry_from_trendok(trend)
+        pos_raw = item.get("positionPct")
+        try:
+            position_pct = float(pos_raw) if pos_raw is not None else None
+        except (TypeError, ValueError):
+            position_pct = None
         ok, reason = should_remove_symbol(
             symbol=sym,
             source=source,
             trade_dates=trade_dates,
             top_5d_industries=top_5d_industries,
             current_industry=industry,
+            position_pct=position_pct,
         )
         if ok:
             out.append({"symbol": sym, "reason": reason})

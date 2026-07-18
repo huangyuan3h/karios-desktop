@@ -58,12 +58,14 @@ export type CondOrderCard = {
   action: string;
   why?: string | null;
   trigger?: number | null;
+  exitStop?: number | null;
+  entryTrigger?: number | null;
   suggestAddPct?: number | null;
   suggestSizeNote?: string | null;
 };
 
-function fmtTrigger(trigger: number | null | undefined): string {
-  return typeof trigger === 'number' && Number.isFinite(trigger) ? String(trigger) : '—';
+function fmtPrice(v: number | null | undefined): string {
+  return typeof v === 'number' && Number.isFinite(v) ? String(v) : '—';
 }
 
 function fmtSuggest(card: CondOrderCard): string {
@@ -74,21 +76,39 @@ function fmtSuggest(card: CondOrderCard): string {
   return 'size=TBD';
 }
 
+function resolveExitStop(card: CondOrderCard): number | null {
+  if (typeof card.exitStop === 'number' && Number.isFinite(card.exitStop)) return card.exitStop;
+  if (typeof card.trigger === 'number' && Number.isFinite(card.trigger)) return card.trigger;
+  return null;
+}
+
 /**
  * Conditional-order draft from Action cards (not broker API).
  * EXIT/TRIM first, then BUY/ADD when allowNewEntries.
+ * When tradingTime=false, lines are prefixed [Queue for Next Open].
  */
 export function formatCondOrderDraftMarkdown(
   cards: CondOrderCard[],
-  opts?: { heading?: string; allowNewEntries?: boolean },
+  opts?: {
+    heading?: string;
+    allowNewEntries?: boolean;
+    tradingTime?: boolean;
+    phase?: string | null;
+  },
 ): string {
   const heading = opts?.heading ?? '##';
   const allowNew = opts?.allowNewEntries === true;
+  const isClosed = opts?.tradingTime === false;
+  const queuePrefix = isClosed ? '[Queue for Next Open] ' : '';
   const lines: string[] = [];
   lines.push(`${heading} Cond order draft`);
   lines.push(
     '- note: 非 BUY/ADD 的监控票若曾挂买入条件单则撤销；勿在回复中逐条罗列全部 WATCH',
   );
+  if (isClosed) {
+    const phase = opts?.phase?.trim() || 'closed';
+    lines.push(`- note: phase: ${phase} — orders queue for next open`);
+  }
 
   const exits: CondOrderCard[] = [];
   const trims: CondOrderCard[] = [];
@@ -109,7 +129,7 @@ export function formatCondOrderDraftMarkdown(
   for (const c of [...exits, ...trims]) {
     const kind = String(c.action).toUpperCase() === 'EXIT' ? '卖出/清仓条件' : '减仓条件';
     lines.push(
-      `- 改单 ${c.symbol} ${kind} @ Trigger=${fmtTrigger(c.trigger)}  Why=${c.why ?? '—'}`,
+      `- ${queuePrefix}改单 ${c.symbol} ${kind} @ Exit_Stop=${fmtPrice(resolveExitStop(c))}  Why=${c.why ?? '—'}`,
     );
     wrote = true;
   }
@@ -117,7 +137,7 @@ export function formatCondOrderDraftMarkdown(
   if (allowNew) {
     for (const c of buys) {
       lines.push(
-        `- 挂买 ${c.symbol} 条件买入 ${fmtSuggest(c)}  Why=${c.why ?? '—'}`,
+        `- ${queuePrefix}挂买 ${c.symbol} 条件买入 ${fmtSuggest(c)}  Why=${c.why ?? '—'}`,
       );
       wrote = true;
     }

@@ -5,7 +5,11 @@ import { CircleX, ExternalLink, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
-import { deriveActionCard, isHeldMissingPositionPct } from '@/lib/execution-action';
+import {
+  deriveActionCard,
+  isHeldMissingPositionPct,
+  isHeldPosition,
+} from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import type { ExecutionGate } from '@karios/shared';
 import {
@@ -474,6 +478,7 @@ export type WatchlistRowProps = {
   costPriceDraft: string | undefined;
   executionGate: ExecutionGate | null;
   mainlineAllow: MainlineAllowSet | null;
+  sectorOutflowBlock?: boolean;
   sectorExposureByIndustry: Map<string, number> | null;
   sleeveExposurePct: number;
   showTooltip: ShowTooltipFn;
@@ -498,6 +503,7 @@ function WatchlistRowInner({
   costPriceDraft,
   executionGate,
   mainlineAllow,
+  sectorOutflowBlock = false,
   sectorExposureByIndustry,
   sleeveExposurePct,
   showTooltip,
@@ -543,14 +549,16 @@ function WatchlistRowInner({
     marketRegime: t?.marketRegime ?? null,
     sectorExposureByIndustry,
     sleeveExposurePct,
+    sectorOutflowBlock,
   });
   const execTone =
-    actionCard.action === 'EXIT'
+    actionCard.action === 'EXIT' || actionCard.action === 'PURGE'
       ? 'text-red-600 font-semibold'
       : actionCard.action === 'BUY' || actionCard.action === 'ADD'
         ? 'text-emerald-700 font-semibold'
         : actionCard.action === 'TRIM' ||
             actionCard.why === 'NOT_MAINLINE' ||
+            actionCard.why === 'SECTOR_OUTFLOW_BLOCK' ||
             actionCard.why === 'DEFENSE_SECTOR_BLOCK' ||
             actionCard.why === 'GATE_DEFEND' ||
             actionCard.why === 'MAINLINE_FADE' ||
@@ -561,6 +569,13 @@ function WatchlistRowInner({
             actionCard.why === 'SLEEVE_CAP_BLOCK'
           ? 'text-amber-700 font-semibold'
           : 'text-[var(--k-muted)]';
+  const heldForTrigger = isHeldPosition(it);
+  const triggerPrice = heldForTrigger
+    ? (actionCard.exitStop ?? actionCard.trigger ?? null)
+    : (actionCard.entryTrigger ?? actionCard.trigger ?? null);
+  const triggerTitle = heldForTrigger
+    ? 'Exit_Stop (max hardStop, trailStop)'
+    : 'Entry_Trigger (buyZoneHigh sniper)';
 
   return (
     <tr className={rowClass}>
@@ -688,8 +703,8 @@ function WatchlistRowInner({
           </span>
         ) : null}
       </td>
-      <td className="px-2 py-2 font-mono text-xs" title="Effective trigger (max hardStop, trailStop)">
-        {fmtPrice(actionCard.trigger ?? null)}
+      <td className="px-2 py-2 font-mono text-xs" title={triggerTitle}>
+        {fmtPrice(triggerPrice)}
       </td>
       <td
         className="px-2 py-2 text-xs"

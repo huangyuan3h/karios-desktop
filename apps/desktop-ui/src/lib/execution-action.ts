@@ -12,6 +12,8 @@ import { isGapUpWeakMarket, isIntradaySurge } from '@/lib/watchlist-metrics';
 export const CHANDELIER_ARM_PNL_PCT = 10;
 export const CHANDELIER_ATR_MULT = 2;
 export const BUY_SCORE_MIN = 80;
+/** Flat names below this score with TrendOK=no are marked PURGE. */
+export const PURGE_SCORE_MAX = 30;
 /** Max single-name weight inside the satellite sleeve; blocks ADD at or above. */
 export const POSITION_SIZE_CAP_PCT = 15;
 /** Max sum of positionPct in one East Money industry; blocks BUY/ADD at or above. */
@@ -32,7 +34,9 @@ export const DEFENSE_SECTOR_KEYWORDS = [
 export type TrendOkLike = {
   symbol?: string;
   score?: number | null;
+  trendOk?: boolean | null;
   buyAction?: string | null;
+  buyZoneHigh?: number | null;
   stopLossPrice?: number | null;
   stopLossParts?: Record<string, unknown> | null;
   values?: {
@@ -275,8 +279,10 @@ export function deriveTriggerAndTrail(opts: {
   peak: number | null;
   hardStop: number | null;
   trailStop: number | null;
+  /** Effective exit stop = max(hardStop, trailStop). */
+  exitStop: number | null;
+  /** @deprecated Alias of exitStop for older callers/tests. */
   trigger: number | null;
-  distPct: number | null;
 } {
   const { hardStop, costPrice, maxPrice, current, atr14 } = opts;
   const pnl = computePnLPct(costPrice, current);
@@ -295,17 +301,22 @@ export function deriveTriggerAndTrail(opts: {
     trailStop = peak - CHANDELIER_ATR_MULT * atr14;
   }
 
-  let trigger: number | null = null;
-  if (hardStop != null && trailStop != null) trigger = Math.max(hardStop, trailStop);
-  else if (hardStop != null) trigger = hardStop;
-  else if (trailStop != null) trigger = trailStop;
+  let exitStop: number | null = null;
+  if (hardStop != null && trailStop != null) exitStop = Math.max(hardStop, trailStop);
+  else if (hardStop != null) exitStop = hardStop;
+  else if (trailStop != null) exitStop = trailStop;
 
-  let distPct: number | null = null;
-  if (trigger != null && current != null && current > 0) {
-    distPct = ((current - trigger) / current) * 100;
-  }
+  return { trailArmed, peak, hardStop, trailStop, exitStop, trigger: exitStop };
+}
 
-  return { trailArmed, peak, hardStop, trailStop, trigger, distPct };
+/** Flat + Score<30 + TrendOK=no → physical-GC candidate (Action=PURGE). */
+export function isPurgeCandidate(opts: {
+  held: boolean;
+  score: number | null;
+  trendOk: boolean | null | undefined;
+}): boolean {
+  const { held, score, trendOk } = opts;
+  return !held && score != null && score < PURGE_SCORE_MAX && trendOk === false;
 }
 
 function atrFromParts(parts: Record<string, unknown> | null | undefined): number | null {
@@ -336,6 +347,8 @@ export function evaluateNewEntryGates(opts: {
   sectorExposureByIndustry?: Map<string, number> | null;
   sleeveExposurePct?: number | null;
   positionRangeHint?: string | null;
+  /** When all sectors show net outflow on the day. */
+  sectorOutflowBlock?: boolean;
 }): NewEntryGateResult {
   const {
     industryName,
@@ -346,6 +359,7 @@ export function evaluateNewEntryGates(opts: {
     sectorExposureByIndustry = null,
     sleeveExposurePct = null,
     positionRangeHint = null,
+    sectorOutflowBlock = false,
   } = opts;
   if (!industryName) {
     return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
@@ -369,7 +383,11 @@ export function evaluateNewEntryGates(opts: {
     return { ok: false, tag: null, why: 'MAINLINE_DATA_UNAVAILABLE' };
   }
   if (!mainlineAllow.names.has(industryName)) {
-    return { ok: false, tag: null, why: 'NOT_MAINLINE' };
+    return {
+      ok: false,
+      tag: null,
+      why: sectorOutflowBlock ? 'SECTOR_OUTFLOW_BLOCK' : 'NOT_MAINLINE',
+    };
   }
   const tag = mainlineAllow.byName.get(industryName) ?? null;
   const why =
@@ -391,8 +409,9 @@ export function evaluateHeldTrimGates(opts: {
   mode: ExecutionGateMode | null;
   industryName: string | null;
   mainlineAllow: MainlineAllowSet | null | undefined;
+  sectorOutflowBlock?: boolean;
 }): HeldTrimGateResult {
-  const { mode, industryName, mainlineAllow } = opts;
+  const { mode, industryName, mainlineAllow, sectorOutflowBlock = false } = opts;
   if (mode === 'DEFEND') {
     return { trim: true, why: 'GATE_DEFEND' };
   }
@@ -401,7 +420,10 @@ export function evaluateHeldTrimGates(opts: {
       return { trim: true, why: 'MISSING_INDUSTRY' };
     }
     if (!mainlineAllow.names.has(industryName)) {
-      return { trim: true, why: 'MAINLINE_FADE' };
+      return {
+        trim: true,
+        why: sectorOutflowBlock ? 'SECTOR_OUTFLOW_BLOCK' : 'MAINLINE_FADE',
+      };
     }
   }
   return { trim: false, why: null };
@@ -422,6 +444,7 @@ export function deriveActionCard(opts: {
   marketRegime?: string | null;
   sectorExposureByIndustry?: Map<string, number> | null;
   sleeveExposurePct?: number | null;
+  sectorOutflowBlock?: boolean;
 }): ExecutionActionCard {
   const {
     symbol,
@@ -435,6 +458,7 @@ export function deriveActionCard(opts: {
     marketRegime = null,
     sectorExposureByIndustry = null,
     sleeveExposurePct = null,
+    sectorOutflowBlock = false,
   } = opts;
   const held = isHeldPosition(position);
   const parts = (trendok?.stopLossParts ?? null) as Record<string, unknown> | null;
@@ -450,13 +474,26 @@ export function deriveActionCard(opts: {
     atr14,
   });
 
+  const exitStop = held ? trail.exitStop : null;
+  const entryTrigger = held ? null : num(trendok?.buyZoneHigh);
+  let distPct: number | null = null;
+  if (held) {
+    if (exitStop != null && currentPrice != null && currentPrice > 0) {
+      distPct = ((currentPrice - exitStop) / currentPrice) * 100;
+    }
+  } else if (entryTrigger != null && currentPrice != null && currentPrice > 0) {
+    distPct = ((entryTrigger - currentPrice) / currentPrice) * 100;
+  }
+  // Compat: trigger = role-relevant level for journal / cond-order
+  const trigger = held ? exitStop : entryTrigger;
+
   const exitNow = Boolean(parts?.exit_now);
   const warnHalf = Boolean(parts?.warn_reduce_half);
   const priceAtOrBelowTrigger =
-    trail.trigger != null &&
+    exitStop != null &&
     currentPrice != null &&
     Number.isFinite(currentPrice) &&
-    currentPrice <= trail.trigger;
+    currentPrice <= exitStop;
 
   const mode = gateMode(gate);
   const allowAttack = mode === 'ATTACK';
@@ -464,6 +501,8 @@ export function deriveActionCard(opts: {
   const score = num(trendok?.score);
   const scoreOk = score != null && score >= BUY_SCORE_MIN;
   const wantsBuy = buyAction === 'buy' && scoreOk;
+  const trendOkFlag =
+    typeof trendok?.trendOk === 'boolean' ? trendok.trendOk : null;
 
   const industryName = resolveIndustryName(trendok);
   const entryGate = evaluateNewEntryGates({
@@ -475,6 +514,7 @@ export function deriveActionCard(opts: {
     sectorExposureByIndustry,
     sleeveExposurePct,
     positionRangeHint: gate?.positionRangeHint ?? null,
+    sectorOutflowBlock,
   });
   // Mainline column independent of chase / concentration vetoes
   const mainlineOk = Boolean(
@@ -486,7 +526,12 @@ export function deriveActionCard(opts: {
   const mainlineTag = mainlineOk
     ? (mainlineAllow!.byName.get(industryName!) ?? null)
     : null;
-  const heldTrim = evaluateHeldTrimGates({ mode, industryName, mainlineAllow });
+  const heldTrim = evaluateHeldTrimGates({
+    mode,
+    industryName,
+    mainlineAllow,
+    sectorOutflowBlock,
+  });
 
   let action: ExecutionAction = 'WATCH';
   let why = 'WATCH';
@@ -514,6 +559,11 @@ export function deriveActionCard(opts: {
   } else if (held) {
     action = 'HOLD';
     why = allowAttack ? 'HOLD' : 'GATE_BLOCK_NEW';
+  } else if (
+    isPurgeCandidate({ held: false, score, trendOk: trendOkFlag })
+  ) {
+    action = 'PURGE';
+    why = 'PURGE_GC';
   } else if (allowAttack && wantsBuy) {
     if (!entryGate.ok) {
       action = 'WATCH';
@@ -527,7 +577,8 @@ export function deriveActionCard(opts: {
     why = 'GATE_BLOCK_NEW';
   } else {
     action = 'WATCH';
-    why = 'WATCH';
+    why =
+      !mainlineOk && sectorOutflowBlock ? 'SECTOR_OUTFLOW_BLOCK' : 'WATCH';
   }
 
   let suggestAddPct: number | null = null;
@@ -553,8 +604,10 @@ export function deriveActionCard(opts: {
     peak: trail.peak,
     hardStop: trail.hardStop,
     trailStop: trail.trailStop,
-    trigger: trail.trigger,
-    distPct: trail.distPct,
+    trigger,
+    entryTrigger,
+    exitStop,
+    distPct,
     why,
     mainlineOk,
     mainlineTag,

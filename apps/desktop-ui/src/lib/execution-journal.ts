@@ -76,6 +76,7 @@ export type BuildExecutionSnapshotInput = {
   mainlineAllow: MainlineAllowSet | null;
   tradingTime?: boolean;
   todaySh?: string;
+  sectorOutflowBlock?: boolean;
   source: ExecutionSnapshotSource;
   meta?: Record<string, unknown>;
 };
@@ -87,6 +88,7 @@ export function buildExecutionSnapshotPayload(
   if (!gate) return null;
   const tradingTime = input.tradingTime ?? isShanghaiTradingTime();
   const todaySh = input.todaySh ?? getShanghaiTodayIso();
+  const sectorOutflowBlock = input.sectorOutflowBlock === true;
   const sectorExposureByIndustry = buildSectorExposureFromWatchlist(items, trend);
   const sleeveExposurePct = buildSleeveExposurePct(items);
   const cards: ExecutionJournalCard[] = [];
@@ -121,6 +123,7 @@ export function buildExecutionSnapshotPayload(
       marketRegime: t?.marketRegime ?? null,
       sectorExposureByIndustry,
       sleeveExposurePct,
+      sectorOutflowBlock,
     });
     cards.push({
       ...card,
@@ -221,6 +224,7 @@ export async function captureAndPushExecutionSnapshot(
     items: WatchlistItem[];
     gate: ExecutionGate | null;
     mainlineAllow: MainlineAllowSet | null;
+    sectorOutflowBlock?: boolean;
     source: ExecutionSnapshotSource;
     trend?: Record<string, TrendOkResult | undefined>;
     quotes?: BuildExecutionSnapshotInput['quotes'];
@@ -241,6 +245,7 @@ export async function captureAndPushExecutionSnapshot(
     quotes: quotes ?? {},
     gate: opts.gate,
     mainlineAllow: opts.mainlineAllow,
+    sectorOutflowBlock: opts.sectorOutflowBlock === true,
     source: opts.source,
   });
   if (!payload) return null;

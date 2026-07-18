@@ -24,10 +24,16 @@ function formatPosPct(v: number | null | undefined): string {
   return typeof v === 'number' && Number.isFinite(v) ? v.toFixed(1) : '—';
 }
 
+export type PositionsExecutionMarkdownResult = {
+  markdown: string;
+  /** Flat symbols with Action=PURGE this round (remove after report is built). */
+  purgeSymbols: string[];
+};
+
 /**
  * Unified combat table for Copy all / Watchlist copy.
  * Merges quant factors (RS/Score/TrendOK/Current) with execution contract
- * (Action/Suggest%/Trigger/Stops) into one LLM payload table.
+ * (Action/Suggest%/Entry_Trigger/Exit_Stop) into one LLM payload table.
  */
 export function buildPositionsExecutionMarkdown(
   items: WatchlistItem[],
@@ -49,7 +55,8 @@ export function buildPositionsExecutionMarkdown(
   mainlineAllow: MainlineAllowSet | null = null,
   tradingTime = false,
   todaySh = '',
-): string {
+  sectorOutflowBlock = false,
+): PositionsExecutionMarkdownResult {
   const lines: string[] = [];
   lines.push(`${heading} Combat Positions & Watchlist (Unified)`);
   if (!gate?.allowNewEntries) {
@@ -70,6 +77,17 @@ export function buildPositionsExecutionMarkdown(
   lines.push(
     '- note: Suggest% = min(5% clip, single 15% room, sector 30% room, sleeve hint room)',
   );
+  lines.push(
+    '- note: Dist% flat = (Entry_Trigger-Current)/Current; held = (Current-Exit_Stop)/Current',
+  );
+  lines.push(
+    '- note: PURGE = Pos%=0 & Score<30 & TrendOK=no (removed from watchlist after this report)',
+  );
+  if (sectorOutflowBlock) {
+    lines.push(
+      '- note: Mainline=no + SECTOR_OUTFLOW_BLOCK when all sectors net outflow',
+    );
+  }
   const sleeveExposurePct = buildSleeveExposurePct(items);
   lines.push(
     `- sleeve: ${formatSleeveBudgetLabel(sleeveExposurePct, gate?.positionRangeHint)}`,
@@ -92,7 +110,8 @@ export function buildPositionsExecutionMarkdown(
     'Pos%',
     'Action',
     'Suggest%',
-    'Trigger',
+    'Entry_Trigger',
+    'Exit_Stop',
     'HardStop',
     'TrailStop',
     'Dist%',
@@ -100,6 +119,7 @@ export function buildPositionsExecutionMarkdown(
     'Why',
   ];
   const rows: unknown[][] = [];
+  const purgeSymbols: string[] = [];
   for (const it of items) {
     const t = trend[it.symbol];
     const q = quotes[it.symbol];
@@ -122,7 +142,11 @@ export function buildPositionsExecutionMarkdown(
       marketRegime: t?.marketRegime ?? null,
       sectorExposureByIndustry,
       sleeveExposurePct,
+      sectorOutflowBlock,
     });
+    if (card.action === 'PURGE') {
+      purgeSymbols.push(it.symbol);
+    }
     const dist =
       typeof card.distPct === 'number' && Number.isFinite(card.distPct)
         ? card.distPct.toFixed(1)
@@ -142,7 +166,8 @@ export function buildPositionsExecutionMarkdown(
       formatPosPct(it.positionPct),
       card.action,
       suggest,
-      mdPrice(card.trigger ?? null),
+      mdPrice(card.entryTrigger ?? null),
+      mdPrice(card.exitStop ?? null),
       mdPrice(card.hardStop ?? null),
       mdPrice(card.trailStop ?? null),
       dist,
@@ -153,9 +178,14 @@ export function buildPositionsExecutionMarkdown(
   if (!rows.length) {
     lines.push('- No watchlist items.');
     lines.push('');
-    return lines.join('\n');
+    return { markdown: lines.join('\n'), purgeSymbols: [] };
   }
   lines.push(mdTable(headers, rows));
+  if (purgeSymbols.length) {
+    lines.push(
+      `- note: Purged ${purgeSymbols.length} symbols (Score<30 & TrendOK=no & flat) — removed after this report`,
+    );
+  }
   lines.push('');
-  return lines.join('\n');
+  return { markdown: lines.join('\n'), purgeSymbols };
 }

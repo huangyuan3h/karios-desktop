@@ -28,20 +28,23 @@ export type UseExecutionJournalCaptureOpts = {
   items: WatchlistItem[];
   gate: ExecutionGate | null;
   mainlineAllow: MainlineAllowSet | null;
+  sectorOutflowBlock?: boolean;
   /** When true, run poll + eod + initial flush */
   enabled?: boolean;
 };
 
 export function useExecutionJournalCapture(opts: UseExecutionJournalCaptureOpts) {
-  const { items, gate, mainlineAllow, enabled = true } = opts;
+  const { items, gate, mainlineAllow, sectorOutflowBlock = false, enabled = true } = opts;
   const queryClient = useQueryClient();
   const [busy, setBusy] = React.useState(false);
   const itemsRef = React.useRef(items);
   const gateRef = React.useRef(gate);
   const mainlineRef = React.useRef(mainlineAllow);
+  const outflowRef = React.useRef(sectorOutflowBlock);
   itemsRef.current = items;
   gateRef.current = gate;
   mainlineRef.current = mainlineAllow;
+  outflowRef.current = sectorOutflowBlock;
 
   const invalidate = React.useCallback(() => {
     const td = getShanghaiTodayIso();
@@ -59,6 +62,7 @@ export function useExecutionJournalCapture(opts: UseExecutionJournalCaptureOpts)
           items: itemsRef.current,
           gate: gateRef.current,
           mainlineAllow: mainlineRef.current,
+          sectorOutflowBlock: outflowRef.current,
           source,
         });
         invalidate();
