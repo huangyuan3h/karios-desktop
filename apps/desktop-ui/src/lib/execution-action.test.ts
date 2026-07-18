@@ -19,6 +19,7 @@ import {
   isSectorConcentrationBlocked,
   isSleeveCapBlocked,
   parsePositionRangeHintMaxPct,
+  suggestFireSizePct,
 } from './execution-action';
 import type { MainlineAllowSet } from './hot-industry-picks';
 
@@ -1082,6 +1083,64 @@ describe('deriveActionCard', () => {
     expect(formatSleeveBudgetLabel(45, '50%-60%')).toBe('Sleeve 45.0% / 60%');
     expect(formatSleeveBudgetLabel(0, '—')).toBe('Sleeve 0.0% / —');
     expect(formatSleeveBudgetLabel(59.9, '30%')).toBe('Sleeve 59.9% / 30%');
+  });
+
+  it('suggests fire size with 5% clip by default', () => {
+    expect(
+      suggestFireSizePct({
+        positionPct: null,
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 10]]),
+        sleeveExposurePct: 40,
+        positionRangeHint: '50%-60%',
+      }),
+    ).toEqual({ addPct: 5, note: 'clip' });
+  });
+
+  it('binds fire size to sleeve room', () => {
+    expect(
+      suggestFireSizePct({
+        positionPct: null,
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 10]]),
+        sleeveExposurePct: 58,
+        positionRangeHint: '50%-60%',
+      }),
+    ).toEqual({ addPct: 2, note: 'sleeve' });
+  });
+
+  it('binds fire size to single-name room on ADD', () => {
+    expect(
+      suggestFireSizePct({
+        positionPct: 12,
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 12]]),
+        sleeveExposurePct: 20,
+        positionRangeHint: '50%-60%',
+      }),
+    ).toEqual({ addPct: 3, note: 'single' });
+  });
+
+  it('attaches suggestAddPct on BUY action card', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      sleeveExposurePct: 40,
+      sectorExposureByIndustry: new Map([['半导体', 5]]),
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.suggestAddPct).toBe(5);
+    expect(card.suggestSizeNote).toBe('clip');
   });
 });
 

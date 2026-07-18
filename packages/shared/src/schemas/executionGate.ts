@@ -39,5 +39,9 @@ export const ExecutionActionCardSchema = z.object({
   why: z.string().optional(),
   mainlineOk: z.boolean().optional(),
   mainlineTag: MainlineTagSchema.nullable().optional(),
+  /** Suggested add to sleeve weight for BUY/ADD (pct points), after caps. */
+  suggestAddPct: z.number().nullable().optional(),
+  /** Binding constraint: clip | single | sector | sleeve */
+  suggestSizeNote: z.string().nullable().optional(),
 });
 export type ExecutionActionCard = z.infer<typeof ExecutionActionCardSchema>;

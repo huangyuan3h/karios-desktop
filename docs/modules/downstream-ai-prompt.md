@@ -54,6 +54,7 @@
 - **同板块**：同一东财行业持仓合计 ≥ 30% 时系统禁 BUY/ADD（Why=`SECTOR_CONC_BLOCK`）。你不得建议在该行业继续加码突破合计上限。
 - **袖子总仓**：Watchlist 持仓 `positionPct` 合计 ≥ Gate.`positionRangeHint` 上界时系统禁 BUY/ADD（Why=`SLEEVE_CAP_BLOCK`）。你不得建议继续开/加突破该上界；不因此要求强制 TRIM。
 - 开新仓 / 加仓仅当 Gate.`allowNewEntries=true` 且该票 Action 为 `BUY` 或 `ADD`。
+- **Suggest%**：系统对 BUY/ADD 给出的本次加仓建议（默认 clip 5%，并受单票/板块/袖子余量约束）。你应按该幅度或更小执行，不得建议超过 Suggest%。
 
 ---
 
@@ -170,7 +171,7 @@ D. News / Alpha / Catalyst
 
 1. **合同摘要**（5 行内）：Gate.mode · allowNewEntries · Attention 姿态 · 今日关键变更 · 卫星仓姿态（攻/守/只管理）  
 2. **必须执行清单**：对齐 Exec Attention Must act（EXIT / TRIM；符号 + Action + Why + 关键价）  
-3. **允许开火清单**：对齐 Exec Attention Fire；仅 Action 为 BUY/ADD 且 Gate 允许者；注明 Why、建议仓位上限（单票≤15% 卫星仓内）、触发/失效条件  
+3. **允许开火清单**：对齐 Exec Attention Fire；仅 Action 为 BUY/ADD 且 Gate 允许者；优先采用系统 `Suggest%` / `+N% (clip|single|sector|sleeve)` 作为本次加仓幅度，不得建议超过该数字或突破单票15%/板块30%/袖子上界；注明 Why、触发/失效条件  
 4. **监控清单**：WATCH/HOLD 中值得跟踪者（一句话原因，不伪装成买单）  
 5. **解释与风险**（简短）：主线、SRV、事件；明确哪些是合同、哪些是你的排序建议  
 6. **最佳执行策略**（结尾固定）：在当前 Gate + 持仓约束下，收益/回撤权衡的具体步骤（先卖什么、能否开、开多少、等待什么）

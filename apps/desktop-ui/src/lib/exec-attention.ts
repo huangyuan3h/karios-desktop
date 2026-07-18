@@ -12,6 +12,8 @@ export type ExecAttentionLine = {
   symbol: string;
   action: string;
   why: string | null;
+  suggestAddPct?: number | null;
+  suggestSizeNote?: string | null;
 };
 
 export type ExecAttentionQueue = {
@@ -56,12 +58,31 @@ function bySymbol(a: ExecAttentionLine, b: ExecAttentionLine): number {
   return a.symbol.localeCompare(b.symbol);
 }
 
-function toLine(c: { symbol: string; action: string; why?: string | null }): ExecAttentionLine {
+function toLine(c: {
+  symbol: string;
+  action: string;
+  why?: string | null;
+  suggestAddPct?: number | null;
+  suggestSizeNote?: string | null;
+}): ExecAttentionLine {
   return {
     symbol: c.symbol,
     action: String(c.action),
     why: c.why == null || c.why === '' ? null : String(c.why),
+    suggestAddPct:
+      typeof c.suggestAddPct === 'number' && Number.isFinite(c.suggestAddPct)
+        ? c.suggestAddPct
+        : null,
+    suggestSizeNote: c.suggestSizeNote == null ? null : String(c.suggestSizeNote),
   };
+}
+
+export function formatAttentionFireLine(x: ExecAttentionLine): string {
+  const size =
+    typeof x.suggestAddPct === 'number' && Number.isFinite(x.suggestAddPct)
+      ? `  +${x.suggestAddPct.toFixed(1)}%${x.suggestSizeNote ? ` (${x.suggestSizeNote})` : ''}`
+      : '';
+  return `${x.symbol}  ${x.action}${size}  ${x.why ?? '—'}`;
 }
 
 /**
@@ -70,7 +91,13 @@ function toLine(c: { symbol: string; action: string; why?: string | null }): Exe
 export function buildExecAttentionQueue(opts: {
   gate: ExecutionGate | null;
   watchlistItems: PositionLike[];
-  cards: Array<{ symbol: string; action: string; why?: string | null }>;
+  cards: Array<{
+    symbol: string;
+    action: string;
+    why?: string | null;
+    suggestAddPct?: number | null;
+    suggestSizeNote?: string | null;
+  }>;
   changes: ExecutionDecisionChange[];
 }): ExecAttentionQueue {
   const { gate, watchlistItems, cards, changes } = opts;
@@ -147,7 +174,7 @@ export function formatExecAttentionMarkdown(
     lines.push('- None');
   } else {
     for (const x of queue.fires) {
-      lines.push(`- ${x.symbol}  ${x.action}  ${x.why ?? '—'}`);
+      lines.push(`- ${formatAttentionFireLine(x)}`);
     }
   }
   if (queue.keyChanges.length) {

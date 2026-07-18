@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { executionGateBadgeClass, fmtDateTime } from '@/lib/dashboard-format';
 import {
   buildExecAttentionQueue,
+  formatAttentionFireLine,
   formatDecisionChangeLine,
   resolveAttentionCards,
   type ExecAttentionLine,
@@ -24,9 +25,11 @@ import type { WatchlistItem } from '@/lib/watchlist-storage';
 function AttentionLines({
   lines,
   empty,
+  fireStyle = false,
 }: {
   lines: ExecAttentionLine[];
   empty: string;
+  fireStyle?: boolean;
 }) {
   if (!lines.length) {
     return <div className="text-[11px] text-[var(--k-muted)]">{empty}</div>;
@@ -35,9 +38,15 @@ function AttentionLines({
     <ul className="space-y-0.5 font-mono text-[11px] leading-snug">
       {lines.map((x) => (
         <li key={`${x.action}-${x.symbol}`}>
-          <span className="font-semibold">{x.symbol}</span>
-          <span className="mx-1.5">{x.action}</span>
-          <span className="text-[var(--k-muted)]">{x.why ?? '—'}</span>
+          {fireStyle ? (
+            formatAttentionFireLine(x)
+          ) : (
+            <>
+              <span className="font-semibold">{x.symbol}</span>
+              <span className="mx-1.5">{x.action}</span>
+              <span className="text-[var(--k-muted)]">{x.why ?? '—'}</span>
+            </>
+          )}
         </li>
       ))}
     </ul>
@@ -168,7 +177,7 @@ export function DecisionJournalCard(props: {
           ) : attention.fireBlockedByGate ? (
             <div className="text-[11px] text-[var(--k-muted)]">Gate blocks new entries</div>
           ) : (
-            <AttentionLines lines={attention.fires} empty="None" />
+            <AttentionLines lines={attention.fires} empty="None" fireStyle />
           )}
         </div>
         {attention.keyChanges.length > 0 ? (

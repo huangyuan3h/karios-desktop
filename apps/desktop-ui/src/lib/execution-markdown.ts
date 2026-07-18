@@ -40,6 +40,9 @@ export function buildPositionsExecutionMarkdown(
   lines.push(
     '- note: BUY/ADD blocked when sleeve positionPct sum >= Gate positionRangeHint max (SLEEVE_CAP_BLOCK)',
   );
+  lines.push(
+    '- note: Suggest% = min(5% clip, single 15% room, sector 30% room, sleeve hint room)',
+  );
   const sleeveExposurePct = buildSleeveExposurePct(items);
   lines.push(
     `- sleeve: ${formatSleeveBudgetLabel(sleeveExposurePct, gate?.positionRangeHint)}`,
@@ -55,6 +58,7 @@ export function buildPositionsExecutionMarkdown(
   const headers = [
     'Symbol',
     'Action',
+    'Suggest%',
     'Trigger',
     'TrailArmed',
     'Peak',
@@ -95,9 +99,14 @@ export function buildPositionsExecutionMarkdown(
     const mainlineCell = card.mainlineOk
       ? card.mainlineTag || 'ok'
       : 'no';
+    const suggest =
+      typeof card.suggestAddPct === 'number' && Number.isFinite(card.suggestAddPct)
+        ? `+${card.suggestAddPct.toFixed(1)}${card.suggestSizeNote ? ` (${card.suggestSizeNote})` : ''}`
+        : '—';
     rows.push([
       it.symbol,
       card.action,
+      suggest,
       mdPrice(card.trigger ?? null),
       card.trailArmed ? 'yes' : 'no',
       mdPrice(card.peak ?? null),

@@ -63,4 +63,17 @@ describe('ExecutionActionCardSchema', () => {
     });
     expect(parsed.mainlineTag).toBe('5D_TOP3');
   });
+
+  it('parses size suggestion fields', () => {
+    const parsed = ExecutionActionCardSchema.parse({
+      symbol: 'CN:600519',
+      action: 'BUY',
+      trailArmed: false,
+      why: 'MAINLINE_OK',
+      suggestAddPct: 5,
+      suggestSizeNote: 'clip',
+    });
+    expect(parsed.suggestAddPct).toBe(5);
+    expect(parsed.suggestSizeNote).toBe('clip');
+  });
 });

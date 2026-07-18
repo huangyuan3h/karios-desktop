@@ -172,7 +172,13 @@ describe('buildExecAttentionQueue', () => {
       watchlistItems: [{ symbol: 'CN:1', positionPct: 20 }],
       cards: [
         { symbol: 'CN:600000', action: 'EXIT', why: 'EXIT_NOW' },
-        { symbol: 'CN:600001', action: 'BUY', why: 'MAINLINE_OK' },
+        {
+          symbol: 'CN:600001',
+          action: 'BUY',
+          why: 'MAINLINE_OK',
+          suggestAddPct: 5,
+          suggestSizeNote: 'clip',
+        },
       ],
       changes: [],
     });
@@ -183,6 +189,6 @@ describe('buildExecAttentionQueue', () => {
     expect(md).toContain('### Must act');
     expect(md).toContain('CN:600000  EXIT  EXIT_NOW');
     expect(md).toContain('### Fire');
-    expect(md).toContain('CN:600001  BUY  MAINLINE_OK');
+    expect(md).toContain('CN:600001  BUY  +5.0% (clip)  MAINLINE_OK');
   });
 });

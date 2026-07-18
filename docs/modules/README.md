@@ -143,6 +143,7 @@ Karios 管理的是家庭资产中的**卫星仓**——专门用来博取更高
 - **同板块合计上限 30%（卫星仓内）**：同一东财行业持仓 `positionPct` 之和 ≥ 30% 时，禁止对该行业 `BUY`/`ADD`（Why=`SECTOR_CONC_BLOCK`）。不自动 TRIM；无仓位数字的持仓不计入合计。
 - **卫星仓总仓位硬闸**：Watchlist 内有限正数 `positionPct` 合计 ≥ Gate.`positionRangeHint` 上界时，禁止任意 `BUY`/`ADD`（Why=`SLEEVE_CAP_BLOCK`）。不 TRIM；hint 缺失/`—`/无法解析或未传合计则 fail-open。
 - **袖子预算可见性**：Watchlist Gate 横幅显示 `Sleeve 合计% / hint上界%`；持仓有成本但缺 `positionPct` 时琥珀色提示（硬闸仍 fail-open，需补全账本后闸才准）。
+- **开火仓位建议（Suggest%）**：`BUY`/`ADD` 时建议本次加仓幅度 = `min(5% clip, 单票15%余量, 板块30%余量, 袖子 hint 余量)`；Exec / Attention / Positions / Copy 同口径展示 `+N% (binding)`。
 
 ### Execution Gate（下游执行合同）
 

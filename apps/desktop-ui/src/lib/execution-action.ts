@@ -16,6 +16,8 @@ export const BUY_SCORE_MIN = 80;
 export const POSITION_SIZE_CAP_PCT = 15;
 /** Max sum of positionPct in one East Money industry; blocks BUY/ADD at or above. */
 export const SECTOR_CONCENTRATION_CAP_PCT = 30;
+/** Default per-fire clip for BUY/ADD size suggestion (pct points). */
+export const DEFAULT_FIRE_CLIP_PCT = 5;
 
 /** Defense sectors blocked from BUY/ADD (East Money industry substring match). */
 export const DEFENSE_SECTOR_KEYWORDS = [
@@ -154,6 +156,62 @@ export function isSleeveCapBlocked(
   const maxPct = parsePositionRangeHintMaxPct(positionRangeHint);
   if (maxPct == null) return false;
   return sleeveExposurePct >= maxPct;
+}
+
+export type FireSizeSuggestion = {
+  addPct: number;
+  note: 'clip' | 'single' | 'sector' | 'sleeve';
+};
+
+/**
+ * Suggested sleeve-weight add for BUY/ADD after single / sector / sleeve headroom.
+ * Caps at DEFAULT_FIRE_CLIP_PCT unless room is smaller. Null if room < 0.1.
+ */
+export function suggestFireSizePct(opts: {
+  positionPct?: number | null;
+  industryName?: string | null;
+  sectorExposureByIndustry?: Map<string, number> | null;
+  sleeveExposurePct?: number | null;
+  positionRangeHint?: string | null;
+  clipPct?: number;
+}): FireSizeSuggestion | null {
+  const clip =
+    typeof opts.clipPct === 'number' && Number.isFinite(opts.clipPct) && opts.clipPct > 0
+      ? opts.clipPct
+      : DEFAULT_FIRE_CLIP_PCT;
+  const current = num(opts.positionPct);
+  const currentPct = current != null && current > 0 ? current : 0;
+  const roomSingle = POSITION_SIZE_CAP_PCT - currentPct;
+
+  const industry = String(opts.industryName || '').trim();
+  let roomSector = Number.POSITIVE_INFINITY;
+  if (industry && opts.sectorExposureByIndustry) {
+    const sum = opts.sectorExposureByIndustry.get(industry);
+    const sectorSum = typeof sum === 'number' && Number.isFinite(sum) ? sum : 0;
+    roomSector = SECTOR_CONCENTRATION_CAP_PCT - sectorSum;
+  }
+
+  const sleeveMax = parsePositionRangeHintMaxPct(opts.positionRangeHint);
+  let roomSleeve = Number.POSITIVE_INFINITY;
+  if (sleeveMax != null) {
+    const sleeve =
+      typeof opts.sleeveExposurePct === 'number' && Number.isFinite(opts.sleeveExposurePct)
+        ? opts.sleeveExposurePct
+        : 0;
+    roomSleeve = sleeveMax - sleeve;
+  }
+
+  const room = Math.min(clip, roomSingle, roomSector, roomSleeve);
+  if (!Number.isFinite(room) || room < 0.1) return null;
+  const addPct = Math.round(room * 10) / 10;
+
+  const eps = 1e-6;
+  let note: FireSizeSuggestion['note'] = 'clip';
+  if (Math.abs(room - roomSleeve) < eps) note = 'sleeve';
+  else if (Math.abs(room - roomSector) < eps) note = 'sector';
+  else if (Math.abs(room - roomSingle) < eps) note = 'single';
+
+  return { addPct, note };
 }
 
 /** Held names with no finite positive positionPct (caps fail-open for these). */
@@ -472,6 +530,22 @@ export function deriveActionCard(opts: {
     why = 'WATCH';
   }
 
+  let suggestAddPct: number | null = null;
+  let suggestSizeNote: string | null = null;
+  if (action === 'BUY' || action === 'ADD') {
+    const size = suggestFireSizePct({
+      positionPct: position.positionPct,
+      industryName,
+      sectorExposureByIndustry,
+      sleeveExposurePct,
+      positionRangeHint: gate?.positionRangeHint ?? null,
+    });
+    if (size) {
+      suggestAddPct = size.addPct;
+      suggestSizeNote = size.note;
+    }
+  }
+
   return {
     symbol,
     action,
@@ -484,6 +558,8 @@ export function deriveActionCard(opts: {
     why,
     mainlineOk,
     mainlineTag,
+    suggestAddPct,
+    suggestSizeNote,
   };
 }
 

@@ -674,11 +674,19 @@ function WatchlistRowInner({
           actionCard.mainlineOk
             ? `mainline=${actionCard.mainlineTag || 'ok'}`
             : 'mainline=no',
+          typeof actionCard.suggestAddPct === 'number'
+            ? `suggest +${actionCard.suggestAddPct.toFixed(1)}% (${actionCard.suggestSizeNote || 'clip'})`
+            : null,
         ]
           .filter(Boolean)
           .join(' · ')}
       >
         {actionCard.action}
+        {typeof actionCard.suggestAddPct === 'number' ? (
+          <span className="ml-1 font-normal text-emerald-700/90">
+            +{actionCard.suggestAddPct.toFixed(0)}%
+          </span>
+        ) : null}
       </td>
       <td className="px-2 py-2 font-mono text-xs" title="Effective trigger (max hardStop, trailStop)">
         {fmtPrice(actionCard.trigger ?? null)}
