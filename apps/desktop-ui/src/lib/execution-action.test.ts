@@ -5,6 +5,7 @@ import type { ExecutionGate } from '@karios/shared';
 import {
   BUY_SCORE_MIN,
   buildSectorExposureByIndustry,
+  buildSleeveExposurePct,
   deriveActionCard,
   deriveTriggerAndTrail,
   evaluateHeldTrimGates,
@@ -13,6 +14,8 @@ import {
   isDefenseSector,
   isHeldPosition,
   isSectorConcentrationBlocked,
+  isSleeveCapBlocked,
+  parsePositionRangeHintMaxPct,
 } from './execution-action';
 import type { MainlineAllowSet } from './hot-industry-picks';
 
@@ -905,6 +908,157 @@ describe('deriveActionCard', () => {
     });
     expect(card.action).toBe('EXIT');
     expect(card.why).toBe('EXIT_NOW');
+  });
+
+  it('parses positionRangeHint upper bound', () => {
+    expect(parsePositionRangeHintMaxPct('50%-60%')).toBe(60);
+    expect(parsePositionRangeHintMaxPct('30%')).toBe(30);
+    expect(parsePositionRangeHintMaxPct('0%-10%')).toBe(10);
+    expect(parsePositionRangeHintMaxPct('80%-100%')).toBe(100);
+    expect(parsePositionRangeHintMaxPct('—')).toBeNull();
+    expect(parsePositionRangeHintMaxPct('')).toBeNull();
+    expect(parsePositionRangeHintMaxPct(null)).toBeNull();
+  });
+
+  it('sums finite positive positionPct for sleeve exposure', () => {
+    expect(
+      buildSleeveExposurePct([
+        { symbol: 'CN:1', positionPct: 20 },
+        { symbol: 'CN:2', positionPct: 40 },
+        { symbol: 'CN:3', costPrice: 10 },
+        { symbol: 'CN:4', positionPct: 0 },
+      ]),
+    ).toBe(60);
+  });
+
+  it('blocks BUY when sleeve exposure >= hint max', () => {
+    expect(isSleeveCapBlocked(60, '50%-60%')).toBe(true);
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      sleeveExposurePct: 60,
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('SLEEVE_CAP_BLOCK');
+    expect(card.mainlineOk).toBe(true);
+  });
+
+  it('blocks ADD to HOLD on sleeve cap (not TRIM)', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.2 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+      sleeveExposurePct: 60,
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('SLEEVE_CAP_BLOCK');
+  });
+
+  it('allows BUY when sleeve is under hint max', () => {
+    expect(isSleeveCapBlocked(59.9, '50%-60%')).toBe(false);
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      sleeveExposurePct: 59.9,
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('MAINLINE_5D_TOP3');
+  });
+
+  it('does not sleeve-block when hint is dash or sleeve omitted', () => {
+    const dashGate: ExecutionGate = { ...attackGate, positionRangeHint: '—' };
+    const cardDash = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: dashGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      sleeveExposurePct: 90,
+    });
+    expect(cardDash.action).toBe('BUY');
+
+    const cardOmit = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+    });
+    expect(cardOmit.action).toBe('BUY');
+  });
+
+  it('EXIT ignores sleeve cap', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        buyAction: 'avoid',
+        stopLossPrice: 9,
+        stopLossParts: { exit_now: true, atr14: 0.2 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 10, positionPct: 10, maxPrice: 11 },
+      currentPrice: 10.5,
+      mainlineAllow: mainline,
+      sleeveExposurePct: 90,
+    });
+    expect(card.action).toBe('EXIT');
+    expect(card.why).toBe('EXIT_NOW');
+  });
+
+  it('sector concentration wins over sleeve cap in entry order', () => {
+    const entry = evaluateNewEntryGates({
+      industryName: '半导体',
+      mainlineAllow: mainline,
+      sectorExposureByIndustry: new Map([['半导体', 35]]),
+      sleeveExposurePct: 90,
+      positionRangeHint: '50%-60%',
+    });
+    expect(entry).toEqual({ ok: false, tag: null, why: 'SECTOR_CONC_BLOCK' });
   });
 });
 

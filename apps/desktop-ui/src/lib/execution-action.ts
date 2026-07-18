@@ -115,6 +115,47 @@ export function isSectorConcentrationBlocked(
   return typeof sum === 'number' && Number.isFinite(sum) && sum >= capPct;
 }
 
+/**
+ * Parse Gate.positionRangeHint upper bound.
+ * "50%-60%" → 60, "30%" → 30, "0%-10%" → 10, "—" / unparseable → null.
+ */
+export function parsePositionRangeHintMaxPct(hint: string | null | undefined): number | null {
+  const raw = String(hint ?? '').trim();
+  if (!raw || raw === '—' || raw === '-') return null;
+  const range = raw.match(/(-?\d+(?:\.\d+)?)\s*%?\s*[-–—~]\s*(-?\d+(?:\.\d+)?)\s*%?/);
+  if (range) {
+    const a = Number(range[1]);
+    const b = Number(range[2]);
+    if (Number.isFinite(a) && Number.isFinite(b)) return Math.max(a, b);
+  }
+  const single = raw.match(/(-?\d+(?:\.\d+)?)\s*%?/);
+  if (single) {
+    const n = Number(single[1]);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+/** Sum finite positive positionPct across the satellite sleeve watchlist. */
+export function buildSleeveExposurePct(positions: PositionLike[]): number {
+  let sum = 0;
+  for (const pos of positions) {
+    const pct = num(pos.positionPct);
+    if (pct != null && pct > 0) sum += pct;
+  }
+  return sum;
+}
+
+export function isSleeveCapBlocked(
+  sleeveExposurePct: number | null | undefined,
+  positionRangeHint: string | null | undefined,
+): boolean {
+  if (typeof sleeveExposurePct !== 'number' || !Number.isFinite(sleeveExposurePct)) return false;
+  const maxPct = parsePositionRangeHintMaxPct(positionRangeHint);
+  if (maxPct == null) return false;
+  return sleeveExposurePct >= maxPct;
+}
+
 export function computePnLPct(cost: number | null, current: number | null): number | null {
   if (cost == null || cost <= 0 || current == null || !Number.isFinite(current)) return null;
   return ((current - cost) / cost) * 100;
@@ -206,6 +247,8 @@ export function evaluateNewEntryGates(opts: {
   gapUp?: boolean | null;
   marketRegime?: string | null;
   sectorExposureByIndustry?: Map<string, number> | null;
+  sleeveExposurePct?: number | null;
+  positionRangeHint?: string | null;
 }): NewEntryGateResult {
   const {
     industryName,
@@ -214,6 +257,8 @@ export function evaluateNewEntryGates(opts: {
     gapUp = null,
     marketRegime = null,
     sectorExposureByIndustry = null,
+    sleeveExposurePct = null,
+    positionRangeHint = null,
   } = opts;
   if (!industryName) {
     return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
@@ -229,6 +274,9 @@ export function evaluateNewEntryGates(opts: {
   }
   if (isSectorConcentrationBlocked(industryName, sectorExposureByIndustry)) {
     return { ok: false, tag: null, why: 'SECTOR_CONC_BLOCK' };
+  }
+  if (isSleeveCapBlocked(sleeveExposurePct, positionRangeHint)) {
+    return { ok: false, tag: null, why: 'SLEEVE_CAP_BLOCK' };
   }
   if (!mainlineAllow || !mainlineAllow.ready) {
     return { ok: false, tag: null, why: 'MAINLINE_DATA_UNAVAILABLE' };
@@ -286,6 +334,7 @@ export function deriveActionCard(opts: {
   gapUp?: boolean | null;
   marketRegime?: string | null;
   sectorExposureByIndustry?: Map<string, number> | null;
+  sleeveExposurePct?: number | null;
 }): ExecutionActionCard {
   const {
     symbol,
@@ -298,6 +347,7 @@ export function deriveActionCard(opts: {
     gapUp = null,
     marketRegime = null,
     sectorExposureByIndustry = null,
+    sleeveExposurePct = null,
   } = opts;
   const held = isHeldPosition(position);
   const parts = (trendok?.stopLossParts ?? null) as Record<string, unknown> | null;
@@ -336,6 +386,8 @@ export function deriveActionCard(opts: {
     gapUp,
     marketRegime,
     sectorExposureByIndustry,
+    sleeveExposurePct,
+    positionRangeHint: gate?.positionRangeHint ?? null,
   });
   // Mainline column independent of chase / concentration vetoes
   const mainlineOk = Boolean(

@@ -14,7 +14,10 @@ import { WatchlistRow } from '@/components/watchlist/WatchlistRow';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import type { ExecutionGate } from '@karios/shared';
 import { useChatStore } from '@/lib/chat/store';
-import { buildSectorExposureFromWatchlist } from '@/lib/execution-action';
+import {
+  buildSectorExposureFromWatchlist,
+  buildSleeveExposurePct,
+} from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
 import {
@@ -175,6 +178,11 @@ export function WatchlistTable({
   const sectorExposureByIndustry = React.useMemo(
     () => buildSectorExposureFromWatchlist(sortedItems, trend),
     [sortedItems, trend],
+  );
+
+  const sleeveExposurePct = React.useMemo(
+    () => buildSleeveExposurePct(sortedItems),
+    [sortedItems],
   );
 
   const [tooltip, setTooltip] = React.useState<{
@@ -396,6 +404,7 @@ export function WatchlistTable({
                         executionGate={executionGate ?? null}
                         mainlineAllow={mainlineAllow ?? null}
                         sectorExposureByIndustry={sectorExposureByIndustry}
+                        sleeveExposurePct={sleeveExposurePct}
                         showTooltip={showTooltip}
                         hideTooltip={hideTooltip}
                         showColorPicker={showColorPicker}

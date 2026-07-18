@@ -141,6 +141,7 @@ Karios 管理的是家庭资产中的**卫星仓**——专门用来博取更高
 - 卫星仓上限由家庭自行设定（例如占净资产的固定比例）；系统信号再强，也不应突破该预算。
 - **单票建议上限 15%（卫星仓内）**：Watchlist `positionPct >= 15` 时 Exec 禁止 `ADD`（→ `HOLD`，Why=`SIZE_CAP_BLOCK`）。不自动 TRIM；候选 `BUY` 不因本规则拦截。
 - **同板块合计上限 30%（卫星仓内）**：同一东财行业持仓 `positionPct` 之和 ≥ 30% 时，禁止对该行业 `BUY`/`ADD`（Why=`SECTOR_CONC_BLOCK`）。不自动 TRIM；无仓位数字的持仓不计入合计。
+- **卫星仓总仓位硬闸**：Watchlist 内有限正数 `positionPct` 合计 ≥ Gate.`positionRangeHint` 上界时，禁止任意 `BUY`/`ADD`（Why=`SLEEVE_CAP_BLOCK`）。不 TRIM；hint 缺失/`—`/无法解析或未传合计则 fail-open。
 
 ### Execution Gate（下游执行合同）
 
@@ -180,8 +181,9 @@ Watchlist 是**监控池**（TV Screener → 回撤 + TrendOK 导入），**不�
 3. **非见光死**：日内涨幅 ≤6%（`>` 6% 拦截；缺报价/`null` 不拦截）
 4. **非弱市高开**：`gapUp`（真跳空：当日低点 > 前日高点）且市场 `Weak`/`Diverging` → 禁止 BUY/ADD；缺 gap / 非弱市 regime 不拦截。与 Alerts `gap_up_weak_market` 同条件；后端 live 时可能已将 `buyAction` 置 avoid，Action 为合同层双保险。
 5. **非板块过浓**：该东财行业已持仓合计 `positionPct >= 30%` → 禁止 BUY/ADD，`SECTOR_CONC_BLOCK`；未传暴露度映射或无仓位数字不拦截。
+6. **非袖子打满**：卫星仓 `positionPct` 合计 ≥ Gate.`positionRangeHint` 上界 → 禁止 BUY/ADD，`SLEEVE_CAP_BLOCK`；hint 不可解析或未传合计不拦截。
 
-否则 Exec 降为 `WATCH`（候选）或持仓 `HOLD`（不加仓、不 TRIM），Why 为 `NOT_MAINLINE` / `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY` / `INTRADAY_SURGE_BLOCK` / `GAP_UP_WEAK_BLOCK` / `SECTOR_CONC_BLOCK`。与 Import 过滤正交。
+否则 Exec 降为 `WATCH`（候选）或持仓 `HOLD`（不加仓、不 TRIM），Why 为 `NOT_MAINLINE` / `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY` / `INTRADAY_SURGE_BLOCK` / `GAP_UP_WEAK_BLOCK` / `SECTOR_CONC_BLOCK` / `SLEEVE_CAP_BLOCK`。与 Import 过滤正交。
 
 ### 持仓 TRIM（DEFEND + 主线失效）
 

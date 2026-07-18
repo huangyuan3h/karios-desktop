@@ -475,6 +475,7 @@ export type WatchlistRowProps = {
   executionGate: ExecutionGate | null;
   mainlineAllow: MainlineAllowSet | null;
   sectorExposureByIndustry: Map<string, number> | null;
+  sleeveExposurePct: number;
   showTooltip: ShowTooltipFn;
   hideTooltip: () => void;
   showColorPicker: (el: HTMLElement, sym: string) => void;
@@ -498,6 +499,7 @@ function WatchlistRowInner({
   executionGate,
   mainlineAllow,
   sectorExposureByIndustry,
+  sleeveExposurePct,
   showTooltip,
   hideTooltip,
   showColorPicker,
@@ -540,6 +542,7 @@ function WatchlistRowInner({
     gapUp: typeof t?.gapUp === 'boolean' ? t.gapUp : null,
     marketRegime: t?.marketRegime ?? null,
     sectorExposureByIndustry,
+    sleeveExposurePct,
   });
   const execTone =
     actionCard.action === 'EXIT'
@@ -554,7 +557,8 @@ function WatchlistRowInner({
             actionCard.why === 'INTRADAY_SURGE_BLOCK' ||
             actionCard.why === 'GAP_UP_WEAK_BLOCK' ||
             actionCard.why === 'SIZE_CAP_BLOCK' ||
-            actionCard.why === 'SECTOR_CONC_BLOCK'
+            actionCard.why === 'SECTOR_CONC_BLOCK' ||
+            actionCard.why === 'SLEEVE_CAP_BLOCK'
           ? 'text-amber-700 font-semibold'
           : 'text-[var(--k-muted)]';
 
