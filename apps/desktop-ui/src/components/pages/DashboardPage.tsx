@@ -1008,7 +1008,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                     </div>
                   ) : (
                     <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
-                      No summary yet. Click "Sync & Copy" to fetch news and generate summary.
+                      No summary yet. Click &quot;Sync & Copy&quot; to fetch news and generate summary.
                     </div>
                   )}
                   <div className="mt-3 flex items-center gap-2">

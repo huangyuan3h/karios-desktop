@@ -461,7 +461,7 @@ export function ModelSettingsPanel() {
 
           {(!config?.profiles || config.profiles.length === 0) && (
             <div className="px-3 py-6 text-center text-sm text-[var(--k-muted)]">
-              暂无配置，点击"添加"创建
+              暂无配置，点击&quot;添加&quot;创建
             </div>
           )}
         </div>

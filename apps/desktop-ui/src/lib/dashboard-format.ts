@@ -220,13 +220,22 @@ export function dedupeShownDates(
 
 /** Build a {date -> top industry names[]} map from the dashboard topByDate array. */
 export function buildTopByDateMap(summary: unknown): Record<string, string[]> {
-  const arr: any[] = Array.isArray((summary as any)?.industryFundFlow?.topByDate)
-    ? (summary as any).industryFundFlow.topByDate
+  const root =
+    summary && typeof summary === 'object' ? (summary as Record<string, unknown>) : null;
+  const industryFundFlow =
+    root?.industryFundFlow && typeof root.industryFundFlow === 'object'
+      ? (root.industryFundFlow as Record<string, unknown>)
+      : null;
+  const arr: unknown[] = Array.isArray(industryFundFlow?.topByDate)
+    ? industryFundFlow.topByDate
     : [];
   const map: Record<string, string[]> = {};
   for (const it of arr) {
-    const d = String(it?.date ?? '');
-    const top = Array.isArray(it?.top) ? it.top.map((x: any) => String(x ?? '')) : [];
+    const row = it && typeof it === 'object' ? (it as Record<string, unknown>) : null;
+    const d = String(row?.date ?? '');
+    const top = Array.isArray(row?.top)
+      ? row.top.map((x: unknown) => String(x ?? ''))
+      : [];
     if (d) map[d] = top;
   }
   return map;
@@ -248,10 +257,15 @@ export function buildIndexTrafficSummary(indexSignals: unknown[]): { title: stri
     };
   }
   const byName = new Map(
-    items.map((x: any) => [String(x?.name ?? x?.tsCode ?? ''), String(x?.signal ?? '')]),
+    items.map((x: unknown) => {
+      const row = x && typeof x === 'object' ? (x as Record<string, unknown>) : null;
+      return [String(row?.name ?? row?.tsCode ?? ''), String(row?.signal ?? '')] as const;
+    }),
   );
-  const sse = byName.get('上证指数') || String((items[0] as any)?.signal ?? '');
-  const cyb = byName.get('创业板指') || String((items[1] as any)?.signal ?? '');
+  const first = items[0] && typeof items[0] === 'object' ? (items[0] as Record<string, unknown>) : null;
+  const second = items[1] && typeof items[1] === 'object' ? (items[1] as Record<string, unknown>) : null;
+  const sse = byName.get('上证指数') || String(first?.signal ?? '');
+  const cyb = byName.get('创业板指') || String(second?.signal ?? '');
   const g1 = sse === 'green' || sse === 'light_green' || sse === 'deep_green';
   const g2 = cyb === 'green' || cyb === 'light_green' || cyb === 'deep_green';
 

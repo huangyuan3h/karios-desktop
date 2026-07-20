@@ -31,7 +31,9 @@ export type DashboardSyncCallbacks = {
 
 export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
   const callbacksRef = React.useRef(callbacks);
-  callbacksRef.current = callbacks;
+  React.useEffect(() => {
+    callbacksRef.current = callbacks;
+  });
 
   const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
   const [busy, setBusy] = React.useState(false);

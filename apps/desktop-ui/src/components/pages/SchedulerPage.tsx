@@ -195,7 +195,7 @@ export function SchedulerPage() {
             }`,
           );
       } else {
-        const err = (r as any).error || 'Sync failed.';
+        const err = 'error' in r ? r.error : 'Sync failed.';
         setError(err);
         if (String(err).toLowerCase().includes('trade calendar missing')) setNeedTradeCal(true);
       }

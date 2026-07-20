@@ -8,6 +8,7 @@ import {
   symbolsWithLatestActionDeltas,
 } from './execution-journal';
 import { BUY_SCORE_MIN } from './execution-action';
+import type { TrendOkResult } from '@/lib/api/types';
 import type { MainlineAllowSet } from './hot-industry-picks';
 
 const gate: ExecutionGate = {
@@ -36,7 +37,7 @@ describe('buildExecutionSnapshotPayload', () => {
           values: { emIndustry: '半导体' },
           gapUp: false,
           marketRegime: 'Strong',
-        } as any,
+        } as TrendOkResult,
       },
       quotes: { 'CN:600000': { price: 10.5 } },
       gate,

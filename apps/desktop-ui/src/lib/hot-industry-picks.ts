@@ -33,8 +33,9 @@ function parseTopEntry(entry: TopByDateEntry): { name: string; value: number } |
 function normalizeRankedEntries(rankedRaw: unknown[]): DailyRankingEntry[] {
   const parsed: Array<{ industryName: string; value: number }> = [];
   for (const row of rankedRaw) {
-    const industryName = String((row as any)?.industryName ?? '').trim();
-    const value = Number((row as any)?.value ?? 0);
+    const rec = row && typeof row === 'object' ? (row as Record<string, unknown>) : null;
+    const industryName = String(rec?.industryName ?? '').trim();
+    const value = Number(rec?.value ?? 0);
     if (!industryName) continue;
     parsed.push({
       industryName,
@@ -149,21 +150,28 @@ type IndustryFlowContext = {
 };
 
 function resolveIndustryFlowContext(summary: unknown): IndustryFlowContext | null {
-  const ind: any = (summary as any)?.industryFundFlow;
-  if (!ind || typeof ind !== 'object') return null;
+  const root = summary && typeof summary === 'object' ? (summary as Record<string, unknown>) : null;
+  const indRaw = root?.industryFundFlow;
+  if (!indRaw || typeof indRaw !== 'object') return null;
+  const ind = indRaw as Record<string, unknown>;
 
-  const dailyRankingsRaw: unknown[] = Array.isArray(ind?.dailyRankings) ? ind.dailyRankings : [];
+  const dailyRankingsRaw: unknown[] = Array.isArray(ind.dailyRankings) ? ind.dailyRankings : [];
   const dailyRankings: DailyRankingByDate[] = dailyRankingsRaw
-    .map((it: any) => {
-      const date = String(it?.date ?? '');
-      const rankedRaw: unknown[] = Array.isArray(it?.ranked) ? it.ranked : [];
+    .map((it: unknown) => {
+      const row = it && typeof it === 'object' ? (it as Record<string, unknown>) : null;
+      const date = String(row?.date ?? '');
+      const rankedRaw: unknown[] = Array.isArray(row?.ranked) ? row.ranked : [];
       const ranked = normalizeRankedEntries(rankedRaw);
       return date ? { date, ranked } : null;
     })
     .filter((x): x is DailyRankingByDate => x != null);
 
-  const datesAll: string[] = Array.isArray(ind?.dates) ? ind.dates : [];
-  const flow5dDates: string[] = Array.isArray(ind?.flow5d?.dates) ? ind.flow5d.dates : [];
+  const datesAll: string[] = Array.isArray(ind.dates) ? ind.dates.map(String) : [];
+  const flow5dObj =
+    ind.flow5d && typeof ind.flow5d === 'object' ? (ind.flow5d as Record<string, unknown>) : null;
+  const flow5dDates: string[] = Array.isArray(flow5dObj?.dates)
+    ? flow5dObj.dates.map(String)
+    : [];
   const rankingDates =
     dailyRankings.length > 0
       ? dailyRankings.map((x) => x.date)
@@ -174,9 +182,13 @@ function resolveIndustryFlowContext(summary: unknown): IndustryFlowContext | nul
     rankingDates,
   });
 
-  const topByDateArr: any[] = Array.isArray(ind?.topByDate) ? ind.topByDate : [];
+  const topByDateArr: Array<{ date?: string; top?: TopByDateEntry[] }> = Array.isArray(
+    ind.topByDate,
+  )
+    ? (ind.topByDate as Array<{ date?: string; top?: TopByDateEntry[] }>)
+    : [];
   const hasTopByDate = topByDateArr.length > 0;
-  const hasFlow5d = Array.isArray(ind?.flow5d?.top) && ind.flow5d.top.length > 0;
+  const hasFlow5d = Array.isArray(flow5dObj?.top) && flow5dObj.top.length > 0;
   if (!dailyRankings.length && !hasTopByDate && !hasFlow5d) return null;
 
   const rankMaps =
@@ -186,8 +198,9 @@ function resolveIndustryFlowContext(summary: unknown): IndustryFlowContext | nul
 
   const { dailyNames, yesterdayRankMap, todayRankMap, todayValueMap } = rankMaps;
 
-  const flow5d: any = ind?.flow5d ?? null;
-  const rows5d: any[] = Array.isArray(flow5d?.top) ? flow5d.top : [];
+  const rows5d: Array<Record<string, unknown>> = Array.isArray(flow5dObj?.top)
+    ? (flow5dObj.top as Array<Record<string, unknown>>)
+    : [];
   const fiveRank = new Map<
     string,
     { rank: number; sum5d: number | null; latestNet: number | null }
@@ -199,7 +212,9 @@ function resolveIndustryFlowContext(summary: unknown): IndustryFlowContext | nul
     if (!name || fiveRank.has(name)) continue;
     const sum5dRaw = Number(r?.sum5d);
     const sum5d = Number.isFinite(sum5dRaw) ? sum5dRaw : null;
-    const seriesArr: any[] = Array.isArray(r?.series) ? r.series : [];
+    const seriesArr: Array<Record<string, unknown>> = Array.isArray(r?.series)
+      ? (r.series as Array<Record<string, unknown>>)
+      : [];
     let latestNet: number | null = null;
     if (latestDate) {
       const p = seriesArr.find((x) => String(x?.date ?? '') === latestDate);

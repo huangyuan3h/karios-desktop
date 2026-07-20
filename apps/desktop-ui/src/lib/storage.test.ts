@@ -8,18 +8,32 @@ describe('storage', () => {
     clear: vi.fn(),
   };
 
+  const originalWindow = globalThis.window;
+
   beforeEach(() => {
-    global.window = { localStorage: mockLocalStorage } as any;
+    Object.defineProperty(globalThis, 'window', {
+      value: { localStorage: mockLocalStorage },
+      configurable: true,
+      writable: true,
+    });
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    delete (global as any).window;
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      configurable: true,
+      writable: true,
+    });
   });
 
   describe('loadJson', () => {
     it('returns fallback when window is undefined', () => {
-      delete (global as any).window;
+      Object.defineProperty(globalThis, 'window', {
+        value: undefined,
+        configurable: true,
+        writable: true,
+      });
       const result = loadJson('test-key', { default: true });
       expect(result).toEqual({ default: true });
     });
@@ -45,7 +59,11 @@ describe('storage', () => {
 
   describe('saveJson', () => {
     it('does nothing when window is undefined', () => {
-      delete (global as any).window;
+      Object.defineProperty(globalThis, 'window', {
+        value: undefined,
+        configurable: true,
+        writable: true,
+      });
       saveJson('test-key', { data: 123 });
       expect(mockLocalStorage.setItem).not.toHaveBeenCalled();
     });
@@ -59,7 +77,7 @@ describe('storage', () => {
     });
 
     it('handles serialization errors gracefully', () => {
-      const circular: any = { a: 1 };
+      const circular: Record<string, unknown> = { a: 1 };
       circular.self = circular;
       saveJson('circular-key', circular);
       expect(mockLocalStorage.setItem).not.toHaveBeenCalled();
