@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 pytestmark = pytest.mark.requires_postgres
 
 from datetime import date
 from typing import Any
 
-import pytest
 
 from data_sync_service.service import etf_fund_flow as svc
 from data_sync_service.service import etf_fund_flow_em as em
