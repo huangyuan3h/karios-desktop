@@ -53,7 +53,7 @@ def get_today_run(job_type: str) -> dict[str, Any] | None:
     if not row:
         return None
     cols = ("id", "job_type", "sync_at", "success", "last_ts_code", "error_message")
-    rec = dict(zip(cols, row, strict=False))
+    rec: dict[str, Any] = dict(zip(cols, row, strict=False))
     if rec.get("sync_at") and hasattr(rec["sync_at"], "isoformat"):
         rec["sync_at"] = rec["sync_at"].isoformat()
     return rec
@@ -97,7 +97,7 @@ def get_last_success(job_type: str) -> dict[str, Any] | None:
     if not row:
         return None
     cols = ("id", "job_type", "sync_at", "success", "last_ts_code", "error_message")
-    rec = dict(zip(cols, row, strict=False))
+    rec: dict[str, Any] = dict(zip(cols, row, strict=False))
     if rec.get("sync_at") and hasattr(rec["sync_at"], "isoformat"):
         rec["sync_at"] = rec["sync_at"].isoformat()
     return rec

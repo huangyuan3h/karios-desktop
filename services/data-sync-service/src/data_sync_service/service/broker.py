@@ -364,7 +364,8 @@ def delete_conditional_order(*, account_id: str, order: dict[str, Any]) -> dict[
     target_key = _conditional_order_key(order)
     if not target_key or target_key == "{}":
         raise ValueError("order is invalid")
-    orders: list[Any] = row.get("conditionalOrders") if isinstance(row.get("conditionalOrders"), list) else []
+    raw_orders = row.get("conditionalOrders")
+    orders: list[Any] = raw_orders if isinstance(raw_orders, list) else []
     kept: list[dict[str, Any]] = []
     removed = 0
     for o in orders:

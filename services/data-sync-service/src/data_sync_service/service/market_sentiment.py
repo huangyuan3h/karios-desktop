@@ -5,7 +5,7 @@ import random
 import sys
 import time
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 from cachetools import TTLCache
@@ -29,9 +29,9 @@ from data_sync_service.service.trade_calendar_utils import (
 BREADTH_DECLINE_RED_THRESHOLD = 3000
 CN_INDEX_TRAFFIC_LIGHT_NAMES = frozenset({"上证指数", "创业板指"})
 INTRADAY_BREADTH_CACHE_TTL_SECONDS = 600
-_INTRADAY_BREADTH_CACHE: TTLCache[str, dict[str, Any]] = TTLCache(
-    maxsize=64,
-    ttl=INTRADAY_BREADTH_CACHE_TTL_SECONDS,
+_INTRADAY_BREADTH_CACHE = cast(
+    TTLCache[str, dict[str, Any]],
+    TTLCache(maxsize=64, ttl=INTRADAY_BREADTH_CACHE_TTL_SECONDS),
 )
 
 

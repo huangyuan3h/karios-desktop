@@ -39,6 +39,20 @@ ignore = [
     "B008",
 ]
 
+[tool.pyright]
+include = ["src"]
+exclude = ["**/__pycache__", "tests"]
+extraPaths = ["src"]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+# psycopg3 wants LiteralString SQL; pandas stubs are noisy — keep as warnings for CI.
+reportArgumentType = "warning"
+reportOptionalSubscript = "warning"
+reportOptionalIterable = "warning"
+reportOptionalMemberAccess = "warning"
+reportGeneralTypeIssues = "warning"
+reportAttributeAccessIssue = "warning"
+
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",

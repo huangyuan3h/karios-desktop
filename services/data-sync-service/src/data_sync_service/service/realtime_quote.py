@@ -57,7 +57,7 @@ def fetch_realtime_quotes(ts_codes: list[str]) -> dict[str, Any]:
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)}
 
-    if df is None or len(df) == 0:
+    if not isinstance(df, pd.DataFrame) or df.empty:
         return {"ok": True, "items": []}
 
     # Normalize to list[dict] with lower-cased keys (tushare returns upper-case columns).
