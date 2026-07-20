@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { generateObject, generateText } from 'ai';
-import { z } from 'zod';
 
 import {
   StrategyDailyRequestSchema,
@@ -8,7 +7,7 @@ import {
   StrategyCandidatesResponseSchema,
   StrategyDailyMarkdownResponseSchema,
 } from '../schemas';
-import { buildContextMarkdown, buildPromptDebug, asTrimmedString } from '../utils';
+import { buildContextMarkdown, buildPromptDebug } from '../utils';
 import {
   getStrategyPrimaryAndFallbackModels,
   AiModel,

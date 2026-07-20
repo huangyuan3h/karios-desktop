@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { generateText } from 'ai';
-import { z } from 'zod';
 
 import {
   AiProfileSchema,
@@ -16,7 +15,7 @@ import {
   ConfigSetActiveSchema,
   ConfigTestSchema,
 } from '../schemas';
-import { normalizeOptionalString, asTrimmedString } from '../utils';
+import { normalizeOptionalString } from '../utils';
 import { modelFromProfile, pickActiveProfile } from '../model';
 
 export const configRoutes = new Hono();

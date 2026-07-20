@@ -130,7 +130,8 @@ export function normalizeAlphaRadarExtract(raw: unknown, categoryHint?: string):
     .map((item, idx) => normalizeAlphaRadarTrendRow(item, idx, categoryHint))
     .filter((row): row is Record<string, unknown> => row !== null)
     .map((row) => {
-      const { source_index: _sourceIndex, ...rest } = row;
+      const rest = { ...row };
+      delete rest.source_index;
       return rest;
     });
   return {
