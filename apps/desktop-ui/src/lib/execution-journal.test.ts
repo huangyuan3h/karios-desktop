@@ -31,13 +31,14 @@ describe('buildExecutionSnapshotPayload', () => {
       items: [{ symbol: 'CN:600000', addedAt: '2026-01-01', positionPct: 5, costPrice: 10 }],
       trend: {
         'CN:600000': {
+          symbol: 'CN:600000',
           score: BUY_SCORE_MIN,
           buyAction: 'buy',
           stopLossPrice: 9,
           values: { emIndustry: '半导体' },
           gapUp: false,
           marketRegime: 'Strong',
-        } as TrendOkResult,
+        } as unknown as TrendOkResult,
       },
       quotes: { 'CN:600000': { price: 10.5 } },
       gate,

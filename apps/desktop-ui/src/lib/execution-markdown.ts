@@ -16,6 +16,7 @@ import {
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import type { TrendOkResult } from '@/lib/api/types';
 import { formatPnLPct, formatRs, buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
+import type { WatchlistQuoteSlice } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
 
 function formatTrendOkCell(t: TrendOkResult | undefined): string {
@@ -157,10 +158,20 @@ export function buildPositionsExecutionMarkdown(
   for (const it of items) {
     const t = trend[it.symbol];
     const q = quotes[it.symbol];
+    const quote: WatchlistQuoteSlice | null = q
+      ? {
+          price: q.price ?? null,
+          tradeTime: q.tradeTime ?? null,
+          amount: q.amount ?? null,
+          volume: q.volume ?? null,
+          preClose: q.preClose ?? null,
+          pctChg: q.pctChg ?? null,
+        }
+      : null;
     const rowMetrics = buildWatchlistRowMetrics({
       symbol: it.symbol,
       trend: t,
-      quote: q,
+      quote,
       tradingTime,
       todaySh,
     });

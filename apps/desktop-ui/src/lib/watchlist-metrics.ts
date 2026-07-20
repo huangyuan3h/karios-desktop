@@ -425,9 +425,9 @@ export function resolveWatchlistCurrentPrice(opts: {
   return close ?? qPrice ?? null;
 }
 
-export function parseQuoteNumber(raw: string | null | undefined): number | null {
+export function parseQuoteNumber(raw: string | number | null | undefined): number | null {
   if (raw == null || raw === '') return null;
-  const n = Number(raw);
+  const n = typeof raw === 'number' ? raw : Number(raw);
   return Number.isFinite(n) ? n : null;
 }
 

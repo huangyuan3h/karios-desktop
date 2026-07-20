@@ -652,7 +652,7 @@ export function IndustryFlowPage() {
 
       {resp?.top?.length ? (
         <div className="grid gap-4">
-          <MainlineSection resp={mainlineResp} />
+          <MainlineSection resp={mainlineResp ?? null} />
           {(() => {
             const rows = resp.top.slice(0, 500);
             const asOfDate = resp.asOfDate || new Date().toISOString().slice(0, 10);

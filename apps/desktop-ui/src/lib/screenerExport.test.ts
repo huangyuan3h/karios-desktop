@@ -123,7 +123,7 @@ describe('fetchTodayScreenerSymbolsByTitle', () => {
   it('returns symbols only for today snapshots with matching titles', async () => {
     const symbols = await fetchTodayScreenerSymbolsByTitle([{ id: 'falcon' }, { id: 'other' }], {
       todayIso: '2026-06-15',
-      apiGetJson: async (path) => {
+      apiGetJson: (async (path: string) => {
         if (path.includes('/snapshots?limit=1')) {
           const sid = path.split('/screeners/')[1]?.split('/')[0];
           return { items: [{ id: `snap-${sid}`, capturedAt: '2026-06-15T08:00:00+00:00' }] };
@@ -152,7 +152,7 @@ describe('fetchTodayScreenerSymbolsByTitle', () => {
           headers: ['Ticker', 'Name'],
           rows: [{ Ticker: '600519', Name: '贵州茅台' }],
         };
-      },
+      }) as <T>(path: string) => Promise<T>,
     });
 
     expect([...symbols]).toEqual(['CN:300308']);
