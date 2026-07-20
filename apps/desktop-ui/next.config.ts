@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  transpilePackages: ['@karios/shared'],
   // Tauri loads static assets from a local directory in production builds.
   // Next.js must be configured for static export to avoid requiring a Node server at runtime.
   output: "export",
@@ -11,13 +12,13 @@ const nextConfig: NextConfig = {
       {
         protocol: "http",
         hostname: "127.0.0.1",
-        port: "4320",
+        port: "4330",
         pathname: "/**",
       },
       {
         protocol: "http",
         hostname: "localhost",
-        port: "4320",
+        port: "4330",
         pathname: "/**",
       },
     ],

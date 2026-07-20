@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Search } from 'lucide-react';
 
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson } from '@/lib/api/client';
 
 type MarketStockRow = {
   symbol: string;
@@ -18,22 +18,6 @@ type MarketStockRow = {
 type MarketStocksResponse = {
   items: MarketStockRow[];
 };
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) {
-    try {
-      const j = JSON.parse(txt) as { detail?: string; error?: string };
-      const msg = (j && (j.detail || j.error)) || '';
-      if (msg) throw new Error(msg);
-    } catch {
-      // ignore
-    }
-    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  }
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
-}
 
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debounced, setDebounced] = React.useState(value);
@@ -72,7 +56,7 @@ export function GlobalStockSearch({
       setOpen(true);
       try {
         const data = await apiGetJson<MarketStocksResponse>(
-          `/market/stocks?limit=8&offset=0&q=${encodeURIComponent(q)}`,
+          `/search/stocks?limit=8&q=${encodeURIComponent(q)}`,
         );
         if (cancelled) return;
         setItems(Array.isArray(data.items) ? data.items : []);

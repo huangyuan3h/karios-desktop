@@ -1,50 +1,24 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import {
+  HotIndustryWorkflowCard,
+  type HotIndustryPick,
+} from '@/components/pages/HotIndustryWorkflowCard';
+import {
+  type IndustryFundFlowPoint,
+  type IndustryFundFlowRow,
+  type MainlineResp,
+  type MainlineScoreRow,
+  runIndustryFlowSync,
+  useIndustryFundFlowQuery,
+  useIndustryMainlineQuery,
+} from '@/lib/queries/industryFlow';
 import { useChatStore } from '@/lib/chat/store';
-
-type IndustryFundFlowPoint = {
-  date: string;
-  netInflow: number;
-};
-
-type IndustryFundFlowRow = {
-  industryCode: string;
-  industryName: string;
-  netInflow: number;
-  sum10d: number;
-  series10d: IndustryFundFlowPoint[];
-};
-
-type IndustryFundFlowResp = {
-  asOfDate: string;
-  days: number;
-  topN: number;
-  dates: string[];
-  top: IndustryFundFlowRow[];
-};
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
 
 function fmtCny(x: number): string {
   const v = Number.isFinite(x) ? x : 0;
@@ -54,12 +28,180 @@ function fmtCny(x: number): string {
   return `${v.toFixed(0)}`;
 }
 
+function fmtScore(x: number): string {
+  const v = Number.isFinite(x) ? x : 0;
+  return v.toFixed(1);
+}
+
 function sumLastN(series: IndustryFundFlowPoint[], n: number): number {
   const xs = Array.isArray(series) ? series : [];
   const tail = xs.slice(-Math.max(1, n));
   let s = 0;
   for (const p of tail) s += Number.isFinite(p.netInflow) ? p.netInflow : 0;
   return s;
+}
+
+function buildHotIndustryPicks(rows: IndustryFundFlowRow[]): HotIndustryPick[] {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const dates = safeRows[0]?.series10d?.map((p) => p.date) ?? [];
+  const latestDate = dates.length ? String(dates[dates.length - 1] ?? '') : '';
+  const prevDate = dates.length >= 2 ? String(dates[dates.length - 2] ?? '') : '';
+
+  const dailyRanked = [...safeRows]
+    .filter((r) => Number.isFinite(r.netInflow) && r.netInflow > 0)
+    .sort((a, b) => b.netInflow - a.netInflow)
+    .slice(0, 50);
+
+  const todayRankByName = new Map<string, number>();
+  const allTodayRanked = [...safeRows].sort((a, b) => b.netInflow - a.netInflow);
+  for (let i = 0; i < allTodayRanked.length; i += 1) {
+    const key = String(allTodayRanked[i].industryName ?? '').trim();
+    if (key && !todayRankByName.has(key)) todayRankByName.set(key, i + 1);
+  }
+
+  const fiveDayRanked = [...safeRows]
+    .map((r) => ({ row: r, sum5d: sumLastN(r.series10d ?? [], 5) }))
+    .filter((x) => Number.isFinite(x.sum5d) && x.sum5d > 0)
+    .sort((a, b) => b.sum5d - a.sum5d)
+    .slice(0, 50);
+
+  const fiveRankByName = new Map<string, { rank: number; sum5d: number }>();
+  for (let i = 0; i < fiveDayRanked.length; i += 1) {
+    const it = fiveDayRanked[i];
+    const key = String(it.row.industryName ?? '').trim();
+    if (!key || fiveRankByName.has(key)) continue;
+    fiveRankByName.set(key, { rank: i + 1, sum5d: it.sum5d });
+  }
+
+  const prevDayRanked = new Map<string, number>();
+  if (prevDate) {
+    const prevScores = safeRows
+      .map((r) => ({
+        name: String(r.industryName ?? '').trim(),
+        value: (r.series10d ?? []).find((p) => p.date === prevDate)?.netInflow ?? 0,
+      }))
+      .filter((x) => x.name && Number.isFinite(x.value))
+      .sort((a, b) => b.value - a.value);
+    for (let i = 0; i < prevScores.length; i += 1) {
+      prevDayRanked.set(prevScores[i].name, i + 1);
+    }
+  }
+
+  const MOMENTUM_THRESHOLD_YI = 20e8;
+  const MOMENTUM_RANK_CHANGE = 10;
+
+  const momentumPicks: HotIndustryPick[] = [];
+  const intersectionPicks: HotIndustryPick[] = [];
+
+  for (let i = 0; i < dailyRanked.length; i += 1) {
+    const r = dailyRanked[i];
+    const key = String(r.industryName ?? '').trim();
+    if (!key) continue;
+
+    const five = fiveRankByName.get(key);
+    const todayRank = todayRankByName.get(key) ?? i + 1;
+    const yesterdayRank = prevDayRanked.get(key) ?? null;
+    const rankChange = yesterdayRank != null ? yesterdayRank - todayRank : null;
+    const isMomentumSignal =
+      r.netInflow >= MOMENTUM_THRESHOLD_YI &&
+      rankChange != null &&
+      rankChange >= MOMENTUM_RANK_CHANGE;
+
+    const pick: HotIndustryPick = {
+      industryName: key,
+      dailyRank: todayRank,
+      fiveDayRank: five?.rank ?? null,
+      netInflow: r.netInflow,
+      sum5d: five?.sum5d ?? null,
+      yesterdayRank,
+      rankChange,
+      momentumSignal: isMomentumSignal,
+    };
+
+    if (isMomentumSignal) {
+      momentumPicks.push(pick);
+    } else if (five) {
+      intersectionPicks.push(pick);
+    }
+  }
+
+  const result: HotIndustryPick[] = [];
+  const seen = new Set<string>();
+  for (const p of momentumPicks) {
+    if (seen.has(p.industryName)) continue;
+    seen.add(p.industryName);
+    result.push(p);
+    if (result.length >= 3) return result;
+  }
+  for (const p of intersectionPicks) {
+    if (seen.has(p.industryName)) continue;
+    seen.add(p.industryName);
+    result.push(p);
+    if (result.length >= 3) break;
+  }
+  return result;
+}
+
+function escapeMarkdownCell(x: unknown): string {
+  const s0 = String(x ?? '');
+  // Keep it single-line and avoid breaking Markdown table formatting.
+  const s1 = s0.replaceAll('\r\n', '\n').replaceAll('\r', '\n').replaceAll('\n', '<br/>');
+  return s1.replaceAll('|', '\\|');
+}
+
+function mdRow(cells: unknown[]): string {
+  return `| ${cells.map(escapeMarkdownCell).join(' | ')} |`;
+}
+
+function mdTable(headers: string[], rows: unknown[][]): string {
+  const out: string[] = [];
+  out.push(mdRow(headers));
+  out.push(mdRow(headers.map(() => '---')));
+  for (const r of rows) out.push(mdRow(r));
+  return out.join('\n');
+}
+
+function formatSeries10d(series: IndustryFundFlowPoint[]): string {
+  const xs = Array.isArray(series) ? series : [];
+  if (!xs.length) return '';
+  // Use multi-line string; it will be escaped to <br/> to keep Markdown table valid.
+  return xs.map((p) => `${String(p.date).slice(5)}: ${fmtCny(p.netInflow)}`).join('\n');
+}
+
+function CopyMarkdownButton({ getMarkdown }: { getMarkdown: () => string }) {
+  const [state, setState] = React.useState<'idle' | 'ok' | 'err'>('idle');
+  const timerRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  async function onCopy() {
+    try {
+      const md = getMarkdown();
+      if (!md.trim()) throw new Error('No data');
+      await navigator.clipboard.writeText(md);
+      setState('ok');
+    } catch {
+      setState('err');
+    } finally {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => setState('idle'), 1400);
+    }
+  }
+
+  const label = state === 'idle' ? 'Copy Markdown' : state === 'ok' ? 'Copied' : 'Copy failed';
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      className="h-8 px-3 text-xs"
+      onClick={() => void onCopy()}
+    >
+      {label}
+    </Button>
+  );
 }
 
 function Sparkline({ series }: { series: IndustryFundFlowPoint[] }) {
@@ -84,13 +226,101 @@ function Sparkline({ series }: { series: IndustryFundFlowPoint[] }) {
         <circle cx={w / 2} cy={mid} r="2" fill={stroke} />
       )}
       {series.length ? (
-        <title>
-          {series
-            .map((p, i) => `${p.date}: ${fmtCny(vals[i] ?? 0)}`)
-            .join(' | ')}
-        </title>
+        <title>{series.map((p, i) => `${p.date}: ${fmtCny(vals[i] ?? 0)}`).join(' | ')}</title>
       ) : null}
     </svg>
+  );
+}
+
+function MainlineSection({ resp }: { resp: MainlineResp | null }) {
+  const current = resp?.currentMainline ?? [];
+  const all = resp?.allScores ?? [];
+  const top = [...all].sort((a, b) => b.totalScore - a.totalScore).slice(0, 10);
+  return (
+    <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+      <div className="mb-2 text-sm font-medium">Mainline (主线)</div>
+      <div className="mb-1 text-xs text-[var(--k-muted)]">As of: {resp?.asOfDate ?? '—'}</div>
+      <div className="mb-3 text-xs text-[var(--k-muted)]">
+        Mainline Score = Flow + Breadth + Trend. Current mainline requires score &gt; 80 for 3+
+        trading days.
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-[var(--k-border)]">
+          <div className="border-b border-[var(--k-border)] px-3 py-2 text-xs font-medium">
+            Current Mainline
+          </div>
+          <div className="overflow-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[var(--k-muted)]">
+                  <th className="px-2 py-2">#</th>
+                  <th className="px-2 py-2">Industry</th>
+                  <th className="px-2 py-2">Total</th>
+                  <th className="px-2 py-2">F/B/T</th>
+                </tr>
+              </thead>
+              <tbody>
+                {current.length ? (
+                  current.map((r, idx) => (
+                    <tr key={r.industryName} className="border-t border-[var(--k-border)]">
+                      <td className="px-2 py-1 font-mono">{idx + 1}</td>
+                      <td className="px-2 py-1">{r.industryName}</td>
+                      <td className="px-2 py-1 font-mono">{fmtScore(r.totalScore)}</td>
+                      <td className="px-2 py-1 font-mono">
+                        {fmtScore(r.flowScore)}/{fmtScore(r.breadthScore)}/{fmtScore(r.trendScore)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="px-2 py-6 text-center text-[var(--k-muted)]">
+                      No mainline yet
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="rounded-lg border border-[var(--k-border)]">
+          <div className="border-b border-[var(--k-border)] px-3 py-2 text-xs font-medium">
+            Top Scores
+          </div>
+          <div className="overflow-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[var(--k-muted)]">
+                  <th className="px-2 py-2">#</th>
+                  <th className="px-2 py-2">Industry</th>
+                  <th className="px-2 py-2">Total</th>
+                  <th className="px-2 py-2">F/B/T</th>
+                </tr>
+              </thead>
+              <tbody>
+                {top.length ? (
+                  top.map((r, idx) => (
+                    <tr key={r.industryName} className="border-t border-[var(--k-border)]">
+                      <td className="px-2 py-1 font-mono">{idx + 1}</td>
+                      <td className="px-2 py-1">{r.industryName}</td>
+                      <td className="px-2 py-1 font-mono">{fmtScore(r.totalScore)}</td>
+                      <td className="px-2 py-1 font-mono">
+                        {fmtScore(r.flowScore)}/{fmtScore(r.breadthScore)}/{fmtScore(r.trendScore)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="px-2 py-6 text-center text-[var(--k-muted)]">
+                      No data
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -112,7 +342,10 @@ function DailyTopByDateTable({
   let collapsed = 0;
   let prevSig = '';
   for (const d of rawShownDates) {
-    const sig = (topByDate[d] || []).slice(0, topK).map((x) => x.industryName || '').join('|');
+    const sig = (topByDate[d] || [])
+      .slice(0, topK)
+      .map((x) => x.industryName || '')
+      .join('|');
     if (sig && sig === prevSig) {
       collapsed += 1;
       continue;
@@ -132,9 +365,28 @@ function DailyTopByDateTable({
             </span>
           ) : null}
         </div>
-        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
-          Reference
-        </Button>
+        <div className="flex items-center gap-2">
+          <CopyMarkdownButton
+            getMarkdown={() => {
+              const headers = ['#', ...shownDates.map((d) => String(d).slice(5))];
+              const rows = Array.from({ length: topK }).map((_, idx) => [
+                idx + 1,
+                ...shownDates.map((d) => {
+                  const it = (topByDate[d] || [])[idx];
+                  const name = String(it?.industryName ?? '').trim();
+                  const v = Number(it?.value ?? 0);
+                  if (!name) return '—';
+                  if (Number.isFinite(v) && Math.abs(v) > 0) return `${name} (${fmtCny(v)})`;
+                  return name;
+                }),
+              ]);
+              return [`# ${title}`, '', mdTable(headers, rows)].join('\n');
+            }}
+          />
+          <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
+            Reference
+          </Button>
+        </div>
       </div>
       <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
         <table className="w-full border-collapse text-xs">
@@ -166,7 +418,10 @@ function DailyTopByDateTable({
             ))}
             {!shownDates.length ? (
               <tr>
-                <td colSpan={1 + shownDates.length} className="px-2 py-6 text-center text-[var(--k-muted)]">
+                <td
+                  colSpan={1 + shownDates.length}
+                  className="px-2 py-6 text-center text-[var(--k-muted)]"
+                >
                   No data
                 </td>
               </tr>
@@ -185,7 +440,12 @@ function MiniTable({
   onReference,
 }: {
   title: string;
-  rows: Array<{ industryCode: string; industryName: string; value: number; series10d?: IndustryFundFlowPoint[] }>;
+  rows: Array<{
+    industryCode: string;
+    industryName: string;
+    value: number;
+    series10d?: IndustryFundFlowPoint[];
+  }>;
   valueLabel: string;
   onReference: () => void;
 }) {
@@ -193,9 +453,23 @@ function MiniTable({
     <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="text-sm font-medium">{title}</div>
-        <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
-          Reference
-        </Button>
+        <div className="flex items-center gap-2">
+          <CopyMarkdownButton
+            getMarkdown={() => {
+              const headers = ['#', 'Industry', valueLabel, 'Trend (10D)'];
+              const rows2 = rows.map((r, idx) => [
+                idx + 1,
+                String(r.industryName ?? ''),
+                fmtCny(Number(r.value ?? 0)),
+                formatSeries10d(r.series10d ?? []),
+              ]);
+              return [`# ${title}`, '', mdTable(headers, rows2)].join('\n');
+            }}
+          />
+          <Button size="sm" variant="secondary" className="h-8 px-3 text-xs" onClick={onReference}>
+            Reference
+          </Button>
+        </div>
       </div>
       <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
         <table className="w-full border-collapse text-xs">
@@ -234,55 +508,64 @@ function MiniTable({
 }
 
 export function IndustryFlowPage() {
+  const queryClient = useQueryClient();
   const { addReference } = useChatStore();
-  const [resp, setResp] = React.useState<IndustryFundFlowResp | null>(null);
+  const {
+    data: resp,
+    error: flowError,
+    isFetching: flowFetching,
+    refetch: refetchFlow,
+  } = useIndustryFundFlowQuery();
+  const {
+    data: mainlineResp,
+    error: mainlineQueryError,
+    isFetching: mainlineFetching,
+    refetch: refetchMainline,
+  } = useIndustryMainlineQuery();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [topN, setTopN] = React.useState(30);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [lastSyncMsg, setLastSyncMsg] = React.useState<string | null>(null);
 
-  const refresh = React.useCallback(async () => {
-    setError(null);
-    try {
-      // Always load full universe for accurate per-day ranking widgets.
-      const universeTopN = 200;
-      const r = await apiGetJson<IndustryFundFlowResp>(
-        `/market/cn/industry-fund-flow?days=10&topN=${encodeURIComponent(String(universeTopN))}`,
-      );
-      setResp(r);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setResp(null);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const mainlineError =
+    mainlineQueryError instanceof Error
+      ? mainlineQueryError.message
+      : mainlineQueryError
+        ? String(mainlineQueryError)
+        : null;
+  const displayError =
+    error ?? (flowError instanceof Error ? flowError.message : flowError ? String(flowError) : null);
+  const refreshing = flowFetching || mainlineFetching;
 
   async function onSync(force: boolean) {
     setBusy(true);
     setError(null);
     setLastSyncMsg(null);
     try {
-      const r = await apiPostJson<Record<string, unknown>>('/market/cn/industry-fund-flow/sync', {
-        days: 10,
-        topN: 10,
-        force,
-      });
+      const r = await runIndustryFlowSync(queryClient, { force });
       if (r && typeof r === 'object') {
-        const msg = [
-          `rowsUpserted=${String(r.rowsUpserted ?? '')}`,
-          `histRowsUpserted=${String(r.histRowsUpserted ?? '')}`,
-          `histFailures=${String(r.histFailures ?? 0)}`,
-          r.message ? String(r.message) : '',
-        ]
-          .filter(Boolean)
-          .join(' • ');
-        setLastSyncMsg(msg || null);
+        if (r.skipped) {
+          const reason = String(r.message || r.reason || 'Skipped.');
+          setLastSyncMsg(
+            reason.includes('not a trading day')
+              ? reason.includes('already up to date')
+                ? '今天不是交易日，数据已是最新。'
+                : '今天不是交易日，已跳过。'
+              : reason,
+          );
+        } else {
+          const msg = [
+            `rows=${String(r.rows ?? '')}`,
+            `histRows=${String(r.histRows ?? '')}`,
+            `histFailures=${String(r.histFailures ?? 0)}`,
+            r.message ? String(r.message) : '',
+          ]
+            .filter(Boolean)
+            .join(' • ');
+          setLastSyncMsg(msg || null);
+        }
       }
-      await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -296,11 +579,17 @@ export function IndustryFlowPage() {
         <div>
           <div className="text-lg font-semibold">CN Industry Fund Flow (10D)</div>
           <div className="mt-1 text-sm text-[var(--k-muted)]">
-            EOD net inflow by industry. Cached in SQLite and reusable by Strategy.
+            EOD net inflow by industry. Cached in Postgres and reusable by Strategy.
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void refresh()} className="gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={busy || refreshing}
+            onClick={() => void Promise.all([refetchFlow(), refetchMainline()])}
+            className="gap-2"
+          >
             <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
@@ -323,14 +612,19 @@ export function IndustryFlowPage() {
         </div>
       </div>
 
-      {error ? (
+      {displayError ? (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
-          {error}
+          {displayError}
         </div>
       ) : null}
       {lastSyncMsg ? (
         <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 text-sm text-[var(--k-muted)]">
           {lastSyncMsg}
+        </div>
+      ) : null}
+      {mainlineError ? (
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+          Mainline data unavailable: {mainlineError}
         </div>
       ) : null}
 
@@ -358,6 +652,7 @@ export function IndustryFlowPage() {
 
       {resp?.top?.length ? (
         <div className="grid gap-4">
+          <MainlineSection resp={mainlineResp ?? null} />
           {(() => {
             const rows = resp.top.slice(0, 500);
             const asOfDate = resp.asOfDate || new Date().toISOString().slice(0, 10);
@@ -365,6 +660,7 @@ export function IndustryFlowPage() {
             const top = 10;
             const dates = resp.dates ?? rows[0]?.series10d?.map((p) => p.date) ?? [];
             const topK = 5;
+            const hotPicks = buildHotIndustryPicks(rows);
 
             // Build daily top inflow list for each date using full universe rows.
             const topByDate: Record<string, Array<{ industryName: string; value: number }>> = {};
@@ -427,103 +723,104 @@ export function IndustryFlowPage() {
                     })
                   }
                 />
+                <HotIndustryWorkflowCard picks={hotPicks} asOfDate={asOfDate} />
 
                 <div className="grid gap-4 md:grid-cols-2">
-                <MiniTable
-                  title="Top inflow (1D)"
-                  valueLabel="Net inflow"
-                  rows={in1d}
-                  onReference={() =>
-                    addReference({
-                      kind: 'industryFundFlow',
-                      refId: `${asOfDate}:${baseDays}:in1d:${top}`,
-                      asOfDate,
-                      days: baseDays,
-                      topN: top,
-                      metric: 'netInflow',
-                      windowDays: 1,
-                      direction: 'in',
-                      title: 'Top inflow (1D)',
-                      createdAt: new Date().toISOString(),
-                    })
-                  }
-                />
-                <MiniTable
-                  title="Top outflow (1D)"
-                  valueLabel="Net inflow"
-                  rows={out1d}
-                  onReference={() =>
-                    addReference({
-                      kind: 'industryFundFlow',
-                      refId: `${asOfDate}:${baseDays}:out1d:${top}`,
-                      asOfDate,
-                      days: baseDays,
-                      topN: top,
-                      metric: 'netInflow',
-                      windowDays: 1,
-                      direction: 'out',
-                      title: 'Top outflow (1D)',
-                      createdAt: new Date().toISOString(),
-                    })
-                  }
-                />
-                <MiniTable
-                  title="Top inflow (5D sum)"
-                  valueLabel="Sum 5D"
-                  rows={in5d}
-                  onReference={() =>
-                    addReference({
-                      kind: 'industryFundFlow',
-                      refId: `${asOfDate}:${baseDays}:in5d:${top}`,
-                      asOfDate,
-                      days: baseDays,
-                      topN: top,
-                      metric: 'sum',
-                      windowDays: 5,
-                      direction: 'in',
-                      title: 'Top inflow (5D sum)',
-                      createdAt: new Date().toISOString(),
-                    })
-                  }
-                />
-                <MiniTable
-                  title="Top outflow (5D sum)"
-                  valueLabel="Sum 5D"
-                  rows={out5d}
-                  onReference={() =>
-                    addReference({
-                      kind: 'industryFundFlow',
-                      refId: `${asOfDate}:${baseDays}:out5d:${top}`,
-                      asOfDate,
-                      days: baseDays,
-                      topN: top,
-                      metric: 'sum',
-                      windowDays: 5,
-                      direction: 'out',
-                      title: 'Top outflow (5D sum)',
-                      createdAt: new Date().toISOString(),
-                    })
-                  }
-                />
-                <MiniTable
-                  title="Top inflow (10D sum)"
-                  valueLabel="Sum 10D"
-                  rows={in10d}
-                  onReference={() =>
-                    addReference({
-                      kind: 'industryFundFlow',
-                      refId: `${asOfDate}:${baseDays}:in10d:${top}`,
-                      asOfDate,
-                      days: baseDays,
-                      topN: top,
-                      metric: 'sum',
-                      windowDays: 10,
-                      direction: 'in',
-                      title: 'Top inflow (10D sum)',
-                      createdAt: new Date().toISOString(),
-                    })
-                  }
-                />
+                  <MiniTable
+                    title="Top inflow (1D)"
+                    valueLabel="Net inflow"
+                    rows={in1d}
+                    onReference={() =>
+                      addReference({
+                        kind: 'industryFundFlow',
+                        refId: `${asOfDate}:${baseDays}:in1d:${top}`,
+                        asOfDate,
+                        days: baseDays,
+                        topN: top,
+                        metric: 'netInflow',
+                        windowDays: 1,
+                        direction: 'in',
+                        title: 'Top inflow (1D)',
+                        createdAt: new Date().toISOString(),
+                      })
+                    }
+                  />
+                  <MiniTable
+                    title="Top outflow (1D)"
+                    valueLabel="Net inflow"
+                    rows={out1d}
+                    onReference={() =>
+                      addReference({
+                        kind: 'industryFundFlow',
+                        refId: `${asOfDate}:${baseDays}:out1d:${top}`,
+                        asOfDate,
+                        days: baseDays,
+                        topN: top,
+                        metric: 'netInflow',
+                        windowDays: 1,
+                        direction: 'out',
+                        title: 'Top outflow (1D)',
+                        createdAt: new Date().toISOString(),
+                      })
+                    }
+                  />
+                  <MiniTable
+                    title="Top inflow (5D sum)"
+                    valueLabel="Sum 5D"
+                    rows={in5d}
+                    onReference={() =>
+                      addReference({
+                        kind: 'industryFundFlow',
+                        refId: `${asOfDate}:${baseDays}:in5d:${top}`,
+                        asOfDate,
+                        days: baseDays,
+                        topN: top,
+                        metric: 'sum',
+                        windowDays: 5,
+                        direction: 'in',
+                        title: 'Top inflow (5D sum)',
+                        createdAt: new Date().toISOString(),
+                      })
+                    }
+                  />
+                  <MiniTable
+                    title="Top outflow (5D sum)"
+                    valueLabel="Sum 5D"
+                    rows={out5d}
+                    onReference={() =>
+                      addReference({
+                        kind: 'industryFundFlow',
+                        refId: `${asOfDate}:${baseDays}:out5d:${top}`,
+                        asOfDate,
+                        days: baseDays,
+                        topN: top,
+                        metric: 'sum',
+                        windowDays: 5,
+                        direction: 'out',
+                        title: 'Top outflow (5D sum)',
+                        createdAt: new Date().toISOString(),
+                      })
+                    }
+                  />
+                  <MiniTable
+                    title="Top inflow (10D sum)"
+                    valueLabel="Sum 10D"
+                    rows={in10d}
+                    onReference={() =>
+                      addReference({
+                        kind: 'industryFundFlow',
+                        refId: `${asOfDate}:${baseDays}:in10d:${top}`,
+                        asOfDate,
+                        days: baseDays,
+                        topN: top,
+                        metric: 'sum',
+                        windowDays: 10,
+                        direction: 'in',
+                        title: 'Top inflow (10D sum)',
+                        createdAt: new Date().toISOString(),
+                      })
+                    }
+                  />
                 </div>
               </>
             );
@@ -536,35 +833,53 @@ export function IndustryFlowPage() {
       )}
 
       {detailsOpen && resp?.top?.length ? (
-        <div className="mt-4 overflow-auto rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]">
-          <table className="w-full border-collapse text-xs">
-            <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
-              <tr className="text-left">
-                <th className="px-3 py-2">Rank</th>
-                <th className="px-3 py-2">Industry</th>
-                <th className="px-3 py-2">Net inflow</th>
-                <th className="px-3 py-2">Sum 10D</th>
-                <th className="px-3 py-2">Trend (10D)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {resp.top.slice(0, topN).map((r, idx) => (
-                <tr key={r.industryCode} className="border-t border-[var(--k-border)]">
-                  <td className="px-3 py-2 font-mono">{idx + 1}</td>
-                  <td className="px-3 py-2">{r.industryName}</td>
-                  <td className="px-3 py-2 font-mono">{fmtCny(r.netInflow)}</td>
-                  <td className="px-3 py-2 font-mono">{fmtCny(r.sum10d)}</td>
-                  <td className="px-3 py-2">
-                    <Sparkline series={r.series10d ?? []} />
-                  </td>
+        <div className="mt-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]">
+          <div className="flex items-center justify-between gap-2 px-4 py-3">
+            <div className="text-sm font-medium">Details</div>
+            <CopyMarkdownButton
+              getMarkdown={() => {
+                const headers = ['Rank', 'Industry', 'Net inflow', 'Sum 10D', 'Trend (10D)'];
+                const rows3 = resp.top
+                  .slice(0, topN)
+                  .map((r, idx) => [
+                    idx + 1,
+                    String(r.industryName ?? ''),
+                    fmtCny(Number(r.netInflow ?? 0)),
+                    fmtCny(Number(r.sum10d ?? 0)),
+                    formatSeries10d(r.series10d ?? []),
+                  ]);
+                return ['# Details', '', mdTable(headers, rows3)].join('\n');
+              }}
+            />
+          </div>
+          <div className="overflow-auto">
+            <table className="w-full border-collapse text-xs">
+              <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
+                <tr className="text-left">
+                  <th className="px-3 py-2">Rank</th>
+                  <th className="px-3 py-2">Industry</th>
+                  <th className="px-3 py-2">Net inflow</th>
+                  <th className="px-3 py-2">Sum 10D</th>
+                  <th className="px-3 py-2">Trend (10D)</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {resp.top.slice(0, topN).map((r, idx) => (
+                  <tr key={r.industryCode} className="border-t border-[var(--k-border)]">
+                    <td className="px-3 py-2 font-mono">{idx + 1}</td>
+                    <td className="px-3 py-2">{r.industryName}</td>
+                    <td className="px-3 py-2 font-mono">{fmtCny(r.netInflow)}</td>
+                    <td className="px-3 py-2 font-mono">{fmtCny(r.sum10d)}</td>
+                    <td className="px-3 py-2">
+                      <Sparkline series={r.series10d ?? []} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
     </div>
   );
 }
-
-

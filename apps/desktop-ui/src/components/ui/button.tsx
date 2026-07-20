@@ -19,6 +19,8 @@ export const buttonVariants = cva(
           'bg-[var(--k-text)] text-[var(--k-surface)] hover:opacity-90',
         secondary:
           'bg-[var(--k-surface-2)] text-[var(--k-text)] hover:bg-[var(--k-border)]',
+        outline:
+          'border border-[var(--k-border)] bg-transparent text-[var(--k-text)] hover:bg-[var(--k-surface-2)]',
         ghost:
           'bg-transparent text-[var(--k-text)] hover:bg-[var(--k-surface-2)]',
         link:

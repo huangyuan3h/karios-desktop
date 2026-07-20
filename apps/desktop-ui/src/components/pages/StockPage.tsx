@@ -1,106 +1,18 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { StockChart } from '@/components/stock/StockChart';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
 import { useChatStore } from '@/lib/chat/store';
 import type { OHLCV } from '@/lib/indicators';
-
-type BarsResp = {
-  symbol: string;
-  market: string;
-  ticker: string;
-  name: string;
-  currency: string;
-  bars: Array<{
-    date: string;
-    open: string;
-    high: string;
-    low: string;
-    close: string;
-    volume: string;
-    amount: string;
-  }>;
-};
-
-type ChipsResp = {
-  symbol: string;
-  market: string;
-  ticker: string;
-  name: string;
-  currency: string;
-  items: Array<{
-    date: string;
-    profitRatio: string;
-    avgCost: string;
-    cost90Low: string;
-    cost90High: string;
-    cost90Conc: string;
-    cost70Low: string;
-    cost70High: string;
-    cost70Conc: string;
-  }>;
-};
-
-type FundFlowResp = {
-  symbol: string;
-  market: string;
-  ticker: string;
-  name: string;
-  currency: string;
-  items: Array<{
-    date: string;
-    close: string;
-    changePct: string;
-    mainNetAmount: string;
-    mainNetRatio: string;
-    superNetAmount: string;
-    superNetRatio: string;
-    largeNetAmount: string;
-    largeNetRatio: string;
-    mediumNetAmount: string;
-    mediumNetRatio: string;
-    smallNetAmount: string;
-    smallNetRatio: string;
-  }>;
-};
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) {
-    try {
-      const j = JSON.parse(txt) as { detail?: string; error?: string };
-      const msg = (j && (j.detail || j.error)) || '';
-      if (msg) throw new Error(msg);
-    } catch {
-      // ignore
-    }
-    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  }
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
-}
-
-function getLastDetailSyncMs(symbol: string): number {
-  try {
-    const v = window.localStorage.getItem(`karios.market.stockDetailLastSync:${symbol}`);
-    const n = Number(v);
-    return Number.isFinite(n) ? n : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function setLastDetailSyncMs(symbol: string, ms: number) {
-  try {
-    window.localStorage.setItem(`karios.market.stockDetailLastSync:${symbol}`, String(ms));
-  } catch {
-    // ignore
-  }
-}
+import {
+  getLastDetailSyncMs,
+  refetchStockDetail,
+  useStockDetailQuery,
+} from '@/lib/queries/stock';
 
 export function StockPage({
   symbol,
@@ -109,16 +21,25 @@ export function StockPage({
   symbol: string;
   onBack: () => void;
 }) {
+  const queryClient = useQueryClient();
   const { addReference } = useChatStore();
-  const [data, setData] = React.useState<BarsResp | null>(null);
-  const [chips, setChips] = React.useState<ChipsResp | null>(null);
-  const [fundFlow, setFundFlow] = React.useState<FundFlowResp | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  const [busy, setBusy] = React.useState(false);
-  const [lastSyncMs, setLastSyncMs] = React.useState<number>(0);
+  const { data, error: queryError, isFetching, refetch } = useStockDetailQuery(symbol);
+  const [lastSyncMs, setLastSyncMs] = React.useState<number>(() => getLastDetailSyncMs(symbol));
+
+  React.useEffect(() => {
+    setLastSyncMs(getLastDetailSyncMs(symbol));
+  }, [symbol, data]);
+
+  const bars = data?.bars ?? null;
+  const chips = data?.chips ?? null;
+  const fundFlow = data?.fundFlow ?? null;
+  const error =
+    queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null;
+  const busy = isFetching;
+
   const chartData: OHLCV[] = React.useMemo(() => {
-    const bars = data?.bars ?? [];
-    return bars
+    const barRows = bars?.bars ?? [];
+    return barRows
       .map((b) => {
         const open = Number(b.open);
         const high = Number(b.high);
@@ -138,47 +59,16 @@ export function StockPage({
         };
       })
       .filter(Boolean) as OHLCV[];
-  }, [data]);
+  }, [bars]);
 
-  const refresh = React.useCallback(async ({ force }: { force?: boolean } = {}) => {
-    setError(null);
-    setBusy(true);
-    try {
-      const [d, c] = await Promise.all([
-        apiGetJson<BarsResp>(
-          `/market/stocks/${encodeURIComponent(symbol)}/bars?days=60${force ? '&force=true' : ''}`,
-        ),
-        apiGetJson<ChipsResp>(
-          `/market/stocks/${encodeURIComponent(symbol)}/chips?days=30${force ? '&force=true' : ''}`,
-        ).catch(
-          () => null,
-        ),
-      ]);
-      const ff = await apiGetJson<FundFlowResp>(
-        `/market/stocks/${encodeURIComponent(symbol)}/fund-flow?days=30${force ? '&force=true' : ''}`,
-      ).catch(() => null);
-      setData(d);
-      setChips(c);
-      setFundFlow(ff);
-      if (force) {
-        const now = Date.now();
-        setLastDetailSyncMs(symbol, now);
-        setLastSyncMs(now);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [symbol]);
+  async function onRefresh() {
+    await refetch();
+  }
 
-  React.useEffect(() => {
-    const prev = getLastDetailSyncMs(symbol);
-    setLastSyncMs(prev);
-    // Auto-sync at most once every 10 minutes per symbol.
-    const age = Date.now() - prev;
-    void refresh({ force: age > 10 * 60 * 1000 });
-  }, [refresh, symbol]);
+  async function onSyncDetail() {
+    await refetchStockDetail(queryClient, symbol, { force: true, quote: true });
+    setLastSyncMs(getLastDetailSyncMs(symbol));
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl p-6">
@@ -189,31 +79,31 @@ export function StockPage({
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
-            <div className="text-lg font-semibold">{data ? `${data.ticker} ${data.name}` : symbol}</div>
+            <div className="text-lg font-semibold">{bars ? `${bars.ticker} ${bars.name}` : symbol}</div>
           </div>
           <div className="mt-1 text-sm text-[var(--k-muted)]">
-            {data ? `${data.market} • ${data.currency}` : 'Loading...'}
+            {bars ? `${bars.market} • ${bars.currency}` : 'Loading...'}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={busy}>
+          <Button variant="secondary" size="sm" onClick={() => void onRefresh()} disabled={busy}>
             Refresh
           </Button>
-          <Button size="sm" onClick={() => void refresh({ force: true })} disabled={busy}>
+          <Button size="sm" onClick={() => void onSyncDetail()} disabled={busy}>
             Sync detail
           </Button>
           <Button
             size="sm"
-            disabled={!data}
+            disabled={!bars}
             onClick={() => {
-              if (!data) return;
+              if (!bars) return;
               addReference({
                 kind: 'stock',
-                refId: data.symbol,
-                symbol: data.symbol,
-                market: data.market,
-                ticker: data.ticker,
-                name: data.name,
+                refId: bars.symbol,
+                symbol: bars.symbol,
+                market: bars.market,
+                ticker: bars.ticker,
+                name: bars.name,
                 barsDays: 60,
                 chipsDays: 30,
                 fundFlowDays: 30,
@@ -240,7 +130,7 @@ export function StockPage({
       <section className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="flex items-center justify-between">
           <div className="font-medium">Candles / Volume / MACD / KDJ</div>
-          <div className="text-xs text-[var(--k-muted)]">{data?.bars?.length ?? 0} bars</div>
+          <div className="text-xs text-[var(--k-muted)]">{bars?.bars?.length ?? 0} bars</div>
         </div>
         <div className="mt-3">
           {chartData.length > 0 ? (
@@ -368,5 +258,3 @@ export function StockPage({
     </div>
   );
 }
-
-

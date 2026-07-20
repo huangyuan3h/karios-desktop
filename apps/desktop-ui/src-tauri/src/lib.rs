@@ -17,7 +17,7 @@ pub fn run() {
         )?;
       }
 
-      // In release builds, start bundled backend sidecars (ai-service + quant-service).
+      // In release builds, start bundled backend sidecars (ai-service + data-sync-service).
       // In dev, backends are started externally via `pnpm dev:tauri`.
       let mgr = app.state::<BackendManager>();
       mgr.start_on_launch(app.handle());

@@ -49,6 +49,9 @@ export type ChatReference =
       buyZoneLow?: number | null;
       buyZoneHigh?: number | null;
       buyWhy?: string | null;
+      intradayChgPct?: number | null;
+      gapUp?: boolean | null;
+      riskAlerts?: Array<{ code: string; severity: 'block' | 'warn'; message: string }>;
     }
   | {
       kind: 'watchlistTable';
@@ -67,6 +70,8 @@ export type ChatReference =
         buyAction?: string | null;
         buyZoneLow?: number | null;
         buyZoneHigh?: number | null;
+        intradayChgPct?: number | null;
+        gapUp?: boolean | null;
       }>;
     }
   | {
@@ -98,15 +103,6 @@ export type ChatReference =
       accountId: string;
       accountTitle: string;
       capturedAt: string;
-    }
-  | {
-      kind: 'strategyReport';
-      refId: string; // reportId
-      reportId: string;
-      accountId: string;
-      accountTitle: string;
-      date: string; // YYYY-MM-DD
-      createdAt: string;
     }
   | {
       kind: 'industryFundFlow';
@@ -157,6 +153,34 @@ export type ChatReference =
       journalId: string;
       title: string;
       content: string; // markdown content
+      capturedAt: string;
+    }
+  | {
+      kind: 'dashboardAll';
+      refId: string; // stable key: `dashboardAll:${asOfDate}:${timestamp}`
+      asOfDate: string;
+      title?: string;
+      capturedAt: string;
+    }
+  | {
+      kind: 'alphaRadar';
+      refId: string;
+      trendId: string;
+      trendName: string;
+      macroTheme?: string;
+      catalystGrade?: string;
+      driverType?: string;
+      eventFocus?: string | null;
+      logicSummary?: string | null;
+      catalyst?: string | null;
+      cnSymbols?: Array<{
+        symbol: string;
+        name: string;
+        confidence: number;
+        rationale: string;
+      }>;
+      riskStatus: string;
+      documentTitle?: string;
       capturedAt: string;
     };
 

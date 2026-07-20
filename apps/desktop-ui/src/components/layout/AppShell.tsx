@@ -1,31 +1,95 @@
 'use client';
 
 import * as React from 'react';
+import dynamic from 'next/dynamic';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Bot } from 'lucide-react';
 
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
-import { BrokerPage } from '@/components/pages/BrokerPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
-import { LeaderStocksPage } from '@/components/pages/LeaderStocksPage';
 import { JournalReadPage } from '@/components/pages/JournalReadPage';
-import { JournalWritePage } from '@/components/pages/JournalWritePage';
 import { MarketPage } from '@/components/pages/MarketPage';
-import { RankPage } from '@/components/pages/RankPage';
+import { NewsPage } from '@/components/pages/NewsPage';
+import { SchedulerPage } from '@/components/pages/SchedulerPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
-import { StrategyPage } from '@/components/pages/StrategyPage';
-import { StockPage } from '@/components/pages/StockPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
+import { IndexPage } from '@/components/pages/IndexPage';
+import { AlphaIncubatorPage } from '@/components/pages/AlphaIncubatorPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
-import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Button } from '@/components/ui/button';
+import { useWatchlistAutomation } from '@/hooks/useWatchlistAutomation';
 import { useChatStore } from '@/lib/chat/store';
+import { createQueryClient } from '@/lib/query-client';
+import { ensureWatchlistHydrated } from '@/lib/watchlist-storage';
 import { cn } from '@/lib/utils';
 
-export function AppShell() {
+const LazyPageFallback = () => (
+  <div className="flex h-full items-center justify-center p-6 text-sm text-[var(--k-muted)]">
+    Loading page…
+  </div>
+);
+
+const BrokerPage = dynamic(
+  () => import('@/components/pages/BrokerPage').then((mod) => mod.BrokerPage),
+  { loading: LazyPageFallback },
+);
+const JournalTradeReviewPage = dynamic(
+  () => import('@/components/pages/JournalTradeReviewPage').then((mod) => mod.JournalTradeReviewPage),
+  { loading: LazyPageFallback },
+);
+const JournalWritePage = dynamic(
+  () => import('@/components/pages/JournalWritePage').then((mod) => mod.JournalWritePage),
+  { loading: LazyPageFallback },
+);
+const StockPage = dynamic(
+  () => import('@/components/pages/StockPage').then((mod) => mod.StockPage),
+  { loading: LazyPageFallback },
+);
+const BacktestPage = dynamic(
+  () => import('@/components/pages/BacktestPage').then((mod) => mod.BacktestPage),
+  { loading: LazyPageFallback },
+);
+const SimTradePage = dynamic(
+  () => import('@/components/pages/SimTradePage').then((mod) => mod.SimTradePage),
+  { loading: LazyPageFallback },
+);
+
+const PAGE_TITLES: Record<string, string> = {
+  dashboard: 'Dashboard',
+  index: 'Index',
+  news: 'News',
+  market: 'Market',
+  industryFlow: 'Industry Flow',
+  alphaIncubator: 'Alpha Incubator',
+  watchlist: 'Watchlist',
+  broker: 'Broker',
+  journal: 'Journal',
+  screener: 'Screener',
+  scheduler: 'Scheduler',
+  backtest: 'Backtest',
+  simtrade: 'Sim Trade',
+  settings: 'Settings',
+  stock: 'Stock',
+};
+
+function getPageTitle(page: string, activeStockSymbol: string | null): string {
+  if (page === 'stock' && activeStockSymbol) {
+    return activeStockSymbol;
+  }
+  return PAGE_TITLES[page] ?? page;
+}
+
+function AppShellInner() {
   const { state, setAgent } = useChatStore();
+
+  React.useEffect(() => {
+    void ensureWatchlistHydrated();
+  }, []);
+
+  useWatchlistAutomation();
   const agentVisible = state.agent.visible;
   const agentMode = state.agent.mode;
   const agentWidth = state.agent.width;
@@ -36,7 +100,7 @@ export function AppShell() {
   const [activeStockSymbol, setActiveStockSymbol] = React.useState<string | null>(null);
   const [stockReturnPage, setStockReturnPage] = React.useState<string>('market');
   const [activeJournalId, setActiveJournalId] = React.useState<string | null>(null);
-  const [journalMode, setJournalMode] = React.useState<'read' | 'write'>('read');
+  const [journalMode, setJournalMode] = React.useState<'read' | 'write' | 'review'>('read');
   const draggingRef = React.useRef(false);
   const agentVisibleRef = React.useRef(agentVisible);
   const agentModeRef = React.useRef(agentMode);
@@ -105,33 +169,7 @@ export function AppShell() {
 
       <main className="flex flex-1 flex-col">
         <header className="flex items-center border-b border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
-          <div className="text-sm font-semibold">
-            {activePage === 'dashboard'
-              ? 'Dashboard'
-              : activePage === 'market'
-                ? 'Market'
-              : activePage === 'rank'
-                ? 'Quant'
-              : activePage === 'industryFlow'
-                ? 'Industry Flow'
-              : activePage === 'watchlist'
-                ? 'Watchlist'
-              : activePage === 'broker'
-                ? 'Broker'
-              : activePage === 'strategy'
-                ? 'Strategy'
-              : activePage === 'journal'
-                ? 'Journal'
-              : activePage === 'leaders'
-                ? 'Leaders'
-              : activePage === 'stock'
-                ? activeStockSymbol ?? 'Stock'
-              : activePage === 'screener'
-                ? 'Screener'
-              : activePage === 'settings'
-                ? 'Settings'
-                : activePage}
-          </div>
+          <div className="text-sm font-semibold">{getPageTitle(activePage, activeStockSymbol)}</div>
 
           <div className="flex-1" />
 
@@ -143,19 +181,17 @@ export function AppShell() {
                 setActivePage('stock');
               }}
             />
-            <ThemeToggle />
             <Button
               variant="secondary"
               size="sm"
               className="h-9 w-9 rounded-full p-0"
-              onClick={() => setAgent((prev) => ({ ...prev, visible: !prev.visible, mode: 'docked' }))}
+              onClick={() =>
+                setAgent((prev) => ({ ...prev, visible: !prev.visible, mode: 'docked' }))
+              }
               title={agentVisible ? 'Hide agent' : 'Show agent'}
             >
               <Bot className="h-4 w-4" />
             </Button>
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-[var(--k-accent)] text-sm font-semibold text-white">
-              U
-            </div>
           </div>
         </header>
 
@@ -163,6 +199,8 @@ export function AppShell() {
           <div className="min-w-0 flex-1 overflow-auto">
             {activePage === 'settings' ? (
               <SettingsPage />
+            ) : activePage === 'news' ? (
+              <NewsPage />
             ) : activePage === 'market' ? (
               <MarketPage
                 onOpenStock={(symbol) => {
@@ -173,16 +211,10 @@ export function AppShell() {
               />
             ) : activePage === 'broker' ? (
               <BrokerPage />
-            ) : activePage === 'rank' ? (
-              <RankPage
-                onOpenStock={(symbol) => {
-                  setStockReturnPage('rank');
-                  setActiveStockSymbol(symbol);
-                  setActivePage('stock');
-                }}
-              />
             ) : activePage === 'industryFlow' ? (
               <IndustryFlowPage />
+            ) : activePage === 'alphaIncubator' ? (
+              <AlphaIncubatorPage />
             ) : activePage === 'watchlist' ? (
               <WatchlistPage
                 onOpenStock={(symbol) => {
@@ -191,8 +223,6 @@ export function AppShell() {
                   setActivePage('stock');
                 }}
               />
-            ) : activePage === 'strategy' ? (
-              <StrategyPage />
             ) : activePage === 'journal' ? (
               journalMode === 'write' ? (
                 <JournalWritePage
@@ -200,6 +230,8 @@ export function AppShell() {
                   onJournalIdChange={setActiveJournalId}
                   onExit={() => setJournalMode('read')}
                 />
+              ) : journalMode === 'review' ? (
+                <JournalTradeReviewPage onBack={() => setJournalMode('read')} />
               ) : (
                 <JournalReadPage
                   activeId={activeJournalId}
@@ -207,16 +239,9 @@ export function AppShell() {
                     setActiveJournalId(id);
                     setJournalMode('write');
                   }}
+                  onOpenTradeReview={() => setJournalMode('review')}
                 />
               )
-            ) : activePage === 'leaders' ? (
-              <LeaderStocksPage
-                onOpenStock={(symbol) => {
-                  setStockReturnPage('leaders');
-                  setActiveStockSymbol(symbol);
-                  setActivePage('stock');
-                }}
-              />
             ) : activePage === 'stock' && activeStockSymbol ? (
               <StockPage
                 symbol={activeStockSymbol}
@@ -224,14 +249,16 @@ export function AppShell() {
               />
             ) : activePage === 'screener' ? (
               <ScreenerPage />
+            ) : activePage === 'scheduler' ? (
+              <SchedulerPage />
+            ) : activePage === 'backtest' ? (
+              <BacktestPage />
+            ) : activePage === 'simtrade' ? (
+              <SimTradePage />
+            ) : activePage === 'index' ? (
+              <IndexPage />
             ) : (
-              <DashboardPage
-                onNavigate={(id) => setActivePage(id)}
-                onOpenStock={(symbol) => {
-                  setActiveStockSymbol(symbol);
-                  setActivePage('stock');
-                }}
-              />
+              <DashboardPage onNavigate={(id) => setActivePage(id)} />
             )}
           </div>
 
@@ -250,10 +277,7 @@ export function AppShell() {
           ) : null}
 
           {agentVisible && agentMode !== 'maximized' ? (
-            <div
-              className="shrink-0"
-              style={{ width: agentWidth }}
-            >
+            <div className="shrink-0" style={{ width: agentWidth }}>
               <div className="h-full border-l border-[var(--k-border)]">
                 <AgentPanel />
               </div>
@@ -289,4 +313,12 @@ export function AppShell() {
   );
 }
 
+export function AppShell() {
+  const [queryClient] = React.useState(() => createQueryClient());
 
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppShellInner />
+    </QueryClientProvider>
+  );
+}

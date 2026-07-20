@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Image from 'next/image';
+import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, UploadCloud, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { newId } from '@/lib/id';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson, apiPostJson, apiPutJson } from '@/lib/api/client';
+import {
+  brokerAccountStateQueryKey,
+  invalidateBrokerQueries,
+  useBrokerAccountStateQuery,
+  useBrokerAccountsQuery,
+  type BrokerAccount,
+  type BrokerAccountState,
+} from '@/lib/queries/broker';
 import { useChatStore } from '@/lib/chat/store';
 
 type ImportImage = {
@@ -21,25 +30,6 @@ type ImportImage = {
   name: string;
   mediaType: string;
   dataUrl: string;
-};
-
-type BrokerAccountState = {
-  accountId: string;
-  broker: string;
-  updatedAt: string;
-  overview: Record<string, unknown>;
-  positions: Array<Record<string, unknown>>;
-  conditionalOrders: Array<Record<string, unknown>>;
-  trades: Array<Record<string, unknown>>;
-  counts: Record<string, number>;
-};
-
-type BrokerAccount = {
-  id: string;
-  broker: string;
-  title: string;
-  accountMasked: string | null;
-  updatedAt: string;
 };
 
 function toNum(v: unknown): number | null {
@@ -67,42 +57,12 @@ function pickStr(obj: Record<string, unknown>, keys: string[]): string {
   return '';
 }
 
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPutJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
 export function BrokerPage() {
   const { addReference } = useChatStore();
+  const queryClient = useQueryClient();
   const [images, setImages] = React.useState<ImportImage[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [state, setState] = React.useState<BrokerAccountState | null>(null);
-  const [accounts, setAccounts] = React.useState<BrokerAccount[]>([]);
   const [accountId, setAccountId] = React.useState<string>('');
   const [showNewAccount, setShowNewAccount] = React.useState(false);
   const [newAccountTitle, setNewAccountTitle] = React.useState('');
@@ -111,29 +71,24 @@ export function BrokerPage() {
   const [renameAccountTitle, setRenameAccountTitle] = React.useState('');
   const [showAllPositions, setShowAllPositions] = React.useState(false);
 
+  const accountsQuery = useBrokerAccountsQuery('pingan');
+  const accounts = accountsQuery.data ?? [];
+  const effectiveAccountId = accountId || accounts[0]?.id || '';
+  const stateQuery = useBrokerAccountStateQuery('pingan', effectiveAccountId);
+  const state = stateQuery.data ?? null;
+
+  React.useEffect(() => {
+    if (!accountId && accounts[0]?.id) setAccountId(accounts[0].id);
+  }, [accountId, accounts]);
+
   const refresh = React.useCallback(async () => {
     setError(null);
     try {
-      const acc = await apiGetJson<BrokerAccount[]>('/broker/accounts?broker=pingan');
-      setAccounts(acc);
-      const effectiveAccountId = accountId || acc[0]?.id || '';
-      if (!accountId && effectiveAccountId) setAccountId(effectiveAccountId);
-      if (effectiveAccountId) {
-        const st = await apiGetJson<BrokerAccountState>(
-          `/broker/pingan/accounts/${encodeURIComponent(effectiveAccountId)}/state`,
-        );
-        setState(st);
-      } else {
-        setState(null);
-      }
+      await invalidateBrokerQueries(queryClient);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [accountId]);
-
-  React.useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  }, [queryClient]);
 
   React.useEffect(() => {
     if (!showRenameAccount) return;
@@ -178,7 +133,11 @@ export function BrokerPage() {
         },
       );
       setImages([]);
-      setState(st);
+      queryClient.setQueryData(
+        brokerAccountStateQueryKey('pingan', accountId),
+        st,
+      );
+      await invalidateBrokerQueries(queryClient);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -232,7 +191,7 @@ export function BrokerPage() {
         <div>
           <div className="text-lg font-semibold">Broker Sync (Ping An)</div>
           <div className="mt-1 text-sm text-[var(--k-muted)]">
-            Paste or drop screenshots, extract with AI, and save into SQLite.
+            Paste or drop screenshots, extract with AI, and save into Postgres.
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -291,7 +250,7 @@ export function BrokerPage() {
           <div className="w-full max-w-md rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 shadow-xl">
             <div className="mb-2 text-sm font-medium">Rename account</div>
             <div className="text-xs text-[var(--k-muted)]">
-              This updates the account title in SQLite and affects all modules.
+              This updates the account title in Postgres and affects all modules.
             </div>
             <div className="mt-3 grid gap-2">
               <input

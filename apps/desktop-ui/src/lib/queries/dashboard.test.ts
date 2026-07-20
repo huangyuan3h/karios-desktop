@@ -1,0 +1,144 @@
+import { QueryClient } from '@tanstack/react-query';
+import { describe, expect, it, vi } from 'vitest';
+
+import type { WatchlistMarketSnapshot } from '@/lib/watchlist-market';
+
+import {
+  buildDashboardSummaryPath,
+  buildWatchlistRiskRowsFromSnapshot,
+  dashboardSummaryQueryKey,
+  fetchWatchlistRiskRows,
+  mergeDashboardSummaryParts,
+} from './dashboard';
+import { watchlistMarketKey } from './watchlist';
+
+vi.mock('@/lib/watchlist-storage', () => ({
+  loadWatchlist: vi.fn(() => [{ symbol: 'CN:600519', name: 'Moutai' }]),
+}));
+
+vi.mock('@/lib/market-hours', () => ({
+  getShanghaiTodayIso: () => '2026-06-18',
+  isShanghaiSyncWindow: () => true,
+  isShanghaiTradingTime: () => false,
+}));
+
+describe('dashboardSummaryQueryKey', () => {
+  it('distinguishes macro full vs no-macro full', () => {
+    expect(dashboardSummaryQueryKey(true)).toEqual(['dashboard', 'summary', 'full']);
+    expect(dashboardSummaryQueryKey(false)).toEqual(['dashboard', 'summary', 'no-macro']);
+  });
+});
+
+describe('buildDashboardSummaryPath', () => {
+  it('omits macro when includeMacro is false', () => {
+    expect(buildDashboardSummaryPath(false)).toBe('/dashboard/summary?include_macro=false');
+  });
+
+  it('uses full path when includeMacro is true', () => {
+    expect(buildDashboardSummaryPath(true)).toBe('/dashboard/summary');
+  });
+
+  it('supports partial include flags', () => {
+    expect(
+      buildDashboardSummaryPath({
+        includeMacro: false,
+        includeSentiment: false,
+        includeNews: true,
+        includeIndustry: false,
+        includeScreeners: false,
+      }),
+    ).toBe(
+      '/dashboard/summary?include_macro=false&include_sentiment=false&include_industry=false&include_screeners=false',
+    );
+  });
+});
+
+describe('mergeDashboardSummaryParts', () => {
+  it('does not let empty partial sections overwrite populated lite/sentiment data', () => {
+    const lite = {
+      asOfDate: '2026-06-18',
+      industryFundFlow: { topByDate: [{ date: '2026-06-18', top: ['Bank'] }] },
+      screeners: [{ id: 's1' }],
+      marketSentiment: {},
+    };
+    const sentiment = {
+      asOfDate: '2026-06-18',
+      industryFundFlow: {},
+      marketSentiment: {
+        items: [{ riskMode: 'caution' }],
+        indexSignals: [{ tsCode: '000001.SH' }],
+      },
+    };
+    const news = {
+      industryFundFlow: {},
+      marketSentiment: {},
+      news: { hours: 24, total: 1, items: [{ id: 'n1', title: 'Headline' }] },
+    };
+
+    const merged = mergeDashboardSummaryParts(lite, sentiment, news);
+    expect(merged?.industryFundFlow).toEqual(lite.industryFundFlow);
+    expect(merged?.marketSentiment).toEqual(sentiment.marketSentiment);
+    expect(merged?.news).toEqual(news.news);
+    expect(merged?.screeners).toEqual(lite.screeners);
+  });
+});
+
+describe('buildWatchlistRiskRowsFromSnapshot', () => {
+  it('keeps rows with alerts and sorts block severity first', () => {
+    const snapshot: WatchlistMarketSnapshot = {
+      trend: {
+        'CN:600519': {
+          symbol: 'CN:600519',
+          name: 'Moutai',
+          riskAlerts: [{ code: 'intraday_surge', severity: 'block', message: 'surge' }],
+        },
+        'CN:000001': {
+          symbol: 'CN:000001',
+          name: 'Ping An',
+          riskAlerts: [{ code: 'gap_up', severity: 'warn', message: 'gap' }],
+        },
+        'CN:999999': {
+          symbol: 'CN:999999',
+          name: 'Quiet',
+        },
+      },
+      quotes: {},
+    };
+
+    const rows = buildWatchlistRiskRowsFromSnapshot(
+      [
+        { symbol: 'CN:000001', name: 'Ping An' },
+        { symbol: 'CN:600519', name: 'Moutai' },
+        { symbol: 'CN:999999', name: 'Quiet' },
+      ],
+      snapshot,
+    );
+
+    expect(rows.map((r) => r.symbol)).toEqual(['CN:600519', 'CN:000001']);
+    expect(rows[0].alerts.some((a) => a.severity === 'block')).toBe(true);
+  });
+});
+
+describe('fetchWatchlistRiskRows', () => {
+  it('uses watchlistMarketKey via queryClient.fetchQuery', async () => {
+    const snapshot: WatchlistMarketSnapshot = {
+      trend: {
+        'CN:600519': {
+          symbol: 'CN:600519',
+          name: 'Moutai',
+          riskAlerts: [{ code: 'test', severity: 'warn', message: 'x' }],
+        },
+      },
+      quotes: {},
+    };
+    const fetchQuery = vi.fn().mockResolvedValue(snapshot);
+    const queryClient = { fetchQuery } as unknown as QueryClient;
+
+    const rows = await fetchWatchlistRiskRows(queryClient);
+
+    expect(fetchQuery).toHaveBeenCalledTimes(1);
+    expect(fetchQuery.mock.calls[0][0].queryKey).toEqual(watchlistMarketKey(['CN:600519']));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].symbol).toBe('CN:600519');
+  });
+});

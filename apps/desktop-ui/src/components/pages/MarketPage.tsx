@@ -4,7 +4,7 @@ import * as React from 'react';
 import { RefreshCw, Search } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson, apiPostJson } from '@/lib/api/client';
 import { useChatStore } from '@/lib/chat/store';
 
 type MarketStatus = {
@@ -33,28 +33,6 @@ type MarketStocksResponse = {
   limit: number;
 };
 
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return (await res.json()) as T;
-}
-
-async function apiPostJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { method: 'POST' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) {
-    try {
-      const j = JSON.parse(txt) as { error?: string; detail?: string };
-      const msg = (j && (j.error || j.detail)) || '';
-      if (msg) throw new Error(msg);
-    } catch {
-      // ignore
-    }
-    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  }
-  return (txt ? (JSON.parse(txt) as T) : ({} as T));
-}
-
 export function MarketPage({
   onOpenStock,
 }: {
@@ -66,7 +44,6 @@ export function MarketPage({
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [q, setQ] = React.useState('');
-  const [market, setMarket] = React.useState<'ALL' | 'CN' | 'HK'>('ALL');
   const [offset, setOffset] = React.useState(0);
   const limit = 50;
 
@@ -76,8 +53,7 @@ export function MarketPage({
       const [st, list] = await Promise.all([
         apiGetJson<MarketStatus>('/market/status'),
         apiGetJson<MarketStocksResponse>(
-          `/market/stocks?limit=${limit}&offset=${offset}` +
-            `${market !== 'ALL' ? `&market=${market}` : ''}` +
+          `/market/stocks?limit=${limit}&offset=${offset}&market=CN` +
             `${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ''}`,
         ),
       ]);
@@ -86,7 +62,7 @@ export function MarketPage({
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [limit, offset, q, market]);
+  }, [limit, offset, q]);
 
   React.useEffect(() => {
     void refresh();
@@ -114,9 +90,9 @@ export function MarketPage({
       <div className="mb-6 flex items-start justify-between gap-3">
         <div>
           <div className="text-lg font-semibold">Market</div>
-          <div className="mt-1 text-sm text-[var(--k-muted)]">CN + HK stock universe.</div>
+          <div className="mt-1 text-sm text-[var(--k-muted)]">CN A-share stock universe.</div>
           <div className="mt-1 text-xs text-[var(--k-muted)]">
-            Total: {status?.stocks ?? '—'}
+            Total: {data?.total ?? '—'}
             {status?.lastSyncAt ? ` • Last sync: ${new Date(status.lastSyncAt).toLocaleString()}` : ''}
           </div>
         </div>
@@ -149,38 +125,6 @@ export function MarketPage({
               setOffset(0);
             }}
           />
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <Button
-            variant={market === 'ALL' ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => {
-              setMarket('ALL');
-              setOffset(0);
-            }}
-          >
-            All
-          </Button>
-          <Button
-            variant={market === 'CN' ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => {
-              setMarket('CN');
-              setOffset(0);
-            }}
-          >
-            CN
-          </Button>
-          <Button
-            variant={market === 'HK' ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => {
-              setMarket('HK');
-              setOffset(0);
-            }}
-          >
-            HK
-          </Button>
         </div>
         <div className="flex-1" />
         <div className="text-xs text-[var(--k-muted)]">

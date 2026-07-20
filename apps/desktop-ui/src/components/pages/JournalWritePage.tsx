@@ -5,7 +5,7 @@ import { ArrowLeft, Save } from 'lucide-react';
 
 import { PlateJournalEditor } from '@/components/journal/PlateJournalEditor';
 import { Button } from '@/components/ui/button';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+import { apiGetJson, apiPostJson, apiPutJson } from '@/lib/api/client';
 import { useChatStore } from '@/lib/chat/store';
 import type { ChatReference } from '@/lib/chat/types';
 
@@ -21,35 +21,6 @@ type ListTradeJournalsResponse = {
   total: number;
   items: TradeJournal[];
 };
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPutJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
 
 function fmtTsSimple(ts: string | null | undefined): string {
   const s = String(ts ?? '').trim();

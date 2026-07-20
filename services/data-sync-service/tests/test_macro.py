@@ -1,0 +1,196 @@
+"""Macro snapshot and post-close wiring."""
+
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient  # type: ignore[import-not-found]
+
+from data_sync_service.main import app  # type: ignore[import-not-found]
+
+pytestmark = pytest.mark.requires_postgres
+
+def test_get_macro_snapshot_endpoint(monkeypatch) -> None:
+    import data_sync_service.api.query_routes as query_routes  # type: ignore[import-not-found]
+
+    def _snap() -> dict:
+        return {"cnIndexSignals": [], "macro": []}
+
+    monkeypatch.setattr(query_routes, "build_macro_snapshot", _snap)
+
+    client = TestClient(app)
+    resp = client.get("/macro/snapshot")
+    assert resp.status_code == 200
+    assert resp.json() == {"cnIndexSignals": [], "macro": []}
+
+
+def test_run_post_close_sync(monkeypatch) -> None:
+    import data_sync_service.service.post_close_sync as pcs  # type: ignore[import-not-found]
+
+    called: list[str] = []
+
+    def _index() -> dict:
+        called.append("index")
+        return {"ok": True, "updated": 1}
+
+    def _macro() -> dict:
+        called.append("macro")
+        return {"ok": True, "updated": 2}
+
+    def _em(**kwargs) -> dict:  # noqa: ANN003
+        called.append("em")
+        return {"ok": True, "updated": 3}
+
+    def _etf() -> dict:
+        called.append("etf")
+        return {"ok": True, "updated": 4}
+
+    monkeypatch.setattr(pcs, "sync_index_daily_full", _index)
+    monkeypatch.setattr(pcs, "sync_macro_daily_full", _macro)
+    monkeypatch.setattr(pcs, "sync_eastmoney_industry_incremental", _em)
+    monkeypatch.setattr(pcs, "sync_etf_fund_flow_watchlist", _etf)
+
+    out = pcs.run_post_close_sync()
+    assert out["indexDaily"]["ok"] is True
+    assert out["macroDaily"]["updated"] == 2
+    assert out["eastmoneyIndustry"]["updated"] == 3
+    assert out["etfFundFlow"]["updated"] == 4
+    assert set(called) == {"index", "macro", "em", "etf"}
+
+
+def test_enrich_macro_items_on_demand_without_tushare(monkeypatch) -> None:
+    from data_sync_service.service import macro_snapshot_on_demand as mod
+
+    monkeypatch.setattr(mod, "try_tushare_pro", lambda: None)
+    monkeypatch.setattr(
+        mod,
+        "_fetch_ixic_via_yfinance",
+        lambda: {
+            "close": 17000.0,
+            "pctChg": 1.2,
+            "asOfDate": "2026-06-20",
+            "ma5": 16900.0,
+            "ma20": 16800.0,
+        },
+    )
+
+    items = [
+        {
+            "seriesId": mod.SID_IXIC,
+            "name": "Nasdaq",
+            "close": 16000.0,
+            "asOfDate": "2026-06-10",
+            "pctChg": 0.5,
+        }
+    ]
+    out = mod.enrich_macro_items_on_demand(items)
+    assert out[0]["close"] == 17000.0
+    assert out[0]["asOfDate"] == "2026-06-20"
+    assert out[0]["source"] == "yfinance.on_demand"
+
+
+def test_fetch_hsi_on_demand(monkeypatch) -> None:
+    from data_sync_service.service import macro_snapshot_on_demand as mod
+
+    monkeypatch.setattr(
+        mod,
+        "_fetch_hsi_via_yfinance",
+        lambda: {
+            "close": 24000.0,
+            "pctChg": -0.5,
+            "asOfDate": "2026-06-22",
+            "ma5": 24100.0,
+            "ma20": 24500.0,
+        },
+    )
+    metrics, src = mod.fetch_hsi_on_demand()
+    assert metrics["close"] == 24000.0
+    assert src == "yfinance.on_demand"
+
+
+def test_resolve_sgx_a50_main_empty() -> None:
+    from data_sync_service.service.macro_daily import (
+        resolve_sgx_a50_main,  # type: ignore[import-not-found]
+    )
+
+    class _Pro:
+        def fut_basic(self, **kwargs):  # noqa: ANN003
+            return None
+
+    assert resolve_sgx_a50_main(_Pro()) is None
+
+
+def test_df_to_metrics_uses_settle_when_close_na() -> None:
+    import pandas as pd  # type: ignore[import-not-found]
+
+    from data_sync_service.service.macro_snapshot_on_demand import (
+        _df_to_metrics,  # type: ignore[import-not-found]
+    )
+
+    df = pd.DataFrame(
+        {
+            "trade_date": ["20260101", "20260102"],
+            "close": [float("nan"), float("nan")],
+            "settle": [500.0, 510.0],
+            "pct_chg": [0.0, 2.0],
+        }
+    )
+    m = _df_to_metrics(df)
+    assert m["close"] == 510.0
+
+
+def test_df_to_metrics_parses_tushare_dates() -> None:
+    import pandas as pd  # type: ignore[import-not-found]
+
+    from data_sync_service.service.macro_snapshot_on_demand import (
+        _df_to_metrics,  # type: ignore[import-not-found]
+    )
+
+    df = pd.DataFrame(
+        {
+            "trade_date": ["20260101", "20260102", "20260103"],
+            "close": [100.0, 101.0, 102.5],
+            "pct_chg": [0.0, 1.0, 1.49],
+        }
+    )
+    m = _df_to_metrics(df)
+    assert m["close"] == 102.5
+    assert m["pctChg"] == 1.49
+    assert m["asOfDate"] == "2026-01-03"
+
+
+def test_df_to_metrics_falls_back_to_prior_close_diff() -> None:
+    import pandas as pd  # type: ignore[import-not-found]
+
+    from data_sync_service.service.macro_snapshot_on_demand import (
+        _df_to_metrics,  # type: ignore[import-not-found]
+    )
+
+    df = pd.DataFrame(
+        {
+            "trade_date": ["20260101", "20260102"],
+            "close": [100.0, 103.0],
+        }
+    )
+    m = _df_to_metrics(df)
+    assert m["close"] == 103.0
+    assert m["pctChg"] == 3.0
+
+
+def test_resolve_main_fut_by_prefix_filters() -> None:
+    import pandas as pd  # type: ignore[import-not-found]
+
+    from data_sync_service.service.macro_daily import (
+        resolve_main_fut_by_prefix,  # type: ignore[import-not-found]
+    )
+
+    class _Pro:
+        def fut_basic(self, **kwargs):  # noqa: ANN003
+            return pd.DataFrame(
+                {
+                    "ts_code": ["CU2501.SHF", "AL2501.SHF"],
+                    "name": ["铜", "铝"],
+                    "list_date": ["20240101", "20240101"],
+                }
+            )
+
+    assert resolve_main_fut_by_prefix(_Pro(), "SHFE", "CU") == "CU2501.SHF"

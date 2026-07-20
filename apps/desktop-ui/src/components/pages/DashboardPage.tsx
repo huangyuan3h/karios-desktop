@@ -2,187 +2,245 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 
+import { DecisionJournalCard } from '@/components/dashboard/DecisionJournalCard';
+import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { useDashboardSummary } from '@/hooks/useDashboardSummary';
+import { useDashboardSync } from '@/hooks/useDashboardSync';
+import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
+import { useWatchlistItems } from '@/hooks/useWatchlistItems';
+import { useWatchlistRisk } from '@/hooks/useWatchlistRisk';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { QUANT_BASE_URL } from '@/lib/endpoints';
+  buildDashboardHotIndustryPicks,
+  buildMainlineAllowSet,
+  isSectorOutflowBlock,
+} from '@/lib/hot-industry-picks';
+import { writeLastCopyAt } from '@/lib/copy-ai-brief';
+import {
+  buildDashboardCopyAllMarkdown,
+  buildIndustryMarkdown,
+  buildSentimentMarkdown,
+} from '@/lib/dashboard-export';
+import {
+  BREADTH_PANIC_DOWN_THRESHOLD,
+  buildIndexTrafficSummary,
+  executionGateBadgeClass,
+  fmtAmountCn,
+  fmtSignedAmountCn,
+  formatSrvIndexLine,
+  srvIndexBadgeClass,
+  fmtDateTime,
+  loadCardOrder,
+  saveCardOrder,
+} from '@/lib/dashboard-format';
+import { parseExecutionGate } from '@/lib/execution-action';
+import { isShanghaiSyncWindow } from '@/lib/market-hours';
 import { useChatStore } from '@/lib/chat/store';
+import {
+  formatGapUp,
+  formatIntradayChgPct,
+  formatVolumeRatio,
+  isIntradaySurge,
+  volumeRatioClassName,
+} from '@/lib/watchlist-metrics';
 
-type DashboardSummary = any;
-type DashboardSyncResp = any;
-type LeaderListResp = any;
-type MainlineSnapshot = {
-  id?: string;
-  tradeDate?: string;
-  createdAt?: string;
-  riskMode?: string | null;
-  selected?: {
-    kind: string;
-    name: string;
-    compositeScore?: number;
-    structureScore?: number;
-    logicScore?: number;
-    logicGrade?: string | null;
-    logicSummary?: string | null;
-    limitupCount?: number;
-    followersCount?: number;
-    topTickers?: Array<{
-      symbol: string;
-      ticker: string;
-      name: string;
-      chgPct?: number;
-      volRatio?: number;
-      turnover?: number;
-    }>;
-  } | null;
-  themesTopK?: Array<{
-    kind: string;
-    name: string;
-    compositeScore?: number;
-    structureScore?: number;
-    logicScore?: number;
-    logicGrade?: string | null;
-    topTickers?: Array<{
-      symbol: string;
-      ticker: string;
-      name: string;
-      chgPct?: number;
-    }>;
-    limitupCount?: number;
-    followersCount?: number;
-  }>;
-  debug?: unknown;
-};
-
-async function apiGetJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, { cache: 'no-store' });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-async function apiPostJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${QUANT_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const txt = await res.text().catch(() => '');
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
-  return txt ? (JSON.parse(txt) as T) : ({} as T);
-}
-
-function loadCardOrder(): string[] | null {
-  try {
-    const raw = window.localStorage.getItem('karios.dashboard.cardOrder.v0');
-    if (!raw) return null;
-    const arr = JSON.parse(raw) as unknown;
-    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveCardOrder(ids: string[]) {
-  try {
-    window.localStorage.setItem('karios.dashboard.cardOrder.v0', JSON.stringify(ids));
-  } catch {
-    // ignore
-  }
-}
-
-function fmtDateTime(x: string | null | undefined) {
-  if (!x) return '—';
-  const d = new Date(x);
-  return Number.isNaN(d.getTime()) ? x : d.toLocaleString();
-}
-
-function parseNum(x: unknown): number | null {
-  const s = String(x ?? '').trim();
-  if (!s) return null;
-  const n = Number(s.replaceAll(',', ''));
-  return Number.isFinite(n) ? n : null;
-}
-
-function fmtAmountCn(x: unknown): string {
-  const n = parseNum(x);
-  if (n == null) return '—';
-  const abs = Math.abs(n);
-  if (abs >= 1e8) return `${(n / 1e8).toFixed(2)}亿`;
-  if (abs >= 1e4) return `${(n / 1e4).toFixed(1)}万`;
-  return `${n.toFixed(0)}`;
-}
-
-function fmtPerfLine(r: any): string {
-  const p = Number(r?.todayChangePct);
-  if (Number.isFinite(p)) {
-    const sign = p > 0 ? '+' : '';
-    return `${sign}${p.toFixed(2)}%`;
-  }
-  return '—';
-}
-
-function fmtLeaderScore(r: any): string {
-  const live = Number(r?.liveScore);
-  if (Number.isFinite(live)) return String(Math.round(live));
-  const s = Number(r?.score);
-  if (Number.isFinite(s)) return String(Math.round(s));
-  return '—';
-}
-
-function riskModeExplain(riskMode: string | null | undefined): string {
-  const v = String(riskMode ?? '').trim();
-  if (v === 'no_new_positions') return '风险高：不建议开新仓（只处理持仓）';
-  if (v === 'caution') return '谨慎：建议小仓位、等确认（回封/回踩）';
-  if (v === 'normal') return '正常：可以按信号参与（仍需风控）';
-  if (v === 'hot') return '偏热：趋势强、可积极一些（仍建议分批）';
-  if (v === 'euphoric') return '亢奋：极强但波动大，追高需更严格止损';
-  return '—';
-}
-
-function scoreLabel(score: number | null | undefined): string {
-  const n = Number(score);
-  if (!Number.isFinite(n)) return '—';
-  if (n >= 85) return '强';
-  if (n >= 70) return '中等偏强';
-  return '偏弱';
-}
-
-export function DashboardPage({
-  onNavigate,
-  onOpenStock,
-}: {
-  onNavigate?: (pageId: string) => void;
-  onOpenStock?: (symbol: string) => void;
-}) {
+export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) => void }) {
+  const queryClient = useQueryClient();
   const { addReference } = useChatStore();
-  const [summary, setSummary] = React.useState<DashboardSummary | null>(null);
-  const [leadersAll, setLeadersAll] = React.useState<LeaderListResp | null>(null);
-  const [mainline, setMainline] = React.useState<MainlineSnapshot | null>(null);
-  const [syncResp, setSyncResp] = React.useState<DashboardSyncResp | null>(null);
-  const [busy, setBusy] = React.useState(false);
-  const [sentimentBusy, setSentimentBusy] = React.useState(false);
-  const [mainlineBusy, setMainlineBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [accountId, setAccountId] = React.useState<string>('');
+
+  const {
+    summary,
+    summaryLoading,
+    error,
+    setError,
+    applySummaryToCache,
+    newsSummary,
+    newsSummaryUpdatedAt,
+    newsFallback,
+    newsSummaryBusy,
+    sentimentBusy,
+    onSyncSentiment,
+    regenerateNewsSummary,
+    shouldRefreshNewsBrief,
+    saveNewsBriefCache,
+    setNewsSummary,
+    setNewsSummaryUpdatedAt,
+    setNewsSummaryBusy,
+  } = useDashboardSummary();
+
+  const { items: watchlistItems } = useWatchlistItems();
+  const executionGate = React.useMemo(
+    () => parseExecutionGate((summary as any)?.marketSentiment?.executionGate),
+    [summary],
+  );
+  const mainlineAllow = React.useMemo(() => buildMainlineAllowSet(summary), [summary]);
+  const sectorOutflowBlock = React.useMemo(() => isSectorOutflowBlock(summary), [summary]);
+  const { capture: captureDecisionSnapshot, busy: decisionCaptureBusy } =
+    useExecutionJournalCapture({
+      items: watchlistItems,
+      gate: executionGate,
+      mainlineAllow,
+      sectorOutflowBlock,
+      enabled: true,
+    });
+
+  const { syncResp, busy, syncSteps, syncProgress, onSyncAll } = useDashboardSync({
+    applySummaryToCache,
+    shouldRefreshNewsBrief,
+    newsSummary,
+    newsSummaryUpdatedAt,
+    setNewsSummary,
+    setNewsSummaryUpdatedAt,
+    setNewsSummaryBusy,
+    saveNewsBriefCache,
+    setError,
+    onSyncComplete: () => {
+      void captureDecisionSnapshot('sync_all');
+    },
+  });
+
+  const {
+    rows: watchlistRiskRows,
+    busy: watchlistRiskBusy,
+    updatedAt: watchlistRiskUpdatedAt,
+    refetch: refetchWatchlistRisk,
+  } = useWatchlistRisk();
+
+  const [industryCopyStatus, setIndustryCopyStatus] = React.useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
+  const [sentimentCopyStatus, setSentimentCopyStatus] = React.useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
+  const [copyAllBusy, setCopyAllBusy] = React.useState(false);
+  const [copyAllStatus, setCopyAllStatus] = React.useState<{ ok: boolean; text: string } | null>(
+    null,
+  );
   const [editLayout, setEditLayout] = React.useState(false);
+
+  const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
+
+  // Loose JSON schema from API; cast for nested card rendering.
+  const dash = summary as any;
+
+  const industryCopyTimerRef = React.useRef<number | null>(null);
+  const sentimentCopyTimerRef = React.useRef<number | null>(null);
+  const copyAllTimerRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (industryCopyTimerRef.current != null) window.clearTimeout(industryCopyTimerRef.current);
+      if (sentimentCopyTimerRef.current != null) window.clearTimeout(sentimentCopyTimerRef.current);
+      if (copyAllTimerRef.current != null) window.clearTimeout(copyAllTimerRef.current);
+    };
+  }, []);
+
+  function toastIndustryCopy(ok: boolean, text: string) {
+    setIndustryCopyStatus({ ok, text });
+    if (industryCopyTimerRef.current != null) window.clearTimeout(industryCopyTimerRef.current);
+    industryCopyTimerRef.current = window.setTimeout(() => setIndustryCopyStatus(null), 2400);
+  }
+
+  function toastSentimentCopy(ok: boolean, text: string) {
+    setSentimentCopyStatus({ ok, text });
+    if (sentimentCopyTimerRef.current != null) window.clearTimeout(sentimentCopyTimerRef.current);
+    sentimentCopyTimerRef.current = window.setTimeout(() => setSentimentCopyStatus(null), 2400);
+  }
+
+  function toastCopyAll(ok: boolean, text: string) {
+    setCopyAllStatus({ ok, text });
+    if (copyAllTimerRef.current != null) window.clearTimeout(copyAllTimerRef.current);
+    copyAllTimerRef.current = window.setTimeout(() => setCopyAllStatus(null), 2600);
+  }
+
+  async function onCopyIndustryMarkdown() {
+    try {
+      const ind = summary?.industryFundFlow as any;
+      const hasTopByDate = Array.isArray(ind?.topByDate) && ind.topByDate.length > 0;
+      const hasFlow5d = Array.isArray(ind?.flow5d?.top) && ind.flow5d.top.length > 0;
+      const hasFlow5dOut = Array.isArray(ind?.flow5dOut?.top) && ind.flow5dOut.top.length > 0;
+      if (!hasTopByDate && !hasFlow5d && !hasFlow5dOut) {
+        toastIndustryCopy(false, 'Nothing to copy (no industry fund flow data).');
+        return;
+      }
+      const md = buildIndustryMarkdown(summary, '#').trim();
+      await navigator.clipboard.writeText(md);
+      toastIndustryCopy(true, 'Copied Markdown to clipboard.');
+    } catch (e) {
+      toastIndustryCopy(false, e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function copyAllMarkdown() {
+    setCopyAllBusy(true);
+    setError(null);
+    try {
+      if (!summary) {
+        toastCopyAll(false, 'No data available. Please refresh first.');
+        return;
+      }
+      const text = await buildDashboardCopyAllMarkdown({
+        summary,
+        newsSummary,
+        newsSummaryUpdatedAt,
+        newsFallback,
+        queryClient,
+      });
+      await navigator.clipboard.writeText(text);
+      writeLastCopyAt(new Date().toISOString());
+      toastCopyAll(true, 'Copied all Markdown to clipboard.');
+    } catch (e) {
+      toastCopyAll(false, e instanceof Error ? e.message : String(e));
+    } finally {
+      setCopyAllBusy(false);
+    }
+  }
+
+  async function syncAndCopyMarkdown() {
+    setCopyAllBusy(true);
+    setError(null);
+    try {
+      const syncResult = await onSyncAll();
+      if (!syncResult.ok) {
+        toastCopyAll(false, 'Sync failed. Copy aborted.');
+        return;
+      }
+      const s = syncResult.summary ?? summary;
+      if (!s) {
+        toastCopyAll(false, 'No data available after sync.');
+        return;
+      }
+      const text = await buildDashboardCopyAllMarkdown({
+        summary: s,
+        newsSummary,
+        newsSummaryUpdatedAt,
+        newsFallback,
+        queryClient,
+      });
+      await navigator.clipboard.writeText(text);
+      writeLastCopyAt(new Date().toISOString());
+      toastCopyAll(true, 'Synced and copied Markdown to clipboard.');
+    } catch (e) {
+      toastCopyAll(false, e instanceof Error ? e.message : String(e));
+    } finally {
+      setCopyAllBusy(false);
+    }
+  }
 
   const defaultCards = React.useMemo(
     () => [
-      { id: 'account', title: 'Account overview' },
-      { id: 'sentiment', title: 'Market sentiment' },
       { id: 'industry', title: 'Industry fund flow' },
-      { id: 'mainline', title: 'Mainline' },
-      { id: 'leaders', title: 'Leaders' },
+      { id: 'sentiment', title: 'Market sentiment' },
+      { id: 'decisions', title: 'Decision Journal' },
+      { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
+      { id: 'news', title: 'News brief' },
       { id: 'screeners', title: 'Screener sync' },
-      { id: 'market', title: 'Market status' },
     ],
     [],
   );
@@ -194,97 +252,12 @@ export function DashboardPage({
     const next = loaded
       ? [...loaded.filter((x) => ids.includes(x)), ...ids.filter((x) => !loaded.includes(x))]
       : ids;
-    setCardOrder(next);
+    const nextIds = next.includes('industry')
+      ? ['industry', ...next.filter((x) => x !== 'industry')]
+      : next;
+    setCardOrder(nextIds);
+    saveCardOrder(nextIds);
   }, [defaultCards]);
-
-  const refresh = React.useCallback(
-    async (nextAccountId?: string) => {
-      setError(null);
-      try {
-        const q = nextAccountId
-          ? `?accountId=${encodeURIComponent(nextAccountId)}`
-          : accountId
-            ? `?accountId=${encodeURIComponent(accountId)}`
-            : '';
-        const s = await apiGetJson<DashboardSummary>(`/dashboard/summary${q}`);
-        setSummary(s);
-        const sel = String(s?.selectedAccountId ?? '');
-        if (sel && sel !== accountId) setAccountId(sel);
-        const effectiveAccountId = nextAccountId || accountId || sel || '';
-
-        // Fetch all leaders (last 10 trading days) WITHOUT force refresh.
-        // Live score refresh should only happen on "Sync all" (after other modules are synced) or Leader "Generate today".
-        try {
-          const ls = await apiGetJson<LeaderListResp>(`/leader?days=10&force=false`);
-          setLeadersAll(ls);
-        } catch {
-          setLeadersAll(null);
-        }
-
-        // Fetch mainline snapshot (read-only).
-        try {
-          const q2 = effectiveAccountId
-            ? `?accountId=${encodeURIComponent(effectiveAccountId)}`
-            : '';
-          const ml = await apiGetJson<MainlineSnapshot>(`/leader/mainline${q2}`);
-          setMainline(ml);
-        } catch {
-          setMainline(null);
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    },
-    [accountId],
-  );
-
-  React.useEffect(() => {
-    void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function onSyncAll() {
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await apiPostJson<DashboardSyncResp>('/dashboard/sync', { force: true });
-      setSyncResp(r);
-      await refresh(accountId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onSyncSentiment() {
-    setSentimentBusy(true);
-    setError(null);
-    try {
-      await apiPostJson('/market/cn/sentiment/sync', { force: true });
-      await refresh(accountId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSentimentBusy(false);
-    }
-  }
-
-  async function onDetectMainline() {
-    setMainlineBusy(true);
-    setError(null);
-    try {
-      const q = accountId
-        ? { accountId, force: true, topK: 3, universeVersion: 'v0' }
-        : { force: true, topK: 3, universeVersion: 'v0' };
-      await apiPostJson('/leader/mainline/generate', q);
-      await refresh(accountId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setMainlineBusy(false);
-    }
-  }
 
   const cardsById = React.useMemo(
     () => Object.fromEntries(defaultCards.map((c) => [c.id, c])),
@@ -310,88 +283,52 @@ export function DashboardPage({
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <div className="text-lg font-semibold">Dashboard</div>
-          <div className="mt-1 text-sm text-[var(--k-muted)]">
-            One-click sync + monitor key signals (account / flow / leaders / holdings).
-          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            className="gap-2"
+            disabled={busy || copyAllBusy}
+            onClick={() => void syncAndCopyMarkdown()}
+          >
+            {busy || copyAllBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+            Sync & Copy
+          </Button>
           <Button
             variant="secondary"
             size="sm"
             className="gap-2"
-            disabled={busy}
-            onClick={() => void refresh()}
+            disabled={busy || copyAllBusy || !summary}
+            onClick={() => void copyAllMarkdown()}
           >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
+            {copyAllBusy && !busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+            Copy for AI
           </Button>
-          <Button size="sm" className="gap-2" disabled={busy} onClick={() => void onSyncAll()}>
-            {busy ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            {busy ? 'Syncing…' : 'Sync all (force)'}
-          </Button>
-          <Button size="sm" variant="secondary" onClick={() => setEditLayout((v) => !v)}>
+          <Button size="sm" variant="ghost" onClick={() => setEditLayout((v) => !v)}>
             {editLayout ? 'Done' : 'Edit layout'}
           </Button>
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-[var(--k-muted)]">
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs"
-          onClick={() => onNavigate?.('broker')}
-        >
-          Broker
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs"
-          onClick={() => onNavigate?.('market')}
-        >
-          Market
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs"
-          onClick={() => onNavigate?.('industryFlow')}
-        >
-          Industry Flow
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs"
-          onClick={() => onNavigate?.('leaders')}
-        >
-          Leaders
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs"
-          onClick={() => onNavigate?.('strategy')}
-        >
-          Strategy
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-8 px-3 text-xs"
-          onClick={() => onNavigate?.('screener')}
-        >
-          Screener
-        </Button>
-        <div className="ml-auto">
-          asOfDate: <span className="font-mono">{summary?.asOfDate ?? '—'}</span>
-        </div>
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--k-muted)]">
+        <span>
+          asOfDate: <span className="font-mono">{String(dash?.asOfDate ?? '—')}</span>
+        </span>
+        {summaryLoading ? (
+          <span className="inline-flex items-center gap-1">
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            Updating…
+          </span>
+        ) : null}
+        {!summaryLoading && summary && !isShanghaiSyncWindow() ? (
+          <span>盘后模式：仅读缓存，同步跳过实时抓取</span>
+        ) : null}
       </div>
+      {copyAllStatus ? (
+        <div className={`mb-4 text-xs ${copyAllStatus.ok ? 'text-emerald-600' : 'text-red-600'}`}>
+          {copyAllStatus.text}
+        </div>
+      ) : null}
 
       {error ? (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
@@ -399,12 +336,52 @@ export function DashboardPage({
         </div>
       ) : null}
 
+      {busy && syncSteps.length > 0 ? (
+        <div className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-sm font-medium">Syncing…</div>
+            <div className="text-xs text-[var(--k-muted)]">{syncProgress}%</div>
+          </div>
+          <Progress value={syncProgress} className="mb-4" />
+          <div className="space-y-2">
+            {syncSteps.map((s) => (
+              <div key={s.name} className="flex items-center gap-3 text-xs">
+                {s.ok === null ? (
+                  <span className="h-4 w-4 rounded-full bg-[var(--k-muted)]/30 animate-pulse" />
+                ) : s.ok ? (
+                  <span className="h-4 w-4 rounded-full bg-emerald-500" />
+                ) : (
+                  <span className="h-4 w-4 rounded-full bg-red-500" />
+                )}
+                <span className="font-mono">
+                  {s.name === 'industryFundFlow'
+                    ? 'Industry Fund Flow'
+                    : s.name === 'marketSentiment'
+                      ? 'Market Sentiment'
+                      : s.name === 'screeners'
+                        ? 'Screeners'
+                        : s.name === 'news'
+                          ? 'News'
+                          : s.name}
+                </span>
+                {s.durationMs !== null ? (
+                  <span className="text-[var(--k-muted)]">{s.durationMs}ms</span>
+                ) : null}
+                {s.message ? (
+                  <span className="text-red-600 truncate">{s.message}</span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {syncResp ? (
         <div className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="mb-2 text-sm font-medium">Last sync result</div>
           <div className="text-xs text-[var(--k-muted)]">
-            started: {fmtDateTime(syncResp.startedAt)} • finished:{' '}
-            {fmtDateTime(syncResp.finishedAt)} • ok: {String(Boolean(syncResp.ok))}
+            started: {fmtDateTime(syncResp.startedAt as string)} • finished:{' '}
+            {fmtDateTime(syncResp.finishedAt as string)} • ok: {String(Boolean(syncResp.ok))}
           </div>
           <div className="mt-3 overflow-auto rounded-lg border border-[var(--k-border)]">
             <table className="w-full border-collapse text-xs">
@@ -417,7 +394,7 @@ export function DashboardPage({
                 </tr>
               </thead>
               <tbody>
-                {(syncResp.steps ?? []).map((s: any) => (
+                {((syncResp.steps as any[]) ?? []).map((s: any) => (
                   <tr key={String(s.name)} className="border-t border-[var(--k-border)]">
                     <td className="px-3 py-2 font-mono">{String(s.name)}</td>
                     <td className="px-3 py-2">{String(Boolean(s.ok))}</td>
@@ -428,10 +405,10 @@ export function DashboardPage({
               </tbody>
             </table>
           </div>
-          {syncResp.screener?.failed?.length || syncResp.screener?.missing?.length ? (
+          {(syncResp.screener as any)?.failed?.length || (syncResp.screener as any)?.missing?.length ? (
             <div className="mt-3 text-xs text-red-600">
-              Screener issues: failed={syncResp.screener?.failed?.length ?? 0} missing=
-              {syncResp.screener?.missing?.length ?? 0}
+              Screener issues: failed={(syncResp.screener as any)?.failed?.length ?? 0} missing=
+              {(syncResp.screener as any)?.missing?.length ?? 0}
             </div>
           ) : null}
         </div>
@@ -439,13 +416,12 @@ export function DashboardPage({
 
       {(() => {
         const weightOf = (id: string) => {
-          if (id === 'sentiment') return 3;
           if (id === 'industry') return 6;
-          if (id === 'account') return 4;
-          if (id === 'mainline') return 3;
-          if (id === 'leaders') return 3;
+          if (id === 'sentiment') return 3;
+          if (id === 'decisions') return 3;
+          if (id === 'watchlistRisk') return 2;
+          if (id === 'news') return 2;
           if (id === 'screeners') return 2;
-          if (id === 'market') return 2;
           return 2;
         };
         const left: any[] = [];
@@ -495,302 +471,27 @@ export function DashboardPage({
                 ) : null}
               </div>
 
-              {id === 'account' ? (
-                <div className="text-sm">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-xs text-[var(--k-muted)]">
-                      updatedAt: {fmtDateTime(summary?.accountState?.updatedAt)}
-                    </div>
-                    <Select
-                      value={accountId}
-                      onValueChange={(v) => {
-                        setAccountId(v);
-                        void refresh(v);
-                      }}
-                    >
-                      <SelectTrigger className="h-8 w-[240px]">
-                        <SelectValue placeholder="Select account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(summary?.accounts ?? []).map((a: any) => (
-                          <SelectItem key={a.id} value={a.id}>
-                            {a.title}
-                            {a.accountMasked ? ` (${a.accountMasked})` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+              {id === 'decisions' ? (
+                <DecisionJournalCard
+                  gate={executionGate}
+                  watchlistItems={watchlistItems}
+                  mainlineAllow={mainlineAllow}
+                  onNavigate={onNavigate}
+                  captureBusy={decisionCaptureBusy}
+                  onSnapshotNow={() => void captureDecisionSnapshot('manual')}
+                />
+              ) : null}
 
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                      <div className="text-xs text-[var(--k-muted)]">Total assets</div>
-                      <div className="mt-1 font-mono">
-                        {fmtAmountCn(summary?.accountState?.totalAssets)}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                      <div className="text-xs text-[var(--k-muted)]">Cash available</div>
-                      <div className="mt-1 font-mono">
-                        {fmtAmountCn(summary?.accountState?.cashAvailable)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-3">
-                    <div className="mb-2 text-xs text-[var(--k-muted)]">Holdings</div>
-                    <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                      <table className="w-full border-collapse text-xs">
-                        <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                          <tr className="text-left">
-                            <th className="px-2 py-2">Ticker</th>
-                            <th className="px-2 py-2">Name</th>
-                            <th className="px-2 py-2 text-right">Price</th>
-                            <th className="px-2 py-2 text-right">Weight</th>
-                            <th className="px-2 py-2 text-right">PnL</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(summary?.holdings ?? []).slice(0, 12).map((h: any, idx: number) => {
-                            const ticker = String(h.ticker ?? '').trim();
-                            const sym = String(h.symbol ?? '').trim();
-                            const inferredSymbol = sym
-                              ? sym
-                              : `${ticker.length === 4 || ticker.length === 5 ? 'HK' : 'CN'}:${ticker}`;
-                            const weight = Number.isFinite(h.weightPct)
-                              ? `${Number(h.weightPct).toFixed(1)}%`
-                              : '—';
-                            return (
-                              <tr key={idx} className="border-t border-[var(--k-border)]">
-                                <td className="px-2 py-2 font-mono">
-                                  <button
-                                    type="button"
-                                    className="text-[var(--k-accent)] hover:underline"
-                                    onClick={() => onOpenStock?.(inferredSymbol)}
-                                    title="Open stock detail"
-                                  >
-                                    {ticker}
-                                  </button>
-                                </td>
-                                <td className="px-2 py-2">{String(h.name ?? '')}</td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {Number.isFinite(h.price) ? Number(h.price).toFixed(2) : '—'}
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">{weight}</td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {fmtAmountCn(h.pnlAmount)}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                          {!(summary?.holdings ?? []).length ? (
-                            <tr>
-                              <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={5}>
-                                No holdings cached yet. Upload broker screenshots in Broker tab.
-                              </td>
-                            </tr>
-                          ) : null}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('broker')}>
-                      Open Broker
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={!summary?.selectedAccountId}
-                      onClick={() => {
-                        if (!summary?.selectedAccountId) return;
-                        const acc = (summary?.accounts ?? []).find(
-                          (a: any) => a.id === summary.selectedAccountId,
-                        );
-                        addReference({
-                          kind: 'brokerState',
-                          refId: summary.selectedAccountId,
-                          broker: 'pingan',
-                          accountId: summary.selectedAccountId,
-                          accountTitle: String(acc?.title ?? 'Account'),
-                          capturedAt: new Date().toISOString(),
-                        } as any);
-                      }}
-                    >
-                      Reference
-                    </Button>
-                  </div>
-                </div>
-              ) : id === 'mainline' ? (
-                <div>
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-xs text-[var(--k-muted)]">
-                      tradeDate: {mainline?.tradeDate ?? '—'} • updatedAt:{' '}
-                      {fmtDateTime(mainline?.createdAt)} • riskMode: {mainline?.riskMode ?? '—'}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="h-8 px-3 text-xs"
-                        disabled={mainlineBusy}
-                        onClick={() => void onDetectMainline()}
-                      >
-                        {mainlineBusy ? (
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-4 w-4" />
-                        )}
-                        <span className="ml-2">{mainlineBusy ? 'Detecting…' : 'Detect'}</span>
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="h-8 px-3 text-xs"
-                        onClick={() => onNavigate?.('leaders')}
-                      >
-                        Open Leaders
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-[var(--k-muted)]">
-                    {riskModeExplain(mainline?.riskMode ?? null)}
-                  </div>
-
-                  {mainline?.selected ? (
-                    <div className="mt-3 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-sm font-semibold">
-                          结论：今天主线是「{mainline.selected.kind} · {mainline.selected.name}」（
-                          {scoreLabel(mainline.selected.compositeScore ?? null)}）
-                        </div>
-                        <div className="text-xs text-[var(--k-muted)]">
-                          composite {Math.round(Number(mainline.selected.compositeScore ?? 0))} •
-                          structure {Math.round(Number(mainline.selected.structureScore ?? 0))} •
-                          logic {Math.round(Number(mainline.selected.logicScore ?? 0))}
-                          {mainline.selected.logicGrade ? ` (${mainline.selected.logicGrade})` : ''}
-                        </div>
-                      </div>
-
-                      <div className="mt-2 text-xs text-[var(--k-muted)]">
-                        涨停（LU）:{' '}
-                        <span className="font-mono">
-                          {Number(mainline.selected.limitupCount ?? 0)}
-                        </span>{' '}
-                        · 跟涨（Followers）:{' '}
-                        <span className="font-mono">
-                          {Number(mainline.selected.followersCount ?? 0)}
-                        </span>
-                      </div>
-
-                      {mainline.selected.logicSummary ? (
-                        <div className="mt-2 text-xs text-[var(--k-muted)]">
-                          AI 逻辑摘要：{mainline.selected.logicSummary}
-                        </div>
-                      ) : null}
-
-                      <div className="mt-3">
-                        <div className="text-xs font-medium">相关股票（点进去验证）</div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {(mainline.selected.topTickers ?? []).slice(0, 12).map((x) => (
-                            <button
-                              key={x.symbol}
-                              type="button"
-                              className="rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-1 text-xs hover:bg-[var(--k-surface-2)]"
-                              onClick={() => onOpenStock?.(x.symbol)}
-                              title={`${x.symbol}${typeof x.chgPct === 'number' ? ` · ${x.chgPct}%` : ''}`}
-                            >
-                              <span className="font-mono">{x.ticker}</span> {x.name}
-                              {typeof x.chgPct === 'number' ? (
-                                <span className="ml-1 font-mono text-[var(--k-muted)]">{`${x.chgPct.toFixed(1)}%`}</span>
-                              ) : null}
-                            </button>
-                          ))}
-                          {!(mainline.selected.topTickers ?? []).length ? (
-                            <div className="text-xs text-[var(--k-muted)]">
-                              暂无成分股列表（数据源可能缺失）。
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-3 text-sm text-[var(--k-muted)]">
-                      结论：暂无明确主线（可能是轮动/多线混战）。你可以先观望，或点 Detect
-                      再跑一次。
-                    </div>
-                  )}
-
-                  {(() => {
-                    const themesTopK = mainline?.themesTopK ?? [];
-                    if (!themesTopK.length) return null;
-                    return (
-                      <div className="mt-3 overflow-auto rounded-lg border border-[var(--k-border)]">
-                        <table className="w-full border-collapse text-xs">
-                          <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                            <tr className="text-left">
-                              <th className="px-2 py-2">备选主线TopK</th>
-                              <th className="px-2 py-2 text-right">综合</th>
-                              <th className="px-2 py-2 text-right">涨停</th>
-                              <th className="px-2 py-2 text-right">跟涨</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {themesTopK.slice(0, 3).map((t) => (
-                              <tr
-                                key={`${t.kind}:${t.name}`}
-                                className="border-t border-[var(--k-border)]"
-                              >
-                                <td className="px-2 py-2">
-                                  <details>
-                                    <summary className="cursor-pointer">
-                                      <span className="font-mono text-[var(--k-muted)]">
-                                        {t.kind}
-                                      </span>{' '}
-                                      {t.name}
-                                    </summary>
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                      {(t.topTickers ?? []).slice(0, 10).map((x) => (
-                                        <button
-                                          key={x.symbol}
-                                          type="button"
-                                          className="rounded-full border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-1 text-xs hover:bg-[var(--k-surface-2)]"
-                                          onClick={() => onOpenStock?.(x.symbol)}
-                                        >
-                                          <span className="font-mono">{x.ticker}</span> {x.name}
-                                        </button>
-                                      ))}
-                                      {!(t.topTickers ?? []).length ? (
-                                        <div className="text-xs text-[var(--k-muted)]">
-                                          暂无成分股列表。
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  </details>
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {Math.round(Number(t.compositeScore ?? 0))}
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {Number(t.limitupCount ?? 0)}
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {Number(t.followersCount ?? 0)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    );
-                  })()}
-                </div>
-              ) : id === 'sentiment' ? (
+              {id === 'sentiment' ? (
                 <div>
                   {(() => {
-                    const ms = summary?.marketSentiment ?? {};
+                    const ms = dash?.marketSentiment ?? {};
                     const items: any[] = Array.isArray(ms.items) ? ms.items : [];
                     const latest = items.length ? items[items.length - 1] : null;
+                    const indexSignals: any[] = Array.isArray(ms.indexSignals)
+                      ? ms.indexSignals
+                      : [];
+                    const summaryLine = buildIndexTrafficSummary(indexSignals);
                     const risk = String(latest?.riskMode ?? '—');
                     const premium = Number.isFinite(latest?.yesterdayLimitUpPremium)
                       ? `${Number(latest.yesterdayLimitUpPremium).toFixed(2)}%`
@@ -805,18 +506,58 @@ export function DashboardPage({
                     const up = Number(latest?.upCount ?? 0);
                     const down = Number(latest?.downCount ?? 0);
                     const flat = Number(latest?.flatCount ?? 0);
+                    const breadthPanic = down >= BREADTH_PANIC_DOWN_THRESHOLD;
+                    const srvIndex: any = ms?.srvIndex ?? null;
+                    const srvLine = formatSrvIndexLine(srvIndex);
+                    const srvBadge = srvIndexBadgeClass(srvIndex?.level);
+                    const overlapSectors: string[] = Array.isArray(srvIndex?.overlapSectors)
+                      ? srvIndex.overlapSectors.map((x: any) => String(x)).filter(Boolean)
+                      : [];
                     const badge =
-                      risk === 'no_new_positions'
-                        ? 'border-red-500/30 bg-red-500/10 text-red-600'
-                        : risk === 'caution'
-                          ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
-                          : risk === 'hot'
-                            ? 'border-green-500/30 bg-green-500/10 text-green-700'
-                            : risk === 'euphoric'
-                              ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700'
-                              : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
+                      risk === 'confirmed_uptrend'
+                        ? 'border-emerald-600/40 bg-emerald-600/15 text-emerald-700'
+                        : risk === 'capitulation_v_bottom'
+                        ? 'border-fuchsia-600/40 bg-fuchsia-600/15 text-fuchsia-700'
+                        : risk === 'extreme_caution' || breadthPanic
+                          ? 'border-red-600/40 bg-red-600/15 text-red-700'
+                          : risk === 'no_new_positions'
+                            ? 'border-red-500/30 bg-red-500/10 text-red-600'
+                            : risk === 'caution'
+                              ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
+                              : risk === 'hot'
+                                ? 'border-green-500/30 bg-green-500/10 text-green-700'
+                                : risk === 'euphoric'
+                                  ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700'
+                                  : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
                     return (
                       <>
+                        {(() => {
+                          const gate = parseExecutionGate(ms?.executionGate);
+                          if (!gate) return null;
+                          const gateBadge = executionGateBadgeClass(gate.mode);
+                          return (
+                            <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${gateBadge}`}>
+                              <div className="flex flex-wrap items-center gap-2 font-medium">
+                                <span>Execution Gate: {gate.mode}</span>
+                                <span className="text-xs opacity-90">
+                                  allowNewEntries={String(gate.allowNewEntries)}
+                                </span>
+                                <span className="text-xs opacity-90">
+                                  {gate.marketRegime} · {gate.indexLight} · pos{' '}
+                                  {gate.positionRangeHint || '—'}
+                                </span>
+                              </div>
+                              {gate.satelliteNote ? (
+                                <div className="mt-1 text-xs opacity-90">{gate.satelliteNote}</div>
+                              ) : null}
+                              {gate.reasons.length ? (
+                                <div className="mt-1 text-xs opacity-80">
+                                  reasons: {gate.reasons.join(' · ')}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <div className={`rounded-md border px-2 py-1 text-xs ${badge}`}>
                             risk: {risk}
@@ -829,6 +570,60 @@ export function DashboardPage({
                                 .join(' • ')}
                             </div>
                           ) : null}
+                        </div>
+
+                        {risk === 'capitulation_v_bottom' && (
+                          <div className="mb-3 rounded-lg border border-fuchsia-600/40 bg-fuchsia-600/15 px-3 py-2 text-sm text-fuchsia-800 dark:text-fuchsia-200">
+                            🚨 Capitulation_V_Bottom (恐慌冰点共振) — 国家队入场 + 恐慌极值，左侧绝佳试错点出现
+                          </div>
+                        )}
+
+                        {risk === 'confirmed_uptrend' && (
+                          <div className="mb-3 rounded-lg border border-emerald-600/40 bg-emerald-600/15 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-200">
+                            🟢 Follow-Through Day 右侧主升浪确立 — 解除宏观死锁，放开攻击权限
+                          </div>
+                        )}
+
+                        <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${srvBadge}`}>
+                          <div className="font-medium">{srvLine}</div>
+                          {srvIndex?.labelZh ? (
+                            <div className="mt-1 text-xs opacity-90">{String(srvIndex.labelZh)}</div>
+                          ) : null}
+                          {overlapSectors.length ? (
+                            <div className="mt-1 text-xs opacity-90">
+                              Overlap: {overlapSectors.join(', ')}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div
+                          className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
+                            breadthPanic
+                              ? 'border-red-500/40 bg-red-500/10'
+                              : 'border-[var(--k-border)] bg-[var(--k-surface-2)]'
+                          }`}
+                        >
+                          <div
+                            className={`font-medium ${
+                              breadthPanic ? 'text-red-700' : 'text-[var(--k-fg)]'
+                            }`}
+                          >
+                            Market Breadth: {up.toLocaleString()} Up / {down.toLocaleString()}{' '}
+                            Down
+                          </div>
+                          {breadthPanic ? (
+                            <div className="mt-1 text-xs text-red-700">
+                              Down &ge; {BREADTH_PANIC_DOWN_THRESHOLD.toLocaleString()}: force red
+                              lights and extreme caution.
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                          <div className="text-sm font-semibold text-amber-700">
+                            {summaryLine.title}
+                          </div>
+                          <div className="mt-1 text-xs text-amber-800">{summaryLine.detail}</div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 text-sm">
@@ -854,6 +649,90 @@ export function DashboardPage({
                             <div className="mt-0.5 font-mono">{failed}</div>
                           </div>
                         </div>
+
+                        {indexSignals.length ? (
+                          <div className="mt-3">
+                            <div className="mb-2 text-xs text-[var(--k-muted)]">
+                              Index traffic lights
+                            </div>
+                            <div className="mb-3 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-xs text-[var(--k-muted)]">
+                              <div className="font-medium text-[var(--k-fg)]">信号规则（简版）</div>
+                              <div className="mt-1">
+                                🔴 Red: Price &lt; MA20 或 MA5 &lt; MA20，仓位 0%-10%。
+                              </div>
+                              <div className="mt-1">
+                                🟡 Yellow: Price &gt; MA20 但 MA20 斜率向下 或 预估全天量 &lt;
+                                MA5_Vol * 0.8 或 MA5 &lt; MA20，仓位 30%。
+                              </div>
+                              <div className="mt-1">
+                                🟢 Green: Price &gt; MA20 且 MA5 &gt; MA20 且 MA20
+                                向上，且预估全天量 &gt; MA5_Vol * 0.8，仓位 50%-60%。
+                              </div>
+                              <div className="mt-1">
+                                ❇️ Deep Green: MA5 &gt; MA20 &gt; MA60 且 Price &gt; EMA10，全市场成交额连续
+                                &gt; 1.5万亿，Breadth &gt; 50% 或 单一板块流入 &gt; 50亿，仓位
+                                80%-100%。
+                              </div>
+                            </div>
+                            <div className="grid gap-2 md:grid-cols-2">
+                              {indexSignals.map((it: any) => {
+                                const signal = String(it?.signal ?? 'unknown');
+                                const source = String(it?.source ?? 'unknown');
+                                const tradeTime = String(it?.tradeTime ?? '').trim();
+                                const asOfDate = String(it?.asOfDate ?? '').trim();
+                                const realtime = it?.realtime === true;
+                                const freshness = realtime ? 'realtime' : 'EOD';
+                                const asOfDisplay = tradeTime || asOfDate || '—';
+                                const quoteError = String(it?.quoteError ?? '').trim();
+                                const signalBadge =
+                                  signal === 'deep_green'
+                                    ? 'border-emerald-600/40 bg-emerald-600/15 text-emerald-800'
+                                    : signal === 'light_green' || signal === 'green'
+                                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+                                      : signal === 'red'
+                                        ? 'border-red-500/30 bg-red-500/10 text-red-600'
+                                        : signal === 'yellow'
+                                          ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
+                                          : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
+                                return (
+                                  <div
+                                    key={String(it?.tsCode ?? it?.name)}
+                                    className={`rounded-lg border px-3 py-2 text-xs ${signalBadge}`}
+                                  >
+                                    <div className="font-medium">
+                                      {String(it?.name ?? it?.tsCode ?? '')}
+                                    </div>
+                                    <div className="mt-1 font-mono">
+                                      {signal} • pos {String(it?.positionRange ?? '—')}
+                                    </div>
+                                    <div className="mt-1 text-[var(--k-muted)]">
+                                      chg{' '}
+                                      {Number.isFinite(it?.pctChg)
+                                        ? `${Number(it.pctChg) >= 0 ? '+' : ''}${Number(it.pctChg).toFixed(2)}%`
+                                        : '—'}{' '}
+                                      • close{' '}
+                                      {Number.isFinite(it?.close)
+                                        ? Number(it.close).toFixed(2)
+                                        : '—'}{' '}
+                                      • MA5{' '}
+                                      {Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—'} •
+                                      MA20{' '}
+                                      {Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—'}
+                                    </div>
+                                    <div className="mt-1 font-mono text-[10px] text-[var(--k-muted)]">
+                                      asOf {asOfDisplay} • {freshness} • {source}
+                                    </div>
+                                    {quoteError ? (
+                                      <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
+                                        quote fallback: {quoteError}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
 
                         <div className="mt-3">
                           <div className="mb-2 text-xs text-[var(--k-muted)]">Last 5 days</div>
@@ -900,7 +779,7 @@ export function DashboardPage({
                                       className="px-2 py-3 text-sm text-[var(--k-muted)]"
                                       colSpan={7}
                                     >
-                                      No sentiment cached yet. Click “Sync all (force)”.
+                                      No sentiment cached yet. Click “Sync & Copy”.
                                     </td>
                                   </tr>
                                 ) : null}
@@ -908,6 +787,124 @@ export function DashboardPage({
                             </table>
                           </div>
                         </div>
+
+                        {(() => {
+                          const etfFlow: any = ms?.etfFundFlow ?? {};
+                          const etfItems: any[] = Array.isArray(etfFlow?.items)
+                            ? etfFlow.items
+                            : [];
+                          return (
+                            <div className="mt-3">
+                              <div className="mb-2 text-xs font-medium text-[var(--k-muted)]">
+                                ETF Fund Flow (Top Watchlist)
+                              </div>
+                              {etfFlow?.shareLag ? (
+                                <div className="mb-2 text-xs text-amber-600 dark:text-amber-400">
+                                  Realtime East Money flow is incomplete. Missing rows are excluded from intraday signals
+                                  {etfFlow?.intradaySafe === false ? ' — not safe for intraday decisions' : ''}.
+                                </div>
+                              ) : null}
+                              <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                                <table className="w-full border-collapse text-xs">
+                                  <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                                    <tr className="text-left">
+                                      <th className="px-2 py-2">ETF Name</th>
+                                      <th className="px-2 py-2 font-mono">Symbol</th>
+                                      <th className="px-2 py-2 text-right">Main Flow</th>
+                                      <th className="px-2 py-2 text-right">Super/Large</th>
+                                      <th className="px-2 py-2 text-right">3D Net Flow</th>
+                                      <th className="px-2 py-2">Realtime AsOf</th>
+                                      <th className="px-2 py-2">Source</th>
+                                      <th className="px-2 py-2">Status</th>
+                                      <th className="px-2 py-2">Signal</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {etfItems.map((it: any, idx: number) => {
+                                      const flowStatus = String(
+                                        it?.flowStatus ?? (it?.live === true ? 'Live' : '—'),
+                                      );
+                                      const live = it?.live === true || flowStatus === 'Live';
+                                      const isMarketClosed = flowStatus === 'MarketClosed';
+                                      const flow1dStale =
+                                        !live &&
+                                        !isMarketClosed &&
+                                        it?.netFlow1d == null &&
+                                        (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
+                                      const flow1dDisplay = flow1dStale
+                                        ? '— (stale)'
+                                        : fmtSignedAmountCn(it?.netFlow1d);
+                                      const superLargeFlow = fmtSignedAmountCn(it?.superLargeNetInflow);
+                                      const largeFlow = fmtSignedAmountCn(it?.largeNetInflow);
+                                      const signalText = String(
+                                        it?.signalDisplay ?? it?.signal ?? '—',
+                                      );
+                                      const isDataLag = String(it?.signal ?? '') === 'Data Lag';
+                                      const realtimeAsOf = String(
+                                        it?.tradeTime ?? it?.flowAsOfDate ?? etfFlow?.asOfDate ?? '—',
+                                      );
+                                      return (
+                                      <tr key={idx} className="border-t border-[var(--k-border)]">
+                                        <td className="px-2 py-2">{String(it?.name ?? '')}</td>
+                                        <td className="px-2 py-2 font-mono">
+                                          {String(it?.symbol ?? '')}
+                                        </td>
+                                        <td className="px-2 py-2 text-right font-mono">
+                                          {flow1dDisplay}
+                                        </td>
+                                        <td className="px-2 py-2 text-right font-mono">
+                                          {superLargeFlow}/{largeFlow}
+                                        </td>
+                                        <td className="px-2 py-2 text-right font-mono">
+                                          {fmtSignedAmountCn(it?.netFlow3d)}
+                                        </td>
+                                        <td className="px-2 py-2 font-mono">
+                                          {realtimeAsOf}
+                                        </td>
+                                        <td className="px-2 py-2 font-mono">
+                                          {String(it?.source ?? '—')}
+                                        </td>
+                                        <td
+                                          className={`px-2 py-2 font-mono ${
+                                            flowStatus === 'Live'
+                                              ? 'font-semibold text-emerald-600'
+                                              : isMarketClosed
+                                                ? 'text-[var(--k-muted)]'
+                                                : flowStatus === 'Stale' || flowStatus === 'Missing'
+                                                  ? 'text-amber-600'
+                                                  : 'text-[var(--k-muted)]'
+                                          }`}
+                                        >
+                                          {isMarketClosed ? 'Market Closed' : flowStatus}
+                                        </td>
+                                        <td
+                                          className={
+                                            isDataLag
+                                              ? 'px-2 py-2 text-[var(--k-muted)]'
+                                              : 'px-2 py-2'
+                                          }
+                                        >
+                                          {signalText}
+                                        </td>
+                                      </tr>
+                                    );})}
+                                    {!etfItems.length ? (
+                                      <tr>
+                                        <td
+                                          className="px-2 py-3 text-sm text-[var(--k-muted)]"
+                                          colSpan={9}
+                                        >
+                                          No ETF fund flow cached yet. Click &quot;Sync
+                                          sentiment&quot;.
+                                        </td>
+                                      </tr>
+                                    ) : null}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         <div className="mt-3 flex items-center gap-2">
                           <Button
@@ -927,7 +924,32 @@ export function DashboardPage({
                             size="sm"
                             variant="secondary"
                             onClick={() => {
-                              const asOfDate = String(ms.asOfDate ?? summary?.asOfDate ?? '');
+                              try {
+                                const md = buildSentimentMarkdown(summary, '#');
+                                void navigator.clipboard
+                                  .writeText(md)
+                                  .then(() => toastSentimentCopy(true, 'Copied Markdown.'))
+                                  .catch(() =>
+                                    toastSentimentCopy(
+                                      false,
+                                      'Copy failed. Please allow clipboard access.',
+                                    ),
+                                  );
+                              } catch (e) {
+                                toastSentimentCopy(
+                                  false,
+                                  e instanceof Error ? e.message : String(e),
+                                );
+                              }
+                            }}
+                          >
+                            Copy Markdown
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              const asOfDate = String(ms.asOfDate ?? dash?.asOfDate ?? '');
                               addReference({
                                 kind: 'marketSentiment',
                                 refId: `${asOfDate}:5`,
@@ -941,293 +963,177 @@ export function DashboardPage({
                             Reference
                           </Button>
                         </div>
+                        {sentimentCopyStatus ? (
+                          <div
+                            className={`mt-2 text-xs ${
+                              sentimentCopyStatus.ok ? 'text-emerald-600' : 'text-red-600'
+                            }`}
+                          >
+                            {sentimentCopyStatus.text}
+                          </div>
+                        ) : null}
                       </>
                     );
                   })()}
                 </div>
               ) : id === 'industry' ? (
+                <IndustryFundFlowCard
+                  summary={dash}
+                  hotIndustryPicks={hotIndustryPicks}
+                  onNavigate={onNavigate}
+                  onAddReference={addReference}
+                  copyStatus={industryCopyStatus}
+                  onCopyIndustryMarkdown={onCopyIndustryMarkdown}
+                />
+              ) : id === 'news' ? (
                 <div>
-                  <div className="mb-2 text-xs text-[var(--k-muted)]">
-                    Top5×Date hotspots (names only)
-                  </div>
-                  {(() => {
-                    const datesAll: string[] = Array.isArray(summary?.industryFundFlow?.dates)
-                      ? summary.industryFundFlow.dates
-                      : [];
-                    const rawShownDates = datesAll.slice(-5);
-                    const topByDateArr: any[] = Array.isArray(summary?.industryFundFlow?.topByDate)
-                      ? summary.industryFundFlow.topByDate
-                      : [];
-                    const map: Record<string, string[]> = {};
-                    for (const it of topByDateArr) {
-                      const d = String(it?.date ?? '');
-                      const top = Array.isArray(it?.top)
-                        ? it.top.map((x: any) => String(x ?? ''))
-                        : [];
-                      if (d) map[d] = top;
-                    }
-                    const dedupedDates: string[] = [];
-                    let prevSig = '';
-                    let collapsed = 0;
-                    for (const d of rawShownDates) {
-                      const sig = (map[d] || []).slice(0, 5).join('|');
-                      if (sig && sig === prevSig) {
-                        collapsed += 1;
-                        continue;
-                      }
-                      dedupedDates.push(d);
-                      prevSig = sig;
-                    }
-
-                    return (
-                      <>
-                        {collapsed ? (
-                          <div className="mb-2 text-xs text-[var(--k-muted)]">
-                            collapsed {collapsed} duplicate non-trading snapshot
-                            {collapsed > 1 ? 's' : ''}
-                          </div>
-                        ) : null}
-                        <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                          <table className="w-full border-collapse text-xs">
-                            <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                              <tr className="text-left">
-                                <th className="px-2 py-2">#</th>
-                                {dedupedDates.map((d: string) => (
-                                  <th key={d} className="px-2 py-2 font-mono">
-                                    {String(d).slice(5)}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {Array.from({ length: 5 }).map((_, i) => (
-                                <tr key={i} className="border-t border-[var(--k-border)]">
-                                  <td className="px-2 py-2 font-mono">{i + 1}</td>
-                                  {dedupedDates.map((d: string, j: number) => (
-                                    <td key={j} className="px-2 py-2">
-                                      {String((map[d] || [])[i] ?? '')}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        {(() => {
-                          const flow5d: any = (summary?.industryFundFlow as any)?.flow5d ?? null;
-                          const flowDates: string[] = Array.isArray(flow5d?.dates)
-                            ? flow5d.dates
-                            : [];
-                          const cols: string[] = flowDates.length
-                            ? flowDates.slice(-5)
-                            : dedupedDates;
-                          const topRows: any[] = Array.isArray(flow5d?.top) ? flow5d.top : [];
-                          if (!topRows.length || !cols.length) return null;
-                          const colDates = cols;
-                          return (
-                            <div className="mt-4">
-                              <div className="mb-2 text-xs text-[var(--k-muted)]">
-                                5D net inflow (Top by 5D sum)
-                              </div>
-                              <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                                <table className="w-full border-collapse text-xs">
-                                  <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                                    <tr className="text-left">
-                                      <th className="px-2 py-2">Industry</th>
-                                      <th className="px-2 py-2 text-right">Sum(5D)</th>
-                                      {colDates.map((d: string) => (
-                                        <th key={d} className="px-2 py-2 text-right font-mono">
-                                          {String(d).slice(5)}
-                                        </th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {topRows.slice(0, 10).map((r: any, idx: number) => {
-                                      const seriesArr: any[] = Array.isArray(r?.series)
-                                        ? r.series
-                                        : [];
-                                      const map: Record<string, number> = {};
-                                      for (const p of seriesArr) {
-                                        const dd = String(p?.date ?? '');
-                                        const nv = Number(p?.netInflow ?? 0);
-                                        if (dd) map[dd] = Number.isFinite(nv) ? nv : 0;
-                                      }
-                                      return (
-                                        <tr
-                                          key={`${String(r?.industryCode ?? idx)}`}
-                                          className="border-t border-[var(--k-border)]"
-                                        >
-                                          <td className="px-2 py-2">
-                                            {String(r?.industryName ?? '')}
-                                          </td>
-                                          <td className="px-2 py-2 text-right font-mono">
-                                            {fmtAmountCn(r?.sum5d)}
-                                          </td>
-                                          {colDates.map((d: string) => (
-                                            <td key={d} className="px-2 py-2 text-right font-mono">
-                                              {fmtAmountCn(map[d] ?? 0)}
-                                            </td>
-                                          ))}
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                        <div className="mt-3 flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => onNavigate?.('industryFlow')}
-                          >
-                            Open Industry Flow
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              const asOfDate = String(
-                                summary?.industryFundFlow?.asOfDate ?? summary?.asOfDate ?? '',
-                              );
-                              addReference({
-                                kind: 'industryFundFlow',
-                                refId: `${asOfDate}:5:10`,
-                                asOfDate,
-                                days: 5,
-                                topN: 10,
-                                view: 'dailyTopByDate',
-                                title: 'CN industry fund flow (Top by date)',
-                                createdAt: new Date().toISOString(),
-                              } as any);
-                            }}
-                          >
-                            Reference
-                          </Button>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              ) : id === 'leaders' ? (
-                <div>
-                  <div className="mb-2 text-xs text-[var(--k-muted)]">
-                    last 10 trading days • latestDate: {summary?.leaders?.latestDate ?? '—'}
-                  </div>
-
-                  {(() => {
-                    const raw = Array.isArray(leadersAll?.leaders) ? leadersAll.leaders : [];
-                    // Consolidated view: dedupe by symbol, keep the latest record per symbol, sorted by score desc.
-                    const m = new Map<string, any>();
-                    for (const it of raw) {
-                      const key = String(it?.symbol ?? it?.ticker ?? '').trim();
-                      if (!key) continue;
-                      const prev = m.get(key);
-                      if (
-                        !prev ||
-                        String(it?.date ?? '').localeCompare(String(prev?.date ?? '')) > 0
-                      ) {
-                        m.set(key, it);
-                      }
-                    }
-                    const rows = Array.from(m.values()).sort((a: any, b: any) => {
-                      const sa = Number.isFinite(Number(a?.liveScore))
-                        ? Number(a.liveScore)
-                        : Number.isFinite(Number(a?.score))
-                          ? Number(a.score)
-                          : -1;
-                      const sb = Number.isFinite(Number(b?.liveScore))
-                        ? Number(b.liveScore)
-                        : Number.isFinite(Number(b?.score))
-                          ? Number(b.score)
-                          : -1;
-                      if (sb !== sa) return sb - sa;
-                      return String(b?.date ?? '').localeCompare(String(a?.date ?? ''));
-                    });
-
-                    if (!rows.length) {
-                      return (
-                        <div className="text-sm text-[var(--k-muted)]">
-                          No leaders yet. Generate in Leaders tab.
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                        <table className="w-full border-collapse text-xs">
-                          <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                            <tr className="text-left">
-                              <th className="px-2 py-2">Ticker</th>
-                              <th className="px-2 py-2">Name</th>
-                              <th className="px-2 py-2 text-right">Live score</th>
-                              <th className="px-2 py-2 text-right">Upside</th>
-                              <th className="px-2 py-2 text-right">Last date</th>
-                              <th className="px-2 py-2 text-right">Today</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rows.slice(0, 24).map((r: any) => (
-                              <tr
-                                key={String(r?.symbol ?? r?.ticker)}
-                                className="border-t border-[var(--k-border)]"
-                              >
-                                <td className="px-2 py-2 font-mono">
-                                  <button
-                                    type="button"
-                                    className="text-[var(--k-accent)] hover:underline"
-                                    onClick={() => onOpenStock?.(String(r?.symbol ?? ''))}
-                                  >
-                                    {String(r?.ticker ?? r?.symbol ?? '')}
-                                  </button>
-                                </td>
-                                <td className="px-2 py-2">{String(r?.name ?? '')}</td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {fmtLeaderScore(r)}
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {Number.isFinite(Number(r?.score))
-                                    ? String(Math.round(Number(r.score)))
-                                    : '—'}
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">
-                                  {String(r?.date ?? '—')}
-                                </td>
-                                <td className="px-2 py-2 text-right font-mono">{fmtPerfLine(r)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="text-xs text-[var(--k-muted)]">
+                      24-hour news summary (AI-generated, finance/stock focused)
+                    </div>
+                    {newsSummaryUpdatedAt ? (
+                      <div className="text-xs text-[var(--k-muted)]">
+                        Generated: {fmtDateTime(newsSummaryUpdatedAt)}
                       </div>
-                    );
-                  })()}
-
-                  <div className="mt-2 text-xs text-[var(--k-muted)]">
-                    Live score estimates a 2-day “profit edge” (probability-weighted expected return
-                    with drawdown penalty), computed from recent price history plus the latest
-                    fund-flow/chips when available. It refreshes on “Sync all (force)” or Leader
-                    “Generate today”.
+                    ) : null}
                   </div>
+                  {newsSummaryBusy ? (
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
+                      <RefreshCw className="mr-2 inline h-4 w-4 animate-spin" />
+                      Generating AI summary...
+                    </div>
+                  ) : newsSummary || newsFallback ? (
+                    <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-4 text-sm">
+                      {newsSummary?.trim() || newsFallback?.trim()}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
+                      No summary yet. Click &quot;Sync & Copy&quot; to fetch news and generate summary.
+                    </div>
+                  )}
                   <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('leaders')}>
-                      Open Leaders
+                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('news')}>
+                      Open News
                     </Button>
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={() => {
-                        addReference({
-                          kind: 'leaderStocks',
-                          refId: `leaderStocks:10:${Date.now()}`,
-                          days: 10,
-                          createdAt: new Date().toISOString(),
-                        } as any);
-                      }}
+                      disabled={newsSummaryBusy}
+                      onClick={() => void regenerateNewsSummary()}
                     >
-                      Reference
+                      {newsSummaryBusy ? (
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      Regenerate
+                    </Button>
+                  </div>
+                </div>
+              ) : id === 'watchlistRisk' ? (
+                <div>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--k-muted)]">
+                    <span>
+                      Intraday &gt;6%、跳空缺口（弱势/震荡）、VWAP 溢价等建仓风险预警
+                    </span>
+                    <span>
+                      {watchlistRiskUpdatedAt
+                        ? `Updated ${fmtDateTime(watchlistRiskUpdatedAt)}`
+                        : '—'}
+                    </span>
+                  </div>
+                  {watchlistRiskBusy && !watchlistRiskRows.length ? (
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
+                      <RefreshCw className="mr-2 inline h-4 w-4 animate-spin" />
+                      Loading watchlist risk alerts...
+                    </div>
+                  ) : watchlistRiskRows.length ? (
+                    <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+                      <table className="w-full border-collapse text-xs">
+                        <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+                          <tr className="text-left">
+                            <th className="px-2 py-2">Symbol</th>
+                            <th className="px-2 py-2">Name</th>
+                            <th className="px-2 py-2">Intraday%</th>
+                            <th className="px-2 py-2">VR</th>
+                            <th className="px-2 py-2">Gap</th>
+                            <th className="px-2 py-2">Alerts</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {watchlistRiskRows.map((row) => {
+                            const hasBlock = row.alerts.some((a) => a.severity === 'block');
+                            return (
+                              <tr
+                                key={row.symbol}
+                                className={`border-t border-[var(--k-border)] ${
+                                  hasBlock ? 'bg-red-50/70' : 'bg-amber-50/50'
+                                }`}
+                              >
+                                <td className="px-2 py-2 font-mono text-red-700">{row.symbol}</td>
+                                <td className="px-2 py-2">{row.name}</td>
+                                <td
+                                  className={`px-2 py-2 font-mono ${
+                                    isIntradaySurge(row.intradayChgPct)
+                                      ? 'font-semibold text-red-600'
+                                      : ''
+                                  }`}
+                                >
+                                  {formatIntradayChgPct(row.intradayChgPct)}
+                                </td>
+                                <td
+                                  className={`px-2 py-2 font-mono ${volumeRatioClassName(row.volumeRatio)}`}
+                                >
+                                  {formatVolumeRatio(row.volumeRatio)}
+                                </td>
+                                <td
+                                  className={`px-2 py-2 font-mono ${
+                                    row.gapUp === true ? 'font-semibold text-red-600' : ''
+                                  }`}
+                                >
+                                  {formatGapUp(row.gapUp)}
+                                </td>
+                                <td className="px-2 py-2">
+                                  {row.alerts.map((alert) => (
+                                    <div
+                                      key={alert.code}
+                                      className={
+                                        alert.severity === 'block'
+                                          ? 'text-red-600'
+                                          : 'text-amber-700'
+                                      }
+                                    >
+                                      {alert.message}
+                                    </div>
+                                  ))}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
+                      No watchlist risk alerts. Add symbols to Watchlist or refresh during session.
+                    </div>
+                  )}
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={watchlistRiskBusy}
+                      onClick={() => void refetchWatchlistRisk()}
+                    >
+                      {watchlistRiskBusy ? (
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      Refresh alerts
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('watchlist')}>
+                      Open Watchlist
                     </Button>
                   </div>
                 </div>
@@ -1247,7 +1153,7 @@ export function DashboardPage({
                         </tr>
                       </thead>
                       <tbody>
-                        {(summary?.screeners ?? []).map((s: any) => {
+                        {(dash?.screeners ?? []).map((s: any) => {
                           const bad = !s.capturedAt || Number(s.rowCount ?? 0) <= 0;
                           return (
                             <tr key={String(s.id)} className="border-t border-[var(--k-border)]">
@@ -1266,7 +1172,7 @@ export function DashboardPage({
                             </tr>
                           );
                         })}
-                        {!(summary?.screeners ?? []).length ? (
+                        {!(dash?.screeners ?? []).length ? (
                           <tr>
                             <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={4}>
                               No enabled screeners.
@@ -1282,21 +1188,7 @@ export function DashboardPage({
                     </Button>
                   </div>
                 </div>
-              ) : (
-                <div>
-                  <div className="text-sm text-[var(--k-muted)]">
-                    stocks: {String(summary?.marketStatus?.stocks ?? '—')}
-                  </div>
-                  <div className="mt-1 text-xs text-[var(--k-muted)]">
-                    lastSyncAt: {fmtDateTime(summary?.marketStatus?.lastSyncAt)}
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('market')}>
-                      Open Market
-                    </Button>
-                  </div>
-                </div>
-              )}
+              ) : null}
             </section>
           );
         };
