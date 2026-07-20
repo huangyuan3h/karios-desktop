@@ -6,6 +6,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Resolve workspace package from source so tests work before `pnpm build`.
+      '@karios/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
     },
   },
   test: {
