@@ -1,8 +1,8 @@
 from data_sync_service.service.dashboard import (
-    _daily_rankings_by_date_from_items,
     _now_iso,
     _today_iso_date,
 )
+from data_sync_service.service.industry_fund_flow_read import daily_rankings_from_flow_items
 
 
 def test_now_iso_format():
@@ -34,7 +34,7 @@ def test_daily_rankings_include_negative_inflow_for_rank_delta() -> None:
             ],
         },
     ]
-    rankings = _daily_rankings_by_date_from_items(items, ["2026-05-22", "2026-05-23"])
+    rankings = daily_rankings_from_flow_items(items, ["2026-05-22", "2026-05-23"])
     prev = next(x for x in rankings if x["date"] == "2026-05-22")["ranked"]
     latest = next(x for x in rankings if x["date"] == "2026-05-23")["ranked"]
     assert any(x["industryName"] == "Rebound-B" and x["rank"] == 2 for x in prev)
