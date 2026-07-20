@@ -1,10 +1,11 @@
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
+
 import pandas as pd
+
 from data_sync_service.service.hk_basic import (
-    _parse_iso_datetime,
     _is_same_utc_month,
+    _parse_iso_datetime,
     map_hk_basic_to_stock_basic_df,
 )
 
@@ -16,7 +17,7 @@ def test_parse_iso_datetime_valid():
 
 
 def test_parse_iso_datetime_datetime():
-    dt = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
+    dt = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
     result = _parse_iso_datetime(dt)
     assert result == dt
 
@@ -31,26 +32,26 @@ def test_parse_iso_datetime_invalid():
 
 
 def test_is_same_utc_month_true():
-    a = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
-    b = datetime(2024, 1, 20, 15, 45, tzinfo=timezone.utc)
+    a = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
+    b = datetime(2024, 1, 20, 15, 45, tzinfo=UTC)
     assert _is_same_utc_month(a, b) is True
 
 
 def test_is_same_utc_month_false():
-    a = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
-    b = datetime(2024, 2, 20, 15, 45, tzinfo=timezone.utc)
+    a = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
+    b = datetime(2024, 2, 20, 15, 45, tzinfo=UTC)
     assert _is_same_utc_month(a, b) is False
 
 
 def test_is_same_utc_month_different_year():
-    a = datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)
-    b = datetime(2025, 1, 20, 15, 45, tzinfo=timezone.utc)
+    a = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
+    b = datetime(2025, 1, 20, 15, 45, tzinfo=UTC)
     assert _is_same_utc_month(a, b) is False
 
 
 def test_is_same_utc_month_with_timezone():
     a = datetime(2024, 1, 15, 22, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
-    b = datetime(2024, 1, 16, 2, 45, tzinfo=timezone.utc)
+    b = datetime(2024, 1, 16, 2, 45, tzinfo=UTC)
     assert _is_same_utc_month(a, b) is True
 
 

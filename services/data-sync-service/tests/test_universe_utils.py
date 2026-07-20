@@ -1,5 +1,3 @@
-import pytest
-from datetime import datetime
 from data_sync_service.testback.universe import _parse_date
 
 

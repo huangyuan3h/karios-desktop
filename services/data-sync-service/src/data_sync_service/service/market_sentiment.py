@@ -12,13 +12,19 @@ from cachetools import TTLCache
 
 from data_sync_service.db import get_connection
 from data_sync_service.db.daily import ensure_table as ensure_daily
+from data_sync_service.db.market_sentiment import get_latest_date, list_days, upsert_daily_rows
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_basic import fetch_ts_codes
-from data_sync_service.db.market_sentiment import get_latest_date, list_days, upsert_daily_rows
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
-from data_sync_service.service.realtime_quote import fetch_realtime_quotes, fetch_realtime_quotes_batched
-from data_sync_service.service.trade_calendar_utils import is_cn_trading_day, last_open_date_on_or_before, shanghai_today
-
+from data_sync_service.service.realtime_quote import (
+    fetch_realtime_quotes,
+    fetch_realtime_quotes_batched,
+)
+from data_sync_service.service.trade_calendar_utils import (
+    is_cn_trading_day,
+    last_open_date_on_or_before,
+    shanghai_today,
+)
 
 BREADTH_DECLINE_RED_THRESHOLD = 3000
 CN_INDEX_TRAFFIC_LIGHT_NAMES = frozenset({"上证指数", "创业板指"})
@@ -385,7 +391,9 @@ def fetch_cn_market_breadth_eod(as_of: date) -> dict[str, Any]:
     rows_n = 0
     while True:
         df = _with_retry(
-            lambda: pro.daily(trade_date=td, limit=limit, offset=offset, fields="ts_code,pct_chg,vol,amount"),
+            lambda offset=offset: pro.daily(
+                trade_date=td, limit=limit, offset=offset, fields="ts_code,pct_chg,vol,amount"
+            ),
             tries=2,
             base_sleep_s=0.6,
         )
@@ -609,7 +617,11 @@ def _tushare_yesterday_limitup_codes(as_of: date) -> tuple[date | None, list[str
         y = as_of - timedelta(days=back)
         trade_date = _safe_trade_date(y)
         try:
-            rs = _with_retry(lambda: _try_limit_list(trade_date), tries=2, base_sleep_s=0.6)
+            rs = _with_retry(
+                lambda trade_date=trade_date: _try_limit_list(trade_date),
+                tries=2,
+                base_sleep_s=0.6,
+            )
         except Exception:
             rs = []
         codes2: list[str] = []

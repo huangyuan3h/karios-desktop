@@ -1,4 +1,3 @@
-import pytest
 from data_sync_service.service.market_bars import (
     _parse_symbol,
 )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from data_sync_service.service.alpha_radar_catalyst import (
     aggregate_catalyst_stocks,
@@ -13,7 +13,7 @@ from data_sync_service.service.alpha_radar_catalyst import (
 
 
 def _now() -> datetime:
-    return datetime(2026, 5, 28, 12, 0, 0, tzinfo=timezone.utc)
+    return datetime(2026, 5, 28, 12, 0, 0, tzinfo=UTC)
 
 
 def _trend(

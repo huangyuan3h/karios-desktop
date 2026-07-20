@@ -201,7 +201,7 @@ def fetch_daily(
     out: list[dict[str, Any]] = []
     for row in rows:
         obj: dict[str, Any] = {}
-        for col, val in zip(columns, row):
+        for col, val in zip(columns, row, strict=False):
             if val is None:
                 obj[col] = None
             elif hasattr(val, "strftime"):
@@ -252,7 +252,7 @@ def fetch_daily_for_codes(
     out: list[dict[str, Any]] = []
     for row in rows:
         obj: dict[str, Any] = {}
-        for col, val in zip(columns, row):
+        for col, val in zip(columns, row, strict=False):
             if val is None:
                 obj[col] = None
             elif hasattr(val, "strftime"):

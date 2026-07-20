@@ -106,7 +106,9 @@ def test_fetch_hsi_on_demand(monkeypatch) -> None:
 
 
 def test_resolve_sgx_a50_main_empty() -> None:
-    from data_sync_service.service.macro_daily import resolve_sgx_a50_main  # type: ignore[import-not-found]
+    from data_sync_service.service.macro_daily import (
+        resolve_sgx_a50_main,  # type: ignore[import-not-found]
+    )
 
     class _Pro:
         def fut_basic(self, **kwargs):  # noqa: ANN003
@@ -118,7 +120,9 @@ def test_resolve_sgx_a50_main_empty() -> None:
 def test_df_to_metrics_uses_settle_when_close_na() -> None:
     import pandas as pd  # type: ignore[import-not-found]
 
-    from data_sync_service.service.macro_snapshot_on_demand import _df_to_metrics  # type: ignore[import-not-found]
+    from data_sync_service.service.macro_snapshot_on_demand import (
+        _df_to_metrics,  # type: ignore[import-not-found]
+    )
 
     df = pd.DataFrame(
         {
@@ -135,7 +139,9 @@ def test_df_to_metrics_uses_settle_when_close_na() -> None:
 def test_df_to_metrics_parses_tushare_dates() -> None:
     import pandas as pd  # type: ignore[import-not-found]
 
-    from data_sync_service.service.macro_snapshot_on_demand import _df_to_metrics  # type: ignore[import-not-found]
+    from data_sync_service.service.macro_snapshot_on_demand import (
+        _df_to_metrics,  # type: ignore[import-not-found]
+    )
 
     df = pd.DataFrame(
         {
@@ -153,7 +159,9 @@ def test_df_to_metrics_parses_tushare_dates() -> None:
 def test_df_to_metrics_falls_back_to_prior_close_diff() -> None:
     import pandas as pd  # type: ignore[import-not-found]
 
-    from data_sync_service.service.macro_snapshot_on_demand import _df_to_metrics  # type: ignore[import-not-found]
+    from data_sync_service.service.macro_snapshot_on_demand import (
+        _df_to_metrics,  # type: ignore[import-not-found]
+    )
 
     df = pd.DataFrame(
         {
@@ -169,7 +177,9 @@ def test_df_to_metrics_falls_back_to_prior_close_diff() -> None:
 def test_resolve_main_fut_by_prefix_filters() -> None:
     import pandas as pd  # type: ignore[import-not-found]
 
-    from data_sync_service.service.macro_daily import resolve_main_fut_by_prefix  # type: ignore[import-not-found]
+    from data_sync_service.service.macro_daily import (
+        resolve_main_fut_by_prefix,  # type: ignore[import-not-found]
+    )
 
     class _Pro:
         def fut_basic(self, **kwargs):  # noqa: ANN003

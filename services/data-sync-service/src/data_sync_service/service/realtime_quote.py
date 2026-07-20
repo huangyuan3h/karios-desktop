@@ -53,7 +53,7 @@ def fetch_realtime_quotes(ts_codes: list[str]) -> dict[str, Any]:
         else:
             # Fallback: try through pro client if available.
             pro = ts.pro_api(settings.tu_share_api_key)
-            df = getattr(pro, "realtime_quote")(ts_code=",".join(codes))
+            df = pro.realtime_quote(ts_code=",".join(codes))
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)}
 

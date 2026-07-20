@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from data_sync_service.testback.engine import BacktestParams, DailyRuleFilter, UniverseFilter, run_backtest
-from data_sync_service.testback.strategies.base import ScoreConfig
+from data_sync_service.testback.engine import (
+    BacktestParams,
+    DailyRuleFilter,
+    UniverseFilter,
+    run_backtest,
+)
 from data_sync_service.testback.strategies import get_strategy_class
+from data_sync_service.testback.strategies.base import ScoreConfig
 
 
 def _parse_args() -> argparse.Namespace:
@@ -70,7 +75,7 @@ def main() -> None:
     max_selected = max(1, int(args.max_selected))
     max_days = max(0, int(args.max_days))
     lines: list[str] = []
-    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    generated_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
     summary = result.get("summary", {})
     daily_log = result.get("daily_log", [])
     lines.append(f"生成时间={generated_at}")

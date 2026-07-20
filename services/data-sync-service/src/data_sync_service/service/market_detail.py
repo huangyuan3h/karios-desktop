@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from datetime import UTC, datetime
-from typing import Any, Tuple
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException  # type: ignore[import-not-found]
@@ -28,7 +28,7 @@ def _today_cn_date_str() -> str:
     return dt.date().isoformat()
 
 
-def _parse_symbol_cn_only(symbol: str) -> Tuple[str, str, str] | None:
+def _parse_symbol_cn_only(symbol: str) -> tuple[str, str, str] | None:
     """
     Parse UI symbol like 'CN:000001' into (market, ticker, ts_code).
     Only CN A-shares are supported.

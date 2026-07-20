@@ -9,16 +9,16 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from data_sync_service.db.alpha_radar import (
+    create_source,
+    disable_sources_except,
     ensure_tables,
     fetch_sources,
     update_source_last_fetch,
     upsert_document,
-    create_source,
-    disable_sources_except,
 )
 from data_sync_service.service.alpha_radar_filter import filter_feed_items
 
@@ -260,7 +260,7 @@ def fetch_rss_feed(url: str) -> list[dict[str, Any]]:
         if hasattr(entry, "published_parsed") and entry.published_parsed:
             try:
                 ts = time.mktime(entry.published_parsed)
-                published_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+                published_at = datetime.fromtimestamp(ts, tz=UTC).isoformat()
             except Exception:
                 pass
         items.append(
@@ -297,7 +297,6 @@ def fetch_jina_markdown(url: str, *, timeout: int = 45, retries: int = 2) -> str
     key = jina_api_key()
     if key:
         headers["Authorization"] = f"Bearer {key}"
-    last_err: str | None = None
     for attempt in range(max(1, retries)):
         req = urllib.request.Request(req_url, headers=headers, method="GET")
         try:
@@ -305,13 +304,13 @@ def fetch_jina_markdown(url: str, *, timeout: int = 45, retries: int = 2) -> str
                 body = resp.read().decode("utf-8", errors="replace").strip()
                 return body or None
         except urllib.error.HTTPError as exc:
-            last_err = exc.read().decode("utf-8", errors="replace") if exc.fp else str(exc)
+            exc.read().decode("utf-8", errors="replace") if exc.fp else str(exc)
             if exc.code in (429, 503) and attempt + 1 < retries:
                 time.sleep(1.5 * (attempt + 1))
                 continue
             break
         except Exception as exc:
-            last_err = str(exc)
+            str(exc)
             if attempt + 1 < retries:
                 time.sleep(1.0 * (attempt + 1))
                 continue
@@ -425,7 +424,7 @@ def fetch_all_sources(
     add_default_sources()
     use_fulltext = enrich_fulltext_enabled() if enrich_fulltext is None else enrich_fulltext
     sources = fetch_sources(enabled_only=True)
-    fetched_at = datetime.now(timezone.utc).isoformat()
+    fetched_at = datetime.now(UTC).isoformat()
     results: dict[str, int] = {}
     source_errors: dict[str, str] = {}
     total_fetched = 0

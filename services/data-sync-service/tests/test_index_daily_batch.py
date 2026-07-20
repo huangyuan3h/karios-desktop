@@ -1,4 +1,3 @@
-from unittest.mock import patch
 
 import data_sync_service.service.market_regime as mr
 

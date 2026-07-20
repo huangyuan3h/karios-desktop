@@ -14,15 +14,18 @@ from data_sync_service.db.industry_fund_flow import get_rows_by_date
 from data_sync_service.db.macro_daily import fetch_last_closes as fetch_macro_last_closes
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_basic import fetch_ts_codes
-from data_sync_service.service.market_sentiment import (
-    fetch_cn_market_breadth_eod,
-    fetch_cn_market_breadth_intraday,
-)
 from data_sync_service.service.macro_snapshot_on_demand import (
     _is_data_stale,
     fetch_hsi_on_demand,
 )
-from data_sync_service.service.realtime_quote import fetch_realtime_quotes, fetch_realtime_quotes_batched
+from data_sync_service.service.market_sentiment import (
+    fetch_cn_market_breadth_eod,
+    fetch_cn_market_breadth_intraday,
+)
+from data_sync_service.service.realtime_quote import (
+    fetch_realtime_quotes,
+    fetch_realtime_quotes_batched,
+)
 
 INDEX_SIGNALS = [
     {"ts_code": "000001.SH", "name": "上证指数"},
@@ -608,11 +611,9 @@ def _compute_index_signals(
 
         vol_ratio = None
         vol_above_ma5 = False
-        vol_above_ma5_strong = False
         estimated_vol: float | None = None
         if len(series_vol) >= 20:
             avg_vol_5 = sum(series_vol[-5:]) / 5.0
-            avg_vol_20 = sum(series_vol[-20:]) / 20.0
             current_vol = series_vol[-1] if series_vol else 0.0
             if used_realtime and ts_code in rt_vol and rt_vol[ts_code] > 0:
                 now_sh = datetime.now(tz=ZoneInfo("Asia/Shanghai"))
@@ -621,15 +622,12 @@ def _compute_index_signals(
                 if estimated_vol is not None and avg_vol_5 > 0:
                     vol_ratio = estimated_vol / avg_vol_5
                     vol_above_ma5 = estimated_vol > avg_vol_5 * 0.8
-                    vol_above_ma5_strong = estimated_vol > avg_vol_5 * 1.3
                 else:
                     vol_above_ma5 = False
-                    vol_above_ma5_strong = False
             else:
                 if avg_vol_5 > 0:
                     vol_ratio = current_vol / avg_vol_5
                 vol_above_ma5 = current_vol > avg_vol_5
-                vol_above_ma5_strong = current_vol > avg_vol_5 * 1.2
 
         signal = "yellow"
         position = "30%"

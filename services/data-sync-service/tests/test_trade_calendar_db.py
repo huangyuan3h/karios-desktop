@@ -1,6 +1,5 @@
-import pytest
-import pandas as pd
 from datetime import date
+
 from data_sync_service.db.trade_calendar import (
     _date_str,
 )

@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from data_sync_service.db.industry_fund_flow import (
     get_dates_upto,
-    get_latest_date as get_latest_industry_date,
     get_sum_by_industry_for_dates,
+)
+from data_sync_service.db.industry_fund_flow import (
+    get_latest_date as get_latest_industry_date,
 )
 from data_sync_service.db.sync_job_record import get_today_run
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day

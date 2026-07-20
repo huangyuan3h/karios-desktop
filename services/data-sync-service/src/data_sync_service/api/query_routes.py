@@ -1,40 +1,60 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter, HTTPException, Query  # type: ignore[import-not-found]
 from pydantic import BaseModel  # type: ignore[import-not-found]
 
 from data_sync_service.db import check_db
-from data_sync_service.service.adj_factor import get_adj_factor_sync_status
-from data_sync_service.service.close_sync import get_close_sync_status
-from data_sync_service.service.daily import get_daily_from_db, get_daily_sync_status
-from data_sync_service.service.market_bars import get_market_bars
-from data_sync_service.service.market_detail import get_market_chips, get_market_fund_flow
-from data_sync_service.service.realtime_quote import fetch_realtime_quotes
-from data_sync_service.db.stock_basic import fetch_market_stocks, get_market_status
-from data_sync_service.service.market_quotes import get_market_quotes_batch, symbol_to_ts_code
-from data_sync_service.service.stock_basic import get_stock_basic_list, get_stock_basic_sync_status
-from data_sync_service.service.trendok import compute_trendok_for_symbols
-from data_sync_service.service.watchlist_v5_alerts import compute_watchlist_v5_alerts, compute_watchlist_v5_plan
-from data_sync_service.service.watchlist_momentum_alerts import compute_watchlist_momentum_alerts
 from data_sync_service.db.index_basic import fetch_index_basic
 from data_sync_service.db.index_daily import fetch_index_daily
 from data_sync_service.db.macro_daily import fetch_macro_daily
+from data_sync_service.db.stock_basic import fetch_market_stocks, get_market_status
+from data_sync_service.service.adj_factor import get_adj_factor_sync_status
+from data_sync_service.service.close_sync import get_close_sync_status
+from data_sync_service.service.daily import get_daily_from_db, get_daily_sync_status
 from data_sync_service.service.macro_snapshot import build_macro_snapshot
-from data_sync_service.service.market_regime import get_index_signals
-from data_sync_service.testback.engine import BacktestParams as EngineParams, DailyRuleFilter as EngineRules, UniverseFilter as EngineUniverse, run_backtest
-from data_sync_service.testback.strategies.base import ScoreConfig as EngineScore
-from data_sync_service.testback.strategies import get_strategy_class
+from data_sync_service.service.market_bars import get_market_bars
+from data_sync_service.service.market_detail import get_market_chips, get_market_fund_flow
+from data_sync_service.service.market_quotes import get_market_quotes_batch, symbol_to_ts_code
+from data_sync_service.service.realtime_quote import fetch_realtime_quotes
+from data_sync_service.service.stock_basic import get_stock_basic_list, get_stock_basic_sync_status
+from data_sync_service.service.trendok import compute_trendok_for_symbols
+from data_sync_service.service.watchlist_momentum_alerts import compute_watchlist_momentum_alerts
+from data_sync_service.service.watchlist_v5_alerts import (
+    compute_watchlist_v5_alerts,
+    compute_watchlist_v5_plan,
+)
+from data_sync_service.testback.db import (
+    delete_run as delete_backtest_run,
+)
 from data_sync_service.testback.db import (
     fetch_run as fetch_backtest_run,
-    fetch_trades as fetch_backtest_trades,
+)
+from data_sync_service.testback.db import (
     fetch_runs as fetch_backtest_runs,
-    delete_run as delete_backtest_run,
+)
+from data_sync_service.testback.db import (
+    fetch_trades as fetch_backtest_trades,
+)
+from data_sync_service.testback.db import (
     insert_run as insert_backtest_run,
+)
+from data_sync_service.testback.db import (
     insert_trades as insert_backtest_trades,
+)
+from data_sync_service.testback.db import (
     update_run_failed as update_backtest_failed,
+)
+from data_sync_service.testback.db import (
     update_run_success as update_backtest_success,
 )
-from uuid import uuid4
+from data_sync_service.testback.engine import BacktestParams as EngineParams
+from data_sync_service.testback.engine import DailyRuleFilter as EngineRules
+from data_sync_service.testback.engine import UniverseFilter as EngineUniverse
+from data_sync_service.testback.engine import run_backtest
+from data_sync_service.testback.strategies import get_strategy_class
+from data_sync_service.testback.strategies.base import ScoreConfig as EngineScore
 
 
 class BacktestUniverse(BaseModel):

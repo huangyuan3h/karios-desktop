@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import math
-import time
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -12,21 +11,23 @@ from zoneinfo import ZoneInfo
 from cachetools import TTLCache
 
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
-from data_sync_service.db.market_sentiment import get_latest_date, list_days
 from data_sync_service.db.industry_fund_flow import (
     get_dates_upto,
-    get_latest_date as get_latest_industry_date,
     get_rows_for_dates,
 )
-from data_sync_service.service.industry_fund_flow_read import build_trendok_flow_context_from_rows
-from data_sync_service.service.trade_calendar_utils import trade_dates_upto
-from data_sync_service.db.stoploss import get_stoploss_batch, upsert_stoploss_batch
+from data_sync_service.db.industry_fund_flow import (
+    get_latest_date as get_latest_industry_date,
+)
+from data_sync_service.db.market_sentiment import get_latest_date, list_days
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_eastmoney_industry import lookup_by_ts_codes as lookup_em_industries
+from data_sync_service.db.stoploss import get_stoploss_batch, upsert_stoploss_batch
 from data_sync_service.db.top_inst import fetch_daily_seats_batch, fetch_summaries_for_codes
+from data_sync_service.service.industry_fund_flow_read import build_trendok_flow_context_from_rows
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 from data_sync_service.service.top_inst_flow import build_inst_flow_payload
+from data_sync_service.service.trade_calendar_utils import trade_dates_upto
 
 TRENDOK_CACHE_TTL_SECONDS = 60
 MACRO_LOCK_CACHE_TTL_SECONDS = 45.0

@@ -1,10 +1,9 @@
-import pytest
 from data_sync_service.testback.engine import (
-    _apply_daily_rules,
-    _score_bar,
-    _pick_top_n,
-    _execute_order,
     DailyRuleFilter,
+    _apply_daily_rules,
+    _execute_order,
+    _pick_top_n,
+    _score_bar,
 )
 from data_sync_service.testback.strategies.base import Bar, Order, ScoreConfig
 

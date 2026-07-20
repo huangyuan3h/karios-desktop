@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pandas as pd  # type: ignore[import-not-found]
 import tushare as ts  # type: ignore[import-not-found]
 
 from data_sync_service.config import get_settings
-from data_sync_service.db.daily import count_rows_for_trade_date
+from data_sync_service.db.daily import count_rows_for_trade_date, update_adj_factor_from_dataframe
 from data_sync_service.db.daily import upsert_from_dataframe as upsert_daily
-from data_sync_service.db.daily import update_adj_factor_from_dataframe
 from data_sync_service.db.sync_job_record import get_last_success, get_today_run, insert_record
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
 from data_sync_service.service.trade_calendar import sync_trade_calendar

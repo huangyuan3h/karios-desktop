@@ -1,9 +1,8 @@
-import pytest
 from data_sync_service.service.watchlist_v5_alerts import (
-    _safe_float,
     _clamp,
     _next_tranche,
     _regime_target,
+    _safe_float,
 )
 
 
@@ -19,7 +18,6 @@ def test_safe_float_invalid():
 
 
 def test_safe_float_nan():
-    import math
     assert _safe_float(float("nan")) is None
 
 

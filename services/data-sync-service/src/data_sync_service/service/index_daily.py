@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd  # type: ignore[import-not-found, import-untyped]
@@ -31,7 +31,7 @@ INDEX_FIELDS = [
 
 
 def _today_yyyymmdd() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d")
+    return datetime.now(UTC).strftime("%Y%m%d")
 
 
 def _date_to_yyyymmdd(d: date) -> str:

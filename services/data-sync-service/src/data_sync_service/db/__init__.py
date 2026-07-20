@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Tuple
-
 import psycopg
 
 from data_sync_service.config import get_settings
@@ -14,7 +12,7 @@ def get_connection() -> psycopg.Connection:
     return psycopg.connect(settings.database_url, connect_timeout=5)
 
 
-def check_db() -> Tuple[bool, str | None]:
+def check_db() -> tuple[bool, str | None]:
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:

@@ -1,9 +1,8 @@
-import pytest
+from data_sync_service.db.industry_fund_flow import _sw_l1_industry_names_array
 from data_sync_service.service.industry_fund_flow import (
     _parse_money_to_cny,
     _stable_industry_code,
 )
-from data_sync_service.db.industry_fund_flow import _sw_l1_industry_names_array
 from data_sync_service.service.industry_taxonomy import (
     SW_L1_INDUSTRIES,
     SW_L1_INDUSTRY_NAMES,
@@ -22,7 +21,6 @@ def test_parse_money_to_cny_number():
 
 
 def test_parse_money_to_cny_nan():
-    import math
     assert _parse_money_to_cny(float("nan")) == 0.0
 
 

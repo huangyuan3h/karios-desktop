@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from data_sync_service.db.alpha_radar import (
@@ -83,7 +83,7 @@ def _parse_iso(value: str | None) -> datetime | None:
     try:
         dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt
     except ValueError:
         return None
@@ -93,7 +93,7 @@ def _within_cooldown(last_run_at: str | None) -> bool:
     last = _parse_iso(last_run_at)
     if not last:
         return False
-    return datetime.now(timezone.utc) - last < timedelta(hours=pipeline_cooldown_hours())
+    return datetime.now(UTC) - last < timedelta(hours=pipeline_cooldown_hours())
 
 
 def _load_ingest_stats() -> dict[str, Any] | None:
@@ -191,7 +191,7 @@ def run_alpha_radar_ingest(*, trigger: str = "manual", force_reprocess: bool = F
         force_reprocess=force_reprocess,
     )
     ingest_stats = ingest_result.get("ingestStats") or {}
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     set_meta(META_LAST_INGEST_AT, now)
     set_meta(META_LAST_INGEST_STATS, json.dumps(ingest_stats, ensure_ascii=False))
 
@@ -229,7 +229,7 @@ def run_alpha_radar_process(
     rounds = _rounds_for_raw_backlog(raw_count=raw_before, max_rounds=max_rounds)
     total_processed, saved_trends, errors = _run_process_loops(max_rounds=rounds)
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     set_meta(META_LAST_PROCESS_AT, now)
     raw_after = count_documents_by_status("raw")
 
@@ -273,7 +273,7 @@ def run_alpha_radar_pipeline(*, force: bool = False, trigger: str = "manual") ->
             "rawBacklogCount": count_documents_by_status("raw"),
         }
 
-    batch_started_at = datetime.now(timezone.utc).isoformat()
+    batch_started_at = datetime.now(UTC).isoformat()
     previous_batch_started_at = get_meta(META_LAST_BATCH_STARTED_AT)
 
     ingest_out = run_alpha_radar_ingest(trigger=trigger)
@@ -338,7 +338,7 @@ def run_alpha_radar_pipeline(*, force: bool = False, trigger: str = "manual") ->
             error_message = "LLM produced 0 trends; kept previous cards"
             errors.append({"error": error_message})
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     set_meta(META_LAST_RUN_AT, now)
     set_meta(META_LAST_TREND_COUNT, str(trend_count))
 

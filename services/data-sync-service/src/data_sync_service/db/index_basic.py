@@ -158,7 +158,7 @@ def fetch_index_basic(
     out: list[dict[str, Any]] = []
     for row in reversed(rows):
         obj: dict[str, Any] = {}
-        for col, val in zip(cols, row):
+        for col, val in zip(cols, row, strict=False):
             if val is None:
                 obj[col] = None
             elif hasattr(val, "strftime") and col == "trade_date":

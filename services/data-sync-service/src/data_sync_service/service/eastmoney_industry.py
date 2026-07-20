@@ -11,6 +11,7 @@ import warnings
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_eastmoney_industry import (
     count_rows,
     coverage_stats,
@@ -19,7 +20,6 @@ from data_sync_service.db.stock_eastmoney_industry import (
     lookup_by_ts_codes,
     upsert_rows,
 )
-from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
 
 JOB_TYPE = "eastmoney_industry_sync"
@@ -133,7 +133,7 @@ def _result_with_coverage(**extra: Any) -> dict[str, Any]:
     stats = coverage_stats()
     total = stats["totalCnStocks"]
     mapped = stats["emMapped"]
-    missing = stats["missingCount"]
+    stats["missingCount"]
     coverage_pct = round(100.0 * mapped / total, 2) if total > 0 else 0.0
     return {
         **extra,

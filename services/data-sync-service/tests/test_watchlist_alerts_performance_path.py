@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from data_sync_service.service import watchlist_momentum_alerts as momentum  # type: ignore[import-not-found]
+from data_sync_service.service import (
+    watchlist_momentum_alerts as momentum,  # type: ignore[import-not-found]
+)
 from data_sync_service.service import watchlist_v5_alerts as v5  # type: ignore[import-not-found]
 
 _SAMPLE_BARS = [

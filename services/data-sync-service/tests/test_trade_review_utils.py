@@ -1,10 +1,10 @@
-import pytest
 from datetime import date
+
 from data_sync_service.db.trade_review import (
-    _to_float,
-    _to_int,
     _to_bool,
     _to_date,
+    _to_float,
+    _to_int,
     _to_json_obj,
 )
 

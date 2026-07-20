@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from typing import Deque, Dict, List
 
 from data_sync_service.service.trendok import _rsi
 from data_sync_service.testback.strategies.base import Bar, BaseStrategy, Order, PortfolioSnapshot
@@ -38,10 +37,10 @@ class AlphaHunterV1Strategy(BaseStrategy):
         self.min_profit_after_time_stop = 0.01
         self.max_daily_sells = 5
         self.max_daily_buys = 5
-        self._entry_info: Dict[str, dict] = {}
-        self._history: Dict[str, Deque[Bar]] = defaultdict(lambda: deque(maxlen=260))
+        self._entry_info: dict[str, dict] = {}
+        self._history: dict[str, deque[Bar]] = defaultdict(lambda: deque(maxlen=260))
 
-    def on_bar(self, trade_date: str, bars: Dict[str, Bar], portfolio: PortfolioSnapshot) -> List[Order]:
+    def on_bar(self, trade_date: str, bars: dict[str, Bar], portfolio: PortfolioSnapshot) -> list[Order]:
         if not bars:
             return []
 
@@ -57,7 +56,7 @@ class AlphaHunterV1Strategy(BaseStrategy):
             max_invested_ratio = 1.0
 
         target_equity = portfolio.equity * max_invested_ratio
-        orders: List[Order] = []
+        orders: list[Order] = []
         candidates: list[tuple[str, float, float]] = []
 
         market_ret20 = self._calc_market_ret20()
@@ -71,7 +70,7 @@ class AlphaHunterV1Strategy(BaseStrategy):
 
             ma20 = self._get_ma(code, 20)
             ma60 = self._get_ma(code, 60)
-            ma10 = self._get_ma(code, 10)
+            self._get_ma(code, 10)
             rsi = self._get_rsi(code)
             if ma20 <= 0 or ma60 <= 0:
                 continue
@@ -178,7 +177,7 @@ class AlphaHunterV1Strategy(BaseStrategy):
         orders = self._limit_daily_turnover(orders)
         return orders
 
-    def _limit_daily_turnover(self, orders: List[Order]) -> List[Order]:
+    def _limit_daily_turnover(self, orders: list[Order]) -> list[Order]:
         sells = [o for o in orders if (o.action or "").lower() == "sell"]
         buys = [o for o in orders if (o.action or "").lower() == "buy"]
         return sells[: self.max_daily_sells] + buys[: self.max_daily_buys]
@@ -247,7 +246,7 @@ class AlphaHunterV1Strategy(BaseStrategy):
         series = self._get_series(code)
         if len(series) < window + 1:
             return 0.0
-        trs: List[float] = []
+        trs: list[float] = []
         for i in range(1, len(series)):
             prev_close = series[i - 1].close
             high = series[i].high
@@ -259,7 +258,7 @@ class AlphaHunterV1Strategy(BaseStrategy):
         recent = trs[-window:]
         return sum(recent) / len(recent)
 
-    def _calc_market_strength(self, bars: Dict[str, Bar]) -> float:
+    def _calc_market_strength(self, bars: dict[str, Bar]) -> float:
         total = 0
         above = 0
         for code, bar in bars.items():
@@ -283,7 +282,7 @@ class AlphaHunterV1Strategy(BaseStrategy):
             return 0.0
         return sum(returns) / len(returns)
 
-    def _calc_dynamic_amount_threshold(self, bars: Dict[str, Bar]) -> float:
+    def _calc_dynamic_amount_threshold(self, bars: dict[str, Bar]) -> float:
         amounts = [b.amount for b in bars.values() if b.amount > 0]
         if not amounts:
             return self.min_amount

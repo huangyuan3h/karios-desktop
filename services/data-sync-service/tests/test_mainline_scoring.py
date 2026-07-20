@@ -1,4 +1,9 @@
-from data_sync_service.service.mainline import _is_mainline, _score_breadth, _score_flow, _score_trend  # type: ignore[import-not-found]
+from data_sync_service.service.mainline import (  # type: ignore[import-not-found]
+    _is_mainline,
+    _score_breadth,
+    _score_flow,
+    _score_trend,
+)
 
 
 def test_flow_score_full() -> None:

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from data_sync_service.service.execution_journal import (
+    build_journal_markdown,
     compute_content_hash,
     diff_snapshots,
-    build_journal_markdown,
     symbols_with_latest_action_deltas,
 )
 

@@ -1,11 +1,11 @@
-import pytest
-import hashlib
 import base64
+import hashlib
+
 from data_sync_service.service.broker import (
-    now_iso,
+    _decode_data_url,
     _norm_str,
     _sha256_bytes,
-    _decode_data_url,
+    now_iso,
 )
 
 

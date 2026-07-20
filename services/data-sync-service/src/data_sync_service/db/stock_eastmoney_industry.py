@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from data_sync_service.db import get_connection
 
@@ -224,7 +225,7 @@ def search_stocks_by_industry_keyword(keyword: str, *, limit: int = 12) -> list[
         ticker = str(r[1] or "")
         if not ticker.isdigit() or len(ticker) != 6:
             continue
-        suffix = "SH" if ticker.startswith("6") else "SZ"
+        "SH" if ticker.startswith("6") else "SZ"
         out.append(
             {
                 "symbol": f"CN:{ticker}",

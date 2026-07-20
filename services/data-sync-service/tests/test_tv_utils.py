@@ -1,5 +1,3 @@
-import pytest
-from datetime import datetime, UTC
 from data_sync_service.service.tv import (
     _now_iso,
     _parse_iso_datetime,

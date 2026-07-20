@@ -1,8 +1,8 @@
-import pytest
 from datetime import date
+
 from data_sync_service.service.daily import (
-    _today_yyyymmdd,
     _date_to_yyyymmdd,
+    _today_yyyymmdd,
 )
 
 

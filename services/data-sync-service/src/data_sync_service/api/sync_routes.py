@@ -1,19 +1,21 @@
 from __future__ import annotations
 
+from datetime import UTC
+
 from fastapi import APIRouter, Query  # type: ignore[import-not-found]
 
 from data_sync_service.service.adj_factor import sync_adj_factor_full
 from data_sync_service.service.close_sync import sync_close
+from data_sync_service.service.etf_fund_flow import sync_etf_fund_flow_watchlist
 from data_sync_service.service.hk_basic import sync_hk_basic
 from data_sync_service.service.hk_daily import sync_hk_daily_full
 from data_sync_service.service.index_basic import sync_index_basic_full
 from data_sync_service.service.index_daily import sync_index_daily_full
 from data_sync_service.service.macro_daily import sync_macro_daily_full
+from data_sync_service.service.option_iv import sync_option_iv_daily
 from data_sync_service.service.post_close_sync import run_post_close_sync
 from data_sync_service.service.stock_basic import sync_stock_basic
 from data_sync_service.service.top_inst_flow import sync_top_inst_watchlist
-from data_sync_service.service.option_iv import sync_option_iv_daily
-from data_sync_service.service.etf_fund_flow import sync_etf_fund_flow_watchlist
 from data_sync_service.service.trade_calendar import sync_trade_calendar
 
 router = APIRouter()
@@ -84,10 +86,10 @@ def sync_hk_basic_endpoint(
 def market_sync_endpoint() -> dict:
     # Purpose: compatibility endpoint for MarketPage; calls sync_stock_basic.
     """Sync market stocks (alias for /sync/stock-basic)."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     result = sync_stock_basic()
-    synced_at = datetime.now(timezone.utc).isoformat()
+    synced_at = datetime.now(UTC).isoformat()
 
     # Return format compatible with quant-service response
     if result.get("ok"):

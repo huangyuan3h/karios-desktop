@@ -19,14 +19,14 @@ from data_sync_service.db.etf_fund_flow import (
     get_latest_date,
     upsert_daily_rows,
 )
+from data_sync_service.db.sync_job_record import get_today_run, insert_record
+from data_sync_service.db.trade_calendar import get_open_dates
 from data_sync_service.service.etf_fund_flow_em import (
     EM_ETF_FLOW_SOURCE,
     fetch_em_etf_realtime_flow_for_symbols,
     fetch_em_etf_spot_for_symbols,
     get_last_em_etf_fetch_error,
 )
-from data_sync_service.db.sync_job_record import get_today_run, insert_record
-from data_sync_service.db.trade_calendar import get_open_dates
 from data_sync_service.service.market_regime import _is_shanghai_sync_window
 from data_sync_service.service.trade_calendar_utils import (
     compute_market_status,

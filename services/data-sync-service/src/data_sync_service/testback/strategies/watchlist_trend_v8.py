@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from math import sqrt
-from typing import Deque, Dict, List
 
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.trendok import _ema, _macd, _rsi
-from data_sync_service.testback.strategies.base import Bar, BaseStrategy, Order, PortfolioSnapshot, ScoreConfig
+from data_sync_service.testback.strategies.base import (
+    Bar,
+    BaseStrategy,
+    Order,
+    PortfolioSnapshot,
+    ScoreConfig,
+)
 
 
 class WatchlistTrendV8Strategy(BaseStrategy):
@@ -68,13 +73,13 @@ class WatchlistTrendV8Strategy(BaseStrategy):
         self.min_score_strong = float(min_score_strong)
         self.min_score_diverging = float(min_score_diverging)
 
-        self._history: Dict[str, Deque[Bar]] = defaultdict(lambda: deque(maxlen=360))
-        self._regime_cache: Dict[str, str] = {}
-        self._entry_price: Dict[str, float] = {}
-        self._peak_price_since_entry: Dict[str, float] = {}
-        self._entry_index: Dict[str, int] = {}
-        self._bar_index: Dict[str, int] = {}
-        self._last_stats: Dict[str, int | str | float] = {}
+        self._history: dict[str, deque[Bar]] = defaultdict(lambda: deque(maxlen=360))
+        self._regime_cache: dict[str, str] = {}
+        self._entry_price: dict[str, float] = {}
+        self._peak_price_since_entry: dict[str, float] = {}
+        self._entry_index: dict[str, int] = {}
+        self._bar_index: dict[str, int] = {}
+        self._last_stats: dict[str, int | str | float] = {}
 
     def _get_regime(self, trade_date: str) -> str:
         if trade_date in self._regime_cache:
@@ -113,7 +118,7 @@ class WatchlistTrendV8Strategy(BaseStrategy):
                 vol_boost = (vols[-1] / avg_vol20) - 1.0
         return 0.60 * ret120 + 0.25 * ret60 + 0.15 * ret20 + 0.05 * vol_boost
 
-    def on_bar(self, trade_date: str, bars: Dict[str, Bar], portfolio: PortfolioSnapshot) -> List[Order]:
+    def on_bar(self, trade_date: str, bars: dict[str, Bar], portfolio: PortfolioSnapshot) -> list[Order]:
         if not bars:
             return []
 
@@ -121,7 +126,7 @@ class WatchlistTrendV8Strategy(BaseStrategy):
         max_positions, invested_ratio, min_score, allow_new_buys = self._regime_params(regime)
         target_per_name = (invested_ratio / max_positions) if max_positions > 0 else 0.0
 
-        orders: List[Order] = []
+        orders: list[Order] = []
         candidates: list[tuple[str, float]] = []
 
         breakout_count = 0
@@ -141,7 +146,7 @@ class WatchlistTrendV8Strategy(BaseStrategy):
             highs = [b.high for b in history]
             vols = [b.volume for b in history]
 
-            ema_fast = _ema(closes, self.fast_window)[-1]
+            _ema(closes, self.fast_window)[-1]
             ema20_series = _ema(closes, self.mid_window)
             ema60_series = _ema(closes, self.slow_window)
             ema120_series = _ema(closes, self.long_window)

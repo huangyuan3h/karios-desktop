@@ -1,10 +1,9 @@
-import pytest
 from data_sync_service.tv.normalize import (
+    drop_empty_columns,
+    enrich_symbol_columns,
     normalize_header,
     normalize_headers,
     split_symbol_cell,
-    drop_empty_columns,
-    enrich_symbol_columns,
 )
 
 

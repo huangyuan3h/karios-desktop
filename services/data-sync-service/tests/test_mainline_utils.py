@@ -1,8 +1,7 @@
-import pytest
 from data_sync_service.service.mainline import (
-    _safe_float,
-    _limit_pct_for,
     _is_limit_up,
+    _limit_pct_for,
+    _safe_float,
 )
 
 

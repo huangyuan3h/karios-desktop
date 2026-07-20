@@ -602,7 +602,7 @@ def test_sector_divergence_overrides_t1_sniper() -> None:
             "riskMetricsLive": True,
         },
     ):
-        res = _trendok_one(
+        _trendok_one(
             symbol="CN:000001",
             name="Test",
             industry="电子",  # BUT industry is in outflow top 3!

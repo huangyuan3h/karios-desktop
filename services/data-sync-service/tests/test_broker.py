@@ -1,10 +1,9 @@
-import pytest
 from data_sync_service.service.broker import (
-    _norm_str,
-    _sha256_bytes,
     _decode_data_url,
     _dedupe,
+    _norm_str,
     _pick_first_str,
+    _sha256_bytes,
 )
 
 

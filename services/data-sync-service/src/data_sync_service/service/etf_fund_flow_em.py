@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import math
 import time
+from datetime import UTC, datetime
 from typing import Any
 
 from data_sync_service.service.em_push2_http import em_get_json

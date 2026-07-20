@@ -11,35 +11,33 @@ from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 
-from data_sync_service.db import get_connection
 from data_sync_service.db.industry_fund_flow import ensure_table as ensure_industry
 from data_sync_service.db.industry_fund_flow import get_dates_upto, get_rows_for_dates
 from data_sync_service.db.industry_fund_flow import get_latest_date as get_latest_industry_date
-from data_sync_service.db.market_sentiment import get_latest_date as get_latest_sentiment_date
 from data_sync_service.db.market_sentiment import (
     get_dates_upto as get_sentiment_dates_upto,
+)
+from data_sync_service.db.market_sentiment import get_latest_date as get_latest_sentiment_date
+from data_sync_service.db.market_sentiment import (
     list_days_for_dates as list_sentiment_days_for_dates,
 )
 from data_sync_service.db.news import ensure_tables as ensure_news_tables
 from data_sync_service.db.news import fetch_items
 from data_sync_service.db.tv import list_latest_snapshots_for_screeners
-from data_sync_service.service.industry_fund_flow import (
-    sync_cn_industry_fund_flow,
-)
 from data_sync_service.service.etf_fund_flow import (
     build_etf_fund_flow_bundle,
     sync_etf_fund_flow_watchlist,
 )
-from data_sync_service.service.option_iv import sync_option_iv_daily
-from data_sync_service.service.top_inst_flow import sync_top_inst_watchlist
+from data_sync_service.service.execution_gate import compute_execution_gate
+from data_sync_service.service.industry_fund_flow import (
+    sync_cn_industry_fund_flow,
+)
 from data_sync_service.service.industry_fund_flow_read import (
     build_dashboard_industry_bundle,
     top_by_date_from_rows,
 )
-from data_sync_service.service.sector_rotation_index import compute_srv_index
-from data_sync_service.service.execution_gate import compute_execution_gate
-from data_sync_service.service.macro_snapshot import build_macro_snapshot
 from data_sync_service.service.macro_daily import sync_macro_daily_full
+from data_sync_service.service.macro_snapshot import build_macro_snapshot
 from data_sync_service.service.market_environment_zh import format_market_environment_zh
 from data_sync_service.service.market_regime import (
     _is_shanghai_sync_window,
@@ -51,18 +49,21 @@ from data_sync_service.service.market_sentiment import (
     sync_cn_sentiment,
 )
 from data_sync_service.service.news import fetch_all_sources
-from data_sync_service.service.tv import (
-    CAPTURE_JOB_DEFAULT_TIMEOUT_S,
-    enqueue_screener_capture,
-    list_screeners,
-    wait_for_capture_jobs,
-)
+from data_sync_service.service.option_iv import sync_option_iv_daily
+from data_sync_service.service.sector_rotation_index import compute_srv_index
+from data_sync_service.service.top_inst_flow import sync_top_inst_watchlist
 from data_sync_service.service.trade_calendar_utils import (
     compute_market_status,
     previous_open_date,
     resolve_effective_as_of,
     shanghai_today_iso,
     trade_dates_upto,
+)
+from data_sync_service.service.tv import (
+    CAPTURE_JOB_DEFAULT_TIMEOUT_S,
+    enqueue_screener_capture,
+    list_screeners,
+    wait_for_capture_jobs,
 )
 
 TV_SCREENER_SYNC_MAX_WORKERS = 2
@@ -629,7 +630,7 @@ def _run_screeners_step_with_progress(
     )
 
 
-def _drain_screener_progress_events(q: queue.Queue[dict[str, Any]]) -> Generator[str, None, None]:
+def _drain_screener_progress_events(q: queue.Queue[dict[str, Any]]) -> Generator[str]:
     while True:
         try:
             evt = q.get_nowait()

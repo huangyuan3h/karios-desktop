@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 from data_sync_service.db import tv_capture_jobs as jobdb

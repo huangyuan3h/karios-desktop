@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from data_sync_service.db.news import (
+    delete_old_items,
     ensure_tables,
     fetch_sources,
-    upsert_item,
     update_source_last_fetch,
-    delete_old_items,
+    upsert_item,
 )
 
 try:
@@ -42,13 +42,13 @@ def fetch_rss_feed(url: str) -> list[dict]:
         if hasattr(entry, "published_parsed") and entry.published_parsed:
             try:
                 ts = time.mktime(entry.published_parsed)
-                published_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+                published_at = datetime.fromtimestamp(ts, tz=UTC).isoformat()
             except Exception:
                 pass
         elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
             try:
                 ts = time.mktime(entry.updated_parsed)
-                published_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+                published_at = datetime.fromtimestamp(ts, tz=UTC).isoformat()
             except Exception:
                 pass
 
@@ -75,7 +75,7 @@ def fetch_all_sources() -> dict[str, int]:
         url = source["url"]
         try:
             items = fetch_rss_feed(url)
-            fetched_at = datetime.now(timezone.utc).isoformat()
+            fetched_at = datetime.now(UTC).isoformat()
             count = 0
             for item in items:
                 upsert_item(
@@ -112,8 +112,8 @@ def add_default_sources() -> None:
         ("hn-front", "Hacker News", "https://hnrss.org/frontpage"),
         ("reddit-finance", "Reddit Finance", "https://www.reddit.com/r/finance/.rss"),
     ]
+
     from data_sync_service.db.news import create_source
-    import uuid
 
     for sid, name, url in default_sources:
         try:

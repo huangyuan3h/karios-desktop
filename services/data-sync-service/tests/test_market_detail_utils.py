@@ -1,4 +1,3 @@
-import pytest
 from data_sync_service.service.market_detail import (
     _parse_symbol_cn_only,
 )

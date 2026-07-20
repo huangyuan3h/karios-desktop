@@ -3,11 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from math import log1p
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
-from data_sync_service.db.daily import fetch_daily_for_codes, fetch_last_adj_factors, fetch_trade_dates_for_codes
-from data_sync_service.testback.universe import build_universe
+from data_sync_service.db.daily import (
+    fetch_daily_for_codes,
+    fetch_last_adj_factors,
+    fetch_trade_dates_for_codes,
+)
 from data_sync_service.testback.strategies.base import Bar, Order, PortfolioSnapshot, ScoreConfig
+from data_sync_service.testback.universe import build_universe
 
 
 @dataclass
@@ -90,18 +94,18 @@ def _adjust_factor_ratio(rows: list[dict[str, Any]], adj_mode: str) -> float:
 def _build_bar_maps(
     rows: list[dict[str, Any]],
     adj_mode: str,
-    prev_close_seed: Dict[str, float] | None = None,
-    ratio_by_code: Dict[str, float] | None = None,
-) -> Tuple[Dict[str, Dict[str, Bar]], Dict[str, Dict[str, float]], Dict[str, float]]:
-    by_code: Dict[str, List[dict[str, Any]]] = {}
+    prev_close_seed: dict[str, float] | None = None,
+    ratio_by_code: dict[str, float] | None = None,
+) -> tuple[dict[str, dict[str, Bar]], dict[str, dict[str, float]], dict[str, float]]:
+    by_code: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
         code = str(r.get("ts_code") or "").strip()
         if not code:
             continue
         by_code.setdefault(code, []).append(r)
-    bars_by_date: Dict[str, Dict[str, Bar]] = {}
-    prev_close_map: Dict[str, Dict[str, float]] = {}
-    last_close_map: Dict[str, float] = dict(prev_close_seed or {})
+    bars_by_date: dict[str, dict[str, Bar]] = {}
+    prev_close_map: dict[str, dict[str, float]] = {}
+    last_close_map: dict[str, float] = dict(prev_close_seed or {})
     for code, items in by_code.items():
         items_sorted = sorted(items, key=lambda x: str(x.get("trade_date") or ""))
         ratio = ratio_by_code.get(code) if ratio_by_code else None
@@ -169,12 +173,12 @@ def _score_bar(bar: Bar, prev_close: float, score: ScoreConfig) -> float:
 
 
 def _pick_top_n(
-    bars: Dict[str, Bar],
-    prev_close_map: Dict[str, float],
+    bars: dict[str, Bar],
+    prev_close_map: dict[str, float],
     rules: DailyRuleFilter,
     score_cfg: ScoreConfig,
-) -> Tuple[Dict[str, Bar], List[Tuple[str, float]]]:
-    scored: List[Tuple[str, float]] = []
+) -> tuple[dict[str, Bar], list[tuple[str, float]]]:
+    scored: list[tuple[str, float]] = []
     for code, bar in bars.items():
         if not _apply_daily_rules(bar, rules):
             continue
@@ -193,11 +197,11 @@ def _execute_order(
     order: Order,
     bar: Bar,
     cash: float,
-    positions: Dict[str, float],
+    positions: dict[str, float],
     fee_rate: float,
     slippage_rate: float,
     current_equity: float,
-) -> Tuple[float, Dict[str, float], dict[str, Any] | None]:
+) -> tuple[float, dict[str, float], dict[str, Any] | None]:
     action = (order.action or "").lower().strip()
     if action not in ("buy", "sell"):
         return cash, positions, None
@@ -292,14 +296,14 @@ def run_backtest(
             min_list_days=universe_filter.min_list_days,
         )
     dates = fetch_trade_dates_for_codes(universe, warmup_start, params.end_date)
-    ratio_by_code: Dict[str, float] | None = None
+    ratio_by_code: dict[str, float] | None = None
     if params.adj_mode == "qfq":
         last_factors = fetch_last_adj_factors(universe, params.end_date)
         ratio_by_code = {code: 1.0 / f for code, f in last_factors.items() if f > 0}
     cash = max(0.0, params.initial_cash)
-    positions: Dict[str, float] = {}
-    last_prices: Dict[str, float] = {}
-    last_buy_date: Dict[str, str] = {}
+    positions: dict[str, float] = {}
+    last_prices: dict[str, float] = {}
+    last_buy_date: dict[str, str] = {}
     equity_curve: list[dict[str, Any]] = []
     drawdown_curve: list[dict[str, Any]] = []
     positions_curve: list[dict[str, Any]] = []
@@ -309,9 +313,9 @@ def run_backtest(
     equity = cash
     strategy.on_start(params.start_date, params.end_date)
     chunk_size = 120
-    last_close_map: Dict[str, float] = {}
+    last_close_map: dict[str, float] = {}
     prev_close_override_date: str | None = None
-    prev_close_override_map: Dict[str, float] | None = None
+    prev_close_override_map: dict[str, float] | None = None
     for start in range(0, len(dates), chunk_size):
         chunk_dates = dates[start : start + chunk_size]
         if start > 0:
@@ -363,7 +367,7 @@ def run_backtest(
             use_full = bool(getattr(strategy, "use_full_bars", False))
             bars_for_strategy = bars_signal if use_full else ordered_selected
             orders = strategy.on_bar(signal_date, bars_for_strategy, snapshot)
-            order_by_code: Dict[str, Order] = {}
+            order_by_code: dict[str, Order] = {}
             for o in orders:
                 if o.ts_code:
                     order_by_code[o.ts_code] = o
@@ -373,7 +377,7 @@ def run_backtest(
                 # those sells to go through, otherwise positions can become "stuck" and stops can't work.
                 allow_buy_outside_selected = bool(getattr(strategy, "allow_buy_outside_selected", False))
                 selected_codes = set(ordered_selected.keys())
-                filtered: Dict[str, Order] = {}
+                filtered: dict[str, Order] = {}
                 for code, o in order_by_code.items():
                     if code in selected_codes:
                         filtered[code] = o

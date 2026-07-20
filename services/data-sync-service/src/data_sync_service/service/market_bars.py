@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Any
 
 from data_sync_service.db.daily import fetch_last_bars
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.service.daily import sync_daily_for_ts_code
 
 
-def _parse_symbol(symbol: str) -> Tuple[str, str, str] | None:
+def _parse_symbol(symbol: str) -> tuple[str, str, str] | None:
     """
     Parse UI symbol like 'CN:000001' into (market, ticker, ts_code).
     Only CN A-shares are supported.

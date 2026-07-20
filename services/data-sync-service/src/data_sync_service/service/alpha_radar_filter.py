@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 # High-trust feeds: only apply exclude filter, skip include requirement.
 TRUSTED_SOURCE_IDS = frozenset(

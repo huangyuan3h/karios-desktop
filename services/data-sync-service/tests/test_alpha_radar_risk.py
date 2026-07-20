@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from data_sync_service.service.alpha_radar_risk import (
+    build_mainline_score_map,
     compute_risk_status,
     keyword_matches_industry,
-    build_mainline_score_map,
 )
 
 

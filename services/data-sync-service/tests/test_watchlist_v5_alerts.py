@@ -1,4 +1,6 @@
-from data_sync_service.service import watchlist_v5_alerts as alerts  # type: ignore[import-not-found]
+from data_sync_service.service import (
+    watchlist_v5_alerts as alerts,  # type: ignore[import-not-found]
+)
 
 
 def _bars(close: float, high: float, low: float, days: int = 30) -> list[tuple[str, str, str, str, str, str]]:

@@ -1,10 +1,11 @@
-import pytest
-import pandas as pd
 from datetime import date
+
+import pandas as pd
+
 from data_sync_service.db.daily import (
+    _date_str,
     _numeric,
     _scalar,
-    _date_str,
 )
 
 

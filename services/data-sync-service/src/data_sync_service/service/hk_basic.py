@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import pandas as pd  # type: ignore[import-not-found]
@@ -28,8 +28,8 @@ def _parse_iso_datetime(value: object) -> datetime | None:
 
 
 def _is_same_utc_month(a: datetime, b: datetime) -> bool:
-    a2 = a.astimezone(timezone.utc)
-    b2 = b.astimezone(timezone.utc)
+    a2 = a.astimezone(UTC)
+    b2 = b.astimezone(UTC)
     return (a2.year, a2.month) == (b2.year, b2.month)
 
 
@@ -87,7 +87,7 @@ def sync_hk_basic(
     if not force:
         last_ok = get_last_success(JOB_TYPE)
         last_at = _parse_iso_datetime((last_ok or {}).get("sync_at"))
-        if last_at and _is_same_utc_month(last_at, datetime.now(timezone.utc)):
+        if last_at and _is_same_utc_month(last_at, datetime.now(UTC)):
             return {"ok": True, "skipped": True, "message": "already synced this month"}
 
     settings = get_settings()

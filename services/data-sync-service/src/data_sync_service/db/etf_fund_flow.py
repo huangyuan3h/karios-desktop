@@ -109,7 +109,7 @@ def _value_for_column(row: dict[str, Any], column: str) -> Any:
 
 def _row_to_dict(columns: list[str], row: tuple[Any, ...]) -> dict[str, Any]:
     obj: dict[str, Any] = {}
-    for col, val in zip(columns, row):
+    for col, val in zip(columns, row, strict=False):
         if val is None:
             obj[col] = None
         elif col == "trade_date" and hasattr(val, "strftime"):

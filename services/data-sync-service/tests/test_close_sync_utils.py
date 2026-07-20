@@ -1,5 +1,5 @@
-import pytest
 from datetime import date
+
 from data_sync_service.service.close_sync import (
     _parse_yyyymmdd,
     _to_yyyymmdd,

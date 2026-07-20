@@ -1,9 +1,8 @@
-import pytest
-import pandas as pd
 from datetime import date
+
 from data_sync_service.db.stock_basic import (
-    _scalar,
     _date,
+    _scalar,
 )
 
 

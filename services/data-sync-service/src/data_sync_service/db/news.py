@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Any
 
 from data_sync_service.db import get_connection
@@ -82,9 +83,9 @@ def fetch_sources(enabled_only: bool = True) -> list[dict[str, Any]]:
 
 def create_source(*, source_id: str, name: str, url: str, enabled: bool = True) -> dict[str, Any]:
     ensure_tables()
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(UTC).isoformat()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -175,9 +176,9 @@ def fetch_items(
         conditions.append("is_read = %s")
         params.append(is_read)
     if hours is not None:
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
         conditions.append("fetched_at >= %s")
         params.append(cutoff)
 
@@ -285,9 +286,9 @@ def update_source_last_fetch(source_id: str, fetched_at: str) -> None:
 
 def delete_old_items(hours: int = 72) -> int:
     ensure_tables()
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(f"DELETE FROM {ITEMS_TABLE} WHERE fetched_at < %s", (cutoff,))

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from data_sync_service.db import check_db, get_connection  # type: ignore[import-not-found]
-from data_sync_service.db.schema_baseline import BASELINE_REVISION, baseline_ddl_statements
+from data_sync_service.db.schema_baseline import baseline_ddl_statements
 
 HEAD_REVISION = "0009_drop_unused_daily_indexes"
 
@@ -49,8 +49,9 @@ def test_baseline_ddl_includes_brin_daily_indexes() -> None:
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
 def test_brin_daily_indexes_exist_and_btree_gone() -> None:
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     service_root = Path(__file__).resolve().parents[1]
     cfg = Config(str(service_root / "alembic.ini"))
@@ -82,8 +83,9 @@ def test_brin_daily_indexes_exist_and_btree_gone() -> None:
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
 def test_alembic_baseline_revision_applied() -> None:
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     service_root = Path(__file__).resolve().parents[1]
     cfg = Config(str(service_root / "alembic.ini"))
@@ -130,8 +132,9 @@ def test_alembic_baseline_core_tables_exist() -> None:
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
 def test_alembic_upgrade_head_is_idempotent() -> None:
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     service_root = Path(__file__).resolve().parents[1]
     cfg = Config(str(service_root / "alembic.ini"))

@@ -1,4 +1,3 @@
-import pytest
 from data_sync_service.service.market_quotes import (
     symbol_to_ts_code,
     ts_code_to_symbol,

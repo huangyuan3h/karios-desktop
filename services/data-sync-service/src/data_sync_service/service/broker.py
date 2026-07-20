@@ -8,8 +8,9 @@ import re
 import urllib.error
 import urllib.request
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import Any, Iterable
+from typing import Any
 
 from data_sync_service.config import get_settings
 from data_sync_service.db.broker import (

@@ -1,15 +1,17 @@
-import pytest
 import math
-from datetime import datetime, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
+
+import pytest
+
 from data_sync_service.service.market_regime import (
     _ema,
-    _macd_histogram,
-    _is_shanghai_trading_time_at,
     _is_shanghai_sync_window_at,
-    _trade_date_from_trade_time,
-    _safe_float,
+    _is_shanghai_trading_time_at,
+    _macd_histogram,
     _realtime_pct_or_price,
+    _safe_float,
+    _trade_date_from_trade_time,
 )
 
 

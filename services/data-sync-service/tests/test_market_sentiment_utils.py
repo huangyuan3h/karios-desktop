@@ -1,15 +1,17 @@
-import pytest
 import math
+from datetime import date
+
+import pytest
+
 from data_sync_service.service.market_sentiment import (
-    now_iso,
-    _parse_money_to_cny,
     _finite_float,
-    _try_float,
+    _limit_pct_for,
+    _parse_money_to_cny,
     _realtime_pct_chg,
     _safe_trade_date,
-    _limit_pct_for,
+    _try_float,
+    now_iso,
 )
-from datetime import date
 
 
 def test_now_iso_format():

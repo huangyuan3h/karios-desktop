@@ -1,4 +1,3 @@
-import pytest
 from data_sync_service.service.dashboard import (
     _daily_rankings_by_date_from_items,
     _now_iso,

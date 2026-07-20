@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient  # type: ignore[import-not-found]
 
+from data_sync_service.db import tv as tvdb  # type: ignore[import-not-found]
 from data_sync_service.main import app  # type: ignore[import-not-found]
 from data_sync_service.service import dashboard as dashboard_svc  # type: ignore[import-not-found]
-from data_sync_service.db import tv as tvdb  # type: ignore[import-not-found]
 
 
 def _enabled_screeners(*ids: str) -> dict:

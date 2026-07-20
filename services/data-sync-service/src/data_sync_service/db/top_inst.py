@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from data_sync_service.db import get_connection
@@ -68,7 +68,7 @@ def _date_str(val: object) -> str | None:
 
 
 def _now_iso() -> str:
-    return datetime.now(tz=timezone.utc).isoformat()
+    return datetime.now(tz=UTC).isoformat()
 
 
 def upsert_daily_rows(rows: list[dict[str, Any]]) -> int:
@@ -210,7 +210,7 @@ def fetch_summaries_for_codes(
     out: dict[str, dict[str, Any]] = {}
     for row in rows:
         obj: dict[str, Any] = {}
-        for col, val in zip(columns, row):
+        for col, val in zip(columns, row, strict=False):
             if col == "trade_date" and hasattr(val, "strftime"):
                 obj[col] = val.strftime("%Y-%m-%d")
             elif col in ("lhasa_dominant", "on_board"):
@@ -260,7 +260,7 @@ def fetch_daily_seats_batch(keys: list[tuple[str, str]]) -> dict[tuple[str, str]
     out: dict[tuple[str, str], list[dict[str, Any]]] = {key: [] for key in normalized}
     for row in rows:
         obj: dict[str, Any] = {}
-        for col, val in zip(columns, row):
+        for col, val in zip(columns, row, strict=False):
             if col == "trade_date" and hasattr(val, "strftime"):
                 obj[col] = val.strftime("%Y-%m-%d")
             elif col not in ("ts_code", "exalter", "side", "reason") and val is not None:

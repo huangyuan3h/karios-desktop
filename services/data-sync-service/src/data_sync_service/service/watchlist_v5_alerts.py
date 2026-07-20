@@ -100,15 +100,15 @@ def _compute_v5_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         closes: list[float] = []
         highs: list[float] = []
         lows: list[float] = []
-        for d, open_s, high_s, low_s, close_s, _vol_s in bars:
+        for d, _open_s, high_s, low_s, close_s, _vol_s in bars:
             c = _safe_float(close_s)
             h = _safe_float(high_s)
-            l = _safe_float(low_s)
+            low = _safe_float(low_s)
             if c is None:
                 continue
             closes.append(c)
             highs.append(h if h is not None else c)
-            lows.append(l if l is not None else c)
+            lows.append(low if low is not None else c)
             dates.append(str(d))
 
         if len(closes) < 30:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
@@ -16,7 +16,7 @@ FIELDS = ["exchange", "cal_date", "is_open", "pretrade_date"]
 
 
 def _today_yyyymmdd() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d")
+    return datetime.now(UTC).strftime("%Y%m%d")
 
 
 def sync_trade_calendar(
@@ -33,7 +33,7 @@ def sync_trade_calendar(
 
     if not start_date:
         # default: 1 year back
-        start_date = (datetime.now(timezone.utc).date() - timedelta(days=365)).strftime("%Y%m%d")
+        start_date = (datetime.now(UTC).date() - timedelta(days=365)).strftime("%Y%m%d")
     if not end_date:
         end_date = _today_yyyymmdd()
 

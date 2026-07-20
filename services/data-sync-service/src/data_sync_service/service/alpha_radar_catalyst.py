@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from data_sync_service.db.alpha_radar import fetch_trends_for_catalyst
@@ -42,8 +42,8 @@ def _parse_iso_dt(value: str | None) -> datetime | None:
     except ValueError:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def event_at_for_trend(trend: dict[str, Any]) -> datetime | None:
@@ -54,7 +54,7 @@ def event_at_for_trend(trend: dict[str, Any]) -> datetime | None:
 
 
 def age_days(event_at: datetime, now: datetime | None = None) -> float:
-    ref = now or datetime.now(timezone.utc)
+    ref = now or datetime.now(UTC)
     delta = ref - event_at
     return max(0.0, delta.total_seconds() / 86400.0)
 
@@ -121,7 +121,7 @@ def aggregate_catalyst_stocks(
     *,
     now: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    ref = now or datetime.now(timezone.utc)
+    ref = now or datetime.now(UTC)
     by_symbol: dict[str, dict[str, Any]] = {}
 
     for trend in trends:

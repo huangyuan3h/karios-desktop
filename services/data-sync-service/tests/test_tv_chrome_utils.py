@@ -1,8 +1,8 @@
-import pytest
 from pathlib import Path
+
 from data_sync_service.service.tv_chrome import (
-    _now_iso,
     _home_path,
+    _now_iso,
     _pid_is_running,
     _tcp_is_listening,
 )

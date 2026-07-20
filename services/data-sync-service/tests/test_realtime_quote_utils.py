@@ -1,5 +1,5 @@
-import pytest
 import pandas as pd
+
 from data_sync_service.service.realtime_quote import (
     _as_str,
     _get,

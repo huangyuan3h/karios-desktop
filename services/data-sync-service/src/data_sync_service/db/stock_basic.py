@@ -121,7 +121,7 @@ def fetch_all() -> list[dict]:
     out = []
     for row in rows:
         obj = {}
-        for col, val in zip(columns, row):
+        for col, val in zip(columns, row, strict=False):
             if hasattr(val, "strftime"):
                 obj[col] = val.strftime("%Y-%m-%d")
             else:

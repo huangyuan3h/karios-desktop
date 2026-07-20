@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-from data_sync_service.db import get_connection
 from psycopg.types.json import Json
+
+from data_sync_service.db import get_connection
 
 RUN_TABLE = "backtest_run"
 TRADE_TABLE = "backtest_trade"
@@ -53,7 +54,7 @@ def ensure_tables() -> None:
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def insert_run(
@@ -181,7 +182,7 @@ def fetch_run(run_id: str) -> dict[str, Any] | None:
                 return None
             cols = [d.name for d in cur.description]
     out: dict[str, Any] = {}
-    for col, val in zip(cols, row):
+    for col, val in zip(cols, row, strict=False):
         if hasattr(val, "strftime"):
             out[col] = val.strftime("%Y-%m-%d %H:%M:%S")
         else:
@@ -207,7 +208,7 @@ def fetch_trades(run_id: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in rows:
         obj: dict[str, Any] = {}
-        for col, val in zip(cols, row):
+        for col, val in zip(cols, row, strict=False):
             if hasattr(val, "strftime"):
                 obj[col] = val.strftime("%Y-%m-%d")
             elif hasattr(val, "__float__") and col not in ("ts_code", "action", "reason"):
@@ -241,7 +242,7 @@ def fetch_runs(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in rows:
         obj: dict[str, Any] = {}
-        for col, val in zip(cols, row):
+        for col, val in zip(cols, row, strict=False):
             if hasattr(val, "strftime"):
                 obj[col] = val.strftime("%Y-%m-%d %H:%M:%S")
             else:

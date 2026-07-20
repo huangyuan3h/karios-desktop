@@ -1,8 +1,8 @@
-import pytest
 from datetime import date
+
 from data_sync_service.api.simtrade_routes import (
-    _parse_date,
     _numeric,
+    _parse_date,
 )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from data_sync_service.db.alpha_radar import (
+    delete_trend_by_id,
     ensure_tables,
     fetch_documents,
     fetch_sources,
@@ -12,20 +13,22 @@ from data_sync_service.db.alpha_radar import (
     fetch_trends,
     get_meta,
     update_trend_risk_status,
-    delete_trend_by_id,
 )
+from data_sync_service.service.alpha_radar_catalyst import list_catalyst_stocks
 from data_sync_service.service.alpha_radar_ingest import add_default_sources, fetch_all_sources
-from data_sync_service.service.alpha_radar_process import process_document, process_pending_documents
+from data_sync_service.service.alpha_radar_mapping import remap_trend_by_id
 from data_sync_service.service.alpha_radar_pipeline import (
     pipeline_status,
     run_alpha_radar_ingest,
     run_alpha_radar_pipeline,
     run_alpha_radar_process,
 )
+from data_sync_service.service.alpha_radar_process import (
+    process_document,
+    process_pending_documents,
+)
 from data_sync_service.service.alpha_radar_risk import build_mainline_score_map, compute_risk_status
 from data_sync_service.service.mainline import get_cn_industry_mainline
-from data_sync_service.service.alpha_radar_mapping import remap_trend_by_id
-from data_sync_service.service.alpha_radar_catalyst import list_catalyst_stocks
 
 router = APIRouter(prefix="/api/alpha-radar", tags=["alpha-radar"])
 

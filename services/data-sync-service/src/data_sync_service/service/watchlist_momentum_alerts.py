@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
-
 from datetime import datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
@@ -157,16 +156,16 @@ def _compute_rows(items: list[dict[str, Any]], realtime: bool) -> list[dict[str,
         highs: list[float] = []
         lows: list[float] = []
         vols: list[float] = []
-        for d, open_s, high_s, low_s, close_s, vol_s in bars:
+        for d, _open_s, high_s, low_s, close_s, vol_s in bars:
             c = _safe_float(close_s)
             h = _safe_float(high_s)
-            l = _safe_float(low_s)
+            low = _safe_float(low_s)
             v = _safe_float(vol_s)
             if c is None:
                 continue
             closes.append(c)
             highs.append(h if h is not None else c)
-            lows.append(l if l is not None else c)
+            lows.append(low if low is not None else c)
             vols.append(v if v is not None else 0.0)
             dates.append(str(d))
 

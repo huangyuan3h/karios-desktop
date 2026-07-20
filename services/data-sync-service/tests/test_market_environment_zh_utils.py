@@ -1,9 +1,8 @@
-import pytest
 from data_sync_service.service.market_environment_zh import (
     _finite_float,
     _fmt_pct_zh,
-    _signal_to_zh,
     _format_macro_close,
+    _signal_to_zh,
 )
 
 
@@ -15,7 +14,6 @@ def test_finite_float_valid():
 def test_finite_float_invalid():
     assert _finite_float(None) is None
     assert _finite_float("invalid") is None
-    import math
     assert _finite_float(float("nan")) is None
     assert _finite_float(float("inf")) is None
 

@@ -5,16 +5,16 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from data_sync_service.db.news import (
-    ensure_tables,
-    fetch_sources,
-    fetch_items,
     create_source,
-    update_source,
     delete_source,
-    mark_item_read,
+    ensure_tables,
+    fetch_items,
+    fetch_sources,
     mark_item_important,
+    mark_item_read,
+    update_source,
 )
-from data_sync_service.service.news import fetch_all_sources, add_default_sources
+from data_sync_service.service.news import add_default_sources, fetch_all_sources
 
 router = APIRouter(prefix="/api/news", tags=["news"])
 

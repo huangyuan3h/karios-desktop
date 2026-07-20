@@ -1,11 +1,11 @@
-import pytest
 import math
+
 from data_sync_service.service.trendok import (
-    _ema,
-    _rsi,
-    _macd,
     _atr14,
+    _ema,
+    _macd,
     _parse_float_safe,
+    _rsi,
 )
 
 

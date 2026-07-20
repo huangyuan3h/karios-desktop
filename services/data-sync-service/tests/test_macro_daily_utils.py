@@ -1,11 +1,12 @@
-import pytest
-import pandas as pd
 from datetime import date
+
+import pandas as pd
+
 from data_sync_service.service.macro_daily import (
-    _today_yyyymmdd,
     _date_to_yyyymmdd,
-    _normalize_us_daily_df,
     _normalize_fx_daily_df,
+    _normalize_us_daily_df,
+    _today_yyyymmdd,
 )
 
 

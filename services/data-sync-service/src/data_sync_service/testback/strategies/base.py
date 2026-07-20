@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 
 @dataclass
@@ -22,16 +21,16 @@ class Bar:
 class Order:
     ts_code: str
     action: str
-    qty: Optional[float] = None
-    target_pct: Optional[float] = None
-    reason: Optional[str] = None
+    qty: float | None = None
+    target_pct: float | None = None
+    reason: str | None = None
 
 
 @dataclass
 class PortfolioSnapshot:
     cash: float
     equity: float
-    positions: Dict[str, float]
+    positions: dict[str, float]
 
 
 @dataclass
@@ -54,9 +53,9 @@ class BaseStrategy(ABC):
     def on_bar(
         self,
         trade_date: str,
-        bars: Dict[str, Bar],
+        bars: dict[str, Bar],
         portfolio: PortfolioSnapshot,
-    ) -> List[Order]:
+    ) -> list[Order]:
         raise NotImplementedError
 
     @classmethod

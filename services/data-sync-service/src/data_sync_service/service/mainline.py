@@ -8,26 +8,40 @@ from data_sync_service.db import get_connection
 from data_sync_service.db.daily import ensure_table as ensure_daily
 from data_sync_service.db.industry_fund_flow import (
     get_dates_upto as flow_dates_upto,
+)
+from data_sync_service.db.industry_fund_flow import (
     get_latest_date as flow_latest_date,
+)
+from data_sync_service.db.industry_fund_flow import (
     get_rows_for_dates as flow_rows_for_dates,
 )
-from data_sync_service.service.industry_fund_flow_read import (
-    positive_days_from_rows,
-    sum_by_industry_from_rows,
+from data_sync_service.db.industry_mainline_metrics import (
+    list_rows_by_date as metrics_rows_by_date,
 )
 from data_sync_service.db.industry_mainline_metrics import (
-    get_dates_upto as metrics_dates_upto,
-    list_rows_by_date as metrics_rows_by_date,
     list_rows_for_dates as metrics_rows_for_dates,
+)
+from data_sync_service.db.industry_mainline_metrics import (
     upsert_daily_rows as metrics_upsert_rows,
 )
 from data_sync_service.db.industry_mainline_scores import (
     list_rows_by_date as scores_rows_by_date,
+)
+from data_sync_service.db.industry_mainline_scores import (
     list_rows_for_dates as scores_rows_for_dates,
+)
+from data_sync_service.db.industry_mainline_scores import (
     upsert_daily_rows as scores_upsert_rows,
 )
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
+from data_sync_service.service.industry_fund_flow_read import (
+    positive_days_from_rows,
+    sum_by_industry_from_rows,
+)
+from data_sync_service.service.trade_calendar_utils import (
+    trade_dates_upto as shared_trade_dates_upto,
+)
 
 SURGE_PCT = 5.0
 LIMIT_UP_PCT = 9.8
@@ -98,9 +112,6 @@ def _prev_open_date(exchange: str, d0: date) -> date | None:
             cur.execute("SELECT MAX(trade_date) FROM daily WHERE trade_date < %s", (d0.isoformat(),))
             row = cur.fetchone()
     return row[0] if row and row[0] else None
-
-
-from data_sync_service.service.trade_calendar_utils import trade_dates_upto as shared_trade_dates_upto
 
 
 def _trade_dates_upto(d0: str, days: int) -> list[str]:

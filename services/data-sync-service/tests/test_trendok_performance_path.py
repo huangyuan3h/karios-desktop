@@ -10,6 +10,7 @@ from data_sync_service.service.trendok import (  # type: ignore[import-not-found
     compute_trendok_for_symbols,
 )
 
+
 def _trend_bars(days: int = 80, start: float = 10.0) -> list[tuple[str, str, str, str, str, str]]:
     base = date(2026, 1, 1)
     rows = []

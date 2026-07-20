@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -151,7 +151,7 @@ def shanghai_today() -> str:
 def shanghai_day_start_iso(day: str | None = None) -> str:
     day_str = day or shanghai_today()
     dt = datetime.strptime(day_str, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ)
-    return dt.astimezone(timezone.utc).isoformat()
+    return dt.astimezone(UTC).isoformat()
 
 
 def get_meta(key: str) -> str | None:
@@ -165,7 +165,7 @@ def get_meta(key: str) -> str | None:
 
 def set_meta(key: str, value: str) -> None:
     ensure_tables()
-    updated_at = datetime.now(timezone.utc).isoformat()
+    updated_at = datetime.now(UTC).isoformat()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -246,7 +246,7 @@ def create_source(
     enabled: bool = True,
 ) -> dict[str, Any]:
     ensure_tables()
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(UTC).isoformat()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -380,7 +380,7 @@ def fetch_documents(
     if hours is not None:
         from datetime import timedelta
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
         conditions.append("fetched_at >= %s")
         params.append(cutoff)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
@@ -471,7 +471,7 @@ def delete_trends_older_than_days(days: int) -> int:
     """Delete trends whose source document event time is older than days (optional ops prune)."""
     ensure_tables()
     age_days = max(1, int(days))
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=age_days)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=age_days)).isoformat()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -526,7 +526,7 @@ def delete_trends_for_day(day: str) -> int:
     day_start = shanghai_day_start_iso(day)
     day_end = (
         datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ) + timedelta(days=1)
-    ).astimezone(timezone.utc).isoformat()
+    ).astimezone(UTC).isoformat()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -577,7 +577,7 @@ def insert_trend(
     trend_json: dict[str, Any],
 ) -> dict[str, Any]:
     ensure_tables()
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(UTC).isoformat()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -707,12 +707,12 @@ def fetch_trends(
         day_end = (
             datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ)
             + timedelta(days=1)
-        ).astimezone(timezone.utc).isoformat()
+        ).astimezone(UTC).isoformat()
         conditions.append("t.created_at >= %s AND t.created_at < %s")
         params.extend([day_start, day_end])
     if max_age_days is not None:
         days = max(1, int(max_age_days))
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
         conditions.append("COALESCE(d.published_at, d.fetched_at) >= %s")
         params.append(cutoff)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
@@ -743,7 +743,7 @@ def fetch_trends_for_catalyst(*, max_age_days: int = 30) -> list[dict[str, Any]]
     """Trends with mapped CN symbols within the catalyst recency window."""
     ensure_tables()
     days = max(1, int(max_age_days))
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(

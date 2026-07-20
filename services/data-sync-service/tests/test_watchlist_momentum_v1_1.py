@@ -1,7 +1,13 @@
-from data_sync_service.testback.strategies import watchlist_momentum_v1_1 as v6_3  # type: ignore[import-not-found]
-from data_sync_service.testback.strategies.base import Bar, PortfolioSnapshot  # type: ignore[import-not-found]
 from data_sync_service.testback.strategies.watchlist_momentum_v1_1 import (  # type: ignore[import-not-found]
     WatchlistTrendV6_3Strategy,
+)
+
+from data_sync_service.testback.strategies import (
+    watchlist_momentum_v1_1 as v6_3,  # type: ignore[import-not-found]
+)
+from data_sync_service.testback.strategies.base import (  # type: ignore[import-not-found]
+    Bar,
+    PortfolioSnapshot,
 )
 
 

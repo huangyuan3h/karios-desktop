@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from data_sync_service.db import get_connection
@@ -30,7 +30,7 @@ def ensure_table() -> None:
 
 
 def _utc_today() -> date:
-    return datetime.now(timezone.utc).date()
+    return datetime.now(UTC).date()
 
 
 def get_today_run(job_type: str) -> dict[str, Any] | None:
@@ -53,7 +53,7 @@ def get_today_run(job_type: str) -> dict[str, Any] | None:
     if not row:
         return None
     cols = ("id", "job_type", "sync_at", "success", "last_ts_code", "error_message")
-    rec = dict(zip(cols, row))
+    rec = dict(zip(cols, row, strict=False))
     if rec.get("sync_at") and hasattr(rec["sync_at"], "isoformat"):
         rec["sync_at"] = rec["sync_at"].isoformat()
     return rec
@@ -97,7 +97,7 @@ def get_last_success(job_type: str) -> dict[str, Any] | None:
     if not row:
         return None
     cols = ("id", "job_type", "sync_at", "success", "last_ts_code", "error_message")
-    rec = dict(zip(cols, row))
+    rec = dict(zip(cols, row, strict=False))
     if rec.get("sync_at") and hasattr(rec["sync_at"], "isoformat"):
         rec["sync_at"] = rec["sync_at"].isoformat()
     return rec

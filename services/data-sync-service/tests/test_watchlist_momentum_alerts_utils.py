@@ -1,9 +1,10 @@
 import pytest
+
 from data_sync_service.service.watchlist_momentum_alerts import (
-    _safe_float,
-    _regime_target,
     _next_tranche,
     _quote_trade_date,
+    _regime_target,
+    _safe_float,
 )
 
 

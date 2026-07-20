@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from data_sync_service.db.daily import ensure_table as ensure_daily_table
 from data_sync_service.db import get_connection
+from data_sync_service.db.daily import ensure_table as ensure_daily_table
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 
