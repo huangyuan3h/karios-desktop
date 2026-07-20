@@ -1,8 +1,5 @@
-import pytest
-
-pytestmark = pytest.mark.requires_postgres
-
 import pandas as pd  # type: ignore[import-not-found, import-untyped]
+import pytest
 from fastapi.testclient import TestClient  # type: ignore[import-not-found]
 
 from data_sync_service.main import app  # type: ignore[import-not-found]
@@ -10,6 +7,7 @@ from data_sync_service.service.hk_basic import (
     map_hk_basic_to_stock_basic_df,  # type: ignore[import-not-found]
 )
 
+pytestmark = pytest.mark.requires_postgres
 
 def test_map_hk_basic_to_stock_basic_df() -> None:
     hk_df = pd.DataFrame(

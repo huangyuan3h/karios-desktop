@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.requires_postgres
-
 import uuid
+
+import pytest
 
 from data_sync_service.db.alpha_radar import (
     create_source,
@@ -15,6 +13,7 @@ from data_sync_service.db.alpha_radar import (
     upsert_document,
 )
 
+pytestmark = pytest.mark.requires_postgres
 
 def _doc_id() -> str:
     return uuid.uuid4().hex[:16]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from unittest.mock import patch
 
 from data_sync_service.service.alpha_radar_symbol_resolve import (

@@ -1,11 +1,9 @@
 import pytest
-
-pytestmark = pytest.mark.requires_postgres
-
 from fastapi.testclient import TestClient  # type: ignore[import-not-found]
 
 from data_sync_service.main import app  # type: ignore[import-not-found]
 
+pytestmark = pytest.mark.requires_postgres
 
 def test_sync_hk_daily_no_stock_list(monkeypatch) -> None:
     import data_sync_service.service.hk_daily as hk_daily  # type: ignore[import-not-found]

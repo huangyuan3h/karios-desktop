@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.requires_postgres
-
 from unittest.mock import patch
+
+import pytest
 
 from data_sync_service.service.industry_fund_flow import (
     get_cn_industry_fund_flow,
@@ -18,6 +16,8 @@ from data_sync_service.service.industry_fund_flow_read import (
     top_by_date_from_rows,
 )
 from data_sync_service.service.mainline import _flow_context
+
+pytestmark = pytest.mark.requires_postgres
 
 FIXTURE_ROWS = [
     {"date": "2024-01-01", "industry_code": "c1", "industry_name": "电子", "net_inflow": 10.0},

@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import pytest
-
-pytestmark = pytest.mark.requires_postgres
-
 from fastapi.testclient import TestClient  # type: ignore[import-not-found]
 
 from data_sync_service.main import app  # type: ignore[import-not-found]
 
+pytestmark = pytest.mark.requires_postgres
 
 def _clear_registry(client: TestClient) -> None:
     client.post("/watchlist/registry", json={"items": []})

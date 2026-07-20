@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from data_sync_service.service import watchlist_automation as wa  # type: ignore[import-not-found]
 
 

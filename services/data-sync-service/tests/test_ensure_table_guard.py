@@ -1,12 +1,11 @@
-import pytest
-
-pytestmark = pytest.mark.requires_postgres
-
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 import data_sync_service.db.daily as daily_mod
 from data_sync_service.db._ensure_guard import reset_ensured_for_tests
 
+pytestmark = pytest.mark.requires_postgres
 
 def test_fetch_last_ohlcv_batch_calls_ensure_table_once_per_process() -> None:
     reset_ensured_for_tests()

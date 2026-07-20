@@ -1,20 +1,18 @@
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.requires_postgres
-
 import json
 import threading
 import time
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient  # type: ignore[import-not-found]
 
 from data_sync_service.db import tv as tvdb  # type: ignore[import-not-found]
 from data_sync_service.main import app  # type: ignore[import-not-found]
 from data_sync_service.service import dashboard as dashboard_svc  # type: ignore[import-not-found]
 
+pytestmark = pytest.mark.requires_postgres
 
 def _enabled_screeners(*ids: str) -> dict:
     return {

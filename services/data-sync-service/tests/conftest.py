@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from db_helpers import postgres_available
 
 

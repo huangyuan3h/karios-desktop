@@ -1,11 +1,9 @@
 import pytest
-
-pytestmark = pytest.mark.requires_postgres
-
 from fastapi.testclient import TestClient  # type: ignore[import-not-found]
 
 from data_sync_service.main import app  # type: ignore[import-not-found]
 
+pytestmark = pytest.mark.requires_postgres
 
 def test_trade_review_crud_endpoints(monkeypatch) -> None:
     import data_sync_service.api.trade_review_routes as routes  # type: ignore[import-not-found]

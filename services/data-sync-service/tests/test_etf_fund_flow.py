@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.requires_postgres
-
 from datetime import date
 from typing import Any
 
+import pytest
 
 from data_sync_service.service import etf_fund_flow as svc
 from data_sync_service.service import etf_fund_flow_em as em
 from data_sync_service.service.etf_fund_flow_em import EM_ETF_FLOW_SOURCE
 
+pytestmark = pytest.mark.requires_postgres
 
 def _flow_for_symbol(symbol: str, *, main_net: float = 12_000_000.0) -> dict[str, Any]:
     return {

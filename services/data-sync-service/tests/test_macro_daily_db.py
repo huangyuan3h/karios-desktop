@@ -1,10 +1,7 @@
-import pytest
-
-pytestmark = pytest.mark.requires_postgres
-
 from datetime import date
 
 import pandas as pd
+import pytest
 
 from data_sync_service.db.macro_daily import (
     _date_str,
@@ -12,6 +9,7 @@ from data_sync_service.db.macro_daily import (
     _scalar,
 )
 
+pytestmark = pytest.mark.requires_postgres
 
 def test_numeric_none():
     assert _numeric(None) is None

@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.requires_postgres
-
 import threading
+
+import pytest
 
 from data_sync_service.db.alpha_radar import _trend_row, ensure_tables
 from data_sync_service.service.alpha_radar_process import _resolve_trend_storage_fields
 
+pytestmark = pytest.mark.requires_postgres
 
 def test_resolve_trend_storage_fields_v4():
     fields = _resolve_trend_storage_fields(
