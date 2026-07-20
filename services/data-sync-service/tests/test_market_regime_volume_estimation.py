@@ -227,6 +227,10 @@ class TestSignalWithEstimatedVolumeOffline:
         """Yellow signal when DB volume < MA5_Vol * 1.0 (offline mode)."""
         import data_sync_service.service.market_regime as mr
 
+        mr.clear_index_signals_cache()
+        monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: False)
+        monkeypatch.setattr(mr, "HK_INDEX_SIGNALS", [])
+
         series = self._make_series_uptrend(base_vol=1e9)
         last_date = series[-1][0]
 
@@ -250,6 +254,10 @@ class TestSignalWithEstimatedVolumeOffline:
         """Green signal when DB volume > MA5_Vol * 1.0 (offline mode)."""
         import data_sync_service.service.market_regime as mr
 
+        mr.clear_index_signals_cache()
+        monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: False)
+        monkeypatch.setattr(mr, "HK_INDEX_SIGNALS", [])
+
         series = self._make_series_uptrend(base_vol=1e9)
         last_date = series[-1][0]
 
@@ -270,6 +278,10 @@ class TestSignalWithEstimatedVolumeOffline:
     def test_deep_green_when_db_vol_above_1_2x(self, monkeypatch) -> None:
         """Deep green when liquidity ok and breadth ok (offline mode)."""
         import data_sync_service.service.market_regime as mr
+
+        mr.clear_index_signals_cache()
+        monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: False)
+        monkeypatch.setattr(mr, "HK_INDEX_SIGNALS", [])
 
         series = self._make_series_uptrend(base_vol=1e9)
         series = [
@@ -317,6 +329,10 @@ class TestReturnValueFields:
     def test_vol_ratio_in_output_offline(self, monkeypatch) -> None:
         import data_sync_service.service.market_regime as mr
 
+        mr.clear_index_signals_cache()
+        monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: False)
+        monkeypatch.setattr(mr, "HK_INDEX_SIGNALS", [])
+
         series = self._make_series_uptrend(base_vol=1e9)
         last_date = series[-1][0]
 
@@ -338,6 +354,10 @@ class TestReturnValueFields:
 
     def test_non_trading_hours_no_estimated_vol(self, monkeypatch) -> None:
         import data_sync_service.service.market_regime as mr
+
+        mr.clear_index_signals_cache()
+        monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: False)
+        monkeypatch.setattr(mr, "HK_INDEX_SIGNALS", [])
 
         series = self._make_series_uptrend(base_vol=1e9)
         last_date = series[-1][0]

@@ -65,6 +65,10 @@ def _patch_dashboard_summary_deps(monkeypatch, *, as_of: str, today: str, in_syn
     import data_sync_service.service.dashboard as dashboard  # type: ignore[import-not-found]
 
     monkeypatch.setattr(dashboard, "get_latest_sentiment_date", lambda: as_of)
+    monkeypatch.setattr(dashboard, "get_latest_industry_date", lambda: as_of)
+    monkeypatch.setattr(dashboard, "shanghai_today_iso", lambda: today)
+    monkeypatch.setattr(dashboard, "resolve_effective_as_of", lambda d: d)
+    monkeypatch.setattr(dashboard, "compute_market_status", lambda: {"isPreMarket": False})
     monkeypatch.setattr(dashboard, "_today_iso_date", lambda: today)
     monkeypatch.setattr(dashboard, "_is_shanghai_sync_window", lambda: in_sync)
     monkeypatch.setattr(dashboard, "_build_industry_bundle", lambda **_: {"dates": [], "topByDate": {}, "flow5d": {}})
@@ -76,7 +80,19 @@ def _patch_dashboard_summary_deps(monkeypatch, *, as_of: str, today: str, in_syn
         lambda **_: {"cnIndexSignals": [], "macro": []},
     )
     monkeypatch.setattr(dashboard, "format_market_environment_zh", lambda _: "")
-
+    monkeypatch.setattr(
+        dashboard,
+        "_build_market_sentiment_bundle",
+        lambda **kwargs: {
+            "asOfDate": as_of,
+            "days": 5,
+            "items": [],
+            "indexSignals": kwargs.get("index_signals") or [],
+            "etfFundFlow": {},
+            "srvIndex": None,
+            "executionGate": {},
+        },
+    )
 
 def test_dashboard_summary_calls_get_index_signals_once_in_realtime_window(monkeypatch) -> None:
     import data_sync_service.service.dashboard as dashboard  # type: ignore[import-not-found]

@@ -33,14 +33,11 @@ def test_avg_pct_chg_from_realtime_fallback(monkeypatch) -> None:
 
     monkeypatch.setattr(
         ms,
-        "fetch_realtime_quotes",
-        lambda codes: {
-            "ok": True,
-            "items": [
-                {"ts_code": "000001.SZ", "price": "10.10", "pre_close": "10.00"},
-                {"ts_code": "000002.SZ", "price": "9.80", "pre_close": "10.00"},
-            ],
-        },
+        "fetch_realtime_quotes_batched",
+        lambda codes: [
+            {"ts_code": "000001.SZ", "price": "10.10", "pre_close": "10.00"},
+            {"ts_code": "000002.SZ", "price": "9.80", "pre_close": "10.00"},
+        ],
     )
 
     avg, matched = ms._avg_pct_chg_from_realtime(["000001.SZ", "000002.SZ"])

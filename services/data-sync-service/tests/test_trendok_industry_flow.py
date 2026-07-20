@@ -492,18 +492,15 @@ def test_t1_sniper_triggers_on_orderly_pullback_after_surge() -> None:
             market_regime="Strong",
         )
 
-    # Should trigger T+1 sniper
-    assert res["checks"]["t1_sniper"] is True
+    # Should detect surge/strong conditions, but sniper must not override
+    # entry-vs-stop hard block (buyAction already avoid).
     assert res["checks"]["t1_surge"] is True
     assert res["checks"]["t1_strong"] is True
-    # Buy action should be B_pullback (sniper entry)
-    assert res["buyAction"] == "B_pullback"
-    assert res["buyMode"] == "B_momentum"
-    # Risk alert must be present
+    assert res["buyChecks"].get("blocked_entry_vs_stop") is True
+    assert res["buyAction"] == "avoid"
+    assert res["checks"]["t1_sniper"] is False
     alerts = [a for a in res["riskAlerts"] if a.get("code") == "t1_sniper"]
-    assert len(alerts) == 1
-    assert alerts[0]["severity"] == "warn"
-    assert "T+1" in alerts[0]["message"]
+    assert len(alerts) == 0
 
 
 def test_t1_sniper_no_trigger_when_pullback_too_large() -> None:

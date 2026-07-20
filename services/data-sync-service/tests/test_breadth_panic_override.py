@@ -46,8 +46,13 @@ def test_apply_breadth_panic_sentiment_items_updates_latest() -> None:
 def test_build_market_sentiment_bundle_applies_breadth_panic(monkeypatch) -> None:
     monkeypatch.setattr(
         dashboard,
-        "list_sentiment_days",
-        lambda **_: [
+        "trade_dates_upto",
+        lambda *a, **k: ["2026-05-29"],
+    )
+    monkeypatch.setattr(
+        dashboard,
+        "list_sentiment_days_for_dates",
+        lambda _dates: [
             {
                 "date": "2026-05-29",
                 "upCount": 1200,
@@ -66,6 +71,10 @@ def test_build_market_sentiment_bundle_applies_breadth_panic(monkeypatch) -> Non
             {"name": "创业板指", "signal": "green", "positionRange": "50%-60%", "rules": []},
         ],
     )
+    monkeypatch.setattr(dashboard, "build_etf_fund_flow_bundle", lambda **_: {})
+    monkeypatch.setattr(dashboard, "_industry_top_by_date", lambda **_: [])
+    monkeypatch.setattr(dashboard, "compute_srv_index", lambda **_: None)
+    monkeypatch.setattr(dashboard, "compute_execution_gate", lambda **_: {"mode": "DEFENSE"})
 
     out = dashboard._build_market_sentiment_bundle(as_of_date="2026-05-29", use_realtime_index=True)
     latest = out["items"][-1]

@@ -22,5 +22,6 @@ def test_sync_window_excludes_night() -> None:
     import data_sync_service.service.market_regime as mr  # type: ignore[import-not-found]
 
     tz = ZoneInfo("Asia/Shanghai")
-    night = datetime(2026, 2, 24, 20, 0, 0, tzinfo=tz)
+    # After-hours window ends at 20:00 inclusive; 20:01 is outside sync window.
+    night = datetime(2026, 2, 24, 20, 1, 0, tzinfo=tz)
     assert mr._is_shanghai_sync_window_at(night) is False

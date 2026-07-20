@@ -21,6 +21,17 @@ def _mock_liquidity_ok(**kwargs):
     }
 
 
+def _patch_offline_index_deps(monkeypatch, series) -> None:
+    mr.clear_index_signals_cache()
+    monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: False)
+    monkeypatch.setattr(
+        mr,
+        "fetch_last_closes_vol_batch",
+        lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
+    )
+    monkeypatch.setattr(mr, "HK_INDEX_SIGNALS", [])
+
+
 def _make_series_uptrend(days: int = 80, base: float = 100.0, drift: float = 0.8) -> list[tuple[str, float, float]]:
     """Create (date, close, vol) series with MA20 slope up and MA5>MA20."""
     out: list[tuple[str, float, float]] = []
@@ -50,11 +61,7 @@ def _make_series_dead_cross(days: int = 80, base: float = 100.0) -> list[tuple[s
 
 def test_green_when_ma20_up_ma5_above_and_vol_ratio(monkeypatch) -> None:
     series = _make_series_uptrend()
-    monkeypatch.setattr(
-        mr,
-        "fetch_last_closes_vol_batch",
-        lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
-    )
+    _patch_offline_index_deps(monkeypatch, series)
     monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.4, "total": 100, "above_count": 40})
     monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_not_ok)
 
@@ -66,11 +73,7 @@ def test_green_when_ma20_up_ma5_above_and_vol_ratio(monkeypatch) -> None:
 
 def test_yellow_when_vol_below_ma5(monkeypatch) -> None:
     series = _make_series_flat_volume(_make_series_uptrend())
-    monkeypatch.setattr(
-        mr,
-        "fetch_last_closes_vol_batch",
-        lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
-    )
+    _patch_offline_index_deps(monkeypatch, series)
     monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70})
     monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_not_ok)
 
@@ -82,11 +85,7 @@ def test_yellow_when_vol_below_ma5(monkeypatch) -> None:
 
 def test_red_when_dead_cross(monkeypatch) -> None:
     series = _make_series_dead_cross()
-    monkeypatch.setattr(
-        mr,
-        "fetch_last_closes_vol_batch",
-        lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
-    )
+    _patch_offline_index_deps(monkeypatch, series)
     monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.9, "total": 100, "above_count": 90})
     monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_not_ok)
 
@@ -98,11 +97,7 @@ def test_red_when_dead_cross(monkeypatch) -> None:
 
 def test_deep_green_requires_breadth_and_volume(monkeypatch) -> None:
     series = _make_series_uptrend()
-    monkeypatch.setattr(
-        mr,
-        "fetch_last_closes_vol_batch",
-        lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
-    )
+    _patch_offline_index_deps(monkeypatch, series)
 
     monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.55, "total": 100, "above_count": 55})
     monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_not_ok)
@@ -112,6 +107,7 @@ def test_deep_green_requires_breadth_and_volume(monkeypatch) -> None:
 
     monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70})
     monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_ok)
+    mr.clear_index_signals_cache()
     signals2 = mr.get_index_signals(as_of_date="2026-02-24")
     assert len(signals2) >= 1
     assert signals2[0]["signal"] == "deep_green"
@@ -137,11 +133,7 @@ def _make_series_macd_turning_up(days: int = 80, base: float = 100.0) -> list[tu
 
 def test_macd_hist_turning_up_overrides_red_to_yellow(monkeypatch) -> None:
     series = _make_series_macd_turning_up()
-    monkeypatch.setattr(
-        mr,
-        "fetch_last_closes_vol_batch",
-        lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
-    )
+    _patch_offline_index_deps(monkeypatch, series)
     monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.5, "total": 100, "above_count": 50})
     monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_not_ok)
 
@@ -163,11 +155,7 @@ def test_macd_hist_turning_up_forces_yellow_when_close_above_ma20(monkeypatch) -
             close = base + 40 * 0.5 - (i - 40) * 0.8
         vol = 1e9
         series.append((d, close, vol))
-    monkeypatch.setattr(
-        mr,
-        "fetch_last_closes_vol_batch",
-        lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
-    )
+    _patch_offline_index_deps(monkeypatch, series)
     monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.5, "total": 100, "above_count": 50})
     monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_not_ok)
 
