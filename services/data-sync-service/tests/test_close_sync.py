@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-pytestmark = pytest.mark.requires_postgres
-
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 

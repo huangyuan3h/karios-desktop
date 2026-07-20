@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.requires_postgres
 
 from unittest.mock import patch
 

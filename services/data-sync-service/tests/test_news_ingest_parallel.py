@@ -1,6 +1,3 @@
-import pytest
-
-pytestmark = pytest.mark.requires_postgres
 
 from unittest.mock import patch
 

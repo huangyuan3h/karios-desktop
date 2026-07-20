@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-pytestmark = pytest.mark.requires_postgres
-
 import time
 
 import pytest
