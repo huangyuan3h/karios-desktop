@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.requires_postgres
+
 from unittest.mock import patch
 
 import data_sync_service.service.news as news_mod

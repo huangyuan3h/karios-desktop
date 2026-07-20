@@ -8,6 +8,30 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: admin123
+          POSTGRES_DB: karios-desktop
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U admin -d karios-desktop"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://admin:admin123@localhost:5432/karios-desktop
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_USER: admin
+      DB_PASSWORD: admin123
+      DB_NAME: karios-desktop
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,6 +58,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Migrate database
+        working-directory: services/data-sync-service
+        run: PYTHONPATH=src uv run alembic upgrade head
+
       - name: Lint
         run: pnpm lint
 
@@ -45,5 +73,3 @@ jobs:
 
       - name: Build
         run: pnpm build
-
-

@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.requires_postgres
+
 import pandas as pd  # type: ignore[import-not-found, import-untyped]
 from fastapi.testclient import TestClient  # type: ignore[import-not-found]
 

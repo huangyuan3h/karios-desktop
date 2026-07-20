@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.requires_postgres
+
 from unittest.mock import patch
 
 from data_sync_service.service.industry_fund_flow import (

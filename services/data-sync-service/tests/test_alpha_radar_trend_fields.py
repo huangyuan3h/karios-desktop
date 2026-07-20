@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.requires_postgres
+
 import threading
 
 from data_sync_service.db.alpha_radar import _trend_row, ensure_tables

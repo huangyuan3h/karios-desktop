@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.requires_postgres
+
 from unittest.mock import MagicMock, patch
 
 import data_sync_service.db.daily as daily_mod

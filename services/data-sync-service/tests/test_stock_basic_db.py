@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.requires_postgres
+
 from datetime import date
 
 from data_sync_service.db.stock_basic import (

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.requires_postgres
+
 from unittest.mock import MagicMock, patch
 
 import pandas as pd

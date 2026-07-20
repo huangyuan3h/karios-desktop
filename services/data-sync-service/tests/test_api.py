@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient  # type: ignore[import-not-found]
 
 from data_sync_service.main import app  # type: ignore[import-not-found]
@@ -12,6 +13,7 @@ def test_healthz() -> None:
     assert "db" in payload
 
 
+@pytest.mark.requires_postgres
 def test_market_bars_compat_endpoint_shape() -> None:
     client = TestClient(app)
     resp = client.get("/market/stocks/CN:000001/bars?days=60")
@@ -21,6 +23,7 @@ def test_market_bars_compat_endpoint_shape() -> None:
     assert isinstance(payload["bars"], list)
 
 
+@pytest.mark.requires_postgres
 def test_market_bars_force_triggers_symbol_sync() -> None:
     from unittest.mock import patch
 
@@ -32,6 +35,7 @@ def test_market_bars_force_triggers_symbol_sync() -> None:
     mock_sync.assert_called_once_with("000001.SZ")
 
 
+@pytest.mark.requires_postgres
 def test_trendok_endpoint_shape() -> None:
     client = TestClient(app)
     resp = client.get("/market/stocks/trendok?symbols=CN:000001")
@@ -76,6 +80,7 @@ def test_trendok_endpoint_shape() -> None:
     assert isinstance(arr[0]["riskAlerts"], list)
 
 
+@pytest.mark.requires_postgres
 def test_tv_screeners_endpoint_shape() -> None:
     client = TestClient(app)
     resp = client.get("/integrations/tradingview/screeners")
@@ -105,6 +110,7 @@ def test_tv_chrome_status_endpoint_shape() -> None:
     }
 
 
+@pytest.mark.requires_postgres
 def test_broker_accounts_state_shape() -> None:
     client = TestClient(app)
     created = client.post(
@@ -133,6 +139,7 @@ def test_broker_accounts_state_shape() -> None:
     assert isinstance(state["trades"], list)
 
 
+@pytest.mark.requires_postgres
 def test_industry_fund_flow_endpoint_shape() -> None:
     client = TestClient(app)
     resp = client.get("/market/cn/industry-fund-flow?days=10&topN=5")
@@ -141,6 +148,7 @@ def test_industry_fund_flow_endpoint_shape() -> None:
     assert set(payload.keys()) >= {"asOfDate", "days", "topN", "dates", "top"}
 
 
+@pytest.mark.requires_postgres
 def test_market_sentiment_endpoint_shape() -> None:
     client = TestClient(app)
     resp = client.get("/market/cn/sentiment?days=5")
@@ -149,6 +157,7 @@ def test_market_sentiment_endpoint_shape() -> None:
     assert set(payload.keys()) >= {"asOfDate", "days", "items"}
 
 
+@pytest.mark.requires_postgres
 def test_dashboard_summary_endpoint_shape() -> None:
     client = TestClient(app)
     resp = client.get("/dashboard/summary")
@@ -213,6 +222,7 @@ def test_tv_capture_job_get_endpoint(monkeypatch) -> None:
     assert payload["rowCount"] == 12
 
 
+@pytest.mark.requires_postgres
 def test_dashboard_sync_endpoint_shape() -> None:
     client = TestClient(app)
     # Avoid running TradingView sync in tests (it may require Chrome profile/login).
@@ -291,6 +301,7 @@ def test_market_fund_flow_cn_only(monkeypatch) -> None:
     assert resp.status_code == 400
 
 
+@pytest.mark.requires_postgres
 def test_global_stock_search_endpoint_shape() -> None:
     client = TestClient(app)
     resp = client.get("/search/stocks?limit=8&q=000001")
@@ -300,6 +311,7 @@ def test_global_stock_search_endpoint_shape() -> None:
     assert isinstance(payload["items"], list)
 
 
+@pytest.mark.requires_postgres
 def test_system_prompt_endpoints_shape_and_roundtrip() -> None:
     client = TestClient(app)
 
@@ -344,6 +356,7 @@ def test_system_prompt_endpoints_shape_and_roundtrip() -> None:
             client.delete(f"/system-prompts/{created_id}")
 
 
+@pytest.mark.requires_postgres
 def test_alpha_radar_endpoints_shape() -> None:
     client = TestClient(app)
     init = client.post("/api/alpha-radar/init-defaults")

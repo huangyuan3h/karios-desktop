@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.requires_postgres
+
 from datetime import date
 
 import pandas as pd
