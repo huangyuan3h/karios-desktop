@@ -44,8 +44,21 @@ def test_sync_top_inst_continues_when_today_success_but_watchlist_missing(monkey
         lambda codes, trade_date=None: {"002185.SZ": {"ts_code": "002185.SZ"}},
     )
     monkeypatch.setattr(svc, "is_trading_day", lambda exchange, cal_date: True)
-    monkeypatch.setattr(svc, "fetch_em_lhb_tickers_on_date", lambda trade_date_iso: set())
-    monkeypatch.setattr(svc, "fetch_em_org_trades_on_date", lambda trade_date_iso: {})
+    # Non-empty LHB (unrelated ticker) avoids suspicious_empty_lhb; watchlist stays off-board.
+    monkeypatch.setattr(
+        svc,
+        "fetch_top_inst_provider_result",
+        lambda trade_date_iso: (
+            TopInstProviderResult(
+                source="eastmoney",
+                lhb_tickers={"600000"},
+                org_by_ticker={},
+                lhb_count=1,
+                org_trade_count=0,
+            ),
+            [],
+        ),
+    )
     monkeypatch.setattr(svc, "upsert_daily_rows", lambda rows: len(rows))
 
     def capture_summary_rows(rows: list[dict]) -> int:
@@ -61,6 +74,7 @@ def test_sync_top_inst_continues_when_today_success_but_watchlist_missing(monkey
     assert out["summaryRows"] == 2
     assert inserted_summary_rows
     assert {row["ts_code"] for row in inserted_summary_rows[0]} == {"002185.SZ", "002156.SZ"}
+    assert all(row["on_board"] is False for row in inserted_summary_rows[0])
 
 
 def test_sync_top_inst_uses_tushare_provider_result(monkeypatch) -> None:

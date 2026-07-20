@@ -1011,6 +1011,7 @@ def _trendok_one(
         "buyWhy": None,
         "buyChecks": {},
         "marketRegime": market_regime,
+        "rs": None,
         "intradayChgPct": None,
         "gapUp": None,
         "riskMetricsLive": False,

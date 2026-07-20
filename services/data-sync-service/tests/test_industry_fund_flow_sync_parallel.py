@@ -36,6 +36,10 @@ def test_sync_cn_industry_fund_flow_parallel_hist_fetch() -> None:
 
     with (
         patch(
+            "data_sync_service.service.industry_fund_flow.is_cn_trading_day",
+            return_value=True,
+        ),
+        patch(
             "data_sync_service.service.industry_fund_flow.fetch_cn_industry_fund_flow_eod",
             return_value=_TOP_ITEMS,
         ),
@@ -61,6 +65,10 @@ def test_sync_cn_industry_fund_flow_hist_failure_isolation() -> None:
         return [{"date": "2024-06-18", "net_inflow": 1.0, "raw": {}}]
 
     with (
+        patch(
+            "data_sync_service.service.industry_fund_flow.is_cn_trading_day",
+            return_value=True,
+        ),
         patch(
             "data_sync_service.service.industry_fund_flow.fetch_cn_industry_fund_flow_eod",
             return_value=_TOP_ITEMS[:3],
