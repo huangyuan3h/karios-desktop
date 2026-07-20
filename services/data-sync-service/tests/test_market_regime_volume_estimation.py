@@ -235,8 +235,8 @@ class TestSignalWithEstimatedVolumeOffline:
 
         monkeypatch.setattr(
             mr,
-            "fetch_last_closes_vol_upto",
-            lambda ts_code, as_of, days=80: series,
+            "fetch_last_closes_vol_batch",
+            lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
         )
         monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70})
 
@@ -255,8 +255,8 @@ class TestSignalWithEstimatedVolumeOffline:
 
         monkeypatch.setattr(
             mr,
-            "fetch_last_closes_vol_upto",
-            lambda ts_code, as_of, days=80: series,
+            "fetch_last_closes_vol_batch",
+            lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
         )
         monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70})
         monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_not_ok)
@@ -280,8 +280,8 @@ class TestSignalWithEstimatedVolumeOffline:
 
         monkeypatch.setattr(
             mr,
-            "fetch_last_closes_vol_upto",
-            lambda ts_code, as_of, days=80: series,
+            "fetch_last_closes_vol_batch",
+            lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
         )
         monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.75, "total": 100, "above_count": 75})
         monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", _mock_liquidity_ok)
@@ -322,8 +322,8 @@ class TestReturnValueFields:
 
         monkeypatch.setattr(
             mr,
-            "fetch_last_closes_vol_upto",
-            lambda ts_code, as_of, days=80: series,
+            "fetch_last_closes_vol_batch",
+            lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
         )
         monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70})
 
@@ -344,8 +344,8 @@ class TestReturnValueFields:
 
         monkeypatch.setattr(
             mr,
-            "fetch_last_closes_vol_upto",
-            lambda ts_code, as_of, days=80: series,
+            "fetch_last_closes_vol_batch",
+            lambda ts_codes, days=80, as_of_date=None, _s=series: {c: _s for c in ts_codes},
         )
         monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **_: {"ratio": 0.7, "total": 100, "above_count": 70})
         monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: False)
