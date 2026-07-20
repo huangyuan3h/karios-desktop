@@ -47,9 +47,19 @@ from data_sync_service.testback.db import CREATE_RUN_SQL, CREATE_TRADE_SQL
 BASELINE_REVISION = "0001_baseline"
 
 
+def _strip_line_comments(sql: str) -> str:
+    """Remove `-- ...` line comments so semicolons inside them do not split statements."""
+    lines: list[str] = []
+    for line in sql.splitlines():
+        if "--" in line:
+            line = line[: line.index("--")]
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def _split_sql(sql: str) -> list[str]:
     statements: list[str] = []
-    for part in sql.split(";"):
+    for part in _strip_line_comments(sql).split(";"):
         stmt = part.strip()
         if stmt:
             statements.append(f"{stmt};")

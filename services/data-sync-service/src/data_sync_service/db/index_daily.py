@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     amount     NUMERIC,
     PRIMARY KEY (ts_code, trade_date)
 );
--- Note: idx_index_daily_trade_date was removed in 0009 (B-tree redundant; PK already covers ts_code-prefixed scans).
+-- Note: idx_index_daily_trade_date B-tree was removed in 0009 (redundant vs PK prefix scans).
 -- BRIN alternative retained as idx_index_daily_trade_date_brin for occasional date-range scans.
 CREATE INDEX IF NOT EXISTS idx_index_daily_trade_date_brin ON {TABLE_NAME} USING BRIN (trade_date) WITH (pages_per_range = 32);
 """

@@ -47,6 +47,22 @@ def test_baseline_ddl_includes_brin_daily_indexes() -> None:
     assert "idx_index_daily_trade_date_brin" in ddl
 
 
+def test_baseline_ddl_statements_are_executable_sql() -> None:
+    """Comments with semicolons must not become standalone Alembic statements."""
+    from data_sync_service.db.schema_baseline import _split_sql
+
+    messy = """
+    CREATE TABLE IF NOT EXISTS t (id INT PRIMARY KEY);
+    -- note: removed old index (redundant; PK already covers scans).
+    CREATE INDEX IF NOT EXISTS idx_t ON t USING BRIN (id);
+    """
+    stmts = _split_sql(messy)
+    assert len(stmts) == 2
+    assert all(s.lstrip().upper().startswith("CREATE") for s in stmts)
+    joined = "\n".join(baseline_ddl_statements())
+    assert "PK already covers" not in joined
+
+
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
 def test_brin_daily_indexes_exist_and_btree_gone() -> None:
     from alembic.config import Config
