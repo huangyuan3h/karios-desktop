@@ -180,6 +180,20 @@ async function upliftLocalToBackend(local: WatchlistItem[]): Promise<boolean> {
   }
 }
 
+function watchlistPositionSignature(items: WatchlistItem[]): string {
+  return JSON.stringify(
+    [...items]
+      .map((x) => ({
+        symbol: x.symbol,
+        positionPct: x.positionPct ?? null,
+        costPrice: x.costPrice ?? null,
+        maxPrice: x.maxPrice ?? null,
+        entryDate: x.entryDate ?? null,
+      }))
+      .sort((a, b) => a.symbol.localeCompare(b.symbol)),
+  );
+}
+
 export async function hydrateWatchlist(): Promise<HydrateWatchlistResult> {
   const localBefore = loadWatchlist();
   let pendingSync = readPendingSync();
@@ -187,9 +201,16 @@ export async function hydrateWatchlist(): Promise<HydrateWatchlistResult> {
   try {
     const remote = await fetchWatchlistFromBackend();
     if (remote.length > 0) {
-      saveWatchlistLocal(remote);
+      const merged = mergeWatchlistRemoteWithLocal(remote, localBefore);
+      saveWatchlistLocal(merged);
+      // If we kept local-only held rows or filled null position fields, push back up.
+      if (watchlistPositionSignature(merged) !== watchlistPositionSignature(remote)) {
+        const synced = await upliftLocalToBackend(merged);
+        pendingSync = !synced;
+        return { source: 'registry', items: merged, pendingSync };
+      }
       setPendingSync(false);
-      return { source: 'registry', items: remote, pendingSync: false };
+      return { source: 'registry', items: merged, pendingSync: false };
     }
 
     if (localBefore.length > 0 || pendingSync) {
@@ -257,4 +278,39 @@ export function normalizeWatchlistItem(item: Partial<WatchlistItem> & { symbol: 
       source: item.source ?? 'manual',
     }
   );
+}
+
+function hasHeldPosition(item: WatchlistItem): boolean {
+  return typeof item.positionPct === 'number' && Number.isFinite(item.positionPct) && item.positionPct > 0;
+}
+
+/**
+ * Prefer remote membership, but keep local position economics when remote left them null.
+ * Also retain local-only held rows so a polluted/partial registry cannot wipe positions.
+ */
+export function mergeWatchlistRemoteWithLocal(
+  remote: WatchlistItem[],
+  local: WatchlistItem[],
+): WatchlistItem[] {
+  const localBySym = new Map(local.map((x) => [x.symbol, x]));
+  const merged: WatchlistItem[] = remote.map((r) => {
+    const loc = localBySym.get(r.symbol);
+    if (!loc) return r;
+    return {
+      ...r,
+      name: r.name ?? loc.name ?? null,
+      nameStatus: r.nameStatus ?? loc.nameStatus,
+      color: r.color && r.color !== '#ffffff' ? r.color : (loc.color ?? r.color),
+      positionPct: r.positionPct ?? loc.positionPct ?? null,
+      costPrice: r.costPrice ?? loc.costPrice ?? null,
+      maxPrice: r.maxPrice ?? loc.maxPrice ?? null,
+      entryDate: r.entryDate ?? loc.entryDate ?? null,
+    };
+  });
+  const remoteSyms = new Set(remote.map((x) => x.symbol));
+  for (const loc of local) {
+    if (remoteSyms.has(loc.symbol)) continue;
+    if (hasHeldPosition(loc)) merged.push(loc);
+  }
+  return normalizeWatchlistItems(merged);
 }

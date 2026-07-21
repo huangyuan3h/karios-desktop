@@ -3,9 +3,24 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient  # type: ignore[import-not-found]
 
+from data_sync_service.db.watchlist_automation import list_registry, upsert_registry
 from data_sync_service.main import app  # type: ignore[import-not-found]
 
 pytestmark = pytest.mark.requires_postgres
+
+
+@pytest.fixture(autouse=True)
+def _restore_watchlist_registry() -> None:
+    """Snapshot/restore so these tests never leave the developer's real registry wiped.
+
+    POST /watchlist/registry is a full replace (including empty → DELETE ALL). Without
+    restore, a local pytest run against DATABASE_URL ends on 贵州茅台 and destroys
+    the user's watchlist + position fields.
+    """
+    before = list_registry()
+    yield
+    upsert_registry(before)
+
 
 def _clear_registry(client: TestClient) -> None:
     client.post("/watchlist/registry", json={"items": []})

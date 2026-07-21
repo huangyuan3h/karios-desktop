@@ -6,6 +6,7 @@ import {
   ensureWatchlistHydrated,
   hydrateWatchlist,
   loadWatchlist,
+  mergeWatchlistRemoteWithLocal,
   normalizeWatchlistItems,
   persistWatchlist,
   resetWatchlistHydrationForTests,
@@ -64,19 +65,66 @@ describe('normalizeWatchlistItems', () => {
   });
 });
 
+describe('mergeWatchlistRemoteWithLocal', () => {
+  it('fills null remote position fields from local', () => {
+    const merged = mergeWatchlistRemoteWithLocal(
+      [{ symbol: 'CN:000001', addedAt: '2026-06-18', positionPct: null, costPrice: null }],
+      [
+        {
+          symbol: 'CN:000001',
+          addedAt: '2026-01-01',
+          positionPct: 10,
+          costPrice: 12.5,
+          entryDate: '2026-06-01',
+        },
+      ],
+    );
+    expect(merged[0]?.positionPct).toBe(10);
+    expect(merged[0]?.costPrice).toBe(12.5);
+    expect(merged[0]?.entryDate).toBe('2026-06-01');
+  });
+
+  it('keeps local-only held positions dropped by remote', () => {
+    const merged = mergeWatchlistRemoteWithLocal(
+      [{ symbol: 'CN:600519', addedAt: '2026-06-18', name: '贵州茅台' }],
+      [
+        {
+          symbol: 'CN:000001',
+          addedAt: '2026-01-01',
+          positionPct: 8,
+          costPrice: 10,
+        },
+      ],
+    );
+    expect(merged.map((x) => x.symbol).sort()).toEqual(['CN:000001', 'CN:600519']);
+  });
+});
+
 describe('hydrateWatchlist', () => {
-  it('prefers registry over localStorage', async () => {
+  it('prefers registry over localStorage but merges local position fields', async () => {
     localStorage.setItem(
       WATCHLIST_STORAGE_KEY,
-      JSON.stringify([{ symbol: 'CN:LOCAL', addedAt: '2026-01-01' }]),
+      JSON.stringify([
+        {
+          symbol: 'CN:REMOTE',
+          addedAt: '2026-01-01',
+          positionPct: 15,
+          costPrice: 9.5,
+        },
+      ]),
     );
-    vi.mocked(fetch).mockResolvedValueOnce(
-      registryResponse([{ symbol: 'CN:REMOTE', addedAt: '2026-06-18' }]) as Response,
-    );
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        registryResponse([{ symbol: 'CN:REMOTE', addedAt: '2026-06-18' }]) as Response,
+      )
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => '{}' } as Response);
 
     const result = await hydrateWatchlist();
     expect(result.source).toBe('registry');
     expect(loadWatchlist()[0]?.symbol).toBe('CN:REMOTE');
+    expect(loadWatchlist()[0]?.positionPct).toBe(15);
+    expect(loadWatchlist()[0]?.costPrice).toBe(9.5);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('uplifts local when registry empty', async () => {
