@@ -111,14 +111,8 @@ export function WatchlistImportDebug({
       </div>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
         <div className="text-[var(--k-muted)]">
-          Scanned {importDebug.scanned} • TrendOK ✅ {importDebug.trendOkCount} • Showing{' '}
-          {importDebugRows.length}
-          {importDebug.funnel ? (
-            <>
-              {' '}
-              • Funnel {formatScreenerFunnel(importDebug.funnel)}
-            </>
-          ) : null}
+          Funnel {importDebug.funnel ? formatScreenerFunnel(importDebug.funnel) : '—'} • TrendOK ✅{' '}
+          {importDebug.trendOkCount} • Showing {importDebugRows.length}
         </div>
         <div className="flex items-center gap-2">
           <input

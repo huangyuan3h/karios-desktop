@@ -232,7 +232,7 @@ export async function importFromScreener(options: ScreenerImportOptions = {}): P
   };
 
   const debug = makeDebug({
-    scanned: filtered.length,
+    scanned: uniq.length,
     trendOkCount: okUniq.length,
     rows: filtered.map(
       (sym) =>

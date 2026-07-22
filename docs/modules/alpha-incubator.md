@@ -94,7 +94,7 @@ URL = `{ALPHA_RADAR_RSSHUB_BASE_URL}{route}`，各源可用独立 env 覆盖。
 盘后 / Run automation 将 Alpha 候选写入 Watchlist 前，在 `catalystScore > 85` 且含 S 之外还要求：
 
 1. 东财行业名可解析（DB `stock_eastmoney_industry`）
-2. 非防守板块（银行 / 电力 / 公用事业 / 中药 / 煤炭 / 高速公路）
-3. 行业 ∈ 5D 净流入 Top10（比 BUY 主线 Top3 宽；Top10 数据缺失时跳过本条）
+2. 非防守板块（银行 / 电力 / 公用事业 / 中药 / 煤炭 / 高速公路；**不**误伤 `电力设备`）
+3. 若行业名本身是申万一级：须 ∈ 5D 净流入 Top10；若为更细的东财板块名（如「半导体」）则 **跳过 Top10**（避免与 SW L1「电子」硬匹配系统性误拒）。Top10 数据缺失时整闸跳过。
 
-拒绝原因计入 automation run `meta.alphaRejected`。
+拒绝原因计入 automation run `meta.alphaRejected`。Max Grade=S 的 GC 豁免基于 **完整催化窗口**，不限于进池用的 score Top200。

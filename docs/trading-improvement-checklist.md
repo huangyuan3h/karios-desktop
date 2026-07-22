@@ -562,7 +562,19 @@ Watchlist item 保留 `source`；Decision Journal / Copy 表增加来源列或�
 
 ---
 
-## 明确不做（防 scope 膨胀）
+## Review notes (2026-07-22 stability pass)
+
+After TIP-004/005/002 implementation, a defect review fixed:
+
+| Issue | Fix |
+|-------|-----|
+| EM industry vs SW L1 Top10 exact match false-rejects | Top10 only when label is SW L1; granular EM fail-open |
+| S GC exemption used catalyst score Top200 | `load_catalyst_window` builds S set from full aggregate |
+| Funnel `Scanned` ≠ `TV` | `scanned` aligned to `tvHit`; UI shows Funnel first |
+| `电力` blocked `电力设备` | defense special-case |
+| ack funnel merge untested | `merge_funnel_into_meta` + unit test |
+
+**Still open (non-blocking):** FE/BE `DEFENSE_SECTOR_KEYWORDS` duplication; no EM↔SW map for stricter Top10; N-day funnel chart.
 
 | 项 | 原因 |
 |----|------|

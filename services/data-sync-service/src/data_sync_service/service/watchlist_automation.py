@@ -23,11 +23,16 @@ from data_sync_service.db.watchlist_automation import (
     list_registry,
     upsert_score_daily,
 )
-from data_sync_service.service.alpha_radar_catalyst import list_catalyst_stocks
+from data_sync_service.service.alpha_radar_catalyst import (
+    aggregate_catalyst_stocks,
+    default_max_age_days,
+    list_catalyst_stocks,
+)
 from data_sync_service.service.close_sync import JOB_TYPE as CLOSE_JOB_TYPE
 from data_sync_service.service.close_sync import _cn_today
 from data_sync_service.service.dashboard import _sync_screeners_step
 from data_sync_service.service.industry_fund_flow import sync_cn_industry_fund_flow
+from data_sync_service.service.industry_taxonomy import is_sw_l1_industry_name
 from data_sync_service.service.trade_calendar_utils import resolve_effective_as_of, trade_dates_upto
 from data_sync_service.service.trendok import compute_trendok_for_symbols
 
@@ -81,10 +86,21 @@ def get_top_5d_industry_names(as_of_date: str | None = None, *, top_n: int = 5) 
 
 
 def is_defense_sector(industry_name: str | None) -> bool:
+    """True when EM/SW industry should be blocked from alpha entry (mirrors FE BUY gate).
+
+    Special-case: keyword ``电力`` must not match growth board ``电力设备``.
+    """
     name = str(industry_name or "").strip()
     if not name:
         return False
-    return any(kw in name for kw in DEFENSE_SECTOR_KEYWORDS)
+    for kw in DEFENSE_SECTOR_KEYWORDS:
+        if kw == "电力":
+            if name == "电力" or ("电力" in name and "电力设备" not in name):
+                return True
+            continue
+        if kw in name:
+            return True
+    return False
 
 
 def _cn_symbol_to_ts_code(symbol: str) -> str | None:
@@ -198,6 +214,33 @@ def symbols_with_max_grade_s(catalyst_payload: dict[str, Any] | None) -> set[str
     return out
 
 
+def load_catalyst_window(*, add_limit: int = 200) -> tuple[dict[str, Any], set[str]]:
+    """
+    Load full catalyst aggregation for Max Grade=S GC exemption, while alpha-add
+    still uses the score-ranked top ``add_limit`` slice (TIP-005 / TIP-004).
+    """
+    from data_sync_service.db.alpha_radar import fetch_trends_for_catalyst
+
+    age_days = default_max_age_days()
+    trends = fetch_trends_for_catalyst(max_age_days=age_days)
+    all_items = aggregate_catalyst_stocks(trends)
+    full_payload = {
+        "stalenessBasis": "published_then_fetched",
+        "maxAgeDays": age_days,
+        "total": len(all_items),
+        "items": all_items,
+    }
+    alpha_s = symbols_with_max_grade_s(full_payload)
+    lim = max(1, min(int(add_limit), 200))
+    add_payload = {
+        "stalenessBasis": full_payload["stalenessBasis"],
+        "maxAgeDays": age_days,
+        "total": len(all_items),
+        "items": all_items[:lim],
+    }
+    return add_payload, alpha_s
+
+
 def should_remove_symbol(
     *,
     symbol: str,
@@ -290,8 +333,10 @@ def compute_alpha_additions(
     Gates (after score>85 and grade S):
     - defense sector → reject
     - missing EM industry → reject (fail-closed per symbol)
-    - industry not in 5D Top10 → reject
-    - if Top10 set empty (flow data missing) → skip Top10 gate (fail-open)
+    - Top10 (SW L1 5D flow): only enforced when the stock industry label is itself
+      an SW L1 name (exact match). Granular EM boards (e.g. 半导体 vs 电子) skip
+      Top10 rather than false-reject (taxonomy mismatch fail-open).
+    - if Top10 set empty (flow data missing) → skip Top10 gate entirely
     """
     payload = catalyst_payload if catalyst_payload is not None else list_catalyst_stocks(limit=limit)
     items = payload.get("items") if isinstance(payload, dict) else []
@@ -350,9 +395,13 @@ def compute_alpha_additions(
         if is_defense_sector(industry):
             _bump("defense_sector")
             continue
-        if top_ready and industry not in top_set:
-            _bump("not_in_top10")
-            continue
+        if top_ready:
+            # Fund-flow Top10 is SW L1; EM stock boards are often finer-grained.
+            if is_sw_l1_industry_name(industry):
+                if industry not in top_set:
+                    _bump("not_in_top10")
+                    continue
+            # else: non-SW EM label → skip Top10 (fail-open), do not reject
         out.append(row)
     return out, rejected
 
@@ -428,9 +477,9 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
     streak_dates = get_last_n_trading_dates(CONSECUTIVE_LOW_SCORE_DAYS)
     meta["streakTradeDates"] = streak_dates
 
-    catalyst_payload = list_catalyst_stocks(limit=200)
-    alpha_s_symbols = symbols_with_max_grade_s(catalyst_payload)
+    catalyst_payload, alpha_s_symbols = load_catalyst_window(add_limit=200)
     meta["alphaSSymbols"] = len(alpha_s_symbols)
+    meta["catalystWindowTotal"] = int(catalyst_payload.get("total") or 0)
 
     remove_items = compute_removals(
         registry,
