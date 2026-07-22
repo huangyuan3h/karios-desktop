@@ -109,6 +109,38 @@ Filter Pills 是 TradingView Screener 页面上方显示的筛选条件标签，
 
 ---
 
+## Strategy contracts（TIP-006）
+
+每个 TradingView Screener 视为一份**策略合同**。改 Filter Pills / 改名 / 换 URL = 发版；以本文 + 快照里的 `screenTitle` / Filter Pills 为准。
+
+### 宇宙一览
+
+| 显示名 / 期望 screenTitle 子串 | 类型 | 进池后滤 | 触媒「今日 screener TrendOK」 | 推荐 enabled |
+|--------------------------------|------|----------|-------------------------------|--------------|
+| **Karios Pullback**（子串 `karios pullback` / `pullback`） | `pullback` | 52W 回撤 ∈ [-15%, -5%] + TrendOK → `source=screener` | 是（标题匹配） | **是（主宇宙）** |
+| Falcon Launch / Institutional Trend | `momentum` | 同上回撤窗（未单独分支前） | 是（标题匹配） | **否**（除非显式要动量观察） |
+| Legacy Falcon / Legacy Black Horse（空库 seed 名） | `legacy` | 同上 | Falcon 类标题才进；Black Horse **不**进 | **否**（已有库请 Settings 禁用/改名） |
+| （系统）Industry Top5 空窗降级 | `system` | 仅 TrendOK → `source=screener_fallback` | 否 | n/a（TIP-003 自动） |
+
+触媒标题匹配实现：`apps/desktop-ui/src/lib/screenerExport.ts` → `SCREENER_TITLE_PATTERNS`（`includes` 小写）。
+
+### Karios Pullback（主合同）
+
+| 项 | 约定 |
+|----|------|
+| TV 显示名 / screenTitle | **Karios Pullback** |
+| URL（TIP-001 验收） | `https://www.tradingview.com/screener/m22BmHkT/` |
+| Market | CN |
+| Pills 原则 | 保留：市值、P/E>0、营收增长、Price>EMA20/50、中长期均线多头、RSI 约 45–75；**不要**：当日涨幅门槛、Rel vol 强势、Perf 3M 大涨等追涨条件 |
+| 表格列 | 须含 **Price** 与 **High 52W**（回撤过滤依赖） |
+| 进池 | 回撤窗 + TrendOK；空窗见 TIP-003 |
+
+### 空库 seed 说明
+
+`ensure_seeded()` 仅在 **tv_screeners 为空** 时写入 `falcon` / `blackhorse` 两条（显示名 **Legacy Falcon (momentum)** / **Legacy Black Horse**）。**不会**更新已有库行。生产库请在 Settings 配置并启用 **Karios Pullback**，禁用遗留动量屏。
+
+---
+
 ## 与其他模块的关系
 
 ```

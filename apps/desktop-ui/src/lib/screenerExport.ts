@@ -42,7 +42,12 @@ export const SCREENER_MARKDOWN_HEADERS = [
   'Flags',
 ] as const;
 
-export const SCREENER_TITLE_PATTERNS = ['falcon launch', 'institutional trend'] as const;
+export const SCREENER_TITLE_PATTERNS = [
+  'karios pullback',
+  'pullback',
+  'falcon launch',
+  'institutional trend',
+] as const;
 
 export function shanghaiDateFromIso(iso: string): string | null {
   const dt = new Date(iso);

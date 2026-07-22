@@ -60,7 +60,7 @@ TV Screener（候选宇宙）
 | TIP-003 | Falcon / 空窗降级宇宙 | P0 | ★★★★☆ | 1–2 天 | [x] |
 | TIP-004 | Alpha 进池加轻量闸（主线 / 结构 / 流动性） | P1 | ★★★★☆ | 1–2 天 | [x] |
 | TIP-005 | Alpha 清池对称化（取消整源豁免） | P1 | ★★★★☆ | 1 天 | [x] |
-| TIP-006 | Screener 策略版本合同（命名 / pills / 文档） | P1 | ★★★☆☆ | 1 天 | [ ] |
+| TIP-006 | Screener 策略版本合同（命名 / pills / 文档） | P1 | ★★★☆☆ | 1 天 | [x] |
 | TIP-007 | 主线内有条件放开动量通道（B_momentum） | P2 | ★★★★☆（进攻） | 2–3 天 | [ ] |
 | TIP-008 | Automation 落地指标与复盘字段 | P2 | ★★★☆☆ | 1–2 天 | [ ] |
 | TIP-009 | Alpha 映射质量抽检与错映射惩罚 | P2 | ★★★☆☆ | 1–2 天 | [ ] |
@@ -97,7 +97,7 @@ TV Screener（候选宇宙）
 #### 细节 checklist
 
 - [x] 在 TradingView 上重配 / 新建 Pullback screener URL，写入 Settings（enabled）— `Karios Pullback` / `m22BmHkT`
-- [ ] 记录 Filter Pills 全文到本条目「验收记录」或 `docs/modules/screener.md`
+- [x] 记录 Filter Pills 原则到 `docs/modules/screener.md` Strategy contracts（TIP-006）
 - [ ] 连续 ≥5 个交易日统计：命中数、过回撤数、过 TrendOK 数（可用 TIP-002 产出）
 - [ ] 若保留 Momentum screener：在导入逻辑中按 screenerId / screenTitle 分支后滤（见文件范围）
 - [x] **明确不做**：用东财「均线多头排列」替换 TV 主宇宙
@@ -318,9 +318,9 @@ Screener 进池要过回撤+TrendOK；Alpha（`catalystScore>85` 且含 S）几�
 
 ### TIP-006：Screener 策略版本合同
 
-**状态**：[ ]  
-**完成日期**：  
-**备注 / PR**：
+**状态**：[x]  
+**完成日期**：2026-07-22  
+**备注 / PR**：local — `screener.md` Strategy contracts；`SCREENER_TITLE_PATTERNS` + Pullback；seed Legacy 命名
 
 #### 问题
 
@@ -331,34 +331,21 @@ Screener 进池要过回撤+TrendOK；Alpha（`catalystScore>85` 且含 S）几�
 每个 enabled screener 有一份「策略合同」：
 
 - 显示名、TV URL、`screenTitle` 期望子串
-- 宇宙类型：`pullback` | `momentum` | `other`
-- Filter Pills 快照（随 capture 已有则可引用）
+- 宇宙类型：`pullback` | `momentum` | `system` | `legacy`
+- Filter Pills 原则（Pullback）
 - 进池后滤：是否应用 52W 回撤窗
 - 是否参与 Alpha 触媒「今日 screener TrendOK」集合
 
 #### 细节 checklist
 
-- [ ] 更新 `docs/modules/screener.md` 正式章节（禁止只留代码注释）
-- [ ] 对齐 `SCREENER_TITLE_PATTERNS` 与真实 `screenTitle`
-- [ ] Settings UI 可选：展示宇宙类型（若改动面可控）
-
-#### 文件范围
-
-| 层 | 文件 |
-|----|------|
-| 文档 | `docs/modules/screener.md` |
-| FE | `screenerExport.ts`、`alpha-radar-catalyst.ts` |
-| Seed | `.../service/tv.py`（`ensure_seeded` 命名） |
-
-#### 预期收益
-
-- **中**：减少配置漂移导致的「以为在跑某策略、实际没跑」。
-- **对收益率**：防静默失效，属于保险型收益。
+- [x] 更新 `docs/modules/screener.md` 正式章节
+- [x] 对齐 `SCREENER_TITLE_PATTERNS` 与真实 `screenTitle`（含 Karios Pullback）
+- [ ] Settings UI 可选：展示宇宙类型 — **未做**（本 TIP 明确跳过）
 
 #### 验证
 
-- [ ] 标题匹配单测覆盖当前线上 screenTitle
-- [ ] 新人只读 screener.md 能说出每套宇宙意图
+- [x] 标题匹配单测覆盖 `Karios Pullback`
+- [x] 新人只读 screener.md 能说出每套宇宙意图
 
 ---
 

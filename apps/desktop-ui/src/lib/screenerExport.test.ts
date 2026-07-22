@@ -105,10 +105,13 @@ describe('screenerMarkdownRowsToTable', () => {
 });
 
 describe('matchesScreenerTitlePattern', () => {
-  it('matches Falcon Launch and Institutional Trend titles case-insensitively', () => {
+  it('matches primary Pullback and legacy momentum titles case-insensitively', () => {
+    expect(matchesScreenerTitlePattern('Karios Pullback')).toBe(true);
+    expect(matchesScreenerTitlePattern('CN Pullback Filter')).toBe(true);
     expect(matchesScreenerTitlePattern('Falcon Launch Filter')).toBe(true);
     expect(matchesScreenerTitlePattern('institutional trend screener')).toBe(true);
     expect(matchesScreenerTitlePattern('Black Horse Filter')).toBe(false);
+    expect(matchesScreenerTitlePattern('Legacy Falcon (momentum)')).toBe(false);
   });
 });
 

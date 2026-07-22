@@ -37,7 +37,7 @@ def ensure_seeded() -> None:
     ts = _now_iso()
     tvdb.upsert_screener(
         screener_id="falcon",
-        name="Swing Falcon Filter",
+        name="Legacy Falcon (momentum)",
         url="https://www.tradingview.com/screener/TMcms1mM/",
         enabled=True,
         created_at=ts,
@@ -45,7 +45,7 @@ def ensure_seeded() -> None:
     )
     tvdb.upsert_screener(
         screener_id="blackhorse",
-        name="Black Horse Filter",
+        name="Legacy Black Horse",
         url="https://www.tradingview.com/screener/kBuKODpK/",
         enabled=True,
         created_at=ts,
