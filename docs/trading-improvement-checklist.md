@@ -56,7 +56,7 @@ TV Screener（候选宇宙）
 | ID | 标题 | 优先级 | 预期收益 | 预估工时 | 状态 |
 |----|------|--------|----------|----------|------|
 | TIP-001 | 校准 TV 第一层：双宇宙 / 对齐回踩 thesis | P0 | ★★★★★ | 0.5–1 天（配置）+ 1–2 周观察 | [ ] |
-| TIP-002 | 漏斗转化率仪表：TV→回撤→TrendOK→开火 | P0 | ★★★★★（度量闭环） | 1–2 天 | [ ] |
+| TIP-002 | 漏斗转化率仪表：TV→回撤→TrendOK→开火 | P0 | ★★★★★（度量闭环） | 1–2 天 | [x] |
 | TIP-003 | Falcon / 空窗降级宇宙 | P0 | ★★★★☆ | 1–2 天 | [ ] |
 | TIP-004 | Alpha 进池加轻量闸（主线 / 结构 / 流动性） | P1 | ★★★★☆ | 1–2 天 | [x] |
 | TIP-005 | Alpha 清池对称化（取消整源豁免） | P1 | ★★★★☆ | 1 天 | [x] |
@@ -126,9 +126,9 @@ TV Screener（候选宇宙）
 
 ### TIP-002：漏斗转化率仪表（度量闭环）
 
-**状态**：[ ]  
-**完成日期**：  
-**备注 / PR**：
+**状态**：[x]  
+**完成日期**：2026-07-22  
+**备注 / PR**：local — minimal：Import Debug + ack `meta.funnel`；无独立表 / 无 N 日图表
 
 #### 问题
 
@@ -138,41 +138,42 @@ TV Screener（候选宇宙）
 
 每个交易日（或每次 Import / Automation）落一条漏斗快照：
 
-| 指标 | 含义 |
-|------|------|
-| `tv_hit` | enabled screener 最新快照去重标的数 |
-| `pass_pullback` | 过 52W 回撤窗 |
-| `pass_trendok` | 过 TrendOK |
-| `added_new` | 新写入 Watchlist |
-| `alpha_candidates` / `alpha_added` | Alpha 候选与实际追加 |
-| `fireable`（可选，次日/当日） | Gate=ATTACK 且主线等条件满足的空仓 BUY 候选数 |
+| 指标 | 含义 | 本轮 |
+|------|------|------|
+| `tvHit` | enabled screener 最新快照去重标的数 | ✅ |
+| `passPullback` | 过 52W 回撤窗 | ✅ |
+| `passTrendOk` | 过 TrendOK | ✅ |
+| `addedNew` | 新写入 Watchlist | ✅ |
+| `alphaRejected` / alpha add | Alpha 拒绝与追加 | ✅（004 已有 + summary） |
+| `fireable` | 可开火候选 | 未做 |
+| N 日表格 / 新表 | 周复盘 UI | 未做（可后续） |
 
-UI 最小形态：Watchlist Import Debug 扩展，或 Dashboard / Scheduler 一行摘要；持久化优先 Postgres（便于周复盘）。
+UI 最小形态：Import Debug 一行 Funnel；automation summary / ack 写入 Postgres `meta.funnel`。
 
 #### 细节 checklist
 
-- [ ] 定义 schema（日级或 run 级）与写入点（import + automation ack）
-- [ ] 前端展示最近 N 日转化率（表格即可）
-- [ ] 文档写明各字段口径（TV 价 vs Tushare TrendOK 可能不一致）
+- [x] 定义 funnel 字段与写入点（import debug + automation ack）
+- [ ] 前端展示最近 N 日转化率（表格）— 未做
+- [x] 文档写明口径（`docs/modules/watchlist.md`）
 
 #### 文件范围
 
 | 层 | 文件 |
 |----|------|
-| FE import | `apps/desktop-ui/src/lib/watchlist-screener-import.ts`、`WatchlistImportDebug` |
-| FE automation | `apps/desktop-ui/src/lib/watchlist-automation.ts` |
-| BE | `services/data-sync-service/.../watchlist_automation.py`、可选新表 + Alembic |
+| FE import | `watchlist-screener-import.ts`、`WatchlistImportDebug` |
+| FE automation | `watchlist-automation.ts` |
+| BE | `ack_run` 合并 `meta.funnel`；API `WatchlistAckRequest.funnel` |
 | 文档 | `docs/modules/watchlist.md`、本文件 |
 
 #### 预期收益
 
 - **极高（元收益）**：后续 TIP 是否有效可证伪；避免无效改 pills / 乱降门槛。
-- **对收益率**：不直接产生 alpha，但阻止损害收益的改动。
 
 #### 验证
 
-- [ ] 手动 Import 与 Run automation 各产生一条可查询记录
-- [ ] 连续 5 日可画出漏斗，无需翻日志
+- [x] 手动 Import 与 Run automation summary 可见 funnel
+- [x] ack 后 latest run `meta.funnel` 可查（需 DB）
+- [x] 单元测试：`formatScreenerFunnel` / summary
 
 ---
 

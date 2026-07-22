@@ -1,5 +1,9 @@
 import { apiGetJson, apiPostJson } from '@/lib/api/client';
-import { importFromScreener } from '@/lib/watchlist-screener-import';
+import {
+  formatScreenerFunnel,
+  importFromScreener,
+  type ScreenerFunnel,
+} from '@/lib/watchlist-screener-import';
 import {
   ensureWatchlistHydrated,
   loadWatchlist,
@@ -36,6 +40,7 @@ export type ApplyAutomationResult = {
   removed: number;
   screenerAdded: number;
   alphaAdded: number;
+  funnel?: ScreenerFunnel | null;
 };
 
 export { isAutomationPollWindow } from '@/lib/market-hours';
@@ -60,10 +65,26 @@ export async function triggerAutomationRun(force = true): Promise<AutomationRun>
 export async function ackAutomationRun(
   runId: string,
   screenerAdded: number,
+  funnel?: ScreenerFunnel | null,
 ): Promise<void> {
   await apiPostJson(`/watchlist/automation/${encodeURIComponent(runId)}/ack`, {
     screenerAdded,
+    ...(funnel ? { funnel } : {}),
   });
+}
+
+function funnelFromMeta(meta: Record<string, unknown> | undefined): ScreenerFunnel | null {
+  const raw = meta?.funnel;
+  if (!raw || typeof raw !== 'object') return null;
+  const f = raw as Record<string, unknown>;
+  const num = (k: string) => (typeof f[k] === 'number' && Number.isFinite(f[k]) ? Number(f[k]) : 0);
+  return {
+    tvHit: num('tvHit'),
+    passPullback: num('passPullback'),
+    passTrendOk: num('passTrendOk'),
+    addedNew: num('addedNew'),
+    droppedByPullback: num('droppedByPullback'),
+  };
 }
 
 export async function applyAutomationRun(
@@ -116,7 +137,8 @@ export async function applyAutomationRun(
   if (alphaAdded > 0) await saveWatchlist(items);
 
   onStage?.('Acknowledging automation run…');
-  await ackAutomationRun(run.runId, screener.addedCount);
+  const funnel = screener.debug.funnel;
+  await ackAutomationRun(run.runId, screener.addedCount, funnel);
 
   if (typeof window !== 'undefined') {
     try {
@@ -130,6 +152,7 @@ export async function applyAutomationRun(
     removed,
     screenerAdded: screener.addedCount,
     alphaAdded,
+    funnel,
   };
 }
 
@@ -161,5 +184,15 @@ export function formatAutomationSummary(
   const alpha = result?.alphaAdded ?? run.alphaAdd?.length ?? 0;
   const when = run.createdAt ? new Date(run.createdAt).toLocaleString() : '—';
   const trigger = run.trigger || 'unknown';
-  return `Last automation: ${when} (${trigger}) | −${removed} screener +${screener} alpha +${alpha}`;
+  const funnel = result?.funnel ?? funnelFromMeta(run.meta);
+  const funnelPart = funnel ? ` | funnel ${formatScreenerFunnel(funnel)}` : '';
+  const rejected = run.meta?.alphaRejected;
+  let rejectPart = '';
+  if (rejected && typeof rejected === 'object') {
+    const entries = Object.entries(rejected as Record<string, unknown>)
+      .filter(([, v]) => typeof v === 'number' && v > 0)
+      .map(([k, v]) => `${k}:${v}`);
+    if (entries.length) rejectPart = ` | alphaReject ${entries.join(',')}`;
+  }
+  return `Last automation: ${when} (${trigger}) | −${removed} screener +${screener} alpha +${alpha}${funnelPart}${rejectPart}`;
 }

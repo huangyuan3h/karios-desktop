@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { WatchlistImportDebug, type ScreenerImportDebugState } from '@/components/watchlist/WatchlistImportDebug';
+import { emptyScreenerFunnel } from '@/lib/watchlist-screener-import';
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
 import { WatchlistToolbar } from '@/components/watchlist/WatchlistToolbar';
 import { Button } from '@/components/ui/button';
@@ -134,6 +135,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     scanned: 0,
     trendOkCount: 0,
     rows: [],
+    funnel: emptyScreenerFunnel(),
   });
 
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
@@ -240,7 +242,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           pushLog(label);
         },
       });
-      setLatestAutomation(run);
+      setLatestAutomation({
+        ...run,
+        screenerAdded: result?.screenerAdded ?? run.screenerAdded,
+        meta: {
+          ...(run.meta && typeof run.meta === 'object' ? run.meta : {}),
+          ...(result?.funnel ? { funnel: result.funnel } : {}),
+        },
+      });
       if (run.skipped) {
         setAutomationMsg(`Skipped: ${run.skipReason || 'unknown'}`);
         setAutomationSkipRun(run);

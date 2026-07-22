@@ -304,20 +304,38 @@ def get_pending_run(trade_date: str | None = None) -> dict[str, Any] | None:
     return _row_to_run(row)
 
 
-def ack_run(run_id: str, screener_added: int | None = None) -> dict[str, Any] | None:
+def ack_run(
+    run_id: str,
+    screener_added: int | None = None,
+    funnel: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     ensure_tables()
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                UPDATE {RUNS_TABLE}
-                SET applied_at = now(), screener_added = %s
-                WHERE id = %s
-                RETURNING id, trade_date, trigger_type, skipped, skip_reason,
-                          remove_items, alpha_add, meta, created_at, applied_at, screener_added
-                """,
-                (screener_added, run_id),
-            )
+            if funnel is not None and isinstance(funnel, dict):
+                cur.execute(
+                    f"""
+                    UPDATE {RUNS_TABLE}
+                    SET applied_at = now(),
+                        screener_added = %s,
+                        meta = COALESCE(meta, '{{}}'::jsonb) || %s::jsonb
+                    WHERE id = %s
+                    RETURNING id, trade_date, trigger_type, skipped, skip_reason,
+                              remove_items, alpha_add, meta, created_at, applied_at, screener_added
+                    """,
+                    (screener_added, Json({"funnel": funnel}), run_id),
+                )
+            else:
+                cur.execute(
+                    f"""
+                    UPDATE {RUNS_TABLE}
+                    SET applied_at = now(), screener_added = %s
+                    WHERE id = %s
+                    RETURNING id, trade_date, trigger_type, skipped, skip_reason,
+                              remove_items, alpha_add, meta, created_at, applied_at, screener_added
+                    """,
+                    (screener_added, run_id),
+                )
             row = cur.fetchone()
         conn.commit()
     if not row:

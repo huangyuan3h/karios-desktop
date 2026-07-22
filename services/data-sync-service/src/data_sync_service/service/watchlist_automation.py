@@ -479,10 +479,14 @@ def get_automation_latest() -> dict[str, Any] | None:
     return get_latest_run()
 
 
-def ack_automation_run(run_id: str, screener_added: int | None = None) -> dict[str, Any] | None:
+def ack_automation_run(
+    run_id: str,
+    screener_added: int | None = None,
+    funnel: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     from data_sync_service.db.watchlist_automation import ack_run
 
-    return ack_run(run_id, screener_added=screener_added)
+    return ack_run(run_id, screener_added=screener_added, funnel=funnel)
 
 
 def get_automation_run(run_id: str) -> dict[str, Any] | None:

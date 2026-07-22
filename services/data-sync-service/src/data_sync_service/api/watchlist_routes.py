@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, Query  # type: ignore[import-not-found]
 from pydantic import BaseModel
 
@@ -34,6 +36,7 @@ class WatchlistRegistryRequest(BaseModel):
 
 class WatchlistAckRequest(BaseModel):
     screenerAdded: int | None = None
+    funnel: dict[str, Any] | None = None
 
 
 @router.get("/watchlist/registry")
@@ -89,7 +92,8 @@ def watchlist_automation_run(force: bool = Query(False)) -> dict:
 def watchlist_automation_ack(run_id: str, req: WatchlistAckRequest | None = None) -> dict:
     try:
         screener_added = req.screenerAdded if req else None
-        row = ack_automation_run(run_id, screener_added=screener_added)
+        funnel = req.funnel if req else None
+        row = ack_automation_run(run_id, screener_added=screener_added, funnel=funnel)
         if not row:
             raise HTTPException(status_code=404, detail="run not found")
         return row
