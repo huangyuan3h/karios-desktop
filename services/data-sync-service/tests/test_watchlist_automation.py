@@ -152,6 +152,13 @@ def test_should_remove_symbol_skips_held_position(monkeypatch) -> None:
     assert reason == "held_position"
 
 
+def test_is_defense_sector() -> None:
+    assert wa.is_defense_sector("银行") is True
+    assert wa.is_defense_sector("股份制银行") is True
+    assert wa.is_defense_sector("半导体") is False
+    assert wa.is_defense_sector(None) is False
+
+
 def test_compute_alpha_additions_filters_score_and_grade(monkeypatch) -> None:
     monkeypatch.setattr(
         wa,
@@ -179,10 +186,79 @@ def test_compute_alpha_additions_filters_score_and_grade(monkeypatch) -> None:
             ]
         },
     )
-    out = wa.compute_alpha_additions()
+    out, rejected = wa.compute_alpha_additions(
+        industry_by_symbol={"CN:600001": "半导体"},
+        top_industries={"半导体", "电子"},
+    )
     assert len(out) == 1
     assert out[0]["symbol"] == "CN:600001"
     assert out[0]["catalystScore"] == 86.0
+    assert rejected.get("no_s_grade") == 1
+    assert rejected.get("low_score") == 1
+
+
+def test_compute_alpha_additions_rejects_defense_and_non_top10() -> None:
+    payload = {
+        "items": [
+            {
+                "symbol": "600000",
+                "name": "Bank",
+                "catalystScore": 90.0,
+                "articles": [{"catalystGrade": "S"}],
+            },
+            {
+                "symbol": "600001",
+                "name": "Cold",
+                "catalystScore": 90.0,
+                "articles": [{"catalystGrade": "S"}],
+            },
+            {
+                "symbol": "600002",
+                "name": "Hot",
+                "catalystScore": 90.0,
+                "articles": [{"catalystGrade": "S"}],
+            },
+            {
+                "symbol": "600003",
+                "name": "NoInd",
+                "catalystScore": 90.0,
+                "articles": [{"catalystGrade": "S"}],
+            },
+        ]
+    }
+    out, rejected = wa.compute_alpha_additions(
+        catalyst_payload=payload,
+        industry_by_symbol={
+            "CN:600000": "银行",
+            "CN:600001": "纺织服装",
+            "CN:600002": "半导体",
+        },
+        top_industries={"半导体", "电子元件"},
+    )
+    assert [x["symbol"] for x in out] == ["CN:600002"]
+    assert rejected.get("defense_sector") == 1
+    assert rejected.get("not_in_top10") == 1
+    assert rejected.get("missing_industry") == 1
+
+
+def test_compute_alpha_additions_top10_fail_open_when_empty() -> None:
+    payload = {
+        "items": [
+            {
+                "symbol": "600002",
+                "name": "Hot",
+                "catalystScore": 90.0,
+                "articles": [{"catalystGrade": "S"}],
+            },
+        ]
+    }
+    out, rejected = wa.compute_alpha_additions(
+        catalyst_payload=payload,
+        industry_by_symbol={"CN:600002": "半导体"},
+        top_industries=set(),
+    )
+    assert len(out) == 1
+    assert "not_in_top10" not in rejected
 
 
 def test_precheck_skips_without_close_sync(monkeypatch) -> None:
@@ -257,7 +333,7 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
     )
     monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: len(rows))
     monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: "run-1")
-    monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None: set())
+    monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None, top_n=5: set())
     monkeypatch.setattr(
         wa,
         "get_last_n_trading_dates",
@@ -277,6 +353,7 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
             ]
         },
     )
+    monkeypatch.setattr(wa, "_resolve_em_industries_for_symbols", lambda symbols: {})
 
     def fake_scores(symbol: str, trade_dates: list[str]) -> list[dict]:
         return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
@@ -290,6 +367,7 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
     assert compute_calls[0][1] is False
     assert result["meta"]["scoreSnapshots"] == 2
     assert result["meta"]["alphaSSymbols"] == 0
+    assert result["meta"]["alphaRejected"]["no_s_grade"] == 1
     assert result["alphaAdd"] == []
     assert "remove" in result
     assert isinstance(result["remove"], list)

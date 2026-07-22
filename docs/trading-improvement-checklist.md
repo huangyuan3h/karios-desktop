@@ -58,7 +58,7 @@ TV Screener（候选宇宙）
 | TIP-001 | 校准 TV 第一层：双宇宙 / 对齐回踩 thesis | P0 | ★★★★★ | 0.5–1 天（配置）+ 1–2 周观察 | [ ] |
 | TIP-002 | 漏斗转化率仪表：TV→回撤→TrendOK→开火 | P0 | ★★★★★（度量闭环） | 1–2 天 | [ ] |
 | TIP-003 | Falcon / 空窗降级宇宙 | P0 | ★★★★☆ | 1–2 天 | [ ] |
-| TIP-004 | Alpha 进池加轻量闸（主线 / 结构 / 流动性） | P1 | ★★★★☆ | 1–2 天 | [ ] |
+| TIP-004 | Alpha 进池加轻量闸（主线 / 结构 / 流动性） | P1 | ★★★★☆ | 1–2 天 | [x] |
 | TIP-005 | Alpha 清池对称化（取消整源豁免） | P1 | ★★★★☆ | 1 天 | [x] |
 | TIP-006 | Screener 策略版本合同（命名 / pills / 文档） | P1 | ★★★☆☆ | 1 天 | [ ] |
 | TIP-007 | 主线内有条件放开动量通道（B_momentum） | P2 | ★★★★☆（进攻） | 2–3 天 | [ ] |
@@ -229,9 +229,9 @@ Falcon Launch 类条件可全日 **0 票** → Automation 第一层断粮，当�
 
 ### TIP-004：Alpha 进池加轻量闸
 
-**状态**：[ ]  
-**完成日期**：  
-**备注 / PR**：
+**状态**：[x]  
+**完成日期**：2026-07-22  
+**备注 / PR**：local — minimal gates: defense sector + 5D Top10；`meta.alphaRejected`
 
 #### 问题
 
@@ -241,29 +241,31 @@ Screener 进池要过回撤+TrendOK；Alpha（`catalystScore>85` 且含 S）几�
 
 在 `compute_alpha_additions`（或前端 apply 前）增加 **至少 1 条** 轻量闸（可组合）：
 
-| 闸 | 建议默认 |
-|----|----------|
-| 流动性 | 近 5/10 日均额或均量下限（Tushare） |
-| 结构 | TrendOK=true **或** Score≥阈值（如 50）二选一放宽 |
-| 板块 | 东财行业 ∈ 5D Top10（比开火主线 Top3 略宽） |
-| 硬排除 | 防守板块名单（与 BUY 闸一致） |
+| 闸 | 建议默认 | 本轮 |
+|----|----------|------|
+| 流动性 | 近 5/10 日均额或均量下限（Tushare） | 未做（后续） |
+| 结构 | TrendOK=true **或** Score≥阈值（如 50）二选一放宽 | 未做（后续） |
+| 板块 | 东财行业 ∈ 5D Top10（比开火主线 Top3 略宽） | ✅ |
+| 硬排除 | 防守板块名单（与 BUY 闸一致） | ✅ |
+| 缺行业 | 无东财行业名 → 拒绝 | ✅ |
+| Top10 空 | 资金流 Top10 不可用 → 跳过 Top10 闸（fail-open） | ✅ |
 
 进池仍不等于买单；闸的目的是 **少进垃圾监控**。
 
 #### 细节 checklist
 
-- [ ] 选定默认闸组合并写进 `docs/modules/alpha-incubator.md` / `watchlist.md`
-- [ ] `meta.alphaRejected` 记录拒绝原因分布
-- [ ] 保留「纯 S + 极高分」紧急通道的开关（默认关或极严）
+- [x] 选定默认闸组合并写进 `docs/modules/watchlist.md`（防守 + Top10）
+- [x] `meta.alphaRejected` 记录拒绝原因分布
+- [ ] 保留「纯 S + 极高分」紧急通道的开关（默认关或极严）— 未做
+- [ ] 流动性 / TrendOK 闸 — 未做，需要时另开 TIP
 
 #### 文件范围
 
 | 层 | 文件 |
 |----|------|
 | BE | `.../service/watchlist_automation.py`（`compute_alpha_additions`） |
-| BE | `.../service/alpha_radar_catalyst.py`（若分数侧扩展） |
-| FE | `watchlist-automation.ts`（若闸在 apply） |
-| 文档 | `docs/modules/alpha-incubator.md`、`watchlist.md` |
+| 测试 | `tests/test_watchlist_automation.py` |
+| 文档 | `docs/modules/watchlist.md`、本文件 |
 
 #### 预期收益
 
@@ -272,8 +274,8 @@ Screener 进池要过回撤+TrendOK；Alpha（`catalystScore>85` 且含 S）几�
 
 #### 验证
 
-- [ ] 回放最近 2 周 alphaAdd：加闸后数量下降，但 `主线∩TrendOK` 占比上升
-- [ ] 单元测试覆盖各拒绝分支
+- [ ] 回放最近 2 周 alphaAdd：加闸后数量下降，但 `主线∩TrendOK` 占比上升（人工）
+- [x] 单元测试覆盖各拒绝分支
 
 ---
 

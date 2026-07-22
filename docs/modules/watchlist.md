@@ -314,7 +314,7 @@ B_momentum 模式：
 
 1. **移除**：连续 3 日 Score &lt; 30 且行业不在 5D 净流入 Top5 的空仓股票；**仅**催化窗口内仍含 Max Grade=`S` 的 `alpha_radar` 票豁免（与 WATCH_SILENT 对齐）。非 S 的 alpha 票与 screener/manual 相同可被 GC。
 2. **Screener 导入**：与「Import from screener」相同逻辑（回撤过滤 + TrendOK）
-3. **Alpha Radar**：catalystScore &gt; 85 且评级 S 的股票 append 到列表底部
+3. **Alpha Radar**：catalystScore &gt; 85 且评级 S，再过轻量进池闸（非防守板块、东财行业 ∈ 5D 净流入 Top10；缺行业名则拒绝；Top10 数据缺失时跳过 Top10 闸）后 append 到列表底部；拒绝原因写入 automation `meta.alphaRejected`
 
 前端在 17:30–20:00 轮询后端 pending run 并落地到 localStorage。
 

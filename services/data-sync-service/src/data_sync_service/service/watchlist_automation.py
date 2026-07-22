@@ -36,6 +36,17 @@ logger = logging.getLogger(__name__)
 SCORE_REMOVAL_THRESHOLD = 30.0
 CATALYST_SCORE_MIN = 85.0
 CONSECUTIVE_LOW_SCORE_DAYS = 3
+# Alpha entry light gate: wider than BUY mainline Top3 (see TIP-004).
+ALPHA_ENTRY_TOP_INDUSTRIES = 10
+# Mirror apps/desktop-ui execution-action DEFENSE_SECTOR_KEYWORDS.
+DEFENSE_SECTOR_KEYWORDS = (
+    "银行",
+    "电力",
+    "公用事业",
+    "中药",
+    "煤炭",
+    "高速公路",
+)
 
 
 def _normalize_trade_date(value: str | None) -> str | None:
@@ -57,16 +68,54 @@ def _shanghai_today_iso() -> str:
     return _to_yyyymmdd(_cn_today())
 
 
-def get_top_5d_industry_names(as_of_date: str | None = None) -> set[str]:
+def get_top_5d_industry_names(as_of_date: str | None = None, *, top_n: int = 5) -> set[str]:
     flow_date = resolve_effective_as_of((as_of_date or "").strip() or get_latest_industry_date())
     if not flow_date:
         return set()
     dates_5 = trade_dates_upto(flow_date, 5, fallback_dates_fn=get_dates_upto)
     if not dates_5:
         return set()
+    n = max(1, int(top_n))
     sums = get_sum_by_industry_for_dates(dates_5)
-    return {str(x.get("industry_name") or "") for x in sums[:5] if x.get("industry_name")}
+    return {str(x.get("industry_name") or "") for x in sums[:n] if x.get("industry_name")}
 
+
+def is_defense_sector(industry_name: str | None) -> bool:
+    name = str(industry_name or "").strip()
+    if not name:
+        return False
+    return any(kw in name for kw in DEFENSE_SECTOR_KEYWORDS)
+
+
+def _cn_symbol_to_ts_code(symbol: str) -> str | None:
+    s = _normalize_cn_watchlist_symbol(symbol)
+    if not s.startswith("CN:"):
+        return None
+    ticker = s.split(":", 1)[1].strip()
+    if len(ticker) != 6 or not ticker.isdigit():
+        return None
+    suffix = "SH" if ticker.startswith("6") else "SZ"
+    return f"{ticker}.{suffix}"
+
+
+def _resolve_em_industries_for_symbols(symbols: list[str]) -> dict[str, str]:
+    """Map CN:xxxxxx → East Money industry name (DB only)."""
+    from data_sync_service.service.eastmoney_industry import lookup_em_industries_for_ts_codes
+
+    ts_by_sym: dict[str, str] = {}
+    for sym in symbols:
+        ts = _cn_symbol_to_ts_code(sym)
+        if ts:
+            ts_by_sym[sym] = ts
+    if not ts_by_sym:
+        return {}
+    by_ts = lookup_em_industries_for_ts_codes(list(ts_by_sym.values()))
+    out: dict[str, str] = {}
+    for sym, ts in ts_by_sym.items():
+        name = by_ts.get(ts)
+        if name and str(name).strip():
+            out[sym] = str(name).strip()
+    return out
 
 def get_last_n_trading_dates(n: int, *, end: date | None = None) -> list[str]:
     end_d = end or _cn_today()
@@ -232,33 +281,80 @@ def compute_alpha_additions(
     limit: int = 200,
     *,
     catalyst_payload: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
+    industry_by_symbol: dict[str, str] | None = None,
+    top_industries: set[str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """
+    Alpha Radar → Watchlist candidates with light entry gates (TIP-004).
+
+    Gates (after score>85 and grade S):
+    - defense sector → reject
+    - missing EM industry → reject (fail-closed per symbol)
+    - industry not in 5D Top10 → reject
+    - if Top10 set empty (flow data missing) → skip Top10 gate (fail-open)
+    """
     payload = catalyst_payload if catalyst_payload is not None else list_catalyst_stocks(limit=limit)
     items = payload.get("items") if isinstance(payload, dict) else []
     if not isinstance(items, list):
-        return []
-    out: list[dict[str, Any]] = []
+        return [], {}
+
+    rejected: dict[str, int] = {}
+
+    def _bump(reason: str) -> None:
+        rejected[reason] = int(rejected.get(reason) or 0) + 1
+
+    prelim: list[dict[str, Any]] = []
     for row in items:
         if not isinstance(row, dict):
             continue
         score = float(row.get("catalystScore") or 0.0)
         if score <= CATALYST_SCORE_MIN:
+            _bump("low_score")
             continue
         articles = row.get("articles") if isinstance(row.get("articles"), list) else []
         has_s = any(str(a.get("catalystGrade") or "").upper() == "S" for a in articles if isinstance(a, dict))
         if not has_s:
+            _bump("no_s_grade")
             continue
         sym = _normalize_cn_watchlist_symbol(str(row.get("symbol") or ""))
         if not sym:
+            _bump("bad_symbol")
             continue
-        out.append(
+        prelim.append(
             {
                 "symbol": sym,
                 "name": str(row.get("name") or sym),
                 "catalystScore": score,
             }
         )
-    return out
+
+    if not prelim:
+        return [], rejected
+
+    industries = industry_by_symbol
+    if industries is None:
+        industries = _resolve_em_industries_for_symbols([str(x["symbol"]) for x in prelim])
+
+    top_set = top_industries
+    if top_set is None:
+        top_set = get_top_5d_industry_names(top_n=ALPHA_ENTRY_TOP_INDUSTRIES)
+    top_ready = bool(top_set)
+
+    out: list[dict[str, Any]] = []
+    for row in prelim:
+        sym = str(row["symbol"])
+        industry = industries.get(sym) if industries else None
+        if not industry:
+            _bump("missing_industry")
+            continue
+        if is_defense_sector(industry):
+            _bump("defense_sector")
+            continue
+        if top_ready and industry not in top_set:
+            _bump("not_in_top10")
+            continue
+        out.append(row)
+    return out, rejected
 
 
 def _precheck(*, force: bool) -> tuple[bool, str | None]:
@@ -343,8 +439,14 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
         trendok_by_symbol=trendok_by_symbol,
         alpha_s_symbols=alpha_s_symbols,
     )
-    alpha_add = compute_alpha_additions(catalyst_payload=catalyst_payload)
+    top10 = get_top_5d_industry_names(top_n=ALPHA_ENTRY_TOP_INDUSTRIES)
+    meta["top10dIndustries"] = sorted(top10)
+    alpha_add, alpha_rejected = compute_alpha_additions(
+        catalyst_payload=catalyst_payload,
+        top_industries=top10,
+    )
     meta["alphaCandidates"] = len(alpha_add)
+    meta["alphaRejected"] = alpha_rejected
 
     run_id = insert_automation_run(
         trade_date=trade_date,

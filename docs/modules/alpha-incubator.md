@@ -88,3 +88,13 @@ URL = `{ALPHA_RADAR_RSSHUB_BASE_URL}{route}`，各源可用独立 env 覆盖。
 
 - LLM 返回 0 trends（V4 铁血标准）：document 标记 `extracted`，1h process **不**视为 error
 - **stored=0**（pipeline ingest）：不删旧趋势卡
+
+## Watchlist 自动化进池闸（TIP-004）
+
+盘后 / Run automation 将 Alpha 候选写入 Watchlist 前，在 `catalystScore > 85` 且含 S 之外还要求：
+
+1. 东财行业名可解析（DB `stock_eastmoney_industry`）
+2. 非防守板块（银行 / 电力 / 公用事业 / 中药 / 煤炭 / 高速公路）
+3. 行业 ∈ 5D 净流入 Top10（比 BUY 主线 Top3 宽；Top10 数据缺失时跳过本条）
+
+拒绝原因计入 automation run `meta.alphaRejected`。
