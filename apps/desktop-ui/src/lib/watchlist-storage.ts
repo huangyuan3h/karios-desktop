@@ -104,7 +104,10 @@ export function normalizeWatchlistItems(raw: unknown): WatchlistItem[] {
             ? it.entryDate.trim()
             : null,
         source:
-          it.source === 'manual' || it.source === 'screener' || it.source === 'alpha_radar'
+          it.source === 'manual' ||
+          it.source === 'screener' ||
+          it.source === 'screener_fallback' ||
+          it.source === 'alpha_radar'
             ? it.source
             : 'manual',
       } satisfies WatchlistItem;

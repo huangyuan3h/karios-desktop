@@ -313,10 +313,19 @@ B_momentum 模式：
 每个 A 股交易日 **17:30（Asia/Shanghai）** 自动运行（也可在 Watchlist 页点击 **Run automation** 手动触发）：
 
 1. **移除**：连续 3 日 Score &lt; 30 且行业不在 5D 净流入 Top5 的空仓股票；**仅**催化窗口内仍含 Max Grade=`S` 的 `alpha_radar` 票豁免（与 WATCH_SILENT 对齐）。非 S 的 alpha 票与 screener/manual 相同可被 GC。
-2. **Screener 导入**：与「Import from screener」相同逻辑（回撤过滤 + TrendOK）
+2. **Screener 导入**：与「Import from screener」相同（回撤 + TrendOK；空窗时 TIP-003 降级）
 3. **Alpha Radar**：catalystScore &gt; 85 且评级 S，再过轻量进池闸（非防守板块；缺东财行业拒绝；若行业为申万一级则须 ∈ 5D Top10，细粒度东财名跳过 Top10）后 append；`meta.alphaRejected` 记拒绝原因。Max Grade=`S` 豁免三日 GC 使用完整催化窗口（非 score Top200）。
 
-**漏斗指标（TIP-002）**：Import / Automation apply 后记录 `funnel`：`tvHit → passPullback → passTrendOk → addedNew`（Import Debug 与 automation summary / ack `meta.funnel`；`scanned` 与 `tvHit` 同口径）。
+**漏斗指标（TIP-002 / TIP-003）**：Import / Automation apply 后记录 `funnel`：`tvHit → passPullback → passTrendOk → +addedNew`；空窗时追加 `| fb Hit→OK→+N`（`fallbackUsed`）。降级票 `source=screener_fallback`，只过 TrendOK、不过 52W 回撤；可被三日 Score GC。
+
+### 空窗降级（TIP-003）
+
+触发：`tvHit == 0` 或 `passPullback == 0`（含「TV 有票但全被回撤杀掉」）。
+
+1. 取 5D 净流入 Top5 申万一级行业，剔除防守（银行 / 公用事业 / 煤炭等）
+2. 东财 `industry_name LIKE %行业%` 拉成分，合计最多 80 只
+3. TrendOK ✅ 且不在列表中 → append，`source=screener_fallback`
+4. 主路径已有 `passPullback > 0` 时**不**触发降级
 
 前端在 17:30–20:00 轮询后端 pending run 并落地到 localStorage。
 

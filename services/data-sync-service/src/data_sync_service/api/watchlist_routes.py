@@ -12,6 +12,7 @@ from data_sync_service.service.watchlist_automation import (
     get_automation_latest,
     get_automation_pending,
     get_automation_run,
+    list_fallback_universe_symbols,
     run_watchlist_automation,
 )
 
@@ -84,6 +85,17 @@ def watchlist_automation_latest() -> dict:
 def watchlist_automation_run(force: bool = Query(False)) -> dict:
     try:
         return run_watchlist_automation(trigger="manual", force=force)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/watchlist/automation/fallback-universe")
+def watchlist_fallback_universe(
+    maxTotal: int = Query(80, ge=1, le=200),
+) -> dict:
+    """TIP-003: empty-window fallback candidates (5D Top5 non-defense → EM LIKE)."""
+    try:
+        return list_fallback_universe_symbols(max_total=maxTotal)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

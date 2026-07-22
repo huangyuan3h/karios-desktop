@@ -84,6 +84,10 @@ function funnelFromMeta(meta: Record<string, unknown> | undefined): ScreenerFunn
     passTrendOk: num('passTrendOk'),
     addedNew: num('addedNew'),
     droppedByPullback: num('droppedByPullback'),
+    fallbackUsed: Boolean(f.fallbackUsed),
+    fallbackHit: num('fallbackHit'),
+    fallbackTrendOk: num('fallbackTrendOk'),
+    fallbackAdded: num('fallbackAdded'),
   };
 }
 

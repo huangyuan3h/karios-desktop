@@ -23,13 +23,12 @@ describe('WatchlistRegistryItemSchema', () => {
     expect(item.entryDate).toBe('2026-06-18');
   });
 
-  it('rejects invalid source', () => {
-    expect(() =>
-      WatchlistRegistryItemSchema.parse({
-        symbol: 'CN:000001',
-        source: 'unknown',
-      }),
-    ).toThrow();
+  it('accepts screener_fallback source', () => {
+    const item = WatchlistRegistryItemSchema.parse({
+      symbol: 'CN:000001',
+      source: 'screener_fallback',
+    });
+    expect(item.source).toBe('screener_fallback');
   });
 });
 

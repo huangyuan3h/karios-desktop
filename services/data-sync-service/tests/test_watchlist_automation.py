@@ -426,3 +426,44 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
     assert result["alphaAdd"] == []
     assert "remove" in result
     assert isinstance(result["remove"], list)
+
+
+def test_list_fallback_universe_skips_defense_and_caps(monkeypatch) -> None:
+    monkeypatch.setattr(
+        wa,
+        "get_top_5d_industry_names_ordered",
+        lambda as_of_date=None, top_n=5: ["银行", "电子", "计算机"],
+    )
+
+    def fake_search(keyword: str, *, limit: int = 12) -> list[dict]:
+        if keyword == "银行":
+            return [{"symbol": "CN:601988", "name": "Bank"}]
+        if keyword == "电子":
+            return [
+                {"symbol": f"CN:30000{i}", "name": f"E{i}"} for i in range(min(limit, 5))
+            ]
+        if keyword == "计算机":
+            return [
+                {"symbol": f"CN:68800{i}", "name": f"C{i}"} for i in range(min(limit, 5))
+            ]
+        return []
+
+    monkeypatch.setattr(
+        "data_sync_service.db.stock_eastmoney_industry.search_stocks_by_industry_keyword",
+        fake_search,
+    )
+    out = wa.list_fallback_universe_symbols(max_total=7, per_industry=5)
+    assert out["industries"] == ["电子", "计算机"]
+    assert out["skippedDefense"] == ["银行"]
+    assert "CN:601988" not in out["symbols"]
+    assert out["count"] == 7
+    assert out["truncated"] is True
+    assert len(out["symbols"]) == len(set(out["symbols"]))
+
+
+def test_list_fallback_universe_empty_top5(monkeypatch) -> None:
+    monkeypatch.setattr(wa, "get_top_5d_industry_names_ordered", lambda as_of_date=None, top_n=5: [])
+    out = wa.list_fallback_universe_symbols()
+    assert out["symbols"] == []
+    assert out["count"] == 0
+    assert out["truncated"] is False

@@ -127,11 +127,13 @@ Filter Pills 是 TradingView Screener 页面上方显示的筛选条件标签，
 
 ### 与 Watchlist 的协作
 
-1. 在 Screener 页面点击 "Import from screener"
+1. 在 Screener / Watchlist 页面触发 Import（或盘后 Automation）
 2. 系统获取所有启用 Screener 的最新快照
-3. 应用回撤比例过滤（-15% 到 -5%）
-4. 进行 TrendOK 检查
-5. 只有通过检查的股票才会添加到 Watchlist
+3. 应用回撤比例过滤（-15% 到 -5%）+ TrendOK → `source=screener`
+4. **空窗降级（TIP-003）**：若 `tvHit==0` 或 `passPullback==0`，改用 5D Top5 非防守行业成分（≤80）只过 TrendOK → `source=screener_fallback`
+5. Funnel 写入 Import Debug / automation `meta.funnel`
+
+主宇宙建议配置为 **Karios Pullback**（趋势回踩，非当日强势动量）。
 
 ### 与 AI 的协作
 

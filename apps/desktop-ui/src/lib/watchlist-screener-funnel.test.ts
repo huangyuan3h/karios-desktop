@@ -10,6 +10,7 @@ describe('formatScreenerFunnel', () => {
   it('formats TIP-002 funnel counts', () => {
     expect(
       formatScreenerFunnel({
+        ...emptyScreenerFunnel(),
         tvHit: 40,
         passPullback: 8,
         passTrendOk: 3,
@@ -19,6 +20,22 @@ describe('formatScreenerFunnel', () => {
     ).toBe('TV 40 → pullback 8 → TrendOK 3 → +2');
   });
 
+  it('appends fallback segment when used', () => {
+    expect(
+      formatScreenerFunnel({
+        ...emptyScreenerFunnel(),
+        tvHit: 10,
+        passPullback: 0,
+        droppedByPullback: 10,
+        fallbackUsed: true,
+        fallbackHit: 80,
+        fallbackTrendOk: 5,
+        fallbackAdded: 3,
+        addedNew: 3,
+      }),
+    ).toBe('TV 10 → pullback 0 → TrendOK 0 → +3 | fb 80→OK 5→+3');
+  });
+
   it('empty funnel helper starts at zeros', () => {
     expect(emptyScreenerFunnel()).toEqual({
       tvHit: 0,
@@ -26,6 +43,10 @@ describe('formatScreenerFunnel', () => {
       passTrendOk: 0,
       addedNew: 0,
       droppedByPullback: 0,
+      fallbackUsed: false,
+      fallbackHit: 0,
+      fallbackTrendOk: 0,
+      fallbackAdded: 0,
     });
   });
 });
@@ -44,6 +65,7 @@ describe('formatAutomationSummary funnel', () => {
       screenerAdded: 2,
       alphaAdded: 0,
       funnel: {
+        ...emptyScreenerFunnel(),
         tvHit: 10,
         passPullback: 4,
         passTrendOk: 2,
@@ -69,12 +91,16 @@ describe('formatAutomationSummary funnel', () => {
           passTrendOk: 1,
           addedNew: 1,
           droppedByPullback: 3,
+          fallbackUsed: true,
+          fallbackHit: 40,
+          fallbackTrendOk: 2,
+          fallbackAdded: 0,
         },
         alphaRejected: { defense_sector: 2 },
       },
     };
     const summary = formatAutomationSummary(run);
-    expect(summary).toContain('funnel TV 5 → pullback 2 → TrendOK 1 → +1');
+    expect(summary).toContain('funnel TV 5 → pullback 2 → TrendOK 1 → +1 | fb 40→OK 2→+0');
     expect(summary).toContain('alphaReject defense_sector:2');
   });
 });

@@ -43,6 +43,10 @@ CATALYST_SCORE_MIN = 85.0
 CONSECUTIVE_LOW_SCORE_DAYS = 3
 # Alpha entry light gate: wider than BUY mainline Top3 (see TIP-004).
 ALPHA_ENTRY_TOP_INDUSTRIES = 10
+# TIP-003 empty-window fallback universe.
+FALLBACK_TOP_INDUSTRIES = 5
+FALLBACK_PER_INDUSTRY = 30
+FALLBACK_MAX_TOTAL = 80
 # Mirror apps/desktop-ui execution-action DEFENSE_SECTOR_KEYWORDS.
 DEFENSE_SECTOR_KEYWORDS = (
     "银行",
@@ -83,6 +87,78 @@ def get_top_5d_industry_names(as_of_date: str | None = None, *, top_n: int = 5) 
     n = max(1, int(top_n))
     sums = get_sum_by_industry_for_dates(dates_5)
     return {str(x.get("industry_name") or "") for x in sums[:n] if x.get("industry_name")}
+
+
+def get_top_5d_industry_names_ordered(as_of_date: str | None = None, *, top_n: int = 5) -> list[str]:
+    """Same as get_top_5d_industry_names but preserves inflow rank order."""
+    flow_date = resolve_effective_as_of((as_of_date or "").strip() or get_latest_industry_date())
+    if not flow_date:
+        return []
+    dates_5 = trade_dates_upto(flow_date, 5, fallback_dates_fn=get_dates_upto)
+    if not dates_5:
+        return []
+    n = max(1, int(top_n))
+    sums = get_sum_by_industry_for_dates(dates_5)
+    out: list[str] = []
+    for x in sums[:n]:
+        name = str(x.get("industry_name") or "").strip()
+        if name:
+            out.append(name)
+    return out
+
+
+def list_fallback_universe_symbols(
+    *,
+    max_total: int = FALLBACK_MAX_TOTAL,
+    per_industry: int = FALLBACK_PER_INDUSTRY,
+    top_n: int = FALLBACK_TOP_INDUSTRIES,
+    as_of_date: str | None = None,
+) -> dict[str, Any]:
+    """
+    TIP-003 empty-window fallback universe.
+
+    5D TopN SW L1 industries (non-defense) → EM industry_name LIKE match → capped symbols.
+    """
+    from data_sync_service.db.stock_eastmoney_industry import search_stocks_by_industry_keyword
+
+    cap = max(1, min(int(max_total), 200))
+    per = max(1, min(int(per_industry), 40))
+    ranked = get_top_5d_industry_names_ordered(as_of_date, top_n=top_n)
+    industries_raw = list(ranked)
+    industries = [name for name in ranked if not is_defense_sector(name)]
+    skipped_defense = [name for name in industries_raw if name not in industries]
+
+    symbols: list[str] = []
+    names_by_symbol: dict[str, str] = {}
+    seen: set[str] = set()
+    truncated = False
+    for industry in industries:
+        if len(symbols) >= cap:
+            truncated = True
+            break
+        room = cap - len(symbols)
+        rows = search_stocks_by_industry_keyword(industry, limit=min(per, room))
+        for row in rows:
+            sym = str(row.get("symbol") or "").strip()
+            if not sym or sym in seen:
+                continue
+            seen.add(sym)
+            symbols.append(sym)
+            names_by_symbol[sym] = str(row.get("name") or sym)
+            if len(symbols) >= cap:
+                truncated = True
+                break
+
+    return {
+        "industries": industries,
+        "industriesRaw": industries_raw,
+        "skippedDefense": skipped_defense,
+        "symbols": symbols,
+        "namesBySymbol": names_by_symbol,
+        "truncated": truncated,
+        "maxTotal": cap,
+        "count": len(symbols),
+    }
 
 
 def is_defense_sector(industry_name: str | None) -> bool:

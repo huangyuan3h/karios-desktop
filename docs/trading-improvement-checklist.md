@@ -55,9 +55,9 @@ TV Screener（候选宇宙）
 
 | ID | 标题 | 优先级 | 预期收益 | 预估工时 | 状态 |
 |----|------|--------|----------|----------|------|
-| TIP-001 | 校准 TV 第一层：双宇宙 / 对齐回踩 thesis | P0 | ★★★★★ | 0.5–1 天（配置）+ 1–2 周观察 | [ ] |
+| TIP-001 | 校准 TV 第一层：双宇宙 / 对齐回踩 thesis | P0 | ★★★★★ | 0.5–1 天（配置）+ 1–2 周观察 | [x] |
 | TIP-002 | 漏斗转化率仪表：TV→回撤→TrendOK→开火 | P0 | ★★★★★（度量闭环） | 1–2 天 | [x] |
-| TIP-003 | Falcon / 空窗降级宇宙 | P0 | ★★★★☆ | 1–2 天 | [ ] |
+| TIP-003 | Falcon / 空窗降级宇宙 | P0 | ★★★★☆ | 1–2 天 | [x] |
 | TIP-004 | Alpha 进池加轻量闸（主线 / 结构 / 流动性） | P1 | ★★★★☆ | 1–2 天 | [x] |
 | TIP-005 | Alpha 清池对称化（取消整源豁免） | P1 | ★★★★☆ | 1 天 | [x] |
 | TIP-006 | Screener 策略版本合同（命名 / pills / 文档） | P1 | ★★★☆☆ | 1 天 | [ ] |
@@ -75,9 +75,9 @@ TV Screener（候选宇宙）
 
 ### TIP-001：校准 TV 第一层 — 双宇宙 / 对齐回踩 thesis
 
-**状态**：[ ]  
-**完成日期**：  
-**备注 / PR**：
+**状态**：[x]  
+**完成日期**：2026-07-22  
+**备注 / PR**：config — `Karios Pullback` URL `…/m22BmHkT/` ~34 hits；去掉动量 pills，对齐回踩
 
 #### 问题
 
@@ -96,11 +96,11 @@ TV Screener（候选宇宙）
 
 #### 细节 checklist
 
-- [ ] 在 TradingView 上重配 / 新建 Pullback screener URL，写入 Settings（enabled）
+- [x] 在 TradingView 上重配 / 新建 Pullback screener URL，写入 Settings（enabled）— `Karios Pullback` / `m22BmHkT`
 - [ ] 记录 Filter Pills 全文到本条目「验收记录」或 `docs/modules/screener.md`
 - [ ] 连续 ≥5 个交易日统计：命中数、过回撤数、过 TrendOK 数（可用 TIP-002 产出）
 - [ ] 若保留 Momentum screener：在导入逻辑中按 screenerId / screenTitle 分支后滤（见文件范围）
-- [ ] **明确不做**：用东财「均线多头排列」替换 TV 主宇宙
+- [x] **明确不做**：用东财「均线多头排列」替换 TV 主宇宙
 
 #### 文件范围（若需代码分支）
 
@@ -179,9 +179,9 @@ UI 最小形态：Import Debug 一行 Funnel；automation summary / ack 写入 P
 
 ### TIP-003：Falcon / 空窗降级宇宙
 
-**状态**：[ ]  
-**完成日期**：  
-**备注 / PR**：
+**状态**：[x]  
+**完成日期**：2026-07-22  
+**备注 / PR**：local — Industry 5D Top5 → TrendOK（skip pullback）；`source=screener_fallback`
 
 #### 问题
 
@@ -189,40 +189,32 @@ Falcon Launch 类条件可全日 **0 票** → Automation 第一层断粮，当�
 
 #### 目标
 
-业务规则：当 **主 Pullback/Momentum screener 最新快照 `row_count=0`（或过回撤后为 0）** 时，启用 **降级宇宙**（仍进同一后滤：回撤可选 + TrendOK）：
+业务规则：当 **主 Pullback screener `tvHit==0` 或 `passPullback==0`** 时，启用降级宇宙：
 
-候选实现（三选一，优先 A）：
-
-- **A.** 第二个已配置的「宽」TV screener（enabled=false 平时，空窗时才用）
-- **B.** 对已在 Industry Flow Top5 的成分做本地 TrendOK 扫描（有上限，如 80 只）
-- **C.** 仅告警 + 人工，不自动降级（最低方案，收益最低）
-
-推荐落地 **A 或 B**；明确记录触发条件与当日 meta。
+- 5D 净流入 Top5（剔除防守板块）→ 东财行业名 LIKE 成分，合计 ≤80
+- 只过 **TrendOK**（跳过 52W 回撤）
+- `source=screener_fallback`；funnel 记 `fallbackUsed/Hit/TrendOk/Added`
 
 #### 细节 checklist
 
-- [ ] 定义空窗：`tv_hit==0` 或 `pass_pullback==0`
-- [ ] 降级来源写入 automation `meta` / 转化率快照（衔接 TIP-002）
-- [ ] 降级候选仍必须过 TrendOK；是否过回撤窗写死在规则里
-- [ ] 避免与主宇宙重复计数污染转化率（标注 `source=fallback`）
+- [x] 定义空窗：`tv_hit==0` 或 `pass_pullback==0`
+- [x] 降级来源写入 funnel / ack `meta.funnel`
+- [x] 降级候选只过 TrendOK（不过回撤）
+- [x] `source=screener_fallback` 与主宇宙区分
 
 #### 文件范围
 
 | 层 | 文件 |
 |----|------|
-| BE automation | `.../service/watchlist_automation.py`、`dashboard._sync_screeners_step` |
-| FE import | `watchlist-screener-import.ts`（若降级在前端） |
-| 文档 | `docs/modules/watchlist.md`、本文件 |
-
-#### 预期收益
-
-- **高**：减少「趋势日断粮」；提高自动化日可监控覆盖。
-- **风险**：宽宇宙灌水 → 必须保留 TrendOK；观察 `added_new` 是否暴涨。
+| Shared | `packages/shared/src/schemas/watchlist.ts` |
+| BE | `watchlist_automation.list_fallback_universe_symbols`；`GET …/fallback-universe` |
+| FE | `watchlist-screener-import.ts` |
+| 文档 | `docs/modules/watchlist.md`、`screener.md`、本文件 |
 
 #### 验证
 
-- [ ] 人为 disable 主 screener 或 mock 0 行时，降级路径触发且 meta 可见
-- [ ] 非空窗日不触发降级
+- [x] 单测：防守行业剔除、符号封顶、funnel fallback 段
+- [ ] 手工：disable Pullback → Import 见 `fallbackUsed`；有 pullback 命中日不触发
 
 ---
 
@@ -575,6 +567,8 @@ After TIP-004/005/002 implementation, a defect review fixed:
 | ack funnel merge untested | `merge_funnel_into_meta` + unit test |
 
 **Still open (non-blocking):** FE/BE `DEFENSE_SECTOR_KEYWORDS` duplication; no EM↔SW map for stricter Top10; N-day funnel chart.
+
+**TIP-003 (2026-07-22):** empty window → Industry 5D Top5 non-defense LIKE universe (cap 80) → TrendOK only → `screener_fallback`.
 
 | 项 | 原因 |
 |----|------|
