@@ -3,16 +3,50 @@ from __future__ import annotations
 from data_sync_service.service import watchlist_automation as wa  # type: ignore[import-not-found]
 
 
-def test_should_remove_symbol_alpha_exempt() -> None:
+def test_should_remove_symbol_alpha_s_exempt(monkeypatch) -> None:
+    def fake_scores(symbol: str, trade_dates: list[str]) -> list[dict]:
+        return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
+
+    monkeypatch.setattr(wa, "get_scores_for_symbol", fake_scores)
     ok, reason = wa.should_remove_symbol(
         symbol="CN:600000",
         source="alpha_radar",
         trade_dates=["2026-06-16", "2026-06-17", "2026-06-18"],
-        top_5d_industries=set(),
-        current_industry="Banking",
+        top_5d_industries={"Banking"},
+        current_industry="Coal",
+        alpha_s_symbols={"CN:600000"},
     )
     assert ok is False
-    assert reason == "alpha_radar_exempt"
+    assert reason == "alpha_s_exempt"
+
+
+def test_should_remove_symbol_alpha_non_s_can_gc(monkeypatch) -> None:
+    def fake_scores(symbol: str, trade_dates: list[str]) -> list[dict]:
+        return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
+
+    monkeypatch.setattr(wa, "get_scores_for_symbol", fake_scores)
+    ok, reason = wa.should_remove_symbol(
+        symbol="CN:600000",
+        source="alpha_radar",
+        trade_dates=["2026-06-16", "2026-06-17", "2026-06-18"],
+        top_5d_industries={"Banking"},
+        current_industry="Coal",
+        alpha_s_symbols={"CN:600001"},
+        position_pct=0,
+    )
+    assert ok is True
+    assert reason == "score_low_3d_and_industry_outside_top5"
+
+
+def test_symbols_with_max_grade_s() -> None:
+    payload = {
+        "items": [
+            {"symbol": "600000", "articles": [{"catalystGrade": "A"}]},
+            {"symbol": "CN:600001", "articles": [{"catalystGrade": "S"}]},
+            {"symbol": "600002", "articles": []},
+        ]
+    }
+    assert wa.symbols_with_max_grade_s(payload) == {"CN:600001"}
 
 
 def test_should_remove_symbol_insufficient_history() -> None:
@@ -229,7 +263,20 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
         "get_last_n_trading_dates",
         lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"],
     )
-    monkeypatch.setattr(wa, "compute_alpha_additions", lambda limit=200: [])
+    monkeypatch.setattr(
+        wa,
+        "list_catalyst_stocks",
+        lambda limit=200: {
+            "items": [
+                {
+                    "symbol": "600000",
+                    "name": "Weak Alpha",
+                    "catalystScore": 90.0,
+                    "articles": [{"catalystGrade": "A"}],
+                }
+            ]
+        },
+    )
 
     def fake_scores(symbol: str, trade_dates: list[str]) -> list[dict]:
         return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
@@ -242,5 +289,7 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
     assert compute_calls[0][0] == ["CN:600000", "CN:600001"]
     assert compute_calls[0][1] is False
     assert result["meta"]["scoreSnapshots"] == 2
+    assert result["meta"]["alphaSSymbols"] == 0
+    assert result["alphaAdd"] == []
     assert "remove" in result
     assert isinstance(result["remove"], list)

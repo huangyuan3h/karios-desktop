@@ -117,6 +117,38 @@ def record_score_snapshots(symbols: list[str]) -> tuple[str | None, int, list[di
     return trade_date, count, rows_out
 
 
+def _normalize_cn_watchlist_symbol(symbol: str) -> str:
+    text = str(symbol or "").strip().upper()
+    if not text:
+        return ""
+    if text.startswith("CN:"):
+        return text
+    if text.startswith("HK:"):
+        return text
+    return f"CN:{text}"
+
+
+def symbols_with_max_grade_s(catalyst_payload: dict[str, Any] | None) -> set[str]:
+    """Symbols whose catalyst window still includes at least one grade-S article."""
+    items = catalyst_payload.get("items") if isinstance(catalyst_payload, dict) else None
+    if not isinstance(items, list):
+        return set()
+    out: set[str] = set()
+    for row in items:
+        if not isinstance(row, dict):
+            continue
+        articles = row.get("articles") if isinstance(row.get("articles"), list) else []
+        has_s = any(
+            str(a.get("catalystGrade") or "").upper() == "S" for a in articles if isinstance(a, dict)
+        )
+        if not has_s:
+            continue
+        sym = _normalize_cn_watchlist_symbol(str(row.get("symbol") or ""))
+        if sym:
+            out.add(sym)
+    return out
+
+
 def should_remove_symbol(
     *,
     symbol: str,
@@ -125,9 +157,13 @@ def should_remove_symbol(
     top_5d_industries: set[str],
     current_industry: str | None,
     position_pct: float | None = None,
+    alpha_s_symbols: set[str] | None = None,
 ) -> tuple[bool, str]:
+    # Align with WATCH_SILENT: only Max Grade=S stays exempt from 3-day Score GC.
     if source == "alpha_radar":
-        return False, "alpha_radar_exempt"
+        norm = _normalize_cn_watchlist_symbol(symbol)
+        if norm and alpha_s_symbols and norm in alpha_s_symbols:
+            return False, "alpha_s_exempt"
     # Do not GC held names (missing/None position treated as flat = 0).
     if position_pct is not None and float(position_pct) > 0:
         return False, "held_position"
@@ -162,7 +198,9 @@ def compute_removals(
     trade_dates: list[str],
     top_5d_industries: set[str],
     trendok_by_symbol: dict[str, dict[str, Any]],
+    alpha_s_symbols: set[str] | None = None,
 ) -> list[dict[str, Any]]:
+    s_set = alpha_s_symbols or set()
     out: list[dict[str, Any]] = []
     for item in registry:
         sym = str(item.get("symbol") or "").strip()
@@ -183,14 +221,19 @@ def compute_removals(
             top_5d_industries=top_5d_industries,
             current_industry=industry,
             position_pct=position_pct,
+            alpha_s_symbols=s_set,
         )
         if ok:
             out.append({"symbol": sym, "reason": reason})
     return out
 
 
-def compute_alpha_additions(limit: int = 200) -> list[dict[str, Any]]:
-    payload = list_catalyst_stocks(limit=limit)
+def compute_alpha_additions(
+    limit: int = 200,
+    *,
+    catalyst_payload: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    payload = catalyst_payload if catalyst_payload is not None else list_catalyst_stocks(limit=limit)
     items = payload.get("items") if isinstance(payload, dict) else []
     if not isinstance(items, list):
         return []
@@ -205,10 +248,9 @@ def compute_alpha_additions(limit: int = 200) -> list[dict[str, Any]]:
         has_s = any(str(a.get("catalystGrade") or "").upper() == "S" for a in articles if isinstance(a, dict))
         if not has_s:
             continue
-        sym_raw = str(row.get("symbol") or "").strip()
-        if not sym_raw:
+        sym = _normalize_cn_watchlist_symbol(str(row.get("symbol") or ""))
+        if not sym:
             continue
-        sym = sym_raw if sym_raw.startswith("CN:") else f"CN:{sym_raw}"
         out.append(
             {
                 "symbol": sym,
@@ -290,13 +332,18 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
     streak_dates = get_last_n_trading_dates(CONSECUTIVE_LOW_SCORE_DAYS)
     meta["streakTradeDates"] = streak_dates
 
+    catalyst_payload = list_catalyst_stocks(limit=200)
+    alpha_s_symbols = symbols_with_max_grade_s(catalyst_payload)
+    meta["alphaSSymbols"] = len(alpha_s_symbols)
+
     remove_items = compute_removals(
         registry,
         trade_dates=streak_dates,
         top_5d_industries=top_5d,
         trendok_by_symbol=trendok_by_symbol,
+        alpha_s_symbols=alpha_s_symbols,
     )
-    alpha_add = compute_alpha_additions()
+    alpha_add = compute_alpha_additions(catalyst_payload=catalyst_payload)
     meta["alphaCandidates"] = len(alpha_add)
 
     run_id = insert_automation_run(

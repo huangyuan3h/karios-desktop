@@ -59,7 +59,7 @@ TV Screener（候选宇宙）
 | TIP-002 | 漏斗转化率仪表：TV→回撤→TrendOK→开火 | P0 | ★★★★★（度量闭环） | 1–2 天 | [ ] |
 | TIP-003 | Falcon / 空窗降级宇宙 | P0 | ★★★★☆ | 1–2 天 | [ ] |
 | TIP-004 | Alpha 进池加轻量闸（主线 / 结构 / 流动性） | P1 | ★★★★☆ | 1–2 天 | [ ] |
-| TIP-005 | Alpha 清池对称化（取消整源豁免） | P1 | ★★★★☆ | 1 天 | [ ] |
+| TIP-005 | Alpha 清池对称化（取消整源豁免） | P1 | ★★★★☆ | 1 天 | [x] |
 | TIP-006 | Screener 策略版本合同（命名 / pills / 文档） | P1 | ★★★☆☆ | 1 天 | [ ] |
 | TIP-007 | 主线内有条件放开动量通道（B_momentum） | P2 | ★★★★☆（进攻） | 2–3 天 | [ ] |
 | TIP-008 | Automation 落地指标与复盘字段 | P2 | ★★★☆☆ | 1–2 天 | [ ] |
@@ -279,9 +279,9 @@ Screener 进池要过回撤+TrendOK；Alpha（`catalystScore>85` 且含 S）几�
 
 ### TIP-005：Alpha 清池对称化（取消整源豁免）
 
-**状态**：[ ]  
-**完成日期**：  
-**备注 / PR**：
+**状态**：[x]  
+**完成日期**：2026-07-22  
+**备注 / PR**：local — `should_remove_symbol` 仅 Max Grade=S → `alpha_s_exempt`
 
 #### 问题
 
@@ -297,9 +297,9 @@ Screener 进池要过回撤+TrendOK；Alpha（`catalystScore>85` 且含 S）几�
 
 #### 细节 checklist
 
-- [ ] 改 `should_remove_symbol`：去掉无条件 `alpha_radar_exempt`，改为查近期 Max Grade / catalyst
-- [ ] 文档与 downstream prompt 对齐（避免 AI 仍假设整源豁免）
-- [ ] 迁移说明：存量 alpha 噪音票会在随后数个交易日被清
+- [x] 改 `should_remove_symbol`：去掉无条件 `alpha_radar_exempt`，改为查近期 Max Grade / catalyst
+- [x] 文档与 downstream prompt 对齐（避免 AI 仍假设整源豁免）
+- [x] 迁移说明：存量 alpha 噪音票会在随后数个交易日被清
 
 #### 文件范围
 
@@ -307,7 +307,7 @@ Screener 进池要过回撤+TrendOK；Alpha（`catalystScore>85` 且含 S）几�
 |----|------|
 | BE | `.../service/watchlist_automation.py` |
 | 测试 | `tests/test_watchlist_automation.py` |
-| 文档 | `docs/modules/watchlist.md`、`README.md`、`downstream-ai-prompt.md` |
+| 文档 | `docs/modules/watchlist.md`、`README.md`、本文件 |
 
 #### 预期收益
 
@@ -316,7 +316,7 @@ Screener 进池要过回撤+TrendOK；Alpha（`catalystScore>85` 且含 S）几�
 
 #### 验证
 
-- [ ] 单测：S 豁免 / 非 S 可删 / 持仓不删
+- [x] 单测：S 豁免 / 非 S 可删 / 持仓不删
 - [ ] 人工跑一次 automation dry-run 或 force，检查 remove 名单合理
 
 ---

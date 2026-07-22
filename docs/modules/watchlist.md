@@ -312,7 +312,7 @@ B_momentum 模式：
 
 每个 A 股交易日 **17:30（Asia/Shanghai）** 自动运行（也可在 Watchlist 页点击 **Run automation** 手动触发）：
 
-1. **移除**：连续 3 日 Score &lt; 30 且行业不在 5D 净流入 Top5 的股票（`alpha_radar` 来源豁免）
+1. **移除**：连续 3 日 Score &lt; 30 且行业不在 5D 净流入 Top5 的空仓股票；**仅**催化窗口内仍含 Max Grade=`S` 的 `alpha_radar` 票豁免（与 WATCH_SILENT 对齐）。非 S 的 alpha 票与 screener/manual 相同可被 GC。
 2. **Screener 导入**：与「Import from screener」相同逻辑（回撤过滤 + TrendOK）
 3. **Alpha Radar**：catalystScore &gt; 85 且评级 S 的股票 append 到列表底部
 
