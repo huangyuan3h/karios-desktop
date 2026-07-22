@@ -9,6 +9,7 @@ import {
   deriveActionCard,
   isHeldMissingPositionPct,
   isHeldPosition,
+  type CatalystPurgeHint,
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso } from '@/lib/market-hours';
@@ -480,6 +481,7 @@ export type WatchlistRowProps = {
   executionGate: ExecutionGate | null;
   mainlineAllow: MainlineAllowSet | null;
   sectorOutflowBlock?: boolean;
+  catalyst?: CatalystPurgeHint | null;
   sectorExposureByIndustry: Map<string, number> | null;
   sleeveExposurePct: number;
   showTooltip: ShowTooltipFn;
@@ -505,6 +507,7 @@ function WatchlistRowInner({
   executionGate,
   mainlineAllow,
   sectorOutflowBlock = false,
+  catalyst = null,
   sectorExposureByIndustry,
   sleeveExposurePct,
   showTooltip,
@@ -551,6 +554,7 @@ function WatchlistRowInner({
     sectorExposureByIndustry,
     sleeveExposurePct,
     sectorOutflowBlock,
+    catalyst,
     todaySh: getShanghaiTodayIso(),
   });
   const execTone =

@@ -126,7 +126,7 @@ export function maxGradeArticle(
 
 /** Symbol → maxGrade + catalystScore for PURGE exemption in Action Cards. */
 export function buildCatalystPurgeMap(
-  resp: CatalystStocksResponse | null | undefined,
+  resp: Pick<CatalystStocksResponse, 'items'> | null | undefined,
 ): Map<string, { maxGrade: string | null; catalystScore: number | null }> {
   const out = new Map<string, { maxGrade: string | null; catalystScore: number | null }>();
   const items = Array.isArray(resp?.items) ? resp!.items : [];

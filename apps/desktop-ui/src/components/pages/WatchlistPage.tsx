@@ -9,6 +9,10 @@ import { Button } from '@/components/ui/button';
 import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistTrend } from '@/hooks/useWatchlistTrend';
+import {
+  buildCatalystPurgeMap,
+  DEFAULT_CATALYST_MAX_AGE_DAYS,
+} from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
 import { executionGateBadgeClass } from '@/lib/dashboard-format';
 import {
@@ -18,6 +22,7 @@ import {
   parseExecutionGate,
 } from '@/lib/execution-action';
 import { buildMainlineAllowSet, isSectorOutflowBlock } from '@/lib/hot-industry-picks';
+import { useAlphaRadarCatalystQuery } from '@/lib/queries/alphaRadar';
 import { useDashboardSummaryQuery } from '@/lib/queries/dashboard';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { watchlistMarketKey } from '@/lib/queries/watchlist';
@@ -36,6 +41,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const { addReference } = useChatStore();
   const sentimentQuery = useDashboardSentimentQuery();
   const liteSummaryQuery = useDashboardSummaryQuery();
+  const catalystQuery = useAlphaRadarCatalystQuery(DEFAULT_CATALYST_MAX_AGE_DAYS);
+  const catalystBySymbol = React.useMemo(
+    () => buildCatalystPurgeMap(catalystQuery.data ?? null),
+    [catalystQuery.data],
+  );
   const executionGate = React.useMemo(
     () =>
       parseExecutionGate(
@@ -467,6 +477,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           executionGate={executionGate}
           mainlineAllow={mainlineAllow}
           sectorOutflowBlock={sectorOutflowBlock}
+          catalystBySymbol={catalystBySymbol}
         />
       </div>
     </div>

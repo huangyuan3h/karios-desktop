@@ -17,6 +17,7 @@ import { useChatStore } from '@/lib/chat/store';
 import {
   buildSectorExposureFromWatchlist,
   buildSleeveExposurePct,
+  type CatalystPurgeHint,
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
@@ -107,6 +108,8 @@ export type WatchlistTableProps = {
   executionGate?: ExecutionGate | null;
   mainlineAllow?: MainlineAllowSet | null;
   sectorOutflowBlock?: boolean;
+  /** Alpha Radar Max Grade=S → WATCH_SILENT (same map as Copy / Journal). */
+  catalystBySymbol?: Map<string, CatalystPurgeHint> | null;
 };
 
 export function sortWatchlistItems(
@@ -151,6 +154,7 @@ export function WatchlistTable({
   executionGate = null,
   mainlineAllow = null,
   sectorOutflowBlock = false,
+  catalystBySymbol = null,
 }: WatchlistTableProps) {
   const { addReference } = useChatStore();
 
@@ -409,6 +413,7 @@ export function WatchlistTable({
                         executionGate={executionGate ?? null}
                         mainlineAllow={mainlineAllow ?? null}
                         sectorOutflowBlock={sectorOutflowBlock}
+                        catalyst={catalystBySymbol?.get(it.symbol) ?? null}
                         sectorExposureByIndustry={sectorExposureByIndustry}
                         sleeveExposurePct={sleeveExposurePct}
                         showTooltip={showTooltip}
