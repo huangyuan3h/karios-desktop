@@ -231,3 +231,86 @@ def test_inst_retail_chase_blocks_buy(monkeypatch) -> None:
     assert any(a.get("code") == "inst_retail_chase" for a in (res.get("riskAlerts") or []))
     if res.get("score") is not None:
         assert float(res["score"]) <= 60.0
+
+
+def test_momentum_surge_allow_skips_avoid() -> None:
+    import data_sync_service.service.trendok as trendok  # type: ignore[import-not-found]
+
+    res = {
+        "buyAction": "buy",
+        "buyMode": "B_momentum",
+        "buyWhy": "mode B",
+        "trendOk": True,
+        "score": 80,
+        "scoreParts": {"penalty_intraday_spike": -20.0},
+        "intradayChgPct": 7.0,
+        "gapUp": False,
+        "riskMetricsLive": True,
+        "buyChecks": {},
+        "stopLossParts": {},
+    }
+    trendok._apply_intraday_risk_buy_blocks(res, market_regime="Strong")  # type: ignore[attr-defined]
+    assert res["buyAction"] == "buy"
+    assert res["buyChecks"].get("momentum_surge_allow") is True
+    assert res["buyChecks"].get("blocked_intraday_surge") is False
+
+
+def test_momentum_surge_blocks_when_pre_spike_score_too_low() -> None:
+    import data_sync_service.service.trendok as trendok  # type: ignore[import-not-found]
+
+    res = {
+        "buyAction": "buy",
+        "buyMode": "B_momentum",
+        "buyWhy": "mode B",
+        "trendOk": True,
+        "score": 60,
+        "scoreParts": {"penalty_intraday_spike": -20.0},
+        "intradayChgPct": 7.0,
+        "gapUp": False,
+        "riskMetricsLive": True,
+        "buyChecks": {},
+        "stopLossParts": {},
+    }
+    trendok._apply_intraday_risk_buy_blocks(res, market_regime="Strong")  # type: ignore[attr-defined]
+    assert res["buyAction"] == "avoid"
+    assert res["buyChecks"].get("blocked_intraday_surge") is True
+
+
+def test_momentum_surge_still_blocks_without_b_mode() -> None:
+    import data_sync_service.service.trendok as trendok  # type: ignore[import-not-found]
+
+    res = {
+        "buyAction": "buy",
+        "buyMode": "A_pullback",
+        "buyWhy": "mode A",
+        "trendOk": True,
+        "score": 90,
+        "intradayChgPct": 7.0,
+        "gapUp": False,
+        "riskMetricsLive": True,
+        "buyChecks": {},
+        "stopLossParts": {},
+    }
+    trendok._apply_intraday_risk_buy_blocks(res, market_regime="Strong")  # type: ignore[attr-defined]
+    assert res["buyAction"] == "avoid"
+    assert res["buyChecks"].get("blocked_intraday_surge") is True
+
+
+def test_momentum_surge_still_blocks_above_9pct() -> None:
+    import data_sync_service.service.trendok as trendok  # type: ignore[import-not-found]
+
+    res = {
+        "buyAction": "buy",
+        "buyMode": "B_momentum",
+        "buyWhy": "mode B",
+        "trendOk": True,
+        "score": 90,
+        "intradayChgPct": 9.5,
+        "gapUp": False,
+        "riskMetricsLive": True,
+        "buyChecks": {},
+        "stopLossParts": {},
+    }
+    trendok._apply_intraday_risk_buy_blocks(res, market_regime="Strong")  # type: ignore[attr-defined]
+    assert res["buyAction"] == "avoid"
+    assert res["buyChecks"].get("blocked_intraday_surge") is True

@@ -103,4 +103,39 @@ describe('formatAutomationSummary funnel', () => {
     expect(summary).toContain('funnel TV 5 → pullback 2 → TrendOK 1 → +1 | fb 40→OK 2→+0');
     expect(summary).toContain('alphaReject defense_sector:2');
   });
+
+  it('appends sync and top5 from meta', () => {
+    const run: AutomationRun = {
+      runId: 'r3',
+      createdAt: '2026-07-22T10:00:00.000Z',
+      trigger: 'manual',
+      remove: [],
+      alphaAdd: [],
+      meta: {
+        industrySync: { ok: true, rows: 10 },
+        screenerSync: { failed: 0, enabled: 2 },
+        top5dIndustries: ['电子', '计算机', '传媒', '通信', '有色金属', '额外'],
+      },
+    };
+    const summary = formatAutomationSummary(run);
+    expect(summary).toContain('sync ind✓ tv✓');
+    expect(summary).toContain('top5 电子,计算机,传媒,通信,有色金属');
+    expect(summary).not.toContain('额外');
+  });
+
+  it('marks sync failed when ok false or failed>0', () => {
+    const run: AutomationRun = {
+      runId: 'r4',
+      createdAt: '2026-07-22T10:00:00.000Z',
+      trigger: 'scheduled',
+      remove: [],
+      alphaAdd: [],
+      meta: {
+        industrySync: { ok: false, error: 'timeout' },
+        screenerSync: { failed: 2, enabled: 3 },
+      },
+    };
+    const summary = formatAutomationSummary(run);
+    expect(summary).toContain('sync ind✗ tv✗');
+  });
 });

@@ -46,6 +46,7 @@
 
 缺数据写「Copy 未提供」，禁止编造。
 不得平反 *_BLOCK（如 INTRADAY_SURGE_BLOCK / GAP_UP_WEAK_BLOCK / SIZE_CAP_BLOCK / SECTOR_CONC_BLOCK / SECTOR_OUTFLOW_BLOCK / ENTRY_BELOW_STOP）；不得劝跳过 EXIT（除非 Why=`T1_LOCK` 或 `ENTRY_DATE_MISSING`）。
+`MOMENTUM_SURGE_ALLOW` 是系统已判定的合法放行码（ATTACK+主线+B_momentum+扣 spike 前 Score≥85 且日内≤9%），可按 BUY/ADD 执行；不得据此主张全局取消见光死，也不得平反其它票的 `INTRADAY_SURGE_BLOCK`。
 PURGE = 空仓僵尸清理（非卖出指令）；报告生成后会从监控池物理剔除。
 WATCH_SILENT = Alpha Radar Max Grade=S 的破位空仓票：禁 PURGE，留池静默观察（非买单）；无视 TrendOK/catalystScore。
 T1_LOCK = 当日买入（EntryDate=today / Locked_T1=True）：禁卖出/清仓条件单，等下一交易日。

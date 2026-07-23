@@ -91,6 +91,37 @@ function funnelFromMeta(meta: Record<string, unknown> | undefined): ScreenerFunn
   };
 }
 
+/** Derive sync ok from automation meta blobs (success paths may omit explicit ok). */
+export function isAutomationSyncOk(sync: unknown): boolean {
+  if (!sync || typeof sync !== 'object') return true;
+  const s = sync as Record<string, unknown>;
+  if (s.ok === false) return false;
+  if (typeof s.error === 'string' && s.error.trim()) return false;
+  if (typeof s.failed === 'number' && s.failed > 0) return false;
+  return true;
+}
+
+export function formatAutomationSyncPart(meta: Record<string, unknown> | undefined): string {
+  if (!meta) return '';
+  const hasIndustry = Object.prototype.hasOwnProperty.call(meta, 'industrySync');
+  const hasScreener = Object.prototype.hasOwnProperty.call(meta, 'screenerSync');
+  if (!hasIndustry && !hasScreener) return '';
+  const ind = hasIndustry ? (isAutomationSyncOk(meta.industrySync) ? '✓' : '✗') : '—';
+  const tv = hasScreener ? (isAutomationSyncOk(meta.screenerSync) ? '✓' : '✗') : '—';
+  return ` | sync ind${ind} tv${tv}`;
+}
+
+export function formatAutomationTop5Part(meta: Record<string, unknown> | undefined): string {
+  const raw = meta?.top5dIndustries;
+  if (!Array.isArray(raw) || !raw.length) return '';
+  const names = raw
+    .map((x) => String(x ?? '').trim())
+    .filter(Boolean)
+    .slice(0, 5);
+  if (!names.length) return '';
+  return ` | top5 ${names.join(',')}`;
+}
+
 export async function applyAutomationRun(
   run: AutomationRun,
   options?: {
@@ -198,5 +229,5 @@ export function formatAutomationSummary(
       .map(([k, v]) => `${k}:${v}`);
     if (entries.length) rejectPart = ` | alphaReject ${entries.join(',')}`;
   }
-  return `Last automation: ${when} (${trigger}) | −${removed} screener +${screener} alpha +${alpha}${funnelPart}${rejectPart}`;
+  return `Last automation: ${when} (${trigger}) | −${removed} screener +${screener} alpha +${alpha}${funnelPart}${rejectPart}${formatAutomationSyncPart(run.meta)}${formatAutomationTop5Part(run.meta)}`;
 }

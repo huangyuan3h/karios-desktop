@@ -12,6 +12,10 @@ import { isGapUpWeakMarket, isIntradaySurge } from '@/lib/watchlist-metrics';
 export const CHANDELIER_ARM_PNL_PCT = 10;
 export const CHANDELIER_ATR_MULT = 2;
 export const BUY_SCORE_MIN = 80;
+/** TIP-007: Score floor for B_momentum intraday surge allow (6%→9%). */
+export const MOMENTUM_SURGE_SCORE_MIN = 85;
+/** TIP-007: Max intraday % when momentum surge allow applies. */
+export const MOMENTUM_SURGE_ALLOW_MAX_PCT = 9;
 /** Flat names below this score with TrendOK=no are marked PURGE. */
 export const PURGE_SCORE_MAX = 30;
 /** Max single-name weight inside the satellite sleeve; blocks ADD at or above. */
@@ -34,8 +38,10 @@ export const DEFENSE_SECTOR_KEYWORDS = [
 export type TrendOkLike = {
   symbol?: string;
   score?: number | null;
+  scoreParts?: Record<string, unknown> | null;
   trendOk?: boolean | null;
   buyAction?: string | null;
+  buyMode?: string | null;
   buyZoneHigh?: number | null;
   stopLossPrice?: number | null;
   stopLossParts?: Record<string, unknown> | null;
@@ -393,6 +399,41 @@ type NewEntryGateResult =
   | { ok: false; tag: null; why: string };
 
 /**
+ * Score used for TIP-007 surge-allow gate.
+ * Anti-Spike keeps −20 on the displayed score; eligibility restores only
+ * `penalty_intraday_spike` so a perfect post-spike 80 can still clear Score≥85.
+ */
+export function scoreForMomentumSurgeGate(
+  score: number | null | undefined,
+  scoreParts?: Record<string, unknown> | null,
+): number | null {
+  const base = num(score);
+  if (base == null) return null;
+  const raw = scoreParts?.penalty_intraday_spike;
+  const spike = typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
+  // scoreParts store penalties as negatives (e.g. -20).
+  return spike < 0 ? base - spike : base;
+}
+
+/**
+ * TIP-007: momentum/score/gate inputs for the 6–9% surge exception.
+ * Mainline membership is enforced later inside evaluateNewEntryGates (not here).
+ */
+export function isMomentumSurgeEligible(opts: {
+  gateMode?: ExecutionGateMode | null;
+  buyMode?: string | null;
+  trendOk?: boolean | null;
+  score?: number | null;
+  scoreParts?: Record<string, unknown> | null;
+}): boolean {
+  if (opts.gateMode !== 'ATTACK') return false;
+  if (String(opts.buyMode || '').trim() !== 'B_momentum') return false;
+  if (opts.trendOk !== true) return false;
+  const score = scoreForMomentumSurgeGate(opts.score, opts.scoreParts);
+  return score != null && score >= MOMENTUM_SURGE_SCORE_MIN;
+}
+
+/**
  * Hard gates for BUY/ADD: defense, surge, gap-up weak, sector concentration, mainline.
  * Fail-closed when industry missing or mainlineAllow not ready.
  * Surge/gap/concentration with null inputs do not block (fail-open).
@@ -408,6 +449,11 @@ export function evaluateNewEntryGates(opts: {
   positionRangeHint?: string | null;
   /** When all sectors show net outflow on the day. */
   sectorOutflowBlock?: boolean;
+  gateMode?: ExecutionGateMode | null;
+  buyMode?: string | null;
+  trendOk?: boolean | null;
+  score?: number | null;
+  scoreParts?: Record<string, unknown> | null;
 }): NewEntryGateResult {
   const {
     industryName,
@@ -419,6 +465,11 @@ export function evaluateNewEntryGates(opts: {
     sleeveExposurePct = null,
     positionRangeHint = null,
     sectorOutflowBlock = false,
+    gateMode: mode = null,
+    buyMode = null,
+    trendOk = null,
+    score = null,
+    scoreParts = null,
   } = opts;
   if (!industryName) {
     return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
@@ -426,9 +477,28 @@ export function evaluateNewEntryGates(opts: {
   if (isDefenseSector(industryName)) {
     return { ok: false, tag: null, why: 'DEFENSE_SECTOR_BLOCK' };
   }
+
+  let momentumSurgeAllow = false;
   if (isIntradaySurge(intradayChgPct)) {
-    return { ok: false, tag: null, why: 'INTRADAY_SURGE_BLOCK' };
+    const eligible = isMomentumSurgeEligible({
+      gateMode: mode,
+      buyMode,
+      trendOk,
+      score,
+      scoreParts,
+    });
+    const pct = typeof intradayChgPct === 'number' ? intradayChgPct : null;
+    if (
+      !eligible ||
+      pct == null ||
+      !Number.isFinite(pct) ||
+      pct > MOMENTUM_SURGE_ALLOW_MAX_PCT
+    ) {
+      return { ok: false, tag: null, why: 'INTRADAY_SURGE_BLOCK' };
+    }
+    momentumSurgeAllow = true;
   }
+
   if (isGapUpWeakMarket(gapUp, marketRegime)) {
     return { ok: false, tag: null, why: 'GAP_UP_WEAK_BLOCK' };
   }
@@ -449,6 +519,9 @@ export function evaluateNewEntryGates(opts: {
     };
   }
   const tag = mainlineAllow.byName.get(industryName) ?? null;
+  if (momentumSurgeAllow) {
+    return { ok: true, tag, why: 'MOMENTUM_SURGE_ALLOW' };
+  }
   const why =
     tag === 'MOMENTUM'
       ? 'MAINLINE_MOMENTUM'
@@ -580,6 +653,11 @@ export function deriveActionCard(opts: {
     sleeveExposurePct,
     positionRangeHint: gate?.positionRangeHint ?? null,
     sectorOutflowBlock,
+    gateMode: mode,
+    buyMode: trendok?.buyMode ?? null,
+    trendOk: trendOkFlag,
+    score,
+    scoreParts: (trendok?.scoreParts as Record<string, unknown> | null | undefined) ?? null,
   });
   // Mainline column independent of chase / concentration vetoes
   const mainlineOk = Boolean(

@@ -148,6 +148,61 @@ describe('evaluateNewEntryGates', () => {
       }).why,
     ).toBe('INTRADAY_SURGE_BLOCK');
   });
+
+  it('TIP-007 allows 6–9% surge for ATTACK + B_momentum + pre-spike score≥85', () => {
+    const r = evaluateNewEntryGates({
+      industryName: '半导体',
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      intradayChgPct: 6.5,
+      gateMode: 'ATTACK',
+      buyMode: 'B_momentum',
+      trendOk: true,
+      // Displayed score after Anti-Spike −20; gate restores spike penalty.
+      score: 80,
+      scoreParts: { penalty_intraday_spike: -20 },
+    });
+    expect(r.ok).toBe(true);
+    expect(r.why).toBe('MOMENTUM_SURGE_ALLOW');
+  });
+
+  it('TIP-007 still blocks >9% even when momentum eligible', () => {
+    expect(
+      evaluateNewEntryGates({
+        industryName: '半导体',
+        mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+        intradayChgPct: 9.1,
+        gateMode: 'ATTACK',
+        buyMode: 'B_momentum',
+        trendOk: true,
+        score: 90,
+      }).why,
+    ).toBe('INTRADAY_SURGE_BLOCK');
+  });
+
+  it('TIP-007 does not allow surge for A_pullback or score 80', () => {
+    expect(
+      evaluateNewEntryGates({
+        industryName: '半导体',
+        mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+        intradayChgPct: 6.5,
+        gateMode: 'ATTACK',
+        buyMode: 'A_pullback',
+        trendOk: true,
+        score: 90,
+      }).why,
+    ).toBe('INTRADAY_SURGE_BLOCK');
+    expect(
+      evaluateNewEntryGates({
+        industryName: '半导体',
+        mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+        intradayChgPct: 6.5,
+        gateMode: 'ATTACK',
+        buyMode: 'B_momentum',
+        trendOk: true,
+        score: 80,
+      }).why,
+    ).toBe('INTRADAY_SURGE_BLOCK');
+  });
 });
 
 describe('deriveActionCard', () => {
@@ -650,6 +705,51 @@ describe('deriveActionCard', () => {
     expect(card.action).toBe('WATCH');
     expect(card.why).toBe('INTRADAY_SURGE_BLOCK');
     expect(card.mainlineOk).toBe(true);
+  });
+
+  it('TIP-007 BUY with MOMENTUM_SURGE_ALLOW at 6.5%', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: 80,
+        scoreParts: { penalty_intraday_spike: -20 },
+        trendOk: true,
+        buyAction: 'buy',
+        buyMode: 'B_momentum',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      intradayChgPct: 6.5,
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('MOMENTUM_SURGE_ALLOW');
+  });
+
+  it('TIP-007 still blocks surge under HOLD_ONLY gate', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: holdGate,
+      trendok: {
+        score: 90,
+        trendOk: true,
+        buyAction: 'buy',
+        buyMode: 'B_momentum',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      intradayChgPct: 6.5,
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('GATE_BLOCK_NEW');
   });
 
   it('blocks ADD to HOLD on intraday surge (not TRIM)', () => {

@@ -394,6 +394,8 @@ def _shanghai_today_iso() -> str:
 
 
 INTRADAY_SURGE_THRESHOLD_PCT = 6.0
+MOMENTUM_SURGE_ALLOW_MAX_PCT = 9.0
+MOMENTUM_SURGE_SCORE_MIN = 85
 _GAP_UP_WEAK_REGIMES = frozenset({"Weak", "Diverging"})
 
 
@@ -448,13 +450,26 @@ def _build_server_risk_alerts(
         and intraday_chg_pct is not None
         and intraday_chg_pct > INTRADAY_SURGE_THRESHOLD_PCT
     ):
-        alerts.append(
-            {
-                "code": "intraday_surge",
-                "severity": "block",
-                "message": f"Intraday change {intraday_chg_pct:.1f}% exceeds 6.0%; no new positions",
-            }
-        )
+        momentum_allow = bool(checks.get("momentum_surge_allow"))
+        if momentum_allow and intraday_chg_pct <= MOMENTUM_SURGE_ALLOW_MAX_PCT:
+            alerts.append(
+                {
+                    "code": "intraday_surge",
+                    "severity": "warn",
+                    "message": (
+                        f"Intraday change {intraday_chg_pct:.1f}% >6% but ≤{MOMENTUM_SURGE_ALLOW_MAX_PCT:.0f}% "
+                        "with B_momentum surge allow"
+                    ),
+                }
+            )
+        else:
+            alerts.append(
+                {
+                    "code": "intraday_surge",
+                    "severity": "block",
+                    "message": f"Intraday change {intraday_chg_pct:.1f}% exceeds 6.0%; no new positions",
+                }
+            )
     if gap_up is True and str(market_regime or "").strip() in _GAP_UP_WEAK_REGIMES:
         regime = str(market_regime or "").strip()
         gap_blocked = bool(checks.get("blocked_gap_up_weak_market"))
@@ -541,6 +556,39 @@ def _block_buy_if_entry_at_or_below_stop(res: dict[str, Any]) -> None:
     buy_checks["blocked_entry_vs_stop"] = True
 
 
+def _score_for_momentum_surge_gate(res: dict[str, Any]) -> float | None:
+    """Displayed score with only intraday-spike Anti-Spike restored for TIP-007 gate."""
+    score = res.get("score")
+    try:
+        score_f = float(score) if score is not None else None
+    except (TypeError, ValueError):
+        return None
+    if score_f is None:
+        return None
+    parts = res.get("scoreParts")
+    if isinstance(parts, dict):
+        raw = parts.get("penalty_intraday_spike")
+        try:
+            spike = float(raw) if raw is not None else 0.0
+        except (TypeError, ValueError):
+            spike = 0.0
+        if spike < 0:
+            return score_f - spike
+    return score_f
+
+
+def _is_momentum_surge_eligible(res: dict[str, Any], *, intraday_pct: float) -> bool:
+    """TIP-007 BE half: B_momentum + TrendOK + pre-spike score≥85 + intraday≤9. Mainline/ATTACK stay FE."""
+    if intraday_pct > MOMENTUM_SURGE_ALLOW_MAX_PCT:
+        return False
+    if str(res.get("buyMode") or "").strip() != "B_momentum":
+        return False
+    if res.get("trendOk") is not True:
+        return False
+    score_f = _score_for_momentum_surge_gate(res)
+    return score_f is not None and score_f >= MOMENTUM_SURGE_SCORE_MIN
+
+
 def _apply_intraday_risk_buy_blocks(
     res: dict[str, Any],
     *,
@@ -560,10 +608,21 @@ def _apply_intraday_risk_buy_blocks(
         res["buyChecks"] = buy_checks
 
     if isinstance(intraday, (int, float)) and float(intraday) > INTRADAY_SURGE_THRESHOLD_PCT:
-        res["buyAction"] = "avoid"
-        res["buyWhy"] = "风险：日内涨幅超过6%，禁止建仓"
-        buy_checks["blocked_intraday_surge"] = True
-        return
+        intraday_pct = float(intraday)
+        if _is_momentum_surge_eligible(res, intraday_pct=intraday_pct):
+            buy_checks["momentum_surge_allow"] = True
+            buy_checks["blocked_intraday_surge"] = False
+            prev_why = str(res.get("buyWhy") or "").strip()
+            allow_msg = (
+                f"TIP-007：日内涨幅 {intraday_pct:.1f}%（>6%且≤{MOMENTUM_SURGE_ALLOW_MAX_PCT:.0f}%），"
+                "B_momentum 高分放宽"
+            )
+            res["buyWhy"] = allow_msg if not prev_why else f"{prev_why}；{allow_msg}"
+        else:
+            res["buyAction"] = "avoid"
+            res["buyWhy"] = "风险：日内涨幅超过6%，禁止建仓"
+            buy_checks["blocked_intraday_surge"] = True
+            return
 
     regime = str(market_regime or "").strip()
     if gap_up is True and regime in _GAP_UP_WEAK_REGIMES:

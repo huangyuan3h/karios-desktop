@@ -522,14 +522,21 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
 
     try:
         industry_result = sync_cn_industry_fund_flow(days=10, top_n=10)
-        meta["industrySync"] = industry_result if isinstance(industry_result, dict) else {"ok": True}
+        if isinstance(industry_result, dict):
+            meta["industrySync"] = {**industry_result, "ok": True}
+        else:
+            meta["industrySync"] = {"ok": True}
     except Exception as exc:  # noqa: BLE001
         logger.warning("watchlist automation industry sync failed: %s", exc)
         meta["industrySync"] = {"ok": False, "error": str(exc)}
 
     try:
         screener_result = _sync_screeners_step(screeners_enabled=True)
-        meta["screenerSync"] = screener_result if isinstance(screener_result, dict) else {}
+        if isinstance(screener_result, dict):
+            failed = int(screener_result.get("failed") or 0)
+            meta["screenerSync"] = {**screener_result, "ok": failed == 0}
+        else:
+            meta["screenerSync"] = {"ok": True}
     except Exception as exc:  # noqa: BLE001
         logger.warning("watchlist automation screener sync failed: %s", exc)
         meta["screenerSync"] = {"ok": False, "error": str(exc)}

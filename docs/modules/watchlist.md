@@ -57,10 +57,20 @@ Score 是一个 0-100 的确定性评分，用于衡量股票的短期设置质�
 
 #### Anti-Spike 剥离惩罚
 
-- 日内涨幅 > 6%：−20 分
+- 日内涨幅 > 6%：−20 分（TIP-007 放宽 Exec 闸时 **仍保留** 此项 Score 惩罚）
 - ATR/Close > 5%：按 `(ratio − 0.05) × 1000`  steep 扣分
 - 当日量 / AvgVol30 > 3：−15 分
 - 收盘 < EMA20：−30 分（一票否决右侧资格）
+
+#### TIP-007 主线动量日内放宽
+
+默认：日内 `>` 6% → Exec `INTRADAY_SURGE_BLOCK`，后端 `buyAction=avoid`。
+
+**例外**（须同时）：Gate=`ATTACK`、东财行业已过主线、`buyMode=B_momentum`、`TrendOK=true`、**扣日内 spike 前** Score≥85（展示分仍含 Anti-Spike −20）、日内 ≤9%。则：
+
+- FE Why=`MOMENTUM_SURGE_ALLOW`（可 BUY/ADD）
+- BE 不强制 `avoid`，`buyChecks.momentum_surge_allow=true`
+- `>` 9% 仍拦截；弱市跳空闸 / 仓位硬闸不变
 
 #### 行业加分
 
@@ -317,6 +327,19 @@ B_momentum 模式：
 3. **Alpha Radar**：catalystScore &gt; 85 且评级 S，再过轻量进池闸（非防守板块；缺东财行业拒绝；若行业为申万一级则须 ∈ 5D Top10，细粒度东财名跳过 Top10）后 append；`meta.alphaRejected` 记拒绝原因。Max Grade=`S` 豁免三日 GC 使用完整催化窗口（非 score Top200）。
 
 **漏斗指标（TIP-002 / TIP-003）**：Import / Automation apply 后记录 `funnel`：`tvHit → passPullback → passTrendOk → +addedNew`；空窗时追加 `| fb Hit→OK→+N`（`fallbackUsed`）。降级票 `source=screener_fallback`，只过 TrendOK、不过 52W 回撤；可被三日 Score GC。
+
+**Automation 摘要 / meta 复盘字段（TIP-008）**：Scheduler 与 Watchlist 工具栏共用 `formatAutomationSummary`：
+
+```text
+Last automation: {time} ({trigger}) | −N screener +X alpha +Y | funnel … | fb … | alphaReject k:v,… | sync ind✓ tv✓ | top5 电子,计算机,…
+```
+
+| meta 字段 | 摘要展示 | 说明 |
+|-----------|----------|------|
+| `funnel` | `funnel TV…` / `fb…` | ack 后写入；含 `fallbackUsed` |
+| `alphaRejected` | `alphaReject reason:count` | 进池闸拒绝分布 |
+| `industrySync` / `screenerSync` | `sync ind✓/✗ tv✓/✗` | `ok:false` / `error` / screener `failed>0` → ✗ |
+| `top5dIndustries` | `top5 a,b,…`（最多 5 名） | 三日 GC 用的 5D Top5 |
 
 ### 空窗降级（TIP-003）
 

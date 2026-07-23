@@ -182,12 +182,12 @@ Watchlist 是**监控池**（TV Screener → 回撤 + TrendOK 导入），**不�
 
 1. **主线**：所属东财行业 ∈ `5D 净流入 Top3` ∪ `Momentum Breakout`（今日净流入≥20亿且排名升≥10）
 2. **非防守板块**：排除银行、电力、公用事业、中药、煤炭、高速公路
-3. **非见光死**：日内涨幅 ≤6%（`>` 6% 拦截；缺报价/`null` 不拦截）
+3. **非见光死**：日内涨幅 ≤6%（`>` 6% 拦截；缺报价/`null` 不拦截）。**TIP-007 例外**：Gate=`ATTACK` 且行业已过主线，且 `buyMode=B_momentum`、`TrendOK=true`、扣日内 spike 前 Score≥85（Anti-Spike −20 仍反映在展示分上）时，允许日内 ≤9%；Why=`MOMENTUM_SURGE_ALLOW`。>9% 仍拦截。
 4. **非弱市高开**：`gapUp`（真跳空：当日低点 > 前日高点）且市场 `Weak`/`Diverging` → 禁止 BUY/ADD；缺 gap / 非弱市 regime 不拦截。与 Alerts `gap_up_weak_market` 同条件；后端 live 时可能已将 `buyAction` 置 avoid，Action 为合同层双保险。
 5. **非板块过浓**：该东财行业已持仓合计 `positionPct >= 30%` → 禁止 BUY/ADD，`SECTOR_CONC_BLOCK`；未传暴露度映射或无仓位数字不拦截。
 6. **非袖子打满**：卫星仓 `positionPct` 合计 ≥ Gate.`positionRangeHint` 上界 → 禁止 BUY/ADD，`SLEEVE_CAP_BLOCK`；hint 不可解析或未传合计不拦截。
 
-否则 Exec 降为 `WATCH`（候选）或持仓 `HOLD`（不加仓、不 TRIM），Why 为 `NOT_MAINLINE` / `SECTOR_OUTFLOW_BLOCK`（全日板块净流出）/ `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY` / `INTRADAY_SURGE_BLOCK` / `GAP_UP_WEAK_BLOCK` / `SECTOR_CONC_BLOCK` / `SLEEVE_CAP_BLOCK`。与 Import 过滤正交。
+否则 Exec 降为 `WATCH`（候选）或持仓 `HOLD`（不加仓、不 TRIM），Why 为 `NOT_MAINLINE` / `SECTOR_OUTFLOW_BLOCK`（全日板块净流出）/ `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY` / `INTRADAY_SURGE_BLOCK` / `MOMENTUM_SURGE_ALLOW`（合法放行）/ `GAP_UP_WEAK_BLOCK` / `SECTOR_CONC_BLOCK` / `SLEEVE_CAP_BLOCK`。与 Import 过滤正交。
 
 空仓且 `Score < 30` 且 `TrendOK=no` → Action=`PURGE`（Why=`PURGE_GC`）；Copy/报告生成后从 Watchlist 物理删除。**豁免**：Alpha Radar Max Grade=`S` → Action=`WATCH_SILENT`（Why=`ALPHA_S_WATCH`），留池静默观察、不物理删（无视 TrendOK/catalystScore）。盘后三日低分自动化：仅 `Pos%==0`（或缺失）才移除；**仅**催化窗口内仍含 Max Grade=`S` 的票豁免三日 GC（非 S 的 `source=alpha_radar` 与其它来源相同可被清）。
 

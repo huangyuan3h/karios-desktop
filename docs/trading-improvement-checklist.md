@@ -61,8 +61,8 @@ TV Screener（候选宇宙）
 | TIP-004 | Alpha 进池加轻量闸（主线 / 结构 / 流动性） | P1 | ★★★★☆ | 1–2 天 | [x] |
 | TIP-005 | Alpha 清池对称化（取消整源豁免） | P1 | ★★★★☆ | 1 天 | [x] |
 | TIP-006 | Screener 策略版本合同（命名 / pills / 文档） | P1 | ★★★☆☆ | 1 天 | [x] |
-| TIP-007 | 主线内有条件放开动量通道（B_momentum） | P2 | ★★★★☆（进攻） | 2–3 天 | [ ] |
-| TIP-008 | Automation 落地指标与复盘字段 | P2 | ★★★☆☆ | 1–2 天 | [ ] |
+| TIP-007 | 主线内有条件放开动量通道（B_momentum） | P2 | ★★★★☆（进攻） | 2–3 天 | [x] |
+| TIP-008 | Automation 落地指标与复盘字段 | P2 | ★★★☆☆ | 1–2 天 | [x] |
 | TIP-009 | Alpha 映射质量抽检与错映射惩罚 | P2 | ★★★☆☆ | 1–2 天 | [ ] |
 | TIP-010 | 备用宽宇宙实验（东财形态仅作对照，不替换） | P3 | ★★☆☆☆ | 1–2 天 + 对照周 | [ ] |
 | TIP-011 | 开火来源归因（TV / Alpha / 手动） | P3 | ★★★☆☆ | 1–2 天 | [ ] |
@@ -353,9 +353,9 @@ Screener 进池要过回撤+TrendOK；Alpha（`catalystScore>85` 且含 S）几�
 
 ### TIP-007：主线内有条件放开动量通道
 
-**状态**：[ ]  
-**完成日期**：  
-**备注 / PR**：
+**状态**：[x]  
+**完成日期**：2026-07-23  
+**备注 / PR**：local — FE/BE dual gate; Why=`MOMENTUM_SURGE_ALLOW`; cap 9%; Score≥85; B_momentum only (no Momentum universe import)
 
 #### 问题
 
@@ -363,51 +363,35 @@ Anti-Spike、日内 >6% 禁 BUY 抑制追高，也系统性错过 A 股主线强
 
 #### 目标
 
-**仅在**同时满足时放宽（示例，落地时写死常数）：
+**仅在**同时满足时放宽：
 
 1. Gate=`ATTACK`
 2. 东财行业 ∈ 主线（5D Top3 ∪ Momentum Breakout）
-3. TrendOK=true 且 Score≥阈值（如 85）
-4. 来自 Momentum 宇宙或 `buyMode=B_momentum`
+3. TrendOK=true 且 Score≥85
+4. `buyMode=B_momentum`
 
-则：
+则日内上限 6%→9%；Why=`MOMENTUM_SURGE_ALLOW`。
 
-- 日内涨幅上限由 6% 提到可配置值（如 9%），或
-- `INTRADAY_SURGE_BLOCK` 对该子集不起作用
-
-**禁止**：全局取消见光死；弱市 / 非主线不得放开。
+**禁止**：全局取消见光死；弱市 / 非主线不得放开。本轮不做 Momentum screener 进池分支。
 
 #### 细节 checklist
 
-- [ ] 与 TIP-001 Momentum 宇宙联动；无 Momentum 宇宙则本 TIP 可推迟
-- [ ] Execution Why 增加明确码（如 `MOMENTUM_SURGE_ALLOW`）便于 Journal
-- [ ] 回测或至少 2 周纸面对照：放开子集的次日表现 vs 对照组
-
-#### 文件范围
-
-| 层 | 文件 |
-|----|------|
-| FE | `apps/desktop-ui/src/lib/execution-action.ts`、相关测试 |
-| BE | TrendOK / buyAction 若双保险 |
-| 文档 | `docs/modules/README.md`、`watchlist.md`、`downstream-ai-prompt.md` |
-
-#### 预期收益
-
-- **中高（进攻）**：在纪律内捕捉主线动量段，直接作用于已开火机会的完整度。
-- **风险**：回撤加大；必须卫星仓仓位盖仍生效。
+- [x] 与 B_momentum 联动（无 Momentum 宇宙则先用 buyMode）
+- [x] Execution Why=`MOMENTUM_SURGE_ALLOW`
+- [ ] 回测或至少 2 周纸面对照：放开子集的次日表现 vs 对照组（观察中）
 
 #### 验证
 
-- [ ] 单测：非主线仍拦截；主线+ATTACK+高分才放行
-- [ ] Decision Journal 能区分普通 BUY 与动量放宽 BUY
+- [x] 单测：非主线仍拦截；主线+ATTACK+高分+B_momentum 才放行；>9% 仍拦
+- [x] Decision Journal 能区分普通 BUY 与动量放宽 BUY（Why 码）
 
 ---
 
 ### TIP-008：Automation 落地指标与复盘字段
 
-**状态**：[ ]  
-**完成日期**：  
-**备注 / PR**：
+**状态**：[x]  
+**完成日期**：2026-07-23  
+**备注 / PR**：local — summary sync+top5；BE industrySync/screenerSync `ok`
 
 #### 问题
 
@@ -437,7 +421,7 @@ Scheduler / Watchlist 摘要只有 `−N screener +X alpha +Y`，缺少拒绝原
 
 #### 验证
 
-- [ ] 一次 manual automation 后 UI 能看到空窗/拒绝摘要
+- [x] 一次 manual automation 后 UI 能看到空窗/拒绝摘要（funnel/fb + alphaReject + sync + top5）
 
 ---
 

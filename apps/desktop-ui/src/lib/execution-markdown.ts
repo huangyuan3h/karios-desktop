@@ -80,7 +80,7 @@ export function buildPositionsExecutionMarkdown(
     lines.push('- note: BUY/ADD only valid when Execution Gate allowNewEntries=true');
   }
   lines.push('- note: BUY/ADD also require mainline bind (5D Top3 or Momentum) and non-defense sector');
-  lines.push('- note: BUY/ADD also blocked when intraday >6% (INTRADAY_SURGE_BLOCK)');
+  lines.push('- note: BUY/ADD blocked when intraday >6% (INTRADAY_SURGE_BLOCK), except TIP-007: ATTACK+mainline+B_momentum+Score≥85 allows ≤9% (Why=MOMENTUM_SURGE_ALLOW)');
   lines.push('- note: BUY/ADD also blocked on gap-up in Weak/Diverging (GAP_UP_WEAK_BLOCK)');
   lines.push(
     '- note: ADD blocked when positionPct >= 15% (SIZE_CAP_BLOCK); single-name satellite cap',
