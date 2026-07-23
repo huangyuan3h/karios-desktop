@@ -550,10 +550,19 @@ After TIP-004/005/002 implementation, a defect review fixed:
 | EM industry vs SW L1 Top10 exact match false-rejects | Top10 only when label is SW L1; granular EM fail-open |
 | S GC exemption used catalyst score Top200 | `load_catalyst_window` builds S set from full aggregate |
 | Funnel `Scanned` ≠ `TV` | `scanned` aligned to `tvHit`; UI shows Funnel first |
-| `电力` blocked `电力设备` | defense special-case |
+| `电力` blocked `电力设备` (BE) | defense special-case |
 | ack funnel merge untested | `merge_funnel_into_meta` + unit test |
 
-**Still open (non-blocking):** FE/BE `DEFENSE_SECTOR_KEYWORDS` duplication; no EM↔SW map for stricter Top10; N-day funnel chart.
+**Stability pass 2 (TIP-006 + residual P1/P2):**
+
+| Issue | Fix |
+|-------|-----|
+| FE BUY gate still blocked `电力设备` | `isDefenseSector` mirrors BE special-case |
+| Empty-DB seed `falcon`/`blackhorse` `enabled=true` | seed defaults `enabled=false` |
+| Bare title pattern `pullback` over-match | patterns = `karios pullback` + legacy momentum titles only |
+| Fallback-universe fetch failure aborted Import | try/catch → empty fallback, primary path continues |
+
+**Still open (non-blocking):** FE/BE `DEFENSE_SECTOR_KEYWORDS` list duplication (logic now aligned); no EM↔SW map for stricter Top10; N-day funnel chart; **existing DBs** still need Settings: enable Karios Pullback, disable legacy (seed only affects empty DB).
 
 **TIP-003 (2026-07-22):** empty window → Industry 5D Top5 non-defense LIKE universe (cap 80) → TrendOK only → `screener_fallback`.
 

@@ -44,7 +44,6 @@ export const SCREENER_MARKDOWN_HEADERS = [
 
 export const SCREENER_TITLE_PATTERNS = [
   'karios pullback',
-  'pullback',
   'falcon launch',
   'institutional trend',
 ] as const;

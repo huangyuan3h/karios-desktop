@@ -94,6 +94,8 @@ describe('deriveTriggerAndTrail', () => {
 describe('evaluateNewEntryGates', () => {
   it('blocks defense sectors', () => {
     expect(isDefenseSector('银行')).toBe(true);
+    expect(isDefenseSector('电力设备')).toBe(false);
+    expect(isDefenseSector('电力')).toBe(true);
     expect(evaluateNewEntryGates({ industryName: '股份制银行', mainlineAllow: allowSet([['股份制银行', '5D_TOP3']]) }).why).toBe(
       'DEFENSE_SECTOR_BLOCK',
     );

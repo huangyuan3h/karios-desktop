@@ -39,7 +39,7 @@ def ensure_seeded() -> None:
         screener_id="falcon",
         name="Legacy Falcon (momentum)",
         url="https://www.tradingview.com/screener/TMcms1mM/",
-        enabled=True,
+        enabled=False,
         created_at=ts,
         updated_at=ts,
     )
@@ -47,7 +47,7 @@ def ensure_seeded() -> None:
         screener_id="blackhorse",
         name="Legacy Black Horse",
         url="https://www.tradingview.com/screener/kBuKODpK/",
-        enabled=True,
+        enabled=False,
         created_at=ts,
         updated_at=ts,
     )

@@ -273,7 +273,15 @@ export function resolveIndustryName(trendok: TrendOkLike | null | undefined): st
 export function isDefenseSector(industryName: string | null | undefined): boolean {
   const name = String(industryName || '').trim();
   if (!name) return false;
-  return DEFENSE_SECTOR_KEYWORDS.some((kw) => name.includes(kw));
+  // Mirror BE watchlist_automation.is_defense_sector: do not treat 电力设备 as utilities.
+  for (const kw of DEFENSE_SECTOR_KEYWORDS) {
+    if (kw === '电力') {
+      if (name === '电力' || (name.includes('电力') && !name.includes('电力设备'))) return true;
+      continue;
+    }
+    if (name.includes(kw)) return true;
+  }
+  return false;
 }
 
 export function deriveTriggerAndTrail(opts: {

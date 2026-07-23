@@ -107,7 +107,7 @@ describe('screenerMarkdownRowsToTable', () => {
 describe('matchesScreenerTitlePattern', () => {
   it('matches primary Pullback and legacy momentum titles case-insensitively', () => {
     expect(matchesScreenerTitlePattern('Karios Pullback')).toBe(true);
-    expect(matchesScreenerTitlePattern('CN Pullback Filter')).toBe(true);
+    expect(matchesScreenerTitlePattern('CN Pullback Filter')).toBe(false);
     expect(matchesScreenerTitlePattern('Falcon Launch Filter')).toBe(true);
     expect(matchesScreenerTitlePattern('institutional trend screener')).toBe(true);
     expect(matchesScreenerTitlePattern('Black Horse Filter')).toBe(false);

@@ -117,9 +117,9 @@ Filter Pills 是 TradingView Screener 页面上方显示的筛选条件标签，
 
 | 显示名 / 期望 screenTitle 子串 | 类型 | 进池后滤 | 触媒「今日 screener TrendOK」 | 推荐 enabled |
 |--------------------------------|------|----------|-------------------------------|--------------|
-| **Karios Pullback**（子串 `karios pullback` / `pullback`） | `pullback` | 52W 回撤 ∈ [-15%, -5%] + TrendOK → `source=screener` | 是（标题匹配） | **是（主宇宙）** |
+| **Karios Pullback**（子串 `karios pullback`） | `pullback` | 52W 回撤 ∈ [-15%, -5%] + TrendOK → `source=screener` | 是（标题匹配） | **是（主宇宙）** |
 | Falcon Launch / Institutional Trend | `momentum` | 同上回撤窗（未单独分支前） | 是（标题匹配） | **否**（除非显式要动量观察） |
-| Legacy Falcon / Legacy Black Horse（空库 seed 名） | `legacy` | 同上 | Falcon 类标题才进；Black Horse **不**进 | **否**（已有库请 Settings 禁用/改名） |
+| Legacy Falcon / Legacy Black Horse（空库 seed 名） | `legacy` | 同上 | Falcon Launch 类标题才进；Black Horse **不**进 | **否**（空库 seed 默认 `enabled=false`；已有库请 Settings 禁用） |
 | （系统）Industry Top5 空窗降级 | `system` | 仅 TrendOK → `source=screener_fallback` | 否 | n/a（TIP-003 自动） |
 
 触媒标题匹配实现：`apps/desktop-ui/src/lib/screenerExport.ts` → `SCREENER_TITLE_PATTERNS`（`includes` 小写）。
@@ -137,7 +137,7 @@ Filter Pills 是 TradingView Screener 页面上方显示的筛选条件标签，
 
 ### 空库 seed 说明
 
-`ensure_seeded()` 仅在 **tv_screeners 为空** 时写入 `falcon` / `blackhorse` 两条（显示名 **Legacy Falcon (momentum)** / **Legacy Black Horse**）。**不会**更新已有库行。生产库请在 Settings 配置并启用 **Karios Pullback**，禁用遗留动量屏。
+`ensure_seeded()` 仅在 **tv_screeners 为空** 时写入 `falcon` / `blackhorse` 两条（显示名 **Legacy Falcon (momentum)** / **Legacy Black Horse**，**`enabled=false`**）。**不会**更新已有库行。生产库请在 Settings 配置并启用 **Karios Pullback**，确认遗留动量屏为禁用。
 
 ---
 

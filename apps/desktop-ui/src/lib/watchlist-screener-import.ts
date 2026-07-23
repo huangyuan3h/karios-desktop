@@ -142,9 +142,14 @@ async function importFallbackTrendOk(options: {
 }> {
   const { existing, now, setStep } = options;
   setStep('Fallback universe (5D Top5)…');
-  const universe = await apiGetJson<FallbackUniverseResponse>(
-    '/watchlist/automation/fallback-universe?maxTotal=80',
-  );
+  let universe: FallbackUniverseResponse;
+  try {
+    universe = await apiGetJson<FallbackUniverseResponse>(
+      '/watchlist/automation/fallback-universe?maxTotal=80',
+    );
+  } catch {
+    return { added: [], fallbackHit: 0, fallbackTrendOk: 0, rows: [] };
+  }
   const symbols = Array.from(
     new Set((universe.symbols || []).map((s) => String(s || '').trim()).filter(Boolean)),
   );
