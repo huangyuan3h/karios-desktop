@@ -14,6 +14,7 @@ import {
   generateObjectCompatOptions,
 } from '../model';
 import { tryParseJsonObject } from '../json_parse';
+import { stripModelThinking } from '../model_thinking';
 
 export const strategyRoutes = new Hono();
 
@@ -424,7 +425,7 @@ strategyRoutes.post('/daily-markdown', async (c) => {
       temperature: 0,
       maxOutputTokens: 3200,
     });
-    return text.trim();
+    return stripModelThinking(text);
   }
 
   try {

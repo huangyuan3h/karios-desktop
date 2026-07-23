@@ -10,6 +10,7 @@ import {
   type MacroItem,
 } from '@/lib/queries/macro';
 import { MACRO_POLL_MS } from '@/lib/queries/intervals';
+import { formatMacroWarning } from '@/lib/macro-warnings';
 
 function signalSurfaceClass(signal: string): string {
   const s = String(signal || 'unknown');
@@ -129,7 +130,10 @@ function macroToCardProps(item: MacroItem): IndexCardProps {
   if (item.tradeTime) footParts.push(String(item.tradeTime));
   if (item.underlyingTsCode) footParts.push(String(item.underlyingTsCode));
   if (item.signalLabel) footParts.push(String(item.signalLabel));
-  if (item.warning) footParts.push(String(item.warning));
+  if (item.warning) {
+    const warn = formatMacroWarning(item.warning);
+    if (warn) footParts.push(warn);
+  }
   const footnote = footParts.length ? footParts.join(' • ') : '—';
 
   return {
@@ -211,7 +215,7 @@ export function IndexPage() {
       {pending ? <div className="text-xs text-[var(--k-muted)]">Updating…</div> : null}
       {data?.warning ? (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-950 dark:text-amber-100">
-          {data.warning}
+          {formatMacroWarning(data.warning)}
         </div>
       ) : null}
       {error ? (

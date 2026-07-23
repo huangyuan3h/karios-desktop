@@ -14,6 +14,7 @@ import { fetchDashboardSummaryCached } from '@/lib/queries/dashboard';
 import { industryFundFlowQueryOptions } from '@/lib/queries/industryFlow';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
 import { loadWatchlist } from '@/lib/watchlist-storage';
+import { ThinkingStreamStripper } from '@/lib/strip-model-thinking';
 
 type TvSnapshotDetail = {
   id: string;
@@ -1014,12 +1015,22 @@ export function ChatPanel() {
 
               const reader = resp.body.getReader();
               const decoder = new TextDecoder();
-              let acc = '';
+              const stripper = new ThinkingStreamStripper();
+              let visible = '';
               while (true) {
                 const { value, done } = await reader.read();
-                if (done) break;
-                acc += decoder.decode(value, { stream: true });
-                updateMessageContent(activeSession.id, assistantId, acc);
+                if (done) {
+                  visible += stripper.flush();
+                  updateMessageContent(activeSession.id, assistantId, visible);
+                  break;
+                }
+                const chunk = decoder.decode(value, { stream: true });
+                visible += stripper.push(chunk);
+                updateMessageContent(
+                  activeSession.id,
+                  assistantId,
+                  visible || (stripper.isInThink ? '_思考中…_' : ''),
+                );
               }
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);

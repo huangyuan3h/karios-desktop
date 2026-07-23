@@ -3,9 +3,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { cn } from '@/lib/utils';
+import { stripModelThinking } from '@/lib/strip-model-thinking';
 
 function normalizeMarkdownForRender(content: string): string {
-  const s = (content ?? '').replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  const s = stripModelThinking((content ?? '').replaceAll('\r\n', '\n').replaceAll('\r', '\n'));
   if (!s.trim()) return '';
 
   // Avoid modifying fenced code blocks.

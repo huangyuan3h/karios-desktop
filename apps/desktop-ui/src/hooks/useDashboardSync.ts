@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { DATA_SYNC_BASE_URL, AI_BASE_URL } from '@/lib/endpoints';
 import type { DashboardSummary } from '@/lib/queries/dashboard';
+import { stripModelThinking } from '@/lib/strip-model-thinking';
 
 type DashboardSyncResp = Record<string, unknown>;
 
@@ -112,7 +113,9 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
                   })
                   .then((aiData) => {
                     const summaryText =
-                      typeof aiData?.summary === 'string' ? aiData.summary.trim() : '';
+                      typeof aiData?.summary === 'string'
+                        ? stripModelThinking(aiData.summary)
+                        : '';
                     if (summaryText) {
                       const updatedAt = new Date().toISOString();
                       cb.setNewsSummary(summaryText);

@@ -289,6 +289,11 @@ def _shanghai_today_iso() -> str:
     return datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
 
 
+# Soft degradation: live ATM put IV failed but latest DB value is shown.
+# Keep on the Put IV card; do not promote to Index page banner.
+PUT_IV_LIVE_FETCH_FAILED_USING_DB = "put_iv_live_fetch_failed_using_db"
+
+
 def resolve_put_iv_for_snapshot(*, write_db: bool = True, use_cache: bool = True) -> dict[str, Any]:
     """
     Live-first Put IV for macro snapshot; optional best-effort DB upsert.
@@ -388,7 +393,7 @@ def resolve_put_iv_for_snapshot(*, write_db: bool = True, use_cache: bool = True
                 "signalLabel": signal_label,
                 "underlyingTsCode": UNDERLYING_TS_CODE,
                 "realtime": False,
-                "warning": "put_iv_live_fetch_failed_using_db" if warning == "put_iv_fetch_failed" else warning,
+                "warning": PUT_IV_LIVE_FETCH_FAILED_USING_DB if warning == "put_iv_fetch_failed" else warning,
                 "diagnostics": diagnostics or {},
                 "cached": False,
             }

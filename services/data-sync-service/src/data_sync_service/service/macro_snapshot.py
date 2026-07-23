@@ -28,7 +28,11 @@ from data_sync_service.service.macro_snapshot_on_demand import (
     macro_snapshot_warning,
 )
 from data_sync_service.service.market_regime import _trade_date_from_trade_time, get_index_signals
-from data_sync_service.service.option_iv import classify_iv_signal, resolve_put_iv_for_snapshot
+from data_sync_service.service.option_iv import (
+    PUT_IV_LIVE_FETCH_FAILED_USING_DB,
+    classify_iv_signal,
+    resolve_put_iv_for_snapshot,
+)
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 MACRO_CARDS: list[dict[str, Any]] = [
@@ -311,7 +315,8 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
 
     out: dict[str, Any] = {"cnIndexSignals": cn_index_signals, "macro": macro_items}
     warnings: list[str] = []
-    if put_iv_warning:
+    # Soft DB fallback stays on the Put IV card only (not a page-level alarm).
+    if put_iv_warning and put_iv_warning != PUT_IV_LIVE_FETCH_FAILED_USING_DB:
         warnings.append(put_iv_warning)
     warn = macro_snapshot_warning()
     if warn:

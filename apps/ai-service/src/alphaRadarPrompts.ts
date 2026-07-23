@@ -26,7 +26,8 @@ Do NOT output Catalyst_Grade B. If an item only qualifies as B, omit it entirely
 2. a_share_mapping: 1–3 pure-play A-share leaders (name or 6-digit code). No fringe stocks.
 3. logic_summary: max 30 Chinese characters — causal chain only.
 4. event_focus: factual statement only; no speculation.
-5. Return valid JSON matching the schema. No markdown fences.`;
+5. Return valid JSON matching the schema. No markdown fences.
+6. Do NOT output chain-of-thought, <think>, <thinking>, or any reasoning tags — JSON only.`;
 
 export const ALPHA_RADAR_V4_JSON_FIELDS = `- macro_theme: standardized theme bucket (e.g. "光通信超级周期", "全球铜供给挤压")
 - driver_type: Global_Tech | Domestic_Policy | Cycle_Reversal
@@ -87,7 +88,7 @@ export function buildExtractBatchInstruction(docs: AlphaRadarDocumentInput[]): s
 }
 
 export const ALPHA_RADAR_V4_JSON_SUFFIX =
-  '\n\nOutput ONLY one JSON object with key "trends" (array). No markdown fences. Empty array is valid.';
+  '\n\nOutput ONLY one JSON object with key "trends" (array). No markdown fences. No <think> tags. Empty array is valid.';
 
 export function buildMapCnSystemPrompt(params: {
   candidateCount: number;
@@ -107,7 +108,7 @@ export function buildMapCnSystemPrompt(params: {
     'Symbol format must be CN:xxxxxx (6-digit ticker). ' +
     'Prefer industry purity over size. Mark low confidence when evidence is weak. ' +
     'AVOID system integrators / OEM assemblers. Prefer upstream component/material leaders. ' +
-    'Return valid JSON. No markdown fences.'
+    'Return valid JSON only. No markdown fences. No <think> or chain-of-thought tags.'
   );
 }
 

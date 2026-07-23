@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AlphaRadarExtractBatchResponseSchema, AlphaRadarDriverTypeSchema } from './schemas';
+import { stripModelThinking } from './model_thinking';
 
 const GRADES = new Set(['S', 'A', 'B', 'C']);
 
@@ -15,7 +16,7 @@ const CATEGORY_DRIVER_DEFAULT: Record<string, z.infer<typeof AlphaRadarDriverTyp
 
 function asString(value: unknown, fallback = ''): string {
   if (value == null) return fallback;
-  return String(value).trim();
+  return stripModelThinking(String(value));
 }
 
 function normalizeGrade(value: unknown): 'S' | 'A' | 'B' | null {

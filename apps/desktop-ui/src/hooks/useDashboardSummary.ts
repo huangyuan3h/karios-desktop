@@ -23,6 +23,7 @@ import {
   dashboardSentimentQueryKey,
   useDashboardSentimentQuery,
 } from '@/lib/queries/sentiment';
+import { stripModelThinking } from '@/lib/strip-model-thinking';
 
 const NEWS_BRIEF_CACHE_KEY = 'karios.dashboard.newsBrief.v1';
 const NEWS_BRIEF_MIN_REFRESH_MS = 4 * 60 * 60 * 1000;
@@ -141,7 +142,8 @@ export function useDashboardSummary() {
       const raw = window.localStorage.getItem(NEWS_BRIEF_CACHE_KEY);
       if (!raw) return;
       const obj = JSON.parse(raw) as NewsBriefCache;
-      const cachedSummary = typeof obj?.summary === 'string' ? obj.summary.trim() : '';
+      const cachedSummary =
+        typeof obj?.summary === 'string' ? stripModelThinking(obj.summary) : '';
       const updatedAt = typeof obj?.updatedAt === 'string' ? obj.updatedAt.trim() : '';
       const fallback = typeof obj?.fallback === 'string' ? obj.fallback.trim() : '';
       if (cachedSummary) setNewsSummary(cachedSummary);
@@ -197,7 +199,8 @@ export function useDashboardSummary() {
         });
         if (aiRes.ok) {
           const aiData = await aiRes.json();
-          const summaryText = typeof aiData?.summary === 'string' ? aiData.summary.trim() : '';
+          const summaryText =
+            typeof aiData?.summary === 'string' ? stripModelThinking(aiData.summary) : '';
           if (summaryText) {
             const updatedAt = new Date().toISOString();
             setNewsSummary(summaryText);

@@ -24,6 +24,7 @@ import {
   type CatalystStock,
 } from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
+import { stripModelThinking } from '@/lib/strip-model-thinking';
 import {
   deleteAlphaRadarTrend,
   invalidateAlphaRadarQueries,
@@ -422,12 +423,12 @@ export function AlphaIncubatorPage() {
                     </div>
                     {t.eventFocus || t.catalyst ? (
                       <p className="mt-2 text-sm leading-relaxed text-[var(--k-text)]">
-                        {t.eventFocus || t.catalyst}
+                        {stripModelThinking(t.eventFocus || t.catalyst || '')}
                       </p>
                     ) : null}
                     {t.logicSummary ? (
                       <p className="mt-1 text-xs font-medium text-[var(--k-muted)]">
-                        逻辑：{t.logicSummary}
+                        逻辑：{stripModelThinking(t.logicSummary)}
                       </p>
                     ) : null}
                     <div className="mt-2 text-sm">

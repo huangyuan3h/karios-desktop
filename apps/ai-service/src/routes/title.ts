@@ -3,6 +3,7 @@ import { generateText } from 'ai';
 
 import { TitleRequestSchema } from '../schemas';
 import { getResolvedModel, AiModel } from '../model';
+import { stripModelThinking } from '../model_thinking';
 
 export const titleRoutes = new Hono();
 
@@ -37,9 +38,10 @@ titleRoutes.post('/', async (c) => {
     model,
     system: system || undefined,
     prompt,
-    maxOutputTokens: 24,
+    maxOutputTokens: 128,
     temperature: 0.2,
   });
 
-  return c.json({ title: text.trim().replace(/^"|"$/g, ''), model: modelId });
+  const title = stripModelThinking(text).replace(/^"|"$/g, '');
+  return c.json({ title, model: modelId });
 });
