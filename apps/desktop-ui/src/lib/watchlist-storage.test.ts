@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   WATCHLIST_PENDING_SYNC_KEY,
   WATCHLIST_STORAGE_KEY,
+  applyZeroPositionCleanup,
   ensureWatchlistHydrated,
   hydrateWatchlist,
   loadWatchlist,
@@ -206,5 +207,37 @@ describe('ensureWatchlistHydrated', () => {
     const [a, b] = await Promise.all([ensureWatchlistHydrated(), ensureWatchlistHydrated()]);
     expect(a.source).toBe(b.source);
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('applyZeroPositionCleanup', () => {
+  it('clears cost/max/entry when positionPct is 0', () => {
+    const out = applyZeroPositionCleanup({
+      symbol: 'CN:000977',
+      addedAt: '2026-07-01T00:00:00Z',
+      positionPct: 0,
+      costPrice: 12.5,
+      maxPrice: 13,
+      entryDate: '2026-07-01',
+      source: 'manual',
+    });
+    expect(out.costPrice).toBeNull();
+    expect(out.maxPrice).toBeNull();
+    expect(out.entryDate).toBeNull();
+    expect(out.positionPct).toBe(0);
+  });
+
+  it('leaves economics intact when positionPct > 0', () => {
+    const out = applyZeroPositionCleanup({
+      symbol: 'CN:000977',
+      addedAt: '2026-07-01T00:00:00Z',
+      positionPct: 5,
+      costPrice: 12.5,
+      maxPrice: 13,
+      entryDate: '2026-07-01',
+      source: 'manual',
+    });
+    expect(out.costPrice).toBe(12.5);
+    expect(out.entryDate).toBe('2026-07-01');
   });
 });

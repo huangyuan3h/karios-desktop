@@ -15,6 +15,7 @@ import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import type { ExecutionGate } from '@karios/shared';
 import { useChatStore } from '@/lib/chat/store';
 import {
+  buildDefensiveSleeveExposurePct,
   buildSectorExposureFromWatchlist,
   buildSleeveExposurePct,
   type CatalystPurgeHint,
@@ -189,6 +190,11 @@ export function WatchlistTable({
   const sleeveExposurePct = React.useMemo(
     () => buildSleeveExposurePct(sortedItems),
     [sortedItems],
+  );
+
+  const defensiveSleeveExposurePct = React.useMemo(
+    () => buildDefensiveSleeveExposurePct(sortedItems, trend),
+    [sortedItems, trend],
   );
 
   const [tooltip, setTooltip] = React.useState<{
@@ -416,6 +422,7 @@ export function WatchlistTable({
                         catalyst={catalystBySymbol?.get(it.symbol) ?? null}
                         sectorExposureByIndustry={sectorExposureByIndustry}
                         sleeveExposurePct={sleeveExposurePct}
+                        defensiveSleeveExposurePct={defensiveSleeveExposurePct}
                         showTooltip={showTooltip}
                         hideTooltip={hideTooltip}
                         showColorPicker={showColorPicker}

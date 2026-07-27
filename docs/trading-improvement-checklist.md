@@ -66,8 +66,33 @@ TV Screener（候选宇宙）
 | TIP-009 | Alpha 映射质量抽检与错映射惩罚 | P2 | ★★★☆☆ | 1–2 天 | [ ] |
 | TIP-010 | 备用宽宇宙实验（东财形态仅作对照，不替换） | P3 | ★★☆☆☆ | 1–2 天 + 对照周 | [ ] |
 | TIP-011 | 开火来源归因（TV / Alpha / 手动） | P3 | ★★★☆☆ | 1–2 天 | [ ] |
+| V6.2-01 | 弱市/DEFEND 14:30 尾盘时间锁 | P0 | ★★★★☆ | 0.5 天 | [x] |
+| V6.2-02 | DEFEND 防守双轨袖子（暂缓 Beta） | P0 | ★★★★★ | 1 天 | [x] |
+| V6.2-03 | Zero-Pos 持仓归零自动清字段 | P0 | ★★★★☆ | 0.5 天 | [x] |
 
 **预期收益图例**：★ 越多 = 越可能提高「有效开火密度」或减少「空转噪音」（在卫星仓纪律内）。
+
+---
+
+## V6.2 — 交易中枢（2026-07-24）
+
+### V6.2-01：14:30 尾盘时间锁
+
+**状态**：[x]  
+**完成日期**：2026-07-24  
+**文件**：`execution-action.ts`（`checkExecutionTimeLock` → `evaluateNewEntryGates` / `deriveActionCard`）
+
+### V6.2-02：防守双轨袖子
+
+**状态**：[x]  
+**完成日期**：2026-07-24  
+**备注**：Beta&lt;0.8 本期未接（1B）；HardStop=`max(EMA10, px×0.965)`（2A）。Attention Fire 对 `DEFENSIVE_SLEEVE_ALLOW` 豁免 `allowNewEntries=false`。
+
+### V6.2-03：Zero-Pos Auto-Purge
+
+**状态**：[x]  
+**完成日期**：2026-07-24  
+**文件**：`watchlist-storage.applyZeroPositionCleanup` ← `setItemPositionPct` clearing
 
 ---
 

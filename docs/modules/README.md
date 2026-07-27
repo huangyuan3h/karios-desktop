@@ -186,12 +186,14 @@ Watchlist 是**监控池**（TV Screener → 回撤 + TrendOK 导入），**不�
 4. **非弱市高开**：`gapUp`（真跳空：当日低点 > 前日高点）且市场 `Weak`/`Diverging` → 禁止 BUY/ADD；缺 gap / 非弱市 regime 不拦截。与 Alerts `gap_up_weak_market` 同条件；后端 live 时可能已将 `buyAction` 置 avoid，Action 为合同层双保险。
 5. **非板块过浓**：该东财行业已持仓合计 `positionPct >= 30%` → 禁止 BUY/ADD，`SECTOR_CONC_BLOCK`；未传暴露度映射或无仓位数字不拦截。
 6. **非袖子打满**：卫星仓 `positionPct` 合计 ≥ Gate.`positionRangeHint` 上界 → 禁止 BUY/ADD，`SLEEVE_CAP_BLOCK`；hint 不可解析或未传合计不拦截。
+7. **弱市/DEFEND 尾盘时间锁（V6.2）**：`Gate.mode=DEFEND` 或 `marketRegime=Weak` 时，仅上海时间 **14:30–14:50** 允许新开/加仓；更早 → `TIME_LOCK_WEAK_REGIME`，更晚 → `MARKET_CLOSING_LOCK`。豁免：`ATTACK` + `Strong`。
+8. **防守双轨袖子（V6.2）**：`DEFEND` 下白名单行业（石油石化/公用事业/煤炭/银行/有色金属）且 ∈ 5D 净流入 Top3、Score≥70、TrendOK=ok 时，可豁免全局禁开，Action=`BUY` Why=`DEFENSIVE_SLEEVE_ALLOW`；袖子合计上限 10%、单票 5%。防守持仓豁免 `GATE_DEFEND` TRIM。HardStop 收紧为 `max(EMA10, Current×0.965)`。**Beta&lt;0.8 硬条件本期未接（follow-up）**。
 
-否则 Exec 降为 `WATCH`（候选）或持仓 `HOLD`（不加仓、不 TRIM），Why 为 `NOT_MAINLINE` / `SECTOR_OUTFLOW_BLOCK`（全日板块净流出）/ `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY` / `INTRADAY_SURGE_BLOCK` / `MOMENTUM_SURGE_ALLOW`（合法放行）/ `GAP_UP_WEAK_BLOCK` / `SECTOR_CONC_BLOCK` / `SLEEVE_CAP_BLOCK`。与 Import 过滤正交。
+否则 Exec 降为 `WATCH`（候选）或持仓 `HOLD`（不加仓、不 TRIM），Why 为 `NOT_MAINLINE` / `SECTOR_OUTFLOW_BLOCK`（全日板块净流出）/ `DEFENSE_SECTOR_BLOCK` / `MISSING_INDUSTRY` / `INTRADAY_SURGE_BLOCK` / `MOMENTUM_SURGE_ALLOW`（合法放行）/ `GAP_UP_WEAK_BLOCK` / `SECTOR_CONC_BLOCK` / `SLEEVE_CAP_BLOCK` / `TIME_LOCK_WEAK_REGIME` / `MARKET_CLOSING_LOCK` / `DEFENSIVE_SLEEVE_ALLOW`（合法放行）。与 Import 过滤正交。
 
 空仓且 `Score < 30` 且 `TrendOK=no` → Action=`PURGE`（Why=`PURGE_GC`）；Copy/报告生成后从 Watchlist 物理删除。**豁免**：Alpha Radar Max Grade=`S` → Action=`WATCH_SILENT`（Why=`ALPHA_S_WATCH`），留池静默观察、不物理删（无视 TrendOK/catalystScore）。盘后三日低分自动化：仅 `Pos%==0`（或缺失）才移除；**仅**催化窗口内仍含 Max Grade=`S` 的票豁免三日 GC（非 S 的 `source=alpha_radar` 与其它来源相同可被清）。
 
-持仓 `entryDate`（上海日历日）等于今日 → `Locked_T1=True`：本应 EXIT/TRIM 时降为 `HOLD`（Why=`T1_LOCK`），Cond 卖单草稿跳过；缺 `entryDate` → `Locked_T1=MISSING` fail-closed（Why=`ENTRY_DATE_MISSING`，禁卖并报警）。首次 `positionPct` 从 0→>0 时自动戳 `entryDate`。
+持仓 `entryDate`（上海日历日）等于今日 → `Locked_T1=True`：本应 EXIT/TRIM 时降为 `HOLD`（Why=`T1_LOCK`），Cond 卖单草稿跳过；缺 `entryDate` → `Locked_T1=MISSING` fail-closed（Why=`ENTRY_DATE_MISSING`，禁卖并报警）。首次 `positionPct` 从 0→>0 时自动戳 `entryDate`。**V6.2 Zero-Pos**：`positionPct` 置 0/`null` 时自动清 `costPrice` / `maxPrice` / `entryDate`，避免残留成本被当成持仓而报 `ENTRY_DATE_MISSING`。
 
 空仓 `Entry_Trigger`（buyZoneHigh）≤ `HardStop`（stopLossPrice）→ 禁 BUY（Why=`ENTRY_BELOW_STOP`）；后端 TrendOK 同步将 `buyAction` 置 `avoid`。
 
@@ -210,6 +212,7 @@ Watchlist 是**监控池**（TV Screener → 回撤 + TrendOK 导入），**不�
 
 - **HOLD_ONLY**：不因 Gate 强制 TRIM，仍可因主线失效 TRIM。
 - 主线数据未就绪时：不因失效误 TRIM（避免空洞数据砍仓）。
+- **V6.2**：防守白名单持仓在 DEFEND 下**豁免** `GATE_DEFEND` TRIM（仍可因主线失效 TRIM）。
 
 ### 选股先选板块
 

@@ -117,6 +117,23 @@ export function normalizeWatchlistItems(raw: unknown): WatchlistItem[] {
     .filter((x) => Boolean(x.symbol));
 }
 
+/**
+ * V6.2 Zero-Pos Auto-Purge: when Pos% is 0/null, clear holding anchors so Action
+ * leaves HOLD/ENTRY_DATE_MISSING and can re-evaluate as WATCH / WATCH_SILENT / PURGE.
+ */
+export function applyZeroPositionCleanup(item: WatchlistItem): WatchlistItem {
+  const pct = item.positionPct;
+  const cleared = pct == null || (typeof pct === 'number' && Number.isFinite(pct) && pct <= 0);
+  if (!cleared) return item;
+  return {
+    ...item,
+    positionPct: pct != null && pct <= 0 ? pct : null,
+    costPrice: null,
+    maxPrice: null,
+    entryDate: null,
+  };
+}
+
 export function loadWatchlist(): WatchlistItem[] {
   return normalizeWatchlistItems(loadJson<WatchlistItem[]>(WATCHLIST_STORAGE_KEY, []));
 }

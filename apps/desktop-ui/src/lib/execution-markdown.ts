@@ -2,6 +2,7 @@ import type { ExecutionActionCard, ExecutionGate } from '@karios/shared';
 
 import { mdPrice, mdScore, mdTable } from '@/lib/dashboard-format';
 import {
+  buildDefensiveSleeveExposurePct,
   buildSectorExposureFromWatchlist,
   buildSleeveExposurePct,
   computePnLPct,
@@ -106,6 +107,12 @@ export function buildPositionsExecutionMarkdown(
   lines.push(
     '- note: Entry_Trigger <= HardStop → no BUY (Why=ENTRY_BELOW_STOP)',
   );
+  lines.push(
+    '- note: DEFEND/Weak TimeLock — BUY/ADD only 14:30–14:50 SH (Why=TIME_LOCK_WEAK_REGIME / MARKET_CLOSING_LOCK); ATTACK+Strong exempt',
+  );
+  lines.push(
+    '- note: DEFEND Defensive Sleeve — whitelist+5D Top3+Score≥70+TrendOK → BUY Why=DEFENSIVE_SLEEVE_ALLOW (cap 10% sleeve / 5% single; beta deferred)',
+  );
   if (sectorOutflowBlock) {
     lines.push(
       '- note: Mainline=no + SECTOR_OUTFLOW_BLOCK when all sectors net outflow',
@@ -131,6 +138,7 @@ export function buildPositionsExecutionMarkdown(
   }
   lines.push('');
   const sectorExposureByIndustry = buildSectorExposureFromWatchlist(items, trend);
+  const defensiveSleeveExposurePct = buildDefensiveSleeveExposurePct(items, trend);
   const headers = [
     'Symbol',
     'Name',
@@ -188,6 +196,7 @@ export function buildPositionsExecutionMarkdown(
       marketRegime: t?.marketRegime ?? null,
       sectorExposureByIndustry,
       sleeveExposurePct,
+      defensiveSleeveExposurePct,
       sectorOutflowBlock,
       catalyst,
       todaySh,

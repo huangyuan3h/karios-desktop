@@ -117,8 +117,11 @@ export function buildExecAttentionQueue(opts: {
   trims.sort(bySymbol);
   fireCandidates.sort(bySymbol);
 
-  const fireBlockedByGate = !allowNew;
-  const fires = allowNew ? fireCandidates : [];
+  const fires = allowNew
+    ? fireCandidates
+    : fireCandidates.filter((x) => String(x.why || '') === 'DEFENSIVE_SLEEVE_ALLOW');
+  // Gate blocks when allowNewEntries=false and no defensive-sleeve fires remain.
+  const fireBlockedByGate = !allowNew && fires.length === 0;
 
   const keyChanges = changes
     .filter((c) => c.field === 'action' || c.field === 'mode')

@@ -121,6 +121,20 @@ describe('formatCondOrderDraftMarkdown', () => {
     expect(md).not.toContain('- 挂买 ');
   });
 
+  it('allows DEFENSIVE_SLEEVE_ALLOW buys when allowNewEntries is false', () => {
+    const md = formatCondOrderDraftMarkdown(
+      [
+        { symbol: 'CN:601857', action: 'BUY', why: 'DEFENSIVE_SLEEVE_ALLOW', suggestAddPct: 5 },
+        { symbol: 'CN:1', action: 'BUY', why: 'MAINLINE_OK', suggestAddPct: 5 },
+      ],
+      { allowNewEntries: false },
+    );
+    expect(md).toContain('挂买 CN:601857');
+    expect(md).toContain('DEFENSIVE_SLEEVE_ALLOW');
+    expect(md).toContain('Gate blocks new entries');
+    expect(md).not.toContain('挂买 CN:1');
+  });
+
   it('prefixes Queue for Next Open when tradingTime is false', () => {
     const md = formatCondOrderDraftMarkdown(
       [

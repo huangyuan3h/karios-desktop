@@ -92,6 +92,21 @@ describe('buildExecAttentionQueue', () => {
     expect(q.exits).toHaveLength(1);
   });
 
+  it('allows DEFENSIVE_SLEEVE_ALLOW fires when allowNewEntries is false', () => {
+    const q = buildExecAttentionQueue({
+      gate: holdGate,
+      watchlistItems: [],
+      cards: [
+        { symbol: 'CN:601857', action: 'BUY', why: 'DEFENSIVE_SLEEVE_ALLOW', suggestAddPct: 5 },
+        { symbol: 'CN:600000', action: 'BUY', why: 'MAINLINE_OK' },
+      ],
+      changes: [],
+    });
+    expect(q.fires).toHaveLength(1);
+    expect(q.fires[0]?.symbol).toBe('CN:601857');
+    expect(q.fireBlockedByGate).toBe(false);
+  });
+
   it('computes sleeve label and missing size from watchlist', () => {
     const q = buildExecAttentionQueue({
       gate: attackGate,

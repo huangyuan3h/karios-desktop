@@ -484,6 +484,7 @@ export type WatchlistRowProps = {
   catalyst?: CatalystPurgeHint | null;
   sectorExposureByIndustry: Map<string, number> | null;
   sleeveExposurePct: number;
+  defensiveSleeveExposurePct?: number;
   showTooltip: ShowTooltipFn;
   hideTooltip: () => void;
   showColorPicker: (el: HTMLElement, sym: string) => void;
@@ -510,6 +511,7 @@ function WatchlistRowInner({
   catalyst = null,
   sectorExposureByIndustry,
   sleeveExposurePct,
+  defensiveSleeveExposurePct = 0,
   showTooltip,
   hideTooltip,
   showColorPicker,
@@ -553,6 +555,7 @@ function WatchlistRowInner({
     marketRegime: t?.marketRegime ?? null,
     sectorExposureByIndustry,
     sleeveExposurePct,
+    defensiveSleeveExposurePct,
     sectorOutflowBlock,
     catalyst,
     todaySh: getShanghaiTodayIso(),
@@ -576,7 +579,9 @@ function WatchlistRowInner({
             actionCard.why === 'GAP_UP_WEAK_BLOCK' ||
             actionCard.why === 'SIZE_CAP_BLOCK' ||
             actionCard.why === 'SECTOR_CONC_BLOCK' ||
-            actionCard.why === 'SLEEVE_CAP_BLOCK'
+            actionCard.why === 'SLEEVE_CAP_BLOCK' ||
+            actionCard.why === 'TIME_LOCK_WEAK_REGIME' ||
+            actionCard.why === 'MARKET_CLOSING_LOCK'
           ? 'text-amber-700 font-semibold'
           : 'text-[var(--k-muted)]';
   const heldForTrigger = isHeldPosition(it);

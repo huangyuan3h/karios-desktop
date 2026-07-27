@@ -1131,6 +1131,7 @@ def _trendok_one(
 
     # Checks + values
     ema5s = _ema(closes, 5)
+    ema10s = _ema(closes, 10)
     ema20s = _ema(closes, 20)
     ema60s = _ema(closes, 60)
     if ema5s and ema20s and ema60s:
@@ -1140,6 +1141,8 @@ def _trendok_one(
         # Rule 1 (optimized): allow EMA5 short-term noise.
         # TrendOK requires close above EMA20 and EMA20 above EMA60.
         res["checks"]["emaOrder"] = bool(closes[-1] > ema20s[-1] and ema20s[-1] > ema60s[-1])
+    if ema10s:
+        res["values"]["ema10"] = ema10s[-1]
 
     macd_line, sig_line, hist = _macd(closes, 12, 26, 9)
     if macd_line and sig_line and hist:

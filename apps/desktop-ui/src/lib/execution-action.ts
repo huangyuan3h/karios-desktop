@@ -7,6 +7,7 @@ import type {
 } from '@karios/shared';
 
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
+import { getShanghaiMinutes } from '@/lib/market-hours';
 import { isGapUpWeakMarket, isIntradaySurge } from '@/lib/watchlist-metrics';
 
 export const CHANDELIER_ARM_PNL_PCT = 10;
@@ -24,6 +25,28 @@ export const POSITION_SIZE_CAP_PCT = 15;
 export const SECTOR_CONCENTRATION_CAP_PCT = 30;
 /** Default per-fire clip for BUY/ADD size suggestion (pct points). */
 export const DEFAULT_FIRE_CLIP_PCT = 5;
+
+/** V6.2: Weak/DEFEND buy window opens at 14:30 Shanghai. */
+export const TIME_LOCK_CUTOFF_MINUTES = 14 * 60 + 30;
+/** V6.2: After 14:50 Shanghai, new entries locked again. */
+export const TIME_LOCK_CLOSE_MINUTES = 14 * 60 + 50;
+
+/** V6.2 defensive sleeve: sectors allowed as hedge under DEFEND. */
+export const DEFENSIVE_SECTOR_WHITELIST = [
+  '石油石化',
+  '公用事业',
+  '煤炭',
+  '银行',
+  '有色金属',
+] as const;
+/** Independent defensive sleeve total cap (pct points). */
+export const DEFENSIVE_SLEEVE_MAX_CAP_PCT = 10;
+/** Per-name cap inside defensive sleeve. */
+export const DEFENSIVE_SINGLE_MAX_CAP_PCT = 5;
+/** Score floor for defensive sleeve probe buys (below growth BUY_SCORE_MIN). */
+export const DEFENSIVE_BUY_SCORE_MIN = 70;
+/** Defensive hard-stop max loss vs current (3.5%). */
+export const DEFENSIVE_MAX_LOSS_PCT = 0.035;
 
 /** Defense sectors blocked from BUY/ADD (East Money industry substring match). */
 export const DEFENSE_SECTOR_KEYWORDS = [
@@ -290,6 +313,121 @@ export function isDefenseSector(industryName: string | null | undefined): boolea
   return false;
 }
 
+/** V6.2: True when industry matches defensive sleeve whitelist. */
+export function isDefensiveSectorWhitelist(industryName: string | null | undefined): boolean {
+  const name = String(industryName || '').trim();
+  if (!name) return false;
+  for (const kw of DEFENSIVE_SECTOR_WHITELIST) {
+    if (name === kw || name.includes(kw)) return true;
+  }
+  return false;
+}
+
+function hasIndustryFlow5dTop3(reasons: unknown): boolean {
+  if (!Array.isArray(reasons)) return false;
+  return reasons.some((r) => String(r) === 'industry_flow_5d_top3');
+}
+
+/** Industry is in 5D net-inflow Top3 via mainline tag or TrendOK flow reasons. */
+export function isIndustryIn5dTop3(opts: {
+  industryName: string | null | undefined;
+  mainlineAllow?: MainlineAllowSet | null;
+  industryFlowReasons?: unknown;
+}): boolean {
+  const industry = String(opts.industryName || '').trim();
+  if (!industry) return false;
+  if (opts.mainlineAllow?.byName.get(industry) === '5D_TOP3') return true;
+  return hasIndustryFlow5dTop3(opts.industryFlowReasons);
+}
+
+/**
+ * V6.2 TimeLock: under DEFEND or Weak, only allow BUY/ADD in 14:30–14:50 Shanghai.
+ * Exempt when ATTACK + Strong.
+ */
+export function checkExecutionTimeLock(opts: {
+  now?: Date | null;
+  gateMode?: ExecutionGateMode | null;
+  marketRegime?: string | null;
+}): { ok: true; why: 'OK' } | { ok: false; why: string } {
+  const mode = opts.gateMode ?? null;
+  const regime = String(opts.marketRegime || '');
+  if (mode === 'ATTACK' && regime === 'Strong') {
+    return { ok: true, why: 'OK' };
+  }
+  if (mode !== 'DEFEND' && regime !== 'Weak') {
+    return { ok: true, why: 'OK' };
+  }
+  const minutes = getShanghaiMinutes(opts.now ?? new Date());
+  if (minutes < TIME_LOCK_CUTOFF_MINUTES) {
+    return { ok: false, why: 'TIME_LOCK_WEAK_REGIME' };
+  }
+  if (minutes > TIME_LOCK_CLOSE_MINUTES) {
+    return { ok: false, why: 'MARKET_CLOSING_LOCK' };
+  }
+  return { ok: true, why: 'OK' };
+}
+
+/**
+ * V6.2 defensive sleeve eligibility (beta deferred).
+ * Does not check sleeve capacity — caller surfaces SLEEVE_CAP_BLOCK separately.
+ */
+export function isDefensiveArbitrageEligible(opts: {
+  gateMode?: ExecutionGateMode | null;
+  industryName?: string | null;
+  mainlineAllow?: MainlineAllowSet | null;
+  industryFlowReasons?: unknown;
+  score?: number | null;
+  trendOk?: boolean | null;
+}): boolean {
+  if (opts.gateMode !== 'DEFEND') return false;
+  if (!isDefensiveSectorWhitelist(opts.industryName)) return false;
+  if (opts.trendOk !== true) return false;
+  const score = num(opts.score);
+  if (score == null || score < DEFENSIVE_BUY_SCORE_MIN) return false;
+  return isIndustryIn5dTop3({
+    industryName: opts.industryName,
+    mainlineAllow: opts.mainlineAllow,
+    industryFlowReasons: opts.industryFlowReasons,
+  });
+}
+
+/** Sum positionPct for whitelist defensive industries only. */
+export function buildDefensiveSleeveExposurePct(
+  items: PositionLike[],
+  trend: Record<string, TrendOkLike | null | undefined>,
+): number {
+  let sum = 0;
+  for (const pos of items) {
+    const pct = num(pos.positionPct);
+    if (pct == null || pct <= 0) continue;
+    const industry = resolveIndustryName(trend[pos.symbol] ?? null);
+    if (!isDefensiveSectorWhitelist(industry)) continue;
+    sum += pct;
+  }
+  return sum;
+}
+
+/**
+ * Tighter defensive hard stop: max(EMA10, current×0.965).
+ * Higher price = tighter for long book. Missing ema10 → loss floor only.
+ */
+export function resolveDefensiveHardStop(opts: {
+  ema10?: number | null;
+  currentPrice?: number | null;
+}): number | null {
+  const current = num(opts.currentPrice);
+  const ema10 = num(opts.ema10);
+  const lossFloor =
+    current != null && current > 0 ? current * (1 - DEFENSIVE_MAX_LOSS_PCT) : null;
+  if (ema10 != null && lossFloor != null) return Math.max(ema10, lossFloor);
+  if (ema10 != null) return ema10;
+  return lossFloor;
+}
+
+export function ema10FromTrendok(trendok: TrendOkLike | null | undefined): number | null {
+  return num(trendok?.values?.ema10);
+}
+
 export function deriveTriggerAndTrail(opts: {
   hardStop: number | null;
   costPrice: number | null;
@@ -454,6 +592,8 @@ export function evaluateNewEntryGates(opts: {
   trendOk?: boolean | null;
   score?: number | null;
   scoreParts?: Record<string, unknown> | null;
+  /** Clock for TimeLock; defaults to now. */
+  now?: Date | null;
 }): NewEntryGateResult {
   const {
     industryName,
@@ -470,12 +610,22 @@ export function evaluateNewEntryGates(opts: {
     trendOk = null,
     score = null,
     scoreParts = null,
+    now = null,
   } = opts;
   if (!industryName) {
     return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
   }
   if (isDefenseSector(industryName)) {
     return { ok: false, tag: null, why: 'DEFENSE_SECTOR_BLOCK' };
+  }
+
+  const timeLock = checkExecutionTimeLock({
+    now,
+    gateMode: mode,
+    marketRegime,
+  });
+  if (!timeLock.ok) {
+    return { ok: false, tag: null, why: timeLock.why };
   }
 
   let momentumSurgeAllow = false;
@@ -535,16 +685,25 @@ type HeldTrimGateResult = { trim: true; why: string } | { trim: false; why: null
 
 /**
  * Held-position trim gates (after EXIT / warn_reduce_half).
- * DEFEND forces TRIM; mainline fade TRIM only when allow-set is ready.
+ * DEFEND forces TRIM unless exemptDefendTrim (defensive sleeve holdings).
+ * Mainline fade TRIM only when allow-set is ready.
  */
 export function evaluateHeldTrimGates(opts: {
   mode: ExecutionGateMode | null;
   industryName: string | null;
   mainlineAllow: MainlineAllowSet | null | undefined;
   sectorOutflowBlock?: boolean;
+  /** V6.2: skip GATE_DEFEND for defensive-sleeve whitelist holdings. */
+  exemptDefendTrim?: boolean;
 }): HeldTrimGateResult {
-  const { mode, industryName, mainlineAllow, sectorOutflowBlock = false } = opts;
-  if (mode === 'DEFEND') {
+  const {
+    mode,
+    industryName,
+    mainlineAllow,
+    sectorOutflowBlock = false,
+    exemptDefendTrim = false,
+  } = opts;
+  if (mode === 'DEFEND' && !exemptDefendTrim) {
     return { trim: true, why: 'GATE_DEFEND' };
   }
   if (mainlineAllow?.ready) {
@@ -576,11 +735,15 @@ export function deriveActionCard(opts: {
   marketRegime?: string | null;
   sectorExposureByIndustry?: Map<string, number> | null;
   sleeveExposurePct?: number | null;
+  /** V6.2: sum of whitelist defensive positionPct (independent sleeve). */
+  defensiveSleeveExposurePct?: number | null;
   sectorOutflowBlock?: boolean;
   /** Alpha Radar catalyst hint; when present, may exempt PURGE. */
   catalyst?: CatalystPurgeHint | null;
   /** Shanghai YYYY-MM-DD for T+1 lock (entryDate === todaySh). */
   todaySh?: string | null;
+  /** Clock for TimeLock; defaults to now. */
+  now?: Date | null;
 }): ExecutionActionCard {
   const {
     symbol,
@@ -594,13 +757,32 @@ export function deriveActionCard(opts: {
     marketRegime = null,
     sectorExposureByIndustry = null,
     sleeveExposurePct = null,
+    defensiveSleeveExposurePct = null,
     sectorOutflowBlock = false,
     catalyst = null,
     todaySh = null,
+    now = null,
   } = opts;
   const held = isHeldPosition(position);
   const parts = (trendok?.stopLossParts ?? null) as Record<string, unknown> | null;
-  const hardStop = num(trendok?.stopLossPrice);
+  const mode = gateMode(gate);
+  const regime = marketRegime ?? gate?.marketRegime ?? null;
+  const industryName = resolveIndustryName(trendok);
+  const useDefensiveStop =
+    mode === 'DEFEND' && isDefensiveSectorWhitelist(industryName);
+  const trendHardStop = num(trendok?.stopLossPrice);
+  const defensiveStop = useDefensiveStop
+    ? resolveDefensiveHardStop({
+        ema10: ema10FromTrendok(trendok),
+        currentPrice,
+      })
+    : null;
+  // Prefer tighter (higher) stop when both exist.
+  let hardStop = trendHardStop;
+  if (defensiveStop != null) {
+    hardStop =
+      hardStop != null ? Math.max(hardStop, defensiveStop) : defensiveStop;
+  }
   const atr14 = atrFromParts(parts);
   const cost = num(position.costPrice);
   const maxPrice = num(position.maxPrice);
@@ -633,7 +815,6 @@ export function deriveActionCard(opts: {
     Number.isFinite(currentPrice) &&
     currentPrice <= exitStop;
 
-  const mode = gateMode(gate);
   const allowAttack = mode === 'ATTACK';
   const buyAction = String(trendok?.buyAction || '').toLowerCase();
   const score = num(trendok?.score);
@@ -642,13 +823,12 @@ export function deriveActionCard(opts: {
   const trendOkFlag =
     typeof trendok?.trendOk === 'boolean' ? trendok.trendOk : null;
 
-  const industryName = resolveIndustryName(trendok);
   const entryGate = evaluateNewEntryGates({
     industryName,
     mainlineAllow,
     intradayChgPct,
     gapUp,
-    marketRegime,
+    marketRegime: regime,
     sectorExposureByIndustry,
     sleeveExposurePct,
     positionRangeHint: gate?.positionRangeHint ?? null,
@@ -658,6 +838,7 @@ export function deriveActionCard(opts: {
     trendOk: trendOkFlag,
     score,
     scoreParts: (trendok?.scoreParts as Record<string, unknown> | null | undefined) ?? null,
+    now,
   });
   // Mainline column independent of chase / concentration vetoes
   const mainlineOk = Boolean(
@@ -669,12 +850,30 @@ export function deriveActionCard(opts: {
   const mainlineTag = mainlineOk
     ? (mainlineAllow!.byName.get(industryName!) ?? null)
     : null;
+  const defensiveHolding = isDefensiveSectorWhitelist(industryName);
   const heldTrim = evaluateHeldTrimGates({
     mode,
     industryName,
     mainlineAllow,
     sectorOutflowBlock,
+    exemptDefendTrim: defensiveHolding,
   });
+
+  const defensiveUsed =
+    typeof defensiveSleeveExposurePct === 'number' &&
+    Number.isFinite(defensiveSleeveExposurePct)
+      ? defensiveSleeveExposurePct
+      : 0;
+  const defensiveEligible =
+    !held &&
+    isDefensiveArbitrageEligible({
+      gateMode: mode,
+      industryName,
+      mainlineAllow,
+      industryFlowReasons: trendok?.values?.industryFlowReasons,
+      score,
+      trendOk: trendOkFlag,
+    });
 
   let action: ExecutionAction = 'WATCH';
   let why = 'WATCH';
@@ -738,6 +937,27 @@ export function deriveActionCard(opts: {
       action = 'PURGE';
       why = 'PURGE_GC';
     }
+  } else if (defensiveEligible) {
+    if (defensiveUsed >= DEFENSIVE_SLEEVE_MAX_CAP_PCT) {
+      action = 'WATCH';
+      why = 'SLEEVE_CAP_BLOCK';
+    } else {
+      const timeLock = checkExecutionTimeLock({
+        now,
+        gateMode: mode,
+        marketRegime: regime,
+      });
+      if (!timeLock.ok) {
+        action = 'WATCH';
+        why = timeLock.why;
+      } else if (entryBelowStop) {
+        action = 'WATCH';
+        why = 'ENTRY_BELOW_STOP';
+      } else {
+        action = 'BUY';
+        why = 'DEFENSIVE_SLEEVE_ALLOW';
+      }
+    }
   } else if (allowAttack && wantsBuy) {
     if (entryBelowStop) {
       action = 'WATCH';
@@ -750,8 +970,18 @@ export function deriveActionCard(opts: {
       why = entryGate.why;
     }
   } else if (!allowAttack && wantsBuy) {
-    action = 'WATCH';
-    why = entryBelowStop ? 'ENTRY_BELOW_STOP' : 'GATE_BLOCK_NEW';
+    const timeLock = checkExecutionTimeLock({
+      now,
+      gateMode: mode,
+      marketRegime: regime,
+    });
+    if (!timeLock.ok) {
+      action = 'WATCH';
+      why = timeLock.why;
+    } else {
+      action = 'WATCH';
+      why = entryBelowStop ? 'ENTRY_BELOW_STOP' : 'GATE_BLOCK_NEW';
+    }
   } else {
     action = 'WATCH';
     why =
@@ -760,7 +990,14 @@ export function deriveActionCard(opts: {
 
   let suggestAddPct: number | null = null;
   let suggestSizeNote: string | null = null;
-  if (action === 'BUY' || action === 'ADD') {
+  if (action === 'BUY' && why === 'DEFENSIVE_SLEEVE_ALLOW') {
+    const roomSleeve = DEFENSIVE_SLEEVE_MAX_CAP_PCT - defensiveUsed;
+    const room = Math.min(DEFENSIVE_SINGLE_MAX_CAP_PCT, roomSleeve);
+    if (Number.isFinite(room) && room >= 0.1) {
+      suggestAddPct = Math.round(room * 10) / 10;
+      suggestSizeNote = roomSleeve <= DEFENSIVE_SINGLE_MAX_CAP_PCT + 1e-6 ? 'sleeve' : 'clip';
+    }
+  } else if (action === 'BUY' || action === 'ADD') {
     const size = suggestFireSizePct({
       positionPct: position.positionPct,
       industryName,

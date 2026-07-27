@@ -72,6 +72,12 @@ Score 是一个 0-100 的确定性评分，用于衡量股票的短期设置质�
 - BE 不强制 `avoid`，`buyChecks.momentum_surge_allow=true`
 - `>` 9% 仍拦截；弱市跳空闸 / 仓位硬闸不变
 
+#### V6.2 尾盘时间锁 / 防守双轨 / 归零清场
+
+- **TimeLock**：`DEFEND` 或 `Weak` 时，BUY/ADD 仅上海 **14:30–14:50**；Why=`TIME_LOCK_WEAK_REGIME` / `MARKET_CLOSING_LOCK`。`ATTACK`+`Strong` 豁免。
+- **Defensive Sleeve**：`DEFEND` 下白名单（石油石化/公用事业/煤炭/银行/有色金属）+ 5D Top3 + Score≥70 + TrendOK → Why=`DEFENSIVE_SLEEVE_ALLOW`（袖子≤10%、单票≤5%）。HardStop=`max(EMA10, px×0.965)`。Beta 硬条件 follow-up。
+- **Zero-Pos**：`Pos%` 置 0/空时清 `costPrice` / `maxPrice` / `entryDate`，避免残留 `ENTRY_DATE_MISSING`。
+
 #### 行业加分
 
 - 股票所在行业处于热点 Top3：额外加分（详见 industryFlowReasons）

@@ -5,6 +5,7 @@ import * as React from 'react';
 import { apiGetJson } from '@/lib/api/client';
 import { getShanghaiTodayIso } from '@/lib/market-hours';
 import {
+  applyZeroPositionCleanup,
   ensureWatchlistHydrated,
   loadWatchlist,
   saveWatchlist,
@@ -179,9 +180,11 @@ export function useWatchlistItems() {
         typeof it.positionPct === 'number' && Number.isFinite(it.positionPct) ? it.positionPct : 0;
       const opening = prevPct <= 0 && nextVal != null && nextVal > 0;
       const clearing = nextVal == null || nextVal <= 0;
+      if (clearing) {
+        return applyZeroPositionCleanup({ ...it, positionPct: nextVal });
+      }
       let entryDate = it.entryDate ?? null;
-      if (clearing) entryDate = null;
-      else if (opening && !entryDate) entryDate = todaySh;
+      if (opening && !entryDate) entryDate = todaySh;
       return { ...it, positionPct: nextVal, entryDate };
     });
     persist(next);
