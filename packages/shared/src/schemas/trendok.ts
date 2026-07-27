@@ -38,11 +38,16 @@ export const MacroLockSchema = z.object({
 });
 export type MacroLock = z.infer<typeof MacroLockSchema>;
 
+export const TrendStatusSchema = z.enum(['ok', 'no', 'recovering']);
+export type TrendStatus = z.infer<typeof TrendStatusSchema>;
+
 export const TrendOkResultSchema = z.object({
   symbol: z.string(),
   name: z.string().nullable().optional(),
   asOfDate: z.string().nullable().optional(),
   trendOk: z.boolean().nullable().optional(),
+  /** V6.3: richer TrendOK label; recovering keeps trendOk=true with score floor. */
+  trendStatus: TrendStatusSchema.nullable().optional(),
   score: z.number().nullable().optional(),
   scoreParts: z.record(z.number()).optional(),
   stopLossPrice: z.number().nullable().optional(),

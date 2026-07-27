@@ -78,6 +78,11 @@ Score 是一个 0-100 的确定性评分，用于衡量股票的短期设置质�
 - **Defensive Sleeve**：`DEFEND` 下白名单（石油石化/公用事业/煤炭/银行/有色金属）+ 5D Top3 + Score≥70 + TrendOK → Why=`DEFENSIVE_SLEEVE_ALLOW`（袖子≤10%、单票≤5%）。HardStop=`max(EMA10, px×0.965)`。Beta 硬条件 follow-up。
 - **Zero-Pos**：`Pos%` 置 0/空时清 `costPrice` / `maxPrice` / `entryDate`，避免残留 `ENTRY_DATE_MISSING`。
 
+#### V6.3 极端资金流豁免 / TrendOK recovering
+
+- **WEAK_ATTACK**：单板块 1D 净流入 >500 亿 + upCount >4000 + ≥14:30 → Gate 从 DEFEND/HOLD_ONLY 升级；`allowNewEntries=true`，Suggest%≤5%。
+- **recovering**：Alpha Max Grade=S + 今日量 ≥2.5×10 日均量 + 大阳线 → `trendStatus=recovering`、`trendOk=true`、Score floor 60；Action 离开 `WATCH_SILENT` → `WATCH`（Why=`TREND_RECOVERING`），非自动 BUY。
+
 #### 行业加分
 
 - 股票所在行业处于热点 Top3：额外加分（详见 industryFlowReasons）

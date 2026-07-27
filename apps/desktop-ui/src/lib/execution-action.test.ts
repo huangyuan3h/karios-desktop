@@ -1746,3 +1746,102 @@ describe('V6.2 TimeLock + Defensive Sleeve + Zero-Pos', () => {
     ).toBe('MARKET_CLOSING_LOCK');
   });
 });
+
+
+describe('V6.3 WEAK_ATTACK + TrendOK recovering', () => {
+  const weakAttackGate: ExecutionGate = {
+    ...attackGate,
+    mode: 'WEAK_ATTACK',
+    allowNewEntries: true,
+    marketRegime: 'Strong',
+    srvLevel: 'Extreme_High',
+    srvOverlapCount: 0,
+    reasons: ['SRV_EXTREME_HIGH', 'INTRADAY_OVERFLOW_OVERRIDE'],
+    overflowSector: '电子',
+    overflowInflowYi: 726,
+    satelliteNote: '极端资金流豁免；允许 5% 先锋仓试探',
+  };
+
+  it('WEAK_ATTACK allows BUY with Suggest%≤5', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:300308',
+      gate: weakAttackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        trendOk: true,
+        buyAction: 'buy',
+        buyZoneHigh: 120,
+        stopLossPrice: 100,
+        values: { emIndustry: '电子' },
+      },
+      position: { symbol: 'CN:300308' },
+      currentPrice: 110,
+      mainlineAllow: allowSet([['电子', 'MOMENTUM']]),
+      marketRegime: 'Strong',
+      now: shanghaiAt(14, 35),
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.suggestAddPct).toBeLessThanOrEqual(5);
+    expect(card.suggestAddPct).toBeGreaterThan(0);
+  });
+
+  it('WEAK_ATTACK does not GATE_DEFEND trim', () => {
+    expect(
+      evaluateHeldTrimGates({
+        mode: 'WEAK_ATTACK',
+        industryName: '电子',
+        mainlineAllow: allowSet([['电子', 'MOMENTUM']]),
+      }),
+    ).toEqual({ trim: false, why: null });
+  });
+
+  it('WEAK_ATTACK after 14:50 → MARKET_CLOSING_LOCK', () => {
+    expect(
+      checkExecutionTimeLock({
+        now: shanghaiAt(14, 51),
+        gateMode: 'WEAK_ATTACK',
+        marketRegime: 'Strong',
+      }).why,
+    ).toBe('MARKET_CLOSING_LOCK');
+  });
+
+  it('Alpha S recovering unlocks WATCH_SILENT → TREND_RECOVERING', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:300308',
+      gate: defendGate,
+      trendok: {
+        score: 60,
+        trendOk: true,
+        trendStatus: 'recovering',
+        buyAction: 'avoid',
+        values: { emIndustry: '电子' },
+      },
+      position: { symbol: 'CN:300308' },
+      currentPrice: 110,
+      catalyst: { maxGrade: 'S', catalystScore: 99 },
+      now: shanghaiAt(14, 35),
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('TREND_RECOVERING');
+  });
+
+  it('recovering with low score still escapes PURGE via purge-candidate branch', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:300502',
+      gate: defendGate,
+      trendok: {
+        score: 10,
+        trendOk: false,
+        trendStatus: 'recovering',
+        buyAction: 'avoid',
+        values: { emIndustry: '电子' },
+      },
+      position: { symbol: 'CN:300502' },
+      currentPrice: 50,
+      catalyst: { maxGrade: 'S' },
+      now: shanghaiAt(14, 35),
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('TREND_RECOVERING');
+  });
+});

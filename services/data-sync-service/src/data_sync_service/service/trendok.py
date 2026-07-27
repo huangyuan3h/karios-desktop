@@ -36,6 +36,10 @@ MACRO_LOCK_DOWN_THRESHOLD = 3500
 LOW_VOLUME_RATIO_THRESHOLD = 1.2
 LOW_VOLUME_RATIO_SCORE_CAP = 79.0
 LOW_VOLUME_RATIO_SCORE_PART = "low_volume_ratio_cap"
+# V6.3 Alpha S TrendOK recovering accelerator
+ALPHA_S_RECOVERING_VOL_MULT = 2.5
+ALPHA_S_RECOVERING_SCORE_FLOOR = 60.0
+ALPHA_S_RECOVERING_SCORE_PART = "alpha_s_trend_recovering"
 _trendok_cache: TTLCache = TTLCache(maxsize=128, ttl=TRENDOK_CACHE_TTL_SECONDS)
 _macro_lock_cache: TTLCache = TTLCache(maxsize=1, ttl=MACRO_LOCK_CACHE_TTL_SECONDS)
 
@@ -44,6 +48,94 @@ def clear_trendok_cache() -> None:
     """Clear in-process TrendOK TTL cache (after bars force sync or tests)."""
     _trendok_cache.clear()
     _macro_lock_cache.clear()
+
+
+def _load_alpha_s_symbols() -> set[str]:
+    """Symbols with Max Grade=S in the active catalyst window (WATCH_SILENT source)."""
+    try:
+        from data_sync_service.service.watchlist_automation import load_catalyst_window
+
+        _, alpha_s = load_catalyst_window()
+        return set(alpha_s or set())
+    except Exception:
+        return set()
+
+
+def _volume_vs_avg10(vols: list[float]) -> float | None:
+    """Today volume / mean of prior 10 sessions; None if insufficient history."""
+    if len(vols) < 11:
+        return None
+    prior = vols[-11:-1]
+    avg10 = sum(prior) / 10.0
+    if avg10 <= 0:
+        return None
+    return float(vols[-1]) / avg10
+
+
+def _is_bullish_day(closes: list[float], opens: list[float]) -> bool:
+    """大阳线: close > open and close >= previous close."""
+    if len(closes) < 2 or len(opens) < 1:
+        return False
+    return bool(closes[-1] > opens[-1] and closes[-1] >= closes[-2])
+
+
+def apply_alpha_s_trend_recovering(
+    res: dict[str, Any],
+    *,
+    closes: list[float],
+    opens: list[float],
+    vols: list[float],
+    is_alpha_s: bool,
+) -> None:
+    """
+    V6.3: Alpha S + 2.5×10d volume + bullish candle → trendStatus=recovering,
+    trendOk=True, score floor 60. Call after final trendOk / failed-score caps.
+    """
+    checks = res.setdefault("checks", {})
+    if not isinstance(checks, dict):
+        checks = {}
+        res["checks"] = checks
+
+    vol_ratio = _volume_vs_avg10(vols)
+    if vol_ratio is not None:
+        res.setdefault("values", {})
+        if isinstance(res["values"], dict):
+            res["values"]["volVsAvg10"] = round(vol_ratio, 6)
+
+    recovering = False
+    if (
+        is_alpha_s
+        and vol_ratio is not None
+        and vol_ratio >= ALPHA_S_RECOVERING_VOL_MULT
+        and _is_bullish_day(closes, opens)
+    ):
+        recovering = True
+        res["trendOk"] = True
+        prev_score = res.get("score")
+        try:
+            score_f = float(prev_score) if prev_score is not None else 0.0
+        except (TypeError, ValueError):
+            score_f = 0.0
+        res["score"] = round(max(score_f, ALPHA_S_RECOVERING_SCORE_FLOOR), 3)
+        parts = res.get("scoreParts")
+        if not isinstance(parts, dict):
+            parts = {}
+            res["scoreParts"] = parts
+        parts[ALPHA_S_RECOVERING_SCORE_PART] = ALPHA_S_RECOVERING_SCORE_FLOOR
+        checks["alphaSTrendRecovering"] = True
+        res["trendStatus"] = "recovering"
+    else:
+        checks["alphaSTrendRecovering"] = False
+        tok = res.get("trendOk")
+        if tok is True:
+            res["trendStatus"] = "ok"
+        elif tok is False:
+            res["trendStatus"] = "no"
+        else:
+            res["trendStatus"] = None
+
+    if not recovering and "alphaSTrendRecovering" not in checks:
+        checks["alphaSTrendRecovering"] = False
 
 
 def macro_override_lock_active(risk_mode: str | None, down_count: int | None) -> bool:
@@ -958,6 +1050,7 @@ def compute_trendok_for_symbols(
 
     stored_stoploss_by_code = get_stoploss_batch(ts_codes)
     stoploss_upserts_by_code: dict[str, dict[str, Any]] = {}
+    alpha_s_symbols = _load_alpha_s_symbols()
 
     def resolve_stoploss(ts_code: str, newly_computed: float, as_of_date: str | None) -> tuple[float, bool]:
         stored = stored_stoploss_by_code.get(ts_code)
@@ -1000,6 +1093,7 @@ def compute_trendok_for_symbols(
                 index_20d_ret=index_20d_ret,
                 index_ema20_down=index_ema20_down,
                 rt_vwap=rt_vwap_by_code.get(ts_code),
+                is_alpha_s=sym in alpha_s_symbols,
             )
         )
     if stoploss_upserts_by_code:
@@ -1048,6 +1142,7 @@ def _trendok_one(
     index_20d_ret: float | None = None,
     index_ema20_down: bool = False,
     rt_vwap: float | None = None,
+    is_alpha_s: bool = False,
 ) -> dict[str, Any]:
     """
     Ported from quant-service `_market_stock_trendok_one` with the same checks/score behavior.
@@ -1058,6 +1153,7 @@ def _trendok_one(
         "name": name,
         "asOfDate": None,
         "trendOk": None,
+        "trendStatus": None,
         "score": None,
         "scoreParts": {},
         "stopLossPrice": None,
@@ -1791,6 +1887,15 @@ def _trendok_one(
                 parts2[LOW_VOLUME_RATIO_SCORE_PART] = LOW_VOLUME_RATIO_SCORE_CAP
     if res.get("score") is not None and res.get("trendOk") is not True:
         res["score"] = round(min(float(res["score"]), TRENDOK_FAILED_SCORE_CAP), 3)
+
+    # V6.3 Alpha S recovering accelerator (after failed-score caps)
+    apply_alpha_s_trend_recovering(
+        res,
+        closes=closes,
+        opens=opens,
+        vols=vols,
+        is_alpha_s=is_alpha_s,
+    )
 
     # RS_Leader alert (V5.7): contrarian resilience highlight during weak market
     if rs_leader:

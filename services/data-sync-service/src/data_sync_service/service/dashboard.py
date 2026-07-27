@@ -34,6 +34,7 @@ from data_sync_service.service.industry_fund_flow import (
 )
 from data_sync_service.service.industry_fund_flow_read import (
     build_dashboard_industry_bundle,
+    max_net_inflow_for_date,
     top_by_date_from_rows,
 )
 from data_sync_service.service.macro_daily import sync_macro_daily_full
@@ -117,13 +118,24 @@ def _build_market_sentiment_bundle(
         top_by_date=_industry_top_by_date(as_of_date=as_of_date, days=5),
         as_of_date=as_of_date,
     )
+    # V6.3 overflow inputs: max 1D SW L1 inflow + upCount
+    ensure_industry()
+    flow_dates = trade_dates_upto(as_of_date, 1, fallback_dates_fn=get_dates_upto)
+    flow_rows = get_rows_for_dates(flow_dates) if flow_dates else []
+    flow_as_of = flow_dates[-1] if flow_dates else as_of_date
+    max_inflow_cny, overflow_sector = max_net_inflow_for_date(flow_rows, flow_as_of)
     # Re-read latest after breadth-panic mutation
     latest_after = sentiment_items[-1] if sentiment_items else {}
+    up_count = int((latest_after or {}).get("upCount") or (latest or {}).get("upCount") or 0)
     execution_gate = compute_execution_gate(
         index_signals=index_signals,
         down_count=int((latest_after or {}).get("downCount") or down_count or 0),
         risk_mode=str((latest_after or {}).get("riskMode") or "") or None,
         srv_index=srv_index,
+        up_count=up_count,
+        max_sector_inflow_cny=max_inflow_cny,
+        overflow_sector=overflow_sector,
+        now=datetime.now(tz=ZoneInfo("Asia/Shanghai")),
     )
     return {
         "asOfDate": as_of_date,

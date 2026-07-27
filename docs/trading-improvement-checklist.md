@@ -69,6 +69,8 @@ TV Screener（候选宇宙）
 | V6.2-01 | 弱市/DEFEND 14:30 尾盘时间锁 | P0 | ★★★★☆ | 0.5 天 | [x] |
 | V6.2-02 | DEFEND 防守双轨袖子（暂缓 Beta） | P0 | ★★★★★ | 1 天 | [x] |
 | V6.2-03 | Zero-Pos 持仓归零自动清字段 | P0 | ★★★★☆ | 0.5 天 | [x] |
+| V6.3-01 | 超大单日资金突破闸门速杀豁免（WEAK_ATTACK） | P0 | ★★★★★ | 1 天 | [x] |
+| V6.3-02 | Alpha S TrendOK recovering 加速器 | P0 | ★★★★☆ | 1 天 | [x] |
 
 **预期收益图例**：★ 越多 = 越可能提高「有效开火密度」或减少「空转噪音」（在卫星仓纪律内）。
 
@@ -93,6 +95,24 @@ TV Screener（候选宇宙）
 **状态**：[x]  
 **完成日期**：2026-07-24  
 **文件**：`watchlist-storage.applyZeroPositionCleanup` ← `setItemPositionPct` clearing
+
+---
+
+## V6.3 — 极端资金流豁免 + TrendOK 修复加速（2026-07-27）
+
+### V6.3-01：Intraday Overflow Override → WEAK_ATTACK
+
+**状态**：[x]  
+**完成日期**：2026-07-27  
+**文件**：`execution_gate.py`、`dashboard.py`、`execution-action.ts`、`packages/shared` schemas  
+**规则**：单板块 1D 净流入 >500 亿 **且** upCount >4000 **且** 上海时间 ≥14:30 时，将 `DEFEND`/`HOLD_ONLY` 升级为 `WEAK_ATTACK`（`allowNewEntries=true`，Suggest% 硬顶 5%）。不覆盖 `BREADTH_PANIC` / `RISK_*`。
+
+### V6.3-02：Alpha S TrendOK recovering
+
+**状态**：[x]  
+**完成日期**：2026-07-27  
+**文件**：`trendok.py`（`apply_alpha_s_trend_recovering`）、`execution-action.ts`、TrendOK Zod  
+**规则**：Max Grade=S + 今日量 ≥2.5×10 日均量 + 大阳线 → `trendStatus=recovering`、`trendOk=true`、score floor 60；解除 `WATCH_SILENT`（Why=`TREND_RECOVERING`）。不自动 BUY（准买区）。
 
 ---
 

@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-export const ExecutionGateModeSchema = z.enum(['ATTACK', 'HOLD_ONLY', 'DEFEND']);
+export const ExecutionGateModeSchema = z.enum([
+  'ATTACK',
+  'WEAK_ATTACK',
+  'HOLD_ONLY',
+  'DEFEND',
+]);
 export type ExecutionGateMode = z.infer<typeof ExecutionGateModeSchema>;
 
 export const MarketRegimeLabelSchema = z.enum(['Strong', 'Diverging', 'Weak']);
@@ -14,10 +19,15 @@ export const ExecutionGateSchema = z.object({
   srvLevel: z.string().nullable().optional(),
   srvOverlapCount: z.number().nullable().optional(),
   downCount: z.number().nullable().optional(),
+  upCount: z.number().nullable().optional(),
   riskMode: z.string().nullable().optional(),
   reasons: z.array(z.string()).default([]),
   positionRangeHint: z.string().optional(),
   satelliteNote: z.string().optional(),
+  /** V6.3: sector that triggered Intraday Overflow Override. */
+  overflowSector: z.string().nullable().optional(),
+  /** V6.3: max 1D sector inflow in 亿 (CNY / 1e8). */
+  overflowInflowYi: z.number().nullable().optional(),
 });
 export type ExecutionGate = z.infer<typeof ExecutionGateSchema>;
 

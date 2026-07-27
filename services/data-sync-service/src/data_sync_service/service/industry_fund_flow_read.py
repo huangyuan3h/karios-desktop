@@ -257,6 +257,37 @@ def top_by_date_from_rows(
     return out
 
 
+def max_net_inflow_for_date(
+    rows: list[dict[str, Any]],
+    as_of: str,
+) -> tuple[float | None, str | None]:
+    """
+    Max SW L1 net_inflow (CNY) for a single date.
+
+    Returns (amount_cny, industry_name) or (None, None) when no rows.
+    """
+    as_of_s = str(as_of or "").strip()
+    if not as_of_s:
+        return None, None
+    day_rows = _dedupe_rows_by_date_name(_rows_for_date(rows, as_of_s))
+    if not day_rows:
+        return None, None
+    best: dict[str, Any] | None = None
+    best_v = float("-inf")
+    for row in day_rows:
+        try:
+            v = float(row.get("net_inflow") or 0.0)
+        except Exception:
+            v = 0.0
+        if v > best_v:
+            best_v = v
+            best = row
+    if best is None:
+        return None, None
+    name = str(best.get("industry_name") or "").strip() or None
+    return best_v, name
+
+
 def build_dashboard_industry_bundle(
     *,
     as_of_date: str,

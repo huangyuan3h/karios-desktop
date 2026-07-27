@@ -92,16 +92,22 @@ export type ExecutionGateLike = {
   srvLevel?: string | null;
   srvOverlapCount?: number | null;
   downCount?: number | null;
+  upCount?: number | null;
   riskMode?: string | null;
   reasons?: string[] | null;
   positionRangeHint?: string | null;
   satelliteNote?: string | null;
+  overflowSector?: string | null;
+  overflowInflowYi?: number | null;
 };
 
 export function executionGateBadgeClass(mode: string | null | undefined): string {
   const m = String(mode || '').trim();
   if (m === 'ATTACK') {
     return 'border-emerald-600/40 bg-emerald-600/15 text-emerald-800 dark:text-emerald-200';
+  }
+  if (m === 'WEAK_ATTACK') {
+    return 'border-lime-600/40 bg-lime-600/15 text-lime-800 dark:text-lime-200';
   }
   if (m === 'HOLD_ONLY') {
     return 'border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-200';
@@ -153,6 +159,15 @@ export function formatExecutionGateMarkdown(
   }
   if (gate.satelliteNote) {
     lines.push(`- satelliteNote: ${String(gate.satelliteNote)}`);
+  }
+  if (gate.overflowSector || gate.overflowInflowYi != null) {
+    const yi =
+      typeof gate.overflowInflowYi === 'number' && Number.isFinite(gate.overflowInflowYi)
+        ? gate.overflowInflowYi
+        : '—';
+    lines.push(
+      `- overflow: ${gate.overflowSector ? String(gate.overflowSector) : '—'} ${yi}亿`,
+    );
   }
   lines.push('');
   return lines.join('\n');

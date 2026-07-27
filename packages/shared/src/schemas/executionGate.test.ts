@@ -20,6 +20,25 @@ describe('ExecutionGateSchema', () => {
     expect(parsed.allowNewEntries).toBe(true);
   });
 
+  it('parses WEAK_ATTACK overflow gate', () => {
+    const parsed = ExecutionGateSchema.parse({
+      mode: 'WEAK_ATTACK',
+      allowNewEntries: true,
+      marketRegime: 'Strong',
+      indexLight: 'green',
+      srvLevel: 'Extreme_High',
+      srvOverlapCount: 0,
+      upCount: 4100,
+      reasons: ['SRV_EXTREME_HIGH', 'INTRADAY_OVERFLOW_OVERRIDE'],
+      overflowSector: '电子',
+      overflowInflowYi: 726,
+      satelliteNote: '极端资金流豁免；允许 5% 先锋仓试探',
+    });
+    expect(parsed.mode).toBe('WEAK_ATTACK');
+    expect(parsed.overflowSector).toBe('电子');
+    expect(parsed.overflowInflowYi).toBe(726);
+  });
+
   it('rejects unknown mode', () => {
     expect(() =>
       ExecutionGateSchema.parse({

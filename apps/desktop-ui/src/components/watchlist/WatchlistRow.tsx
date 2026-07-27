@@ -114,7 +114,17 @@ function TrendOkCell({
   hideTooltip: () => void;
 }) {
   const ok = t?.trendOk ?? null;
-  const icon = ok == null ? '—' : ok ? '✅' : '❌';
+  const status = String(t?.trendStatus || '')
+    .trim()
+    .toLowerCase();
+  const icon =
+    status === 'recovering'
+      ? '🔄'
+      : ok == null
+        ? '—'
+        : ok
+          ? '✅'
+          : '❌';
   const rsiNow =
     typeof t?.values?.rsi14 === 'number' && Number.isFinite(t.values.rsi14)
       ? t.values.rsi14

@@ -1,11 +1,16 @@
-"""Tests for Execution Gate (ATTACK / HOLD_ONLY / DEFEND)."""
+"""Tests for Execution Gate (ATTACK / WEAK_ATTACK / HOLD_ONLY / DEFEND)."""
 
 from __future__ import annotations
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from data_sync_service.service.execution_gate import (
     MODE_ATTACK,
     MODE_DEFEND,
     MODE_HOLD_ONLY,
+    MODE_WEAK_ATTACK,
+    OVERFLOW_INFLOW_THRESHOLD_CNY,
     REGIME_DIVERGING,
     REGIME_STRONG,
     REGIME_WEAK,
@@ -27,6 +32,10 @@ def _signals(sse: str, cyb: str) -> list[dict]:
 
 def _srv(level: str | None, overlap: int | None = 3) -> dict:
     return {"level": level, "overlapCount": overlap, "overlapSectors": []}
+
+
+def _sh(hour: int, minute: int) -> datetime:
+    return datetime(2026, 7, 27, hour, minute, tzinfo=ZoneInfo("Asia/Shanghai"))
 
 
 def test_attack_when_strong_and_srv_stable() -> None:
@@ -139,3 +148,100 @@ def test_index_light_is_tighter_of_pair() -> None:
     )
     assert out["indexLight"] == "yellow"
     assert out["positionRangeHint"] == "30%"
+
+
+def test_v63_overflow_upgrades_srv_extreme_to_weak_attack() -> None:
+    """726亿 electronics + upCount 4100 at 14:31 → WEAK_ATTACK despite SRV Extreme_High."""
+    out = compute_execution_gate(
+        index_signals=_signals("green", "green"),
+        down_count=1000,
+        up_count=4100,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_EXTREME_HIGH, 0),
+        max_sector_inflow_cny=726e8,
+        overflow_sector="电子",
+        now=_sh(14, 31),
+    )
+    assert out["mode"] == MODE_WEAK_ATTACK
+    assert out["allowNewEntries"] is True
+    assert "INTRADAY_OVERFLOW_OVERRIDE" in out["reasons"]
+    assert "SRV_EXTREME_HIGH" in out["reasons"]
+    assert out["overflowSector"] == "电子"
+    assert out["overflowInflowYi"] == 726.0
+
+
+def test_v63_overflow_before_1430_stays_defend() -> None:
+    out = compute_execution_gate(
+        index_signals=_signals("green", "green"),
+        down_count=1000,
+        up_count=4100,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_EXTREME_HIGH, 0),
+        max_sector_inflow_cny=726e8,
+        overflow_sector="电子",
+        now=_sh(14, 0),
+    )
+    assert out["mode"] == MODE_DEFEND
+    assert out["allowNewEntries"] is False
+    assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
+
+
+def test_v63_overflow_does_not_override_breadth_panic() -> None:
+    out = compute_execution_gate(
+        index_signals=_signals("green", "green"),
+        down_count=3200,
+        up_count=4100,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_EXTREME_HIGH, 0),
+        max_sector_inflow_cny=OVERFLOW_INFLOW_THRESHOLD_CNY + 1e8,
+        overflow_sector="电子",
+        now=_sh(14, 31),
+    )
+    assert out["mode"] == MODE_DEFEND
+    assert "BREADTH_PANIC" in out["reasons"]
+    assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
+
+
+def test_v63_overflow_upgrades_hold_only() -> None:
+    out = compute_execution_gate(
+        index_signals=_signals("green", "red"),
+        down_count=1000,
+        up_count=4100,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_STABLE, 3),
+        max_sector_inflow_cny=550e8,
+        overflow_sector="半导体",
+        now=_sh(14, 30),
+    )
+    assert out["mode"] == MODE_WEAK_ATTACK
+    assert out["allowNewEntries"] is True
+    assert "INTRADAY_OVERFLOW_OVERRIDE" in out["reasons"]
+
+
+def test_v63_overflow_does_not_downgrade_attack() -> None:
+    out = compute_execution_gate(
+        index_signals=_signals("green", "green"),
+        down_count=800,
+        up_count=4100,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_STABLE, 3),
+        max_sector_inflow_cny=726e8,
+        overflow_sector="电子",
+        now=_sh(14, 31),
+    )
+    assert out["mode"] == MODE_ATTACK
+    assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
+
+
+def test_v63_overflow_requires_up_count() -> None:
+    out = compute_execution_gate(
+        index_signals=_signals("green", "green"),
+        down_count=1000,
+        up_count=3999,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_EXTREME_HIGH, 0),
+        max_sector_inflow_cny=726e8,
+        now=_sh(14, 31),
+    )
+    assert out["mode"] == MODE_DEFEND
+    assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]

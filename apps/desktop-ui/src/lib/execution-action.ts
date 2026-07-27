@@ -25,6 +25,8 @@ export const POSITION_SIZE_CAP_PCT = 15;
 export const SECTOR_CONCENTRATION_CAP_PCT = 30;
 /** Default per-fire clip for BUY/ADD size suggestion (pct points). */
 export const DEFAULT_FIRE_CLIP_PCT = 5;
+/** V6.3: hard cap for WEAK_ATTACK pioneer sleeve (pct points). */
+export const WEAK_ATTACK_SINGLE_MAX_CAP_PCT = 5;
 
 /** V6.2: Weak/DEFEND buy window opens at 14:30 Shanghai. */
 export const TIME_LOCK_CUTOFF_MINUTES = 14 * 60 + 30;
@@ -63,6 +65,8 @@ export type TrendOkLike = {
   score?: number | null;
   scoreParts?: Record<string, unknown> | null;
   trendOk?: boolean | null;
+  /** V6.3: ok | no | recovering */
+  trendStatus?: string | null;
   buyAction?: string | null;
   buyMode?: string | null;
   buyZoneHigh?: number | null;
@@ -343,6 +347,7 @@ export function isIndustryIn5dTop3(opts: {
 /**
  * V6.2 TimeLock: under DEFEND or Weak, only allow BUY/ADD in 14:30–14:50 Shanghai.
  * Exempt when ATTACK + Strong.
+ * V6.3 WEAK_ATTACK: already past 14:30 gate unlock; still respect >14:50 closing lock.
  */
 export function checkExecutionTimeLock(opts: {
   now?: Date | null;
@@ -354,10 +359,16 @@ export function checkExecutionTimeLock(opts: {
   if (mode === 'ATTACK' && regime === 'Strong') {
     return { ok: true, why: 'OK' };
   }
+  const minutes = getShanghaiMinutes(opts.now ?? new Date());
+  if (mode === 'WEAK_ATTACK') {
+    if (minutes > TIME_LOCK_CLOSE_MINUTES) {
+      return { ok: false, why: 'MARKET_CLOSING_LOCK' };
+    }
+    return { ok: true, why: 'OK' };
+  }
   if (mode !== 'DEFEND' && regime !== 'Weak') {
     return { ok: true, why: 'OK' };
   }
-  const minutes = getShanghaiMinutes(opts.now ?? new Date());
   if (minutes < TIME_LOCK_CUTOFF_MINUTES) {
     return { ok: false, why: 'TIME_LOCK_WEAK_REGIME' };
   }
@@ -815,13 +826,17 @@ export function deriveActionCard(opts: {
     Number.isFinite(currentPrice) &&
     currentPrice <= exitStop;
 
-  const allowAttack = mode === 'ATTACK';
+  const allowAttack = mode === 'ATTACK' || mode === 'WEAK_ATTACK';
   const buyAction = String(trendok?.buyAction || '').toLowerCase();
   const score = num(trendok?.score);
   const scoreOk = score != null && score >= BUY_SCORE_MIN;
   const wantsBuy = buyAction === 'buy' && scoreOk;
   const trendOkFlag =
     typeof trendok?.trendOk === 'boolean' ? trendok.trendOk : null;
+  const isRecovering =
+    String(trendok?.trendStatus || '')
+      .trim()
+      .toLowerCase() === 'recovering';
 
   const entryGate = evaluateNewEntryGates({
     industryName,
@@ -930,7 +945,10 @@ export function deriveActionCard(opts: {
   } else if (
     isPurgeCandidate({ held: false, score, trendOk: trendOkFlag })
   ) {
-    if (isAlphaSPurgeExempt(catalyst ?? {})) {
+    if (isRecovering) {
+      action = 'WATCH';
+      why = 'TREND_RECOVERING';
+    } else if (isAlphaSPurgeExempt(catalyst ?? {})) {
       action = 'WATCH_SILENT';
       why = 'ALPHA_S_WATCH';
     } else {
@@ -982,6 +1000,9 @@ export function deriveActionCard(opts: {
       action = 'WATCH';
       why = entryBelowStop ? 'ENTRY_BELOW_STOP' : 'GATE_BLOCK_NEW';
     }
+  } else if (isRecovering) {
+    action = 'WATCH';
+    why = 'TREND_RECOVERING';
   } else {
     action = 'WATCH';
     why =
@@ -1009,6 +1030,14 @@ export function deriveActionCard(opts: {
       suggestAddPct = size.addPct;
       suggestSizeNote = size.note;
     }
+    // V6.3: WEAK_ATTACK pioneer sleeve hard-caps single-name Suggest% at 5.
+    if (mode === 'WEAK_ATTACK' && suggestAddPct != null) {
+      const capped = Math.min(suggestAddPct, WEAK_ATTACK_SINGLE_MAX_CAP_PCT);
+      if (capped < suggestAddPct - 1e-9) {
+        suggestSizeNote = 'overflow';
+      }
+      suggestAddPct = Math.round(capped * 10) / 10;
+    }
   }
 
   return {
@@ -1034,7 +1063,14 @@ export function parseExecutionGate(raw: unknown): ExecutionGate | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   const mode = String(o.mode || '');
-  if (mode !== 'ATTACK' && mode !== 'HOLD_ONLY' && mode !== 'DEFEND') return null;
+  if (
+    mode !== 'ATTACK' &&
+    mode !== 'WEAK_ATTACK' &&
+    mode !== 'HOLD_ONLY' &&
+    mode !== 'DEFEND'
+  ) {
+    return null;
+  }
   const regime = String(o.marketRegime || '');
   if (regime !== 'Strong' && regime !== 'Diverging' && regime !== 'Weak') return null;
   const reasons = Array.isArray(o.reasons) ? o.reasons.map((x) => String(x)) : [];
@@ -1046,9 +1082,12 @@ export function parseExecutionGate(raw: unknown): ExecutionGate | null {
     srvLevel: o.srvLevel == null ? null : String(o.srvLevel),
     srvOverlapCount: num(o.srvOverlapCount),
     downCount: num(o.downCount),
+    upCount: num(o.upCount),
     riskMode: o.riskMode == null ? null : String(o.riskMode),
     reasons,
     positionRangeHint: o.positionRangeHint == null ? undefined : String(o.positionRangeHint),
     satelliteNote: o.satelliteNote == null ? undefined : String(o.satelliteNote),
+    overflowSector: o.overflowSector == null ? null : String(o.overflowSector),
+    overflowInflowYi: num(o.overflowInflowYi),
   };
 }

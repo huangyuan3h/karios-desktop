@@ -22,8 +22,12 @@ import type { WatchlistItem } from '@/lib/watchlist-storage';
 
 function formatTrendOkCell(t: TrendOkResult | undefined): string {
   if (!t) return '—';
-  if (t.trendOk === true) return 'ok';
-  if (t.trendOk === false) return 'no';
+  const status = String(t.trendStatus || '')
+    .trim()
+    .toLowerCase();
+  if (status === 'recovering') return 'recovering';
+  if (status === 'ok' || t.trendOk === true) return 'ok';
+  if (status === 'no' || t.trendOk === false) return 'no';
   return '—';
 }
 
@@ -93,13 +97,13 @@ export function buildPositionsExecutionMarkdown(
     '- note: BUY/ADD blocked when sleeve positionPct sum >= Gate positionRangeHint max (SLEEVE_CAP_BLOCK)',
   );
   lines.push(
-    '- note: Suggest% = min(5% clip, single 15% room, sector 30% room, sleeve hint room)',
+    '- note: Suggest% = min(5% clip, single 15% room, sector 30% room, sleeve hint room); WEAK_ATTACK hard-caps Suggest% at 5% (overflow pioneer)',
   );
   lines.push(
     '- note: Dist% flat = (Entry_Trigger-Current)/Current; held = (Current-Exit_Stop)/Current',
   );
   lines.push(
-    '- note: PURGE = Pos%=0 & Score<30 & TrendOK=no (removed after report); Alpha Max Grade=S → WATCH_SILENT (kept, ignore scores)',
+    '- note: PURGE = Pos%=0 & Score<30 & TrendOK=no (removed after report); Alpha Max Grade=S → WATCH_SILENT (kept); V6.3 recovering → WATCH Why=TREND_RECOVERING',
   );
   lines.push(
     '- note: Locked_T1=True (entryDate=today) → EXIT/TRIM blocked (Why=T1_LOCK); missing entryDate → Locked_T1=MISSING fail-closed (Why=ENTRY_DATE_MISSING)',
@@ -112,6 +116,9 @@ export function buildPositionsExecutionMarkdown(
   );
   lines.push(
     '- note: DEFEND Defensive Sleeve — whitelist+5D Top3+Score≥70+TrendOK → BUY Why=DEFENSIVE_SLEEVE_ALLOW (cap 10% sleeve / 5% single; beta deferred)',
+  );
+  lines.push(
+    '- note: WEAK_ATTACK (V6.3 Intraday Overflow Override) — sector 1D inflow>500亿 + upCount>4000 + ≥14:30 → allowNewEntries with Suggest%≤5%',
   );
   if (sectorOutflowBlock) {
     lines.push(
