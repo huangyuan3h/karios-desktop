@@ -1,8 +1,18 @@
 """Daily HK K-line sync: full sync with resume and skip-if-today-ok.
 
-The full sync prefers yfinance (no per-call rate cap on typical traffic).
-Tushare `pro.hk_daily` is kept as a per-ticker fallback for the hot path
-(bars?force=true) and for tickers yfinance does not cover.
+Source priority for each ts_code (highest first):
+
+  1. **akshare** (``ak.stock_hk_daily``) — Sina Finance source. Fastest
+     (avg ~0.2s/cold, ~0.1s/cache), no documented per-call rate cap, full
+     OHLCV history since listing. Best day-to-day choice.
+  2. **yfinance** — kept as fallback for tickers Sina can't resolve, or
+     when Sina is unreachable. Subject to IP-level rate caps.
+  3. **tushare** (``pro.hk_daily``) — last-resort fallback. Long history
+     and survives Sina outages, but rate-limited to ~1 call/min on
+     lower-tier keys, so unsuitable for full-market batches.
+
+The per-stock logic is incremental (only fetches rows newer than the
+cached last_trade_date), so re-running daily is cheap and resilient.
 """
 
 from __future__ import annotations
@@ -38,10 +48,10 @@ DAILY_FIELDS = [
     "amount",
 ]
 
-# Default pacing for the yfinance full sync — yfinance has no documented rate
-# cap but is throttled by Yahoo's IP fairness policy. 0.5s/call keeps us
-# within typical limits and processes ~2700 stocks in ~25 minutes.
-_YF_DELAY_SECONDS = 0.5
+# Default pacing between per-ticker calls. Sina (akshare) is documented as
+# having no per-call rate cap but we still space requests to be polite.
+# 0.2s × 2700 stocks ≈ 9 minutes for a full sweep.
+_AK_DELAY_SECONDS = 0.2
 _PROGRESS_EVERY = 50
 
 
@@ -53,15 +63,60 @@ def _date_to_yyyymmdd(d: date) -> str:
     return d.strftime("%Y%m%d")
 
 
+def _sync_one_with_fallback(ts_code: str) -> dict[str, Any]:
+    """Sync a single HK ts_code with the priority chain: akshare → yfinance → tushare.
+
+    Returns the merged result with ``source`` set to whichever backend
+    actually delivered bars (or the highest that didn't fail), and
+    ``updated`` reflecting the rows written.
+    """
+    from data_sync_service.service.hk_daily_ak import sync_hk_daily_for_ts_code_ak
+
+    # 1. akshare (Sina): fastest + no rate cap.
+    ak_result = sync_hk_daily_for_ts_code_ak(ts_code)
+    if ak_result.get("ok") and int(ak_result.get("updated") or 0) > 0:
+        return ak_result
+    ak_error = None if ak_result.get("ok") else ak_result.get("error")
+
+    # 2. yfinance: kept for tickers Sina can't resolve.
+    from data_sync_service.service.hk_daily_yf import sync_hk_daily_for_ts_code_yf
+
+    yf_result = sync_hk_daily_for_ts_code_yf(ts_code)
+    if yf_result.get("ok") and int(yf_result.get("updated") or 0) > 0:
+        return yf_result
+
+    # 3. tushare: last resort (1 call/min rate cap, but most reliable).
+    ts_result = _tushare_sync_one(ts_code)
+    if ts_result.get("ok") and int(ts_result.get("updated") or 0) > 0:
+        return ts_result
+
+    # Nothing delivered new bars. Return the most informative error from
+    # whichever source failed first (akshare), then a normalised "no data".
+    if not ak_result.get("ok"):
+        return {
+            "ok": True,
+            "updated": 0,
+            "skipped": True,
+            "ts_code": ts_code,
+            "source": "akshare",
+            "message": f"akshare failed: {ak_error}; no other source had data either",
+        }
+    return {
+        "ok": True,
+        "updated": 0,
+        "skipped": True,
+        "ts_code": ts_code,
+        "source": "akshare",
+        "message": "no source delivered new bars",
+    }
+
+
 def sync_hk_daily_full() -> dict[str, Any]:
     """
-    Full sync for HK stocks via yfinance (with tushare fallback per-ticker):
+    Full sync for HK stocks with source-priority fallback (akshare → yfinance → tushare):
     - If today's run already succeeded: skip.
     - If today's run failed: resume from the ts_code after last_ts_code.
-    - If we already have today's data for a stock, skip that stock.
-
-    The per-stock logic is incremental (only fetches rows newer than the
-    cached last_trade_date), so re-running daily is cheap.
+    - Per-stock logic is incremental (only fetches rows newer than cached last_trade_date).
     """
     run = get_today_run(JOB_TYPE)
     if run and run.get("success"):
@@ -79,12 +134,10 @@ def sync_hk_daily_full() -> dict[str, Any]:
         except ValueError:
             pass
 
-    # Lazy import to avoid pulling yfinance at module import time.
-    from data_sync_service.service.hk_daily_yf import sync_hk_daily_for_ts_code_yf
-
     total_rows = 0
     skipped_count = 0
     failed_count = 0
+    source_counts: dict[str, int] = {"akshare": 0, "yfinance": 0, "tushare": 0}
     last_successful_ts_code: str | None = None
     remaining = len(ts_codes) - start_index
     logger.info(
@@ -97,16 +150,14 @@ def sync_hk_daily_full() -> dict[str, Any]:
     for i in range(start_index, len(ts_codes)):
         ts_code = ts_codes[i]
         try:
-            yf_result = sync_hk_daily_for_ts_code_yf(ts_code)
-            updated = int(yf_result.get("updated") or 0) if yf_result.get("ok") else 0
-            if updated == 0:
-                # Fallback to tushare when yfinance returned nothing.
-                ts_result = _tushare_sync_one(ts_code)
-                updated = int(ts_result.get("updated") or 0) if ts_result.get("ok") else 0
+            result = _sync_one_with_fallback(ts_code)
+            updated = int(result.get("updated") or 0) if result.get("ok") else 0
+            source = result.get("source") or "unknown"
             if updated == 0:
                 skipped_count += 1
             else:
                 total_rows += updated
+                source_counts[source] = source_counts.get(source, 0) + 1
             last_successful_ts_code = ts_code
         except Exception as exc:  # noqa: BLE001
             failed_count += 1
@@ -118,30 +169,33 @@ def sync_hk_daily_full() -> dict[str, Any]:
         done = i + 1 - start_index
         if done % _PROGRESS_EVERY == 0 or done == remaining:
             logger.info(
-                "hk_daily_full_sync progress: %s/%s updated=%s skipped=%s failed=%s",
+                "hk_daily_full_sync progress: %s/%s updated=%s skipped=%s failed=%s sources=%s",
                 done,
                 remaining,
                 total_rows,
                 skipped_count,
                 failed_count,
+                source_counts,
             )
 
-        if _YF_DELAY_SECONDS > 0 and i < len(ts_codes) - 1:
-            time.sleep(_YF_DELAY_SECONDS)
+        if _AK_DELAY_SECONDS > 0 and i < len(ts_codes) - 1:
+            time.sleep(_AK_DELAY_SECONDS)
 
     insert_record(job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None)
     logger.info(
-        "hk_daily_full_sync done: total=%s updated=%s skipped=%s failed=%s",
+        "hk_daily_full_sync done: total=%s updated=%s skipped=%s failed=%s sources=%s",
         remaining,
         total_rows,
         skipped_count,
         failed_count,
+        source_counts,
     )
     return {
         "ok": True,
         "updated": total_rows,
         "skipped_count": skipped_count,
         "failed_count": failed_count,
+        "sources": source_counts,
     }
 
 
@@ -174,7 +228,7 @@ def _tushare_sync_one(ts_code: str) -> dict[str, Any]:
         updated = 0
         if df is not None and not df.empty:
             updated = upsert_from_dataframe(df)
-        return {"ok": True, "updated": updated, "ts_code": code}
+        return {"ok": True, "updated": updated, "ts_code": code, "source": "tushare"}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e), "ts_code": code}
 
@@ -189,7 +243,8 @@ def get_hk_daily_sync_status() -> dict[str, Any]:
 
 def sync_hk_daily_for_ts_code(ts_code: str) -> dict[str, Any]:
     """
-    Tushare hk_daily per-ticker sync. Used by market_bars as a fallback when
-    yfinance has no data for the requested HK ticker.
+    Single-ticker HK sync using the source-priority chain
+    (akshare → yfinance → tushare). Used by market_bars for the
+    hot-path ``bars?force=true`` refresh.
     """
-    return _tushare_sync_one(ts_code)
+    return _sync_one_with_fallback(ts_code)
