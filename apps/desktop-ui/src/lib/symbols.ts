@@ -1,14 +1,41 @@
-/** CN A-share symbol helpers shared by watchlist market fetch paths. */
+/** Watchlist symbol helpers: CN A-share + HK ticker + ETF → ts_code. */
 
 export function toTsCodeFromSymbol(symbol: string): string | null {
   const s = symbol.trim().toUpperCase();
-  if (!s.startsWith('CN:')) return null;
-  const ticker = s.slice('CN:'.length).trim();
-  if (!/^[0-9]{6}$/.test(ticker)) return null;
-  const suffix = ticker.startsWith('6') ? 'SH' : 'SZ';
-  return `${ticker}.${suffix}`;
+  if (!s) return null;
+  if (s.startsWith('CN:')) {
+    const ticker = s.slice('CN:'.length).trim();
+    if (!/^[0-9]{6}$/.test(ticker)) return null;
+    const suffix = ticker.startsWith('6') ? 'SH' : 'SZ';
+    return `${ticker}.${suffix}`;
+  }
+  if (s.startsWith('HK:')) {
+    const ticker = s.slice('HK:'.length).trim();
+    if (!/^[0-9]{1,5}$/.test(ticker)) return null;
+    return `${ticker.padStart(5, '0')}.HK`;
+  }
+  if (s.startsWith('ETF:')) {
+    const ticker = s.slice('ETF:'.length).trim();
+    if (!/^[0-9]{6}$/.test(ticker)) return null;
+    // SH ETFs: 5xxxxx (broad/sector), 6xxxxx, 9xxxxx (cross-border).
+    // SZ ETFs: 1xxxxx, 0xxxxx.
+    const suffix = ['5', '6', '9'].includes(ticker[0]) ? 'SH' : 'SZ';
+    return `${ticker}.${suffix}`;
+  }
+  return null;
 }
 
 export function isCnWatchlistSymbol(symbol: string): boolean {
-  return toTsCodeFromSymbol(symbol) != null;
+  const s = symbol.trim().toUpperCase();
+  return s.startsWith('CN:');
+}
+
+export function isHkWatchlistSymbol(symbol: string): boolean {
+  const s = symbol.trim().toUpperCase();
+  return s.startsWith('HK:');
+}
+
+export function isEtfWatchlistSymbol(symbol: string): boolean {
+  const s = symbol.trim().toUpperCase();
+  return s.startsWith('ETF:');
 }

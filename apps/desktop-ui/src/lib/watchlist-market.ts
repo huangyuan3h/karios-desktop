@@ -4,7 +4,7 @@ import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import { chunk } from '@/lib/chunk';
 import { mapWithConcurrency } from '@/lib/concurrency';
 import { parseQuoteNumber } from '@/lib/watchlist-metrics';
-import { isCnWatchlistSymbol, toTsCodeFromSymbol } from '@/lib/symbols';
+import { toTsCodeFromSymbol } from '@/lib/symbols';
 
 const DEFAULT_FORCE_BARS_CONCURRENCY = 4;
 const DEFAULT_FORCE_BARS_DAYS = 60;
@@ -65,16 +65,16 @@ export async function forceRefreshWatchlistBars(
   symbols: string[],
   options: { concurrency?: number; days?: number } = {},
 ): Promise<WatchlistBarSyncResult> {
-  const cnSymbols = symbols.filter((s) => s && isCnWatchlistSymbol(s));
-  if (!cnSymbols.length) return { failures: 0, total: 0 };
+  const supportedSymbols = symbols.filter((s) => s && toTsCodeFromSymbol(s) != null);
+  if (!supportedSymbols.length) return { failures: 0, total: 0 };
 
   const concurrency = options.concurrency ?? DEFAULT_FORCE_BARS_CONCURRENCY;
   const days = options.days ?? DEFAULT_FORCE_BARS_DAYS;
-  const outcomes = await mapWithConcurrency(cnSymbols, concurrency, (sym) =>
+  const outcomes = await mapWithConcurrency(supportedSymbols, concurrency, (sym) =>
     forceRefreshOneBar(sym, days),
   );
   const failures = outcomes.filter((ok) => !ok).length;
-  return { failures, total: cnSymbols.length };
+  return { failures, total: supportedSymbols.length };
 }
 
 function mapQuoteItem(

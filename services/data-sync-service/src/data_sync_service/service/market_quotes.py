@@ -87,8 +87,8 @@ def get_market_quotes_batch(
 
 def symbol_to_ts_code(symbol: str) -> str | None:
     """
-    Convert symbol format (CN:000001) to ts_code format (000001.SZ).
-    Returns None if format is invalid.
+    Convert symbol format (CN:000001, HK:00700, ETF:510300) to ts_code
+    (000001.SZ, 00700.HK, 510300.SH). Returns None if format is invalid.
     """
     if not symbol or ":" not in symbol:
         return None
@@ -99,7 +99,13 @@ def symbol_to_ts_code(symbol: str) -> str | None:
     if market == "CN" and len(ticker) == 6 and ticker.isdigit():
         suffix = "SH" if ticker.startswith("6") else "SZ"
         return f"{ticker}.{suffix}"
-    # HK support can be added later
+    if market == "HK" and 1 <= len(ticker) <= 5 and ticker.isdigit():
+        return f"{ticker.zfill(5)}.HK"
+    if market == "ETF" and len(ticker) == 6 and ticker.isdigit():
+        # SH ETFs: 5xxxxx (broad/sector), 6xxxxx (Shanghai snapshot), 9xxxxx (cross-border).
+        # SZ ETFs: 1xxxxx (broad/sector), 0xxxxx.
+        suffix = "SH" if ticker[0] in ("5", "6", "9") else "SZ"
+        return f"{ticker}.{suffix}"
     return None
 
 

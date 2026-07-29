@@ -387,7 +387,7 @@ def search_stocks_endpoint(
 @router.get("/market/stocks/resolve")
 def resolve_symbols_endpoint(symbols: list[str] | None = Query(None)) -> list[dict]:
     """
-    Purpose: Resolve symbols (CN:xxxxxx) to name/ticker/market for Watchlist.
+    Purpose: Resolve symbols (CN:xxxxxx, HK:0xxxx, ETF:xxxxxx) to name/ticker/market for Watchlist.
     Source: data-sync-service stock_basic table (tushare).
     """
     syms0 = symbols if isinstance(symbols, list) else []
@@ -398,13 +398,22 @@ def resolve_symbols_endpoint(symbols: list[str] | None = Query(None)) -> list[di
     if len(syms) > 500:
         syms = syms[:500]
 
-    # Map CN:xxxxxx -> ts_code
+    # Map symbol -> ts_code (CN + HK + ETF)
     want: dict[str, str] = {}
     for sym in syms:
         if sym.startswith("CN:"):
             ticker = sym.split(":", 1)[1].strip()
             if len(ticker) == 6 and ticker.isdigit():
                 suffix = "SH" if ticker.startswith("6") else "SZ"
+                want[sym] = f"{ticker}.{suffix}"
+        elif sym.startswith("HK:"):
+            ticker = sym.split(":", 1)[1].strip()
+            if 1 <= len(ticker) <= 5 and ticker.isdigit():
+                want[sym] = f"{ticker.zfill(5)}.HK"
+        elif sym.startswith("ETF:"):
+            ticker = sym.split(":", 1)[1].strip()
+            if len(ticker) == 6 and ticker.isdigit():
+                suffix = "SH" if ticker[0] in ("5", "6", "9") else "SZ"
                 want[sym] = f"{ticker}.{suffix}"
 
     if not want:
@@ -432,13 +441,22 @@ def resolve_symbols_endpoint(symbols: list[str] | None = Query(None)) -> list[di
         hit = by_code.get(code)
         if not hit:
             continue
+        if code.endswith(".HK"):
+            market = "HK"
+            currency = "HKD"
+        elif sym.startswith("ETF:"):
+            market = "ETF"
+            currency = "CNY"
+        else:
+            market = "CN"
+            currency = "CNY"
         out.append(
             {
                 "symbol": sym,
-                "market": "CN",
+                "market": market,
                 "ticker": hit["ticker"],
                 "name": hit["name"],
-                "currency": "CNY",
+                "currency": currency,
             }
         )
     return out

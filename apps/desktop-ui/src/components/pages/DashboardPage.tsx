@@ -25,6 +25,8 @@ import {
   buildIndustryMarkdown,
   buildSentimentMarkdown,
 } from '@/lib/dashboard-export';
+import { refetchWatchlistMarket } from '@/lib/queries/watchlist';
+import { loadWatchlist } from '@/lib/watchlist-storage';
 import {
   BREADTH_PANIC_DOWN_THRESHOLD,
   buildIndexTrafficSummary,
@@ -98,6 +100,17 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setNewsSummaryBusy,
     saveNewsBriefCache,
     setError,
+    forceRefreshWatchlistOnSync: async () => {
+      // Cover HK/ETF watchlist symbols that the backend sync steps do not
+      // touch. Reads from local watchlist so this also runs even when the
+      // user is on Dashboard and not on the Watchlist page.
+      const items = loadWatchlist();
+      const symbols = items
+        .map((it) => (typeof it?.symbol === 'string' ? it.symbol.trim().toUpperCase() : ''))
+        .filter(Boolean);
+      if (!symbols.length) return;
+      await refetchWatchlistMarket(queryClient, symbols, { forceMarket: true });
+    },
     onSyncComplete: () => {
       void captureDecisionSnapshot('sync_all');
     },

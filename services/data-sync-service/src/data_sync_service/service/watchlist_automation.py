@@ -181,13 +181,25 @@ def is_defense_sector(industry_name: str | None) -> bool:
 
 def _cn_symbol_to_ts_code(symbol: str) -> str | None:
     s = _normalize_cn_watchlist_symbol(symbol)
-    if not s.startswith("CN:"):
-        return None
-    ticker = s.split(":", 1)[1].strip()
-    if len(ticker) != 6 or not ticker.isdigit():
-        return None
-    suffix = "SH" if ticker.startswith("6") else "SZ"
-    return f"{ticker}.{suffix}"
+    if s.startswith("CN:"):
+        ticker = s.split(":", 1)[1].strip()
+        if len(ticker) != 6 or not ticker.isdigit():
+            return None
+        suffix = "SH" if ticker.startswith("6") else "SZ"
+        return f"{ticker}.{suffix}"
+    if s.startswith("HK:"):
+        ticker = s.split(":", 1)[1].strip()
+        if not (1 <= len(ticker) <= 5 and ticker.isdigit()):
+            return None
+        padded = ticker.zfill(5)
+        return f"{padded}.HK"
+    if s.startswith("ETF:"):
+        ticker = s.split(":", 1)[1].strip()
+        if len(ticker) != 6 or not ticker.isdigit():
+            return None
+        suffix = "SH" if ticker[0] in ("5", "6", "9") else "SZ"
+        return f"{ticker}.{suffix}"
+    return None
 
 
 def _resolve_em_industries_for_symbols(symbols: list[str]) -> dict[str, str]:
@@ -265,6 +277,8 @@ def _normalize_cn_watchlist_symbol(symbol: str) -> str:
     if text.startswith("CN:"):
         return text
     if text.startswith("HK:"):
+        return text
+    if text.startswith("ETF:"):
         return text
     return f"CN:{text}"
 

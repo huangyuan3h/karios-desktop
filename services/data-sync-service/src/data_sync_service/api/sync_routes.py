@@ -6,9 +6,14 @@ from fastapi import APIRouter, Query  # type: ignore[import-not-found]
 
 from data_sync_service.service.adj_factor import sync_adj_factor_full
 from data_sync_service.service.close_sync import sync_close
+from data_sync_service.service.etf_daily import sync_etf_daily_full, get_etf_daily_sync_status
 from data_sync_service.service.etf_fund_flow import sync_etf_fund_flow_watchlist
+from data_sync_service.service.fund_basic import (
+    get_etf_fund_basic_sync_status,
+    sync_etf_fund_basic,
+)
 from data_sync_service.service.hk_basic import sync_hk_basic
-from data_sync_service.service.hk_daily import sync_hk_daily_full
+from data_sync_service.service.hk_daily import get_hk_daily_sync_status, sync_hk_daily_full
 from data_sync_service.service.index_basic import sync_index_basic_full
 from data_sync_service.service.index_daily import sync_index_daily_full
 from data_sync_service.service.macro_daily import sync_macro_daily_full
@@ -82,6 +87,34 @@ def sync_hk_basic_endpoint(
     return sync_hk_basic(ts_code=ts_code, list_status=list_status, force=bool(force))
 
 
+@router.post("/sync/etf-fund-basic")
+def sync_etf_fund_basic_endpoint(
+    list_status: str = Query("L", description="Listing status: L listed, D delisted, P suspended"),
+    force: bool = Query(False, description="Force sync even if already synced this month"),
+) -> dict:
+    # Purpose: pull fund_basic(market='E') from tushare into stock_basic table (market='ETF').
+    """Sync ETF fund_basic from tushare into stock_basic table."""
+    return sync_etf_fund_basic(list_status=list_status, force=bool(force))
+
+
+@router.get("/sync/etf-fund-basic/status")
+def sync_etf_fund_basic_status_endpoint() -> dict:
+    """Return the last sync status for ETF fund_basic."""
+    return get_etf_fund_basic_sync_status()
+
+
+@router.post("/sync/etf-daily")
+def sync_etf_daily_endpoint() -> dict:
+    """Trigger full ETF daily K-line sync into daily table."""
+    return sync_etf_daily_full()
+
+
+@router.get("/sync/etf-daily/status")
+def sync_etf_daily_status_endpoint() -> dict:
+    """Return today's run record for etf_daily_full."""
+    return get_etf_daily_sync_status()
+
+
 @router.post("/market/sync")
 def market_sync_endpoint() -> dict:
     # Purpose: compatibility endpoint for MarketPage; calls sync_stock_basic.
@@ -120,6 +153,12 @@ def sync_hk_daily_endpoint() -> dict:
     # Purpose: full HK daily sync into daily table; skip if today already succeeded.
     """Trigger full HK daily sync into daily table. Skips if today already succeeded; resumes from failure."""
     return sync_hk_daily_full()
+
+
+@router.get("/sync/hk-daily/status")
+def sync_hk_daily_status_endpoint() -> dict:
+    """Return today's run record for hk_daily_full (success / last_ts_code / error)."""
+    return get_hk_daily_sync_status()
 
 
 @router.post("/sync/adj-factor")

@@ -1,7 +1,14 @@
-"""Daily HK K-line sync: full sync with resume and skip-if-today-ok."""
+"""Daily HK K-line sync: full sync with resume and skip-if-today-ok.
+
+The full sync prefers yfinance (no per-call rate cap on typical traffic).
+Tushare `pro.hk_daily` is kept as a per-ticker fallback for the hot path
+(bars?force=true) and for tickers yfinance does not cover.
+"""
 
 from __future__ import annotations
 
+import logging
+import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -12,6 +19,8 @@ from data_sync_service.config import get_settings
 from data_sync_service.db.daily import get_last_trade_date, upsert_from_dataframe
 from data_sync_service.db.stock_basic import fetch_ts_codes_by_market
 from data_sync_service.db.sync_job_record import get_today_run, insert_record
+
+logger = logging.getLogger(__name__)
 
 JOB_TYPE = "hk_daily_full"
 FULL_START_DATE = "20230101"
@@ -29,6 +38,12 @@ DAILY_FIELDS = [
     "amount",
 ]
 
+# Default pacing for the yfinance full sync — yfinance has no documented rate
+# cap but is throttled by Yahoo's IP fairness policy. 0.5s/call keeps us
+# within typical limits and processes ~2700 stocks in ~25 minutes.
+_YF_DELAY_SECONDS = 0.5
+_PROGRESS_EVERY = 50
+
 
 def _today_yyyymmdd() -> str:
     return datetime.now(UTC).strftime("%Y%m%d")
@@ -40,10 +55,13 @@ def _date_to_yyyymmdd(d: date) -> str:
 
 def sync_hk_daily_full() -> dict[str, Any]:
     """
-    Full sync for HK stocks:
+    Full sync for HK stocks via yfinance (with tushare fallback per-ticker):
     - If today's run already succeeded: skip.
     - If today's run failed: resume from the ts_code after last_ts_code.
     - If we already have today's data for a stock, skip that stock.
+
+    The per-stock logic is incremental (only fetches rows newer than the
+    cached last_trade_date), so re-running daily is cheap.
     """
     run = get_today_run(JOB_TYPE)
     if run and run.get("success"):
@@ -61,51 +79,104 @@ def sync_hk_daily_full() -> dict[str, Any]:
         except ValueError:
             pass
 
-    settings = get_settings()
-    if not settings.tu_share_api_key:
-        return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
+    # Lazy import to avoid pulling yfinance at module import time.
+    from data_sync_service.service.hk_daily_yf import sync_hk_daily_for_ts_code_yf
 
-    pro = ts.pro_api(settings.tu_share_api_key)
-    end_date = _today_yyyymmdd()
     total_rows = 0
+    skipped_count = 0
+    failed_count = 0
     last_successful_ts_code: str | None = None
+    remaining = len(ts_codes) - start_index
+    logger.info(
+        "hk_daily_full_sync start: total=%s resuming_from=%s remaining=%s",
+        len(ts_codes),
+        start_index,
+        remaining,
+    )
 
     for i in range(start_index, len(ts_codes)):
         ts_code = ts_codes[i]
         try:
-            last_date = get_last_trade_date(ts_code)
-            if last_date is None:
-                start_date = FULL_START_DATE
+            yf_result = sync_hk_daily_for_ts_code_yf(ts_code)
+            updated = int(yf_result.get("updated") or 0) if yf_result.get("ok") else 0
+            if updated == 0:
+                # Fallback to tushare when yfinance returned nothing.
+                ts_result = _tushare_sync_one(ts_code)
+                updated = int(ts_result.get("updated") or 0) if ts_result.get("ok") else 0
+            if updated == 0:
+                skipped_count += 1
             else:
-                next_date = last_date + timedelta(days=1)
-                start_date = _date_to_yyyymmdd(next_date)
-
-            if start_date > end_date:
-                last_successful_ts_code = ts_code
-                continue
-
-            df: pd.DataFrame = pro.hk_daily(
-                ts_code=ts_code,
-                start_date=start_date,
-                end_date=end_date,
-                fields=",".join(DAILY_FIELDS),
-            )
-            if df is not None and not df.empty:
-                n = upsert_from_dataframe(df)
-                total_rows += n
-
+                total_rows += updated
             last_successful_ts_code = ts_code
         except Exception as exc:  # noqa: BLE001
-            insert_record(
-                job_type=JOB_TYPE,
-                success=False,
-                last_ts_code=last_successful_ts_code,
-                error_message=str(exc),
+            failed_count += 1
+            logger.warning("hk_daily_full_sync %s exception: %s", ts_code, exc)
+            # Continue instead of aborting: a single bad ticker should not
+            # block the whole batch. Resume next day picks up where we left.
+            last_successful_ts_code = ts_code
+
+        done = i + 1 - start_index
+        if done % _PROGRESS_EVERY == 0 or done == remaining:
+            logger.info(
+                "hk_daily_full_sync progress: %s/%s updated=%s skipped=%s failed=%s",
+                done,
+                remaining,
+                total_rows,
+                skipped_count,
+                failed_count,
             )
-            return {"ok": False, "error": str(exc), "last_ts_code": last_successful_ts_code}
+
+        if _YF_DELAY_SECONDS > 0 and i < len(ts_codes) - 1:
+            time.sleep(_YF_DELAY_SECONDS)
 
     insert_record(job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None)
-    return {"ok": True, "updated": total_rows}
+    logger.info(
+        "hk_daily_full_sync done: total=%s updated=%s skipped=%s failed=%s",
+        remaining,
+        total_rows,
+        skipped_count,
+        failed_count,
+    )
+    return {
+        "ok": True,
+        "updated": total_rows,
+        "skipped_count": skipped_count,
+        "failed_count": failed_count,
+    }
+
+
+def _tushare_sync_one(ts_code: str) -> dict[str, Any]:
+    """Single-ticker tushare fallback used by sync_hk_daily_full."""
+    code = (ts_code or "").strip().upper()
+    if not code:
+        return {"ok": False, "error": "ts_code is required"}
+    settings = get_settings()
+    if not settings.tu_share_api_key:
+        return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
+
+    last_date = get_last_trade_date(code)
+    if last_date is None:
+        start_date = FULL_START_DATE
+    else:
+        start_date = _date_to_yyyymmdd(last_date + timedelta(days=1))
+    end_date = _today_yyyymmdd()
+    if start_date > end_date:
+        return {"ok": True, "updated": 0, "skipped": True, "ts_code": code}
+
+    try:
+        pro = ts.pro_api(settings.tu_share_api_key)
+        df: pd.DataFrame = pro.hk_daily(
+            ts_code=code,
+            start_date=start_date,
+            end_date=end_date,
+            fields=",".join(DAILY_FIELDS),
+        )
+        updated = 0
+        if df is not None and not df.empty:
+            updated = upsert_from_dataframe(df)
+        return {"ok": True, "updated": updated, "ts_code": code}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e), "ts_code": code}
 
 
 def get_hk_daily_sync_status() -> dict[str, Any]:
@@ -114,3 +185,11 @@ def get_hk_daily_sync_status() -> dict[str, Any]:
     if run is None:
         return {"job_type": JOB_TYPE, "today_run": None}
     return {"job_type": JOB_TYPE, "today_run": run}
+
+
+def sync_hk_daily_for_ts_code(ts_code: str) -> dict[str, Any]:
+    """
+    Tushare hk_daily per-ticker sync. Used by market_bars as a fallback when
+    yfinance has no data for the requested HK ticker.
+    """
+    return _tushare_sync_one(ts_code)

@@ -47,7 +47,82 @@ ETF_WATCHLIST: list[dict[str, str]] = [
     {"symbol": "159819", "ts_code": "159819.SZ", "name": "人工智能 ETF", "category": "sector"},
 ]
 
+# Tickers that opt out of the dynamic universe (keep the hardcoded name+category above).
+_CORE_ETF_TICKERS: frozenset[str] = frozenset(item["symbol"] for item in ETF_WATCHLIST)
+
 FUND_DAILY_FIELDS = "ts_code,trade_date,close,vol,amount"
+
+
+def _infer_etf_category(ticker: str) -> str:
+    """Heuristic: 5xxxxx = broad (沪深300/500/50 style); 1xxxxx = sector/cross-border."""
+    t = str(ticker or "").strip()
+    if not t:
+        return "broad"
+    return "broad" if t.startswith("5") else "sector"
+
+
+def _fetch_extended_etf_universe(
+    *,
+    max_size: int = 200,
+    exclude_core: bool = True,
+) -> list[dict[str, str]]:
+    """Read non-core ETFs from stock_basic where market='ETF'.
+
+    Returns list[dict] with keys: symbol, ts_code, name, category.
+    Sorted by ts_code ascending; truncated to max_size.
+    """
+    from data_sync_service.db import get_connection
+    from data_sync_service.db.stock_basic import ensure_table as ensure_sb
+
+    cap = max(1, min(int(max_size), 5000))
+    ensure_sb()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT ts_code, symbol, name
+                FROM stock_basic
+                WHERE market = 'ETF'
+                  AND (delist_date IS NULL OR delist_date > CURRENT_DATE)
+                ORDER BY ts_code ASC
+                LIMIT %s
+                """,
+                (cap,),
+            )
+            rows = cur.fetchall()
+    out: list[dict[str, str]] = []
+    for ts_code, ticker, name in rows:
+        sym = str(ticker or "").strip()
+        if exclude_core and sym in _CORE_ETF_TICKERS:
+            continue
+        out.append(
+            {
+                "symbol": sym,
+                "ts_code": str(ts_code),
+                "name": str(name or sym),
+                "category": _infer_etf_category(sym),
+            }
+        )
+    return out
+
+
+def get_etf_watchlist_extended(
+    *,
+    max_size: int = 200,
+    include_core: bool = True,
+) -> list[dict[str, str]]:
+    """Public helper: core ETF_WATCHLIST + extended stock_basic ETF rows.
+
+    Order: core first (preserves dashboard historical ordering), then extended.
+    Truncated to max_size.
+    """
+    cap = max(1, min(int(max_size), 5000))
+    out: list[dict[str, str]] = list(ETF_WATCHLIST) if include_core else []
+    if len(out) >= cap:
+        return out[:cap]
+    remaining = cap - len(out)
+    out.extend(_fetch_extended_etf_universe(max_size=remaining, exclude_core=True))
+    return out
 
 
 def _now_iso() -> str:

@@ -780,7 +780,7 @@ def _merge_realtime_bar(
 def _symbol_to_ts_code(symbol: str) -> tuple[str, str, str] | None:
     """
     Map UI symbol to (market, ticker, ts_code).
-    Currently only supports CN.
+    Supports CN A-shares, HK tickers, and ETFs.
     """
     s = (symbol or "").strip().upper()
     if not s:
@@ -790,6 +790,18 @@ def _symbol_to_ts_code(symbol: str) -> tuple[str, str, str] | None:
         if len(ticker) == 6 and ticker.isdigit():
             suffix = "SH" if ticker.startswith("6") else "SZ"
             return "CN", ticker, f"{ticker}.{suffix}"
+        return None
+    if s.startswith("HK:"):
+        ticker = s.split(":", 1)[1].strip()
+        if 1 <= len(ticker) <= 5 and ticker.isdigit():
+            padded = ticker.zfill(5)
+            return "HK", padded, f"{padded}.HK"
+        return None
+    if s.startswith("ETF:"):
+        ticker = s.split(":", 1)[1].strip()
+        if len(ticker) == 6 and ticker.isdigit():
+            suffix = "SH" if ticker[0] in ("5", "6", "9") else "SZ"
+            return "ETF", ticker, f"{ticker}.{suffix}"
         return None
     return None
 
@@ -1177,7 +1189,11 @@ def _trendok_one(
         "missingData": [],
     }
 
-    if not symbol.startswith("CN:"):
+    if not (
+        symbol.startswith("CN:")
+        or symbol.startswith("HK:")
+        or symbol.startswith("ETF:")
+    ):
         res["missingData"].append("unsupported_market")
         return res
 

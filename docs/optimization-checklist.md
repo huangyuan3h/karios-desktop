@@ -40,6 +40,9 @@
 | OPT-038 | News / Alpha Radar RSS ingest 并行化 | P1 | 1 天 | [x] |
 | OPT-039 | AlphaIncubator / NewsPage React Query 迁移 | P1 | 1–2 天 | [x] |
 | OPT-040 | ChatPanel 残留 trendok 与 Export fallback 统一 Query | P1 | 0.5–1 天 | [x] |
+| OPT-041 | Watchlist 港股 (HK) 闸门打通 | P1 | 0.5–1 天 | [x] |
+| OPT-042 | Watchlist ETF 通用化（fund_basic + 全量 ETF） | P1 | 1–2 天 | [x] |
+| OPT-043 | HK 日线 cron 改每日 + yfinance 增量 | P1 | 0.5 天 | [x] |
 
 ---
 
@@ -391,12 +394,167 @@ Week 1: OPT-032（ensure_table guard）→ OPT-033（index batch）→ OPT-034�
 Week 2: OPT-031（Sentiment breadth）→ OPT-035（sync_daily_full 退役）
 Week 3: OPT-036（Screener 2N）→ OPT-038（RSS 并行）
 Week 4: OPT-037（Dashboard 拆分）→ OPT-039 + OPT-040（Query 收尾）
+Week 5: OPT-041（HK 闸门）→ OPT-042（ETF 通用化）
 ```
 
 **建议 PR 拆分**：
 
 - **PR-A（backend P0）**：OPT-032 + OPT-033 + OPT-034 + OPT-035 + OPT-038
 - **PR-B（frontend P1）**：OPT-036 + OPT-037 + OPT-039 + OPT-040
+- **PR-C（多市场 P1）**：OPT-041 + OPT-042（HK 闸门 + ETF 通用化）
+
+---
+
+## P1 — 多市场扩展
+
+### OPT-041：Watchlist 港股 (HK) 闸门打通
+
+**状态**：[x]  
+**完成日期**：2026-07-29  
+**PR/Commit**：–
+
+#### 背景
+
+Watchlist 当前仅支持 CN A 股，但底层 Tushare 港股基础数据（`hk_basic` → `stock_basic.market='HK'`）和港股日线（`hk_daily` → `daily` 表）已经在月度 cron 同步进 DB。Symbol → ts_code 转换层（`symbol_to_ts_code`、`_parse_symbol`、`_symbol_to_ts_code` 等）共 8 处 CN-only 闸门拒收 HK:`前缀`，导致 StockPage / WatchlistPage 对港股直接 400。
+
+#### 目标
+
+- `HK:00700` 等 4-5 位 HK 编码在 symbol→ts_code 转换层全部走通
+- `/market/stocks/{symbol}/bars` 支持 HK 增量（调 `hk_daily`，复用 `hk_daily_job` 的 ts_code-单股模式）
+- `/market/stocks/resolve` 支持 HK 名称查询
+- `/market/stocks/trendok` 对 HK 输出 TrendOK/Score（与 CN 同一套 EMA/RSI 指标，阈值后续调参）
+- 前端 `symbols.ts` `toTsCodeFromSymbol` 加 HK 分支；`watchlist-market.ts` `forceRefreshWatchlistBars` 不再过滤 HK
+- `chips` / `fund-flow` 端点保持 400（数据源 CN-only；HK 筹码 / 资金流暂不支持）
+
+#### 数据源复用
+
+| 数据 | 现状 | 来源 |
+|------|------|------|
+| 港股列表 | ✅ 已同步 | Tushare `pro.hk_basic` |
+| 港股日线 | ✅ 已同步 | Tushare `pro.hk_daily` |
+| 港股实时报价 | ⚠️ 待验证 | Tushare `pro.realtime_quote` (支持 `00700.HK` 格式) |
+| 港股指数 | ✅ 已用 | yfinance `^HSI` |
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/market_quotes.py` |
+| Service | `services/data-sync-service/src/data_sync_service/service/market_bars.py` |
+| Service | `services/data-sync-service/src/data_sync_service/service/market_detail.py` |
+| Service | `services/data-sync-service/src/data_sync_service/service/trendok.py` |
+| Service | `services/data-sync-service/src/data_sync_service/service/watchlist_automation.py` |
+| Service | `services/data-sync-service/src/data_sync_service/service/hk_daily.py`（新增 `sync_hk_daily_for_ts_code`） |
+| Service | `services/data-sync-service/src/data_sync_service/service/realtime_quote.py`（HK EM push2 fallback） |
+| API | `services/data-sync-service/src/data_sync_service/api/query_routes.py` |
+| Frontend | `apps/desktop-ui/src/lib/symbols.ts` |
+| Frontend | `apps/desktop-ui/src/lib/watchlist-market.ts` |
+| Tests | `tests/test_market_quotes_utils.py`、`test_market_bars_utils.py`、`test_market_detail_utils.py`、`test_realtime_quote_utils.py`、`watchlist-market.test.ts` |
+
+#### 验证
+
+- [x] `symbol_to_ts_code("HK:00700")` → `"00700.HK"`
+- [x] `_parse_symbol("HK:00700")` → `("HK", "00700", "00700.HK")`
+- [x] `/market/stocks/HK:00700/bars?force=true` 返回非空 bars（增量走 `sync_hk_daily_for_ts_code`）
+- [x] `/market/stocks/resolve?symbols=HK:00700` 返回 name/market
+- [x] `/market/stocks/trendok?symbols=HK:00700` 返回有效 score（不带 `unsupported_market`）
+- [x] pytest + vitest 通过（后端 845 + 前端 342）
+- [x] 港股实时报价 EM push2 兜底（tushare `realtime_quote(00700.HK)` 当前 key 列不匹配 → 自动 fallback 到 `push2.eastmoney.com secid=116.{ticker}`）
+
+---
+
+### OPT-042：Watchlist ETF 通用化（fund_basic + 全量 ETF）
+
+**状态**：[x]  
+**完成日期**：2026-07-29  
+**PR/Commit**：–
+
+#### 背景
+
+Dashboard 的 ETF 资金流硬编码 6 只（`etf_fund_flow.py:41-48`），用户无法把任意 ETF（如 510300、513050、159819）加进 Watchlist。`stock_basic` 表是通用 schema，但 ETF 没有走 `pro.fund_basic` 同步，Tushare `pro.fund_daily` 也未启用。
+
+#### 目标
+
+- 新增 `service/fund_basic.py` 调 `pro.fund_basic(market='E', status='L')`，写入 `stock_basic` `market='ETF'`
+- 新增 `service/etf_daily.py` 调 `pro.fund_daily` 把全量 ETF 日线写进 `daily` 表
+- `market_quotes.symbol_to_ts_code` / `_parse_symbol` / TrendOK 加 `ETF:` 前缀分支
+- `etf_fund_flow.py` universe 从 6 只扩到 `stock_basic.market='ETF'`
+- 前端 `normalizeSymbolInput` 支持 `5xxxxx`/`1xxxxx` 6 位 ETF 输入 → `ETF:xxxxxx`
+
+#### 数据源
+
+- Tushare `pro.fund_basic(market='E')` —— 普通会员通常已开通，需 `force=true` 验证
+- 失败兜底：东方财富 `fund.eastmoney.com/data/fundranking.html` HTTP 抓取
+- 实时资金流：复用 `etf_fund_flow_em.py`（已支持全市场推送 `MK0021/MK0022/MK0023/MK0024/MK0827`）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/fund_basic.py`（新建） |
+| Service | `services/data-sync-service/src/data_sync_service/service/etf_daily.py`（新建） |
+| Service | `services/data-sync-service/src/data_sync_service/service/etf_fund_flow.py`（加 `get_etf_watchlist_extended`） |
+| Service | `services/data-sync-service/src/data_sync_service/service/market_quotes.py`（symbol→ts_code 加 ETF） |
+| Service | `services/data-sync-service/src/data_sync_service/service/market_bars.py`（_parse_symbol 加 ETF） |
+| Service | `services/data-sync-service/src/data_sync_service/service/market_detail.py`（_parse_symbol 加 ETF） |
+| Service | `services/data-sync-service/src/data_sync_service/service/trendok.py`（_symbol_to_ts_code 加 ETF） |
+| Service | `services/data-sync-service/src/data_sync_service/service/watchlist_automation.py` |
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/fund_basic_job.py`（新建） |
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/etf_daily_job.py`（新建） |
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/__init__.py` |
+| API | `services/data-sync-service/src/data_sync_service/api/sync_routes.py`（`/sync/etf-fund-basic`、`/sync/etf-daily`） |
+| API | `services/data-sync-service/src/data_sync_service/api/query_routes.py`（`/resolve` 加 ETF） |
+| Frontend | `apps/desktop-ui/src/lib/symbols.ts`（ETF 分支） |
+| Frontend | `apps/desktop-ui/src/hooks/useWatchlistItems.ts`（normalizeSymbolInput ETF 输入） |
+| Tests | 新建 `test_fund_basic_utils.py`、`test_etf_fund_flow_universe.py`、`symbols.test.ts`、`useWatchlistItems.test.ts` |
+
+#### 验证
+
+- [x] `pro.fund_basic(market='E')` 在当前 Tushare key 可调用（实测 2156 只 ETF）
+- [x] `stock_basic` 包含 ETF 行（market='ETF'），数量 2102 已上市
+- [x] `daily` 包含 `510300.SH` 等 ETF ts_code 历史 K 线（`fund_daily` 已验证）
+- [x] `ETF:510300` 在 Watchlist 流程中可加、可查行情、可拿 TrendOK
+- [x] pytest + vitest 通过
+- [x] `etf_fund_flow.py` 加 `get_etf_watchlist_extended(max_size=N)` 动态从 `stock_basic.market='ETF'` 扩展（默认不破坏 dashboard 6 只核心 ETF）
+
+---
+
+### OPT-043：HK 日线 cron 改每日 + yfinance 增量
+
+**状态**：[x]  
+**完成日期**：2026-07-29  
+**PR/Commit**：–
+
+#### 背景
+
+OPT-041 打通了 HK 闸门，但 `hk_daily_full` cron 是 `30 18 1 * *`（每月 1 号跑一次），新加 HK tickers 到 Watchlist 后等不到下次同步就只能走 `bars?force=true` 单股 tushare 调用（1次/分钟）。watchlist 整体要看 HK 行情就必须等下个月。
+
+#### 目标
+
+- HK daily cron 改为每日跑（每天 17:30 Asia/Shanghai = HK 收盘 1.5h 后）
+- 每只 HK 走 **增量**（last_trade_date+1 → 今天），全市场重跑成本 ~22 分钟
+- 单股 yfinance 失败不阻塞整批；resume 用现有 `sync_job_record.last_ts_code`
+- 暴露 `/sync/hk-daily/status` 让运维能查进度
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/hk_daily_job.py` |
+| Service | `services/data-sync-service/src/data_sync_service/service/hk_daily.py`（yfinance 优先 + tushare 兜底；进度日志；continue-after-error） |
+| API | `services/data-sync-service/src/data_sync_service/api/sync_routes.py`（新增 `GET /sync/hk-daily/status`） |
+| Script | `services/data-sync-service/scripts/sync_hk_yf.py`（一次性手动触发 `--only-missing`） |
+| Tests | `tests/test_hk_daily.py`（resume / cron 频率回归 / 单股失败不阻塞） |
+
+#### 验证
+
+- [x] cron 从 `30 18 1 * *` 改为 `30 17 * * *`（每天）
+- [x] `sync_hk_daily_full` 内 `get_last_trade_date` 已经做增量；只对缺失日期窗口拉数据
+- [x] yfinance 失败时 tushare 兜底；yfinance 返回 0 行时 tushare 兜底
+- [x] 单 ticker raise 时继续循环（不 abort），记 `failed_count`
+- [x] resume 用 `sync_job_record.last_ts_code`；第二天从下一个 ticker 继续
+- [x] pytest 856 + vitest 342 全绿
+- [x] `scripts/sync_hk_yf.py --only-missing --delay 1.5` 给首次手工全量用
 
 ---
 

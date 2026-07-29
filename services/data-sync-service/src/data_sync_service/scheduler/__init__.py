@@ -11,6 +11,8 @@ from data_sync_service.scheduler import (
     close_sync_job,
     daily_sync_job,
     eastmoney_industry_job,
+    etf_daily_job,
+    fund_basic_job,
     hk_basic_job,
     hk_daily_job,
     index_daily_job,
@@ -47,6 +49,18 @@ def create_scheduler() -> BackgroundScheduler:
         hk_daily_job.run,
         hk_daily_job.build_trigger(),
         id=hk_daily_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        fund_basic_job.run,
+        fund_basic_job.build_trigger(),
+        id=fund_basic_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        etf_daily_job.run,
+        etf_daily_job.build_trigger(),
+        id=etf_daily_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(
