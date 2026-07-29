@@ -33,7 +33,8 @@ from data_sync_service.db.sync_job_record import get_today_run, insert_record
 logger = logging.getLogger(__name__)
 
 JOB_TYPE = "hk_daily_full"
-FULL_START_DATE = "20230101"
+# First-time backfill starts 5 years ago today (matches hk_daily_ak default).
+# TrendOK only needs ~1y of bars; 5y keeps long-term backtests working.
 DAILY_FIELDS = [
     "ts_code",
     "trade_date",
@@ -53,6 +54,7 @@ DAILY_FIELDS = [
 # 0.2s × 2700 stocks ≈ 9 minutes for a full sweep.
 _AK_DELAY_SECONDS = 0.2
 _PROGRESS_EVERY = 50
+_BACKFILL_YEARS = 5
 
 
 def _today_yyyymmdd() -> str:
@@ -61,6 +63,13 @@ def _today_yyyymmdd() -> str:
 
 def _date_to_yyyymmdd(d: date) -> str:
     return d.strftime("%Y%m%d")
+
+
+def _backfill_start_yyyymmdd() -> str:
+    """Earliest date tushare will pull on first-time full sync (5y ago today)."""
+    return _date_to_yyyymmdd(
+        datetime.now(UTC).date() - timedelta(days=365 * _BACKFILL_YEARS)
+    )
 
 
 def _sync_one_with_fallback(ts_code: str) -> dict[str, Any]:
@@ -200,7 +209,11 @@ def sync_hk_daily_full() -> dict[str, Any]:
 
 
 def _tushare_sync_one(ts_code: str) -> dict[str, Any]:
-    """Single-ticker tushare fallback used by sync_hk_daily_full."""
+    """Single-ticker tushare fallback used by sync_hk_daily_full.
+
+    First-time sync pulls 5 years of history; subsequent calls are
+    incremental from the cached last_trade_date.
+    """
     code = (ts_code or "").strip().upper()
     if not code:
         return {"ok": False, "error": "ts_code is required"}
@@ -210,7 +223,7 @@ def _tushare_sync_one(ts_code: str) -> dict[str, Any]:
 
     last_date = get_last_trade_date(code)
     if last_date is None:
-        start_date = FULL_START_DATE
+        start_date = _backfill_start_yyyymmdd()
     else:
         start_date = _date_to_yyyymmdd(last_date + timedelta(days=1))
     end_date = _today_yyyymmdd()

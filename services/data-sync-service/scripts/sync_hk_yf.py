@@ -3,14 +3,15 @@
 Use this when the watchlist shows `no_bars` for HK tickers and tushare's
 hk_daily rate-limit (1 call/minute) is too slow to populate the watchlist
 interactively. yfinance has no per-call rate cap (subject to IP-level
-fairness).
+fairness). Note: akshare (Sina) is the preferred source — try
+``scripts/sync_hk_ak.py`` first.
+
+Default backfill window is **5 years** (today − 5y). Pre-existing rows
+older than the window are left untouched — we never DELETE history.
 
 Usage:
     cd services/data-sync-service
-    PYTHONPATH=src python scripts/sync_hk_yf.py [--limit N] [--delay S] [--only-missing]
-
-Default: 1s delay between calls; processes all HK stocks that have no daily
-rows yet. Safe to interrupt and re-run (resumable).
+    PYTHONPATH=src python scripts/sync_hk_yf.py [--limit N] [--delay S] [--only-missing] [--years N]
 """
 
 from __future__ import annotations
@@ -23,6 +24,8 @@ from data_sync_service.db.daily import get_last_trade_date
 from data_sync_service.db.stock_basic import fetch_ts_codes_by_market
 from data_sync_service.service.hk_daily_yf import sync_hk_daily_for_ts_code_yf
 
+DEFAULT_BACKFILL_YEARS = 5
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Sync HK daily K-lines via yfinance")
@@ -32,6 +35,12 @@ def main(argv: list[str] | None = None) -> int:
         "--only-missing",
         action="store_true",
         help="Skip symbols that already have daily rows",
+    )
+    parser.add_argument(
+        "--years",
+        type=int,
+        default=DEFAULT_BACKFILL_YEARS,
+        help=f"First-time backfill window in years (default {DEFAULT_BACKFILL_YEARS})",
     )
     parser.add_argument("--symbol", action="append", default=[], help="Specific ts_code(s)")
     args = parser.parse_args(argv)
@@ -50,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         ts_codes = ts_codes[: args.limit]
         print(f"--limit: processing first {len(ts_codes)} stocks")
 
-    print(f"Total to sync: {len(ts_codes)} HK stocks (delay={args.delay}s)")
+    print(f"Total to sync: {len(ts_codes)} HK stocks (delay={args.delay}s, backfill_years={args.years})")
     print()
 
     succeeded = 0
@@ -61,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for i, tc in enumerate(ts_codes, 1):
         try:
-            r = sync_hk_daily_for_ts_code_yf(tc)
+            r = sync_hk_daily_for_ts_code_yf(tc, backfill_years=args.years)
         except Exception as e:  # noqa: BLE001
             failed += 1
             print(f"[{i}/{len(ts_codes)}] {tc}: EXC {type(e).__name__}: {e}")

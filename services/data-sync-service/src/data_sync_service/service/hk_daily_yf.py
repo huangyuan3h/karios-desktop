@@ -67,8 +67,16 @@ def _df_to_daily_rows(ts_code: str, df: Any) -> list[dict[str, Any]]:
     return out
 
 
-def sync_hk_daily_for_ts_code_yf(ts_code: str) -> dict[str, Any]:
-    """Incremental yfinance HK K-line sync for one ts_code. Bypasses tushare rate limit."""
+def sync_hk_daily_for_ts_code_yf(
+    ts_code: str,
+    backfill_years: int = 5,
+) -> dict[str, Any]:
+    """Incremental yfinance HK K-line sync for one ts_code. Bypasses tushare rate limit.
+
+    First-time sync pulls up to ``backfill_years`` of history (default 5y);
+    subsequent calls are incremental from the cached last_trade_date.
+    Pre-existing rows older than the backfill window are not removed.
+    """
     code = (ts_code or "").strip().upper()
     if not code.endswith(".HK"):
         return {"ok": False, "error": "ts_code must end with .HK", "ts_code": code}
@@ -80,8 +88,10 @@ def sync_hk_daily_for_ts_code_yf(ts_code: str) -> dict[str, Any]:
     last_date = get_last_trade_date(code)
     end_date = datetime.now(UTC).date().isoformat()
     if last_date is None:
-        # Pull a generous window to feed TrendOK EMA60/RSI windows.
-        start_date = (datetime.now(UTC).date() - timedelta(days=400)).isoformat()
+        # First-time backfill: cap at ``backfill_years`` years to keep
+        # bootstrap time and DB size reasonable. TrendOK only needs ~1y,
+        # but 5y keeps long-term backtests working.
+        start_date = (datetime.now(UTC).date() - timedelta(days=365 * int(backfill_years))).isoformat()
     else:
         # Fetch from the day after our last known bar.
         start_date_obj = last_date + timedelta(days=1)

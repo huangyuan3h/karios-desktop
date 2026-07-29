@@ -21,7 +21,7 @@ Layout differences vs tushare / yfinance:
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from data_sync_service.db.daily import get_last_trade_date, upsert_from_dataframe
@@ -40,6 +40,12 @@ _DAILY_UPSERT_COLS = [
     "vol",
     "amount",
 ]
+
+# Default look-back window for first-time full sync. The TrendOK EMA60 / RSI
+# windows only need ~1y of bars, but we keep 5y of history so long-term
+# backtests (5y max drawdown, 5y Sharpe, etc.) keep working without
+# re-pulling. Older history is available on-demand via Tushare.
+_DEFAULT_BACKFILL_YEARS = 5
 
 
 def _ts_code_to_sina(ts_code: str) -> str | None:
@@ -134,8 +140,29 @@ def _df_to_daily_rows(
     return out
 
 
-def sync_hk_daily_for_ts_code_ak(ts_code: str) -> dict[str, Any]:
+def _default_backfill_cutoff(years: int = _DEFAULT_BACKFILL_YEARS) -> date:
+    """Earliest trade_date to backfill when we have no prior bars.
+
+    Defaults to 5 years ago today; TrendOK only needs ~1y but 5y keeps
+    long-term backtests (Sharpe / max drawdown) working.
+    """
+    return datetime.now(UTC).date() - timedelta(days=365 * years)
+
+
+def sync_hk_daily_for_ts_code_ak(
+    ts_code: str,
+    backfill_years: int = _DEFAULT_BACKFILL_YEARS,
+) -> dict[str, Any]:
     """Incremental akshare (Sina) HK K-line sync for one ts_code.
+
+    Behaviour:
+      - If we already have bars for this ts_code, only fetch rows newer
+        than the cached last_trade_date (typical daily cron path).
+      - If we have no bars yet, fetch up to ``backfill_years`` of history
+        (default 5y) starting from ``today - 5y``. Older history is left
+        untouched and can be backfilled on demand via tushare.
+      - Existing rows older than the backfill window are NOT removed;
+        upsert only inserts / updates.
 
     Returns ``{ok, updated, ts_code, source: 'akshare'}`` or ``{ok: False,
     error, ts_code}`` if the call failed.
@@ -149,6 +176,9 @@ def sync_hk_daily_for_ts_code_ak(ts_code: str) -> dict[str, Any]:
         return {"ok": False, "error": "could not derive Sina symbol", "ts_code": code}
 
     last_date = get_last_trade_date(code)
+    since = last_date
+    if since is None:
+        since = _default_backfill_cutoff(int(backfill_years))
 
     try:
         import akshare as ak  # type: ignore[import-not-found]
@@ -160,7 +190,7 @@ def sync_hk_daily_for_ts_code_ak(ts_code: str) -> dict[str, Any]:
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": f"akshare error: {type(e).__name__}: {e}", "ts_code": code}
 
-    rows = _df_to_daily_rows(code, df, since=last_date)
+    rows = _df_to_daily_rows(code, df, since=since)
     if not rows:
         # Either nothing new, or all rows already cached.
         return {
@@ -186,4 +216,5 @@ def sync_hk_daily_for_ts_code_ak(ts_code: str) -> dict[str, Any]:
         "ts_code": code,
         "source": "akshare",
         "latest_trade_date": rows[-1]["trade_date"],
+        "backfill_years": backfill_years,
     }
