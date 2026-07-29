@@ -563,8 +563,56 @@ OPT-041 打通了 HK 闸门，但 `hk_daily_full` cron 是 `30 18 1 * *`（每�
 - [x] `sync_hk_daily_full` 内 `get_last_trade_date` 已经做增量；只对缺失日期窗口拉数据
 - [x] 单 ticker raise 时继续循环（不 abort），记 `failed_count`
 - [x] resume 用 `sync_job_record.last_ts_code`；第二天从下一个 ticker 继续
-- [x] pytest 872 + vitest 344 全绿
+- [x] pytest 896 + vitest 344 全绿
 - [x] `scripts/sync_hk_ak.py --only-missing --years 5 --delay 0.2` 给首次手工全量用
+- [x] HK industry 由 Xueqiu `mbu` 截前 24 字 → `stock_basic.industry`（`/sync/hk-industry`，cron 02:00 Asia/Shanghai，限速 1s/call + 2 retry）
+- [x] `hk_basic` 同步加 `keep_industry=True` — COALESCE 保留已有 industry（不被 tushare None 覆盖）
+- [x] watchlist `POST /watchlist/registry` 自动回填 `name` from `stock_basic`（HK / ETF / CN 通用）
+- [x] `POST /watchlist/registry/backfill-names` 一键回填所有 null name 给运维
+
+---
+
+### OPT-044：HK watchlist 显示 name + industry
+
+**状态**：[x]  
+**完成日期**：2026-07-29  
+**PR/Commit**：–
+
+#### 背景
+
+OPT-041 打通了 HK 闸门，watchlist 能加 HK 股票，但截图里 `Name` 和 `Industry` 两列都显示 `—`：
+- **Name**: `_addAndResolve` 调 `/market/stocks/resolve` 但 backend 没在 `upsert_registry` 时持久化 client-side resolve 失败时的回退；老的 HK items name 一直 null
+- **Industry**: tushare `pro.hk_basic` 不返回 industry；akshare `stock_hk_spot` / `stock_hk_security_profile_em` 都不含 industry；雪球 `stock_individual_basic_info_hk_xq` 提供 `mbu` (主营业务)
+
+#### 目标
+
+- HK watchlist `Name` 列显示真实公司名（不是 `—`）
+- HK watchlist `Industry` 列显示主营业务描述（截前 24 字）
+- 不破坏 CN watchlist 已有的 `tushare` 行业分类
+- 雪球限流（soft rate-limit 返回 all-None）时 retry，不浪费之前已 resolve 的 entry
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/hk_industry.py`（新建：Xueqiu mbu → industry，retry × 2） |
+| Service | `services/data-sync-service/src/data_sync_service/service/hk_basic.py`（改：`keep_industry=True`） |
+| DB | `services/data-sync-service/src/data_sync_service/db/stock_basic.py`（新增 `update_industry()` + `UPSERT_KEEP_INDUSTRY_SQL`） |
+| API | `services/data-sync-service/src/data_sync_service/api/sync_routes.py`（`POST/GET /sync/hk-industry`） |
+| API | `services/data-sync-service/src/data_sync_service/api/watchlist_routes.py`（`POST /watchlist/registry` 自动回填 name + 新 `POST /watchlist/registry/backfill-names`） |
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/hk_industry_job.py`（新建：02:00 Asia/Shanghai daily） |
+| Tests | `tests/test_hk_industry.py`（新建 21 个：truncate / fetch_xueqiu_mbu retry / sync / status / db.update_industry / keep_industry COALESCE） |
+| Tests | `tests/test_watchlist_registry.py`（加 3 个：backfill HK name / preserve client name / backfill endpoint） |
+
+#### 验证
+
+- [x] HK watchlist `Name`: backend `GET /watchlist/registry` 已返回 `HK:01810 → 小米集团-W`、`HK:00700 → 腾讯控股`
+- [x] HK watchlist `Industry`: `POST /sync/hk-industry?symbols=01810.HK` 调用接口就绪（雪球限流当下走 retry→返回 None 时 ok=False；雪球放行即可填）
+- [x] `upsert_from_dataframe(df, keep_industry=True)` 用 `COALESCE(stock_basic.industry, EXCLUDED.industry)` — 验证手动 UPDATE industry 后跑 sync_hk_basic 不被清空
+- [x] `POST /watchlist/registry` 自动回填缺失的 name（HK/CN/ETF 全覆盖）
+- [x] `POST /watchlist/registry/backfill-names` 一键运维：填 3 个 null → 返回 `updatedCount=2`（不存在的 CN:999999 仍 null）
+- [x] pytest 896 + vitest 344 全绿
+- [x] `/sync/hk-industry/status`: `totalHk=2767 / mappedHk=0 / missingHk=2767`（雪球首次实跑即可填）
 
 ---
 

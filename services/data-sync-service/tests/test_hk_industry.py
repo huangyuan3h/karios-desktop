@@ -106,6 +106,41 @@ def test_fetch_xueqiu_mbu_returns_none_on_exception(monkeypatch: pytest.MonkeyPa
     assert hk_industry.fetch_xueqiu_mbu("00700.HK", sleep_s=0.0) is None
 
 
+def test_fetch_xueqiu_mbu_retries_when_all_values_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Xueqiu soft rate-limits by returning rows of all None; we must retry."""
+    calls = {"n": 0}
+    none_df = pd.DataFrame({"item": ["mbu"], "value": [None]})
+    real_df = pd.DataFrame({"item": ["mbu"], "value": ["本集团主要从事金融业"]})
+
+    def flaky(**_kw):
+        calls["n"] += 1
+        return none_df if calls["n"] <= 1 else real_df
+
+    fake_ak = SimpleNamespace(stock_individual_basic_info_hk_xq=flaky)
+    monkeypatch.setitem(__import__("sys").modules, "akshare", fake_ak)
+
+    out = hk_industry.fetch_xueqiu_mbu("00700.HK", sleep_s=0.0, retries=2)
+    assert out == "本集团主要从事金融业"
+    assert calls["n"] == 2
+
+
+def test_fetch_xueqiu_mbu_gives_up_after_all_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If every retry returns all-None, return None rather than infinite loop."""
+    calls = {"n": 0}
+    none_df = pd.DataFrame({"item": ["mbu"], "value": [None]})
+
+    def always_none(**_kw):
+        calls["n"] += 1
+        return none_df
+
+    fake_ak = SimpleNamespace(stock_individual_basic_info_hk_xq=always_none)
+    monkeypatch.setitem(__import__("sys").modules, "akshare", fake_ak)
+
+    out = hk_industry.fetch_xueqiu_mbu("00700.HK", sleep_s=0.0, retries=2)
+    assert out is None
+    assert calls["n"] == 3  # initial + 2 retries
+
+
 # ----- _iter_missing_hk_codes tests -----
 
 def _patch_get_connection(monkeypatch, conn_factory):

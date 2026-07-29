@@ -115,3 +115,83 @@ def test_get_registry_item_fields() -> None:
     assert row["maxPrice"] == 1800
     assert row["positionPct"] == 12.5
     assert row["color"] == "#dcfce7"
+
+
+def test_post_backfills_hk_name_from_stock_basic() -> None:
+    """When client sends HK:01810 with name=null, the route fills it from stock_basic.
+
+    The client resolve path can miss this when stock_basic wasn't synced yet or when
+    the watchlist item was migrated from a registry without name resolution.
+    """
+    client = TestClient(app)
+    _clear_registry(client)
+    client.post(
+        "/watchlist/registry",
+        json={
+            "items": [
+                {
+                    "symbol": "HK:01810",
+                    "name": None,
+                    "addedAt": "2026-06-18T00:00:00.000Z",
+                },
+                {
+                    "symbol": "HK:00700",
+                    "name": None,
+                    "addedAt": "2026-06-18T00:00:00.000Z",
+                },
+            ]
+        },
+    )
+    rows = client.get("/watchlist/registry").json()["items"]
+    by_sym = {r["symbol"]: r for r in rows}
+    # stock_basic should already contain these names (hk_basic sync).
+    assert by_sym["HK:01810"]["name"] == "小米集团-W"
+    assert by_sym["HK:00700"]["name"] == "腾讯控股"
+
+
+def test_post_preserves_client_provided_name() -> None:
+    """If the client already sends a name, the route should NOT overwrite it."""
+    client = TestClient(app)
+    _clear_registry(client)
+    client.post(
+        "/watchlist/registry",
+        json={
+            "items": [
+                {
+                    "symbol": "HK:01810",
+                    "name": "Custom Name",
+                    "addedAt": "2026-06-18T00:00:00.000Z",
+                }
+            ]
+        },
+    )
+    rows = client.get("/watchlist/registry").json()["items"]
+    assert rows[0]["name"] == "Custom Name"
+
+
+def test_backfill_names_endpoint_fills_nulls() -> None:
+    """POST /watchlist/registry/backfill-names fills null names using stock_basic."""
+    client = TestClient(app)
+    _clear_registry(client)
+    # Stage items with null names for symbols known to exist in stock_basic.
+    client.post(
+        "/watchlist/registry",
+        json={
+            "items": [
+                {"symbol": "HK:01810", "name": None, "addedAt": "2026-06-18T00:00:00.000Z"},
+                {"symbol": "HK:00700", "name": None, "addedAt": "2026-06-18T00:00:00.000Z"},
+                {"symbol": "CN:999999", "name": None, "addedAt": "2026-06-18T00:00:00.000Z"},
+            ]
+        },
+    )
+    resp = client.post("/watchlist/registry/backfill-names")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["ok"] is True
+    assert payload["total"] == 3
+    # CN:999999 does not exist in stock_basic → still null.
+    rows = client.get("/watchlist/registry").json()["items"]
+    by_sym = {r["symbol"]: r for r in rows}
+    assert by_sym["HK:01810"]["name"] == "小米集团-W"
+    assert by_sym["HK:00700"]["name"] == "腾讯控股"
+    assert by_sym["CN:999999"]["name"] is None

@@ -53,8 +53,96 @@ def get_watchlist_registry() -> dict:
 def watchlist_registry(req: WatchlistRegistryRequest) -> dict:
     try:
         items = [x.model_dump(exclude_none=False) for x in req.items]
+        items = _backfill_names(items)
         count = upsert_registry(items)
         return {"ok": True, "count": count}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _backfill_names(items: list[dict]) -> list[dict]:
+    """Fill in name from stock_basic when client-side resolve missed it (HK / ETF / CN)."""
+    if not items:
+        return items
+    need: dict[str, str] = {}
+    for it in items:
+        sym = str(it.get("symbol") or "").strip()
+        if not sym or it.get("name"):
+            continue
+        need[sym] = _to_ts_code(sym)
+    if not need:
+        return items
+    ts_codes = list({v for v in need.values() if v})
+    if not ts_codes:
+        return items
+    try:
+        from data_sync_service.db import get_connection
+        from data_sync_service.db.stock_basic import ensure_table as ensure_sb
+
+        ensure_sb()
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT ts_code, name FROM stock_basic WHERE ts_code = ANY(%s)",
+                    (ts_codes,),
+                )
+                rows = cur.fetchall()
+        by_ts = {str(r[0]): str(r[1] or "") for r in rows if r and r[0]}
+    except Exception:
+        return items
+    if not by_ts:
+        return items
+    out: list[dict] = []
+    for it in items:
+        sym = str(it.get("symbol") or "").strip()
+        if sym in need and not it.get("name"):
+            tc = need.get(sym)
+            nm = by_ts.get(tc) if tc else ""
+            if nm:
+                it = {**it, "name": nm}
+        out.append(it)
+    return out
+
+
+def _to_ts_code(sym: str) -> str:
+    s = sym.strip()
+    if s.startswith("HK:"):
+        ticker = s.split(":", 1)[1].strip()
+        if 1 <= len(ticker) <= 5 and ticker.isdigit():
+            return f"{ticker.zfill(5)}.HK"
+    elif s.startswith("CN:"):
+        ticker = s.split(":", 1)[1].strip()
+        if len(ticker) == 6 and ticker.isdigit():
+            suffix = "SH" if ticker.startswith("6") else "SZ"
+            return f"{ticker}.{suffix}"
+    elif s.startswith("ETF:"):
+        ticker = s.split(":", 1)[1].strip()
+        if len(ticker) == 6 and ticker.isdigit():
+            suffix = "SH" if ticker[0] in ("5", "6", "9") else "SZ"
+            return f"{ticker}.{suffix}"
+    return ""
+
+
+@router.post("/watchlist/registry/backfill-names")
+def backfill_registry_names() -> dict:
+    """One-shot backfill: fill null `name` from stock_basic for every registered symbol.
+
+    Useful after the resolver was missing for HK / ETF tickers or after data loss.
+    """
+    try:
+        items = list_registry()
+        before_null = sum(1 for x in items if not x.get("name"))
+        filled = _backfill_names(items)
+        if filled != items:
+            upsert_registry(filled)
+        after_null = sum(1 for x in filled if not x.get("name"))
+        return {
+            "ok": True,
+            "total": len(items),
+            "filledBefore": before_null,
+            "filledAfter": after_null,
+            "updatedCount": before_null - after_null,
+        }
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
