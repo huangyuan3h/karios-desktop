@@ -161,6 +161,28 @@ def sync_hk_daily_status_endpoint() -> dict:
     return get_hk_daily_sync_status()
 
 
+@router.post("/sync/hk-industry")
+def sync_hk_industry_endpoint(
+    symbols: list[str] | None = Query(
+        None,
+        description="Optional explicit HK ts_codes, e.g. 00700.HK. Overrides limit when set.",
+    ),
+    limit: int = Query(500, ge=1, le=5000, description="Max HK codes to update when symbols is empty"),
+) -> dict:
+    """Sync HK stock industry labels from Xueqiu mbu into stock_basic.industry."""
+    from data_sync_service.service.hk_industry import sync_hk_industry
+
+    return sync_hk_industry(symbols=symbols, limit=limit)
+
+
+@router.get("/sync/hk-industry/status")
+def sync_hk_industry_status_endpoint() -> dict:
+    """Return HK industry coverage (mapped / total)."""
+    from data_sync_service.service.hk_industry import get_hk_industry_status
+
+    return get_hk_industry_status()
+
+
 @router.post("/sync/adj-factor")
 def sync_adj_factor_endpoint() -> dict:
     # Purpose: sync adj_factor into daily table; updates by (ts_code, trade_date).

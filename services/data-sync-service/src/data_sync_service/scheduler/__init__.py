@@ -15,6 +15,7 @@ from data_sync_service.scheduler import (
     fund_basic_job,
     hk_basic_job,
     hk_daily_job,
+    hk_industry_job,
     index_daily_job,
     macro_daily_job,
     news_fetch_job,
@@ -133,6 +134,12 @@ def create_scheduler() -> BackgroundScheduler:
         eastmoney_industry_job.run,
         eastmoney_industry_job.build_trigger(),
         id=eastmoney_industry_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        hk_industry_job.run,
+        hk_industry_job.build_trigger(),
+        id=hk_industry_job.JOB_ID,
         replace_existing=True,
     )
     return scheduler

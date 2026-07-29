@@ -519,7 +519,7 @@ Dashboard 的 ETF 资金流硬编码 6 只（`etf_fund_flow.py:41-48`），用�
 
 ---
 
-### OPT-043：HK 日线 cron 改每日 + yfinance 增量
+### OPT-043：HK 日线 cron 改每日 + akshare 高优先级源 + 5y backfill
 
 **状态**：[x]  
 **完成日期**：2026-07-29  
@@ -529,32 +529,42 @@ Dashboard 的 ETF 资金流硬编码 6 只（`etf_fund_flow.py:41-48`），用�
 
 OPT-041 打通了 HK 闸门，但 `hk_daily_full` cron 是 `30 18 1 * *`（每月 1 号跑一次），新加 HK tickers 到 Watchlist 后等不到下次同步就只能走 `bars?force=true` 单股 tushare 调用（1次/分钟）。watchlist 整体要看 HK 行情就必须等下个月。
 
+而且 yfinance 在某些 IP 上会被 rate limit（实测全量限流），tushare 受 1次/分钟限制，不适合全市场 batch。**akshare `ak.stock_hk_daily()` (Sina 源) 实测 30 次连续调用 0 失败，平均 0.12s/call**，应作为最高优先级源。
+
 #### 目标
 
 - HK daily cron 改为每日跑（每天 17:30 Asia/Shanghai = HK 收盘 1.5h 后）
-- 每只 HK 走 **增量**（last_trade_date+1 → 今天），全市场重跑成本 ~22 分钟
-- 单股 yfinance 失败不阻塞整批；resume 用现有 `sync_job_record.last_ts_code`
-- 暴露 `/sync/hk-daily/status` 让运维能查进度
+- 数据源优先级：**akshare (Sina) → yfinance → tushare**（akshare 最快 + 最稳）
+- 首次同步只拉**最近 5 年**数据；已有老数据保留不删
+- 每只 HK 走**增量**（last_trade_date+1 → 今天）
+- 单股失败不阻塞整批；resume 用现有 `sync_job_record.last_ts_code`
+- 暴露 `/sync/hk_daily/status` 让运维能查进度
 
 #### 文件范围
 
 | 层 | 文件 |
 |----|------|
-| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/hk_daily_job.py` |
-| Service | `services/data-sync-service/src/data_sync_service/service/hk_daily.py`（yfinance 优先 + tushare 兜底；进度日志；continue-after-error） |
-| API | `services/data-sync-service/src/data_sync_service/api/sync_routes.py`（新增 `GET /sync/hk-daily/status`） |
-| Script | `services/data-sync-service/scripts/sync_hk_yf.py`（一次性手动触发 `--only-missing`） |
-| Tests | `tests/test_hk_daily.py`（resume / cron 频率回归 / 单股失败不阻塞） |
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/hk_daily_job.py`（cron 改 `30 17 * * *`） |
+| Service | `services/data-sync-service/src/data_sync_service/service/hk_daily.py`（akshare > yfinance > tushare；进度日志；5y 兜底） |
+| Service | `services/data-sync-service/src/data_sync_service/service/hk_daily_ak.py`（新建：akshare 封装 + 5y 窗口） |
+| Service | `services/data-sync-service/src/data_sync_service/service/hk_daily_yf.py`（first-time backfill 改为 5y） |
+| API | `services/data-sync-service/src/data_sync_service/api/sync_routes.py`（`GET /sync/hk-daily/status`） |
+| Script | `services/data-sync-service/scripts/sync_hk_ak.py`（一次性 akshare 全量 `--only-missing --years 5`） |
+| Script | `services/data-sync-service/scripts/sync_hk_yf.py`（保留 `--years N` 选项） |
+| Tests | `tests/test_hk_daily_ak_utils.py`（13 个新测试：5y 窗口、pre_close/change 计算） |
+| Tests | `tests/test_hk_daily.py`（priority chain / resume / cron 频率 / 单股失败） |
 
 #### 验证
 
 - [x] cron 从 `30 18 1 * *` 改为 `30 17 * * *`（每天）
+- [x] akshare 优先级最高：30/30 连续调用 0 失败，平均 0.12s/call
+- [x] 全量同步实测：**1868/1868 success, 0 failed, 1,553,162 rows in 16.5 min**（5y 窗口）
+- [x] DB 状态：2767/2767 HK 都有 bars；新加的 5y 数据 = 2,402,893 行；老数据（>=1998）保留不删
 - [x] `sync_hk_daily_full` 内 `get_last_trade_date` 已经做增量；只对缺失日期窗口拉数据
-- [x] yfinance 失败时 tushare 兜底；yfinance 返回 0 行时 tushare 兜底
 - [x] 单 ticker raise 时继续循环（不 abort），记 `failed_count`
 - [x] resume 用 `sync_job_record.last_ts_code`；第二天从下一个 ticker 继续
-- [x] pytest 856 + vitest 342 全绿
-- [x] `scripts/sync_hk_yf.py --only-missing --delay 1.5` 给首次手工全量用
+- [x] pytest 872 + vitest 344 全绿
+- [x] `scripts/sync_hk_ak.py --only-missing --years 5 --delay 0.2` 给首次手工全量用
 
 ---
 

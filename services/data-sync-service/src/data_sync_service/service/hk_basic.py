@@ -109,7 +109,9 @@ def sync_hk_basic(
             insert_record(job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None)
             return {"ok": True, "updated": 0, "message": "no data from tushare"}
 
-        n = upsert_from_dataframe(mapped)
+        # keep_industry=True: never overwrite an HK stock's industry (filled by hk_industry
+        # sync) with the None value that tushare hk_basic exposes.
+        n = upsert_from_dataframe(mapped, keep_industry=True)
         insert_record(job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None)
         return {"ok": True, "updated": n, "list_status": list_status2}
     except Exception as exc:  # noqa: BLE001
