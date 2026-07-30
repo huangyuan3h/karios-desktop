@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC
+from typing import Any
 
 from fastapi import APIRouter, Query  # type: ignore[import-not-found]
 
@@ -265,3 +266,73 @@ def sync_close_endpoint(exchange: str = Query("SSE"), force: bool = Query(False)
         return {**result, **post}
     post = run_post_close_sync()
     return {"ok": True, "result": result, **post}
+
+
+# Job types that write their own row into sync_job_record. close_sync_catchup
+# runs sync_close under the hood, so it shares stock_close_sync records.
+SYNC_JOB_TYPES: tuple[str, ...] = (
+    "stock_basic_sync",
+    "hk_basic_sync",
+    "hk_daily_full",
+    "hk_industry_sync",
+    "etf_fund_basic_sync",
+    "etf_daily_full",
+    "stock_daily_full",
+    "stock_adj_factor_full",
+    "stock_close_sync",
+    "index_daily_full",
+    "macro_daily_full",
+    "eastmoney_industry_sync",
+    "alpha_radar_pipeline",
+)
+
+
+@router.get("/sync/jobs")
+def sync_jobs_status_endpoint() -> dict:
+    """Aggregate status for all scheduled sync jobs.
+
+    Returns today's run and last success for each known job_type (from
+    sync_job_record), plus extras for HK industry coverage, Alpha Radar
+    pipeline state, and the latest watchlist automation run.
+    """
+    # Lazy imports keep startup lean and tolerate missing optional deps.
+    from data_sync_service.db.sync_job_record import get_last_success, get_today_run
+
+    jobs: dict[str, dict[str, Any]] = {}
+    for job_type in SYNC_JOB_TYPES:
+        jobs[job_type] = {
+            "todayRun": get_today_run(job_type),
+            "lastSuccess": get_last_success(job_type),
+        }
+
+    hk_industry_coverage: dict[str, Any] | None = None
+    try:
+        from data_sync_service.service.hk_industry import get_hk_industry_status
+
+        hk_industry_coverage = get_hk_industry_status()
+    except Exception as exc:  # noqa: BLE001
+        hk_industry_coverage = {"ok": False, "error": str(exc)}
+
+    alpha_radar: dict[str, Any] | None = None
+    try:
+        from data_sync_service.service.alpha_radar_pipeline import pipeline_status
+
+        alpha_radar = pipeline_status()
+    except Exception as exc:  # noqa: BLE001
+        alpha_radar = {"ok": False, "error": str(exc)}
+
+    watchlist_automation: dict[str, Any] | None = None
+    try:
+        from data_sync_service.db.watchlist_automation import get_latest_run
+
+        watchlist_automation = get_latest_run()
+    except Exception as exc:  # noqa: BLE001
+        watchlist_automation = {"ok": False, "error": str(exc)}
+
+    return {
+        "ok": True,
+        "jobs": jobs,
+        "hkIndustryCoverage": hk_industry_coverage,
+        "alphaRadar": alpha_radar,
+        "watchlistAutomation": watchlist_automation,
+    }

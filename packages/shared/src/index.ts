@@ -6,5 +6,6 @@ export * from './schemas/watchlist';
 export * from './schemas/tvCapture';
 export * from './schemas/executionGate';
 export * from './schemas/executionJournal';
+export * from './schemas/scheduler';
 
 
