@@ -268,8 +268,10 @@ def sync_close_endpoint(exchange: str = Query("SSE"), force: bool = Query(False)
     return {"ok": True, "result": result, **post}
 
 
-# Job types that write their own row into sync_job_record. close_sync_catchup
-# runs sync_close under the hood, so it shares stock_close_sync records.
+# Job types that write their own row into sync_job_record. Every job that
+# runs from the scheduler should land here so the UI can show per-job OK/FAIL
+# status. (job_type may differ from the scheduler JOB_ID — keep the value the
+# scheduler write_record actually inserts.)
 SYNC_JOB_TYPES: tuple[str, ...] = (
     "stock_basic_sync",
     "hk_basic_sync",
@@ -280,10 +282,15 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "stock_daily_full",
     "stock_adj_factor_full",
     "stock_close_sync",
+    "stock_close_catchup",
     "index_daily_full",
     "macro_daily_full",
     "eastmoney_industry_sync",
     "alpha_radar_pipeline",
+    "alpha_radar_ingest",
+    "alpha_radar_process",
+    "watchlist_automation",
+    "news_fetch_job",
 )
 
 

@@ -28,8 +28,8 @@ describe('SCHEDULER_JOB_CATALOG', () => {
         'eastmoney_industry_sync',
         'watchlist_automation',
         'alpha_radar_pipeline',
-        'alpha_radar_ingest_job',
-        'alpha_radar_process_job',
+        'alpha_radar_ingest',
+        'alpha_radar_process',
         'news_fetch_job',
       ]),
     );
@@ -40,6 +40,13 @@ describe('SCHEDULER_JOB_CATALOG', () => {
     for (const m of SCHEDULER_JOB_CATALOG) {
       expect(seen.has(m.jobType)).toBe(false);
       seen.add(m.jobType);
+    }
+  });
+
+  it('every job is tracked (writes to sync_job_record)', () => {
+    // All 19 jobs must write to sync_job_record so the UI can show OK/FAIL.
+    for (const m of SCHEDULER_JOB_CATALOG) {
+      expect(m.tracked).toBe(true);
     }
   });
 

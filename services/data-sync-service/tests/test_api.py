@@ -421,10 +421,15 @@ def test_sync_jobs_aggregate_endpoint_shape() -> None:
         "stock_daily_full",
         "stock_adj_factor_full",
         "stock_close_sync",
+        "stock_close_catchup",
         "index_daily_full",
         "macro_daily_full",
         "eastmoney_industry_sync",
         "alpha_radar_pipeline",
+        "alpha_radar_ingest",
+        "alpha_radar_process",
+        "watchlist_automation",
+        "news_fetch_job",
     }
     assert expected_job_types.issubset(set(payload["jobs"].keys()))
 

@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.triggers.cron import CronTrigger
 
-from data_sync_service.db.sync_job_record import get_today_run
+from data_sync_service.db.sync_job_record import get_today_run, insert_record
 from data_sync_service.service.close_sync import JOB_TYPE as CLOSE_JOB_TYPE
 from data_sync_service.service.close_sync import sync_close
 from data_sync_service.service.post_close_sync import run_post_close_sync
@@ -33,19 +33,41 @@ def run() -> None:
 
     now_cn = datetime.now(ZoneInfo("Asia/Shanghai"))
     logger.info("close_sync_catchup tick at %s", now_cn.isoformat())
-    result = sync_close(exchange="SSE", force=True)
-    if result.get("ok"):
-        if result.get("skipped"):
-            logger.info("close_sync_catchup skipped: %s", result.get("message", ""))
+    try:
+        result = sync_close(exchange="SSE", force=True)
+        if result.get("ok"):
+            if result.get("skipped"):
+                logger.info("close_sync_catchup skipped: %s", result.get("message", ""))
+                insert_record(
+                    JOB_ID,
+                    success=True,
+                    last_ts_code=result.get("message"),
+                    error_message="skipped",
+                )
+            else:
+                logger.info(
+                    "close_sync_catchup ok: daily=%s adj_factor=%s dates=%s",
+                    result.get("updated_daily_rows", 0),
+                    result.get("updated_adj_factor_rows", 0),
+                    result.get("trade_dates", []),
+                )
+                insert_record(
+                    JOB_ID,
+                    success=True,
+                    last_ts_code=",".join(result.get("trade_dates") or []),
+                    error_message=None,
+                )
+            post = run_post_close_sync()
+            logger.info("close_sync_catchup post_close_sync: %s", post)
         else:
-            logger.info(
-                "close_sync_catchup ok: daily=%s adj_factor=%s dates=%s",
-                result.get("updated_daily_rows", 0),
-                result.get("updated_adj_factor_rows", 0),
-                result.get("trade_dates", []),
+            logger.warning("close_sync_catchup failed: %s", result.get("error", "unknown"))
+            insert_record(
+                JOB_ID,
+                success=False,
+                last_ts_code=None,
+                error_message=result.get("error", "unknown"),
             )
-        post = run_post_close_sync()
-        logger.info("close_sync_catchup post_close_sync: %s", post)
-    else:
-        logger.warning("close_sync_catchup failed: %s", result.get("error", "unknown"))
+    except Exception as exc:
+        logger.warning("close_sync_catchup crashed: %s", exc)
+        insert_record(JOB_ID, success=False, error_message=str(exc))
 
