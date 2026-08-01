@@ -29,6 +29,8 @@ from .api.discovery_routes import router as discovery_router
 from .api.v1_business_routes import router as v1_business_router
 # OPT-047 Phase C: /v1/explain/{symbol} — comprehensive context pack.
 from .api.v1_explain_routes import router as v1_explain_router
+# OPT-051 §12 #5: /v1/quota — per-API-key usage snapshot.
+from .api.v1_quota_routes import router as v1_quota_router
 from .scheduler import create_scheduler
 from .service.tv_capture_worker import start_tv_capture_worker, stop_tv_capture_worker
 
@@ -43,7 +45,28 @@ async def lifespan(app: FastAPI):
     stop_tv_capture_worker()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    title="Karios /v1/* API",
+    version="0.1.0",
+    description=(
+        "OpenAI-compatible /v1/* surface for the Karios investment desktop. "
+        "Designed for an external AI assistant: discovery endpoints first "
+        "(`/v1/version`, `/v1/schema`, `/v1/errors`, `/v1/changelog`), then "
+        "read-only business data (`/v1/market/snapshot`, `/v1/watchlist/items`, "
+        "`/v1/decision-journal/query`, `/v1/paper-trades`, `/v1/paper-trades/stats`), "
+        "comprehensive context (`/v1/explain/{symbol}`), and self-inspection "
+        "(`/v1/quota`). Auth is opt-in via `Authorization: Bearer <key>` when "
+        "`KARIOS_API_KEYS` is set; otherwise all routes are open. "
+        "See `docs/api/README.md` for the human-readable index."
+    ),
+    openapi_tags=[
+        {"name": "v1:discovery", "description": "Stable discovery endpoints (no auth required)."},
+        {"name": "v1:business", "description": "Read-only business data (market, watchlist, journal, paper-trades)."},
+        {"name": "v1:explain", "description": "Comprehensive context pack for a single symbol."},
+        {"name": "v1:quota", "description": "Per-API-key quota usage snapshot."},
+    ],
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -51,6 +74,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# OPT-051: parse KARIOS_API_KEYS once at app load so the quota dependency
+# doesn't re-read the env var on every request.
+from .api.key_quota import keys_from_env  # noqa: E402
+
+app.state.api_keys = keys_from_env()
+
 app.include_router(query_router)
 app.include_router(simtrade_router)
 app.include_router(sync_router)
@@ -75,3 +104,5 @@ app.include_router(discovery_router)
 app.include_router(v1_business_router)
 # OPT-047 Phase C: /v1/explain/{symbol}.
 app.include_router(v1_explain_router)
+# OPT-051 §12 #5: /v1/quota.
+app.include_router(v1_quota_router)

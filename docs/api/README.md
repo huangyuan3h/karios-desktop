@@ -20,6 +20,9 @@
 │         ──► GET /v1/watchlist/items                         │
 │         ──► GET /v1/decision-journal/query?since=...        │
 │         ──► GET /v1/explain/{symbol}                        │
+│         ──► GET /v1/paper-trades                            │
+│         ──► GET /v1/paper-trades/stats                      │
+│         ──► GET /v1/quota                                   │
 │                                                             │
 │   升级  ──► GET /v1/changelog?since=老版本                  │
 │                                                             │
@@ -31,10 +34,12 @@
 │  Karios（macOS 本地）                                        │
 │   - pnpm dev (Next.js) + Python FastAPI                     │
 │   - Postgres（本地权威）                                     │
-│   - 4 稳定发现性 + 4 业务 endpoint（只读）                    │
+│   - 4 稳定发现性 + 7 业务 endpoint（只读）+ quota            │
 │   - 不做：推送 / 日报生成 / 自然语言代理                       │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+> **可视化文档**：[`openapi.md`](./openapi.md) — Swagger UI 在 `/docs`、ReDoc 在 `/redoc`（FastAPI 默认开启）。
 
 ---
 
@@ -55,7 +60,7 @@
 
 ## 2. 业务 endpoint（只读）
 
-> 4 个 endpoint 都只读。**禁止改仓**（写操作走现有 `/watchlist/*` / `/execution/*`）。详见 [`business.md`](./business.md) + [`explain.md`](./explain.md)。
+> 7 个 endpoint 都只读。**禁止改仓**（写操作走现有 `/watchlist/*` / `/execution/*`）。详见 [`business.md`](./business.md) + [`explain.md`](./explain.md) + [`openapi.md`](./openapi.md)。
 
 | Endpoint | 用途 | 鉴权 |
 |----------|------|------|
@@ -63,6 +68,9 @@
 | `GET /v1/watchlist/items` | 当前 watchlist 全量 | opt-in |
 | `GET /v1/decision-journal/query?since=...&limit=...` | 近期决策变更 | opt-in |
 | `GET /v1/explain/{symbol}` | 单 symbol 完整上下文包（解释素材）| opt-in |
+| `GET /v1/paper-trades?status=&since=&limit=` | paper-trade intake log | opt-in |
+| `GET /v1/paper-trades/stats?since=` | win rate / avg pnl / holding 分布 | opt-in |
+| `GET /v1/quota` | 当前 API Key 配额用量快照 | opt-in |
 
 ---
 
@@ -92,17 +100,25 @@ PATCH  ↑  修描述 / 修默认值 / 加错误码（不删旧的）   →  AI 
 
 ---
 
-## 6. 鉴权（opt-in）
+## 6. 鉴权 + 配额（opt-in）
 
 Karios 默认**不要求 API Key**（向后兼容现有前端）。在 `.env` 设置：
 
 ```bash
+# 旧格式：扁平 list（无配额）
 KARIOS_API_KEYS=key-for-ai-assistant,key-for-friend
+
+# 新格式：label:secret:rpm:rph:rpd，rpm/rph/rpd=0 表示不限
+KARIOS_API_KEYS="frontend:sk-abc:600:0:0,external-ai:sk-xyz:60:1000:10000"
 ```
 
 设置后：
-- 4 个**业务** endpoint（/v1/market/snapshot、/v1/watchlist/items、/v1/decision-journal/query、/v1/explain/{symbol}）要求 `Authorization: Bearer <key>`
+- 7 个**业务 + explain + quota** endpoint 要求 `Authorization: Bearer <key>`，并按 rpm/rph/rpd 限速
 - 4 个**发现性** endpoint 仍然不要求 Key（AI 助手启动先调这些）
+- 配额耗尽 → 429 + `Retry-After` + `X-RateLimit-*` 头部
+- 自查用量 → `GET /v1/quota`（仅暴露当前匹配的 Key，不暴露其他 Key）
+
+完整配额 + Key 格式 + 示例档案见 [`openapi.md`](./openapi.md)。
 
 ---
 
