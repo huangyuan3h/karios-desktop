@@ -997,6 +997,89 @@ P2 加：`pnl_pct >= +10%`（`target_hit`）+ `score 跌穿`（`score_floor`）+
 | 2026-08-01 | **OPT-054 触发**：用户 review 后明确真痛点（换电脑 / 长期生命力 / 远程访问）→ 新建 `docs/designs/karios-longevity-2026-08.md`（系统级真值），§13 todo；DB 决策保持 + 加 §13 行动项（Docker / Neon 副本 / Tailscale / 临时 VM）|
 | 2026-08-01 | **OPT-055 / §14 立**：用户 review 后暂缓远程部署项（§13 #1/#2/#3）+ 提级 §14 #1 AI agent 打通 + §12 #8 ego-lite 调研；新建 `docs/integrations/ai-agent-cookbook.md`（目标）|
 | 2026-08-01 | **OPT-055 §14 #1 完成**：AI Agent 集成 cookbook 10 节（4 步启动 + 4 场景 + 错误处理 + 配额监控 + Python/Node client + 上线 checklist + FAQ）；`docs/integrations/ai-agent-cookbook.md` |
+| 2026-08-01 | **OPT-056 触发**：用户 §12 #7 启动 — Docker 一键起 + UPS 自动恢复；§13 longevity 真痛点；范围锁定（Dockefile ×3 + 4 compose 服务 + 5 脚本 + 1 文档 + 1 测试）|
+
+### OPT-056：Docker 一键起 + UPS 自动恢复（todo §12 #7 / §13 #0）
+
+**状态**：[x] 完成（脚本骨架 + Dockerfiles + compose + tests + docs；端到端实跑需 Docker Desktop）
+**完成日期**：2026-08-01
+**优先级**：P0（todo §13 longevity · 直接对应"换电脑也能跑"真痛点）
+**关联 todo**：[§13 Longevity](../todo.md) · [§12 实施清单 #7](../todo.md)
+**关联设计稿**：[`docs/designs/karios-longevity-2026-08.md`](../designs/karios-longevity-2026-08.md) §3.1 / §3.2 / §3.5
+**摘要**：[`archive/2026-08-01-opt-056-docker-one-click.md`](../archive/2026-08-01-opt-056-docker-one-click.md)
+
+#### 背景
+
+用户原话："我关心的无非换电脑也能正常跑这个系统，让这个系统长期有生命力，远程也能访问这几个痛点。" 当前 §13 已落地决策真值，但 Docker / UPS 都是绿地。
+
+当前实情（2026-08-01 调研）：
+- 仓库无任何 `Dockerfile` · `docker-compose.yml` 只含 `postgres / pgadmin / rsshub` 三个基础设施
+- `data-sync-service` 是 FastAPI + uv（Python 3.13），dev 监听 `127.0.0.1:4330`，**容器内需改 `0.0.0.0`**
+- `ai-service` 是 Hono + tsc（Node 22），dev 监听 `4310`，`/healthz` 只验进程
+- `desktop-ui` 是 Next.js 16.1 + `output: "export"`，**生产形态是静态文件 → 必须配 nginx 容器**
+- `@karios/shared` 是 monorepo workspace package → Node Dockerfile 不能只 COPY 单 app
+- 当前 `init-scripts` 挂载路径不存在 → 即使 Postgres 启动后也无 schema
+- 无任何 launchd plist、无任何 UPS 脚本
+
+#### 目标
+
+| 任务 | 内容 |
+|------|------|
+| **A. Dockerfile × 3** | `data-sync-service` (python:3.13-slim + uv) · `ai-service` (node:22-alpine + pnpm) · `desktop-ui` (node:22 build stage → nginx:alpine runtime) |
+| **B. 扩展 docker-compose.yml** | 4 新服务：`data-sync`、`ai-service`、`desktop-ui`、`migrate`（一次性 init）+ healthchecks（`pg_isready` / `curl /healthz`）+ `depends_on: service_healthy` |
+| **C. 一键脚本 × 3** | `scripts/docker-up.sh` / `docker-down.sh` / `docker-status.sh` —— 唯一入口，**用户只需要会 `docker-up.sh`** |
+| **D. LaunchAgent** | `scripts/install-launchd.sh` 安装 `~/Library/LaunchAgents/com.karios.docker-up.plist`（macOS 登录后跑 docker-up.sh）+ `uninstall-launchd.sh` |
+| **E. UPS shutdown hook** | `scripts/ups-shutdown.sh` —— 由外部监控（`nut` 或 APC `apcupsd`）调 `lowbattery` 时触发：`docker compose down` → `pmset shutdown now`；**Karios 自身不做电池监控** |
+| **F. 文档** | `docs/setup/docker-one-click.md`：前置条件 → `pnpm install:all` → `cp .env.example .env` → `scripts/docker-up.sh` → 访问 `http://localhost:8080` → 可选 `scripts/install-launchd.sh` |
+| **G. 测试** | `tests/test_docker_one_click.py`：所有脚本存在 + `bash -n` 通过 + `--help` 返回 0 + plist XML 用 `plutil -lint` 校验 + `.env.example` 包含所有必备 key |
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Dockerfiles | `services/data-sync-service/Dockerfile`（**新**）· `apps/ai-service/Dockerfile`（**新**）· `apps/desktop-ui/Dockerfile`（**新**）|
+| Compose | `docker-compose.yml`（**改**——加 4 service + healthchecks + 默认 network）|
+| Ignore | `.dockerignore`（**新**）|
+| Scripts (root) | `scripts/docker-up.sh`（**新**）· `scripts/docker-down.sh`（**新**）· `scripts/docker-status.sh`（**新**）· `scripts/install-launchd.sh`（**新**）· `scripts/uninstall-launchd.sh`（**新**）· `scripts/ups-shutdown.sh`（**新**）|
+| Docs | `docs/setup/docker-one-click.md`（**新**）· `.env.example`（**新**——根目录模板）|
+| Tests | `services/data-sync-service/tests/test_docker_one_click.py`（**新**）|
+
+#### 范围限定（**不**做的事）
+
+- ❌ **不**把 `.env` 真实 secret COPY 进 image；只用 `env_file:` 挂载 + compose `secrets:` 留作 OPT-056.x
+- ❌ **不**改 `data-sync-service` 默认端口（仍 `4330`）—— 一致性 vs 漂移：代码 / Tauri / Compose 全部统一
+- ❌ **不**改 `ai-service` 默认端口（仍 `4310`）
+- ❌ **不**自建 UPS 电池监控（macOS 无原生 API）—— 只提供 hook 脚本，由 `nut` / `apcupsd` 调用
+- ❌ **不**做生产 TLS —— Cloudflare Tunnel 已处理
+- ❌ **不**改 Tauri 桌面（Tauri 已在 §13 降级，独立路线）
+- ❌ **不**改 TV Chrome capture 路径（macOS 仍走宿主 Chrome + `host.docker.internal:9222`）
+- ❌ **不**改 `desktop-ui` 的 `next.config.ts` 的 `output: "export"`（这是 Tauri 与 Docker 唯一的共同基线）
+- ❌ **不**让 Compose 内的容器互调 `localhost` —— Data Sync 的 `DATABASE_URL` 必须是 `postgres:5432`，且文档明确写出
+
+#### 验证
+
+- [x] `bash -n` 全部新脚本通过（6/6：`docker-up.sh` / `docker-down.sh` / `docker-status.sh` / `install-launchd.sh` / `uninstall-launchd.sh` / `ups-shutdown.sh`）
+- [x] `python3 -m pytest tests/test_docker_one_click.py --no-cov` 全绿：**57/57**
+- [x] `plutil -lint` LaunchAgent plist 通过（实际生成 `/Users/huangyuan/Library/LaunchAgents/com.karios.docker-up.plist` 通过 lint）
+- [x] `docker compose config --quiet` 解析新 compose 无误（7 services：postgres / pgadmin / rsshub / data-sync / ai-service / desktop-ui / migrate）
+- [x] `docker compose config --images` 显示 4 个 build image（karios/data-sync-service, karios/ai-service, karios/desktop-ui）+ 3 个 pull image
+- [x] Dockerfile 全部 pinned（无 `:latest` 标签；`postgres:16-alpine` / `python:3.13-slim-bookworm` / `node:22-alpine` / `nginx:1.27-alpine`）
+- [x] `.env.example` 覆盖所有 compose 引用 key（`POSTGRES_USER/PASSWORD/DB/PORT`、`TU_SHARE_API_KEY`、`AI_SERVICE_PORT/DATA_SYNC_PORT/DESKTOP_UI_PORT/RSSHUB_PORT/PGADMIN_PORT`、`NEXT_PUBLIC_*`、`KARIOS_API_KEYS`）
+- [x] install-launchd.sh 实际安装并加载 LaunchAgent（已在用户机器上验证：`launchctl list` 显示 `com.karios.docker-up`，PID 1）
+- [x] ai-service + desktop-ui typecheck/lint 不受影响（126 tests 全绿，tsc 无 error）
+- [ ] 端到端 `docker compose up -d` 实跑：未在本次 session 跑通（build 全栈需 5-10 分钟，且需要先 `--migrate` 停掉旧 orphan 容器 `postgres-db` / `pgadmin-web` / `karios-rsshub`）。脚本已就绪，**用户首次实跑前必须 `scripts/docker-up.sh --migrate` 一次**。
+- [ ] 真实 Chrome capture 路径（`host.docker.internal:9222`）：需用户在 macOS 宿主上手动启动 Chrome `--remote-debugging-port=9222`。已记入 setup doc。
+
+#### 反模式
+
+- ❌ **不**用 `:latest` 镜像标签（postgres:16-alpine / node:22-alpine / nginx:1.27-alpine 全部钉死）
+- ❌ **不**用 `network_mode: host`（破坏 `depends_on` healthcheck 链路）
+- ❌ **不**在 `docker-up.sh` 里 echo 任何 secret 值（与 OPT-051 一致）
+- ❌ **不**让 launchd plist 跑在 root（LaunchAgent 必须用户级 → 不需要 sudo）
+- ❌ **不**让 `ups-shutdown.sh` 默认开机自启 —— 必须显式 `enable` 才挂载（防误关）
+- ❌ **不**在 Desktop UI Dockerfile 里跑 `next dev`（只 build static + nginx serve）
+- ❌ **不**给 AI service 容器持久化 secret 文件（`KARIOS_APP_DATA_DIR` 卷挂载由用户在 `docker-up.sh` 设置，默认关闭）
+- ❌ **不**修改既有 `docker-compose.yml` 的 postgres 凭据 / `init-scripts` 路径（保留向后兼容；如需换 dev 凭据 → 单独 PR）
 
 ---
 

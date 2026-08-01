@@ -1,0 +1,29 @@
+# Data Sync Service local .dockerignore
+# Augments the root .dockerignore when this directory is the build context.
+
+**/node_modules/
+**/coverage/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.ruff_cache/
+**/.venv/
+
+# Tests live in CI, not in image.
+tests/
+testback/
+
+# Local databases and migration scripts.
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+init-data/
+
+# IDE / OS.
+.vscode/
+.idea/
+.DS_Store
+*.log
+
+# Editor caches.
+.cache/

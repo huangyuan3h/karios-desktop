@@ -122,6 +122,7 @@
 > chrome 后台抓 TV 池子 → 不能上云 + 重。需要更轻量的方案。
 
 - **[P1] ego-lite 调研**：✅ **done 2026-08-01** → [`designs/ego-lite-spike-2026-08.md`](./designs/ego-lite-spike-2026-08.md)（结论：用 TV Scanner API 替代 Chrome，无需浏览器；Chrome 作为 fallback 6 个月后 deprecate）
+- **[P1] TV Capture 数据源决策**：A股 3 screener 用 Tushare Pro / 港美股用 TV Scanner API / 落地时机 → **待拍板**（A股已有 Tushare 200/年全覆盖；港股需 Tushare HK 另订或 TV API；需验证 Tushare 能否 1:1 复刻 3 个 screener 逻辑）
 - **[P1] 付费 API 矩阵**：对比候选源 → 写 `archive/YYYY-MM-datasource-matrix.md`：
   - Tushare Pro / Tushare HK / 聚宽 / 通达信 L2 / iFinD / Wind mini / Choice
   - 维度：覆盖范围（CN/HK/US）、价格、限频、数据质量、稳定性
@@ -225,6 +226,7 @@
 | 2026-07-24 | V6.2 14:30 尾盘时间锁 + 防守双轨袖子 + Zero-Pos 归零清场 | 见 `trading-improvement-checklist.md` V6.2 节 |
 | 2026-07-22 | 漏斗转化率 / Pullback 主宇宙校准 / Alpha 进池闸 / Alpha GC 对称化 | 见 `trading-improvement-checklist.md` TIP-001~006 |
 | 2026-07-29 | HK + ETF 闸门全打通（OPT-041~044） | 见 `optimization-checklist.md` |
+| 2026-08-01 | OPT-056 / §12 #7：Docker 一键起 + UPS 自动恢复（3 Dockerfile + 4 compose service + 6 脚本 + setup doc + 57 tests）| [`archive/2026-08-01-opt-056-docker-one-click.md`](./archive/2026-08-01-opt-056-docker-one-click.md)（脚本骨架完整，端到端实跑需用户跑 `scripts/docker-up.sh --migrate`）|
 
 ---
 
@@ -271,8 +273,9 @@
 | 4 | **数据源质量审计**（出决策文档） | §3 收益 + §6 数据源 | 1 天 | — | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-050-data-source-audit.md`](./archive/2026-08-01-opt-050-data-source-audit.md)；续 Tushare 200/年；不引 Wind/Choice/iFinD/聚宽；healthcheck 脚本就绪 |
 | 5 | **API Key 配额 + 人类可读 OpenAPI 文档** | §3 API | 1-2 天 | #1 完成 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-051-api-key-quota-openapi.md`](./archive/2026-08-01-opt-051-api-key-quota-openapi.md)；多 Key + label:secret:rpm:rph:rpd 格式（向后兼容旧）；三窗口滑动配额 in-mem；/v1/quota 自查；FastAPI metadata + openapi_tags + Swagger UI + ReDoc；23+11 单测全绿 |
 | 6 | **Alpha Radar 扩展 HK 标的识别**（原 "HK Alpha S 自动归类"，已改名更精确）| §3 收益 | 2-3 天（实际 1）| `OPT-044` 已通 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-052-alpha-radar-hk.md`](./archive/2026-08-01-opt-052-alpha-radar-hk.md)；ai-service hk_mapping prompt 字段 + python resolve_hk_mapping + trend_json.hkSymbols + aggregate_catalyst_stocks 合并 CN+HK + compute_alpha_additions 跳过 HK EM industry 闸门；13+1 单测全绿 |
-| 7 | **Docker 一键起 + UPS 自动恢复** | §4 工程 | 1-2 天 | docker-compose 已有 | 出门断电 / 重启全自动恢复 |
+| 7 | **Docker 一键起 + UPS 自动恢复** | §4 工程 + §13 longevity | 1-2 天 | docker-compose 已有 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-056-docker-one-click.md`](./archive/2026-08-01-opt-056-docker-one-click.md)；3 Dockerfile（data-sync / ai-service / desktop-ui+nginx）+ 4 compose service（migrate / data-sync / ai-service / desktop-ui）+ 6 脚本（docker-up/down/status + install-launchd/uninstall-launchd/ups-shutdown）+ 1 setup doc + 57 smoke tests 全绿；旧用户首次实跑必加 `--migrate`；UPS hook 由 nut/apcupsd 外挂触发（macOS 无原生电池 API）|
 | 8 | **ego-lite 调研结论** | §6 数据源 | 0.5 天（实际 spike） | — | ✅ **done 2026-08-01** → [`designs/ego-lite-spike-2026-08.md`](./designs/ego-lite-spike-2026-08.md)；结论：用 TV Scanner API（`scanner.tradingview.com/global/scan`）替代 Chrome capture，无需浏览器/Playwright/login，30+ 字段，CN stocks 支持；详见 spike 文档 |
+| 8.5 | **TV Capture 数据源决策**：A股 3 screener 用 Tushare Pro 替代 Chrome / 港美股用 TV Scanner API / 落地时机 | §3 收益 + §6 数据源 | 0.5 天 | ego-lite spike | **待拍板**；A股已有 Tushare 200/年（含基本面/技术面全覆盖）；港股需 Tushare HK 另订或 TV Scanner API；美股无 Tushare；风险：TV 内部 API 无 SLA；需对比 Tushare 等价查询能否 1:1 复刻现有 3 个 screener 逻辑 |
 | 9 | **付费 API 矩阵评估** | §6 数据源 | 1-2 天 | — | 同上，影响未来上云选型 |
 | 10 | **DB 走向决策文档** | §4 工程 | 0.5 天 | — | ✅ **done 2026-08-01** → [`designs/db-direction-2026-08.md`](./designs/db-direction-2026-08.md)（不进 archive——是未拍板后的真值）；5 选项横向对比 + 备份 cron 策略 + 6 触发条件（半年期复审）+ 已知风险；`freelancer-arch.md` + `cloud-deployment-options.md` 链到本文档 |
 | 11 | **形态迁移（Tauri 降级）** | §2 定位 | 1 天 | — | 长期减少维护面 |
@@ -345,10 +348,10 @@
 
 | 痛点 | 现状 | §13 行动项 |
 |------|------|-----------|
-| **换电脑也能跑** | 当前 1-3 天 | §12 #7 Docker 一键起（1-2 天）→ 降到 2 小时 |
-| **数据独立于 Mac** | 本地 PG 单点 | §13 #1 Neon 只读副本 + 定时 sync（1 天）|
-| **远程访问兜底** | 仅 Cloudflare Tunnel | §13 #2 Tailscale Funnel fallback（0.5 天）|
-| **Mac 长期关机 fallback** | 不支持 | §13 #3 临时 VM Hetzner €4/月按月开（0.5 天）|
+| **换电脑也能跑** | 当前 1-3 天 | ✅ §12 #7 Docker 一键起 **done 2026-08-01**（OPT-056）→ ~2 小时（含首次 build）；脚本骨架 + 57 tests + setup doc 就绪 |
+| **数据独立于 Mac** | 本地 PG 单点 | §13 #1 Neon 只读副本 + 定时 sync（1 天）🟡 暂缓 |
+| **远程访问兜底** | 仅 Cloudflare Tunnel | §13 #2 Tailscale Funnel fallback（0.5 天）🟡 暂缓 |
+| **Mac 长期关机 fallback** | 不支持 | §13 #3 临时 VM Hetzner €4/月按月开（0.5 天）🟡 暂缓 |
 
 > **核心约束**：**Mac 永远在线 / 你永远想维护** = 信仰，不是契约。Longevity 的核心是**不依赖单一维护者 + 单机**。详见 longevity 文档。
 
