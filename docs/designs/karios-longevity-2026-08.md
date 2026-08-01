@@ -2,6 +2,7 @@
 
 > **关联 todo**：[`docs/todo.md §2 形态决策` / `§4 工程与部署` / `§13 Longevity（新建）`](../../todo.md)
 > **上下文**：[`db-direction-2026-08.md`](./db-direction-2026-08.md)（DB 维度）+ [`cloud-deployment-options.md`](./cloud-deployment-options.md)（架构总决策）+ [`freelancer-architecture.md`](./freelancer-architecture.md)（Tunnel + /v1/*）
+> **未来方案**：[`mac-mini-deployment.md`](./mac-mini-deployment.md)（2026-08-01 立 · 用户拿到 Mac mini 那天的整体部署方案）
 > **决议日**：2026-08-01
 > **下次复审**：2027-02-01
 
@@ -175,6 +176,7 @@
 ```
 docs/designs/karios-longevity-2026-08.md  (本文档 · 系统级痛点真值)
         │
+        ├─► mac-mini-deployment.md          (Mac mini 时代的整体部署方案 · 2026-08-01 立)
         ├─► db-direction-2026-08.md  (DB 维度切片)
         ├─► cloud-deployment-options.md  (架构总决策)
         └─► freelancer-architecture.md  (Tunnel + /v1/* 架构)
@@ -182,6 +184,7 @@ docs/designs/karios-longevity-2026-08.md  (本文档 · 系统级痛点真值)
 
 > **未来 review**：
 > - 任何关于"系统能不能跑下去"的讨论 → 先读本文件
+> - 任何关于"Mac mini 上怎么部署"的讨论 → [`mac-mini-deployment.md`](./mac-mini-deployment.md)
 > - 任何关于"DB 在哪"的讨论 → [`db-direction-2026-08.md`](./db-direction-2026-08.md)
 > - 任何关于"要不要上云"的讨论 → [`cloud-deployment-options.md`](./cloud-deployment-options.md)
 > - 不要再单独讨论"省钱 / 单笔月成本"——这不是真痛点

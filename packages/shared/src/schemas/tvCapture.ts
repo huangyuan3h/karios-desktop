@@ -29,8 +29,27 @@ export const TvScreenerSchema = z.object({
   url: z.string(),
   enabled: z.boolean(),
   updatedAt: z.string(),
+  mode: z.enum(['api', 'chrome']).default('chrome'),
+  market: z.string().nullable().optional(),
+  filterJson: z.record(z.unknown()).nullable().optional(),
+  apiColumns: z.array(z.string()).nullable().optional(),
 });
 export type TvScreener = z.infer<typeof TvScreenerSchema>;
+
+export const TvScreenerTemplateSchema = z.object({
+  templateId: z.string(),
+  displayName: z.string(),
+  market: z.string(),
+  description: z.string(),
+  nestedFilterValidated: z.boolean(),
+  screenTitleSubstr: z.string(),
+});
+export type TvScreenerTemplate = z.infer<typeof TvScreenerTemplateSchema>;
+
+export const TvScreenerTemplateListResponseSchema = z.object({
+  items: z.array(TvScreenerTemplateSchema),
+});
+export type TvScreenerTemplateListResponse = z.infer<typeof TvScreenerTemplateListResponseSchema>;
 
 export const TvScreenerListResponseSchema = z.object({
   items: z.array(TvScreenerSchema),

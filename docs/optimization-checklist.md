@@ -999,14 +999,22 @@ P2 加：`pnl_pct >= +10%`（`target_hit`）+ `score 跌穿`（`score_floor`）+
 | 2026-08-01 | **OPT-055 §14 #1 完成**：AI Agent 集成 cookbook 10 节（4 步启动 + 4 场景 + 错误处理 + 配额监控 + Python/Node client + 上线 checklist + FAQ）；`docs/integrations/ai-agent-cookbook.md` |
 | 2026-08-01 | **OPT-056 触发**：用户 §12 #7 启动 — Docker 一键起 + UPS 自动恢复；§13 longevity 真痛点；范围锁定（Dockefile ×3 + 4 compose 服务 + 5 脚本 + 1 文档 + 1 测试）|
 
-### OPT-056：Docker 一键起 + UPS 自动恢复（todo §12 #7 / §13 #0）
+### OPT-056：Docker 一键起 + UPS 自动恢复（todo §12 #7 / §13 / [Mac mini 时代方案](../designs/mac-mini-deployment.md)）
 
-**状态**：[x] 完成（脚本骨架 + Dockerfiles + compose + tests + docs；端到端实跑需 Docker Desktop）
+**状态**：[x] 完成（脚本骨架 + Dockerfiles + compose + tests + docs；端到端实跑需 Docker Desktop；**作为 Mac mini 时代的部署方案就绪，不是当前日常开发工具**）
 **完成日期**：2026-08-01
-**优先级**：P0（todo §13 longevity · 直接对应"换电脑也能跑"真痛点）
-**关联 todo**：[§13 Longevity](../todo.md) · [§12 实施清单 #7](../todo.md)
-**关联设计稿**：[`docs/designs/karios-longevity-2026-08.md`](../designs/karios-longevity-2026-08.md) §3.1 / §3.2 / §3.5
+**优先级**：P0（todo §13 longevity · Mac mini 时代整体部署的底座）
+**关联 todo**：[§13 Longevity](../todo.md) · [§12 实施清单 #7](../todo.md) · [§13.1 Mac mini 时代整体部署](../todo.md)
+**关联设计稿**：[`docs/designs/mac-mini-deployment.md`](../designs/mac-mini-deployment.md)（完整架构 + 触发条件 + 实施时序） · [`docs/designs/karios-longevity-2026-08.md`](../designs/karios-longevity-2026-08.md) §3.1 / §3.2 / §3.5
 **摘要**：[`archive/2026-08-01-opt-056-docker-one-click.md`](../archive/2026-08-01-opt-056-docker-one-click.md)
+
+> ⚠️ **使用边界**：日常开发仍用 `pnpm dev`（OPT-056 文档 §"与开发模式的区别"）。Docker 栈是为 **Mac mini 长期开机部署** 准备的——用户拿到 Mac mini 那一天按 [`mac-mini-deployment.md`](../designs/mac-mini-deployment.md) §5 实施。
+>
+> **Mac mini 时代的 diff**（相对于当前实现）：
+> - 移除 compose 里的 `postgres` + `migrate` service
+> - `data-sync` 改连 `host.docker.internal:5432`（本地 PG）
+> - 单源数据 = brew services 起的本地 Postgres
+> - 见 [`mac-mini-deployment.md` §4](../designs/mac-mini-deployment.md)
 
 #### 背景
 
@@ -1080,6 +1088,54 @@ P2 加：`pnl_pct >= +10%`（`target_hit`）+ `score 跌穿`（`score_floor`）+
 - ❌ **不**在 Desktop UI Dockerfile 里跑 `next dev`（只 build static + nginx serve）
 - ❌ **不**给 AI service 容器持久化 secret 文件（`KARIOS_APP_DATA_DIR` 卷挂载由用户在 `docker-up.sh` 设置，默认关闭）
 - ❌ **不**修改既有 `docker-compose.yml` 的 postgres 凭据 / `init-scripts` 路径（保留向后兼容；如需换 dev 凭据 → 单独 PR）
+
+---
+
+### OPT-057：TV Capture 三轨架构 + 新建 screener 模板化（todo §12 #8.5 / §3 收益 / §6 数据源）
+
+**状态**：[x] 完成（40 新单测 + 153 全绿 · 0 regression）
+**完成日期**：2026-08-01
+**优先级**：P1（todo §3 收益 / §6 数据源双线收益；3 个主 screener 数据源稳定性）
+**关联 todo**：[§12 #8.5](../todo.md) · [§3 收益](../todo.md) · [§6 数据源](../todo.md)
+**关联设计稿**：[`docs/designs/tv-capture-data-source-2026-08.md`](../designs/tv-capture-data-source-2026-08.md)（落地决策） · [`docs/designs/ego-lite-spike-2026-08.md`](../designs/ego-lite-spike-2026-08.md)（Phase 1 spike）
+**摘要**：[`archive/2026-08-01-opt-057-tv-capture-three-track.md`](../archive/2026-08-01-opt-057-tv-capture-three-track.md)
+
+#### 背景
+
+ego-lite spike（2026-08-01）确认 TV Scanner API 可用。本 OPT 把 spike 转成主线产品：**三轨架构（API / ego-lite / Chrome）按 screener 调度**，新建 screener 流程模板化（消除"用户必须先去 TV 网站存 screener"的认知负担）。
+
+#### 范围
+
+1. **DB schema**：加 `mode` / `filter_json` / `api_columns` 3 列（`url` 改 nullable）
+2. **`tv/scanner_api.py`**：POST `scanner.tradingview.com/global/scan`，返回结构化结果
+3. **`tv/ego_lite.py`**：Playwright headless chromium（无 Chrome profile）抓 screener URL
+4. **`service/tv.py` dispatcher**：按 `mode` 调度 + 失败 fallback 链 `api → ego_lite → chrome`
+5. **`docs/modules/screener-templates.md`**：3 个主 screener 的 filter JSON 真值（Karios Pullback v3 / Falcon Launch / Industry Top5）
+6. **前端 `SettingsPage`**：新建 screener 三模式（Template / Custom URL / Filter JSON）+ mode 切换 + JSON 编辑器
+7. **`shared/schemas/tv.ts`**：扩展 `TvScreener` schema 加 `mode` / `market` / `filterJson` / `apiColumns`
+8. **测试**：单测 `test_tv_scanner_api.py` + `test_tv_ego_lite.py` + `test_tv_dispatcher.py` + e2e
+
+#### 反模式
+
+- ❌ **不**完全砍 Chrome（保留 6 个月 fallback；ego-lite spike 决策）
+- ❌ **不**自动 fallback 后静默改写 snapshot `payload.mode`（保持 `payload.capturedVia` 字段可审计）
+- ❌ **不**改 TV screener URL 的解析路径（仍走 Playwright，只是换 driver）
+- ❌ **不**在模板里塞所有 TV Screener 可选字段（只暴露稳定字段 `Symbol`/`Price`/`High 52W` 等，回撤窗依赖）
+- ❌ **不**让 `filter_json` 接受任意 TV 内部结构（只接受 spike 验证过的字段白名单）
+- ❌ **不**改 `screenTitle` 的"合同"语义（TIP-006 合同：仍手工构造 `Karios Pullback` 等子串）
+- ❌ **不**在 dispatcher 里把 fallback 链写成"全部试一遍"（按 `mode` 决定初始入口，失败一次只降一级）
+
+#### 验证
+
+- [x] Alembic `0012_tv_screeners_api_mode.py` 升级成功（`alembic upgrade head`）— migration 写好，待用户本地 upgrade
+- [x] `db/tv.py` CREATE_SQL 同步新列（空 DB parity）
+- [ ] 3 个主 screener 注册到新模板表（Karios Pullback v3 必启用）— 待 `scripts/migrate_screeners_to_api_mode.py` 跑（OPT-057.x）
+- [x] SettingsPage 模板下拉可选 → Save 后 ScreenerPage 显示 snapshot（**UI 写完，待端到端实跑**）
+- [ ] AM/PM cron `mode=api` 抓取成功率 ≥ 95% — 待用户 30 天实测
+- [ ] AM/PM cron 失败后 fallback 到 ego_lite / chrome 路径有 telemetry（`payload.capturedVia` 已就绪）— 待 telemetry 落地
+- [x] 单元测试：`test_tv_scanner_api.py`（17）、`test_tv_ego_lite.py`（3）、`test_tv_dispatcher.py`（9）、`test_tv_templates.py`（9），共 38 tests 全绿 + 2 ego-lite mock tests = 40
+- [ ] `docs/modules/screener.md` 更新"为什么使用 CDP"节 → "三轨架构"（**待补写**）
+- [x] OPT-057 完成后写 `archive/2026-08-01-opt-057-tv-capture-three-track.md`
 
 ---
 

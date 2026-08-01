@@ -1,8 +1,10 @@
 # Docker 一键起 + UPS 自动恢复
 
-> todo §12 #7 · §13 #0 · OPT-056
+> todo §12 #7 · §13 · OPT-056 · [`mac-mini-deployment.md`](../designs/mac-mini-deployment.md)
 >
-> 目的：让 Karios 在 **新电脑 / 断电恢复** 场景下 2 小时内即可用，**不依赖云**。
+> 目的：让 Karios 在 **Mac mini 长期开机部署**场景下自动启动 + 断电恢复，**不依赖云**。
+>
+> **使用边界**：日常开发仍用 `pnpm dev`（见 §「与开发模式的区别」）。Docker 栈是为 **Mac mini 时代** 准备的——本文档配套 [`mac-mini-deployment.md`](../designs/mac-mini-deployment.md) 一起读。
 
 ## 概览
 

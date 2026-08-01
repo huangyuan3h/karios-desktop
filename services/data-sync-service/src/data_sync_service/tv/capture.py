@@ -20,6 +20,84 @@ class CaptureResult:
     rows: list[dict[str, str]]
 
 
+async def _capture_once_via_page(
+    page: Any, *, url: str, max_rows: int = 300
+) -> tuple[list[str], list[str], list[dict[str, str]], str | None]:
+    """Run one capture pass against an already-open Playwright page.
+
+    Used by both `capture_screener_over_cdp` (CDP-attached Chrome) and
+    `ego_lite.capture_screener_ego_lite_async` (fresh headless chromium).
+    The caller is responsible for navigating + waiting for network idle
+    before invoking this helper.
+
+    Returns (filters, headers, rows, screen_title).
+    """
+    if await _detect_login_required(page):
+        raise RuntimeError(
+            "TradingView login required: this screener hides results for non-authenticated profiles. "
+            "Please log in to TradingView in the dedicated CDP Chrome profile (disable headless temporarily) "
+            "and try again.",
+        )
+    grid = await _find_screener_grid(page)
+    if grid is None:
+        raise RuntimeError(
+            "Cannot locate screener grid/table. Please ensure you are logged in.",
+        )
+
+    filters = await _read_filter_pills(page, grid)
+    tag = await _element_tag(grid)
+    raw_headers = await (_read_table_headers(grid) if tag == "TABLE" else _read_grid_headers(grid))
+    headers = normalize_headers(raw_headers or ["Symbol"])
+
+    key = next((k for k in ("Symbol", "Ticker", "代码") if k in headers), headers[0])
+    await _wait_for_grid_data(page, grid, tag=tag, headers=headers, key=key)
+
+    seen: set[str] = set()
+    rows: list[dict[str, str]] = []
+    for _ in range(MAX_SCROLL_STEPS):
+        visible = (
+            await _read_visible_table_rows(grid, headers)
+            if tag == "TABLE"
+            else await _read_visible_grid_rows(grid, headers)
+        )
+        added = 0
+        for r in visible:
+            sym = str(r.get(key, "") or "").strip()
+            if not sym or sym in seen:
+                continue
+            seen.add(sym)
+            rows.append(r)
+            added += 1
+            if len(rows) >= max_rows:
+                break
+        if len(rows) >= max_rows:
+            break
+
+        await _scroll_grid(page, grid, steps=1)
+        after = (
+            await _read_visible_table_rows(grid, headers)
+            if tag == "TABLE"
+            else await _read_visible_grid_rows(grid, headers)
+        )
+        any_new = False
+        for r in after:
+            sym = str(r.get(key, "") or "").strip()
+            if sym and sym not in seen:
+                any_new = True
+                break
+        if added == 0 and not any_new:
+            break
+
+    headers2, rows2 = enrich_symbol_columns(headers, rows)
+    headers3, rows3 = drop_empty_columns(headers2, rows2)
+
+    out_rows: list[dict[str, str]] = []
+    for r in rows3:
+        out_rows.append({str(k): str(v) for k, v in r.items()})
+
+    return filters, [str(h) for h in headers3], out_rows, await _detect_screen_title(page)
+
+
 async def _element_tag(locator) -> str:
     try:
         return str(await locator.evaluate("el => el.tagName")).upper()
@@ -432,79 +510,15 @@ async def capture_screener_over_cdp(
         context.set_default_timeout(timeout_ms)
         page = await context.new_page()
         try:
-            async def _capture_once() -> tuple[list[str], list[str], list[dict[str, str]], str | None]:
-                if await _detect_login_required(page):
-                    raise RuntimeError(
-                        "TradingView login required: this screener hides results for non-authenticated profiles. "
-                        "Please log in to TradingView in the dedicated CDP Chrome profile (disable headless temporarily) "
-                        "and try again.",
-                    )
-                grid = await _find_screener_grid(page)
-                if grid is None:
-                    raise RuntimeError(
-                        "Cannot locate screener grid/table. Please ensure you are logged in.",
-                    )
-
-                filters = await _read_filter_pills(page, grid)
-                tag = await _element_tag(grid)
-                raw_headers = await (_read_table_headers(grid) if tag == "TABLE" else _read_grid_headers(grid))
-                headers = normalize_headers(raw_headers or ["Symbol"])
-
-                key = next((k for k in ("Symbol", "Ticker", "代码") if k in headers), headers[0])
-                await _wait_for_grid_data(page, grid, tag=tag, headers=headers, key=key)
-
-                seen: set[str] = set()
-                rows: list[dict[str, str]] = []
-                for _ in range(MAX_SCROLL_STEPS):
-                    visible = (
-                        await _read_visible_table_rows(grid, headers)
-                        if tag == "TABLE"
-                        else await _read_visible_grid_rows(grid, headers)
-                    )
-                    added = 0
-                    for r in visible:
-                        sym = str(r.get(key, "") or "").strip()
-                        if not sym or sym in seen:
-                            continue
-                        seen.add(sym)
-                        rows.append(r)
-                        added += 1
-                        if len(rows) >= max_rows:
-                            break
-                    if len(rows) >= max_rows:
-                        break
-
-                    await _scroll_grid(page, grid, steps=1)
-                    after = (
-                        await _read_visible_table_rows(grid, headers)
-                        if tag == "TABLE"
-                        else await _read_visible_grid_rows(grid, headers)
-                    )
-                    any_new = False
-                    for r in after:
-                        sym = str(r.get(key, "") or "").strip()
-                        if sym and sym not in seen:
-                            any_new = True
-                            break
-                    if added == 0 and not any_new:
-                        break
-
-                headers2, rows2 = enrich_symbol_columns(headers, rows)
-                headers3, rows3 = drop_empty_columns(headers2, rows2)
-
-                out_rows: list[dict[str, str]] = []
-                for r in rows3:
-                    out_rows.append({str(k): str(v) for k, v in r.items()})
-
-                return filters, [str(h) for h in headers3], out_rows, await _detect_screen_title(page)
-
             await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
             await page.wait_for_timeout(1200)
             try:
                 await page.wait_for_load_state("networkidle", timeout=4_000)
             except Exception:
                 pass
-            filters, headers_out, rows_out, screen_title = await _capture_once()
+            filters, headers_out, rows_out, screen_title = await _capture_once_via_page(
+                page, url=url, max_rows=max_rows
+            )
             if not rows_out:
                 await page.reload(wait_until="domcontentloaded", timeout=timeout_ms)
                 await page.wait_for_timeout(1200)
@@ -512,7 +526,9 @@ async def capture_screener_over_cdp(
                     await page.wait_for_load_state("networkidle", timeout=4_000)
                 except Exception:
                     pass
-                filters, headers_out, rows_out, screen_title = await _capture_once()
+                filters, headers_out, rows_out, screen_title = await _capture_once_via_page(
+                    page, url=url, max_rows=max_rows
+                )
 
             captured_at = datetime.now(tz=UTC).isoformat()
             return CaptureResult(

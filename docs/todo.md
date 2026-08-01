@@ -227,6 +227,7 @@
 | 2026-07-22 | 漏斗转化率 / Pullback 主宇宙校准 / Alpha 进池闸 / Alpha GC 对称化 | 见 `trading-improvement-checklist.md` TIP-001~006 |
 | 2026-07-29 | HK + ETF 闸门全打通（OPT-041~044） | 见 `optimization-checklist.md` |
 | 2026-08-01 | OPT-056 / §12 #7：Docker 一键起 + UPS 自动恢复（3 Dockerfile + 4 compose service + 6 脚本 + setup doc + 57 tests）| [`archive/2026-08-01-opt-056-docker-one-click.md`](./archive/2026-08-01-opt-056-docker-one-click.md)（脚本骨架完整，端到端实跑需用户跑 `scripts/docker-up.sh --migrate`）|
+| 2026-08-01 | OPT-057 / §12 #8.5：TV Capture 三轨架构（Scanner API + ego-lite + Chrome fallback）+ 新建 screener 模板化 UI | [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)（40 新单测 + 0 regression；嵌套 filter DSL 待 Phase 7 验证）|
 
 ---
 
@@ -275,7 +276,7 @@
 | 6 | **Alpha Radar 扩展 HK 标的识别**（原 "HK Alpha S 自动归类"，已改名更精确）| §3 收益 | 2-3 天（实际 1）| `OPT-044` 已通 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-052-alpha-radar-hk.md`](./archive/2026-08-01-opt-052-alpha-radar-hk.md)；ai-service hk_mapping prompt 字段 + python resolve_hk_mapping + trend_json.hkSymbols + aggregate_catalyst_stocks 合并 CN+HK + compute_alpha_additions 跳过 HK EM industry 闸门；13+1 单测全绿 |
 | 7 | **Docker 一键起 + UPS 自动恢复** | §4 工程 + §13 longevity | 1-2 天 | docker-compose 已有 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-056-docker-one-click.md`](./archive/2026-08-01-opt-056-docker-one-click.md)；3 Dockerfile（data-sync / ai-service / desktop-ui+nginx）+ 4 compose service（migrate / data-sync / ai-service / desktop-ui）+ 6 脚本（docker-up/down/status + install-launchd/uninstall-launchd/ups-shutdown）+ 1 setup doc + 57 smoke tests 全绿；旧用户首次实跑必加 `--migrate`；UPS hook 由 nut/apcupsd 外挂触发（macOS 无原生电池 API）|
 | 8 | **ego-lite 调研结论** | §6 数据源 | 0.5 天（实际 spike） | — | ✅ **done 2026-08-01** → [`designs/ego-lite-spike-2026-08.md`](./designs/ego-lite-spike-2026-08.md)；结论：用 TV Scanner API（`scanner.tradingview.com/global/scan`）替代 Chrome capture，无需浏览器/Playwright/login，30+ 字段，CN stocks 支持；详见 spike 文档 |
-| 8.5 | **TV Capture 数据源决策**：A股 3 screener 用 Tushare Pro 替代 Chrome / 港美股用 TV Scanner API / 落地时机 | §3 收益 + §6 数据源 | 0.5 天 | ego-lite spike | **待拍板**；A股已有 Tushare 200/年（含基本面/技术面全覆盖）；港股需 Tushare HK 另订或 TV Scanner API；美股无 Tushare；风险：TV 内部 API 无 SLA；需对比 Tushare 等价查询能否 1:1 复刻现有 3 个 screener 逻辑 |
+| 8.5 | **TV Capture 数据源决策**：候选 C 升级版（API + ego-lite 并行 + Chrome fallback）+ 新建 screener UI 模板化 | §3 + §6 | 3-4 天 | #1 完成 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)；Alembic `0012_tv_screeners_api_mode.py`（加 `mode` / `market` / `filter_json` / `api_columns` 4 列 + `url` nullable + CHECK 约束）；`tv/scanner_api.py` + `tv/ego_lite.py` + `tv/templates.py`（3 个主 screener 真值）；`service/tv.py` 三轨 dispatcher（api → ego_lite → chrome fallback 链 + `payload.capturedVia` 审计字段）；SettingsPage 三模式 UI（Template 模板下拉 / Custom URL legacy / Filter JSON advanced）+ 编辑模式切换；shared schema 扩展 `TvScreener` + `TvScreenerTemplate`；40 新单测全绿（`test_tv_scanner_api.py` / `test_tv_templates.py` / `test_tv_dispatcher.py` / `test_tv_ego_lite.py`）+ 已有 tv tests 全绿；TS clean；nesting-filter DSL 待 Phase 7 验证脚本实测（`nested_filter_validated=False` 标注）|
 | 9 | **付费 API 矩阵评估** | §6 数据源 | 1-2 天 | — | 同上，影响未来上云选型 |
 | 10 | **DB 走向决策文档** | §4 工程 | 0.5 天 | — | ✅ **done 2026-08-01** → [`designs/db-direction-2026-08.md`](./designs/db-direction-2026-08.md)（不进 archive——是未拍板后的真值）；5 选项横向对比 + 备份 cron 策略 + 6 触发条件（半年期复审）+ 已知风险；`freelancer-arch.md` + `cloud-deployment-options.md` 链到本文档 |
 | 11 | **形态迁移（Tauri 降级）** | §2 定位 | 1 天 | — | 长期减少维护面 |
@@ -345,13 +346,35 @@
 > **用户原话**："我关心的无非换电脑也能正常跑这个系统，让这个系统长期有生命力，远程也能访问这几个痛点。"
 >
 > **决策真值**：[`docs/designs/karios-longevity-2026-08.md`](./designs/karios-longevity-2026-08.md)（2026-08-01 立）
+>
+> **未来方案**：[`docs/designs/mac-mini-deployment.md`](./designs/mac-mini-deployment.md)（2026-08-01 立 · 用户拿到 Mac mini 那天的整体部署方案）
 
 | 痛点 | 现状 | §13 行动项 |
 |------|------|-----------|
-| **换电脑也能跑** | 当前 1-3 天 | ✅ §12 #7 Docker 一键起 **done 2026-08-01**（OPT-056）→ ~2 小时（含首次 build）；脚本骨架 + 57 tests + setup doc 就绪 |
+| **换电脑也能跑** | 当前 1-3 天 | ✅ §12 #7 Docker 一键起 **done 2026-08-01**（OPT-056）→ ~2 小时（含首次 build）；脚本骨架 + 82 tests + setup doc 就绪 |
 | **数据独立于 Mac** | 本地 PG 单点 | §13 #1 Neon 只读副本 + 定时 sync（1 天）🟡 暂缓 |
 | **远程访问兜底** | 仅 Cloudflare Tunnel | §13 #2 Tailscale Funnel fallback（0.5 天）🟡 暂缓 |
 | **Mac 长期关机 fallback** | 不支持 | §13 #3 临时 VM Hetzner €4/月按月开（0.5 天）🟡 暂缓 |
+
+### §13.1 Mac mini 时代整体部署（用户 2026-08-01 review）
+
+> **用户原话**（review §13 时）："我倾向于系统整体稳定部署 docker，然后自动启动，db 用现在的，不用两个，保证系统长期开机，可能是未来很久以后还 mac mini 长期开机部署的方案，对这个项目真的能养活我之后的事情吧。"
+
+**核心决策（2026-08-01）**：
+
+| 维度 | 决策 | 理由 |
+|------|------|------|
+| **部署形态** | Docker compose | 自动启动 + UPS 保护 + 多端访问 |
+| **数据源** | **本地 Postgres（brew services）单一数据源** | "db 用现在的" + 不切换数据所有权 |
+| **自动启动** | macOS LaunchAgent → `docker compose up -d` | 开机即用，断电恢复不干预 |
+| **触发时机** | 用户拿到 Mac mini（或同等 7×24 设备）那天 | 不是现在 |
+
+**不**要做的事（避免重复建设）：
+- ❌ 不在 docker compose 里跑自己的 postgres service（跟本地 PG 抢 5432）
+- ❌ 不复制数据到第二个 PG（违反"单一数据源"）
+- ❌ 不现在就 full migration（用户没 Mac mini）
+
+**完整方案 + 时序 + 反例**：[`docs/designs/mac-mini-deployment.md`](./designs/mac-mini-deployment.md)（§3 架构 / §4 与现状差异 / §5 实施时序 / §6 日常维护 / §7 触发条件 / §8 失败模式）
 
 > **核心约束**：**Mac 永远在线 / 你永远想维护** = 信仰，不是契约。Longevity 的核心是**不依赖单一维护者 + 单机**。详见 longevity 文档。
 
@@ -383,3 +406,18 @@
 | §12 #7 Docker 一键起 | 🟢 仍建议 | **换电脑 + 长期生命力痛点不依赖云**——可独立做 |
 
 > **保留项**：§12 #7 Docker 一键起——痛点 1（换电脑）**不依赖云**，仍可独立推进。
+
+---
+
+## 15. 老婆使用 watchlist 的反馈（待汇总 · 不污染 P0）
+
+> **状态**：暂存，等老婆反馈
+> **来源**：老婆亲自使用 Karios watchlist 后给的具体建议
+> **行动**：反馈汇总后落 `docs/modules/watchlist.md` 末尾"用户使用笔记"段；衍生需求列为 §3 / §12 的 P1 子条目
+
+- [ ] 老婆试用 watchlist 一周后 → 收集具体卡点 / 期望
+- [ ] 反馈落到 `docs/modules/watchlist.md` 末尾"用户使用笔记"段
+- [ ] 衍生需求（P1）列入 todo §3 或 §12
+
+> **为什么现在不做**：watchlist 模块当前是单人单表设计（无 user_id / role / share 概念）；老婆的具体反馈没到位时做任何 UX 改动都是赌博。等反馈到位再动。
+> **明确不做的事**：❌ 暂不做"双人 watchlist" / "配偶共享"等改动；❌ 不在 Karios 内做"家庭版"分支。

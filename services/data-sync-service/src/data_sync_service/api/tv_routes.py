@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from data_sync_service.service import tv as tvsvc
 
@@ -13,14 +13,27 @@ router = APIRouter()
 
 class CreateTvScreenerRequest(BaseModel):
     name: str
-    url: str
+    url: str = ""
+    enabled: bool = True
+    mode: str = Field(default="chrome", pattern="^(api|chrome)$")
+    market: str | None = None
+    filterJson: dict[str, Any] | None = None
+    apiColumns: list[str] | None = None
+
+
+class CreateTvScreenerFromTemplateRequest(BaseModel):
+    templateId: str
     enabled: bool = True
 
 
 class UpdateTvScreenerRequest(BaseModel):
     name: str
-    url: str
+    url: str = ""
     enabled: bool
+    mode: str = Field(default="chrome", pattern="^(api|chrome)$")
+    market: str | None = None
+    filterJson: dict[str, Any] | None = None
+    apiColumns: list[str] | None = None
 
 
 class MigrateTvFromSqliteRequest(BaseModel):
@@ -32,14 +45,44 @@ def list_tv_screeners() -> dict[str, Any]:
     return tvsvc.list_screeners()
 
 
+@router.get("/integrations/tradingview/screener-templates")
+def list_tv_screener_templates() -> dict[str, Any]:
+    return tvsvc.list_screener_templates()
+
+
 @router.post("/integrations/tradingview/screeners")
 def create_tv_screener(req: CreateTvScreenerRequest) -> dict[str, str]:
-    return tvsvc.create_screener(name=req.name, url=req.url, enabled=req.enabled)
+    return tvsvc.create_screener(
+        name=req.name,
+        url=req.url,
+        enabled=req.enabled,
+        mode=req.mode,
+        market=req.market,
+        filter_json=req.filterJson,
+        api_columns=req.apiColumns,
+    )
+
+
+@router.post("/integrations/tradingview/screeners/from-template")
+def create_tv_screener_from_template(req: CreateTvScreenerFromTemplateRequest) -> dict[str, str]:
+    return tvsvc.create_screener_from_template(
+        template_id=req.templateId,
+        enabled=req.enabled,
+    )
 
 
 @router.put("/integrations/tradingview/screeners/{screener_id}")
 def update_tv_screener(screener_id: str, req: UpdateTvScreenerRequest) -> dict[str, bool]:
-    return tvsvc.update_screener(screener_id=screener_id, name=req.name, url=req.url, enabled=req.enabled)
+    return tvsvc.update_screener(
+        screener_id=screener_id,
+        name=req.name,
+        url=req.url,
+        enabled=req.enabled,
+        mode=req.mode,
+        market=req.market,
+        filter_json=req.filterJson,
+        api_columns=req.apiColumns,
+    )
 
 
 @router.delete("/integrations/tradingview/screeners/{screener_id}")
