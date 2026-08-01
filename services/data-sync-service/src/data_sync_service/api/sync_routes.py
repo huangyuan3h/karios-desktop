@@ -7,7 +7,7 @@ from fastapi import APIRouter, Query  # type: ignore[import-not-found]
 
 from data_sync_service.service.adj_factor import sync_adj_factor_full
 from data_sync_service.service.close_sync import sync_close
-from data_sync_service.service.etf_daily import sync_etf_daily_full, get_etf_daily_sync_status
+from data_sync_service.service.etf_daily import get_etf_daily_sync_status, sync_etf_daily_full
 from data_sync_service.service.etf_fund_flow import sync_etf_fund_flow_watchlist
 from data_sync_service.service.fund_basic import (
     get_etf_fund_basic_sync_status,
@@ -284,12 +284,16 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "stock_close_sync",
     "stock_close_catchup",
     "index_daily_full",
+    "index_basic_sync",
     "macro_daily_full",
     "eastmoney_industry_sync",
     "alpha_radar_pipeline",
     "alpha_radar_ingest",
     "alpha_radar_process",
     "watchlist_automation",
+    "cn_industry_post_close_sync",
+    "tv_screener_capture_am",
+    "tv_screener_capture_pm",
     "news_fetch_job",
 )
 

@@ -95,12 +95,14 @@ export type SchedulerJobsResponse = z.infer<typeof SchedulerJobsResponseSchema>;
 export const SchedulerJobGroupSchema = z.enum([
   'coreClose',
   'cnBasic',
+  'cnIndustry',
   'hk',
   'etf',
   'indexMacro',
   'eastmoneyIndustry',
   'watchlistAutomation',
   'alphaRadar',
+  'tvScreener',
   'news',
 ]);
 export type SchedulerJobGroup = z.infer<typeof SchedulerJobGroupSchema>;
@@ -308,6 +310,18 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     { endpoint: '/sync/index-daily', method: 'POST', label: '立即同步' },
   ),
   meta(
+    'index_basic_sync',
+    'indexMacro',
+    '指数每日指标（市宽）',
+    '独立调度 pro.index_dailybasic（turnover_rate / float_mv），保证 macro_snapshot 市宽无需用户触发 Dashboard。',
+    '工作日 17:15',
+    '15 17 * * 1-5',
+    'cron',
+    true,
+    15,
+    { endpoint: '/sync/index-basic', method: 'POST', label: '立即同步' },
+  ),
+  meta(
     'macro_daily_full',
     'indexMacro',
     '宏观/全球数据',
@@ -345,6 +359,44 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     'cron',
     true,
     10,
+  ),
+
+  /* CN industry + sentiment (post-close) ----------------------------------- */
+  meta(
+    'cn_industry_post_close_sync',
+    'cnIndustry',
+    '盘后行业/情绪/主线',
+    '工作日 17:35 同步 industry_fund_flow + industry_mainline + cn_sentiment，让 Dashboard 顶部始终保持新，无需点 Sync all。',
+    '工作日 17:35',
+    '35 17 * * 1-5',
+    'cron',
+    true,
+    10,
+    { endpoint: '/market/cn/industry-fund-flow/sync', method: 'POST', label: '立即同步' },
+  ),
+
+  /* TradingView screener AM/PM capture ------------------------------------ */
+  meta(
+    'tv_screener_capture_am',
+    'tvScreener',
+    'TradingView 抓取 (AM)',
+    '工作日 09:30 入队所有启用 screener；tv_capture_worker 后台消费，结果落入 tv_snapshots。',
+    '工作日 09:30',
+    '30 9 * * 1-5',
+    'cron',
+    true,
+    10,
+  ),
+  meta(
+    'tv_screener_capture_pm',
+    'tvScreener',
+    'TradingView 抓取 (PM)',
+    '工作日 15:30 入队所有启用 screener；与 AM 抓取形成日内双快照。',
+    '工作日 15:30',
+    '30 15 * * 1-5',
+    'cron',
+    true,
+    20,
   ),
 
   /* Alpha Radar ----------------------------------------------------------- */
@@ -403,12 +455,14 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
 export const SCHEDULER_GROUP_ORDER: readonly SchedulerJobGroup[] = [
   'coreClose',
   'cnBasic',
+  'cnIndustry',
   'hk',
   'etf',
   'indexMacro',
   'eastmoneyIndustry',
   'watchlistAutomation',
   'alphaRadar',
+  'tvScreener',
   'news',
 ];
 
@@ -423,6 +477,10 @@ export const SCHEDULER_GROUP_META: Record<
   cnBasic: {
     titleCn: 'A 股基础数据',
     descriptionCn: '股票列表、上市状态等基础信息。',
+  },
+  cnIndustry: {
+    titleCn: '盘后行业/情绪',
+    descriptionCn: 'A 股盘后行业资金流向、主线与情绪指标同步。',
   },
   hk: {
     titleCn: '港股同步',
@@ -447,6 +505,10 @@ export const SCHEDULER_GROUP_META: Record<
   alphaRadar: {
     titleCn: 'Alpha Radar 情报',
     descriptionCn: 'RSS 抓取 → LLM 抽取 → A 股映射的端到端 pipeline。',
+  },
+  tvScreener: {
+    titleCn: 'TradingView 抓取',
+    descriptionCn: '交易日 09:30 / 15:30 入队 screener，后台 worker 异步采集。',
   },
   news: {
     titleCn: '财经新闻',

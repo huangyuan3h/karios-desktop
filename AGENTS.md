@@ -90,7 +90,16 @@ TradingView screener capture is **async** via Postgres job queue `tv_capture_job
 - In-process worker (`tv_capture_worker.py`): max **2** concurrent captures; dedupe active jobs per screener.
 - Dashboard Sync All: enqueue all screeners, then `wait_for_capture_jobs` (SSE emits `jobId` / `jobStatus`).
 - Screener UI: POST → poll job → refresh snapshots.
+- **AM/PM cron:** `tv_screener_capture_am` (workdays 09:30 Asia/Shanghai) + `tv_screener_capture_pm` (workdays 15:30 Asia/Shanghai) enqueue all enabled screeners daily; matches `docs/modules/screener.md` "AM/PM" intent.
 - Migration: `0002_tv_capture_jobs` — run `PYTHONPATH=src alembic upgrade head`.
+
+---
+
+## Scheduler coverage gaps closed
+
+- `index_basic_sync` — weekdays 17:15 Asia/Shanghai (`scheduler/index_basic_job.py`). Independent sync of `index_dailybasic` so `macro_snapshot.market_breadth` is warm without a user clicking "Sync all".
+- `cn_industry_post_close_sync` — weekdays 17:35 Asia/Shanghai (`scheduler/cn_industry_post_close_job.py`). Runs `sync_cn_industry_fund_flow` + `sync_cn_industry_mainline` + `sync_cn_sentiment` after `close_sync` (17:10) and `watchlist_automation` (17:30). Aligns implementation with `docs/modules/industry-flow.md` and `market-sentiment.md` "盘后每日更新".
+- All three job types added to `SYNC_JOB_TYPES` in `api/sync_routes.py` and to `SCHEDULER_JOB_CATALOG` (with new `cnIndustry` / `tvScreener` groups) in `packages/shared/src/schemas/scheduler.ts`.
 
 ---
 

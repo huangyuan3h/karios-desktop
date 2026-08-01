@@ -9,6 +9,7 @@ from data_sync_service.scheduler import (
     alpha_radar_process_job,
     close_catchup_job,
     close_sync_job,
+    cn_industry_post_close_job,
     daily_sync_job,
     eastmoney_industry_job,
     etf_daily_job,
@@ -16,10 +17,12 @@ from data_sync_service.scheduler import (
     hk_basic_job,
     hk_daily_job,
     hk_industry_job,
+    index_basic_job,
     index_daily_job,
     macro_daily_job,
     news_fetch_job,
     stock_basic_job,
+    tv_screener_capture_job,
     watchlist_automation_job,
 )
 
@@ -140,6 +143,30 @@ def create_scheduler() -> BackgroundScheduler:
         hk_industry_job.run,
         hk_industry_job.build_trigger(),
         id=hk_industry_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        index_basic_job.run,
+        index_basic_job.build_trigger(),
+        id=index_basic_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        cn_industry_post_close_job.run,
+        cn_industry_post_close_job.build_trigger(),
+        id=cn_industry_post_close_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        tv_screener_capture_job.run,
+        tv_screener_capture_job.build_am_trigger(),
+        id=tv_screener_capture_job.JOB_ID_AM,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        tv_screener_capture_job.run,
+        tv_screener_capture_job.build_pm_trigger(),
+        id=tv_screener_capture_job.JOB_ID_PM,
         replace_existing=True,
     )
     return scheduler

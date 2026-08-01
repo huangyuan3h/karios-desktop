@@ -83,12 +83,41 @@ Background worker (max 2 concurrent) runs in-process; dedupes active jobs per sc
 
 ## Scheduler
 
-One Python file per cron job under `scheduler/`, with `JOB_ID`, `build_trigger()`, and `run()`. Register in `scheduler/__init__.py`.
+One Python file per cron job under `scheduler/`, with `JOB_ID`, `build_trigger()`, and `run()`. Register in `scheduler/__init__.py`. All triggers use `Asia/Shanghai`; APScheduler itself is anchored in UTC with a 12 h `misfire_grace_time`.
 
-- `stock_basic_job`: every Friday 18:00 (Asia/Shanghai). Failures are logged only.
-- `daily_sync_job`: full daily sync every Friday 17:00 (Asia/Shanghai), fallback only. Failures are logged only.
-- `adj_factor_job`: full adj_factor sync every Friday 17:00 (Asia/Shanghai), fallback only. Failures are logged only.
-- `close_sync_job`: runs daily 17:10 (Asia/Shanghai); checks trade calendar and skips on non-trading days.
+Daily / weekday post-close chain:
+
+- `close_sync_job` — daily 17:10 weekdays; pulls daily + adj_factor by `trade_date`; runs `run_post_close_sync()` (index_daily, macro_daily, etf_fund_flow, option_iv, top_inst, em_industry).
+- `close_catchup_job` — every 10 min weekdays 17:00–23:00; heals missed `close_sync` runs.
+- `index_daily_job` — weekdays 16:30; `pro.index_daily` for SH/SZ/CSI300.
+- `index_basic_job` — weekdays 17:15; `pro.index_dailybasic` (market breadth for `macro_snapshot`).
+- `hk_daily_job` — daily 17:30; HK K-line incremental sync (akshare → yfinance → tushare).
+- `watchlist_automation_job` — weekdays 17:30; post-close GC + screener import + Alpha Radar add.
+- `cn_industry_post_close_job` — weekdays 17:35; `industry_fund_flow` + `industry_mainline` + `cn_sentiment` so Dashboard 顶部 is warm without a user click.
+- `eastmoney_industry_job` — weekdays 18:00; incremental East Money industry labels.
+- `hk_industry_job` — daily 02:00; Xueqiu mbu HK industry labels (before HK open 09:30 HKT).
+- `macro_daily_job` — Tue–Sat 07:00; US indices + FX + A50/HSI futures + COMM series.
+
+Weekly / monthly:
+
+- `stock_basic_job` — Fri 18:00; tushare `pro.stock_basic` for IPOs/delistings/name changes.
+- `daily_sync_job` — Fri 17:00; legacy per-stock loop (deprecated; falls through to `close_sync`).
+- `adj_factor_job` — Fri 17:00; full `adj_factor` safety net.
+- `hk_basic_job` — 1st of month 03:30.
+- `fund_basic_job` — 1st of month 04:00.
+- `etf_daily_job` — 1st of month 19:00; full ETF K-line backfill.
+
+Continuous (interval triggers):
+
+- `news_fetch_job` — every 4h; RSS fetch + 72h prune.
+- `alpha_radar_ingest_job` — every 4h; RSSHub + English RSS ingest.
+- `alpha_radar_process_job` — every 1h; LLM batch on raw docs.
+- `alpha_radar_fetch_job` — every 12h; full pipeline (cooldown 12h).
+- `tv_screener_capture_job` — weekdays 09:30 (AM) + 15:30 (PM); enqueues all enabled TradingView screeners into `tv_capture_jobs`. The in-process `tv_capture_worker` (max 2 concurrent) consumes the queue; results land as `tv_snapshots`.
+
+Always-on background worker (not a cron, but started in `lifespan`):
+
+- `tv_capture_worker` — drains `tv_capture_jobs` table; max 2 concurrent captures; dedupes active jobs per screener.
 
 ## Sync job record
 

@@ -24,9 +24,13 @@ describe('SCHEDULER_JOB_CATALOG', () => {
         'stock_adj_factor_full',
         'stock_close_catchup',
         'index_daily_full',
+        'index_basic_sync',
         'macro_daily_full',
         'eastmoney_industry_sync',
         'watchlist_automation',
+        'cn_industry_post_close_sync',
+        'tv_screener_capture_am',
+        'tv_screener_capture_pm',
         'alpha_radar_pipeline',
         'alpha_radar_ingest',
         'alpha_radar_process',
@@ -57,6 +61,13 @@ describe('SCHEDULER_JOB_CATALOG', () => {
       expect(m.titleCn).toMatch(/港股/);
       expect(m.scheduleCn.length).toBeGreaterThan(0);
     }
+  });
+
+  it('has both AM and PM TradingView capture jobs', () => {
+    const tv = SCHEDULER_JOB_CATALOG.filter((m) => m.group === 'tvScreener');
+    expect(tv.map((m) => m.jobType).sort()).toEqual(
+      ['tv_screener_capture_am', 'tv_screener_capture_pm'].sort(),
+    );
   });
 
   it('every job has a group entry in SCHEDULER_GROUP_META', () => {
