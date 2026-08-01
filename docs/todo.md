@@ -32,7 +32,7 @@
 | §2 收益 / 交易 | TIP-009 alpha 映射抽检 / TIP-011 开火归因 | 数据源质量审计 | TIP-001~008 + V6.2/3 已沉淀（`trading-improvement-checklist.md`） |
 | §3 API 开放 | — | API Key 配额 + 限流 | ✅ 已归档 → `archive/2026-08-01-opt-045-v1-api-surface.md`（OPT-045/046/047 整圈）|
 | §4 工程与部署 | — | DB 走向决策 / Docker 一键 | ✅ Tunnel 脚本骨架 → `optimization-checklist.md` OPT-048（端到端验证 pending） |
-| §5 数据源 / 浏览器 | — | ego-lite 调研、付费 API 矩阵 | ✅ 数据源审计 → [`archive/2026-08-01-opt-050-data-source-audit.md`](./archive/2026-08-01-opt-050-data-source-audit.md)；续 Tushare 200/年，不引 Wind/Choice/iFinD/聚宽 |
+| §5 数据源 / 浏览器 | — | ego-lite 调研、付费 API 矩阵 | ✅ ego-lite spike done 2026-08-01（`designs/ego-lite-spike-2026-08.md`）；数据源审计 done 2026-08-01 |
 | §6 新闻 / 研报 | — | 研报源评估、是否独立 | `OPT-037/038/039` News Query 并行化 |
 | §7 多市场 | — | 美股 / 加拿大时区 | `OPT-041/042/043/044` HK + ETF 已通 |
 | §8 回测 | — | BacktestPage 重写（等 paper 数据） | ✅ paper-trading v0 → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；历史 BacktestPage 已隐藏 |
@@ -121,11 +121,7 @@
 
 > chrome 后台抓 TV 池子 → 不能上云 + 重。需要更轻量的方案。
 
-- **[P1] ego-lite 调研**：`https://github.com/citrolabs/ego-lite`
-  - 验证：是否真的能替代 Chrome 抓 screener
-  - 验证：HTTP/无头、是否支持并发、是否合规反爬
-  - 验证：能否容器化跑（云部署前提）
-  - 写调研结论到 `archive/YYYY-MM-ego-lite-eval.md`
+- **[P1] ego-lite 调研**：✅ **done 2026-08-01** → [`designs/ego-lite-spike-2026-08.md`](./designs/ego-lite-spike-2026-08.md)（结论：用 TV Scanner API 替代 Chrome，无需浏览器；Chrome 作为 fallback 6 个月后 deprecate）
 - **[P1] 付费 API 矩阵**：对比候选源 → 写 `archive/YYYY-MM-datasource-matrix.md`：
   - Tushare Pro / Tushare HK / 聚宽 / 通达信 L2 / iFinD / Wind mini / Choice
   - 维度：覆盖范围（CN/HK/US）、价格、限频、数据质量、稳定性
@@ -224,6 +220,7 @@
 | 2026-08-01 | OPT-051 / §12 #5：API Key 多 Key + 三窗口滑动配额 + /v1/quota + Swagger/Redoc + docs/api/openapi.md | [`archive/2026-08-01-opt-051-api-key-quota-openapi.md`](./archive/2026-08-01-opt-051-api-key-quota-openapi.md) |
 | 2026-08-01 | OPT-052 / §12 #6：Alpha Radar 扩展 HK 标的识别（hk_mapping prompt + resolve_hk_mapping + trend_json.hkSymbols + aggregate 合并 + watchlist HK 跳过 EM industry 闸门）| [`archive/2026-08-01-opt-052-alpha-radar-hk.md`](./archive/2026-08-01-opt-052-alpha-radar-hk.md) |
 | 2026-08-01 | OPT-053 / §12 #10：DB 走向决策（5 选项对比 + 备份 3 副本 + 6 触发条件 + 半年期复审）| [`archive/2026-08-01-opt-053-db-direction.md`](./archive/2026-08-01-opt-053-db-direction.md)（决策真值在 `designs/db-direction-2026-08.md`）|
+| 2026-08-01 | §12 #8 ego-lite spike：Chrome capture 替代方案调研（TV Scanner API 发现 + spike 验证）| [`designs/ego-lite-spike-2026-08.md`](./designs/ego-lite-spike-2026-08.md) |
 | 2026-07-27 | V6.3 极端资金流豁免 `INTRADAY_OVERFLOW_OVERRIDE` + Alpha S TrendOK recovering | 见 `trading-improvement-checklist.md` V6.3 节 |
 | 2026-07-24 | V6.2 14:30 尾盘时间锁 + 防守双轨袖子 + Zero-Pos 归零清场 | 见 `trading-improvement-checklist.md` V6.2 节 |
 | 2026-07-22 | 漏斗转化率 / Pullback 主宇宙校准 / Alpha 进池闸 / Alpha GC 对称化 | 见 `trading-improvement-checklist.md` TIP-001~006 |
@@ -271,11 +268,11 @@
 | 1 | **OpenAI 兼容 `/v1/*` + AI 助手可发现性** | §3 API | 4-5 天 | BE schema 已有 | ✅ **done 2026-08-01** → 摘要 [`archive/2026-08-01-opt-045-v1-api-surface.md`](./archive/2026-08-01-opt-045-v1-api-surface.md)；OPT-045/046/047 整圈闭合，49 v1/* 单测全绿 |
 | 2 | **Cloudflare Tunnel 部署** | §4 工程 | 0.5 天 | 域名已在 Route53 | ✅ **done 2026-08-01（脚本骨架）** → `scripts/start-quick-tunnel.sh` + `setup-named-tunnel.sh` + `docs/designs/cloudflare-tunnel-setup.md`；真实端到端验证 pending（需用户装 cloudflared，brew install cloudflared） |
 | 3 | **paper-trading daily 启动** | §8 回测 | 2-3 天 | bars 数据已全 | ✅ **done 2026-08-01（v0 CN only）** → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；paper_trades 表 + 2 cron + 2 /v1 endpoint + 19 单测全绿 |
-| 4 | **数据源质量审计**（出决策文档） | §3 收益 + §6 数据源 | 1 天 | — | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-050-data-source-audit.md`](./archive/2026-08-01-opt-050-data-source-audit.md)；续 Tushare 200/年；不引 Wind/Choice/iFinD/聚宽；ego-lite 留 P2；healthcheck 脚本就绪 |
+| 4 | **数据源质量审计**（出决策文档） | §3 收益 + §6 数据源 | 1 天 | — | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-050-data-source-audit.md`](./archive/2026-08-01-opt-050-data-source-audit.md)；续 Tushare 200/年；不引 Wind/Choice/iFinD/聚宽；healthcheck 脚本就绪 |
 | 5 | **API Key 配额 + 人类可读 OpenAPI 文档** | §3 API | 1-2 天 | #1 完成 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-051-api-key-quota-openapi.md`](./archive/2026-08-01-opt-051-api-key-quota-openapi.md)；多 Key + label:secret:rpm:rph:rpd 格式（向后兼容旧）；三窗口滑动配额 in-mem；/v1/quota 自查；FastAPI metadata + openapi_tags + Swagger UI + ReDoc；23+11 单测全绿 |
 | 6 | **Alpha Radar 扩展 HK 标的识别**（原 "HK Alpha S 自动归类"，已改名更精确）| §3 收益 | 2-3 天（实际 1）| `OPT-044` 已通 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-052-alpha-radar-hk.md`](./archive/2026-08-01-opt-052-alpha-radar-hk.md)；ai-service hk_mapping prompt 字段 + python resolve_hk_mapping + trend_json.hkSymbols + aggregate_catalyst_stocks 合并 CN+HK + compute_alpha_additions 跳过 HK EM industry 闸门；13+1 单测全绿 |
 | 7 | **Docker 一键起 + UPS 自动恢复** | §4 工程 | 1-2 天 | docker-compose 已有 | 出门断电 / 重启全自动恢复 |
-| 8 | **ego-lite 调研结论** | §6 数据源 | 2-3 天 | — | 决定能否替代 Chrome 抓 TV |
+| 8 | **ego-lite 调研结论** | §6 数据源 | 0.5 天（实际 spike） | — | ✅ **done 2026-08-01** → [`designs/ego-lite-spike-2026-08.md`](./designs/ego-lite-spike-2026-08.md)；结论：用 TV Scanner API（`scanner.tradingview.com/global/scan`）替代 Chrome capture，无需浏览器/Playwright/login，30+ 字段，CN stocks 支持；详见 spike 文档 |
 | 9 | **付费 API 矩阵评估** | §6 数据源 | 1-2 天 | — | 同上，影响未来上云选型 |
 | 10 | **DB 走向决策文档** | §4 工程 | 0.5 天 | — | ✅ **done 2026-08-01** → [`designs/db-direction-2026-08.md`](./designs/db-direction-2026-08.md)（不进 archive——是未拍板后的真值）；5 选项横向对比 + 备份 cron 策略 + 6 触发条件（半年期复审）+ 已知风险；`freelancer-arch.md` + `cloud-deployment-options.md` 链到本文档 |
 | 11 | **形态迁移（Tauri 降级）** | §2 定位 | 1 天 | — | 长期减少维护面 |
@@ -337,3 +334,49 @@
 
 **每日 / 每周加 1 条**：
 - 跑 `bash services/data-sync-service/scripts/data-source-healthcheck.sh` → 失败立即处理（不囤）
+
+---
+
+## 13. Longevity · 系统长期生命力（用户 2026-08-01 真痛点）
+
+> **用户原话**："我关心的无非换电脑也能正常跑这个系统，让这个系统长期有生命力，远程也能访问这几个痛点。"
+>
+> **决策真值**：[`docs/designs/karios-longevity-2026-08.md`](./designs/karios-longevity-2026-08.md)（2026-08-01 立）
+
+| 痛点 | 现状 | §13 行动项 |
+|------|------|-----------|
+| **换电脑也能跑** | 当前 1-3 天 | §12 #7 Docker 一键起（1-2 天）→ 降到 2 小时 |
+| **数据独立于 Mac** | 本地 PG 单点 | §13 #1 Neon 只读副本 + 定时 sync（1 天）|
+| **远程访问兜底** | 仅 Cloudflare Tunnel | §13 #2 Tailscale Funnel fallback（0.5 天）|
+| **Mac 长期关机 fallback** | 不支持 | §13 #3 临时 VM Hetzner €4/月按月开（0.5 天）|
+
+> **核心约束**：**Mac 永远在线 / 你永远想维护** = 信仰，不是契约。Longevity 的核心是**不依赖单一维护者 + 单机**。详见 longevity 文档。
+
+---
+
+## 14. AI Agent 打通 + Chrome 替代（用户 2026-08-01 优先级修正）
+
+> **用户原话**（review §13 时）："远程部署的部分先优先级下降一些，我们先保证这个系统和 我个人的 ai agent 打通以及 chrome 替代方案吧，暂时云还有一段路。"
+>
+> **结果**：§13 远程部署项（Neon 副本 / Tailscale / 临时 VM）**暂缓**；§12 #8 ego-lite 调研**升级为立即做**；新增 §14 AI agent 打通 cookbook。
+
+### §14 行动项
+
+| # | 动作 | 工时 | 状态 |
+|---|------|------|------|
+| **§14 #1** | **AI agent 集成 cookbook**（启动 4 步 + 4 场景 + 错误处理 + 配额监控 + Python/Node client）| 1-2 天 | ✅ **done 2026-08-01** → [`integrations/ai-agent-cookbook.md`](./integrations/ai-agent-cookbook.md)（10 节 + Python/Node client）|
+| §14 #2 | `/v1/*` 持续稳定保证（含 rate limit retry cookbook）| 1 天 | 等 §14 #1 跑通 |
+| §14 #3 | 决策/告警 webhook（AI agent 订阅 Karios 事件）| 1-2 天 | 设计稿 |
+| §12 #8 | **ego-lite 调研 spike**（TV 数据不依赖 Chrome）| 0.5 天（实际） | ✅ done 2026-08-01 → `designs/ego-lite-spike-2026-08.md`：TV Scanner API 替代 Chrome |
+| §12 #8.5 | ego-lite 决策：替代 Chrome / 保留 Chrome / 折中 | 0.5 天 | ✅ done 2026-08-01（决策已在 spike 中拍板：重构 TV Capture 为 API 模式，Chrome 作为 fallback 6 个月后 deprecate）|
+
+### §13 远程部署暂缓（用户 review 后）
+
+| 项 | 状态 | 暂缓触发 |
+|----|------|----------|
+| §13 #1 Neon 只读副本 | 🟡 暂缓 | 用户："暂时云还有一段路" |
+| §13 #2 Tailscale Funnel | 🟡 暂缓 | 同上 |
+| §13 #3 临时 VM fallback | 🟡 暂缓 | 同上 |
+| §12 #7 Docker 一键起 | 🟢 仍建议 | **换电脑 + 长期生命力痛点不依赖云**——可独立做 |
+
+> **保留项**：§12 #7 Docker 一键起——痛点 1（换电脑）**不依赖云**，仍可独立推进。

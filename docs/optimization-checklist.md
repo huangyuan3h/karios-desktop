@@ -994,6 +994,9 @@ P2 加：`pnl_pct >= +10%`（`target_hit`）+ `score 跌穿`（`score_floor`）+
 | 2026-08-01 | OPT-051 / §12 #5 完成：API Key 多 Key + 三窗口滑动配额（in-mem）+ /v1/quota + FastAPI metadata + openapi_tags + Swagger/Redoc + 8 节人类可读 `docs/api/openapi.md`；23+11 单测全绿（向后兼容旧 KARIOS_API_KEYS 格式）|
 | 2026-08-01 | OPT-052 / §12 #6 完成：Alpha Radar 扩展 HK 标的识别（ai-service 加 hk_mapping 字段 + python resolve_hk_mapping + trend_json.hkSymbols + aggregate_catalyst_stocks 合并 CN+HK + compute_alpha_additions 跳过 HK EM industry 闸门）；13+1 单测全绿 |
 | 2026-08-01 | OPT-053 / §12 #10 完成：DB 走向决策（5 选项对比 + 备份 3 副本策略 + 6 触发条件 + 半年期复审 2027-02-01）；决策真值 → `docs/designs/db-direction-2026-08.md`；零代码改动，纯文档拍板 |
+| 2026-08-01 | **OPT-054 触发**：用户 review 后明确真痛点（换电脑 / 长期生命力 / 远程访问）→ 新建 `docs/designs/karios-longevity-2026-08.md`（系统级真值），§13 todo；DB 决策保持 + 加 §13 行动项（Docker / Neon 副本 / Tailscale / 临时 VM）|
+| 2026-08-01 | **OPT-055 / §14 立**：用户 review 后暂缓远程部署项（§13 #1/#2/#3）+ 提级 §14 #1 AI agent 打通 + §12 #8 ego-lite 调研；新建 `docs/integrations/ai-agent-cookbook.md`（目标）|
+| 2026-08-01 | **OPT-055 §14 #1 完成**：AI Agent 集成 cookbook 10 节（4 步启动 + 4 场景 + 错误处理 + 配额监控 + Python/Node client + 上线 checklist + FAQ）；`docs/integrations/ai-agent-cookbook.md` |
 
 ---
 

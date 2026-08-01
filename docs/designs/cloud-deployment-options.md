@@ -1,10 +1,12 @@
 # Cloud Deployment Options — 评估与决策
 
-> **关联 todo**：[§2 形态决策](../todo.md) · [§4 工程与部署](../todo.md) · [§5 数据源](../todo.md)  
-> **结论**：**不上云**。改为「Mac 当 homelab + Cloudflare Tunnel 暴露 + AI 助手在本地主动推送」的本地优先架构。  
+> **关联 todo**：[§2 形态决策](../todo.md) · [§4 工程与部署](../todo.md) · [§5 数据源](../todo.md) · [§13 Longevity](../todo.md)
+> **结论**：**不上云**。改为「Mac 当 homelab + Cloudflare Tunnel 暴露 + AI 助手在本地主动推送」的本地优先架构。
 > **决议日**：2026-08-01
 >
 > **DB 维度的具体决策**（备份 / HA / 触发条件 / 复审日历）见 [`db-direction-2026-08.md`](./db-direction-2026-08.md)。本文档只覆盖整体架构。
+>
+> **系统级痛点真值**（换电脑 / 长期生命力 / 远程访问）见 [`karios-longevity-2026-08.md`](./karios-longevity-2026-08.md)。**先读那个再读本文档**——能避免讨论错位。
 
 ---
 
