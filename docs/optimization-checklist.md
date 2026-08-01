@@ -795,6 +795,55 @@ Phase A 给了 4 个发现性 endpoint，Phase B 给了 3 个业务 endpoint。P
 - ❌ bump 脚本自动 commit（让人 review 后手 commit）
 - ❌ `/v1/explain` 路径变化（破坏 AI 助手缓存的 schema）
 
+---
+
+### OPT-048：Cloudflare Tunnel 部署（todo §12 #2）
+
+**状态**：[x] 脚本骨架 done · 真实端到端验证 pending（需用户装 cloudflared）  
+**完成日期**：2026-08-01（脚本/文档/测试）  
+**优先级**：P1（todo §12 #2）  
+**关联 todo**：[§4 工程与部署 P1](../todo.md) · [§12 实施清单 #2](../todo.md) · [§11 自由人](../todo.md)  
+**关联设计稿**：[`docs/designs/cloud-deployment-options.md`](../designs/cloud-deployment-options.md) · [`docs/designs/freelancer-architecture.md`](../designs/freelancer-architecture.md) · [`docs/designs/cloudflare-tunnel-setup.md`](../designs/cloudflare-tunnel-setup.md)（新建）
+
+#### 背景
+
+`/v1/*` 端到端完成（OPT-045/046/047），但 Karios 仍只在 `127.0.0.1:4310` 监听。外部 AI 助手（Telegram 推送代理 / 钓鱼旅行时）无法跨网调。
+
+按 [`docs/designs/cloud-deployment-options.md`](../designs/cloud-deployment-options.md) 决议：**不上云**，**用 Cloudflare Tunnel 把本地服务暴露到公网**，套在自己域名上。
+
+#### 目标
+
+- **Quick Tunnel 脚本**（零配置，立即可用，URL 含 `*.trycloudflare.com`）：`scripts/start-quick-tunnel.sh`
+- **Named Tunnel 脚本**（生产模式，套自有域名）：`scripts/setup-named-tunnel.sh`
+- **人类可读 setup 文档**：`docs/designs/cloudflare-tunnel-setup.md`（含两种方案 + 域名配置 + 验证步骤 + 回退到 Tailscale Funnel）
+- **测试覆盖**：`tests/test_tunnel_scripts.py` —— 脚本存在 + 可执行 + 文档完整 + 路径引用正确（**不真连 Cloudflare**）
+- **职责边界明确**：Tunnel 跑在 macOS 上，由用户登录时 launchd 启动（**不进 Docker**）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Script | `services/data-sync-service/scripts/start-quick-tunnel.sh`（**新**）|
+| Script | `services/data-sync-service/scripts/setup-named-tunnel.sh`（**新**）|
+| Design | `docs/designs/cloudflare-tunnel-setup.md`（**新**）|
+| Tests | `services/data-sync-service/tests/test_tunnel_scripts.py`（**新**）|
+| Todo | `docs/todo.md` §12 #2 标 done + 链接到 archive |
+
+#### 验证
+
+- [x] `bash scripts/start-quick-tunnel.sh` 检测 cloudflared 是否已装；缺时给安装指引（`test_quick_tunnel_help` + 错误路径）
+- [x] `bash scripts/setup-named-tunnel.sh --help` 打印 3 步流程（`test_named_tunnel_help`）
+- [x] `docs/designs/cloudflare-tunnel-setup.md` 含 4 节：why / quick-tunnel / named-tunnel / 验证 + 回退（`test_setup_doc_has_four_main_sections`）
+- [x] `pytest tests/test_tunnel_scripts.py --no-cov` 全绿：**12 passed + 1 skipped**（skipped = cloudflared 未装的 preflight 测试）
+- [ ] 真实端到端验证（**等用户装好 cloudflared 后**）：`cloudflared tunnel --url http://127.0.0.1:4310` 拿到 trycloudflare URL → 外部 `curl /v1/version` 返回 200 → 在 `archive/` 写 `opt-048-cloudflare-tunnel-verified.md`
+
+#### 反模式
+
+- ❌ Tunnel 进 Docker（Cloudflare 客户端不该在容器里漂移；macOS launchd 才是 host 守护）
+- ❌ 把 cloudflared token 写进 git（用 `~/.cloudflared/` 目录 + 600 权限）
+- ❌ 把 quick-tunnel URL 写进 .env（URL 每次重启会变；应该从 cloudflared 启动日志抓）
+- ❌ 用 Tunnel 暴露 dev-only 内部服务（`/market/stocks/...` 等）—— 只暴露 `/v1/*` 业务 + `/docs` FastAPI Swagger
+
 ## 审查记录
 
 | 日期 | 说明 |
@@ -806,6 +855,7 @@ Phase A 给了 4 个发现性 endpoint，Phase B 给了 3 个业务 endpoint。P
 | 2026-08-01 | OPT-046 规划：Phase B — 3 个只读业务 endpoint（/v1/market/snapshot + /v1/watchlist/items + /v1/decision-journal/query） |
 | 2026-08-01 | OPT-046 完成：3 个只读业务 endpoint + 18 单测全绿；test_api 无 regression |
 | 2026-08-01 | OPT-047 完成：/v1/explain/{symbol} + docs/api/ 6 份人类可读 + scripts/bump-api-version.sh；49 v1/* 单测全绿 |
+| 2026-08-01 | OPT-048 脚本骨架完成：scripts/start-quick-tunnel.sh + setup-named-tunnel.sh + docs/designs/cloudflare-tunnel-setup.md + 12 单测全绿（真实端到端验证等用户装 cloudflared）|
 
 ---
 
