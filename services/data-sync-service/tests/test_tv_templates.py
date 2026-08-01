@@ -28,13 +28,27 @@ def test_karios_pullback_cn_filter_shape():
     # TV Scanner API filter is now an array (not {"and": [...]}).
     assert isinstance(f, list)
     left_ops = {entry["left"]: entry for entry in f}
-    # Pullback contract (TIP-006): 市值 ≥ 30B
+    # Pullback contract: 市值 ≥ 3B
     assert left_ops["market_cap_basic"]["operation"] == "greater"
-    assert left_ops["market_cap_basic"]["right"] == 30_000_000_000
+    assert left_ops["market_cap_basic"]["right"] == 3_000_000_000
     # RSI 45-75 (EMA crossover + pullback window handled downstream by TrendOK)
     rsi = next(e for e in f if e["left"] == "RSI")
     assert rsi["operation"] == "in_range"
     assert rsi["right"] == [45, 75]
+    # SMA20 > SMA50 (trend filter)
+    sma = next(e for e in f if e["left"] == "SMA20")
+    assert sma["operation"] == "greater"
+    assert sma["right"] == "SMA50"
+    # EMA50 > EMA200 (trend filter)
+    ema = next(e for e in f if e["left"] == "EMA50")
+    assert ema["operation"] == "greater"
+    assert ema["right"] == "EMA200"
+    # Sector filter (16 sectors, excluding Finance and Utilities)
+    sector = left_ops["sector"]
+    assert sector["operation"] == "in_range"
+    assert len(sector["right"]) == 16
+    assert "Finance" not in sector["right"]
+    assert "Utilities" not in sector["right"]
 
 
 def test_falcon_launch_v2_cn_filter_shape():
@@ -69,6 +83,13 @@ def test_hk_template_universe_filter():
     assert t is not None
     exchange = next(e for e in t.filter_json if e["left"] == "exchange")
     assert exchange["right"] == "HKEX"
+    # Sector filter (18 sectors, excluding Finance and Utilities)
+    left_ops = {entry["left"]: entry for entry in t.filter_json}
+    sector = left_ops["sector"]
+    assert sector["operation"] == "in_range"
+    assert len(sector["right"]) == 18
+    assert "Finance" not in sector["right"]
+    assert "Utilities" not in sector["right"]
 
 
 def test_us_template_universe_filter():
@@ -76,6 +97,18 @@ def test_us_template_universe_filter():
     assert t is not None
     exchange = next(e for e in t.filter_json if e["left"] == "exchange")
     assert exchange["right"] == ["NASDAQ", "NYSE", "AMEX"]
+    # Verify new conditions
+    left_ops = {entry["left"]: entry for entry in t.filter_json}
+    assert left_ops["market_cap_basic"]["right"] == 3_000_000_000
+    assert left_ops["Perf.Y"]["operation"] == "greater"
+    assert left_ops["SMA20"]["right"] == "SMA50"
+    assert left_ops["EMA50"]["right"] == "EMA200"
+    # Sector filter (18 sectors, excluding Finance and Utilities)
+    sector = left_ops["sector"]
+    assert sector["operation"] == "in_range"
+    assert len(sector["right"]) == 18
+    assert "Finance" not in sector["right"]
+    assert "Utilities" not in sector["right"]
 
 
 def test_templates_have_required_columns():

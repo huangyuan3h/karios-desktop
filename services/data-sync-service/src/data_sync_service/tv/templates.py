@@ -57,6 +57,11 @@ _DEFAULT_API_COLUMNS: list[str] = [
     "price_earnings_ttm",  # P/E
     "RSI",
     "MACD.macd",
+    "SMA20",         # 20-day SMA (for filter + display)
+    "SMA50",         # 50-day SMA (for filter + display)
+    "EMA50",         # 50-day EMA (for filter)
+    "EMA200",        # 200-day EMA (for filter)
+    "Perf.Y",        # YTD performance (for filter + display)
     "High.Interval52Week",  # High 52W (for downstream TrendOK)
 ]
 
@@ -64,56 +69,101 @@ _DEFAULT_API_COLUMNS: list[str] = [
 def _karios_pullback_filter_cn() -> list[dict[str, Any]]:
     """Karios Pullback v3 — A 股主合同 (TIP-006).
 
-    Strategy Contract: 趋势回踩 5-15%，市值 ≥ 30B，EMA 多头，RSI 45-75。
-
-    Scanner API pre-filter (coarse — TrendOK handles fine-grained EMA
-    crossover + pullback window + pullback_pct downstream):
+    与旧 Chrome screener 对齐的条件（Scanner API 可实现部分）：
 
     - exchange ∈ [SSE, SZSE] (A 股 only)
-    - market_cap_basic ≥ 30B (large-cap universe)
-    - price_earnings_ttm > 0 (exclude negative-PE / loss-making)
-    - RSI ∈ [45, 75] (not overbought, not oversold)
-
-    NOTE: TV Scanner API expects `filter` to be an array of conditions.
-    Multiple conditions in the array are ANDed together.
+    - market_cap_basic ≥ 3B (市值 ≥ 300 亿人民币)
+    - price_earnings_ttm > 0 (排除亏损股)
+    - Perf.Y > 0 (年初至今涨幅为正)
+    - RSI ∈ [45, 75] (RSI 45-75，强势但未超买)
+    - SMA20 > SMA50 (短期均线在长期均线之上)
+    - EMA50 > EMA200 (中期趋势向上，金叉状态)
+    - sector ∈ 16 个行业 (排除 Finance 和 Utilities)
     """
     return [
         {"left": "exchange", "operation": "in_range", "right": ["SSE", "SZSE"]},
-        {"left": "market_cap_basic", "operation": "greater", "right": 30_000_000_000},
+        {"left": "market_cap_basic", "operation": "greater", "right": 3_000_000_000},
         {"left": "price_earnings_ttm", "operation": "greater", "right": 0},
+        {"left": "Perf.Y", "operation": "greater", "right": 0},
         {"left": "RSI", "operation": "in_range", "right": [45, 75]},
+        {"left": "SMA20", "operation": "greater", "right": "SMA50"},
+        {"left": "EMA50", "operation": "greater", "right": "EMA200"},
+        {"left": "sector", "operation": "in_range", "right": [
+            "Commercial Services", "Communications", "Consumer Durables",
+            "Consumer Non-Durables", "Distribution Services",
+            "Electronic Technology", "Energy Minerals", "Health Services",
+            "Health Technology", "Industrial Services", "Non-Energy Minerals",
+            "Process Industries", "Producer Manufacturing", "Retail Trade",
+            "Technology Services", "Transportation",
+        ]},
     ]
 
 
 def _karios_pullback_filter_hk() -> list[dict[str, Any]]:
     """Karios Pullback v3 (HK) — 港股主合同。
 
+    与旧 Chrome screener 对齐的条件（Scanner API 可实现部分）：
+
     - exchange = HKEX (港股 only)
-    - market_cap_basic ≥ 30B
-    - price_earnings_ttm > 0
-    - RSI ∈ [45, 75]
+    - market_cap_basic ≥ 3B (市值 ≥ 30 亿港币)
+    - price_earnings_ttm > 0 (排除亏损股)
+    - Perf.Y > 0 (年初至今涨幅为正)
+    - RSI ∈ [45, 75] (RSI 45-75，强势但未超买)
+    - SMA20 > SMA50 (短期均线在长期均线之上)
+    - EMA50 > EMA200 (中期趋势向上，金叉状态)
+    - sector ∈ 18 个行业 (排除 Finance 和 Utilities)
     """
     return [
         {"left": "exchange", "operation": "equal", "right": "HKEX"},
-        {"left": "market_cap_basic", "operation": "greater", "right": 30_000_000_000},
+        {"left": "market_cap_basic", "operation": "greater", "right": 3_000_000_000},
         {"left": "price_earnings_ttm", "operation": "greater", "right": 0},
+        {"left": "Perf.Y", "operation": "greater", "right": 0},
         {"left": "RSI", "operation": "in_range", "right": [45, 75]},
+        {"left": "SMA20", "operation": "greater", "right": "SMA50"},
+        {"left": "EMA50", "operation": "greater", "right": "EMA200"},
+        {"left": "sector", "operation": "in_range", "right": [
+            "Commercial Services", "Communications", "Consumer Durables",
+            "Consumer Non-Durables", "Consumer Services", "Distribution Services",
+            "Electronic Technology", "Energy Minerals", "Health Services",
+            "Health Technology", "Industrial Services", "Miscellaneous",
+            "Non-Energy Minerals", "Process Industries", "Producer Manufacturing",
+            "Retail Trade", "Technology Services", "Transportation",
+        ]},
     ]
 
 
 def _karios_pullback_filter_us() -> list[dict[str, Any]]:
     """Karios Pullback v3 (US) — 美股主合同。
 
+    与旧 Chrome screener 对齐的条件（Scanner API 可实现部分）：
+
     - exchange ∈ [NASDAQ, NYSE, AMEX] (美股 only)
-    - market_cap_basic ≥ 30B
-    - price_earnings_ttm > 0
-    - RSI ∈ [45, 75]
+    - market_cap_basic ≥ 3B (市值 ≥ 30 亿美元)
+    - price_earnings_ttm > 0 (排除亏损股)
+    - Perf.Y > 0 (年初至今涨幅为正)
+    - RSI ∈ [45, 75] (RSI 45-75，强势但未超买)
+    - SMA20 > SMA50 (短期均线在长期均线之上)
+    - EMA50 > EMA200 (中期趋势向上，金叉状态)
+    - sector ∈ 18 个行业 (排除 Finance 和 Utilities)
+
+    注：Revenue growth 和 close > EMA20/50 在 Scanner API 中不可用。
     """
     return [
         {"left": "exchange", "operation": "in_range", "right": ["NASDAQ", "NYSE", "AMEX"]},
-        {"left": "market_cap_basic", "operation": "greater", "right": 30_000_000_000},
+        {"left": "market_cap_basic", "operation": "greater", "right": 3_000_000_000},
         {"left": "price_earnings_ttm", "operation": "greater", "right": 0},
+        {"left": "Perf.Y", "operation": "greater", "right": 0},
         {"left": "RSI", "operation": "in_range", "right": [45, 75]},
+        {"left": "SMA20", "operation": "greater", "right": "SMA50"},
+        {"left": "EMA50", "operation": "greater", "right": "EMA200"},
+        {"left": "sector", "operation": "in_range", "right": [
+            "Commercial services", "Communications", "Consumer durables",
+            "Consumer non-durables", "Consumer services", "Distribution services",
+            "Electronic technology", "Energy minerals", "Health services",
+            "Health technology", "Industrial services", "Miscellaneous",
+            "Non-energy minerals", "Process industries", "Producer manufacturing",
+            "Retail trade", "Technology services", "Transportation",
+        ]},
     ]
 
 
