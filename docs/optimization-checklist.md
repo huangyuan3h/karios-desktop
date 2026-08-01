@@ -678,6 +678,63 @@ Karios 与外部 AI 助手（用户独立项目）唯一的桥是 OpenAI 兼容 
 - ❌ 让 `/v1/schema` 返回手写 JSON（永远 `app.openapi()`）
 - ❌ 在 Phase A 实现 git diff 解析（放到 Phase C）
 
+### OPT-046：OpenAI 兼容 `/v1/*` 业务 endpoint（Phase B）
+
+**状态**：[x] done  
+**完成日期**：2026-08-01  
+**优先级**：P0  
+**关联 todo**：[§3 API 开放 P0](../todo.md) · [§12 实施清单 #1](../todo.md)  
+**前置**：[`OPT-045` Phase A done](./optimization-checklist.md#opt-045openai-兼容-v1--ai-助手可发现性)
+**关联设计稿**：[`docs/designs/api-contract.md`](../designs/api-contract.md)
+
+#### 背景
+
+OPT-045 Phase A 给 AI 助手提供了"稳定的 4 个发现性 endpoint"。但 AI 助手**实际想调**的是业务数据。本 OPT 暴露 3 个只读业务 endpoint，作为 AI 助手"自服务"基础。
+
+#### 目标
+
+3 个**只读**业务 endpoint（**禁止改仓**；写操作走现有 `/watchlist/*` / `/execution/*` 路径）：
+
+| Endpoint | 包装现有 | 用途 |
+|----------|----------|------|
+| `GET /v1/market/snapshot?symbols=...` | `query_routes /market/stocks/trendok` + `/market/stocks/{symbol}/bars` | AI 助手一次拿 N 个标的的 TrendOK / Score / 当前价 / 关键指标 |
+| `GET /v1/watchlist/items` | `watchlist_routes /watchlist/registry` | AI 助手拿当前 watchlist（含 `positionPct` / `costPrice` / Action / Trigger / HardStop）|
+| `GET /v1/decision-journal/query?since=...&limit=...` | `execution_journal_routes /execution/changes` | AI 助手拿近期决策变更（Why 码 + 触发时间）|
+
+**关键设计约束**（继承自 `api-contract.md`）：
+
+- **只读**；改仓走现有 API，不在 `/v1/*` 暴露
+- 字段 `description` 写人话（给 LLM 看的）
+- 每个 endpoint 加 `asOfDate` 字段（数据新鲜度）
+- 鉴权依赖 `require_api_key`（**opt-in**：未配 KARIOS_API_KEYS 时仍可访问，与现有前端一致）
+- 路径前缀 `/v1/`，独立 router（与 `discovery_routes` 区分）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| API | `services/data-sync-service/src/data_sync_service/api/v1_business_routes.py`（**新** — 3 个 endpoint）|
+| App | `services/data-sync-service/src/data_sync_service/main.py`（include router + `dependencies=[require_api_key]`）|
+| Tests | `services/data-sync-service/tests/test_v1_business_endpoints.py`（**新** — 3 endpoint + 鉴权 + description 校验 + 错误码）|
+
+#### 验证
+
+- [x] `GET /v1/market/snapshot?symbols=CN:000001,HK:00700` 返回 200 + 数组
+- [x] `GET /v1/market/snapshot` 缺 symbols → 422
+- [x] `GET /v1/watchlist/items` 返回 200 + `{items, count, asOfDate}`
+- [x] `GET /v1/decision-journal/query?since=YYYY-MM-DD&limit=50` 返回 200 + `{changes, asOfDate}`
+- [x] 业务 endpoint 缺 API Key（启用鉴权时）→ 401
+- [x] `why` 字段在 journal query 中保留（LLM 聚合用）
+- [x] `positionPct` 字段在 watchlist items 中保留 null
+- [x] pytest 全绿：**18/18**（test_v1_business_endpoints） + 17/17（test_discovery） + 19/19（test_api 无 regression）+ 8/8（alembic）= **62/62**
+
+#### 反模式
+
+- ❌ 暴露任何写操作到 `/v1/*`（写仓由前端 / 现有 API 负责）
+- ❌ 字段 description 写"内部代号"（AI 助手无法理解）
+- ❌ 复用现有 router 路径（破坏 `api-contract.md` 路径稳定）
+- ❌ 跳过 `asOfDate` 字段（AI 助手必须知道数据新鲜度）
+
 ---
 
 ## 审查记录
@@ -688,6 +745,8 @@ Karios 与外部 AI 助手（用户独立项目）唯一的桥是 OpenAI 兼容 
 | 2026-06-18 | 第六轮实施完成：OPT-031 ~ OPT-040（backend P0 + frontend P1 Query 收尾） |
 | 2026-08-01 | 第七轮规划：OPT-045 `OpenAI 兼容 /v1/* + AI 助手可发现性`（对应 todo §12 #1） |
 | 2026-08-01 | OPT-045 Phase A 完成：4 稳定发现性 endpoint + API Key 鉴权 + 17 单测全绿 |
+| 2026-08-01 | OPT-046 规划：Phase B — 3 个只读业务 endpoint（/v1/market/snapshot + /v1/watchlist/items + /v1/decision-journal/query） |
+| 2026-08-01 | OPT-046 完成：3 个只读业务 endpoint + 18 单测全绿；test_api 无 regression |
 
 ---
 

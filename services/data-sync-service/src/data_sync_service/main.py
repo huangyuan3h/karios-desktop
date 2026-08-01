@@ -24,6 +24,9 @@ from .api.watchlist_routes import router as watchlist_router
 # OPT-045 Phase A: 4 stable discovery endpoints (no auth — must be reachable
 # before any API key can be issued).
 from .api.discovery_routes import router as discovery_router
+# OPT-045 Phase B / OPT-046: 3 read-only business endpoints under /v1/*.
+# Auth is opt-in (no-op when KARIOS_API_KEYS is empty).
+from .api.v1_business_routes import router as v1_business_router
 from .scheduler import create_scheduler
 from .service.tv_capture_worker import start_tv_capture_worker, stop_tv_capture_worker
 
@@ -66,3 +69,5 @@ app.include_router(watchlist_router)
 # Phase B will add a separate /v1/* business router that depends on
 # api.auth.require_api_key.
 app.include_router(discovery_router)
+# OPT-045 Phase B / OPT-046: read-only business endpoints under /v1/*.
+app.include_router(v1_business_router)

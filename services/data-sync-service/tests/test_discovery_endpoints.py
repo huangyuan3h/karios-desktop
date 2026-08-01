@@ -17,6 +17,24 @@ from data_sync_service.main import app  # type: ignore[import-not-found]
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _reset_settings_cache() -> None:
+    """Clear the @lru_cache on config.get_settings before each test.
+
+    Several tests in this module mutate KARIOS_API_KEYS via monkeypatch. The
+    env change is reverted by monkeypatch at teardown, but the lru_cache on
+    ``config.get_settings`` would otherwise keep serving the stale Settings
+    instance to subsequent tests and break the "auth disabled by default"
+    invariant. Clearing the cache at the start of every test makes each
+    assertion independent of the previous test's env state.
+    """
+    from data_sync_service import config
+
+    config.get_settings.cache_clear()
+    yield
+    config.get_settings.cache_clear()
+
+
 # ---------------------------------------------------------------------------
 # /v1/version
 # ---------------------------------------------------------------------------
@@ -173,12 +191,9 @@ def test_discovery_unaffected_by_invalid_auth_header() -> None:
 @pytest.mark.asyncio
 async def test_require_api_key_disabled_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
     """When KARIOS_API_KEYS is empty the dependency must accept any request."""
+    from data_sync_service import config
     from data_sync_service.api.auth import require_api_key
 
-    # Re-bind settings cache to a known empty-keys state.
-    from data_sync_service import config
-
-    config.get_settings.cache_clear()
     monkeypatch.setenv("KARIOS_API_KEYS", "")
     config.get_settings.cache_clear()
 
