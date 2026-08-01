@@ -32,7 +32,7 @@
 | §2 收益 / 交易 | TIP-009 alpha 映射抽检 / TIP-011 开火归因 | 数据源质量审计 | TIP-001~008 + V6.2/3 已沉淀（`trading-improvement-checklist.md`） |
 | §3 API 开放 | — | API Key 配额 + 限流 | ✅ 已归档 → `archive/2026-08-01-opt-045-v1-api-surface.md`（OPT-045/046/047 整圈）|
 | §4 工程与部署 | — | DB 走向决策 / Docker 一键 | ✅ Tunnel 脚本骨架 → `optimization-checklist.md` OPT-048（端到端验证 pending） |
-| §5 数据源 / 浏览器 | — | ego-lite 调研、付费 API 矩阵 | ✅ ego-lite spike done 2026-08-01（`designs/ego-lite-spike-2026-08.md`）；数据源审计 done 2026-08-01 |
+| §5 数据源 / 浏览器 | — | 付费 API 矩阵 | ✅ TV Scanner API 作为唯一池子（2026-08-01）；ego-lite/Chrome CDP 仅作 fallback；数据源审计 done 2026-08-01 |
 | §6 新闻 / 研报 | — | 研报源评估、是否独立 | `OPT-037/038/039` News Query 并行化 |
 | §7 多市场 | — | 美股 / 加拿大时区 | `OPT-041/042/043/044` HK + ETF 已通 |
 | §8 回测 | — | BacktestPage 重写（等 paper 数据） | ✅ paper-trading v0 → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；历史 BacktestPage 已隐藏 |
@@ -227,7 +227,7 @@
 | 2026-07-22 | 漏斗转化率 / Pullback 主宇宙校准 / Alpha 进池闸 / Alpha GC 对称化 | 见 `trading-improvement-checklist.md` TIP-001~006 |
 | 2026-07-29 | HK + ETF 闸门全打通（OPT-041~044） | 见 `optimization-checklist.md` |
 | 2026-08-01 | OPT-056 / §12 #7：Docker 一键起 + UPS 自动恢复（3 Dockerfile + 4 compose service + 6 脚本 + setup doc + 57 tests）| [`archive/2026-08-01-opt-056-docker-one-click.md`](./archive/2026-08-01-opt-056-docker-one-click.md)（脚本骨架完整，端到端实跑需用户跑 `scripts/docker-up.sh --migrate`）|
-| 2026-08-01 | OPT-057 / §12 #8.5：TV Capture 三轨架构（Scanner API + ego-lite + Chrome fallback）+ 新建 screener 模板化 UI + 5 模板 live API 验证通过 + capture 流程端到端走通 | [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)（47 新单测 + 1055 全绿；Scanner API filter 必须用数组格式 `[{left,op,right}]`；HK country='China'，US country='United States'）|
+| 2026-08-01 | OPT-057 / §12 #8.5：TV Capture 三轨架构（Scanner API + ego-lite + Chrome fallback）+ 新建 screener 模板化 UI + 5 模板 live API 验证通过 + capture 流程端到端走通 | [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)（47 新单测 + 1055 全绿；Scanner API filter 必须用数组格式 `[{left,op,right}]`；HK `exchange=HKEX`，US `exchange∈[NASDAQ,NYSE,AMEX]`；**最终决策**：TV Scanner API 池子基本够用，ego-lite/Chrome CDP 仅作 fallback）|
 
 ---
 
@@ -276,8 +276,8 @@
 | 6 | **Alpha Radar 扩展 HK 标的识别**（原 "HK Alpha S 自动归类"，已改名更精确）| §3 收益 | 2-3 天（实际 1）| `OPT-044` 已通 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-052-alpha-radar-hk.md`](./archive/2026-08-01-opt-052-alpha-radar-hk.md)；ai-service hk_mapping prompt 字段 + python resolve_hk_mapping + trend_json.hkSymbols + aggregate_catalyst_stocks 合并 CN+HK + compute_alpha_additions 跳过 HK EM industry 闸门；13+1 单测全绿 |
 | 7 | **Docker 一键起 + UPS 自动恢复** | §4 工程 + §13 longevity | 1-2 天 | docker-compose 已有 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-056-docker-one-click.md`](./archive/2026-08-01-opt-056-docker-one-click.md)；3 Dockerfile（data-sync / ai-service / desktop-ui+nginx）+ 4 compose service（migrate / data-sync / ai-service / desktop-ui）+ 6 脚本（docker-up/down/status + install-launchd/uninstall-launchd/ups-shutdown）+ 1 setup doc + 57 smoke tests 全绿；旧用户首次实跑必加 `--migrate`；UPS hook 由 nut/apcupsd 外挂触发（macOS 无原生电池 API）|
 | 8 | **ego-lite 调研结论** | §6 数据源 | 0.5 天（实际 spike） | — | ✅ **done 2026-08-01** → [`designs/ego-lite-spike-2026-08.md`](./designs/ego-lite-spike-2026-08.md)；结论：用 TV Scanner API（`scanner.tradingview.com/global/scan`）替代 Chrome capture，无需浏览器/Playwright/login，30+ 字段，CN stocks 支持；详见 spike 文档 |
-| 8.5 | **TV Capture 数据源决策**：候选 C 升级版（API + ego-lite 并行 + Chrome fallback）+ 新建 screener UI 模板化 | §3 + §6 | 3-4 天 | #1 完成 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)；Alembic `0012_tv_screeners_api_mode.py`；5 模板 live API 验证通过 + capture 流程端到端走通；关键发现：Scanner API filter 必须用**数组格式** `[{left,op,right}]`（不支持 `{"and": [...]}`）；column-to-column 比较（如 `close > EMA20`）在 nullable 列上报错；HK `country='China'`，US `country='United States'`；47 新单测 + 1055 全绿；`docs/modules/screener.md` 已更新为三轨架构|
-| 9 | **付费 API 矩阵评估** | §6 数据源 | 1-2 天 | — | 同上，影响未来上云选型 |
+| 8.5 | **TV Capture 数据源决策**：Scanner API 作为唯一池子，ego-lite/Chrome CDP 降级为 fallback | §3 + §6 | 3-4 天 | #1 完成 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)；Alembic `0012_tv_screeners_api_mode.py`；5 模板 live API 验证通过 + capture 流程端到端走通；关键发现：Scanner API filter 必须用**数组格式** `[{left,op,right}]`；HK `exchange=HKEX`，US `exchange∈[NASDAQ,NYSE,AMEX]`；47 新单测 + 1055 全绿；`docs/modules/screener.md` 已更新为三轨架构；**最终决策**：TV Scanner API 池子基本够用，ego-lite/Chrome CDP 仅作 fallback，不作为主要数据源 |
+| 9 | **付费 API 矩阵评估** | §6 数据源 | 1-2 天 | — | 影响未来上云选型 |
 | 10 | **DB 走向决策文档** | §4 工程 | 0.5 天 | — | ✅ **done 2026-08-01** → [`designs/db-direction-2026-08.md`](./designs/db-direction-2026-08.md)（不进 archive——是未拍板后的真值）；5 选项横向对比 + 备份 cron 策略 + 6 触发条件（半年期复审）+ 已知风险；`freelancer-arch.md` + `cloud-deployment-options.md` 链到本文档 |
 | 11 | **形态迁移（Tauri 降级）** | §2 定位 | 1 天 | — | 长期减少维护面 |
 | 12 | **BacktestPage 重写**（基于 paper 数据） | §8 回测 | 3-5 天 | paper-trading 有 N 日数据 | 仅作参数敏感度工具，不作发布依据 |
@@ -380,11 +380,13 @@
 
 ---
 
-## 14. AI Agent 打通 + Chrome 替代（用户 2026-08-01 优先级修正）
+## 14. AI Agent 打通 + TV 数据源决策（用户 2026-08-01 优先级修正）
 
 > **用户原话**（review §13 时）："远程部署的部分先优先级下降一些，我们先保证这个系统和 我个人的 ai agent 打通以及 chrome 替代方案吧，暂时云还有一段路。"
 >
 > **结果**：§13 远程部署项（Neon 副本 / Tailscale / 临时 VM）**暂缓**；§12 #8 ego-lite 调研**升级为立即做**；新增 §14 AI agent 打通 cookbook。
+>
+> **最终决策**（2026-08-01）：TV Scanner API 作为唯一池子基本够用，ego-lite/Chrome CDP 仅作 fallback。Screener 模板化 + Pullback 过滤（-5% ~ -15%）已足够。
 
 ### §14 行动项
 
@@ -394,7 +396,7 @@
 | §14 #2 | `/v1/*` 持续稳定保证（含 rate limit retry cookbook）| 1 天 | 等 §14 #1 跑通 |
 | §14 #3 | 决策/告警 webhook（AI agent 订阅 Karios 事件）| 1-2 天 | 设计稿 |
 | §12 #8 | **ego-lite 调研 spike**（TV 数据不依赖 Chrome）| 0.5 天（实际） | ✅ done 2026-08-01 → `designs/ego-lite-spike-2026-08.md`：TV Scanner API 替代 Chrome |
-| §12 #8.5 | ego-lite 决策：替代 Chrome / 保留 Chrome / 折中 | 0.5 天 | ✅ done 2026-08-01（决策已在 spike 中拍板：重构 TV Capture 为 API 模式，Chrome 作为 fallback 6 个月后 deprecate）|
+| §12 #8.5 | TV Capture 三轨架构（Scanner API + ego-lite + Chrome fallback）| 3-4 天 | ✅ done 2026-08-01 → `archive/2026-08-01-opt-057-tv-capture-three-track.md`；**最终决策**：TV Scanner API 池子基本够用，ego-lite/Chrome CDP 仅作 fallback |
 
 ### §13 远程部署暂缓（用户 review 后）
 

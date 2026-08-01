@@ -247,9 +247,9 @@ Filter Pills 是 TradingView Screener 页面上方显示的筛选条件标签，
 
 | 优先级 | 数据源 | 依赖 | 说明 |
 |--------|--------|------|------|
-| **Primary** | TV Scanner API (`scanner.tradingview.com/global/scan`) | 仅 HTTP | 无需 Chrome/login；POST JSON filter → 返回 30+ 结构化字段 |
-| **Mid-tier** | ego-lite（Playwright headless chromium） | Playwright | 无 Chrome profile；headless 浏览 screener URL → 解析 HTML table |
-| **Legacy** | Chrome CDP（`connect_over_cdp`） | Chrome + login | 已保存的 screener URL 直接访问；保留 6 个月至 2027-02 |
+| **Primary** | TV Scanner API (`scanner.tradingview.com/global/scan`) | 仅 HTTP | **唯一池子**；无需 Chrome/login；POST JSON filter → 返回 30+ 结构化字段 |
+| **Fallback** | ego-lite（Playwright headless chromium） | Playwright | 仅作 fallback；无 Chrome profile；headless 浏览 screener URL → 解析 HTML table |
+| **Legacy** | Chrome CDP（`connect_over_cdp`） | Chrome + login | 仅作 fallback；已保存的 screener URL 直接访问；保留 6 个月至 2027-02 |
 
 **Dispatcher 逻辑**：`service/tv.py` → `_dispatch_capture(mode, filter_json, api_columns, url)` 根据 screener 的 `mode` 字段选择路径：
 - `mode='api'` → Scanner API（primary）→ ego-lite（fallback）→ 失败报错
