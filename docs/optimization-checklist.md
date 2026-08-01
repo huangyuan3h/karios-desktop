@@ -992,6 +992,7 @@ P2 加：`pnl_pct >= +10%`（`target_hit`）+ `score 跌穿`（`score_floor`）+
 | 2026-08-01 | OPT-049 完成：paper-trades 表 + 2 cron + 2 /v1 endpoint + 19 单测全绿（Alembic 0011 + service 关闭条件 + 幂等 intake）|
 | 2026-08-01 | OPT-050 完成：数据源审计 + 5 候选对比 + healthcheck 脚本 + 13 单测全绿（决策稿 → `docs/designs/data-source-audit-2026-08.md`）|
 | 2026-08-01 | OPT-051 / §12 #5 完成：API Key 多 Key + 三窗口滑动配额（in-mem）+ /v1/quota + FastAPI metadata + openapi_tags + Swagger/Redoc + 8 节人类可读 `docs/api/openapi.md`；23+11 单测全绿（向后兼容旧 KARIOS_API_KEYS 格式）|
+| 2026-08-01 | OPT-052 / §12 #6 完成：Alpha Radar 扩展 HK 标的识别（ai-service 加 hk_mapping 字段 + python resolve_hk_mapping + trend_json.hkSymbols + aggregate_catalyst_stocks 合并 CN+HK + compute_alpha_additions 跳过 HK EM industry 闸门）；13+1 单测全绿 |
 
 ---
 

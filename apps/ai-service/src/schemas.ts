@@ -341,6 +341,7 @@ export const AlphaRadarTrendV4Schema = z.object({
   catalyst_grade: AlphaRadarCatalystGradeSchema,
   event_focus: z.string().min(1).max(2000),
   a_share_mapping: z.array(z.string().min(1).max(80)).min(1).max(3),
+  hk_mapping: z.array(z.string().min(1).max(80)).max(3).optional().default([]),
   logic_summary: z.string().min(1).max(30),
 });
 

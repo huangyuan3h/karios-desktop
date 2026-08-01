@@ -59,6 +59,21 @@ function normalizeShareMapping(value: unknown, macroTheme: string): string[] {
   return macroTheme ? [macroTheme.slice(0, 40)] : ['产业趋势'];
 }
 
+function normalizeHkMapping(value: unknown): string[] {
+  const raw = value ?? [];
+  const items: string[] = [];
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      const text = asString(entry);
+      if (text) items.push(text);
+    }
+  } else {
+    const text = asString(raw);
+    if (text) items.push(text);
+  }
+  return [...new Set(items)].slice(0, 3);
+}
+
 function normalizeLogicSummary(value: unknown, fallback: string): string {
   const text = asString(value, fallback) || fallback;
   return text.slice(0, 30);
@@ -105,6 +120,7 @@ export function normalizeAlphaRadarTrendRow(
       row.a_share_mapping ?? row.aShareMapping ?? row.keywords_for_mapping ?? row.keywordsForMapping,
       macroTheme,
     ),
+    hk_mapping: normalizeHkMapping(row.hk_mapping ?? row.hkMapping),
     logic_summary: logicSummary,
     source_index: normalizeSourceIndex(row.source_index ?? row.sourceIndex, idx),
   };

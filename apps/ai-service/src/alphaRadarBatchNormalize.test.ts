@@ -101,6 +101,39 @@ describe('parseAlphaRadarBatchExtract V4', () => {
       expect((result.data.trends[0]?.logic_summary ?? '').length).toBeLessThanOrEqual(30);
     }
   });
+
+  it('accepts hk_mapping as optional and caps at 3 (OPT-052)', () => {
+    const result = parseAlphaRadarBatchExtract({
+      trends: [
+        {
+          macro_theme: '腾讯 AI 资本开支回升',
+          driver_type: 'Global_Tech',
+          catalyst_grade: 'S',
+          event_focus: '腾讯 Q2 capex 同比 +80%',
+          a_share_mapping: ['光环新网'],
+          hk_mapping: ['00700', '腾讯', 'Tencent', 'extra'],
+          logic_summary: 'HK AI 算力 capex 重启',
+          source_index: 0,
+        },
+        {
+          macro_theme: '纯 A 股政策',
+          driver_type: 'Domestic_Policy',
+          catalyst_grade: 'S',
+          event_focus: '设备更新',
+          a_share_mapping: ['三一重工'],
+          logic_summary: '国债驱动设备更新',
+          source_index: 1,
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.trends).toHaveLength(2);
+      expect(result.data.trends[0]?.hk_mapping).toEqual(['00700', '腾讯', 'Tencent']);
+      // Trends without hk_mapping must default to [] (not undefined) so downstream Python can iterate safely.
+      expect(result.data.trends[1]?.hk_mapping).toEqual([]);
+    }
+  });
 });
 
 describe('normalizeAlphaRadarExtract', () => {

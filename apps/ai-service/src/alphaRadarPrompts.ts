@@ -24,16 +24,18 @@ Do NOT output Catalyst_Grade B. If an item only qualifies as B, omit it entirely
 # Output Constraints
 1. Be cold and objective. Empty trends array is valid when nothing meets S or A.
 2. a_share_mapping: 1–3 pure-play A-share leaders (name or 6-digit code). No fringe stocks.
-3. logic_summary: max 30 Chinese characters — causal chain only.
-4. event_focus: factual statement only; no speculation.
-5. Return valid JSON matching the schema. No markdown fences.
-6. Do NOT output chain-of-thought, <think>, <thinking>, or any reasoning tags — JSON only.`;
+3. hk_mapping (optional): 1–3 HK-listed pure-play leaders if the catalyst directly maps to HK (name or 5-digit HK ticker like 00700). Skip if the catalyst has no HK pure-play.
+4. logic_summary: max 30 Chinese characters — causal chain only.
+5. event_focus: factual statement only; no speculation.
+6. Return valid JSON matching the schema. No markdown fences.
+7. Do NOT output chain-of-thought, <think>, <thinking>, or any reasoning tags — JSON only.`;
 
 export const ALPHA_RADAR_V4_JSON_FIELDS = `- macro_theme: standardized theme bucket (e.g. "光通信超级周期", "全球铜供给挤压")
 - driver_type: Global_Tech | Domestic_Policy | Cycle_Reversal
 - catalyst_grade: S | A only (never B)
 - event_focus: factual evidence (1-2 sentences)
 - a_share_mapping: 1-3 A-share leader names or 6-digit codes
+- hk_mapping (optional): 1-3 HK-listed leader names or 5-digit HK tickers when the catalyst has an HK pure-play
 - logic_summary: causal logic, max 30 Chinese characters`;
 
 export type AlphaRadarDocumentInput = {
@@ -80,7 +82,7 @@ export function buildExtractBatchInstruction(docs: AlphaRadarDocumentInput[]): s
     `Batch size: ${docs.length} items\n\n` +
     'Task: Extract up to 8 distinct S/A catalysts across ALL items (deduplicate similar themes).\n' +
     'Omit any item that only qualifies as B-grade.\n' +
-    'Return JSON: {"trends":[{"macro_theme","driver_type","catalyst_grade","event_focus","a_share_mapping","logic_summary","source_index"}]}\n' +
+    'Return JSON: {"trends":[{"macro_theme","driver_type","catalyst_grade","event_focus","a_share_mapping","hk_mapping","logic_summary","source_index"}]}\n' +
     `${ALPHA_RADAR_V4_JSON_FIELDS}\n` +
     'source_index = 0-based item number.\n\n' +
     digest

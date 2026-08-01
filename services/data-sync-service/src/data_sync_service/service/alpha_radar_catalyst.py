@@ -129,14 +129,23 @@ def aggregate_catalyst_stocks(
         if not event_at:
             continue
         document_id = str(trend.get("documentId") or "")
+        # OPT-052: CN and HK symbols live in separate fields but both contribute
+        # to the same catalyst bucket. The aggregator treats them uniformly so
+        # downstream GC / alpha-add logic doesn't need to special-case market.
+        all_mappings: list[tuple[str, dict[str, Any]]] = []
         for cn in trend.get("cnSymbols") or []:
-            symbol_raw = str(cn.get("symbol") or "").strip()
+            all_mappings.append(("CN", cn))
+        for hk in trend.get("hkSymbols") or []:
+            all_mappings.append(("HK", hk))
+
+        for _market, mapping in all_mappings:
+            symbol_raw = str(mapping.get("symbol") or "").strip()
             if not symbol_raw:
                 continue
             symbol = _normalize_symbol(symbol_raw)
-            name = str(cn.get("name") or symbol).strip()
+            name = str(mapping.get("name") or symbol).strip()
             try:
-                confidence = float(cn.get("confidence") or 0.0)
+                confidence = float(mapping.get("confidence") or 0.0)
             except (TypeError, ValueError):
                 confidence = 0.0
             contribution = article_contribution(

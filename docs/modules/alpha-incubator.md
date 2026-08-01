@@ -40,10 +40,17 @@ LLM 输出字段（仅 `catalyst_grade` ∈ {S, A}，B 级丢弃）：
 - `macro_theme` — 主题桶
 - `driver_type` — Global_Tech | Domestic_Policy | Cycle_Reversal
 - `event_focus` — 事实陈述
-- `a_share_mapping` — 1–3 只龙头名称或代码
+- `a_share_mapping` — 1–3 只 A 股龙头名称或 6 位代码
+- `hk_mapping` — 0–3 只港股纯映射龙头名称或 5 位 ticker（**OPT-052**，可选；催化剂直接映射到港股时才填）
 - `logic_summary` — 逻辑推演（≤30 字）
 
 DB 额外列：`driver_type`、`event_focus`、`logic_summary`
+
+### OPT-052：HK 标的识别（自 2026-08-01）
+
+LLM 输出 `hk_mapping` 后，Python 端在 `alpha_radar_symbol_resolve.resolve_hk_mapping` 中按 5 位 ticker 或公司名解析，写到 `trend_json.hkSymbols`（**不**单立 DB 列——HK 命中频次低，避免 schema migration 噪音）。`aggregate_catalyst_stocks` 把 `cnSymbols` 和 `hkSymbols` 合并到同一个 bucket map，下游 `WATCH_SILENT` / `compute_alpha_additions` 无需特殊处理。
+
+HK 标的进 watchlist 时**跳过 EM industry 闸门**（`missing_industry` / `is_defense_sector` / Top10）：EM 行业数据只覆盖 A 股。仍保留 `catalystScore` + `Max Grade=S` 上游闸门（OPT-052 没放宽这两道）。
 
 ## 中文 RSS 源（RSSHub）
 

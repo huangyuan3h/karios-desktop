@@ -478,14 +478,22 @@ def compute_alpha_additions(
     out: list[dict[str, Any]] = []
     for row in prelim:
         sym = str(row["symbol"])
+        # OPT-052: HK pure-plays do not carry EM (东方财富) industry labels —
+        # the EM industry pipeline is CN-only. Skipping the industry gates
+        # for HK is the right behavior because (a) we have no HK fund-flow
+        # data, and (b) HK Alpha S entries are already gated by score + grade
+        # upstream. The only failure mode we accept is "false positive on a
+        # HK name with no HK pure-play" — same as the CN knowledge-fallback
+        # path, and the catalystScore gate keeps that bounded.
+        is_hk = sym.startswith("HK:")
         industry = industries.get(sym) if industries else None
-        if not industry:
+        if not industry and not is_hk:
             _bump("missing_industry")
             continue
-        if is_defense_sector(industry):
+        if industry and is_defense_sector(industry):
             _bump("defense_sector")
             continue
-        if top_ready:
+        if top_ready and industry:
             # Fund-flow Top10 is SW L1; EM stock boards are often finer-grained.
             if is_sw_l1_industry_name(industry):
                 if industry not in top_set:

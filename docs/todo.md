@@ -222,6 +222,7 @@
 | 2026-08-01 | OPT-049：paper_trades 表 + 2 cron + 2 /v1 endpoint + 19 单测；Alembic 0011 | [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md) |
 | 2026-08-01 | OPT-050：数据源审计（5 候选对比 + 决策 = 续 Tushare 不引 Wind）+ healthcheck 脚本 | [`archive/2026-08-01-opt-050-data-source-audit.md`](./archive/2026-08-01-opt-050-data-source-audit.md) |
 | 2026-08-01 | OPT-051 / §12 #5：API Key 多 Key + 三窗口滑动配额 + /v1/quota + Swagger/Redoc + docs/api/openapi.md | [`archive/2026-08-01-opt-051-api-key-quota-openapi.md`](./archive/2026-08-01-opt-051-api-key-quota-openapi.md) |
+| 2026-08-01 | OPT-052 / §12 #6：Alpha Radar 扩展 HK 标的识别（hk_mapping prompt + resolve_hk_mapping + trend_json.hkSymbols + aggregate 合并 + watchlist HK 跳过 EM industry 闸门）| [`archive/2026-08-01-opt-052-alpha-radar-hk.md`](./archive/2026-08-01-opt-052-alpha-radar-hk.md) |
 | 2026-07-27 | V6.3 极端资金流豁免 `INTRADAY_OVERFLOW_OVERRIDE` + Alpha S TrendOK recovering | 见 `trading-improvement-checklist.md` V6.3 节 |
 | 2026-07-24 | V6.2 14:30 尾盘时间锁 + 防守双轨袖子 + Zero-Pos 归零清场 | 见 `trading-improvement-checklist.md` V6.2 节 |
 | 2026-07-22 | 漏斗转化率 / Pullback 主宇宙校准 / Alpha 进池闸 / Alpha GC 对称化 | 见 `trading-improvement-checklist.md` TIP-001~006 |
@@ -271,7 +272,7 @@
 | 3 | **paper-trading daily 启动** | §8 回测 | 2-3 天 | bars 数据已全 | ✅ **done 2026-08-01（v0 CN only）** → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；paper_trades 表 + 2 cron + 2 /v1 endpoint + 19 单测全绿 |
 | 4 | **数据源质量审计**（出决策文档） | §3 收益 + §6 数据源 | 1 天 | — | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-050-data-source-audit.md`](./archive/2026-08-01-opt-050-data-source-audit.md)；续 Tushare 200/年；不引 Wind/Choice/iFinD/聚宽；ego-lite 留 P2；healthcheck 脚本就绪 |
 | 5 | **API Key 配额 + 人类可读 OpenAPI 文档** | §3 API | 1-2 天 | #1 完成 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-051-api-key-quota-openapi.md`](./archive/2026-08-01-opt-051-api-key-quota-openapi.md)；多 Key + label:secret:rpm:rph:rpd 格式（向后兼容旧）；三窗口滑动配额 in-mem；/v1/quota 自查；FastAPI metadata + openapi_tags + Swagger UI + ReDoc；23+11 单测全绿 |
-| 6 | **HK Alpha S 自动归类 → Watchlist** | §3 收益 | 1 天 | `OPT-044` 已通 | HK 标的能进 Alpha S 旁路 |
+| 6 | **Alpha Radar 扩展 HK 标的识别**（原 "HK Alpha S 自动归类"，已改名更精确）| §3 收益 | 2-3 天（实际 1）| `OPT-044` 已通 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-052-alpha-radar-hk.md`](./archive/2026-08-01-opt-052-alpha-radar-hk.md)；ai-service hk_mapping prompt 字段 + python resolve_hk_mapping + trend_json.hkSymbols + aggregate_catalyst_stocks 合并 CN+HK + compute_alpha_additions 跳过 HK EM industry 闸门；13+1 单测全绿 |
 | 7 | **Docker 一键起 + UPS 自动恢复** | §4 工程 | 1-2 天 | docker-compose 已有 | 出门断电 / 重启全自动恢复 |
 | 8 | **ego-lite 调研结论** | §6 数据源 | 2-3 天 | — | 决定能否替代 Chrome 抓 TV |
 | 9 | **付费 API 矩阵评估** | §6 数据源 | 1-2 天 | — | 同上，影响未来上云选型 |
