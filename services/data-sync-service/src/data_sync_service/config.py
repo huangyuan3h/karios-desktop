@@ -25,6 +25,9 @@ class Settings:
     db_name: str
     tu_share_api_key: str
     ai_service_base_url: str
+    # OPT-045: OpenAI 兼容 /v1/* + AI 助手可发现性
+    karios_api_version: str
+    karios_api_keys: tuple[str, ...]
 
 
 @lru_cache(maxsize=1)
@@ -43,6 +46,11 @@ def get_settings() -> Settings:
     if not database_url:
         database_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
+    # OPT-045: API version + optional API Key list (comma-separated, empty = auth disabled).
+    karios_api_version = os.getenv("KARIOS_API_VERSION", "0.1.0")
+    karios_api_keys_raw = os.getenv("KARIOS_API_KEYS", "").strip()
+    karios_api_keys = tuple(k for k in karios_api_keys_raw.split(",") if k.strip())
+
     return Settings(
         database_url=database_url,
         db_host=db_host,
@@ -52,4 +60,6 @@ def get_settings() -> Settings:
         db_name=db_name,
         tu_share_api_key=tu_share_api_key,
         ai_service_base_url=ai_service_base_url,
+        karios_api_version=karios_api_version,
+        karios_api_keys=karios_api_keys,
     )

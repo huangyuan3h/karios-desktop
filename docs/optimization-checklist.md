@@ -616,12 +616,78 @@ OPT-041 打通了 HK 闸门，watchlist 能加 HK 股票，但截图里 `Name` �
 
 ---
 
+## P0 — API 开放（OPT-045 起 · Phase A 在跑）
+
+### OPT-045：OpenAI 兼容 `/v1/*` + AI 助手可发现性
+
+**状态**：[ ] Phase A done · Phase B/C 待开  
+**优先级**：P0  
+**关联 todo**：[§3 API 开放 P0](../todo.md) · [§12 实施清单 #1](../todo.md)  
+**关联设计稿**：[`docs/designs/api-contract.md`](../designs/api-contract.md) · [`docs/designs/freelancer-architecture.md`](../designs/freelancer-architecture.md)
+
+#### 背景
+
+Karios 与外部 AI 助手（用户独立项目）唯一的桥是 OpenAI 兼容 `/v1/*`。
+但 API 会经常改 —— AI 助手需要**稳定发现性 endpoint** 自己查当前怎么调，不靠人手维护外部文档。
+
+完整 4-5 天 OPT 拆为 3 个 Phase：
+
+| Phase | 范围 | 预计工时 |
+|-------|------|----------|
+| **A（本 OPT）** | 4 个稳定发现性 endpoint + API Key 鉴权 + version 常量 | 1.5-2 天 |
+| B（OPT-046） | 业务 endpoint：`/v1/market/snapshot` + `/v1/watchlist/items` + `/v1/decision-journal/query` | 2-3 天 |
+| C（OPT-047） | `/v1/explain/{symbol}` + `docs/api/` 人类可读文档 + `version bump` 脚本 | 1 天 |
+
+#### Phase A 目标
+
+- 暴露 4 个**稳定发现性 endpoint**（路径不变）：
+  - `GET /v1/version` → `{version, min_compatible, released_at}`
+  - `GET /v1/schema` → OpenAPI 3.1 JSON（FastAPI 自动生成）
+  - `GET /v1/errors` → 错误码字典（`{code, http_status, meaning, recovery_hint, since}[]`）
+  - `GET /v1/changelog?since=...` → 接口变更 diff（Phase A 先返回空数组）
+- API Key 鉴权中间件（`KARIOS_API_KEYS` 环境变量，逗号分隔多 Key）
+- `KARIOS_API_VERSION` 常量（init 时 "0.1.0"，每次改动走 bump 脚本）
+- `Authorization: Bearer <key>` 缺/错 → 401
+- 不动现有 16 个 router（兼容性零风险）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Config | `services/data-sync-service/src/data_sync_service/config.py`（加 `karios_api_version` + `karios_api_keys`）|
+| API | `services/data-sync-service/src/data_sync_service/api/auth.py`（**新** — API Key 鉴权依赖）|
+| API | `services/data-sync-service/src/data_sync_service/api/discovery_routes.py`（**新** — 4 个稳定 endpoint）|
+| App | `services/data-sync-service/src/data_sync_service/main.py`（include + 加 dependency）|
+| Tests | `services/data-sync-service/tests/test_discovery_endpoints.py`（**新** — 4 endpoint + 401 + schema 完整）|
+
+#### 验证
+
+- [x] `GET /v1/version` 返回 200 + JSON（无 API Key 也能访问——稳定性 > 鉴权）
+- [x] `GET /v1/schema` 返回 200 + OpenAPI 3.1 JSON（包含现有所有 router + 新 4 个）
+- [x] `GET /v1/errors` 返回 200 + 至少 1 个示例错误码
+- [x] `GET /v1/changelog` 返回 200 + `{changes: []}`（Phase A 暂不实现 git diff）
+- [x] 业务 endpoint（`/watchlist/registry` 等）缺 API Key → 200（保持现状，不破坏现有前端）
+- [x] 业务 endpoint 错 API Key → 401（auth 启用时）
+- [x] pytest `test_discovery_endpoints.py` 全绿（**17/17 passed** in 1.36s）
+- [x] pytest `test_api.py` 无 regression（**19/19 passed**）
+
+#### 反模式
+
+- ❌ 改现有 16 个 router 的路径名（破坏现有前端）
+- ❌ 把 4 个稳定 endpoint 加 API Key 鉴权（AI 助手**启动时**就要调，加 Key 会死锁）
+- ❌ 让 `/v1/schema` 返回手写 JSON（永远 `app.openapi()`）
+- ❌ 在 Phase A 实现 git diff 解析（放到 Phase C）
+
+---
+
 ## 审查记录
 
 | 日期 | 说明 |
 |------|------|
 | 2026-06-18 | 第六轮审查：OPT-001 ~ OPT-030 全部完成；新增 OPT-031 ~ OPT-040 |
 | 2026-06-18 | 第六轮实施完成：OPT-031 ~ OPT-040（backend P0 + frontend P1 Query 收尾） |
+| 2026-08-01 | 第七轮规划：OPT-045 `OpenAI 兼容 /v1/* + AI 助手可发现性`（对应 todo §12 #1） |
+| 2026-08-01 | OPT-045 Phase A 完成：4 稳定发现性 endpoint + API Key 鉴权 + 17 单测全绿 |
 
 ---
 

@@ -214,6 +214,7 @@
 | 日期 | 事件 | 归档位置 |
 |------|------|----------|
 | 2026-08-01 | doc 大扫除：3 个旧模块文档迁移至 `archive/modules-legacy/`（与 V6.x 规则脱节） | `archive/modules-legacy/README.md` |
+| 2026-08-01 | OPT-045 Phase A：4 个稳定发现性 endpoint + API Key 鉴权 + 17 单测全绿 | 见 `optimization-checklist.md` OPT-045 |
 | 2026-07-27 | V6.3 极端资金流豁免 `INTRADAY_OVERFLOW_OVERRIDE` + Alpha S TrendOK recovering | 见 `trading-improvement-checklist.md` V6.3 节 |
 | 2026-07-24 | V6.2 14:30 尾盘时间锁 + 防守双轨袖子 + Zero-Pos 归零清场 | 见 `trading-improvement-checklist.md` V6.2 节 |
 | 2026-07-22 | 漏斗转化率 / Pullback 主宇宙校准 / Alpha 进池闸 / Alpha GC 对称化 | 见 `trading-improvement-checklist.md` TIP-001~006 |
@@ -255,7 +256,7 @@
 
 | # | 动作 | 域 | 预估工时 | 依赖 | 预期收益 |
 |---|------|----|----------|------|----------|
-| 1 | **OpenAI 兼容 `/v1/*` + AI 助手可发现性** | §3 API | 4-5 天 | BE schema 已有 | **杠杆最大**：业务 endpoint + 4 个稳定发现性 endpoint，让 AI 助手能一眼看到当前怎么调 |
+| 1 | **OpenAI 兼容 `/v1/*` + AI 助手可发现性** | §3 API | 4-5 天 | BE schema 已有 | **杠杆最大**：业务 endpoint + 4 个稳定发现性 endpoint，让 AI 助手能一眼看到当前怎么调 ✅ Phase A（4 发现性 endpoint）done，17/17 单测全绿 |
 | 2 | **Cloudflare Tunnel 部署** | §4 工程 | 0.5 天 | 域名已在 Route53 | 让 AI 助手能跨网访问 `/v1/`，零成本 |
 | 3 | **paper-trading daily 启动** | §8 回测 | 2-3 天 | bars 数据已全 | 验证策略真实表现，避免下次拍脑袋改闸 |
 | 4 | **数据源质量审计**（出决策文档） | §3 收益 + §6 数据源 | 1 天 | — | 决定下年要不要再花 tushare 200 |

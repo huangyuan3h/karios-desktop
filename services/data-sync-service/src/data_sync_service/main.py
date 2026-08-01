@@ -21,6 +21,9 @@ from .api.trade_review_routes import router as trade_review_router
 from .api.tv_chrome_routes import router as tv_chrome_router
 from .api.tv_routes import router as tv_router
 from .api.watchlist_routes import router as watchlist_router
+# OPT-045 Phase A: 4 stable discovery endpoints (no auth — must be reachable
+# before any API key can be issued).
+from .api.discovery_routes import router as discovery_router
 from .scheduler import create_scheduler
 from .service.tv_capture_worker import start_tv_capture_worker, stop_tv_capture_worker
 
@@ -59,3 +62,7 @@ app.include_router(market_sentiment_router)
 app.include_router(news_router)
 app.include_router(alpha_radar_router)
 app.include_router(watchlist_router)
+# OPT-045 Phase A: discovery router (4 stable endpoints, no auth).
+# Phase B will add a separate /v1/* business router that depends on
+# api.auth.require_api_key.
+app.include_router(discovery_router)
