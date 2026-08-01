@@ -737,6 +737,64 @@ OPT-045 Phase A 给 AI 助手提供了"稳定的 4 个发现性 endpoint"。但 
 
 ---
 
+### OPT-047：`/v1/explain/{symbol}` + 人类可读文档 + version bump（Phase C）
+
+**状态**：[x] done  
+**完成日期**：2026-08-01  
+**优先级**：P0  
+**关联 todo**：[§3 API 开放 P0](../todo.md) · [§12 实施清单 #1](../todo.md)  
+**前置**：[`OPT-046` done](./optimization-checklist.md#opt-046openai-兼容-v1--业务端endpointphase-b)
+**关联设计稿**：[`docs/designs/api-contract.md`](../designs/api-contract.md)
+
+#### 背景
+
+Phase A 给了 4 个发现性 endpoint，Phase B 给了 3 个业务 endpoint。Phase C 闭合 OPT-045 整圈：
+
+1. **/v1/explain/{symbol}** — 把"AI 助手想解释一个 symbol"需要的**全部素材**打包返回（**Karios 不调用 LLM**；让外部 AI 助手自带 LLM 处理）
+2. **人类可读 API 文档** — `docs/api/`（自动从 OpenAPI + 错误码字典 + 接口契约 markdown 生成）
+3. **version bump 脚本** — `scripts/bump-api-version.sh`（CI 可调，校验三处 version 一致）
+
+#### 目标
+
+| 任务 | 内容 |
+|------|------|
+| **A. /v1/explain/{symbol}** | 一次性返回：symbol 基础 + 完整 trendok 字段（scoreParts / stopLossParts）+ 在 watchlist 状态 + 最近 N 条 journal changes。**Karios 不调 LLM**——素材包给 AI 助手自己生成解释 |
+| **B. docs/api/** | `README.md` 索引 + `discovery.md` / `business.md` / `explain.md` 人类可读 + `errors.md` 错误码字典 + `CHANGELOG.md` 骨架 |
+| **C. version bump 脚本** | `scripts/bump-api-version.sh` 接受 `major` / `minor` / `patch` + 一行 message；写入 `docs/api/CHANGELOG.md`；打印 diff；检查 git 干净 |
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| API | `services/data-sync-service/src/data_sync_service/api/v1_explain_routes.py`（**新**）|
+| App | `services/data-sync-service/src/data_sync_service/main.py`（include）|
+| Docs | `docs/api/README.md`（**新**）|
+| Docs | `docs/api/discovery.md`（**新**）|
+| Docs | `docs/api/business.md`（**新**）|
+| Docs | `docs/api/explain.md`（**新**）|
+| Docs | `docs/api/errors.md`（**新**）|
+| Docs | `docs/api/CHANGELOG.md`（**新** 骨架）|
+| Script | `services/data-sync-service/scripts/bump-api-version.sh`（**新**）|
+| Tests | `services/data-sync-service/tests/test_v1_explain_endpoint.py`（**新**）|
+
+#### 验证
+
+- [x] `GET /v1/explain/CN:000001` 返回 200 + 完整素材包（trendok + watchlist + journal 5 条）
+- [x] `GET /v1/explain/UNKNOWN` 仍 200（trendok={}, watchlist.inWatchlist=False, recentChanges=[]）
+- [x] `recentChanges` 严格只含该 symbol（其他 symbol 的行被过滤）
+- [x] `recentChanges` 最多 5 条（cap 测试守住）
+- [x] `recentChangesWindowDays=30` 一致
+- [x] `docs/api/` 含 6 份子文档（README + discovery + business + explain + errors + CHANGELOG）
+- [x] `scripts/bump-api-version.sh` 接受 major/minor/patch + 一行 message；git 不干净时拒绝
+- [x] pytest 全绿：**14/14** explain + 17/17 discovery + 18/18 business + 19/19 test_api（无 regression）+ 8/8 alembic = **76/76**
+
+#### 反模式
+
+- ❌ **Karios 调 LLM** 生成解释（违反"功能不重合"——LLM 解释归外部 AI 助手）
+- ❌ 文档里写"实现细节"（文档只描述"怎么调"和"返回什么"）
+- ❌ bump 脚本自动 commit（让人 review 后手 commit）
+- ❌ `/v1/explain` 路径变化（破坏 AI 助手缓存的 schema）
+
 ## 审查记录
 
 | 日期 | 说明 |
@@ -747,6 +805,7 @@ OPT-045 Phase A 给 AI 助手提供了"稳定的 4 个发现性 endpoint"。但 
 | 2026-08-01 | OPT-045 Phase A 完成：4 稳定发现性 endpoint + API Key 鉴权 + 17 单测全绿 |
 | 2026-08-01 | OPT-046 规划：Phase B — 3 个只读业务 endpoint（/v1/market/snapshot + /v1/watchlist/items + /v1/decision-journal/query） |
 | 2026-08-01 | OPT-046 完成：3 个只读业务 endpoint + 18 单测全绿；test_api 无 regression |
+| 2026-08-01 | OPT-047 完成：/v1/explain/{symbol} + docs/api/ 6 份人类可读 + scripts/bump-api-version.sh；49 v1/* 单测全绿 |
 
 ---
 
