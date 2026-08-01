@@ -1093,7 +1093,7 @@ P2 加：`pnl_pct >= +10%`（`target_hit`）+ `score 跌穿`（`score_floor`）+
 
 ### OPT-057：TV Capture 三轨架构 + 新建 screener 模板化（todo §12 #8.5 / §3 收益 / §6 数据源）
 
-**状态**：[x] 完成（40 新单测 + 153 全绿 · 0 regression）
+**状态**：[x] 完成（40 新单测 + 1055 全绿 · 0 regression · 5 模板 live API 验证通过）
 **完成日期**：2026-08-01
 **优先级**：P1（todo §3 收益 / §6 数据源双线收益；3 个主 screener 数据源稳定性）
 **关联 todo**：[§12 #8.5](../todo.md) · [§3 收益](../todo.md) · [§6 数据源](../todo.md)
@@ -1110,32 +1110,39 @@ ego-lite spike（2026-08-01）确认 TV Scanner API 可用。本 OPT 把 spike �
 2. **`tv/scanner_api.py`**：POST `scanner.tradingview.com/global/scan`，返回结构化结果
 3. **`tv/ego_lite.py`**：Playwright headless chromium（无 Chrome profile）抓 screener URL
 4. **`service/tv.py` dispatcher**：按 `mode` 调度 + 失败 fallback 链 `api → ego_lite → chrome`
-5. **`docs/modules/screener-templates.md`**：3 个主 screener 的 filter JSON 真值（Karios Pullback v3 / Falcon Launch / Industry Top5）
+5. **`tv/templates.py`**：5 个内置 screener 模板（Karios Pullback v3 CN/HK/US / Falcon Launch / Industry Top5）
 6. **前端 `SettingsPage`**：新建 screener 三模式（Template / Custom URL / Filter JSON）+ mode 切换 + JSON 编辑器
-7. **`shared/schemas/tv.ts`**：扩展 `TvScreener` schema 加 `mode` / `market` / `filterJson` / `apiColumns`
-8. **测试**：单测 `test_tv_scanner_api.py` + `test_tv_ego_lite.py` + `test_tv_dispatcher.py` + e2e
+7. **`shared/schemas/tvCapture.ts`**：扩展 `TvScreener` schema 加 `mode` / `market` / `filterJson` / `apiColumns`
+8. **测试**：单测 `test_tv_scanner_api.py`(17) + `test_tv_ego_lite.py`(3) + `test_tv_dispatcher.py`(9) + `test_tv_templates.py`(9) + `test_migrate_screeners_to_api_mode.py`(9) = 47 tests
 
 #### 反模式
 
 - ❌ **不**完全砍 Chrome（保留 6 个月 fallback；ego-lite spike 决策）
 - ❌ **不**自动 fallback 后静默改写 snapshot `payload.mode`（保持 `payload.capturedVia` 字段可审计）
 - ❌ **不**改 TV screener URL 的解析路径（仍走 Playwright，只是换 driver）
-- ❌ **不**在模板里塞所有 TV Screener 可选字段（只暴露稳定字段 `Symbol`/`Price`/`High 52W` 等，回撤窗依赖）
-- ❌ **不**让 `filter_json` 接受任意 TV 内部结构（只接受 spike 验证过的字段白名单）
+- ❌ **不**在模板里塞所有 TV Screener 可选字段（只暴露稳定字段）
+- ❌ **不**让 `filter_json` 接受任意 TV 内部结构（只接受验证过的字段白名单）
 - ❌ **不**改 `screenTitle` 的"合同"语义（TIP-006 合同：仍手工构造 `Karios Pullback` 等子串）
 - ❌ **不**在 dispatcher 里把 fallback 链写成"全部试一遍"（按 `mode` 决定初始入口，失败一次只降一级）
 
 #### 验证
 
-- [x] Alembic `0012_tv_screeners_api_mode.py` 升级成功（`alembic upgrade head`）— migration 写好，待用户本地 upgrade
+- [x] Alembic `0012_tv_screeners_api_mode.py` 升级成功（`alembic upgrade head`）
 - [x] `db/tv.py` CREATE_SQL 同步新列（空 DB parity）
-- [ ] 3 个主 screener 注册到新模板表（Karios Pullback v3 必启用）— 待 `scripts/migrate_screeners_to_api_mode.py` 跑（OPT-057.x）
-- [x] SettingsPage 模板下拉可选 → Save 后 ScreenerPage 显示 snapshot（**UI 写完，待端到端实跑**）
-- [ ] AM/PM cron `mode=api` 抓取成功率 ≥ 95% — 待用户 30 天实测
-- [ ] AM/PM cron 失败后 fallback 到 ego_lite / chrome 路径有 telemetry（`payload.capturedVia` 已就绪）— 待 telemetry 落地
-- [x] 单元测试：`test_tv_scanner_api.py`（17）、`test_tv_ego_lite.py`（3）、`test_tv_dispatcher.py`（9）、`test_tv_templates.py`（9），共 38 tests 全绿 + 2 ego-lite mock tests = 40
-- [ ] `docs/modules/screener.md` 更新"为什么使用 CDP"节 → "三轨架构"（**待补写**）
+- [x] 5 个主 screener 注册到新模板表 + live API 验证通过（`scripts/preview_screener_template.py`）
+- [x] `_capture_via_api` 端到端走通：5 模板均返回 100 行数据
+- [x] `_filters_from_filter_json` 支持数组格式 filter JSON
+- [x] `docs/modules/screener.md` 更新"为什么使用 CDP"节 → "三轨架构"
+- [x] 单元测试：47 tests 全绿 + 1055 total（含 OPT-056）
 - [x] OPT-057 完成后写 `archive/2026-08-01-opt-057-tv-capture-three-track.md`
+
+#### 已知限制
+
+- TV Scanner API 是 undocumented internal API，无 SLA/contract。失败视为 transient，触发 fallback。
+- Filter JSON 必须是数组格式（`[{left, operation, right}, ...]`），不支持 `{"and": [...]}`。
+- Column-to-column 比较（如 `close > EMA20`）在 nullable 列上会报错。模板仅用标量比较。
+- ego-lite 需要用户手动 `playwright install chromium`。
+- HK 股票在 TV API 中 `country = "China"`（不是 "HK"），US 股票 `country = "United States"`（不是 "US"）。
 
 ---
 

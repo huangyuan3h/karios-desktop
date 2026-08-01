@@ -141,12 +141,12 @@ def list_screener_templates() -> dict[str, Any]:
 def update_screener(
     *,
     screener_id: str,
-    name: str,
-    url: str,
-    enabled: bool,
+    name: str = "",
+    url: str = "",
+    enabled: bool = False,
     mode: str = "chrome",
     market: str | None = None,
-    filter_json: dict[str, Any] | None = None,
+    filter_json: dict[str, Any] | list[Any] | None = None,
     api_columns: list[str] | None = None,
 ) -> dict[str, bool]:
     ensure_seeded()
@@ -369,11 +369,14 @@ def _validate_screener_for_capture(screener_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Screener not found")
     if not screener.get("enabled"):
         raise HTTPException(status_code=409, detail="Screener is disabled")
+    mode = screener.get("mode") or "chrome"
     url = str(screener.get("url") or "").strip()
-    if not url:
-        raise HTTPException(status_code=400, detail="Screener URL is empty")
-    if not (url.startswith("http://") or url.startswith("https://")):
-        raise HTTPException(status_code=400, detail="Screener URL must start with http(s)://")
+    # API-mode screeners use filter_json, not URL — skip URL validation.
+    if mode != "api":
+        if not url:
+            raise HTTPException(status_code=400, detail="Screener URL is empty")
+        if not (url.startswith("http://") or url.startswith("https://")):
+            raise HTTPException(status_code=400, detail="Screener URL must start with http(s)://")
     return screener
 
 
@@ -418,7 +421,7 @@ def _capture_and_persist_screener(*, screener_id: str) -> dict[str, Any]:
     result, captured_via = _dispatch_capture(
         mode=mode,
         url=url,
-        filter_json=filter_json if isinstance(filter_json, dict) else None,
+        filter_json=filter_json if isinstance(filter_json, (dict, list)) else None,
         api_columns=api_columns if isinstance(api_columns, list) else None,
     )
 
@@ -449,7 +452,7 @@ def _capture_and_persist_screener(*, screener_id: str) -> dict[str, Any]:
 
 def _capture_via_api(
     *,
-    filter_json: dict[str, Any],
+    filter_json: list[Any],
     api_columns: list[str],
     url: str,
     screen_title: str | None,
@@ -526,7 +529,9 @@ def _dispatch_capture(
         if not url:
             # API-mode screeners don't need a URL, but downstream code may
             # still expect one; synthesise a stable identifier.
-            url = f"scanner_api://{filter_json.get('market') or 'unknown'}"
+            # filter_json is an array of conditions; extract market from
+            # screener config (passed separately) or use a placeholder.
+            url = "scanner_api://api-screener"
         try:
             return _capture_via_api(
                 filter_json=filter_json,
@@ -571,17 +576,16 @@ def _infer_screen_title_from_url(url: str) -> str | None:
     return None
 
 
-def _filters_from_filter_json(filter_json: dict[str, Any]) -> list[str]:
+def _filters_from_filter_json(filter_json: dict[str, Any] | list[Any]) -> list[str]:
     """Convert filter JSON into a human-readable filter pill list (UI display).
 
     Used by `payload.filters` so the existing UI (ScreenerPage, history view)
     doesn't need to know about the new field. The conversion is intentionally
     lossy — it's for display, not for recomputing the filter.
 
-    The TV Scanner API filter format is `{"and": [<pred>, <pred>, ...]}` or
-    `{"or": [...]}`, with the root key being the boolean operator (no
-    `operation` field at the root). Predicate nodes have `{left, operation,
-    right}` shape.
+    The TV Scanner API filter format is now an array of conditions:
+    ``[{left, operation, right}, ...]`` (multiple conditions are ANDed).
+    Legacy format ``{"and": [...]}`` is also handled for backwards compat.
     """
     out: list[str] = []
 
@@ -592,7 +596,7 @@ def _filters_from_filter_json(filter_json: dict[str, Any]) -> list[str]:
             return
         if not isinstance(node, dict):
             return
-        # Root keys: "and" / "or" map to compound operators.
+        # Legacy root keys: "and" / "or" map to compound operators.
         if "and" in node and isinstance(node["and"], list):
             for child in node["and"]:
                 walk(child)

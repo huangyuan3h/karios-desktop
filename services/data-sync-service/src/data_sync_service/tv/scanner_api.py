@@ -99,7 +99,7 @@ def _scanner_headers() -> dict[str, str]:
 
 def build_request_payload(
     *,
-    filter_payload: dict[str, Any],
+    filter_payload: dict[str, Any] | list[Any],
     columns: list[str],
     sort_by: str = "market_cap_basic",
     sort_order: str = "desc",
@@ -109,6 +109,10 @@ def build_request_payload(
 
     `filter_payload` is the raw TV filter JSON (see spike §2 for shape).
     `columns` is a list of internal column names (e.g. ["name", "close"]).
+
+    NOTE: TV Scanner API expects `filter` to be an array of conditions.
+    A single condition is represented as a dict inside the array.
+    Multiple conditions in the array are ANDed together.
     """
     return {
         "filter": filter_payload,
@@ -143,7 +147,7 @@ def _post_json(url: str, payload: dict[str, Any], *, timeout: float) -> bytes:
 
 def fetch_screener_via_api(
     *,
-    filter_payload: dict[str, Any],
+    filter_payload: dict[str, Any] | list[Any],
     columns: list[str],
     sort_by: str = "market_cap_basic",
     sort_order: str = "desc",
@@ -158,8 +162,10 @@ def fetch_screener_via_api(
     so the dispatcher can fall back to ego_lite. Raises PermanentApiError
     on 4xx (caller bug, e.g. malformed filter).
     """
-    if not isinstance(filter_payload, dict) or not filter_payload:
-        raise PermanentApiError("filter_payload must be a non-empty dict")
+    if not isinstance(filter_payload, (dict, list)):
+        raise PermanentApiError("filter_payload must be a non-empty dict or list")
+    if isinstance(filter_payload, (dict, list)) and not filter_payload:
+        raise PermanentApiError("filter_payload must be a non-empty dict or list")
     if not columns:
         raise PermanentApiError("columns must be a non-empty list")
     payload = build_request_payload(
@@ -203,10 +209,16 @@ def _parse_response(*, raw: bytes | dict, requested_columns: list[str]) -> Scann
     rows: list[dict[str, str]] = []
     raw_rows: list[list[Any]] = []
     for entry in data:
-        if not isinstance(entry, list) or len(entry) < 3:
+        # TV Scanner API returns objects {"s": "SYMBOL", "d": [values]} OR
+        # arrays [None, [values], None] depending on the endpoint variant.
+        raw_values: list[Any] = []
+        if isinstance(entry, dict):
+            raw_values = entry.get("d", [])
+        elif isinstance(entry, list) and len(entry) >= 2:
+            raw_values = entry[1] if isinstance(entry[1], list) else []
+        else:
             continue
-        raw_rows.append(entry[1] if isinstance(entry[1], list) else [])
-        raw_values = entry[1] if isinstance(entry[1], list) else []
+        raw_rows.append(raw_values)
         d: dict[str, str] = {}
         for i, col in enumerate(requested_columns):
             v = raw_values[i] if i < len(raw_values) else None

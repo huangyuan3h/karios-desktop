@@ -27,12 +27,12 @@ class CreateTvScreenerFromTemplateRequest(BaseModel):
 
 
 class UpdateTvScreenerRequest(BaseModel):
-    name: str
+    name: str = ""
     url: str = ""
-    enabled: bool
+    enabled: bool = False
     mode: str = Field(default="chrome", pattern="^(api|chrome)$")
     market: str | None = None
-    filterJson: dict[str, Any] | None = None
+    filterJson: dict[str, Any] | list[Any] | None = None
     apiColumns: list[str] | None = None
 
 

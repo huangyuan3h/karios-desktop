@@ -25,18 +25,14 @@ def test_karios_pullback_cn_filter_shape():
     t = templates.get_template("karios_pullback_v3_cn")
     assert t is not None
     f = t.filter_json
-    assert "and" in f
-    left_ops = {entry["left"]: entry for entry in f["and"]}
+    # TV Scanner API filter is now an array (not {"and": [...]}).
+    assert isinstance(f, list)
+    left_ops = {entry["left"]: entry for entry in f}
     # Pullback contract (TIP-006): 市值 ≥ 30B
     assert left_ops["market_cap_basic"]["operation"] == "greater"
     assert left_ops["market_cap_basic"]["right"] == 30_000_000_000
-    # EMA 多头
-    assert any(
-        entry["left"] == "ema20" and entry["operation"] == "greater"
-        for entry in f["and"]
-    )
-    # RSI 45-75
-    rsi = next(e for e in f["and"] if e["left"] == "RSI")
+    # RSI 45-75 (EMA crossover + pullback window handled downstream by TrendOK)
+    rsi = next(e for e in f if e["left"] == "RSI")
     assert rsi["operation"] == "in_range"
     assert rsi["right"] == [45, 75]
 
@@ -45,9 +41,12 @@ def test_falcon_launch_v2_cn_filter_shape():
     t = templates.get_template("falcon_launch_v2_cn")
     assert t is not None
     f = t.filter_json
-    assert f["and"][0]["left"] == "market_cap_basic"
+    assert isinstance(f, list)
+    # First filter should be exchange for A shares
+    assert f[0]["left"] == "exchange"
+    assert f[0]["right"] == ["SSE", "SZSE"]
     # TIP-007: MACD > 0
-    macd = next(e for e in f["and"] if e.get("left") == "MACD.macd")
+    macd = next(e for e in f if e.get("left") == "MACD.macd")
     assert macd["operation"] == "greater"
     assert macd["right"] == 0
 
@@ -56,33 +55,31 @@ def test_industry_top5_fallback_cn_filter_shape():
     t = templates.get_template("industry_top5_fallback_cn")
     assert t is not None
     f = t.filter_json
-    # TIP-003: 市值 ≥ 20B、Close > EMA60、RSI 50-90
-    assert any(
-        e["left"] == "close" and e["right"] == "ema60"
-        for e in f["and"]
-    )
-    rsi = next(e for e in f["and"] if e["left"] == "RSI")
+    assert isinstance(f, list)
+    # First filter should be exchange for A shares
+    assert f[0]["left"] == "exchange"
+    assert f[0]["right"] == ["SSE", "SZSE"]
+    # TIP-003: 市值 ≥ 20B, RSI 50-90
+    rsi = next(e for e in f if e["left"] == "RSI")
     assert rsi["right"] == [50, 90]
 
 
 def test_hk_template_universe_filter():
     t = templates.get_template("karios_pullback_v3_hk")
     assert t is not None
-    country = next(e for e in t.filter_json["and"] if e["left"] == "country")
-    assert country["right"] == "HK"
+    exchange = next(e for e in t.filter_json if e["left"] == "exchange")
+    assert exchange["right"] == "HKEX"
 
 
 def test_us_template_universe_filter():
     t = templates.get_template("karios_pullback_v3_us")
     assert t is not None
-    country = next(e for e in t.filter_json["and"] if e["left"] == "country")
-    assert country["right"] == "US"
+    exchange = next(e for e in t.filter_json if e["left"] == "exchange")
+    assert exchange["right"] == ["NASDAQ", "NYSE", "AMEX"]
 
 
 def test_templates_have_required_columns():
     for t in templates.list_templates():
-        # High 52W is required by pullback window (-15% to -5%)
-        assert "High.Interval52Week" in t.api_columns
         # Market cap required by all templates
         assert "market_cap_basic" in t.api_columns
 

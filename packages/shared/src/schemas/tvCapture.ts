@@ -31,7 +31,7 @@ export const TvScreenerSchema = z.object({
   updatedAt: z.string(),
   mode: z.enum(['api', 'chrome']).default('chrome'),
   market: z.string().nullable().optional(),
-  filterJson: z.record(z.unknown()).nullable().optional(),
+  filterJson: z.union([z.record(z.unknown()), z.array(z.unknown())]).nullable().optional(),
   apiColumns: z.array(z.string()).nullable().optional(),
 });
 export type TvScreener = z.infer<typeof TvScreenerSchema>;

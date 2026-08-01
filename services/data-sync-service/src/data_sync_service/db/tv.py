@@ -101,7 +101,7 @@ def _row_to_screener(row: tuple[Any, ...]) -> dict[str, Any]:
         "updatedAt": str(row[4]),
         "mode": str(row[5] or "chrome"),
         "market": str(row[6]) if row[6] is not None else None,
-        "filterJson": row[7] if isinstance(row[7], dict) else None,
+        "filterJson": row[7] if isinstance(row[7], (dict, list)) else None,
         "apiColumns": list(row[8]) if isinstance(row[8], list) else None,
     }
 
@@ -167,7 +167,7 @@ def update_screener(
     updated_at: str,
     mode: str = "chrome",
     market: str | None = None,
-    filter_json: dict[str, Any] | None = None,
+    filter_json: dict[str, Any] | list[Any] | None = None,
     api_columns: list[str] | None = None,
 ) -> bool:
     ensure_tables()
