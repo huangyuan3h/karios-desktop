@@ -247,5 +247,5 @@ Market Sentiment 的红绿灯帮助判断市场状态，控制卫星仓仓位风
 - [下游判断 AI Prompt（V7）](./downstream-ai-prompt.md)
 
 - [优化 Checklist（架构债务 & Agent 任务）](../optimization-checklist.md)
-- [项目整体架构](../architecture-and-requirements.md)
-- [Screener 模块设计](../design/screener-module.md)
+- [docs 总索引](../README.md)
+- [设计与未完成概念](../designs/README.md)
