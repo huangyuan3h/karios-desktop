@@ -35,7 +35,7 @@
 | §5 数据源 / 浏览器 | — | ego-lite 调研、付费 API 矩阵 | `OPT-043` akshare 优先链 / `OPT-041/044` HK 闸门 |
 | §6 新闻 / 研报 | — | 研报源评估、是否独立 | `OPT-037/038/039` News Query 并行化 |
 | §7 多市场 | — | 美股 / 加拿大时区 | `OPT-041/042/043/044` HK + ETF 已通 |
-| §8 回测 | — | paper-trading 先于回测 | 历史 BacktestPage 已隐藏（隐式归档） |
+| §8 回测 | — | BacktestPage 重写（等 paper 数据） | ✅ paper-trading v0 → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；历史 BacktestPage 已隐藏 |
 | **doc 大扫除** | — | — | `archive/modules-legacy/`（2026-08-01：industry-flow / market-sentiment / news-brief 3 旧版模块文档） |
 
 ---
@@ -219,6 +219,7 @@
 | 2026-08-01 | OPT-047：/v1/explain/{symbol} + docs/api/ 6 份人类可读 + scripts/bump-api-version.sh + 14 单测 | 见 `optimization-checklist.md` OPT-047 |
 | 2026-08-01 | **OPT-045 整圈归档**（OPT-045/046/047 合并视角）：/v1/* 端到端 8 个 endpoint 落地 + 6 份人类可读文档 + 49 v1/* 单测 | [`archive/2026-08-01-opt-045-v1-api-surface.md`](./archive/2026-08-01-opt-045-v1-api-surface.md) |
 | 2026-08-01 | OPT-048 脚本骨架：Tunnel 一行起 + 生产模式 + setup 文档 + 12 单测 | 见 `optimization-checklist.md` OPT-048 |
+| 2026-08-01 | OPT-049：paper_trades 表 + 2 cron + 2 /v1 endpoint + 19 单测；Alembic 0011 | [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md) |
 | 2026-07-27 | V6.3 极端资金流豁免 `INTRADAY_OVERFLOW_OVERRIDE` + Alpha S TrendOK recovering | 见 `trading-improvement-checklist.md` V6.3 节 |
 | 2026-07-24 | V6.2 14:30 尾盘时间锁 + 防守双轨袖子 + Zero-Pos 归零清场 | 见 `trading-improvement-checklist.md` V6.2 节 |
 | 2026-07-22 | 漏斗转化率 / Pullback 主宇宙校准 / Alpha 进池闸 / Alpha GC 对称化 | 见 `trading-improvement-checklist.md` TIP-001~006 |
@@ -262,7 +263,7 @@
 |---|------|----|----------|------|----------|
 | 1 | **OpenAI 兼容 `/v1/*` + AI 助手可发现性** | §3 API | 4-5 天 | BE schema 已有 | ✅ **done 2026-08-01** → 摘要 [`archive/2026-08-01-opt-045-v1-api-surface.md`](./archive/2026-08-01-opt-045-v1-api-surface.md)；OPT-045/046/047 整圈闭合，49 v1/* 单测全绿 |
 | 2 | **Cloudflare Tunnel 部署** | §4 工程 | 0.5 天 | 域名已在 Route53 | ✅ **done 2026-08-01（脚本骨架）** → `scripts/start-quick-tunnel.sh` + `setup-named-tunnel.sh` + `docs/designs/cloudflare-tunnel-setup.md`；真实端到端验证 pending（需用户装 cloudflared，brew install cloudflared） |
-| 3 | **paper-trading daily 启动** | §8 回测 | 2-3 天 | bars 数据已全 | 验证策略真实表现，避免下次拍脑袋改闸 |
+| 3 | **paper-trading daily 启动** | §8 回测 | 2-3 天 | bars 数据已全 | ✅ **done 2026-08-01（v0 CN only）** → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；paper_trades 表 + 2 cron + 2 /v1 endpoint + 19 单测全绿 |
 | 4 | **数据源质量审计**（出决策文档） | §3 收益 + §6 数据源 | 1 天 | — | 决定下年要不要再花 tushare 200 |
 | 5 | **API Key 配额 + 人类可读 OpenAPI 文档** | §3 API | 1-2 天 | #1 完成 | 多个 AI 助手能各自有 Key + 人能浏览接口 |
 | 6 | **HK Alpha S 自动归类 → Watchlist** | §3 收益 | 1 天 | `OPT-044` 已通 | HK 标的能进 Alpha S 旁路 |

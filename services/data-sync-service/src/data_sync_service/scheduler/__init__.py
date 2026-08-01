@@ -21,6 +21,8 @@ from data_sync_service.scheduler import (
     index_daily_job,
     macro_daily_job,
     news_fetch_job,
+    paper_trading_intake_job,
+    paper_trading_update_job,
     stock_basic_job,
     tv_screener_capture_job,
     watchlist_automation_job,
@@ -155,6 +157,19 @@ def create_scheduler() -> BackgroundScheduler:
         cn_industry_post_close_job.run,
         cn_industry_post_close_job.build_trigger(),
         id=cn_industry_post_close_job.JOB_ID,
+        replace_existing=True,
+    )
+    # OPT-049: paper-trading intake + update (after cn_industry_post_close).
+    scheduler.add_job(
+        paper_trading_intake_job.run,
+        paper_trading_intake_job.build_trigger(),
+        id=paper_trading_intake_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        paper_trading_update_job.run,
+        paper_trading_update_job.build_trigger(),
+        id=paper_trading_update_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(

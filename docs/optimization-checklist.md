@@ -844,6 +844,139 @@ Phase A 给了 4 个发现性 endpoint，Phase B 给了 3 个业务 endpoint。P
 - ❌ 把 quick-tunnel URL 写进 .env（URL 每次重启会变；应该从 cloudflared 启动日志抓）
 - ❌ 用 Tunnel 暴露 dev-only 内部服务（`/market/stocks/...` 等）—— 只暴露 `/v1/*` 业务 + `/docs` FastAPI Swagger
 
+---
+
+### OPT-049：Paper-trading 启动（todo §12 #3 / §8 回测）
+
+**状态**：[x] done（v0 — CN only）  
+**完成日期**：2026-08-01  
+**优先级**：P0（todo §8 收益 / §12 #3 实施）  
+**关联 todo**：[§3 收益 / §8 回测](../todo.md) · [§12 实施清单 #3](../todo.md)  
+**关联设计稿**：[`docs/designs/freelancer-architecture.md`](../designs/freelancer-architecture.md) · [`docs/designs/api-contract.md`](../designs/api-contract.md)  
+**摘要**：[`archive/2026-08-01-opt-049-paper-trading.md`](../archive/2026-08-01-opt-049-paper-trading.md)
+
+#### 背景
+
+`docs/todo.md §8` 旧 BacktestPage 效果差已隐藏。重启前置条件之一：必须有 paper-trading 先于回测——回测容易过拟合，paper-trading 不会。
+
+按 §8 决议：**paper-trading 跑一周 → 拿真实策略表现数据** → 反向给 §3 收益输血。
+
+#### 目标
+
+| 任务 | 内容 |
+|------|------|
+| **A. 数据模型** | `paper_trades` 表（id, symbol, entry_date, side, entry_price, score/why_at_entry, status, close_date, pnl_pct, holding_days, close_reason）+ 幂等 unique index `(symbol, entry_date, side)` |
+| **B. service 层** | `run_intake`（找未跟随的 BUY/ADD 候选 → 落库，幂等）· `run_update`（每日更新 pnl + 触发 v0 关闭条件）· `compute_stats`（胜率 / 平均收益）|
+| **C. scheduler** | 2 cron：`paper_trading_intake` 17:40 + `paper_trading_update` 17:45（Asia/Shanghai 工作日）|
+| **D. /v1 暴露** | `GET /v1/paper-trades?status=&since=&limit=` + `GET /v1/paper-trades/stats?since=` |
+| **E. 测试** | 19 测试（db shape + service 过滤 / 关闭条件 / 幂等 + API shape + 鉴权）|
+| **F. Alembic** | `0011_paper_trades` migration + `db/paper_trading.py` `CREATE_SQL` 同步 |
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| DB | `services/data-sync-service/src/data_sync_service/db/paper_trading.py`（**新**）|
+| Migration | `services/data-sync-service/alembic/versions/0011_paper_trades.py`（**新**）|
+| Service | `services/data-sync-service/src/data_sync_service/service/paper_trading.py`（**新**）|
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/paper_trading_intake_job.py`（**新**）|
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/paper_trading_update_job.py`（**新**）|
+| Scheduler | `services/data-sync-service/src/data_sync_service/scheduler/__init__.py`（注册 2 cron）|
+| API | `services/data-sync-service/src/data_sync_service/api/v1_business_routes.py`（+ `/v1/paper-trades` + `/v1/paper-trades/stats`）|
+| Tests | `services/data-sync-service/tests/test_paper_trading.py`（**新** — 19 tests）|
+| Tests | `services/data-sync-service/tests/test_alembic_baseline.py`（HEAD_REVISION 更新）|
+
+#### v0 关闭条件
+
+- `pnl_pct <= -5%` → `close_reason="stop_hit"`
+- `holding_days >= 5` → `close_reason="max_hold"`
+
+P2 加：`pnl_pct >= +10%`（`target_hit`）+ `score 跌穿`（`score_floor`）+ 离开 watchlist（`pool_exit`）。
+
+#### v0 范围限定
+
+- **CN only**（HK 需 FX + T+0/T+2 结算差异，留 OPT-050+）
+- **不复制 live Execution Gate**——paper-trade 用同一 BUY/ADD 触发器（decision journal）+ 同一 entry_price（日线收盘），不重写规则
+- **不作为发布决策依据**（避免过拟合）——只作"如果跟着信号走会怎样"的真实数据
+
+#### 验证
+
+- [x] Alembic baseline test + upgrade head idempotent
+- [x] `pytest tests/test_paper_trading.py --no-cov` 全绿：**19/19**
+- [x] `test_api.py` 无 regression：**19/19**
+- [x] 全部 v1 + integration 测试：**107 passed, 1 skipped**（skip = cloudflared 未装的 preflight）
+
+#### 反模式
+
+- ❌ 让 paper-trading 改 live watchlist / live positionPct（只读 source of truth）
+- ❌ 用回测框架重写一份 BUY/ADD 规则（必须用 live Execution Gate 同口径）
+- ❌ 把 paper-trade stats 当成"发布决策依据"（过拟合风险——paper-trade 是 simulation 而非 reality）
+- ❌ 触发关闭条件后没写 `close_reason`（强制枚举值测试守住）
+
+---
+
+### OPT-050：数据源质量审计（todo §12 #4 / §3 收益 / §6 数据源）
+
+**状态**：[x] done  
+**完成日期**：2026-08-01  
+**优先级**：P0（todo §3 收益 / §12 #4 实施）  
+**关联 todo**：[§3 收益 P0](../todo.md) · [§6 数据源 P1](../todo.md) · [§12 实施清单 #4](../todo.md)  
+**关联设计稿**：[`docs/designs/data-source-audit-2026-08.md`](../designs/data-source-audit-2026-08.md)（**新**）  
+**摘要**：[`archive/2026-08-01-opt-050-data-source-audit.md`](../archive/2026-08-01-opt-050-data-source-audit.md)
+
+#### 背景
+
+按 todo §3 / §6 / §12 #4："现有源'非常杂，质量不高'，评估是否替换/补强"——决定下年要不要续 Tushare 200 + 候选源 ROI 评估。
+
+#### 目标
+
+| 任务 | 内容 |
+|------|------|
+| **A. 现有源矩阵** | grep 出 codebase 实际使用的所有外部数据源（Tushare / akshare / yfinance / EM push2 / 雪球 / RSSHub），每源标覆盖 + 用途 + 风险 |
+| **B. 候选源对比** | 聚宽 / Wind mini / Choice / iFinD / 自建 5 候选 × 5 维度（价格 / 覆盖 / 限频 / 质量 / ROI）|
+| **C. 决策** | 续 / 不续 / 加 / 切 → 出每源明确行动 |
+| **D. health check 脚本** | `scripts/data-source-healthcheck.sh`（轻量，**不**真连外部；只检查 API key 是否配置）|
+
+#### 决策摘要
+
+| 源 | 决策 | 理由 |
+|----|------|------|
+| Tushare Pro 200/年 | ✅ **续** | 主力：CN daily / HK basic / fund_basic / industry / index / adj_factor 全覆盖，断了 → 7 个 cron 全废 |
+| akshare (Sina HK) | ✅ **保留** | OPT-043 验证最稳；30/30 连续 0 失败，平均 0.12s/call |
+| akshare (其他) | ✅ **保留** | 行业资金流主力；本地多源兜底 |
+| yfinance | ⚠️ **降级为 backup** | rate-limit 严重；仅作 HK 日线最后兜底 |
+| 东方财富 push2 | ✅ **保留** | HK 实时报价兜底（云 IP 被拉黑，本机 OK）|
+| 雪球 Xueqiu | ✅ **保留** | HK industry 抓取（mbu 主营）|
+| RSSHub | ✅ **保留** | Alpha Radar 新闻源 |
+| **聚宽 JQData** | ❌ **不引** | 已有 akshare HK + Tushare CN；聚宽没有不可替代的覆盖 |
+| **Wind mini** | ❌ **不引** | 5000+/年贵 25 倍；Tushare Pro 已覆盖卫星仓所有数据需求 |
+| **Choice / iFinD** | ❌ **不引** | 同上 + 各自数千/年 |
+| **自建爬虫（ego-lite）** | 🔄 **P2 调研** | OPT-051（todo §12 #8）—— 0 成本替代 Chrome TV 抓取 |
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Design | `docs/designs/data-source-audit-2026-08.md`（**新**）|
+| Script | `services/data-sync-service/scripts/data-source-healthcheck.sh`（**新**）|
+| Tests | `services/data-sync-service/tests/test_data_source_audit.py`（**新**）|
+| Doc | `archive/2026-08-01-opt-050-data-source-audit.md`（**新** — 决策摘要）|
+| Doc | `docs/todo.md` §6 + §12 #4 标 done + 链接 archive |
+
+#### 验证
+
+- [x] `docs/designs/data-source-audit-2026-08.md` 含 5 节（现有源 / 候选 / 决策 / ROI / 反原则）
+- [x] `bash scripts/data-source-healthcheck.sh` 在缺 key 时给清晰指引
+- [x] `pytest tests/test_data_source_audit.py --no-cov` 全绿
+- [x] todo.md §12 #4 标 ✅ + 链接到 archive
+
+#### 反模式
+
+- ❌ 一年一审（成本只 200，但断了会同时废 7 个 cron）→ **保留 6 月 1 日做一次轻审**
+- ❌ 看到别人用 Wind 就跟（贵 25 倍，**没有不可替代的覆盖**）
+- ❌ 多个源同质数据做"双保险"（维护成本翻倍；不如让 1 个主源 + 1 个真正互补的 backup）
+- ❌ 自建爬虫作为主力（0 成本但维护累；做兜底 OK，做主力 → 后期崩）
+
 ## 审查记录
 
 | 日期 | 说明 |
@@ -856,6 +989,7 @@ Phase A 给了 4 个发现性 endpoint，Phase B 给了 3 个业务 endpoint。P
 | 2026-08-01 | OPT-046 完成：3 个只读业务 endpoint + 18 单测全绿；test_api 无 regression |
 | 2026-08-01 | OPT-047 完成：/v1/explain/{symbol} + docs/api/ 6 份人类可读 + scripts/bump-api-version.sh；49 v1/* 单测全绿 |
 | 2026-08-01 | OPT-048 脚本骨架完成：scripts/start-quick-tunnel.sh + setup-named-tunnel.sh + docs/designs/cloudflare-tunnel-setup.md + 12 单测全绿（真实端到端验证等用户装 cloudflared）|
+| 2026-08-01 | OPT-049 完成：paper-trades 表 + 2 cron + 2 /v1 endpoint + 19 单测全绿（Alembic 0011 + service 关闭条件 + 幂等 intake）|
 
 ---
 

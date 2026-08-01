@@ -29,6 +29,8 @@ from pydantic import BaseModel, Field  # type: ignore[import-not-found]
 
 from ..api.auth import require_api_key  # noqa: F401  (used as router-level dependency)
 from ..db import execution_journal as ej_db
+from ..db import paper_trading as pt_db
+from ..service.paper_trading import compute_stats as pt_compute_stats
 from ..db.watchlist_automation import list_registry
 from ..service.trendok import compute_trendok_for_symbols
 
@@ -399,3 +401,145 @@ def get_decision_journal_query(
             )
         )
     return DecisionJournalResponse(asOfDate=date.today().isoformat(), changes=changes)
+
+
+# ---------------------------------------------------------------------------
+# /v1/paper-trades
+# ---------------------------------------------------------------------------
+
+
+class PaperTrade(BaseModel):
+    """One paper-trade row (OPT-049)."""
+
+    id: str = Field(..., description="UUID primary key.")
+    symbol: str = Field(..., description="MARKET:TICKER form (v0: CN only).")
+    entryDate: str = Field(..., description="ISO date the simulated order was placed.")
+    side: str = Field(
+        ...,
+        description="'BUY' or 'ADD'. v0 only emits these two — exits are implicit (cron closes).",
+    )
+    entryPrice: float = Field(..., description="Daily close on entryDate used as fill price.")
+    scoreAtEntry: float | None = Field(
+        default=None,
+        description="Snapshot of TrendOK score at the time of the original BUY/ADD signal.",
+    )
+    whyAtEntry: str | None = Field(
+        default=None,
+        description="Stable reason code from the decision journal (MAINLINE_OK, etc.).",
+    )
+    sleevePct: float | None = Field(
+        default=None,
+        description="Suggested position size at entry (informational; the simulated fill is full-position).",
+    )
+    status: str = Field(
+        ...,
+        description="'open' | 'closed'. Closed rows are immutable.",
+    )
+    closeDate: str | None = Field(
+        default=None,
+        description="ISO date the cron closed the trade. null while still open.",
+    )
+    closePrice: float | None = Field(
+        default=None,
+        description="Latest close (or final close if status='closed').",
+    )
+    pnlPct: float | None = Field(
+        default=None,
+        description="(closePrice - entryPrice) / entryPrice * 100. Updated daily by the update cron.",
+    )
+    holdingDays: int | None = Field(
+        default=None,
+        description="Calendar days from entryDate to closeDate (or today for open rows).",
+    )
+    closeReason: str | None = Field(
+        default=None,
+        description=(
+            "Why the cron closed the trade. v0 emits 'stop_hit' (pnl_pct <= -5%) or "
+            "'max_hold' (holding_days >= 5). null while still open."
+        ),
+    )
+
+
+class PaperTradeListResponse(BaseModel):
+    """Response of GET /v1/paper-trades."""
+
+    asOfDate: str = Field(..., description="ISO date the list was read.")
+    count: int = Field(..., description="Number of rows in `items`.")
+    items: list[PaperTrade] = Field(..., description="Latest first (entry_date DESC).")
+
+
+class PaperTradeStatsResponse(BaseModel):
+    """Response of GET /v1/paper-trades/stats."""
+
+    since: str = Field(..., description="ISO date lower bound used for the stats window.")
+    closedCount: int = Field(..., description="Number of closed trades in the window.")
+    winningCount: int = Field(..., description="Subset of closedCount where pnl_pct > 0.")
+    winRate: float | None = Field(
+        default=None,
+        description="winningCount / closedCount, in [0, 1]. null when closedCount == 0.",
+    )
+    avgPnlPct: float | None = Field(
+        default=None,
+        description="Arithmetic mean of pnl_pct across the window. null when closedCount == 0.",
+    )
+
+
+@router.get(
+    "/paper-trades",
+    response_model=PaperTradeListResponse,
+    summary="List paper trades (OPT-049, v0: CN-only, read-only).",
+)
+def get_paper_trades(
+    status: str | None = Query(
+        default=None,
+        description="Filter by status: 'open' | 'closed'. null returns both.",
+    ),
+    since: str | None = Query(
+        default=None,
+        description="ISO date (YYYY-MM-DD). Only rows with entry_date >= since are returned.",
+    ),
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=500,
+        description="Maximum rows to return. Capped at 500 to keep the response bounded.",
+    ),
+) -> PaperTradeListResponse:
+    try:
+        rows = pt_db.list_paper_trades(status=status, since=since, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return PaperTradeListResponse(
+        asOfDate=date.today().isoformat(),
+        count=len(rows),
+        items=[PaperTrade(**r) for r in rows],
+    )
+
+
+@router.get(
+    "/paper-trades/stats",
+    response_model=PaperTradeStatsResponse,
+    summary="Get aggregate stats for paper trades since a given date.",
+)
+def get_paper_trades_stats(
+    since: str = Query(
+        ...,
+        description="ISO date (YYYY-MM-DD) lower bound. Required — stats are useless without a window.",
+        examples=["2026-08-01"],
+    ),
+) -> PaperTradeStatsResponse:
+    try:
+        result = pt_compute_stats(since_iso=since)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=str(result["error"]))
+    return PaperTradeStatsResponse(
+        since=result["since"],
+        closedCount=int(result.get("closedCount") or 0),
+        winningCount=int(result.get("winningCount") or 0),
+        winRate=result.get("winRate"),
+        avgPnlPct=result.get("avgPnlPct"),
+    )
