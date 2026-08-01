@@ -29,11 +29,11 @@
 | 领域 | 在做（P0） | 待办（P1-P4） | 完成归档 |
 |------|------------|---------------|----------|
 | §1 定位与形态 | — | Tauri vs 固定 URL 评估 | — |
-| §2 收益 / 交易 | TIP-009 alpha 映射抽检 / TIP-011 开火归因 | 数据源质量审计 | TIP-001~008 + V6.2/3 已沉淀（`trading-improvement-checklist.md`） |
+| §2 收益 / 交易 | TIP-009 alpha 映射抽检 / TIP-011 开火归因 | Watchlist hover tooltip / Dashboard 精简 + 参数说明 | TIP-001~008 + V6.2/3 已沉淀（`trading-improvement-checklist.md`） |
 | §3 API 开放 | — | API Key 配额 + 限流 | ✅ 已归档 → `archive/2026-08-01-opt-045-v1-api-surface.md`（OPT-045/046/047 整圈）|
 | §4 工程与部署 | — | DB 走向决策 / Docker 一键 | ✅ Tunnel 脚本骨架 → `optimization-checklist.md` OPT-048（端到端验证 pending） |
 | §5 数据源 / 浏览器 | — | 付费 API 矩阵 | ✅ TV Scanner API 作为唯一池子（2026-08-01）；ego-lite/Chrome CDP 仅作 fallback；数据源审计 done 2026-08-01 |
-| §6 新闻 / 研报 | — | 研报源评估、是否独立 | `OPT-037/038/039` News Query 并行化 |
+| §6 新闻 / 研报 | — | News 质量评估（老婆反馈不如财经新闻准） | `OPT-037/038/039` News Query 并行化 |
 | §7 多市场 | — | 美股 / 加拿大时区 | `OPT-041/042/043/044` HK + ETF 已通 |
 | §8 回测 | — | BacktestPage 重写（等 paper 数据） | ✅ paper-trading v0 → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；历史 BacktestPage 已隐藏 |
 | **doc 大扫除** | — | — | `archive/modules-legacy/`（2026-08-01：industry-flow / market-sentiment / news-brief 3 旧版模块文档） |
@@ -284,6 +284,10 @@
 | 13 | **MCP server 暴露** | §3 API | 1-2 天 | #1 完成 | Cursor / Claude Desktop 直接调（另一种标准化形式） |
 | 14 | **美股 symbol 闸门** | §7 多市场 | 3-5 天 | 加拿大规划启动 | 远期触发 |
 | 15 | **加拿大税务/账户模型** | §7 多市场 | 远期 | — | 远景 |
+| 16 | **Watchlist table hover tooltip** | §2 收益 | 0.5 天 | — | P1 · 老婆反馈：表头参数看不懂，需 hover 提示 |
+| 17 | **Dashboard 精简 + 参数说明** | §2 收益 | 1 天 | — | P1 · 老婆反馈：内容重复、参数看不懂 |
+| 16 | **Watchlist table hover tooltip** | §2 收益 | 0.5 天 | — | 老婆反馈：表头参数看不懂，需 hover 提示 |
+| 17 | **Dashboard 精简 + 参数说明** | §2 收益 | 1 天 | — | 老婆反馈：内容重复、参数看不懂 |
 
 ### 怎么"凑时间一个个实现"
 
@@ -411,15 +415,24 @@
 
 ---
 
-## 15. 老婆使用 watchlist 的反馈（待汇总 · 不污染 P0）
+## 15. 老婆使用 watchlist 的反馈（2026-08-01 已收到 · 不污染 P0）
 
-> **状态**：暂存，等老婆反馈
-> **来源**：老婆亲自使用 Karios watchlist 后给的具体建议
+> **状态**：已收到具体反馈，需落实
+> **来源**：老婆亲自使用 Karios 后给的具体建议
 > **行动**：反馈汇总后落 `docs/modules/watchlist.md` 末尾"用户使用笔记"段；衍生需求列为 §3 / §12 的 P1 子条目
 
-- [ ] 老婆试用 watchlist 一周后 → 收集具体卡点 / 期望
+### 已收到反馈
+
+| # | 反馈 | 影响范围 | 优先级 |
+|---|------|----------|--------|
+| 1 | Watchlist table header 参数看不懂，hover 上去能明白每一个参数干什么的 | WatchlistPage table columns | P1 |
+| 2 | 新闻模块特别是 dashboard 这里的部分没有她财经新闻准 | Dashboard news + modules/news.md | P2 |
+| 3 | Dashboard 里面有些内容重复，参数看不懂不知道干什么 | DashboardPage cards | P1 |
+
+### 衍生需求（待落实）
+
+- [ ] Watchlist table columns 加 hover tooltip（P1）
+- [ ] Dashboard 精简重复内容 + 参数说明（P1）
+- [ ] News 模块质量评估（是否需要替换/补强）（P2）
 - [ ] 反馈落到 `docs/modules/watchlist.md` 末尾"用户使用笔记"段
 - [ ] 衍生需求（P1）列入 todo §3 或 §12
-
-> **为什么现在不做**：watchlist 模块当前是单人单表设计（无 user_id / role / share 概念）；老婆的具体反馈没到位时做任何 UX 改动都是赌博。等反馈到位再动。
-> **明确不做的事**：❌ 暂不做"双人 watchlist" / "配偶共享"等改动；❌ 不在 Karios 内做"家庭版"分支。
