@@ -105,6 +105,46 @@ open http://127.0.0.1:8080
 scripts/install-launchd.sh
 ```
 
+### 已知 bug 修复（2026-08-01 patches）
+
+**Patch 1 — `apps/desktop-ui/Dockerfile` shell-in-COPY**：
+
+第 38 行 `COPY ... 2>/dev/null || true` 错误——`COPY` 不跑 shell，`2>/dev/null` 被 BuildKit 当字面路径。已改为：
+
+```diff
+-COPY services/data-sync-service/package.json ./services/data-sync-service/package.json 2>/dev/null || true
++COPY services/data-sync-service/package.json ./services/data-sync-service/package.json
+```
+
+**Patch 2 — `apps/ai-service` ERR_PNPM_NO_LOCKFILE**：
+
+第 126 行 compose 用了 `context: ./apps/ai-service` 但 pnpm workspace 锁文件只在 repo root，build 时找不到 `pnpm-lock.yaml`。已改为：
+
+```diff
+-  ai-service:
+-    build:
+-      context: ./apps/ai-service
+-      dockerfile: Dockerfile
++  ai-service:
++    build:
++      context: .
++      dockerfile: apps/ai-service/Dockerfile
+```
+
+`apps/ai-service/Dockerfile` 重写：COPY root lockfile + 所有 workspace package.json 后再 `pnpm install --filter ./apps/ai-service...`。
+
+**新增 regression guards**（`test_docker_one_click.py`）：
+
+| 测试 | 防什么 |
+|------|--------|
+| `test_dockerfile_no_shell_in_copy` | 3 Dockerfile × 7 forbidden token |
+| `test_root_pnpm_lockfile_exists` | 确认 root lockfile 存在 |
+| `test_no_per_app_pnpm_lockfile` | 3 个路径，per-app lockfile 不应存在 |
+| `test_node_dockerfile_copies_root_lockfile` | 2 个 Node Dockerfile 必须 COPY literal pnpm-lock.yaml（非 glob） |
+| `test_node_dockerfile_uses_root_context` | compose 必须 `context: .` 给 ai-service / desktop-ui |
+
+合计 **8 个新测试**（60 → 68 全绿）。
+
 ## 后续动作（不在本次范围）
 
 - **§13 #1/#2/#3**（远程部署 / Neon / Tailscale / 临时 VM）：用户 review 后暂缓，等真需要时再开

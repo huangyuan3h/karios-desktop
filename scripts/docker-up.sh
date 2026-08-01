@@ -108,7 +108,7 @@ ORPHAN_CONTAINERS=(postgres-db pgadmin-web karios-rsshub)
 
 if [ "$MIGRATE" = "1" ]; then
     echo "[docker-up] --migrate: stopping orphan containers from old compose..."
-    for c in "${ORPHAN_CONTAINERS[@]}"; do
+    for c in ${ORPHAN_CONTAINERS[@]+"${ORPHAN_CONTAINERS[@]}"}; do
         if docker ps --format '{{.Names}}' | grep -qx "$c"; then
             echo "  stopping $c..."
             docker stop "$c" >/dev/null || true
@@ -117,7 +117,7 @@ if [ "$MIGRATE" = "1" ]; then
 else
     # Check for orphans; warn if any are running on required ports.
     CONFLICT=0
-    for c in "${ORPHAN_CONTAINERS[@]}"; do
+    for c in ${ORPHAN_CONTAINERS[@]+"${ORPHAN_CONTAINERS[@]}"}; do
         if docker ps --format '{{.Names}}' | grep -qx "$c"; then
             echo "[docker-up] detected orphan container: $c" >&2
             CONFLICT=1
@@ -148,7 +148,9 @@ fi
 # ---- up --------------------------------------------------------------------
 
 echo "[docker-up] starting services..."
-docker compose up -d "${COMPOSE_ARGS[@]}" --remove-orphans
+# Use the `${arr[@]+...}` form so that an empty COMPOSE_ARGS doesn't trigger
+# `set -u` "unbound variable" in bash. See bash manual on array expansion.
+docker compose up -d ${COMPOSE_ARGS[@]+"${COMPOSE_ARGS[@]}"} --remove-orphans
 
 # ---- wait for healthz ------------------------------------------------------
 

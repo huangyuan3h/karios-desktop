@@ -35,7 +35,9 @@ COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml turbo.json ./
 COPY apps/desktop-ui/package.json ./apps/desktop-ui/package.json
 COPY apps/ai-service/package.json ./apps/ai-service/package.json
 COPY packages/shared/package.json ./packages/shared/package.json
-COPY services/data-sync-service/package.json ./services/data-sync-service/package.json 2>/dev/null || true
+# data-sync-service uses uv (Python), but pnpm workspace resolution requires
+# its package.json stub to exist on disk. It does exist (verified).
+COPY services/data-sync-service/package.json ./services/data-sync-service/package.json
 
 # Copy shared source (transpiled by Next transpilePackages).
 COPY packages/shared ./packages/shared
@@ -43,9 +45,15 @@ COPY packages/shared ./packages/shared
 # Copy desktop-ui source + config.
 COPY apps/desktop-ui ./apps/desktop-ui
 
-# Install (frozen lockfile). Filter to just desktop-ui so we don't pull in ai-service deps.
+# Install all workspace deps (frozen lockfile). We do NOT use `--filter`
+# because Next.js Turbopack has known issues resolving pnpm workspace
+# transitive deps through symlinks — `packages/shared` depends on `zod`
+# and the resolver can't find it after a filtered install. Installing
+# the full workspace matches the host dev workflow (`pnpm install`).
+# --prod=false: include devDependencies needed for `next build`, even though
+# NODE_ENV=production is set globally above.
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --filter ./apps/desktop-ui...
+    pnpm install --frozen-lockfile --prod=false
 
 # Build static export into out/.
 ARG NEXT_PUBLIC_DATA_SYNC_BASE_URL=http://127.0.0.1:4330

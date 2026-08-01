@@ -187,15 +187,38 @@ brew install apcupsd
 - Docker Desktop 设置为「Start Docker Desktop when you sign in」
 - 系统设置 → 节能 → 「唤醒以供网络访问」开启（否则远程访问场景下 Mac 不会自动唤醒）
 
-## 与开发模式的区别
+## 与开发模式的区别（**重要**）
 
-| 模式 | 命令 | 用途 |
-|------|------|------|
-| **Docker 一键起**（推荐日常） | `scripts/docker-up.sh` | 跑实盘 / 看盘 / 改 SQL / 远程访问 |
-| **dev 热重载** | `pnpm dev` | 改 Python / TS 代码，需要 HMR |
-| **dev + tauri** | `pnpm dev:tauri` | 改 Tauri 桌面壳（已经降级，可忽略） |
+| 模式 | 命令 | 用途 | 代码改了怎么办 |
+|------|------|------|----------------|
+| **Docker 一键起**（**跑 Karios**） | `scripts/docker-up.sh` | 实盘 / 看盘 / 远程访问 / 给家里人看 / 验证生产形态 | `scripts/docker-up.sh --rebuild`（5-10 分钟） |
+| **dev 热重载**（**改代码**） | `pnpm dev` | 日常 Python / TS 开发，HMR 1-3 秒生效 | 自动 reload（**不用动 Docker**） |
+| **dev + tauri** | `pnpm dev:tauri` | 改 Tauri 桌面壳（已降级，可忽略） | — |
 
-**不要同时跑**：docker-up.sh 占了 4330 / 4310 / 5432 等端口，pnpm dev 也用同样端口；会冲突。
+**核心原则**：
+
+- **改代码 → `pnpm dev`**。Docker compose 不参与日常开发（不是为开发设计的）。
+- **跑 Karios → `scripts/docker-up.sh`**。代码已定型后用。
+- **代码改了想立即跑 Docker**：先 `pnpm dev` 验证 → 满意后 `scripts/docker-up.sh --rebuild`（不重建 image 只重建 `data-sync` / `ai-service` / `desktop-ui` 的 source 层，约 2-3 分钟）。
+
+**为什么不在 Docker 里做热重载**：
+- Docker compose 是"运行 Karios"的工具，不是开发工具
+- 在容器里跑 `next dev` / `uvicorn --reload` 比 `pnpm dev` 慢（多一层 volume mount + Docker 网络）
+- 行业标准做法就是两套：dev mode = 本机 HMR，prod mode = container baked image
+
+**改代码后想跑 Docker，build 实际多久？**
+
+| 改动 | 重新 build | 备注 |
+|------|-----------|------|
+| 首次 build（全栈） | 5-10 分钟 | 下载 base image + 装所有依赖 |
+| Python 文件 | **~10 秒** | 仅 `COPY src` layer 重 build，uv deps 层 CACHED |
+| `pyproject.toml` / `uv.lock` | 1-2 分钟 | uv deps 层重装；runtime layer CACHED |
+| `package.json` / `pnpm-lock.yaml` | 2-3 分钟 | pnpm install 重跑；static export 增量 build |
+| Desktop UI TS 文件 | 30-60 秒 | 仅 `next build` 重跑 |
+| 共享 schema (`packages/shared`) | 1-2 分钟 | desktop-ui 重 build（依赖 shared） |
+| `Dockerfile` / `docker-compose.yml` | 全栈 | 配置改了一定要 `--rebuild` |
+
+**不要同时跑**：docker-up.sh 占了 4330 / 4310 / 5432 等端口，pnpm dev 也用同样端口；会冲突。跑 docker-up 前先 `pnpm dev` 退出（或反过来）。
 
 ## 故障排查
 

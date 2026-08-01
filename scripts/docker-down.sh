@@ -46,6 +46,7 @@ if [ "$VOLUMES" = "1" ]; then
 fi
 
 echo "[docker-down] stopping services..."
-docker compose "${ARGS[@]}"
+# Use the `${arr[@]+...}` form so an empty ARGS doesn't trigger `set -u`.
+docker compose ${ARGS[@]+"${ARGS[@]}"}
 
 echo "[docker-down] done."

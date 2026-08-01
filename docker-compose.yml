@@ -123,8 +123,8 @@ services:
 
   ai-service:
     build:
-      context: ./apps/ai-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/ai-service/Dockerfile
     container_name: karios-ai-service
     image: karios/ai-service:latest
     env_file:
