@@ -262,6 +262,8 @@ GET  /v1/alpha-radar/recent      → 近期 Alpha S 候选
 
 ## 何时回退 / 重新评估
 
+> **DB 维度的具体触发条件 + 备份 / HA / 多区域策略见 [`db-direction-2026-08.md`](./db-direction-2026-08.md)**。本文档只列出架构层面触发；DB 决策以其为准。
+
 - 移动端使用频次 > 3 次/日，且对延迟不耐受 → 评估 Vercel + Neon（**注意：仍只暴露 Karios**，AI 助手继续独立）
 - 公开给家庭成员 / 朋友 → 评估 Vercel + Neon（多人场景）
 - 电脑经常断电 / UPS 不够撑 → 评估迁移到 VPS（Hetzner €4/月），Karios + AI 助手都迁
