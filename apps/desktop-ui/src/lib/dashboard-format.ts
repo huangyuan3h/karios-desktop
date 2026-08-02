@@ -4,6 +4,94 @@ export const BREADTH_PANIC_DOWN_THRESHOLD = 3000;
 export const DASHBOARD_CARD_ORDER_KEY = 'karios.dashboard.cardOrder.v0';
 export const DASHBOARD_COPY_MODE_KEY = 'karios.dashboard.copyMode.v0';
 
+// --- Translation helpers (English → Chinese for UI display) ---
+
+const RISK_LABELS: Record<string, string> = {
+  normal: '正常',
+  caution: '谨慎',
+  hot: '过热',
+  euphoric: '狂热',
+  no_new_positions: '禁止新开仓',
+  extreme_caution: '极度谨慎',
+  capitulation_v_bottom: '恐慌冰点共振',
+  confirmed_uptrend: '趋势确立',
+};
+
+export function translateRisk(risk: string | null | undefined): string {
+  return RISK_LABELS[String(risk ?? '').trim()] || String(risk ?? '—');
+}
+
+const GATE_MODE_LABELS: Record<string, string> = {
+  ATTACK: '进攻',
+  WEAK_ATTACK: '弱势进攻',
+  HOLD_ONLY: '仅持有',
+  DEFEND: '防守',
+};
+
+export function translateGateMode(mode: string | null | undefined): string {
+  return GATE_MODE_LABELS[String(mode ?? '').trim()] || String(mode ?? '—');
+}
+
+const REGIME_LABELS: Record<string, string> = {
+  Strong: '强势',
+  Diverging: '分化',
+  Weak: '弱势',
+};
+
+export function translateRegime(regime: string | null | undefined): string {
+  return REGIME_LABELS[String(regime ?? '').trim()] || String(regime ?? '—');
+}
+
+const INDEX_LIGHT_LABELS: Record<string, string> = {
+  green: '绿灯',
+  yellow: '黄灯',
+  red: '红灯',
+};
+
+export function translateIndexLight(light: string | null | undefined): string {
+  return INDEX_LIGHT_LABELS[String(light ?? '').trim()] || String(light ?? '—');
+}
+
+const SRV_LEVEL_LABELS: Record<string, string> = {
+  Extreme_High: '极高',
+  Elevated: '偏高',
+  Stable: '稳定',
+};
+
+export function translateSrvLevel(level: string | null | undefined): string {
+  return SRV_LEVEL_LABELS[String(level ?? '').trim()] || String(level ?? '—');
+}
+
+const SIGNAL_LABELS: Record<string, string> = {
+  deep_green: '深绿',
+  light_green: '浅绿',
+  green: '绿',
+  yellow: '黄',
+  red: '红',
+};
+
+export function translateSignal(signal: string | null | undefined): string {
+  return SIGNAL_LABELS[String(signal ?? '').trim()] || String(signal ?? '—');
+}
+
+const REASON_LABELS: Record<string, string> = {
+  BREADTH_PANIC: '跌停恐慌',
+  RISK_NO_NEW: '风险:禁止开仓',
+  RISK_EXTREME_CAUTION: '风险:极度谨慎',
+  SRV_EXTREME_HIGH: 'SRV极高',
+  REGIME_WEAK: '弱势',
+  REGIME_DIVERGING: '分化',
+  SRV_ELEVATED: 'SRV偏高',
+  REGIME_STRONG: '强势',
+  SRV_STABLE: 'SRV稳定',
+  SRV_UNKNOWN: 'SRV未知',
+  INTRADAY_OVERFLOW_OVERRIDE: '盘中溢出覆盖',
+};
+
+export function translateReason(r: string | null | undefined): string {
+  return REASON_LABELS[String(r ?? '').trim()] || String(r ?? '—');
+}
+
 export type DashboardCopyMode = 'full' | 'compact';
 
 export function loadCopyMode(): DashboardCopyMode {
@@ -85,9 +173,9 @@ export function formatSrvIndexLine(srv: SrvIndexLike | null | undefined): string
   const level = String(srv?.level ?? '').trim();
   const overlap = srv?.overlapCount;
   if (!level || typeof overlap !== 'number' || !Number.isFinite(overlap)) {
-    return 'SRV_Index (Sector Rotation): —';
+    return 'SRV 轮动指数: —';
   }
-  return `SRV_Index (Sector Rotation): ${level} (3D Overlap = ${overlap})`;
+  return `SRV 轮动指数: ${translateSrvLevel(level)}（3D重叠 = ${overlap}）`;
 }
 
 export function srvIndexBadgeClass(level: string | null | undefined): string {

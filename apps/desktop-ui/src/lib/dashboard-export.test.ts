@@ -241,14 +241,14 @@ describe('buildSentimentMarkdown', () => {
     expect(md).toContain('## Market sentiment');
     expect(md).toContain('- risk: neutral');
     expect(md).toContain(
-      '- SRV_Index (Sector Rotation): Extreme_High (3D Overlap = 0)',
+      '- SRV 轮动指数: 极高（3D重叠 = 0）',
     );
     expect(md).toContain('## 市场环境摘要');
     expect(md).toContain('市场震荡，控制仓位。');
     expect(md).toContain('## Market sentiment');
     expect(md).toContain('- risk: neutral');
     expect(md).toContain(
-      '- SRV_Index (Sector Rotation): Extreme_High (3D Overlap = 0)',
+      '- SRV 轮动指数: 极高（3D重叠 = 0）',
     );
     expect(md).not.toContain('## Index traffic lights');
     expect(md).not.toContain('## Market & Macro overview');

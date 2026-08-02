@@ -33,8 +33,8 @@ describe('formatSrvIndexLine', () => {
   it('formats level and overlap count', () => {
     expect(
       formatSrvIndexLine({ level: 'Extreme_High', overlapCount: 0 }),
-    ).toBe('SRV_Index (Sector Rotation): Extreme_High (3D Overlap = 0)');
-    expect(formatSrvIndexLine(null)).toBe('SRV_Index (Sector Rotation): —');
+    ).toBe('SRV 轮动指数: 极高（3D重叠 = 0）');
+    expect(formatSrvIndexLine(null)).toBe('SRV 轮动指数: —');
   });
 });
 

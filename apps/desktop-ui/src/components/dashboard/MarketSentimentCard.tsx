@@ -14,6 +14,12 @@ import {
   fmtSignedAmountCn,
   formatSrvIndexLine,
   srvIndexBadgeClass,
+  translateRisk,
+  translateGateMode,
+  translateRegime,
+  translateIndexLight,
+  translateSignal,
+  translateReason,
 } from '@/lib/dashboard-format';
 import { parseExecutionGate } from '@/lib/execution-action';
 import { buildSentimentMarkdown } from '@/lib/dashboard-export';
@@ -90,17 +96,17 @@ export function MarketSentimentCard({
       {gate ? (
         <div className={`rounded-lg border px-3 py-2 text-sm ${executionGateBadgeClass(gate.mode)}`}>
           <div className="flex flex-wrap items-center gap-2 font-medium">
-            <span>执行闸门: {gate.mode}</span>
+            <span>执行闸门: {translateGateMode(gate.mode)}</span>
             <span className="text-xs opacity-90">允许开仓={String(gate.allowNewEntries)}</span>
             <span className="text-xs opacity-90">
-              {gate.marketRegime} · {gate.indexLight} · 仓位 {gate.positionRangeHint || '—'}
+              {translateRegime(gate.marketRegime)} · {translateIndexLight(gate.indexLight)} · 仓位 {gate.positionRangeHint || '—'}
             </span>
           </div>
           {gate.satelliteNote ? (
             <div className="mt-1 text-xs opacity-90">{gate.satelliteNote}</div>
           ) : null}
           {gate.reasons.length ? (
-            <div className="mt-1 text-xs opacity-80">原因: {gate.reasons.join(' · ')}</div>
+            <div className="mt-1 text-xs opacity-80">原因: {gate.reasons.map(translateReason).join(' · ')}</div>
           ) : null}
         </div>
       ) : null}
@@ -109,7 +115,7 @@ export function MarketSentimentCard({
       <div className="grid grid-cols-3 gap-2">
         <div className={`rounded-lg border px-3 py-2 text-xs ${badge}`}>
           <div className="mb-1 font-medium uppercase tracking-wide opacity-60">风险</div>
-          <div className="text-base font-bold">{risk}</div>
+          <div className="text-base font-bold">{translateRisk(risk)}</div>
           {Array.isArray(latest?.rules) && latest.rules.length ? (
             <div className="mt-1 text-[10px] opacity-80">
               {latest.rules.slice(0, 2).map((x: any) => String(x)).join(' · ')}
@@ -226,7 +232,7 @@ export function MarketSentimentCard({
                 >
                   <div className="font-medium">{String(it?.name ?? it?.tsCode ?? '')}</div>
                   <div className="mt-1 font-mono">
-                    {signal} · 仓位 {String(it?.positionRange ?? '—')}
+                    {translateSignal(signal)} · 仓位 {String(it?.positionRange ?? '—')}
                   </div>
                   <div className="mt-1 text-[var(--k-muted)]">
                     涨幅{' '}
