@@ -431,8 +431,8 @@
 
 ### 衍生需求（待落实）
 
-- [ ] Watchlist table columns 加 hover tooltip（P1）
-- [ ] Dashboard 精简重复内容 + 参数说明（P1）
+- [x] Watchlist table columns 加 hover tooltip（P1 · 2026-08-01 完成 → `lib/watchlist-column-help.tsx` + `ColumnHeader`）
+- [x] Dashboard 精简重复内容 + 参数说明（P1 · 2026-08-01 完成 → `lib/dashboard-card-help.tsx` + `DashboardHeader`；Last sync table → 单行；Index rule 块 → hover）
 - [ ] News 模块质量评估（是否需要替换/补强）（P2）
 - [ ] 反馈落到 `docs/modules/watchlist.md` 末尾"用户使用笔记"段
 - [ ] 衍生需求（P1）列入 todo §3 或 §12

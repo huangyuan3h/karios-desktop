@@ -5,6 +5,7 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 
+import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DecisionJournalCard } from '@/components/dashboard/DecisionJournalCard';
 import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
 import { Button } from '@/components/ui/button';
@@ -428,35 +429,43 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
       {syncResp ? (
         <div className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-          <div className="mb-2 text-sm font-medium">Last sync result</div>
-          <div className="text-xs text-[var(--k-muted)]">
-            started: {fmtDateTime(syncResp.startedAt as string)} • finished:{' '}
-            {fmtDateTime(syncResp.finishedAt as string)} • ok: {String(Boolean(syncResp.ok))}
-          </div>
-          <div className="mt-3 overflow-auto rounded-lg border border-[var(--k-border)]">
-            <table className="w-full border-collapse text-xs">
-              <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                <tr className="text-left">
-                  <th className="px-3 py-2">Step</th>
-                  <th className="px-3 py-2">OK</th>
-                  <th className="px-3 py-2">Duration</th>
-                  <th className="px-3 py-2">Message</th>
-                </tr>
-              </thead>
-              <tbody>
-                {((syncResp.steps as any[]) ?? []).map((s: any) => (
-                  <tr key={String(s.name)} className="border-t border-[var(--k-border)]">
-                    <td className="px-3 py-2 font-mono">{String(s.name)}</td>
-                    <td className="px-3 py-2">{String(Boolean(s.ok))}</td>
-                    <td className="px-3 py-2 font-mono">{String(s.durationMs ?? 0)}ms</td>
-                    <td className="px-3 py-2 text-[var(--k-muted)]">{String(s.message ?? '')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mb-2 flex flex-wrap items-center gap-3 text-xs">
+            <span className="text-sm font-medium">Last sync</span>
+            <span className="text-[var(--k-muted)]">
+              {fmtDateTime(syncResp.startedAt as string)} → {fmtDateTime(syncResp.finishedAt as string)}
+            </span>
+            <span
+              className={`rounded px-2 py-0.5 ${
+                syncResp.ok
+                  ? 'bg-emerald-500/15 text-emerald-700'
+                  : 'bg-red-500/15 text-red-700'
+              }`}
+            >
+              {syncResp.ok ? 'OK' : 'FAILED'}
+            </span>
+            {((syncResp.steps as any[]) ?? []).length ? (
+              <span className="text-[var(--k-muted)]">
+                {(syncResp.steps as any[]).map((s: any) => {
+                  const ok = Boolean(s.ok);
+                  const name = String(s.name ?? '');
+                  const ms = Number(s.durationMs ?? 0);
+                  return (
+                    <span
+                      key={name}
+                      className={`ml-2 inline-flex items-center gap-1 font-mono ${
+                        ok ? 'text-emerald-700' : 'text-red-700'
+                      }`}
+                      title={String(s.message ?? '')}
+                    >
+                      {ok ? '✓' : '✗'} {name} {ms}ms
+                    </span>
+                  );
+                })}
+              </span>
+            ) : null}
           </div>
           {(syncResp.screener as any)?.failed?.length || (syncResp.screener as any)?.missing?.length ? (
-            <div className="mt-3 text-xs text-red-600">
+            <div className="text-xs text-red-600">
               Screener issues: failed={(syncResp.screener as any)?.failed?.length ?? 0} missing=
               {(syncResp.screener as any)?.missing?.length ?? 0}
             </div>
@@ -702,27 +711,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
                         {indexSignals.length ? (
                           <div className="mt-3">
-                            <div className="mb-2 text-xs text-[var(--k-muted)]">
-                              Index traffic lights
-                            </div>
-                            <div className="mb-3 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-xs text-[var(--k-muted)]">
-                              <div className="font-medium text-[var(--k-fg)]">信号规则（简版）</div>
-                              <div className="mt-1">
-                                🔴 Red: Price &lt; MA20 或 MA5 &lt; MA20，仓位 0%-10%。
-                              </div>
-                              <div className="mt-1">
-                                🟡 Yellow: Price &gt; MA20 但 MA20 斜率向下 或 预估全天量 &lt;
-                                MA5_Vol * 0.8 或 MA5 &lt; MA20，仓位 30%。
-                              </div>
-                              <div className="mt-1">
-                                🟢 Green: Price &gt; MA20 且 MA5 &gt; MA20 且 MA20
-                                向上，且预估全天量 &gt; MA5_Vol * 0.8，仓位 50%-60%。
-                              </div>
-                              <div className="mt-1">
-                                ❇️ Deep Green: MA5 &gt; MA20 &gt; MA60 且 Price &gt; EMA10，全市场成交额连续
-                                &gt; 1.5万亿，Breadth &gt; 50% 或 单一板块流入 &gt; 50亿，仓位
-                                80%-100%。
-                              </div>
+                            <div className="mb-2 flex items-center justify-between gap-2 text-xs text-[var(--k-muted)]">
+                              <DashboardHeader helpId="idxRule.title" align="left" width={420} />
                             </div>
                             <div className="grid gap-2 md:grid-cols-2">
                               {indexSignals.map((it: any) => {
@@ -790,12 +780,24 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                             <table className="w-full border-collapse text-xs">
                               <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
                                 <tr className="text-left">
-                                  <th className="px-2 py-2 font-mono">date</th>
-                                  <th className="px-2 py-2 text-right">ratio</th>
-                                  <th className="px-2 py-2 text-right">turnover</th>
-                                  <th className="px-2 py-2 text-right">premium%</th>
-                                  <th className="px-2 py-2 text-right">failed%</th>
-                                  <th className="px-2 py-2">risk</th>
+                                  <th className="px-2 py-2">
+                                    <DashboardHeader helpId="sentiment5d.date" align="left" width={280} />
+                                  </th>
+                                  <th className="px-2 py-2 text-right">
+                                    <DashboardHeader helpId="sentiment5d.ratio" align="right" width={340} />
+                                  </th>
+                                  <th className="px-2 py-2 text-right">
+                                    <DashboardHeader helpId="sentiment5d.turnover" align="right" width={340} />
+                                  </th>
+                                  <th className="px-2 py-2 text-right">
+                                    <DashboardHeader helpId="sentiment5d.premiumPct" align="right" width={360} />
+                                  </th>
+                                  <th className="px-2 py-2 text-right">
+                                    <DashboardHeader helpId="sentiment5d.failedPct" align="right" width={360} />
+                                  </th>
+                                  <th className="px-2 py-2">
+                                    <DashboardHeader helpId="sentiment5d.risk" align="left" width={340} />
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -858,15 +860,33 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                 <table className="w-full border-collapse text-xs">
                                   <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
                                     <tr className="text-left">
-                                      <th className="px-2 py-2">ETF Name</th>
-                                      <th className="px-2 py-2 font-mono">Symbol</th>
-                                      <th className="px-2 py-2 text-right">Main Flow</th>
-                                      <th className="px-2 py-2 text-right">Super/Large</th>
-                                      <th className="px-2 py-2 text-right">3D Net Flow</th>
-                                      <th className="px-2 py-2">Realtime AsOf</th>
-                                      <th className="px-2 py-2">Source</th>
-                                      <th className="px-2 py-2">Status</th>
-                                      <th className="px-2 py-2">Signal</th>
+                                      <th className="px-2 py-2">
+                                        <DashboardHeader helpId="etf.name" align="left" width={300} />
+                                      </th>
+                                      <th className="px-2 py-2 font-mono">
+                                        <DashboardHeader helpId="etf.symbol" align="left" width={300} />
+                                      </th>
+                                      <th className="px-2 py-2 text-right">
+                                        <DashboardHeader helpId="etf.mainFlow" align="right" width={340} />
+                                      </th>
+                                      <th className="px-2 py-2 text-right">
+                                        <DashboardHeader helpId="etf.superLarge" align="right" width={360} />
+                                      </th>
+                                      <th className="px-2 py-2 text-right">
+                                        <DashboardHeader helpId="etf.flow3d" align="right" width={300} />
+                                      </th>
+                                      <th className="px-2 py-2">
+                                        <DashboardHeader helpId="etf.realtimeAsOf" align="left" width={320} />
+                                      </th>
+                                      <th className="px-2 py-2">
+                                        <DashboardHeader helpId="etf.source" align="left" width={300} />
+                                      </th>
+                                      <th className="px-2 py-2">
+                                        <DashboardHeader helpId="etf.status" align="left" width={320} />
+                                      </th>
+                                      <th className="px-2 py-2">
+                                        <DashboardHeader helpId="etf.signal" align="left" width={340} />
+                                      </th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -1038,13 +1058,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
               ) : id === 'news' ? (
                 <div>
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <div className="text-xs text-[var(--k-muted)]">
-                      24-hour news summary (AI-generated, finance/stock focused)
-                    </div>
+                    <DashboardHeader helpId="news.brief" align="left" width={360} />
                     {newsSummaryUpdatedAt ? (
-                      <div className="text-xs text-[var(--k-muted)]">
-                        Generated: {fmtDateTime(newsSummaryUpdatedAt)}
-                      </div>
+                      <DashboardHeader helpId="news.asOf" align="right" width={300} />
                     ) : null}
                   </div>
                   {newsSummaryBusy ? (
@@ -1102,12 +1118,24 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                       <table className="w-full border-collapse text-xs">
                         <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
                           <tr className="text-left">
-                            <th className="px-2 py-2">Symbol</th>
-                            <th className="px-2 py-2">Name</th>
-                            <th className="px-2 py-2">Intraday%</th>
-                            <th className="px-2 py-2">VR</th>
-                            <th className="px-2 py-2">Gap</th>
-                            <th className="px-2 py-2">Alerts</th>
+                            <th className="px-2 py-2">
+                              <DashboardHeader helpId="risk.symbol" align="left" width={260} />
+                            </th>
+                            <th className="px-2 py-2">
+                              <DashboardHeader helpId="risk.name" align="left" width={260} />
+                            </th>
+                            <th className="px-2 py-2">
+                              <DashboardHeader helpId="risk.intradayPct" align="left" width={300} />
+                            </th>
+                            <th className="px-2 py-2">
+                              <DashboardHeader helpId="risk.vr" align="left" width={300} />
+                            </th>
+                            <th className="px-2 py-2">
+                              <DashboardHeader helpId="risk.gap" align="left" width={300} />
+                            </th>
+                            <th className="px-2 py-2">
+                              <DashboardHeader helpId="risk.alerts" align="left" width={360} />
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1196,10 +1224,18 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                     <table className="w-full border-collapse text-xs">
                       <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
                         <tr className="text-left">
-                          <th className="px-2 py-2">Name</th>
-                          <th className="px-2 py-2">capturedAt</th>
-                          <th className="px-2 py-2 text-right">rows</th>
-                          <th className="px-2 py-2 text-right">filters</th>
+                          <th className="px-2 py-2">
+                            <DashboardHeader helpId="screener.name" align="left" width={300} />
+                          </th>
+                          <th className="px-2 py-2">
+                            <DashboardHeader helpId="screener.capturedAt" align="left" width={300} />
+                          </th>
+                          <th className="px-2 py-2 text-right">
+                            <DashboardHeader helpId="screener.rows" align="right" width={300} />
+                          </th>
+                          <th className="px-2 py-2 text-right">
+                            <DashboardHeader helpId="screener.filters" align="right" width={300} />
+                          </th>
                         </tr>
                       </thead>
                       <tbody>

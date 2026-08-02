@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ColumnHeader } from '@/components/watchlist/ColumnHeader';
 import { WatchlistRow } from '@/components/watchlist/WatchlistRow';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import type { ExecutionGate } from '@karios/shared';
@@ -336,24 +337,6 @@ export function WatchlistTable({
     [addReference],
   );
 
-  const headerTip = (
-    <>
-      <div className="mb-2 font-medium">Definition (CN daily)</div>
-      <div className="space-y-1 text-[var(--k-muted)]">
-        <div>✅ only when ALL rules are satisfied.</div>
-        <div>— when data/indicators are insufficient.</div>
-      </div>
-      <div className="mt-2 space-y-1">
-        <div>1) Close &gt; EMA(20) and EMA(20) &gt; EMA(60)</div>
-        <div>2) MACD line &gt; 0</div>
-        <div>3) MACD histogram &gt; 0</div>
-        <div>4) Close ≥ 0.90 × High(20)</div>
-        <div>5) RSI(14) in [50, 90]</div>
-        <div>6) AvgVol(5) &gt; 0.9 × AvgVol(30)</div>
-      </div>
-    </>
-  );
-
   return (
     <>
       <section className="box-border grid min-w-0 w-full grid-cols-1 overflow-hidden rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
@@ -371,40 +354,174 @@ export function WatchlistTable({
               <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
                 <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                   <tr className="text-left">
-                    <th className="px-3 py-2 w-[40px]" title="Color flag">
-                      <span className="sr-only">Color</span>
+                    <th className="px-3 py-2 w-[40px]">
+                      <ColumnHeader
+                        columnId="color"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={300}
+                      />
                     </th>
-                    <th className="px-3 py-2 w-[110px]">Symbol</th>
-                    <th className="px-3 py-2 w-[120px] max-w-[120px]">Name</th>
-                    <th className="px-3 py-2 w-[120px] max-w-[140px]">Industry</th>
-                    <th className="px-2 py-2 w-[58px]">仓位%</th>
-                    <th className="px-2 py-2 w-[80px]">成本价</th>
-                    <th className="px-2 py-2 w-[72px]">Current</th>
-                    <th className="px-2 py-2 w-[80px]">止损</th>
-                    <th className="px-2 py-2 w-[56px]" title="Execution Action (BUY/HOLD/EXIT/…)">
-                      Exec
+                    <th className="px-3 py-2 w-[110px]">
+                      <ColumnHeader
+                        columnId="symbol"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={320}
+                      />
                     </th>
-                    <th
-                      className="px-2 py-2 w-[72px]"
-                      title="Held: Exit_Stop · Flat: Entry_Trigger (buyZoneHigh)"
-                    >
-                      Trigger
+                    <th className="px-3 py-2 w-[120px] max-w-[120px]">
+                      <ColumnHeader
+                        columnId="name"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={300}
+                      />
                     </th>
-                    <th className="px-2 py-2 w-[64px]" title="ATR chandelier trail">
-                      Trail
+                    <th className="px-3 py-2 w-[120px] max-w-[140px]">
+                      <ColumnHeader
+                        columnId="industry"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
                     </th>
-                    <th className="max-w-[130px] px-2 py-2 w-[120px]">买入</th>
-                    <th className="px-2 py-2 w-[64px]">HotTop3</th>
-                    <th className="px-2 py-2 w-[64px]" title="RS (Relative Strength) vs CSI300 20-day return">
-                      RS
+                    <th className="px-2 py-2 w-[58px]">
+                      <ColumnHeader
+                        columnId="positionPct"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
                     </th>
-                    <th className="px-2 py-2 w-[68px]">VWAP</th>
-                    <th className="px-2 py-2 w-[72px]">Intraday%</th>
-                    <th className="px-2 py-2 w-[72px]">VR(量比)</th>
-                    <th className="px-2 py-2 w-[120px]">Inst_Flow</th>
-                    <th className="px-2 py-2 w-[48px]">Gap</th>
-                    <th className="px-2 py-2 w-[140px]">Alerts</th>
-                    <th className="px-2 py-2 w-[64px]">P&L%</th>
+                    <th className="px-2 py-2 w-[80px]">
+                      <ColumnHeader
+                        columnId="costPrice"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[72px]">
+                      <ColumnHeader
+                        columnId="currentPrice"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[80px]">
+                      <ColumnHeader
+                        columnId="stopLoss"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={360}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[56px]">
+                      <ColumnHeader
+                        columnId="execAction"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={360}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[72px]">
+                      <ColumnHeader
+                        columnId="trigger"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={360}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[64px]">
+                      <ColumnHeader
+                        columnId="trail"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
+                    </th>
+                    <th className="max-w-[130px] px-2 py-2 w-[120px]">
+                      <ColumnHeader
+                        columnId="buy"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={360}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[64px]">
+                      <ColumnHeader
+                        columnId="hotTop3"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[64px]">
+                      <ColumnHeader
+                        columnId="rs"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={360}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[68px]">
+                      <ColumnHeader
+                        columnId="vwap"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[72px]">
+                      <ColumnHeader
+                        columnId="intradayPct"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[72px]">
+                      <ColumnHeader
+                        columnId="volumeRatio"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[120px]">
+                      <ColumnHeader
+                        columnId="instFlow"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[48px]">
+                      <ColumnHeader
+                        columnId="gap"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[140px]">
+                      <ColumnHeader
+                        columnId="alerts"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={360}
+                      />
+                    </th>
+                    <th className="px-2 py-2 w-[64px]">
+                      <ColumnHeader
+                        columnId="pnl"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
+                    </th>
                     <th
                       className={watchlistStickyCellClass('score', { header: true })}
                       style={watchlistStickyCellStyle('score', { header: true })}
@@ -423,7 +540,12 @@ export function WatchlistTable({
                         title="Click to toggle sort. Right-click to enable/disable sorting."
                         aria-label="Sort by score"
                       >
-                        <span>Score</span>
+                        <ColumnHeader
+                          columnId="score"
+                          showTooltip={showTooltip}
+                          hideTooltip={hideTooltip}
+                          width={340}
+                        />
                         {scoreSortEnabled ? (
                           scoreSortDir === 'desc' ? (
                             <ArrowDown className="h-3.5 w-3.5" />
@@ -439,17 +561,12 @@ export function WatchlistTable({
                       className={watchlistStickyCellClass('trendOk', { header: true })}
                       style={watchlistStickyCellStyle('trendOk', { header: true })}
                     >
-                      <button
-                        type="button"
-                        className="inline-flex items-center hover:text-[var(--k-text)]"
-                        onMouseEnter={(e) => showTooltip(e.currentTarget, headerTip, 380)}
-                        onMouseLeave={hideTooltip}
-                        onFocus={(e) => showTooltip(e.currentTarget, headerTip, 380)}
-                        onBlur={hideTooltip}
-                        aria-label="TrendOK definition"
-                      >
-                        TrendOK
-                      </button>
+                      <ColumnHeader
+                        columnId="trendOk"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={380}
+                      />
                     </th>
                     <th
                       className={watchlistStickyCellClass('action', {
@@ -458,7 +575,12 @@ export function WatchlistTable({
                       })}
                       style={watchlistStickyCellStyle('action', { header: true })}
                     >
-                      Action
+                      <ColumnHeader
+                        columnId="action"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={340}
+                      />
                     </th>
                   </tr>
                 </thead>
