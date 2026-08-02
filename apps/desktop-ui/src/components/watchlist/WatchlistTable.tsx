@@ -18,6 +18,7 @@ import {
   buildDefensiveSleeveExposurePct,
   buildSectorExposureFromWatchlist,
   buildSleeveExposurePct,
+  deriveActionCard,
   type CatalystPurgeHint,
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
@@ -26,6 +27,7 @@ import {
   buildWatchlistRowMetrics,
 } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
+import { shouldShowInWatchlistTable } from '@/lib/watchlist-table-filter';
 
 const FLAG_COLORS: Array<{ label: string; hex: string }> = [
   { label: 'White', hex: '#ffffff' },
@@ -197,6 +199,61 @@ export function WatchlistTable({
     [sortedItems, trend],
   );
 
+  const actionBySymbol = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const it of sortedItems) {
+      const t = trend[it.symbol];
+      const rowMetrics = rowMetricsBySymbol.get(it.symbol);
+      if (!rowMetrics) continue;
+      try {
+        const card = deriveActionCard({
+          symbol: it.symbol,
+          gate: executionGate ?? null,
+          trendok: t ?? null,
+          position: it,
+          currentPrice: rowMetrics.current,
+          mainlineAllow: mainlineAllow ?? null,
+          intradayChgPct: rowMetrics.intradayChgPct,
+          gapUp: typeof t?.gapUp === 'boolean' ? t.gapUp : null,
+          marketRegime: t?.marketRegime ?? null,
+          sectorExposureByIndustry,
+          sleeveExposurePct,
+          defensiveSleeveExposurePct,
+          sectorOutflowBlock,
+          catalyst: catalystBySymbol?.get(it.symbol) ?? null,
+          todaySh,
+        });
+        m.set(it.symbol, card.action);
+      } catch {
+        m.set(it.symbol, 'WATCH_SILENT');
+      }
+    }
+    return m;
+  }, [
+    sortedItems,
+    trend,
+    rowMetricsBySymbol,
+    executionGate,
+    mainlineAllow,
+    sectorExposureByIndustry,
+    sleeveExposurePct,
+    defensiveSleeveExposurePct,
+    sectorOutflowBlock,
+    catalystBySymbol,
+    todaySh,
+  ]);
+
+  const visibleSortedItems = React.useMemo(() => {
+    return sortedItems.filter((it) => {
+      const t = trend[it.symbol];
+      const action = actionBySymbol.get(it.symbol) ?? null;
+      if (action === 'PURGE') return true;
+      return shouldShowInWatchlistTable(it, t ?? null, action);
+    });
+  }, [sortedItems, trend, actionBySymbol]);
+
+  const hiddenCount = sortedItems.length - visibleSortedItems.length;
+
   const [tooltip, setTooltip] = React.useState<{
     open: boolean;
     x: number;
@@ -302,7 +359,10 @@ export function WatchlistTable({
       <section className="box-border grid min-w-0 w-full grid-cols-1 overflow-hidden rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
         <div className="mb-2 flex items-center justify-between">
           <div className="text-sm font-medium">List</div>
-          <div className="text-xs text-[var(--k-muted)]">{items.length} items</div>
+          <div className="text-xs text-[var(--k-muted)]">
+            {visibleSortedItems.length} / {items.length} items
+            {hiddenCount > 0 ? ` · ${hiddenCount} hidden (silent dead rows)` : ''}
+          </div>
         </div>
 
         {items.length ? (
@@ -403,7 +463,7 @@ export function WatchlistTable({
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedItems.map((it) => {
+                  {visibleSortedItems.map((it) => {
                     const rowMetrics = rowMetricsBySymbol.get(it.symbol);
                     if (!rowMetrics) return null;
                     return (

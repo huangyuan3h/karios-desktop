@@ -9,8 +9,11 @@ import { fetchWatchlistMarketSnapshot } from '@/lib/watchlist-market';
 import {
   buildDashboardCopyAllMarkdown,
   buildIndustryMarkdown,
+  buildMarketAndMacroMarkdown,
   buildSentimentMarkdown,
   buildWatchlistMarkdown,
+  SCREENER_COPY_MIN_SCORE,
+  SCREENER_COPY_TOP_N,
 } from './dashboard-export';
 import { copyBlockingMissingData } from './watchlist-export';
 
@@ -155,6 +158,7 @@ describe('buildSentimentMarkdown', () => {
             ma5: 3180.2,
             ma20: 3150.1,
             asOfDate: '2026-06-18',
+            source: 'cn_index',
           },
         ],
         items: [
@@ -216,6 +220,18 @@ describe('buildSentimentMarkdown', () => {
           labelZh: '恶性电风扇绞肉机',
         },
       },
+      macroSnapshot: {
+        macro: [
+          {
+            name: '300ETF Put IV',
+            category: 'volatility',
+            close: 18.5,
+            signalLabel: 'calm',
+            asOfDate: '2026-06-18',
+            source: 'iv',
+          },
+        ],
+      },
     };
 
     const md = buildSentimentMarkdown(summary);
@@ -227,9 +243,16 @@ describe('buildSentimentMarkdown', () => {
     expect(md).toContain(
       '- SRV_Index (Sector Rotation): Extreme_High (3D Overlap = 0)',
     );
-    expect(md).toContain('## Index traffic lights');
-    expect(md).toContain('上证指数');
-    expect(md).toContain('+0.35%');
+    expect(md).toContain('## 市场环境摘要');
+    expect(md).toContain('市场震荡，控制仓位。');
+    expect(md).toContain('## Market sentiment');
+    expect(md).toContain('- risk: neutral');
+    expect(md).toContain(
+      '- SRV_Index (Sector Rotation): Extreme_High (3D Overlap = 0)',
+    );
+    expect(md).not.toContain('## Index traffic lights');
+    expect(md).not.toContain('## Market & Macro overview');
+    expect(md).not.toContain('## 300ETF Put IV');
     expect(md).toContain('| date | up | down |');
     expect(md).toContain('## ETF Fund Flow (Top Watchlist)');
     expect(md).toContain(
@@ -278,6 +301,63 @@ describe('buildSentimentMarkdown', () => {
       },
     });
     expect(md).toContain('- macroLock: active');
+  });
+
+  it('omits Index traffic lights and Put IV blocks (moved to Market & Macro)', () => {
+    const md = buildSentimentMarkdown({
+      marketSentiment: {
+        items: [],
+        indexSignals: [
+          { name: '上证指数', signal: 'green', positionRange: 'mid', pctChg: 0.5, close: 3200, asOfDate: '2026-08-01' },
+        ],
+      },
+      macroSnapshot: {
+        macro: [
+          { name: '300ETF Put IV', category: 'volatility', close: 18.5, signalLabel: 'calm', asOfDate: '2026-08-01' },
+        ],
+      },
+    });
+    expect(md).not.toContain('## Index traffic lights');
+    expect(md).not.toContain('## 300ETF Put IV');
+  });
+});
+
+describe('buildMarketAndMacroMarkdown', () => {
+  it('returns empty when no signals or macro', () => {
+    expect(buildMarketAndMacroMarkdown({})).toBe('');
+    expect(buildMarketAndMacroMarkdown(null)).toBe('');
+  });
+
+  it('combines index signals + macro items + put IV in one table', () => {
+    const md = buildMarketAndMacroMarkdown({
+      marketSentiment: {
+        indexSignals: [
+          { name: '上证指数', signal: 'green', pctChg: 0.5, close: 3200, ma5: 3180, ma20: 3150, asOfDate: '2026-08-01', source: 'cn_index' },
+          { name: '创业板指', signal: 'yellow', pctChg: -0.3, close: 2100, ma5: 2110, ma20: 2150, asOfDate: '2026-08-01', source: 'cn_index' },
+        ],
+      },
+      macroSnapshot: {
+        macro: [
+          { name: 'WTI 原油', category: 'commodity', pctChg: 1.5, close: 82.4, signal: 'up', asOfDate: '2026-08-01', source: 'macro' },
+          { name: '300ETF Put IV', category: 'volatility', close: 18.5, signalLabel: 'calm', asOfDate: '2026-08-01', source: 'iv' },
+        ],
+      },
+    });
+    expect(md).toContain('## Market & Macro overview');
+    expect(md).toContain('上证指数');
+    expect(md).toContain('创业板指');
+    expect(md).toContain('WTI 原油');
+    expect(md).toContain('300ETF Put IV');
+    expect(md).toContain('| Index |');
+    expect(md).toContain('| Macro |');
+    expect(md).toContain('| Vol (IV) |');
+  });
+});
+
+describe('screener Top N + Score threshold constants', () => {
+  it('exposes constants for filtering', () => {
+    expect(SCREENER_COPY_TOP_N).toBe(10);
+    expect(SCREENER_COPY_MIN_SCORE).toBe(60);
   });
 });
 

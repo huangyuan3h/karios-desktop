@@ -19,6 +19,10 @@ import type { TrendOkResult } from '@/lib/api/types';
 import { formatPnLPct, formatRs, buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
 import type { WatchlistQuoteSlice } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
+import {
+  WATCHLIST_TABLE_VISIBILITY_NOTE,
+  shouldShowInWatchlistTable,
+} from '@/lib/watchlist-table-filter';
 
 function formatTrendOkCell(t: TrendOkResult | undefined): string {
   if (!t) return '—';
@@ -81,6 +85,7 @@ export function buildPositionsExecutionMarkdown(
 ): PositionsExecutionMarkdownResult {
   const lines: string[] = [];
   lines.push(`${heading} Combat Positions & Watchlist (Unified)`);
+  lines.push(...WATCHLIST_TABLE_VISIBILITY_NOTE);
   if (!gate?.allowNewEntries) {
     lines.push('- note: BUY/ADD only valid when Execution Gate allowNewEntries=true');
   }
@@ -170,6 +175,7 @@ export function buildPositionsExecutionMarkdown(
   ];
   const rows: unknown[][] = [];
   const purgeSymbols: string[] = [];
+  let hiddenRows = 0;
   for (const it of items) {
     const t = trend[it.symbol];
     const q = quotes[it.symbol];
@@ -210,6 +216,15 @@ export function buildPositionsExecutionMarkdown(
     });
     if (card.action === 'PURGE') {
       purgeSymbols.push(it.symbol);
+    }
+    // Visibility filter (2026-08-01): drop silent dead rows (WATCH_SILENT & no signal)
+    // but keep PURGE rows so the post-report GC can still remove them from storage.
+    if (
+      card.action !== 'PURGE' &&
+      !shouldShowInWatchlistTable(it, t ?? null, card.action)
+    ) {
+      hiddenRows += 1;
+      continue;
     }
     const dist =
       typeof card.distPct === 'number' && Number.isFinite(card.distPct)
@@ -253,6 +268,9 @@ export function buildPositionsExecutionMarkdown(
     return { markdown: lines.join('\n'), purgeSymbols: [] };
   }
   lines.push(mdTable(headers, rows));
+  if (hiddenRows > 0) {
+    lines.push(`- note: ${hiddenRows} silent dead rows hidden (Pos%=— & Score<60 & TrendOK≠ok/recovering & Action=WATCH_SILENT); kept in DB`);
+  }
   if (purgeSymbols.length) {
     lines.push(
       `- note: Purged ${purgeSymbols.length} symbols (Score<30 & TrendOK=no & flat, not Alpha S) — removed after this report`,

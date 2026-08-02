@@ -20,7 +20,6 @@ import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { useWatchlistMarketQuery } from '@/lib/queries/watchlist';
 import {
   useExecutionChangesQuery,
-  useExecutionRecentSnapshotsQuery,
   useExecutionSnapshotsQuery,
 } from '@/lib/queries/execution-journal';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
@@ -72,9 +71,6 @@ export function DecisionJournalCard(props: {
     onSnapshotNow,
     onNavigate,
   } = props;
-  const [showHistory, setShowHistory] = React.useState(false);
-  const [expandedId, setExpandedId] = React.useState<string | null>(null);
-
   const symbols = React.useMemo(
     () => watchlistItems.map((i) => i.symbol).filter(Boolean),
     [watchlistItems],
@@ -83,7 +79,6 @@ export function DecisionJournalCard(props: {
 
   const changesQ = useExecutionChangesQuery();
   const snapsQ = useExecutionSnapshotsQuery();
-  const recentQ = useExecutionRecentSnapshotsQuery(30);
 
   const changes = changesQ.data?.items ?? [];
   const todaySnaps = snapsQ.data?.items ?? [];
@@ -236,14 +231,7 @@ export function DecisionJournalCard(props: {
           >
             {captureBusy ? 'Saving…' : 'Snapshot now'}
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2 text-xs"
-            onClick={() => setShowHistory((v) => !v)}
-          >
-            {showHistory ? 'Hide history' : 'Recent 5d'}
-          </Button>
+          {/* 2026-08-01 · Recent 5d toggle removed (only signal changes matter) */}
         </div>
       </div>
 
@@ -320,45 +308,7 @@ export function DecisionJournalCard(props: {
         </div>
       ) : null}
 
-      {showHistory ? (
-        <div>
-          <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">Recent snapshots</div>
-          <ul className="max-h-40 space-y-1 overflow-auto text-[11px]">
-            {(recentQ.data?.items ?? []).slice(0, 15).map((s) => {
-              const n = Array.isArray(s.cards) ? s.cards.length : 0;
-              const mode =
-                s.gate && typeof s.gate === 'object' && 'mode' in s.gate
-                  ? String((s.gate as { mode?: string }).mode ?? '—')
-                  : '—';
-              const open = expandedId === s.id;
-              return (
-                <li key={s.id} className="rounded border border-[var(--k-border)] px-2 py-1">
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between gap-2 text-left font-mono"
-                    onClick={() => setExpandedId(open ? null : s.id)}
-                  >
-                    <span>
-                      {s.tradeDate} {fmtDateTime(s.capturedAt ?? null)} · {s.source} · {mode} ·{' '}
-                      {n} cards
-                    </span>
-                    <span className="text-[var(--k-muted)]">{open ? '▾' : '▸'}</span>
-                  </button>
-                  {open && Array.isArray(s.cards) ? (
-                    <div className="mt-1 max-h-28 overflow-auto text-[10px] text-[var(--k-muted)]">
-                      {s.cards.map((c) => (
-                        <div key={`${s.id}-${c.symbol}`}>
-                          {c.symbol} {c.action} {c.why}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
+      {/* 2026-08-01 · Recent snapshots block removed (only signal changes matter) */}
     </div>
   );
 }

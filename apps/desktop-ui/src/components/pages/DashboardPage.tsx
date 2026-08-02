@@ -38,6 +38,8 @@ import {
   fmtDateTime,
   loadCardOrder,
   saveCardOrder,
+  loadCopyMode,
+  saveCopyMode,
 } from '@/lib/dashboard-format';
 import { parseExecutionGate } from '@/lib/execution-action';
 import { isShanghaiSyncWindow } from '@/lib/market-hours';
@@ -204,10 +206,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         newsSummaryUpdatedAt,
         newsFallback,
         queryClient,
+        mode: copyMode,
       });
       await navigator.clipboard.writeText(text);
       writeLastCopyAt(new Date().toISOString());
-      toastCopyAll(true, 'Copied all Markdown to clipboard.');
+      toastCopyAll(true, `Copied ${copyMode === 'compact' ? 'compact' : 'full'} Markdown to clipboard.`);
     } catch (e) {
       toastCopyAll(false, e instanceof Error ? e.message : String(e));
     } finally {
@@ -235,10 +238,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         newsSummaryUpdatedAt,
         newsFallback,
         queryClient,
+        mode: copyMode,
       });
       await navigator.clipboard.writeText(text);
       writeLastCopyAt(new Date().toISOString());
-      toastCopyAll(true, 'Synced and copied Markdown to clipboard.');
+      toastCopyAll(true, `Synced and copied ${copyMode === 'compact' ? 'compact' : 'full'} Markdown to clipboard.`);
     } catch (e) {
       toastCopyAll(false, e instanceof Error ? e.message : String(e));
     } finally {
@@ -271,6 +275,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setCardOrder(nextIds);
     saveCardOrder(nextIds);
   }, [defaultCards]);
+
+  const [copyMode, setCopyMode] = React.useState<'full' | 'compact'>(() => loadCopyMode());
+  React.useEffect(() => {
+    saveCopyMode(copyMode);
+  }, [copyMode]);
 
   const cardsById = React.useMemo(
     () => Object.fromEntries(defaultCards.map((c) => [c.id, c])),
@@ -317,6 +326,34 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             {copyAllBusy && !busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
             Copy for AI
           </Button>
+          <div className="inline-flex items-center rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-0.5 text-xs">
+            <button
+              type="button"
+              className={`rounded px-2 py-1 ${
+                copyMode === 'compact'
+                  ? 'bg-emerald-600/15 text-emerald-700 font-medium'
+                  : 'text-[var(--k-muted)] hover:bg-[var(--k-surface-2)]'
+              }`}
+              onClick={() => setCopyMode('compact')}
+              aria-pressed={copyMode === 'compact'}
+              title="极速决策模式 — 剪贴板只保留核心 20% 数据"
+            >
+              Compact
+            </button>
+            <button
+              type="button"
+              className={`rounded px-2 py-1 ${
+                copyMode === 'full'
+                  ? 'bg-emerald-600/15 text-emerald-700 font-medium'
+                  : 'text-[var(--k-muted)] hover:bg-[var(--k-surface-2)]'
+              }`}
+              onClick={() => setCopyMode('full')}
+              aria-pressed={copyMode === 'full'}
+              title="完整模式 — 盘后归档/存盘用"
+            >
+              Full
+            </button>
+          </div>
           <Button size="sm" variant="ghost" onClick={() => setEditLayout((v) => !v)}>
             {editLayout ? 'Done' : 'Edit layout'}
           </Button>

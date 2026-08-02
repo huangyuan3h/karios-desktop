@@ -2,6 +2,26 @@ import { buildDashboardHotIndustryPicks } from '@/lib/hot-industry-picks';
 
 export const BREADTH_PANIC_DOWN_THRESHOLD = 3000;
 export const DASHBOARD_CARD_ORDER_KEY = 'karios.dashboard.cardOrder.v0';
+export const DASHBOARD_COPY_MODE_KEY = 'karios.dashboard.copyMode.v0';
+
+export type DashboardCopyMode = 'full' | 'compact';
+
+export function loadCopyMode(): DashboardCopyMode {
+  try {
+    const raw = window.localStorage.getItem(DASHBOARD_COPY_MODE_KEY);
+    return raw === 'full' ? 'full' : 'compact';
+  } catch {
+    return 'compact';
+  }
+}
+
+export function saveCopyMode(mode: DashboardCopyMode) {
+  try {
+    window.localStorage.setItem(DASHBOARD_COPY_MODE_KEY, mode);
+  } catch {
+    // ignore
+  }
+}
 
 export function loadCardOrder(): string[] | null {
   try {

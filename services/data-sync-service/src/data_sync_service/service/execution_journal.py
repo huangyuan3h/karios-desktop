@@ -25,6 +25,34 @@ LATEST_ACTIONS_DELTA_FIELDS = frozenset(
     {"action", "trigger", "entryTrigger", "exitStop", "hardStop", "trailStop"}
 )
 
+# hardStop changes smaller than this (relative to old value) are noise (2026-08-01 · wife feedback).
+HARDSTOP_NOISE_THRESHOLD_PCT = 0.01
+
+
+def _is_hardstop_noise(old_value: Any, new_value: Any, threshold: float = HARDSTOP_NOISE_THRESHOLD_PCT) -> bool:
+    """True when hardStop drift is smaller than `threshold` (relative)."""
+    try:
+        o = float(old_value)
+        n = float(new_value)
+    except (TypeError, ValueError):
+        return False
+    if o == 0:
+        return abs(n) < threshold
+    return abs(n - o) / abs(o) < threshold
+
+
+def filter_journal_changes(changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop hardStop drifts < HARDSTOP_NOISE_THRESHOLD_PCT (2026-08-01)."""
+    out: list[dict[str, Any]] = []
+    for c in changes:
+        if not isinstance(c, dict):
+            continue
+        if str(c.get("scope")) == "symbol" and str(c.get("field")) == "hardStop":
+            if _is_hardstop_noise(c.get("oldValue"), c.get("newValue")):
+                continue
+        out.append(c)
+    return out
+
 
 def _norm_str(v: Any) -> str:
     if v is None:
@@ -298,11 +326,11 @@ def build_journal_markdown(
 ) -> str:
     days = max(1, min(int(days), 30))
     latest = ej_db.fetch_latest_snapshot(trade_date=trade_date)
-    # Also pull recent snapshots across days for context
-    snaps = ej_db.list_snapshots(limit=max(20, days * 5))
     changes = ej_db.list_changes(trade_date=trade_date, limit=changes_limit)
     if not changes and days > 1:
         changes = ej_db.list_changes(limit=changes_limit)
+    # 2026-08-01 noise filter: drop hardStop drifts < HARDSTOP_NOISE_THRESHOLD_PCT
+    changes = filter_journal_changes(changes)
 
     lines: list[str] = []
     lines.append("## Decision Journal")
@@ -313,6 +341,9 @@ def build_journal_markdown(
     lines.append(f"- latestSource: {_md_cell((latest or {}).get('source'))}")
     lines.append(
         "- note: Prefer Action/Why transitions below over re-deriving rules."
+    )
+    lines.append(
+        f"- note: hardStop drifts < {int(HARDSTOP_NOISE_THRESHOLD_PCT * 100)}% suppressed (noise filter)"
     )
     lines.append("")
 
@@ -382,15 +413,5 @@ def build_journal_markdown(
             )
     lines.append("")
 
-    if snaps:
-        lines.append("### Recent snapshots")
-        for s in snaps[: min(10, len(snaps))]:
-            n_cards = len(s.get("cards") or []) if isinstance(s.get("cards"), list) else 0
-            gate = s.get("gate") if isinstance(s.get("gate"), dict) else {}
-            lines.append(
-                f"- {s.get('tradeDate')} {s.get('capturedAt')} source={s.get('source')} "
-                f"gate={gate.get('mode')} cards={n_cards}"
-            )
-        lines.append("")
-
+    # 2026-08-01: Recent snapshots block removed — only signal changes matter (Action / Why / Gate)
     return "\n".join(lines)

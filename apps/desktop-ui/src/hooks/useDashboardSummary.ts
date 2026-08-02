@@ -24,6 +24,7 @@ import {
   useDashboardSentimentQuery,
 } from '@/lib/queries/sentiment';
 import { stripModelThinking } from '@/lib/strip-model-thinking';
+import { filterNewsByKeyword } from '@/lib/news-keyword-whitelist';
 
 const NEWS_BRIEF_CACHE_KEY = 'karios.dashboard.newsBrief.v1';
 const NEWS_BRIEF_MIN_REFRESH_MS = 4 * 60 * 60 * 1000;
@@ -36,7 +37,9 @@ type NewsBriefCache = {
 };
 
 function buildNewsFallback(items: any[]): string | null {
-  const rows = (Array.isArray(items) ? items : [])
+  // 2026-08-01 · wife feedback: drop irrelevant news (intl entertainment, periphery politics).
+  const filtered = filterNewsByKeyword(items);
+  const rows = (Array.isArray(filtered) ? filtered : [])
     .slice(0, 8)
     .map((it: any, idx: number) => {
       const title = String(it?.title ?? '').trim();
