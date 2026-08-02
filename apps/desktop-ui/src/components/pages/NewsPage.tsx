@@ -152,11 +152,17 @@ export function NewsPage() {
   }
 
   const importantItems = items.filter((i) => i.isImportant);
+  // Important filter: keep (a) manually starred items, (b) anything the LLM
+  // scored as ≥1 importance or ≥15 relevance, (c) anything tagged actionable.
+  // Pure noise (importance=0 + relevance=0) still gets filtered out.
   const isImportantEnough = (item: NewsItem) =>
-    (item.importance != null && item.importance >= 2) ||
-    (item.relevanceScore != null && item.relevanceScore >= 30);
+    (item.importance != null && item.importance >= 1) ||
+    (item.relevanceScore != null && item.relevanceScore >= 15) ||
+    item.actionability === 'actionable';
   const filteredItems =
-    filterMode === 'important' ? items.filter((i) => i.isImportant || isImportantEnough(i)) : items;
+    filterMode === 'important'
+      ? items.filter((i) => i.isImportant || isImportantEnough(i))
+      : items;
   const regularItems = filteredItems.filter((i) => !i.isImportant);
 
   return (

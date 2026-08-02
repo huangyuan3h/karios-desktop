@@ -413,9 +413,123 @@ def test_select_brief_items_watchlist_boost() -> None:
     ), patch(
         "data_sync_service.service.morning_brief._load_watchlist_context",
         return_value=({"600519.SH"}, set()),
+    ), patch(
+        "data_sync_service.service.morning_brief._load_watched_symbols",
+        return_value={"600519.SH", "600519"},
     ):
         result = select_brief_items(hours=24)
 
     assert len(result) == 2
     assert result[0]["id"] == "held"
     assert result[0]["category"] == "watchlist"
+
+
+def test_actionable_gets_5pt_boost() -> None:
+    """Items tagged actionability=actionable get a +5 nudge so they
+    surface above purely background context."""
+    now = datetime.now(UTC)
+    recent = (now - timedelta(hours=1)).isoformat()
+    base = {
+        "importance": 3,
+        "relevanceScore": 45,
+        "publishedAt": recent,
+        "fetchedAt": recent,
+        "tickers": [],
+        "sectors": [],
+    }
+    base_score = _score_item({**base, "actionability": "informational"}, set(), set())
+    boosted = _score_item({**base, "actionability": "actionable"}, set(), set())
+    assert abs(boosted - base_score - 5) < 0.1
+
+
+def test_select_brief_items_skips_importance_zero() -> None:
+    """Importance=0 items are noise — brief should never surface them."""
+    mock_items = [
+        {
+            "id": "noise",
+            "title": "Background noise",
+            "sourceId": "x",
+            "publishedAt": "2026-08-02T10:00:00+00:00",
+            "fetchedAt": "2026-08-02T10:00:00+00:00",
+            "enrichmentStatus": "done",
+            "importance": 0,
+            "relevanceScore": 0,
+            "actionability": "informational",
+            "tickers": [],
+            "sectors": [],
+            "aiSummary": "",
+        },
+        {
+            "id": "real",
+            "title": "Real news",
+            "sourceId": "x",
+            "publishedAt": "2026-08-02T10:00:00+00:00",
+            "fetchedAt": "2026-08-02T10:00:00+00:00",
+            "enrichmentStatus": "done",
+            "importance": 3,
+            "relevanceScore": 45,
+            "actionability": "informational",
+            "tickers": [],
+            "sectors": [],
+            "aiSummary": "Real summary",
+        },
+    ]
+
+    with patch(
+        "data_sync_service.service.morning_brief.fetch_items",
+        return_value=(2, mock_items),
+    ), patch(
+        "data_sync_service.service.morning_brief._load_watchlist_context",
+        return_value=(set(), set()),
+    ):
+        result = select_brief_items(hours=24)
+
+    ids = [it["id"] for it in result]
+    assert "noise" not in ids
+    assert "real" in ids
+
+
+def test_select_brief_prefers_actionable_over_informational() -> None:
+    """Two equally-relevant items; actionable should rank higher."""
+    base_time = "2026-08-02T10:00:00+00:00"
+    mock_items = [
+        {
+            "id": "info",
+            "title": "Background context",
+            "sourceId": "x",
+            "publishedAt": base_time,
+            "fetchedAt": base_time,
+            "enrichmentStatus": "done",
+            "importance": 3,
+            "relevanceScore": 45,
+            "actionability": "informational",
+            "tickers": [],
+            "sectors": [],
+            "aiSummary": "",
+        },
+        {
+            "id": "do",
+            "title": "Action needed today",
+            "sourceId": "x",
+            "publishedAt": base_time,
+            "fetchedAt": base_time,
+            "enrichmentStatus": "done",
+            "importance": 3,
+            "relevanceScore": 45,
+            "actionability": "actionable",
+            "tickers": [],
+            "sectors": [],
+            "aiSummary": "Do this",
+        },
+    ]
+
+    with patch(
+        "data_sync_service.service.morning_brief.fetch_items",
+        return_value=(2, mock_items),
+    ), patch(
+        "data_sync_service.service.morning_brief._load_watchlist_context",
+        return_value=(set(), set()),
+    ):
+        result = select_brief_items(hours=24)
+
+    assert result[0]["id"] == "do"

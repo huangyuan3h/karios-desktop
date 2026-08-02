@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ThinkingStreamStripper,
+  stripJsonCodeFence,
   stripModelThinking,
   stripThinkingFromTextStream,
 } from './model_thinking';
@@ -99,5 +100,47 @@ describe('stripThinkingFromTextStream', () => {
       out += value;
     }
     expect(out).toBe('visible');
+  });
+});
+
+describe('stripJsonCodeFence', () => {
+  it('returns empty for empty input', () => {
+    expect(stripJsonCodeFence('')).toBe('');
+  });
+
+  it('strips ```json fences around an array', () => {
+    const wrapped = '```json\n[{"a": 1}]\n```';
+    expect(stripJsonCodeFence(wrapped)).toBe('[{"a": 1}]');
+  });
+
+  it('strips ```json fences around an object', () => {
+    const wrapped = '```json\n{"a": 1}\n```';
+    expect(stripJsonCodeFence(wrapped)).toBe('{"a": 1}');
+  });
+
+  it('strips plain ``` fences without language hint', () => {
+    const wrapped = '```\n{"a": 1}\n```';
+    expect(stripJsonCodeFence(wrapped)).toBe('{"a": 1}');
+  });
+
+  it('handles uppercase JSON hint', () => {
+    expect(stripJsonCodeFence('```JSON\n{"a": 1}\n```')).toBe('{"a": 1}');
+  });
+
+  it('leaves plain JSON untouched', () => {
+    expect(stripJsonCodeFence('{"a": 1}')).toBe('{"a": 1}');
+  });
+
+  it('strips leading-only fence (truncated response)', () => {
+    expect(stripJsonCodeFence('```json\n{"a": 1}')).toBe('{"a": 1}');
+  });
+
+  it('strips trailing-only fence (truncated response)', () => {
+    expect(stripJsonCodeFence('{"a": 1}\n```')).toBe('{"a": 1}');
+  });
+
+  it('preserves internal code fences inside the content', () => {
+    const inner = 'Note: use `code` here';
+    expect(stripJsonCodeFence(`\`\`\`json\n${inner}\n\`\`\``)).toBe(inner);
   });
 });

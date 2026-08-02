@@ -9,10 +9,19 @@ from data_sync_service.service.hk_daily_yf import (
 )
 
 
-def test_ts_code_to_yf_strips_leading_zeros():
-    assert _ts_code_to_yf("00700.HK") == "700.HK"
+def test_ts_code_to_yf_pads_to_four_digits():
+    # yfinance expects 4-digit padding. Our 5-digit tushare ts_codes
+    # map to last 4 digits, zero-padded if necessary.
+    assert _ts_code_to_yf("00700.HK") == "0700.HK"
     assert _ts_code_to_yf("01810.HK") == "1810.HK"
-    assert _ts_code_to_yf("00005.HK") == "5.HK"
+    assert _ts_code_to_yf("00005.HK") == "0005.HK"
+    assert _ts_code_to_yf("09988.HK") == "9988.HK"
+
+
+def test_ts_code_to_yf_never_strips_all_zeros():
+    """Regression: the old `lstrip("0")` returned `1.HK` for `00001.HK`,
+    which yfinance 404'd. We must always return a 4-digit symbol."""
+    assert _ts_code_to_yf("00001.HK") == "0001.HK"
 
 
 def test_ts_code_to_yf_rejects_non_hk():

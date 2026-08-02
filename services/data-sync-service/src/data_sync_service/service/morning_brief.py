@@ -65,6 +65,11 @@ def _load_watchlist_context() -> tuple[set[str], set[str]]:
     Returns (held_symbols, held_sectors).
     held_symbols: symbols where positionPct > 0 (user actually owns these).
     held_sectors: industries from watchlist_score_daily for held symbols.
+
+    Note: items in watchlist_registry WITHOUT broker positionPct are still
+    treated as "watched" via `_load_watched_symbols()` — used by the
+    watchlist boost and category assignment so an Alpha-Radar-registered
+    stock with no broker integration still surfaces as "watchlist".
     """
     held_symbols: set[str] = set()
     held_sectors: set[str] = set()
@@ -106,8 +111,45 @@ def _load_watchlist_context() -> tuple[set[str], set[str]]:
     return held_symbols, held_sectors
 
 
-def _watchlist_boost(item: dict[str, Any], held_symbols: set[str], held_sectors: set[str]) -> int:
-    """Compute watchlist boost 0–50 based on ticker/sector overlap."""
+def _load_watched_symbols() -> set[str]:
+    """Symbols in watchlist_registry (any source).
+
+    Distinct from `_load_watchlist_context`'s held_symbols: includes
+    alpha_radar/screener/manual entries even without broker payload.
+    """
+    try:
+        from data_sync_service.db import get_connection
+
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT symbol FROM watchlist_registry")
+                rows = cur.fetchall()
+        out: set[str] = set()
+        for r in rows:
+            sym = str(r[0])
+            out.add(sym)
+            bare = sym.split(":", 1)[-1] if ":" in sym else sym
+            bare = bare.split(".")[0] if "." in bare else bare
+            out.add(bare)
+        return out
+    except Exception:
+        return set()
+
+
+def _watchlist_boost(
+    item: dict[str, Any],
+    held_symbols: set[str],
+    held_sectors: set[str],
+    watched_symbols: set[str] | None = None,
+) -> int:
+    """Compute watchlist boost 0–50 based on ticker/sector overlap.
+
+    Priority:
+      - Held (broker positionPct > 0): +50
+      - Watched (in watchlist_registry, no broker): +30
+      - Sector match (held/watchlist sector): +20
+      - No match: 0
+    """
     tickers = set(item.get("tickers") or [])
     sectors = set(item.get("sectors") or [])
 
@@ -119,6 +161,14 @@ def _watchlist_boost(item: dict[str, Any], held_symbols: set[str], held_sectors:
     if bare_tickers & held_symbols:
         return 50
 
+    # Fall back to "watched" (in watchlist_registry but not held)
+    if watched_symbols is not None:
+        if tickers & watched_symbols:
+            return 30
+        bare_tickers2 = {t.split(".")[0] for t in tickers if "." in t}
+        if bare_tickers2 & watched_symbols:
+            return 30
+
     # Check sector match
     if sectors & held_sectors:
         return 20
@@ -126,13 +176,19 @@ def _watchlist_boost(item: dict[str, Any], held_symbols: set[str], held_sectors:
     return 0
 
 
-def _assign_category(item: dict[str, Any], held_symbols: set[str]) -> str:
-    """Assign a brief category: watchlist, risk, macro, sector."""
+def _assign_category(item: dict[str, Any], watched_symbols: set[str]) -> str:
+    """Assign a brief category: watchlist, risk, macro, sector.
+
+    `watched_symbols` should include both held and registry entries so
+    items mentioning an Alpha-Radar-registered ticker also get the
+    "watchlist" bucket.
+    """
     tickers = set(item.get("tickers") or [])
     bare_tickers = {t.split(".")[0] for t in tickers if "." in t}
 
-    # If mentions a held ticker, it's watchlist-related
-    if (tickers & held_symbols) or (bare_tickers & held_symbols):
+    # If mentions any ticker in the user's watchlist (held or watched),
+    # it's watchlist-related.
+    if (tickers & watched_symbols) or (bare_tickers & watched_symbols):
         return "watchlist"
 
     title = (item.get("title") or "").lower()
@@ -150,13 +206,27 @@ def _score_item(
     item: dict[str, Any],
     held_symbols: set[str],
     held_sectors: set[str],
+    watched_symbols: set[str] | None = None,
 ) -> float:
-    """Score a news item for brief selection with watchlist awareness."""
+    """Score a news item for brief selection with watchlist awareness.
+
+    Final score (0–100+):
+      - importance × 0.3   (LLM-rated 0–5)
+      - relevance × 0.3    (importance × 15 + watchlist boost, 0–100)
+      - freshness × 0.2    (recency bonus 10/40/70/100)
+      - watchlist_boost × 0.2  (held=50 / watched=30 / sector=20 / 0)
+
+    Plus a +5 nudge for `actionability == "actionable"` so items the user
+    can act on today surface above purely background context.
+    """
     importance = item.get("importance") or 0
     relevance = item.get("relevanceScore") or 0
     freshness = _freshness_bonus(item.get("publishedAt"), item.get("fetchedAt", ""))
-    boost = _watchlist_boost(item, held_symbols, held_sectors)
-    return importance * 0.3 + relevance * 0.3 + freshness * 0.2 + boost * 0.2
+    boost = _watchlist_boost(item, held_symbols, held_sectors, watched_symbols)
+    score = importance * 0.3 + relevance * 0.3 + freshness * 0.2 + boost * 0.2
+    if item.get("actionability") == "actionable":
+        score += 5
+    return score
 
 
 def _is_excluded(item: dict[str, Any]) -> bool:
@@ -171,6 +241,7 @@ def select_brief_items(hours: int = 24, limit: int = 200) -> list[dict[str, Any]
 
     # Load watchlist context
     held_symbols, held_sectors = _load_watchlist_context()
+    watched_symbols = _load_watched_symbols()
 
     # Only consider items that have been enriched
     enriched = [i for i in items if i.get("enrichmentStatus") == "done"]
@@ -181,9 +252,13 @@ def select_brief_items(hours: int = 24, limit: int = 200) -> list[dict[str, Any]
     # Exclude actionability == "historical" if field exists
     enriched = [i for i in enriched if i.get("actionability") != "historical"]
 
+    # Skip noise (LLM scored importance=0): brief is for "worth knowing"
+    # news, not noise pre-filter.
+    enriched = [i for i in enriched if (i.get("importance") or 0) >= 1]
+
     # Score and sort
     scored = [
-        (item, _score_item(item, held_symbols, held_sectors))
+        (item, _score_item(item, held_symbols, held_sectors, watched_symbols))
         for item in enriched
     ]
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -191,7 +266,7 @@ def select_brief_items(hours: int = 24, limit: int = 200) -> list[dict[str, Any]
     # Assign categories and build result
     result = []
     for item, score in scored[:BRIEF_SIZE]:
-        category = _assign_category(item, held_symbols)
+        category = _assign_category(item, watched_symbols)
         result.append({
             "id": item["id"],
             "title": item["title"],

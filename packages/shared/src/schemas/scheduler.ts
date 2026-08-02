@@ -459,7 +459,7 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     'interval',
     true,
     11,
-    { endpoint: '/news/enrichment/run', method: 'POST', label: '运行富化' },
+    { endpoint: '/api/news/enrichment/run', method: 'POST', label: '运行富化' },
   ),
   meta(
     'morning_brief_am',
@@ -471,7 +471,7 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     'cron',
     true,
     12,
-    { endpoint: '/news/brief/generate?brief_type=morning', method: 'POST', label: '生成早间简报' },
+    { endpoint: '/api/news/brief/generate?brief_type=morning', method: 'POST', label: '生成早间简报' },
   ),
   meta(
     'morning_brief_pm',
@@ -483,7 +483,7 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     'cron',
     true,
     13,
-    { endpoint: '/news/brief/generate?brief_type=midday', method: 'POST', label: '生成午间简报' },
+    { endpoint: '/api/news/brief/generate?brief_type=midday', method: 'POST', label: '生成午间简报' },
   ),
 ];
 

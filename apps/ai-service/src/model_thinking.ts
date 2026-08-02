@@ -26,10 +26,31 @@ const MAX_PARTIAL_TAG_LEN = 24;
 export function stripModelThinking(text: string): string {
   if (!text) return '';
   let out = text.replace(THINK_BLOCK_RE, '');
-  // Truncated responses often leave an unclosed <think>… block with no final answer.
+  // Truncated responses often leave an unclosed … block with no final answer.
   out = out.replace(UNCLOSED_THINK_RE, '');
   out = out.replace(ORPHAN_CLOSE_RE, '');
   return out.trim();
+}
+
+/**
+ * Strip a leading/trailing markdown code fence from a JSON response.
+ *
+ * Some chat models (e.g. MiniMax-M3) wrap JSON in ```json ... ``` even
+ * when no JSON-schema response_format was requested. Downstream
+ * `json.loads` chokes on the leading ``` with
+ * `Expecting value: line 1 column 1 (char 0)`.
+ *
+ * Only meant for routes whose callers will parse the result as JSON;
+ * chat-style routes should leave code fences intact.
+ */
+export function stripJsonCodeFence(text: string): string {
+  if (!text) return '';
+  const fenced = /^```(?:json|JSON)?\s*\n?([\s\S]*?)\n?```\s*$/.exec(text);
+  if (fenced) return fenced[1].trim();
+  return text
+    .replace(/^```(?:json|JSON)?\s*\n?/, '')
+    .replace(/\n?```\s*$/, '')
+    .trim();
 }
 
 /**

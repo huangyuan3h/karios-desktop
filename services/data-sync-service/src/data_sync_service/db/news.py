@@ -11,12 +11,18 @@ from data_sync_service.db._ensure_guard import ensure_once
 
 # HTML cleanup utilities (mirror of service/news.py _strip_html)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
+# Fallback: a `<` without a matching `>` is a truncated tag (RSS summaries
+# get cut to 500 chars in fetch_rss_feed, so we often store mid-tag). Strip
+# the orphan `<` plus any text up to end-of-string as if it were an unclosed
+# attribute soup.
+_HTML_ORPHAN_RE = re.compile(r"<[^>]*$")
 _MULTI_SPACE_RE = re.compile(r"\s+")
 _HTML_ENTITIES = {"&amp;": "&", "&lt;": "<", "&gt;": ">", "&nbsp;": " ", "&quot;": '"'}
 
 
 def _strip_html(text: str) -> str:
     text = _HTML_TAG_RE.sub(" ", text)
+    text = _HTML_ORPHAN_RE.sub(" ", text)
     for entity, char in _HTML_ENTITIES.items():
         text = text.replace(entity, char)
     return _MULTI_SPACE_RE.sub(" ", text).strip()
@@ -265,7 +271,7 @@ def fetch_items(
         {
             "id": str(r[0]),
             "sourceId": str(r[1]),
-            "title": str(r[2]),
+            "title": _strip_html(str(r[2])),
             "link": str(r[3]),
             "summary": _strip_html(str(r[4])) if r[4] else None,
             "publishedAt": str(r[5]) if r[5] else None,
@@ -299,6 +305,10 @@ def upsert_item(
     fetched_at: str,
 ) -> dict[str, Any]:
     ensure_tables()
+    # Always strip HTML at write time
+    title = _strip_html(title)
+    if summary:
+        summary = _strip_html(summary)
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -385,7 +395,12 @@ def delete_old_items(hours: int = 72) -> int:
 # ---------------------------------------------------------------------------
 
 def fetch_pending_enrichment(limit: int = 50) -> list[dict[str, Any]]:
-    """Return items not yet enriched (enrichment_status IS NULL), newest first."""
+    """Return items needing enrichment: never tried OR failed and ready to retry.
+
+    Picks `enrichment_status IS NULL` first (never tried), then falls back to
+    `failed` items older than `retry_after_minutes` ago so a transient outage
+    (e.g. JSON parse bug now fixed) can be cleared without manual DB poking.
+    """
     ensure_tables()
     lim = max(1, min(int(limit), 200))
     with get_connection() as conn:
@@ -398,7 +413,11 @@ def fetch_pending_enrichment(limit: int = 50) -> list[dict[str, Any]]:
                        ai_summary, enrichment_status, enriched_at, enrichment_model
                 FROM {ITEMS_TABLE}
                 WHERE enrichment_status IS NULL
-                ORDER BY COALESCE(published_at, fetched_at) DESC
+                   OR (enrichment_status = 'failed'
+                       AND enriched_at < (NOW() - INTERVAL '120 minutes'))
+                ORDER BY
+                  CASE WHEN enrichment_status IS NULL THEN 0 ELSE 1 END,
+                  COALESCE(published_at, fetched_at) DESC
                 LIMIT %s
                 """,
                 (lim,),

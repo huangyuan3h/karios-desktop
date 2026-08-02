@@ -2,9 +2,10 @@
 
 tushare `pro.hk_daily` is limited to 1 call per hour on lower-tier keys, so
 single-stock refresh on user watchlists can stall for hours. Yahoo Finance
-serves HK OHLC at `XXXXX.HK` (no zero-padding) for free without rate caps on
-typical traffic. We map our 5-digit ts_code back to yfinance's format and
-write the same row layout into the `daily` table.
+serves HK OHLC at `XXXX.HK` (4-digit padded, no leading-zero stripping).
+We map our 5-digit ts_code (e.g. `00700.HK`) to yfinance's 4-digit format
+(`0700.HK`). Doing `lstrip("0")` here is wrong: `00001.HK` would become
+`1.HK`, which yfinance 404s. We right-trim to 4 digits instead.
 """
 
 from __future__ import annotations
@@ -16,12 +17,17 @@ from data_sync_service.db.daily import get_last_trade_date, upsert_from_datafram
 
 
 def _ts_code_to_yf(ts_code: str) -> str | None:
-    """Convert our padded ts_code like '00700.HK' to yfinance's unpadded '0700.HK'."""
+    """Convert our 5-digit ts_code (e.g. '00700.HK') to yfinance's 4-digit ('0700.HK')."""
     code = (ts_code or "").strip().upper()
     if not code.endswith(".HK"):
         return None
-    ticker = code[:-3].lstrip("0") or "0"
-    return f"{ticker}.HK"
+    digits = code[:-3]
+    if not digits.isdigit() or not digits:
+        return None
+    # yfinance expects 4-digit padding (e.g. '0001.HK', '0700.HK', '9988.HK').
+    # Our 5-digit tushare format -> last 4 digits is always correct.
+    yf_ticker = digits[-4:].zfill(4)
+    return f"{yf_ticker}.HK"
 
 
 def _today_yyyymmdd() -> str:

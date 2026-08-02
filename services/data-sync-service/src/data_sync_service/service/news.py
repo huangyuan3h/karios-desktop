@@ -22,6 +22,9 @@ except ImportError:
 
 # HTML tag stripper — keeps text content, drops tags
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
+# Fallback: handle unclosed tags (RSS summaries truncated to 500 chars
+# before HTML close). Drops the orphan `<` and everything until EOS.
+_HTML_ORPHAN_RE = re.compile(r"<[^>]*$")
 # Multiple whitespace collapsed to single space
 _MULTI_SPACE_RE = re.compile(r"\s+")
 # Common HTML entities
@@ -31,6 +34,7 @@ _HTML_ENTITIES = {"&amp;": "&", "&lt;": "<", "&gt;": ">", "&nbsp;": " ", "&quot;
 def _strip_html(text: str) -> str:
     """Remove HTML tags and decode entities from RSS summary."""
     text = _HTML_TAG_RE.sub(" ", text)
+    text = _HTML_ORPHAN_RE.sub(" ", text)
     for entity, char in _HTML_ENTITIES.items():
         text = text.replace(entity, char)
     text = _MULTI_SPACE_RE.sub(" ", text).strip()

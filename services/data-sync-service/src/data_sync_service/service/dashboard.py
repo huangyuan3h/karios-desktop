@@ -199,10 +199,43 @@ def _index_signal_items(*, as_of_date: str | None) -> list[dict[str, Any]]:
 
 def _news_items(hours: int = 24, limit: int = 50) -> dict[str, Any]:
     """
-    Fetch recent news items for the dashboard.
+    Fetch recent news items for the dashboard, sorted by investment relevance.
+
+    Ordering rules (decision-useful first):
+      1. Enriched items with importance >= 1, sorted by relevance_score DESC
+         (relevance_score already folds in importance + watchlist boost).
+      2. Unenriched items (enrichment hasn't run yet) — fallback order by time.
+      3. Items with importance = 0 are noise — skipped entirely.
+
+    Returns score fields (`importance`, `relevanceScore`, `actionability`,
+    `tickers`) so the frontend can mark watchlist hits and decide which
+    to surface as actionable.
     """
     ensure_news_tables()
-    total, items = fetch_items(limit=limit, hours=hours)
+    total, items = fetch_items(limit=limit * 2, hours=hours)
+
+    enriched: list[dict[str, Any]] = []
+    unenriched: list[dict[str, Any]] = []
+    for item in items:
+        importance = item.get("importance")
+        if importance is None:
+            unenriched.append(item)
+        elif importance >= 1:
+            enriched.append(item)
+        # importance == 0 → noise, drop
+
+    # Enriched: relevance desc, then importance desc (relevance already
+    # includes importance × 15 so this is mostly a tie-breaker).
+    enriched.sort(
+        key=lambda i: (
+            -(int(i.get("relevanceScore") or 0)),
+            -(int(i.get("importance") or 0)),
+        )
+    )
+
+    # Unenriched: backend already returned them newest-first; preserve order.
+    combined = (enriched + unenriched)[:limit]
+
     return {
         "hours": hours,
         "total": total,
@@ -213,8 +246,13 @@ def _news_items(hours: int = 24, limit: int = 50) -> dict[str, Any]:
                 "title": item["title"],
                 "link": item["link"],
                 "publishedAt": item["publishedAt"],
+                "importance": item.get("importance"),
+                "relevanceScore": item.get("relevanceScore"),
+                "actionability": item.get("actionability"),
+                "tickers": item.get("tickers") or [],
+                "aiSummary": item.get("aiSummary"),
             }
-            for item in items
+            for item in combined
         ],
     }
 
