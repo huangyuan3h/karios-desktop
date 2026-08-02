@@ -49,7 +49,7 @@ def _normalize_title(title: str) -> str:
     # Remove parenthetical content
     t = re.sub(r"[（(][^)）]*[)）]", "", t)
     # Strip punctuation
-    t = re.sub(r"[，。！？、；：""''「」\[\]【】(),.!?;:\"]", "", t)
+    t = re.sub("[，。！？、；：\"\"''「」\\[\\]【】(),.!?;:\"]", "", t)
     t = _MULTI_SPACE_RE.sub("", t)
     return t
 
