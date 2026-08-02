@@ -324,3 +324,110 @@ def test_hk_position_range_hint_prefers_tighter_hk_light() -> None:
     )
     assert out["hkGate"]["indexLight"] == "yellow"
     assert out["hkGate"]["positionRangeHint"] == "30%"
+
+
+# ---------- V6.4 ETF flow confirmation layer ----------
+
+def _etf(verdict: str, *, incomplete: bool = False) -> dict:
+    return {
+        "verdict": verdict,
+        "broadDirection": "buy" if verdict == "confirm" else "outflow",
+        "sectorDirection": "neutral",
+        "incomplete": incomplete,
+    }
+
+
+def test_etf_confirm_keeps_attack_with_reason() -> None:
+    out = compute_execution_gate(
+        index_signals=_signals("green", "deep_green"),
+        down_count=800,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_STABLE, 3),
+        etf_flow_signal=_etf("confirm"),
+    )
+    assert out["mode"] == MODE_ATTACK
+    assert "ETF_FLOW_CONFIRM" in out["reasons"]
+    assert "ETF_FLOW_CONTRADICT" not in out["reasons"]
+
+
+def test_etf_contradict_downgrades_attack_to_hold_only() -> None:
+    out = compute_execution_gate(
+        index_signals=_signals("green", "deep_green"),
+        down_count=800,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_STABLE, 3),
+        etf_flow_signal=_etf("contradict"),
+    )
+    assert out["mode"] == MODE_HOLD_ONLY
+    assert out["allowNewEntries"] is False
+    assert "ETF_FLOW_CONTRADICT" in out["reasons"]
+
+
+def test_etf_contradict_never_upgrades_or_moves_hard_defend() -> None:
+    # DEFEND base (SRV extreme high) stays DEFEND; contradict is informational.
+    out = compute_execution_gate(
+        index_signals=_signals("green", "green"),
+        down_count=1000,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_EXTREME_HIGH, 1),
+        etf_flow_signal=_etf("contradict"),
+    )
+    assert out["mode"] == MODE_DEFEND
+    assert "ETF_FLOW_CONTRADICT" in out["reasons"]
+
+
+def test_etf_contradict_does_not_downgrade_weak_attack() -> None:
+    out = compute_execution_gate(
+        index_signals=_signals("green", "green"),
+        down_count=1000,
+        up_count=4100,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_EXTREME_HIGH, 0),
+        max_sector_inflow_cny=726e8,
+        overflow_sector="电子",
+        now=_sh(14, 31),
+        etf_flow_signal=_etf("contradict"),
+    )
+    assert out["mode"] == MODE_WEAK_ATTACK
+    assert "ETF_FLOW_CONTRADICT" in out["reasons"]
+
+
+def test_etf_incomplete_signal_is_ignored() -> None:
+    out = compute_execution_gate(
+        index_signals=_signals("green", "deep_green"),
+        down_count=800,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_STABLE, 3),
+        etf_flow_signal=_etf("contradict", incomplete=True),
+    )
+    assert out["mode"] == MODE_ATTACK
+    assert "ETF_FLOW_CONTRADICT" not in out["reasons"]
+    assert "ETF_FLOW_CONFIRM" not in out["reasons"]
+    assert out["etfFlowSignal"]["incomplete"] is True
+
+
+def test_etf_neutral_adds_no_reason() -> None:
+    out = compute_execution_gate(
+        index_signals=_signals("green", "deep_green"),
+        down_count=800,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_STABLE, 3),
+        etf_flow_signal=_etf("neutral"),
+    )
+    assert out["mode"] == MODE_ATTACK
+    assert "ETF_FLOW_CONFIRM" not in out["reasons"]
+    assert "ETF_FLOW_CONTRADICT" not in out["reasons"]
+    assert out["etfFlowSignal"]["verdict"] == "neutral"
+
+
+def test_etf_signal_in_cn_gate_not_hk_gate() -> None:
+    out = compute_execution_gate(
+        index_signals=_cn_hk_signals("green", "green", "green", "green", "green"),
+        down_count=800,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_STABLE, 3),
+        etf_flow_signal=_etf("confirm"),
+    )
+    assert out["etfFlowSignal"]["verdict"] == "confirm"
+    assert out["cnGate"]["etfFlowSignal"]["verdict"] == "confirm"
+    assert "etfFlowSignal" not in out["hkGate"]

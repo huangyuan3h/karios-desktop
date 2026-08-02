@@ -219,6 +219,83 @@ describe('evaluateNewEntryGates', () => {
   });
 });
 
+describe('ETF no-industry passthrough', () => {
+  it('evaluateNewEntryGates passes ETF without industry/mainline', () => {
+    const r = evaluateNewEntryGates({
+      industryName: null,
+      mainlineAllow: null,
+      isEtf: true,
+      gateMode: 'ATTACK',
+    });
+    expect(r.ok).toBe(true);
+    expect(r.tag).toBeNull();
+    expect(r.why).toBe('ETF_DIRECT');
+  });
+
+  it('ETF still respects sleeve cap and time lock', () => {
+    const blocked = evaluateNewEntryGates({
+      industryName: null,
+      mainlineAllow: null,
+      isEtf: true,
+      gateMode: 'ATTACK',
+      sleeveExposurePct: 60,
+      positionRangeHint: '50%-60%',
+    });
+    expect(blocked.why).toBe('SLEEVE_CAP_BLOCK');
+
+    const locked = evaluateNewEntryGates({
+      industryName: null,
+      mainlineAllow: null,
+      isEtf: true,
+      gateMode: 'ATTACK',
+      now: shanghaiAt(10, 0),
+    });
+    expect(locked.ok).toBe(true);
+    expect(locked.why).toBe('ETF_DIRECT');
+  });
+
+  it('deriveActionCard marks BUY for flat ETF with score+buy under attack', () => {
+    const card = deriveActionCard({
+      symbol: 'ETF:510300',
+      gate: attackGate,
+      trendok: { score: BUY_SCORE_MIN, buyAction: 'buy', stopLossPrice: 3.8 },
+      position: { symbol: 'ETF:510300' },
+      currentPrice: 4.0,
+      mainlineAllow: null,
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('ETF_DIRECT');
+    expect(card.mainlineOk).toBe(false);
+  });
+
+  it('held ETF is not trimmed for missing industry / mainline fade', () => {
+    const card = deriveActionCard({
+      symbol: 'ETF:510050',
+      gate: attackGate,
+      trendok: { score: 0, buyAction: 'avoid' },
+      position: { symbol: 'ETF:510050', positionPct: 5, costPrice: 3.0, entryDate: '2026-07-01' },
+      currentPrice: 3.0,
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).not.toBe('MAINLINE_FADE');
+    expect(card.why).not.toBe('MISSING_INDUSTRY');
+  });
+
+  it('non-ETF held position still trims on mainline fade', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: { score: 0, buyAction: 'avoid', values: { emIndustry: '白酒' } },
+      position: { symbol: 'CN:600000', positionPct: 5, costPrice: 10, entryDate: '2026-07-01' },
+      currentPrice: 10,
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+    });
+    expect(card.action).toBe('TRIM');
+    expect(card.why).toBe('MAINLINE_FADE');
+  });
+});
+
 describe('deriveActionCard', () => {
   const mainline = allowSet([['半导体', '5D_TOP3'], ['AI应用', 'MOMENTUM']]);
 

@@ -86,6 +86,8 @@ const REASON_LABELS: Record<string, string> = {
   SRV_STABLE: 'SRV稳定',
   SRV_UNKNOWN: 'SRV未知',
   INTRADAY_OVERFLOW_OVERRIDE: '盘中溢出覆盖',
+  ETF_FLOW_CONFIRM: '资金流确认',
+  ETF_FLOW_CONTRADICT: '资金流背离',
 };
 
 export function translateReason(r: string | null | undefined): string {

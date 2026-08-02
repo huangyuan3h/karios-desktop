@@ -192,9 +192,16 @@ def sync_adj_factor_endpoint() -> dict:
 
 
 @router.post("/sync/index-daily")
-def sync_index_daily_endpoint() -> dict:
+def sync_index_daily_endpoint(force: bool = Query(False, description="Force sync even if already synced today")) -> dict:
     # Purpose: full index daily sync for selected indices; skip if today already succeeded.
     """Trigger full sync of index daily bars. Skips if today already succeeded; resumes from failure."""
+    from data_sync_service.db.sync_job_record import ensure_table, get_connection
+    if force:
+        ensure_table()
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM sync_job_record WHERE job_type = 'index_daily_full'")
+            conn.commit()
     return sync_index_daily_full()
 
 

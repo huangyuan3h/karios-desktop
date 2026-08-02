@@ -159,6 +159,8 @@ Dashboard 与「Copy all Markdown」顶部输出 **Execution Gate**，把分散�
 
 指数红绿灯覆盖面：**A 股** = 上证指数（featured，占 2 格）+ 创业板指 + 中证500；**港股** = 恒生指数 + 恒生科技指数。Regime 语义：Strong = 本市场全部绿灯，Diverging = 部分绿灯，Weak = 无绿灯；`positionRangeHint` 取本市场更保守（更弱）灯对应的仓位区间。
 
+**ETF 资金流 = 二级确认/过滤因子（V6.4）**：不独立触发买卖。`ETF_WATCHLIST` 按类别归并成 `etfFlowSignal`（broad→国家队方向、sector→板块动量），`verdict=confirm/neutral/contradict`。执行闸在数据完整时：`confirm` 仅追加原因 `ETF_FLOW_CONFIRM`；`contradict` 追加 `ETF_FLOW_CONTRADICT` 并把普通 `ATTACK` 降为 `HOLD_ONLY`。永不升级、不降 `WEAK_ATTACK` 与硬 `DEFEND`，数据不完整时忽略。Dashboard 展示为情绪卡片内一行「资金确认」徽标，完整 ETF 明细表只保留在 Index 页次级面板与 AI copy 输出。
+
 Watchlist 每行另有 **Action Card**（Exec / Trigger / Trail）：EXIT、TRIM、HOLD、ADD、BUY、WATCH、**WATCH_SILENT**、**PURGE**。Trigger 列按仓位语义拆分：**空仓**显示 Entry_Trigger（`buyZoneHigh`），**持仓**显示 Exit_Stop（`max(hardStop, trailStop)`）。Dist%：空仓 `(Entry−Current)/Current`，持仓 `(Current−Exit)/Current`。Unified Copy 表另含 **CostPrice / P&L% / EntryDate / Locked_T1**（A 股 T+1：当日买入禁 EXIT）。下游 AI 应优先服从 Gate 与 Action，而不是自行重算红绿灯。
 
 ### Decision Journal（执行决策闭环）

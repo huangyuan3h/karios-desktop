@@ -55,6 +55,7 @@ export function useWatchlistItems() {
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [costPriceDrafts, setCostPriceDrafts] = React.useState<Record<string, string>>({});
+  const [positionPctDrafts, setPositionPctDrafts] = React.useState<Record<string, string>>({});
 
   const persist = React.useCallback((next: WatchlistItem[]) => {
     setItems(next);
@@ -189,6 +190,12 @@ export function useWatchlistItems() {
     const num = raw === '' ? null : Number(raw);
     const nextVal =
       typeof num === 'number' && Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : null;
+    setPositionPctDrafts((prev) => {
+      if (prev[symbol] == null) return prev;
+      const next = { ...prev };
+      delete next[symbol];
+      return next;
+    });
     const todaySh = getShanghaiTodayIso();
     const next = items.map((it) => {
       if (it.symbol !== symbol) return it;
@@ -206,9 +213,24 @@ export function useWatchlistItems() {
     persist(next);
   }
 
+  function setItemPositionPctDraft(symbol: string, value: string) {
+    setPositionPctDrafts((prev) => ({ ...prev, [symbol]: value }));
+  }
+
+  function commitItemPositionPctDraft(symbol: string) {
+    const raw = positionPctDrafts[symbol];
+    setPositionPctDrafts((prev) => {
+      const next = { ...prev };
+      delete next[symbol];
+      return next;
+    });
+    if (raw == null) return;
+    setItemPositionPct(symbol, raw);
+  }
+
   function setItemCostPriceValue(symbol: string, value: number | null) {
     const nextVal =
-      typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+      typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 1000) / 1000 : null;
     const next = items.map((it) =>
       it.symbol === symbol ? { ...it, costPrice: nextVal, maxPrice: nextVal ?? it.maxPrice } : it,
     );
@@ -248,11 +270,14 @@ export function useWatchlistItems() {
     code,
     setCode,
     costPriceDrafts,
+    positionPctDrafts,
     onAdd,
     onRemove,
     addSymbolToWatchlist,
     setItemColor,
     setItemPositionPct,
+    setItemPositionPctDraft,
+    commitItemPositionPctDraft,
     setItemCostPriceDraft,
     setItemCostPriceValue,
     commitItemCostPriceDraft,

@@ -73,11 +73,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     code,
     setCode,
     costPriceDrafts,
+    positionPctDrafts,
     onAdd,
     onRemove,
     addSymbolToWatchlist,
     setItemColor,
     setItemPositionPct,
+    setItemPositionPctDraft,
+    commitItemPositionPctDraft,
     setItemCostPriceDraft,
     setItemCostPriceValue,
     commitItemCostPriceDraft,
@@ -473,6 +476,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           trend={trend}
           quotes={quotes}
           costPriceDrafts={costPriceDrafts}
+          positionPctDrafts={positionPctDrafts}
           scoreSortDir={scoreSortDir}
           scoreSortEnabled={scoreSortEnabled}
           setScoreSortDir={setScoreSortDir}
@@ -481,6 +485,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           setShowHidden={setShowHidden}
           setItemColor={setItemColor}
           setItemPositionPct={setItemPositionPct}
+          setItemPositionPctDraft={setItemPositionPctDraft}
+          commitItemPositionPctDraft={commitItemPositionPctDraft}
           setItemCostPriceDraft={setItemCostPriceDraft}
           setItemCostPriceValue={setItemCostPriceValue}
           commitItemCostPriceDraft={commitItemCostPriceDraft}

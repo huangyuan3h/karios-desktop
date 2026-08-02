@@ -5,17 +5,19 @@ import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { fmtSignedAmountCn } from '@/lib/dashboard-format';
 
 type Props = {
-  dash: any;
+  etfFundFlow: any;
+  showTitle?: boolean;
 };
 
-export function EtfFundFlowCard({ dash }: Props) {
-  const ms = dash?.marketSentiment ?? {};
-  const etfFlow: any = ms?.etfFundFlow ?? {};
+export function EtfFundFlowCard({ etfFundFlow, showTitle = true }: Props) {
+  const etfFlow: any = etfFundFlow ?? {};
   const etfItems: any[] = Array.isArray(etfFlow?.items) ? etfFlow.items : [];
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">ETF资金流 (持仓关注)</div>
+      {showTitle ? (
+        <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">ETF资金流 (持仓关注)</div>
+      ) : null}
       {etfFlow?.shareLag ? (
         <div className="mb-1 text-[10px] text-amber-600 dark:text-amber-400">
           东方财富实时资金流不完整，缺失行已从盘中信号中排除

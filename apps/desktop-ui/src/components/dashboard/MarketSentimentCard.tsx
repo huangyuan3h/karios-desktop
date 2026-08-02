@@ -147,6 +147,50 @@ export function MarketSentimentCard({
         </div>
       </div>
 
+      {/* ETF flow confirmation signal (secondary factor) */}
+      {(() => {
+        const ef: any = ms?.etfFlowSignal;
+        if (!ef) return null;
+        const verdict = String(ef?.verdict ?? 'neutral');
+        const badgeCls =
+          verdict === 'confirm'
+            ? 'border-emerald-500/30 bg-emerald-500/10'
+            : verdict === 'contradict'
+              ? 'border-red-500/30 bg-red-500/10'
+              : 'border-[var(--k-border)] bg-[var(--k-surface-2)]';
+        const textCls =
+          verdict === 'confirm'
+            ? 'text-emerald-700 dark:text-emerald-300'
+            : verdict === 'contradict'
+              ? 'text-red-700 dark:text-red-300'
+              : 'text-[var(--k-muted)]';
+        const verdictZh =
+          verdict === 'confirm' ? '确认净流入' : verdict === 'contradict' ? '背离净流出' : '中性';
+        const broadZh =
+          ef?.broadDirection === 'buy'
+            ? '国家队净买'
+            : ef?.broadDirection === 'outflow'
+              ? '国家队流出'
+              : '中性';
+        const sectorZh =
+          ef?.sectorDirection === 'buy'
+            ? '板块动量'
+            : ef?.sectorDirection === 'outflow'
+              ? '机构流出'
+              : '中性';
+        return (
+          <div className={`rounded-lg border px-3 py-2 text-xs ${badgeCls}`}>
+            <div className="mb-1 font-medium uppercase tracking-wide opacity-60">资金确认 (ETF)</div>
+            <div className={`text-sm font-bold ${textCls}`}>{verdictZh}</div>
+            <div className="mt-1 text-[10px] opacity-80">
+              国家队 {broadZh} · 板块 {sectorZh}
+              {ef?.incomplete ? ' · 数据不完整' : ''}
+              {ef?.asOfDate ? ` · ${String(ef.asOfDate)}` : ''}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Special alerts */}
       {risk === 'capitulation_v_bottom' && (
         <div className="rounded-lg border border-fuchsia-600/40 bg-fuchsia-600/15 px-3 py-2 text-xs text-fuchsia-800 dark:text-fuchsia-200">

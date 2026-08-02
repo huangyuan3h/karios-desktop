@@ -26,6 +26,7 @@ from data_sync_service.db.news import fetch_items
 from data_sync_service.db.tv import list_latest_snapshots_for_screeners
 from data_sync_service.service.etf_fund_flow import (
     build_etf_fund_flow_bundle,
+    build_etf_flow_signal,
     sync_etf_fund_flow_watchlist,
 )
 from data_sync_service.service.execution_gate import compute_execution_gate
@@ -114,6 +115,7 @@ def _build_market_sentiment_bundle(
         index_signals = get_index_signals(as_of_date=index_as_of, include_breadth=False)
     index_signals = apply_breadth_panic_index_signals(index_signals, down_count)
     etf_fund_flow = build_etf_fund_flow_bundle(as_of_date=as_of_date)
+    etf_flow_signal = build_etf_flow_signal(as_of_date=as_of_date)
     srv_index = compute_srv_index(
         top_by_date=_industry_top_by_date(as_of_date=as_of_date, days=5),
         as_of_date=as_of_date,
@@ -136,6 +138,7 @@ def _build_market_sentiment_bundle(
         max_sector_inflow_cny=max_inflow_cny,
         overflow_sector=overflow_sector,
         now=datetime.now(tz=ZoneInfo("Asia/Shanghai")),
+        etf_flow_signal=etf_flow_signal,
     )
     return {
         "asOfDate": as_of_date,
@@ -143,6 +146,7 @@ def _build_market_sentiment_bundle(
         "items": sentiment_items,
         "indexSignals": index_signals,
         "etfFundFlow": etf_fund_flow,
+        "etfFlowSignal": etf_flow_signal,
         "srvIndex": srv_index,
         "executionGate": execution_gate,
     }

@@ -251,6 +251,7 @@ def compute_execution_gate(
     max_sector_inflow_cny: float | None = None,
     overflow_sector: str | None = None,
     now: datetime | None = None,
+    etf_flow_signal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Derive ATTACK / WEAK_ATTACK / HOLD_ONLY / DEFEND from index lights, breadth,
@@ -262,6 +263,11 @@ def compute_execution_gate(
     V6.3 overflow: when base mode is DEFEND/HOLD_ONLY (and not BREADTH_PANIC /
     RISK_*), sector 1D inflow > 500亿 + upCount > 4000 + Shanghai >= 14:30
     upgrades to WEAK_ATTACK (5% pioneer sleeve).
+
+    V6.4 ETF flow confirmation layer: ETF flow is a secondary factor, never a
+    trigger. confirm adds a reason only; contradict (complete data only)
+    downgrades plain ATTACK to HOLD_ONLY. Never upgrades, never applies when
+    ETF flow data is incomplete.
     """
     signals = list(index_signals or [])
     srv = srv_index if isinstance(srv_index, dict) else {}
@@ -348,6 +354,18 @@ def compute_execution_gate(
         mode = MODE_WEAK_ATTACK
         reasons.append("INTRADAY_OVERFLOW_OVERRIDE")
 
+    # V6.4 ETF flow confirmation layer (defensive-only).
+    etf_flow = etf_flow_signal if isinstance(etf_flow_signal, dict) else {}
+    etf_verdict = str(etf_flow.get("verdict") or "neutral").strip()
+    etf_incomplete = bool(etf_flow.get("incomplete"))
+    if not etf_incomplete:
+        if etf_verdict == "confirm":
+            reasons.append("ETF_FLOW_CONFIRM")
+        elif etf_verdict == "contradict":
+            reasons.append("ETF_FLOW_CONTRADICT")
+            if mode == MODE_ATTACK:
+                mode = MODE_HOLD_ONLY
+
     # Dedupe reasons preserving order
     seen: set[str] = set()
     uniq_reasons: list[str] = []
@@ -372,6 +390,12 @@ def compute_execution_gate(
         "satelliteNote": _satellite_note(mode),
         "overflowSector": overflow_sector_out,
         "overflowInflowYi": overflow_inflow_yi,
+        "etfFlowSignal": {
+            "verdict": etf_verdict,
+            "broadDirection": str(etf_flow.get("broadDirection") or "neutral"),
+            "sectorDirection": str(etf_flow.get("sectorDirection") or "neutral"),
+            "incomplete": etf_incomplete,
+        },
     }
     # Dual-market position budgeting: the flat top-level stays the CN gate for
     # backward compatibility; cnGate/hkGate give each market its own budget.

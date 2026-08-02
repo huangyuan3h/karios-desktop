@@ -381,8 +381,17 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
   lines.push('');
 
   const etfFlow: any = ms?.etfFundFlow ?? {};
+  const etfFlowSignal: any = ms?.etfFlowSignal ?? null;
   const etfItems: any[] = Array.isArray(etfFlow?.items) ? etfFlow.items : [];
   if (etfItems.length) {
+    if (etfFlowSignal && typeof etfFlowSignal === 'object') {
+      const verdict = String(etfFlowSignal?.verdict ?? 'neutral');
+      const broad = String(etfFlowSignal?.broadDirection ?? 'neutral');
+      const sector = String(etfFlowSignal?.sectorDirection ?? 'neutral');
+      lines.push(
+        `- ETF flow confirmation: ${verdict} (broad=${broad}, sector=${sector}${etfFlowSignal?.incomplete ? ', incomplete' : ''})`,
+      );
+    }
     if (etfFlow?.shareLag) {
       lines.push(
         `- ETF realtime flow incomplete; missing rows are excluded from intraday signals (intradaySafe: ${String(etfFlow?.intradaySafe ?? false)})`,

@@ -8,6 +8,7 @@ import type {
 
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiMinutes } from '@/lib/market-hours';
+import { isEtfWatchlistSymbol } from '@/lib/symbols';
 import { isGapUpWeakMarket, isIntradaySurge } from '@/lib/watchlist-metrics';
 
 export const CHANDELIER_ARM_PNL_PCT = 10;
@@ -605,6 +606,8 @@ export function evaluateNewEntryGates(opts: {
   scoreParts?: Record<string, unknown> | null;
   /** Clock for TimeLock; defaults to now. */
   now?: Date | null;
+  /** ETF: bypass industry/mainline gates (no-sector direct). */
+  isEtf?: boolean;
 }): NewEntryGateResult {
   const {
     industryName,
@@ -622,12 +625,15 @@ export function evaluateNewEntryGates(opts: {
     score = null,
     scoreParts = null,
     now = null,
+    isEtf = false,
   } = opts;
-  if (!industryName) {
-    return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
-  }
-  if (isDefenseSector(industryName)) {
-    return { ok: false, tag: null, why: 'DEFENSE_SECTOR_BLOCK' };
+  if (!isEtf) {
+    if (!industryName) {
+      return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
+    }
+    if (isDefenseSector(industryName)) {
+      return { ok: false, tag: null, why: 'DEFENSE_SECTOR_BLOCK' };
+    }
   }
 
   const timeLock = checkExecutionTimeLock({
@@ -663,11 +669,17 @@ export function evaluateNewEntryGates(opts: {
   if (isGapUpWeakMarket(gapUp, marketRegime)) {
     return { ok: false, tag: null, why: 'GAP_UP_WEAK_BLOCK' };
   }
-  if (isSectorConcentrationBlocked(industryName, sectorExposureByIndustry)) {
+  if (!isEtf && isSectorConcentrationBlocked(industryName, sectorExposureByIndustry)) {
     return { ok: false, tag: null, why: 'SECTOR_CONC_BLOCK' };
   }
   if (isSleeveCapBlocked(sleeveExposurePct, positionRangeHint)) {
     return { ok: false, tag: null, why: 'SLEEVE_CAP_BLOCK' };
+  }
+  if (isEtf) {
+    return { ok: true, tag: null, why: momentumSurgeAllow ? 'MOMENTUM_SURGE_ALLOW' : 'ETF_DIRECT' };
+  }
+  if (industryName == null) {
+    return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
   }
   if (!mainlineAllow || !mainlineAllow.ready) {
     return { ok: false, tag: null, why: 'MAINLINE_DATA_UNAVAILABLE' };
@@ -706,6 +718,8 @@ export function evaluateHeldTrimGates(opts: {
   sectorOutflowBlock?: boolean;
   /** V6.2: skip GATE_DEFEND for defensive-sleeve whitelist holdings. */
   exemptDefendTrim?: boolean;
+  /** ETF: skip mainline-fade/industry trims (no-sector, buy-and-hold). */
+  skipMainlineFade?: boolean;
 }): HeldTrimGateResult {
   const {
     mode,
@@ -713,11 +727,12 @@ export function evaluateHeldTrimGates(opts: {
     mainlineAllow,
     sectorOutflowBlock = false,
     exemptDefendTrim = false,
+    skipMainlineFade = false,
   } = opts;
   if (mode === 'DEFEND' && !exemptDefendTrim) {
     return { trim: true, why: 'GATE_DEFEND' };
   }
-  if (mainlineAllow?.ready) {
+  if (!skipMainlineFade && mainlineAllow?.ready) {
     if (!industryName) {
       return { trim: true, why: 'MISSING_INDUSTRY' };
     }
@@ -775,6 +790,7 @@ export function deriveActionCard(opts: {
     now = null,
   } = opts;
   const held = isHeldPosition(position);
+  const isEtf = isEtfWatchlistSymbol(symbol);
   const parts = (trendok?.stopLossParts ?? null) as Record<string, unknown> | null;
   const mode = gateMode(gate);
   const regime = marketRegime ?? gate?.marketRegime ?? null;
@@ -854,6 +870,7 @@ export function deriveActionCard(opts: {
     score,
     scoreParts: (trendok?.scoreParts as Record<string, unknown> | null | undefined) ?? null,
     now,
+    isEtf,
   });
   // Mainline column independent of chase / concentration vetoes
   const mainlineOk = Boolean(
@@ -872,6 +889,7 @@ export function deriveActionCard(opts: {
     mainlineAllow,
     sectorOutflowBlock,
     exemptDefendTrim: defensiveHolding,
+    skipMainlineFade: isEtf,
   });
 
   const defensiveUsed =

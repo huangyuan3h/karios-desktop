@@ -101,6 +101,7 @@ export type WatchlistTableProps = {
   trend: Record<string, TrendOkResult>;
   quotes: Record<string, WatchlistQuote>;
   costPriceDrafts: Record<string, string>;
+  positionPctDrafts: Record<string, string>;
   scoreSortDir: 'desc' | 'asc';
   scoreSortEnabled: boolean;
   setScoreSortDir: React.Dispatch<React.SetStateAction<'desc' | 'asc'>>;
@@ -109,6 +110,8 @@ export type WatchlistTableProps = {
   setShowHidden: React.Dispatch<React.SetStateAction<boolean>>;
   setItemColor: (symbol: string, color: string) => void;
   setItemPositionPct: (symbol: string, value: string) => void;
+  setItemPositionPctDraft: (symbol: string, value: string) => void;
+  commitItemPositionPctDraft: (symbol: string) => void;
   setItemCostPriceDraft: (symbol: string, value: string) => void;
   setItemCostPriceValue: (symbol: string, value: number | null) => void;
   commitItemCostPriceDraft: (symbol: string) => void;
@@ -149,6 +152,7 @@ export function WatchlistTable({
   trend,
   quotes,
   costPriceDrafts,
+  positionPctDrafts,
   scoreSortDir,
   scoreSortEnabled,
   setScoreSortDir,
@@ -157,6 +161,8 @@ export function WatchlistTable({
   setShowHidden,
   setItemColor,
   setItemPositionPct,
+  setItemPositionPctDraft,
+  commitItemPositionPctDraft,
   setItemCostPriceDraft,
   setItemCostPriceValue,
   commitItemCostPriceDraft,
@@ -655,6 +661,7 @@ export function WatchlistTable({
                         tradingTime={tradingTime}
                         todaySh={todaySh}
                         costPriceDraft={costPriceDrafts[it.symbol]}
+                        positionPctDraft={positionPctDrafts[it.symbol]}
                         executionGate={executionGate ?? null}
                         mainlineAllow={mainlineAllow ?? null}
                         sectorOutflowBlock={sectorOutflowBlock}
@@ -666,6 +673,8 @@ export function WatchlistTable({
                         hideTooltip={hideTooltip}
                         showColorPicker={showColorPicker}
                         setItemPositionPct={setItemPositionPct}
+                        setItemPositionPctDraft={setItemPositionPctDraft}
+                        commitItemPositionPctDraft={commitItemPositionPctDraft}
                         setItemCostPriceDraft={setItemCostPriceDraft}
                         setItemCostPriceValue={setItemCostPriceValue}
                         commitItemCostPriceDraft={commitItemCostPriceDraft}

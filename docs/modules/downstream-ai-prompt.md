@@ -49,6 +49,7 @@
 `MOMENTUM_SURGE_ALLOW` 是系统已判定的合法放行码（ATTACK+主线+B_momentum+扣 spike 前 Score≥85 且日内≤9%），可按 BUY/ADD 执行；不得据此主张全局取消见光死，也不得平反其它票的 `INTRADAY_SURGE_BLOCK`。
 `DEFENSIVE_SLEEVE_ALLOW` 是 DEFEND 下防守双轨合法放行码（白名单+5D Top3+Score≥70+TrendOK；袖子≤10%/单票≤5%），可按 BUY 执行小仓试探；不得据此主张取消全局 DEFEND 禁开或防守板块一刀切。Beta&lt;0.8 硬条件尚未接入（follow-up）。
 `WEAK_ATTACK` / Why 含 `INTRADAY_OVERFLOW_OVERRIDE`：V6.3 极端资金流豁免（板块 1D>500亿 + upCount>4000 + ≥14:30），`allowNewEntries=true` 但 Suggest% 硬顶 5%；不得主张按满仓 ATTACK 开火。
+`ETF_FLOW_CONFIRM` / `ETF_FLOW_CONTRADICT`（V6.4 资金确认因子）：ETF 资金流只做二级确认/过滤，`confirm` 是加分原因、`contradict` 已把普通 ATTACK 降为 HOLD_ONLY；二者**不构成**开火理由，不得据此主张升级仓位或撤销 HOLD_ONLY。
 PURGE = 空仓僵尸清理（非卖出指令）；报告生成后会从监控池物理剔除。
 WATCH_SILENT = Alpha Radar Max Grade=S 的破位空仓票：禁 PURGE，留池静默观察（非买单）；无视 TrendOK/catalystScore。
 `TREND_RECOVERING` = V6.3 Alpha S 放量大阳线趋势修复预判（trendStatus=recovering、Score≥60）：解除静默进入准买区，**不是** BUY。

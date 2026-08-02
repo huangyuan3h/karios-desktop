@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 import { IndexDetailPage } from '@/components/pages/IndexDetailPage';
+import { EtfFundFlowCard } from '@/components/dashboard/EtfFundFlowCard';
 import {
   useMacroSnapshotQuery,
   type CnIndexSignal,
@@ -11,6 +12,32 @@ import {
 } from '@/lib/queries/macro';
 import { MACRO_POLL_MS } from '@/lib/queries/intervals';
 import { formatMacroWarning } from '@/lib/macro-warnings';
+
+function signalBucket(s: unknown): 'green' | 'yellow' | 'red' | 'neutral' {
+  const v = String(s ?? '').toLowerCase();
+  if (v.includes('green')) return 'green';
+  if (v === 'yellow' || v === 'amber') return 'yellow';
+  if (v === 'red') return 'red';
+  return 'neutral';
+}
+
+function signalDotClass(bucket: string): string {
+  if (bucket === 'green') return 'bg-emerald-500';
+  if (bucket === 'yellow') return 'bg-amber-400';
+  if (bucket === 'red') return 'bg-red-500';
+  return 'bg-[var(--k-border)]';
+}
+
+function SectionDivider({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="shrink-0 text-[11px] font-semibold uppercase tracking-widest text-[var(--k-muted)]">
+        {children}
+      </span>
+      <span className="h-px min-w-0 flex-1 bg-[var(--k-border)]" />
+    </div>
+  );
+}
 
 function signalSurfaceClass(signal: string): string {
   const s = String(signal || 'unknown');
@@ -186,6 +213,14 @@ export function IndexPage() {
   const cn = Array.isArray(data?.cnIndexSignals) ? data!.cnIndexSignals! : [];
   const macro = Array.isArray(data?.macro) ? data!.macro! : [];
 
+  const signalCounts = React.useMemo(() => {
+    const counts = { green: 0, yellow: 0, red: 0, neutral: 0 };
+    for (const it of cn) counts[signalBucket(it?.signal)] += 1;
+    for (const m of macro) counts[signalBucket(m?.signal)] += 1;
+    return counts;
+  }, [cn, macro]);
+  const totalSignals = cn.length + macro.length;
+
   if (detail) {
     return (
       <IndexDetailPage
@@ -199,10 +234,28 @@ export function IndexPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <p className="max-w-prose text-xs leading-relaxed text-[var(--k-muted)]">
-          CN indices + macro · poll ~{MACRO_POLL_MS / 1000}s · offshore series are typically prior session EOD.
-        </p>
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--k-fg)]">指数与宏观</h2>
+            {totalSignals > 0 ? (
+              <div className="flex items-center gap-2.5 text-[11px] text-[var(--k-muted)]">
+                {(['red', 'yellow', 'green'] as const).map((b) =>
+                  signalCounts[b] > 0 ? (
+                    <span key={b} className="inline-flex items-center gap-1.5">
+                      <span className={`h-2 w-2 rounded-full ${signalDotClass(b)}`} />
+                      <span className="tabular-nums">{signalCounts[b]}</span>
+                    </span>
+                  ) : null,
+                )}
+              </div>
+            ) : null}
+          </div>
+          <p className="mt-1 max-w-prose text-xs leading-relaxed text-[var(--k-muted)]">
+            CN indices + macro · poll ~{MACRO_POLL_MS / 1000}s · offshore series are typically prior
+            session EOD.
+          </p>
+        </div>
         <button
           type="button"
           className="shrink-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-1.5 text-xs font-medium shadow-sm"
@@ -210,7 +263,7 @@ export function IndexPage() {
         >
           Refresh
         </button>
-      </div>
+      </header>
 
       {pending ? <div className="text-xs text-[var(--k-muted)]">Updating…</div> : null}
       {data?.warning ? (
@@ -248,6 +301,15 @@ export function IndexPage() {
           />
         ))}
       </div>
+
+      {data?.etfFundFlow ? (
+        <section className="pt-2">
+          <SectionDivider>ETF 资金流</SectionDivider>
+          <div className="mt-3 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 shadow-sm">
+            <EtfFundFlowCard etfFundFlow={data.etfFundFlow} showTitle={false} />
+          </div>
+        </section>
+      ) : null}
 
       {!cn.length && !macro.length ? (
         <div className="text-xs text-[var(--k-muted)]">No data — sync index/macro or check Tushare token.</div>
