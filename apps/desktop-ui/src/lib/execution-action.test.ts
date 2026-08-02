@@ -1442,9 +1442,9 @@ describe('deriveActionCard', () => {
   });
 
   it('formats sleeve budget label with one decimal', () => {
-    expect(formatSleeveBudgetLabel(45, '50%-60%')).toBe('Sleeve 45.0% / 60%');
-    expect(formatSleeveBudgetLabel(0, '—')).toBe('Sleeve 0.0% / —');
-    expect(formatSleeveBudgetLabel(59.9, '30%')).toBe('Sleeve 59.9% / 30%');
+    expect(formatSleeveBudgetLabel(45, '50%-60%')).toBe('仓位 45.0% / 60%');
+    expect(formatSleeveBudgetLabel(0, '—')).toBe('仓位 0.0% / —');
+    expect(formatSleeveBudgetLabel(59.9, '30%')).toBe('仓位 59.9% / 30%');
   });
 
   it('suggests fire size with 5% clip by default', () => {

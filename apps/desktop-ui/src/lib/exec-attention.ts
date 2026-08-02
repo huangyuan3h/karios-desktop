@@ -28,6 +28,58 @@ export type ExecAttentionQueue = {
 
 export type AttentionCardsSource = 'live' | 'snapshot' | 'none';
 
+const ACTION_LABEL: Record<string, string> = {
+  EXIT: '卖出',
+  TRIM: '减仓',
+  BUY: '买入',
+  ADD: '加仓',
+  HOLD: '持有',
+  WATCH: '观望',
+};
+
+export function translateAction(action: string): string {
+  return ACTION_LABEL[action] ?? action;
+}
+
+const WHY_LABEL: Record<string, string> = {
+  EXIT_NOW: '强制卖出',
+  TRIGGER_HIT: '止损触发',
+  WARN_REDUCE_HALF: '减半警告',
+  GATE_DEFEND: '防守模式',
+  MAINLINE_FADE: '主线退潮',
+  SECTOR_OUTFLOW_BLOCK: '板块资金流出',
+  MISSING_INDUSTRY: '行业缺失',
+  T1_LOCK: 'T+1锁定',
+  ENTRY_DATE_MISSING: '建仓日缺失',
+  SIZE_CAP_BLOCK: '仓位上限',
+  GATE_BLOCK_NEW: 'Gate禁止开仓',
+  HOLD: '持有',
+  INTRADAY_SURGE_BLOCK: '盘中涨幅过大',
+  GAP_UP_WEAK_BLOCK: '跳空弱势阻断',
+  SECTOR_CONC_BLOCK: '板块集中度超限',
+  SLEEVE_CAP_BLOCK: '组合仓位超限',
+  MAINLINE_DATA_UNAVAILABLE: '主线数据未就绪',
+  NOT_MAINLINE: '非主线行业',
+  TIME_LOCK_WEAK_REGIME: '弱势时段锁定',
+  MARKET_CLOSING_LOCK: '尾盘锁定',
+  DEFENSE_SECTOR_BLOCK: '防御板块',
+  ENTRY_BELOW_STOP: '买入价低于止损',
+  MAINLINE_OK: '主线确认',
+  MAINLINE_5D_TOP3: '5日净流入Top3',
+  MAINLINE_MOMENTUM: '动量主线',
+  MOMENTUM_SURGE_ALLOW: '动量突破允许',
+  DEFENSIVE_SLEEVE_ALLOW: '防守仓允许',
+  WATCH: '观望',
+  TREND_RECOVERING: '趋势恢复中',
+  ALPHA_S_WATCH: 'Alpha S级关注',
+  PURGE_GC: '垃圾清理',
+};
+
+export function translateWhy(why: string | null | undefined): string {
+  if (!why) return '—';
+  return WHY_LABEL[why] ?? why;
+}
+
 /** Prefer live Action cards; fall back to journal snapshot. */
 export function resolveAttentionCards(opts: {
   liveCards: Array<{ symbol: string; action: string; why?: string | null }> | null | undefined;
@@ -51,7 +103,10 @@ export function formatDecisionChangeLine(c: ExecutionDecisionChange): string {
     return `${t}  Gate ${c.field}: ${c.oldValue ?? '—'} → ${c.newValue ?? '—'}`;
   }
   const sym = c.symbol ?? '—';
-  return `${t}  ${sym}  ${c.field}: ${c.oldValue ?? '—'} → ${c.newValue ?? '—'}`;
+  const field = c.field === 'action' ? '操作' : c.field === 'why' ? '原因' : c.field;
+  const oldVal = c.field === 'action' ? translateAction(c.oldValue ?? '') : c.field === 'why' ? translateWhy(c.oldValue) : (c.oldValue ?? '—');
+  const newVal = c.field === 'action' ? translateAction(c.newValue ?? '') : c.field === 'why' ? translateWhy(c.newValue) : (c.newValue ?? '—');
+  return `${t}  ${sym}  ${field}: ${oldVal} → ${newVal}`;
 }
 
 function bySymbol(a: ExecAttentionLine, b: ExecAttentionLine): number {
@@ -82,7 +137,7 @@ export function formatAttentionFireLine(x: ExecAttentionLine): string {
     typeof x.suggestAddPct === 'number' && Number.isFinite(x.suggestAddPct)
       ? `  +${x.suggestAddPct.toFixed(1)}%${x.suggestSizeNote ? ` (${x.suggestSizeNote})` : ''}`
       : '';
-  return `${x.symbol}  ${x.action}${size}  ${x.why ?? '—'}`;
+  return `${x.symbol}  ${translateAction(x.action)}${size}  ${translateWhy(x.why)}`;
 }
 
 /**

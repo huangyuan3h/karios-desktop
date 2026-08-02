@@ -277,7 +277,7 @@ export function isHeldMissingPositionPct(pos: PositionLike): boolean {
   return pct == null || pct <= 0;
 }
 
-/** Display: "Sleeve 45.0% / 60%" or "Sleeve 0.0% / —". */
+/** Display: "仓位 45.0% / 60%" or "仓位 0.0% / —". */
 export function formatSleeveBudgetLabel(
   sleeveExposurePct: number,
   positionRangeHint: string | null | undefined,
@@ -285,7 +285,7 @@ export function formatSleeveBudgetLabel(
   const sum = Number.isFinite(sleeveExposurePct) ? sleeveExposurePct : 0;
   const maxPct = parsePositionRangeHintMaxPct(positionRangeHint);
   const maxLabel = maxPct == null ? '—' : `${maxPct}%`;
-  return `Sleeve ${sum.toFixed(1)}% / ${maxLabel}`;
+  return `仓位 ${sum.toFixed(1)}% / ${maxLabel}`;
 }
 
 export function computePnLPct(cost: number | null, current: number | null): number | null {

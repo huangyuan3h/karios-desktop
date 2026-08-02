@@ -248,9 +248,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
   const defaultCards = React.useMemo(
     () => [
-      { id: 'brief', title: 'News Brief' },
-      { id: 'industry', title: 'Industry fund flow' },
-      { id: 'sentiment', title: 'Market sentiment' },
+      { id: 'brief', title: '新闻简报' },
+      { id: 'industry', title: '行业资金流' },
+      { id: 'sentiment', title: '市场情绪' },
       { id: 'decisions', title: '执行日志' },
       { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
     ],

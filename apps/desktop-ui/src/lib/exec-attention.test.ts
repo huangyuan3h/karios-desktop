@@ -118,7 +118,7 @@ describe('buildExecAttentionQueue', () => {
       cards: [],
       changes: [],
     });
-    expect(q.sleeveLabel).toBe('Sleeve 45.0% / 60%');
+    expect(q.sleeveLabel).toBe('仓位 45.0% / 60%');
     expect(q.missingSize).toBe(1);
   });
 
@@ -200,10 +200,10 @@ describe('buildExecAttentionQueue', () => {
     const md = formatExecAttentionMarkdown(q, { source: 'live' });
     expect(md).toContain('## Exec Attention');
     expect(md).toContain('- source: live');
-    expect(md).toContain('Sleeve 20.0% / 60%');
+    expect(md).toContain('仓位 20.0% / 60%');
     expect(md).toContain('### Must act');
-    expect(md).toContain('CN:600000  EXIT  EXIT_NOW');
+    expect(md).toContain('CN:600000  卖出  强制卖出');
     expect(md).toContain('### Fire');
-    expect(md).toContain('CN:600001  BUY  +5.0% (clip)  MAINLINE_OK');
+    expect(md).toContain('CN:600001  买入  +5.0% (clip)  主线确认');
   });
 });

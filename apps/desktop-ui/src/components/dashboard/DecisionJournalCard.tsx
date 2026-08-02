@@ -10,6 +10,8 @@ import {
   formatAttentionFireLine,
   formatDecisionChangeLine,
   resolveAttentionCards,
+  translateAction,
+  translateWhy,
   type ExecAttentionLine,
 } from '@/lib/exec-attention';
 import {
@@ -251,7 +253,7 @@ export function DecisionJournalCard(props: {
         {changesQ.isLoading ? (
           <div className="text-xs text-[var(--k-muted)]">加载中…</div>
         ) : changes.length === 0 ? (
-          <div className="text-xs text-[var(--k-muted)]">No decision changes recorded today.</div>
+          <div className="text-xs text-[var(--k-muted)]">今日暂无决策变更记录。</div>
         ) : (
           <ul className="max-h-48 space-y-1 overflow-auto font-mono text-[11px] leading-snug">
             {changes.slice(0, 40).map((c) => (
@@ -273,29 +275,29 @@ export function DecisionJournalCard(props: {
       {latest ? (
         <div>
           <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">
-            Latest actions (delta)
+            最新操作（变更）
           </div>
           {latestActionCards.length === 0 ? (
             <div className="text-xs text-[var(--k-muted)]">
-              No Action / Trigger / Stop deltas today (silent WATCH omitted).
+              今日暂无操作 / 触发 / 止损变更（静默 WATCH 已省略）。
             </div>
           ) : (
             <div className="max-h-40 overflow-auto rounded border border-[var(--k-border)]">
               <table className="w-full text-left text-[11px]">
                 <thead className="sticky top-0 bg-[var(--k-surface-2)] text-[var(--k-muted)]">
                   <tr>
-                    <th className="px-2 py-1">Symbol</th>
-                    <th className="px-2 py-1">Action</th>
-                    <th className="px-2 py-1">Why</th>
-                    <th className="px-2 py-1">Pos%</th>
+                    <th className="px-2 py-1">代码</th>
+                    <th className="px-2 py-1">操作</th>
+                    <th className="px-2 py-1">原因</th>
+                    <th className="px-2 py-1">仓位%</th>
                   </tr>
                 </thead>
                 <tbody>
                   {latestActionCards.map((c) => (
                     <tr key={c.symbol} className="border-t border-[var(--k-border)] font-mono">
                       <td className="px-2 py-1">{c.symbol}</td>
-                      <td className="px-2 py-1 font-semibold">{c.action}</td>
-                      <td className="px-2 py-1 text-[var(--k-muted)]">{c.why ?? '—'}</td>
+                      <td className="px-2 py-1 font-semibold">{translateAction(c.action)}</td>
+                      <td className="px-2 py-1 text-[var(--k-muted)]">{translateWhy(c.why)}</td>
                       <td className="px-2 py-1">
                         {typeof c.positionPct === 'number' ? c.positionPct.toFixed(1) : '—'}
                       </td>
