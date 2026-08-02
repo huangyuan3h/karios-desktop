@@ -21,7 +21,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from alembic import op
-import sqlalchemy as sa
 
 revision: str = "0014_news_items_enrichment"
 down_revision: str | Sequence[str] | None = "0013_news_sources_tier"
@@ -30,58 +29,30 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "news_items",
-        sa.Column("tickers", sa.ARRAY(sa.Text()), nullable=True),
-    )
-    op.add_column(
-        "news_items",
-        sa.Column("sectors", sa.ARRAY(sa.Text()), nullable=True),
-    )
-    op.add_column(
-        "news_items",
-        sa.Column("event_type", sa.Text(), nullable=True),
-    )
-    op.add_column(
-        "news_items",
-        sa.Column("importance", sa.SmallInteger(), nullable=True),
-    )
-    op.add_column(
-        "news_items",
-        sa.Column("relevance_score", sa.SmallInteger(), nullable=True),
-    )
-    op.add_column(
-        "news_items",
-        sa.Column("ai_summary", sa.Text(), nullable=True),
-    )
-    op.add_column(
-        "news_items",
-        sa.Column("enrichment_status", sa.Text(), nullable=True),
-    )
-    op.add_column(
-        "news_items",
-        sa.Column("enriched_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.add_column(
-        "news_items",
-        sa.Column("enrichment_model", sa.Text(), nullable=True),
-    )
+    # NOTE: baseline 0001 pulls live CREATE_SQL from db/news.py, which already
+    # contains these columns/indexes, so all statements must be idempotent
+    # (IF NOT EXISTS) to work on fresh DBs and legacy DBs alike.
+    op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS tickers TEXT[];")
+    op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS sectors TEXT[];")
+    op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS event_type TEXT;")
+    op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS importance SMALLINT;")
+    op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS relevance_score SMALLINT;")
+    op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS ai_summary TEXT;")
+    op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS enrichment_status TEXT;")
+    op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS enriched_at TIMESTAMPTZ;")
+    op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS enrichment_model TEXT;")
 
-    op.create_index(
-        "idx_news_items_enrichment_status",
-        "news_items",
-        ["enrichment_status"],
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_news_items_enrichment_status "
+        "ON news_items (enrichment_status);"
     )
-    op.create_index(
-        "idx_news_items_importance",
-        "news_items",
-        ["importance"],
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_news_items_importance "
+        "ON news_items (importance);"
     )
-    op.create_index(
-        "idx_news_items_tickers",
-        "news_items",
-        ["tickers"],
-        postgresql_using="gin",
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_news_items_tickers "
+        "ON news_items USING GIN (tickers);"
     )
 
 

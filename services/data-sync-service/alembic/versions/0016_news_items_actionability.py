@@ -13,7 +13,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from alembic import op
-import sqlalchemy as sa
 
 revision: str = "0016_news_items_actionability"
 down_revision: str | Sequence[str] | None = "0015_morning_briefs"
@@ -22,14 +21,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "news_items",
-        sa.Column("actionability", sa.Text(), nullable=True),
-    )
-    op.create_index(
-        "idx_news_items_actionability",
-        "news_items",
-        ["actionability"],
+    # NOTE: baseline 0001 pulls live CREATE_SQL from db/news.py, which already
+    # contains this column, so the statements must be idempotent (IF NOT EXISTS).
+    op.execute("ALTER TABLE news_items ADD COLUMN IF NOT EXISTS actionability TEXT;")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_news_items_actionability "
+        "ON news_items (actionability);"
     )
 
 

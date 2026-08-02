@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "0012_tv_screeners_api_mode"
 down_revision: str | Sequence[str] | None = "0011_paper_trades"
@@ -21,47 +21,28 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # NOTE: baseline 0001 pulls live CREATE_SQL from db/tv.py, which already
+    # contains these columns, so all ALTERs must be idempotent (IF NOT EXISTS)
+    # to work both on fresh DBs and on legacy DBs that predate OPT-057.
     # mode: 'api' (TV Scanner API) | 'chrome' (legacy CDP).
     # Default 'chrome' to preserve backward-compat for all existing rows.
-    op.add_column(
-        "tv_screeners",
-        sa.Column(
-            "mode",
-            sa.Text(),
-            nullable=False,
-            server_default=sa.text("'chrome'"),
-        ),
+    op.execute(
+        "ALTER TABLE tv_screeners ADD COLUMN IF NOT EXISTS "
+        "mode TEXT NOT NULL DEFAULT 'chrome';"
     )
     # market: 'cn' | 'hk' | 'us' | NULL (any). Only relevant when mode='api'.
-    op.add_column(
-        "tv_screeners",
-        sa.Column("market", sa.Text(), nullable=True),
-    )
+    op.execute("ALTER TABLE tv_screeners ADD COLUMN IF NOT EXISTS market TEXT;")
     # filter_json: TV Scanner API filter payload (only when mode='api').
-    op.add_column(
-        "tv_screeners",
-        sa.Column(
-            "filter_json",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=True,
-        ),
-    )
+    op.execute("ALTER TABLE tv_screeners ADD COLUMN IF NOT EXISTS filter_json JSONB;")
     # api_columns: TV Scanner API columns list (only when mode='api').
-    op.add_column(
-        "tv_screeners",
-        sa.Column(
-            "api_columns",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=True,
-        ),
-    )
+    op.execute("ALTER TABLE tv_screeners ADD COLUMN IF NOT EXISTS api_columns JSONB;")
     # url: was NOT NULL; now nullable so mode='api' screeners can omit it.
     op.alter_column("tv_screeners", "url", existing_type=sa.Text(), nullable=True)
-    # Add a CHECK constraint to enforce mode enum at DB level.
-    op.create_check_constraint(
-        "ck_tv_screeners_mode",
-        "tv_screeners",
-        "mode IN ('api', 'chrome')",
+    # Enforce mode enum at DB level; recreate so both paths converge.
+    op.execute("ALTER TABLE tv_screeners DROP CONSTRAINT IF EXISTS ck_tv_screeners_mode;")
+    op.execute(
+        "ALTER TABLE tv_screeners ADD CONSTRAINT ck_tv_screeners_mode "
+        "CHECK (mode IN ('api', 'chrome'));"
     )
 
 

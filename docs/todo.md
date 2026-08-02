@@ -29,13 +29,13 @@
 | 领域 | 在做（P0） | 待办（P1-P4） | 完成归档 |
 |------|------------|---------------|----------|
 | §1 定位与形态 | — | Tauri vs 固定 URL 评估 | — |
-| §2 收益 / 交易 | TIP-009 alpha 映射抽检 / TIP-011 开火归因 | Watchlist hover tooltip / Dashboard 精简 + 参数说明 | TIP-001~008 + V6.2/3 已沉淀（`trading-improvement-checklist.md`） |
+| §2 收益 / 交易 | TIP-009 alpha 映射抽检 / TIP-011 开火归因 / 漏斗 N 日表格（TIP-002 收尾） | — | TIP-001~008 + V6.2/3 已沉淀；hover tooltip + Dashboard 精简 done 2026-08-01（§15） |
 | §3 API 开放 | — | API Key 配额 + 限流 | ✅ 已归档 → `archive/2026-08-01-opt-045-v1-api-surface.md`（OPT-045/046/047 整圈）|
-| §4 工程与部署 | — | DB 走向决策 / Docker 一键 | ✅ Tunnel 脚本骨架 → `optimization-checklist.md` OPT-048（端到端验证 pending） |
+| §4 工程与部署 | DB 本地备份自动化（新发现 2026-08-02） | 隐藏页 & legacy 清理（新发现 2026-08-02） | ✅ Tunnel 脚本骨架 OPT-048；DB 决策 OPT-053；Docker 一键 OPT-056；Alembic 纪律见 AGENTS.md |
 | §5 数据源 / 浏览器 | — | 付费 API 矩阵 | ✅ TV Scanner API 作为唯一池子（2026-08-01）；ego-lite/Chrome CDP 仅作 fallback；数据源审计 done 2026-08-01 |
 | §6 新闻 / 研报 | — | News 质量评估（老婆反馈不如财经新闻准） | `OPT-037/038/039` News Query 并行化 |
 | §7 多市场 | — | 美股 / 加拿大时区 | `OPT-041/042/043/044` HK + ETF 已通 |
-| §8 回测 | — | BacktestPage 重写（等 paper 数据） | ✅ paper-trading v0 → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；历史 BacktestPage 已隐藏 |
+| §8 回测 | paper v0.1 关闭条件补齐（新发现 2026-08-02） | BacktestPage 重写（等 paper 数据） | ✅ paper-trading v0 → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；历史 BacktestPage 已隐藏 |
 | **doc 大扫除** | — | — | `archive/modules-legacy/`（2026-08-01：industry-flow / market-sentiment / news-brief 3 旧版模块文档） |
 
 ---
@@ -114,6 +114,8 @@
 - **[P1] 内网穿透/反向代理**：研究 Tailscale / Cloudflare Tunnel / FRP 中最适合"经常改代码"的方案。
 - **[P2] Tauri 构建降级**：保留但停止维护 desktop 形态的 bug 修复（与 §2 决策一致）。
 - **[P2] Alembic 迁移纪律**：见 `AGENTS.md`，所有 schema 改必须经过 Alembic（已建立 baseline）。
+- **[P0] DB 本地备份自动化**（2026-08-02 审查新发现）：`OPT-053` 已拍板"备份 3 副本策略"，但仓库里**没有任何 backup 脚本 / cron**——"换电脑也能跑"痛点（§13）的数据侧还是空的。落地 pg_dump 日备份 + 本地/异地双副本 + 恢复演练（0.5-1 天）。
+- **[P1] 隐藏页面与 legacy 清理**（2026-08-02 审查新发现）：`SimTradePage`（1017 行）+ `/simtrade` API、`BacktestPage`（664 行）+ `testback/` 旧回测框架仍注册在 `main.py` 路由——nav 已注释隐藏但代码/API 仍在维护面内。退役或标 deprecated（0.5-1 天）。
 
 ---
 
@@ -201,6 +203,7 @@
   2. 必须能拉历史 bars（HK ≥5y 已通过 `OPT-043`；CN 5y+ 已有 `daily` 表）
   3. 纸面交易（paper-trading）先于纯回测——回测容易过拟合，paper 不会
 - **[P1] Paper-trading daily 跑**：把当前 BUY/ADD 信号在收盘后假买入，跟踪 N 日后的实际表现
+- **[P1] Paper-trading v0.1 关闭条件补齐**（2026-08-02 审查新发现）：+10% `target_hit` / score 跌穿 `score_floor` / 离开 watchlist `pool_exit`（`OPT-049` 已列未做）——补齐后胜率 / 持有天数统计才完整（1 天）。
 - **[P1] 单策略回测能力**：保留但**不作为发布决策依据**，只为理解参数敏感度
 - **[P2] BacktestPage 重写**：产品形态（不写到本 todo 的 P0，因为要先有数字）
 
@@ -331,10 +334,12 @@
 | 13 | **MCP server 暴露** | §3 API | 1-2 天 | #1 完成 | Cursor / Claude Desktop 直接调（另一种标准化形式） |
 | 14 | **美股 symbol 闸门** | §7 多市场 | 3-5 天 | 加拿大规划启动 | 远期触发 |
 | 15 | **加拿大税务/账户模型** | §7 多市场 | 远期 | — | 远景 |
-| 16 | **Watchlist table hover tooltip** | §2 收益 | 0.5 天 | — | P1 · 老婆反馈：表头参数看不懂，需 hover 提示 |
-| 17 | **Dashboard 精简 + 参数说明** | §2 收益 | 1 天 | — | P1 · 老婆反馈：内容重复、参数看不懂 |
-| 16 | **Watchlist table hover tooltip** | §2 收益 | 0.5 天 | — | 老婆反馈：表头参数看不懂，需 hover 提示 |
-| 17 | **Dashboard 精简 + 参数说明** | §2 收益 | 1 天 | — | 老婆反馈：内容重复、参数看不懂 |
+| 16 | **Watchlist table hover tooltip** | §2 收益 | 0.5 天 | — | ✅ **done 2026-08-01** → `lib/watchlist-column-help.tsx` + `ColumnHeader`（§15 反馈 #1）|
+| 17 | **Dashboard 精简 + 参数说明** | §2 收益 | 1 天 | — | ✅ **done 2026-08-01** → `lib/dashboard-card-help.tsx` + `DashboardHeader`（§15 反馈 #3）|
+| 18 | **DB 本地备份自动化** | §4 工程 | 0.5-1 天 | OPT-053 决策已立 | 新发现 2026-08-02：pg_dump 日备 + 本地/异地双副本 + 恢复演练 |
+| 19 | **隐藏页面 / legacy 清理** | §4 工程 | 0.5-1 天 | — | 新发现 2026-08-02：SimTradePage + /simtrade、BacktestPage + testback/ 仍注册路由 |
+| 20 | **漏斗 N 日转化率表格** | §3 收益 | 0.5 天 | TIP-002 埋点已就绪 | §3 P0 漏斗闭环的可执行行：前端展示最近 N 日转化率 |
+| 21 | **Paper-trading v0.1 关闭条件** | §8 回测 | 1 天 | OPT-049 | target_hit / score_floor / pool_exit 补齐 |
 
 ### 怎么"凑时间一个个实现"
 
@@ -370,22 +375,6 @@
 - ❌ **API 字段 description 写"待补充"或内部代号**：AI 助手无法判断含义，违反 `api-contract.md` 约束
 - ❌ **业务 endpoint 改路径名而不 bump MAJOR**：破坏 AI 助手缓存的 schema
 - ❌ **在外部仓库（AI 助手那边）手写 Karios API 文档**：永远从 `/v1/schema` 自动生成
-
-**实现动作模板**（每个 # 都照这个来）：
-
-```text
-1. 在 docs/optimization-checklist.md（或 trading-improvement-checklist.md）起一条 OPT-xxx / TIP-xxx
-2. AGENTS.md 已规定：完成 → 勾选 + 写测试
-3. 完成 → todo §10 加一行 + docs/archive/ 起摘要
-4. §12 这行末尾加 ✅ + 完成日期
-```
-
-### 反模式
-
-- ❌ **跳着做**：先做 #5 再做 #1 → Telegram 推力没起来，外部 AI 调通也没意义
-- ❌ **贪多**：一周打 5 个 → 每个都半成品，半年后什么都没真正可用
-- ❌ **先做 #11 #12**：Tauri 降级 + BacktestPage 是"做完才有用"的任务，没有 paper 数据 #12 没意义
-- ❌ **被数据源卡住**：tushare 现在 200/年够用，先别花 1 天做 #4，做 #1 #2 立刻出杠杆
 
 **每日 / 每周加 1 条**：
 - 跑 `bash services/data-sync-service/scripts/data-source-healthcheck.sh` → 失败立即处理（不囤）

@@ -18,7 +18,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from alembic import op
-import sqlalchemy as sa
 
 revision: str = "0013_news_sources_tier"
 down_revision: str | Sequence[str] | None = "0012_tv_screeners_api_mode"
@@ -27,28 +26,11 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "news_sources",
-        sa.Column(
-            "tier",
-            sa.Text(),
-            nullable=False,
-            server_default=sa.text("'D'"),
-        ),
-    )
-    op.add_column(
-        "news_sources",
-        sa.Column(
-            "category",
-            sa.Text(),
-            nullable=True,
-        ),
-    )
-    op.create_index(
-        "idx_news_sources_tier",
-        "news_sources",
-        ["tier"],
-    )
+    # NOTE: baseline 0001 pulls live CREATE_SQL from db/news.py, which already
+    # contains these columns, so all ALTERs must be idempotent (IF NOT EXISTS).
+    op.execute("ALTER TABLE news_sources ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'D';")
+    op.execute("ALTER TABLE news_sources ADD COLUMN IF NOT EXISTS category TEXT;")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_news_sources_tier ON news_sources (tier);")
 
 
 def downgrade() -> None:
