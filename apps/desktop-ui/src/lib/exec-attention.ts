@@ -221,7 +221,7 @@ export function formatExecAttentionMarkdown(
     lines.push('- None');
   } else {
     for (const x of mustAct) {
-      lines.push(`- ${x.symbol}  ${x.action}  ${x.why ?? '—'}`);
+      lines.push(`- ${x.symbol}  ${translateAction(x.action)}  ${translateWhy(x.why)}`);
     }
   }
   lines.push('');

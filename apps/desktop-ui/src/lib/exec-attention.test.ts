@@ -177,7 +177,7 @@ describe('buildExecAttentionQueue', () => {
     });
     expect(q.keyChanges).toHaveLength(3);
     expect(q.keyChanges.map((x) => x.id)).toEqual(['1', '3', '4']);
-    expect(q.keyChanges[0].line).toContain('action');
+    expect(q.keyChanges[0].line).toContain('操作');
     expect(formatDecisionChangeLine(changes[2])).toContain('Gate mode');
   });
 

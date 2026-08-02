@@ -32,7 +32,7 @@ describe('formatSinceLastCopyMarkdown', () => {
     const md = formatSinceLastCopyMarkdown(changes, { lastAt: null });
     expect(md).toContain('## Since last copy');
     expect(md).toContain('no prior copy marker');
-    expect(md).toContain('action');
+    expect(md).toContain('操作');
     expect(md).not.toContain('positionPct');
   });
 
