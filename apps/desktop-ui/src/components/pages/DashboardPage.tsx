@@ -8,6 +8,7 @@ import { RefreshCw } from 'lucide-react';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DecisionJournalCard } from '@/components/dashboard/DecisionJournalCard';
 import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
+import { MarketSentimentCard } from '@/components/dashboard/MarketSentimentCard';
 import { MorningBriefCard } from '@/components/dashboard/MorningBriefCard';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -25,18 +26,11 @@ import { writeLastCopyAt } from '@/lib/copy-ai-brief';
 import {
   buildDashboardCopyAllMarkdown,
   buildIndustryMarkdown,
-  buildSentimentMarkdown,
 } from '@/lib/dashboard-export';
 import { refetchWatchlistMarket } from '@/lib/queries/watchlist';
 import { loadWatchlist } from '@/lib/watchlist-storage';
 import {
-  BREADTH_PANIC_DOWN_THRESHOLD,
-  buildIndexTrafficSummary,
   executionGateBadgeClass,
-  fmtAmountCn,
-  fmtSignedAmountCn,
-  formatSrvIndexLine,
-  srvIndexBadgeClass,
   fmtDateTime,
   loadCardOrder,
   saveCardOrder,
@@ -476,29 +470,22 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       ) : null}
 
       {(() => {
-        const weightOf = (id: string) => {
-          if (id === 'brief') return 4;
-          if (id === 'industry') return 6;
-          if (id === 'sentiment') return 3;
-          if (id === 'decisions') return 3;
-          if (id === 'watchlistRisk') return 2;
-          if (id === 'news') return 2;
-          if (id === 'screeners') return 2;
-          return 2;
-        };
+        const fixedLeft = ['industry'];
+        const fixedRight = ['sentiment'];
+        const leftSet = new Set(fixedLeft);
+        const rightSet = new Set(fixedRight);
         const left: any[] = [];
         const right: any[] = [];
-        let wl = 0;
-        let wr = 0;
         for (const c of orderedCards) {
           const id = String(c.id);
-          const w = weightOf(id);
-          if (wl <= wr) {
+          if (leftSet.has(id)) {
             left.push(c);
-            wl += w;
+          } else if (rightSet.has(id)) {
+            right.push(c);
+          } else if (left.length <= right.length) {
+            left.push(c);
           } else {
             right.push(c);
-            wr += w;
           }
         }
 
@@ -507,7 +494,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
           return (
             <section
               key={id}
-              className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4"
+              className="min-h-0 flex flex-col rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4"
             >
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="text-sm font-medium">{c.title}</div>
@@ -545,503 +532,15 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
               ) : null}
 
               {id === 'sentiment' ? (
-                <div>
-                  {(() => {
-                    const ms = dash?.marketSentiment ?? {};
-                    const items: any[] = Array.isArray(ms.items) ? ms.items : [];
-                    const latest = items.length ? items[items.length - 1] : null;
-                    const indexSignals: any[] = Array.isArray(ms.indexSignals)
-                      ? ms.indexSignals
-                      : [];
-                    const summaryLine = buildIndexTrafficSummary(indexSignals);
-                    const risk = String(latest?.riskMode ?? '—');
-                    const premium = Number.isFinite(latest?.yesterdayLimitUpPremium)
-                      ? `${Number(latest.yesterdayLimitUpPremium).toFixed(2)}%`
-                      : '—';
-                    const failed = Number.isFinite(latest?.failedLimitUpRate)
-                      ? `${Number(latest.failedLimitUpRate).toFixed(1)}%`
-                      : '—';
-                    const turnover = fmtAmountCn(latest?.marketTurnoverCny);
-                    const ratio = Number.isFinite(latest?.upDownRatio)
-                      ? Number(latest.upDownRatio).toFixed(2)
-                      : '—';
-                    const up = Number(latest?.upCount ?? 0);
-                    const down = Number(latest?.downCount ?? 0);
-                    const flat = Number(latest?.flatCount ?? 0);
-                    const breadthPanic = down >= BREADTH_PANIC_DOWN_THRESHOLD;
-                    const srvIndex: any = ms?.srvIndex ?? null;
-                    const srvLine = formatSrvIndexLine(srvIndex);
-                    const srvBadge = srvIndexBadgeClass(srvIndex?.level);
-                    const overlapSectors: string[] = Array.isArray(srvIndex?.overlapSectors)
-                      ? srvIndex.overlapSectors.map((x: any) => String(x)).filter(Boolean)
-                      : [];
-                    const badge =
-                      risk === 'confirmed_uptrend'
-                        ? 'border-emerald-600/40 bg-emerald-600/15 text-emerald-700'
-                        : risk === 'capitulation_v_bottom'
-                        ? 'border-fuchsia-600/40 bg-fuchsia-600/15 text-fuchsia-700'
-                        : risk === 'extreme_caution' || breadthPanic
-                          ? 'border-red-600/40 bg-red-600/15 text-red-700'
-                          : risk === 'no_new_positions'
-                            ? 'border-red-500/30 bg-red-500/10 text-red-600'
-                            : risk === 'caution'
-                              ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
-                              : risk === 'hot'
-                                ? 'border-green-500/30 bg-green-500/10 text-green-700'
-                                : risk === 'euphoric'
-                                  ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700'
-                                  : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
-                    return (
-                      <>
-                        {(() => {
-                          const gate = parseExecutionGate(ms?.executionGate);
-                          if (!gate) return null;
-                          const gateBadge = executionGateBadgeClass(gate.mode);
-                          return (
-                            <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${gateBadge}`}>
-                              <div className="flex flex-wrap items-center gap-2 font-medium">
-                                <span>Execution Gate: {gate.mode}</span>
-                                <span className="text-xs opacity-90">
-                                  allowNewEntries={String(gate.allowNewEntries)}
-                                </span>
-                                <span className="text-xs opacity-90">
-                                  {gate.marketRegime} · {gate.indexLight} · pos{' '}
-                                  {gate.positionRangeHint || '—'}
-                                </span>
-                              </div>
-                              {gate.satelliteNote ? (
-                                <div className="mt-1 text-xs opacity-90">{gate.satelliteNote}</div>
-                              ) : null}
-                              {gate.reasons.length ? (
-                                <div className="mt-1 text-xs opacity-80">
-                                  reasons: {gate.reasons.join(' · ')}
-                                </div>
-                              ) : null}
-                            </div>
-                          );
-                        })()}
-                        <div className="mb-2 flex flex-wrap items-center gap-2">
-                          <div className={`rounded-md border px-2 py-1 text-xs ${badge}`}>
-                            risk: {risk}
-                          </div>
-                          {Array.isArray(latest?.rules) && latest.rules.length ? (
-                            <div className="text-xs text-[var(--k-muted)]">
-                              {latest.rules
-                                .slice(0, 2)
-                                .map((x: any) => String(x))
-                                .join(' • ')}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        {risk === 'capitulation_v_bottom' && (
-                          <div className="mb-3 rounded-lg border border-fuchsia-600/40 bg-fuchsia-600/15 px-3 py-2 text-sm text-fuchsia-800 dark:text-fuchsia-200">
-                            🚨 Capitulation_V_Bottom (恐慌冰点共振) — 国家队入场 + 恐慌极值，左侧绝佳试错点出现
-                          </div>
-                        )}
-
-                        {risk === 'confirmed_uptrend' && (
-                          <div className="mb-3 rounded-lg border border-emerald-600/40 bg-emerald-600/15 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-200">
-                            🟢 Follow-Through Day 右侧主升浪确立 — 解除宏观死锁，放开攻击权限
-                          </div>
-                        )}
-
-                        <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${srvBadge}`}>
-                          <div className="font-medium">{srvLine}</div>
-                          {srvIndex?.labelZh ? (
-                            <div className="mt-1 text-xs opacity-90">{String(srvIndex.labelZh)}</div>
-                          ) : null}
-                          {overlapSectors.length ? (
-                            <div className="mt-1 text-xs opacity-90">
-                              Overlap: {overlapSectors.join(', ')}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div
-                          className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
-                            breadthPanic
-                              ? 'border-red-500/40 bg-red-500/10'
-                              : 'border-[var(--k-border)] bg-[var(--k-surface-2)]'
-                          }`}
-                        >
-                          <div
-                            className={`font-medium ${
-                              breadthPanic ? 'text-red-700' : 'text-[var(--k-fg)]'
-                            }`}
-                          >
-                            Market Breadth: {up.toLocaleString()} Up / {down.toLocaleString()}{' '}
-                            Down / {flat.toLocaleString()} Flat
-                          </div>
-                          <div className="mt-1 grid grid-cols-2 gap-2 text-xs text-[var(--k-muted)] sm:grid-cols-3">
-                            <span>
-                              <span className="opacity-70">ratio</span>{' '}
-                              <span className="font-mono">{ratio}</span>
-                            </span>
-                            <span>
-                              <span className="opacity-70">turnover</span>{' '}
-                              <span className="font-mono">{turnover}</span>
-                            </span>
-                            <span>
-                              <span className="opacity-70">premium</span>{' '}
-                              <span className="font-mono">{premium}</span>
-                              <span className="opacity-70"> · </span>
-                              <span className="opacity-70">failed</span>{' '}
-                              <span className="font-mono">{failed}</span>
-                            </span>
-                          </div>
-                          {breadthPanic ? (
-                            <div className="mt-1 text-xs text-red-700">
-                              Down &ge; {BREADTH_PANIC_DOWN_THRESHOLD.toLocaleString()}: force red
-                              lights and extreme caution.
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                          <div className="text-sm font-semibold text-amber-700">
-                            {summaryLine.title}
-                          </div>
-                          <div className="mt-1 text-xs text-amber-800">{summaryLine.detail}</div>
-                        </div>
-
-                        {indexSignals.length ? (
-                          <div className="mt-3">
-                            <div className="mb-2 flex items-center justify-between gap-2 text-xs text-[var(--k-muted)]">
-                              <DashboardHeader helpId="idxRule.title" align="left" width={420} />
-                            </div>
-                            <div className="grid gap-2 md:grid-cols-2">
-                              {indexSignals.map((it: any) => {
-                                const signal = String(it?.signal ?? 'unknown');
-                                const source = String(it?.source ?? 'unknown');
-                                const tradeTime = String(it?.tradeTime ?? '').trim();
-                                const asOfDate = String(it?.asOfDate ?? '').trim();
-                                const realtime = it?.realtime === true;
-                                const freshness = realtime ? 'realtime' : 'EOD';
-                                const asOfDisplay = tradeTime || asOfDate || '—';
-                                const quoteError = String(it?.quoteError ?? '').trim();
-                                const signalBadge =
-                                  signal === 'deep_green'
-                                    ? 'border-emerald-600/40 bg-emerald-600/15 text-emerald-800'
-                                    : signal === 'light_green' || signal === 'green'
-                                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
-                                      : signal === 'red'
-                                        ? 'border-red-500/30 bg-red-500/10 text-red-600'
-                                        : signal === 'yellow'
-                                          ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
-                                          : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
-                                return (
-                                  <div
-                                    key={String(it?.tsCode ?? it?.name)}
-                                    className={`rounded-lg border px-3 py-2 text-xs ${signalBadge}`}
-                                  >
-                                    <div className="font-medium">
-                                      {String(it?.name ?? it?.tsCode ?? '')}
-                                    </div>
-                                    <div className="mt-1 font-mono">
-                                      {signal} • pos {String(it?.positionRange ?? '—')}
-                                    </div>
-                                    <div className="mt-1 text-[var(--k-muted)]">
-                                      chg{' '}
-                                      {Number.isFinite(it?.pctChg)
-                                        ? `${Number(it.pctChg) >= 0 ? '+' : ''}${Number(it.pctChg).toFixed(2)}%`
-                                        : '—'}{' '}
-                                      • close{' '}
-                                      {Number.isFinite(it?.close)
-                                        ? Number(it.close).toFixed(2)
-                                        : '—'}{' '}
-                                      • MA5{' '}
-                                      {Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—'} •
-                                      MA20{' '}
-                                      {Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—'}
-                                    </div>
-                                    <div className="mt-1 font-mono text-[10px] text-[var(--k-muted)]">
-                                      asOf {asOfDisplay} • {freshness} • {source}
-                                    </div>
-                                    {quoteError ? (
-                                      <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
-                                        quote fallback: {quoteError}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ) : null}
-
-                        <div className="mt-3">
-                          <div className="mb-2 text-xs text-[var(--k-muted)]">Last 5 days</div>
-                          <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                            <table className="w-full border-collapse text-xs">
-                              <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                                <tr className="text-left">
-                                  <th className="px-2 py-2 whitespace-nowrap">
-                                    <DashboardHeader helpId="sentiment5d.date" align="left" width={280} />
-                                  </th>
-                                  <th className="px-2 py-2 text-right whitespace-nowrap">
-                                    <DashboardHeader helpId="sentiment5d.ratio" align="right" width={340} />
-                                  </th>
-                                  <th className="px-2 py-2 text-right whitespace-nowrap">
-                                    <DashboardHeader helpId="sentiment5d.turnover" align="right" width={340} />
-                                  </th>
-                                  <th className="px-2 py-2 text-right whitespace-nowrap">
-                                    <DashboardHeader helpId="sentiment5d.premiumPct" align="right" width={360} />
-                                  </th>
-                                  <th className="px-2 py-2 text-right whitespace-nowrap">
-                                    <DashboardHeader helpId="sentiment5d.failedPct" align="right" width={360} />
-                                  </th>
-                                  <th className="px-2 py-2 whitespace-nowrap">
-                                    <DashboardHeader helpId="sentiment5d.risk" align="left" width={340} />
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(items || []).slice(-5).map((it: any, idx: number) => (
-                                  <tr key={idx} className="border-t border-[var(--k-border)]">
-                                    <td className="px-2 py-2 font-mono">{String(it.date ?? '')}</td>
-                                    <td className="px-2 py-2 text-right font-mono">
-                                      {Number.isFinite(it.upDownRatio)
-                                        ? Number(it.upDownRatio).toFixed(2)
-                                        : '—'}
-                                    </td>
-                                    <td className="px-2 py-2 text-right font-mono">
-                                      {fmtAmountCn(it.marketTurnoverCny)}
-                                    </td>
-                                    <td className="px-2 py-2 text-right font-mono">
-                                      {Number.isFinite(it.yesterdayLimitUpPremium)
-                                        ? `${Number(it.yesterdayLimitUpPremium).toFixed(2)}%`
-                                        : '—'}
-                                    </td>
-                                    <td className="px-2 py-2 text-right font-mono">
-                                      {Number.isFinite(it.failedLimitUpRate)
-                                        ? `${Number(it.failedLimitUpRate).toFixed(1)}%`
-                                        : '—'}
-                                    </td>
-                                    <td className="px-2 py-2">{String(it.riskMode ?? '')}</td>
-                                  </tr>
-                                ))}
-                                {!items.length ? (
-                                  <tr>
-                                    <td
-                                      className="px-2 py-3 text-sm text-[var(--k-muted)]"
-                                      colSpan={7}
-                                    >
-                                      No sentiment cached yet. Click “Sync & Copy”.
-                                    </td>
-                                  </tr>
-                                ) : null}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-
-                        {(() => {
-                          const etfFlow: any = ms?.etfFundFlow ?? {};
-                          const etfItems: any[] = Array.isArray(etfFlow?.items)
-                            ? etfFlow.items
-                            : [];
-                          return (
-                            <div className="mt-3">
-                              <div className="mb-2 text-xs font-medium text-[var(--k-muted)]">
-                                ETF Fund Flow (Top Watchlist)
-                              </div>
-                              {etfFlow?.shareLag ? (
-                                <div className="mb-2 text-xs text-amber-600 dark:text-amber-400">
-                                  Realtime East Money flow is incomplete. Missing rows are excluded from intraday signals
-                                  {etfFlow?.intradaySafe === false ? ' — not safe for intraday decisions' : ''}.
-                                </div>
-                              ) : null}
-                              <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                                <table className="w-full border-collapse text-xs">
-                                  <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                                    <tr className="text-left">
-                                      <th className="px-2 py-2 whitespace-nowrap">
-                                        <DashboardHeader helpId="etf.name" align="left" width={300} />
-                                      </th>
-                                      <th className="px-2 py-2 font-mono whitespace-nowrap">
-                                        <DashboardHeader helpId="etf.symbol" align="left" width={300} />
-                                      </th>
-                                      <th className="px-2 py-2 text-right whitespace-nowrap">
-                                        <DashboardHeader helpId="etf.mainFlow" align="right" width={340} />
-                                      </th>
-                                      <th className="px-2 py-2 text-right whitespace-nowrap">
-                                        <DashboardHeader helpId="etf.superLarge" align="right" width={360} />
-                                      </th>
-                                      <th className="px-2 py-2 text-right whitespace-nowrap">
-                                        <DashboardHeader helpId="etf.flow3d" align="right" width={300} />
-                                      </th>
-                                      <th className="px-2 py-2 whitespace-nowrap">
-                                        <DashboardHeader helpId="etf.realtimeAsOf" align="left" width={320} />
-                                      </th>
-                                      <th className="px-2 py-2 whitespace-nowrap">
-                                        <DashboardHeader helpId="etf.source" align="left" width={300} />
-                                      </th>
-                                      <th className="px-2 py-2 whitespace-nowrap">
-                                        <DashboardHeader helpId="etf.status" align="left" width={320} />
-                                      </th>
-                                      <th className="px-2 py-2 whitespace-nowrap">
-                                        <DashboardHeader helpId="etf.signal" align="left" width={340} />
-                                      </th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {etfItems.map((it: any, idx: number) => {
-                                      const flowStatus = String(
-                                        it?.flowStatus ?? (it?.live === true ? 'Live' : '—'),
-                                      );
-                                      const live = it?.live === true || flowStatus === 'Live';
-                                      const isMarketClosed = flowStatus === 'MarketClosed';
-                                      const flow1dStale =
-                                        !live &&
-                                        !isMarketClosed &&
-                                        it?.netFlow1d == null &&
-                                        (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
-                                      const flow1dDisplay = flow1dStale
-                                        ? '— (stale)'
-                                        : fmtSignedAmountCn(it?.netFlow1d);
-                                      const superLargeFlow = fmtSignedAmountCn(it?.superLargeNetInflow);
-                                      const largeFlow = fmtSignedAmountCn(it?.largeNetInflow);
-                                      const signalText = String(
-                                        it?.signalDisplay ?? it?.signal ?? '—',
-                                      );
-                                      const isDataLag = String(it?.signal ?? '') === 'Data Lag';
-                                      const realtimeAsOf = String(
-                                        it?.tradeTime ?? it?.flowAsOfDate ?? etfFlow?.asOfDate ?? '—',
-                                      );
-                                      return (
-                                      <tr key={idx} className="border-t border-[var(--k-border)]">
-                                        <td className="px-2 py-2">{String(it?.name ?? '')}</td>
-                                        <td className="px-2 py-2 font-mono">
-                                          {String(it?.symbol ?? '')}
-                                        </td>
-                                        <td className="px-2 py-2 text-right font-mono">
-                                          {flow1dDisplay}
-                                        </td>
-                                        <td className="px-2 py-2 text-right font-mono">
-                                          {superLargeFlow}/{largeFlow}
-                                        </td>
-                                        <td className="px-2 py-2 text-right font-mono">
-                                          {fmtSignedAmountCn(it?.netFlow3d)}
-                                        </td>
-                                        <td className="px-2 py-2 font-mono">
-                                          {realtimeAsOf}
-                                        </td>
-                                        <td className="px-2 py-2 font-mono">
-                                          {String(it?.source ?? '—')}
-                                        </td>
-                                        <td
-                                          className={`px-2 py-2 font-mono ${
-                                            flowStatus === 'Live'
-                                              ? 'font-semibold text-emerald-600'
-                                              : isMarketClosed
-                                                ? 'text-[var(--k-muted)]'
-                                                : flowStatus === 'Stale' || flowStatus === 'Missing'
-                                                  ? 'text-amber-600'
-                                                  : 'text-[var(--k-muted)]'
-                                          }`}
-                                        >
-                                          {isMarketClosed ? 'Market Closed' : flowStatus}
-                                        </td>
-                                        <td
-                                          className={
-                                            isDataLag
-                                              ? 'px-2 py-2 text-[var(--k-muted)]'
-                                              : 'px-2 py-2'
-                                          }
-                                        >
-                                          {signalText}
-                                        </td>
-                                      </tr>
-                                    );})}
-                                    {!etfItems.length ? (
-                                      <tr>
-                                        <td
-                                          className="px-2 py-3 text-sm text-[var(--k-muted)]"
-                                          colSpan={9}
-                                        >
-                                          No ETF fund flow cached yet. Click &quot;Sync
-                                          sentiment&quot;.
-                                        </td>
-                                      </tr>
-                                    ) : null}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        <div className="mt-3 flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={sentimentBusy}
-                            onClick={() => void onSyncSentiment()}
-                          >
-                            {sentimentBusy ? (
-                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                            )}
-                            Sync sentiment
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              try {
-                                const md = buildSentimentMarkdown(summary, '#');
-                                void navigator.clipboard
-                                  .writeText(md)
-                                  .then(() => toastSentimentCopy(true, 'Copied Markdown.'))
-                                  .catch(() =>
-                                    toastSentimentCopy(
-                                      false,
-                                      'Copy failed. Please allow clipboard access.',
-                                    ),
-                                  );
-                              } catch (e) {
-                                toastSentimentCopy(
-                                  false,
-                                  e instanceof Error ? e.message : String(e),
-                                );
-                              }
-                            }}
-                          >
-                            Copy Markdown
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              const asOfDate = String(ms.asOfDate ?? dash?.asOfDate ?? '');
-                              addReference({
-                                kind: 'marketSentiment',
-                                refId: `${asOfDate}:5`,
-                                asOfDate,
-                                days: 5,
-                                title: 'CN market sentiment (breadth & limit-up)',
-                                createdAt: new Date().toISOString(),
-                              } as any);
-                            }}
-                          >
-                            Reference
-                          </Button>
-                        </div>
-                        {sentimentCopyStatus ? (
-                          <div
-                            className={`mt-2 text-xs ${
-                              sentimentCopyStatus.ok ? 'text-emerald-600' : 'text-red-600'
-                            }`}
-                          >
-                            {sentimentCopyStatus.text}
-                          </div>
-                        ) : null}
-                      </>
-                    );
-                  })()}
-                </div>
+                <MarketSentimentCard
+                  dash={dash}
+                  summary={summary}
+                  sentimentBusy={sentimentBusy}
+                  onSyncSentiment={() => void onSyncSentiment()}
+                  toastSentimentCopy={toastSentimentCopy}
+                  sentimentCopyStatus={sentimentCopyStatus}
+                  addReference={addReference}
+                />
               ) : id === 'industry' ? (
                 <IndustryFundFlowCard
                   summary={dash}
@@ -1281,8 +780,15 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
           <>
             <div className="space-y-4 lg:hidden">{orderedCards.map(renderCard)}</div>
             <div className="hidden lg:grid lg:grid-cols-2 lg:gap-4">
-              <div className="space-y-4">{left.map(renderCard)}</div>
-              <div className="space-y-4">{right.map(renderCard)}</div>
+              {(() => {
+                const maxLen = Math.max(left.length, right.length);
+                const merged: any[] = [];
+                for (let i = 0; i < maxLen; i++) {
+                  if (left[i]) merged.push(left[i]);
+                  if (right[i]) merged.push(right[i]);
+                }
+                return merged.map(renderCard);
+              })()}
             </div>
           </>
         );
