@@ -165,7 +165,7 @@ export function MorningBriefCard(props: {
           </div>
         ) : (
           <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3 text-sm text-[var(--k-muted)]">
-            暂无摘要。请点击"同步并复制"获取新闻并生成摘要。
+            暂无摘要。请点击“同步并复制”获取新闻并生成摘要。
           </div>
         )}
         <div className="mt-2 flex items-center gap-2">

@@ -220,7 +220,7 @@ export async function importFromScreener(options: ScreenerImportOptions = {}): P
   let filtered: string[] = [];
   let droppedByPullback = 0;
   let okUniq: string[] = [];
-  let debugBySym: Record<string, TrendOkResult> = {};
+  const debugBySym: Record<string, TrendOkResult> = {};
   let primaryAdded: WatchlistItem[] = [];
   let primaryRows: TrendOkResult[] = [];
 
