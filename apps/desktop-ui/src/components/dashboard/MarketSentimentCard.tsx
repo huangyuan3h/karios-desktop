@@ -90,17 +90,17 @@ export function MarketSentimentCard({
       {gate ? (
         <div className={`rounded-lg border px-3 py-2 text-sm ${executionGateBadgeClass(gate.mode)}`}>
           <div className="flex flex-wrap items-center gap-2 font-medium">
-            <span>Execution Gate: {gate.mode}</span>
-            <span className="text-xs opacity-90">allowNewEntries={String(gate.allowNewEntries)}</span>
+            <span>执行闸门: {gate.mode}</span>
+            <span className="text-xs opacity-90">允许开仓={String(gate.allowNewEntries)}</span>
             <span className="text-xs opacity-90">
-              {gate.marketRegime} · {gate.indexLight} · pos {gate.positionRangeHint || '—'}
+              {gate.marketRegime} · {gate.indexLight} · 仓位 {gate.positionRangeHint || '—'}
             </span>
           </div>
           {gate.satelliteNote ? (
             <div className="mt-1 text-xs opacity-90">{gate.satelliteNote}</div>
           ) : null}
           {gate.reasons.length ? (
-            <div className="mt-1 text-xs opacity-80">reasons: {gate.reasons.join(' · ')}</div>
+            <div className="mt-1 text-xs opacity-80">原因: {gate.reasons.join(' · ')}</div>
           ) : null}
         </div>
       ) : null}
@@ -108,7 +108,7 @@ export function MarketSentimentCard({
       {/* Risk + SRV + Traffic — 3-column compact grid */}
       <div className="grid grid-cols-3 gap-2">
         <div className={`rounded-lg border px-3 py-2 text-xs ${badge}`}>
-          <div className="mb-1 font-medium uppercase tracking-wide opacity-60">Risk</div>
+          <div className="mb-1 font-medium uppercase tracking-wide opacity-60">风险</div>
           <div className="text-base font-bold">{risk}</div>
           {Array.isArray(latest?.rules) && latest.rules.length ? (
             <div className="mt-1 text-[10px] opacity-80">
@@ -118,18 +118,18 @@ export function MarketSentimentCard({
         </div>
 
         <div className={`rounded-lg border px-3 py-2 text-xs ${srvBadge}`}>
-          <div className="mb-1 font-medium uppercase tracking-wide opacity-60">SRV Index</div>
+          <div className="mb-1 font-medium uppercase tracking-wide opacity-60">SRV 指数</div>
           <div className="text-base font-bold">{srvLine}</div>
           {srvIndex?.labelZh ? (
             <div className="mt-1 text-[10px] opacity-90">{String(srvIndex.labelZh)}</div>
           ) : null}
           {overlapSectors.length ? (
-            <div className="mt-1 text-[10px] opacity-80">Overlap: {overlapSectors.join(', ')}</div>
+            <div className="mt-1 text-[10px] opacity-80">重叠: {overlapSectors.join(', ')}</div>
           ) : null}
         </div>
 
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
-          <div className="mb-1 font-medium uppercase tracking-wide text-amber-600">Traffic</div>
+          <div className="mb-1 font-medium uppercase tracking-wide text-amber-600">行情</div>
           <div className="text-sm font-bold text-amber-700">{summaryLine.title}</div>
           <div className="mt-1 text-[10px] text-amber-800">{summaryLine.detail}</div>
         </div>
@@ -188,7 +188,7 @@ export function MarketSentimentCard({
         </div>
         {breadthPanic ? (
           <div className="mt-1 text-[10px] text-red-700">
-            Down &ge; {BREADTH_PANIC_DOWN_THRESHOLD.toLocaleString()}: force red lights and extreme caution.
+            跌停 &ge; {BREADTH_PANIC_DOWN_THRESHOLD.toLocaleString()}：触发红色预警，极度谨慎。
           </div>
         ) : null}
       </div>
@@ -206,7 +206,7 @@ export function MarketSentimentCard({
               const tradeTime = String(it?.tradeTime ?? '').trim();
               const asOfDate = String(it?.asOfDate ?? '').trim();
               const realtime = it?.realtime === true;
-              const freshness = realtime ? 'realtime' : 'EOD';
+              const freshness = realtime ? '实时' : '收盘';
               const asOfDisplay = tradeTime || asOfDate || '—';
               const quoteError = String(it?.quoteError ?? '').trim();
               const signalBadge =
@@ -226,24 +226,24 @@ export function MarketSentimentCard({
                 >
                   <div className="font-medium">{String(it?.name ?? it?.tsCode ?? '')}</div>
                   <div className="mt-1 font-mono">
-                    {signal} · pos {String(it?.positionRange ?? '—')}
+                    {signal} · 仓位 {String(it?.positionRange ?? '—')}
                   </div>
                   <div className="mt-1 text-[var(--k-muted)]">
-                    chg{' '}
+                    涨幅{' '}
                     {Number.isFinite(it?.pctChg)
                       ? `${Number(it.pctChg) >= 0 ? '+' : ''}${Number(it.pctChg).toFixed(2)}%`
                       : '—'}{' '}
-                    · close{' '}
+                    · 收盘{' '}
                     {Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—'} · MA5{' '}
                     {Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—'} · MA20{' '}
                     {Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—'}
                   </div>
                   <div className="mt-1 font-mono text-[10px] text-[var(--k-muted)]">
-                    asOf {asOfDisplay} · {freshness} · {source}
+                    截至 {asOfDisplay} · {freshness} · {source}
                   </div>
                   {quoteError ? (
                     <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
-                      quote fallback: {quoteError}
+                      行情回退: {quoteError}
                     </div>
                   ) : null}
                 </div>
@@ -261,7 +261,7 @@ export function MarketSentimentCard({
           onClick={() => setDetailsOpen((v) => !v)}
         >
           {detailsOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          Details — Last 5 days · ETF Fund Flow
+          详情 — 近5日 · ETF资金流
         </button>
         {detailsOpen && (
           <div className="mt-2 space-y-3">
@@ -316,7 +316,7 @@ export function MarketSentimentCard({
                   {!items.length ? (
                     <tr>
                       <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={6}>
-                        No sentiment cached yet. Click &quot;Sync & Copy&quot;.
+                        暂无情绪数据。请点击"同步并复制"。
                       </td>
                     </tr>
                   ) : null}
@@ -331,12 +331,12 @@ export function MarketSentimentCard({
               return (
                 <div>
                   <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">
-                    ETF Fund Flow (Top Watchlist)
+                    ETF资金流 (持仓关注)
                   </div>
                   {etfFlow?.shareLag ? (
                     <div className="mb-1 text-[10px] text-amber-600 dark:text-amber-400">
-                      Realtime East Money flow is incomplete. Missing rows are excluded from intraday signals
-                      {etfFlow?.intradaySafe === false ? ' — not safe for intraday decisions' : ''}.
+                      东方财富实时资金流不完整，缺失行已从盘中信号中排除
+                      {etfFlow?.intradaySafe === false ? ' — 盘中决策不可用' : ''}。
                     </div>
                   ) : null}
                   <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
@@ -405,7 +405,7 @@ export function MarketSentimentCard({
                                         : 'text-[var(--k-muted)]'
                                 }`}
                               >
-                                {isMarketClosed ? 'Market Closed' : flowStatus}
+                                {isMarketClosed ? '已收盘' : flowStatus}
                               </td>
                               <td className={isDataLag ? 'px-2 py-2 text-[var(--k-muted)]' : 'px-2 py-2'}>
                                 {signalText}
@@ -416,7 +416,7 @@ export function MarketSentimentCard({
                         {!etfItems.length ? (
                           <tr>
                             <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={9}>
-                              No ETF fund flow cached yet. Click &quot;Sync sentiment&quot;.
+                              暂无ETF资金流数据。请点击"同步情绪"。
                             </td>
                           </tr>
                         ) : null}
@@ -438,7 +438,7 @@ export function MarketSentimentCard({
           ) : (
             <RefreshCw className="mr-2 h-4 w-4" />
           )}
-          Sync sentiment
+          同步情绪
         </Button>
         <Button
           size="sm"
@@ -448,14 +448,14 @@ export function MarketSentimentCard({
               const md = buildSentimentMarkdown(summary, '#');
               void navigator.clipboard
                 .writeText(md)
-                .then(() => toastSentimentCopy(true, 'Copied Markdown.'))
-                .catch(() => toastSentimentCopy(false, 'Copy failed. Please allow clipboard access.'));
+                .then(() => toastSentimentCopy(true, '已复制Markdown。'))
+                .catch(() => toastSentimentCopy(false, '复制失败，请允许剪贴板访问。'));
             } catch (e) {
               toastSentimentCopy(false, e instanceof Error ? e.message : String(e));
             }
           }}
         >
-          Copy Markdown
+          复制Markdown
         </Button>
         <Button
           size="sm"
@@ -467,12 +467,12 @@ export function MarketSentimentCard({
               refId: `${asOfDate}:5`,
               asOfDate,
               days: 5,
-              title: 'CN market sentiment (breadth & limit-up)',
+              title: 'A股市场情绪（涨跌与涨停）',
               createdAt: new Date().toISOString(),
             });
           }}
         >
-          Reference
+          参考
         </Button>
       </div>
       {sentimentCopyStatus ? (

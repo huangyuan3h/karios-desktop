@@ -47,8 +47,8 @@ function AttentionLines({
           ) : (
             <>
               <span className="font-semibold">{x.symbol}</span>
-              <span className="mx-1.5">{x.action}</span>
-              <span className="text-[var(--k-muted)]">{x.why ?? '—'}</span>
+              <span className="mx-1.5">{translateAction(x.action)}</span>
+              <span className="text-[var(--k-muted)]">{translateWhy(x.why)}</span>
             </>
           )}
         </li>

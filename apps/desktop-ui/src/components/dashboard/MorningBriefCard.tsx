@@ -90,7 +90,7 @@ export function MorningBriefCard(props: {
   if (briefQ.isPending) {
     return (
       <div className="text-sm text-[var(--k-muted)]">
-        Loading brief…
+        加载简报中…
       </div>
     );
   }
@@ -157,7 +157,7 @@ export function MorningBriefCard(props: {
         {newsSummaryBusy && !newsSummary ? (
           <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3 text-sm text-[var(--k-muted)]">
             <RefreshCw className="mr-2 inline h-4 w-4 animate-spin" />
-            Generating AI summary...
+            生成AI摘要中…
           </div>
         ) : newsSummary ? (
           <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-sm">
@@ -165,12 +165,12 @@ export function MorningBriefCard(props: {
           </div>
         ) : (
           <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3 text-sm text-[var(--k-muted)]">
-            No summary yet. Click &quot;Sync & Copy&quot; to fetch news and generate summary.
+            暂无摘要。请点击"同步并复制"获取新闻并生成摘要。
           </div>
         )}
         <div className="mt-2 flex items-center gap-2">
           <Button size="sm" variant="secondary" onClick={() => onNavigate?.('news')}>
-            Open News
+            打开新闻
           </Button>
           <Button
             size="sm"
@@ -183,7 +183,7 @@ export function MorningBriefCard(props: {
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
-            Regenerate
+            重新生成
           </Button>
         </div>
       </div>
