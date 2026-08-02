@@ -35,6 +35,9 @@ describe('SCHEDULER_JOB_CATALOG', () => {
         'alpha_radar_ingest',
         'alpha_radar_process',
         'news_fetch_job',
+        'news_enrich_job',
+        'morning_brief_am',
+        'morning_brief_pm',
       ]),
     );
   });
@@ -48,7 +51,7 @@ describe('SCHEDULER_JOB_CATALOG', () => {
   });
 
   it('every job is tracked (writes to sync_job_record)', () => {
-    // All 19 jobs must write to sync_job_record so the UI can show OK/FAIL.
+    // All jobs must write to sync_job_record so the UI can show OK/FAIL.
     for (const m of SCHEDULER_JOB_CATALOG) {
       expect(m.tracked).toBe(true);
     }

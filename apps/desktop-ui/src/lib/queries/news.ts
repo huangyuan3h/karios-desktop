@@ -19,6 +19,8 @@ export type NewsSource = {
   enabled: boolean;
   lastFetch: string | null;
   createdAt: string;
+  tier?: string;
+  category?: string | null;
 };
 
 export type DashboardNewsItem = {
@@ -31,6 +33,17 @@ export type DashboardNewsItem = {
   fetchedAt: string;
   isRead: boolean;
   isImportant: boolean;
+  // Track 2: LLM enrichment fields
+  tickers?: string[] | null;
+  sectors?: string[] | null;
+  eventType?: string | null;
+  importance?: number | null;
+  relevanceScore?: number | null;
+  aiSummary?: string | null;
+  actionability?: 'actionable' | 'informational' | 'historical' | null;
+  enrichmentStatus?: string | null;
+  enrichedAt?: string | null;
+  enrichmentModel?: string | null;
 };
 
 export type NewsItem = DashboardNewsItem;
@@ -111,4 +124,56 @@ export function useNewsSourcesQuery() {
 
 export async function invalidateNewsPageQueries(queryClient: QueryClient): Promise<void> {
   await queryClient.invalidateQueries({ queryKey: ['news'] });
+}
+
+// --- Morning Brief (Track 3) ---
+
+export type BriefCategory = 'watchlist' | 'risk' | 'macro' | 'sector';
+
+export type BriefItem = {
+  id: string;
+  title: string;
+  sourceId: string | null;
+  publishedAt: string | null;
+  tickers: string[];
+  sectors: string[];
+  eventType: string | null;
+  importance: number | null;
+  relevanceScore: number | null;
+  aiSummary: string | null;
+  actionability: 'actionable' | 'informational' | 'historical' | null;
+  link: string | null;
+  score: number;
+  category: BriefCategory;
+};
+
+export type MorningBrief = {
+  id: string;
+  briefDate: string;
+  briefType: string;
+  items: BriefItem[];
+  macroOverview: string | null;
+  modelVersion: string | null;
+  sourceItemIds: string[] | null;
+  createdAt: string;
+};
+
+export function morningBriefQueryKey() {
+  return ['news', 'brief', 'latest'] as const;
+}
+
+export async function fetchMorningBrief(): Promise<{ brief: MorningBrief | null }> {
+  return apiGetJson<{ brief: MorningBrief | null }>('/api/news/brief/latest');
+}
+
+export function morningBriefQueryOptions() {
+  return {
+    queryKey: morningBriefQueryKey(),
+    queryFn: fetchMorningBrief,
+    staleTime: 60_000,
+  };
+}
+
+export function useMorningBriefQuery() {
+  return useQuery(morningBriefQueryOptions());
 }

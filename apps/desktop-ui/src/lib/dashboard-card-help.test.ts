@@ -43,6 +43,7 @@ describe('DASHBOARD_HELP registry', () => {
       'sync.message',
       'news.brief',
       'news.asOf',
+      'brief',
     ];
     const missing = expectedIds.filter((id) => !DASHBOARD_HELP[id]);
     expect(missing, `Missing help entries: ${missing.join(', ')}`).toEqual([]);

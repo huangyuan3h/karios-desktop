@@ -336,6 +336,21 @@ export const DASHBOARD_HELP: Record<string, DashboardHelp> = {
     short: 'AI 摘要生成的 timestamp。',
     detail: '盘后定时同步：每个交易日 17:35 重新生成。',
   },
+
+  // --- Morning Brief card ---
+  brief: {
+    id: 'brief',
+    label: 'Morning Brief',
+    sub: 'Watchlist-aware curated news',
+    short: '基于 watchlist 的每日新闻精选，按持仓相关/风险/板块/宏观分类。',
+    detail:
+      '生成逻辑:\n' +
+      '1. 从 24h 新闻中筛选已 enriched 的条目\n' +
+      '2. 排除月度总结等回顾性内容和 actionability=historical\n' +
+      '3. Watchlist-aware 评分：提及持仓 +50，提及关注 +30，匹配板块 +20\n' +
+      '4. 按分类（watchlist/risk/sector/macro）分组展示\n\n' +
+      '每日 08:30 和 12:30 自动生成（工作日）。',
+  },
 };
 
 export function getDashboardHelp(id: string): DashboardHelp {

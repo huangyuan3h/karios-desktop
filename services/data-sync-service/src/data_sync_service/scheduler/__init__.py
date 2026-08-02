@@ -20,6 +20,8 @@ from data_sync_service.scheduler import (
     index_basic_job,
     index_daily_job,
     macro_daily_job,
+    morning_brief_job,
+    news_enrich_job,
     news_fetch_job,
     paper_trading_intake_job,
     paper_trading_update_job,
@@ -97,6 +99,12 @@ def create_scheduler() -> BackgroundScheduler:
         news_fetch_job.run,
         news_fetch_job.build_trigger(),
         id=news_fetch_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        news_enrich_job.run,
+        news_enrich_job.build_trigger(),
+        id=news_enrich_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(
@@ -179,9 +187,22 @@ def create_scheduler() -> BackgroundScheduler:
         replace_existing=True,
     )
     scheduler.add_job(
-        tv_screener_capture_job.run,
-        tv_screener_capture_job.build_pm_trigger(),
-        id=tv_screener_capture_job.JOB_ID_PM,
+        news_enrich_job.run,
+        news_enrich_job.build_trigger(),
+        id=news_enrich_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)
+    scheduler.add_job(
+        lambda: morning_brief_job.run(brief_type="morning"),
+        morning_brief_job.build_am_trigger(),
+        id=morning_brief_job.JOB_ID_AM,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        lambda: morning_brief_job.run(brief_type="midday"),
+        morning_brief_job.build_pm_trigger(),
+        id=morning_brief_job.JOB_ID_PM,
         replace_existing=True,
     )
     return scheduler

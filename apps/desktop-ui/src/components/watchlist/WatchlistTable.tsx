@@ -6,6 +6,8 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  ChevronDown,
+  ChevronUp,
   CircleX,
 } from 'lucide-react';
 
@@ -71,6 +73,7 @@ function watchlistStickyCellClass(
   const tone = opts.tone ?? 'none';
   const parts = [
     'sticky',
+    'whitespace-nowrap',
     watchlistStickyRowBg(tone, opts.header),
     'px-3 py-2',
     column === 'score' ? 'shadow-[-4px_0_8px_rgba(0,0,0,0.06)]' : '',
@@ -102,6 +105,8 @@ export type WatchlistTableProps = {
   scoreSortEnabled: boolean;
   setScoreSortDir: React.Dispatch<React.SetStateAction<'desc' | 'asc'>>;
   setScoreSortEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  showHidden: boolean;
+  setShowHidden: React.Dispatch<React.SetStateAction<boolean>>;
   setItemColor: (symbol: string, color: string) => void;
   setItemPositionPct: (symbol: string, value: string) => void;
   setItemCostPriceDraft: (symbol: string, value: string) => void;
@@ -148,6 +153,8 @@ export function WatchlistTable({
   scoreSortEnabled,
   setScoreSortDir,
   setScoreSortEnabled,
+  showHidden,
+  setShowHidden,
   setItemColor,
   setItemPositionPct,
   setItemCostPriceDraft,
@@ -337,14 +344,63 @@ export function WatchlistTable({
     [addReference],
   );
 
+  const renderedItems = React.useMemo(() => {
+    if (showHidden) {
+      const hiddenSet = new Set(
+        sortedItems
+          .filter(
+            (it) =>
+              !shouldShowInWatchlistTable(
+                it,
+                trend[it.symbol] ?? null,
+                actionBySymbol.get(it.symbol) ?? null,
+              ),
+          )
+          .map((it) => it.symbol),
+      );
+      return { items: sortedItems, hiddenSet };
+    }
+    return {
+      items: visibleSortedItems,
+      hiddenSet: new Set<string>(),
+    };
+  }, [showHidden, sortedItems, visibleSortedItems, trend, actionBySymbol]);
+
   return (
     <>
       <section className="box-border grid min-w-0 w-full grid-cols-1 overflow-hidden rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex items-center justify-between gap-2">
           <div className="text-sm font-medium">List</div>
-          <div className="text-xs text-[var(--k-muted)]">
-            {visibleSortedItems.length} / {items.length} items
-            {hiddenCount > 0 ? ` · ${hiddenCount} hidden (silent dead rows)` : ''}
+          <div className="flex items-center gap-3 text-xs text-[var(--k-muted)]">
+            <span>
+              {visibleSortedItems.length} / {items.length} items
+              {hiddenCount > 0 ? ` · ${hiddenCount} hidden (silent dead rows)` : ''}
+            </span>
+            {hiddenCount > 0 ? (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 py-0.5 text-[11px] hover:text-[var(--k-text)]"
+                onClick={() => setShowHidden((v) => !v)}
+                title={
+                  showHidden
+                    ? 'Click to hide silent dead rows (low score, no position, TrendOK off).'
+                    : 'Click to show all rows including silent dead ones (dimmed).'
+                }
+                aria-label={showHidden ? 'Hide silent rows' : 'Show all rows'}
+              >
+                {showHidden ? (
+                  <>
+                    <ChevronUp className="h-3 w-3" aria-hidden />
+                    Hide silent
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-3 w-3" aria-hidden />
+                    Show all {items.length}
+                  </>
+                )}
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -354,7 +410,7 @@ export function WatchlistTable({
               <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
                 <thead className="bg-[var(--k-surface)] text-[var(--k-muted)]">
                   <tr className="text-left">
-                    <th className="px-3 py-2 w-[40px]">
+                    <th className="px-3 py-2 min-w-[44px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="color"
                         showTooltip={showTooltip}
@@ -362,7 +418,7 @@ export function WatchlistTable({
                         width={300}
                       />
                     </th>
-                    <th className="px-3 py-2 w-[110px]">
+                    <th className="px-3 py-2 min-w-[110px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="symbol"
                         showTooltip={showTooltip}
@@ -370,7 +426,7 @@ export function WatchlistTable({
                         width={320}
                       />
                     </th>
-                    <th className="px-3 py-2 w-[120px] max-w-[120px]">
+                    <th className="px-3 py-2 min-w-[120px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="name"
                         showTooltip={showTooltip}
@@ -378,7 +434,7 @@ export function WatchlistTable({
                         width={300}
                       />
                     </th>
-                    <th className="px-3 py-2 w-[120px] max-w-[140px]">
+                    <th className="px-3 py-2 min-w-[140px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="industry"
                         showTooltip={showTooltip}
@@ -386,7 +442,7 @@ export function WatchlistTable({
                         width={340}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[58px]">
+                    <th className="px-2 py-2 min-w-[96px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="positionPct"
                         showTooltip={showTooltip}
@@ -394,7 +450,7 @@ export function WatchlistTable({
                         width={340}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[80px]">
+                    <th className="px-2 py-2 min-w-[96px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="costPrice"
                         showTooltip={showTooltip}
@@ -402,7 +458,7 @@ export function WatchlistTable({
                         width={340}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[72px]">
+                    <th className="px-2 py-2 min-w-[88px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="currentPrice"
                         showTooltip={showTooltip}
@@ -410,7 +466,7 @@ export function WatchlistTable({
                         width={340}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[80px]">
+                    <th className="px-2 py-2 min-w-[96px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="stopLoss"
                         showTooltip={showTooltip}
@@ -418,7 +474,7 @@ export function WatchlistTable({
                         width={360}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[56px]">
+                    <th className="px-2 py-2 min-w-[88px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="execAction"
                         showTooltip={showTooltip}
@@ -426,7 +482,7 @@ export function WatchlistTable({
                         width={360}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[72px]">
+                    <th className="px-2 py-2 min-w-[104px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="trigger"
                         showTooltip={showTooltip}
@@ -434,7 +490,7 @@ export function WatchlistTable({
                         width={360}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[64px]">
+                    <th className="px-2 py-2 min-w-[104px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="trail"
                         showTooltip={showTooltip}
@@ -442,7 +498,7 @@ export function WatchlistTable({
                         width={340}
                       />
                     </th>
-                    <th className="max-w-[130px] px-2 py-2 w-[120px]">
+                    <th className="px-2 py-2 min-w-[120px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="buy"
                         showTooltip={showTooltip}
@@ -450,7 +506,7 @@ export function WatchlistTable({
                         width={360}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[64px]">
+                    <th className="px-2 py-2 min-w-[96px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="hotTop3"
                         showTooltip={showTooltip}
@@ -458,7 +514,7 @@ export function WatchlistTable({
                         width={340}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[64px]">
+                    <th className="px-2 py-2 min-w-[80px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="rs"
                         showTooltip={showTooltip}
@@ -466,7 +522,7 @@ export function WatchlistTable({
                         width={360}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[68px]">
+                    <th className="px-2 py-2 min-w-[88px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="vwap"
                         showTooltip={showTooltip}
@@ -474,7 +530,7 @@ export function WatchlistTable({
                         width={340}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[72px]">
+                    <th className="px-2 py-2 min-w-[88px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="intradayPct"
                         showTooltip={showTooltip}
@@ -482,7 +538,7 @@ export function WatchlistTable({
                         width={340}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[72px]">
+                    <th className="px-2 py-2 min-w-[88px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="volumeRatio"
                         showTooltip={showTooltip}
@@ -490,7 +546,7 @@ export function WatchlistTable({
                         width={340}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[120px]">
+                    <th className="px-2 py-2 min-w-[120px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="instFlow"
                         showTooltip={showTooltip}
@@ -498,7 +554,7 @@ export function WatchlistTable({
                         width={340}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[48px]">
+                    <th className="px-2 py-2 min-w-[80px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="gap"
                         showTooltip={showTooltip}
@@ -506,7 +562,7 @@ export function WatchlistTable({
                         width={340}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[140px]">
+                    <th className="px-2 py-2 min-w-[120px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="alerts"
                         showTooltip={showTooltip}
@@ -514,7 +570,7 @@ export function WatchlistTable({
                         width={360}
                       />
                     </th>
-                    <th className="px-2 py-2 w-[64px]">
+                    <th className="px-2 py-2 min-w-[80px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="pnl"
                         showTooltip={showTooltip}
@@ -585,9 +641,10 @@ export function WatchlistTable({
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleSortedItems.map((it) => {
+                  {renderedItems.items.map((it) => {
                     const rowMetrics = rowMetricsBySymbol.get(it.symbol);
                     if (!rowMetrics) return null;
+                    const isHiddenRow = renderedItems.hiddenSet.has(it.symbol);
                     return (
                       <WatchlistRow
                         key={it.symbol}
@@ -615,6 +672,12 @@ export function WatchlistTable({
                         onRemove={onRemove}
                         onOpenStock={onOpenStock}
                         onAddReference={onAddReference}
+                        rowClassName={isHiddenRow ? 'opacity-50' : undefined}
+                        rowTitle={
+                          isHiddenRow
+                            ? 'Silent dead row (Pos%≤0 · Score<60 · TrendOK≠ok/recovering · WATCH_SILENT)'
+                            : undefined
+                        }
                       />
                     );
                   })}

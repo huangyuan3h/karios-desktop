@@ -8,6 +8,7 @@ import { RefreshCw } from 'lucide-react';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DecisionJournalCard } from '@/components/dashboard/DecisionJournalCard';
 import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
+import { MorningBriefCard } from '@/components/dashboard/MorningBriefCard';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useDashboardSummary } from '@/hooks/useDashboardSummary';
@@ -253,6 +254,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
   const defaultCards = React.useMemo(
     () => [
+      { id: 'brief', title: 'Morning Brief' },
       { id: 'industry', title: 'Industry fund flow' },
       { id: 'sentiment', title: 'Market sentiment' },
       { id: 'decisions', title: 'Decision Journal' },
@@ -475,6 +477,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
       {(() => {
         const weightOf = (id: string) => {
+          if (id === 'brief') return 4;
           if (id === 'industry') return 6;
           if (id === 'sentiment') return 3;
           if (id === 'decisions') return 3;
@@ -668,7 +671,24 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                             }`}
                           >
                             Market Breadth: {up.toLocaleString()} Up / {down.toLocaleString()}{' '}
-                            Down
+                            Down / {flat.toLocaleString()} Flat
+                          </div>
+                          <div className="mt-1 grid grid-cols-2 gap-2 text-xs text-[var(--k-muted)] sm:grid-cols-3">
+                            <span>
+                              <span className="opacity-70">ratio</span>{' '}
+                              <span className="font-mono">{ratio}</span>
+                            </span>
+                            <span>
+                              <span className="opacity-70">turnover</span>{' '}
+                              <span className="font-mono">{turnover}</span>
+                            </span>
+                            <span>
+                              <span className="opacity-70">premium</span>{' '}
+                              <span className="font-mono">{premium}</span>
+                              <span className="opacity-70"> · </span>
+                              <span className="opacity-70">failed</span>{' '}
+                              <span className="font-mono">{failed}</span>
+                            </span>
                           </div>
                           {breadthPanic ? (
                             <div className="mt-1 text-xs text-red-700">
@@ -683,30 +703,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                             {summaryLine.title}
                           </div>
                           <div className="mt-1 text-xs text-amber-800">{summaryLine.detail}</div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                            <div className="text-xs text-[var(--k-muted)]">Up/Down/Flat</div>
-                            <div className="mt-1 font-mono">
-                              {up}/{down}/{flat}
-                            </div>
-                            <div className="mt-1 text-xs text-[var(--k-muted)]">ratio: {ratio}</div>
-                            <div className="mt-1 text-xs text-[var(--k-muted)]">
-                              turnover: {turnover}
-                            </div>
-                          </div>
-                          <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                            <div className="text-xs text-[var(--k-muted)]">Sentiment</div>
-                            <div className="mt-1 text-xs text-[var(--k-muted)]">
-                              yesterday limit-up premium
-                            </div>
-                            <div className="mt-0.5 font-mono">{premium}</div>
-                            <div className="mt-1 text-xs text-[var(--k-muted)]">
-                              failed limit-up rate
-                            </div>
-                            <div className="mt-0.5 font-mono">{failed}</div>
-                          </div>
                         </div>
 
                         {indexSignals.length ? (
@@ -780,22 +776,22 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                             <table className="w-full border-collapse text-xs">
                               <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
                                 <tr className="text-left">
-                                  <th className="px-2 py-2">
+                                  <th className="px-2 py-2 whitespace-nowrap">
                                     <DashboardHeader helpId="sentiment5d.date" align="left" width={280} />
                                   </th>
-                                  <th className="px-2 py-2 text-right">
+                                  <th className="px-2 py-2 text-right whitespace-nowrap">
                                     <DashboardHeader helpId="sentiment5d.ratio" align="right" width={340} />
                                   </th>
-                                  <th className="px-2 py-2 text-right">
+                                  <th className="px-2 py-2 text-right whitespace-nowrap">
                                     <DashboardHeader helpId="sentiment5d.turnover" align="right" width={340} />
                                   </th>
-                                  <th className="px-2 py-2 text-right">
+                                  <th className="px-2 py-2 text-right whitespace-nowrap">
                                     <DashboardHeader helpId="sentiment5d.premiumPct" align="right" width={360} />
                                   </th>
-                                  <th className="px-2 py-2 text-right">
+                                  <th className="px-2 py-2 text-right whitespace-nowrap">
                                     <DashboardHeader helpId="sentiment5d.failedPct" align="right" width={360} />
                                   </th>
-                                  <th className="px-2 py-2">
+                                  <th className="px-2 py-2 whitespace-nowrap">
                                     <DashboardHeader helpId="sentiment5d.risk" align="left" width={340} />
                                   </th>
                                 </tr>
@@ -860,31 +856,31 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                                 <table className="w-full border-collapse text-xs">
                                   <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
                                     <tr className="text-left">
-                                      <th className="px-2 py-2">
+                                      <th className="px-2 py-2 whitespace-nowrap">
                                         <DashboardHeader helpId="etf.name" align="left" width={300} />
                                       </th>
-                                      <th className="px-2 py-2 font-mono">
+                                      <th className="px-2 py-2 font-mono whitespace-nowrap">
                                         <DashboardHeader helpId="etf.symbol" align="left" width={300} />
                                       </th>
-                                      <th className="px-2 py-2 text-right">
+                                      <th className="px-2 py-2 text-right whitespace-nowrap">
                                         <DashboardHeader helpId="etf.mainFlow" align="right" width={340} />
                                       </th>
-                                      <th className="px-2 py-2 text-right">
+                                      <th className="px-2 py-2 text-right whitespace-nowrap">
                                         <DashboardHeader helpId="etf.superLarge" align="right" width={360} />
                                       </th>
-                                      <th className="px-2 py-2 text-right">
+                                      <th className="px-2 py-2 text-right whitespace-nowrap">
                                         <DashboardHeader helpId="etf.flow3d" align="right" width={300} />
                                       </th>
-                                      <th className="px-2 py-2">
+                                      <th className="px-2 py-2 whitespace-nowrap">
                                         <DashboardHeader helpId="etf.realtimeAsOf" align="left" width={320} />
                                       </th>
-                                      <th className="px-2 py-2">
+                                      <th className="px-2 py-2 whitespace-nowrap">
                                         <DashboardHeader helpId="etf.source" align="left" width={300} />
                                       </th>
-                                      <th className="px-2 py-2">
+                                      <th className="px-2 py-2 whitespace-nowrap">
                                         <DashboardHeader helpId="etf.status" align="left" width={320} />
                                       </th>
-                                      <th className="px-2 py-2">
+                                      <th className="px-2 py-2 whitespace-nowrap">
                                         <DashboardHeader helpId="etf.signal" align="left" width={340} />
                                       </th>
                                     </tr>
@@ -1055,6 +1051,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   copyStatus={industryCopyStatus}
                   onCopyIndustryMarkdown={onCopyIndustryMarkdown}
                 />
+              ) : id === 'brief' ? (
+                <MorningBriefCard onNavigate={onNavigate} />
               ) : id === 'news' ? (
                 <div>
                   <div className="mb-2 flex items-center justify-between gap-2">
@@ -1118,22 +1116,22 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                       <table className="w-full border-collapse text-xs">
                         <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
                           <tr className="text-left">
-                            <th className="px-2 py-2">
+                            <th className="px-2 py-2 whitespace-nowrap">
                               <DashboardHeader helpId="risk.symbol" align="left" width={260} />
                             </th>
-                            <th className="px-2 py-2">
+                            <th className="px-2 py-2 whitespace-nowrap">
                               <DashboardHeader helpId="risk.name" align="left" width={260} />
                             </th>
-                            <th className="px-2 py-2">
+                            <th className="px-2 py-2 whitespace-nowrap">
                               <DashboardHeader helpId="risk.intradayPct" align="left" width={300} />
                             </th>
-                            <th className="px-2 py-2">
+                            <th className="px-2 py-2 whitespace-nowrap">
                               <DashboardHeader helpId="risk.vr" align="left" width={300} />
                             </th>
-                            <th className="px-2 py-2">
+                            <th className="px-2 py-2 whitespace-nowrap">
                               <DashboardHeader helpId="risk.gap" align="left" width={300} />
                             </th>
-                            <th className="px-2 py-2">
+                            <th className="px-2 py-2 whitespace-nowrap">
                               <DashboardHeader helpId="risk.alerts" align="left" width={360} />
                             </th>
                           </tr>
@@ -1224,16 +1222,16 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                     <table className="w-full border-collapse text-xs">
                       <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
                         <tr className="text-left">
-                          <th className="px-2 py-2">
+                          <th className="px-2 py-2 whitespace-nowrap">
                             <DashboardHeader helpId="screener.name" align="left" width={300} />
                           </th>
-                          <th className="px-2 py-2">
+                          <th className="px-2 py-2 whitespace-nowrap">
                             <DashboardHeader helpId="screener.capturedAt" align="left" width={300} />
                           </th>
-                          <th className="px-2 py-2 text-right">
+                          <th className="px-2 py-2 text-right whitespace-nowrap">
                             <DashboardHeader helpId="screener.rows" align="right" width={300} />
                           </th>
-                          <th className="px-2 py-2 text-right">
+                          <th className="px-2 py-2 text-right whitespace-nowrap">
                             <DashboardHeader helpId="screener.filters" align="right" width={300} />
                           </th>
                         </tr>

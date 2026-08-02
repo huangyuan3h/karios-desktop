@@ -140,6 +140,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
+  const [showHidden, setShowHidden] = React.useState(false);
 
   React.useEffect(() => {
     void fetchAutomationLatest()
@@ -476,6 +477,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           scoreSortEnabled={scoreSortEnabled}
           setScoreSortDir={setScoreSortDir}
           setScoreSortEnabled={setScoreSortEnabled}
+          showHidden={showHidden}
+          setShowHidden={setShowHidden}
           setItemColor={setItemColor}
           setItemPositionPct={setItemPositionPct}
           setItemCostPriceDraft={setItemCostPriceDraft}

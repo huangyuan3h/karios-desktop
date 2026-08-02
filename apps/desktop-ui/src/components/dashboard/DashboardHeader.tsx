@@ -69,9 +69,11 @@ export function DashboardHeader({
       onBlur={hide}
       aria-label={`${h.label} — ${h.sub ?? ''}`.trim()}
     >
-      <span>{h.label}</span>
+      <span className="whitespace-nowrap">{h.label}</span>
       {h.sub ? (
-        <span className="text-[10px] font-normal text-[var(--k-muted)]">{h.sub}</span>
+        <span className="whitespace-nowrap text-[10px] font-normal text-[var(--k-muted)]">
+          {h.sub}
+        </span>
       ) : null}
       {open ? (
         <span

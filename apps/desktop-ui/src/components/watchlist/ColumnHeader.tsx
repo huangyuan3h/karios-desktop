@@ -14,6 +14,9 @@ import {
  * Renders label (bold) + sub (CN, smaller, muted) on two lines.
  * Always wires `title=...` for instant native tooltip (free, no JS).
  * If showTooltip is passed, also opens rich portal on hover/focus.
+ *
+ * Always renders a `<span>` (not a `<button>`) so it can be safely nested
+ * inside another `<button>` (e.g. the score sort handler in WatchlistTable).
  */
 export type ColumnHeaderProps = {
   columnId: string;
@@ -38,14 +41,14 @@ export function ColumnHeader({
   }
   const interactive = Boolean(showTooltip && hideTooltip);
   const body = (
-    <>
-      <div className="flex flex-col items-start gap-0.5 leading-tight">
-        <span>{h.label}</span>
-        {h.sub ? (
-          <span className="text-[10px] font-normal text-[var(--k-muted)]">{h.sub}</span>
-        ) : null}
-      </div>
-    </>
+    <div className="flex flex-col items-start gap-0.5 leading-tight">
+      <span className="whitespace-nowrap">{h.label}</span>
+      {h.sub ? (
+        <span className="whitespace-nowrap text-[10px] font-normal text-[var(--k-muted)]">
+          {h.sub}
+        </span>
+      ) : null}
+    </div>
   );
   if (!interactive) {
     return (
@@ -55,9 +58,10 @@ export function ColumnHeader({
     );
   }
   return (
-    <button
-      type="button"
-      className={`inline-flex items-center rounded px-1 py-0.5 hover:text-[var(--k-text)] ${className ?? ''}`}
+    <span
+      role="button"
+      tabIndex={0}
+      className={`inline-flex cursor-help items-center rounded px-1 py-0.5 hover:text-[var(--k-text)] ${className ?? ''}`}
       title={h.short}
       onMouseEnter={(e) => {
         if (showTooltip) showTooltip(e.currentTarget, buildWatchlistColumnTooltipBody(h), width);
@@ -70,6 +74,6 @@ export function ColumnHeader({
       aria-label={`${h.label} — ${h.sub ?? ''}`.trim()}
     >
       {body}
-    </button>
+    </span>
   );
 }

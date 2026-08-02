@@ -505,6 +505,8 @@ export type WatchlistRowProps = {
   onRemove: (sym: string) => void;
   onOpenStock?: (symbol: string) => void;
   onAddReference: (item: WatchlistItem, trend: TrendOkResult | undefined) => void;
+  rowClassName?: string;
+  rowTitle?: string;
 };
 
 function WatchlistRowInner({
@@ -532,6 +534,8 @@ function WatchlistRowInner({
   onRemove,
   onOpenStock,
   onAddReference,
+  rowClassName,
+  rowTitle,
 }: WatchlistRowProps) {
   const tone = rowTone(t, rowMetrics.alerts);
   const rowClass =
@@ -603,7 +607,7 @@ function WatchlistRowInner({
     : 'Entry_Trigger (buyZoneHigh sniper)';
 
   return (
-    <tr className={rowClass}>
+    <tr className={`${rowClass} ${rowClassName ?? ''}`} title={rowTitle}>
       <td className="px-3 py-2">
         <button
           type="button"

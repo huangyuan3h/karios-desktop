@@ -143,6 +143,53 @@
 - **[P2] 是否独立**：决定是否单独抽一个 `karios-research` 子项目，避免污染主仓的卫星仓交易逻辑。
 - **[P2] 研报 → α 通道**：研报里的标的 + 评级如何进 Watchlist 旁路（参考 Alpha Radar 流程 `TIP-004`）。
 
+### News Substrate 2.0（老婆反馈 #2 "没有财经新闻准"）
+
+> 问题根源：RSS 源有 BBC/NYT 等通用新闻混入；无 tier 分级；无关联个股/板块提取。
+>
+> 三轨并行：
+> - **Track 1**：RSS 源分级（Tier A/B/C/D）+ 投资级替换 → **done 2026-08-02**
+> - **Track 2**：LLM enrichment（tickers / sectors / event_type / importance / relevance_score / ai_summary）→ 进行中
+> - **Track 3**：Morning Brief（08:30 + 12:30 定时 top 5-7 条推送到 Dashboard）
+
+**Track 1 · done 2026-08-02**：
+
+| 内容 | 结果 |
+|------|------|
+| Tier A (6 sources) | 财联社·电报, 华尔街见闻·全球, 金十数据·快讯, 格隆汇·快讯, 财联社·深度, 财新网 |
+| Tier B (5 sources) | 36氪·资讯, 华尔街见闻·美股, 第一财经, 虎嗅·财经, 36氪 |
+| Tier C (3 sources) | 国家统计局, 证监会, 金十数据·数据 |
+| Disabled (8 sources) | BBC, NYT, HN, Reddit + Playwright-only 6 sources (xueqiu/10jqka/eastmoney/stcn/36kr-flash/Reuters) |
+| DB columns | `tier TEXT NOT NULL DEFAULT 'D'`, `category TEXT` on `news_sources` |
+| Seed script | `scripts/seed_news_sources.py` (idempotent, `--dry-run` / `--legacy-disable`) |
+| Tests | `tests/test_news_sources_seed.py` (6 tests: tier budget, legacy exclusion, tier-A required, duplicate check, RSSHub reachability) |
+
+**Track 2 · done 2026-08-02**：
+
+| 内容 | 结果 |
+|------|------|
+| DB columns | `tickers TEXT[]`, `sectors TEXT[]`, `event_type TEXT`, `importance SMALLINT`, `relevance_score SMALLINT`, `ai_summary TEXT`, `enrichment_status TEXT`, `enriched_at TIMESTAMPTZ`, `enrichment_model TEXT` on `news_items` |
+| Alembic | `0014_news_items_enrichment.py` |
+| DB helpers | `fetch_pending_enrichment()`, `update_item_enrichment()`, `count_by_enrichment_status()` |
+| LLM worker | `service/news_enrich.py` — batch 10 items, JSON schema, watchlist-aware scoring (+30 watchlist, +50 held), 0–5 importance |
+| Scheduler | `scheduler/news_enrich_job.py` (every 2h, after news_fetch_job) |
+| API | `GET /api/news/enrichment/status`, `POST /api/news/enrichment/run` |
+| Frontend | `NewsPage` shows enrichment status bar + per-item event_type/importance/relevance/tickers/aiSummary badges |
+| Shared | `SCHEDULER_JOB_CATALOG` + `SYNC_JOB_TYPES` updated with `news_enrich_job` |
+| Tests | 1220 backend + 391 frontend + 55 shared all green (1 pre-existing flaky test excluded) |
+
+**Track 3 · done 2026-08-02**：
+
+| 内容 | 结果 |
+|------|------|
+| DB table | `morning_briefs` (id, brief_date, brief_type, items JSONB, macro_overview, model_version, source_item_ids, created_at) |
+| Alembic | `0015_morning_briefs.py` |
+| Selection | `service/morning_brief.py` — score = importance × 0.4 + relevance × 0.4 + freshness × 0.2; top 7 items; only enriched items |
+| Cron | `scheduler/morning_brief_job.py` — AM 08:30 + PM 12:30 Asia/Shanghai weekdays |
+| API | `GET /api/news/brief/latest`, `GET /api/news/brief/recent`, `POST /api/news/brief/generate` |
+| Shared | `SCHEDULER_JOB_CATALOG` + `SYNC_JOB_TYPES` updated with `morning_brief_am` / `morning_brief_pm` |
+| Tests | `tests/test_morning_brief.py` (9 tests: freshness bonus, scoring, filtering, sorting, max items) |
+
 ---
 
 ## 8. 回测（重启）
@@ -433,6 +480,6 @@
 
 - [x] Watchlist table columns 加 hover tooltip（P1 · 2026-08-01 完成 → `lib/watchlist-column-help.tsx` + `ColumnHeader`）
 - [x] Dashboard 精简重复内容 + 参数说明（P1 · 2026-08-01 完成 → `lib/dashboard-card-help.tsx` + `DashboardHeader`；Last sync table → 单行；Index rule 块 → hover）
-- [ ] News 模块质量评估（是否需要替换/补强）（P2）
+- [x] News 模块质量评估（是否需要替换/补强）（P2）→ ✅ **done 2026-08-02** → News Substrate 2.0 全三轨完成（Track 1: 13 investment-grade sources；Track 2: LLM enrichment；Track 3: Morning Brief cron + API）。详见 §7 下方。
 - [ ] 反馈落到 `docs/modules/watchlist.md` 末尾"用户使用笔记"段
 - [ ] 衍生需求（P1）列入 todo §3 或 §12

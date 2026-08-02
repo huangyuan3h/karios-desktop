@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from data_sync_service.db.news import (
+    count_by_enrichment_status,
     create_source,
     delete_source,
     ensure_tables,
@@ -104,3 +105,50 @@ def init_defaults():
     ensure_tables()
     add_default_sources()
     return {"ok": True}
+
+
+@router.get("/enrichment/status")
+def enrichment_status():
+    """Return counts of news_items by enrichment_status for monitoring."""
+    ensure_tables()
+    return {"counts": count_by_enrichment_status()}
+
+
+@router.post("/enrichment/run")
+def run_enrichment(max_batches: int = 10):
+    """Manually trigger LLM enrichment on pending items."""
+    ensure_tables()
+    from data_sync_service.service.news_enrich import run_enrichment_cycle
+
+    summary = run_enrichment_cycle(max_batches=max_batches)
+    return summary
+
+
+@router.get("/brief/latest")
+def get_latest_brief(brief_type: str | None = None):
+    """Fetch the most recent morning/midday brief."""
+    ensure_tables()
+    from data_sync_service.db.morning_brief import fetch_latest_brief
+
+    brief = fetch_latest_brief(brief_type=brief_type)
+    return {"brief": brief}
+
+
+@router.get("/brief/recent")
+def get_recent_briefs(limit: int = 7):
+    """Fetch the most recent N briefs."""
+    ensure_tables()
+    from data_sync_service.db.morning_brief import fetch_recent_briefs
+
+    briefs = fetch_recent_briefs(limit=limit)
+    return {"briefs": briefs}
+
+
+@router.post("/brief/generate")
+def generate_brief(brief_type: str = "morning"):
+    """Manually generate a morning or midday brief."""
+    ensure_tables()
+    from data_sync_service.service.morning_brief import generate_brief
+
+    brief = generate_brief(brief_type=brief_type)
+    return {"brief": brief}

@@ -295,6 +295,9 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "tv_screener_capture_am",
     "tv_screener_capture_pm",
     "news_fetch_job",
+    "news_enrich_job",
+    "morning_brief_am",
+    "morning_brief_pm",
 )
 
 
