@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { DATA_SYNC_BASE_URL, AI_BASE_URL } from '@/lib/endpoints';
 import type { DashboardSummary } from '@/lib/queries/dashboard';
+import { stripModelThinking } from '@/lib/strip-model-thinking';
 
 type DashboardSyncResp = Record<string, unknown>;
 
@@ -25,6 +26,14 @@ export type DashboardSyncCallbacks = {
   setNewsSummaryBusy: (v: boolean) => void;
   saveNewsBriefCache: (patch: object) => void;
   setError: (v: string | null) => void;
+  /**
+   * Optional: force-refresh watchlist K-lines after the backend SSE stream
+   * finishes. Required so dashboard "Sync & Copy" also covers HK/ETF symbols
+   * — the backend sync steps don't touch per-stock bars, so without this
+   * callback watchlist HK tickers only get fresh data when the user opens
+   * the watchlist page or via the daily hk_daily cron.
+   */
+  forceRefreshWatchlistOnSync?: () => Promise<unknown>;
   /** Fired after Sync All stream completes (success or soft failure). */
   onSyncComplete?: () => void;
 };
@@ -46,7 +55,17 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
     setSyncSteps([]);
     setSyncProgress(0);
 
-    const stepNames = ['industryFundFlow', 'marketSentiment', 'screeners', 'news'];
+    const stepNames = [
+      'industryFundFlow',
+      'marketSentiment',
+      'macroDaily',
+      'screeners',
+      'news',
+      // Final step: force-refresh watchlist K-lines (covers HK/ETF) which
+      // the backend sync steps do not touch. This step runs after the SSE
+      // 'done' event and is driven by the forceRefreshWatchlistOnSync callback.
+      'watchlist',
+    ];
     // Sync All is an explicit user action — always force catch-up for stale modules.
     const forceSync = true;
 
@@ -84,18 +103,51 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
             es.close();
             const result = data.result as DashboardSyncResp;
             setSyncResp(result);
-            setSyncProgress(100);
+            // Progress stays at backend progress until the optional watchlist
+            // force-refresh finishes — otherwise the UI would jump to 100% and
+            // appear "done" while HK/ETF bars are still being pulled.
+            setSyncProgress(Math.round(((stepNames.length - 1) / stepNames.length) * 100));
+            setSyncSteps((prev) =>
+              prev.map((s) =>
+                s.name === 'watchlist' && s.ok === null
+                  ? { ...s, ok: null, message: 'pulling HK/ETF K-lines…' }
+                  : s,
+              ),
+            );
 
             const cb = callbacksRef.current;
             const s = data.summary as DashboardSummary;
+            const finalize = () => {
+              setSyncSteps((prev) =>
+                prev.map((st) =>
+                  st.name === 'watchlist' && st.ok === null
+                    ? { ...st, ok: true, durationMs: 0, message: 'done' }
+                    : st,
+                ),
+              );
+              setSyncProgress(100);
+              setBusy(false);
+              cb.onSyncComplete?.();
+              resolve({ ok: true, summary: s });
+            };
+
+            const afterWatchlist = async () => {
+              try {
+                if (cb.forceRefreshWatchlistOnSync) {
+                  await cb.forceRefreshWatchlistOnSync();
+                }
+              } catch (e) {
+                console.warn('forceRefreshWatchlistOnSync failed:', e);
+              }
+              finalize();
+            };
+
             if (s) {
               cb.applySummaryToCache(s);
               const newsData = (s as any)?.news;
               if (newsData && Array.isArray(newsData.items) && newsData.items.length > 0) {
                 if (!cb.shouldRefreshNewsBrief(cb.newsSummaryUpdatedAt) && cb.newsSummary?.trim()) {
-                  setBusy(false);
-                  cb.onSyncComplete?.();
-                  resolve({ ok: true, summary: s });
+                  void afterWatchlist();
                   return;
                 }
                 cb.setNewsSummaryBusy(true);
@@ -112,7 +164,9 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
                   })
                   .then((aiData) => {
                     const summaryText =
-                      typeof aiData?.summary === 'string' ? aiData.summary.trim() : '';
+                      typeof aiData?.summary === 'string'
+                        ? stripModelThinking(aiData.summary)
+                        : '';
                     if (summaryText) {
                       const updatedAt = new Date().toISOString();
                       cb.setNewsSummary(summaryText);
@@ -123,19 +177,13 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
                   .catch(() => {})
                   .finally(() => {
                     cb.setNewsSummaryBusy(false);
-                    setBusy(false);
-                    cb.onSyncComplete?.();
-                    resolve({ ok: true, summary: s });
+                    void afterWatchlist();
                   });
               } else {
-                setBusy(false);
-                cb.onSyncComplete?.();
-                resolve({ ok: true, summary: s });
+                void afterWatchlist();
               }
             } else {
-              setBusy(false);
-              cb.onSyncComplete?.();
-              resolve({ ok: true, summary: null });
+              void afterWatchlist();
             }
           }
         } catch {

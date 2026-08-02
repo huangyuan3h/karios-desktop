@@ -28,6 +28,7 @@ export const VWAP_PREMIUM_MULTIPLIER = 1.05;
 export const GAP_UP_WEAK_REGIMES = new Set(['Weak', 'Diverging']);
 
 import type { WatchlistRiskAlert, InstFlow } from '@karios/shared';
+import { isHkWatchlistSymbol } from '@/lib/symbols';
 
 export type { WatchlistRiskAlert, InstFlow };
 
@@ -391,6 +392,12 @@ export function shouldRequireRealtimeQuote(opts: {
  * Pick the best "current" price for watchlist display / markdown export.
  * Prefer today's realtime quote during session; after close prefer synced daily bar,
  * but fall back to today's closing quote while daily sync is still pending.
+ *
+ * HK tickers get a dedicated branch: the East Money push2 feed used by
+ * `GET /quote` returns an intraday price but no `trade_time`, so `qDate` is
+ * always empty and `hasTodayQuote` is false. Without this branch HK rows
+ * would fall through to `trend.close`, which is yesterday's close until the
+ * HK daily sync catches up.
  */
 export function resolveWatchlistCurrentPrice(opts: {
   tradingTime: boolean;
@@ -408,9 +415,14 @@ export function resolveWatchlistCurrentPrice(opts: {
   const qDate = tradeDateFromTradeTime(opts.quoteTradeTime ?? null);
   const trendDate = String(opts.trendAsOfDate ?? '').trim();
   const isCn = opts.symbol.toUpperCase().startsWith('CN:');
+  const isHk = isHkWatchlistSymbol(opts.symbol);
   const hasTodayQuote = qPrice != null && qDate === opts.todaySh;
 
   if (opts.tradingTime && isCn && hasTodayQuote) {
+    return qPrice;
+  }
+
+  if (isHk && qPrice != null) {
     return qPrice;
   }
 

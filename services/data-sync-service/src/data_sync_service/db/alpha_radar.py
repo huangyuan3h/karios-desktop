@@ -808,6 +808,46 @@ def update_trend_mapping(
     return ok
 
 
+def update_trend_hk_mapping(
+    *,
+    trend_id: str,
+    hk_symbols: list[dict[str, Any]],
+) -> bool:
+    """Persist HK mapping inside trend_json (OPT-052).
+
+    HK symbols are not promoted to a dedicated column because the volume
+    is low (alpha radar hits HK rarely) and the v0 surface is read-only on
+    the /v1/* side — promoting to a column would require a migration with
+    no read benefit yet. Store under trend_json.hkSymbols and have
+    ``_trend_row`` lift it to the top-level ``hkSymbols`` field so the rest
+    of the pipeline treats CN and HK symbols uniformly.
+    """
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT trend_json FROM {TRENDS_TABLE} WHERE id = %s",
+                (trend_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return False
+            try:
+                base = json.loads(str(row[0])) if row[0] else {}
+            except Exception:
+                base = {}
+            if not isinstance(base, dict):
+                base = {}
+            base["hkSymbols"] = list(hk_symbols or [])
+            cur.execute(
+                f"UPDATE {TRENDS_TABLE} SET trend_json = %s WHERE id = %s",
+                (json.dumps(base, ensure_ascii=False), trend_id),
+            )
+            ok = (cur.rowcount or 0) > 0
+        conn.commit()
+    return ok
+
+
 def _source_row(row: tuple[Any, ...]) -> dict[str, Any]:
     return {
         "id": str(row[0]),
@@ -855,6 +895,7 @@ def _trend_row(row: tuple[Any, ...]) -> dict[str, Any]:
 
     keywords: list[str] = []
     cn_symbols: list[dict[str, Any]] = []
+    hk_symbols: list[dict[str, Any]] = []
     trend_json: dict[str, Any] = {}
     try:
         if keywords_raw:
@@ -871,6 +912,12 @@ def _trend_row(row: tuple[Any, ...]) -> dict[str, Any]:
             trend_json = json.loads(str(trend_json_raw))
     except Exception:
         trend_json = {}
+    try:
+        raw_hk = trend_json.get("hkSymbols") if isinstance(trend_json, dict) else None
+        if isinstance(raw_hk, list):
+            hk_symbols = [r for r in raw_hk if isinstance(r, dict)]
+    except Exception:
+        hk_symbols = []
 
     trend_name = str(row[2])
     urgency_level = str(row[5])
@@ -897,6 +944,7 @@ def _trend_row(row: tuple[Any, ...]) -> dict[str, Any]:
         "urgencyLevel": urgency_level,
         "keywordsForMapping": keywords,
         "cnSymbols": cn_symbols,
+        "hkSymbols": hk_symbols,
         "mappingConfidence": float(row[13] if len(row) >= _TREND_SELECT_COLS else row[10])
         if (row[13] if len(row) >= _TREND_SELECT_COLS else row[10]) is not None
         else None,

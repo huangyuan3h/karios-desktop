@@ -90,33 +90,61 @@ alphaRadarRoutes.post('/extract', async (c) => {
     text: condensed,
   });
 
-  async function run(m: AiModel): Promise<unknown> {
+  async function runObject(m: AiModel): Promise<unknown> {
     const { object } = await generateObject({
       model: m,
       schema: AlphaRadarExtractResponseSchema,
       system: ALPHA_RADAR_V4_SYSTEM_PROMPT,
       prompt: instruction,
       temperature: 0,
-      maxOutputTokens: 2500,
+      // Thinking models may spend tokens on CoT before JSON; keep headroom.
+      maxOutputTokens: 4000,
       ...generateObjectCompatOptions(looseStructuredOutputs),
     });
     return object;
   }
 
+  async function runText(m: AiModel): Promise<unknown> {
+    const { text } = await generateText({
+      model: m,
+      system: ALPHA_RADAR_V4_SYSTEM_PROMPT,
+      prompt: instruction + ALPHA_RADAR_V4_JSON_SUFFIX,
+      temperature: 0,
+      maxOutputTokens: 4000,
+      ...generateTextJsonObjectModeOptions(looseStructuredOutputs),
+    });
+    return tryParseJsonObject(text);
+  }
+
+  async function attempt(m: AiModel, mid: string) {
+    const failures: string[] = [];
+    try {
+      const obj = await runObject(m);
+      const out = AlphaRadarExtractResponseSchema.parse(
+        normalizeAlphaRadarExtract(obj, category),
+      );
+      return { ...out, model: mid || out.model };
+    } catch (e) {
+      failures.push(e instanceof Error ? e.message : String(e));
+    }
+    try {
+      const obj = await runText(m);
+      const out = AlphaRadarExtractResponseSchema.parse(
+        normalizeAlphaRadarExtract(obj, category),
+      );
+      return { ...out, model: mid || out.model };
+    } catch (e) {
+      failures.push(e instanceof Error ? e.message : String(e));
+      throw new Error(failures.join(' | '));
+    }
+  }
+
   try {
-    const obj = await run(model);
-    const out = AlphaRadarExtractResponseSchema.parse(
-      normalizeAlphaRadarExtract(obj, category),
-    );
-    return c.json({ ...out, model: modelId || out.model });
+    return c.json(await attempt(model, modelId));
   } catch (e) {
     if (fallbackModel) {
       try {
-        const obj = await run(fallbackModel);
-        const out = AlphaRadarExtractResponseSchema.parse(
-          normalizeAlphaRadarExtract(obj, category),
-        );
-        return c.json({ ...out, model: fallbackModelId || out.model });
+        return c.json(await attempt(fallbackModel, fallbackModelId || modelId));
       } catch (fallbackErr) {
         const msg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
         return c.json({ error: msg }, 500);
@@ -169,7 +197,7 @@ alphaRadarRoutes.post('/extract-batch', async (c) => {
       system: ALPHA_RADAR_V4_SYSTEM_PROMPT,
       prompt: instruction,
       temperature: 0,
-      maxOutputTokens: 4000,
+      maxOutputTokens: 6000,
       ...generateObjectCompatOptions(looseStructuredOutputs),
     });
     return finalize('generateObject', object, mid);
@@ -181,7 +209,7 @@ alphaRadarRoutes.post('/extract-batch', async (c) => {
       system: ALPHA_RADAR_V4_SYSTEM_PROMPT,
       prompt: instruction + ALPHA_RADAR_V4_JSON_SUFFIX,
       temperature: 0,
-      maxOutputTokens: 4000,
+      maxOutputTokens: 6000,
       ...generateTextJsonObjectModeOptions(looseStructuredOutputs),
     });
     return finalize('generateText', tryParseJsonObject(text), mid);
@@ -258,29 +286,58 @@ alphaRadarRoutes.post('/map-cn', async (c) => {
     seedSymbols: seeds,
   });
 
-  async function run(m: AiModel): Promise<unknown> {
+  async function runObject(m: AiModel): Promise<unknown> {
     const { object } = await generateObject({
       model: m,
       schema: AlphaRadarMapCnResponseSchema,
       system,
       prompt: instruction,
       temperature: 0,
-      maxOutputTokens: 1200,
+      maxOutputTokens: 2000,
       ...generateObjectCompatOptions(looseStructuredOutputs),
     });
     return object;
   }
 
+  async function runText(m: AiModel): Promise<unknown> {
+    const { text } = await generateText({
+      model: m,
+      system,
+      prompt:
+        instruction +
+        '\n\nOutput ONLY one JSON object. No markdown fences. No <think> tags.',
+      temperature: 0,
+      maxOutputTokens: 2000,
+      ...generateTextJsonObjectModeOptions(looseStructuredOutputs),
+    });
+    return tryParseJsonObject(text);
+  }
+
+  async function attempt(m: AiModel, mid: string) {
+    const failures: string[] = [];
+    try {
+      const obj = await runObject(m);
+      const out = AlphaRadarMapCnResponseSchema.parse(obj);
+      return { ...out, model: mid || out.model };
+    } catch (e) {
+      failures.push(e instanceof Error ? e.message : String(e));
+    }
+    try {
+      const obj = await runText(m);
+      const out = AlphaRadarMapCnResponseSchema.parse(obj);
+      return { ...out, model: mid || out.model };
+    } catch (e) {
+      failures.push(e instanceof Error ? e.message : String(e));
+      throw new Error(failures.join(' | '));
+    }
+  }
+
   try {
-    const obj = await run(model);
-    const out = AlphaRadarMapCnResponseSchema.parse(obj);
-    return c.json({ ...out, model: modelId || out.model });
+    return c.json(await attempt(model, modelId));
   } catch (e) {
     if (fallbackModel) {
       try {
-        const obj = await run(fallbackModel);
-        const out = AlphaRadarMapCnResponseSchema.parse(obj);
-        return c.json({ ...out, model: fallbackModelId || out.model });
+        return c.json(await attempt(fallbackModel, fallbackModelId || modelId));
       } catch (fallbackErr) {
         const msg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
         return c.json({ error: msg }, 500);

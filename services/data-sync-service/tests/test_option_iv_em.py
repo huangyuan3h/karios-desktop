@@ -97,7 +97,7 @@ def test_resolve_put_iv_for_snapshot_falls_back_to_db(monkeypatch) -> None:
 
     assert out["close"] == pytest.approx(18.5)
     assert out["realtime"] is False
-    assert out["warning"] == "put_iv_live_fetch_failed_using_db"
+    assert out["warning"] == svc.PUT_IV_LIVE_FETCH_FAILED_USING_DB
     assert out["diagnostics"]["error"] == "no_510300_put_iv_candidate"
 
 

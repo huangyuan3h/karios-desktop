@@ -3,6 +3,7 @@ import { generateText } from 'ai';
 
 import { NewsSummaryRequestSchema } from '../schemas';
 import { getResolvedModel, AiModel } from '../model';
+import { stripModelThinking } from '../model_thinking';
 
 export const newsRoutes = new Hono();
 
@@ -45,7 +46,8 @@ newsRoutes.post('/summary', async (c) => {
 4. 只挑选最重要的、与财经/股票相关的新闻
 5. 按重要性排序，最重要的放在前面
 6. 如果没有重要财经新闻，简要说明即可
-7. 使用简洁专业的中文表达`;
+7. 使用简洁专业的中文表达
+8. 只输出最终摘要本身；不要输出思考过程，不要使用 <think> 等标签`;
 
   const prompt = `以下是过去${hours}小时的新闻标题：
 
@@ -54,14 +56,28 @@ ${newsTitles}
 请用数字列表格式（1. 2. 3. ...）总结其中的财经/股票相关重要信息（300-400字）：`;
 
   try {
+    // Thinking models (e.g. MiniMax-M3) may spend many tokens on <think>…</think>
+    // before the visible answer; keep headroom so the summary is not truncated away.
     const { text } = await generateText({
       model,
       prompt: `${system}\n\n${prompt}`,
       temperature: 0,
-      maxOutputTokens: 500,
+      maxOutputTokens: 2048,
     });
+    const summary = stripModelThinking(text);
+    if (!summary) {
+      return c.json(
+        {
+          error:
+            'Model returned only thinking content (no usable summary). Try again or switch model.',
+          itemsCount: items.length,
+          model: modelId,
+        },
+        502,
+      );
+    }
     return c.json({
-      summary: text.trim(),
+      summary,
       itemsCount: items.length,
       model: modelId,
     });

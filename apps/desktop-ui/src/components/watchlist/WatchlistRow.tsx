@@ -9,9 +9,11 @@ import {
   deriveActionCard,
   isHeldMissingPositionPct,
   isHeldPosition,
+  type CatalystPurgeHint,
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso } from '@/lib/market-hours';
+import { isEtfWatchlistSymbol } from '@/lib/symbols';
 import type { ExecutionGate } from '@karios/shared';
 import {
   computePnLPct,
@@ -41,7 +43,8 @@ import {
   rowTone,
 } from '@/lib/watchlist-table-cells';
 
-const COST_PRICE_RE = /^\d+(\.\d{0,2})?$/;
+const COST_PRICE_RE = /^\d+(\.\d{0,3})?$/;
+const POSITION_PCT_RE = /^\d+(\.\d{0,2})?$/;
 
 type WatchlistRowTone = 'green' | 'red' | 'none';
 type WatchlistStickyColumn = 'score' | 'trendOk' | 'action';
@@ -113,7 +116,17 @@ function TrendOkCell({
   hideTooltip: () => void;
 }) {
   const ok = t?.trendOk ?? null;
-  const icon = ok == null ? '—' : ok ? '✅' : '❌';
+  const status = String(t?.trendStatus || '')
+    .trim()
+    .toLowerCase();
+  const icon =
+    status === 'recovering'
+      ? '🔄'
+      : ok == null
+        ? '—'
+        : ok
+          ? '✅'
+          : '❌';
   const rsiNow =
     typeof t?.values?.rsi14 === 'number' && Number.isFinite(t.values.rsi14)
       ? t.values.rsi14
@@ -477,21 +490,28 @@ export type WatchlistRowProps = {
   tradingTime: boolean;
   todaySh: string;
   costPriceDraft: string | undefined;
+  positionPctDraft: string | undefined;
   executionGate: ExecutionGate | null;
   mainlineAllow: MainlineAllowSet | null;
   sectorOutflowBlock?: boolean;
+  catalyst?: CatalystPurgeHint | null;
   sectorExposureByIndustry: Map<string, number> | null;
   sleeveExposurePct: number;
+  defensiveSleeveExposurePct?: number;
   showTooltip: ShowTooltipFn;
   hideTooltip: () => void;
   showColorPicker: (el: HTMLElement, sym: string) => void;
   setItemPositionPct: (symbol: string, value: string) => void;
+  setItemPositionPctDraft: (symbol: string, value: string) => void;
+  commitItemPositionPctDraft: (symbol: string) => void;
   setItemCostPriceDraft: (symbol: string, value: string) => void;
   setItemCostPriceValue: (symbol: string, value: number | null) => void;
   commitItemCostPriceDraft: (symbol: string) => void;
   onRemove: (sym: string) => void;
   onOpenStock?: (symbol: string) => void;
   onAddReference: (item: WatchlistItem, trend: TrendOkResult | undefined) => void;
+  rowClassName?: string;
+  rowTitle?: string;
 };
 
 function WatchlistRowInner({
@@ -502,21 +522,28 @@ function WatchlistRowInner({
   tradingTime,
   todaySh,
   costPriceDraft,
+  positionPctDraft,
   executionGate,
   mainlineAllow,
   sectorOutflowBlock = false,
+  catalyst = null,
   sectorExposureByIndustry,
   sleeveExposurePct,
+  defensiveSleeveExposurePct = 0,
   showTooltip,
   hideTooltip,
   showColorPicker,
   setItemPositionPct,
+  setItemPositionPctDraft,
+  commitItemPositionPctDraft,
   setItemCostPriceDraft,
   setItemCostPriceValue,
   commitItemCostPriceDraft,
   onRemove,
   onOpenStock,
   onAddReference,
+  rowClassName,
+  rowTitle,
 }: WatchlistRowProps) {
   const tone = rowTone(t, rowMetrics.alerts);
   const rowClass =
@@ -550,7 +577,9 @@ function WatchlistRowInner({
     marketRegime: t?.marketRegime ?? null,
     sectorExposureByIndustry,
     sleeveExposurePct,
+    defensiveSleeveExposurePct,
     sectorOutflowBlock,
+    catalyst,
     todaySh: getShanghaiTodayIso(),
   });
   const execTone =
@@ -572,10 +601,17 @@ function WatchlistRowInner({
             actionCard.why === 'GAP_UP_WEAK_BLOCK' ||
             actionCard.why === 'SIZE_CAP_BLOCK' ||
             actionCard.why === 'SECTOR_CONC_BLOCK' ||
-            actionCard.why === 'SLEEVE_CAP_BLOCK'
+            actionCard.why === 'SLEEVE_CAP_BLOCK' ||
+            actionCard.why === 'TIME_LOCK_WEAK_REGIME' ||
+            actionCard.why === 'MARKET_CLOSING_LOCK'
           ? 'text-amber-700 font-semibold'
           : 'text-[var(--k-muted)]';
   const heldForTrigger = isHeldPosition(it);
+  const isEtf = isEtfWatchlistSymbol(it.symbol);
+  const etfSuggestPct =
+    typeof actionCard.suggestAddPct === 'number' && Number.isFinite(actionCard.suggestAddPct)
+      ? actionCard.suggestAddPct
+      : 5;
   const triggerPrice = heldForTrigger
     ? (actionCard.exitStop ?? actionCard.trigger ?? null)
     : (actionCard.entryTrigger ?? actionCard.trigger ?? null);
@@ -584,7 +620,7 @@ function WatchlistRowInner({
     : 'Entry_Trigger (buyZoneHigh sniper)';
 
   return (
-    <tr className={rowClass}>
+    <tr className={`${rowClass} ${rowClassName ?? ''}`} title={rowTitle}>
       <td className="px-3 py-2">
         <button
           type="button"
@@ -633,12 +669,26 @@ function WatchlistRowInner({
               : 'h-8 w-full min-w-0 max-w-[52px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-1.5 font-mono text-xs outline-none'
           }
           placeholder="0"
+          inputMode="decimal"
           value={
-            typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
+            positionPctDraft ??
+            (typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)
               ? String(it.positionPct)
-              : ''
+              : '')
           }
-          onChange={(e) => setItemPositionPct(it.symbol, e.target.value)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === '' || POSITION_PCT_RE.test(raw)) {
+              setItemPositionPctDraft(it.symbol, raw);
+            }
+          }}
+          onFocus={() => {
+            if (positionPctDraft != null) return;
+            if (typeof it.positionPct === 'number' && Number.isFinite(it.positionPct)) {
+              setItemPositionPctDraft(it.symbol, String(it.positionPct));
+            }
+          }}
+          onBlur={() => commitItemPositionPctDraft(it.symbol)}
         />
       </td>
       <td className="px-2 py-2">
@@ -649,7 +699,7 @@ function WatchlistRowInner({
           value={
             costPriceDraft ??
             (typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)
-              ? it.costPrice.toFixed(2)
+              ? it.costPrice.toFixed(3)
               : '')
           }
           onChange={(e) => {
@@ -667,7 +717,7 @@ function WatchlistRowInner({
           onFocus={() => {
             if (costPriceDraft != null) return;
             if (typeof it.costPrice === 'number' && Number.isFinite(it.costPrice)) {
-              setItemCostPriceDraft(it.symbol, it.costPrice.toFixed(2));
+              setItemCostPriceDraft(it.symbol, it.costPrice.toFixed(3));
             }
           }}
           onBlur={() => commitItemCostPriceDraft(it.symbol)}
@@ -707,6 +757,32 @@ function WatchlistRowInner({
           <span className="ml-1 font-normal text-emerald-700/90">
             +{actionCard.suggestAddPct.toFixed(0)}%
           </span>
+        ) : null}
+        {isEtf ? (
+          <div className="mt-1 flex gap-1">
+            {heldForTrigger ? (
+              <button
+                type="button"
+                className="rounded border border-red-500/40 px-1.5 py-0.5 text-[10px] font-normal text-red-600 hover:bg-red-500/10"
+                onClick={() => setItemPositionPct(it.symbol, '0')}
+                title="一键清仓（仓位=0，应用成本清理）"
+              >
+                卖出
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="rounded border border-emerald-600/40 px-1.5 py-0.5 text-[10px] font-normal text-emerald-700 hover:bg-emerald-500/10"
+                onClick={() => {
+                  if (currentPrice != null) setItemCostPriceValue(it.symbol, currentPrice);
+                  setItemPositionPct(it.symbol, String(etfSuggestPct));
+                }}
+                title={`一键买入：仓位 ${etfSuggestPct}%、成本=现价`}
+              >
+                买入
+              </button>
+            )}
+          </div>
         ) : null}
       </td>
       <td className="px-2 py-2 font-mono text-xs" title={triggerTitle}>

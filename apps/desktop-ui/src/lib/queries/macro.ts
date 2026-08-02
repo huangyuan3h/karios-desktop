@@ -10,6 +10,7 @@ import { MACRO_POLL_MS } from './intervals';
 export type CnIndexSignal = {
   tsCode?: string;
   name?: string;
+  featured?: boolean;
   signal?: string;
   positionRange?: string;
   close?: number | null;
@@ -43,9 +44,23 @@ export type MacroItem = {
   warning?: string | null;
 };
 
+export type EtfFlowSignal = {
+  asOfDate?: string;
+  verdict?: 'confirm' | 'neutral' | 'contradict' | string;
+  broadDirection?: 'buy' | 'outflow' | 'mixed' | 'neutral' | string;
+  sectorDirection?: 'buy' | 'outflow' | 'mixed' | 'neutral' | string;
+  confirmCount?: number;
+  contradictCount?: number;
+  intradaySafe?: boolean;
+  shareLag?: boolean;
+  incomplete?: boolean;
+};
+
 export type MacroSnapshot = {
   cnIndexSignals?: CnIndexSignal[];
   macro?: MacroItem[];
+  etfFundFlow?: unknown;
+  etfFlowSignal?: EtfFlowSignal;
   warning?: string;
 };
 

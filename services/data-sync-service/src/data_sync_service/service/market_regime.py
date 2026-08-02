@@ -16,9 +16,10 @@ from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_basic import fetch_ts_codes
 from data_sync_service.service.macro_snapshot_on_demand import (
     _is_data_stale,
-    fetch_hsi_on_demand,
+    fetch_hk_index_on_demand,
 )
 from data_sync_service.service.market_sentiment import (
+    CN_INDEX_TRAFFIC_LIGHT_NAMES,
     fetch_cn_market_breadth_eod,
     fetch_cn_market_breadth_intraday,
 )
@@ -28,12 +29,14 @@ from data_sync_service.service.realtime_quote import (
 )
 
 INDEX_SIGNALS = [
-    {"ts_code": "000001.SH", "name": "上证指数"},
+    {"ts_code": "000001.SH", "name": "上证指数", "featured": True},
     {"ts_code": "399006.SZ", "name": "创业板指"},
+    {"ts_code": "000905.SH", "name": "中证500"},
 ]
 
 HK_INDEX_SIGNALS = [
     {"series_id": "HSI", "name": "恒生指数"},
+    {"series_id": "HSTECH", "name": "恒生科技指数"},
 ]
 
 HISTORY_DAYS = 80
@@ -569,6 +572,7 @@ def _compute_index_signals(
             item_out = {
                 "tsCode": ts_code,
                 "name": name,
+                "featured": bool(it.get("featured")),
                 "asOfDate": series[-1][0] if series else None,
                 "close": series[-1][1] if series else None,
                 "ma5": None,
@@ -689,6 +693,7 @@ def _compute_index_signals(
         item_out = {
             "tsCode": ts_code,
             "name": name,
+            "featured": bool(it.get("featured")),
             "asOfDate": series[-1][0],
             "close": close,
             "ma5": ma5,
@@ -717,7 +722,7 @@ def _compute_index_signals(
         name = it["name"]
         series_raw = fetch_macro_last_closes(series_id, days=HISTORY_DAYS)
         if not series_raw or _hsi_series_stale(series_raw):
-            metrics, src = fetch_hsi_on_demand()
+            metrics, src = fetch_hk_index_on_demand(series_id)
             if metrics.get("close") is not None and metrics.get("asOfDate"):
                 series_raw = _merge_on_demand_into_series(series_raw, metrics)
                 hsi_on_demand_source = src
@@ -729,6 +734,7 @@ def _compute_index_signals(
             item_out = {
                 "tsCode": series_id,
                 "name": name,
+                "featured": bool(it.get("featured")),
                 "asOfDate": None,
                 "close": None,
                 "ma5": None,
@@ -871,6 +877,7 @@ def _compute_index_signals(
         item_out = {
             "tsCode": series_id,
             "name": name,
+            "featured": bool(it.get("featured")),
             "asOfDate": series[-1][0],
             "close": close,
             "ma5": ma5,
@@ -907,21 +914,20 @@ def _signal_rank(signal: str) -> int:
 
 
 def _regime_from_signals(index_signals: list[dict[str, Any]]) -> tuple[str, str | None]:
-    if len(index_signals) < 2:
+    cn = [
+        x
+        for x in index_signals
+        if str(x.get("name") or x.get("tsCode") or "").strip() in CN_INDEX_TRAFFIC_LIGHT_NAMES
+    ]
+    if len(cn) < 2:
+        cn = [x for x in index_signals if isinstance(x, dict)][:2]
+    if len(cn) < 2:
         return "Weak", None
-    by_name = {str(x.get("name") or x.get("tsCode") or ""): str(x.get("signal") or "") for x in index_signals}
-    sse = by_name.get("上证指数") or str(index_signals[0].get("signal") or "")
-    cyb = by_name.get("创业板指") or str(index_signals[1].get("signal") or "")
-    g1 = sse in ("green", "light_green", "deep_green")
-    g2 = cyb in ("green", "light_green", "deep_green")
-    if g1 and g2:
+    greens = sum(1 for x in cn if str(x.get("signal") or "") in ("green", "light_green", "deep_green"))
+    if greens == len(cn):
         return "Strong", None
-    if g1 or g2:
-        r1 = _signal_rank(sse)
-        r2 = _signal_rank(cyb)
-        if r1 == r2:
-            return "Diverging", "mixed"
-        return ("Diverging", "sse_stronger") if r1 > r2 else ("Diverging", "cyb_stronger")
+    if greens > 0:
+        return "Diverging", "mixed"
     return "Weak", None
 
 

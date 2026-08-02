@@ -7,11 +7,17 @@ import type {
 } from '@karios/shared';
 
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
+import { getShanghaiMinutes } from '@/lib/market-hours';
+import { isEtfWatchlistSymbol } from '@/lib/symbols';
 import { isGapUpWeakMarket, isIntradaySurge } from '@/lib/watchlist-metrics';
 
 export const CHANDELIER_ARM_PNL_PCT = 10;
 export const CHANDELIER_ATR_MULT = 2;
 export const BUY_SCORE_MIN = 80;
+/** TIP-007: Score floor for B_momentum intraday surge allow (6%→9%). */
+export const MOMENTUM_SURGE_SCORE_MIN = 85;
+/** TIP-007: Max intraday % when momentum surge allow applies. */
+export const MOMENTUM_SURGE_ALLOW_MAX_PCT = 9;
 /** Flat names below this score with TrendOK=no are marked PURGE. */
 export const PURGE_SCORE_MAX = 30;
 /** Max single-name weight inside the satellite sleeve; blocks ADD at or above. */
@@ -20,6 +26,30 @@ export const POSITION_SIZE_CAP_PCT = 15;
 export const SECTOR_CONCENTRATION_CAP_PCT = 30;
 /** Default per-fire clip for BUY/ADD size suggestion (pct points). */
 export const DEFAULT_FIRE_CLIP_PCT = 5;
+/** V6.3: hard cap for WEAK_ATTACK pioneer sleeve (pct points). */
+export const WEAK_ATTACK_SINGLE_MAX_CAP_PCT = 5;
+
+/** V6.2: Weak/DEFEND buy window opens at 14:30 Shanghai. */
+export const TIME_LOCK_CUTOFF_MINUTES = 14 * 60 + 30;
+/** V6.2: After 14:50 Shanghai, new entries locked again. */
+export const TIME_LOCK_CLOSE_MINUTES = 14 * 60 + 50;
+
+/** V6.2 defensive sleeve: sectors allowed as hedge under DEFEND. */
+export const DEFENSIVE_SECTOR_WHITELIST = [
+  '石油石化',
+  '公用事业',
+  '煤炭',
+  '银行',
+  '有色金属',
+] as const;
+/** Independent defensive sleeve total cap (pct points). */
+export const DEFENSIVE_SLEEVE_MAX_CAP_PCT = 10;
+/** Per-name cap inside defensive sleeve. */
+export const DEFENSIVE_SINGLE_MAX_CAP_PCT = 5;
+/** Score floor for defensive sleeve probe buys (below growth BUY_SCORE_MIN). */
+export const DEFENSIVE_BUY_SCORE_MIN = 70;
+/** Defensive hard-stop max loss vs current (3.5%). */
+export const DEFENSIVE_MAX_LOSS_PCT = 0.035;
 
 /** Defense sectors blocked from BUY/ADD (East Money industry substring match). */
 export const DEFENSE_SECTOR_KEYWORDS = [
@@ -34,8 +64,12 @@ export const DEFENSE_SECTOR_KEYWORDS = [
 export type TrendOkLike = {
   symbol?: string;
   score?: number | null;
+  scoreParts?: Record<string, unknown> | null;
   trendOk?: boolean | null;
+  /** V6.3: ok | no | recovering */
+  trendStatus?: string | null;
   buyAction?: string | null;
+  buyMode?: string | null;
   buyZoneHigh?: number | null;
   stopLossPrice?: number | null;
   stopLossParts?: Record<string, unknown> | null;
@@ -244,7 +278,7 @@ export function isHeldMissingPositionPct(pos: PositionLike): boolean {
   return pct == null || pct <= 0;
 }
 
-/** Display: "Sleeve 45.0% / 60%" or "Sleeve 0.0% / —". */
+/** Display: "卫星仓 17.0%（上限 10%）" or "卫星仓 0.0%（上限 —）". */
 export function formatSleeveBudgetLabel(
   sleeveExposurePct: number,
   positionRangeHint: string | null | undefined,
@@ -252,7 +286,7 @@ export function formatSleeveBudgetLabel(
   const sum = Number.isFinite(sleeveExposurePct) ? sleeveExposurePct : 0;
   const maxPct = parsePositionRangeHintMaxPct(positionRangeHint);
   const maxLabel = maxPct == null ? '—' : `${maxPct}%`;
-  return `Sleeve ${sum.toFixed(1)}% / ${maxLabel}`;
+  return `卫星仓 ${sum.toFixed(1)}%（上限 ${maxLabel}）`;
 }
 
 export function computePnLPct(cost: number | null, current: number | null): number | null {
@@ -273,7 +307,137 @@ export function resolveIndustryName(trendok: TrendOkLike | null | undefined): st
 export function isDefenseSector(industryName: string | null | undefined): boolean {
   const name = String(industryName || '').trim();
   if (!name) return false;
-  return DEFENSE_SECTOR_KEYWORDS.some((kw) => name.includes(kw));
+  // Mirror BE watchlist_automation.is_defense_sector: do not treat 电力设备 as utilities.
+  for (const kw of DEFENSE_SECTOR_KEYWORDS) {
+    if (kw === '电力') {
+      if (name === '电力' || (name.includes('电力') && !name.includes('电力设备'))) return true;
+      continue;
+    }
+    if (name.includes(kw)) return true;
+  }
+  return false;
+}
+
+/** V6.2: True when industry matches defensive sleeve whitelist. */
+export function isDefensiveSectorWhitelist(industryName: string | null | undefined): boolean {
+  const name = String(industryName || '').trim();
+  if (!name) return false;
+  for (const kw of DEFENSIVE_SECTOR_WHITELIST) {
+    if (name === kw || name.includes(kw)) return true;
+  }
+  return false;
+}
+
+function hasIndustryFlow5dTop3(reasons: unknown): boolean {
+  if (!Array.isArray(reasons)) return false;
+  return reasons.some((r) => String(r) === 'industry_flow_5d_top3');
+}
+
+/** Industry is in 5D net-inflow Top3 via mainline tag or TrendOK flow reasons. */
+export function isIndustryIn5dTop3(opts: {
+  industryName: string | null | undefined;
+  mainlineAllow?: MainlineAllowSet | null;
+  industryFlowReasons?: unknown;
+}): boolean {
+  const industry = String(opts.industryName || '').trim();
+  if (!industry) return false;
+  if (opts.mainlineAllow?.byName.get(industry) === '5D_TOP3') return true;
+  return hasIndustryFlow5dTop3(opts.industryFlowReasons);
+}
+
+/**
+ * V6.2 TimeLock: under DEFEND or Weak, only allow BUY/ADD in 14:30–14:50 Shanghai.
+ * Exempt when ATTACK + Strong.
+ * V6.3 WEAK_ATTACK: already past 14:30 gate unlock; still respect >14:50 closing lock.
+ */
+export function checkExecutionTimeLock(opts: {
+  now?: Date | null;
+  gateMode?: ExecutionGateMode | null;
+  marketRegime?: string | null;
+}): { ok: true; why: 'OK' } | { ok: false; why: string } {
+  const mode = opts.gateMode ?? null;
+  const regime = String(opts.marketRegime || '');
+  if (mode === 'ATTACK' && regime === 'Strong') {
+    return { ok: true, why: 'OK' };
+  }
+  const minutes = getShanghaiMinutes(opts.now ?? new Date());
+  if (mode === 'WEAK_ATTACK') {
+    if (minutes > TIME_LOCK_CLOSE_MINUTES) {
+      return { ok: false, why: 'MARKET_CLOSING_LOCK' };
+    }
+    return { ok: true, why: 'OK' };
+  }
+  if (mode !== 'DEFEND' && regime !== 'Weak') {
+    return { ok: true, why: 'OK' };
+  }
+  if (minutes < TIME_LOCK_CUTOFF_MINUTES) {
+    return { ok: false, why: 'TIME_LOCK_WEAK_REGIME' };
+  }
+  if (minutes > TIME_LOCK_CLOSE_MINUTES) {
+    return { ok: false, why: 'MARKET_CLOSING_LOCK' };
+  }
+  return { ok: true, why: 'OK' };
+}
+
+/**
+ * V6.2 defensive sleeve eligibility (beta deferred).
+ * Does not check sleeve capacity — caller surfaces SLEEVE_CAP_BLOCK separately.
+ */
+export function isDefensiveArbitrageEligible(opts: {
+  gateMode?: ExecutionGateMode | null;
+  industryName?: string | null;
+  mainlineAllow?: MainlineAllowSet | null;
+  industryFlowReasons?: unknown;
+  score?: number | null;
+  trendOk?: boolean | null;
+}): boolean {
+  if (opts.gateMode !== 'DEFEND') return false;
+  if (!isDefensiveSectorWhitelist(opts.industryName)) return false;
+  if (opts.trendOk !== true) return false;
+  const score = num(opts.score);
+  if (score == null || score < DEFENSIVE_BUY_SCORE_MIN) return false;
+  return isIndustryIn5dTop3({
+    industryName: opts.industryName,
+    mainlineAllow: opts.mainlineAllow,
+    industryFlowReasons: opts.industryFlowReasons,
+  });
+}
+
+/** Sum positionPct for whitelist defensive industries only. */
+export function buildDefensiveSleeveExposurePct(
+  items: PositionLike[],
+  trend: Record<string, TrendOkLike | null | undefined>,
+): number {
+  let sum = 0;
+  for (const pos of items) {
+    const pct = num(pos.positionPct);
+    if (pct == null || pct <= 0) continue;
+    const industry = resolveIndustryName(trend[pos.symbol] ?? null);
+    if (!isDefensiveSectorWhitelist(industry)) continue;
+    sum += pct;
+  }
+  return sum;
+}
+
+/**
+ * Tighter defensive hard stop: max(EMA10, current×0.965).
+ * Higher price = tighter for long book. Missing ema10 → loss floor only.
+ */
+export function resolveDefensiveHardStop(opts: {
+  ema10?: number | null;
+  currentPrice?: number | null;
+}): number | null {
+  const current = num(opts.currentPrice);
+  const ema10 = num(opts.ema10);
+  const lossFloor =
+    current != null && current > 0 ? current * (1 - DEFENSIVE_MAX_LOSS_PCT) : null;
+  if (ema10 != null && lossFloor != null) return Math.max(ema10, lossFloor);
+  if (ema10 != null) return ema10;
+  return lossFloor;
+}
+
+export function ema10FromTrendok(trendok: TrendOkLike | null | undefined): number | null {
+  return num(trendok?.values?.ema10);
 }
 
 export function deriveTriggerAndTrail(opts: {
@@ -385,6 +549,41 @@ type NewEntryGateResult =
   | { ok: false; tag: null; why: string };
 
 /**
+ * Score used for TIP-007 surge-allow gate.
+ * Anti-Spike keeps −20 on the displayed score; eligibility restores only
+ * `penalty_intraday_spike` so a perfect post-spike 80 can still clear Score≥85.
+ */
+export function scoreForMomentumSurgeGate(
+  score: number | null | undefined,
+  scoreParts?: Record<string, unknown> | null,
+): number | null {
+  const base = num(score);
+  if (base == null) return null;
+  const raw = scoreParts?.penalty_intraday_spike;
+  const spike = typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
+  // scoreParts store penalties as negatives (e.g. -20).
+  return spike < 0 ? base - spike : base;
+}
+
+/**
+ * TIP-007: momentum/score/gate inputs for the 6–9% surge exception.
+ * Mainline membership is enforced later inside evaluateNewEntryGates (not here).
+ */
+export function isMomentumSurgeEligible(opts: {
+  gateMode?: ExecutionGateMode | null;
+  buyMode?: string | null;
+  trendOk?: boolean | null;
+  score?: number | null;
+  scoreParts?: Record<string, unknown> | null;
+}): boolean {
+  if (opts.gateMode !== 'ATTACK') return false;
+  if (String(opts.buyMode || '').trim() !== 'B_momentum') return false;
+  if (opts.trendOk !== true) return false;
+  const score = scoreForMomentumSurgeGate(opts.score, opts.scoreParts);
+  return score != null && score >= MOMENTUM_SURGE_SCORE_MIN;
+}
+
+/**
  * Hard gates for BUY/ADD: defense, surge, gap-up weak, sector concentration, mainline.
  * Fail-closed when industry missing or mainlineAllow not ready.
  * Surge/gap/concentration with null inputs do not block (fail-open).
@@ -400,6 +599,15 @@ export function evaluateNewEntryGates(opts: {
   positionRangeHint?: string | null;
   /** When all sectors show net outflow on the day. */
   sectorOutflowBlock?: boolean;
+  gateMode?: ExecutionGateMode | null;
+  buyMode?: string | null;
+  trendOk?: boolean | null;
+  score?: number | null;
+  scoreParts?: Record<string, unknown> | null;
+  /** Clock for TimeLock; defaults to now. */
+  now?: Date | null;
+  /** ETF: bypass industry/mainline gates (no-sector direct). */
+  isEtf?: boolean;
 }): NewEntryGateResult {
   const {
     industryName,
@@ -411,24 +619,67 @@ export function evaluateNewEntryGates(opts: {
     sleeveExposurePct = null,
     positionRangeHint = null,
     sectorOutflowBlock = false,
+    gateMode: mode = null,
+    buyMode = null,
+    trendOk = null,
+    score = null,
+    scoreParts = null,
+    now = null,
+    isEtf = false,
   } = opts;
-  if (!industryName) {
-    return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
+  if (!isEtf) {
+    if (!industryName) {
+      return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
+    }
+    if (isDefenseSector(industryName)) {
+      return { ok: false, tag: null, why: 'DEFENSE_SECTOR_BLOCK' };
+    }
   }
-  if (isDefenseSector(industryName)) {
-    return { ok: false, tag: null, why: 'DEFENSE_SECTOR_BLOCK' };
+
+  const timeLock = checkExecutionTimeLock({
+    now,
+    gateMode: mode,
+    marketRegime,
+  });
+  if (!timeLock.ok) {
+    return { ok: false, tag: null, why: timeLock.why };
   }
+
+  let momentumSurgeAllow = false;
   if (isIntradaySurge(intradayChgPct)) {
-    return { ok: false, tag: null, why: 'INTRADAY_SURGE_BLOCK' };
+    const eligible = isMomentumSurgeEligible({
+      gateMode: mode,
+      buyMode,
+      trendOk,
+      score,
+      scoreParts,
+    });
+    const pct = typeof intradayChgPct === 'number' ? intradayChgPct : null;
+    if (
+      !eligible ||
+      pct == null ||
+      !Number.isFinite(pct) ||
+      pct > MOMENTUM_SURGE_ALLOW_MAX_PCT
+    ) {
+      return { ok: false, tag: null, why: 'INTRADAY_SURGE_BLOCK' };
+    }
+    momentumSurgeAllow = true;
   }
+
   if (isGapUpWeakMarket(gapUp, marketRegime)) {
     return { ok: false, tag: null, why: 'GAP_UP_WEAK_BLOCK' };
   }
-  if (isSectorConcentrationBlocked(industryName, sectorExposureByIndustry)) {
+  if (!isEtf && isSectorConcentrationBlocked(industryName, sectorExposureByIndustry)) {
     return { ok: false, tag: null, why: 'SECTOR_CONC_BLOCK' };
   }
   if (isSleeveCapBlocked(sleeveExposurePct, positionRangeHint)) {
     return { ok: false, tag: null, why: 'SLEEVE_CAP_BLOCK' };
+  }
+  if (isEtf) {
+    return { ok: true, tag: null, why: momentumSurgeAllow ? 'MOMENTUM_SURGE_ALLOW' : 'ETF_DIRECT' };
+  }
+  if (industryName == null) {
+    return { ok: false, tag: null, why: 'MISSING_INDUSTRY' };
   }
   if (!mainlineAllow || !mainlineAllow.ready) {
     return { ok: false, tag: null, why: 'MAINLINE_DATA_UNAVAILABLE' };
@@ -441,6 +692,9 @@ export function evaluateNewEntryGates(opts: {
     };
   }
   const tag = mainlineAllow.byName.get(industryName) ?? null;
+  if (momentumSurgeAllow) {
+    return { ok: true, tag, why: 'MOMENTUM_SURGE_ALLOW' };
+  }
   const why =
     tag === 'MOMENTUM'
       ? 'MAINLINE_MOMENTUM'
@@ -454,19 +708,31 @@ type HeldTrimGateResult = { trim: true; why: string } | { trim: false; why: null
 
 /**
  * Held-position trim gates (after EXIT / warn_reduce_half).
- * DEFEND forces TRIM; mainline fade TRIM only when allow-set is ready.
+ * DEFEND forces TRIM unless exemptDefendTrim (defensive sleeve holdings).
+ * Mainline fade TRIM only when allow-set is ready.
  */
 export function evaluateHeldTrimGates(opts: {
   mode: ExecutionGateMode | null;
   industryName: string | null;
   mainlineAllow: MainlineAllowSet | null | undefined;
   sectorOutflowBlock?: boolean;
+  /** V6.2: skip GATE_DEFEND for defensive-sleeve whitelist holdings. */
+  exemptDefendTrim?: boolean;
+  /** ETF: skip mainline-fade/industry trims (no-sector, buy-and-hold). */
+  skipMainlineFade?: boolean;
 }): HeldTrimGateResult {
-  const { mode, industryName, mainlineAllow, sectorOutflowBlock = false } = opts;
-  if (mode === 'DEFEND') {
+  const {
+    mode,
+    industryName,
+    mainlineAllow,
+    sectorOutflowBlock = false,
+    exemptDefendTrim = false,
+    skipMainlineFade = false,
+  } = opts;
+  if (mode === 'DEFEND' && !exemptDefendTrim) {
     return { trim: true, why: 'GATE_DEFEND' };
   }
-  if (mainlineAllow?.ready) {
+  if (!skipMainlineFade && mainlineAllow?.ready) {
     if (!industryName) {
       return { trim: true, why: 'MISSING_INDUSTRY' };
     }
@@ -495,11 +761,15 @@ export function deriveActionCard(opts: {
   marketRegime?: string | null;
   sectorExposureByIndustry?: Map<string, number> | null;
   sleeveExposurePct?: number | null;
+  /** V6.2: sum of whitelist defensive positionPct (independent sleeve). */
+  defensiveSleeveExposurePct?: number | null;
   sectorOutflowBlock?: boolean;
   /** Alpha Radar catalyst hint; when present, may exempt PURGE. */
   catalyst?: CatalystPurgeHint | null;
   /** Shanghai YYYY-MM-DD for T+1 lock (entryDate === todaySh). */
   todaySh?: string | null;
+  /** Clock for TimeLock; defaults to now. */
+  now?: Date | null;
 }): ExecutionActionCard {
   const {
     symbol,
@@ -513,13 +783,33 @@ export function deriveActionCard(opts: {
     marketRegime = null,
     sectorExposureByIndustry = null,
     sleeveExposurePct = null,
+    defensiveSleeveExposurePct = null,
     sectorOutflowBlock = false,
     catalyst = null,
     todaySh = null,
+    now = null,
   } = opts;
   const held = isHeldPosition(position);
+  const isEtf = isEtfWatchlistSymbol(symbol);
   const parts = (trendok?.stopLossParts ?? null) as Record<string, unknown> | null;
-  const hardStop = num(trendok?.stopLossPrice);
+  const mode = gateMode(gate);
+  const regime = marketRegime ?? gate?.marketRegime ?? null;
+  const industryName = resolveIndustryName(trendok);
+  const useDefensiveStop =
+    mode === 'DEFEND' && isDefensiveSectorWhitelist(industryName);
+  const trendHardStop = num(trendok?.stopLossPrice);
+  const defensiveStop = useDefensiveStop
+    ? resolveDefensiveHardStop({
+        ema10: ema10FromTrendok(trendok),
+        currentPrice,
+      })
+    : null;
+  // Prefer tighter (higher) stop when both exist.
+  let hardStop = trendHardStop;
+  if (defensiveStop != null) {
+    hardStop =
+      hardStop != null ? Math.max(hardStop, defensiveStop) : defensiveStop;
+  }
   const atr14 = atrFromParts(parts);
   const cost = num(position.costPrice);
   const maxPrice = num(position.maxPrice);
@@ -552,26 +842,35 @@ export function deriveActionCard(opts: {
     Number.isFinite(currentPrice) &&
     currentPrice <= exitStop;
 
-  const mode = gateMode(gate);
-  const allowAttack = mode === 'ATTACK';
+  const allowAttack = mode === 'ATTACK' || mode === 'WEAK_ATTACK';
   const buyAction = String(trendok?.buyAction || '').toLowerCase();
   const score = num(trendok?.score);
   const scoreOk = score != null && score >= BUY_SCORE_MIN;
   const wantsBuy = buyAction === 'buy' && scoreOk;
   const trendOkFlag =
     typeof trendok?.trendOk === 'boolean' ? trendok.trendOk : null;
+  const isRecovering =
+    String(trendok?.trendStatus || '')
+      .trim()
+      .toLowerCase() === 'recovering';
 
-  const industryName = resolveIndustryName(trendok);
   const entryGate = evaluateNewEntryGates({
     industryName,
     mainlineAllow,
     intradayChgPct,
     gapUp,
-    marketRegime,
+    marketRegime: regime,
     sectorExposureByIndustry,
     sleeveExposurePct,
     positionRangeHint: gate?.positionRangeHint ?? null,
     sectorOutflowBlock,
+    gateMode: mode,
+    buyMode: trendok?.buyMode ?? null,
+    trendOk: trendOkFlag,
+    score,
+    scoreParts: (trendok?.scoreParts as Record<string, unknown> | null | undefined) ?? null,
+    now,
+    isEtf,
   });
   // Mainline column independent of chase / concentration vetoes
   const mainlineOk = Boolean(
@@ -583,12 +882,31 @@ export function deriveActionCard(opts: {
   const mainlineTag = mainlineOk
     ? (mainlineAllow!.byName.get(industryName!) ?? null)
     : null;
+  const defensiveHolding = isDefensiveSectorWhitelist(industryName);
   const heldTrim = evaluateHeldTrimGates({
     mode,
     industryName,
     mainlineAllow,
     sectorOutflowBlock,
+    exemptDefendTrim: defensiveHolding,
+    skipMainlineFade: isEtf,
   });
+
+  const defensiveUsed =
+    typeof defensiveSleeveExposurePct === 'number' &&
+    Number.isFinite(defensiveSleeveExposurePct)
+      ? defensiveSleeveExposurePct
+      : 0;
+  const defensiveEligible =
+    !held &&
+    isDefensiveArbitrageEligible({
+      gateMode: mode,
+      industryName,
+      mainlineAllow,
+      industryFlowReasons: trendok?.values?.industryFlowReasons,
+      score,
+      trendOk: trendOkFlag,
+    });
 
   let action: ExecutionAction = 'WATCH';
   let why = 'WATCH';
@@ -645,12 +963,36 @@ export function deriveActionCard(opts: {
   } else if (
     isPurgeCandidate({ held: false, score, trendOk: trendOkFlag })
   ) {
-    if (isAlphaSPurgeExempt(catalyst ?? {})) {
+    if (isRecovering) {
+      action = 'WATCH';
+      why = 'TREND_RECOVERING';
+    } else if (isAlphaSPurgeExempt(catalyst ?? {})) {
       action = 'WATCH_SILENT';
       why = 'ALPHA_S_WATCH';
     } else {
       action = 'PURGE';
       why = 'PURGE_GC';
+    }
+  } else if (defensiveEligible) {
+    if (defensiveUsed >= DEFENSIVE_SLEEVE_MAX_CAP_PCT) {
+      action = 'WATCH';
+      why = 'SLEEVE_CAP_BLOCK';
+    } else {
+      const timeLock = checkExecutionTimeLock({
+        now,
+        gateMode: mode,
+        marketRegime: regime,
+      });
+      if (!timeLock.ok) {
+        action = 'WATCH';
+        why = timeLock.why;
+      } else if (entryBelowStop) {
+        action = 'WATCH';
+        why = 'ENTRY_BELOW_STOP';
+      } else {
+        action = 'BUY';
+        why = 'DEFENSIVE_SLEEVE_ALLOW';
+      }
     }
   } else if (allowAttack && wantsBuy) {
     if (entryBelowStop) {
@@ -664,8 +1006,21 @@ export function deriveActionCard(opts: {
       why = entryGate.why;
     }
   } else if (!allowAttack && wantsBuy) {
+    const timeLock = checkExecutionTimeLock({
+      now,
+      gateMode: mode,
+      marketRegime: regime,
+    });
+    if (!timeLock.ok) {
+      action = 'WATCH';
+      why = timeLock.why;
+    } else {
+      action = 'WATCH';
+      why = entryBelowStop ? 'ENTRY_BELOW_STOP' : 'GATE_BLOCK_NEW';
+    }
+  } else if (isRecovering) {
     action = 'WATCH';
-    why = entryBelowStop ? 'ENTRY_BELOW_STOP' : 'GATE_BLOCK_NEW';
+    why = 'TREND_RECOVERING';
   } else {
     action = 'WATCH';
     why =
@@ -674,7 +1029,14 @@ export function deriveActionCard(opts: {
 
   let suggestAddPct: number | null = null;
   let suggestSizeNote: string | null = null;
-  if (action === 'BUY' || action === 'ADD') {
+  if (action === 'BUY' && why === 'DEFENSIVE_SLEEVE_ALLOW') {
+    const roomSleeve = DEFENSIVE_SLEEVE_MAX_CAP_PCT - defensiveUsed;
+    const room = Math.min(DEFENSIVE_SINGLE_MAX_CAP_PCT, roomSleeve);
+    if (Number.isFinite(room) && room >= 0.1) {
+      suggestAddPct = Math.round(room * 10) / 10;
+      suggestSizeNote = roomSleeve <= DEFENSIVE_SINGLE_MAX_CAP_PCT + 1e-6 ? 'sleeve' : 'clip';
+    }
+  } else if (action === 'BUY' || action === 'ADD') {
     const size = suggestFireSizePct({
       positionPct: position.positionPct,
       industryName,
@@ -685,6 +1047,14 @@ export function deriveActionCard(opts: {
     if (size) {
       suggestAddPct = size.addPct;
       suggestSizeNote = size.note;
+    }
+    // V6.3: WEAK_ATTACK pioneer sleeve hard-caps single-name Suggest% at 5.
+    if (mode === 'WEAK_ATTACK' && suggestAddPct != null) {
+      const capped = Math.min(suggestAddPct, WEAK_ATTACK_SINGLE_MAX_CAP_PCT);
+      if (capped < suggestAddPct - 1e-9) {
+        suggestSizeNote = 'overflow';
+      }
+      suggestAddPct = Math.round(capped * 10) / 10;
     }
   }
 
@@ -711,7 +1081,14 @@ export function parseExecutionGate(raw: unknown): ExecutionGate | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   const mode = String(o.mode || '');
-  if (mode !== 'ATTACK' && mode !== 'HOLD_ONLY' && mode !== 'DEFEND') return null;
+  if (
+    mode !== 'ATTACK' &&
+    mode !== 'WEAK_ATTACK' &&
+    mode !== 'HOLD_ONLY' &&
+    mode !== 'DEFEND'
+  ) {
+    return null;
+  }
   const regime = String(o.marketRegime || '');
   if (regime !== 'Strong' && regime !== 'Diverging' && regime !== 'Weak') return null;
   const reasons = Array.isArray(o.reasons) ? o.reasons.map((x) => String(x)) : [];
@@ -723,6 +1100,38 @@ export function parseExecutionGate(raw: unknown): ExecutionGate | null {
     srvLevel: o.srvLevel == null ? null : String(o.srvLevel),
     srvOverlapCount: num(o.srvOverlapCount),
     downCount: num(o.downCount),
+    upCount: num(o.upCount),
+    riskMode: o.riskMode == null ? null : String(o.riskMode),
+    reasons,
+    positionRangeHint: o.positionRangeHint == null ? undefined : String(o.positionRangeHint),
+    satelliteNote: o.satelliteNote == null ? undefined : String(o.satelliteNote),
+    overflowSector: o.overflowSector == null ? null : String(o.overflowSector),
+    overflowInflowYi: num(o.overflowInflowYi),
+    cnGate: parseGateSubset(o.cnGate),
+    hkGate: parseGateSubset(o.hkGate),
+  };
+}
+
+function parseGateSubset(raw: unknown): ExecutionGate['hkGate'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const mode = String(o.mode || '');
+  if (
+    mode !== 'ATTACK' &&
+    mode !== 'WEAK_ATTACK' &&
+    mode !== 'HOLD_ONLY' &&
+    mode !== 'DEFEND'
+  ) {
+    return null;
+  }
+  const regime = String(o.marketRegime || '');
+  if (regime !== 'Strong' && regime !== 'Diverging' && regime !== 'Weak') return null;
+  const reasons = Array.isArray(o.reasons) ? o.reasons.map((x) => String(x)) : [];
+  return {
+    mode,
+    allowNewEntries: Boolean(o.allowNewEntries),
+    marketRegime: regime,
+    indexLight: String(o.indexLight || '—'),
     riskMode: o.riskMode == null ? null : String(o.riskMode),
     reasons,
     positionRangeHint: o.positionRangeHint == null ? undefined : String(o.positionRangeHint),

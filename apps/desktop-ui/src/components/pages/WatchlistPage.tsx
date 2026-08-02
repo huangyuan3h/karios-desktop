@@ -3,12 +3,18 @@
 import * as React from 'react';
 
 import { WatchlistImportDebug, type ScreenerImportDebugState } from '@/components/watchlist/WatchlistImportDebug';
+import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
+import { emptyScreenerFunnel } from '@/lib/watchlist-screener-import';
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
 import { WatchlistToolbar } from '@/components/watchlist/WatchlistToolbar';
 import { Button } from '@/components/ui/button';
 import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistTrend } from '@/hooks/useWatchlistTrend';
+import {
+  buildCatalystPurgeMap,
+  DEFAULT_CATALYST_MAX_AGE_DAYS,
+} from '@/lib/alpha-radar-catalyst';
 import { useChatStore } from '@/lib/chat/store';
 import { executionGateBadgeClass } from '@/lib/dashboard-format';
 import {
@@ -18,6 +24,7 @@ import {
   parseExecutionGate,
 } from '@/lib/execution-action';
 import { buildMainlineAllowSet, isSectorOutflowBlock } from '@/lib/hot-industry-picks';
+import { useAlphaRadarCatalystQuery } from '@/lib/queries/alphaRadar';
 import { useDashboardSummaryQuery } from '@/lib/queries/dashboard';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { watchlistMarketKey } from '@/lib/queries/watchlist';
@@ -36,6 +43,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const { addReference } = useChatStore();
   const sentimentQuery = useDashboardSentimentQuery();
   const liteSummaryQuery = useDashboardSummaryQuery();
+  const catalystQuery = useAlphaRadarCatalystQuery(DEFAULT_CATALYST_MAX_AGE_DAYS);
+  const catalystBySymbol = React.useMemo(
+    () => buildCatalystPurgeMap(catalystQuery.data ?? null),
+    [catalystQuery.data],
+  );
   const executionGate = React.useMemo(
     () =>
       parseExecutionGate(
@@ -62,11 +74,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     code,
     setCode,
     costPriceDrafts,
+    positionPctDrafts,
     onAdd,
     onRemove,
     addSymbolToWatchlist,
     setItemColor,
     setItemPositionPct,
+    setItemPositionPctDraft,
+    commitItemPositionPctDraft,
     setItemCostPriceDraft,
     setItemCostPriceValue,
     commitItemCostPriceDraft,
@@ -124,10 +139,12 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     scanned: 0,
     trendOkCount: 0,
     rows: [],
+    funnel: emptyScreenerFunnel(),
   });
 
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
+  const [showHidden, setShowHidden] = React.useState(false);
 
   React.useEffect(() => {
     void fetchAutomationLatest()
@@ -230,7 +247,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           pushLog(label);
         },
       });
-      setLatestAutomation(run);
+      setLatestAutomation({
+        ...run,
+        screenerAdded: result?.screenerAdded ?? run.screenerAdded,
+        meta: {
+          ...(run.meta && typeof run.meta === 'object' ? run.meta : {}),
+          ...(result?.funnel ? { funnel: result.funnel } : {}),
+        },
+      });
       if (run.skipped) {
         setAutomationMsg(`Skipped: ${run.skipReason || 'unknown'}`);
         setAutomationSkipRun(run);
@@ -400,6 +424,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           setError={setError}
         />
 
+        <FunnelHistoryTable limit={10} />
+
         <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="mb-2 text-sm font-medium">Add</div>
           <div className="grid gap-2 md:grid-cols-12">
@@ -453,12 +479,17 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           trend={trend}
           quotes={quotes}
           costPriceDrafts={costPriceDrafts}
+          positionPctDrafts={positionPctDrafts}
           scoreSortDir={scoreSortDir}
           scoreSortEnabled={scoreSortEnabled}
           setScoreSortDir={setScoreSortDir}
           setScoreSortEnabled={setScoreSortEnabled}
+          showHidden={showHidden}
+          setShowHidden={setShowHidden}
           setItemColor={setItemColor}
           setItemPositionPct={setItemPositionPct}
+          setItemPositionPctDraft={setItemPositionPctDraft}
+          commitItemPositionPctDraft={commitItemPositionPctDraft}
           setItemCostPriceDraft={setItemCostPriceDraft}
           setItemCostPriceValue={setItemCostPriceValue}
           commitItemCostPriceDraft={commitItemCostPriceDraft}
@@ -467,6 +498,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           executionGate={executionGate}
           mainlineAllow={mainlineAllow}
           sectorOutflowBlock={sectorOutflowBlock}
+          catalystBySymbol={catalystBySymbol}
         />
       </div>
     </div>

@@ -23,6 +23,37 @@ def test_get_macro_snapshot_endpoint(monkeypatch) -> None:
     assert resp.json() == {"cnIndexSignals": [], "macro": []}
 
 
+def test_build_macro_snapshot_includes_etf_fund_flow(monkeypatch) -> None:
+    import data_sync_service.service.macro_snapshot as mod
+
+    captured: dict[str, object] = {}
+
+    def _etf(**kwargs) -> dict:
+        captured.update(kwargs)
+        return {"asOfDate": "2026-06-18", "items": [], "shareLag": False, "intradaySafe": True}
+
+    monkeypatch.setattr(mod, "ensure_table", lambda: None)
+    monkeypatch.setattr(mod, "get_index_signals", lambda **kw: [])
+    monkeypatch.setattr(mod, "fetch_last_closes_batch", lambda *_a, **_k: {})
+    monkeypatch.setattr(mod, "get_latest_rows_batch", lambda *_a, **_k: {})
+    monkeypatch.setattr(mod, "resolve_put_iv_for_snapshot", lambda **_k: {})
+    monkeypatch.setattr(mod, "enrich_macro_items_on_demand", lambda items: items)
+    monkeypatch.setattr(mod, "macro_snapshot_warning", lambda: None)
+    monkeypatch.setattr(mod, "build_etf_fund_flow_bundle", _etf)
+    monkeypatch.setattr(mod, "_is_shanghai_sync_window", lambda: False)
+    monkeypatch.setattr(mod, "get_latest_etf_flow_date", lambda: "2026-06-18")
+
+    out = mod.build_macro_snapshot()
+    assert out["etfFundFlow"] == {
+        "asOfDate": "2026-06-18",
+        "items": [],
+        "shareLag": False,
+        "intradaySafe": True,
+    }
+    # Outside the sync window we fall back to the latest stored ETF date.
+    assert captured.get("as_of_date") == "2026-06-18"
+
+
 def test_run_post_close_sync(monkeypatch) -> None:
     import data_sync_service.service.post_close_sync as pcs  # type: ignore[import-not-found]
 
@@ -102,8 +133,142 @@ def test_fetch_hsi_on_demand(monkeypatch) -> None:
             "ma20": 24500.0,
         },
     )
-    metrics, src = mod.fetch_hsi_on_demand()
+    metrics, src = mod.fetch_hk_index_on_demand("HSI")
     assert metrics["close"] == 24000.0
+    assert src == "yfinance.on_demand"
+
+
+def test_fetch_hstech_bars_via_yf_normalizes(monkeypatch) -> None:
+    import sys
+
+    import pandas as pd  # type: ignore[import-not-found]
+
+    from data_sync_service.service import macro_daily as md  # type: ignore[import-not-found]
+
+    class _Ticker:
+        def __init__(self, ticker: str) -> None:
+            assert ticker == "^HSTECH"
+
+        def history(self, **kwargs):  # noqa: ANN003
+            return pd.DataFrame(
+                {
+                    "Open": [3000.0, 3050.0],
+                    "High": [3100.0, 3080.0],
+                    "Low": [2990.0, 3040.0],
+                    "Close": [3050.0, 3070.0],
+                    "Volume": [100, 120],
+                },
+                index=pd.DatetimeIndex(pd.to_datetime(["2026-07-30", "2026-07-31"]), name="Date"),
+            )
+
+    class _Yf:
+        def Ticker(self, ticker: str):  # noqa: N802
+            return _Ticker(ticker)
+
+    monkeypatch.setitem(sys.modules, "yfinance", _Yf())
+    df = md._fetch_hstech_bars_via_yf("20260701", "20260802")
+    assert df is not None
+    assert df["trade_date"].tolist() == ["2026-07-30", "2026-07-31"]
+    assert df["close"].tolist() == [3050.0, 3070.0]
+    assert abs(df["pct_chg"].iloc[-1] - ((3070.0 / 3050.0 - 1) * 100.0)) < 1e-9
+    assert df["vol"].tolist() == [100, 120]
+
+
+def test_fetch_hstech_bars_via_ak_normalizes(monkeypatch) -> None:
+    import sys
+
+    import pandas as pd  # type: ignore[import-not-found]
+
+    from data_sync_service.service import macro_daily as md  # type: ignore[import-not-found]
+
+    class _Ak:
+        def stock_hk_index_daily_sina(self, symbol: str) -> pd.DataFrame:
+            assert symbol == "HSTECH"
+            return pd.DataFrame(
+                {
+                    "date": pd.to_datetime(["2026-07-27", "2026-07-30", "2026-07-31"]).date,
+                    "open": [4500.0, 4600.0, 4818.0],
+                    "high": [4600.0, 4700.0, 4871.0],
+                    "low": [4400.0, 4500.0, 4763.0],
+                    "close": [4550.0, 4803.0, 4829.0],
+                    "volume": [100, 120, 130],
+                    "amount": [1e9, 1.2e9, 1.3e9],
+                }
+            )
+
+    monkeypatch.setitem(sys.modules, "akshare", _Ak())
+    df = md._fetch_hstech_bars_via_ak("20260727", "20260802")
+    assert df is not None
+    assert df["trade_date"].tolist() == ["2026-07-27", "2026-07-30", "2026-07-31"]
+    assert df["close"].tolist() == [4550.0, 4803.0, 4829.0]
+    assert abs(df["pct_chg"].iloc[-1] - ((4829.0 / 4803.0 - 1) * 100.0)) < 1e-9
+    assert df["vol"].tolist() == [100, 120, 130]
+    assert df["amount"].tolist() == [1e9, 1.2e9, 1.3e9]
+
+
+def test_fetch_hstech_bars_via_ak_filters_window(monkeypatch) -> None:
+    import sys
+
+    import pandas as pd  # type: ignore[import-not-found]
+
+    from data_sync_service.service import macro_daily as md  # type: ignore[import-not-found]
+
+    class _Ak:
+        def stock_hk_index_daily_sina(self, symbol: str) -> pd.DataFrame:
+            return pd.DataFrame(
+                {
+                    "date": pd.to_datetime(["2026-01-02", "2026-07-30", "2026-07-31"]).date,
+                    "open": [4000.0, 4600.0, 4818.0],
+                    "high": [4100.0, 4700.0, 4871.0],
+                    "low": [3900.0, 4500.0, 4763.0],
+                    "close": [4050.0, 4803.0, 4829.0],
+                    "volume": [100, 120, 130],
+                    "amount": [1e9, 1.2e9, 1.3e9],
+                }
+            )
+
+    monkeypatch.setitem(sys.modules, "akshare", _Ak())
+    df = md._fetch_hstech_bars_via_ak("20260701", "20260802")
+    assert df is not None
+    assert df["trade_date"].tolist() == ["2026-07-30", "2026-07-31"]
+
+
+def test_fetch_hstech_on_demand_prefers_sina(monkeypatch) -> None:
+    from data_sync_service.service import macro_snapshot_on_demand as mod
+
+    monkeypatch.setattr(
+        mod,
+        "_fetch_hstech_via_sina",
+        lambda: {
+            "close": 4829.22,
+            "pctChg": 0.53,
+            "asOfDate": "2026-07-31",
+            "ma5": 4800.0,
+            "ma20": 4700.0,
+        },
+    )
+    metrics, src = mod.fetch_hk_index_on_demand("HSTECH")
+    assert metrics["close"] == 4829.22
+    assert src == "akshare.on_demand"
+
+
+def test_fetch_hstech_on_demand_falls_back_to_yfinance(monkeypatch) -> None:
+    from data_sync_service.service import macro_snapshot_on_demand as mod
+
+    monkeypatch.setattr(mod, "_fetch_hstech_via_sina", lambda: None)
+    monkeypatch.setattr(
+        mod,
+        "_fetch_hstech_via_yfinance",
+        lambda: {
+            "close": 4800.0,
+            "pctChg": 0.1,
+            "asOfDate": "2026-07-31",
+            "ma5": 4790.0,
+            "ma20": 4700.0,
+        },
+    )
+    metrics, src = mod.fetch_hk_index_on_demand("HSTECH")
+    assert metrics["close"] == 4800.0
     assert src == "yfinance.on_demand"
 
 

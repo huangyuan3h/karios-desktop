@@ -10,6 +10,8 @@ import {
   formatAttentionFireLine,
   formatDecisionChangeLine,
   resolveAttentionCards,
+  translateAction,
+  translateWhy,
   type ExecAttentionLine,
 } from '@/lib/exec-attention';
 import {
@@ -20,7 +22,6 @@ import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { useWatchlistMarketQuery } from '@/lib/queries/watchlist';
 import {
   useExecutionChangesQuery,
-  useExecutionRecentSnapshotsQuery,
   useExecutionSnapshotsQuery,
 } from '@/lib/queries/execution-journal';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
@@ -46,8 +47,8 @@ function AttentionLines({
           ) : (
             <>
               <span className="font-semibold">{x.symbol}</span>
-              <span className="mx-1.5">{x.action}</span>
-              <span className="text-[var(--k-muted)]">{x.why ?? '—'}</span>
+              <span className="mx-1.5">{translateAction(x.action)}</span>
+              <span className="text-[var(--k-muted)]">{translateWhy(x.why)}</span>
             </>
           )}
         </li>
@@ -72,9 +73,6 @@ export function DecisionJournalCard(props: {
     onSnapshotNow,
     onNavigate,
   } = props;
-  const [showHistory, setShowHistory] = React.useState(false);
-  const [expandedId, setExpandedId] = React.useState<string | null>(null);
-
   const symbols = React.useMemo(
     () => watchlistItems.map((i) => i.symbol).filter(Boolean),
     [watchlistItems],
@@ -83,7 +81,6 @@ export function DecisionJournalCard(props: {
 
   const changesQ = useExecutionChangesQuery();
   const snapsQ = useExecutionSnapshotsQuery();
-  const recentQ = useExecutionRecentSnapshotsQuery(30);
 
   const changes = changesQ.data?.items ?? [];
   const todaySnaps = snapsQ.data?.items ?? [];
@@ -144,14 +141,14 @@ export function DecisionJournalCard(props: {
     <div className="space-y-3 text-sm">
       <div className="rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)]/40 px-3 py-2">
         <div className="mb-1 flex flex-wrap items-center gap-2">
-          <div className="text-xs font-medium text-[var(--k-muted)]">Exec Attention</div>
+          <div className="text-xs font-medium text-[var(--k-muted)]">执行提醒</div>
           <span className="text-[10px] text-[var(--k-muted)]">
             {cardsSource === 'live'
-              ? 'live'
+              ? '实时'
               : cardsSource === 'snapshot'
-                ? 'from snapshot'
+                ? '快照'
                 : marketQ.isLoading || marketQ.isFetching
-                  ? 'loading…'
+                  ? '加载中…'
                   : '—'}
           </span>
           {onNavigate ? (
@@ -161,37 +158,37 @@ export function DecisionJournalCard(props: {
               className="ml-auto h-6 px-2 text-[11px]"
               onClick={() => onNavigate('watchlist')}
             >
-              Open Watchlist
+              打开持仓
             </Button>
           ) : null}
         </div>
         <div className="text-xs">{attention.sleeveLabel}</div>
         {attention.missingSize > 0 ? (
           <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
-            {attention.missingSize} held missing size
+            {attention.missingSize} 持仓缺失
           </div>
         ) : null}
         <div className="mt-2">
-          <div className="mb-0.5 text-[11px] font-medium text-[var(--k-muted)]">Must act</div>
+          <div className="mb-0.5 text-[11px] font-medium text-[var(--k-muted)]">必须执行</div>
           {cardsSource === 'none' && (marketQ.isLoading || marketQ.isFetching) ? (
-            <div className="text-[11px] text-[var(--k-muted)]">Loading market…</div>
+            <div className="text-[11px] text-[var(--k-muted)]">加载行情中…</div>
           ) : (
-            <AttentionLines lines={mustAct} empty="None" />
+            <AttentionLines lines={mustAct} empty="无" />
           )}
         </div>
         <div className="mt-2">
-          <div className="mb-0.5 text-[11px] font-medium text-[var(--k-muted)]">Fire</div>
+          <div className="mb-0.5 text-[11px] font-medium text-[var(--k-muted)]">触发信号</div>
           {cardsSource === 'none' && (marketQ.isLoading || marketQ.isFetching) ? (
-            <div className="text-[11px] text-[var(--k-muted)]">Loading market…</div>
+            <div className="text-[11px] text-[var(--k-muted)]">加载行情中…</div>
           ) : attention.fireBlockedByGate ? (
-            <div className="text-[11px] text-[var(--k-muted)]">Gate blocks new entries</div>
+            <div className="text-[11px] text-[var(--k-muted)]">Gate 禁止开新仓</div>
           ) : (
-            <AttentionLines lines={attention.fires} empty="None" fireStyle />
+            <AttentionLines lines={attention.fires} empty="无" fireStyle />
           )}
         </div>
         {attention.keyChanges.length > 0 ? (
           <div className="mt-2">
-            <div className="mb-0.5 text-[11px] font-medium text-[var(--k-muted)]">Key changes</div>
+            <div className="mb-0.5 text-[11px] font-medium text-[var(--k-muted)]">关键变更</div>
             <ul className="space-y-0.5 font-mono text-[11px] leading-snug text-amber-800 dark:text-amber-200">
               {attention.keyChanges.map((c) => (
                 <li key={c.id}>{c.line}</li>
@@ -201,12 +198,12 @@ export function DecisionJournalCard(props: {
         ) : null}
         {cardsSource === 'snapshot' ? (
           <div className="mt-2 text-[11px] text-[var(--k-muted)]">
-            Actions from last journal snapshot (live market unavailable).
+            来自上次快照的操作（实时行情不可用）。
           </div>
         ) : null}
         {cardsSource === 'none' && !marketQ.isLoading && !marketQ.isFetching ? (
           <div className="mt-2 text-[11px] text-[var(--k-muted)]">
-            No live market or snapshot yet — open Watchlist / Snapshot now.
+            暂无实时行情或快照 — 请打开持仓 / 快照。
           </div>
         ) : null}
       </div>
@@ -216,10 +213,10 @@ export function DecisionJournalCard(props: {
           <span
             className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${executionGateBadgeClass(gate.mode)}`}
           >
-            Live Gate: {gate.mode}
+            实时 Gate: {gate.mode}
           </span>
         ) : (
-          <span className="text-xs text-[var(--k-muted)]">Gate unavailable</span>
+          <span className="text-xs text-[var(--k-muted)]">Gate 不可用</span>
         )}
         {modeChanged ? (
           <span className="text-xs font-medium text-amber-700">
@@ -234,36 +231,29 @@ export function DecisionJournalCard(props: {
             disabled={captureBusy || !gate}
             onClick={() => onSnapshotNow?.()}
           >
-            {captureBusy ? 'Saving…' : 'Snapshot now'}
+            {captureBusy ? '保存中…' : '立即快照'}
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2 text-xs"
-            onClick={() => setShowHistory((v) => !v)}
-          >
-            {showHistory ? 'Hide history' : 'Recent 5d'}
-          </Button>
+          {/* 2026-08-01 · Recent 5d toggle removed (only signal changes matter) */}
         </div>
       </div>
 
       {latest ? (
         <div className="text-xs text-[var(--k-muted)]">
-          Latest snapshot: {fmtDateTime(latest.capturedAt ?? null)} · source={latest.source} ·{' '}
+          最新快照: {fmtDateTime(latest.capturedAt ?? null)} · source={latest.source} ·{' '}
           {snapshotCards.length} cards
         </div>
       ) : (
         <div className="text-xs text-[var(--k-muted)]">
-          No snapshot yet today. Sync All or Snapshot now to start the journal.
+          今日暂无快照。请先「同步全部」或「立即快照」以开始记录。
         </div>
       )}
 
       <div>
-        <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">Today&apos;s changes</div>
+        <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">今日变更</div>
         {changesQ.isLoading ? (
-          <div className="text-xs text-[var(--k-muted)]">Loading…</div>
+          <div className="text-xs text-[var(--k-muted)]">加载中…</div>
         ) : changes.length === 0 ? (
-          <div className="text-xs text-[var(--k-muted)]">No decision changes recorded today.</div>
+          <div className="text-xs text-[var(--k-muted)]">今日暂无决策变更记录。</div>
         ) : (
           <ul className="max-h-48 space-y-1 overflow-auto font-mono text-[11px] leading-snug">
             {changes.slice(0, 40).map((c) => (
@@ -285,29 +275,29 @@ export function DecisionJournalCard(props: {
       {latest ? (
         <div>
           <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">
-            Latest actions (delta)
+            最新操作（变更）
           </div>
           {latestActionCards.length === 0 ? (
             <div className="text-xs text-[var(--k-muted)]">
-              No Action / Trigger / Stop deltas today (silent WATCH omitted).
+              今日暂无操作 / 触发 / 止损变更（静默 WATCH 已省略）。
             </div>
           ) : (
             <div className="max-h-40 overflow-auto rounded border border-[var(--k-border)]">
               <table className="w-full text-left text-[11px]">
                 <thead className="sticky top-0 bg-[var(--k-surface-2)] text-[var(--k-muted)]">
                   <tr>
-                    <th className="px-2 py-1">Symbol</th>
-                    <th className="px-2 py-1">Action</th>
-                    <th className="px-2 py-1">Why</th>
-                    <th className="px-2 py-1">Pos%</th>
+                    <th className="px-2 py-1">代码</th>
+                    <th className="px-2 py-1">操作</th>
+                    <th className="px-2 py-1">原因</th>
+                    <th className="px-2 py-1">仓位%</th>
                   </tr>
                 </thead>
                 <tbody>
                   {latestActionCards.map((c) => (
                     <tr key={c.symbol} className="border-t border-[var(--k-border)] font-mono">
                       <td className="px-2 py-1">{c.symbol}</td>
-                      <td className="px-2 py-1 font-semibold">{c.action}</td>
-                      <td className="px-2 py-1 text-[var(--k-muted)]">{c.why ?? '—'}</td>
+                      <td className="px-2 py-1 font-semibold">{translateAction(c.action)}</td>
+                      <td className="px-2 py-1 text-[var(--k-muted)]">{translateWhy(c.why)}</td>
                       <td className="px-2 py-1">
                         {typeof c.positionPct === 'number' ? c.positionPct.toFixed(1) : '—'}
                       </td>
@@ -320,45 +310,7 @@ export function DecisionJournalCard(props: {
         </div>
       ) : null}
 
-      {showHistory ? (
-        <div>
-          <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">Recent snapshots</div>
-          <ul className="max-h-40 space-y-1 overflow-auto text-[11px]">
-            {(recentQ.data?.items ?? []).slice(0, 15).map((s) => {
-              const n = Array.isArray(s.cards) ? s.cards.length : 0;
-              const mode =
-                s.gate && typeof s.gate === 'object' && 'mode' in s.gate
-                  ? String((s.gate as { mode?: string }).mode ?? '—')
-                  : '—';
-              const open = expandedId === s.id;
-              return (
-                <li key={s.id} className="rounded border border-[var(--k-border)] px-2 py-1">
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between gap-2 text-left font-mono"
-                    onClick={() => setExpandedId(open ? null : s.id)}
-                  >
-                    <span>
-                      {s.tradeDate} {fmtDateTime(s.capturedAt ?? null)} · {s.source} · {mode} ·{' '}
-                      {n} cards
-                    </span>
-                    <span className="text-[var(--k-muted)]">{open ? '▾' : '▸'}</span>
-                  </button>
-                  {open && Array.isArray(s.cards) ? (
-                    <div className="mt-1 max-h-28 overflow-auto text-[10px] text-[var(--k-muted)]">
-                      {s.cards.map((c) => (
-                        <div key={`${s.id}-${c.symbol}`}>
-                          {c.symbol} {c.action} {c.why}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
+      {/* 2026-08-01 · Recent snapshots block removed (only signal changes matter) */}
     </div>
   );
 }

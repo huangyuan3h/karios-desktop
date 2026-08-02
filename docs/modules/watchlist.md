@@ -57,10 +57,31 @@ Score 是一个 0-100 的确定性评分，用于衡量股票的短期设置质�
 
 #### Anti-Spike 剥离惩罚
 
-- 日内涨幅 > 6%：−20 分
+- 日内涨幅 > 6%：−20 分（TIP-007 放宽 Exec 闸时 **仍保留** 此项 Score 惩罚）
 - ATR/Close > 5%：按 `(ratio − 0.05) × 1000`  steep 扣分
 - 当日量 / AvgVol30 > 3：−15 分
 - 收盘 < EMA20：−30 分（一票否决右侧资格）
+
+#### TIP-007 主线动量日内放宽
+
+默认：日内 `>` 6% → Exec `INTRADAY_SURGE_BLOCK`，后端 `buyAction=avoid`。
+
+**例外**（须同时）：Gate=`ATTACK`、东财行业已过主线、`buyMode=B_momentum`、`TrendOK=true`、**扣日内 spike 前** Score≥85（展示分仍含 Anti-Spike −20）、日内 ≤9%。则：
+
+- FE Why=`MOMENTUM_SURGE_ALLOW`（可 BUY/ADD）
+- BE 不强制 `avoid`，`buyChecks.momentum_surge_allow=true`
+- `>` 9% 仍拦截；弱市跳空闸 / 仓位硬闸不变
+
+#### V6.2 尾盘时间锁 / 防守双轨 / 归零清场
+
+- **TimeLock**：`DEFEND` 或 `Weak` 时，BUY/ADD 仅上海 **14:30–14:50**；Why=`TIME_LOCK_WEAK_REGIME` / `MARKET_CLOSING_LOCK`。`ATTACK`+`Strong` 豁免。
+- **Defensive Sleeve**：`DEFEND` 下白名单（石油石化/公用事业/煤炭/银行/有色金属）+ 5D Top3 + Score≥70 + TrendOK → Why=`DEFENSIVE_SLEEVE_ALLOW`（袖子≤10%、单票≤5%）。HardStop=`max(EMA10, px×0.965)`。Beta 硬条件 follow-up。
+- **Zero-Pos**：`Pos%` 置 0/空时清 `costPrice` / `maxPrice` / `entryDate`，避免残留 `ENTRY_DATE_MISSING`。
+
+#### V6.3 极端资金流豁免 / TrendOK recovering
+
+- **WEAK_ATTACK**：单板块 1D 净流入 >500 亿 + upCount >4000 + ≥14:30 → Gate 从 DEFEND/HOLD_ONLY 升级；`allowNewEntries=true`，Suggest%≤5%。
+- **recovering**：Alpha Max Grade=S + 今日量 ≥2.5×10 日均量 + 大阳线 → `trendStatus=recovering`、`trendOk=true`、Score floor 60；Action 离开 `WATCH_SILENT` → `WATCH`（Why=`TREND_RECOVERING`），非自动 BUY。
 
 #### 行业加分
 
@@ -312,9 +333,33 @@ B_momentum 模式：
 
 每个 A 股交易日 **17:30（Asia/Shanghai）** 自动运行（也可在 Watchlist 页点击 **Run automation** 手动触发）：
 
-1. **移除**：连续 3 日 Score &lt; 30 且行业不在 5D 净流入 Top5 的股票（`alpha_radar` 来源豁免）
-2. **Screener 导入**：与「Import from screener」相同逻辑（回撤过滤 + TrendOK）
-3. **Alpha Radar**：catalystScore &gt; 85 且评级 S 的股票 append 到列表底部
+1. **移除**：连续 3 日 Score &lt; 30 且行业不在 5D 净流入 Top5 的空仓股票；**仅**催化窗口内仍含 Max Grade=`S` 的 `alpha_radar` 票豁免（与 WATCH_SILENT 对齐）。非 S 的 alpha 票与 screener/manual 相同可被 GC。
+2. **Screener 导入**：与「Import from screener」相同（回撤 + TrendOK；空窗时 TIP-003 降级）
+3. **Alpha Radar**：catalystScore &gt; 85 且评级 S，再过轻量进池闸（非防守板块；缺东财行业拒绝；若行业为申万一级则须 ∈ 5D Top10，细粒度东财名跳过 Top10）后 append；`meta.alphaRejected` 记拒绝原因。Max Grade=`S` 豁免三日 GC 使用完整催化窗口（非 score Top200）。
+
+**漏斗指标（TIP-002 / TIP-003）**：Import / Automation apply 后记录 `funnel`：`tvHit → passPullback → passTrendOk → +addedNew`；空窗时追加 `| fb Hit→OK→+N`（`fallbackUsed`）。降级票 `source=screener_fallback`，只过 TrendOK、不过 52W 回撤；可被三日 Score GC。
+
+**Automation 摘要 / meta 复盘字段（TIP-008）**：Scheduler 与 Watchlist 工具栏共用 `formatAutomationSummary`：
+
+```text
+Last automation: {time} ({trigger}) | −N screener +X alpha +Y | funnel … | fb … | alphaReject k:v,… | sync ind✓ tv✓ | top5 电子,计算机,…
+```
+
+| meta 字段 | 摘要展示 | 说明 |
+|-----------|----------|------|
+| `funnel` | `funnel TV…` / `fb…` | ack 后写入；含 `fallbackUsed` |
+| `alphaRejected` | `alphaReject reason:count` | 进池闸拒绝分布 |
+| `industrySync` / `screenerSync` | `sync ind✓/✗ tv✓/✗` | `ok:false` / `error` / screener `failed>0` → ✗ |
+| `top5dIndustries` | `top5 a,b,…`（最多 5 名） | 三日 GC 用的 5D Top5 |
+
+### 空窗降级（TIP-003）
+
+触发：`tvHit == 0` 或 `passPullback == 0`（含「TV 有票但全被回撤杀掉」）。
+
+1. 取 5D 净流入 Top5 申万一级行业，剔除防守（银行 / 公用事业 / 煤炭等）
+2. 东财 `industry_name LIKE %行业%` 拉成分，合计最多 80 只
+3. TrendOK ✅ 且不在列表中 → append，`source=screener_fallback`
+4. 主路径已有 `passPullback > 0` 时**不**触发降级
 
 前端在 17:30–20:00 轮询后端 pending run 并落地到 localStorage。
 

@@ -127,7 +127,7 @@ export function fmtPrice(v: number | null | undefined): string {
 
 export function fmtScore(v: number | null | undefined): string {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
-  return String(Math.round(v));
+  return v.toFixed(2);
 }
 
 export function fmtNum(v: unknown, digits = 2): string {

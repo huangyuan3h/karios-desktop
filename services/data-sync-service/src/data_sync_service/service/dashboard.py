@@ -25,6 +25,7 @@ from data_sync_service.db.news import ensure_tables as ensure_news_tables
 from data_sync_service.db.news import fetch_items
 from data_sync_service.db.tv import list_latest_snapshots_for_screeners
 from data_sync_service.service.etf_fund_flow import (
+    build_etf_flow_signal,
     build_etf_fund_flow_bundle,
     sync_etf_fund_flow_watchlist,
 )
@@ -34,6 +35,7 @@ from data_sync_service.service.industry_fund_flow import (
 )
 from data_sync_service.service.industry_fund_flow_read import (
     build_dashboard_industry_bundle,
+    max_net_inflow_for_date,
     top_by_date_from_rows,
 )
 from data_sync_service.service.macro_daily import sync_macro_daily_full
@@ -113,17 +115,30 @@ def _build_market_sentiment_bundle(
         index_signals = get_index_signals(as_of_date=index_as_of, include_breadth=False)
     index_signals = apply_breadth_panic_index_signals(index_signals, down_count)
     etf_fund_flow = build_etf_fund_flow_bundle(as_of_date=as_of_date)
+    etf_flow_signal = build_etf_flow_signal(as_of_date=as_of_date)
     srv_index = compute_srv_index(
         top_by_date=_industry_top_by_date(as_of_date=as_of_date, days=5),
         as_of_date=as_of_date,
     )
+    # V6.3 overflow inputs: max 1D SW L1 inflow + upCount
+    ensure_industry()
+    flow_dates = trade_dates_upto(as_of_date, 1, fallback_dates_fn=get_dates_upto)
+    flow_rows = get_rows_for_dates(flow_dates) if flow_dates else []
+    flow_as_of = flow_dates[-1] if flow_dates else as_of_date
+    max_inflow_cny, overflow_sector = max_net_inflow_for_date(flow_rows, flow_as_of)
     # Re-read latest after breadth-panic mutation
     latest_after = sentiment_items[-1] if sentiment_items else {}
+    up_count = int((latest_after or {}).get("upCount") or (latest or {}).get("upCount") or 0)
     execution_gate = compute_execution_gate(
         index_signals=index_signals,
         down_count=int((latest_after or {}).get("downCount") or down_count or 0),
         risk_mode=str((latest_after or {}).get("riskMode") or "") or None,
         srv_index=srv_index,
+        up_count=up_count,
+        max_sector_inflow_cny=max_inflow_cny,
+        overflow_sector=overflow_sector,
+        now=datetime.now(tz=ZoneInfo("Asia/Shanghai")),
+        etf_flow_signal=etf_flow_signal,
     )
     return {
         "asOfDate": as_of_date,
@@ -131,6 +146,7 @@ def _build_market_sentiment_bundle(
         "items": sentiment_items,
         "indexSignals": index_signals,
         "etfFundFlow": etf_fund_flow,
+        "etfFlowSignal": etf_flow_signal,
         "srvIndex": srv_index,
         "executionGate": execution_gate,
     }
@@ -187,10 +203,43 @@ def _index_signal_items(*, as_of_date: str | None) -> list[dict[str, Any]]:
 
 def _news_items(hours: int = 24, limit: int = 50) -> dict[str, Any]:
     """
-    Fetch recent news items for the dashboard.
+    Fetch recent news items for the dashboard, sorted by investment relevance.
+
+    Ordering rules (decision-useful first):
+      1. Enriched items with importance >= 1, sorted by relevance_score DESC
+         (relevance_score already folds in importance + watchlist boost).
+      2. Unenriched items (enrichment hasn't run yet) — fallback order by time.
+      3. Items with importance = 0 are noise — skipped entirely.
+
+    Returns score fields (`importance`, `relevanceScore`, `actionability`,
+    `tickers`) so the frontend can mark watchlist hits and decide which
+    to surface as actionable.
     """
     ensure_news_tables()
-    total, items = fetch_items(limit=limit, hours=hours)
+    total, items = fetch_items(limit=limit * 2, hours=hours)
+
+    enriched: list[dict[str, Any]] = []
+    unenriched: list[dict[str, Any]] = []
+    for item in items:
+        importance = item.get("importance")
+        if importance is None:
+            unenriched.append(item)
+        elif importance >= 1:
+            enriched.append(item)
+        # importance == 0 → noise, drop
+
+    # Enriched: relevance desc, then importance desc (relevance already
+    # includes importance × 15 so this is mostly a tie-breaker).
+    enriched.sort(
+        key=lambda i: (
+            -(int(i.get("relevanceScore") or 0)),
+            -(int(i.get("importance") or 0)),
+        )
+    )
+
+    # Unenriched: backend already returned them newest-first; preserve order.
+    combined = (enriched + unenriched)[:limit]
+
     return {
         "hours": hours,
         "total": total,
@@ -201,8 +250,13 @@ def _news_items(hours: int = 24, limit: int = 50) -> dict[str, Any]:
                 "title": item["title"],
                 "link": item["link"],
                 "publishedAt": item["publishedAt"],
+                "importance": item.get("importance"),
+                "relevanceScore": item.get("relevanceScore"),
+                "actionability": item.get("actionability"),
+                "tickers": item.get("tickers") or [],
+                "aiSummary": item.get("aiSummary"),
             }
-            for item in items
+            for item in combined
         ],
     }
 

@@ -1,45 +1,65 @@
-version: '3.8'
+name: karios
+
+# Karios Desktop — one-shot production stack.
+#
+# Bringup:
+#   cp .env.example .env   # fill TU_SHARE_API_KEY etc.
+#   scripts/docker-up.sh   # builds + starts + waits for /healthz
+#
+# Tear-down:
+#   scripts/docker-down.sh
+#
+# Status:
+#   scripts/docker-status.sh
+#
+# See docs/setup/docker-one-click.md for full instructions.
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: postgres-db
+    container_name: karios-postgres
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin123
-      POSTGRES_DB: karios-desktop
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin123}
+      POSTGRES_DB: ${POSTGRES_DB:-karios-desktop}
     ports:
-      - '5432:5432'
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./init-scripts:/docker-entrypoint-initdb.d
     networks:
-      - pg-network
+      - karios-net
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: pgadmin-web
+    container_name: karios-pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@localhost.com
-      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@localhost.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin123}
       PGADMIN_CONFIG_SERVER_MODE: 'False'
-      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False' # 这样可以避免强制弹窗询问主密码
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
     ports:
-      - '8080:80'
+      - '${PGADMIN_PORT:-8081}:80'
     volumes:
       - pgadmin-data:/var/lib/pgadmin
     networks:
-      - pg-network
+      - karios-net
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   rsshub:
     image: diygod/rsshub:latest
     container_name: karios-rsshub
     ports:
-      - '1200:1200'
+      - '${RSSHUB_PORT:-1200}:1200'
     environment:
       NODE_ENV: production
       CACHE_TYPE: memory
@@ -48,7 +68,95 @@ services:
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     networks:
-      - pg-network
+      - karios-net
+    restart: unless-stopped
+
+  # One-shot Alembic migration. Exits 0 on success; compose does not start app
+  # services until this completes. Run again on any new revision file.
+  migrate:
+    build:
+      context: ./services/data-sync-service
+      dockerfile: Dockerfile
+    container_name: karios-migrate
+    image: karios/data-sync-service:latest
+    command: ['alembic', 'upgrade', 'head']
+    env_file:
+      - path: ./.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/${POSTGRES_DB:-karios-desktop}
+    networks:
+      - karios-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  data-sync:
+    build:
+      context: ./services/data-sync-service
+      dockerfile: Dockerfile
+    container_name: karios-data-sync
+    image: karios/data-sync-service:latest
+    env_file:
+      - path: ./.env
+        required: false
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4330
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/${POSTGRES_DB:-karios-desktop}
+      AI_SERVICE_BASE_URL: http://ai-service:4310
+      ALPHA_RADAR_RSSHUB_BASE_URL: http://rsshub:1200
+      # Chrome CDP defaults to host.docker.internal:9222 so capture can use
+      # the macOS host's Chrome without bundling it in the image.
+      TV_CHROME_CDP_URL: ${TV_CHROME_CDP_URL:-http://host.docker.internal:9222}
+    ports:
+      - '${DATA_SYNC_PORT:-4330}:4330'
+    networks:
+      - karios-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: .
+      dockerfile: apps/ai-service/Dockerfile
+    container_name: karios-ai-service
+    image: karios/ai-service:latest
+    env_file:
+      - path: ./.env
+        required: false
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4310
+      NODE_ENV: production
+    ports:
+      - '${AI_SERVICE_PORT:-4310}:4310'
+    networks:
+      - karios-net
+    restart: unless-stopped
+
+  desktop-ui:
+    build:
+      context: .
+      dockerfile: apps/desktop-ui/Dockerfile
+      args:
+        # Browser-visible URLs (set at build time — Next inlines NEXT_PUBLIC_*).
+        NEXT_PUBLIC_DATA_SYNC_BASE_URL: ${NEXT_PUBLIC_DATA_SYNC_BASE_URL:-http://127.0.0.1:4330}
+        NEXT_PUBLIC_AI_BASE_URL: ${NEXT_PUBLIC_AI_BASE_URL:-http://127.0.0.1:4310}
+    container_name: karios-desktop-ui
+    image: karios/desktop-ui:latest
+    ports:
+      - '${DESKTOP_UI_PORT:-8080}:8080'
+    networks:
+      - karios-net
+    depends_on:
+      data-sync:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
@@ -56,5 +164,5 @@ volumes:
   pgadmin-data:
 
 networks:
-  pg-network:
+  karios-net:
     driver: bridge

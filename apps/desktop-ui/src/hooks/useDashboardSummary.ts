@@ -23,6 +23,8 @@ import {
   dashboardSentimentQueryKey,
   useDashboardSentimentQuery,
 } from '@/lib/queries/sentiment';
+import { stripModelThinking } from '@/lib/strip-model-thinking';
+import { filterNewsByKeyword } from '@/lib/news-keyword-whitelist';
 
 const NEWS_BRIEF_CACHE_KEY = 'karios.dashboard.newsBrief.v1';
 const NEWS_BRIEF_MIN_REFRESH_MS = 4 * 60 * 60 * 1000;
@@ -35,15 +37,50 @@ type NewsBriefCache = {
 };
 
 function buildNewsFallback(items: any[]): string | null {
-  const rows = (Array.isArray(items) ? items : [])
-    .slice(0, 8)
+  // 2026-08-02 · track-2-aware fallback: prefer enriched, decision-useful items.
+  //
+  // Tier 1: items enriched by the LLM (have importance / relevanceScore /
+  //         actionability). Sort by relevance_score desc, then importance desc.
+  // Tier 2: items not yet enriched (enrichment job hasn't run). Fall back
+  //         to the keyword whitelist (2026-08-01 wife feedback).
+  //
+  // Watchlist hits get a `★` prefix so the user sees what's relevant to
+  // their holdings at a glance.
+  const arr = Array.isArray(items) ? items : [];
+  const enriched = arr.filter(
+    (it) => it?.importance != null && it.importance >= 1,
+  );
+  const unenriched = arr.filter((it) => it?.importance == null);
+
+  const sortByPriority = (a: any, b: any) => {
+    const rDiff = (b?.relevanceScore || 0) - (a?.relevanceScore || 0);
+    if (rDiff !== 0) return rDiff;
+    const iDiff = (b?.importance || 0) - (a?.importance || 0);
+    if (iDiff !== 0) return iDiff;
+    return 0;
+  };
+  enriched.sort(sortByPriority);
+
+  // Only run the keyword whitelist on unenriched items — enriched items
+  // already passed the LLM importance gate.
+  const filteredUnenriched = filterNewsByKeyword(unenriched);
+
+  // Combine: enriched first (relevance-ranked), then whitelist-filtered
+  // unenriched items. Take top 8 total.
+  const combined = [...enriched, ...filteredUnenriched].slice(0, 8);
+
+  const rows = combined
     .map((it: any, idx: number) => {
       const title = String(it?.title ?? '').trim();
       if (!title) return null;
+      const tickers: string[] = Array.isArray(it?.tickers) ? it.tickers : [];
+      const isWatchlistHit = tickers.length > 0;
+      const actionable = it?.actionability === 'actionable';
+      const prefix = isWatchlistHit ? '★ ' : actionable ? '⚡ ' : '';
       const source = String(it?.sourceId ?? '').trim();
       const publishedAt = String(it?.publishedAt ?? '').trim();
       const meta = [source, publishedAt].filter(Boolean).join(' | ');
-      return `${idx + 1}. ${title}${meta ? ` (${meta})` : ''}`;
+      return `${idx + 1}. ${prefix}${title}${meta ? ` (${meta})` : ''}`;
     })
     .filter(Boolean) as string[];
   if (!rows.length) return null;
@@ -141,7 +178,8 @@ export function useDashboardSummary() {
       const raw = window.localStorage.getItem(NEWS_BRIEF_CACHE_KEY);
       if (!raw) return;
       const obj = JSON.parse(raw) as NewsBriefCache;
-      const cachedSummary = typeof obj?.summary === 'string' ? obj.summary.trim() : '';
+      const cachedSummary =
+        typeof obj?.summary === 'string' ? stripModelThinking(obj.summary) : '';
       const updatedAt = typeof obj?.updatedAt === 'string' ? obj.updatedAt.trim() : '';
       const fallback = typeof obj?.fallback === 'string' ? obj.fallback.trim() : '';
       if (cachedSummary) setNewsSummary(cachedSummary);
@@ -197,7 +235,8 @@ export function useDashboardSummary() {
         });
         if (aiRes.ok) {
           const aiData = await aiRes.json();
-          const summaryText = typeof aiData?.summary === 'string' ? aiData.summary.trim() : '';
+          const summaryText =
+            typeof aiData?.summary === 'string' ? stripModelThinking(aiData.summary) : '';
           if (summaryText) {
             const updatedAt = new Date().toISOString();
             setNewsSummary(summaryText);

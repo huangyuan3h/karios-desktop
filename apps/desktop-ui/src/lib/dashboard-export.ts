@@ -86,6 +86,10 @@ import { loadWatchlist, ensureWatchlistHydrated, type WatchlistItem } from '@/li
 
 type DashboardSummary = any;
 
+/** Copy-all screener filtering (2026-08-01 · wife feedback). */
+export const SCREENER_COPY_TOP_N = 10;
+export const SCREENER_COPY_MIN_SCORE = 60;
+
 type QuoteResp = {
   ok: boolean;
   error?: string;
@@ -224,6 +228,86 @@ export function buildIndustryMarkdown(s: DashboardSummary | null, heading = '##'
   return lines.join('\n').trim() + '\n';
 }
 
+export function buildMarketAndMacroMarkdown(
+  s: DashboardSummary | null,
+  heading = '##',
+): string {
+  const summary2: any = s ?? {};
+  const ms: any = summary2?.marketSentiment ?? {};
+  const indexSignals: any[] = Array.isArray(ms?.indexSignals) ? ms.indexSignals : [];
+  const macroSnapshot: any = summary2?.macroSnapshot ?? {};
+  const macroItems: any[] = Array.isArray(macroSnapshot?.macro) ? macroSnapshot.macro : [];
+
+  if (!indexSignals.length && !macroItems.length) return '';
+
+  const lines: string[] = [];
+  lines.push(`${heading} Market & Macro overview`);
+  lines.push('');
+  lines.push(
+    '- note: 指数红绿灯 + 宏观商品/汇率 + 300ETF Put IV 一张表；避免散落重复',
+  );
+
+  const headers = ['Name', 'Kind', 'Signal', 'Pos', 'Chg%', 'Close', 'MA5', 'MA20', 'AsOfDate', 'Source'];
+  const rows: unknown[][] = [];
+
+  for (const it of indexSignals) {
+    const pc = it?.pctChg;
+    const chg =
+      typeof pc === 'number' && Number.isFinite(pc)
+        ? `${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%`
+        : '—';
+    const name = String(it?.name ?? it?.tsCode ?? '');
+    rows.push([
+      it?.featured === true ? `★ ${name}` : name,
+      'Index',
+      String(it?.signal ?? ''),
+      String(it?.positionRange ?? '—'),
+      chg,
+      Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
+      Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
+      Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
+      String(it?.asOfDate ?? ''),
+      String(it?.source ?? '—'),
+    ]);
+  }
+
+  for (const it of macroItems) {
+    const pct = it?.pctChg;
+    const chg =
+      typeof pct === 'number' && Number.isFinite(pct)
+        ? `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`
+        : '—';
+    const isVol = it?.category === 'volatility';
+    const closeStr = Number.isFinite(it?.close)
+      ? isVol
+        ? `${Number(it.close).toFixed(1)}%`
+        : Number(it.close).toFixed(2)
+      : '—';
+    const signalStr = it?.signalLabel
+      ? it.signalLabel
+      : it?.signal
+        ? String(it.signal)
+        : '—';
+    const kind = isVol ? 'Vol (IV)' : 'Macro';
+    rows.push([
+      String(it?.name ?? it?.seriesId ?? ''),
+      kind,
+      signalStr,
+      '—',
+      chg,
+      closeStr,
+      Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
+      Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
+      String(it?.asOfDate ?? ''),
+      String(it?.source ?? ''),
+    ]);
+  }
+
+  lines.push(mdTable(headers, rows));
+  lines.push('');
+  return lines.join('\n').trim() + '\n';
+}
+
 export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##'): string {
   const summary2: any = s ?? {};
   const ms: any = summary2?.marketSentiment ?? {};
@@ -274,28 +358,8 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
   lines.push('');
 
   if (indexSignals.length) {
-    const headers0 = ['Index', 'Signal', 'Position', 'chg%', 'Close', 'MA5', 'MA20', 'AsOfDate'];
-    const rows0: unknown[][] = indexSignals.map((it: any) => {
-      const pc = it?.pctChg;
-      const chg =
-        typeof pc === 'number' && Number.isFinite(pc)
-          ? `${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%`
-          : '—';
-      return [
-        String(it?.name ?? it?.tsCode ?? ''),
-        String(it?.signal ?? ''),
-        String(it?.positionRange ?? ''),
-        chg,
-        Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
-        Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
-        Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
-        String(it?.asOfDate ?? ''),
-      ];
-    });
-    lines.push(`${heading}# Index traffic lights`);
-    lines.push('');
-    lines.push(mdTable(headers0, rows0));
-    lines.push('');
+    // 2026-08-01: Index traffic lights moved into the unified Market & Macro
+    // overview table (see buildMarketAndMacroMarkdown). Skip duplicate here.
   }
 
   const last5 = (items || []).slice(-5);
@@ -317,8 +381,17 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
   lines.push('');
 
   const etfFlow: any = ms?.etfFundFlow ?? {};
+  const etfFlowSignal: any = ms?.etfFlowSignal ?? null;
   const etfItems: any[] = Array.isArray(etfFlow?.items) ? etfFlow.items : [];
   if (etfItems.length) {
+    if (etfFlowSignal && typeof etfFlowSignal === 'object') {
+      const verdict = String(etfFlowSignal?.verdict ?? 'neutral');
+      const broad = String(etfFlowSignal?.broadDirection ?? 'neutral');
+      const sector = String(etfFlowSignal?.sectorDirection ?? 'neutral');
+      lines.push(
+        `- ETF flow confirmation: ${verdict} (broad=${broad}, sector=${sector}${etfFlowSignal?.incomplete ? ', incomplete' : ''})`,
+      );
+    }
     if (etfFlow?.shareLag) {
       lines.push(
         `- ETF realtime flow incomplete; missing rows are excluded from intraday signals (intradaySafe: ${String(etfFlow?.intradaySafe ?? false)})`,
@@ -367,21 +440,9 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
 
   const macroSnapshot: any = summary2?.macroSnapshot ?? {};
   const macroItems: any[] = Array.isArray(macroSnapshot?.macro) ? macroSnapshot.macro : [];
-  const putIv = macroItems.find((it: any) => it?.category === 'volatility');
-  if (putIv) {
-    const ivClose =
-      typeof putIv?.close === 'number' && Number.isFinite(putIv.close)
-        ? `${putIv.close.toFixed(1)}%`
-        : '—';
-    const ivSignal = String(putIv?.signalLabel ?? putIv?.signal ?? '—');
-    lines.push(`${heading} 300ETF Put IV (panic gauge)`);
-    lines.push('');
-    lines.push(`- close: ${ivClose}`);
-    lines.push(`- signal: ${ivSignal}`);
-    lines.push(`- asOfDate: ${String(putIv?.asOfDate ?? '')}`);
-    lines.push(`- source: ${String(putIv?.source ?? '')}`);
-    lines.push('');
-  }
+  void macroItems;
+  // 2026-08-01: 300ETF Put IV moved into the unified Market & Macro overview table
+  // (see buildMarketAndMacroMarkdown). Skip duplicate here.
 
   return lines.join('\n').trim() + '\n';
 }
@@ -436,21 +497,34 @@ export async function buildScreenersMarkdown(
   s: DashboardSummary | null,
   heading = '##',
   queryClient?: QueryClient,
+  options?: { mode?: 'full' | 'compact' },
 ): Promise<string> {
   const summary2: any = s ?? {};
   const rows: any[] = Array.isArray(summary2?.screeners) ? summary2.screeners : [];
+  const compact = options?.mode === 'compact';
   const lines: string[] = [];
   lines.push(`${heading} Screener sync`);
   lines.push('');
-  const headers = ['Name', 'capturedAt', 'rows', 'filters'];
+  lines.push(
+    `- note: per screener Top ${SCREENER_COPY_TOP_N} by Score (>= ${SCREENER_COPY_MIN_SCORE}); lower scores trimmed`,
+  );
+  const headers = ['Name', 'capturedAt', 'rows', 'filters', 'kept'];
   const rows2: unknown[][] = rows.map((r: any) => [
     String(r?.name ?? r?.id ?? ''),
     String(r?.capturedAt ?? ''),
     String(r?.rowCount ?? 0),
     String(r?.filtersCount ?? 0),
+    `${String(r?.rowCount ?? 0)} raw`,
   ]);
   lines.push(mdTable(headers, rows2));
   lines.push('');
+
+  if (compact) {
+    // Compact: skip per-screener row tables (only keep header summary).
+    lines.push('- note: compact mode — per-screener row tables omitted (open Screener page for details)');
+    lines.push('');
+    return lines.join('\n').trim() + '\n';
+  }
 
   const screenerIds = rows
     .map((sc: any) => String(sc?.id ?? '').trim())
@@ -525,7 +599,8 @@ export async function buildScreenersMarkdown(
       ? snap.headers.map((h) => String(h ?? ''))
       : [];
     const rowsTv: Array<Record<string, string>> = Array.isArray(snap?.rows) ? snap.rows : [];
-    const limit = 50;
+    const rawRowCount = rowsTv.length;
+    const limit = 200;
     const truncated = rowsTv.length > limit;
     const rowsSlice = rowsTv.slice(0, limit);
 
@@ -540,7 +615,7 @@ export async function buildScreenersMarkdown(
           .join(' • ')}${snap.filters.length > 8 ? '…' : ''}`,
       );
     }
-    if (truncated) lines.push(`- note: showing first ${limit} rows (truncated)`);
+    if (truncated) lines.push(`- note: scanning first ${limit} raw rows (truncated)`);
     lines.push(
       '- scoreSource: TrendOK (same as Watchlist); Score>90 = candidate for forced research',
     );
@@ -550,18 +625,35 @@ export async function buildScreenersMarkdown(
       const trendMap = await fetchTrendOkMap(symbols, {
         realtime: isShanghaiTradingTime(),
       });
-      const enrichedRows = buildScreenerMarkdownRows(rowsSlice, headersTv, trendMap);
-      const missingScore = countMissingScores(enrichedRows);
+      const enrichedAll = buildScreenerMarkdownRows(rowsSlice, headersTv, trendMap);
+      const eligible = enrichedAll.filter(
+        (r) => typeof r.score === 'number' && Number.isFinite(r.score) && r.score >= SCREENER_COPY_MIN_SCORE,
+      );
+      const topN = eligible.slice(0, SCREENER_COPY_TOP_N);
+      const trimmed = enrichedAll.length - topN.length;
+      if (trimmed > 0) {
+        lines.push(
+          `- kept: ${topN.length} of ${enrichedAll.length} (Score>=${SCREENER_COPY_MIN_SCORE} & Top ${SCREENER_COPY_TOP_N})`,
+        );
+      } else {
+        lines.push(`- kept: ${topN.length} of ${enrichedAll.length}`);
+      }
+      const missingScore = countMissingScores(enrichedAll);
       if (missingScore > 0) lines.push(`- missingScore: ${missingScore}`);
       lines.push('');
-      lines.push(
-        mdTable([...SCREENER_MARKDOWN_HEADERS], screenerMarkdownRowsToTable(enrichedRows)),
-      );
+      if (topN.length) {
+        lines.push(
+          mdTable([...SCREENER_MARKDOWN_HEADERS], screenerMarkdownRowsToTable(topN)),
+        );
+      } else {
+        lines.push(`_No rows match Score>=${SCREENER_COPY_MIN_SCORE}._`);
+      }
     } else {
       lines.push('');
       lines.push('_No rows._');
     }
     lines.push('');
+    void rawRowCount;
   }
 
   return lines.join('\n').trim() + '\n';
@@ -792,6 +884,8 @@ export type DashboardCopyAllOptions = {
   newsSummaryUpdatedAt?: string | null;
   newsFallback?: string | null;
   queryClient?: QueryClient;
+  /** Copy mode (2026-08-01): 'compact' trims ~80% of secondary sections for fast scan. */
+  mode?: 'full' | 'compact';
 };
 
 type ExecutionCopyBundle = {
@@ -916,7 +1010,8 @@ export async function buildDashboardCopyAllMarkdown(
 ): Promise<string> {
   await ensureWatchlistHydrated();
   let { summary: s } = options;
-  const { newsSummary, newsSummaryUpdatedAt, newsFallback, queryClient } = options;
+  const { newsSummary, newsSummaryUpdatedAt, newsFallback, queryClient, mode = 'full' } = options;
+  const compact = mode === 'compact';
   if (!s) {
     throw new Error('No data available. Please refresh first.');
   }
@@ -947,14 +1042,14 @@ export async function buildDashboardCopyAllMarkdown(
   const tradingTime = isShanghaiTradingTime();
   const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd, execBundle, sinceLastMd] =
     await Promise.all([
-      buildScreenersMarkdown(s, '##', queryClient),
+      buildScreenersMarkdown(s, '##', queryClient, { mode }),
       buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow, sectorOutflowBlock),
       buildCompactCatalystMarkdown(s),
       fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
         .then(({ items, scope }) =>
           buildAlphaRadarTrendsMarkdown(items, {
             headingLevel: '##',
-            mode: 'compact',
+            mode: compact ? 'compact' : 'compact',
             scopeNote:
               scope === 'recent'
                 ? `recent ${DEFAULT_CATALYST_MAX_AGE_DAYS}d (latest batch empty)`
@@ -1028,18 +1123,35 @@ export async function buildDashboardCopyAllMarkdown(
     lines.push('- note: unavailable (capture snapshots via Dashboard Sync All or Snapshot now)');
     lines.push('');
   }
-  lines.push(buildIndustryMarkdown(s, '##').trim());
-  lines.push('');
-  lines.push(buildHotIndustriesMarkdown(s, '##').trim());
-  lines.push('');
+  if (!compact) {
+    lines.push(buildIndustryMarkdown(s, '##').trim());
+    lines.push('');
+    lines.push(buildHotIndustriesMarkdown(s, '##').trim());
+    lines.push('');
+  } else {
+    // Compact mode: keep only the headline industry fund flow summary (no Top5×Date grid).
+    lines.push(
+      buildIndustryMarkdown(s, '##')
+        .split('\n')
+        .slice(0, 6)
+        .concat(['- note: compact mode — full industry tables omitted', ''])
+        .join('\n'),
+    );
+    lines.push('');
+    lines.push('- note: compact mode — Hot industries workflow omitted');
+    lines.push('');
+  }
   lines.push(buildSentimentMarkdown(s, '##').trim());
   lines.push('');
-  lines.push(buildMacroMarkdown(s, '##').trim());
+  lines.push(buildMarketAndMacroMarkdown(s, '##').trim());
   lines.push('');
   lines.push('## News brief');
   lines.push('');
   lines.push(`- hours: ${String((s as any)?.news?.hours ?? 24)}`);
   lines.push(`- total: ${String((s as any)?.news?.total ?? 0)}`);
+  lines.push(
+    '- note: 关键词白名单过滤（AI/算力/半导体/美联储/降准降息/原油/关税/…）；其他娱乐/边缘政治新闻剔除',
+  );
   if (newsSummaryUpdatedAt) lines.push(`- summaryUpdatedAt: ${newsSummaryUpdatedAt}`);
   lines.push('');
   if (newsSummary?.trim()) lines.push(newsSummary.trim());

@@ -6,6 +6,7 @@ import {
   BUY_SCORE_MIN,
   buildSectorExposureByIndustry,
   buildSleeveExposurePct,
+  checkExecutionTimeLock,
   countHeldMissingPositionPct,
   deriveActionCard,
   deriveTriggerAndTrail,
@@ -19,6 +20,7 @@ import {
   isSectorConcentrationBlocked,
   isSleeveCapBlocked,
   parsePositionRangeHintMaxPct,
+  resolveDefensiveHardStop,
   suggestFireSizePct,
 } from './execution-action';
 import type { MainlineAllowSet } from './hot-industry-picks';
@@ -57,6 +59,16 @@ const defendGate: ExecutionGate = {
   satelliteNote: '防守优先',
 };
 
+/** Fixed Shanghai wall-clock for TimeLock-sensitive tests (ISO with +08:00). */
+function shanghaiAt(hour: number, minute: number): Date {
+  const hh = String(hour).padStart(2, '0');
+  const mm = String(minute).padStart(2, '0');
+  return new Date(`2026-07-22T${hh}:${mm}:00+08:00`);
+}
+
+/** Inside V6.2 unlock window under Weak/DEFEND. */
+const unlockedNow = shanghaiAt(14, 31);
+
 function allowSet(names: Array<[string, 'MOMENTUM' | '5D_TOP3']>): MainlineAllowSet {
   const byName = new Map(names);
   return { ready: true, names: new Set(names.map(([n]) => n)), byName };
@@ -94,6 +106,8 @@ describe('deriveTriggerAndTrail', () => {
 describe('evaluateNewEntryGates', () => {
   it('blocks defense sectors', () => {
     expect(isDefenseSector('银行')).toBe(true);
+    expect(isDefenseSector('电力设备')).toBe(false);
+    expect(isDefenseSector('电力')).toBe(true);
     expect(evaluateNewEntryGates({ industryName: '股份制银行', mainlineAllow: allowSet([['股份制银行', '5D_TOP3']]) }).why).toBe(
       'DEFENSE_SECTOR_BLOCK',
     );
@@ -131,6 +145,7 @@ describe('evaluateNewEntryGates', () => {
         mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
         gapUp: true,
         marketRegime: 'Weak',
+        now: unlockedNow,
       }).why,
     ).toBe('GAP_UP_WEAK_BLOCK');
   });
@@ -143,8 +158,141 @@ describe('evaluateNewEntryGates', () => {
         intradayChgPct: 6.1,
         gapUp: true,
         marketRegime: 'Weak',
+        now: unlockedNow,
       }).why,
     ).toBe('INTRADAY_SURGE_BLOCK');
+  });
+
+  it('TIP-007 allows 6–9% surge for ATTACK + B_momentum + pre-spike score≥85', () => {
+    const r = evaluateNewEntryGates({
+      industryName: '半导体',
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      intradayChgPct: 6.5,
+      gateMode: 'ATTACK',
+      buyMode: 'B_momentum',
+      trendOk: true,
+      // Displayed score after Anti-Spike −20; gate restores spike penalty.
+      score: 80,
+      scoreParts: { penalty_intraday_spike: -20 },
+    });
+    expect(r.ok).toBe(true);
+    expect(r.why).toBe('MOMENTUM_SURGE_ALLOW');
+  });
+
+  it('TIP-007 still blocks >9% even when momentum eligible', () => {
+    expect(
+      evaluateNewEntryGates({
+        industryName: '半导体',
+        mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+        intradayChgPct: 9.1,
+        gateMode: 'ATTACK',
+        buyMode: 'B_momentum',
+        trendOk: true,
+        score: 90,
+      }).why,
+    ).toBe('INTRADAY_SURGE_BLOCK');
+  });
+
+  it('TIP-007 does not allow surge for A_pullback or score 80', () => {
+    expect(
+      evaluateNewEntryGates({
+        industryName: '半导体',
+        mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+        intradayChgPct: 6.5,
+        gateMode: 'ATTACK',
+        buyMode: 'A_pullback',
+        trendOk: true,
+        score: 90,
+      }).why,
+    ).toBe('INTRADAY_SURGE_BLOCK');
+    expect(
+      evaluateNewEntryGates({
+        industryName: '半导体',
+        mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+        intradayChgPct: 6.5,
+        gateMode: 'ATTACK',
+        buyMode: 'B_momentum',
+        trendOk: true,
+        score: 80,
+      }).why,
+    ).toBe('INTRADAY_SURGE_BLOCK');
+  });
+});
+
+describe('ETF no-industry passthrough', () => {
+  it('evaluateNewEntryGates passes ETF without industry/mainline', () => {
+    const r = evaluateNewEntryGates({
+      industryName: null,
+      mainlineAllow: null,
+      isEtf: true,
+      gateMode: 'ATTACK',
+    });
+    expect(r.ok).toBe(true);
+    expect(r.tag).toBeNull();
+    expect(r.why).toBe('ETF_DIRECT');
+  });
+
+  it('ETF still respects sleeve cap and time lock', () => {
+    const blocked = evaluateNewEntryGates({
+      industryName: null,
+      mainlineAllow: null,
+      isEtf: true,
+      gateMode: 'ATTACK',
+      sleeveExposurePct: 60,
+      positionRangeHint: '50%-60%',
+    });
+    expect(blocked.why).toBe('SLEEVE_CAP_BLOCK');
+
+    const locked = evaluateNewEntryGates({
+      industryName: null,
+      mainlineAllow: null,
+      isEtf: true,
+      gateMode: 'ATTACK',
+      now: shanghaiAt(10, 0),
+    });
+    expect(locked.ok).toBe(true);
+    expect(locked.why).toBe('ETF_DIRECT');
+  });
+
+  it('deriveActionCard marks BUY for flat ETF with score+buy under attack', () => {
+    const card = deriveActionCard({
+      symbol: 'ETF:510300',
+      gate: attackGate,
+      trendok: { score: BUY_SCORE_MIN, buyAction: 'buy', stopLossPrice: 3.8 },
+      position: { symbol: 'ETF:510300' },
+      currentPrice: 4.0,
+      mainlineAllow: null,
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('ETF_DIRECT');
+    expect(card.mainlineOk).toBe(false);
+  });
+
+  it('held ETF is not trimmed for missing industry / mainline fade', () => {
+    const card = deriveActionCard({
+      symbol: 'ETF:510050',
+      gate: attackGate,
+      trendok: { score: 0, buyAction: 'avoid' },
+      position: { symbol: 'ETF:510050', positionPct: 5, costPrice: 3.0, entryDate: '2026-07-01' },
+      currentPrice: 3.0,
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).not.toBe('MAINLINE_FADE');
+    expect(card.why).not.toBe('MISSING_INDUSTRY');
+  });
+
+  it('non-ETF held position still trims on mainline fade', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: { score: 0, buyAction: 'avoid', values: { emIndustry: '白酒' } },
+      position: { symbol: 'CN:600000', positionPct: 5, costPrice: 10, entryDate: '2026-07-01' },
+      currentPrice: 10,
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+    });
+    expect(card.action).toBe('TRIM');
+    expect(card.why).toBe('MAINLINE_FADE');
   });
 });
 
@@ -650,6 +798,51 @@ describe('deriveActionCard', () => {
     expect(card.mainlineOk).toBe(true);
   });
 
+  it('TIP-007 BUY with MOMENTUM_SURGE_ALLOW at 6.5%', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: 80,
+        scoreParts: { penalty_intraday_spike: -20 },
+        trendOk: true,
+        buyAction: 'buy',
+        buyMode: 'B_momentum',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      intradayChgPct: 6.5,
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('MOMENTUM_SURGE_ALLOW');
+  });
+
+  it('TIP-007 still blocks surge under HOLD_ONLY gate', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: holdGate,
+      trendok: {
+        score: 90,
+        trendOk: true,
+        buyAction: 'buy',
+        buyMode: 'B_momentum',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      intradayChgPct: 6.5,
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('GATE_BLOCK_NEW');
+  });
+
   it('blocks ADD to HOLD on intraday surge (not TRIM)', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
@@ -746,6 +939,7 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
       gapUp: true,
       marketRegime: 'Weak',
+      now: unlockedNow,
     });
     expect(card.action).toBe('WATCH');
     expect(card.why).toBe('GAP_UP_WEAK_BLOCK');
@@ -789,6 +983,7 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
       gapUp: true,
       marketRegime: 'Weak',
+      now: unlockedNow,
     });
     expect(card.action).toBe('HOLD');
     expect(card.why).toBe('GAP_UP_WEAK_BLOCK');
@@ -831,6 +1026,7 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
       gapUp: false,
       marketRegime: 'Weak',
+      now: unlockedNow,
     });
     expect(card.action).toBe('BUY');
     expect(card.why).toBe('MAINLINE_5D_TOP3');
@@ -852,6 +1048,7 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
       gapUp: null,
       marketRegime: 'Weak',
+      now: unlockedNow,
     });
     expect(card.action).toBe('BUY');
     expect(card.why).toBe('MAINLINE_5D_TOP3');
@@ -874,6 +1071,7 @@ describe('deriveActionCard', () => {
       intradayChgPct: 6.1,
       gapUp: true,
       marketRegime: 'Weak',
+      now: unlockedNow,
     });
     expect(card.action).toBe('WATCH');
     expect(card.why).toBe('INTRADAY_SURGE_BLOCK');
@@ -895,6 +1093,7 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
       gapUp: true,
       marketRegime: 'Weak',
+      now: unlockedNow,
     });
     expect(card.action).toBe('EXIT');
     expect(card.why).toBe('EXIT_NOW');
@@ -1032,6 +1231,7 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
       gapUp: true,
       marketRegime: 'Weak',
+      now: unlockedNow,
     });
     expect(card.action).toBe('HOLD');
     expect(card.why).toBe('GAP_UP_WEAK_BLOCK');
@@ -1319,9 +1519,9 @@ describe('deriveActionCard', () => {
   });
 
   it('formats sleeve budget label with one decimal', () => {
-    expect(formatSleeveBudgetLabel(45, '50%-60%')).toBe('Sleeve 45.0% / 60%');
-    expect(formatSleeveBudgetLabel(0, '—')).toBe('Sleeve 0.0% / —');
-    expect(formatSleeveBudgetLabel(59.9, '30%')).toBe('Sleeve 59.9% / 30%');
+    expect(formatSleeveBudgetLabel(45, '50%-60%')).toBe('卫星仓 45.0%（上限 60%）');
+    expect(formatSleeveBudgetLabel(0, '—')).toBe('卫星仓 0.0%（上限 —）');
+    expect(formatSleeveBudgetLabel(59.9, '30%')).toBe('卫星仓 59.9%（上限 30%）');
   });
 
   it('suggests fire size with 5% clip by default', () => {
@@ -1394,6 +1594,17 @@ describe('evaluateHeldTrimGates', () => {
     ).toEqual({ trim: true, why: 'GATE_DEFEND' });
   });
 
+  it('exempts GATE_DEFEND trim for defensive whitelist holdings', () => {
+    expect(
+      evaluateHeldTrimGates({
+        mode: 'DEFEND',
+        industryName: '石油石化',
+        mainlineAllow: allowSet([['石油石化', '5D_TOP3']]),
+        exemptDefendTrim: true,
+      }),
+    ).toEqual({ trim: false, why: null });
+  });
+
   it('mainline fade when ready and industry out', () => {
     expect(
       evaluateHeldTrimGates({
@@ -1402,5 +1613,312 @@ describe('evaluateHeldTrimGates', () => {
         mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
       }),
     ).toEqual({ trim: true, why: 'MAINLINE_FADE' });
+  });
+});
+
+describe('V6.2 TimeLock + Defensive Sleeve + Zero-Pos', () => {
+  it('1.1 DEFEND 10:30 → WATCH TIME_LOCK_WEAK_REGIME even with Score 95', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: defendGate,
+      trendok: {
+        score: 95,
+        trendOk: true,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      marketRegime: 'Weak',
+      now: shanghaiAt(10, 30),
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('TIME_LOCK_WEAK_REGIME');
+  });
+
+  it('1.2 DEFEND 14:31 defensive eligible → BUY Suggest%≤5', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:601857',
+      gate: defendGate,
+      trendok: {
+        score: 75,
+        trendOk: true,
+        buyAction: 'buy',
+        buyZoneHigh: 10.5,
+        stopLossPrice: 9,
+        values: {
+          emIndustry: '石油石化',
+          industryFlowReasons: ['industry_flow_5d_top3'],
+          ema10: 9.8,
+        },
+      },
+      position: { symbol: 'CN:601857' },
+      currentPrice: 10,
+      mainlineAllow: allowSet([['石油石化', '5D_TOP3']]),
+      marketRegime: 'Weak',
+      defensiveSleeveExposurePct: 0,
+      now: shanghaiAt(14, 31),
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('DEFENSIVE_SLEEVE_ALLOW');
+    expect(card.suggestAddPct).toBe(5);
+    expect(card.hardStop).toBeGreaterThanOrEqual(10 * 0.965);
+  });
+
+  it('1.3 ATTACK 10:00 skips TimeLock', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        trendOk: true,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      marketRegime: 'Strong',
+      now: shanghaiAt(10, 0),
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).not.toMatch(/TIME_LOCK|MARKET_CLOSING/);
+  });
+
+  it('2.1 semiconductor under DEFEND stays WATCH; oil BUY', () => {
+    const semi = deriveActionCard({
+      symbol: 'CN:688981',
+      gate: defendGate,
+      trendok: {
+        score: 90,
+        trendOk: true,
+        buyAction: 'buy',
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:688981' },
+      currentPrice: 10,
+      mainlineAllow: allowSet([
+        ['半导体', '5D_TOP3'],
+        ['石油石化', '5D_TOP3'],
+      ]),
+      marketRegime: 'Weak',
+      now: shanghaiAt(14, 31),
+    });
+    expect(semi.action).toBe('WATCH');
+    expect(semi.why).toBe('GATE_BLOCK_NEW');
+
+    const oil = deriveActionCard({
+      symbol: 'CN:601857',
+      gate: defendGate,
+      trendok: {
+        score: 75,
+        trendOk: true,
+        buyZoneHigh: 11,
+        values: { emIndustry: '石油石化' },
+      },
+      position: { symbol: 'CN:601857' },
+      currentPrice: 10,
+      mainlineAllow: allowSet([['石油石化', '5D_TOP3']]),
+      marketRegime: 'Weak',
+      defensiveSleeveExposurePct: 0,
+      now: shanghaiAt(14, 31),
+    });
+    expect(oil.action).toBe('BUY');
+    expect(oil.why).toBe('DEFENSIVE_SLEEVE_ALLOW');
+    expect(oil.suggestAddPct).toBe(5);
+  });
+
+  it('2.2 defensive sleeve at 10% → SLEEVE_CAP_BLOCK', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:601857',
+      gate: defendGate,
+      trendok: {
+        score: 75,
+        trendOk: true,
+        values: { emIndustry: '石油石化' },
+      },
+      position: { symbol: 'CN:601857' },
+      currentPrice: 10,
+      mainlineAllow: allowSet([['石油石化', '5D_TOP3']]),
+      marketRegime: 'Weak',
+      defensiveSleeveExposurePct: 10,
+      now: shanghaiAt(14, 31),
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('SLEEVE_CAP_BLOCK');
+  });
+
+  it('3.1 zero-pos clears entryDate/cost so no ENTRY_DATE_MISSING HOLD', () => {
+    // Residual cost with Pos%=0 still counts as held (pre-cleanup bug).
+    expect(
+      isHeldPosition({
+        symbol: 'CN:000977',
+        positionPct: 0,
+        costPrice: 12,
+        entryDate: null,
+      }),
+    ).toBe(true);
+
+    const cleaned = {
+      symbol: 'CN:000977',
+      positionPct: 0 as number | null,
+      costPrice: null as number | null,
+      entryDate: null as string | null,
+      maxPrice: null as number | null,
+    };
+    expect(isHeldPosition(cleaned)).toBe(false);
+    const card = deriveActionCard({
+      symbol: 'CN:000977',
+      gate: attackGate,
+      trendok: { score: 50, trendOk: true, values: { emIndustry: '半导体' } },
+      position: cleaned,
+      currentPrice: 11,
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+    });
+    expect(card.action).not.toBe('HOLD');
+    expect(card.why).not.toBe('ENTRY_DATE_MISSING');
+  });
+
+  it('3.2 Alpha S → WATCH_SILENT; low score → PURGE after flat', () => {
+    const silent = deriveActionCard({
+      symbol: 'CN:000977',
+      gate: attackGate,
+      trendok: { score: 10, trendOk: false, values: { emIndustry: '半导体' } },
+      position: { symbol: 'CN:000977', positionPct: 0 },
+      currentPrice: 10,
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      catalyst: { maxGrade: 'S' },
+    });
+    expect(silent.action).toBe('WATCH_SILENT');
+    expect(silent.why).toBe('ALPHA_S_WATCH');
+
+    const purge = deriveActionCard({
+      symbol: 'CN:000977',
+      gate: attackGate,
+      trendok: { score: 10, trendOk: false, values: { emIndustry: '半导体' } },
+      position: { symbol: 'CN:000977', positionPct: 0 },
+      currentPrice: 10,
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+    });
+    expect(purge.action).toBe('PURGE');
+    expect(purge.why).toBe('PURGE_GC');
+  });
+
+  it('resolveDefensiveHardStop prefers tighter of EMA10 and -3.5%', () => {
+    expect(resolveDefensiveHardStop({ ema10: 9.5, currentPrice: 10 })).toBeCloseTo(9.65, 6);
+    expect(resolveDefensiveHardStop({ ema10: 9.8, currentPrice: 10 })).toBeCloseTo(9.8, 6);
+    expect(resolveDefensiveHardStop({ ema10: null, currentPrice: 10 })).toBeCloseTo(9.65, 6);
+  });
+
+  it('checkExecutionTimeLock MARKET_CLOSING_LOCK after 14:50', () => {
+    expect(
+      checkExecutionTimeLock({
+        now: shanghaiAt(14, 51),
+        gateMode: 'DEFEND',
+        marketRegime: 'Weak',
+      }).why,
+    ).toBe('MARKET_CLOSING_LOCK');
+  });
+});
+
+
+describe('V6.3 WEAK_ATTACK + TrendOK recovering', () => {
+  const weakAttackGate: ExecutionGate = {
+    ...attackGate,
+    mode: 'WEAK_ATTACK',
+    allowNewEntries: true,
+    marketRegime: 'Strong',
+    srvLevel: 'Extreme_High',
+    srvOverlapCount: 0,
+    reasons: ['SRV_EXTREME_HIGH', 'INTRADAY_OVERFLOW_OVERRIDE'],
+    overflowSector: '电子',
+    overflowInflowYi: 726,
+    satelliteNote: '极端资金流豁免；允许 5% 先锋仓试探',
+  };
+
+  it('WEAK_ATTACK allows BUY with Suggest%≤5', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:300308',
+      gate: weakAttackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        trendOk: true,
+        buyAction: 'buy',
+        buyZoneHigh: 120,
+        stopLossPrice: 100,
+        values: { emIndustry: '电子' },
+      },
+      position: { symbol: 'CN:300308' },
+      currentPrice: 110,
+      mainlineAllow: allowSet([['电子', 'MOMENTUM']]),
+      marketRegime: 'Strong',
+      now: shanghaiAt(14, 35),
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.suggestAddPct).toBeLessThanOrEqual(5);
+    expect(card.suggestAddPct).toBeGreaterThan(0);
+  });
+
+  it('WEAK_ATTACK does not GATE_DEFEND trim', () => {
+    expect(
+      evaluateHeldTrimGates({
+        mode: 'WEAK_ATTACK',
+        industryName: '电子',
+        mainlineAllow: allowSet([['电子', 'MOMENTUM']]),
+      }),
+    ).toEqual({ trim: false, why: null });
+  });
+
+  it('WEAK_ATTACK after 14:50 → MARKET_CLOSING_LOCK', () => {
+    expect(
+      checkExecutionTimeLock({
+        now: shanghaiAt(14, 51),
+        gateMode: 'WEAK_ATTACK',
+        marketRegime: 'Strong',
+      }).why,
+    ).toBe('MARKET_CLOSING_LOCK');
+  });
+
+  it('Alpha S recovering unlocks WATCH_SILENT → TREND_RECOVERING', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:300308',
+      gate: defendGate,
+      trendok: {
+        score: 60,
+        trendOk: true,
+        trendStatus: 'recovering',
+        buyAction: 'avoid',
+        values: { emIndustry: '电子' },
+      },
+      position: { symbol: 'CN:300308' },
+      currentPrice: 110,
+      catalyst: { maxGrade: 'S', catalystScore: 99 },
+      now: shanghaiAt(14, 35),
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('TREND_RECOVERING');
+  });
+
+  it('recovering with low score still escapes PURGE via purge-candidate branch', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:300502',
+      gate: defendGate,
+      trendok: {
+        score: 10,
+        trendOk: false,
+        trendStatus: 'recovering',
+        buyAction: 'avoid',
+        values: { emIndustry: '电子' },
+      },
+      position: { symbol: 'CN:300502' },
+      currentPrice: 50,
+      catalyst: { maxGrade: 'S' },
+      now: shanghaiAt(14, 35),
+    });
+    expect(card.action).toBe('WATCH');
+    expect(card.why).toBe('TREND_RECOVERING');
   });
 });

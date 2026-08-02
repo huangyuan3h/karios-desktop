@@ -5,8 +5,11 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 
+import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DecisionJournalCard } from '@/components/dashboard/DecisionJournalCard';
 import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
+import { MarketSentimentCard } from '@/components/dashboard/MarketSentimentCard';
+import { MorningBriefCard } from '@/components/dashboard/MorningBriefCard';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useDashboardSummary } from '@/hooks/useDashboardSummary';
@@ -23,19 +26,13 @@ import { writeLastCopyAt } from '@/lib/copy-ai-brief';
 import {
   buildDashboardCopyAllMarkdown,
   buildIndustryMarkdown,
-  buildSentimentMarkdown,
 } from '@/lib/dashboard-export';
+import { refetchWatchlistMarket } from '@/lib/queries/watchlist';
+import { loadWatchlist } from '@/lib/watchlist-storage';
 import {
-  BREADTH_PANIC_DOWN_THRESHOLD,
-  buildIndexTrafficSummary,
-  executionGateBadgeClass,
-  fmtAmountCn,
-  fmtSignedAmountCn,
-  formatSrvIndexLine,
-  srvIndexBadgeClass,
   fmtDateTime,
-  loadCardOrder,
-  saveCardOrder,
+  loadCopyMode,
+  saveCopyMode,
 } from '@/lib/dashboard-format';
 import { parseExecutionGate } from '@/lib/execution-action';
 import { isShanghaiSyncWindow } from '@/lib/market-hours';
@@ -98,6 +95,17 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     setNewsSummaryBusy,
     saveNewsBriefCache,
     setError,
+    forceRefreshWatchlistOnSync: async () => {
+      // Cover HK/ETF watchlist symbols that the backend sync steps do not
+      // touch. Reads from local watchlist so this also runs even when the
+      // user is on Dashboard and not on the Watchlist page.
+      const items = loadWatchlist();
+      const symbols = items
+        .map((it) => (typeof it?.symbol === 'string' ? it.symbol.trim().toUpperCase() : ''))
+        .filter(Boolean);
+      if (!symbols.length) return;
+      await refetchWatchlistMarket(queryClient, symbols, { forceMarket: true });
+    },
     onSyncComplete: () => {
       void captureDecisionSnapshot('sync_all');
     },
@@ -122,7 +130,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const [copyAllStatus, setCopyAllStatus] = React.useState<{ ok: boolean; text: string } | null>(
     null,
   );
-  const [editLayout, setEditLayout] = React.useState(false);
 
   const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
 
@@ -191,10 +198,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         newsSummaryUpdatedAt,
         newsFallback,
         queryClient,
+        mode: copyMode,
       });
       await navigator.clipboard.writeText(text);
       writeLastCopyAt(new Date().toISOString());
-      toastCopyAll(true, 'Copied all Markdown to clipboard.');
+      toastCopyAll(true, `Copied ${copyMode === 'compact' ? 'compact' : 'full'} Markdown to clipboard.`);
     } catch (e) {
       toastCopyAll(false, e instanceof Error ? e.message : String(e));
     } finally {
@@ -222,10 +230,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         newsSummaryUpdatedAt,
         newsFallback,
         queryClient,
+        mode: copyMode,
       });
       await navigator.clipboard.writeText(text);
       writeLastCopyAt(new Date().toISOString());
-      toastCopyAll(true, 'Synced and copied Markdown to clipboard.');
+      toastCopyAll(true, `Synced and copied ${copyMode === 'compact' ? 'compact' : 'full'} Markdown to clipboard.`);
     } catch (e) {
       toastCopyAll(false, e instanceof Error ? e.message : String(e));
     } finally {
@@ -233,50 +242,33 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     }
   }
 
-  const defaultCards = React.useMemo(
-    () => [
-      { id: 'industry', title: 'Industry fund flow' },
-      { id: 'sentiment', title: 'Market sentiment' },
-      { id: 'decisions', title: 'Decision Journal' },
-      { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
-      { id: 'news', title: 'News brief' },
-      { id: 'screeners', title: 'Screener sync' },
-    ],
+  type DashCard = { id: string; title: string };
+  const cardsById: Record<string, DashCard> = React.useMemo(
+    () => ({
+      industry: { id: 'industry', title: '行业资金流' },
+      sentiment: { id: 'sentiment', title: '市场情绪' },
+      brief: { id: 'brief', title: '新闻简报' },
+      watchlistRisk: { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
+      decisions: { id: 'decisions', title: '执行日志' },
+    }),
     [],
   );
 
-  const [cardOrder, setCardOrder] = React.useState<string[]>(() => []);
+  const [copyMode, setCopyMode] = React.useState<'full' | 'compact'>('full');
   React.useEffect(() => {
-    const loaded = loadCardOrder();
-    const ids = defaultCards.map((c) => c.id);
-    const next = loaded
-      ? [...loaded.filter((x) => ids.includes(x)), ...ids.filter((x) => !loaded.includes(x))]
-      : ids;
-    const nextIds = next.includes('industry')
-      ? ['industry', ...next.filter((x) => x !== 'industry')]
-      : next;
-    setCardOrder(nextIds);
-    saveCardOrder(nextIds);
-  }, [defaultCards]);
+    setCopyMode(loadCopyMode());
+  }, []);
+  React.useEffect(() => {
+    saveCopyMode(copyMode);
+  }, [copyMode]);
 
-  const cardsById = React.useMemo(
-    () => Object.fromEntries(defaultCards.map((c) => [c.id, c])),
-    [defaultCards],
-  );
-  const orderedCards = cardOrder.map((id) => cardsById[id]).filter(Boolean);
-
-  function moveCard(id: string, dir: -1 | 1) {
-    const idx = cardOrder.indexOf(id);
-    if (idx < 0) return;
-    const j = idx + dir;
-    if (j < 0 || j >= cardOrder.length) return;
-    const next = [...cardOrder];
-    const tmp = next[idx];
-    next[idx] = next[j];
-    next[j] = tmp;
-    setCardOrder(next);
-    saveCardOrder(next);
-  }
+  const columnCards = React.useMemo(() => {
+    const visible = (id: string) => id !== 'watchlistRisk' || watchlistRiskRows.length > 0;
+    return {
+      left: ['industry', 'watchlistRisk', 'decisions'].filter(visible).map((id) => cardsById[id]),
+      right: ['sentiment', 'brief'].filter(visible).map((id) => cardsById[id]),
+    };
+  }, [cardsById, watchlistRiskRows.length]);
 
   return (
     <div className="mx-auto w-full max-w-6xl p-6">
@@ -304,9 +296,34 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             {copyAllBusy && !busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
             Copy for AI
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setEditLayout((v) => !v)}>
-            {editLayout ? 'Done' : 'Edit layout'}
-          </Button>
+          <div className="inline-flex items-center rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-0.5 text-xs">
+            <button
+              type="button"
+              className={`rounded px-2 py-1 ${
+                copyMode === 'compact'
+                  ? 'bg-emerald-600/15 text-emerald-700 font-medium'
+                  : 'text-[var(--k-muted)] hover:bg-[var(--k-surface-2)]'
+              }`}
+              onClick={() => setCopyMode('compact')}
+              aria-pressed={copyMode === 'compact'}
+              title="极速决策模式 — 剪贴板只保留核心 20% 数据"
+            >
+              Compact
+            </button>
+            <button
+              type="button"
+              className={`rounded px-2 py-1 ${
+                copyMode === 'full'
+                  ? 'bg-emerald-600/15 text-emerald-700 font-medium'
+                  : 'text-[var(--k-muted)] hover:bg-[var(--k-surface-2)]'
+              }`}
+              onClick={() => setCopyMode('full')}
+              aria-pressed={copyMode === 'full'}
+              title="完整模式 — 盘后归档/存盘用"
+            >
+              Full
+            </button>
+          </div>
         </div>
       </div>
 
@@ -378,35 +395,43 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
       {syncResp ? (
         <div className="mb-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
-          <div className="mb-2 text-sm font-medium">Last sync result</div>
-          <div className="text-xs text-[var(--k-muted)]">
-            started: {fmtDateTime(syncResp.startedAt as string)} • finished:{' '}
-            {fmtDateTime(syncResp.finishedAt as string)} • ok: {String(Boolean(syncResp.ok))}
-          </div>
-          <div className="mt-3 overflow-auto rounded-lg border border-[var(--k-border)]">
-            <table className="w-full border-collapse text-xs">
-              <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                <tr className="text-left">
-                  <th className="px-3 py-2">Step</th>
-                  <th className="px-3 py-2">OK</th>
-                  <th className="px-3 py-2">Duration</th>
-                  <th className="px-3 py-2">Message</th>
-                </tr>
-              </thead>
-              <tbody>
-                {((syncResp.steps as any[]) ?? []).map((s: any) => (
-                  <tr key={String(s.name)} className="border-t border-[var(--k-border)]">
-                    <td className="px-3 py-2 font-mono">{String(s.name)}</td>
-                    <td className="px-3 py-2">{String(Boolean(s.ok))}</td>
-                    <td className="px-3 py-2 font-mono">{String(s.durationMs ?? 0)}ms</td>
-                    <td className="px-3 py-2 text-[var(--k-muted)]">{String(s.message ?? '')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mb-2 flex flex-wrap items-center gap-3 text-xs">
+            <span className="text-sm font-medium">Last sync</span>
+            <span className="text-[var(--k-muted)]">
+              {fmtDateTime(syncResp.startedAt as string)} → {fmtDateTime(syncResp.finishedAt as string)}
+            </span>
+            <span
+              className={`rounded px-2 py-0.5 ${
+                syncResp.ok
+                  ? 'bg-emerald-500/15 text-emerald-700'
+                  : 'bg-red-500/15 text-red-700'
+              }`}
+            >
+              {syncResp.ok ? 'OK' : 'FAILED'}
+            </span>
+            {((syncResp.steps as any[]) ?? []).length ? (
+              <span className="text-[var(--k-muted)]">
+                {(syncResp.steps as any[]).map((s: any) => {
+                  const ok = Boolean(s.ok);
+                  const name = String(s.name ?? '');
+                  const ms = Number(s.durationMs ?? 0);
+                  return (
+                    <span
+                      key={name}
+                      className={`ml-2 inline-flex items-center gap-1 font-mono ${
+                        ok ? 'text-emerald-700' : 'text-red-700'
+                      }`}
+                      title={String(s.message ?? '')}
+                    >
+                      {ok ? '✓' : '✗'} {name} {ms}ms
+                    </span>
+                  );
+                })}
+              </span>
+            ) : null}
           </div>
           {(syncResp.screener as any)?.failed?.length || (syncResp.screener as any)?.missing?.length ? (
-            <div className="mt-3 text-xs text-red-600">
+            <div className="text-xs text-red-600">
               Screener issues: failed={(syncResp.screener as any)?.failed?.length ?? 0} missing=
               {(syncResp.screener as any)?.missing?.length ?? 0}
             </div>
@@ -415,60 +440,18 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       ) : null}
 
       {(() => {
-        const weightOf = (id: string) => {
-          if (id === 'industry') return 6;
-          if (id === 'sentiment') return 3;
-          if (id === 'decisions') return 3;
-          if (id === 'watchlistRisk') return 2;
-          if (id === 'news') return 2;
-          if (id === 'screeners') return 2;
-          return 2;
-        };
-        const left: any[] = [];
-        const right: any[] = [];
-        let wl = 0;
-        let wr = 0;
-        for (const c of orderedCards) {
-          const id = String(c.id);
-          const w = weightOf(id);
-          if (wl <= wr) {
-            left.push(c);
-            wl += w;
-          } else {
-            right.push(c);
-            wr += w;
-          }
-        }
+        const left = columnCards.left;
+        const right = columnCards.right;
 
         const renderCard = (c: any) => {
           const id = String(c.id);
           return (
             <section
               key={id}
-              className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4"
+              className="min-h-0 flex flex-col rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4"
             >
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="text-sm font-medium">{c.title}</div>
-                {editLayout ? (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => moveCard(id, -1)}
-                    >
-                      ↑
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => moveCard(id, 1)}
-                    >
-                      ↓
-                    </Button>
-                  </div>
-                ) : null}
               </div>
 
               {id === 'decisions' ? (
@@ -483,499 +466,15 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
               ) : null}
 
               {id === 'sentiment' ? (
-                <div>
-                  {(() => {
-                    const ms = dash?.marketSentiment ?? {};
-                    const items: any[] = Array.isArray(ms.items) ? ms.items : [];
-                    const latest = items.length ? items[items.length - 1] : null;
-                    const indexSignals: any[] = Array.isArray(ms.indexSignals)
-                      ? ms.indexSignals
-                      : [];
-                    const summaryLine = buildIndexTrafficSummary(indexSignals);
-                    const risk = String(latest?.riskMode ?? '—');
-                    const premium = Number.isFinite(latest?.yesterdayLimitUpPremium)
-                      ? `${Number(latest.yesterdayLimitUpPremium).toFixed(2)}%`
-                      : '—';
-                    const failed = Number.isFinite(latest?.failedLimitUpRate)
-                      ? `${Number(latest.failedLimitUpRate).toFixed(1)}%`
-                      : '—';
-                    const turnover = fmtAmountCn(latest?.marketTurnoverCny);
-                    const ratio = Number.isFinite(latest?.upDownRatio)
-                      ? Number(latest.upDownRatio).toFixed(2)
-                      : '—';
-                    const up = Number(latest?.upCount ?? 0);
-                    const down = Number(latest?.downCount ?? 0);
-                    const flat = Number(latest?.flatCount ?? 0);
-                    const breadthPanic = down >= BREADTH_PANIC_DOWN_THRESHOLD;
-                    const srvIndex: any = ms?.srvIndex ?? null;
-                    const srvLine = formatSrvIndexLine(srvIndex);
-                    const srvBadge = srvIndexBadgeClass(srvIndex?.level);
-                    const overlapSectors: string[] = Array.isArray(srvIndex?.overlapSectors)
-                      ? srvIndex.overlapSectors.map((x: any) => String(x)).filter(Boolean)
-                      : [];
-                    const badge =
-                      risk === 'confirmed_uptrend'
-                        ? 'border-emerald-600/40 bg-emerald-600/15 text-emerald-700'
-                        : risk === 'capitulation_v_bottom'
-                        ? 'border-fuchsia-600/40 bg-fuchsia-600/15 text-fuchsia-700'
-                        : risk === 'extreme_caution' || breadthPanic
-                          ? 'border-red-600/40 bg-red-600/15 text-red-700'
-                          : risk === 'no_new_positions'
-                            ? 'border-red-500/30 bg-red-500/10 text-red-600'
-                            : risk === 'caution'
-                              ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
-                              : risk === 'hot'
-                                ? 'border-green-500/30 bg-green-500/10 text-green-700'
-                                : risk === 'euphoric'
-                                  ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700'
-                                  : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
-                    return (
-                      <>
-                        {(() => {
-                          const gate = parseExecutionGate(ms?.executionGate);
-                          if (!gate) return null;
-                          const gateBadge = executionGateBadgeClass(gate.mode);
-                          return (
-                            <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${gateBadge}`}>
-                              <div className="flex flex-wrap items-center gap-2 font-medium">
-                                <span>Execution Gate: {gate.mode}</span>
-                                <span className="text-xs opacity-90">
-                                  allowNewEntries={String(gate.allowNewEntries)}
-                                </span>
-                                <span className="text-xs opacity-90">
-                                  {gate.marketRegime} · {gate.indexLight} · pos{' '}
-                                  {gate.positionRangeHint || '—'}
-                                </span>
-                              </div>
-                              {gate.satelliteNote ? (
-                                <div className="mt-1 text-xs opacity-90">{gate.satelliteNote}</div>
-                              ) : null}
-                              {gate.reasons.length ? (
-                                <div className="mt-1 text-xs opacity-80">
-                                  reasons: {gate.reasons.join(' · ')}
-                                </div>
-                              ) : null}
-                            </div>
-                          );
-                        })()}
-                        <div className="mb-2 flex flex-wrap items-center gap-2">
-                          <div className={`rounded-md border px-2 py-1 text-xs ${badge}`}>
-                            risk: {risk}
-                          </div>
-                          {Array.isArray(latest?.rules) && latest.rules.length ? (
-                            <div className="text-xs text-[var(--k-muted)]">
-                              {latest.rules
-                                .slice(0, 2)
-                                .map((x: any) => String(x))
-                                .join(' • ')}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        {risk === 'capitulation_v_bottom' && (
-                          <div className="mb-3 rounded-lg border border-fuchsia-600/40 bg-fuchsia-600/15 px-3 py-2 text-sm text-fuchsia-800 dark:text-fuchsia-200">
-                            🚨 Capitulation_V_Bottom (恐慌冰点共振) — 国家队入场 + 恐慌极值，左侧绝佳试错点出现
-                          </div>
-                        )}
-
-                        {risk === 'confirmed_uptrend' && (
-                          <div className="mb-3 rounded-lg border border-emerald-600/40 bg-emerald-600/15 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-200">
-                            🟢 Follow-Through Day 右侧主升浪确立 — 解除宏观死锁，放开攻击权限
-                          </div>
-                        )}
-
-                        <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${srvBadge}`}>
-                          <div className="font-medium">{srvLine}</div>
-                          {srvIndex?.labelZh ? (
-                            <div className="mt-1 text-xs opacity-90">{String(srvIndex.labelZh)}</div>
-                          ) : null}
-                          {overlapSectors.length ? (
-                            <div className="mt-1 text-xs opacity-90">
-                              Overlap: {overlapSectors.join(', ')}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div
-                          className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
-                            breadthPanic
-                              ? 'border-red-500/40 bg-red-500/10'
-                              : 'border-[var(--k-border)] bg-[var(--k-surface-2)]'
-                          }`}
-                        >
-                          <div
-                            className={`font-medium ${
-                              breadthPanic ? 'text-red-700' : 'text-[var(--k-fg)]'
-                            }`}
-                          >
-                            Market Breadth: {up.toLocaleString()} Up / {down.toLocaleString()}{' '}
-                            Down
-                          </div>
-                          {breadthPanic ? (
-                            <div className="mt-1 text-xs text-red-700">
-                              Down &ge; {BREADTH_PANIC_DOWN_THRESHOLD.toLocaleString()}: force red
-                              lights and extreme caution.
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                          <div className="text-sm font-semibold text-amber-700">
-                            {summaryLine.title}
-                          </div>
-                          <div className="mt-1 text-xs text-amber-800">{summaryLine.detail}</div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                            <div className="text-xs text-[var(--k-muted)]">Up/Down/Flat</div>
-                            <div className="mt-1 font-mono">
-                              {up}/{down}/{flat}
-                            </div>
-                            <div className="mt-1 text-xs text-[var(--k-muted)]">ratio: {ratio}</div>
-                            <div className="mt-1 text-xs text-[var(--k-muted)]">
-                              turnover: {turnover}
-                            </div>
-                          </div>
-                          <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3">
-                            <div className="text-xs text-[var(--k-muted)]">Sentiment</div>
-                            <div className="mt-1 text-xs text-[var(--k-muted)]">
-                              yesterday limit-up premium
-                            </div>
-                            <div className="mt-0.5 font-mono">{premium}</div>
-                            <div className="mt-1 text-xs text-[var(--k-muted)]">
-                              failed limit-up rate
-                            </div>
-                            <div className="mt-0.5 font-mono">{failed}</div>
-                          </div>
-                        </div>
-
-                        {indexSignals.length ? (
-                          <div className="mt-3">
-                            <div className="mb-2 text-xs text-[var(--k-muted)]">
-                              Index traffic lights
-                            </div>
-                            <div className="mb-3 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-xs text-[var(--k-muted)]">
-                              <div className="font-medium text-[var(--k-fg)]">信号规则（简版）</div>
-                              <div className="mt-1">
-                                🔴 Red: Price &lt; MA20 或 MA5 &lt; MA20，仓位 0%-10%。
-                              </div>
-                              <div className="mt-1">
-                                🟡 Yellow: Price &gt; MA20 但 MA20 斜率向下 或 预估全天量 &lt;
-                                MA5_Vol * 0.8 或 MA5 &lt; MA20，仓位 30%。
-                              </div>
-                              <div className="mt-1">
-                                🟢 Green: Price &gt; MA20 且 MA5 &gt; MA20 且 MA20
-                                向上，且预估全天量 &gt; MA5_Vol * 0.8，仓位 50%-60%。
-                              </div>
-                              <div className="mt-1">
-                                ❇️ Deep Green: MA5 &gt; MA20 &gt; MA60 且 Price &gt; EMA10，全市场成交额连续
-                                &gt; 1.5万亿，Breadth &gt; 50% 或 单一板块流入 &gt; 50亿，仓位
-                                80%-100%。
-                              </div>
-                            </div>
-                            <div className="grid gap-2 md:grid-cols-2">
-                              {indexSignals.map((it: any) => {
-                                const signal = String(it?.signal ?? 'unknown');
-                                const source = String(it?.source ?? 'unknown');
-                                const tradeTime = String(it?.tradeTime ?? '').trim();
-                                const asOfDate = String(it?.asOfDate ?? '').trim();
-                                const realtime = it?.realtime === true;
-                                const freshness = realtime ? 'realtime' : 'EOD';
-                                const asOfDisplay = tradeTime || asOfDate || '—';
-                                const quoteError = String(it?.quoteError ?? '').trim();
-                                const signalBadge =
-                                  signal === 'deep_green'
-                                    ? 'border-emerald-600/40 bg-emerald-600/15 text-emerald-800'
-                                    : signal === 'light_green' || signal === 'green'
-                                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
-                                      : signal === 'red'
-                                        ? 'border-red-500/30 bg-red-500/10 text-red-600'
-                                        : signal === 'yellow'
-                                          ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700'
-                                          : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]';
-                                return (
-                                  <div
-                                    key={String(it?.tsCode ?? it?.name)}
-                                    className={`rounded-lg border px-3 py-2 text-xs ${signalBadge}`}
-                                  >
-                                    <div className="font-medium">
-                                      {String(it?.name ?? it?.tsCode ?? '')}
-                                    </div>
-                                    <div className="mt-1 font-mono">
-                                      {signal} • pos {String(it?.positionRange ?? '—')}
-                                    </div>
-                                    <div className="mt-1 text-[var(--k-muted)]">
-                                      chg{' '}
-                                      {Number.isFinite(it?.pctChg)
-                                        ? `${Number(it.pctChg) >= 0 ? '+' : ''}${Number(it.pctChg).toFixed(2)}%`
-                                        : '—'}{' '}
-                                      • close{' '}
-                                      {Number.isFinite(it?.close)
-                                        ? Number(it.close).toFixed(2)
-                                        : '—'}{' '}
-                                      • MA5{' '}
-                                      {Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—'} •
-                                      MA20{' '}
-                                      {Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—'}
-                                    </div>
-                                    <div className="mt-1 font-mono text-[10px] text-[var(--k-muted)]">
-                                      asOf {asOfDisplay} • {freshness} • {source}
-                                    </div>
-                                    {quoteError ? (
-                                      <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
-                                        quote fallback: {quoteError}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ) : null}
-
-                        <div className="mt-3">
-                          <div className="mb-2 text-xs text-[var(--k-muted)]">Last 5 days</div>
-                          <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                            <table className="w-full border-collapse text-xs">
-                              <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                                <tr className="text-left">
-                                  <th className="px-2 py-2 font-mono">date</th>
-                                  <th className="px-2 py-2 text-right">ratio</th>
-                                  <th className="px-2 py-2 text-right">turnover</th>
-                                  <th className="px-2 py-2 text-right">premium%</th>
-                                  <th className="px-2 py-2 text-right">failed%</th>
-                                  <th className="px-2 py-2">risk</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(items || []).slice(-5).map((it: any, idx: number) => (
-                                  <tr key={idx} className="border-t border-[var(--k-border)]">
-                                    <td className="px-2 py-2 font-mono">{String(it.date ?? '')}</td>
-                                    <td className="px-2 py-2 text-right font-mono">
-                                      {Number.isFinite(it.upDownRatio)
-                                        ? Number(it.upDownRatio).toFixed(2)
-                                        : '—'}
-                                    </td>
-                                    <td className="px-2 py-2 text-right font-mono">
-                                      {fmtAmountCn(it.marketTurnoverCny)}
-                                    </td>
-                                    <td className="px-2 py-2 text-right font-mono">
-                                      {Number.isFinite(it.yesterdayLimitUpPremium)
-                                        ? `${Number(it.yesterdayLimitUpPremium).toFixed(2)}%`
-                                        : '—'}
-                                    </td>
-                                    <td className="px-2 py-2 text-right font-mono">
-                                      {Number.isFinite(it.failedLimitUpRate)
-                                        ? `${Number(it.failedLimitUpRate).toFixed(1)}%`
-                                        : '—'}
-                                    </td>
-                                    <td className="px-2 py-2">{String(it.riskMode ?? '')}</td>
-                                  </tr>
-                                ))}
-                                {!items.length ? (
-                                  <tr>
-                                    <td
-                                      className="px-2 py-3 text-sm text-[var(--k-muted)]"
-                                      colSpan={7}
-                                    >
-                                      No sentiment cached yet. Click “Sync & Copy”.
-                                    </td>
-                                  </tr>
-                                ) : null}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-
-                        {(() => {
-                          const etfFlow: any = ms?.etfFundFlow ?? {};
-                          const etfItems: any[] = Array.isArray(etfFlow?.items)
-                            ? etfFlow.items
-                            : [];
-                          return (
-                            <div className="mt-3">
-                              <div className="mb-2 text-xs font-medium text-[var(--k-muted)]">
-                                ETF Fund Flow (Top Watchlist)
-                              </div>
-                              {etfFlow?.shareLag ? (
-                                <div className="mb-2 text-xs text-amber-600 dark:text-amber-400">
-                                  Realtime East Money flow is incomplete. Missing rows are excluded from intraday signals
-                                  {etfFlow?.intradaySafe === false ? ' — not safe for intraday decisions' : ''}.
-                                </div>
-                              ) : null}
-                              <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                                <table className="w-full border-collapse text-xs">
-                                  <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                                    <tr className="text-left">
-                                      <th className="px-2 py-2">ETF Name</th>
-                                      <th className="px-2 py-2 font-mono">Symbol</th>
-                                      <th className="px-2 py-2 text-right">Main Flow</th>
-                                      <th className="px-2 py-2 text-right">Super/Large</th>
-                                      <th className="px-2 py-2 text-right">3D Net Flow</th>
-                                      <th className="px-2 py-2">Realtime AsOf</th>
-                                      <th className="px-2 py-2">Source</th>
-                                      <th className="px-2 py-2">Status</th>
-                                      <th className="px-2 py-2">Signal</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {etfItems.map((it: any, idx: number) => {
-                                      const flowStatus = String(
-                                        it?.flowStatus ?? (it?.live === true ? 'Live' : '—'),
-                                      );
-                                      const live = it?.live === true || flowStatus === 'Live';
-                                      const isMarketClosed = flowStatus === 'MarketClosed';
-                                      const flow1dStale =
-                                        !live &&
-                                        !isMarketClosed &&
-                                        it?.netFlow1d == null &&
-                                        (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
-                                      const flow1dDisplay = flow1dStale
-                                        ? '— (stale)'
-                                        : fmtSignedAmountCn(it?.netFlow1d);
-                                      const superLargeFlow = fmtSignedAmountCn(it?.superLargeNetInflow);
-                                      const largeFlow = fmtSignedAmountCn(it?.largeNetInflow);
-                                      const signalText = String(
-                                        it?.signalDisplay ?? it?.signal ?? '—',
-                                      );
-                                      const isDataLag = String(it?.signal ?? '') === 'Data Lag';
-                                      const realtimeAsOf = String(
-                                        it?.tradeTime ?? it?.flowAsOfDate ?? etfFlow?.asOfDate ?? '—',
-                                      );
-                                      return (
-                                      <tr key={idx} className="border-t border-[var(--k-border)]">
-                                        <td className="px-2 py-2">{String(it?.name ?? '')}</td>
-                                        <td className="px-2 py-2 font-mono">
-                                          {String(it?.symbol ?? '')}
-                                        </td>
-                                        <td className="px-2 py-2 text-right font-mono">
-                                          {flow1dDisplay}
-                                        </td>
-                                        <td className="px-2 py-2 text-right font-mono">
-                                          {superLargeFlow}/{largeFlow}
-                                        </td>
-                                        <td className="px-2 py-2 text-right font-mono">
-                                          {fmtSignedAmountCn(it?.netFlow3d)}
-                                        </td>
-                                        <td className="px-2 py-2 font-mono">
-                                          {realtimeAsOf}
-                                        </td>
-                                        <td className="px-2 py-2 font-mono">
-                                          {String(it?.source ?? '—')}
-                                        </td>
-                                        <td
-                                          className={`px-2 py-2 font-mono ${
-                                            flowStatus === 'Live'
-                                              ? 'font-semibold text-emerald-600'
-                                              : isMarketClosed
-                                                ? 'text-[var(--k-muted)]'
-                                                : flowStatus === 'Stale' || flowStatus === 'Missing'
-                                                  ? 'text-amber-600'
-                                                  : 'text-[var(--k-muted)]'
-                                          }`}
-                                        >
-                                          {isMarketClosed ? 'Market Closed' : flowStatus}
-                                        </td>
-                                        <td
-                                          className={
-                                            isDataLag
-                                              ? 'px-2 py-2 text-[var(--k-muted)]'
-                                              : 'px-2 py-2'
-                                          }
-                                        >
-                                          {signalText}
-                                        </td>
-                                      </tr>
-                                    );})}
-                                    {!etfItems.length ? (
-                                      <tr>
-                                        <td
-                                          className="px-2 py-3 text-sm text-[var(--k-muted)]"
-                                          colSpan={9}
-                                        >
-                                          No ETF fund flow cached yet. Click &quot;Sync
-                                          sentiment&quot;.
-                                        </td>
-                                      </tr>
-                                    ) : null}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        <div className="mt-3 flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={sentimentBusy}
-                            onClick={() => void onSyncSentiment()}
-                          >
-                            {sentimentBusy ? (
-                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                            )}
-                            Sync sentiment
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              try {
-                                const md = buildSentimentMarkdown(summary, '#');
-                                void navigator.clipboard
-                                  .writeText(md)
-                                  .then(() => toastSentimentCopy(true, 'Copied Markdown.'))
-                                  .catch(() =>
-                                    toastSentimentCopy(
-                                      false,
-                                      'Copy failed. Please allow clipboard access.',
-                                    ),
-                                  );
-                              } catch (e) {
-                                toastSentimentCopy(
-                                  false,
-                                  e instanceof Error ? e.message : String(e),
-                                );
-                              }
-                            }}
-                          >
-                            Copy Markdown
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              const asOfDate = String(ms.asOfDate ?? dash?.asOfDate ?? '');
-                              addReference({
-                                kind: 'marketSentiment',
-                                refId: `${asOfDate}:5`,
-                                asOfDate,
-                                days: 5,
-                                title: 'CN market sentiment (breadth & limit-up)',
-                                createdAt: new Date().toISOString(),
-                              } as any);
-                            }}
-                          >
-                            Reference
-                          </Button>
-                        </div>
-                        {sentimentCopyStatus ? (
-                          <div
-                            className={`mt-2 text-xs ${
-                              sentimentCopyStatus.ok ? 'text-emerald-600' : 'text-red-600'
-                            }`}
-                          >
-                            {sentimentCopyStatus.text}
-                          </div>
-                        ) : null}
-                      </>
-                    );
-                  })()}
-                </div>
+                <MarketSentimentCard
+                  dash={dash}
+                  summary={summary}
+                  sentimentBusy={sentimentBusy}
+                  onSyncSentiment={() => void onSyncSentiment()}
+                  toastSentimentCopy={toastSentimentCopy}
+                  sentimentCopyStatus={sentimentCopyStatus}
+                  addReference={addReference}
+                />
               ) : id === 'industry' ? (
                 <IndustryFundFlowCard
                   summary={dash}
@@ -985,51 +484,13 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   copyStatus={industryCopyStatus}
                   onCopyIndustryMarkdown={onCopyIndustryMarkdown}
                 />
-              ) : id === 'news' ? (
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <div className="text-xs text-[var(--k-muted)]">
-                      24-hour news summary (AI-generated, finance/stock focused)
-                    </div>
-                    {newsSummaryUpdatedAt ? (
-                      <div className="text-xs text-[var(--k-muted)]">
-                        Generated: {fmtDateTime(newsSummaryUpdatedAt)}
-                      </div>
-                    ) : null}
-                  </div>
-                  {newsSummaryBusy ? (
-                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
-                      <RefreshCw className="mr-2 inline h-4 w-4 animate-spin" />
-                      Generating AI summary...
-                    </div>
-                  ) : newsSummary || newsFallback ? (
-                    <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-4 text-sm">
-                      {newsSummary?.trim() || newsFallback?.trim()}
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
-                      No summary yet. Click &quot;Sync & Copy&quot; to fetch news and generate summary.
-                    </div>
-                  )}
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('news')}>
-                      Open News
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={newsSummaryBusy}
-                      onClick={() => void regenerateNewsSummary()}
-                    >
-                      {newsSummaryBusy ? (
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                      )}
-                      Regenerate
-                    </Button>
-                  </div>
-                </div>
+              ) : id === 'brief' ? (
+                <MorningBriefCard
+                  onNavigate={onNavigate}
+                  newsSummary={newsSummary}
+                  newsSummaryBusy={newsSummaryBusy}
+                  onRegenerateNews={() => void regenerateNewsSummary()}
+                />
               ) : id === 'watchlistRisk' ? (
                 <div>
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--k-muted)]">
@@ -1052,12 +513,24 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                       <table className="w-full border-collapse text-xs">
                         <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
                           <tr className="text-left">
-                            <th className="px-2 py-2">Symbol</th>
-                            <th className="px-2 py-2">Name</th>
-                            <th className="px-2 py-2">Intraday%</th>
-                            <th className="px-2 py-2">VR</th>
-                            <th className="px-2 py-2">Gap</th>
-                            <th className="px-2 py-2">Alerts</th>
+                            <th className="px-2 py-2 whitespace-nowrap">
+                              <DashboardHeader helpId="risk.symbol" align="left" width={260} />
+                            </th>
+                            <th className="px-2 py-2 whitespace-nowrap">
+                              <DashboardHeader helpId="risk.name" align="left" width={260} />
+                            </th>
+                            <th className="px-2 py-2 whitespace-nowrap">
+                              <DashboardHeader helpId="risk.intradayPct" align="left" width={300} />
+                            </th>
+                            <th className="px-2 py-2 whitespace-nowrap">
+                              <DashboardHeader helpId="risk.vr" align="left" width={300} />
+                            </th>
+                            <th className="px-2 py-2 whitespace-nowrap">
+                              <DashboardHeader helpId="risk.gap" align="left" width={300} />
+                            </th>
+                            <th className="px-2 py-2 whitespace-nowrap">
+                              <DashboardHeader helpId="risk.alerts" align="left" width={360} />
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1137,57 +610,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                     </Button>
                   </div>
                 </div>
-              ) : id === 'screeners' ? (
-                <div>
-                  <div className="mb-2 text-xs text-[var(--k-muted)]">
-                    Enabled screeners (no content). Missing/rowCount=0 will be highlighted.
-                  </div>
-                  <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                    <table className="w-full border-collapse text-xs">
-                      <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                        <tr className="text-left">
-                          <th className="px-2 py-2">Name</th>
-                          <th className="px-2 py-2">capturedAt</th>
-                          <th className="px-2 py-2 text-right">rows</th>
-                          <th className="px-2 py-2 text-right">filters</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(dash?.screeners ?? []).map((s: any) => {
-                          const bad = !s.capturedAt || Number(s.rowCount ?? 0) <= 0;
-                          return (
-                            <tr key={String(s.id)} className="border-t border-[var(--k-border)]">
-                              <td className="px-2 py-2">{String(s.name ?? s.id)}</td>
-                              <td className={`px-2 py-2 font-mono ${bad ? 'text-red-600' : ''}`}>
-                                {String(s.capturedAt ?? '—')}
-                              </td>
-                              <td
-                                className={`px-2 py-2 text-right font-mono ${bad ? 'text-red-600' : ''}`}
-                              >
-                                {String(s.rowCount ?? 0)}
-                              </td>
-                              <td className="px-2 py-2 text-right font-mono">
-                                {String(s.filtersCount ?? 0)}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {!(dash?.screeners ?? []).length ? (
-                          <tr>
-                            <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={4}>
-                              No enabled screeners.
-                            </td>
-                          </tr>
-                        ) : null}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('screener')}>
-                      Open Screener
-                    </Button>
-                  </div>
-                </div>
               ) : null}
             </section>
           );
@@ -1195,20 +617,16 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
         return (
           <>
-            <div className="space-y-4 lg:hidden">{orderedCards.map(renderCard)}</div>
-            <div className="hidden lg:grid lg:grid-cols-2 lg:gap-4">
-              <div className="space-y-4">{left.map(renderCard)}</div>
-              <div className="space-y-4">{right.map(renderCard)}</div>
+            <div className="space-y-4 lg:hidden">
+              {[...left, ...right].map(renderCard)}
+            </div>
+            <div className="hidden lg:flex lg:items-start lg:gap-4">
+              <div className="flex min-w-0 flex-1 flex-col gap-4">{left.map(renderCard)}</div>
+              <div className="flex min-w-0 flex-1 flex-col gap-4">{right.map(renderCard)}</div>
             </div>
           </>
         );
       })()}
-
-      {editLayout ? (
-        <div className="mt-4 text-xs text-[var(--k-muted)]">
-          Layout config is saved locally. Drag-and-drop UI can be added later; for now use ↑/↓.
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -50,38 +50,70 @@ export function generateTextJsonObjectModeOptions(looseStructuredOutputs: boolea
  * role that @ai-sdk/openai emits for "reasoning-style" model IDs — which includes any
  * model id not matching gpt-3*, gpt-4*, chatgpt-4o, or gpt-5-chat (e.g. llama3, qwen).
  * Rewrite to `system` before the request leaves the process.
+ *
+ * MiniMax-M3 embeds chain-of-thought in `content` as <think>…</think> unless
+ * `reasoning_split: true` is set (then thinking goes to reasoning_content).
  */
-export function rewriteDeveloperMessageRolesInJsonString(body: string): string {
+export function rewriteOpenAiCompatibleRequestBody(
+  body: string,
+  opts?: { baseURL?: string },
+): string {
   try {
     const parsed = JSON.parse(body) as Record<string, unknown>;
-    const messages = parsed.messages;
-    if (!Array.isArray(messages)) return body;
     let changed = false;
-    const next = messages.map((m: unknown) => {
-      if (
-        m !== null &&
-        typeof m === 'object' &&
-        'role' in m &&
-        (m as { role: string }).role === 'developer'
-      ) {
-        changed = true;
-        return { ...(m as Record<string, unknown>), role: 'system' };
-      }
-      return m;
-    });
-    if (!changed) return body;
-    return JSON.stringify({ ...parsed, messages: next });
+
+    const messages = parsed.messages;
+    if (Array.isArray(messages)) {
+      const next = messages.map((m: unknown) => {
+        if (
+          m !== null &&
+          typeof m === 'object' &&
+          'role' in m &&
+          (m as { role: string }).role === 'developer'
+        ) {
+          changed = true;
+          return { ...(m as Record<string, unknown>), role: 'system' };
+        }
+        return m;
+      });
+      if (changed) parsed.messages = next;
+    }
+
+    if (shouldEnableMiniMaxReasoningSplit(parsed, opts?.baseURL) && parsed.reasoning_split !== true) {
+      parsed.reasoning_split = true;
+      changed = true;
+    }
+
+    return changed ? JSON.stringify(parsed) : body;
   } catch {
     return body;
   }
 }
 
-function openAiCompatibleFetchRewriteDeveloper(innerFetch: typeof fetch = globalThis.fetch): typeof fetch {
+/** @deprecated Use rewriteOpenAiCompatibleRequestBody */
+export function rewriteDeveloperMessageRolesInJsonString(body: string): string {
+  return rewriteOpenAiCompatibleRequestBody(body);
+}
+
+function shouldEnableMiniMaxReasoningSplit(
+  parsed: Record<string, unknown>,
+  baseURL?: string,
+): boolean {
+  const model = typeof parsed.model === 'string' ? parsed.model : '';
+  if (/minimax/i.test(model)) return true;
+  if (baseURL && /minimaxi?\.com/i.test(baseURL)) return true;
+  return false;
+}
+
+function openAiCompatibleFetch(
+  baseURL: string | undefined,
+  innerFetch: typeof fetch = globalThis.fetch,
+): typeof fetch {
   return async (input, init) => {
     if (!init?.body || typeof init.body !== 'string') {
       return innerFetch(input, init);
     }
-    const body = rewriteDeveloperMessageRolesInJsonString(init.body);
+    const body = rewriteOpenAiCompatibleRequestBody(init.body, { baseURL });
     if (body === init.body) {
       return innerFetch(input, init);
     }
@@ -126,7 +158,7 @@ export function modelFromProfile(p: z.infer<typeof AiProfileSchema>): ResolvedMo
     const ollamaClient = createOpenAI({
       apiKey,
       baseURL,
-      fetch: openAiCompatibleFetchRewriteDeveloper(),
+      fetch: openAiCompatibleFetch(baseURL),
     });
     return {
       model: ollamaClient.chat(p.modelId),
@@ -143,7 +175,7 @@ export function modelFromProfile(p: z.infer<typeof AiProfileSchema>): ResolvedMo
       ? createOpenAI({
           apiKey,
           baseURL,
-          ...(baseURL ? { fetch: openAiCompatibleFetchRewriteDeveloper() } : {}),
+          ...(baseURL ? { fetch: openAiCompatibleFetch(baseURL) } : {}),
         })
       : openai;
   return {

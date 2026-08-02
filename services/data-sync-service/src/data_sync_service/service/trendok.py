@@ -36,6 +36,10 @@ MACRO_LOCK_DOWN_THRESHOLD = 3500
 LOW_VOLUME_RATIO_THRESHOLD = 1.2
 LOW_VOLUME_RATIO_SCORE_CAP = 79.0
 LOW_VOLUME_RATIO_SCORE_PART = "low_volume_ratio_cap"
+# V6.3 Alpha S TrendOK recovering accelerator
+ALPHA_S_RECOVERING_VOL_MULT = 2.5
+ALPHA_S_RECOVERING_SCORE_FLOOR = 60.0
+ALPHA_S_RECOVERING_SCORE_PART = "alpha_s_trend_recovering"
 _trendok_cache: TTLCache = TTLCache(maxsize=128, ttl=TRENDOK_CACHE_TTL_SECONDS)
 _macro_lock_cache: TTLCache = TTLCache(maxsize=1, ttl=MACRO_LOCK_CACHE_TTL_SECONDS)
 
@@ -44,6 +48,94 @@ def clear_trendok_cache() -> None:
     """Clear in-process TrendOK TTL cache (after bars force sync or tests)."""
     _trendok_cache.clear()
     _macro_lock_cache.clear()
+
+
+def _load_alpha_s_symbols() -> set[str]:
+    """Symbols with Max Grade=S in the active catalyst window (WATCH_SILENT source)."""
+    try:
+        from data_sync_service.service.watchlist_automation import load_catalyst_window
+
+        _, alpha_s = load_catalyst_window()
+        return set(alpha_s or set())
+    except Exception:
+        return set()
+
+
+def _volume_vs_avg10(vols: list[float]) -> float | None:
+    """Today volume / mean of prior 10 sessions; None if insufficient history."""
+    if len(vols) < 11:
+        return None
+    prior = vols[-11:-1]
+    avg10 = sum(prior) / 10.0
+    if avg10 <= 0:
+        return None
+    return float(vols[-1]) / avg10
+
+
+def _is_bullish_day(closes: list[float], opens: list[float]) -> bool:
+    """大阳线: close > open and close >= previous close."""
+    if len(closes) < 2 or len(opens) < 1:
+        return False
+    return bool(closes[-1] > opens[-1] and closes[-1] >= closes[-2])
+
+
+def apply_alpha_s_trend_recovering(
+    res: dict[str, Any],
+    *,
+    closes: list[float],
+    opens: list[float],
+    vols: list[float],
+    is_alpha_s: bool,
+) -> None:
+    """
+    V6.3: Alpha S + 2.5×10d volume + bullish candle → trendStatus=recovering,
+    trendOk=True, score floor 60. Call after final trendOk / failed-score caps.
+    """
+    checks = res.setdefault("checks", {})
+    if not isinstance(checks, dict):
+        checks = {}
+        res["checks"] = checks
+
+    vol_ratio = _volume_vs_avg10(vols)
+    if vol_ratio is not None:
+        res.setdefault("values", {})
+        if isinstance(res["values"], dict):
+            res["values"]["volVsAvg10"] = round(vol_ratio, 6)
+
+    recovering = False
+    if (
+        is_alpha_s
+        and vol_ratio is not None
+        and vol_ratio >= ALPHA_S_RECOVERING_VOL_MULT
+        and _is_bullish_day(closes, opens)
+    ):
+        recovering = True
+        res["trendOk"] = True
+        prev_score = res.get("score")
+        try:
+            score_f = float(prev_score) if prev_score is not None else 0.0
+        except (TypeError, ValueError):
+            score_f = 0.0
+        res["score"] = round(max(score_f, ALPHA_S_RECOVERING_SCORE_FLOOR), 3)
+        parts = res.get("scoreParts")
+        if not isinstance(parts, dict):
+            parts = {}
+            res["scoreParts"] = parts
+        parts[ALPHA_S_RECOVERING_SCORE_PART] = ALPHA_S_RECOVERING_SCORE_FLOOR
+        checks["alphaSTrendRecovering"] = True
+        res["trendStatus"] = "recovering"
+    else:
+        checks["alphaSTrendRecovering"] = False
+        tok = res.get("trendOk")
+        if tok is True:
+            res["trendStatus"] = "ok"
+        elif tok is False:
+            res["trendStatus"] = "no"
+        else:
+            res["trendStatus"] = None
+
+    if not recovering and "alphaSTrendRecovering" not in checks:
+        checks["alphaSTrendRecovering"] = False
 
 
 def macro_override_lock_active(risk_mode: str | None, down_count: int | None) -> bool:
@@ -394,6 +486,8 @@ def _shanghai_today_iso() -> str:
 
 
 INTRADAY_SURGE_THRESHOLD_PCT = 6.0
+MOMENTUM_SURGE_ALLOW_MAX_PCT = 9.0
+MOMENTUM_SURGE_SCORE_MIN = 85
 _GAP_UP_WEAK_REGIMES = frozenset({"Weak", "Diverging"})
 
 
@@ -448,13 +542,26 @@ def _build_server_risk_alerts(
         and intraday_chg_pct is not None
         and intraday_chg_pct > INTRADAY_SURGE_THRESHOLD_PCT
     ):
-        alerts.append(
-            {
-                "code": "intraday_surge",
-                "severity": "block",
-                "message": f"Intraday change {intraday_chg_pct:.1f}% exceeds 6.0%; no new positions",
-            }
-        )
+        momentum_allow = bool(checks.get("momentum_surge_allow"))
+        if momentum_allow and intraday_chg_pct <= MOMENTUM_SURGE_ALLOW_MAX_PCT:
+            alerts.append(
+                {
+                    "code": "intraday_surge",
+                    "severity": "warn",
+                    "message": (
+                        f"Intraday change {intraday_chg_pct:.1f}% >6% but ≤{MOMENTUM_SURGE_ALLOW_MAX_PCT:.0f}% "
+                        "with B_momentum surge allow"
+                    ),
+                }
+            )
+        else:
+            alerts.append(
+                {
+                    "code": "intraday_surge",
+                    "severity": "block",
+                    "message": f"Intraday change {intraday_chg_pct:.1f}% exceeds 6.0%; no new positions",
+                }
+            )
     if gap_up is True and str(market_regime or "").strip() in _GAP_UP_WEAK_REGIMES:
         regime = str(market_regime or "").strip()
         gap_blocked = bool(checks.get("blocked_gap_up_weak_market"))
@@ -541,6 +648,39 @@ def _block_buy_if_entry_at_or_below_stop(res: dict[str, Any]) -> None:
     buy_checks["blocked_entry_vs_stop"] = True
 
 
+def _score_for_momentum_surge_gate(res: dict[str, Any]) -> float | None:
+    """Displayed score with only intraday-spike Anti-Spike restored for TIP-007 gate."""
+    score = res.get("score")
+    try:
+        score_f = float(score) if score is not None else None
+    except (TypeError, ValueError):
+        return None
+    if score_f is None:
+        return None
+    parts = res.get("scoreParts")
+    if isinstance(parts, dict):
+        raw = parts.get("penalty_intraday_spike")
+        try:
+            spike = float(raw) if raw is not None else 0.0
+        except (TypeError, ValueError):
+            spike = 0.0
+        if spike < 0:
+            return score_f - spike
+    return score_f
+
+
+def _is_momentum_surge_eligible(res: dict[str, Any], *, intraday_pct: float) -> bool:
+    """TIP-007 BE half: B_momentum + TrendOK + pre-spike score≥85 + intraday≤9. Mainline/ATTACK stay FE."""
+    if intraday_pct > MOMENTUM_SURGE_ALLOW_MAX_PCT:
+        return False
+    if str(res.get("buyMode") or "").strip() != "B_momentum":
+        return False
+    if res.get("trendOk") is not True:
+        return False
+    score_f = _score_for_momentum_surge_gate(res)
+    return score_f is not None and score_f >= MOMENTUM_SURGE_SCORE_MIN
+
+
 def _apply_intraday_risk_buy_blocks(
     res: dict[str, Any],
     *,
@@ -560,10 +700,21 @@ def _apply_intraday_risk_buy_blocks(
         res["buyChecks"] = buy_checks
 
     if isinstance(intraday, (int, float)) and float(intraday) > INTRADAY_SURGE_THRESHOLD_PCT:
-        res["buyAction"] = "avoid"
-        res["buyWhy"] = "风险：日内涨幅超过6%，禁止建仓"
-        buy_checks["blocked_intraday_surge"] = True
-        return
+        intraday_pct = float(intraday)
+        if _is_momentum_surge_eligible(res, intraday_pct=intraday_pct):
+            buy_checks["momentum_surge_allow"] = True
+            buy_checks["blocked_intraday_surge"] = False
+            prev_why = str(res.get("buyWhy") or "").strip()
+            allow_msg = (
+                f"TIP-007：日内涨幅 {intraday_pct:.1f}%（>6%且≤{MOMENTUM_SURGE_ALLOW_MAX_PCT:.0f}%），"
+                "B_momentum 高分放宽"
+            )
+            res["buyWhy"] = allow_msg if not prev_why else f"{prev_why}；{allow_msg}"
+        else:
+            res["buyAction"] = "avoid"
+            res["buyWhy"] = "风险：日内涨幅超过6%，禁止建仓"
+            buy_checks["blocked_intraday_surge"] = True
+            return
 
     regime = str(market_regime or "").strip()
     if gap_up is True and regime in _GAP_UP_WEAK_REGIMES:
@@ -629,7 +780,7 @@ def _merge_realtime_bar(
 def _symbol_to_ts_code(symbol: str) -> tuple[str, str, str] | None:
     """
     Map UI symbol to (market, ticker, ts_code).
-    Currently only supports CN.
+    Supports CN A-shares, HK tickers, and ETFs.
     """
     s = (symbol or "").strip().upper()
     if not s:
@@ -639,6 +790,18 @@ def _symbol_to_ts_code(symbol: str) -> tuple[str, str, str] | None:
         if len(ticker) == 6 and ticker.isdigit():
             suffix = "SH" if ticker.startswith("6") else "SZ"
             return "CN", ticker, f"{ticker}.{suffix}"
+        return None
+    if s.startswith("HK:"):
+        ticker = s.split(":", 1)[1].strip()
+        if 1 <= len(ticker) <= 5 and ticker.isdigit():
+            padded = ticker.zfill(5)
+            return "HK", padded, f"{padded}.HK"
+        return None
+    if s.startswith("ETF:"):
+        ticker = s.split(":", 1)[1].strip()
+        if len(ticker) == 6 and ticker.isdigit():
+            suffix = "SH" if ticker[0] in ("5", "6", "9") else "SZ"
+            return "ETF", ticker, f"{ticker}.{suffix}"
         return None
     return None
 
@@ -899,6 +1062,7 @@ def compute_trendok_for_symbols(
 
     stored_stoploss_by_code = get_stoploss_batch(ts_codes)
     stoploss_upserts_by_code: dict[str, dict[str, Any]] = {}
+    alpha_s_symbols = _load_alpha_s_symbols()
 
     def resolve_stoploss(ts_code: str, newly_computed: float, as_of_date: str | None) -> tuple[float, bool]:
         stored = stored_stoploss_by_code.get(ts_code)
@@ -941,6 +1105,7 @@ def compute_trendok_for_symbols(
                 index_20d_ret=index_20d_ret,
                 index_ema20_down=index_ema20_down,
                 rt_vwap=rt_vwap_by_code.get(ts_code),
+                is_alpha_s=sym in alpha_s_symbols,
             )
         )
     if stoploss_upserts_by_code:
@@ -989,6 +1154,7 @@ def _trendok_one(
     index_20d_ret: float | None = None,
     index_ema20_down: bool = False,
     rt_vwap: float | None = None,
+    is_alpha_s: bool = False,
 ) -> dict[str, Any]:
     """
     Ported from quant-service `_market_stock_trendok_one` with the same checks/score behavior.
@@ -999,6 +1165,7 @@ def _trendok_one(
         "name": name,
         "asOfDate": None,
         "trendOk": None,
+        "trendStatus": None,
         "score": None,
         "scoreParts": {},
         "stopLossPrice": None,
@@ -1022,7 +1189,11 @@ def _trendok_one(
         "missingData": [],
     }
 
-    if not symbol.startswith("CN:"):
+    if not (
+        symbol.startswith("CN:")
+        or symbol.startswith("HK:")
+        or symbol.startswith("ETF:")
+    ):
         res["missingData"].append("unsupported_market")
         return res
 
@@ -1072,6 +1243,7 @@ def _trendok_one(
 
     # Checks + values
     ema5s = _ema(closes, 5)
+    ema10s = _ema(closes, 10)
     ema20s = _ema(closes, 20)
     ema60s = _ema(closes, 60)
     if ema5s and ema20s and ema60s:
@@ -1081,6 +1253,8 @@ def _trendok_one(
         # Rule 1 (optimized): allow EMA5 short-term noise.
         # TrendOK requires close above EMA20 and EMA20 above EMA60.
         res["checks"]["emaOrder"] = bool(closes[-1] > ema20s[-1] and ema20s[-1] > ema60s[-1])
+    if ema10s:
+        res["values"]["ema10"] = ema10s[-1]
 
     macd_line, sig_line, hist = _macd(closes, 12, 26, 9)
     if macd_line and sig_line and hist:
@@ -1729,6 +1903,15 @@ def _trendok_one(
                 parts2[LOW_VOLUME_RATIO_SCORE_PART] = LOW_VOLUME_RATIO_SCORE_CAP
     if res.get("score") is not None and res.get("trendOk") is not True:
         res["score"] = round(min(float(res["score"]), TRENDOK_FAILED_SCORE_CAP), 3)
+
+    # V6.3 Alpha S recovering accelerator (after failed-score caps)
+    apply_alpha_s_trend_recovering(
+        res,
+        closes=closes,
+        opens=opens,
+        vols=vols,
+        is_alpha_s=is_alpha_s,
+    )
 
     # RS_Leader alert (V5.7): contrarian resilience highlight during weak market
     if rs_leader:

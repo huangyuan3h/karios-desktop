@@ -133,6 +133,78 @@ describe('resolveWatchlistCurrentPrice', () => {
       }),
     ).toBe(9.9);
   });
+
+  it('uses EM realtime quote for HK during session even when trend bar is stale', () => {
+    // East Money push2 returns the live intraday price for HK but no trade_time,
+    // so quoteTradeTime is null and trendAsOfDate still points at yesterday.
+    expect(
+      resolveWatchlistCurrentPrice({
+        tradingTime: true,
+        todaySh: today,
+        symbol: 'HK:00700',
+        trendAsOfDate: yesterday,
+        quotePrice: 382.4,
+        quoteTradeTime: null,
+        trendClose: 380.0,
+      }),
+    ).toBe(382.4);
+  });
+
+  it('uses EM realtime quote for HK after hours before daily sync catches up', () => {
+    expect(
+      resolveWatchlistCurrentPrice({
+        tradingTime: false,
+        todaySh: today,
+        symbol: 'HK:00700',
+        trendAsOfDate: yesterday,
+        quotePrice: 385.1,
+        quoteTradeTime: null,
+        trendClose: 380.0,
+      }),
+    ).toBe(385.1);
+  });
+
+  it('still prefers HK realtime quote after daily bar is synced for today', () => {
+    expect(
+      resolveWatchlistCurrentPrice({
+        tradingTime: false,
+        todaySh: today,
+        symbol: 'HK:00700',
+        trendAsOfDate: today,
+        quotePrice: 385.1,
+        quoteTradeTime: null,
+        trendClose: 384.0,
+      }),
+    ).toBe(385.1);
+  });
+
+  it('falls back to daily close for HK when EM quote is unavailable', () => {
+    expect(
+      resolveWatchlistCurrentPrice({
+        tradingTime: true,
+        todaySh: today,
+        symbol: 'HK:00700',
+        trendAsOfDate: today,
+        quotePrice: null,
+        quoteTradeTime: null,
+        trendClose: 384.0,
+      }),
+    ).toBe(384.0);
+  });
+
+  it('returns null for HK when both EM quote and daily close are missing', () => {
+    expect(
+      resolveWatchlistCurrentPrice({
+        tradingTime: true,
+        todaySh: today,
+        symbol: 'HK:00700',
+        trendAsOfDate: yesterday,
+        quotePrice: null,
+        quoteTradeTime: null,
+        trendClose: null,
+      }),
+    ).toBeNull();
+  });
 });
 
 describe('resolveIntradayChgPct', () => {

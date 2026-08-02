@@ -92,6 +92,21 @@ describe('buildExecAttentionQueue', () => {
     expect(q.exits).toHaveLength(1);
   });
 
+  it('allows DEFENSIVE_SLEEVE_ALLOW fires when allowNewEntries is false', () => {
+    const q = buildExecAttentionQueue({
+      gate: holdGate,
+      watchlistItems: [],
+      cards: [
+        { symbol: 'CN:601857', action: 'BUY', why: 'DEFENSIVE_SLEEVE_ALLOW', suggestAddPct: 5 },
+        { symbol: 'CN:600000', action: 'BUY', why: 'MAINLINE_OK' },
+      ],
+      changes: [],
+    });
+    expect(q.fires).toHaveLength(1);
+    expect(q.fires[0]?.symbol).toBe('CN:601857');
+    expect(q.fireBlockedByGate).toBe(false);
+  });
+
   it('computes sleeve label and missing size from watchlist', () => {
     const q = buildExecAttentionQueue({
       gate: attackGate,
@@ -103,7 +118,7 @@ describe('buildExecAttentionQueue', () => {
       cards: [],
       changes: [],
     });
-    expect(q.sleeveLabel).toBe('Sleeve 45.0% / 60%');
+    expect(q.sleeveLabel).toBe('卫星仓 45.0%（上限 60%）');
     expect(q.missingSize).toBe(1);
   });
 
@@ -162,7 +177,7 @@ describe('buildExecAttentionQueue', () => {
     });
     expect(q.keyChanges).toHaveLength(3);
     expect(q.keyChanges.map((x) => x.id)).toEqual(['1', '3', '4']);
-    expect(q.keyChanges[0].line).toContain('action');
+    expect(q.keyChanges[0].line).toContain('操作');
     expect(formatDecisionChangeLine(changes[2])).toContain('Gate mode');
   });
 
@@ -185,10 +200,10 @@ describe('buildExecAttentionQueue', () => {
     const md = formatExecAttentionMarkdown(q, { source: 'live' });
     expect(md).toContain('## Exec Attention');
     expect(md).toContain('- source: live');
-    expect(md).toContain('Sleeve 20.0% / 60%');
+    expect(md).toContain('卫星仓 20.0%（上限 60%）');
     expect(md).toContain('### Must act');
-    expect(md).toContain('CN:600000  EXIT  EXIT_NOW');
+    expect(md).toContain('CN:600000  卖出  强制卖出');
     expect(md).toContain('### Fire');
-    expect(md).toContain('CN:600001  BUY  +5.0% (clip)  MAINLINE_OK');
+    expect(md).toContain('CN:600001  买入  +5.0% (clip)  主线确认');
   });
 });

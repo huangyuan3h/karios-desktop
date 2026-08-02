@@ -15,6 +15,19 @@ type TvScreener = {
   url: string;
   enabled: boolean;
   updatedAt: string;
+  mode: 'api' | 'chrome';
+  market?: string | null;
+  filterJson?: Record<string, unknown> | null;
+  apiColumns?: string[] | null;
+};
+
+type TvScreenerTemplate = {
+  templateId: string;
+  displayName: string;
+  market: string;
+  description: string;
+  nestedFilterValidated: boolean;
+  screenTitleSubstr: string;
 };
 
 type TvChromeStatus = {
@@ -29,10 +42,13 @@ type TvChromeStatus = {
   headless: boolean;
 };
 
+type NewScreenerMode = 'template' | 'url' | 'json';
+
 export function SettingsPage() {
   const [tab, setTab] = React.useState<'tradingview' | 'models'>('tradingview');
 
   const [screeners, setScreeners] = React.useState<TvScreener[]>([]);
+  const [templates, setTemplates] = React.useState<TvScreenerTemplate[]>([]);
   const [status, setStatus] = React.useState<TvChromeStatus | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -44,26 +60,40 @@ export function SettingsPage() {
   const [sourceProfileDir, setSourceProfileDir] = React.useState('Profile 1');
   const [forceBootstrap, setForceBootstrap] = React.useState(false);
 
+  // New screener form state (OPT-057 three-mode UI).
+  const [newMode, setNewMode] = React.useState<NewScreenerMode>('template');
+  const [newTemplateId, setNewTemplateId] = React.useState<string>('');
   const [newName, setNewName] = React.useState('');
   const [newUrl, setNewUrl] = React.useState('');
+  const [newFilterJson, setNewFilterJson] = React.useState('');
 
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editName, setEditName] = React.useState('');
   const [editUrl, setEditUrl] = React.useState('');
+  const [editMode, setEditMode] = React.useState<'api' | 'chrome'>('chrome');
+  const [editFilterJson, setEditFilterJson] = React.useState('');
 
   const refresh = React.useCallback(async () => {
     setError(null);
     try {
-      const [s, st] = await Promise.all([
+      const [s, st, ts] = await Promise.all([
         apiGetJson<{ items: TvScreener[] }>('/integrations/tradingview/screeners'),
         apiGetJson<TvChromeStatus>('/integrations/tradingview/status'),
+        apiGetJson<{ items: TvScreenerTemplate[] }>(
+          '/integrations/tradingview/screener-templates',
+        ),
       ]);
       setScreeners(s.items);
       setStatus(st);
+      setTemplates(ts.items);
+      if (!newTemplateId && ts.items.length > 0) {
+        const cn = ts.items.find((t) => t.market === 'cn');
+        setNewTemplateId((cn ?? ts.items[0]).templateId);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [newTemplateId]);
 
   React.useEffect(() => {
     void refresh();
@@ -78,9 +108,7 @@ export function SettingsPage() {
         '/integrations/tradingview/chrome/start',
         {
           headless,
-          // Use a dedicated user-data-dir for CDP. Keep it stable so cookies persist.
           userDataDir: status?.userDataDir ?? '~/.karios/chrome-tv-cdp',
-          // Use the same profile directory name as the source, so we can copy Profile 1.
           profileDirectory: sourceProfileDir,
           bootstrapFromChromeUserDataDir: sourceUserDataDir,
           bootstrapFromProfileDirectory: sourceProfileDir,
@@ -109,20 +137,59 @@ export function SettingsPage() {
   }
 
   async function addScreener() {
-    if (!newUrl.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await apiPostJson<{ id: string }>(
-        '/integrations/tradingview/screeners',
-        {
-          name: newName.trim() || 'Untitled',
-          url: newUrl.trim(),
-          enabled: true,
-        },
-      );
+      if (newMode === 'template') {
+        if (!newTemplateId) {
+          setError('Pick a template first.');
+          return;
+        }
+        await apiPostJson<{ id: string }>(
+          '/integrations/tradingview/screeners/from-template',
+          { templateId: newTemplateId, enabled: true },
+        );
+      } else if (newMode === 'url') {
+        if (!newUrl.trim()) {
+          setError('URL is required for legacy mode.');
+          return;
+        }
+        await apiPostJson<{ id: string }>(
+          '/integrations/tradingview/screeners',
+          {
+            name: newName.trim() || 'Untitled',
+            url: newUrl.trim(),
+            enabled: true,
+            mode: 'chrome',
+          },
+        );
+      } else {
+        // json
+        if (!newFilterJson.trim()) {
+          setError('Filter JSON is required.');
+          return;
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(newFilterJson);
+        } catch (e) {
+          setError(`Filter JSON parse error: ${e instanceof Error ? e.message : String(e)}`);
+          return;
+        }
+        await apiPostJson<{ id: string }>(
+          '/integrations/tradingview/screeners',
+          {
+            name: newName.trim() || 'Untitled',
+            url: '',
+            enabled: true,
+            mode: 'api',
+            filterJson: parsed as Record<string, unknown>,
+          },
+        );
+      }
       setNewName('');
       setNewUrl('');
+      setNewFilterJson('');
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -135,12 +202,23 @@ export function SettingsPage() {
     setBusy(true);
     setError(null);
     try {
+      let filterJson = it.filterJson ?? null;
+      if (next.mode === 'api' && editFilterJson.trim()) {
+        try {
+          filterJson = JSON.parse(editFilterJson) as Record<string, unknown>;
+        } catch (e) {
+          setError(`Filter JSON parse error: ${e instanceof Error ? e.message : String(e)}`);
+          return;
+        }
+      }
       await apiPutJson<{ ok: boolean }>(
         `/integrations/tradingview/screeners/${encodeURIComponent(it.id)}`,
         {
           name: (next.name ?? it.name).trim() || 'Untitled',
           url: (next.url ?? it.url).trim(),
           enabled: next.enabled ?? it.enabled,
+          mode: next.mode ?? it.mode,
+          filterJson,
         },
       );
       await refresh();
@@ -347,39 +425,135 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-2">
-                <div className="grid grid-cols-12 gap-2">
-                  <input
-                    className="col-span-3 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
-                    placeholder="Name"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                  />
-                  <input
-                    className="col-span-8 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
-                    placeholder="https://www.tradingview.com/screener/..."
-                    value={newUrl}
-                    onChange={(e) => setNewUrl(e.target.value)}
-                  />
-                  <Button
-                    className="col-span-1 h-9"
-                    onClick={() => void addScreener()}
-                    disabled={busy}
-                  >
-                    Add
-                  </Button>
+              <div className="mt-4 grid gap-3">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-[var(--k-muted)]">Mode:</span>
+                  {(['template', 'url', 'json'] as const).map((m) => (
+                    <Button
+                      key={m}
+                      size="sm"
+                      variant={newMode === m ? 'default' : 'secondary'}
+                      onClick={() => setNewMode(m)}
+                      disabled={busy}
+                    >
+                      {m === 'template' ? 'Template (推荐)' : m === 'url' ? 'Custom URL (legacy)' : 'Filter JSON (advanced)'}
+                    </Button>
+                  ))}
                 </div>
+
+                {newMode === 'template' ? (
+                  <div className="grid grid-cols-12 gap-2">
+                    <select
+                      className="col-span-9 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                      value={newTemplateId}
+                      onChange={(e) => setNewTemplateId(e.target.value)}
+                      disabled={busy || templates.length === 0}
+                    >
+                      {templates.length === 0 ? (
+                        <option value="">Loading templates...</option>
+                      ) : (
+                        templates.map((t) => (
+                          <option key={t.templateId} value={t.templateId}>
+                            {t.displayName} ({t.market.toUpperCase()})
+                            {t.nestedFilterValidated ? '' : ' ⚠'}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <Button
+                      className="col-span-3 h-9"
+                      onClick={() => void addScreener()}
+                      disabled={busy || !newTemplateId}
+                    >
+                      Save &amp; Enable
+                    </Button>
+                    {(() => {
+                      const t = templates.find((x) => x.templateId === newTemplateId);
+                      return t ? (
+                        <div className="col-span-12 text-xs text-[var(--k-muted)]">
+                          {t.description}
+                          {!t.nestedFilterValidated ? (
+                            <span className="ml-2 text-amber-600">
+                              ⚠ Filter not yet validated against live API
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                ) : null}
+
+                {newMode === 'url' ? (
+                  <div className="grid grid-cols-12 gap-2">
+                    <input
+                      className="col-span-3 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                      placeholder="Name"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      disabled={busy}
+                    />
+                    <input
+                      className="col-span-8 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                      placeholder="https://www.tradingview.com/screener/..."
+                      value={newUrl}
+                      onChange={(e) => setNewUrl(e.target.value)}
+                      disabled={busy}
+                    />
+                    <Button
+                      className="col-span-1 h-9"
+                      onClick={() => void addScreener()}
+                      disabled={busy || !newUrl.trim()}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                ) : null}
+
+                {newMode === 'json' ? (
+                  <div className="grid grid-cols-12 gap-2">
+                    <input
+                      className="col-span-3 h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                      placeholder="Name"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      disabled={busy}
+                    />
+                    <textarea
+                      className="col-span-12 min-h-[120px] rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                      placeholder='{"and": [{"left": "market_cap_basic", "operation": "greater", "right": 30000000000}, ...]}'
+                      value={newFilterJson}
+                      onChange={(e) => setNewFilterJson(e.target.value)}
+                      disabled={busy}
+                    />
+                    <Button
+                      className="col-span-12 h-9"
+                      onClick={() => void addScreener()}
+                      disabled={busy || !newFilterJson.trim()}
+                    >
+                      Save &amp; Enable
+                    </Button>
+                  </div>
+                ) : null}
 
                 <div className="mt-2 overflow-hidden rounded-lg border border-[var(--k-border)]">
                   <div className="grid grid-cols-12 gap-2 bg-[var(--k-surface-2)] px-3 py-2 text-xs text-[var(--k-muted)]">
                     <div className="col-span-3">Name</div>
-                    <div className="col-span-5">URL</div>
-                    <div className="col-span-2 text-center">On</div>
-                    <div className="col-span-2 text-right">Actions</div>
+                    <div className="col-span-2">Mode</div>
+                    <div className="col-span-3">Source</div>
+                    <div className="col-span-1 text-center">On</div>
+                    <div className="col-span-3 text-right">Actions</div>
                   </div>
                   <div className="divide-y divide-[var(--k-border)]">
                     {screeners.map((it) => {
                       const editing = editingId === it.id;
+                      const sourceLabel =
+                        it.mode === 'api'
+                          ? it.market
+                            ? `API · ${it.market.toUpperCase()}`
+                            : 'API'
+                          : it.url
+                            ? `Chrome · ${it.url.length > 32 ? `${it.url.slice(0, 32)}…` : it.url}`
+                            : 'Chrome';
                       return (
                         <div key={it.id} className="grid grid-cols-12 gap-2 px-3 py-2">
                           <div className="col-span-3">
@@ -388,32 +562,69 @@ export function SettingsPage() {
                                 className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
                                 value={editName}
                                 onChange={(e) => setEditName(e.target.value)}
+                                disabled={busy}
                               />
                             ) : (
                               <div className="truncate pt-2 text-sm">{it.name}</div>
                             )}
                           </div>
-                          <div className="col-span-5">
+                          <div className="col-span-2 pt-2">
                             {editing ? (
-                              <input
-                                className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
-                                value={editUrl}
-                                onChange={(e) => setEditUrl(e.target.value)}
-                              />
+                              <select
+                                className="h-9 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-2 text-xs"
+                                value={editMode}
+                                onChange={(e) => setEditMode(e.target.value as 'api' | 'chrome')}
+                                disabled={busy}
+                              >
+                                <option value="api">api</option>
+                                <option value="chrome">chrome</option>
+                              </select>
+                            ) : (
+                              <span
+                                className={cn(
+                                  'inline-block rounded-full border px-2 py-0.5 font-mono text-xs',
+                                  it.mode === 'api'
+                                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700'
+                                    : 'border-[var(--k-border)] bg-[var(--k-surface-2)] text-[var(--k-muted)]',
+                                )}
+                              >
+                                {it.mode}
+                              </span>
+                            )}
+                          </div>
+                          <div className="col-span-3">
+                            {editing ? (
+                              editMode === 'chrome' ? (
+                                <input
+                                  className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--k-ring)]"
+                                  placeholder="URL (chrome mode)"
+                                  value={editUrl}
+                                  onChange={(e) => setEditUrl(e.target.value)}
+                                  disabled={busy}
+                                />
+                              ) : (
+                                <textarea
+                                  className="min-h-[80px] w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 font-mono text-xs"
+                                  placeholder="filter_json"
+                                  value={editFilterJson}
+                                  onChange={(e) => setEditFilterJson(e.target.value)}
+                                  disabled={busy}
+                                />
+                              )
                             ) : (
                               <div className="truncate pt-2 font-mono text-xs text-[var(--k-muted)]">
-                                {it.url}
+                                {sourceLabel}
                               </div>
                             )}
                           </div>
-                          <div className="col-span-2 grid place-items-center">
+                          <div className="col-span-1 grid place-items-center">
                             <Switch
                               checked={it.enabled}
                               onCheckedChange={(v) => void saveScreener(it, { enabled: v })}
                               disabled={busy}
                             />
                           </div>
-                          <div className="col-span-2 flex items-center justify-end gap-1">
+                          <div className="col-span-3 flex items-center justify-end gap-1">
                             {editing ? (
                               <>
                                 <Button
@@ -421,9 +632,11 @@ export function SettingsPage() {
                                   size="sm"
                                   className="h-8 px-2"
                                   onClick={() =>
-                                    void saveScreener(it, { name: editName, url: editUrl }).then(
-                                      () => setEditingId(null),
-                                    )
+                                    void saveScreener(it, {
+                                      name: editName,
+                                      url: editUrl,
+                                      mode: editMode,
+                                    }).then(() => setEditingId(null))
                                   }
                                   disabled={busy}
                                 >
@@ -449,6 +662,10 @@ export function SettingsPage() {
                                     setEditingId(it.id);
                                     setEditName(it.name);
                                     setEditUrl(it.url);
+                                    setEditMode(it.mode);
+                                    setEditFilterJson(
+                                      it.filterJson ? JSON.stringify(it.filterJson, null, 2) : '',
+                                    );
                                   }}
                                   disabled={busy}
                                 >

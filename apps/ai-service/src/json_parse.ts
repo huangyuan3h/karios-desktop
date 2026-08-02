@@ -1,5 +1,7 @@
+import { stripModelThinking } from './model_thinking';
+
 export function tryParseJsonObject(text: string): unknown {
-  const t0 = text.trim();
+  const t0 = stripModelThinking(text);
   // Strip common markdown code fences if present.
   const t =
     t0.startsWith('```') && t0.endsWith('```')

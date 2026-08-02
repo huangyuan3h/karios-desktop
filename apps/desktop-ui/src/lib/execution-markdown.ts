@@ -2,6 +2,7 @@ import type { ExecutionActionCard, ExecutionGate } from '@karios/shared';
 
 import { mdPrice, mdScore, mdTable } from '@/lib/dashboard-format';
 import {
+  buildDefensiveSleeveExposurePct,
   buildSectorExposureFromWatchlist,
   buildSleeveExposurePct,
   computePnLPct,
@@ -18,11 +19,19 @@ import type { TrendOkResult } from '@/lib/api/types';
 import { formatPnLPct, formatRs, buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
 import type { WatchlistQuoteSlice } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
+import {
+  WATCHLIST_TABLE_VISIBILITY_NOTE,
+  shouldShowInWatchlistTable,
+} from '@/lib/watchlist-table-filter';
 
 function formatTrendOkCell(t: TrendOkResult | undefined): string {
   if (!t) return '—';
-  if (t.trendOk === true) return 'ok';
-  if (t.trendOk === false) return 'no';
+  const status = String(t.trendStatus || '')
+    .trim()
+    .toLowerCase();
+  if (status === 'recovering') return 'recovering';
+  if (status === 'ok' || t.trendOk === true) return 'ok';
+  if (status === 'no' || t.trendOk === false) return 'no';
   return '—';
 }
 
@@ -76,11 +85,12 @@ export function buildPositionsExecutionMarkdown(
 ): PositionsExecutionMarkdownResult {
   const lines: string[] = [];
   lines.push(`${heading} Combat Positions & Watchlist (Unified)`);
+  lines.push(...WATCHLIST_TABLE_VISIBILITY_NOTE);
   if (!gate?.allowNewEntries) {
     lines.push('- note: BUY/ADD only valid when Execution Gate allowNewEntries=true');
   }
   lines.push('- note: BUY/ADD also require mainline bind (5D Top3 or Momentum) and non-defense sector');
-  lines.push('- note: BUY/ADD also blocked when intraday >6% (INTRADAY_SURGE_BLOCK)');
+  lines.push('- note: BUY/ADD blocked when intraday >6% (INTRADAY_SURGE_BLOCK), except TIP-007: ATTACK+mainline+B_momentum+Score≥85 allows ≤9% (Why=MOMENTUM_SURGE_ALLOW)');
   lines.push('- note: BUY/ADD also blocked on gap-up in Weak/Diverging (GAP_UP_WEAK_BLOCK)');
   lines.push(
     '- note: ADD blocked when positionPct >= 15% (SIZE_CAP_BLOCK); single-name satellite cap',
@@ -92,19 +102,28 @@ export function buildPositionsExecutionMarkdown(
     '- note: BUY/ADD blocked when sleeve positionPct sum >= Gate positionRangeHint max (SLEEVE_CAP_BLOCK)',
   );
   lines.push(
-    '- note: Suggest% = min(5% clip, single 15% room, sector 30% room, sleeve hint room)',
+    '- note: Suggest% = min(5% clip, single 15% room, sector 30% room, sleeve hint room); WEAK_ATTACK hard-caps Suggest% at 5% (overflow pioneer)',
   );
   lines.push(
     '- note: Dist% flat = (Entry_Trigger-Current)/Current; held = (Current-Exit_Stop)/Current',
   );
   lines.push(
-    '- note: PURGE = Pos%=0 & Score<30 & TrendOK=no (removed after report); Alpha Max Grade=S → WATCH_SILENT (kept, ignore scores)',
+    '- note: PURGE = Pos%=0 & Score<30 & TrendOK=no (removed after report); Alpha Max Grade=S → WATCH_SILENT (kept); V6.3 recovering → WATCH Why=TREND_RECOVERING',
   );
   lines.push(
     '- note: Locked_T1=True (entryDate=today) → EXIT/TRIM blocked (Why=T1_LOCK); missing entryDate → Locked_T1=MISSING fail-closed (Why=ENTRY_DATE_MISSING)',
   );
   lines.push(
     '- note: Entry_Trigger <= HardStop → no BUY (Why=ENTRY_BELOW_STOP)',
+  );
+  lines.push(
+    '- note: DEFEND/Weak TimeLock — BUY/ADD only 14:30–14:50 SH (Why=TIME_LOCK_WEAK_REGIME / MARKET_CLOSING_LOCK); ATTACK+Strong exempt',
+  );
+  lines.push(
+    '- note: DEFEND Defensive Sleeve — whitelist+5D Top3+Score≥70+TrendOK → BUY Why=DEFENSIVE_SLEEVE_ALLOW (cap 10% sleeve / 5% single; beta deferred)',
+  );
+  lines.push(
+    '- note: WEAK_ATTACK (V6.3 Intraday Overflow Override) — sector 1D inflow>500亿 + upCount>4000 + ≥14:30 → allowNewEntries with Suggest%≤5%',
   );
   if (sectorOutflowBlock) {
     lines.push(
@@ -131,6 +150,7 @@ export function buildPositionsExecutionMarkdown(
   }
   lines.push('');
   const sectorExposureByIndustry = buildSectorExposureFromWatchlist(items, trend);
+  const defensiveSleeveExposurePct = buildDefensiveSleeveExposurePct(items, trend);
   const headers = [
     'Symbol',
     'Name',
@@ -155,6 +175,7 @@ export function buildPositionsExecutionMarkdown(
   ];
   const rows: unknown[][] = [];
   const purgeSymbols: string[] = [];
+  let hiddenRows = 0;
   for (const it of items) {
     const t = trend[it.symbol];
     const q = quotes[it.symbol];
@@ -188,12 +209,22 @@ export function buildPositionsExecutionMarkdown(
       marketRegime: t?.marketRegime ?? null,
       sectorExposureByIndustry,
       sleeveExposurePct,
+      defensiveSleeveExposurePct,
       sectorOutflowBlock,
       catalyst,
       todaySh,
     });
     if (card.action === 'PURGE') {
       purgeSymbols.push(it.symbol);
+    }
+    // Visibility filter (2026-08-01): drop silent dead rows (WATCH_SILENT & no signal)
+    // but keep PURGE rows so the post-report GC can still remove them from storage.
+    if (
+      card.action !== 'PURGE' &&
+      !shouldShowInWatchlistTable(it, t ?? null, card.action)
+    ) {
+      hiddenRows += 1;
+      continue;
     }
     const dist =
       typeof card.distPct === 'number' && Number.isFinite(card.distPct)
@@ -237,6 +268,9 @@ export function buildPositionsExecutionMarkdown(
     return { markdown: lines.join('\n'), purgeSymbols: [] };
   }
   lines.push(mdTable(headers, rows));
+  if (hiddenRows > 0) {
+    lines.push(`- note: ${hiddenRows} silent dead rows hidden (Pos%=— & Score<60 & TrendOK≠ok/recovering & Action=WATCH_SILENT); kept in DB`);
+  }
   if (purgeSymbols.length) {
     lines.push(
       `- note: Purged ${purgeSymbols.length} symbols (Score<30 & TrendOK=no & flat, not Alpha S) — removed after this report`,

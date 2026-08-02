@@ -23,14 +23,19 @@ Screener 模块负责从 TradingView 网站抓取用户自定义的股票筛选�
 
 ```
 1. 配置阶段（一次性）
-   ├── 在 Settings 页面添加 TradingView Screener URL
-   └── 系统保存配置到数据库
+   ├── 方式 A: Template 模式（推荐，90% 用户）
+   │   └── 在 Settings 页面选择内置模板 → 一键创建
+   ├── 方式 B: Custom URL 模式（legacy）
+   │   └── 在 Settings 页面粘贴 TV Screener URL
+   └── 方式 C: Filter JSON 模式（高级）
+       └── 在 Settings 页面粘贴 TV Scanner API filter JSON
+   └── 系统保存配置到数据库（mode='api' 或 mode='chrome'）
 
 2. 日常同步
    ├── 打开 Screener 页面
    ├── 点击 "Sync" 或 "Sync all" 触发同步
-   ├── 系统通过 CDP 连接 Chrome 抓取数据
-   └── 结果保存为快照
+   ├── 系统根据 mode 选择数据源（Scanner API / Chrome CDP / ego-lite）
+   └── 结果保存为快照（capturedVia 记录实际数据源）
 
 3. 数据使用
    ├── 查看最新快照的股票列表
@@ -42,28 +47,31 @@ Screener 模块负责从 TradingView 网站抓取用户自定义的股票筛选�
 ### 数据采集流程
 
 ```
-用户触发同步
+用户触发同步 / Cron (AM 09:30 / PM 15:30)
      │
      ▼
-连接本地 Chrome (CDP)
+Dispatcher: 检查 screener.mode
      │
-     ▼
-打开 TradingView Screener 页面
-     │
-     ▼
-等待页面加载完成
-     │
-     ▼
-提取 Filter Pills（筛选条件）
-     │
-     ▼
-滚动加载表格数据（最多 300 行）
-     │
-     ▼
-数据归一化处理
-     │
-     ▼
-保存快照到数据库
+     ├── mode='api' ─────────────────────────────────────────┐
+     │   TV Scanner API (HTTP POST)                          │
+     │   → 成功: 返回结构化数据                               │
+     │   → 失败: fallback to ego-lite ──→ fallback to 失败   │
+     │                                                        │
+     └── mode='chrome' ──────────────────────────────────────┐
+         Chrome CDP (连接已登录 Chrome)                       │
+         → 成功: 解析 HTML table                             │
+         → 失败: fallback to ego-lite ──→ fallback to 失败   │
+                                                               │
+     共享 fallback: ego-lite (Playwright headless)             │
+     → 无 Chrome profile，headless 打开 screener URL          │
+     → 成功: 解析 HTML table                                  │
+     → 失败: 报错                                             │
+                                                               │
+     ▼                                                         │
+数据归一化处理 (normalize.py)                                   │
+     │                                                         │
+     ▼                                                         │
+保存快照到数据库 (capturedVia 审计字段)                         │
 ```
 
 ---
@@ -109,6 +117,38 @@ Filter Pills 是 TradingView Screener 页面上方显示的筛选条件标签，
 
 ---
 
+## Strategy contracts（TIP-006）
+
+每个 TradingView Screener 视为一份**策略合同**。改 Filter Pills / 改名 / 换 URL = 发版；以本文 + 快照里的 `screenTitle` / Filter Pills 为准。
+
+### 宇宙一览
+
+| 显示名 / 期望 screenTitle 子串 | 类型 | 进池后滤 | 触媒「今日 screener TrendOK」 | 推荐 enabled |
+|--------------------------------|------|----------|-------------------------------|--------------|
+| **Karios Pullback**（子串 `karios pullback`） | `pullback` | 52W 回撤 ∈ [-15%, -5%] + TrendOK → `source=screener` | 是（标题匹配） | **是（主宇宙）** |
+| Falcon Launch / Institutional Trend | `momentum` | 同上回撤窗（未单独分支前） | 是（标题匹配） | **否**（除非显式要动量观察） |
+| Legacy Falcon / Legacy Black Horse（空库 seed 名） | `legacy` | 同上 | Falcon Launch 类标题才进；Black Horse **不**进 | **否**（空库 seed 默认 `enabled=false`；已有库请 Settings 禁用） |
+| （系统）Industry Top5 空窗降级 | `system` | 仅 TrendOK → `source=screener_fallback` | 否 | n/a（TIP-003 自动） |
+
+触媒标题匹配实现：`apps/desktop-ui/src/lib/screenerExport.ts` → `SCREENER_TITLE_PATTERNS`（`includes` 小写）。
+
+### Karios Pullback（主合同）
+
+| 项 | 约定 |
+|----|------|
+| TV 显示名 / screenTitle | **Karios Pullback** |
+| URL（TIP-001 验收） | `https://www.tradingview.com/screener/m22BmHkT/` |
+| Market | CN |
+| Pills 原则 | 保留：市值、P/E>0、营收增长、Price>EMA20/50、中长期均线多头、RSI 约 45–75；**不要**：当日涨幅门槛、Rel vol 强势、Perf 3M 大涨等追涨条件 |
+| 表格列 | 须含 **Price** 与 **High 52W**（回撤过滤依赖） |
+| 进池 | 回撤窗 + TrendOK；空窗见 TIP-003 |
+
+### 空库 seed 说明
+
+`ensure_seeded()` 仅在 **tv_screeners 为空** 时写入 `falcon` / `blackhorse` 两条（显示名 **Legacy Falcon (momentum)** / **Legacy Black Horse**，**`enabled=false`**）。**不会**更新已有库行。生产库请在 Settings 配置并启用 **Karios Pullback**，确认遗留动量屏为禁用。
+
+---
+
 ## 与其他模块的关系
 
 ```
@@ -127,11 +167,13 @@ Filter Pills 是 TradingView Screener 页面上方显示的筛选条件标签，
 
 ### 与 Watchlist 的协作
 
-1. 在 Screener 页面点击 "Import from screener"
+1. 在 Screener / Watchlist 页面触发 Import（或盘后 Automation）
 2. 系统获取所有启用 Screener 的最新快照
-3. 应用回撤比例过滤（-15% 到 -5%）
-4. 进行 TrendOK 检查
-5. 只有通过检查的股票才会添加到 Watchlist
+3. 应用回撤比例过滤（-15% 到 -5%）+ TrendOK → `source=screener`
+4. **空窗降级（TIP-003）**：若 `tvHit==0` 或 `passPullback==0`，改用 5D Top5 非防守行业成分（≤80）只过 TrendOK → `source=screener_fallback`
+5. Funnel 写入 Import Debug / automation `meta.funnel`
+
+主宇宙建议配置为 **Karios Pullback**（趋势回踩，非当日强势动量）。
 
 ### 与 AI 的协作
 
@@ -199,11 +241,26 @@ Filter Pills 是 TradingView Screener 页面上方显示的筛选条件标签，
 
 ## 技术要点（非代码层面）
 
-### 为什么使用 CDP 而不是直接 API
+### 三轨数据采集架构（OPT-057）
 
-- TradingView 的 Screener 数据是动态渲染的
-- 筛选条件（Filter Pills）无法通过 URL 参数获取
-- 需要 CDP 连接已登录的 Chrome 来复用认证状态
+系统采用三层 fallback 架构获取 screener 数据：
+
+| 优先级 | 数据源 | 依赖 | 说明 |
+|--------|--------|------|------|
+| **Primary** | TV Scanner API (`scanner.tradingview.com/global/scan`) | 仅 HTTP | **唯一池子**；无需 Chrome/login；POST JSON filter → 返回 30+ 结构化字段 |
+| **Fallback** | ego-lite（Playwright headless chromium） | Playwright | 仅作 fallback；无 Chrome profile；headless 浏览 screener URL → 解析 HTML table |
+| **Legacy** | Chrome CDP（`connect_over_cdp`） | Chrome + login | 仅作 fallback；已保存的 screener URL 直接访问；保留 6 个月至 2027-02 |
+
+**Dispatcher 逻辑**：`service/tv.py` → `_dispatch_capture(mode, filter_json, api_columns, url)` 根据 screener 的 `mode` 字段选择路径：
+- `mode='api'` → Scanner API（primary）→ ego-lite（fallback）→ 失败报错
+- `mode='chrome'` → Chrome CDP（primary）→ ego-lite（fallback）→ 失败报错
+
+**审计字段**：每次 capture 结果的 `payload.capturedVia` 记录实际使用的数据源（`scanner_api` / `ego_lite` / `chrome_cdp`），便于排查。
+
+**已知限制**：
+- TV Scanner API 是 undocumented internal API，无 SLA/contract。失败视为 transient，触发 fallback。
+- Filter JSON 必须是数组格式（`[{left, operation, right}, ...]`），不支持 `{"and": [...]}`。
+- Column-to-column 比较（如 `close > EMA20`）在 nullable 列上会报 `Incompatible types: number and null`。模板仅用标量比较，EMA 交叉/TrendOK 由下游 `watchlist_automation.py` 处理。
 
 ### 数据存储策略
 
@@ -213,6 +270,9 @@ Filter Pills 是 TradingView Screener 页面上方显示的筛选条件标签，
 
 ### 性能考虑
 
-- 表格是虚拟滚动，需要模拟滚动加载更多数据
+- **Scanner API**（mode='api'）：~1-3s / 50 行，无渲染开销，Docker 友好
+- **ego-lite**（fallback）：~5-10s / 50 行，headless Playwright 无 profile
+- **Chrome CDP**（mode='chrome'）：~5-10s / 50 行，需要 Chrome + login
+- 表格虚拟滚动：Chrome/ego-lite 路径需要模拟滚动加载更多数据
 - 最多抓取 300 行
 - 串行同步多个 Screener，避免过载

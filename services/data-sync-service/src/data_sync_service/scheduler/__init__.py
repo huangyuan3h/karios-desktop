@@ -9,14 +9,24 @@ from data_sync_service.scheduler import (
     alpha_radar_process_job,
     close_catchup_job,
     close_sync_job,
+    cn_industry_post_close_job,
     daily_sync_job,
     eastmoney_industry_job,
+    etf_daily_job,
+    fund_basic_job,
     hk_basic_job,
     hk_daily_job,
+    hk_industry_job,
+    index_basic_job,
     index_daily_job,
     macro_daily_job,
+    morning_brief_job,
+    news_enrich_job,
     news_fetch_job,
+    paper_trading_intake_job,
+    paper_trading_update_job,
     stock_basic_job,
+    tv_screener_capture_job,
     watchlist_automation_job,
 )
 
@@ -50,6 +60,18 @@ def create_scheduler() -> BackgroundScheduler:
         replace_existing=True,
     )
     scheduler.add_job(
+        fund_basic_job.run,
+        fund_basic_job.build_trigger(),
+        id=fund_basic_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        etf_daily_job.run,
+        etf_daily_job.build_trigger(),
+        id=etf_daily_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
         daily_sync_job.run,
         daily_sync_job.build_trigger(),
         id=daily_sync_job.JOB_ID,
@@ -77,6 +99,12 @@ def create_scheduler() -> BackgroundScheduler:
         news_fetch_job.run,
         news_fetch_job.build_trigger(),
         id=news_fetch_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        news_enrich_job.run,
+        news_enrich_job.build_trigger(),
+        id=news_enrich_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(
@@ -119,6 +147,62 @@ def create_scheduler() -> BackgroundScheduler:
         eastmoney_industry_job.run,
         eastmoney_industry_job.build_trigger(),
         id=eastmoney_industry_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        hk_industry_job.run,
+        hk_industry_job.build_trigger(),
+        id=hk_industry_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        index_basic_job.run,
+        index_basic_job.build_trigger(),
+        id=index_basic_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        cn_industry_post_close_job.run,
+        cn_industry_post_close_job.build_trigger(),
+        id=cn_industry_post_close_job.JOB_ID,
+        replace_existing=True,
+    )
+    # OPT-049: paper-trading intake + update (after cn_industry_post_close).
+    scheduler.add_job(
+        paper_trading_intake_job.run,
+        paper_trading_intake_job.build_trigger(),
+        id=paper_trading_intake_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        paper_trading_update_job.run,
+        paper_trading_update_job.build_trigger(),
+        id=paper_trading_update_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        tv_screener_capture_job.run,
+        tv_screener_capture_job.build_am_trigger(),
+        id=tv_screener_capture_job.JOB_ID_AM,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        news_enrich_job.run,
+        news_enrich_job.build_trigger(),
+        id=news_enrich_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)
+    scheduler.add_job(
+        lambda: morning_brief_job.run(brief_type="morning"),
+        morning_brief_job.build_am_trigger(),
+        id=morning_brief_job.JOB_ID_AM,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        lambda: morning_brief_job.run(brief_type="midday"),
+        morning_brief_job.build_pm_trigger(),
+        id=morning_brief_job.JOB_ID_PM,
         replace_existing=True,
     )
     return scheduler

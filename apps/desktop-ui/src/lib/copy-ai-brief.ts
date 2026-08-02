@@ -212,9 +212,21 @@ export function formatCondOrderDraftMarkdown(
       );
       wrote = true;
     }
-  } else if (buys.length) {
-    lines.push('- note: Gate blocks new entries — 勿挂新买入条件单');
-    wrote = true;
+  } else {
+    const defensiveBuys = buys.filter(
+      (c) => String(c.why || '').toUpperCase() === 'DEFENSIVE_SLEEVE_ALLOW',
+    );
+    for (const c of defensiveBuys) {
+      lines.push(
+        `- ${queuePrefix}挂买 ${c.symbol} 条件买入 ${fmtSuggest(c)}  Why=${c.why ?? '—'}`,
+      );
+      wrote = true;
+    }
+    const blockedOther = buys.length - defensiveBuys.length;
+    if (blockedOther > 0) {
+      lines.push('- note: Gate blocks new entries — 勿挂新买入条件单');
+      wrote = true;
+    }
   }
 
   if (!wrote) {

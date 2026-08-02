@@ -197,7 +197,7 @@ def search_stocks_by_industry_keyword(keyword: str, *, limit: int = 12) -> list[
     kw = str(keyword or "").strip()
     if not kw:
         return []
-    lim = max(1, min(int(limit), 30))
+    lim = max(1, min(int(limit), 40))
     try:
         from data_sync_service.db.stock_basic import ensure_table as ensure_sb
 
@@ -225,7 +225,6 @@ def search_stocks_by_industry_keyword(keyword: str, *, limit: int = 12) -> list[
         ticker = str(r[1] or "")
         if not ticker.isdigit() or len(ticker) != 6:
             continue
-        "SH" if ticker.startswith("6") else "SZ"
         out.append(
             {
                 "symbol": f"CN:{ticker}",

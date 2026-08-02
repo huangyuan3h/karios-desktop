@@ -197,8 +197,7 @@ pnpm install:all
 ## 更多文档
 
 - **[AGENTS.md](./AGENTS.md)** — AI Agent / 维护者必读（Alembic、schema 变更、OPT 任务约定）
-- [docs/modules/README.md](./docs/modules/README.md) — 业务模块与工作流
+- **[docs/README.md](./docs/README.md)** — docs 目录总索引；入口首看 [`docs/todo.md`](./docs/todo.md)
+- [docs/modules/README.md](./docs/modules/README.md) — 业务模块与 V6.x 红线规则
 - [docs/optimization-checklist.md](./docs/optimization-checklist.md) — 架构优化与 Agent 任务清单
 - [services/data-sync-service/README.md](./services/data-sync-service/README.md) — 后端 API、调度、数据库迁移
-
-详细的架构设计和需求说明请参阅 `docs/architecture-and-requirements.md`（待补充）。

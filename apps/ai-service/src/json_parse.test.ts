@@ -13,6 +13,11 @@ describe('tryParseJsonObject', () => {
     expect(result).toEqual({ data: 123 });
   });
 
+  it('strips think blocks before parsing JSON', () => {
+    const text = '<think>planning...</think>\n{"ok": true}';
+    expect(tryParseJsonObject(text)).toEqual({ ok: true });
+  });
+
   it('strips code fences without language hint', () => {
     const text = '```\n{"name": "test"}\n```';
     const result = tryParseJsonObject(text);

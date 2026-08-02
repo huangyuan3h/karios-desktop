@@ -23,11 +23,16 @@ from data_sync_service.db.watchlist_automation import (
     list_registry,
     upsert_score_daily,
 )
-from data_sync_service.service.alpha_radar_catalyst import list_catalyst_stocks
+from data_sync_service.service.alpha_radar_catalyst import (
+    aggregate_catalyst_stocks,
+    default_max_age_days,
+    list_catalyst_stocks,
+)
 from data_sync_service.service.close_sync import JOB_TYPE as CLOSE_JOB_TYPE
 from data_sync_service.service.close_sync import _cn_today
 from data_sync_service.service.dashboard import _sync_screeners_step
 from data_sync_service.service.industry_fund_flow import sync_cn_industry_fund_flow
+from data_sync_service.service.industry_taxonomy import is_sw_l1_industry_name
 from data_sync_service.service.trade_calendar_utils import resolve_effective_as_of, trade_dates_upto
 from data_sync_service.service.trendok import compute_trendok_for_symbols
 
@@ -36,6 +41,21 @@ logger = logging.getLogger(__name__)
 SCORE_REMOVAL_THRESHOLD = 30.0
 CATALYST_SCORE_MIN = 85.0
 CONSECUTIVE_LOW_SCORE_DAYS = 3
+# Alpha entry light gate: wider than BUY mainline Top3 (see TIP-004).
+ALPHA_ENTRY_TOP_INDUSTRIES = 10
+# TIP-003 empty-window fallback universe.
+FALLBACK_TOP_INDUSTRIES = 5
+FALLBACK_PER_INDUSTRY = 30
+FALLBACK_MAX_TOTAL = 80
+# Mirror apps/desktop-ui execution-action DEFENSE_SECTOR_KEYWORDS.
+DEFENSE_SECTOR_KEYWORDS = (
+    "银行",
+    "电力",
+    "公用事业",
+    "中药",
+    "煤炭",
+    "高速公路",
+)
 
 
 def _normalize_trade_date(value: str | None) -> str | None:
@@ -57,16 +77,149 @@ def _shanghai_today_iso() -> str:
     return _to_yyyymmdd(_cn_today())
 
 
-def get_top_5d_industry_names(as_of_date: str | None = None) -> set[str]:
+def get_top_5d_industry_names(as_of_date: str | None = None, *, top_n: int = 5) -> set[str]:
     flow_date = resolve_effective_as_of((as_of_date or "").strip() or get_latest_industry_date())
     if not flow_date:
         return set()
     dates_5 = trade_dates_upto(flow_date, 5, fallback_dates_fn=get_dates_upto)
     if not dates_5:
         return set()
+    n = max(1, int(top_n))
     sums = get_sum_by_industry_for_dates(dates_5)
-    return {str(x.get("industry_name") or "") for x in sums[:5] if x.get("industry_name")}
+    return {str(x.get("industry_name") or "") for x in sums[:n] if x.get("industry_name")}
 
+
+def get_top_5d_industry_names_ordered(as_of_date: str | None = None, *, top_n: int = 5) -> list[str]:
+    """Same as get_top_5d_industry_names but preserves inflow rank order."""
+    flow_date = resolve_effective_as_of((as_of_date or "").strip() or get_latest_industry_date())
+    if not flow_date:
+        return []
+    dates_5 = trade_dates_upto(flow_date, 5, fallback_dates_fn=get_dates_upto)
+    if not dates_5:
+        return []
+    n = max(1, int(top_n))
+    sums = get_sum_by_industry_for_dates(dates_5)
+    out: list[str] = []
+    for x in sums[:n]:
+        name = str(x.get("industry_name") or "").strip()
+        if name:
+            out.append(name)
+    return out
+
+
+def list_fallback_universe_symbols(
+    *,
+    max_total: int = FALLBACK_MAX_TOTAL,
+    per_industry: int = FALLBACK_PER_INDUSTRY,
+    top_n: int = FALLBACK_TOP_INDUSTRIES,
+    as_of_date: str | None = None,
+) -> dict[str, Any]:
+    """
+    TIP-003 empty-window fallback universe.
+
+    5D TopN SW L1 industries (non-defense) → EM industry_name LIKE match → capped symbols.
+    """
+    from data_sync_service.db.stock_eastmoney_industry import search_stocks_by_industry_keyword
+
+    cap = max(1, min(int(max_total), 200))
+    per = max(1, min(int(per_industry), 40))
+    ranked = get_top_5d_industry_names_ordered(as_of_date, top_n=top_n)
+    industries_raw = list(ranked)
+    industries = [name for name in ranked if not is_defense_sector(name)]
+    skipped_defense = [name for name in industries_raw if name not in industries]
+
+    symbols: list[str] = []
+    names_by_symbol: dict[str, str] = {}
+    seen: set[str] = set()
+    truncated = False
+    for industry in industries:
+        if len(symbols) >= cap:
+            truncated = True
+            break
+        room = cap - len(symbols)
+        rows = search_stocks_by_industry_keyword(industry, limit=min(per, room))
+        for row in rows:
+            sym = str(row.get("symbol") or "").strip()
+            if not sym or sym in seen:
+                continue
+            seen.add(sym)
+            symbols.append(sym)
+            names_by_symbol[sym] = str(row.get("name") or sym)
+            if len(symbols) >= cap:
+                truncated = True
+                break
+
+    return {
+        "industries": industries,
+        "industriesRaw": industries_raw,
+        "skippedDefense": skipped_defense,
+        "symbols": symbols,
+        "namesBySymbol": names_by_symbol,
+        "truncated": truncated,
+        "maxTotal": cap,
+        "count": len(symbols),
+    }
+
+
+def is_defense_sector(industry_name: str | None) -> bool:
+    """True when EM/SW industry should be blocked from alpha entry (mirrors FE BUY gate).
+
+    Special-case: keyword ``电力`` must not match growth board ``电力设备``.
+    """
+    name = str(industry_name or "").strip()
+    if not name:
+        return False
+    for kw in DEFENSE_SECTOR_KEYWORDS:
+        if kw == "电力":
+            if name == "电力" or ("电力" in name and "电力设备" not in name):
+                return True
+            continue
+        if kw in name:
+            return True
+    return False
+
+
+def _cn_symbol_to_ts_code(symbol: str) -> str | None:
+    s = _normalize_cn_watchlist_symbol(symbol)
+    if s.startswith("CN:"):
+        ticker = s.split(":", 1)[1].strip()
+        if len(ticker) != 6 or not ticker.isdigit():
+            return None
+        suffix = "SH" if ticker.startswith("6") else "SZ"
+        return f"{ticker}.{suffix}"
+    if s.startswith("HK:"):
+        ticker = s.split(":", 1)[1].strip()
+        if not (1 <= len(ticker) <= 5 and ticker.isdigit()):
+            return None
+        padded = ticker.zfill(5)
+        return f"{padded}.HK"
+    if s.startswith("ETF:"):
+        ticker = s.split(":", 1)[1].strip()
+        if len(ticker) != 6 or not ticker.isdigit():
+            return None
+        suffix = "SH" if ticker[0] in ("5", "6", "9") else "SZ"
+        return f"{ticker}.{suffix}"
+    return None
+
+
+def _resolve_em_industries_for_symbols(symbols: list[str]) -> dict[str, str]:
+    """Map CN:xxxxxx → East Money industry name (DB only)."""
+    from data_sync_service.service.eastmoney_industry import lookup_em_industries_for_ts_codes
+
+    ts_by_sym: dict[str, str] = {}
+    for sym in symbols:
+        ts = _cn_symbol_to_ts_code(sym)
+        if ts:
+            ts_by_sym[sym] = ts
+    if not ts_by_sym:
+        return {}
+    by_ts = lookup_em_industries_for_ts_codes(list(ts_by_sym.values()))
+    out: dict[str, str] = {}
+    for sym, ts in ts_by_sym.items():
+        name = by_ts.get(ts)
+        if name and str(name).strip():
+            out[sym] = str(name).strip()
+    return out
 
 def get_last_n_trading_dates(n: int, *, end: date | None = None) -> list[str]:
     end_d = end or _cn_today()
@@ -117,6 +270,67 @@ def record_score_snapshots(symbols: list[str]) -> tuple[str | None, int, list[di
     return trade_date, count, rows_out
 
 
+def _normalize_cn_watchlist_symbol(symbol: str) -> str:
+    text = str(symbol or "").strip().upper()
+    if not text:
+        return ""
+    if text.startswith("CN:"):
+        return text
+    if text.startswith("HK:"):
+        return text
+    if text.startswith("ETF:"):
+        return text
+    return f"CN:{text}"
+
+
+def symbols_with_max_grade_s(catalyst_payload: dict[str, Any] | None) -> set[str]:
+    """Symbols whose catalyst window still includes at least one grade-S article."""
+    items = catalyst_payload.get("items") if isinstance(catalyst_payload, dict) else None
+    if not isinstance(items, list):
+        return set()
+    out: set[str] = set()
+    for row in items:
+        if not isinstance(row, dict):
+            continue
+        articles = row.get("articles") if isinstance(row.get("articles"), list) else []
+        has_s = any(
+            str(a.get("catalystGrade") or "").upper() == "S" for a in articles if isinstance(a, dict)
+        )
+        if not has_s:
+            continue
+        sym = _normalize_cn_watchlist_symbol(str(row.get("symbol") or ""))
+        if sym:
+            out.add(sym)
+    return out
+
+
+def load_catalyst_window(*, add_limit: int = 200) -> tuple[dict[str, Any], set[str]]:
+    """
+    Load full catalyst aggregation for Max Grade=S GC exemption, while alpha-add
+    still uses the score-ranked top ``add_limit`` slice (TIP-005 / TIP-004).
+    """
+    from data_sync_service.db.alpha_radar import fetch_trends_for_catalyst
+
+    age_days = default_max_age_days()
+    trends = fetch_trends_for_catalyst(max_age_days=age_days)
+    all_items = aggregate_catalyst_stocks(trends)
+    full_payload = {
+        "stalenessBasis": "published_then_fetched",
+        "maxAgeDays": age_days,
+        "total": len(all_items),
+        "items": all_items,
+    }
+    alpha_s = symbols_with_max_grade_s(full_payload)
+    lim = max(1, min(int(add_limit), 200))
+    add_payload = {
+        "stalenessBasis": full_payload["stalenessBasis"],
+        "maxAgeDays": age_days,
+        "total": len(all_items),
+        "items": all_items[:lim],
+    }
+    return add_payload, alpha_s
+
+
 def should_remove_symbol(
     *,
     symbol: str,
@@ -125,9 +339,13 @@ def should_remove_symbol(
     top_5d_industries: set[str],
     current_industry: str | None,
     position_pct: float | None = None,
+    alpha_s_symbols: set[str] | None = None,
 ) -> tuple[bool, str]:
+    # Align with WATCH_SILENT: only Max Grade=S stays exempt from 3-day Score GC.
     if source == "alpha_radar":
-        return False, "alpha_radar_exempt"
+        norm = _normalize_cn_watchlist_symbol(symbol)
+        if norm and alpha_s_symbols and norm in alpha_s_symbols:
+            return False, "alpha_s_exempt"
     # Do not GC held names (missing/None position treated as flat = 0).
     if position_pct is not None and float(position_pct) > 0:
         return False, "held_position"
@@ -162,7 +380,9 @@ def compute_removals(
     trade_dates: list[str],
     top_5d_industries: set[str],
     trendok_by_symbol: dict[str, dict[str, Any]],
+    alpha_s_symbols: set[str] | None = None,
 ) -> list[dict[str, Any]]:
+    s_set = alpha_s_symbols or set()
     out: list[dict[str, Any]] = []
     for item in registry:
         sym = str(item.get("symbol") or "").strip()
@@ -183,40 +403,105 @@ def compute_removals(
             top_5d_industries=top_5d_industries,
             current_industry=industry,
             position_pct=position_pct,
+            alpha_s_symbols=s_set,
         )
         if ok:
             out.append({"symbol": sym, "reason": reason})
     return out
 
 
-def compute_alpha_additions(limit: int = 200) -> list[dict[str, Any]]:
-    payload = list_catalyst_stocks(limit=limit)
+def compute_alpha_additions(
+    limit: int = 200,
+    *,
+    catalyst_payload: dict[str, Any] | None = None,
+    industry_by_symbol: dict[str, str] | None = None,
+    top_industries: set[str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """
+    Alpha Radar → Watchlist candidates with light entry gates (TIP-004).
+
+    Gates (after score>85 and grade S):
+    - defense sector → reject
+    - missing EM industry → reject (fail-closed per symbol)
+    - Top10 (SW L1 5D flow): only enforced when the stock industry label is itself
+      an SW L1 name (exact match). Granular EM boards (e.g. 半导体 vs 电子) skip
+      Top10 rather than false-reject (taxonomy mismatch fail-open).
+    - if Top10 set empty (flow data missing) → skip Top10 gate entirely
+    """
+    payload = catalyst_payload if catalyst_payload is not None else list_catalyst_stocks(limit=limit)
     items = payload.get("items") if isinstance(payload, dict) else []
     if not isinstance(items, list):
-        return []
-    out: list[dict[str, Any]] = []
+        return [], {}
+
+    rejected: dict[str, int] = {}
+
+    def _bump(reason: str) -> None:
+        rejected[reason] = int(rejected.get(reason) or 0) + 1
+
+    prelim: list[dict[str, Any]] = []
     for row in items:
         if not isinstance(row, dict):
             continue
         score = float(row.get("catalystScore") or 0.0)
         if score <= CATALYST_SCORE_MIN:
+            _bump("low_score")
             continue
         articles = row.get("articles") if isinstance(row.get("articles"), list) else []
         has_s = any(str(a.get("catalystGrade") or "").upper() == "S" for a in articles if isinstance(a, dict))
         if not has_s:
+            _bump("no_s_grade")
             continue
-        sym_raw = str(row.get("symbol") or "").strip()
-        if not sym_raw:
+        sym = _normalize_cn_watchlist_symbol(str(row.get("symbol") or ""))
+        if not sym:
+            _bump("bad_symbol")
             continue
-        sym = sym_raw if sym_raw.startswith("CN:") else f"CN:{sym_raw}"
-        out.append(
+        prelim.append(
             {
                 "symbol": sym,
                 "name": str(row.get("name") or sym),
                 "catalystScore": score,
             }
         )
-    return out
+
+    if not prelim:
+        return [], rejected
+
+    industries = industry_by_symbol
+    if industries is None:
+        industries = _resolve_em_industries_for_symbols([str(x["symbol"]) for x in prelim])
+
+    top_set = top_industries
+    if top_set is None:
+        top_set = get_top_5d_industry_names(top_n=ALPHA_ENTRY_TOP_INDUSTRIES)
+    top_ready = bool(top_set)
+
+    out: list[dict[str, Any]] = []
+    for row in prelim:
+        sym = str(row["symbol"])
+        # OPT-052: HK pure-plays do not carry EM (东方财富) industry labels —
+        # the EM industry pipeline is CN-only. Skipping the industry gates
+        # for HK is the right behavior because (a) we have no HK fund-flow
+        # data, and (b) HK Alpha S entries are already gated by score + grade
+        # upstream. The only failure mode we accept is "false positive on a
+        # HK name with no HK pure-play" — same as the CN knowledge-fallback
+        # path, and the catalystScore gate keeps that bounded.
+        is_hk = sym.startswith("HK:")
+        industry = industries.get(sym) if industries else None
+        if not industry and not is_hk:
+            _bump("missing_industry")
+            continue
+        if industry and is_defense_sector(industry):
+            _bump("defense_sector")
+            continue
+        if top_ready and industry:
+            # Fund-flow Top10 is SW L1; EM stock boards are often finer-grained.
+            if is_sw_l1_industry_name(industry):
+                if industry not in top_set:
+                    _bump("not_in_top10")
+                    continue
+            # else: non-SW EM label → skip Top10 (fail-open), do not reject
+        out.append(row)
+    return out, rejected
 
 
 def _precheck(*, force: bool) -> tuple[bool, str | None]:
@@ -259,14 +544,21 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
 
     try:
         industry_result = sync_cn_industry_fund_flow(days=10, top_n=10)
-        meta["industrySync"] = industry_result if isinstance(industry_result, dict) else {"ok": True}
+        if isinstance(industry_result, dict):
+            meta["industrySync"] = {**industry_result, "ok": True}
+        else:
+            meta["industrySync"] = {"ok": True}
     except Exception as exc:  # noqa: BLE001
         logger.warning("watchlist automation industry sync failed: %s", exc)
         meta["industrySync"] = {"ok": False, "error": str(exc)}
 
     try:
         screener_result = _sync_screeners_step(screeners_enabled=True)
-        meta["screenerSync"] = screener_result if isinstance(screener_result, dict) else {}
+        if isinstance(screener_result, dict):
+            failed = int(screener_result.get("failed") or 0)
+            meta["screenerSync"] = {**screener_result, "ok": failed == 0}
+        else:
+            meta["screenerSync"] = {"ok": True}
     except Exception as exc:  # noqa: BLE001
         logger.warning("watchlist automation screener sync failed: %s", exc)
         meta["screenerSync"] = {"ok": False, "error": str(exc)}
@@ -290,14 +582,25 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
     streak_dates = get_last_n_trading_dates(CONSECUTIVE_LOW_SCORE_DAYS)
     meta["streakTradeDates"] = streak_dates
 
+    catalyst_payload, alpha_s_symbols = load_catalyst_window(add_limit=200)
+    meta["alphaSSymbols"] = len(alpha_s_symbols)
+    meta["catalystWindowTotal"] = int(catalyst_payload.get("total") or 0)
+
     remove_items = compute_removals(
         registry,
         trade_dates=streak_dates,
         top_5d_industries=top_5d,
         trendok_by_symbol=trendok_by_symbol,
+        alpha_s_symbols=alpha_s_symbols,
     )
-    alpha_add = compute_alpha_additions()
+    top10 = get_top_5d_industry_names(top_n=ALPHA_ENTRY_TOP_INDUSTRIES)
+    meta["top10dIndustries"] = sorted(top10)
+    alpha_add, alpha_rejected = compute_alpha_additions(
+        catalyst_payload=catalyst_payload,
+        top_industries=top10,
+    )
     meta["alphaCandidates"] = len(alpha_add)
+    meta["alphaRejected"] = alpha_rejected
 
     run_id = insert_automation_run(
         trade_date=trade_date,
@@ -330,10 +633,22 @@ def get_automation_latest() -> dict[str, Any] | None:
     return get_latest_run()
 
 
-def ack_automation_run(run_id: str, screener_added: int | None = None) -> dict[str, Any] | None:
+def get_automation_runs(limit: int = 10) -> list[dict[str, Any]]:
+    """Recent acknowledged runs (one per trade_date, newest first) for the
+    TIP-002 N-day funnel history table."""
+    from data_sync_service.db.watchlist_automation import list_recent_runs
+
+    return list_recent_runs(limit=limit)
+
+
+def ack_automation_run(
+    run_id: str,
+    screener_added: int | None = None,
+    funnel: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     from data_sync_service.db.watchlist_automation import ack_run
 
-    return ack_run(run_id, screener_added=screener_added)
+    return ack_run(run_id, screener_added=screener_added, funnel=funnel)
 
 
 def get_automation_run(run_id: str) -> dict[str, Any] | None:

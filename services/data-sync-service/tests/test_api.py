@@ -398,4 +398,56 @@ def test_alpha_radar_endpoints_shape() -> None:
 
     missing = client.delete("/api/alpha-radar/trends/nonexistent-trend-id")
     assert missing.status_code == 200
-    assert missing.json().get("ok") is False
+
+
+@pytest.mark.requires_postgres
+def test_sync_jobs_aggregate_endpoint_shape() -> None:
+    """GET /sync/jobs returns per-job today_run/last_success plus extras."""
+    client = TestClient(app)
+    resp = client.get("/sync/jobs")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload.get("ok") is True
+    assert isinstance(payload.get("jobs"), dict)
+
+    # All known tracked job_types must be present, even if no run yet.
+    expected_job_types = {
+        "stock_basic_sync",
+        "hk_basic_sync",
+        "hk_daily_full",
+        "hk_industry_sync",
+        "etf_fund_basic_sync",
+        "etf_daily_full",
+        "stock_daily_full",
+        "stock_adj_factor_full",
+        "stock_close_sync",
+        "stock_close_catchup",
+        "index_daily_full",
+        "macro_daily_full",
+        "eastmoney_industry_sync",
+        "alpha_radar_pipeline",
+        "alpha_radar_ingest",
+        "alpha_radar_process",
+        "watchlist_automation",
+        "news_fetch_job",
+    }
+    assert expected_job_types.issubset(set(payload["jobs"].keys()))
+
+    for job_type, entry in payload["jobs"].items():
+        assert set(entry.keys()) == {"todayRun", "lastSuccess"}, job_type
+        assert entry["todayRun"] is None or isinstance(entry["todayRun"], dict), job_type
+        assert entry["lastSuccess"] is None or isinstance(entry["lastSuccess"], dict), job_type
+        if entry["todayRun"]:
+            assert set(entry["todayRun"].keys()) >= {
+                "id",
+                "job_type",
+                "sync_at",
+                "success",
+            }
+            assert entry["todayRun"]["job_type"] == job_type
+
+    # HK industry coverage, alpha radar, watchlist automation are optional
+    # best-effort - they may be null on a fresh DB without crashing the endpoint.
+    assert "hkIndustryCoverage" in payload
+    assert "alphaRadar" in payload
+    assert "watchlistAutomation" in payload

@@ -7,6 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import type { TrendOkResult } from '@/lib/api/types';
 import {
+  formatScreenerFunnel,
+  type ScreenerFunnel,
+  type ScreenerImportDebugState,
+} from '@/lib/watchlist-screener-import';
+import {
   collectWatchlistRiskAlerts,
   formatGapUp,
   formatIntradayChgPct,
@@ -14,6 +19,8 @@ import {
   isIntradaySurge,
 } from '@/lib/watchlist-metrics';
 import { fmtBuyCell, fmtPrice, fmtScore } from '@/lib/watchlist-table-cells';
+
+export type { ScreenerFunnel, ScreenerImportDebugState };
 
 function VisibilitySection({
   visible,
@@ -34,13 +41,6 @@ function VisibilitySection({
     </div>
   );
 }
-
-export type ScreenerImportDebugState = {
-  updatedAt: string | null;
-  scanned: number;
-  trendOkCount: number;
-  rows: TrendOkResult[];
-};
 
 export type WatchlistImportDebugProps = {
   importDebug: ScreenerImportDebugState;
@@ -111,8 +111,8 @@ export function WatchlistImportDebug({
       </div>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
         <div className="text-[var(--k-muted)]">
-          Scanned {importDebug.scanned} • TrendOK ✅ {importDebug.trendOkCount} • Showing{' '}
-          {importDebugRows.length}
+          Funnel {importDebug.funnel ? formatScreenerFunnel(importDebug.funnel) : '—'} • TrendOK ✅{' '}
+          {importDebug.trendOkCount} • Showing {importDebugRows.length}
         </div>
         <div className="flex items-center gap-2">
           <input

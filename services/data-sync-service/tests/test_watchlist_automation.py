@@ -3,16 +3,78 @@ from __future__ import annotations
 from data_sync_service.service import watchlist_automation as wa  # type: ignore[import-not-found]
 
 
-def test_should_remove_symbol_alpha_exempt() -> None:
+def test_should_remove_symbol_alpha_s_exempt(monkeypatch) -> None:
+    def fake_scores(symbol: str, trade_dates: list[str]) -> list[dict]:
+        return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
+
+    monkeypatch.setattr(wa, "get_scores_for_symbol", fake_scores)
     ok, reason = wa.should_remove_symbol(
         symbol="CN:600000",
         source="alpha_radar",
         trade_dates=["2026-06-16", "2026-06-17", "2026-06-18"],
-        top_5d_industries=set(),
-        current_industry="Banking",
+        top_5d_industries={"Banking"},
+        current_industry="Coal",
+        alpha_s_symbols={"CN:600000"},
     )
     assert ok is False
-    assert reason == "alpha_radar_exempt"
+    assert reason == "alpha_s_exempt"
+
+
+def test_should_remove_symbol_alpha_non_s_can_gc(monkeypatch) -> None:
+    def fake_scores(symbol: str, trade_dates: list[str]) -> list[dict]:
+        return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
+
+    monkeypatch.setattr(wa, "get_scores_for_symbol", fake_scores)
+    ok, reason = wa.should_remove_symbol(
+        symbol="CN:600000",
+        source="alpha_radar",
+        trade_dates=["2026-06-16", "2026-06-17", "2026-06-18"],
+        top_5d_industries={"Banking"},
+        current_industry="Coal",
+        alpha_s_symbols={"CN:600001"},
+        position_pct=0,
+    )
+    assert ok is True
+    assert reason == "score_low_3d_and_industry_outside_top5"
+
+
+def test_symbols_with_max_grade_s() -> None:
+    payload = {
+        "items": [
+            {"symbol": "600000", "articles": [{"catalystGrade": "A"}]},
+            {"symbol": "CN:600001", "articles": [{"catalystGrade": "S"}]},
+            {"symbol": "600002", "articles": []},
+        ]
+    }
+    assert wa.symbols_with_max_grade_s(payload) == {"CN:600001"}
+
+
+def test_load_catalyst_window_s_exempt_uses_full_window(monkeypatch) -> None:
+    """S-exemption must not be limited to the score-ranked add slice (TIP-005)."""
+    many = [
+        {
+            "symbol": f"{600000 + i}",
+            "name": f"S{i}",
+            "catalystScore": float(100 - i),
+            "articles": [{"catalystGrade": "S"}],
+        }
+        for i in range(5)
+    ]
+    monkeypatch.setattr(wa, "default_max_age_days", lambda: 30)
+
+    def _fake_fetch(max_age_days: int = 30):
+        return []
+
+    monkeypatch.setattr(
+        "data_sync_service.db.alpha_radar.fetch_trends_for_catalyst",
+        _fake_fetch,
+    )
+    monkeypatch.setattr(wa, "aggregate_catalyst_stocks", lambda trends: many)
+
+    add_payload, alpha_s = wa.load_catalyst_window(add_limit=2)
+    assert len(add_payload["items"]) == 2
+    assert add_payload["total"] == 5
+    assert alpha_s == {f"CN:{600000 + i}" for i in range(5)}
 
 
 def test_should_remove_symbol_insufficient_history() -> None:
@@ -118,6 +180,16 @@ def test_should_remove_symbol_skips_held_position(monkeypatch) -> None:
     assert reason == "held_position"
 
 
+def test_is_defense_sector() -> None:
+    assert wa.is_defense_sector("银行") is True
+    assert wa.is_defense_sector("股份制银行") is True
+    assert wa.is_defense_sector("半导体") is False
+    assert wa.is_defense_sector(None) is False
+    assert wa.is_defense_sector("电力设备") is False
+    assert wa.is_defense_sector("电力") is True
+    assert wa.is_defense_sector("水力发电") is False
+
+
 def test_compute_alpha_additions_filters_score_and_grade(monkeypatch) -> None:
     monkeypatch.setattr(
         wa,
@@ -145,10 +217,87 @@ def test_compute_alpha_additions_filters_score_and_grade(monkeypatch) -> None:
             ]
         },
     )
-    out = wa.compute_alpha_additions()
+    out, rejected = wa.compute_alpha_additions(
+        industry_by_symbol={"CN:600001": "电子"},
+        top_industries={"电子", "计算机"},
+    )
     assert len(out) == 1
     assert out[0]["symbol"] == "CN:600001"
     assert out[0]["catalystScore"] == 86.0
+    assert rejected.get("no_s_grade") == 1
+    assert rejected.get("low_score") == 1
+
+
+def test_compute_alpha_additions_rejects_defense_and_non_top10() -> None:
+    payload = {
+        "items": [
+            {
+                "symbol": "600000",
+                "name": "Bank",
+                "catalystScore": 90.0,
+                "articles": [{"catalystGrade": "S"}],
+            },
+            {
+                "symbol": "600001",
+                "name": "Cold SW",
+                "catalystScore": 90.0,
+                "articles": [{"catalystGrade": "S"}],
+            },
+            {
+                "symbol": "600002",
+                "name": "Hot SW",
+                "catalystScore": 90.0,
+                "articles": [{"catalystGrade": "S"}],
+            },
+            {
+                "symbol": "600003",
+                "name": "NoInd",
+                "catalystScore": 90.0,
+                "articles": [{"catalystGrade": "S"}],
+            },
+            {
+                "symbol": "600004",
+                "name": "EM granular",
+                "catalystScore": 90.0,
+                "articles": [{"catalystGrade": "S"}],
+            },
+        ]
+    }
+    out, rejected = wa.compute_alpha_additions(
+        catalyst_payload=payload,
+        industry_by_symbol={
+            "CN:600000": "银行",
+            "CN:600001": "纺织服饰",
+            "CN:600002": "电子",
+            "CN:600004": "半导体",
+        },
+        top_industries={"电子", "计算机"},
+    )
+    # 电子 in Top10; 半导体 is non-SW EM → Top10 fail-open; 银行 defense; 纺织服饰 SW not in Top10
+    assert {x["symbol"] for x in out} == {"CN:600002", "CN:600004"}
+    assert rejected.get("defense_sector") == 1
+    assert rejected.get("not_in_top10") == 1
+    assert rejected.get("missing_industry") == 1
+
+
+def test_compute_alpha_additions_top10_fail_open_when_empty() -> None:
+    payload = {
+        "items": [
+            {
+                "symbol": "600002",
+                "name": "Hot",
+                "catalystScore": 90.0,
+                "articles": [{"catalystGrade": "S"}],
+            },
+        ]
+    }
+    out, rejected = wa.compute_alpha_additions(
+        catalyst_payload=payload,
+        industry_by_symbol={"CN:600002": "半导体"},
+        top_industries=set(),
+    )
+    assert len(out) == 1
+    assert "not_in_top10" not in rejected
 
 
 def test_precheck_skips_without_close_sync(monkeypatch) -> None:
@@ -166,9 +315,21 @@ def test_precheck_force_bypasses(monkeypatch) -> None:
     assert reason is None
 
 
-def test_normalize_trade_date() -> None:
-    assert wa._normalize_trade_date("20260618") == "2026-06-18"
-    assert wa._normalize_trade_date("2026-06-18") == "2026-06-18"
+def test_merge_funnel_into_meta_preserves_alpha_rejected() -> None:
+    from data_sync_service.db.watchlist_automation import merge_funnel_into_meta
+
+    meta = {"alphaRejected": {"defense_sector": 2}, "trigger": "manual"}
+    funnel = {
+        "tvHit": 10,
+        "passPullback": 3,
+        "passTrendOk": 1,
+        "addedNew": 1,
+        "droppedByPullback": 7,
+    }
+    merged = merge_funnel_into_meta(meta, funnel)
+    assert merged["alphaRejected"] == {"defense_sector": 2}
+    assert merged["funnel"]["tvHit"] == 10
+    assert merge_funnel_into_meta(meta, None) == meta
 
 
 def test_record_score_snapshots_returns_rows(monkeypatch) -> None:
@@ -223,13 +384,31 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
     )
     monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: len(rows))
     monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: "run-1")
-    monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None: set())
+    monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None, top_n=5: set())
     monkeypatch.setattr(
         wa,
         "get_last_n_trading_dates",
         lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"],
     )
-    monkeypatch.setattr(wa, "compute_alpha_additions", lambda limit=200: [])
+    monkeypatch.setattr(
+        wa,
+        "load_catalyst_window",
+        lambda add_limit=200: (
+            {
+                "items": [
+                    {
+                        "symbol": "600000",
+                        "name": "Weak Alpha",
+                        "catalystScore": 90.0,
+                        "articles": [{"catalystGrade": "A"}],
+                    }
+                ],
+                "total": 1,
+            },
+            set(),
+        ),
+    )
+    monkeypatch.setattr(wa, "_resolve_em_industries_for_symbols", lambda symbols: {})
 
     def fake_scores(symbol: str, trade_dates: list[str]) -> list[dict]:
         return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
@@ -242,5 +421,49 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
     assert compute_calls[0][0] == ["CN:600000", "CN:600001"]
     assert compute_calls[0][1] is False
     assert result["meta"]["scoreSnapshots"] == 2
+    assert result["meta"]["alphaSSymbols"] == 0
+    assert result["meta"]["alphaRejected"]["no_s_grade"] == 1
+    assert result["alphaAdd"] == []
     assert "remove" in result
     assert isinstance(result["remove"], list)
+
+
+def test_list_fallback_universe_skips_defense_and_caps(monkeypatch) -> None:
+    monkeypatch.setattr(
+        wa,
+        "get_top_5d_industry_names_ordered",
+        lambda as_of_date=None, top_n=5: ["银行", "电子", "计算机"],
+    )
+
+    def fake_search(keyword: str, *, limit: int = 12) -> list[dict]:
+        if keyword == "银行":
+            return [{"symbol": "CN:601988", "name": "Bank"}]
+        if keyword == "电子":
+            return [
+                {"symbol": f"CN:30000{i}", "name": f"E{i}"} for i in range(min(limit, 5))
+            ]
+        if keyword == "计算机":
+            return [
+                {"symbol": f"CN:68800{i}", "name": f"C{i}"} for i in range(min(limit, 5))
+            ]
+        return []
+
+    monkeypatch.setattr(
+        "data_sync_service.db.stock_eastmoney_industry.search_stocks_by_industry_keyword",
+        fake_search,
+    )
+    out = wa.list_fallback_universe_symbols(max_total=7, per_industry=5)
+    assert out["industries"] == ["电子", "计算机"]
+    assert out["skippedDefense"] == ["银行"]
+    assert "CN:601988" not in out["symbols"]
+    assert out["count"] == 7
+    assert out["truncated"] is True
+    assert len(out["symbols"]) == len(set(out["symbols"]))
+
+
+def test_list_fallback_universe_empty_top5(monkeypatch) -> None:
+    monkeypatch.setattr(wa, "get_top_5d_industry_names_ordered", lambda as_of_date=None, top_n=5: [])
+    out = wa.list_fallback_universe_symbols()
+    assert out["symbols"] == []
+    assert out["count"] == 0
+    assert out["truncated"] is False

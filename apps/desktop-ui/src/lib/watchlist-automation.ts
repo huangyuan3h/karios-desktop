@@ -1,5 +1,9 @@
 import { apiGetJson, apiPostJson } from '@/lib/api/client';
-import { importFromScreener } from '@/lib/watchlist-screener-import';
+import {
+  formatScreenerFunnel,
+  importFromScreener,
+  type ScreenerFunnel,
+} from '@/lib/watchlist-screener-import';
 import {
   ensureWatchlistHydrated,
   loadWatchlist,
@@ -36,6 +40,7 @@ export type ApplyAutomationResult = {
   removed: number;
   screenerAdded: number;
   alphaAdded: number;
+  funnel?: ScreenerFunnel | null;
 };
 
 export { isAutomationPollWindow } from '@/lib/market-hours';
@@ -53,6 +58,14 @@ export async function fetchAutomationLatest(): Promise<AutomationRun | null> {
   return res;
 }
 
+/** TIP-002: N-day funnel history — one acknowledged run per trade_date, newest first. */
+export async function fetchFunnelHistory(limit = 10): Promise<AutomationRun[]> {
+  const res = await apiGetJson<{ ok: boolean; runs?: AutomationRun[] }>(
+    `/watchlist/automation/runs?limit=${limit}`,
+  );
+  return Array.isArray(res.runs) ? res.runs : [];
+}
+
 export async function triggerAutomationRun(force = true): Promise<AutomationRun> {
   return apiPostJson<AutomationRun>(`/watchlist/automation/run?force=${force ? 'true' : 'false'}`);
 }
@@ -60,10 +73,61 @@ export async function triggerAutomationRun(force = true): Promise<AutomationRun>
 export async function ackAutomationRun(
   runId: string,
   screenerAdded: number,
+  funnel?: ScreenerFunnel | null,
 ): Promise<void> {
   await apiPostJson(`/watchlist/automation/${encodeURIComponent(runId)}/ack`, {
     screenerAdded,
+    ...(funnel ? { funnel } : {}),
   });
+}
+
+export function funnelFromMeta(meta: Record<string, unknown> | undefined): ScreenerFunnel | null {
+  const raw = meta?.funnel;
+  if (!raw || typeof raw !== 'object') return null;
+  const f = raw as Record<string, unknown>;
+  const num = (k: string) => (typeof f[k] === 'number' && Number.isFinite(f[k]) ? Number(f[k]) : 0);
+  return {
+    tvHit: num('tvHit'),
+    passPullback: num('passPullback'),
+    passTrendOk: num('passTrendOk'),
+    addedNew: num('addedNew'),
+    droppedByPullback: num('droppedByPullback'),
+    fallbackUsed: Boolean(f.fallbackUsed),
+    fallbackHit: num('fallbackHit'),
+    fallbackTrendOk: num('fallbackTrendOk'),
+    fallbackAdded: num('fallbackAdded'),
+  };
+}
+
+/** Derive sync ok from automation meta blobs (success paths may omit explicit ok). */
+export function isAutomationSyncOk(sync: unknown): boolean {
+  if (!sync || typeof sync !== 'object') return true;
+  const s = sync as Record<string, unknown>;
+  if (s.ok === false) return false;
+  if (typeof s.error === 'string' && s.error.trim()) return false;
+  if (typeof s.failed === 'number' && s.failed > 0) return false;
+  return true;
+}
+
+export function formatAutomationSyncPart(meta: Record<string, unknown> | undefined): string {
+  if (!meta) return '';
+  const hasIndustry = Object.prototype.hasOwnProperty.call(meta, 'industrySync');
+  const hasScreener = Object.prototype.hasOwnProperty.call(meta, 'screenerSync');
+  if (!hasIndustry && !hasScreener) return '';
+  const ind = hasIndustry ? (isAutomationSyncOk(meta.industrySync) ? '✓' : '✗') : '—';
+  const tv = hasScreener ? (isAutomationSyncOk(meta.screenerSync) ? '✓' : '✗') : '—';
+  return ` | sync ind${ind} tv${tv}`;
+}
+
+export function formatAutomationTop5Part(meta: Record<string, unknown> | undefined): string {
+  const raw = meta?.top5dIndustries;
+  if (!Array.isArray(raw) || !raw.length) return '';
+  const names = raw
+    .map((x) => String(x ?? '').trim())
+    .filter(Boolean)
+    .slice(0, 5);
+  if (!names.length) return '';
+  return ` | top5 ${names.join(',')}`;
 }
 
 export async function applyAutomationRun(
@@ -116,7 +180,8 @@ export async function applyAutomationRun(
   if (alphaAdded > 0) await saveWatchlist(items);
 
   onStage?.('Acknowledging automation run…');
-  await ackAutomationRun(run.runId, screener.addedCount);
+  const funnel = screener.debug.funnel;
+  await ackAutomationRun(run.runId, screener.addedCount, funnel);
 
   if (typeof window !== 'undefined') {
     try {
@@ -130,6 +195,7 @@ export async function applyAutomationRun(
     removed,
     screenerAdded: screener.addedCount,
     alphaAdded,
+    funnel,
   };
 }
 
@@ -161,5 +227,15 @@ export function formatAutomationSummary(
   const alpha = result?.alphaAdded ?? run.alphaAdd?.length ?? 0;
   const when = run.createdAt ? new Date(run.createdAt).toLocaleString() : '—';
   const trigger = run.trigger || 'unknown';
-  return `Last automation: ${when} (${trigger}) | −${removed} screener +${screener} alpha +${alpha}`;
+  const funnel = result?.funnel ?? funnelFromMeta(run.meta);
+  const funnelPart = funnel ? ` | funnel ${formatScreenerFunnel(funnel)}` : '';
+  const rejected = run.meta?.alphaRejected;
+  let rejectPart = '';
+  if (rejected && typeof rejected === 'object') {
+    const entries = Object.entries(rejected as Record<string, unknown>)
+      .filter(([, v]) => typeof v === 'number' && v > 0)
+      .map(([k, v]) => `${k}:${v}`);
+    if (entries.length) rejectPart = ` | alphaReject ${entries.join(',')}`;
+  }
+  return `Last automation: ${when} (${trigger}) | −${removed} screener +${screener} alpha +${alpha}${funnelPart}${rejectPart}${formatAutomationSyncPart(run.meta)}${formatAutomationTop5Part(run.meta)}`;
 }

@@ -28,10 +28,10 @@ def _today_cn_date_str() -> str:
     return dt.date().isoformat()
 
 
-def _parse_symbol_cn_only(symbol: str) -> tuple[str, str, str] | None:
+def _parse_symbol(symbol: str) -> tuple[str, str, str] | None:
     """
-    Parse UI symbol like 'CN:000001' into (market, ticker, ts_code).
-    Only CN A-shares are supported.
+    Parse UI symbol like 'CN:000001' or 'HK:00700' or 'ETF:510300' into
+    (market, ticker, ts_code). Supports CN A-shares, HK tickers, and ETFs.
     """
     s = (symbol or "").strip()
     if not s:
@@ -42,11 +42,30 @@ def _parse_symbol_cn_only(symbol: str) -> tuple[str, str, str] | None:
             suffix = "SH" if ticker.startswith("6") else "SZ"
             return "CN", ticker, f"{ticker}.{suffix}"
         return None
+    if s.startswith("HK:"):
+        ticker = s.split(":", 1)[1].strip()
+        if 1 <= len(ticker) <= 5 and ticker.isdigit():
+            padded = ticker.zfill(5)
+            return "HK", padded, f"{padded}.HK"
+        return None
+    if s.startswith("ETF:"):
+        ticker = s.split(":", 1)[1].strip()
+        if len(ticker) == 6 and ticker.isdigit():
+            suffix = "SH" if ticker[0] in ("5", "6", "9") else "SZ"
+            return "ETF", ticker, f"{ticker}.{suffix}"
+        return None
     # Allow direct ts_code input
     if len(s) == 9 and s[6] == "." and s[:6].isdigit() and s[7:].isalpha():
         ticker = s[:6]
         return "CN", ticker, s.upper()
+    if len(s) == 8 and s[5] == "." and s[:5].isdigit() and s[6:].upper() == "HK":
+        ticker = s[:5]
+        return "HK", ticker, s.upper()
     return None
+
+
+# Back-compat alias for callers that still expect the old name.
+_parse_symbol_cn_only = _parse_symbol
 
 
 def _lookup_name(ts_code: str) -> str | None:
@@ -177,7 +196,7 @@ def fetch_cn_a_fund_flow(ticker: str, *, days: int = 60) -> list[dict[str, str]]
 
 def get_market_chips(*, symbol: str, days: int = 60, force: bool = False) -> dict[str, Any]:
     days2 = max(10, min(int(days), 200))
-    parsed = _parse_symbol_cn_only(symbol)
+    parsed = _parse_symbol(symbol)
     if not parsed:
         raise HTTPException(status_code=400, detail="Invalid symbol format.")
     market, ticker, ts_code = parsed
@@ -242,7 +261,7 @@ def get_market_chips(*, symbol: str, days: int = 60, force: bool = False) -> dic
 
 def get_market_fund_flow(*, symbol: str, days: int = 60, force: bool = False) -> dict[str, Any]:
     days2 = max(10, min(int(days), 200))
-    parsed = _parse_symbol_cn_only(symbol)
+    parsed = _parse_symbol(symbol)
     if not parsed:
         raise HTTPException(status_code=400, detail="Invalid symbol format.")
     market, ticker, ts_code = parsed

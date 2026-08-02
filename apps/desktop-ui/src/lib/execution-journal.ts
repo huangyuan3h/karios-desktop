@@ -17,6 +17,7 @@ import {
 } from '@/lib/alpha-radar-catalyst';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import {
+  buildDefensiveSleeveExposurePct,
   buildSectorExposureFromWatchlist,
   buildSleeveExposurePct,
   deriveActionCard,
@@ -100,6 +101,7 @@ export function buildExecutionSnapshotPayload(
   const catalystBySymbol = input.catalystBySymbol ?? null;
   const sectorExposureByIndustry = buildSectorExposureFromWatchlist(items, trend);
   const sleeveExposurePct = buildSleeveExposurePct(items);
+  const defensiveSleeveExposurePct = buildDefensiveSleeveExposurePct(items, trend);
   const cards: ExecutionJournalCard[] = [];
   for (const it of items) {
     const t = trend[it.symbol];
@@ -132,6 +134,7 @@ export function buildExecutionSnapshotPayload(
       marketRegime: t?.marketRegime ?? null,
       sectorExposureByIndustry,
       sleeveExposurePct,
+      defensiveSleeveExposurePct,
       sectorOutflowBlock,
       catalyst: catalystBySymbol?.get(it.symbol) ?? null,
       todaySh,

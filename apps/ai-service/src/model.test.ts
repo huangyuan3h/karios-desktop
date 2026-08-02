@@ -5,6 +5,7 @@ import {
   modelFromProfile,
   getStrategyFallbackModelId,
   rewriteDeveloperMessageRolesInJsonString,
+  rewriteOpenAiCompatibleRequestBody,
 } from './model';
 import { AiProfileSchema, AiConfigStoreSchema } from './config';
 
@@ -195,6 +196,38 @@ describe('modelFromProfile', () => {
     const result = modelFromProfile(profile);
     expect(result.provider).toBe('ollama');
     expect(result.looseStructuredOutputs).toBe(true);
+  });
+});
+
+describe('rewriteOpenAiCompatibleRequestBody', () => {
+  it('sets reasoning_split for MiniMax model ids', () => {
+    const raw = JSON.stringify({
+      model: 'MiniMax-M3',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    const out = JSON.parse(rewriteOpenAiCompatibleRequestBody(raw)) as {
+      reasoning_split?: boolean;
+    };
+    expect(out.reasoning_split).toBe(true);
+  });
+
+  it('sets reasoning_split when baseURL is MiniMax', () => {
+    const raw = JSON.stringify({
+      model: 'custom-alias',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    const out = JSON.parse(
+      rewriteOpenAiCompatibleRequestBody(raw, { baseURL: 'https://api.minimaxi.com/v1' }),
+    ) as { reasoning_split?: boolean };
+    expect(out.reasoning_split).toBe(true);
+  });
+
+  it('does not set reasoning_split for unrelated models', () => {
+    const raw = JSON.stringify({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(rewriteOpenAiCompatibleRequestBody(raw)).toBe(raw);
   });
 });
 

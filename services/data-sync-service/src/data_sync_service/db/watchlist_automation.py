@@ -196,6 +196,31 @@ def get_scores_for_symbol(symbol: str, trade_dates: list[str]) -> list[dict[str,
     ]
 
 
+def fetch_latest_score_since(symbol: str, since_trade_date: str) -> float | None:
+    """Return the most recent TrendOK score on/after ``since_trade_date``.
+
+    Used by paper-trading's ``score_floor`` close condition. Returns None when
+    no score row exists (callers fail open — a missing score never closes a
+    paper trade by itself).
+    """
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT score FROM {SCORE_TABLE}
+                WHERE symbol = %s AND trade_date >= %s
+                ORDER BY trade_date DESC
+                LIMIT 1
+                """,
+                (symbol, since_trade_date),
+            )
+            row = cur.fetchone()
+    if row is None or row[0] is None:
+        return None
+    return float(row[0])
+
+
 def insert_automation_run(
     *,
     trade_date: str,
@@ -271,6 +296,35 @@ def get_latest_run() -> dict[str, Any] | None:
     return _row_to_run(row)
 
 
+def list_recent_runs(*, limit: int = 10) -> list[dict[str, Any]]:
+    """Return the most recent acknowledged run per trade_date, newest first.
+
+    Used by the funnel-history table (TIP-002 N-day view): one row per trading
+    day, so repeated manual+scheduled runs on the same day collapse into the
+    latest acknowledged one. Rows without an acknowledged funnel are skipped.
+    """
+    ensure_tables()
+    limit = max(1, min(int(limit), 30))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT DISTINCT ON (trade_date)
+                       id, trade_date, trigger_type, skipped, skip_reason,
+                       remove_items, alpha_add, meta, created_at, applied_at, screener_added
+                FROM {RUNS_TABLE}
+                WHERE applied_at IS NOT NULL
+                  AND meta IS NOT NULL
+                  AND meta->>'funnel' IS NOT NULL
+                ORDER BY trade_date DESC, created_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+    return [_row_to_run(r) for r in rows]
+
+
 def get_pending_run(trade_date: str | None = None) -> dict[str, Any] | None:
     ensure_tables()
     with get_connection() as conn:
@@ -304,19 +358,47 @@ def get_pending_run(trade_date: str | None = None) -> dict[str, Any] | None:
     return _row_to_run(row)
 
 
-def ack_run(run_id: str, screener_added: int | None = None) -> dict[str, Any] | None:
+def merge_funnel_into_meta(
+    meta: dict[str, Any] | None,
+    funnel: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Pure merge used by ack_run so funnel persistence is unit-testable."""
+    out: dict[str, Any] = dict(meta) if isinstance(meta, dict) else {}
+    if funnel is not None and isinstance(funnel, dict):
+        out["funnel"] = funnel
+    return out
+
+
+def ack_run(
+    run_id: str,
+    screener_added: int | None = None,
+    funnel: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     ensure_tables()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 f"""
+                SELECT meta FROM {RUNS_TABLE} WHERE id = %s
+                """,
+                (run_id,),
+            )
+            existing = cur.fetchone()
+            if not existing:
+                return None
+            current_meta = existing[0] if isinstance(existing[0], dict) else {}
+            new_meta = merge_funnel_into_meta(current_meta, funnel)
+            cur.execute(
+                f"""
                 UPDATE {RUNS_TABLE}
-                SET applied_at = now(), screener_added = %s
+                SET applied_at = now(),
+                    screener_added = %s,
+                    meta = %s
                 WHERE id = %s
                 RETURNING id, trade_date, trigger_type, skipped, skip_reason,
                           remove_items, alpha_add, meta, created_at, applied_at, screener_added
                 """,
-                (screener_added, run_id),
+                (screener_added, Json(new_meta), run_id),
             )
             row = cur.fetchone()
         conn.commit()

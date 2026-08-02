@@ -18,9 +18,13 @@ from data_sync_service.config import ROOT_ENV_PATH
 from data_sync_service.db import tv as tvdb
 from data_sync_service.db import tv_capture_jobs as jobdb
 from data_sync_service.service import tv_chrome
+from data_sync_service.tv import scanner_api
 from data_sync_service.tv.capture import capture_screener_over_cdp_sync
 
 CAPTURE_JOB_DEFAULT_TIMEOUT_S = 180
+CAPTURE_VIA_API = "api"
+CAPTURE_VIA_EGO_LITE = "ego_lite"
+CAPTURE_VIA_CHROME = "chrome"
 
 
 def _now_iso() -> str:
@@ -37,19 +41,21 @@ def ensure_seeded() -> None:
     ts = _now_iso()
     tvdb.upsert_screener(
         screener_id="falcon",
-        name="Swing Falcon Filter",
+        name="Legacy Falcon (momentum)",
         url="https://www.tradingview.com/screener/TMcms1mM/",
-        enabled=True,
+        enabled=False,
         created_at=ts,
         updated_at=ts,
+        mode="chrome",
     )
     tvdb.upsert_screener(
         screener_id="blackhorse",
-        name="Black Horse Filter",
+        name="Legacy Black Horse",
         url="https://www.tradingview.com/screener/kBuKODpK/",
-        enabled=True,
+        enabled=False,
         created_at=ts,
         updated_at=ts,
+        mode="chrome",
     )
 
 
@@ -58,7 +64,16 @@ def list_screeners() -> dict[str, Any]:
     return {"items": tvdb.fetch_screeners()}
 
 
-def create_screener(*, name: str, url: str, enabled: bool = True) -> dict[str, str]:
+def create_screener(
+    *,
+    name: str,
+    url: str = "",
+    enabled: bool = True,
+    mode: str = "chrome",
+    market: str | None = None,
+    filter_json: dict[str, Any] | list[dict[str, Any]] | None = None,
+    api_columns: list[str] | None = None,
+) -> dict[str, str]:
     ensure_seeded()
     screener_id = str(uuid.uuid4())
     ts = _now_iso()
@@ -69,11 +84,71 @@ def create_screener(*, name: str, url: str, enabled: bool = True) -> dict[str, s
         enabled=bool(enabled),
         created_at=ts,
         updated_at=ts,
+        mode=mode,
+        market=market,
+        filter_json=filter_json,
+        api_columns=api_columns,
     )
     return {"id": screener_id}
 
 
-def update_screener(*, screener_id: str, name: str, url: str, enabled: bool) -> dict[str, bool]:
+def create_screener_from_template(
+    *,
+    template_id: str,
+    enabled: bool = True,
+) -> dict[str, str]:
+    """Register a screener pre-populated from a built-in template.
+
+    Used by SettingsPage's Template mode: picks the template, derives
+    name + market + filter_json + api_columns, and creates a fresh
+    screener with mode='api'.
+    """
+    from data_sync_service.tv.templates import get_template
+
+    ensure_seeded()
+    template = get_template(template_id)
+    if template is None:
+        raise HTTPException(status_code=400, detail=f"unknown template: {template_id}")
+    return create_screener(
+        name=template.display_name,
+        url="",  # API mode doesn't need a URL
+        enabled=enabled,
+        mode="api",
+        market=template.market,
+        filter_json=template.filter_json,
+        api_columns=list(template.api_columns),
+    )
+
+
+def list_screener_templates() -> dict[str, Any]:
+    """Expose built-in templates to the frontend (SettingsPage)."""
+    from data_sync_service.tv.templates import list_templates
+
+    items = [
+        {
+            "templateId": t.template_id,
+            "displayName": t.display_name,
+            "market": t.market,
+            "description": t.description,
+            "nestedFilterValidated": t.nested_filter_validated,
+            "screenTitleSubstr": t.screen_title_substr,
+        }
+        for t in list_templates()
+    ]
+    return {"items": items}
+
+
+def update_screener(
+    *,
+    screener_id: str,
+    name: str = "",
+    url: str = "",
+    enabled: bool = False,
+    mode: str = "chrome",
+    market: str | None = None,
+    filter_json: dict[str, Any] | list[Any] | None = None,
+    api_columns: list[str] | None = None,
+) -> dict[str, bool]:
     ensure_seeded()
     ok = tvdb.update_screener(
         screener_id=(screener_id or "").strip(),
@@ -81,6 +156,10 @@ def update_screener(*, screener_id: str, name: str, url: str, enabled: bool) -> 
         url=(url or "").strip(),
         enabled=bool(enabled),
         updated_at=_now_iso(),
+        mode=mode,
+        market=market,
+        filter_json=filter_json,
+        api_columns=api_columns,
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Not found")
@@ -290,11 +369,14 @@ def _validate_screener_for_capture(screener_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Screener not found")
     if not screener.get("enabled"):
         raise HTTPException(status_code=409, detail="Screener is disabled")
+    mode = screener.get("mode") or "chrome"
     url = str(screener.get("url") or "").strip()
-    if not url:
-        raise HTTPException(status_code=400, detail="Screener URL is empty")
-    if not (url.startswith("http://") or url.startswith("https://")):
-        raise HTTPException(status_code=400, detail="Screener URL must start with http(s)://")
+    # API-mode screeners use filter_json, not URL — skip URL validation.
+    if mode != "api":
+        if not url:
+            raise HTTPException(status_code=400, detail="Screener URL is empty")
+        if not (url.startswith("http://") or url.startswith("https://")):
+            raise HTTPException(status_code=400, detail="Screener URL must start with http(s)://")
     return screener
 
 
@@ -331,14 +413,16 @@ def _capture_and_persist_screener(*, screener_id: str) -> dict[str, Any]:
     screener = _validate_screener_for_capture(screener_id)
     sid = str(screener.get("id") or "").strip()
     url = str(screener.get("url") or "").strip()
-    cdp_url = _ensure_cdp_ready()
-    try:
-        result = capture_screener_over_cdp_sync(cdp_url=cdp_url, url=url)
-    except Exception as e:  # noqa: BLE001
-        msg = str(e) or e.__class__.__name__
-        if "Cannot locate screener grid/table" in msg or "TradingView login required" in msg:
-            raise HTTPException(status_code=409, detail=msg) from e
-        raise HTTPException(status_code=500, detail=msg) from e
+    mode = str(screener.get("mode") or CAPTURE_VIA_CHROME).strip().lower()
+    filter_json = screener.get("filterJson")
+    api_columns = screener.get("apiColumns")
+
+    result, captured_via = _dispatch_capture(
+        mode=mode,
+        url=url,
+        filter_json=filter_json if isinstance(filter_json, (dict, list)) else None,
+        api_columns=api_columns if isinstance(api_columns, list) else None,
+    )
 
     snapshot_id = str(uuid.uuid4())
     payload = {
@@ -347,6 +431,7 @@ def _capture_and_persist_screener(*, screener_id: str) -> dict[str, Any]:
         "url": result.url,
         "headers": result.headers,
         "rows": result.rows,
+        "capturedVia": captured_via,
     }
     tvdb.upsert_snapshot(
         snapshot_id=snapshot_id,
@@ -360,7 +445,184 @@ def _capture_and_persist_screener(*, screener_id: str) -> dict[str, Any]:
         "capturedAt": result.captured_at,
         "rowCount": len(result.rows),
         "screenerId": sid,
+        "capturedVia": captured_via,
     }
+
+
+def _capture_via_api(
+    *,
+    filter_json: list[Any],
+    api_columns: list[str],
+    url: str,
+    screen_title: str | None,
+    filters: list[str] | None = None,
+) -> tuple[Any, str]:
+    """Run Scanner API and wrap as a Chrome-CDP-compatible CaptureResult."""
+    columns = api_columns or scanner_api.default_columns()
+    api_result = scanner_api.fetch_screener_via_api(
+        filter_payload=filter_json,
+        columns=columns,
+    )
+    # Map internal column names back to friendly headers (matches
+    # ScreenerPage pickColumns contract).
+    friendly_headers, friendly_rows = scanner_api.internal_to_friendly_rows(
+        api_result.headers, api_result.raw_rows
+    )
+    title = screen_title or _infer_screen_title_from_url(url) or "TradingView Scanner"
+    from data_sync_service.tv.capture import CaptureResult
+
+    cap = CaptureResult(
+        url=url,
+        captured_at=api_result.captured_at,
+        screen_title=title,
+        filters=filters or _filters_from_filter_json(filter_json),
+        headers=friendly_headers,
+        rows=friendly_rows,
+    )
+    return cap, CAPTURE_VIA_API
+
+
+def _capture_via_ego_lite(*, url: str) -> tuple[Any, str]:
+    """ego-lite fallback (headless chromium, no profile)."""
+    from data_sync_service.tv import ego_lite
+
+    try:
+        cap = ego_lite.capture_screener_ego_lite_sync(url=url)
+        return cap, CAPTURE_VIA_EGO_LITE
+    except ego_lite.EgoLiteUnavailable as e:
+        # Playwright not installed — re-raise as transient so caller
+        # can decide whether to fall back to chrome.
+        raise scanner_api.TransientApiError(f"ego_lite_unavailable:{e}") from e
+
+
+def _capture_via_chrome(*, url: str) -> tuple[Any, str]:
+    """Chrome CDP (legacy fallback path)."""
+    cdp_url = _ensure_cdp_ready()
+    cap = capture_screener_over_cdp_sync(cdp_url=cdp_url, url=url)
+    return cap, CAPTURE_VIA_CHROME
+
+
+def _dispatch_capture(
+    *,
+    mode: str,
+    url: str,
+    filter_json: dict[str, Any] | list[dict[str, Any]] | None,
+    api_columns: list[str] | None,
+) -> tuple[Any, str]:
+    """Dispatch a screener capture across the three tracks (OPT-057).
+
+    Fallback chain: api → ego_lite → chrome.
+    - `mode='api'`: try Scanner API first; on TransientApiError, fall back
+      to ego_lite; on PermanentApiError, surface immediately.
+    - `mode='chrome'`: try chrome first; on RuntimeError, surface.
+      (Chrome errors are not transient in our model — restart handled by
+      `_ensure_cdp_ready` inside `_capture_via_chrome`.)
+    """
+    if mode == CAPTURE_VIA_API:
+        if not filter_json:
+            # Backstop: legacy api-mode screener registered without filter.
+            raise HTTPException(
+                status_code=409,
+                detail="Screener mode='api' but filter_json is empty. Pick a template or set filter_json.",
+            )
+        if not url:
+            # API-mode screeners don't need a URL, but downstream code may
+            # still expect one; synthesise a stable identifier.
+            # filter_json is an array of conditions; extract market from
+            # screener config (passed separately) or use a placeholder.
+            url = "scanner_api://api-screener"
+        try:
+            return _capture_via_api(
+                filter_json=filter_json,
+                api_columns=api_columns or [],
+                url=url,
+                screen_title=None,
+            )
+        except scanner_api.TransientApiError as e:
+            # Mid-tier fallback: try ego_lite if playwright is available.
+            try:
+                return _capture_via_ego_lite(url=url)
+            except scanner_api.TransientApiError:
+                # ego_lite unavailable / also failed → bubble up original error
+                raise HTTPException(status_code=502, detail=f"api+ego_lite_failed:{e}") from e
+        except scanner_api.PermanentApiError as e:
+            raise HTTPException(status_code=422, detail=f"api_permanent:{e}") from e
+
+    # mode='chrome' (default for legacy rows)
+    if not url:
+        raise HTTPException(
+            status_code=409,
+            detail="Screener mode='chrome' requires a URL.",
+        )
+    try:
+        return _capture_via_chrome(url=url)
+    except Exception as e:  # noqa: BLE001
+        msg = str(e) or e.__class__.__name__
+        if "Cannot locate screener grid/table" in msg or "TradingView login required" in msg:
+            raise HTTPException(status_code=409, detail=msg) from e
+        raise HTTPException(status_code=500, detail=msg) from e
+
+
+def _infer_screen_title_from_url(url: str) -> str | None:
+    """Best-effort screen title when one isn't supplied (API mode)."""
+    if not url:
+        return None
+    if url.startswith("scanner_api://"):
+        return None
+    # TV screener URLs look like https://www.tradingview.com/screener/<id>/
+    # The friendly title isn't in the URL; downstream code falls back to
+    # screener.name anyway. This helper is mostly for audit logs.
+    return None
+
+
+def _filters_from_filter_json(filter_json: dict[str, Any] | list[Any]) -> list[str]:
+    """Convert filter JSON into a human-readable filter pill list (UI display).
+
+    Used by `payload.filters` so the existing UI (ScreenerPage, history view)
+    doesn't need to know about the new field. The conversion is intentionally
+    lossy — it's for display, not for recomputing the filter.
+
+    The TV Scanner API filter format is now an array of conditions:
+    ``[{left, operation, right}, ...]`` (multiple conditions are ANDed).
+    Legacy format ``{"and": [...]}`` is also handled for backwards compat.
+    """
+    out: list[str] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, list):
+            for child in node:
+                walk(child)
+            return
+        if not isinstance(node, dict):
+            return
+        # Legacy root keys: "and" / "or" map to compound operators.
+        if "and" in node and isinstance(node["and"], list):
+            for child in node["and"]:
+                walk(child)
+            return
+        if "or" in node and isinstance(node["or"], list):
+            for child in node["or"]:
+                walk(child)
+            return
+        op = node.get("operation")
+        if op in {"greater", "less", "equal", "in_range", "egreater", "eless"}:
+            left = node.get("left")
+            right = node.get("right")
+            if isinstance(right, dict):
+                right = _op_str(right)
+            out.append(f"{left} {op} {right}")
+
+    walk(filter_json)
+    return out
+
+
+def _op_str(node: dict[str, Any]) -> str:
+    op = node.get("operation")
+    if op == "mult":
+        return f"{node.get('left')}*{node.get('right')}"
+    if op == "subtract":
+        return f"{node.get('left')}-{node.get('right')}"
+    return str(node.get("right"))
 
 
 def job_to_api(job: dict[str, Any]) -> dict[str, Any]:

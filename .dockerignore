@@ -1,0 +1,71 @@
+# Karios Desktop root .dockerignore
+# Applies to ALL Dockerfiles that build from repo root context.
+# Per-app ignores go in app-local .dockerignore files (services/data-sync-service/.dockerignore, etc.).
+
+# ---- Version control ----
+.git/
+.gitignore
+.gitattributes
+
+# ---- CI / docs (never bake into image) ----
+.github/
+docs/
+*.md
+LICENSE
+CHANGELOG*
+
+# ---- Tests (run in CI, not image) ----
+**/tests/
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.test.js
+**/*.test.py
+**/coverage/
+**/.coverage
+**/coverage.json
+
+# ---- Build artifacts ----
+**/node_modules/
+**/.next/
+**/out/
+**/dist/
+**/.turbo/
+**/.pnpm-store/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/.ruff_cache/
+**/.venv/
+**/venv/
+
+# ---- Local config (NEVER bake secrets) ----
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# ---- IDE / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- Local databases ----
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+data/
+
+# ---- Migration testing outputs ----
+.init-data/
+init-scripts/

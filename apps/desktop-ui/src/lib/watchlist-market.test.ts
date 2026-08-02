@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe('forceRefreshWatchlistBars', () => {
-  it('requests bars for each CN symbol and counts failures', async () => {
+  it('requests bars for each CN+HK symbol and counts failures', async () => {
     vi.mocked(apiGetJson)
       .mockResolvedValueOnce({ bars: [] })
       .mockRejectedValueOnce(new Error('500'))
@@ -35,10 +35,17 @@ describe('forceRefreshWatchlistBars', () => {
       { concurrency: 4 },
     );
 
-    expect(result.total).toBe(4);
+    // HK is now supported (OPT-041), so all 5 symbols are included.
+    expect(result.total).toBe(5);
     expect(result.failures).toBe(1);
-    expect(apiGetJson).toHaveBeenCalledTimes(4);
+    expect(apiGetJson).toHaveBeenCalledTimes(5);
     expect(String(vi.mocked(apiGetJson).mock.calls[0]?.[0])).toContain('force=true');
+    expect(
+      vi
+        .mocked(apiGetJson)
+        .mock.calls.map(([path]) => String(path))
+        .some((p) => p.includes('HK%3A00700') || p.includes('HK:00700')),
+    ).toBe(true);
   });
 
   it('retries once on 429', async () => {

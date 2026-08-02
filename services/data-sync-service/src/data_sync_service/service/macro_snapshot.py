@@ -5,12 +5,17 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from data_sync_service.db.etf_fund_flow import get_latest_date as get_latest_etf_flow_date
 from data_sync_service.db.macro_daily import (
     ensure_table,
     fetch_last_closes,
     fetch_last_closes_batch,
     get_latest_row,
     get_latest_rows_batch,
+)
+from data_sync_service.service.etf_fund_flow import (
+    build_etf_flow_signal,
+    build_etf_fund_flow_bundle,
 )
 from data_sync_service.service.macro_daily import (
     SID_510300_PUT_IV,
@@ -27,9 +32,18 @@ from data_sync_service.service.macro_snapshot_on_demand import (
     enrich_macro_items_on_demand,
     macro_snapshot_warning,
 )
-from data_sync_service.service.market_regime import _trade_date_from_trade_time, get_index_signals
-from data_sync_service.service.option_iv import classify_iv_signal, resolve_put_iv_for_snapshot
+from data_sync_service.service.market_regime import (
+    _is_shanghai_sync_window,
+    _trade_date_from_trade_time,
+    get_index_signals,
+)
+from data_sync_service.service.option_iv import (
+    PUT_IV_LIVE_FETCH_FAILED_USING_DB,
+    classify_iv_signal,
+    resolve_put_iv_for_snapshot,
+)
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
+from data_sync_service.service.trade_calendar_utils import shanghai_today
 
 MACRO_CARDS: list[dict[str, Any]] = [
     {
@@ -310,8 +324,14 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
                 m["unit"] = "%"
 
     out: dict[str, Any] = {"cnIndexSignals": cn_index_signals, "macro": macro_items}
+    # ETF fund flow (same bundle as the Dashboard card; realtime spot only during sync window).
+    today = shanghai_today().isoformat()
+    etf_as_of = today if _is_shanghai_sync_window() else (get_latest_etf_flow_date() or today)
+    out["etfFundFlow"] = build_etf_fund_flow_bundle(as_of_date=etf_as_of)
+    out["etfFlowSignal"] = build_etf_flow_signal(as_of_date=etf_as_of)
     warnings: list[str] = []
-    if put_iv_warning:
+    # Soft DB fallback stays on the Put IV card only (not a page-level alarm).
+    if put_iv_warning and put_iv_warning != PUT_IV_LIVE_FETCH_FAILED_USING_DB:
         warnings.append(put_iv_warning)
     warn = macro_snapshot_warning()
     if warn:

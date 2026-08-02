@@ -157,10 +157,10 @@ export function IndustryFundFlowCard({
       />
       <div className="mt-3 flex items-center gap-2">
         <Button size="sm" variant="secondary" onClick={() => onNavigate?.('industryFlow')}>
-          Open Industry Flow
+          打开行业资金流
         </Button>
         <Button size="sm" variant="secondary" onClick={() => void onCopyIndustryMarkdown()}>
-          Copy Markdown
+          复制Markdown
         </Button>
         <Button
           size="sm"
@@ -173,12 +173,12 @@ export function IndustryFundFlowCard({
               days: 5,
               topN: 10,
               view: 'dailyTopByDate',
-              title: 'CN industry fund flow (Top by date)',
+              title: 'A股行业资金流（按日期Top）',
               createdAt: new Date().toISOString(),
             } as any);
           }}
         >
-          Reference
+          参考
         </Button>
       </div>
       {copyStatus ? (

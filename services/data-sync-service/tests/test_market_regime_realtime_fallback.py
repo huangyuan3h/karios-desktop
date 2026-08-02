@@ -29,15 +29,18 @@ def test_hsi_quote_failure_does_not_block_cn_realtime(monkeypatch) -> None:
     series = _series()
 
     def fake_quotes(codes: list[str]) -> dict[str, Any]:
-        if codes == ["000001.SH", "399006.SZ"]:
+        if codes == ["000001.SH", "399006.SZ", "000905.SH"]:
             return {
                 "ok": True,
                 "items": [
                     _quote_item("000001.SH", 190.0, 179.0, "2026-03-21 14:30:00"),
                     _quote_item("399006.SZ", 290.0, 279.0, "2026-03-21 14:30:01"),
+                    _quote_item("000905.SH", 390.0, 379.0, "2026-03-21 14:30:02"),
                 ],
             }
-        if codes == ["HSI"]:
+        if codes == ["HSI", "HSTECH"]:
+            return {"ok": False, "error": "list index out of range"}
+        if codes == ["HSI"] or codes == ["HSTECH"]:
             return {"ok": False, "error": "list index out of range"}
         raise AssertionError(f"unexpected quote request: {codes}")
 
@@ -49,7 +52,7 @@ def test_hsi_quote_failure_does_not_block_cn_realtime(monkeypatch) -> None:
         lambda codes, days=80, as_of_date=None: {code: series for code in codes},
     )
     monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days=80: [(d, c) for d, c, _ in series])
-    monkeypatch.setattr(mr, "fetch_hsi_on_demand", lambda: ({}, None))
+    monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({}, None))
 
     signals = mr.get_index_signals(include_breadth=False)
     by_code = {str(x["tsCode"]): x for x in signals}
@@ -59,6 +62,8 @@ def test_hsi_quote_failure_does_not_block_cn_realtime(monkeypatch) -> None:
     assert by_code["000001.SH"]["close"] == 190.0
     assert by_code["399006.SZ"]["realtime"] is True
     assert by_code["399006.SZ"]["close"] == 290.0
+    assert by_code["000905.SH"]["realtime"] is True
+    assert by_code["000905.SH"]["close"] == 390.0
     assert by_code["HSI"]["realtime"] is False
     assert by_code["HSI"]["quoteError"] == "list index out of range"
 
@@ -68,13 +73,17 @@ def test_cn_batch_failure_falls_back_to_single_symbol_quotes(monkeypatch) -> Non
     series = _series()
 
     def fake_quotes(codes: list[str]) -> dict[str, Any]:
-        if codes == ["000001.SH", "399006.SZ"]:
+        if codes == ["000001.SH", "399006.SZ", "000905.SH"]:
             return {"ok": False, "error": "batch failure"}
         if codes == ["000001.SH"]:
             return {"ok": True, "items": [_quote_item("000001.SH", 190.0, 179.0, "2026-03-21 14:30:00")]}
         if codes == ["399006.SZ"]:
             return {"ok": False, "error": "symbol failure"}
-        if codes == ["HSI"]:
+        if codes == ["000905.SH"]:
+            return {"ok": False, "error": "symbol failure"}
+        if codes == ["HSI", "HSTECH"]:
+            return {"ok": False, "error": "unsupported"}
+        if codes == ["HSI"] or codes == ["HSTECH"]:
             return {"ok": False, "error": "unsupported"}
         raise AssertionError(f"unexpected quote request: {codes}")
 
@@ -86,7 +95,7 @@ def test_cn_batch_failure_falls_back_to_single_symbol_quotes(monkeypatch) -> Non
         lambda codes, days=80, as_of_date=None: {code: series for code in codes},
     )
     monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days=80: [(d, c) for d, c, _ in series])
-    monkeypatch.setattr(mr, "fetch_hsi_on_demand", lambda: ({}, None))
+    monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({}, None))
 
     signals = mr.get_index_signals(include_breadth=False)
     by_code = {str(x["tsCode"]): x for x in signals}

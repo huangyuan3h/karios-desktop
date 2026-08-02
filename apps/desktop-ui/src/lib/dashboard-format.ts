@@ -2,6 +2,116 @@ import { buildDashboardHotIndustryPicks } from '@/lib/hot-industry-picks';
 
 export const BREADTH_PANIC_DOWN_THRESHOLD = 3000;
 export const DASHBOARD_CARD_ORDER_KEY = 'karios.dashboard.cardOrder.v0';
+export const DASHBOARD_COPY_MODE_KEY = 'karios.dashboard.copyMode.v0';
+
+// --- Translation helpers (English → Chinese for UI display) ---
+
+const RISK_LABELS: Record<string, string> = {
+  normal: '正常',
+  caution: '谨慎',
+  hot: '过热',
+  euphoric: '狂热',
+  no_new_positions: '禁止新开仓',
+  extreme_caution: '极度谨慎',
+  capitulation_v_bottom: '恐慌冰点共振',
+  confirmed_uptrend: '趋势确立',
+};
+
+export function translateRisk(risk: string | null | undefined): string {
+  return RISK_LABELS[String(risk ?? '').trim()] || String(risk ?? '—');
+}
+
+const GATE_MODE_LABELS: Record<string, string> = {
+  ATTACK: '进攻',
+  WEAK_ATTACK: '弱势进攻',
+  HOLD_ONLY: '仅持有',
+  DEFEND: '防守',
+};
+
+export function translateGateMode(mode: string | null | undefined): string {
+  return GATE_MODE_LABELS[String(mode ?? '').trim()] || String(mode ?? '—');
+}
+
+const REGIME_LABELS: Record<string, string> = {
+  Strong: '强势',
+  Diverging: '分化',
+  Weak: '弱势',
+};
+
+export function translateRegime(regime: string | null | undefined): string {
+  return REGIME_LABELS[String(regime ?? '').trim()] || String(regime ?? '—');
+}
+
+const INDEX_LIGHT_LABELS: Record<string, string> = {
+  green: '绿灯',
+  yellow: '黄灯',
+  red: '红灯',
+};
+
+export function translateIndexLight(light: string | null | undefined): string {
+  return INDEX_LIGHT_LABELS[String(light ?? '').trim()] || String(light ?? '—');
+}
+
+const SRV_LEVEL_LABELS: Record<string, string> = {
+  Extreme_High: '极高',
+  Elevated: '偏高',
+  Stable: '稳定',
+};
+
+export function translateSrvLevel(level: string | null | undefined): string {
+  return SRV_LEVEL_LABELS[String(level ?? '').trim()] || String(level ?? '—');
+}
+
+const SIGNAL_LABELS: Record<string, string> = {
+  deep_green: '深绿',
+  light_green: '浅绿',
+  green: '绿',
+  yellow: '黄',
+  red: '红',
+};
+
+export function translateSignal(signal: string | null | undefined): string {
+  return SIGNAL_LABELS[String(signal ?? '').trim()] || String(signal ?? '—');
+}
+
+const REASON_LABELS: Record<string, string> = {
+  BREADTH_PANIC: '跌停恐慌',
+  RISK_NO_NEW: '风险:禁止开仓',
+  RISK_EXTREME_CAUTION: '风险:极度谨慎',
+  SRV_EXTREME_HIGH: 'SRV极高',
+  REGIME_WEAK: '弱势',
+  REGIME_DIVERGING: '分化',
+  SRV_ELEVATED: 'SRV偏高',
+  REGIME_STRONG: '强势',
+  SRV_STABLE: 'SRV稳定',
+  SRV_UNKNOWN: 'SRV未知',
+  INTRADAY_OVERFLOW_OVERRIDE: '盘中溢出覆盖',
+  ETF_FLOW_CONFIRM: '资金流确认',
+  ETF_FLOW_CONTRADICT: '资金流背离',
+};
+
+export function translateReason(r: string | null | undefined): string {
+  return REASON_LABELS[String(r ?? '').trim()] || String(r ?? '—');
+}
+
+export type DashboardCopyMode = 'full' | 'compact';
+
+export function loadCopyMode(): DashboardCopyMode {
+  try {
+    const raw = window.localStorage.getItem(DASHBOARD_COPY_MODE_KEY);
+    return raw === 'full' ? 'full' : 'compact';
+  } catch {
+    return 'compact';
+  }
+}
+
+export function saveCopyMode(mode: DashboardCopyMode) {
+  try {
+    window.localStorage.setItem(DASHBOARD_COPY_MODE_KEY, mode);
+  } catch {
+    // ignore
+  }
+}
 
 export function loadCardOrder(): string[] | null {
   try {
@@ -65,9 +175,9 @@ export function formatSrvIndexLine(srv: SrvIndexLike | null | undefined): string
   const level = String(srv?.level ?? '').trim();
   const overlap = srv?.overlapCount;
   if (!level || typeof overlap !== 'number' || !Number.isFinite(overlap)) {
-    return 'SRV_Index (Sector Rotation): —';
+    return 'SRV 轮动指数: —';
   }
-  return `SRV_Index (Sector Rotation): ${level} (3D Overlap = ${overlap})`;
+  return `SRV 轮动指数: ${translateSrvLevel(level)}（3D重叠 = ${overlap}）`;
 }
 
 export function srvIndexBadgeClass(level: string | null | undefined): string {
@@ -92,16 +202,24 @@ export type ExecutionGateLike = {
   srvLevel?: string | null;
   srvOverlapCount?: number | null;
   downCount?: number | null;
+  upCount?: number | null;
   riskMode?: string | null;
   reasons?: string[] | null;
   positionRangeHint?: string | null;
   satelliteNote?: string | null;
+  overflowSector?: string | null;
+  overflowInflowYi?: number | null;
+  cnGate?: ExecutionGateLike | null;
+  hkGate?: ExecutionGateLike | null;
 };
 
 export function executionGateBadgeClass(mode: string | null | undefined): string {
   const m = String(mode || '').trim();
   if (m === 'ATTACK') {
     return 'border-emerald-600/40 bg-emerald-600/15 text-emerald-800 dark:text-emerald-200';
+  }
+  if (m === 'WEAK_ATTACK') {
+    return 'border-lime-600/40 bg-lime-600/15 text-lime-800 dark:text-lime-200';
   }
   if (m === 'HOLD_ONLY') {
     return 'border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-200';
@@ -153,6 +271,34 @@ export function formatExecutionGateMarkdown(
   }
   if (gate.satelliteNote) {
     lines.push(`- satelliteNote: ${String(gate.satelliteNote)}`);
+  }
+  if (gate.overflowSector || gate.overflowInflowYi != null) {
+    const yi =
+      typeof gate.overflowInflowYi === 'number' && Number.isFinite(gate.overflowInflowYi)
+        ? gate.overflowInflowYi
+        : '—';
+    lines.push(
+      `- overflow: ${gate.overflowSector ? String(gate.overflowSector) : '—'} ${yi}亿`,
+    );
+  }
+  if (gate.hkGate) {
+    const h = gate.hkGate;
+    const hReasons = Array.isArray(h.reasons)
+      ? h.reasons.map((x) => String(x)).filter(Boolean)
+      : [];
+    lines.push(`- hkGate.mode: ${String(h.mode)}`);
+    lines.push(`- hkGate.allowNewEntries: ${h.allowNewEntries === true}`);
+    lines.push(`- hkGate.marketRegime: ${String(h.marketRegime ?? '—')}`);
+    lines.push(`- hkGate.indexLight: ${String(h.indexLight ?? '—')}`);
+    if (h.positionRangeHint) {
+      lines.push(`- hkGate.positionRangeHint: ${String(h.positionRangeHint)}`);
+    }
+    if (h.satelliteNote) {
+      lines.push(`- hkGate.satelliteNote: ${String(h.satelliteNote)}`);
+    }
+    if (hReasons.length) {
+      lines.push(`- hkGate.reasons: [${hReasons.join(', ')}]`);
+    }
   }
   lines.push('');
   return lines.join('\n');
@@ -241,48 +387,38 @@ export function buildTopByDateMap(summary: unknown): Record<string, string[]> {
   return map;
 }
 
-function signalRank(x: string): number {
-  if (x === 'green' || x === 'light_green' || x === 'deep_green') return 3;
-  if (x === 'yellow') return 2;
-  if (x === 'red') return 1;
-  return 0;
-}
+const CN_INDEX_NAMES = new Set(['上证指数', '创业板指', '中证500']);
 
 export function buildIndexTrafficSummary(indexSignals: unknown[]): { title: string; detail: string } {
   const items = Array.isArray(indexSignals) ? indexSignals : [];
-  if (items.length < 2) {
+  const cn = items.filter((x: unknown) => {
+    const row = x && typeof x === 'object' ? (x as Record<string, unknown>) : null;
+    return Boolean(row && CN_INDEX_NAMES.has(String(row?.name ?? '')));
+  });
+  const pool = cn.length >= 2 ? cn : items;
+  if (pool.length < 2) {
     return {
       title: '⚠️ 当前行情：弱势 (Weak)',
       detail: '缺少完整指数信号，保持防守。',
     };
   }
-  const byName = new Map(
-    items.map((x: unknown) => {
-      const row = x && typeof x === 'object' ? (x as Record<string, unknown>) : null;
-      return [String(row?.name ?? row?.tsCode ?? ''), String(row?.signal ?? '')] as const;
-    }),
-  );
-  const first = items[0] && typeof items[0] === 'object' ? (items[0] as Record<string, unknown>) : null;
-  const second = items[1] && typeof items[1] === 'object' ? (items[1] as Record<string, unknown>) : null;
-  const sse = byName.get('上证指数') || String(first?.signal ?? '');
-  const cyb = byName.get('创业板指') || String(second?.signal ?? '');
-  const g1 = sse === 'green' || sse === 'light_green' || sse === 'deep_green';
-  const g2 = cyb === 'green' || cyb === 'light_green' || cyb === 'deep_green';
+  const greens = pool.filter((x: unknown) => {
+    const row = x && typeof x === 'object' ? (x as Record<string, unknown>) : null;
+    const s = String(row?.signal ?? '');
+    return s === 'green' || s === 'light_green' || s === 'deep_green';
+  }).length;
 
-  if (g1 && g2) {
+  if (greens === pool.length) {
     return {
       title: '✅ 当前行情：强势 (Strong)',
-      detail: '双绿确认，顺势为主，控制仓位与回撤。',
+      detail: '全绿确认，顺势为主，控制仓位与回撤。',
     };
   }
 
-  if (g1 || g2) {
-    const r1 = signalRank(sse);
-    const r2 = signalRank(cyb);
-    const bias = r1 === r2 ? '分化' : r1 > r2 ? '主强创弱' : '创强主弱';
+  if (greens > 0) {
     return {
       title: '⚠️ 当前行情：震荡/分化 (Diverging)',
-      detail: `震荡分化（${bias}），严禁追高，仅限防守型回踩；买入仅用反弹买入策略单。`,
+      detail: '震荡分化，严禁追高，仅限防守型回踩；买入仅用反弹买入策略单。',
     };
   }
 

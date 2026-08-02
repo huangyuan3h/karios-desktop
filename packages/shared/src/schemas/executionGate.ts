@@ -1,10 +1,31 @@
 import { z } from 'zod';
 
-export const ExecutionGateModeSchema = z.enum(['ATTACK', 'HOLD_ONLY', 'DEFEND']);
+export const ExecutionGateModeSchema = z.enum([
+  'ATTACK',
+  'WEAK_ATTACK',
+  'HOLD_ONLY',
+  'DEFEND',
+]);
 export type ExecutionGateMode = z.infer<typeof ExecutionGateModeSchema>;
 
 export const MarketRegimeLabelSchema = z.enum(['Strong', 'Diverging', 'Weak']);
 export type MarketRegimeLabel = z.infer<typeof MarketRegimeLabelSchema>;
+
+/**
+ * Per-market execution gate (A-share vs HK independent position budget).
+ * Backend emits a flat CN gate (top-level fields) plus nested cnGate/hkGate.
+ */
+export const MarketGateSubsetSchema = z.object({
+  mode: ExecutionGateModeSchema,
+  allowNewEntries: z.boolean(),
+  marketRegime: MarketRegimeLabelSchema,
+  indexLight: z.string(),
+  riskMode: z.string().nullable().optional(),
+  reasons: z.array(z.string()).default([]),
+  positionRangeHint: z.string().optional(),
+  satelliteNote: z.string().optional(),
+});
+export type MarketGateSubset = z.infer<typeof MarketGateSubsetSchema>;
 
 export const ExecutionGateSchema = z.object({
   mode: ExecutionGateModeSchema,
@@ -14,10 +35,19 @@ export const ExecutionGateSchema = z.object({
   srvLevel: z.string().nullable().optional(),
   srvOverlapCount: z.number().nullable().optional(),
   downCount: z.number().nullable().optional(),
+  upCount: z.number().nullable().optional(),
   riskMode: z.string().nullable().optional(),
   reasons: z.array(z.string()).default([]),
   positionRangeHint: z.string().optional(),
   satelliteNote: z.string().optional(),
+  /** V6.3: sector that triggered Intraday Overflow Override. */
+  overflowSector: z.string().nullable().optional(),
+  /** V6.3: max 1D sector inflow in 亿 (CNY / 1e8). */
+  overflowInflowYi: z.number().nullable().optional(),
+  /** Alias of the flat CN gate, for symmetric per-market access. */
+  cnGate: MarketGateSubsetSchema.nullable().optional(),
+  /** Independent HK position budget driven by HK index lights. */
+  hkGate: MarketGateSubsetSchema.nullable().optional(),
 });
 export type ExecutionGate = z.infer<typeof ExecutionGateSchema>;
 

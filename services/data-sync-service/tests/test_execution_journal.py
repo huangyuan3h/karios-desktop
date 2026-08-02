@@ -6,6 +6,7 @@ from data_sync_service.service.execution_journal import (
     build_journal_markdown,
     compute_content_hash,
     diff_snapshots,
+    filter_journal_changes,
     symbols_with_latest_action_deltas,
 )
 
@@ -226,3 +227,95 @@ def test_build_journal_markdown_omits_silent_watch_pool(monkeypatch):
     latest_section = md.split("### Latest Actions")[1]
     assert "CN:A" not in latest_section
     assert "CN:B" not in latest_section
+
+
+def test_build_journal_markdown_drops_recent_snapshots_block(monkeypatch):
+    """2026-08-01 · Recent snapshots block removed (only signal changes matter)."""
+    monkeypatch.setattr(
+        "data_sync_service.service.execution_journal.ej_db.fetch_latest_snapshot",
+        lambda trade_date=None: {
+            "id": "s1",
+            "tradeDate": "2026-07-18",
+            "capturedAt": "2026-07-18T08:00:00+00:00",
+            "source": "manual",
+            "gate": {"mode": "ATTACK"},
+            "cards": [],
+        },
+    )
+    monkeypatch.setattr(
+        "data_sync_service.service.execution_journal.ej_db.list_snapshots",
+        lambda trade_date=None, limit=50: [],
+    )
+    monkeypatch.setattr(
+        "data_sync_service.service.execution_journal.ej_db.list_changes",
+        lambda trade_date=None, since=None, limit=100: [],
+    )
+    md = build_journal_markdown(trade_date="2026-07-18")
+    assert "### Recent snapshots" not in md
+
+
+def test_filter_journal_changes_drops_small_hardstop_drifts():
+    """hardStop drift < 1% is suppressed."""
+    changes = [
+        {"scope": "symbol", "symbol": "CN:A", "field": "hardStop", "oldValue": 36.87, "newValue": 36.94},  # ~0.19% — noise
+        {"scope": "symbol", "symbol": "CN:A", "field": "hardStop", "oldValue": 10.0, "newValue": 9.85},  # 1.5% — kept
+        {"scope": "symbol", "symbol": "CN:B", "field": "hardStop", "oldValue": 10.0, "newValue": 8.5},  # 15% — kept
+        {"scope": "symbol", "symbol": "CN:C", "field": "action", "oldValue": "HOLD", "newValue": "TRIM"},
+        {"scope": "gate", "field": "mode", "oldValue": "ATTACK", "newValue": "DEFEND"},
+    ]
+    out = filter_journal_changes(changes)
+    assert len(out) == 4
+    fields = [(c.get("symbol"), c.get("field")) for c in out]
+    # CN:A drift 36.87→36.94 (~0.19%) is dropped as noise
+    assert fields.count(("CN:A", "hardStop")) == 1  # only the 1.5% drift kept
+    assert ("CN:B", "hardStop") in fields  # 15% drift kept
+    assert ("CN:C", "action") in fields  # Action transition always kept
+    assert (None, "mode") in fields  # Gate change always kept
+
+
+def test_build_journal_markdown_filters_small_hardstop_drifts(monkeypatch):
+    """End-to-end: small hardStop drifts should not appear in markdown."""
+    monkeypatch.setattr(
+        "data_sync_service.service.execution_journal.ej_db.fetch_latest_snapshot",
+        lambda trade_date=None: {
+            "id": "s1",
+            "tradeDate": "2026-07-18",
+            "capturedAt": "2026-07-18T08:00:00+00:00",
+            "source": "manual",
+            "gate": {"mode": "ATTACK"},
+            "cards": [],
+        },
+    )
+    monkeypatch.setattr(
+        "data_sync_service.service.execution_journal.ej_db.list_snapshots",
+        lambda trade_date=None, limit=50: [],
+    )
+    monkeypatch.setattr(
+        "data_sync_service.service.execution_journal.ej_db.list_changes",
+        lambda trade_date=None, since=None, limit=100: [
+            {
+                "changedAt": "2026-07-18T07:00:00+00:00",
+                "tradeDate": "2026-07-18",
+                "scope": "symbol",
+                "symbol": "CN:A",
+                "field": "hardStop",
+                "oldValue": 36.8727,
+                "newValue": 36.9402,
+            },
+            {
+                "changedAt": "2026-07-18T07:01:00+00:00",
+                "tradeDate": "2026-07-18",
+                "scope": "symbol",
+                "symbol": "CN:B",
+                "field": "action",
+                "oldValue": "HOLD",
+                "newValue": "TRIM",
+            },
+        ],
+    )
+    md = build_journal_markdown(trade_date="2026-07-18")
+    assert "36.8727" not in md
+    assert "36.9402" not in md
+    assert "HOLD" in md
+    assert "TRIM" in md
+    assert "hardStop drifts" in md  # Note is shown

@@ -13,7 +13,9 @@ import {
 import { watchlistMarketKey } from './watchlist';
 
 vi.mock('@/lib/watchlist-storage', () => ({
-  loadWatchlist: vi.fn(() => [{ symbol: 'CN:600519', name: 'Moutai' }]),
+  loadWatchlist: vi.fn(() => [
+    { symbol: 'CN:600519', name: 'Moutai', positionPct: 20 },
+  ]),
 }));
 
 vi.mock('@/lib/market-hours', () => ({

@@ -26,6 +26,7 @@ SID_COMM_ENERGY = "COMM_ENERGY"
 SID_COMM_GOLD = "COMM_GOLD"
 SID_COMM_COPPER = "COMM_COPPER"
 SID_HSI = "HSI"
+SID_HSTECH = "HSTECH"
 SID_510300_PUT_IV = "510300_PUT_IV"
 
 SERIES_ORDER: list[str] = [
@@ -38,6 +39,7 @@ SERIES_ORDER: list[str] = [
     SID_COMM_GOLD,
     SID_COMM_COPPER,
     SID_HSI,
+    SID_HSTECH,
     SID_510300_PUT_IV,
 ]
 
@@ -139,6 +141,77 @@ def _paged_fut_daily(pro: Any, ts_code: str, start_date: str, end_date: str) -> 
         return None
     merged = pd.concat(chunks, ignore_index=True)
     return merged.drop_duplicates(subset=["trade_date"], keep="last")
+
+
+def _fetch_hstech_bars_via_ak(start_date: str, end_date: str) -> pd.DataFrame | None:
+    """
+    HSTECH daily bars via akshare (Sina Finance) — preferred fallback since
+    tushare index_global has no HSTECH series and yfinance ^HSTECH is IP
+    rate-limited in some regions. Returns a DataFrame normalized for
+    macro_daily upsert (trade_date/open/high/low/close/pct_chg/vol/amount).
+    """
+    try:
+        import akshare as ak  # type: ignore[import-not-found]
+    except Exception:
+        return None
+    try:
+        df = ak.stock_hk_index_daily_sina(symbol="HSTECH")
+    except Exception:
+        return None
+    if df is None or getattr(df, "empty", True):
+        return None
+    start_dt = datetime.strptime(start_date, "%Y%m%d").date()
+    end_dt = datetime.strptime(end_date, "%Y%m%d").date()
+    out = pd.DataFrame()
+    out["trade_date"] = pd.to_datetime(df["date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    out["open"] = df.get("open")
+    out["high"] = df.get("high")
+    out["low"] = df.get("low")
+    out["close"] = df.get("close")
+    out["pct_chg"] = pd.to_numeric(df.get("close"), errors="coerce").pct_change() * 100.0
+    out["vol"] = df.get("volume")
+    out["amount"] = df.get("amount")
+    out = out.dropna(subset=["close"])
+    if out.empty:
+        return None
+    parsed = pd.to_datetime(out["trade_date"], errors="coerce")
+    mask = parsed.notna() & (parsed.dt.date >= start_dt) & (parsed.dt.date <= end_dt)
+    out = out.loc[mask].sort_values("trade_date").reset_index(drop=True)
+    return out if not out.empty else None
+
+
+def _fetch_hstech_bars_via_yf(start_date: str, end_date: str) -> pd.DataFrame | None:
+    """
+    HSTECH fallback via Yahoo Finance (tushare index_global has no HSTECH series).
+    Returns a DataFrame normalized for macro_daily upsert (trade_date/open/high/low/close/pct_chg/vol).
+    """
+    try:
+        import yfinance as yf  # type: ignore[import-not-found]
+    except Exception:
+        return None
+    try:
+        hist = yf.Ticker("^HSTECH").history(start=start_date, end=end_date)
+    except Exception:
+        return None
+    if hist is None or hist.empty:
+        return None
+    hist = hist.dropna(subset=["Close"])
+    if hist.empty:
+        return None
+    df = hist.reset_index()
+    date_col = df["Date"]
+    out = pd.DataFrame()
+    if hasattr(date_col.dt, "strftime"):
+        out["trade_date"] = date_col.dt.strftime("%Y-%m-%d")
+    else:
+        out["trade_date"] = date_col.astype(str).str[:10]
+    out["open"] = df.get("Open")
+    out["high"] = df.get("High")
+    out["low"] = df.get("Low")
+    out["close"] = df.get("Close")
+    out["pct_chg"] = df["Close"].pct_change() * 100.0
+    out["vol"] = df.get("Volume")
+    return out.dropna(subset=["close"])
 
 
 def resolve_sgx_a50_main(pro: Any) -> str | None:
@@ -342,6 +415,25 @@ def sync_macro_daily_full() -> dict[str, Any]:
             return 0
         return upsert_from_dataframe(df, series_id=SID_HSI, source="index_global", underlying_ts_code="HSI")
 
+    def sync_hstech() -> int:
+        last = get_last_trade_date(SID_HSTECH)
+        start = FULL_START_DATE if last is None else _date_to_yyyymmdd(last + timedelta(days=1))
+        end = _today_yyyymmdd()
+        if start > end:
+            return 0
+        df = _paged_index_global(pro, "HSTECH", start, end)
+        if df is None or df.empty:
+            df = _fetch_hstech_bars_via_ak(start, end)
+            if df is None or df.empty:
+                df = _fetch_hstech_bars_via_yf(start, end)
+                if df is None or df.empty:
+                    return 0
+                return upsert_from_dataframe(
+                    df, series_id=SID_HSTECH, source="yfinance", underlying_ts_code="^HSTECH"
+                )
+            return upsert_from_dataframe(df, series_id=SID_HSTECH, source="akshare", underlying_ts_code="HSTECH")
+        return upsert_from_dataframe(df, series_id=SID_HSTECH, source="index_global", underlying_ts_code="HSTECH")
+
     sync_funcs: dict[str, Callable[[], int]] = {
         SID_IXIC: sync_ixic,
         SID_DJI: sync_dji,
@@ -352,6 +444,7 @@ def sync_macro_daily_full() -> dict[str, Any]:
         SID_COMM_GOLD: lambda: sync_comm("SHFE", "AU", "fut_daily"),
         SID_COMM_COPPER: lambda: sync_comm("SHFE", "CU", "fut_daily"),
         SID_HSI: sync_hsi,
+        SID_HSTECH: sync_hstech,
     }
 
     for i in range(start_index, len(SERIES_ORDER)):

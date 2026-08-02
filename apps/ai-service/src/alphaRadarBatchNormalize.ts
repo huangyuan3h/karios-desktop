@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AlphaRadarExtractBatchResponseSchema, AlphaRadarDriverTypeSchema } from './schemas';
+import { stripModelThinking } from './model_thinking';
 
 const GRADES = new Set(['S', 'A', 'B', 'C']);
 
@@ -15,7 +16,7 @@ const CATEGORY_DRIVER_DEFAULT: Record<string, z.infer<typeof AlphaRadarDriverTyp
 
 function asString(value: unknown, fallback = ''): string {
   if (value == null) return fallback;
-  return String(value).trim();
+  return stripModelThinking(String(value));
 }
 
 function normalizeGrade(value: unknown): 'S' | 'A' | 'B' | null {
@@ -56,6 +57,21 @@ function normalizeShareMapping(value: unknown, macroTheme: string): string[] {
   const deduped = [...new Set(items)].slice(0, 3);
   if (deduped.length) return deduped;
   return macroTheme ? [macroTheme.slice(0, 40)] : ['产业趋势'];
+}
+
+function normalizeHkMapping(value: unknown): string[] {
+  const raw = value ?? [];
+  const items: string[] = [];
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      const text = asString(entry);
+      if (text) items.push(text);
+    }
+  } else {
+    const text = asString(raw);
+    if (text) items.push(text);
+  }
+  return [...new Set(items)].slice(0, 3);
 }
 
 function normalizeLogicSummary(value: unknown, fallback: string): string {
@@ -104,6 +120,7 @@ export function normalizeAlphaRadarTrendRow(
       row.a_share_mapping ?? row.aShareMapping ?? row.keywords_for_mapping ?? row.keywordsForMapping,
       macroTheme,
     ),
+    hk_mapping: normalizeHkMapping(row.hk_mapping ?? row.hkMapping),
     logic_summary: logicSummary,
     source_index: normalizeSourceIndex(row.source_index ?? row.sourceIndex, idx),
   };

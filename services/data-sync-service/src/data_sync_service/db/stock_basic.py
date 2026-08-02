@@ -33,6 +33,18 @@ ON CONFLICT (ts_code) DO UPDATE SET
     delist_date = EXCLUDED.delist_date;
 """
 
+UPSERT_KEEP_INDUSTRY_SQL = f"""
+INSERT INTO {TABLE_NAME} (ts_code, symbol, name, industry, market, list_date, delist_date)
+VALUES (%s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT (ts_code) DO UPDATE SET
+    symbol = EXCLUDED.symbol,
+    name = EXCLUDED.name,
+    industry = COALESCE(stock_basic.industry, EXCLUDED.industry),
+    market = EXCLUDED.market,
+    list_date = EXCLUDED.list_date,
+    delist_date = EXCLUDED.delist_date;
+"""
+
 
 def _ensure_table_impl() -> None:
     with get_connection() as conn:
@@ -59,8 +71,12 @@ def _date(val: object) -> str | None:
     return str(val).strip() or None
 
 
-def upsert_from_dataframe(df: pd.DataFrame) -> int:
-    """Upsert rows from tushare stock_basic DataFrame. Returns number of rows upserted."""
+def upsert_from_dataframe(df: pd.DataFrame, *, keep_industry: bool = False) -> int:
+    """Upsert rows from tushare stock_basic DataFrame. Returns number of rows upserted.
+
+    When keep_industry=True (used by hk_basic sync where industry is None),
+    the existing industry value is preserved via COALESCE — never overwritten with NULL.
+    """
     ensure_table()
     rows = []
     for row in df.itertuples(index=False):
@@ -75,9 +91,39 @@ def upsert_from_dataframe(df: pd.DataFrame) -> int:
         ))
     if not rows:
         return 0
+    sql = UPSERT_KEEP_INDUSTRY_SQL if keep_industry else UPSERT_SQL
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.executemany(UPSERT_SQL, rows)
+            cur.executemany(sql, rows)
+        conn.commit()
+    return len(rows)
+
+
+def update_industry(mapping: dict[str, str]) -> int:
+    """Update only the industry column for given ts_codes. Returns number of rows updated.
+
+    Skips entries where the mapped value is empty / None.
+    """
+    if not mapping:
+        return 0
+    rows = [
+        (code, label.strip())
+        for code, label in mapping.items()
+        if code and label and str(label).strip()
+    ]
+    if not rows:
+        return 0
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(
+                f"""
+                UPDATE {TABLE_NAME}
+                SET industry = %s
+                WHERE ts_code = %s
+                """,
+                [(label, code) for code, label in rows],
+            )
         conn.commit()
     return len(rows)
 
