@@ -14,6 +14,12 @@ import {
   useScreenerListQuery,
   useScreenerSnapshotsQuery,
 } from '@/lib/queries/screener';
+import {
+  formatScreenerCell,
+  formatScreenerRow,
+  isScreenerTextColumn,
+} from '@/lib/screener-format';
+import { cn } from '@/lib/utils';
 
 type TvHistoryCell = {
   snapshotId: string;
@@ -85,7 +91,8 @@ function toMarkdownTable(headers: string[], rows: Record<string, string>[]): str
   const headerLine = `| ${safeHeaders.join(' | ')} |`;
   const dividerLine = `| ${safeHeaders.map(() => '---').join(' | ')} |`;
   const body = rows.map((r) => {
-    const cells = headers.map((h) => escapeMarkdownCell(r[h] ?? ''));
+    const formatted = formatScreenerRow(headers, r);
+    const cells = headers.map((h) => escapeMarkdownCell(formatted[h] ?? ''));
     return `| ${cells.join(' | ')} |`;
   });
   return [headerLine, dividerLine, ...body].join('\n');
@@ -401,15 +408,25 @@ export function ScreenerPage() {
                       <tbody>
                         {snap.rows.map((r, idx) => (
                           <tr key={idx} className="border-t border-[var(--k-border)]">
-                            {cols.map((h) => (
-                              <td
-                                key={h}
-                                className="max-w-[280px] truncate px-3 py-2 font-mono text-xs"
-                                title={r[h] ?? ''}
-                              >
-                                {r[h] ?? ''}
-                              </td>
-                            ))}
+                            {cols.map((h) => {
+                              const raw = r[h] ?? '';
+                              const display = formatScreenerCell(h, raw);
+                              const textCol = isScreenerTextColumn(h);
+                              return (
+                                <td
+                                  key={h}
+                                  className={cn(
+                                    'px-3 py-2 font-mono text-xs',
+                                    textCol
+                                      ? 'max-w-[280px] truncate text-left'
+                                      : 'whitespace-nowrap text-right tabular-nums',
+                                  )}
+                                  title={raw}
+                                >
+                                  {display}
+                                </td>
+                              );
+                            })}
                           </tr>
                         ))}
                         {snap.rows.length === 0 ? (
