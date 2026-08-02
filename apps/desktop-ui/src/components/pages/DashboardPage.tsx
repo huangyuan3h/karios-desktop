@@ -248,13 +248,11 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
   const defaultCards = React.useMemo(
     () => [
-      { id: 'brief', title: 'Morning Brief' },
+      { id: 'brief', title: 'News Brief' },
       { id: 'industry', title: 'Industry fund flow' },
       { id: 'sentiment', title: 'Market sentiment' },
-      { id: 'decisions', title: 'Decision Journal' },
+      { id: 'decisions', title: '执行日志' },
       { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
-      { id: 'news', title: 'News brief' },
-      { id: 'screeners', title: 'Screener sync' },
     ],
     [],
   );
@@ -282,7 +280,10 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     () => Object.fromEntries(defaultCards.map((c) => [c.id, c])),
     [defaultCards],
   );
-  const orderedCards = cardOrder.map((id) => cardsById[id]).filter(Boolean);
+  const orderedCards = cardOrder
+    .map((id) => cardsById[id])
+    .filter(Boolean)
+    .filter((c) => c.id !== 'watchlistRisk' || watchlistRiskRows.length > 0);
 
   function moveCard(id: string, dir: -1 | 1) {
     const idx = cardOrder.indexOf(id);
@@ -551,48 +552,12 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   onCopyIndustryMarkdown={onCopyIndustryMarkdown}
                 />
               ) : id === 'brief' ? (
-                <MorningBriefCard onNavigate={onNavigate} />
-              ) : id === 'news' ? (
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <DashboardHeader helpId="news.brief" align="left" width={360} />
-                    {newsSummaryUpdatedAt ? (
-                      <DashboardHeader helpId="news.asOf" align="right" width={300} />
-                    ) : null}
-                  </div>
-                  {newsSummaryBusy ? (
-                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
-                      <RefreshCw className="mr-2 inline h-4 w-4 animate-spin" />
-                      Generating AI summary...
-                    </div>
-                  ) : newsSummary || newsFallback ? (
-                    <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-4 text-sm">
-                      {newsSummary?.trim() || newsFallback?.trim()}
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-4 text-sm text-[var(--k-muted)]">
-                      No summary yet. Click &quot;Sync & Copy&quot; to fetch news and generate summary.
-                    </div>
-                  )}
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('news')}>
-                      Open News
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={newsSummaryBusy}
-                      onClick={() => void regenerateNewsSummary()}
-                    >
-                      {newsSummaryBusy ? (
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                      )}
-                      Regenerate
-                    </Button>
-                  </div>
-                </div>
+                <MorningBriefCard
+                  onNavigate={onNavigate}
+                  newsSummary={newsSummary}
+                  newsSummaryBusy={newsSummaryBusy}
+                  onRegenerateNews={() => void regenerateNewsSummary()}
+                />
               ) : id === 'watchlistRisk' ? (
                 <div>
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--k-muted)]">
@@ -709,65 +674,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                     </Button>
                     <Button size="sm" variant="secondary" onClick={() => onNavigate?.('watchlist')}>
                       Open Watchlist
-                    </Button>
-                  </div>
-                </div>
-              ) : id === 'screeners' ? (
-                <div>
-                  <div className="mb-2 text-xs text-[var(--k-muted)]">
-                    Enabled screeners (no content). Missing/rowCount=0 will be highlighted.
-                  </div>
-                  <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                    <table className="w-full border-collapse text-xs">
-                      <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                        <tr className="text-left">
-                          <th className="px-2 py-2 whitespace-nowrap">
-                            <DashboardHeader helpId="screener.name" align="left" width={300} />
-                          </th>
-                          <th className="px-2 py-2 whitespace-nowrap">
-                            <DashboardHeader helpId="screener.capturedAt" align="left" width={300} />
-                          </th>
-                          <th className="px-2 py-2 text-right whitespace-nowrap">
-                            <DashboardHeader helpId="screener.rows" align="right" width={300} />
-                          </th>
-                          <th className="px-2 py-2 text-right whitespace-nowrap">
-                            <DashboardHeader helpId="screener.filters" align="right" width={300} />
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(dash?.screeners ?? []).map((s: any) => {
-                          const bad = !s.capturedAt || Number(s.rowCount ?? 0) <= 0;
-                          return (
-                            <tr key={String(s.id)} className="border-t border-[var(--k-border)]">
-                              <td className="px-2 py-2">{String(s.name ?? s.id)}</td>
-                              <td className={`px-2 py-2 font-mono ${bad ? 'text-red-600' : ''}`}>
-                                {String(s.capturedAt ?? '—')}
-                              </td>
-                              <td
-                                className={`px-2 py-2 text-right font-mono ${bad ? 'text-red-600' : ''}`}
-                              >
-                                {String(s.rowCount ?? 0)}
-                              </td>
-                              <td className="px-2 py-2 text-right font-mono">
-                                {String(s.filtersCount ?? 0)}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {!(dash?.screeners ?? []).length ? (
-                          <tr>
-                            <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={4}>
-                              No enabled screeners.
-                            </td>
-                          </tr>
-                        ) : null}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => onNavigate?.('screener')}>
-                      Open Screener
                     </Button>
                   </div>
                 </div>

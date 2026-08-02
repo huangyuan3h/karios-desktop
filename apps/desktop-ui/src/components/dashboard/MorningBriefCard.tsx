@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { useMorningBriefQuery, type BriefCategory, type BriefItem } from '@/lib/queries/news';
@@ -78,8 +79,11 @@ function BriefItemRow({ item }: { item: BriefItem }) {
 
 export function MorningBriefCard(props: {
   onNavigate?: (pageId: string) => void;
+  newsSummary?: string | null;
+  newsSummaryBusy?: boolean;
+  onRegenerateNews?: () => void;
 }) {
-  const { onNavigate } = props;
+  const { onNavigate, newsSummary, newsSummaryBusy, onRegenerateNews } = props;
   const briefQ = useMorningBriefQuery();
   const brief = briefQ.data?.brief;
 
@@ -140,10 +144,48 @@ export function MorningBriefCard(props: {
         })}
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
-        <Button size="sm" variant="secondary" onClick={() => onNavigate?.('news')}>
-          Open News
-        </Button>
+      <div className="mt-4 border-t border-[var(--k-border)] pt-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-[var(--k-muted)]">AI 摘要</span>
+          {newsSummaryBusy ? (
+            <span className="inline-flex items-center gap-1 text-xs text-[var(--k-muted)]">
+              <RefreshCw className="h-3 w-3 animate-spin" />
+              生成中…
+            </span>
+          ) : null}
+        </div>
+        {newsSummaryBusy && !newsSummary ? (
+          <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3 text-sm text-[var(--k-muted)]">
+            <RefreshCw className="mr-2 inline h-4 w-4 animate-spin" />
+            Generating AI summary...
+          </div>
+        ) : newsSummary ? (
+          <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-sm">
+            {newsSummary.trim()}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] p-3 text-sm text-[var(--k-muted)]">
+            No summary yet. Click &quot;Sync & Copy&quot; to fetch news and generate summary.
+          </div>
+        )}
+        <div className="mt-2 flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={() => onNavigate?.('news')}>
+            Open News
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={newsSummaryBusy}
+            onClick={onRegenerateNews}
+          >
+            {newsSummaryBusy ? (
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Regenerate
+          </Button>
+        </div>
       </div>
     </div>
   );
