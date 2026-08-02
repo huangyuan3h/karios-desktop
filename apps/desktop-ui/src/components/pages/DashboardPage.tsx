@@ -7,6 +7,7 @@ import { RefreshCw } from 'lucide-react';
 
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DecisionJournalCard } from '@/components/dashboard/DecisionJournalCard';
+import { EtfFundFlowCard } from '@/components/dashboard/EtfFundFlowCard';
 import { IndustryFundFlowCard } from '@/components/dashboard/IndustryFundFlowCard';
 import { MarketSentimentCard } from '@/components/dashboard/MarketSentimentCard';
 import { MorningBriefCard } from '@/components/dashboard/MorningBriefCard';
@@ -250,6 +251,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       brief: { id: 'brief', title: '新闻简报' },
       watchlistRisk: { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
       decisions: { id: 'decisions', title: '执行日志' },
+      etf: { id: 'etf', title: 'ETF资金流' },
     }),
     [],
   );
@@ -265,7 +267,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const columnCards = React.useMemo(() => {
     const visible = (id: string) => id !== 'watchlistRisk' || watchlistRiskRows.length > 0;
     return {
-      left: ['industry', 'watchlistRisk', 'decisions'].filter(visible).map((id) => cardsById[id]),
+      left: ['industry', 'watchlistRisk', 'etf', 'decisions'].filter(visible).map((id) => cardsById[id]),
       right: ['sentiment', 'brief'].filter(visible).map((id) => cardsById[id]),
     };
   }, [cardsById, watchlistRiskRows.length]);
@@ -475,6 +477,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                   sentimentCopyStatus={sentimentCopyStatus}
                   addReference={addReference}
                 />
+              ) : id === 'etf' ? (
+                <EtfFundFlowCard dash={dash} />
               ) : id === 'industry' ? (
                 <IndustryFundFlowCard
                   summary={dash}

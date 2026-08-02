@@ -33,6 +33,8 @@ OVERFLOW_UNLOCK_MINUTES = 14 * 60 + 30  # 14:30 Shanghai
 _GREEN_SIGNALS = frozenset({"green", "light_green", "deep_green"})
 _RISK_DEFEND = frozenset({"extreme_caution", "no_new_positions"})
 
+HK_INDEX_TRAFFIC_LIGHT_NAMES = frozenset({"恒生指数", "恒生科技指数"})
+
 _SIGNAL_RANK = {
     "deep_green": 4,
     "green": 3,
@@ -61,33 +63,48 @@ def _cn_index_signals(index_signals: list[dict[str, Any]]) -> list[dict[str, Any
     return out
 
 
-def classify_market_regime(index_signals: list[dict[str, Any]]) -> str:
-    """Strong = both CN lights green; Diverging = one green; else Weak."""
-    cn = _cn_index_signals(index_signals)
-    if len(cn) < 2:
-        # Fall back to first two signals if names missing
-        cn = [s for s in (index_signals or []) if isinstance(s, dict)][:2]
-    if len(cn) < 2:
+def _hk_index_signals(index_signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for sig in index_signals or []:
+        if not isinstance(sig, dict):
+            continue
+        name = str(sig.get("name") or "").strip()
+        if name in HK_INDEX_TRAFFIC_LIGHT_NAMES:
+            out.append(sig)
+    return out
+
+
+def _fallback_signals(index_signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [s for s in (index_signals or []) if isinstance(s, dict)][:2]
+
+
+def _classify_regime(signals: list[dict[str, Any]]) -> str:
+    """Strong = all signals green; Diverging = some green; Weak = none green."""
+    if len(signals) < 2:
         return REGIME_WEAK
-    g1 = _is_green(str(cn[0].get("signal") or ""))
-    g2 = _is_green(str(cn[1].get("signal") or ""))
-    if g1 and g2:
+    greens = sum(1 for s in signals if _is_green(str(s.get("signal") or "")))
+    if greens == len(signals):
         return REGIME_STRONG
-    if g1 or g2:
+    if greens > 0:
         return REGIME_DIVERGING
     return REGIME_WEAK
 
 
-def tighter_index_light(index_signals: list[dict[str, Any]]) -> str:
-    """Return the tighter (more defensive) of 上证 / 创业板 lights."""
+def classify_market_regime(index_signals: list[dict[str, Any]]) -> str:
+    """Strong = all CN lights green; Diverging = some; else Weak."""
     cn = _cn_index_signals(index_signals)
     if len(cn) < 2:
-        cn = [s for s in (index_signals or []) if isinstance(s, dict)][:2]
-    if not cn:
+        cn = _fallback_signals(index_signals)
+    return _classify_regime(cn)
+
+
+def _tighter_light(signals: list[dict[str, Any]]) -> str:
+    """Return the tighter (more defensive) light from an explicit signal list."""
+    if not signals:
         return "red"
     best = None
     best_rank = 99
-    for sig in cn:
+    for sig in signals:
         raw = str(sig.get("signal") or "").strip().lower() or "red"
         rank = _signal_rank(raw)
         if rank < best_rank:
@@ -96,17 +113,22 @@ def tighter_index_light(index_signals: list[dict[str, Any]]) -> str:
     return best or "red"
 
 
-def _position_range_hint(index_signals: list[dict[str, Any]], index_light: str) -> str:
+def tighter_index_light(index_signals: list[dict[str, Any]]) -> str:
+    """Return the tighter (more defensive) of the CN lights."""
     cn = _cn_index_signals(index_signals)
     if len(cn) < 2:
-        cn = [s for s in (index_signals or []) if isinstance(s, dict)][:2]
+        cn = _fallback_signals(index_signals)
+    return _tighter_light(cn)
+
+
+def _position_range_hint_from(signals: list[dict[str, Any]], index_light: str) -> str:
     # Prefer the range from the tighter light's signal row
-    for sig in cn:
+    for sig in signals:
         if str(sig.get("signal") or "").strip().lower() == index_light:
             pos = str(sig.get("positionRange") or "").strip()
             if pos:
                 return pos
-    for sig in cn:
+    for sig in signals:
         pos = str(sig.get("positionRange") or "").strip()
         if pos:
             return pos
@@ -120,6 +142,13 @@ def _position_range_hint(index_signals: list[dict[str, Any]], index_light: str) 
     return defaults.get(index_light, "—")
 
 
+def _position_range_hint(index_signals: list[dict[str, Any]], index_light: str) -> str:
+    cn = _cn_index_signals(index_signals)
+    if len(cn) < 2:
+        cn = _fallback_signals(index_signals)
+    return _position_range_hint_from(cn, index_light)
+
+
 def _satellite_note(mode: str) -> str:
     if mode == MODE_ATTACK:
         return "允许开新仓与加仓；遵守单票上限与吊灯止盈"
@@ -128,6 +157,68 @@ def _satellite_note(mode: str) -> str:
     if mode == MODE_HOLD_ONLY:
         return "禁止开新仓；仅管理退出与吊灯"
     return "防守优先；禁止开新仓，优先减仓不合规持仓"
+
+
+def _hk_satellite_note(mode: str) -> str:
+    if mode == MODE_ATTACK:
+        return "港股允许开新仓与加仓；遵守单票上限与吊灯止盈"
+    if mode == MODE_WEAK_ATTACK:
+        return "港股允许 5% 先锋仓试探"
+    if mode == MODE_HOLD_ONLY:
+        return "港股禁止开新仓；仅管理退出与吊灯"
+    return "港股防守优先；禁止开新仓，优先减仓不合规持仓"
+
+
+def compute_hk_gate(
+    *,
+    index_signals: list[dict[str, Any]] | None = None,
+    risk_mode: str | None = None,
+) -> dict[str, Any]:
+    """
+    HK execution gate: independent position budget for HK trades.
+
+    Driven by HK index lights (恒生指数 / 恒生科技指数) plus the shared global
+    risk mode. CN breadth / SRV / overflow factors are CN-specific and do not
+    apply here — the HK sleeve is sized independently of the CN sleeve.
+    """
+    signals = list(index_signals or [])
+    hk = _hk_index_signals(signals)
+    if not hk:
+        hk = _fallback_signals(signals)
+    risk = str(risk_mode or "").strip()
+    regime = _classify_regime(hk)
+    index_light = _tighter_light(hk)
+    reasons: list[str] = []
+
+    defend = False
+    if risk in _RISK_DEFEND:
+        defend = True
+        reasons.append("RISK_NO_NEW" if risk == "no_new_positions" else "RISK_EXTREME_CAUTION")
+    if regime == REGIME_WEAK:
+        defend = True
+        reasons.append("REGIME_WEAK")
+
+    if defend:
+        mode = MODE_DEFEND
+    elif regime == REGIME_DIVERGING:
+        mode = MODE_HOLD_ONLY
+        reasons.append("REGIME_DIVERGING")
+    elif regime == REGIME_STRONG:
+        mode = MODE_ATTACK
+        reasons.append("REGIME_STRONG")
+    else:
+        mode = MODE_HOLD_ONLY
+
+    return {
+        "mode": mode,
+        "allowNewEntries": mode in (MODE_ATTACK, MODE_WEAK_ATTACK),
+        "marketRegime": regime,
+        "indexLight": index_light,
+        "riskMode": risk or None,
+        "reasons": reasons,
+        "positionRangeHint": _position_range_hint_from(hk, index_light),
+        "satelliteNote": _hk_satellite_note(mode),
+    }
 
 
 def _shanghai_minutes(now: datetime | None) -> int:
@@ -266,7 +357,7 @@ def compute_execution_gate(
             uniq_reasons.append(r)
 
     allow_new = mode in (MODE_ATTACK, MODE_WEAK_ATTACK)
-    return {
+    result = {
         "mode": mode,
         "allowNewEntries": allow_new,
         "marketRegime": regime,
@@ -282,3 +373,8 @@ def compute_execution_gate(
         "overflowSector": overflow_sector_out,
         "overflowInflowYi": overflow_inflow_yi,
     }
+    # Dual-market position budgeting: the flat top-level stays the CN gate for
+    # backward compatibility; cnGate/hkGate give each market its own budget.
+    result["cnGate"] = dict(result)
+    result["hkGate"] = compute_hk_gate(index_signals=signals, risk_mode=risk)
+    return result

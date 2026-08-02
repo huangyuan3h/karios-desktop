@@ -207,6 +207,8 @@ export type ExecutionGateLike = {
   satelliteNote?: string | null;
   overflowSector?: string | null;
   overflowInflowYi?: number | null;
+  cnGate?: ExecutionGateLike | null;
+  hkGate?: ExecutionGateLike | null;
 };
 
 export function executionGateBadgeClass(mode: string | null | undefined): string {
@@ -276,6 +278,25 @@ export function formatExecutionGateMarkdown(
     lines.push(
       `- overflow: ${gate.overflowSector ? String(gate.overflowSector) : '—'} ${yi}亿`,
     );
+  }
+  if (gate.hkGate) {
+    const h = gate.hkGate;
+    const hReasons = Array.isArray(h.reasons)
+      ? h.reasons.map((x) => String(x)).filter(Boolean)
+      : [];
+    lines.push(`- hkGate.mode: ${String(h.mode)}`);
+    lines.push(`- hkGate.allowNewEntries: ${h.allowNewEntries === true}`);
+    lines.push(`- hkGate.marketRegime: ${String(h.marketRegime ?? '—')}`);
+    lines.push(`- hkGate.indexLight: ${String(h.indexLight ?? '—')}`);
+    if (h.positionRangeHint) {
+      lines.push(`- hkGate.positionRangeHint: ${String(h.positionRangeHint)}`);
+    }
+    if (h.satelliteNote) {
+      lines.push(`- hkGate.satelliteNote: ${String(h.satelliteNote)}`);
+    }
+    if (hReasons.length) {
+      lines.push(`- hkGate.reasons: [${hReasons.join(', ')}]`);
+    }
   }
   lines.push('');
   return lines.join('\n');
@@ -364,48 +385,38 @@ export function buildTopByDateMap(summary: unknown): Record<string, string[]> {
   return map;
 }
 
-function signalRank(x: string): number {
-  if (x === 'green' || x === 'light_green' || x === 'deep_green') return 3;
-  if (x === 'yellow') return 2;
-  if (x === 'red') return 1;
-  return 0;
-}
+const CN_INDEX_NAMES = new Set(['上证指数', '创业板指', '中证500']);
 
 export function buildIndexTrafficSummary(indexSignals: unknown[]): { title: string; detail: string } {
   const items = Array.isArray(indexSignals) ? indexSignals : [];
-  if (items.length < 2) {
+  const cn = items.filter((x: unknown) => {
+    const row = x && typeof x === 'object' ? (x as Record<string, unknown>) : null;
+    return Boolean(row && CN_INDEX_NAMES.has(String(row?.name ?? '')));
+  });
+  const pool = cn.length >= 2 ? cn : items;
+  if (pool.length < 2) {
     return {
       title: '⚠️ 当前行情：弱势 (Weak)',
       detail: '缺少完整指数信号，保持防守。',
     };
   }
-  const byName = new Map(
-    items.map((x: unknown) => {
-      const row = x && typeof x === 'object' ? (x as Record<string, unknown>) : null;
-      return [String(row?.name ?? row?.tsCode ?? ''), String(row?.signal ?? '')] as const;
-    }),
-  );
-  const first = items[0] && typeof items[0] === 'object' ? (items[0] as Record<string, unknown>) : null;
-  const second = items[1] && typeof items[1] === 'object' ? (items[1] as Record<string, unknown>) : null;
-  const sse = byName.get('上证指数') || String(first?.signal ?? '');
-  const cyb = byName.get('创业板指') || String(second?.signal ?? '');
-  const g1 = sse === 'green' || sse === 'light_green' || sse === 'deep_green';
-  const g2 = cyb === 'green' || cyb === 'light_green' || cyb === 'deep_green';
+  const greens = pool.filter((x: unknown) => {
+    const row = x && typeof x === 'object' ? (x as Record<string, unknown>) : null;
+    const s = String(row?.signal ?? '');
+    return s === 'green' || s === 'light_green' || s === 'deep_green';
+  }).length;
 
-  if (g1 && g2) {
+  if (greens === pool.length) {
     return {
       title: '✅ 当前行情：强势 (Strong)',
-      detail: '双绿确认，顺势为主，控制仓位与回撤。',
+      detail: '全绿确认，顺势为主，控制仓位与回撤。',
     };
   }
 
-  if (g1 || g2) {
-    const r1 = signalRank(sse);
-    const r2 = signalRank(cyb);
-    const bias = r1 === r2 ? '分化' : r1 > r2 ? '主强创弱' : '创强主弱';
+  if (greens > 0) {
     return {
       title: '⚠️ 当前行情：震荡/分化 (Diverging)',
-      detail: `震荡分化（${bias}），严禁追高，仅限防守型回踩；买入仅用反弹买入策略单。`,
+      detail: '震荡分化，严禁追高，仅限防守型回踩；买入仅用反弹买入策略单。',
     };
   }
 

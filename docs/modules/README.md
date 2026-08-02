@@ -155,6 +155,10 @@ Dashboard 与「Copy all Markdown」顶部输出 **Execution Gate**，把分散�
 | HOLD_ONLY | false | 分化或 SRV Elevated：禁止新开，只管理持仓 |
 | DEFEND | false | 广度恐慌 / SRV Extreme_High / Weak / 极端风险：防守 |
 
+**双市场独立仓位（A股 / 港股）**：`executionGate` 顶层字段仍为 A 股闸门（兼容下游），并新增 `cnGate`（=顶层）与 `hkGate`。两市场**各自独立**按本市场红绿灯给出 `positionRangeHint`，不共用仓位预算——总仓位 100% 可在 A 股与港股之间分配。HK 闸门由恒生指数 + 恒生科技指数驱动，叠加全局 riskMode（extreme_caution / no_new_positions 强制 DEFEND）；不含 A 股特有的广度恐慌 / SRV / 盘中溢出覆盖。Dashboard / Copy all 分别展示 `A股闸门` / `港股闸门`。
+
+指数红绿灯覆盖面：**A 股** = 上证指数（featured，占 2 格）+ 创业板指 + 中证500；**港股** = 恒生指数 + 恒生科技指数。Regime 语义：Strong = 本市场全部绿灯，Diverging = 部分绿灯，Weak = 无绿灯；`positionRangeHint` 取本市场更保守（更弱）灯对应的仓位区间。
+
 Watchlist 每行另有 **Action Card**（Exec / Trigger / Trail）：EXIT、TRIM、HOLD、ADD、BUY、WATCH、**WATCH_SILENT**、**PURGE**。Trigger 列按仓位语义拆分：**空仓**显示 Entry_Trigger（`buyZoneHigh`），**持仓**显示 Exit_Stop（`max(hardStop, trailStop)`）。Dist%：空仓 `(Entry−Current)/Current`，持仓 `(Current−Exit)/Current`。Unified Copy 表另含 **CostPrice / P&L% / EntryDate / Locked_T1**（A 股 T+1：当日买入禁 EXIT）。下游 AI 应优先服从 Gate 与 Action，而不是自行重算红绿灯。
 
 ### Decision Journal（执行决策闭环）

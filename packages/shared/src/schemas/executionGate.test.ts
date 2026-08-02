@@ -50,6 +50,36 @@ describe('ExecutionGateSchema', () => {
       }),
     ).toThrow();
   });
+
+  it('parses per-market cnGate/hkGate', () => {
+    const parsed = ExecutionGateSchema.parse({
+      mode: 'HOLD_ONLY',
+      allowNewEntries: false,
+      marketRegime: 'Diverging',
+      indexLight: 'red',
+      reasons: ['REGIME_DIVERGING'],
+      positionRangeHint: '30%',
+      cnGate: {
+        mode: 'HOLD_ONLY',
+        allowNewEntries: false,
+        marketRegime: 'Diverging',
+        indexLight: 'red',
+        reasons: ['REGIME_DIVERGING'],
+        positionRangeHint: '30%',
+      },
+      hkGate: {
+        mode: 'ATTACK',
+        allowNewEntries: true,
+        marketRegime: 'Strong',
+        indexLight: 'green',
+        reasons: ['REGIME_STRONG'],
+        positionRangeHint: '50%-60%',
+      },
+    });
+    expect(parsed.cnGate?.mode).toBe('HOLD_ONLY');
+    expect(parsed.hkGate?.mode).toBe('ATTACK');
+    expect(parsed.hkGate?.positionRangeHint).toBe('50%-60%');
+  });
 });
 
 describe('ExecutionActionCardSchema', () => {

@@ -102,7 +102,7 @@ def test_fetch_hsi_on_demand(monkeypatch) -> None:
             "ma20": 24500.0,
         },
     )
-    metrics, src = mod.fetch_hsi_on_demand()
+    metrics, src = mod.fetch_hk_index_on_demand("HSI")
     assert metrics["close"] == 24000.0
     assert src == "yfinance.on_demand"
 

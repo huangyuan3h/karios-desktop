@@ -10,6 +10,7 @@ import { MACRO_POLL_MS } from './intervals';
 export type CnIndexSignal = {
   tsCode?: string;
   name?: string;
+  featured?: boolean;
   signal?: string;
   positionRange?: string;
   close?: number | null;

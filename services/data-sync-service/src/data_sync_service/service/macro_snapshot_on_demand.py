@@ -17,6 +17,7 @@ from data_sync_service.service.macro_daily import (
     SID_COMM_GOLD,
     SID_DJI,
     SID_HSI,
+    SID_HSTECH,
     SID_IXIC,
     SID_SPX,
     SID_USDCNH,
@@ -90,6 +91,10 @@ def _fetch_spx_via_yfinance() -> dict[str, Any] | None:
 
 def _fetch_hsi_via_yfinance() -> dict[str, Any] | None:
     return _fetch_yfinance_index("^HSI")
+
+
+def _fetch_hstech_via_yfinance() -> dict[str, Any] | None:
+    return _fetch_yfinance_index("^HSTECH")
 
 
 def _df_to_metrics(df: pd.DataFrame | None) -> dict[str, Any]:
@@ -195,6 +200,15 @@ def _fetch_on_demand_series(pro: Any | None, series_id: str) -> tuple[dict[str, 
             df = pro.index_global(ts_code="HSI", start_date=sd, end_date=ed)
             m = _df_to_metrics(df)
             return m, "tushare.index_global.on_demand" if m else None, "HSI"
+        if series_id == SID_HSTECH:
+            yf_metrics = _fetch_hstech_via_yfinance()
+            if yf_metrics:
+                return yf_metrics, "yfinance.on_demand", "HSTECH"
+            if pro is None:
+                return {}, None, None
+            df = pro.index_global(ts_code="HSTECH", start_date=sd, end_date=ed)
+            m = _df_to_metrics(df)
+            return m, "tushare.index_global.on_demand" if m else None, "HSTECH"
         if pro is None:
             return {}, None, None
         if series_id == SID_USDCNH:
@@ -237,7 +251,7 @@ def _fetch_on_demand_series(pro: Any | None, series_id: str) -> tuple[dict[str, 
     return {}, None, None
 
 
-ALWAYS_REFRESH_SERIES = [SID_IXIC, SID_DJI, SID_SPX, SID_USDCNH, SID_A50, SID_HSI]
+ALWAYS_REFRESH_SERIES = [SID_IXIC, SID_DJI, SID_SPX, SID_USDCNH, SID_A50, SID_HSI, SID_HSTECH]
 
 def _is_data_stale(as_of_date: str | None) -> bool:
     """Check if data is stale (older than 2 days for offshore series)."""
@@ -298,10 +312,10 @@ def enrich_macro_items_on_demand(macro_items: list[dict[str, Any]]) -> list[dict
     return macro_items
 
 
-def fetch_hsi_on_demand() -> tuple[dict[str, Any], str | None]:
-    """Public helper for index signals HSI refresh."""
+def fetch_hk_index_on_demand(series_id: str) -> tuple[dict[str, Any], str | None]:
+    """Public helper for index-signals HK refresh (HSI / HSTECH)."""
     pro = try_tushare_pro()
-    metrics, src, _ = _fetch_on_demand_series(pro, SID_HSI)
+    metrics, src, _ = _fetch_on_demand_series(pro, series_id)
     return metrics, src
 
 

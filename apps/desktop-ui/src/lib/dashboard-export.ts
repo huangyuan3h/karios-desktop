@@ -247,7 +247,7 @@ export function buildMarketAndMacroMarkdown(
     '- note: 指数红绿灯 + 宏观商品/汇率 + 300ETF Put IV 一张表；避免散落重复',
   );
 
-  const headers = ['Name', 'Kind', 'Signal', 'Chg%', 'Close', 'MA5', 'MA20', 'AsOfDate', 'Source'];
+  const headers = ['Name', 'Kind', 'Signal', 'Pos', 'Chg%', 'Close', 'MA5', 'MA20', 'AsOfDate', 'Source'];
   const rows: unknown[][] = [];
 
   for (const it of indexSignals) {
@@ -256,10 +256,12 @@ export function buildMarketAndMacroMarkdown(
       typeof pc === 'number' && Number.isFinite(pc)
         ? `${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%`
         : '—';
+    const name = String(it?.name ?? it?.tsCode ?? '');
     rows.push([
-      String(it?.name ?? it?.tsCode ?? ''),
+      it?.featured === true ? `★ ${name}` : name,
       'Index',
       String(it?.signal ?? ''),
+      String(it?.positionRange ?? '—'),
       chg,
       Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
       Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
@@ -291,6 +293,7 @@ export function buildMarketAndMacroMarkdown(
       String(it?.name ?? it?.seriesId ?? ''),
       kind,
       signalStr,
+      '—',
       chg,
       closeStr,
       Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',

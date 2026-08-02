@@ -1089,5 +1089,34 @@ export function parseExecutionGate(raw: unknown): ExecutionGate | null {
     satelliteNote: o.satelliteNote == null ? undefined : String(o.satelliteNote),
     overflowSector: o.overflowSector == null ? null : String(o.overflowSector),
     overflowInflowYi: num(o.overflowInflowYi),
+    cnGate: parseGateSubset(o.cnGate),
+    hkGate: parseGateSubset(o.hkGate),
+  };
+}
+
+function parseGateSubset(raw: unknown): ExecutionGate['hkGate'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const mode = String(o.mode || '');
+  if (
+    mode !== 'ATTACK' &&
+    mode !== 'WEAK_ATTACK' &&
+    mode !== 'HOLD_ONLY' &&
+    mode !== 'DEFEND'
+  ) {
+    return null;
+  }
+  const regime = String(o.marketRegime || '');
+  if (regime !== 'Strong' && regime !== 'Diverging' && regime !== 'Weak') return null;
+  const reasons = Array.isArray(o.reasons) ? o.reasons.map((x) => String(x)) : [];
+  return {
+    mode,
+    allowNewEntries: Boolean(o.allowNewEntries),
+    marketRegime: regime,
+    indexLight: String(o.indexLight || '—'),
+    riskMode: o.riskMode == null ? null : String(o.riskMode),
+    reasons,
+    positionRangeHint: o.positionRangeHint == null ? undefined : String(o.positionRangeHint),
+    satelliteNote: o.satelliteNote == null ? undefined : String(o.satelliteNote),
   };
 }

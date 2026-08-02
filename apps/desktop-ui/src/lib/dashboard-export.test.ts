@@ -332,8 +332,8 @@ describe('buildMarketAndMacroMarkdown', () => {
     const md = buildMarketAndMacroMarkdown({
       marketSentiment: {
         indexSignals: [
-          { name: '上证指数', signal: 'green', pctChg: 0.5, close: 3200, ma5: 3180, ma20: 3150, asOfDate: '2026-08-01', source: 'cn_index' },
-          { name: '创业板指', signal: 'yellow', pctChg: -0.3, close: 2100, ma5: 2110, ma20: 2150, asOfDate: '2026-08-01', source: 'cn_index' },
+          { name: '上证指数', featured: true, signal: 'green', positionRange: '50%-60%', pctChg: 0.5, close: 3200, ma5: 3180, ma20: 3150, asOfDate: '2026-08-01', source: 'cn_index' },
+          { name: '创业板指', signal: 'yellow', positionRange: '30%', pctChg: -0.3, close: 2100, ma5: 2110, ma20: 2150, asOfDate: '2026-08-01', source: 'cn_index' },
         ],
       },
       macroSnapshot: {
@@ -345,12 +345,15 @@ describe('buildMarketAndMacroMarkdown', () => {
     });
     expect(md).toContain('## Market & Macro overview');
     expect(md).toContain('上证指数');
+    expect(md).toContain('★ 上证指数');
     expect(md).toContain('创业板指');
     expect(md).toContain('WTI 原油');
     expect(md).toContain('300ETF Put IV');
     expect(md).toContain('| Index |');
     expect(md).toContain('| Macro |');
     expect(md).toContain('| Vol (IV) |');
+    expect(md).toContain('| 50%-60% |');
+    expect(md).toContain('| 30% |');
   });
 });
 

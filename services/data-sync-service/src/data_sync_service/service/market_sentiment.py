@@ -27,7 +27,7 @@ from data_sync_service.service.trade_calendar_utils import (
 )
 
 BREADTH_DECLINE_RED_THRESHOLD = 3000
-CN_INDEX_TRAFFIC_LIGHT_NAMES = frozenset({"上证指数", "创业板指"})
+CN_INDEX_TRAFFIC_LIGHT_NAMES = frozenset({"上证指数", "创业板指", "中证500"})
 INTRADAY_BREADTH_CACHE_TTL_SECONDS = 600
 _INTRADAY_BREADTH_CACHE = cast(
     TTLCache[str, dict[str, Any]],

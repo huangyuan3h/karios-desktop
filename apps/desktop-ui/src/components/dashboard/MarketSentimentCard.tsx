@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import { RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,6 @@ import {
   buildIndexTrafficSummary,
   executionGateBadgeClass,
   fmtAmountCn,
-  fmtSignedAmountCn,
   formatSrvIndexLine,
   srvIndexBadgeClass,
   translateRisk,
@@ -34,6 +33,27 @@ type Props = {
   addReference: (ref: any) => void;
 };
 
+function GateBadge({ label, gate }: { label: string; gate: any }) {
+  return (
+    <div className={`rounded-lg border px-3 py-2 text-sm ${executionGateBadgeClass(gate.mode)}`}>
+      <div className="flex flex-wrap items-center gap-2 font-medium">
+        <span>
+          {label}: {translateGateMode(gate.mode)}
+        </span>
+        <span className="text-xs opacity-90">允许开仓={String(gate.allowNewEntries)}</span>
+        <span className="text-xs opacity-90">
+          {translateRegime(gate.marketRegime)} · {translateIndexLight(gate.indexLight)} · 仓位{' '}
+          {gate.positionRangeHint || '—'}
+        </span>
+      </div>
+      {gate.satelliteNote ? <div className="mt-1 text-xs opacity-90">{gate.satelliteNote}</div> : null}
+      {gate.reasons?.length ? (
+        <div className="mt-1 text-xs opacity-80">原因: {gate.reasons.map(translateReason).join(' · ')}</div>
+      ) : null}
+    </div>
+  );
+}
+
 export function MarketSentimentCard({
   dash,
   summary,
@@ -43,14 +63,11 @@ export function MarketSentimentCard({
   sentimentCopyStatus,
   addReference,
 }: Props) {
-  const [detailsOpen, setDetailsOpen] = React.useState(false);
-
   const ms = dash?.marketSentiment ?? {};
   const items: any[] = Array.isArray(ms.items) ? ms.items : [];
   const latest = items.length ? items[items.length - 1] : null;
   const indexSignals: any[] = Array.isArray(ms.indexSignals) ? ms.indexSignals : [];
-  const summaryLine = buildIndexTrafficSummary(indexSignals);
-  const risk = String(latest?.riskMode ?? '—');
+  const summaryLine = buildIndexTrafficSummary(indexSignals);  const risk = String(latest?.riskMode ?? '—');
   const premium = Number.isFinite(latest?.yesterdayLimitUpPremium)
     ? `${Number(latest.yesterdayLimitUpPremium).toFixed(2)}%`
     : '—';
@@ -92,22 +109,11 @@ export function MarketSentimentCard({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Execution Gate */}
+      {/* Execution Gate — A股 + 港股 独立仓位闸门 */}
       {gate ? (
-        <div className={`rounded-lg border px-3 py-2 text-sm ${executionGateBadgeClass(gate.mode)}`}>
-          <div className="flex flex-wrap items-center gap-2 font-medium">
-            <span>执行闸门: {translateGateMode(gate.mode)}</span>
-            <span className="text-xs opacity-90">允许开仓={String(gate.allowNewEntries)}</span>
-            <span className="text-xs opacity-90">
-              {translateRegime(gate.marketRegime)} · {translateIndexLight(gate.indexLight)} · 仓位 {gate.positionRangeHint || '—'}
-            </span>
-          </div>
-          {gate.satelliteNote ? (
-            <div className="mt-1 text-xs opacity-90">{gate.satelliteNote}</div>
-          ) : null}
-          {gate.reasons.length ? (
-            <div className="mt-1 text-xs opacity-80">原因: {gate.reasons.map(translateReason).join(' · ')}</div>
-          ) : null}
+        <div className="grid gap-2 md:grid-cols-2">
+          <GateBadge label="A股闸门" gate={gate} />
+          {gate.hkGate ? <GateBadge label="港股闸门" gate={gate.hkGate} /> : null}
         </div>
       ) : null}
 
@@ -162,34 +168,34 @@ export function MarketSentimentCard({
         <div className={`mb-2 font-medium ${breadthPanic ? 'text-red-700' : 'text-[var(--k-fg)]'}`}>
           涨跌家数
         </div>
-        <div className="grid grid-cols-7 gap-1 text-center">
+        <div className="grid grid-cols-4 gap-1 text-center sm:grid-cols-7">
           <div>
             <div className="text-[10px] opacity-60">涨</div>
-            <div className="font-mono text-emerald-600">{up.toLocaleString()}</div>
+            <div className="whitespace-nowrap font-mono text-emerald-600">{up.toLocaleString()}</div>
           </div>
           <div>
             <div className="text-[10px] opacity-60">跌</div>
-            <div className="font-mono text-red-600">{down.toLocaleString()}</div>
+            <div className="whitespace-nowrap font-mono text-red-600">{down.toLocaleString()}</div>
           </div>
           <div>
             <div className="text-[10px] opacity-60">平</div>
-            <div className="font-mono text-[var(--k-muted)]">{flat.toLocaleString()}</div>
+            <div className="whitespace-nowrap font-mono text-[var(--k-muted)]">{flat.toLocaleString()}</div>
           </div>
           <div>
             <div className="text-[10px] opacity-60">比</div>
-            <div className="font-mono">{ratio}</div>
+            <div className="whitespace-nowrap font-mono">{ratio}</div>
           </div>
           <div>
             <div className="text-[10px] opacity-60">成交额</div>
-            <div className="font-mono">{turnover}</div>
+            <div className="whitespace-nowrap font-mono">{turnover}</div>
           </div>
           <div>
             <div className="text-[10px] opacity-60">溢价</div>
-            <div className="font-mono">{premium}</div>
+            <div className="whitespace-nowrap font-mono">{premium}</div>
           </div>
           <div>
             <div className="text-[10px] opacity-60">炸板</div>
-            <div className="font-mono">{failed}</div>
+            <div className="whitespace-nowrap font-mono">{failed}</div>
           </div>
         </div>
         {breadthPanic ? (
@@ -215,6 +221,7 @@ export function MarketSentimentCard({
               const freshness = realtime ? '实时' : '收盘';
               const asOfDisplay = tradeTime || asOfDate || '—';
               const quoteError = String(it?.quoteError ?? '').trim();
+              const featured = it?.featured === true;
               const signalBadge =
                 signal === 'deep_green'
                   ? 'border-emerald-600/40 bg-emerald-600/15 text-emerald-800'
@@ -228,9 +235,13 @@ export function MarketSentimentCard({
               return (
                 <div
                   key={String(it?.tsCode ?? it?.name)}
-                  className={`rounded-lg border px-3 py-2 text-xs ${signalBadge}`}
-                >
-                  <div className="font-medium">{String(it?.name ?? it?.tsCode ?? '')}</div>
+                  className={`rounded-lg border px-3 py-2 text-xs ${signalBadge} ${
+                    featured ? 'md:col-span-2' : ''
+                  }`}                >
+                  <div className="font-medium">
+                    {featured ? '★ ' : ''}
+                    {String(it?.name ?? it?.tsCode ?? '')}
+                  </div>
                   <div className="mt-1 font-mono">
                     {translateSignal(signal)} · 仓位 {String(it?.positionRange ?? '—')}
                   </div>
@@ -247,6 +258,11 @@ export function MarketSentimentCard({
                   <div className="mt-1 font-mono text-[10px] text-[var(--k-muted)]">
                     截至 {asOfDisplay} · {freshness} · {source}
                   </div>
+                  {featured && Array.isArray(it?.rules) && it.rules.length ? (
+                    <div className="mt-1 text-[10px] opacity-80">
+                      规则: {it.rules.map((x: any) => String(x)).join(' · ')}
+                    </div>
+                  ) : null}
                   {quoteError ? (
                     <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
                       行情回退: {quoteError}
@@ -259,181 +275,66 @@ export function MarketSentimentCard({
         </div>
       ) : null}
 
-      {/* Collapsible details: 5-day + ETF */}
+      {/* Last 5 days — always open */}
       <div>
-        <button
-          type="button"
-          className="flex w-full items-center gap-1.5 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 py-2 text-xs font-medium text-[var(--k-muted)] hover:bg-[var(--k-surface)] transition-colors"
-          onClick={() => setDetailsOpen((v) => !v)}
-        >
-          {detailsOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          详情 — 近5日 · ETF资金流
-        </button>
-        {detailsOpen && (
-          <div className="mt-2 space-y-3">
-            {/* Last 5 days */}
-            <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-              <table className="w-full border-collapse text-xs">
-                <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                  <tr className="text-left">
-                    <th className="px-2 py-2 whitespace-nowrap">
-                      <DashboardHeader helpId="sentiment5d.date" align="left" width={280} />
-                    </th>
-                    <th className="px-2 py-2 text-right whitespace-nowrap">
-                      <DashboardHeader helpId="sentiment5d.ratio" align="right" width={340} />
-                    </th>
-                    <th className="px-2 py-2 text-right whitespace-nowrap">
-                      <DashboardHeader helpId="sentiment5d.turnover" align="right" width={340} />
-                    </th>
-                    <th className="px-2 py-2 text-right whitespace-nowrap">
-                      <DashboardHeader helpId="sentiment5d.premiumPct" align="right" width={360} />
-                    </th>
-                    <th className="px-2 py-2 text-right whitespace-nowrap">
-                      <DashboardHeader helpId="sentiment5d.failedPct" align="right" width={360} />
-                    </th>
-                    <th className="px-2 py-2 whitespace-nowrap">
-                      <DashboardHeader helpId="sentiment5d.risk" align="left" width={340} />
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(items || []).slice(-5).map((it: any, idx: number) => (
-                    <tr key={idx} className="border-t border-[var(--k-border)]">
-                      <td className="px-2 py-2 font-mono">{String(it.date ?? '')}</td>
-                      <td className="px-2 py-2 text-right font-mono">
-                        {Number.isFinite(it.upDownRatio) ? Number(it.upDownRatio).toFixed(2) : '—'}
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono">
-                        {fmtAmountCn(it.marketTurnoverCny)}
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono">
-                        {Number.isFinite(it.yesterdayLimitUpPremium)
-                          ? `${Number(it.yesterdayLimitUpPremium).toFixed(2)}%`
-                          : '—'}
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono">
-                        {Number.isFinite(it.failedLimitUpRate)
-                          ? `${Number(it.failedLimitUpRate).toFixed(1)}%`
-                          : '—'}
-                      </td>
-                      <td className="px-2 py-2">{String(it.riskMode ?? '')}</td>
-                    </tr>
-                  ))}
-                  {!items.length ? (
-                    <tr>
-                      <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={6}>
-                        暂无情绪数据。请点击"同步并复制"。
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-
-            {/* ETF Fund Flow */}
-            {(() => {
-              const etfFlow: any = ms?.etfFundFlow ?? {};
-              const etfItems: any[] = Array.isArray(etfFlow?.items) ? etfFlow.items : [];
-              return (
-                <div>
-                  <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">
-                    ETF资金流 (持仓关注)
-                  </div>
-                  {etfFlow?.shareLag ? (
-                    <div className="mb-1 text-[10px] text-amber-600 dark:text-amber-400">
-                      东方财富实时资金流不完整，缺失行已从盘中信号中排除
-                      {etfFlow?.intradaySafe === false ? ' — 盘中决策不可用' : ''}。
-                    </div>
-                  ) : null}
-                  <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
-                    <table className="w-full border-collapse text-xs">
-                      <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
-                        <tr className="text-left">
-                          <th className="px-2 py-2 whitespace-nowrap">
-                            <DashboardHeader helpId="etf.name" align="left" width={300} />
-                          </th>
-                          <th className="px-2 py-2 font-mono whitespace-nowrap">
-                            <DashboardHeader helpId="etf.symbol" align="left" width={300} />
-                          </th>
-                          <th className="px-2 py-2 text-right whitespace-nowrap">
-                            <DashboardHeader helpId="etf.mainFlow" align="right" width={340} />
-                          </th>
-                          <th className="px-2 py-2 text-right whitespace-nowrap">
-                            <DashboardHeader helpId="etf.superLarge" align="right" width={360} />
-                          </th>
-                          <th className="px-2 py-2 text-right whitespace-nowrap">
-                            <DashboardHeader helpId="etf.flow3d" align="right" width={300} />
-                          </th>
-                          <th className="px-2 py-2 whitespace-nowrap">
-                            <DashboardHeader helpId="etf.realtimeAsOf" align="left" width={320} />
-                          </th>
-                          <th className="px-2 py-2 whitespace-nowrap">
-                            <DashboardHeader helpId="etf.source" align="left" width={300} />
-                          </th>
-                          <th className="px-2 py-2 whitespace-nowrap">
-                            <DashboardHeader helpId="etf.status" align="left" width={320} />
-                          </th>
-                          <th className="px-2 py-2 whitespace-nowrap">
-                            <DashboardHeader helpId="etf.signal" align="left" width={340} />
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {etfItems.map((it: any, idx: number) => {
-                          const flowStatus = String(it?.flowStatus ?? (it?.live === true ? 'Live' : '—'));
-                          const live = it?.live === true || flowStatus === 'Live';
-                          const isMarketClosed = flowStatus === 'MarketClosed';
-                          const flow1dStale =
-                            !live && !isMarketClosed && it?.netFlow1d == null && (it?.flowAsOfDate != null || it?.netFlow1dLagged != null);
-                          const flow1dDisplay = flow1dStale ? '— (stale)' : fmtSignedAmountCn(it?.netFlow1d);
-                          const superLargeFlow = fmtSignedAmountCn(it?.superLargeNetInflow);
-                          const largeFlow = fmtSignedAmountCn(it?.largeNetInflow);
-                          const signalText = String(it?.signalDisplay ?? it?.signal ?? '—');
-                          const isDataLag = String(it?.signal ?? '') === 'Data Lag';
-                          const realtimeAsOf = String(it?.tradeTime ?? it?.flowAsOfDate ?? etfFlow?.asOfDate ?? '—');
-                          return (
-                            <tr key={idx} className="border-t border-[var(--k-border)]">
-                              <td className="px-2 py-2">{String(it?.name ?? '')}</td>
-                              <td className="px-2 py-2 font-mono">{String(it?.symbol ?? '')}</td>
-                              <td className="px-2 py-2 text-right font-mono">{flow1dDisplay}</td>
-                              <td className="px-2 py-2 text-right font-mono">{superLargeFlow}/{largeFlow}</td>
-                              <td className="px-2 py-2 text-right font-mono">{fmtSignedAmountCn(it?.netFlow3d)}</td>
-                              <td className="px-2 py-2 font-mono">{realtimeAsOf}</td>
-                              <td className="px-2 py-2 font-mono">{String(it?.source ?? '—')}</td>
-                              <td
-                                className={`px-2 py-2 font-mono ${
-                                  flowStatus === 'Live'
-                                    ? 'font-semibold text-emerald-600'
-                                    : isMarketClosed
-                                      ? 'text-[var(--k-muted)]'
-                                      : flowStatus === 'Stale' || flowStatus === 'Missing'
-                                        ? 'text-amber-600'
-                                        : 'text-[var(--k-muted)]'
-                                }`}
-                              >
-                                {isMarketClosed ? '已收盘' : flowStatus}
-                              </td>
-                              <td className={isDataLag ? 'px-2 py-2 text-[var(--k-muted)]' : 'px-2 py-2'}>
-                                {signalText}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {!etfItems.length ? (
-                          <tr>
-                            <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={9}>
-                              暂无ETF资金流数据。请点击"同步情绪"。
-                            </td>
-                          </tr>
-                        ) : null}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
+        <div className="mb-1 text-xs font-medium text-[var(--k-muted)]">近5日</div>
+        <div className="overflow-auto rounded-lg border border-[var(--k-border)]">
+          <table className="w-full border-collapse text-xs">
+            <thead className="bg-[var(--k-surface-2)] text-[var(--k-muted)]">
+              <tr className="text-left">
+                <th className="px-2 py-2 whitespace-nowrap">
+                  <DashboardHeader helpId="sentiment5d.date" align="left" width={280} />
+                </th>
+                <th className="px-2 py-2 text-right whitespace-nowrap">
+                  <DashboardHeader helpId="sentiment5d.ratio" align="right" width={340} />
+                </th>
+                <th className="px-2 py-2 text-right whitespace-nowrap">
+                  <DashboardHeader helpId="sentiment5d.turnover" align="right" width={340} />
+                </th>
+                <th className="px-2 py-2 text-right whitespace-nowrap">
+                  <DashboardHeader helpId="sentiment5d.premiumPct" align="right" width={360} />
+                </th>
+                <th className="px-2 py-2 text-right whitespace-nowrap">
+                  <DashboardHeader helpId="sentiment5d.failedPct" align="right" width={360} />
+                </th>
+                <th className="px-2 py-2 whitespace-nowrap">
+                  <DashboardHeader helpId="sentiment5d.risk" align="left" width={340} />
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {(items || []).slice(-5).map((it: any, idx: number) => (
+                <tr key={idx} className="border-t border-[var(--k-border)]">
+                  <td className="px-2 py-2 font-mono">{String(it.date ?? '')}</td>
+                  <td className="px-2 py-2 text-right font-mono">
+                    {Number.isFinite(it.upDownRatio) ? Number(it.upDownRatio).toFixed(2) : '—'}
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono">
+                    {fmtAmountCn(it.marketTurnoverCny)}
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono">
+                    {Number.isFinite(it.yesterdayLimitUpPremium)
+                      ? `${Number(it.yesterdayLimitUpPremium).toFixed(2)}%`
+                      : '—'}
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono">
+                    {Number.isFinite(it.failedLimitUpRate)
+                      ? `${Number(it.failedLimitUpRate).toFixed(1)}%`
+                      : '—'}
+                  </td>
+                  <td className="px-2 py-2">{String(it.riskMode ?? '')}</td>
+                </tr>
+              ))}
+              {!items.length ? (
+                <tr>
+                  <td className="px-2 py-3 text-sm text-[var(--k-muted)]" colSpan={6}>
+                    暂无情绪数据。请点击“同步并复制”。
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Action buttons */}
