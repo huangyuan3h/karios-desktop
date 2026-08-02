@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -171,10 +172,7 @@ def test_setup_doc_referenced_paths_exist() -> None:
 
 
 @pytest.mark.skipif(
-    subprocess.run(
-        ["command", "-v", "cloudflared"],
-        capture_output=True,
-    ).returncode != 0,
+    shutil.which("cloudflared") is None,
     reason="cloudflared not installed; preflight check needs the install step to pass first",
 )
 def test_quick_tunnel_preflight_fails_without_local_server() -> None:
