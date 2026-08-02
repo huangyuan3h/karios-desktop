@@ -30,10 +30,7 @@ import {
 import { refetchWatchlistMarket } from '@/lib/queries/watchlist';
 import { loadWatchlist } from '@/lib/watchlist-storage';
 import {
-  executionGateBadgeClass,
   fmtDateTime,
-  loadCardOrder,
-  saveCardOrder,
   loadCopyMode,
   saveCopyMode,
 } from '@/lib/dashboard-format';
@@ -133,7 +130,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
   const [copyAllStatus, setCopyAllStatus] = React.useState<{ ok: boolean; text: string } | null>(
     null,
   );
-  const [editLayout, setEditLayout] = React.useState(false);
 
   const hotIndustryPicks = React.useMemo(() => buildDashboardHotIndustryPicks(summary), [summary]);
 
@@ -246,57 +242,33 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
     }
   }
 
-  const defaultCards = React.useMemo(
-    () => [
-      { id: 'brief', title: '新闻简报' },
-      { id: 'industry', title: '行业资金流' },
-      { id: 'sentiment', title: '市场情绪' },
-      { id: 'decisions', title: '执行日志' },
-      { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
-    ],
+  type DashCard = { id: string; title: string };
+  const cardsById: Record<string, DashCard> = React.useMemo(
+    () => ({
+      industry: { id: 'industry', title: '行业资金流' },
+      sentiment: { id: 'sentiment', title: '市场情绪' },
+      brief: { id: 'brief', title: '新闻简报' },
+      watchlistRisk: { id: 'watchlistRisk', title: 'Watchlist 风险警报' },
+      decisions: { id: 'decisions', title: '执行日志' },
+    }),
     [],
   );
 
-  const [cardOrder, setCardOrder] = React.useState<string[]>(() => []);
+  const [copyMode, setCopyMode] = React.useState<'full' | 'compact'>('full');
   React.useEffect(() => {
-    const loaded = loadCardOrder();
-    const ids = defaultCards.map((c) => c.id);
-    const next = loaded
-      ? [...loaded.filter((x) => ids.includes(x)), ...ids.filter((x) => !loaded.includes(x))]
-      : ids;
-    const nextIds = next.includes('industry')
-      ? ['industry', ...next.filter((x) => x !== 'industry')]
-      : next;
-    setCardOrder(nextIds);
-    saveCardOrder(nextIds);
-  }, [defaultCards]);
-
-  const [copyMode, setCopyMode] = React.useState<'full' | 'compact'>(() => loadCopyMode());
+    setCopyMode(loadCopyMode());
+  }, []);
   React.useEffect(() => {
     saveCopyMode(copyMode);
   }, [copyMode]);
 
-  const cardsById = React.useMemo(
-    () => Object.fromEntries(defaultCards.map((c) => [c.id, c])),
-    [defaultCards],
-  );
-  const orderedCards = cardOrder
-    .map((id) => cardsById[id])
-    .filter(Boolean)
-    .filter((c) => c.id !== 'watchlistRisk' || watchlistRiskRows.length > 0);
-
-  function moveCard(id: string, dir: -1 | 1) {
-    const idx = cardOrder.indexOf(id);
-    if (idx < 0) return;
-    const j = idx + dir;
-    if (j < 0 || j >= cardOrder.length) return;
-    const next = [...cardOrder];
-    const tmp = next[idx];
-    next[idx] = next[j];
-    next[j] = tmp;
-    setCardOrder(next);
-    saveCardOrder(next);
-  }
+  const columnCards = React.useMemo(() => {
+    const visible = (id: string) => id !== 'watchlistRisk' || watchlistRiskRows.length > 0;
+    return {
+      left: ['industry', 'watchlistRisk', 'decisions'].filter(visible).map((id) => cardsById[id]),
+      right: ['sentiment', 'brief'].filter(visible).map((id) => cardsById[id]),
+    };
+  }, [cardsById, watchlistRiskRows.length]);
 
   return (
     <div className="mx-auto w-full max-w-6xl p-6">
@@ -352,9 +324,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
               Full
             </button>
           </div>
-          <Button size="sm" variant="ghost" onClick={() => setEditLayout((v) => !v)}>
-            {editLayout ? 'Done' : 'Edit layout'}
-          </Button>
         </div>
       </div>
 
@@ -471,24 +440,8 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
       ) : null}
 
       {(() => {
-        const fixedLeft = ['industry'];
-        const fixedRight = ['sentiment'];
-        const leftSet = new Set(fixedLeft);
-        const rightSet = new Set(fixedRight);
-        const left: any[] = [];
-        const right: any[] = [];
-        for (const c of orderedCards) {
-          const id = String(c.id);
-          if (leftSet.has(id)) {
-            left.push(c);
-          } else if (rightSet.has(id)) {
-            right.push(c);
-          } else if (left.length <= right.length) {
-            left.push(c);
-          } else {
-            right.push(c);
-          }
-        }
+        const left = columnCards.left;
+        const right = columnCards.right;
 
         const renderCard = (c: any) => {
           const id = String(c.id);
@@ -499,26 +452,6 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
             >
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="text-sm font-medium">{c.title}</div>
-                {editLayout ? (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => moveCard(id, -1)}
-                    >
-                      ↑
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => moveCard(id, 1)}
-                    >
-                      ↓
-                    </Button>
-                  </div>
-                ) : null}
               </div>
 
               {id === 'decisions' ? (
@@ -684,27 +617,16 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
 
         return (
           <>
-            <div className="space-y-4 lg:hidden">{orderedCards.map(renderCard)}</div>
-            <div className="hidden lg:grid lg:grid-cols-2 lg:gap-4">
-              {(() => {
-                const maxLen = Math.max(left.length, right.length);
-                const merged: any[] = [];
-                for (let i = 0; i < maxLen; i++) {
-                  if (left[i]) merged.push(left[i]);
-                  if (right[i]) merged.push(right[i]);
-                }
-                return merged.map(renderCard);
-              })()}
+            <div className="space-y-4 lg:hidden">
+              {[...left, ...right].map(renderCard)}
+            </div>
+            <div className="hidden lg:flex lg:items-start lg:gap-4">
+              <div className="flex min-w-0 flex-1 flex-col gap-4">{left.map(renderCard)}</div>
+              <div className="flex min-w-0 flex-1 flex-col gap-4">{right.map(renderCard)}</div>
             </div>
           </>
         );
       })()}
-
-      {editLayout ? (
-        <div className="mt-4 text-xs text-[var(--k-muted)]">
-          Layout config is saved locally. Drag-and-drop UI can be added later; for now use ↑/↓.
-        </div>
-      ) : null}
     </div>
   );
 }
