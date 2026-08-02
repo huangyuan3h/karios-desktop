@@ -9,11 +9,6 @@ set -euo pipefail
 LABEL="com.karios.docker-up"
 PLIST_PATH="$HOME/Library/LaunchAgents/${LABEL}.plist"
 
-if [ "$(uname -s)" != "Darwin" ]; then
-    echo "error: this script is macOS-only. Detected: $(uname -s)" >&2
-    exit 1
-fi
-
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     cat <<'EOF'
 Usage: uninstall-launchd.sh
@@ -21,6 +16,11 @@ Usage: uninstall-launchd.sh
 Unloads and removes the Karios LaunchAgent. Safe to run multiple times.
 EOF
     exit 0
+fi
+
+if [ "$(uname -s)" != "Darwin" ]; then
+    echo "error: this script is macOS-only. Detected: $(uname -s)" >&2
+    exit 1
 fi
 
 if launchctl list | grep -q "$LABEL"; then

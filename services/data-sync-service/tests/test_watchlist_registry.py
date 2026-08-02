@@ -26,6 +26,49 @@ def _clear_registry(client: TestClient) -> None:
     client.post("/watchlist/registry", json={"items": []})
 
 
+@pytest.fixture
+def _seed_hk_stock_basic_names() -> None:
+    """Ensure stock_basic contains the HK names the backfill reads.
+
+    CI's fresh database has no stock_basic rows, so the backfill tests must
+    seed the lookup table themselves instead of relying on a prior hk_basic
+    sync (which is a network operation).
+    """
+    import pandas as pd  # type: ignore[import-not-found, import-untyped]
+
+    from data_sync_service.db import get_connection
+    from data_sync_service.db.stock_basic import ensure_table, upsert_from_dataframe
+
+    ensure_table()
+    ts_codes = ["01810.HK", "00700.HK"]
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT ts_code, name FROM stock_basic WHERE ts_code = ANY(%s)",
+                (ts_codes,),
+            )
+            before = {str(r[0]): r[1] for r in cur.fetchall()}
+    df = pd.DataFrame(
+        [
+            {"ts_code": "01810.HK", "symbol": "01810", "name": "小米集团-W", "market": "HK"},
+            {"ts_code": "00700.HK", "symbol": "00700", "name": "腾讯控股", "market": "HK"},
+        ]
+    )
+    upsert_from_dataframe(df, keep_industry=True)
+    yield
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            for tc in ts_codes:
+                if tc in before:
+                    cur.execute(
+                        "UPDATE stock_basic SET name = %s WHERE ts_code = %s",
+                        (before[tc], tc),
+                    )
+                else:
+                    cur.execute("DELETE FROM stock_basic WHERE ts_code = %s", (tc,))
+        conn.commit()
+
+
 def test_get_registry_empty() -> None:
     client = TestClient(app)
     _clear_registry(client)
@@ -117,7 +160,7 @@ def test_get_registry_item_fields() -> None:
     assert row["color"] == "#dcfce7"
 
 
-def test_post_backfills_hk_name_from_stock_basic() -> None:
+def test_post_backfills_hk_name_from_stock_basic(_seed_hk_stock_basic_names) -> None:
     """When client sends HK:01810 with name=null, the route fills it from stock_basic.
 
     The client resolve path can miss this when stock_basic wasn't synced yet or when
@@ -169,7 +212,7 @@ def test_post_preserves_client_provided_name() -> None:
     assert rows[0]["name"] == "Custom Name"
 
 
-def test_backfill_names_endpoint_fills_nulls() -> None:
+def test_backfill_names_endpoint_fills_nulls(_seed_hk_stock_basic_names) -> None:
     """POST /watchlist/registry/backfill-names fills null names using stock_basic."""
     client = TestClient(app)
     _clear_registry(client)

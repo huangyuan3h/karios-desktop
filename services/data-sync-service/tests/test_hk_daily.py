@@ -55,6 +55,16 @@ def test_sync_hk_daily_resume_from_last_ts_code(monkeypatch) -> None:
     stub = type("S", (), {"sync_hk_daily_for_ts_code_yf": staticmethod(fake_yf)})
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_yf", stub)
 
+    # akshare must return 0 rows so the chain falls through to yfinance
+    # (otherwise a real network fetch on a fresh DB short-circuits the test).
+    import data_sync_service.service.hk_daily_ak as ak_module
+
+    monkeypatch.setattr(
+        ak_module,
+        "sync_hk_daily_for_ts_code_ak",
+        lambda tc: {"ok": True, "updated": 0, "skipped": True, "ts_code": tc, "source": "akshare"},
+    )
+
     monkeypatch.setattr(
         hk_daily,
         "_tushare_sync_one",

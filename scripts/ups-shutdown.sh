@@ -33,11 +33,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT"
 
-if [ "$(uname -s)" != "Darwin" ]; then
-    echo "error: this script is macOS-only. Detected: $(uname -s)" >&2
-    exit 1
-fi
-
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     cat <<'EOF'
 Usage: ups-shutdown.sh
@@ -47,6 +42,11 @@ Intended to be called by an external UPS monitor (nut, apcupsd, etc.) on
 low battery. See docs/setup/docker-one-click.md for monitor configuration.
 EOF
     exit 0
+fi
+
+if [ "$(uname -s)" != "Darwin" ]; then
+    echo "error: this script is macOS-only. Detected: $(uname -s)" >&2
+    exit 1
 fi
 
 echo "[ups-shutdown] bringing down Karios Docker stack..."

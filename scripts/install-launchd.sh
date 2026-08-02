@@ -26,11 +26,6 @@ LABEL="com.karios.docker-up"
 PLIST_PATH="$HOME/Library/LaunchAgents/${LABEL}.plist"
 LOG_DIR="$HOME/Library/Logs/karios"
 
-if [ "$(uname -s)" != "Darwin" ]; then
-    echo "error: this script is macOS-only. Detected: $(uname -s)" >&2
-    exit 1
-fi
-
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     cat <<'EOF'
 Usage: install-launchd.sh
@@ -41,6 +36,11 @@ After install, the Karios Docker stack starts automatically on every login.
 macOS only. No arguments.
 EOF
     exit 0
+fi
+
+if [ "$(uname -s)" != "Darwin" ]; then
+    echo "error: this script is macOS-only. Detected: $(uname -s)" >&2
+    exit 1
 fi
 
 if [ ! -x "$DOCKER_UP" ]; then
