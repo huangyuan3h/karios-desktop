@@ -9,10 +9,6 @@ Verifies:
 
 from __future__ import annotations
 
-import os
-import urllib.request
-import urllib.error
-
 from data_sync_service.service.news import (
     DEFAULT_NEWS_SOURCES,
     LEGACY_DISABLED_SOURCES,

@@ -16,7 +16,6 @@ from data_sync_service.tv.scanner_api import (
     internal_to_friendly_rows,
 )
 
-
 # --- helpers ---------------------------------------------------------------
 
 

@@ -17,7 +17,7 @@ should require a key live under a separate router (Phase B).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Request  # type: ignore[import-not-found]
@@ -263,7 +263,7 @@ def get_version() -> VersionResponse:
     return VersionResponse(
         version=settings.karios_api_version,
         min_compatible=settings.karios_api_version,  # Phase A: 0.x → only itself is compatible
-        released_at=datetime.now(timezone.utc).isoformat(),
+        released_at=datetime.now(UTC).isoformat(),
     )
 
 

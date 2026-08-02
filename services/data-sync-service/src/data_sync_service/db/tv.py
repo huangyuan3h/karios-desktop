@@ -116,7 +116,7 @@ def upsert_screener(
     updated_at: str,
     mode: str = "chrome",
     market: str | None = None,
-    filter_json: dict[str, Any] | None = None,
+    filter_json: dict[str, Any] | list[dict[str, Any]] | None = None,
     api_columns: list[str] | None = None,
 ) -> None:
     ensure_tables()

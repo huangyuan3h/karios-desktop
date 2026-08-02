@@ -55,7 +55,6 @@ def upsert_brief(
     """Insert or update a morning/midday brief for a given date."""
     ensure_tables()
     import json
-    import uuid
 
     now = datetime.now(UTC).isoformat()
     brief_id = f"{brief_date}-{brief_type}"

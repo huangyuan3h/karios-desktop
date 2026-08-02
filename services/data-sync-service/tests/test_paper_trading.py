@@ -7,14 +7,12 @@ and the upstream journal / daily table so they run everywhere.
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient  # type: ignore[import-not-found]
 
 from data_sync_service.main import app  # type: ignore[import-not-found]
-
 
 client = TestClient(app)
 
@@ -312,10 +310,20 @@ def test_run_intake_treats_idempotent_insert_as_skip() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _patched_run_update(open_rows, bars_by_ts, today_iso="2026-08-06"):
+def _patched_run_update(open_rows, bars_by_ts, today_iso="2026-08-06", registry=None, score=99.0):
+    if registry is None:
+        registry = [{"symbol": t.get("symbol") or ""} for t in open_rows]
     return (
         patch("data_sync_service.service.paper_trading.pt_db.get_open_paper_trades", return_value=open_rows),
         patch("data_sync_service.service.paper_trading.fetch_last_ohlcv_batch", return_value=bars_by_ts),
+        patch(
+            "data_sync_service.db.watchlist_automation.list_registry",
+            return_value=registry,
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.wa_db.fetch_latest_score_since",
+            return_value=score,
+        ),
     )
 
 
@@ -323,8 +331,8 @@ def test_run_update_closes_on_stop_loss() -> None:
     """pnl_pct <= -5% must close with reason 'stop_hit'."""
     open_rows = [{**_OPEN_ROW, "entry_price": 10.0, "entry_date": "2026-08-01"}]
     bars = {"000001.SZ": [("2026-08-06", 9.4, 9.4, 9.3, 9.4, 1000)]}  # -6% drawdown
-    p1, p2 = _patched_run_update(open_rows, bars)
-    with p1, p2, patch(
+    p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
+    with p1, p2, p3, p4, patch(
         "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
         return_value={**_OPEN_ROW, "status": "closed", "close_reason": "stop_hit"},
     ) as mock_close, patch(
@@ -343,11 +351,11 @@ def test_run_update_closes_on_max_hold() -> None:
     """holding_days >= 5 must close with reason 'max_hold'."""
     open_rows = [{**_OPEN_ROW, "entry_price": 10.0, "entry_date": "2026-08-01"}]
     bars = {"000001.SZ": [("2026-08-06", 10.3, 10.3, 10.2, 10.3, 1000)]}  # +3% (no stop)
-    p1, p2 = _patched_run_update(open_rows, bars)
-    with p1, p2, patch(
+    p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
+    with p1, p2, p3, p4, patch(
         "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
         return_value={**_OPEN_ROW, "status": "closed", "close_reason": "max_hold"},
-    ) as mock_close, patch(
+    ), patch(
         "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
     ) as mock_update:
         from data_sync_service.service.paper_trading import run_update
@@ -363,8 +371,8 @@ def test_run_update_updates_without_closing_when_within_bounds() -> None:
     """Day 2 with -2% drawdown: just update, no close."""
     open_rows = [{**_OPEN_ROW, "entry_price": 10.0, "entry_date": "2026-08-04"}]
     bars = {"000001.SZ": [("2026-08-06", 9.8, 9.8, 9.7, 9.8, 1000)]}
-    p1, p2 = _patched_run_update(open_rows, bars)
-    with p1, p2, patch(
+    p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
+    with p1, p2, p3, p4, patch(
         "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
         return_value={**_OPEN_ROW, "pnl_pct": -2.0, "holding_days": 2},
     ) as mock_update, patch(
@@ -385,8 +393,8 @@ def test_run_update_skips_symbols_without_fresh_close() -> None:
     """If the daily table hasn't closed yet, skip without erroring."""
     open_rows = [{**_OPEN_ROW, "entry_price": 10.0, "entry_date": "2026-08-04"}]
     bars: dict[str, list] = {}  # nothing
-    p1, p2 = _patched_run_update(open_rows, bars)
-    with p1, p2, patch(
+    p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
+    with p1, p2, p3, p4, patch(
         "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
     ) as mock_update, patch(
         "data_sync_service.service.paper_trading.pt_db.close_paper_trade"
@@ -398,6 +406,136 @@ def test_run_update_skips_symbols_without_fresh_close() -> None:
     assert summary["updated"] == 0
     assert summary["closed"] == 0
     mock_update.assert_not_called()
+    mock_close.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Service: run_update v0.1 close conditions (target_hit / score_floor / pool_exit)
+# ---------------------------------------------------------------------------
+
+
+def test_run_update_closes_on_target_hit_even_with_max_hold() -> None:
+    """pnl_pct >= +10% must close with 'target_hit' — and beat 'max_hold'."""
+    open_rows = [{**_OPEN_ROW, "entry_price": 10.0, "entry_date": "2026-08-01"}]
+    bars = {"000001.SZ": [("2026-08-06", 11.2, 11.2, 11.1, 11.2, 1000)]}  # +12%
+    p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
+    with p1, p2, p3, p4, patch(
+        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "target_hit"},
+    ) as mock_close, patch(
+        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+    ) as mock_update:
+        from data_sync_service.service.paper_trading import run_update
+
+        # holding_days would be 5 (max_hold) but target beats it.
+        summary = run_update(today_iso="2026-08-06")
+    assert summary["closed"] == 1
+    assert summary["closeReasons"].get("target_hit") == 1
+    assert mock_close.call_args.kwargs["close_reason"] == "target_hit"
+    mock_update.assert_not_called()
+
+
+def test_run_update_stop_beats_target_on_high_volatility() -> None:
+    """A -6% day must close as 'stop_hit', never 'target_hit'."""
+    open_rows = [{**_OPEN_ROW, "entry_price": 10.0, "entry_date": "2026-08-01"}]
+    bars = {"000001.SZ": [("2026-08-06", 9.4, 9.4, 9.3, 9.4, 1000)]}  # -6%
+    p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
+    with p1, p2, p3, p4, patch(
+        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "stop_hit"},
+    ) as mock_close, patch(
+        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+    ) as mock_update:
+        from data_sync_service.service.paper_trading import run_update
+
+        summary = run_update(today_iso="2026-08-06")
+    assert summary["closeReasons"].get("stop_hit") == 1
+    assert mock_close.call_args.kwargs["close_reason"] == "stop_hit"
+    mock_update.assert_not_called()
+
+
+def test_run_update_closes_on_score_floor() -> None:
+    """Latest TrendOK score < SCORE_FLOOR must close with 'score_floor'."""
+    open_rows = [{**_OPEN_ROW, "entry_price": 10.0, "entry_date": "2026-08-04"}]
+    bars = {"000001.SZ": [("2026-08-06", 10.1, 10.1, 10.0, 10.1, 1000)]}  # +1%
+    p1, p2, p3, p4 = _patched_run_update(open_rows, bars, score=18.0)
+    with p1, p2, p3, p4, patch(
+        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "score_floor"},
+    ) as mock_close, patch(
+        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+    ) as mock_update:
+        from data_sync_service.service.paper_trading import run_update
+
+        summary = run_update(today_iso="2026-08-06")
+    assert summary["closed"] == 1
+    assert summary["closeReasons"].get("score_floor") == 1
+    assert mock_close.call_args.kwargs["close_reason"] == "score_floor"
+    mock_update.assert_not_called()
+
+
+def test_run_update_score_floor_fails_open_without_score_data() -> None:
+    """Missing score data never closes a trade (fail-open)."""
+    open_rows = [{**_OPEN_ROW, "entry_price": 10.0, "entry_date": "2026-08-04"}]
+    bars = {"000001.SZ": [("2026-08-06", 10.1, 10.1, 10.0, 10.1, 1000)]}
+    p1, p2, p3, p4 = _patched_run_update(open_rows, bars, score=None)
+    with p1, p2, p3, p4, patch(
+        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
+        return_value={**_OPEN_ROW, "pnl_pct": 1.0, "holding_days": 2},
+    ), patch(
+        "data_sync_service.service.paper_trading.pt_db.close_paper_trade"
+    ) as mock_close:
+        from data_sync_service.service.paper_trading import run_update
+
+        summary = run_update(today_iso="2026-08-06")
+    assert summary["updated"] == 1
+    assert summary["closed"] == 0
+    mock_close.assert_not_called()
+
+
+def test_run_update_closes_on_pool_exit() -> None:
+    """Symbol purged from the watchlist registry must close with 'pool_exit'."""
+    open_rows = [{**_OPEN_ROW, "entry_price": 10.0, "entry_date": "2026-08-04"}]
+    bars = {"000001.SZ": [("2026-08-06", 10.1, 10.1, 10.0, 10.1, 1000)]}
+    # Registry contains the symbol → not a pool exit... then without it → exit.
+    p1, p2, p3, p4 = _patched_run_update(open_rows, bars, registry=[{"symbol": "CN:999999"}])
+    with p1, p2, p3, p4, patch(
+        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "pool_exit"},
+    ) as mock_close, patch(
+        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+    ) as mock_update:
+        from data_sync_service.service.paper_trading import run_update
+
+        summary = run_update(today_iso="2026-08-06")
+    assert summary["closed"] == 1
+    assert summary["closeReasons"].get("pool_exit") == 1
+    assert mock_close.call_args.kwargs["close_reason"] == "pool_exit"
+    mock_update.assert_not_called()
+
+
+def test_run_update_pool_exit_fails_open_when_registry_unreadable() -> None:
+    """A registry read failure must never close a trade (fail-open)."""
+    open_rows = [{**_OPEN_ROW, "entry_price": 10.0, "entry_date": "2026-08-04"}]
+    bars = {"000001.SZ": [("2026-08-06", 10.1, 10.1, 10.0, 10.1, 1000)]}
+    p1, p2 = _patched_run_update(open_rows, bars)[:2]
+    with p1, p2, patch(
+        "data_sync_service.db.watchlist_automation.list_registry",
+        side_effect=RuntimeError("db down"),
+    ), patch(
+        "data_sync_service.service.paper_trading.wa_db.fetch_latest_score_since",
+        return_value=90.0,
+    ), patch(
+        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
+        return_value={**_OPEN_ROW, "pnl_pct": 1.0, "holding_days": 2},
+    ), patch(
+        "data_sync_service.service.paper_trading.pt_db.close_paper_trade"
+    ) as mock_close:
+        from data_sync_service.service.paper_trading import run_update
+
+        summary = run_update(today_iso="2026-08-06")
+    assert summary["updated"] == 1
+    assert summary["closed"] == 0
     mock_close.assert_not_called()
 
 

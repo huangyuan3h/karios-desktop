@@ -15,22 +15,20 @@ from data_sync_service.tv.ego_lite import EgoLiteUnavailable
 
 
 def test_ego_lite_unavailable_when_playwright_missing(monkeypatch):
-    """If playwright import fails, _ensure_playwright raises EgoLiteUnavailable."""
+    """If the playwright module cannot be found, _ensure_playwright raises
+    EgoLiteUnavailable."""
 
-    def fake_import(name, *args, **kwargs):
+    def fake_find_spec(name, *args, **kwargs):
         if name == "playwright.async_api":
-            raise ImportError("simulated missing playwright")
-        return __import__(name, *args, **kwargs)
+            return None
+        return orig_find_spec(name, *args, **kwargs)
 
-    import builtins
+    import importlib.util
 
-    orig_import = builtins.__import__
-    builtins.__import__ = fake_import
-    try:
-        with pytest.raises(EgoLiteUnavailable):
-            ego_lite._ensure_playwright()
-    finally:
-        builtins.__import__ = orig_import
+    orig_find_spec = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+    with pytest.raises(EgoLiteUnavailable):
+        ego_lite._ensure_playwright()
 
 
 def test_ego_lite_unavailable_propagates_via_scanner_transient():

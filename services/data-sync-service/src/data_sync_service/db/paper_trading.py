@@ -6,9 +6,10 @@ done if the user had followed every recommendation. Each row is one entry:
 - `close_date` / `close_price` / `pnl_pct` / `holding_days` are filled when the
   trade is closed (intake cron + update cron decide when).
 - `close_reason` is one of: `target_hit` | `stop_hit` | `max_hold` | `score_floor`
-  | `pool_exit` | `manual`. v0 only emits `max_hold` and `stop_hit`.
+  | `pool_exit` | `manual`. v0.1 emits `max_hold`, `stop_hit`, `target_hit`,
+  `score_floor` and `pool_exit`.
 
-v0 scope:
+v0.1 scope:
 - **CN-only**. HK paper-trading needs FX, T+0/T+2 settlement differences,
   and a separate update cadence — punted to OPT-050+.
 - **No live P&L aggregation here**. Stats are computed in
@@ -24,12 +25,9 @@ Design rules (see docs/designs/api-contract.md for the broader pattern):
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import date
 from typing import Any
-
-from psycopg.types.json import Json  # type: ignore[import-not-found]
 
 from data_sync_service.db import get_connection
 
@@ -47,15 +45,29 @@ SIDE_BUY = "BUY"
 SIDE_ADD = "ADD"
 SIDES = (SIDE_BUY, SIDE_ADD)
 
-# Close reasons v0 emits. P2 may add `target_hit` and `score_floor`.
+# Close reasons. Treat as a closed enum: extending requires bumping the
+# paper-trade API description + adding to CloseReasonLiteral.
+# v0 (OPT-049) emitted only `max_hold` and `stop_hit`; v0.1 (OPT-058) adds
+# `target_hit`, `score_floor` and `pool_exit` (see service/paper_trading.py).
 CLOSE_REASON_MAX_HOLD = "max_hold"  # holding_days >= MAX_HOLD_DAYS
 CLOSE_REASON_STOP_HIT = "stop_hit"  # pnl_pct <= STOP_LOSS_PCT
-CLOSE_REASONS = (CLOSE_REASON_MAX_HOLD, CLOSE_REASON_STOP_HIT)
+CLOSE_REASON_TARGET_HIT = "target_hit"  # pnl_pct >= TARGET_PNL_PCT
+CLOSE_REASON_SCORE_FLOOR = "score_floor"  # latest TrendOK score < SCORE_FLOOR
+CLOSE_REASON_POOL_EXIT = "pool_exit"  # symbol purged from the watchlist registry
+CLOSE_REASONS = (
+    CLOSE_REASON_MAX_HOLD,
+    CLOSE_REASON_STOP_HIT,
+    CLOSE_REASON_TARGET_HIT,
+    CLOSE_REASON_SCORE_FLOOR,
+    CLOSE_REASON_POOL_EXIT,
+)
 
-# v0 close thresholds. Kept module-level so tests can assert against the
+# v0.1 close thresholds. Kept module-level so tests can assert against the
 # exact values and operators can tune them in one place.
 MAX_HOLD_DAYS = 5
 STOP_LOSS_PCT = -5.0  # i.e. pnl_pct <= -5% triggers stop_hit
+TARGET_PNL_PCT = 10.0  # i.e. pnl_pct >= +10% triggers target_hit
+SCORE_FLOOR = 30.0  # latest TrendOK score < 30 triggers score_floor
 
 CREATE_SQL = f"""
 CREATE TABLE IF NOT EXISTS {PAPER_TRADES_TABLE} (

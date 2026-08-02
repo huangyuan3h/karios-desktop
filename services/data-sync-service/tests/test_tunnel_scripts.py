@@ -143,7 +143,6 @@ def test_setup_doc_referenced_paths_exist() -> None:
     """The setup doc references three concrete files the user must create
     (QUICK_TUNNEL / NAMED_TUNNEL scripts + the discovery.md inside docs/api).
     None of these may be missing or the doc is lying to the user."""
-    doc = SETUP_DOC.read_text(encoding="utf-8")
     for referenced in (
         "scripts/start-quick-tunnel.sh",
         "scripts/setup-named-tunnel.sh",

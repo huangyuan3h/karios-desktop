@@ -15,7 +15,7 @@ morning session.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from data_sync_service.db.morning_brief import upsert_brief

@@ -13,9 +13,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
+
+from alembic import op
 
 revision: str = "0015_morning_briefs"
 down_revision: str | Sequence[str] | None = "0014_news_items_enrichment"

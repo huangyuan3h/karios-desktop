@@ -43,11 +43,9 @@ manual validation before marking a template production-ready.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from dataclasses import dataclass
-from typing import Any
 
 from data_sync_service.tv import scanner_api
 from data_sync_service.tv.templates import get_template, list_templates
@@ -171,16 +169,12 @@ def _auto_update_template_py(passed: set[str]) -> int:
     # State machine: track which template we're inside, update its
     # nested_filter_validated line if it appears False and template is in `passed`.
     current_template: str | None = None
-    current_indent: str = ""
-    pending_update: bool = False
 
     for line in src.splitlines():
         # Detect ScreenerTemplate( block opening for our target templates.
         m_id = re.match(r'^(\s*)template_id="([^"]+)",\s*$', line)
         if m_id:
             current_template = m_id.group(2)
-            current_indent = m_id.group(1)
-            pending_update = False
             out_lines.append(line)
             continue
         m_valid = re.match(r'^(\s*)nested_filter_validated=(True|False),\s*$', line)
@@ -191,7 +185,6 @@ def _auto_update_template_py(passed: set[str]) -> int:
                 updated += 1
             else:
                 out_lines.append(line)
-            pending_update = False
             continue
         # Close of block resets template tracking on the matching close paren.
         if line.strip() == ")" and current_template is not None:

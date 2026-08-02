@@ -10,8 +10,8 @@ import logging
 
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-not-found]
 
-from data_sync_service.db.sync_job_record import insert_record
 from data_sync_service.db.news import count_by_enrichment_status
+from data_sync_service.db.sync_job_record import insert_record
 
 logger = logging.getLogger(__name__)
 

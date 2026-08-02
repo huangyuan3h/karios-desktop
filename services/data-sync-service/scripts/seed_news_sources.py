@@ -43,7 +43,7 @@ def main() -> int:
     print()
     print(f"Seed plan ({len(DEFAULT_NEWS_SOURCES)} investment-grade sources):")
     changes = []
-    for sid, name, url, tier, category in DEFAULT_NEWS_SOURCES:
+    for sid, name, _url, tier, category in DEFAULT_NEWS_SOURCES:
         cur = existing.get(sid)
         if cur is None:
             changes.append(("INSERT", sid, name, tier, category))

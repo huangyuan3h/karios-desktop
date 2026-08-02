@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import urllib.parse
 import urllib.request
-from typing import Any
 
 _SINA_REFERER = "https://finance.sina.com.cn/"
 

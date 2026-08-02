@@ -147,7 +147,6 @@ def sync_hk_daily_full() -> dict[str, Any]:
     skipped_count = 0
     failed_count = 0
     source_counts: dict[str, int] = {"akshare": 0, "yfinance": 0, "tushare": 0}
-    last_successful_ts_code: str | None = None
     remaining = len(ts_codes) - start_index
     logger.info(
         "hk_daily_full_sync start: total=%s resuming_from=%s remaining=%s",
@@ -167,13 +166,11 @@ def sync_hk_daily_full() -> dict[str, Any]:
             else:
                 total_rows += updated
                 source_counts[source] = source_counts.get(source, 0) + 1
-            last_successful_ts_code = ts_code
         except Exception as exc:  # noqa: BLE001
             failed_count += 1
             logger.warning("hk_daily_full_sync %s exception: %s", ts_code, exc)
             # Continue instead of aborting: a single bad ticker should not
             # block the whole batch. Resume next day picks up where we left.
-            last_successful_ts_code = ts_code
 
         done = i + 1 - start_index
         if done % _PROGRESS_EVERY == 0 or done == remaining:

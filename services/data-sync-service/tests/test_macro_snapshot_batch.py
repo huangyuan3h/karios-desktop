@@ -8,7 +8,9 @@ from data_sync_service.service.macro_snapshot import (  # type: ignore[import-no
     MACRO_CARDS,
     build_macro_snapshot,
 )
-from data_sync_service.service.option_iv import PUT_IV_LIVE_FETCH_FAILED_USING_DB  # type: ignore[import-not-found]
+from data_sync_service.service.option_iv import (
+    PUT_IV_LIVE_FETCH_FAILED_USING_DB,  # type: ignore[import-not-found]
+)
 
 
 def _patch_macro_snapshot_deps(**resolve_put_iv_kwargs):

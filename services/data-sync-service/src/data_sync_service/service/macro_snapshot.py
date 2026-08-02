@@ -14,8 +14,8 @@ from data_sync_service.db.macro_daily import (
     get_latest_rows_batch,
 )
 from data_sync_service.service.etf_fund_flow import (
-    build_etf_fund_flow_bundle,
     build_etf_flow_signal,
+    build_etf_fund_flow_bundle,
 )
 from data_sync_service.service.macro_daily import (
     SID_510300_PUT_IV,

@@ -12,6 +12,7 @@ from data_sync_service.service.watchlist_automation import (
     get_automation_latest,
     get_automation_pending,
     get_automation_run,
+    get_automation_runs,
     list_fallback_universe_symbols,
     run_watchlist_automation,
 )
@@ -165,6 +166,24 @@ def watchlist_automation_latest() -> dict:
         if not latest:
             return {"found": False}
         return {"found": True, **latest}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/watchlist/automation/runs")
+def watchlist_automation_runs(limit: int = Query(10, ge=1, le=30)) -> dict:
+    """TIP-002 N-day funnel history: one acknowledged run per trade_date,
+    newest first, including each run's meta.funnel counts.
+
+    NOTE: must stay registered before ``/watchlist/automation/{run_id}`` so
+    FastAPI matches the literal ``runs`` path instead of treating it as a
+    run id.
+    """
+    try:
+        from datetime import date
+
+        runs = get_automation_runs(limit=limit)
+        return {"ok": True, "runs": runs, "asOfDate": date.today().isoformat()}
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

@@ -14,14 +14,13 @@ edits for now.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends  # type: ignore[import-not-found]
 from pydantic import BaseModel, Field  # type: ignore[-import-not-found]
 
 from ..api.key_quota import AuthenticatedKey, enforce_quota, quota_tracker
-
 
 router = APIRouter(
     prefix="/v1",
@@ -84,7 +83,7 @@ def get_quota(auth: AuthenticatedKey = Depends(enforce_quota)) -> QuotaResponse:
         key_label=key.label,
         auth_enabled=bool(key.has_quota() or key.label != "anonymous"),
         windows=windows,
-        as_of=datetime.now(timezone.utc).isoformat(),
+        as_of=datetime.now(UTC).isoformat(),
     )
 
 

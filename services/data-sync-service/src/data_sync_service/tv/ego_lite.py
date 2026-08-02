@@ -14,8 +14,8 @@ the dispatcher can skip ego_lite and fall straight through to chrome.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 from datetime import UTC, datetime
-from typing import Any
 
 # Reuse the helpers from capture.py. They are module-private by convention
 # but the alternative is duplicating ~300 lines of DOM-walking logic.
@@ -42,7 +42,8 @@ def _ensure_playwright() -> None:
     (skip ego_lite, try chrome directly).
     """
     try:
-        from playwright.async_api import async_playwright  # type: ignore[import-not-found]
+        if importlib.util.find_spec("playwright.async_api") is None:
+            raise EgoLiteUnavailable("playwright_not_installed:module_missing")
     except ImportError as e:
         raise EgoLiteUnavailable(f"playwright_not_installed:{e}") from e
 

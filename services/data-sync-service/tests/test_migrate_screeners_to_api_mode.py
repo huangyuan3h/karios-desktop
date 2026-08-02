@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
 from scripts import migrate_screeners_to_api_mode as m
 
 

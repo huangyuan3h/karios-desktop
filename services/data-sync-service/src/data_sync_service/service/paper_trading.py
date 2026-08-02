@@ -9,13 +9,14 @@ Three entry points, all run by the scheduler:
 
 - :func:`run_update` — at 17:45 Asia/Shanghai, weekdays. For every open
   trade, looks up the latest daily close and updates ``close_price``,
-  ``pnl_pct``, ``holding_days``. If the close triggers a v0 close condition
-  (stop loss or max hold), closes the trade with the appropriate reason.
+  ``pnl_pct``, ``holding_days``. If the close triggers a v0.1 close condition
+  (stop loss / target hit / score floor / pool exit / max hold), closes the
+  trade with the appropriate reason.
 
 - :func:`compute_stats` — exposed via the API. Returns a small summary for
   the last N days: total closed, win count, win rate, mean pnl_pct.
 
-Why v0 is CN-only: HK paper-trading needs FX, T+0/T+2 settlement differences,
+Why v0.1 is CN-only: HK paper-trading needs FX, T+0/T+2 settlement differences,
 and a separate update cadence. Punted to OPT-050+.
 
 This file deliberately does NOT import ``data_sync_service.db.paper_trading``
@@ -26,11 +27,12 @@ functions in a way that hides them — every DB call is a thin CRUD function in
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date
 from typing import Any
 
 from data_sync_service.db import execution_journal as ej_db
 from data_sync_service.db import paper_trading as pt_db
+from data_sync_service.db import watchlist_automation as wa_db
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.service.trendok import _symbol_to_ts_code  # for CN resolution
 
@@ -212,8 +214,14 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
     For every open trade:
     1. Look up the latest close.
     2. Update pnl_pct / holding_days.
-    3. Apply v0 close conditions: stop_hit (pnl_pct <= STOP_LOSS_PCT) or
-       max_hold (holding_days >= MAX_HOLD_DAYS).
+    3. Apply v0.1 close conditions, in priority order (first match wins):
+       - ``stop_hit``: pnl_pct <= STOP_LOSS_PCT
+       - ``target_hit``: pnl_pct >= TARGET_PNL_PCT
+       - ``score_floor``: latest TrendOK score < SCORE_FLOOR (fail-open: a
+         missing score never closes)
+       - ``pool_exit``: symbol no longer in the watchlist registry
+         (fail-open: registry read failure never closes)
+       - ``max_hold``: holding_days >= MAX_HOLD_DAYS
 
     Returns a summary dict for the cron recorder.
     """
@@ -260,6 +268,16 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_trade update fetch_last_ohlcv_batch failed: %s", exc)
 
+    # Watchlist registry snapshot for the `pool_exit` condition. None means
+    # the read failed → fail open (never close on pool_exit without data).
+    registry_symbols: set[str] | None = None
+    try:
+        registry_symbols = {
+            str(r.get("symbol") or "") for r in wa_db.list_registry() if r
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_trade update list_registry failed: %s", exc)
+
     for t in open_trades:
         sym = str(t.get("symbol") or "")
         ts = _resolve_cn_ts_code(sym)
@@ -273,9 +291,13 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
         pnl_pct = (close_price - entry_price) / entry_price * 100.0
         holding_days = _holding_days_for(str(t.get("entry_date") or ""), today_iso)
 
-        # Apply close conditions FIRST, so the final state is closed with the
-        # current price.
-        if pnl_pct <= pt_db.STOP_LOSS_PCT:
+        reason = _pick_close_reason(
+            t=t,
+            pnl_pct=pnl_pct,
+            holding_days=holding_days,
+            registry_symbols=registry_symbols,
+        )
+        if reason is not None:
             try:
                 pt_db.close_paper_trade(
                     trade_id=str(t.get("id") or ""),
@@ -283,32 +305,13 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
                     close_price=close_price,
                     pnl_pct=pnl_pct,
                     holding_days=holding_days,
-                    close_reason=pt_db.CLOSE_REASON_STOP_HIT,
+                    close_reason=reason,
                 )
             except Exception as exc:  # noqa: BLE001
-                logger.warning("close_paper_trade (stop) failed for %s: %s", sym, exc)
+                logger.warning("close_paper_trade (%s) failed for %s: %s", reason, sym, exc)
                 continue
             summary["closed"] += 1
-            r = pt_db.CLOSE_REASON_STOP_HIT
-            summary["closeReasons"][r] = summary["closeReasons"].get(r, 0) + 1
-            continue
-
-        if holding_days >= pt_db.MAX_HOLD_DAYS:
-            try:
-                pt_db.close_paper_trade(
-                    trade_id=str(t.get("id") or ""),
-                    close_date=today_iso,
-                    close_price=close_price,
-                    pnl_pct=pnl_pct,
-                    holding_days=holding_days,
-                    close_reason=pt_db.CLOSE_REASON_MAX_HOLD,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("close_paper_trade (max_hold) failed for %s: %s", sym, exc)
-                continue
-            summary["closed"] += 1
-            r = pt_db.CLOSE_REASON_MAX_HOLD
-            summary["closeReasons"][r] = summary["closeReasons"].get(r, 0) + 1
+            summary["closeReasons"][reason] = summary["closeReasons"].get(reason, 0) + 1
             continue
 
         # Otherwise just touch the live state.
@@ -325,6 +328,44 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
         summary["updated"] += 1
 
     return summary
+
+
+def _pick_close_reason(
+    *,
+    t: dict[str, Any],
+    pnl_pct: float,
+    holding_days: int,
+    registry_symbols: set[str] | None,
+) -> str | None:
+    """Choose the close reason for an open trade, or None to keep it open.
+
+    Priority: stop_hit > target_hit > score_floor > pool_exit > max_hold.
+    ``score_floor`` and ``pool_exit`` are fail-open — when their input data is
+    unavailable they are skipped instead of force-closing.
+    """
+    if pnl_pct <= pt_db.STOP_LOSS_PCT:
+        return pt_db.CLOSE_REASON_STOP_HIT
+    if pnl_pct >= pt_db.TARGET_PNL_PCT:
+        return pt_db.CLOSE_REASON_TARGET_HIT
+
+    score: float | None = None
+    try:
+        score = wa_db.fetch_latest_score_since(
+            str(t.get("symbol") or ""),
+            str(t.get("entry_date") or ""),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_trade fetch_latest_score_since failed: %s", exc)
+    if score is not None and score < pt_db.SCORE_FLOOR:
+        return pt_db.CLOSE_REASON_SCORE_FLOOR
+
+    if registry_symbols is not None and str(t.get("symbol") or "") not in registry_symbols:
+        return pt_db.CLOSE_REASON_POOL_EXIT
+
+    if holding_days >= pt_db.MAX_HOLD_DAYS:
+        return pt_db.CLOSE_REASON_MAX_HOLD
+
+    return None
 
 
 # ---------------------------------------------------------------------------

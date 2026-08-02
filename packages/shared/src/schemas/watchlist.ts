@@ -34,3 +34,36 @@ export const WatchlistRegistryResponseSchema = z.object({
   count: z.number(),
 });
 export type WatchlistRegistryResponse = z.infer<typeof WatchlistRegistryResponseSchema>;
+
+/** TIP-002 funnel counts persisted in automation run meta (ack `meta.funnel`). */
+export const AutomationFunnelSchema = z.object({
+  tvHit: z.number(),
+  passPullback: z.number(),
+  passTrendOk: z.number(),
+  addedNew: z.number(),
+  droppedByPullback: z.number().optional(),
+  fallbackUsed: z.boolean().optional(),
+  fallbackHit: z.number().optional(),
+  fallbackTrendOk: z.number().optional(),
+  fallbackAdded: z.number().optional(),
+});
+export type AutomationFunnel = z.infer<typeof AutomationFunnelSchema>;
+
+/** One row of the N-day funnel history (GET /watchlist/automation/runs). */
+export const AutomationRunHistoryRowSchema = z.object({
+  runId: z.string(),
+  tradeDate: z.string(),
+  trigger: z.string(),
+  skipped: z.boolean(),
+  funnel: AutomationFunnelSchema.nullable().optional(),
+  screenerAdded: z.number().nullable().optional(),
+  createdAt: z.string().nullable().optional(),
+});
+export type AutomationRunHistoryRow = z.infer<typeof AutomationRunHistoryRowSchema>;
+
+export const FunnelHistoryResponseSchema = z.object({
+  ok: z.boolean(),
+  runs: z.array(AutomationRunHistoryRowSchema),
+  asOfDate: z.string(),
+});
+export type FunnelHistoryResponse = z.infer<typeof FunnelHistoryResponseSchema>;

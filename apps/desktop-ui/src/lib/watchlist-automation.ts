@@ -58,6 +58,14 @@ export async function fetchAutomationLatest(): Promise<AutomationRun | null> {
   return res;
 }
 
+/** TIP-002: N-day funnel history — one acknowledged run per trade_date, newest first. */
+export async function fetchFunnelHistory(limit = 10): Promise<AutomationRun[]> {
+  const res = await apiGetJson<{ ok: boolean; runs?: AutomationRun[] }>(
+    `/watchlist/automation/runs?limit=${limit}`,
+  );
+  return Array.isArray(res.runs) ? res.runs : [];
+}
+
 export async function triggerAutomationRun(force = true): Promise<AutomationRun> {
   return apiPostJson<AutomationRun>(`/watchlist/automation/run?force=${force ? 'true' : 'false'}`);
 }
@@ -73,7 +81,7 @@ export async function ackAutomationRun(
   });
 }
 
-function funnelFromMeta(meta: Record<string, unknown> | undefined): ScreenerFunnel | null {
+export function funnelFromMeta(meta: Record<string, unknown> | undefined): ScreenerFunnel | null {
   const raw = meta?.funnel;
   if (!raw || typeof raw !== 'object') return null;
   const f = raw as Record<string, unknown>;

@@ -28,7 +28,6 @@ def run() -> None:
     """Refill / refresh HK industry labels (EM primary, Xueqiu fallback)."""
     status = get_hk_industry_status()
     missing = int(status.get("missingHk", 0) or 0)
-    mapped = int(status.get("mappedHk", 0) or 0)
     total = int(status.get("totalHk", 0) or 0)
     # Always run — EM labels may have been updated upstream.
     result = sync_hk_industry(limit=min(BATCH_LIMIT, max(missing, total)))

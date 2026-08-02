@@ -23,7 +23,6 @@ from data_sync_service.service.alpha_radar_symbol_resolve import (
 )
 from data_sync_service.service.watchlist_automation import compute_alpha_additions
 
-
 # ---------------------------------------------------------------------------
 # _normalize_hk_ticker
 # ---------------------------------------------------------------------------

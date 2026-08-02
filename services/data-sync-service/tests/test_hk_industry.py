@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pandas as pd
 import pytest
 
 from data_sync_service.service import hk_industry
-
 
 # ----- _truncate_mbu pure-function tests -----
 

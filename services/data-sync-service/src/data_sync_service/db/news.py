@@ -463,9 +463,9 @@ def update_item_enrichment(
 ) -> bool:
     """Write LLM enrichment results back to a news item."""
     ensure_tables()
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    enriched_at = datetime.now(timezone.utc).isoformat()
+    enriched_at = datetime.now(UTC).isoformat()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(

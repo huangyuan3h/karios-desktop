@@ -633,6 +633,14 @@ def get_automation_latest() -> dict[str, Any] | None:
     return get_latest_run()
 
 
+def get_automation_runs(limit: int = 10) -> list[dict[str, Any]]:
+    """Recent acknowledged runs (one per trade_date, newest first) for the
+    TIP-002 N-day funnel history table."""
+    from data_sync_service.db.watchlist_automation import list_recent_runs
+
+    return list_recent_runs(limit=limit)
+
+
 def ack_automation_run(
     run_id: str,
     screener_added: int | None = None,

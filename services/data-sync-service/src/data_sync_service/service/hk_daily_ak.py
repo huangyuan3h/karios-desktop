@@ -92,7 +92,7 @@ def _df_to_daily_rows(
                 d = datetime.fromisoformat(str(raw_date).strip()).date()
             except ValueError:
                 continue
-        if since is not None and d <= since:
+        if since is not None and d is not None and d <= since:
             prev_close = row.get("close")  # noqa: F841 — track for next bar's pre_close
             try:
                 prev_close = float(prev_close) if prev_close is not None and prev_close == prev_close else None

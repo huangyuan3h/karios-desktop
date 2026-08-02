@@ -25,7 +25,6 @@ from data_sync_service.api.key_quota import (  # type: ignore[import-not-found]
 )
 from data_sync_service.main import app  # type: ignore[import-not-found]
 
-
 client = TestClient(app)
 
 

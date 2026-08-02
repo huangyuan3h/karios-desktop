@@ -1,9 +1,9 @@
 """Tests for ETF universe helpers in etf_fund_flow."""
 
 from data_sync_service.service.etf_fund_flow import (
-    _infer_etf_category,
     _CORE_ETF_TICKERS,
     ETF_WATCHLIST,
+    _infer_etf_category,
 )
 
 

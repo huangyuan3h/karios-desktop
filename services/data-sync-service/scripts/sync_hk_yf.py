@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
 
     elapsed = time.monotonic() - t0
     print()
-    print(f"=== Summary ===")
+    print("=== Summary ===")
     print(f"Total processed: {len(ts_codes)}")
     print(f"Succeeded (new bars): {succeeded}")
     print(f"Skipped (no data): {skipped}")

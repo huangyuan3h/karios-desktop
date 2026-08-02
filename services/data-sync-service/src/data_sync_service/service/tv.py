@@ -71,7 +71,7 @@ def create_screener(
     enabled: bool = True,
     mode: str = "chrome",
     market: str | None = None,
-    filter_json: dict[str, Any] | None = None,
+    filter_json: dict[str, Any] | list[dict[str, Any]] | None = None,
     api_columns: list[str] | None = None,
 ) -> dict[str, str]:
     ensure_seeded()
@@ -115,7 +115,7 @@ def create_screener_from_template(
         enabled=enabled,
         mode="api",
         market=template.market,
-        filter_json=dict(template.filter_json),
+        filter_json=template.filter_json,
         api_columns=list(template.api_columns),
     )
 
@@ -416,7 +416,6 @@ def _capture_and_persist_screener(*, screener_id: str) -> dict[str, Any]:
     mode = str(screener.get("mode") or CAPTURE_VIA_CHROME).strip().lower()
     filter_json = screener.get("filterJson")
     api_columns = screener.get("apiColumns")
-    market = str(screener.get("market") or "").strip().lower() or None
 
     result, captured_via = _dispatch_capture(
         mode=mode,
@@ -507,7 +506,7 @@ def _dispatch_capture(
     *,
     mode: str,
     url: str,
-    filter_json: dict[str, Any] | None,
+    filter_json: dict[str, Any] | list[dict[str, Any]] | None,
     api_columns: list[str] | None,
 ) -> tuple[Any, str]:
     """Dispatch a screener capture across the three tracks (OPT-057).

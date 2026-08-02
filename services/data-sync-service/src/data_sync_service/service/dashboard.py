@@ -25,8 +25,8 @@ from data_sync_service.db.news import ensure_tables as ensure_news_tables
 from data_sync_service.db.news import fetch_items
 from data_sync_service.db.tv import list_latest_snapshots_for_screeners
 from data_sync_service.service.etf_fund_flow import (
-    build_etf_fund_flow_bundle,
     build_etf_flow_signal,
+    build_etf_fund_flow_bundle,
     sync_etf_fund_flow_watchlist,
 )
 from data_sync_service.service.execution_gate import compute_execution_gate

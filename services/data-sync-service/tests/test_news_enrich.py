@@ -5,10 +5,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
 from data_sync_service.service import news_enrich
-
 
 # ---------------------------------------------------------------------------
 # Tier 0: pre-filter

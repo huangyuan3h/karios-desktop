@@ -30,8 +30,8 @@ from pydantic import BaseModel, Field  # type: ignore[import-not-found]
 from ..api.auth import require_api_key  # noqa: F401  (used as router-level dependency)
 from ..db import execution_journal as ej_db
 from ..db import paper_trading as pt_db
-from ..service.paper_trading import compute_stats as pt_compute_stats
 from ..db.watchlist_automation import list_registry
+from ..service.paper_trading import compute_stats as pt_compute_stats
 from ..service.trendok import compute_trendok_for_symbols
 
 router = APIRouter(
@@ -454,7 +454,9 @@ class PaperTrade(BaseModel):
     closeReason: str | None = Field(
         default=None,
         description=(
-            "Why the cron closed the trade. v0 emits 'stop_hit' (pnl_pct <= -5%) or "
+            "Why the cron closed the trade. v0.1 emits 'stop_hit' (pnl_pct <= -5%), "
+            "'target_hit' (pnl_pct >= +10%), 'score_floor' (TrendOK score < 30), "
+            "'pool_exit' (symbol purged from the watchlist) or "
             "'max_hold' (holding_days >= 5). null while still open."
         ),
     )
@@ -487,7 +489,7 @@ class PaperTradeStatsResponse(BaseModel):
 @router.get(
     "/paper-trades",
     response_model=PaperTradeListResponse,
-    summary="List paper trades (OPT-049, v0: CN-only, read-only).",
+    summary="List paper trades (OPT-049, v0.1: CN-only, read-only).",
 )
 def get_paper_trades(
     status: str | None = Query(

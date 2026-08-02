@@ -29,13 +29,13 @@
 | 领域 | 在做（P0） | 待办（P1-P4） | 完成归档 |
 |------|------------|---------------|----------|
 | §1 定位与形态 | — | Tauri vs 固定 URL 评估 | — |
-| §2 收益 / 交易 | TIP-009 alpha 映射抽检 / TIP-011 开火归因 / 漏斗 N 日表格（TIP-002 收尾） | — | TIP-001~008 + V6.2/3 已沉淀；hover tooltip + Dashboard 精简 done 2026-08-01（§15） |
+| §2 收益 / 交易 | TIP-009 alpha 映射抽检 / TIP-011 开火归因 | — | TIP-001~008 + V6.2/3 已沉淀；hover tooltip + Dashboard 精简 done 2026-08-01（§15）；漏斗 N 日表格 done 2026-08-02（OPT-058） |
 | §3 API 开放 | — | API Key 配额 + 限流 | ✅ 已归档 → `archive/2026-08-01-opt-045-v1-api-surface.md`（OPT-045/046/047 整圈）|
 | §4 工程与部署 | DB 本地备份自动化（新发现 2026-08-02） | 隐藏页 & legacy 清理（新发现 2026-08-02） | ✅ Tunnel 脚本骨架 OPT-048；DB 决策 OPT-053；Docker 一键 OPT-056；Alembic 纪律见 AGENTS.md |
 | §5 数据源 / 浏览器 | — | 付费 API 矩阵 | ✅ TV Scanner API 作为唯一池子（2026-08-01）；ego-lite/Chrome CDP 仅作 fallback；数据源审计 done 2026-08-01 |
 | §6 新闻 / 研报 | — | News 质量评估（老婆反馈不如财经新闻准） | `OPT-037/038/039` News Query 并行化 |
 | §7 多市场 | — | 美股 / 加拿大时区 | `OPT-041/042/043/044` HK + ETF 已通 |
-| §8 回测 | paper v0.1 关闭条件补齐（新发现 2026-08-02） | BacktestPage 重写（等 paper 数据） | ✅ paper-trading v0 → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；历史 BacktestPage 已隐藏 |
+| §8 回测 | — | BacktestPage 重写（等 paper 数据） | ✅ paper-trading v0 → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；v0.1 关闭条件 done 2026-08-02（OPT-058）；历史 BacktestPage 已隐藏 |
 | **doc 大扫除** | — | — | `archive/modules-legacy/`（2026-08-01：industry-flow / market-sentiment / news-brief 3 旧版模块文档） |
 
 ---
@@ -61,7 +61,7 @@
   - HK：akshare（Sina）已验证最稳（`OPT-043`），不要再切
   - 评估：聚宽 / Wind mini / Choice / iFinD / 自建爬虫 中是否有 ROI 为正的补强
 - **[P0] 重启回测系统**：原 BacktestPage 效果差已隐藏，待重做 → 见 §8
-- **[P0] 漏斗转化率度量闭环**：`TIP-002` 已埋点，下一步是把 N 日表格/周报落地 → `archive/`。
+- **[P0] 漏斗转化率度量闭环**：[done] 2026-08-02 —— `TIP-002` 埋点 + N 日表格已闭环（[`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)）；周报形态待 §3 P1 排期。
 - **[P1] 研报/新闻 α 来源**：见 §6。
 - **[P1] 卫星仓上限 / 仓位管理复核**：当前 15% 单票 + 30% 板块 + 袖子上限体系是否仍合理（参考 §13 `positionPct` 复杂度）。
 - **[P2] 开火来源归因（TV/Alpha/手动）**：`TIP-011` 已列未做 → 直接挂这里追踪。
@@ -203,7 +203,7 @@
   2. 必须能拉历史 bars（HK ≥5y 已通过 `OPT-043`；CN 5y+ 已有 `daily` 表）
   3. 纸面交易（paper-trading）先于纯回测——回测容易过拟合，paper 不会
 - **[P1] Paper-trading daily 跑**：把当前 BUY/ADD 信号在收盘后假买入，跟踪 N 日后的实际表现
-- **[P1] Paper-trading v0.1 关闭条件补齐**（2026-08-02 审查新发现）：+10% `target_hit` / score 跌穿 `score_floor` / 离开 watchlist `pool_exit`（`OPT-049` 已列未做）——补齐后胜率 / 持有天数统计才完整（1 天）。
+- **[P1] Paper-trading v0.1 关闭条件补齐**：[done] 2026-08-02 —— +10% `target_hit` / score 跌穿 `score_floor` / 离开 watchlist `pool_exit` 已落地（[`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)）；胜率 / 持有天数统计口径已完整。
 - **[P1] 单策略回测能力**：保留但**不作为发布决策依据**，只为理解参数敏感度
 - **[P2] BacktestPage 重写**：产品形态（不写到本 todo 的 P0，因为要先有数字）
 
@@ -277,6 +277,7 @@
 | 2026-07-22 | 漏斗转化率 / Pullback 主宇宙校准 / Alpha 进池闸 / Alpha GC 对称化 | 见 `trading-improvement-checklist.md` TIP-001~006 |
 | 2026-07-29 | HK + ETF 闸门全打通（OPT-041~044） | 见 `optimization-checklist.md` |
 | 2026-08-01 | OPT-056 / §12 #7：Docker 一键起 + UPS 自动恢复（3 Dockerfile + 4 compose service + 6 脚本 + setup doc + 57 tests）| [`archive/2026-08-01-opt-056-docker-one-click.md`](./archive/2026-08-01-opt-056-docker-one-click.md)（脚本骨架完整，端到端实跑需用户跑 `scripts/docker-up.sh --migrate`）|
+| 2026-08-02 | **OPT-058 / §12 #20+#21**：漏斗 N 日表格（TIP-002 收尾：`GET /watchlist/automation/runs` + FunnelHistoryTable）+ Paper-trading v0.1 关闭条件（target_hit / score_floor / pool_exit，fail-open 纪律）| [`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)（后端 50 相关测试 + 前端 5 新测试全绿）|
 | 2026-08-01 | OPT-057 / §12 #8.5：TV Capture 三轨架构（Scanner API + ego-lite + Chrome fallback）+ 新建 screener 模板化 UI + 5 模板 live API 验证通过 + capture 流程端到端走通 | [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)（47 新单测 + 1055 全绿；Scanner API filter 必须用数组格式 `[{left,op,right}]`；HK `exchange=HKEX`，US `exchange∈[NASDAQ,NYSE,AMEX]`；**最终决策**：TV Scanner API 池子基本够用，ego-lite/Chrome CDP 仅作 fallback）|
 
 ---
@@ -338,8 +339,8 @@
 | 17 | **Dashboard 精简 + 参数说明** | §2 收益 | 1 天 | — | ✅ **done 2026-08-01** → `lib/dashboard-card-help.tsx` + `DashboardHeader`（§15 反馈 #3）|
 | 18 | **DB 本地备份自动化** | §4 工程 | 0.5-1 天 | OPT-053 决策已立 | 新发现 2026-08-02：pg_dump 日备 + 本地/异地双副本 + 恢复演练 |
 | 19 | **隐藏页面 / legacy 清理** | §4 工程 | 0.5-1 天 | — | 新发现 2026-08-02：SimTradePage + /simtrade、BacktestPage + testback/ 仍注册路由 |
-| 20 | **漏斗 N 日转化率表格** | §3 收益 | 0.5 天 | TIP-002 埋点已就绪 | §3 P0 漏斗闭环的可执行行：前端展示最近 N 日转化率 |
-| 21 | **Paper-trading v0.1 关闭条件** | §8 回测 | 1 天 | OPT-049 | target_hit / score_floor / pool_exit 补齐 |
+| 20 | **漏斗 N 日转化率表格** | §3 收益 | 0.5 天 | TIP-002 埋点已就绪 | ✅ **done 2026-08-02** → [`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)；`GET /watchlist/automation/runs` + FunnelHistoryTable 挂 WatchlistPage |
+| 21 | **Paper-trading v0.1 关闭条件** | §8 回测 | 1 天 | OPT-049 | ✅ **done 2026-08-02** → 同上；target_hit / score_floor / pool_exit 补齐，fail-open 纪律 |
 
 ### 怎么"凑时间一个个实现"
 

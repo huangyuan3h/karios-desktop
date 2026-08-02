@@ -1146,6 +1146,53 @@ ego-lite spike（2026-08-01）确认 TV Scanner API 可用。本 OPT 把 spike �
 
 ---
 
+### OPT-058：漏斗 N 日表格（TIP-002 收尾）+ Paper-trading v0.1 关闭条件
+
+**状态**：[x] done
+**完成日期**：2026-08-02
+**优先级**：P0（todo §12 #20/#21 · 2026-08-02 review 最高 ROI 两件）
+**关联 todo**：[§12 #20](../todo.md)（漏斗 N 日转化率表格）· [§12 #21](../todo.md)（paper v0.1 关闭条件）· [TIP-002](../trading-improvement-checklist.md) · [OPT-049](./optimization-checklist.md#opt-049paper-trading-启动todo-12-3--8-回测)
+**摘要**：[`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](../archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)
+
+#### 背景
+
+TIP-002 埋点已就绪（ack `meta.funnel`），但 N 日表格从未落地——整个 TIP 系列改动有效与否无法周度复盘；OPT-049 v0 只有 `stop_hit` / `max_hold` 两条关闭路径，正在积累的 paper 数据统计口径不完整（+10% target / score 跌穿 / 池内剔除缺失）。
+
+#### 目标
+
+| 任务 | 内容 |
+|------|------|
+| **A. 漏斗 N 日表格** | `GET /watchlist/automation/runs?limit=N`（每交易日一行的 ack run + `meta.funnel`，DISTINCT ON trade_date）+ shared Zod + `useFunnelHistoryQuery` + `FunnelHistoryTable` 挂 WatchlistPage |
+| **B. paper v0.1 关闭条件** | `target_hit` (+10%) / `score_floor` (<30) / `pool_exit`（不在 watchlist registry）；优先级 stop > target > score_floor > pool_exit > max_hold；score/registry 数据缺失 fail-open 不关闭 |
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| DB | `db/watchlist_automation.py`（`list_recent_runs` + `fetch_latest_score_since`）、`db/paper_trading.py`（CLOSE_REASONS + 阈值常量） |
+| Service | `service/watchlist_automation.py`（`get_automation_runs`）、`service/paper_trading.py`（`_pick_close_reason`） |
+| API | `api/watchlist_routes.py`（`GET /watchlist/automation/runs`，**须注册在 `{run_id}` 路由前**）、`api/v1_business_routes.py`（closeReason description 同步） |
+| Shared | `packages/shared/src/schemas/watchlist.ts`（FunnelHistoryResponse） |
+| Frontend | `lib/queries/funnel.ts`（新）、`components/watchlist/FunnelHistoryTable.tsx`（新）、`lib/watchlist-automation.ts`（`fetchFunnelHistory` + 导出 `funnelFromMeta`）、`WatchlistPage.tsx` |
+| Tests | `tests/test_paper_trading.py`（+8）、`tests/test_funnel_history.py`（新 4）、`FunnelHistoryTable.test.tsx`（新 5） |
+
+#### 验证
+
+- [x] `GET /watchlist/automation/runs` 返回 `{ok, runs, asOfDate}`；`runs` 字面路径优先于 `{run_id}` 动态路由（单测守住）
+- [x] paper v0.1 五条关闭条件 + 优先级（stop 压 target、target 压 max_hold）+ 两处 fail-open 单测
+- [x] 后端 50 相关测试全绿；全量 1316 passed（1 pre-existing flaky 除外）
+- [x] 前端 FunnelHistoryTable 5 测试全绿 + `tsc --noEmit` 0 error + shared build 通过
+- [x] todo §12 #20/#21 标 ✅ + archive 摘要 + §10 补行
+
+#### 反模式
+
+- ❌ 把 `runs` 注册在 `GET /watchlist/automation/{run_id}` 之后（FastAPI 按注册顺序匹配 → "runs" 被当 run_id → 404）
+- ❌ score / registry 数据缺失时硬关闭 paper 仓（必须 fail-open，与"主线数据未就绪不误 TRIM"同哲学）
+- ❌ 同一天多次 automation 在表格里占多行（DISTINCT ON trade_date 收敛为最新一次）
+- ❌ 改 `close_reason` 枚举而不同步 `/v1/paper-trades` description（LLM 契约漂移）
+
+---
+
 ## 相关文档
 
 - [模块文档索引](./modules/README.md)

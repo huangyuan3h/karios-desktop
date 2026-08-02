@@ -14,9 +14,10 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from data_sync_service.config import get_settings
 from data_sync_service.db.stock_basic import (
     ensure_table as ensure_stock_basic,
+)
+from data_sync_service.db.stock_basic import (
     fetch_ts_codes_by_market,
     update_industry,
 )
@@ -190,7 +191,7 @@ def fetch_xueqiu_mbu(
             time.sleep(sleep_s * (attempt + 1))
             continue
         try:
-            rows = dict(zip(df["item"].tolist(), df["value"].tolist()))
+            rows = dict(zip(df["item"].tolist(), df["value"].tolist(), strict=False))
         except Exception:
             time.sleep(sleep_s * (attempt + 1))
             continue
