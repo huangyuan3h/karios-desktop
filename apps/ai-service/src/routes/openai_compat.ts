@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { generateText } from 'ai';
 
 import { getResolvedModel } from '../model';
+import { generateTextJsonObjectModeOptions } from '../model';
 import { stripJsonCodeFence, stripModelThinking } from '../model_thinking';
 
 /**
@@ -46,9 +47,11 @@ openaiCompatRoutes.post('/chat/completions', async (c) => {
   }
 
   let model;
+  let looseStructuredOutputs = false;
   try {
     const resolved = await getResolvedModel();
     model = resolved.model;
+    looseStructuredOutputs = resolved.looseStructuredOutputs;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'AI model not configured';
     return c.json({ error: message }, 500);
@@ -70,6 +73,11 @@ openaiCompatRoutes.post('/chat/completions', async (c) => {
       messages: aiMessages,
       temperature: body.temperature ?? 0.1,
       maxOutputTokens: maxTokens,
+      // Honor the caller's response_format (json_object) when the backend
+      // supports it. Dropped by the SDK with a warning for reasoning models.
+      ...(body.response_format?.type === 'json_object'
+        ? generateTextJsonObjectModeOptions(looseStructuredOutputs)
+        : {}),
     });
 
     const content = stripJsonCodeFence(stripModelThinking(result.text));

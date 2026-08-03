@@ -236,10 +236,23 @@ def _entry_summary(entry: Any, *, max_len: int = 3000) -> str | None:
     return merged[:max_len]
 
 
+def _quote_url(url: str) -> str:
+    """Percent-encode non-ASCII chars in path/query (e.g. RSSHub routes
+    with Chinese keywords like /eastmoney/search/铜). urllib fails with
+    "'ascii' codec can't encode character" otherwise. Already-encoded
+    sequences (%xx) are preserved."""
+    parts = urllib.parse.urlsplit(url)
+    if (parts.path.isascii() and parts.query.isascii()):
+        return url
+    path = urllib.parse.quote(parts.path, safe="/%:@")
+    query = urllib.parse.quote(parts.query, safe="=&%?;,")
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, path, query, parts.fragment))
+
+
 def fetch_rss_feed(url: str) -> list[dict[str, Any]]:
     if feedparser is None:
         raise RuntimeError("feedparser is not installed")
-    req = urllib.request.Request(url, headers={"User-Agent": RSS_USER_AGENT}, method="GET")
+    req = urllib.request.Request(_quote_url(url), headers={"User-Agent": RSS_USER_AGENT}, method="GET")
     timeout = rss_timeout_seconds()
     try:
         with _urlopen(req, timeout=timeout) as resp:

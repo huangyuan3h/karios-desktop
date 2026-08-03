@@ -2,13 +2,17 @@
 
 Source priority for each ts_code (highest first):
 
-  1. **akshare** (``ak.stock_hk_daily``) — Sina Finance source. Fastest
-     (avg ~0.2s/cold, ~0.1s/cache), no documented per-call rate cap, full
-     OHLCV history since listing. Best day-to-day choice.
-  2. **yfinance** — kept as fallback for tickers Sina can't resolve, or
-     when Sina is unreachable. Subject to IP-level rate caps.
-  3. **tushare** (``pro.hk_daily``) — last-resort fallback. Long history
-     and survives Sina outages, but rate-limited to ~1 call/min on
+  1. **Tencent ifzq** (``hk_daily_tx``) — plain-JSON HK K-lines, no JS
+     decoding / V8 dependency. Reliable on macOS where akshare's Sina
+     decoder crashes the whole process. Full OHLCV history via paging.
+  2. **akshare** (``ak.stock_hk_daily``) — Sina Finance source. Fast, full
+     history, but its py_mini_racer (V8) decoder crashes on macOS 26, so it
+     is skipped there and only used on non-darwin platforms.
+  3. **yfinance** — kept as fallback for tickers Sina/Tencent can't
+     resolve, or when both are unreachable. Subject to IP-level rate caps
+     and has been observed returning "delisted" for valid HK tickers.
+  4. **tushare** (``pro.hk_daily``) — last-resort fallback. Long history
+     and survives upstream outages, but rate-limited to ~1 call/min on
      lower-tier keys, so unsuitable for full-market batches.
 
 The per-stock logic is incremental (only fetches rows newer than the
@@ -18,6 +22,7 @@ cached last_trade_date), so re-running daily is cheap and resilient.
 from __future__ import annotations
 
 import logging
+import sys
 import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -49,8 +54,8 @@ DAILY_FIELDS = [
     "amount",
 ]
 
-# Default pacing between per-ticker calls. Sina (akshare) is documented as
-# having no per-call rate cap but we still space requests to be polite.
+# Default pacing between per-ticker calls. Sources are documented as having
+# no strict per-call rate cap, but we still space requests to be polite.
 # 0.2s × 2700 stocks ≈ 9 minutes for a full sweep.
 _AK_DELAY_SECONDS = 0.2
 _PROGRESS_EVERY = 50
@@ -73,34 +78,54 @@ def _backfill_start_yyyymmdd() -> str:
 
 
 def _sync_one_with_fallback(ts_code: str) -> dict[str, Any]:
-    """Sync a single HK ts_code with the priority chain: akshare → yfinance → tushare.
+    """Sync a single HK ts_code: tencent → akshare → yfinance → tushare.
 
-    Returns the merged result with ``source`` set to whichever backend
-    actually delivered bars (or the highest that didn't fail), and
+    Tencent ifzq is the primary source (plain JSON, no V8). akshare is only
+    used on non-darwin platforms where its V8 decoder cannot crash the
+    process. Returns the merged result with ``source`` set to whichever
+    backend actually delivered bars (or the highest that didn't fail), and
     ``updated`` reflecting the rows written.
     """
-    from data_sync_service.service.hk_daily_ak import sync_hk_daily_for_ts_code_ak
+    # 1. Tencent ifzq: no V8 / JS decoding, works on macOS.
+    from data_sync_service.service.hk_daily_tx import sync_hk_daily_for_ts_code_tx
 
-    # 1. akshare (Sina): fastest + no rate cap.
-    ak_result = sync_hk_daily_for_ts_code_ak(ts_code)
-    if ak_result.get("ok") and int(ak_result.get("updated") or 0) > 0:
-        return ak_result
+    tx_result = sync_hk_daily_for_ts_code_tx(ts_code)
+    if tx_result.get("ok") and int(tx_result.get("updated") or 0) > 0:
+        return tx_result
+
+    # 2. akshare (Sina): fastest + no rate cap — non-darwin only.
+    ak_result = {"ok": False, "error": "akshare_disabled_on_darwin"}
+    if sys.platform != "darwin":
+        from data_sync_service.service.hk_daily_ak import sync_hk_daily_for_ts_code_ak
+
+        ak_result = sync_hk_daily_for_ts_code_ak(ts_code)
+        if ak_result.get("ok") and int(ak_result.get("updated") or 0) > 0:
+            return ak_result
     ak_error = None if ak_result.get("ok") else ak_result.get("error")
 
-    # 2. yfinance: kept for tickers Sina can't resolve.
+    # 3. yfinance: kept for tickers Sina/Tencent can't resolve.
     from data_sync_service.service.hk_daily_yf import sync_hk_daily_for_ts_code_yf
 
     yf_result = sync_hk_daily_for_ts_code_yf(ts_code)
     if yf_result.get("ok") and int(yf_result.get("updated") or 0) > 0:
         return yf_result
 
-    # 3. tushare: last resort (1 call/min rate cap, but most reliable).
+    # 4. tushare: last resort (1 call/min rate cap, but most reliable).
     ts_result = _tushare_sync_one(ts_code)
     if ts_result.get("ok") and int(ts_result.get("updated") or 0) > 0:
         return ts_result
 
     # Nothing delivered new bars. Return the most informative error from
-    # whichever source failed first (akshare), then a normalised "no data".
+    # whichever source failed first (tencent), then a normalised "no data".
+    if not tx_result.get("ok"):
+        return {
+            "ok": True,
+            "updated": 0,
+            "skipped": True,
+            "ts_code": ts_code,
+            "source": "tencent",
+            "message": f"tencent failed: {tx_result.get('error')}; no other source had data either",
+        }
     if not ak_result.get("ok"):
         return {
             "ok": True,
@@ -115,14 +140,15 @@ def _sync_one_with_fallback(ts_code: str) -> dict[str, Any]:
         "updated": 0,
         "skipped": True,
         "ts_code": ts_code,
-        "source": "akshare",
+        "source": "tencent",
         "message": "no source delivered new bars",
     }
 
 
 def sync_hk_daily_full() -> dict[str, Any]:
     """
-    Full sync for HK stocks with source-priority fallback (akshare → yfinance → tushare):
+    Full sync for HK stocks with source-priority fallback
+    (tencent → akshare → yfinance → tushare):
     - If today's run already succeeded: skip.
     - If today's run failed: resume from the ts_code after last_ts_code.
     - Per-stock logic is incremental (only fetches rows newer than cached last_trade_date).
@@ -146,7 +172,7 @@ def sync_hk_daily_full() -> dict[str, Any]:
     total_rows = 0
     skipped_count = 0
     failed_count = 0
-    source_counts: dict[str, int] = {"akshare": 0, "yfinance": 0, "tushare": 0}
+    source_counts: dict[str, int] = {"tencent": 0, "akshare": 0, "yfinance": 0, "tushare": 0}
     remaining = len(ts_codes) - start_index
     logger.info(
         "hk_daily_full_sync start: total=%s resuming_from=%s remaining=%s",
@@ -254,7 +280,7 @@ def get_hk_daily_sync_status() -> dict[str, Any]:
 def sync_hk_daily_for_ts_code(ts_code: str) -> dict[str, Any]:
     """
     Single-ticker HK sync using the source-priority chain
-    (akshare → yfinance → tushare). Used by market_bars for the
+    (tencent → akshare → yfinance → tushare). Used by market_bars for the
     hot-path ``bars?force=true`` refresh.
     """
     return _sync_one_with_fallback(ts_code)
