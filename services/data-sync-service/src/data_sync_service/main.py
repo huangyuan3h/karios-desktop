@@ -18,7 +18,6 @@ from .api.journal_routes import router as journal_router
 from .api.market_sentiment_routes import router as market_sentiment_router
 from .api.news_routes import router as news_router
 from .api.query_routes import router as query_router
-from .api.simtrade_routes import router as simtrade_router
 from .api.sync_routes import router as sync_router
 from .api.system_prompts_routes import router as system_prompts_router
 from .api.trade_review_routes import router as trade_review_router
@@ -85,7 +84,6 @@ from .api.key_quota import keys_from_env  # noqa: E402
 app.state.api_keys = keys_from_env()
 
 app.include_router(query_router)
-app.include_router(simtrade_router)
 app.include_router(sync_router)
 app.include_router(system_prompts_router)
 app.include_router(dashboard_router)

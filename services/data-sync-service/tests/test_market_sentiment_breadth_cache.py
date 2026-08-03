@@ -12,7 +12,7 @@ def test_intraday_breadth_cache_skips_second_quote_fetch() -> None:
         calls["n"] += 1
         return {"ok": True, "items": [{"pct_chg": "1", "volume": "100", "amount": "1000"}]}
 
-    with patch.object(ms, "fetch_ts_codes", return_value=["000001.SZ"] * 60):
+    with patch.object(ms, "fetch_stock_ts_codes", return_value=["000001.SZ"] * 60):
         with patch.object(ms, "fetch_realtime_quotes", side_effect=_quotes):
             d = date(2026, 6, 18)
             first = ms.fetch_cn_market_breadth_intraday(d)

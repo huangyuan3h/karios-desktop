@@ -138,6 +138,28 @@ def fetch_ts_codes() -> list[str]:
     return [r[0] for r in rows if r and r[0]]
 
 
+CN_STOCK_BOARDS = ("主板", "创业板", "科创板", "北交所")
+
+
+def fetch_stock_ts_codes() -> list[str]:
+    """
+    Return CN A-share stock ts_codes only (excludes ETFs, funds and HK).
+
+    Mirrors the tushare.daily universe used by EOD breadth so intraday counts
+    stay comparable to EOD counts.
+    """
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT ts_code FROM {TABLE_NAME} "
+                f"WHERE market IN {CN_STOCK_BOARDS} AND delist_date IS NULL "
+                f"ORDER BY ts_code"
+            )
+            rows = cur.fetchall()
+    return [r[0] for r in rows if r and r[0]]
+
+
 def fetch_ts_codes_by_market(market: str) -> list[str]:
     """Return ordered ts_codes filtered by market."""
     ensure_table()

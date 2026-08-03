@@ -94,7 +94,7 @@ PYTHONPATH=src alembic current
 ### When changing schema (agent checklist)
 
 1. Add **`alembic/versions/xxxx_describe_change.py`** with `upgrade()` / optional `downgrade()`.
-2. Update matching **`CREATE_SQL` / `CREATE_*_SQL`** in `services/data-sync-service/src/data_sync_service/db/*.py` (and `testback/db.py` if applicable).
+2. Update matching **`CREATE_SQL` / `CREATE_*_SQL`** in `services/data-sync-service/src/data_sync_service/db/*.py`.
 3. Update business code that uses the new columns/tables.
 4. Add or extend tests; run `pytest` (DB tests skip if Postgres unavailable).
 5. Tell the user to run `PYTHONPATH=src alembic upgrade head` locally (or run it in terminal if allowed).

@@ -48,14 +48,6 @@ const StockPage = dynamic(
   () => import('@/components/pages/StockPage').then((mod) => mod.StockPage),
   { loading: LazyPageFallback },
 );
-const BacktestPage = dynamic(
-  () => import('@/components/pages/BacktestPage').then((mod) => mod.BacktestPage),
-  { loading: LazyPageFallback },
-);
-const SimTradePage = dynamic(
-  () => import('@/components/pages/SimTradePage').then((mod) => mod.SimTradePage),
-  { loading: LazyPageFallback },
-);
 
 const PAGE_TITLES: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -69,8 +61,6 @@ const PAGE_TITLES: Record<string, string> = {
   journal: 'Journal',
   screener: 'Screener',
   scheduler: 'Scheduler',
-  backtest: 'Backtest',
-  simtrade: 'Sim Trade',
   settings: 'Settings',
   stock: 'Stock',
 };
@@ -251,10 +241,6 @@ function AppShellInner() {
               <ScreenerPage />
             ) : activePage === 'scheduler' ? (
               <SchedulerPage />
-            ) : activePage === 'backtest' ? (
-              <BacktestPage />
-            ) : activePage === 'simtrade' ? (
-              <SimTradePage />
             ) : activePage === 'index' ? (
               <IndexPage />
             ) : (

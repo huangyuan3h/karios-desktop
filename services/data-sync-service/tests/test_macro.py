@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 from fastapi.testclient import TestClient  # type: ignore[import-not-found]
 
 from data_sync_service.main import app  # type: ignore[import-not-found]
 
 pytestmark = pytest.mark.requires_postgres
+
+
+@pytest.fixture(autouse=True)
+def _non_darwin(monkeypatch):
+    """The darwin guard skips akshare (V8 crash); tests mock akshare instead."""
+    if sys.platform == "darwin":
+        monkeypatch.setattr(sys, "platform", "linux")
 
 def test_get_macro_snapshot_endpoint(monkeypatch) -> None:
     import data_sync_service.api.query_routes as query_routes  # type: ignore[import-not-found]

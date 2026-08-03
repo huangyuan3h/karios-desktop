@@ -244,7 +244,7 @@ export function MarketSentimentCard({
         </div>
         {breadthPanic ? (
           <div className="mt-1 text-[10px] text-red-700">
-            跌停 &ge; {BREADTH_PANIC_DOWN_THRESHOLD.toLocaleString()}：触发红色预警，极度谨慎。
+            下跌 &ge; {BREADTH_PANIC_DOWN_THRESHOLD.toLocaleString()}：触发红色预警，极度谨慎。
           </div>
         ) : null}
       </div>

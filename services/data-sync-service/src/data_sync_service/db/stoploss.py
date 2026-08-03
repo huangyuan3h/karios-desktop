@@ -136,6 +136,30 @@ def upsert_stoploss_batch(rows: list[dict[str, Any]]) -> int:
     return len(values)
 
 
+def delete_stoploss(ts_code: str) -> None:
+    """Delete a stored stoploss row (e.g. position closed -> ratchet resets)."""
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"DELETE FROM {TABLE_NAME} WHERE ts_code = %s", (ts_code,))
+        conn.commit()
+
+
+def delete_stoploss_batch(ts_codes: list[str]) -> int:
+    """Delete stored stoploss rows for multiple ts_codes. Returns deleted count."""
+    codes = [str(c or "").strip() for c in ts_codes]
+    codes = [c for c in codes if c]
+    if not codes:
+        return 0
+    ensure_table()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"DELETE FROM {TABLE_NAME} WHERE ts_code = ANY(%s)", (codes,))
+            count = cur.rowcount
+        conn.commit()
+    return int(count or 0)
+
+
 def compute_effective_stoploss(
     ts_code: str,
     newly_computed: float,

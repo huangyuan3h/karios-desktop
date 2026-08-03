@@ -203,6 +203,14 @@ def test_compute_trendok_batches_stoploss_and_daily_seats() -> None:
             return_value={"600519.SH": {"stop_loss_price": 999.0}},
         ) as stoploss_batch,
         patch("data_sync_service.service.trendok.upsert_stoploss_batch") as upsert_batch,
+        patch("data_sync_service.service.trendok.delete_stoploss_batch") as delete_batch,
+        patch(
+            "data_sync_service.db.watchlist_automation.list_registry",
+            return_value=[
+                {"symbol": "CN:600519", "positionPct": 5.0, "costPrice": 10.0},
+                {"symbol": "CN:000001", "positionPct": 5.0, "costPrice": 20.0},
+            ],
+        ),
     ):
         out = compute_trendok_for_symbols(["CN:600519", "CN:000001"], realtime=False)
 
@@ -212,7 +220,47 @@ def test_compute_trendok_batches_stoploss_and_daily_seats() -> None:
     upsert_rows = upsert_batch.call_args.args[0]
     assert len(upsert_rows) == 1
     assert upsert_rows[0]["ts_code"] == "000001.SZ"
+    delete_batch.assert_not_called()
     assert next(row for row in out if row["symbol"] == "CN:600519")["stopLossPrice"] == 999.0
+
+
+def test_compute_trendok_not_held_resets_stored_stoploss() -> None:
+    """Position closed (positionPct null/0): stored ratchet is ignored and
+    deleted so a future re-entry starts from a fresh stop (no permanent buy lock)."""
+    clear_trendok_cache()
+    bars = {"600519.SH": _trend_bars(start=10.0)}
+    with (
+        patch("data_sync_service.service.trendok.fetch_last_ohlcv_batch", return_value=bars),
+        patch("data_sync_service.service.trendok._build_industry_flow_context", return_value={"ok": False}),
+        patch(
+            "data_sync_service.service.trendok.get_market_regime",
+            return_value={"regime": "Strong", "bias": None, "indexSignals": []},
+        ),
+        patch(
+            "data_sync_service.service.trendok._lookup_stock_basic",
+            return_value=({"600519.SH": "Moutai"}, {"600519.SH": "Food"}),
+        ),
+        patch("data_sync_service.service.trendok._lookup_em_industry_boards", return_value={}),
+        patch("data_sync_service.service.trendok.fetch_summaries_for_codes", return_value={}),
+        patch("data_sync_service.service.trendok.fetch_daily_seats_batch", return_value={}),
+        patch(
+            "data_sync_service.service.trendok.get_stoploss_batch",
+            return_value={"600519.SH": {"stop_loss_price": 999.0}},
+        ),
+        patch("data_sync_service.service.trendok.upsert_stoploss_batch") as upsert_batch,
+        patch("data_sync_service.service.trendok.delete_stoploss_batch") as delete_batch,
+        patch(
+            "data_sync_service.db.watchlist_automation.list_registry",
+            return_value=[{"symbol": "CN:600519", "positionPct": None, "costPrice": None}],
+        ),
+    ):
+        out = compute_trendok_for_symbols(["CN:600519"], realtime=False)
+
+    row = next(r for r in out if r["symbol"] == "CN:600519")
+    assert row["stopLossPrice"] != 999.0
+    assert row["stopLossParts"]["used_stored_higher"] is False
+    upsert_batch.assert_not_called()
+    delete_batch.assert_called_once_with(["600519.SH"])
 
 
 def test_compute_trendok_realtime_flag_separate_cache() -> None:
@@ -310,3 +358,156 @@ def test_resolve_effective_stoploss_upserts_when_computed_is_higher() -> None:
     upsert_batch.assert_called_once_with(
         [{"ts_code": "600519.SH", "stop_loss_price": 40.0, "as_of_date": "2026-03-21"}]
     )
+
+
+def _rise_then_fall_bars(rise: int = 80, fall: int = 20, start: float = 10.0) -> list[tuple[str, str, str, str, str, str]]:
+    """Steady rise then a sustained decline -> EMA5 < EMA20, close < EMA20."""
+    base = date(2026, 1, 1)
+    rows = []
+    for idx in range(rise):
+        close = start + idx * 0.1
+        rows.append(
+            (
+                (base + timedelta(days=idx)).isoformat(),
+                f"{close - 0.04:.3f}",
+                f"{close + 0.08:.3f}",
+                f"{close - 0.08:.3f}",
+                f"{close:.3f}",
+                "100000",
+            )
+        )
+    peak = start + (rise - 1) * 0.1
+    for idx in range(fall):
+        close = peak - (idx + 1) * 0.15
+        rows.append(
+            (
+                (base + timedelta(days=rise + idx)).isoformat(),
+                f"{close + 0.04:.3f}",
+                f"{close + 0.08:.3f}",
+                f"{close - 0.08:.3f}",
+                f"{close:.3f}",
+                "100000",
+            )
+        )
+    return rows
+
+
+def _accelerating_then_small_dip_bars(bars: int = 26, start: float = 10.0) -> list[tuple[str, str, str, str, str, str]]:
+    """Accelerating rise then a 4-bar dip: close stays above EMA20,
+    but the position is slightly underwater vs a cost near the peak."""
+    base = date(2026, 1, 1)
+    rows = []
+    close = start
+    for idx in range(bars):
+        close = close * 1.06
+        rows.append(
+            (
+                (base + timedelta(days=idx)).isoformat(),
+                f"{close * 0.995:.3f}",
+                f"{close * 1.01:.3f}",
+                f"{close * 0.99:.3f}",
+                f"{close:.3f}",
+                "1000000",
+            )
+        )
+    for idx in range(4):
+        close = close * 0.975
+        rows.append(
+            (
+                (base + timedelta(days=bars + idx)).isoformat(),
+                f"{close * 0.995:.3f}",
+                f"{close * 1.01:.3f}",
+                f"{close * 0.99:.3f}",
+                f"{close:.3f}",
+                "1000000",
+            )
+        )
+    return rows
+
+
+def test_compute_trendok_exit_now_displays_current_not_stored() -> None:
+    """exit_now: the actionable stop is the current price (sell at market);
+    a stale higher ratchet value must not be displayed or persisted."""
+    clear_trendok_cache()
+    bars = {"600519.SH": _rise_then_fall_bars()}
+    with (
+        patch("data_sync_service.service.trendok.fetch_last_ohlcv_batch", return_value=bars),
+        patch("data_sync_service.service.trendok._build_industry_flow_context", return_value={"ok": False}),
+        patch(
+            "data_sync_service.service.trendok.get_market_regime",
+            return_value={"regime": "Strong", "bias": None, "indexSignals": []},
+        ),
+        patch(
+            "data_sync_service.service.trendok._lookup_stock_basic",
+            return_value=({"600519.SH": "Moutai"}, {"600519.SH": "Food"}),
+        ),
+        patch("data_sync_service.service.trendok._lookup_em_industry_boards", return_value={}),
+        patch("data_sync_service.service.trendok.fetch_summaries_for_codes", return_value={}),
+        patch("data_sync_service.service.trendok.fetch_daily_seats_batch", return_value={}),
+        patch(
+            "data_sync_service.service.trendok.get_stoploss_batch",
+            return_value={"600519.SH": {"stop_loss_price": 999.0}},
+        ),
+        patch("data_sync_service.service.trendok.upsert_stoploss_batch") as upsert_batch,
+        patch("data_sync_service.service.trendok.delete_stoploss_batch") as delete_batch,
+        patch(
+            "data_sync_service.db.watchlist_automation.list_registry",
+            return_value=[{"symbol": "CN:600519", "positionPct": 5.0, "costPrice": 10.0}],
+        ),
+    ):
+        out = compute_trendok_for_symbols(["CN:600519"], realtime=False)
+
+    row = next(r for r in out if r["symbol"] == "CN:600519")
+    parts = row["stopLossParts"]
+    assert parts["exit_now"] is True
+    current = round(float(bars["600519.SH"][-1][4]), 6)
+    assert row["stopLossPrice"] == current
+    assert parts["final_stop_loss"] == current
+    assert parts["used_stored_higher"] is False
+    upsert_batch.assert_not_called()
+    delete_batch.assert_not_called()
+
+
+def test_compute_trendok_entry_hard_stop_floor_when_held_in_loss() -> None:
+    """Held and slightly underwater: the loss cap binds from ENTRY cost, not
+    from current price, so the stop is raised to cost*(1 - max_loss_pct)."""
+    clear_trendok_cache()
+    bars = {"600519.SH": _accelerating_then_small_dip_bars()}
+    cost_price = 43.0
+    with (
+        patch("data_sync_service.service.trendok.fetch_last_ohlcv_batch", return_value=bars),
+        patch("data_sync_service.service.trendok._build_industry_flow_context", return_value={"ok": False}),
+        patch(
+            "data_sync_service.service.trendok.get_market_regime",
+            return_value={"regime": "Strong", "bias": None, "indexSignals": []},
+        ),
+        patch(
+            "data_sync_service.service.trendok._lookup_stock_basic",
+            return_value=({"600519.SH": "Moutai"}, {"600519.SH": "Food"}),
+        ),
+        patch("data_sync_service.service.trendok._lookup_em_industry_boards", return_value={}),
+        patch("data_sync_service.service.trendok.fetch_summaries_for_codes", return_value={}),
+        patch("data_sync_service.service.trendok.fetch_daily_seats_batch", return_value={}),
+        patch("data_sync_service.service.trendok.get_stoploss_batch", return_value={}),
+        patch("data_sync_service.service.trendok.upsert_stoploss_batch") as upsert_batch,
+        patch("data_sync_service.service.trendok.delete_stoploss_batch") as delete_batch,
+        patch(
+            "data_sync_service.db.watchlist_automation.list_registry",
+            return_value=[{"symbol": "CN:600519", "positionPct": 5.0, "costPrice": cost_price}],
+        ),
+    ):
+        out = compute_trendok_for_symbols(["CN:600519"], realtime=False)
+
+    row = next(r for r in out if r["symbol"] == "CN:600519")
+    parts = row["stopLossParts"]
+    assert parts["exit_now"] is False
+    current = float(bars["600519.SH"][-1][4])
+    assert current < cost_price
+    assert "hard_stop_entry" in parts
+    expected_entry_floor = round(cost_price * (1.0 - parts["max_loss_pct"]), 6)
+    assert parts["hard_stop_entry"] == expected_entry_floor
+    assert parts["hard_stop_current"] < parts["hard_stop_entry"]
+    assert parts["hard_stop"] == parts["hard_stop_entry"]
+    assert row["stopLossPrice"] >= parts["hard_stop_entry"]
+    assert upsert_batch.call_args.args[0][0]["ts_code"] == "600519.SH"
+    delete_batch.assert_not_called()

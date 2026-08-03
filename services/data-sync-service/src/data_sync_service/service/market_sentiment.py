@@ -14,7 +14,7 @@ from data_sync_service.db import get_connection
 from data_sync_service.db.daily import ensure_table as ensure_daily
 from data_sync_service.db.market_sentiment import get_latest_date, list_days, upsert_daily_rows
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
-from data_sync_service.db.stock_basic import fetch_ts_codes
+from data_sync_service.db.stock_basic import fetch_stock_ts_codes
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
 from data_sync_service.service.realtime_quote import (
     fetch_realtime_quotes,
@@ -457,8 +457,7 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
         return cached
 
     ensure_stock_basic()
-    ts_codes_all = fetch_ts_codes()
-    ts_codes = [c for c in ts_codes_all if c.endswith((".SZ", ".SH", ".BJ"))]
+    ts_codes = fetch_stock_ts_codes()
     requested = len(ts_codes)
     if not ts_codes:
         empty = {

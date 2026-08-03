@@ -21,7 +21,12 @@ from data_sync_service.db.industry_fund_flow import (
 from data_sync_service.db.market_sentiment import get_latest_date, list_days
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_eastmoney_industry import lookup_by_ts_codes as lookup_em_industries
-from data_sync_service.db.stoploss import get_stoploss_batch, upsert_stoploss_batch
+from data_sync_service.db.stoploss import (
+    delete_stoploss,
+    delete_stoploss_batch,
+    get_stoploss_batch,
+    upsert_stoploss_batch,
+)
 from data_sync_service.db.top_inst import fetch_daily_seats_batch, fetch_summaries_for_codes
 from data_sync_service.service.industry_fund_flow_read import build_trendok_flow_context_from_rows
 from data_sync_service.service.market_regime import get_market_regime
@@ -1062,9 +1067,63 @@ def compute_trendok_for_symbols(
 
     stored_stoploss_by_code = get_stoploss_batch(ts_codes)
     stoploss_upserts_by_code: dict[str, dict[str, Any]] = {}
+    stoploss_deletes_by_code: set[str] = set()
     alpha_s_symbols = _load_alpha_s_symbols()
 
-    def resolve_stoploss(ts_code: str, newly_computed: float, as_of_date: str | None) -> tuple[float, bool]:
+    # Position context from the watchlist registry: symbol -> (is_held, cost_price).
+    # The ratchet (stop only increases) applies only while a position is HELD;
+    # closing a position resets it so a re-entry starts from a fresh stop.
+    registry_ctx_by_symbol: dict[str, dict[str, Any]] = {}
+    try:
+        from data_sync_service.db.watchlist_automation import list_registry
+
+        for row in list_registry():
+            sym = str(row.get("symbol") or "").strip().upper()
+            if sym:
+                registry_ctx_by_symbol[sym] = row
+    except Exception:
+        pass
+
+    def position_ctx(sym: str) -> tuple[bool, float | None]:
+        row = registry_ctx_by_symbol.get(str(sym or "").upper())
+        pct = row.get("positionPct") if row else None
+        cost = row.get("costPrice") if row else None
+        try:
+            is_held = pct is not None and float(pct) > 0
+        except (TypeError, ValueError):
+            is_held = False
+        if is_held:
+            try:
+                cost_ok = cost is not None and float(cost) > 0
+            except (TypeError, ValueError):
+                cost_ok = False
+            return True, (float(cost) if cost_ok else None)
+        return False, None
+
+    def resolve_stoploss(
+        ts_code: str,
+        newly_computed: float,
+        as_of_date: str | None,
+        *,
+        is_held: bool,
+        use_stored: bool = True,
+    ) -> tuple[float, bool]:
+        """Resolve effective stoploss.
+
+        - ``use_stored=False`` (exit_now): always return the freshly computed
+          value without touching the store.
+        - ``use_stored=True`` and held: monotonic ratchet (max with stored).
+        - ``use_stored=True`` and NOT held: ignore and delete the stored row
+          (position lifecycle reset) so a later re-entry starts fresh.
+        """
+        if not use_stored:
+            return newly_computed, False
+        if not is_held:
+            stored = stored_stoploss_by_code.get(ts_code)
+            if stored is not None and stored.get("stop_loss_price") is not None:
+                stoploss_deletes_by_code.add(ts_code)
+                stored_stoploss_by_code[ts_code] = None
+            return newly_computed, False
         stored = stored_stoploss_by_code.get(ts_code)
         stored_price = stored.get("stop_loss_price") if stored else None
         if stored_price is not None and float(stored_price) >= newly_computed:
@@ -1089,6 +1148,7 @@ def compute_trendok_for_symbols(
         em_industry = by_em_industry.get(ts_code)
         industry_for_flow = em_industry or tushare_industry
         bars = bars_by_code.get(ts_code, [])
+        is_held, cost_price = position_ctx(sym)
         out.append(
             _trendok_one(
                 symbol=sym,
@@ -1106,10 +1166,14 @@ def compute_trendok_for_symbols(
                 index_ema20_down=index_ema20_down,
                 rt_vwap=rt_vwap_by_code.get(ts_code),
                 is_alpha_s=sym in alpha_s_symbols,
+                is_held=is_held,
+                cost_price=cost_price,
             )
         )
     if stoploss_upserts_by_code:
         upsert_stoploss_batch(list(stoploss_upserts_by_code.values()))
+    if stoploss_deletes_by_code:
+        delete_stoploss_batch(sorted(stoploss_deletes_by_code))
     _trendok_cache[cache_key] = out
     return _finalize_trendok_response(out)
 
@@ -1119,12 +1183,33 @@ def _resolve_effective_stoploss(
     newly_computed: float,
     as_of_date: str | None,
     resolver: Any | None,
+    *,
+    is_held: bool = True,
+    use_stored: bool = True,
 ) -> tuple[float, bool]:
     if resolver is not None:
-        return resolver(ts_code, newly_computed, as_of_date)
+        return resolver(ts_code, newly_computed, as_of_date, is_held=is_held, use_stored=use_stored)
+    if not use_stored:
+        return newly_computed, False
     stored = get_stoploss_batch([ts_code]).get(ts_code)
     stored_price = stored.get("stop_loss_price") if stored else None
-    if stored_price is not None and float(stored_price) >= newly_computed:
+    if stored_price is None:
+        if not is_held:
+            return newly_computed, False
+        upsert_stoploss_batch(
+            [
+                {
+                    "ts_code": ts_code,
+                    "stop_loss_price": newly_computed,
+                    "as_of_date": as_of_date,
+                }
+            ]
+        )
+        return newly_computed, False
+    if not is_held:
+        delete_stoploss(ts_code)
+        return newly_computed, False
+    if float(stored_price) >= newly_computed:
         return float(stored_price), True
     upsert_stoploss_batch(
         [
@@ -1155,6 +1240,8 @@ def _trendok_one(
     index_ema20_down: bool = False,
     rt_vwap: float | None = None,
     is_alpha_s: bool = False,
+    is_held: bool = False,
+    cost_price: float | None = None,
 ) -> dict[str, Any]:
     """
     Ported from quant-service `_market_stock_trendok_one` with the same checks/score behavior.
@@ -1518,12 +1605,19 @@ def _trendok_one(
                 stop_parts["warn_display"] = "警告：MACD柱缩小但未转负，建议至少卖出一半"
 
             if exit_now:
-                # Immediate exit: stop at current price.
+                # Immediate exit: stop at current price. Display the actionable
+                # level (market exit) — do NOT ratchet against a stored value,
+                # which would show a stale price that can no longer be filled.
                 computed_stop = round(current, 6)
                 ts_code = _symbol_to_ts_code(symbol)
                 if ts_code:
                     effective_stop, used_stored = _resolve_effective_stoploss(
-                        ts_code[2], computed_stop, res.get("asOfDate"), resolve_stoploss
+                        ts_code[2],
+                        computed_stop,
+                        res.get("asOfDate"),
+                        resolve_stoploss,
+                        is_held=is_held,
+                        use_stored=False,
                     )
                     res["stopLossPrice"] = effective_stop
                     stop_parts["final_stop_loss"] = effective_stop
@@ -1576,7 +1670,16 @@ def _trendok_one(
                     res["missingData"].append("atr14_unavailable")
                 else:
                     buffer = atr_k * atr14
-                    hard_stop = current * (1.0 - max_loss_pct)
+                    # Loss cap from CURRENT price (profit-locking / default).
+                    hard_stop_current = current * (1.0 - max_loss_pct)
+                    hard_stop = hard_stop_current
+                    if is_held and cost_price is not None:
+                        # Loss cap from ENTRY cost: guarantees the drawdown from
+                        # cost never exceeds max_loss_pct, even after a rally.
+                        hard_stop_entry = cost_price * (1.0 - max_loss_pct)
+                        hard_stop = max(hard_stop_current, hard_stop_entry)
+                        stop_parts["hard_stop_entry"] = round(hard_stop_entry, 6)
+                    stop_parts["hard_stop_current"] = round(hard_stop_current, 6)
                     stop_loss_support = final_support - buffer
                     final_stop = max(stop_loss_support, hard_stop)
                     final_stop = min(final_stop, current)  # never above current
@@ -1589,7 +1692,11 @@ def _trendok_one(
                     ts_code_tuple = _symbol_to_ts_code(symbol)
                     if ts_code_tuple:
                         effective_stop, used_stored = _resolve_effective_stoploss(
-                            ts_code_tuple[2], computed_stop, res.get("asOfDate"), resolve_stoploss
+                            ts_code_tuple[2],
+                            computed_stop,
+                            res.get("asOfDate"),
+                            resolve_stoploss,
+                            is_held=is_held,
                         )
                         stop_parts["final_stop_loss"] = effective_stop
                         stop_parts["used_stored_higher"] = used_stored

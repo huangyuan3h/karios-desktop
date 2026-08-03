@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 def test_fetch_cn_market_breadth_intraday_aggregates(monkeypatch) -> None:
     import data_sync_service.service.market_sentiment as ms  # type: ignore[import-not-found]
 
-    monkeypatch.setattr(ms, "fetch_ts_codes", lambda: ["000001.SZ", "000002.SZ"])
+    monkeypatch.setattr(ms, "fetch_stock_ts_codes", lambda: ["000001.SZ", "000002.SZ"])
     monkeypatch.setattr(
         ms,
         "fetch_realtime_quotes",

@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import sys
 from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _non_darwin(monkeypatch):
+    """The darwin guard skips akshare (V8 crash); tests mock akshare instead."""
+    if sys.platform == "darwin":
+        monkeypatch.setattr(sys, "platform", "linux")
 
 
 def test_ts_code_to_sina_padded() -> None:

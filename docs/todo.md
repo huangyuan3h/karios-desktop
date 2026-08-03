@@ -31,7 +31,7 @@
 | §1 定位与形态 | — | Tauri vs 固定 URL 评估 | — |
 | §2 收益 / 交易 | TIP-009 alpha 映射抽检 / TIP-011 开火归因 | — | TIP-001~008 + V6.2/3 已沉淀；hover tooltip + Dashboard 精简 done 2026-08-01（§15）；漏斗 N 日表格 done 2026-08-02（OPT-058） |
 | §3 API 开放 | — | API Key 配额 + 限流 | ✅ 已归档 → `archive/2026-08-01-opt-045-v1-api-surface.md`（OPT-045/046/047 整圈）|
-| §4 工程与部署 | DB 本地备份自动化（新发现 2026-08-02） | 隐藏页 & legacy 清理（新发现 2026-08-02） | ✅ Tunnel 脚本骨架 OPT-048；DB 决策 OPT-053；Docker 一键 OPT-056；Alembic 纪律见 AGENTS.md |
+| §4 工程与部署 | DB 本地备份自动化（新发现 2026-08-02） | — | ✅ Tunnel 脚本骨架 OPT-048；DB 决策 OPT-053；Docker 一键 OPT-056；Alembic 纪律见 AGENTS.md；隐藏页 & legacy 清理 done 2026-08-03（OPT-059） |
 | §5 数据源 / 浏览器 | — | 付费 API 矩阵 | ✅ TV Scanner API 作为唯一池子（2026-08-01）；ego-lite/Chrome CDP 仅作 fallback；数据源审计 done 2026-08-01 |
 | §6 新闻 / 研报 | — | News 质量评估（老婆反馈不如财经新闻准） | `OPT-037/038/039` News Query 并行化 |
 | §7 多市场 | — | 美股 / 加拿大时区 | `OPT-041/042/043/044` HK + ETF 已通 |
@@ -115,7 +115,7 @@
 - **[P2] Tauri 构建降级**：保留但停止维护 desktop 形态的 bug 修复（与 §2 决策一致）。
 - **[P2] Alembic 迁移纪律**：见 `AGENTS.md`，所有 schema 改必须经过 Alembic（已建立 baseline）。
 - **[P0] DB 本地备份自动化**（2026-08-02 审查新发现）：`OPT-053` 已拍板"备份 3 副本策略"，但仓库里**没有任何 backup 脚本 / cron**——"换电脑也能跑"痛点（§13）的数据侧还是空的。落地 pg_dump 日备份 + 本地/异地双副本 + 恢复演练（0.5-1 天）。
-- **[P1] 隐藏页面与 legacy 清理**（2026-08-02 审查新发现）：`SimTradePage`（1017 行）+ `/simtrade` API、`BacktestPage`（664 行）+ `testback/` 旧回测框架仍注册在 `main.py` 路由——nav 已注释隐藏但代码/API 仍在维护面内。退役或标 deprecated（0.5-1 天）。
+- **[P1] 隐藏页面与 legacy 清理**：✅ **[done] 2026-08-03** → [`archive/2026-08-03-opt-059-legacy-cleanup.md`](./archive/2026-08-03-opt-059-legacy-cleanup.md)（OPT-059）：`SimTradePage`（1017 行）+ `/simtrade` API、`BacktestPage`（664 行）+ `testback/` 旧回测框架全部删除（代码/路由/测试/Alembic 0017 删表）；§8 重启回测时不复用旧框架。
 
 ---
 
@@ -260,6 +260,7 @@
 
 | 日期 | 事件 | 归档位置 |
 |------|------|----------|
+| 2026-08-03 | **OPT-059 / §12 #19**：隐藏页 / legacy 清理——SimTradePage + `/simtrade` API、BacktestPage + `/backtest/*`、`testback/` 框架整体退役删除；Alembic `0017_drop_backtest_tables` 删表（2+132 行旧数据）；baseline/测试/文档同步 | [`archive/2026-08-03-opt-059-legacy-cleanup.md`](./archive/2026-08-03-opt-059-legacy-cleanup.md)（1247 后端 + 429 前端测试绿；唯一失败为既有 trendok flaky，stash 验证与本次无关）|
 | 2026-08-01 | doc 大扫除：3 个旧模块文档迁移至 `archive/modules-legacy/`（与 V6.x 规则脱节） | `archive/modules-legacy/README.md` |
 | 2026-08-01 | OPT-045 Phase A：4 个稳定发现性 endpoint + API Key 鉴权 + 17 单测全绿 | 见 `optimization-checklist.md` OPT-045 |
 | 2026-08-01 | OPT-046：3 个只读业务 endpoint（/v1/market/snapshot + /v1/watchlist/items + /v1/decision-journal/query）+ 18 单测全绿 | 见 `optimization-checklist.md` OPT-046 |
@@ -338,7 +339,7 @@
 | 16 | **Watchlist table hover tooltip** | §2 收益 | 0.5 天 | — | ✅ **done 2026-08-01** → `lib/watchlist-column-help.tsx` + `ColumnHeader`（§15 反馈 #1）|
 | 17 | **Dashboard 精简 + 参数说明** | §2 收益 | 1 天 | — | ✅ **done 2026-08-01** → `lib/dashboard-card-help.tsx` + `DashboardHeader`（§15 反馈 #3）|
 | 18 | **DB 本地备份自动化** | §4 工程 | 0.5-1 天 | OPT-053 决策已立 | 新发现 2026-08-02：pg_dump 日备 + 本地/异地双副本 + 恢复演练 |
-| 19 | **隐藏页面 / legacy 清理** | §4 工程 | 0.5-1 天 | — | 新发现 2026-08-02：SimTradePage + /simtrade、BacktestPage + testback/ 仍注册路由 |
+| 19 | **隐藏页面 / legacy 清理** | §4 工程 | 0.5-1 天（实际 2h） | — | ✅ **done 2026-08-03** → [`archive/2026-08-03-opt-059-legacy-cleanup.md`](./archive/2026-08-03-opt-059-legacy-cleanup.md)（OPT-059）；SimTradePage + /simtrade、BacktestPage + testback/ 全删（含 Alembic 0017 删表）；1247 后端 + 429 前端测试绿，唯一失败为既有 trendok flaky |
 | 20 | **漏斗 N 日转化率表格** | §3 收益 | 0.5 天 | TIP-002 埋点已就绪 | ✅ **done 2026-08-02** → [`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)；`GET /watchlist/automation/runs` + FunnelHistoryTable 挂 WatchlistPage |
 | 21 | **Paper-trading v0.1 关闭条件** | §8 回测 | 1 天 | OPT-049 | ✅ **done 2026-08-02** → 同上；target_hit / score_floor / pool_exit 补齐，fail-open 纪律 |
 

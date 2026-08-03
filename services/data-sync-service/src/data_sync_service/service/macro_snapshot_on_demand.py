@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -103,6 +104,10 @@ def _fetch_hstech_via_sina() -> dict[str, Any] | None:
     Reliable in regions where yfinance ``^HSTECH`` is IP rate-limited, and the
     same Sina feed that powers HK realtime quotes (realtime_quote.py).
     """
+    # AkShare's Sina index decoder is backed by mini_racer (V8), which can
+    # crash the whole process (FATAL in libmini_racer) on macOS.
+    if sys.platform == "darwin":
+        return None
     try:
         import akshare as ak  # type: ignore[import-not-found]
 
