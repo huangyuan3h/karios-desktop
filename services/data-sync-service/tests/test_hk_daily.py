@@ -55,15 +55,18 @@ def test_sync_hk_daily_resume_from_last_ts_code(monkeypatch) -> None:
     stub = type("S", (), {"sync_hk_daily_for_ts_code_yf": staticmethod(fake_yf)})
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_yf", stub)
 
-    # akshare must return 0 rows so the chain falls through to yfinance
+    # tencent must return 0 rows so the chain falls through to yfinance
     # (otherwise a real network fetch on a fresh DB short-circuits the test).
-    import data_sync_service.service.hk_daily_ak as ak_module
-
-    monkeypatch.setattr(
-        ak_module,
-        "sync_hk_daily_for_ts_code_ak",
-        lambda tc: {"ok": True, "updated": 0, "skipped": True, "ts_code": tc, "source": "akshare"},
+    tx_stub = type(
+        "T",
+        (),
+        {
+            "sync_hk_daily_for_ts_code_tx": staticmethod(
+                lambda tc: {"ok": True, "updated": 0, "skipped": True, "ts_code": tc, "source": "tencent"}
+            )
+        },
     )
+    monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
 
     monkeypatch.setattr(
         hk_daily,
@@ -107,14 +110,14 @@ def test_sync_hk_daily_continues_after_single_ticker_failure(monkeypatch) -> Non
     monkeypatch.setattr(hk_daily, "get_today_run", lambda _job: None)
     monkeypatch.setattr(hk_daily.time, "sleep", lambda _s: None)
 
-    def fake_yf(tc):
+    def fake_tx(tc):
         if tc == "BAD.HK":
-            raise RuntimeError("yfinance network error")
+            raise RuntimeError("tencent network error")
         return {"ok": True, "updated": 0, "ts_code": tc}
 
     import sys
-    stub = type("S", (), {"sync_hk_daily_for_ts_code_yf": staticmethod(fake_yf)})
-    monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_yf", stub)
+    tx_stub = type("T", (), {"sync_hk_daily_for_ts_code_tx": staticmethod(fake_tx)})
+    monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
 
     monkeypatch.setattr(hk_daily, "_tushare_sync_one", lambda tc: {"ok": True, "updated": 0})
     monkeypatch.setattr(hk_daily, "insert_record", lambda **_kw: None)
@@ -142,9 +145,8 @@ def test_sync_hk_daily_status_endpoint(monkeypatch) -> None:
 
 
 def test_sync_hk_daily_full_priority_chain(monkeypatch) -> None:
-    """When akshare returns new bars, yfinance and tushare must NOT be called."""
+    """When tencent returns new bars, akshare/yfinance/tushare must NOT be called."""
     import data_sync_service.service.hk_daily as hk_daily
-    import data_sync_service.service.hk_daily_ak as ak_module
 
     monkeypatch.setattr(
         hk_daily,
@@ -155,11 +157,13 @@ def test_sync_hk_daily_full_priority_chain(monkeypatch) -> None:
     monkeypatch.setattr(hk_daily.time, "sleep", lambda _s: None)
     monkeypatch.setattr(hk_daily, "insert_record", lambda **_kw: None)
 
-    monkeypatch.setattr(
-        ak_module,
-        "sync_hk_daily_for_ts_code_ak",
-        lambda tc: {"ok": True, "updated": 3, "ts_code": tc, "source": "akshare"},
+    import sys
+    tx_stub = type(
+        "T",
+        (),
+        {"sync_hk_daily_for_ts_code_tx": staticmethod(lambda tc: {"ok": True, "updated": 3, "ts_code": tc, "source": "tencent"})},
     )
+    monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
 
     yf_calls: list[str] = []
     ts_calls: list[str] = []
@@ -173,21 +177,19 @@ def test_sync_hk_daily_full_priority_chain(monkeypatch) -> None:
         yf_calls.append(tc)
         return {"ok": True, "updated": 0, "ts_code": tc, "source": "yfinance"}
 
-    import sys
     stub = type("S", (), {"sync_hk_daily_for_ts_code_yf": staticmethod(fake_yf)})
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_yf", stub)
 
     result = hk_daily.sync_hk_daily_full()
     assert result["ok"] is True
-    assert result["sources"] == {"akshare": 1, "yfinance": 0, "tushare": 0}
+    assert result["sources"] == {"tencent": 1, "akshare": 0, "yfinance": 0, "tushare": 0}
     assert yf_calls == []
     assert ts_calls == []
 
 
-def test_sync_hk_daily_full_falls_back_to_yfinance_when_akshare_empty(monkeypatch) -> None:
-    """akshare returns 0 rows → yfinance tries next → if yfinance gives rows, tushare must NOT be called."""
+def test_sync_hk_daily_full_falls_back_to_yfinance_when_tencent_empty(monkeypatch) -> None:
+    """tencent returns 0 rows → akshare (darwin: skipped) → yfinance tries next → if yfinance gives rows, tushare must NOT be called."""
     import data_sync_service.service.hk_daily as hk_daily
-    import data_sync_service.service.hk_daily_ak as ak_module
 
     monkeypatch.setattr(
         hk_daily, "fetch_ts_codes_by_market", lambda _m: ["00700.HK"]
@@ -196,18 +198,19 @@ def test_sync_hk_daily_full_falls_back_to_yfinance_when_akshare_empty(monkeypatc
     monkeypatch.setattr(hk_daily.time, "sleep", lambda _s: None)
     monkeypatch.setattr(hk_daily, "insert_record", lambda **_kw: None)
 
-    monkeypatch.setattr(
-        ak_module,
-        "sync_hk_daily_for_ts_code_ak",
-        lambda tc: {"ok": True, "updated": 0, "skipped": True, "ts_code": tc, "source": "akshare"},
+    import sys
+    tx_stub = type(
+        "T",
+        (),
+        {"sync_hk_daily_for_ts_code_tx": staticmethod(lambda tc: {"ok": True, "updated": 0, "skipped": True, "ts_code": tc, "source": "tencent"})},
     )
+    monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
 
     ts_calls: list[str] = []
 
     def fake_yf(tc):
         return {"ok": True, "updated": 2, "ts_code": tc, "source": "yfinance"}
 
-    import sys
     stub = type("S", (), {"sync_hk_daily_for_ts_code_yf": staticmethod(fake_yf)})
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_yf", stub)
 
@@ -219,14 +222,13 @@ def test_sync_hk_daily_full_falls_back_to_yfinance_when_akshare_empty(monkeypatc
 
     result = hk_daily.sync_hk_daily_full()
     assert result["ok"] is True
-    assert result["sources"] == {"akshare": 0, "yfinance": 1, "tushare": 0}
+    assert result["sources"] == {"tencent": 0, "akshare": 0, "yfinance": 1, "tushare": 0}
     assert ts_calls == []
 
 
-def test_sync_hk_daily_full_falls_back_to_tushare_when_akshare_and_yf_empty(monkeypatch) -> None:
-    """akshare and yfinance return 0 → tushare is called as last resort."""
+def test_sync_hk_daily_full_falls_back_to_tushare_when_tencent_and_yf_empty(monkeypatch) -> None:
+    """tencent and yfinance return 0 → tushare is called as last resort."""
     import data_sync_service.service.hk_daily as hk_daily
-    import data_sync_service.service.hk_daily_ak as ak_module
 
     monkeypatch.setattr(
         hk_daily, "fetch_ts_codes_by_market", lambda _m: ["00700.HK"]
@@ -235,16 +237,17 @@ def test_sync_hk_daily_full_falls_back_to_tushare_when_akshare_and_yf_empty(monk
     monkeypatch.setattr(hk_daily.time, "sleep", lambda _s: None)
     monkeypatch.setattr(hk_daily, "insert_record", lambda **_kw: None)
 
-    monkeypatch.setattr(
-        ak_module,
-        "sync_hk_daily_for_ts_code_ak",
-        lambda tc: {"ok": True, "updated": 0, "skipped": True, "ts_code": tc, "source": "akshare"},
+    import sys
+    tx_stub = type(
+        "T",
+        (),
+        {"sync_hk_daily_for_ts_code_tx": staticmethod(lambda tc: {"ok": True, "updated": 0, "skipped": True, "ts_code": tc, "source": "tencent"})},
     )
+    monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
 
     def fake_yf(tc):
         return {"ok": True, "updated": 0, "ts_code": tc, "source": "yfinance"}
 
-    import sys
     stub = type("S", (), {"sync_hk_daily_for_ts_code_yf": staticmethod(fake_yf)})
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_yf", stub)
 
@@ -257,7 +260,7 @@ def test_sync_hk_daily_full_falls_back_to_tushare_when_akshare_and_yf_empty(monk
 
     result = hk_daily.sync_hk_daily_full()
     assert result["ok"] is True
-    assert result["sources"] == {"akshare": 0, "yfinance": 0, "tushare": 1}
+    assert result["sources"] == {"tencent": 0, "akshare": 0, "yfinance": 0, "tushare": 1}
     assert ts_calls == ["00700.HK"]
 
 
