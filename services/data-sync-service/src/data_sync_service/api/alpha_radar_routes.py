@@ -23,6 +23,7 @@ from data_sync_service.service.alpha_radar_pipeline import (
     run_alpha_radar_pipeline,
     run_alpha_radar_process,
 )
+from data_sync_service.service.alpha_radar_qa import get_auto_qa_stats
 from data_sync_service.service.alpha_radar_process import (
     process_document,
     process_pending_documents,
@@ -113,6 +114,23 @@ def generate_daily(body: dict | None = None):
 def catalyst_stocks(limit: int = 50, maxAgeDays: int | None = None):
     ensure_tables()
     return list_catalyst_stocks(limit=limit, max_age_days=maxAgeDays)
+
+
+@router.get("/auto-qa-stats")
+def auto_qa_stats(sinceDays: int = 7, limit: int = 20):
+    """Auto-QA snapshot for downstream AI agents (Dashboard Copy markdown).
+
+    Two sections:
+      - ``recentPenalties``: per-trend penalty entries — wrong-industry
+        mappings surfaced by the data-driven theme→industry map
+        (TIP-009 signal #1).
+      - ``lowWinRateThemes``: macro themes whose paper-trade win-rate over
+        the past ``lookbackDays`` (default 30) falls below the floor.
+
+    No write side effects; safe to call from Copy-all or external AI agent.
+    """
+    ensure_tables()
+    return get_auto_qa_stats(since_days=sinceDays, limit=limit)
 
 
 @router.get("/trends")

@@ -29,7 +29,7 @@
 | 领域 | 在做（P0） | 待办（P1-P4） | 完成归档 |
 |------|------------|---------------|----------|
 | §1 定位与形态 | — | — | ✅ Tauri 降级 done 2026-08-04（OPT-060 / §12 #11）|
-| §2 收益 / 交易 | TIP-009 alpha 映射抽检 / TIP-011 开火归因 | — | TIP-001~008 + V6.2/3 已沉淀；hover tooltip + Dashboard 精简 done 2026-08-01（§15）；漏斗 N 日表格 done 2026-08-02（OPT-058） |
+| §2 收益 / 交易 | TIP-011 开火归因 | — | TIP-001~009 + V6.2/3 已沉淀；hover tooltip + Dashboard 精简 done 2026-08-01（§15）；漏斗 N 日表格 done 2026-08-02（OPT-058）；**TIP-009 Alpha 映射自动 QA done 2026-08-04**（数据驱动 5 信号 · 用户零操作）|
 | §3 API 开放 | — | API Key 配额 + 限流 | ✅ 已归档 → `archive/2026-08-01-opt-045-v1-api-surface.md`（OPT-045/046/047 整圈）|
 | §4 工程与部署 | — | — | ✅ Tunnel 脚本骨架 OPT-048；DB 决策 OPT-053；Docker 一键 OPT-056；隐藏页 & legacy 清理 done 2026-08-03（OPT-059）；**DB 本地备份 + 跨机迁移包 done 2026-08-04（OPT-061 / §12 #18）** |
 | §5 数据源 / 浏览器 | — | 付费 API 矩阵 | ✅ TV Scanner API 作为唯一池子（2026-08-01）；ego-lite/Chrome CDP 仅作 fallback；数据源审计 done 2026-08-01 |
@@ -65,7 +65,7 @@
 - **[P1] 研报/新闻 α 来源**：见 §6。
 - **[P1] 卫星仓上限 / 仓位管理复核**：当前 15% 单票 + 30% 板块 + 袖子上限体系是否仍合理（参考 §13 `positionPct` 复杂度）。
 - **[P2] 开火来源归因（TV/Alpha/手动）**：`TIP-011` 已列未做 → 直接挂这里追踪。
-- **[P2] Alpha 映射质量抽检**：`TIP-009`。
+- **[P2] Alpha 映射质量抽检**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md`](./archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md)（TIP-009 · 5 信号自动 QA · 用户零操作；theme_industry_map 从历史 alpha_radar_trends 数据驱动学，penalty 应用到 compute_alpha_additions，Copy markdown 末尾暴露给外部 AI agent）。
 
 ---
 
@@ -89,7 +89,7 @@
   - 详细规范见 [`docs/designs/api-contract.md`](./designs/api-contract.md)
 - **[P1] API Key 配额管理**：多 Key、scope（read-only / write-journal）、限流、审计日志。
 - **[P1] 人类可读 API 文档**：`docs/api/` Markdown + FastAPI Swagger UI（**自动从 OpenAPI 生成，不手写**）
-- **[P2] MCP server 暴露**：把核心 endpoint 做成 MCP 工具，能被 Claude Desktop/Cursor 直接调（与 #1 是同一目标的另一种标准化形式）。
+- **[P2] MCP server 暴露**：❌ **[cancelled] 2026-08-04** —— 用户确认 AI 助手为自写 Python/Node agent（`docs/integrations/ai-agent-cookbook.md §7` 风格），`/v1/*` + cookbook 已 100% 覆盖；MCP 主要价值（Claude Desktop / Cursor UI 内工具自动发现）不命中。MCP 是另一层抽象，对自写 agent 零增量价值。后续如需启用 Claude Desktop / Cursor 内置 AI 直调，按本节原描述单独起 OPT。
 - ❌ **不在 Karios 范围**（明确分工）：
   - Telegram Bot / 推送 / 主动日报代理 → **外部 AI 助手做**，通过 `/v1/*` 拉数据
   - 自然语言决策代理 / 自动下单 → **外部 AI 助手做**
@@ -281,6 +281,7 @@
 | 2026-07-29 | HK + ETF 闸门全打通（OPT-041~044） | 见 `optimization-checklist.md` |
 | 2026-08-01 | OPT-056 / §12 #7：Docker 一键起 + UPS 自动恢复（3 Dockerfile + 4 compose service + 6 脚本 + setup doc + 57 tests）| [`archive/2026-08-01-opt-056-docker-one-click.md`](./archive/2026-08-01-opt-056-docker-one-click.md)（脚本骨架完整，端到端实跑需用户跑 `scripts/docker-up.sh --migrate`）|
 | 2026-08-02 | **OPT-058 / §12 #20+#21**：漏斗 N 日表格（TIP-002 收尾：`GET /watchlist/automation/runs` + FunnelHistoryTable）+ Paper-trading v0.1 关闭条件（target_hit / score_floor / pool_exit，fail-open 纪律）| [`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)（后端 50 相关测试 + 前端 5 新测试全绿）|
+| 2026-08-04 | **TIP-009 / §3 P2**：Alpha 映射质量抽检 + 错映射惩罚（数据驱动 · 用户零操作版本）——5 信号自动 QA（行业不匹配 / 历史胜率低 / 名称歧义 / 板块资金流背离 / 个股资金流背离）；theme→industry 映射从历史 alpha_radar_trends 自动聚类（90d 数据 → 11 主题 / 季度跑脚本更新）；penalty 应用到 `compute_alpha_additions` 的 catalystScore；Dashboard Copy markdown 末尾新 2 section（⚠ Mapping warnings + Theme historical win-rate）喂外部 AI agent 决策；新增 `GET /api/alpha-radar/auto-qa-stats` | [`archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md`](./archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md)（1274 后端 + 440 前端全绿；用户日常仍是 Sync + Copy，0 增量操作）|
 | 2026-08-01 | OPT-057 / §12 #8.5：TV Capture 三轨架构（Scanner API + ego-lite + Chrome fallback）+ 新建 screener 模板化 UI + 5 模板 live API 验证通过 + capture 流程端到端走通 | [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)（47 新单测 + 1055 全绿；Scanner API filter 必须用数组格式 `[{left,op,right}]`；HK `exchange=HKEX`，US `exchange∈[NASDAQ,NYSE,AMEX]`；**最终决策**：TV Scanner API 池子基本够用，ego-lite/Chrome CDP 仅作 fallback）|
 
 ---
@@ -335,7 +336,7 @@
 | 10 | **DB 走向决策文档** | §4 工程 | 0.5 天 | — | ✅ **done 2026-08-01** → [`designs/db-direction-2026-08.md`](./designs/db-direction-2026-08.md)（不进 archive——是未拍板后的真值）；5 选项横向对比 + 备份 cron 策略 + 6 触发条件（半年期复审）+ 已知风险；`freelancer-arch.md` + `cloud-deployment-options.md` 链到本文档 |
 | 11 | **形态迁移（Tauri 降级）** | §2 定位 | 1 天 | — | 长期减少维护面 | ✅ **done 2026-08-04** → [`archive/2026-08-04-opt-060-tauri-deprecation.md`](./archive/2026-08-04-opt-060-tauri-deprecation.md)（OPT-060）；根 + apps/desktop-ui 的 tauri scripts/deps/concurrently 全删；`src-tauri/` + sidecar build 脚本按 "保留 build 配置" 不动；6 新单测全绿 |
 | 12 | **BacktestPage 重写**（基于 paper 数据） | §8 回测 | 3-5 天 | paper-trading 有 N 日数据 | 仅作参数敏感度工具，不作发布依据 |
-| 13 | **MCP server 暴露** | §3 API | 1-2 天 | #1 完成 | Cursor / Claude Desktop 直接调（另一种标准化形式） |
+| 13 | **MCP server 暴露** | §3 API | 1-2 天 | #1 完成 | Cursor / Claude Desktop 直接调（另一种标准化形式） | ❌ **cancelled 2026-08-04** —— AI 助手为自写 agent，`/v1/*` + cookbook 已够；§3 P2 同条标 cancelled |
 | 14 | **美股 symbol 闸门** | §7 多市场 | 3-5 天 | 加拿大规划启动 | 远期触发 |
 | 15 | **加拿大税务/账户模型** | §7 多市场 | 远期 | — | 远景 |
 | 16 | **Watchlist table hover tooltip** | §2 收益 | 0.5 天 | — | ✅ **done 2026-08-01** → `lib/watchlist-column-help.tsx` + `ColumnHeader`（§15 反馈 #1）|

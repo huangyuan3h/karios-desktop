@@ -4,11 +4,13 @@ import type { QueryClient } from '@tanstack/react-query';
 import { apiGetJson } from '@/lib/api/client';
 import type { TrendOkResult } from '@/lib/api/types';
 import {
+  buildAutoQaMarkdown,
   buildCatalystPurgeMap,
   buildCatalystStocksMarkdown,
   buildAlphaRadarTrendsMarkdown,
   DEFAULT_CATALYST_MAX_AGE_DAYS,
   fetchAlphaRadarTrendsForCopy,
+  fetchAutoQaStats,
   fetchCatalystStocks,
   normalizeCatalystSymbol,
   type CatalystCopyContext,
@@ -1081,6 +1083,9 @@ export async function buildDashboardCopyAllMarkdown(
         formatSinceLastCopyMarkdown([], { lastAt: readLastCopyAt() }),
       ),
     ]);
+  const autoQaMd = buildAutoQaMarkdown(
+    await fetchAutoQaStats(DATA_SYNC_BASE_URL, 7, 20),
+  );
   const attentionMd = execBundle.attentionMd;
   const condOrderMd = formatCondOrderDraftMarkdown(execBundle.cards, {
     heading: '##',
@@ -1162,6 +1167,10 @@ export async function buildDashboardCopyAllMarkdown(
   lines.push('');
   lines.push(alphaTrendsMd.trim());
   lines.push('');
+  if (autoQaMd) {
+    lines.push(autoQaMd.trim());
+    lines.push('');
+  }
   lines.push(catalystMd.trim());
   lines.push('');
   lines.push(watchlistMd.trim());

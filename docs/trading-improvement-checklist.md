@@ -486,37 +486,54 @@ Scheduler / Watchlist 摘要只有 `−N screener +X alpha +Y`，缺少拒绝原
 
 ### TIP-009：Alpha 映射质量抽检与错映射惩罚
 
-**状态**：[ ]  
-**完成日期**：  
-**备注 / PR**：
+**状态**：[x]  
+**完成日期**：2026-08-04  
+**备注 / PR**：[`archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md`](../../archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md)
 
 #### 问题
 
-LLM / fallback 映射错龙头 → 盯错票；自动化会把错票送进池。
+LLM / fallback 映射错龙头 → 盯错票；自动化会把错票送进池。**用户没时间做人工抽检**——重做方案：从已有数据全自动检测。
 
 #### 目标
 
-- 周频抽检：随机 N 条 S 级趋势，人工或半自动核对 `cnSymbols`
-- 可选：低 confidence 不参与 `compute_alpha_additions`
-- 可选：用户「映射错误」标记 → 降低该 document/symbol 权重
+5 类自动 penalty 信号（数据驱动 / 无人工反馈）：
+1. 行业不匹配（vs `data/seed/theme_industry_map.json`）— 0.6
+2. 历史胜率低（paper_trades 30D < 30%）— 0.5
+3. 名称歧义匹配 — 0.4
+4. 板块资金流背离 — 0.3
+5. 个股资金流背离 — 0.2
+
+penalty 应用到 `compute_alpha_additions` 的 catalystScore 上；最终自动 QA 警告 + 主题胜率通过 Dashboard "Copy" markdown 暴露给外部 AI agent 决策。
 
 #### 文件范围
 
 | 层 | 文件 |
 |----|------|
-| BE | `alpha_radar_symbol_resolve.py`、`alpha_radar_catalyst.py` |
-| UI | Alpha Incubator 页 |
-| 文档 | `docs/modules/alpha-incubator.md` |
+| Script | `scripts/build_theme_industry_map.py`（数据驱动种子）|
+| Service（new）| `service/alpha_radar_qa.py`（5 信号综合 + 自动 QA stats）|
+| Service | `service/alpha_radar_catalyst.py`（输出加 autoQaPenalty 字段）|
+| Service | `service/alpha_radar_symbol_resolve.py`（_lookup_by_name 歧义检测）|
+| Service | `service/watchlist_automation.py`（compute_alpha_additions 应用 penalty）|
+| API | `api/alpha_radar_routes.py`（新增 `GET /api/alpha-radar/auto-qa-stats`）|
+| UI | `apps/desktop-ui/src/lib/alpha-radar-catalyst.ts`（buildAutoQaMarkdown + formatCatalystStockSummaryLine QA 标）|
+| UI | `apps/desktop-ui/src/lib/dashboard-export.ts`（Copy markdown 末尾加 2 section）|
+| Docs | `docs/modules/alpha-incubator.md` §auto-qa-rules |
+| Tests | `tests/test_alpha_radar_qa.py`（12 单测）+ `alpha-radar-catalyst.test.ts`（+5 单测）|
+| Seed | `services/data-sync-service/data/seed/theme_industry_map.json`（季度跑脚本更新）|
 
 #### 预期收益
 
-- **中**：减少错误监控与错误 WATCH_SILENT。
-- **对收益率**：避免在错票上浪费注意力与误触发研究。
+- **中**：减少错票进 watchlist → 减少错跟踪 + 误触发研究。
+- **对 AI agent**：Copy markdown 多 2 section 后，外部 AI 决策时自带错映射警告 + 主题胜率上下文。
+- **对用户**：日常 0 增量操作（仍是 Sync + Copy）。
 
 #### 验证
 
-- [ ] confidence 阈值单测
-- [ ] 抽检表模板进文档（哪怕先用 Markdown 手工表）
+- [x] 5 信号综合单测 + 歧义检测（12 backend）
+- [x] Copy markdown 末尾 2 section 渲染（5 frontend）
+- [x] catalyst items 携带 autoQaPenalty + adjustedCatalystScore 字段
+- [x] build_theme_industry_map.py 数据驱动 90 天样本覆盖 11 个主题
+- [x] full pytest 1274 passed + frontend 440 passed（pre-existing 跳过除外）
 
 ---
 

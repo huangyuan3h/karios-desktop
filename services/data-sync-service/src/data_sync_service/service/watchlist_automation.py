@@ -416,6 +416,7 @@ def compute_alpha_additions(
     catalyst_payload: dict[str, Any] | None = None,
     industry_by_symbol: dict[str, str] | None = None,
     top_industries: set[str] | None = None,
+    auto_qa_penalties: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """
     Alpha Radar → Watchlist candidates with light entry gates (TIP-004).
@@ -427,11 +428,25 @@ def compute_alpha_additions(
       an SW L1 name (exact match). Granular EM boards (e.g. 半导体 vs 电子) skip
       Top10 rather than false-reject (taxonomy mismatch fail-open).
     - if Top10 set empty (flow data missing) → skip Top10 gate entirely
+    - TIP-009 auto-QA penalty: catalystScore is multiplied by (1 - penalty)
+      before the SCORE_MIN check; entries that fall under the floor are
+      counted under ``auto_qa_penalty``.
     """
     payload = catalyst_payload if catalyst_payload is not None else list_catalyst_stocks(limit=limit)
     items = payload.get("items") if isinstance(payload, dict) else []
     if not isinstance(items, list):
         return [], {}
+
+    penalties = auto_qa_penalties
+    if penalties is None:
+        try:
+            from data_sync_service.service.alpha_radar_qa import (
+                compute_auto_qa_penalty_for_catalyst,
+            )
+            penalties = compute_auto_qa_penalty_for_catalyst(items)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("auto_qa_penalty compute failed: %s", exc)
+            penalties = {}
 
     rejected: dict[str, int] = {}
 
@@ -455,11 +470,20 @@ def compute_alpha_additions(
         if not sym:
             _bump("bad_symbol")
             continue
+        penalty_info = penalties.get(sym) or {}
+        penalty = float(penalty_info.get("penalty") or 0.0)
+        adjusted_score = score * (1.0 - penalty)
+        if adjusted_score <= CATALYST_SCORE_MIN:
+            _bump("auto_qa_penalty")
+            continue
         prelim.append(
             {
                 "symbol": sym,
                 "name": str(row.get("name") or sym),
-                "catalystScore": score,
+                "catalystScore": adjusted_score,
+                "rawCatalystScore": score,
+                "autoQaPenalty": round(penalty, 3),
+                "autoQaSignals": penalty_info.get("signals") or {},
             }
         )
 

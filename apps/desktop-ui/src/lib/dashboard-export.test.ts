@@ -30,11 +30,13 @@ vi.mock('@/lib/queries/dashboard', async (importOriginal) => {
 });
 
 vi.mock('@/lib/alpha-radar-catalyst', () => ({
+  buildAutoQaMarkdown: vi.fn(() => ''),
   buildCatalystPurgeMap: vi.fn(() => new Map()),
   buildCatalystStocksMarkdown: vi.fn(() => '## Catalyst\n'),
   buildAlphaRadarTrendsMarkdown: vi.fn(() => '## Trends\n'),
   DEFAULT_CATALYST_MAX_AGE_DAYS: 7,
   fetchAlphaRadarTrendsForCopy: vi.fn(async () => ({ items: [], scope: 'latest' })),
+  fetchAutoQaStats: vi.fn(async () => null),
   fetchCatalystStocks: vi.fn(async () => ({ items: [] })),
   normalizeCatalystSymbol: vi.fn((s: string) => s),
 }));

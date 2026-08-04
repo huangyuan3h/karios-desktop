@@ -54,11 +54,24 @@ def _lookup_by_name(name: str) -> dict[str, Any] | None:
     if sym and not sym.startswith("CN:"):
         ticker = str(top.get("ticker") or sym)
         sym = f"CN:{ticker}" if ticker else sym
+    confidence = 0.75
+    ambiguous = False
+    try:
+        from data_sync_service.service.alpha_radar_qa import name_search_is_ambiguous
+
+        ambiguous = name_search_is_ambiguous(candidates=candidates)
+    except Exception:  # noqa: BLE001
+        ambiguous = False
+    if ambiguous:
+        # TIP-009: ambiguous name matches keep the same top-1 pick but drop
+        # confidence so downstream auto-QA penalty (#3) actually triggers.
+        confidence = 0.55
     return {
         "symbol": sym,
         "name": str(top.get("name") or name),
-        "confidence": 0.75,
-        "rationale": "Name search match",
+        "confidence": confidence,
+        "rationale": "Name search match" + (" (ambiguous)" if ambiguous else ""),
+        "ambiguous": ambiguous,
     }
 
 
@@ -241,6 +254,7 @@ def resolve_a_share_mapping(
                     "name": str(match.get("name") or text),
                     "confidence": float(match.get("confidence") or 0.75),
                     "rationale": str(match.get("rationale") or rationale),
+                    "ambiguous": bool(match.get("ambiguous", False)),
                 }
             )
         else:

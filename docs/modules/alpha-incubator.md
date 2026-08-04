@@ -103,5 +103,54 @@ URL = `{ALPHA_RADAR_RSSHUB_BASE_URL}{route}`，各源可用独立 env 覆盖。
 1. 东财行业名可解析（DB `stock_eastmoney_industry`）
 2. 非防守板块（银行 / 电力 / 公用事业 / 中药 / 煤炭 / 高速公路；**不**误伤 `电力设备`）
 3. 若行业名本身是申万一级：须 ∈ 5D 净流入 Top10；若为更细的东财板块名（如「半导体」）则 **跳过 Top10**（避免与 SW L1「电子」硬匹配系统性误拒）。Top10 数据缺失时整闸跳过。
+4. **TIP-009 auto-QA 闸门**：候选分数被 `auto_qa_penalty`（0–0.6）折扣后再与 `CATALYST_SCORE_MIN=85` 比。惩罚来源见下方 §auto-qa-rules。
 
 拒绝原因计入 automation run `meta.alphaRejected`。Max Grade=S 的 GC 豁免基于 **完整催化窗口**，不限于进池用的 score Top200。
+
+---
+
+## Auto-QA Rules (TIP-009 · 数据驱动 · 用户零操作)
+
+5 类自动 penalty 信号，全部从已有数据计算（**没有** LLM 写种子词、**没有** 用户抽检反馈）：
+
+| # | 信号 | penalty | 数据源 |
+|---|------|---------|--------|
+| 1 | **行业不匹配** | 0.6 | `data/seed/theme_industry_map.json` + `stock_eastmoney_industry` |
+| 2 | **历史胜率低** | 0.5 | `paper_trades` 30D 命中/总数（macroTheme 维度）|
+| 3 | **名称歧义** | 0.4 | `_lookup_by_name` 候选 top1/top2 字符前缀/子串重合 |
+| 4 | **板块资金流背离** | 0.3 | `industry_fund_flow` 5D 净流出 vs trend 暗示方向 |
+| 5 | **个股资金流背离** | 0.2 | `fund_flow` 5D 净流出 vs trend 暗示方向 |
+
+penalty = max(signal1, signal2, ..., signal5)（不累加，避免过度惩罚）。
+
+### 数据驱动映射（不是硬编码）
+
+`scripts/build_theme_industry_map.py` 从历史 `alpha_radar_trends` 跑一次，统计每个 `macro_theme` 映射股票的真实行业分布：
+
+- 阈值 ≥70% 的 cnSymbols 落在某 SW L1 / EM 板块 → 该主题加入 `themes`
+- 主题未达阈值或样本不足（<3 映射）→ 进 `unmapped_themes`，auto-QA penalty=0（无信号）
+- 季度跑一次更新即可
+
+### 用户工作流
+
+| 步骤 | 用户 | 系统 |
+|------|------|------|
+| ① | Sync | 拉数据 + alpha pipeline（含 auto_qa_penalty） |
+| ② | Copy (Dashboard) | Copy markdown 末尾多 2 section：⚠ Mapping warnings + Theme historical win-rate |
+| ③ | 给外部 AI agent | 决策时看到错映射警告 + 低胜率主题 |
+| ④ | AI agent 写 watchlist | 已带 auto_qa_penalty 的 catalystScore 决定 BUY 信号强度 |
+
+**用户日常操作**：仍是 Sync + Copy。0 增量。
+
+### 后置观测 API
+
+- `GET /api/alpha-radar/auto-qa-stats?sinceDays=7&limit=20` — 主动查询时用，不进 Dashboard
+- Copy markdown 末尾新 section 是被动可见的展示层
+
+### 不做的事（明确）
+
+- ❌ 不加 UI ✓/✗/? 反馈按钮
+- ❌ 不写周抽检 markdown 模板（用户个人流程）
+- ❌ 不动 LLM prompt
+- ❌ 不引入外部 catalog
+- ❌ 不让用户做任何额外操作

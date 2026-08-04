@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildAlphaRadarTrendsMarkdown,
+  buildAutoQaMarkdown,
   buildCatalystStocksMarkdown,
   filterRecentArticles,
   formatCatalystStockSummaryLine,
   formatStructuredTrendJson,
   shouldShowCatalystNews,
+  type AutoQaStats,
   type CatalystArticle,
   type CatalystCopyContext,
   type CatalystStock,
@@ -75,6 +77,92 @@ describe('formatCatalystStockSummaryLine', () => {
     expect(formatCatalystStockSummaryLine(sampleStock())).toBe(
       'CN:300308 中际旭创 | Score: 78.0 | Max Grade: S (Optical Supercycle)',
     );
+  });
+
+  it('appends QA flag and uses adjusted score when penalty > 0', () => {
+    const stock = sampleStock({
+      catalystScore: 100,
+      autoQaPenalty: 0.6,
+      adjustedCatalystScore: 40,
+      autoQaSignals: { industry_mismatch: { industry: '半导体设备' } },
+    });
+    expect(formatCatalystStockSummaryLine(stock)).toBe(
+      'CN:300308 中际旭创 | Score: 40.0 | Max Grade: S (Optical Supercycle) · ⚠QA -60%',
+    );
+  });
+});
+
+describe('buildAutoQaMarkdown', () => {
+  it('returns empty string when no penalties and no low-win themes', () => {
+    const stats: AutoQaStats = {
+      sinceDays: 7,
+      lookbackDays: 30,
+      themesCovered: 5,
+      recentPenalties: [],
+      lowWinRateThemes: [],
+    };
+    expect(buildAutoQaMarkdown(stats)).toBe('');
+  });
+
+  it('returns empty string when stats is null/undefined', () => {
+    expect(buildAutoQaMarkdown(null)).toBe('');
+    expect(buildAutoQaMarkdown(undefined)).toBe('');
+  });
+
+  it('renders warnings + low-win-rate sections when both present', () => {
+    const stats: AutoQaStats = {
+      sinceDays: 7,
+      lookbackDays: 30,
+      themesCovered: 2,
+      recentPenalties: [
+        {
+          trendId: 't1',
+          trendName: 'HBM 涨价',
+          macroTheme: 'HBM 涨价',
+          symbol: 'CN:002371',
+          symbolName: '北方华创',
+          industry: '半导体设备',
+          expectedIndustries: ['半导体'],
+          penalty: 0.6,
+        },
+      ],
+      lowWinRateThemes: [{ theme: '某某概念', wins: 1, total: 6, winRate: 0.167 }],
+    };
+    const md = buildAutoQaMarkdown(stats);
+    expect(md).toContain('## Alpha Radar · Auto-QA');
+    expect(md).toContain('HBM 涨价');
+    expect(md).toContain('CN:002371');
+    expect(md).toContain('半导体设备');
+    expect(md).toContain('半导体');
+    expect(md).toContain('60%');
+    expect(md).toContain('某某概念');
+    expect(md).toContain('1 / 6');
+    expect(md).toContain('17%');
+  });
+
+  it('renders only penalties when no low-win themes', () => {
+    const stats: AutoQaStats = {
+      sinceDays: 7,
+      lookbackDays: 30,
+      themesCovered: 1,
+      recentPenalties: [
+        {
+          trendId: 't1',
+          trendName: 'AI',
+          macroTheme: 'AI',
+          symbol: 'CN:300033',
+          symbolName: '同花顺',
+          industry: '计算机',
+          expectedIndustries: ['电子'],
+          penalty: 0.6,
+        },
+      ],
+      lowWinRateThemes: [],
+    };
+    const md = buildAutoQaMarkdown(stats);
+    expect(md).toContain('## Alpha Radar · Auto-QA');
+    expect(md).toContain('Mapping warnings');
+    expect(md).not.toContain('Theme historical win-rate');
   });
 });
 
