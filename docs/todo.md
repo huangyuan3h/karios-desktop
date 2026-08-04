@@ -396,7 +396,8 @@
 | 痛点 | 现状 | §13 行动项 |
 |------|------|-----------|
 | **换电脑也能跑** | 当前 1-3 天 | ✅ §12 #7 Docker 一键起 **done 2026-08-01**（OPT-056）→ ~2 小时（含首次 build）；脚本骨架 + 82 tests + setup doc 就绪 |
-| **数据独立于 Mac** | 本地 PG 单点 | §13 #1 Neon 只读副本 + 定时 sync（1 天）🟡 暂缓 |
+| **换电脑也能恢复数据** | 1.7 GB DB 无法迁移 | ✅ §12 #18 DB 本地备份 + 跨机迁移包 **done 2026-08-04**（OPT-061）→ 新 Mac 5 分钟恢复（详见 [`designs/db-backup-and-migrate-2026-08.md`](./designs/db-backup-and-migrate-2026-08.md)）；iCloud 异地副本兜底 Mac 整机丢失场景 |
+| **数据独立于 Mac** | 本地 PG 单点 | §13 #1 Neon 只读副本 + 定时 sync（1 天）🟡 暂缓（OPT-061 iCloud 已部分覆盖）|
 | **远程访问兜底** | 仅 Cloudflare Tunnel | §13 #2 Tailscale Funnel fallback（0.5 天）🟡 暂缓 |
 | **Mac 长期关机 fallback** | 不支持 | §13 #3 临时 VM Hetzner €4/月按月开（0.5 天）🟡 暂缓 |
 

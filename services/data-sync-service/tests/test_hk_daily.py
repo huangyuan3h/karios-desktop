@@ -8,6 +8,7 @@ pytestmark = pytest.mark.requires_postgres
 def test_sync_hk_daily_no_stock_list(monkeypatch) -> None:
     import data_sync_service.service.hk_daily as hk_daily  # type: ignore[import-not-found]
 
+    monkeypatch.setattr(hk_daily, "get_today_run", lambda _job: None)
     monkeypatch.setattr(hk_daily, "fetch_ts_codes_by_market", lambda _market: [])
     result = hk_daily.sync_hk_daily_full()
     assert result["ok"] is True
