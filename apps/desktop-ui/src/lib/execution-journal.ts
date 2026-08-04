@@ -28,6 +28,13 @@ import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
 import { buildWatchlistRowMetrics } from '@/lib/watchlist-metrics';
 import type { WatchlistItem } from '@/lib/watchlist-storage';
+import {
+  buildSourceContext,
+  fetchTvSourceSymbols,
+  inferSource,
+  type SourceContext,
+} from '@/lib/execution-source';
+import { normalizeCatalystSymbol } from '@/lib/alpha-radar-catalyst';
 
 const QUEUE_KEY = 'karios.executionJournal.queue.v1';
 
@@ -86,6 +93,8 @@ export type BuildExecutionSnapshotInput = {
   todaySh?: string;
   sectorOutflowBlock?: boolean;
   catalystBySymbol?: Map<string, CatalystPurgeHint> | null;
+  /** TIP-011: TV/ALPHA symbol sets for write-time source attribution. */
+  sourceContext?: SourceContext | null;
   source: ExecutionSnapshotSource;
   meta?: Record<string, unknown>;
 };
@@ -99,6 +108,7 @@ export function buildExecutionSnapshotPayload(
   const todaySh = input.todaySh ?? getShanghaiTodayIso();
   const sectorOutflowBlock = input.sectorOutflowBlock === true;
   const catalystBySymbol = input.catalystBySymbol ?? null;
+  const sourceContext = input.sourceContext ?? null;
   const sectorExposureByIndustry = buildSectorExposureFromWatchlist(items, trend);
   const sleeveExposurePct = buildSleeveExposurePct(items);
   const defensiveSleeveExposurePct = buildDefensiveSleeveExposurePct(items, trend);
@@ -138,6 +148,7 @@ export function buildExecutionSnapshotPayload(
       sectorOutflowBlock,
       catalyst: catalystBySymbol?.get(it.symbol) ?? null,
       todaySh,
+      source: sourceContext ? inferSource(it.symbol, sourceContext) : null,
     });
     cards.push({
       ...card,
@@ -253,13 +264,20 @@ export async function captureAndPushExecutionSnapshot(
     trend = snap.trend as Record<string, TrendOkResult | undefined>;
     quotes = snap.quotes;
   }
-  const catalystBySymbol = await fetchCatalystStocks(
-    DATA_SYNC_BASE_URL,
-    50,
-    DEFAULT_CATALYST_MAX_AGE_DAYS,
-  )
-    .then((resp) => buildCatalystPurgeMap(resp))
-    .catch(() => null);
+  const [catalystResp, tvSymbols] = await Promise.all([
+    fetchCatalystStocks(DATA_SYNC_BASE_URL, 50, DEFAULT_CATALYST_MAX_AGE_DAYS).catch(() => null),
+    fetchTvSourceSymbols().catch(() => new Set<string>()),
+  ]);
+  const catalystBySymbol = catalystResp ? buildCatalystPurgeMap(catalystResp) : null;
+  const alphaSymbols = new Set<string>();
+  for (const it of catalystResp?.items ?? []) {
+    const sym = normalizeCatalystSymbol(String(it?.symbol ?? ''));
+    if (sym) alphaSymbols.add(sym.toUpperCase());
+  }
+  const sourceContext: SourceContext = buildSourceContext({
+    tvSymbols,
+    alphaSymbols,
+  });
   const payload = buildExecutionSnapshotPayload({
     items: opts.items,
     trend: trend ?? {},
@@ -268,6 +286,7 @@ export async function captureAndPushExecutionSnapshot(
     mainlineAllow: opts.mainlineAllow,
     sectorOutflowBlock: opts.sectorOutflowBlock === true,
     catalystBySymbol,
+    sourceContext,
     source: opts.source,
   });
   if (!payload) return null;

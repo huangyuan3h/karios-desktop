@@ -46,6 +46,7 @@ _OPEN_ROW = {
     "pnlPct": None,
     "holdingDays": None,
     "closeReason": None,
+    "source": "TV",
     "createdAt": "2026-08-01T09:40:00+00:00",
     "updatedAt": "2026-08-01T09:40:00+00:00",
 }

@@ -142,6 +142,31 @@ describe('ExecutionActionCardSchema', () => {
     expect(parsed.mainlineTag).toBe('5D_TOP3');
   });
 
+  it('parses source attribution field (TIP-011)', () => {
+    const parsed = ExecutionActionCardSchema.parse({
+      symbol: 'CN:600519',
+      action: 'BUY',
+      trailArmed: false,
+      why: 'MAINLINE_OK',
+      source: 'TV',
+    });
+    expect(parsed.source).toBe('TV');
+    const alpha = ExecutionActionCardSchema.parse({
+      symbol: 'CN:600519',
+      action: 'ADD',
+      trailArmed: false,
+      source: 'ALPHA',
+    });
+    expect(alpha.source).toBe('ALPHA');
+    const none = ExecutionActionCardSchema.parse({
+      symbol: 'CN:600519',
+      action: 'BUY',
+      trailArmed: false,
+      source: null,
+    });
+    expect(none.source).toBeNull();
+  });
+
   it('parses size suggestion fields', () => {
     const parsed = ExecutionActionCardSchema.parse({
       symbol: 'CN:600519',

@@ -31,6 +31,7 @@ from ..api.auth import require_api_key  # noqa: F401  (used as router-level depe
 from ..db import execution_journal as ej_db
 from ..db import paper_trading as pt_db
 from ..db.watchlist_automation import list_registry
+from ..service.execution_source import aggregate_source_stats
 from ..service.paper_trading import compute_stats as pt_compute_stats
 from ..service.trendok import compute_trendok_for_symbols
 
@@ -460,6 +461,15 @@ class PaperTrade(BaseModel):
             "'max_hold' (holding_days >= 5). null while still open."
         ),
     )
+    source: str | None = Field(
+        default=None,
+        description=(
+            "Provenance of the BUY/ADD signal (TIP-011). Closed enum: "
+            "'TV' (TV screener funnel) | 'ALPHA' (Alpha Radar catalyst) | "
+            "'MANUAL' (user / external AI agent). null = pre-TIP-011 row."
+        ),
+        examples=["TV", "ALPHA", "MANUAL"],
+    )
 
 
 class PaperTradeListResponse(BaseModel):
@@ -545,3 +555,76 @@ def get_paper_trades_stats(
         winRate=result.get("winRate"),
         avgPnlPct=result.get("avgPnlPct"),
     )
+
+
+# ---------------------------------------------------------------------------
+# /v1/execution/source-stats (TIP-011)
+# ---------------------------------------------------------------------------
+
+
+class SourceStatsBucket(BaseModel):
+    """Per-source aggregation bucket."""
+
+    buySignals: int = Field(
+        ...,
+        description="Count of BUY transitions in execution_decision_changes for this source.",
+    )
+    closed: int = Field(
+        ...,
+        description="Paper-trade closed count for this source in the window.",
+    )
+    wins: int = Field(..., description="Closed trades with pnl_pct > 0.")
+    losses: int = Field(..., description="Closed trades with pnl_pct <= 0.")
+    winRate: float = Field(
+        ...,
+        description="wins / (wins + losses). 0 when no closed trades.",
+    )
+
+
+class SourceStatsResponse(BaseModel):
+    """Response of GET /v1/execution/source-stats (TIP-011)."""
+
+    sinceDays: int = Field(
+        ...,
+        description="Lookback window in days used for the aggregation.",
+    )
+    lookbackDays: int = Field(
+        ...,
+        description="Mirror of sinceDays for callers that key on lookbackDays.",
+    )
+    generatedAt: str = Field(
+        ...,
+        description="ISO timestamp when this snapshot was computed (server clock).",
+    )
+    bySource: dict[str, SourceStatsBucket] = Field(
+        ...,
+        description=(
+            "Per-source aggregates. Keys are 'TV' | 'ALPHA' | 'MANUAL' | 'UNKNOWN'. "
+            "Only sources with at least one BUY signal OR one closed trade appear "
+            "in the response — empty buckets are dropped."
+        ),
+    )
+    openTradesBySource: dict[str, int] = Field(
+        ...,
+        description="Open paper-trade counts by source (for in-flight monitoring).",
+    )
+
+
+@router.get(
+    "/execution/source-stats",
+    response_model=SourceStatsResponse,
+    summary="Per-source BUY/ADD win-rate (TIP-011).",
+)
+def get_execution_source_stats(
+    sinceDays: int = Query(
+        default=30,
+        ge=1,
+        le=365,
+        description="Lookback window in days. Defaults to 30 (env EXECUTION_SOURCE_STATS_LOOKBACK_DAYS).",
+    ),
+) -> SourceStatsResponse:
+    try:
+        result = aggregate_source_stats(since_days=sinceDays)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return SourceStatsResponse(**result)

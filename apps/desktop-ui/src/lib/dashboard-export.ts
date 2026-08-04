@@ -45,6 +45,12 @@ import {
   buildExecutionSnapshotPayload,
   fetchExecutionJournalMarkdown,
 } from '@/lib/execution-journal';
+import {
+  fetchSourceContext,
+  fetchSourceStats,
+  formatSourceAttributionMarkdown,
+  type SourceContext,
+} from '@/lib/execution-source';
 import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
 import {
   buildMainlineAllowSet,
@@ -894,6 +900,7 @@ type ExecutionCopyBundle = {
   attentionMd: string;
   cards: CondOrderCard[];
   quotes: Record<string, CondOrderQuoteHint>;
+  sourceStatsMd: string;
 };
 
 async function buildExecutionCopyBundle(opts: {
@@ -910,6 +917,7 @@ async function buildExecutionCopyBundle(opts: {
 
   let liveCards: CondOrderCard[] | null = null;
   let quotes: Record<string, CondOrderQuoteHint> = {};
+  let sourceContext: SourceContext | null = null;
   if (gate && items.length) {
     try {
       const symbols = items.map((i) => i.symbol);
@@ -930,6 +938,7 @@ async function buildExecutionCopyBundle(opts: {
       )
         .then((resp) => buildCatalystPurgeMap(resp))
         .catch(() => null);
+      sourceContext = await fetchSourceContext(DATA_SYNC_BASE_URL).catch(() => null);
       const payload = buildExecutionSnapshotPayload({
         items,
         trend: market.trend,
@@ -938,6 +947,7 @@ async function buildExecutionCopyBundle(opts: {
         mainlineAllow,
         sectorOutflowBlock,
         catalystBySymbol,
+        sourceContext,
         source: 'poll',
       });
       liveCards = (payload?.cards as CondOrderCard[] | undefined) ?? null;
@@ -981,10 +991,20 @@ async function buildExecutionCopyBundle(opts: {
     cards,
     changes,
   });
+  let sourceStatsMd = '';
+  try {
+    sourceStatsMd = formatSourceAttributionMarkdown(
+      await fetchSourceStats(DATA_SYNC_BASE_URL, 30),
+      { heading: '##' },
+    );
+  } catch {
+    sourceStatsMd = '';
+  }
   return {
     attentionMd: formatExecAttentionMarkdown(queue, { heading: '##', source }),
     cards: cards as CondOrderCard[],
     quotes,
+    sourceStatsMd,
   };
 }
 
@@ -1077,6 +1097,7 @@ export async function buildDashboardCopyAllMarkdown(
           ),
           cards: [],
           quotes: {},
+          sourceStatsMd: '',
         }),
       ),
       buildSinceLastCopyMarkdown().catch(() =>
@@ -1126,6 +1147,10 @@ export async function buildDashboardCopyAllMarkdown(
   } catch {
     lines.push('## Decision Journal');
     lines.push('- note: unavailable (capture snapshots via Dashboard Sync All or Snapshot now)');
+    lines.push('');
+  }
+  if (execBundle.sourceStatsMd.trim()) {
+    lines.push(execBundle.sourceStatsMd.trim());
     lines.push('');
   }
   if (!compact) {

@@ -3,6 +3,7 @@ import type {
   ExecutionActionCard,
   ExecutionGate,
   ExecutionGateMode,
+  ExecutionSource,
   MainlineTag,
 } from '@karios/shared';
 
@@ -770,6 +771,8 @@ export function deriveActionCard(opts: {
   todaySh?: string | null;
   /** Clock for TimeLock; defaults to now. */
   now?: Date | null;
+  /** TIP-011: provenance of the signal; null = unknown/pre-TIP-011. */
+  source?: ExecutionSource | null;
 }): ExecutionActionCard {
   const {
     symbol,
@@ -788,6 +791,7 @@ export function deriveActionCard(opts: {
     catalyst = null,
     todaySh = null,
     now = null,
+    source = null,
   } = opts;
   const held = isHeldPosition(position);
   const isEtf = isEtfWatchlistSymbol(symbol);
@@ -1061,6 +1065,7 @@ export function deriveActionCard(opts: {
   return {
     symbol,
     action,
+    source,
     trailArmed: trail.trailArmed,
     peak: trail.peak,
     hardStop: trail.hardStop,

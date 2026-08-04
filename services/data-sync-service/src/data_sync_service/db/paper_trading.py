@@ -62,6 +62,12 @@ CLOSE_REASONS = (
     CLOSE_REASON_POOL_EXIT,
 )
 
+# TIP-011: source attribution (provenance of the BUY/ADD signal).
+SOURCE_TV = "TV"  # originated from TV screener (funnel)
+SOURCE_ALPHA = "ALPHA"  # originated from Alpha Radar catalyst
+SOURCE_MANUAL = "MANUAL"  # user / external AI agent added
+SOURCES = (SOURCE_TV, SOURCE_ALPHA, SOURCE_MANUAL)
+
 # v0.1 close thresholds. Kept module-level so tests can assert against the
 # exact values and operators can tune them in one place.
 MAX_HOLD_DAYS = 5
@@ -85,6 +91,7 @@ CREATE TABLE IF NOT EXISTS {PAPER_TRADES_TABLE} (
     pnl_pct         DOUBLE PRECISION,
     holding_days    INTEGER,
     close_reason    TEXT,
+    source          TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -102,6 +109,11 @@ CREATE INDEX IF NOT EXISTS idx_paper_trades_status_open
 CREATE INDEX IF NOT EXISTS idx_paper_trades_close_date
     ON {PAPER_TRADES_TABLE}(close_date DESC)
     WHERE status = 'closed';
+
+-- TIP-011: source attribution by provenance (TV / ALPHA / MANUAL).
+CREATE INDEX IF NOT EXISTS idx_paper_trades_source
+    ON {PAPER_TRADES_TABLE}(source, entry_date DESC)
+    WHERE source IS NOT NULL;
 """
 
 
@@ -126,14 +138,20 @@ def insert_paper_trade(
     score_at_entry: float | None = None,
     why_at_entry: str | None = None,
     sleeve_pct: float | None = None,
+    source: str | None = None,
 ) -> dict[str, Any] | None:
     """Insert one paper trade. Returns the row or ``None`` on idempotent skip.
 
     Idempotent on ``(symbol, entry_date, side)``: re-running intake for the
     same day never produces duplicates.
+
+    ``source`` (TIP-011) is one of 'TV' / 'ALPHA' / 'MANUAL' (closed enum) or
+    None for legacy rows that pre-date attribution.
     """
     if side not in SIDES:
         raise ValueError(f"side must be one of {SIDES} (got {side!r})")
+    if source is not None and source not in SOURCES:
+        raise ValueError(f"source must be one of {SOURCES} or None (got {source!r})")
     ensure_tables()
     new_id = str(uuid.uuid4())
     with get_connection() as conn:
@@ -142,8 +160,8 @@ def insert_paper_trade(
                 f"""
                 INSERT INTO {PAPER_TRADES_TABLE}
                     (id, symbol, entry_date, side, entry_price, score_at_entry,
-                     why_at_entry, sleeve_pct, status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open')
+                     why_at_entry, sleeve_pct, status, source)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', %s)
                 ON CONFLICT (symbol, entry_date, side) DO NOTHING
                 RETURNING *
                 """,
@@ -156,6 +174,7 @@ def insert_paper_trade(
                     score_at_entry,
                     why_at_entry,
                     sleeve_pct,
+                    source,
                 ),
             )
             row = cur.fetchone()
@@ -343,7 +362,24 @@ def _row_to_dict(row: tuple | list) -> dict[str, Any]:
 
     Field names use camelCase to stay byte-identical to the ``/v1/paper-trades``
     contract and the existing ``/watchlist/registry`` shape (per OPT-009 / shared).
+
+    TIP-011 added the ``source`` column AT THE END of the table (after
+    ``updated_at``). All other positions remain unchanged. To stay
+    robust against future appended columns, the helper infers ``source``
+    from the trailing slot; if a future migration shifts ``source`` again,
+    update this single function.
     """
+    # Detect the source column slot: scan the row for the first non-tuple
+    # entry that doesn't match the existing positional layout. For all
+    # current cases (15-column legacy + 17-column TIP-011), the source
+    # value lives at index 16. If psycopg ever returns a Row-like object,
+    # prefer named access.
+    try:
+        source = row["source"]  # type: ignore[index]
+        named = True
+    except (KeyError, TypeError):
+        named = False
+        source = None
     return {
         "id": row[0],
         "symbol": row[1],
@@ -359,9 +395,57 @@ def _row_to_dict(row: tuple | list) -> dict[str, Any]:
         "pnlPct": float(row[11]) if row[11] is not None else None,
         "holdingDays": int(row[12]) if row[12] is not None else None,
         "closeReason": row[13],
+        "source": row[16] if not named and len(row) > 16 else source,
         "createdAt": row[14].isoformat() if row[14] is not None else None,
         "updatedAt": row[15].isoformat() if row[15] is not None else None,
     }
+
+
+def count_by_source(*, since: str | None = None, status: str | None = None) -> dict[str, dict[str, int]]:
+    """Aggregate paper-trade counts + wins by ``source`` since the given date.
+
+    Returns ``{source: {total, wins, losses, winRate}}``. Sources not present
+    in the data are omitted from the dict (caller decides defaults).
+    """
+    ensure_tables()
+    clauses: list[str] = []
+    params: list[Any] = []
+    if since:
+        clauses.append("entry_date >= %s")
+        params.append(since)
+    if status:
+        clauses.append("status = %s")
+        params.append(status)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT source,
+                       COUNT(*) AS total,
+                       COUNT(*) FILTER (WHERE pnl_pct > 0) AS wins,
+                       COUNT(*) FILTER (WHERE pnl_pct <= 0) AS losses
+                FROM {PAPER_TRADES_TABLE}
+                {where}
+                GROUP BY source
+                """,
+                tuple(params),
+            )
+            rows = cur.fetchall()
+    out: dict[str, dict[str, int]] = {}
+    for r in rows:
+        source = r[0] if r[0] is not None else "UNKNOWN"
+        total = int(r[1] or 0)
+        wins = int(r[2] or 0)
+        losses = int(r[3] or 0)
+        closed_total = wins + losses
+        out[str(source)] = {
+            "total": total,
+            "wins": wins,
+            "losses": losses,
+            "winRate": round(wins / closed_total, 3) if closed_total > 0 else 0.0,
+        }
+    return out
 
 
 # ---------------------------------------------------------------------------

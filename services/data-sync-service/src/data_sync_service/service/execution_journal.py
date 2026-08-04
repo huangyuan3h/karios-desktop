@@ -66,6 +66,12 @@ def _norm_str(v: Any) -> str:
     return str(v)
 
 
+def _norm_source(v: Any) -> str:
+    """Normalize source attribution. Closed enum 'TV' | 'ALPHA' | 'MANUAL' or ''."""
+    s = str(v or "").strip().upper()
+    return s if s in {"TV", "ALPHA", "MANUAL"} else ""
+
+
 def decision_payload_for_hash(gate: dict[str, Any] | None, cards: list[dict[str, Any]] | None) -> dict[str, Any]:
     g = gate if isinstance(gate, dict) else {}
     mode = _norm_str(g.get("mode"))
@@ -91,7 +97,17 @@ def decision_payload_for_hash(gate: dict[str, Any] | None, cards: list[dict[str,
             }
         )
     card_rows.sort(key=lambda r: r["symbol"])
+    # TIP-011: source attribution is annotation, not decision content — keep it
+    # out of the content hash so re-tagging a card doesn't churn snapshots.
     return {"mode": mode, "allowNewEntries": allow, "cards": card_rows}
+
+
+def _card_source(card: dict[str, Any] | None) -> str | None:
+    """Read source from a card. Returns None for pre-TIP-011 / unannotated cards."""
+    if not isinstance(card, dict):
+        return None
+    s = _norm_source(card.get("source"))
+    return s if s else None
 
 
 def compute_content_hash(gate: dict[str, Any] | None, cards: list[dict[str, Any]] | None) -> str:
@@ -111,6 +127,18 @@ def _cards_by_symbol(cards: list[dict[str, Any]] | None) -> dict[str, dict[str, 
     return out
 
 
+def _card_source_by_symbol(cards: list[dict[str, Any]] | None) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for c in cards or []:
+        if not isinstance(c, dict):
+            continue
+        sym = str(c.get("symbol") or "").strip()
+        src = _card_source(c)
+        if sym and src:
+            out[sym] = src
+    return out
+
+
 def diff_snapshots(
     prev: dict[str, Any] | None,
     curr_gate: dict[str, Any],
@@ -120,7 +148,13 @@ def diff_snapshots(
     from_snapshot_id: str | None,
     to_snapshot_id: str,
 ) -> list[dict[str, Any]]:
-    """Return change rows (not yet persisted)."""
+    """Return change rows (not yet persisted).
+
+    Each per-symbol change carries the symbol's ``card.source`` (TIP-011)
+    so downstream stats can break down BUY/ADD win-rate by provenance.
+    Pre-TIP-011 snapshots have no source field; those change rows keep
+    ``source=None`` and surface as 'UNKNOWN' in the stats endpoint.
+    """
     changes: list[dict[str, Any]] = []
     prev_gate = (prev or {}).get("gate") if prev else None
     prev_cards = (prev or {}).get("cards") if prev else None
@@ -142,6 +176,7 @@ def diff_snapshots(
                 "field": "mode",
                 "old_value": prev_mode or None,
                 "new_value": curr_mode or None,
+                "source": None,
             }
         )
 
@@ -158,11 +193,13 @@ def diff_snapshots(
                 "field": "allowNewEntries",
                 "old_value": "true" if prev_allow else "false",
                 "new_value": "true" if curr_allow else "false",
+                "source": None,
             }
         )
 
     prev_map = _cards_by_symbol(prev_cards if prev else [])
     curr_map = _cards_by_symbol(curr_cards)
+    curr_sources = _card_source_by_symbol(curr_cards)
     symbols = sorted(set(prev_map) | set(curr_map))
     for sym in symbols:
         p = prev_map.get(sym) or {}
@@ -170,6 +207,7 @@ def diff_snapshots(
         if not prev:
             # First snapshot of the day/session: do not flood with "appeared" events.
             continue
+        sym_source = curr_sources.get(sym)
         if sym not in prev_map and sym in curr_map:
             changes.append(
                 {
@@ -181,6 +219,7 @@ def diff_snapshots(
                     "field": "action",
                     "old_value": None,
                     "new_value": _norm_str(c.get("action")) or None,
+                    "source": sym_source,
                 }
             )
             why = _norm_str(c.get("why"))
@@ -195,6 +234,7 @@ def diff_snapshots(
                         "field": "why",
                         "old_value": None,
                         "new_value": why,
+                        "source": sym_source,
                     }
                 )
             continue
@@ -209,6 +249,7 @@ def diff_snapshots(
                     "field": "action",
                     "old_value": _norm_str(p.get("action")) or None,
                     "new_value": None,
+                    "source": None,
                 }
             )
             continue
@@ -235,6 +276,7 @@ def diff_snapshots(
                         "field": field,
                         "old_value": ov or None,
                         "new_value": nv or None,
+                        "source": sym_source,
                     }
                 )
     return changes

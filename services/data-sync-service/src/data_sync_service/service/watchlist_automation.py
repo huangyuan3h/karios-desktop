@@ -484,6 +484,9 @@ def compute_alpha_additions(
                 "rawCatalystScore": score,
                 "autoQaPenalty": round(penalty, 3),
                 "autoQaSignals": penalty_info.get("signals") or {},
+                # TIP-011: tag ALPHA provenance so downstream journal changes
+                # and paper_trades can attribute win-rate by source.
+                "source": "ALPHA",
             }
         )
 

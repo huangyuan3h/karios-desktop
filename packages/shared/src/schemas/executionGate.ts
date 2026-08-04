@@ -66,9 +66,18 @@ export type ExecutionAction = z.infer<typeof ExecutionActionSchema>;
 export const MainlineTagSchema = z.enum(['MOMENTUM', '5D_TOP3']);
 export type MainlineTag = z.infer<typeof MainlineTagSchema>;
 
+/**
+ * Provenance of a BUY/ADD signal (TIP-011).
+ * 'TV' = TV screener funnel, 'ALPHA' = Alpha Radar catalyst, 'MANUAL' = user/AI.
+ */
+export const ExecutionSourceSchema = z.enum(['TV', 'ALPHA', 'MANUAL']);
+export type ExecutionSource = z.infer<typeof ExecutionSourceSchema>;
+
 export const ExecutionActionCardSchema = z.object({
   symbol: z.string(),
   action: ExecutionActionSchema,
+  /** TIP-011: provenance of the signal; null = pre-TIP-011 / unknown. */
+  source: ExecutionSourceSchema.nullable().optional(),
   trailArmed: z.boolean(),
   peak: z.number().nullable().optional(),
   hardStop: z.number().nullable().optional(),

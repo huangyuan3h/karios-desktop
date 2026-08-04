@@ -29,7 +29,7 @@
 | 领域 | 在做（P0） | 待办（P1-P4） | 完成归档 |
 |------|------------|---------------|----------|
 | §1 定位与形态 | — | — | ✅ Tauri 降级 done 2026-08-04（OPT-060 / §12 #11）|
-| §2 收益 / 交易 | TIP-011 开火归因 | — | TIP-001~009 + V6.2/3 已沉淀；hover tooltip + Dashboard 精简 done 2026-08-01（§15）；漏斗 N 日表格 done 2026-08-02（OPT-058）；**TIP-009 Alpha 映射自动 QA done 2026-08-04**（数据驱动 5 信号 · 用户零操作）|
+| §2 收益 / 交易 | TIP-011 开火归因 | — | TIP-001~009 + V6.2/3 已沉淀；hover tooltip + Dashboard 精简 done 2026-08-01（§15）；漏斗 N 日表格 done 2026-08-02（OPT-058）；**TIP-009 Alpha 映射自动 QA done 2026-08-04**（数据驱动 5 信号 · 用户零操作）；**TIP-011 开火来源归因 done 2026-08-04**（TV/Alpha/手动 胜率分桶 + Copy section）|
 | §3 API 开放 | — | API Key 配额 + 限流 | ✅ 已归档 → `archive/2026-08-01-opt-045-v1-api-surface.md`（OPT-045/046/047 整圈）|
 | §4 工程与部署 | — | — | ✅ Tunnel 脚本骨架 OPT-048；DB 决策 OPT-053；Docker 一键 OPT-056；隐藏页 & legacy 清理 done 2026-08-03（OPT-059）；**DB 本地备份 + 跨机迁移包 done 2026-08-04（OPT-061 / §12 #18）** |
 | §5 数据源 / 浏览器 | — | 付费 API 矩阵 | ✅ TV Scanner API 作为唯一池子（2026-08-01）；ego-lite/Chrome CDP 仅作 fallback；数据源审计 done 2026-08-01 |
@@ -64,7 +64,7 @@
 - **[P0] 漏斗转化率度量闭环**：[done] 2026-08-02 —— `TIP-002` 埋点 + N 日表格已闭环（[`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)）；周报形态待 §3 P1 排期。
 - **[P1] 研报/新闻 α 来源**：见 §6。
 - **[P1] 卫星仓上限 / 仓位管理复核**：当前 15% 单票 + 30% 板块 + 袖子上限体系是否仍合理（参考 §13 `positionPct` 复杂度）。
-- **[P2] 开火来源归因（TV/Alpha/手动）**：`TIP-011` 已列未做 → 直接挂这里追踪。
+- **[P2] 开火来源归因（TV/Alpha/手动）**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-tip-011-execution-source.md`](./archive/2026-08-04-tip-011-execution-source.md)（TIP-011 · source 贯穿 write-path：前端 deriveActionCard 写 `source`（TV/ALPHA/MANUAL）→ diff_snapshots 透传 → `execution_decision_changes.source` + `paper_trades.source`；`GET /v1/execution/source-stats` 按来源出 BUY 信号量 + 平仓胜率；Copy markdown 新 section「Execution · Source attribution (30d)」；alembic 0018）。
 - **[P2] Alpha 映射质量抽检**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md`](./archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md)（TIP-009 · 5 信号自动 QA · 用户零操作；theme_industry_map 从历史 alpha_radar_trends 数据驱动学，penalty 应用到 compute_alpha_additions，Copy markdown 末尾暴露给外部 AI agent）。
 
 ---
@@ -282,6 +282,7 @@
 | 2026-08-01 | OPT-056 / §12 #7：Docker 一键起 + UPS 自动恢复（3 Dockerfile + 4 compose service + 6 脚本 + setup doc + 57 tests）| [`archive/2026-08-01-opt-056-docker-one-click.md`](./archive/2026-08-01-opt-056-docker-one-click.md)（脚本骨架完整，端到端实跑需用户跑 `scripts/docker-up.sh --migrate`）|
 | 2026-08-02 | **OPT-058 / §12 #20+#21**：漏斗 N 日表格（TIP-002 收尾：`GET /watchlist/automation/runs` + FunnelHistoryTable）+ Paper-trading v0.1 关闭条件（target_hit / score_floor / pool_exit，fail-open 纪律）| [`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)（后端 50 相关测试 + 前端 5 新测试全绿）|
 | 2026-08-04 | **TIP-009 / §3 P2**：Alpha 映射质量抽检 + 错映射惩罚（数据驱动 · 用户零操作版本）——5 信号自动 QA（行业不匹配 / 历史胜率低 / 名称歧义 / 板块资金流背离 / 个股资金流背离）；theme→industry 映射从历史 alpha_radar_trends 自动聚类（90d 数据 → 11 主题 / 季度跑脚本更新）；penalty 应用到 `compute_alpha_additions` 的 catalystScore；Dashboard Copy markdown 末尾新 2 section（⚠ Mapping warnings + Theme historical win-rate）喂外部 AI agent 决策；新增 `GET /api/alpha-radar/auto-qa-stats` | [`archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md`](./archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md)（1274 后端 + 440 前端全绿；用户日常仍是 Sync + Copy，0 增量操作）|
+| 2026-08-04 | **TIP-011 / §2 P2**：开火来源归因（TV/Alpha/手动）——`source` 贯穿 write-path：前端 `deriveActionCard` 按 TV screener 快照 + Alpha catalyst 集合写 `source`（closed enum TV/ALPHA/MANUAL）→ `diff_snapshots` 透传到 `execution_decision_changes.source` → paper_trades intake 镜像到 `paper_trades.source`；新增 `GET /v1/execution/source-stats`（按来源出 BUY 信号量 + 平仓胜率 + 持仓数）；Copy markdown 新 section「Execution · Source attribution (30d)」；alembic 0018 + 全量 1295 后端 + 456 前端测试全绿 | [`archive/2026-08-04-tip-011-execution-source.md`](./archive/2026-08-04-tip-011-execution-source.md) |
 | 2026-08-01 | OPT-057 / §12 #8.5：TV Capture 三轨架构（Scanner API + ego-lite + Chrome fallback）+ 新建 screener 模板化 UI + 5 模板 live API 验证通过 + capture 流程端到端走通 | [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)（47 新单测 + 1055 全绿；Scanner API filter 必须用数组格式 `[{left,op,right}]`；HK `exchange=HKEX`，US `exchange∈[NASDAQ,NYSE,AMEX]`；**最终决策**：TV Scanner API 池子基本够用，ego-lite/Chrome CDP 仅作 fallback）|
 
 ---

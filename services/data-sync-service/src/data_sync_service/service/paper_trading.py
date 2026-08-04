@@ -165,6 +165,9 @@ def run_intake(*, trade_date: str | None = None) -> dict[str, Any]:
             summary["skippedReasons"][reason] = summary["skippedReasons"].get(reason, 0) + 1
             continue
         sym = str(ch.get("symbol") or "")
+        raw_source = ch.get("source")
+        # TIP-011: only accept the closed enum; everything else → None.
+        source = raw_source if raw_source in pt_db.SOURCES else None
         try:
             row = pt_db.insert_paper_trade(
                 symbol=sym,
@@ -174,6 +177,7 @@ def run_intake(*, trade_date: str | None = None) -> dict[str, Any]:
                 score_at_entry=ch.get("score"),
                 why_at_entry=ch.get("why"),
                 sleeve_pct=ch.get("sleevePct"),
+                source=source,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_trade insert failed for %s: %s", sym, exc)
