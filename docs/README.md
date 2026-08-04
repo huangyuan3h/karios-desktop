@@ -56,7 +56,7 @@
 | 子项目 | README |
 |--------|--------|
 | Backend / DB / Alembic / 调度 | [`../services/data-sync-service/README.md`](../services/data-sync-service/README.md) |
-| Frontend (Next.js / Tauri) | [`../apps/desktop-ui/README.md`](../apps/desktop-ui/README.md) |
+| Frontend (Next.js) | [`../apps/desktop-ui/README.md`](../apps/desktop-ui/README.md) |
 | AI Service | [`../apps/ai-service/README.md`](../apps/ai-service/README.md) |
 | Shared Schema | [`../packages/shared/README.md`](../packages/shared/README.md) |
 

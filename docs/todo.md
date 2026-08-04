@@ -28,10 +28,10 @@
 
 | 领域 | 在做（P0） | 待办（P1-P4） | 完成归档 |
 |------|------------|---------------|----------|
-| §1 定位与形态 | — | Tauri vs 固定 URL 评估 | — |
+| §1 定位与形态 | — | — | ✅ Tauri 降级 done 2026-08-04（OPT-060 / §12 #11）|
 | §2 收益 / 交易 | TIP-009 alpha 映射抽检 / TIP-011 开火归因 | — | TIP-001~008 + V6.2/3 已沉淀；hover tooltip + Dashboard 精简 done 2026-08-01（§15）；漏斗 N 日表格 done 2026-08-02（OPT-058） |
 | §3 API 开放 | — | API Key 配额 + 限流 | ✅ 已归档 → `archive/2026-08-01-opt-045-v1-api-surface.md`（OPT-045/046/047 整圈）|
-| §4 工程与部署 | DB 本地备份自动化（新发现 2026-08-02） | — | ✅ Tunnel 脚本骨架 OPT-048；DB 决策 OPT-053；Docker 一键 OPT-056；Alembic 纪律见 AGENTS.md；隐藏页 & legacy 清理 done 2026-08-03（OPT-059） |
+| §4 工程与部署 | — | — | ✅ Tunnel 脚本骨架 OPT-048；DB 决策 OPT-053；Docker 一键 OPT-056；隐藏页 & legacy 清理 done 2026-08-03（OPT-059）；**DB 本地备份 + 跨机迁移包 done 2026-08-04（OPT-061 / §12 #18）** |
 | §5 数据源 / 浏览器 | — | 付费 API 矩阵 | ✅ TV Scanner API 作为唯一池子（2026-08-01）；ego-lite/Chrome CDP 仅作 fallback；数据源审计 done 2026-08-01 |
 | §6 新闻 / 研报 | — | News 质量评估（老婆反馈不如财经新闻准） | `OPT-037/038/039` News Query 并行化 |
 | §7 多市场 | — | 美股 / 加拿大时区 | `OPT-041/042/043/044` HK + ETF 已通 |
@@ -44,8 +44,8 @@
 
 > 一边用一边改的现状不可持续，必须先把"长期形态"定下来。
 
-- **[P0] Tauri 桌面 vs 固定 URL**：用户明确倾向"固定 URL + 每张页面有专属链接"，桌面打包不是刚需 → 形态决策文档化到 `docs/archive/`。
-- **[P0] 形态迁移路线**：保持当前 Next.js dev，把"对外可访问性"提到 P0；Tauri 不再作为主线交付形态（暂保留 build 配置但不做为发布目标）。
+- **[P0] Tauri 桌面 vs 固定 URL**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-opt-060-tauri-deprecation.md`](./archive/2026-08-04-opt-060-tauri-deprecation.md)（OPT-060）。决策：Web 形态为唯一交付形态；Tauri 保留 `src-tauri/` 源码 + `scripts/build-sidecars-macos.sh`，未来真要重启时 ≤ 0.5 天接入。
+- **[P0] 形态迁移路线**：✅ **[done] 2026-08-04** → 同上（OPT-060 / §12 #11）。`pnpm dev` + Docker compose 为唯一活跃路径；dev 流程不再接入 Tauri。
 - **[P1] 可分享 / 可订阅 URL**：每张关键页面（Watchlist、Dashboard、特定 symbol）有 stable URL，方便 AI 助手 query、复盘自包含。
 - **[P1] 基础 AI 能力保留**：内置 Chat Panel + 摘要生成（不依赖外部 AI 调用本地数据时也能用）。
 - **[P4] 完整产品定位文档**：把"卫星仓纪律化操作工具"等核心定位写成一页式宣言。
@@ -112,7 +112,7 @@
   - `pnpm dev` 仍可用作开发模式
 - **[P1] 频繁改代码 vs 部署**：开发模式用热重载；发布模式用 Docker 镜像。**不**做自动 CI/CD（手工 build 已够用，省钱）。
 - **[P1] 内网穿透/反向代理**：研究 Tailscale / Cloudflare Tunnel / FRP 中最适合"经常改代码"的方案。
-- **[P2] Tauri 构建降级**：保留但停止维护 desktop 形态的 bug 修复（与 §2 决策一致）。
+- **[P2] Tauri 构建降级**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-opt-060-tauri-deprecation.md`](./archive/2026-08-04-opt-060-tauri-deprecation.md)（OPT-060）。`src-tauri/` 保留不动，但 `package.json` 活跃路径已无 Tauri scripts/deps，未来 desktop bug 不再修。
 - **[P2] Alembic 迁移纪律**：见 `AGENTS.md`，所有 schema 改必须经过 Alembic（已建立 baseline）。
 - **[P0] DB 本地备份自动化**（2026-08-02 审查新发现）：`OPT-053` 已拍板"备份 3 副本策略"，但仓库里**没有任何 backup 脚本 / cron**——"换电脑也能跑"痛点（§13）的数据侧还是空的。落地 pg_dump 日备份 + 本地/异地双副本 + 恢复演练（0.5-1 天）。
 - **[P1] 隐藏页面与 legacy 清理**：✅ **[done] 2026-08-03** → [`archive/2026-08-03-opt-059-legacy-cleanup.md`](./archive/2026-08-03-opt-059-legacy-cleanup.md)（OPT-059）：`SimTradePage`（1017 行）+ `/simtrade` API、`BacktestPage`（664 行）+ `testback/` 旧回测框架全部删除（代码/路由/测试/Alembic 0017 删表）；§8 重启回测时不复用旧框架。
@@ -261,6 +261,8 @@
 | 日期 | 事件 | 归档位置 |
 |------|------|----------|
 | 2026-08-03 | **OPT-059 / §12 #19**：隐藏页 / legacy 清理——SimTradePage + `/simtrade` API、BacktestPage + `/backtest/*`、`testback/` 框架整体退役删除；Alembic `0017_drop_backtest_tables` 删表（2+132 行旧数据）；baseline/测试/文档同步 | [`archive/2026-08-03-opt-059-legacy-cleanup.md`](./archive/2026-08-03-opt-059-legacy-cleanup.md)（1247 后端 + 429 前端测试绿；唯一失败为既有 trendok flaky，stash 验证与本次无关）|
+| 2026-08-04 | **OPT-061 / §12 #18**：DB 本地备份 + 跨机迁移包——`db_backup.sh`（pg_dump -Fc + iCloud mirror + 25h last-age 跳过）+ `db_restore.sh`（docker cp + pg_restore --jobs=4 + alembic + manifest cross-check）+ `karios_migrate_export.sh`（tarball bundle）+ `install-db-backup-launchd.sh`（plist 03:00 + RunAtLoad + Wake + DATABASE_URL env）；设计稿 `designs/db-backup-and-migrate-2026-08.md` 解决"电脑休眠 → 唤醒后 launchd 不补跑错过的 job"问题（3 trigger 叠加 + last-age 检查兜底）| [`archive/2026-08-04-opt-061-db-backup-migrate.md`](./archive/2026-08-04-opt-061-db-backup-migrate.md)（端到端 2 次演练：round-trip drop+restore 21s + 新 Mac 模拟全新容器 restore 44 表 + 00700.HK 2026-08-04 487.6 数据完整）|
+| 2026-08-04 | **OPT-060 / §12 #11**：形态迁移 · Tauri 降级——根 + apps/desktop-ui 的 tauri scripts/deps/concurrently 全删；`src-tauri/` Rust 源码 + `scripts/build-sidecars-macos.sh` 按 §2 P0 "保留 build 配置" 不动；顶层 docs（README / AGENTS / docs/README / docker-one-click / next.config / Dockerfile）同步；6 新单测全绿 | [`archive/2026-08-04-opt-060-tauri-deprecation.md`](./archive/2026-08-04-opt-060-tauri-deprecation.md)（决策真值：Web = 唯一交付形态；Tauri 复活需 ≤ 0.5 天接入）|
 | 2026-08-01 | doc 大扫除：3 个旧模块文档迁移至 `archive/modules-legacy/`（与 V6.x 规则脱节） | `archive/modules-legacy/README.md` |
 | 2026-08-01 | OPT-045 Phase A：4 个稳定发现性 endpoint + API Key 鉴权 + 17 单测全绿 | 见 `optimization-checklist.md` OPT-045 |
 | 2026-08-01 | OPT-046：3 个只读业务 endpoint（/v1/market/snapshot + /v1/watchlist/items + /v1/decision-journal/query）+ 18 单测全绿 | 见 `optimization-checklist.md` OPT-046 |
@@ -331,14 +333,14 @@
 | 8.5 | **TV Capture 数据源决策**：Scanner API 作为唯一池子，ego-lite/Chrome CDP 降级为 fallback | §3 + §6 | 3-4 天 | #1 完成 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)；Alembic `0012_tv_screeners_api_mode.py`；5 模板 live API 验证通过 + capture 流程端到端走通；关键发现：Scanner API filter 必须用**数组格式** `[{left,op,right}]`；HK `exchange=HKEX`，US `exchange∈[NASDAQ,NYSE,AMEX]`；47 新单测 + 1055 全绿；`docs/modules/screener.md` 已更新为三轨架构；**最终决策**：TV Scanner API 池子基本够用，ego-lite/Chrome CDP 仅作 fallback，不作为主要数据源 |
 | 9 | **付费 API 矩阵评估** | §6 数据源 | 1-2 天 | — | 影响未来上云选型 |
 | 10 | **DB 走向决策文档** | §4 工程 | 0.5 天 | — | ✅ **done 2026-08-01** → [`designs/db-direction-2026-08.md`](./designs/db-direction-2026-08.md)（不进 archive——是未拍板后的真值）；5 选项横向对比 + 备份 cron 策略 + 6 触发条件（半年期复审）+ 已知风险；`freelancer-arch.md` + `cloud-deployment-options.md` 链到本文档 |
-| 11 | **形态迁移（Tauri 降级）** | §2 定位 | 1 天 | — | 长期减少维护面 |
+| 11 | **形态迁移（Tauri 降级）** | §2 定位 | 1 天 | — | 长期减少维护面 | ✅ **done 2026-08-04** → [`archive/2026-08-04-opt-060-tauri-deprecation.md`](./archive/2026-08-04-opt-060-tauri-deprecation.md)（OPT-060）；根 + apps/desktop-ui 的 tauri scripts/deps/concurrently 全删；`src-tauri/` + sidecar build 脚本按 "保留 build 配置" 不动；6 新单测全绿 |
 | 12 | **BacktestPage 重写**（基于 paper 数据） | §8 回测 | 3-5 天 | paper-trading 有 N 日数据 | 仅作参数敏感度工具，不作发布依据 |
 | 13 | **MCP server 暴露** | §3 API | 1-2 天 | #1 完成 | Cursor / Claude Desktop 直接调（另一种标准化形式） |
 | 14 | **美股 symbol 闸门** | §7 多市场 | 3-5 天 | 加拿大规划启动 | 远期触发 |
 | 15 | **加拿大税务/账户模型** | §7 多市场 | 远期 | — | 远景 |
 | 16 | **Watchlist table hover tooltip** | §2 收益 | 0.5 天 | — | ✅ **done 2026-08-01** → `lib/watchlist-column-help.tsx` + `ColumnHeader`（§15 反馈 #1）|
 | 17 | **Dashboard 精简 + 参数说明** | §2 收益 | 1 天 | — | ✅ **done 2026-08-01** → `lib/dashboard-card-help.tsx` + `DashboardHeader`（§15 反馈 #3）|
-| 18 | **DB 本地备份自动化** | §4 工程 | 0.5-1 天 | OPT-053 决策已立 | 新发现 2026-08-02：pg_dump 日备 + 本地/异地双副本 + 恢复演练 |
+| 18 | **DB 本地备份自动化** | §4 工程 | 0.5-1 天 | OPT-053 决策已立 | ✅ **done 2026-08-04** → [`archive/2026-08-04-opt-061-db-backup-migrate.md`](./archive/2026-08-04-opt-061-db-backup-migrate.md)（OPT-061 · §13 Longevity "换电脑也能跑" 数据侧补完 · 用户"电脑就休眠"约束 · 3 脚本 + launchd plist + tarball migrate + 端到端 2 次演练）；与 §12 #7 Docker 一键起互补 |
 | 19 | **隐藏页面 / legacy 清理** | §4 工程 | 0.5-1 天（实际 2h） | — | ✅ **done 2026-08-03** → [`archive/2026-08-03-opt-059-legacy-cleanup.md`](./archive/2026-08-03-opt-059-legacy-cleanup.md)（OPT-059）；SimTradePage + /simtrade、BacktestPage + testback/ 全删（含 Alembic 0017 删表）；1247 后端 + 429 前端测试绿，唯一失败为既有 trendok flaky |
 | 20 | **漏斗 N 日转化率表格** | §3 收益 | 0.5 天 | TIP-002 埋点已就绪 | ✅ **done 2026-08-02** → [`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)；`GET /watchlist/automation/runs` + FunnelHistoryTable 挂 WatchlistPage |
 | 21 | **Paper-trading v0.1 关闭条件** | §8 回测 | 1 天 | OPT-049 | ✅ **done 2026-08-02** → 同上；target_hit / score_floor / pool_exit 补齐，fail-open 纪律 |

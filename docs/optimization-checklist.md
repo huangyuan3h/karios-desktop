@@ -1197,3 +1197,134 @@ TIP-002 埋点已就绪（ack `meta.funnel`），但 N 日表格从未落地—�
 
 - [模块文档索引](./modules/README.md)
 - [Agent 指南](../AGENTS.md)
+
+---
+
+### OPT-060：形态迁移 · Tauri 降级（todo §12 #11 / §2 形态决策 / §4 P2）
+
+**状态**：[x] 完成（活跃 dev 路径 + 顶层文档同步 + 5 单测；`src-tauri/` Rust 源码 + sidecar build 脚本按 "保留 build 配置" 不动）
+**完成日期**：2026-08-04
+**优先级**：P0（todo §2 形态决策两条 P0 · §12 #11 · 长期减少维护面）
+**关联 todo**：[§2 形态决策](../todo.md) · [§4 P2 Tauri 构建降级](../todo.md) · [§12 实施清单 #11](../todo.md)
+**关联设计稿**：[`docs/designs/mac-mini-deployment.md` §2.3](../designs/mac-mini-deployment.md)（vs Tauri 桌面形态对比）· [`docs/designs/karios-longevity-2026-08.md` §3](../designs/karios-longevity-2026-08.md)（§12 #11 在 longevity 行动清单中）
+**摘要**：[`archive/2026-08-04-opt-060-tauri-deprecation.md`](../archive/2026-08-04-opt-060-tauri-deprecation.md)
+
+#### 背景
+
+`apps/desktop-ui/src-tauri/` Tauri v2 build 完整就绪（Cargo.lock + sidecar 编译脚本 + 4 个 macOS sidecar 已 commit），但 Tauri 桌面形态已与 Karios 长期方向（`pnpm dev` + Docker compose 一键起 + Cloudflare Tunnel 远程）不重合：
+
+- 用户 2026-08-01 review §13 时明确："我倾向于系统整体稳定部署 docker，然后自动启动，db 用现在的，不用两个"
+- Tauri 桌面适合"笔记本 + 单人 + 出差"；当前路径是"家里 7×24 跑 + 多端访问"
+- `/v1/*` OpenAI 兼容 API（OPT-045~047）已通，AI agent 走 web + Tunnel 即可，不需要桌面 client
+- Tauri 维护面：Rust toolchain + Tauri CLI + sidecar 编译（PyInstaller + Bun compile）+ 跨平台 bundling —— 与"长期减少维护面"目标冲突
+
+#### 目标
+
+| 任务 | 内容 |
+|------|------|
+| **A. 移除活跃 dev 路径** | 根 `package.json` 删 `predev:tauri` / `dev:tauri`；删 devDep `concurrently`（仅被 `dev:tauri` 使用）；`apps/desktop-ui/package.json` 删 `tauri` / `tauri:dev` / `tauri:build`；删 dep `@tauri-apps/api`（src 内零引用）；删 devDep `@tauri-apps/cli` |
+| **B. 同步顶层文档** | `README.md` 行 163（表行）+ 行 179（Rust 工具链）；`AGENTS.md` 表行；`docs/README.md` 子项目行；`docs/setup/docker-one-click.md` "与开发模式的区别" 表删 dev + tauri 行；`apps/desktop-ui/next.config.ts` 注释改 "Static export required by Docker nginx"；`services/data-sync-service/Dockerfile` 注释 "live/Tauri conventions" → "live conventions" |
+| **C. 保留 build 配置** | `apps/desktop-ui/src-tauri/` 整个目录（`Cargo.toml` / `Cargo.lock` / `tauri.conf.json` / `tauri.backends.conf.json` / `build.rs` / `src/lib.rs` / `src/backends.rs` / `src/main.rs` / `icons/` / `capabilities/` / `gen/` / `sidecars/`） + `scripts/build-sidecars-macos.sh` —— 按 §2 P0 "**暂保留 build 配置**" 落地 |
+| **D. 单测** | `apps/desktop-ui/src/lib/tauri-deprecation.test.ts`：5 tests — 根 + apps/desktop-ui 的 scripts/deps 移除；`src-tauri/` + `scripts/build-sidecars-macos.sh` 仍存在 |
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| 脚本 | `package.json`（根 · **改**） · `apps/desktop-ui/package.json`（**改**）|
+| 文档 | `README.md`（**改**） · `AGENTS.md`（**改**） · `docs/README.md`（**改**） · `docs/setup/docker-one-click.md`（**改**）|
+| 注释 | `apps/desktop-ui/next.config.ts`（**改**） · `services/data-sync-service/Dockerfile`（**改**）|
+| 测试 | `apps/desktop-ui/src/lib/tauri-deprecation.test.ts`（**新**）|
+
+#### 范围限定（**不**做的事）
+
+- � **不**删除 `apps/desktop-ui/src-tauri/` 整个目录（§2 P0 "暂保留 build 配置"）
+- ❌ **不**删除 `scripts/build-sidecars-macos.sh`（sidecar 编译入口，Tauri 复活时唯一线索）
+- ❌ **不**手工改 `pnpm-lock.yaml`（下次 `pnpm install` 自动清掉 `@tauri-apps/*` + `concurrently` 块）
+- ❌ **不**改 `apps/desktop-ui/eslint.config.mjs` 的 `src-tauri/target/**` ignore（src-tauri/ 仍存在，target/ 仍需忽略）
+- ❌ **不**回写 OPT-056 历史记录（反模式节里 "代码 / Tauri / Compose 全部统一" 等是当时 scope-bound 的真实约束）
+- ❌ **不**改 `docs/designs/*` 三份设计稿里"vs Tauri 桌面"的对比章节（这些是历史决策依据，删掉会让"为什么不上 Tauri"不可考）
+- ❌ **不**做"完整删除 Cargo.lock 等" —— 同上，保留 = 未来复活时省 0.5 天接入
+
+#### 验证
+
+- [x] 根 `package.json` 无 `tauri` script；无 `concurrently` devDep
+- [x] `apps/desktop-ui/package.json` 无 `tauri` / `tauri:dev` / `tauri:build` script；无 `@tauri-apps/api` dep；无 `@tauri-apps/cli` devDep
+- [x] `apps/desktop-ui/src/` 内无 `@tauri-apps` 引用（grep 验证）
+- [x] `apps/desktop-ui/src-tauri/` 目录完整保留（`Cargo.toml` + `Cargo.lock` + `tauri.conf.json` + `src/lib.rs` + `src/backends.rs` + icons + sidecars）
+- [x] `scripts/build-sidecars-macos.sh` 完整保留
+- [x] `apps/desktop-ui/src/lib/tauri-deprecation.test.ts` 5/5 tests 全绿
+- [x] 前端 typecheck 干净（`pnpm typecheck`）
+- [x] 前端 lint 0 error（`pnpm lint`）
+- [x] 后端 pytest 未受影响（仅改 1 行 Dockerfile 注释）
+- [x] todo §1 / §2 / §4 / §12 #11 / §10 同步更新
+
+#### 反模式
+
+- ❌ **不**只删 `pnpm dev:tauri` 不删 `predev:tauri`（用户跑 `pnpm dev:tauri` 时 `ensure-ports` / `ensure-rsshub` 不跑，会撞端口）
+- ❌ **不**只删 scripts 不删 deps（`@tauri-apps/cli` 在 devDep 但无 script 调用 = 死代码）
+- ❌ **不**为"清理彻底"把 `src-tauri/` 整个删了（违反"暂保留 build 配置"）
+- ❌ **不**在注释里写"Tauri 已 deprecated"等情绪化字眼（按本文档"保留 build 配置"基调，仅改事实）
+- ❌ **不**改 `apps/desktop-ui/next.config.ts` 的 `output: 'export'`（Docker nginx 仍需静态 export；OPT-056 已写"不**改"）
+
+---
+
+### OPT-061：DB 本地备份自动化 + 跨机迁移包（todo §12 #18 / §13 Longevity / §4 P0）
+
+**状态**：[x] 完成（2026-08-04 · 3 脚本 + 1 plist + 1 design + 1 端到端 restore 演练）
+**完成日期**：2026-08-04
+**优先级**：P0（todo §13 "换电脑也能跑" 的**数据侧**补完；与 §12 #7 Docker 一键起互补）
+**关联 todo**：[§12 实施清单 #18](../todo.md) · [§13 Longevity "换电脑也能跑"](../todo.md) · [§4 P0 DB 本地备份自动化](../todo.md)
+**关联设计稿**：[`docs/designs/db-backup-and-migrate-2026-08.md`](../designs/db-backup-and-migrate-2026-08.md)（决策真值 · 用户"电脑就休眠"约束的兜底机制）
+**摘要**：[`archive/2026-08-04-opt-061-db-backup-migrate.md`](../archive/2026-08-04-opt-061-db-backup-migrate.md)
+
+#### 背景
+
+OPT-053 已立"备份 3 副本策略"，但仓库里**零 backup 脚本 / cron**：
+
+- 用户原话（todo §13）："我关心的无非换电脑也能正常跑这个系统，让这个系统长期有生命力，远程也能访问"
+- §12 #7 Docker 一键起解决了**代码侧**（换电脑 2 小时即可起 stack），但**数据侧**（1.7 GB 数据库迁移）无工具
+- 用户电脑使用模式：**休眠随用随醒**，不是 7×24 —— launchd `StartCalendarInterval` 在 sleep 时不跑、唤醒后**不会补跑**错过的事件，必须用脚本内 last-age 检查兜底
+- iCloud Drive 客户端在 Mac 睡眠时仍同步 → 是 §13 "不上云"约束下唯一能用的"异地副本"
+
+#### 目标
+
+| 任务 | 内容 |
+|------|------|
+| **A. db_backup.sh** | `pg_dump -Fc -Z 9`（docker exec 进 Postgres 容器）；保留本地 30d + iCloud 14d；TOC 校验失败标 `.corrupt`；last-age 25h 跳过；写 manifest (pg version / table count / size) |
+| **B. db_restore.sh** | `docker cp` 进容器后 `pg_restore --jobs=4`；可选 `--drop-existing`；自动跑 `alembic upgrade head`；manifest cross-check 表数 |
+| **C. karios_migrate_export.sh** | 调 db_backup.sh 出新 dump → bundle dump + manifest + env.template + restore.sh + checksums.sha256 + README.txt → tar.gz（~244 MB）|
+| **D. install-db-backup-launchd.sh + plist** | `com.karios.db-backup` LaunchAgent；StartCalendarInterval 03:00 + Wake=true + RunAtLoad=true + DATABASE_URL env（写到 plist 而不是 shell）；可选 append ~/.zshenv hook；提供 `--status` / `--unload` |
+| **E. 休眠兜底** | 三个 trigger 叠加（cron / RunAtLoad / zshenv hook）+ 脚本内 last-age 25h 检查，保证最坏情况（睡眠 N 天后醒来开 shell）也能在 30s 内完成 dump |
+| **F. 验证** | (1) round-trip：dump → drop → restore，44 表全 + daily 10.9M 行；(2) 新 Mac 模拟：全新 postgres 容器 + 解 tarball + restore.sh → 00700.HK 2026-08-04 close 487.6 数据完整 |
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| 脚本（data-sync） | `services/data-sync-service/scripts/db_backup.sh`（**新** · ~140 行） · `services/data-sync-service/scripts/db_restore.sh`（**新** · ~170 行） · `services/data-sync-service/scripts/karios_migrate_export.sh`（**新** · ~140 行）|
+| 脚本（顶层） | `scripts/install-db-backup-launchd.sh`（**新** · ~180 行 · 模仿 install-launchd.sh 风格）|
+| 设计 | `docs/designs/db-backup-and-migrate-2026-08.md`（**新**）|
+| 不动 | `services/data-sync-service/src/data_sync_service/**`（无业务代码改动）· `apps/desktop-ui/**`（无前端改动）· `apps/ai-service/**`（无 AI 改动）|
+
+#### 验证（2026-08-04 实测）
+
+- [x] `bash db_backup.sh --dry-run` 输出正确路径；`--force` 端到端 dump 1m33s / 245 MB / iCloud 同步 OK
+- [x] `bash db_backup.sh`（无 --force）上次 dump 3s 前 → 正确 skip（last-age 25h 阈值生效）
+- [x] `bash db_restore.sh <dump> --drop-existing` drop + pg_restore 21s + alembic upgrade 1s + 表数 44 = manifest 44
+- [x] 新 Mac 模拟：`docker run postgres:16-alpine` → 解 tarball → `KARIOS_PG_CONTAINER=karios-migrate-test ./karios_restore.sh ... --drop-existing` → 44 表 + 00700.HK 2026-08-04 487.6 完整
+- [x] `plutil -lint` plist OK；`launchctl load -w` 加载 OK；RunAtLoad 触发后 stdio 显示 "skip"（读到 DATABASE_URL + last-age 5 分钟前）
+- [x] `bash install-db-backup-launchd.sh --status` LOADED 显示；zshenv hook 默认未安装（需要 TTY 询问）
+
+#### 反模式（不**做）
+
+- ❌ **不**写加密层 —— iCloud Drive 已 E2E 加密；本地副本明文已是事实
+- ❌ **不**做 WAL archiving / PITR —— §13 "长期生命力"非"任意秒级回滚"
+- ❌ **不**自动上传 S3 —— §13 #1 Neon 副本暂缓；iCloud 2 副本已够
+- ❌ **不**做 ZFS / BTRFS snapshot —— docker volume 不适用
+- ❌ **不**打包成 .dmg —— tarball + README.txt 已够；新 Mac 上 git clone + pnpm install 即可
+- ❌ **不**改 launchd 实现补跑机制（不存在） —— 走"3 trigger + last-age 检查"组合
+- ❌ **不**写定时 watchdog —— cron + RunAtLoad + zshenv 已覆盖
+- ❌ **不**写测试（脚本 + tarball round-trip 验证已替代） —— 脚本内的 manifest / checksums 是天然校验
+
+---

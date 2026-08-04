@@ -8,7 +8,7 @@
 
 | Path | Role |
 |------|------|
-| `apps/desktop-ui` | Next.js UI (Tauri WebView) |
+| `apps/desktop-ui` | Next.js UI (web-only) |
 | `apps/ai-service` | Node/TypeScript AI service (Vercel AI SDK) |
 | `services/data-sync-service` | Python FastAPI — data sync, analysis, Postgres |
 | `packages/shared` | 跨层 Zod schemas + TS 类型 |

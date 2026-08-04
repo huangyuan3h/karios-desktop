@@ -2,8 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   transpilePackages: ['@karios/shared'],
-  // Tauri loads static assets from a local directory in production builds.
-  // Next.js must be configured for static export to avoid requiring a Node server at runtime.
+  // Static export required by Docker nginx (and previously by the Tauri WebView).
+  // Next.js must produce static assets so no Node server is needed at runtime.
   output: "export",
   images: {
     // Static export can't use Next.js Image Optimization (it requires a server).
