@@ -30,6 +30,13 @@ export const DEFAULT_FIRE_CLIP_PCT = 5;
 /** V6.3: hard cap for WEAK_ATTACK pioneer sleeve (pct points). */
 export const WEAK_ATTACK_SINGLE_MAX_CAP_PCT = 5;
 
+/** V7.0-02: max per-fire risk budget in % of account equity (risk-parity sizing). */
+export const RISK_BUDGET_PCT = 0.5;
+/** V7.0-02: suggested sizes below this (pct points) are rejected as too small to matter. */
+export const RISK_MIN_SIZE_PCT = 2.5;
+/** V7.0-02: ATR fallback stop distance = 2 × ATR% when no hard stop is known. */
+export const RISK_FALLBACK_ATR_MULT = 2;
+
 /** V6.2: Weak/DEFEND buy window opens at 14:30 Shanghai. */
 export const TIME_LOCK_CUTOFF_MINUTES = 14 * 60 + 30;
 /** V6.2: After 14:50 Shanghai, new entries locked again. */
@@ -207,12 +214,18 @@ export function isSleeveCapBlocked(
 
 export type FireSizeSuggestion = {
   addPct: number;
-  note: 'clip' | 'single' | 'sector' | 'sleeve';
+  /** Binding constraint: clip | single | sector | sleeve | risk (V7.0-02). */
+  note: 'clip' | 'single' | 'sector' | 'sleeve' | 'risk';
+  /** Stop distance (%) used by risk-parity sizing; null when sizing degraded to clip-only. */
+  stopDistancePct: number | null;
 };
 
 /**
  * Suggested sleeve-weight add for BUY/ADD after single / sector / sleeve headroom.
- * Caps at DEFAULT_FIRE_CLIP_PCT unless room is smaller. Null if room < 0.1.
+ * V7.0-02: also binds to risk-parity size = RISK_BUDGET_PCT / stop-distance%,
+ * where stop-distance% prefers the actual hard stop and falls back to 2 × ATR%.
+ * Caps at DEFAULT_FIRE_CLIP_PCT unless room is smaller. Null if room < 0.1
+ * or the risk-parity size falls below RISK_MIN_SIZE_PCT.
  */
 export function suggestFireSizePct(opts: {
   positionPct?: number | null;
@@ -221,6 +234,12 @@ export function suggestFireSizePct(opts: {
   sleeveExposurePct?: number | null;
   positionRangeHint?: string | null;
   clipPct?: number;
+  /** V7.0-02: actual stop distance % (e.g. 10 = 10%); preferred over ATR fallback. */
+  stopDistancePct?: number | null;
+  /** V7.0-02: ATR14 fallback — used when stopDistancePct is unavailable. */
+  atr14?: number | null;
+  /** V7.0-02: reference price (current or entryTrigger) for ATR fallback. */
+  referencePrice?: number | null;
 }): FireSizeSuggestion | null {
   const clip =
     typeof opts.clipPct === 'number' && Number.isFinite(opts.clipPct) && opts.clipPct > 0
@@ -248,7 +267,24 @@ export function suggestFireSizePct(opts: {
     roomSleeve = sleeveMax - sleeve;
   }
 
-  const room = Math.min(clip, roomSingle, roomSector, roomSleeve);
+  let riskCap = Number.POSITIVE_INFINITY;
+  let stopDistancePct: number | null = null;
+  const stopDist = num(opts.stopDistancePct);
+  if (stopDist != null && stopDist > 0) {
+    stopDistancePct = stopDist;
+  } else {
+    const atr = num(opts.atr14);
+    const ref = num(opts.referencePrice);
+    if (atr != null && atr > 0 && ref != null && ref > 0) {
+      stopDistancePct = ((RISK_FALLBACK_ATR_MULT * atr) / ref) * 100;
+    }
+  }
+  if (stopDistancePct != null) {
+    riskCap = RISK_BUDGET_PCT / (stopDistancePct / 100);
+    if (riskCap < RISK_MIN_SIZE_PCT) return null;
+  }
+
+  const room = Math.min(clip, roomSingle, roomSector, roomSleeve, riskCap);
   if (!Number.isFinite(room) || room < 0.1) return null;
   const addPct = Math.round(room * 10) / 10;
 
@@ -257,8 +293,15 @@ export function suggestFireSizePct(opts: {
   if (Math.abs(room - roomSleeve) < eps) note = 'sleeve';
   else if (Math.abs(room - roomSector) < eps) note = 'sector';
   else if (Math.abs(room - roomSingle) < eps) note = 'single';
+  else if (
+    Number.isFinite(riskCap) &&
+    riskCap < clip &&
+    Math.abs(room - riskCap) < eps
+  ) {
+    note = 'risk';
+  }
 
-  return { addPct, note };
+  return { addPct, note, stopDistancePct };
 }
 
 /** Held names with no finite positive positionPct (caps fail-open for these). */
@@ -835,6 +878,16 @@ export function deriveActionCard(opts: {
   } else if (entryTrigger != null && currentPrice != null && currentPrice > 0) {
     distPct = ((entryTrigger - currentPrice) / currentPrice) * 100;
   }
+
+  // V7.0-02: stop distance % for risk-parity sizing.
+  // Held (ADD) → (current − exitStop) / current; flat (BUY) → (ref − hardStop) / ref.
+  const sizeRefPrice = held ? currentPrice : (entryTrigger ?? currentPrice);
+  const sizeStopLevel = held ? exitStop : hardStop;
+  let sizeStopDistancePct: number | null = null;
+  if (sizeStopLevel != null && sizeRefPrice != null && sizeRefPrice > 0) {
+    const sizeDist = ((sizeRefPrice - sizeStopLevel) / sizeRefPrice) * 100;
+    if (Number.isFinite(sizeDist) && sizeDist > 0) sizeStopDistancePct = sizeDist;
+  }
   // Compat: trigger = role-relevant level for journal / cond-order
   const trigger = held ? exitStop : entryTrigger;
 
@@ -1047,6 +1100,9 @@ export function deriveActionCard(opts: {
       sectorExposureByIndustry,
       sleeveExposurePct,
       positionRangeHint: gate?.positionRangeHint ?? null,
+      stopDistancePct: sizeStopDistancePct,
+      atr14,
+      referencePrice: sizeRefPrice,
     });
     if (size) {
       suggestAddPct = size.addPct;
@@ -1079,6 +1135,8 @@ export function deriveActionCard(opts: {
     mainlineTag,
     suggestAddPct,
     suggestSizeNote,
+    /** V7.0-02: stop distance % that drove risk-parity sizing (display/diagnostic). */
+    sizeStopDistancePct,
   };
 }
 

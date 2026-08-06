@@ -199,6 +199,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         newsFallback,
         queryClient,
         mode: copyMode,
+        forceFresh: true,
       });
       await navigator.clipboard.writeText(text);
       writeLastCopyAt(new Date().toISOString());
@@ -231,6 +232,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
         newsFallback,
         queryClient,
         mode: copyMode,
+        forceFresh: true,
       });
       await navigator.clipboard.writeText(text);
       writeLastCopyAt(new Date().toISOString());

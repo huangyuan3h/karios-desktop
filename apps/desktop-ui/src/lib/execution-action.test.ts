@@ -1533,7 +1533,7 @@ describe('deriveActionCard', () => {
         sleeveExposurePct: 40,
         positionRangeHint: '50%-60%',
       }),
-    ).toEqual({ addPct: 5, note: 'clip' });
+    ).toEqual({ addPct: 5, note: 'clip', stopDistancePct: null });
   });
 
   it('binds fire size to sleeve room', () => {
@@ -1545,7 +1545,7 @@ describe('deriveActionCard', () => {
         sleeveExposurePct: 58,
         positionRangeHint: '50%-60%',
       }),
-    ).toEqual({ addPct: 2, note: 'sleeve' });
+    ).toEqual({ addPct: 2, note: 'sleeve', stopDistancePct: null });
   });
 
   it('binds fire size to single-name room on ADD', () => {
@@ -1557,7 +1557,7 @@ describe('deriveActionCard', () => {
         sleeveExposurePct: 20,
         positionRangeHint: '50%-60%',
       }),
-    ).toEqual({ addPct: 3, note: 'single' });
+    ).toEqual({ addPct: 3, note: 'single', stopDistancePct: null });
   });
 
   it('attaches suggestAddPct on BUY action card', () => {
@@ -1576,6 +1576,151 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
       sleeveExposurePct: 40,
       sectorExposureByIndustry: new Map([['半导体', 5]]),
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.suggestAddPct).toBe(5);
+    expect(card.suggestSizeNote).toBe('clip');
+  });
+});
+
+describe('V7.0-02 risk-parity sizing (suggestFireSizePct)', () => {
+  const base = {
+    positionPct: null,
+    industryName: '半导体',
+    sectorExposureByIndustry: new Map([['半导体', 0]]),
+    sleeveExposurePct: 20,
+    positionRangeHint: '50%-60%',
+  };
+  it('keeps 5% clip for wide-stop names (risk budget not binding)', () => {
+    expect(
+      suggestFireSizePct({ ...base, stopDistancePct: 5 }),
+    ).toEqual({ addPct: 5, note: 'clip', stopDistancePct: 5 });
+  });
+
+  it('shrinks size when stop distance is wide (risk binds)', () => {
+    // 0.5% budget / 12% stop = 4.17 → 4.2
+    expect(
+      suggestFireSizePct({ ...base, stopDistancePct: 12 }),
+    ).toEqual({ addPct: 4.2, note: 'risk', stopDistancePct: 12 });
+  });
+
+  it('allows the floor size exactly at RISK_MIN_SIZE_PCT', () => {
+    // 0.5 / 20% = 2.5 → allowed
+    expect(
+      suggestFireSizePct({ ...base, stopDistancePct: 20 }),
+    ).toEqual({ addPct: 2.5, note: 'risk', stopDistancePct: 20 });
+  });
+
+  it('rejects the fire when risk size falls below the floor', () => {
+    // 0.5 / 25% = 2.0 < 2.5 → null
+    expect(suggestFireSizePct({ ...base, stopDistancePct: 25 })).toBeNull();
+  });
+
+  it('falls back to 2×ATR% when no stop distance is known', () => {
+    // atr14=6 on ref 100 → 12% → risk binds → 4.2
+    expect(
+      suggestFireSizePct({ ...base, atr14: 6, referencePrice: 100 }),
+    ).toEqual({ addPct: 4.2, note: 'risk', stopDistancePct: 12 });
+  });
+
+  it('prefers actual stop distance over ATR fallback', () => {
+    // actual stop 6% → riskCap = 8.3 (clip binds); ATR fallback would be 20% → 2.5
+    expect(
+      suggestFireSizePct({
+        ...base,
+        stopDistancePct: 6,
+        atr14: 10,
+        referencePrice: 100,
+      }),
+    ).toEqual({ addPct: 5, note: 'clip', stopDistancePct: 6 });
+  });
+
+  it('still binds to concentration rooms when tighter than risk cap', () => {
+    // risk cap = 0.5/0.10 = 5 → sleeve room 2 binds instead
+    expect(
+      suggestFireSizePct({
+        ...base,
+        stopDistancePct: 10,
+        sleeveExposurePct: 58,
+        positionRangeHint: '50%-60%',
+      }),
+    ).toEqual({ addPct: 2, note: 'sleeve', stopDistancePct: 10 });
+  });
+
+  it('does not bind risk on ADD with near-zero cushion (stop above ref)', () => {
+    // negative distance → no risk cap → clip
+    expect(
+      suggestFireSizePct({ ...base, stopDistancePct: -1 }),
+    ).toEqual({ addPct: 5, note: 'clip', stopDistancePct: null });
+  });
+});
+
+describe('V7.0-02 risk-parity sizing (deriveActionCard)', () => {
+  const mainline = allowSet([['半导体', '5D_TOP3']]);
+  it('BUY with wide stop shrinks Suggest% and reports stop distance', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:688256',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 88,
+        buyZoneHigh: 100,
+        stopLossParts: { atr14: 4 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:688256' },
+      currentPrice: 99,
+      mainlineAllow: mainline,
+      sleeveExposurePct: 20,
+      sectorExposureByIndustry: new Map([['半导体', 0]]),
+    });
+    expect(card.action).toBe('BUY');
+    // stop dist = (100 − 88)/100 = 12% → 0.5/0.12 = 4.166 → 4.2
+    expect(card.sizeStopDistancePct).toBeCloseTo(12, 6);
+    expect(card.suggestAddPct).toBe(4.2);
+    expect(card.suggestSizeNote).toBe('risk');
+  });
+
+  it('ADD sizes against exitStop cushion', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9.2,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', costPrice: 9, positionPct: 5, maxPrice: 10.5, entryDate: '2026-08-01' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      sleeveExposurePct: 20,
+      sectorExposureByIndustry: new Map([['半导体', 5]]),
+    });
+    // held → no chandelier yet (pnl +11% ≥ 10%? 10.5 peak, atr 0.3 → trail = 10.5−0.6 = 9.9; exitStop = max(9.2, 9.9) = 9.9)
+    // stop dist = (10 − 9.9)/10 = 1% → risk cap = 50 → clip binds
+    expect(card.action).toBe('ADD');
+    expect(card.sizeStopDistancePct).toBeCloseTo(1, 6);
+    expect(card.suggestAddPct).toBe(5);
+    expect(card.suggestSizeNote).toBe('clip');
+  });
+
+  it('BUY with no stop data degrades to clip sizing (ATR fallback unavailable)', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: mainline,
+      sleeveExposurePct: 20,
+      sectorExposureByIndustry: new Map([['半导体', 0]]),
     });
     expect(card.action).toBe('BUY');
     expect(card.suggestAddPct).toBe(5);

@@ -456,6 +456,51 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
     expect(queryClient.getQueryData(key)).toMatchObject({ barSync: { failures: 0, total: 1 } });
     expect(md).toContain('| CN:000001 | Test |');
   });
+
+  it('forceFresh bypasses a healthy cache and refetches (TIP-014)', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const key = watchlistMarketQueryOptions(['CN:000001']).queryKey;
+    await queryClient.setQueryData(key, {
+      trend: {
+        'CN:000001': {
+          symbol: 'CN:000001',
+          name: 'Test',
+          score: 90,
+          asOfDate: '2026-06-18',
+          values: { volumeRatio: 1.58 },
+          missingData: [],
+        },
+      },
+      quotes: {},
+    });
+    mockedFetchWatchlistMarketSnapshot.mockResolvedValue({
+      trend: {
+        'CN:000001': {
+          symbol: 'CN:000001',
+          name: 'Test',
+          score: 92,
+          asOfDate: '2026-06-19',
+          values: { volumeRatio: 1.6 },
+          missingData: [],
+        },
+      },
+      quotes: {},
+      barSync: { failures: 0, total: 1 },
+    });
+
+    const md = await buildWatchlistMarkdown(queryClient, null, null, false, true);
+
+    expect(mockedFetchWatchlistMarketSnapshot).toHaveBeenCalledWith(['CN:000001'], {
+      forceMarket: false,
+      realtime: false,
+    });
+    expect(queryClient.getQueryData(key)).toMatchObject({
+      trend: { 'CN:000001': { score: 92, asOfDate: '2026-06-19' } },
+    });
+    expect(md).toContain('| CN:000001 | Test |');
+  });
 });
 
 describe('buildDashboardCopyAllMarkdown cache', () => {

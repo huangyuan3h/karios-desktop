@@ -13,6 +13,7 @@ from .api.dashboard_routes import router as dashboard_router
 # before any API key can be issued).
 from .api.discovery_routes import router as discovery_router
 from .api.execution_journal_routes import router as execution_journal_router
+from .api.health_routes import router as health_router
 from .api.industry_flow_routes import router as industry_flow_router
 from .api.journal_routes import router as journal_router
 from .api.market_sentiment_routes import router as market_sentiment_router
@@ -34,6 +35,7 @@ from .api.v1_explain_routes import router as v1_explain_router
 # OPT-051 §12 #5: /v1/quota — per-API-key usage snapshot.
 from .api.v1_quota_routes import router as v1_quota_router
 from .api.watchlist_routes import router as watchlist_router
+from .api.research_routes import router as research_router
 from .scheduler import create_scheduler
 from .service.tv_capture_worker import start_tv_capture_worker, stop_tv_capture_worker
 
@@ -91,6 +93,7 @@ app.include_router(tv_router)
 app.include_router(tv_chrome_router)
 app.include_router(journal_router)
 app.include_router(execution_journal_router)
+app.include_router(health_router)
 app.include_router(trade_review_router)
 app.include_router(broker_router)
 app.include_router(industry_flow_router)
@@ -98,6 +101,7 @@ app.include_router(market_sentiment_router)
 app.include_router(news_router)
 app.include_router(alpha_radar_router)
 app.include_router(watchlist_router)
+app.include_router(research_router)
 # OPT-045 Phase A: discovery router (4 stable endpoints, no auth).
 # Phase B will add a separate /v1/* business router that depends on
 # api.auth.require_api_key.

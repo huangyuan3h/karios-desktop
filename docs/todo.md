@@ -29,7 +29,7 @@
 | 领域 | 在做（P0） | 待办（P1-P4） | 完成归档 |
 |------|------------|---------------|----------|
 | §1 定位与形态 | — | — | ✅ Tauri 降级 done 2026-08-04（OPT-060 / §12 #11）|
-| §2 收益 / 交易 | TIP-011 开火归因 | — | TIP-001~009 + V6.2/3 已沉淀；hover tooltip + Dashboard 精简 done 2026-08-01（§15）；漏斗 N 日表格 done 2026-08-02（OPT-058）；**TIP-009 Alpha 映射自动 QA done 2026-08-04**（数据驱动 5 信号 · 用户零操作）；**TIP-011 开火来源归因 done 2026-08-04**（TV/Alpha/手动 胜率分桶 + Copy section）|
+| §2 收益 / 交易 | TIP-011 开火归因 | — | TIP-001~009 + V6.2/3 已沉淀；hover tooltip + Dashboard 精简 done 2026-08-01（§15）；漏斗 N 日表格 done 2026-08-02（OPT-058）；**TIP-009 Alpha 映射自动 QA done 2026-08-04**（数据驱动 5 信号 · 用户零操作）；**TIP-011 开火来源归因 done 2026-08-04**（TV/Alpha/手动 胜率分桶 + Copy section）；**V7.0-02 风险平价开仓尺寸 done 2026-08-05**（0.5% 风险预算/止损距离 · FE+shared 零 BE 改动）；**TIP-012 研报→Alpha 通道 done 2026-08-05**（东财研报 API · 确定性评分 · 复用 TIP-004 闸门 · 每轮 cap 10 · 评分回写 + camelCase API 对齐 2026-08-06）；**TIP-013 Copy 新鲜度可见 done 2026-08-06**（`/api/health/datasources` · Copy All 头部 per-source 时间戳 + STALE 警告）；**TIP-014 Copy 强制刷新 done 2026-08-06**（forceFresh 绕过 react-query 缓存重拉行情/screener/评分）|
 | §3 API 开放 | — | API Key 配额 + 限流 | ✅ 已归档 → `archive/2026-08-01-opt-045-v1-api-surface.md`（OPT-045/046/047 整圈）|
 | §4 工程与部署 | — | — | ✅ Tunnel 脚本骨架 OPT-048；DB 决策 OPT-053；Docker 一键 OPT-056；隐藏页 & legacy 清理 done 2026-08-03（OPT-059）；**DB 本地备份 + 跨机迁移包 done 2026-08-04（OPT-061 / §12 #18）** |
 | §5 数据源 / 浏览器 | — | 付费 API 矩阵 | ✅ TV Scanner API 作为唯一池子（2026-08-01）；ego-lite/Chrome CDP 仅作 fallback；数据源审计 done 2026-08-01 |
@@ -66,6 +66,8 @@
 - **[P1] 卫星仓上限 / 仓位管理复核**：当前 15% 单票 + 30% 板块 + 袖子上限体系是否仍合理（参考 §13 `positionPct` 复杂度）。
 - **[P2] 开火来源归因（TV/Alpha/手动）**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-tip-011-execution-source.md`](./archive/2026-08-04-tip-011-execution-source.md)（TIP-011 · source 贯穿 write-path：前端 deriveActionCard 写 `source`（TV/ALPHA/MANUAL）→ diff_snapshots 透传 → `execution_decision_changes.source` + `paper_trades.source`；`GET /v1/execution/source-stats` 按来源出 BUY 信号量 + 平仓胜率；Copy markdown 新 section「Execution · Source attribution (30d)」；alembic 0018）。
 - **[P2] Alpha 映射质量抽检**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md`](./archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md)（TIP-009 · 5 信号自动 QA · 用户零操作；theme_industry_map 从历史 alpha_radar_trends 数据驱动学，penalty 应用到 compute_alpha_additions，Copy markdown 末尾暴露给外部 AI agent）。
+- **[P2] 风险平价开仓尺寸（V7.0-02）**：✅ **[done] 2026-08-05** → [`archive/2026-08-05-v7-02-risk-parity-sizing.md`](./archive/2026-08-05-v7-02-risk-parity-sizing.md)（Suggest% = min(5% clip, 0.5%风险预算/止损距离%, 单票/行业/Sleeve room)；实际止损位优先、2×ATR 兜底；<2.5% 放弃；绑定约束 note=`risk` + 面板显示止损距离；BE 零改动）。关联 §3 P1「卫星仓上限/仓位管理复核」。
+- **[P2] 研报 → α 通道（TIP-012）**：✅ **[done] 2026-08-05** → [`archive/2026-08-05-tip-012-research-alpha-channel.md`](./archive/2026-08-05-tip-012-research-alpha-channel.md)（东财研报 API 免费源 · 确定性评分（评级×80+目标价×20 权重，14天半衰期）· 复用 TIP-004 闸门 score_min=70 · 每轮 cap 10 · registry source='research' 可归因 · alembic 0019 + 每2h job；关联 §7 P2「研报→α通道」与 §7 P1「研报源评估」的可行性验证）。
 
 ---
 
@@ -137,13 +139,9 @@
 
 > 当前 News Brief 主要是 RSS + 摘要，研报是另一个量级的信息。
 
-- **[P1] 研报源评估**：可用性 / 合规 / 价格
-  - 巨潮资讯网（公开，免费但有限）
-  - 慧博 / 进门策略（会员）
-  - Wind/Choice 研报（最全，最贵）
-  - 第三方聚合：萝卜投研 / 研报客
+- **[P1] 研报源评估**：可用性 / 合规 / 价格 —— ✅ **东财研报中心 API 免费可用已实测**（TIP-012，2026-08-05）：单日 40-60 份个股研报、评级/目标价/EPS/行业全结构化、无鉴权；巨潮/慧博/Wind 无需再评估（除非需要深度研报全文）
 - **[P2] 是否独立**：决定是否单独抽一个 `karios-research` 子项目，避免污染主仓的卫星仓交易逻辑。
-- **[P2] 研报 → α 通道**：研报里的标的 + 评级如何进 Watchlist 旁路（参考 Alpha Radar 流程 `TIP-004`）。
+- **[P2] 研报 → α 通道**：✅ **[done] 2026-08-05** → TIP-012（见 §3 完成记录）；评级/目标价 → 复用 Alpha Radar 旁路进 Watchlist，registry source='research' 可归因
 
 ### News Substrate 2.0（老婆反馈 #2 "没有财经新闻准"）
 

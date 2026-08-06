@@ -66,12 +66,16 @@ TV Screener（候选宇宙）
 | TIP-009 | Alpha 映射质量抽检与错映射惩罚 | P2 | ★★★☆☆ | 1–2 天 | [x] 2026-08-04 |
 | TIP-010 | 备用宽宇宙实验（东财形态仅作对照，不替换） | P3 | ★★☆☆☆ | 1–2 天 + 对照周 | [ ] |
 | TIP-011 | 开火来源归因（TV / Alpha / 手动） | P3 | ★★★☆☆ | 1–2 天 | [x] 2026-08-04 |
+| TIP-012 | 研报 → Alpha 通道（评级/目标价进池） | P1 | ★★★★☆（新供给） | 2–3 天 | [x] 2026-08-05 |
 | V6.2-01 | 弱市/DEFEND 14:30 尾盘时间锁 | P0 | ★★★★☆ | 0.5 天 | [x] |
 | V6.2-02 | DEFEND 防守双轨袖子（暂缓 Beta） | P0 | ★★★★★ | 1 天 | [x] |
 | V6.2-03 | Zero-Pos 持仓归零自动清字段 | P0 | ★★★★☆ | 0.5 天 | [x] |
 | V6.3-01 | 超大单日资金突破闸门速杀豁免（WEAK_ATTACK） | P0 | ★★★★★ | 1 天 | [x] |
 | V6.3-02 | Alpha S TrendOK recovering 加速器 | P0 | ★★★★☆ | 1 天 | [x] |
 | V6.4-01 | ETF 资金流降级为系统级「资金确认因子」（Dashboard 移除大表） | P1 | ★★★☆☆（确认/过滤层） | 0.5–1 天 | [x] |
+| V7.0-01 | 跨资产相关性热力网（Correlation Cap） | P1（暂缓） | ★★★★☆（防共振回撤） | 2–3 天 | [ ] 暂缓 |
+| V7.0-02 | ATR 风险平价开仓尺寸（Risk-Parity Sizing） | **P0（选做）** | ★★★★★（风险金额恒定） | 1–2 天 | [x] 2026-08-05 |
+| V7.0-03 | 三阶利润护城河（Profit Escalator） | 排除 | ★★☆☆☆ | — | [x] 排除 |
 
 **预期收益图例**：★ 越多 = 越可能提高「有效开火密度」或减少「空转噪音」（在卫星仓纪律内）。
 
@@ -127,6 +131,213 @@ TV Screener（候选宇宙）
 - 聚合：`ETF_WATCHLIST` 按 `category` 归并 —— broad（510300/510050/510500）→ 国家队方向（`National Team Buy/Outflow`），sector（512480/515880/159819）→ 板块方向（`Sector Momentum/Inst Outflow`）；得出 `verdict = confirm / neutral / contradict`。
 - 执行闸（`compute_execution_gate`）：数据完整（`incomplete=false`，即无 shareLag 且 intradaySafe）时，`confirm` 仅追加原因 `ETF_FLOW_CONFIRM`；`contradict` 追加 `ETF_FLOW_CONTRADICT` **且把普通 ATTACK 降为 HOLD_ONLY**。永不升级；不降 `WEAK_ATTACK`（V6.3 溢出豁免）与硬 `DEFEND`；数据不完整时完全忽略。
 - UI：DashboardPage **移除** ETF 大表格卡片；`MarketSentimentCard` 新增一行「资金确认 (ETF)」徽标（confirm 绿 / contradict 红 / 中性灰）。完整 ETF 明细表仅保留在 IndexPage 次级面板与 AI copy 输出中。
+
+---
+
+## V7.0 — 组合级风控 + 风险平价 + 利润阶梯（2026-08-05 评估采纳）
+
+> 来源：外部系统 V7.0 改进提案；经对照现有代码（`execution-action.ts` / `execution_gate.py`）评审后**部分采纳 + 修正**。
+> 评审结论（2026-08-05）：**仅选做 V7.0-02（ATR 风险平价）**，理由：原理无争议、每笔交易直接受益、改动最小（仅 `suggestFireSizePct`）、可立即验证。V7.0-01 暂缓（工程复杂、属预防性闸门，作为第二步）；V7.0-03 排除（Tier3 与现有 Chandelier 重复且更保守，Tier1 +3% 阈值与波动率逻辑自相矛盾，Tier2 分批止盈与趋势跟随哲学冲突）。
+
+### V7.0-01：跨资产相关性热力网（Cross-Asset Correlation Cap）—— 暂缓（第二步）
+
+**状态**：[ ] 暂缓  
+**完成日期**：  
+**优先级**：P1（暂缓）  
+**备注 / PR**：
+
+#### 问题
+
+现有限制只按**单票 15% / 东财行业 30% / Sleeve 上限**切割，存在跨资产相关性盲区：
+恒生科技 ETF + 腾讯 + 通信 ETF(CPO) 分属港 ETF / 港股 / A 股 ETF 三种资产，但底层 Beta 高度同向（纳指/英伟达大跌时共振回撤）。东财行业映射无法表达「跨市场同主题」暴露。
+
+#### 目标（修正后方案）
+
+**混合法：语义因子映射为主 + 经验相关性为辅**，不直接裸用 20 日相关系数：
+
+1. **语义因子层（主）**：ETF → 跟踪指数（如恒生科技指数、科创 50）；个股 → 东财行业 + 跨市场主题映射（`theme_industry_map.json` 已有类似基建）。定义因子簇（如 `Tech_Beta` = 恒生科技 + 半导体 + CPO + 中概互联）。
+2. **经验相关性层（辅/确认）**：20 日收益率相关性矩阵，**先对齐交易日历**（港股与 A 股节假日不同，未对齐的样本直接拉低相关性造成假阴性）；最少对齐样本数不达标则 fail-open 回退到语义层。
+3. **硬约束**：语义因子簇或经验聚类（r > 0.75）的持仓占比累计 **> 30%** → 对该簇内新 BUY/ADD 下发 `CORRELATION_CAP_BLOCK`（只拦新开仓，不强制平仓）；Suggest% 同步扣减。
+4. **展示**：战斗面板新增 Correlation Matrix 小面板（簇占比 + 顶部相关对）。
+
+**明确不做**：用 20 日纯统计相关性作为唯一依据（样本少、跨市场日历错位、崩盘期相关性才最高但历史窗口反而低估）；不引入强制卖出。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Shared | `packages/shared/src/schemas/`（correlation 相关字段） |
+| BE | 新 `service/correlation.py`（日历对齐 + 相关性 + 语义簇）；`execution_gate.py`（簇暴露计算 + BLOCK） |
+| FE | `execution-action.ts`（roomCorrelation 入 min 链）、战斗面板矩阵卡片 |
+| 测试 | `tests/test_correlation.py`（日历对齐 / 簇聚合 / 边界 30%） |
+
+#### 预期收益
+
+- **高**：堵住「三类资产同一条 Beta」的隐形集中度；降低隔夜美股单边暴跌的共振回撤。
+- **风险**：阈值 30% 在小持仓组合下可能频繁触发；建议先以「告警（WARN）+ 挡 ADD」两档灰度。
+
+#### 验证
+
+- [ ] 单测：跨市场日历对齐；簇聚合正确；>30% 拦 BUY/ADD；<30% 放行
+- [ ] 用当前组合（含恒生科技 ETF 18.4% 案例）回放确认触发与数字合理
+
+---
+
+### V7.0-02：ATR 风险平价开仓尺寸（Risk-Parity Sizing）—— 本轮唯一选做项
+
+**状态**：[x]  
+**完成日期**：2026-08-05  
+**优先级**：P0  
+**备注 / PR**：见 [`docs/archive/2026-08-05-v7-02-risk-parity-sizing.md`](../archive/2026-08-05-v7-02-risk-parity-sizing.md)
+
+#### 问题
+
+`DEFAULT_FIRE_CLIP_PCT=5` 对所有标的等额切子弹；唐山港日波幅 1.2% 与寒武纪 5%–8% 同仓 5%，高波动票对账户的风险贡献是低波动票的 3–4 倍。
+
+#### 目标（修正后方案）
+
+**按「实际止损距离」定价风险，ATR 仅作兜底代理**：
+
+```
+sizePct = min(DEFAULT_FIRE_CLIP_PCT,
+              单笔风险预算(默认0.5%) / 止损距离% ,
+              roomSingle, roomSector, roomSleeve, roomCorrelation)
+止损距离% = (entry − 实际HardStop) / entry          # 有 TrendOK stopLossPrice 时优先
+            否则 ≈ 2 × ATR% (14日)                   # 兜底
+```
+
+- 低波动（ATR%≈2%，止损 4% 内）：尺寸可到 5% 上限；
+- 高波动（ATR%≈6%，止损 8%–12%）：尺寸自动缩至 2.5%–3.5%。
+- **下限保护**：尺寸 < 2.5% 时标注 `SIZE_TOO_SMALL`（建议跳过或仅观察），避免碎片化小仓；上限仍受 5% clip / 15% 单票 / 30% 行业 / 各 Sleeve cap 约束（嵌套进现有 `suggestFireSizePct` min 链）。
+- **修正说明**：提案公式 `0.5%/(ATR%×2)` 与示例数字（ATR 6% → 2.5–3.5%）自洽性不佳（0.5/12≈4.2%），且以 2×ATR 代替实际止损距离会失真（系统 HardStop 多为结构位，非 2×ATR）；按「实际止损距离优先」重写后两者自然一致。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| FE | `execution-action.ts`（`suggestFireSizePct` 增 stopDistancePct/atr14/referencePrice 参数 + riskCap 入 min 链 + `sizeStopDistancePct` 输出）、`WatchlistRow.tsx`（Suggest% title 显示止损距离）、`execution-markdown.ts`（Suggest% note 更新） |
+| Shared | `packages/shared/src/schemas/executionGate.ts`（`sizeStopDistancePct` 字段） |
+| 测试 | `execution-action.test.ts`（低/高波动尺寸、下限保护、与 room 链交互、ATR fallback、ADD/BUY 场景） |
+| BE | **无需改动**——`trendok.py` 已输出 `stopLossParts.atr14`（绝对值）与 `stopLossPrice`（结构位硬止损），FE 侧数据完备 |
+
+#### 预期收益
+
+- **高**：单笔触发止损对账户的伤害金额趋于恒定（0.5% 预算）；高波动票不再用等额仓位放大回撤压力。
+- **风险**：需监控总仓位分母口径（Sleeve 占比 vs 总权益）；低波动票 5% 上限不变意味着其单票风险贡献仍可超预算，属可接受折中。
+
+#### 验证
+
+- [x] 单测覆盖低/高 ATR 场景 + 与单票/行业/Sleeve room 的 min 交互（+14 条，前端全量 467 passed / shared 57 passed / tsc clean）
+- [ ] 实盘观察 2 周：开火尺寸分布是否符合「低波大仓、高波小仓」
+
+---
+
+### V7.0-03：三阶利润护城河（Profit Escalator）—— 已排除（2026-08-05）
+
+**状态**：[x] 排除  
+**完成日期**：2026-08-05  
+**优先级**：—  
+**备注 / PR**：排除理由见 V7.0 章节开头评审结论；保留本节仅作决策记录。
+
+#### 排除论证
+
+1. **Tier3 是重复建设**：现有 `deriveTriggerAndTrail` 已实现浮盈 ≥10% 启动 Chandelier（`CHANDELIER_ARM_PNL_PCT=10`，`trailStop = peak − 2×ATR`，exitStop = max(hardStop, trailStop)）。提案的 15% 启动档比现状**更保守**，加了等于倒退。
+2. **Tier1（+3% 锁保本）与波动率逻辑自相矛盾**：ATR 6% 的高波票单日噪声即 ±5%，+3% 抬保本 = 必然被噪声扫出局，直接把 V7.0-02 想扛的波动又还回去了。
+3. **Tier2（1/3 分批止盈）与「让利润奔跑」哲学冲突**：Chandelier 的本质是趋势跟随（让赢家奔跑、让利润曲线自己说话），固定位置分批止盈在数学上压低期望收益（截断右尾），仅在心理层面有价值——不值得为此改执行逻辑。
+4. **增量价值低**：现有 Chandelier + 结构位 HardStop 已覆盖 90% 的锁利需求；阶梯抬升属于锦上添花，与 ATR 平价相比 ROI 低。
+
+#### 现状盘点（供未来参考，若仍想做）
+
+- 现有 HardStop 来自 TrendOK `stopLossPrice`（结构位/EMA），无阶梯抬升机制——若未来要拾起，只做 T1/T2（阈值按 ATR 缩放），Tier3 沿用现有 Chandelier。
+
+#### 现状盘点（评审关键）
+
+- 现有 `deriveTriggerAndTrail` 已实现 **浮盈 ≥10% 启动 Chandelier**（`CHANDELIER_ARM_PNL_PCT=10`，`trailStop = peak − 2×ATR`，exitStop = max(hardStop, trailStop)）——提案的 Tier3（15% 启动）比现状**更保守**，无需新增。
+- 现有 HardStop 来自 TrendOK `stopLossPrice`（结构位/EMA），无阶梯抬升机制——Tier1/2 确有增量价值。
+
+#### 目标（修正后方案）
+
+| Tier | 触发 | 动作 | 修正点 |
+|------|------|------|--------|
+| T1 Breakeven Lock | 浮盈 ≥ **max(3%, 1.0×ATR%)** | HardStop = max(HardStop, cost×1.005)；标记 `BREAKEVEN_LOCKED` | **修正**：纯 +3% 对 ATR 6% 的票一天噪声就扫停，阈值按 ATR 缩放 |
+| T2 Profit Lock | 浮盈 ≥ +8% | HardStop = max(HardStop, cost×1.04)；生成 1/3 仓「挂牌分批止盈」**建议**（paper，不强制） | **修正**：分批止盈与「让利润奔跑」哲学冲突，落地为建议而非强制单 |
+| T3 Runner | 浮盈 ≥ +10%（沿用现有） | 现有 Chandelier `peak − 2×ATR` 已覆盖 | 不再新增 15% 档；沿用现状 |
+
+- 兼容性：现有 `exitStop = max(hardStop, trailStop)` 天然支持 T1/T2 抬升后与 Chandelier 取高者。
+- 执行面：T1/T2 抬升在 `deriveTriggerAndTrail` 内实现（输入浮盈、ATR%、hardStop、cost），输出 `escalatorTier: 0|1|2`。
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| FE | `execution-action.ts`（`deriveTriggerAndTrail` 增阶梯逻辑 + `escalatorTier` 字段）、`execution-markdown.ts`（面板列） |
+| Shared | `packages/shared/src/schemas/`（escalator 字段） |
+| 测试 | `execution-action.test.ts`（三档触发 / ATR 缩放 / max 链） |
+
+#### 预期收益
+
+- **中**：浮盈转实盈节奏更明确；减少「+10% 利润吐回归零」。
+- **风险**：T1 抬到保本后回踩即离场，会砍掉部分「回踩后继续主升」的赢家——这正是 Chandelier 与 Breakeven 的固有矛盾；阈值按 ATR 缩放后矛盾显著缓解。
+
+#### 验证
+
+- [ ] 单测：三档触发边界 + ATR 缩放 + 与现有 Chandelier 取 max 兼容
+- [ ] 实盘 2 周观察：T1 触发后被扫出局的比例（应远低于纯 +3% 阈值）
+
+### TIP-012：研报 → Alpha 通道（评级/目标价进池）
+
+**状态**：[x]  
+**完成日期**：2026-08-05  
+**优先级**：P1  
+**备注 / PR**：见 [`docs/archive/2026-08-05-tip-012-research-alpha-channel.md`](../archive/2026-08-05-tip-012-research-alpha-channel.md)
+
+#### 问题
+
+Alpha 供给只来自新闻 catalyst（Alpha Radar RSS）——「研报是另一个量级的信息」但没进系统。研报评级/目标价/EPS 比新闻结构化得多，且发布密集（东财每日 40-60 份个股研报）。
+
+#### 目标
+
+**研报 → α 旁路**（复用 Alpha Radar 全部下游）：
+
+```text
+东财研报中心 API（reportapi.eastmoney.com，免费）
+  → research_reports 表（info_code 去重；alembic 0019）
+  → 确定性评分：score = (评级×80 + 目标价空间×20) × 时效衰减(14天半衰期)
+     买入=80 / 增持=60 / 目标价20%空间=+8；多份确认 +5/份(cap +10)
+  → build_research_catalyst_payload：按 symbol 聚合，形状与 catalyst payload 一致
+  → compute_alpha_additions（score_min=70，复用 TIP-004 闸门：防守板块/Top10/缺行业）
+  → 与 catalyst 候选合并进 automation alphaAdd；每轮 cap 10 个
+  → 前端 registry source='research'（Watchlist 可溯源）
+```
+
+**关键设计**：
+- 行业标签**直接用东财研报 API 自带行业**（与 EM 缓存同源）——解决"新标的 EM 缓存无行 → missing_industry 误拒"（实测 31/49 被拒，修复后 30 候选）
+- 执行溯源仍走 ALPHA/MANUAL（TIP-011 三枚举不变）；registry source 加 `research` 区分通道
+- 每轮 cap `RESEARCH_MAX_CANDIDATES=10`（注意力预算；payload 已按分排序）
+- 调度：`research_report_sync` job 每 2h 抓最近 3 天增量（去重幂等）
+- 评分阈值 70 < Alpha 的 85：1 份新鲜"买入"=80 即可进池（研报信号弱于 S 级新闻 catalyst，故用低门槛+行业闸约束）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| BE 新 | `service/research.py`（sync/评分/聚合）、`db/research.py`（表+upsert/list/stats）、`scheduler/research_report_job.py`、`api/research_routes.py`（/api/research/reports、stats、sync） |
+| BE 改 | `watchlist_automation.py`（score_min 参数 + research 候选合并 + cap）、`api/sync_routes.py`（SYNC_JOB_TYPES）、`db/schema_baseline.py`、`scheduler/__init__.py`、`main.py` |
+| 迁移 | `alembic/versions/0019_research_reports.py` |
+| Shared | `schemas/watchlist.ts`（source 枚举 +research）、`schemas/scheduler.ts`（job catalog） |
+| FE | `watchlist-automation.ts`（channel→registry source + summary 显示研报α计数） |
+| 测试 | `tests/test_research.py`（16 单测）+ `test_watchlist_automation.py`（+3） |
+
+#### 预期收益
+
+- **高**：新增确定性 Alpha 供给（每日 40-60 份研报 → 结构化候选）；与新闻 catalyst 通道互补（研报滞后但结构化，catalyst 及时但噪声大）。
+- **风险**：研报发布时价格已部分反应（跟风风险）——靠 TrendOK/score 池内二次筛选兜底；进池 ≠ 买单。
+
+#### 验证
+
+- [x] 端到端：真实 API 抓取 63 条 → 入库 58 → 聚合 49 标的 → 闸门后 30 候选 → cap 10 进 run
+- [x] 单测 16+3；全量后端 1313 / shared 57 / 前端 467 全绿
+- [ ] 观察 2 周：研报进池票的 TrendOK/开火转化率 vs 新闻 catalyst（registry source='research' 可归因）
 
 ---
 

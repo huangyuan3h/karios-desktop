@@ -300,6 +300,81 @@ def test_compute_alpha_additions_top10_fail_open_when_empty() -> None:
     assert "not_in_top10" not in rejected
 
 
+def test_compute_alpha_additions_score_min_lower_floor_research() -> None:
+    """TIP-012: research channel passes its own lower floor (70) and keeps
+    the channel tag for the frontend registry source."""
+    payload = {
+        "items": [
+            {
+                "symbol": "600000",
+                "name": "Buy Rated",
+                "catalystScore": 80.0,
+                "channel": "research",
+                "articles": [{"catalystGrade": "S"}],
+            },
+            {
+                "symbol": "600001",
+                "name": "Mid",
+                "catalystScore": 65.0,
+                "channel": "research",
+                "articles": [{"catalystGrade": "S"}],
+            },
+        ]
+    }
+    out, rejected = wa.compute_alpha_additions(
+        catalyst_payload=payload,
+        industry_by_symbol={"CN:600000": "电子", "CN:600001": "电子"},
+        top_industries={"电子"},
+        score_min=70.0,
+    )
+    assert len(out) == 1
+    assert out[0]["symbol"] == "CN:600000"
+    assert out[0]["channel"] == "research"
+    assert rejected.get("low_score") == 1
+
+
+def test_compute_alpha_additions_default_floor_rejects_research_low() -> None:
+    """Without score_min, an 80 research score is still below the 85 floor."""
+    payload = {
+        "items": [
+            {
+                "symbol": "600000",
+                "name": "Buy Rated",
+                "catalystScore": 80.0,
+                "channel": "research",
+                "articles": [{"catalystGrade": "S"}],
+            },
+        ]
+    }
+    out, rejected = wa.compute_alpha_additions(
+        catalyst_payload=payload,
+        industry_by_symbol={"CN:600000": "电子"},
+        top_industries={"电子"},
+    )
+    assert len(out) == 0
+    assert rejected.get("low_score") == 1
+
+
+def test_compute_alpha_additions_non_research_channel_null() -> None:
+    payload = {
+        "items": [
+            {
+                "symbol": "600002",
+                "name": "Hot",
+                "catalystScore": 90.0,
+                "articles": [{"catalystGrade": "S"}],
+            },
+        ]
+    }
+    out, _ = wa.compute_alpha_additions(
+        catalyst_payload=payload,
+        industry_by_symbol={"CN:600002": "半导体"},
+        top_industries=set(),
+    )
+    assert len(out) == 1
+    assert out[0].get("channel") is None
+
+
 def test_precheck_skips_without_close_sync(monkeypatch) -> None:
     monkeypatch.setattr(wa, "is_trading_day", lambda exchange, d: True)
     monkeypatch.setattr(wa, "get_today_run", lambda job_type: None)
@@ -409,6 +484,11 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
         ),
     )
     monkeypatch.setattr(wa, "_resolve_em_industries_for_symbols", lambda symbols: {})
+    monkeypatch.setattr(
+        wa,
+        "build_research_catalyst_payload",
+        lambda limit=100: {"stalenessBasis": "test", "maxAgeDays": 14, "total": 0, "items": []},
+    )
 
     def fake_scores(symbol: str, trade_dates: list[str]) -> list[dict]:
         return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]

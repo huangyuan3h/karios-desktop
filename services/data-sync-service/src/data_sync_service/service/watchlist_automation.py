@@ -33,6 +33,11 @@ from data_sync_service.service.close_sync import _cn_today
 from data_sync_service.service.dashboard import _sync_screeners_step
 from data_sync_service.service.industry_fund_flow import sync_cn_industry_fund_flow
 from data_sync_service.service.industry_taxonomy import is_sw_l1_industry_name
+from data_sync_service.service.research import (
+    RESEARCH_MAX_CANDIDATES,
+    RESEARCH_SCORE_MIN,
+    build_research_catalyst_payload,
+)
 from data_sync_service.service.trade_calendar_utils import resolve_effective_as_of, trade_dates_upto
 from data_sync_service.service.trendok import compute_trendok_for_symbols
 
@@ -417,6 +422,7 @@ def compute_alpha_additions(
     industry_by_symbol: dict[str, str] | None = None,
     top_industries: set[str] | None = None,
     auto_qa_penalties: dict[str, dict[str, Any]] | None = None,
+    score_min: float | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """
     Alpha Radar → Watchlist candidates with light entry gates (TIP-004).
@@ -431,11 +437,17 @@ def compute_alpha_additions(
     - TIP-009 auto-QA penalty: catalystScore is multiplied by (1 - penalty)
       before the SCORE_MIN check; entries that fall under the floor are
       counted under ``auto_qa_penalty``.
+
+    V7.0/TIP-012: ``score_min`` overrides the 85 floor — the research channel
+    passes 70 (RESEARCH_SCORE_MIN) because a fresh 买入 rating is a weaker
+    signal than an S-grade news catalyst but still pool-worthy.
     """
     payload = catalyst_payload if catalyst_payload is not None else list_catalyst_stocks(limit=limit)
     items = payload.get("items") if isinstance(payload, dict) else []
     if not isinstance(items, list):
         return [], {}
+
+    score_floor = CATALYST_SCORE_MIN if score_min is None else float(score_min)
 
     penalties = auto_qa_penalties
     if penalties is None:
@@ -458,7 +470,7 @@ def compute_alpha_additions(
         if not isinstance(row, dict):
             continue
         score = float(row.get("catalystScore") or 0.0)
-        if score <= CATALYST_SCORE_MIN:
+        if score <= score_floor:
             _bump("low_score")
             continue
         articles = row.get("articles") if isinstance(row.get("articles"), list) else []
@@ -473,7 +485,7 @@ def compute_alpha_additions(
         penalty_info = penalties.get(sym) or {}
         penalty = float(penalty_info.get("penalty") or 0.0)
         adjusted_score = score * (1.0 - penalty)
-        if adjusted_score <= CATALYST_SCORE_MIN:
+        if adjusted_score <= score_floor:
             _bump("auto_qa_penalty")
             continue
         prelim.append(
@@ -484,6 +496,9 @@ def compute_alpha_additions(
                 "rawCatalystScore": score,
                 "autoQaPenalty": round(penalty, 3),
                 "autoQaSignals": penalty_info.get("signals") or {},
+                # TIP-012: research-channel candidates keep their channel tag so
+                # the frontend can mark registry source='research'.
+                "channel": str(row.get("channel") or "") or None,
                 # TIP-011: tag ALPHA provenance so downstream journal changes
                 # and paper_trades can attribute win-rate by source.
                 "source": "ALPHA",
@@ -628,6 +643,35 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
     )
     meta["alphaCandidates"] = len(alpha_add)
     meta["alphaRejected"] = alpha_rejected
+
+    # TIP-012: research channel (研报 → α) — same entry gates, lower floor.
+    research_add: list[dict[str, Any]] = []
+    research_rejected: dict[str, int] = {}
+    try:
+        research_payload = build_research_catalyst_payload(limit=100)
+        # Research reports carry their own East Money industry label (same
+        # taxonomy as the EM cache); prefer it over the DB cache so fresh
+        # names without a warm cache row still pass the defense/Top10 gates.
+        research_industries = {
+            str(x.get("symbol")): str(x["industryName"])
+            for x in (research_payload.get("items") or [])
+            if isinstance(x, dict) and x.get("symbol") and x.get("industryName")
+        }
+        research_add, research_rejected = compute_alpha_additions(
+            catalyst_payload=research_payload,
+            industry_by_symbol=research_industries,
+            top_industries=top10,
+            score_min=RESEARCH_SCORE_MIN,
+        )
+        # Attention budget: cap research-channel additions per run (best
+        # scores first — payload is already sorted descending).
+        research_add = research_add[:RESEARCH_MAX_CANDIDATES]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("research channel candidate build failed: %s", exc)
+        research_rejected = {"research_channel_error": 1}
+    alpha_add = alpha_add + research_add
+    meta["researchCandidates"] = len(research_add)
+    meta["researchRejected"] = research_rejected
 
     run_id = insert_automation_run(
         trade_date=trade_date,

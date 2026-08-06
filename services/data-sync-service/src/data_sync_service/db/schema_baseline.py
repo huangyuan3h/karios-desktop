@@ -30,6 +30,7 @@ from data_sync_service.db.market_detail import CREATE_SQL as MARKET_DETAIL_CREAT
 from data_sync_service.db.market_sentiment import CREATE_SQL as MARKET_SENTIMENT_CREATE_SQL
 from data_sync_service.db.news import CREATE_ITEMS_SQL
 from data_sync_service.db.news import CREATE_SOURCES_SQL as NEWS_SOURCES_SQL
+from data_sync_service.db.research import CREATE_TABLE_SQL as RESEARCH_CREATE_SQL
 from data_sync_service.db.stock_basic import CREATE_SQL as STOCK_BASIC_CREATE_SQL
 from data_sync_service.db.stock_eastmoney_industry import CREATE_SQL as EM_INDUSTRY_CREATE_SQL
 from data_sync_service.db.stoploss import CREATE_INDEX_SQL as STOPLOSS_INDEX_SQL
@@ -123,6 +124,7 @@ def baseline_ddl_statements() -> list[str]:
         BROKER_CREATE_SQL,
         WATCHLIST_AUTOMATION_CREATE_SQL,
         SYSTEM_PROMPTS_CREATE_SQL,
+        RESEARCH_CREATE_SQL,
     ]
 
     statements: list[str] = []

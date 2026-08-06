@@ -101,7 +101,12 @@ export const ExecutionActionCardSchema = z.object({
   mainlineTag: MainlineTagSchema.nullable().optional(),
   /** Suggested add to sleeve weight for BUY/ADD (pct points), after caps. */
   suggestAddPct: z.number().nullable().optional(),
-  /** Binding constraint: clip | single | sector | sleeve */
+  /** Binding constraint: clip | single | sector | sleeve | risk (V7.0-02) */
   suggestSizeNote: z.string().nullable().optional(),
+  /**
+   * V7.0-02: stop distance % that drove risk-parity sizing
+   * (held → (current − exitStop)/current, flat → (ref − hardStop)/ref, else 2×ATR%).
+   */
+  sizeStopDistancePct: z.number().nullable().optional(),
 });
 export type ExecutionActionCard = z.infer<typeof ExecutionActionCardSchema>;

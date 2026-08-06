@@ -746,8 +746,16 @@ function WatchlistRowInner({
             ? `mainline=${actionCard.mainlineTag || 'ok'}`
             : 'mainline=no',
           typeof actionCard.suggestAddPct === 'number'
-            ? `suggest +${actionCard.suggestAddPct.toFixed(1)}% (${actionCard.suggestSizeNote || 'clip'})`
-            : null,
+            ? `suggest +${actionCard.suggestAddPct.toFixed(1)}% (${actionCard.suggestSizeNote || 'clip'}${
+                actionCard.sizeStopDistancePct != null
+                  ? ` · stop ${actionCard.sizeStopDistancePct.toFixed(1)}%`
+                  : ''
+              })`
+            : actionCard.action === 'BUY' || actionCard.action === 'ADD'
+              ? actionCard.sizeStopDistancePct != null
+                ? `stop ${actionCard.sizeStopDistancePct.toFixed(1)}% → 风险超预算(建议<2.5%)，放弃`
+                : null
+              : null,
         ]
           .filter(Boolean)
           .join(' · ')}

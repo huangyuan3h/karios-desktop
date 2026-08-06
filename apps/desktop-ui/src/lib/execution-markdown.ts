@@ -102,7 +102,10 @@ export function buildPositionsExecutionMarkdown(
     '- note: BUY/ADD blocked when sleeve positionPct sum >= Gate positionRangeHint max (SLEEVE_CAP_BLOCK)',
   );
   lines.push(
-    '- note: Suggest% = min(5% clip, single 15% room, sector 30% room, sleeve hint room); WEAK_ATTACK hard-caps Suggest% at 5% (overflow pioneer)',
+    '- note: Suggest% = min(5% clip, 0.5% risk-budget / stop-dist%, single 15% room, sector 30% room, sleeve hint room); stop-dist% = (ref−stop)/ref (held: exitStop, flat: hardStop; fallback 2×ATR%); binding (risk) means vol-shrunk size; <2.5% → no suggestion',
+  );
+  lines.push(
+    '- note: WEAK_ATTACK hard-caps Suggest% at 5% (overflow pioneer)',
   );
   lines.push(
     '- note: Dist% flat = (Entry_Trigger-Current)/Current; held = (Current-Exit_Stop)/Current',

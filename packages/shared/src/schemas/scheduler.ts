@@ -485,6 +485,18 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     13,
     { endpoint: '/api/news/brief/generate?brief_type=midday', method: 'POST', label: '生成午间简报' },
   ),
+  meta(
+    'research_report_sync',
+    'alphaRadar',
+    '研报同步',
+    '每 2 小时从东方财富研报中心抓取最新个股研报（评级/目标价/EPS），供研报 α 通道入池。',
+    '每 2 小时',
+    null,
+    'interval',
+    true,
+    14,
+    { endpoint: '/api/research/sync', method: 'POST', label: '立即同步' },
+  ),
 ];
 
 /** Group display order in the UI. */

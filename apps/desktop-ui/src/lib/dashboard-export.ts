@@ -58,6 +58,7 @@ import {
   type MainlineAllowSet,
 } from '@/lib/hot-industry-picks';
 import { applyWatchlistPurgeAfterReport } from '@/lib/watchlist-purge';
+import { buildDataFreshnessMarkdown, fetchDataSourcesHealth } from '@/lib/freshness';
 import type {
   ExecutionChangeListResponse,
   ExecutionGate,
@@ -81,7 +82,11 @@ import {
 } from '@/lib/screenerExport';
 import { toTsCodeFromSymbol } from '@/lib/symbols';
 import { screenerSnapshotsQueryOptions } from '@/lib/queries/screener';
-import { fetchDashboardSummaryPartial } from '@/lib/queries/dashboard';
+import {
+  dashboardLiteQueryKey,
+  fetchDashboardLiteSummary,
+  fetchDashboardSummaryPartial,
+} from '@/lib/queries/dashboard';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
 import { fetchWatchlistMarketSnapshot, type WatchlistMarketSnapshot } from '@/lib/watchlist-market';
 import {
@@ -157,6 +162,7 @@ function symbolsWithMissingTrendInputs(
 async function fetchWatchlistSnapshotForCopy(
   symbols: string[],
   queryClient?: QueryClient,
+  forceFresh = false,
 ): Promise<WatchlistMarketSnapshot> {
   if (!queryClient) {
     return fetchWatchlistMarketSnapshot(symbols, {
@@ -166,7 +172,9 @@ async function fetchWatchlistSnapshotForCopy(
   }
 
   const options = watchlistMarketQueryOptions(symbols);
-  const snapshot = await queryClient.fetchQuery(options);
+  const snapshot = forceFresh
+    ? await queryClient.fetchQuery({ ...options, staleTime: 0 })
+    : await queryClient.fetchQuery(options);
   const missingInputs = symbolsWithMissingTrendInputs(symbols, snapshot.trend);
   if (!missingInputs.length) return snapshot;
 
@@ -505,7 +513,7 @@ export async function buildScreenersMarkdown(
   s: DashboardSummary | null,
   heading = '##',
   queryClient?: QueryClient,
-  options?: { mode?: 'full' | 'compact' },
+  options?: { mode?: 'full' | 'compact'; forceFresh?: boolean },
 ): Promise<string> {
   const summary2: any = s ?? {};
   const rows: any[] = Array.isArray(summary2?.screeners) ? summary2.screeners : [];
@@ -558,7 +566,12 @@ export async function buildScreenersMarkdown(
   >;
 
   if (queryClient && screenerIds.length) {
-    const snapMap = await queryClient.fetchQuery(screenerSnapshotsQueryOptions(screenerIds));
+    const snapMap = options?.forceFresh
+      ? await queryClient.fetchQuery({
+          ...screenerSnapshotsQueryOptions(screenerIds),
+          staleTime: 0,
+        })
+      : await queryClient.fetchQuery(screenerSnapshotsQueryOptions(screenerIds));
     resolvedScreenerResults = screenerIds.map((sid) => {
       const snap = snapMap[sid];
       if (!snap) return { sid, error: 'No snapshot found' };
@@ -672,6 +685,7 @@ export async function buildWatchlistMarkdown(
   gate?: ExecutionGate | null,
   mainlineAllow?: MainlineAllowSet | null,
   sectorOutflowBlock = false,
+  forceFresh = false,
 ): Promise<string> {
   const itemsRaw = loadWatchlist();
   const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
@@ -702,7 +716,7 @@ export async function buildWatchlistMarkdown(
   >;
 
   if (queryClient) {
-    const snapshot = await fetchWatchlistSnapshotForCopy(syms, queryClient);
+    const snapshot = await fetchWatchlistSnapshotForCopy(syms, queryClient, forceFresh);
     trend = snapshot.trend;
     quotes = snapshot.quotes;
   } else {
@@ -894,6 +908,8 @@ export type DashboardCopyAllOptions = {
   queryClient?: QueryClient;
   /** Copy mode (2026-08-01): 'compact' trims ~80% of secondary sections for fast scan. */
   mode?: 'full' | 'compact';
+  /** TIP-014: bypass react-query cache and re-fetch market/screener data before building. */
+  forceFresh?: boolean;
 };
 
 type ExecutionCopyBundle = {
@@ -908,8 +924,9 @@ async function buildExecutionCopyBundle(opts: {
   mainlineAllow: MainlineAllowSet | null;
   sectorOutflowBlock?: boolean;
   queryClient?: QueryClient;
+  forceFresh?: boolean;
 }): Promise<ExecutionCopyBundle> {
-  const { gate, mainlineAllow, sectorOutflowBlock = false, queryClient } = opts;
+  const { gate, mainlineAllow, sectorOutflowBlock = false, queryClient, forceFresh = false } = opts;
   const itemsRaw = loadWatchlist();
   const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
     .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
@@ -921,7 +938,7 @@ async function buildExecutionCopyBundle(opts: {
   if (gate && items.length) {
     try {
       const symbols = items.map((i) => i.symbol);
-      const market = await fetchWatchlistSnapshotForCopy(symbols, queryClient);
+      const market = await fetchWatchlistSnapshotForCopy(symbols, queryClient, forceFresh);
       const nameBySym = new Map(items.map((i) => [i.symbol, i.name ?? null]));
       quotes = {};
       for (const sym of symbols) {
@@ -1032,10 +1049,22 @@ export async function buildDashboardCopyAllMarkdown(
 ): Promise<string> {
   await ensureWatchlistHydrated();
   let { summary: s } = options;
-  const { newsSummary, newsSummaryUpdatedAt, newsFallback, queryClient, mode = 'full' } = options;
+  const { newsSummary, newsSummaryUpdatedAt, newsFallback, queryClient, mode = 'full', forceFresh = false } = options;
   const compact = mode === 'compact';
   if (!s) {
     throw new Error('No data available. Please refresh first.');
+  }
+  // TIP-014: force fresh dashboard summary when requested (bypasses cache).
+  if (forceFresh && queryClient) {
+    try {
+      s = await queryClient.fetchQuery({
+        queryKey: dashboardLiteQueryKey(),
+        queryFn: () => fetchDashboardLiteSummary(),
+        staleTime: 0,
+      });
+    } catch {
+      // keep provided summary on refresh failure
+    }
   }
   const macroItems = (s as any)?.macroSnapshot?.macro;
   if (!Array.isArray(macroItems) || macroItems.length === 0) {
@@ -1064,8 +1093,8 @@ export async function buildDashboardCopyAllMarkdown(
   const tradingTime = isShanghaiTradingTime();
   const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd, execBundle, sinceLastMd] =
     await Promise.all([
-      buildScreenersMarkdown(s, '##', queryClient, { mode }),
-      buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow, sectorOutflowBlock),
+      buildScreenersMarkdown(s, '##', queryClient, { mode, forceFresh }),
+      buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow, sectorOutflowBlock, forceFresh),
       buildCompactCatalystMarkdown(s),
       fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
         .then(({ items, scope }) =>
@@ -1084,6 +1113,7 @@ export async function buildDashboardCopyAllMarkdown(
         mainlineAllow,
         sectorOutflowBlock,
         queryClient,
+        forceFresh,
       }).catch(
         (): ExecutionCopyBundle => ({
           attentionMd: formatExecAttentionMarkdown(
@@ -1120,6 +1150,21 @@ export async function buildDashboardCopyAllMarkdown(
   lines.push(`- generatedAt: ${generatedAt}`);
   lines.push(`- asOfDate: ${String((s as any)?.asOfDate ?? '')}`);
   lines.push('');
+  // TIP-013: per-source freshness header (stale sources flagged for the agent).
+  try {
+    const health = await fetchDataSourcesHealth();
+    const freshnessMd = buildDataFreshnessMarkdown(
+      Array.isArray(health?.sources) ? health.sources : [],
+    );
+    if (freshnessMd.trim()) {
+      lines.push(freshnessMd.trim());
+      lines.push('');
+    }
+  } catch {
+    lines.push('## Data freshness');
+    lines.push('- unavailable (health endpoint not reachable)');
+    lines.push('');
+  }
   // AI behavior lives in System Prompt (docs/modules/downstream-ai-prompt.md); payload stays data-only.
   lines.push(sinceLastMd.trim());
   lines.push('');

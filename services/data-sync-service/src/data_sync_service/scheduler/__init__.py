@@ -25,6 +25,7 @@ from data_sync_service.scheduler import (
     news_fetch_job,
     paper_trading_intake_job,
     paper_trading_update_job,
+    research_report_job,
     stock_basic_job,
     tv_screener_capture_job,
     watchlist_automation_job,
@@ -190,6 +191,13 @@ def create_scheduler() -> BackgroundScheduler:
         news_enrich_job.run,
         news_enrich_job.build_trigger(),
         id=news_enrich_job.JOB_ID,
+        replace_existing=True,
+    )
+    # TIP-012: research report ingestion (研报 → Alpha channel)
+    scheduler.add_job(
+        research_report_job.run,
+        research_report_job.build_trigger(),
+        id=research_report_job.JOB_ID,
         replace_existing=True,
     )
     # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)
