@@ -1247,3 +1247,90 @@ export async function buildDashboardCopyAllMarkdown(
   lines.push('');
   return lines.join('\n').trim() + '\n';
 }
+
+/**
+ * Incremental snapshot for the Decision Agent: only what changed since the last
+ * reference (freshness + since-last-copy + Gate + Exec Attention + Cond orders +
+ * Journal). Full tables (watchlist / macro / news / industry) are intentionally
+ * omitted — the live active layer (L1) injects them on every LLM call.
+ */
+export async function buildCopyDeltaMarkdown(opts: {
+  summary: DashboardSummary | null;
+  queryClient?: QueryClient;
+  forceFresh?: boolean;
+}): Promise<string> {
+  const { summary: s, queryClient, forceFresh = false } = opts;
+  const executionGate = parseExecutionGate((s as any)?.marketSentiment?.executionGate);
+  const mainlineAllow = buildMainlineAllowSet(s);
+  const sectorOutflowBlock = isSectorOutflowBlock(s);
+  const tradingTime = isShanghaiTradingTime();
+  const [sinceLastMd, journalMd, freshnessMd] = await Promise.all([
+    buildSinceLastCopyMarkdown().catch(() =>
+      formatSinceLastCopyMarkdown([], { lastAt: readLastCopyAt() }),
+    ),
+    fetchExecutionJournalMarkdown({ tradeDate: getShanghaiTodayIso(), days: 5 }).catch(
+      () => '',
+    ),
+    fetchDataSourcesHealth()
+      .then((h) =>
+        buildDataFreshnessMarkdown(Array.isArray(h?.sources) ? h.sources : []),
+      )
+      .catch(() => ''),
+  ]);
+  const execBundle = await buildExecutionCopyBundle({
+    gate: executionGate,
+    mainlineAllow,
+    sectorOutflowBlock,
+    queryClient,
+    forceFresh,
+  }).catch(() => null);
+
+  const lines: string[] = [];
+  lines.push('# 增量快照（自上次引用以来的变更）');
+  lines.push(
+    '- note: 完整操作表 / 宏观 / 新闻等全量数据由「决策活跃层」在每次对话时实时注入，此处只附增量与待办，不重复全量',
+  );
+  lines.push('');
+  if (freshnessMd.trim()) {
+    lines.push(freshnessMd.trim());
+    lines.push('');
+  }
+  if (sinceLastMd.trim()) {
+    lines.push(sinceLastMd.trim());
+    lines.push('');
+  }
+  lines.push(
+    formatExecutionGateMarkdown(
+      executionGate ??
+        ((s as any)?.marketSentiment?.executionGate as ExecutionGate | null) ??
+        null,
+      '##',
+    ).trim(),
+  );
+  lines.push('');
+  if (execBundle) {
+    if (execBundle.attentionMd.trim()) {
+      lines.push(execBundle.attentionMd.trim());
+      lines.push('');
+    }
+    lines.push(
+      formatCondOrderDraftMarkdown(execBundle.cards, {
+        heading: '##',
+        allowNewEntries: executionGate?.allowNewEntries === true,
+        tradingTime,
+        phase: tradingTime ? 'Open' : 'Closed',
+        quotes: execBundle.quotes,
+      }).trim(),
+    );
+    lines.push('');
+    if (execBundle.sourceStatsMd.trim()) {
+      lines.push(execBundle.sourceStatsMd.trim());
+      lines.push('');
+    }
+  }
+  if (journalMd.trim()) {
+    lines.push(journalMd.trim());
+    lines.push('');
+  }
+  return lines.join('\n').trim();
+}

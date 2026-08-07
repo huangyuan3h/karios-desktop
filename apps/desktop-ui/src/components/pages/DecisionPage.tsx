@@ -16,7 +16,7 @@ import { AnalysisView } from '@/components/decision/AnalysisView';
 import { AI_BASE_URL, DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import type { ChatMessage } from '@/lib/chat/types';
 import { cn } from '@/lib/utils';
-import { buildDashboardCopyAllMarkdown } from '@/lib/dashboard-export';
+import { buildDashboardCopyAllMarkdown, buildCopyDeltaMarkdown } from '@/lib/dashboard-export';
 import { fetchDashboardSummaryPartial } from '@/lib/queries/dashboard';
 import {
   activeLayerToMarkdown,
@@ -203,31 +203,13 @@ export function DecisionPage() {
   }
 
   /** Stream one assistant reply for the given history (caller appended the user message). */
-  async function streamAssistantReply(
-    history: DecisionMessage[],
-    opts?: { brief?: boolean },
-  ) {
+  async function streamAssistantReply(history: DecisionMessage[]) {
     if (!threadId) return;
     const layer = await buildLayer(false);
     const layerMd = layer ? activeLayerToMarkdown(layer) : '';
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
     if (systemPrompt.trim()) {
       messages.push({ role: 'system', content: systemPrompt.trim() });
-    }
-    if (opts?.brief) {
-      messages.push({
-        role: 'system',
-        content:
-          '[简报任务] 基于上方「数据快照」直接生成今日决策简报，不要寒暄。结构：' +
-          '## 战情摘要（今日焦点 ≤3，每点一行）\n' +
-          '## 操作建议（Watchlist 内逐票：BUY/ADD/HOLD/EXIT + 一句话依据）\n' +
-          '## 风险与 Gate（闸门状态 + 板块流出）\n' +
-          '## 待确认问题（≤3，留给用户决策）\n' +
-          '规则：1) 焦点与要动作的持仓用「事实→多空两面→结论」三段式分析，不要一行断言；' +
-          '2) ETF 是指数篮子，不受 15% 单票上限约束，不得以超单票上限为由建议减 ETF；' +
-          '3) A股（CN:）与港股（HK:）仓位分开核算，各自对照自己的 Gate 上限（HK 看 hkGate）；' +
-          '4) 语言：中文。保持简洁，不注水不套话。',
-      });
     }
     if (layerMd) {
       messages.push({ role: 'system', content: layerMd });
@@ -300,7 +282,7 @@ export function DecisionPage() {
     await streamAssistantReply([...localMessages, userMsg]);
   }
 
-  /** Insert the current full Copy All payload as a user message. */
+  /** Insert current data into the conversation: full snapshot as baseline, delta afterwards. */
   async function handleInsertCopyAll() {
     if (!threadId || inserting) return;
     setInserting(true);
@@ -331,23 +313,36 @@ export function DecisionPage() {
             )
             .join('\n')
         : '';
-      const text = await buildDashboardCopyAllMarkdown({
-        summary,
-        newsSummary: null,
-        newsFallback: newsFallback || null,
-        queryClient,
-        mode: 'full',
-        forceFresh: false,
-      });
-      const marker = `📋 引用当前数据快照\n\n${text}`;
-      const userMsg = await appendDecisionMessage(threadId, {
-        role: 'user',
-        content: marker,
-        contextSnapshot: { copyAllRef: new Date().toISOString() },
-      });
-      setLocalMessages((prev) => [...prev, userMsg]);
-      // Auto-generate the decision brief from the fresh snapshot.
-      await streamAssistantReply([...localMessages, userMsg], { brief: true });
+      const hasBaseline = localMessages.some((m) => m.content.startsWith('📋'));
+      if (!hasBaseline) {
+        // First reference: full snapshot as baseline.
+        const text = await buildDashboardCopyAllMarkdown({
+          summary,
+          newsSummary: null,
+          newsFallback: newsFallback || null,
+          queryClient,
+          mode: 'full',
+          forceFresh: false,
+        });
+        const marker = `📋 引用当前数据快照\n\n${text}`;
+        const userMsg = await appendDecisionMessage(threadId, {
+          role: 'user',
+          content: marker,
+          contextSnapshot: { copyAllRef: new Date().toISOString() },
+        });
+        setLocalMessages((prev) => [...prev, userMsg]);
+      } else {
+        // Later references: delta only (full tables live in the active layer).
+        const deltaMd = await buildCopyDeltaMarkdown({ summary, queryClient });
+        const marker = `📈 增量快照（变更与待办）\n\n${deltaMd}`;
+        const userMsg = await appendDecisionMessage(threadId, {
+          role: 'user',
+          content: marker,
+          contextSnapshot: { copyDeltaRef: new Date().toISOString() },
+        });
+        setLocalMessages((prev) => [...prev, userMsg]);
+      }
+      // 只把数据插入对话，不触发 LLM；由指挥官在下方输入自己的指令触发。
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setLocalMessages((prev) => [
@@ -467,15 +462,16 @@ export function DecisionPage() {
               <div className="flex flex-col gap-3 p-4">
                 {chatMessages.map((m, idx) => {
                   const isSnapshot = m.content.startsWith('📋');
+                  const isDelta = m.content.startsWith('📈');
                   const isArchive = m.content.startsWith('# 归档引用');
-                  if (isSnapshot || isArchive) {
-                    const body = isSnapshot
-                      ? m.content.replace(/^📋[^\n]*\n+/, '')
+                  if (isSnapshot || isDelta || isArchive) {
+                    const body = isSnapshot || isDelta
+                      ? m.content.replace(/^[📋📈][^\n]*\n+/, '')
                       : m.content;
                     return (
                       <details
                         key={m.id}
-                        open={idx === messageCount - 1 && isSnapshot}
+                        open={idx === messageCount - 1 && (isSnapshot || isDelta)}
                         className="group relative rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2"
                       >
                         <button
@@ -486,7 +482,7 @@ export function DecisionPage() {
                           <Trash2 size={13} />
                         </button>
                         <summary className="cursor-pointer select-none text-xs font-medium text-[var(--k-muted)] transition-colors hover:text-[var(--k-text)]">
-                          {isSnapshot ? '📋 数据快照' : '📎 归档引用'} ·{' '}
+                          {isSnapshot ? '📋 数据快照' : isDelta ? '📈 增量快照' : '📎 归档引用'} ·{' '}
                           {m.createdAt.slice(5, 16)} · 点击展开/折叠
                         </summary>
                         <div className="mt-2 max-h-[32rem] overflow-auto text-sm leading-6">
@@ -542,7 +538,7 @@ export function DecisionPage() {
                 {inserting ? '正在生成数据快照…' : '引用当前数据（Copy All）'}
               </Button>
               <span className="text-[11px] leading-4 text-[var(--k-muted)]">
-                点击后把最新完整数据（操作表/新闻/研报/宏观）插入对话
+                首次插入全量快照，之后只插入增量变更（完整表格由活跃层每次对话实时注入）；均不自动发送，在下方输入指令后发送
               </span>
             </div>
             <ChatComposer onSend={(t) => void handleSend(t)} disabled={streaming || threadId == null} />

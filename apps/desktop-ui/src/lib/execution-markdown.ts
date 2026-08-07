@@ -87,8 +87,11 @@ export function buildPositionsExecutionMarkdown(
   catalystBySymbol: Map<string, CatalystPurgeHint> | null = null,
 ): PositionsExecutionMarkdownResult {
   const lines: string[] = [];
-  lines.push(`${heading} Combat Positions & Watchlist (Unified)`);
+  lines.push(`${heading} Combat Positions & Watchlist（A股 / 港股 分表）`);
   lines.push(...WATCHLIST_TABLE_VISIBILITY_NOTE);
+  lines.push(
+    '- note: 两市场独立核算 — A股（CN: 个股 + ETF: 篮子）与港股（HK: 个股/基金）分表呈现，各自对照自己的 Gate 上限；ETF 计入 A股 sleeve',
+  );
   if (!gate?.allowNewEntries) {
     lines.push('- note: BUY/ADD only valid when Execution Gate allowNewEntries=true');
   }
@@ -188,7 +191,8 @@ export function buildPositionsExecutionMarkdown(
     'Mainline',
     'Why',
   ];
-  const rows: unknown[][] = [];
+  const cnRows: unknown[][] = [];
+  const hkRows: unknown[][] = [];
   const purgeSymbols: string[] = [];
   let hiddenRows = 0;
   for (const it of items) {
@@ -261,7 +265,7 @@ export function buildPositionsExecutionMarkdown(
       typeof it.costPrice === 'number' ? it.costPrice : null,
       rowMetrics.current,
     );
-    rows.push([
+    const row = [
       it.symbol,
       it.name ?? t?.name ?? '—',
       formatRs(t),
@@ -282,14 +286,25 @@ export function buildPositionsExecutionMarkdown(
       dist,
       mainlineCell,
       card.why ?? '—',
-    ]);
+    ];
+    if (marketOfSymbol(it.symbol) === 'hk') hkRows.push(row);
+    else cnRows.push(row);
   }
-  if (!rows.length) {
+  if (!cnRows.length && !hkRows.length) {
     lines.push('- No watchlist items.');
     lines.push('');
     return { markdown: lines.join('\n'), purgeSymbols: [] };
   }
-  lines.push(mdTable(headers, rows));
+  if (cnRows.length) {
+    lines.push(`${heading} A股 卫星仓（CN: 个股 + ETF: 篮子）`);
+    lines.push(mdTable(headers, cnRows));
+    lines.push('');
+  }
+  if (hkRows.length) {
+    lines.push(`${heading} 港股 卫星仓（HK: 个股/基金）`);
+    lines.push(mdTable(headers, hkRows));
+    lines.push('');
+  }
   if (hiddenRows > 0) {
     lines.push(`- note: ${hiddenRows} silent dead rows hidden (Pos%=— & Score<60 & TrendOK≠ok/recovering & Action=WATCH_SILENT); kept in DB`);
   }

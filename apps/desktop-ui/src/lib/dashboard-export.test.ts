@@ -404,7 +404,7 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
 
     const md = await buildWatchlistMarkdown(queryClient);
 
-    expect(md).toContain('## Combat Positions & Watchlist (Unified)');
+    expect(md).toContain('## Combat Positions & Watchlist（A股 / 港股 分表）');
     expect(md).toContain(
       '| Symbol | Name | RS | Score | TrendOK | Current | Pos% | CostPrice | P&L% | EntryDate | Locked_T1 | Action |',
     );
@@ -588,7 +588,7 @@ describe('buildDashboardCopyAllMarkdown cache', () => {
     expect(md).toContain('### Fire');
     expect(md).toContain('Gate blocks new entries');
     expect(md).toContain('## Cond order draft');
-    expect(md).toContain('## Combat Positions & Watchlist (Unified)');
+    expect(md).toContain('## Combat Positions & Watchlist（A股 / 港股 分表）');
     expect(md).toContain('Mainline');
     expect(md).toContain('mainline bind');
     expect(md).toContain('INTRADAY_SURGE_BLOCK');

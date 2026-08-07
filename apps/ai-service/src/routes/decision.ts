@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { streamText, generateText, tool } from 'ai';
+import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 
 import { ChatRequestSchema, toModelMessagesFromChatRequest } from '../chat';
@@ -191,16 +192,28 @@ decisionRoutes.post('/', async (c) => {
     }),
   };
 
+  // Gemini grounding: real-time web search (free tier does not support it —
+  // enable via GEMINI_SEARCH_GROUNDING=1 once on a paid plan) + deep thinking.
+  const searchEnabled =
+    (process.env.GEMINI_SEARCH_GROUNDING ?? '').trim().length > 0;
+  const decisionTools = searchEnabled
+    ? { ...archiveTools, google_search: google.tools.googleSearch({ mode: 'MODE_DYNAMIC' }) }
+    : archiveTools;
+  const geminiProviderOptions = {
+    googleGenerativeAI: { thinkingConfig: { thinkingLevel: 'high' as const } },
+  };
+
   let result;
   try {
     result = await streamText({
       model,
       messages,
-      tools: archiveTools,
+      tools: decisionTools,
+      providerOptions: geminiProviderOptions,
     });
   } catch {
     // Fallback: model may not support tool calling — retry without tools.
-    result = await streamText({ model, messages });
+    result = await streamText({ model, messages, providerOptions: geminiProviderOptions });
   }
 
   const stripper = new ThinkingStreamStripper();
