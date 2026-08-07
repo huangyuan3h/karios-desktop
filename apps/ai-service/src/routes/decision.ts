@@ -3,7 +3,7 @@ import { streamText, generateText, tool } from 'ai';
 import { z } from 'zod';
 
 import { ChatRequestSchema, toModelMessagesFromChatRequest } from '../chat';
-import { getResolvedModel, generateTextJsonObjectModeOptions, AiModel } from '../model';
+import { getResolvedModel, getDecisionModelBundle, generateTextJsonObjectModeOptions, AiModel } from '../model';
 import { ThinkingStreamStripper, stripJsonCodeFence } from '../model_thinking';
 
 const DATA_SYNC_BASE_URL = process.env.DATA_SYNC_BASE_URL ?? 'http://127.0.0.1:4330';
@@ -166,7 +166,7 @@ decisionRoutes.post('/', async (c) => {
 
   let model: AiModel;
   try {
-    model = (await getResolvedModel()).model;
+    model = (await getDecisionModelBundle()).model;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invalid AI configuration';
     return c.json({ error: message }, 500);
@@ -215,7 +215,9 @@ decisionRoutes.post('/', async (c) => {
         if (rest) controller.enqueue(rest);
         controller.close();
       } catch (err) {
-        controller.error(err);
+        const message = err instanceof Error ? err.message : String(err);
+        controller.enqueue(`\n[决策模型错误] ${message}`);
+        controller.close();
       }
     },
   });
