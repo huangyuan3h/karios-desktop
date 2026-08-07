@@ -2,9 +2,11 @@ import type { ExecutionDecisionChange, ExecutionGate } from '@karios/shared';
 
 import { fmtDateTime } from '@/lib/dashboard-format';
 import {
+  buildSleeveExposureByMarket,
   buildSleeveExposurePct,
   countHeldMissingPositionPct,
-  formatSleeveBudgetLabel,
+  marketOfSymbol,
+  parsePositionRangeHintMaxPct,
   type PositionLike,
 } from '@/lib/execution-action';
 
@@ -24,6 +26,10 @@ export type ExecAttentionQueue = {
   trims: ExecAttentionLine[];
   fires: ExecAttentionLine[];
   fireBlockedByGate: boolean;
+  /** CN gate closed but CN fire candidates exist (per-market messaging). */
+  cnGateBlocked: boolean;
+  /** HK gate allows new entries (hkGate ATTACK) — HK fires may fire. */
+  hkGateOpen: boolean;
   keyChanges: Array<{ id: string; line: string }>;
 };
 
@@ -189,6 +195,7 @@ export function buildExecAttentionQueue(opts: {
 }): ExecAttentionQueue {
   const { gate, watchlistItems, cards, changes } = opts;
   const allowNew = gate?.allowNewEntries === true;
+  const hkOpen = gate?.hkGate?.allowNewEntries === true;
   const exits: ExecAttentionLine[] = [];
   const trims: ExecAttentionLine[] = [];
   const fireCandidates: ExecAttentionLine[] = [];
@@ -216,27 +223,40 @@ export function buildExecAttentionQueue(opts: {
   trims.sort(bySymbol);
   fireCandidates.sort(bySymbol);
 
-  const fires = allowNew
-    ? fireCandidates
-    : fireCandidates.filter((x) => String(x.why || '') === 'DEFENSIVE_SLEEVE_ALLOW');
-  // Gate blocks when allowNewEntries=false and no defensive-sleeve fires remain.
-  const fireBlockedByGate = !allowNew && fires.length === 0;
+  // Per-market fire gating: HK symbols are evaluated against hkGate (when the
+  // row cards carry it); CN/ETF symbols against the CN gate.
+  const isHkSym = (s: string) => marketOfSymbol(s) === 'hk';
+  const cnFires = fireCandidates.filter((f) => !isHkSym(f.symbol));
+  const hkFires = fireCandidates.filter((f) => isHkSym(f.symbol));
+  const cnFiresShown = allowNew
+    ? cnFires
+    : cnFires.filter((x) => String(x.why || '') === 'DEFENSIVE_SLEEVE_ALLOW');
+  const fires = [...cnFiresShown, ...(hkOpen ? hkFires : [])];
+  const cnGateBlocked = !allowNew;
+  const hkGateOpen = hkOpen;
 
   const keyChanges = changes
     .filter((c) => c.field === 'action' || c.field === 'mode')
     .slice(0, 3)
     .map((c) => ({ id: c.id, line: formatDecisionChangeLine(c) }));
 
+  const capLabel = (v: number | null) => (v == null ? '—' : `${v}%`);
+  const sleeveByMarket = buildSleeveExposureByMarket(watchlistItems);
+  const cnCap = parsePositionRangeHintMaxPct(gate?.positionRangeHint);
+  const hkCap = parsePositionRangeHintMaxPct(gate?.hkGate?.positionRangeHint ?? null);
+
   return {
-    sleeveLabel: formatSleeveBudgetLabel(
-      buildSleeveExposurePct(watchlistItems),
-      gate?.positionRangeHint,
-    ),
+    sleeveLabel:
+      `卫星仓 ${buildSleeveExposurePct(watchlistItems).toFixed(1)}%` +
+      ` = A股 ${sleeveByMarket.cn.toFixed(1)}% + ETF ${sleeveByMarket.etf.toFixed(1)}%` +
+      ` + 港股 ${sleeveByMarket.hk.toFixed(1)}%（CN≤${capLabel(cnCap)} / HK≤${capLabel(hkCap)}）`,
     missingSize: countHeldMissingPositionPct(watchlistItems),
     exits,
     trims,
     fires,
-    fireBlockedByGate,
+    fireBlockedByGate: !allowNew && fires.length === 0,
+    cnGateBlocked,
+    hkGateOpen,
     keyChanges,
   };
 }
@@ -272,14 +292,17 @@ export function formatExecAttentionMarkdown(
   }
   lines.push('');
   lines.push(`${heading}# Fire`);
-  if (queue.fireBlockedByGate) {
-    lines.push('- Gate blocks new entries');
-  } else if (!queue.fires.length) {
+  if (queue.cnGateBlocked) {
+    lines.push('- CN Gate blocks new entries');
+  }
+  if (queue.hkGateOpen) {
+    lines.push('- HK gate open（hkGate 允许开仓/加仓）');
+  }
+  for (const x of queue.fires) {
+    lines.push(`- ${formatAttentionFireLine(x)}`);
+  }
+  if (!queue.cnGateBlocked && !queue.hkGateOpen && !queue.fires.length) {
     lines.push('- None');
-  } else {
-    for (const x of queue.fires) {
-      lines.push(`- ${formatAttentionFireLine(x)}`);
-    }
   }
   if (queue.keyChanges.length) {
     lines.push('');

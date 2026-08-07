@@ -16,6 +16,7 @@ import {
   fetchCatalystStocks,
 } from '@/lib/alpha-radar-catalyst';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+import { marketOfSymbol } from '@/lib/execution-action';
 import {
   buildDefensiveSleeveExposurePct,
   buildSectorExposureFromWatchlist,
@@ -134,7 +135,10 @@ export function buildExecutionSnapshotPayload(
     });
     const card = deriveActionCard({
       symbol: it.symbol,
-      gate,
+      gate:
+        marketOfSymbol(it.symbol) === 'hk' && gate?.hkGate
+          ? { ...gate, ...gate.hkGate }
+          : gate,
       trendok: t ?? null,
       position: it,
       currentPrice: rowMetrics.current,

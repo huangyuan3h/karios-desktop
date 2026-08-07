@@ -257,7 +257,7 @@ describe('buildSentimentMarkdown', () => {
     expect(md).not.toContain('## Market & Macro overview');
     expect(md).not.toContain('## 300ETF Put IV');
     expect(md).toContain('| date | up | down |');
-    expect(md).toContain('## ETF Fund Flow (Top Watchlist)');
+    expect(md).toContain('## ETF Fund Flow (Top by 资金流，非仅持仓)');
     expect(md).toContain(
       '| 沪深300 ETF | 510300 | +52.30亿 | +31.00亿 | +21.30亿 | +120.50亿 | 2026-06-18T06:30:00+00:00 | eastmoney.realtime_flow | Live |',
     );

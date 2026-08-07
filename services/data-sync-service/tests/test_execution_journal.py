@@ -229,6 +229,47 @@ def test_build_journal_markdown_omits_silent_watch_pool(monkeypatch):
     assert "CN:B" not in latest_section
 
 
+def test_build_journal_markdown_collapses_bulk_init_changes(monkeypatch):
+    """C6: a same-timestamp bulk initialization (50 rows) collapses to one row."""
+    monkeypatch.setattr(
+        "data_sync_service.service.execution_journal.ej_db.fetch_latest_snapshot",
+        lambda trade_date=None: None,
+    )
+    monkeypatch.setattr(
+        "data_sync_service.service.execution_journal.ej_db.list_snapshots",
+        lambda trade_date=None, limit=50: [],
+    )
+    bulk = [
+        {
+            "changedAt": "2026-07-18T06:00:00+00:00",
+            "tradeDate": "2026-07-18",
+            "scope": "symbol",
+            "symbol": f"CN:{i:06d}",
+            "field": "action",
+            "oldValue": "",
+            "newValue": "WATCH",
+        }
+        for i in range(50)
+    ]
+    single = {
+        "changedAt": "2026-07-18T07:00:00+00:00",
+        "tradeDate": "2026-07-18",
+        "scope": "symbol",
+        "symbol": "CN:600000",
+        "field": "action",
+        "oldValue": "WATCH",
+        "newValue": "BUY",
+    }
+    monkeypatch.setattr(
+        "data_sync_service.service.execution_journal.ej_db.list_changes",
+        lambda trade_date=None, since=None, limit=100: bulk + [single],
+    )
+    md = build_journal_markdown(trade_date="2026-07-18")
+    changes_section = md.split("### Changes (today)")[1].split("### Latest Actions")[0]
+    assert "批量初始化 50 项" in changes_section
+    # Only the collapsed row + the single real change remain (was 51 rows).
+    assert changes_section.count("\n| 2026-07-18") == 2
+    assert "| CN:600000 | action | WATCH | BUY |" in changes_section
 def test_build_journal_markdown_drops_recent_snapshots_block(monkeypatch):
     """2026-08-01 · Recent snapshots block removed (only signal changes matter)."""
     monkeypatch.setattr(

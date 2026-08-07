@@ -266,6 +266,20 @@ export function buildMarketAndMacroMarkdown(
   const headers = ['Name', 'Kind', 'Signal', 'Pos', 'Chg%', 'Close', 'MA5', 'MA20', 'AsOfDate', 'Source'];
   const rows: unknown[][] = [];
 
+  // B5: flag rows whose data is much older than the newest row (stale > 2 days).
+  const allDates = [...indexSignals, ...macroItems]
+    .map((it) => String(it?.asOfDate ?? '').slice(0, 10))
+    .filter(Boolean)
+    .sort();
+  const latestAsOf = allDates[allDates.length - 1] ?? '';
+  const staleDays = (asOf: string): number => {
+    const a = Date.parse(`${asOf.slice(0, 10)}T00:00:00Z`);
+    const b = Date.parse(`${latestAsOf}T00:00:00Z`);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+    return Math.round((b - a) / 86_400_000);
+  };
+  let staleCount = 0;
+
   for (const it of indexSignals) {
     const pc = it?.pctChg;
     const chg =
@@ -273,6 +287,10 @@ export function buildMarketAndMacroMarkdown(
         ? `${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%`
         : '—';
     const name = String(it?.name ?? it?.tsCode ?? '');
+    const asOf = String(it?.asOfDate ?? '').slice(0, 10);
+    const days = staleDays(asOf);
+    const staleTag = days > 2 ? ` ⚠️${days}d` : '';
+    if (days > 2) staleCount += 1;
     rows.push([
       it?.featured === true ? `★ ${name}` : name,
       'Index',
@@ -282,7 +300,7 @@ export function buildMarketAndMacroMarkdown(
       Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
       Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
       Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
-      String(it?.asOfDate ?? ''),
+      `${asOf}${staleTag}`,
       String(it?.source ?? '—'),
     ]);
   }
@@ -305,6 +323,10 @@ export function buildMarketAndMacroMarkdown(
         ? String(it.signal)
         : '—';
     const kind = isVol ? 'Vol (IV)' : 'Macro';
+    const asOf = String(it?.asOfDate ?? '').slice(0, 10);
+    const days = staleDays(asOf);
+    const staleTag = days > 2 ? ` ⚠️${days}d` : '';
+    if (days > 2) staleCount += 1;
     rows.push([
       String(it?.name ?? it?.seriesId ?? ''),
       kind,
@@ -314,9 +336,13 @@ export function buildMarketAndMacroMarkdown(
       closeStr,
       Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
       Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
-      String(it?.asOfDate ?? ''),
+      `${asOf}${staleTag}`,
       String(it?.source ?? ''),
     ]);
+  }
+
+  if (staleCount > 0) {
+    lines.push(`- note: ⚠️n = 数据比最新行旧 ${staleCount} 行，慎用（上次同步 ${latestAsOf}）`);
   }
 
   lines.push(mdTable(headers, rows));
@@ -448,7 +474,7 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
         String(it?.signalDisplay ?? it?.signal ?? '—'),
       ];
     });
-    lines.push(`${heading} ETF Fund Flow (Top Watchlist)`);
+    lines.push(`${heading} ETF Fund Flow (Top by 资金流，非仅持仓)`);
     lines.push('');
     lines.push(mdTable(etfHeaders, etfRows));
     lines.push('');
@@ -509,6 +535,21 @@ export function buildMacroMarkdown(s: DashboardSummary | null, heading = '##'): 
   return lines.join('\n').trim() + '\n';
 }
 
+/** C8: compress long screener filters (e.g. the 18-sector whitelist) to save context. */
+function summarizeScreenerFilter(filter: string): string {
+  const s = String(filter);
+  if (s.startsWith('sector in_range')) {
+    const n = (s.match(/'/g) ?? []).length / 2;
+    return `行业白名单(${Math.round(n)})`;
+  }
+  if (s.length > 40) {
+    const key = (s.split(/[\s_]/)[0] ?? 'filter').trim();
+    return `${key}(长条件 ${s.length} chars)`;
+  }
+  return s;
+}
+
+/** C8: compress long screener filters (e.g. the 18-sector whitelist) to save context. */
 export async function buildScreenersMarkdown(
   s: DashboardSummary | null,
   heading = '##',
@@ -630,10 +671,7 @@ export async function buildScreenersMarkdown(
     lines.push(`- rows: ${String(snap?.rowCount ?? rowsTv.length ?? 0)}`);
     if (Array.isArray(snap?.filters) && snap.filters.length) {
       lines.push(
-        `- filters: ${snap.filters
-          .slice(0, 8)
-          .map((x) => escapeMarkdownCell(String(x)))
-          .join(' • ')}${snap.filters.length > 8 ? '…' : ''}`,
+        `- filters: ${snap.filters.map(summarizeScreenerFilter).join(' • ')}`,
       );
     }
     if (truncated) lines.push(`- note: scanning first ${limit} raw rows (truncated)`);
@@ -935,10 +973,12 @@ async function buildExecutionCopyBundle(opts: {
   let liveCards: CondOrderCard[] | null = null;
   let quotes: Record<string, CondOrderQuoteHint> = {};
   let sourceContext: SourceContext | null = null;
+  let trendMap: Record<string, unknown> = {};
   if (gate && items.length) {
     try {
       const symbols = items.map((i) => i.symbol);
       const market = await fetchWatchlistSnapshotForCopy(symbols, queryClient, forceFresh);
+      trendMap = market.trend;
       const nameBySym = new Map(items.map((i) => [i.symbol, i.name ?? null]));
       quotes = {};
       for (const sym of symbols) {
@@ -1004,7 +1044,10 @@ async function buildExecutionCopyBundle(opts: {
   const { cards, source } = resolveAttentionCards({ liveCards, snapshotCards });
   const queue = buildExecAttentionQueue({
     gate,
-    watchlistItems: items,
+    watchlistItems: items.map((it) => ({
+      ...it,
+      trendok: trendMap[it.symbol] ?? null,
+    })),
     cards,
     changes,
   });
@@ -1240,7 +1283,19 @@ export async function buildDashboardCopyAllMarkdown(
   lines.push('## News brief');
   lines.push('');
   lines.push(`- hours: ${String((s as any)?.news?.hours ?? 24)}`);
-  lines.push(`- total: ${String((s as any)?.news?.total ?? 0)}`);
+  const newsItemsCount = Array.isArray((s as any)?.news?.items)
+    ? (s as any).news.items.length
+    : 0;
+  const newsTotal = Number((s as any)?.news?.total ?? 0);
+  const usingFallback = !newsSummary?.trim() && newsFallback?.trim();
+  if (usingFallback) {
+    lines.push(`- total: ${String(newsItemsCount || newsTotal || 0)}`);
+    lines.push(
+      `- note: AI 摘要未生成/未更新（${newsSummaryUpdatedAt ? `上次 ${newsSummaryUpdatedAt}` : '无'}）— 以下为原始标题回退`,
+    );
+  } else {
+    lines.push(`- total: ${String(newsTotal ?? 0)}`);
+  }
   lines.push(
     '- note: 关键词白名单过滤（AI/算力/半导体/美联储/降准降息/原油/关税/…）；其他娱乐/边缘政治新闻剔除',
   );

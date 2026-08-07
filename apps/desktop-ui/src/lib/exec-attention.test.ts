@@ -143,7 +143,7 @@ describe('buildExecAttentionQueue', () => {
       cards: [],
       changes: [],
     });
-    expect(q.sleeveLabel).toBe('卫星仓 45.0%（上限 60%）');
+    expect(q.sleeveLabel).toBe('卫星仓 45.0% = A股 45.0% + ETF 0.0% + 港股 0.0%（CN≤60% / HK≤—）');
     expect(q.missingSize).toBe(1);
   });
 
@@ -225,7 +225,7 @@ describe('buildExecAttentionQueue', () => {
     const md = formatExecAttentionMarkdown(q, { source: 'live' });
     expect(md).toContain('## Exec Attention');
     expect(md).toContain('- source: live');
-    expect(md).toContain('卫星仓 20.0%（上限 60%）');
+    expect(md).toContain('卫星仓 20.0% = A股 20.0% + ETF 0.0% + 港股 0.0%（CN≤60% / HK≤—）');
     expect(md).toContain('### Must act');
     expect(md).toContain('CN:600000  卖出  强制卖出');
     expect(md).toContain('### Fire');

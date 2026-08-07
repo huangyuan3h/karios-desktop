@@ -396,29 +396,48 @@ def build_journal_markdown(
     if not day_changes:
         lines.append("| — | — | — | — | — | — |")
     else:
+        # C6: collapse bulk-initialization bursts (one timestamp with many rows)
+        # into a single summary row — the full 80-row table is noise for the LLM.
+        by_ts: dict[str, list[dict[str, Any]]] = {}
         for c in day_changes:
-            lines.append(
-                "| "
-                + " | ".join(
-                    [
-                        _md_cell(c.get("changedAt")),
-                        _md_cell(c.get("scope")),
-                        _md_cell(c.get("symbol")),
-                        _md_cell(c.get("field")),
-                        _md_cell(c.get("oldValue")),
-                        _md_cell(c.get("newValue")),
-                    ]
+            by_ts.setdefault(str(c.get("changedAt") or ""), []).append(c)
+        for ts, rows in by_ts.items():
+            if len(rows) > 5:
+                fields = sorted({str(r.get("field") or "") for r in rows if r.get("field")})
+                old_vals = sorted(
+                    {str(r.get("oldValue") or "") for r in rows if r.get("oldValue")}
                 )
-                + " |"
-            )
+                new_vals = sorted(
+                    {str(r.get("newValue") or "") for r in rows if r.get("newValue")}
+                )
+                preview = "、".join(new_vals[:6]) + ("…" if len(new_vals) > 6 else "")
+                lines.append(
+                    f"| {_md_cell(ts)} | — | 批量初始化 {len(rows)} 项 | "
+                    + f"{_md_cell('、'.join(fields))} | "
+                    + f"{_md_cell('、'.join(old_vals) or '—')} | {_md_cell(preview or '—')} |"
+                )
+            else:
+                for c in rows:
+                    lines.append(
+                        "| "
+                        + " | ".join(
+                            [
+                                _md_cell(c.get("changedAt")),
+                                _md_cell(c.get("scope")),
+                                _md_cell(c.get("symbol")),
+                                _md_cell(c.get("field")),
+                                _md_cell(c.get("oldValue")),
+                                _md_cell(c.get("newValue")),
+                            ]
+                        )
+                        + " |"
+                    )
     lines.append("")
 
     lines.append("### Latest Actions")
     lines.append(
         "- note: delta-only — Action / Trigger / HardStop / TrailStop changes; silent WATCH omitted"
     )
-    lines.append("| Symbol | Action | Why | Trigger | HardStop | TrailStop | Pos% | Mainline |")
-    lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
     cards = (latest or {}).get("cards") or []
     delta_symbols = symbols_with_latest_action_deltas(day_changes)
     delta_cards: list[dict[str, Any]] = []
@@ -432,7 +451,25 @@ def build_journal_markdown(
     if not delta_cards:
         lines.append("| — | — | — | — | — | — | — | — |")
     else:
+        # C7: plain WATCH/WATCH_SILENT rows (no trigger level) carry no signal
+        # beyond the watchlist table itself — collapse them into a count note.
+        meaningful: list[dict[str, Any]] = []
+        watch_only = 0
         for c in delta_cards:
+            action = str(c.get("action") or "").strip()
+            trigger = c.get("trigger")
+            has_trigger = trigger not in (None, "", 0, "—")
+            if action in ("WATCH", "WATCH_SILENT") and not has_trigger:
+                watch_only += 1
+                continue
+            meaningful.append(c)
+        if watch_only:
+            lines.append(
+                f"- note: {watch_only} 项 WATCH 无变化（硬止损见操作表，不再逐行罗列）"
+            )
+        lines.append("| Symbol | Action | Why | Trigger | HardStop | TrailStop | Pos% | Mainline |")
+        lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
+        for c in meaningful:
             ml = "ok" if c.get("mainlineOk") else "no"
             tag = c.get("mainlineTag")
             if tag:
