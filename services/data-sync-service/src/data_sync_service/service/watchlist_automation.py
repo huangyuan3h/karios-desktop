@@ -185,7 +185,9 @@ def is_defense_sector(industry_name: str | None) -> bool:
 
 
 def _cn_symbol_to_ts_code(symbol: str) -> str | None:
-    s = _normalize_cn_watchlist_symbol(symbol)
+    from data_sync_service.service.market_quotes import normalize_market_symbol
+
+    s = _normalize_cn_watchlist_symbol(normalize_market_symbol(symbol))
     if s.startswith("CN:"):
         ticker = s.split(":", 1)[1].strip()
         if len(ticker) != 6 or not ticker.isdigit():

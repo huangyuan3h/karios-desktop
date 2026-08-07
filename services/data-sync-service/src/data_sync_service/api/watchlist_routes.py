@@ -106,7 +106,9 @@ def _backfill_names(items: list[dict]) -> list[dict]:
 
 
 def _to_ts_code(sym: str) -> str:
-    s = sym.strip()
+    from data_sync_service.service.market_quotes import normalize_market_symbol
+
+    s = normalize_market_symbol(sym)
     if s.startswith("HK:"):
         ticker = s.split(":", 1)[1].strip()
         if 1 <= len(ticker) <= 5 and ticker.isdigit():

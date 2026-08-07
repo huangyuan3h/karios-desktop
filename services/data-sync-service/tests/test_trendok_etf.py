@@ -6,7 +6,21 @@ from unittest.mock import patch
 
 import pytest
 
-from data_sync_service.service.trendok import _trendok_one  # type: ignore[import-not-found]
+from data_sync_service.service.trendok import _symbol_to_ts_code, _trendok_one  # type: ignore[import-not-found]
+
+
+def test_symbol_to_ts_code_accepts_suffixed_cn():
+    assert _symbol_to_ts_code("CN:002064.SZ") == ("CN", "002064", "002064.SZ")
+    assert _symbol_to_ts_code("CN:603259.SH") == ("CN", "603259", "603259.SH")
+    assert _symbol_to_ts_code("CN:688266.SH") == ("CN", "688266", "688266.SH")
+    assert _symbol_to_ts_code("ETF:513180.SH") == ("ETF", "513180", "513180.SH")
+    assert _symbol_to_ts_code("HK:00700.HK") == ("HK", "00700", "00700.HK")
+
+
+def test_symbol_to_ts_code_still_rejects_invalid():
+    assert _symbol_to_ts_code("CN:") is None
+    assert _symbol_to_ts_code("CN:12345") is None
+    assert _symbol_to_ts_code("CN:abcdef") is None
 
 
 def _bars(

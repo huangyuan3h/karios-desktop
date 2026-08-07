@@ -41,7 +41,9 @@ def _ts_code_to_secid(ts_code: str) -> str | None:
 
 
 def _symbol_to_ts_code(symbol: str) -> str | None:
-    s = (symbol or "").strip().upper()
+    from data_sync_service.service.market_quotes import normalize_market_symbol
+
+    s = normalize_market_symbol(symbol)
     if not s.startswith("CN:"):
         return None
     ticker = s.split(":", 1)[1].strip()

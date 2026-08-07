@@ -56,6 +56,41 @@ def test_sync_cn_sentiment_catchup_on_non_trading_day_when_stale() -> None:
     assert out.get("asOfDate") == "2026-06-18"
 
 
+def test_sync_cn_sentiment_success_path_returns_ok_flag() -> None:
+    """Success and already-synced paths must carry ok=True (job gate)."""
+    with (
+        patch.object(ms, "is_cn_trading_day", return_value=True),
+        patch.object(ms, "last_open_date_on_or_before", return_value=date(2026, 6, 18)),
+        patch.object(ms, "get_latest_date", return_value="2026-06-18"),
+        patch.object(ms, "list_days", return_value=[{"date": "2026-06-18", "upCount": 1}]),
+        patch.object(ms, "compute_cn_sentiment_for_date") as mock_compute,
+        patch.object(ms, "upsert_daily_rows") as mock_upsert,
+    ):
+        out = ms.sync_cn_sentiment(date_str="2026-06-18", force=False)
+
+    assert out.get("ok") is True
+    assert out.get("skipped") is True
+    mock_compute.assert_not_called()
+    mock_upsert.assert_not_called()
+
+    with (
+        patch.object(ms, "is_cn_trading_day", return_value=True),
+        patch.object(ms, "last_open_date_on_or_before", return_value=date(2026, 6, 18)),
+        patch.object(ms, "get_latest_date", return_value="2026-06-10"),
+        patch.object(ms, "get_open_dates", return_value=[date(2026, 6, 18)]),
+        patch.object(
+            ms,
+            "_persist_sentiment_for_date",
+            return_value={"date": "2026-06-18", "upCount": 2},
+        ),
+        patch.object(ms, "list_days", return_value=[{"date": "2026-06-18", "upCount": 2}]),
+    ):
+        out = ms.sync_cn_sentiment(date_str="2026-06-18", force=False)
+
+    assert out.get("ok") is True
+    assert out.get("asOfDate") == "2026-06-18"
+
+
 def test_sync_cn_sentiment_no_stale_forward_fill_on_compute_error() -> None:
     with (
         patch.object(ms, "is_cn_trading_day", return_value=True),

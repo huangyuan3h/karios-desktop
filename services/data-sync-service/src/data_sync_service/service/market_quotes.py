@@ -85,14 +85,29 @@ def get_market_quotes_batch(
     return out
 
 
+def normalize_market_symbol(symbol: str) -> str:
+    """
+    Canonicalize a UI symbol before parsing: CN:002064.SZ → CN:002064,
+    HK:00700.HK → HK:00700, ETF:510300.SH → ETF:510300. Bare tickers
+    (002064) pass through unchanged (callers may add the market prefix).
+    """
+    s = str(symbol or "").strip().upper()
+    if ":" in s:
+        market, ticker = s.split(":", 1)
+        ticker = str(ticker).strip().split(".")[0].strip()
+        return f"{market.strip()}:{ticker}"
+    return s
+
+
 def symbol_to_ts_code(symbol: str) -> str | None:
     """
-    Convert symbol format (CN:000001, HK:00700, ETF:510300) to ts_code
+    Convert symbol format (CN:000001, CN:000001.SZ, HK:00700, ETF:510300) to ts_code
     (000001.SZ, 00700.HK, 510300.SH). Returns None if format is invalid.
     """
-    if not symbol or ":" not in symbol:
+    s = normalize_market_symbol(symbol)
+    if not s or ":" not in s:
         return None
-    parts = symbol.split(":", 1)
+    parts = s.split(":", 1)
     if len(parts) != 2:
         return None
     market, ticker = parts[0].strip().upper(), parts[1].strip()

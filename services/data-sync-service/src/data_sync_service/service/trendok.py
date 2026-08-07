@@ -785,9 +785,11 @@ def _merge_realtime_bar(
 def _symbol_to_ts_code(symbol: str) -> tuple[str, str, str] | None:
     """
     Map UI symbol to (market, ticker, ts_code).
-    Supports CN A-shares, HK tickers, and ETFs.
+    Supports CN A-shares (with or without .SH/.SZ suffix), HK tickers, and ETFs.
     """
-    s = (symbol or "").strip().upper()
+    from data_sync_service.service.market_quotes import normalize_market_symbol
+
+    s = normalize_market_symbol(symbol)
     if not s:
         return None
     if s.startswith("CN:"):

@@ -378,6 +378,7 @@ def sync_cn_industry_fund_flow(*, days: int = 10, top_n: int = 10, force: bool =
     if hist_rows:
         upsert_daily_rows(hist_rows)
     out: dict[str, Any] = {
+        "ok": True,
         "asOfDate": as_of.strftime("%Y-%m-%d"),
         "rows": len(daily_rows),
         "filteredRows": max(0, len(fetched_items) - len(items)),

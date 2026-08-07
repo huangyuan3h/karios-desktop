@@ -1,7 +1,15 @@
 /** Watchlist symbol helpers: CN A-share + HK ticker + ETF → ts_code. */
 
-export function toTsCodeFromSymbol(symbol: string): string | null {
+/** Strip a market suffix (CN:002064.SZ → CN:002064) to the canonical form. */
+export function normalizeWatchlistSymbol(symbol: string): string {
   const s = symbol.trim().toUpperCase();
+  if (!s.includes(':')) return s;
+  const [market, ticker] = s.split(':');
+  return `${market}:${(ticker || '').split('.')[0]}`;
+}
+
+export function toTsCodeFromSymbol(symbol: string): string | null {
+  const s = normalizeWatchlistSymbol(symbol);
   if (!s) return null;
   if (s.startsWith('CN:')) {
     const ticker = s.slice('CN:'.length).trim();

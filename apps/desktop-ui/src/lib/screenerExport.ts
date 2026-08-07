@@ -149,8 +149,11 @@ function normalizeSymbolInput(input: string): { symbol: string } | { error: stri
   const raw = (input || '').trim().toUpperCase();
   if (!raw) return { error: 'Empty input' };
 
-  if (/^(CN|HK):[0-9A-Z.\-]{1,16}$/.test(raw)) {
-    return { symbol: raw };
+  if (/^(CN|HK|ETF):[0-9A-Z.\-]{1,16}$/.test(raw)) {
+    const [market, ticker] = raw.split(':');
+    // Canonical form has no market suffix: CN:002064.SZ → CN:002064.
+    const bare = (ticker || '').split('.')[0];
+    return { symbol: `${market}:${bare}` };
   }
 
   if (/^\d{6}$/.test(raw)) {

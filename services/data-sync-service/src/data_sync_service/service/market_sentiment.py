@@ -1298,6 +1298,10 @@ def _resolve_sentiment_sync_dates(*, request_date: date, force: bool) -> tuple[l
             cached = list_days(as_of_date=request_date.isoformat(), days=1)
             if cached and str(cached[-1].get("date") or "") == request_date.isoformat():
                 return [], {
+                    "ok": True,
+                    "skipped": True,
+                    "reason": "already_synced",
+                    "message": "sentiment already synced for today",
                     "asOfDate": request_date.isoformat(),
                     "days": 1,
                     "items": [cached[-1]],
@@ -1346,6 +1350,7 @@ def sync_cn_sentiment(*, date_str: str, force: bool) -> dict[str, Any]:
         target_iso = (last_open_date_on_or_before(cal_d) or cal_d).isoformat()
         cached = list_days(as_of_date=target_iso, days=5)
         return {
+            "ok": True,
             "asOfDate": target_iso,
             "days": len(cached),
             "items": cached,
@@ -1381,6 +1386,7 @@ def sync_cn_sentiment(*, date_str: str, force: bool) -> dict[str, Any]:
 
     recent = list_days(as_of_date=as_of, days=min(5, len(dates_to_sync)))
     out: dict[str, Any] = {
+        "ok": True,
         "asOfDate": as_of,
         "days": len(recent) if recent else len(synced_items),
         "items": recent if recent else synced_items,
