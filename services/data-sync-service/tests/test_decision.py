@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
@@ -16,6 +17,8 @@ client = TestClient(app)
 
 
 def test_session_crud_roundtrip() -> None:
+    from data_sync_service.db import get_connection
+
     create = client.post(
         "/api/decision/sessions",
         json={"title": "t", "system_prompt": "contract-v7.8"},
@@ -23,28 +26,34 @@ def test_session_crud_roundtrip() -> None:
     assert create.status_code == 200
     session = create.json()["session"]
     sid = session["id"]
-    assert session["title"] == "t"
-    assert session["system_prompt"] == "contract-v7.8"
+    try:
+        assert session["title"] == "t"
+        assert session["system_prompt"] == "contract-v7.8"
 
-    msg = client.post(
-        f"/api/decision/sessions/{sid}/messages",
-        json={"role": "user", "content": "hello", "context_snapshot": {"layer1": {"P0": 1}}},
-    )
-    assert msg.status_code == 200
-    assert msg.json()["message"]["role"] == "user"
+        msg = client.post(
+            f"/api/decision/sessions/{sid}/messages",
+            json={"role": "user", "content": "hello", "context_snapshot": {"layer1": {"P0": 1}}},
+        )
+        assert msg.status_code == 200
+        assert msg.json()["message"]["role"] == "user"
 
-    listing = client.get(f"/api/decision/sessions/{sid}/messages")
-    assert listing.status_code == 200
-    assert len(listing.json()["messages"]) == 1
+        listing = client.get(f"/api/decision/sessions/{sid}/messages")
+        assert listing.status_code == 200
+        assert len(listing.json()["messages"]) == 1
 
-    renamed = client.patch(f"/api/decision/sessions/{sid}", json={"title": "renamed"})
-    assert renamed.json()["session"]["title"] == "renamed"
+        renamed = client.patch(f"/api/decision/sessions/{sid}", json={"title": "renamed"})
+        assert renamed.json()["session"]["title"] == "renamed"
 
-    sessions = client.get("/api/decision/sessions")
-    assert len(sessions.json()["sessions"]) >= 1
-    found = next(s for s in sessions.json()["sessions"] if s["id"] == sid)
-    assert found["title"] == "renamed"
-    assert found["messageCount"] == 1
+        sessions = client.get("/api/decision/sessions")
+        assert len(sessions.json()["sessions"]) >= 1
+        found = next(s for s in sessions.json()["sessions"] if s["id"] == sid)
+        assert found["title"] == "renamed"
+        assert found["messageCount"] == 1
+    finally:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM decision_sessions WHERE id = %s", (sid,))
+            conn.commit()
 
 
 def test_sessions_list_shape() -> None:
@@ -69,14 +78,65 @@ def test_snapshots_list_empty() -> None:
 
 
 def test_snapshot_build_and_search_roundtrip() -> None:
+    from datetime import datetime, timezone
+
+    from data_sync_service.db import get_connection
+
     session = client.post("/api/decision/sessions", json={"title": "m3-snap"}).json()["session"]
-    client.post(
+    msg = client.post(
         f"/api/decision/sessions/{session['id']}/messages",
         json={"role": "user", "content": "分析 CN:600519.SH 的走势与研报"},
-    )
-    rec = build_daily_snapshot()
-    assert rec["status"] == "open"
-    assert rec["exchangeCount"] >= 1
+    ).json()["message"]
+    # Pin the message into the snapshot window: _messages_on queries the
+    # UTC calendar day, so created_at must fall inside UTC today regardless
+    # of the Shanghai/UTC date boundary (the historical flake).
+    today = datetime.now(timezone.utc).date()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE decision_messages SET created_at = %s WHERE id = %s",
+                (f"{today.isoformat()}T10:00:00+00:00", msg["id"]),
+            )
+            cur.execute(
+                "SELECT snapshot_date, active_layer_ref, agent_exchanges, outcome, status FROM decision_snapshots WHERE snapshot_date = %s",
+                (today,),
+            )
+            before = cur.fetchone()
+        conn.commit()
+    try:
+        rec = build_daily_snapshot(snapshot_date=today)
+        assert rec["status"] == "open"
+        assert rec["exchangeCount"] >= 1
+    finally:
+        # Restore the real daily snapshot (build_daily_snapshot upserts the
+        # current date and would otherwise clobber today's archived row) and
+        # remove the test session (CASCADE removes its messages).
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM decision_snapshots WHERE snapshot_date = %s",
+                    (today,),
+                )
+                if before:
+                    cur.execute(
+                        """
+                        INSERT INTO decision_snapshots
+                            (snapshot_date, active_layer_ref, agent_exchanges, outcome, status)
+                        VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s)
+                        """,
+                        (
+                            before[0],
+                            json.dumps(before[1]) if before[1] is not None else None,
+                            json.dumps(before[2]) if before[2] is not None else None,
+                            json.dumps(before[3]) if before[3] is not None else None,
+                            before[4],
+                        ),
+                    )
+                cur.execute(
+                    "DELETE FROM decision_sessions WHERE id = %s",
+                    (session["id"],),
+                )
+            conn.commit()
 
     hits = search_archive_by_symbol("600519")
     assert any("600519" in (m or "") for h in hits for m in h["matches"])
@@ -97,18 +157,26 @@ def test_snapshot_build_and_search_roundtrip() -> None:
 
 
 def test_delete_message_endpoint() -> None:
+    from data_sync_service.db import get_connection
+
     session = client.post("/api/decision/sessions", json={"title": "del"}).json()["session"]
-    msg = client.post(
-        f"/api/decision/sessions/{session['id']}/messages",
-        json={"role": "user", "content": "delete me"},
-    ).json()["message"]
-    resp = client.delete(f"/api/decision/sessions/{session['id']}/messages/{msg['id']}")
-    assert resp.status_code == 200
-    assert resp.json()["ok"] is True
-    listing = client.get(f"/api/decision/sessions/{session['id']}/messages")
-    assert listing.json()["messages"] == []
-    missing = client.delete(f"/api/decision/sessions/{session['id']}/messages/999999999")
-    assert missing.json()["ok"] is False
+    try:
+        msg = client.post(
+            f"/api/decision/sessions/{session['id']}/messages",
+            json={"role": "user", "content": "delete me"},
+        ).json()["message"]
+        resp = client.delete(f"/api/decision/sessions/{session['id']}/messages/{msg['id']}")
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+        listing = client.get(f"/api/decision/sessions/{session['id']}/messages")
+        assert listing.json()["messages"] == []
+        missing = client.delete(f"/api/decision/sessions/{session['id']}/messages/999999999")
+        assert missing.json()["ok"] is False
+    finally:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM decision_sessions WHERE id = %s", (session["id"],))
+            conn.commit()
 
 
 def test_actions_crud_and_tracking(monkeypatch) -> None:

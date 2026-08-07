@@ -158,6 +158,20 @@
 **H3. 测试隔离复查（K2）**
 - 做法：26 个 requires_postgres 文件跑前/跑后对比关键表行数（paper_trades / execution_* / daily / *daily 抽样）
 - 验收：全量测试跑完，表行数不变；有插入的测试全部加 teardown（AGENTS.md 纪律生效）
+- **状态：[x] 2026-08-08**。审计结果：
+
+| 文件 | 问题 | 修复 |
+|------|------|------|
+| `test_alpha_radar_upsert.py` | 3 测试插 source+document 零清理 | 加 autouse teardown（`DELETE FROM alpha_radar_sources WHERE id LIKE 'test-src-%'`，CASCADE 清 documents/trends） |
+| `test_api.py::test_dashboard_sync_endpoint_shape` | 真实触发盘后同步 → 每次跑 capture 快照+写 changes 残留 | mock `dashboard_sync_parallel`（测试本意是 endpoint shape） |
+| `test_api.py::test_broker_accounts_state_shape` | POST /broker/accounts 创建账户不清理（**历史累积 233 个 Test Account**） | finally 删除 account + state |
+| `test_api.py::test_alpha_radar_endpoints_shape` | init-defaults 有 `disable_sources_except` 副作用（禁用非默认源） | mock `add_default_sources` |
+| `test_decision.py::test_session_crud_roundtrip` / `test_delete_message_endpoint` | 插 session 不清理（**历史累积 141 个测试 session**） | finally 删除 session（CASCADE 删 messages） |
+| `test_decision.py::test_snapshot_build_and_search_roundtrip` | ① upsert 覆盖当天真实快照（status 打回 open）② **flaky 根因**：消息 `created_at=UTC now` 与 `shanghai_today()` 窗口在 UTC 跨天时错位（每天仅 16/24 概率过） | 快照 save/restore + 消息时间钉到 UTC 当日 + 显式传 UTC snapshot_date；连跑 3 次稳定 |
+| `test_execution_source_db.py::test_insert_changes_persists_source_field` | 硬编码 `CN:600000`（真实浦发银行！）未注册清理集合 → **污染真实 symbol 的决策日志**（历史 14 条） | 改用 `_fresh_symbol()`（自动注册清理） |
+
+- **历史残留清理**（修复前的累积）：233 个 Test Account + 141 个测试 session/102 消息 + 48 条 snap-tgt 假 changes 已删；真实数据保留（1 个真实账户、5 个真实 session、3 个快照）。
+- **新增验收工具**：`scripts/db_rows_baseline.py`（save/check 27 张关键表行数）——全量测试跑完 `check` 必须 OK。最终验收：1404 passed 且 27 张表零变化。
 
 ### P1（L4 启动前完成）
 

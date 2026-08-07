@@ -197,13 +197,16 @@ def test_count_changes_by_source_filters_by_field_and_new_value() -> None:
 
 def test_insert_changes_persists_source_field() -> None:
     today = date.today().isoformat()
+    # _fresh_symbol registers with the teardown; a hardcoded real symbol
+    # (previously CN:600000) would leak fake rows into a live symbol's log.
+    sym = _fresh_symbol()
     persisted = ej_db.insert_changes(
         [
             {
                 "trade_date": today,
                 "to_snapshot_id": "snap-tgt",
                 "scope": "symbol",
-                "symbol": "CN:600000",
+                "symbol": sym,
                 "field": "action",
                 "old_value": "WATCH",
                 "new_value": "BUY",

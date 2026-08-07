@@ -223,6 +223,11 @@ paper_trades（230+ 条）、`source='manual-test'` 快照（72 条）、假快�
    各查一次相关表计数）。
 4. 新增 DB 表相关的集成测试时，先想清楚"我这个测试会往哪个表插什么行、怎么删"，
    再写断言。
+5. **集成测试禁止硬编码真实 symbol**（如 `CN:600000`）——曾污染真实决策日志；
+   一律走前缀 helper（规则 2）。
+6. 动过 requires_postgres 测试后，跑全量并验收：`python3 scripts/db_rows_baseline.py save`
+   → 全量 pytest → `python3 scripts/db_rows_baseline.py check` 必须 OK
+   （27 张关键表行数零变化）。
 
 ---
 
