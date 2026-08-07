@@ -59,12 +59,22 @@ ETF_CLUSTER_PREFIXES: dict[tuple[str, ...], str] = {
 HK_TECH_TICKERS = {"00700", "01810", "09988", "03690", "09618", "01024", "02020", "02318"}
 
 # Eastmoney industry substring → cluster (CN stocks).
+# Order matters: the first matching needle wins, so broader/generic labels
+# ("电子") must come AFTER more specific ones ("消费电子", "电子元件").
+# K4 audit 2026-08-08: "电子" (216 stocks incl. 中芯/海光/寒武纪/澜起/长电),
+# "印制电路板" (PCB/CPO chain, e.g. 沪电 002463), "元件", "光学光电子",
+# "化学制药" and "小金属" were unmapped → those symbols fell through to
+# "other" and were NOT cluster-protected on future BUY.
 INDUSTRY_CLUSTER_RULES: list[tuple[str, str]] = [
     ("半导体", "semiconductor"),
     ("电子元件", "semiconductor"),
+    ("元件", "semiconductor"),
     ("电子化学品", "semiconductor"),
-    ("通信", "tech_comm"),
+    ("军工电子", "semiconductor"),
     ("消费电子", "tech_comm"),
+    ("电子", "semiconductor"),  # eastmoney 一级电子 = 芯片/半导体硬件
+    ("印制电路板", "tech_comm"),  # PCB / CPO 通信产业链
+    ("通信", "tech_comm"),
     ("计算机设备", "tech_comm"),
     ("软件开发", "tech_comm"),
     ("互联网服务", "tech_comm"),
@@ -77,6 +87,7 @@ INDUSTRY_CLUSTER_RULES: list[tuple[str, str]] = [
     ("有色金属", "metal"),
     ("贵金属", "metal"),
     ("工业金属", "metal"),
+    ("小金属", "metal"),
     ("银行", "financial"),
     ("证券", "financial"),
     ("保险", "financial"),
@@ -91,6 +102,7 @@ INDUSTRY_CLUSTER_RULES: list[tuple[str, str]] = [
     ("医疗服务", "health"),
     ("医疗器械", "health"),
     ("生物制品", "health"),
+    ("化学制药", "health"),
 ]
 
 CLUSTER_LABELS = {

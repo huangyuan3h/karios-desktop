@@ -30,7 +30,8 @@ TABLES = [
     "tv_screeners",
     "tv_screener_snapshots",
     "morning_briefs",
-    "news_items",
+    # news_items deliberately excluded: news_fetch_job runs in the background
+    # and appends real feed rows mid-test-suite (observed 2026-08-08).
     "news_sources",
     "system_prompts",
     "system_prompt_state",

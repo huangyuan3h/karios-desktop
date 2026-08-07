@@ -122,7 +122,7 @@
 | K1 | **paper 数据进不了决策快照**：`decision.py` 读 `entry_date`/`pnl_pct`（db 返回 camelCase）→ 决策归档/上下文里 paper 部分为空 | `service/decision.py:118-125` | **P0** | 双 key 兼容或改 camelCase；补测试（mock 用真实 camelCase shape） | **[x] 2026-08-08** |
 | K2 | requires_postgres 测试隔离：26 个文件中多数无 teardown，跑全量测试可能再次污染 dev DB | `tests/test_*.py` | **P1** | 逐个检查插数据点 + teardown；高风险文件先跑前后行数对比 | [ ] |
 | K3 | 前端测试 mock 的 journal/paper shape 是否与 db 一致（测试掩盖 bug 的根源） | `apps/desktop-ui` + 后端 tests | **P1** | 排查计划 1.1 的执行产物：统一 mock shape 约定 | [ ] |
-| K4 | correlation 簇映射完整性未验证（漏簇 = 漏保护） | `service/correlation.py` | P1 | 用全量 registry + 历史 score 行业列表回归簇映射，输出「未归类持仓」清单 | [ ] |
+| K4 | correlation 簇映射完整性未验证（漏簇 = 漏保护） | `service/correlation.py` | P1 | 用全量 registry + 历史 score 行业列表回归簇映射，输出「未归类持仓」清单 | **[x] 2026-08-08** |
 | K5 | 盘后链路顺序依赖（close → post_close → automation → paper）无端到端冒烟测试 | scheduler | P2 | 一次「盘后全链路 dry-run」脚本 | [ ] |
 
 ---
@@ -150,6 +150,18 @@
   1. `service/decision.py` **未 import `json`** 却调用 `json.dumps/loads` → NameError 被 except 吞掉 → `extract_pending_actions` 调度（decision_action_job）**从未真正工作**（processed 恒空）。已加 `import json`。
   2. 测试 mock 与 db shape 不一致（K3 根源实证）：`test_decision.py` 的 `list_changes` mock 用 snake `new_value`，恰好配合 bug 代码「假绿」——已改真实 camelCase mock。
 - decision.py 覆盖率：**43% → 99%**（新增 13 个纯逻辑测试，全 camelCase mock，无 DB 写入）。
+
+**K4. correlation 簇映射回归（2026-08-08 完成）**
+- **真实数据回归结果**：当前 4 个持仓全部受保护（HK:00700→tech_hk、ETF:513180→tech_hk、CN:300628→tech_comm、CN:601899→metal）✓；无「未归类持仓」。
+- **规则覆盖缺口（修复）**：27 个 registry symbol 归 other 中，8 只科创板芯片股（688981 中芯/688041 海光/688256 寒武纪/688008 澜起/688012 中微/600584 长电/603986 兆易/688072）行业标为东财一级「**电子**」→ 规则未命中 → **未来买入无簇保护**。已补规则（顺序敏感）：
+  - 「电子」→ semiconductor（**必须在「消费电子」之后**，子串匹配）；「元件」「军工电子」→ semiconductor
+  - 「印制电路板」→ tech_comm（PCB/CPO 链，沪电 002463）
+  - 「小金属」→ metal（锡业 000960）；「化学制药」→ health
+  - 修复后芯片股全部 → semiconductor ✓
+- **遗留（记录，非 K4 scope）**：
+  1. 16 个 watchlist symbol `industry=None`（stock_eastmoney_industry 缺行：药明康德 603259/百济 688235/天合光能 688599 等）——根因 **stock_basic 表 CN codes=0** → 东财行业增量 sync 永远无 missing codes → 表卡在 1630 行。属 B7 行情同步问题，待修。
+  2. **fail-open 语义**：行业缺失 → `other` → 不参与 cap = **漏保护（激进方向）**——列入 H5 fail-open 清单。
+- correlation.py 覆盖率：**57% → 95%**（+10 测试：K4 规则/em_industry 查询与失败/矩阵全路径/部分对齐/fail-open/带矩阵 evaluate）。
 
 **H2. 盘后决策链端到端冒烟（K5 前置）**
 - 做法：脚本模拟一个完整交易日：journal 有 BUY 信号 → intake 建仓 → 次日 update → 平仓 → 归因/周报可见

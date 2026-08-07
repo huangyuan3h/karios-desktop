@@ -166,3 +166,216 @@ def test_correlation_matrix_high_for_same_theme() -> None:
     rets_c = [(rc[i] - rc[i - 1]) / rc[i - 1] for i in range(1, len(rc))]
     assert _pearson(rets_a, rets_b) == 1.0
     assert _pearson(rets_a, rets_c) < 0.3  # gold moves independently
+
+
+# ---------------------------------------------------------------------------
+# K4 audit patch (2026-08-08): 电子/印制电路板/元件/光学光电子/小金属/化学制药
+# ---------------------------------------------------------------------------
+
+
+def test_cluster_rules_k4_audit_patch() -> None:
+    # 东财一级「电子」= 芯片/半导体硬件（中芯 688981、海光 688041、寒武纪 688256）→ semiconductor
+    assert cluster_for_symbol("CN:688981", "电子") == "semiconductor"
+    assert cluster_for_symbol("CN:688041", "电子") == "semiconductor"
+    assert cluster_for_symbol("CN:688256", "电子") == "semiconductor"
+    assert cluster_for_symbol("CN:600584", "电子") == "semiconductor"
+    # 消费电子必须先于「电子」命中 → tech_comm（顺序敏感）
+    assert cluster_for_symbol("CN:002475", "消费电子") == "tech_comm"
+    # 军工电子 → semiconductor
+    assert cluster_for_symbol("CN:600893", "军工电子Ⅱ") == "semiconductor"
+    # PCB / CPO 产业链（沪电 002463）→ tech_comm
+    assert cluster_for_symbol("CN:002463", "印制电路板") == "tech_comm"
+    # 元件 / 光学光电子 → semiconductor
+    assert cluster_for_symbol("CN:603501", "元件") == "semiconductor"
+    assert cluster_for_symbol("CN:002456", "光学光电子") == "semiconductor"
+    # 小金属（锡业 000960）→ metal
+    assert cluster_for_symbol("CN:000960", "小金属") == "metal"
+    # 化学制药 → health
+    assert cluster_for_symbol("CN:600276", "化学制药") == "health"
+    # 未匹配行业保持 other
+    assert cluster_for_symbol("CN:600000", "房地产开发") == "other"
+
+
+def test_em_industry_for_ts_code_lookup() -> None:
+    from data_sync_service.service.correlation import em_industry_for_ts_code
+
+    class _Cur:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, sql, params=None): return None
+        def fetchone(self): return ("半导体",)
+
+    class _Conn:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def cursor(self): return _Cur()
+
+    with patch("data_sync_service.service.correlation.get_connection", return_value=_Conn()):
+        assert em_industry_for_ts_code("688981.SH") == "半导体"
+
+
+def test_em_industry_for_ts_code_missing_and_failure() -> None:
+    from data_sync_service.service.correlation import em_industry_for_ts_code
+
+    class _Cur:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, sql, params=None): return None
+        def fetchone(self): return None
+
+    class _Conn:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def cursor(self): return _Cur()
+
+    with patch("data_sync_service.service.correlation.get_connection", return_value=_Conn()):
+        assert em_industry_for_ts_code("688981.SH") is None
+
+    def boom():
+        raise RuntimeError("db down")
+
+    with patch("data_sync_service.service.correlation.get_connection", side_effect=boom):
+        assert em_industry_for_ts_code("688981.SH") is None
+
+
+# ---------------------------------------------------------------------------
+# Empirical correlation: full DB path via fake connection
+# ---------------------------------------------------------------------------
+
+
+class _FakeCorrCursor:
+    def __init__(self, rows):
+        self._rows = rows
+        self._calls = 0
+
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+    def execute(self, sql, params=None):
+        self._calls += 1
+        return None
+
+    def fetchall(self):
+        return self._rows
+
+
+class _FakeCorrConn:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+    def cursor(self):
+        return _FakeCorrCursor(self._rows)
+
+
+def _corr_rows(ts_code: str, closes: list[float], start_day: int = 0) -> list:
+    from datetime import date, timedelta
+
+    base = date(2026, 7, 1)
+    return [
+        (ts_code, base + timedelta(days=start_day + i), c)
+        for i, c in enumerate(closes)
+    ]
+
+
+def test_correlation_matrix_full_path() -> None:
+    # 20 fully-aligned days; identical returns → r = 1.0.
+    closes_a = [100, 101, 103, 105, 108, 110, 112, 115, 118, 120,
+                123, 126, 129, 132, 135, 138, 141, 144, 147, 150]
+    closes_b = [200, 202, 206, 210, 216, 220, 224, 230, 236, 240,
+                246, 252, 258, 264, 270, 276, 282, 288, 294, 300]
+    rows = _corr_rows("00700.HK", closes_a) + _corr_rows("513180.SH", closes_b)
+    with patch(
+        "data_sync_service.service.correlation.get_connection",
+        return_value=_FakeCorrConn(rows),
+    ):
+        matrix, aligned = correlation_matrix(["HK:00700", "ETF:513180"], days=20)
+    assert aligned == 20
+    assert matrix == {("HK:00700", "ETF:513180"): 1.0}
+
+
+def test_correlation_matrix_small_sample_fails_open() -> None:
+    rows = _corr_rows("00700.HK", [100 + i for i in range(10)]) + \
+        _corr_rows("513180.SH", [200 + 2 * i for i in range(10)])
+    with patch(
+        "data_sync_service.service.correlation.get_connection",
+        return_value=_FakeCorrConn(rows),
+    ):
+        matrix, aligned = correlation_matrix(["HK:00700", "ETF:513180"])
+    assert matrix == {}
+    assert aligned == 10  # < MIN_ALIGNED_DAYS → fail-open
+
+
+def test_correlation_matrix_too_few_symbols() -> None:
+    matrix, aligned = correlation_matrix(["HK:00700"])
+    assert matrix == {}
+    assert aligned == 0
+    matrix2, aligned2 = correlation_matrix([])
+    assert matrix2 == {}
+    assert aligned2 == 0
+    matrix3, aligned3 = correlation_matrix(["garbage"])
+    assert matrix3 == {}
+    assert aligned3 == 0
+
+
+def test_correlation_matrix_db_failure() -> None:
+    def boom():
+        raise RuntimeError("db down")
+
+    with patch("data_sync_service.service.correlation.get_connection", side_effect=boom):
+        matrix, aligned = correlation_matrix(["HK:00700", "ETF:513180"])
+    assert matrix == {}
+    assert aligned == 0
+
+
+def test_correlation_matrix_partial_alignment() -> None:
+    # A has 25 days, B has 20 overlapping → aligned = 20.
+    closes_a = [100 + i for i in range(25)]
+    closes_b = [200 + 2 * i for i in range(20)]
+    rows = _corr_rows("00700.HK", closes_a) + _corr_rows("513180.SH", closes_b, start_day=5)
+    with patch(
+        "data_sync_service.service.correlation.get_connection",
+        return_value=_FakeCorrConn(rows),
+    ):
+        matrix, aligned = correlation_matrix(["HK:00700", "ETF:513180"], days=20)
+    assert aligned == 20
+    assert len(matrix) == 1
+    assert 0.99 < matrix[("HK:00700", "ETF:513180")] <= 1.0
+
+
+def test_evaluate_correlation_cap_with_matrix() -> None:
+    positions = [
+        {"symbol": "HK:00700", "positionPct": 10.0},
+        {"symbol": "ETF:513180", "positionPct": 10.0},
+        {"symbol": "CN:601899", "positionPct": 10.0},
+    ]
+    closes_a = [100, 101, 103, 105, 108, 110, 112, 115, 118, 120,
+                123, 126, 129, 132, 135, 138, 141, 144, 147, 150]
+    closes_b = [200, 202, 206, 210, 216, 220, 224, 230, 236, 240,
+                246, 252, 258, 264, 270, 276, 282, 288, 294, 300]
+    rows = _corr_rows("00700.HK", closes_a) + _corr_rows("513180.SH", closes_b)
+    with patch(
+        "data_sync_service.service.correlation.get_connection",
+        return_value=_FakeCorrConn(rows),
+    ):
+        out = evaluate_correlation_cap(positions, industries={"CN:601899": "有色金属"}, include_matrix=True)
+    assert out["empiricalNote"] is None
+    assert out["topPairs"] == [["HK:00700", "ETF:513180", 1.0]]
+
+
+def test_evaluate_correlation_cap_matrix_insufficient_sample() -> None:
+    positions = [
+        {"symbol": "HK:00700", "positionPct": 10.0},
+        {"symbol": "ETF:513180", "positionPct": 10.0},
+    ]
+    rows = _corr_rows("00700.HK", [100 + i for i in range(10)]) + \
+        _corr_rows("513180.SH", [200 + 2 * i for i in range(10)])
+    with patch(
+        "data_sync_service.service.correlation.get_connection",
+        return_value=_FakeCorrConn(rows),
+    ):
+        out = evaluate_correlation_cap(positions, include_matrix=True)
+    assert out["empiricalNote"] == "样本不足，仅语义层生效（fail-open）"
+    assert out["topPairs"] == []
