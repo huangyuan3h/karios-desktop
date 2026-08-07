@@ -169,7 +169,7 @@ def analyze_exit_attribution(*, days: int = 5, limit: int = 500) -> dict[str, An
                     str(t.get("closeReason") or t.get("close_reason") or "")
                 ),
                 "closeDate": cd,
-                "pnlPct": t.get("pnl_pct"),
+                "pnlPct": t.get("pnlPct") if t.get("pnlPct") is not None else t.get("pnl_pct"),
                 "forwardPct": round(fwd, 3) if fwd is not None else None,
                 "bucket": _bucket(fwd) if fwd is not None else None,
             }

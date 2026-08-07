@@ -6,6 +6,7 @@ feedback from execution journal changes + paper trades.
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -105,7 +106,7 @@ def apply_daily_outcomes(*, days: int = 5) -> dict[str, Any]:
             {
                 "symbol": c.get("symbol"),
                 "field": c.get("field"),
-                "newValue": c.get("new_value"),
+                "newValue": c.get("newValue"),
                 "source": c.get("source"),
             }
             for c in changes
@@ -115,14 +116,14 @@ def apply_daily_outcomes(*, days: int = 5) -> dict[str, Any]:
         try:
             trades = list_paper_trades(limit=100)
             for t in trades:
-                entry = str(t.get("entry_date") or "")[:10]
+                entry = str(t.get("entryDate") or "")[:10]
                 if entry == date_str:
                     paper.append(
                         {
                             "symbol": t.get("symbol"),
                             "side": t.get("side"),
                             "status": t.get("status"),
-                            "pnlPct": t.get("pnl_pct"),
+                            "pnlPct": t.get("pnlPct"),
                         }
                     )
         except Exception:  # noqa: BLE001
@@ -164,9 +165,9 @@ def analysis_stats(*, fired_days: int = 30, paper_limit: int = 500) -> dict[str,
     except Exception:  # noqa: BLE001
         pass
     closed = [t for t in trades if str(t.get("status") or "") == "closed"]
-    wins = [t for t in closed if (t.get("pnl_pct") or 0) > 0]
-    losses = [t for t in closed if (t.get("pnl_pct") or 0) <= 0]
-    pnls = [t.get("pnl_pct") or 0 for t in closed]
+    wins = [t for t in closed if (t.get("pnlPct") or 0) > 0]
+    losses = [t for t in closed if (t.get("pnlPct") or 0) <= 0]
+    pnls = [t.get("pnlPct") or 0 for t in closed]
     avg_pnl = round(sum(pnls) / len(pnls), 2) if pnls else None
 
     # OPT-062: per-market NET stats for the same window. Best-effort — the
@@ -316,7 +317,7 @@ def match_executions(*, match_window_days: int = 3) -> dict[str, Any]:
                 c
                 for c in changes
                 if c.get("symbol") == a["symbol"]
-                and str(c.get("new_value") or "").upper() == a["action"]
+                and str(c.get("newValue") or "").upper() == a["action"]
                 and c.get("field") == "action"
             ),
             None,
