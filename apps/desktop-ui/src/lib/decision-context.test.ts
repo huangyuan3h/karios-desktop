@@ -40,6 +40,18 @@ describe('buildNewsMarkdown', () => {
   it('returns empty for no items', () => {
     expect(buildNewsMarkdown({})).toBe('');
   });
+
+  it('drops low-relevance non-whitelist noise and caps at 5', () => {
+    const items = Array.from({ length: 8 }, (_, i) => ({
+      title: `无关娱乐新闻${i}`,
+      relevanceScore: 10,
+      publishedAt: '2026-08-06T09:00:00Z',
+    }));
+    items.push({ title: '央行宣布降准', relevanceScore: 5, publishedAt: '2026-08-06T09:00:00Z' });
+    const md = buildNewsMarkdown({ news: { hours: 24, total: items.length, items } });
+    expect(md).toContain('央行宣布降准');
+    expect(md).not.toContain('无关娱乐新闻');
+  });
 });
 
 describe('activeLayerToMarkdown', () => {
