@@ -22,6 +22,5 @@
 
 | 文件 | 关联 todo 节 | 状态 |
 |------|--------------|------|
-| — | — | （起步阶段，尚无） |
-
-> 第一份入驻草稿建议落点：`docs/designs/cloud-deployment-options.md`（对应 todo §5 / §4 部署走向决策）。
+| [`l3-l4-evolution-roadmap.md`](./l3-l4-evolution-roadmap.md) | §16 升级方向（L3 → L4） | **方向已拍板 2026-08-07**；L3 进行中（L3-P1 度量基座），L4 待排期 |
+| `cloud-deployment-options.md` | §5 / §4 部署走向决策 | 待拍板 |
