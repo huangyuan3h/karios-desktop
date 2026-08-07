@@ -166,6 +166,19 @@
 **H2. 盘后决策链端到端冒烟（K5 前置）**
 - 做法：脚本模拟一个完整交易日：journal 有 BUY 信号 → intake 建仓 → 次日 update → 平仓 → 归因/周报可见
 - 验收：全链路数据在 API 上可见；所有消费方无 key 报错
+- **状态：[x] 2026-08-08**。`tests/test_postclose_smoke.py`（requires_postgres，teardown 全清）：
+
+| 步骤 | 链路 | 验证点 |
+|------|------|--------|
+| 1 | `ingest_snapshot`（真实 DB 写 snapshot+changes） | changed=True、card 校验通过 |
+| 2 | `run_intake`（仅价格 mock） | candidates=1、inserted=1、open 行 entryDate/market/source 正确 |
+| 3 | `run_update`（价格 2x → target_hit） | closed=1、closeReason=target_hit、pnlPct/grossPnlPct/costsPct 非空 |
+| 4 | `analyze_exit_attribution` | byReason.target_hit.count>=1（K1 修复的 pnlPct 读取验证） |
+| 5 | `build_weekly_review` | paper.closed>=1、byReason.target_hit、avgNetPnlPct 非空 |
+
+- **抓到生产 bug（K 级新增）**：`run_intake` 的 `action` 变量是函数级作用域——过滤循环遍历所有 changes 后残留为**最后一条 action change 的值**，插入循环 `side=action` 全用它 → 尾部是 WATCH/TRIM/EXIT 时**所有 insert 失败或记错 side**（这解释了 paper_trades 长期只有 1 行）。已修复（每个 candidate 重新读取）+ 回归测试 `test_run_intake_insert_side_not_leaked_from_last_change`。
+- **数据隔离要点**：ingest 的 diff 会对比真实最新快照 → 跨日反向变化污染真实 symbol 日志（672 行已清）；冒烟用「空基线快照」做 diff 起点，只产生测试 symbol 的行。
+- 验收：冒烟连跑 3 次稳定；全量 1416 passed；27 张表零变化。
 
 **H3. 测试隔离复查（K2）**
 - 做法：26 个 requires_postgres 文件跑前/跑后对比关键表行数（paper_trades / execution_* / daily / *daily 抽样）

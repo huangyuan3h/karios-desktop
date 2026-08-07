@@ -545,7 +545,7 @@
 | H1 数据口径审计 | **[x] 2026-08-08**：全量对照表完成（详见 l4-gate-audit.md §4）；decision.py 覆盖率 43% → 99% |
 | H3 测试隔离复查（26 个 requires_postgres 文件） | **[x] 2026-08-08**：7 处污染源修复（含 flaky 根因：UTC/上海跨天窗口）；清 233 测试账户 + 141 测试 session + 48 假 changes；`scripts/db_rows_baseline.py` 验收 OK |
 | K4 correlation 簇回归 | **[x] 2026-08-08**：持仓全保护；补 8 条簇规则（电子/元件/PCB/小金属/化学制药等）；correlation.py 57%→95%；遗留：stock_basic CN=0 致行业缺失（B7）+ fail-open 激进语义（入 H5 清单） |
-| H2 盘后链路端到端冒烟 | [ ] |
+| H2 盘后链路端到端冒烟 | **[x] 2026-08-08**：`test_postclose_smoke.py` 五步链路全绿；**抓到生产 bug**：run_intake side 变量泄漏（最后一条 action 污染所有 insert，解释 paper_trades 长期 1 行）已修 + 回归测试；基线验收零变化 |
 | H4 前端决策链边界矩阵 | [ ] |
 | H5 fail-open 语义清单 | [ ] |
 | H6 时区/日历一致性 | [ ] |

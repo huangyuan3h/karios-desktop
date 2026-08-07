@@ -827,3 +827,42 @@ def test_resolve_ts_code_accepts_cn_and_hk() -> None:
     # ETF / unknown stay out of scope (v0.2).
     assert _resolve_ts_code("ETF:510300") is None
     assert _resolve_ts_code("unknown") is None
+
+
+def test_run_intake_insert_side_not_leaked_from_last_change() -> None:
+    """Regression (H2 smoke 2026-08-08): `action` is function-scoped in the
+    filter loop; a trailing WATCH/TRIM change used to leak into every insert
+    (`side=action` in the insert loop), failing or mislabelling all inserts."""
+    fake_journal = [
+        {"symbol": "CN:000001", "field": "action", "newValue": "BUY", "source": "TV"},
+        {"symbol": "CN:000002", "field": "action", "newValue": "WATCH_SILENT", "source": "TV"},
+    ]
+    inserted: list[dict] = []
+
+    def fake_insert(**kwargs):
+        inserted.append(kwargs)
+        return {"id": "x"}
+
+    with (
+        patch(
+            "data_sync_service.service.paper_trading.ej_db.list_changes",
+            return_value=fake_journal,
+        ),
+        patch(
+            "data_sync_service.db.watchlist_automation.list_registry",
+            return_value=[],
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.fetch_last_ohlcv_batch",
+            return_value={"000001.SZ": [("2026-08-01", 12.0, 12.0, 11.9, 12.0, 1000)]},
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.insert_paper_trade",
+            side_effect=fake_insert,
+        ),
+    ):
+        from data_sync_service.service.paper_trading import run_intake
+
+        summary = run_intake(trade_date="2026-08-01")
+    assert summary["inserted"] == 1
+    assert inserted and inserted[0]["side"] == "BUY"

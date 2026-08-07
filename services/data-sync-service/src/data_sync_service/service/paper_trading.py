@@ -187,6 +187,10 @@ def run_intake(*, trade_date: str | None = None) -> dict[str, Any]:
             continue
         sym = str(ch.get("symbol") or "")
         raw_source = ch.get("source")
+        # action is function-scoped in the filter loop above; re-read it per
+        # candidate (previously the LAST action change seen leaked into every
+        # insert — a WATCH/TRIM/EXIT tail row made all inserts fail or mislabel).
+        action = str(ch.get("newValue") or "").upper()
         # TIP-011: only accept the closed enum; everything else → None.
         source = raw_source if raw_source in pt_db.SOURCES else None
         try:
