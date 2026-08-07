@@ -21,6 +21,15 @@ export type DecisionAnalysis = {
     losses: number;
     winRate: number | null;
     avgPnlPct: number | null;
+    byMarket?: Record<
+      string,
+      {
+        closedCount: number;
+        winningCount: number;
+        winRate: number | null;
+        avgPnlPct: number | null;
+      }
+    >;
   };
   sessions: Array<{
     id: number;
@@ -193,9 +202,32 @@ export function AnalysisView() {
       <div className="grid grid-cols-2 gap-1.5">
         <StatCard label="总交易" value={String(a.paper.total)} />
         <StatCard label="胜率" value={winRate} sub={`${a.paper.wins} 胜 / ${a.paper.losses} 负`} />
-        <StatCard label="平均盈亏" value={a.paper.avgPnlPct != null ? `${a.paper.avgPnlPct}%` : '—'} />
+        <StatCard label="平均盈亏" value={a.paper.avgPnlPct != null ? `${a.paper.avgPnlPct}%` : '—'} sub="扣费后净口径" />
         <StatCard label="持仓中" value={String(a.paper.open)} sub={`已平仓 ${a.paper.closed}`} />
       </div>
+
+      {/* 分市场净口径（OPT-062 · L3-P1） */}
+      {a.paper.byMarket && Object.keys(a.paper.byMarket).length > 0 && (
+        <div>
+          <div className="mb-1.5 text-[11px] font-medium text-[var(--k-muted)]">
+            分市场净盈亏（CN/HK · 扣费后）
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {Object.entries(a.paper.byMarket).map(([market, m]) => {
+              const mr = m.winRate != null ? `${(m.winRate * 100).toFixed(1)}%` : '—';
+              const mp = m.avgPnlPct != null ? `${m.avgPnlPct}%` : '—';
+              return (
+                <StatCard
+                  key={market}
+                  label={market === 'HK' ? '港股 HK' : 'A股 CN'}
+                  value={mr}
+                  sub={`${m.winningCount} 胜 / ${m.closedCount - m.winningCount} 负 · 均盈亏 ${mp}`}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 注入审计 */}
       <div>

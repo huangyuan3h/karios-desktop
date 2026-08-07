@@ -142,13 +142,14 @@ def analysis_stats(*, fired_days: int = 30, paper_limit: int = 500) -> dict[str,
     """Aggregate decision-loop analytics (TIP-015 M4).
 
     - Judgment volume by provenance (TIP-011 bucket, action changes)
-    - Paper-trading outcome distribution (win rate, avg pnl)
+    - Paper-trading outcome distribution (win rate, avg pnl) — NET-of-costs
+      since v0.2 (OPT-062); per-market split in ``paperByMarket``
     - Per-session context audit: rounds, average injected tokens
     """
     from datetime import timedelta
 
     from data_sync_service.db.execution_journal import count_changes_by_source
-    from data_sync_service.db.paper_trading import list_paper_trades
+    from data_sync_service.db.paper_trading import count_by_market_since, list_paper_trades
 
     since = (datetime.now(timezone.utc) - timedelta(days=fired_days)).isoformat()
     by_source = count_changes_by_source(
@@ -167,6 +168,13 @@ def analysis_stats(*, fired_days: int = 30, paper_limit: int = 500) -> dict[str,
     losses = [t for t in closed if (t.get("pnl_pct") or 0) <= 0]
     pnls = [t.get("pnl_pct") or 0 for t in closed]
     avg_pnl = round(sum(pnls) / len(pnls), 2) if pnls else None
+
+    # OPT-062: per-market NET stats for the same window. Best-effort — the
+    # analysis must not break when the DB read fails.
+    try:
+        market_stats = count_by_market_since(since.split("T")[0])
+    except Exception:  # noqa: BLE001
+        market_stats = {}
 
     sessions: list[dict[str, Any]] = []
     ensure_table()
@@ -207,6 +215,7 @@ def analysis_stats(*, fired_days: int = 30, paper_limit: int = 500) -> dict[str,
             "losses": len(losses),
             "winRate": round(len(wins) / len(closed), 3) if closed else None,
             "avgPnlPct": avg_pnl,
+            "byMarket": market_stats,
         },
         "sessions": sessions,
     }

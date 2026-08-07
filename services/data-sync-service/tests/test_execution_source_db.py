@@ -24,17 +24,58 @@ from data_sync_service.db import paper_trading as pt_db
 pytestmark = pytest.mark.requires_postgres
 
 
+_CREATED_SYMBOLS: set[str] = set()
+
+# Fake snapshot ids this module inserts into execution_decision_changes
+# (test_aggregate_source_stats_shape / test_backfill_paper_trades_source_dry_run).
+_FAKE_SNAPSHOT_IDS = ("snap-agg", "snap-bf")
+
+
 @pytest.fixture(autouse=True)
 def _ensure_tables() -> None:
+    """Ensure tables, then clean up every row this module inserted.
+
+    These integration tests write real rows into the dev Postgres; without a
+    teardown they pollute the paper_trades / execution_snapshots /
+    execution_decision_changes tables (2026-08-07 incident: 230+ CN:99xxxx
+    paper rows + 72 'manual-test' snapshots + 67 fake-id change rows masked
+    all real decision-log data). Every test's rows are deleted after the test.
+    """
     pt_db.ensure_tables()
     ej_db.ensure_table()
+    yield
+    if _CREATED_SYMBOLS:
+        from data_sync_service.db import get_connection
+
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM paper_trades WHERE symbol = ANY(%s)",
+                    (sorted(_CREATED_SYMBOLS),),
+                )
+                cur.execute(
+                    """
+                    DELETE FROM execution_decision_changes
+                    WHERE symbol = ANY(%s)
+                       OR to_snapshot_id = ANY(%s)
+                       OR from_snapshot_id = ANY(%s)
+                    """,
+                    (sorted(_CREATED_SYMBOLS), list(_FAKE_SNAPSHOT_IDS), list(_FAKE_SNAPSHOT_IDS)),
+                )
+                cur.execute(
+                    "DELETE FROM execution_snapshots WHERE source = 'manual-test'"
+                )
+            conn.commit()
+        _CREATED_SYMBOLS.clear()
 
 
 def _fresh_symbol(prefix: str = "CN") -> str:
     import uuid
 
     u = uuid.uuid4().hex[:6]
-    return f"{prefix}:99{u}"
+    sym = f"{prefix}:99{u}"
+    _CREATED_SYMBOLS.add(sym)
+    return sym
 
 
 def test_insert_paper_trade_round_trip_source() -> None:

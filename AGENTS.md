@@ -204,6 +204,26 @@ Implement OPT-XXX from docs/optimization-checklist.md.
 | Frontend | `cd apps/desktop-ui && npm run test` |
 | Alembic | `pytest tests/test_alembic_baseline.py` |
 
+### DB 集成测试纪律（2026-08-07 教训 · 必须遵守）
+
+**任何 `requires_postgres` 测试插入真实数据后必须清理自己写的行。**
+
+原因：`test_execution_source_db.py` 曾直接往 dev Postgres 插入 `CN:99{uuid}` 假 symbol 的
+paper_trades（230+ 条）、`source='manual-test'` 快照（72 条）、假快照 id（`snap-agg`/
+`snap-bf`）的 changes 行（67 条）且不清理——污染决策日志、归因统计，掩盖了真实数据。
+
+规则：
+
+1. 测试写入的行必须在 autouse fixture 的 teardown 中按特征删除（参考
+   `tests/test_execution_source_db.py::_ensure_tables` 的清理模式）。
+2. 生成测试 symbol 一律走带前缀的 helper（如 `CN:99{uuid[:6]}`）并登记到集合，
+   teardown 用 `symbol = ANY(%s)` 删除；快照/changes 用本测试专用特征
+   （`source` / 假 id）删除。
+3. 写完测试后**必须实际跑一遍并确认表保持干净**（`pytest tests/test_xxx.py` 前后
+   各查一次相关表计数）。
+4. 新增 DB 表相关的集成测试时，先想清楚"我这个测试会往哪个表插什么行、怎么删"，
+   再写断言。
+
 ---
 
 ## Language

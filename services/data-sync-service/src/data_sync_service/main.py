@@ -13,6 +13,7 @@ from .api.dashboard_routes import router as dashboard_router
 # before any API key can be issued).
 from .api.discovery_routes import router as discovery_router
 from .api.decision_routes import router as decision_router
+from .api.backtest_routes import router as backtest_router
 from .api.execution_journal_routes import router as execution_journal_router
 from .api.health_routes import router as health_router
 from .api.industry_flow_routes import router as industry_flow_router
@@ -107,6 +108,7 @@ app.include_router(research_router)
 # Phase B will add a separate /v1/* business router that depends on
 # api.auth.require_api_key.
 app.include_router(discovery_router)
+app.include_router(backtest_router)
 app.include_router(decision_router)
 # OPT-045 Phase B / OPT-046: read-only business endpoints under /v1/*.
 app.include_router(v1_business_router)

@@ -14,6 +14,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { ColumnHeader } from '@/components/watchlist/ColumnHeader';
 import { WatchlistRow } from '@/components/watchlist/WatchlistRow';
+import {
+  clusterExposureForSymbol,
+  useCorrelationStatusQuery,
+} from '@/lib/queries/backtest';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import type { ExecutionGate } from '@karios/shared';
 import { useChatStore } from '@/lib/chat/store';
@@ -208,6 +212,7 @@ export function WatchlistTable({
     [sortedItems],
   );
 
+  const correlationStatus = useCorrelationStatusQuery(true, true).data;
   const defensiveSleeveExposurePct = React.useMemo(
     () => buildDefensiveSleeveExposurePct(sortedItems, trend),
     [sortedItems, trend],
@@ -669,6 +674,7 @@ export function WatchlistTable({
                         sectorExposureByIndustry={sectorExposureByIndustry}
                         sleeveExposurePct={sleeveExposurePct}
                         defensiveSleeveExposurePct={defensiveSleeveExposurePct}
+                        clusterExposurePct={clusterExposureForSymbol(correlationStatus, it.symbol)}
                         showTooltip={showTooltip}
                         hideTooltip={hideTooltip}
                         showColorPicker={showColorPicker}

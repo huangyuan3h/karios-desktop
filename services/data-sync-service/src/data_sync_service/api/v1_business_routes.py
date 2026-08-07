@@ -410,19 +410,25 @@ def get_decision_journal_query(
 
 
 class PaperTrade(BaseModel):
-    """One paper-trade row (OPT-049)."""
+    """One paper-trade row (OPT-049; v0.2 OPT-062 adds market + net PnL)."""
 
     id: str = Field(..., description="UUID primary key.")
-    symbol: str = Field(..., description="MARKET:TICKER form (v0: CN only).")
+    symbol: str = Field(
+        ...,
+        description="MARKET:TICKER form (CN:000001 or HK:00700).",
+    )
     entryDate: str = Field(..., description="ISO date the simulated order was placed.")
     side: str = Field(
         ...,
-        description="'BUY' or 'ADD'. v0 only emits these two — exits are implicit (cron closes).",
+        description="'BUY' or 'ADD'. Only these two are emitted — exits are implicit (cron closes).",
     )
-    entryPrice: float = Field(..., description="Daily close on entryDate used as fill price.")
+    entryPrice: float = Field(
+        ...,
+        description="Daily close on entryDate used as fill price (before costs).",
+    )
     scoreAtEntry: float | None = Field(
         default=None,
-        description="Snapshot of TrendOK score at the time of the original BUY/ADD signal.",
+        description="Snapshot of TrendOK score at the time of the original BUY/ADD signal (CN only).",
     )
     whyAtEntry: str | None = Field(
         default=None,
@@ -446,7 +452,23 @@ class PaperTrade(BaseModel):
     )
     pnlPct: float | None = Field(
         default=None,
-        description="(closePrice - entryPrice) / entryPrice * 100. Updated daily by the update cron.",
+        description=(
+            "v0.2 NET PnL % (gross minus round-trip costs) for CLOSED rows; "
+            "current GROSS PnL % for OPEN rows. Legacy pre-v0.2 rows have "
+            "gross == net (no cost model)."
+        ),
+    )
+    grossPnlPct: float | None = Field(
+        default=None,
+        description="v0.2: PnL % before costs (close_time for closed rows). null on legacy rows.",
+    )
+    costsPct: float | None = Field(
+        default=None,
+        description=(
+            "v0.2: round-trip cost % (slippage + commission + stamp tax by "
+            "market). CN ~0.30%, HK ~0.60% under the default model. null on "
+            "legacy rows (costs not modeled)."
+        ),
     )
     holdingDays: int | None = Field(
         default=None,
@@ -455,10 +477,11 @@ class PaperTrade(BaseModel):
     closeReason: str | None = Field(
         default=None,
         description=(
-            "Why the cron closed the trade. v0.1 emits 'stop_hit' (pnl_pct <= -5%), "
-            "'target_hit' (pnl_pct >= +10%), 'score_floor' (TrendOK score < 30), "
-            "'pool_exit' (symbol purged from the watchlist) or "
-            "'max_hold' (holding_days >= 5). null while still open."
+            "Why the cron closed the trade. v0.1 emits 'stop_hit' (net pnl_pct "
+            "<= -5%), 'target_hit' (net pnl_pct >= +10%), 'score_floor' "
+            "(TrendOK score < 30, CN only), 'pool_exit' (symbol purged from "
+            "the watchlist) or 'max_hold' (holding_days >= 5). null while "
+            "still open."
         ),
     )
     source: str | None = Field(
@@ -470,6 +493,11 @@ class PaperTrade(BaseModel):
         ),
         examples=["TV", "ALPHA", "MANUAL"],
     )
+    market: str = Field(
+        default="CN",
+        description="'CN' | 'HK' (v0.2). PnL is in local currency (CNY/HKD); no FX conversion yet.",
+        examples=["CN", "HK"],
+    )
 
 
 class PaperTradeListResponse(BaseModel):
@@ -480,26 +508,48 @@ class PaperTradeListResponse(BaseModel):
     items: list[PaperTrade] = Field(..., description="Latest first (entry_date DESC).")
 
 
-class PaperTradeStatsResponse(BaseModel):
-    """Response of GET /v1/paper-trades/stats."""
+class PaperTradeMarketStats(BaseModel):
+    """Per-market NET stats bucket (v0.2 / OPT-062)."""
 
-    since: str = Field(..., description="ISO date lower bound used for the stats window.")
-    closedCount: int = Field(..., description="Number of closed trades in the window.")
-    winningCount: int = Field(..., description="Subset of closedCount where pnl_pct > 0.")
+    closedCount: int = Field(..., description="Closed trades in this market within the window.")
+    winningCount: int = Field(..., description="Closed trades with net pnl_pct > 0.")
     winRate: float | None = Field(
         default=None,
         description="winningCount / closedCount, in [0, 1]. null when closedCount == 0.",
     )
     avgPnlPct: float | None = Field(
         default=None,
-        description="Arithmetic mean of pnl_pct across the window. null when closedCount == 0.",
+        description="Mean NET pnl_pct for this market. null when closedCount == 0.",
+    )
+
+
+class PaperTradeStatsResponse(BaseModel):
+    """Response of GET /v1/paper-trades/stats."""
+
+    since: str = Field(..., description="ISO date lower bound used for the stats window.")
+    closedCount: int = Field(..., description="Number of closed trades in the window.")
+    winningCount: int = Field(..., description="Subset of closedCount where net pnl_pct > 0.")
+    winRate: float | None = Field(
+        default=None,
+        description="winningCount / closedCount, in [0, 1]. null when closedCount == 0.",
+    )
+    avgPnlPct: float | None = Field(
+        default=None,
+        description="Arithmetic mean of NET pnl_pct across the window. null when closedCount == 0.",
+    )
+    byMarket: dict[str, PaperTradeMarketStats] = Field(
+        default_factory=dict,
+        description=(
+            "Per-market NET stats for the window (v0.2): {CN: {...}, HK: {...}}. "
+            "Absent markets have no closed trades."
+        ),
     )
 
 
 @router.get(
     "/paper-trades",
     response_model=PaperTradeListResponse,
-    summary="List paper trades (OPT-049, v0.1: CN-only, read-only).",
+    summary="List paper trades (OPT-049; v0.2 OPT-062: CN + HK, read-only).",
 )
 def get_paper_trades(
     status: str | None = Query(
@@ -510,6 +560,11 @@ def get_paper_trades(
         default=None,
         description="ISO date (YYYY-MM-DD). Only rows with entry_date >= since are returned.",
     ),
+    market: str | None = Query(
+        default=None,
+        description="Filter by market: 'CN' | 'HK'. null returns both (v0.2 / OPT-062).",
+        examples=["CN", "HK"],
+    ),
     limit: int = Query(
         default=50,
         ge=1,
@@ -518,7 +573,7 @@ def get_paper_trades(
     ),
 ) -> PaperTradeListResponse:
     try:
-        rows = pt_db.list_paper_trades(status=status, since=since, limit=limit)
+        rows = pt_db.list_paper_trades(status=status, since=since, limit=limit, market=market)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -533,7 +588,7 @@ def get_paper_trades(
 @router.get(
     "/paper-trades/stats",
     response_model=PaperTradeStatsResponse,
-    summary="Get aggregate stats for paper trades since a given date.",
+    summary="Get aggregate (NET-of-costs) stats for paper trades since a given date.",
 )
 def get_paper_trades_stats(
     since: str = Query(
@@ -541,9 +596,14 @@ def get_paper_trades_stats(
         description="ISO date (YYYY-MM-DD) lower bound. Required — stats are useless without a window.",
         examples=["2026-08-01"],
     ),
+    market: str | None = Query(
+        default=None,
+        description="Narrow the headline numbers to one market ('CN' | 'HK'); byMarket always returned.",
+        examples=["CN", "HK"],
+    ),
 ) -> PaperTradeStatsResponse:
     try:
-        result = pt_compute_stats(since_iso=since)
+        result = pt_compute_stats(since_iso=since, market=market)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     if "error" in result:
@@ -554,6 +614,7 @@ def get_paper_trades_stats(
         winningCount=int(result.get("winningCount") or 0),
         winRate=result.get("winRate"),
         avgPnlPct=result.get("avgPnlPct"),
+        byMarket=result.get("byMarket") or {},
     )
 
 

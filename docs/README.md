@@ -34,7 +34,7 @@
 
 | 清单 | 命名 | 适用范围 | 状态 |
 |------|------|----------|------|
-| [`optimization-checklist.md`](./optimization-checklist.md) | `OPT-001` ~ `OPT-044+` | 架构 / 性能 / 兼容 / 工程债 | 滚动维护（OPT-001~044 已完成；OPT-045+ 待开） |
+| [`optimization-checklist.md`](./optimization-checklist.md) | `OPT-001` ~ `OPT-062` | 架构 / 性能 / 兼容 / 工程债 | 滚动维护（OPT-001~062 滚动；最新 OPT-062 Paper v0.2） |
 | [`trading-improvement-checklist.md`](./trading-improvement-checklist.md) | `TIP-001` ~ `TIP-011`、`V6.2-*`、`V6.3-*` | 业务规则校准 / 交易闸 | 滚动维护（P0/P1 已完成；TIP-009/011 仍未关） |
 
 **工作流**：todo 上新一条 → 评估是工程债（→ OPT-xxx）还是业务规则（→ TIP-xxx） → 对应清单创建条目 → 实现 → 勾选 + 引用。

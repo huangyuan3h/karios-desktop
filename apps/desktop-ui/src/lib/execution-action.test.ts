@@ -14,6 +14,7 @@ import {
   deriveEtfFallbackStop,
   evaluateHeldTrimGates,
   evaluateNewEntryGates,
+  isCorrelationClusterBlocked,
   formatSleeveBudgetLabel,
   isAtOrOverPositionSizeCap,
   isDefenseSector,
@@ -2274,5 +2275,66 @@ describe('V6.3 WEAK_ATTACK + TrendOK recovering', () => {
     });
     expect(card.action).toBe('WATCH');
     expect(card.why).toBe('TREND_RECOVERING');
+  });
+});
+
+describe('correlation cluster cap (V7.0-01 / L3-P5)', () => {
+
+  it('blocks new entries when the cluster is at/over 30%', () => {
+    expect(isCorrelationClusterBlocked(29.9)).toBe(false);
+    expect(isCorrelationClusterBlocked(30)).toBe(true);
+    expect(isCorrelationClusterBlocked(34.2)).toBe(true);
+    expect(isCorrelationClusterBlocked(null)).toBe(false);
+    expect(isCorrelationClusterBlocked(undefined)).toBe(false);
+  });
+
+  it('returns CORRELATION_CAP_BLOCK for a new BUY in an over-limit cluster', () => {
+    const r = evaluateNewEntryGates({
+      industryName: '半导体',
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      trendOk: true,
+      score: 90,
+      clusterExposurePct: 34.2,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.why).toBe('CORRELATION_CAP_BLOCK');
+  });
+
+  it('lets entries through when the cluster is under the cap', () => {
+    const r = evaluateNewEntryGates({
+      industryName: '半导体',
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      trendOk: true,
+      score: 90,
+      clusterExposurePct: 12.5,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('shrinks Suggest% when correlation room binds (note=correlation)', () => {
+    const size = suggestFireSizePct({
+      positionPct: 0,
+      industryName: '半导体',
+      sectorExposureByIndustry: new Map([['半导体', 5]]),
+      sleeveExposurePct: 0,
+      positionRangeHint: '0%-60%',
+      roomCorrelation: 2.5, // cluster at 27.5% of 30%
+      isEtf: false,
+    });
+    expect(size).not.toBeNull();
+    expect(size!.addPct).toBe(2.5);
+    expect(size!.note).toBe('correlation');
+  });
+
+  it('ignores correlation room when absent (default Infinity)', () => {
+    const size = suggestFireSizePct({
+      positionPct: 0,
+      industryName: '半导体',
+      sectorExposureByIndustry: new Map([['半导体', 0]]),
+      sleeveExposurePct: 0,
+      positionRangeHint: '0%-60%',
+      isEtf: false,
+    });
+    expect(size!.note).not.toBe('correlation');
   });
 });

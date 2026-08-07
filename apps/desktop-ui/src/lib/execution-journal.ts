@@ -100,6 +100,9 @@ export type BuildExecutionSnapshotInput = {
   meta?: Record<string, unknown>;
 };
 
+/** Valid watchlist symbol shapes (mirrors backend is_valid_watchlist_symbol). */
+const WATCHLIST_SYMBOL_RE = /^(CN:\d{6}|HK:\d{1,5}|ETF:\d{6})$/;
+
 export function buildExecutionSnapshotPayload(
   input: BuildExecutionSnapshotInput,
 ): ExecutionSnapshotIngestRequest | null {
@@ -115,6 +118,11 @@ export function buildExecutionSnapshotPayload(
   const defensiveSleeveExposurePct = buildDefensiveSleeveExposurePct(items, trend);
   const cards: ExecutionJournalCard[] = [];
   for (const it of items) {
+    // Upstream defense (2026-08-07): only well-formed watchlist symbols may
+    // enter the journal; malformed ones (e.g. CN:99{uuid} test rows) are
+    // skipped here AND rejected by the backend ingest.
+    const sym = String(it.symbol ?? '').trim().toUpperCase();
+    if (!WATCHLIST_SYMBOL_RE.test(sym)) continue;
     const t = trend[it.symbol];
     const q = quotes[it.symbol];
     const rowMetrics = buildWatchlistRowMetrics({

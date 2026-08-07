@@ -29,6 +29,7 @@ const items = [
   { id: 'alphaIncubator', label: 'Alpha Incubator', icon: Rocket },
   { id: 'research', label: 'Research', icon: FileText },
   { id: 'decision', label: '决策 Agent', icon: Bot },
+  { id: 'backtest', label: '回测', icon: BarChart3 },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
   // { id: 'broker', label: 'Broker', icon: CreditCard },
   { id: 'journal', label: 'Journal', icon: NotebookPen },

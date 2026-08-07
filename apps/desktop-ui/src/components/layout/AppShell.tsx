@@ -14,6 +14,7 @@ import { MarketPage } from '@/components/pages/MarketPage';
 import { NewsPage } from '@/components/pages/NewsPage';
 import { ResearchPage } from '@/components/pages/ResearchPage';
 import { DecisionPage } from '@/components/pages/DecisionPage';
+import { BacktestPage } from '@/components/pages/BacktestPage';
 import { SchedulerPage } from '@/components/pages/SchedulerPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
@@ -60,6 +61,7 @@ const PAGE_TITLES: Record<string, string> = {
   alphaIncubator: 'Alpha Incubator',
   research: 'Research',
   decision: '决策 Agent',
+  backtest: '回测',
   watchlist: 'Watchlist',
   broker: 'Broker',
   journal: 'Journal',
@@ -213,6 +215,8 @@ function AppShellInner() {
               <ResearchPage />
             ) : activePage === 'decision' ? (
               <DecisionPage />
+            ) : activePage === 'backtest' ? (
+              <BacktestPage />
             ) : activePage === 'watchlist' ? (
               <WatchlistPage
                 onOpenStock={(symbol) => {

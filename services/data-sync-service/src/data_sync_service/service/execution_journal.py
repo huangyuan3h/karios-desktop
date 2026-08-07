@@ -4,9 +4,23 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
 
 from data_sync_service.db import execution_journal as ej_db
+
+# Symbol validation (2026-08-07 upstream fix): only well-formed watchlist
+# symbols may enter the journal. Mirrors service/trendok._symbol_to_ts_code:
+#   CN:6 digits | HK:1-5 digits | ETF:6 digits
+# Malformed symbols (e.g. CN:99{uuid} test rows) are dropped at diff time and
+# reported as ``rejectedCards`` on ingest, so they can never pollute the
+# decision log again.
+_SYMBOL_RE = re.compile(r"^(CN:\d{6}|HK:\d{1,5}|ETF:\d{6})$")
+
+
+def is_valid_watchlist_symbol(symbol: str) -> bool:
+    """True when ``symbol`` is a parseable watchlist symbol (CN/HK/ETF)."""
+    return bool(_SYMBOL_RE.match(str(symbol or "").strip().upper()))
 
 DECISION_CARD_FIELDS = (
     "symbol",
@@ -122,6 +136,9 @@ def _cards_by_symbol(cards: list[dict[str, Any]] | None) -> dict[str, dict[str, 
         if not isinstance(c, dict):
             continue
         sym = str(c.get("symbol") or "").strip()
+        # Upstream defense: malformed symbols never enter the diff (2026-08-07).
+        if sym and not is_valid_watchlist_symbol(sym):
+            continue
         if sym:
             out[sym] = c
     return out
@@ -311,7 +328,11 @@ def ingest_snapshot(
     Insert snapshot if decision hash changed; else heartbeat-update latest same-day row.
     Returns API-shaped result.
     """
-    content_hash = compute_content_hash(gate, cards)
+    # Upstream defense (2026-08-07): malformed symbols are dropped BEFORE the
+    # snapshot is stored, and counted so operators can see a submission was
+    # partially rejected instead of silently losing cards.
+    clean_cards, rejected = _split_valid_cards(cards)
+    content_hash = compute_content_hash(gate, clean_cards)
     latest = ej_db.fetch_latest_snapshot(trade_date=trade_date)
 
     if latest and latest.get("contentHash") == content_hash:
@@ -323,6 +344,7 @@ def ingest_snapshot(
             "heartbeat": True,
             "snapshot": snap,
             "changes": [],
+            "rejectedCards": rejected,
         }
 
     # Prefer previous snapshot overall (may be prior day) for meaningful diffs across sessions.
@@ -331,14 +353,14 @@ def ingest_snapshot(
         trade_date=trade_date,
         source=source,
         gate=gate,
-        cards=cards,
+        cards=clean_cards,
         content_hash=content_hash,
         meta=meta,
     )
     change_rows = diff_snapshots(
         prev,
         gate,
-        cards,
+        clean_cards,
         trade_date=trade_date,
         from_snapshot_id=(prev or {}).get("id"),
         to_snapshot_id=snap["id"],
@@ -350,7 +372,25 @@ def ingest_snapshot(
         "heartbeat": False,
         "snapshot": snap,
         "changes": persisted,
+        "rejectedCards": rejected,
     }
+
+
+def _split_valid_cards(cards: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    """Partition cards into (valid, count_of_rejected). Cards with a
+    malformed symbol are dropped; non-dict entries are dropped too."""
+    valid: list[dict[str, Any]] = []
+    rejected = 0
+    for c in cards or []:
+        if not isinstance(c, dict):
+            rejected += 1
+            continue
+        sym = str(c.get("symbol") or "").strip()
+        if not is_valid_watchlist_symbol(sym):
+            rejected += 1
+            continue
+        valid.append(c)
+    return valid, rejected
 
 
 def _md_cell(v: Any) -> str:

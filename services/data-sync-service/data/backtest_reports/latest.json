@@ -1,0 +1,1450 @@
+{
+  "generatedAt": "2026-08-07T21:51:13.572741+00:00",
+  "window": {
+    "start": "2026-06-18",
+    "end": "2026-08-07"
+  },
+  "mode": "grid",
+  "results": [
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 70.0,
+        "max_hold_days": 5,
+        "stop_loss_pct": -3.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 75,
+      "closed": 75,
+      "open_at_end": 8,
+      "wins": 26,
+      "losses": 49,
+      "win_rate": 0.347,
+      "avg_net_pnl_pct": -0.5,
+      "avg_gross_pnl_pct": -0.2,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 90.986,
+      "by_score_bucket": {
+        "70-80": {
+          "trades": 53,
+          "wins": 19,
+          "winRate": 0.358,
+          "avgNet": -0.02
+        },
+        ">=90": {
+          "trades": 9,
+          "wins": 2,
+          "winRate": 0.222,
+          "avgNet": -2.638
+        },
+        "80-85": {
+          "trades": 9,
+          "wins": 2,
+          "winRate": 0.222,
+          "avgNet": -3.748
+        },
+        "85-90": {
+          "trades": 4,
+          "wins": 3,
+          "winRate": 0.75,
+          "avgNet": 5.263
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 70.0,
+        "max_hold_days": 5,
+        "stop_loss_pct": -5.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 73,
+      "closed": 73,
+      "open_at_end": 10,
+      "wins": 28,
+      "losses": 45,
+      "win_rate": 0.384,
+      "avg_net_pnl_pct": -0.648,
+      "avg_gross_pnl_pct": -0.348,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 108.959,
+      "by_score_bucket": {
+        "70-80": {
+          "trades": 51,
+          "wins": 20,
+          "winRate": 0.392,
+          "avgNet": -0.381
+        },
+        ">=90": {
+          "trades": 9,
+          "wins": 3,
+          "winRate": 0.333,
+          "avgNet": -1.691
+        },
+        "80-85": {
+          "trades": 9,
+          "wins": 2,
+          "winRate": 0.222,
+          "avgNet": -3.748
+        },
+        "85-90": {
+          "trades": 4,
+          "wins": 3,
+          "winRate": 0.75,
+          "avgNet": 5.263
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 70.0,
+        "max_hold_days": 5,
+        "stop_loss_pct": -8.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 72,
+      "closed": 72,
+      "open_at_end": 10,
+      "wins": 29,
+      "losses": 43,
+      "win_rate": 0.403,
+      "avg_net_pnl_pct": -0.844,
+      "avg_gross_pnl_pct": -0.544,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 127.958,
+      "by_score_bucket": {
+        "70-80": {
+          "trades": 50,
+          "wins": 21,
+          "winRate": 0.42,
+          "avgNet": -0.208
+        },
+        ">=90": {
+          "trades": 9,
+          "wins": 3,
+          "winRate": 0.333,
+          "avgNet": -2.142
+        },
+        "80-85": {
+          "trades": 9,
+          "wins": 2,
+          "winRate": 0.222,
+          "avgNet": -5.795
+        },
+        "85-90": {
+          "trades": 4,
+          "wins": 3,
+          "winRate": 0.75,
+          "avgNet": 5.263
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 70.0,
+        "max_hold_days": 10,
+        "stop_loss_pct": -3.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 75,
+      "closed": 75,
+      "open_at_end": 8,
+      "wins": 26,
+      "losses": 49,
+      "win_rate": 0.347,
+      "avg_net_pnl_pct": -0.5,
+      "avg_gross_pnl_pct": -0.2,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 90.986,
+      "by_score_bucket": {
+        "70-80": {
+          "trades": 53,
+          "wins": 19,
+          "winRate": 0.358,
+          "avgNet": -0.02
+        },
+        ">=90": {
+          "trades": 9,
+          "wins": 2,
+          "winRate": 0.222,
+          "avgNet": -2.638
+        },
+        "80-85": {
+          "trades": 9,
+          "wins": 2,
+          "winRate": 0.222,
+          "avgNet": -3.748
+        },
+        "85-90": {
+          "trades": 4,
+          "wins": 3,
+          "winRate": 0.75,
+          "avgNet": 5.263
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 70.0,
+        "max_hold_days": 10,
+        "stop_loss_pct": -5.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 73,
+      "closed": 73,
+      "open_at_end": 10,
+      "wins": 28,
+      "losses": 45,
+      "win_rate": 0.384,
+      "avg_net_pnl_pct": -0.648,
+      "avg_gross_pnl_pct": -0.348,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 108.959,
+      "by_score_bucket": {
+        "70-80": {
+          "trades": 51,
+          "wins": 20,
+          "winRate": 0.392,
+          "avgNet": -0.381
+        },
+        ">=90": {
+          "trades": 9,
+          "wins": 3,
+          "winRate": 0.333,
+          "avgNet": -1.691
+        },
+        "80-85": {
+          "trades": 9,
+          "wins": 2,
+          "winRate": 0.222,
+          "avgNet": -3.748
+        },
+        "85-90": {
+          "trades": 4,
+          "wins": 3,
+          "winRate": 0.75,
+          "avgNet": 5.263
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 70.0,
+        "max_hold_days": 10,
+        "stop_loss_pct": -8.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 72,
+      "closed": 72,
+      "open_at_end": 10,
+      "wins": 29,
+      "losses": 43,
+      "win_rate": 0.403,
+      "avg_net_pnl_pct": -0.844,
+      "avg_gross_pnl_pct": -0.544,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 127.958,
+      "by_score_bucket": {
+        "70-80": {
+          "trades": 50,
+          "wins": 21,
+          "winRate": 0.42,
+          "avgNet": -0.208
+        },
+        ">=90": {
+          "trades": 9,
+          "wins": 3,
+          "winRate": 0.333,
+          "avgNet": -2.142
+        },
+        "80-85": {
+          "trades": 9,
+          "wins": 2,
+          "winRate": 0.222,
+          "avgNet": -5.795
+        },
+        "85-90": {
+          "trades": 4,
+          "wins": 3,
+          "winRate": 0.75,
+          "avgNet": 5.263
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 70.0,
+        "max_hold_days": 20,
+        "stop_loss_pct": -3.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 75,
+      "closed": 75,
+      "open_at_end": 8,
+      "wins": 26,
+      "losses": 49,
+      "win_rate": 0.347,
+      "avg_net_pnl_pct": -0.5,
+      "avg_gross_pnl_pct": -0.2,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 90.986,
+      "by_score_bucket": {
+        "70-80": {
+          "trades": 53,
+          "wins": 19,
+          "winRate": 0.358,
+          "avgNet": -0.02
+        },
+        ">=90": {
+          "trades": 9,
+          "wins": 2,
+          "winRate": 0.222,
+          "avgNet": -2.638
+        },
+        "80-85": {
+          "trades": 9,
+          "wins": 2,
+          "winRate": 0.222,
+          "avgNet": -3.748
+        },
+        "85-90": {
+          "trades": 4,
+          "wins": 3,
+          "winRate": 0.75,
+          "avgNet": 5.263
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 70.0,
+        "max_hold_days": 20,
+        "stop_loss_pct": -5.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 73,
+      "closed": 73,
+      "open_at_end": 10,
+      "wins": 28,
+      "losses": 45,
+      "win_rate": 0.384,
+      "avg_net_pnl_pct": -0.648,
+      "avg_gross_pnl_pct": -0.348,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 108.959,
+      "by_score_bucket": {
+        "70-80": {
+          "trades": 51,
+          "wins": 20,
+          "winRate": 0.392,
+          "avgNet": -0.381
+        },
+        ">=90": {
+          "trades": 9,
+          "wins": 3,
+          "winRate": 0.333,
+          "avgNet": -1.691
+        },
+        "80-85": {
+          "trades": 9,
+          "wins": 2,
+          "winRate": 0.222,
+          "avgNet": -3.748
+        },
+        "85-90": {
+          "trades": 4,
+          "wins": 3,
+          "winRate": 0.75,
+          "avgNet": 5.263
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 70.0,
+        "max_hold_days": 20,
+        "stop_loss_pct": -8.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 72,
+      "closed": 72,
+      "open_at_end": 10,
+      "wins": 29,
+      "losses": 43,
+      "win_rate": 0.403,
+      "avg_net_pnl_pct": -0.844,
+      "avg_gross_pnl_pct": -0.544,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 127.958,
+      "by_score_bucket": {
+        "70-80": {
+          "trades": 50,
+          "wins": 21,
+          "winRate": 0.42,
+          "avgNet": -0.208
+        },
+        ">=90": {
+          "trades": 9,
+          "wins": 3,
+          "winRate": 0.333,
+          "avgNet": -2.142
+        },
+        "80-85": {
+          "trades": 9,
+          "wins": 2,
+          "winRate": 0.222,
+          "avgNet": -5.795
+        },
+        "85-90": {
+          "trades": 4,
+          "wins": 3,
+          "winRate": 0.75,
+          "avgNet": 5.263
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 80.0,
+        "max_hold_days": 5,
+        "stop_loss_pct": -3.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 30,
+      "closed": 30,
+      "open_at_end": 2,
+      "wins": 10,
+      "losses": 20,
+      "win_rate": 0.333,
+      "avg_net_pnl_pct": -1.139,
+      "avg_gross_pnl_pct": -0.839,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 49.222,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 16,
+          "wins": 4,
+          "winRate": 0.25,
+          "avgNet": -2.984
+        },
+        "80-85": {
+          "trades": 11,
+          "wins": 4,
+          "winRate": 0.364,
+          "avgNet": -0.55
+        },
+        "85-90": {
+          "trades": 3,
+          "wins": 2,
+          "winRate": 0.667,
+          "avgNet": 6.538
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 80.0,
+        "max_hold_days": 5,
+        "stop_loss_pct": -5.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 29,
+      "closed": 29,
+      "open_at_end": 2,
+      "wins": 11,
+      "losses": 18,
+      "win_rate": 0.379,
+      "avg_net_pnl_pct": -0.72,
+      "avg_gross_pnl_pct": -0.42,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 44.145,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 15,
+          "wins": 5,
+          "winRate": 0.333,
+          "avgNet": -2.296
+        },
+        "80-85": {
+          "trades": 11,
+          "wins": 4,
+          "winRate": 0.364,
+          "avgNet": -0.55
+        },
+        "85-90": {
+          "trades": 3,
+          "wins": 2,
+          "winRate": 0.667,
+          "avgNet": 6.538
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 80.0,
+        "max_hold_days": 5,
+        "stop_loss_pct": -8.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 29,
+      "closed": 29,
+      "open_at_end": 2,
+      "wins": 11,
+      "losses": 18,
+      "win_rate": 0.379,
+      "avg_net_pnl_pct": -1.508,
+      "avg_gross_pnl_pct": -1.208,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 67.986,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 15,
+          "wins": 5,
+          "winRate": 0.333,
+          "avgNet": -2.591
+        },
+        "80-85": {
+          "trades": 11,
+          "wins": 4,
+          "winRate": 0.364,
+          "avgNet": -2.224
+        },
+        "85-90": {
+          "trades": 3,
+          "wins": 2,
+          "winRate": 0.667,
+          "avgNet": 6.538
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 80.0,
+        "max_hold_days": 10,
+        "stop_loss_pct": -3.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 30,
+      "closed": 30,
+      "open_at_end": 2,
+      "wins": 10,
+      "losses": 20,
+      "win_rate": 0.333,
+      "avg_net_pnl_pct": -1.139,
+      "avg_gross_pnl_pct": -0.839,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 49.222,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 16,
+          "wins": 4,
+          "winRate": 0.25,
+          "avgNet": -2.984
+        },
+        "80-85": {
+          "trades": 11,
+          "wins": 4,
+          "winRate": 0.364,
+          "avgNet": -0.55
+        },
+        "85-90": {
+          "trades": 3,
+          "wins": 2,
+          "winRate": 0.667,
+          "avgNet": 6.538
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 80.0,
+        "max_hold_days": 10,
+        "stop_loss_pct": -5.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 29,
+      "closed": 29,
+      "open_at_end": 2,
+      "wins": 11,
+      "losses": 18,
+      "win_rate": 0.379,
+      "avg_net_pnl_pct": -0.72,
+      "avg_gross_pnl_pct": -0.42,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 44.145,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 15,
+          "wins": 5,
+          "winRate": 0.333,
+          "avgNet": -2.296
+        },
+        "80-85": {
+          "trades": 11,
+          "wins": 4,
+          "winRate": 0.364,
+          "avgNet": -0.55
+        },
+        "85-90": {
+          "trades": 3,
+          "wins": 2,
+          "winRate": 0.667,
+          "avgNet": 6.538
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 80.0,
+        "max_hold_days": 10,
+        "stop_loss_pct": -8.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 29,
+      "closed": 29,
+      "open_at_end": 2,
+      "wins": 11,
+      "losses": 18,
+      "win_rate": 0.379,
+      "avg_net_pnl_pct": -1.508,
+      "avg_gross_pnl_pct": -1.208,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 67.986,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 15,
+          "wins": 5,
+          "winRate": 0.333,
+          "avgNet": -2.591
+        },
+        "80-85": {
+          "trades": 11,
+          "wins": 4,
+          "winRate": 0.364,
+          "avgNet": -2.224
+        },
+        "85-90": {
+          "trades": 3,
+          "wins": 2,
+          "winRate": 0.667,
+          "avgNet": 6.538
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 80.0,
+        "max_hold_days": 20,
+        "stop_loss_pct": -3.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 30,
+      "closed": 30,
+      "open_at_end": 2,
+      "wins": 10,
+      "losses": 20,
+      "win_rate": 0.333,
+      "avg_net_pnl_pct": -1.139,
+      "avg_gross_pnl_pct": -0.839,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 49.222,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 16,
+          "wins": 4,
+          "winRate": 0.25,
+          "avgNet": -2.984
+        },
+        "80-85": {
+          "trades": 11,
+          "wins": 4,
+          "winRate": 0.364,
+          "avgNet": -0.55
+        },
+        "85-90": {
+          "trades": 3,
+          "wins": 2,
+          "winRate": 0.667,
+          "avgNet": 6.538
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 80.0,
+        "max_hold_days": 20,
+        "stop_loss_pct": -5.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 29,
+      "closed": 29,
+      "open_at_end": 2,
+      "wins": 11,
+      "losses": 18,
+      "win_rate": 0.379,
+      "avg_net_pnl_pct": -0.72,
+      "avg_gross_pnl_pct": -0.42,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 44.145,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 15,
+          "wins": 5,
+          "winRate": 0.333,
+          "avgNet": -2.296
+        },
+        "80-85": {
+          "trades": 11,
+          "wins": 4,
+          "winRate": 0.364,
+          "avgNet": -0.55
+        },
+        "85-90": {
+          "trades": 3,
+          "wins": 2,
+          "winRate": 0.667,
+          "avgNet": 6.538
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 80.0,
+        "max_hold_days": 20,
+        "stop_loss_pct": -8.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 29,
+      "closed": 29,
+      "open_at_end": 2,
+      "wins": 11,
+      "losses": 18,
+      "win_rate": 0.379,
+      "avg_net_pnl_pct": -1.508,
+      "avg_gross_pnl_pct": -1.208,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 67.986,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 15,
+          "wins": 5,
+          "winRate": 0.333,
+          "avgNet": -2.591
+        },
+        "80-85": {
+          "trades": 11,
+          "wins": 4,
+          "winRate": 0.364,
+          "avgNet": -2.224
+        },
+        "85-90": {
+          "trades": 3,
+          "wins": 2,
+          "winRate": 0.667,
+          "avgNet": 6.538
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 85.0,
+        "max_hold_days": 5,
+        "stop_loss_pct": -3.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 22,
+      "closed": 22,
+      "open_at_end": 1,
+      "wins": 7,
+      "losses": 15,
+      "win_rate": 0.318,
+      "avg_net_pnl_pct": -1.443,
+      "avg_gross_pnl_pct": -1.143,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 38.221,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 17,
+          "wins": 4,
+          "winRate": 0.235,
+          "avgNet": -2.97
+        },
+        "85-90": {
+          "trades": 5,
+          "wins": 3,
+          "winRate": 0.6,
+          "avgNet": 3.746
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 85.0,
+        "max_hold_days": 5,
+        "stop_loss_pct": -5.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 21,
+      "closed": 21,
+      "open_at_end": 1,
+      "wins": 8,
+      "losses": 13,
+      "win_rate": 0.381,
+      "avg_net_pnl_pct": -0.879,
+      "avg_gross_pnl_pct": -0.579,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 29.697,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 16,
+          "wins": 5,
+          "winRate": 0.312,
+          "avgNet": -2.324
+        },
+        "85-90": {
+          "trades": 5,
+          "wins": 3,
+          "winRate": 0.6,
+          "avgNet": 3.746
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 85.0,
+        "max_hold_days": 5,
+        "stop_loss_pct": -8.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 21,
+      "closed": 21,
+      "open_at_end": 1,
+      "wins": 8,
+      "losses": 13,
+      "win_rate": 0.381,
+      "avg_net_pnl_pct": -1.09,
+      "avg_gross_pnl_pct": -0.79,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 33.757,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 16,
+          "wins": 5,
+          "winRate": 0.312,
+          "avgNet": -2.601
+        },
+        "85-90": {
+          "trades": 5,
+          "wins": 3,
+          "winRate": 0.6,
+          "avgNet": 3.746
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 85.0,
+        "max_hold_days": 10,
+        "stop_loss_pct": -3.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 22,
+      "closed": 22,
+      "open_at_end": 1,
+      "wins": 7,
+      "losses": 15,
+      "win_rate": 0.318,
+      "avg_net_pnl_pct": -1.443,
+      "avg_gross_pnl_pct": -1.143,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 38.221,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 17,
+          "wins": 4,
+          "winRate": 0.235,
+          "avgNet": -2.97
+        },
+        "85-90": {
+          "trades": 5,
+          "wins": 3,
+          "winRate": 0.6,
+          "avgNet": 3.746
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 85.0,
+        "max_hold_days": 10,
+        "stop_loss_pct": -5.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 21,
+      "closed": 21,
+      "open_at_end": 1,
+      "wins": 8,
+      "losses": 13,
+      "win_rate": 0.381,
+      "avg_net_pnl_pct": -0.879,
+      "avg_gross_pnl_pct": -0.579,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 29.697,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 16,
+          "wins": 5,
+          "winRate": 0.312,
+          "avgNet": -2.324
+        },
+        "85-90": {
+          "trades": 5,
+          "wins": 3,
+          "winRate": 0.6,
+          "avgNet": 3.746
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 85.0,
+        "max_hold_days": 10,
+        "stop_loss_pct": -8.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 21,
+      "closed": 21,
+      "open_at_end": 1,
+      "wins": 8,
+      "losses": 13,
+      "win_rate": 0.381,
+      "avg_net_pnl_pct": -1.09,
+      "avg_gross_pnl_pct": -0.79,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 33.757,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 16,
+          "wins": 5,
+          "winRate": 0.312,
+          "avgNet": -2.601
+        },
+        "85-90": {
+          "trades": 5,
+          "wins": 3,
+          "winRate": 0.6,
+          "avgNet": 3.746
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 85.0,
+        "max_hold_days": 20,
+        "stop_loss_pct": -3.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 22,
+      "closed": 22,
+      "open_at_end": 1,
+      "wins": 7,
+      "losses": 15,
+      "win_rate": 0.318,
+      "avg_net_pnl_pct": -1.443,
+      "avg_gross_pnl_pct": -1.143,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 38.221,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 17,
+          "wins": 4,
+          "winRate": 0.235,
+          "avgNet": -2.97
+        },
+        "85-90": {
+          "trades": 5,
+          "wins": 3,
+          "winRate": 0.6,
+          "avgNet": 3.746
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 85.0,
+        "max_hold_days": 20,
+        "stop_loss_pct": -5.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 21,
+      "closed": 21,
+      "open_at_end": 1,
+      "wins": 8,
+      "losses": 13,
+      "win_rate": 0.381,
+      "avg_net_pnl_pct": -0.879,
+      "avg_gross_pnl_pct": -0.579,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 29.697,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 16,
+          "wins": 5,
+          "winRate": 0.312,
+          "avgNet": -2.324
+        },
+        "85-90": {
+          "trades": 5,
+          "wins": 3,
+          "winRate": 0.6,
+          "avgNet": 3.746
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 85.0,
+        "max_hold_days": 20,
+        "stop_loss_pct": -8.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 21,
+      "closed": 21,
+      "open_at_end": 1,
+      "wins": 8,
+      "losses": 13,
+      "win_rate": 0.381,
+      "avg_net_pnl_pct": -1.09,
+      "avg_gross_pnl_pct": -0.79,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 33.757,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 16,
+          "wins": 5,
+          "winRate": 0.312,
+          "avgNet": -2.601
+        },
+        "85-90": {
+          "trades": 5,
+          "wins": 3,
+          "winRate": 0.6,
+          "avgNet": 3.746
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 90.0,
+        "max_hold_days": 5,
+        "stop_loss_pct": -3.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 18,
+      "closed": 18,
+      "open_at_end": 1,
+      "wins": 5,
+      "losses": 13,
+      "win_rate": 0.278,
+      "avg_net_pnl_pct": -2.707,
+      "avg_gross_pnl_pct": -2.407,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 49.039,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 18,
+          "wins": 5,
+          "winRate": 0.278,
+          "avgNet": -2.707
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 90.0,
+        "max_hold_days": 5,
+        "stop_loss_pct": -5.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 17,
+      "closed": 17,
+      "open_at_end": 1,
+      "wins": 6,
+      "losses": 11,
+      "win_rate": 0.353,
+      "avg_net_pnl_pct": -2.084,
+      "avg_gross_pnl_pct": -1.784,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 35.74,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 17,
+          "wins": 6,
+          "winRate": 0.353,
+          "avgNet": -2.084
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 90.0,
+        "max_hold_days": 5,
+        "stop_loss_pct": -8.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 17,
+      "closed": 17,
+      "open_at_end": 1,
+      "wins": 6,
+      "losses": 11,
+      "win_rate": 0.353,
+      "avg_net_pnl_pct": -2.344,
+      "avg_gross_pnl_pct": -2.044,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 40.166,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 17,
+          "wins": 6,
+          "winRate": 0.353,
+          "avgNet": -2.344
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 90.0,
+        "max_hold_days": 10,
+        "stop_loss_pct": -3.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 18,
+      "closed": 18,
+      "open_at_end": 1,
+      "wins": 5,
+      "losses": 13,
+      "win_rate": 0.278,
+      "avg_net_pnl_pct": -2.707,
+      "avg_gross_pnl_pct": -2.407,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 49.039,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 18,
+          "wins": 5,
+          "winRate": 0.278,
+          "avgNet": -2.707
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 90.0,
+        "max_hold_days": 10,
+        "stop_loss_pct": -5.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 17,
+      "closed": 17,
+      "open_at_end": 1,
+      "wins": 6,
+      "losses": 11,
+      "win_rate": 0.353,
+      "avg_net_pnl_pct": -2.084,
+      "avg_gross_pnl_pct": -1.784,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 35.74,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 17,
+          "wins": 6,
+          "winRate": 0.353,
+          "avgNet": -2.084
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 90.0,
+        "max_hold_days": 10,
+        "stop_loss_pct": -8.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 17,
+      "closed": 17,
+      "open_at_end": 1,
+      "wins": 6,
+      "losses": 11,
+      "win_rate": 0.353,
+      "avg_net_pnl_pct": -2.344,
+      "avg_gross_pnl_pct": -2.044,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 40.166,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 17,
+          "wins": 6,
+          "winRate": 0.353,
+          "avgNet": -2.344
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 90.0,
+        "max_hold_days": 20,
+        "stop_loss_pct": -3.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 18,
+      "closed": 18,
+      "open_at_end": 1,
+      "wins": 5,
+      "losses": 13,
+      "win_rate": 0.278,
+      "avg_net_pnl_pct": -2.707,
+      "avg_gross_pnl_pct": -2.407,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 49.039,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 18,
+          "wins": 5,
+          "winRate": 0.278,
+          "avgNet": -2.707
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 90.0,
+        "max_hold_days": 20,
+        "stop_loss_pct": -5.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 17,
+      "closed": 17,
+      "open_at_end": 1,
+      "wins": 6,
+      "losses": 11,
+      "win_rate": 0.353,
+      "avg_net_pnl_pct": -2.084,
+      "avg_gross_pnl_pct": -1.784,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 35.74,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 17,
+          "wins": 6,
+          "winRate": 0.353,
+          "avgNet": -2.084
+        }
+      }
+    },
+    {
+      "config": {
+        "start_date": "2026-06-18",
+        "end_date": "2026-08-07",
+        "score_threshold": 90.0,
+        "max_hold_days": 20,
+        "stop_loss_pct": -8.0,
+        "target_pnl_pct": 10.0,
+        "score_floor": 30.0,
+        "market": "CN"
+      },
+      "calendar_days": 36,
+      "trades": 17,
+      "closed": 17,
+      "open_at_end": 1,
+      "wins": 6,
+      "losses": 11,
+      "win_rate": 0.353,
+      "avg_net_pnl_pct": -2.344,
+      "avg_gross_pnl_pct": -2.044,
+      "avg_costs_pct": 0.3,
+      "max_drawdown_pct": 40.166,
+      "by_score_bucket": {
+        ">=90": {
+          "trades": 17,
+          "wins": 6,
+          "winRate": 0.353,
+          "avgNet": -2.344
+        }
+      }
+    }
+  ]
+}

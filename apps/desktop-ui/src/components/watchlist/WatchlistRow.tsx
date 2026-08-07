@@ -498,6 +498,8 @@ export type WatchlistRowProps = {
   sectorExposureByIndustry: Map<string, number> | null;
   sleeveExposurePct: number;
   defensiveSleeveExposurePct?: number;
+  /** V7.0-01 / L3-P5: semantic factor-cluster exposure % (from parent). */
+  clusterExposurePct?: number | null;
   showTooltip: ShowTooltipFn;
   hideTooltip: () => void;
   showColorPicker: (el: HTMLElement, sym: string) => void;
@@ -530,6 +532,7 @@ function WatchlistRowInner({
   sectorExposureByIndustry,
   sleeveExposurePct,
   defensiveSleeveExposurePct = 0,
+  clusterExposurePct = null,
   showTooltip,
   hideTooltip,
   showColorPicker,
@@ -578,6 +581,7 @@ function WatchlistRowInner({
     sectorExposureByIndustry,
     sleeveExposurePct,
     defensiveSleeveExposurePct,
+    clusterExposurePct,
     sectorOutflowBlock,
     catalyst,
     todaySh: getShanghaiTodayIso(),

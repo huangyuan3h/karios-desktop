@@ -501,3 +501,53 @@ def fetch_last_ohlcv_batch(ts_codes: list[str], days: int = 120) -> dict[str, li
             )
         )
     return out
+
+
+def fetch_ohlcv_batch_between(
+    ts_codes: list[str],
+    start_date: str,
+    end_date: str,
+) -> dict[str, list[tuple[str, str, str, str, str, str]]]:
+    """Fetch OHLCV rows per ts_code within a date window, in ONE query.
+
+    Returns mapping: ts_code -> [(date, open, high, low, close, volume), ...]
+    ordered by date ASC. Same tuple shape as :func:`fetch_last_ohlcv_batch`
+    so callers can share parsing (OPT-063 backtest engine).
+    """
+    ensure_table()
+    codes = [c.strip().upper() for c in ts_codes if c and c.strip()]
+    if not codes:
+        return {}
+    start2 = _date_str(start_date)
+    end2 = _date_str(end_date)
+    if not start2 or not end2:
+        return {}
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT ts_code, trade_date, open, high, low, close, vol
+                FROM {TABLE_NAME}
+                WHERE ts_code = ANY(%s)
+                  AND trade_date >= %s
+                  AND trade_date <= %s
+                ORDER BY ts_code ASC, trade_date ASC
+                """,
+                (codes, start2, end2),
+            )
+            rows = cur.fetchall()
+    out: dict[str, list[tuple[str, str, str, str, str, str]]] = {}
+    for r in rows:
+        code = str(r[0])
+        d = r[1].strftime("%Y-%m-%d") if hasattr(r[1], "strftime") else str(r[1])
+        out.setdefault(code, []).append(
+            (
+                d,
+                str(r[2] or ""),
+                str(r[3] or ""),
+                str(r[4] or ""),
+                str(r[5] or ""),
+                str(r[6] or ""),
+            )
+        )
+    return out

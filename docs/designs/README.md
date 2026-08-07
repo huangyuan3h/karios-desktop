@@ -24,3 +24,4 @@
 |------|--------------|------|
 | [`l3-l4-evolution-roadmap.md`](./l3-l4-evolution-roadmap.md) | §16 升级方向（L3 → L4） | **方向已拍板 2026-08-07**；L3 进行中（L3-P1 度量基座），L4 待排期 |
 | `cloud-deployment-options.md` | §5 / §4 部署走向决策 | 待拍板 |
+| [`miniqmt-xtquant-live-trading.md`](./miniqmt-xtquant-live-trading.md) | §16 L4-P1 券商研究 | 未落地 / 待拍板（需券商文字确认费率与权限） |

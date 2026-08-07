@@ -36,7 +36,7 @@
 | §6 新闻 / 研报 | — | News 质量评估（老婆反馈不如财经新闻准） | `OPT-037/038/039` News Query 并行化 |
 | §7 多市场 | — | 美股 / 加拿大时区 | `OPT-041/042/043/044` HK + ETF 已通 |
 | §8 回测 | — | BacktestPage 重写（等 paper 数据） | ✅ paper-trading v0 → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；v0.1 关闭条件 done 2026-08-02（OPT-058）；历史 BacktestPage 已隐藏 |
-| **升级方向 L3→L4** | L3-P1 度量基座（paper v0.2） | L3-P2~P5 + L4 全项（见 §16） | **§16 已立 2026-08-07** → [`designs/l3-l4-evolution-roadmap.md`](./designs/l3-l4-evolution-roadmap.md)（L3=验证闭环，L4=执行闭环） |
+| **升级方向 L3→L4** | L4-P1 券商研究 | L4 全项（见 §16） | **§16 已立 2026-08-07** → [`designs/l3-l4-evolution-roadmap.md`](./designs/l3-l4-evolution-roadmap.md)（L3=验证闭环，L4=执行闭环）；**L3 全部完成 2026-08-07**：P1 度量基座（OPT-062）、P2 回测引擎（OPT-063）、P3 归因（OPT-064）、P4 周度复盘（OPT-065）、**P5 组合风控 done**（OPT-067：相关性防火墙，tech_hk 34.2% 超限实拦）；AGENTS.md 加 DB 测试清理纪律 |
 | **doc 大扫除** | — | — | `archive/modules-legacy/`（2026-08-01：industry-flow / market-sentiment / news-brief 3 旧版模块文档） |
 
 ---
@@ -259,6 +259,12 @@
 
 | 日期 | 事件 | 归档位置 |
 |------|------|----------|
+| 2026-08-07 | **L3-P5 / OPT-067**：组合相关性防火墙（V7.0-01 转正）——9 个语义因子簇（ETF 前缀 + 东财行业 + HK 科技清单）+ 20 日经验相关性（日历对齐 fail-open）；簇 >30% 拦簇内新开仓（CORRELATION_CAP_BLOCK）+ Suggest% roomCorrelation min 链；回测页「组合相关性防火墙」面板；实测 tech_hk 34.2%（腾讯+恒生科技 ETF）超限实拦，00700×513180 r=0.926 | [`archive/2026-08-07-opt-067-correlation-firewall.md`](./archive/2026-08-07-opt-067-correlation-firewall.md)（1388 后端 + 500 前端全绿；**L3 五里程碑全部完成**） |
+| 2026-08-07 | **OPT-066**：journal 上游 symbol 防御层——`is_valid_watchlist_symbol`（CN/HK/ETF 格式校验）+ diff/ingest 双层过滤（坏卡 `rejectedCards` 可观测）+ 前端提交前过滤；坏 symbol 永远进不了决策日志 | [`archive/2026-08-07-opt-066-journal-symbol-defense.md`](./archive/2026-08-07-opt-066-journal-symbol-defense.md)（1379 后端 + 495 前端全绿） |
+| 2026-08-07 | **L3-P4 / OPT-065**：周度决策质量复盘——决策量 / paper 净口径 / 卖出归因 / 漏斗健康度 → 中文 markdown 报告；决策 Agent「分析」tab 新增周报卡（复制喂 AI agent）；首次实测：本周 38 条信号 97% 来自 ALPHA（自动提示供给单一化） | [`archive/2026-08-07-opt-065-weekly-review.md`](./archive/2026-08-07-opt-065-weekly-review.md)（1376 后端 + 494 前端全绿） |
+| 2026-08-07 | **L3-P3 / OPT-064**：卖出归因（前向收益分桶 by close_reason + 组合暴露）+ 回测页（SidebarNav「回测」）；**期间修复 2 个 live bug**：(1) intake 读 journal 的 key 错位 → paper 自上线从未有真实数据；(2) service 层 snake_case 读 db camelCase → run_update 永不更新（修复后首笔真实闭环 CN:600000 pool_exit）；测试基建加 teardown 防 DB 污染 | [`archive/2026-08-07-opt-064-exit-attribution-backtest-page.md`](./archive/2026-08-07-opt-064-exit-attribution-backtest-page.md)（1370 后端 + 494 前端全绿；已知问题：journal 上游 hash symbol 待修） |
+| 2026-08-07 | **L3-P2 / OPT-063**：回测引擎 v0——信号回放（watchlist_score_daily 历史实际分）+ `_pick_close_reason` 同码复用（as-of score 注入防前视）；36 组敏感度网格（score×hold×stop）+ CLI/API；实测近 7 周全组合净期望为负（敏感度价值；不作发布依据） | [`archive/2026-08-07-opt-063-backtest-engine.md`](./archive/2026-08-07-opt-063-backtest-engine.md)（1365 后端全绿；v0.2：TV 池回撤窗口 / 月度滚动 / BacktestPage） |
+| 2026-08-07 | **L3-P1 / OPT-062**：Paper v0.2——HK 接入 + 分市场成本模型（CN 30bps / HK 60bps 往返）；pnl_pct 重定义为净口径，stop/target 按净值触发；`/v1/paper-trades` 加 market 过滤 + stats byMarket；决策 Agent 页分市场展示；db 层切 dict_row 退役位置索引 hack；Alembic 0022（legacy 回填 CN/0） | [`archive/2026-08-07-opt-062-paper-v02.md`](./archive/2026-08-07-opt-062-paper-v02.md)（1352 后端 + 494 前端全绿；汇率/ETF 记入 L3-P3） |
 | 2026-08-03 | **OPT-059 / §12 #19**：隐藏页 / legacy 清理——SimTradePage + `/simtrade` API、BacktestPage + `/backtest/*`、`testback/` 框架整体退役删除；Alembic `0017_drop_backtest_tables` 删表（2+132 行旧数据）；baseline/测试/文档同步 | [`archive/2026-08-03-opt-059-legacy-cleanup.md`](./archive/2026-08-03-opt-059-legacy-cleanup.md)（1247 后端 + 429 前端测试绿；唯一失败为既有 trendok flaky，stash 验证与本次无关）|
 | 2026-08-04 | **OPT-061 / §12 #18**：DB 本地备份 + 跨机迁移包——`db_backup.sh`（pg_dump -Fc + iCloud mirror + 25h last-age 跳过）+ `db_restore.sh`（docker cp + pg_restore --jobs=4 + alembic + manifest cross-check）+ `karios_migrate_export.sh`（tarball bundle）+ `install-db-backup-launchd.sh`（plist 03:00 + RunAtLoad + Wake + DATABASE_URL env）；设计稿 `designs/db-backup-and-migrate-2026-08.md` 解决"电脑休眠 → 唤醒后 launchd 不补跑错过的 job"问题（3 trigger 叠加 + last-age 检查兜底）| [`archive/2026-08-04-opt-061-db-backup-migrate.md`](./archive/2026-08-04-opt-061-db-backup-migrate.md)（端到端 2 次演练：round-trip drop+restore 21s + 新 Mac 模拟全新容器 restore 44 表 + 00700.HK 2026-08-04 487.6 数据完整）|
 | 2026-08-04 | **OPT-060 / §12 #11**：形态迁移 · Tauri 降级——根 + apps/desktop-ui 的 tauri scripts/deps/concurrently 全删；`src-tauri/` Rust 源码 + `scripts/build-sidecars-macos.sh` 按 §2 P0 "保留 build 配置" 不动；顶层 docs（README / AGENTS / docs/README / docker-one-click / next.config / Dockerfile）同步；6 新单测全绿 | [`archive/2026-08-04-opt-060-tauri-deprecation.md`](./archive/2026-08-04-opt-060-tauri-deprecation.md)（决策真值：Web = 唯一交付形态；Tauri 复活需 ≤ 0.5 天接入）|
@@ -499,11 +505,11 @@
 
 | # | 里程碑 | 内容 | 依赖 | 状态 |
 |---|--------|------|------|------|
-| **L3-P1** | 度量基座 | paper v0.2：HK 接入 + 滑点/佣金/印花税/T+1/涨跌停建模 + 成交假设统一 | §8 paper v0.1 已有 | [ ] |
-| **L3-P2** | 回测引擎 | 与 live Execution Gate 同口径回测（同一份规则代码）+ ≥5y 历史 + 参数敏感度视图 | L3-P1 | [ ] |
-| **L3-P3** | 归因与敏感度 | 卖出归因分桶（卖早/卖晚/卖对）；参数敏感性报告；卫星仓上限复核（15%/30%/sleeve） | L3-P2 | [ ] |
-| **L3-P4** | 决策 Agent M2 | 周度复盘：喂 paper 实绩 + 归因 + 漏斗数据出「决策质量报告」 | L3-P1/P3 | [ ] |
-| **L3-P5** | 组合风控 | V7.0-01 相关性热力网转正落地（Correlation Cap + 共振预警） | L3-P2 | [ ] |
+| **L3-P1** | 度量基座 | paper v0.2：HK 接入 + 滑点/佣金/印花税建模 + 成交假设统一 | §8 paper v0.1 已有 | ✅ **[done] 2026-08-07** → [`archive/2026-08-07-opt-062-paper-v02.md`](./archive/2026-08-07-opt-062-paper-v02.md)（OPT-062：CN+HK 净口径成本模型 + byMarket 统计 + decision 分析分市场；T+1 由盘后 cron 节奏天然满足；FX 汇率/涨跌停/停牌/ETF 记入 L3-P3 精化） |
+| **L3-P2** | 回测引擎 | 与 live Execution Gate 同口径回测（同一份规则代码）+ ≥5y 历史 + 参数敏感度视图 | L3-P1 | ✅ **[done] 2026-08-07** → [`archive/2026-08-07-opt-063-backtest-engine.md`](./archive/2026-08-07-opt-063-backtest-engine.md)（OPT-063：信号回放 + `_pick_close_reason` 同码复用 + 净成本；36 组网格 CLI/API；**实测 2026-06-18 起全组合净期望为负——为阈值再校准提供依据**；v0.2：TV 池回撤窗口 / 月度滚动 / BacktestPage UI） |
+| **L3-P3** | 归因与敏感度 | 卖出归因分桶（卖早/卖晚/卖对）；参数敏感性报告；卫星仓上限复核（15%/30%/sleeve） | L3-P2 | ✅ **[done] 2026-08-07** → [`archive/2026-08-07-opt-064-exit-attribution-backtest-page.md`](./archive/2026-08-07-opt-064-exit-attribution-backtest-page.md)（OPT-064：卖出归因分桶 + 组合暴露 + **回测页（用户可见位置）**；过程中修复 2 个 live bug：intake journal key 错位（paper 从未有真实数据）、service/db camelCase 错位（run_update 永不更新）；journal 上游 hash symbol **已修** OPT-066 双层防御） |
+| **L3-P4** | 决策 Agent M2 | 周度复盘：喂 paper 实绩 + 归因 + 漏斗数据，输出「本周决策质量报告」 | L3-P1/P3 | ✅ **[done] 2026-08-07** → [`archive/2026-08-07-opt-065-weekly-review.md`](./archive/2026-08-07-opt-065-weekly-review.md)（OPT-065 v0：数据驱动周报 + 决策 Agent「分析」tab 展示；M2 v1：LLM 深度解读 / 自动推送归外部 agent） |
+| **L3-P5** | 组合风控 | V7.0-01 相关性热力网转正落地（Correlation Cap + 共振预警） | L3-P2 | ✅ **[done] 2026-08-07** → [`archive/2026-08-07-opt-067-correlation-firewall.md`](./archive/2026-08-07-opt-067-correlation-firewall.md)（OPT-067：9 语义簇 + 日历对齐相关性 + >30% 拦新开仓 + roomCorrelation min 链；实测 tech_hk 34.2% 超限实拦） |
 
 ### L4 里程碑（长期愿景 · 6-12 个月 +）
 

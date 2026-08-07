@@ -68,8 +68,8 @@
 | `GET /v1/watchlist/items` | 当前 watchlist 全量 | opt-in |
 | `GET /v1/decision-journal/query?since=...&limit=...` | 近期决策变更 | opt-in |
 | `GET /v1/explain/{symbol}` | 单 symbol 完整上下文包（解释素材）| opt-in |
-| `GET /v1/paper-trades?status=&since=&limit=` | paper-trade intake log | opt-in |
-| `GET /v1/paper-trades/stats?since=` | win rate / avg pnl / holding 分布 | opt-in |
+| `GET /v1/paper-trades?status=&since=&market=&limit=` | paper-trade intake log (CN+HK, v0.2) | opt-in |
+| `GET /v1/paper-trades/stats?since=&market=` | 净口径胜率 / 均盈亏 / byMarket 分市场 | opt-in |
 | `GET /v1/quota` | 当前 API Key 配额用量快照 | opt-in |
 
 ---

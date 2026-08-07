@@ -1328,3 +1328,227 @@ OPT-053 已立"备份 3 副本策略"，但仓库里**零 backup 脚本 / cron**
 - ❌ **不**写测试（脚本 + tarball round-trip 验证已替代） —— 脚本内的 manifest / checksums 是天然校验
 
 ---
+
+### OPT-062：Paper v0.2 —— HK 接入 + 成本/滑点建模（todo §16 L3-P1 / §8 回测）
+
+**状态**：[x]  
+**完成日期**：2026-08-07  
+**背景**：todo §16 立 L3-P1「度量基座」：paper v0.1 只覆盖 CN 且零成本口径，胜率虚高。v0.2 补两块：(1) 分市场成本模型（滑点/佣金/印花税）——**pnl_pct 重定义为净盈亏**；(2) HK 接入（HK bars 与 CN 同存 `daily` 表，ts_code 如 `00700.HK`，`fetch_last_ohlcv_batch` 直接复用）。
+
+#### 成本模型（`service/paper_cost_model.py` · 保守默认值，单点可调）
+
+| 市场 | 佣金（每边） | 印花税 | 滑点（每边） | 往返成本 |
+|------|--------------|--------|--------------|----------|
+| CN | 2.5 bps（万2.5） | 卖出 5 bps（0.05%） | 10 bps | **30 bps ≈ 0.30%** |
+| HK | 5 bps | 买卖各 10 bps（0.1%） | 15 bps | **60 bps ≈ 0.60%** |
+
+- 触发口径：stop_hit / target_hit 按**净盈亏**判定（保守、贴近实盘）
+- ETF 与 FX 汇率转换本轮不做（记入 L3-P3 精化项）
+
+#### 数据模型（Alembic 0022）
+
+| 列 | 语义 |
+|----|------|
+| `market` | 'CN' \| 'HK'，legacy 回填 'CN' |
+| `gross_pnl_pct` | 平仓前毛盈亏（legacy 回填 = pnl_pct） |
+| `costs_pct` | 往返成本 %（legacy 回填 0） |
+| `pnl_pct` | **重定义为净盈亏** = gross - costs（open 行仍为当日毛盈亏，关闭时才落地净值） |
+
+#### 统计与 API
+
+- `/v1/paper-trades` 支持 `market=CN|HK` 过滤；`/v1/paper-trades/stats` 新增 `byMarket` 分桶
+- `service/decision.py::analysis_stats` 新增 `paperByMarket`（决策 Agent 页 CN/HK 分市场胜率）
+- 消费方自动变净口径（零改动）：M4 分析、TIP-011 来源归因、Dashboard Copy、Alpha QA 低胜率主题
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/paper_cost_model.py`（**新**） |
+| Service | `services/data-sync-service/src/data_sync_service/service/paper_trading.py`（intake/update/stats 市场感知 + 净口径） |
+| DB | `services/data-sync-service/src/data_sync_service/db/paper_trading.py`（CREATE_SQL + CRUD + byMarket 统计） |
+| API | `services/data-sync-service/src/data_sync_service/api/v1_business_routes.py`（PaperTrade 模型 + market 过滤 + stats byMarket） |
+| API | `services/data-sync-service/src/data_sync_service/api/decision_routes.py`（透传 paperByMarket） |
+| Service | `services/data-sync-service/src/data_sync_service/service/decision.py`（analysis_stats byMarket） |
+| Migration | `services/data-sync-service/alembic/versions/0022_paper_trades_v02.py`（**新** + CREATE_SQL 同步） |
+| FE | `apps/desktop-ui/src/components/decision/AnalysisView.tsx`（净口径标注 + CN/HK 分市场） |
+| FE | `apps/desktop-ui/src/lib/queries/decision.ts`（类型 + paperByMarket） |
+| 测试 | `tests/test_paper_trading.py` 扩展 + `tests/test_paper_cost_model.py`（**新**） |
+
+#### 反模式（不**做**）
+
+- ❌ **不**做 HK 汇率转换（系统无 FX 数据源；记 L3-P3）
+- ❌ **不**做 ETF paper（TrendOK/评分闸对 ETF 语义未定义；保持 skip 记录可见）
+- ❌ **不**动 `count_by_source` / source-stats 形状（净口径自动生效，避免 API 破坏）
+- ❌ **不**给 open 行实时扣成本（往返成本在关闭时一次性落地，语义清晰）
+- ❌ **不**做参数敏感性工程（L3-P3 再做；本轮只立口径）
+---
+
+### OPT-063：回测引擎 v0 —— 信号回放 + live 平仓逻辑同口径（todo §16 L3-P2 / §8 回测）
+
+**状态**：[x]  
+**完成日期**：2026-08-07  
+**背景**：L3-P2「回测引擎」。关键约束（todo §8）：与 live 同口径（同一份规则代码）、历史 bars、只作参数敏感度不作发布依据。数据深度实测：daily bars 1998 起、index_daily 2023 起、**tv_screener_snapshots 2025-12-21 起**、**watchlist_score_daily 2026-06-18 起**（系统当时实际打的 TrendOK 分）、行业资金流 2025-12 起、机构席位仅 2 个月（无历史，降级）。
+
+#### 设计：信号回放（signal replay）而非全因子重算
+
+```
+watchlist_score_daily（当时实际 TrendOK 分）
+        │  score >= threshold
+        ▼
+建仓（信号日收盘价）── 每日更新 ──► _pick_close_reason（LIVE 同码复用）
+                                        │  stop/target/score_floor/max_hold
+                                        ▼
+                              平仓：net pnl（复用 paper_cost_model）
+```
+
+- **同口径铁律的落地**：平仓逻辑 100% 复用 `service/paper_trading._pick_close_reason`——唯一改动是给它加 `score` 显式注入参数（回测传 as-of 当日历史分，live 传 None 行为不变），避免回测读当前分造成**前视偏差**
+- **信号**：watchlist_score_daily（系统当时打的分，不存在重写规则问题）；tv_screener_snapshots 提供宇宙参考（v0 不消费，v0.2 加回撤区间过滤）
+- **成本**：平仓净口径（round_trip_cost_pct，与 paper v0.2 同一模型）
+- **明确前视/降级清单**：机构席位、ETF 资金流、主线 SRV 无历史 → 不参与 v0（这些因子在 score 里已隐含）；pool_exit 无 registry 历史 → v0 关闭
+
+#### 参数敏感度（v0 网格）
+
+score_threshold ∈ {70, 80, 85, 90} × max_hold ∈ {5, 10, 20} × stop ∈ {-3, -5, -8}
+
+#### 交付
+
+- `service/backtest_engine.py`（**新**）：simulate(config) → trades + summary（胜率/均值净盈亏/最大回撤/按 score 分桶）；run_sensitivity() → 网格对比
+- `scripts/run_backtest.py`（**新**）：CLI 单配置 / 网格，输出 JSON + markdown 报告（可喂 AI agent）
+- `GET /api/backtest/run`（单配置）+ `GET /api/backtest/latest-report`（最近一次报告）
+- 不重复造：**BacktestPage UI 属 §8 P2 / §12 #12**（等引擎数字稳定后单独排期）
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/backtest_engine.py`（**新**） |
+| Service | `services/data-sync-service/src/data_sync_service/service/paper_trading.py`（`_pick_close_reason` 加 score 注入参数，默认 None 行为不变） |
+| API | `services/data-sync-service/src/data_sync_service/api/backtest_routes.py`（**新**，挂载到 app） |
+| 脚本 | `services/data-sync-service/scripts/run_backtest.py`（**新**） |
+| 测试 | `tests/test_backtest_engine.py`（**新**） |
+
+#### 反模式（不**做**）
+
+- ❌ **不**重写一份 TrendOK/规则代码（铁律：回测=历史信号+live 平仓逻辑）
+- ❌ **不**让回测读当前数据（score/registry 一律 as-of 注入；读不到就 fail-open）
+- ❌ **不**做参数寻优（只做敏感度对比；结论不作发布依据，以 paper 实绩为准）
+- ❌ **不**做 BacktestPage UI（§8 P2 单独排期）
+- ❌ **不**做 HK/ETF 回放（v0 只 CN，得分历史以 CN 为主）
+---
+
+### OPT-064：卖出归因 + 敏感性报告 + 回测页（todo §16 L3-P3 / §8 回测 UI）
+
+**状态**：[x]  
+**完成日期**：2026-08-07  
+**背景**：L3-P3「归因与敏感度」：(1) 卖出归因分桶（卖早/卖对/中性）量化 Chandelier/止盈/止损质量；(2) 参数敏感性报告 UI；(3) 卫星仓上限复核（15%/30%/sleeve）初版数据。用户要求「有一个位置能看到」→ 新增回测页（BacktestPage 雏形，§8 P2 正式重写仍待排期）。
+
+#### 卖出归因（`service/exit_attribution.py`）
+
+```
+closed paper_trades ──► 平仓后 N 日 forward return（daily 表 window fetch）
+        │
+        ▼
+bucket: fwd_N ≥ +2% → 卖早（exit_early）
+        fwd_N ≤ -1% → 卖对（exit_well）
+        其余       → 中性
+        ▼
+聚合：by close_reason（stop_hit / target_hit / max_hold / score_floor / pool_exit / end_of_window）
+     → 每种卖出理由的「后验质量」：fwd 均值 + 卖早率 + 卖对率
+```
+
+- N 日 = 平仓日后的第 N 个交易日（configurable，默认 5）
+- 数据不足（paper 刚起步）→ 返回空并提示「继续积累」
+- 同时输出组合暴露：最多同时持仓数 → 单票权重下界（卫星仓 15%/30% 复核参考）
+
+#### 回测页（`BacktestPage.tsx` · 用户可见位置）
+
+SidebarNav 新增「回测」入口。三区块：
+1. **单配置回测**：窗口 + score/stop/max_hold 参数 → `GET /api/backtest/run` → 摘要卡（交易数/胜率/均净盈亏/最大回撤）
+2. **敏感度网格**：默认窗口 `GET /api/backtest/sensitivity` → 36 行对比表（按 win_rate 排序）
+3. **卖出归因**：`GET /api/exit-attribution/analysis` → by-reason 归因表 + 组合暴露
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| Service | `services/data-sync-service/src/data_sync_service/service/exit_attribution.py`（**新**） |
+| API | `services/data-sync-service/src/data_sync_service/api/backtest_routes.py`（+`/exit-attribution` 与 `/portfolio-exposure` 或并入） |
+| FE | `apps/desktop-ui/src/components/pages/BacktestPage.tsx`（**新**） |
+| FE | `apps/desktop-ui/src/components/layout/SidebarNav.tsx` + `AppShell.tsx`（入口 + 路由） |
+| FE | `apps/desktop-ui/src/lib/queries/backtest.ts`（**新**，react-query hooks） |
+| 测试 | `tests/test_exit_attribution.py`（**新**）+ API 测试 |
+
+#### 反模式（不**做**）
+
+- ❌ **不**在页面做参数寻优（只展示敏感度，发布依据仍以 paper 实绩为准）
+- ❌ **不**改引擎行为（OPT-063 已定型；页面只消费 API）
+- ❌ **不**做真实交易 UI（无下单能力，纯分析页）
+
+
+---
+
+### OPT-065：周度决策质量复盘（todo §16 L3-P4 · 决策 Agent M2 v0）
+
+**状态**：[x]  
+**完成日期**：2026-08-07  
+**背景**：L3-P4 M2 v0——TIP-015 M1（时点问答）升级为数据驱动周度复盘：决策量 / paper 净口径实绩 / 卖出归因 / 漏斗健康度 → 中文 markdown 报告（可复制喂 AI agent）。
+
+#### 交付
+
+- `service/weekly_review.py`（**新**）：ISO 周聚合 + 4 节报告（决策量 / Paper 实绩 / 卖出归因 / 本周观察）；auto-notes 只从数据触发；样本不足明确标注
+- `GET /api/backtest/weekly-review?end=`（默认今天）
+- FE：决策 Agent「分析」tab 顶部 `WeeklyReviewCard`（报告 + 复制 + 刷新）
+- 复用：`analyze_exit_attribution`（L3-P3 同样本语义）、paper 净口径
+
+#### 反模式
+
+- ❌ LLM 不进关键路径（数字 100% 数据驱动；深度解读归外部 agent）
+- ❌ 不做自动推送（归外部 AI 助手）
+- ❌ 报告不做参数建议（只提示先跑 paper 对照）
+---
+
+### OPT-066：journal 上游 symbol 防御层（2026-08-07 遗留修复）
+
+**状态**：[x]  
+**完成日期**：2026-08-07  
+**背景**：OPT-064 清理了 967 条测试污染 journal 行（manual-test 快照 + snap-agg/snap-bf 假 id），但写入路径本身无校验——任何来源（前端 snapshot 提交、未来 AI agent、alpha 通道）都可能再写入坏 symbol（如 CN:99{uuid}）。补防御层，让坏 symbol 永远进不了 journal。
+
+#### 防御（双层）
+
+| 层 | 改动 |
+|----|------|
+| 后端（权威） | `service/execution_journal.py` 新增 `is_valid_watchlist_symbol()`（CN:6位 / HK:1-5位 / ETF:6位，与 trendok._symbol_to_ts_code 对齐）；`_cards_by_symbol` diff 前过滤非法卡片；`ingest_snapshot` 在**存储前**剥离非法卡片并返回 `rejectedCards` 计数（可观测，不静默丢卡） |
+| 前端（双保险） | `buildExecutionSnapshotPayload` 构建卡片前跳过非法 symbol（`WATCHLIST_SYMBOL_RE`，与后端同规则） |
+
+#### 验证
+
+- 后端 1379 passed / 2 skipped（唯一失败为既有 flaky）；前端 495 passed；tsc 干净
+- 实测：`ingest_snapshot` 传 [CN:600000, CN:9901ae04, HK:00700] → `rejectedCards: 1`，坏卡不入库
+- 新测试：`test_is_valid_watchlist_symbol`（10 断言）、`test_diff_ignores_malformed_symbol_cards`、`test_split_valid_cards_counts_rejects`、FE `skips items with malformed watchlist symbols`
+
+#### 反模式（不**做**）
+
+- ❌ 不修前端 localStorage 的存量 symbol（registry 已验证 0 污染）
+- ❌ 不做 symbol 规范化（把坏 symbol 映射到真实代码是幻觉——直接拒绝）
+- ❌ 不阻塞合法提交（拒绝只针对非法格式，正常 CN/HK/ETF 不受影响）
+---
+
+### OPT-067：组合相关性防火墙（todo §16 L3-P5 · V7.0-01 转正）
+
+**状态**：[x]  
+**完成日期**：2026-08-07  
+**背景**：L3-P5 组合风控——V7.0-01 从「暂缓」转正。语义因子簇为主 + 20 日经验相关性为辅（日历对齐，<15 样本 fail-open）；簇暴露 >30% → 簇内新 BUY/ADD 拦（CORRELATION_CAP_BLOCK），Suggest% 经 roomCorrelation 进 min 链；不强制平仓。
+
+#### 交付
+
+- `service/correlation.py`（**新**）：9 个语义簇（港股科技/半导体/通信/金属/新能源/消费/医药/金融/宽基）+ ETF 前缀映射 + 东财行业规则 + 日历对齐相关性 + cap 评估
+- `GET /api/backtest/correlation-status`：当前持仓簇暴露 + 超限 + blockedSymbols + topPairs
+- FE：`isCorrelationClusterBlocked` / `suggestFireSizePct.roomCorrelation`（note='correlation'）/ `evaluateNewEntryGates` CORRELATION_CAP_BLOCK / deriveActionCard 透传；回测页「组合相关性防火墙」面板；WatchlistTable 每行传簇暴露
+- 实测命中设计场景：tech_hk 34.2%（腾讯+恒生科技 ETF）超限；00700×513180 r=0.926
+
+#### 反模式
+
+- ❌ 纯统计相关性唯一依据（语义层为主，fail-open）
+- ❌ 强制卖出（只拦新开仓）
+- ❌ other 簇参与 cap

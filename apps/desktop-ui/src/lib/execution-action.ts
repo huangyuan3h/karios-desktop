@@ -263,10 +263,28 @@ export function isSleeveCapBlocked(
   return sleeveExposurePct >= maxPct;
 }
 
+/**
+ * V7.0-01 / L3-P5: semantic factor-cluster cap (default 30%).
+ * When the symbol's cluster is already at/over the cap, new BUY/ADD entries
+ * in that cluster are blocked (existing positions are never force-sold).
+ */
+export function isCorrelationClusterBlocked(
+  clusterExposurePct: number | null | undefined,
+  capPct: number = CORRELATION_CLUSTER_CAP_PCT,
+): boolean {
+  if (typeof clusterExposurePct !== 'number' || !Number.isFinite(clusterExposurePct)) {
+    return false;
+  }
+  return clusterExposurePct >= capPct;
+}
+
+/** V7.0-01: cluster exposure cap % (30) — mirrors backend CLUSTER_CAP_PCT. */
+export const CORRELATION_CLUSTER_CAP_PCT = 30;
+
 export type FireSizeSuggestion = {
   addPct: number;
-  /** Binding constraint: clip | single | sector | sleeve | risk (V7.0-02). */
-  note: 'clip' | 'single' | 'sector' | 'sleeve' | 'risk';
+  /** Binding constraint: clip | single | sector | sleeve | risk (V7.0-02) | correlation (V7.0-01). */
+  note: 'clip' | 'single' | 'sector' | 'sleeve' | 'risk' | 'correlation';
   /** Stop distance (%) used by risk-parity sizing; null when sizing degraded to clip-only. */
   stopDistancePct: number | null;
 };
@@ -293,6 +311,10 @@ export function suggestFireSizePct(opts: {
   referencePrice?: number | null;
   /** ETF (basket/index proxy): exempt from the 15% single-name cap. */
   isEtf?: boolean;
+  /** V7.0-01 (L3-P5): remaining headroom in the symbol's semantic factor
+   *  cluster (30% - current cluster exposure). Entering the min chain
+   *  shrinks Suggest% as the cluster fills up. */
+  roomCorrelation?: number | null;
 }): FireSizeSuggestion | null {
   const clip =
     typeof opts.clipPct === 'number' && Number.isFinite(opts.clipPct) && opts.clipPct > 0
@@ -338,7 +360,13 @@ export function suggestFireSizePct(opts: {
     if (riskCap < RISK_MIN_SIZE_PCT) return null;
   }
 
-  const room = Math.min(clip, roomSingle, roomSector, roomSleeve, riskCap);
+  let roomCorrelation = Number.POSITIVE_INFINITY;
+  const corrRoom = num(opts.roomCorrelation);
+  if (corrRoom != null && Number.isFinite(corrRoom)) {
+    roomCorrelation = corrRoom;
+  }
+
+  const room = Math.min(clip, roomSingle, roomSector, roomSleeve, riskCap, roomCorrelation);
   if (!Number.isFinite(room) || room < 0.1) return null;
   const addPct = Math.round(room * 10) / 10;
 
@@ -353,6 +381,12 @@ export function suggestFireSizePct(opts: {
     Math.abs(room - riskCap) < eps
   ) {
     note = 'risk';
+  } else if (
+    Number.isFinite(roomCorrelation) &&
+    roomCorrelation < clip &&
+    Math.abs(room - roomCorrelation) < eps
+  ) {
+    note = 'correlation';
   }
 
   return { addPct, note, stopDistancePct };
@@ -732,6 +766,9 @@ export function evaluateNewEntryGates(opts: {
   now?: Date | null;
   /** ETF: bypass industry/mainline gates (no-sector direct). */
   isEtf?: boolean;
+  /** V7.0-01 / L3-P5: semantic factor-cluster exposure % of the symbol's
+   *  cluster. >= 30% blocks new BUY/ADD (existing positions untouched). */
+  clusterExposurePct?: number | null;
 }): NewEntryGateResult {
   const {
     industryName,
@@ -750,6 +787,7 @@ export function evaluateNewEntryGates(opts: {
     scoreParts = null,
     now = null,
     isEtf = false,
+    clusterExposurePct = null,
   } = opts;
   if (!isEtf) {
     if (!industryName) {
@@ -798,6 +836,11 @@ export function evaluateNewEntryGates(opts: {
   }
   if (isSleeveCapBlocked(sleeveExposurePct, positionRangeHint)) {
     return { ok: false, tag: null, why: 'SLEEVE_CAP_BLOCK' };
+  }
+  // V7.0-01: cluster cap blocks NEW entries only — existing positions are
+  // never force-sold, so held symbols (ADD) skip the correlation check.
+  if (isCorrelationClusterBlocked(clusterExposurePct)) {
+    return { ok: false, tag: null, why: 'CORRELATION_CAP_BLOCK' };
   }
   if (isEtf) {
     return { ok: true, tag: null, why: momentumSurgeAllow ? 'MOMENTUM_SURGE_ALLOW' : 'ETF_DIRECT' };
@@ -896,6 +939,10 @@ export function deriveActionCard(opts: {
   now?: Date | null;
   /** TIP-011: provenance of the signal; null = unknown/pre-TIP-011. */
   source?: ExecutionSource | null;
+  /** V7.0-01 / L3-P5: semantic factor-cluster exposure % for this symbol's
+   *  cluster (from GET /api/backtest/correlation-status). Passed into the
+   *  entry gates (>=30% blocks new BUY) and Suggest% headroom. */
+  clusterExposurePct?: number | null;
 }): ExecutionActionCard {
   const {
     symbol,
@@ -915,6 +962,7 @@ export function deriveActionCard(opts: {
     todaySh = null,
     now = null,
     source = null,
+    clusterExposurePct = null,
   } = opts;
   const held = isHeldPosition(position);
   const isEtf = isEtfWatchlistSymbol(symbol);
@@ -1040,6 +1088,7 @@ export function deriveActionCard(opts: {
     scoreParts: (trendok?.scoreParts as Record<string, unknown> | null | undefined) ?? null,
     now,
     isEtf,
+    clusterExposurePct,
   });
   // Mainline column independent of chase / concentration vetoes
   const mainlineOk = Boolean(
@@ -1225,6 +1274,10 @@ export function deriveActionCard(opts: {
       atr14,
       referencePrice: sizeRefPrice,
       isEtf,
+      roomCorrelation:
+        typeof clusterExposurePct === 'number' && Number.isFinite(clusterExposurePct)
+          ? CORRELATION_CLUSTER_CAP_PCT - clusterExposurePct
+          : null,
     });
     if (size) {
       suggestAddPct = size.addPct;

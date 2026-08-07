@@ -13,6 +13,7 @@ import { ChatComposer } from '@/components/chat/ChatComposer';
 import { MarkdownMessage } from '@/components/chat/MarkdownMessage';
 import { ContextInspector } from '@/components/decision/ContextInspector';
 import { AnalysisView } from '@/components/decision/AnalysisView';
+import { WeeklyReviewCard } from '@/components/decision/WeeklyReviewCard';
 import { AI_BASE_URL, DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import type { ChatMessage } from '@/lib/chat/types';
 import { cn } from '@/lib/utils';
@@ -576,7 +577,10 @@ export function DecisionPage() {
             />
           </TabsContent>
           <TabsContent value="analysis" className="min-h-0 flex-1">
-            <AnalysisView />
+            <div className="flex flex-col gap-3 p-3">
+              <WeeklyReviewCard />
+              <AnalysisView />
+            </div>
           </TabsContent>
         </Tabs>
       )}

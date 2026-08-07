@@ -167,5 +167,13 @@ def test_analysis_endpoint_shape() -> None:
     assert "firedBySource" in payload
     assert "firedTotal" in payload
     assert "paper" in payload
-    assert set(payload["paper"]) >= {"total", "closed", "wins", "losses", "winRate", "avgPnlPct"}
+    assert set(payload["paper"]) >= {
+        "total",
+        "closed",
+        "wins",
+        "losses",
+        "winRate",
+        "avgPnlPct",
+        "byMarket",
+    }
     assert isinstance(payload["sessions"], list)

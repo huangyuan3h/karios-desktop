@@ -360,3 +360,71 @@ def test_build_journal_markdown_filters_small_hardstop_drifts(monkeypatch):
     assert "HOLD" in md
     assert "TRIM" in md
     assert "hardStop drifts" in md  # Note is shown
+
+
+# ---------------------------------------------------------------------------
+# Upstream symbol defense (2026-08-07): malformed symbols never enter the journal
+# ---------------------------------------------------------------------------
+
+
+def test_is_valid_watchlist_symbol():
+    from data_sync_service.service.execution_journal import is_valid_watchlist_symbol
+
+    assert is_valid_watchlist_symbol("CN:600000")
+    assert is_valid_watchlist_symbol("CN:000001")
+    assert is_valid_watchlist_symbol("HK:00700")
+    assert is_valid_watchlist_symbol("HK:0001")
+    assert is_valid_watchlist_symbol("ETF:510300")
+    assert is_valid_watchlist_symbol("cn:600000")  # case-insensitive
+    # Malformed — these poisoned the journal (CN:99{uuid} test rows).
+    assert not is_valid_watchlist_symbol("CN:9901ae04")
+    assert not is_valid_watchlist_symbol("CN:9946eb51")
+    assert not is_valid_watchlist_symbol("CN:6000000")
+    assert not is_valid_watchlist_symbol("HK:007000")
+    assert not is_valid_watchlist_symbol("600000")
+    assert not is_valid_watchlist_symbol("")
+    assert not is_valid_watchlist_symbol(None)
+
+
+def test_diff_ignores_malformed_symbol_cards():
+    """Cards with malformed symbols must not produce journal changes."""
+    prev = {
+        "id": "s1",
+        "gate": {"mode": "ATTACK", "allowNewEntries": True},
+        "cards": [
+            {"symbol": "CN:600000", "action": "BUY", "why": "MAINLINE_OK"},
+            {"symbol": "CN:9901ae04", "action": "BUY", "why": "MAINLINE_OK"},
+        ],
+    }
+    curr_cards = [
+        {"symbol": "CN:600000", "action": "HOLD", "why": "HOLD"},
+        {"symbol": "CN:9946eb51", "action": "WATCH", "why": "WATCH"},
+    ]
+    changes = diff_snapshots(
+        prev,
+        {"mode": "ATTACK", "allowNewEntries": True},
+        curr_cards,
+        trade_date="2026-08-08",
+        from_snapshot_id="s1",
+        to_snapshot_id="s2",
+    )
+    symbols = {c.get("symbol") for c in changes}
+    assert "CN:9901ae04" not in symbols
+    assert "CN:9946eb51" not in symbols
+    assert "CN:600000" in symbols
+
+
+def test_split_valid_cards_counts_rejects():
+    from data_sync_service.service.execution_journal import _split_valid_cards
+
+    valid, rejected = _split_valid_cards(
+        [
+            {"symbol": "CN:600000", "action": "BUY"},
+            {"symbol": "CN:9901ae04", "action": "BUY"},  # malformed
+            {"symbol": "HK:00700", "action": "WATCH"},
+            "not-a-dict",  # junk
+            {"symbol": "", "action": "WATCH"},  # empty
+        ]
+    )
+    assert rejected == 3
+    assert [c["symbol"] for c in valid] == ["CN:600000", "HK:00700"]
