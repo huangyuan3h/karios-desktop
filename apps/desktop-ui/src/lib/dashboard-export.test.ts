@@ -259,7 +259,7 @@ describe('buildSentimentMarkdown', () => {
     expect(md).toContain('| date | up | down |');
     expect(md).toContain('## ETF Fund Flow (Top by 资金流，非仅持仓)');
     expect(md).toContain(
-      '| 沪深300 ETF | 510300 | +52.30亿 | +31.00亿 | +21.30亿 | +120.50亿 | 2026-06-18T06:30:00+00:00 | eastmoney.realtime_flow | Live |',
+      '| 沪深300 ETF | 510300 | +52.30亿 | +120.50亿 | 2026-06-18T06:30:00+00:00 | eastmoney.realtime_flow | Live |',
     );
     expect(md).toContain('🛡️ National Team Buy');
     expect(md).toContain('⚠️ Inst Outflow');
@@ -362,7 +362,7 @@ describe('buildMarketAndMacroMarkdown', () => {
 
 describe('screener Top N + Score threshold constants', () => {
   it('exposes constants for filtering', () => {
-    expect(SCREENER_COPY_TOP_N).toBe(10);
+    expect(SCREENER_COPY_TOP_N).toBe(5);
     expect(SCREENER_COPY_MIN_SCORE).toBe(60);
   });
 });
@@ -590,7 +590,7 @@ describe('buildDashboardCopyAllMarkdown cache', () => {
     expect(md).toContain('## Cond order draft');
     expect(md).toContain('## Combat Positions & Watchlist（A股 / 港股 分表）');
     expect(md).toContain('Mainline');
-    expect(md).toContain('mainline bind');
+    expect(md).toContain('主线绑定');
     expect(md).toContain('INTRADAY_SURGE_BLOCK');
   });
 });

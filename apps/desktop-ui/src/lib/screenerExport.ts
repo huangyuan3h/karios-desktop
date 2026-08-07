@@ -3,6 +3,15 @@ import type { TrendOkResult } from '@/lib/api/types';
 import { getShanghaiTodayIso } from '@/lib/market-hours';
 import { formatGapUp, formatIntradayChgPct } from '@/lib/watchlist-metrics';
 
+/** Round raw TradingView changePct floats (e.g. 8.355795148247976 → +8.36%). */
+function formatChangePct(raw: string | null | undefined): string {
+  const s = String(raw ?? '').trim();
+  if (!s || s === '—') return '—';
+  const v = Number(s);
+  if (!Number.isFinite(v)) return s;
+  return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+}
+
 export type { TrendOkResult } from '@/lib/api/types';
 export { fetchTrendOkMap } from '@/lib/api/trendok';
 export { getShanghaiTodayIso } from '@/lib/market-hours';
@@ -257,7 +266,7 @@ export function buildScreenerMarkdownRows(
       name: pickScreenerField(row, headers, 'name') || trend?.name || '—',
       industry,
       price: pickScreenerField(row, headers, 'price') || '—',
-      changePct: pickScreenerField(row, headers, 'changePct') || '—',
+      changePct: formatChangePct(pickScreenerField(row, headers, 'changePct')),
       relVolume: pickScreenerField(row, headers, 'relVolume') || '—',
       score,
       intradayPct: formatIntradayChgPct(trend?.intradayChgPct ?? null),

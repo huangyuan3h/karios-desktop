@@ -90,49 +90,34 @@ export function buildPositionsExecutionMarkdown(
   lines.push(`${heading} Combat Positions & Watchlist（A股 / 港股 分表）`);
   lines.push(...WATCHLIST_TABLE_VISIBILITY_NOTE);
   lines.push(
-    '- note: 两市场独立核算 — A股（CN: 个股 + ETF: 篮子）与港股（HK: 个股/基金）分表呈现，各自对照自己的 Gate 上限；ETF 计入 A股 sleeve（HK 指数 ETF 例外，见下）',
+    '- note: 两市场独立核算 — A股(CN个股+ETF篮子)对照 CN Gate、港股(HK个股/基金+HK指数ETF如513180)对照 hkGate；ETF 免单票15%上限，计入对应 sleeve 总额',
   );
   if (!gate?.allowNewEntries) {
     lines.push('- note: BUY/ADD only valid when Execution Gate allowNewEntries=true');
   }
-  lines.push('- note: BUY/ADD also require mainline bind (5D Top3 or Momentum) and non-defense sector');
-  lines.push('- note: BUY/ADD blocked when intraday >6% (INTRADAY_SURGE_BLOCK), except TIP-007: ATTACK+mainline+B_momentum+Score≥85 allows ≤9% (Why=MOMENTUM_SURGE_ALLOW)');
-  lines.push('- note: BUY/ADD also blocked on gap-up in Weak/Diverging (GAP_UP_WEAK_BLOCK)');
   lines.push(
-    '- note: ADD blocked when positionPct >= 15% (SIZE_CAP_BLOCK); single-name satellite cap — ETFs exempt (index baskets)',
+    '- note: BUY/ADD 前提=主线绑定(5D Top3/Momentum)+非防御板块; 全部板块净流出时阻断(SECTOR_OUTFLOW_BLOCK)',
   );
   lines.push(
-    '- note: BUY/ADD blocked when sector positionPct sum >= 30% (SECTOR_CONC_BLOCK)',
+    '- note: BUY/ADD 阻断=盘中>6%(INTRADAY_SURGE_BLOCK; ATTACK+主线+B动量+Score≥85 可至9%=MOMENTUM_SURGE_ALLOW) / 弱势或背离跳空(GAP_UP_WEAK_BLOCK) / Entry_Trigger≤HardStop(ENTRY_BELOW_STOP)',
   );
   lines.push(
-    '- note: BUY/ADD blocked when sleeve positionPct sum >= Gate positionRangeHint max (SLEEVE_CAP_BLOCK)',
+    '- note: 仓位上限=单票15%(SIZE_CAP_BLOCK; ETF豁免) / 板块合计30%(SECTOR_CONC_BLOCK) / sleeve 达 Gate hint 上限(SLEEVE_CAP_BLOCK)',
   );
   lines.push(
-    '- note: Suggest% = min(5% clip, 0.5% risk-budget / stop-dist%, single 15% room, sector 30% room, sleeve hint room); stop-dist% = (ref−stop)/ref (held: exitStop, flat: hardStop; fallback 2×ATR%); binding (risk) means vol-shrunk size; <2.5% → no suggestion',
+    '- note: Suggest% = min(5%截断, 0.5%风险预算/止损距离, 单票15%余量, 板块30%余量, sleeve余量); 风险绑定=缩量; <2.5%不出建议; WEAK_ATTACK 封顶5%',
   );
   lines.push(
-    '- note: WEAK_ATTACK hard-caps Suggest% at 5% (overflow pioneer)',
+    '- note: Dist% 平仓=(Entry_Trigger−现价)/现价; 持仓=(现价−Exit_Stop)/现价; stop-dist% 同口径(fallback 2×ATR%)',
   );
   lines.push(
-    '- note: Dist% flat = (Entry_Trigger-Current)/Current; held = (Current-Exit_Stop)/Current',
+    '- note: PURGE=Pos%0 & Score<30 & TrendOK=no → 移除; Alpha S 级→WATCH_SILENT; 恢复中→WATCH(TREND_RECOVERING)',
   );
   lines.push(
-    '- note: PURGE = Pos%=0 & Score<30 & TrendOK=no (removed after report); Alpha Max Grade=S → WATCH_SILENT (kept); V6.3 recovering → WATCH Why=TREND_RECOVERING',
+    '- note: T+1 锁: entryDate=今天→EXIT/TRIM 禁(T1_LOCK); 缺 entryDate→fail-closed(ENTRY_DATE_MISSING)',
   );
   lines.push(
-    '- note: Locked_T1=True (entryDate=today) → EXIT/TRIM blocked (Why=T1_LOCK); missing entryDate → Locked_T1=MISSING fail-closed (Why=ENTRY_DATE_MISSING)',
-  );
-  lines.push(
-    '- note: Entry_Trigger <= HardStop → no BUY (Why=ENTRY_BELOW_STOP)',
-  );
-  lines.push(
-    '- note: DEFEND/Weak TimeLock — BUY/ADD only 14:30–14:50 SH (Why=TIME_LOCK_WEAK_REGIME / MARKET_CLOSING_LOCK); ATTACK+Strong exempt',
-  );
-  lines.push(
-    '- note: DEFEND Defensive Sleeve — whitelist+5D Top3+Score≥70+TrendOK → BUY Why=DEFENSIVE_SLEEVE_ALLOW (cap 10% sleeve / 5% single; beta deferred)',
-  );
-  lines.push(
-    '- note: WEAK_ATTACK (V6.3 Intraday Overflow Override) — sector 1D inflow>500亿 + upCount>4000 + ≥14:30 → allowNewEntries with Suggest%≤5%',
+    '- note: DEFEND/Weak 时段锁: BUY/ADD 仅 14:30–14:50(TIME_LOCK_WEAK_REGIME/MARKET_CLOSING_LOCK); 防御仓白名单+5D Top3+Score≥70→DEFENSIVE_SLEEVE_ALLOW(10% sleeve/5% 单票); V6.3 溢出: 单日净流入>500亿+涨>4000家+≥14:30→allowNewEntries≤5%',
   );
   if (sectorOutflowBlock) {
     lines.push(

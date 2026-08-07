@@ -99,8 +99,8 @@ import { loadWatchlist, ensureWatchlistHydrated, type WatchlistItem } from '@/li
 
 type DashboardSummary = any;
 
-/** Copy-all screener filtering (2026-08-01 · wife feedback). */
-export const SCREENER_COPY_TOP_N = 10;
+/** Copy-all screener filtering (2026-08-01 · wife feedback; 2026-08-07 · Top 10→5). */
+export const SCREENER_COPY_TOP_N = 5;
 export const SCREENER_COPY_MIN_SCORE = 60;
 
 type QuoteResp = {
@@ -350,7 +350,11 @@ export function buildMarketAndMacroMarkdown(
   return lines.join('\n').trim() + '\n';
 }
 
-export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##'): string {
+export function buildSentimentMarkdown(
+  s: DashboardSummary | null,
+  heading = '##',
+  compact = false,
+): string {
   const summary2: any = s ?? {};
   const ms: any = summary2?.marketSentiment ?? {};
   const items: any[] = Array.isArray(ms?.items) ? ms.items : [];
@@ -443,8 +447,6 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
       'ETF Name',
       'Symbol',
       'Main Flow',
-      'Super Large',
-      'Large',
       '3D Net Flow',
       'Realtime AsOf',
       'Source',
@@ -465,8 +467,6 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
         String(it?.name ?? ''),
         String(it?.symbol ?? ''),
         flow1d,
-        fmtSignedAmountCn(it?.superLargeNetInflow),
-        fmtSignedAmountCn(it?.largeNetInflow),
         fmtSignedAmountCn(it?.netFlow3d),
         String(it?.tradeTime ?? it?.flowAsOfDate ?? etfFlow?.asOfDate ?? '—'),
         String(it?.source ?? '—'),
@@ -474,9 +474,13 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
         String(it?.signalDisplay ?? it?.signal ?? '—'),
       ];
     });
+    const etfShown = compact ? etfRows.slice(0, 4) : etfRows;
     lines.push(`${heading} ETF Fund Flow (Top by 资金流，非仅持仓)`);
     lines.push('');
-    lines.push(mdTable(etfHeaders, etfRows));
+    if (compact && etfRows.length > etfShown.length) {
+      lines.push('- note: compact mode — 仅保留 Top 4 ETF 资金流');
+    }
+    lines.push(mdTable(etfHeaders, etfShown));
     lines.push('');
   }
 
@@ -1160,7 +1164,7 @@ export async function buildDashboardCopyAllMarkdown(
         .then(({ items, scope }) =>
           buildAlphaRadarTrendsMarkdown(items, {
             headingLevel: '##',
-            mode: compact ? 'compact' : 'compact',
+            mode: compact ? 'compact' : 'full',
             scopeNote:
               scope === 'recent'
                 ? `recent ${DEFAULT_CATALYST_MAX_AGE_DAYS}d (latest batch empty)`
@@ -1276,7 +1280,7 @@ export async function buildDashboardCopyAllMarkdown(
     lines.push('- note: compact mode — Hot industries workflow omitted');
     lines.push('');
   }
-  lines.push(buildSentimentMarkdown(s, '##').trim());
+  lines.push(buildSentimentMarkdown(s, '##', compact).trim());
   lines.push('');
   lines.push(buildMarketAndMacroMarkdown(s, '##').trim());
   lines.push('');
@@ -1294,15 +1298,25 @@ export async function buildDashboardCopyAllMarkdown(
       `- note: AI 摘要未生成/未更新（${newsSummaryUpdatedAt ? `上次 ${newsSummaryUpdatedAt}` : '无'}）— 以下为原始标题回退`,
     );
   } else {
-    lines.push(`- total: ${String(newsTotal ?? 0)}`);
+    const summaryItemCount = (newsSummary?.match(/^\s*\d+\./gm) ?? []).length;
+    lines.push(`- total: ${String(summaryItemCount || newsTotal || 0)}`);
   }
   lines.push(
     '- note: 关键词白名单过滤（AI/算力/半导体/美联储/降准降息/原油/关税/…）；其他娱乐/边缘政治新闻剔除',
   );
   if (newsSummaryUpdatedAt) lines.push(`- summaryUpdatedAt: ${newsSummaryUpdatedAt}`);
   lines.push('');
-  if (newsSummary?.trim()) lines.push(newsSummary.trim());
-  else if (newsFallback?.trim()) lines.push(newsFallback.trim());
+  let newsBody = '';
+  if (newsSummary?.trim()) newsBody = newsSummary.trim();
+  else if (newsFallback?.trim()) newsBody = newsFallback.trim();
+  if (compact && newsBody) {
+    const numbered = newsBody.split('\n').filter((l) => /^\s*\d+\./.test(l));
+    if (numbered.length > 8) {
+      newsBody = numbered.slice(0, 8).join('\n');
+      lines.push('- note: compact mode — 仅保留前 8 条新闻，完整列表见 News 页');
+    }
+  }
+  if (newsBody) lines.push(newsBody);
   else lines.push('No summary yet. Last news records are included above.');
   lines.push('');
   lines.push(screenersMd.trim());
