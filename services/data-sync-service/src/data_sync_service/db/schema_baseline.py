@@ -18,6 +18,7 @@ from data_sync_service.db.alpha_radar import (
 )
 from data_sync_service.db.broker import CREATE_SQL as BROKER_CREATE_SQL
 from data_sync_service.db.daily import CREATE_SQL as DAILY_CREATE_SQL
+from data_sync_service.db.decision import CREATE_SQL as DECISION_CREATE_SQL
 from data_sync_service.db.etf_fund_flow import CREATE_SQL as ETF_FUND_FLOW_CREATE_SQL
 from data_sync_service.db.index_basic import CREATE_SQL as INDEX_BASIC_CREATE_SQL
 from data_sync_service.db.index_daily import CREATE_SQL as INDEX_DAILY_CREATE_SQL
@@ -125,8 +126,8 @@ def baseline_ddl_statements() -> list[str]:
         WATCHLIST_AUTOMATION_CREATE_SQL,
         SYSTEM_PROMPTS_CREATE_SQL,
         RESEARCH_CREATE_SQL,
+        DECISION_CREATE_SQL,
     ]
-
     statements: list[str] = []
     for sql in ordered_sql:
         statements.extend(_split_sql(sql))

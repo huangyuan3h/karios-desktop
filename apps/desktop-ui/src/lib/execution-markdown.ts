@@ -4,14 +4,17 @@ import { mdPrice, mdScore, mdTable } from '@/lib/dashboard-format';
 import {
   buildDefensiveSleeveExposurePct,
   buildSectorExposureFromWatchlist,
+  buildSleeveExposureByMarket,
   buildSleeveExposurePct,
   computePnLPct,
   countHeldMissingPositionPct,
   deriveActionCard,
-  formatSleeveBudgetLabel,
   isHeldPosition,
   isLockedT1,
   isMissingEntryDate,
+  marketOfSymbol,
+  parsePositionRangeHintMaxPct,
+  sleeveExposureForSymbol,
   type CatalystPurgeHint,
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
@@ -93,7 +96,7 @@ export function buildPositionsExecutionMarkdown(
   lines.push('- note: BUY/ADD blocked when intraday >6% (INTRADAY_SURGE_BLOCK), except TIP-007: ATTACK+mainline+B_momentum+Score≥85 allows ≤9% (Why=MOMENTUM_SURGE_ALLOW)');
   lines.push('- note: BUY/ADD also blocked on gap-up in Weak/Diverging (GAP_UP_WEAK_BLOCK)');
   lines.push(
-    '- note: ADD blocked when positionPct >= 15% (SIZE_CAP_BLOCK); single-name satellite cap',
+    '- note: ADD blocked when positionPct >= 15% (SIZE_CAP_BLOCK); single-name satellite cap — ETFs exempt (index baskets)',
   );
   lines.push(
     '- note: BUY/ADD blocked when sector positionPct sum >= 30% (SECTOR_CONC_BLOCK)',
@@ -134,8 +137,17 @@ export function buildPositionsExecutionMarkdown(
     );
   }
   const sleeveExposurePct = buildSleeveExposurePct(items);
+  const sleeveByMarket = buildSleeveExposureByMarket(items);
+  const cnCap = parsePositionRangeHintMaxPct(gate?.positionRangeHint);
+  const hkCap = parsePositionRangeHintMaxPct(gate?.hkGate?.positionRangeHint ?? null);
+  const capLabel = (v: number | null) => (v == null ? '—' : `${v}%`);
   lines.push(
-    `- sleeve: ${formatSleeveBudgetLabel(sleeveExposurePct, gate?.positionRangeHint)}`,
+    `- sleeve: 卫星仓 ${sleeveExposurePct.toFixed(1)}%（CN 上限 ${capLabel(cnCap)}）` +
+      `｜A股 ${sleeveByMarket.cn.toFixed(1)}% + ETF ${sleeveByMarket.etf.toFixed(1)}%（计入 CN 上限）` +
+      `｜港股 ${sleeveByMarket.hk.toFixed(1)}%（hkGate 上限 ${capLabel(hkCap)}）`,
+  );
+  lines.push(
+    '- note: ETF 是指数/板块篮子，不是单票：不受 15% 单票上限约束（SIZE_CAP_BLOCK 豁免），只计入 CN 市场 sleeve 总额',
   );
   const missingSize = countHeldMissingPositionPct(items);
   if (missingSize > 0) {
@@ -200,9 +212,16 @@ export function buildPositionsExecutionMarkdown(
       todaySh,
     });
     const catalyst = catalystBySymbol?.get(it.symbol) ?? null;
+    // Per-market sleeve accounting: HK rows size against the HK sleeve,
+    // CN/ETF rows against the CN sleeve (incl. ETFs). Position budgets are
+    // evaluated against the market's own gate hint (hkGate for HK).
+    const rowGate =
+      marketOfSymbol(it.symbol) === 'hk' && gate?.hkGate
+        ? { ...gate, ...gate.hkGate }
+        : gate;
     const card: ExecutionActionCard = deriveActionCard({
       symbol: it.symbol,
-      gate,
+      gate: rowGate,
       trendok: t ?? null,
       position: it,
       currentPrice: rowMetrics.current,
@@ -211,7 +230,7 @@ export function buildPositionsExecutionMarkdown(
       gapUp: typeof t?.gapUp === 'boolean' ? t.gapUp : null,
       marketRegime: t?.marketRegime ?? null,
       sectorExposureByIndustry,
-      sleeveExposurePct,
+      sleeveExposurePct: sleeveExposureForSymbol(sleeveByMarket, it.symbol),
       defensiveSleeveExposurePct,
       sectorOutflowBlock,
       catalyst,

@@ -216,6 +216,7 @@ describe('buildSentimentMarkdown', () => {
         srvIndex: {
           asOfDate: '2026-06-18',
           dates: ['2026-06-16', '2026-06-17', '2026-06-18'],
+          score: 92.5,
           overlapCount: 0,
           overlapSectors: [],
           level: 'Extreme_High',
@@ -243,14 +244,14 @@ describe('buildSentimentMarkdown', () => {
     expect(md).toContain('## Market sentiment');
     expect(md).toContain('- risk: neutral');
     expect(md).toContain(
-      '- SRV 轮动指数: 极高（3D重叠 = 0）',
+      '- SRV 轮动指数: 92.5/100 极高（3D重叠 = 0）',
     );
     expect(md).toContain('## 市场环境摘要');
     expect(md).toContain('市场震荡，控制仓位。');
     expect(md).toContain('## Market sentiment');
     expect(md).toContain('- risk: neutral');
     expect(md).toContain(
-      '- SRV 轮动指数: 极高（3D重叠 = 0）',
+      '- SRV 轮动指数: 92.5/100 极高（3D重叠 = 0）',
     );
     expect(md).not.toContain('## Index traffic lights');
     expect(md).not.toContain('## Market & Macro overview');

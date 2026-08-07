@@ -14,6 +14,10 @@ import { isGapUpWeakMarket, isIntradaySurge } from '@/lib/watchlist-metrics';
 
 export const CHANDELIER_ARM_PNL_PCT = 10;
 export const CHANDELIER_ATR_MULT = 2;
+/** ETF fallback stop: max drawdown from entry cost (no trendok stop available). */
+export const ETF_FALLBACK_MAX_LOSS_PCT = 0.05;
+/** ETF fallback stop: max drawdown from peak once position is in profit (trail). */
+export const ETF_FALLBACK_TRAIL_PCT = 0.07;
 export const BUY_SCORE_MIN = 80;
 /** TIP-007: Score floor for B_momentum intraday surge allow (6%→9%). */
 export const MOMENTUM_SURGE_SCORE_MIN = 85;
@@ -202,6 +206,49 @@ export function buildSleeveExposurePct(positions: PositionLike[]): number {
   return sum;
 }
 
+export type SleeveExposureByMarket = {
+  /** A-share single names (CN: prefix) in pct points. */
+  cn: number;
+  /** HK names (HK: prefix) in pct points. */
+  hk: number;
+  /** ETF baskets (ETF: prefix) in pct points; governed by the CN gate. */
+  etf: number;
+  /** Total across all markets. */
+  total: number;
+};
+
+/** Market bucket of a symbol for sleeve accounting (ETF trades under the CN gate). */
+export function marketOfSymbol(symbol: string): 'cn' | 'hk' | 'etf' {
+  if (isEtfWatchlistSymbol(symbol)) return 'etf';
+  if (String(symbol || '').toUpperCase().startsWith('HK:')) return 'hk';
+  return 'cn';
+}
+
+/**
+ * Per-market sleeve exposure: A-share / HK / ETF buckets sum positionPct
+ * independently, so a CN ADD is not blocked (or reported) by HK exposure and
+ * vice versa. ETFs are not single names — they count toward the CN sleeve.
+ */
+export function buildSleeveExposureByMarket(positions: PositionLike[]): SleeveExposureByMarket {
+  const acc = { cn: 0, hk: 0, etf: 0, total: 0 };
+  for (const pos of positions) {
+    const pct = num(pos.positionPct);
+    if (pct == null || pct <= 0) continue;
+    acc[marketOfSymbol(pos.symbol)] += pct;
+    acc.total += pct;
+  }
+  return acc;
+}
+
+/** Sleeve exposure that applies to a symbol's own market (ETF → CN sleeve). */
+export function sleeveExposureForSymbol(
+  byMarket: SleeveExposureByMarket,
+  symbol: string,
+): number {
+  const m = marketOfSymbol(symbol);
+  return m === 'hk' ? byMarket.hk : byMarket.cn + byMarket.etf;
+}
+
 export function isSleeveCapBlocked(
   sleeveExposurePct: number | null | undefined,
   positionRangeHint: string | null | undefined,
@@ -240,6 +287,8 @@ export function suggestFireSizePct(opts: {
   atr14?: number | null;
   /** V7.0-02: reference price (current or entryTrigger) for ATR fallback. */
   referencePrice?: number | null;
+  /** ETF (basket/index proxy): exempt from the 15% single-name cap. */
+  isEtf?: boolean;
 }): FireSizeSuggestion | null {
   const clip =
     typeof opts.clipPct === 'number' && Number.isFinite(opts.clipPct) && opts.clipPct > 0
@@ -247,7 +296,8 @@ export function suggestFireSizePct(opts: {
       : DEFAULT_FIRE_CLIP_PCT;
   const current = num(opts.positionPct);
   const currentPct = current != null && current > 0 ? current : 0;
-  const roomSingle = POSITION_SIZE_CAP_PCT - currentPct;
+  // ETFs are index/sector baskets, not single names — no single-name cap.
+  const roomSingle = opts.isEtf ? Number.POSITIVE_INFINITY : POSITION_SIZE_CAP_PCT - currentPct;
 
   const industry = String(opts.industryName || '').trim();
   let roomSector = Number.POSITIVE_INFINITY;
@@ -533,6 +583,32 @@ export function isPurgeCandidate(opts: {
 }): boolean {
   const { held, score, trendOk } = opts;
   return !held && score != null && score < PURGE_SCORE_MAX && trendOk === false;
+}
+
+/**
+ * ETF price-drawdown stop used when trendok has no stopLossPrice (data-starved /
+ * fallback mode, RuleType=ETF_FALLBACK). max(entry -5%, peak -7% when armed),
+ * never above current. Mirrors the backend hard-stop shape from position inputs.
+ */
+export function deriveEtfFallbackStop(opts: {
+  costPrice: number | null;
+  maxPrice: number | null;
+  current: number | null;
+}): number | null {
+  const cost = num(opts.costPrice);
+  const current = num(opts.current);
+  if (cost == null || current == null || current <= 0) return null;
+  const peak =
+    opts.maxPrice != null && Number.isFinite(opts.maxPrice) ? opts.maxPrice : null;
+  const pnlPct = cost > 0 ? ((current - cost) / cost) * 100 : 0;
+  let stop = Math.max(
+    current * (1 - ETF_FALLBACK_MAX_LOSS_PCT),
+    cost * (1 - ETF_FALLBACK_MAX_LOSS_PCT),
+  );
+  if (peak != null && pnlPct >= CHANDELIER_ARM_PNL_PCT) {
+    stop = Math.max(stop, peak * (1 - ETF_FALLBACK_TRAIL_PCT));
+  }
+  return Math.min(stop, current);
 }
 
 /**
@@ -860,6 +936,21 @@ export function deriveActionCard(opts: {
   const atr14 = atrFromParts(parts);
   const cost = num(position.costPrice);
   const maxPrice = num(position.maxPrice);
+  // ETF fallback (RuleType=ETF_FALLBACK): trendok data-starved (no stop) →
+  // price-drawdown stop derived from entry cost / peak. Keeps the position
+  // protected with a relative stop instead of 0/none hard-exit behaviour.
+  let etfFallback = false;
+  if (isEtf && held && hardStop == null) {
+    const fb = deriveEtfFallbackStop({
+      costPrice: cost,
+      maxPrice,
+      current: currentPrice,
+    });
+    if (fb != null) {
+      hardStop = fb;
+      etfFallback = true;
+    }
+  }
   const trail = deriveTriggerAndTrail({
     hardStop,
     costPrice: cost,
@@ -893,11 +984,28 @@ export function deriveActionCard(opts: {
 
   const exitNow = Boolean(parts?.exit_now);
   const warnHalf = Boolean(parts?.warn_reduce_half);
+  // Float tolerance: trailStop = peak - 2*ATR14 can land a hair below current
+  // (e.g. 3.5999999999999996 vs 3.6); a touch within 1e-9 counts as hit.
+  const PRICE_EPS = 1e-9;
+  // Price-based triggers, ETF semantics: trail-stop touch → TRIM; only a
+  // hard-stop (or real stop) breach → EXIT. Fallback stops are estimates, so
+  // they never count as a hard-stop breach.
+  const hardStopHit =
+    held &&
+    !etfFallback &&
+    hardStop != null &&
+    currentPrice != null &&
+    Number.isFinite(currentPrice) &&
+    currentPrice <= hardStop + PRICE_EPS;
+  // ETF rule isolation: trend-structure exit_now is a TRIM-level warning (the
+  // backend already downgrades it), but defensively downgrade any stray
+  // exit_now from stale data here too — only a hard-stop price breach exits.
+  const etfExitDowngraded = isEtf && exitNow && !hardStopHit;
   const priceAtOrBelowTrigger =
     exitStop != null &&
     currentPrice != null &&
     Number.isFinite(currentPrice) &&
-    currentPrice <= exitStop;
+    currentPrice <= exitStop + PRICE_EPS;
 
   const allowAttack = mode === 'ATTACK' || mode === 'WEAK_ATTACK';
   const buyAction = String(trendok?.buyAction || '').toLowerCase();
@@ -983,9 +1091,18 @@ export function deriveActionCard(opts: {
     if (blockSellWhy) {
       action = 'HOLD';
       why = blockSellWhy;
+    } else if (isEtf && !hardStopHit) {
+      // ETF: trail/warn/fallback touched without a real hard-stop breach →
+      // smooth TRIM (half), never a forced full exit.
+      action = 'TRIM';
+      why = etfFallback
+        ? 'ETF_FALLBACK_TRIM'
+        : etfExitDowngraded
+          ? 'WARN_REDUCE_HALF'
+          : 'TRAIL_STOP_TRIM';
     } else {
       action = 'EXIT';
-      why = exitNow ? 'EXIT_NOW' : 'TRIGGER_HIT';
+      why = exitNow ? 'EXIT_NOW' : isEtf ? 'HARD_STOP_HIT' : 'TRIGGER_HIT';
     }
   } else if (held && warnHalf) {
     if (blockSellWhy) {
@@ -1007,7 +1124,7 @@ export function deriveActionCard(opts: {
     if (!entryGate.ok) {
       action = 'HOLD';
       why = entryGate.why;
-    } else if (isAtOrOverPositionSizeCap(position.positionPct)) {
+    } else if (!isEtf && isAtOrOverPositionSizeCap(position.positionPct)) {
       action = 'HOLD';
       why = 'SIZE_CAP_BLOCK';
     } else {
@@ -1103,6 +1220,7 @@ export function deriveActionCard(opts: {
       stopDistancePct: sizeStopDistancePct,
       atr14,
       referencePrice: sizeRefPrice,
+      isEtf,
     });
     if (size) {
       suggestAddPct = size.addPct;
@@ -1137,6 +1255,8 @@ export function deriveActionCard(opts: {
     suggestSizeNote,
     /** V7.0-02: stop distance % that drove risk-parity sizing (display/diagnostic). */
     sizeStopDistancePct,
+    /** ETF data-starved fallback mode (price-drawdown stop in use). */
+    ruleType: etfFallback ? 'ETF_FALLBACK' : null,
   };
 }
 

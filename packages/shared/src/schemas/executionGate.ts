@@ -97,6 +97,11 @@ export const ExecutionActionCardSchema = z.object({
    */
   distPct: z.number().nullable().optional(),
   why: z.string().optional(),
+  /**
+   * Signal rule variant; 'ETF_FALLBACK' = ETF data-starved fallback
+   * (price-drawdown stop, no trendok stopLossPrice).
+   */
+  ruleType: z.string().nullable().optional(),
   mainlineOk: z.boolean().optional(),
   mainlineTag: MainlineTagSchema.nullable().optional(),
   /** Suggested add to sleeve weight for BUY/ADD (pct points), after caps. */

@@ -179,4 +179,22 @@ describe('ExecutionActionCardSchema', () => {
     expect(parsed.suggestAddPct).toBe(5);
     expect(parsed.suggestSizeNote).toBe('clip');
   });
+
+  it('parses ETF_FALLBACK ruleType', () => {
+    const parsed = ExecutionActionCardSchema.parse({
+      symbol: 'ETF:515880',
+      action: 'TRIM',
+      trailArmed: false,
+      why: 'ETF_FALLBACK_TRIM',
+      ruleType: 'ETF_FALLBACK',
+    });
+    expect(parsed.ruleType).toBe('ETF_FALLBACK');
+    const plain = ExecutionActionCardSchema.parse({
+      symbol: 'CN:600519',
+      action: 'EXIT',
+      trailArmed: false,
+      ruleType: null,
+    });
+    expect(plain.ruleType).toBeNull();
+  });
 });

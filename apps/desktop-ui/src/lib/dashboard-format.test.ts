@@ -31,10 +31,13 @@ describe('fmtSignedAmountCn', () => {
 });
 
 describe('formatSrvIndexLine', () => {
-  it('formats level and overlap count', () => {
+  it('formats score with level and overlap count', () => {
     expect(
-      formatSrvIndexLine({ level: 'Extreme_High', overlapCount: 0 }),
-    ).toBe('SRV 轮动指数: 极高（3D重叠 = 0）');
+      formatSrvIndexLine({ level: 'Extreme_High', score: 92.5, overlapCount: 0 }),
+    ).toBe('SRV 轮动指数: 92.5/100 极高（3D重叠 = 0）');
+    expect(
+      formatSrvIndexLine({ level: 'Elevated', score: 56.5, overlapCount: 1 }),
+    ).toBe('SRV 轮动指数: 56.5/100 偏高（3D重叠 = 1）');
     expect(formatSrvIndexLine(null)).toBe('SRV 轮动指数: —');
   });
 });

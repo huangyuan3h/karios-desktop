@@ -1501,9 +1501,23 @@ def _trendok_one(
         current = float(closes[-1])
         stop_parts["current_price"] = round(current, 6)
 
-        if not lows or res["values"].get("ema20") is None:
-            res["stopLossPrice"] = None
-            res["missingData"].append("stoploss_missing_inputs")
+        if not lows or len(closes) < 20 or res["values"].get("ema20") is None:
+            if symbol.startswith("ETF:"):
+                # ETF fallback: insufficient bars for a reliable EMA20 -> price-drawdown
+                # relative stop (current -8%), so a data-starved ETF still gets a stop
+                # instead of 0/none.
+                stop_parts["etf_fallback"] = True
+                stop_parts["etf_fallback_reason"] = "no_ema20"
+                fallback_stop = round(current * (1.0 - 0.08), 6)
+                stop_parts["hard_stop"] = fallback_stop
+                stop_parts["computed_stop_loss"] = fallback_stop
+                stop_parts["final_stop_loss"] = fallback_stop
+                stop_parts["fallback_stop_loss"] = fallback_stop
+                res["stopLossPrice"] = fallback_stop
+                res["stopLossParts"] = stop_parts
+            else:
+                res["stopLossPrice"] = None
+                res["missingData"].append("stoploss_missing_inputs")
         else:
             swing_low = min(lows[-10:]) if len(lows) >= 10 else min(lows)
             if len(lows) >= 20:
@@ -1525,26 +1539,39 @@ def _trendok_one(
 
             # Exit-now overrides:
             # 1) Trend structure break: EMA5 < EMA20 OR close < EMA20 => exit immediately (stop = current)
+            # ETF isolation: ETFs track indices tightly, so a short EMA5/EMA20 wiggle or a shallow
+            # close-below-EMA20 right after entry is noise. For ETFs these downgrade to a TRIM-level
+            # warning (warn_reduce_half); only price-based stops (hard stop / trail stop, evaluated
+            # on the frontend) can trigger a full EXIT.
             exit_now = False
             exit_reasons: list[str] = []
             exit_check_ema5_lt_ema20 = False
             exit_check_close_lt_ema20 = False
             exit_check_mom_exhaust = False
             exit_check_vol_dry = False
+            warn_reduce_half = False
+            warn_reasons: list[str] = []
+            is_etf = symbol.startswith("ETF:")
             if res["values"].get("ema5") is not None and res["values"].get("ema20") is not None:
                 if float(res["values"]["ema5"]) < float(res["values"]["ema20"]):
-                    exit_now = True
-                    exit_check_ema5_lt_ema20 = True
-                    exit_reasons.append("trend_structure_break:ema5_below_ema20")
+                    if is_etf:
+                        warn_reduce_half = True
+                        warn_reasons.append("trend_structure_break:ema5_below_ema20")
+                    else:
+                        exit_now = True
+                        exit_check_ema5_lt_ema20 = True
+                        exit_reasons.append("trend_structure_break:ema5_below_ema20")
             if res["values"].get("ema20") is not None and current < float(res["values"]["ema20"]):
-                exit_now = True
-                exit_check_close_lt_ema20 = True
-                exit_reasons.append("trend_structure_break:close_below_ema20")
+                if is_etf:
+                    warn_reduce_half = True
+                    warn_reasons.append("trend_structure_break:close_below_ema20")
+                else:
+                    exit_now = True
+                    exit_check_close_lt_ema20 = True
+                    exit_reasons.append("trend_structure_break:close_below_ema20")
 
             # 2) Momentum exhaustion: MACD hist shrinks 3 days then turns negative + volume dries up
             # Warning case: hist shrinks but stays positive => suggest reducing half.
-            warn_reduce_half = False
-            warn_reasons: list[str] = []
             if res["values"].get("avgVol5") is not None and res["values"].get("avgVol30") is not None:
                 avg5v = float(res["values"]["avgVol5"])
                 avg30v = float(res["values"]["avgVol30"])
@@ -1554,9 +1581,17 @@ def _trendok_one(
                     vol_dry = avg30v > 0.0 and (avg5v < avg30v)
                     exit_check_vol_dry = bool(vol_dry)
                     if shrink_then_flip and vol_dry:
-                        exit_now = True
-                        exit_check_mom_exhaust = True
-                        exit_reasons.append("momentum_exhaustion:hist_shrink3_flip_negative_and_volume_dry")
+                        if is_etf:
+                            # ETF: momentum exhaustion is a TRIM-level warning too;
+                            # never a full-exit on a signal (price stops decide).
+                            warn_reduce_half = True
+                            warn_reasons.append(
+                                "momentum_exhaustion:hist_shrink3_flip_negative_and_volume_dry"
+                            )
+                        else:
+                            exit_now = True
+                            exit_check_mom_exhaust = True
+                            exit_reasons.append("momentum_exhaustion:hist_shrink3_flip_negative_and_volume_dry")
 
                     if not shrink_then_flip:
                         shrink_cnt = 0
@@ -1666,8 +1701,20 @@ def _trendok_one(
 
                 atr14 = _atr14(highs, lows, closes, 14)
                 if atr14 is None:
-                    res["stopLossPrice"] = None
-                    res["missingData"].append("atr14_unavailable")
+                    if symbol.startswith("ETF:"):
+                        # ETF fallback: ATR unavailable -> price-drawdown relative stop.
+                        stop_parts["etf_fallback"] = True
+                        stop_parts["etf_fallback_reason"] = "no_atr14"
+                        fallback_stop = round(current * (1.0 - max_loss_pct), 6)
+                        stop_parts["hard_stop"] = fallback_stop
+                        stop_parts["computed_stop_loss"] = fallback_stop
+                        stop_parts["final_stop_loss"] = fallback_stop
+                        stop_parts["fallback_stop_loss"] = fallback_stop
+                        res["stopLossPrice"] = fallback_stop
+                        res["stopLossParts"] = stop_parts
+                    else:
+                        res["stopLossPrice"] = None
+                        res["missingData"].append("atr14_unavailable")
                 else:
                     buffer = atr_k * atr14
                     # Loss cap from CURRENT price (profit-locking / default).

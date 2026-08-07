@@ -11,6 +11,9 @@ from data_sync_service.scheduler import (
     close_sync_job,
     cn_industry_post_close_job,
     daily_sync_job,
+    decision_action_job,
+    decision_outcome_job,
+    decision_snapshot_job,
     eastmoney_industry_job,
     etf_daily_job,
     fund_basic_job,
@@ -198,6 +201,26 @@ def create_scheduler() -> BackgroundScheduler:
         research_report_job.run,
         research_report_job.build_trigger(),
         id=research_report_job.JOB_ID,
+        replace_existing=True,
+    )
+    # TIP-015: decision archive snapshot + T+1 outcome feedback
+    scheduler.add_job(
+        decision_snapshot_job.run,
+        decision_snapshot_job.build_trigger(),
+        id=decision_snapshot_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        decision_outcome_job.run,
+        decision_outcome_job.build_trigger(),
+        id=decision_outcome_job.JOB_ID,
+        replace_existing=True,
+    )
+    # TIP-015: extract brief actions → match executions → track outcomes
+    scheduler.add_job(
+        decision_action_job.run,
+        decision_action_job.build_trigger(),
+        id=decision_action_job.JOB_ID,
         replace_existing=True,
     )
     # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)

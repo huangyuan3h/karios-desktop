@@ -1,7 +1,48 @@
 # TIP-015 · 决策 Agent 闭环（Decision Loop）· 设计文档
 
-> 状态：设计稿 · 2026-08-06
-> 关联：TIP-013（数据新鲜度可见）/ TIP-014（Copy 强制刷新）/ TIP-011（开火归因）/ V7.8 downstream-ai-prompt（决策合同）
+> 状态：设计中 · M1-M4 已落地（2026-08-06）· 建议追踪已落地（2026-08-06）· M5 待定
+> 关联：TIP-013（数据新鲜度可见）/ TIP-014（Copy 强制刷新）/ TIP-011（开火归因）/ V7.9 downstream-ai-prompt（决策合同）
+
+## 建议追踪（简报 → 执行 → 效果）完成记录（2026-08-06）
+
+- **schema**：`decision_actions` 表（alembic 0021）：symbol/action(BUY|ADD|HOLD|EXIT)/rationale/confidence/status(proposed|executed|not_executed)/source/matched_change_id/outcome(JSONB)
+- **提取**：ai-service `/decision/extract-actions`（generateText JSON mode + 正则校验 symbol 格式 CN:xxxxxx.SH/SZ + action 枚举）；data-sync `extract_pending_actions()` 扫近 48h 含「## 操作建议」的简报消息 → 落库（per message_id 幂等）
+- **执行匹配**：`match_executions()`——建议日 3 天内 execution_decision_changes 同 symbol+action（field=action）→ status=executed + matched_change_id；HOLD 不可交易不参与
+- **效果**：`track_action_outcomes()`——stock_daily 建议日后 1/3/5 交易日涨跌幅存 outcome
+- **作业**：`decision_action_tracking`（工作日 18:30）+ SYNC_JOB_TYPES；API `GET /api/decision/actions`
+- **前端**：AnalysisView 增加「建议追踪」区块——每建议显示 symbol/action 徽标/状态徽标/confidence/rationale/±1/3/5d 涨跌（红绿）+ 已执行计数
+- 测试：后端 test_decision 8 用例（含 mock 执行匹配链）；全量后端 1323 / 前端 478 / ai-service typecheck+lint clean
+
+## M4 完成记录（2026-08-06）
+
+- 后端 `service/decision.py::analysis_stats` + `GET /api/decision/analysis`：开火归因分桶（count_changes_by_source action=BUY，口径同 TIP-011）、模拟盘胜负统计（win rate / avg pnl）、每会话注入审计（auditRounds = 有 context_snapshot 的消息数）
+- 前端 `components/decision/AnalysisView.tsx`：右侧 Tabs（Context | 分析）切换——开火归因条形图（ALPHA/TV/MANUAL/RESEARCH 分桶）、胜率卡片（总交易/胜率/平均盈亏/持仓中）、注入审计会话列表（X 轮审计徽标）
+- 实测：近 30 天 74 次开火（ALPHA 34 / TV 38 / UNKNOWN 2），模拟盘 126 笔全 open（尚未平仓）
+- 顺手修复既有 flaky：`test_tv_capture_jobs` 的 `claim_next_jobs` 全局抢任务被其他测试残留 job 遮蔽——测试前置 DELETE queued/running
+- 全量：后端 1321 / 前端 478 / ai-service typecheck+lint clean
+
+## M3 完成记录（2026-08-06）
+
+- 后端 `service/decision.py`：`build_daily_snapshot`（当日决策消息 + watchlist 注册表 ref → 归档）、`apply_daily_outcomes`（execution changes action + paper trades 回灌前 5 日快照 outcome）、`search_archive_by_symbol`（全文检索 exchange 提及）
+- 后端 API：`GET /snapshots/{date}`（详情）、`GET /archive/search?symbol=`；`upsert_snapshot` ON CONFLICT 全列 COALESCE（修掉 outcome 回灌清空 exchanges 的 bug）
+- scheduler：`decision_snapshot_job`（交易日 18:00）+ `decision_outcome_job`（交易日 19:00）+ SYNC_JOB_TYPES
+- ai-service `routes/decision.ts`（`/decision`）：streamText + AI SDK v5 tools（`retrieve_archive_snapshot` / `search_archive_by_symbol`，内部调 4330；模型不支持 tools 时自动降级无 tools）——**v5 坑**：`parameters` 改名 `inputSchema`、无 `maxSteps` 参数
+- 前端：DecisionPage 改调 `/decision`；Inspector Layer3 显示开火数/反馈状态 + 点击插入归档引用（`decisionSnapshotToMarkdown` 作为 user 消息进上下文，落库 context_snapshot.archiveRef）；归档摘要含 outcome 开火/模拟盘
+- 测试：后端 test_decision 5 用例（含快照往返 + 检索）；全量后端 1320 / 前端 478 / ai-service typecheck+lint clean
+
+## M2 完成记录（2026-08-06）
+
+- `lib/decision-context.ts`：`buildDecisionActiveLayer`（5 块：P0 操作表 / P1 新鲜度+新闻 / P2 宏观+行业，实时装配，P0+P1 默认注入）+ `estimateTokens`（中文 1.8 chars/tok 粗估）+ `activeLayerToMarkdown`
+- `components/decision/ContextInspector.tsx`：Layer1 块列表（P0/P1/P2 徽标 + tokens + Switch 开关）、35k token 预算条（Progress，超预算标红）、Layer2 窗口计数、Layer3 归档日期索引、TIP-013 freshness 状态条（stale 红点 + ⚠）
+- DecisionPage 重构：发送消息前自动装配活跃层注入 system 消息 + context_snapshot 落库（块清单 + token）；Layer2 滑动窗口折叠（超 24 条折叠为「判断/结果」摘要行）；shadcn 风格（Switch/Progress/Button + k-\* 变量统一）
+- **实现偏差**：文档原写"装配放 ai-service"，实际放前端——`buildWatchlistMarkdown` 等 builder 只在 desktop-ui 存在，ai-service 复制即双写（违背 §9 同源原则）；ai-service 保持无状态 /chat
+
+## M1 完成记录（2026-08-06）
+
+- 后端：`db/decision.py`（3 表 + CRUD）+ alembic 0020 + schema_baseline + `api/decision_routes.py`（sessions/messages/snapshots 6 端点）+ main.py 注册
+- 前端：`lib/queries/decision.ts` + `components/pages/DecisionPage.tsx`（左会话列表 / 中对话流复用 ChatMessageList+ChatComposer / system prompt 读 active preset）+ SidebarNav「决策 Agent」+ AppShell
+- 对话流式走 ai-service `/chat`，SSE reader 增量渲染；用户/助手消息落 DB（contextSnapshot 已预留字段）
+- 测试：后端 tests/test_decision.py（4 用例，含 CRUD 往返）+ 前端 decision.test.ts；全量后端 1319 / 前端 473 / tsc clean
 
 ## 1. 背景与目标
 
@@ -30,7 +71,7 @@
 | 资产 | 位置 | 复用方式 |
 |---|---|---|
 | 统一 LLM 出口 ai-service | `apps/ai-service`（4310，Hono + Vercel AI SDK，openai/google/ollama profile） | 决策 chat 路由直接加这里 |
-| 决策合同 V7.8 | `docs/modules/downstream-ai-prompt.md` | 作为决策 agent 的权威 system prompt（原文注入，不再维护第二份） |
+| 决策合同 V7.9 | `docs/modules/downstream-ai-prompt.md` | 作为决策 agent 的权威 system prompt（原文注入，不再维护第二份） |
 | Copy All payload | `dashboard-export.ts` `buildDashboardCopyAllMarkdown` | 活跃决策层的**数据源**（保持纯 payload，不含行为指令） |
 | 新鲜度 API | `/api/health/datasources`（TIP-013） | 决策区 freshness 指示器 + agent 侧数据可信度提示 |
 | 引用装配 buildReferenceBlock | `ChatPanel.tsx`（16 种引用类型） | 拆出可复用的 context 装配器 |
@@ -98,7 +139,7 @@
 
 | 项 | 预算 | 说明 |
 |---|---|---|
-| System prompt（V7.8） | ~4k | 恒定 |
+| System prompt（V7.9） | ~4k | 恒定 |
 | Layer 1 活跃层 | ~5k | P0 3k + P1 1.5k + P2 0.5k（P2 可折叠为一行） |
 | Layer 2 窗口（12 轮） | ~15k | 超出的轮折叠为摘要行 |
 | 预留（本轮检索结果/输出） | ~8k | 按需检索最大注入 |
@@ -114,7 +155,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ 决策 Agent  [模型: gpt-4o-decision▼] [决策合同 V7.8] [新建会话]  │
+│ 决策 Agent  [模型: gpt-4o-decision▼] [决策合同 V7.9] [新建会话]  │
 │ ├───────────────────────────────┬────────────────────────────┤
 │ │  对话流（复用 ChatMessageList) │  Context Inspector           │
 │ │  · 消息带"本轮注入"徽标        │  ├ Layer 1 活跃层            │
@@ -143,7 +184,7 @@
 ### 4.3 与现有 AgentPanel 的关系
 
 - 现有全局 dock 聊天（AgentPanel/ChatPanel）**保留**，定位：通用聊天/杂项
-- 决策区是**专用页面**：固定装配 V7.8 决策合同 + 分层 context + 归档检索 + 反馈标记；UI 组件（消息列表/流式/composer）复用，**context 装配与存储独立**
+- 决策区是**专用页面**：固定装配 V7.9 决策合同 + 分层 context + 归档检索 + 反馈标记；UI 组件（消息列表/流式/composer）复用，**context 装配与存储独立**
 
 ## 5. Context 可分析（审计能力）
 
@@ -194,7 +235,7 @@ decision_snapshots(id, snapshot_date, active_layer_ref JSONB, agent_exchanges JS
 
 | 里程碑 | 内容 | 验收 |
 |---|---|---|
-| **M1 会话持久化** | 3 张表 + 4 组 API + DecisionPage 基础聊天（SSE 流式，直接调 ai-service /chat + V7.8 合同） | 决策区可对话，重启不丢，可回看历史会话 |
+| **M1 会话持久化** | 3 张表 + 4 组 API + DecisionPage 基础聊天（SSE 流式，直接调 ai-service /chat ＋ V7.9 合同） | 决策区可对话，重启不丢，可回看历史会话 |
 | **M2 分层 context + Inspector** | ai-service 装配 Layer1（实时拉取）+ Layer2 窗口 + 折叠；Context Inspector UI + token 预算条 + freshness 状态条 | 每轮注入 ≤35k 恒定；Inspector 每块可见/可开关；freshness 过期标红可刷新 |
 | **M3 归档 + 检索 + 反馈** | snapshot/outcome 作业 + 检索函数调用 + 会话里"归档引用"块 | 10 天快照可检索；T+1 胜负回灌可见 |
 | **M4 分析视图** | 每轮注入审计展开 + 判断胜率统计（决策区「分析」tab） | 可回答"agent 判断的胜率与依据" |

@@ -13,6 +13,7 @@ import { JournalReadPage } from '@/components/pages/JournalReadPage';
 import { MarketPage } from '@/components/pages/MarketPage';
 import { NewsPage } from '@/components/pages/NewsPage';
 import { ResearchPage } from '@/components/pages/ResearchPage';
+import { DecisionPage } from '@/components/pages/DecisionPage';
 import { SchedulerPage } from '@/components/pages/SchedulerPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
@@ -58,6 +59,7 @@ const PAGE_TITLES: Record<string, string> = {
   industryFlow: 'Industry Flow',
   alphaIncubator: 'Alpha Incubator',
   research: 'Research',
+  decision: '决策 Agent',
   watchlist: 'Watchlist',
   broker: 'Broker',
   journal: 'Journal',
@@ -209,6 +211,8 @@ function AppShellInner() {
               <AlphaIncubatorPage />
             ) : activePage === 'research' ? (
               <ResearchPage />
+            ) : activePage === 'decision' ? (
+              <DecisionPage />
             ) : activePage === 'watchlist' ? (
               <WatchlistPage
                 onOpenStock={(symbol) => {

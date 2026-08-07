@@ -166,6 +166,7 @@ export function fmtSignedAmountCn(x: unknown): string {
 
 export type SrvIndexLike = {
   level?: string | null;
+  score?: number | null;
   overlapCount?: number | null;
   overlapSectors?: string[] | null;
   labelZh?: string | null;
@@ -173,11 +174,15 @@ export type SrvIndexLike = {
 
 export function formatSrvIndexLine(srv: SrvIndexLike | null | undefined): string {
   const level = String(srv?.level ?? '').trim();
+  const score = srv?.score;
   const overlap = srv?.overlapCount;
-  if (!level || typeof overlap !== 'number' || !Number.isFinite(overlap)) {
+  if (!level || typeof score !== 'number' || !Number.isFinite(score)) {
     return 'SRV 轮动指数: —';
   }
-  return `SRV 轮动指数: ${translateSrvLevel(level)}（3D重叠 = ${overlap}）`;
+  if (typeof overlap !== 'number' || !Number.isFinite(overlap)) {
+    return `SRV 轮动指数: ${translateSrvLevel(level)}（${score}/100）`;
+  }
+  return `SRV 轮动指数: ${score}/100 ${translateSrvLevel(level)}（3D重叠 = ${overlap}）`;
 }
 
 export function srvIndexBadgeClass(level: string | null | undefined): string {

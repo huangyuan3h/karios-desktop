@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  Bot,
   ChevronsLeft,
   ChevronsRight,
   Clock,
@@ -27,6 +28,7 @@ const items = [
   { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
   { id: 'alphaIncubator', label: 'Alpha Incubator', icon: Rocket },
   { id: 'research', label: 'Research', icon: FileText },
+  { id: 'decision', label: '决策 Agent', icon: Bot },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
   // { id: 'broker', label: 'Broker', icon: CreditCard },
   { id: 'journal', label: 'Journal', icon: NotebookPen },

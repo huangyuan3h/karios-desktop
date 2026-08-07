@@ -5,11 +5,13 @@ import type { ExecutionGate } from '@karios/shared';
 import {
   BUY_SCORE_MIN,
   buildSectorExposureByIndustry,
+  buildSleeveExposureByMarket,
   buildSleeveExposurePct,
   checkExecutionTimeLock,
   countHeldMissingPositionPct,
   deriveActionCard,
   deriveTriggerAndTrail,
+  deriveEtfFallbackStop,
   evaluateHeldTrimGates,
   evaluateNewEntryGates,
   formatSleeveBudgetLabel,
@@ -19,8 +21,10 @@ import {
   isHeldPosition,
   isSectorConcentrationBlocked,
   isSleeveCapBlocked,
+  marketOfSymbol,
   parsePositionRangeHintMaxPct,
   resolveDefensiveHardStop,
+  sleeveExposureForSymbol,
   suggestFireSizePct,
 } from './execution-action';
 import type { MainlineAllowSet } from './hot-industry-picks';
@@ -293,6 +297,128 @@ describe('ETF no-industry passthrough', () => {
     });
     expect(card.action).toBe('TRIM');
     expect(card.why).toBe('MAINLINE_FADE');
+  });
+});
+
+describe('ETF exit behavior (rule isolation: TRIM over EXIT)', () => {
+  const etfHeld = (over: Partial<Parameters<typeof deriveActionCard>[0]> = {}) =>
+    deriveActionCard({
+      symbol: 'ETF:510050',
+      gate: attackGate,
+      trendok: null,
+      position: {
+        symbol: 'ETF:510050',
+        positionPct: 5,
+        costPrice: 3.0,
+        maxPrice: 3.8,
+        entryDate: '2026-07-01',
+      },
+      currentPrice: 3.6,
+      mainlineAllow: null,
+      ...over,
+    });
+
+  it('deriveEtfFallbackStop derives drawdown stop from cost and armed peak', () => {
+    // pnl 26.7% >= 10% → peak trail engaged: max(current*0.95, cost*0.95, peak*0.93)
+    expect(
+      deriveEtfFallbackStop({ costPrice: 3.0, maxPrice: 4.0, current: 3.8 }),
+    ).toBeCloseTo(3.72, 5);
+    // no profit → cost floor only
+    expect(
+      deriveEtfFallbackStop({ costPrice: 3.0, maxPrice: 3.05, current: 3.0 }),
+    ).toBeCloseTo(2.85, 5);
+    // missing cost → null (cannot derive a meaningful stop)
+    expect(deriveEtfFallbackStop({ costPrice: null, maxPrice: 4.0, current: 3.0 })).toBeNull();
+  });
+
+  it('ETF + stale exit_now (no hard-stop breach) downgrades to TRIM/WARN_REDUCE_HALF', () => {
+    const card = etfHeld({
+      trendok: {
+        score: 60,
+        stopLossPrice: 3.2,
+        stopLossParts: { exit_now: true, exit_reasons: ['trend_structure_break:close_below_ema20'], atr14: 0.1 },
+      },
+    });
+    expect(card.action).toBe('TRIM');
+    expect(card.why).toBe('WARN_REDUCE_HALF');
+  });
+
+  it('ETF trail-stop touch without hard-stop breach → TRIM/TRAIL_STOP_TRIM', () => {
+    // pnl 20%, peak 3.8, atr14 0.1 → trailStop = 3.8 - 0.2 = 3.6 == current
+    const card = etfHeld({
+      trendok: {
+        score: 70,
+        stopLossPrice: 3.2,
+        stopLossParts: { atr14: 0.1 },
+      },
+      currentPrice: 3.6,
+    });
+    expect(card.trailArmed).toBe(true);
+    expect(card.trailStop).toBeCloseTo(3.6, 5);
+    expect(card.action).toBe('TRIM');
+    expect(card.why).toBe('TRAIL_STOP_TRIM');
+  });
+
+  it('ETF hard-stop breach → EXIT/HARD_STOP_HIT', () => {
+    const card = etfHeld({
+      trendok: {
+        score: 70,
+        stopLossPrice: 3.2,
+        stopLossParts: { atr14: 0.1 },
+      },
+      currentPrice: 3.1,
+    });
+    expect(card.action).toBe('EXIT');
+    expect(card.why).toBe('HARD_STOP_HIT');
+  });
+
+  it('ETF fallback stop (no trendok stop) → ruleType ETF_FALLBACK, touch → TRIM/ETF_FALLBACK_TRIM', () => {
+    const card = etfHeld({
+      currentPrice: 2.8,
+    });
+    expect(card.ruleType).toBe('ETF_FALLBACK');
+    // fallback stop = min(max(2.8*0.95, 3.0*0.95), 2.8) = 2.8 → current touches it
+    expect(card.hardStop).toBeCloseTo(2.8, 5);
+    expect(card.action).toBe('TRIM');
+    expect(card.why).toBe('ETF_FALLBACK_TRIM');
+  });
+
+  it('ETF fallback derived from armed peak when trendok data missing', () => {
+    const card = etfHeld({
+      currentPrice: 3.8,
+    });
+    expect(card.ruleType).toBe('ETF_FALLBACK');
+    // max(current*0.95=3.61, cost*0.95=2.85, peak*0.93=3.534) = 3.61
+    expect(card.hardStop).toBeCloseTo(3.61, 5);
+    // current 3.8 > fallback stop → no touch → HOLD (not a false exit)
+    expect(card.action).toBe('HOLD');
+  });
+
+  it('stock TRIGGER_HIT stays EXIT (individual logic unchanged)', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:002821',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        trendOk: true,
+        buyAction: 'wait',
+        stopLossPrice: 100,
+        stopLossParts: { atr14: 1 },
+        values: { emIndustry: '化学制药' },
+      },
+      position: {
+        symbol: 'CN:002821',
+        positionPct: 7,
+        costPrice: 110,
+        maxPrice: 112,
+        entryDate: '2026-07-17',
+      },
+      currentPrice: 95,
+      mainlineAllow: null,
+      todaySh: '2026-07-18',
+    });
+    expect(card.action).toBe('EXIT');
+    expect(card.why).toBe('TRIGGER_HIT');
   });
 });
 
@@ -1158,6 +1284,24 @@ describe('deriveActionCard', () => {
     expect(card.why).toBe('SIZE_CAP_BLOCK');
   });
 
+  it('ETF is exempt from the 15% single-name cap (basket, not a single stock)', () => {
+    const card = deriveActionCard({
+      symbol: 'ETF:513180',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 0.55,
+        stopLossParts: { atr14: 0.01 },
+      },
+      position: { symbol: 'ETF:513180', costPrice: 0.5, positionPct: 27.9, maxPrice: 0.56, entryDate: '2026-07-01' },
+      currentPrice: 0.57,
+      mainlineAllow: mainline,
+    });
+    expect(card.action).toBe('ADD');
+    expect(card.why).toBe('ETF_DIRECT');
+  });
+
   it('fail-open ADD when held via costPrice only (no positionPct)', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
@@ -1372,6 +1516,70 @@ describe('deriveActionCard', () => {
         { symbol: 'CN:4', positionPct: 0 },
       ]),
     ).toBe(60);
+  });
+
+  it('splits sleeve exposure by market (A-share / HK / ETF)', () => {
+    const byMarket = buildSleeveExposureByMarket([
+      { symbol: 'CN:600000', positionPct: 12.2 },
+      { symbol: 'ETF:513180', positionPct: 27.9 },
+      { symbol: 'HK:00700', positionPct: 8 },
+      { symbol: 'HK:09988', positionPct: 0 },
+    ]);
+    expect(byMarket.cn).toBeCloseTo(12.2);
+    expect(byMarket.etf).toBeCloseTo(27.9);
+    expect(byMarket.hk).toBeCloseTo(8);
+    expect(byMarket.total).toBeCloseTo(48.1);
+    expect(buildSleeveExposureByMarket([{ symbol: 'CN:1', positionPct: 0.1 }])).toEqual({
+      cn: 0.1,
+      etf: 0,
+      hk: 0,
+      total: 0.1,
+    });
+  });
+
+  it('classifies symbol market buckets', () => {
+    expect(marketOfSymbol('ETF:513180')).toBe('etf');
+    expect(marketOfSymbol('hk:00700')).toBe('hk');
+    expect(marketOfSymbol('CN:600000')).toBe('cn');
+    expect(marketOfSymbol('unknown')).toBe('cn');
+  });
+
+  it('sleeve for a symbol is its own market (ETF counts into CN sleeve)', () => {
+    const byMarket = buildSleeveExposureByMarket([
+      { symbol: 'CN:600000', positionPct: 12.2 },
+      { symbol: 'ETF:513180', positionPct: 27.9 },
+      { symbol: 'HK:00700', positionPct: 8 },
+    ]);
+    expect(sleeveExposureForSymbol(byMarket, 'CN:600000')).toBeCloseTo(40.1);
+    expect(sleeveExposureForSymbol(byMarket, 'ETF:513180')).toBeCloseTo(40.1);
+    expect(sleeveExposureForSymbol(byMarket, 'HK:00700')).toBeCloseTo(8);
+  });
+
+  it('HK BUY/ADD is sleeve-capped by the HK bucket, not the CN+ETF total', () => {
+    const hkGate: ExecutionGate = {
+      ...attackGate,
+      positionRangeHint: '0%-10%',
+      hkGate: { ...attackGate, positionRangeHint: '30%-40%' },
+    };
+    const card = deriveActionCard({
+      symbol: 'HK:00700',
+      gate: hkGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 380,
+        stopLossParts: { atr14: 6 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'HK:00700' },
+      currentPrice: 400,
+      mainlineAllow: mainline,
+      // CN+ETF sleeve at 40% would block; HK bucket at 8% must not.
+      sleeveExposurePct: 8,
+      sectorExposureByIndustry: new Map([['半导体', 10]]),
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.why).toBe('MAINLINE_5D_TOP3');
   });
 
   it('blocks BUY when sleeve exposure >= hint max', () => {
