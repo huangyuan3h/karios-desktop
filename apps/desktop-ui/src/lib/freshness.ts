@@ -17,7 +17,7 @@ export type DataSourcesHealth = {
 };
 
 export async function fetchDataSourcesHealth(): Promise<DataSourcesHealth> {
-  return apiGetJson<DataSourcesHealth>('/health/datasources');
+  return apiGetJson<DataSourcesHealth>('/api/health/datasources');
 }
 
 function formatAge(ageMinutes: number | null): string {

@@ -1083,6 +1083,23 @@ export async function buildDashboardCopyAllMarkdown(
       // keep existing summary
     }
   }
+  const sentimentItems = (s as any)?.marketSentiment?.items;
+  if (!Array.isArray(sentimentItems) || sentimentItems.length === 0) {
+    try {
+      const sentimentPartial = await fetchDashboardSummaryPartial({
+        includeMacro: false,
+        includeSentiment: true,
+        includeNews: false,
+        includeIndustry: false,
+        includeScreeners: false,
+      });
+      if (sentimentPartial?.marketSentiment) {
+        s = { ...s, marketSentiment: sentimentPartial.marketSentiment };
+      }
+    } catch {
+      // keep existing summary
+    }
+  }
   const generatedAt = new Date().toLocaleString('zh-CN', {
     timeZone: 'Asia/Shanghai',
     hour12: false,

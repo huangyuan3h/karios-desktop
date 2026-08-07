@@ -1521,7 +1521,7 @@ describe('deriveActionCard', () => {
   it('splits sleeve exposure by market (A-share / HK / ETF)', () => {
     const byMarket = buildSleeveExposureByMarket([
       { symbol: 'CN:600000', positionPct: 12.2 },
-      { symbol: 'ETF:513180', positionPct: 27.9 },
+      { symbol: 'ETF:510300', positionPct: 27.9 },
       { symbol: 'HK:00700', positionPct: 8 },
       { symbol: 'HK:09988', positionPct: 0 },
     ]);
@@ -1538,7 +1538,8 @@ describe('deriveActionCard', () => {
   });
 
   it('classifies symbol market buckets', () => {
-    expect(marketOfSymbol('ETF:513180')).toBe('etf');
+    expect(marketOfSymbol('ETF:513180')).toBe('hk');
+    expect(marketOfSymbol('ETF:510300')).toBe('etf');
     expect(marketOfSymbol('hk:00700')).toBe('hk');
     expect(marketOfSymbol('CN:600000')).toBe('cn');
     expect(marketOfSymbol('unknown')).toBe('cn');
@@ -1547,11 +1548,11 @@ describe('deriveActionCard', () => {
   it('sleeve for a symbol is its own market (ETF counts into CN sleeve)', () => {
     const byMarket = buildSleeveExposureByMarket([
       { symbol: 'CN:600000', positionPct: 12.2 },
-      { symbol: 'ETF:513180', positionPct: 27.9 },
+      { symbol: 'ETF:510300', positionPct: 27.9 },
       { symbol: 'HK:00700', positionPct: 8 },
     ]);
     expect(sleeveExposureForSymbol(byMarket, 'CN:600000')).toBeCloseTo(40.1);
-    expect(sleeveExposureForSymbol(byMarket, 'ETF:513180')).toBeCloseTo(40.1);
+    expect(sleeveExposureForSymbol(byMarket, 'ETF:510300')).toBeCloseTo(40.1);
     expect(sleeveExposureForSymbol(byMarket, 'HK:00700')).toBeCloseTo(8);
   });
 

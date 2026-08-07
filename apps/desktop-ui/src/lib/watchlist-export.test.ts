@@ -59,7 +59,7 @@ describe('buildWatchlistMarkdown', () => {
       sortedItems: [
         { symbol: 'CN:000001', name: 'TestA', costPrice: 9.5, addedAt: '2026-06-18T00:00:00Z' },
         { symbol: 'HK:00700', name: 'Tencent', costPrice: 476, addedAt: '2026-06-18T00:00:00Z' },
-        { symbol: 'ETF:513180', name: '恒生科技ETF', costPrice: 0.61, addedAt: '2026-06-18T00:00:00Z' },
+        { symbol: 'ETF:510300', name: '沪深300ETF', costPrice: 3.9, addedAt: '2026-06-18T00:00:00Z' },
       ],
       trendSnap: {
         'CN:000001': {
@@ -86,13 +86,13 @@ describe('buildWatchlistMarkdown', () => {
           gapUp: false,
           missingData: [],
         },
-        'ETF:513180': {
-          symbol: 'ETF:513180',
+        'ETF:510300': {
+          symbol: 'ETF:510300',
           name: '恒生科技ETF',
           score: 65,
           trendOk: false,
           asOfDate: '2026-06-18',
-          values: { close: 0.61, volumeRatio: 1.0, rsValue: 3.0 },
+          values: { close: 3.9, volumeRatio: 1.0, rsValue: 3.0 },
           rs: 3.0,
           intradayChgPct: -0.3,
           gapUp: false,
@@ -102,7 +102,7 @@ describe('buildWatchlistMarkdown', () => {
       quotesSnap: {
         'CN:000001': { tsCode: '000001.SZ', price: 10.2, tradeTime: '2026-06-18 14:30:00', amount: 1, volume: 1, preClose: 10, pctChg: 2 },
         'HK:00700': { tsCode: '00700.HK', price: 480.5, tradeTime: '2026-06-18 15:30:00', amount: 1, volume: 1, preClose: 476, pctChg: 1 },
-        'ETF:513180': { tsCode: '513180.SH', price: 0.61, tradeTime: '2026-06-18 14:30:00', amount: 1, volume: 1, preClose: 0.61, pctChg: 0 },
+        'ETF:510300': { tsCode: '510300.SH', price: 3.9, tradeTime: '2026-06-18 14:30:00', amount: 1, volume: 1, preClose: 3.9, pctChg: 0 },
       },
     });
 
@@ -110,11 +110,11 @@ describe('buildWatchlistMarkdown', () => {
     expect(md).toContain('## 港股 卫星仓（HK: 个股/基金）');
     const cnTable = md.slice(0, md.indexOf('## 港股 卫星仓'));
     expect(cnTable).toContain('| CN:000001 |');
-    expect(cnTable).toContain('| ETF:513180 |');
+    expect(cnTable).toContain('| ETF:510300 |');
     expect(cnTable).not.toContain('| HK:00700 |');
     const hkTable = md.slice(md.indexOf('## 港股 卫星仓'));
     expect(hkTable).toContain('| HK:00700 |');
     expect(hkTable).not.toContain('| CN:000001 |');
-    expect(hkTable).not.toContain('| ETF:513180 |');
+    expect(hkTable).not.toContain('| ETF:510300 |');
   });
 });

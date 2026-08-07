@@ -8,6 +8,7 @@ import {
   formatExecAttentionMarkdown,
   resolveAttentionCards,
 } from './exec-attention';
+import type { PositionLike } from './execution-action';
 
 const attackGate: ExecutionGate = {
   mode: 'ATTACK',
@@ -90,6 +91,30 @@ describe('buildExecAttentionQueue', () => {
     expect(q.fires).toEqual([]);
     expect(q.fireBlockedByGate).toBe(true);
     expect(q.exits).toHaveLength(1);
+  });
+
+  it('attaches warn_reasons hint to WARN_REDUCE_HALF trims', () => {
+    const q = buildExecAttentionQueue({
+      gate: attackGate,
+      watchlistItems: [
+        {
+          symbol: 'CN:300628',
+          trendok: {
+            stopLossParts: {
+              warn_reduce_half: true,
+              warn_reasons: ['momentum_warning:hist_shrinking', 'momentum_warning:hist_shrinking_and_volume_dry'],
+            },
+          },
+        } as unknown as PositionLike,
+      ],
+      cards: [{ symbol: 'CN:300628', action: 'TRIM', why: 'WARN_REDUCE_HALF' }],
+      changes: [],
+    });
+    expect(q.trims).toHaveLength(1);
+    expect(q.trims[0]?.hint).toContain('MACD柱连续收缩');
+    expect(q.trims[0]?.hint).toContain('MACD柱连续收缩+量能萎缩');
+    const md = formatExecAttentionMarkdown(q, { source: 'live' });
+    expect(md).toContain('（MACD柱连续收缩；MACD柱连续收缩+量能萎缩）');
   });
 
   it('allows DEFENSIVE_SLEEVE_ALLOW fires when allowNewEntries is false', () => {

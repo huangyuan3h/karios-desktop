@@ -90,7 +90,7 @@ export function buildPositionsExecutionMarkdown(
   lines.push(`${heading} Combat Positions & Watchlist（A股 / 港股 分表）`);
   lines.push(...WATCHLIST_TABLE_VISIBILITY_NOTE);
   lines.push(
-    '- note: 两市场独立核算 — A股（CN: 个股 + ETF: 篮子）与港股（HK: 个股/基金）分表呈现，各自对照自己的 Gate 上限；ETF 计入 A股 sleeve',
+    '- note: 两市场独立核算 — A股（CN: 个股 + ETF: 篮子）与港股（HK: 个股/基金）分表呈现，各自对照自己的 Gate 上限；ETF 计入 A股 sleeve（HK 指数 ETF 例外，见下）',
   );
   if (!gate?.allowNewEntries) {
     lines.push('- note: BUY/ADD only valid when Execution Gate allowNewEntries=true');
@@ -150,7 +150,7 @@ export function buildPositionsExecutionMarkdown(
       `｜港股 ${sleeveByMarket.hk.toFixed(1)}%（hkGate 上限 ${capLabel(hkCap)}）`,
   );
   lines.push(
-    '- note: ETF 是指数/板块篮子，不是单票：不受 15% 单票上限约束（SIZE_CAP_BLOCK 豁免），只计入 CN 市场 sleeve 总额',
+    '- note: ETF 是指数/板块篮子，不是单票：不受 15% 单票上限约束（SIZE_CAP_BLOCK 豁免），只计入 CN 市场 sleeve 总额；HK 指数 ETF（如 ETF:513180 华夏恒生科技）按港股 exposure 归入港股 sleeve',
   );
   const missingSize = countHeldMissingPositionPct(items);
   if (missingSize > 0) {

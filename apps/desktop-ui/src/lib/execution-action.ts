@@ -217,8 +217,12 @@ export type SleeveExposureByMarket = {
   total: number;
 };
 
+/** HK-index ETFs are HK exposure (e.g. 华夏恒生科技ETF tracks the HSTECH index) — count under the HK sleeve. */
+const HK_INDEX_ETF_OVERRIDES: ReadonlySet<string> = new Set(['ETF:513180']);
+
 /** Market bucket of a symbol for sleeve accounting (ETF trades under the CN gate). */
 export function marketOfSymbol(symbol: string): 'cn' | 'hk' | 'etf' {
+  if (HK_INDEX_ETF_OVERRIDES.has(String(symbol || '').trim().toUpperCase())) return 'hk';
   if (isEtfWatchlistSymbol(symbol)) return 'etf';
   if (String(symbol || '').toUpperCase().startsWith('HK:')) return 'hk';
   return 'cn';
