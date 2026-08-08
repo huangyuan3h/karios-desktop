@@ -308,3 +308,87 @@ def test_backtest_sensitivity_endpoint(monkeypatch) -> None:
     assert body["ok"] is True
     assert body["configs"] == 36  # default grid: 4 x 3 x 3
     assert len(body["results"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# wave-1 additions: window end, open positions, market filter, summary
+# ---------------------------------------------------------------------------
+
+
+def test_simulate_closes_leftovers_at_window_end() -> None:
+    """A position still open on the last day closes with reason end_of_window."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {"2026-06-18": {CN1: 88.0}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.2, "2026-06-22": 11.0}}
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22")
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    assert run.summary.open_at_end == 0
+    assert run.trades[0].close_reason == "end_of_window"
+    assert run.summary.trades == 1
+    assert run.summary.calendar_days == 3
+    d = run.summary.to_dict()
+    assert isinstance(d, dict) and d["closed"] == 1
+
+
+def test_simulate_no_bars_means_no_entry_no_crash() -> None:
+    """No bars for the symbol at all → nothing enters, nothing closes, no crash."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 88.0}}
+    data = _data(calendar, scores, {})
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-19")
+    run = simulate(config, data=data)
+    assert run.summary.closed == 0
+    assert run.summary.open_at_end == 0
+    assert run.summary.trades == 0
+
+
+def test_simulate_filters_other_market_symbols() -> None:
+    """HK symbol must never enter a CN-config simulation."""
+    calendar = ["2026-06-18"]
+    scores = {"2026-06-18": {"CN:600001": 88.0, "HK:00700": 95.0}}
+    prices = {
+        "600001.SH": {"2026-06-18": 10.0},
+        "00700.HK": {"2026-06-18": 480.0},
+    }
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-18")
+    run = simulate(config, data=data)
+    assert run.summary.trades == 1
+    assert run.trades[0].symbol == "CN:600001"
+
+
+def test_simulate_skips_entry_without_price() -> None:
+    calendar = ["2026-06-18"]
+    scores = {"2026-06-18": {CN1: 88.0}}
+    data = _data(calendar, scores, {"600001.SH": {"2026-06-17": 10.0}})
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-18")
+    run = simulate(config, data=data)
+    assert run.summary.trades == 0
+
+
+def test_calendar_days_between_helpers() -> None:
+    from data_sync_service.service.backtest_engine import _calendar_days_between
+
+    assert _calendar_days_between("2026-06-18", "2026-06-18") == 0
+    assert _calendar_days_between("2026-06-18", "2026-06-22") == 4
+    assert _calendar_days_between("not-a-date", "2026-06-22") == 0
+    assert _calendar_days_between("2026-06-18", "bad") == 0
+
+
+import pytest
+
+
+@pytest.mark.requires_postgres
+def test_backtest_data_loads_from_db() -> None:
+    """BacktestData real-DB path: calendar + scores + bars (dev DB, CN)."""
+    from data_sync_service.service.backtest_engine import BacktestData, BacktestConfig
+
+    config = BacktestConfig(start_date="2026-07-27", end_date="2026-07-31")
+    data = BacktestData(config)
+    assert data.calendar, "dev DB should have bars in the window"
+    assert data.close_by_ts_day, "bars should map to closes"
+    # every calendar day present as key in some close map is not required,
+    # but scores must exist for at least one day (watchlist_score_daily)
+    assert data.scores_by_day

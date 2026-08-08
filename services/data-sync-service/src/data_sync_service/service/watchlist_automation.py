@@ -91,7 +91,9 @@ def get_top_5d_industry_names(as_of_date: str | None = None, *, top_n: int = 5) 
         return set()
     n = max(1, int(top_n))
     sums = get_sum_by_industry_for_dates(dates_5)
-    return {str(x.get("industry_name") or "") for x in sums[:n] if x.get("industry_name")}
+    # strip() mirrors the ordered variant below — unstripped names would
+    # silently break the exact-match GC comparison in should_remove_symbol.
+    return {str(x.get("industry_name") or "").strip() for x in sums[:n] if x.get("industry_name")}
 
 
 def get_top_5d_industry_names_ordered(as_of_date: str | None = None, *, top_n: int = 5) -> list[str]:

@@ -547,3 +547,324 @@ def test_list_fallback_universe_empty_top5(monkeypatch) -> None:
     assert out["symbols"] == []
     assert out["count"] == 0
     assert out["truncated"] is False
+
+
+def test_get_top_5d_industry_names_empty_when_no_flow_date(monkeypatch) -> None:
+    monkeypatch.setattr(wa, "resolve_effective_as_of", lambda x: None)
+    assert wa.get_top_5d_industry_names(as_of_date="2026-06-18") == set()
+    assert wa.get_top_5d_industry_names_ordered(as_of_date="2026-06-18") == []
+
+
+def test_get_top_5d_industry_names_ordered_rank(monkeypatch) -> None:
+    monkeypatch.setattr(
+        wa, "resolve_effective_as_of", lambda x: "2026-06-18"
+    )
+    monkeypatch.setattr(
+        wa, "trade_dates_upto", lambda d, n, fallback_dates_fn=None: ["2026-06-12", "2026-06-18"]
+    )
+    monkeypatch.setattr(
+        wa,
+        "get_sum_by_industry_for_dates",
+        lambda dates: [
+            {"industry_name": " 银行 "},
+            {"industry_name": ""},
+            {"industry_name": "半导体"},
+        ],
+    )
+    out = wa.get_top_5d_industry_names_ordered(as_of_date="2026-06-18", top_n=5)
+    assert out == ["银行", "半导体"]
+    assert wa.get_top_5d_industry_names(as_of_date="2026-06-18") == {"银行", "半导体"}
+
+
+def test_list_fallback_universe_filters_defense_and_caps(monkeypatch) -> None:
+    monkeypatch.setattr(
+        wa,
+        "get_top_5d_industry_names_ordered",
+        lambda as_of_date=None, top_n=5: ["半导体", "电力", "电子", "煤炭"],
+    )
+
+    def fake_search(keyword: str, limit: int) -> list[dict]:
+        if keyword == "半导体":
+            return [{"symbol": f"CN:30000{i}", "name": f"s{i}"} for i in range(3)]
+        if keyword == "电子":
+            return [{"symbol": f"CN:00000{i}", "name": f"b{i}"} for i in range(5)]
+        if keyword == "煤炭":
+            return [{"symbol": f"CN:60000{i}", "name": f"m{i}"} for i in range(4)]
+        return []
+
+    monkeypatch.setattr(
+        "data_sync_service.db.stock_eastmoney_industry.search_stocks_by_industry_keyword",
+        fake_search,
+    )
+    out = wa.list_fallback_universe_symbols(max_total=6, per_industry=4, top_n=5)
+    assert "电力" in out["skippedDefense"]
+    assert out["industries"] == ["半导体", "电子"]
+    assert out["truncated"] is True
+    assert len(out["symbols"]) == 6
+    assert out["count"] == 6
+
+
+def test_cn_symbol_to_ts_code_brushes() -> None:
+    assert wa._cn_symbol_to_ts_code("CN:600000") == "600000.SH"
+    assert wa._cn_symbol_to_ts_code("CN:000021") == "000021.SZ"
+    assert wa._cn_symbol_to_ts_code("HK:700") == "00700.HK"
+    assert wa._cn_symbol_to_ts_code("ETF:510300") == "510300.SH"
+    assert wa._cn_symbol_to_ts_code("ETF:159915") == "159915.SZ"
+    assert wa._cn_symbol_to_ts_code("CN:12345") is None
+    assert wa._cn_symbol_to_ts_code("ETF:ABC123") is None
+    assert wa._cn_symbol_to_ts_code("") is None
+
+
+def test_record_score_snapshots_skips_invalid_rows(monkeypatch) -> None:
+    monkeypatch.setattr(
+        wa,
+        "compute_trendok_for_symbols",
+        lambda symbols, realtime=False: [
+            {"symbol": "CN:600000", "asOfDate": "2026-06-18", "score": 20.0, "values": {"emIndustry": "银行"}},
+            {"symbol": "", "asOfDate": "2026-06-18", "score": 10.0},  # no symbol → skip
+            {"symbol": "CN:600001", "asOfDate": "", "score": 30.0},   # no asOfDate → today
+            "not-a-dict",                                             # skip
+        ],
+    )
+    captured: list[list[dict]] = []
+    monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: captured.append(rows) or len(rows))
+    td, count, rows = wa.record_score_snapshots(["CN:600000", "CN:600001"])
+    assert td == "2026-06-18"
+    assert count == 2
+    assert captured[0][0]["industry"] == "银行"
+    assert captured[0][1]["trade_date"] == wa._shanghai_today_iso()
+
+
+def test_run_watchlist_automation_research_channel(monkeypatch) -> None:
+    monkeypatch.setattr(wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: [])
+    monkeypatch.setattr(wa, "sync_cn_industry_fund_flow", lambda **kwargs: {"ok": True})
+    monkeypatch.setattr(wa, "_sync_screeners_step", lambda **kwargs: {"ok": True})
+    monkeypatch.setattr(wa, "list_registry", lambda: [])
+    monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: 0)
+    monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: "run-r")
+    monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None, top_n=5: {"银行"})
+    monkeypatch.setattr(
+        wa, "get_last_n_trading_dates", lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"]
+    )
+    monkeypatch.setattr(
+        wa,
+        "load_catalyst_window",
+        lambda add_limit=200: ({"items": [], "total": 0}, set()),
+    )
+    monkeypatch.setattr(wa, "_resolve_em_industries_for_symbols", lambda symbols: {})
+    monkeypatch.setattr(wa, "get_scores_for_symbol", lambda symbol, trade_dates: [])
+
+    research_calls: dict = {}
+
+    def fake_research(limit: int = 100) -> dict:
+        research_calls["limit"] = limit
+        return {
+            "stalenessBasis": "test",
+            "maxAgeDays": 14,
+            "total": 1,
+            "items": [
+                {
+                    "symbol": "CN:600999",
+                    "name": "Research Pick",
+                    "catalystScore": 88.0,
+                    "industryName": "银行",
+                    "articles": [{"catalystGrade": "S"}],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(wa, "build_research_catalyst_payload", fake_research)
+
+    added_calls: dict = {}
+
+    def fake_additions(
+        catalyst_payload=None,
+        industry_by_symbol=None,
+        top_industries=None,
+        score_min=None,
+        limit=200,
+    ) -> tuple[list[dict], dict[str, int]]:
+        added_calls["score_min"] = score_min
+        return (
+            [
+                {
+                    "symbol": "CN:600999",
+                    "name": "Research Pick",
+                    "catalystScore": 88.0,
+                    "channel": "research",
+                    "source": "ALPHA",
+                }
+            ],
+            {},
+        )
+
+    monkeypatch.setattr(wa, "compute_alpha_additions", fake_additions)
+
+    result = wa.run_watchlist_automation(trigger="scheduled", force=True)
+    assert result["skipped"] is False
+    assert research_calls["limit"] == 100
+    assert result["meta"]["researchCandidates"] == 1
+    assert result["meta"]["researchRejected"] == {}
+
+
+def test_normalize_trade_date_variants() -> None:
+    assert wa._normalize_trade_date(None) is None
+    assert wa._normalize_trade_date("") is None
+    assert wa._normalize_trade_date("20260618") == "2026-06-18"
+    assert wa._normalize_trade_date("2026-06-18T00:00:00") == "2026-06-18"
+    assert wa._normalize_trade_date("garbage") == "garbage"
+
+
+def test_symbols_with_max_grade_s_ignores_non_dict_rows() -> None:
+    payload = {
+        "items": [
+            {"symbol": "600000", "articles": [{"catalystGrade": "S"}]},
+            "not-a-dict",
+            {"symbol": "600001", "articles": [{"catalystGrade": "A"}]},
+            {"symbol": "", "articles": [{"catalystGrade": "S"}]},
+        ]
+    }
+    out = wa.symbols_with_max_grade_s(payload)
+    assert out == {"CN:600000"}
+    assert wa.symbols_with_max_grade_s(None) == set()
+    assert wa.symbols_with_max_grade_s({"items": "not-a-list"}) == set()
+
+
+def test_symbols_with_max_grade_s_article_not_dict() -> None:
+    payload = {"items": [{"symbol": "600000", "articles": ["S", {"catalystGrade": "S"}]}]}
+    out = wa.symbols_with_max_grade_s(payload)
+    assert out == {"CN:600000"}
+
+
+def test_compute_removals_wraps_registry_and_trendok(monkeypatch) -> None:
+    """compute_removals: skips empty symbols, drives should_remove, filters."""
+    calls: list[tuple] = []
+
+    def fake_should(**kw):
+        calls.append(kw)
+        return kw.get("symbol") == "CN:600000", "score_low_3d_and_industry_outside_top5"
+
+    monkeypatch.setattr(wa, "should_remove_symbol", fake_should)
+    monkeypatch.setattr(wa, "_industry_from_trendok", lambda trend: trend.get("industry"))
+
+    registry = [
+        {"symbol": "CN:600000", "source": "manual", "positionPct": None},
+        {"symbol": "", "source": "manual"},
+        {"symbol": "CN:600001", "source": "alpha_radar", "positionPct": "bad-value"},
+    ]
+    trendok = {
+        "CN:600000": {"industry": "半导体"},
+        "CN:600001": {"industry": "银行"},
+    }
+    out = wa.compute_removals(
+        registry,
+        trade_dates=["2026-06-16"],
+        top_5d_industries=set(),
+        trendok_by_symbol=trendok,
+        alpha_s_symbols={"CN:600001"},
+    )
+    assert out == [{"symbol": "CN:600000", "reason": "score_low_3d_and_industry_outside_top5"}]
+    # only 2 calls: empty symbol skipped; the alpha_s symbol still evaluated
+    assert len(calls) == 2
+    assert calls[0]["symbol"] == "CN:600000"
+
+
+def test_industry_from_trendok_em_preferred_then_row() -> None:
+    assert wa._industry_from_trendok({"values": {"emIndustry": "半导体"}}) == "半导体"
+    assert wa._industry_from_trendok({"values": {"em_industry": "银行"}, "industry": "煤炭"}) == "银行"
+    assert wa._industry_from_trendok({"values": {}, "industry": " 医药 "}) == "医药"
+    assert wa._industry_from_trendok({"values": None, "industry": None}) is None
+
+
+def test_resolve_em_industries_for_symbols_maps_cn_only(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "data_sync_service.service.eastmoney_industry.lookup_em_industries_for_ts_codes",
+        lambda codes: {"600000.SH": " 银行 ", "00700.HK": "资讯科技"},
+    )
+    out = wa._resolve_em_industries_for_symbols(
+        ["CN:600000", "HK:700", "ETF:510300", "bad-symbol"]
+    )
+    assert out == {"CN:600000": "银行", "HK:700": "资讯科技"}
+    # ETF:510300 / bad-symbol are dropped by _cn_symbol_to_ts_code
+
+
+def test_precheck_skips_on_non_trading_day(monkeypatch) -> None:
+    monkeypatch.setattr(wa, "_cn_today", lambda: __import__("datetime").date(2026, 8, 8))
+    monkeypatch.setattr(wa, "is_trading_day", lambda ex, d: False)
+    assert wa._precheck(force=False) == (True, "not_trading_day")
+    assert wa._precheck(force=True) == (False, None)
+
+
+def test_precheck_waits_for_close_sync(monkeypatch) -> None:
+    monkeypatch.setattr(wa, "_cn_today", lambda: __import__("datetime").date(2026, 8, 7))
+    monkeypatch.setattr(wa, "is_trading_day", lambda ex, d: True)
+    monkeypatch.setattr(wa, "get_today_run", lambda job: None)
+    assert wa._precheck(force=False) == (True, "close_sync_not_ready")
+
+
+def test_get_automation_helpers_delegate(monkeypatch) -> None:
+    monkeypatch.setattr(wa, "get_pending_run", lambda td: {"tradeDate": "2026-08-07"})
+    assert wa.get_automation_pending("2026-08-07")["tradeDate"] == "2026-08-07"
+
+    monkeypatch.setattr(
+        "data_sync_service.db.watchlist_automation.get_latest_run", lambda: {"id": "r1"}
+    )
+    assert wa.get_automation_latest()["id"] == "r1"
+
+    monkeypatch.setattr(
+        "data_sync_service.db.watchlist_automation.list_recent_runs",
+        lambda limit: [{"id": "r1"}],
+    )
+    assert wa.get_automation_runs(limit=3) == [{"id": "r1"}]
+
+    monkeypatch.setattr(
+        "data_sync_service.db.watchlist_automation.ack_run",
+        lambda rid, screener_added=None, funnel=None: {"id": rid},
+    )
+    assert wa.ack_automation_run("r1", screener_added=1)["id"] == "r1"
+
+    monkeypatch.setattr(wa, "get_run_by_id", lambda rid: {"id": rid})
+    assert wa.get_automation_run("r1")["id"] == "r1"
+
+
+def test_run_watchlist_automation_skipped_path(monkeypatch) -> None:
+    monkeypatch.setattr(wa, "_precheck", lambda force=False: (True, "not_trading_day"))
+    monkeypatch.setattr(wa, "insert_automation_run", lambda **kw: "run-s")
+    out = wa.run_watchlist_automation(trigger="scheduled", force=False)
+    assert out["skipped"] is True
+    assert out["skipReason"] == "not_trading_day"
+    assert out["remove"] == []
+
+
+def test_run_watchlist_automation_industry_sync_failure_is_meta(monkeypatch) -> None:
+    """Industry sync raising must land in meta, not crash the run."""
+    monkeypatch.setattr(wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: [])
+    monkeypatch.setattr(
+        wa, "sync_cn_industry_fund_flow", lambda **kw: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+    monkeypatch.setattr(wa, "_sync_screeners_step", lambda **kw: {"ok": True, "failed": 0})
+    monkeypatch.setattr(wa, "list_registry", lambda: [])
+    monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: 0)
+    monkeypatch.setattr(wa, "insert_automation_run", lambda **kw: "run-2")
+    monkeypatch.setattr(wa, "get_top_5d_industry_names", lambda as_of_date=None, top_n=5: set())
+    monkeypatch.setattr(
+        wa, "get_last_n_trading_dates", lambda n, end=None: ["2026-06-16", "2026-06-17", "2026-06-18"]
+    )
+    monkeypatch.setattr(
+        wa, "load_catalyst_window", lambda add_limit=200: ({"items": [], "total": 0}, set())
+    )
+    monkeypatch.setattr(wa, "_resolve_em_industries_for_symbols", lambda symbols: {})
+    monkeypatch.setattr(wa, "get_scores_for_symbol", lambda symbol, trade_dates: [])
+    monkeypatch.setattr(
+        wa, "build_research_catalyst_payload", lambda limit=100: {"items": [], "total": 0}
+    )
+    monkeypatch.setattr(
+        wa,
+        "compute_alpha_additions",
+        lambda **kw: ([], {}),
+    )
+
+    out = wa.run_watchlist_automation(trigger="scheduled", force=True)
+    assert out["skipped"] is False
+    assert out["meta"]["industrySync"] == {"ok": False, "error": "boom"}
+    assert out["meta"]["screenerSync"]["ok"] is True

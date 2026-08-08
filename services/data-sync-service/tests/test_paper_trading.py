@@ -887,3 +887,156 @@ def test_holding_days_calendar_semantics() -> None:
     assert _holding_days_for(None, "2026-08-03") == 0
     # Reverse order → clamped to 0
     assert _holding_days_for("2026-08-10", "2026-08-03") == 0
+
+
+# ---------------------------------------------------------------------------
+# Failure / resilience paths (coverage wave 1)
+# ---------------------------------------------------------------------------
+
+
+def test_run_intake_handles_list_changes_failure() -> None:
+    from data_sync_service.service.paper_trading import run_intake
+
+    with patch(
+        "data_sync_service.service.paper_trading.ej_db.list_changes",
+        side_effect=RuntimeError("db down"),
+    ):
+        summary = run_intake(trade_date="2026-08-01")
+    assert summary["error"] == "ej_db.list_changes failed: db down"
+    assert summary["candidates"] == 0
+
+
+def test_run_intake_handles_registry_failure() -> None:
+    """Registry read failure must not abort intake (fail open, no positions known)."""
+    fake_journal = [
+        {"symbol": "CN:000001", "field": "action", "newValue": "BUY"},
+    ]
+    with (
+        patch(
+            "data_sync_service.service.paper_trading.ej_db.list_changes",
+            return_value=fake_journal,
+        ),
+        patch(
+            "data_sync_service.db.watchlist_automation.list_registry",
+            side_effect=RuntimeError("db down"),
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.fetch_last_ohlcv_batch",
+            return_value={"000001.SZ": [("2026-08-01", 12.0, 12.0, 11.9, 12.0, 1000)]},
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.insert_paper_trade",
+            return_value={"id": "x"},
+        ) as mock_insert,
+    ):
+        from data_sync_service.service.paper_trading import run_intake
+
+        summary = run_intake(trade_date="2026-08-01")
+    assert summary["inserted"] == 1
+    assert "error" not in summary
+    mock_insert.assert_called_once()
+
+
+def test_run_intake_skips_candidates_without_close_price() -> None:
+    fake_journal = [
+        {"symbol": "CN:000001", "field": "action", "newValue": "BUY"},
+    ]
+    with (
+        patch(
+            "data_sync_service.service.paper_trading.ej_db.list_changes",
+            return_value=fake_journal,
+        ),
+        patch(
+            "data_sync_service.db.watchlist_automation.list_registry",
+            return_value=[],
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.fetch_last_ohlcv_batch",
+            return_value={},  # no bars at all → no close price
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.insert_paper_trade",
+            return_value={"id": "x"},
+        ) as mock_insert,
+    ):
+        from data_sync_service.service.paper_trading import run_intake
+
+        summary = run_intake(trade_date="2026-08-01")
+    assert summary["candidates"] == 1
+    assert summary["inserted"] == 0
+    assert summary["skippedReasons"].get("no-close-price") == 1
+    mock_insert.assert_not_called()
+
+
+def test_run_intake_counts_insert_errors_as_skipped() -> None:
+    fake_journal = [
+        {"symbol": "CN:000001", "field": "action", "newValue": "BUY"},
+    ]
+    with (
+        patch(
+            "data_sync_service.service.paper_trading.ej_db.list_changes",
+            return_value=fake_journal,
+        ),
+        patch(
+            "data_sync_service.db.watchlist_automation.list_registry",
+            return_value=[],
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.fetch_last_ohlcv_batch",
+            return_value={"000001.SZ": [("2026-08-01", 12.0, 12.0, 11.9, 12.0, 1000)]},
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.insert_paper_trade",
+            side_effect=RuntimeError("constraint"),
+        ),
+    ):
+        from data_sync_service.service.paper_trading import run_intake
+
+        summary = run_intake(trade_date="2026-08-01")
+    assert summary["skipped"] == 1
+    assert summary["skippedReasons"].get("insert-error") == 1
+
+
+def test_run_update_handles_open_trades_failure() -> None:
+    from data_sync_service.service.paper_trading import run_update
+
+    with patch(
+        "data_sync_service.service.paper_trading.pt_db.get_open_paper_trades",
+        side_effect=RuntimeError("db down"),
+    ):
+        summary = run_update()
+    assert summary["error"] == "get_open_paper_trades failed: db down"
+    assert summary["updated"] == 0
+
+
+def test_run_update_registry_failure_never_pool_exits() -> None:
+    """Fail-open: when the registry read fails, pool_exit must not close anything."""
+    from data_sync_service.service.paper_trading import run_update
+
+    open_row = {**_OPEN_ROW, "closeReason": None, "entryDate": "2026-08-08"}
+    with (
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.get_open_paper_trades",
+            return_value=[open_row],
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.fetch_last_ohlcv_batch",
+            return_value={"000001.SZ": [("2026-08-01", 12.0, 12.0, 11.9, 12.0, 1000)]},
+        ),
+        patch(
+            "data_sync_service.db.watchlist_automation.list_registry",
+            side_effect=RuntimeError("db down"),
+        ),
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+            return_value={"id": "row-1"},
+        ) as mock_close,
+        patch(
+            "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price",
+            return_value=None,
+        ),
+    ):
+        summary = run_update(today_iso="2026-08-08")
+    # symbol not in registry (None) → must not hit the pool_exit branch
+    assert summary["updated"] == 1
+    mock_close.assert_not_called()

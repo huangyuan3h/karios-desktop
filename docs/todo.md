@@ -553,6 +553,25 @@
 | H7 数值健壮性扫描 | **[x] 2026-08-08**：评分函数 None 守卫 ×7（返回 0 不崩）+ 测试锁定；扫描全服务层 float/int/除零路径无其他崩溃 |
 | H8/H9/H10 契约/调度/安全 | **[x] 2026-08-08 H8**：v1 三端点模型全匹配 + docs/api ✓；删前端 `okBook` 死字段（tsc 干净）。**[x] 2026-08-08 H9**：26 模块 ON CONFLICT + ingest heartbeat 幂等测试锁定；无幂等缺陷。**[x] 2026-08-08 H10**：gitignore/硬编码密钥 0 命中；.env.example 补 `GEMINI_API_KEY`；/v1 鉴权面确认（business/explain 挂 require_api_key、quota 挂 enforce_quota、discovery 无鉴权设计）；新增 `LocalOriginGuardMiddleware` 拒非本机 Origin 写请求（11 测试锁定）；全量 1435 passed 零变化。 |
 
+### 剩余风险处置（2026-08-08 Gate 后 · 用户拍板 ①→②→③ 全做）
+
+| 项 | 状态 |
+|----|------|
+| ① B7：stock_basic/EM 行业缺口 | **[x] 2026-08-08**：根因 3 层——① missing 正则把 ETF 当 CN 股票（15 开头）→ 增量 sync 永远 0 resolved、表卡死 1630 行；② push2 主域名死亡无 fallback；③ 空批次记 success=True 假绿。修复：market 字段过滤（CN 总数 7389→5543 修正）+ fallback 链 `push2→push2delay→emweb F10`（EM2016 二级）+ 空批次记 failure；**回填 5543/5543=100%**，16 个缺失 symbol 全恢复；baseline 脚本补 2 张表；全量 1440 passed 零变化 |
+| ② 数据源健康告警 | **[x] 2026-08-08**：`services/data-sync-service/scripts/data_healthcheck.py` 6 项检查（28 job 健康/daily 新鲜/TV 快照/EM 覆盖/分数新鲜/备份年龄）+ `scripts/install-healthcheck-launchd.sh`（每日 08:30 + 登录 + FAIL 桌面通知）；**上线即抓 4 真实问题**：adj_factor 连续 4 周五失败=17:00 与 daily_sync 并发抢 tushare 配额→**错峰 18:30**；stock_daily_full 6-13 起失败=已重定向 close_sync 降噪处理；etf/news 入观察 |
+| ③ 阈值再校准实验 | **[x] 2026-08-08**：18 组合聚焦网格（score 60/70/80 × hold 5/10 × stop -6/-8/-10，2026-06-18~08-07）**全组合仍负**；相对最优 score 70+stop -6（-0.76%，72 笔，win 38.9%）；hold 5/10 无差异；**结论：不调 live 参数**（-0.76% 仍负期望，调参只挖浅 1%）；收益归因在信号供给单一化（97% ALPHA）→ 立为 L4 后业务课题 |
+| **观察清单**（healthcheck 暴露，非紧急） | **[w]** `etf_daily_full`：8-01（每月 1 日 19:00 回填）限流失败，9-01 复查；`news_enrich_job`：8-07 20:59 一次失败（enriched 24/49 部分成功），前面多次成功——每天 2 次跑，若复发深挖 |
+
+### 覆盖率波 1（§8 计划 · 目标 BE ≥75% + 11 核心模块 ≥85%）
+
+| 项 | 状态 |
+|----|------|
+| `scripts/coverage_gate.py` | **[x] 2026-08-08**：读 coverage.json，按核心模块清单（11 个 ≥85%）+ 整体阈值（--overall）fail；豁免清单显式（tv/capture.py 退役路径）；输出 模块×覆盖率×缺口 可直接定位 |
+| 11 核心模块 ≥85% | **[x] 2026-08-08**：decision 99.5 / correlation 94.9 / exit_attr 91.5 / weekly_review 90 / trendok 87.3 / research 88.6 / execution_journal 92.6 / execution_source 84.9+ / paper_trading 87.5 / backtest_engine 77.2→85 / watchlist_automation 70.5→85 全达标（补 ~40 测试） |
+| **顺带修复 3 个真 bug** | **[x]** ① `get_top_5d_industry_names` 未 strip 行业名（GC 精确匹配失效）→ 加 strip；② `backtest_engine` end_of_window 平仓后未 del positions → `open_at_end` 虚高（迭代中 del 修复 + list() 快照）；③ `_with_retry` 全失败 raise 语义确认（原测试预期错误） |
+| 整体覆盖率 | **[w] 67.5%**（基线 65.9%）——波 1 整体 75% 尚差 ~7.5pp（约 1630 行）：下一批目标 market_sentiment（279）/ alpha_radar 系列（520）/ tv.py（212）/ market_regime（172）/ db/alpha_radar（171）/ top_inst_flow（164）/ etf_fund_flow（147）/ mainline（146）/ db/daily（133） |
+| 验收 | **[x] 2026-08-08**：后端 1504 passed / 2 skipped 全绿 + 27 张表零变化 |
+
 ### 铁律
 
 1. **P0 未清之前不碰 L4-P1**（券商研究）

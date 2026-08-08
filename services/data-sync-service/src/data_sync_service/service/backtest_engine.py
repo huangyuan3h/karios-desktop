@@ -300,7 +300,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 del positions[sym]
 
     # 3) Close leftovers at the window end (engine-only reason).
-    for sym, pos in positions.items():
+    for sym, pos in list(positions.items()):
         closes = data.close_by_ts_day.get(pos["ts_code"])
         last_day = data.calendar[-1] if data.calendar else config.end_date
         final_px = None
@@ -332,6 +332,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 score_at_entry=pos.get("score_at_entry"),
             )
         )
+        # Must drop the closed position or open_at_end would count it too
+        # (it counts only the positions we could not price at window end).
+        del positions[sym]
     # Position dict is discarded; open_at_end = count we could not price.
     open_at_end = len(positions)
 
