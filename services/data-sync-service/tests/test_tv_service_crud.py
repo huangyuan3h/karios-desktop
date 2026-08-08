@@ -227,3 +227,216 @@ def test_screener_history_no_snapshots_uses_today() -> None:
         out = tv_svc.screener_history(screener_id="s1", days=7)
     assert len(out["rows"]) == 1
     assert out["rows"][0]["am"] is None
+"""tv.py: history, validation, dispatch, migration."""
+
+import sqlite3
+
+import pytest
+from fastapi import HTTPException
+
+from data_sync_service.service import tv as tvmod
+
+
+def test_parse_iso_datetime() -> None:
+    assert tvmod._parse_iso_datetime("2026-08-07T10:30:00Z") is not None
+    assert tvmod._parse_iso_datetime("2026-08-07T10:30:00+08:00") is not None
+    assert tvmod._parse_iso_datetime("  ") is None
+    assert tvmod._parse_iso_datetime("garbage") is None
+
+
+def test_tv_local_date_and_slot() -> None:
+    d, slot = tvmod._tv_local_date_and_slot("2026-08-07T03:30:00Z")  # 11:30 +08
+    assert slot == "am"
+    d2, slot2 = tvmod._tv_local_date_and_slot("2026-08-07T04:00:00Z")  # 12:00 +08
+    assert slot2 == "pm"
+    d3, slot3 = tvmod._tv_local_date_and_slot("")
+    assert slot3 == "unknown"
+
+
+def test_screener_history_basic(monkeypatch) -> None:
+    monkeypatch.setattr(tvmod, "ensure_seeded", lambda: None)
+    monkeypatch.setattr(tvmod.tvdb, "fetch_screener_by_id", lambda sid: {"id": "s1", "name": "N"})
+    monkeypatch.setattr(tvmod.tvdb, "list_snapshots_for_screener_full", lambda sid, limit=200: [
+        {"snapshotId": "a", "capturedAt": "2026-08-07T02:00:00Z", "rowCount": 5, "screenTitle": "T", "filters": ["x > 1"]},
+        {"snapshotId": "b", "capturedAt": "2026-08-07T06:00:00Z", "rowCount": 3, "screenTitle": "T", "filters": []},
+        {"snapshotId": "c", "capturedAt": "2026-08-06T04:00:00Z", "rowCount": 9, "screenTitle": "T", "filters": []},
+    ])
+    out = tvmod.screener_history(screener_id="s1", days=10)
+    assert out["screenerId"] == "s1"
+    assert out["days"] == 10
+    assert len(out["rows"]) == 2
+    am_row = [r for r in out["rows"] if r["date"] == "2026-08-07"][0]
+    assert am_row["am"]["snapshotId"] == "a"
+    assert am_row["pm"]["snapshotId"] == "b"
+    assert am_row["pm"]["rowCount"] == 3
+
+
+def test_screener_history_validation(monkeypatch) -> None:
+    monkeypatch.setattr(tvmod, "ensure_seeded", lambda: None)
+    with pytest.raises(HTTPException) as e1:
+        tvmod.screener_history(screener_id="  ")
+    assert e1.value.status_code == 400
+    monkeypatch.setattr(tvmod.tvdb, "fetch_screener_by_id", lambda sid: None)
+    with pytest.raises(HTTPException) as e2:
+        tvmod.screener_history(screener_id="s1")
+    assert e2.value.status_code == 404
+
+
+def test_screener_history_no_data_uses_today(monkeypatch) -> None:
+    monkeypatch.setattr(tvmod, "ensure_seeded", lambda: None)
+    monkeypatch.setattr(tvmod.tvdb, "fetch_screener_by_id", lambda sid: {"id": "s1", "name": "N"})
+    monkeypatch.setattr(tvmod.tvdb, "list_snapshots_for_screener_full", lambda sid, limit=200: [])
+    out = tvmod.screener_history(screener_id="s1", days=999)
+    assert out["days"] == 30
+    assert len(out["rows"]) == 1
+
+
+def test_validate_screener_for_capture(monkeypatch) -> None:
+    monkeypatch.setattr(tvmod, "ensure_seeded", lambda: None)
+    with pytest.raises(HTTPException) as e0:
+        tvmod._validate_screener_for_capture("")
+    assert e0.value.status_code == 400
+    monkeypatch.setattr(tvmod.tvdb, "fetch_screener_by_id", lambda sid: None)
+    with pytest.raises(HTTPException) as e1:
+        tvmod._validate_screener_for_capture("s1")
+    assert e1.value.status_code == 404
+    monkeypatch.setattr(tvmod.tvdb, "fetch_screener_by_id", lambda sid: {"enabled": False})
+    with pytest.raises(HTTPException) as e2:
+        tvmod._validate_screener_for_capture("s1")
+    assert e2.value.status_code == 409
+    monkeypatch.setattr(tvmod.tvdb, "fetch_screener_by_id", lambda sid: {"enabled": True, "mode": "chrome", "url": ""})
+    with pytest.raises(HTTPException) as e3:
+        tvmod._validate_screener_for_capture("s1")
+    assert e3.value.status_code == 400
+    monkeypatch.setattr(tvmod.tvdb, "fetch_screener_by_id", lambda sid: {"enabled": True, "mode": "chrome", "url": "ftp://x"})
+    with pytest.raises(HTTPException) as e4:
+        tvmod._validate_screener_for_capture("s1")
+    assert e4.value.status_code == 400
+    monkeypatch.setattr(tvmod.tvdb, "fetch_screener_by_id", lambda sid: {"enabled": True, "mode": "api", "url": ""})
+    assert tvmod._validate_screener_for_capture("s1") is not None
+
+
+def test_migrate_from_sqlite(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "karios.sqlite3"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE tv_screeners (id TEXT, name TEXT, url TEXT, enabled INTEGER, created_at TEXT, updated_at TEXT)")
+    conn.execute("CREATE TABLE tv_screener_snapshots (id TEXT, screener_id TEXT, captured_at TEXT, row_count INTEGER, rows_json TEXT)")
+    conn.execute("INSERT INTO tv_screeners VALUES ('s1', 'N1', 'http://a', 1, 't0', 't1')")
+    conn.execute("INSERT INTO tv_screener_snapshots VALUES ('p1', 's1', '2026-08-07T00:00:00Z', 4, '{\"rows\": [1]}')")
+    conn.execute("INSERT INTO tv_screener_snapshots VALUES ('p2', 's1', '2026-08-07T01:00:00Z', 2, 'not-json')")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(tvmod, "ensure_seeded", lambda: None)
+    upserted = []
+    monkeypatch.setattr(tvmod.tvdb, "upsert_screener", lambda **kw: upserted.append(("s", kw["screener_id"], kw["enabled"])))
+    monkeypatch.setattr(tvmod.tvdb, "upsert_snapshot", lambda **kw: upserted.append(("p", kw["snapshot_id"], kw["payload"])))
+
+    out = tvmod.migrate_from_sqlite(sqlite_path=str(db_path))
+    assert out["screenersUpserted"] == 1
+    assert out["snapshotsUpserted"] == 2
+    assert upserted[0][2] is True
+    payload = [u for u in upserted if u[0] == "p" and u[1] == "p2"][0][2]
+    assert payload == {}
+
+    with pytest.raises(HTTPException) as e:
+        tvmod.migrate_from_sqlite(sqlite_path=str(tmp_path / "missing.sqlite3"))
+    assert e.value.status_code == 404
+
+
+def test_dispatch_capture_api_ok(monkeypatch) -> None:
+    cap = type("C", (), {"url": "scanner_api://x", "captured_at": "t", "screen_title": "T", "filters": ["a"], "headers": [], "rows": []})()
+    monkeypatch.setattr(tvmod, "_capture_via_api", lambda **kw: (cap, "api"))
+    out = tvmod._dispatch_capture(mode="api", url="scanner_api://api-screener", filter_json=[{"left": "a"}], api_columns=["col"])
+    assert out[1] == "api"
+
+
+def test_dispatch_capture_api_backstops(monkeypatch) -> None:
+    with pytest.raises(HTTPException) as e:
+        tvmod._dispatch_capture(mode="api", url="", filter_json=None, api_columns=None)
+    assert e.value.status_code == 409
+    with pytest.raises(HTTPException) as e2:
+        tvmod._dispatch_capture(mode="api", url="", filter_json=[{"left": "x"}], api_columns=None)
+    assert e2.value.status_code in (409, 422)
+
+
+def test_dispatch_capture_api_fallback_chain(monkeypatch) -> None:
+    class Transient(tvmod.scanner_api.TransientApiError):
+        pass
+
+    cap = object()
+    monkeypatch.setattr(tvmod, "_capture_via_api", lambda **kw: (_ for _ in ()).throw(Transient("t")))
+    monkeypatch.setattr(tvmod, "_capture_via_ego_lite", lambda url: (cap, "ego_lite"))
+    out = tvmod._dispatch_capture(mode="api", url="http://x", filter_json=[{"left": "a"}], api_columns=[])
+    assert out[1] == "ego_lite"
+
+    def ego_fail(url):
+        raise Transient("no playwright")
+
+    monkeypatch.setattr(tvmod, "_capture_via_ego_lite", ego_fail)
+    with pytest.raises(HTTPException) as e:
+        tvmod._dispatch_capture(mode="api", url="http://x", filter_json=[{"left": "a"}], api_columns=[])
+    assert e.value.status_code == 502
+
+    monkeypatch.setattr(tvmod, "_capture_via_api", lambda **kw: (_ for _ in ()).throw(tvmod.scanner_api.PermanentApiError("p")))
+    with pytest.raises(HTTPException) as e2:
+        tvmod._dispatch_capture(mode="api", url="http://x", filter_json=[{"left": "a"}], api_columns=[])
+    assert e2.value.status_code == 422
+
+
+def test_dispatch_capture_chrome(monkeypatch) -> None:
+    cap = object()
+    monkeypatch.setattr(tvmod, "_capture_via_chrome", lambda url: (cap, "chrome"))
+    assert tvmod._dispatch_capture(mode="chrome", url="http://x", filter_json=None, api_columns=None)[1] == "chrome"
+
+    with pytest.raises(HTTPException) as e:
+        tvmod._dispatch_capture(mode="chrome", url="", filter_json=None, api_columns=None)
+    assert e.value.status_code == 409
+
+    monkeypatch.setattr(tvmod, "_capture_via_chrome", lambda url: (_ for _ in ()).throw(RuntimeError("Cannot locate screener grid/table")))
+    with pytest.raises(HTTPException) as e2:
+        tvmod._dispatch_capture(mode="chrome", url="http://x", filter_json=None, api_columns=None)
+    assert e2.value.status_code == 409
+
+    monkeypatch.setattr(tvmod, "_capture_via_chrome", lambda url: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(HTTPException) as e3:
+        tvmod._dispatch_capture(mode="chrome", url="http://x", filter_json=None, api_columns=None)
+    assert e3.value.status_code == 500
+
+
+def test_filters_from_filter_json() -> None:
+    out = tvmod._filters_from_filter_json([
+        {"left": "market_cap_basic", "operation": "egreater", "right": 100},
+        {"left": "price", "operation": "greater", "right": {"operation": "subtract", "left": 10, "right": 2}},
+        {"left": "pe", "operation": "not_equal", "right": 0},
+    ])
+    assert len(out) == 2
+    assert out[0] == "market_cap_basic egreater 100"
+    assert out[1] == "price greater 10-2"
+
+    legacy = tvmod._filters_from_filter_json({"and": [{"left": "a", "operation": "equal", "right": 1}]})
+    assert legacy == ["a equal 1"]
+    assert tvmod._filters_from_filter_json([]) == []
+    assert tvmod._filters_from_filter_json("not-a-dict") == []
+
+
+def test_capture_via_ego_lite_paths(monkeypatch) -> None:
+    import data_sync_service.tv.ego_lite as ego_mod
+
+    cap = object()
+    monkeypatch.setattr(ego_mod, "capture_screener_ego_lite_sync", lambda url: cap)
+    assert tvmod._capture_via_ego_lite(url="http://x") == (cap, "ego_lite")
+
+    def fail(url):
+        raise ego_mod.EgoLiteUnavailable("no")
+
+    monkeypatch.setattr(ego_mod, "capture_screener_ego_lite_sync", fail)
+    with pytest.raises(tvmod.scanner_api.TransientApiError):
+        tvmod._capture_via_ego_lite(url="http://x")
+
+
+def test_capture_via_chrome(monkeypatch) -> None:
+    cap = object()
+    monkeypatch.setattr(tvmod, "_ensure_cdp_ready", lambda: "http://127.0.0.1:9222")
+    monkeypatch.setattr(tvmod, "capture_screener_over_cdp_sync", lambda cdp_url, url: cap)
+    assert tvmod._capture_via_chrome(url="http://x") == (cap, "chrome")

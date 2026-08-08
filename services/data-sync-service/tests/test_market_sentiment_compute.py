@@ -246,3 +246,211 @@ def test_fetch_cn_failed_limitup_rate_darwin_raises_akshare_disabled(monkeypatch
     out = ms.fetch_cn_failed_limitup_rate(__import__("datetime").date(2026, 8, 4))
     assert out["failed_rate"] == 0.0
     assert "akshare_disabled_on_darwin" in out["raw"].get("akshareError", "")
+"""market_sentiment wave-3: tushare/akshare fetchers + compute driver."""
+
+import datetime
+import math
+import sys
+
+import pandas as pd
+
+from data_sync_service.service import market_sentiment as ms
+
+
+def test_finite_and_try_float() -> None:
+    assert ms._finite_float(1.5) == 1.5
+    assert ms._finite_float("x", 7.0) == 7.0
+    assert ms._finite_float(math.inf) == 0.0
+    assert ms._try_float("3.0") == 3.0
+    assert ms._try_float(math.nan) is None
+    assert ms._try_float("bad") is None
+
+
+def test_realtime_pct_chg() -> None:
+    assert ms._realtime_pct_chg({"pct_chg": "1.2"}) == 1.2
+    assert ms._realtime_pct_chg({"price": 11.0, "pre_close": 10.0}) == 10.0
+    assert ms._realtime_pct_chg({"price": 10.0}) is None
+    assert ms._realtime_pct_chg({}) is None
+
+
+def test_with_retry_success_and_retry(monkeypatch) -> None:
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RuntimeError("boom")
+        return "ok"
+
+    monkeypatch.setattr(ms, "time", type("T", (), {"sleep": staticmethod(lambda s: None)})())
+    assert ms._with_retry(flaky, tries=3) == "ok"
+    assert calls["n"] == 3
+
+    def always_fail():
+        raise RuntimeError("boom2")
+
+    try:
+        ms._with_retry(always_fail, tries=3)
+        assert False
+    except RuntimeError:
+        pass
+
+
+def test_tushare_yesterday_limitup_codes(monkeypatch) -> None:
+    class _Pro:
+        def __init__(self):
+            self.calls = []
+
+        def limit_list_d(self, **kw):
+            self.calls.append(kw)
+            raise TypeError("no such signature")
+
+        def limit_list(self, **kw):
+            self.calls.append(kw)
+            if kw.get("trade_date") == "20260805":
+                return pd.DataFrame({"ts_code": ["600000.SH", "000001.SZ"], "name": ["a", "b"]})
+            return pd.DataFrame()
+
+    pro = _Pro()
+    monkeypatch.setattr(ms, "_tushare_pro", lambda: pro)
+    monkeypatch.setattr(ms, "time", type("T", (), {"sleep": staticmethod(lambda s: None)})())
+    y, codes = ms._tushare_yesterday_limitup_codes(datetime.date(2026, 8, 7))
+    assert codes == ["600000.SH", "000001.SZ"]
+    assert y == datetime.date(2026, 8, 5)
+
+
+def test_tushare_yesterday_limitup_codes_none(monkeypatch) -> None:
+    monkeypatch.setattr(ms, "_tushare_pro", lambda: type("P", (), {"limit_list_d": lambda **kw: None})())
+    monkeypatch.setattr(ms, "time", type("T", (), {"sleep": staticmethod(lambda s: None)})())
+    y, codes = ms._tushare_yesterday_limitup_codes(datetime.date(2026, 8, 7))
+    assert y is None and codes == []
+
+
+def test_fetch_premium_tushare(monkeypatch) -> None:
+    monkeypatch.setattr(ms, "_tushare_yesterday_limitup_codes", lambda as_of: (datetime.date(2026, 8, 5), ["600000.SH", "000001.SZ"]))
+    monkeypatch.setattr(ms, "_tushare_daily_pct_chg_map", lambda as_of: {"600000.SH": 5.0, "000001.SZ": 3.0, "000002.SZ": 9.0})
+    out = ms.fetch_cn_yesterday_limitup_premium_tushare(datetime.date(2026, 8, 7))
+    assert out["premium"] == 4.0
+    assert out["count"] == 2
+    assert out["raw"]["matched"] == 2
+
+    monkeypatch.setattr(ms, "_tushare_yesterday_limitup_codes", lambda as_of: (None, []))
+    out2 = ms.fetch_cn_yesterday_limitup_premium_tushare(datetime.date(2026, 8, 7))
+    assert out2["premium"] == 0.0 and out2["count"] == 0
+
+
+def test_fetch_cn_a_spot_change_pct(monkeypatch) -> None:
+    df = pd.DataFrame({"代码": ["600000", "000001"], "涨跌幅": ["5.0%", "3.5"]})
+    ak = type("AK", (), {"stock_zh_a_spot_em": staticmethod(lambda: df)})()
+    monkeypatch.setattr(ms, "_akshare", lambda: ak)
+    out = ms._fetch_cn_a_spot_change_pct()
+    assert out == {"600000": 5.0, "000001": 3.5}
+
+
+def test_fetch_cn_a_spot_change_pct_fallback_and_fail(monkeypatch) -> None:
+    df = pd.DataFrame({"code": ["600000"], "change_pct": [2.0]})
+    ak = type("AK", (), {
+        "stock_zh_a_spot_em": staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("blocked"))),
+        "stock_zh_a_spot": staticmethod(lambda: df),
+    })()
+    monkeypatch.setattr(ms, "_akshare", lambda: ak)
+    monkeypatch.setattr(ms, "time", type("T", (), {"sleep": staticmethod(lambda s: None)})())
+    assert ms._fetch_cn_a_spot_change_pct() == {"600000": 2.0}
+
+    ak2 = type("AK", (), {})()
+    monkeypatch.setattr(ms, "_akshare", lambda: ak2)
+    try:
+        ms._fetch_cn_a_spot_change_pct()
+        assert False
+    except RuntimeError:
+        pass
+
+
+def test_fetch_premium_akshare_path(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    df = pd.DataFrame({"股票代码": ["600000", "000001"], "名称": ["a", "b"]})
+    ak = type("AK", (), {"stock_zt_pool_em": staticmethod(lambda date: df)})()
+    monkeypatch.setattr(ms, "_akshare", lambda: ak)
+    monkeypatch.setattr(ms, "_fetch_cn_a_spot_change_pct", lambda: {"600000": 4.0, "000001": 2.0})
+    monkeypatch.setattr(ms, "time", type("T", (), {"sleep": staticmethod(lambda s: None)})())
+    out = ms.fetch_cn_yesterday_limitup_premium(datetime.date(2026, 8, 7))
+    assert out["raw"]["source"] == "akshare"
+    assert out["premium"] == 3.0
+    monkeypatch.undo()
+
+
+def test_fetch_premium_akshare_fails_falls_back(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(ms, "_akshare", lambda: type("AK", (), {})())
+    monkeypatch.setattr(ms, "fetch_cn_yesterday_limitup_premium_tushare", lambda as_of: {"date": "x", "premium": 1.0, "count": 1, "raw": {}})
+    out = ms.fetch_cn_yesterday_limitup_premium(datetime.date(2026, 8, 7))
+    assert out["premium"] == 1.0
+    assert "akshareError" in out["raw"]
+
+    def boom(as_of):
+        raise RuntimeError("tushare also down")
+
+    monkeypatch.setattr(ms, "fetch_cn_yesterday_limitup_premium_tushare", boom)
+    out2 = ms.fetch_cn_yesterday_limitup_premium(datetime.date(2026, 8, 7))
+    assert out2["premium"] == 0.0
+    assert out2["raw"]["source"] == "fallback"
+    monkeypatch.undo()
+
+
+def test_fetch_premium_darwin_uses_tushare(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(ms, "fetch_cn_yesterday_limitup_premium_tushare", lambda as_of: {"date": "x", "premium": 2.5, "count": 1, "raw": {"source": "tushare"}})
+    out = ms.fetch_cn_yesterday_limitup_premium(datetime.date(2026, 8, 7))
+    assert out["premium"] == 2.5
+    monkeypatch.undo()
+
+
+def test_failed_limitup_rate_zbgc(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    df_close = pd.DataFrame({"代码": ["600000", "000001", "000002"]})
+    df_failed = pd.DataFrame({"代码": ["600003", "000004"]})
+
+    class _AK:
+        def stock_zt_pool_em(self, date):
+            return df_close
+
+        def stock_zt_pool_zbgc_em(self, date):
+            return df_failed
+
+    monkeypatch.setattr(ms, "_akshare", lambda: _AK())
+    out = ms.fetch_cn_failed_limitup_rate(datetime.date(2026, 8, 7))
+    assert out["raw"]["method"] == "zbgc_over_zbgc_plus_close"
+    assert out["failed_rate"] == 40.0  # 2 / (2+3)
+    assert out["ever_count"] == 5
+    monkeypatch.undo()
+
+
+def test_failed_limitup_rate_strong_fallback(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    df_close = pd.DataFrame({"代码": ["600000", "000001"]})
+    df_ever = pd.DataFrame({"代码": ["600000", "000001", "000002", "000003"]})
+
+    class _AK:
+        def stock_zt_pool_em(self, date):
+            return df_close
+
+        def stock_zt_pool_zbgc_em(self, date):
+            raise RuntimeError("no zbgc")
+
+        def stock_zt_pool_strong_em(self, date):
+            return df_ever
+
+    monkeypatch.setattr(ms, "_akshare", lambda: _AK())
+    out = ms.fetch_cn_failed_limitup_rate(datetime.date(2026, 8, 7))
+    assert out["raw"]["method"] == "fallback_strong_minus_close"
+    assert out["failed_rate"] == 50.0  # (4-2)/4
+    monkeypatch.undo()
+
+
+def test_failed_limitup_rate_fallback_default(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(ms, "_akshare", lambda: type("AK", (), {})())
+    out = ms.fetch_cn_failed_limitup_rate(datetime.date(2026, 8, 7))
+    assert out["failed_rate"] == 0.0
+    assert out["raw"]["source"] == "fallback"
+    monkeypatch.undo()

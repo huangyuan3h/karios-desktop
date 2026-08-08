@@ -569,8 +569,8 @@
 | `scripts/coverage_gate.py` | **[x] 2026-08-08**：读 coverage.json，按核心模块清单（11 个 ≥85%）+ 整体阈值（--overall）fail；豁免清单显式（tv/capture.py 退役路径）；输出 模块×覆盖率×缺口 可直接定位 |
 | 11 核心模块 ≥85% | **[x] 2026-08-08**：decision 99.5 / correlation 94.9 / exit_attr 91.5 / weekly_review 90 / trendok 87.3 / research 88.6 / execution_journal 92.6 / execution_source 84.9+ / paper_trading 87.5 / backtest_engine 77.2→85 / watchlist_automation 70.5→85 全达标（补 ~40 测试） |
 | **顺带修复 3 个真 bug** | **[x]** ① `get_top_5d_industry_names` 未 strip 行业名（GC 精确匹配失效）→ 加 strip；② `backtest_engine` end_of_window 平仓后未 del positions → `open_at_end` 虚高（迭代中 del 修复 + list() 快照）；③ `_with_retry` 全失败 raise 语义确认（原测试预期错误） |
-| 整体覆盖率 | **[w] 69.3%**（基线 65.9%，第 1 会话 +3.4pp / ~90 新测试）——波 1 整体 75% 尚差 ~5.7pp（约 1250 行）；已覆盖：market_sentiment（72%→+18 测试）、macro_daily（34.6%→+9）、tv CRUD（+13）、mainline（+8）、db/daily（+3）、alpha pipeline（+12）、alpha process（+9）、market_regime（+11）、db/alpha_radar（+5）、top_inst sync（+6）、etf_fund_flow（+7）、alpha ingest（+7）；剩余：alpha_radar_ingest 主流程 / etf_fund_flow sync / tv.py 后半 / macro_daily 后半 / market_regime compute / db/alpha_radar 读路径 / api 层（query_routes 111 行） |
-| 验收 | **[x] 2026-08-08**：后端 1590 passed / 2 skipped 全绿 + 27 张表零变化（第 1 会话 1504 / 第 2 会话 1590） |
+| 整体覆盖率 | **[w] 72.4%**（基线 65.9%，两会话累计 +6.5pp / ~185 新测试）——波 1 整体 75% 尚差 ~2.6pp（约 570 行）；第 2 会话新覆盖：alpha_radar_ingest 主流程（RSS/Jina/并发聚合）、market_regime breadth/liquidity/quote_map、etf_fund_flow sync+tushare 历史、tv.py history/migrate/dispatch/fallback 链、db/alpha_radar 读删改+trend 行解析、db/daily 全量 fetch/update、market_sentiment tushare/akshare fetchers+premium/failed-limitup 全分支；剩余：market_sentiment compute_cn_sentiment_for_date（~40）、alpha_radar_process（128）、tv_chrome（124）、macro_daily（124）、broker（118）、trendok（166）、query_routes api 层（111）等 |
+| 验收 | **[x] 2026-08-08**：后端 1670 passed / 2 skipped 全绿 + 27 张表零变化（会话 1: 1504 → 会话 2: 1590 → 会话 3: 1670） |
 
 ### 铁律
 

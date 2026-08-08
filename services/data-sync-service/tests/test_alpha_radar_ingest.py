@@ -227,7 +227,7 @@ def test_fetch_jina_markdown_retries(monkeypatch) -> None:
     monkeypatch.setattr(ai, "_urlopen", fake_urlopen)
     monkeypatch.setattr(ai, "time", type("T", (), {"sleep": staticmethod(lambda s: None)})())
     assert ai.fetch_jina_markdown("http://x/y") is None
-    assert calls["n"] == 3  # 1 + 2 retries
+    assert calls["n"] == 2  # retries=2 → 2 total attempts
 
 
 def test_fetch_jina_markdown_ok(monkeypatch) -> None:
@@ -321,7 +321,6 @@ def test_fetch_all_sources_aggregates(monkeypatch) -> None:
     monkeypatch.setattr(ai, "enrich_fulltext_enabled", lambda: True)
     monkeypatch.setattr(ai, "fetch_sources", lambda enabled_only: [{"id": "s1"}, {"id": "s2"}])
     monkeypatch.setattr(ai, "fetch_jina_markdown", lambda url: None)
-    monkeypatch.setattr(ai, "Semaphore", threading.Semaphore)
 
     def fake_one(source, **kw):
         return {
@@ -343,4 +342,6 @@ def test_fetch_all_sources_aggregates(monkeypatch) -> None:
     assert out["results"] == {"s1": 3, "s2": -1}
     assert out["sourceErrors"]["s2"] == "boom"
     assert out["fullTextMode"] == "priority"
-    assert out["ingestStats"]["new"] == 1
+    assert out["ingestStats"]["new"] == 2
+    assert out["ingestStats"]["requeued"] == 2
+    assert out["ingestStats"]["fetched"] == 6
