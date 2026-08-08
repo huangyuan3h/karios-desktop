@@ -866,3 +866,24 @@ def test_run_intake_insert_side_not_leaked_from_last_change() -> None:
         summary = run_intake(trade_date="2026-08-01")
     assert summary["inserted"] == 1
     assert inserted and inserted[0]["side"] == "BUY"
+
+
+def test_holding_days_calendar_semantics() -> None:
+    """H6: _holding_days_for counts CALENDAR days (documented v0 trade-off;
+    a weekend is 2-3 days, same-week same-day is 0)."""
+    from data_sync_service.service.paper_trading import _holding_days_for
+
+    # Same day → 0
+    assert _holding_days_for("2026-08-03", "2026-08-03") == 0
+    # Next calendar day → 1
+    assert _holding_days_for("2026-08-03", "2026-08-04") == 1
+    # Cross-weekend: Friday → Monday = 3 calendar days
+    assert _holding_days_for("2026-08-07", "2026-08-10") == 3
+    # Cross-month: 07-31 → 08-03 = 3
+    assert _holding_days_for("2026-07-31", "2026-08-03") == 3
+    # Invalid dates → 0 (no crash)
+    assert _holding_days_for("", "2026-08-03") == 0
+    assert _holding_days_for("2026-08-03", "garbage") == 0
+    assert _holding_days_for(None, "2026-08-03") == 0
+    # Reverse order → clamped to 0
+    assert _holding_days_for("2026-08-10", "2026-08-03") == 0

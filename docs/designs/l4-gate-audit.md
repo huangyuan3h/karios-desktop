@@ -244,10 +244,26 @@
 **H6. 时区/日历一致性（1.4）**
 - 做法：paper `_holding_days_for`、cron 触发、HK 交易日差异——文档化 + 测试
 - 验收：跨周末持有天数测试；HK 假期不产生「假更新」
+- **状态：[x] 2026-08-08**：
+
+| 项 | 结论 |
+|----|------|
+| 调度时区 | 22 个 cron job 全部 `Asia/Shanghai`（scheduler 默认 UTC 被 trigger 自带时区覆盖）；6 个 interval job 时区无关；盘后链顺序正确（close 17:10 → automation 17:30 → intake 17:40 → update 17:45 → decision 18:30）；intake/update/automation/decision 全 `1-5`；close_sync 无 1-5 但内部有非交易日跳过 ✓ |
+| **修复：`_messages_on` UTC 边界 → 上海日界** | 旧实现用 UTC 日期窗口 + `shanghai_today()` 用主机本地时区——上海凌晨（UTC 前一日）消息被静默漏出快照窗口。改：`SHANGHAI_TZ = +08:00` 显式常量 + `_messages_on` 用上海 00:00~23:59:59.999999 边界 |
+| **修复：`_holding_days_for` None 崩溃** | `date.fromisoformat(None)` 抛 TypeError（只 catch ValueError）。改 `str()` 归一 + 双异常 catch；测试锁定跨周末=3/跨月=3/无效=0/反向=0 |
+| HK 日历差异 | paper `_holding_days_for` 计**日历天**（v0 已文档化权衡）；correlation 经验相关用 union 对齐（已做）；HK 无 score_floor（fail-open 保守）。文档化，不改语义 |
 
 **H7. 数值健壮性扫描（1.6）**
 - 做法：grep `float(`、`int(`、`/ `、`[0]` 关键路径；对 None/0/空输入补 guard
 - 验收：关键服务函数对 None/空输入不抛异常（fail 有日志）
+- **状态：[x] 2026-08-08**：
+
+| 修复 | 位置 |
+|------|------|
+| 评分函数 None 守卫 ×6 + ema20_prev | `trendok._clip01` / `_score_sub_ema` / `_score_sub_macd` / `_score_sub_breakout` / `_score_sub_rsi` / `_score_sub_volume` ——None 输入返回 (0.0, 0.0) 而非 TypeError（测试锁定 `test_score_subs_are_none_safe`） |
+| `_holding_days_for` None/TypeError | 见 H6 |
+
+- **扫描结果**：trendok 空列表指标（_atr14/_ema/_rsi/_macd/_bonus）返回 None/[]/0.0 ✓；correlation 全空输入 OK；`week_bounds` 非法输入显式 ValueError（输入校验，设计如此）；`round_trip_cost_pct('XX')` 显式 ValueError（closed enum）✓；db 层 `_float`/`_int` 已带 try ✓；`int(raw)`/`float(conf)` 均为环境变量/内部可信数据。
 
 ### P2（有余力做）
 

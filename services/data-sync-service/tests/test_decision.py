@@ -78,9 +78,10 @@ def test_snapshots_list_empty() -> None:
 
 
 def test_snapshot_build_and_search_roundtrip() -> None:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from data_sync_service.db import get_connection
+    from data_sync_service.service.decision import SHANGHAI_TZ
 
     session = client.post("/api/decision/sessions", json={"title": "m3-snap"}).json()["session"]
     msg = client.post(
@@ -88,14 +89,14 @@ def test_snapshot_build_and_search_roundtrip() -> None:
         json={"role": "user", "content": "分析 CN:600519.SH 的走势与研报"},
     ).json()["message"]
     # Pin the message into the snapshot window: _messages_on queries the
-    # UTC calendar day, so created_at must fall inside UTC today regardless
-    # of the Shanghai/UTC date boundary (the historical flake).
-    today = datetime.now(timezone.utc).date()
+    # Shanghai calendar day (H6), so created_at must fall inside Shanghai
+    # today — any time works regardless of the UTC/SH date boundary.
+    today = datetime.now(SHANGHAI_TZ).date()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE decision_messages SET created_at = %s WHERE id = %s",
-                (f"{today.isoformat()}T10:00:00+00:00", msg["id"]),
+                (f"{today.isoformat()}T10:00:00+08:00", msg["id"]),
             )
             cur.execute(
                 "SELECT snapshot_date, active_layer_ref, agent_exchanges, outcome, status FROM decision_snapshots WHERE snapshot_date = %s",
@@ -739,3 +740,56 @@ def test_search_archive_respects_limit(monkeypatch) -> None:
 
     hits = svc.search_archive_by_symbol("600519", limit=5)
     assert len(hits) == 5
+
+
+def test_messages_on_uses_shanghai_day_boundary() -> None:
+    """H6 (2026-08-08): the daily-snapshot message window must be the Shanghai
+    calendar day, not the UTC one (a message at Shanghai 00:30 on day D is
+    UTC day D-1 16:30 — the old UTC-day window silently dropped it)."""
+    from datetime import datetime, timedelta
+
+    from data_sync_service.service import decision as svc
+    from data_sync_service.service.decision import SHANGHAI_TZ
+
+    day = (datetime.now(SHANGHAI_TZ) - timedelta(days=2)).date()
+    captured: list[tuple] = []
+
+    class _Cur:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, sql, params=None):
+            captured.append(tuple(params or ()))
+            return None
+        def fetchall(self): return []
+
+    class _Conn:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def cursor(self): return _Cur()
+
+    import data_sync_service.service.decision as mod
+
+    original = mod.get_connection
+    try:
+        mod.get_connection = lambda: _Conn()
+        mod._messages_on(day, limit=100)
+    finally:
+        mod.get_connection = original
+
+    assert len(captured) == 1
+    start_iso, end_iso = captured[0][0], captured[0][1]
+    # Shanghai midnight of `day` (UTC: previous day 16:00)…
+    assert start_iso.startswith(day.isoformat())
+    assert "+08:00" in start_iso
+    # …through Shanghai 23:59:59.999999 of `day`.
+    assert end_iso.startswith(day.isoformat())
+    assert "+08:00" in end_iso
+
+
+def test_shanghai_today_explicit_tz() -> None:
+    """H6: shanghai_today must be Asia/Shanghai (+08:00), not host-local."""
+    from datetime import datetime
+
+    from data_sync_service.service.decision import SHANGHAI_TZ, shanghai_today
+
+    assert datetime.now(SHANGHAI_TZ).date() == shanghai_today()

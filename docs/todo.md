@@ -548,8 +548,8 @@
 | H2 盘后链路端到端冒烟 | **[x] 2026-08-08**：`test_postclose_smoke.py` 五步链路全绿；**抓到生产 bug**：run_intake side 变量泄漏（最后一条 action 污染所有 insert，解释 paper_trades 长期 1 行）已修 + 回归测试；基线验收零变化 |
 | H4 前端决策链边界矩阵 | **[x] 2026-08-08**：13 个边界用例（满仓/负 room/ETF 豁免/correlation 绑定/ratchet）；前端 515 passed + tsc 干净 |
 | H5 fail-open 语义清单 | **[x] 2026-08-08**：扫描 11 文件 75 处 except；**修 2 个激进项**（宏观死锁读取失败→fail-closed 锁激活且不缓存；registry 读取失败→不再批量删止损）；2 个高危项记录设计权衡（日内风控 bar 陈旧、breadth panic 依赖 sentiment 兜底）；其余 14 项中低危记录 |
-| H6 时区/日历一致性 | [ ] |
-| H7 数值健壮性扫描 | [ ] |
+| H6 时区/日历一致性 | **[x] 2026-08-08**：调度全 Asia/Shanghai ✓；**修 `_messages_on` UTC→上海日界**（凌晨消息漏出快照）+ `_holding_days_for` None 崩溃；跨周末/跨月测试；HK 日历差异文档化 |
+| H7 数值健壮性扫描 | **[x] 2026-08-08**：评分函数 None 守卫 ×7（返回 0 不崩）+ 测试锁定；扫描全服务层 float/int/除零路径无其他崩溃 |
 | H8/H9/H10 契约/调度/安全 | [ ] |
 
 ### 铁律

@@ -230,9 +230,9 @@ def _holding_days_for(entry_date_iso: str, today_iso: str) -> int:
     """Trading-day count between entry_date and today. v0 counts calendar days
     (correct enough for a 5-day max hold; refine later with the trade calendar)."""
     try:
-        e = date.fromisoformat(entry_date_iso)
-        t = date.fromisoformat(today_iso)
-    except ValueError:
+        e = date.fromisoformat(str(entry_date_iso or ""))
+        t = date.fromisoformat(str(today_iso or ""))
+    except (ValueError, TypeError):
         return 0
     return max(0, (t - e).days)
 

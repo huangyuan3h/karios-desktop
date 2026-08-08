@@ -328,6 +328,8 @@ def _parse_float_safe(v: Any) -> float | None:
 
 
 def _clip01(x: float) -> float:
+    if x is None:
+        return 0.0
     return 0.0 if x <= 0.0 else 1.0 if x >= 1.0 else x
 
 
@@ -340,17 +342,21 @@ _W_VOL = 0.20
 
 
 def _score_sub_ema(ema5: float, ema20: float, ema60: float, ema20_prev: float) -> tuple[float, float]:
+    if ema5 is None or ema20 is None or ema60 is None:
+        return 0.0, 0.0
     s_ema = 0.0
     if ema5 > ema20:
         s_ema += 0.4
     if ema20 > ema60:
         s_ema += 0.4
-    if ema20_prev > 0 and (ema20 - ema20_prev) / ema20_prev > 0.001:
+    if ema20_prev is not None and ema20_prev > 0 and (ema20 - ema20_prev) / ema20_prev > 0.001:
         s_ema += 0.2
     return s_ema, 100.0 * _W_EMA * s_ema
 
 
 def _score_sub_macd(macd_last: float, hist: list[float]) -> tuple[float, float]:
+    if macd_last is None:
+        return 0.0, 0.0
     s_macd = 0.0
     if macd_last >= 0 and len(hist) >= 2:
         h0, h1 = hist[-2], hist[-1]
@@ -360,12 +366,16 @@ def _score_sub_macd(macd_last: float, hist: list[float]) -> tuple[float, float]:
 
 
 def _score_sub_breakout(close: float, high20_high: float) -> tuple[float, float]:
+    if close is None or high20_high is None:
+        return 0.0, 0.0
     ratio_hi = close / high20_high if high20_high > 0 else 0.0
     s_break = _clip01((ratio_hi - 0.85) / 0.10)
     return s_break, 100.0 * _W_BREAK * s_break
 
 
 def _score_sub_rsi(rsi14: float) -> tuple[float, float]:
+    if rsi14 is None:
+        return 0.0, 0.0
     s_rsi = _clip01(1.0 - abs(rsi14 - 65.0) / 15.0)
     if rsi14 > 80.0:
         s_rsi *= _clip01(1.0 - (rsi14 - 80.0) / 10.0)
@@ -373,6 +383,8 @@ def _score_sub_rsi(rsi14: float) -> tuple[float, float]:
 
 
 def _score_sub_volume(ratio_vol: float) -> tuple[float, float]:
+    if ratio_vol is None:
+        return 0.0, 0.0
     if ratio_vol < 1.0:
         s_vol = ratio_vol
     elif ratio_vol < 1.2:

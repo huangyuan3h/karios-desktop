@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 from data_sync_service.db.decision import (
@@ -23,8 +23,12 @@ MAX_EXCHANGE_MESSAGES = 20
 MAX_EXCHANGE_CHARS = 2000
 
 
+SHANGHAI_TZ = timezone(timedelta(hours=8))
+
+
 def shanghai_today() -> date:
-    return datetime.now(timezone.utc).astimezone().date()
+    """Shanghai calendar date (H6: explicit +08:00, not host-local timezone)."""
+    return datetime.now(SHANGHAI_TZ).date()
 
 
 def _watchlist_ref() -> dict[str, Any]:
@@ -44,10 +48,16 @@ def _watchlist_ref() -> dict[str, Any]:
 
 
 def _messages_on(snapshot_date: date, limit: int = 100) -> list[dict[str, Any]]:
-    """All decision-agent messages for a given UTC date (sampled by session)."""
+    """All decision-agent messages for a given SHANGHAI calendar day.
+
+    H6 (2026-08-08): the window must be the Shanghai day boundary, not the
+    UTC one — a message posted between Shanghai 00:00-07:59 (UTC of the
+    previous day) used to fall outside the UTC-day window and was silently
+    dropped from the daily snapshot.
+    """
     ensure_table()
-    start = f"{snapshot_date.isoformat()}T00:00:00+00:00"
-    end = f"{snapshot_date.isoformat()}T23:59:59.999999+00:00"
+    start = datetime.combine(snapshot_date, time.min, tzinfo=SHANGHAI_TZ)
+    end = datetime.combine(snapshot_date, time.max, tzinfo=SHANGHAI_TZ)
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -58,7 +68,7 @@ def _messages_on(snapshot_date: date, limit: int = 100) -> list[dict[str, Any]]:
                 ORDER BY created_at ASC
                 LIMIT %s
                 """,
-                (start, end, limit),
+                (start.isoformat(), end.isoformat(), limit),
             )
             rows = cur.fetchall()
     cols = ("session_id", "role", "content", "created_at")
