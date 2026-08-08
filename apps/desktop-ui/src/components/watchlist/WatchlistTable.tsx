@@ -62,13 +62,15 @@ const FLAG_COLORS: Array<{ label: string; hex: string }> = [
 ];
 
 type WatchlistRowTone = 'green' | 'red' | 'none';
-type WatchlistStickyColumn = 'score' | 'trendOk' | 'action';
+type WatchlistStickyColumn = 'score' | 'exec' | 'trendOk' | 'action';
 
 const WATCHLIST_STICKY_COLUMN_LAYOUT: Record<
   WatchlistStickyColumn,
   { width: number; right: number; zHeader: number; zBody: number }
 > = {
-  score: { width: 80, right: 168, zHeader: 23, zBody: 13 },
+  // Fixed right group (left→right): score | exec | trendOk | action.
+  score: { width: 80, right: 272, zHeader: 23, zBody: 13 },
+  exec: { width: 110, right: 168, zHeader: 24, zBody: 14 },
   trendOk: { width: 80, right: 88, zHeader: 22, zBody: 12 },
   action: { width: 88, right: 0, zHeader: 25, zBody: 15 },
 };
@@ -687,7 +689,10 @@ export function WatchlistTable({
                         )}
                       </button>
                     </th>
-                    <th className="px-2 py-2 min-w-[88px] whitespace-nowrap">
+                    <th
+                      className={watchlistStickyCellClass('exec', { header: true })}
+                      style={watchlistStickyCellStyle('exec', { header: true })}
+                    >
                       <ColumnHeader
                         columnId="execAction"
                         showTooltip={showTooltip}
@@ -763,7 +768,7 @@ export function WatchlistTable({
                         rowClassName={isHiddenRow ? 'opacity-50' : undefined}
                         rowTitle={
                           isHiddenRow
-                            ? 'Silent dead row (Pos%≤0 · Score<60 · TrendOK≠ok/recovering · WATCH_SILENT)'
+                            ? 'Silent dead row (Pos%≤0 · Score<70 · TrendOK≠ok/recovering · WATCH_SILENT)'
                             : undefined
                         }
                       />

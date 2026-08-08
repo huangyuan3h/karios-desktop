@@ -46,13 +46,15 @@ const COST_PRICE_RE = /^\d+(\.\d{0,3})?$/;
 const POSITION_PCT_RE = /^\d+(\.\d{0,2})?$/;
 
 type WatchlistRowTone = 'green' | 'red' | 'none';
-type WatchlistStickyColumn = 'score' | 'trendOk' | 'action';
+type WatchlistStickyColumn = 'score' | 'exec' | 'trendOk' | 'action';
 
 const WATCHLIST_STICKY_COLUMN_LAYOUT: Record<
   WatchlistStickyColumn,
   { width: number; right: number; zHeader: number; zBody: number }
 > = {
-  score: { width: 80, right: 168, zHeader: 23, zBody: 13 },
+  // Fixed right group (left→right): score | exec | trendOk | action.
+  score: { width: 80, right: 272, zHeader: 23, zBody: 13 },
+  exec: { width: 110, right: 168, zHeader: 24, zBody: 14 },
   trendOk: { width: 80, right: 88, zHeader: 22, zBody: 12 },
   action: { width: 88, right: 0, zHeader: 25, zBody: 15 },
 };
@@ -853,7 +855,8 @@ function WatchlistRowInner({
         <ScoreCell sym={it.symbol} t={t} showTooltip={showTooltip} hideTooltip={hideTooltip} />
       </td>
       <td
-        className={`px-2 py-2 font-mono text-xs ${execTone}`}
+        className={watchlistStickyCellClass('exec', { tone, extra: 'text-left' })}
+        style={watchlistStickyCellStyle('exec')}
         title={[
           actionCard.why,
           actionCard.mainlineOk
@@ -874,7 +877,7 @@ function WatchlistRowInner({
           .filter(Boolean)
           .join(' · ')}
       >
-        {actionCard.action}
+        <span className={execTone}>{actionCard.action}</span>
         {typeof actionCard.suggestAddPct === 'number' ? (
           <span className="ml-1 font-normal text-emerald-700/90">
             +{actionCard.suggestAddPct.toFixed(0)}%

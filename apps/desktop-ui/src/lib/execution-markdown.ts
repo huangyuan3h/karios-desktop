@@ -291,7 +291,7 @@ export function buildPositionsExecutionMarkdown(
     lines.push('');
   }
   if (hiddenRows > 0) {
-    lines.push(`- note: ${hiddenRows} silent dead rows hidden (Pos%=— & Score<60 & TrendOK≠ok/recovering & Action=WATCH_SILENT); kept in DB`);
+    lines.push(`- note: ${hiddenRows} silent dead rows hidden (Pos%=— & Score<70 & TrendOK≠ok/recovering & Action=WATCH_SILENT); kept in DB`);
   }
   if (purgeSymbols.length) {
     lines.push(

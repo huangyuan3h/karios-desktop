@@ -3,7 +3,7 @@
  *
  * Drop silent "dead" rows that occupy board space without trading value:
  *   Pos% > 0 → real positions (always show)
- *   OR Score >= 60 → strong candidate
+ *   OR Score >= 70 → strong candidate (buy threshold, 2026-08-09 user spec)
  *   OR TrendOK in ['ok', 'recovering'] → right-side potential
  *   OR Action != WATCH_SILENT → any active (non-silent) watch
  *
@@ -24,8 +24,8 @@ export type WatchlistVisibilityItem = {
 };
 
 export const WATCHLIST_TABLE_VISIBILITY_NOTE = [
-  '- note: hidden rows are silent dead stock (Pos%=— & Score<60 & TrendOK≠ok/recovering & Action=WATCH_SILENT); kept in DB',
-  '- note: shown if Pos%>0 (held) OR Score>=60 OR TrendOK=ok/recovering OR Action≠WATCH_SILENT',
+  '- note: hidden rows are silent dead stock (Pos%=— & Score<70 & TrendOK≠ok/recovering & Action=WATCH_SILENT); kept in DB',
+  '- note: shown if Pos%>0 (held) OR Score>=70 OR TrendOK=ok/recovering OR Action≠WATCH_SILENT',
 ];
 
 function isTrendOkPositive(t: WatchlistVisibilityTrend | undefined | null): boolean {
@@ -42,7 +42,7 @@ function isTrendOkPositive(t: WatchlistVisibilityTrend | undefined | null): bool
 function isHighScore(t: WatchlistVisibilityTrend | undefined | null): boolean {
   if (!t) return false;
   const s = t.score;
-  return typeof s === 'number' && Number.isFinite(s) && s >= 60;
+  return typeof s === 'number' && Number.isFinite(s) && s >= 70;
 }
 
 function isHeld(item: WatchlistVisibilityItem): boolean {
