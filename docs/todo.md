@@ -577,7 +577,9 @@
 | 项 | 状态 |
 |----|------|
 | 会话 4（75.0% → 79.7%） | **[x] 2026-08-08**：1978 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 79.7%，-1023 missed）——top_inst_flow 68→95.1%（网络层/retry/tushare/provider 编排 53 测试）、query_routes 46.1→98%（resolve/quotes/全部小 endpoint 27）、option_iv 68.5→97%（sync driver/akshare fallback/paging 27）、db/index_daily 46→88%、db/news 49→97%、db/tv 38→99%、db/index_basic 14→93%、news_enrich 58→88%（_call_llm/enrich_batch/cycle 22）、db/macro_daily 58→91%、db/watchlist_automation 50→96%、mainline 70→98%（metrics 计算层 13） |
-| 剩余大块 | trendok `_trendok_one`、market_sentiment compute、market_regime 剩余、etf_daily（19.8%）、db/broker（40%）、market_detail、close_sync、alpha_radar_mapping（38%）、api 层（alpha_radar_routes/watchlist_routes 各 ~60） |
+| 会话 5（79.7% → 83.2%） | **[x] 2026-08-08**：2229 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 83.2%，-1038 missed）——etf_daily 20→99、db/broker 40→97、alpha_radar_mapping 38→100、market_detail 56→96、close_sync 56→97（trade calendar 全分支/分页/断点续传）、adj_factor 24→100、db/stock_eastmoney_industry 50→97、em_push2_http 61→100、sina_http 46→97、fund_basic 51→99、service/daily 45→96、db/stoploss 34→100、db/research 43→94、db/stock_basic 66→97（fetch_market_stocks 分页+quote 聚合） |
+| 会话 6（83.2% → 83.9%） | **[x] 2026-08-08**：2295 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 83.9%，-155 missed）——watchlist_routes 64→90（registry CRUD/backfill/automation 全 endpoint 21）、alpha_radar_routes 51→98（sources/trends/sync/process/remap/risk 21）、sync_routes 67→98（全部 sync 端点 + /sync/jobs 聚合含降级分支 24） |
+| 剩余大块 | trendok `_trendok_one`、market_sentiment compute、market_regime 剩余、service/tv（81%）、db/industry_fund_flow（67%）、hk_*（hk_daily 66%/hk_basic 60%/hk_daily_tx 81%）、db/top_inst（62%）、db/paper_trading（80%）、db/decision（84%）、market_bars（71%）、tv/scanner_api（86%）、db/morning_brief（23%）、db/industry_mainline_metrics（22%）、db/journal（17%） |
 
 ### 铁律
 
