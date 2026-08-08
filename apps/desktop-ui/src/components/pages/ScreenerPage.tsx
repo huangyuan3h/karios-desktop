@@ -6,6 +6,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { TvScreener } from '@karios/shared';
 
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TradingViewSettingsPanel } from '@/components/settings/TradingViewSettingsPanel';
 import { useChatStore } from '@/lib/chat/store';
 import { apiGetJson } from '@/lib/api/client';
 import { syncTvScreenerAndWait } from '@/lib/api/tvCapture';
@@ -101,6 +103,7 @@ function toMarkdownTable(headers: string[], rows: Record<string, string>[]): str
 export function ScreenerPage() {
   const queryClient = useQueryClient();
   const { addReference } = useChatStore();
+  const [tab, setTab] = React.useState<'snapshots' | 'tradingview'>('snapshots');
   const listQuery = useScreenerListQuery();
   const screeners = listQuery.data ?? [];
   const screenerIds = React.useMemo(() => screeners.map((sc) => sc.id), [screeners]);
@@ -246,6 +249,15 @@ export function ScreenerPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl p-6">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as 'snapshots' | 'tradingview')}>
+        <div className="mb-6">
+          <TabsList>
+            <TabsTrigger value="snapshots">Snapshots</TabsTrigger>
+            <TabsTrigger value="tradingview">TradingView</TabsTrigger>
+          </TabsList>
+        </div>
+        <div className={tab === 'snapshots' ? '' : 'hidden'}>
+          <TabsContent value="snapshots" className="mt-0">
       <div className="mb-6 flex w-full items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-lg font-semibold">Screener</div>
@@ -522,10 +534,18 @@ export function ScreenerPage() {
 
         {screeners.length === 0 ? (
           <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-6 text-center text-sm text-[var(--k-muted)]">
-            No enabled screeners. Configure them in Settings first.
+            No enabled screeners. Configure them in the TradingView tab.
           </div>
         ) : null}
       </div>
+          </TabsContent>
+        </div>
+        <div className={tab === 'tradingview' ? '' : 'hidden'}>
+          <TabsContent value="tradingview" className="mt-0">
+            <TradingViewSettingsPanel />
+          </TabsContent>
+        </div>
+      </Tabs>
     </div>
   );
 }
