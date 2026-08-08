@@ -8,11 +8,11 @@ import { Bot } from 'lucide-react';
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { DashboardPage } from '@/components/pages/DashboardPage';
+import { AlphaTabsPage } from '@/components/pages/AlphaTabsPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
 import { JournalReadPage } from '@/components/pages/JournalReadPage';
 import { MarketPage } from '@/components/pages/MarketPage';
 import { NewsPage } from '@/components/pages/NewsPage';
-import { ResearchPage } from '@/components/pages/ResearchPage';
 import { DecisionPage } from '@/components/pages/DecisionPage';
 import { BacktestPage } from '@/components/pages/BacktestPage';
 import { SchedulerPage } from '@/components/pages/SchedulerPage';
@@ -20,7 +20,6 @@ import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
 import { IndexPage } from '@/components/pages/IndexPage';
-import { AlphaIncubatorPage } from '@/components/pages/AlphaIncubatorPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { Button } from '@/components/ui/button';
 import { useWatchlistAutomation } from '@/hooks/useWatchlistAutomation';
@@ -58,8 +57,7 @@ const PAGE_TITLES: Record<string, string> = {
   news: 'News',
   market: 'Market',
   industryFlow: 'Industry Flow',
-  alphaIncubator: 'Alpha Incubator',
-  research: 'Research',
+  alpha: 'Alpha',
   decision: '决策 Agent',
   backtest: '回测',
   watchlist: 'Watchlist',
@@ -209,10 +207,8 @@ function AppShellInner() {
               <BrokerPage />
             ) : activePage === 'industryFlow' ? (
               <IndustryFlowPage />
-            ) : activePage === 'alphaIncubator' ? (
-              <AlphaIncubatorPage />
-            ) : activePage === 'research' ? (
-              <ResearchPage />
+            ) : activePage === 'alpha' ? (
+              <AlphaTabsPage />
             ) : activePage === 'decision' ? (
               <DecisionPage />
             ) : activePage === 'backtest' ? (

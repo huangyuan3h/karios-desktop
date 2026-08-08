@@ -623,6 +623,7 @@
 | 项 | 状态 |
 |----|------|
 | 执行链 R2 若暴露 fail-open/fail-closed 语义问题 | 入 §17 H5 清单续 |
+| **baseline 验收时机**（2026-08-08 终验教训）：dev server + UI 活跃时 `/dashboard/summary` 每次触发 top_inst 同步、FE registry debounce 触发快照写入——`db_rows_baseline.py check` 会误报。全量验收需在 UI 闲置时执行（或先 save 再立即跑） | 已确认非测试污染（时间戳均在 pytest 窗口外）；写入源：dashboard 加载→sync_top_inst_watchlist；FE useExecutionJournalCapture debounce→capture('registry') |
 | R4 引入 testing-library 是否影响 SSR 组件（'use client' 组件） | 验证后再扩范围 |
 
 ### 铁律
