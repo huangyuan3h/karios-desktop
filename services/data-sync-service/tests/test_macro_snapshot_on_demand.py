@@ -6,7 +6,14 @@ import sys
 import pandas as pd
 
 from data_sync_service.service import macro_snapshot_on_demand as msd
-from data_sync_service.service.macro_daily import SID_A50, SID_IXIC, SID_COMM_GOLD, SID_HSI, SID_HSTECH, SID_USDCNH
+from data_sync_service.service.macro_daily import (
+    SID_A50,
+    SID_COMM_GOLD,
+    SID_HSI,
+    SID_HSTECH,
+    SID_IXIC,
+    SID_USDCNH,
+)
 
 
 def test_lookback_range() -> None:
@@ -37,10 +44,9 @@ def test_fetch_hstech_via_sina(monkeypatch) -> None:
     assert msd._fetch_hstech_via_sina() is None  # akshare import missing
 
     df = pd.DataFrame({"date": ["2026-08-05", "2026-08-06"], "close": [1.0, 2.0]})
-    ak = type("AK", (), {"stock_hk_index_daily_sina": staticmethod(lambda symbol: df)})()
+    _ = type("AK", (), {"stock_hk_index_daily_sina": staticmethod(lambda symbol: df)})()
     monkeypatch.setattr(msd, "sys", __import__("sys"))
 
-    import importlib
     import types as _types
     fake_ak = _types.ModuleType("akshare")
     fake_ak.stock_hk_index_daily_sina = lambda symbol: df

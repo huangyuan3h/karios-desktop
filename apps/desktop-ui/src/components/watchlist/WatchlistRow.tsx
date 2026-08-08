@@ -13,7 +13,6 @@ import {
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso } from '@/lib/market-hours';
-import { isEtfWatchlistSymbol } from '@/lib/symbols';
 import type { ExecutionGate } from '@karios/shared';
 import {
   computePnLPct,
@@ -98,6 +97,8 @@ function watchlistStickyCellStyle(
 }
 
 type ShowTooltipFn = (el: HTMLElement, content: React.ReactNode, width?: number) => void;
+
+export type TradeDialogKind = 'buy' | 'add' | 'sell';
 
 function checkLine(label: string, ok: boolean | null | undefined, detail: string) {
   if (ok == null) return { label, state: '—', detail };
@@ -512,6 +513,8 @@ export type WatchlistRowProps = {
   onRemove: (sym: string) => void;
   onOpenStock?: (symbol: string) => void;
   onAddReference: (item: WatchlistItem, trend: TrendOkResult | undefined) => void;
+  /** Open the buy/add/sell dialog for this row (all symbols). */
+  onOpenTradeDialog?: (kind: TradeDialogKind, item: WatchlistItem) => void;
   rowClassName?: string;
   rowTitle?: string;
 };
@@ -545,6 +548,7 @@ function WatchlistRowInner({
   onRemove,
   onOpenStock,
   onAddReference,
+  onOpenTradeDialog,
   rowClassName,
   rowTitle,
 }: WatchlistRowProps) {
@@ -611,11 +615,6 @@ function WatchlistRowInner({
           ? 'text-amber-700 font-semibold'
           : 'text-[var(--k-muted)]';
   const heldForTrigger = isHeldPosition(it);
-  const isEtf = isEtfWatchlistSymbol(it.symbol);
-  const etfSuggestPct =
-    typeof actionCard.suggestAddPct === 'number' && Number.isFinite(actionCard.suggestAddPct)
-      ? actionCard.suggestAddPct
-      : 5;
   const triggerPrice = heldForTrigger
     ? (actionCard.exitStop ?? actionCard.trigger ?? null)
     : (actionCard.entryTrigger ?? actionCard.trigger ?? null);
@@ -770,26 +769,33 @@ function WatchlistRowInner({
             +{actionCard.suggestAddPct.toFixed(0)}%
           </span>
         ) : null}
-        {isEtf ? (
+        {onOpenTradeDialog ? (
           <div className="mt-1 flex gap-1">
             {heldForTrigger ? (
-              <button
-                type="button"
-                className="rounded border border-red-500/40 px-1.5 py-0.5 text-[10px] font-normal text-red-600 hover:bg-red-500/10"
-                onClick={() => setItemPositionPct(it.symbol, '0')}
-                title="一键清仓（仓位=0，应用成本清理）"
-              >
-                卖出
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="rounded border border-emerald-600/40 px-1.5 py-0.5 text-[10px] font-normal text-emerald-700 hover:bg-emerald-500/10"
+                  onClick={() => onOpenTradeDialog?.('add', it)}
+                  title="加仓：输入加仓价格 + 仓位，自动加权平均成本"
+                >
+                  加仓
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-red-500/40 px-1.5 py-0.5 text-[10px] font-normal text-red-600 hover:bg-red-500/10"
+                  onClick={() => onOpenTradeDialog?.('sell', it)}
+                  title="卖出：输入卖出价格，记录真实成交"
+                >
+                  卖出
+                </button>
+              </>
             ) : (
               <button
                 type="button"
                 className="rounded border border-emerald-600/40 px-1.5 py-0.5 text-[10px] font-normal text-emerald-700 hover:bg-emerald-500/10"
-                onClick={() => {
-                  if (currentPrice != null) setItemCostPriceValue(it.symbol, currentPrice);
-                  setItemPositionPct(it.symbol, String(etfSuggestPct));
-                }}
-                title={`一键买入：仓位 ${etfSuggestPct}%、成本=现价`}
+                onClick={() => onOpenTradeDialog?.('buy', it)}
+                title="买入：输入买入价格 + 仓位"
               >
                 买入
               </button>

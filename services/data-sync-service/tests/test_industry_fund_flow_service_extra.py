@@ -126,7 +126,7 @@ class TestDayKline:
 
 class TestAkHist:
     def test_darwin(self) -> None:
-        monkeypatch = Mock()
+
         with pytest.raises(RuntimeError, match="darwin"):
             iff._try_akshare_hist("半导体", days=5)
 

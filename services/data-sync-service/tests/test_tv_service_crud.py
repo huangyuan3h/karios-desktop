@@ -229,12 +229,11 @@ def test_screener_history_no_snapshots_uses_today() -> None:
     assert out["rows"][0]["am"] is None
 """tv.py: history, validation, dispatch, migration."""
 
-import sqlite3
+import sqlite3  # noqa: E402
 
-import pytest
-from fastapi import HTTPException
+import pytest  # noqa: E402
 
-from data_sync_service.service import tv as tvmod
+from data_sync_service.service import tv as tvmod  # noqa: E402
 
 
 def test_parse_iso_datetime() -> None:

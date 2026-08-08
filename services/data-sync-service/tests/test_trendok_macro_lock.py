@@ -99,7 +99,6 @@ def test_macro_lock_fails_closed_on_sentiment_read_failure(monkeypatch) -> None:
 def test_macro_lock_read_failure_not_cached() -> None:
     """The failed read must not poison the cache with a permanent (None, None)
     unlock; a subsequent successful read replaces it."""
-    from data_sync_service.service.trendok import _read_latest_sentiment_for_macro_lock
 
     cache = {}
     import data_sync_service.service.trendok as trendok

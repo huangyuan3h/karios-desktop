@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from datetime import date
 
-import pytest
-
 from data_sync_service.db import top_inst as ti
 
 
@@ -126,7 +124,7 @@ class TestSummaries:
         assert ti.fetch_summaries_for_codes(["600000.SH"], trade_date="bad") == {}
 
     def test_fetch_summaries_bad_float(self, monkeypatch) -> None:
-        conn = _conn(monkeypatch, rows=[(date(2026, 8, 7), "600000.SH", "abc", 0.1, None, False, True)], colnames=self.COLS)
+        _ = _conn(monkeypatch, rows=[(date(2026, 8, 7), "600000.SH", "abc", 0.1, None, False, True)], colnames=self.COLS)
         out = ti.fetch_summaries_for_codes(["600000.SH"])
         assert out["600000.SH"]["inst_net_buy"] == "abc"
 

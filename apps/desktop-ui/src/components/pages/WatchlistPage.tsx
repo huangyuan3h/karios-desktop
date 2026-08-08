@@ -4,6 +4,7 @@ import * as React from 'react';
 
 import { WatchlistImportDebug, type ScreenerImportDebugState } from '@/components/watchlist/WatchlistImportDebug';
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
+import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
 import { emptyScreenerFunnel } from '@/lib/watchlist-screener-import';
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
 import { WatchlistToolbar } from '@/components/watchlist/WatchlistToolbar';
@@ -425,6 +426,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         />
 
         <FunnelHistoryTable limit={10} />
+
+        <TradeStatsPanel />
 
         <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="mb-2 text-sm font-medium">Add</div>

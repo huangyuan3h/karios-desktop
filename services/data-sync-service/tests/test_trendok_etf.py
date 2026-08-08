@@ -6,7 +6,10 @@ from unittest.mock import patch
 
 import pytest
 
-from data_sync_service.service.trendok import _symbol_to_ts_code, _trendok_one  # type: ignore[import-not-found]
+from data_sync_service.service.trendok import (  # type: ignore[import-not-found]
+    _symbol_to_ts_code,
+    _trendok_one,
+)
 
 
 def test_symbol_to_ts_code_accepts_suffixed_cn():

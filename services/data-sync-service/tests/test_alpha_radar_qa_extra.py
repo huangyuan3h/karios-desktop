@@ -3,11 +3,6 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from unittest.mock import Mock
-
-import pytest
 
 from data_sync_service.service import alpha_radar_qa as qa
 

@@ -43,6 +43,7 @@ from data_sync_service.db.trade_calendar import CREATE_SQL as TRADE_CALENDAR_CRE
 from data_sync_service.db.trade_review import CREATE_SQL as TRADE_REVIEW_CREATE_SQL
 from data_sync_service.db.tv import CREATE_SQL as TV_CREATE_SQL
 from data_sync_service.db.tv_chrome_settings import CREATE_SQL as TV_CHROME_SETTINGS_CREATE_SQL
+from data_sync_service.db.user_trades import CREATE_SQL as USER_TRADES_CREATE_SQL
 from data_sync_service.db.watchlist_automation import CREATE_SQL as WATCHLIST_AUTOMATION_CREATE_SQL
 
 BASELINE_REVISION = "0001_baseline"
@@ -127,6 +128,7 @@ def baseline_ddl_statements() -> list[str]:
         SYSTEM_PROMPTS_CREATE_SQL,
         RESEARCH_CREATE_SQL,
         DECISION_CREATE_SQL,
+        USER_TRADES_CREATE_SQL,
     ]
     statements: list[str] = []
     for sql in ordered_sql:

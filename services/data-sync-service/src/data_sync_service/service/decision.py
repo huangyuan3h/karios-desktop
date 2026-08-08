@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import Any
 
 from data_sync_service.db.decision import (
     ensure_table,
     get_connection,
-    list_messages,
     list_snapshots,
     upsert_snapshot,
 )
@@ -61,7 +60,7 @@ def _messages_on(snapshot_date: date, limit: int = 100) -> list[dict[str, Any]]:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"""
+                """
                 SELECT session_id, role, content, created_at
                 FROM decision_messages
                 WHERE created_at >= %s::timestamptz AND created_at <= %s::timestamptz
@@ -90,7 +89,7 @@ def build_daily_snapshot(*, snapshot_date: date | None = None) -> dict[str, Any]
         for m in messages[-MAX_EXCHANGE_MESSAGES:]
     ]
     active_ref = _watchlist_ref()
-    active_ref["snapshotAt"] = datetime.now(timezone.utc).isoformat()
+    active_ref["snapshotAt"] = datetime.now(UTC).isoformat()
     rec = upsert_snapshot(
         snapshot_date=target,
         active_layer_ref=active_ref,
@@ -140,7 +139,7 @@ def apply_daily_outcomes(*, days: int = 5) -> dict[str, Any]:
             pass
         outcome = {"fired": fired, "paper": paper}
         if fired or paper:
-            rec = upsert_snapshot(
+            _ = upsert_snapshot(
                 snapshot_date=d,
                 status="reviewed",
                 outcome=outcome,
@@ -162,7 +161,7 @@ def analysis_stats(*, fired_days: int = 30, paper_limit: int = 500) -> dict[str,
     from data_sync_service.db.execution_journal import count_changes_by_source
     from data_sync_service.db.paper_trading import count_by_market_since, list_paper_trades
 
-    since = (datetime.now(timezone.utc) - timedelta(days=fired_days)).isoformat()
+    since = (datetime.now(UTC) - timedelta(days=fired_days)).isoformat()
     by_source = count_changes_by_source(
         since=since,
         field="action",
@@ -192,7 +191,7 @@ def analysis_stats(*, fired_days: int = 30, paper_limit: int = 500) -> dict[str,
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"""
+                """
                 SELECT s.id, s.title, s.last_active_at,
                        COUNT(m.id) AS msg_count,
                        COUNT(m.id) FILTER (WHERE m.context_snapshot IS NOT NULL) AS snapshot_count
@@ -309,7 +308,6 @@ def match_executions(*, match_window_days: int = 3) -> dict[str, Any]:
     within `match_window_days` after the action was created. HOLD is
     non-tradeable and stays proposed.
     """
-    from datetime import timedelta
 
     from data_sync_service.db.decision import list_actions, update_action_status
     from data_sync_service.db.execution_journal import list_changes
@@ -356,11 +354,11 @@ def track_action_outcomes(*, horizon_days: int = 5) -> dict[str, Any]:
     if not actions:
         return {"ok": True, "tracked": 0}
 
-    start = (datetime.now(timezone.utc).date() - timedelta(days=horizon_days + 5)).isoformat()
+    start = (datetime.now(UTC).date() - timedelta(days=horizon_days + 5)).isoformat()
     bars = fetch_daily_for_codes(
         [c for c in ts_codes if len(c) == 10],
         start,
-        datetime.now(timezone.utc).date().isoformat(),
+        datetime.now(UTC).date().isoformat(),
     )
     by_code: dict[str, list[dict[str, Any]]] = {}
     for b in bars:
@@ -378,7 +376,7 @@ def track_action_outcomes(*, horizon_days: int = 5) -> dict[str, Any]:
         base = float(rows[base_idx]["close"] or 0)
         if base <= 0:
             continue
-        def pct(i: int) -> float | None:
+        def pct(i: int, base_idx: int = base_idx, base: float = base, rows: list[dict[str, Any]] = rows) -> float | None:
             if base_idx + i >= len(rows):
                 return None
             c = float(rows[base_idx + i]["close"] or 0)

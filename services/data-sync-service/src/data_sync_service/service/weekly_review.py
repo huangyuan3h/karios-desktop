@@ -25,7 +25,6 @@ from typing import Any
 from data_sync_service.db import get_connection
 from data_sync_service.db import paper_trading as pt_db
 from data_sync_service.service.exit_attribution import analyze_exit_attribution
-from data_sync_service.service.paper_trading import _resolve_ts_code
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,8 @@ def week_bounds(end_date: str) -> tuple[str, str]:
     try:
         d = date.fromisoformat(end_date)
     except ValueError:
-        raise ValueError(f"end must be YYYY-MM-DD (got {end_date!r})")
+        raise ValueError(f"end must be YYYY-MM-DD (got {end_date!r})") from None
+
     monday = d - timedelta(days=d.weekday())
     return monday.isoformat(), d.isoformat()
 
@@ -107,7 +107,7 @@ def _closed_by_reason(start: str, end: str) -> dict[str, dict[str, Any]]:
             b["sumNet"] += float(pnl)
             if float(pnl) > 0:
                 b["wins"] += 1
-    for reason, b in out.items():
+    for _, b in out.items():
         b["avgNet"] = round(b["sumNet"] / b["count"], 3) if b["count"] else None
         b["winRate"] = round(b["wins"] / b["count"], 3) if b["count"] else None
         del b["sumNet"]

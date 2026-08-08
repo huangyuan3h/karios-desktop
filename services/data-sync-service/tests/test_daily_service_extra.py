@@ -6,7 +6,6 @@ import warnings
 from datetime import date
 
 import pandas as pd
-import pytest
 
 from data_sync_service.service import daily as dl
 

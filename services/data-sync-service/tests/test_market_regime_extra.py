@@ -254,8 +254,8 @@ class TestBreadthAndLiquidity:
         monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: False)
         monkeypatch.setattr(mr, "ensure_stock_basic", lambda: None)
         monkeypatch.setattr(mr, "fetch_stock_ts_codes", lambda: ["600000.SH", "000001.SZ"])
-        rising = [("2026-0%d-%02d" % (i // 30 + 1, i % 30 + 1), 5.0 if i < 20 else 10.0, 0.0, 0.0, 5.0 if i < 20 else 10.0, 1e6) for i in range(30)]
-        falling = [("2026-0%d-%02d" % (i // 30 + 1, i % 30 + 1), 10.0 if i < 20 else 5.0, 0.0, 0.0, 10.0 if i < 20 else 5.0, 1e6) for i in range(30)]
+        rising = [(f"2026-0{i // 30 + 1}-{i % 30 + 1:02d}", 5.0 if i < 20 else 10.0, 0.0, 0.0, 5.0 if i < 20 else 10.0, 1e6) for i in range(30)]
+        falling = [(f"2026-0{i // 30 + 1}-{i % 30 + 1:02d}", 10.0 if i < 20 else 5.0, 0.0, 0.0, 10.0 if i < 20 else 5.0, 1e6) for i in range(30)]
 
         def batch(codes, days):
             return {"600000.SH": rising, "000001.SZ": falling}

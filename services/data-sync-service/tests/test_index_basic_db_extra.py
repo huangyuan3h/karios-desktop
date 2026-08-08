@@ -111,11 +111,11 @@ def test_upsert_empty(monkeypatch) -> None:
 
 
 def test_get_last_trade_date(monkeypatch) -> None:
-    cur = _patch(monkeypatch, [(date(2026, 8, 7),)])
+    _ = _patch(monkeypatch, [(date(2026, 8, 7),)])
     assert ib.get_last_trade_date("000001.SH") == date(2026, 8, 7)
-    cur2 = _patch(monkeypatch, [(None,)])
+    _ = _patch(monkeypatch, [(None,)])
     assert ib.get_last_trade_date("000001.SH") is None
-    cur3 = _patch(monkeypatch, [])
+    _ = _patch(monkeypatch, [])
     assert ib.get_last_trade_date("000001.SH") is None
 
 

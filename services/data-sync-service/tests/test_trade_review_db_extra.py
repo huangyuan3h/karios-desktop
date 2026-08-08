@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from data_sync_service.db import trade_review as tr
 
 FULL_ROW = (
@@ -156,7 +154,7 @@ class TestCrud:
         assert params[24] == '{"a": 1}'
 
     def test_create_review_missing(self, monkeypatch) -> None:
-        conn = _conn(monkeypatch, seq_by_cursor=[[], [], []], rowcount=0)
+        _ = _conn(monkeypatch, seq_by_cursor=[[], [], []], rowcount=0)
         out = tr.create_review(review_id="r9", payload={}, created_at="t", updated_at="t")
         assert out == {}
 

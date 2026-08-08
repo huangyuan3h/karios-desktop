@@ -215,7 +215,7 @@ def analyze_exit_attribution(*, days: int = 5, limit: int = 500) -> dict[str, An
             p["bucket"]
         ]
         b[count_key] += 1
-    for r, b in by_reason.items():
+    for _, b in by_reason.items():
         if b["withForward"]:
             b["avgFwdPct"] = round(b["sumFwd"] / b["withForward"], 3)
             b["earlyRate"] = round(b["earlyCount"] / b["withForward"], 3)

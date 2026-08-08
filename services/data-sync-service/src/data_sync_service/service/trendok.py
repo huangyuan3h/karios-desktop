@@ -11,8 +11,6 @@ from zoneinfo import ZoneInfo
 
 from cachetools import TTLCache
 
-logger = logging.getLogger(__name__)
-
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.db.industry_fund_flow import (
     get_dates_upto,
@@ -36,6 +34,8 @@ from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 from data_sync_service.service.top_inst_flow import build_inst_flow_payload
 from data_sync_service.service.trade_calendar_utils import trade_dates_upto
+
+logger = logging.getLogger(__name__)
 
 TRENDOK_CACHE_TTL_SECONDS = 60
 MACRO_LOCK_CACHE_TTL_SECONDS = 45.0

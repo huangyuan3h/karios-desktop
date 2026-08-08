@@ -124,8 +124,10 @@ export function buildWatchlistNewsKeys(): { codes: Set<string>; names: Set<strin
  * (keyword whitelist). Top 5 — news is a scan input, not a context hog.
  */
 export function buildNewsMarkdown(s: Record<string, unknown>): string {
-  const news: any = (s as any)?.news ?? {};
-  const items: any[] = Array.isArray(news?.items) ? news.items : [];
+  const news = (s?.news ?? {}) as Record<string, unknown>;
+  const items = Array.isArray(news.items)
+    ? (news.items as Array<Record<string, unknown>>)
+    : [];
   if (!items.length) return '';
   const keys = buildWatchlistNewsKeys();
   const hits = items
@@ -166,13 +168,16 @@ export async function buildWatchlistAlphaMarkdown(): Promise<string> {
   const lines = ['## Alpha 催化（Watchlist 交集）', ''];
   let count = 0;
   for (const t of Array.isArray(items) ? items : []) {
-    const cnSymbols: any[] = Array.isArray((t as any)?.cnSymbols) ? (t as any).cnSymbols : [];
+    const tRec = t as Record<string, unknown>;
+    const cnSymbols = Array.isArray(tRec.cnSymbols)
+      ? (tRec.cnSymbols as Array<Record<string, unknown>>)
+      : [];
     for (const s of cnSymbols) {
       const code = String(s?.symbol ?? '');
       const code6 = code.replace(/\D/g, '').slice(-6) ?? '';
       if (!code6 || !keys.codes.has(code6)) continue;
-      const theme = String((t as any)?.macroTheme ?? (t as any)?.trendName ?? '—');
-      const grade = String((t as any)?.catalystGrade ?? (t as any)?.urgencyLevel ?? 'B');
+      const theme = String(tRec.macroTheme ?? tRec.trendName ?? '—');
+      const grade = String(tRec.catalystGrade ?? tRec.urgencyLevel ?? 'B');
       const conf = Math.round(Number(s?.confidence) * 100);
       const rationale = String(s?.rationale ?? '').slice(0, 60);
       lines.push(
@@ -219,7 +224,9 @@ export async function buildDecisionActiveLayer(opts: {
     fetchDataSourcesHealth().catch(() => ({ sources: [] as DataSourceFreshness[] })),
   ]);
 
-  const gate = parseExecutionGate((summary as any)?.marketSentiment?.executionGate);
+  const gate = parseExecutionGate(
+    (summary?.marketSentiment as Record<string, unknown> | undefined)?.executionGate,
+  );
   const mainlineAllow = buildMainlineAllowSet(summary);
   const sectorOutflowBlock = isSectorOutflowBlock(summary);
 

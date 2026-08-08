@@ -1552,3 +1552,27 @@ SidebarNav 新增「回测」入口。三区块：
 - ❌ 纯统计相关性唯一依据（语义层为主，fail-open）
 - ❌ 强制卖出（只拦新开仓）
 - ❌ other 簇参与 cap
+
+---
+
+### OPT-068：真实交易记录 + 期望值看板（todo §3 P2 · 2026-08-08 用户拍板）
+
+**状态**：[x]  
+**完成日期**：2026-08-08  
+**背景**：用户实际买卖闭环——watchlist 已有买入价（costPrice）+ 仓位（positionPct），缺卖出记录与胜率度量。不做 Alpha 191 因子全量落地，走「纪律 + 真实数据验证」路线（关联 TIP-013）。
+
+#### 交付
+
+- `db/user_trades.py`（**新**）+ alembic `0023_user_trades`：append-only 真实交易日志（BUY/ADD/SELL 三条腿；SELL 带 costBasis/entryDate/pnlPct/holdingDays，毛利口径）
+- `service/user_trades_stats.py`（**新**）：期望值 = 胜率×平均盈利 − 败率×平均亏损 − 0.3% 往返成本；bySource（TV/ALPHA/MANUAL/RESEARCH 对齐 TIP-011）/ bySymbol 分桶；profitFactor / avgHoldingDays
+- API：`POST /trades`（SELL 由后端算 pnlPct+holdingDays）、`GET /trades`、`GET /trades/stats`、`DELETE /trades/{id}`
+- shared：`schemas/userTrades.ts`（Zod：UserTrade / UserTradeRequest / UserTradesStats + schema 测试）
+- FE：`TradeActionDialog`（买入/加仓/卖出弹窗，卖出预填现价 + 预计盈亏预览）；Watchlist 行内按钮替换 ETF 专用快键；`TradeStatsPanel` 期望值看板（胜率/平均盈利/平均亏损/盈亏比/净期望值 + 分来源 + 最近卖出）；`lib/trade-recording.ts` 加权成本混合 + PnL/持有天数纯函数
+- 加仓识别：持仓标的新增买入 → `blendAddCost` 加权平均成本 + 记 ADD leg
+
+#### 反模式
+
+- ❌ 用 paper_trades（模拟信号日志）冒充真实交易
+- ❌ 把净值/费用模型塞进 user_trades（毛利 + 展示期扣 0.3% 成本，口径单一）
+- ❌ 样本 <50 时给出结论（看板明示"仅作趋势参考"）
+

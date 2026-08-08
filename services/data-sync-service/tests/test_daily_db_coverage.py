@@ -79,11 +79,9 @@ def test_upsert_from_dataframe_builds_rows(monkeypatch) -> None:
 
 def test_upsert_from_dataframe_empty_df() -> None:
     assert dbd.upsert_from_dataframe(pd.DataFrame()) == 0
-import datetime
+import datetime  # noqa: E402
 
-import pandas as pd
-
-from data_sync_service.db import daily as dd
+from data_sync_service.db import daily as dd  # noqa: E402
 
 
 class _Cur:

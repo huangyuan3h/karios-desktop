@@ -36,7 +36,7 @@ def test_resolve_trend_storage_fields_full() -> None:
     assert out["logic_summary"] == "summary-y"
 
 
-def test_keywords_from_trend() -> None:
+def test_keywords_from_trend_empty_entries() -> None:
     fields = {"macro_theme": "半导体"}
     assert ap._keywords_from_trend({"a_share_mapping": [" 中芯 ", ""]}, fields) == ["半导体", "中芯"]
     assert ap._keywords_from_trend({}, fields) == ["半导体"]
@@ -109,11 +109,11 @@ def test_document_text_uses_fulltext_and_title_summary() -> None:
     assert ap._document_text({"title": "T"}) == "T"
 """alpha_radar_process wave-2: extract/save/batch/pending drivers."""
 
-import json
-import urllib.error
-import urllib.request
+import json  # noqa: E402
+import urllib.error  # noqa: E402
+import urllib.request  # noqa: E402
 
-from data_sync_service.service import alpha_radar_process as arp
+from data_sync_service.service import alpha_radar_process as arp  # noqa: E402
 
 
 def test_ai_service_base_url(monkeypatch) -> None:
@@ -170,7 +170,7 @@ def test_ai_extract_trends_http_error(monkeypatch) -> None:
     monkeypatch.setattr(arp.urllib.request, "urlopen", fake_urlopen)
     try:
         arp._ai_extract_trends(text="t", title="ti", category="c", source_url="u")
-        assert False
+        raise AssertionError()
     except RuntimeError as exc:
         assert "extract error" in str(exc)
 
@@ -257,7 +257,7 @@ def test_process_document(monkeypatch) -> None:
     monkeypatch.setattr(arp, "fetch_document_by_id", lambda did: None)
     try:
         arp.process_document("d1")
-        assert False
+        raise AssertionError()
     except ValueError:
         pass
 
@@ -265,7 +265,7 @@ def test_process_document(monkeypatch) -> None:
     monkeypatch.setattr(arp, "fetch_document_by_id", lambda did: {"id": "d1"})
     try:
         arp.process_document("d1")
-        assert False
+        raise AssertionError()
     except ValueError as exc:
         assert "too short" in str(exc)
 
@@ -296,7 +296,7 @@ def test_ai_extract_batch_ok_and_error(monkeypatch) -> None:
     monkeypatch.setattr(arp.urllib.request, "urlopen", fail_urlopen)
     try:
         arp._ai_extract_batch(documents=[])
-        assert False
+        raise AssertionError()
     except RuntimeError as exc:
         assert "extract-batch" in str(exc)
 
@@ -319,7 +319,7 @@ def test_process_document_batch(monkeypatch) -> None:
     monkeypatch.setattr(arp, "_ai_extract_batch", lambda documents: {"error": "ai down"})
     try:
         arp.process_document_batch(batch_size=3)
-        assert False
+        raise AssertionError()
     except RuntimeError as exc:
         assert "ai down" in str(exc)
 

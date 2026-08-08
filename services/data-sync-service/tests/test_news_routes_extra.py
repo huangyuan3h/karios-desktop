@@ -9,7 +9,7 @@ from data_sync_service.main import app
 
 client = TestClient(app)
 
-import data_sync_service.api.news_routes as nr
+import data_sync_service.api.news_routes as nr  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

@@ -136,7 +136,7 @@ def compute_srv_index(*, top_by_date: list[dict[str, Any]], as_of_date: str) -> 
         unique_all |= s
     unique_count = len(unique_all)
 
-    leader_names = [l for l in leaders if l]
+    leader_names = [x for x in leaders if x]
     top1_appearances = 0
     if leader_names:
         counts: dict[str, int] = {}

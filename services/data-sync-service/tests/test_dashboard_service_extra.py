@@ -3,15 +3,9 @@
 from __future__ import annotations
 
 import queue
-import json
-from unittest.mock import Mock
-
-import pytest
-from fastapi import HTTPException
-
-from data_sync_service.service import dashboard as db
-
 from datetime import date
+
+from fastapi import HTTPException
 
 from data_sync_service.service import dashboard as dash  # noqa: F401  (alias used below)
 
@@ -61,7 +55,7 @@ class TestIsoHelpers:
         assert dash._now_iso().endswith("+00:00")
         assert dash._today_iso_date().count("-") == 2
         assert dash._shanghai_today_iso().count("-") == 2
-        monkeypatch = Mock()
+
         dash._index_signal_items(as_of_date="d") if False else None
 
     def test_index_signal_items(self, monkeypatch) -> None:

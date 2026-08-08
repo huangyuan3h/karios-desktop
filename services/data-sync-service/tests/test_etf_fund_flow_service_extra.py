@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from unittest.mock import Mock
 
 import pandas as pd
 import pytest
 
-from data_sync_service.db.etf_fund_flow import upsert_daily_rows
 from data_sync_service.service import etf_fund_flow as eff
 from data_sync_service.service.etf_fund_flow_em import EM_ETF_FLOW_SOURCE
 

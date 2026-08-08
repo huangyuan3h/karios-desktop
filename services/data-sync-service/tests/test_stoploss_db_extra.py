@@ -70,7 +70,7 @@ def test_get_stoploss_none(monkeypatch) -> None:
 
 def test_get_stoploss_row(monkeypatch) -> None:
     now = datetime(2026, 8, 7, 12, 0)
-    cur = _patch(monkeypatch, _Cur(fetchone=("600000.SH", 10.5, now, "2026-08-07")))
+    _ = _patch(monkeypatch, _Cur(fetchone=("600000.SH", 10.5, now, "2026-08-07")))
     out = sl.get_stoploss("600000.SH")
     assert out["ts_code"] == "600000.SH"
     assert out["stop_loss_price"] == 10.5
@@ -79,7 +79,7 @@ def test_get_stoploss_row(monkeypatch) -> None:
 
 
 def test_get_stoploss_null_fields(monkeypatch) -> None:
-    cur = _patch(monkeypatch, _Cur(fetchone=("600000.SH", None, None, None)))
+    _ = _patch(monkeypatch, _Cur(fetchone=("600000.SH", None, None, None)))
     out = sl.get_stoploss("600000.SH")
     assert out["stop_loss_price"] is None
     assert out["updated_at"] is None and out["as_of_date"] is None

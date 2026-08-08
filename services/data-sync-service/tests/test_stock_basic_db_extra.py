@@ -160,13 +160,13 @@ def test_fetch_all(monkeypatch) -> None:
     import datetime as dt
 
     cols = [_Col("ts_code"), _Col("name"), _Col("list_date")]
-    cur = _patch(monkeypatch, _Cur(fetchall=[("600000.SH", "浦发", dt.date(2026, 8, 7))], cols=cols))
+    _ = _patch(monkeypatch, _Cur(fetchall=[("600000.SH", "浦发", dt.date(2026, 8, 7))], cols=cols))
     out = sb.fetch_all()
     assert out == [{"ts_code": "600000.SH", "name": "浦发", "list_date": "2026-08-07"}]
 
 
 def test_fetch_market_stocks_cn(monkeypatch) -> None:
-    cur = _patch(monkeypatch, _Cur(fetchone=(2,), fetchall=[
+    _ = _patch(monkeypatch, _Cur(fetchone=(2,), fetchall=[
         ("000001.SZ", "1", "平安", "主板", "2026-01-01", None),
         ("00700.HK", "00700", "腾讯", "HK", None, None),
     ], cols=[_Col("ts_code")]))
@@ -211,7 +211,7 @@ def test_fetch_market_stocks_limit_clamped(monkeypatch) -> None:
 
 
 def test_get_market_status(monkeypatch) -> None:
-    cur = _patch(monkeypatch, _Cur(fetchone=(5000,)))
+    _ = _patch(monkeypatch, _Cur(fetchone=(5000,)))
     from data_sync_service.db import sync_job_record as sjr
 
     monkeypatch.setattr(sjr, "get_last_successful_run", lambda jt: {"sync_at": "2026-08-07T10:00:00"})

@@ -13,12 +13,11 @@ from __future__ import annotations
 import pytest
 
 from data_sync_service.service.backtest_engine import (
+    CLOSE_REASON_END_OF_WINDOW,
     BacktestConfig,
     BacktestData,
-    CLOSE_REASON_END_OF_WINDOW,
     simulate,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures: in-memory BacktestData
@@ -377,13 +376,12 @@ def test_calendar_days_between_helpers() -> None:
     assert _calendar_days_between("2026-06-18", "bad") == 0
 
 
-import pytest
 
 
 @pytest.mark.requires_postgres
 def test_backtest_data_loads_from_db() -> None:
     """BacktestData real-DB path: calendar + scores + bars (dev DB, CN)."""
-    from data_sync_service.service.backtest_engine import BacktestData, BacktestConfig
+    from data_sync_service.service.backtest_engine import BacktestConfig, BacktestData
 
     config = BacktestConfig(start_date="2026-07-27", end_date="2026-07-31")
     data = BacktestData(config)

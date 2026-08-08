@@ -70,9 +70,9 @@ def _patch(monkeypatch, rows=None):
 
 
 def test_get_last_trade_date(monkeypatch) -> None:
-    cur = _patch(monkeypatch, [(date(2026, 8, 7),)])
+    _ = _patch(monkeypatch, [(date(2026, 8, 7),)])
     assert md.get_last_trade_date("SPX") == date(2026, 8, 7)
-    cur2 = _patch(monkeypatch, [(None,)])
+    _ = _patch(monkeypatch, [(None,)])
     assert md.get_last_trade_date("SPX") is None
 
 
@@ -163,7 +163,7 @@ def test_fetch_last_closes_batch(monkeypatch) -> None:
 def test_get_latest_rows_batch(monkeypatch) -> None:
     assert md.get_latest_rows_batch([]) == {}
     rows = [("SPX", date(2026, 8, 7), "tushare", "000001.SH", 1, 2, 3, 4, 5, 6, 7, 8, 9)]
-    cur = _patch(monkeypatch, rows)
+    _ = _patch(monkeypatch, rows)
     out = md.get_latest_rows_batch(["SPX"])
     assert out["SPX"]["close"] == 4.0
     assert out["SPX"]["trade_date"] == "2026-08-07"
@@ -181,5 +181,5 @@ def test_get_latest_row(monkeypatch) -> None:
 
 
 def test_list_distinct_series_ids(monkeypatch) -> None:
-    cur = _patch(monkeypatch, [("SPX",), ("IXIC",), (None,)])
+    _ = _patch(monkeypatch, [("SPX",), ("IXIC",), (None,)])
     assert md.list_distinct_series_ids() == ["SPX", "IXIC"]

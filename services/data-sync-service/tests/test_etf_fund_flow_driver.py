@@ -94,9 +94,7 @@ def test_aggregate_etf_flow_signal_incomplete_flags() -> None:
     assert out["incomplete"] is True
 """etf_fund_flow: watchlist sync driver + tushare history + helpers."""
 
-import datetime
-
-from data_sync_service.service import etf_fund_flow as eff
+import datetime  # noqa: E402
 
 
 def test_sync_skip_today(monkeypatch) -> None:
@@ -253,9 +251,7 @@ def test_apply_em_spot_fallback_noop() -> None:
     monkeypatch.undo()
 """etf_fund_flow wave-2: extended universe, frame merge, flow helpers."""
 
-import pandas as pd
-
-from data_sync_service.service import etf_fund_flow as eff
+import pandas as pd  # noqa: E402
 
 
 def test_fetch_extended_etf_universe(monkeypatch) -> None:

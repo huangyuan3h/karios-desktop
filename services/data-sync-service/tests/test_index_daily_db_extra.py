@@ -107,7 +107,7 @@ def test_fetch_index_daily_empty(monkeypatch) -> None:
 
 def test_fetch_last_closes(monkeypatch) -> None:
     rows = [(date(2026, 8, 7), 4.5), (date(2026, 8, 6), 4.2)]
-    cur = _patch(monkeypatch, rows)
+    _ = _patch(monkeypatch, rows)
     out = idd.fetch_last_closes("000001.SH", days=60)
     assert out == [("2026-08-06", 4.2), ("2026-08-07", 4.5)]  # ASC
 
@@ -151,7 +151,7 @@ def test_fetch_last_closes_vol_batch(monkeypatch) -> None:
         ("399001.SZ", date(2026, 8, 7), 9.0, 50.0),
         ("999999.X", date(2026, 8, 7), 1.0, 2.0),  # not requested -> setdefault bucket
     ]
-    cur = _patch(monkeypatch, rows)
+    _ = _patch(monkeypatch, rows)
     out = idd.fetch_last_closes_vol_batch(["000001.SH", "399001.SZ"], days=80)
     assert out["000001.SH"] == [("2026-08-06", 4.2, 90.0), ("2026-08-07", 4.5, 100.0)]
     assert out["399001.SZ"] == [("2026-08-07", 9.0, 50.0)]
@@ -193,12 +193,12 @@ def test_upsert_from_dataframe_empty(monkeypatch) -> None:
 
 
 def test_get_last_trade_date_hit(monkeypatch) -> None:
-    cur = _patch(monkeypatch, [(date(2026, 8, 7),)])
+    _ = _patch(monkeypatch, [(date(2026, 8, 7),)])
     assert idd.get_last_trade_date("000001.SH") == date(2026, 8, 7)
 
 
 def test_get_last_trade_date_miss(monkeypatch) -> None:
-    cur = _patch(monkeypatch, [(None,)])
+    _ = _patch(monkeypatch, [(None,)])
     assert idd.get_last_trade_date("000001.SH") is None
-    cur2 = _patch(monkeypatch, [])
+    _ = _patch(monkeypatch, [])
     assert idd.get_last_trade_date("000001.SH") is None

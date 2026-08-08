@@ -8,7 +8,7 @@ chat which lives in localStorage), plus daily decision snapshots for the
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from data_sync_service.db import get_connection
@@ -78,7 +78,7 @@ def ensure_table() -> None:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def create_session(
@@ -320,7 +320,7 @@ def list_actions(
     limit: int = 200,
 ) -> list[dict[str, Any]]:
     ensure_table()
-    clauses: list[str] = [f"created_at >= now() - INTERVAL '%s days'"]
+    clauses: list[str] = ["created_at >= now() - INTERVAL '%s days'"]
     params: list[Any] = [days]
     if status:
         clauses.append("status = %s")

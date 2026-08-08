@@ -387,7 +387,7 @@ def _summarize(
         b["sumNet"] += t.pnl_pct
         if t.pnl_pct > 0:
             b["wins"] += 1
-    for bucket, b in buckets.items():
+    for _, b in buckets.items():
         b["winRate"] = round(b["wins"] / b["trades"], 3) if b["trades"] else None
         b["avgNet"] = round(b["sumNet"] / b["trades"], 3) if b["trades"] else None
         del b["sumNet"]

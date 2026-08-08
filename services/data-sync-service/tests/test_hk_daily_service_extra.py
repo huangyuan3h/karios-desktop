@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from unittest.mock import Mock
 
 import pandas as pd
-import pytest
 
 from data_sync_service.service import hk_daily as hd
 

@@ -59,8 +59,7 @@ def main() -> int:
     failures: list[str] = []
     print(f"{'module':<38} {'cov%':>6} {'missed':>7} {'gap':>6}")
     print("-" * 62)
-    for mod, target in [("OVERALL", args.overall)]:
-        pass
+
     for fname, fdata in sorted(files.items()):
         short = fname.split("src/data_sync_service/")[-1] if "src/data_sync_service/" in fname else fname
         if "tests" in fname:

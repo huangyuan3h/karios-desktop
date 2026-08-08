@@ -9,7 +9,7 @@ from data_sync_service.main import app
 
 client = TestClient(app)
 
-import data_sync_service.api.sync_routes as sr
+import data_sync_service.api.sync_routes as sr  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -194,9 +194,9 @@ def test_sync_close_failure_no_post(monkeypatch) -> None:
 
 def test_sync_jobs_aggregate(monkeypatch) -> None:
     from data_sync_service.db import sync_job_record as sjr
-    from data_sync_service.service import hk_industry as hi
-    from data_sync_service.service import alpha_radar_pipeline as ap
     from data_sync_service.db import watchlist_automation as wa
+    from data_sync_service.service import alpha_radar_pipeline as ap
+    from data_sync_service.service import hk_industry as hi
 
     monkeypatch.setattr(sjr, "get_today_run", lambda jt: {"job_type": jt} if jt == "stock_basic_sync" else None)
     monkeypatch.setattr(sjr, "get_last_success", lambda jt: {"job_type": jt})
@@ -215,9 +215,9 @@ def test_sync_jobs_aggregate(monkeypatch) -> None:
 
 def test_sync_jobs_aggregate_errors(monkeypatch) -> None:
     from data_sync_service.db import sync_job_record as sjr
-    from data_sync_service.service import hk_industry as hi
-    from data_sync_service.service import alpha_radar_pipeline as ap
     from data_sync_service.db import watchlist_automation as wa
+    from data_sync_service.service import alpha_radar_pipeline as ap
+    from data_sync_service.service import hk_industry as hi
 
     monkeypatch.setattr(sjr, "get_today_run", lambda jt: None)
     monkeypatch.setattr(sjr, "get_last_success", lambda jt: None)

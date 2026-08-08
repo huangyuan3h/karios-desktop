@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from data_sync_service.api.watchlist_routes import (
     _backfill_names,
     _to_ts_code,
-    router,
 )
 from data_sync_service.main import app
 
@@ -104,7 +103,6 @@ def test_backfill_names_fills(monkeypatch) -> None:
 
 
 def test_backfill_names_db_error(monkeypatch) -> None:
-    import data_sync_service.api.watchlist_routes as wr
     from data_sync_service import db as dblib
 
     monkeypatch.setattr(dblib, "get_connection", lambda: (_ for _ in ()).throw(RuntimeError("down")))
@@ -124,7 +122,6 @@ def test_to_ts_code() -> None:
 
 def test_backfill_registry_names(monkeypatch) -> None:
     import data_sync_service.api.watchlist_routes as wr
-    from data_sync_service import db as dblib
 
     monkeypatch.setattr(wr, "_backfill_names", lambda items: [dict(x, name="浦发银行") for x in items])
     monkeypatch.setattr(wr, "upsert_registry", lambda items: len(items))

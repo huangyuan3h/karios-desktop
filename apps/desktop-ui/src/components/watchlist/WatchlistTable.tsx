@@ -13,7 +13,21 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { ColumnHeader } from '@/components/watchlist/ColumnHeader';
+import {
+  TradeActionDialog,
+  type TradeDialogOpenState,
+} from '@/components/watchlist/TradeActionDialog';
 import { WatchlistRow } from '@/components/watchlist/WatchlistRow';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  blendAddCost,
+  tradeMarketForSymbol,
+  tradeSourceForItem,
+} from '@/lib/trade-recording';
+import {
+  invalidateUserTradesQueries,
+  recordUserTrade,
+} from '@/lib/queries/userTrades';
 import {
   clusterExposureForSymbol,
   useCorrelationStatusQuery,
@@ -288,6 +302,63 @@ export function WatchlistTable({
     placement: 'top-end' | 'bottom-end';
     symbol: string | null;
   }>({ open: false, x: 0, y: 0, placement: 'bottom-end', symbol: null });
+  const [tradeDialog, setTradeDialog] = React.useState<TradeDialogOpenState | null>(null);
+  const queryClient = useQueryClient();
+
+  const openTradeDialog = React.useCallback(
+    (kind: 'buy' | 'add' | 'sell', item: WatchlistItem) => {
+      const current = rowMetricsBySymbol.get(item.symbol)?.current ?? null;
+      setTradeDialog({ kind, item, currentPrice: current });
+    },
+    [rowMetricsBySymbol],
+  );
+
+  const handleTradeConfirm = React.useCallback(
+    async (values: { price: number; positionPct: number }) => {
+      if (!tradeDialog) return;
+      const { kind, item } = tradeDialog;
+      const { price, positionPct } = values;
+      const symbol = item.symbol;
+      const source = tradeSourceForItem(item);
+      const market = tradeMarketForSymbol(symbol);
+      try {
+        if (kind === 'buy') {
+          await recordUserTrade({ symbol, side: 'BUY', price, positionPct, source, market });
+          setItemCostPriceValue(symbol, price);
+          setItemPositionPct(symbol, String(positionPct));
+        } else if (kind === 'add') {
+          const oldCost = item.costPrice ?? price;
+          const oldPct = item.positionPct ?? 0;
+          const blended = blendAddCost(oldCost, oldPct, price, positionPct);
+          await recordUserTrade({ symbol, side: 'ADD', price, positionPct, source, market });
+          setItemCostPriceValue(symbol, blended.blendedCost);
+          setItemPositionPct(symbol, String(blended.newPositionPct));
+        } else {
+          const costBasis = item.costPrice;
+          const entryDate = item.entryDate;
+          if (costBasis == null || !entryDate) return;
+          await recordUserTrade({
+            symbol,
+            side: 'SELL',
+            price,
+            positionPct,
+            costBasis,
+            entryDate,
+            source,
+            market,
+          });
+          const remaining = (item.positionPct ?? 0) - positionPct;
+          setItemPositionPct(symbol, String(Math.max(0, remaining)));
+        }
+        void invalidateUserTradesQueries(queryClient);
+      } catch {
+        // Trade journal is best-effort; watchlist edits still apply.
+      } finally {
+        setTradeDialog(null);
+      }
+    },
+    [tradeDialog, queryClient, setItemCostPriceValue, setItemPositionPct],
+  );
 
   const showTooltip = React.useCallback((el: HTMLElement, content: React.ReactNode, width = 360) => {
     const r = el.getBoundingClientRect();
@@ -687,6 +758,7 @@ export function WatchlistTable({
                         onRemove={onRemove}
                         onOpenStock={onOpenStock}
                         onAddReference={onAddReference}
+                        onOpenTradeDialog={openTradeDialog}
                         rowClassName={isHiddenRow ? 'opacity-50' : undefined}
                         rowTitle={
                           isHiddenRow
@@ -705,6 +777,15 @@ export function WatchlistTable({
           <div className="text-sm text-[var(--k-muted)]">No items yet. Add a ticker above.</div>
         )}
       </section>
+
+      {tradeDialog ? (
+        <TradeActionDialog
+          state={tradeDialog}
+          suggestPct={5}
+          onClose={() => setTradeDialog(null)}
+          onConfirm={(values) => void handleTradeConfirm(values)}
+        />
+      ) : null}
 
       {tooltip.open
         ? createPortal(

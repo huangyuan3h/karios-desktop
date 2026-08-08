@@ -746,9 +746,8 @@ def test_messages_on_uses_shanghai_day_boundary() -> None:
     """H6 (2026-08-08): the daily-snapshot message window must be the Shanghai
     calendar day, not the UTC one (a message at Shanghai 00:30 on day D is
     UTC day D-1 16:30 — the old UTC-day window silently dropped it)."""
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
-    from data_sync_service.service import decision as svc
     from data_sync_service.service.decision import SHANGHAI_TZ
 
     day = (datetime.now(SHANGHAI_TZ) - timedelta(days=2)).date()

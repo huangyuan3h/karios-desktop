@@ -114,7 +114,7 @@ def test_list_registry(monkeypatch) -> None:
         ("CN:600519", "manual", "", "not-a-dict"),
         ("HK:00700", "manual", None, None),
     ]
-    cur = _patch(monkeypatch, rows)
+    _ = _patch(monkeypatch, rows)
     out = wa.list_registry()
     assert out[0]["symbol"] == "CN:600000" and out[0]["score"] == 80
     assert out[1]["source"] == "manual"
@@ -155,11 +155,11 @@ def test_get_scores_for_symbol(monkeypatch) -> None:
 
 
 def test_fetch_latest_score_since(monkeypatch) -> None:
-    cur = _patch(monkeypatch, [(80.0,)])
+    _ = _patch(monkeypatch, [(80.0,)])
     assert wa.fetch_latest_score_since("CN:600000", "2026-08-01") == 80.0
-    cur2 = _patch(monkeypatch, [(None,)])
+    _ = _patch(monkeypatch, [(None,)])
     assert wa.fetch_latest_score_since("CN:600000", "2026-08-01") is None
-    cur3 = _patch(monkeypatch, [])
+    _ = _patch(monkeypatch, [])
     assert wa.fetch_latest_score_since("CN:600000", "2026-08-01") is None
 
 
@@ -194,16 +194,16 @@ def test_get_run_by_id(monkeypatch) -> None:
     assert out["screenerAdded"] == 3
     assert cur.executed[0][1] == ("run-1",)
 
-    cur2 = _patch(monkeypatch, [])
+    _ = _patch(monkeypatch, [])
     assert wa.get_run_by_id("ghost") is None
 
 
 def test_get_latest_run(monkeypatch) -> None:
-    cur = _patch(monkeypatch, [_run_row(meta=None, applied=None)])
+    _ = _patch(monkeypatch, [_run_row(meta=None, applied=None)])
     out = wa.get_latest_run()
     assert out["runId"] == "run-1"
     assert out["appliedAt"] is None and out["meta"] == {}
-    cur2 = _patch(monkeypatch, [])
+    _ = _patch(monkeypatch, [])
     assert wa.get_latest_run() is None
 
 
@@ -227,7 +227,7 @@ def test_get_pending_run_with_and_without_date(monkeypatch) -> None:
     assert out2 is not None
     assert "trade_date = %s" not in cur2.executed[0][0]
 
-    cur3 = _patch(monkeypatch, [])
+    _ = _patch(monkeypatch, [])
     assert wa.get_pending_run() is None
 
 

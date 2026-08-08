@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import uuid
 
 from data_sync_service.db import alpha_radar as ard
 
@@ -162,7 +161,6 @@ def test_upsert_document_builds_query(monkeypatch) -> None:
     assert params[0] == "doc-1"
 """db/alpha_radar wave-2: fetch/delete/trend read-write drivers via fake conn."""
 
-from data_sync_service.db import alpha_radar as ard
 
 
 class _FakeCur:

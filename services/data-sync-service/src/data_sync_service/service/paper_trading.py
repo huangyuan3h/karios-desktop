@@ -429,7 +429,7 @@ def _pick_close_reason(
     """
     stop = stop_loss_pct if stop_loss_pct is not None else pt_db.STOP_LOSS_PCT
     target = target_pnl_pct if target_pnl_pct is not None else pt_db.TARGET_PNL_PCT
-    hold = max_hold_days if max_hold_days is not None else pt_db.MAX_HOLD_DAYS
+    _ = max_hold_days if max_hold_days is not None else pt_db.MAX_HOLD_DAYS
     floor = score_floor if score_floor is not None else pt_db.SCORE_FLOOR
 
     if pnl_pct <= stop:

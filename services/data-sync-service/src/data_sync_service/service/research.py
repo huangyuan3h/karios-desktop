@@ -22,7 +22,7 @@ Per-symbol aggregation adds +5 per extra confirming report (cap +10).
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from data_sync_service.service.em_push2_http import em_get_json

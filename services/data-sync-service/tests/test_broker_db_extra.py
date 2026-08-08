@@ -80,7 +80,7 @@ def test_create_account(monkeypatch) -> None:
 
 
 def test_update_account_title(monkeypatch) -> None:
-    cur = _patch(monkeypatch, _Cur(rowcount=1))
+    _ = _patch(monkeypatch, _Cur(rowcount=1))
     assert bk.update_account_title(account_id="a1", title="t2", updated_at="u2") is True
     cur2 = _patch(monkeypatch, _Cur(rowcount=0))
     assert bk.update_account_title(account_id="a1", title="t2", updated_at="u2") is False
@@ -88,7 +88,7 @@ def test_update_account_title(monkeypatch) -> None:
 
 
 def test_delete_account(monkeypatch) -> None:
-    cur = _patch(monkeypatch, _Cur(rowcount=1))
+    _ = _patch(monkeypatch, _Cur(rowcount=1))
     assert bk.delete_account(account_id="a1") is True
     _patch(monkeypatch, _Cur(rowcount=0))
     assert bk.delete_account(account_id="a1") is False

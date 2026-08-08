@@ -90,9 +90,7 @@ def test_urlopen_uses_opener(monkeypatch) -> None:
     assert ai._urlopen(req, timeout=10) is not None
 
 
-import hashlib
-
-from data_sync_service.service import alpha_radar_ingest as ai
+import hashlib  # noqa: E402
 
 
 class _FakeResp:
@@ -184,7 +182,7 @@ def test_quote_url() -> None:
 
 def test_fetch_rss_feed(monkeypatch) -> None:
     items = []
-    for i, entry in enumerate(_fake_entries().entries):
+    for _, entry in enumerate(_fake_entries().entries):
         items.append(entry)
 
     def fake_feedparser_parse(raw):
@@ -204,7 +202,7 @@ def test_fetch_rss_feed_http_error(monkeypatch) -> None:
     monkeypatch.setattr(ai, "_urlopen", lambda req, timeout: (_ for _ in ()).throw(_http_error(500)))
     try:
         ai.fetch_rss_feed("http://h/feed")
-        assert False
+        raise AssertionError()
     except RuntimeError as exc:
         assert "HTTP 500" in str(exc)
 
@@ -314,7 +312,6 @@ def test_fetch_one_alpha_source_requeued_and_error(monkeypatch) -> None:
 
 
 def test_fetch_all_sources_aggregates(monkeypatch) -> None:
-    import threading
 
     monkeypatch.setattr(ai, "ensure_tables", lambda: None)
     monkeypatch.setattr(ai, "add_default_sources", lambda: None)

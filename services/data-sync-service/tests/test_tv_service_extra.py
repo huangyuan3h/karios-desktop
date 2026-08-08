@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 from fastapi import HTTPException
 
 from data_sync_service.service import tv as svc
-from data_sync_service.tv.capture import CaptureResult
 from data_sync_service.tv import scanner_api
+from data_sync_service.tv.capture import CaptureResult
 
 
 class _FakeTvdb:

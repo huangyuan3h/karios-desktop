@@ -67,6 +67,7 @@ TV Screener（候选宇宙）
 | TIP-010 | 备用宽宇宙实验（东财形态仅作对照，不替换） | P3 | ★★☆☆☆ | 1–2 天 + 对照周 | [ ] |
 | TIP-011 | 开火来源归因（TV / Alpha / 手动） | P3 | ★★★☆☆ | 1–2 天 | [x] 2026-08-04 |
 | TIP-012 | 研报 → Alpha 通道（评级/目标价进池） | P1 | ★★★★☆（新供给） | 2–3 天 | [x] 2026-08-05 |
+| TIP-013 | 信号 IC 验证 + 自研因子探索（Alpha 191 借鉴，不照搬） | P2 | ★★★★☆（度量闭环） | Phase A 1–2 天 / Phase B 2–3 天 | [ ] |
 | V6.2-01 | 弱市/DEFEND 14:30 尾盘时间锁 | P0 | ★★★★☆ | 0.5 天 | [x] |
 | V6.2-02 | DEFEND 防守双轨袖子（暂缓 Beta） | P0 | ★★★★★ | 1 天 | [x] |
 | V6.2-03 | Zero-Pos 持仓归零自动清字段 | P0 | ★★★★☆ | 0.5 天 | [x] |
@@ -748,6 +749,74 @@ penalty 应用到 `compute_alpha_additions` 的 catalystScore 上；最终自动
 
 ---
 
+### TIP-013：信号 IC 验证 + 自研因子探索（Alpha 191 借鉴，不照搬）
+
+**状态**：[ ]  
+**完成日期**：  
+**备注 / PR**：
+
+#### 背景
+
+用户在评估「Alpha 191 公式化因子」后，确认**不做全量落地**（需全市场日线底仓 + 每日截面计算 + 多空调仓，工程量大且 2015 年发表因子已被机构消化），但借鉴其核心方法论 —— **IC / Rank IC / 分层胜率** —— 先度量现有信号，再自研小因子集。
+
+#### 目标（两阶段，Phase A 先做）
+
+**Phase A — 现有信号 IC 度量**（1–2 天）
+
+对现有信号（Alpha catalystScore / TrendOK Score / 研报评分 / TV 信号）计算：
+
+- Rank IC（Spearman）：信号值 vs 未来 N 日收益（N=1/3/5/10），输出均值、ICIR、胜率
+- 分层胜率：按信号分桶（如 S/A/B），各桶的平仓胜率与平均收益
+- 衰减曲线：信号 → 未来 1/3/5/10 日预测力的衰减
+
+数据源：`paper_trades`（平仓结果）、`execution_decision_changes`（信号快照）、watchlist 历史。**不新增全市场数据同步**。
+
+**Phase B — 自研因子库**（2–3 天，用 Phase A 管道验证）
+
+从**已有数据 + 经济学解释**出发的小因子集起步（不做 191 条）：
+
+| 因子 | 数据源（已有） |
+|------|----------------|
+| 动量（N 日收益 / RS） | watchlist bars + index_dailybasic |
+| 波动率 / 回撤深度 | watchlist bars |
+| 换手 / 流动性 | tushare daily_basic（如已同步） |
+| 个股资金流 | 东财个股资金流 |
+| 行业资金流 + 主线归属 | 东财行业资金流（已有） |
+| ETF 资金确认（V6.4 思路） | etf_fund_flow（已有） |
+
+同一 IC 管道验证 → 有效的（ICIR ≥ 0.5 且分层单调）接入闸门校准或新加为辅助信号。
+
+#### 明确不做（scope 边界）
+
+- ❌ Alpha 191 全量公式落地（数据底仓 + 调仓执行，个人 watchlist 体系不匹配）
+- ❌ 因子实盘仓位分配（IC 只做度量与校准，不自动下单）
+- ❌ 为因子同步全市场日线（Phase B 仅用已有全市场数据：stock_basic / 资金流 / 指数）
+
+#### 统计纪律
+
+- Watchlist 规模（二三十只）样本的 IC 仅作**趋势参考**，不做显著性结论；Phase B 用全市场截面数据时 IC 才有统计意义
+- 所有 IC 输出必须带样本数 N，N 不足（如 <100）时标注「样本不足，仅供参考」
+
+#### 文件范围
+
+| 层 | 文件 |
+|----|------|
+| BE | `service/factor_validation.py`（新：IC / Rank IC / ICIR / 分层 / 衰减） |
+| BE | `api/backtest_routes.py`（复用）或 `api/factor_routes.py`（新） |
+| DB | 可选 `factor_scores` 表（alembic revision + CREATE_SQL 同步，遵循 AGENTS.md 迁移纪律） |
+| FE | 回测页 / AlphaIncubator 加「信号 IC」面板 |
+| 测试 | `tests/test_factor_validation.py` |
+| 文档 | 结论写回本条目（哪些信号/因子有效、是否调闸门） |
+
+#### 验证
+
+- [ ] Phase A：≥3 个现有信号跑通 30/90 天 Rank IC + ICIR + 分层胜率 + 衰减表（带样本数）
+- [ ] Phase B：≥3 个自研因子入库并跑通同一管道
+- [ ] 结论落回本条目：有效因子清单 + 建议的闸门阈值调整
+- [ ] full pytest + frontend test 全绿（沿用 27 张表零变化纪律）
+
+---
+
 ## P3 — 对照与长期
 
 ### TIP-010：备用宽宇宙实验（东财形态仅对照，不替换）
@@ -853,6 +922,7 @@ Week 1:  TIP-001（先配 Pullback TV）+ TIP-002（埋点）
 Week 2:  TIP-003（空窗）+ TIP-006（合同文档）
 Week 3:  TIP-004 + TIP-005（Alpha 进/出对称）
 Week 4+: TIP-008 展示 → TIP-007 动量放开（有数据再开）→ TIP-009/011 → TIP-010 对照实验
+远期：TIP-013 Phase A（信号 IC 度量）→ Phase B（自研因子库，用同一管道验证）
 ```
 
 每完成一项：勾选总览表 + 条目内 checklist，并在「备注 / PR」写下观察数据（转化率变化一句即可）。

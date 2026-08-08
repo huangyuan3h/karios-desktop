@@ -59,7 +59,7 @@ def test_ai_extract_pingan_screenshot(monkeypatch) -> None:
     monkeypatch.setattr(bk.urllib.request, "urlopen", fail)
     try:
         bk._ai_extract_pingan_screenshot(image_data_url="x")
-        assert False
+        raise AssertionError()
     except RuntimeError as exc:
         assert "ai-service error" in str(exc)
 
@@ -203,7 +203,7 @@ def test_delete_conditional_order(monkeypatch) -> None:
     monkeypatch.setattr(bk, "get_account_state_row", lambda aid: None)
     try:
         bk.delete_conditional_order(account_id="a1", order={"ticker": "x"})
-        assert False
+        raise AssertionError()
     except ValueError:
         pass
 
@@ -213,11 +213,11 @@ def test_delete_conditional_order(monkeypatch) -> None:
     })
     try:
         bk.delete_conditional_order(account_id="a1", order={})
-        assert False
+        raise AssertionError()
     except KeyError:
         pass  # empty-order key is not "{}" (all fields empty strings) → not found
     try:
         bk.delete_conditional_order(account_id="a1", order={"ticker": "zzz"})
-        assert False
+        raise AssertionError()
     except KeyError:
         pass

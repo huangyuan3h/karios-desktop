@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import types
-import urllib.request
 
 import pytest
 

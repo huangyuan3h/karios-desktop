@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -83,8 +83,8 @@ class TestPanicRules:
 
 class TestCapitulation:
     def test_all_conditions(self, monkeypatch) -> None:
-        from data_sync_service.db import macro_daily as md
         from data_sync_service.db import etf_fund_flow as eff
+        from data_sync_service.db import macro_daily as md
         from data_sync_service.service import macro_daily as smd
 
         monkeypatch.setattr(md, "get_latest_row", lambda sid: {"close": 25.0})
@@ -97,8 +97,8 @@ class TestCapitulation:
         assert out["raw"]["mainFlowYi"] == 30.0
 
     def test_breadth_fails(self, monkeypatch) -> None:
-        from data_sync_service.db import macro_daily as md
         from data_sync_service.db import etf_fund_flow as eff
+        from data_sync_service.db import macro_daily as md
         from data_sync_service.service import macro_daily as smd
 
         monkeypatch.setattr(md, "get_latest_row", lambda sid: {"close": 25.0})
@@ -110,8 +110,8 @@ class TestCapitulation:
         assert out["raw"]["down"] == 1000
 
     def test_iv_fails(self, monkeypatch) -> None:
-        from data_sync_service.db import macro_daily as md
         from data_sync_service.db import etf_fund_flow as eff
+        from data_sync_service.db import macro_daily as md
         from data_sync_service.service import macro_daily as smd
 
         monkeypatch.setattr(md, "get_latest_row", lambda sid: {"close": 5.0})

@@ -16,13 +16,11 @@ surface here. Teardown deletes every row this test inserted.
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
-
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 from data_sync_service.db import get_connection
-from data_sync_service.db import execution_journal as ej_db
 from data_sync_service.db import paper_trading as pt_db
 
 pytestmark = pytest.mark.requires_postgres
@@ -110,7 +108,7 @@ def test_postclose_chain_end_to_end() -> None:
 
     sym = _smoke_symbol()
     ticker = sym.split(":", 1)[1]
-    ts_code = f"{ticker}.SZ"  # 99xxxx → SZ
+    _ = f"{ticker}.SZ"  # 99xxxx → SZ
 
     # -- Step 1: journal BUY signal (real ingest: writes snapshot + changes) --
     _mock_no_prev_snapshot()  # empty baseline → diff covers only our card

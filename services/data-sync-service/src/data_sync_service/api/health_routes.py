@@ -6,7 +6,7 @@ visible timestamps instead of relying on faith.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter

@@ -118,7 +118,7 @@ def test_upsert_org_sname_fallback(monkeypatch) -> None:
 
 
 def test_upsert_counts_inserted(monkeypatch) -> None:
-    cur = _patch(monkeypatch, _Cur(rowcount=0))
+    _ = _patch(monkeypatch, _Cur(rowcount=0))
     assert rs.upsert_research_reports([{
         "infoCode": "3", "stockCode": "s", "stockName": "n", "title": "t",
         "publishDate": "2026-08-07",

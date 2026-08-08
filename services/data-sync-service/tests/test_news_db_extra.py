@@ -122,7 +122,7 @@ def test_update_source_no_fields_returns_none(monkeypatch) -> None:
 
 
 def test_update_source_missing_row_returns_none(monkeypatch) -> None:
-    cur = _patch(monkeypatch, [])
+    _ = _patch(monkeypatch, [])
     out = nw.update_source(source_id="ghost", name="x")
     assert out is None
 
@@ -239,7 +239,7 @@ def test_update_item_enrichment(monkeypatch) -> None:
 
 
 def test_count_by_enrichment_status(monkeypatch) -> None:
-    cur = _patch(monkeypatch, [("done", 10), ("failed", 2), ("pending", 3)])
+    _ = _patch(monkeypatch, [("done", 10), ("failed", 2), ("pending", 3)])
     assert nw.count_by_enrichment_status() == {"done": 10, "failed": 2, "pending": 3}
 
 

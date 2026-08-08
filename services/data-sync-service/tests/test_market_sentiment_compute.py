@@ -193,7 +193,6 @@ def test_prev_open_date_falls_back_to_daily(monkeypatch) -> None:
 
 
 def test_tushare_yesterday_limitup_codes_finds_y(monkeypatch) -> None:
-    import pandas as pd
 
     class _FakePro:
         def limit_list_d(self, **kw):
@@ -248,13 +247,10 @@ def test_fetch_cn_failed_limitup_rate_darwin_raises_akshare_disabled(monkeypatch
     assert "akshare_disabled_on_darwin" in out["raw"].get("akshareError", "")
 """market_sentiment wave-3: tushare/akshare fetchers + compute driver."""
 
-import datetime
-import math
-import sys
+import math  # noqa: E402
+import sys  # noqa: E402
 
-import pandas as pd
-
-from data_sync_service.service import market_sentiment as ms
+import pandas as pd  # noqa: E402
 
 
 def test_finite_and_try_float() -> None:
@@ -291,7 +287,7 @@ def test_with_retry_success_and_retry(monkeypatch) -> None:
 
     try:
         ms._with_retry(always_fail, tries=3)
-        assert False
+        raise AssertionError()
     except RuntimeError:
         pass
 
@@ -361,7 +357,7 @@ def test_fetch_cn_a_spot_change_pct_fallback_and_fail(monkeypatch) -> None:
     monkeypatch.setattr(ms, "_akshare", lambda: ak2)
     try:
         ms._fetch_cn_a_spot_change_pct()
-        assert False
+        raise AssertionError()
     except RuntimeError:
         pass
 

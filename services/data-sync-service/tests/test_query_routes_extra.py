@@ -66,7 +66,7 @@ def test_resolve_symbols_invalid_symbols(monkeypatch) -> None:
 def test_resolve_symbols_caps_at_500(monkeypatch) -> None:
     rows = [("600000.SH", "600000", "浦发银行")]
     _patch_resolve_db(monkeypatch, rows)
-    syms = "&symbols=".join([f"CN:600000"] * 501)
+    syms = "&symbols=".join(["CN:600000"] * 501)
     out = client.get(f"/market/stocks/resolve?symbols={syms}").json()
     assert len(out) == 1
 
@@ -275,7 +275,6 @@ def test_watchlist_momentum_alerts_endpoint(monkeypatch) -> None:
 
 
 def test_misc_status_endpoints(monkeypatch) -> None:
-    import data_sync_service.api.query_routes as qr
 
     for path, fn, ret in [
         ("/stock-basic", "get_stock_basic_list", [{"a": 1}]),

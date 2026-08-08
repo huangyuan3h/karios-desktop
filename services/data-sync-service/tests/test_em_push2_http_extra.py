@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import urllib.error
-
 from data_sync_service.service import em_push2_http as eh
 
 

@@ -226,7 +226,7 @@ class TestPureHelpers:
 
     def test_merge_realtime_bar_append(self) -> None:
         bars = _rising_bars(5)
-        last_date = bars[-1][0]
+        _ = bars[-1][0]
         quote = {"price": "150.0", "trade_time": "2026-08-06 15:00:00", "open": "149.0", "high": "151.0", "low": "148.5", "volume": "123456"}
         merged = tk._merge_realtime_bar(bars, quote)
         assert len(merged) == 6

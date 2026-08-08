@@ -13,13 +13,12 @@ All tests are gated by ``requires_postgres`` (see conftest.py).
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 
 import pytest
 
 from data_sync_service.db import execution_journal as ej_db
 from data_sync_service.db import paper_trading as pt_db
-
 
 pytestmark = pytest.mark.requires_postgres
 

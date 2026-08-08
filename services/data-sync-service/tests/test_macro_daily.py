@@ -110,11 +110,7 @@ def test_sync_macro_daily_one_series_upserts(monkeypatch) -> None:
     out = md.sync_macro_daily_full()
     assert out["ok"] is True
     assert out["updated"] >= 2
-import sys
-
-import pandas as pd
-
-from data_sync_service.service import macro_daily as md
+import sys  # noqa: E402
 
 
 def test_tushare_pro_and_try(monkeypatch) -> None:
@@ -127,7 +123,7 @@ def test_tushare_pro_and_try(monkeypatch) -> None:
     monkeypatch.setattr(md, "get_settings", lambda: type("S", (), {"tu_share_api_key": ""})())
     try:
         md._tushare_pro()
-        assert False
+        raise AssertionError()
     except RuntimeError:
         pass
     assert md.try_tushare_pro() is None
@@ -213,7 +209,7 @@ def test_fetch_hstech_via_ak_and_yf(monkeypatch) -> None:
         "open": [1.0, 2.0], "high": [2.0, 3.0], "low": [0.5, 1.5],
         "close": [1.5, 2.5], "volume": [100, 200], "amount": [300, 400],
     })
-    ak = type("AK", (), {"stock_hk_index_daily_sina": staticmethod(lambda symbol: df)})()
+    _ = type("AK", (), {"stock_hk_index_daily_sina": staticmethod(lambda symbol: df)})()
     monkeypatch.setattr(md, "sys", __import__("sys"))
     monkeypatch.setattr(md, "akshare", None) if hasattr(md, "akshare") else None
     import akshare  # noqa: F401

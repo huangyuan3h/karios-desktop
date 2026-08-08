@@ -6,14 +6,14 @@ from fastapi import FastAPI  # type: ignore[import-not-found]
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore[import-not-found]
 
 from .api.alpha_radar_routes import router as alpha_radar_router
+from .api.backtest_routes import router as backtest_router
 from .api.broker_routes import router as broker_router
 from .api.dashboard_routes import router as dashboard_router
+from .api.decision_routes import router as decision_router
 
 # OPT-045 Phase A: 4 stable discovery endpoints (no auth — must be reachable
 # before any API key can be issued).
 from .api.discovery_routes import router as discovery_router
-from .api.decision_routes import router as decision_router
-from .api.backtest_routes import router as backtest_router
 from .api.execution_journal_routes import router as execution_journal_router
 from .api.health_routes import router as health_router
 from .api.industry_flow_routes import router as industry_flow_router
@@ -21,11 +21,13 @@ from .api.journal_routes import router as journal_router
 from .api.market_sentiment_routes import router as market_sentiment_router
 from .api.news_routes import router as news_router
 from .api.query_routes import router as query_router
+from .api.research_routes import router as research_router
 from .api.sync_routes import router as sync_router
 from .api.system_prompts_routes import router as system_prompts_router
 from .api.trade_review_routes import router as trade_review_router
 from .api.tv_chrome_routes import router as tv_chrome_router
 from .api.tv_routes import router as tv_router
+from .api.user_trades_routes import router as user_trades_router
 
 # OPT-045 Phase B / OPT-046: 3 read-only business endpoints under /v1/*.
 # Auth is opt-in (no-op when KARIOS_API_KEYS is empty).
@@ -37,7 +39,6 @@ from .api.v1_explain_routes import router as v1_explain_router
 # OPT-051 §12 #5: /v1/quota — per-API-key usage snapshot.
 from .api.v1_quota_routes import router as v1_quota_router
 from .api.watchlist_routes import router as watchlist_router
-from .api.research_routes import router as research_router
 from .scheduler import create_scheduler
 from .service.tv_capture_worker import start_tv_capture_worker, stop_tv_capture_worker
 
@@ -110,6 +111,7 @@ app.include_router(news_router)
 app.include_router(alpha_radar_router)
 app.include_router(watchlist_router)
 app.include_router(research_router)
+app.include_router(user_trades_router)
 # OPT-045 Phase A: discovery router (4 stable endpoints, no auth).
 # Phase B will add a separate /v1/* business router that depends on
 # api.auth.require_api_key.

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import datetime
 
-import pandas as pd
-
 from data_sync_service.service import trendok as tk
 
 

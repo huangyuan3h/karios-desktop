@@ -69,6 +69,7 @@
 - **[P2] Alpha 映射质量抽检**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md`](./archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md)（TIP-009 · 5 信号自动 QA · 用户零操作；theme_industry_map 从历史 alpha_radar_trends 数据驱动学，penalty 应用到 compute_alpha_additions，Copy markdown 末尾暴露给外部 AI agent）。
 - **[P2] 风险平价开仓尺寸（V7.0-02）**：✅ **[done] 2026-08-05** → [`archive/2026-08-05-v7-02-risk-parity-sizing.md`](./archive/2026-08-05-v7-02-risk-parity-sizing.md)（Suggest% = min(5% clip, 0.5%风险预算/止损距离%, 单票/行业/Sleeve room)；实际止损位优先、2×ATR 兜底；<2.5% 放弃；绑定约束 note=`risk` + 面板显示止损距离；BE 零改动）。关联 §3 P1「卫星仓上限/仓位管理复核」。
 - **[P2] 研报 → α 通道（TIP-012）**：✅ **[done] 2026-08-05** → [`archive/2026-08-05-tip-012-research-alpha-channel.md`](./archive/2026-08-05-tip-012-research-alpha-channel.md)（东财研报 API 免费源 · 确定性评分（评级×80+目标价×20 权重，14天半衰期）· 复用 TIP-004 闸门 score_min=70 · 每轮 cap 10 · registry source='research' 可归因 · alembic 0019 + 每2h job；关联 §7 P2「研报→α通道」与 §7 P1「研报源评估」的可行性验证）。
+- **[P2] 真实交易记录 + 期望值看板**：用户实际买卖记录闭环——watchlist 已有买入价（costPrice）+ 仓位（positionPct）；新增 **卖出 icon → 输入卖出价格**（记录卖出价/持仓天数/盈亏）；**加仓识别**（持仓标的新增买入 → 加权平均成本 + 记 ADD leg）；Watchlist 页**期望值看板**（胜率 / 盈亏比 / 每笔期望值 vs 0.3% 成本线 / 分来源 / 样本数）。数据来源 `user_trades` 表（alembic 0023）；统计口径：期望值 = 胜率×平均盈利 − 败率×平均亏损 − 0.3% 成本。关联 TIP-013（信号 IC 验证）——先积累真实交易样本，再验证信号是否有边际优势。**业务决策（2026-08-08 用户）**：不做 Alpha 191 因子全量落地，做「纪律 + 真实数据验证」路线。
 
 ---
 
@@ -587,6 +588,42 @@
 | 会话 12（90.4% → 91.8%） | **[x] 2026-08-08**：3222 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 91.8%，-1797 missed）——scheduler 全目录 26→94%（create_scheduler 注册矩阵 31 job id + trigger 类型/简单 cron job 三分支参数化 ×9/close_sync 3 分支+post/close_catchup 5 分支记录矩阵/daily_sync 4 分支/watchlist_automation 4 分支/decision 三 job/paper_trading 双 job/morning_brief 双触发器 5 分支/news_fetch-enrich 各 3 分支/research_report 3 分支/alpha_radar 三 job+env 解析）；**修复产品缺陷**：create_scheduler 原只注册 tv_screener_capture_am，PM 快照任务从未调度，补注册 JOB_ID_PM |
 | 会话 13（FE：queries 层测试） | **[x] 2026-08-08**：desktop-ui 608 tests 全绿（63 文件，1 skipped），All files 69.4%→74.6%，**lib/queries 43.96%→79.92%**、lib/api 69.38%→92.51%——backtest 0→100（run/sensitivity/exit-attribution/correlation 路径+clusterExposure 4 分支）、broker 0→100（keys/fetch/options/hooks/invalidate）、execution-journal 0→100（默认上海日期/refetch 60s/120s/limit）、weekly-review 0→100（enabled/staleTime）、tvCapture 0→100（轮询/失败抛错/超时 fake timers）、decision 6.77→92（fetch 系列/create/update/rename/append/delete/markdown 渲染 6 分支）、sentiment 30→100、alphaRadar 20→92（4 fetch+4 options+hooks+3 mutation+invalidate）、news 23→85、research 24→100；**技术要点**：mock useQuery 捕获 options 直接调 hook（无 jsdom 免渲染）、tvCapture fake timers 先 attach assertion 防 unhandled rejection；note：apps/desktop-ui eslint 坏为预先存在（eslint-plugin-import 解析失败，既有文件同样失败） |
 | 剩余大块 | db/industry_fund_flow（67%）、hk_*（hk_daily 66%/hk_basic 60%/hk_daily_tx 81%）、db/paper_trading（80%）、db/decision（84%）、market_bars（71%）、tv/scanner_api（86%）、db/morning_brief（23%）、db/industry_mainline_metrics（22%）、db/journal（17%）、service/etf_fund_flow（87%）、service/macro_daily（85%）、service/macro_snapshot_on_demand（81%）、service/alpha_radar_qa（81%）、service/dashboard（87%）、service/industry_fund_flow（78%）、service/macro_snapshot（72%）、service/alpha_radar_pipeline（76%）、api/broker_routes（54%）、service/alpha_radar_symbol_resolve（72%）、service/eastmoney_industry（79%）、api/backtest_routes（53%）、api/system_prompts_routes（52%） |
+
+## 18. 工程稳健性加固（2026-08-08 立 · 波 2 后工程视角排查）
+
+> **背景**：BE 91.8% + FE lib 74.6% 之后，从工程角度全仓排查发现的非功能性缺口。
+> **原则**：与 §17 铁律一致——每个修复 = 测试 + 验收证据；一次一个修复不混 scope。
+
+### 不稳健点清单（按风险排序）
+
+| # | 问题 | 风险等级 | 证据 |
+|---|------|---------|------|
+| E1 | **全仓 lint 门禁失效**：`eslint-config-next` 解析 `eslint-plugin-import` 失败，本地与 CI 的 `pnpm lint` 都会挂；无 husky/PR 门禁，红线坏了无人拦 | P0（门禁级） | 本地 `npx eslint src/lib/api/client.ts`（既有文件）同样失败，非本次测试引入 |
+| E2 | **BE 交易执行链仍低于稳健线**：execution_gate 87.7%（交易闸）、paper_trading 87.9%、db/decision 84%、db/execution_journal 80%、db/paper_trading 79.7%——核心线 85% 达标但异常/边界分支有真实缺口 | P1 | coverage.json 2026-08-08 |
+| E3 | **FE UI 层基本裸奔**：无 testing-library/jsdom/E2E；components 仅 2 文件有测试、hooks 2 个；74.6% 只是 src/lib 层数字，表格/表单/SSE 页面交互无保障 | P1 | vitest coverage 配置仅 include src/lib |
+| E4 | **契约漂移风险（结构性）**：OPT-009 明言 Python 响应手工对齐 shared Zod；queries 测试只验证路径字符串不验证后端返回形状 | P2 | docs/todo.md §OPT-009 / queries 测试现状 |
+| E5 | **调度失败无告警消费**：sync_job_record 落表但无人消费；BackgroundScheduler 单进程内无分布式锁；healthcheck 脚本不检查 job 失败 | P2 | data_healthcheck.py 6 项检查范围 |
+| E6 | **BE 小文件低覆盖**：alpha_radar_daily 0%、db/journal 17%、db/morning_brief 23%、db/industry_mainline_metrics 22%、tv/ego_lite 28% | P3 | coverage.json |
+| E7 | **ai-service 无覆盖率 gate**：10 个测试文件但 coverage 未纳入验收；vitest thresholds 未配置 | P3 | apps/ai-service 配置 |
+
+### 修复规划（一次一个 · 按此顺序执行）
+
+| 修复 | 内容 | 验收标准 | 状态 |
+|------|------|---------|------|
+| R1 | **lint 门禁修复**：重装 eslint 依赖（pnpm install / 对齐 lockfile）→ 本地 `pnpm lint` 全绿 → 确认 CI 步骤可过；如根因是依赖缺失则补 devDep | `pnpm lint`（root turbo）零错误；CI 同一命令可过 | **[x] 2026-08-08**：根因 = node_modules 与 lockfile 漂移（eslint-config-next 目录内 eslint-plugin-import 悬空 symlink，6/18 重装后未更新，pnpm install 因 lockfile 一致跳过修复）→ 定点重链；随后清 225→0 个 BE ruff 错误（--fix 126 + 手动 99：F841×45 未用变量、B011×13 assert False、E402×32（trendok logger 下移 + 测试 noqa）、B023 decision 闭包默认参数绑定、B904/B905/UP031/E741/B007）；**顺带发现 1 个测试丢失 bug**：test_alpha_radar_process.py 同名 `test_keywords_from_trend` 定义两次（39 行 ap. 版本从未运行），重命名为 `test_keywords_from_trend_empty_entries`；desktop-ui 12 个 no-explicit-any error 修完（decision-context/exec-attention 动态字段改显式断言）；**验收**：pnpm lint 4 包全绿（0 errors，desktop-ui 剩 31 warnings 为历史未用变量/exhaustive-deps 记录观察）+ BE 3223 passed/表零变化/gate 91.8% + FE 607 passed + TSC 干净 |
+| R2 | **BE 执行链补齐**：execution_gate / paper_trading / db/decision / db/execution_journal / db/paper_trading 补异常与边界分支测试至 ≥90% | 全量 pytest 全绿 + 表零变化 + GATE PASSED | **[x] 2026-08-08**：5 文件全 ≥99%（execution_gate 87.7→99、paper_trading 87.9→99、db/decision 84→99、db/execution_journal 80→99、db/paper_trading 79.7→100；各剩 1 条不可达死分支）；新增 5 个测试文件 122 测——execution_gate：非 dict 信号/fallback/未知 SRV level/overflow 覆盖三态（时间/阈值/ATTACK 不适用）/ETF confirm-contradict-incomplete 矩阵/HK gate 嵌入；paper_trading：intake 全 skip 路径（out-of-scope/no-close-price/duplicate/insert-error/异常注册表）、update 全守卫（registry fail-open/close 异常/update 异常/空 bars/坏价格）、_pick_close_reason 五原因矩阵（stop/target/score_floor/pool_exit/max_hold + score 异常 fail-open）、compute_stats 三态；db 层 mock 连接矩阵（get_session/update 系列/touch/upsert_actions 空/ list_actions status+iso 转换/list_snapshots 双分支/limit clamp/has_source_on_date 三态/list_changes since/insert 校验 raise×3/count_since/avg/row 转换）；**验收**：3345 passed / 2 skipped 全绿 + 27 表零变化 + GATE PASSED（OVERALL 92.5%，-1646 missed）；修复 1 个测试隔离问题（_TABLE_ENSURED 全局缓存导致全量下 CREATE 不执行，改断言不依赖） |
+| R3 | **BE 小文件清零**：alpha_radar_daily / db/journal / db/morning_brief / db/industry_mainline_metrics / tv/ego_lite 至 ≥85% | 同上 | **[x] 2026-08-08**：5 文件全 100%（journal 17→100：fetch_all clamp/空表、fetch_by_id 空 id/未命中、update 仅 title/仅 content 保留另一字段、delete rowcount 0/1；morning_brief 23→100：upsert RETURNING、latest 带/不带 type、recent clamp 30、_row_to_dict 坏 JSON→[]/None 字段矩阵；industry_mainline_metrics 22→100：upsert 空→0 且不 executemany/过滤假行/raw 非 dict 包装、list 两函数 raw dict vs str 解析、get_dates_upto clamp 60+反转；ego_lite 28→100：playwright 缺失/ImportError→EgoLiteUnavailable、全 mock 无网络 capture 成功/空行 reload 重试/close 异常吞掉、sync wrapper；alpha_radar_daily 0→100：纯 re-export import 测试）；**验收**：3384 passed / 2 skipped 全绿 + 27 表零变化 + GATE PASSED（OVERALL 93.3%，-1459 missed）；修复：fake async_playwright 应为同步返回 context-manager 对象、update_journal 3 次 ensure_table 导致断言改语义匹配 |
+| R4 | **FE 组件层起步**：装 @testing-library/react + jsdom，给 watchlist/dashboard 核心组件补首批组件测试；FE 阈值 60% 覆盖范围扩到 components | FE 全量测试全绿 + 新增组件测试 ≥20 个 | **[x] 2026-08-08**：装 @testing-library/react/jest-dom/jsdom；vitest 全局 jsdom + setup 注入 jest-dom + coverage include 扩到 components/hooks（排除 pages/chat/journal/agent/ui/layout/theme 与未纳入范围的次要目录）；**新增 10 个组件测试文件共 91 个测试**（DashboardHeader 7：hover/blur tooltip/align 左右定位/fallback；EtfFundFlowCard 8：shareLag+intradaySafe 警告/Live/已收盘/stale/Data Lag/空态；MorningBriefCard 11：pending/无 brief/分组计数/未知类别丢弃/midday/badge 阈值/AI 摘要三态/按钮；IndustryFundFlowCard 6：矩阵+dedupe+collapsed/5D inflow 表/参考 refId/复制状态色；MarketSentimentCard 11：gate+HkGate/风险档/panic/ETF confirm-contradict/恐慌告警/indexSignals featured+quoteError/近5日/按钮 disabled+参考/空态；DecisionJournalCard 8：mock 3 个 react-query hooks（queries/watchlist + queries/execution-journal）无 jsdom 依赖的 options 捕获模式；WatchlistToolbar 11：按钮禁用矩阵/进度条+日志 slice(-4)/skip+force/copy 色/error；WatchlistImportDebug 8：过滤/排序（null 最后）/Add/In watchlist/空态；FunnelHistoryTable 9：toFunnelRow 全分支/loading/兜底列；WatchlistRow 12：tone 红绿 class/颜色/持仓 vs 非持仓 买卖按钮/position+cost draft 校验提交/参考/移除）；**顺带修**：R2 测试遗留 13 个 ruff 错误（B011×7 assert False→raise、F401×4、UP017）+ 既有 userTrades.test.ts side 字面量 TSC 错误（as const）+ tests 类型修复（GATE as ExecutionGate、quote undefined）；**验收**：FE 708 passed / 1 skipped 全绿 + All files 62.78%（components/dashboard 93.76、watchlist 41+，全局阈值 60% 通过）+ typecheck 干净 + pnpm lint 4 包全绿 + BE 3403 passed / 表零变化 / GATE 93.3%；观察项：WatchlistRow/Table 仍 0%→部分覆盖（Row 12 测已补），radix Switch 交互在 jsdom 未测 |
+| R5 | **job 失败告警**：healthcheck 或新端点消费 sync_job_record 失败记录（近 24h 失败 job → 桌面通知/API 可见） | 有测试锁定 + 手动触发验证 | [ ] |
+| R6 | **契约测试**：queries 层对核心响应加形状断言（golden JSON 或 shared Zod 校验）；至少覆盖 dashboard/watchlist/execution 三链 | 测试全绿 + 捕获 ≥1 真实漂移或确认无漂移 | [ ] |
+| R7 | **ai-service 覆盖率 gate**：vitest thresholds 配置 + 补足至 ≥60% | ai-service coverage 报告 ≥60% 且 CI 稳定 | [ ] |
+
+### 观察清单
+
+| 项 | 状态 |
+|----|------|
+| 执行链 R2 若暴露 fail-open/fail-closed 语义问题 | 入 §17 H5 清单续 |
+| R4 引入 testing-library 是否影响 SSR 组件（'use client' 组件） | 验证后再扩范围 |
 
 ### 铁律
 

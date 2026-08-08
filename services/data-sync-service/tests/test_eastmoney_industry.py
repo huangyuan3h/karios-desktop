@@ -172,7 +172,7 @@ class _FakeResp:
     def __init__(self, payload: bytes) -> None:
         self._payload = payload
 
-    def __enter__(self) -> "_FakeResp":
+    def __enter__(self) -> _FakeResp:
         return self
 
     def __exit__(self, *args: object) -> None:
@@ -183,7 +183,7 @@ class _FakeResp:
 
 
 class _RaisingResp:
-    def __enter__(self) -> "_RaisingResp":
+    def __enter__(self) -> _RaisingResp:
         raise RemoteDisconnected("Remote end closed connection without response")
 
     def __exit__(self, *args: object) -> None:

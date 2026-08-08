@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import types
 import urllib.error
-from unittest.mock import patch
 
 import pytest
 

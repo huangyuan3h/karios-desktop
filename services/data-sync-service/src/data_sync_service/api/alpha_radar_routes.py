@@ -23,11 +23,11 @@ from data_sync_service.service.alpha_radar_pipeline import (
     run_alpha_radar_pipeline,
     run_alpha_radar_process,
 )
-from data_sync_service.service.alpha_radar_qa import get_auto_qa_stats
 from data_sync_service.service.alpha_radar_process import (
     process_document,
     process_pending_documents,
 )
+from data_sync_service.service.alpha_radar_qa import get_auto_qa_stats
 from data_sync_service.service.alpha_radar_risk import build_mainline_score_map, compute_risk_status
 from data_sync_service.service.mainline import get_cn_industry_mainline
 

@@ -10,7 +10,6 @@ Verifies LocalOriginGuardMiddleware behavior against the real app:
 from __future__ import annotations
 
 import pytest
-
 from fastapi.testclient import TestClient
 
 from data_sync_service.main import app

@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import Mock
-
 import pytest
 
 from data_sync_service.service import macro_snapshot as ms
 from data_sync_service.service.macro_daily import (
     SID_510300_PUT_IV,
     SID_IXIC,
-    SID_SPX,
     SID_USDCNH,
 )
 

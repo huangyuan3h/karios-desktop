@@ -9,7 +9,7 @@ from data_sync_service.main import app
 
 client = TestClient(app)
 
-import data_sync_service.api.alpha_radar_routes as ar
+import data_sync_service.api.alpha_radar_routes as ar  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

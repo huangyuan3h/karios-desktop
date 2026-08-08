@@ -93,7 +93,7 @@ def test_fetch_screener_by_id_hit_miss(monkeypatch) -> None:
     assert out["filterJson"] is None and out["apiColumns"] is None
     assert cur.executed[0][1] == ("s1",)
 
-    cur = _patch(monkeypatch, [])
+    _ = _patch(monkeypatch, [])
     assert tvdb.fetch_screener_by_id("s1") is None
     assert tvdb.fetch_screener_by_id("") is None
     assert tvdb.fetch_screener_by_id("  ") is None
@@ -142,9 +142,9 @@ def test_delete_screener(monkeypatch) -> None:
 
 
 def test_count_screeners(monkeypatch) -> None:
-    cur = _patch(monkeypatch, [(5,)])
+    _ = _patch(monkeypatch, [(5,)])
     assert tvdb.count_screeners() == 5
-    cur2 = _patch(monkeypatch, [(None,)])
+    _ = _patch(monkeypatch, [(None,)])
     assert tvdb.count_screeners() == 0
 
 
@@ -184,7 +184,7 @@ def test_list_latest_snapshots_for_screeners(monkeypatch) -> None:
     assert tvdb.list_latest_snapshots_for_screeners([]) == {}
     assert tvdb.list_latest_snapshots_for_screeners(["", " "]) == {}
     rows = [("sn1", "s1", "t1", 5, {"screenTitle": "池"})]
-    cur = _patch(monkeypatch, rows)
+    _ = _patch(monkeypatch, rows)
     out = tvdb.list_latest_snapshots_for_screeners(["s1", "s1"])
     assert out == {"s1": {"snapshotId": "sn1", "screenerId": "s1", "capturedAt": "t1", "rowCount": 5, "screenTitle": "池", "filters": []}}
 
@@ -212,7 +212,7 @@ def test_snapshot_detail_from_row_variants() -> None:
 def test_list_latest_snapshot_details_for_screeners(monkeypatch) -> None:
     assert tvdb.list_latest_snapshot_details_for_screeners([]) == {}
     rows = [("sn1", "s1", "t1", 1, {"rows": [{"a": 1}]})]
-    cur = _patch(monkeypatch, rows)
+    _ = _patch(monkeypatch, rows)
     out = tvdb.list_latest_snapshot_details_for_screeners(["s1", "s2"])
     assert out["s1"]["id"] == "sn1"
     assert out["s2"] is None  # no snapshot -> None
@@ -222,9 +222,9 @@ def test_list_latest_snapshot_details_for_screeners(monkeypatch) -> None:
 def test_fetch_snapshot_detail(monkeypatch) -> None:
     assert tvdb.fetch_snapshot_detail("") is None
     assert tvdb.fetch_snapshot_detail("  ") is None
-    cur = _patch(monkeypatch, [])
+    _ = _patch(monkeypatch, [])
     assert tvdb.fetch_snapshot_detail("ghost") is None
     row = ("sn1", "s1", "t1", 3, {"rows": [{"x": "y"}]})
-    cur = _patch(monkeypatch, [_snap_row(*row)])
+    _ = _patch(monkeypatch, [_snap_row(*row)])
     out = tvdb.fetch_snapshot_detail("sn1")
     assert out["id"] == "sn1" and out["rowCount"] == 3

@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -65,7 +65,7 @@ def main() -> int:
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     payload: dict = {
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "generatedAt": datetime.now(UTC).isoformat(),
         "window": {"start": args.start, "end": args.end},
         "mode": "grid" if args.grid else "single",
     }

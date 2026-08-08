@@ -19,7 +19,6 @@ from data_sync_service.service.correlation import (
     evaluate_correlation_cap,
 )
 
-
 # ---------------------------------------------------------------------------
 # Semantic cluster mapping
 # ---------------------------------------------------------------------------

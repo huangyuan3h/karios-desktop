@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 from fastapi.responses import Response
 
+from data_sync_service.api import broker_routes as br
 from data_sync_service.api.broker_routes import (
     BrokerImportRequest,
     BrokerSyncRequest,
@@ -23,7 +23,6 @@ from data_sync_service.api.broker_routes import (
     rename_account_endpoint,
     sync_pingan_state_endpoint,
 )
-from data_sync_service.api import broker_routes as br
 
 
 class TestAccounts:

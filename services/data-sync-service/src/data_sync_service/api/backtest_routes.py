@@ -157,7 +157,10 @@ def correlation_status(
     top correlation pairs. Read-only.
     """
     from data_sync_service.db.watchlist_automation import list_registry
-    from data_sync_service.service.correlation import em_industry_for_ts_code, evaluate_correlation_cap
+    from data_sync_service.service.correlation import (
+        em_industry_for_ts_code,
+        evaluate_correlation_cap,
+    )
 
     try:
         registry = list_registry()

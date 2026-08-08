@@ -164,7 +164,8 @@ function warnReasonHint(
   why: string | null,
 ): string | null {
   if (why !== 'WARN_REDUCE_HALF') return null;
-  const parts = (item as any)?.trendok?.stopLossParts as Record<string, unknown> | null | undefined;
+  const parts = (item as { trendok?: { stopLossParts?: unknown } }).trendok
+    ?.stopLossParts as Record<string, unknown> | null | undefined;
   const reasons = Array.isArray(parts?.warn_reasons) ? parts.warn_reasons : [];
   if (!reasons.length) return null;
   return reasons.map((r) => translateWarnReason(String(r))).join('；');

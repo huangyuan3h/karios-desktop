@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
-
 from data_sync_service.service import top_inst_flow as tif
 from data_sync_service.service.top_inst_flow import TopInstProviderResult
 

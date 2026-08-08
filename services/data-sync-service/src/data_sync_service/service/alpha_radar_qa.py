@@ -446,7 +446,7 @@ def _names_share_significant_chars(name_a: str, name_b: str) -> bool:
     if not a or not b or a == b:
         return False
     common_prefix = 0
-    for x, y in zip(a, b):
+    for x, y in zip(a, b, strict=False):
         if x == y:
             common_prefix += 1
         else:

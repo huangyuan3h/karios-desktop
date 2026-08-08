@@ -8,21 +8,19 @@ is exercised by the alpha_radar_pipeline tests on a real DB.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from data_sync_service.service.alpha_radar_qa import (
     AutoQaConfig,
+    _names_share_significant_chars,
     compute_auto_qa_penalty,
     compute_auto_qa_penalty_for_catalyst,
     fetch_theme_win_rates,
     get_auto_qa_stats,
     name_search_is_ambiguous,
-    _names_share_significant_chars,
 )
-
 
 # ---------------------------------------------------------------------------
 # name_search_is_ambiguous
