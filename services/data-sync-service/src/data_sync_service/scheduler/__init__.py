@@ -191,6 +191,12 @@ def create_scheduler() -> BackgroundScheduler:
         replace_existing=True,
     )
     scheduler.add_job(
+        tv_screener_capture_job.run,
+        tv_screener_capture_job.build_pm_trigger(),
+        id=tv_screener_capture_job.JOB_ID_PM,
+        replace_existing=True,
+    )
+    scheduler.add_job(
         news_enrich_job.run,
         news_enrich_job.build_trigger(),
         id=news_enrich_job.JOB_ID,
