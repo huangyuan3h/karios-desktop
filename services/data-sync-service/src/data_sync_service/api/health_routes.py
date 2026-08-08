@@ -96,7 +96,8 @@ def _job_last_success(job_type: str) -> str | None:
     return sync_at.isoformat() if hasattr(sync_at, "isoformat") else sync_at
 
 
-def _alpha_radar_last_at() -> str | None:    try:
+def _alpha_radar_last_at() -> str | None:
+    try:
         from data_sync_service.service.alpha_radar_pipeline import pipeline_status
 
         status = pipeline_status()

@@ -1,0 +1,69 @@
+{
+ "items": [
+  {
+   "id": "06e5982b-bbf4-4335-a2e5-07b2282564be",
+   "tradeDate": "2026-08-07",
+   "changedAt": "2026-08-07T14:36:55.007628+00:00",
+   "fromSnapshotId": "f01e1971-cef2-4c1b-a63f-9326603310d9",
+   "toSnapshotId": "a096ed68-d656-40a0-ae92-98e71eb4151b",
+   "scope": "symbol",
+   "symbol": "CN:000960",
+   "field": "action",
+   "oldValue": null,
+   "newValue": "WATCH",
+   "source": "MANUAL"
+  },
+  {
+   "id": "07479980-df07-4f3a-98be-23bd4188c0b4",
+   "tradeDate": "2026-08-07",
+   "changedAt": "2026-08-07T14:36:55.007628+00:00",
+   "fromSnapshotId": "f01e1971-cef2-4c1b-a63f-9326603310d9",
+   "toSnapshotId": "a096ed68-d656-40a0-ae92-98e71eb4151b",
+   "scope": "symbol",
+   "symbol": "CN:000960",
+   "field": "why",
+   "oldValue": null,
+   "newValue": "WATCH",
+   "source": "MANUAL"
+  },
+  {
+   "id": "21d8f7d8-4122-4bf9-be0a-9e89c2fac8ae",
+   "tradeDate": "2026-08-07",
+   "changedAt": "2026-08-07T14:36:55.007628+00:00",
+   "fromSnapshotId": "f01e1971-cef2-4c1b-a63f-9326603310d9",
+   "toSnapshotId": "a096ed68-d656-40a0-ae92-98e71eb4151b",
+   "scope": "symbol",
+   "symbol": "CN:000021",
+   "field": "action",
+   "oldValue": null,
+   "newValue": "WATCH_SILENT",
+   "source": "ALPHA"
+  },
+  {
+   "id": "f31473e1-416a-4c18-ad9b-ad3acbf6ac82",
+   "tradeDate": "2026-08-07",
+   "changedAt": "2026-08-07T14:36:55.007628+00:00",
+   "fromSnapshotId": "f01e1971-cef2-4c1b-a63f-9326603310d9",
+   "toSnapshotId": "a096ed68-d656-40a0-ae92-98e71eb4151b",
+   "scope": "symbol",
+   "symbol": "CN:000021",
+   "field": "why",
+   "oldValue": null,
+   "newValue": "ALPHA_S_WATCH",
+   "source": "ALPHA"
+  },
+  {
+   "id": "1ed159e3-1609-4284-bd5e-af7dc827d4e4",
+   "tradeDate": "2026-08-07",
+   "changedAt": "2026-08-07T14:36:55.007628+00:00",
+   "fromSnapshotId": "f01e1971-cef2-4c1b-a63f-9326603310d9",
+   "toSnapshotId": "a096ed68-d656-40a0-ae92-98e71eb4151b",
+   "scope": "symbol",
+   "symbol": "CN:000977",
+   "field": "action",
+   "oldValue": null,
+   "newValue": "WATCH_SILENT",
+   "source": "TV"
+  }
+ ]
+}
