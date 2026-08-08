@@ -569,8 +569,15 @@
 | `scripts/coverage_gate.py` | **[x] 2026-08-08**：读 coverage.json，按核心模块清单（11 个 ≥85%）+ 整体阈值（--overall）fail；豁免清单显式（tv/capture.py 退役路径）；输出 模块×覆盖率×缺口 可直接定位 |
 | 11 核心模块 ≥85% | **[x] 2026-08-08**：decision 99.5 / correlation 94.9 / exit_attr 91.5 / weekly_review 90 / trendok 87.3 / research 88.6 / execution_journal 92.6 / execution_source 84.9+ / paper_trading 87.5 / backtest_engine 77.2→85 / watchlist_automation 70.5→85 全达标（补 ~40 测试） |
 | **顺带修复 3 个真 bug** | **[x]** ① `get_top_5d_industry_names` 未 strip 行业名（GC 精确匹配失效）→ 加 strip；② `backtest_engine` end_of_window 平仓后未 del positions → `open_at_end` 虚高（迭代中 del 修复 + list() 快照）；③ `_with_retry` 全失败 raise 语义确认（原测试预期错误） |
-| 整体覆盖率 | **[w] 72.4%**（基线 65.9%，两会话累计 +6.5pp / ~185 新测试）——波 1 整体 75% 尚差 ~2.6pp（约 570 行）；第 2 会话新覆盖：alpha_radar_ingest 主流程（RSS/Jina/并发聚合）、market_regime breadth/liquidity/quote_map、etf_fund_flow sync+tushare 历史、tv.py history/migrate/dispatch/fallback 链、db/alpha_radar 读删改+trend 行解析、db/daily 全量 fetch/update、market_sentiment tushare/akshare fetchers+premium/failed-limitup 全分支；剩余：market_sentiment compute_cn_sentiment_for_date（~40）、alpha_radar_process（128）、tv_chrome（124）、macro_daily（124）、broker（118）、trendok（166）、query_routes api 层（111）等 |
-| 验收 | **[x] 2026-08-08**：后端 1670 passed / 2 skipped 全绿 + 27 张表零变化（会话 1: 1504 → 会话 2: 1590 → 会话 3: 1670） |
+| 整体覆盖率 | **[x] 2026-08-08：75.0% GATE PASSED**（基线 65.9%，三会话累计 +9.1pp / ~290 新测试，1759 全绿）——第 3 会话覆盖：trendok（alpha-S recovering/risk buy blocks/quote merge/industry flow）、alpha_radar_process（extract/save/batch/pending）、tv_chrome（profile copy/start/stop 全路径）、macro_daily（paging/合约解析/full sync 驱动）、broker（decode/ai-extract/images/条件单删除）、etf_fund_flow 剩余（universe/frame merge/classify）、macro_snapshot_on_demand（metrics/on-demand 系列/enrich） |
+| 验收 | **[x] 2026-08-08**：**波 1 整体验收**：后端 1759 passed / 2 skipped 全绿 + 27 张表零变化 + `coverage_gate.py` GATE PASSED（OVERALL 75.0%，11 核心模块最低 87.9% 全 ≥85%，tv/capture.py EXEMPT） |
+
+### 覆盖率波 2（波 1 后续 · 继续推整体覆盖率）
+
+| 项 | 状态 |
+|----|------|
+| 会话 4（75.0% → 79.7%） | **[x] 2026-08-08**：1978 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 79.7%，-1023 missed）——top_inst_flow 68→95.1%（网络层/retry/tushare/provider 编排 53 测试）、query_routes 46.1→98%（resolve/quotes/全部小 endpoint 27）、option_iv 68.5→97%（sync driver/akshare fallback/paging 27）、db/index_daily 46→88%、db/news 49→97%、db/tv 38→99%、db/index_basic 14→93%、news_enrich 58→88%（_call_llm/enrich_batch/cycle 22）、db/macro_daily 58→91%、db/watchlist_automation 50→96%、mainline 70→98%（metrics 计算层 13） |
+| 剩余大块 | trendok `_trendok_one`、market_sentiment compute、market_regime 剩余、etf_daily（19.8%）、db/broker（40%）、market_detail、close_sync、alpha_radar_mapping（38%）、api 层（alpha_radar_routes/watchlist_routes 各 ~60） |
 
 ### 铁律
 

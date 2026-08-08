@@ -251,3 +251,110 @@ def test_apply_em_spot_fallback_noop() -> None:
     )
     assert ok is False
     monkeypatch.undo()
+"""etf_fund_flow wave-2: extended universe, frame merge, flow helpers."""
+
+import pandas as pd
+
+from data_sync_service.service import etf_fund_flow as eff
+
+
+def test_fetch_extended_etf_universe(monkeypatch) -> None:
+    rows = [  # SQL does market/delist filtering; mock returns valid ETF rows only
+        ("510300.SH", "510300", "沪深300ETF"),
+        ("159915.SZ", "159915", "创业板ETF"),
+        ("511990.SH", "511990", "华宝添益"),
+    ]
+    class _Cur:
+        def execute(self, sql, params):
+            pass
+
+        def fetchall(self):
+            return rows
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return None
+
+    class _Conn:
+        def cursor(self):
+            return _Cur()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return None
+
+    import data_sync_service.db as dbmod
+    import data_sync_service.db.stock_basic as sbmod
+
+    monkeypatch.setattr(dbmod, "get_connection", lambda: _Conn())
+    monkeypatch.setattr(sbmod, "ensure_table", lambda: None)
+    monkeypatch.setattr(eff, "_CORE_ETF_TICKERS", frozenset({"510300"}))
+    monkeypatch.setattr(eff, "_infer_etf_category", lambda sym: "broad" if sym.startswith("51") else "other")
+    out = eff._fetch_extended_etf_universe(max_size=10, exclude_core=True)
+    syms = [x["symbol"] for x in out]
+    assert "510300" not in syms  # core excluded
+    assert "159915" in syms
+    assert all(x["category"] for x in out)
+
+    out2 = eff._fetch_extended_etf_universe(max_size=0, exclude_core=False)
+    assert len(out2) == 3  # mock bypasses SQL LIMIT; cap=1 passed in LIMIT %s
+
+
+def test_should_skip_etf_sync_today(monkeypatch) -> None:
+    monkeypatch.setattr(eff, "get_today_run", lambda job: {"success": True})
+    monkeypatch.setattr(eff, "_is_shanghai_sync_window", lambda: False)
+    assert eff._should_skip_etf_sync_today(force=False) is True
+    assert eff._should_skip_etf_sync_today(force=True) is False
+    monkeypatch.setattr(eff, "get_today_run", lambda job: None)
+    assert eff._should_skip_etf_sync_today(force=False) is False
+
+
+def test_em_flow_trade_date() -> None:
+    assert eff._em_flow_trade_date({"dataDate": "2026-08-07 15:00:00"}, fallback_iso="2026-08-07") == "2026-08-07"
+    assert eff._em_flow_trade_date({"dataDate": "bad"}, fallback_iso="2026-08-07") == "2026-08-07"
+    assert eff._em_flow_trade_date({}, fallback_iso="2026-08-07") == "2026-08-07"
+
+
+def test_is_current_realtime_trade_date(monkeypatch) -> None:
+    monkeypatch.setattr(eff, "last_open_date_on_or_before", lambda d: None)
+    assert eff._is_current_realtime_trade_date("2026-08-07", fallback_iso="2026-08-07") is True
+    monkeypatch.setattr(eff, "last_open_date_on_or_before", lambda d: eff.date(2026, 8, 6))
+    assert eff._is_current_realtime_trade_date("2026-08-05", fallback_iso="2026-08-07") is False
+    assert eff._is_current_realtime_trade_date("garbage", fallback_iso="garbage") is True
+
+
+def test_em_flow_to_daily_row() -> None:
+    flow = {"mainNetInflow": 500.0, "fdShareWan": 100.0, "latestPrice": 4.0, "source": "em"}
+    row = eff._em_flow_to_daily_row(ts_code="510300.SH", trade_date_iso="2026-08-07", flow=flow, updated_at="t")
+    assert row["net_inflow"] == 500.0
+    assert eff._em_flow_to_daily_row(ts_code="x", trade_date_iso="d", flow={}, updated_at="t") is None
+
+
+def test_merge_tushare_frames() -> None:
+    share = pd.DataFrame({"trade_date": ["20260806", "20260807"], "fd_share": [100.0, 110.0]})
+    daily = pd.DataFrame({
+        "trade_date": ["20260807"], "close": [4.0], "vol": [100.0], "amount": [400.0],
+    })
+    out = eff._merge_tushare_frames("510300.SH", share_df=share, daily_df=daily, updated_at="t")
+    assert [x["trade_date"] for x in out] == ["2026-08-06", "2026-08-07"]
+    assert out[1]["fd_share"] == 110.0
+    assert out[1]["avg_price"] is not None
+    assert out[0]["avg_price"] is None  # daily missing for 08-06
+
+    out2 = eff._merge_tushare_frames("510300.SH", share_df=None, daily_df=None, updated_at="t")
+    assert out2 == []
+
+
+def test_classify_signal() -> None:
+    assert eff.classify_signal(category="Broad", net_flow_1d=1.0, net_flow_3d=2.0) == "National Team Buy"
+    assert eff.classify_signal(category="broad", net_flow_1d=-1.0, net_flow_3d=-2.0) == "National Team Outflow"
+    assert eff.classify_signal(category="broad", net_flow_1d=1.0, net_flow_3d=-2.0) == "Neutral"
+    assert eff.classify_signal(category="sector", net_flow_1d=1.0, net_flow_3d=1e10) == "Sector Momentum"
+    assert eff.classify_signal(category="sector", net_flow_1d=-1.0, net_flow_3d=-2.0) == "Inst Outflow"
+    assert eff.classify_signal(category="sector", net_flow_1d=1.0, net_flow_3d=1.0) == "Neutral"
+    assert eff.classify_signal(category="other", net_flow_1d=1.0, net_flow_3d=2.0) == "Neutral"
+    assert eff.classify_signal(category="broad", net_flow_1d=None, net_flow_3d=2.0) == "Neutral"
