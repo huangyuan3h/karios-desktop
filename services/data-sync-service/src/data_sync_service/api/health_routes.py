@@ -96,8 +96,7 @@ def _job_last_success(job_type: str) -> str | None:
     return sync_at.isoformat() if hasattr(sync_at, "isoformat") else sync_at
 
 
-def _alpha_radar_last_at() -> str | None:
-    try:
+def _alpha_radar_last_at() -> str | None:    try:
         from data_sync_service.service.alpha_radar_pipeline import pipeline_status
 
         status = pipeline_status()
@@ -153,6 +152,40 @@ def datasource_freshness() -> list[dict[str, Any]]:
             }
         )
     return sources
+
+
+def recent_job_failures(hours: int = 24) -> dict[str, Any]:
+    """Aggregate sync job failures from the last `hours` (R5 job-failure alerts)."""
+    from data_sync_service.db.sync_job_record import list_recent_failures
+
+    recs = list_recent_failures(hours=hours)
+    latest_by_job: dict[str, dict[str, Any]] = {}
+    for r in recs:
+        jt = str(r.get("job_type") or "unknown")
+        if jt not in latest_by_job:
+            latest_by_job[jt] = r
+    failures = [
+        {
+            "jobType": jt,
+            "syncedAt": rec.get("sync_at"),
+            "lastTsCode": rec.get("last_ts_code"),
+            "errorMessage": rec.get("error_message"),
+            "failures24h": sum(1 for r in recs if str(r.get("job_type") or "unknown") == jt),
+        }
+        for jt, rec in latest_by_job.items()
+    ]
+    return {
+        "ok": len(failures) == 0,
+        "hours": hours,
+        "count": len(failures),
+        "failures": failures,
+    }
+
+
+@router.get("/job-failures")
+def job_failures_endpoint(hours: int = 24) -> dict[str, Any]:
+    """Recent sync job failures (last 24h by default) — surfaced for desktop alerts."""
+    return recent_job_failures(hours=hours)
 
 
 @router.get("/datasources")
