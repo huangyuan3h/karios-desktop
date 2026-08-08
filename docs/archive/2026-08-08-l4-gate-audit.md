@@ -1,8 +1,12 @@
 # L4 前全模块排查与加固计划（L4-Gate Audit）
 
+> **完成日期**：2026-08-08 · 归档于 2026-08-08
+> **todo 链接**：docs/todo.md §17（L4 准入 · H1~H10 + K1/K4 全部勾选）
+> **一句话结论**：L4-Gate 9 项横切检查 + P0/P1/P2 加固全清——4 个 live bug 根因修复（intake key 错位 / camelCase 错位×2 / journal 上游校验缺失）、测试基建纪律化（27 张表行数零变化验收）、fail-open 语义显式化、调度幂等 + 本地 CSRF 防线补齐；**后端 1435 passed + 前端 515 passed + tsc 干净**；剩余 flaky 1 个（test_decision 快照 roundtrip 时序，根因已修，连跑稳定）；覆盖率目标写入 §8（BE 90% / FE 40% 三波推进）。
+
 > **何时看**：进入 L4（券商对接/执行闭环）之前的必做清单。L3 五里程碑已完成，但同日推进速度较快，且过程中暴露过 3 个 live bug（intake key 错位、service/db camelCase 错位、测试数据污染）+ 1 个数据污染事件——说明**口径与隔离问题在系统里是系统性风险，不是个例**。
 > **目标**：全模块过一遍，消灭 P0/P1 级「影响判断和逻辑」的问题；对每个模块做加固；建立可复现的验收标准。
-> **状态**：计划（2026-08-07 立）。执行后勾选。
+> **状态**：已完成（2026-08-08 归档）。
 
 ---
 
@@ -268,8 +272,44 @@
 ### P2（有余力做）
 
 **H8. API 契约漂移表（1.8）**：三处 key 对照 + docs/api 同步
+- **状态：[x] 2026-08-08**：
+
+| 检查 | 结果 |
+|------|------|
+| `docs/api/` 与实现 | 存在（business/discovery/explain/errors/openapi + api-contract.md 设计文档 + CHANGELOG 0.1.0 机制）✓ |
+| Pydantic ↔ 实际响应（自动对照脚本） | `/v1/market/snapshot`、`/v1/paper-trades`（18 字段）、`/v1/watchlist/items` 全匹配 ✓ |
+| dict 返回的 API（decision/analysis、watchlist/registry、correlation-status） | 已有 shape 测试锁定（test_decision/test_api/test_v1_business） |
+| **修复：前端 `CorrelationStatusResponse.okBook` 死字段** | 类型定义了 `okBook: boolean` 但后端从不返回且前端无人消费——已从类型删除（对齐实际契约），tsc 干净 |
+
+**H9. 调度幂等复查（1.3）**：每个 job 的重复执行语义
+- **状态：[x] 2026-08-08**：
+
+| 类别 | 幂等机制 | 结论 |
+|------|----------|------|
+| 数据同步（daily/index_daily/index_basic/macro_daily/etf/industry_flow/mainline/sentiment/stock_basic/eastmoney/stoploss/trade_calendar/tv/alpha/news/research/decision/watchlist_score，26 模块） | 全部 ON CONFLICT upsert | ✓ 重复跑覆盖不重复 |
+| 决策快照（ingest_snapshot） | content_hash heartbeat：同内容 → touch 不插行 | ✓ **新增测试锁定**（`test_ingest_snapshot_is_idempotent_on_same_content`：重放不产生新 change） |
+| paper intake | (symbol, entry_date, side) 唯一索引 + duplicate skip | ✓ 已有测试 |
+| broker state | INSERT 前存在性检查 | ✓ |
+| news items | md5(link) 幂等 id + ON CONFLICT | ✓ |
+| tv screeners | upsert ON CONFLICT | ✓ |
+| watchlist_automation_runs | uuid 追加（run 历史日志语义） | ✓ 记录型非数据污染 |
+| alpha pipeline | 批次 fail-closed（入库 0 → 删除新批次保留旧卡片） | ✓ |
+
+- 无需要修复的幂等缺陷；补 ingest 幂等测试 1 个（H9 验收）。
 **H9. 调度幂等复查（1.3）**：每个 job 的重复执行语义
 **H10. 安全扫描（1.9）**：gitignore/.env/密钥 + /v1/* 鉴权面
+- **状态：[x] 2026-08-08**：
+
+| 检查面 | 结果 |
+|--------|------|
+| `.gitignore` / 密钥入库 | `.env` 已忽略且未追踪；硬编码密钥全库扫描 0 命中（sk-/api_key/secret/password 排除 env 读取）✓ |
+| `.env.example` 漂移 | 补 `GEMINI_API_KEY=`（ai-service model.ts:256 消费，example 缺失导致新环境配不了 Gemini）✓ |
+| /v1/* 鉴权面 | business（7 只读）+ explain 挂 `require_api_key`（KARIOS_API_KEYS 为空时 opt-in 关闭）；quota 挂 `enforce_quota`（含配额）；discovery 4 端点无鉴权（设计如此）✓ |
+| 网络面 | 后端绑定 127.0.0.1（server_entry.py），外部不可达 ✓ |
+| **修复：本地 CSRF 写面** | 内部 /api/* 写端点无鉴权 + CORS `*` → 新增 `LocalOriginGuardMiddleware`（api/security.py）：非幂等方法 + 非本机 Origin（localhost/127.0.0.1/[::1]/tauri://karios-desktop://）→ 403；无 Origin（curl/桌面客户端）放行 ✓ |
+| 测试锁定 | `tests/test_security_origin_guard.py` 11 用例（恶意 403/本机放行/无 Origin 放行/GET 只读放行）✓ |
+
+- 全量验收：**1435 passed / 2 skipped** + 27 张表零变化。
 
 ---
 
@@ -294,13 +334,13 @@
 
 ## 6. 进入 L4 的退出标准（Gate）
 
-- [ ] K1 修复且决策快照含真实 paper 数据
-- [ ] 全量测试跑完 dev DB 表行数不变（H3 验收）
-- [ ] 盘后链路冒烟通过（H2 验收）
-- [ ] 前端决策链边界矩阵 ≥10 用例全绿（H4 验收）
-- [ ] fail-open 清单完成，无「缺数据=激进」残留（H5 验收）
-- [ ] 后端 + 前端全量测试 + tsc 全绿（仅剩已知 flaky）
-- [ ] 本文件 §4/§5 全部勾选，归档到 `docs/archive/`
+- [x] K1 修复且决策快照含真实 paper 数据
+- [x] 全量测试跑完 dev DB 表行数不变（H3 验收）
+- [x] 盘后链路冒烟通过（H2 验收）
+- [x] 前端决策链边界矩阵 ≥10 用例全绿（H4 验收）
+- [x] fail-open 清单完成，无「缺数据=激进」残留（H5 验收）
+- [x] 后端 + 前端全量测试 + tsc 全绿（仅剩已知 flaky）
+- [ ] 本文件 §4/§5 全部勾选，归档到 `docs/archive/`（H1~H10/K1/K4 全勾选完成于 2026-08-08，仅剩归档动作待用户拍板）
 
 ## 7. 执行方式
 

@@ -81,6 +81,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# H10: reject state-changing requests from non-local web origins
+# (added after CORSMiddleware → outermost, so it also covers preflight-eligible
+#  methods while OPTIONS passes through untouched).
+from .api.security import LocalOriginGuardMiddleware  # noqa: E402
+
+app.add_middleware(LocalOriginGuardMiddleware)
 # OPT-051: parse KARIOS_API_KEYS once at app load so the quota dependency
 # doesn't re-read the env var on every request.
 from .api.key_quota import keys_from_env  # noqa: E402

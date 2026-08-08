@@ -55,8 +55,25 @@ def _symbol_to_ts_code(symbol: str) -> str | None:
 
 def _fetch_em_industry_for_ts_code(ts_code: str) -> str | None:
     """
-    Fetch East Money industry label for one A-share via push2 stock/get (field f127).
+    Fetch East Money industry label for one A-share.
+
+    Primary: push2 stock/get (field f127, EM board name).
+    Fallback: emweb F10 CompanySurvey (EM2016, three-level path) when push2 is
+    unreachable — the resolved label is the second level of the EM2016 path
+    (e.g. ``医药生物-化学制药-化学制剂`` → ``化学制药``), which matches the
+    correlation cluster rules and the existing EM board-name granularity.
     """
+    label = None
+    try:
+        label = _fetch_em_industry_push2(ts_code)
+    except Exception:  # noqa: BLE001 - push2 down (DNS/TLS/disconnect) → fallback
+        label = None
+    if label:
+        return label
+    return _fetch_em_industry_emweb(ts_code)
+
+
+def _fetch_em_industry_push2(ts_code: str) -> str | None:
     secid = _ts_code_to_secid(ts_code)
     if not secid:
         return None
@@ -87,6 +104,53 @@ def _fetch_em_industry_for_ts_code(ts_code: str) -> str | None:
         return None
     name = str(data.get("f127") or "").strip()
     return name or None
+
+
+def _em2016_to_board_name(em2016: str) -> str | None:
+    """``医药生物-化学制药-化学制剂`` → ``化学制药``; single level → as-is."""
+    parts = [p.strip() for p in (em2016 or "").split("-") if p and p.strip()]
+    if not parts:
+        return None
+    return parts[1] if len(parts) >= 2 else parts[0]
+
+
+def _fetch_em_industry_emweb(ts_code: str) -> str | None:
+    """East Money F10 CompanySurvey (EM2016 industry path) fallback."""
+    parts = (ts_code or "").strip().split(".")
+    if len(parts) != 2:
+        return None
+    ticker, suffix = parts[0].strip(), parts[1].strip().upper()
+    if len(ticker) != 6 or not ticker.isdigit():
+        return None
+    url = "https://emweb.securities.eastmoney.com/PC_HSF10/CompanySurvey/PageAjax"
+    req = urllib.request.Request(
+        f"{url}?code={suffix}{ticker}",
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/json,text/plain,*/*",
+            "Referer": "https://emweb.securities.eastmoney.com/",
+            "Connection": "close",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read()
+    except Exception:  # noqa: BLE001 - emweb down/limited → treat as no label
+        return None
+    try:
+        j = json.loads(raw.decode("utf-8", errors="replace"))
+    except ValueError:
+        return None
+    jbzl = j.get("jbzl") if isinstance(j, dict) else None
+    if not isinstance(jbzl, list) or not jbzl:
+        return None
+    row = jbzl[0]
+    if not isinstance(row, dict):
+        return None
+    return _em2016_to_board_name(str(row.get("EM2016") or ""))
 
 
 def fetch_em_industries_for_ts_codes(
@@ -175,6 +239,7 @@ def sync_eastmoney_industry_incremental(
     batches_run = 0
     updated_at = _now_iso()
     last_resolved: dict[str, str] = {}
+    any_empty_batch = False
 
     for _ in range(batches):
         if mode == "stale":
@@ -213,7 +278,22 @@ def sync_eastmoney_industry_incremental(
                 for code, name in resolved.items()
             ]
             updated = upsert_rows(rows)
-            insert_record(job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None)
+            if resolved:
+                insert_record(job_type=JOB_TYPE, success=True, last_ts_code=None, error_message=None)
+            else:
+                # H10/H1 lesson: an all-empty batch used to be recorded as
+                # success — the job looked green while the upstream source was
+                # unreachable. Mark it failed so health checks can see it.
+                any_empty_batch = True
+                insert_record(
+                    job_type=JOB_TYPE,
+                    success=False,
+                    last_ts_code=after or (ts_codes[0] if ts_codes else None),
+                    error_message=(
+                        f"no industry resolved for {len(ts_codes)} codes "
+                        "(push2/emweb unreachable or malformed response)"
+                    ),
+                )
             total_requested += len(ts_codes)
             total_resolved += len(resolved)
             total_updated += updated
@@ -240,7 +320,7 @@ def sync_eastmoney_industry_incremental(
             )
 
     return _result_with_coverage(
-        ok=True,
+        ok=not any_empty_batch,
         mode=mode,
         requested=total_requested,
         resolved=total_resolved,

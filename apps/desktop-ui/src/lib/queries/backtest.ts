@@ -142,7 +142,6 @@ export type CorrelationStatusResponse = {
   blockedSymbols: string[];
   topPairs: Array<[string, string, number]>;
   empiricalNote: string | null;
-  okBook: boolean;
 };
 
 export function useCorrelationStatusQuery(includeMatrix = true, enabled = true) {

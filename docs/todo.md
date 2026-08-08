@@ -259,6 +259,7 @@
 
 | 日期 | 事件 | 归档位置 |
 |------|------|----------|
+| 2026-08-08 | **L4-Gate 全清（H1~H10 + K1/K4）**：4 个 live bug 根因修复（intake key 错位 / camelCase×2 / journal 校验）、测试隔离纪律化（233 假账户+141 假 session 清理、db_rows_baseline 27 表验收）、fail-open 清单（修 2 激进项）、时区/数值健壮性、API 契约对照（删前端 okBook 死字段）、调度幂等（ingest heartbeat 测试锁定）、安全扫描（本地 CSRF Origin 守卫 11 测试） | [`archive/2026-08-08-l4-gate-audit.md`](./archive/2026-08-08-l4-gate-audit.md)（后端 1435 passed + 前端 515 passed + tsc 干净；L4 准入 Gate 6/7 项达标，剩归档动作已完成——§17 全部勾选） |
 | 2026-08-07 | **L3-P5 / OPT-067**：组合相关性防火墙（V7.0-01 转正）——9 个语义因子簇（ETF 前缀 + 东财行业 + HK 科技清单）+ 20 日经验相关性（日历对齐 fail-open）；簇 >30% 拦簇内新开仓（CORRELATION_CAP_BLOCK）+ Suggest% roomCorrelation min 链；回测页「组合相关性防火墙」面板；实测 tech_hk 34.2%（腾讯+恒生科技 ETF）超限实拦，00700×513180 r=0.926 | [`archive/2026-08-07-opt-067-correlation-firewall.md`](./archive/2026-08-07-opt-067-correlation-firewall.md)（1388 后端 + 500 前端全绿；**L3 五里程碑全部完成**） |
 | 2026-08-07 | **OPT-066**：journal 上游 symbol 防御层——`is_valid_watchlist_symbol`（CN/HK/ETF 格式校验）+ diff/ingest 双层过滤（坏卡 `rejectedCards` 可观测）+ 前端提交前过滤；坏 symbol 永远进不了决策日志 | [`archive/2026-08-07-opt-066-journal-symbol-defense.md`](./archive/2026-08-07-opt-066-journal-symbol-defense.md)（1379 后端 + 495 前端全绿） |
 | 2026-08-07 | **L3-P4 / OPT-065**：周度决策质量复盘——决策量 / paper 净口径 / 卖出归因 / 漏斗健康度 → 中文 markdown 报告；决策 Agent「分析」tab 新增周报卡（复制喂 AI agent）；首次实测：本周 38 条信号 97% 来自 ALPHA（自动提示供给单一化） | [`archive/2026-08-07-opt-065-weekly-review.md`](./archive/2026-08-07-opt-065-weekly-review.md)（1376 后端 + 494 前端全绿） |
@@ -535,14 +536,14 @@
 
 > **决策**：进入 L4（券商对接/执行闭环）之前，全模块过一遍，消灭 P0/P1 级「影响判断和逻辑」的问题。
 > **背景**：2026-08-07 完成 L3-P1~P5 过程中暴露 3 个 live bug + 1 个数据污染事件，证明「测试全绿 ≠ 逻辑正确」（mock shape 与 db 不一致掩盖了数周）。必须系统性排查。
-> **详细计划**：[`designs/l4-gate-audit.md`](./designs/l4-gate-audit.md)（9 项横切检查 + A/B/C 模块分级 + P0/P1/P2 加固项 + 退出标准）。
+> **详细计划**：[`archive/2026-08-08-l4-gate-audit.md`](./archive/2026-08-08-l4-gate-audit.md)（9 项横切检查 + A/B/C 模块分级 + P0/P1/P2 加固项 + 退出标准）。
 
 ### Gate 状态
 
 | 项 | 状态 |
 |----|------|
 | K1：`decision.py` 读 camelCase 错位（paper 进不了决策快照） | **[x] 2026-08-08**：4 处错位 + exit_attribution 1 处漏网 + 附带发现 `import json` 缺失（extract_pending_actions 从未工作） |
-| H1 数据口径审计 | **[x] 2026-08-08**：全量对照表完成（详见 l4-gate-audit.md §4）；decision.py 覆盖率 43% → 99% |
+| H1 数据口径审计 | **[x] 2026-08-08**：全量对照表完成（详见 archive/l4-gate-audit §4）；decision.py 覆盖率 43% → 99% |
 | H3 测试隔离复查（26 个 requires_postgres 文件） | **[x] 2026-08-08**：7 处污染源修复（含 flaky 根因：UTC/上海跨天窗口）；清 233 测试账户 + 141 测试 session + 48 假 changes；`scripts/db_rows_baseline.py` 验收 OK |
 | K4 correlation 簇回归 | **[x] 2026-08-08**：持仓全保护；补 8 条簇规则（电子/元件/PCB/小金属/化学制药等）；correlation.py 57%→95%；遗留：stock_basic CN=0 致行业缺失（B7）+ fail-open 激进语义（入 H5 清单） |
 | H2 盘后链路端到端冒烟 | **[x] 2026-08-08**：`test_postclose_smoke.py` 五步链路全绿；**抓到生产 bug**：run_intake side 变量泄漏（最后一条 action 污染所有 insert，解释 paper_trades 长期 1 行）已修 + 回归测试；基线验收零变化 |
@@ -550,7 +551,7 @@
 | H5 fail-open 语义清单 | **[x] 2026-08-08**：扫描 11 文件 75 处 except；**修 2 个激进项**（宏观死锁读取失败→fail-closed 锁激活且不缓存；registry 读取失败→不再批量删止损）；2 个高危项记录设计权衡（日内风控 bar 陈旧、breadth panic 依赖 sentiment 兜底）；其余 14 项中低危记录 |
 | H6 时区/日历一致性 | **[x] 2026-08-08**：调度全 Asia/Shanghai ✓；**修 `_messages_on` UTC→上海日界**（凌晨消息漏出快照）+ `_holding_days_for` None 崩溃；跨周末/跨月测试；HK 日历差异文档化 |
 | H7 数值健壮性扫描 | **[x] 2026-08-08**：评分函数 None 守卫 ×7（返回 0 不崩）+ 测试锁定；扫描全服务层 float/int/除零路径无其他崩溃 |
-| H8/H9/H10 契约/调度/安全 | [ ] |
+| H8/H9/H10 契约/调度/安全 | **[x] 2026-08-08 H8**：v1 三端点模型全匹配 + docs/api ✓；删前端 `okBook` 死字段（tsc 干净）。**[x] 2026-08-08 H9**：26 模块 ON CONFLICT + ingest heartbeat 幂等测试锁定；无幂等缺陷。**[x] 2026-08-08 H10**：gitignore/硬编码密钥 0 命中；.env.example 补 `GEMINI_API_KEY`；/v1 鉴权面确认（business/explain 挂 require_api_key、quota 挂 enforce_quota、discovery 无鉴权设计）；新增 `LocalOriginGuardMiddleware` 拒非本机 Origin 写请求（11 测试锁定）；全量 1435 passed 零变化。 |
 
 ### 铁律
 

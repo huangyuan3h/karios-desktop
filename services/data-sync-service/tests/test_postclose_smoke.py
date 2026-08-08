@@ -164,3 +164,39 @@ def test_postclose_chain_end_to_end() -> None:
     assert paper.get("closed", 0) >= 1
     assert (paper.get("byReason") or {}).get("target_hit", {}).get("count", 0) >= 1
     assert paper.get("avgNetPnlPct") is not None
+
+
+def test_ingest_snapshot_is_idempotent_on_same_content() -> None:
+    """H9: re-ingesting the identical gate+cards must NOT emit new changes
+    (content-hash heartbeat). A cron double-fire must not duplicate rows."""
+    from data_sync_service.service.execution_journal import ingest_snapshot
+
+    sym = _smoke_symbol()
+    _mock_no_prev_snapshot()
+    gate = {"mode": "AGGRESSIVE", "allowNewEntries": True}
+    cards = [{"symbol": sym, "action": "BUY", "why": "SMOKE_TEST", "source": "TV"}]
+
+    first = ingest_snapshot(
+        trade_date=ENTRY_DATE, source="TV", gate=gate, cards=cards, meta={"smoke": True},
+    )
+    _CREATED["snapshot_ids"].add(first["snapshotId"])
+    assert first["changed"] is True
+
+    second = ingest_snapshot(
+        trade_date=ENTRY_DATE, source="TV", gate=gate, cards=cards, meta={"smoke": True},
+    )
+    assert second["changed"] is False
+    assert second["heartbeat"] is True
+    assert second["changes"] == []
+
+    # Exactly one BUY change row for the symbol (no duplicates from re-fire).
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COUNT(*) FROM execution_decision_changes
+                WHERE symbol = %s AND field = 'action'
+                """,
+                (sym,),
+            )
+            assert cur.fetchone()[0] == 1
