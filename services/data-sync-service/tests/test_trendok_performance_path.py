@@ -511,3 +511,44 @@ def test_compute_trendok_entry_hard_stop_floor_when_held_in_loss() -> None:
     assert row["stopLossPrice"] >= parts["hard_stop_entry"]
     assert upsert_batch.call_args.args[0][0]["ts_code"] == "600519.SH"
     delete_batch.assert_not_called()
+
+
+def test_compute_trendok_keeps_stored_stoploss_when_registry_read_fails() -> None:
+    """H5 (2026-08-08): a watchlist-registry read failure must NOT be treated
+    as 'nobody is held' — that previously bulk-deleted every stored stoploss.
+    With the registry unavailable, stored stops are kept (fail-closed)."""
+    clear_trendok_cache()
+    bars = {"600519.SH": _trend_bars(start=10.0)}
+
+    def registry_boom():
+        raise RuntimeError("db down")
+
+    with (
+        patch("data_sync_service.service.trendok.fetch_last_ohlcv_batch", return_value=bars),
+        patch("data_sync_service.service.trendok._build_industry_flow_context", return_value={"ok": False}),
+        patch(
+            "data_sync_service.service.trendok.get_market_regime",
+            return_value={"regime": "Strong", "bias": None, "indexSignals": []},
+        ),
+        patch(
+            "data_sync_service.service.trendok._lookup_stock_basic",
+            return_value=({"600519.SH": "Kweichow Moutai"}, {"600519.SH": "Food"}),
+        ),
+        patch("data_sync_service.service.trendok._lookup_em_industry_boards", return_value={}),
+        patch("data_sync_service.service.trendok.fetch_summaries_for_codes", return_value={}),
+        patch("data_sync_service.service.trendok.fetch_daily_seats_batch", return_value={}),
+        patch(
+            "data_sync_service.service.trendok.get_stoploss_batch",
+            return_value={"600519.SH": {"stop_loss_price": 999.0}},
+        ) as stoploss_batch,
+        patch("data_sync_service.service.trendok.upsert_stoploss_batch"),
+        patch("data_sync_service.service.trendok.delete_stoploss_batch") as delete_batch,
+        patch("data_sync_service.service.trendok.delete_stoploss"),
+        patch("data_sync_service.db.watchlist_automation.list_registry", side_effect=registry_boom),
+    ):
+        out = compute_trendok_for_symbols(["CN:600519"], realtime=False)
+
+    assert len(out) == 1
+    stoploss_batch.assert_called_once_with(["600519.SH"])
+    # stored stop is kept: no delete call for the registry-failure path
+    delete_batch.assert_not_called()

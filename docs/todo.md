@@ -546,8 +546,8 @@
 | H3 测试隔离复查（26 个 requires_postgres 文件） | **[x] 2026-08-08**：7 处污染源修复（含 flaky 根因：UTC/上海跨天窗口）；清 233 测试账户 + 141 测试 session + 48 假 changes；`scripts/db_rows_baseline.py` 验收 OK |
 | K4 correlation 簇回归 | **[x] 2026-08-08**：持仓全保护；补 8 条簇规则（电子/元件/PCB/小金属/化学制药等）；correlation.py 57%→95%；遗留：stock_basic CN=0 致行业缺失（B7）+ fail-open 激进语义（入 H5 清单） |
 | H2 盘后链路端到端冒烟 | **[x] 2026-08-08**：`test_postclose_smoke.py` 五步链路全绿；**抓到生产 bug**：run_intake side 变量泄漏（最后一条 action 污染所有 insert，解释 paper_trades 长期 1 行）已修 + 回归测试；基线验收零变化 |
-| H4 前端决策链边界矩阵 | [ ] |
-| H5 fail-open 语义清单 | [ ] |
+| H4 前端决策链边界矩阵 | **[x] 2026-08-08**：13 个边界用例（满仓/负 room/ETF 豁免/correlation 绑定/ratchet）；前端 515 passed + tsc 干净 |
+| H5 fail-open 语义清单 | **[x] 2026-08-08**：扫描 11 文件 75 处 except；**修 2 个激进项**（宏观死锁读取失败→fail-closed 锁激活且不缓存；registry 读取失败→不再批量删止损）；2 个高危项记录设计权衡（日内风控 bar 陈旧、breadth panic 依赖 sentiment 兜底）；其余 14 项中低危记录 |
 | H6 时区/日历一致性 | [ ] |
 | H7 数值健壮性扫描 | [ ] |
 | H8/H9/H10 契约/调度/安全 | [ ] |

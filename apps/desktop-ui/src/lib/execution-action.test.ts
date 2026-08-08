@@ -2338,3 +2338,218 @@ describe('correlation cluster cap (V7.0-01 / L3-P5)', () => {
     expect(size!.note).not.toBe('correlation');
   });
 });
+
+describe('H4 boundary matrix (2026-08-08 gate)', () => {
+  // -- suggestFireSizePct: full / negative room / ETF exemption --
+  it('returns null when positionPct is exactly at the 15% single cap (zero room)', () => {
+    expect(
+      suggestFireSizePct({
+        positionPct: 15,
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 0]]),
+        sleeveExposurePct: 0,
+        positionRangeHint: '50%-60%',
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null when positionPct exceeds the single cap (negative single room)', () => {
+    expect(
+      suggestFireSizePct({
+        positionPct: 18,
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 0]]),
+        sleeveExposurePct: 0,
+        positionRangeHint: '50%-60%',
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null when the sector sum already exceeds the 30% cap (negative sector room)', () => {
+    expect(
+      suggestFireSizePct({
+        positionPct: 0,
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 35]]),
+        sleeveExposurePct: 0,
+        positionRangeHint: '50%-60%',
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null when sleeve is exactly at the hint max (zero sleeve room)', () => {
+    expect(
+      suggestFireSizePct({
+        positionPct: 0,
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 0]]),
+        sleeveExposurePct: 60,
+        positionRangeHint: '50%-60%',
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null when sleeve exceeds the hint max (negative sleeve room)', () => {
+    expect(
+      suggestFireSizePct({
+        positionPct: 0,
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 0]]),
+        sleeveExposurePct: 62,
+        positionRangeHint: '50%-60%',
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null when correlation room is negative (cluster over the 30% cap)', () => {
+    expect(
+      suggestFireSizePct({
+        positionPct: 0,
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 0]]),
+        sleeveExposurePct: 0,
+        positionRangeHint: '50%-60%',
+        roomCorrelation: -2,
+      }),
+    ).toBeNull();
+  });
+
+  it('rejects tiny room below 0.1 pct points', () => {
+    expect(
+      suggestFireSizePct({
+        positionPct: 0,
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 29.95]]),
+        sleeveExposurePct: 0,
+        positionRangeHint: '50%-60%',
+      }),
+    ).toBeNull();
+  });
+
+  it('ETF is exempt from the single-name cap inside suggestFireSizePct', () => {
+    expect(
+      suggestFireSizePct({
+        positionPct: 14.9, // would be near-zero room for a stock
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 0]]),
+        sleeveExposurePct: 40,
+        positionRangeHint: '50%-60%',
+        isEtf: true,
+      }),
+    ).toEqual({ addPct: 5, note: 'clip', stopDistancePct: null });
+  });
+
+  it('note prefers sleeve over clip when both rooms tie at the clip value', () => {
+    // roomSleeve = 60 - 55 = 5 === clip → sleeve note (checked before clip).
+    expect(
+      suggestFireSizePct({
+        positionPct: 0,
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 0]]),
+        sleeveExposurePct: 55,
+        positionRangeHint: '50%-60%',
+      }),
+    ).toEqual({ addPct: 5, note: 'sleeve', stopDistancePct: null });
+  });
+
+  it('risk cap exactly equal to clip stays note=clip (risk note requires strictly tighter)', () => {
+    // stop distance 10% → riskCap = 0.5/(0.1) = 5 === clip → not labelled risk.
+    expect(
+      suggestFireSizePct({
+        positionPct: 0,
+        industryName: '半导体',
+        sectorExposureByIndustry: new Map([['半导体', 0]]),
+        sleeveExposurePct: 0,
+        positionRangeHint: '50%-60%',
+        stopDistancePct: 10,
+      }),
+    ).toEqual({ addPct: 5, note: 'clip', stopDistancePct: 10 });
+  });
+
+  // -- stop ratchet: max(hardStop, trailStop) --
+  it('ratchet: trailStop above hardStop wins the exit stop', () => {
+    // pnl 20% > 10%, peak 12, atr14 0.5 → trailStop = 12 - 1 = 11 > hardStop 8.
+    const out = deriveTriggerAndTrail({
+      hardStop: 8,
+      costPrice: 10,
+      maxPrice: 12,
+      current: 12,
+      atr14: 0.5,
+    });
+    expect(out.trailArmed).toBe(true);
+    expect(out.trailStop).toBe(11);
+    expect(out.exitStop).toBe(11);
+  });
+
+  it('ratchet: hardStop above trailStop wins the exit stop', () => {
+    // trailStop = 12 - 1 = 11 < hardStop 11.5 → exitStop = 11.5 (stop only ratchets up).
+    const out = deriveTriggerAndTrail({
+      hardStop: 11.5,
+      costPrice: 10,
+      maxPrice: 12,
+      current: 12,
+      atr14: 0.5,
+    });
+    expect(out.trailArmed).toBe(true);
+    expect(out.trailStop).toBe(11);
+    expect(out.exitStop).toBe(11.5);
+  });
+
+  it('trail never arms below +10% pnl even with a peak and ATR', () => {
+    const out = deriveTriggerAndTrail({
+      hardStop: 9,
+      costPrice: 10,
+      maxPrice: 10.8,
+      current: 10.8,
+      atr14: 0.5,
+    });
+    expect(out.trailArmed).toBe(false);
+    expect(out.trailStop).toBeNull();
+    expect(out.exitStop).toBe(9);
+  });
+
+  it('deriveActionCard: BUY in a nearly-full cluster sizes to correlation room', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000' },
+      currentPrice: 10,
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      sleeveExposurePct: 40,
+      sectorExposureByIndustry: new Map([['半导体', 5]]),
+      clusterExposurePct: 27.5, // room = 2.5 → binds below the 5% clip
+    });
+    expect(card.action).toBe('BUY');
+    expect(card.suggestAddPct).toBe(2.5);
+    expect(card.suggestSizeNote).toBe('correlation');
+  });
+
+  it('deriveActionCard: ADD is blocked in an over-limit cluster (CORRELATION_CAP_BLOCK)', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:600000',
+      gate: attackGate,
+      trendok: {
+        score: BUY_SCORE_MIN,
+        buyAction: 'buy',
+        stopLossPrice: 9,
+        stopLossParts: { atr14: 0.3 },
+        values: { emIndustry: '半导体' },
+      },
+      position: { symbol: 'CN:600000', positionPct: 5, costPrice: 10 },
+      currentPrice: 10,
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      sleeveExposurePct: 40,
+      sectorExposureByIndustry: new Map([['半导体', 5]]),
+      clusterExposurePct: 31,
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('CORRELATION_CAP_BLOCK');
+  });
+});

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import copy
+import logging
 import math
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from cachetools import TTLCache
+
+logger = logging.getLogger(__name__)
 
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.db.industry_fund_flow import (
@@ -179,10 +182,13 @@ def _read_latest_sentiment_for_macro_lock() -> tuple[str | None, int | None]:
         result = (risk_mode, down_count)
         _macro_lock_cache["latest"] = result
         return result
-    except Exception:
-        result = (None, None)
-        _macro_lock_cache["latest"] = result
-        return result
+    except Exception as exc:
+        # H5 (2026-08-08): sentiment read failure must not silently disable
+        # the crash lock (that is fail-OPEN on the most defensive gate).
+        # Fail closed → treat as extreme_caution; do NOT cache so a recovered
+        # read unlocks on the next evaluation.
+        logger.warning("macro lock sentiment read failed (lock fail-closed): %s", exc)
+        return ("extreme_caution", MACRO_LOCK_DOWN_THRESHOLD)
 
 
 def apply_macro_override_lock(
@@ -1075,7 +1081,11 @@ def compute_trendok_for_symbols(
     # Position context from the watchlist registry: symbol -> (is_held, cost_price).
     # The ratchet (stop only increases) applies only while a position is HELD;
     # closing a position resets it so a re-entry starts from a fresh stop.
+    # H5 (2026-08-08): a registry READ FAILURE must not be treated as "nobody
+    # is held" — that used to bulk-delete every stored stoploss. registry
+    # state is then UNKNOWN and stoploss rows are kept (fail-closed).
     registry_ctx_by_symbol: dict[str, dict[str, Any]] = {}
+    registry_available = True
     try:
         from data_sync_service.db.watchlist_automation import list_registry
 
@@ -1083,8 +1093,9 @@ def compute_trendok_for_symbols(
             sym = str(row.get("symbol") or "").strip().upper()
             if sym:
                 registry_ctx_by_symbol[sym] = row
-    except Exception:
-        pass
+    except Exception as exc:
+        registry_available = False
+        logger.warning("trendok stoploss registry read failed (stops kept): %s", exc)
 
     def position_ctx(sym: str) -> tuple[bool, float | None]:
         row = registry_ctx_by_symbol.get(str(sym or "").upper())
@@ -1121,10 +1132,15 @@ def compute_trendok_for_symbols(
         if not use_stored:
             return newly_computed, False
         if not is_held:
-            stored = stored_stoploss_by_code.get(ts_code)
-            if stored is not None and stored.get("stop_loss_price") is not None:
-                stoploss_deletes_by_code.add(ts_code)
-                stored_stoploss_by_code[ts_code] = None
+            # Position lifecycle reset (delete stored stop so a re-entry
+            # starts fresh) — only when the registry is trustworthy. When the
+            # registry read failed, is_held is UNKNOWN: never delete a stored
+            # stop on guesswork (H5).
+            if registry_available:
+                stored = stored_stoploss_by_code.get(ts_code)
+                if stored is not None and stored.get("stop_loss_price") is not None:
+                    stoploss_deletes_by_code.add(ts_code)
+                    stored_stoploss_by_code[ts_code] = None
             return newly_computed, False
         stored = stored_stoploss_by_code.get(ts_code)
         stored_price = stored.get("stop_loss_price") if stored else None

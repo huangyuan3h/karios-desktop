@@ -203,10 +203,43 @@
 **H4. 前端决策链单元回归（A1）**
 - 做法：`execution-action.ts` 的尺寸 min 链（clip/single/sector/sleeve/risk/correlation 6 项）构造边界测试矩阵；止损链（HardStop/TrailStop）ratchet 测试
 - 验收：新增 ≥10 个边界用例（0 仓位、满仓、负 room、ETF 豁免、correlation 绑定）
+- **状态：[x] 2026-08-08**。`execution-action.test.ts` 追加「H4 boundary matrix」13 个用例：
+
+| 边界 | 用例 |
+|------|------|
+| 满仓 | positionPct=15（零 room）→ null；positionPct=18（负 room）→ null |
+| 负 room | sector sum 35% → null；sleeve 62/60 → null；roomCorrelation=-2 → null |
+| 零 room | sleeve=60/60 → null；sleeve=55 与 clip 平 → note=sleeve |
+| 微小 room | sector 29.95%（room<0.1）→ null |
+| ETF 豁免 | positionPct=14.9 + isEtf → 仍 clip 5（single cap 豁免） |
+| risk 边界 | riskCap==clip（stop 10%）→ note 保持 clip（须严格更紧才标 risk） |
+| 止损 ratchet | trailStop>hardStop → exitStop=trailStop；hardStop>trailStop → exitStop=hardStop；pnl<10% 永不武装 |
+| correlation 绑定 | BUY 在 cluster 27.5% → Suggest 2.5 note=correlation；ADD 在 31% → CORRELATION_CAP_BLOCK |
+
+- 验收：前端全量 **515 passed / 1 skipped** + tsc 干净。注意：测试改动后跑全量 vitest 确认（曾因全局 sed 误伤 1 个既有用例，git checkout 还原后重新追加）。
 
 **H5. fail-open 语义清单（1.5）**
 - 做法：把「缺数据时的默认行为」整理成表（模块 × 数据源 × 缺数据行为 × 方向是否正确）
 - 验收：表完成；发现「缺数据=激进」的项已改为保守或加测试锁定
+- **状态：[x] 2026-08-08**。扫描 11 个核心 service 文件（75 处 except 分支），清单：
+
+**已修复（缺数据=激进 → 保守）**：
+
+| 项 | 位置 | 原行为（激进） | 修复（保守） | 测试 |
+|----|------|----------------|--------------|------|
+| 1 | `trendok._read_latest_sentiment_for_macro_lock` | 情绪表读取异常 → (None,None) → **崩盘禁买锁失效** | 失败 → extreme_caution（锁激活）+ **不缓存**（恢复后自动解锁） | `test_trendok_macro_lock` +2 |
+| 2 | `trendok.compute_trendok_for_symbols` | registry 读取异常被吞 → 全部视为未持有 → **批量删除所有存量止损**（破坏性） | registry 状态 UNKNOWN → 跳过删除（fail-closed 保留保护） | `test_compute_trendok_keeps_stored_stoploss_when_registry_read_fails` |
+
+**高危项记录（设计权衡，不修）**：
+
+| 项 | 位置 | 行为 | 处理依据 |
+|----|------|------|----------|
+| 3 | `trendok` 日内风控（riskMetricsLive） | 最新 bar ≠ 今日 → 日内暴涨/跳空追高拦截失效 | bar 陈旧与休市/未开盘无法区分；误保守会全天误杀。关联 H6 |
+| 4 | `execution_gate` BREADTH_PANIC | downCount 缺失→0 → panic 不触发 | sentiment 层已有 errors→caution 兜底（market_sentiment.py:1194） |
+
+**中低危记录（18 项中的其余）**：SRV 缺失仍可 ATTACK（已文档化 SRV_UNKNOWN）；CN/HK 指数信号 <2 条用任意 2 条 fallback；行业 Top10 门槛缺失时跳过（TIP-004 已文档化）；清池缺数据不移除（池污染）；auto-QA 惩罚缺失按 0；premium/炸板率失败按 0 不产生 caution；Alpha S 催化剂加载失败按空集（保守）；enrichment/机构席位/期权 IV 全部 fail-closed 或中性。
+
+**顶层防线整体健康**：execution_gate 状态机、sentiment errors→caution、Alpha grade 缺省 "B"、watchlist 分数门槛——全部「缺数据→阻止」。
 
 **H6. 时区/日历一致性（1.4）**
 - 做法：paper `_holding_days_for`、cron 触发、HK 交易日差异——文档化 + 测试

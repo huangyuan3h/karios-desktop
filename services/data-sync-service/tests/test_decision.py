@@ -107,6 +107,26 @@ def test_snapshot_build_and_search_roundtrip() -> None:
         rec = build_daily_snapshot(snapshot_date=today)
         assert rec["status"] == "open"
         assert rec["exchangeCount"] >= 1
+
+        # Assertions must run BEFORE the finally cleanup restores/deletes the
+        # daily snapshot row (with no pre-existing snapshot the row is gone
+        # after cleanup and the detail endpoint would return empty).
+        hits = search_archive_by_symbol("600519")
+        assert any("600519" in (m or "") for h in hits for m in h["matches"])
+
+        detail = client.get(f"/api/decision/snapshots/{rec['snapshotDate']}")
+        assert detail.status_code == 200
+        body = detail.json()
+        assert body["ok"] is True
+        assert len(body["snapshot"]["exchanges"]) >= 1
+
+        search = client.get("/api/decision/archive/search", params={"symbol": "600519"})
+        assert search.status_code == 200
+        assert len(search.json()["hits"]) >= 1
+
+        invalid = client.get("/api/decision/snapshots/not-a-date")
+        assert invalid.status_code == 200
+        assert invalid.json()["ok"] is False
     finally:
         # Restore the real daily snapshot (build_daily_snapshot upserts the
         # current date and would otherwise clobber today's archived row) and
@@ -137,23 +157,6 @@ def test_snapshot_build_and_search_roundtrip() -> None:
                     (session["id"],),
                 )
             conn.commit()
-
-    hits = search_archive_by_symbol("600519")
-    assert any("600519" in (m or "") for h in hits for m in h["matches"])
-
-    detail = client.get(f"/api/decision/snapshots/{rec['snapshotDate']}")
-    assert detail.status_code == 200
-    body = detail.json()
-    assert body["ok"] is True
-    assert len(body["snapshot"]["exchanges"]) >= 1
-
-    search = client.get("/api/decision/archive/search", params={"symbol": "600519"})
-    assert search.status_code == 200
-    assert len(search.json()["hits"]) >= 1
-
-    invalid = client.get("/api/decision/snapshots/not-a-date")
-    assert invalid.status_code == 200
-    assert invalid.json()["ok"] is False
 
 
 def test_delete_message_endpoint() -> None:
