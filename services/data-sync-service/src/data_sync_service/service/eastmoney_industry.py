@@ -58,28 +58,24 @@ def _fetch_em_industry_for_ts_code(ts_code: str) -> str | None:
     Fetch East Money industry label for one A-share.
 
     Primary: push2 stock/get (field f127, EM board name).
-    Fallback: emweb F10 CompanySurvey (EM2016, three-level path) when push2 is
-    unreachable — the resolved label is the second level of the EM2016 path
-    (e.g. ``医药生物-化学制药-化学制剂`` → ``化学制药``), which matches the
-    correlation cluster rules and the existing EM board-name granularity.
+    Fallback chain when the host is unreachable: push2delay mirror (same
+    payload) → emweb F10 CompanySurvey (EM2016, three-level path). The EM2016
+    label resolves to the second level (``医药生物-化学制药-化学制剂`` →
+    ``化学制药``), matching the correlation cluster rules.
     """
-    label = None
-    try:
-        label = _fetch_em_industry_push2(ts_code)
-    except Exception:  # noqa: BLE001 - push2 down (DNS/TLS/disconnect) → fallback
-        label = None
-    if label:
-        return label
-    return _fetch_em_industry_emweb(ts_code)
+    for label in (
+        _fetch_em_industry_push2(ts_code),
+        _fetch_em_industry_push2delay(ts_code),
+        _fetch_em_industry_emweb(ts_code),
+    ):
+        if label:
+            return label
+    return None
 
 
-def _fetch_em_industry_push2(ts_code: str) -> str | None:
-    secid = _ts_code_to_secid(ts_code)
-    if not secid:
-        return None
-    url = "https://push2.eastmoney.com/api/qt/stock/get"
+def _push2_get_label(url: str, ts_code: str) -> str | None:
     params = {
-        "secid": secid,
+        "secid": _ts_code_to_secid(ts_code) or "",
         "fields": "f127",
         "ut": "bd1d9ddb04089700cf9c27f6f7426281",
         "_": str(int(time.time() * 1000)),
@@ -96,7 +92,7 @@ def _fetch_em_industry_push2(ts_code: str) -> str | None:
             "Connection": "close",
         },
     )
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    with urllib.request.urlopen(req, timeout=10) as resp:
         raw = resp.read()
     j = json.loads(raw.decode("utf-8", errors="replace"))
     data = j.get("data") if isinstance(j, dict) else None
@@ -104,6 +100,24 @@ def _fetch_em_industry_push2(ts_code: str) -> str | None:
         return None
     name = str(data.get("f127") or "").strip()
     return name or None
+
+
+def _fetch_em_industry_push2(ts_code: str) -> str | None:
+    if not _ts_code_to_secid(ts_code):
+        return None
+    try:
+        return _push2_get_label("https://push2.eastmoney.com/api/qt/stock/get", ts_code)
+    except Exception:  # noqa: BLE001 - main host down → next in fallback chain
+        return None
+
+
+def _fetch_em_industry_push2delay(ts_code: str) -> str | None:
+    if not _ts_code_to_secid(ts_code):
+        return None
+    try:
+        return _push2_get_label("https://push2delay.eastmoney.com/api/qt/stock/get", ts_code)
+    except Exception:  # noqa: BLE001 - mirror down → emweb fallback
+        return None
 
 
 def _em2016_to_board_name(em2016: str) -> str | None:
@@ -184,8 +198,7 @@ def _list_cn_ts_codes(*, limit: int | None = None) -> list[str]:
                 """
                 SELECT ts_code
                 FROM stock_basic
-                WHERE (market IN ('主板', '中小板', '创业板', '科创板', 'CN') OR ts_code ~ '^[0-9]{6}\\.(SH|SZ)$')
-                  AND (ts_code LIKE '%%.SH' OR ts_code LIKE '%%.SZ')
+                WHERE market IN ('主板', '中小板', '创业板', '科创板', '北交所', 'CN')
                 ORDER BY ts_code
                 LIMIT %s
                 """,

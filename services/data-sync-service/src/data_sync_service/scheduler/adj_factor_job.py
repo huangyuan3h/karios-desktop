@@ -11,8 +11,11 @@ from data_sync_service.service.adj_factor import sync_adj_factor_full
 logger = logging.getLogger(__name__)
 
 JOB_ID = "adj_factor_full_sync"
-# Every Friday 17:00 Asia/Shanghai (fallback; other strategy may be used normally)
-CRON_EXPRESSION = "0 17 * * 5"
+# Friday 18:30 Asia/Shanghai — moved off 17:00 where it collided with
+# daily_sync (both hammered the shared tushare quota and both failed with
+# "频率超限" every Friday since 2026-07-11). close_sync (17:10 daily) already
+# refreshes adj_factor incrementally; this job is the historical backfill.
+CRON_EXPRESSION = "30 18 * * 5"
 TIMEZONE = "Asia/Shanghai"
 
 

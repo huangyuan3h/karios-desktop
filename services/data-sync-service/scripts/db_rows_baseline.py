@@ -42,6 +42,8 @@ TABLES = [
     "market_top_inst_summary",
     "market_fund_flow",
     "market_chips",
+    "stock_eastmoney_industry",
+    "stock_basic",
 ]
 
 BASELINE = Path("/var/folders/3w/qqvhb_7930n24tty9_87bmf40000gn/T/opencode/h3_rows_baseline.json")
