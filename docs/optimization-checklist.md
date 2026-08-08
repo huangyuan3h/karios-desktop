@@ -1576,3 +1576,31 @@ SidebarNav 新增「回测」入口。三区块：
 - ❌ 把净值/费用模型塞进 user_trades（毛利 + 展示期扣 0.3% 成本，口径单一）
 - ❌ 样本 <50 时给出结论（看板明示"仅作趋势参考"）
 
+
+### OPT-069：52W 回撤关改用 DB K 线（2026-08-09 发现并修复）
+
+**状态**：[x]
+**完成日期**：2026-08-09
+
+**背景**：8/02 起 Funnel History 连续 4 个交易日「回撤 0、转化率 0%、走兜底」——诊断确认 TV Scanner API 模式下 `High.Interval52Week` 列对几乎所有行返回空字符串（8/01 16:00 screener 从 Chrome 模式切到 api 模式为分界），FE `getRetracementRatioFromScreenerRow` 全部拿不到 52W 高 → 回撤关全灭 → 兜底宇宙接管。**不是市场没有 5~15% 回撤票**（K 线验证 101 只候选有 31 只 in window）。
+
+#### 交付
+
+- BE `filter_pullback_window()`（`service/watchlist_automation.py`）：52W 回撤 = 最新 close vs 最近 300 根 K 线 max(high)（阈值 -15%~-5% 不变）；不足 60 根标记 missing；复用 `db.daily.fetch_last_ohlcv_batch` 单次批量查询；symbol→ts_code 复用 `symbol_to_ts_code`（CN/HK/ETF）
+- API：`POST /watchlist/automation/pullback-filter`（入参 symbols，返回 results/symbol/tsCode/price/high52w/pullbackRatio/inWindow/windowBars/missing + asOf + unparsed）
+- FE `importFromScreener`：回撤关改调该端点（`setStep('52W pullback check (K-line)')`），删除 TV 列解析 helper（parseScreenerNumber/pickFirstRowValue/getRetracementRatioFromScreenerRow）；兜底触发条件不变
+- 测试：BE `tests/test_watchlist_pullback_filter.py`（9 个：in/out 窗口、max(high) 跨棒、不足窗口 missing、HK 解析、unparsed、空输入）；FE `src/lib/watchlist-screener-import.test.ts`（2 个：pullback-filter 走 K 线 + 全灭时兜底）
+- 实测：8/08 最新快照候选 101 → in_window 31（修复前 0），BE 3419 passed / 93.28%，FE 723 passed，baseline OK
+
+#### 监控（回撤关连续 3 天 0 → 告警）
+
+- `service/watchlist_funnel_health.py`（新）：盘后 18:10 用最新 TV 快照 + K 线**离线重放入池漏斗**（tvHit / passPullback / missing / fallbackWouldTrigger）；每次运行写 sync_job_record（metrics 存 error_message、streak 存 last_ts_code）
+- 连续 3 个交易日回撤关 0 通过 → `insert_record(success=False)` → 出现在 `GET /api/health/job-failures`（健康页 Job Failures 区域自动可见）
+- 同日多次运行（定时+手动）按日期去重，不虚增 streak；collect 异常单独记 failure
+- 手动触发：`POST /watchlist/automation/funnel-health/check`；Scheduler 页新增「漏斗健康检查」条目（shared `SCHEDULER_JOB_CATALOG`，18:10 工作日 + 立即检查按钮）
+- 测试：`tests/test_watchlist_funnel_health.py`（7 个：健康/首日 anomaly/3 天连续 failure/中断/失败记录延续 streak/同日去重/collect 错误）
+
+#### 反模式
+
+- ❌ 依赖 TV 快照列算 52W 回撤（列值可能为空且不可告警）
+- ❌ 用 EMA/SMA 近似 52W 高（口径漂移，K 线是权威源）

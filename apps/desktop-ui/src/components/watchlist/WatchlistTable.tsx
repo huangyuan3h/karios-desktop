@@ -556,14 +556,6 @@ export function WatchlistTable({
                         width={360}
                       />
                     </th>
-                    <th className="px-2 py-2 min-w-[88px] whitespace-nowrap">
-                      <ColumnHeader
-                        columnId="execAction"
-                        showTooltip={showTooltip}
-                        hideTooltip={hideTooltip}
-                        width={360}
-                      />
-                    </th>
                     <th className="px-2 py-2 min-w-[104px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="trigger"
@@ -695,6 +687,15 @@ export function WatchlistTable({
                         )}
                       </button>
                     </th>
+                    <th className="px-2 py-2 min-w-[88px] whitespace-nowrap">
+                      <ColumnHeader
+                        columnId="execAction"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={360}
+                      />
+                    </th>
+
                     <th
                       className={watchlistStickyCellClass('trendOk', { header: true })}
                       style={watchlistStickyCellStyle('trendOk', { header: true })}

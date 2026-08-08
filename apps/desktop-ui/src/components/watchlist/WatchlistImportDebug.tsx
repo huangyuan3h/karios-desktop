@@ -109,7 +109,8 @@ export function WatchlistImportDebug({
             : 'No import yet'}
         </div>
       </div>
-      <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+      <VisibilitySection visible={importDebugOpen} className="mt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-[var(--k-muted)]">
           Funnel {importDebug.funnel ? formatScreenerFunnel(importDebug.funnel) : '—'} • TrendOK ✅{' '}
           {importDebug.trendOkCount} • Showing {importDebugRows.length}
@@ -131,6 +132,7 @@ export function WatchlistImportDebug({
           </Button>
         </div>
       </div>
+      </VisibilitySection>
 
       <VisibilitySection
         visible={importDebugOpen}

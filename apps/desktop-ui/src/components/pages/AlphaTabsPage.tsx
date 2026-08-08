@@ -20,34 +20,36 @@ export function AlphaTabsPage() {
   return (
     <div className="flex flex-col">
       <div className="sticky top-0 z-10 border-b border-[var(--k-border)] bg-[var(--k-surface)]">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 pt-3 md:px-6">
-          <button
-            type="button"
-            className={cn(
-              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              tab === 'incubator'
-                ? 'bg-[var(--k-surface-2)] text-[var(--k-text)]'
-                : 'text-[var(--k-muted)] hover:text-[var(--k-text)]',
-            )}
-            onClick={() => setTab('incubator')}
-            aria-pressed={tab === 'incubator'}
-          >
-            Alpha Incubator
-          </button>
-          <button
-            type="button"
-            className={cn(
-              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              tab === 'research'
-                ? 'bg-[var(--k-surface-2)] text-[var(--k-text)]'
-                : 'text-[var(--k-muted)] hover:text-[var(--k-text)]',
-            )}
-            onClick={() => setTab('research')}
-            aria-pressed={tab === 'research'}
-          >
-            Research · 研报 α
-          </button>
-          <span className="ml-auto hidden text-xs text-[var(--k-muted)] md:inline">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 pb-3 pt-3 md:px-6">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className={cn(
+                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                tab === 'incubator'
+                  ? 'bg-[var(--k-surface-2)] text-[var(--k-text)]'
+                  : 'text-[var(--k-muted)] hover:text-[var(--k-text)]',
+              )}
+              onClick={() => setTab('incubator')}
+              aria-pressed={tab === 'incubator'}
+            >
+              Alpha Incubator
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                tab === 'research'
+                  ? 'bg-[var(--k-surface-2)] text-[var(--k-text)]'
+                  : 'text-[var(--k-muted)] hover:text-[var(--k-text)]',
+              )}
+              onClick={() => setTab('research')}
+              aria-pressed={tab === 'research'}
+            >
+              Research · 研报 α
+            </button>
+          </div>
+          <span className="hidden text-xs text-[var(--k-muted)] md:inline">
             S 级 / 高分信号在 Run Automation 时进入 Watchlist 监控池
           </span>
         </div>

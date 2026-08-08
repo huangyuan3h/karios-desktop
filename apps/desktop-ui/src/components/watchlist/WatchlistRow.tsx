@@ -741,68 +741,6 @@ function WatchlistRowInner({
       <td className="px-2 py-2">
         <StopLossCell sym={it.symbol} t={t} showTooltip={showTooltip} hideTooltip={hideTooltip} />
       </td>
-      <td
-        className={`px-2 py-2 font-mono text-xs ${execTone}`}
-        title={[
-          actionCard.why,
-          actionCard.mainlineOk
-            ? `mainline=${actionCard.mainlineTag || 'ok'}`
-            : 'mainline=no',
-          typeof actionCard.suggestAddPct === 'number'
-            ? `suggest +${actionCard.suggestAddPct.toFixed(1)}% (${actionCard.suggestSizeNote || 'clip'}${
-                actionCard.sizeStopDistancePct != null
-                  ? ` · stop ${actionCard.sizeStopDistancePct.toFixed(1)}%`
-                  : ''
-              })`
-            : actionCard.action === 'BUY' || actionCard.action === 'ADD'
-              ? actionCard.sizeStopDistancePct != null
-                ? `stop ${actionCard.sizeStopDistancePct.toFixed(1)}% → 风险超预算(建议<2.5%)，放弃`
-                : null
-              : null,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-      >
-        {actionCard.action}
-        {typeof actionCard.suggestAddPct === 'number' ? (
-          <span className="ml-1 font-normal text-emerald-700/90">
-            +{actionCard.suggestAddPct.toFixed(0)}%
-          </span>
-        ) : null}
-        {onOpenTradeDialog ? (
-          <div className="mt-1 flex gap-1">
-            {heldForTrigger ? (
-              <>
-                <button
-                  type="button"
-                  className="rounded border border-emerald-600/40 px-1.5 py-0.5 text-[10px] font-normal text-emerald-700 hover:bg-emerald-500/10"
-                  onClick={() => onOpenTradeDialog?.('add', it)}
-                  title="加仓：输入加仓价格 + 仓位，自动加权平均成本"
-                >
-                  加仓
-                </button>
-                <button
-                  type="button"
-                  className="rounded border border-red-500/40 px-1.5 py-0.5 text-[10px] font-normal text-red-600 hover:bg-red-500/10"
-                  onClick={() => onOpenTradeDialog?.('sell', it)}
-                  title="卖出：输入卖出价格，记录真实成交"
-                >
-                  卖出
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="rounded border border-emerald-600/40 px-1.5 py-0.5 text-[10px] font-normal text-emerald-700 hover:bg-emerald-500/10"
-                onClick={() => onOpenTradeDialog?.('buy', it)}
-                title="买入：输入买入价格 + 仓位"
-              >
-                买入
-              </button>
-            )}
-          </div>
-        ) : null}
-      </td>
       <td className="px-2 py-2 font-mono text-xs" title={triggerTitle}>
         {fmtPrice(triggerPrice)}
       </td>
@@ -915,6 +853,69 @@ function WatchlistRowInner({
         <ScoreCell sym={it.symbol} t={t} showTooltip={showTooltip} hideTooltip={hideTooltip} />
       </td>
       <td
+        className={`px-2 py-2 font-mono text-xs ${execTone}`}
+        title={[
+          actionCard.why,
+          actionCard.mainlineOk
+            ? `mainline=${actionCard.mainlineTag || 'ok'}`
+            : 'mainline=no',
+          typeof actionCard.suggestAddPct === 'number'
+            ? `suggest +${actionCard.suggestAddPct.toFixed(1)}% (${actionCard.suggestSizeNote || 'clip'}${
+                actionCard.sizeStopDistancePct != null
+                  ? ` · stop ${actionCard.sizeStopDistancePct.toFixed(1)}%`
+                  : ''
+              })`
+            : actionCard.action === 'BUY' || actionCard.action === 'ADD'
+              ? actionCard.sizeStopDistancePct != null
+                ? `stop ${actionCard.sizeStopDistancePct.toFixed(1)}% → 风险超预算(建议<2.5%)，放弃`
+                : null
+              : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      >
+        {actionCard.action}
+        {typeof actionCard.suggestAddPct === 'number' ? (
+          <span className="ml-1 font-normal text-emerald-700/90">
+            +{actionCard.suggestAddPct.toFixed(0)}%
+          </span>
+        ) : null}
+        {onOpenTradeDialog ? (
+          <div className="mt-1 flex gap-1">
+            {heldForTrigger ? (
+              <>
+                <button
+                  type="button"
+                  className="rounded border border-emerald-600/40 px-1.5 py-0.5 text-[10px] font-normal text-emerald-700 hover:bg-emerald-500/10"
+                  onClick={() => onOpenTradeDialog?.('add', it)}
+                  title="加仓：输入加仓价格 + 仓位，自动加权平均成本"
+                >
+                  加仓
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-red-500/40 px-1.5 py-0.5 text-[10px] font-normal text-red-600 hover:bg-red-500/10"
+                  onClick={() => onOpenTradeDialog?.('sell', it)}
+                  title="卖出：输入卖出价格，记录真实成交"
+                >
+                  卖出
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="rounded border border-emerald-600/40 px-1.5 py-0.5 text-[10px] font-normal text-emerald-700 hover:bg-emerald-500/10"
+                onClick={() => onOpenTradeDialog?.('buy', it)}
+                title="买入：输入买入价格 + 仓位"
+              >
+                买入
+              </button>
+            )}
+          </div>
+        ) : null}
+      </td>
+
+      <td
         className={watchlistStickyCellClass('trendOk', { tone })}
         style={watchlistStickyCellStyle('trendOk')}
       >
@@ -947,6 +948,7 @@ function WatchlistRowInner({
           </Button>
         </div>
       </td>
+
     </tr>
   );
 }

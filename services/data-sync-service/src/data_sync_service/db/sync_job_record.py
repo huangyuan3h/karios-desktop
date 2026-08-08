@@ -133,3 +133,27 @@ def list_recent_failures(hours: int = 24) -> list[dict[str, Any]]:
             )
             rows = cur.fetchall()
     return [_record_from_row(r) for r in rows]
+
+
+def list_recent_runs(job_type: str, limit: int = 7) -> list[dict[str, Any]]:
+    """Return latest run records for a job_type (newest first).
+
+    Used by the funnel health monitor to detect consecutive-anomaly streaks
+    across trading days.
+    """
+    ensure_table()
+    lim = max(1, min(int(limit), 30))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id, job_type, sync_at, success, last_ts_code, error_message
+                FROM {TABLE_NAME}
+                WHERE job_type = %s
+                ORDER BY sync_at DESC
+                LIMIT %s
+                """,
+                (job_type, lim),
+            )
+            rows = cur.fetchall()
+    return [_record_from_row(r) for r in rows]

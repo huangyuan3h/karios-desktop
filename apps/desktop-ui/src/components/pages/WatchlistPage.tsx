@@ -5,6 +5,7 @@ import * as React from 'react';
 import { WatchlistImportDebug, type ScreenerImportDebugState } from '@/components/watchlist/WatchlistImportDebug';
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
 import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
+import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
 import { emptyScreenerFunnel } from '@/lib/watchlist-screener-import';
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
 import { WatchlistToolbar } from '@/components/watchlist/WatchlistToolbar';
@@ -130,7 +131,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [copyMdBusy, setCopyMdBusy] = React.useState(false);
   const copyMdTimerRef = React.useRef<number | null>(null);
 
-  const [importDebugOpen, setImportDebugOpen] = React.useState(true);
+  const [importDebugOpen, setImportDebugOpen] = React.useState(false);
   const [importDebugFilter, setImportDebugFilter] = React.useState('');
   const [importDebugScoreSortDir, setImportDebugScoreSortDir] = React.useState<'desc' | 'asc'>(
     'desc',
@@ -411,23 +412,23 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           onForceAutomationFromSkip={() => void onRunAutomation(true)}
         />
 
-        <WatchlistImportDebug
-          importDebug={importDebug}
-          importDebugOpen={importDebugOpen}
-          setImportDebugOpen={setImportDebugOpen}
-          importDebugFilter={importDebugFilter}
-          setImportDebugFilter={setImportDebugFilter}
-          importDebugScoreSortDir={importDebugScoreSortDir}
-          setImportDebugScoreSortDir={setImportDebugScoreSortDir}
-          watchlistSet={watchlistSet}
-          addSymbolToWatchlist={addSymbolToWatchlist}
-          setCode={setCode}
-          setError={setError}
-        />
-
-        <FunnelHistoryTable limit={10} />
-
-        <TradeStatsPanel />
+        <WatchlistInsightsPanel>
+          <TradeStatsPanel />
+          <FunnelHistoryTable limit={10} />
+          <WatchlistImportDebug
+            importDebug={importDebug}
+            importDebugOpen={importDebugOpen}
+            setImportDebugOpen={setImportDebugOpen}
+            importDebugFilter={importDebugFilter}
+            setImportDebugFilter={setImportDebugFilter}
+            importDebugScoreSortDir={importDebugScoreSortDir}
+            setImportDebugScoreSortDir={setImportDebugScoreSortDir}
+            watchlistSet={watchlistSet}
+            addSymbolToWatchlist={addSymbolToWatchlist}
+            setCode={setCode}
+            setError={setError}
+          />
+        </WatchlistInsightsPanel>
 
         <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="mb-2 text-sm font-medium">Add</div>

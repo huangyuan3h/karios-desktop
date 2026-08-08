@@ -211,6 +211,113 @@ def _cn_symbol_to_ts_code(symbol: str) -> str | None:
     return None
 
 
+# 52W pullback window constants (mirror FE importFromScreener thresholds).
+PULLBACK_WINDOW_MIN = -0.15
+PULLBACK_WINDOW_MAX = -0.05
+# Bars needed for a meaningful 52W window; fewer → candidate marked missing.
+PULLBACK_MIN_BARS = 60
+PULLBACK_LOOKBACK_BARS = 300
+
+
+def filter_pullback_window(
+    symbols: list[str],
+    *,
+    as_of: str | None = None,
+    min_ratio: float = PULLBACK_WINDOW_MIN,
+    max_ratio: float = PULLBACK_WINDOW_MAX,
+) -> dict[str, Any]:
+    """
+    Screen symbols by 52-week pullback using DB K-lines (daily table).
+
+    Why not the TV snapshot column? ``High.Interval52Week`` from the Scanner API
+    returns empty for virtually every row (observed 2026-08-02+), which silently
+    zeroed the funnel's pullback gate and forced the fallback universe path.
+
+    Window: latest close vs max(high) over the last ``PULLBACK_LOOKBACK_BARS``
+    bars (clamped to the trailing 52 trading weeks). Candidate passes when
+    ``min_ratio <= (price - high52w) / high52w <= max_ratio``.
+
+    Returns:
+      {"ok", "results": [{symbol, tsCode, price, high52w, pullbackRatio,
+                          inWindow, windowBars, missing}], "asOf", "unparsed"}
+    """
+    from data_sync_service.db.daily import fetch_last_ohlcv_batch
+    from data_sync_service.service.market_quotes import symbol_to_ts_code
+
+    results: list[dict[str, Any]] = []
+    ts_by_symbol: dict[str, str] = {}
+    unparsed: list[str] = []
+    for sym in symbols:
+        s = str(sym or "").strip()
+        if not s:
+            continue
+        ts = symbol_to_ts_code(s)
+        if not ts:
+            unparsed.append(s)
+            continue
+        ts_by_symbol[s] = ts
+
+    if ts_by_symbol:
+        bars = fetch_last_ohlcv_batch(list(dict.fromkeys(ts_by_symbol.values())), days=PULLBACK_LOOKBACK_BARS)
+        as_of_date = max(
+            (b[0] for rows in bars.values() for b in rows),
+            default=as_of or "",
+        )
+        for sym, ts in ts_by_symbol.items():
+            rows = bars.get(ts) or []
+            # Tuples are (date, open, high, low, close, volume).
+            parsed_highs = []
+            parsed_closes = []
+            for b in rows:
+                try:
+                    parsed_highs.append(float(b[2] or ""))
+                except ValueError:
+                    parsed_highs.append(None)
+                try:
+                    parsed_closes.append(float(b[4] or ""))
+                except ValueError:
+                    parsed_closes.append(None)
+            valid = [h for h in parsed_highs if h is not None and h > 0]
+            latest_close = next((c for c in reversed(parsed_closes) if c is not None), None)
+            if latest_close is None or not valid or len(valid) < PULLBACK_MIN_BARS:
+                results.append(
+                    {
+                        "symbol": sym,
+                        "tsCode": ts,
+                        "price": latest_close,
+                        "high52w": None,
+                        "pullbackRatio": None,
+                        "inWindow": False,
+                        "windowBars": len(valid),
+                        "missing": True,
+                    }
+                )
+                continue
+            high52w = max(valid)
+            ratio = (latest_close - high52w) / high52w
+            results.append(
+                {
+                    "symbol": sym,
+                    "tsCode": ts,
+                    "price": latest_close,
+                    "high52w": high52w,
+                    "pullbackRatio": round(ratio, 6),
+                    "inWindow": min_ratio <= ratio <= max_ratio,
+                    "windowBars": len(valid),
+                    "missing": False,
+                }
+            )
+    else:
+        as_of_date = as_of or ""
+
+    return {
+        "ok": True,
+        "results": results,
+        "asOf": as_of_date or None,
+        "unparsed": unparsed,
+    }
+
+
 def _resolve_em_industries_for_symbols(symbols: list[str]) -> dict[str, str]:
     """Map CN:xxxxxx → East Money industry name (DB only)."""
     from data_sync_service.service.eastmoney_industry import lookup_em_industries_for_ts_codes

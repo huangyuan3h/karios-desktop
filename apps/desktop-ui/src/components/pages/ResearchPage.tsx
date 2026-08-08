@@ -119,7 +119,7 @@ export function ResearchPage() {
   const stats = statsQuery.data?.stats;
 
   return (
-    <div className="mx-auto w-full max-w-4xl p-6">
+    <div className="mx-auto w-full max-w-4xl px-6 pb-6 pt-3">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-lg font-semibold">Research · 研报 α</div>

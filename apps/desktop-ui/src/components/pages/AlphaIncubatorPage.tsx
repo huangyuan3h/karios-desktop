@@ -217,7 +217,7 @@ export function AlphaIncubatorPage() {
   const withinCooldown = Boolean(status.withinCooldown);
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-4 p-4 md:p-6">
+    <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 pb-6 pt-2 md:px-6 md:pb-8 md:pt-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-lg font-semibold">

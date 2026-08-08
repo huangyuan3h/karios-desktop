@@ -1,4 +1,4 @@
-import { apiGetJson } from '@/lib/api/client';
+import { apiGetJson, apiPostJson } from '@/lib/api/client';
 import type { TrendOkResult } from '@/lib/api/types';
 import { isShanghaiQuoteWindow } from '@/lib/market-hours';
 import { fetchTrendOkMap, normalizeScreenerSymbol } from '@/lib/screenerExport';
@@ -56,6 +56,25 @@ type FallbackUniverseResponse = {
   count?: number;
 };
 
+/** POST /watchlist/automation/pullback-filter — 52W pullback gate (BE K-lines). */
+type PullbackFilterResult = {
+  symbol: string;
+  tsCode: string;
+  price: number | null;
+  high52w: number | null;
+  pullbackRatio: number | null;
+  inWindow: boolean;
+  windowBars: number;
+  missing: boolean;
+};
+
+type PullbackFilterResponse = {
+  ok: boolean;
+  results: PullbackFilterResult[];
+  asOf: string | null;
+  unparsed: string[];
+};
+
 export type ScreenerImportOptions = {
   existingItems?: WatchlistItem[];
   silent?: boolean;
@@ -96,38 +115,6 @@ function makeDebug(partial: {
     rows: partial.rows,
     funnel: partial.funnel,
   };
-}
-
-function parseScreenerNumber(raw: unknown): number | null {
-  const s = String(raw ?? '').trim();
-  if (!s) return null;
-  const m = s.match(/-?\d+(?:,\d{3})*(?:\.\d+)?/);
-  if (!m) return null;
-  const n = Number(m[0].replaceAll(',', ''));
-  return Number.isFinite(n) ? n : null;
-}
-
-function pickFirstRowValue(row: Record<string, string>, keys: string[]): string {
-  for (const k of keys) {
-    const v = row[k];
-    if (typeof v === 'string' && v.trim()) return v;
-  }
-  return '';
-}
-
-function getRetracementRatioFromScreenerRow(row: Record<string, string>): number | null {
-  const priceRaw = pickFirstRowValue(row, ['Price', 'Last', 'Close']);
-  const high52wRaw = pickFirstRowValue(row, [
-    'High 52W',
-    'High | Interval52Weeks',
-    '52 Week High',
-    'High 52 week',
-    'High 52Wk',
-  ]);
-  const price = parseScreenerNumber(priceRaw);
-  const high52w = parseScreenerNumber(high52wRaw);
-  if (price == null || high52w == null || high52w <= 0) return null;
-  return (price - high52w) / high52w;
 }
 
 async function importFallbackTrendOk(options: {
@@ -234,7 +221,6 @@ export async function importFromScreener(options: ScreenerImportOptions = {}): P
     }
 
     const candidates: string[] = [];
-    const retracementBySymbol = new Map<string, number[]>();
     for (const snap of snapshotDetails) {
       if (!snap) continue;
       for (const r of snap.rows || []) {
@@ -242,22 +228,28 @@ export async function importFromScreener(options: ScreenerImportOptions = {}): P
         const sym = normalizeScreenerSymbol(raw);
         if (!sym) continue;
         candidates.push(sym);
-        const ratio = getRetracementRatioFromScreenerRow(r);
-        if (ratio == null) continue;
-        const arr = retracementBySymbol.get(sym) ?? [];
-        arr.push(ratio);
-        retracementBySymbol.set(sym, arr);
       }
     }
 
     uniq = Array.from(new Set(candidates)).slice(0, 2000);
-    const minPullback = -0.15;
-    const maxPullback = -0.05;
-    filtered = uniq.filter((sym) => {
-      const rs = retracementBySymbol.get(sym) ?? [];
-      return rs.some((x) => x >= minPullback && x <= maxPullback);
-    });
+
+    // 52W pullback gate (TIP-002): computed server-side from DB K-lines.
+    // TV's `High.Interval52Week` returns empty for virtually every row in
+    // Scanner API mode (observed 2026-08-02+), which zeroed this gate and
+    // silently forced the fallback universe path.
+    setStep('52W pullback check (K-line)', 0, uniq.length);
+    let pbResp: PullbackFilterResponse;
+    try {
+      pbResp = await apiPostJson<PullbackFilterResponse>('/watchlist/automation/pullback-filter', {
+        symbols: uniq,
+      });
+    } catch {
+      pbResp = { ok: true, results: [], asOf: null, unparsed: [] };
+    }
+    const inWindow = new Set((pbResp.results ?? []).filter((r) => r.inWindow).map((r) => r.symbol));
+    filtered = uniq.filter((sym) => inWindow.has(sym));
     droppedByPullback = uniq.length - filtered.length;
+    setStep('52W pullback check (K-line)', uniq.length, uniq.length);
 
     if (filtered.length) {
       setStep('TrendOK check', 0, filtered.length);

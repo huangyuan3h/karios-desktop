@@ -17,6 +17,7 @@ from data_sync_service.scheduler import (
     eastmoney_industry_job,
     etf_daily_job,
     fund_basic_job,
+    funnel_health_job,
     hk_basic_job,
     hk_daily_job,
     hk_industry_job,
@@ -145,6 +146,12 @@ def create_scheduler() -> BackgroundScheduler:
         watchlist_automation_job.run,
         watchlist_automation_job.build_trigger(),
         id=watchlist_automation_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        funnel_health_job.run,
+        funnel_health_job.build_trigger(),
+        id=funnel_health_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(
