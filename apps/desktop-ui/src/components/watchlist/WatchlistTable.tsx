@@ -334,10 +334,10 @@ export function WatchlistTable({
   );
 
   const handleTradeConfirm = React.useCallback(
-    async (values: { price: number; positionPct: number }) => {
+    async (values: { price: number; positionPct: number; costPrice?: number }) => {
       if (!tradeDialog) return;
       const { kind, item } = tradeDialog;
-      const { price, positionPct } = values;
+      const { price, positionPct, costPrice } = values;
       const symbol = item.symbol;
       const source = tradeSourceForItem(item);
       const market = tradeMarketForSymbol(symbol);
@@ -354,16 +354,19 @@ export function WatchlistTable({
           setItemCostPriceValue(symbol, blended.blendedCost);
           setItemPositionPct(symbol, String(blended.newPositionPct));
         } else {
-          const costBasis = item.costPrice;
-          const entryDate = item.entryDate;
-          if (costBasis == null || !entryDate) return;
+          // Optional cost fill (2026-08-09): when the holding had no cost
+          // price, the dialog can supply one so pnl is computed; the trade
+          // is recorded either way.
+          const costBasis =
+            typeof costPrice === 'number' && costPrice > 0 ? costPrice : item.costPrice;
+          if (typeof costBasis === 'number') setItemCostPriceValue(symbol, costBasis);
           await recordUserTrade({
             symbol,
             side: 'SELL',
             price,
             positionPct,
-            costBasis,
-            entryDate,
+            costBasis: typeof costBasis === 'number' ? costBasis : undefined,
+            entryDate: item.entryDate ?? undefined,
             source,
             market,
           });

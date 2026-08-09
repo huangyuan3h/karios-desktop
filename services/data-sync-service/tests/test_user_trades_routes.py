@@ -79,12 +79,36 @@ def test_record_buy_accepts_without_cost_basis() -> None:
     assert r.json()["trade"]["pnlPct"] is None
 
 
-def test_record_sell_requires_cost_basis() -> None:
+def test_record_sell_without_cost_basis_records_no_pnl() -> None:
+    """2026-08-09: SELL no longer requires costBasis/entryDate — holdings
+    missing them must still be recordable; pnl stays null."""
     r = client.post(
         "/trades",
         json={"symbol": "CN:600000", "side": "SELL", "price": 10.0, "positionPct": 5.0},
     )
-    assert r.status_code == 400
+    assert r.status_code == 200
+    trade = r.json()["trade"]
+    assert trade["side"] == "SELL"
+    assert trade["pnlPct"] is None
+    assert trade["holdingDays"] is None
+
+
+def test_record_sell_with_cost_basis_computes_pnl() -> None:
+    r = client.post(
+        "/trades",
+        json={
+            "symbol": "CN:600000",
+            "side": "SELL",
+            "price": 12.0,
+            "positionPct": 5.0,
+            "costBasis": 10.0,
+            "entryDate": "2026-08-01",
+        },
+    )
+    assert r.status_code == 200
+    trade = r.json()["trade"]
+    assert trade["pnlPct"] == 20.0
+    assert trade["holdingDays"] is not None
 
 
 def test_record_invalid_symbol_rejected() -> None:
