@@ -40,7 +40,8 @@ def test_fetch_hstech_via_sina(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "darwin")
     assert msd._fetch_hstech_via_sina() is None
     monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(msd, "sys", __import__("sys"))
+    # simulate akshare not installed (import inside the function must fail)
+    monkeypatch.setitem(sys.modules, "akshare", None)
     assert msd._fetch_hstech_via_sina() is None  # akshare import missing
 
     df = pd.DataFrame({"date": ["2026-08-05", "2026-08-06"], "close": [1.0, 2.0]})

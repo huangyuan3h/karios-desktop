@@ -5,6 +5,27 @@ from data_sync_service.main import app  # type: ignore[import-not-found]
 
 pytestmark = pytest.mark.requires_postgres
 
+
+def _stub_akshare(monkeypatch) -> None:
+    """Make the akshare HK fallback inert.
+
+    CI runs linux with akshare installed; without this stub the real fallback
+    would hit the network and short-circuit the yfinance/tushare chain.
+    """
+    import sys
+
+    ak_stub = type(
+        "A",
+        (),
+        {
+            "sync_hk_daily_for_ts_code_ak": staticmethod(
+                lambda tc: {"ok": False, "error": "test_stub", "ts_code": tc}
+            )
+        },
+    )
+    monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_ak", ak_stub)
+
+
 def test_sync_hk_daily_no_stock_list(monkeypatch) -> None:
     import data_sync_service.service.hk_daily as hk_daily  # type: ignore[import-not-found]
 
@@ -68,6 +89,7 @@ def test_sync_hk_daily_resume_from_last_ts_code(monkeypatch) -> None:
         },
     )
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
+    _stub_akshare(monkeypatch)
 
     monkeypatch.setattr(
         hk_daily,
@@ -119,6 +141,7 @@ def test_sync_hk_daily_continues_after_single_ticker_failure(monkeypatch) -> Non
     import sys
     tx_stub = type("T", (), {"sync_hk_daily_for_ts_code_tx": staticmethod(fake_tx)})
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
+    _stub_akshare(monkeypatch)
 
     monkeypatch.setattr(hk_daily, "_tushare_sync_one", lambda tc: {"ok": True, "updated": 0})
     monkeypatch.setattr(hk_daily, "insert_record", lambda **_kw: None)
@@ -165,6 +188,7 @@ def test_sync_hk_daily_full_priority_chain(monkeypatch) -> None:
         {"sync_hk_daily_for_ts_code_tx": staticmethod(lambda tc: {"ok": True, "updated": 3, "ts_code": tc, "source": "tencent"})},
     )
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
+    _stub_akshare(monkeypatch)
 
     yf_calls: list[str] = []
     ts_calls: list[str] = []
@@ -206,6 +230,7 @@ def test_sync_hk_daily_full_falls_back_to_yfinance_when_tencent_empty(monkeypatc
         {"sync_hk_daily_for_ts_code_tx": staticmethod(lambda tc: {"ok": True, "updated": 0, "skipped": True, "ts_code": tc, "source": "tencent"})},
     )
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
+    _stub_akshare(monkeypatch)
 
     ts_calls: list[str] = []
 
@@ -245,6 +270,7 @@ def test_sync_hk_daily_full_falls_back_to_tushare_when_tencent_and_yf_empty(monk
         {"sync_hk_daily_for_ts_code_tx": staticmethod(lambda tc: {"ok": True, "updated": 0, "skipped": True, "ts_code": tc, "source": "tencent"})},
     )
     monkeypatch.setitem(sys.modules, "data_sync_service.service.hk_daily_tx", tx_stub)
+    _stub_akshare(monkeypatch)
 
     def fake_yf(tc):
         return {"ok": True, "updated": 0, "ts_code": tc, "source": "yfinance"}

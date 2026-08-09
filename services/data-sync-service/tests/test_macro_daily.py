@@ -200,23 +200,24 @@ def test_resolve_ine_sc_main_and_prefix(monkeypatch) -> None:
 def test_fetch_hstech_via_ak_and_yf(monkeypatch) -> None:
     monkeypatch.setattr(sys, "platform", "darwin")
     assert md._fetch_hstech_bars_via_ak("20260101", "20260110") is None
+
     monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(md, "sys", md.sys)
-    assert md._fetch_hstech_bars_via_ak("20260101", "20260110") is None  # akshare import missing
+    # simulate akshare not installed (import inside the function must fail)
+    monkeypatch.setitem(sys.modules, "akshare", None)
+    assert md._fetch_hstech_bars_via_ak("20260101", "20260110") is None
 
     df = pd.DataFrame({
         "date": ["2026-01-05", "2026-01-06"],
         "open": [1.0, 2.0], "high": [2.0, 3.0], "low": [0.5, 1.5],
         "close": [1.5, 2.5], "volume": [100, 200], "amount": [300, 400],
     })
-    _ = type("AK", (), {"stock_hk_index_daily_sina": staticmethod(lambda symbol: df)})()
-    monkeypatch.setattr(md, "sys", __import__("sys"))
-    monkeypatch.setattr(md, "akshare", None) if hasattr(md, "akshare") else None
-    import akshare  # noqa: F401
+    import types as _types
 
-    # simulate import failure path by removing module attr
-    monkeypatch.delattr(md, "akshare", raising=False)
-    assert md._fetch_hstech_bars_via_ak("20260101", "20260110") is None
+    fake_ak = _types.ModuleType("akshare")
+    fake_ak.stock_hk_index_daily_sina = lambda symbol: df
+    monkeypatch.setitem(sys.modules, "akshare", fake_ak)
+    out = md._fetch_hstech_bars_via_ak("20260101", "20260110")
+    assert out is not None and list(out["close"]) == [1.5, 2.5]
 
 
 def test_sync_macro_daily_full_skip(monkeypatch) -> None:

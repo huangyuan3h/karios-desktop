@@ -551,16 +551,53 @@ def test_calendar_days_between_helpers() -> None:
 
 @pytest.mark.requires_postgres
 def test_backtest_data_loads_from_db() -> None:
-    """BacktestData real-DB path: calendar + scores + bars (dev DB, CN)."""
+    """BacktestData real-DB path: calendar + scores + bars (self-seeded, CN).
+
+    Seeds a fake CN symbol (69xxxx.SH — never a real A-share code) into daily
+    + watchlist_score_daily for the window, then cleans up its own rows.
+    """
+    import uuid
+
+    from data_sync_service.db import get_connection
     from data_sync_service.service.backtest_engine import BacktestConfig, BacktestData
 
-    config = BacktestConfig(start_date="2026-07-27", end_date="2026-07-31")
-    data = BacktestData(config)
-    assert data.calendar, "dev DB should have bars in the window"
-    assert data.close_by_ts_day, "bars should map to closes"
-    # every calendar day present as key in some close map is not required,
-    # but scores must exist for at least one day (watchlist_score_daily)
-    assert data.scores_by_day
+    ticker = f"69{uuid.uuid4().int % 10000:04d}"
+    symbol = f"CN:{ticker}"
+    ts_code = f"{ticker}.SH"
+    days = ["2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30", "2026-07-31"]
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            for d in days:
+                cur.execute(
+                    """
+                    INSERT INTO daily (ts_code, trade_date, open, high, low, close,
+                                       pre_close, change, pct_chg, vol, amount)
+                    VALUES (%s, %s, 10, 11, 9, 10, 10, 0, 0, 1000, 10000)
+                    ON CONFLICT (ts_code, trade_date) DO NOTHING
+                    """,
+                    (ts_code, d),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO watchlist_score_daily (symbol, trade_date, score)
+                    VALUES (%s, %s, 80)
+                    ON CONFLICT (symbol, trade_date) DO NOTHING
+                    """,
+                    (symbol, d),
+                )
+
+    try:
+        config = BacktestConfig(start_date="2026-07-27", end_date="2026-07-31")
+        data = BacktestData(config)
+        assert data.calendar, "seeded bars should appear in the window"
+        assert data.close_by_ts_day, "bars should map to closes"
+        assert data.scores_by_day, "seeded watchlist_score_daily rows should load"
+    finally:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM daily WHERE ts_code = %s", (ts_code,))
+                cur.execute("DELETE FROM watchlist_score_daily WHERE symbol = %s", (symbol,))
 
 def test_trailing_stop_closes_on_peak_pullback() -> None:
     """trailing_stop_pct closes when close falls X% below the entry-high peak."""
