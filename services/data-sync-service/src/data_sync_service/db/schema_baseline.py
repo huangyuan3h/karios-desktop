@@ -18,6 +18,7 @@ from data_sync_service.db.alpha_radar import (
 )
 from data_sync_service.db.broker import CREATE_SQL as BROKER_CREATE_SQL
 from data_sync_service.db.daily import CREATE_SQL as DAILY_CREATE_SQL
+from data_sync_service.db.decision import CREATE_SQL as DECISION_CREATE_SQL
 from data_sync_service.db.etf_fund_flow import CREATE_SQL as ETF_FUND_FLOW_CREATE_SQL
 from data_sync_service.db.index_basic import CREATE_SQL as INDEX_BASIC_CREATE_SQL
 from data_sync_service.db.index_daily import CREATE_SQL as INDEX_DAILY_CREATE_SQL
@@ -30,6 +31,7 @@ from data_sync_service.db.market_detail import CREATE_SQL as MARKET_DETAIL_CREAT
 from data_sync_service.db.market_sentiment import CREATE_SQL as MARKET_SENTIMENT_CREATE_SQL
 from data_sync_service.db.news import CREATE_ITEMS_SQL
 from data_sync_service.db.news import CREATE_SOURCES_SQL as NEWS_SOURCES_SQL
+from data_sync_service.db.research import CREATE_TABLE_SQL as RESEARCH_CREATE_SQL
 from data_sync_service.db.stock_basic import CREATE_SQL as STOCK_BASIC_CREATE_SQL
 from data_sync_service.db.stock_eastmoney_industry import CREATE_SQL as EM_INDUSTRY_CREATE_SQL
 from data_sync_service.db.stoploss import CREATE_INDEX_SQL as STOPLOSS_INDEX_SQL
@@ -41,8 +43,8 @@ from data_sync_service.db.trade_calendar import CREATE_SQL as TRADE_CALENDAR_CRE
 from data_sync_service.db.trade_review import CREATE_SQL as TRADE_REVIEW_CREATE_SQL
 from data_sync_service.db.tv import CREATE_SQL as TV_CREATE_SQL
 from data_sync_service.db.tv_chrome_settings import CREATE_SQL as TV_CHROME_SETTINGS_CREATE_SQL
+from data_sync_service.db.user_trades import CREATE_SQL as USER_TRADES_CREATE_SQL
 from data_sync_service.db.watchlist_automation import CREATE_SQL as WATCHLIST_AUTOMATION_CREATE_SQL
-from data_sync_service.testback.db import CREATE_RUN_SQL, CREATE_TRADE_SQL
 
 BASELINE_REVISION = "0001_baseline"
 
@@ -124,10 +126,10 @@ def baseline_ddl_statements() -> list[str]:
         BROKER_CREATE_SQL,
         WATCHLIST_AUTOMATION_CREATE_SQL,
         SYSTEM_PROMPTS_CREATE_SQL,
-        CREATE_RUN_SQL,
-        CREATE_TRADE_SQL,
+        RESEARCH_CREATE_SQL,
+        DECISION_CREATE_SQL,
+        USER_TRADES_CREATE_SQL,
     ]
-
     statements: list[str] = []
     for sql in ordered_sql:
         statements.extend(_split_sql(sql))

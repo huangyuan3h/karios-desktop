@@ -345,6 +345,36 @@ def list_latest_snapshots_for_screeners(
     return out
 
 
+def fetch_latest_snapshot_rows(screener_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+    """Latest snapshot rows per screener_id (payload only, one DB round-trip).
+
+    Used by the funnel health monitor to reproduce the FE import funnel
+    offline (without a browser session).
+    """
+    ids = sorted({str(s or "").strip() for s in screener_ids if str(s or "").strip()})
+    if not ids:
+        return {}
+    ensure_tables()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT DISTINCT ON (screener_id)
+                    screener_id, payload
+                FROM {SNAPSHOTS_TABLE}
+                WHERE screener_id = ANY(%s)
+                ORDER BY screener_id, captured_at DESC
+                """,
+                (ids,),
+            )
+            rows = cur.fetchall()
+    out: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        payload = r[1] if isinstance(r[1], dict) else (r[1] or {})
+        out[str(r[0])] = list(payload.get("rows") or [])
+    return out
+
+
 def _snapshot_detail_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
     payload = row[4] if isinstance(row[4], dict) else (row[4] or {})
     screen_title = str(payload.get("screenTitle") or "") or None

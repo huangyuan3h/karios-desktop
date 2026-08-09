@@ -142,6 +142,31 @@ describe('ExecutionActionCardSchema', () => {
     expect(parsed.mainlineTag).toBe('5D_TOP3');
   });
 
+  it('parses source attribution field (TIP-011)', () => {
+    const parsed = ExecutionActionCardSchema.parse({
+      symbol: 'CN:600519',
+      action: 'BUY',
+      trailArmed: false,
+      why: 'MAINLINE_OK',
+      source: 'TV',
+    });
+    expect(parsed.source).toBe('TV');
+    const alpha = ExecutionActionCardSchema.parse({
+      symbol: 'CN:600519',
+      action: 'ADD',
+      trailArmed: false,
+      source: 'ALPHA',
+    });
+    expect(alpha.source).toBe('ALPHA');
+    const none = ExecutionActionCardSchema.parse({
+      symbol: 'CN:600519',
+      action: 'BUY',
+      trailArmed: false,
+      source: null,
+    });
+    expect(none.source).toBeNull();
+  });
+
   it('parses size suggestion fields', () => {
     const parsed = ExecutionActionCardSchema.parse({
       symbol: 'CN:600519',
@@ -153,5 +178,23 @@ describe('ExecutionActionCardSchema', () => {
     });
     expect(parsed.suggestAddPct).toBe(5);
     expect(parsed.suggestSizeNote).toBe('clip');
+  });
+
+  it('parses ETF_FALLBACK ruleType', () => {
+    const parsed = ExecutionActionCardSchema.parse({
+      symbol: 'ETF:515880',
+      action: 'TRIM',
+      trailArmed: false,
+      why: 'ETF_FALLBACK_TRIM',
+      ruleType: 'ETF_FALLBACK',
+    });
+    expect(parsed.ruleType).toBe('ETF_FALLBACK');
+    const plain = ExecutionActionCardSchema.parse({
+      symbol: 'CN:600519',
+      action: 'EXIT',
+      trailArmed: false,
+      ruleType: null,
+    });
+    expect(plain.ruleType).toBeNull();
   });
 });

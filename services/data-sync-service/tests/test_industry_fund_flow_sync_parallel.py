@@ -58,6 +58,31 @@ def test_sync_cn_industry_fund_flow_parallel_hist_fetch() -> None:
     assert out["histRows"] == 10
 
 
+def test_sync_cn_industry_fund_flow_returns_ok_flag() -> None:
+    """Success path must carry ok=True so cn_industry_post_close_sync job succeeds."""
+    with (
+        patch(
+            "data_sync_service.service.industry_fund_flow.is_cn_trading_day",
+            return_value=True,
+        ),
+        patch(
+            "data_sync_service.service.industry_fund_flow.fetch_cn_industry_fund_flow_eod",
+            return_value=_TOP_ITEMS[:2],
+        ),
+        patch(
+            "data_sync_service.service.industry_fund_flow.upsert_daily_rows",
+        ),
+        patch(
+            "data_sync_service.service.industry_fund_flow.fetch_cn_industry_fund_flow_hist",
+            return_value=[],
+        ),
+    ):
+        out = sync_cn_industry_fund_flow(days=10, top_n=2)
+
+    assert out.get("ok") is True
+    assert out["asOfDate"] is not None
+
+
 def test_sync_cn_industry_fund_flow_hist_failure_isolation() -> None:
     def _hist(name: str, *, industry_code: str | None = None, days: int = 10) -> list[dict]:
         if name == "电子":

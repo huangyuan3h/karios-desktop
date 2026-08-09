@@ -298,6 +298,7 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "alpha_radar_ingest",
     "alpha_radar_process",
     "watchlist_automation",
+    "watchlist_funnel_health",
     "cn_industry_post_close_sync",
     "tv_screener_capture_am",
     "tv_screener_capture_pm",
@@ -305,6 +306,10 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "news_enrich_job",
     "morning_brief_am",
     "morning_brief_pm",
+    "research_report_sync",
+    "decision_snapshot",
+    "decision_outcome",
+    "decision_action_tracking",
 )
 
 

@@ -1,0 +1,221 @@
+"""Data freshness health endpoint (TIP-013).
+
+Reports per-source last-sync freshness so the Copy All payload can carry
+visible timestamps instead of relying on faith.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Any
+
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/api/health", tags=["health"])
+
+# (source, job_type, data_table, data_table_ts_column, threshold_minutes)
+_SOURCES: tuple[dict[str, Any], ...] = (
+    {
+        "source": "market",
+        "weekendTolerant": True,
+        "label": "行情",
+        "jobType": "stock_close_sync",
+        "table": "stock_daily",
+        "tableTsColumn": "trade_date",
+        "thresholdMinutes": 24 * 60,
+    },
+    {
+        "source": "news",
+        "label": "新闻",
+        "jobType": "news_fetch_job",
+        "table": "news_items",
+        "tableTsColumn": "fetched_at",
+        "thresholdMinutes": 6 * 60,
+    },
+    {
+        "source": "research",
+        "label": "研报",
+        "jobType": "research_report_sync",
+        "table": "research_reports",
+        "tableTsColumn": "created_at",
+        "thresholdMinutes": 24 * 60,
+    },
+    {
+        "source": "watchlist",
+        "weekendTolerant": True,
+        "label": "Watchlist 评分",
+        "jobType": "watchlist_automation",
+        "table": None,
+        "tableTsColumn": None,
+        "thresholdMinutes": 48 * 60,
+    },
+    {
+        "source": "macro",
+        "weekendTolerant": True,
+        "label": "宏观",
+        "jobType": "macro_daily_full",
+        "table": None,
+        "tableTsColumn": None,
+        "thresholdMinutes": 48 * 60,
+    },
+    {
+        "source": "alpha_radar",
+        "weekendTolerant": True,
+        "label": "Alpha Radar",
+        "jobType": "alpha_radar_pipeline",
+        "table": None,
+        "tableTsColumn": None,
+        "thresholdMinutes": 24 * 60,
+    },
+)
+
+
+def _last_table_timestamp(table: str, ts_column: str) -> str | None:
+    if not table or not ts_column:
+        return None
+    from data_sync_service.db import get_connection
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT MAX({ts_column}) FROM {table}",
+                    None,
+                )
+                row = cur.fetchone()
+        if not row or row[0] is None:
+            return None
+        ts = row[0]
+        return ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _job_last_success(job_type: str) -> str | None:
+    from data_sync_service.db.sync_job_record import get_last_success
+
+    rec = get_last_success(job_type)
+    if not rec:
+        return None
+    sync_at = rec.get("sync_at")
+    return sync_at.isoformat() if hasattr(sync_at, "isoformat") else sync_at
+
+
+def _alpha_radar_last_at() -> str | None:
+    try:
+        from data_sync_service.service.alpha_radar_pipeline import pipeline_status
+
+        status = pipeline_status()
+        for key in ("lastFetchAt", "lastProcessedAt", "lastRunAt", "last_sync_at"):
+            if status and status.get(key):
+                ts = status[key]
+                return ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        ts = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        return ts
+    except ValueError:
+        return None
+
+
+def datasource_freshness() -> list[dict[str, Any]]:
+    now = datetime.now(UTC)
+    # Weekend (Shanghai) has no new data until Monday's close; relax the
+    # thresholds so the alert does not cry wolf every Saturday/Sunday.
+    weekend_extra_hours = 48 if _is_shanghai_weekend(now) else 0
+    sources: list[dict[str, Any]] = []
+    for spec in _SOURCES:
+        job_at = _job_last_success(spec["jobType"])
+        table_at = _last_table_timestamp(spec["table"], spec["tableTsColumn"])
+        candidate = max(
+            [t for t in (job_at, table_at) if _parse_dt(t) is not None],
+            key=lambda t: _parse_dt(t) or now,
+            default=None,
+        )
+        if spec["source"] == "alpha_radar":
+            radar_at = _alpha_radar_last_at()
+            if _parse_dt(radar_at) and (
+                not candidate or (_parse_dt(radar_at) or now) > (_parse_dt(candidate) or now)
+            ):
+                candidate = radar_at
+        last = _parse_dt(candidate)
+        age_minutes = int((now - last).total_seconds() / 60) if last else None
+        weekend_bonus = weekend_extra_hours * 60 if spec.get("weekendTolerant") else 0
+        threshold = spec["thresholdMinutes"] + weekend_bonus
+        sources.append(
+            {
+                "source": spec["source"],
+                "label": spec["label"],
+                "lastSyncedAt": candidate,
+                "ageMinutes": age_minutes,
+                "thresholdMinutes": threshold,
+                "stale": age_minutes is None or age_minutes > threshold,
+            }
+        )
+    return sources
+
+
+def _is_shanghai_weekend(now: datetime) -> bool:
+    """True when it is a Saturday/Sunday in Asia/Shanghai."""
+    from datetime import timedelta, timezone
+
+    sh = now.astimezone(timezone(timedelta(hours=8)))
+    return sh.weekday() >= 5
+
+
+def recent_job_failures(hours: int = 24) -> dict[str, Any]:
+    """Aggregate sync job failures from the last `hours` (R5 job-failure alerts)."""
+    from data_sync_service.db.sync_job_record import list_recent_failures
+
+    recs = list_recent_failures(hours=hours)
+    latest_by_job: dict[str, dict[str, Any]] = {}
+    for r in recs:
+        jt = str(r.get("job_type") or "unknown")
+        if jt not in latest_by_job:
+            latest_by_job[jt] = r
+    failures = [
+        {
+            "jobType": jt,
+            "syncedAt": rec.get("sync_at"),
+            "lastTsCode": rec.get("last_ts_code"),
+            "errorMessage": rec.get("error_message"),
+            # Cap the per-job count: high-frequency manual retries (e.g. an
+            # option-IV source with no data) would otherwise flood the alert.
+            "failures24h": min(
+                sum(1 for r in recs if str(r.get("job_type") or "unknown") == jt),
+                10,
+            ),
+        }
+        for jt, rec in latest_by_job.items()
+    ]
+    return {
+        "ok": len(failures) == 0,
+        "hours": hours,
+        "count": len(failures),
+        "failures": failures,
+    }
+
+
+@router.get("/job-failures")
+def job_failures_endpoint(hours: int = 24) -> dict[str, Any]:
+    """Recent sync job failures (last 24h by default) — surfaced for desktop alerts."""
+    return recent_job_failures(hours=hours)
+
+
+@router.get("/datasources")
+def datasources_endpoint() -> dict[str, Any]:
+    """Per-source data freshness for Copy All header (TIP-013)."""
+    return {
+        "ok": True,
+        "generatedAt": datetime.now(UTC).isoformat(),
+        "sources": datasource_freshness(),
+    }

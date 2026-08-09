@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Data Sync Service — FastAPI + uv + Postgres + Alembic
 # Builds a minimal image with Alembic migrations baked in.
-# Runs as non-root; listens on 0.0.0.0:4330 (matches live/Tauri conventions).
+# Runs as non-root; listens on 0.0.0.0:4330 (matches live conventions).
 #
 # Build context: services/data-sync-service (so pyproject.toml + uv.lock are at root).
 # The repo-level .dockerignore + this service's own .dockerignore keep image small.

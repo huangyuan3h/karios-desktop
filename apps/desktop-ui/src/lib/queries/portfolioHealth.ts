@@ -1,0 +1,68 @@
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
+
+/** Raw response of GET /v1/agent/portfolio-health (S-3 holdings health). */
+export interface PortfolioHolding {
+  symbol: string;
+  name?: string;
+  positionPct?: number;
+  costPrice?: number;
+  lastClose?: number;
+  lastDate?: string;
+  peakPrice?: number;
+  peakDate?: string;
+  pnlPct?: number;
+  drawdownFromPeakPct?: number;
+  holdingDays?: number;
+  stopLossLine?: number;
+  trailingLine?: number;
+  pyramidTriggerLine?: number;
+  pyramidAdded?: boolean;
+  maxHoldDate?: string;
+  expireDate?: string;
+  action?: 'EXIT' | 'HOLD';
+  reason?: string;
+  note?: string;
+  status?: string;
+}
+
+export interface PortfolioCandidate {
+  symbol?: string;
+  name?: string | null;
+  ts_code?: string;
+  industry?: string;
+  score?: number;
+  rs?: number;
+  regime?: string | null;
+}
+
+export interface PortfolioHealthResponse {
+  tradeDate?: string;
+  regime?: string | null;
+  sentiment?: string | null;
+  panicCooldown?: {
+    lastPanicDate?: string | null;
+    cooldownEndDate?: string | null;
+    active?: boolean;
+  } | null;
+  s3Candidates?: PortfolioCandidate[] | null;
+  s3Rules?: Record<string, unknown>;
+  holdings?: PortfolioHolding[];
+}
+
+/**
+ * Fetch the S-3-aligned health check (holdings vs exit rules + market state).
+ */
+export async function fetchPortfolioHealth(
+  baseUrl: string = DATA_SYNC_BASE_URL,
+  signal?: AbortSignal,
+): Promise<PortfolioHealthResponse> {
+  const res = await fetch(`${baseUrl}/v1/agent/portfolio-health`, {
+    cache: 'no-store',
+    signal: signal ?? AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`${res.status} ${res.statusText}${txt ? `: ${txt}` : ''}`);
+  }
+  return (await res.json()) as PortfolioHealthResponse;
+}

@@ -103,7 +103,7 @@ export const WATCHLIST_COLUMN_HELP: Record<string, WatchlistColumnHelp> = {
     id: 'execAction',
     label: '执行',
     sub: 'Action',
-    short: '执行动作: BUY / ADD / HOLD / TRIM / EXIT / PURGE / WATCH_SILENT。',
+    short: '执行动作: BUY / ADD / HOLD / TRIM / EXIT / PURGE / WATCH_SILENT + 买卖按钮 + Reference / Remove。',
     detail:
       '由 deriveActionCard() 综合 trend + gate + mainline + sleeve + sector + catalyst 给出。\n\n' +
       '- BUY: 评分达标 + 主流 + gate 允许\n' +
@@ -113,7 +113,8 @@ export const WATCHLIST_COLUMN_HELP: Record<string, WatchlistColumnHelp> = {
       '- EXIT: 立刻离场（执行场 = 当前价）\n' +
       '- PURGE: 系统判定这只票应剔除\n' +
       '- WATCH_SILENT: 静默观察（默认无交易动作）\n\n' +
-      '悬停看 hover title: action + suggestAddPct + mainlineTag。',
+      '悬停看 hover title: action + suggestAddPct + mainlineTag。\n' +
+      '按钮行：买入 / 加仓 / 卖出（真实交易记录）+ Reference（丢到 chat）+ Remove（移出自选股）。',
   },
   trigger: {
     id: 'trigger',

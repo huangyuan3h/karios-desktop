@@ -171,7 +171,8 @@ Dashboard 卡片 **Decision Journal** 把 Gate + Action Card 写成可回放时�
 - **自动采集**：Sync All、盘中 5 分钟 poll、Watchlist 仓位变更 debounce、收盘后 eod、手动 Snapshot now。Action Card 仍由前端 `deriveActionCard` 计算后 POST。
 - **变更流水**：`mode` / `action` / `why` / `trigger` / `entryTrigger` / `exitStop` / `hardStop` / `trailStop` / `positionPct` 变化落库；同决策 content_hash 只心跳更新 `captured_at`。
 - **Latest Actions（delta）**：Journal 只列出当日 Action / Trigger / Entry_Trigger / Exit_Stop / HardStop / TrailStop 变更的标的；静默 WATCH→WATCH 不入表。
-- **Copy all Markdown（忙人包）**：纯数据 Payload（**无**内嵌 AI instructions）。顺序：`## Since last copy` → Gate → Attention → Cond order（休市带 `[Queue for Next Open]`）→ Journal → 宏观原料 → **`## Combat Positions & Watchlist (Unified)`**（含 CostPrice/P&L%/EntryDate/Locked_T1、Entry_Trigger/Exit_Stop；PURGE 行在报告后物理剔除；Alpha S 豁免为 WATCH_SILENT）。行为合同只在 System Prompt。Dashboard 另有 **Sync & Copy** 一键。
+- **Copy all Markdown（忙人包）**：纯数据 Payload（**无**内嵌 AI instructions）。顺序：`## Since last copy` → Gate → Attention → Cond order（休市带 `[Queue for Next Open]`）→ Journal → **`## Execution · Source attribution (30d)`**（TIP-011 开火来源归因表）→ 宏观原料 → **`## Combat Positions & Watchlist (Unified)`**（含 CostPrice/P&L%/EntryDate/Locked_T1、Entry_Trigger/Exit_Stop；PURGE 行在报告后物理剔除；Alpha S 豁免为 WATCH_SILENT）。行为合同只在 System Prompt。Dashboard 另有 **Sync & Copy** 一键。
+- **开火来源归因（TIP-011）**：每个 BUY/ADD 信号带 `source` 来源（closed enum `TV` / `ALPHA` / `MANUAL`；NULL = TIP-011 之前的数据 → 归入 `UNKNOWN` 桶）。写入路径：前端 `deriveActionCard` 在 snapshot 构建时按「TV screener 最新快照符号 ∪ Alpha catalyst 符号」推断 → `diff_snapshots` 透传到 `execution_decision_changes.source` → paper_trades intake 镜像到 `paper_trades.source`。读侧：`GET /v1/execution/source-stats?sinceDays=30`（每来源 BUY 信号量 + 平仓/胜/负 + 胜率 + 持仓数）；Dashboard Copy 的 `Execution · Source attribution` 表格同数据源。迁移：`0018_source_attribution`。
 - 迁移：`PYTHONPATH=src alembic upgrade head`（revision `0010_execution_decision_journal`）。
 
 ### 下游判断 AI（Copy → Agent）

@@ -7,21 +7,25 @@ import { Bot } from 'lucide-react';
 
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
+import { SystemHealthBanner } from '@/components/layout/SystemHealthBanner';
 import { DashboardPage } from '@/components/pages/DashboardPage';
+import { AlphaTabsPage } from '@/components/pages/AlphaTabsPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
 import { JournalReadPage } from '@/components/pages/JournalReadPage';
 import { MarketPage } from '@/components/pages/MarketPage';
 import { NewsPage } from '@/components/pages/NewsPage';
+import { DecisionPage } from '@/components/pages/DecisionPage';
+import { BacktestPage } from '@/components/pages/BacktestPage';
 import { SchedulerPage } from '@/components/pages/SchedulerPage';
 import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
 import { IndexPage } from '@/components/pages/IndexPage';
-import { AlphaIncubatorPage } from '@/components/pages/AlphaIncubatorPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { Button } from '@/components/ui/button';
 import { useWatchlistAutomation } from '@/hooks/useWatchlistAutomation';
 import { useChatStore } from '@/lib/chat/store';
+import { buildHash, currentHash, parseHash } from '@/lib/hash-router';
 import { createQueryClient } from '@/lib/query-client';
 import { ensureWatchlistHydrated } from '@/lib/watchlist-storage';
 import { cn } from '@/lib/utils';
@@ -48,14 +52,6 @@ const StockPage = dynamic(
   () => import('@/components/pages/StockPage').then((mod) => mod.StockPage),
   { loading: LazyPageFallback },
 );
-const BacktestPage = dynamic(
-  () => import('@/components/pages/BacktestPage').then((mod) => mod.BacktestPage),
-  { loading: LazyPageFallback },
-);
-const SimTradePage = dynamic(
-  () => import('@/components/pages/SimTradePage').then((mod) => mod.SimTradePage),
-  { loading: LazyPageFallback },
-);
 
 const PAGE_TITLES: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -63,14 +59,14 @@ const PAGE_TITLES: Record<string, string> = {
   news: 'News',
   market: 'Market',
   industryFlow: 'Industry Flow',
-  alphaIncubator: 'Alpha Incubator',
+  alpha: 'Alpha',
+  decision: '决策 Agent',
+  backtest: '回测',
   watchlist: 'Watchlist',
   broker: 'Broker',
   journal: 'Journal',
   screener: 'Screener',
   scheduler: 'Scheduler',
-  backtest: 'Backtest',
-  simtrade: 'Sim Trade',
   settings: 'Settings',
   stock: 'Stock',
 };
@@ -106,6 +102,64 @@ function AppShellInner() {
   const agentModeRef = React.useRef(agentMode);
   const [overlayMounted, setOverlayMounted] = React.useState(false);
   const [overlayEntered, setOverlayEntered] = React.useState(false);
+  const appliedInitialHash = React.useRef(false);
+
+  // Hash router: initial route from the URL, then keep state and hash in
+  // sync (state → replaceState; external links / back-forward → hashchange).
+  React.useEffect(() => {
+    if (appliedInitialHash.current) return;
+    appliedInitialHash.current = true;
+    const route = parseHash(currentHash());
+    if (route.page === 'stock' && route.symbol) {
+      setActivePage('stock');
+      setActiveStockSymbol(route.symbol);
+    } else if (route.page === 'journal' && route.journalMode) {
+      setActivePage('journal');
+      setJournalMode(route.journalMode);
+      if (route.journalId) setActiveJournalId(route.journalId);
+    } else {
+      setActivePage(route.page);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    function onHashChange() {
+      const route = parseHash(window.location.hash);
+      if (route.page === 'stock' && route.symbol) {
+        setActivePage('stock');
+        setActiveStockSymbol(route.symbol);
+      } else if (route.page === 'journal') {
+        setActivePage('journal');
+        setJournalMode(route.journalMode ?? 'read');
+        if (route.journalId) setActiveJournalId(route.journalId);
+      } else {
+        setActivePage(route.page);
+      }
+    }
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  React.useEffect(() => {
+    if (!appliedInitialHash.current) return;
+    const route: { page: string; symbol?: string | null; journalMode?: string | null; journalId?: string | null } = {
+      page: activePage,
+    };
+    if (activePage === 'stock') route.symbol = activeStockSymbol;
+    if (activePage === 'journal') {
+      route.journalMode = journalMode;
+      if (activeJournalId) route.journalId = activeJournalId;
+    }
+    const hash = buildHash({
+      page: route.page,
+      symbol: route.symbol ?? null,
+      journalMode: (route.journalMode ?? null) as 'read' | 'write' | 'review' | null,
+      journalId: route.journalId ?? null,
+    });
+    if (window.location.hash !== hash) {
+      window.history.replaceState(null, '', hash);
+    }
+  }, [activePage, activeStockSymbol, journalMode, activeJournalId]);
 
   React.useEffect(() => {
     agentVisibleRef.current = agentVisible;
@@ -195,6 +249,8 @@ function AppShellInner() {
           </div>
         </header>
 
+        <SystemHealthBanner />
+
         <div className="flex min-h-0 flex-1">
           <div className="min-w-0 flex-1 overflow-auto">
             {activePage === 'settings' ? (
@@ -213,8 +269,12 @@ function AppShellInner() {
               <BrokerPage />
             ) : activePage === 'industryFlow' ? (
               <IndustryFlowPage />
-            ) : activePage === 'alphaIncubator' ? (
-              <AlphaIncubatorPage />
+            ) : activePage === 'alpha' ? (
+              <AlphaTabsPage />
+            ) : activePage === 'decision' ? (
+              <DecisionPage />
+            ) : activePage === 'backtest' ? (
+              <BacktestPage />
             ) : activePage === 'watchlist' ? (
               <WatchlistPage
                 onOpenStock={(symbol) => {
@@ -251,10 +311,6 @@ function AppShellInner() {
               <ScreenerPage />
             ) : activePage === 'scheduler' ? (
               <SchedulerPage />
-            ) : activePage === 'backtest' ? (
-              <BacktestPage />
-            ) : activePage === 'simtrade' ? (
-              <SimTradePage />
             ) : activePage === 'index' ? (
               <IndexPage />
             ) : (

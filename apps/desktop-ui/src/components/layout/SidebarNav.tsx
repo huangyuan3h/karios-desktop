@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  Bot,
   ChevronsLeft,
   ChevronsRight,
   Clock,
@@ -20,18 +21,18 @@ import { cn } from '@/lib/utils';
 
 const items = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'index', label: 'Index', icon: LineChart },
-  { id: 'news', label: 'News', icon: Newspaper },
-  { id: 'market', label: 'Market', icon: Table2 },
-  { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
-  { id: 'alphaIncubator', label: 'Alpha Incubator', icon: Rocket },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
-  // { id: 'broker', label: 'Broker', icon: CreditCard },
-  { id: 'journal', label: 'Journal', icon: NotebookPen },
+  { id: 'decision', label: '决策 Agent', icon: Bot },
+  { id: 'market', label: 'Market', icon: Table2 },
+  { id: 'index', label: 'Index', icon: LineChart },
+  { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
+  { id: 'alpha', label: 'Alpha', icon: Rocket },
   { id: 'screener', label: 'Screener', icon: Table2 },
+  { id: 'news', label: 'News', icon: Newspaper },
+  { id: 'backtest', label: '回测', icon: BarChart3 },
+  { id: 'journal', label: 'Journal', icon: NotebookPen },
+  // { id: 'broker', label: 'Broker', icon: CreditCard },
   { id: 'scheduler', label: 'Scheduler', icon: Clock },
-  // { id: 'backtest', label: 'Backtest', icon: Activity },
-  // { id: 'simtrade', label: 'Sim Trade', icon: Gamepad2 },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

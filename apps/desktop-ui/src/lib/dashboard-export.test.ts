@@ -30,11 +30,13 @@ vi.mock('@/lib/queries/dashboard', async (importOriginal) => {
 });
 
 vi.mock('@/lib/alpha-radar-catalyst', () => ({
+  buildAutoQaMarkdown: vi.fn(() => ''),
   buildCatalystPurgeMap: vi.fn(() => new Map()),
   buildCatalystStocksMarkdown: vi.fn(() => '## Catalyst\n'),
   buildAlphaRadarTrendsMarkdown: vi.fn(() => '## Trends\n'),
   DEFAULT_CATALYST_MAX_AGE_DAYS: 7,
   fetchAlphaRadarTrendsForCopy: vi.fn(async () => ({ items: [], scope: 'latest' })),
+  fetchAutoQaStats: vi.fn(async () => null),
   fetchCatalystStocks: vi.fn(async () => ({ items: [] })),
   normalizeCatalystSymbol: vi.fn((s: string) => s),
 }));
@@ -214,6 +216,7 @@ describe('buildSentimentMarkdown', () => {
         srvIndex: {
           asOfDate: '2026-06-18',
           dates: ['2026-06-16', '2026-06-17', '2026-06-18'],
+          score: 92.5,
           overlapCount: 0,
           overlapSectors: [],
           level: 'Extreme_High',
@@ -241,22 +244,22 @@ describe('buildSentimentMarkdown', () => {
     expect(md).toContain('## Market sentiment');
     expect(md).toContain('- risk: neutral');
     expect(md).toContain(
-      '- SRV 轮动指数: 极高（3D重叠 = 0）',
+      '- SRV 轮动指数: 92.5/100 极高（3D重叠 = 0）',
     );
     expect(md).toContain('## 市场环境摘要');
     expect(md).toContain('市场震荡，控制仓位。');
     expect(md).toContain('## Market sentiment');
     expect(md).toContain('- risk: neutral');
     expect(md).toContain(
-      '- SRV 轮动指数: 极高（3D重叠 = 0）',
+      '- SRV 轮动指数: 92.5/100 极高（3D重叠 = 0）',
     );
     expect(md).not.toContain('## Index traffic lights');
     expect(md).not.toContain('## Market & Macro overview');
     expect(md).not.toContain('## 300ETF Put IV');
     expect(md).toContain('| date | up | down |');
-    expect(md).toContain('## ETF Fund Flow (Top Watchlist)');
+    expect(md).toContain('## ETF Fund Flow (Top by 资金流，非仅持仓)');
     expect(md).toContain(
-      '| 沪深300 ETF | 510300 | +52.30亿 | +31.00亿 | +21.30亿 | +120.50亿 | 2026-06-18T06:30:00+00:00 | eastmoney.realtime_flow | Live |',
+      '| 沪深300 ETF | 510300 | +52.30亿 | +120.50亿 | 2026-06-18T06:30:00+00:00 | eastmoney.realtime_flow | Live |',
     );
     expect(md).toContain('🛡️ National Team Buy');
     expect(md).toContain('⚠️ Inst Outflow');
@@ -359,7 +362,7 @@ describe('buildMarketAndMacroMarkdown', () => {
 
 describe('screener Top N + Score threshold constants', () => {
   it('exposes constants for filtering', () => {
-    expect(SCREENER_COPY_TOP_N).toBe(10);
+    expect(SCREENER_COPY_TOP_N).toBe(5);
     expect(SCREENER_COPY_MIN_SCORE).toBe(60);
   });
 });
@@ -401,7 +404,7 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
 
     const md = await buildWatchlistMarkdown(queryClient);
 
-    expect(md).toContain('## Combat Positions & Watchlist (Unified)');
+    expect(md).toContain('## Combat Positions & Watchlist（A股 / 港股 分表）');
     expect(md).toContain(
       '| Symbol | Name | RS | Score | TrendOK | Current | Pos% | CostPrice | P&L% | EntryDate | Locked_T1 | Action |',
     );
@@ -452,6 +455,51 @@ describe('buildWatchlistMarkdown with QueryClient cache', () => {
       realtime: false,
     });
     expect(queryClient.getQueryData(key)).toMatchObject({ barSync: { failures: 0, total: 1 } });
+    expect(md).toContain('| CN:000001 | Test |');
+  });
+
+  it('forceFresh bypasses a healthy cache and refetches (TIP-014)', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    const key = watchlistMarketQueryOptions(['CN:000001']).queryKey;
+    await queryClient.setQueryData(key, {
+      trend: {
+        'CN:000001': {
+          symbol: 'CN:000001',
+          name: 'Test',
+          score: 90,
+          asOfDate: '2026-06-18',
+          values: { volumeRatio: 1.58 },
+          missingData: [],
+        },
+      },
+      quotes: {},
+    });
+    mockedFetchWatchlistMarketSnapshot.mockResolvedValue({
+      trend: {
+        'CN:000001': {
+          symbol: 'CN:000001',
+          name: 'Test',
+          score: 92,
+          asOfDate: '2026-06-19',
+          values: { volumeRatio: 1.6 },
+          missingData: [],
+        },
+      },
+      quotes: {},
+      barSync: { failures: 0, total: 1 },
+    });
+
+    const md = await buildWatchlistMarkdown(queryClient, null, null, false, true);
+
+    expect(mockedFetchWatchlistMarketSnapshot).toHaveBeenCalledWith(['CN:000001'], {
+      forceMarket: false,
+      realtime: false,
+    });
+    expect(queryClient.getQueryData(key)).toMatchObject({
+      trend: { 'CN:000001': { score: 92, asOfDate: '2026-06-19' } },
+    });
     expect(md).toContain('| CN:000001 | Test |');
   });
 });
@@ -540,9 +588,9 @@ describe('buildDashboardCopyAllMarkdown cache', () => {
     expect(md).toContain('### Fire');
     expect(md).toContain('Gate blocks new entries');
     expect(md).toContain('## Cond order draft');
-    expect(md).toContain('## Combat Positions & Watchlist (Unified)');
+    expect(md).toContain('## Combat Positions & Watchlist（A股 / 港股 分表）');
     expect(md).toContain('Mainline');
-    expect(md).toContain('mainline bind');
+    expect(md).toContain('主线绑定');
     expect(md).toContain('INTRADAY_SURGE_BLOCK');
   });
 });

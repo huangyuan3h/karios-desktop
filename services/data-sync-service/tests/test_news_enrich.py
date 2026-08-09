@@ -151,6 +151,15 @@ class TestPromptStructure:
         # 200 chars after "summary: " plus the label itself
         assert "x" * 250 not in prompt
 
+    def test_prompt_forbids_thinking_and_fences(self):
+        """Reasoning models (MiniMax-M3) wrap answers in <think>/```json;
+        the prompt must demand pure JSON so parsing stays reliable."""
+        items = [{"id": "x1", "title": "Fed holds rates"}]
+        prompt = news_enrich._build_prompt(items)
+        assert "no thinking" in prompt
+        assert "Output ONLY the JSON array" in prompt
+        assert "code fences" in prompt
+
     def test_prompt_handles_missing_summary(self):
         items = [{"id": "x1", "title": "Just a title"}]
         prompt = news_enrich._build_prompt(items)

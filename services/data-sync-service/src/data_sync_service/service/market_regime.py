@@ -13,7 +13,7 @@ from data_sync_service.db.index_daily import fetch_last_closes_vol_batch
 from data_sync_service.db.industry_fund_flow import get_rows_by_date
 from data_sync_service.db.macro_daily import fetch_last_closes as fetch_macro_last_closes
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
-from data_sync_service.db.stock_basic import fetch_ts_codes
+from data_sync_service.db.stock_basic import fetch_stock_ts_codes
 from data_sync_service.service.macro_snapshot_on_demand import (
     _is_data_stale,
     fetch_hk_index_on_demand,
@@ -265,8 +265,7 @@ def _compute_breadth_above_ma20_ratio(*, as_of_date: str | None = None) -> dict[
     Returns {ratio, total, above_count}; caches per-request via single call.
     """
     ensure_stock_basic()
-    codes_all = fetch_ts_codes()
-    ts_codes = [c for c in codes_all if c.endswith((".SZ", ".SH", ".BJ"))]
+    ts_codes = fetch_stock_ts_codes()
     if not ts_codes:
         return {"ratio": 0.0, "total": 0, "above_count": 0}
 
@@ -722,7 +721,13 @@ def _compute_index_signals(
         name = it["name"]
         series_raw = fetch_macro_last_closes(series_id, days=HISTORY_DAYS)
         if not series_raw or _hsi_series_stale(series_raw):
-            metrics, src = fetch_hk_index_on_demand(series_id)
+            if use_as_of:
+                # as-of mode: never fetch on demand — today's network data
+                # would be look-ahead for a historical date. HK stays "no
+                # data" (does not affect the CN regime used by gates).
+                metrics, src = {}, None
+            else:
+                metrics, src = fetch_hk_index_on_demand(series_id)
             if metrics.get("close") is not None and metrics.get("asOfDate"):
                 series_raw = _merge_on_demand_into_series(series_raw, metrics)
                 hsi_on_demand_source = src

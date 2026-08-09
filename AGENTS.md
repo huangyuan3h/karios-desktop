@@ -8,7 +8,7 @@
 
 | Path | Role |
 |------|------|
-| `apps/desktop-ui` | Next.js UI (Tauri WebView) |
+| `apps/desktop-ui` | Next.js UI (web-only) |
 | `apps/ai-service` | Node/TypeScript AI service (Vercel AI SDK) |
 | `services/data-sync-service` | Python FastAPI — data sync, analysis, Postgres |
 | `packages/shared` | 跨层 Zod schemas + TS 类型 |
@@ -94,7 +94,7 @@ PYTHONPATH=src alembic current
 ### When changing schema (agent checklist)
 
 1. Add **`alembic/versions/xxxx_describe_change.py`** with `upgrade()` / optional `downgrade()`.
-2. Update matching **`CREATE_SQL` / `CREATE_*_SQL`** in `services/data-sync-service/src/data_sync_service/db/*.py` (and `testback/db.py` if applicable).
+2. Update matching **`CREATE_SQL` / `CREATE_*_SQL`** in `services/data-sync-service/src/data_sync_service/db/*.py`.
 3. Update business code that uses the new columns/tables.
 4. Add or extend tests; run `pytest` (DB tests skip if Postgres unavailable).
 5. Tell the user to run `PYTHONPATH=src alembic upgrade head` locally (or run it in terminal if allowed).
@@ -177,6 +177,25 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
 
 ---
 
+## Backtest walk-forward（S-3 参数验证铁律工具）
+
+任何 S-3 参数/机制改动必须过 **三窗 walk-forward**（单窗好看 = 过拟合，todo §19 反模式）。
+工具：`services/data-sync-service/scripts/run_walk_forward.py`（C1，2026-08-09 交付）：
+
+```bash
+cd services/data-sync-service
+PYTHONPATH=src python3 scripts/run_walk_forward.py                       # 三窗 vs 固化基线
+PYTHONPATH=src python3 scripts/run_walk_forward.py --param score_threshold=70   # 试参数
+PYTHONPATH=src python3 scripts/run_walk_forward.py --save-baseline       # 数据/引擎变化后重固化基线
+```
+
+- 三窗固定切分：`OOS2`=2024-08-01~2025-08-01 · `train`=2025-08-01~2026-02-01 · `valid`=2026-03-01~2026-08-07
+- 内置 S-3 定案配置（真值在 `docs/modules/strategy-params.md` §1）；`--param k=v` 覆盖任意
+  `BacktestConfig` 字段（未知字段告警忽略）
+- 基线固化在 `data/backtest_reports/walk_forward_baseline.json`；三窗相对基线 >5pt 劣化
+  → 自动判"未通过/拒收"
+- 验收口径：改动后跑 `--param ...` 三窗对比，输出表 + 判定随实验记录（todo §19 步骤要求）
+
 ## Scoped optimization tasks
 
 For structural work, use `docs/optimization-checklist.md`:
@@ -203,6 +222,31 @@ Implement OPT-XXX from docs/optimization-checklist.md.
 | Backend | `cd services/data-sync-service && pytest …` (use `--no-cov` for quick runs) |
 | Frontend | `cd apps/desktop-ui && npm run test` |
 | Alembic | `pytest tests/test_alembic_baseline.py` |
+
+### DB 集成测试纪律（2026-08-07 教训 · 必须遵守）
+
+**任何 `requires_postgres` 测试插入真实数据后必须清理自己写的行。**
+
+原因：`test_execution_source_db.py` 曾直接往 dev Postgres 插入 `CN:99{uuid}` 假 symbol 的
+paper_trades（230+ 条）、`source='manual-test'` 快照（72 条）、假快照 id（`snap-agg`/
+`snap-bf`）的 changes 行（67 条）且不清理——污染决策日志、归因统计，掩盖了真实数据。
+
+规则：
+
+1. 测试写入的行必须在 autouse fixture 的 teardown 中按特征删除（参考
+   `tests/test_execution_source_db.py::_ensure_tables` 的清理模式）。
+2. 生成测试 symbol 一律走带前缀的 helper（如 `CN:99{uuid[:6]}`）并登记到集合，
+   teardown 用 `symbol = ANY(%s)` 删除；快照/changes 用本测试专用特征
+   （`source` / 假 id）删除。
+3. 写完测试后**必须实际跑一遍并确认表保持干净**（`pytest tests/test_xxx.py` 前后
+   各查一次相关表计数）。
+4. 新增 DB 表相关的集成测试时，先想清楚"我这个测试会往哪个表插什么行、怎么删"，
+   再写断言。
+5. **集成测试禁止硬编码真实 symbol**（如 `CN:600000`）——曾污染真实决策日志；
+   一律走前缀 helper（规则 2）。
+6. 动过 requires_postgres 测试后，跑全量并验收：`python3 scripts/db_rows_baseline.py save`
+   → 全量 pytest → `python3 scripts/db_rows_baseline.py check` 必须 OK
+   （27 张关键表行数零变化）。
 
 ---
 

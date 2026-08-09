@@ -43,6 +43,15 @@ def _date_to_yyyymmdd(d: date) -> str:
     return d.strftime("%Y%m%d")
 
 
+def _sync_end_date(ts_code: str) -> str:
+    """Latest trading day <= today (weekend/holiday → previous trading day)
+    so weekend crons skip instead of making empty tushare calls."""
+    from data_sync_service.db.trade_calendar import last_trading_day_str
+
+    exchange = "SZSE" if str(ts_code).startswith(("0", "1", "3")) else "SSE"
+    return last_trading_day_str(exchange, datetime.now(UTC).date())
+
+
 def _fetch_etf_ts_codes() -> list[str]:
     """Return ordered ETF ts_codes (those whose stock_basic.market='ETF')."""
     return fetch_ts_codes_by_market("ETF")
@@ -76,7 +85,7 @@ def sync_etf_daily_full() -> dict[str, Any]:
         return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
 
     pro = ts.pro_api(settings.tu_share_api_key)
-    end_date = _today_yyyymmdd()
+    end_date = _sync_end_date(ts_codes[0] if ts_codes else "")
     total_rows = 0
     last_successful_ts_code: str | None = None
 
@@ -141,7 +150,7 @@ def sync_etf_daily_for_ts_code(ts_code: str) -> dict[str, Any]:
         start_date = FULL_START_DATE
     else:
         start_date = _date_to_yyyymmdd(last_date + timedelta(days=1))
-    end_date = _today_yyyymmdd()
+    end_date = _sync_end_date(code)
     if start_date > end_date:
         return {"ok": True, "updated": 0, "skipped": True, "ts_code": code}
 

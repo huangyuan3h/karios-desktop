@@ -4,11 +4,13 @@ import type { QueryClient } from '@tanstack/react-query';
 import { apiGetJson } from '@/lib/api/client';
 import type { TrendOkResult } from '@/lib/api/types';
 import {
+  buildAutoQaMarkdown,
   buildCatalystPurgeMap,
   buildCatalystStocksMarkdown,
   buildAlphaRadarTrendsMarkdown,
   DEFAULT_CATALYST_MAX_AGE_DAYS,
   fetchAlphaRadarTrendsForCopy,
+  fetchAutoQaStats,
   fetchCatalystStocks,
   normalizeCatalystSymbol,
   type CatalystCopyContext,
@@ -43,13 +45,20 @@ import {
   buildExecutionSnapshotPayload,
   fetchExecutionJournalMarkdown,
 } from '@/lib/execution-journal';
-import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
+import {
+  fetchSourceContext,
+  fetchSourceStats,
+  formatSourceAttributionMarkdown,
+  type SourceContext,
+} from '@/lib/execution-source';
+import { buildPositionsExecutionMarkdown, fetchPanicCooldown } from '@/lib/execution-markdown';
 import {
   buildMainlineAllowSet,
   isSectorOutflowBlock,
   type MainlineAllowSet,
 } from '@/lib/hot-industry-picks';
 import { applyWatchlistPurgeAfterReport } from '@/lib/watchlist-purge';
+import { buildDataFreshnessMarkdown, fetchDataSourcesHealth } from '@/lib/freshness';
 import type {
   ExecutionChangeListResponse,
   ExecutionGate,
@@ -73,7 +82,11 @@ import {
 } from '@/lib/screenerExport';
 import { toTsCodeFromSymbol } from '@/lib/symbols';
 import { screenerSnapshotsQueryOptions } from '@/lib/queries/screener';
-import { fetchDashboardSummaryPartial } from '@/lib/queries/dashboard';
+import {
+  dashboardLiteQueryKey,
+  fetchDashboardLiteSummary,
+  fetchDashboardSummaryPartial,
+} from '@/lib/queries/dashboard';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
 import { fetchWatchlistMarketSnapshot, type WatchlistMarketSnapshot } from '@/lib/watchlist-market';
 import {
@@ -86,8 +99,8 @@ import { loadWatchlist, ensureWatchlistHydrated, type WatchlistItem } from '@/li
 
 type DashboardSummary = any;
 
-/** Copy-all screener filtering (2026-08-01 · wife feedback). */
-export const SCREENER_COPY_TOP_N = 10;
+/** Copy-all screener filtering (2026-08-01 · wife feedback; 2026-08-07 · Top 10→5). */
+export const SCREENER_COPY_TOP_N = 5;
 export const SCREENER_COPY_MIN_SCORE = 60;
 
 type QuoteResp = {
@@ -149,6 +162,7 @@ function symbolsWithMissingTrendInputs(
 async function fetchWatchlistSnapshotForCopy(
   symbols: string[],
   queryClient?: QueryClient,
+  forceFresh = false,
 ): Promise<WatchlistMarketSnapshot> {
   if (!queryClient) {
     return fetchWatchlistMarketSnapshot(symbols, {
@@ -158,7 +172,9 @@ async function fetchWatchlistSnapshotForCopy(
   }
 
   const options = watchlistMarketQueryOptions(symbols);
-  const snapshot = await queryClient.fetchQuery(options);
+  const snapshot = forceFresh
+    ? await queryClient.fetchQuery({ ...options, staleTime: 0 })
+    : await queryClient.fetchQuery(options);
   const missingInputs = symbolsWithMissingTrendInputs(symbols, snapshot.trend);
   if (!missingInputs.length) return snapshot;
 
@@ -250,6 +266,20 @@ export function buildMarketAndMacroMarkdown(
   const headers = ['Name', 'Kind', 'Signal', 'Pos', 'Chg%', 'Close', 'MA5', 'MA20', 'AsOfDate', 'Source'];
   const rows: unknown[][] = [];
 
+  // B5: flag rows whose data is much older than the newest row (stale > 2 days).
+  const allDates = [...indexSignals, ...macroItems]
+    .map((it) => String(it?.asOfDate ?? '').slice(0, 10))
+    .filter(Boolean)
+    .sort();
+  const latestAsOf = allDates[allDates.length - 1] ?? '';
+  const staleDays = (asOf: string): number => {
+    const a = Date.parse(`${asOf.slice(0, 10)}T00:00:00Z`);
+    const b = Date.parse(`${latestAsOf}T00:00:00Z`);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+    return Math.round((b - a) / 86_400_000);
+  };
+  let staleCount = 0;
+
   for (const it of indexSignals) {
     const pc = it?.pctChg;
     const chg =
@@ -257,6 +287,10 @@ export function buildMarketAndMacroMarkdown(
         ? `${pc >= 0 ? '+' : ''}${pc.toFixed(2)}%`
         : '—';
     const name = String(it?.name ?? it?.tsCode ?? '');
+    const asOf = String(it?.asOfDate ?? '').slice(0, 10);
+    const days = staleDays(asOf);
+    const staleTag = days > 2 ? ` ⚠️${days}d` : '';
+    if (days > 2) staleCount += 1;
     rows.push([
       it?.featured === true ? `★ ${name}` : name,
       'Index',
@@ -266,7 +300,7 @@ export function buildMarketAndMacroMarkdown(
       Number.isFinite(it?.close) ? Number(it.close).toFixed(2) : '—',
       Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
       Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
-      String(it?.asOfDate ?? ''),
+      `${asOf}${staleTag}`,
       String(it?.source ?? '—'),
     ]);
   }
@@ -289,6 +323,10 @@ export function buildMarketAndMacroMarkdown(
         ? String(it.signal)
         : '—';
     const kind = isVol ? 'Vol (IV)' : 'Macro';
+    const asOf = String(it?.asOfDate ?? '').slice(0, 10);
+    const days = staleDays(asOf);
+    const staleTag = days > 2 ? ` ⚠️${days}d` : '';
+    if (days > 2) staleCount += 1;
     rows.push([
       String(it?.name ?? it?.seriesId ?? ''),
       kind,
@@ -298,9 +336,13 @@ export function buildMarketAndMacroMarkdown(
       closeStr,
       Number.isFinite(it?.ma5) ? Number(it.ma5).toFixed(2) : '—',
       Number.isFinite(it?.ma20) ? Number(it.ma20).toFixed(2) : '—',
-      String(it?.asOfDate ?? ''),
+      `${asOf}${staleTag}`,
       String(it?.source ?? ''),
     ]);
+  }
+
+  if (staleCount > 0) {
+    lines.push(`- note: ⚠️n = 数据比最新行旧 ${staleCount} 行，慎用（上次同步 ${latestAsOf}）`);
   }
 
   lines.push(mdTable(headers, rows));
@@ -308,7 +350,11 @@ export function buildMarketAndMacroMarkdown(
   return lines.join('\n').trim() + '\n';
 }
 
-export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##'): string {
+export function buildSentimentMarkdown(
+  s: DashboardSummary | null,
+  heading = '##',
+  compact = false,
+): string {
   const summary2: any = s ?? {};
   const ms: any = summary2?.marketSentiment ?? {};
   const items: any[] = Array.isArray(ms?.items) ? ms.items : [];
@@ -401,8 +447,6 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
       'ETF Name',
       'Symbol',
       'Main Flow',
-      'Super Large',
-      'Large',
       '3D Net Flow',
       'Realtime AsOf',
       'Source',
@@ -423,8 +467,6 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
         String(it?.name ?? ''),
         String(it?.symbol ?? ''),
         flow1d,
-        fmtSignedAmountCn(it?.superLargeNetInflow),
-        fmtSignedAmountCn(it?.largeNetInflow),
         fmtSignedAmountCn(it?.netFlow3d),
         String(it?.tradeTime ?? it?.flowAsOfDate ?? etfFlow?.asOfDate ?? '—'),
         String(it?.source ?? '—'),
@@ -432,9 +474,13 @@ export function buildSentimentMarkdown(s: DashboardSummary | null, heading = '##
         String(it?.signalDisplay ?? it?.signal ?? '—'),
       ];
     });
-    lines.push(`${heading} ETF Fund Flow (Top Watchlist)`);
+    const etfShown = compact ? etfRows.slice(0, 4) : etfRows;
+    lines.push(`${heading} ETF Fund Flow (Top by 资金流，非仅持仓)`);
     lines.push('');
-    lines.push(mdTable(etfHeaders, etfRows));
+    if (compact && etfRows.length > etfShown.length) {
+      lines.push('- note: compact mode — 仅保留 Top 4 ETF 资金流');
+    }
+    lines.push(mdTable(etfHeaders, etfShown));
     lines.push('');
   }
 
@@ -493,11 +539,26 @@ export function buildMacroMarkdown(s: DashboardSummary | null, heading = '##'): 
   return lines.join('\n').trim() + '\n';
 }
 
+/** C8: compress long screener filters (e.g. the 18-sector whitelist) to save context. */
+function summarizeScreenerFilter(filter: string): string {
+  const s = String(filter);
+  if (s.startsWith('sector in_range')) {
+    const n = (s.match(/'/g) ?? []).length / 2;
+    return `行业白名单(${Math.round(n)})`;
+  }
+  if (s.length > 40) {
+    const key = (s.split(/[\s_]/)[0] ?? 'filter').trim();
+    return `${key}(长条件 ${s.length} chars)`;
+  }
+  return s;
+}
+
+/** C8: compress long screener filters (e.g. the 18-sector whitelist) to save context. */
 export async function buildScreenersMarkdown(
   s: DashboardSummary | null,
   heading = '##',
   queryClient?: QueryClient,
-  options?: { mode?: 'full' | 'compact' },
+  options?: { mode?: 'full' | 'compact'; forceFresh?: boolean },
 ): Promise<string> {
   const summary2: any = s ?? {};
   const rows: any[] = Array.isArray(summary2?.screeners) ? summary2.screeners : [];
@@ -550,7 +611,12 @@ export async function buildScreenersMarkdown(
   >;
 
   if (queryClient && screenerIds.length) {
-    const snapMap = await queryClient.fetchQuery(screenerSnapshotsQueryOptions(screenerIds));
+    const snapMap = options?.forceFresh
+      ? await queryClient.fetchQuery({
+          ...screenerSnapshotsQueryOptions(screenerIds),
+          staleTime: 0,
+        })
+      : await queryClient.fetchQuery(screenerSnapshotsQueryOptions(screenerIds));
     resolvedScreenerResults = screenerIds.map((sid) => {
       const snap = snapMap[sid];
       if (!snap) return { sid, error: 'No snapshot found' };
@@ -609,10 +675,7 @@ export async function buildScreenersMarkdown(
     lines.push(`- rows: ${String(snap?.rowCount ?? rowsTv.length ?? 0)}`);
     if (Array.isArray(snap?.filters) && snap.filters.length) {
       lines.push(
-        `- filters: ${snap.filters
-          .slice(0, 8)
-          .map((x) => escapeMarkdownCell(String(x)))
-          .join(' • ')}${snap.filters.length > 8 ? '…' : ''}`,
+        `- filters: ${snap.filters.map(summarizeScreenerFilter).join(' • ')}`,
       );
     }
     if (truncated) lines.push(`- note: scanning first ${limit} raw rows (truncated)`);
@@ -664,6 +727,7 @@ export async function buildWatchlistMarkdown(
   gate?: ExecutionGate | null,
   mainlineAllow?: MainlineAllowSet | null,
   sectorOutflowBlock = false,
+  forceFresh = false,
 ): Promise<string> {
   const itemsRaw = loadWatchlist();
   const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
@@ -694,7 +758,7 @@ export async function buildWatchlistMarkdown(
   >;
 
   if (queryClient) {
-    const snapshot = await fetchWatchlistSnapshotForCopy(syms, queryClient);
+    const snapshot = await fetchWatchlistSnapshotForCopy(syms, queryClient, forceFresh);
     trend = snapshot.trend;
     quotes = snapshot.quotes;
   } else {
@@ -796,6 +860,8 @@ export async function buildWatchlistMarkdown(
   )
     .then((resp) => buildCatalystPurgeMap(resp))
     .catch(() => null);
+  const rsRanks = await fetchRsRanks(sorted.map((i) => i.symbol)).catch(() => null);
+  const panicCooldown = await fetchPanicCooldown();
   const { markdown, purgeSymbols } = buildPositionsExecutionMarkdown(
     sorted,
     trend,
@@ -807,6 +873,8 @@ export async function buildWatchlistMarkdown(
     todaySh,
     sectorOutflowBlock,
     catalystBySymbol,
+    rsRanks,
+    panicCooldown,
   );
   // Report still lists PURGE rows; remove them from storage for the next copy.
   if (purgeSymbols.length) {
@@ -886,12 +954,15 @@ export type DashboardCopyAllOptions = {
   queryClient?: QueryClient;
   /** Copy mode (2026-08-01): 'compact' trims ~80% of secondary sections for fast scan. */
   mode?: 'full' | 'compact';
+  /** TIP-014: bypass react-query cache and re-fetch market/screener data before building. */
+  forceFresh?: boolean;
 };
 
 type ExecutionCopyBundle = {
   attentionMd: string;
   cards: CondOrderCard[];
   quotes: Record<string, CondOrderQuoteHint>;
+  sourceStatsMd: string;
 };
 
 async function buildExecutionCopyBundle(opts: {
@@ -899,8 +970,9 @@ async function buildExecutionCopyBundle(opts: {
   mainlineAllow: MainlineAllowSet | null;
   sectorOutflowBlock?: boolean;
   queryClient?: QueryClient;
+  forceFresh?: boolean;
 }): Promise<ExecutionCopyBundle> {
-  const { gate, mainlineAllow, sectorOutflowBlock = false, queryClient } = opts;
+  const { gate, mainlineAllow, sectorOutflowBlock = false, queryClient, forceFresh = false } = opts;
   const itemsRaw = loadWatchlist();
   const items: WatchlistItem[] = (Array.isArray(itemsRaw) ? itemsRaw : [])
     .filter((x) => x && typeof x.symbol === 'string' && String(x.symbol).trim())
@@ -908,10 +980,13 @@ async function buildExecutionCopyBundle(opts: {
 
   let liveCards: CondOrderCard[] | null = null;
   let quotes: Record<string, CondOrderQuoteHint> = {};
+  let sourceContext: SourceContext | null = null;
+  let trendMap: Record<string, unknown> = {};
   if (gate && items.length) {
     try {
       const symbols = items.map((i) => i.symbol);
-      const market = await fetchWatchlistSnapshotForCopy(symbols, queryClient);
+      const market = await fetchWatchlistSnapshotForCopy(symbols, queryClient, forceFresh);
+      trendMap = market.trend;
       const nameBySym = new Map(items.map((i) => [i.symbol, i.name ?? null]));
       quotes = {};
       for (const sym of symbols) {
@@ -928,6 +1003,7 @@ async function buildExecutionCopyBundle(opts: {
       )
         .then((resp) => buildCatalystPurgeMap(resp))
         .catch(() => null);
+      sourceContext = await fetchSourceContext(DATA_SYNC_BASE_URL).catch(() => null);
       const payload = buildExecutionSnapshotPayload({
         items,
         trend: market.trend,
@@ -936,6 +1012,7 @@ async function buildExecutionCopyBundle(opts: {
         mainlineAllow,
         sectorOutflowBlock,
         catalystBySymbol,
+        sourceContext,
         source: 'poll',
       });
       liveCards = (payload?.cards as CondOrderCard[] | undefined) ?? null;
@@ -975,14 +1052,27 @@ async function buildExecutionCopyBundle(opts: {
   const { cards, source } = resolveAttentionCards({ liveCards, snapshotCards });
   const queue = buildExecAttentionQueue({
     gate,
-    watchlistItems: items,
+    watchlistItems: items.map((it) => ({
+      ...it,
+      trendok: trendMap[it.symbol] ?? null,
+    })),
     cards,
     changes,
   });
+  let sourceStatsMd = '';
+  try {
+    sourceStatsMd = formatSourceAttributionMarkdown(
+      await fetchSourceStats(DATA_SYNC_BASE_URL, 30),
+      { heading: '##' },
+    );
+  } catch {
+    sourceStatsMd = '';
+  }
   return {
     attentionMd: formatExecAttentionMarkdown(queue, { heading: '##', source }),
     cards: cards as CondOrderCard[],
     quotes,
+    sourceStatsMd,
   };
 }
 
@@ -1010,10 +1100,22 @@ export async function buildDashboardCopyAllMarkdown(
 ): Promise<string> {
   await ensureWatchlistHydrated();
   let { summary: s } = options;
-  const { newsSummary, newsSummaryUpdatedAt, newsFallback, queryClient, mode = 'full' } = options;
+  const { newsSummary, newsSummaryUpdatedAt, newsFallback, queryClient, mode = 'full', forceFresh = false } = options;
   const compact = mode === 'compact';
   if (!s) {
     throw new Error('No data available. Please refresh first.');
+  }
+  // TIP-014: force fresh dashboard summary when requested (bypasses cache).
+  if (forceFresh && queryClient) {
+    try {
+      s = await queryClient.fetchQuery({
+        queryKey: dashboardLiteQueryKey(),
+        queryFn: () => fetchDashboardLiteSummary(),
+        staleTime: 0,
+      });
+    } catch {
+      // keep provided summary on refresh failure
+    }
   }
   const macroItems = (s as any)?.macroSnapshot?.macro;
   if (!Array.isArray(macroItems) || macroItems.length === 0) {
@@ -1032,6 +1134,23 @@ export async function buildDashboardCopyAllMarkdown(
       // keep existing summary
     }
   }
+  const sentimentItems = (s as any)?.marketSentiment?.items;
+  if (!Array.isArray(sentimentItems) || sentimentItems.length === 0) {
+    try {
+      const sentimentPartial = await fetchDashboardSummaryPartial({
+        includeMacro: false,
+        includeSentiment: true,
+        includeNews: false,
+        includeIndustry: false,
+        includeScreeners: false,
+      });
+      if (sentimentPartial?.marketSentiment) {
+        s = { ...s, marketSentiment: sentimentPartial.marketSentiment };
+      }
+    } catch {
+      // keep existing summary
+    }
+  }
   const generatedAt = new Date().toLocaleString('zh-CN', {
     timeZone: 'Asia/Shanghai',
     hour12: false,
@@ -1042,14 +1161,14 @@ export async function buildDashboardCopyAllMarkdown(
   const tradingTime = isShanghaiTradingTime();
   const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd, execBundle, sinceLastMd] =
     await Promise.all([
-      buildScreenersMarkdown(s, '##', queryClient, { mode }),
-      buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow, sectorOutflowBlock),
+      buildScreenersMarkdown(s, '##', queryClient, { mode, forceFresh }),
+      buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow, sectorOutflowBlock, forceFresh),
       buildCompactCatalystMarkdown(s),
       fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
         .then(({ items, scope }) =>
           buildAlphaRadarTrendsMarkdown(items, {
             headingLevel: '##',
-            mode: compact ? 'compact' : 'compact',
+            mode: compact ? 'compact' : 'full',
             scopeNote:
               scope === 'recent'
                 ? `recent ${DEFAULT_CATALYST_MAX_AGE_DAYS}d (latest batch empty)`
@@ -1062,6 +1181,7 @@ export async function buildDashboardCopyAllMarkdown(
         mainlineAllow,
         sectorOutflowBlock,
         queryClient,
+        forceFresh,
       }).catch(
         (): ExecutionCopyBundle => ({
           attentionMd: formatExecAttentionMarkdown(
@@ -1075,12 +1195,16 @@ export async function buildDashboardCopyAllMarkdown(
           ),
           cards: [],
           quotes: {},
+          sourceStatsMd: '',
         }),
       ),
       buildSinceLastCopyMarkdown().catch(() =>
         formatSinceLastCopyMarkdown([], { lastAt: readLastCopyAt() }),
       ),
     ]);
+  const autoQaMd = buildAutoQaMarkdown(
+    await fetchAutoQaStats(DATA_SYNC_BASE_URL, 7, 20),
+  );
   const attentionMd = execBundle.attentionMd;
   const condOrderMd = formatCondOrderDraftMarkdown(execBundle.cards, {
     heading: '##',
@@ -1094,6 +1218,21 @@ export async function buildDashboardCopyAllMarkdown(
   lines.push(`- generatedAt: ${generatedAt}`);
   lines.push(`- asOfDate: ${String((s as any)?.asOfDate ?? '')}`);
   lines.push('');
+  // TIP-013: per-source freshness header (stale sources flagged for the agent).
+  try {
+    const health = await fetchDataSourcesHealth();
+    const freshnessMd = buildDataFreshnessMarkdown(
+      Array.isArray(health?.sources) ? health.sources : [],
+    );
+    if (freshnessMd.trim()) {
+      lines.push(freshnessMd.trim());
+      lines.push('');
+    }
+  } catch {
+    lines.push('## Data freshness');
+    lines.push('- unavailable (health endpoint not reachable)');
+    lines.push('');
+  }
   // AI behavior lives in System Prompt (docs/modules/downstream-ai-prompt.md); payload stays data-only.
   lines.push(sinceLastMd.trim());
   lines.push('');
@@ -1123,6 +1262,10 @@ export async function buildDashboardCopyAllMarkdown(
     lines.push('- note: unavailable (capture snapshots via Dashboard Sync All or Snapshot now)');
     lines.push('');
   }
+  if (execBundle.sourceStatsMd.trim()) {
+    lines.push(execBundle.sourceStatsMd.trim());
+    lines.push('');
+  }
   if (!compact) {
     lines.push(buildIndustryMarkdown(s, '##').trim());
     lines.push('');
@@ -1141,30 +1284,156 @@ export async function buildDashboardCopyAllMarkdown(
     lines.push('- note: compact mode — Hot industries workflow omitted');
     lines.push('');
   }
-  lines.push(buildSentimentMarkdown(s, '##').trim());
+  lines.push(buildSentimentMarkdown(s, '##', compact).trim());
   lines.push('');
   lines.push(buildMarketAndMacroMarkdown(s, '##').trim());
   lines.push('');
   lines.push('## News brief');
   lines.push('');
   lines.push(`- hours: ${String((s as any)?.news?.hours ?? 24)}`);
-  lines.push(`- total: ${String((s as any)?.news?.total ?? 0)}`);
+  const newsItemsCount = Array.isArray((s as any)?.news?.items)
+    ? (s as any).news.items.length
+    : 0;
+  const newsTotal = Number((s as any)?.news?.total ?? 0);
+  const usingFallback = !newsSummary?.trim() && newsFallback?.trim();
+  if (usingFallback) {
+    lines.push(`- total: ${String(newsItemsCount || newsTotal || 0)}`);
+    lines.push(
+      `- note: AI 摘要未生成/未更新（${newsSummaryUpdatedAt ? `上次 ${newsSummaryUpdatedAt}` : '无'}）— 以下为原始标题回退`,
+    );
+  } else {
+    const summaryItemCount = (newsSummary?.match(/^\s*\d+\./gm) ?? []).length;
+    lines.push(`- total: ${String(summaryItemCount || newsTotal || 0)}`);
+  }
   lines.push(
     '- note: 关键词白名单过滤（AI/算力/半导体/美联储/降准降息/原油/关税/…）；其他娱乐/边缘政治新闻剔除',
   );
   if (newsSummaryUpdatedAt) lines.push(`- summaryUpdatedAt: ${newsSummaryUpdatedAt}`);
   lines.push('');
-  if (newsSummary?.trim()) lines.push(newsSummary.trim());
-  else if (newsFallback?.trim()) lines.push(newsFallback.trim());
+  let newsBody = '';
+  if (newsSummary?.trim()) newsBody = newsSummary.trim();
+  else if (newsFallback?.trim()) newsBody = newsFallback.trim();
+  if (compact && newsBody) {
+    const numbered = newsBody.split('\n').filter((l) => /^\s*\d+\./.test(l));
+    if (numbered.length > 8) {
+      newsBody = numbered.slice(0, 8).join('\n');
+      lines.push('- note: compact mode — 仅保留前 8 条新闻，完整列表见 News 页');
+    }
+  }
+  if (newsBody) lines.push(newsBody);
   else lines.push('No summary yet. Last news records are included above.');
   lines.push('');
   lines.push(screenersMd.trim());
   lines.push('');
   lines.push(alphaTrendsMd.trim());
   lines.push('');
+  if (autoQaMd) {
+    lines.push(autoQaMd.trim());
+    lines.push('');
+  }
   lines.push(catalystMd.trim());
   lines.push('');
   lines.push(watchlistMd.trim());
   lines.push('');
   return lines.join('\n').trim() + '\n';
+}
+
+/**
+ * Incremental snapshot for the Decision Agent: only what changed since the last
+ * reference (freshness + since-last-copy + Gate + Exec Attention + Cond orders +
+ * Journal). Full tables (watchlist / macro / news / industry) are intentionally
+ * omitted — the live active layer (L1) injects them on every LLM call.
+ */
+export async function buildCopyDeltaMarkdown(opts: {
+  summary: DashboardSummary | null;
+  queryClient?: QueryClient;
+  forceFresh?: boolean;
+}): Promise<string> {
+  const { summary: s, queryClient, forceFresh = false } = opts;
+  const executionGate = parseExecutionGate((s as any)?.marketSentiment?.executionGate);
+  const mainlineAllow = buildMainlineAllowSet(s);
+  const sectorOutflowBlock = isSectorOutflowBlock(s);
+  const tradingTime = isShanghaiTradingTime();
+  const [sinceLastMd, journalMd, freshnessMd] = await Promise.all([
+    buildSinceLastCopyMarkdown().catch(() =>
+      formatSinceLastCopyMarkdown([], { lastAt: readLastCopyAt() }),
+    ),
+    fetchExecutionJournalMarkdown({ tradeDate: getShanghaiTodayIso(), days: 5 }).catch(
+      () => '',
+    ),
+    fetchDataSourcesHealth()
+      .then((h) =>
+        buildDataFreshnessMarkdown(Array.isArray(h?.sources) ? h.sources : []),
+      )
+      .catch(() => ''),
+  ]);
+  const execBundle = await buildExecutionCopyBundle({
+    gate: executionGate,
+    mainlineAllow,
+    sectorOutflowBlock,
+    queryClient,
+    forceFresh,
+  }).catch(() => null);
+
+  const lines: string[] = [];
+  lines.push('# 增量快照（自上次引用以来的变更）');
+  lines.push(
+    '- note: 完整操作表 / 宏观 / 新闻等全量数据由「决策活跃层」在每次对话时实时注入，此处只附增量与待办，不重复全量',
+  );
+  lines.push('');
+  if (freshnessMd.trim()) {
+    lines.push(freshnessMd.trim());
+    lines.push('');
+  }
+  if (sinceLastMd.trim()) {
+    lines.push(sinceLastMd.trim());
+    lines.push('');
+  }
+  lines.push(
+    formatExecutionGateMarkdown(
+      executionGate ??
+        ((s as any)?.marketSentiment?.executionGate as ExecutionGate | null) ??
+        null,
+      '##',
+    ).trim(),
+  );
+  lines.push('');
+  if (execBundle) {
+    if (execBundle.attentionMd.trim()) {
+      lines.push(execBundle.attentionMd.trim());
+      lines.push('');
+    }
+    lines.push(
+      formatCondOrderDraftMarkdown(execBundle.cards, {
+        heading: '##',
+        allowNewEntries: executionGate?.allowNewEntries === true,
+        tradingTime,
+        phase: tradingTime ? 'Open' : 'Closed',
+        quotes: execBundle.quotes,
+      }).trim(),
+    );
+    lines.push('');
+    if (execBundle.sourceStatsMd.trim()) {
+      lines.push(execBundle.sourceStatsMd.trim());
+      lines.push('');
+    }
+  }
+  if (journalMd.trim()) {
+    lines.push(journalMd.trim());
+    lines.push('');
+  }
+  return lines.join('\n').trim();
+}
+
+async function fetchRsRanks(symbols: string[]): Promise<Record<string, number> | null> {
+  if (!symbols.length) return null;
+  try {
+    const q = encodeURIComponent(symbols.join(','));
+    const res = await fetch(`${DATA_SYNC_BASE_URL}/watchlist/rs-ranks?symbols=${q}`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const d = (await res.json()) as { ranks?: Record<string, number> };
+    return d.ranks ?? null;
+  } catch {
+    return null;
+  }
 }

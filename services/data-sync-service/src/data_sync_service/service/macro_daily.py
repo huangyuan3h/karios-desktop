@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -150,6 +151,10 @@ def _fetch_hstech_bars_via_ak(start_date: str, end_date: str) -> pd.DataFrame | 
     rate-limited in some regions. Returns a DataFrame normalized for
     macro_daily upsert (trade_date/open/high/low/close/pct_chg/vol/amount).
     """
+    # AkShare's Sina index decoder is backed by mini_racer (V8), which can
+    # crash the whole process (FATAL in libmini_racer) on macOS.
+    if sys.platform == "darwin":
+        return None
     try:
         import akshare as ak  # type: ignore[import-not-found]
     except Exception:

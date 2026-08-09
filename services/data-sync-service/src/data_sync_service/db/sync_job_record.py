@@ -106,3 +106,54 @@ def get_last_success(job_type: str) -> dict[str, Any] | None:
 def get_last_successful_run(job_type: str) -> dict[str, Any] | None:
     """Alias for get_last_success for compatibility."""
     return get_last_success(job_type)
+
+
+def _record_from_row(row: Any) -> dict[str, Any]:
+    cols = ("id", "job_type", "sync_at", "success", "last_ts_code", "error_message")
+    rec: dict[str, Any] = dict(zip(cols, row, strict=False))
+    if rec.get("sync_at") and hasattr(rec["sync_at"], "isoformat"):
+        rec["sync_at"] = rec["sync_at"].isoformat()
+    return rec
+
+
+def list_recent_failures(hours: int = 24) -> list[dict[str, Any]]:
+    """Return failed sync job records from the last `hours` (newest first)."""
+    ensure_table()
+    hours = max(1, min(int(hours), 24 * 7))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id, job_type, sync_at, success, last_ts_code, error_message
+                FROM {TABLE_NAME}
+                WHERE success = FALSE AND sync_at >= now() - make_interval(hours => %s)
+                ORDER BY sync_at DESC
+                """,
+                (hours,),
+            )
+            rows = cur.fetchall()
+    return [_record_from_row(r) for r in rows]
+
+
+def list_recent_runs(job_type: str, limit: int = 7) -> list[dict[str, Any]]:
+    """Return latest run records for a job_type (newest first).
+
+    Used by the funnel health monitor to detect consecutive-anomaly streaks
+    across trading days.
+    """
+    ensure_table()
+    lim = max(1, min(int(limit), 30))
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT id, job_type, sync_at, success, last_ts_code, error_message
+                FROM {TABLE_NAME}
+                WHERE job_type = %s
+                ORDER BY sync_at DESC
+                LIMIT %s
+                """,
+                (job_type, lim),
+            )
+            rows = cur.fetchall()
+    return [_record_from_row(r) for r in rows]

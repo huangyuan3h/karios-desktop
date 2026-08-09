@@ -195,7 +195,6 @@ brew install apcupsd
 |------|------|------|----------------|
 | **Docker 一键起**（**跑 Karios**） | `scripts/docker-up.sh` | 实盘 / 看盘 / 远程访问 / 给家里人看 / 验证生产形态 | `scripts/docker-up.sh --rebuild`（5-10 分钟） |
 | **dev 热重载**（**改代码**） | `pnpm dev` | 日常 Python / TS 开发，HMR 1-3 秒生效 | 自动 reload（**不用动 Docker**） |
-| **dev + tauri** | `pnpm dev:tauri` | 改 Tauri 桌面壳（已降级，可忽略） | — |
 
 **核心原则**：
 

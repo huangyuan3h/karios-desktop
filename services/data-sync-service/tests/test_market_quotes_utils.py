@@ -1,4 +1,5 @@
 from data_sync_service.service.market_quotes import (
+    normalize_market_symbol,
     symbol_to_ts_code,
     ts_code_to_symbol,
 )
@@ -12,6 +13,22 @@ def test_symbol_to_ts_code_cn_sh():
 def test_symbol_to_ts_code_cn_sz():
     assert symbol_to_ts_code("CN:000001") == "000001.SZ"
     assert symbol_to_ts_code("CN:000002") == "000002.SZ"
+
+
+def test_symbol_to_ts_code_accepts_market_suffix():
+    # TV screener imports may carry .SH/.SZ suffixes; canonical parse must strip them.
+    assert symbol_to_ts_code("CN:600000.SH") == "600000.SH"
+    assert symbol_to_ts_code("CN:002064.SZ") == "002064.SZ"
+    assert symbol_to_ts_code("cn:688235.sh") == "688235.SH"
+    assert symbol_to_ts_code("ETF:510300.SH") == "510300.SH"
+
+
+def test_normalize_market_symbol_strips_suffix():
+    assert normalize_market_symbol("CN:002064.SZ") == "CN:002064"
+    assert normalize_market_symbol("CN:603259.SH") == "CN:603259"
+    assert normalize_market_symbol("HK:00700.HK") == "HK:00700"
+    assert normalize_market_symbol("ETF:513180.SH") == "ETF:513180"
+    assert normalize_market_symbol("CN:600000") == "CN:600000"
 
 
 def test_symbol_to_ts_code_hk_5digit():

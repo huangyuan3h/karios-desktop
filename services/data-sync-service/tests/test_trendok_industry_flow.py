@@ -378,8 +378,26 @@ def test_sector_divergence_no_trigger_when_industry_not_in_outflow_top3() -> Non
 
 
 # ========== V5.6 T+1 Sniper Tests ==========
-def _bars_for_t1_sniper(*, t1_surge_pct: float, t1_gap_up: bool, today_chg_pct: float) -> list[tuple[str, str, str, str, str, str]]:
-    """Generate bars for T+1 sniper testing."""
+def _bars_for_t1_sniper(
+    *,
+    t1_surge_pct: float,
+    t1_gap_up: bool,
+    today_chg_pct: float,
+    today_close_drop_pct: float | None = None,
+) -> list[tuple[str, str, str, str, str, str]]:
+    """Generate bars for T+1 sniper testing.
+
+    today_chg_pct is the canonical intraday "pullback" signal passed through
+    to mock `_compute_day_risk_metrics`. It is *also* the default close move
+    vs T-1 used for the actual bar.
+
+    today_close_drop_pct, when provided, overrides the close-vs-T1 move used
+    for the actual bar (while leaving today_chg_pct untouched, so the
+    intraday signal can stay in the -1%..-3% pullback window). This is how
+    the test exercises "today's close is well below EMA20 → exit_now
+    triggers → buyAction=avoid" without losing the -2% intraday pullback
+    signal that the t1_sniper rule still inspects.
+    """
     from datetime import date, timedelta
 
     out: list[tuple[str, str, str, str, str, str]] = []
@@ -435,8 +453,10 @@ def _bars_for_t1_sniper(*, t1_surge_pct: float, t1_gap_up: bool, today_chg_pct: 
         )
     )
 
-    # Day i=62: T day (today - pullback)
-    today_factor = 1.0 + today_chg_pct / 100.0
+    # Day i=62: T day (today). today_close_drop_pct (if given) overrides the
+    # close-vs-T1 move; otherwise fall back to today_chg_pct.
+    close_drop_pct = today_chg_pct if today_close_drop_pct is None else today_close_drop_pct
+    today_factor = 1.0 + close_drop_pct / 100.0
     today_close = t1_close * today_factor
     today_open = t1_close * 0.995
     today_high = today_close * 1.01
@@ -457,7 +477,15 @@ def _bars_for_t1_sniper(*, t1_surge_pct: float, t1_gap_up: bool, today_chg_pct: 
 
 
 def test_t1_sniper_triggers_on_orderly_pullback_after_surge() -> None:
-    """V5.6: T+1 sniper triggers when yesterday surged > 6% and today pulls back orderly (-1% to -3%)."""
+    """V5.6: T+1 sniper triggers when yesterday surged > 6% and today pulls back orderly (-1% to -3%).
+
+    Negative scenario: even when surge/strong conditions AND an orderly -2%
+    intraday pullback are detected, the sniper must NOT fire if today closes
+    structurally below EMA20 (exit_now triggers, buyAction=avoid). The
+    intraday -2% signal is preserved (so the t1_sniper rule's pullback
+    gate would otherwise pass) while the actual close is forced well below
+    EMA20 via today_close_drop_pct.
+    """
     from data_sync_service.service.trendok import _trendok_one  # type: ignore[import-not-found]
 
     with patch(
@@ -475,7 +503,8 @@ def test_t1_sniper_triggers_on_orderly_pullback_after_surge() -> None:
             bars=_bars_for_t1_sniper(
                 t1_surge_pct=7.0,  # Yesterday surged > 6%
                 t1_gap_up=False,
-                today_chg_pct=-2.0,  # Today orderly pullback
+                today_chg_pct=-2.0,  # Intraday mock — within pullback window
+                today_close_drop_pct=-20.0,  # Actual close well below EMA20 → exit_now
             ),
             flow_ctx={
                 "ok": True,
@@ -492,11 +521,12 @@ def test_t1_sniper_triggers_on_orderly_pullback_after_surge() -> None:
             market_regime="Strong",
         )
 
-    # Should detect surge/strong conditions, but sniper must not override
-    # entry-vs-stop hard block (buyAction already avoid).
+    # Detect surge/strong conditions. Sniper must not override exit_now.
     assert res["checks"]["t1_surge"] is True
     assert res["checks"]["t1_strong"] is True
-    assert res["buyChecks"].get("blocked_entry_vs_stop") is True
+    # exit_now is the structural-break guard that flips buyAction=avoid and
+    # prevents the sniper from firing on a "looks like a pullback" intraday.
+    assert res["stopLossParts"].get("exit_now") is True
     assert res["buyAction"] == "avoid"
     assert res["checks"]["t1_sniper"] is False
     alerts = [a for a in res["riskAlerts"] if a.get("code") == "t1_sniper"]

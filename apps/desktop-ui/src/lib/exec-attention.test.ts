@@ -8,6 +8,7 @@ import {
   formatExecAttentionMarkdown,
   resolveAttentionCards,
 } from './exec-attention';
+import type { PositionLike } from './execution-action';
 
 const attackGate: ExecutionGate = {
   mode: 'ATTACK',
@@ -92,6 +93,30 @@ describe('buildExecAttentionQueue', () => {
     expect(q.exits).toHaveLength(1);
   });
 
+  it('attaches warn_reasons hint to WARN_REDUCE_HALF trims', () => {
+    const q = buildExecAttentionQueue({
+      gate: attackGate,
+      watchlistItems: [
+        {
+          symbol: 'CN:300628',
+          trendok: {
+            stopLossParts: {
+              warn_reduce_half: true,
+              warn_reasons: ['momentum_warning:hist_shrinking', 'momentum_warning:hist_shrinking_and_volume_dry'],
+            },
+          },
+        } as unknown as PositionLike,
+      ],
+      cards: [{ symbol: 'CN:300628', action: 'TRIM', why: 'WARN_REDUCE_HALF' }],
+      changes: [],
+    });
+    expect(q.trims).toHaveLength(1);
+    expect(q.trims[0]?.hint).toContain('MACD柱连续收缩');
+    expect(q.trims[0]?.hint).toContain('MACD柱连续收缩+量能萎缩');
+    const md = formatExecAttentionMarkdown(q, { source: 'live' });
+    expect(md).toContain('（MACD柱连续收缩；MACD柱连续收缩+量能萎缩）');
+  });
+
   it('allows DEFENSIVE_SLEEVE_ALLOW fires when allowNewEntries is false', () => {
     const q = buildExecAttentionQueue({
       gate: holdGate,
@@ -118,7 +143,7 @@ describe('buildExecAttentionQueue', () => {
       cards: [],
       changes: [],
     });
-    expect(q.sleeveLabel).toBe('卫星仓 45.0%（上限 60%）');
+    expect(q.sleeveLabel).toBe('卫星仓 45.0% = A股 45.0% + ETF 0.0% + 港股 0.0%（CN≤60% / HK≤—）');
     expect(q.missingSize).toBe(1);
   });
 
@@ -200,7 +225,7 @@ describe('buildExecAttentionQueue', () => {
     const md = formatExecAttentionMarkdown(q, { source: 'live' });
     expect(md).toContain('## Exec Attention');
     expect(md).toContain('- source: live');
-    expect(md).toContain('卫星仓 20.0%（上限 60%）');
+    expect(md).toContain('卫星仓 20.0% = A股 20.0% + ETF 0.0% + 港股 0.0%（CN≤60% / HK≤—）');
     expect(md).toContain('### Must act');
     expect(md).toContain('CN:600000  卖出  强制卖出');
     expect(md).toContain('### Fire');

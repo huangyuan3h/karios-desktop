@@ -4,6 +4,8 @@ import {
   pickActiveProfile,
   modelFromProfile,
   getStrategyFallbackModelId,
+  getDecisionModelBundle,
+  DECISION_DEFAULT_MODEL_ID,
   rewriteDeveloperMessageRolesInJsonString,
   rewriteOpenAiCompatibleRequestBody,
 } from './model';
@@ -268,6 +270,7 @@ describe('getStrategyFallbackModelId', () => {
 
   afterEach(() => {
     process.env = originalEnv;
+
   });
 
   it('returns null when env not set', () => {
@@ -283,5 +286,47 @@ describe('getStrategyFallbackModelId', () => {
   it('returns null for empty string', () => {
     process.env.AI_STRATEGY_FALLBACK_MODEL = '';
     expect(getStrategyFallbackModelId()).toBeNull();
+  });
+});
+
+describe('getDecisionModelBundle', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+
+  });
+
+  it('returns gemini model and injects API key when GEMINI_API_KEY is set', async () => {
+    process.env.GEMINI_API_KEY = 'decision-gemini-key';
+    const bundle = await getDecisionModelBundle();
+    expect(bundle.provider).toBe('google');
+    expect(bundle.modelId).toBe(DECISION_DEFAULT_MODEL_ID);
+    expect(bundle.looseStructuredOutputs).toBe(false);
+    expect(process.env.GOOGLE_GENERATIVE_AI_API_KEY).toBe('decision-gemini-key');
+    expect(process.env.GOOGLE_API_KEY).toBe('decision-gemini-key');
+  });
+
+  it('respects AI_DECISION_MODEL override', async () => {
+    process.env.GEMINI_API_KEY = 'decision-gemini-key';
+    process.env.AI_DECISION_MODEL = 'gemini-2.5-flash';
+    const bundle = await getDecisionModelBundle();
+    expect(bundle.modelId).toBe('gemini-2.5-flash');
+  });
+
+  it('falls back to normal resolution when GEMINI_API_KEY is missing', async () => {
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.OPENAI_BASE_URL;
+    process.env.KARIOS_APP_DATA_DIR = '/tmp/karios-ai-test-nonexistent-dir';
+    process.env.AI_PROVIDER = 'openai';
+    process.env.AI_MODEL = 'gpt-test-model';
+    const bundle = await getDecisionModelBundle();
+    expect(bundle.provider).toBe('openai');
+    expect(bundle.modelId).toBe('gpt-test-model');
+    expect(bundle.looseStructuredOutputs).toBe(false);
   });
 });

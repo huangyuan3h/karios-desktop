@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 import math
 from datetime import datetime
 from typing import Any
@@ -21,13 +22,20 @@ from data_sync_service.db.industry_fund_flow import (
 from data_sync_service.db.market_sentiment import get_latest_date, list_days
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
 from data_sync_service.db.stock_eastmoney_industry import lookup_by_ts_codes as lookup_em_industries
-from data_sync_service.db.stoploss import get_stoploss_batch, upsert_stoploss_batch
+from data_sync_service.db.stoploss import (
+    delete_stoploss,
+    delete_stoploss_batch,
+    get_stoploss_batch,
+    upsert_stoploss_batch,
+)
 from data_sync_service.db.top_inst import fetch_daily_seats_batch, fetch_summaries_for_codes
 from data_sync_service.service.industry_fund_flow_read import build_trendok_flow_context_from_rows
 from data_sync_service.service.market_regime import get_market_regime
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 from data_sync_service.service.top_inst_flow import build_inst_flow_payload
 from data_sync_service.service.trade_calendar_utils import trade_dates_upto
+
+logger = logging.getLogger(__name__)
 
 TRENDOK_CACHE_TTL_SECONDS = 60
 MACRO_LOCK_CACHE_TTL_SECONDS = 45.0
@@ -174,10 +182,13 @@ def _read_latest_sentiment_for_macro_lock() -> tuple[str | None, int | None]:
         result = (risk_mode, down_count)
         _macro_lock_cache["latest"] = result
         return result
-    except Exception:
-        result = (None, None)
-        _macro_lock_cache["latest"] = result
-        return result
+    except Exception as exc:
+        # H5 (2026-08-08): sentiment read failure must not silently disable
+        # the crash lock (that is fail-OPEN on the most defensive gate).
+        # Fail closed → treat as extreme_caution; do NOT cache so a recovered
+        # read unlocks on the next evaluation.
+        logger.warning("macro lock sentiment read failed (lock fail-closed): %s", exc)
+        return ("extreme_caution", MACRO_LOCK_DOWN_THRESHOLD)
 
 
 def apply_macro_override_lock(
@@ -317,6 +328,8 @@ def _parse_float_safe(v: Any) -> float | None:
 
 
 def _clip01(x: float) -> float:
+    if x is None:
+        return 0.0
     return 0.0 if x <= 0.0 else 1.0 if x >= 1.0 else x
 
 
@@ -329,17 +342,21 @@ _W_VOL = 0.20
 
 
 def _score_sub_ema(ema5: float, ema20: float, ema60: float, ema20_prev: float) -> tuple[float, float]:
+    if ema5 is None or ema20 is None or ema60 is None:
+        return 0.0, 0.0
     s_ema = 0.0
     if ema5 > ema20:
         s_ema += 0.4
     if ema20 > ema60:
         s_ema += 0.4
-    if ema20_prev > 0 and (ema20 - ema20_prev) / ema20_prev > 0.001:
+    if ema20_prev is not None and ema20_prev > 0 and (ema20 - ema20_prev) / ema20_prev > 0.001:
         s_ema += 0.2
     return s_ema, 100.0 * _W_EMA * s_ema
 
 
 def _score_sub_macd(macd_last: float, hist: list[float]) -> tuple[float, float]:
+    if macd_last is None:
+        return 0.0, 0.0
     s_macd = 0.0
     if macd_last >= 0 and len(hist) >= 2:
         h0, h1 = hist[-2], hist[-1]
@@ -349,12 +366,16 @@ def _score_sub_macd(macd_last: float, hist: list[float]) -> tuple[float, float]:
 
 
 def _score_sub_breakout(close: float, high20_high: float) -> tuple[float, float]:
+    if close is None or high20_high is None:
+        return 0.0, 0.0
     ratio_hi = close / high20_high if high20_high > 0 else 0.0
     s_break = _clip01((ratio_hi - 0.85) / 0.10)
     return s_break, 100.0 * _W_BREAK * s_break
 
 
 def _score_sub_rsi(rsi14: float) -> tuple[float, float]:
+    if rsi14 is None:
+        return 0.0, 0.0
     s_rsi = _clip01(1.0 - abs(rsi14 - 65.0) / 15.0)
     if rsi14 > 80.0:
         s_rsi *= _clip01(1.0 - (rsi14 - 80.0) / 10.0)
@@ -362,6 +383,8 @@ def _score_sub_rsi(rsi14: float) -> tuple[float, float]:
 
 
 def _score_sub_volume(ratio_vol: float) -> tuple[float, float]:
+    if ratio_vol is None:
+        return 0.0, 0.0
     if ratio_vol < 1.0:
         s_vol = ratio_vol
     elif ratio_vol < 1.2:
@@ -780,9 +803,11 @@ def _merge_realtime_bar(
 def _symbol_to_ts_code(symbol: str) -> tuple[str, str, str] | None:
     """
     Map UI symbol to (market, ticker, ts_code).
-    Supports CN A-shares, HK tickers, and ETFs.
+    Supports CN A-shares (with or without .SH/.SZ suffix), HK tickers, and ETFs.
     """
-    s = (symbol or "").strip().upper()
+    from data_sync_service.service.market_quotes import normalize_market_symbol
+
+    s = normalize_market_symbol(symbol)
     if not s:
         return None
     if s.startswith("CN:"):
@@ -1062,9 +1087,73 @@ def compute_trendok_for_symbols(
 
     stored_stoploss_by_code = get_stoploss_batch(ts_codes)
     stoploss_upserts_by_code: dict[str, dict[str, Any]] = {}
+    stoploss_deletes_by_code: set[str] = set()
     alpha_s_symbols = _load_alpha_s_symbols()
 
-    def resolve_stoploss(ts_code: str, newly_computed: float, as_of_date: str | None) -> tuple[float, bool]:
+    # Position context from the watchlist registry: symbol -> (is_held, cost_price).
+    # The ratchet (stop only increases) applies only while a position is HELD;
+    # closing a position resets it so a re-entry starts from a fresh stop.
+    # H5 (2026-08-08): a registry READ FAILURE must not be treated as "nobody
+    # is held" — that used to bulk-delete every stored stoploss. registry
+    # state is then UNKNOWN and stoploss rows are kept (fail-closed).
+    registry_ctx_by_symbol: dict[str, dict[str, Any]] = {}
+    registry_available = True
+    try:
+        from data_sync_service.db.watchlist_automation import list_registry
+
+        for row in list_registry():
+            sym = str(row.get("symbol") or "").strip().upper()
+            if sym:
+                registry_ctx_by_symbol[sym] = row
+    except Exception as exc:
+        registry_available = False
+        logger.warning("trendok stoploss registry read failed (stops kept): %s", exc)
+
+    def position_ctx(sym: str) -> tuple[bool, float | None]:
+        row = registry_ctx_by_symbol.get(str(sym or "").upper())
+        pct = row.get("positionPct") if row else None
+        cost = row.get("costPrice") if row else None
+        try:
+            is_held = pct is not None and float(pct) > 0
+        except (TypeError, ValueError):
+            is_held = False
+        if is_held:
+            try:
+                cost_ok = cost is not None and float(cost) > 0
+            except (TypeError, ValueError):
+                cost_ok = False
+            return True, (float(cost) if cost_ok else None)
+        return False, None
+
+    def resolve_stoploss(
+        ts_code: str,
+        newly_computed: float,
+        as_of_date: str | None,
+        *,
+        is_held: bool,
+        use_stored: bool = True,
+    ) -> tuple[float, bool]:
+        """Resolve effective stoploss.
+
+        - ``use_stored=False`` (exit_now): always return the freshly computed
+          value without touching the store.
+        - ``use_stored=True`` and held: monotonic ratchet (max with stored).
+        - ``use_stored=True`` and NOT held: ignore and delete the stored row
+          (position lifecycle reset) so a later re-entry starts fresh.
+        """
+        if not use_stored:
+            return newly_computed, False
+        if not is_held:
+            # Position lifecycle reset (delete stored stop so a re-entry
+            # starts fresh) — only when the registry is trustworthy. When the
+            # registry read failed, is_held is UNKNOWN: never delete a stored
+            # stop on guesswork (H5).
+            if registry_available:
+                stored = stored_stoploss_by_code.get(ts_code)
+                if stored is not None and stored.get("stop_loss_price") is not None:
+                    stoploss_deletes_by_code.add(ts_code)
+                    stored_stoploss_by_code[ts_code] = None
+            return newly_computed, False
         stored = stored_stoploss_by_code.get(ts_code)
         stored_price = stored.get("stop_loss_price") if stored else None
         if stored_price is not None and float(stored_price) >= newly_computed:
@@ -1089,6 +1178,7 @@ def compute_trendok_for_symbols(
         em_industry = by_em_industry.get(ts_code)
         industry_for_flow = em_industry or tushare_industry
         bars = bars_by_code.get(ts_code, [])
+        is_held, cost_price = position_ctx(sym)
         out.append(
             _trendok_one(
                 symbol=sym,
@@ -1106,10 +1196,14 @@ def compute_trendok_for_symbols(
                 index_ema20_down=index_ema20_down,
                 rt_vwap=rt_vwap_by_code.get(ts_code),
                 is_alpha_s=sym in alpha_s_symbols,
+                is_held=is_held,
+                cost_price=cost_price,
             )
         )
     if stoploss_upserts_by_code:
         upsert_stoploss_batch(list(stoploss_upserts_by_code.values()))
+    if stoploss_deletes_by_code:
+        delete_stoploss_batch(sorted(stoploss_deletes_by_code))
     _trendok_cache[cache_key] = out
     return _finalize_trendok_response(out)
 
@@ -1119,12 +1213,33 @@ def _resolve_effective_stoploss(
     newly_computed: float,
     as_of_date: str | None,
     resolver: Any | None,
+    *,
+    is_held: bool = True,
+    use_stored: bool = True,
 ) -> tuple[float, bool]:
     if resolver is not None:
-        return resolver(ts_code, newly_computed, as_of_date)
+        return resolver(ts_code, newly_computed, as_of_date, is_held=is_held, use_stored=use_stored)
+    if not use_stored:
+        return newly_computed, False
     stored = get_stoploss_batch([ts_code]).get(ts_code)
     stored_price = stored.get("stop_loss_price") if stored else None
-    if stored_price is not None and float(stored_price) >= newly_computed:
+    if stored_price is None:
+        if not is_held:
+            return newly_computed, False
+        upsert_stoploss_batch(
+            [
+                {
+                    "ts_code": ts_code,
+                    "stop_loss_price": newly_computed,
+                    "as_of_date": as_of_date,
+                }
+            ]
+        )
+        return newly_computed, False
+    if not is_held:
+        delete_stoploss(ts_code)
+        return newly_computed, False
+    if float(stored_price) >= newly_computed:
         return float(stored_price), True
     upsert_stoploss_batch(
         [
@@ -1155,6 +1270,8 @@ def _trendok_one(
     index_ema20_down: bool = False,
     rt_vwap: float | None = None,
     is_alpha_s: bool = False,
+    is_held: bool = False,
+    cost_price: float | None = None,
 ) -> dict[str, Any]:
     """
     Ported from quant-service `_market_stock_trendok_one` with the same checks/score behavior.
@@ -1414,9 +1531,23 @@ def _trendok_one(
         current = float(closes[-1])
         stop_parts["current_price"] = round(current, 6)
 
-        if not lows or res["values"].get("ema20") is None:
-            res["stopLossPrice"] = None
-            res["missingData"].append("stoploss_missing_inputs")
+        if not lows or len(closes) < 20 or res["values"].get("ema20") is None:
+            if symbol.startswith("ETF:"):
+                # ETF fallback: insufficient bars for a reliable EMA20 -> price-drawdown
+                # relative stop (current -8%), so a data-starved ETF still gets a stop
+                # instead of 0/none.
+                stop_parts["etf_fallback"] = True
+                stop_parts["etf_fallback_reason"] = "no_ema20"
+                fallback_stop = round(current * (1.0 - 0.08), 6)
+                stop_parts["hard_stop"] = fallback_stop
+                stop_parts["computed_stop_loss"] = fallback_stop
+                stop_parts["final_stop_loss"] = fallback_stop
+                stop_parts["fallback_stop_loss"] = fallback_stop
+                res["stopLossPrice"] = fallback_stop
+                res["stopLossParts"] = stop_parts
+            else:
+                res["stopLossPrice"] = None
+                res["missingData"].append("stoploss_missing_inputs")
         else:
             swing_low = min(lows[-10:]) if len(lows) >= 10 else min(lows)
             if len(lows) >= 20:
@@ -1438,26 +1569,39 @@ def _trendok_one(
 
             # Exit-now overrides:
             # 1) Trend structure break: EMA5 < EMA20 OR close < EMA20 => exit immediately (stop = current)
+            # ETF isolation: ETFs track indices tightly, so a short EMA5/EMA20 wiggle or a shallow
+            # close-below-EMA20 right after entry is noise. For ETFs these downgrade to a TRIM-level
+            # warning (warn_reduce_half); only price-based stops (hard stop / trail stop, evaluated
+            # on the frontend) can trigger a full EXIT.
             exit_now = False
             exit_reasons: list[str] = []
             exit_check_ema5_lt_ema20 = False
             exit_check_close_lt_ema20 = False
             exit_check_mom_exhaust = False
             exit_check_vol_dry = False
+            warn_reduce_half = False
+            warn_reasons: list[str] = []
+            is_etf = symbol.startswith("ETF:")
             if res["values"].get("ema5") is not None and res["values"].get("ema20") is not None:
                 if float(res["values"]["ema5"]) < float(res["values"]["ema20"]):
-                    exit_now = True
-                    exit_check_ema5_lt_ema20 = True
-                    exit_reasons.append("trend_structure_break:ema5_below_ema20")
+                    if is_etf:
+                        warn_reduce_half = True
+                        warn_reasons.append("trend_structure_break:ema5_below_ema20")
+                    else:
+                        exit_now = True
+                        exit_check_ema5_lt_ema20 = True
+                        exit_reasons.append("trend_structure_break:ema5_below_ema20")
             if res["values"].get("ema20") is not None and current < float(res["values"]["ema20"]):
-                exit_now = True
-                exit_check_close_lt_ema20 = True
-                exit_reasons.append("trend_structure_break:close_below_ema20")
+                if is_etf:
+                    warn_reduce_half = True
+                    warn_reasons.append("trend_structure_break:close_below_ema20")
+                else:
+                    exit_now = True
+                    exit_check_close_lt_ema20 = True
+                    exit_reasons.append("trend_structure_break:close_below_ema20")
 
             # 2) Momentum exhaustion: MACD hist shrinks 3 days then turns negative + volume dries up
             # Warning case: hist shrinks but stays positive => suggest reducing half.
-            warn_reduce_half = False
-            warn_reasons: list[str] = []
             if res["values"].get("avgVol5") is not None and res["values"].get("avgVol30") is not None:
                 avg5v = float(res["values"]["avgVol5"])
                 avg30v = float(res["values"]["avgVol30"])
@@ -1467,9 +1611,17 @@ def _trendok_one(
                     vol_dry = avg30v > 0.0 and (avg5v < avg30v)
                     exit_check_vol_dry = bool(vol_dry)
                     if shrink_then_flip and vol_dry:
-                        exit_now = True
-                        exit_check_mom_exhaust = True
-                        exit_reasons.append("momentum_exhaustion:hist_shrink3_flip_negative_and_volume_dry")
+                        if is_etf:
+                            # ETF: momentum exhaustion is a TRIM-level warning too;
+                            # never a full-exit on a signal (price stops decide).
+                            warn_reduce_half = True
+                            warn_reasons.append(
+                                "momentum_exhaustion:hist_shrink3_flip_negative_and_volume_dry"
+                            )
+                        else:
+                            exit_now = True
+                            exit_check_mom_exhaust = True
+                            exit_reasons.append("momentum_exhaustion:hist_shrink3_flip_negative_and_volume_dry")
 
                     if not shrink_then_flip:
                         shrink_cnt = 0
@@ -1518,12 +1670,19 @@ def _trendok_one(
                 stop_parts["warn_display"] = "警告：MACD柱缩小但未转负，建议至少卖出一半"
 
             if exit_now:
-                # Immediate exit: stop at current price.
+                # Immediate exit: stop at current price. Display the actionable
+                # level (market exit) — do NOT ratchet against a stored value,
+                # which would show a stale price that can no longer be filled.
                 computed_stop = round(current, 6)
                 ts_code = _symbol_to_ts_code(symbol)
                 if ts_code:
                     effective_stop, used_stored = _resolve_effective_stoploss(
-                        ts_code[2], computed_stop, res.get("asOfDate"), resolve_stoploss
+                        ts_code[2],
+                        computed_stop,
+                        res.get("asOfDate"),
+                        resolve_stoploss,
+                        is_held=is_held,
+                        use_stored=False,
                     )
                     res["stopLossPrice"] = effective_stop
                     stop_parts["final_stop_loss"] = effective_stop
@@ -1572,11 +1731,32 @@ def _trendok_one(
 
                 atr14 = _atr14(highs, lows, closes, 14)
                 if atr14 is None:
-                    res["stopLossPrice"] = None
-                    res["missingData"].append("atr14_unavailable")
+                    if symbol.startswith("ETF:"):
+                        # ETF fallback: ATR unavailable -> price-drawdown relative stop.
+                        stop_parts["etf_fallback"] = True
+                        stop_parts["etf_fallback_reason"] = "no_atr14"
+                        fallback_stop = round(current * (1.0 - max_loss_pct), 6)
+                        stop_parts["hard_stop"] = fallback_stop
+                        stop_parts["computed_stop_loss"] = fallback_stop
+                        stop_parts["final_stop_loss"] = fallback_stop
+                        stop_parts["fallback_stop_loss"] = fallback_stop
+                        res["stopLossPrice"] = fallback_stop
+                        res["stopLossParts"] = stop_parts
+                    else:
+                        res["stopLossPrice"] = None
+                        res["missingData"].append("atr14_unavailable")
                 else:
                     buffer = atr_k * atr14
-                    hard_stop = current * (1.0 - max_loss_pct)
+                    # Loss cap from CURRENT price (profit-locking / default).
+                    hard_stop_current = current * (1.0 - max_loss_pct)
+                    hard_stop = hard_stop_current
+                    if is_held and cost_price is not None:
+                        # Loss cap from ENTRY cost: guarantees the drawdown from
+                        # cost never exceeds max_loss_pct, even after a rally.
+                        hard_stop_entry = cost_price * (1.0 - max_loss_pct)
+                        hard_stop = max(hard_stop_current, hard_stop_entry)
+                        stop_parts["hard_stop_entry"] = round(hard_stop_entry, 6)
+                    stop_parts["hard_stop_current"] = round(hard_stop_current, 6)
                     stop_loss_support = final_support - buffer
                     final_stop = max(stop_loss_support, hard_stop)
                     final_stop = min(final_stop, current)  # never above current
@@ -1589,7 +1769,11 @@ def _trendok_one(
                     ts_code_tuple = _symbol_to_ts_code(symbol)
                     if ts_code_tuple:
                         effective_stop, used_stored = _resolve_effective_stoploss(
-                            ts_code_tuple[2], computed_stop, res.get("asOfDate"), resolve_stoploss
+                            ts_code_tuple[2],
+                            computed_stop,
+                            res.get("asOfDate"),
+                            resolve_stoploss,
+                            is_held=is_held,
                         )
                         stop_parts["final_stop_loss"] = effective_stop
                         stop_parts["used_stored_higher"] = used_stored

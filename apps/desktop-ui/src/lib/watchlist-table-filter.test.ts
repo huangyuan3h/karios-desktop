@@ -33,7 +33,7 @@ describe('shouldShowInWatchlistTable', () => {
     ).toBe(false);
   });
 
-  it('shows Score >= 60 even when Pos%=— and TrendOK=no', () => {
+  it('shows Score >= 70 even when Pos%=— and TrendOK=no', () => {
     expect(
       shouldShowInWatchlistTable(
         { symbol: 'CN:C', positionPct: null },
@@ -41,6 +41,23 @@ describe('shouldShowInWatchlistTable', () => {
         'WATCH_SILENT',
       ),
     ).toBe(true);
+    expect(
+      shouldShowInWatchlistTable(
+        { symbol: 'CN:C2', positionPct: null },
+        { trendOk: false, trendStatus: 'no', score: 70 },
+        'WATCH_SILENT',
+      ),
+    ).toBe(true);
+  });
+
+  it('hides Score 60-69 silent rows (below buy threshold)', () => {
+    expect(
+      shouldShowInWatchlistTable(
+        { symbol: 'CN:C3', positionPct: null },
+        { trendOk: false, trendStatus: 'no', score: 65 },
+        'WATCH_SILENT',
+      ),
+    ).toBe(false);
   });
 
   it('shows TrendOK=ok even when Score=0', () => {

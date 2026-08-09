@@ -14,7 +14,7 @@ from data_sync_service.db import get_connection
 from data_sync_service.db.daily import ensure_table as ensure_daily
 from data_sync_service.db.market_sentiment import get_latest_date, list_days, upsert_daily_rows
 from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
-from data_sync_service.db.stock_basic import fetch_ts_codes
+from data_sync_service.db.stock_basic import fetch_stock_ts_codes
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
 from data_sync_service.service.realtime_quote import (
     fetch_realtime_quotes,
@@ -457,8 +457,7 @@ def fetch_cn_market_breadth_intraday(as_of: date) -> dict[str, Any]:
         return cached
 
     ensure_stock_basic()
-    ts_codes_all = fetch_ts_codes()
-    ts_codes = [c for c in ts_codes_all if c.endswith((".SZ", ".SH", ".BJ"))]
+    ts_codes = fetch_stock_ts_codes()
     requested = len(ts_codes)
     if not ts_codes:
         empty = {
@@ -1299,6 +1298,10 @@ def _resolve_sentiment_sync_dates(*, request_date: date, force: bool) -> tuple[l
             cached = list_days(as_of_date=request_date.isoformat(), days=1)
             if cached and str(cached[-1].get("date") or "") == request_date.isoformat():
                 return [], {
+                    "ok": True,
+                    "skipped": True,
+                    "reason": "already_synced",
+                    "message": "sentiment already synced for today",
                     "asOfDate": request_date.isoformat(),
                     "days": 1,
                     "items": [cached[-1]],
@@ -1347,6 +1350,7 @@ def sync_cn_sentiment(*, date_str: str, force: bool) -> dict[str, Any]:
         target_iso = (last_open_date_on_or_before(cal_d) or cal_d).isoformat()
         cached = list_days(as_of_date=target_iso, days=5)
         return {
+            "ok": True,
             "asOfDate": target_iso,
             "days": len(cached),
             "items": cached,
@@ -1382,6 +1386,7 @@ def sync_cn_sentiment(*, date_str: str, force: bool) -> dict[str, Any]:
 
     recent = list_days(as_of_date=as_of, days=min(5, len(dates_to_sync)))
     out: dict[str, Any] = {
+        "ok": True,
         "asOfDate": as_of,
         "days": len(recent) if recent else len(synced_items),
         "items": recent if recent else synced_items,
@@ -1402,3 +1407,46 @@ def get_cn_sentiment(*, days: int = 10, as_of_date: str | None = None) -> dict[s
         return {"asOfDate": "", "days": days, "items": []}
     items = list_days(as_of_date=d, days=days)
     return {"asOfDate": d, "days": max(1, min(int(days), 30)), "items": items}
+
+
+def get_panic_cooldown(
+    *, days: int = 10, cooldown_days: int = 3, as_of_date: str | None = None
+) -> dict[str, Any]:
+    """S-3 panic protection status (same semantics as the backtest engine).
+
+    Most recent panic day (risk_mode in no_new_positions/extreme_caution)
+    within ``days``, cooldown end computed over the CN trade calendar
+    (panic day + cooldown_days trading days — matches
+    BacktestConfig.panic_cooldown_days). ``active`` True when ``as_of_date``
+    (or today) is still inside the cooldown window: no new S-3 entries then.
+    """
+    from datetime import date, timedelta
+
+    from data_sync_service.db import get_connection
+    from data_sync_service.service.backtest_engine import SENTIMENT_BLOCK_MODES
+
+    items = get_cn_sentiment(days=days, as_of_date=as_of_date)["items"]
+    panic_dates = [i["date"] for i in items if i.get("riskMode") in SENTIMENT_BLOCK_MODES]
+    if not panic_dates:
+        return {"lastPanicDate": None, "cooldownEndDate": None, "active": False}
+    last_panic = panic_dates[-1]
+    today = (as_of_date or "").strip() or date.today().isoformat()
+    cooldown_end = last_panic
+    if cooldown_days > 0:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT DISTINCT trade_date FROM daily
+                    WHERE trade_date > %s AND trade_date <= %s
+                    ORDER BY trade_date
+                    """,
+                    (last_panic, (date.fromisoformat(last_panic) + timedelta(days=60)).isoformat()),
+                )
+                nxt = [str(r[0]) for r in cur.fetchall()]
+        cooldown_end = nxt[min(cooldown_days - 1, len(nxt) - 1)] if nxt else last_panic
+    return {
+        "lastPanicDate": last_panic,
+        "cooldownEndDate": cooldown_end,
+        "active": today <= cooldown_end,
+    }

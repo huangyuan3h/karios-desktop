@@ -56,7 +56,8 @@ BATCH_SIZE = int(os.getenv("NEWS_ENRICHMENT_BATCH_SIZE", "5"))
 
 # Per-call timeout (seconds). Generous but bounded so a hung model
 # (esp. thinking models like MiniMax-M3) doesn't tie up the worker.
-LLM_TIMEOUT_S = int(os.getenv("NEWS_ENRICHMENT_TIMEOUT_S", "60"))
+# 300s: reasoning models routinely take >60s on a 5-item batch.
+LLM_TIMEOUT_S = int(os.getenv("NEWS_ENRICHMENT_TIMEOUT_S", "300"))
 
 # Max retries on transient failures. Kept at 1 — failed items get marked
 # `failed` and won't be retried within the same cycle, so re-trying wastes
@@ -214,7 +215,8 @@ def _build_prompt(items: list[dict[str, Any]]) -> str:
         "- eventType: earnings | macro | policy | m&a | ipo | dividend | analyst | sector | other.\n"
         "- importance: 0=noise, 1=minor, 2=noteworthy, 3=market-relevant, 4=sector-moving, 5=systemic.\n"
         "- aiSummary: one Chinese sentence ≤25 chars.\n"
-        "- actionability: actionable | informational | historical.\n\n"
+        "- actionability: actionable | informational | historical.\n"
+        "Output ONLY the JSON array — no thinking process, no <think> tags, no markdown code fences.\n\n"
         f"Items:\n{items_text}"
     )
 
@@ -229,7 +231,12 @@ def _call_llm(prompt: str) -> str:
             "model": ENRICHMENT_MODEL,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1,
-            "max_tokens": 1024,
+            "response_format": {"type": "json_object"},
+            # Reasoning models (e.g. MiniMax-M3) spend output budget on
+            # chain-of-thought before the JSON; 1024 truncates the array
+            # mid-string ("Expecting ',' delimiter"). 4096 keeps the
+            # visible JSON intact.
+            "max_tokens": int(os.getenv("NEWS_ENRICHMENT_MAX_TOKENS", "4096")),
         }
     ).encode("utf-8")
 

@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Tauri build artifacts (may include generated/binary JS assets)
     "src-tauri/target/**",
+    // Vitest coverage reports (generated, not source)
+    "coverage/**",
   ]),
 ]);
 

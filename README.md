@@ -160,7 +160,7 @@ Screener 模块从 TradingView 网站抓取用户自定义的股票筛选器数�
 
 | 目录 | 说明 |
 |------|------|
-| `apps/desktop-ui` | 前端界面（Next.js，运行在 Tauri WebView 中）|
+| `apps/desktop-ui` | 前端界面（Next.js；运行形态：dev / Docker compose）|
 | `apps/ai-service` | AI 服务（Node/TypeScript，使用 Vercel AI SDK）|
 | `services/data-sync-service` | 数据服务（Python，负责数据采集与分析）|
 | `packages/shared` | 共享的类型定义和 Schema |
@@ -176,7 +176,6 @@ Screener 模块从 TradingView 网站抓取用户自定义的股票筛选器数�
 - pnpm
 - Python 3.13+
 - uv（Python 包管理器）
-- Rust 工具链（用于 Tauri，需要 Rust >= 1.83）
 
 ### 启动开发环境
 

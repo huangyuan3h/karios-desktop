@@ -1,0 +1,2981 @@
+{
+ "asOfDate": "2026-08-07",
+ "industryFundFlow": {
+  "asOfDate": "2026-08-07",
+  "days": 5,
+  "topK": 5,
+  "dates": [
+   "2026-08-03",
+   "2026-08-04",
+   "2026-08-05",
+   "2026-08-06",
+   "2026-08-07"
+  ],
+  "topByDate": [
+   {
+    "date": "2026-08-03",
+    "top": [
+     "电力设备",
+     "公用事业",
+     "机械设备",
+     "通信",
+     "轻工制造"
+    ]
+   },
+   {
+    "date": "2026-08-04",
+    "top": [
+     "电子",
+     "通信",
+     "计算机",
+     "机械设备",
+     "有色金属"
+    ]
+   },
+   {
+    "date": "2026-08-05",
+    "top": [
+     "电子",
+     "有色金属",
+     "机械设备",
+     "计算机",
+     "电力设备"
+    ]
+   },
+   {
+    "date": "2026-08-06",
+    "top": [
+     "通信",
+     "基础化工",
+     "煤炭",
+     "电子",
+     "建筑材料"
+    ]
+   },
+   {
+    "date": "2026-08-07",
+    "top": [
+     "电子",
+     "医药生物",
+     "有色金属",
+     "机械设备",
+     "建筑材料"
+    ]
+   }
+  ],
+  "dailyRankings": [
+   {
+    "date": "2026-08-03",
+    "ranked": [
+     {
+      "industryName": "电力设备",
+      "value": 2399259136.0,
+      "rank": 1
+     },
+     {
+      "industryName": "公用事业",
+      "value": 1463706176.0,
+      "rank": 2
+     },
+     {
+      "industryName": "机械设备",
+      "value": 1127678464.0,
+      "rank": 3
+     },
+     {
+      "industryName": "通信",
+      "value": 985145088.0,
+      "rank": 4
+     },
+     {
+      "industryName": "轻工制造",
+      "value": 80651312.0,
+      "rank": 5
+     },
+     {
+      "industryName": "农林牧渔",
+      "value": 76873168.0,
+      "rank": 6
+     },
+     {
+      "industryName": "环保",
+      "value": 58219584.0,
+      "rank": 7
+     },
+     {
+      "industryName": "综合",
+      "value": 25606336.0,
+      "rank": 8
+     },
+     {
+      "industryName": "美容护理",
+      "value": 6508669.0,
+      "rank": 9
+     },
+     {
+      "industryName": "纺织服饰",
+      "value": -41174896.0,
+      "rank": 10
+     },
+     {
+      "industryName": "钢铁",
+      "value": -79221552.0,
+      "rank": 11
+     },
+     {
+      "industryName": "社会服务",
+      "value": -144404768.0,
+      "rank": 12
+     },
+     {
+      "industryName": "石油石化",
+      "value": -194139456.0,
+      "rank": 13
+     },
+     {
+      "industryName": "商贸零售",
+      "value": -203524208.0,
+      "rank": 14
+     },
+     {
+      "industryName": "交通运输",
+      "value": -207180848.0,
+      "rank": 15
+     },
+     {
+      "industryName": "食品饮料",
+      "value": -256971328.0,
+      "rank": 16
+     },
+     {
+      "industryName": "煤炭",
+      "value": -397309440.0,
+      "rank": 17
+     },
+     {
+      "industryName": "房地产",
+      "value": -432425568.0,
+      "rank": 18
+     },
+     {
+      "industryName": "银行",
+      "value": -531045632.0,
+      "rank": 19
+     },
+     {
+      "industryName": "汽车",
+      "value": -551333904.0,
+      "rank": 20
+     },
+     {
+      "industryName": "国防军工",
+      "value": -610659696.0,
+      "rank": 21
+     },
+     {
+      "industryName": "家用电器",
+      "value": -877022016.0,
+      "rank": 22
+     },
+     {
+      "industryName": "建筑装饰",
+      "value": -939086880.0,
+      "rank": 23
+     },
+     {
+      "industryName": "基础化工",
+      "value": -963186944.0,
+      "rank": 24
+     },
+     {
+      "industryName": "有色金属",
+      "value": -1611438848.0,
+      "rank": 25
+     },
+     {
+      "industryName": "非银金融",
+      "value": -1631835904.0,
+      "rank": 26
+     },
+     {
+      "industryName": "医药生物",
+      "value": -2006458880.0,
+      "rank": 27
+     },
+     {
+      "industryName": "传媒",
+      "value": -2432732160.0,
+      "rank": 28
+     },
+     {
+      "industryName": "计算机",
+      "value": -2637520896.0,
+      "rank": 29
+     },
+     {
+      "industryName": "建筑材料",
+      "value": -3247830480.0,
+      "rank": 30
+     },
+     {
+      "industryName": "电子",
+      "value": -28250193920.0,
+      "rank": 31
+     }
+    ]
+   },
+   {
+    "date": "2026-08-04",
+    "ranked": [
+     {
+      "industryName": "电子",
+      "value": 33490100224.0,
+      "rank": 1
+     },
+     {
+      "industryName": "通信",
+      "value": 22247595776.0,
+      "rank": 2
+     },
+     {
+      "industryName": "计算机",
+      "value": 5221112576.0,
+      "rank": 3
+     },
+     {
+      "industryName": "机械设备",
+      "value": 4332803840.0,
+      "rank": 4
+     },
+     {
+      "industryName": "有色金属",
+      "value": 3359318016.0,
+      "rank": 5
+     },
+     {
+      "industryName": "电力设备",
+      "value": 2489846528.0,
+      "rank": 6
+     },
+     {
+      "industryName": "医药生物",
+      "value": 1988097792.0,
+      "rank": 7
+     },
+     {
+      "industryName": "传媒",
+      "value": 1770734336.0,
+      "rank": 8
+     },
+     {
+      "industryName": "建筑材料",
+      "value": 804536544.0,
+      "rank": 9
+     },
+     {
+      "industryName": "基础化工",
+      "value": 233579008.0,
+      "rank": 10
+     },
+     {
+      "industryName": "综合",
+      "value": 183521392.0,
+      "rank": 11
+     },
+     {
+      "industryName": "环保",
+      "value": 116477536.0,
+      "rank": 12
+     },
+     {
+      "industryName": "国防军工",
+      "value": 103309456.0,
+      "rank": 13
+     },
+     {
+      "industryName": "轻工制造",
+      "value": 79616080.0,
+      "rank": 14
+     },
+     {
+      "industryName": "社会服务",
+      "value": -85309936.0,
+      "rank": 15
+     },
+     {
+      "industryName": "美容护理",
+      "value": -132589596.0,
+      "rank": 16
+     },
+     {
+      "industryName": "钢铁",
+      "value": -149987984.0,
+      "rank": 17
+     },
+     {
+      "industryName": "纺织服饰",
+      "value": -219375840.0,
+      "rank": 18
+     },
+     {
+      "industryName": "房地产",
+      "value": -407291264.0,
+      "rank": 19
+     },
+     {
+      "industryName": "商贸零售",
+      "value": -585023600.0,
+      "rank": 20
+     },
+     {
+      "industryName": "煤炭",
+      "value": -621203200.0,
+      "rank": 21
+     },
+     {
+      "industryName": "农林牧渔",
+      "value": -700931712.0,
+      "rank": 22
+     },
+     {
+      "industryName": "交通运输",
+      "value": -749907088.0,
+      "rank": 23
+     },
+     {
+      "industryName": "建筑装饰",
+      "value": -884823376.0,
+      "rank": 24
+     },
+     {
+      "industryName": "石油石化",
+      "value": -961959760.0,
+      "rank": 25
+     },
+     {
+      "industryName": "家用电器",
+      "value": -1135937392.0,
+      "rank": 26
+     },
+     {
+      "industryName": "汽车",
+      "value": -1861171968.0,
+      "rank": 27
+     },
+     {
+      "industryName": "公用事业",
+      "value": -1876893440.0,
+      "rank": 28
+     },
+     {
+      "industryName": "银行",
+      "value": -1904451584.0,
+      "rank": 29
+     },
+     {
+      "industryName": "食品饮料",
+      "value": -2125993200.0,
+      "rank": 30
+     },
+     {
+      "industryName": "非银金融",
+      "value": -3029901056.0,
+      "rank": 31
+     }
+    ]
+   },
+   {
+    "date": "2026-08-05",
+    "ranked": [
+     {
+      "industryName": "电子",
+      "value": 30145679360.0,
+      "rank": 1
+     },
+     {
+      "industryName": "有色金属",
+      "value": 13583151872.0,
+      "rank": 2
+     },
+     {
+      "industryName": "机械设备",
+      "value": 4773569536.0,
+      "rank": 3
+     },
+     {
+      "industryName": "计算机",
+      "value": 2611967488.0,
+      "rank": 4
+     },
+     {
+      "industryName": "电力设备",
+      "value": 1638024448.0,
+      "rank": 5
+     },
+     {
+      "industryName": "基础化工",
+      "value": 1548230912.0,
+      "rank": 6
+     },
+     {
+      "industryName": "汽车",
+      "value": 1398623232.0,
+      "rank": 7
+     },
+     {
+      "industryName": "建筑材料",
+      "value": 1199008512.0,
+      "rank": 8
+     },
+     {
+      "industryName": "建筑装饰",
+      "value": 1049662224.0,
+      "rank": 9
+     },
+     {
+      "industryName": "国防军工",
+      "value": 921844224.0,
+      "rank": 10
+     },
+     {
+      "industryName": "非银金融",
+      "value": 537691904.0,
+      "rank": 11
+     },
+     {
+      "industryName": "交通运输",
+      "value": 428920976.0,
+      "rank": 12
+     },
+     {
+      "industryName": "环保",
+      "value": 419776272.0,
+      "rank": 13
+     },
+     {
+      "industryName": "家用电器",
+      "value": 291426688.0,
+      "rank": 14
+     },
+     {
+      "industryName": "房地产",
+      "value": 167254576.0,
+      "rank": 15
+     },
+     {
+      "industryName": "社会服务",
+      "value": 110735024.0,
+      "rank": 16
+     },
+     {
+      "industryName": "农林牧渔",
+      "value": 23095744.0,
+      "rank": 17
+     },
+     {
+      "industryName": "纺织服饰",
+      "value": -24267744.0,
+      "rank": 18
+     },
+     {
+      "industryName": "美容护理",
+      "value": -47078459.0,
+      "rank": 19
+     },
+     {
+      "industryName": "钢铁",
+      "value": -62363424.0,
+      "rank": 20
+     },
+     {
+      "industryName": "综合",
+      "value": -93988880.0,
+      "rank": 21
+     },
+     {
+      "industryName": "煤炭",
+      "value": -301969120.0,
+      "rank": 22
+     },
+     {
+      "industryName": "商贸零售",
+      "value": -343366352.0,
+      "rank": 23
+     },
+     {
+      "industryName": "轻工制造",
+      "value": -397259120.0,
+      "rank": 24
+     },
+     {
+      "industryName": "通信",
+      "value": -565134336.0,
+      "rank": 25
+     },
+     {
+      "industryName": "公用事业",
+      "value": -771120384.0,
+      "rank": 26
+     },
+     {
+      "industryName": "银行",
+      "value": -888339456.0,
+      "rank": 27
+     },
+     {
+      "industryName": "石油石化",
+      "value": -1217346208.0,
+      "rank": 28
+     },
+     {
+      "industryName": "医药生物",
+      "value": -1247589888.0,
+      "rank": 29
+     },
+     {
+      "industryName": "食品饮料",
+      "value": -1636400880.0,
+      "rank": 30
+     },
+     {
+      "industryName": "传媒",
+      "value": -2067770368.0,
+      "rank": 31
+     }
+    ]
+   },
+   {
+    "date": "2026-08-06",
+    "ranked": [
+     {
+      "industryName": "通信",
+      "value": 1924928768.0,
+      "rank": 1
+     },
+     {
+      "industryName": "基础化工",
+      "value": 1694214144.0,
+      "rank": 2
+     },
+     {
+      "industryName": "煤炭",
+      "value": 1222030576.0,
+      "rank": 3
+     },
+     {
+      "industryName": "电子",
+      "value": 679325696.0,
+      "rank": 4
+     },
+     {
+      "industryName": "建筑材料",
+      "value": 165554176.0,
+      "rank": 5
+     },
+     {
+      "industryName": "农林牧渔",
+      "value": 165322048.0,
+      "rank": 6
+     },
+     {
+      "industryName": "机械设备",
+      "value": -6817792.0,
+      "rank": 7
+     },
+     {
+      "industryName": "房地产",
+      "value": -27881616.0,
+      "rank": 8
+     },
+     {
+      "industryName": "银行",
+      "value": -79432448.0,
+      "rank": 9
+     },
+     {
+      "industryName": "石油石化",
+      "value": -106208720.0,
+      "rank": 10
+     },
+     {
+      "industryName": "美容护理",
+      "value": -155879605.0,
+      "rank": 11
+     },
+     {
+      "industryName": "环保",
+      "value": -195676224.0,
+      "rank": 12
+     },
+     {
+      "industryName": "纺织服饰",
+      "value": -198460512.0,
+      "rank": 13
+     },
+     {
+      "industryName": "轻工制造",
+      "value": -250643088.0,
+      "rank": 14
+     },
+     {
+      "industryName": "钢铁",
+      "value": -308893136.0,
+      "rank": 15
+     },
+     {
+      "industryName": "综合",
+      "value": -340174219.0,
+      "rank": 16
+     },
+     {
+      "industryName": "家用电器",
+      "value": -352249360.0,
+      "rank": 17
+     },
+     {
+      "industryName": "食品饮料",
+      "value": -500384432.0,
+      "rank": 18
+     },
+     {
+      "industryName": "建筑装饰",
+      "value": -578973360.0,
+      "rank": 19
+     },
+     {
+      "industryName": "社会服务",
+      "value": -661910480.0,
+      "rank": 20
+     },
+     {
+      "industryName": "交通运输",
+      "value": -714226816.0,
+      "rank": 21
+     },
+     {
+      "industryName": "商贸零售",
+      "value": -792873168.0,
+      "rank": 22
+     },
+     {
+      "industryName": "医药生物",
+      "value": -1639045376.0,
+      "rank": 23
+     },
+     {
+      "industryName": "国防军工",
+      "value": -1680892160.0,
+      "rank": 24
+     },
+     {
+      "industryName": "汽车",
+      "value": -2807117056.0,
+      "rank": 25
+     },
+     {
+      "industryName": "有色金属",
+      "value": -2880036608.0,
+      "rank": 26
+     },
+     {
+      "industryName": "公用事业",
+      "value": -3146920528.0,
+      "rank": 27
+     },
+     {
+      "industryName": "非银金融",
+      "value": -4124914432.0,
+      "rank": 28
+     },
+     {
+      "industryName": "传媒",
+      "value": -5682085888.0,
+      "rank": 29
+     },
+     {
+      "industryName": "电力设备",
+      "value": -8269306624.0,
+      "rank": 30
+     },
+     {
+      "industryName": "计算机",
+      "value": -8671195136.0,
+      "rank": 31
+     }
+    ]
+   },
+   {
+    "date": "2026-08-07",
+    "ranked": [
+     {
+      "industryName": "电子",
+      "value": 26702635008.0,
+      "rank": 1
+     },
+     {
+      "industryName": "医药生物",
+      "value": 8914400768.0,
+      "rank": 2
+     },
+     {
+      "industryName": "有色金属",
+      "value": 6930835712.0,
+      "rank": 3
+     },
+     {
+      "industryName": "机械设备",
+      "value": 4258507776.0,
+      "rank": 4
+     },
+     {
+      "industryName": "建筑材料",
+      "value": 3069471744.0,
+      "rank": 5
+     },
+     {
+      "industryName": "电力设备",
+      "value": 2414596608.0,
+      "rank": 6
+     },
+     {
+      "industryName": "基础化工",
+      "value": 967337216.0,
+      "rank": 7
+     },
+     {
+      "industryName": "石油石化",
+      "value": 127611808.0,
+      "rank": 8
+     },
+     {
+      "industryName": "钢铁",
+      "value": 34325616.0,
+      "rank": 9
+     },
+     {
+      "industryName": "煤炭",
+      "value": 25589712.0,
+      "rank": 10
+     },
+     {
+      "industryName": "综合",
+      "value": -16316160.0,
+      "rank": 11
+     },
+     {
+      "industryName": "国防军工",
+      "value": -29391872.0,
+      "rank": 12
+     },
+     {
+      "industryName": "美容护理",
+      "value": -36945307.0,
+      "rank": 13
+     },
+     {
+      "industryName": "农林牧渔",
+      "value": -40305792.0,
+      "rank": 14
+     },
+     {
+      "industryName": "公用事业",
+      "value": -80245184.0,
+      "rank": 15
+     },
+     {
+      "industryName": "建筑装饰",
+      "value": -193160928.0,
+      "rank": 16
+     },
+     {
+      "industryName": "纺织服饰",
+      "value": -194594096.0,
+      "rank": 17
+     },
+     {
+      "industryName": "房地产",
+      "value": -207004560.0,
+      "rank": 18
+     },
+     {
+      "industryName": "社会服务",
+      "value": -238522256.0,
+      "rank": 19
+     },
+     {
+      "industryName": "交通运输",
+      "value": -277751456.0,
+      "rank": 20
+     },
+     {
+      "industryName": "环保",
+      "value": -338756592.0,
+      "rank": 21
+     },
+     {
+      "industryName": "家用电器",
+      "value": -354388912.0,
+      "rank": 22
+     },
+     {
+      "industryName": "轻工制造",
+      "value": -363411312.0,
+      "rank": 23
+     },
+     {
+      "industryName": "商贸零售",
+      "value": -372531760.0,
+      "rank": 24
+     },
+     {
+      "industryName": "食品饮料",
+      "value": -418507856.0,
+      "rank": 25
+     },
+     {
+      "industryName": "汽车",
+      "value": -461514752.0,
+      "rank": 26
+     },
+     {
+      "industryName": "银行",
+      "value": -1150113024.0,
+      "rank": 27
+     },
+     {
+      "industryName": "传媒",
+      "value": -1195149312.0,
+      "rank": 28
+     },
+     {
+      "industryName": "非银金融",
+      "value": -1303223040.0,
+      "rank": 29
+     },
+     {
+      "industryName": "通信",
+      "value": -3138262272.0,
+      "rank": 30
+     },
+     {
+      "industryName": "计算机",
+      "value": -6685018624.0,
+      "rank": 31
+     }
+    ]
+   }
+  ],
+  "flow5d": {
+   "asOfDate": "2026-08-07",
+   "days": 5,
+   "topN": 10,
+   "dates": [
+    "2026-08-03",
+    "2026-08-04",
+    "2026-08-05",
+    "2026-08-06",
+    "2026-08-07"
+   ],
+   "top": [
+    {
+     "industryCode": "BK1201",
+     "industryName": "电子",
+     "sum5d": 62767546368.0,
+     "netInflow": 26702635008.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -28250193920.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": 33490100224.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": 30145679360.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": 679325696.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": 26702635008.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK1215",
+     "industryName": "通信",
+     "sum5d": 21454273024.0,
+     "netInflow": -3138262272.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": 985145088.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": 22247595776.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": -565134336.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": 1924928768.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": -3138262272.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK0478",
+     "industryName": "有色金属",
+     "sum5d": 19381830144.0,
+     "netInflow": 6930835712.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -1611438848.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": 3359318016.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": 13583151872.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -2880036608.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": 6930835712.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK1205",
+     "industryName": "机械设备",
+     "sum5d": 14485741824.0,
+     "netInflow": 4258507776.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": 1127678464.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": 4332803840.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": 4773569536.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -6817792.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": 4258507776.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK1216",
+     "industryName": "医药生物",
+     "sum5d": 6009404416.0,
+     "netInflow": 8914400768.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -2006458880.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": 1988097792.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": -1247589888.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -1639045376.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": 8914400768.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK1206",
+     "industryName": "基础化工",
+     "sum5d": 3480174336.0,
+     "netInflow": 967337216.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -963186944.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": 233579008.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": 1548230912.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": 1694214144.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": 967337216.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK1208",
+     "industryName": "建筑材料",
+     "sum5d": 1990740496.0,
+     "netInflow": 3069471744.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -3247830480.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": 804536544.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": 1199008512.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": 165554176.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": 3069471744.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK1200",
+     "industryName": "电力设备",
+     "sum5d": 672420096.0,
+     "netInflow": 2414596608.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": 2399259136.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": 2489846528.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": 1638024448.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -8269306624.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": 2414596608.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK0728",
+     "industryName": "环保",
+     "sum5d": 60040576.0,
+     "netInflow": -338756592.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": 58219584.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": 116477536.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": 419776272.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -195676224.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": -338756592.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK0437",
+     "industryName": "煤炭",
+     "sum5d": -72861472.0,
+     "netInflow": 25589712.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -397309440.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": -621203200.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": -301969120.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": 1222030576.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": 25589712.0
+      }
+     ]
+    }
+   ]
+  },
+  "flow5dOut": {
+   "asOfDate": "2026-08-07",
+   "days": 5,
+   "topN": 10,
+   "dates": [
+    "2026-08-03",
+    "2026-08-04",
+    "2026-08-05",
+    "2026-08-06",
+    "2026-08-07"
+   ],
+   "top": [
+    {
+     "industryCode": "BK1207",
+     "industryName": "计算机",
+     "sum5d": -10160654592.0,
+     "netInflow": -6685018624.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -2637520896.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": 5221112576.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": 2611967488.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -8671195136.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": -6685018624.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK0486",
+     "industryName": "传媒",
+     "sum5d": -9607003392.0,
+     "netInflow": -1195149312.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -2432732160.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": 1770734336.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": -2067770368.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -5682085888.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": -1195149312.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK1203",
+     "industryName": "非银金融",
+     "sum5d": -9552182528.0,
+     "netInflow": -1303223040.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -1631835904.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": -3029901056.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": 537691904.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -4124914432.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": -1303223040.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK0438",
+     "industryName": "食品饮料",
+     "sum5d": -4938257696.0,
+     "netInflow": -418507856.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -256971328.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": -2125993200.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": -1636400880.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -500384432.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": -418507856.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK1283",
+     "industryName": "银行",
+     "sum5d": -4553382144.0,
+     "netInflow": -1150113024.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -531045632.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": -1904451584.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": -888339456.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -79432448.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": -1150113024.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK0427",
+     "industryName": "公用事业",
+     "sum5d": -4411473360.0,
+     "netInflow": -80245184.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": 1463706176.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": -1876893440.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": -771120384.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -3146920528.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": -80245184.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK1211",
+     "industryName": "汽车",
+     "sum5d": -4282514448.0,
+     "netInflow": -461514752.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -551333904.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": -1861171968.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": 1398623232.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -2807117056.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": -461514752.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK0456",
+     "industryName": "家用电器",
+     "sum5d": -2428170992.0,
+     "netInflow": -354388912.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -877022016.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": -1135937392.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": 291426688.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -352249360.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": -354388912.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK0464",
+     "industryName": "石油石化",
+     "sum5d": -2352042336.0,
+     "netInflow": 127611808.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -194139456.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": -961959760.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": -1217346208.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -106208720.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": 127611808.0
+      }
+     ]
+    },
+    {
+     "industryCode": "BK1213",
+     "industryName": "商贸零售",
+     "sum5d": -2297319088.0,
+     "netInflow": -372531760.0,
+     "series": [
+      {
+       "date": "2026-08-03",
+       "netInflow": -203524208.0
+      },
+      {
+       "date": "2026-08-04",
+       "netInflow": -585023600.0
+      },
+      {
+       "date": "2026-08-05",
+       "netInflow": -343366352.0
+      },
+      {
+       "date": "2026-08-06",
+       "netInflow": -792873168.0
+      },
+      {
+       "date": "2026-08-07",
+       "netInflow": -372531760.0
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "marketSentiment": {
+  "asOfDate": "2026-08-07",
+  "days": 5,
+  "items": [
+   {
+    "date": "2026-08-03",
+    "upCount": 4005,
+    "downCount": 1466,
+    "flatCount": 58,
+    "totalCount": 5529,
+    "upDownRatio": 2.731923601637108,
+    "marketTurnoverCny": 2011058574248.8586,
+    "marketVolume": 1150192796.6499982,
+    "yesterdayLimitUpPremium": 1.662056589147287,
+    "failedLimitUpRate": 41.49659863945578,
+    "riskMode": "hot",
+    "rules": [
+     "hot(turnover>=1.8T && breadth>=1.5 && premium>=0.5 && failed<=50)"
+    ],
+    "updatedAt": "2026-08-03T11:52:51.190283+00:00"
+   },
+   {
+    "date": "2026-08-04",
+    "upCount": 3642,
+    "downCount": 1747,
+    "flatCount": 140,
+    "totalCount": 5529,
+    "upDownRatio": 2.084716657126503,
+    "marketTurnoverCny": 2228440633552.0933,
+    "marketVolume": 1211988799.329996,
+    "yesterdayLimitUpPremium": 1.4692919773195878,
+    "failedLimitUpRate": 32.035928143712574,
+    "riskMode": "hot",
+    "rules": [
+     "hot(turnover>=1.8T && breadth>=1.5 && premium>=0.5 && failed<=50)"
+    ],
+    "updatedAt": "2026-08-04T13:43:24.049672+00:00"
+   },
+   {
+    "date": "2026-08-05",
+    "upCount": 3725,
+    "downCount": 1621,
+    "flatCount": 186,
+    "totalCount": 5532,
+    "upDownRatio": 2.29796421961752,
+    "marketTurnoverCny": 2679886031716.8926,
+    "marketVolume": 1333288410.6599972,
+    "yesterdayLimitUpPremium": 2.7183994406130267,
+    "failedLimitUpRate": 36.484490398818316,
+    "riskMode": "hot",
+    "rules": [
+     "hot(turnover>=1.8T && breadth>=1.5 && premium>=0.5 && failed<=50)"
+    ],
+    "updatedAt": "2026-08-05T13:28:41.545038+00:00"
+   },
+   {
+    "date": "2026-08-06",
+    "upCount": 2789,
+    "downCount": 2590,
+    "flatCount": 154,
+    "totalCount": 5533,
+    "upDownRatio": 1.0768339768339767,
+    "marketTurnoverCny": 2547511157543.3027,
+    "marketVolume": 1313101245.1800015,
+    "yesterdayLimitUpPremium": 0.8673301191919192,
+    "failedLimitUpRate": 34.82758620689655,
+    "riskMode": "normal",
+    "rules": [],
+    "updatedAt": "2026-08-06T14:19:19.111163+00:00"
+   },
+   {
+    "date": "2026-08-07",
+    "upCount": 2856,
+    "downCount": 2536,
+    "flatCount": 143,
+    "totalCount": 5535,
+    "upDownRatio": 1.1261829652996846,
+    "marketTurnoverCny": 2683401729382.0723,
+    "marketVolume": 1293082294.83,
+    "yesterdayLimitUpPremium": 0.436877041958042,
+    "failedLimitUpRate": 34.70394736842105,
+    "riskMode": "normal",
+    "rules": [],
+    "updatedAt": "2026-08-08T12:22:39.055314+00:00"
+   }
+  ],
+  "indexSignals": [
+   {
+    "tsCode": "000001.SH",
+    "name": "上证指数",
+    "featured": true,
+    "asOfDate": "2026-08-07",
+    "close": 3940.0371,
+    "ma5": 3870.1532999999995,
+    "ma20": 3859.47365,
+    "ma60": 4002.0606350000003,
+    "ma20Prev": 3862.279875,
+    "ema10": 3869.2978466477443,
+    "signal": "yellow",
+    "positionRange": "30%",
+    "rules": [
+     "MA20 slope down"
+    ],
+    "realtime": false,
+    "tradeTime": null,
+    "source": "db.index_daily",
+    "pctChg": 1.0174670631676013,
+    "volRatio": 1.0051242955275894,
+    "estimatedVol": null,
+    "totalTurnover": 0.0,
+    "maxIndustryInflow": 0.0
+   },
+   {
+    "tsCode": "399006.SZ",
+    "name": "创业板指",
+    "featured": false,
+    "asOfDate": "2026-08-07",
+    "close": 3563.1165,
+    "ma5": 3481.06792,
+    "ma20": 3527.153615,
+    "ma60": 3867.576321666667,
+    "ma20Prev": 3541.13436,
+    "ema10": 3485.7980086389894,
+    "signal": "yellow",
+    "positionRange": "30%",
+    "rules": [
+     "MA5<MA20",
+     "MACD hist turning up override"
+    ],
+    "realtime": false,
+    "tradeTime": null,
+    "source": "db.index_daily",
+    "pctChg": 1.3527345840149574,
+    "volRatio": 1.0787035565058247,
+    "estimatedVol": null,
+    "totalTurnover": 0.0,
+    "maxIndustryInflow": 0.0
+   },
+   {
+    "tsCode": "000905.SH",
+    "name": "中证500",
+    "featured": false,
+    "asOfDate": "2026-08-07",
+    "close": 7980.1245,
+    "ma5": 7728.14038,
+    "ma20": 7719.72413,
+    "ma60": 8262.964391666666,
+    "ma20Prev": 7745.91643,
+    "ema10": 7719.184753867635,
+    "signal": "yellow",
+    "positionRange": "30%",
+    "rules": [
+     "MA20 slope down",
+     "Vol<MA5Vol*0.8(est)"
+    ],
+    "realtime": false,
+    "tradeTime": null,
+    "source": "db.index_daily",
+    "pctChg": 1.9256104089714077,
+    "volRatio": 0.9875281053128664,
+    "estimatedVol": null,
+    "totalTurnover": 0.0,
+    "maxIndustryInflow": 0.0
+   },
+   {
+    "tsCode": "HSI",
+    "name": "恒生指数",
+    "featured": false,
+    "asOfDate": "2026-08-07",
+    "close": 25668.029296875,
+    "ma5": 25854.731859375002,
+    "ma20": 25097.66696484375,
+    "ma60": 24856.948654947915,
+    "ma20Prev": 25024.2385,
+    "signal": "green",
+    "positionRange": "50%-60%",
+    "rules": [
+     "price>MA20 && MA5>MA20 && MA20 up"
+    ],
+    "realtime": false,
+    "tradeTime": null,
+    "source": "yfinance.on_demand",
+    "pctChg": -0.715163715065835,
+    "volRatio": null,
+    "estimatedVol": null
+   },
+   {
+    "tsCode": "HSTECH",
+    "name": "恒生科技指数",
+    "featured": false,
+    "asOfDate": "2026-07-31",
+    "close": 4829.22022,
+    "ma5": 4786.075978,
+    "ma20": 4714.0040045000005,
+    "ma60": 4765.080330833333,
+    "ma20Prev": 4697.4929935,
+    "signal": "green",
+    "positionRange": "50%-60%",
+    "rules": [
+     "price>MA20 && MA5>MA20 && MA20 up"
+    ],
+    "realtime": false,
+    "tradeTime": null,
+    "source": "db.macro_daily",
+    "pctChg": 0.5297963868803242,
+    "volRatio": null,
+    "estimatedVol": null
+   }
+  ],
+  "etfFundFlow": {
+   "asOfDate": "2026-08-07",
+   "shareLag": false,
+   "intradaySafe": true,
+   "items": [
+    {
+     "name": "沪深300 ETF",
+     "symbol": "510300",
+     "tsCode": "510300.SH",
+     "category": "broad",
+     "netFlow1d": 1107129920.0,
+     "netFlow1dLagged": null,
+     "netFlow3d": 2355732720.0,
+     "flowAsOfDate": null,
+     "source": "eastmoney.realtime_flow",
+     "live": true,
+     "flowStatus": "Live",
+     "flowProvider": "eastmoney",
+     "tradeTime": "2026-08-07T08:11:52+00:00",
+     "mainNetInflow": 1107129920.0,
+     "superLargeNetInflow": 1626432832.0,
+     "largeNetInflow": -519302912.0,
+     "mediumNetInflow": -667993760.0,
+     "smallNetInflow": -439136154.0,
+     "signal": "National Team Buy",
+     "signalDisplay": "🛡️ National Team Buy"
+    },
+    {
+     "name": "上证50 ETF",
+     "symbol": "510050",
+     "tsCode": "510050.SH",
+     "category": "broad",
+     "netFlow1d": 227679600.0,
+     "netFlow1dLagged": null,
+     "netFlow3d": 616879840.0,
+     "flowAsOfDate": null,
+     "source": "eastmoney.realtime_flow",
+     "live": true,
+     "flowStatus": "Live",
+     "flowProvider": "eastmoney",
+     "tradeTime": "2026-08-07T08:11:37+00:00",
+     "mainNetInflow": 227679600.0,
+     "superLargeNetInflow": 594589248.0,
+     "largeNetInflow": -366909648.0,
+     "mediumNetInflow": -92079494.0,
+     "smallNetInflow": -135600103.0,
+     "signal": "National Team Buy",
+     "signalDisplay": "🛡️ National Team Buy"
+    },
+    {
+     "name": "中证500 ETF",
+     "symbol": "510500",
+     "tsCode": "510500.SH",
+     "category": "broad",
+     "netFlow1d": 363918288.0,
+     "netFlow1dLagged": null,
+     "netFlow3d": 908693056.0,
+     "flowAsOfDate": null,
+     "source": "eastmoney.realtime_flow",
+     "live": true,
+     "flowStatus": "Live",
+     "flowProvider": "eastmoney",
+     "tradeTime": "2026-08-07T08:11:39+00:00",
+     "mainNetInflow": 363918288.0,
+     "superLargeNetInflow": 543951152.0,
+     "largeNetInflow": -180032864.0,
+     "mediumNetInflow": -232905040.0,
+     "smallNetInflow": -131013237.0,
+     "signal": "National Team Buy",
+     "signalDisplay": "🛡️ National Team Buy"
+    },
+    {
+     "name": "半导体 ETF",
+     "symbol": "512480",
+     "tsCode": "512480.SH",
+     "category": "sector",
+     "netFlow1d": 143439472.0,
+     "netFlow1dLagged": null,
+     "netFlow3d": 492247360.0,
+     "flowAsOfDate": null,
+     "source": "eastmoney.realtime_flow",
+     "live": true,
+     "flowStatus": "Live",
+     "flowProvider": "eastmoney",
+     "tradeTime": "2026-08-07T08:11:43+00:00",
+     "mainNetInflow": 143439472.0,
+     "superLargeNetInflow": 155098720.0,
+     "largeNetInflow": -11659248.0,
+     "mediumNetInflow": -66992478.0,
+     "smallNetInflow": -76446990.0,
+     "signal": "Neutral",
+     "signalDisplay": "➖ Neutral"
+    },
+    {
+     "name": "通信 ETF",
+     "symbol": "515880",
+     "tsCode": "515880.SH",
+     "category": "sector",
+     "netFlow1d": -29470256.0,
+     "netFlow1dLagged": null,
+     "netFlow3d": -42593536.0,
+     "flowAsOfDate": null,
+     "source": "eastmoney.realtime_flow",
+     "live": true,
+     "flowStatus": "Live",
+     "flowProvider": "eastmoney",
+     "tradeTime": "2026-08-07T08:11:47+00:00",
+     "mainNetInflow": -29470256.0,
+     "superLargeNetInflow": 70271968.0,
+     "largeNetInflow": -99742224.0,
+     "mediumNetInflow": -44055120.0,
+     "smallNetInflow": 73525360.0,
+     "signal": "Inst Outflow",
+     "signalDisplay": "⚠️ Inst Outflow"
+    },
+    {
+     "name": "人工智能 ETF",
+     "symbol": "159819",
+     "tsCode": "159819.SZ",
+     "category": "sector",
+     "netFlow1d": 38419118.0,
+     "netFlow1dLagged": null,
+     "netFlow3d": 9495070.0,
+     "flowAsOfDate": null,
+     "source": "eastmoney.realtime_flow",
+     "live": true,
+     "flowStatus": "Live",
+     "flowProvider": "eastmoney",
+     "tradeTime": "2026-08-07T07:34:54+00:00",
+     "mainNetInflow": 38419118.0,
+     "superLargeNetInflow": 35263192.0,
+     "largeNetInflow": 3155926.0,
+     "mediumNetInflow": -17532248.0,
+     "smallNetInflow": -20886869.0,
+     "signal": "Neutral",
+     "signalDisplay": "➖ Neutral"
+    }
+   ]
+  },
+  "etfFlowSignal": {
+   "asOfDate": "2026-08-07",
+   "verdict": "neutral",
+   "broadDirection": "buy",
+   "sectorDirection": "outflow",
+   "confirmCount": 3,
+   "contradictCount": 1,
+   "intradaySafe": true,
+   "shareLag": false,
+   "incomplete": false
+  },
+  "srvIndex": {
+   "asOfDate": "2026-08-07",
+   "dates": [
+    "2026-08-05",
+    "2026-08-06",
+    "2026-08-07"
+   ],
+   "score": 64.0,
+   "overlapCount": 1,
+   "pairwiseOverlap": 1.5,
+   "uniqueIndustries": 10,
+   "leaderStability": 2,
+   "overlapSectors": [
+    "电子"
+   ],
+   "level": "Elevated",
+   "labelZh": "高热震荡分歧"
+  },
+  "executionGate": {
+   "mode": "DEFEND",
+   "allowNewEntries": false,
+   "marketRegime": "Weak",
+   "indexLight": "yellow",
+   "srvLevel": "Elevated",
+   "srvOverlapCount": 1,
+   "downCount": 2536,
+   "upCount": 2856,
+   "riskMode": "normal",
+   "reasons": [
+    "REGIME_WEAK"
+   ],
+   "positionRangeHint": "30%",
+   "satelliteNote": "防守优先；禁止开新仓，优先减仓不合规持仓",
+   "overflowSector": "电子",
+   "overflowInflowYi": 267.03,
+   "etfFlowSignal": {
+    "verdict": "neutral",
+    "broadDirection": "buy",
+    "sectorDirection": "outflow",
+    "incomplete": false
+   },
+   "cnGate": {
+    "mode": "DEFEND",
+    "allowNewEntries": false,
+    "marketRegime": "Weak",
+    "indexLight": "yellow",
+    "srvLevel": "Elevated",
+    "srvOverlapCount": 1,
+    "downCount": 2536,
+    "upCount": 2856,
+    "riskMode": "normal",
+    "reasons": [
+     "REGIME_WEAK"
+    ],
+    "positionRangeHint": "30%",
+    "satelliteNote": "防守优先；禁止开新仓，优先减仓不合规持仓",
+    "overflowSector": "电子",
+    "overflowInflowYi": 267.03,
+    "etfFlowSignal": {
+     "verdict": "neutral",
+     "broadDirection": "buy",
+     "sectorDirection": "outflow",
+     "incomplete": false
+    }
+   },
+   "hkGate": {
+    "mode": "ATTACK",
+    "allowNewEntries": true,
+    "marketRegime": "Strong",
+    "indexLight": "green",
+    "riskMode": "normal",
+    "reasons": [
+     "REGIME_STRONG"
+    ],
+    "positionRangeHint": "50%-60%",
+    "satelliteNote": "港股允许开新仓与加仓；遵守单票上限与吊灯止盈"
+   }
+  }
+ },
+ "screeners": [
+  {
+   "id": "tmpl-pullback-v3-hk",
+   "name": "Karios Pullback v3 (HK)",
+   "enabled": true,
+   "updatedAt": "2026-08-01T16:00:40.971791+00:00",
+   "capturedAt": "2026-08-07T11:49:19.931666+00:00",
+   "rowCount": 30,
+   "filtersCount": 8
+  },
+  {
+   "id": "tmpl-pullback-v3-cn",
+   "name": "Karios Pullback v3 (CN)",
+   "enabled": true,
+   "updatedAt": "2026-08-01T16:00:40.927637+00:00",
+   "capturedAt": "2026-08-07T11:49:20.048347+00:00",
+   "rowCount": 81,
+   "filtersCount": 8
+  }
+ ],
+ "news": {
+  "hours": 24,
+  "total": 313,
+  "items": [
+   {
+    "id": "00f528249f0c6f24",
+    "sourceId": "wallstreetcn-global",
+    "title": "伊官员：有证据显示美军使用磷弹轰炸伊朗多地",
+    "link": "https://wallstreetcn.com/livenews/3147008",
+    "publishedAt": "2026-08-08T04:17:48+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "a3ab57b67e8945d4",
+    "sourceId": "wallstreetcn-global",
+    "title": "水利部将针对浙江省的洪水防御应急响应提升至Ⅲ级",
+    "link": "https://wallstreetcn.com/livenews/3147007",
+    "publishedAt": "2026-08-08T04:16:09+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "75805fa6830795d1",
+    "sourceId": "wallstreetcn-global",
+    "title": "伯克希尔哈撒韦：截至6月30日，股权投资总公允价值中有66%集中在美国运通、苹果、美国银行、阿尔phabet（谷歌母公司）和可口可乐这五家企业。 2025年全年末持有...",
+    "link": "https://wallstreetcn.com/livenews/3147006",
+    "publishedAt": "2026-08-08T04:15:06+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "ed7625f1ce95ac86",
+    "sourceId": "wallstreetcn-global",
+    "title": "楼继伟理事长出席资产盘活课题研讨会",
+    "link": "https://wallstreetcn.com/livenews/3147005",
+    "publishedAt": "2026-08-08T04:09:26+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "f6f89eeb88597d05",
+    "sourceId": "wallstreetcn-global",
+    "title": "伯克希尔哈撒韦：至6月30日，保险浮存金大约为1775亿美元。",
+    "link": "https://wallstreetcn.com/livenews/3147004",
+    "publishedAt": "2026-08-08T04:07:44+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "b81d631316c11ad5",
+    "sourceId": "wallstreetcn-global",
+    "title": "伯克希尔：二季度回购股票45亿美元",
+    "link": "https://wallstreetcn.com/livenews/3147003",
+    "publishedAt": "2026-08-08T04:06:40+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "47af09630a1cc3da",
+    "sourceId": "wallstreetcn-global",
+    "title": "伯克希尔哈撒韦：二季度BNSF运营利润15.6亿美元。",
+    "link": "https://wallstreetcn.com/livenews/3147002",
+    "publishedAt": "2026-08-08T04:05:36+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "9e9aa95d4038584e",
+    "sourceId": "wallstreetcn-global",
+    "title": "伯克希尔哈撒韦二季度运营利润129.83亿美元，同比增长16%。 二季度归属于股东的净利润256.67亿美元，上年同期123.70亿美元。 二季度投资收益109亿美元。 二季度A...",
+    "link": "https://wallstreetcn.com/livenews/3147000",
+    "publishedAt": "2026-08-08T04:00:34+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "3d444c1e65d958d8",
+    "sourceId": "wallstreetcn-global",
+    "title": "伊朗接近与阿曼达成管理海峡协议",
+    "link": "https://wallstreetcn.com/livenews/3146999",
+    "publishedAt": "2026-08-08T03:58:02+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "392b92e48b32d3d1",
+    "sourceId": "cls-depth",
+    "title": "永和豆浆创始人林炳生逝世",
+    "link": "https://www.cls.cn/detail/2449141",
+    "publishedAt": "2026-08-08T03:56:18+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "b3964a7618aa2e8a",
+    "sourceId": "wallstreetcn-global",
+    "title": "阿维塔王辉：华为乾崑智驾里程突破137亿公里",
+    "link": "https://wallstreetcn.com/livenews/3146998",
+    "publishedAt": "2026-08-08T03:55:10+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "df36227f097af314",
+    "sourceId": "cls-depth",
+    "title": "AI硬件涨价潮传导3C租赁：需求翻倍，租赁商拆售显卡内存",
+    "link": "https://www.cls.cn/detail/2449139",
+    "publishedAt": "2026-08-08T03:54:27+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "90b94ff506fbc944",
+    "sourceId": "wallstreetcn-global",
+    "title": "武契奇会见泽连斯基，就经贸等领域合作交换意见",
+    "link": "https://wallstreetcn.com/livenews/3146997",
+    "publishedAt": "2026-08-08T03:40:44+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "bb49ec947207834d",
+    "sourceId": "wallstreetcn-global",
+    "title": "伊朗外长：伊朗与阿曼就霍尔木兹海峡管理达成协议已非常接近",
+    "link": "https://wallstreetcn.com/livenews/3146996",
+    "publishedAt": "2026-08-08T03:35:22+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "6f111af43f7a032d",
+    "sourceId": "cls-depth",
+    "title": "“罕见视频首次发布”，伊方发布伊朗最高领袖穆杰塔巴视频，未说明拍摄日期",
+    "link": "https://www.cls.cn/detail/2449138",
+    "publishedAt": "2026-08-08T03:35:02+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "8e5b3557e5453fb3",
+    "sourceId": "cls-depth",
+    "title": "一周调研速递：多家公司产能、订单、技术迎来突破，涉及PCB、MLCC、算力、CPO等行业",
+    "link": "https://www.cls.cn/detail/2449118",
+    "publishedAt": "2026-08-08T03:34:58+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "63abda12ba7262c1",
+    "sourceId": "wallstreetcn-global",
+    "title": "匈牙利执政党提名前最高法院院长为总统候选人",
+    "link": "https://wallstreetcn.com/livenews/3146995",
+    "publishedAt": "2026-08-08T03:32:58+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "fb21fc38ffc2171f",
+    "sourceId": "jin10-flash",
+    "title": "美联储政策天平再度倾斜，CPI能否继续按住9月加息预期？投资资金疯狂进场，黄金上涨逻辑或已打通！财报季临近尾声，美股最糟糕的阶段还没过去？点击查看...",
+    "link": "https://xnews.jin10.com/details/226940",
+    "publishedAt": "2026-08-08T03:18:03+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "9eb6f7f2a8f3f9da",
+    "sourceId": "wallstreetcn-global",
+    "title": "伊朗媒体发布伊朗最高领袖视频",
+    "link": "https://wallstreetcn.com/livenews/3146994",
+    "publishedAt": "2026-08-08T02:51:27+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "1d8e7ad8b0be26aa",
+    "sourceId": "wallstreetcn-global",
+    "title": "2026年度总票房破240亿",
+    "link": "https://wallstreetcn.com/livenews/3146993",
+    "publishedAt": "2026-08-08T02:51:04+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "7bf002908d41035e",
+    "sourceId": "cls-depth",
+    "title": "又一电影宣布撤档",
+    "link": "https://www.cls.cn/detail/2449133",
+    "publishedAt": "2026-08-08T02:46:38+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "695423dd92d488df",
+    "sourceId": "cls-depth",
+    "title": "宇树科技10日开启IPO申购 具身智能赛道迎来IPO密集期",
+    "link": "https://www.cls.cn/detail/2449119",
+    "publishedAt": "2026-08-08T02:36:05+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "b60a300ea8263f1e",
+    "sourceId": "wallstreetcn-global",
+    "title": "阿联酋称该国一船只在霍尔木兹海峡遭袭",
+    "link": "https://wallstreetcn.com/livenews/3146992",
+    "publishedAt": "2026-08-08T02:26:13+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "86c9529be560e4d7",
+    "sourceId": "wallstreetcn-global",
+    "title": "伊朗革命卫队：重开海峡需美国接受伊朗条件",
+    "link": "https://wallstreetcn.com/livenews/3146991",
+    "publishedAt": "2026-08-08T02:25:05+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "d13d5f48a96b83b3",
+    "sourceId": "wallstreetcn-global",
+    "title": "霍尔木兹海峡关闭致伊拉克石油出口骤降75%",
+    "link": "https://wallstreetcn.com/livenews/3146990",
+    "publishedAt": "2026-08-08T02:13:38+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "dada8341185e278d",
+    "sourceId": "wallstreetcn-global",
+    "title": "伊拉克石油部长：伊拉克正与伊朗谈判以允许伊拉克石油出口，但相关安排尚未生效。 新建巴士拉-菲什哈布尔输油管道预计耗资不超过150亿美元。 该管道将包括从哈迪...",
+    "link": "https://wallstreetcn.com/livenews/3146989",
+    "publishedAt": "2026-08-08T01:48:04+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "f502200ad59f188b",
+    "sourceId": "wallstreetcn-global",
+    "title": "部分社交媒体因休达危机被欧盟委员会约谈",
+    "link": "https://wallstreetcn.com/livenews/3146988",
+    "publishedAt": "2026-08-08T01:17:24+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "050adca16ba39713",
+    "sourceId": "cls-depth",
+    "title": "潮起之时 “药”守初心：解码国内药企崛起的时代答案",
+    "link": "https://www.cls.cn/detail/2449111",
+    "publishedAt": "2026-08-08T01:10:00+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "835478cefe85ef5b",
+    "sourceId": "wallstreetcn-global",
+    "title": "苹果官网显示，Apple智能可配合阿里巴巴千问模型工作。",
+    "link": "https://wallstreetcn.com/livenews/3146987",
+    "publishedAt": "2026-08-08T01:05:00+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "7fe4abb1d3a6f70d",
+    "sourceId": "wallstreetcn-global",
+    "title": "江波龙：完成37亿元定增事项 发行价格为560元/股",
+    "link": "https://wallstreetcn.com/livenews/3146986",
+    "publishedAt": "2026-08-08T01:01:16+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "8148fa5ba322da5b",
+    "sourceId": "cls-depth",
+    "title": "A股存储巨头，定增大幅溢价",
+    "link": "https://www.cls.cn/detail/2449113",
+    "publishedAt": "2026-08-08T00:59:41+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "18f5644e837ac08c",
+    "sourceId": "jin10-flash",
+    "title": "黄金强势行情能否延续？此处看涨期权出现减持，多空资金重调布局。金价后续能否进一步打开上涨空间，或取决于这一关键区域的资金博弈...",
+    "link": "https://xnews.jin10.com/details/226941",
+    "publishedAt": "2026-08-08T00:51:49+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "2f3b10b3a2ee7d71",
+    "sourceId": "wallstreetcn-global",
+    "title": "印尼一文化节现场发生枪击事件",
+    "link": "https://wallstreetcn.com/livenews/3146985",
+    "publishedAt": "2026-08-08T00:41:09+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "ca521ae842fe01d1",
+    "sourceId": "wallstreetcn-global",
+    "title": "美国参议院确认托德布兰奇将担任美国司法部长。",
+    "link": "https://wallstreetcn.com/livenews/3146984",
+    "publishedAt": "2026-08-08T00:40:18+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "76b38894357f0ffe",
+    "sourceId": "wallstreetcn-global",
+    "title": "东方电气集团党组：坚决拥护党中央对宋致远进行纪律审查和监察调查的决定",
+    "link": "https://wallstreetcn.com/livenews/3146983",
+    "publishedAt": "2026-08-08T00:33:37+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "cdcd570547635ede",
+    "sourceId": "wallstreetcn-global",
+    "title": "全国数标委明确：所谓“数据国家标准编制费”系冒名收取",
+    "link": "https://wallstreetcn.com/livenews/3146982",
+    "publishedAt": "2026-08-08T00:33:00+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "5ef0f6bdbebbba27",
+    "sourceId": "wallstreetcn-global",
+    "title": "美国财长贝森特：霍尔木兹海峡将“变得无关紧要”",
+    "link": "https://wallstreetcn.com/livenews/3146981",
+    "publishedAt": "2026-08-08T00:19:11+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "5fe4f74b2d0025ac",
+    "sourceId": "cls-depth",
+    "title": "AI模型安全事件不断 网络安全行业的技术范式将迎来变革",
+    "link": "https://www.cls.cn/detail/2449105",
+    "publishedAt": "2026-08-08T00:07:12+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "42eb05c6c14fdcbc",
+    "sourceId": "wallstreetcn-global",
+    "title": "伊朗总统称敌人未能将伊朗推入崩溃",
+    "link": "https://wallstreetcn.com/livenews/3146979",
+    "publishedAt": "2026-08-08T00:07:08+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "701e5220c6f53404",
+    "sourceId": "cls-depth",
+    "title": "贝森特：在未来两年内，霍尔木兹海峡将“变得无关紧要”，经由该地运输的能源将有超过50%或70%改由地下管道输送",
+    "link": "https://www.cls.cn/detail/2449104",
+    "publishedAt": "2026-08-08T00:07:07+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "e0b6cfe9c0ec65b2",
+    "sourceId": "wallstreetcn-global",
+    "title": "美国会参议院通过临时拨款法案",
+    "link": "https://wallstreetcn.com/livenews/3146978",
+    "publishedAt": "2026-08-07T23:59:50+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "40df12455e384904",
+    "sourceId": "wallstreetcn-global",
+    "title": "台风“白海豚”外围环流风雨已至 上海浙江局地将有特大暴雨",
+    "link": "https://wallstreetcn.com/livenews/3146977",
+    "publishedAt": "2026-08-07T23:46:14+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "2270d673859dbf7f",
+    "sourceId": "wallstreetcn-global",
+    "title": "受台风“白海豚”影响 上海轮渡全线停航",
+    "link": "https://wallstreetcn.com/livenews/3146976",
+    "publishedAt": "2026-08-07T23:39:58+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "17ff7af89f760403",
+    "sourceId": "wallstreetcn-global",
+    "title": "阳光电源：FCC政策主要限制新产品认证 公司目前在美销售的光伏逆变器、储能系统不受影响",
+    "link": "https://wallstreetcn.com/livenews/3146975",
+    "publishedAt": "2026-08-07T23:12:26+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "ffd9c0882dfa06e7",
+    "sourceId": "wallstreetcn-global",
+    "title": "消息人士：美军高层寻找摆脱伊朗战事的途径",
+    "link": "https://wallstreetcn.com/livenews/3146980",
+    "publishedAt": "2026-08-07T23:03:41+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "c2e705f6cb838e64",
+    "sourceId": "cls-depth",
+    "title": "黄金走势即将逆袭？华尔街投行：现在是买入的绝佳时机",
+    "link": "https://www.cls.cn/detail/2449090",
+    "publishedAt": "2026-08-07T22:58:44+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "967f5d4543383f9e",
+    "sourceId": "wallstreetcn-global",
+    "title": "利比亚扎维亚炼油厂：周六无人机击中了一个未经处理的石脑油储罐，造成泄漏，目前情况已得到控制。",
+    "link": "https://wallstreetcn.com/livenews/3146974",
+    "publishedAt": "2026-08-07T22:58:30+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "0b8988bcab73550a",
+    "sourceId": "wallstreetcn-global",
+    "title": "湖北首家宇树科技产业学院成立",
+    "link": "https://wallstreetcn.com/livenews/3146971",
+    "publishedAt": "2026-08-07T22:48:27+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "5a13b412cd8e52ab",
+    "sourceId": "wallstreetcn-global",
+    "title": "乌称基辅等地遭袭 已有多人死伤",
+    "link": "https://wallstreetcn.com/livenews/3146970",
+    "publishedAt": "2026-08-07T22:34:37+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   },
+   {
+    "id": "aa1a32bb5b11f751",
+    "sourceId": "wallstreetcn-global",
+    "title": "今年上半年人形机器人领域新设企业11.6万户",
+    "link": "https://wallstreetcn.com/livenews/3146969",
+    "publishedAt": "2026-08-07T22:20:57+00:00",
+    "importance": null,
+    "relevanceScore": null,
+    "actionability": null,
+    "tickers": [],
+    "aiSummary": null
+   }
+  ]
+ },
+ "marketEnvironmentZh": "市场环境摘要：上证指数涨1.02%，收报3940.04（黄灯，建议仓位30%）；创业板指涨1.35%，收报3563.12（黄灯，建议仓位30%）；中证500涨1.93%，收报7980.12（黄灯，建议仓位30%）；恒生指数跌0.72%，收报25668.03（绿灯，建议仓位50%-60%）；恒生科技指数涨0.53%，收报4829.22（绿灯，建议仓位50%-60%）；纳指涨1.30%，收报26690.62，截至2026-08-07；Dow Jones Industrial涨0.28%，收报54036.93，截至2026-08-07；S&P 500涨0.62%，收报7757.64，截至2026-08-07；离岸人民币跌0.01%，报6.7475，截至2026-08-06；富时A50涨1.10%，收报14843.93，截至2026-08-04；INE原油主力涨2.53%，收报509.90，截至2026-08-07；沪金主力涨1.04%，收报947.06，截至2026-08-07；沪铜主力涨0.86%，收报107360，截至2026-08-07；300ETF认沽IV涨3.47%，收报19.38，截至2026-08-06。",
+ "macroSnapshot": {
+  "cnIndexSignals": [
+   {
+    "tsCode": "000001.SH",
+    "name": "上证指数",
+    "featured": true,
+    "asOfDate": "2026-08-07",
+    "close": 3940.0371,
+    "ma5": 3870.1532999999995,
+    "ma20": 3859.47365,
+    "ma60": 4002.0606350000003,
+    "ma20Prev": 3862.279875,
+    "ema10": 3869.2978466477443,
+    "signal": "yellow",
+    "positionRange": "30%",
+    "rules": [
+     "MA20 slope down"
+    ],
+    "realtime": false,
+    "tradeTime": null,
+    "source": "db.index_daily",
+    "pctChg": 1.0174670631676013,
+    "volRatio": 1.0051242955275894,
+    "estimatedVol": null,
+    "totalTurnover": 0.0,
+    "maxIndustryInflow": 0.0
+   },
+   {
+    "tsCode": "399006.SZ",
+    "name": "创业板指",
+    "featured": false,
+    "asOfDate": "2026-08-07",
+    "close": 3563.1165,
+    "ma5": 3481.06792,
+    "ma20": 3527.153615,
+    "ma60": 3867.576321666667,
+    "ma20Prev": 3541.13436,
+    "ema10": 3485.7980086389894,
+    "signal": "yellow",
+    "positionRange": "30%",
+    "rules": [
+     "MA5<MA20",
+     "MACD hist turning up override"
+    ],
+    "realtime": false,
+    "tradeTime": null,
+    "source": "db.index_daily",
+    "pctChg": 1.3527345840149574,
+    "volRatio": 1.0787035565058247,
+    "estimatedVol": null,
+    "totalTurnover": 0.0,
+    "maxIndustryInflow": 0.0
+   },
+   {
+    "tsCode": "000905.SH",
+    "name": "中证500",
+    "featured": false,
+    "asOfDate": "2026-08-07",
+    "close": 7980.1245,
+    "ma5": 7728.14038,
+    "ma20": 7719.72413,
+    "ma60": 8262.964391666666,
+    "ma20Prev": 7745.91643,
+    "ema10": 7719.184753867635,
+    "signal": "yellow",
+    "positionRange": "30%",
+    "rules": [
+     "MA20 slope down",
+     "Vol<MA5Vol*0.8(est)"
+    ],
+    "realtime": false,
+    "tradeTime": null,
+    "source": "db.index_daily",
+    "pctChg": 1.9256104089714077,
+    "volRatio": 0.9875281053128664,
+    "estimatedVol": null,
+    "totalTurnover": 0.0,
+    "maxIndustryInflow": 0.0
+   },
+   {
+    "tsCode": "HSI",
+    "name": "恒生指数",
+    "featured": false,
+    "asOfDate": "2026-08-07",
+    "close": 25668.029296875,
+    "ma5": 25854.731859375002,
+    "ma20": 25097.66696484375,
+    "ma60": 24856.948654947915,
+    "ma20Prev": 25024.2385,
+    "signal": "green",
+    "positionRange": "50%-60%",
+    "rules": [
+     "price>MA20 && MA5>MA20 && MA20 up"
+    ],
+    "realtime": false,
+    "tradeTime": null,
+    "source": "yfinance.on_demand",
+    "pctChg": -0.715163715065835,
+    "volRatio": null,
+    "estimatedVol": null
+   },
+   {
+    "tsCode": "HSTECH",
+    "name": "恒生科技指数",
+    "featured": false,
+    "asOfDate": "2026-07-31",
+    "close": 4829.22022,
+    "ma5": 4786.075978,
+    "ma20": 4714.0040045000005,
+    "ma60": 4765.080330833333,
+    "ma20Prev": 4697.4929935,
+    "signal": "green",
+    "positionRange": "50%-60%",
+    "rules": [
+     "price>MA20 && MA5>MA20 && MA20 up"
+    ],
+    "realtime": false,
+    "tradeTime": null,
+    "source": "db.macro_daily",
+    "pctChg": 0.5297963868803242,
+    "volRatio": null,
+    "estimatedVol": null
+   }
+  ],
+  "macro": [
+   {
+    "seriesId": "IXIC",
+    "name": "Nasdaq Composite",
+    "category": "us_tech",
+    "why": "Overnight US tech drives CN tech sentiment; watch before the A-share open.",
+    "asOfDate": "2026-08-07",
+    "close": 26690.619140625,
+    "pctChg": 1.2990169643423022,
+    "ma5": 26380.259765625,
+    "ma20": 25672.5279296875,
+    "source": "yfinance.on_demand",
+    "underlyingTsCode": "IXIC",
+    "realtime": false,
+    "tradeTime": null,
+    "quotePrice": null,
+    "quotePctChg": null,
+    "dataSource": "on_demand"
+   },
+   {
+    "seriesId": "DJI",
+    "name": "Dow Jones Industrial",
+    "category": "us_equity",
+    "why": "Dow Jones reflects broad US market health; impacts global sentiment.",
+    "asOfDate": "2026-08-07",
+    "close": 54036.9296875,
+    "pctChg": 0.2817627147346068,
+    "ma5": 53907.08828125,
+    "ma20": 52654.31953125,
+    "source": "yfinance.on_demand",
+    "underlyingTsCode": "DJI",
+    "realtime": false,
+    "tradeTime": null,
+    "quotePrice": null,
+    "quotePctChg": null,
+    "dataSource": "on_demand"
+   },
+   {
+    "seriesId": "SPX",
+    "name": "S&P 500",
+    "category": "us_equity",
+    "why": "S&P 500 is the benchmark for US large-cap; key for global risk appetite.",
+    "asOfDate": "2026-08-07",
+    "close": 7757.64013671875,
+    "pctChg": 0.6184231308959001,
+    "ma5": 7705.633984375,
+    "ma20": 7525.406958007812,
+    "source": "yfinance.on_demand",
+    "underlyingTsCode": "SPX",
+    "realtime": false,
+    "tradeTime": null,
+    "quotePrice": null,
+    "quotePctChg": null,
+    "dataSource": "on_demand"
+   },
+   {
+    "seriesId": "USDCNH.FXCM",
+    "name": "USD/CNH",
+    "category": "fx",
+    "why": "Offshore CNY is a key valve for northbound / foreign flows into A-shares.",
+    "asOfDate": "2026-08-06",
+    "close": 6.74751,
+    "pctChg": -0.007113229272710717,
+    "ma5": 6.749654,
+    "ma20": 6.761884499999999,
+    "source": "tushare.fx_daily.on_demand",
+    "underlyingTsCode": "USDCNH.FXCM",
+    "realtime": false,
+    "tradeTime": null,
+    "quotePrice": null,
+    "quotePctChg": null,
+    "dataSource": "on_demand"
+   },
+   {
+    "seriesId": "A50",
+    "name": "FTSE China A50",
+    "category": "a50",
+    "why": "Overnight A50 futures are a rough 'night session' for A-share positioning.",
+    "asOfDate": "2026-08-04",
+    "close": 14843.93,
+    "pctChg": 1.0986,
+    "ma5": 14813.346,
+    "ma20": 15070.1095,
+    "source": "index_global",
+    "underlyingTsCode": "XIN9",
+    "realtime": false,
+    "tradeTime": null,
+    "quotePrice": null,
+    "quotePctChg": null
+   },
+   {
+    "seriesId": "COMM_ENERGY",
+    "name": "Energy (INE SC main)",
+    "category": "commodity",
+    "why": "Oil moves often lead cyclical / energy sector rotation in A-shares.",
+    "asOfDate": "2026-08-07",
+    "close": 509.9,
+    "pctChg": 2.533681882163677,
+    "ma5": 510.68,
+    "ma20": 528.125,
+    "source": "fut_daily",
+    "underlyingTsCode": "SCTAS2612.INE",
+    "realtime": false,
+    "tradeTime": null,
+    "quotePrice": null,
+    "quotePctChg": null
+   },
+   {
+    "seriesId": "COMM_GOLD",
+    "name": "Gold (SHFE AU main)",
+    "category": "commodity",
+    "why": "Gold / metals strength often precedes mining and materials themes.",
+    "asOfDate": "2026-08-07",
+    "close": 947.06,
+    "pctChg": 1.0412888082790985,
+    "ma5": 920.2719999999999,
+    "ma20": 902.868,
+    "source": "fut_daily",
+    "underlyingTsCode": "AU2708.SHF",
+    "realtime": false,
+    "tradeTime": null,
+    "quotePrice": null,
+    "quotePctChg": null
+   },
+   {
+    "seriesId": "COMM_COPPER",
+    "name": "Copper (SHFE CU main)",
+    "category": "commodity",
+    "why": "Copper is a cyclical macro bellwether; relevant for basic materials.",
+    "asOfDate": "2026-08-07",
+    "close": 107360.0,
+    "pctChg": 0.864336715520481,
+    "ma5": 106140.0,
+    "ma20": 104413.0,
+    "source": "fut_daily",
+    "underlyingTsCode": "CU2707.SHF",
+    "realtime": false,
+    "tradeTime": null,
+    "quotePrice": null,
+    "quotePctChg": null
+   },
+   {
+    "seriesId": "510300_PUT_IV",
+    "name": "300ETF Put IV",
+    "category": "volatility",
+    "why": "A-share fear gauge; rising put IV signals panic.",
+    "asOfDate": "2026-08-06",
+    "close": 19.38,
+    "pctChg": 3.47,
+    "ma5": 20.924,
+    "ma20": 23.091,
+    "source": "eastmoney",
+    "underlyingTsCode": "510300.SH",
+    "realtime": false,
+    "tradeTime": null,
+    "quotePrice": null,
+    "quotePctChg": null,
+    "signal": "green",
+    "signalLabel": "Normal",
+    "warning": "put_iv_live_fetch_failed_using_db",
+    "diagnostics": {
+     "eastmoneyRows": 0,
+     "eastmoneyPutRows": 0,
+     "eastmoneySelected": false,
+     "akshareAttempted": false,
+     "akshareSelected": false,
+     "akshareSkippedReason": "akshare_disabled_on_darwin",
+     "error": "no_510300_put_iv_candidate",
+     "eastmoneyError": "requests:('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')); curl:curl: (52) Empty reply from server; urllib:Remote end closed connection without response"
+    },
+    "unit": "%"
+   }
+  ],
+  "etfFundFlow": {
+   "asOfDate": "2026-08-07",
+   "shareLag": false,
+   "intradaySafe": true,
+   "items": [
+    {
+     "name": "沪深300 ETF",
+     "symbol": "510300",
+     "tsCode": "510300.SH",
+     "category": "broad",
+     "netFlow1d": 1107129920.0,
+     "netFlow1dLagged": null,
+     "netFlow3d": 2355732720.0,
+     "flowAsOfDate": null,
+     "source": "eastmoney.realtime_flow",
+     "live": true,
+     "flowStatus": "Live",
+     "flowProvider": "eastmoney",
+     "tradeTime": "2026-08-07T08:11:52+00:00",
+     "mainNetInflow": 1107129920.0,
+     "superLargeNetInflow": 1626432832.0,
+     "largeNetInflow": -519302912.0,
+     "mediumNetInflow": -667993760.0,
+     "smallNetInflow": -439136154.0,
+     "signal": "National Team Buy",
+     "signalDisplay": "🛡️ National Team Buy"
+    },
+    {
+     "name": "上证50 ETF",
+     "symbol": "510050",
+     "tsCode": "510050.SH",
+     "category": "broad",
+     "netFlow1d": 227679600.0,
+     "netFlow1dLagged": null,
+     "netFlow3d": 616879840.0,
+     "flowAsOfDate": null,
+     "source": "eastmoney.realtime_flow",
+     "live": true,
+     "flowStatus": "Live",
+     "flowProvider": "eastmoney",
+     "tradeTime": "2026-08-07T08:11:37+00:00",
+     "mainNetInflow": 227679600.0,
+     "superLargeNetInflow": 594589248.0,
+     "largeNetInflow": -366909648.0,
+     "mediumNetInflow": -92079494.0,
+     "smallNetInflow": -135600103.0,
+     "signal": "National Team Buy",
+     "signalDisplay": "🛡️ National Team Buy"
+    },
+    {
+     "name": "中证500 ETF",
+     "symbol": "510500",
+     "tsCode": "510500.SH",
+     "category": "broad",
+     "netFlow1d": 363918288.0,
+     "netFlow1dLagged": null,
+     "netFlow3d": 908693056.0,
+     "flowAsOfDate": null,
+     "source": "eastmoney.realtime_flow",
+     "live": true,
+     "flowStatus": "Live",
+     "flowProvider": "eastmoney",
+     "tradeTime": "2026-08-07T08:11:39+00:00",
+     "mainNetInflow": 363918288.0,
+     "superLargeNetInflow": 543951152.0,
+     "largeNetInflow": -180032864.0,
+     "mediumNetInflow": -232905040.0,
+     "smallNetInflow": -131013237.0,
+     "signal": "National Team Buy",
+     "signalDisplay": "🛡️ National Team Buy"
+    },
+    {
+     "name": "半导体 ETF",
+     "symbol": "512480",
+     "tsCode": "512480.SH",
+     "category": "sector",
+     "netFlow1d": 143439472.0,
+     "netFlow1dLagged": null,
+     "netFlow3d": 492247360.0,
+     "flowAsOfDate": null,
+     "source": "eastmoney.realtime_flow",
+     "live": true,
+     "flowStatus": "Live",
+     "flowProvider": "eastmoney",
+     "tradeTime": "2026-08-07T08:11:43+00:00",
+     "mainNetInflow": 143439472.0,
+     "superLargeNetInflow": 155098720.0,
+     "largeNetInflow": -11659248.0,
+     "mediumNetInflow": -66992478.0,
+     "smallNetInflow": -76446990.0,
+     "signal": "Neutral",
+     "signalDisplay": "➖ Neutral"
+    },
+    {
+     "name": "通信 ETF",
+     "symbol": "515880",
+     "tsCode": "515880.SH",
+     "category": "sector",
+     "netFlow1d": -29470256.0,
+     "netFlow1dLagged": null,
+     "netFlow3d": -42593536.0,
+     "flowAsOfDate": null,
+     "source": "eastmoney.realtime_flow",
+     "live": true,
+     "flowStatus": "Live",
+     "flowProvider": "eastmoney",
+     "tradeTime": "2026-08-07T08:11:47+00:00",
+     "mainNetInflow": -29470256.0,
+     "superLargeNetInflow": 70271968.0,
+     "largeNetInflow": -99742224.0,
+     "mediumNetInflow": -44055120.0,
+     "smallNetInflow": 73525360.0,
+     "signal": "Inst Outflow",
+     "signalDisplay": "⚠️ Inst Outflow"
+    },
+    {
+     "name": "人工智能 ETF",
+     "symbol": "159819",
+     "tsCode": "159819.SZ",
+     "category": "sector",
+     "netFlow1d": 38419118.0,
+     "netFlow1dLagged": null,
+     "netFlow3d": 9495070.0,
+     "flowAsOfDate": null,
+     "source": "eastmoney.realtime_flow",
+     "live": true,
+     "flowStatus": "Live",
+     "flowProvider": "eastmoney",
+     "tradeTime": "2026-08-07T07:34:54+00:00",
+     "mainNetInflow": 38419118.0,
+     "superLargeNetInflow": 35263192.0,
+     "largeNetInflow": 3155926.0,
+     "mediumNetInflow": -17532248.0,
+     "smallNetInflow": -20886869.0,
+     "signal": "Neutral",
+     "signalDisplay": "➖ Neutral"
+    }
+   ]
+  },
+  "etfFlowSignal": {
+   "asOfDate": "2026-08-07",
+   "verdict": "neutral",
+   "broadDirection": "buy",
+   "sectorDirection": "outflow",
+   "confirmCount": 3,
+   "contradictCount": 1,
+   "intradaySafe": true,
+   "shareLag": false,
+   "incomplete": false
+  }
+ },
+ "meta": {
+  "inSyncWindow": false,
+  "useRealtimeIndex": false,
+  "marketStatus": {
+   "phase": "Weekend",
+   "isTradingDay": false,
+   "isPreMarket": false,
+   "isMarketOpen": false,
+   "asOfTime": "20:35"
+  }
+ }
+}

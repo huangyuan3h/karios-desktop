@@ -99,3 +99,28 @@ describe('filterLatestActionCards (delta logging)', () => {
     expect(filterLatestActionCards(cards, changes)).toEqual([]);
   });
 });
+
+describe('buildExecutionSnapshotPayload malformed-symbol defense', () => {
+  it('skips items with malformed watchlist symbols', () => {
+    const payload = buildExecutionSnapshotPayload({
+      items: [
+        { symbol: 'CN:600000', addedAt: '2026-01-01', positionPct: 5, costPrice: 10 },
+        // Malformed — must never enter the journal (CN:99{uuid} test rows).
+        { symbol: 'CN:9901ae04', addedAt: '2026-01-01', positionPct: 5, costPrice: 10 },
+        { symbol: 'HK:00700', addedAt: '2026-01-01', positionPct: 5, costPrice: 100 },
+      ],
+      trend: {},
+      quotes: {},
+      gate,
+      mainlineAllow: allowSet([]),
+      tradingTime: false,
+      todaySh: '2026-07-18',
+      source: 'manual',
+    });
+    expect(payload).not.toBeNull();
+    const symbols = payload!.cards.map((c) => c.symbol);
+    expect(symbols).toContain('CN:600000');
+    expect(symbols).toContain('HK:00700');
+    expect(symbols).not.toContain('CN:9901ae04');
+  });
+});

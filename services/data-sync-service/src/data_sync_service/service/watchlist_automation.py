@@ -6,6 +6,7 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
+from data_sync_service.db import get_connection
 from data_sync_service.db.industry_fund_flow import (
     get_dates_upto,
     get_sum_by_industry_for_dates,
@@ -33,6 +34,11 @@ from data_sync_service.service.close_sync import _cn_today
 from data_sync_service.service.dashboard import _sync_screeners_step
 from data_sync_service.service.industry_fund_flow import sync_cn_industry_fund_flow
 from data_sync_service.service.industry_taxonomy import is_sw_l1_industry_name
+from data_sync_service.service.research import (
+    RESEARCH_MAX_CANDIDATES,
+    RESEARCH_SCORE_MIN,
+    build_research_catalyst_payload,
+)
 from data_sync_service.service.trade_calendar_utils import resolve_effective_as_of, trade_dates_upto
 from data_sync_service.service.trendok import compute_trendok_for_symbols
 
@@ -86,7 +92,9 @@ def get_top_5d_industry_names(as_of_date: str | None = None, *, top_n: int = 5) 
         return set()
     n = max(1, int(top_n))
     sums = get_sum_by_industry_for_dates(dates_5)
-    return {str(x.get("industry_name") or "") for x in sums[:n] if x.get("industry_name")}
+    # strip() mirrors the ordered variant below — unstripped names would
+    # silently break the exact-match GC comparison in should_remove_symbol.
+    return {str(x.get("industry_name") or "").strip() for x in sums[:n] if x.get("industry_name")}
 
 
 def get_top_5d_industry_names_ordered(as_of_date: str | None = None, *, top_n: int = 5) -> list[str]:
@@ -180,7 +188,9 @@ def is_defense_sector(industry_name: str | None) -> bool:
 
 
 def _cn_symbol_to_ts_code(symbol: str) -> str | None:
-    s = _normalize_cn_watchlist_symbol(symbol)
+    from data_sync_service.service.market_quotes import normalize_market_symbol
+
+    s = _normalize_cn_watchlist_symbol(normalize_market_symbol(symbol))
     if s.startswith("CN:"):
         ticker = s.split(":", 1)[1].strip()
         if len(ticker) != 6 or not ticker.isdigit():
@@ -200,6 +210,113 @@ def _cn_symbol_to_ts_code(symbol: str) -> str | None:
         suffix = "SH" if ticker[0] in ("5", "6", "9") else "SZ"
         return f"{ticker}.{suffix}"
     return None
+
+
+# 52W pullback window constants (mirror FE importFromScreener thresholds).
+PULLBACK_WINDOW_MIN = -0.15
+PULLBACK_WINDOW_MAX = -0.05
+# Bars needed for a meaningful 52W window; fewer → candidate marked missing.
+PULLBACK_MIN_BARS = 60
+PULLBACK_LOOKBACK_BARS = 300
+
+
+def filter_pullback_window(
+    symbols: list[str],
+    *,
+    as_of: str | None = None,
+    min_ratio: float = PULLBACK_WINDOW_MIN,
+    max_ratio: float = PULLBACK_WINDOW_MAX,
+) -> dict[str, Any]:
+    """
+    Screen symbols by 52-week pullback using DB K-lines (daily table).
+
+    Why not the TV snapshot column? ``High.Interval52Week`` from the Scanner API
+    returns empty for virtually every row (observed 2026-08-02+), which silently
+    zeroed the funnel's pullback gate and forced the fallback universe path.
+
+    Window: latest close vs max(high) over the last ``PULLBACK_LOOKBACK_BARS``
+    bars (clamped to the trailing 52 trading weeks). Candidate passes when
+    ``min_ratio <= (price - high52w) / high52w <= max_ratio``.
+
+    Returns:
+      {"ok", "results": [{symbol, tsCode, price, high52w, pullbackRatio,
+                          inWindow, windowBars, missing}], "asOf", "unparsed"}
+    """
+    from data_sync_service.db.daily import fetch_last_ohlcv_batch
+    from data_sync_service.service.market_quotes import symbol_to_ts_code
+
+    results: list[dict[str, Any]] = []
+    ts_by_symbol: dict[str, str] = {}
+    unparsed: list[str] = []
+    for sym in symbols:
+        s = str(sym or "").strip()
+        if not s:
+            continue
+        ts = symbol_to_ts_code(s)
+        if not ts:
+            unparsed.append(s)
+            continue
+        ts_by_symbol[s] = ts
+
+    if ts_by_symbol:
+        bars = fetch_last_ohlcv_batch(list(dict.fromkeys(ts_by_symbol.values())), days=PULLBACK_LOOKBACK_BARS)
+        as_of_date = max(
+            (b[0] for rows in bars.values() for b in rows),
+            default=as_of or "",
+        )
+        for sym, ts in ts_by_symbol.items():
+            rows = bars.get(ts) or []
+            # Tuples are (date, open, high, low, close, volume).
+            parsed_highs = []
+            parsed_closes = []
+            for b in rows:
+                try:
+                    parsed_highs.append(float(b[2] or ""))
+                except ValueError:
+                    parsed_highs.append(None)
+                try:
+                    parsed_closes.append(float(b[4] or ""))
+                except ValueError:
+                    parsed_closes.append(None)
+            valid = [h for h in parsed_highs if h is not None and h > 0]
+            latest_close = next((c for c in reversed(parsed_closes) if c is not None), None)
+            if latest_close is None or not valid or len(valid) < PULLBACK_MIN_BARS:
+                results.append(
+                    {
+                        "symbol": sym,
+                        "tsCode": ts,
+                        "price": latest_close,
+                        "high52w": None,
+                        "pullbackRatio": None,
+                        "inWindow": False,
+                        "windowBars": len(valid),
+                        "missing": True,
+                    }
+                )
+                continue
+            high52w = max(valid)
+            ratio = (latest_close - high52w) / high52w
+            results.append(
+                {
+                    "symbol": sym,
+                    "tsCode": ts,
+                    "price": latest_close,
+                    "high52w": high52w,
+                    "pullbackRatio": round(ratio, 6),
+                    "inWindow": min_ratio <= ratio <= max_ratio,
+                    "windowBars": len(valid),
+                    "missing": False,
+                }
+            )
+    else:
+        as_of_date = as_of or ""
+
+    return {
+        "ok": True,
+        "results": results,
+        "asOf": as_of_date or None,
+        "unparsed": unparsed,
+    }
 
 
 def _resolve_em_industries_for_symbols(symbols: list[str]) -> dict[str, str]:
@@ -416,6 +533,8 @@ def compute_alpha_additions(
     catalyst_payload: dict[str, Any] | None = None,
     industry_by_symbol: dict[str, str] | None = None,
     top_industries: set[str] | None = None,
+    auto_qa_penalties: dict[str, dict[str, Any]] | None = None,
+    score_min: float | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """
     Alpha Radar → Watchlist candidates with light entry gates (TIP-004).
@@ -427,11 +546,31 @@ def compute_alpha_additions(
       an SW L1 name (exact match). Granular EM boards (e.g. 半导体 vs 电子) skip
       Top10 rather than false-reject (taxonomy mismatch fail-open).
     - if Top10 set empty (flow data missing) → skip Top10 gate entirely
+    - TIP-009 auto-QA penalty: catalystScore is multiplied by (1 - penalty)
+      before the SCORE_MIN check; entries that fall under the floor are
+      counted under ``auto_qa_penalty``.
+
+    V7.0/TIP-012: ``score_min`` overrides the 85 floor — the research channel
+    passes 70 (RESEARCH_SCORE_MIN) because a fresh 买入 rating is a weaker
+    signal than an S-grade news catalyst but still pool-worthy.
     """
     payload = catalyst_payload if catalyst_payload is not None else list_catalyst_stocks(limit=limit)
     items = payload.get("items") if isinstance(payload, dict) else []
     if not isinstance(items, list):
         return [], {}
+
+    score_floor = CATALYST_SCORE_MIN if score_min is None else float(score_min)
+
+    penalties = auto_qa_penalties
+    if penalties is None:
+        try:
+            from data_sync_service.service.alpha_radar_qa import (
+                compute_auto_qa_penalty_for_catalyst,
+            )
+            penalties = compute_auto_qa_penalty_for_catalyst(items)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("auto_qa_penalty compute failed: %s", exc)
+            penalties = {}
 
     rejected: dict[str, int] = {}
 
@@ -443,7 +582,7 @@ def compute_alpha_additions(
         if not isinstance(row, dict):
             continue
         score = float(row.get("catalystScore") or 0.0)
-        if score <= CATALYST_SCORE_MIN:
+        if score <= score_floor:
             _bump("low_score")
             continue
         articles = row.get("articles") if isinstance(row.get("articles"), list) else []
@@ -455,11 +594,26 @@ def compute_alpha_additions(
         if not sym:
             _bump("bad_symbol")
             continue
+        penalty_info = penalties.get(sym) or {}
+        penalty = float(penalty_info.get("penalty") or 0.0)
+        adjusted_score = score * (1.0 - penalty)
+        if adjusted_score <= score_floor:
+            _bump("auto_qa_penalty")
+            continue
         prelim.append(
             {
                 "symbol": sym,
                 "name": str(row.get("name") or sym),
-                "catalystScore": score,
+                "catalystScore": adjusted_score,
+                "rawCatalystScore": score,
+                "autoQaPenalty": round(penalty, 3),
+                "autoQaSignals": penalty_info.get("signals") or {},
+                # TIP-012: research-channel candidates keep their channel tag so
+                # the frontend can mark registry source='research'.
+                "channel": str(row.get("channel") or "") or None,
+                # TIP-011: tag ALPHA provenance so downstream journal changes
+                # and paper_trades can attribute win-rate by source.
+                "source": "ALPHA",
             }
         )
 
@@ -602,6 +756,35 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
     meta["alphaCandidates"] = len(alpha_add)
     meta["alphaRejected"] = alpha_rejected
 
+    # TIP-012: research channel (研报 → α) — same entry gates, lower floor.
+    research_add: list[dict[str, Any]] = []
+    research_rejected: dict[str, int] = {}
+    try:
+        research_payload = build_research_catalyst_payload(limit=100)
+        # Research reports carry their own East Money industry label (same
+        # taxonomy as the EM cache); prefer it over the DB cache so fresh
+        # names without a warm cache row still pass the defense/Top10 gates.
+        research_industries = {
+            str(x.get("symbol")): str(x["industryName"])
+            for x in (research_payload.get("items") or [])
+            if isinstance(x, dict) and x.get("symbol") and x.get("industryName")
+        }
+        research_add, research_rejected = compute_alpha_additions(
+            catalyst_payload=research_payload,
+            industry_by_symbol=research_industries,
+            top_industries=top10,
+            score_min=RESEARCH_SCORE_MIN,
+        )
+        # Attention budget: cap research-channel additions per run (best
+        # scores first — payload is already sorted descending).
+        research_add = research_add[:RESEARCH_MAX_CANDIDATES]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("research channel candidate build failed: %s", exc)
+        research_rejected = {"research_channel_error": 1}
+    alpha_add = alpha_add + research_add
+    meta["researchCandidates"] = len(research_add)
+    meta["researchRejected"] = research_rejected
+
     run_id = insert_automation_run(
         trade_date=trade_date,
         trigger_type=trigger,
@@ -653,3 +836,85 @@ def ack_automation_run(
 
 def get_automation_run(run_id: str) -> dict[str, Any] | None:
     return get_run_by_id(run_id)
+
+# ---------------------------------------------------------------------------
+# RS whole-market rank (S-2 / OPT-073): 20-day return percentile vs ALL stocks
+# ---------------------------------------------------------------------------
+
+_rs_rank_cache: dict[str, float] = {}
+_rs_rank_cache_date: str | None = None
+
+
+def compute_rs_ranks(symbols: list[str], as_of_date: str | None = None) -> dict[str, float]:
+    """Return {symbol: percentile} of 20-day relative strength vs ALL stocks.
+
+    Percentile 0-1 (strongest = 1.0). Ranking pool = every stock with a bar
+    on the as-of date; benchmark subtraction is skipped (constant shift does
+    not change ranks). Results cached per as-of date.
+    """
+    global _rs_rank_cache, _rs_rank_cache_date
+    from data_sync_service.service.trendok import _symbol_to_ts_code
+
+    resolved: dict[str, str] = {}
+    for sym in symbols:
+        parsed = _symbol_to_ts_code(str(sym))
+        if parsed:
+            resolved[str(sym)] = parsed[2]
+
+    # resolve as-of: latest trade date in daily <= as_of_date
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            if as_of_date:
+                cur.execute(
+                    "SELECT MAX(trade_date) FROM daily WHERE trade_date <= %s",
+                    (as_of_date,),
+                )
+            else:
+                cur.execute("SELECT MAX(trade_date) FROM daily")
+            latest = cur.fetchone()
+            latest = str(latest[0]) if latest and latest[0] else None
+    if not latest:
+        return {}
+    if _rs_rank_cache_date == latest:
+        pass
+    else:
+        # rank all stocks on `latest` by 20d return
+        rows: list[tuple[str, float]] = []
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT ts_code, ret20 FROM (
+                        SELECT ts_code, close,
+                            (close / lag(close, 20) OVER (PARTITION BY ts_code ORDER BY trade_date) - 1) * 100 AS ret20
+                        FROM daily
+                        WHERE trade_date <= %s
+                          AND trade_date >= (
+                              SELECT MIN(trade_date) FROM (
+                                  SELECT DISTINCT trade_date FROM daily
+                                  WHERE trade_date <= %s ORDER BY trade_date DESC LIMIT 21
+                              ) w
+                          )
+                          AND close > 0
+                    ) t
+                    WHERE ret20 IS NOT NULL
+                    """,
+                    (latest, latest),
+                )
+                rows = cur.fetchall()
+        ranked = sorted(rows, key=lambda kv: -kv[1])
+        total = len(ranked)
+        pos: dict[str, float] = {}
+        for i, (ts, _ret) in enumerate(ranked, start=1):
+            pos[ts] = (total - i + 1) / total if total else 0.0
+        _rs_rank_cache.clear()
+        _rs_rank_cache.update(pos)
+        _rs_rank_cache_date = latest
+
+    out: dict[str, Any] = {}
+    for sym, ts in resolved.items():
+        pct = _rs_rank_cache.get(ts)
+        if pct is not None:
+            out[sym] = pct
+    out["_asOf"] = latest  # sentinel key stripped by the caller
+    return out

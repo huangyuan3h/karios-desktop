@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from data_sync_service.db.watchlist_automation import list_registry, upsert_registry
 from data_sync_service.service.watchlist_automation import (
     ack_automation_run,
+    filter_pullback_window,
     get_automation_latest,
     get_automation_pending,
     get_automation_run,
@@ -16,6 +17,7 @@ from data_sync_service.service.watchlist_automation import (
     list_fallback_universe_symbols,
     run_watchlist_automation,
 )
+from data_sync_service.service.watchlist_funnel_health import check_funnel_health
 
 router = APIRouter()
 
@@ -39,6 +41,30 @@ class WatchlistRegistryRequest(BaseModel):
 class WatchlistAckRequest(BaseModel):
     screenerAdded: int | None = None
     funnel: dict[str, Any] | None = None
+
+
+class PullbackFilterRequest(BaseModel):
+    symbols: list[str] = []
+    asOf: str | None = None
+
+
+@router.get("/watchlist/rs-ranks")
+def watchlist_rs_ranks(
+    symbols: str = Query(..., description="Comma-separated symbols (CN:/HK:)."),
+) -> dict:
+    """Whole-market 20-day RS percentile per symbol (S-2: top-50% filter).
+
+    Percentile 0-1 (strongest = 1.0); ranking pool = ALL stocks with a bar
+    on the latest trade date. Cached per as-of date.
+    """
+    from data_sync_service.service.watchlist_automation import compute_rs_ranks
+
+    syms = [s.strip() for s in symbols.split(",") if s.strip()]
+    if not syms:
+        return {"ok": True, "asOfDate": None, "ranks": {}}
+    ranks = compute_rs_ranks(syms)
+    as_of = ranks.pop("_asOf", None)
+    return {"ok": True, "asOfDate": as_of, "ranks": ranks}
 
 
 @router.get("/watchlist/registry")
@@ -106,7 +132,9 @@ def _backfill_names(items: list[dict]) -> list[dict]:
 
 
 def _to_ts_code(sym: str) -> str:
-    s = sym.strip()
+    from data_sync_service.service.market_quotes import normalize_market_symbol
+
+    s = normalize_market_symbol(sym)
     if s.startswith("HK:"):
         ticker = s.split(":", 1)[1].strip()
         if 1 <= len(ticker) <= 5 and ticker.isdigit():
@@ -203,6 +231,24 @@ def watchlist_fallback_universe(
     """TIP-003: empty-window fallback candidates (5D Top5 non-defense → EM LIKE)."""
     try:
         return list_fallback_universe_symbols(max_total=maxTotal)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/watchlist/automation/pullback-filter")
+def watchlist_automation_pullback_filter(req: PullbackFilterRequest) -> dict:
+    """52W pullback gate using DB K-lines (replaces unreliable TV High.Interval52Week)."""
+    try:
+        return filter_pullback_window(req.symbols or [], as_of=req.asOf)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/watchlist/automation/funnel-health/check")
+def watchlist_automation_funnel_health_check() -> dict:
+    """Manually run the funnel health check (normally 18:10 on weekdays)."""
+    try:
+        return check_funnel_health()
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

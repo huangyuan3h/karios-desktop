@@ -2,9 +2,11 @@ import type { ExecutionDecisionChange, ExecutionGate } from '@karios/shared';
 
 import { fmtDateTime } from '@/lib/dashboard-format';
 import {
+  buildSleeveExposureByMarket,
   buildSleeveExposurePct,
   countHeldMissingPositionPct,
-  formatSleeveBudgetLabel,
+  marketOfSymbol,
+  parsePositionRangeHintMaxPct,
   type PositionLike,
 } from '@/lib/execution-action';
 
@@ -12,6 +14,7 @@ export type ExecAttentionLine = {
   symbol: string;
   action: string;
   why: string | null;
+  hint?: string | null;
   suggestAddPct?: number | null;
   suggestSizeNote?: string | null;
 };
@@ -23,6 +26,10 @@ export type ExecAttentionQueue = {
   trims: ExecAttentionLine[];
   fires: ExecAttentionLine[];
   fireBlockedByGate: boolean;
+  /** CN gate closed but CN fire candidates exist (per-market messaging). */
+  cnGateBlocked: boolean;
+  /** HK gate allows new entries (hkGate ATTACK) — HK fires may fire. */
+  hkGateOpen: boolean;
   keyChanges: Array<{ id: string; line: string }>;
 };
 
@@ -44,6 +51,9 @@ export function translateAction(action: string): string {
 const WHY_LABEL: Record<string, string> = {
   EXIT_NOW: '强制卖出',
   TRIGGER_HIT: '止损触发',
+  HARD_STOP_HIT: '硬止损触发',
+  TRAIL_STOP_TRIM: '移动止盈减半',
+  ETF_FALLBACK_TRIM: '回撤止损减半',
   WARN_REDUCE_HALF: '减半警告',
   GATE_DEFEND: '防守模式',
   MAINLINE_FADE: '主线退潮',
@@ -132,6 +142,35 @@ function toLine(c: {
   };
 }
 
+const WARN_REASON_LABEL: Record<string, string> = {
+  'trend_structure_break:ema5_below_ema20': 'EMA5跌破EMA20',
+  'trend_structure_break:close_below_ema20': '收盘跌破EMA20',
+  'momentum_exhaustion:hist_shrink3_flip_negative_and_volume_dry': 'MACD三日缩量转负+量能萎缩',
+  'momentum_warning:hist_shrinking_and_volume_dry': 'MACD柱连续收缩+量能萎缩',
+  'momentum_warning:hist_shrinking': 'MACD柱连续收缩',
+  'momentum_warning:hist_shrinking_volume_unknown': 'MACD柱连续收缩（量未知）',
+};
+
+export function translateWarnReason(reason: string): string {
+  return WARN_REASON_LABEL[reason] ?? reason;
+}
+
+/**
+ * Trim reasons from TrendOK stop-loss parts (warn_reasons). Lets "Must act"
+ * show why a held position gets a reduce-half warning, not just the label.
+ */
+function warnReasonHint(
+  item: PositionLike,
+  why: string | null,
+): string | null {
+  if (why !== 'WARN_REDUCE_HALF') return null;
+  const parts = (item as { trendok?: { stopLossParts?: unknown } }).trendok
+    ?.stopLossParts as Record<string, unknown> | null | undefined;
+  const reasons = Array.isArray(parts?.warn_reasons) ? parts.warn_reasons : [];
+  if (!reasons.length) return null;
+  return reasons.map((r) => translateWarnReason(String(r))).join('；');
+}
+
 export function formatAttentionFireLine(x: ExecAttentionLine): string {
   const size =
     typeof x.suggestAddPct === 'number' && Number.isFinite(x.suggestAddPct)
@@ -157,14 +196,27 @@ export function buildExecAttentionQueue(opts: {
 }): ExecAttentionQueue {
   const { gate, watchlistItems, cards, changes } = opts;
   const allowNew = gate?.allowNewEntries === true;
+  const hkOpen = gate?.hkGate?.allowNewEntries === true;
   const exits: ExecAttentionLine[] = [];
   const trims: ExecAttentionLine[] = [];
   const fireCandidates: ExecAttentionLine[] = [];
 
+  const trimHintBySymbol = new Map<string, string>();
+  for (const it of watchlistItems) {
+    const hint = warnReasonHint(it, 'WARN_REDUCE_HALF');
+    if (hint) trimHintBySymbol.set(String(it?.symbol ?? ''), hint);
+  }
+
   for (const c of cards) {
     const action = String(c.action || '').toUpperCase();
     if (action === 'EXIT') exits.push(toLine(c));
-    else if (action === 'TRIM') trims.push(toLine(c));
+    else if (action === 'TRIM') {
+      const line = toLine(c);
+      if (line.why === 'WARN_REDUCE_HALF' && trimHintBySymbol.has(line.symbol)) {
+        line.hint = trimHintBySymbol.get(line.symbol) ?? null;
+      }
+      trims.push(line);
+    }
     else if (action === 'BUY' || action === 'ADD') fireCandidates.push(toLine(c));
   }
 
@@ -172,27 +224,40 @@ export function buildExecAttentionQueue(opts: {
   trims.sort(bySymbol);
   fireCandidates.sort(bySymbol);
 
-  const fires = allowNew
-    ? fireCandidates
-    : fireCandidates.filter((x) => String(x.why || '') === 'DEFENSIVE_SLEEVE_ALLOW');
-  // Gate blocks when allowNewEntries=false and no defensive-sleeve fires remain.
-  const fireBlockedByGate = !allowNew && fires.length === 0;
+  // Per-market fire gating: HK symbols are evaluated against hkGate (when the
+  // row cards carry it); CN/ETF symbols against the CN gate.
+  const isHkSym = (s: string) => marketOfSymbol(s) === 'hk';
+  const cnFires = fireCandidates.filter((f) => !isHkSym(f.symbol));
+  const hkFires = fireCandidates.filter((f) => isHkSym(f.symbol));
+  const cnFiresShown = allowNew
+    ? cnFires
+    : cnFires.filter((x) => String(x.why || '') === 'DEFENSIVE_SLEEVE_ALLOW');
+  const fires = [...cnFiresShown, ...(hkOpen ? hkFires : [])];
+  const cnGateBlocked = !allowNew;
+  const hkGateOpen = hkOpen;
 
   const keyChanges = changes
     .filter((c) => c.field === 'action' || c.field === 'mode')
     .slice(0, 3)
     .map((c) => ({ id: c.id, line: formatDecisionChangeLine(c) }));
 
+  const capLabel = (v: number | null) => (v == null ? '—' : `${v}%`);
+  const sleeveByMarket = buildSleeveExposureByMarket(watchlistItems);
+  const cnCap = parsePositionRangeHintMaxPct(gate?.positionRangeHint);
+  const hkCap = parsePositionRangeHintMaxPct(gate?.hkGate?.positionRangeHint ?? null);
+
   return {
-    sleeveLabel: formatSleeveBudgetLabel(
-      buildSleeveExposurePct(watchlistItems),
-      gate?.positionRangeHint,
-    ),
+    sleeveLabel:
+      `卫星仓 ${buildSleeveExposurePct(watchlistItems).toFixed(1)}%` +
+      ` = A股 ${sleeveByMarket.cn.toFixed(1)}% + ETF ${sleeveByMarket.etf.toFixed(1)}%` +
+      ` + 港股 ${sleeveByMarket.hk.toFixed(1)}%（CN≤${capLabel(cnCap)} / HK≤${capLabel(hkCap)}）`,
     missingSize: countHeldMissingPositionPct(watchlistItems),
     exits,
     trims,
     fires,
-    fireBlockedByGate,
+    fireBlockedByGate: !allowNew && fires.length === 0,
+    cnGateBlocked,
+    hkGateOpen,
     keyChanges,
   };
 }
@@ -221,19 +286,24 @@ export function formatExecAttentionMarkdown(
     lines.push('- None');
   } else {
     for (const x of mustAct) {
-      lines.push(`- ${x.symbol}  ${translateAction(x.action)}  ${translateWhy(x.why)}`);
+      lines.push(
+        `- ${x.symbol}  ${translateAction(x.action)}  ${translateWhy(x.why)}${x.hint ? `（${x.hint}）` : ''}`,
+      );
     }
   }
   lines.push('');
   lines.push(`${heading}# Fire`);
-  if (queue.fireBlockedByGate) {
-    lines.push('- Gate blocks new entries');
-  } else if (!queue.fires.length) {
+  if (queue.cnGateBlocked) {
+    lines.push('- CN Gate blocks new entries');
+  }
+  if (queue.hkGateOpen) {
+    lines.push('- HK gate open（hkGate 允许开仓/加仓）');
+  }
+  for (const x of queue.fires) {
+    lines.push(`- ${formatAttentionFireLine(x)}`);
+  }
+  if (!queue.cnGateBlocked && !queue.hkGateOpen && !queue.fires.length) {
     lines.push('- None');
-  } else {
-    for (const x of queue.fires) {
-      lines.push(`- ${formatAttentionFireLine(x)}`);
-    }
   }
   if (queue.keyChanges.length) {
     lines.push('');

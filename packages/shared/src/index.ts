@@ -7,5 +7,6 @@ export * from './schemas/tvCapture';
 export * from './schemas/executionGate';
 export * from './schemas/executionJournal';
 export * from './schemas/scheduler';
+export * from './schemas/userTrades';
 
 

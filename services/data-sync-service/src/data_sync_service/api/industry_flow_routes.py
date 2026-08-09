@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query  # type: ignore[import-not-found]
+from fastapi import APIRouter, Body, HTTPException, Query  # type: ignore[import-not-found]
 
 from data_sync_service.service.industry_fund_flow import (
     get_cn_industry_fund_flow,
@@ -25,7 +25,7 @@ def market_cn_industry_fund_flow(
 
 @router.post("/market/cn/industry-fund-flow/sync")
 def market_cn_industry_fund_flow_sync(
-    payload: dict,
+    payload: dict = Body(default={}),
 ) -> dict:
     days = int(payload.get("days") or 10)
     top_n = int(payload.get("topN") or 10)
@@ -47,7 +47,7 @@ def market_cn_industry_mainline(
 
 
 @router.post("/market/cn/industry-mainline/sync")
-def market_cn_industry_mainline_sync(payload: dict) -> dict:
+def market_cn_industry_mainline_sync(payload: dict = Body(default={})) -> dict:
     as_of = str(payload.get("asOfDate") or "") or None
     force = bool(payload.get("force") or False)
     try:

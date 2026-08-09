@@ -19,6 +19,13 @@ describe('normalizeScreenerSymbol', () => {
     expect(normalizeScreenerSymbol('CN:000001')).toBe('CN:000001');
     expect(normalizeScreenerSymbol('HKEX:0700')).toBe('HK:0700');
   });
+
+  it('strips .SH/.SZ market suffixes to the canonical form', () => {
+    expect(normalizeScreenerSymbol('CN:002064.SZ')).toBe('CN:002064');
+    expect(normalizeScreenerSymbol('CN:603259.SH')).toBe('CN:603259');
+    expect(normalizeScreenerSymbol('CN:688266.SH')).toBe('CN:688266');
+    expect(normalizeScreenerSymbol('ETF:513180.SH')).toBe('ETF:513180');
+  });
 });
 
 describe('buildScreenerMarkdownRows', () => {

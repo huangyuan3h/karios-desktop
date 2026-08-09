@@ -13,7 +13,26 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { ColumnHeader } from '@/components/watchlist/ColumnHeader';
+import {
+  TradeActionDialog,
+  type TradeDialogOpenState,
+} from '@/components/watchlist/TradeActionDialog';
 import { WatchlistRow } from '@/components/watchlist/WatchlistRow';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  blendAddCost,
+  tradeMarketForSymbol,
+  tradeSourceForItem,
+} from '@/lib/trade-recording';
+import {
+  invalidateUserTradesQueries,
+  recordUserTrade,
+} from '@/lib/queries/userTrades';
+import {
+  clusterExposureForSymbol,
+  useCorrelationStatusQuery,
+} from '@/lib/queries/backtest';
+import { useWatchlistRsRanksQuery } from '@/lib/queries/watchlist';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import type { ExecutionGate } from '@karios/shared';
 import { useChatStore } from '@/lib/chat/store';
@@ -44,13 +63,15 @@ const FLAG_COLORS: Array<{ label: string; hex: string }> = [
 ];
 
 type WatchlistRowTone = 'green' | 'red' | 'none';
-type WatchlistStickyColumn = 'score' | 'trendOk' | 'action';
+type WatchlistStickyColumn = 'score' | 'exec' | 'trendOk' | 'action';
 
 const WATCHLIST_STICKY_COLUMN_LAYOUT: Record<
   WatchlistStickyColumn,
   { width: number; right: number; zHeader: number; zBody: number }
 > = {
-  score: { width: 80, right: 168, zHeader: 23, zBody: 13 },
+  // Fixed right group (left→right): score | exec | trendOk | action.
+  score: { width: 80, right: 272, zHeader: 23, zBody: 13 },
+  exec: { width: 110, right: 168, zHeader: 24, zBody: 14 },
   trendOk: { width: 80, right: 88, zHeader: 22, zBody: 12 },
   action: { width: 88, right: 0, zHeader: 25, zBody: 15 },
 };
@@ -177,6 +198,7 @@ export function WatchlistTable({
 
   const tradingTime = React.useMemo(() => isShanghaiTradingTime(), []);
   const todaySh = React.useMemo(() => getShanghaiTodayIso(), []);
+  const rsRanksQuery = useWatchlistRsRanksQuery(sortedItems.map((i) => i.symbol));
 
   const rowMetricsBySymbol = React.useMemo(() => {
     const m = new Map<
@@ -208,6 +230,7 @@ export function WatchlistTable({
     [sortedItems],
   );
 
+  const correlationStatus = useCorrelationStatusQuery(true, true).data;
   const defensiveSleeveExposurePct = React.useMemo(
     () => buildDefensiveSleeveExposurePct(sortedItems, trend),
     [sortedItems, trend],
@@ -283,6 +306,63 @@ export function WatchlistTable({
     placement: 'top-end' | 'bottom-end';
     symbol: string | null;
   }>({ open: false, x: 0, y: 0, placement: 'bottom-end', symbol: null });
+  const [tradeDialog, setTradeDialog] = React.useState<TradeDialogOpenState | null>(null);
+  const queryClient = useQueryClient();
+
+  const openTradeDialog = React.useCallback(
+    (kind: 'buy' | 'add' | 'sell', item: WatchlistItem) => {
+      const current = rowMetricsBySymbol.get(item.symbol)?.current ?? null;
+      setTradeDialog({ kind, item, currentPrice: current });
+    },
+    [rowMetricsBySymbol],
+  );
+
+  const handleTradeConfirm = React.useCallback(
+    async (values: { price: number; positionPct: number }) => {
+      if (!tradeDialog) return;
+      const { kind, item } = tradeDialog;
+      const { price, positionPct } = values;
+      const symbol = item.symbol;
+      const source = tradeSourceForItem(item);
+      const market = tradeMarketForSymbol(symbol);
+      try {
+        if (kind === 'buy') {
+          await recordUserTrade({ symbol, side: 'BUY', price, positionPct, source, market });
+          setItemCostPriceValue(symbol, price);
+          setItemPositionPct(symbol, String(positionPct));
+        } else if (kind === 'add') {
+          const oldCost = item.costPrice ?? price;
+          const oldPct = item.positionPct ?? 0;
+          const blended = blendAddCost(oldCost, oldPct, price, positionPct);
+          await recordUserTrade({ symbol, side: 'ADD', price, positionPct, source, market });
+          setItemCostPriceValue(symbol, blended.blendedCost);
+          setItemPositionPct(symbol, String(blended.newPositionPct));
+        } else {
+          const costBasis = item.costPrice;
+          const entryDate = item.entryDate;
+          if (costBasis == null || !entryDate) return;
+          await recordUserTrade({
+            symbol,
+            side: 'SELL',
+            price,
+            positionPct,
+            costBasis,
+            entryDate,
+            source,
+            market,
+          });
+          const remaining = (item.positionPct ?? 0) - positionPct;
+          setItemPositionPct(symbol, String(Math.max(0, remaining)));
+        }
+        void invalidateUserTradesQueries(queryClient);
+      } catch {
+        // Trade journal is best-effort; watchlist edits still apply.
+      } finally {
+        setTradeDialog(null);
+      }
+    },
+    [tradeDialog, queryClient, setItemCostPriceValue, setItemPositionPct],
+  );
 
   const showTooltip = React.useCallback((el: HTMLElement, content: React.ReactNode, width = 360) => {
     const r = el.getBoundingClientRect();
@@ -480,14 +560,6 @@ export function WatchlistTable({
                         width={360}
                       />
                     </th>
-                    <th className="px-2 py-2 min-w-[88px] whitespace-nowrap">
-                      <ColumnHeader
-                        columnId="execAction"
-                        showTooltip={showTooltip}
-                        hideTooltip={hideTooltip}
-                        width={360}
-                      />
-                    </th>
                     <th className="px-2 py-2 min-w-[104px] whitespace-nowrap">
                       <ColumnHeader
                         columnId="trigger"
@@ -620,6 +692,18 @@ export function WatchlistTable({
                       </button>
                     </th>
                     <th
+                      className={watchlistStickyCellClass('exec', { header: true })}
+                      style={watchlistStickyCellStyle('exec', { header: true })}
+                    >
+                      <ColumnHeader
+                        columnId="execAction"
+                        showTooltip={showTooltip}
+                        hideTooltip={hideTooltip}
+                        width={360}
+                      />
+                    </th>
+
+                    <th
                       className={watchlistStickyCellClass('trendOk', { header: true })}
                       style={watchlistStickyCellStyle('trendOk', { header: true })}
                     >
@@ -669,6 +753,8 @@ export function WatchlistTable({
                         sectorExposureByIndustry={sectorExposureByIndustry}
                         sleeveExposurePct={sleeveExposurePct}
                         defensiveSleeveExposurePct={defensiveSleeveExposurePct}
+                        clusterExposurePct={clusterExposureForSymbol(correlationStatus, it.symbol)}
+                        rsRank={rsRanksQuery.data?.ranks[it.symbol] ?? null}
                         showTooltip={showTooltip}
                         hideTooltip={hideTooltip}
                         showColorPicker={showColorPicker}
@@ -681,10 +767,11 @@ export function WatchlistTable({
                         onRemove={onRemove}
                         onOpenStock={onOpenStock}
                         onAddReference={onAddReference}
+                        onOpenTradeDialog={openTradeDialog}
                         rowClassName={isHiddenRow ? 'opacity-50' : undefined}
                         rowTitle={
                           isHiddenRow
-                            ? 'Silent dead row (Pos%≤0 · Score<60 · TrendOK≠ok/recovering · WATCH_SILENT)'
+                            ? 'Silent dead row (Pos%≤0 · Score<70 · TrendOK≠ok/recovering · WATCH_SILENT)'
                             : undefined
                         }
                       />
@@ -699,6 +786,15 @@ export function WatchlistTable({
           <div className="text-sm text-[var(--k-muted)]">No items yet. Add a ticker above.</div>
         )}
       </section>
+
+      {tradeDialog ? (
+        <TradeActionDialog
+          state={tradeDialog}
+          suggestPct={5}
+          onClose={() => setTradeDialog(null)}
+          onConfirm={(values) => void handleTradeConfirm(values)}
+        />
+      ) : null}
 
       {tooltip.open
         ? createPortal(

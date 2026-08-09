@@ -11,15 +11,25 @@ export default defineConfig({
     },
   },
   test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      include: ['src/lib/**/*.{ts,tsx}'],
+      include: ['src/lib/**/*.{ts,tsx}', 'src/components/**/*.{ts,tsx}', 'src/hooks/**/*.{ts,tsx}'],
       exclude: [
-        'src/lib/**/*.test.{ts,tsx}',
-        'src/lib/**/*.spec.{ts,tsx}',
+        'src/**/*.test.{ts,tsx}',
+        'src/**/*.spec.{ts,tsx}',
         'src/lib/chat/types.ts',
         'src/lib/chat/store.ts',
+        'src/components/pages/**',
+        'src/components/chat/**',
+        'src/components/agent/**',
+        'src/components/journal/**',
+        'src/components/theme/**',
+        'src/components/ui/**',
+        'src/components/layout/**',
       ],
       thresholds: {
         lines: 60,

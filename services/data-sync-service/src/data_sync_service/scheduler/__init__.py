@@ -11,9 +11,13 @@ from data_sync_service.scheduler import (
     close_sync_job,
     cn_industry_post_close_job,
     daily_sync_job,
+    decision_action_job,
+    decision_outcome_job,
+    decision_snapshot_job,
     eastmoney_industry_job,
     etf_daily_job,
     fund_basic_job,
+    funnel_health_job,
     hk_basic_job,
     hk_daily_job,
     hk_industry_job,
@@ -23,8 +27,10 @@ from data_sync_service.scheduler import (
     morning_brief_job,
     news_enrich_job,
     news_fetch_job,
+    paper_s3_intake_job,
     paper_trading_intake_job,
     paper_trading_update_job,
+    research_report_job,
     stock_basic_job,
     tv_screener_capture_job,
     watchlist_automation_job,
@@ -144,6 +150,12 @@ def create_scheduler() -> BackgroundScheduler:
         replace_existing=True,
     )
     scheduler.add_job(
+        funnel_health_job.run,
+        funnel_health_job.build_trigger(),
+        id=funnel_health_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
         eastmoney_industry_job.run,
         eastmoney_industry_job.build_trigger(),
         id=eastmoney_industry_job.JOB_ID,
@@ -180,6 +192,13 @@ def create_scheduler() -> BackgroundScheduler:
         id=paper_trading_update_job.JOB_ID,
         replace_existing=True,
     )
+    # G4: S-3 backtest paper intake (after regular intake, before update).
+    scheduler.add_job(
+        paper_s3_intake_job.run,
+        paper_s3_intake_job.build_trigger(),
+        id=paper_s3_intake_job.JOB_ID,
+        replace_existing=True,
+    )
     scheduler.add_job(
         tv_screener_capture_job.run,
         tv_screener_capture_job.build_am_trigger(),
@@ -187,9 +206,42 @@ def create_scheduler() -> BackgroundScheduler:
         replace_existing=True,
     )
     scheduler.add_job(
+        tv_screener_capture_job.run,
+        tv_screener_capture_job.build_pm_trigger(),
+        id=tv_screener_capture_job.JOB_ID_PM,
+        replace_existing=True,
+    )
+    scheduler.add_job(
         news_enrich_job.run,
         news_enrich_job.build_trigger(),
         id=news_enrich_job.JOB_ID,
+        replace_existing=True,
+    )
+    # TIP-012: research report ingestion (研报 → Alpha channel)
+    scheduler.add_job(
+        research_report_job.run,
+        research_report_job.build_trigger(),
+        id=research_report_job.JOB_ID,
+        replace_existing=True,
+    )
+    # TIP-015: decision archive snapshot + T+1 outcome feedback
+    scheduler.add_job(
+        decision_snapshot_job.run,
+        decision_snapshot_job.build_trigger(),
+        id=decision_snapshot_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        decision_outcome_job.run,
+        decision_outcome_job.build_trigger(),
+        id=decision_outcome_job.JOB_ID,
+        replace_existing=True,
+    )
+    # TIP-015: extract brief actions → match executions → track outcomes
+    scheduler.add_job(
+        decision_action_job.run,
+        decision_action_job.build_trigger(),
+        id=decision_action_job.JOB_ID,
         replace_existing=True,
     )
     # Track 3: Morning Brief (AM 08:30 + PM 12:30 Asia/Shanghai, weekdays)

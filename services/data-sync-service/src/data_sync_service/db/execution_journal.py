@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS {CHANGES_TABLE} (
     symbol              TEXT,
     field               TEXT NOT NULL,
     old_value           TEXT,
-    new_value           TEXT
+    new_value           TEXT,
+    source              TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_execution_changes_trade_changed
@@ -48,6 +49,11 @@ CREATE INDEX IF NOT EXISTS idx_execution_changes_trade_changed
 
 CREATE INDEX IF NOT EXISTS idx_execution_changes_symbol
     ON {CHANGES_TABLE}(symbol, changed_at DESC);
+
+-- TIP-011: source attribution by provenance (TV / ALPHA / MANUAL).
+CREATE INDEX IF NOT EXISTS idx_execution_changes_source
+    ON {CHANGES_TABLE}(source, changed_at DESC)
+    WHERE source IS NOT NULL;
 """
 
 _TABLE_ENSURED = False
@@ -275,10 +281,10 @@ def insert_changes(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     f"""
                     INSERT INTO {CHANGES_TABLE}
                         (id, trade_date, changed_at, from_snapshot_id, to_snapshot_id,
-                         scope, symbol, field, old_value, new_value)
-                    VALUES (%s, %s::date, COALESCE(%s::timestamptz, now()), %s, %s, %s, %s, %s, %s, %s)
+                         scope, symbol, field, old_value, new_value, source)
+                    VALUES (%s, %s::date, COALESCE(%s::timestamptz, now()), %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id, trade_date, changed_at, from_snapshot_id, to_snapshot_id,
-                              scope, symbol, field, old_value, new_value
+                              scope, symbol, field, old_value, new_value, source
                     """,
                     (
                         cid,
@@ -291,6 +297,7 @@ def insert_changes(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         r["field"],
                         r.get("old_value"),
                         r.get("new_value"),
+                        r.get("source"),
                     ),
                 )
                 out.append(_change_row(cur.fetchone()))
@@ -321,7 +328,7 @@ def list_changes(
             cur.execute(
                 f"""
                 SELECT id, trade_date, changed_at, from_snapshot_id, to_snapshot_id,
-                       scope, symbol, field, old_value, new_value
+                       scope, symbol, field, old_value, new_value, source
                 FROM {CHANGES_TABLE}
                 {where}
                 ORDER BY changed_at DESC
@@ -331,6 +338,50 @@ def list_changes(
             )
             rows = cur.fetchall()
     return [_change_row(r) for r in rows]
+
+
+def count_changes_by_source(
+    *,
+    since: str | None = None,
+    field: str | None = "action",
+    new_value: str | None = "BUY",
+) -> dict[str, int]:
+    """Aggregate change counts by ``source``. Optional filter on field + new_value.
+
+    Used by ``/v1/execution/source-stats`` to surface BUY-signal volume per
+    provenance. Pre-TIP-011 rows have NULL source and are bucketed under
+    'UNKNOWN'.
+    """
+    ensure_table()
+    clauses: list[str] = []
+    params: list[Any] = []
+    if since:
+        clauses.append("changed_at >= %s::timestamptz")
+        params.append(since)
+    if field:
+        clauses.append("field = %s")
+        params.append(field)
+    if new_value:
+        clauses.append("new_value = %s")
+        params.append(new_value)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT source, COUNT(*) AS total
+                FROM {CHANGES_TABLE}
+                {where}
+                GROUP BY source
+                """,
+                tuple(params),
+            )
+            rows = cur.fetchall()
+    out: dict[str, int] = {}
+    for r in rows:
+        key = str(r[0]) if r[0] is not None else "UNKNOWN"
+        out[key] = int(r[1] or 0)
+    return out
 
 
 def _snapshot_row(row: tuple[Any, ...] | None) -> dict[str, Any]:
@@ -372,6 +423,7 @@ def _change_row(row: tuple[Any, ...] | None) -> dict[str, Any]:
         field,
         old_value,
         new_value,
+        source,
     ) = row
     return {
         "id": cid,
@@ -384,4 +436,5 @@ def _change_row(row: tuple[Any, ...] | None) -> dict[str, Any]:
         "field": field,
         "oldValue": old_value,
         "newValue": new_value,
+        "source": source,
     }

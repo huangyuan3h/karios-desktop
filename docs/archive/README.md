@@ -39,7 +39,7 @@ docs/archive/
 
 | 日期 | 来源 todo 节 | 归档文件 | 一句话结论 |
 |------|--------------|----------|-----------|
-| — | — | — | （起步阶段尚无归档，待首次完成追加） |
+| 2026-08-04 | §2 收益 · P2 | [`2026-08-04-tip-011-execution-source.md`](./2026-08-04-tip-011-execution-source.md) | 开火来源归因：TV/ALPHA/MANUAL 贯穿 write-path，`/v1/execution/source-stats` + Copy attribution 表，用户零操作 |
 
 ---
 

@@ -20,6 +20,8 @@ export type AutomationAlphaAddItem = {
   symbol: string;
   name?: string;
   catalystScore?: number;
+  /** TIP-012: 'research' marks 研报 → Alpha channel candidates. */
+  channel?: string | null;
 };
 
 export type AutomationRun = {
@@ -173,7 +175,9 @@ export async function applyAutomationRun(
       name: row.name ?? null,
       addedAt: now,
       color: '#e0e7ff',
-      source: 'alpha_radar',
+      // TIP-012: research-channel candidates (研报 → α) keep their own
+      // registry source so the Watchlist / journal can attribute them.
+      source: row.channel === 'research' ? 'research' : 'alpha_radar',
     });
     alphaAdded += 1;
   }
@@ -225,10 +229,13 @@ export function formatAutomationSummary(
   const removed = result?.removed ?? run.remove?.length ?? 0;
   const screener = result?.screenerAdded ?? run.screenerAdded ?? 0;
   const alpha = result?.alphaAdded ?? run.alphaAdd?.length ?? 0;
+  const research = run.meta?.researchCandidates ?? 0;
   const when = run.createdAt ? new Date(run.createdAt).toLocaleString() : '—';
   const trigger = run.trigger || 'unknown';
   const funnel = result?.funnel ?? funnelFromMeta(run.meta);
   const funnelPart = funnel ? ` | funnel ${formatScreenerFunnel(funnel)}` : '';
+  const researchPart =
+    typeof research === 'number' && research > 0 ? ` | 研报α +${research}` : '';
   const rejected = run.meta?.alphaRejected;
   let rejectPart = '';
   if (rejected && typeof rejected === 'object') {
@@ -237,5 +244,5 @@ export function formatAutomationSummary(
       .map(([k, v]) => `${k}:${v}`);
     if (entries.length) rejectPart = ` | alphaReject ${entries.join(',')}`;
   }
-  return `Last automation: ${when} (${trigger}) | −${removed} screener +${screener} alpha +${alpha}${funnelPart}${rejectPart}${formatAutomationSyncPart(run.meta)}${formatAutomationTop5Part(run.meta)}`;
+  return `Last automation: ${when} (${trigger}) | −${removed} screener +${screener} alpha +${alpha}${researchPart}${funnelPart}${rejectPart}${formatAutomationSyncPart(run.meta)}${formatAutomationTop5Part(run.meta)}`;
 }

@@ -360,6 +360,18 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     true,
     10,
   ),
+  meta(
+    'watchlist_funnel_health',
+    'watchlistAutomation',
+    '漏斗健康检查',
+    '工作日 18:10 用最新 TV 快照 + K 线回放入池漏斗（TV 命中 → 52W 回撤）；回撤关连续 3 天 0 通过则记失败并出现在健康页 Job Failures。',
+    '工作日 18:10',
+    '10 18 * * 1-5',
+    'cron',
+    true,
+    10,
+    { endpoint: '/watchlist/automation/funnel-health/check', method: 'POST', label: '立即检查' },
+  ),
 
   /* CN industry + sentiment (post-close) ----------------------------------- */
   meta(
@@ -484,6 +496,18 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     true,
     13,
     { endpoint: '/api/news/brief/generate?brief_type=midday', method: 'POST', label: '生成午间简报' },
+  ),
+  meta(
+    'research_report_sync',
+    'alphaRadar',
+    '研报同步',
+    '每 2 小时从东方财富研报中心抓取最新个股研报（评级/目标价/EPS），供研报 α 通道入池。',
+    '每 2 小时',
+    null,
+    'interval',
+    true,
+    14,
+    { endpoint: '/api/research/sync', method: 'POST', label: '立即同步' },
   ),
 ];
 

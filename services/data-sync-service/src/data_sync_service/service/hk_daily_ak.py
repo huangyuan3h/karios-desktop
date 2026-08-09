@@ -21,6 +21,7 @@ Layout differences vs tushare / yfinance:
 
 from __future__ import annotations
 
+import sys
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -174,7 +175,6 @@ def sync_hk_daily_for_ts_code_ak(
     sina_symbol = _ts_code_to_sina(code)
     if sina_symbol is None:
         return {"ok": False, "error": "could not derive Sina symbol", "ts_code": code}
-
     last_date = get_last_trade_date(code)
     since = last_date
     if since is None:
@@ -184,6 +184,12 @@ def sync_hk_daily_for_ts_code_ak(
         import akshare as ak  # type: ignore[import-not-found]
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": f"akshare unavailable: {e}", "ts_code": code}
+
+    # AkShare's Sina HK decoder is backed by mini_racer (V8), which can crash
+    # the whole process (FATAL in libmini_racer) on macOS. Fall back to the
+    # yfinance / tushare chain in hk_daily.py instead.
+    if sys.platform == "darwin":
+        return {"ok": False, "error": "akshare_disabled_on_darwin", "ts_code": code}
 
     try:
         df = ak.stock_hk_daily(symbol=sina_symbol)

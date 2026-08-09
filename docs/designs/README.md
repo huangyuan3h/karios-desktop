@@ -22,6 +22,7 @@
 
 | 文件 | 关联 todo 节 | 状态 |
 |------|--------------|------|
-| — | — | （起步阶段，尚无） |
-
-> 第一份入驻草稿建议落点：`docs/designs/cloud-deployment-options.md`（对应 todo §5 / §4 部署走向决策）。
+| [`l3-l4-evolution-roadmap.md`](./l3-l4-evolution-roadmap.md) | §16 升级方向（L3 → L4） | **方向已拍板 2026-08-07**；L3 五里程碑全部完成，L4 待排期 |
+| [`l4-gate-audit.md`](./l4-gate-audit.md) | §17 L4 准入 Gate（全模块排查加固） | **计划已立 2026-08-07**；P0 未清不启动 L4 |
+| `cloud-deployment-options.md` | §5 / §4 部署走向决策 | 待拍板 |
+| [`miniqmt-xtquant-live-trading.md`](./miniqmt-xtquant-live-trading.md) | §16 L4-P1 券商研究 | 未落地 / 待拍板（需券商文字确认费率与权限） |

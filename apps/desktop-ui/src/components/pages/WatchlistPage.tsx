@@ -4,6 +4,9 @@ import * as React from 'react';
 
 import { WatchlistImportDebug, type ScreenerImportDebugState } from '@/components/watchlist/WatchlistImportDebug';
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
+import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
+import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
+import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
 import { emptyScreenerFunnel } from '@/lib/watchlist-screener-import';
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
 import { WatchlistToolbar } from '@/components/watchlist/WatchlistToolbar';
@@ -129,7 +132,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [copyMdBusy, setCopyMdBusy] = React.useState(false);
   const copyMdTimerRef = React.useRef<number | null>(null);
 
-  const [importDebugOpen, setImportDebugOpen] = React.useState(true);
+  const [importDebugOpen, setImportDebugOpen] = React.useState(false);
   const [importDebugFilter, setImportDebugFilter] = React.useState('');
   const [importDebugScoreSortDir, setImportDebugScoreSortDir] = React.useState<'desc' | 'asc'>(
     'desc',
@@ -370,6 +373,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 executionGate.positionRangeHint,
               )}
             </div>
+            <div className="mt-1 text-xs opacity-90">
+              S-2 操作口径：{['Strong', 'Diverging'].includes(String(executionGate.marketRegime ?? ''))
+                ? '✅ 非 Weak 可开仓'
+                : '⏸ Weak 空仓等待'} · score≥70 · RS 前 50% · 移动止损 -8%
+            </div>
             {(() => {
               const missingSize = countHeldMissingPositionPct(items);
               return missingSize > 0 ? (
@@ -410,21 +418,25 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           onForceAutomationFromSkip={() => void onRunAutomation(true)}
         />
 
-        <WatchlistImportDebug
-          importDebug={importDebug}
-          importDebugOpen={importDebugOpen}
-          setImportDebugOpen={setImportDebugOpen}
-          importDebugFilter={importDebugFilter}
-          setImportDebugFilter={setImportDebugFilter}
-          importDebugScoreSortDir={importDebugScoreSortDir}
-          setImportDebugScoreSortDir={setImportDebugScoreSortDir}
-          watchlistSet={watchlistSet}
-          addSymbolToWatchlist={addSymbolToWatchlist}
-          setCode={setCode}
-          setError={setError}
-        />
+        <PortfolioHealthCard onOpenStock={onOpenStock} />
 
-        <FunnelHistoryTable limit={10} />
+        <WatchlistInsightsPanel>
+          <TradeStatsPanel />
+          <FunnelHistoryTable limit={10} />
+          <WatchlistImportDebug
+            importDebug={importDebug}
+            importDebugOpen={importDebugOpen}
+            setImportDebugOpen={setImportDebugOpen}
+            importDebugFilter={importDebugFilter}
+            setImportDebugFilter={setImportDebugFilter}
+            importDebugScoreSortDir={importDebugScoreSortDir}
+            setImportDebugScoreSortDir={setImportDebugScoreSortDir}
+            watchlistSet={watchlistSet}
+            addSymbolToWatchlist={addSymbolToWatchlist}
+            setCode={setCode}
+            setError={setError}
+          />
+        </WatchlistInsightsPanel>
 
         <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
           <div className="mb-2 text-sm font-medium">Add</div>

@@ -8,7 +8,7 @@ import pytest
 from data_sync_service.db import check_db, get_connection  # type: ignore[import-not-found]
 from data_sync_service.db.schema_baseline import baseline_ddl_statements
 
-HEAD_REVISION = "0016_news_items_actionability"
+HEAD_REVISION = "0024_stock_dailybasic"
 
 
 def _postgres_available() -> bool:
@@ -24,7 +24,6 @@ def test_baseline_ddl_includes_core_tables() -> None:
         "daily",
         "stock_basic",
         "alpha_radar_trends",
-        "backtest_run",
         "watchlist_registry",
         "tv_screeners",
     ):
@@ -129,7 +128,6 @@ def test_alembic_baseline_core_tables_exist() -> None:
         "daily",
         "stock_basic",
         "alpha_radar_trends",
-        "backtest_run",
         "watchlist_registry",
     }
     with get_connection() as conn:

@@ -4,9 +4,23 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
 
 from data_sync_service.db import execution_journal as ej_db
+
+# Symbol validation (2026-08-07 upstream fix): only well-formed watchlist
+# symbols may enter the journal. Mirrors service/trendok._symbol_to_ts_code:
+#   CN:6 digits | HK:1-5 digits | ETF:6 digits
+# Malformed symbols (e.g. CN:99{uuid} test rows) are dropped at diff time and
+# reported as ``rejectedCards`` on ingest, so they can never pollute the
+# decision log again.
+_SYMBOL_RE = re.compile(r"^(CN:\d{6}|HK:\d{1,5}|ETF:\d{6})$")
+
+
+def is_valid_watchlist_symbol(symbol: str) -> bool:
+    """True when ``symbol`` is a parseable watchlist symbol (CN/HK/ETF)."""
+    return bool(_SYMBOL_RE.match(str(symbol or "").strip().upper()))
 
 DECISION_CARD_FIELDS = (
     "symbol",
@@ -66,6 +80,12 @@ def _norm_str(v: Any) -> str:
     return str(v)
 
 
+def _norm_source(v: Any) -> str:
+    """Normalize source attribution. Closed enum 'TV' | 'ALPHA' | 'MANUAL' or ''."""
+    s = str(v or "").strip().upper()
+    return s if s in {"TV", "ALPHA", "MANUAL"} else ""
+
+
 def decision_payload_for_hash(gate: dict[str, Any] | None, cards: list[dict[str, Any]] | None) -> dict[str, Any]:
     g = gate if isinstance(gate, dict) else {}
     mode = _norm_str(g.get("mode"))
@@ -91,7 +111,17 @@ def decision_payload_for_hash(gate: dict[str, Any] | None, cards: list[dict[str,
             }
         )
     card_rows.sort(key=lambda r: r["symbol"])
+    # TIP-011: source attribution is annotation, not decision content — keep it
+    # out of the content hash so re-tagging a card doesn't churn snapshots.
     return {"mode": mode, "allowNewEntries": allow, "cards": card_rows}
+
+
+def _card_source(card: dict[str, Any] | None) -> str | None:
+    """Read source from a card. Returns None for pre-TIP-011 / unannotated cards."""
+    if not isinstance(card, dict):
+        return None
+    s = _norm_source(card.get("source"))
+    return s if s else None
 
 
 def compute_content_hash(gate: dict[str, Any] | None, cards: list[dict[str, Any]] | None) -> str:
@@ -106,8 +136,23 @@ def _cards_by_symbol(cards: list[dict[str, Any]] | None) -> dict[str, dict[str, 
         if not isinstance(c, dict):
             continue
         sym = str(c.get("symbol") or "").strip()
+        # Upstream defense: malformed symbols never enter the diff (2026-08-07).
+        if sym and not is_valid_watchlist_symbol(sym):
+            continue
         if sym:
             out[sym] = c
+    return out
+
+
+def _card_source_by_symbol(cards: list[dict[str, Any]] | None) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for c in cards or []:
+        if not isinstance(c, dict):
+            continue
+        sym = str(c.get("symbol") or "").strip()
+        src = _card_source(c)
+        if sym and src:
+            out[sym] = src
     return out
 
 
@@ -120,7 +165,13 @@ def diff_snapshots(
     from_snapshot_id: str | None,
     to_snapshot_id: str,
 ) -> list[dict[str, Any]]:
-    """Return change rows (not yet persisted)."""
+    """Return change rows (not yet persisted).
+
+    Each per-symbol change carries the symbol's ``card.source`` (TIP-011)
+    so downstream stats can break down BUY/ADD win-rate by provenance.
+    Pre-TIP-011 snapshots have no source field; those change rows keep
+    ``source=None`` and surface as 'UNKNOWN' in the stats endpoint.
+    """
     changes: list[dict[str, Any]] = []
     prev_gate = (prev or {}).get("gate") if prev else None
     prev_cards = (prev or {}).get("cards") if prev else None
@@ -142,6 +193,7 @@ def diff_snapshots(
                 "field": "mode",
                 "old_value": prev_mode or None,
                 "new_value": curr_mode or None,
+                "source": None,
             }
         )
 
@@ -158,11 +210,13 @@ def diff_snapshots(
                 "field": "allowNewEntries",
                 "old_value": "true" if prev_allow else "false",
                 "new_value": "true" if curr_allow else "false",
+                "source": None,
             }
         )
 
     prev_map = _cards_by_symbol(prev_cards if prev else [])
     curr_map = _cards_by_symbol(curr_cards)
+    curr_sources = _card_source_by_symbol(curr_cards)
     symbols = sorted(set(prev_map) | set(curr_map))
     for sym in symbols:
         p = prev_map.get(sym) or {}
@@ -170,6 +224,7 @@ def diff_snapshots(
         if not prev:
             # First snapshot of the day/session: do not flood with "appeared" events.
             continue
+        sym_source = curr_sources.get(sym)
         if sym not in prev_map and sym in curr_map:
             changes.append(
                 {
@@ -181,6 +236,7 @@ def diff_snapshots(
                     "field": "action",
                     "old_value": None,
                     "new_value": _norm_str(c.get("action")) or None,
+                    "source": sym_source,
                 }
             )
             why = _norm_str(c.get("why"))
@@ -195,6 +251,7 @@ def diff_snapshots(
                         "field": "why",
                         "old_value": None,
                         "new_value": why,
+                        "source": sym_source,
                     }
                 )
             continue
@@ -209,6 +266,7 @@ def diff_snapshots(
                     "field": "action",
                     "old_value": _norm_str(p.get("action")) or None,
                     "new_value": None,
+                    "source": None,
                 }
             )
             continue
@@ -235,6 +293,7 @@ def diff_snapshots(
                         "field": field,
                         "old_value": ov or None,
                         "new_value": nv or None,
+                        "source": sym_source,
                     }
                 )
     return changes
@@ -269,7 +328,11 @@ def ingest_snapshot(
     Insert snapshot if decision hash changed; else heartbeat-update latest same-day row.
     Returns API-shaped result.
     """
-    content_hash = compute_content_hash(gate, cards)
+    # Upstream defense (2026-08-07): malformed symbols are dropped BEFORE the
+    # snapshot is stored, and counted so operators can see a submission was
+    # partially rejected instead of silently losing cards.
+    clean_cards, rejected = _split_valid_cards(cards)
+    content_hash = compute_content_hash(gate, clean_cards)
     latest = ej_db.fetch_latest_snapshot(trade_date=trade_date)
 
     if latest and latest.get("contentHash") == content_hash:
@@ -281,6 +344,7 @@ def ingest_snapshot(
             "heartbeat": True,
             "snapshot": snap,
             "changes": [],
+            "rejectedCards": rejected,
         }
 
     # Prefer previous snapshot overall (may be prior day) for meaningful diffs across sessions.
@@ -289,14 +353,14 @@ def ingest_snapshot(
         trade_date=trade_date,
         source=source,
         gate=gate,
-        cards=cards,
+        cards=clean_cards,
         content_hash=content_hash,
         meta=meta,
     )
     change_rows = diff_snapshots(
         prev,
         gate,
-        cards,
+        clean_cards,
         trade_date=trade_date,
         from_snapshot_id=(prev or {}).get("id"),
         to_snapshot_id=snap["id"],
@@ -308,7 +372,25 @@ def ingest_snapshot(
         "heartbeat": False,
         "snapshot": snap,
         "changes": persisted,
+        "rejectedCards": rejected,
     }
+
+
+def _split_valid_cards(cards: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    """Partition cards into (valid, count_of_rejected). Cards with a
+    malformed symbol are dropped; non-dict entries are dropped too."""
+    valid: list[dict[str, Any]] = []
+    rejected = 0
+    for c in cards or []:
+        if not isinstance(c, dict):
+            rejected += 1
+            continue
+        sym = str(c.get("symbol") or "").strip()
+        if not is_valid_watchlist_symbol(sym):
+            rejected += 1
+            continue
+        valid.append(c)
+    return valid, rejected
 
 
 def _md_cell(v: Any) -> str:
@@ -354,29 +436,48 @@ def build_journal_markdown(
     if not day_changes:
         lines.append("| — | — | — | — | — | — |")
     else:
+        # C6: collapse bulk-initialization bursts (one timestamp with many rows)
+        # into a single summary row — the full 80-row table is noise for the LLM.
+        by_ts: dict[str, list[dict[str, Any]]] = {}
         for c in day_changes:
-            lines.append(
-                "| "
-                + " | ".join(
-                    [
-                        _md_cell(c.get("changedAt")),
-                        _md_cell(c.get("scope")),
-                        _md_cell(c.get("symbol")),
-                        _md_cell(c.get("field")),
-                        _md_cell(c.get("oldValue")),
-                        _md_cell(c.get("newValue")),
-                    ]
+            by_ts.setdefault(str(c.get("changedAt") or ""), []).append(c)
+        for ts, rows in by_ts.items():
+            if len(rows) > 5:
+                fields = sorted({str(r.get("field") or "") for r in rows if r.get("field")})
+                old_vals = sorted(
+                    {str(r.get("oldValue") or "") for r in rows if r.get("oldValue")}
                 )
-                + " |"
-            )
+                new_vals = sorted(
+                    {str(r.get("newValue") or "") for r in rows if r.get("newValue")}
+                )
+                preview = "、".join(new_vals[:6]) + ("…" if len(new_vals) > 6 else "")
+                lines.append(
+                    f"| {_md_cell(ts)} | — | 批量初始化 {len(rows)} 项 | "
+                    + f"{_md_cell('、'.join(fields))} | "
+                    + f"{_md_cell('、'.join(old_vals) or '—')} | {_md_cell(preview or '—')} |"
+                )
+            else:
+                for c in rows:
+                    lines.append(
+                        "| "
+                        + " | ".join(
+                            [
+                                _md_cell(c.get("changedAt")),
+                                _md_cell(c.get("scope")),
+                                _md_cell(c.get("symbol")),
+                                _md_cell(c.get("field")),
+                                _md_cell(c.get("oldValue")),
+                                _md_cell(c.get("newValue")),
+                            ]
+                        )
+                        + " |"
+                    )
     lines.append("")
 
     lines.append("### Latest Actions")
     lines.append(
         "- note: delta-only — Action / Trigger / HardStop / TrailStop changes; silent WATCH omitted"
     )
-    lines.append("| Symbol | Action | Why | Trigger | HardStop | TrailStop | Pos% | Mainline |")
-    lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
     cards = (latest or {}).get("cards") or []
     delta_symbols = symbols_with_latest_action_deltas(day_changes)
     delta_cards: list[dict[str, Any]] = []
@@ -390,7 +491,25 @@ def build_journal_markdown(
     if not delta_cards:
         lines.append("| — | — | — | — | — | — | — | — |")
     else:
+        # C7: plain WATCH/WATCH_SILENT rows (no trigger level) carry no signal
+        # beyond the watchlist table itself — collapse them into a count note.
+        meaningful: list[dict[str, Any]] = []
+        watch_only = 0
         for c in delta_cards:
+            action = str(c.get("action") or "").strip()
+            trigger = c.get("trigger")
+            has_trigger = trigger not in (None, "", 0, "—")
+            if action in ("WATCH", "WATCH_SILENT") and not has_trigger:
+                watch_only += 1
+                continue
+            meaningful.append(c)
+        if watch_only:
+            lines.append(
+                f"- note: {watch_only} 项 WATCH 无变化（硬止损见操作表，不再逐行罗列）"
+            )
+        lines.append("| Symbol | Action | Why | Trigger | HardStop | TrailStop | Pos% | Mainline |")
+        lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
+        for c in meaningful:
             ml = "ok" if c.get("mainlineOk") else "no"
             tag = c.get("mainlineTag")
             if tag:

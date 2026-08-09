@@ -251,14 +251,57 @@ def list_catalyst_stocks(
     *,
     limit: int = 50,
     max_age_days: int | None = None,
+    include_auto_qa: bool = True,
 ) -> dict[str, Any]:
     age_days_param = max_age_days if max_age_days is not None else default_max_age_days()
     trends = fetch_trends_for_catalyst(max_age_days=age_days_param)
     items = aggregate_catalyst_stocks(trends)
     lim = max(1, min(int(limit), 200))
+
+    auto_qa_payload: dict[str, Any] = {}
+    if include_auto_qa:
+        try:
+            from data_sync_service.service.alpha_radar_qa import (
+                compute_auto_qa_penalty_for_catalyst,
+                fetch_theme_win_rates,
+            )
+            penalties = compute_auto_qa_penalty_for_catalyst(items[:lim])
+            win_rates = fetch_theme_win_rates()
+            for item in items[:lim]:
+                sym = str(item.get("symbol") or "")
+                pen = penalties.get(sym) or {}
+                item["autoQaPenalty"] = pen.get("penalty", 0.0)
+                item["autoQaSignals"] = pen.get("signals") or {}
+                item["autoQaIndustry"] = pen.get("industry")
+                if item["autoQaPenalty"] > 0:
+                    item["adjustedCatalystScore"] = round(
+                        float(item.get("catalystScore") or 0) * (1.0 - item["autoQaPenalty"]),
+                        2,
+                    )
+                else:
+                    item["adjustedCatalystScore"] = item.get("catalystScore")
+                first_article = (item.get("articles") or [{}])[0]
+                if isinstance(first_article, dict):
+                    theme = first_article.get("macroTheme")
+                    if theme and theme in win_rates:
+                        item["themeHistoricalWinRate"] = win_rates[theme]["winRate"]
+                        item["themeHistoricalTrades"] = win_rates[theme]["total"]
+            auto_qa_payload = {
+                "applied": True,
+                "themesCovered": len(penalties),
+                "lowWinRateThemeCount": sum(
+                    1
+                    for wr in win_rates.values()
+                    if wr["winRate"] < 0.30
+                ),
+            }
+        except Exception as exc:  # noqa: BLE001
+            auto_qa_payload = {"applied": False, "error": str(exc)}
+
     return {
         "stalenessBasis": STALENESS_BASIS,
         "maxAgeDays": age_days_param,
         "total": len(items),
         "items": items[:lim],
+        "autoQa": auto_qa_payload,
     }

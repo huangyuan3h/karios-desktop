@@ -66,9 +66,18 @@ export type ExecutionAction = z.infer<typeof ExecutionActionSchema>;
 export const MainlineTagSchema = z.enum(['MOMENTUM', '5D_TOP3']);
 export type MainlineTag = z.infer<typeof MainlineTagSchema>;
 
+/**
+ * Provenance of a BUY/ADD signal (TIP-011).
+ * 'TV' = TV screener funnel, 'ALPHA' = Alpha Radar catalyst, 'MANUAL' = user/AI.
+ */
+export const ExecutionSourceSchema = z.enum(['TV', 'ALPHA', 'MANUAL']);
+export type ExecutionSource = z.infer<typeof ExecutionSourceSchema>;
+
 export const ExecutionActionCardSchema = z.object({
   symbol: z.string(),
   action: ExecutionActionSchema,
+  /** TIP-011: provenance of the signal; null = pre-TIP-011 / unknown. */
+  source: ExecutionSourceSchema.nullable().optional(),
   trailArmed: z.boolean(),
   peak: z.number().nullable().optional(),
   hardStop: z.number().nullable().optional(),
@@ -88,11 +97,21 @@ export const ExecutionActionCardSchema = z.object({
    */
   distPct: z.number().nullable().optional(),
   why: z.string().optional(),
+  /**
+   * Signal rule variant; 'ETF_FALLBACK' = ETF data-starved fallback
+   * (price-drawdown stop, no trendok stopLossPrice).
+   */
+  ruleType: z.string().nullable().optional(),
   mainlineOk: z.boolean().optional(),
   mainlineTag: MainlineTagSchema.nullable().optional(),
   /** Suggested add to sleeve weight for BUY/ADD (pct points), after caps. */
   suggestAddPct: z.number().nullable().optional(),
-  /** Binding constraint: clip | single | sector | sleeve */
+  /** Binding constraint: clip | single | sector | sleeve | risk (V7.0-02) */
   suggestSizeNote: z.string().nullable().optional(),
+  /**
+   * V7.0-02: stop distance % that drove risk-parity sizing
+   * (held → (current − exitStop)/current, flat → (ref − hardStop)/ref, else 2×ATR%).
+   */
+  sizeStopDistancePct: z.number().nullable().optional(),
 });
 export type ExecutionActionCard = z.infer<typeof ExecutionActionCardSchema>;

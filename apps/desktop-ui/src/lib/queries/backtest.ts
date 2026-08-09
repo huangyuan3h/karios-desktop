@@ -1,150 +1,220 @@
 'use client';
 
-import { useQuery, type QueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import { apiGetJson } from '@/lib/api/client';
 
-import { SCREENER_STALE_MS } from './intervals';
+export type BacktestSummary = {
+  config: {
+    start_date: string;
+    end_date: string;
+    score_threshold: number;
+    max_hold_days: number;
+    stop_loss_pct: number;
+    target_pnl_pct: number;
+    score_floor: number;
+    market: string;
+    gates: string;
+    trailing_stop_pct?: number;
+    position_pct?: number;
+    max_positions?: number;
+    rs_rank_min?: number;
+    diverging_scale?: number;
+  };
+  calendar_days: number;
+  trades: number;
+  closed: number;
+  open_at_end: number;
+  wins: number;
+  losses: number;
+  win_rate: number | null;
+  avg_net_pnl_pct: number | null;
+  avg_gross_pnl_pct: number | null;
+  avg_costs_pct: number | null;
+  max_drawdown_pct: number;
+  total_net_pnl_pct: number;
+  annual_net_pnl_pct: number;
+  avg_win_pct: number | null;
+  avg_loss_pct: number | null;
+  sharpe: number | null;
+  excess_vs_best_benchmark_pct: number;
+  best_benchmark: string;
+  by_score_bucket: Record<string, { trades: number; wins: number; winRate: number | null; avgNet: number | null }>;
+  gated_blocks: Record<string, number>;
+};
 
-export type BacktestRunListItem = {
-  id: string;
-  strategy_name: string;
+export type SensitivityResult = BacktestSummary;
+
+export type BenchmarkItem = {
+  ts_code: string;
+  name: string;
   start_date: string;
   end_date: string;
-  status: string;
-  created_at: string;
-  summary: Record<string, number> | null;
-  error_message: string | null;
+  total_return_pct: number;
+  annual_pct: number;
 };
 
-export type DailyLogEntry = {
-  date: string;
-  selected: Array<{ ts_code: string; score: number; avg_price: number }>;
-  orders: Array<{
-    ts_code: string;
-    action: string;
-    reason?: string | null;
-    status?: string | null;
-    exec_qty?: number | null;
-    exec_price?: number | null;
-  }>;
-  positions?: Array<{ ts_code: string; qty: number }>;
-  strategy_stats?: {
-    date?: string;
-    regime?: string;
-    bars?: number;
-    breakout_ok?: number;
-    pullback_ok?: number;
-    sell_ok?: number;
-    buy_signal?: number;
-  } | null;
-  cash_before: number;
-  cash: number;
-  equity: number;
+export type SensitivityResponse = {
+  ok: boolean;
+  configs: number;
+  benchmarks: BenchmarkItem[];
+  results: SensitivityResult[];
 };
 
-export type BacktestRunRecord = {
-  id: string;
-  strategy_name: string;
-  start_date: string;
-  end_date: string;
-  status: string;
-  created_at: string;
-  params: unknown;
-  summary: Record<string, number> | null;
-  equity_curve: Array<{ date: string; equity: number }> | null;
-  drawdown_curve: Array<{ date: string; drawdown: number }> | null;
-  positions_curve: Array<{ date: string; invested_ratio: number }> | null;
-  daily_log: Array<DailyLogEntry> | null;
-  error_message: string | null;
+export type BacktestRunResponse = {
+  ok: boolean;
+  summary: BacktestSummary;
+  benchmarks: BenchmarkItem[];
 };
 
-export type BacktestResultResponse = {
-  run: BacktestRunRecord;
-  trades: Array<Record<string, unknown>>;
-};
-
-export type IndexDailyPoint = {
-  date: string;
-  close: number;
-};
-
-export function backtestRunsQueryKey(limit = 50) {
-  return ['backtest', 'runs', limit] as const;
-}
-
-export function backtestResultQueryKey(runId: string) {
-  return ['backtest', 'result', runId] as const;
-}
-
-export function backtestIndexQueryKey(startDate: string, endDate: string) {
-  return ['backtest', 'index', '000001.SH', startDate, endDate] as const;
-}
-
-export async function fetchBacktestRuns(limit = 50): Promise<BacktestRunListItem[]> {
-  const resp = await apiGetJson<{ items: BacktestRunListItem[] }>(
-    `/backtest/runs?limit=${limit}`,
-  );
-  return resp.items ?? [];
-}
-
-export async function fetchBacktestResult(runId: string): Promise<BacktestResultResponse> {
-  return apiGetJson<BacktestResultResponse>(`/backtest/result/${encodeURIComponent(runId)}`);
-}
-
-export async function fetchBacktestIndexSeries(
-  startDate: string,
-  endDate: string,
-): Promise<IndexDailyPoint[]> {
-  const items = await apiGetJson<Array<Record<string, unknown>>>(
-    `/index-daily?ts_code=000001.SH&start_date=${startDate}&end_date=${endDate}&limit=10000`,
-  );
-  return items
-    .map((x) => ({
-      date: String(x.trade_date || ''),
-      close: Number(x.close || 0),
-    }))
-    .filter((x) => x.date && Number.isFinite(x.close) && x.close > 0);
-}
-
-export function backtestRunsQueryOptions(limit = 50) {
-  return {
-    queryKey: backtestRunsQueryKey(limit),
-    queryFn: () => fetchBacktestRuns(limit),
-    staleTime: SCREENER_STALE_MS,
+export type ExitAttributionResponse = {
+  ok: boolean;
+  days: number;
+  closedCount: number;
+  withForwardCount: number;
+  excluded: number;
+  insufficient: boolean;
+  hint: string | null;
+  overall: {
+    count: number;
+    avgFwdPct: number | null;
+    earlyCount: number;
+    wellCount: number;
+    neutralCount: number;
+    earlyRate: number | null;
+    wellRate: number | null;
   };
-}
-
-export function backtestResultQueryOptions(runId: string) {
-  return {
-    queryKey: backtestResultQueryKey(runId),
-    queryFn: () => fetchBacktestResult(runId),
-    staleTime: SCREENER_STALE_MS,
-    enabled: Boolean(runId?.trim()),
+  byReason: Record<
+    string,
+    {
+      label: string;
+      count: number;
+      withForward?: number;
+      avgFwdPct?: number | null;
+      earlyCount?: number;
+      wellCount?: number;
+      neutralCount?: number;
+      earlyRate?: number | null;
+      wellRate?: number | null;
+    }
+  >;
+  exposure: {
+    maxSimultaneous: number;
+    singleStockWeightFloorPct: number | null;
+    note: string;
   };
+};
+
+export type BacktestParams = {
+  start: string;
+  end: string;
+  scoreThreshold: number;
+  maxHoldDays: number;
+  stopLossPct: number;
+  gates: string;
+  trailingStopPct: number;
+  positionPct: number;
+  maxPositions: number;
+  rsRankMin: number;
+  divergingScale: number;
+  targetPnlPct: number;
+  scoreFloor: number;
+  panicCooldownDays: number;
+  slippagePct: number;
+};
+
+export const GATE_LEVELS = [
+  { value: 'full', label: '全套（红绿灯+资金流+mainline）' },
+  { value: 'regime', label: '仅红绿灯 regime' },
+  { value: 'none', label: '只看分数（v0）' },
+] as const;
+
+function backtestRunPath(p: BacktestParams): string {
+  const q = new URLSearchParams({
+    start: p.start,
+    end: p.end,
+    score_threshold: String(p.scoreThreshold),
+    max_hold_days: String(p.maxHoldDays),
+    stop_loss_pct: String(p.stopLossPct),
+    gates: p.gates,
+    trailing_stop_pct: String(p.trailingStopPct),
+    position_pct: String(p.positionPct),
+    max_positions: String(p.maxPositions),
+    rs_rank_min: String(p.rsRankMin),
+    diverging_scale: String(p.divergingScale),
+    target_pnl_pct: String(p.targetPnlPct),
+    score_floor: String(p.scoreFloor),
+    panic_cooldown_days: String(p.panicCooldownDays),
+    slippage_pct: String(p.slippagePct),
+  });
+  return `/api/backtest/run?${q.toString()}`;
 }
 
-export function backtestIndexQueryOptions(startDate: string, endDate: string) {
-  return {
-    queryKey: backtestIndexQueryKey(startDate, endDate),
-    queryFn: () => fetchBacktestIndexSeries(startDate, endDate),
-    staleTime: SCREENER_STALE_MS,
-    enabled: Boolean(startDate?.trim() && endDate?.trim()),
-  };
+export function useBacktestRunQuery(p: BacktestParams, attempt = 0) {
+  return useQuery({
+    queryKey: ['backtest', 'run', p, attempt],
+    queryFn: () => apiGetJson<BacktestRunResponse>(backtestRunPath(p)),
+    staleTime: 0,
+  });
 }
 
-export function useBacktestRunsQuery(limit = 50) {
-  return useQuery(backtestRunsQueryOptions(limit));
+export function useSensitivityQuery(start: string, end: string, enabled: boolean) {
+  const q = new URLSearchParams({ start, end });
+  return useQuery({
+    queryKey: ['backtest', 'sensitivity', start, end],
+    queryFn: () => apiGetJson<SensitivityResponse>(`/api/backtest/sensitivity?${q.toString()}`),
+    staleTime: 60_000,
+    enabled,
+  });
 }
 
-export function useBacktestResultQuery(runId: string) {
-  return useQuery(backtestResultQueryOptions(runId));
+export function useExitAttributionQuery(days = 5, enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'exit-attribution', days],
+    queryFn: () => apiGetJson<ExitAttributionResponse>(`/api/backtest/exit-attribution?days=${days}`),
+    staleTime: 30_000,
+    enabled,
+  });
 }
 
-export function useBacktestIndexQuery(startDate: string, endDate: string) {
-  return useQuery(backtestIndexQueryOptions(startDate, endDate));
+export type CorrelationStatusResponse = {
+  ok: boolean;
+  capPct: number;
+  clusters: Record<
+    string,
+    {
+      label: string;
+      exposurePct: number;
+      symbols: string[];
+      industries: string[];
+    }
+  >;
+  overLimit: string[];
+  blockedSymbols: string[];
+  topPairs: Array<[string, string, number]>;
+  empiricalNote: string | null;
+};
+
+export function useCorrelationStatusQuery(includeMatrix = true, enabled = true) {
+  const q = new URLSearchParams({ include_matrix: String(includeMatrix) });
+  return useQuery({
+    queryKey: ['backtest', 'correlation-status', includeMatrix],
+    queryFn: () =>
+      apiGetJson<CorrelationStatusResponse>(`/api/backtest/correlation-status?${q.toString()}`),
+    staleTime: 60_000,
+    enabled,
+  });
 }
 
-export async function invalidateBacktestQueries(queryClient: QueryClient): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey: ['backtest'] });
+/** Cluster exposure % for one symbol from a correlation-status payload. */
+export function clusterExposureForSymbol(
+  status: CorrelationStatusResponse | undefined,
+  symbol: string,
+): number | null {
+  if (!status) return null;
+  const s = symbol.trim().toUpperCase();
+  for (const c of Object.values(status.clusters)) {
+    if (c.symbols.includes(s)) return c.exposurePct;
+  }
+  return null;
 }

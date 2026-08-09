@@ -142,6 +142,17 @@ def test_wait_for_capture_jobs_polls_until_terminal(monkeypatch) -> None:
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
 def test_job_db_enqueue_claim_and_done() -> None:
+    # Isolate from other tests: claim_next_jobs picks globally, so leftover
+    # queued/running jobs from other suites would shadow this test's job.
+    from data_sync_service.db import get_connection
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM tv_capture_jobs WHERE status IN ('queued', 'running')"
+            )
+        conn.commit()
+
     sid = f"test-screener-{int(time.time() * 1000)}"
     job = jobdb.insert_job(screener_id=sid, trigger_source="test")
     assert job["status"] == "queued"

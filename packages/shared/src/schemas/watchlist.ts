@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-export const WatchlistSourceSchema = z.enum(['manual', 'screener', 'screener_fallback', 'alpha_radar']);
+export const WatchlistSourceSchema = z.enum([
+  'manual',
+  'screener',
+  'screener_fallback',
+  'alpha_radar',
+  'research',
+]);
 export type WatchlistSource = z.infer<typeof WatchlistSourceSchema>;
 
 export const WatchlistNameStatusSchema = z.enum(['resolved', 'not_found']);

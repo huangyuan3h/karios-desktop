@@ -182,3 +182,27 @@ def test_compute_watchlist_score_v4_uses_explicit_volume_ratio() -> None:
     )
 
     assert parts_low["volume"] < parts_full["volume"]
+
+
+def test_score_subs_are_none_safe() -> None:
+    """H7 (2026-08-08): scoring sub-functions must tolerate None inputs
+    (missing indicators) instead of raising TypeError."""
+    from data_sync_service.service.trendok import (
+        _clip01,
+        _score_sub_breakout,
+        _score_sub_ema,
+        _score_sub_macd,
+        _score_sub_rsi,
+        _score_sub_volume,
+    )
+
+    assert _clip01(None) == 0.0
+    assert _score_sub_ema(None, None, None, None) == (0.0, 0.0)
+    assert _score_sub_ema(1.0, 0.5, 0.4, None) == (0.8, 32.0)
+    assert _score_sub_macd(None, []) == (0.0, 0.0)
+    assert _score_sub_macd(0.5, []) == (0.0, 0.0)
+    assert _score_sub_breakout(None, None) == (0.0, 0.0)
+    assert _score_sub_breakout(10.0, None) == (0.0, 0.0)
+    assert _score_sub_rsi(None) == (0.0, 0.0)
+    assert _score_sub_volume(None) == (0.0, 0.0)
+    assert _score_sub_volume(0.8) == (0.8, 16.0)

@@ -1,4 +1,13 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+
+// Local .env (apps/ai-service/.env) is the primary source — same as `dotenv/config`.
+dotenv.config();
+// Repo root .env fills in keys that only live there (GEMINI_API_KEY, proxy vars).
+// dotenv never overrides already-set variables, so local values always win.
+const rootEnv = path.resolve(process.cwd(), '..', '..', '.env');
+if (existsSync(rootEnv)) dotenv.config({ path: rootEnv });
 
 import { serve } from '@hono/node-server';
 

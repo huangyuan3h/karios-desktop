@@ -13,7 +13,6 @@ import {
 } from '@/lib/execution-action';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso } from '@/lib/market-hours';
-import { isEtfWatchlistSymbol } from '@/lib/symbols';
 import type { ExecutionGate } from '@karios/shared';
 import {
   computePnLPct,
@@ -47,13 +46,15 @@ const COST_PRICE_RE = /^\d+(\.\d{0,3})?$/;
 const POSITION_PCT_RE = /^\d+(\.\d{0,2})?$/;
 
 type WatchlistRowTone = 'green' | 'red' | 'none';
-type WatchlistStickyColumn = 'score' | 'trendOk' | 'action';
+type WatchlistStickyColumn = 'score' | 'exec' | 'trendOk' | 'action';
 
 const WATCHLIST_STICKY_COLUMN_LAYOUT: Record<
   WatchlistStickyColumn,
   { width: number; right: number; zHeader: number; zBody: number }
 > = {
-  score: { width: 80, right: 168, zHeader: 23, zBody: 13 },
+  // Fixed right group (left→right): score | exec | trendOk | action.
+  score: { width: 80, right: 272, zHeader: 23, zBody: 13 },
+  exec: { width: 110, right: 168, zHeader: 24, zBody: 14 },
   trendOk: { width: 80, right: 88, zHeader: 22, zBody: 12 },
   action: { width: 88, right: 0, zHeader: 25, zBody: 15 },
 };
@@ -98,6 +99,8 @@ function watchlistStickyCellStyle(
 }
 
 type ShowTooltipFn = (el: HTMLElement, content: React.ReactNode, width?: number) => void;
+
+export type TradeDialogKind = 'buy' | 'add' | 'sell';
 
 function checkLine(label: string, ok: boolean | null | undefined, detail: string) {
   if (ok == null) return { label, state: '—', detail };
@@ -498,6 +501,9 @@ export type WatchlistRowProps = {
   sectorExposureByIndustry: Map<string, number> | null;
   sleeveExposurePct: number;
   defensiveSleeveExposurePct?: number;
+  /** V7.0-01 / L3-P5: semantic factor-cluster exposure % (from parent). */
+  clusterExposurePct?: number | null;
+  rsRank?: number | null;
   showTooltip: ShowTooltipFn;
   hideTooltip: () => void;
   showColorPicker: (el: HTMLElement, sym: string) => void;
@@ -510,6 +516,8 @@ export type WatchlistRowProps = {
   onRemove: (sym: string) => void;
   onOpenStock?: (symbol: string) => void;
   onAddReference: (item: WatchlistItem, trend: TrendOkResult | undefined) => void;
+  /** Open the buy/add/sell dialog for this row (all symbols). */
+  onOpenTradeDialog?: (kind: TradeDialogKind, item: WatchlistItem) => void;
   rowClassName?: string;
   rowTitle?: string;
 };
@@ -530,6 +538,8 @@ function WatchlistRowInner({
   sectorExposureByIndustry,
   sleeveExposurePct,
   defensiveSleeveExposurePct = 0,
+  clusterExposurePct = null,
+  rsRank = null,
   showTooltip,
   hideTooltip,
   showColorPicker,
@@ -542,6 +552,7 @@ function WatchlistRowInner({
   onRemove,
   onOpenStock,
   onAddReference,
+  onOpenTradeDialog,
   rowClassName,
   rowTitle,
 }: WatchlistRowProps) {
@@ -578,6 +589,7 @@ function WatchlistRowInner({
     sectorExposureByIndustry,
     sleeveExposurePct,
     defensiveSleeveExposurePct,
+    clusterExposurePct,
     sectorOutflowBlock,
     catalyst,
     todaySh: getShanghaiTodayIso(),
@@ -607,11 +619,6 @@ function WatchlistRowInner({
           ? 'text-amber-700 font-semibold'
           : 'text-[var(--k-muted)]';
   const heldForTrigger = isHeldPosition(it);
-  const isEtf = isEtfWatchlistSymbol(it.symbol);
-  const etfSuggestPct =
-    typeof actionCard.suggestAddPct === 'number' && Number.isFinite(actionCard.suggestAddPct)
-      ? actionCard.suggestAddPct
-      : 5;
   const triggerPrice = heldForTrigger
     ? (actionCard.exitStop ?? actionCard.trigger ?? null)
     : (actionCard.entryTrigger ?? actionCard.trigger ?? null);
@@ -738,53 +745,6 @@ function WatchlistRowInner({
       <td className="px-2 py-2">
         <StopLossCell sym={it.symbol} t={t} showTooltip={showTooltip} hideTooltip={hideTooltip} />
       </td>
-      <td
-        className={`px-2 py-2 font-mono text-xs ${execTone}`}
-        title={[
-          actionCard.why,
-          actionCard.mainlineOk
-            ? `mainline=${actionCard.mainlineTag || 'ok'}`
-            : 'mainline=no',
-          typeof actionCard.suggestAddPct === 'number'
-            ? `suggest +${actionCard.suggestAddPct.toFixed(1)}% (${actionCard.suggestSizeNote || 'clip'})`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-      >
-        {actionCard.action}
-        {typeof actionCard.suggestAddPct === 'number' ? (
-          <span className="ml-1 font-normal text-emerald-700/90">
-            +{actionCard.suggestAddPct.toFixed(0)}%
-          </span>
-        ) : null}
-        {isEtf ? (
-          <div className="mt-1 flex gap-1">
-            {heldForTrigger ? (
-              <button
-                type="button"
-                className="rounded border border-red-500/40 px-1.5 py-0.5 text-[10px] font-normal text-red-600 hover:bg-red-500/10"
-                onClick={() => setItemPositionPct(it.symbol, '0')}
-                title="一键清仓（仓位=0，应用成本清理）"
-              >
-                卖出
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="rounded border border-emerald-600/40 px-1.5 py-0.5 text-[10px] font-normal text-emerald-700 hover:bg-emerald-500/10"
-                onClick={() => {
-                  if (currentPrice != null) setItemCostPriceValue(it.symbol, currentPrice);
-                  setItemPositionPct(it.symbol, String(etfSuggestPct));
-                }}
-                title={`一键买入：仓位 ${etfSuggestPct}%、成本=现价`}
-              >
-                买入
-              </button>
-            )}
-          </div>
-        ) : null}
-      </td>
       <td className="px-2 py-2 font-mono text-xs" title={triggerTitle}>
         {fmtPrice(triggerPrice)}
       </td>
@@ -819,23 +779,45 @@ function WatchlistRowInner({
           const rs = t?.rs ?? (t?.values?.rsValue as number | undefined);
           if (typeof rs !== 'number' || !Number.isFinite(rs)) return '—';
           const isLeader = t?.checks?.rs_leader === true;
+          const pct = typeof rsRank === 'number' && Number.isFinite(rsRank) ? rsRank : null;
+          const inTopHalf = pct != null && pct >= 0.5;
           return (
-            <span
-              className={
-                isLeader
-                  ? 'font-bold text-emerald-600'
-                  : rs > 0
-                    ? 'text-emerald-600'
-                    : 'text-red-600'
-              }
-              title={
-                isLeader
-                  ? '💪 RS_Leader (逆势抗跌) — outperforming CSI300 by >10% in weak market'
-                  : `RS vs CSI300 20D: ${rs > 0 ? '+' : ''}${rs.toFixed(1)}%`
-              }
-            >
-              {rs > 0 ? '+' : ''}
-              {rs.toFixed(1)}%
+            <span className="inline-flex items-center gap-1">
+              <span
+                className={
+                  isLeader
+                    ? 'font-bold text-emerald-600'
+                    : rs > 0
+                      ? 'text-emerald-600'
+                      : 'text-red-600'
+                }
+                title={
+                  isLeader
+                    ? '💪 RS_Leader (逆势抗跌) — outperforming CSI300 by >10% in weak market'
+                    : `RS vs CSI300 20D: ${rs > 0 ? '+' : ''}${rs.toFixed(1)}%`
+                }
+              >
+                {rs > 0 ? '+' : ''}
+                {rs.toFixed(1)}%
+              </span>
+              {pct != null && (
+                <span
+                  className={`rounded px-1 text-[10px] tabular-nums ${
+                    inTopHalf
+                      ? 'bg-emerald-500/10 font-semibold text-emerald-700 dark:text-emerald-300'
+                      : 'bg-red-500/10 font-semibold text-red-600'
+                  }`}
+                  title={
+                    inTopHalf
+                      ? `全市场 20 日相对强度排名前 ${(pct * 100).toFixed(0)}%（S-3：≥50% 达标）`
+                      : `全市场 20 日相对强度排名前 ${(pct * 100).toFixed(0)}% — 低于 50% 回测不建议买入（S-3：只买前 50%）`
+                  }
+                >
+                  {inTopHalf
+                    ? `前${(pct * 100).toFixed(0)}%`
+                    : `前${(pct * 100).toFixed(0)}% 不买`}
+                </span>
+              )}
             </span>
           );
         })()}
@@ -897,6 +879,70 @@ function WatchlistRowInner({
         <ScoreCell sym={it.symbol} t={t} showTooltip={showTooltip} hideTooltip={hideTooltip} />
       </td>
       <td
+        className={watchlistStickyCellClass('exec', { tone, extra: 'text-left' })}
+        style={watchlistStickyCellStyle('exec')}
+        title={[
+          actionCard.why,
+          actionCard.mainlineOk
+            ? `mainline=${actionCard.mainlineTag || 'ok'}`
+            : 'mainline=no',
+          typeof actionCard.suggestAddPct === 'number'
+            ? `suggest +${actionCard.suggestAddPct.toFixed(1)}% (${actionCard.suggestSizeNote || 'clip'}${
+                actionCard.sizeStopDistancePct != null
+                  ? ` · stop ${actionCard.sizeStopDistancePct.toFixed(1)}%`
+                  : ''
+              })`
+            : actionCard.action === 'BUY' || actionCard.action === 'ADD'
+              ? actionCard.sizeStopDistancePct != null
+                ? `stop ${actionCard.sizeStopDistancePct.toFixed(1)}% → 风险超预算(建议<2.5%)，放弃`
+                : null
+              : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      >
+        <span className={execTone}>{actionCard.action}</span>
+        {typeof actionCard.suggestAddPct === 'number' ? (
+          <span className="ml-1 font-normal text-emerald-700/90">
+            +{actionCard.suggestAddPct.toFixed(0)}%
+          </span>
+        ) : null}
+        {onOpenTradeDialog ? (
+          <div className="mt-1 flex gap-1">
+            {heldForTrigger ? (
+              <>
+                <button
+                  type="button"
+                  className="rounded border border-emerald-600/40 px-1.5 py-0.5 text-[10px] font-normal text-emerald-700 hover:bg-emerald-500/10"
+                  onClick={() => onOpenTradeDialog?.('add', it)}
+                  title="加仓：输入加仓价格 + 仓位，自动加权平均成本"
+                >
+                  加仓
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-red-500/40 px-1.5 py-0.5 text-[10px] font-normal text-red-600 hover:bg-red-500/10"
+                  onClick={() => onOpenTradeDialog?.('sell', it)}
+                  title="卖出：输入卖出价格，记录真实成交"
+                >
+                  卖出
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="rounded border border-emerald-600/40 px-1.5 py-0.5 text-[10px] font-normal text-emerald-700 hover:bg-emerald-500/10"
+                onClick={() => onOpenTradeDialog?.('buy', it)}
+                title="买入：输入买入价格 + 仓位"
+              >
+                买入
+              </button>
+            )}
+          </div>
+        ) : null}
+      </td>
+
+      <td
         className={watchlistStickyCellClass('trendOk', { tone })}
         style={watchlistStickyCellStyle('trendOk')}
       >
@@ -929,6 +975,7 @@ function WatchlistRowInner({
           </Button>
         </div>
       </td>
+
     </tr>
   );
 }

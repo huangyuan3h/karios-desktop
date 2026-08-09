@@ -55,6 +55,15 @@ export type CatalystStock = {
   articleCount: number;
   latestArticleAt?: string | null;
   articles: CatalystArticle[];
+  /** TIP-009: auto-QA penalty in [0, 1]; 0 means no signal. */
+  autoQaPenalty?: number;
+  autoQaSignals?: Record<string, unknown>;
+  autoQaIndustry?: string | null;
+  /** TIP-009: catalystScore after the auto-QA penalty multiplier. */
+  adjustedCatalystScore?: number;
+  /** TIP-009: macro_theme historical paper-trade win-rate [0, 1]. */
+  themeHistoricalWinRate?: number;
+  themeHistoricalTrades?: number;
 };
 
 export type CatalystStocksResponse = {
@@ -149,7 +158,14 @@ export function formatCatalystStockSummaryLine(stock: CatalystStock): string {
   const sym = normalizeCatalystSymbol(stock.symbol);
   const maxGrade = maxGradeArticle(stock.articles);
   const gradePart = maxGrade ? `Max Grade: ${maxGrade.grade} (${maxGrade.theme})` : 'Max Grade: —';
-  return `${sym} ${stock.name} | Score: ${formatCatalystScore(stock.catalystScore)} | ${gradePart}`;
+  const penalty = typeof stock.autoQaPenalty === 'number' ? stock.autoQaPenalty : 0;
+  const score =
+    typeof stock.adjustedCatalystScore === 'number' &&
+    Number.isFinite(stock.adjustedCatalystScore)
+      ? stock.adjustedCatalystScore
+      : stock.catalystScore;
+  const qaFlag = penalty > 0 ? ` · ⚠QA -${Math.round(penalty * 100)}%` : '';
+  return `${sym} ${stock.name} | Score: ${formatCatalystScore(score)} | ${gradePart}${qaFlag}`;
 }
 
 export function articleAgeHours(publishedAt?: string | null, now = Date.now()): number | null {
@@ -474,4 +490,91 @@ export async function fetchAlphaRadarTrendsForCopy(
   }
   const recent = await fetchAlphaRadarTrends(baseUrl, limit, false, maxAgeDays);
   return { items: recent, scope: 'recent' };
+}
+
+// ---------------------------------------------------------------------------
+// TIP-009: Auto-QA penalties + theme win-rates (data-driven, no human input)
+// ---------------------------------------------------------------------------
+
+export type AutoQaPenalty = {
+  trendId: string;
+  trendName: string;
+  macroTheme: string;
+  symbol: string;
+  symbolName: string;
+  industry: string;
+  expectedIndustries: string[];
+  penalty: number;
+};
+
+export type AutoQaWinRate = {
+  theme: string;
+  wins: number;
+  total: number;
+  winRate: number;
+};
+
+export type AutoQaStats = {
+  sinceDays: number;
+  lookbackDays: number;
+  themesCovered: number;
+  lowWinRateThemes: AutoQaWinRate[];
+  recentPenalties: AutoQaPenalty[];
+  config?: { minWinRate?: number; nameAmbiguityGap?: number };
+};
+
+export async function fetchAutoQaStats(
+  baseUrl: string,
+  sinceDays = 7,
+  limit = 20,
+): Promise<AutoQaStats | null> {
+  try {
+    return await apiFetchJson<AutoQaStats>(
+      `/api/alpha-radar/auto-qa-stats?sinceDays=${sinceDays}&limit=${limit}`,
+      { baseUrl, signal: AbortSignal.timeout(15_000) },
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function buildAutoQaMarkdown(stats: AutoQaStats | null | undefined): string {
+  if (!stats) return '';
+  const lines: string[] = [];
+  const penalties = Array.isArray(stats.recentPenalties) ? stats.recentPenalties : [];
+  const lowWin = Array.isArray(stats.lowWinRateThemes) ? stats.lowWinRateThemes : [];
+
+  if (penalties.length === 0 && lowWin.length === 0) {
+    return '';
+  }
+
+  lines.push('## Alpha Radar · Auto-QA');
+  lines.push(`- sinceDays: ${stats.sinceDays}`);
+  lines.push(`- themesCovered: ${stats.themesCovered}`);
+  lines.push('');
+
+  if (penalties.length > 0) {
+    lines.push('### ⚠ Mapping warnings');
+    lines.push('| Trend | Symbol | Industry | Expected | Penalty |');
+    lines.push('| --- | --- | --- | --- | ---: |');
+    for (const p of penalties.slice(0, 20)) {
+      const expected = (p.expectedIndustries || []).join(' / ') || '—';
+      lines.push(
+        `| ${p.trendName || p.macroTheme} | ${p.symbol} ${p.symbolName || ''} | ${p.industry} | ${expected} | ${Math.round(p.penalty * 100)}% |`,
+      );
+    }
+    lines.push('');
+  }
+
+  if (lowWin.length > 0) {
+    lines.push('### Theme historical win-rate (paper-trading)');
+    lines.push('| Macro Theme | Wins / Total | Win Rate |');
+    lines.push('| --- | ---: | ---: |');
+    for (const t of lowWin) {
+      lines.push(`| ${t.theme} | ${t.wins} / ${t.total} | ${(t.winRate * 100).toFixed(0)}% |`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n').trim() + '\n';
 }

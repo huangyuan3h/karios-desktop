@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-08-09T11:29:59.287995+00:00",
+  "tag": "",
+  "config": {
+    "score_threshold": 65.0,
+    "max_hold_days": 60,
+    "stop_loss_pct": -5.0,
+    "target_pnl_pct": 100.0,
+    "score_floor": 0.0,
+    "market": "CN",
+    "gates": "full",
+    "trailing_stop_pct": -8.0,
+    "position_pct": 0.1,
+    "max_positions": 20,
+    "rs_rank_min": 0.5,
+    "diverging_scale": 1.0,
+    "panic_cooldown_days": 3,
+    "slippage_pct": 0.05,
+    "pyramid_trigger_pct": 2.5,
+    "pyramid_add_scale": 0.5,
+    "pyramid_max_adds": 1
+  },
+  "results": {
+    "OOS2": {
+      "closed": 319,
+      "winRate": 0.42,
+      "avgNetPnlPct": 4.247,
+      "totalNetPnlPct": 106.944,
+      "maxDrawdownPct": 21.0,
+      "sharpe": 3.61
+    },
+    "train": {
+      "closed": 215,
+      "winRate": 0.521,
+      "avgNetPnlPct": 8.759,
+      "totalNetPnlPct": 147.479,
+      "maxDrawdownPct": 9.956,
+      "sharpe": 5.78
+    },
+    "valid": {
+      "closed": 63,
+      "winRate": 0.54,
+      "avgNetPnlPct": 15.255,
+      "totalNetPnlPct": 73.929,
+      "maxDrawdownPct": 5.806,
+      "sharpe": 8.59
+    }
+  },
+  "baselineUsed": true
+}

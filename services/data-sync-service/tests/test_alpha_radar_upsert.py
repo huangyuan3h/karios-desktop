@@ -15,6 +15,23 @@ from data_sync_service.db.alpha_radar import (
 
 pytestmark = pytest.mark.requires_postgres
 
+
+@pytest.fixture(autouse=True)
+def _cleanup_alpha_radar_rows() -> None:
+    """Delete test sources after each test (CASCADE removes documents + trends).
+
+    Every test inserts a source + document via the real DB; without cleanup
+    each full-suite run leaves rows behind (AGENTS.md DB test discipline).
+    """
+    from data_sync_service.db import get_connection
+
+    yield
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM alpha_radar_sources WHERE id LIKE 'test-src-%'")
+        conn.commit()
+
+
 def _doc_id() -> str:
     return uuid.uuid4().hex[:16]
 

@@ -112,6 +112,8 @@ def test_tv_chrome_status_endpoint_shape() -> None:
 
 @pytest.mark.requires_postgres
 def test_broker_accounts_state_shape() -> None:
+    from data_sync_service.db import get_connection
+
     client = TestClient(app)
     created = client.post(
         "/broker/accounts",
@@ -137,6 +139,13 @@ def test_broker_accounts_state_shape() -> None:
     assert isinstance(state["positions"], list)
     assert isinstance(state["conditionalOrders"], list)
     assert isinstance(state["trades"], list)
+
+    # Clean up the created account (would otherwise accumulate per run).
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM broker_account_state WHERE account_id = %s", (acc["id"],))
+            cur.execute("DELETE FROM broker_accounts WHERE id = %s", (acc["id"],))
+        conn.commit()
 
 
 @pytest.mark.requires_postgres
@@ -223,9 +232,23 @@ def test_tv_capture_job_get_endpoint(monkeypatch) -> None:
 
 
 @pytest.mark.requires_postgres
-def test_dashboard_sync_endpoint_shape() -> None:
+def test_dashboard_sync_endpoint_shape(monkeypatch) -> None:
+    import data_sync_service.service.dashboard as dashboard_svc
+
+    # Mock the real sync: it captures execution snapshots + writes change
+    # rows to the dev DB, and would leave rows behind every test run.
+    monkeypatch.setattr(
+        dashboard_svc,
+        "dashboard_sync_parallel",
+        lambda *, force=True, screeners=True: {
+            "ok": True,
+            "startedAt": "2026-08-08T00:00:00+00:00",
+            "finishedAt": "2026-08-08T00:00:01+00:00",
+            "steps": ["close_sync", "post_close_sync", "watchlist_automation"],
+            "screener": {"ok": False, "skipped": True},
+        },
+    )
     client = TestClient(app)
-    # Avoid running TradingView sync in tests (it may require Chrome profile/login).
     resp = client.post("/dashboard/sync?force=true&screeners=false", json={})
     assert resp.status_code == 200
     payload = resp.json()
@@ -357,7 +380,13 @@ def test_system_prompt_endpoints_shape_and_roundtrip() -> None:
 
 
 @pytest.mark.requires_postgres
-def test_alpha_radar_endpoints_shape() -> None:
+def test_alpha_radar_endpoints_shape(monkeypatch) -> None:
+    # init-defaults writes default sources + disables non-default ones; mock
+    # it so the test stays read-only against the dev DB.
+    monkeypatch.setattr(
+        "data_sync_service.api.alpha_radar_routes.add_default_sources",
+        lambda: None,
+    )
     client = TestClient(app)
     init = client.post("/api/alpha-radar/init-defaults")
     assert init.status_code == 200
@@ -451,3 +480,16 @@ def test_sync_jobs_aggregate_endpoint_shape() -> None:
     assert "hkIndustryCoverage" in payload
     assert "alphaRadar" in payload
     assert "watchlistAutomation" in payload
+
+
+@pytest.mark.requires_postgres
+def test_panic_cooldown_endpoint() -> None:
+    """GET /market/cn/sentiment/panic-cooldown returns S-3 panic status shape."""
+    client = TestClient(app)
+    res = client.get("/market/cn/sentiment/panic-cooldown?days=10&cooldownDays=3")
+    assert res.status_code == 200
+    body = res.json()
+    assert set(body) == {"lastPanicDate", "cooldownEndDate", "active"}
+    assert isinstance(body["active"], bool)
+    if body["lastPanicDate"]:
+        assert body["cooldownEndDate"] is not None

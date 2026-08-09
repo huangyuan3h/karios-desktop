@@ -73,3 +73,54 @@ def test_macro_lock_reader_uses_cache_without_repeat_db_calls() -> None:
     assert second == first
     assert list_days.call_count == 1
 
+
+
+def test_macro_lock_fails_closed_on_sentiment_read_failure(monkeypatch) -> None:
+    """H5 (2026-08-08): a sentiment read failure must not disable the crash
+    lock — the read degrades to extreme_caution (lock active) and is NOT
+    cached, so recovery re-locks/unlocks correctly."""
+    from data_sync_service.service.trendok import _read_latest_sentiment_for_macro_lock
+
+    def boom() -> None:
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr("data_sync_service.service.trendok._shanghai_today_iso", boom)
+    monkeypatch.setattr("data_sync_service.service.trendok._macro_lock_cache", {})
+
+    risk_mode, down_count = _read_latest_sentiment_for_macro_lock()
+    assert risk_mode == "extreme_caution"
+    assert down_count == 3500
+    # failure is not cached — the next call retries the read
+    from data_sync_service.service import trendok as trendok
+
+    assert "latest" not in trendok._macro_lock_cache
+
+
+def test_macro_lock_read_failure_not_cached() -> None:
+    """The failed read must not poison the cache with a permanent (None, None)
+    unlock; a subsequent successful read replaces it."""
+
+    cache = {}
+    import data_sync_service.service.trendok as trendok
+
+    original = trendok._macro_lock_cache
+    try:
+        trendok._macro_lock_cache = cache
+
+        def boom() -> None:
+            raise RuntimeError("db down")
+
+        trendok._shanghai_today_iso = boom
+        trendok._read_latest_sentiment_for_macro_lock()
+        assert "latest" not in cache
+
+        # simulate recovery: empty table is a valid no-lock state
+        trendok._shanghai_today_iso = lambda: "2026-08-08"
+        trendok.list_days = lambda as_of_date=None, days=1: []
+        trendok.get_latest_date = lambda: None
+        risk_mode, down_count = trendok._read_latest_sentiment_for_macro_lock()
+        assert risk_mode is None
+        assert down_count is None
+        assert "latest" in cache
+    finally:
+        trendok._macro_lock_cache = original

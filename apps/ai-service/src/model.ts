@@ -1,6 +1,7 @@
 import { generateText } from 'ai';
 import { createOpenAI, openai } from '@ai-sdk/openai';
-import { google } from '@ai-sdk/google';
+import { createGoogleGenerativeAI, google } from '@ai-sdk/google';
+import { fetch as undiciFetch, EnvHttpProxyAgent } from 'undici';
 import { z } from 'zod';
 
 import { AiConfigStoreSchema, AiProfileSchema, loadConfigStore } from './config';
@@ -218,6 +219,55 @@ export async function getResolvedModel(): Promise<ResolvedModelBundle> {
 export function getStrategyFallbackModelId(): string | null {
   const id = (process.env.AI_STRATEGY_FALLBACK_MODEL ?? '').trim();
   return id || null;
+}
+
+export const DECISION_DEFAULT_MODEL_ID = 'gemini-3.6-flash';
+
+let geminiFetch: typeof fetch | null = null;
+
+/**
+ * Gemini calls go through the HTTP(S) proxy from env (https_proxy/http_proxy),
+ * since the API is not directly reachable from some networks. Falls back to the
+ * global fetch when no proxy env var is configured; no_proxy is respected.
+ */
+function getGeminiFetch(): typeof fetch {
+  if (geminiFetch) return geminiFetch;
+  const hasProxy =
+    (process.env.https_proxy ??
+      process.env.HTTPS_PROXY ??
+      process.env.http_proxy ??
+      process.env.HTTP_PROXY ??
+      '').trim().length > 0;
+  if (!hasProxy) {
+    geminiFetch = globalThis.fetch;
+    return geminiFetch;
+  }
+  const agent = new EnvHttpProxyAgent();
+  geminiFetch = (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+    undiciFetch(input as never, { ...init, dispatcher: agent } as never) as Promise<Response>;
+  return geminiFetch;
+}
+
+/**
+ * Decision Agent model resolver: use Gemini when GEMINI_API_KEY is configured,
+ * otherwise fall back to the normal profile/env resolution.
+ */
+export async function getDecisionModelBundle(): Promise<ResolvedModelBundle> {
+  const key = asTrimmedString(process.env.GEMINI_API_KEY);
+  if (!key) {
+    return getResolvedModel();
+  }
+  const modelId = asTrimmedString(process.env.AI_DECISION_MODEL) || DECISION_DEFAULT_MODEL_ID;
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY = key;
+  process.env.GOOGLE_API_KEY = key;
+  delete process.env.OPENAI_BASE_URL;
+  const geminiClient = createGoogleGenerativeAI({ fetch: getGeminiFetch() });
+  return {
+    model: geminiClient.languageModel(modelId),
+    provider: 'google',
+    modelId,
+    looseStructuredOutputs: false,
+  };
 }
 
 export async function getStrategyPrimaryAndFallbackModels(): Promise<{

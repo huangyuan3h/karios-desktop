@@ -70,8 +70,11 @@ def upsert_registry(items: list[dict[str, Any]]) -> int:
             conn.commit()
         return 0
     values = []
+    # Lazy import: db layer must not hard-depend on the service layer.
+    from data_sync_service.service.market_quotes import normalize_market_symbol
+
     for item in items:
-        sym = str(item.get("symbol") or "").strip()
+        sym = normalize_market_symbol(str(item.get("symbol") or "").strip())
         if not sym:
             continue
         values.append(
@@ -79,7 +82,7 @@ def upsert_registry(items: list[dict[str, Any]]) -> int:
                 sym,
                 str(item.get("source") or "manual"),
                 str(item.get("addedAt") or item.get("added_at") or ""),
-                Json(item),
+                Json({**item, "symbol": sym}),
             )
         )
     if not values:
