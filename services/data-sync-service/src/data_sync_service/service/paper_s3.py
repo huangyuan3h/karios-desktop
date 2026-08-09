@@ -23,6 +23,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from data_sync_service.db.daily import fetch_last_ohlcv_batch
+from data_sync_service.db.paper_trading import SOURCE_S3, insert_paper_trade
 from data_sync_service.service.backtest_engine import (
     BacktestConfig,
     _load_flow_mainline_data,
@@ -31,10 +33,7 @@ from data_sync_service.service.backtest_engine import (
     _load_rs_ranks,
 )
 from data_sync_service.service.market_sentiment import get_cn_sentiment, get_panic_cooldown
-from data_sync_service.service.paper_cost_model import MARKETS
 from data_sync_service.service.paper_trading import _resolve_ts_code
-from data_sync_service.db.daily import fetch_last_ohlcv_batch
-from data_sync_service.db.paper_trading import SOURCE_S3, insert_paper_trade
 from data_sync_service.service.trendok import _lookup_stock_basic
 
 logger = logging.getLogger(__name__)
@@ -120,7 +119,7 @@ def build_s3_candidates(
     )
     regime_by_day = _load_regime_by_day(cfg, [day])
     flow_any_positive_by_day, mainline_allow_by_day = _load_flow_mainline_data(cfg, [day])
-    panic = get_panic_cooldown(days=10, cooldown_days=3)
+    panic = get_panic_cooldown(days=10, cooldown_days=3, as_of_date=day)
 
     scores = _load_today_scores(day)
     if not scores:
@@ -147,7 +146,7 @@ def build_s3_candidates(
     if not flow_ok:
         return []
     mainline = mainline_allow_by_day.get(day) or set()
-    sentiment_items = get_cn_sentiment(days=1)["items"]
+    sentiment_items = get_cn_sentiment(days=1, as_of_date=day)["items"]
     today_mode = sentiment_items[-1].get("riskMode") if sentiment_items else ""
     if today_mode in SENTIMENT_BLOCK_MODES or panic.get("active"):
         return []

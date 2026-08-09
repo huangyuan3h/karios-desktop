@@ -27,6 +27,7 @@ from data_sync_service.scheduler import (
     morning_brief_job,
     news_enrich_job,
     news_fetch_job,
+    paper_s3_intake_job,
     paper_trading_intake_job,
     paper_trading_update_job,
     research_report_job,
@@ -189,6 +190,13 @@ def create_scheduler() -> BackgroundScheduler:
         paper_trading_update_job.run,
         paper_trading_update_job.build_trigger(),
         id=paper_trading_update_job.JOB_ID,
+        replace_existing=True,
+    )
+    # G4: S-3 backtest paper intake (after regular intake, before update).
+    scheduler.add_job(
+        paper_s3_intake_job.run,
+        paper_s3_intake_job.build_trigger(),
+        id=paper_s3_intake_job.JOB_ID,
         replace_existing=True,
     )
     scheduler.add_job(

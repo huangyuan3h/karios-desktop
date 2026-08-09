@@ -1409,26 +1409,28 @@ def get_cn_sentiment(*, days: int = 10, as_of_date: str | None = None) -> dict[s
     return {"asOfDate": d, "days": max(1, min(int(days), 30)), "items": items}
 
 
-def get_panic_cooldown(*, days: int = 10, cooldown_days: int = 3) -> dict[str, Any]:
+def get_panic_cooldown(
+    *, days: int = 10, cooldown_days: int = 3, as_of_date: str | None = None
+) -> dict[str, Any]:
     """S-3 panic protection status (same semantics as the backtest engine).
 
     Most recent panic day (risk_mode in no_new_positions/extreme_caution)
     within ``days``, cooldown end computed over the CN trade calendar
     (panic day + cooldown_days trading days — matches
-    BacktestConfig.panic_cooldown_days). ``active`` True when today is still
-    inside the cooldown window: no new S-3 entries then.
+    BacktestConfig.panic_cooldown_days). ``active`` True when ``as_of_date``
+    (or today) is still inside the cooldown window: no new S-3 entries then.
     """
     from datetime import date, timedelta
 
     from data_sync_service.db import get_connection
     from data_sync_service.service.backtest_engine import SENTIMENT_BLOCK_MODES
 
-    items = get_cn_sentiment(days=days)["items"]
+    items = get_cn_sentiment(days=days, as_of_date=as_of_date)["items"]
     panic_dates = [i["date"] for i in items if i.get("riskMode") in SENTIMENT_BLOCK_MODES]
     if not panic_dates:
         return {"lastPanicDate": None, "cooldownEndDate": None, "active": False}
     last_panic = panic_dates[-1]
-    today = date.today().isoformat()
+    today = (as_of_date or "").strip() or date.today().isoformat()
     cooldown_end = last_panic
     if cooldown_days > 0:
         with get_connection() as conn:

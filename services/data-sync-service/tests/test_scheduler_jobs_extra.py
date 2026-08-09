@@ -103,7 +103,7 @@ class TestCreateScheduler:
             "macro_daily_full_sync", "watchlist_automation", "watchlist_funnel_health",
             "eastmoney_industry_sync",
             "hk_industry_sync", "index_basic_sync", "cn_industry_post_close_sync",
-            "paper_trading_intake", "paper_trading_update", "tv_screener_capture_am",
+            "paper_trading_intake", "paper_trading_update", "paper_s3_intake", "tv_screener_capture_am",
             "tv_screener_capture_pm", "news_enrich_job", "research_report_sync",
             "decision_snapshot", "decision_outcome", "decision_action_tracking",
             "morning_brief_am", "morning_brief_pm",

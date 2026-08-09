@@ -854,3 +854,164 @@ def test_trend_score_disabled_by_default() -> None:
 def test_trend_score_validation() -> None:
     with pytest.raises(ValueError):
         BacktestConfig(start_date="2026-08-01", end_date="2026-08-07", trend_score_min=150.0)
+
+
+def test_entries_ordered_by_score_when_sleeve_limited() -> None:
+    """A full sleeve admits the highest-score candidates first, not
+    symbol-alphabetical order (regression: 300308.SZ missed while score=100).
+    """
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {
+        "2026-06-18": {
+            "CN:000001": 60.0,  # alphabetically first, lowest score
+            "CN:000002": 55.0,
+            "CN:000003": 90.0,  # alphabetically last, highest score
+        },
+        "2026-06-19": {},
+    }
+    prices = {
+        "000001.SZ": {"2026-06-18": 10.0, "2026-06-19": 10.1},
+        "000002.SZ": {"2026-06-18": 10.0, "2026-06-19": 10.1},
+        "000003.SZ": {"2026-06-18": 10.0, "2026-06-19": 10.1},
+    }
+    data = _data(calendar, scores, prices)
+    run = simulate(
+        BacktestConfig(
+            start_date="2026-06-18", end_date="2026-06-19",
+            score_threshold=50.0, max_positions=1, gates="full",
+        ),
+        data=data,
+    )
+    assert run.summary.closed == 1
+    assert run.trades[0].symbol == "CN:000003"
+
+
+def _rotation_data(calendar, scores, prices, rs_by_day, regime="Strong") -> BacktestData:
+    data = _data(calendar, scores, prices, regime=regime)
+    data.rs_rank_by_day = rs_by_day
+    return data
+
+
+def test_swap_replaces_weak_held_with_strong_candidate() -> None:
+    """RS-rotation: a held stock in the weakest RS band is swapped for a
+    clearly-stronger candidate; the swap pays slippage + round-trip costs.
+    """
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
+    scores = {
+        "2026-06-18": {"CN:600001": 88.0},  # held from day 1
+        "2026-06-22": {"CN:000001": 90.0},  # strong candidate appears
+    }
+    prices = {
+        TS1: {d: 10.0 for d in calendar},
+        "000001.SZ": {d: 10.0 for d in calendar},
+    }
+    rs = {
+        d: {TS1: 0.1, "000001.SZ": 0.9} for d in calendar
+    }
+    data = _rotation_data(calendar, scores, prices, rs)
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-23",
+        score_threshold=65.0, gates="full",
+        swap_weak_rs_below=0.3, swap_strong_rs_at_least=0.8,
+        swap_min_hold_days=1, swap_max_per_day=2,
+    )
+    run = simulate(config, data=data)
+    swapped = [t for t in run.trades if t.close_reason == "swapped"]
+    assert len(swapped) == 1
+    assert swapped[0].symbol == "CN:600001"
+    assert swapped[0].close_date == "2026-06-22"
+    # new position took over
+    assert any(t.symbol == "CN:000001" for t in run.trades)
+
+
+def test_swap_requires_strong_rs_candidate() -> None:
+    """A candidate below swap_strong_rs_at_least cannot trigger a swap."""
+    calendar = ["2026-06-18", "2026-06-22"]
+    scores = {
+        "2026-06-18": {"CN:600001": 88.0},
+        "2026-06-22": {"CN:000001": 90.0},
+    }
+    prices = {TS1: {d: 10.0 for d in calendar}, "000001.SZ": {d: 10.0 for d in calendar}}
+    rs = {d: {TS1: 0.1, "000001.SZ": 0.5} for d in calendar}  # 0.5 < 0.8
+    data = _rotation_data(calendar, scores, prices, rs)
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-22",
+        score_threshold=65.0, gates="full",
+        swap_weak_rs_below=0.3, swap_strong_rs_at_least=0.8,
+        swap_min_hold_days=1, swap_max_per_day=2,
+    )
+    run = simulate(config, data=data)
+    assert not [t for t in run.trades if t.close_reason == "swapped"]
+    # candidate still enters normally on 06-22
+    assert any(t.symbol == "CN:000001" for t in run.trades)
+
+
+def test_swap_requires_weak_held_rs() -> None:
+    """A held stock whose RS is still strong is never swapped out."""
+    calendar = ["2026-06-18", "2026-06-22"]
+    scores = {
+        "2026-06-18": {"CN:600001": 88.0},
+        "2026-06-22": {"CN:000001": 90.0},
+    }
+    prices = {TS1: {d: 10.0 for d in calendar}, "000001.SZ": {d: 10.0 for d in calendar}}
+    rs = {d: {TS1: 0.5, "000001.SZ": 0.9} for d in calendar}  # held RS 0.5 > 0.3
+    data = _rotation_data(calendar, scores, prices, rs)
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-22",
+        score_threshold=65.0, gates="full",
+        swap_weak_rs_below=0.3, swap_strong_rs_at_least=0.8,
+        swap_min_hold_days=1, swap_max_per_day=2,
+    )
+    run = simulate(config, data=data)
+    assert not [t for t in run.trades if t.close_reason == "swapped"]
+
+
+def test_swap_respects_min_hold_days() -> None:
+    """Fresh positions (below swap_min_hold_days) are protected from swaps."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {
+        "2026-06-18": {"CN:600001": 88.0},
+        "2026-06-19": {"CN:000001": 90.0},
+    }
+    prices = {TS1: {d: 10.0 for d in calendar}, "000001.SZ": {d: 10.0 for d in calendar}}
+    rs = {d: {TS1: 0.1, "000001.SZ": 0.9} for d in calendar}
+    data = _rotation_data(calendar, scores, prices, rs)
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-19",
+        score_threshold=65.0, gates="full",
+        swap_weak_rs_below=0.3, swap_strong_rs_at_least=0.8,
+        swap_min_hold_days=10, swap_max_per_day=2,
+    )
+    run = simulate(config, data=data)
+    assert not [t for t in run.trades if t.close_reason == "swapped"]
+
+
+def test_swap_caps_per_day() -> None:
+    """swap_max_per_day limits how many swaps happen on one day."""
+    calendar = ["2026-06-18", "2026-06-22"]
+    scores = {
+        "2026-06-18": {"CN:600001": 88.0, "CN:600002": 88.0, "CN:600003": 88.0},
+        "2026-06-22": {"CN:000001": 90.0, "CN:000002": 90.0, "CN:000003": 90.0},
+    }
+    prices = {
+        TS1: {d: 10.0 for d in calendar},
+        "600002.SH": {d: 10.0 for d in calendar},
+        "600003.SH": {d: 10.0 for d in calendar},
+        "000001.SZ": {d: 10.0 for d in calendar},
+        "000002.SZ": {d: 10.0 for d in calendar},
+        "000003.SZ": {d: 10.0 for d in calendar},
+    }
+    rs = {d: {
+        "600001.SH": 0.1, "600002.SH": 0.2, "600003.SH": 0.3,
+        "000001.SZ": 0.9, "000002.SZ": 0.88, "000003.SZ": 0.86,
+    } for d in calendar}
+    data = _rotation_data(calendar, scores, prices, rs)
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-22",
+        score_threshold=65.0, gates="full",
+        swap_weak_rs_below=0.35, swap_strong_rs_at_least=0.8,
+        swap_min_hold_days=1, swap_max_per_day=2,
+    )
+    run = simulate(config, data=data)
+    swapped = [t for t in run.trades if t.close_reason == "swapped"]
+    assert len(swapped) == 2  # 3 eligible pairs, capped at 2

@@ -32,8 +32,8 @@ from ..db import execution_journal as ej_db
 from ..db import paper_trading as pt_db
 from ..db.watchlist_automation import list_registry
 from ..service.execution_source import aggregate_source_stats
-from ..service.paper_trading import compute_stats as pt_compute_stats
 from ..service.paper_s3 import run_intake_s3
+from ..service.paper_trading import compute_stats as pt_compute_stats
 from ..service.trendok import compute_trendok_for_symbols
 
 router = APIRouter(

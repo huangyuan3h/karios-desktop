@@ -348,7 +348,10 @@ class TestPickCloseReason:
         )
         assert reason == "stop_hit"
 
-    def test_target_hit(self) -> None:
+    def test_target_hit(self, monkeypatch) -> None:
+        import data_sync_service.db.paper_trading as pt_db
+
+        monkeypatch.setattr(pt_db, "TARGET_PNL_PCT", 10.0)
         reason = pt._pick_close_reason(
             t={"symbol": "CN:600519"},
             pnl_pct=15.0,
@@ -358,8 +361,10 @@ class TestPickCloseReason:
         assert reason == "target_hit"
 
     def test_score_floor(self, monkeypatch) -> None:
+        import data_sync_service.db.paper_trading as pt_db
         from data_sync_service.db import watchlist_automation as wa_db
 
+        monkeypatch.setattr(pt_db, "SCORE_FLOOR", 30.0)
         monkeypatch.setattr(wa_db, "fetch_latest_score_since", lambda symbol, entry_date: 25.0)
         reason = pt._pick_close_reason(
             t={"symbol": "CN:600519"},
@@ -426,6 +431,7 @@ class TestComputeStats:
             "get_open_paper_trades",
             lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}],
         )
+        monkeypatch.setattr(pt_db, "TARGET_PNL_PCT", 10.0)
         close = Mock()
         monkeypatch.setattr(pt_db, "close_paper_trade", close)
         _patch_all(

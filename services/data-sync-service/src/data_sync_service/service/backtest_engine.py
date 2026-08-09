@@ -69,6 +69,7 @@ SCORE_TABLE = "watchlist_score_daily"
 
 CLOSE_REASON_END_OF_WINDOW = "end_of_window"
 CLOSE_REASON_TRAILING = "trailing_stop"
+CLOSE_REASON_SWAPPED = "swapped"
 
 GATE_LEVELS = ("none", "regime", "full")
 
@@ -104,6 +105,10 @@ class BacktestConfig:
     panic_cooldown_days: int = 0
     slippage_pct: float = 0.0
     trend_score_min: float = 0.0
+    swap_weak_rs_below: float = 0.0
+    swap_strong_rs_at_least: float = 0.0
+    swap_min_hold_days: int = 0
+    swap_max_per_day: int = 0
 
     def __post_init__(self) -> None:
         if self.market not in MARKETS:
@@ -128,6 +133,14 @@ class BacktestConfig:
             raise ValueError("drawdown_circuit_pct must be <= 0 (0 disables, e.g. -5 = halt new entries when trailing 20d realized pnl < -5%)")
         if not 0 <= self.trend_score_min <= 100:
             raise ValueError("trend_score_min must be in [0, 100] (0 disables)")
+        if not 0 <= self.swap_weak_rs_below <= 1:
+            raise ValueError("swap_weak_rs_below must be in [0, 1] (0 disables, 0.3 = held stocks in the weakest 30% RS can be swapped out)")
+        if not 0 <= self.swap_strong_rs_at_least <= 1:
+            raise ValueError("swap_strong_rs_at_least must be in [0, 1] (0 disables, 0.8 = only top-20% RS candidates can replace)")
+        if self.swap_min_hold_days < 0:
+            raise ValueError("swap_min_hold_days must be >= 0")
+        if self.swap_max_per_day < 0:
+            raise ValueError("swap_max_per_day must be >= 0 (0 disables rotation)")
 
 
 @dataclass
@@ -694,9 +707,94 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         )
         day_index += 1
 
+        # 1.5) RS-rotation swaps (before entries): swap out RS-weakened held
+        #      stocks for clearly-stronger candidates, so a full sleeve is not
+        #      a wall against the market's strongest names (300308 case).
+        swapped_syms: set[str] = set()
+        if config.swap_max_per_day > 0:
+            held = []
+            for sym, pos in positions.items():
+                if _calendar_days_between(str(pos["entry_date"]), day) < config.swap_min_hold_days:
+                    continue
+                rsv = data.rs_rank_by_day.get(day, {}).get(pos["ts_code"])
+                if rsv is not None and rsv < config.swap_weak_rs_below:
+                    held.append((rsv, sym, pos))
+            held.sort()  # weakest RS first
+            cands = []
+            for sym, score in day_scores.items():
+                if score < threshold:
+                    continue
+                if circuit_halted or panic_cooldown:
+                    continue
+                if sym in positions or sym in swapped_syms:
+                    continue
+                resolved = _resolve_ts_code(sym)
+                if resolved is None or resolved[0] != config.market:
+                    continue
+                ts = resolved[1]
+                if _gate_blocked(config, data, day, ts) is not None:
+                    continue
+                rsv = data.rs_rank_by_day.get(day, {}).get(ts)
+                if rsv is None or rsv < config.swap_strong_rs_at_least:
+                    continue
+                px = entry_price_for(ts, day)
+                if px is None or px <= 0:
+                    continue
+                regime = data.regime_by_day.get(day)
+                pos_scale = 1.0 if regime == REGIME_STRONG else (
+                    config.diverging_scale if regime == REGIME_DIVERGING else 0.0
+                )
+                cands.append((rsv, score, sym, ts, px, pos_scale))
+            cands.sort(reverse=True)  # strongest RS first
+            for (rsv_w, sym_w, pos_w), cand in zip(held, cands):
+                if len(swapped_syms) >= config.swap_max_per_day:
+                    break
+                _, _, sym_c, ts_c, px_c, pos_scale_c = cand
+                closes = data.close_by_ts_day.get(pos_w["ts_code"])
+                close_px = closes.get(day) if closes else None
+                if close_px is None or close_px <= 0:
+                    continue
+                entry_px = float(pos_w["entry_price"])
+                slip = config.slippage_pct
+                cost = entry_px * (1 + slip / 100.0)
+                gross = (close_px * (1 - slip / 100.0) - cost) / cost * 100.0
+                net = gross - costs_pct
+                realized_pnl_window.append((day, net))
+                closed_trades.append(
+                    BacktestTrade(
+                        symbol=sym_w,
+                        market=config.market,
+                        entry_date=str(pos_w["entry_date"]),
+                        entry_price=round(entry_px, 4),
+                        close_date=day,
+                        close_price=round(float(close_px), 4),
+                        gross_pnl_pct=round(gross, 4),
+                        costs_pct=round(costs_pct, 4),
+                        pnl_pct=round(net, 4),
+                        holding_days=_calendar_days_between(str(pos_w["entry_date"]), day),
+                        close_reason=CLOSE_REASON_SWAPPED,
+                        score_at_entry=pos_w.get("score_at_entry"),
+                        position_pct=float(pos_w.get("position_pct") or config.position_pct),
+                    )
+                )
+                del positions[sym_w]
+                positions[sym_c] = {
+                    "symbol": sym_c,
+                    "market": config.market,
+                    "ts_code": ts_c,
+                    "entry_date": day,
+                    "entry_price": px_c,
+                    "peak_price": px_c,
+                    "score_at_entry": day_scores[sym_c],
+                    "position_pct": config.position_pct * pos_scale_c,
+                }
+                swapped_syms.add(sym_c)
+
         # 1) Entries: score >= threshold, gates passed, not already held,
-        #    price available.
-        for sym, score in day_scores.items():
+        #    price available. Score-desc order so a full sleeve admits the
+        #    strongest candidates first (matches build_s3_candidates; the old
+        #    dict iteration order was symbol-alphabetical and biased entries).
+        for sym, score in sorted(day_scores.items(), key=lambda kv: -kv[1]):
             if score < threshold:
                 continue
             if circuit_halted:
@@ -731,6 +829,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     continue
             if len(positions) >= config.max_positions:
                 gated_blocks["sleeve"] += 1
+                continue
+            if sym in swapped_syms:
                 continue
             px = entry_price_for(ts, day)
             if px is None or px <= 0:
