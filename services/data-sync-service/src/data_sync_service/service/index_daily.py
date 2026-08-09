@@ -14,7 +14,7 @@ from data_sync_service.db.sync_job_record import get_today_run, insert_record
 
 JOB_TYPE = "index_daily_full"
 FULL_START_DATE = "20230101"
-INDEX_CODES = ["000001.SH", "399006.SZ", "000300.SH", "000905.SH"]
+INDEX_CODES = ["000001.SH", "399006.SZ", "000300.SH", "000905.SH", "000688.SH"]  # 000688 = 科创50 (2026-08-09 benchmark)
 INDEX_FIELDS = [
     "ts_code",
     "trade_date",

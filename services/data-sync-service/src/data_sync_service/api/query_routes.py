@@ -84,6 +84,20 @@ def get_index_daily_endpoint(
     return fetch_index_daily(ts_code=ts_code, start_date=start_date, end_date=end_date, limit=limit)
 
 
+@router.get("/market/regime")
+def get_market_regime_endpoint() -> dict:
+    """Current market regime (Strong/Diverging/Weak) — same code as the
+    backtest gate and the live decision path (OPT-073 / S-2)."""
+    from data_sync_service.service.market_regime import get_market_regime
+
+    info = get_market_regime(as_of_date=None, include_breadth=False)
+    return {
+        "ok": True,
+        "regime": str(info.get("regime") or "Unknown"),
+        "asOfDate": info.get("asOfDate"),
+    }
+
+
 @router.get("/macro/snapshot")
 def get_macro_snapshot_endpoint() -> dict:
     """Index page: CN index traffic lights + macro series (EOD + best-effort realtime)."""

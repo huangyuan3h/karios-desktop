@@ -15,6 +15,11 @@ export type BacktestSummary = {
     score_floor: number;
     market: string;
     gates: string;
+    trailing_stop_pct?: number;
+    position_pct?: number;
+    max_positions?: number;
+    rs_rank_min?: number;
+    diverging_scale?: number;
   };
   calendar_days: number;
   trades: number;
@@ -27,21 +32,39 @@ export type BacktestSummary = {
   avg_gross_pnl_pct: number | null;
   avg_costs_pct: number | null;
   max_drawdown_pct: number;
+  total_net_pnl_pct: number;
+  annual_net_pnl_pct: number;
+  avg_win_pct: number | null;
+  avg_loss_pct: number | null;
+  sharpe: number | null;
+  excess_vs_best_benchmark_pct: number;
+  best_benchmark: string;
   by_score_bucket: Record<string, { trades: number; wins: number; winRate: number | null; avgNet: number | null }>;
   gated_blocks: Record<string, number>;
+};
+
+export type SensitivityResult = BacktestSummary;
+
+export type BenchmarkItem = {
+  ts_code: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  total_return_pct: number;
+  annual_pct: number;
+};
+
+export type SensitivityResponse = {
+  ok: boolean;
+  configs: number;
+  benchmarks: BenchmarkItem[];
+  results: SensitivityResult[];
 };
 
 export type BacktestRunResponse = {
   ok: boolean;
   summary: BacktestSummary;
-};
-
-export type SensitivityResult = BacktestSummary;
-
-export type SensitivityResponse = {
-  ok: boolean;
-  configs: number;
-  results: SensitivityResult[];
+  benchmarks: BenchmarkItem[];
 };
 
 export type ExitAttributionResponse = {
@@ -89,6 +112,11 @@ export type BacktestParams = {
   maxHoldDays: number;
   stopLossPct: number;
   gates: string;
+  trailingStopPct: number;
+  positionPct: number;
+  maxPositions: number;
+  rsRankMin: number;
+  divergingScale: number;
 };
 
 export const GATE_LEVELS = [
@@ -105,6 +133,11 @@ function backtestRunPath(p: BacktestParams): string {
     max_hold_days: String(p.maxHoldDays),
     stop_loss_pct: String(p.stopLossPct),
     gates: p.gates,
+    trailing_stop_pct: String(p.trailingStopPct),
+    position_pct: String(p.positionPct),
+    max_positions: String(p.maxPositions),
+    rs_rank_min: String(p.rsRankMin),
+    diverging_scale: String(p.divergingScale),
   });
   return `/api/backtest/run?${q.toString()}`;
 }

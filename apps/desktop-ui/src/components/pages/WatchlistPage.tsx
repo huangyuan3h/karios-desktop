@@ -372,6 +372,11 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
                 executionGate.positionRangeHint,
               )}
             </div>
+            <div className="mt-1 text-xs opacity-90">
+              S-2 操作口径：{['Strong', 'Diverging'].includes(String(executionGate.marketRegime ?? ''))
+                ? '✅ 非 Weak 可开仓'
+                : '⏸ Weak 空仓等待'} · score≥70 · RS 前 50% · 移动止损 -8%
+            </div>
             {(() => {
               const missingSize = countHeldMissingPositionPct(items);
               return missingSize > 0 ? (

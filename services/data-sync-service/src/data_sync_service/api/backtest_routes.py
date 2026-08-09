@@ -22,8 +22,10 @@ from fastapi import APIRouter, HTTPException, Query
 from data_sync_service.service.backtest_engine import (
     BacktestConfig,
     default_sensitivity_grid,
+    load_benchmarks,
     run_sensitivity,
     simulate,
+    with_benchmark_excess,
 )
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
@@ -49,6 +51,12 @@ def backtest_run(
     score_floor: float = Query(30.0, ge=0, le=100),
     market: str = Query("CN", pattern="^(CN|HK)$"),
     gates: str = Query("full", pattern="^(none|regime|full)$"),
+    trailing_stop_pct: float = Query(0.0, le=0, description="Peak-pullback trailing stop (<=0; 0 disables)."),
+    position_pct: float = Query(0.05, gt=0, le=1, description="Per-trade position size (default 0.05 = 5% sleeve)."),
+    max_positions: int = Query(10, ge=1, le=100, description="Max simultaneous positions (default 10)."),
+    rs_rank_min: float = Query(0.0, ge=0, le=1, description="Min whole-market RS percentile (0 disables; 0.8 = top 20% 20d relative strength)."),
+    diverging_scale: float = Query(0.0, ge=0, le=1, description="Position size when regime=Diverging (0 = no entries, 0.5 = half size)."),
+    drawdown_circuit_pct: float = Query(0.0, le=0, description="Halt new entries when trailing 30d realized pnl <= this (<=0; 0 disables)."),
 ) -> dict[str, Any]:
     """Run one backtest configuration (signals = historical TrendOK scores
     filtered by entry gates — traffic-light regime / sector flow / mainline)."""
@@ -64,14 +72,22 @@ def backtest_run(
             score_floor=score_floor,
             market=market,
             gates=gates,
+            trailing_stop_pct=trailing_stop_pct,
+            position_pct=position_pct,
+            max_positions=max_positions,
+            rs_rank_min=rs_rank_min,
+            diverging_scale=diverging_scale,
+            drawdown_circuit_pct=drawdown_circuit_pct,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
         run = simulate(config)
+        benchmarks = load_benchmarks(start, end)
+        with_benchmark_excess(run.summary, benchmarks)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"backtest failed: {exc}") from exc
-    return {"ok": True, "summary": run.summary.to_dict()}
+    return {"ok": True, "summary": run.summary.to_dict(), "benchmarks": benchmarks}
 
 
 @router.get("/sensitivity")
@@ -85,9 +101,12 @@ def backtest_sensitivity(
     try:
         grid = default_sensitivity_grid(start, end)
         results = run_sensitivity(grid)
+        benchmarks = load_benchmarks(start, end)
+        for r in results:
+            with_benchmark_excess(r, benchmarks)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"sensitivity failed: {exc}") from exc
-    return {"ok": True, "configs": len(grid), "results": [r.to_dict() for r in results]}
+    return {"ok": True, "configs": len(grid), "benchmarks": benchmarks, "results": [r.to_dict() for r in results]}
 
 
 @router.get("/latest-report")

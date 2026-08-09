@@ -503,6 +503,7 @@ export type WatchlistRowProps = {
   defensiveSleeveExposurePct?: number;
   /** V7.0-01 / L3-P5: semantic factor-cluster exposure % (from parent). */
   clusterExposurePct?: number | null;
+  rsRank?: number | null;
   showTooltip: ShowTooltipFn;
   hideTooltip: () => void;
   showColorPicker: (el: HTMLElement, sym: string) => void;
@@ -538,6 +539,7 @@ function WatchlistRowInner({
   sleeveExposurePct,
   defensiveSleeveExposurePct = 0,
   clusterExposurePct = null,
+  rsRank = null,
   showTooltip,
   hideTooltip,
   showColorPicker,
@@ -777,23 +779,39 @@ function WatchlistRowInner({
           const rs = t?.rs ?? (t?.values?.rsValue as number | undefined);
           if (typeof rs !== 'number' || !Number.isFinite(rs)) return '—';
           const isLeader = t?.checks?.rs_leader === true;
+          const pct = typeof rsRank === 'number' && Number.isFinite(rsRank) ? rsRank : null;
+          const inTopHalf = pct != null && pct >= 0.5;
           return (
-            <span
-              className={
-                isLeader
-                  ? 'font-bold text-emerald-600'
-                  : rs > 0
-                    ? 'text-emerald-600'
-                    : 'text-red-600'
-              }
-              title={
-                isLeader
-                  ? '💪 RS_Leader (逆势抗跌) — outperforming CSI300 by >10% in weak market'
-                  : `RS vs CSI300 20D: ${rs > 0 ? '+' : ''}${rs.toFixed(1)}%`
-              }
-            >
-              {rs > 0 ? '+' : ''}
-              {rs.toFixed(1)}%
+            <span className="inline-flex items-center gap-1">
+              <span
+                className={
+                  isLeader
+                    ? 'font-bold text-emerald-600'
+                    : rs > 0
+                      ? 'text-emerald-600'
+                      : 'text-red-600'
+                }
+                title={
+                  isLeader
+                    ? '💪 RS_Leader (逆势抗跌) — outperforming CSI300 by >10% in weak market'
+                    : `RS vs CSI300 20D: ${rs > 0 ? '+' : ''}${rs.toFixed(1)}%`
+                }
+              >
+                {rs > 0 ? '+' : ''}
+                {rs.toFixed(1)}%
+              </span>
+              {pct != null && (
+                <span
+                  className={`rounded px-1 text-[10px] tabular-nums ${
+                    inTopHalf
+                      ? 'bg-emerald-500/10 font-semibold text-emerald-700 dark:text-emerald-300'
+                      : 'text-[var(--k-muted)]'
+                  }`}
+                  title={`全市场 20 日相对强度排名前 ${(pct * 100).toFixed(0)}%（S-2：≥50% 达标）`}
+                >
+                  前{(pct * 100).toFixed(0)}%
+                </span>
+              )}
             </span>
           );
         })()}

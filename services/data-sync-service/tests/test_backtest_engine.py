@@ -57,6 +57,7 @@ def _data(
     if industry_by_ts is None:
         industry_by_ts = {ts: "计算机" for ts in prices}
     data.industry_by_ts = dict(industry_by_ts)
+    data.sentiment_risk_by_day = {}
     return data
 
 
@@ -318,13 +319,14 @@ def test_gates_full_flow_blocks_only_when_all_industries_non_positive() -> None:
     assert run.summary.gated_blocks == {}
 
 
-def test_gates_full_missing_data_fails_closed() -> None:
-    """Missing gate data blocks the entry (live fail-closed posture)."""
+def test_gates_full_missing_gate_data_degrades_open() -> None:
+    """Missing flow/mainline data degrades (fail-open): replay of the live
+    system's then-current capabilities (no fund-flow gates before 2025-12-15)."""
     calendar = ["2026-06-18", "2026-06-19"]
     scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}}
     prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5}}
 
-    # no industry mapping → mainline blocks
+    # industry mapping missing → MISSING_INDUSTRY blocks (live behaviour)
     run = _run_with_gates(
         calendar,
         scores,
@@ -336,13 +338,28 @@ def test_gates_full_missing_data_fails_closed() -> None:
     assert run.summary.closed == 0
     assert run.summary.gated_blocks == {"mainline": 2}
 
-    # no flow data for the day → flow blocks
+    # mainline data missing for the day → degrades, entry ok
+    data = _data(calendar, scores, prices, **_gate_data(calendar))
+    data.mainline_allow_by_day = {}
+    run = simulate(
+        BacktestConfig(start_date=calendar[0], end_date=calendar[-1], gates="full"),
+        data=data,
+    )
+    assert run.summary.closed == 1
+    assert run.summary.gated_blocks == {}
+
+    # no flow data for the day → flow absent → degrade, entry ok
     data = _data(calendar, scores, prices, **_gate_data(calendar))
     data.flow_any_positive_by_day = {}
     run = simulate(
         BacktestConfig(start_date=calendar[0], end_date=calendar[-1], gates="full"),
         data=data,
     )
+    assert run.summary.closed == 1
+    assert run.summary.gated_blocks == {}
+
+    # present-but-fully-negative flow still blocks
+    run = _run_with_gates(calendar, scores, prices, gates="full", flow_any_positive=False)
     assert run.summary.closed == 0
     assert run.summary.gated_blocks == {"flow": 2}
 
@@ -386,6 +403,13 @@ def _fake_summary_dict() -> dict:
         avg_gross_pnl_pct=-0.579,
         avg_costs_pct=0.3,
         max_drawdown_pct=29.7,
+            total_net_pnl_pct=-18.5,
+            annual_net_pnl_pct=-37.0,
+            avg_win_pct=None,
+            avg_loss_pct=None,
+            sharpe=None,
+            excess_vs_best_benchmark_pct=0.0,
+            best_benchmark="",
         by_score_bucket={">=90": {"trades": 5, "wins": 2, "winRate": 0.4, "avgNet": -1.0}},
     )
     return BacktestRun(summary=s, trades=[])
@@ -534,3 +558,168 @@ def test_backtest_data_loads_from_db() -> None:
     # every calendar day present as key in some close map is not required,
     # but scores must exist for at least one day (watchlist_score_daily)
     assert data.scores_by_day
+
+def test_trailing_stop_closes_on_peak_pullback() -> None:
+    """trailing_stop_pct closes when close falls X% below the entry-high peak."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23", "2026-06-24"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}, "2026-06-24": {}}
+    prices = {
+        TS1: {
+            "2026-06-18": 10.0,  # entry
+            "2026-06-19": 11.0,  # peak 11.0 (+10%)
+            "2026-06-22": 12.0,  # peak 12.0 (+20%)
+            "2026-06-23": 11.3,  # -5.8% from peak → trailing -5 closes
+            "2026-06-24": 12.0,
+        }
+    }
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-24",
+        stop_loss_pct=-15.0,  # loose fixed stop so trailing is the trigger
+        target_pnl_pct=30.0,  # loose target so trailing is the trigger
+        max_hold_days=10,
+        trailing_stop_pct=-5.0,
+    )
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    t = run.trades[0]
+    assert t.close_reason == "trailing_stop"
+    assert t.close_date == "2026-06-23"
+    assert t.entry_price == 10.0
+    assert t.close_price == 11.3
+    assert abs(t.pnl_pct - (13.0 - 0.3)) < 0.01
+
+
+def test_trailing_stop_disabled_by_default() -> None:
+    """trailing_stop_pct=0 keeps v0 fixed-stop behaviour."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {d: {CN1: 90.0} for d in calendar}
+    prices = {
+        TS1: {"2026-06-18": 10.0, "2026-06-19": 11.0, "2026-06-22": 10.2}
+    }
+    run = simulate(
+        BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", stop_loss_pct=-5.0),
+        data=_data(calendar, scores, prices),
+    )
+    assert run.summary.closed == 1
+    # +2% gross, +1.7% net: not a stop; closed by end_of_window instead
+    assert run.trades[0].close_reason == CLOSE_REASON_END_OF_WINDOW
+
+
+def test_trailing_stop_validation() -> None:
+    with pytest.raises(ValueError):
+        BacktestConfig(start_date="2026-08-01", end_date="2026-08-07", trailing_stop_pct=5.0)
+
+
+def test_summary_total_net_pnl() -> None:
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0, "CN:600002": 88.0}, "2026-06-19": {}}
+    prices = {
+        TS1: {"2026-06-18": 10.0, "2026-06-19": 11.0},
+        "600002.SH": {"2026-06-18": 10.0, "2026-06-19": 9.0},
+    }
+    run = simulate(
+        BacktestConfig(start_date="2026-06-18", end_date="2026-06-19", score_threshold=85.0),
+        data=_data(calendar, scores, prices),
+    )
+    # total_net_pnl_pct is scaled by the per-trade position size (5% default)
+    assert run.summary.total_net_pnl_pct == pytest.approx(
+        ((10.0 - 0.3) + (-10.0 - 0.3)) * 0.05
+    )
+
+def test_rs_rank_filter_blocks_weak_strength() -> None:
+    """rs_rank_min keeps only whole-market top-X percentile symbols."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0, "CN:600002": 88.0}, "2026-06-19": {}}
+    prices = {
+        TS1: {"2026-06-18": 10.0, "2026-06-19": 11.0},
+        "600002.SH": {"2026-06-18": 10.0, "2026-06-19": 10.0},
+    }
+    data = _data(calendar, scores, prices)
+    # 600002 ranks last (0.5), CN1 first (1.0) — threshold 0.8 keeps only CN1
+    data.rs_rank_by_day = {
+        "2026-06-18": {"600001.SH": 1.0, "600002.SH": 0.5},
+        "2026-06-19": {},
+    }
+    run = simulate(
+        BacktestConfig(
+            start_date="2026-06-18",
+            end_date="2026-06-19",
+            score_threshold=85.0,
+            rs_rank_min=0.8,
+        ),
+        data=data,
+    )
+    assert run.summary.closed == 1
+    assert run.trades[0].symbol == "CN:600001"
+    assert run.summary.gated_blocks.get("rs") == 1  # 600002 blocked
+
+
+def test_rs_rank_missing_data_blocks_fail_closed() -> None:
+    """A symbol with no RS data on the day is blocked (fail-closed)."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5}}
+    data = _data(calendar, scores, prices)
+    data.rs_rank_by_day = {}  # no RS data at all
+    run = simulate(
+        BacktestConfig(
+            start_date="2026-06-18",
+            end_date="2026-06-19",
+            score_threshold=85.0,
+            rs_rank_min=0.8,
+        ),
+        data=data,
+    )
+    assert run.summary.closed == 0
+    assert run.summary.gated_blocks.get("rs") == 1
+
+
+def test_rs_rank_disabled_by_default() -> None:
+    """rs_rank_min=0 (default) skips the RS filter entirely."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5}}
+    data = _data(calendar, scores, prices)
+    data.rs_rank_by_day = {}
+    run = simulate(
+        BacktestConfig(start_date="2026-06-18", end_date="2026-06-19", score_threshold=85.0),
+        data=data,
+    )
+    assert run.summary.closed == 1
+    assert run.summary.gated_blocks == {}
+
+
+def test_rs_rank_validation() -> None:
+    with pytest.raises(ValueError):
+        BacktestConfig(start_date="2026-08-01", end_date="2026-08-07", rs_rank_min=1.5)
+
+def test_sentiment_risk_mode_blocks_entries() -> None:
+    """extreme_caution / no_new_positions days block new entries (live gate)."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5}}
+    data = _data(calendar, scores, prices)
+    data.sentiment_risk_by_day = {"2026-06-18": "extreme_caution"}
+    run = simulate(
+        BacktestConfig(start_date="2026-06-18", end_date="2026-06-19", gates="full"),
+        data=data,
+    )
+    assert run.summary.closed == 0
+    assert run.summary.gated_blocks.get("sentiment") == 1
+
+
+def test_sentiment_missing_data_degrades_open() -> None:
+    """Sentiment data missing (pre-2026-01-05) degrades: entries allowed."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5}}
+    data = _data(calendar, scores, prices)
+    data.sentiment_risk_by_day = {}
+    run = simulate(
+        BacktestConfig(start_date="2026-06-18", end_date="2026-06-19", gates="full"),
+        data=data,
+    )
+    assert run.summary.closed == 1
+    assert run.summary.gated_blocks.get("sentiment") is None

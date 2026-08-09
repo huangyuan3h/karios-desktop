@@ -57,3 +57,26 @@ export async function refetchWatchlistMarket(
   queryClient.setQueryData(key, snapshot);
   return snapshot;
 }
+
+export type RsRanksResponse = {
+  ok: boolean;
+  asOfDate: string | null;
+  ranks: Record<string, number>;
+};
+
+export function useWatchlistRsRanksQuery(symbols: string[]) {
+  return useQuery({
+    queryKey: ['watchlist', 'rs-ranks', [...symbols].sort().join(',')],
+    queryFn: async () => {
+      const q = encodeURIComponent(symbols.join(','));
+      const res = await fetch(`/watchlist/rs-ranks?symbols=${q}`, {
+        cache: 'no-store',
+      });
+      if (!res.ok) throw new Error(`rs-ranks ${res.status}`);
+      return (await res.json()) as RsRanksResponse;
+    },
+    enabled: symbols.length > 0,
+    staleTime: 10 * 60 * 1000,
+    refetchInterval: symbols.length > 0 ? 10 * 60 * 1000 : false,
+  });
+}

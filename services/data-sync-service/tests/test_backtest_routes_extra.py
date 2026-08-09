@@ -11,6 +11,10 @@ from data_sync_service.api import backtest_routes as br
 
 
 class FakeSummary:
+    annual_net_pnl_pct = 5.0
+    best_benchmark = ""
+    excess_vs_best_benchmark_pct = 0.0
+
     def to_dict(self):
         return {"pnl": 1.0}
 
@@ -18,7 +22,8 @@ class FakeSummary:
 class TestRun:
     def test_run(self, monkeypatch) -> None:
         monkeypatch.setattr(br, "simulate", lambda config: Mock(summary=FakeSummary()))
-        out = br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=80.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full")
+        monkeypatch.setattr(br, "load_benchmarks", lambda start, end: [])
+        out = br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=80.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full", trailing_stop_pct=0.0, position_pct=0.05, max_positions=10, rs_rank_min=0.0, diverging_scale=0.0, drawdown_circuit_pct=0.0)
         assert out["ok"] is True and out["summary"] == {"pnl": 1.0}
 
     def test_run_bad_window(self) -> None:
@@ -38,7 +43,7 @@ class TestRun:
     def test_run_simulate_error(self, monkeypatch) -> None:
         monkeypatch.setattr(br, "simulate", lambda config: (_ for _ in ()).throw(RuntimeError("boom")))
         with pytest.raises(HTTPException) as exc:
-            br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=85.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full")
+            br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=85.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full", trailing_stop_pct=0.0, position_pct=0.05, max_positions=10, rs_rank_min=0.0, diverging_scale=0.0, drawdown_circuit_pct=0.0)
         assert exc.value.status_code == 500
         assert "backtest failed" in exc.value.detail
 
@@ -46,7 +51,8 @@ class TestRun:
 class TestSensitivity:
     def test_ok(self, monkeypatch) -> None:
         monkeypatch.setattr(br, "default_sensitivity_grid", lambda s, e: [{"a": 1}, {"b": 2}])
-        monkeypatch.setattr(br, "run_sensitivity", lambda grid: [Mock(to_dict=lambda: {"r": 1}), Mock(to_dict=lambda: {"r": 2})])
+        monkeypatch.setattr(br, "load_benchmarks", lambda start, end: [])
+        monkeypatch.setattr(br, "run_sensitivity", lambda grid: [FakeSummary(), FakeSummary()])
         out = br.backtest_sensitivity(start="2026-01-01", end="2026-06-01")
         assert out["ok"] is True and out["configs"] == 2 and len(out["results"]) == 2
 

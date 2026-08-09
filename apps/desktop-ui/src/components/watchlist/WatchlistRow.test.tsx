@@ -202,3 +202,23 @@ describe('WatchlistRow', () => {
     expect(screen.getByText('CN:600519').closest('tr')).toHaveClass('bg-red-50/60');
   });
 });
+
+describe('WatchlistRow RS rank badge (S-2)', () => {
+  it('shows top-half badge when rsRank >= 0.5', () => {
+    render(<WatchlistRow {...baseProps({ rsRank: 0.82 })} />);
+    expect(screen.getByTitle(/前 82%.*S-2/)).toBeTruthy();
+    const badge = screen.getByText('前82%');
+    expect(badge.className).toContain('text-emerald');
+  });
+
+  it('shows plain rank when below top half', () => {
+    render(<WatchlistRow {...baseProps({ rsRank: 0.3 })} />);
+    expect(screen.getByText('前30%')).toBeTruthy();
+    expect(screen.getByText('前30%').className).not.toContain('text-emerald');
+  });
+
+  it('omits rank badge when rsRank missing', () => {
+    render(<WatchlistRow {...baseProps({ rsRank: null })} />);
+    expect(screen.queryByText(/前\d+%/)).toBeNull();
+  });
+});

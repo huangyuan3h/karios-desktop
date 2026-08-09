@@ -6,6 +6,7 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
+from data_sync_service.db import get_connection
 from data_sync_service.db.industry_fund_flow import (
     get_dates_upto,
     get_sum_by_industry_for_dates,
@@ -835,3 +836,85 @@ def ack_automation_run(
 
 def get_automation_run(run_id: str) -> dict[str, Any] | None:
     return get_run_by_id(run_id)
+
+# ---------------------------------------------------------------------------
+# RS whole-market rank (S-2 / OPT-073): 20-day return percentile vs ALL stocks
+# ---------------------------------------------------------------------------
+
+_rs_rank_cache: dict[str, dict[str, float]] = {}
+_rs_rank_cache_date: str | None = None
+
+
+def compute_rs_ranks(symbols: list[str], as_of_date: str | None = None) -> dict[str, float]:
+    """Return {symbol: percentile} of 20-day relative strength vs ALL stocks.
+
+    Percentile 0-1 (strongest = 1.0). Ranking pool = every stock with a bar
+    on the as-of date; benchmark subtraction is skipped (constant shift does
+    not change ranks). Results cached per as-of date.
+    """
+    global _rs_rank_cache, _rs_rank_cache_date
+    from data_sync_service.service.trendok import _symbol_to_ts_code
+
+    resolved: dict[str, str] = {}
+    for sym in symbols:
+        parsed = _symbol_to_ts_code(str(sym))
+        if parsed:
+            resolved[str(sym)] = parsed[2]
+
+    # resolve as-of: latest trade date in daily <= as_of_date
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            if as_of_date:
+                cur.execute(
+                    "SELECT MAX(trade_date) FROM daily WHERE trade_date <= %s",
+                    (as_of_date,),
+                )
+            else:
+                cur.execute("SELECT MAX(trade_date) FROM daily")
+            latest = cur.fetchone()
+            latest = str(latest[0]) if latest and latest[0] else None
+    if not latest:
+        return {}
+    if _rs_rank_cache_date == latest:
+        pass
+    else:
+        # rank all stocks on `latest` by 20d return
+        rows: list[tuple[str, float]] = []
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT ts_code, ret20 FROM (
+                        SELECT ts_code, close,
+                            (close / lag(close, 20) OVER (PARTITION BY ts_code ORDER BY trade_date) - 1) * 100 AS ret20
+                        FROM daily
+                        WHERE trade_date <= %s
+                          AND trade_date >= (
+                              SELECT MIN(trade_date) FROM (
+                                  SELECT DISTINCT trade_date FROM daily
+                                  WHERE trade_date <= %s ORDER BY trade_date DESC LIMIT 21
+                              ) w
+                          )
+                          AND close > 0
+                    ) t
+                    WHERE ret20 IS NOT NULL
+                    """,
+                    (latest, latest),
+                )
+                rows = cur.fetchall()
+        ranked = sorted(rows, key=lambda kv: -kv[1])
+        total = len(ranked)
+        pos: dict[str, float] = {}
+        for i, (ts, _ret) in enumerate(ranked, start=1):
+            pos[ts] = (total - i + 1) / total if total else 0.0
+        _rs_rank_cache.clear()
+        _rs_rank_cache.update(pos)
+        _rs_rank_cache_date = latest
+
+    out: dict[str, float] = {}
+    for sym, ts in resolved.items():
+        pct = _rs_rank_cache.get(ts)
+        if pct is not None:
+            out[sym] = pct
+    out["_asOf"] = latest  # sentinel key stripped by the caller
+    return out

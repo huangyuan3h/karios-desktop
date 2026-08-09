@@ -32,6 +32,7 @@ import {
   clusterExposureForSymbol,
   useCorrelationStatusQuery,
 } from '@/lib/queries/backtest';
+import { useWatchlistRsRanksQuery } from '@/lib/queries/watchlist';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import type { ExecutionGate } from '@karios/shared';
 import { useChatStore } from '@/lib/chat/store';
@@ -197,6 +198,7 @@ export function WatchlistTable({
 
   const tradingTime = React.useMemo(() => isShanghaiTradingTime(), []);
   const todaySh = React.useMemo(() => getShanghaiTodayIso(), []);
+  const rsRanksQuery = useWatchlistRsRanksQuery(sortedItems.map((i) => i.symbol));
 
   const rowMetricsBySymbol = React.useMemo(() => {
     const m = new Map<
@@ -752,6 +754,7 @@ export function WatchlistTable({
                         sleeveExposurePct={sleeveExposurePct}
                         defensiveSleeveExposurePct={defensiveSleeveExposurePct}
                         clusterExposurePct={clusterExposureForSymbol(correlationStatus, it.symbol)}
+                        rsRank={rsRanksQuery.data?.ranks[it.symbol] ?? null}
                         showTooltip={showTooltip}
                         hideTooltip={hideTooltip}
                         showColorPicker={showColorPicker}

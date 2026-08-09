@@ -47,13 +47,17 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from data_sync_service.db import get_connection
 from data_sync_service.db.daily import fetch_ohlcv_batch_between
 from data_sync_service.db.industry_fund_flow import get_dates_upto, get_rows_for_dates
-from data_sync_service.service.execution_gate import REGIME_STRONG, classify_market_regime
+from data_sync_service.service.execution_gate import (
+    REGIME_DIVERGING,
+    REGIME_STRONG,
+    classify_market_regime,
+)
 from data_sync_service.service.industry_fund_flow_read import top_by_date_from_rows
 from data_sync_service.service.market_regime import get_index_signals
 from data_sync_service.service.paper_cost_model import MARKETS, round_trip_cost_pct
@@ -64,12 +68,14 @@ logger = logging.getLogger(__name__)
 SCORE_TABLE = "watchlist_score_daily"
 
 CLOSE_REASON_END_OF_WINDOW = "end_of_window"
+CLOSE_REASON_TRAILING = "trailing_stop"
 
 GATE_LEVELS = ("none", "regime", "full")
 
 GATE_REASON_REGIME = "regime"
 GATE_REASON_FLOW = "flow"
 GATE_REASON_MAINLINE = "mainline"
+GATE_REASON_SENTIMENT = "sentiment"
 
 # Live mainline momentum-breakout thresholds (hot-industry-picks.ts).
 MOMENTUM_THRESHOLD_YI = 20e8
@@ -89,6 +95,14 @@ class BacktestConfig:
     score_floor: float = 30.0
     market: str = "CN"
     gates: str = "full"
+    trailing_stop_pct: float = 0.0
+    position_pct: float = 0.05
+    max_positions: int = 10
+    rs_rank_min: float = 0.0
+    diverging_scale: float = 0.0
+    drawdown_circuit_pct: float = 0.0
+    panic_cooldown_days: int = 0
+    slippage_pct: float = 0.0
 
     def __post_init__(self) -> None:
         if self.market not in MARKETS:
@@ -99,6 +113,18 @@ class BacktestConfig:
             raise ValueError("score_threshold must be in [0, 100]")
         if self.gates not in GATE_LEVELS:
             raise ValueError(f"gates must be one of {GATE_LEVELS} (got {self.gates!r})")
+        if self.trailing_stop_pct > 0:
+            raise ValueError("trailing_stop_pct must be <= 0 (0 disables, e.g. -8 = 8%% peak pullback)")
+        if not 0 < self.position_pct <= 1:
+            raise ValueError("position_pct must be in (0, 1]")
+        if not 1 <= self.max_positions <= 100:
+            raise ValueError("max_positions must be in [1, 100]")
+        if not 0 <= self.rs_rank_min <= 1:
+            raise ValueError("rs_rank_min must be in [0, 1] (0 disables, 0.8 = top 20% RS)")
+        if not 0 <= self.diverging_scale <= 1:
+            raise ValueError("diverging_scale must be in [0, 1] (0 = no entries when Diverging, 0.5 = half size)")
+        if self.drawdown_circuit_pct > 0:
+            raise ValueError("drawdown_circuit_pct must be <= 0 (0 disables, e.g. -5 = halt new entries when trailing 20d realized pnl < -5%)")
 
 
 @dataclass
@@ -117,6 +143,7 @@ class BacktestTrade:
     holding_days: int
     close_reason: str
     score_at_entry: float | None
+    position_pct: float = 0.05
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -138,6 +165,13 @@ class BacktestSummary:
     avg_gross_pnl_pct: float | None
     avg_costs_pct: float | None
     max_drawdown_pct: float
+    total_net_pnl_pct: float
+    annual_net_pnl_pct: float
+    avg_win_pct: float | None
+    avg_loss_pct: float | None
+    sharpe: float | None
+    excess_vs_best_benchmark_pct: float
+    best_benchmark: str
     by_score_bucket: dict[str, dict[str, Any]] = field(default_factory=dict)
     gated_blocks: dict[str, int] = field(default_factory=dict)
 
@@ -185,6 +219,8 @@ class BacktestData:
             config, self.calendar
         )
         self.industry_by_ts = _load_industries(self.ts_codes)
+        self.rs_rank_by_day = _load_rs_ranks(config, self.calendar, set(self.ts_codes))
+        self.sentiment_risk_by_day = _load_sentiment_risk(config)
 
 
 def _load_calendar(start_date: str, end_date: str) -> list[str]:
@@ -205,6 +241,52 @@ def _load_calendar(start_date: str, end_date: str) -> list[str]:
     for r in rows:
         d = r[0]
         out.append(d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d))
+    return out
+
+
+BENCHMARK_INDEXES = [
+    {"ts_code": "000001.SH", "name": "上证指数"},
+    {"ts_code": "399006.SZ", "name": "创业板指"},
+    {"ts_code": "000300.SH", "name": "沪深300"},
+    {"ts_code": "000905.SH", "name": "中证500"},
+    {"ts_code": "000688.SH", "name": "科创50"},
+]
+
+
+def load_benchmarks(start_date: str, end_date: str) -> list[dict[str, Any]]:
+    """Window total/annual return for each benchmark index (first to last close)."""
+    out: list[dict[str, Any]] = []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            for it in BENCHMARK_INDEXES:
+                code = it["ts_code"]
+                cur.execute(
+                    """
+                    SELECT trade_date, close FROM index_daily
+                    WHERE ts_code = %s AND trade_date >= %s AND trade_date <= %s
+                    ORDER BY trade_date
+                    """,
+                    (code, start_date, end_date),
+                )
+                rows = cur.fetchall()
+                if len(rows) < 2:
+                    continue
+                start_px = float(rows[0][1])
+                end_px = float(rows[-1][1])
+                if start_px <= 0:
+                    continue
+                total = (end_px / start_px - 1.0) * 100.0
+                years = max((date.fromisoformat(end_date) - date.fromisoformat(start_date)).days / 365.25, 1 / 365.25)
+                out.append(
+                    {
+                        "ts_code": code,
+                        "name": it["name"],
+                        "start_date": str(rows[0][0]),
+                        "end_date": str(rows[-1][0]),
+                        "total_return_pct": round(total, 2),
+                        "annual_pct": round(total / years, 2),
+                    }
+                )
     return out
 
 
@@ -322,9 +404,116 @@ def _load_flow_mainline_data(
                         and (y_r - r) >= MOMENTUM_RANK_CHANGE
                     ):
                         allow.add(name)
-        if allow or day_flows:
+        if day_flows:
             mainline_allow[day] = allow
     return flow_any_positive, mainline_allow
+
+
+RS_LOOKBACK_DAYS = 20
+
+
+def _load_rs_ranks(
+    config: BacktestConfig,
+    calendar: list[str],
+    universe_ts: set[str],
+) -> dict[str, dict[str, float]]:
+    """Per-day relative-strength percentile (0-1, 1 = strongest) per symbol.
+
+    RS = 20-day return minus the CSI300 20-day return, ranked against ALL
+    stocks with a bar that day (whole-market relative strength, IbD-style).
+    Only universe symbols are kept; other symbols are the ranking pool.
+    Returns {day: {symbol: percentile}}. Days without RS data (no bars,
+    suspension, <21 bars history) are absent → the engine treats them as
+    blocked (fail-closed).
+    """
+    from datetime import timedelta
+
+    if config.rs_rank_min <= 0:
+        return {}
+    start_early = max(
+        date.fromisoformat(config.start_date) - timedelta(days=40), date(2024, 1, 1)
+    ).isoformat()
+    rows: list[tuple[str, str, float]] = []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date, ts_code, ret20 FROM (
+                    SELECT trade_date, ts_code, close,
+                        (close / lag(close, 20) OVER (PARTITION BY ts_code ORDER BY trade_date) - 1) * 100 AS ret20
+                    FROM daily
+                    WHERE trade_date >= %s AND trade_date <= %s AND close > 0
+                ) t WHERE ret20 IS NOT NULL
+                ORDER BY trade_date
+                """,
+                (start_early, config.end_date),
+            )
+            rows = cur.fetchall()
+            # CSI300 benchmark 20d return (as-of, same window)
+            bench: dict[str, float] = {}
+            cur.execute(
+                """
+                SELECT trade_date, close FROM index_daily
+                WHERE ts_code = '000300.SH' AND trade_date >= %s AND trade_date <= %s
+                ORDER BY trade_date
+                """,
+                (start_early, config.end_date),
+            )
+            bench_rows = cur.fetchall()
+    bench_close: dict[str, float] = {str(d): float(c) for d, c in bench_rows}
+    bench_dates = sorted(bench_close)
+    for i in range(RS_LOOKBACK_DAYS, len(bench_dates)):
+        d0, d1 = bench_dates[i - RS_LOOKBACK_DAYS], bench_dates[i]
+        if bench_close[d0] > 0:
+            bench[d1] = (bench_close[d1] / bench_close[d0] - 1.0) * 100.0
+
+    # group rows by day (rows are ordered by trade_date)
+    out: dict[str, dict[str, float]] = {}
+    day_rows: dict[str, list[tuple[str, float]]] = {}
+    for d, ts, ret in rows:
+        ds = str(d)
+        day_rows.setdefault(ds, []).append((str(ts), float(ret)))
+    for day in calendar:
+        items = day_rows.get(day)
+        if not items:
+            continue
+        b = bench.get(day)
+        if b is None:
+            continue
+        ranked = sorted(items, key=lambda kv: -(kv[1] - b))
+        total = len(ranked)
+        if total < 30:  # too thin a market to rank reliably
+            continue
+        pos: dict[str, float] = {}
+        for i, (ts, _ret) in enumerate(ranked, start=1):
+            if ts in universe_ts:
+                pos[ts] = (total - i + 1) / total  # strongest = 1.0, weakest = ~0
+        out[day] = pos
+    return out
+
+
+SENTIMENT_BLOCK_MODES = ("no_new_positions", "extreme_caution")
+
+
+def _load_sentiment_risk(config: BacktestConfig) -> dict[str, str]:
+    """Per-day sentiment risk_mode (live gate _RISK_DEFEND input).
+
+    Missing days degrade (fail-open): sentiment data starts 2026-01-05, the
+    live system did not have this gate before then.
+    """
+    out: dict[str, str] = {}
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT date, risk_mode FROM market_cn_sentiment_daily
+                WHERE date >= %s AND date <= %s
+                """,
+                (config.start_date, config.end_date),
+            )
+            for d, mode in cur.fetchall():
+                out[str(d)] = str(mode or "")
+    return out
 
 
 def _load_industries(ts_codes: list[str]) -> dict[str, str]:
@@ -356,14 +545,24 @@ def _gate_blocked(
     the live mainline ``MAINLINE_DATA_UNAVAILABLE`` path).
     """
     if config.gates in ("regime", "full"):
-        if data.regime_by_day.get(day) != REGIME_STRONG:
-            return GATE_REASON_REGIME
+        regime = data.regime_by_day.get(day)
+        if regime != REGIME_STRONG:
+            if regime == REGIME_DIVERGING and config.diverging_scale > 0:
+                pass  # allowed, position scaled down at entry
+            else:
+                return GATE_REASON_REGIME
     if config.gates == "full":
-        if not data.flow_any_positive_by_day.get(day):
+        # Data-missing days degrade (fail-open): the live system did not have
+        # fund-flow gates before 2025-12-15, so historical windows without
+        # that data must replay the system's then-current capabilities.
+        risk = data.sentiment_risk_by_day.get(day)
+        if risk in SENTIMENT_BLOCK_MODES:
+            return GATE_REASON_SENTIMENT
+        if day in data.flow_any_positive_by_day and not data.flow_any_positive_by_day[day]:
             return GATE_REASON_FLOW
         allow = data.mainline_allow_by_day.get(day)
         ind = data.industry_by_ts.get(ts)
-        if allow is None or ind is None or ind not in allow:
+        if allow is not None and (ind is None or ind not in allow):
             return GATE_REASON_MAINLINE
     return None
 
@@ -392,9 +591,19 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
     positions: dict[str, dict[str, Any]] = {}  # symbol -> live position state
     closed_trades: list[BacktestTrade] = []
     gated_blocks: dict[str, int] = defaultdict(int)
+    last_panic_idx = -10 ** 9
+    day_index = 0
 
     threshold = config.score_threshold
     costs_pct = round_trip_cost_pct(config.market) * 100.0
+    realized_pnl_window: list[tuple[str, float]] = []  # (close_date, pnl_pct)"""
+
+    def _circuit_halted(day: str) -> bool:
+        if config.drawdown_circuit_pct >= 0:
+            return False
+        cutoff = (date.fromisoformat(day) - timedelta(days=30)).isoformat()
+        recent = [pnl for d, pnl in realized_pnl_window if d >= cutoff]
+        return len(recent) >= 3 and sum(recent) <= config.drawdown_circuit_pct
 
     def entry_price_for(ts: str, day: str) -> float | None:
         closes = data.close_by_ts_day.get(ts)
@@ -402,11 +611,25 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
 
     for day in data.calendar:
         day_scores = data.scores_by_day.get(day, {})
+        circuit_halted = _circuit_halted(day)
+        if data.sentiment_risk_by_day.get(day) in SENTIMENT_BLOCK_MODES:
+            last_panic_idx = day_index
+        panic_cooldown = (
+            config.panic_cooldown_days > 0
+            and (day_index - last_panic_idx) <= config.panic_cooldown_days
+        )
+        day_index += 1
 
         # 1) Entries: score >= threshold, gates passed, not already held,
         #    price available.
         for sym, score in day_scores.items():
             if score < threshold:
+                continue
+            if circuit_halted:
+                gated_blocks["circuit"] += 1
+                continue
+            if panic_cooldown:
+                gated_blocks["panic_cooldown"] += 1
                 continue
             if sym in positions:
                 continue
@@ -418,16 +641,30 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             if blocked_by is not None:
                 gated_blocks[blocked_by] += 1
                 continue
+            if config.rs_rank_min > 0:
+                rs = data.rs_rank_by_day.get(day, {}).get(ts)
+                if rs is None or rs < config.rs_rank_min:
+                    gated_blocks["rs"] += 1
+                    continue
+            if len(positions) >= config.max_positions:
+                gated_blocks["sleeve"] += 1
+                continue
             px = entry_price_for(ts, day)
             if px is None or px <= 0:
                 continue
+            regime = data.regime_by_day.get(day)
+            pos_scale = 1.0 if regime == REGIME_STRONG else (
+                config.diverging_scale if regime == REGIME_DIVERGING else 0.0
+            )
             positions[sym] = {
                 "symbol": sym,
                 "market": config.market,
                 "ts_code": ts,
                 "entry_date": day,
                 "entry_price": px,
+                "peak_price": px,
                 "score_at_entry": score,
+                "position_pct": config.position_pct * pos_scale,
             }
 
         # 2) Daily mark-to-market + close conditions (LIVE picker, as-of score).
@@ -439,10 +676,14 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 # No bar today (suspension / weekend noise) — hold, retry next day.
                 continue
             entry_px = float(pos["entry_price"])
-            gross = (close_px - entry_px) / entry_px * 100.0
+            slip = config.slippage_pct
+            gross = (close_px * (1 - slip / 100.0) - entry_px * (1 + slip / 100.0)) / entry_px * 100.0
             net = gross - costs_pct
             holding = _calendar_days_between(str(pos["entry_date"]), day)
             score_asof = day_scores.get(sym)  # None → score_floor fails open
+
+            if close_px > float(pos["peak_price"]):
+                pos["peak_price"] = close_px
 
             reason = _pick_close_reason(
                 t=pos,
@@ -455,7 +696,12 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 max_hold_days=config.max_hold_days,
                 score_floor=config.score_floor,
             )
+            if reason is None and config.trailing_stop_pct != 0:
+                peak = float(pos["peak_price"])
+                if peak > 0 and (close_px - peak) / peak * 100.0 <= config.trailing_stop_pct:
+                    reason = CLOSE_REASON_TRAILING
             if reason is not None:
+                realized_pnl_window.append((day, net))
                 closed_trades.append(
                     BacktestTrade(
                         symbol=sym,
@@ -470,6 +716,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                         holding_days=holding,
                         close_reason=reason,
                         score_at_entry=pos.get("score_at_entry"),
+                        position_pct=float(pos.get("position_pct") or config.position_pct),
                     )
                 )
                 del positions[sym]
@@ -489,7 +736,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         if final_px is None or final_px <= 0:
             continue
         entry_px = float(pos["entry_price"])
-        gross = (final_px - entry_px) / entry_px * 100.0
+        slip = config.slippage_pct
+        gross = (final_px * (1 - slip / 100.0) - entry_px * (1 + slip / 100.0)) / entry_px * 100.0
         net = gross - costs_pct
         closed_trades.append(
             BacktestTrade(
@@ -505,6 +753,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 holding_days=_calendar_days_between(str(pos["entry_date"]), last_day),
                 close_reason=CLOSE_REASON_END_OF_WINDOW,
                 score_at_entry=pos.get("score_at_entry"),
+                position_pct=float(pos.get("position_pct") or config.position_pct),
             )
         )
         # Must drop the closed position or open_at_end would count it too
@@ -533,8 +782,13 @@ def _summarize(
     grosses = [t.gross_pnl_pct for t in closed]
     costs = [t.costs_pct for t in closed]
 
-    # Max drawdown on the cumulative net-pnl curve (ordered by close date).
-    curve: list[tuple[str, float]] = sorted((t.close_date, t.pnl_pct) for t in closed)
+    # Max drawdown on the cumulative net-pnl curve (ordered by close date),
+    # scaled by the per-trade position size (a 5% sleeve cannot move the
+    # account by its full pnl_pct).
+    curve: list[tuple[str, float]] = sorted(
+        (t.close_date, t.pnl_pct * float(getattr(t, "position_pct", config.position_pct)))
+        for t in closed
+    )
     peak = 0.0
     cum = 0.0
     max_dd = 0.0
@@ -581,9 +835,80 @@ def _summarize(
         avg_gross_pnl_pct=round(sum(grosses) / len(grosses), 3) if grosses else None,
         avg_costs_pct=round(sum(costs) / len(costs), 3) if costs else None,
         max_drawdown_pct=round(max_dd, 3),
+        total_net_pnl_pct=round(
+            sum(t.pnl_pct * float(getattr(t, "position_pct", config.position_pct)) for t in closed),
+            3,
+        )
+        if closed
+        else 0.0,
+        annual_net_pnl_pct=round(
+            sum(t.pnl_pct * float(getattr(t, "position_pct", config.position_pct)) for t in closed)
+            / _window_years(config),
+            3,
+        )
+        if closed
+        else 0.0,
+        avg_win_pct=round(sum(t.pnl_pct for t in wins) / len(wins), 3) if wins else None,
+        avg_loss_pct=round(sum(t.pnl_pct for t in losses) / len(losses), 3) if losses else None,
+        sharpe=_sharpe_from_closes(closed, config),
+        excess_vs_best_benchmark_pct=0.0,
+        best_benchmark="",
         by_score_bucket=buckets,
         gated_blocks=dict(gated_blocks or {}),
     )
+
+
+def _window_years(config: BacktestConfig) -> float:
+    try:
+        return max(
+            (date.fromisoformat(config.end_date) - date.fromisoformat(config.start_date)).days / 365.25,
+            1 / 365.25,
+        )
+    except ValueError:
+        return 1.0
+
+
+def _sharpe_from_closes(
+    closed: list[BacktestTrade],
+    config: BacktestConfig,
+) -> float | None:
+    """Approximate annualized Sharpe from the per-close-day return series.
+
+    Each close day contributes pnl_pct * scale (0 on days without closes).
+    This is a coarse proxy (no intraday MTM of open positions); labeled
+    "approx" in the UI.
+    """
+    if not closed:
+        return None
+    import statistics
+
+    by_day: dict[str, float] = {}
+    for t in closed:
+        w = float(getattr(t, "position_pct", config.position_pct))
+        by_day[t.close_date] = by_day.get(t.close_date, 0.0) + t.pnl_pct * w
+    days = sorted(by_day)
+    rets = [by_day[d] for d in days]
+    if len(rets) < 3:
+        return None
+    mean = statistics.mean(rets)
+    stdev = statistics.stdev(rets) if len(rets) > 1 else 0.0
+    if stdev <= 0:
+        return None
+    return round(mean / stdev * (252 ** 0.5), 2)
+
+
+def with_benchmark_excess(
+    summary: BacktestSummary,
+    benchmarks: list[dict[str, Any]],
+) -> BacktestSummary:
+    """Fill excess-vs-best-benchmark fields on a summary (mutates + returns)."""
+    best = max(benchmarks, key=lambda b: b.get("annual_pct") or 0.0) if benchmarks else None
+    best_annual = float(best.get("annual_pct") or 0.0) if best else 0.0
+    summary.best_benchmark = str(best.get("name") or "") if best else ""
+    summary.excess_vs_best_benchmark_pct = round(
+        float(summary.annual_net_pnl_pct or 0.0) - best_annual, 2
+    )
+    return summary
 
 
 def run_sensitivity(configs: list[BacktestConfig]) -> list[BacktestSummary]:

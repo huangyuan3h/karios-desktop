@@ -17,12 +17,17 @@ import {
 } from '@/lib/queries/backtest';
 
 const DEFAULT_PARAMS: BacktestParams = {
-  start: '2026-06-18',
+  start: '2025-08-01',
   end: new Date().toISOString().slice(0, 10),
-  scoreThreshold: 85,
-  maxHoldDays: 5,
+  scoreThreshold: 70,
+  maxHoldDays: 60,
   stopLossPct: -5,
   gates: 'full',
+  trailingStopPct: -8,
+  positionPct: 0.05,
+  maxPositions: 10,
+  rsRankMin: 0.5,
+  divergingScale: 0,
 };
 
 const INPUT_CLS =
@@ -73,7 +78,7 @@ export function BacktestPage() {
       <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
         <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
           <Activity className="size-3.5" />
-          回测 · 参数（信号 = 历史实际 TrendOK 分 · 平仓逻辑与 live paper 同码）
+          回测 · 参数（信号 = 历史实际 TrendOK 分 · 平仓逻辑与 live paper 同码 · 默认=趋势跟随方案）
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
@@ -122,6 +127,64 @@ export function BacktestPage() {
             />
           </label>
           <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+            移动止损 %
+            <input
+              type="number"
+              className={cn(INPUT_CLS, 'w-20')}
+              value={params.trailingStopPct}
+              placeholder="0=关闭"
+              onChange={(e) => set('trailingStopPct', e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+            单笔仓位
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              max="1"
+              className={cn(INPUT_CLS, 'w-20')}
+              value={params.positionPct}
+              onChange={(e) => set('positionPct', e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+            持仓上限
+            <input
+              type="number"
+              min="1"
+              className={cn(INPUT_CLS, 'w-20')}
+              value={params.maxPositions}
+              onChange={(e) => set('maxPositions', e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+            RS 排名过滤
+            <input
+              type="number"
+              step="0.05"
+              min="0"
+              max="1"
+              className={cn(INPUT_CLS, 'w-20')}
+              value={params.rsRankMin}
+              placeholder="0=关闭"
+              onChange={(e) => set('rsRankMin', e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+            Diverging 仓位
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="1"
+              className={cn(INPUT_CLS, 'w-20')}
+              value={params.divergingScale}
+              placeholder="0=不开仓"
+              onChange={(e) => set('divergingScale', e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
             入池闸门
             <select
               className={INPUT_CLS}
@@ -160,7 +223,10 @@ export function BacktestPage() {
         <div className="mt-2 text-[10px] text-[var(--k-muted)]">
           净口径：已扣除往返成本（CN 0.30%）。入池闸门与实盘同规则：regime=指数红绿灯
           全绿才开新仓；full=红绿灯 + 全行业资金流不转负 + 个股行业在 5D 净流入 Top3
-          （数据缺失 fail-closed 拦截）。仅参数敏感度参考，不作发布依据——以 paper 实绩为准。
+          ∪ 动量突破（历史数据缺失日降级为仅 regime）。RS 排名过滤=全市场 20 日相对强度
+          百分位（0.8 = 只买前 20% 强票；缺数据日 fail-closed）。单笔仓位×持仓上限=资金
+          模型。移动止损=峰值回撤平仓（0 关闭）。Diverging 仓位=震荡市开仓比例
+          （0=不开，0.5=半仓；Weak 始终不开仓）。仅参数敏感度参考，不作发布依据。
         </div>
       </div>
 
@@ -180,6 +246,7 @@ export function BacktestPage() {
               <StatCard label="胜率（净）" value={winRate(s.win_rate)} sub={`${s.wins} 胜 / ${s.losses} 负`} />
               <StatCard label="平均净盈亏" value={pct(s.avg_net_pnl_pct)} sub={`毛 ${pct(s.avg_gross_pnl_pct)} · 成本 ${pct(s.avg_costs_pct)}`} />
               <StatCard label="最大回撤" value={pct(s.max_drawdown_pct, 1)} sub="累计净盈亏曲线" />
+              <StatCard label="累计净收益" value={pct(s.total_net_pnl_pct, 1)} sub={`按 ${params.positionPct * 100}% 仓位折算`} />
               <StatCard label="窗口末持仓" value={String(s.open_at_end)} sub="无法定价的仓位" />
               <StatCard
                 label="分档胜率"
@@ -202,12 +269,42 @@ export function BacktestPage() {
         </div>
       )}
 
+      {/* 基准 */}
+      {sensQ.data && sensQ.data.benchmarks.length > 0 && (
+        <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+          <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+            <Activity className="size-3.5" />
+            基准对比（窗口年化 · 目标 = 最强指数 +10%）
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {sensQ.data.benchmarks.map((b) => (
+              <div key={b.ts_code} className="rounded-md border border-[var(--k-border)] px-2.5 py-1.5 text-[11px]">
+                <span className="text-[var(--k-muted)]">{b.name}</span>{' '}
+                <span className={cn('font-semibold tabular-nums', b.annual_pct >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-400')}>
+                  {pct(b.annual_pct, 1)}/年
+                </span>
+                <span className="text-[10px] text-[var(--k-muted)]">（窗口 {pct(b.total_return_pct, 1)}）</span>
+              </div>
+            ))}
+            {(() => {
+              const best = sensQ.data.benchmarks.reduce((a, b) => (b.annual_pct > a.annual_pct ? b : a), sensQ.data.benchmarks[0]);
+              return (
+                <div className="rounded-md border border-[var(--k-accent)]/50 bg-[var(--k-accent)]/5 px-2.5 py-1.5 text-[11px]">
+                  <span className="text-[var(--k-muted)]">目标线：</span>
+                  <span className="font-semibold tabular-nums">{best.name} +10% = {pct(best.annual_pct + 10, 1)}/年</span>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* 敏感度网格 */}
       {gridOn && (
         <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
           <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
             <BarChart3 className="size-3.5" />
-            敏感度网格（score × hold × stop × 闸门 = 72 组 · 默认窗口）
+            敏感度网格（score × hold × stop × 闸门 × trail · 默认窗口 · 按超额排序）
             {sensQ.isFetching && <span className="text-[10px] text-[var(--k-muted)]">计算中（约 60s）…</span>}
           </div>
           {sensQ.isError ? (
@@ -221,9 +318,13 @@ export function BacktestPage() {
                     <th className="py-1 pr-2">score</th>
                     <th className="py-1 pr-2">hold</th>
                     <th className="py-1 pr-2">stop</th>
+                    <th className="py-1 pr-2">trail</th>
                     <th className="py-1 pr-2">trades</th>
                     <th className="py-1 pr-2">胜率</th>
                     <th className="py-1 pr-2">均净%</th>
+                    <th className="py-1 pr-2">年化%</th>
+                    <th className="py-1 pr-2">超额%</th>
+                    <th className="py-1 pr-2">夏普</th>
                     <th className="py-1 pr-2">maxDD%</th>
                   </tr>
                 </thead>
@@ -236,9 +337,16 @@ export function BacktestPage() {
                         <td className="py-1 pr-2">{r.config.score_threshold.toFixed(0)}</td>
                         <td className="py-1 pr-2">{r.config.max_hold_days}</td>
                         <td className="py-1 pr-2">{r.config.stop_loss_pct.toFixed(0)}</td>
+                        <td className="py-1 pr-2">{r.config.trailing_stop_pct ? r.config.trailing_stop_pct.toFixed(0) : '—'}</td>
                         <td className="py-1 pr-2">{r.closed}</td>
                         <td className="py-1 pr-2 font-medium">{winRate(r.win_rate)}</td>
                         <td className={cn('py-1 pr-2', tone(r.avg_net_pnl_pct))}>{pct(r.avg_net_pnl_pct)}</td>
+                        <td className={cn('py-1 pr-2 font-medium', tone(r.annual_net_pnl_pct))}>{pct(r.annual_net_pnl_pct, 1)}</td>
+                        <td className={cn('py-1 pr-2', r.excess_vs_best_benchmark_pct >= 10 ? 'font-semibold text-emerald-700 dark:text-emerald-300' : tone(r.excess_vs_best_benchmark_pct))}>
+                          {pct(r.excess_vs_best_benchmark_pct, 1)}
+                          {r.excess_vs_best_benchmark_pct >= 10 && ' ✓'}
+                        </td>
+                        <td className="py-1 pr-2">{r.sharpe ?? '—'}</td>
                         <td className="py-1 pr-2">{pct(r.max_drawdown_pct, 1)}</td>
                       </tr>
                     ))}

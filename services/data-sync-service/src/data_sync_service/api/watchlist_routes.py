@@ -48,6 +48,25 @@ class PullbackFilterRequest(BaseModel):
     asOf: str | None = None
 
 
+@router.get("/watchlist/rs-ranks")
+def watchlist_rs_ranks(
+    symbols: str = Query(..., description="Comma-separated symbols (CN:/HK:)."),
+) -> dict:
+    """Whole-market 20-day RS percentile per symbol (S-2: top-50% filter).
+
+    Percentile 0-1 (strongest = 1.0); ranking pool = ALL stocks with a bar
+    on the latest trade date. Cached per as-of date.
+    """
+    from data_sync_service.service.watchlist_automation import compute_rs_ranks
+
+    syms = [s.strip() for s in symbols.split(",") if s.strip()]
+    if not syms:
+        return {"ok": True, "asOfDate": None, "ranks": {}}
+    ranks = compute_rs_ranks(syms)
+    as_of = ranks.pop("_asOf", None)
+    return {"ok": True, "asOfDate": as_of, "ranks": ranks}
+
+
 @router.get("/watchlist/registry")
 def get_watchlist_registry() -> dict:
     try:

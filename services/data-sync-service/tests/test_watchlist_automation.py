@@ -868,3 +868,49 @@ def test_run_watchlist_automation_industry_sync_failure_is_meta(monkeypatch) -> 
     assert out["skipped"] is False
     assert out["meta"]["industrySync"] == {"ok": False, "error": "boom"}
     assert out["meta"]["screenerSync"]["ok"] is True
+
+def test_compute_rs_ranks_returns_percentiles(monkeypatch) -> None:
+    """compute_rs_ranks maps symbols -> whole-market RS percentiles."""
+
+    from data_sync_service.service import watchlist_automation as wa
+
+    monkeypatch.setattr(wa, "get_connection", lambda: (_ for _ in ()).throw(AssertionError("db should not be hit")))
+
+    def fake_parse(sym):
+        return ("CN", "600001", "600001.SH") if sym == "CN:600001" else ("CN", "600002", "600002.SH")
+
+    monkeypatch.setattr("data_sync_service.service.trendok._symbol_to_ts_code", fake_parse)
+
+    class FakeCur:
+        def __init__(self):
+            self.n = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params=None):
+            self.n += 1
+
+        def fetchone(self):
+            return ("2026-08-07",)  # latest trade date
+
+        def fetchall(self):
+            return [("600001.SH", 10.0), ("600002.SH", -5.0)]  # ret20 rows
+
+    class FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def cursor(self):
+            return FakeCur()
+
+    monkeypatch.setattr(wa, "get_connection", lambda: FakeConn())
+    ranks = wa.compute_rs_ranks(["CN:600001", "CN:600002"])
+    assert ranks["CN:600001"] == 1.0  # strongest of the two
+    assert ranks["CN:600002"] == 0.5

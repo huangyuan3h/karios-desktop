@@ -43,6 +43,11 @@ const PARAMS = {
   maxHoldDays: 5,
   stopLossPct: -5,
   gates: 'full',
+  trailingStopPct: 0,
+  positionPct: 0.05,
+  maxPositions: 10,
+  rsRankMin: 0,
+  divergingScale: 0,
 };
 
 describe('useBacktestRunQuery', () => {
@@ -59,7 +64,7 @@ describe('useBacktestRunQuery', () => {
     expect(opts.staleTime).toBe(0);
     await opts.queryFn();
     expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
-      '/api/backtest/run?start=2026-01-01&end=2026-06-01&score_threshold=80&max_hold_days=5&stop_loss_pct=-5&gates=full',
+      '/api/backtest/run?start=2026-01-01&end=2026-06-01&score_threshold=80&max_hold_days=5&stop_loss_pct=-5&gates=full&trailing_stop_pct=0&position_pct=0.05&max_positions=10&rs_rank_min=0&diverging_scale=0',
     );
   });
 });
