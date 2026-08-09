@@ -34,6 +34,7 @@ from ..db.watchlist_automation import list_registry
 from ..service.execution_source import aggregate_source_stats
 from ..service.paper_s3 import run_intake_s3
 from ..service.paper_trading import compute_stats as pt_compute_stats
+from ..service.portfolio_health import build_portfolio_health
 from ..service.trendok import compute_trendok_for_symbols
 
 router = APIRouter(
@@ -715,3 +716,21 @@ def paper_s3_intake(
         return run_intake_s3(trade_date=tradeDate, max_positions=maxPositions)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"s3 intake failed: {exc}") from exc
+
+
+@router.get(
+    "/agent/portfolio-health",
+    summary="S-3-aligned health check for the real holdings (decision agent).",
+)
+def agent_portfolio_health(
+    tradeDate: str | None = Query(
+        default=None,
+        description="ISO date (YYYY-MM-DD); default the latest trading day.",
+    ),
+) -> dict:
+    """Holdings vs S-3 exit rules (stop -5% / trailing -8% / 60-day cap) plus
+    market state (regime / sentiment / panic cooldown / S-3 candidates)."""
+    try:
+        return build_portfolio_health(trade_date=tradeDate)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"portfolio health failed: {exc}") from exc

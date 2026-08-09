@@ -86,6 +86,77 @@ async function searchArchive(symbol: string): Promise<string> {
   return lines.join('\n');
 }
 
+/** S-3 rules knowledge injected statically so answers stay aligned with the
+ * backtest even before the holdings tool is called. */
+const S3_RULES_KNOWLEDGE = `【S-3 回测纪律（本系统唯一证据 · 双窗验证 2026-08-09）】
+- 市场状态只挡开仓不触发卖出：Weak=空仓观望，Strong/Diverging=进攻（Diverging 满仓）
+- 持仓退出只有 4 条规则（命中即卖，未命中绝不因"市场弱"减仓）：
+  1) 固定止损：净亏 >= 5% → 卖
+  2) 移动止损：从持仓峰值回撤 >= 8% → 卖（保护利润）
+  3) 60 天持有上限 → 卖
+  4) score<0 平仓（等于永不触发）
+- 历史证据：2024-25 弱市年（Weak 占 73%）持仓全程持有最终 +80.5%——
+  弱市减仓违反回测证明的最优行为；收益来自少数 Strong/Diverging 进攻窗口
+- 参数（S-3 定案）：score65 · hold60 · target100（不止盈）· floor0 · trailing-8 ·
+  stop-5 · RS前50% · Diverging满仓 · 恐慌冷却3天 · 滑点0.05% · mp20 · 金字塔+2.5%加半仓(1次)
+- 回答持仓问题时：先调用 query_s3_holdings_health 获取实时体检，按上述规则给结论；
+  不要凭感觉建议减仓，回测证据优先`;
+
+async function queryHoldingsHealth(): Promise<string> {
+  const data = await fetchJson<{
+    tradeDate?: string;
+    regime?: string | null;
+    sentiment?: string | null;
+    s3Candidates?: number | null;
+    panicCooldown?: { lastPanicDate?: string | null; cooldownEndDate?: string | null; active?: boolean } | null;
+    s3Rules?: Record<string, unknown>;
+    holdings?: Array<{
+      symbol?: string;
+      name?: string;
+      positionPct?: number;
+      costPrice?: number;
+      lastClose?: number;
+      pnlPct?: number;
+      drawdownFromPeakPct?: number;
+      holdingDays?: number;
+      stopLossLine?: number;
+      trailingLine?: number;
+      expireDate?: string;
+      action?: string;
+      reason?: string;
+      note?: string;
+    }>;
+  }>(`/v1/agent/portfolio-health`);
+  if (!data) return '持仓体检服务暂不可用（data-sync-service 未响应），请稍后再试。';
+  const lines = [
+    `# S-3 持仓体检（${data.tradeDate ?? '最新'}）`,
+    '',
+    `- 市场状态：regime=${data.regime ?? '—'} · sentiment=${data.sentiment ?? '—'} · S-3 候选=${data.s3Candidates ?? '—'} · 恐慌冷却=${data.panicCooldown?.active ? `至 ${data.panicCooldown.cooldownEndDate}` : '无'}`,
+    `- S-3 退出规则：止损 -5% · 移动止损 -8% · 60 天上限（持仓体检按此判定）`,
+    '',
+  ];
+  const holds = data.holdings ?? [];
+  if (holds.length === 0) {
+    lines.push('（当前无持仓——未录入成本/仓位的 watchlist 票不算持仓）');
+  }
+  for (const h of holds) {
+    const line = h.action === 'EXIT' ? '🔴 建议退出' : '✅ 持有';
+    lines.push(
+      `- **${h.name ?? h.symbol}**（${h.symbol} · 仓位 ${h.positionPct ?? '—'}%）${line}` +
+        `：盈亏 ${h.pnlPct != null ? `${h.pnlPct >= 0 ? '+' : ''}${h.pnlPct}%` : '—'}` +
+        ` · 峰值回撤 ${h.drawdownFromPeakPct ?? '—'}%` +
+        ` · 已持 ${h.holdingDays ?? '—'} 天` +
+        (h.stopLossLine != null ? ` · 止损线 ${h.stopLossLine}` : '') +
+        (h.trailingLine != null ? ` · 移动线 ${h.trailingLine}` : '') +
+        (h.expireDate ? ` · 到期 ${h.expireDate}` : '') +
+        (h.reason ? ` · 触发：${h.reason}` : '') +
+        (h.note ? ` · ${h.note}` : ''),
+    );
+  }
+  lines.push('', '- 结论口径：以上按 S-3 回测退出规则自动判定；未触发即持有，不因市场 Weak 减仓。');
+  return lines.join('\n');
+}
+
 export const decisionRoutes = new Hono();
 
 /**
@@ -165,6 +236,9 @@ decisionRoutes.post('/', async (c) => {
 
   const messages = toModelMessagesFromChatRequest(parsed.data);
 
+  // S-3 backtest knowledge so answers stay aligned with the validated rules.
+  const s3SystemMessage = { role: 'system' as const, content: S3_RULES_KNOWLEDGE };
+
   let model: AiModel;
   try {
     model = (await getDecisionModelBundle()).model;
@@ -174,6 +248,14 @@ decisionRoutes.post('/', async (c) => {
   }
 
   const archiveTools = {
+    query_s3_holdings_health: tool({
+      description:
+        '获取当前真实持仓的 S-3 回测体检（每只的盈亏/峰值回撤/止损线/移动止损线/到期日/持有建议）' +
+        '以及市场状态（regime/sentiment/恐慌冷却/S-3 候选数）。用户问"该不该减仓/卖/加仓/持有/我的仓位"时' +
+        '必须先调用此工具，按 S-3 退出规则回答，不要凭感觉。',
+      inputSchema: z.object({}),
+      execute: async () => queryHoldingsHealth(),
+    }),
     retrieve_archive_snapshot: tool({
       description:
         '按日期检索历史决策归档快照（当日决策对话 + 开火记录 + 模拟盘结果）。仅在用户询问历史/上周/某天决策时才调用。',
@@ -207,13 +289,17 @@ decisionRoutes.post('/', async (c) => {
   try {
     result = await streamText({
       model,
-      messages,
+      messages: [s3SystemMessage, ...messages],
       tools: decisionTools,
       providerOptions: geminiProviderOptions,
     });
   } catch {
     // Fallback: model may not support tool calling — retry without tools.
-    result = await streamText({ model, messages, providerOptions: geminiProviderOptions });
+    result = await streamText({
+      model,
+      messages: [s3SystemMessage, ...messages],
+      providerOptions: geminiProviderOptions,
+    });
   }
 
   const stripper = new ThinkingStreamStripper();

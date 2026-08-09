@@ -168,8 +168,8 @@ class BacktestConfig:
             raise ValueError("max_per_industry must be in [0, 100] (0 disables, 4 = at most 4 holdings per industry)")
         if self.entry_sort not in ("score", "score_rs", "rs"):
             raise ValueError(f"entry_sort must be one of ('score', 'score_rs', 'rs') (got {self.entry_sort!r})")
-        if self.min_mv < 0 or self.max_mv < 0:
-            raise ValueError("min_mv / max_mv must be >= 0 (亿元; 0 disables the bound)")
+        if self.min_mv < 0 or self.max_mv < 0 or self.mv_max_diverging < 0:
+            raise ValueError("min_mv / max_mv / mv_max_diverging must be >= 0 (亿元; 0 disables the bound)")
 
 
 @dataclass
@@ -954,6 +954,14 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     if config.max_mv > 0 and mv > config.max_mv:
                         gated_blocks["mv_max"] += 1
                         continue
+            # Style-defense: in Diverging (choppy/weak) regimes exclude
+            # mega-cap institutional names — 2024-25 OOS2 showed the
+            # >500亿 cohort had the worst drawdowns (crowded unwind).
+            if config.mv_max_diverging > 0 and data.regime_by_day.get(day) == REGIME_DIVERGING:
+                mv = data.mv_by_day.get(day, {}).get(ts)
+                if mv is not None and mv > config.mv_max_diverging:
+                    gated_blocks["mv_diverging"] += 1
+                    continue
             if len(positions) >= config.max_positions:
                 gated_blocks["sleeve"] += 1
                 continue

@@ -1,0 +1,191 @@
+"""Portfolio health check aligned to the S-3 backtest exit rules.
+
+For every real holding in the watchlist registry (positionPct > 0) compute the
+S-3 exit conditions from the SAME constants the paper system uses
+(db/paper_trading.py): fixed stop -5% · trailing -8% from peak · 60-day cap.
+Market state (regime / sentiment / panic cooldown / S-3 candidates) is
+attached so a decision agent can answer "should I cut?" exactly the way the
+backtest would.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import date
+from typing import Any
+
+from data_sync_service.db.paper_trading import (
+    MAX_HOLD_DAYS,
+    STOP_LOSS_PCT,
+    TRAILING_STOP_PCT,
+)
+from data_sync_service.db.watchlist_automation import list_registry
+
+logger = logging.getLogger(__name__)
+
+
+def _resolve_holding_ts(symbol: str) -> str | None:
+    """CN/HK resolve via the paper engine; ETF by exchange code prefix."""
+    from data_sync_service.service.paper_trading import _resolve_ts_code
+
+    parsed = _resolve_ts_code(symbol)
+    if parsed:
+        return parsed[1]
+    if symbol.startswith("ETF:"):
+        code = symbol.removeprefix("ETF:")
+        if len(code) == 6 and code.isdigit():
+            return f"{code}.SH" if code.startswith(("5", "6")) else f"{code}.SZ"
+    return None
+
+
+def _holding_check(
+    *,
+    name: str,
+    cost: float,
+    entry_date: str,
+    ts: str,
+    trade_date: str,
+) -> dict[str, Any]:
+    """S-3 exit-condition check for one holding (same constants as paper)."""
+    from data_sync_service.db import get_connection
+
+    out: dict[str, Any] = {
+        "symbol": name,
+        "costPrice": cost,
+        "entryDate": entry_date,
+        "tsCode": ts,
+        "checkDate": trade_date,
+    }
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date, high, close FROM daily
+                WHERE ts_code = %s AND trade_date >= %s AND trade_date <= %s
+                ORDER BY trade_date
+                """,
+                (ts, entry_date, trade_date),
+            )
+            bars = cur.fetchall()
+    if not bars:
+        out["status"] = "no-price-data"
+        out["action"] = "HOLD"
+        out["note"] = "无价格数据，继续持有观察"
+        return out
+
+    last_date, _h, last_close = bars[-1]
+    last_close = float(last_close)
+    peak = max(float(b[1]) for b in bars if b[1] is not None)
+    peak_date = max(bars, key=lambda b: float(b[1]))[0]
+    pnl = (last_close - cost) / cost * 100.0
+    drawdown = (last_close - peak) / peak * 100.0
+    try:
+        days = (date.fromisoformat(trade_date) - date.fromisoformat(entry_date)).days
+    except ValueError:
+        days = 0
+
+    out["lastClose"] = last_close
+    out["lastDate"] = str(last_date)
+    out["peakPrice"] = peak
+    out["peakDate"] = str(peak_date)
+    out["pnlPct"] = round(pnl, 2)
+    out["drawdownFromPeakPct"] = round(drawdown, 2)
+    out["holdingDays"] = days
+    out["stopLossLine"] = round(cost * (1 + STOP_LOSS_PCT / 100.0), 3)
+    out["trailingLine"] = round(peak * (1 + TRAILING_STOP_PCT / 100.0), 3)
+    out["maxHoldDate"] = (
+        date.fromisoformat(entry_date).isoformat()
+    )
+    out["expireDate"] = (
+        date.fromisoformat(entry_date)
+        + __import__("datetime").timedelta(days=MAX_HOLD_DAYS)
+    ).isoformat()
+
+    reasons: list[str] = []
+    if pnl <= STOP_LOSS_PCT:
+        reasons.append(f"stop_loss（净亏{abs(pnl):.1f}% >= {abs(STOP_LOSS_PCT):.0f}% 阈值）")
+    if drawdown <= TRAILING_STOP_PCT:
+        reasons.append(f"trailing_stop（峰值回撤{abs(drawdown):.1f}% >= {abs(TRAILING_STOP_PCT):.0f}% 阈值）")
+    if days >= MAX_HOLD_DAYS:
+        reasons.append(f"max_hold（已持{days}天 >= {MAX_HOLD_DAYS} 天）")
+    if reasons:
+        out["action"] = "EXIT"
+        out["reason"] = "；".join(reasons)
+    else:
+        out["action"] = "HOLD"
+    return out
+
+
+def build_portfolio_health(*, trade_date: str | None = None) -> dict[str, Any]:
+    """Full S-3-aligned health report for the real holdings."""
+    from data_sync_service.db.paper_trading import today_iso
+    from data_sync_service.service.backtest_engine import BacktestConfig, _load_regime_by_day
+    from data_sync_service.service.market_sentiment import get_cn_sentiment, get_panic_cooldown
+    from data_sync_service.service.paper_s3 import build_s3_candidates
+
+    day = trade_date or today_iso()
+    holdings: list[dict[str, Any]] = []
+    try:
+        for r in list_registry():
+            payload = r.get("payload") or {}
+            # list_registry flattens payload fields to the top level; accept
+            # both shapes.
+            pct = payload.get("positionPct", r.get("positionPct"))
+            cost = payload.get("costPrice", r.get("costPrice"))
+            entry = payload.get("entryDate", r.get("entryDate"))
+            name = payload.get("name", r.get("name"))
+            if not (isinstance(pct, (int, float)) and pct > 0 and cost and entry):
+                continue
+            ts = _resolve_holding_ts(str(r.get("symbol") or ""))
+            check = _holding_check(
+                name=str(name or r.get("symbol") or ""),
+                cost=float(cost),
+                entry_date=str(entry),
+                ts=ts or "",
+                trade_date=day,
+            )
+            check["symbol"] = str(r.get("symbol") or "")
+            check["name"] = str(name or "")
+            check["positionPct"] = pct
+            if ts is None:
+                check["action"] = "HOLD"
+                check["note"] = "无法解析标的代码，人工核对"
+            holdings.append(check)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health holdings failed: %s", exc)
+
+    regime = None
+    try:
+        cfg = BacktestConfig(
+            start_date=day, end_date=day,
+            score_threshold=65.0, gates="full", rs_rank_min=0.5,
+        )
+        regime = _load_regime_by_day(cfg, [day]).get(day)
+    except Exception:  # noqa: BLE001
+        pass
+    sentiment = None
+    panic = None
+    candidates = None
+    try:
+        items = get_cn_sentiment(days=1, as_of_date=day)["items"]
+        sentiment = items[-1].get("riskMode") if items else None
+        panic = get_panic_cooldown(days=10, cooldown_days=3, as_of_date=day)
+        candidates = len(build_s3_candidates(trade_date=day))
+    except Exception:  # noqa: BLE001
+        pass
+
+    return {
+        "tradeDate": day,
+        "regime": regime,
+        "sentiment": sentiment,
+        "panicCooldown": panic,
+        "s3Candidates": candidates,
+        "s3Rules": {
+            "entryScore": 65,
+            "rsMin": 0.5,
+            "stopLossPct": STOP_LOSS_PCT,
+            "trailingStopPct": TRAILING_STOP_PCT,
+            "maxHoldDays": MAX_HOLD_DAYS,
+        },
+        "holdings": holdings,
+    }

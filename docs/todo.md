@@ -983,6 +983,23 @@ swap 0→0.3/0.8/10/2（paper 已部署，待复审）· position 回测 10% / p
 - 2023 年数据对"现在系统"没有验证价值——S-3 的 score/闸门模型 2023 年不存在，回测它
   等于验证一个从未运行过的系统
 
+#### 步骤 13：决策 Agent 回测感知（2026-08-09 ✅ · 用户「让 agent 同步知道回测信息」）
+
+- 问题：决策 Agent（ai-service /decision/）之前只有历史归档 tool，无任何回测知识——
+  用户靠"copy all markdown + prompt"补知识
+- **后端**：`GET /v1/agent/portfolio-health`（v1_business_routes.py +
+  service/portfolio_health.py）——真实持仓（registry positionPct>0）按 S-3 退出规则
+  逐票体检（止损-5%/移动止损-8%/60天上限，常量同 paper 模块）+ 市场状态
+  （regime/sentiment/恐慌冷却/S-3候选数）；实测 4 持仓（腾讯/亿联/恒生ETF/紫金）全 HOLD
+  与手动一致；ETF/HK symbol 解析已处理
+- **ai-service**：decision.ts 注入 `S3_RULES_KNOWLEDGE`（S-3 纪律 system prompt：
+  Weak 只挡开仓不触发卖出、4 条退出规则、弱市年 +80.5% 证据、参数表）+
+  `query_s3_holdings_health` tool（描述强制"问减仓必先调工具"）；138 tests passed
+- 效果：决策 Agent 现在回答"该不该减仓"时自动拉实时体检 + 按回测规则给结论，
+  无需再手工贴 markdown；静态知识（规则/纪律）常驻 system prompt
+- 后续可选：把回测结论速览（docs/modules/backtest-strategy.md 结论段）进一步压缩进
+  system prompt；或 agent 追问"为什么"时给出窗口级证据
+
 #### 步骤 7：季度参数复核（例行项 · 2026-08-09 用户拍板 ✅）
 
 - 节奏：每 3 个月一次双窗复核（训练窗滚动 + 验证窗 + OOS2），结果记

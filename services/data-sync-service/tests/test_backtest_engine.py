@@ -1239,3 +1239,25 @@ def test_mv_filter_blocks_outside_band() -> None:
     assert [t.symbol for t in run.trades] == ["CN:600003"]
     assert run.summary.gated_blocks.get("mv_min") == 1
     assert run.summary.gated_blocks.get("mv_max") == 1
+
+
+def test_mv_diverging_excludes_mega_cap_only_in_diverging() -> None:
+    """mv_max_diverging caps market cap only on Diverging regime days."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {
+        "2026-06-18": {"CN:600001": 90.0, "CN:600002": 90.0},
+        "2026-06-19": {},
+    }
+    prices = {
+        "600001.SH": {d: 10.0 for d in calendar},
+        "600002.SH": {d: 10.0 for d in calendar},
+    }
+    data = _data(calendar, scores, prices, regime="Diverging")
+    data.mv_by_day = {"2026-06-18": {"600001.SH": 100.0, "600002.SH": 600.0}}
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-19",
+        gates="full", diverging_scale=1.0, mv_max_diverging=500.0,
+    )
+    run = simulate(config, data=data)
+    assert [t.symbol for t in run.trades] == ["CN:600001"]
+    assert run.summary.gated_blocks.get("mv_diverging") == 1
