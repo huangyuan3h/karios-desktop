@@ -65,6 +65,19 @@ SWAP_MAX_PER_DAY = 2
 # system's default — flexibility kept, not exercised).
 SWAP_ENABLED = False
 
+# Pyramiding (user-approved 2026-08-09, §19.2 step 8): add a half sleeve on
+# the same-day close when the S-3 main leg is +2.5%; at most 1 add per
+# position; the add leg is a separate paper trade (source='S3', why
+# 'S-3 pyramid-add'). Triple-window monotone: +1%>+2.5%>+5%>+10%>+30%
+# (train 158.5/155.5/148.1/137.1/122.0) — the S-3 entry gates already filter
+# a high-win-rate pool, so confirming EARLIER captures more of the move.
+# 2.5% chosen as the explainable floor ("held above cost for ~2 sessions")
+# instead of 1% (noise-level, +3pt only) or 0 (no business meaning).
+PYRAMID_TRIGGER_PCT = 2.5
+PYRAMID_ADD_SCALE = 0.5
+PYRAMID_MAX_ADDS = 1
+PYRAMID_ENABLED = True
+
 SENTIMENT_BLOCK_MODES = ("no_new_positions", "extreme_caution")
 
 
@@ -212,6 +225,76 @@ def _s3_open_holds() -> list[dict[str, Any]]:
     return [r for r in list_paper_trades(status="open") if r.get("source") == SOURCE_S3]
 
 
+def _fetch_closes(ts_codes: list[str]) -> dict[str, float]:
+    """{ts_code: latest close} — best-effort, empty dict on failure."""
+    if not ts_codes:
+        return {}
+    closes: dict[str, float] = {}
+    try:
+        bars_by_ts = fetch_last_ohlcv_batch(sorted(set(ts_codes)), days=2)
+        for ts, bars in bars_by_ts.items():
+            if not bars:
+                continue
+            last = bars[-1]
+            try:
+                closes[str(ts)] = float(last[4])
+            except (TypeError, ValueError, IndexError):
+                continue
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 close fetch failed: %s", exc)
+    return closes
+
+
+def _pyramid_adds(*, day: str, holds: list[dict[str, Any]], closes: dict[str, float]) -> int:
+    """S-3 pyramiding: add a half sleeve at same-day close when the main leg
+    is up >= PYRAMID_TRIGGER_PCT. Idempotent per (symbol, entry_date, side);
+    at most PYRAMID_MAX_ADDS adds per symbol (counted via the 'pyramid-add'
+    marker in existing open S-3 rows)."""
+    if not PYRAMID_ENABLED or PYRAMID_MAX_ADDS <= 0:
+        return 0
+    n = 0
+    for h in holds:
+        sym = str(h.get("symbol") or "")
+        if not sym:
+            continue
+        entry = float(h.get("entryPrice") or 0.0)
+        if entry <= 0:
+            continue
+        ts = str(h.get("tsCode") or "")
+        px = closes.get(ts)
+        if px is None or px <= 0:
+            continue
+        if "pyramid-add" in str(h.get("whyAtEntry") or ""):
+            continue  # this row already is an add leg
+        existing = sum(
+            1
+            for x in holds
+            if x.get("symbol") == sym and "pyramid-add" in str(x.get("whyAtEntry") or "")
+        )
+        if existing >= PYRAMID_MAX_ADDS:
+            continue
+        gross = (px - entry) / entry * 100.0
+        if gross < PYRAMID_TRIGGER_PCT:
+            continue
+        try:
+            row = insert_paper_trade(
+                symbol=sym,
+                entry_date=day,
+                side="BUY",
+                entry_price=px,
+                why_at_entry=f"S-3 pyramid-add (main leg +{gross:.0f}%)",
+                sleeve_pct=S3_POSITION_PCT * PYRAMID_ADD_SCALE,
+                source=SOURCE_S3,
+                market="CN",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("paper_s3 pyramid-add failed for %s: %s", sym, exc)
+            continue
+        if row is not None:
+            n += 1
+    return n
+
+
 def _swap_holds_for_candidates(
     *,
     day: str,
@@ -294,11 +377,23 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
         "tradeDate": day,
         "candidates": 0,
         "inserted": 0,
+        "pyramidAdded": 0,
         "swappedIn": 0,
         "swappedOut": 0,
         "skipped": 0,
         "skippedReasons": {},
     }
+
+    # S-3 pyramiding first: add legs on held winners are regime-independent
+    # (like the backtest's mark-to-market step) and free up no sleeve.
+    try:
+        holds0 = _s3_open_holds()
+        if holds0:
+            closes0 = _fetch_closes([str(h.get("tsCode") or "") for h in holds0 if h.get("tsCode")])
+            summary["pyramidAdded"] = _pyramid_adds(day=day, holds=holds0, closes=closes0)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 pyramiding failed: %s", exc)
+
     try:
         candidates = build_s3_candidates(trade_date=day, max_positions=max_positions)
     except Exception as exc:  # noqa: BLE001
@@ -311,7 +406,7 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
     # before any fresh entries (same gate order as the backtest engine).
     swapped_cands: list[dict[str, Any]] = []
     try:
-        holds = _s3_open_holds()
+        holds = _s3_open_holds()  # fresh: includes today's add legs
         if holds and candidates and SWAP_ENABLED:
             cfg = BacktestConfig(
                 start_date=day,
@@ -324,15 +419,7 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
             hold_ts = {str(h.get("tsCode") or "") for h in holds if h.get("tsCode")}
             rs_by_ts = _load_rs_ranks(cfg, [day], hold_ts).get(day, {})
             all_ts = sorted(hold_ts | {c["ts_code"] for c in candidates})
-            bars_by_ts = fetch_last_ohlcv_batch(all_ts, days=2)
-            closes = {}
-            for ts, bars in bars_by_ts.items():
-                if not bars:
-                    continue
-                try:
-                    closes[str(ts)] = float(bars[-1][4])
-                except (TypeError, ValueError, IndexError):
-                    continue
+            closes = _fetch_closes(all_ts)
             swapped_cands, candidates = _swap_holds_for_candidates(
                 day=day, holds=holds, candidates=candidates,
                 rs_by_ts=rs_by_ts, closes=closes,

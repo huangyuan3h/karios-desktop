@@ -1015,3 +1015,227 @@ def test_swap_caps_per_day() -> None:
     run = simulate(config, data=data)
     swapped = [t for t in run.trades if t.close_reason == "swapped"]
     assert len(swapped) == 2  # 3 eligible pairs, capped at 2
+
+
+def test_pyramid_adds_on_profit_and_exits_with_main_leg() -> None:
+    """Pyramid: a held winner triggers an add leg at +trigger%; both legs
+    exit together with the same close reason."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
+    scores = {
+        "2026-06-18": {CN1: 88.0},
+        "2026-06-19": {CN1: 88.0},
+        "2026-06-22": {CN1: 88.0},
+        "2026-06-23": {CN1: 88.0},
+    }
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 11.5, "2026-06-22": 12.0, "2026-06-23": 9.6}}
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-23",
+        gates="full", target_pnl_pct=100.0, max_hold_days=60, trailing_stop_pct=-8.0,
+        pyramid_trigger_pct=10.0, pyramid_add_scale=0.5, pyramid_max_adds=1,
+    )
+    run = simulate(config, data=data)
+    trades = run.trades
+    # 06-19 +15% >= +10% trigger -> add leg at 11.5; 06-23 close 9.6 = -20%
+    # from peak 12.0 (06-22) but only -4% on the main leg (no stop_hit)
+    # -> trailing_stop closes both legs.
+    assert len(trades) == 2
+    main = [t for t in trades if t.entry_date == "2026-06-18"]
+    add = [t for t in trades if t.entry_date == "2026-06-19"]
+    assert len(main) == 1 and len(add) == 1
+    assert main[0].close_reason == "trailing_stop" and add[0].close_reason == "trailing_stop"
+    assert main[0].close_date == "2026-06-23" and add[0].close_date == "2026-06-23"
+    assert add[0].entry_price == 11.5
+    assert abs(add[0].position_pct - 0.05 * 0.5) < 1e-9  # default 0.05 * 0.5
+
+
+def test_pyramid_respects_max_adds() -> None:
+    """Only pyramid_max_adds add legs per position."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23", "2026-06-24"]
+    scores = {d: {CN1: 88.0} for d in calendar}
+    prices = {TS1: {d: 10.0 * (1.15 ** i) for i, d in enumerate(calendar)}}
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-24",
+        gates="full", max_hold_days=5,
+        pyramid_trigger_pct=10.0, pyramid_add_scale=0.5, pyramid_max_adds=2,
+    )
+    run = simulate(config, data=data)
+    add_legs = [t for t in run.trades if t.entry_date != "2026-06-18"]
+    assert len(add_legs) <= 2
+
+
+def test_pyramid_disabled_by_default() -> None:
+    """pyramid_max_adds=0 (default) never adds legs."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 88.0}, "2026-06-19": {CN1: 88.0}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 13.0}}
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-19", gates="full",
+        pyramid_trigger_pct=10.0, pyramid_add_scale=0.5, pyramid_max_adds=0,
+    )
+    run = simulate(config, data=data)
+    assert len(run.trades) == 1
+
+
+def test_atr_size_scales_sleeve_down_for_high_vol() -> None:
+    """ATR sizing: a 4% daily-vol stock gets half the base sleeve (cap 2x)."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 88.0}, "2026-06-19": {}}
+    # ~4% daily ranges: high/low alternating 102/98 around 100
+    bars = [("2026-06-01", "100", "102", "98", "100", "100")]
+    for i in range(1, 22):
+        base = 100 * (1.004 ** i)
+        bars.append((f"2026-06-{i+1:02d}", f"{base:.2f}", f"{base*1.02:.2f}", f"{base*0.98:.2f}", f"{base:.2f}", "100"))
+    bars.append(("2026-06-18", "105", "106", "104", "105", "100"))
+    bars.append(("2026-06-19", "106", "107", "105", "106", "100"))
+    data = _data(calendar, scores, {TS1: {"2026-06-18": 105.0, "2026-06-19": 106.0}})
+    data.bars_by_ts = {TS1: bars}
+    data.closes_by_ts = {TS1: [(b[0], float(b[5])) for b in bars]}
+    data.close_by_ts_day = {TS1: {"2026-06-18": 105.0, "2026-06-19": 106.0}}
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-19", gates="full",
+        atr_size_window=20, atr_size_cap=2.0, atr_benchmark_pct=2.0,
+    )
+    run = simulate(config, data=data)
+    t = run.trades[0]
+    # ATR ~2% of price -> scale ~1.0x (benchmark 2% / atr ~2%)
+    assert 0.5 <= t.position_pct / config.position_pct <= 2.0
+
+
+def test_atr_size_disabled_by_default() -> None:
+    """atr_size_window=0 (default) leaves sleeves untouched."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 88.0}, "2026-06-19": {}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5}}
+    data = _data(calendar, scores, prices)
+    data.bars_by_ts = {TS1: [("2026-06-01", "10", "10.5", "9.5", "10", "100")] * 20}
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-19", gates="full")
+    run = simulate(config, data=data)
+    assert run.trades[0].position_pct == config.position_pct
+
+
+def test_industry_cap_blocks_fourth_same_industry_holding() -> None:
+    """max_per_industry: a 4th candidate from an already-capped industry is
+    blocked; candidates from other industries still enter."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {
+        "2026-06-18": {
+            "CN:600001": 90.0, "CN:600002": 90.0, "CN:600003": 90.0, "CN:600004": 90.0,
+            "CN:000001": 90.0,
+        },
+        "2026-06-19": {},
+    }
+    prices = {
+        "600001.SH": {d: 10.0 for d in calendar},
+        "600002.SH": {d: 10.0 for d in calendar},
+        "600003.SH": {d: 10.0 for d in calendar},
+        "600004.SH": {d: 10.0 for d in calendar},
+        "000001.SZ": {d: 10.0 for d in calendar},
+    }
+    data = _data(calendar, scores, prices)
+    data.industry_by_ts = {
+        "600001.SH": "计算机", "600002.SH": "计算机", "600003.SH": "计算机",
+        "600004.SH": "计算机", "000001.SZ": "医药",
+    }
+    data.mainline_allow_by_day = {d: {"计算机", "医药"} for d in calendar}
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-19",
+        gates="full", max_per_industry=3,
+    )
+    run = simulate(config, data=data)
+    syms = {t.symbol for t in run.trades}
+    assert syms == {"CN:600001", "CN:600002", "CN:600003", "CN:000001"}
+    assert run.summary.gated_blocks.get("industry_cap") == 1
+
+
+def test_industry_cap_disabled_by_default() -> None:
+    """max_per_industry=0 (default) never caps by industry."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {
+        "2026-06-18": {"CN:600001": 90.0, "CN:600002": 90.0, "CN:600003": 90.0},
+        "2026-06-19": {},
+    }
+    prices = {
+        "600001.SH": {d: 10.0 for d in calendar},
+        "600002.SH": {d: 10.0 for d in calendar},
+        "600003.SH": {d: 10.0 for d in calendar},
+    }
+    data = _data(calendar, scores, prices)
+    data.industry_by_ts = {"600001.SH": "计算机", "600002.SH": "计算机", "600003.SH": "计算机"}
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-19", gates="full")
+    run = simulate(config, data=data)
+    assert len(run.trades) == 3
+
+
+def test_entry_sort_rs_prefers_strong_rs_within_threshold() -> None:
+    """entry_sort='rs': among score>=threshold candidates, the strongest RS
+    enters first when the sleeve is limited."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {
+        "2026-06-18": {
+            "CN:600001": 90.0,  # high score, low RS
+            "CN:600002": 80.0,  # lower score, high RS
+        },
+        "2026-06-19": {},
+    }
+    prices = {
+        "600001.SH": {d: 10.0 for d in calendar},
+        "600002.SH": {d: 10.0 for d in calendar},
+    }
+    data = _data(calendar, scores, prices)
+    data.rs_rank_by_day = {d: {"600001.SH": 0.1, "600002.SH": 0.9} for d in calendar}
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-19",
+        score_threshold=65.0, gates="full", max_positions=1, entry_sort="rs",
+    )
+    run = simulate(config, data=data)
+    assert run.trades[0].symbol == "CN:600002"
+
+
+def test_entry_sort_score_default_keeps_base_order() -> None:
+    """entry_sort='score' (default) enters the higher score first."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {
+        "2026-06-18": {"CN:600001": 90.0, "CN:600002": 80.0},
+        "2026-06-19": {},
+    }
+    prices = {
+        "600001.SH": {d: 10.0 for d in calendar},
+        "600002.SH": {d: 10.0 for d in calendar},
+    }
+    data = _data(calendar, scores, prices)
+    data.rs_rank_by_day = {d: {"600001.SH": 0.1, "600002.SH": 0.9} for d in calendar}
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-19",
+        gates="full", max_positions=1, entry_sort="score",
+    )
+    run = simulate(config, data=data)
+    assert run.trades[0].symbol == "CN:600001"
+
+
+def test_mv_filter_blocks_outside_band() -> None:
+    """min_mv/max_mv (亿元) layer the pool; missing mv data fails open."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {
+        "2026-06-18": {"CN:600001": 90.0, "CN:600002": 90.0, "CN:600003": 90.0},
+        "2026-06-19": {},
+    }
+    prices = {
+        "600001.SH": {d: 10.0 for d in calendar},
+        "600002.SH": {d: 10.0 for d in calendar},
+        "600003.SH": {d: 10.0 for d in calendar},
+    }
+    data = _data(calendar, scores, prices)
+    data.mv_by_day = {
+        "2026-06-18": {"600001.SH": 50.0, "600002.SH": 500.0, "600003.SH": 250.0}
+    }
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-19",
+        gates="full", min_mv=100.0, max_mv=400.0,
+    )
+    run = simulate(config, data=data)
+    assert [t.symbol for t in run.trades] == ["CN:600003"]
+    assert run.summary.gated_blocks.get("mv_min") == 1
+    assert run.summary.gated_blocks.get("mv_max") == 1

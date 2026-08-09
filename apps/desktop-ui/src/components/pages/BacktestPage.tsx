@@ -19,15 +19,19 @@ import {
 const DEFAULT_PARAMS: BacktestParams = {
   start: '2025-08-01',
   end: new Date().toISOString().slice(0, 10),
-  scoreThreshold: 70,
+  scoreThreshold: 65,
   maxHoldDays: 60,
   stopLossPct: -5,
   gates: 'full',
   trailingStopPct: -8,
-  positionPct: 0.05,
-  maxPositions: 10,
+  positionPct: 0.1,
+  maxPositions: 20,
   rsRankMin: 0.5,
-  divergingScale: 0,
+  divergingScale: 1,
+  targetPnlPct: 100,
+  scoreFloor: 0,
+  panicCooldownDays: 3,
+  slippagePct: 0.05,
 };
 
 const INPUT_CLS =
@@ -182,6 +186,49 @@ export function BacktestPage() {
               value={params.divergingScale}
               placeholder="0=不开仓"
               onChange={(e) => set('divergingScale', e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+            止盈 %
+            <input
+              type="number"
+              className={cn(INPUT_CLS, 'w-20')}
+              value={params.targetPnlPct}
+              placeholder="100=不止盈"
+              onChange={(e) => set('targetPnlPct', e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+            Score 平仓线
+            <input
+              type="number"
+              className={cn(INPUT_CLS, 'w-20')}
+              value={params.scoreFloor}
+              placeholder="0=不平仓"
+              onChange={(e) => set('scoreFloor', e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+            恐慌冷却（天）
+            <input
+              type="number"
+              min="0"
+              className={cn(INPUT_CLS, 'w-20')}
+              value={params.panicCooldownDays}
+              placeholder="0=关闭"
+              onChange={(e) => set('panicCooldownDays', e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+            滑点 %
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              className={cn(INPUT_CLS, 'w-20')}
+              value={params.slippagePct}
+              placeholder="0=关闭"
+              onChange={(e) => set('slippagePct', e.target.value)}
             />
           </label>
           <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">

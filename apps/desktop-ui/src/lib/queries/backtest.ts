@@ -117,6 +117,10 @@ export type BacktestParams = {
   maxPositions: number;
   rsRankMin: number;
   divergingScale: number;
+  targetPnlPct: number;
+  scoreFloor: number;
+  panicCooldownDays: number;
+  slippagePct: number;
 };
 
 export const GATE_LEVELS = [
@@ -138,6 +142,10 @@ function backtestRunPath(p: BacktestParams): string {
     max_positions: String(p.maxPositions),
     rs_rank_min: String(p.rsRankMin),
     diverging_scale: String(p.divergingScale),
+    target_pnl_pct: String(p.targetPnlPct),
+    score_floor: String(p.scoreFloor),
+    panic_cooldown_days: String(p.panicCooldownDays),
+    slippage_pct: String(p.slippagePct),
   });
   return `/api/backtest/run?${q.toString()}`;
 }

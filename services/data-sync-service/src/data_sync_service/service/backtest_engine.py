@@ -109,6 +109,17 @@ class BacktestConfig:
     swap_strong_rs_at_least: float = 0.0
     swap_min_hold_days: int = 0
     swap_max_per_day: int = 0
+    pyramid_trigger_pct: float = 0.0
+    pyramid_add_scale: float = 0.0
+    pyramid_max_adds: int = 0
+    atr_size_window: int = 0
+    atr_size_cap: float = 2.0
+    atr_benchmark_pct: float = 2.0
+    max_per_industry: int = 0
+    entry_sort: str = "score"
+    min_mv: float = 0.0
+    max_mv: float = 0.0
+    mv_max_diverging: float = 0.0
 
     def __post_init__(self) -> None:
         if self.market not in MARKETS:
@@ -141,6 +152,24 @@ class BacktestConfig:
             raise ValueError("swap_min_hold_days must be >= 0")
         if self.swap_max_per_day < 0:
             raise ValueError("swap_max_per_day must be >= 0 (0 disables rotation)")
+        if not 0 <= self.pyramid_trigger_pct <= 200:
+            raise ValueError("pyramid_trigger_pct must be in [0, 200] (0 disables, 10 = add when the main leg is +10%)")
+        if not 0 <= self.pyramid_add_scale <= 2:
+            raise ValueError("pyramid_add_scale must be in [0, 2] (0.5 = add half the initial sleeve)")
+        if not 0 <= self.pyramid_max_adds <= 5:
+            raise ValueError("pyramid_max_adds must be in [0, 5] (0 disables)")
+        if not 0 <= self.atr_size_window <= 120:
+            raise ValueError("atr_size_window must be in [0, 120] (0 disables, 20 = size by 20-day ATR)")
+        if not 1 <= self.atr_size_cap <= 5:
+            raise ValueError("atr_size_cap must be in [1, 5] (2 = sleeves between 0.5x and 2x)")
+        if not 0.5 <= self.atr_benchmark_pct <= 10:
+            raise ValueError("atr_benchmark_pct must be in [0.5, 10] (2 = 2% daily vol gets the base sleeve)")
+        if not 0 <= self.max_per_industry <= 100:
+            raise ValueError("max_per_industry must be in [0, 100] (0 disables, 4 = at most 4 holdings per industry)")
+        if self.entry_sort not in ("score", "score_rs", "rs"):
+            raise ValueError(f"entry_sort must be one of ('score', 'score_rs', 'rs') (got {self.entry_sort!r})")
+        if self.min_mv < 0 or self.max_mv < 0:
+            raise ValueError("min_mv / max_mv must be >= 0 (亿元; 0 disables the bound)")
 
 
 @dataclass
@@ -253,6 +282,7 @@ class BacktestData:
         self.industry_by_ts = _load_industries(self.ts_codes)
         self.rs_rank_by_day = _load_rs_ranks(config, self.calendar, set(self.ts_codes))
         self.sentiment_risk_by_day = _load_sentiment_risk(config)
+        self.mv_by_day = _load_market_caps(config, set(self.ts_codes))
 
 
 def _load_calendar(start_date: str, end_date: str) -> list[str]:
@@ -603,6 +633,30 @@ def _load_sentiment_risk(config: BacktestConfig) -> dict[str, str]:
     return out
 
 
+def _load_market_caps(config: BacktestConfig, ts_codes: set[str]) -> dict[str, dict[str, float]]:
+    """{trade_date: {ts_code: total_mv}} in 亿元 for the windowed universe.
+
+    Missing dates/rows degrade (fail-open): only layers the pool when the
+    market-cap data is present.
+    """
+    out: dict[str, dict[str, float]] = {}
+    if not ts_codes:
+        return out
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date, ts_code, total_mv FROM stock_dailybasic
+                WHERE trade_date >= %s AND trade_date <= %s
+                  AND ts_code = ANY(%s) AND total_mv IS NOT NULL
+                """,
+                (config.start_date, config.end_date, list(ts_codes)),
+            )
+            for d, ts, mv in cur.fetchall():
+                out.setdefault(str(d), {})[str(ts)] = float(mv) / 10000.0
+    return out
+
+
 def _load_industries(ts_codes: list[str]) -> dict[str, str]:
     """ts_code -> Eastmoney industry name (bulk read, mainline gate input)."""
     if not ts_codes:
@@ -696,6 +750,39 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         closes = data.close_by_ts_day.get(ts)
         return closes.get(day) if closes else None
 
+    def atr_scale_for(ts: str, day: str) -> float:
+        """Volatility-targeted sleeve scale: ATR% < benchmark -> bigger sleeve
+        (and vice versa), clamped to [1/cap, cap]."""
+        if config.atr_size_window <= 0:
+            return 1.0
+        bars = data.bars_by_ts.get(ts)
+        if not bars:
+            return 1.0
+        recent = [(b, float(b[2]), float(b[3])) for b in bars if str(b[0]) <= day][-config.atr_size_window:]
+        if len(recent) < max(5, config.atr_size_window // 2):
+            return 1.0
+        tr_sum = 0.0
+        prev_close = None
+        n = 0
+        for _, hi, lo in recent:
+            if prev_close is None:
+                prev_close = hi  # first bar: approximate with its high
+                continue
+            tr_sum += max(hi - lo, abs(hi - prev_close), abs(lo - prev_close))
+            prev_close = hi
+            n += 1
+        if n == 0:
+            return 1.0
+        atr = tr_sum / n
+        px = entry_price_for(ts, day)
+        if px is None or px <= 0:
+            return 1.0
+        atr_pct = atr / px * 100.0
+        if atr_pct <= 0:
+            return 1.0
+        scale = config.atr_benchmark_pct / atr_pct
+        return min(config.atr_size_cap, max(1.0 / config.atr_size_cap, scale))
+
     for day in data.calendar:
         day_scores = data.scores_by_day.get(day, {})
         circuit_halted = _circuit_halted(day)
@@ -786,7 +873,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     "entry_price": px_c,
                     "peak_price": px_c,
                     "score_at_entry": day_scores[sym_c],
-                    "position_pct": config.position_pct * pos_scale_c,
+                    "position_pct": config.position_pct * pos_scale_c * atr_scale_for(ts_c, day),
                 }
                 swapped_syms.add(sym_c)
 
@@ -794,7 +881,27 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         #    price available. Score-desc order so a full sleeve admits the
         #    strongest candidates first (matches build_s3_candidates; the old
         #    dict iteration order was symbol-alphabetical and biased entries).
-        for sym, score in sorted(day_scores.items(), key=lambda kv: -kv[1]):
+        # Entry order when the sleeve is limited: 'score' (base), 'score_rs'
+        # (score * (0.5 + rs) — both matter), 'rs' (strength first).
+        if config.entry_sort == "score":
+            ordered_scores = sorted(day_scores.items(), key=lambda kv: -kv[1])
+        else:
+            rs_of = {}
+            for sym in day_scores:
+                resolved = _resolve_ts_code(sym)
+                if resolved is not None:
+                    rs_of[sym] = data.rs_rank_by_day.get(day, {}).get(resolved[1])
+            if config.entry_sort == "rs":
+                ordered_scores = sorted(
+                    day_scores.items(),
+                    key=lambda kv: (-(rs_of.get(kv[0]) or 0.0), -kv[1]),
+                )
+            else:  # score_rs
+                ordered_scores = sorted(
+                    day_scores.items(),
+                    key=lambda kv: (-(kv[1] * (0.5 + (rs_of.get(kv[0]) or 0.0))), -kv[1]),
+                )
+        for sym, score in ordered_scores:
             if score < threshold:
                 continue
             if circuit_halted:
@@ -827,6 +934,26 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if trend is None or trend < config.trend_score_min:
                     gated_blocks["trend"] += 1
                     continue
+            if config.max_per_industry > 0:
+                ind = data.industry_by_ts.get(ts)
+                if ind:
+                    cnt = sum(
+                        1
+                        for p in positions.values()
+                        if data.industry_by_ts.get(p["ts_code"]) == ind
+                    )
+                    if cnt >= config.max_per_industry:
+                        gated_blocks["industry_cap"] += 1
+                        continue
+            if config.min_mv > 0 or config.max_mv > 0:
+                mv = data.mv_by_day.get(day, {}).get(ts)
+                if mv is not None:
+                    if config.min_mv > 0 and mv < config.min_mv:
+                        gated_blocks["mv_min"] += 1
+                        continue
+                    if config.max_mv > 0 and mv > config.max_mv:
+                        gated_blocks["mv_max"] += 1
+                        continue
             if len(positions) >= config.max_positions:
                 gated_blocks["sleeve"] += 1
                 continue
@@ -847,7 +974,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 "entry_price": px,
                 "peak_price": px,
                 "score_at_entry": score,
-                "position_pct": config.position_pct * pos_scale,
+                "position_pct": config.position_pct * pos_scale * atr_scale_for(ts, day),
             }
 
         # 2) Daily mark-to-market + close conditions (LIVE picker, as-of score).
@@ -903,7 +1030,47 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                         position_pct=float(pos.get("position_pct") or config.position_pct),
                     )
                 )
+                # Pyramid add-legs exit with the main leg.
+                for add in pos.get("adds_list", []):
+                    add_entry = float(add["entry_price"])
+                    add_cost = add_entry * (1 + slip / 100.0)
+                    add_gross = (close_px * (1 - slip / 100.0) - add_cost) / add_cost * 100.0
+                    closed_trades.append(
+                        BacktestTrade(
+                            symbol=sym,
+                            market=config.market,
+                            entry_date=str(add["entry_date"]),
+                            entry_price=round(add_entry, 4),
+                            close_date=day,
+                            close_price=round(float(close_px), 4),
+                            gross_pnl_pct=round(add_gross, 4),
+                            costs_pct=round(costs_pct, 4),
+                            pnl_pct=round(add_gross - costs_pct, 4),
+                            holding_days=_calendar_days_between(str(add["entry_date"]), day),
+                            close_reason=reason,
+                            score_at_entry=pos.get("score_at_entry"),
+                            position_pct=float(add.get("position_pct") or 0.0),
+                        )
+                    )
                 del positions[sym]
+                continue
+
+            # Pyramid: add a smaller leg when the trend confirms (main leg
+            # up >= trigger) — checked only when no exit fired, same day close.
+            if (
+                config.pyramid_max_adds > 0
+                and pos.get("adds", 0) < config.pyramid_max_adds
+                and gross >= config.pyramid_trigger_pct
+            ):
+                pos["adds"] = pos.get("adds", 0) + 1
+                pos.setdefault("adds_list", []).append(
+                    {
+                        "entry_date": day,
+                        "entry_price": close_px,
+                        "position_pct": float(pos.get("position_pct") or config.position_pct)
+                        * config.pyramid_add_scale,
+                    }
+                )
 
     # 3) Close leftovers at the window end (engine-only reason).
     for sym, pos in list(positions.items()):
@@ -941,6 +1108,27 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 position_pct=float(pos.get("position_pct") or config.position_pct),
             )
         )
+        for add in pos.get("adds_list", []):
+            add_entry = float(add["entry_price"])
+            add_cost = add_entry * (1 + slip / 100.0)
+            add_gross = (final_px * (1 - slip / 100.0) - add_cost) / add_cost * 100.0
+            closed_trades.append(
+                BacktestTrade(
+                    symbol=sym,
+                    market=config.market,
+                    entry_date=str(add["entry_date"]),
+                    entry_price=round(add_entry, 4),
+                    close_date=last_day,
+                    close_price=round(float(final_px), 4),
+                    gross_pnl_pct=round(add_gross, 4),
+                    costs_pct=round(costs_pct, 4),
+                    pnl_pct=round(add_gross - costs_pct, 4),
+                    holding_days=_calendar_days_between(str(add["entry_date"]), last_day),
+                    close_reason=CLOSE_REASON_END_OF_WINDOW,
+                    score_at_entry=pos.get("score_at_entry"),
+                    position_pct=float(add.get("position_pct") or 0.0),
+                )
+            )
         # Must drop the closed position or open_at_end would count it too
         # (it counts only the positions we could not price at window end).
         del positions[sym]

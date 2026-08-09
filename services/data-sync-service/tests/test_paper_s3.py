@@ -290,3 +290,78 @@ def test_swap_caps_per_day_and_skips_missing_close() -> None:
     assert len(swapped) == 2  # h1 skipped (no close), h2+h3 swapped, capped at 2
     assert len(rest) == 1
     assert close.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Pyramiding (2026-08-09 · user-approved, §19.2 step 8)
+# ---------------------------------------------------------------------------
+
+
+def _s3_hold(symbol, ts, entry, why=""):
+    return {"id": f"h-{symbol}", "symbol": symbol, "source": "S3", "tsCode": ts,
+            "entryDate": "2026-07-01", "entryPrice": entry, "status": "open",
+            "whyAtEntry": why}
+
+
+def test_pyramid_adds_half_sleeve_on_plus_10() -> None:
+    """Main leg +10% -> one add leg at the same-day close, half sleeve."""
+    holds = [_s3_hold("CN:600001", "600001.SH", 10.0)]
+    with (
+        patch.object(paper_s3, "insert_paper_trade") as insert,
+        patch.object(paper_s3, "PYRAMID_ENABLED", True),
+    ):
+        n = paper_s3._pyramid_adds(
+            day="2026-08-07", holds=holds,
+            closes={"600001.SH": 11.0},  # +10%
+        )
+    assert n == 1
+    kw = insert.call_args.kwargs
+    assert kw["symbol"] == "CN:600001"
+    assert kw["entry_date"] == "2026-08-07"
+    assert kw["entry_price"] == 11.0
+    assert abs(kw["sleeve_pct"] - 0.025) < 1e-9  # 5% * 0.5
+    assert "pyramid-add" in kw["why_at_entry"]
+
+
+def test_pyramid_skips_below_trigger() -> None:
+    """Main leg below +2.5% -> no add."""
+    holds = [_s3_hold("CN:600001", "600001.SH", 10.0)]
+    with (
+        patch.object(paper_s3, "insert_paper_trade") as insert,
+        patch.object(paper_s3, "PYRAMID_ENABLED", True),
+    ):
+        n = paper_s3._pyramid_adds(
+            day="2026-08-07", holds=holds, closes={"600001.SH": 10.2},  # +2%
+        )
+    assert n == 0
+    insert.assert_not_called()
+
+
+def test_pyramid_skips_when_already_added() -> None:
+    """A symbol with an existing pyramid-add leg is not added again."""
+    holds = [
+        _s3_hold("CN:600001", "600001.SH", 10.0),
+        _s3_hold("CN:600001", "600001.SH", 10.8, why="S-3 pyramid-add (main leg +8%)"),
+    ]
+    with (
+        patch.object(paper_s3, "insert_paper_trade") as insert,
+        patch.object(paper_s3, "PYRAMID_ENABLED", True),
+    ):
+        n = paper_s3._pyramid_adds(
+            day="2026-08-07", holds=holds, closes={"600001.SH": 12.0},  # +20%
+        )
+    assert n == 0
+    insert.assert_not_called()
+
+
+def test_pyramid_disabled_by_switch() -> None:
+    holds = [_s3_hold("CN:600001", "600001.SH", 10.0)]
+    with (
+        patch.object(paper_s3, "insert_paper_trade") as insert,
+        patch.object(paper_s3, "PYRAMID_ENABLED", False),
+    ):
+        n = paper_s3._pyramid_adds(
+            day="2026-08-07", holds=holds, closes={"600001.SH": 12.0},
+        )
+    assert n == 0
+    insert.assert_not_called()
