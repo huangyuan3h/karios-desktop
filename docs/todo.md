@@ -997,6 +997,17 @@ swap 0→0.3/0.8/10/2（paper 已部署，待复审）· position 回测 10% / p
   `query_s3_holdings_health` tool（描述强制"问减仓必先调工具"）；138 tests passed
 - 效果：决策 Agent 现在回答"该不该减仓"时自动拉实时体检 + 按回测规则给结论，
   无需再手工贴 markdown；静态知识（规则/纪律）常驻 system prompt
+- **扩展（同日 · 用户「我可能会问的不只是减仓」）**：tool 覆盖三类问题——卖/持有/买/加仓：
+  - 每持仓新增 `pyramidTriggerLine`（成本+2.5%）+ `pyramidAdded`（是否已加过仓，查 paper
+    trades 的 pyramid-add 标记）
+  - `s3Candidates` 从计数改全明细（symbol/name/score/rs/industry/regime，name 经
+    trendok stock_basic 补齐）——用户问"买什么"时 agent 有具体候选可答
+  - system prompt 补：买=只推候选清单内标的·~5%仓位；加仓=+2.5%未加过才可·每票至多1次；
+    持仓>9票RS最弱先轮出
+  - 新增 build 层测试（test_portfolio_health 6 passed）；修复 trailing 峰值用 high 的
+    口径 bug → close（与回测引擎一致），maxHoldDate=entry+60
+- 后续可选：把回测结论速览（docs/modules/backtest-strategy.md 结论段）进一步压缩进
+  system prompt；或 agent 追问"为什么"时给出窗口级证据
 - 后续可选：把回测结论速览（docs/modules/backtest-strategy.md 结论段）进一步压缩进
   system prompt；或 agent 追问"为什么"时给出窗口级证据
 

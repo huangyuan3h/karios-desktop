@@ -25,6 +25,15 @@ def _date_to_yyyymmdd(d: date) -> str:
     return d.strftime("%Y%m%d")
 
 
+def _sync_end_date(ts_code: str) -> str:
+    """Latest trading day <= today (weekend/holiday → previous trading day)
+    so weekend crons skip instead of making empty tushare calls."""
+    from data_sync_service.db.trade_calendar import last_trading_day_str
+
+    exchange = "SZSE" if str(ts_code).startswith(("0", "1", "3")) else "SSE"
+    return last_trading_day_str(exchange, datetime.now(UTC).date())
+
+
 def sync_adj_factor_full() -> dict[str, Any]:
     """
     Sync adj_factor into daily.adj_factor.
@@ -55,7 +64,7 @@ def sync_adj_factor_full() -> dict[str, Any]:
         return {"ok": False, "error": "TU_SHARE_API_KEY is not set"}
 
     pro = ts.pro_api(settings.tu_share_api_key)
-    end_date = _today_yyyymmdd()
+    end_date = _sync_end_date(ts_codes[0] if ts_codes else "")
     total_rows = 0
     last_successful_ts_code: str | None = None
 

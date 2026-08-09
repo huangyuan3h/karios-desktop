@@ -119,6 +119,41 @@ def get_latest_calendar_date(exchange: str) -> date | None:
     return row[0] if row and row[0] else None
 
 
+def last_trading_day(exchange: str, on_date: date) -> date:
+    """Latest trading day on or before ``on_date``.
+
+    Prefers the calendar table (handles exchange holidays); falls back to
+    skipping weekends only when the table has no row at/after the answer
+    (e.g. calendar not yet extended), never returning a date after
+    ``on_date``.
+    """
+    try:
+        ensure_table()
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT MAX(cal_date)
+                    FROM {TABLE_NAME}
+                    WHERE exchange = %s AND is_open = 1 AND cal_date <= %s
+                    """,
+                    (exchange, on_date),
+                )
+                row = cur.fetchone()
+        if row and row[0]:
+            return row[0]
+    except Exception:  # noqa: BLE001
+        pass
+    d = on_date
+    while d.weekday() >= 5:  # Sat/Sun — no calendar row for those days anyway
+        d = d - __import__("datetime").timedelta(days=1)
+    return d
+
+
+def last_trading_day_str(exchange: str, on_date: date) -> str:
+    return last_trading_day(exchange, on_date).strftime("%Y%m%d")
+
+
 def summary(exchange: str, start_date: date, end_date: date) -> dict[str, Any]:
     ensure_table()
     with get_connection() as conn:

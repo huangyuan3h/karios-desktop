@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -74,8 +74,9 @@ class TestTimeHelpers:
         assert mr._merge_on_demand_into_series(series, {"asOfDate": "2026-08-08", "close": "bad"}) == series
 
     def test_hsi_series_stale(self) -> None:
+        yesterday = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
         assert mr._hsi_series_stale([]) is True
-        assert mr._hsi_series_stale([("2026-08-07", 100.0)]) is False
+        assert mr._hsi_series_stale([(yesterday, 100.0)]) is False
 
     def test_hsi_source_label(self) -> None:
         assert mr._hsi_source_label(used_realtime=True, on_demand_src=None) == "tushare.realtime_quote"
@@ -218,10 +219,26 @@ class TestIndexSignals:
         self._patch_basics(monkeypatch)
         monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days: [])
         monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({"close": 21000.0, "asOfDate": "2026-08-07"}, "yf"))
-        out = mr._compute_index_signals(as_of_date="2026-08-07")
+        out = mr._compute_index_signals()
         hk = [x for x in out if x["tsCode"] in ("HSI", "HSTECH")]
         assert hk[0]["close"] == 21000.0
         assert hk[0]["source"] == "yf"
+
+    def test_hk_asof_never_fetches_on_demand(self, monkeypatch) -> None:
+        """as-of mode must NOT call the network for historical dates
+        (look-ahead guard); the on-demand path is live-mode only."""
+        self._patch_basics(monkeypatch)
+        calls: list[str] = []
+        monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days: [])
+        monkeypatch.setattr(
+            mr, "fetch_hk_index_on_demand",
+            lambda series_id: (calls.append(series_id) or ({"close": 21000.0, "asOfDate": "2026-08-07"}, "yf")),
+        )
+        out = mr._compute_index_signals(as_of_date="2026-08-07")
+        hk = [x for x in out if x["tsCode"] in ("HSI", "HSTECH")]
+        assert calls == []
+        assert hk[0]["close"] is None
+        assert hk[0]["rules"] == ["no data in macro_daily"]
 
     def test_get_market_regime_cached(self, monkeypatch) -> None:
         self._patch_basics(monkeypatch)

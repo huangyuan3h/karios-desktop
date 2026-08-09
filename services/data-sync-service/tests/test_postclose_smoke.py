@@ -125,7 +125,9 @@ def test_postclose_chain_end_to_end() -> None:
     # -- Step 2: intake opens the trade (real DB; only prices mocked) --
     with _mock_prices(entry_price=100.0, update_price=100.0):
         intake = run_intake(trade_date=ENTRY_DATE)
-    assert intake["candidates"] == 1, intake
+    # NOTE: candidates count varies with real journal data (yesterday's cron
+    # may already have ingested real BUY cards → 'duplicate' skips); we only
+    # assert that OUR smoke card is ingested.
     assert intake["inserted"] == 1, intake
 
     open_rows = pt_db.list_paper_trades(status="open", limit=100)
@@ -135,8 +137,9 @@ def test_postclose_chain_end_to_end() -> None:
     assert opened["market"] == "CN"
     assert opened["source"] == "TV"
 
-    # -- Step 3: update closes on target_hit (2x price → net pnl ≫ 10%) --
-    with _mock_prices(entry_price=100.0, update_price=200.0):
+    # -- Step 3: update closes on target_hit (3x price → net pnl ≫ 100%) --
+    # S-3 定案：TARGET_PNL_PCT=100（不止盈），+100% 仍持有；3x 才触发 target_hit。
+    with _mock_prices(entry_price=100.0, update_price=300.0):
         upd = run_update(today_iso=UPDATE_DATE)
     assert upd["closed"] == 1, upd
     assert upd["closeReasons"].get("target_hit") == 1, upd

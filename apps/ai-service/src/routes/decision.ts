@@ -89,25 +89,38 @@ async function searchArchive(symbol: string): Promise<string> {
 /** S-3 rules knowledge injected statically so answers stay aligned with the
  * backtest even before the holdings tool is called. */
 const S3_RULES_KNOWLEDGE = `【S-3 回测纪律（本系统唯一证据 · 双窗验证 2026-08-09）】
-- 市场状态只挡开仓不触发卖出：Weak=空仓观望，Strong/Diverging=进攻（Diverging 满仓）
+- 市场状态只挡开仓不触发卖出：Weak=空仓观望（不开新仓），Strong/Diverging=进攻（Diverging 满仓）
+- 回答"买什么"：先查体检里的今日候选清单，只推荐清单内标的，每票 ~5% 仓位；
+  入池门槛 = score>=65 · RS前50% · 行业 5D 净流入 Top3（mainline）· 无恐慌冷却 · regime!=Weak
+- 回答"加仓吗"：先查体检里该票的金字塔触发线/是否已加仓——成本涨幅 >= +2.5% 且未加过
+  才可加半仓（1/2 袖套），每票至多 1 次；已加过/未到线 = 不加
 - 持仓退出只有 4 条规则（命中即卖，未命中绝不因"市场弱"减仓）：
   1) 固定止损：净亏 >= 5% → 卖
-  2) 移动止损：从持仓峰值回撤 >= 8% → 卖（保护利润）
+  2) 移动止损：从持仓峰值（收盘价口径）回撤 >= 8% → 卖（保护利润）
   3) 60 天持有上限 → 卖
   4) score<0 平仓（等于永不触发）
 - 历史证据：2024-25 弱市年（Weak 占 73%）持仓全程持有最终 +80.5%——
   弱市减仓违反回测证明的最优行为；收益来自少数 Strong/Diverging 进攻窗口
 - 参数（S-3 定案）：score65 · hold60 · target100（不止盈）· floor0 · trailing-8 ·
-  stop-5 · RS前50% · Diverging满仓 · 恐慌冷却3天 · 滑点0.05% · mp20 · 金字塔+2.5%加半仓(1次)
-- 回答持仓问题时：先调用 query_s3_holdings_health 获取实时体检，按上述规则给结论；
-  不要凭感觉建议减仓，回测证据优先`;
+  stop-5 · RS前50% · Diverging满仓 · 恐慌冷却3天 · 滑点0.05% · mp20 ·
+  金字塔+2.5%加半仓(每票1次) · 持仓>9票时RS最弱先轮出
+- 回答持仓/买卖/加仓问题时：先调用 query_s3_holdings_health 获取实时体检，按上述规则给结论；
+  不要凭感觉建议，回测证据优先`;
 
 async function queryHoldingsHealth(): Promise<string> {
   const data = await fetchJson<{
     tradeDate?: string;
     regime?: string | null;
     sentiment?: string | null;
-    s3Candidates?: number | null;
+    s3Candidates?: Array<{
+      symbol?: string;
+      name?: string | null;
+      ts_code?: string;
+      industry?: string;
+      score?: number;
+      rs?: number;
+      regime?: string | null;
+    }> | null;
     panicCooldown?: { lastPanicDate?: string | null; cooldownEndDate?: string | null; active?: boolean } | null;
     s3Rules?: Record<string, unknown>;
     holdings?: Array<{
@@ -121,6 +134,8 @@ async function queryHoldingsHealth(): Promise<string> {
       holdingDays?: number;
       stopLossLine?: number;
       trailingLine?: number;
+      pyramidTriggerLine?: number;
+      pyramidAdded?: boolean;
       expireDate?: string;
       action?: string;
       reason?: string;
@@ -128,11 +143,12 @@ async function queryHoldingsHealth(): Promise<string> {
     }>;
   }>(`/v1/agent/portfolio-health`);
   if (!data) return '持仓体检服务暂不可用（data-sync-service 未响应），请稍后再试。';
+  const rules = data.s3Rules ?? {};
   const lines = [
-    `# S-3 持仓体检（${data.tradeDate ?? '最新'}）`,
+    `# S-3 决策体检（${data.tradeDate ?? '最新'}）`,
     '',
-    `- 市场状态：regime=${data.regime ?? '—'} · sentiment=${data.sentiment ?? '—'} · S-3 候选=${data.s3Candidates ?? '—'} · 恐慌冷却=${data.panicCooldown?.active ? `至 ${data.panicCooldown.cooldownEndDate}` : '无'}`,
-    `- S-3 退出规则：止损 -5% · 移动止损 -8% · 60 天上限（持仓体检按此判定）`,
+    `- 市场状态：regime=${data.regime ?? '—'} · sentiment=${data.sentiment ?? '—'} · 恐慌冷却=${data.panicCooldown?.active ? `至 ${data.panicCooldown.cooldownEndDate}` : '无'}`,
+    `- S-3 规则：止损 -5% · 移动止损 -8% · 60 天上限 · 金字塔 +${rules.pyramidTriggerPct ?? 2.5}% 加半仓（每票至多 1 次，加过的不要再加）`,
     '',
   ];
   const holds = data.holdings ?? [];
@@ -148,12 +164,29 @@ async function queryHoldingsHealth(): Promise<string> {
         ` · 已持 ${h.holdingDays ?? '—'} 天` +
         (h.stopLossLine != null ? ` · 止损线 ${h.stopLossLine}` : '') +
         (h.trailingLine != null ? ` · 移动线 ${h.trailingLine}` : '') +
+        (h.pyramidTriggerLine != null ? ` · 金字塔触发线 ${h.pyramidTriggerLine}` : '') +
+        (h.pyramidAdded ? ' · 已加仓' : ' · 未加仓') +
         (h.expireDate ? ` · 到期 ${h.expireDate}` : '') +
         (h.reason ? ` · 触发：${h.reason}` : '') +
         (h.note ? ` · ${h.note}` : ''),
     );
   }
-  lines.push('', '- 结论口径：以上按 S-3 回测退出规则自动判定；未触发即持有，不因市场 Weak 减仓。');
+  const cands = data.s3Candidates ?? [];
+  if (cands.length > 0) {
+    lines.push('', '## 今日 S-3 开仓候选（买什么参考）');
+    for (const c of cands) {
+      lines.push(
+        `- **${c.name ?? c.symbol}**（${c.symbol}${c.industry ? ` · ${c.industry}` : ''}）` +
+          ` score=${c.score ?? '—'} · RS前50%=${c.rs ?? '—'} · 建议仓位 ~5%`,
+      );
+    }
+    lines.push('- 入池门槛：score≥65 · RS 前 50% · regime≠Weak · 行业在 5D 净流入 Top3 · 无恐慌冷却');
+  } else if (data.regime === 'Weak') {
+    lines.push('', '- 今日 **无开仓候选**（regime=Weak：S-3 规定空仓观望，不新开仓）');
+  } else {
+    lines.push('', '- 今日无开仓候选（门槛：score≥65 · RS 前 50% · 行业净流入 Top3 · 无恐慌冷却）');
+  }
+  lines.push('', '- 结论口径：退出/加仓按 S-3 规则自动判定；市场 Weak 只挡开仓不触发卖出。');
   return lines.join('\n');
 }
 
@@ -250,9 +283,10 @@ decisionRoutes.post('/', async (c) => {
   const archiveTools = {
     query_s3_holdings_health: tool({
       description:
-        '获取当前真实持仓的 S-3 回测体检（每只的盈亏/峰值回撤/止损线/移动止损线/到期日/持有建议）' +
-        '以及市场状态（regime/sentiment/恐慌冷却/S-3 候选数）。用户问"该不该减仓/卖/加仓/持有/我的仓位"时' +
-        '必须先调用此工具，按 S-3 退出规则回答，不要凭感觉。',
+        '获取 S-3 决策体检：①每只真实持仓的盈亏/峰值回撤/止损线/移动止损线/金字塔触发线/' +
+        '是否已加仓/到期日/持有建议；②今日开仓候选（买什么）；③市场状态（regime/sentiment/' +
+        '恐慌冷却）。用户问"该不该减仓/卖/持有/加仓/金字塔/买什么/能不能买/我的仓位"时' +
+        '必须先调用此工具，按 S-3 规则回答，不要凭感觉。',
       inputSchema: z.object({}),
       execute: async () => queryHoldingsHealth(),
     }),

@@ -1794,3 +1794,45 @@ SidebarNav 新增「回测」入口。三区块：
 
 - ❌ 依赖 TV 快照列算 52W 回撤（列值可能为空且不可告警）
 - ❌ 用 EMA/SMA 近似 52W 高（口径漂移，K 线是权威源）
+
+### OPT-073：S-3 持仓体检面板 + 决策 Agent 回测感知（2026-08-09 · 用户「让 agent 同步知道回测信息」）
+
+**状态**：[x]
+**完成日期**：2026-08-09
+
+**背景**：决策 Agent 之前无回测知识，用户靠 copy all markdown + prompt 手动喂；
+持仓状态（止损线/移动线/到期日）只能手算。目标是 Agent 自动用回测知识回答
+卖/买/加三类问题，且用户打开执行页直接看到体检。
+
+#### 交付（后端）
+
+- `service/portfolio_health.py`（新）：`build_portfolio_health(trade_date)` —— 真实持仓
+  （watchlist registry positionPct>0）逐票按 S-3 退出规则体检（固定止损 -5% / 移动止损
+  -8% 峰值回撤（**close 口径**，与回测引擎一致）/ 60 天上限，常量同 paper 模块）+
+  金字塔触发线（成本+2.5%）+ 是否已加仓（paper_trades pyramid-add 标记）+ 市场状态
+  （regime/sentiment/恐慌冷却/当日 S-3 候选明细，候选补 stock_basic 名称）
+- `GET /v1/agent/portfolio-health`（v1_business_routes.py）
+- 修复口径 bug：trailing 峰值原用 high → 改 close（亿联回撤 -4.0%→-1.2%）；
+  `maxHoldDate` 原错返回 entry_date → entry+60
+- 测试：`tests/test_portfolio_health.py`（6 passed，close 峰值/双退出触发/到期日/build 层组装）
+
+#### 交付（ai-service）
+
+- `routes/decision.ts`：新增 `query_s3_holdings_health` tool（强制"问减仓/加仓/买什么先调"）+
+  `S3_RULES_KNOWLEDGE` system prompt（Weak 只挡开仓不触发卖出、4 条退出规则、
+  弱市年 +80.5% 证据、参数表、金字塔纪律、9 票 RS 轮出）；138 tests passed
+
+#### 交付（desktop-ui）
+
+- `components/watchlist/PortfolioHealthCard.tsx`（新）：WatchlistPage 执行 Gate 下方——
+  市场状态 chips（regime/sentiment/恐慌冷却/候选数）+ 每持仓（盈亏色/回撤/动作 badge/
+  止损线·移动线·金字塔线·到期/已加仓）+ 今日开仓候选 chips；5min 自动刷新 + 手动刷新；
+  空持仓/弱市/错误态都有明确文案
+- `lib/queries/portfolioHealth.ts`（新）；`PortfolioHealthCard.test.tsx`（4 passed）；
+  FE 全量 737 passed、tsc/eslint 干净
+
+#### 反模式
+
+- ❌ 测试依赖真实 journal 残留（smoke 测试断言 candidates==1 → 只断言自己的插入）
+- ❌ 组件显式 `retry: 1` 覆盖测试 client 的 retry:false（重试退避 1s+ 导致测试假 pending）
+- ❌ 周末 cron 按日历日拉 tushare 空转（已修：`last_trading_day()` 交易日感知）

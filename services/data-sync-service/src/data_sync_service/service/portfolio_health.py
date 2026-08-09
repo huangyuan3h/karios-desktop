@@ -24,6 +24,13 @@ from data_sync_service.db.watchlist_automation import list_registry
 logger = logging.getLogger(__name__)
 
 
+def _lookup_stock_basic(ts_codes: list[str]) -> tuple[dict[str, str], dict[str, str]]:
+    """{ts_code: name}, {ts_code: industry} — best-effort, empty on failure."""
+    from data_sync_service.service.trendok import _lookup_stock_basic as _lkb
+
+    return _lkb(ts_codes)
+
+
 def _resolve_holding_ts(symbol: str) -> str | None:
     """CN/HK resolve via the paper engine; ETF by exchange code prefix."""
     from data_sync_service.service.paper_trading import _resolve_ts_code
@@ -36,6 +43,27 @@ def _resolve_holding_ts(symbol: str) -> str | None:
         if len(code) == 6 and code.isdigit():
             return f"{code}.SH" if code.startswith(("5", "6")) else f"{code}.SZ"
     return None
+
+
+def _lookup_stock_basic(ts_codes: list[str]) -> tuple[dict[str, str], dict[str, str]]:
+    """{ts_code: name}, {ts_code: industry} — best-effort, empty on failure."""
+    from data_sync_service.db.stock_basic import load_all_stock_basic
+
+    names: dict[str, str] = {}
+    industries: dict[str, str] = {}
+    try:
+        for r in load_all_stock_basic():
+            ts = r.get("ts_code")
+            if not ts:
+                continue
+            if ts in ts_codes:
+                if r.get("name"):
+                    names[ts] = str(r["name"])
+                if r.get("industry"):
+                    industries[ts] = str(r["industry"])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health stock basic failed: %s", exc)
+    return names, industries
 
 
 def _holding_check(
@@ -75,8 +103,9 @@ def _holding_check(
 
     last_date, _h, last_close = bars[-1]
     last_close = float(last_close)
-    peak = max(float(b[1]) for b in bars if b[1] is not None)
-    peak_date = max(bars, key=lambda b: float(b[1]))[0]
+    # Trailing stop is evaluated on CLOSE prices (same as backtest engine).
+    peak = max(float(b[2]) for b in bars if b[2] is not None)
+    peak_date = max(bars, key=lambda b: float(b[2]))[0]
     pnl = (last_close - cost) / cost * 100.0
     drawdown = (last_close - peak) / peak * 100.0
     try:
@@ -93,13 +122,9 @@ def _holding_check(
     out["holdingDays"] = days
     out["stopLossLine"] = round(cost * (1 + STOP_LOSS_PCT / 100.0), 3)
     out["trailingLine"] = round(peak * (1 + TRAILING_STOP_PCT / 100.0), 3)
-    out["maxHoldDate"] = (
-        date.fromisoformat(entry_date).isoformat()
-    )
-    out["expireDate"] = (
-        date.fromisoformat(entry_date)
-        + __import__("datetime").timedelta(days=MAX_HOLD_DAYS)
-    ).isoformat()
+    expire = date.fromisoformat(entry_date) + __import__("datetime").timedelta(days=MAX_HOLD_DAYS)
+    out["maxHoldDate"] = expire.isoformat()
+    out["expireDate"] = expire.isoformat()
 
     reasons: list[str] = []
     if pnl <= STOP_LOSS_PCT:
@@ -121,11 +146,16 @@ def build_portfolio_health(*, trade_date: str | None = None) -> dict[str, Any]:
     from data_sync_service.db.paper_trading import today_iso
     from data_sync_service.service.backtest_engine import BacktestConfig, _load_regime_by_day
     from data_sync_service.service.market_sentiment import get_cn_sentiment, get_panic_cooldown
-    from data_sync_service.service.paper_s3 import build_s3_candidates
+    from data_sync_service.service.paper_s3 import (
+        PYRAMID_ADD_SCALE,
+        PYRAMID_TRIGGER_PCT,
+        build_s3_candidates,
+    )
 
     day = trade_date or today_iso()
     holdings: list[dict[str, Any]] = []
     try:
+        pyramid_syms = _pyramided_symbols()
         for r in list_registry():
             payload = r.get("payload") or {}
             # list_registry flattens payload fields to the top level; accept
@@ -147,6 +177,10 @@ def build_portfolio_health(*, trade_date: str | None = None) -> dict[str, Any]:
             check["symbol"] = str(r.get("symbol") or "")
             check["name"] = str(name or "")
             check["positionPct"] = pct
+            check["pyramidTriggerLine"] = round(
+                float(cost) * (1 + PYRAMID_TRIGGER_PCT / 100.0), 3
+            )
+            check["pyramidAdded"] = str(r.get("symbol") or "") in pyramid_syms
             if ts is None:
                 check["action"] = "HOLD"
                 check["note"] = "无法解析标的代码，人工核对"
@@ -165,14 +199,22 @@ def build_portfolio_health(*, trade_date: str | None = None) -> dict[str, Any]:
         pass
     sentiment = None
     panic = None
-    candidates = None
+    candidates: list[dict[str, Any]] = []
     try:
         items = get_cn_sentiment(days=1, as_of_date=day)["items"]
         sentiment = items[-1].get("riskMode") if items else None
         panic = get_panic_cooldown(days=10, cooldown_days=3, as_of_date=day)
-        candidates = len(build_s3_candidates(trade_date=day))
-    except Exception:  # noqa: BLE001
-        pass
+        candidates = build_s3_candidates(trade_date=day)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health s3 candidates failed: %s", exc)
+    try:
+        if candidates:
+            ts_codes = [c["ts_code"] for c in candidates]
+            names = _lookup_stock_basic(ts_codes)[0]
+            for c in candidates:
+                c["name"] = names.get(c["ts_code"])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health candidate names failed: %s", exc)
 
     return {
         "tradeDate": day,
@@ -186,6 +228,22 @@ def build_portfolio_health(*, trade_date: str | None = None) -> dict[str, Any]:
             "stopLossPct": STOP_LOSS_PCT,
             "trailingStopPct": TRAILING_STOP_PCT,
             "maxHoldDays": MAX_HOLD_DAYS,
+            "pyramidTriggerPct": PYRAMID_TRIGGER_PCT,
+            "pyramidAddScale": PYRAMID_ADD_SCALE,
         },
         "holdings": holdings,
     }
+
+
+def _pyramided_symbols() -> set[str]:
+    """Symbols that already have an open S-3 pyramid-add leg."""
+    from data_sync_service.db.paper_trading import list_paper_trades
+
+    out: set[str] = set()
+    try:
+        for r in list_paper_trades(status="open"):
+            if r.get("source") == "S3" and "pyramid-add" in str(r.get("whyAtEntry") or ""):
+                out.add(str(r.get("symbol") or ""))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health pyramided lookup failed: %s", exc)
+    return out
