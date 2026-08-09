@@ -39,20 +39,22 @@ def run() -> None:
     mainline = sync_cn_industry_mainline(force=False)
     sentiment = sync_cn_sentiment(date_str=today, force=False)
 
-    ok = bool(industry.get("ok")) and bool(mainline.get("ok")) and bool(sentiment.get("ok"))
-    skipped = bool(industry.get("skipped")) and bool(mainline.get("ok")) and bool(sentiment.get("ok"))
-
-    if not ok:
-        err = (
-            industry.get("error")
-            or mainline.get("error")
-            or sentiment.get("error")
-            or "unknown"
-        )
-        insert_record(JOB_ID, success=False, error_message=str(err))
-        logger.warning("cn_industry_post_close_sync failed: industry=%s mainline=%s sentiment=%s", industry, mainline, sentiment)
+    # Contract: the three sync services only set an "error" key on failure.
+    # Success dicts carry asOfDate/rows/items (no "ok" key); skips carry a
+    # "skipped" flag. Judging success by "ok" always fails (regression 2026-08-06).
+    results = {"industry": industry, "mainline": mainline, "sentiment": sentiment}
+    failed = {
+        name: str(r.get("error"))
+        for name, r in results.items()
+        if not isinstance(r, dict) or r.get("error")
+    }
+    if failed:
+        first_name, first_err = next(iter(failed.items()))
+        insert_record(JOB_ID, success=False, error_message=f"{first_name}: {first_err}")
+        logger.warning("cn_industry_post_close_sync failed: %s", failed)
         return
 
+    skipped = any(isinstance(r, dict) and bool(r.get("skipped")) for r in results.values())
     insert_record(JOB_ID, success=True)
     if skipped:
         logger.info(

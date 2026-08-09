@@ -37,9 +37,11 @@ def test_build_trigger_is_cron() -> None:
 def test_run_calls_all_three(monkeypatch: pytest.MonkeyPatch) -> None:
     called: dict[str, int] = {"industry": 0, "mainline": 0, "sentiment": 0}
 
+    # Real service contract: success dicts carry NO "ok" key (regression 2026-08-06
+    # — job judged success by "ok", which is always absent → permanent failure).
     def fake_industry(*, days: int = 10, top_n: int = 10) -> dict:
         called["industry"] += 1
-        return {"ok": True, "asOfDate": "2026-07-04"}
+        return {"asOfDate": "2026-07-04", "rows": 5, "histFailures": 0}
 
     def fake_mainline(*, force: bool = False) -> dict:
         called["mainline"] += 1
@@ -47,7 +49,7 @@ def test_run_calls_all_three(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def fake_sentiment(*, date_str: str, force: bool) -> dict:
         called["sentiment"] += 1
-        return {"ok": True, "asOfDate": date_str}
+        return {"asOfDate": date_str, "days": 1, "items": []}
 
     monkeypatch.setattr(cn_industry_post_close_job, "sync_cn_industry_fund_flow", fake_industry)
     monkeypatch.setattr(cn_industry_post_close_job, "sync_cn_industry_mainline", fake_mainline)
@@ -127,5 +129,5 @@ def test_run_logs_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     msgs = _capture_logs(monkeypatch)
     cn_industry_post_close_job.run()
 
-    assert captured == [(cn_industry_post_close_job.JOB_ID, False, "upstream down")]
+    assert captured == [(cn_industry_post_close_job.JOB_ID, False, "industry: upstream down")]
     assert any("cn_industry_post_close_sync failed" in m for m in msgs)

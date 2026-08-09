@@ -78,6 +78,38 @@ def test_industry_top5_fallback_cn_filter_shape():
     assert rsi["right"] == [50, 90]
 
 
+def test_rightside_v1_cn_filter_shape():
+    """Karios RightSide v1 — A 股右侧交易池合同。"""
+    t = templates.get_template("karios_rightside_v1_cn")
+    assert t is not None
+    assert t.market == "cn"
+    assert t.screen_title_substr == "karios rightside"
+    f = t.filter_json
+    assert isinstance(f, list)
+    left_ops = {entry["left"]: entry for entry in f}
+    # Universe + liquidity
+    assert left_ops["exchange"]["right"] == ["SSE", "SZSE"]
+    assert left_ops["market_cap_basic"]["right"] == 3_000_000_000
+    assert left_ops["volume"]["right"] == 20_000_000
+    # 右侧趋势确认：EMA50 > EMA200（指标对指标，避免 number-vs-null 400）
+    assert left_ops["EMA50"]["right"] == "EMA200"
+    # 动量确认未超买
+    assert left_ops["MACD.macd"]["operation"] == "greater"
+    assert left_ops["MACD.macd"]["right"] == 0
+    assert left_ops["RSI"]["operation"] == "in_range"
+    assert left_ops["RSI"]["right"] == [50, 80]
+    # Sector 白名单：排除 Finance / Utilities
+    sector = left_ops["sector"]
+    assert sector["operation"] == "in_range"
+    assert len(sector["right"]) == 16
+    assert "Finance" not in sector["right"]
+    assert "Utilities" not in sector["right"]
+    # 无 number-vs-indicator 比较（close vs SMA/EMA 会触发 TV API 400）
+    for e in f:
+        if e["left"] == "close":
+            assert isinstance(e["right"], (int, float)), f"close vs {e['right']} not allowed"
+
+
 def test_hk_template_universe_filter():
     t = templates.get_template("karios_pullback_v3_hk")
     assert t is not None

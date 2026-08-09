@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import os
+import re
 import threading
 import time
 
@@ -8,6 +10,50 @@ import pytest
 
 from data_sync_service.db import tv_capture_jobs as jobdb  # type: ignore[import-not-found]
 from data_sync_service.service import tv as tvsvc  # type: ignore[import-not-found]
+from data_sync_service.tv import capture as capture_mod  # type: ignore[import-not-found]
+
+
+class _FakeLocator:
+    def __init__(self, match: bool) -> None:
+        self._match = match
+
+    @property
+    def first(self) -> "_FakeLocator":
+        return self
+
+    async def is_visible(self, timeout: int = 800) -> bool:
+        return self._match
+
+
+class _FakePage:
+    """Emulate playwright `text=/regex/i` locators against a body text."""
+
+    def __init__(self, body_text: str) -> None:
+        self._text = body_text
+
+    def locator(self, selector: str) -> _FakeLocator:
+        m = re.match(r"^text=/(.*)/([is]*)$", selector)
+        if m:
+            pattern, flags = m.group(1), m.group(2)
+            return _FakeLocator(re.search(pattern, self._text, flags=re.IGNORECASE if "i" in flags else 0) is not None)
+        return _FakeLocator(False)
+
+
+def test_detect_login_required_recognizes_tv_walls() -> None:
+    cases = {
+        # Actual strings TradingView renders for registered-user-only screeners.
+        "Sign in to see the results": True,
+        "This screen is using some filters for registered users only": True,
+        "Log in to see the results": True,
+        "filters for logged-in users only": True,
+        "登录后才能查看结果": True,
+        "No login wall here — grid renders normally": False,
+        "": False,
+    }
+    for body, expected in cases.items():
+        page = _FakePage(body)
+        assert asyncio.run(capture_mod._detect_login_required(page)) is expected, body
+
 
 
 def _postgres_available() -> bool:

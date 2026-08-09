@@ -197,6 +197,48 @@ def _industry_top5_filter_cn() -> list[dict[str, Any]]:
     ]
 
 
+# A 股行业白名单（排除 Finance / Utilities 等低波动板块）——与 pullback CN 合同一致。
+_CN_ACTIVE_SECTORS: list[str] = [
+    "Commercial Services", "Communications", "Consumer Durables",
+    "Consumer Non-Durables", "Distribution Services",
+    "Electronic Technology", "Energy Minerals", "Health Services",
+    "Health Technology", "Industrial Services", "Non-Energy Minerals",
+    "Process Industries", "Producer Manufacturing", "Retail Trade",
+    "Technology Services", "Transportation",
+]
+
+
+def _karios_rightside_filter_cn() -> list[dict[str, Any]]:
+    """Karios RightSide v1 — A 股右侧交易池 (右侧确认 + 动量 + 流动性)。
+
+    右侧交易核心：只买已确认上升趋势的标的，不在下跌中抄底。
+    只使用已对 live Scanner API 验证过的比较形式（标量 / 列对列 / in_range）。
+    注意：`close` 与指标列（SMA20/EMA200）直接比较会触发 TV API 400
+    "Incompatible types: number and null"，故此处只用指标对指标 + 标量。
+
+    - exchange ∈ [SSE, SZSE] (A 股 only)
+    - market_cap_basic ≥ 3B (市值 ≥ 30 亿，规避小盘流动性风险)
+    - price_earnings_ttm > 0 (排除亏损股)
+    - Perf.Y > 0 (年内涨幅为正，非超跌反弹)
+    - volume ≥ 20M (日均成交 ≥ 2000 万股，右侧需要有承接)
+    - RSI ∈ [50, 80] (动量确认但未超买，右侧起涨段)
+    - MACD.macd > 0 (动能为正)
+    - EMA50 > EMA200 (中期金叉，趋势向上确认)
+    - sector ∈ 16 个行业 (排除 Finance 和 Utilities)
+    """
+    return [
+        {"left": "exchange", "operation": "in_range", "right": ["SSE", "SZSE"]},
+        {"left": "market_cap_basic", "operation": "greater", "right": 3_000_000_000},
+        {"left": "price_earnings_ttm", "operation": "greater", "right": 0},
+        {"left": "Perf.Y", "operation": "greater", "right": 0},
+        {"left": "volume", "operation": "greater", "right": 20_000_000},
+        {"left": "RSI", "operation": "in_range", "right": [50, 80]},
+        {"left": "MACD.macd", "operation": "greater", "right": 0},
+        {"left": "EMA50", "operation": "greater", "right": "EMA200"},
+        {"left": "sector", "operation": "in_range", "right": list(_CN_ACTIVE_SECTORS)},
+    ]
+
+
 SCREENER_TEMPLATES: tuple[ScreenerTemplate, ...] = (
     ScreenerTemplate(
         template_id="karios_pullback_v3_cn",
@@ -246,6 +288,16 @@ SCREENER_TEMPLATES: tuple[ScreenerTemplate, ...] = (
         filter_json=_industry_top5_filter_cn(),
         api_columns=list(_DEFAULT_API_COLUMNS),
         description="TIP-003 空窗降级 — 市值 ≥20B、Close > EMA60、RSI 50-90。",
+        nested_filter_validated=True,
+    ),
+    ScreenerTemplate(
+        template_id="karios_rightside_v1_cn",
+        display_name="Karios RightSide v1 (CN)",
+        screen_title_substr="karios rightside",
+        market="cn",
+        filter_json=_karios_rightside_filter_cn(),
+        api_columns=list(_DEFAULT_API_COLUMNS),
+        description="A 股右侧交易池 — 趋势确认：EMA50>EMA200、MACD>0、RSI 50-80、Perf.Y>0、市值≥30亿、成交≥2000万股。",
         nested_filter_validated=True,
     ),
 )

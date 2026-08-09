@@ -475,8 +475,9 @@ async def _detect_login_required(page) -> bool:
     result table with a CTA like 'Log in to see the results'.
     """
     selectors = [
-        'text=/Log in to see the results/i',
-        'text=/filters for logged-?in users only/i',
+        'text=/[Ll]og in to see the results/i',
+        'text=/[Ss]ign in to see the results/i',
+        'text=/filters for (registered|logged-?in) users only/i',
         # Some locales may not use English consistently; keep a small Chinese fallback.
         'text=/登录.*查看.*结果/',
     ]

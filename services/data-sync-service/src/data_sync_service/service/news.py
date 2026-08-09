@@ -193,7 +193,7 @@ def _rsshub_url(path: str) -> str:
     return f"{base}{path}"
 
 
-# News Substrate 2.0 · Track 1 (2026-08-02) — trimmed to5 core sources 2026-08-02
+# News Substrate 2.0 · Track 1 — 8 core sources (5 trimmed core + 3 added 2026-08-06)
 # Only sources that directly serve A-share investment decisions.
 # Tier A = must-read real-time telegraph · Tier C = policy first-hand.
 DEFAULT_NEWS_SOURCES: list[tuple[str, str, str, str, str | None]] = [
@@ -207,8 +207,31 @@ DEFAULT_NEWS_SOURCES: list[tuple[str, str, str, str, str | None]] = [
         "telegraph",
     ),
     ("jin10-flash", "金十数据·快讯", _rsshub_url("/jin10/flash"), "A", "telegraph"),
+    # Added 2026-08-06 — A-share specific real-time telegraph
+    (
+        "wallstreetcn-a-stock",
+        "华尔街见闻·A股快讯",
+        _rsshub_url("/wallstreetcn/live/a-stock"),
+        "A",
+        "telegraph",
+    ),
     # Depth / research
     ("cls-depth", "财联社·深度研判", _rsshub_url("/cls/depth"), "A", "depth"),
+    # Added 2026-08-06 — investment research directly serving A-share decisions
+    (
+        "eastmoney-strategyreport",
+        "东方财富·策略报告",
+        _rsshub_url("/eastmoney/report/strategyreport"),
+        "B",
+        "depth",
+    ),
+    (
+        "gelonghui-home",
+        "格隆汇·首页",
+        _rsshub_url("/gelonghui/home"),
+        "B",
+        "depth",
+    ),
     # Policy first-hand
     ("csrc-news", "证监会·要闻", _rsshub_url("/gov/csrc/news"), "C", "policy"),
 ]
@@ -219,7 +242,7 @@ DEFAULT_NEWS_SOURCES: list[tuple[str, str, str, str, str | None]] = [
 # - legacy 4: bbc/nyt/hn/reddit — generic world/HN/Reddit, not investment-grade
 # - playwright_required 6: routes that 503 without Playwright in our RSSHub env
 # - trimmed 2026-08-02: removed 8 sources to reduce noise (36kr, huxiu, yicai,
-#   gelonghui, caixin, stats-gov, jin10-data, wallstreetcn-us)
+#   caixin, stats-gov, jin10-data, wallstreetcn-us) — gelonghui re-added 2026-08-06
 LEGACY_DISABLED_SOURCES: list[str] = [
     "bbc-world",
     "nyt-world",
@@ -231,7 +254,6 @@ LEGACY_DISABLED_SOURCES: list[str] = [
     "stcn-ecom",
     "36kr-flash",
     "reuters-business",
-    "gelonghui-home",
     "caixin-headline",
     "wallstreetcn-us",
     "yicai-news",
@@ -243,7 +265,7 @@ LEGACY_DISABLED_SOURCES: list[str] = [
 
 
 def add_default_sources() -> None:
-    """Idempotent seed: upsert 13 investment-grade sources + disable 4 legacy ones.
+    """Idempotent seed: upsert 8 investment-grade sources + disable legacy ones.
 
     Safe to run on every startup. New source tiers / categories are propagated via
     ON CONFLICT (url) DO UPDATE. Existing rows are not overwritten for name/enabled

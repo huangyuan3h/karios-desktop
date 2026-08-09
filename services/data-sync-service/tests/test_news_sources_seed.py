@@ -44,18 +44,39 @@ def test_total_source_count_tight() -> None:
     )
 
 
+def test_china_stock_investment_sources_active() -> None:
+    """Added 2026-08-06: A-share / investment-focused sources must be active.
+
+    - wallstreetcn-a-stock is an A-share real-time telegraph (Tier A).
+    - eastmoney-strategyreport and gelonghui-home are investment research feeds.
+    """
+    active = {sid: (tier, cat) for sid, _, _, tier, cat in DEFAULT_NEWS_SOURCES}
+    expected = {
+        "wallstreetcn-a-stock": ("A", "telegraph"),
+        "eastmoney-strategyreport": ("B", "depth"),
+        "gelonghui-home": ("B", "depth"),
+    }
+    for sid, (tier, cat) in expected.items():
+        assert sid in active, f"{sid} missing from DEFAULT_NEWS_SOURCES"
+        assert active[sid] == (tier, cat), f"{sid} expected {tier}/{cat}, got {active[sid]}"
+
+
 def test_no_duplicate_source_ids() -> None:
     ids = [sid for sid, *_ in DEFAULT_NEWS_SOURCES]
     assert len(ids) == len(set(ids)), f"Duplicate source IDs: {ids}"
 
 
 def test_removed_noise_sources_in_disabled_list() -> None:
-    """Sources removed for noise (36kr, huxiu, yicai, etc.) are in disabled list."""
+    """Sources removed for noise (36kr, huxiu, yicai, etc.) are in disabled list.
+
+    gelonghui-home is NOT in this list — it was re-added as active on 2026-08-06.
+    """
     active_ids = {sid for sid, *_ in DEFAULT_NEWS_SOURCES}
     noise_sources = [
-        "36kr-news", "huxiu-finance", "yicai-news", "gelonghui-home",
+        "36kr-news", "huxiu-finance", "yicai-news",
         "caixin-headline", "wallstreetcn-us", "7e2ce389", "jin10-data",
     ]
     for sid in noise_sources:
         assert sid not in active_ids, f"{sid} should not be active"
         assert sid in LEGACY_DISABLED_SOURCES, f"{sid} should be in LEGACY_DISABLED_SOURCES"
+    assert "gelonghui-home" not in LEGACY_DISABLED_SOURCES, "gelonghui-home re-added as active 2026-08-06"

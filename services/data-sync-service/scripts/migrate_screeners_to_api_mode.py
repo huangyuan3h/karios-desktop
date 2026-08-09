@@ -54,6 +54,7 @@ TEMPLATE_SCREENER_IDS: dict[str, str] = {
     "karios_pullback_v3_us": "tmpl-pullback-v3-us",
     "falcon_launch_v2_cn": "tmpl-falcon-launch-v2-cn",
     "industry_top5_fallback_cn": "tmpl-industry-top5-fallback-cn",
+    "karios_rightside_v1_cn": "tmpl-rightside-v1-cn",
 }
 
 
