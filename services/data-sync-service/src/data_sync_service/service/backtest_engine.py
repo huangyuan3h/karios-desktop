@@ -546,7 +546,8 @@ def _load_rs_ranks(
         b = bench.get(day)
         if b is None:
             continue
-        ranked = sorted(items, key=lambda kv: -(kv[1] - b))
+        bench_ret = b
+        ranked = sorted(items, key=lambda kv: -(kv[1] - bench_ret))
         total = len(ranked)
         if total < 30:  # too thin a market to rank reliably
             continue

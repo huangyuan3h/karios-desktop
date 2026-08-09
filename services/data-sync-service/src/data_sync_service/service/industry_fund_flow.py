@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import random
 import sys
 import time
@@ -122,14 +123,21 @@ def _eastmoney_board_fund_flow_daykline(*, secid: str) -> list[dict[str, Any]]:
         "_": int(time.time() * 1000),
     }
     qs = urllib.parse.urlencode(params)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json,text/plain,*/*",
+        "Referer": "https://data.eastmoney.com/",
+        "Connection": "close",
+    }
+    # eastmoney push2his fflow needs a trusted fingerprint cookie (qgqp_b_id
+    # etc.); requests without it get RemoteDisconnected (2026-08-09 finding).
+    # Set EASTMONEY_COOKIE in repo root .env (refresh from a browser session
+    # when the cookie expires).
+    if os.environ.get("EASTMONEY_COOKIE"):
+        headers["Cookie"] = os.environ["EASTMONEY_COOKIE"]
     req = urllib.request.Request(
         f"{url}?{qs}",
-        headers={
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept": "application/json,text/plain,*/*",
-            "Referer": "https://data.eastmoney.com/",
-            "Connection": "close",
-        },
+        headers=headers,
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
         raw = resp.read()

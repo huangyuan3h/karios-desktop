@@ -24,13 +24,6 @@ from data_sync_service.db.watchlist_automation import list_registry
 logger = logging.getLogger(__name__)
 
 
-def _lookup_stock_basic(ts_codes: list[str]) -> tuple[dict[str, str], dict[str, str]]:
-    """{ts_code: name}, {ts_code: industry} — best-effort, empty on failure."""
-    from data_sync_service.service.trendok import _lookup_stock_basic as _lkb
-
-    return _lkb(ts_codes)
-
-
 def _resolve_holding_ts(symbol: str) -> str | None:
     """CN/HK resolve via the paper engine; ETF by exchange code prefix."""
     from data_sync_service.service.paper_trading import _resolve_ts_code
@@ -47,12 +40,12 @@ def _resolve_holding_ts(symbol: str) -> str | None:
 
 def _lookup_stock_basic(ts_codes: list[str]) -> tuple[dict[str, str], dict[str, str]]:
     """{ts_code: name}, {ts_code: industry} — best-effort, empty on failure."""
-    from data_sync_service.db.stock_basic import load_all_stock_basic
+    from data_sync_service.db.stock_basic import fetch_all
 
     names: dict[str, str] = {}
     industries: dict[str, str] = {}
     try:
-        for r in load_all_stock_basic():
+        for r in fetch_all():
             ts = r.get("ts_code")
             if not ts:
                 continue

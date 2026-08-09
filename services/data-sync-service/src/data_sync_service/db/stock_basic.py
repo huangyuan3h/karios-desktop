@@ -154,7 +154,8 @@ def fetch_stock_ts_codes() -> list[str]:
             cur.execute(
                 f"SELECT ts_code FROM {TABLE_NAME} "
                 f"WHERE market IN {CN_STOCK_BOARDS} AND delist_date IS NULL "
-                f"ORDER BY ts_code"
+                f"ORDER BY ts_code",
+                None,
             )
             rows = cur.fetchall()
     return [r[0] for r in rows if r and r[0]]

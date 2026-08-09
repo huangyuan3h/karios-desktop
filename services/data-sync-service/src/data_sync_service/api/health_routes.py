@@ -79,7 +79,8 @@ def _last_table_timestamp(table: str, ts_column: str) -> str | None:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT MAX({ts_column}) FROM {table}"
+                    f"SELECT MAX({ts_column}) FROM {table}",
+                    None,
                 )
                 row = cur.fetchone()
         if not row or row[0] is None:

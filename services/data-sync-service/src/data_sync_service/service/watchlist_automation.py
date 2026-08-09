@@ -841,7 +841,7 @@ def get_automation_run(run_id: str) -> dict[str, Any] | None:
 # RS whole-market rank (S-2 / OPT-073): 20-day return percentile vs ALL stocks
 # ---------------------------------------------------------------------------
 
-_rs_rank_cache: dict[str, dict[str, float]] = {}
+_rs_rank_cache: dict[str, float] = {}
 _rs_rank_cache_date: str | None = None
 
 
@@ -911,7 +911,7 @@ def compute_rs_ranks(symbols: list[str], as_of_date: str | None = None) -> dict[
         _rs_rank_cache.update(pos)
         _rs_rank_cache_date = latest
 
-    out: dict[str, float] = {}
+    out: dict[str, Any] = {}
     for sym, ts in resolved.items():
         pct = _rs_rank_cache.get(ts)
         if pct is not None:

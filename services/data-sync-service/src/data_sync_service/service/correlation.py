@@ -51,7 +51,7 @@ ETF_CLUSTER_PREFIXES: dict[tuple[str, ...], str] = {
     ("512660", "159516"): "tech_comm",  # 军工通信（近似）— 通信 ETF 516880/159519 另列
     ("516880", "159519", "159383"): "tech_comm",  # 通信 / CPO ETF
     ("510880", "512800"): "financial",  # 红利低波偏金融 → 保守归类
-    ("512000"): "financial",  # 券商 ETF
+    ("512000",): "financial",  # 券商 ETF
     ("510300", "510050", "510500"): "broad_cn",  # 宽基（不参与 cap）
 }
 

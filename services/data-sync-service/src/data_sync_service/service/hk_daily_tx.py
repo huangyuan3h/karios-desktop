@@ -101,7 +101,7 @@ def _fetch_kline_page(
     node = data.get(symbol) or {}
     if isinstance(node, dict):
         rows = node.get("qfqday") or node.get("day") or []
-        return [r for r in rows if isinstance(r, (list, tuple)) and len(r) >= 9]
+        return [list(r) for r in rows if isinstance(r, (list, tuple)) and len(r) >= 9]
     return []
 
 
