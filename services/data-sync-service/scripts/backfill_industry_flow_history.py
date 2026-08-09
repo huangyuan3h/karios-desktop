@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from pathlib import Path
@@ -59,6 +60,7 @@ def main() -> int:
     ap.add_argument("--since", default="2024-07-01", help="Keep rows with date >= this (YYYY-MM-DD)")
     ap.add_argument("--workers", type=int, default=1, help="Serial is safer: eastmoney push2his throttles concurrent bursts")
     ap.add_argument("--rounds", type=int, default=4, help="Re-run failing industries up to this many rounds")
+    ap.add_argument("--sleep-between", type=float, default=15.0, help="Seconds between industries (slow mode avoids IP bans)")
     args = ap.parse_args()
 
     since = date.fromisoformat(args.since)
@@ -74,9 +76,7 @@ def main() -> int:
         try:
             items = _with_retry(
                 lambda: _eastmoney_board_fund_flow_daykline(secid=secid),
-                tries=5,
-                base_sleep_s=1.0,
-                max_sleep_s=6.0,
+                tries=1,
             )
         except Exception as exc:  # noqa: BLE001
             return f"{name}: {exc}"
@@ -116,6 +116,7 @@ def main() -> int:
                     per_industry.append((name, n, d0, d1))
                     total_rows += n
                     print(f"  {name:24s} +{n:5d} rows  {d0} .. {d1}")
+                time.sleep(args.sleep_between)
         pending = failures
 
     print(f"\ntotal backfilled rows: {total_rows}  (industries done: {len(per_industry)}/{len(pairs)})")

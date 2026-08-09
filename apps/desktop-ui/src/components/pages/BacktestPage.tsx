@@ -32,6 +32,7 @@ const DEFAULT_PARAMS: BacktestParams = {
   scoreFloor: 0,
   panicCooldownDays: 3,
   slippagePct: 0.05,
+  excludeBoards: '300',
 };
 
 const INPUT_CLS =
@@ -229,6 +230,16 @@ export function BacktestPage() {
               value={params.slippagePct}
               placeholder="0=关闭"
               onChange={(e) => set('slippagePct', e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+            排除板块（前缀逗号分隔，300=创业板）
+            <input
+              type="text"
+              className={cn(INPUT_CLS, 'w-28')}
+              value={params.excludeBoards}
+              placeholder="空=不过滤"
+              onChange={(e) => set('excludeBoards', e.target.value)}
             />
           </label>
           <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">

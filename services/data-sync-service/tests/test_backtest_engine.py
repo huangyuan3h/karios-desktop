@@ -1278,6 +1278,36 @@ def test_mv_filter_blocks_outside_band() -> None:
     assert run.summary.gated_blocks.get("mv_max") == 1
 
 
+def test_exclude_boards_filters_symbol_prefix() -> None:
+    """exclude_boards layers the pool by 3-digit code prefix (e.g. 300 = ChiNext)."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {
+        "2026-06-18": {"CN:300001": 90.0, "CN:600001": 90.0, "CN:600002": 90.0},
+        "2026-06-19": {},
+    }
+    prices = {
+        "300001.SZ": {d: 10.0 for d in calendar},
+        "600001.SH": {d: 10.0 for d in calendar},
+        "600002.SH": {d: 10.0 for d in calendar},
+    }
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-19",
+        gates="full", exclude_boards="300",
+    )
+    run = simulate(config, data=data)
+    assert sorted(t.symbol for t in run.trades) == ["CN:600001", "CN:600002"]
+    assert run.summary.gated_blocks.get("board_excluded") == 1
+
+
+def test_exclude_boards_invalid_prefix_raises() -> None:
+    with pytest.raises(ValueError):
+        BacktestConfig(
+            start_date="2026-06-18", end_date="2026-06-19",
+            exclude_boards="60",
+        )
+
+
 def test_mv_diverging_excludes_mega_cap_only_in_diverging() -> None:
     """mv_max_diverging caps market cap only on Diverging regime days."""
     calendar = ["2026-06-18", "2026-06-19"]

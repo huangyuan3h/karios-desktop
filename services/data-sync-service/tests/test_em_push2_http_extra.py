@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+import pytest
+
 from data_sync_service.service import em_push2_http as eh
+
+
+@pytest.fixture(autouse=True)
+def _no_proxy_env(monkeypatch):
+    """Tests must not depend on the host .env (EASTMONEY_PROXY/COOKIE): the
+    urllib opener branch would otherwise do real network calls."""
+    monkeypatch.setattr(eh, "_PROXY", "")
+    monkeypatch.setattr(eh, "_COOKIE", "")
 
 
 def test_em_headers_valid_referer() -> None:

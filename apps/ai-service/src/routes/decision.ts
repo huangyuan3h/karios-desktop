@@ -103,7 +103,7 @@ const S3_RULES_KNOWLEDGE = `【S-3 回测纪律（本系统唯一证据 · 双�
   弱市减仓违反回测证明的最优行为；收益来自少数 Strong/Diverging 进攻窗口
 - 参数（S-3 定案）：score65 · hold60 · target100（不止盈）· floor0 · trailing-8 ·
   stop-5 · RS前50% · Diverging满仓 · 恐慌冷却3天 · 滑点0.05% · mp20 ·
-  金字塔+2.5%加半仓(每票1次) · 持仓>9票时RS最弱先轮出
+  金字塔+2.5%加半仓(每票1次) · 持仓>19票时RS最弱先轮出
 - 回答持仓/买卖/加仓问题时：先调用 query_s3_holdings_health 获取实时体检，按上述规则给结论；
   不要凭感觉建议，回测证据优先`;
 

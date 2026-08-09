@@ -120,6 +120,8 @@ class BacktestConfig:
     min_mv: float = 0.0
     max_mv: float = 0.0
     mv_max_diverging: float = 0.0
+    exclude_boards: str = ""
+    board_exclude_set: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if self.market not in MARKETS:
@@ -170,6 +172,11 @@ class BacktestConfig:
             raise ValueError(f"entry_sort must be one of ('score', 'score_rs', 'rs') (got {self.entry_sort!r})")
         if self.min_mv < 0 or self.max_mv < 0 or self.mv_max_diverging < 0:
             raise ValueError("min_mv / max_mv / mv_max_diverging must be >= 0 (亿元; 0 disables the bound)")
+        if self.exclude_boards:
+            prefixes = {p.strip() for p in self.exclude_boards.split(",") if p.strip()}
+            if not all(len(p) == 3 and p.isdigit() for p in prefixes):
+                raise ValueError("exclude_boards must be comma-separated 3-digit board prefixes like '300,688'")
+            object.__setattr__(self, "board_exclude_set", frozenset(prefixes))
 
 
 @dataclass
@@ -962,6 +969,11 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 mv = data.mv_by_day.get(day, {}).get(ts)
                 if mv is not None and mv > config.mv_max_diverging:
                     gated_blocks["mv_diverging"] += 1
+                    continue
+            if config.board_exclude_set:
+                code = str(sym).split(":")[-1]
+                if code[:3] in config.board_exclude_set:
+                    gated_blocks["board_excluded"] += 1
                     continue
             if len(positions) >= config.max_positions:
                 gated_blocks["sleeve"] += 1

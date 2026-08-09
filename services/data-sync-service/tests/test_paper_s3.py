@@ -65,6 +65,20 @@ def test_build_s3_candidates_basic() -> None:
     assert out[0]["regime"] == "Strong"
 
 
+def test_build_s3_candidates_excludes_chinext_board() -> None:
+    """300xxx symbols are excluded (S3_EXCLUDE_BOARDS=('300',) — user-approved
+    A4 focus-pool fix 2026-08-09); main-board and STAR pass."""
+    chi_next = "CN:300001"
+    with _patch_day_gates():
+        paper_s3._load_today_scores.return_value = {
+            CN_A: 90.0,
+            CN_B: 80.0,
+            chi_next: 95.0,
+        }
+        out = paper_s3.build_s3_candidates(trade_date="2026-08-07")
+    assert sorted(c["symbol"] for c in out) == [CN_A, CN_B]
+
+
 def test_build_s3_candidates_blocks_weak_regime() -> None:
     with _patch_day_gates(regime="Weak"):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}

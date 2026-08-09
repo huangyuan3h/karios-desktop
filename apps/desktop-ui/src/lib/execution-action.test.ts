@@ -2311,6 +2311,41 @@ describe('correlation cluster cap (V7.0-01 / L3-P5)', () => {
     expect(r.ok).toBe(true);
   });
 
+  it('S-3 candidates skip the cluster + sector caps (user-approved 2026-08-09)', () => {
+    const r = evaluateNewEntryGates({
+      industryName: '半导体',
+      mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
+      trendOk: true,
+      score: 90,
+      clusterExposurePct: 34.2,
+      sectorExposureByIndustry: new Map([['半导体', 55]]),
+      isS3Candidate: true,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.why).not.toBe('SECTOR_CONC_BLOCK');
+    expect(r.why).not.toBe('CORRELATION_CAP_BLOCK');
+  });
+
+  it('S-3 candidate Suggest% ignores sector/cluster room but keeps clip', () => {
+    const size = suggestFireSizePct({
+      industryName: '半导体',
+      sectorExposureByIndustry: new Map([['半导体', 60]]),
+      roomCorrelation: 0.5,
+      isS3Candidate: true,
+    });
+    expect(size?.addPct).toBe(5);
+    expect(size?.note).toBe('clip');
+  });
+
+  it('non-S-3 Suggest% still binds sector room', () => {
+    const size = suggestFireSizePct({
+      industryName: '半导体',
+      sectorExposureByIndustry: new Map([['半导体', 29]]),
+    });
+    expect(size?.addPct).toBe(1);
+    expect(size?.note).toBe('sector');
+  });
+
   it('shrinks Suggest% when correlation room binds (note=correlation)', () => {
     const size = suggestFireSizePct({
       positionPct: 0,

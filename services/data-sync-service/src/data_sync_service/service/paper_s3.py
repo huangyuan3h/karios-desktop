@@ -49,6 +49,17 @@ S3_RS_MIN = 0.5
 S3_MAX_POSITIONS = 20
 S3_POSITION_PCT = 0.05  # per-sleeve size (paper is 5%; backtest 10%x20 is the upper bound)
 
+# ChiNext (300xxx) excluded from S-3 candidates — user-approved 2026-08-09
+# (A4 focus-pool analysis + triple-window validation):
+#   - A4: ChiNext has never contributed alpha in any window (OOS2 25 trades
+#     -3.2pt at 28% win, valid 5 trades all lost); main board = stable base,
+#     STAR (688) = alpha engine in the recent window (+59.6pt / 77%).
+#   - walk-forward: exclude_boards=300 → OOS2 +124.3 vs 106.9 (+17.4pt, DD
+#     21.0→18.7), train +151.1 vs 147.5 (+3.6pt), valid +77.2 flat (DD 5.8→5.0).
+#     Excluding STAR as well destroys valid (43.8, -30.1pt) — rejected.
+# Empty tuple = no board filter.
+S3_EXCLUDE_BOARDS: tuple[str, ...] = ("300",)
+
 # RS-rotation swap params (validated on backtest double windows 2026-08-09):
 # a held S-3 trade whose RS falls into the weakest 30% after >= 10 days is
 # swapped for the strongest RS>=0.8 candidate, at most SWAP_MAX_PER_DAY pairs.
@@ -198,6 +209,9 @@ def build_s3_candidates(
             continue
         rs = rs_by_day.get(ts)
         if rs is None or rs < S3_RS_MIN:
+            continue
+        code = str(sym).split(":")[-1]
+        if code[:3] in S3_EXCLUDE_BOARDS:
             continue
         industry = industry_by_ts.get(ts) or ""
         if not industry or industry not in mainline:

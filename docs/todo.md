@@ -64,7 +64,7 @@
 - **[P0] 重启回测系统**：原 BacktestPage 效果差已隐藏，待重做 → 见 §8
 - **[P0] 漏斗转化率度量闭环**：[done] 2026-08-02 —— `TIP-002` 埋点 + N 日表格已闭环（[`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)）；周报形态待 §3 P1 排期。
 - **[P1] 研报/新闻 α 来源**：见 §6。
-- **[P1] 卫星仓上限 / 仓位管理复核**：当前 15% 单票 + 30% 板块 + 袖子上限体系是否仍合理（参考 §13 `positionPct` 复杂度）。
+- **[P1] 卫星仓上限 / 仓位管理复核**：✅ **[done] 2026-08-09** —— 复核结论：① **单票 15% cap / clip 5% 维持**（S-3 单票 ≤7.5% 远低，无冲突）；② **S-3 候选豁免 30% 板块 cap + 30% 相关性簇 cap**（用户拍板：S-3 主线集中=回测验证特性，行业 cap 实验崩盘实证；前端 `deriveActionCard`/`evaluateNewEntryGates`/`suggestFireSizePct` 加 `isS3Candidate` 豁免，WatchlistTable/Row/execution-markdown 三处接入 buildS3Candidates 集合，4 新测试）；③ **旧口径统一**：§19.1 C5「≤10笔」+ 决策 Agent「>9票轮出」→ **20 票**（mp20 定案，ai-service decision.ts + todo §19.1 同步）。验收：FE 751 passed + typecheck + lint 4 包全绿；顺带修 backfill 脚本缺 `import time`（回拉恢复前置）
 - **[P2] 开火来源归因（TV/Alpha/手动）**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-tip-011-execution-source.md`](./archive/2026-08-04-tip-011-execution-source.md)（TIP-011 · source 贯穿 write-path：前端 deriveActionCard 写 `source`（TV/ALPHA/MANUAL）→ diff_snapshots 透传 → `execution_decision_changes.source` + `paper_trades.source`；`GET /v1/execution/source-stats` 按来源出 BUY 信号量 + 平仓胜率；Copy markdown 新 section「Execution · Source attribution (30d)」；alembic 0018）。
 - **[P2] Alpha 映射质量抽检**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md`](./archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md)（TIP-009 · 5 信号自动 QA · 用户零操作；theme_industry_map 从历史 alpha_radar_trends 数据驱动学，penalty 应用到 compute_alpha_additions，Copy markdown 末尾暴露给外部 AI agent）。
 - **[P2] 风险平价开仓尺寸（V7.0-02）**：✅ **[done] 2026-08-05** → [`archive/2026-08-05-v7-02-risk-parity-sizing.md`](./archive/2026-08-05-v7-02-risk-parity-sizing.md)（Suggest% = min(5% clip, 0.5%风险预算/止损距离%, 单票/行业/Sleeve room)；实际止损位优先、2×ATR 兜底；<2.5% 放弃；绑定约束 note=`risk` + 面板显示止损距离；BE 零改动）。关联 §3 P1「卫星仓上限/仓位管理复核」。
@@ -562,6 +562,7 @@
 | ② 数据源健康告警 | **[x] 2026-08-08**：`services/data-sync-service/scripts/data_healthcheck.py` 6 项检查（28 job 健康/daily 新鲜/TV 快照/EM 覆盖/分数新鲜/备份年龄）+ `scripts/install-healthcheck-launchd.sh`（每日 08:30 + 登录 + FAIL 桌面通知）；**上线即抓 4 真实问题**：adj_factor 连续 4 周五失败=17:00 与 daily_sync 并发抢 tushare 配额→**错峰 18:30**；stock_daily_full 6-13 起失败=已重定向 close_sync 降噪处理；etf/news 入观察 |
 | ③ 阈值再校准实验 | **[x] 2026-08-08**：18 组合聚焦网格（score 60/70/80 × hold 5/10 × stop -6/-8/-10，2026-06-18~08-07）**全组合仍负**；相对最优 score 70+stop -6（-0.76%，72 笔，win 38.9%）；hold 5/10 无差异；**结论：不调 live 参数**（-0.76% 仍负期望，调参只挖浅 1%）；收益归因在信号供给单一化（97% ALPHA）→ 立为 L4 后业务课题 |
 | **观察清单**（healthcheck 暴露，非紧急） | **[w]** `etf_daily_full`：8-01（每月 1 日 19:00 回填）限流失败，9-01 复查；`news_enrich_job`：8-07 20:59 一次失败（enriched 24/49 部分成功），前面多次成功——每天 2 次跑，若复发深挖 |
+| **稳定性审计（2026-08-09 · 业务+工程双轨 · 5 修）** | **[x] 全部处理**：① **backup_age 假 FAIL**：healthcheck 36h 阈值 vs 备份 25h 跳过节奏（最长合法间隔 49h）→ 阈值 36→50h；② **cn_industry_post_close_sync 工作日每天失败**（8-04~07）：17:35 太早（东财盘后行业数据 17:30-18:30 才发布）→ **cron 17:35→18:15** + error_message 加三部分诊断（原来只给 "unknown"）；③ **option_iv_daily 161 次失败**（8-06 起）：东财风控（回拉风暴 IP 拉黑）拒 push2 期权接口（502/Empty reply）→ `em_push2_http.em_get_json` 三链加 **EASTMONEY_PROXY + COOKIE**（与 fflow 同配方，**同时修复 etf_fund_flow_em/realtime_quote 同源问题**）；④ **eastmoney_industry_sync 16 次失败**（同根因 push2/emweb unreachable）→ 该模块 urllib 层加代理（_open_url helper）；⑤ **news_enrich 恶化 49/0**：ai-service 离线（环境状态）+ 失败原因从未入库 → `enrich_batch`/`run_enrichment_cycle` 透传 firstError 进 error_message（下次失败可诊断）；**归因非问题**：hk_basic 72 次失败=当时 .env 缺 key（21:44 已补全，重启服务验证）、top_inst suspicious_empty_lhb（8-08 起自愈 91 连成功）、tv_snapshots 27h（周末无盘中快照正常）、docker-nginx-1 重启循环（dify 无关项目）；**测试隔离**：em_push2_http/eastmoney_industry 测试加 _PROXY/_COOKIE 清空 fixture（host .env 有代理时旧 mock 走真网络）；验收：**3500 passed 全绿 + 基线重存（score 回填 367691 行，无服务状态下 save）** |
 
 ### 覆盖率波 1（§8 计划 · 目标 BE ≥75% + 11 核心模块 ≥85%）
 
@@ -662,10 +663,22 @@
       walk-forward 证明 0.7/0.8 过拟合（验证窗劣化）、0.5 双窗稳健
 - [ ] **A2 趋势评分校准**：score 是"买点评分"（低位刚启动加分）→ 涨了 3 倍的高位强票低分。
       引入"趋势质量"维度（RS 排名 + 均线多头排列 + 距 52W 高距离），与 score 组成双信号
-- [ ] **A3 主线板块强化**：mainline 白名单已有（5D Top3 ∪ 动量突破）——验证其对胜率贡献
-      并考虑"只做主线"的严格模式（非主线票即使高分也不买）
-- [ ] **A4 专注池实验**：科创/创业板 beta 暴露——牛市 regime 下是否应提高成长板块暴露
-      （指标：池内 688/300 票占比 vs 基准收益贡献）
+- [x] **A3 主线板块强化**：mainline 白名单已有（5D Top3 ∪ 动量突破）——**valid 窗量化先行
+      （2026-08-09，详见 §19.2 mainline/flow 节）**：gates 三档对照证明 flow+mainline 闸门在
+      数据齐的 valid 窗贡献 +32.6pt + 回撤再减半 + 胜率 +13pt，「只做主线严格模式」有数据支持；
+      OOS2 历史段回拉后补三窗定案（严格模式是否固化需等回拉）
+- [x] **A4 专注池实验**：科创/创业板 beta 暴露——**done 2026-08-09（板块限制实验 + 固化）**：
+      A4 分析：universe 主板 73.2%/创业 14.3%/科创 12.5%；valid 窗科创 30笔胜率70%贡献+59.6pt
+      （占全窗 77%）= alpha 主力；主板=稳健基本盘；**创业板 300 三窗从未正贡献**。
+      引擎加 `exclude_boards`（前缀逗号分隔，frozen dataclass object.__setattr__ + 2 单测）+
+      `--param` 字符串类型修复（`from __future__ import annotations` 下 f.type 是字符串）。
+      **三窗验证**：排除 300 → OOS2 +124.3（+17.4pt/DD 21.0→18.7）、train +151.1（+3.6pt/胜率
+      +2.4pt）、valid +77.2 持平（DD 5.8→5.0）——**三窗 0 劣化通过**；排除 300+688 → valid
+      -30.1pt 拒收（科创不可砍）。
+      **✅ 用户拍板固化**：paper `S3_EXCLUDE_BOARDS=("300",)`（build_s3_candidates 过滤，
+      1 新测试）+ BacktestPage 默认 '300'（新输入框）+ 后端 /api/backtest/run 参数 +
+      walk-forward S3_CONFIG 同步；99 BE 相关测试 + FE 748 全绿（验收见 strategy-params.md
+      §4 版本历史）
 
 **B. 执行层**
 
@@ -726,7 +739,8 @@
 2. 买入前自查：regime 非 Weak（banner）✓ → score≥65 ✓ → RS 前50%（绿色徽标）✓ → 主线 ✓ → 非恐慌冷却期
 3. **卖出只按**：移动止损 -8% / 固定 -5% / 60 天——**禁止**因"涨了 10%"或"评分回落"卖出（回测证明是错误）
 4. 恐慌冷却期（极端谨慎日 +3 天）不买新票
-5. 每笔 5-10%，同时 ≤10 笔；不加仓追涨
+5. 每笔 5%（paper S-3 口径），同时 ≤20 笔（mp20 定案）；加仓每票至多 1 次（+2.5% 触发，半仓）
+   （2026-08-09 复核：原「≤10笔」为 S-3 定案前旧口径，已统一为 20——见下方卫星仓复核记录）
 
 #### 执行顺序（一次一项 · 每项 = 改动 + 测试 + 证据）
 
@@ -1036,15 +1050,42 @@ swap 0→0.3/0.8/10/2（paper 已部署，待复审）· position 回测 10% / p
 - **脚本就绪**：`scripts/backfill_industry_flow_history.py` —— 表内 distinct SW L1 行业
   （约 30 个）逐行业拉东财 push2his daykline 全量历史（cron 同源接口）→ 幂等 upsert，
   支持 --since 2024-07-01（覆盖 OOS2）与并发
-- **⛔ 受阻（2026-08-09 深挖结论）**：push2his 分接口风控差异——
-  **`fflow/daykline/get`（资金流历史，回拉脚本走此）稳定 RemoteDisconnected**；
-  `stock/kline/get`（普通 K 线）通；`push2delay` fflow 只回最近 1 条（无历史）；
-  akshare 同源同断；tushare moneyflow_ind_dc/ths 无 token 权限——**当前无可用
-  东财资金流历史源**。对策：`scripts/retry_backfill_until_done.py` 已挂后台
-  （每 10 分钟一轮串行重试 + 失败行业多轮重跑，幂等 upsert，零人工）——接口
-  恢复即自动补全；或用户拿到 tushare 2000 积分后换 moneyflow_ind_dc
-- 候选（未拍板不做）：stock/kline 通→行业指数价格动量近似资金流 Top3（A3 机制
-  改动，改回测口径，需用户拍板）
+- **⚠️ 进行中（2026-08-09 晚 · 用户拍板低频慢慢跑）**：
+  - **已入库 37423 行**（source=backfill：312 行业 × 120 天，2026-02-06~08-07）——
+    21:39 换节点 jms-s2 后一轮拉取成功（retry 进程自动跑），**valid 窗（26-03~08）
+    资金流闸门已补齐**；表内现有 eastmoney_bkzj 19181 行（12-15 起 cron 增量）
+  - **关键发现：`lmt=0` 只返回最近 120 条 kline**（不是全历史）——历史段
+    （2024-07~2026-02）需分页：尝试 `beg/end` 参数（stock/kline 支持，fflow 待验证；
+    失败可能与节点拉黑混淆）
+  - **风控再升级（第 4 层·当前卡点）：人机验证码**（弹了 2 次）——验证码后
+    jms-s2 节点也全拒；**换新节点可突破一次**（jms-s1→jms-s2 即通，312 行业一次
+    成功），黑名单冷却后继续（30min~24h）
+  - **已生效**：ClashX Meta 规则 eastmoney/dfcfw→PROXY 置顶（备份
+    ~/.config/clash.meta/config.yaml.bak-*）；`retry_backfill_until_done.py`
+    已写好（probe 死即跳过零请求、解封自动低频回拉）——**后台循环已停**
+  - **⏸ 暂停（2026-08-09 深夜 · 用户拍板"先不测了，以后再说"）**：
+    部分 proxy 节点断连 + 验证码风控升级，回拉暂停。**下次恢复路径**：
+    ① 等 ClashX 节点恢复/换未黑节点 → ② 一条命令重跑
+    `PYTHONPATH=src python3 scripts/backfill_industry_flow_history.py --since 2024-07-01
+    --rounds 2 --workers 1 --sleep-between 15` → ③ 或用户打开
+    data.eastmoney.com/bkzj/hy.html 用 DevTools 抄官方前端的历史资金流
+    接口参数（可能含分页/日期参数，替代 lmt=0 的 120 条上限）
+- **⛔ 风控机制备忘（2026-08-09 三层排查结论 · 用户协助实测）**：
+  - **层 1 接口鉴权**：fflow 历史需要东财**指纹 cookie**（qgqp_b_id 等，JS 在
+    页面生成；DevTools 实测 Remote Address=127.0.0.1:7890 走代理、cookie 齐全
+    才通）——curl/urllib 无 cookie 必断；最小可用集 `qgqp_b_id + nid18`（已验证）
+  - **层 2 TLS 指纹**：同 cookie 下 macOS curl（SecureTransport）通、Python
+    urllib/curl_cffi（OpenSSL 栈）断 → `industry_fund_flow.py` 已改 subprocess
+    调 curl（`--noproxy *` 防环境代理）+ `.env` 加 `EASTMONEY_COOKIE`（模块级
+    load_dotenv 兜底脚本场景）——**cron 增量同步与回拉同函数同修复**
+  - **层 3 IP/频率黑名单（当前卡点）**：组合测试 + 失败重试风暴（~300 次失败
+    连接）触发**家宽 IP 全面拉黑**（stock/kline 也断、无痕浏览器+美国节点也断）
+    → 对策：停手冷却 + `retry_backfill_until_done.py` 改低频（interval 1800s、
+    backfill tries 2、失败行业多轮）——**黑名单冷却后（30min~24h）再跑**
+  - 教训：**失败重试风暴 = 拉黑诱因**；风控接口必须"低频率 + 一次成功"
+- 候选（未拍板不做）：stock/kline 价格动量近似资金流 Top3（A3 机制改动，需拍板）
+- cookie 刷新指引：Chrome 打开任意东财页 → F12 → Application → Cookies →
+  https://data.eastmoney.com 域 → 复制全部 cookie 对到 .env `EASTMONEY_COOKIE=`
 - **前端系统自检（同日 · 用户「任何问题报错」）**：全局 `SystemHealthBanner`
   （AppShell header 下方，任何页面可见）——并行探测：① data-sync-service 在线
   （/api/health/datasources）② ai-service 在线（/healthz）③ 6 数据源新鲜度
@@ -1055,8 +1096,24 @@ swap 0→0.3/0.8/10/2（paper 已部署，待复审）· position 回测 10% / p
 - **顺带修复（同日）**：cron 失败静默告警缺失 → `SyncFailureBanner`（Dashboard 顶部，
   消费 GET /api/health/job-failures?hours=48，有失败显示红色横幅：job×次数+时间+错误
   摘要+跳 Scheduler 详情；健康/不可达均不渲染）；3 新测试；FE 740 passed
+- **挂测试修复（同日）**：`test_industry_fund_flow_service_extra.py` 5 个挂测试全修
+  （28 passed）——TestDayKline 3 个 mock 旧 urllib urlopen，现 `_eastmoney_board_fund_flow_daykline`
+  已改 subprocess curl → 改 mock `iff.subprocess.run`（CompletedProcess stdout）；TestDataApi 2 个
+  mock `iff.urllib.request` 失败根因 = 模块只 `import urllib.parse`，`urllib.request` 靠全局
+  副作用存活 → 显式 `import urllib.request`；顺带修 load_dotenv 块遗留 E402（4 处 noqa）
 - 后续：接口恢复 → 回拉 → 三窗复核（train/OOS2/valid 对比基线 114.2/80.5/51.8）+ A3
   量化（gates none/regime/full 对照）→ 结论入 strategy-params.md 复核列
+- **A3 量化先行（2026-08-09 · valid 窗数据补齐后 · gates 三档对照完成）**：
+  - **valid 窗（数据完整，最干净）**：none +18.1%/DD25.9/胜25.8/198笔 →
+    regime +44.5%/DD10.8/胜43.1/109笔 → full +77.1%/DD5.8/胜56.2/64笔
+  - **train 窗**：none +159.0/DD10.4 → regime +119.4/DD9.4 → full +147.5/DD10.0
+  - **OOS2 窗**：none +59.1/DD38.3/胜36.3/499笔 → regime +106.9/DD21.0/胜42.0/319笔 →
+    full = regime 完全一致（flow 数据缺失 fail-open 降级，看不到增量）
+  - **结论**：① regime 闸门=最大单项贡献（三窗一致 +26~48pt 且回撤砍半）；② flow+mainline
+    闸门=第二正贡献（valid +32.6pt + 回撤减半 + 胜率 +13pt）——「只做主线严格模式」有
+    数据支持，但 OOS2 需历史回拉后三窗定案；③ 回拉完成后再跑一次全三窗 none/regime/full
+    补 OOS2 证据（严格模式决策依据）
+  - 结果入档 strategy-params.md 版本历史（复核列）
 
 #### C1 walk-forward 工具（2026-08-09 ✅ · §19.2 执行顺序第 3 项 · 季度复核基建）
 

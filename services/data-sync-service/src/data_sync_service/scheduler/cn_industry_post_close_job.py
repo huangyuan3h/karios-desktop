@@ -20,8 +20,11 @@ from data_sync_service.service.market_sentiment import sync_cn_sentiment
 logger = logging.getLogger(__name__)
 
 JOB_ID = "cn_industry_post_close_sync"
-# Weekdays 17:35 Asia/Shanghai (after close_sync 17:10 + watchlist_automation 17:30).
-CRON_EXPRESSION = "35 17 * * 1-5"
+# Weekdays 18:15 Asia/Shanghai. Was 17:35 — eastmoney publishes the daily
+# industry fund-flow/mainline data late afternoon (17:30-18:30); 17:35 runs
+# failed every weekday with no data yet (2026-08-09 audit). 18:15 sits after
+# close_sync 17:10 + watchlist_automation 17:30 + paper_s3_intake 17:42.
+CRON_EXPRESSION = "15 18 * * 1-5"
 TIMEZONE = "Asia/Shanghai"
 
 
@@ -49,7 +52,14 @@ def run() -> None:
             or sentiment.get("error")
             or "unknown"
         )
-        insert_record(JOB_ID, success=False, error_message=str(err))
+        # 2026-08-09: include per-part status so a silent part (ok=False with
+        # no error field) is diagnosable instead of a bare "unknown".
+        detail = {
+            "industry": (industry.get("ok"), industry.get("skipped"), industry.get("error")),
+            "mainline": (mainline.get("ok"), mainline.get("error")),
+            "sentiment": (sentiment.get("ok"), sentiment.get("error")),
+        }
+        insert_record(JOB_ID, success=False, error_message=f"{err} {detail}")
         logger.warning("cn_industry_post_close_sync failed: industry=%s mainline=%s sentiment=%s", industry, mainline, sentiment)
         return
 

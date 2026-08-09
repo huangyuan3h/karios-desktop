@@ -56,6 +56,7 @@ S3_CONFIG: dict[str, float | int | str] = {
     "pyramid_trigger_pct": 2.5,
     "pyramid_add_scale": 0.5,
     "pyramid_max_adds": 1,
+    "exclude_boards": "300",
 }
 
 WINDOWS: dict[str, tuple[str, str]] = {
@@ -69,13 +70,17 @@ BASELINE_FILE = REPORT_DIR / "walk_forward_baseline.json"
 
 
 def _overrides(args: argparse.Namespace) -> dict[str, float | int | str]:
-    valid = {f.name for f in fields(BacktestConfig)}
+    field_types = {f.name: f.type for f in fields(BacktestConfig)}
+    valid = set(field_types)
     out: dict[str, float | int | str] = {}
     for kv in args.param:
         key, _, value = kv.partition("=")
         key = key.strip()
         if key not in valid:
             print(f"WARN: unknown BacktestConfig field {key!r} (ignored)", file=sys.stderr)
+            continue
+        if str(field_types[key]) == "str":
+            out[key] = value.strip()
             continue
         raw: float | int | str
         try:

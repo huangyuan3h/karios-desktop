@@ -3,16 +3,25 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 import time
 import urllib.parse
 import urllib.request
 import warnings
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Literal
 
-from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic
-from data_sync_service.db.stock_eastmoney_industry import (
+# 2026-08-09: home-line IP is rate-limited/banned by eastmoney (backfill
+# storm fallout); route push2/emweb via the ClashX node exit when
+# EASTMONEY_PROXY is set (mirrors em_push2_http.py / industry_fund_flow.py).
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(Path(__file__).resolve().parents[5] / ".env")  # noqa: E402
+
+from data_sync_service.db.stock_basic import ensure_table as ensure_stock_basic  # noqa: E402
+from data_sync_service.db.stock_eastmoney_industry import (  # noqa: E402
     count_rows,
     coverage_stats,
     list_missing_cn_ts_codes,
@@ -20,7 +29,23 @@ from data_sync_service.db.stock_eastmoney_industry import (
     lookup_by_ts_codes,
     upsert_rows,
 )
-from data_sync_service.db.sync_job_record import get_today_run, insert_record
+from data_sync_service.db.sync_job_record import get_today_run, insert_record  # noqa: E402
+
+_PROXY = os.environ.get("EASTMONEY_PROXY", "").strip()
+_COOKIE = os.environ.get("EASTMONEY_COOKIE", "").strip()
+
+
+def _em_opener() -> urllib.request.OpenerDirector | None:
+    if not _PROXY:
+        return None
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": _PROXY, "https": _PROXY})
+    )
+
+
+def _open_url(req: urllib.request.Request, timeout: float):
+    opener = _em_opener()
+    return opener.open(req, timeout=timeout) if opener else urllib.request.urlopen(req, timeout=timeout)
 
 JOB_TYPE = "eastmoney_industry_sync"
 
@@ -92,7 +117,7 @@ def _push2_get_label(url: str, ts_code: str) -> str | None:
             "Connection": "close",
         },
     )
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with _open_url(req, timeout=10) as resp:
         raw = resp.read()
     j = json.loads(raw.decode("utf-8", errors="replace"))
     data = j.get("data") if isinstance(j, dict) else None
@@ -150,7 +175,7 @@ def _fetch_em_industry_emweb(ts_code: str) -> str | None:
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _open_url(req, timeout=15) as resp:
             raw = resp.read()
     except Exception:  # noqa: BLE001 - emweb down/limited → treat as no label
         return None

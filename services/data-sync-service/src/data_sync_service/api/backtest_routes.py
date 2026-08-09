@@ -60,6 +60,7 @@ def backtest_run(
     panic_cooldown_days: int = Query(0, ge=0, le=30, description="Days after a sentiment-panic day with no new entries (default 0; S-3 uses 3)."),
     slippage_pct: float = Query(0.0, ge=0, le=2, description="One-way slippage % deducted at entry and exit (default 0; S-3 honest view uses 0.05)."),
     trend_score_min: float = Query(0.0, ge=0, le=100, description="A2 trend-quality score minimum (0 disables; 60 = MA-aligned, near-high, strong RS stocks only)."),
+    exclude_boards: str = Query("", description="Comma-separated 3-digit board prefixes to exclude (e.g. '300' = ChiNext; empty = no filter)."),
 ) -> dict[str, Any]:
     """Run one backtest configuration (signals = historical TrendOK scores
     filtered by entry gates — traffic-light regime / sector flow / mainline)."""
@@ -84,6 +85,7 @@ def backtest_run(
             panic_cooldown_days=panic_cooldown_days,
             slippage_pct=slippage_pct,
             trend_score_min=trend_score_min,
+            exclude_boards=exclude_boards,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

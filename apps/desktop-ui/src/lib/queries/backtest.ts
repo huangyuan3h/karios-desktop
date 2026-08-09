@@ -121,6 +121,7 @@ export type BacktestParams = {
   scoreFloor: number;
   panicCooldownDays: number;
   slippagePct: number;
+  excludeBoards: string;
 };
 
 export const GATE_LEVELS = [
@@ -146,6 +147,7 @@ function backtestRunPath(p: BacktestParams): string {
     score_floor: String(p.scoreFloor),
     panic_cooldown_days: String(p.panicCooldownDays),
     slippage_pct: String(p.slippagePct),
+    exclude_boards: p.excludeBoards,
   });
   return `/api/backtest/run?${q.toString()}`;
 }

@@ -66,8 +66,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--since", default="2025-12-15", help="Rows with date < this count as 'history' (cron start date)")
     ap.add_argument("--fetch-since", default="2024-07-01", help="Backfill start date passed to the backfill script")
-    ap.add_argument("--interval-s", type=int, default=900, help="Wait between rounds")
-    ap.add_argument("--max-hangs", type=int, default=24, help="Give up after N rounds with zero progress")
+    ap.add_argument("--interval-s", type=int, default=1800, help="Wait between rounds (long: IP bans follow retry storms)")
+    ap.add_argument("--max-hangs", type=int, default=48, help="Give up after N rounds with zero progress")
     args = ap.parse_args()
 
     target = date.fromisoformat(args.fetch_since)
@@ -84,7 +84,8 @@ def main() -> int:
             time.sleep(args.interval_s)
             continue
         proc = subprocess.run(
-            [sys.executable, str(SCRIPT), "--since", str(target), "--rounds", "2", "--workers", "1"],
+            [sys.executable, str(SCRIPT), "--since", str(target), "--rounds", "2", "--workers", "1",
+             "--sleep-between", "15"],
             cwd=str(SCRIPT.parents[1]),
             env={**__import__("os").environ, "PYTHONPATH": str(SCRIPT.parents[1] / "src")},
         )

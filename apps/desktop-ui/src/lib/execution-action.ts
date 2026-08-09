@@ -315,6 +315,11 @@ export function suggestFireSizePct(opts: {
    *  cluster (30% - current cluster exposure). Entering the min chain
    *  shrinks Suggest% as the cluster fills up. */
   roomCorrelation?: number | null;
+  /** S-3 candidate (user-approved 2026-08-09): exempt from the 30% sector /
+   *  correlation-cluster caps — the S-3 mainline strategy is concentrated by
+   *  design (industry-cap experiments crashed the valid window). Other caps
+   *  (clip / single / sleeve / risk) still bind. */
+  isS3Candidate?: boolean;
 }): FireSizeSuggestion | null {
   const clip =
     typeof opts.clipPct === 'number' && Number.isFinite(opts.clipPct) && opts.clipPct > 0
@@ -327,7 +332,7 @@ export function suggestFireSizePct(opts: {
 
   const industry = String(opts.industryName || '').trim();
   let roomSector = Number.POSITIVE_INFINITY;
-  if (industry && opts.sectorExposureByIndustry) {
+  if (!opts.isS3Candidate && industry && opts.sectorExposureByIndustry) {
     const sum = opts.sectorExposureByIndustry.get(industry);
     const sectorSum = typeof sum === 'number' && Number.isFinite(sum) ? sum : 0;
     roomSector = SECTOR_CONCENTRATION_CAP_PCT - sectorSum;
@@ -361,9 +366,11 @@ export function suggestFireSizePct(opts: {
   }
 
   let roomCorrelation = Number.POSITIVE_INFINITY;
-  const corrRoom = num(opts.roomCorrelation);
-  if (corrRoom != null && Number.isFinite(corrRoom)) {
-    roomCorrelation = corrRoom;
+  if (!opts.isS3Candidate) {
+    const corrRoom = num(opts.roomCorrelation);
+    if (corrRoom != null && Number.isFinite(corrRoom)) {
+      roomCorrelation = corrRoom;
+    }
   }
 
   const room = Math.min(clip, roomSingle, roomSector, roomSleeve, riskCap, roomCorrelation);
@@ -769,6 +776,9 @@ export function evaluateNewEntryGates(opts: {
   /** V7.0-01 / L3-P5: semantic factor-cluster exposure % of the symbol's
    *  cluster. >= 30% blocks new BUY/ADD (existing positions untouched). */
   clusterExposurePct?: number | null;
+  /** S-3 candidate (user-approved 2026-08-09): exempt from the 30% sector /
+   *  correlation-cluster entry blocks (mainline concentration is validated). */
+  isS3Candidate?: boolean;
 }): NewEntryGateResult {
   const {
     industryName,
@@ -831,7 +841,7 @@ export function evaluateNewEntryGates(opts: {
   if (isGapUpWeakMarket(gapUp, marketRegime)) {
     return { ok: false, tag: null, why: 'GAP_UP_WEAK_BLOCK' };
   }
-  if (!isEtf && isSectorConcentrationBlocked(industryName, sectorExposureByIndustry)) {
+  if (!isEtf && !opts.isS3Candidate && isSectorConcentrationBlocked(industryName, sectorExposureByIndustry)) {
     return { ok: false, tag: null, why: 'SECTOR_CONC_BLOCK' };
   }
   if (isSleeveCapBlocked(sleeveExposurePct, positionRangeHint)) {
@@ -839,7 +849,9 @@ export function evaluateNewEntryGates(opts: {
   }
   // V7.0-01: cluster cap blocks NEW entries only — existing positions are
   // never force-sold, so held symbols (ADD) skip the correlation check.
-  if (isCorrelationClusterBlocked(clusterExposurePct)) {
+  // S-3 candidates (user-approved 2026-08-09) also skip it: mainline
+  // concentration is a validated feature, not an accident.
+  if (!opts.isS3Candidate && isCorrelationClusterBlocked(clusterExposurePct)) {
     return { ok: false, tag: null, why: 'CORRELATION_CAP_BLOCK' };
   }
   if (isEtf) {
@@ -943,6 +955,9 @@ export function deriveActionCard(opts: {
    *  cluster (from GET /api/backtest/correlation-status). Passed into the
    *  entry gates (>=30% blocks new BUY) and Suggest% headroom. */
   clusterExposurePct?: number | null;
+  /** S-3 candidate (user-approved 2026-08-09): exempt from the 30% sector /
+   *  correlation-cluster caps in the entry gates and Suggest% sizing. */
+  isS3Candidate?: boolean;
 }): ExecutionActionCard {
   const {
     symbol,
@@ -963,6 +978,7 @@ export function deriveActionCard(opts: {
     now = null,
     source = null,
     clusterExposurePct = null,
+    isS3Candidate = false,
   } = opts;
   const held = isHeldPosition(position);
   const isEtf = isEtfWatchlistSymbol(symbol);
@@ -1089,6 +1105,7 @@ export function deriveActionCard(opts: {
     now,
     isEtf,
     clusterExposurePct,
+    isS3Candidate,
   });
   // Mainline column independent of chase / concentration vetoes
   const mainlineOk = Boolean(
@@ -1278,6 +1295,7 @@ export function deriveActionCard(opts: {
         typeof clusterExposurePct === 'number' && Number.isFinite(clusterExposurePct)
           ? CORRELATION_CLUSTER_CAP_PCT - clusterExposurePct
           : null,
+      isS3Candidate,
     });
     if (size) {
       suggestAddPct = size.addPct;

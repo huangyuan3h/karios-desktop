@@ -504,6 +504,8 @@ export type WatchlistRowProps = {
   /** V7.0-01 / L3-P5: semantic factor-cluster exposure % (from parent). */
   clusterExposurePct?: number | null;
   rsRank?: number | null;
+  /** S-3 candidate (user-approved 2026-08-09): exempt from sector/cluster caps. */
+  isS3Candidate?: boolean;
   showTooltip: ShowTooltipFn;
   hideTooltip: () => void;
   showColorPicker: (el: HTMLElement, sym: string) => void;
@@ -540,6 +542,7 @@ function WatchlistRowInner({
   defensiveSleeveExposurePct = 0,
   clusterExposurePct = null,
   rsRank = null,
+  isS3Candidate = false,
   showTooltip,
   hideTooltip,
   showColorPicker,
@@ -593,6 +596,7 @@ function WatchlistRowInner({
     sectorOutflowBlock,
     catalyst,
     todaySh: getShanghaiTodayIso(),
+    isS3Candidate,
   });
   const execTone =
     actionCard.action === 'EXIT' || actionCard.action === 'PURGE'

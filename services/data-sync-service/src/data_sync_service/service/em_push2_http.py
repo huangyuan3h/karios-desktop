@@ -3,16 +3,28 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Any
+
+# Scripts (backfill / healthcheck) run outside FastAPI — load the repo root
+# .env so EASTMONEY_PROXY / EASTMONEY_COOKIE are available even when
+# get_settings() was never called. Mirrors industry_fund_flow.py.
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(Path(__file__).resolve().parents[5] / ".env")
+
+_PROXY = os.environ.get("EASTMONEY_PROXY", "").strip()
+_COOKIE = os.environ.get("EASTMONEY_COOKIE", "").strip()
 
 
 def _em_headers(referer: str) -> dict[str, str]:
     parsed = urllib.parse.urlparse(referer)
     origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else "https://quote.eastmoney.com"
-    return {
+    headers = {
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -28,6 +40,12 @@ def _em_headers(referer: str) -> dict[str, str]:
         "Sec-Fetch-Site": "same-site",
         "Connection": "keep-alive",
     }
+    # 2026-08-09: eastmoney IP-ban (caused by the fund-flow backfill storm)
+    # rejects the home line; a proxy exit node + fingerprint cookie restores
+    # access (same recipe as industry_fund_flow._eastmoney_board_fund_flow_daykline).
+    if _COOKIE:
+        headers["Cookie"] = _COOKIE
+    return headers
 
 
 def _json_dict_from_text(text: str, *, source: str) -> dict[str, Any]:
@@ -48,6 +66,8 @@ def _curl_get_json(url: str, *, params: dict[str, str], referer: str, timeout: f
     full_url = f"{url}?{urllib.parse.urlencode(params)}"
     headers = _em_headers(referer)
     args = ["curl", "-sS", "--compressed", "-w", "\n%{http_code}"]
+    if _PROXY:
+        args += ["-x", _PROXY]
     for name, value in headers.items():
         args.extend(["-H", f"{name}: {value}"])
     args.append(full_url)
@@ -74,7 +94,12 @@ def _curl_get_json(url: str, *, params: dict[str, str], referer: str, timeout: f
 def _urllib_get_json(url: str, *, params: dict[str, str], referer: str, timeout: float) -> dict[str, Any]:
     full_url = f"{url}?{urllib.parse.urlencode(params)}"
     req = urllib.request.Request(full_url, headers=_em_headers(referer))
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    opener: urllib.request.OpenerDirector | None = None
+    if _PROXY:
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": _PROXY, "https": _PROXY})
+        )
+    with (opener.open(req, timeout=timeout) if opener else urllib.request.urlopen(req, timeout=timeout)) as resp:
         raw = resp.read()
         status = getattr(resp, "status", 200)
     if int(status) >= 400:
@@ -94,12 +119,15 @@ def em_get_json(
     try:
         import requests  # type: ignore[import-not-found]
 
+        proxies: dict[str, str | None] = {"http": None, "https": None}
+        if _PROXY:
+            proxies = {"http": _PROXY, "https": _PROXY}
         resp = requests.get(
             url,
             params=params,
             headers=_em_headers(referer),
             timeout=timeout,
-            proxies={"http": None, "https": None},
+            proxies=proxies,
         )
         if resp.status_code >= 400:
             preview = resp.text[:160].replace("\n", " ")

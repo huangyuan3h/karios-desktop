@@ -188,7 +188,9 @@ def check_backup_age() -> dict[str, Any]:
         return _fail("no backup dumps found")
     mtime = datetime.fromtimestamp(dumps[-1].stat().st_mtime, tz=UTC)
     age_hours = (_now_sh() - (mtime + SHANGHAI_OFFSET)).total_seconds() / 3600
-    if age_hours > 36:
+    # db_backup.sh skips when the newest dump is < 25h old (sleep safety net),
+    # so the max legit gap is ~49h; FAIL only beyond that (50h).
+    if age_hours > 50:
         return _fail(f"backup stale ({age_hours:.0f}h, {dumps[-1].name})")
     return _ok(f"backup {age_hours:.0f}h ago ({dumps[-1].name})")
 

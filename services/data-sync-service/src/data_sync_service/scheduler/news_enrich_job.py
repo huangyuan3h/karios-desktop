@@ -34,6 +34,8 @@ def run():
         err_msg = None
         if summary["totalFailed"] > 0:
             err_msg = f"failed={summary['totalFailed']}; enriched={summary['totalEnriched']}"
+            if summary.get("firstError"):
+                err_msg += f"; first_error={str(summary['firstError'])[:160]}"
         insert_record(
             JOB_ID,
             success=success,

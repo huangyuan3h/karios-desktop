@@ -9,6 +9,14 @@ import pytest
 from data_sync_service.service import eastmoney_industry as ei
 
 
+@pytest.fixture(autouse=True)
+def _no_proxy_env(monkeypatch):
+    """Tests must not depend on the host .env: with EASTMONEY_PROXY set the
+    code paths would use the real proxy opener instead of mocked urlopen."""
+    monkeypatch.setattr(ei, "_PROXY", "")
+    monkeypatch.setattr(ei, "_COOKIE", "")
+
+
 class TestSecid:
     def test_now_iso(self) -> None:
         assert ei._now_iso().endswith("+00:00")

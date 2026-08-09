@@ -4,28 +4,36 @@ import hashlib
 import json
 import os
 import random
+import subprocess
 import sys
 import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import Any
 
-from data_sync_service.db.industry_fund_flow import (
+# Backfill scripts run outside the FastAPI app, so ensure the repo root .env
+# (EASTMONEY_COOKIE) is loaded even when get_settings() was never called.
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(Path(__file__).resolve().parents[5] / ".env")  # noqa: E402
+
+from data_sync_service.db.industry_fund_flow import (  # noqa: E402
     get_dates_upto,
     get_latest_date,
     get_rows_for_dates,
     get_top_rows,
     upsert_daily_rows,
 )
-from data_sync_service.service.industry_fund_flow_read import series_map_from_rows
-from data_sync_service.service.industry_taxonomy import (
+from data_sync_service.service.industry_fund_flow_read import series_map_from_rows  # noqa: E402
+from data_sync_service.service.industry_taxonomy import (  # noqa: E402
     DEFAULT_INDUSTRY_FLOW_SOURCE,
     classify_sw_l1_industry,
     row_is_sw_l1,
 )
-from data_sync_service.service.trade_calendar_utils import (
+from data_sync_service.service.trade_calendar_utils import (  # noqa: E402
     is_cn_trading_day,
     last_open_date_on_or_before,
     resolve_effective_as_of,
@@ -123,24 +131,26 @@ def _eastmoney_board_fund_flow_daykline(*, secid: str) -> list[dict[str, Any]]:
         "_": int(time.time() * 1000),
     }
     qs = urllib.parse.urlencode(params)
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "application/json,text/plain,*/*",
-        "Referer": "https://data.eastmoney.com/",
-        "Connection": "close",
-    }
-    # eastmoney push2his fflow needs a trusted fingerprint cookie (qgqp_b_id
-    # etc.); requests without it get RemoteDisconnected (2026-08-09 finding).
-    # Set EASTMONEY_COOKIE in repo root .env (refresh from a browser session
-    # when the cookie expires).
+    # macOS system curl (SecureTransport TLS) is whitelisted by eastmoney's
+    # TLS-fingerprint gate; Python's OpenSSL stack gets RemoteDisconnected
+    # (2026-08-09 finding). Also requires EASTMONEY_COOKIE fingerprint cookie
+    # (repo root .env; refresh from a browser session when it expires).
+    cmd = [
+        "curl",
+        "-s",
+        "--max-time", "20",
+        "-A", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "-H", "Accept: application/json,text/plain,*/*",
+        "-H", "Referer: https://data.eastmoney.com/",
+    ]
+    # EASTMONEY_PROXY (e.g. http://127.0.0.1:7890) routes via the ClashX node
+    # exit — the home-line IP is banned by eastmoney (2026-08-09).
+    if os.environ.get("EASTMONEY_PROXY"):
+        cmd += ["-x", os.environ["EASTMONEY_PROXY"]]
     if os.environ.get("EASTMONEY_COOKIE"):
-        headers["Cookie"] = os.environ["EASTMONEY_COOKIE"]
-    req = urllib.request.Request(
-        f"{url}?{qs}",
-        headers=headers,
-    )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        raw = resp.read()
+        cmd += ["-H", f"Cookie: {os.environ['EASTMONEY_COOKIE']}"]
+    cmd += [f"{url}?{qs}"]
+    raw = subprocess.run(cmd, capture_output=True, timeout=30, check=False).stdout
     j = json.loads(raw.decode("utf-8", errors="replace"))
     data = j.get("data") if isinstance(j, dict) else None
     klines = (data or {}).get("klines") if isinstance(data, dict) else None

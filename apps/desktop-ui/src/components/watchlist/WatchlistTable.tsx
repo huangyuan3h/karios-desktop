@@ -35,6 +35,7 @@ import {
 import { useWatchlistRsRanksQuery } from '@/lib/queries/watchlist';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import type { ExecutionGate } from '@karios/shared';
+import { buildS3Candidates } from '@/lib/execution-markdown';
 import { useChatStore } from '@/lib/chat/store';
 import {
   buildDefensiveSleeveExposurePct,
@@ -236,6 +237,20 @@ export function WatchlistTable({
     [sortedItems, trend],
   );
 
+  const s3Symbols = React.useMemo(() => {
+    const cands = buildS3Candidates({
+      items: sortedItems,
+      trend,
+      rsRanks: rsRanksQuery.data?.ranks ?? null,
+      gate: executionGate ?? null,
+      mainlineAllow: mainlineAllow ?? null,
+      sectorOutflowBlock,
+      cnCap: null,
+      sleeveExposurePct,
+    });
+    return new Set(cands.map((c) => c.symbol));
+  }, [sortedItems, trend, rsRanksQuery.data, executionGate, mainlineAllow, sectorOutflowBlock, sleeveExposurePct]);
+
   const actionBySymbol = React.useMemo(() => {
     const m = new Map<string, string>();
     for (const it of sortedItems) {
@@ -259,6 +274,7 @@ export function WatchlistTable({
           sectorOutflowBlock,
           catalyst: catalystBySymbol?.get(it.symbol) ?? null,
           todaySh,
+          isS3Candidate: s3Symbols.has(it.symbol),
         });
         m.set(it.symbol, card.action);
       } catch {
@@ -755,6 +771,7 @@ export function WatchlistTable({
                         defensiveSleeveExposurePct={defensiveSleeveExposurePct}
                         clusterExposurePct={clusterExposureForSymbol(correlationStatus, it.symbol)}
                         rsRank={rsRanksQuery.data?.ranks[it.symbol] ?? null}
+                        isS3Candidate={s3Symbols.has(it.symbol)}
                         showTooltip={showTooltip}
                         hideTooltip={hideTooltip}
                         showColorPicker={showColorPicker}

@@ -23,7 +23,9 @@ def _capture_logs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 def test_constants() -> None:
     assert cn_industry_post_close_job.JOB_ID == "cn_industry_post_close_sync"
-    assert cn_industry_post_close_job.CRON_EXPRESSION == "35 17 * * 1-5"
+    # 18:15 — 17:35 was too early for eastmoney's daily industry data
+    # (every weekday run failed with no data yet; 2026-08-09 audit).
+    assert cn_industry_post_close_job.CRON_EXPRESSION == "15 18 * * 1-5"
     assert cn_industry_post_close_job.TIMEZONE == "Asia/Shanghai"
 
 
@@ -127,5 +129,9 @@ def test_run_logs_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     msgs = _capture_logs(monkeypatch)
     cn_industry_post_close_job.run()
 
-    assert captured == [(cn_industry_post_close_job.JOB_ID, False, "upstream down")]
+    assert captured[0][0] == cn_industry_post_close_job.JOB_ID
+    assert captured[0][1] is False
+    # error message now carries the per-part diagnostics (2026-08-09)
+    assert str(captured[0][2]).startswith("upstream down")
+    assert "'industry': (False" in str(captured[0][2])
     assert any("cn_industry_post_close_sync failed" in m for m in msgs)

@@ -403,7 +403,7 @@ def enrich_batch(items: list[dict[str, Any]]) -> dict[str, int]:
                 enrichment_status="failed",
                 enrichment_model=ENRICHMENT_MODEL,
             )
-        return {"enriched": 0, "failed": len(items), "filtered": 0}
+        return {"enriched": 0, "failed": len(items), "filtered": 0, "error": str(exc)[:300]}
 
     parsed = _parse_llm_response(raw, item_ids)
     enriched_count = 0
@@ -483,6 +483,7 @@ def run_enrichment_cycle(max_batches: int = 10) -> dict[str, Any]:
     total_failed = 0
     total_filtered = 0
     batches_processed = 0
+    first_error: str | None = None
 
     for batch_idx in range(max_batches):
         pending = fetch_pending_enrichment(limit=BATCH_SIZE)
@@ -501,12 +502,16 @@ def run_enrichment_cycle(max_batches: int = 10) -> dict[str, Any]:
                 counts = enrich_batch(kept)
                 total_enriched += counts["enriched"]
                 total_failed += counts["failed"]
+                if counts.get("error") and first_error is None:
+                    first_error = str(counts["error"])
                 logger.info(
                     "Enrichment batch %d: %d enriched, %d failed",
                     batch_idx + 1, counts["enriched"], counts["failed"],
                 )
             except Exception as exc:
                 logger.error("Enrichment batch %d failed: %s", batch_idx + 1, exc)
+                if first_error is None:
+                    first_error = str(exc)
                 for item in kept:
                     update_item_enrichment(
                         item_id=item["id"],
@@ -528,4 +533,5 @@ def run_enrichment_cycle(max_batches: int = 10) -> dict[str, Any]:
         "totalFailed": total_failed,
         "totalFiltered": total_filtered,
         "model": ENRICHMENT_MODEL,
+        "firstError": first_error,
     }

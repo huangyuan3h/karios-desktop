@@ -203,6 +203,19 @@ export function buildPositionsExecutionMarkdown(
   const hkRows: unknown[][] = [];
   const purgeSymbols: string[] = [];
   let hiddenRows = 0;
+  // S-3 candidate set (used for the sector/cluster-cap exemption and the
+  // S-3 section below) — computed once, before the per-row loop.
+  const s3Candidates = buildS3Candidates({
+    items,
+    trend,
+    rsRanks,
+    gate,
+    mainlineAllow,
+    sectorOutflowBlock,
+    cnCap,
+    sleeveExposurePct,
+  });
+  const s3Symbols = new Set(s3Candidates.map((c) => c.symbol));
   for (const it of items) {
     const t = trend[it.symbol];
     const q = quotes[it.symbol];
@@ -247,6 +260,7 @@ export function buildPositionsExecutionMarkdown(
       sectorOutflowBlock,
       catalyst,
       todaySh,
+      isS3Candidate: s3Symbols.has(it.symbol),
     });
     if (card.action === 'PURGE') {
       purgeSymbols.push(it.symbol);
@@ -298,16 +312,6 @@ export function buildPositionsExecutionMarkdown(
     if (marketOfSymbol(it.symbol) === 'hk') hkRows.push(row);
     else cnRows.push(row);
   }
-  const s3Candidates = buildS3Candidates({
-    items,
-    trend,
-    rsRanks,
-    gate,
-    mainlineAllow,
-    sectorOutflowBlock,
-    cnCap,
-    sleeveExposurePct,
-  });
   if (panicCooldown?.active) {
     lines.push(`${heading} S-3 回测口径买入候选（趋势跟随）`);
     lines.push(
@@ -365,7 +369,7 @@ export function buildPositionsExecutionMarkdown(
  * no sector-outflow block. Position = backtest size 10% per sleeve,
  * capped by the CN sleeve budget. CN only (HK has no score).
  */
-function buildS3Candidates(opts: {
+export function buildS3Candidates(opts: {
   items: WatchlistItem[];
   trend: Record<string, TrendOkResult | undefined>;
   rsRanks: Record<string, number> | null;
