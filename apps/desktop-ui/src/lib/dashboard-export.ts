@@ -51,7 +51,7 @@ import {
   formatSourceAttributionMarkdown,
   type SourceContext,
 } from '@/lib/execution-source';
-import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
+import { buildPositionsExecutionMarkdown, fetchPanicCooldown } from '@/lib/execution-markdown';
 import {
   buildMainlineAllowSet,
   isSectorOutflowBlock,
@@ -860,6 +860,8 @@ export async function buildWatchlistMarkdown(
   )
     .then((resp) => buildCatalystPurgeMap(resp))
     .catch(() => null);
+  const rsRanks = await fetchRsRanks(sorted.map((i) => i.symbol)).catch(() => null);
+  const panicCooldown = await fetchPanicCooldown();
   const { markdown, purgeSymbols } = buildPositionsExecutionMarkdown(
     sorted,
     trend,
@@ -871,6 +873,8 @@ export async function buildWatchlistMarkdown(
     todaySh,
     sectorOutflowBlock,
     catalystBySymbol,
+    rsRanks,
+    panicCooldown,
   );
   // Report still lists PURGE rows; remove them from storage for the next copy.
   if (purgeSymbols.length) {
@@ -1419,4 +1423,17 @@ export async function buildCopyDeltaMarkdown(opts: {
     lines.push('');
   }
   return lines.join('\n').trim();
+}
+
+async function fetchRsRanks(symbols: string[]): Promise<Record<string, number> | null> {
+  if (!symbols.length) return null;
+  try {
+    const q = encodeURIComponent(symbols.join(','));
+    const res = await fetch(`/watchlist/rs-ranks?symbols=${q}`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const d = (await res.json()) as { ranks?: Record<string, number> };
+    return d.ranks ?? null;
+  } catch {
+    return null;
+  }
 }

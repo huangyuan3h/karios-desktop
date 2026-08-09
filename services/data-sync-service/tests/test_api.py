@@ -480,3 +480,16 @@ def test_sync_jobs_aggregate_endpoint_shape() -> None:
     assert "hkIndustryCoverage" in payload
     assert "alphaRadar" in payload
     assert "watchlistAutomation" in payload
+
+
+@pytest.mark.requires_postgres
+def test_panic_cooldown_endpoint() -> None:
+    """GET /market/cn/sentiment/panic-cooldown returns S-3 panic status shape."""
+    client = TestClient(app)
+    res = client.get("/market/cn/sentiment/panic-cooldown?days=10&cooldownDays=3")
+    assert res.status_code == 200
+    body = res.json()
+    assert set(body) == {"lastPanicDate", "cooldownEndDate", "active"}
+    assert isinstance(body["active"], bool)
+    if body["lastPanicDate"]:
+        assert body["cooldownEndDate"] is not None

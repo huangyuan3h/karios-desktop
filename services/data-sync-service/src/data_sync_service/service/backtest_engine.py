@@ -103,6 +103,7 @@ class BacktestConfig:
     drawdown_circuit_pct: float = 0.0
     panic_cooldown_days: int = 0
     slippage_pct: float = 0.0
+    trend_score_min: float = 0.0
 
     def __post_init__(self) -> None:
         if self.market not in MARKETS:
@@ -125,6 +126,8 @@ class BacktestConfig:
             raise ValueError("diverging_scale must be in [0, 1] (0 = no entries when Diverging, 0.5 = half size)")
         if self.drawdown_circuit_pct > 0:
             raise ValueError("drawdown_circuit_pct must be <= 0 (0 disables, e.g. -5 = halt new entries when trailing 20d realized pnl < -5%)")
+        if not 0 <= self.trend_score_min <= 100:
+            raise ValueError("trend_score_min must be in [0, 100] (0 disables)")
 
 
 @dataclass
@@ -201,19 +204,35 @@ class BacktestData:
                 self.ts_codes.append(resolved[1])
         self.bars_by_ts: dict[str, list[tuple[str, str, str, str, str, str]]] = {}
         if self.ts_codes:
+            from datetime import timedelta
+
+            start_lookback = max(
+                date.fromisoformat(config.start_date) - timedelta(days=TREND_LOOKBACK_DAYS),
+                date(1998, 1, 1),
+            ).isoformat()
             self.bars_by_ts = fetch_ohlcv_batch_between(
-                self.ts_codes, config.start_date, config.end_date
+                self.ts_codes, start_lookback, config.end_date
             )
         # index: ts_code -> {date: close}
         self.close_by_ts_day: dict[str, dict[str, float]] = {}
+        # ts_code -> ascending (date, close) series incl. lookback (A2 trendScore)
+        self.closes_by_ts: dict[str, list[tuple[str, float]]] = {}
         for ts, bars in self.bars_by_ts.items():
             closes: dict[str, float] = {}
+            series: list[tuple[str, float]] = []
             for bar in bars:
                 try:
-                    closes[str(bar[0])] = float(bar[4])
+                    c = float(bar[4])
                 except (TypeError, ValueError):
                     continue
+                d = str(bar[0])
+                if c > 0:
+                    series.append((d, c))
+                    if d >= config.start_date:
+                        closes[d] = c
+            series.sort(key=lambda kv: kv[0])
             self.close_by_ts_day[ts] = closes
+            self.closes_by_ts[ts] = series
         self.regime_by_day = _load_regime_by_day(config, self.calendar)
         self.flow_any_positive_by_day, self.mainline_allow_by_day = _load_flow_mainline_data(
             config, self.calendar
@@ -411,6 +430,10 @@ def _load_flow_mainline_data(
 
 RS_LOOKBACK_DAYS = 20
 
+# A2 trendScore lookback: 52-week (252 trading days ~ 365 calendar) high needs
+# ~370 calendar days of bars; 400 leaves a buffer for gaps.
+TREND_LOOKBACK_DAYS = 400
+
 
 def _load_rs_ranks(
     config: BacktestConfig,
@@ -494,6 +517,57 @@ def _load_rs_ranks(
 
 SENTIMENT_BLOCK_MODES = ("no_new_positions", "extreme_caution")
 
+
+def _trend_score(
+    rs: float | None,
+    closes: list[tuple[str, float]] | None,
+    as_of_day: str,
+) -> float | None:
+    """A2 trend-quality score (0-100) as-of ``as_of_day``.
+
+    Three interpretable factors (each has a business story; missing inputs
+    degrade to 0, so the gate fails closed):
+
+    1. Relative strength percentile (0-1, 1 = strongest) → 40 pts.
+    2. MA alignment: MA5 > MA20 > MA60 → 30 pts; partial (MA5 > MA20 or
+       MA20 > MA60) → 15 pts; none → 0.
+    3. Distance to 52-week high: within -5% → 30 pts; -10% → 20; -15% → 10;
+       deeper → 0. Uses the longest available history when < 252 bars.
+    """
+    from bisect import bisect_right
+
+    if not closes:
+        return None
+    dates = [d for d, _c in closes]
+    idx = bisect_right(dates, as_of_day)
+    if idx < 60:
+        return None  # not enough history for MA60
+    px = [c for _d, c in closes[:idx]]
+
+    ma5 = sum(px[-5:]) / 5
+    ma20 = sum(px[-20:]) / 20
+    ma60 = sum(px[-60:]) / 60
+    if ma5 > ma20 > ma60:
+        mult = 1.0
+    elif ma5 > ma20 or ma20 > ma60:
+        mult = 0.5
+    else:
+        mult = 0.0
+
+    lookback = min(idx, 252)
+    high = max(px[-lookback:])
+    close = px[-1]
+    dist = (close - high) / high if high > 0 else -1.0
+    if dist > -0.05:
+        nzd = 30.0
+    elif dist > -0.10:
+        nzd = 20.0
+    elif dist > -0.15:
+        nzd = 10.0
+    else:
+        nzd = 0.0
+
+    return (rs if rs is not None else 0.0) * 40.0 + 30.0 * mult + nzd
 
 def _load_sentiment_risk(config: BacktestConfig) -> dict[str, str]:
     """Per-day sentiment risk_mode (live gate _RISK_DEFEND input).
@@ -646,6 +720,15 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if rs is None or rs < config.rs_rank_min:
                     gated_blocks["rs"] += 1
                     continue
+            if config.trend_score_min > 0:
+                trend = _trend_score(
+                    data.rs_rank_by_day.get(day, {}).get(ts),
+                    data.closes_by_ts.get(ts),
+                    day,
+                )
+                if trend is None or trend < config.trend_score_min:
+                    gated_blocks["trend"] += 1
+                    continue
             if len(positions) >= config.max_positions:
                 gated_blocks["sleeve"] += 1
                 continue
@@ -677,7 +760,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 continue
             entry_px = float(pos["entry_price"])
             slip = config.slippage_pct
-            gross = (close_px * (1 - slip / 100.0) - entry_px * (1 + slip / 100.0)) / entry_px * 100.0
+            cost = entry_px * (1 + slip / 100.0)
+            gross = (close_px * (1 - slip / 100.0) - cost) / cost * 100.0
             net = gross - costs_pct
             holding = _calendar_days_between(str(pos["entry_date"]), day)
             score_asof = day_scores.get(sym)  # None → score_floor fails open
@@ -737,7 +821,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             continue
         entry_px = float(pos["entry_price"])
         slip = config.slippage_pct
-        gross = (final_px * (1 - slip / 100.0) - entry_px * (1 + slip / 100.0)) / entry_px * 100.0
+        cost = entry_px * (1 + slip / 100.0)
+        gross = (final_px * (1 - slip / 100.0) - cost) / cost * 100.0
         net = gross - costs_pct
         closed_trades.append(
             BacktestTrade(

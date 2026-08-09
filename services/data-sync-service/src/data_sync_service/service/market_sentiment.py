@@ -1407,3 +1407,44 @@ def get_cn_sentiment(*, days: int = 10, as_of_date: str | None = None) -> dict[s
         return {"asOfDate": "", "days": days, "items": []}
     items = list_days(as_of_date=d, days=days)
     return {"asOfDate": d, "days": max(1, min(int(days), 30)), "items": items}
+
+
+def get_panic_cooldown(*, days: int = 10, cooldown_days: int = 3) -> dict[str, Any]:
+    """S-3 panic protection status (same semantics as the backtest engine).
+
+    Most recent panic day (risk_mode in no_new_positions/extreme_caution)
+    within ``days``, cooldown end computed over the CN trade calendar
+    (panic day + cooldown_days trading days — matches
+    BacktestConfig.panic_cooldown_days). ``active`` True when today is still
+    inside the cooldown window: no new S-3 entries then.
+    """
+    from datetime import date, timedelta
+
+    from data_sync_service.db import get_connection
+    from data_sync_service.service.backtest_engine import SENTIMENT_BLOCK_MODES
+
+    items = get_cn_sentiment(days=days)["items"]
+    panic_dates = [i["date"] for i in items if i.get("riskMode") in SENTIMENT_BLOCK_MODES]
+    if not panic_dates:
+        return {"lastPanicDate": None, "cooldownEndDate": None, "active": False}
+    last_panic = panic_dates[-1]
+    today = date.today().isoformat()
+    cooldown_end = last_panic
+    if cooldown_days > 0:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT DISTINCT trade_date FROM daily
+                    WHERE trade_date > %s AND trade_date <= %s
+                    ORDER BY trade_date
+                    """,
+                    (last_panic, (date.fromisoformat(last_panic) + timedelta(days=60)).isoformat()),
+                )
+                nxt = [str(r[0]) for r in cur.fetchall()]
+        cooldown_end = nxt[min(cooldown_days - 1, len(nxt) - 1)] if nxt else last_panic
+    return {
+        "lastPanicDate": last_panic,
+        "cooldownEndDate": cooldown_end,
+        "active": today <= cooldown_end,
+    }

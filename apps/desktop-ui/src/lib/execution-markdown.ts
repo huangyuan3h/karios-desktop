@@ -52,6 +52,26 @@ function formatLockedT1(entryDate: string | null | undefined, todaySh: string): 
   return isLockedT1(entryDate, todaySh) ? 'True' : 'False';
 }
 
+/** S-3 panic protection status (backtest: no entries panic day + 3 trade days). */
+export type PanicCooldownStatus = {
+  lastPanicDate: string | null;
+  cooldownEndDate: string | null;
+  active: boolean;
+};
+
+/** Fetch S-3 panic cooldown from the backend (fail-open: null on any error). */
+export async function fetchPanicCooldown(): Promise<PanicCooldownStatus | null> {
+  try {
+    const res = await fetch('/market/cn/sentiment/panic-cooldown?days=10&cooldownDays=3', {
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as PanicCooldownStatus;
+  } catch {
+    return null;
+  }
+}
+
 export type PositionsExecutionMarkdownResult = {
   markdown: string;
   /** Flat symbols with Action=PURGE this round (remove after report is built). */
@@ -85,6 +105,8 @@ export function buildPositionsExecutionMarkdown(
   todaySh = '',
   sectorOutflowBlock = false,
   catalystBySymbol: Map<string, CatalystPurgeHint> | null = null,
+  rsRanks: Record<string, number> | null = null,
+  panicCooldown: PanicCooldownStatus | null = null,
 ): PositionsExecutionMarkdownResult {
   const lines: string[] = [];
   lines.push(`${heading} Combat Positions & Watchlist（A股 / 港股 分表）`);
@@ -275,6 +297,39 @@ export function buildPositionsExecutionMarkdown(
     if (marketOfSymbol(it.symbol) === 'hk') hkRows.push(row);
     else cnRows.push(row);
   }
+  const s3Candidates = buildS3Candidates({
+    items,
+    trend,
+    rsRanks,
+    gate,
+    mainlineAllow,
+    sectorOutflowBlock,
+    cnCap,
+    sleeveExposurePct,
+  });
+  if (panicCooldown?.active) {
+    lines.push(`${heading} S-3 回测口径买入候选（趋势跟随）`);
+    lines.push(
+      `- ⚠️ 恐慌冷却期：最近恐慌日 ${panicCooldown.lastPanicDate ?? '—'}，冷却至 ${panicCooldown.cooldownEndDate ?? '—'} —— 回测证明：恐慌后 3 个交易日禁开新仓（纪律）`,
+    );
+    lines.push('');
+  } else if (s3Candidates.length) {
+    lines.push(`${heading} S-3 回测口径买入候选（趋势跟随）`);
+    lines.push(
+      mdTable(
+        ['Symbol', 'Name', 'Score', 'RS%', '仓位%'],
+        s3Candidates.map((c) => [c.symbol, c.name, mdScore(c.score), c.rsLabel, c.sizePct]),
+      ),
+    );
+    lines.push(
+      '- note: S-3=回测定案规则（score≥65 · RS前50% · regime非Weak · 主线白名单 · 移动止损-8% · 持有60天 · 不止盈 · 恐慌保护）；仓位=回测口径 10%/笔（受 sleeve 上限约束）',
+    );
+    lines.push('');
+  } else if (gate && rsRanks != null) {
+    lines.push(`${heading} S-3 回测口径买入候选（趋势跟随）`);
+    lines.push('- 当前无满足 S-3 全部条件的候选 —— 空仓等待（纪律）');
+    lines.push('');
+  }
   if (!cnRows.length && !hkRows.length) {
     lines.push('- No watchlist items.');
     lines.push('');
@@ -300,4 +355,53 @@ export function buildPositionsExecutionMarkdown(
   }
   lines.push('');
   return { markdown: lines.join('\n'), purgeSymbols };
+}
+
+/**
+ * S-3 backtest-derived buy candidates (2026-08-09).
+ * All conditions from docs/modules/trading-system.md §3:
+ * score>=65, whole-market RS >= top 50%, regime != Weak, mainline ok,
+ * no sector-outflow block. Position = backtest size 10% per sleeve,
+ * capped by the CN sleeve budget. CN only (HK has no score).
+ */
+function buildS3Candidates(opts: {
+  items: WatchlistItem[];
+  trend: Record<string, TrendOkResult | undefined>;
+  rsRanks: Record<string, number> | null;
+  gate: ExecutionGate | null;
+  mainlineAllow: MainlineAllowSet | null;
+  sectorOutflowBlock: boolean;
+  cnCap: number | null;
+  sleeveExposurePct: number;
+}): Array<{ symbol: string; name: string; score: number; rsLabel: string; sizePct: string }> {
+  const { items, trend, rsRanks, gate, mainlineAllow, sectorOutflowBlock, cnCap, sleeveExposurePct } = opts;
+  if (!gate || rsRanks == null || sectorOutflowBlock) return [];
+  const regime = String(gate.marketRegime ?? '');
+  if (regime !== 'Strong' && regime !== 'Diverging') return [];
+  const maxSize = cnCap ?? 100;
+  let remaining = Math.max(0, maxSize - sleeveExposurePct);
+  const out: Array<{ symbol: string; name: string; score: number; rsLabel: string; sizePct: string }> = [];
+  for (const it of items) {
+    if (marketOfSymbol(it.symbol) !== 'cn') continue;
+    if (isHeldPosition(it)) continue;
+    const t = trend[it.symbol];
+    const score = typeof t?.score === 'number' ? t.score : null;
+    if (score == null || score < 65) continue;
+    const rs = rsRanks[it.symbol];
+    if (typeof rs !== 'number' || rs < 0.5) continue;
+    if (!mainlineAllow?.ready) continue;
+    const ind = String(t?.values?.emIndustry ?? '');
+    if (!ind || !mainlineAllow.names.has(ind)) continue;
+    if (remaining <= 0) break;
+    const size = Math.min(10, remaining);
+    out.push({
+      symbol: it.symbol,
+      name: it.name ?? t?.name ?? '—',
+      score,
+      rsLabel: `前${Math.round(rs * 100)}%`,
+      sizePct: `${size.toFixed(0)}%`,
+    });
+    remaining -= size;
+  }
+  return out;
 }

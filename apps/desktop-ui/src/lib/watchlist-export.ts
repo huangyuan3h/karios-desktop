@@ -8,6 +8,7 @@ import {
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
+import { fetchPanicCooldown } from '@/lib/execution-markdown';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
 import { refetchWatchlistMarket } from '@/lib/queries/watchlist';
@@ -126,7 +127,7 @@ export function validateWatchlistCopyData(options: {
   return { ok: false, message: `Copy aborted: ${parts.join(' | ')}` };
 }
 
-export function buildWatchlistMarkdown(options: {
+export async function buildWatchlistMarkdown(options: {
   sortedItems: WatchlistItem[];
   trendSnap: Record<string, TrendOkResult>;
   quotesSnap: Record<string, WatchlistQuote>;
@@ -136,7 +137,7 @@ export function buildWatchlistMarkdown(options: {
   executionGate?: ExecutionGate | null;
   mainlineAllow?: MainlineAllowSet | null;
   sectorOutflowBlock?: boolean;
-}): string {
+}): Promise<string> {
   const {
     sortedItems,
     trendSnap,
@@ -149,6 +150,8 @@ export function buildWatchlistMarkdown(options: {
   } = options;
   // Same unified combat table as Dashboard Copy all (no separate fat Watchlist dump).
   // Sync helper: no catalyst fetch (PURGE exemption only on Copy / Sync&Copy paths).
+  const rsRanks = await fetchRsRanks(sortedItems.map((i) => i.symbol));
+  const panicCooldown = await fetchPanicCooldown();
   const { markdown } = buildPositionsExecutionMarkdown(
     sortedItems,
     trendSnap,
@@ -160,6 +163,8 @@ export function buildWatchlistMarkdown(options: {
     todaySh,
     sectorOutflowBlock,
     null,
+    rsRanks,
+    panicCooldown,
   );
   return markdown.trim() + '\n';
 }
@@ -214,6 +219,7 @@ export async function copyWatchlistMarkdown(options: {
   if (validationError) return validationError;
 
   const catalystBySymbol = await loadCatalystPurgeMap();
+  const panicCooldown = await fetchPanicCooldown();
   const { markdown, purgeSymbols } = buildPositionsExecutionMarkdown(
     sortedItems,
     trendSnap,
@@ -225,9 +231,25 @@ export async function copyWatchlistMarkdown(options: {
     todaySh,
     sectorOutflowBlock,
     catalystBySymbol,
+    null,
+    panicCooldown,
   );
   if (purgeSymbols.length) {
     await applyWatchlistPurgeAfterReport(purgeSymbols).catch(() => 0);
   }
   return { ok: true, markdown: markdown.trim() + '\n' };
+}
+
+/** Fetch whole-market RS percentiles for the S-3 candidate block. */
+async function fetchRsRanks(symbols: string[]): Promise<Record<string, number> | null> {
+  if (!symbols.length) return null;
+  try {
+    const q = encodeURIComponent(symbols.join(','));
+    const res = await fetch(`/watchlist/rs-ranks?symbols=${q}`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const d = (await res.json()) as { ranks?: Record<string, number> };
+    return d.ranks ?? null;
+  } catch {
+    return null;
+  }
 }

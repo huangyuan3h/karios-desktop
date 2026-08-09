@@ -805,11 +805,17 @@ function WatchlistRowInner({
                   className={`rounded px-1 text-[10px] tabular-nums ${
                     inTopHalf
                       ? 'bg-emerald-500/10 font-semibold text-emerald-700 dark:text-emerald-300'
-                      : 'text-[var(--k-muted)]'
+                      : 'bg-red-500/10 font-semibold text-red-600'
                   }`}
-                  title={`全市场 20 日相对强度排名前 ${(pct * 100).toFixed(0)}%（S-2：≥50% 达标）`}
+                  title={
+                    inTopHalf
+                      ? `全市场 20 日相对强度排名前 ${(pct * 100).toFixed(0)}%（S-3：≥50% 达标）`
+                      : `全市场 20 日相对强度排名前 ${(pct * 100).toFixed(0)}% — 低于 50% 回测不建议买入（S-3：只买前 50%）`
+                  }
                 >
-                  前{(pct * 100).toFixed(0)}%
+                  {inTopHalf
+                    ? `前${(pct * 100).toFixed(0)}%`
+                    : `前${(pct * 100).toFixed(0)}% 不买`}
                 </span>
               )}
             </span>

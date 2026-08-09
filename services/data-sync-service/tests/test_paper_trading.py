@@ -423,8 +423,11 @@ def test_run_update_closes_on_stop_loss() -> None:
     mock_update.assert_not_called()
 
 
-def test_run_update_closes_on_max_hold() -> None:
-    """holding_days >= 5 must close with reason 'max_hold'."""
+def test_run_update_closes_on_max_hold(monkeypatch) -> None:
+    """holding_days >= MAX_HOLD_DAYS must close with reason 'max_hold'."""
+    import data_sync_service.db.paper_trading as pt_db_mod
+
+    monkeypatch.setattr(pt_db_mod, "MAX_HOLD_DAYS", 5)
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-01"}]
     bars = {"000001.SZ": [("2026-08-06", 10.3, 10.3, 10.2, 10.3, 1000)]}  # +3% (no stop)
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
@@ -490,8 +493,11 @@ def test_run_update_skips_symbols_without_fresh_close() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_run_update_closes_on_target_hit_even_with_max_hold() -> None:
-    """pnl_pct >= +10% must close with 'target_hit' — and beat 'max_hold'."""
+def test_run_update_closes_on_target_hit_even_with_max_hold(monkeypatch) -> None:
+    """pnl_pct >= TARGET_PNL_PCT must close with 'target_hit' — and beat 'max_hold'."""
+    import data_sync_service.db.paper_trading as pt_db_mod
+
+    monkeypatch.setattr(pt_db_mod, "TARGET_PNL_PCT", 10.0)
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-01"}]
     bars = {"000001.SZ": [("2026-08-06", 11.2, 11.2, 11.1, 11.2, 1000)]}  # +12%
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
@@ -624,8 +630,11 @@ def test_run_update_hk_trade_closes_with_hk_costs() -> None:
     mock_update.assert_not_called()
 
 
-def test_run_update_closes_on_score_floor() -> None:
+def test_run_update_closes_on_score_floor(monkeypatch) -> None:
     """Latest TrendOK score < SCORE_FLOOR must close with 'score_floor'."""
+    import data_sync_service.db.paper_trading as pt_db_mod
+
+    monkeypatch.setattr(pt_db_mod, "SCORE_FLOOR", 30.0)
     open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-04"}]
     bars = {"000001.SZ": [("2026-08-06", 10.1, 10.1, 10.0, 10.1, 1000)]}  # +1%
     p1, p2, p3, p4 = _patched_run_update(open_rows, bars, score=18.0)
@@ -1040,3 +1049,16 @@ def test_run_update_registry_failure_never_pool_exits() -> None:
     # symbol not in registry (None) → must not hit the pool_exit branch
     assert summary["updated"] == 1
     mock_close.assert_not_called()
+
+
+def test_s3_close_thresholds_pinned() -> None:
+    """S-3 backtest params are the live defaults (evidence: backtest-strategy.md).
+
+    Any change here must first be re-validated on the validation window.
+    """
+    import data_sync_service.db.paper_trading as pt_db_mod
+
+    assert pt_db_mod.MAX_HOLD_DAYS == 60
+    assert pt_db_mod.TARGET_PNL_PCT == 100.0
+    assert pt_db_mod.SCORE_FLOOR == 0.0
+    assert pt_db_mod.STOP_LOSS_PCT == -5.0

@@ -33,6 +33,7 @@ from ..db import paper_trading as pt_db
 from ..db.watchlist_automation import list_registry
 from ..service.execution_source import aggregate_source_stats
 from ..service.paper_trading import compute_stats as pt_compute_stats
+from ..service.paper_s3 import run_intake_s3
 from ..service.trendok import compute_trendok_for_symbols
 
 router = APIRouter(
@@ -689,3 +690,28 @@ def get_execution_source_stats(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return SourceStatsResponse(**result)
+
+
+@router.post(
+    "/paper/s3-intake",
+    summary="Run the S-3 backtest paper intake (G4): paper-trade today's S-3 candidates.",
+)
+def paper_s3_intake(
+    tradeDate: str | None = Query(
+        default=None,
+        description="ISO date (YYYY-MM-DD) to run the S-3 rules for; default today.",
+    ),
+    maxPositions: int = Query(
+        default=20,
+        ge=1,
+        le=100,
+        description="Max simultaneous S-3 candidates per run (S-3 backtest cap).",
+    ),
+) -> dict:
+    """Run the S-3 entry rules (score>=65 · RS>=50% · regime!=Weak · mainline ·
+    panic cooldown) and insert paper trades with source='S3'. Idempotent per
+    (symbol, date, side)."""
+    try:
+        return run_intake_s3(trade_date=tradeDate, max_positions=maxPositions)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"s3 intake failed: {exc}") from exc

@@ -58,6 +58,9 @@ def _data(
         industry_by_ts = {ts: "计算机" for ts in prices}
     data.industry_by_ts = dict(industry_by_ts)
     data.sentiment_risk_by_day = {}
+    data.closes_by_ts = {
+        ts: [(d, float(px)) for d, px in sorted(m.items())] for ts, m in prices.items()
+    }
     return data
 
 
@@ -723,3 +726,131 @@ def test_sentiment_missing_data_degrades_open() -> None:
     )
     assert run.summary.closed == 1
     assert run.summary.gated_blocks.get("sentiment") is None
+
+def test_panic_cooldown_blocks_entries_after_panic() -> None:
+    """panic_cooldown_days halts new entries for N days after a panic day."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}, "2026-06-22": {CN1: 90.0}, "2026-06-23": {}}
+    prices = {TS1: {d: 10.0 for d in calendar}}
+    data = _data(calendar, scores, prices)
+    data.sentiment_risk_by_day = {"2026-06-19": "extreme_caution"}
+    run = simulate(
+        BacktestConfig(start_date="2026-06-18", end_date="2026-06-23",
+                       gates="full", panic_cooldown_days=2),
+        data=data,
+    )
+    # 06-18 entry ok; 06-19 panic (blocked); 06-22 cooldown day 1 (blocked); 06-23 cooldown day 2 (blocked)
+    assert run.summary.closed == 1
+    assert run.summary.gated_blocks.get("panic_cooldown") == 2
+
+
+def test_slippage_reduces_gross() -> None:
+    """slippage_pct is deducted at entry and exit."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 11.0}}
+    data = _data(calendar, scores, prices)
+    run = simulate(
+        BacktestConfig(start_date="2026-06-18", end_date="2026-06-19", slippage_pct=0.5),
+        data=data,
+    )
+    # entry 10*1.005, exit 11*0.995 -> gross = (10.945-10.05)/10.05 = 8.91%
+    assert run.summary.closed == 1
+    assert run.trades[0].gross_pnl_pct == round((11 * 0.995 - 10 * 1.005) / (10 * 1.005) * 100, 4)
+
+
+def test_slippage_zero_by_default() -> None:
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 11.0}}
+    run = simulate(
+        BacktestConfig(start_date="2026-06-18", end_date="2026-06-19"),
+        data=_data(calendar, scores, prices),
+    )
+    assert run.trades[0].gross_pnl_pct == 10.0
+
+
+# ---------------------------------------------------------------------------
+# A2 trend_score gate (OPT step 2)
+# ---------------------------------------------------------------------------
+
+
+def _trend_series(price_map: dict[str, float]) -> list[tuple[str, float]]:
+    return [(d, float(px)) for d, px in sorted(price_map.items())]
+
+
+def test_trend_score_components() -> None:
+    """_trend_score: RS percentile 40pts + MA alignment 30pts + near-high 30pts."""
+    from data_sync_service.service.backtest_engine import _trend_score
+
+    # 62 rising closes: MA5 > MA20 > MA60, close at a fresh high
+    dates = [f"2026-01-{d:02d}" for d in range(1, 62)]
+    closes = _trend_series({d: float(i + 100) for i, d in enumerate(dates)})
+    # rs = 1.0 (strongest), perfect MA alignment, at 52w high
+    assert _trend_score(1.0, closes, "2026-03-01") == 40.0 + 30.0 + 30.0
+    # rs = 0.5 halves the RS factor contribution
+    assert _trend_score(0.5, closes, "2026-03-01") == pytest.approx(20.0 + 30.0 + 30.0)
+    # far below the 52w high (-30%): near-high factor = 0, no MA alignment
+    flat = _trend_series({f"2026-01-{d:02d}": float(100) for d in range(1, 62)})
+    flat[60] = ("2026-03-01", 70.0)
+    assert _trend_score(1.0, flat, "2026-03-01") == pytest.approx(40.0 + 0.0 + 0.0)
+    # within -5% of the 52w high but flat MA: near-high factor = 30
+    flat[60] = ("2026-03-01", 96.0)
+    assert _trend_score(1.0, flat, "2026-03-01") == pytest.approx(40.0 + 0.0 + 30.0)
+
+
+def test_trend_score_insufficient_history() -> None:
+    from data_sync_service.service.backtest_engine import _trend_score
+
+    closes = _trend_series({f"2026-01-{d:02d}": float(100 + d) for d in range(1, 20)})
+    assert _trend_score(1.0, closes, "2026-01-20") is None
+
+
+def test_trend_score_min_blocks_low_trend_quality() -> None:
+    """trend_score_min keeps only symbols above the quality bar."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0, "CN:600002": 88.0}, "2026-06-19": {}}
+    hist = {f"2026-03-{d:02d}": float(10 + i) for i, d in enumerate(range(1, 31))}
+    hist.update({f"2026-04-{d:02d}": float(40 + i) for i, d in enumerate(range(1, 31))})
+    hist.update({f"2026-05-{d:02d}": float(70 + i) for i, d in enumerate(range(1, 31))})
+    hist["2026-06-18"] = 100.0
+    hist["2026-06-19"] = 100.5
+    prices = {TS1: dict(hist), "600002.SH": dict(hist)}
+    data = _data(calendar, scores, prices)
+    # Both have full price history, but CN1 gets rs=1.0 (strong) vs 600002 rs=0.0
+    data.rs_rank_by_day = {
+        "2026-06-18": {"600001.SH": 1.0, "600002.SH": 0.0},
+        "2026-06-19": {},
+    }
+    run = simulate(
+        BacktestConfig(
+            start_date="2026-06-18",
+            end_date="2026-06-19",
+            score_threshold=85.0,
+            rs_rank_min=0.0,
+            trend_score_min=70.0,
+        ),
+        data=data,
+    )
+    assert run.summary.closed == 1
+    assert run.trades[0].symbol == "CN:600001"
+    assert run.summary.gated_blocks.get("trend") == 1
+
+
+def test_trend_score_disabled_by_default() -> None:
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5}}
+    data = _data(calendar, scores, prices)
+    data.closes_by_ts = {}  # no trend data at all
+    run = simulate(
+        BacktestConfig(start_date="2026-06-18", end_date="2026-06-19", score_threshold=85.0),
+        data=data,
+    )
+    assert run.summary.closed == 1
+    assert run.summary.gated_blocks.get("trend") is None
+
+
+def test_trend_score_validation() -> None:
+    with pytest.raises(ValueError):
+        BacktestConfig(start_date="2026-08-01", end_date="2026-08-07", trend_score_min=150.0)

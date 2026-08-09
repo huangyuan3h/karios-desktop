@@ -23,7 +23,7 @@ class TestRun:
     def test_run(self, monkeypatch) -> None:
         monkeypatch.setattr(br, "simulate", lambda config: Mock(summary=FakeSummary()))
         monkeypatch.setattr(br, "load_benchmarks", lambda start, end: [])
-        out = br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=80.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full", trailing_stop_pct=0.0, position_pct=0.05, max_positions=10, rs_rank_min=0.0, diverging_scale=0.0, drawdown_circuit_pct=0.0)
+        out = br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=80.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full", trailing_stop_pct=0.0, position_pct=0.05, max_positions=10, rs_rank_min=0.0, diverging_scale=0.0, drawdown_circuit_pct=0.0, panic_cooldown_days=0, slippage_pct=0.0, trend_score_min=0.0)
         assert out["ok"] is True and out["summary"] == {"pnl": 1.0}
 
     def test_run_bad_window(self) -> None:
@@ -43,7 +43,7 @@ class TestRun:
     def test_run_simulate_error(self, monkeypatch) -> None:
         monkeypatch.setattr(br, "simulate", lambda config: (_ for _ in ()).throw(RuntimeError("boom")))
         with pytest.raises(HTTPException) as exc:
-            br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=85.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full", trailing_stop_pct=0.0, position_pct=0.05, max_positions=10, rs_rank_min=0.0, diverging_scale=0.0, drawdown_circuit_pct=0.0)
+            br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=85.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full", trailing_stop_pct=0.0, position_pct=0.05, max_positions=10, rs_rank_min=0.0, diverging_scale=0.0, drawdown_circuit_pct=0.0, panic_cooldown_days=0, slippage_pct=0.0, trend_score_min=0.0)
         assert exc.value.status_code == 500
         assert "backtest failed" in exc.value.detail
 

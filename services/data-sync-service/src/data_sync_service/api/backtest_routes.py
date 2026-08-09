@@ -57,6 +57,9 @@ def backtest_run(
     rs_rank_min: float = Query(0.0, ge=0, le=1, description="Min whole-market RS percentile (0 disables; 0.8 = top 20% 20d relative strength)."),
     diverging_scale: float = Query(0.0, ge=0, le=1, description="Position size when regime=Diverging (0 = no entries, 0.5 = half size)."),
     drawdown_circuit_pct: float = Query(0.0, le=0, description="Halt new entries when trailing 30d realized pnl <= this (<=0; 0 disables)."),
+    panic_cooldown_days: int = Query(0, ge=0, le=30, description="Days after a sentiment-panic day with no new entries (default 0; S-3 uses 3)."),
+    slippage_pct: float = Query(0.0, ge=0, le=2, description="One-way slippage % deducted at entry and exit (default 0; S-3 honest view uses 0.05)."),
+    trend_score_min: float = Query(0.0, ge=0, le=100, description="A2 trend-quality score minimum (0 disables; 60 = MA-aligned, near-high, strong RS stocks only)."),
 ) -> dict[str, Any]:
     """Run one backtest configuration (signals = historical TrendOK scores
     filtered by entry gates — traffic-light regime / sector flow / mainline)."""
@@ -78,6 +81,9 @@ def backtest_run(
             rs_rank_min=rs_rank_min,
             diverging_scale=diverging_scale,
             drawdown_circuit_pct=drawdown_circuit_pct,
+            panic_cooldown_days=panic_cooldown_days,
+            slippage_pct=slippage_pct,
+            trend_score_min=trend_score_min,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

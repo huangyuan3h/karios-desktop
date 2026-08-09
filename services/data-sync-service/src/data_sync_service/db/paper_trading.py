@@ -80,14 +80,16 @@ CLOSE_REASONS = (
 SOURCE_TV = "TV"  # originated from TV screener (funnel)
 SOURCE_ALPHA = "ALPHA"  # originated from Alpha Radar catalyst
 SOURCE_MANUAL = "MANUAL"  # user / external AI agent added
-SOURCES = (SOURCE_TV, SOURCE_ALPHA, SOURCE_MANUAL)
+SOURCE_S3 = "S3"  # S-3 backtest entry rules (paper_s3 intake, G4)
+SOURCES = (SOURCE_TV, SOURCE_ALPHA, SOURCE_MANUAL, SOURCE_S3)
 
-# v0.1 close thresholds. Kept module-level so tests can assert against the
+# Close thresholds (S-3 backtest params, 2026-08-09 — backtest-strategy.md
+# is the evidence record). Kept module-level so tests can assert against the
 # exact values and operators can tune them in one place.
-MAX_HOLD_DAYS = 5
+MAX_HOLD_DAYS = 60  # S-3: hold up to 60 days (5-day force-close was proven wrong)
 STOP_LOSS_PCT = -5.0  # i.e. net pnl_pct <= -5% triggers stop_hit (v0.2: net)
-TARGET_PNL_PCT = 10.0  # i.e. net pnl_pct >= +10% triggers target_hit (v0.2: net)
-SCORE_FLOOR = 30.0  # latest TrendOK score < 30 triggers score_floor (CN only; HK fails open)
+TARGET_PNL_PCT = 100.0  # S-3: no active take-profit (10% target was proven a profit killer)
+SCORE_FLOOR = 0.0  # S-3: never close on score retreat (floor 30 was proven to kill trends)
 
 CREATE_SQL = f"""
 CREATE TABLE IF NOT EXISTS {PAPER_TRADES_TABLE} (
