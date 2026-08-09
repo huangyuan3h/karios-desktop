@@ -1053,6 +1053,18 @@ swap 0→0.3/0.8/10/2（paper 已部署，待复审）· position 回测 10% / p
 - 后续：接口恢复 → 回拉 → 三窗复核（train/OOS2/valid 对比基线 114.2/80.5/51.8）+ A3
   量化（gates none/regime/full 对照）→ 结论入 strategy-params.md 复核列
 
+#### C1 walk-forward 工具（2026-08-09 ✅ · §19.2 执行顺序第 3 项 · 季度复核基建）
+
+- `scripts/run_walk_forward.py`：三窗固定切分（OOS2 24-08~25-08 / train 25-08~26-02 /
+  valid 26-03~08-07）跑 S-3 定案（S3_CONFIG 常量表，指向 strategy-params.md 真值）+
+  `--param k=v` 任意 BacktestConfig 覆盖 + `--save-baseline` 固化 + >5pt 劣化自动拒收
+- **基线固化**（2026-08-09 · 10%×20 口径含金字塔）：OOS2 +106.9%/DD21.0/夏普3.61/319笔 ·
+  train +147.5%/DD10.0/5.78/215笔 · valid +73.9%/DD5.8/8.59/63笔（valid 与定案档完全一致；
+  train/OOS2 与定案历史差 -3~-8pt=金字塔实现细节差异，以新基线为准）
+- 验证：score70/mp10 → valid +41.0（-33pt 劣化自动拒收，方向与 mp10 定案一致）
+- 用途：季度复核（步骤 7）一条命令出三窗对比；任何未来实验（B2 等）直接套用
+- 文档：strategy-params.md 复核流程引用工具 + 基线记录
+
 #### 可分享/可订阅 URL（2026-08-09 ✅ · 用户拍板 §2 P1）
 
 - **背景**：AppShell 内部 state 切页无 URL——复盘/归档链接点不开、AI 助手无法直达

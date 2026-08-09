@@ -177,6 +177,25 @@ Python does **not** import `@karios/shared` at runtime. Field-name comments in r
 
 ---
 
+## Backtest walk-forward（S-3 参数验证铁律工具）
+
+任何 S-3 参数/机制改动必须过 **三窗 walk-forward**（单窗好看 = 过拟合，todo §19 反模式）。
+工具：`services/data-sync-service/scripts/run_walk_forward.py`（C1，2026-08-09 交付）：
+
+```bash
+cd services/data-sync-service
+PYTHONPATH=src python3 scripts/run_walk_forward.py                       # 三窗 vs 固化基线
+PYTHONPATH=src python3 scripts/run_walk_forward.py --param score_threshold=70   # 试参数
+PYTHONPATH=src python3 scripts/run_walk_forward.py --save-baseline       # 数据/引擎变化后重固化基线
+```
+
+- 三窗固定切分：`OOS2`=2024-08-01~2025-08-01 · `train`=2025-08-01~2026-02-01 · `valid`=2026-03-01~2026-08-07
+- 内置 S-3 定案配置（真值在 `docs/modules/strategy-params.md` §1）；`--param k=v` 覆盖任意
+  `BacktestConfig` 字段（未知字段告警忽略）
+- 基线固化在 `data/backtest_reports/walk_forward_baseline.json`；三窗相对基线 >5pt 劣化
+  → 自动判"未通过/拒收"
+- 验收口径：改动后跑 `--param ...` 三窗对比，输出表 + 判定随实验记录（todo §19 步骤要求）
+
 ## Scoped optimization tasks
 
 For structural work, use `docs/optimization-checklist.md`:
