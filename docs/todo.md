@@ -1027,6 +1027,32 @@ swap 0→0.3/0.8/10/2（paper 已部署，待复审）· position 回测 10% / p
 - 后续可选：把回测结论速览（docs/modules/backtest-strategy.md 结论段）进一步压缩进
   system prompt；或 agent 追问"为什么"时给出窗口级证据
 
+#### mainline/flow 历史回拉 + S-3 定案复核（2026-08-09 立 · 用户拍板 · **数据源受阻待接口恢复**）
+
+- **背景**：回测 mainline/flow 闸门数据源 = `market_cn_industry_fund_flow_daily`
+  （仅 2025-12-15 起，157 天）——训练窗（25-08~12）与 OOS2（24-08~25-08）闸门
+  fail-open 降级。mainline 指标表（涨停统计）**不是**回测闸门输入（只用 fund_flow 的
+  5D Top3 + 动量突破）。回拉后重跑三窗验证 S-3 定案 + 顺带量化 A3（mainline 贡献）
+- **脚本就绪**：`scripts/backfill_industry_flow_history.py` —— 表内 distinct SW L1 行业
+  （约 30 个）逐行业拉东财 push2his daykline 全量历史（cron 同源接口）→ 幂等 upsert，
+  支持 --since 2024-07-01（覆盖 OOS2）与并发
+- **⛔ 受阻**：push2his.eastmoney.com 当前被网络层阻断（TLS 握手后 Empty reply，
+  08-07 起时好时坏：cn_industry_post_close_sync 08-07 连败 3 次仅 1 次成功；
+  同源 getbkzj/东财主站通，DNS 单 IP 101.226.30.221 直连也失败）——接口恢复后
+  一条命令重跑：`PYTHONPATH=src python3 scripts/backfill_industry_flow_history.py`
+- **前端系统自检（同日 · 用户「任何问题报错」）**：全局 `SystemHealthBanner`
+  （AppShell header 下方，任何页面可见）——并行探测：① data-sync-service 在线
+  （/api/health/datasources）② ai-service 在线（/healthz）③ 6 数据源新鲜度
+  （stale 超阈值）④ 48h job 失败（/api/health/job-failures）；异常=红色横幅
+  （服务离线），告警=琥珀（陈旧/失败），点击展开明细 + 手动重检，5 分钟自动轮询，
+  全健康时不渲染；`lib/queries/systemHealth.ts` 汇聚 + 4 测试；Dashboard 旧
+  SyncFailureBanner 并入后删除（死代码清理）；FE 741 passed
+- **顺带修复（同日）**：cron 失败静默告警缺失 → `SyncFailureBanner`（Dashboard 顶部，
+  消费 GET /api/health/job-failures?hours=48，有失败显示红色横幅：job×次数+时间+错误
+  摘要+跳 Scheduler 详情；健康/不可达均不渲染）；3 新测试；FE 740 passed
+- 后续：接口恢复 → 回拉 → 三窗复核（train/OOS2/valid 对比基线 114.2/80.5/51.8）+ A3
+  量化（gates none/regime/full 对照）→ 结论入 strategy-params.md 复核列
+
 #### 步骤 7：季度参数复核（例行项 · 2026-08-09 用户拍板 ✅）
 
 - 节奏：每 3 个月一次双窗复核（训练窗滚动 + 验证窗 + OOS2），结果记

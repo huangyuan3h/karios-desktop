@@ -7,6 +7,7 @@ import { Bot } from 'lucide-react';
 
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
+import { SystemHealthBanner } from '@/components/layout/SystemHealthBanner';
 import { DashboardPage } from '@/components/pages/DashboardPage';
 import { AlphaTabsPage } from '@/components/pages/AlphaTabsPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
@@ -188,6 +189,8 @@ function AppShellInner() {
             </Button>
           </div>
         </header>
+
+        <SystemHealthBanner />
 
         <div className="flex min-h-0 flex-1">
           <div className="min-w-0 flex-1 overflow-auto">

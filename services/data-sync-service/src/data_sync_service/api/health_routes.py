@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/health", tags=["health"])
 _SOURCES: tuple[dict[str, Any], ...] = (
     {
         "source": "market",
+        "weekendTolerant": True,
         "label": "行情",
         "jobType": "stock_close_sync",
         "table": "stock_daily",
@@ -41,6 +42,7 @@ _SOURCES: tuple[dict[str, Any], ...] = (
     },
     {
         "source": "watchlist",
+        "weekendTolerant": True,
         "label": "Watchlist 评分",
         "jobType": "watchlist_automation",
         "table": None,
@@ -49,6 +51,7 @@ _SOURCES: tuple[dict[str, Any], ...] = (
     },
     {
         "source": "macro",
+        "weekendTolerant": True,
         "label": "宏观",
         "jobType": "macro_daily_full",
         "table": None,
@@ -57,6 +60,7 @@ _SOURCES: tuple[dict[str, Any], ...] = (
     },
     {
         "source": "alpha_radar",
+        "weekendTolerant": True,
         "label": "Alpha Radar",
         "jobType": "alpha_radar_pipeline",
         "table": None,
@@ -124,6 +128,9 @@ def _parse_dt(value: str | None) -> datetime | None:
 
 def datasource_freshness() -> list[dict[str, Any]]:
     now = datetime.now(UTC)
+    # Weekend (Shanghai) has no new data until Monday's close; relax the
+    # thresholds so the alert does not cry wolf every Saturday/Sunday.
+    weekend_extra_hours = 48 if _is_shanghai_weekend(now) else 0
     sources: list[dict[str, Any]] = []
     for spec in _SOURCES:
         job_at = _job_last_success(spec["jobType"])
@@ -141,7 +148,8 @@ def datasource_freshness() -> list[dict[str, Any]]:
                 candidate = radar_at
         last = _parse_dt(candidate)
         age_minutes = int((now - last).total_seconds() / 60) if last else None
-        threshold = spec["thresholdMinutes"]
+        weekend_bonus = weekend_extra_hours * 60 if spec.get("weekendTolerant") else 0
+        threshold = spec["thresholdMinutes"] + weekend_bonus
         sources.append(
             {
                 "source": spec["source"],
@@ -153,6 +161,14 @@ def datasource_freshness() -> list[dict[str, Any]]:
             }
         )
     return sources
+
+
+def _is_shanghai_weekend(now: datetime) -> bool:
+    """True when it is a Saturday/Sunday in Asia/Shanghai."""
+    from datetime import timedelta, timezone
+
+    sh = now.astimezone(timezone(timedelta(hours=8)))
+    return sh.weekday() >= 5
 
 
 def recent_job_failures(hours: int = 24) -> dict[str, Any]:
@@ -171,7 +187,12 @@ def recent_job_failures(hours: int = 24) -> dict[str, Any]:
             "syncedAt": rec.get("sync_at"),
             "lastTsCode": rec.get("last_ts_code"),
             "errorMessage": rec.get("error_message"),
-            "failures24h": sum(1 for r in recs if str(r.get("job_type") or "unknown") == jt),
+            # Cap the per-job count: high-frequency manual retries (e.g. an
+            # option-IV source with no data) would otherwise flood the alert.
+            "failures24h": min(
+                sum(1 for r in recs if str(r.get("job_type") or "unknown") == jt),
+                10,
+            ),
         }
         for jt, rec in latest_by_job.items()
     ]
