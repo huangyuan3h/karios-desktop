@@ -721,7 +721,13 @@ def _compute_index_signals(
         name = it["name"]
         series_raw = fetch_macro_last_closes(series_id, days=HISTORY_DAYS)
         if not series_raw or _hsi_series_stale(series_raw):
-            metrics, src = fetch_hk_index_on_demand(series_id)
+            if use_as_of:
+                # as-of mode: never fetch on demand — today's network data
+                # would be look-ahead for a historical date. HK stays "no
+                # data" (does not affect the CN regime used by gates).
+                metrics, src = {}, None
+            else:
+                metrics, src = fetch_hk_index_on_demand(series_id)
             if metrics.get("close") is not None and metrics.get("asOfDate"):
                 series_raw = _merge_on_demand_into_series(series_raw, metrics)
                 hsi_on_demand_source = src

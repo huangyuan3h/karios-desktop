@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 import {
+  GATE_LEVELS,
   useBacktestRunQuery,
   useCorrelationStatusQuery,
   useExitAttributionQuery,
@@ -21,6 +22,7 @@ const DEFAULT_PARAMS: BacktestParams = {
   scoreThreshold: 85,
   maxHoldDays: 5,
   stopLossPct: -5,
+  gates: 'full',
 };
 
 const INPUT_CLS =
@@ -52,9 +54,10 @@ function tone(v: number | null): string {
 export function BacktestPage() {
   const [params, setParams] = React.useState<BacktestParams>(DEFAULT_PARAMS);
   const [submitted, setSubmitted] = React.useState<BacktestParams>(DEFAULT_PARAMS);
+  const [attempt, setAttempt] = React.useState(0);
   const [gridOn, setGridOn] = React.useState(false);
 
-  const runQ = useBacktestRunQuery(submitted);
+  const runQ = useBacktestRunQuery(submitted, attempt);
   const sensQ = useSensitivityQuery(DEFAULT_PARAMS.start, DEFAULT_PARAMS.end, gridOn);
   const exitQ = useExitAttributionQuery(5);
   const corrQ = useCorrelationStatusQuery(true, true);
@@ -118,14 +121,30 @@ export function BacktestPage() {
               onChange={(e) => set('stopLossPct', e.target.value)}
             />
           </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+            入池闸门
+            <select
+              className={INPUT_CLS}
+              value={params.gates}
+              onChange={(e) => set('gates', e.target.value)}
+            >
+              {GATE_LEVELS.map((g) => (
+                <option key={g.value} value={g.value}>
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <Button
             size="sm"
+            disabled={runQ.isFetching}
             onClick={() => {
               setSubmitted(params);
+              setAttempt((a) => a + 1);
               setGridOn(false);
             }}
           >
-            运行回测
+            {runQ.isFetching ? '计算中…' : '运行回测'}
           </Button>
           <Button
             size="sm"
@@ -139,7 +158,9 @@ export function BacktestPage() {
           </Button>
         </div>
         <div className="mt-2 text-[10px] text-[var(--k-muted)]">
-          净口径：已扣除往返成本（CN 0.30%）。仅参数敏感度参考，不作发布依据——以 paper 实绩为准。
+          净口径：已扣除往返成本（CN 0.30%）。入池闸门与实盘同规则：regime=指数红绿灯
+          全绿才开新仓；full=红绿灯 + 全行业资金流不转负 + 个股行业在 5D 净流入 Top3
+          （数据缺失 fail-closed 拦截）。仅参数敏感度参考，不作发布依据——以 paper 实绩为准。
         </div>
       </div>
 
@@ -167,6 +188,13 @@ export function BacktestPage() {
                   .map(([b, v]) => `${b}:${(v.winRate ?? 0).toFixed(2)}`)
                   .join(' · ')}
               />
+              <StatCard
+                label="闸门拦截"
+                value={String(Object.values(s.gated_blocks).reduce((a, b) => a + b, 0))}
+                sub={Object.entries(s.gated_blocks)
+                  .map(([k, v]) => `${k}×${v}`)
+                  .join(' · ')}
+              />
             </div>
           ) : (
             <p className="text-xs text-[var(--k-muted)]">点「运行回测」开始。</p>
@@ -179,8 +207,8 @@ export function BacktestPage() {
         <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
           <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
             <BarChart3 className="size-3.5" />
-            敏感度网格（score × hold × stop = 36 组 · 默认窗口）
-            {sensQ.isFetching && <span className="text-[10px] text-[var(--k-muted)]">计算中（约 30s）…</span>}
+            敏感度网格（score × hold × stop × 闸门 = 72 组 · 默认窗口）
+            {sensQ.isFetching && <span className="text-[10px] text-[var(--k-muted)]">计算中（约 60s）…</span>}
           </div>
           {sensQ.isError ? (
             <p className="text-xs text-red-700">{String(sensQ.error)}</p>
@@ -189,6 +217,7 @@ export function BacktestPage() {
               <table className="w-full text-left text-xs tabular-nums">
                 <thead className="sticky top-0 bg-[var(--k-surface)]">
                   <tr className="text-[10px] text-[var(--k-muted)]">
+                    <th className="py-1 pr-2">闸门</th>
                     <th className="py-1 pr-2">score</th>
                     <th className="py-1 pr-2">hold</th>
                     <th className="py-1 pr-2">stop</th>
@@ -203,6 +232,7 @@ export function BacktestPage() {
                     .sort((a, b) => (b.win_rate ?? -1) - (a.win_rate ?? -1))
                     .map((r, i) => (
                       <tr key={i} className="border-t border-[var(--k-border)]/60">
+                        <td className="py-1 pr-2 text-[var(--k-muted)]">{r.config.gates}</td>
                         <td className="py-1 pr-2">{r.config.score_threshold.toFixed(0)}</td>
                         <td className="py-1 pr-2">{r.config.max_hold_days}</td>
                         <td className="py-1 pr-2">{r.config.stop_loss_pct.toFixed(0)}</td>

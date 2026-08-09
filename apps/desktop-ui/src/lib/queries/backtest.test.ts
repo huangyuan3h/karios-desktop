@@ -42,6 +42,7 @@ const PARAMS = {
   scoreThreshold: 80,
   maxHoldDays: 5,
   stopLossPct: -5,
+  gates: 'full',
 };
 
 describe('useBacktestRunQuery', () => {
@@ -54,11 +55,11 @@ describe('useBacktestRunQuery', () => {
     mockedApiGetJson.mockResolvedValue({ ok: true, summary: {} });
     useBacktestRunQuery(PARAMS);
     const opts = lastOptions();
-    expect(opts.queryKey).toEqual(['backtest', 'run', PARAMS]);
+    expect(opts.queryKey).toEqual(['backtest', 'run', PARAMS, 0]);
     expect(opts.staleTime).toBe(0);
     await opts.queryFn();
     expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
-      '/api/backtest/run?start=2026-01-01&end=2026-06-01&score_threshold=80&max_hold_days=5&stop_loss_pct=-5',
+      '/api/backtest/run?start=2026-01-01&end=2026-06-01&score_threshold=80&max_hold_days=5&stop_loss_pct=-5&gates=full',
     );
   });
 });

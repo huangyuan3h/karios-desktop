@@ -48,8 +48,10 @@ def backtest_run(
     target_pnl_pct: float = Query(10.0, ge=0),
     score_floor: float = Query(30.0, ge=0, le=100),
     market: str = Query("CN", pattern="^(CN|HK)$"),
+    gates: str = Query("full", pattern="^(none|regime|full)$"),
 ) -> dict[str, Any]:
-    """Run one backtest configuration (v0: signals = historical TrendOK scores)."""
+    """Run one backtest configuration (signals = historical TrendOK scores
+    filtered by entry gates — traffic-light regime / sector flow / mainline)."""
     _validate_window(start, end)
     try:
         config = BacktestConfig(
@@ -61,6 +63,7 @@ def backtest_run(
             target_pnl_pct=target_pnl_pct,
             score_floor=score_floor,
             market=market,
+            gates=gates,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -76,7 +79,8 @@ def backtest_sensitivity(
     start: str = Query(..., description="Window start (YYYY-MM-DD)."),
     end: str = Query(..., description="Window end (YYYY-MM-DD)."),
 ) -> dict[str, Any]:
-    """Run the default v0 grid (score x hold x stop) and return summaries."""
+    """Run the default grid (score x hold x stop x gates: none vs full)
+    and return summaries."""
     _validate_window(start, end)
     try:
         grid = default_sensitivity_grid(start, end)

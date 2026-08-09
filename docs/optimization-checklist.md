@@ -1600,7 +1600,98 @@ SidebarNav 新增「回测」入口。三区块：
 - 手动触发：`POST /watchlist/automation/funnel-health/check`；Scheduler 页新增「漏斗健康检查」条目（shared `SCHEDULER_JOB_CATALOG`，18:10 工作日 + 立即检查按钮）
 - 测试：`tests/test_watchlist_funnel_health.py`（7 个：健康/首日 anomaly/3 天连续 failure/中断/失败记录延续 streak/同日去重/collect 错误）
 
+### OPT-070：回测引擎 v1.5 入池闸门（2026-08-09 · 用户拍板「与真实决策匹配」）
+
+**状态**：[x]
+**完成日期**：2026-08-09
+
+**背景**：回测信号只按 score 阈值（v0），不含真实决策链的指数红绿灯/板块资金流/mainline
+白名单 → 网格调出的参数与实盘口径脱节（实测 85/5/-5 在弱市窗口回测 21 笔全入场，
+而真实系统该窗口 29/36 天 Weak regime 根本不开新仓）。
+
+#### 交付
+
+- `BacktestConfig.gates`（none|regime|full，默认 full=实盘口径）：`none` 维持 v0 只看分；
+  `regime` 指数红绿灯全绿（REGIME_STRONG）才开新仓（复用 `get_index_signals(as_of)`
+  + `classify_market_regime`，与 live gate 同函数）；`full` 再加全行业 SW L1 净流入
+  ≤0 挡（同 sectorOutflowBlock 规则）+ 个股 EM 行业 ∈ 5D 净流入 Top3 才开（同
+  mainline 白名单）。闸门数据缺失 fail-closed（同 live 姿态），拦截次数记入
+  `summary.gated_blocks`（regime/flow/mainline 分项）
+- `BacktestData` 按日预载 regime / 全市场资金流 / 5D Top3 行业 / ts→行业映射
+  （一次批量查询 + as-of 现算，窗口内每 config 共享）
+- `run_sensitivity` 重构：同窗口 config 共享一份 BacktestData（之前每 config 独立加载）；
+  默认网格 = score×hold×stop×闸门两档（none/full）= 72 组
+- API：`GET /api/backtest/run?gates=`（默认 full）、`/api/backtest/sensitivity`
+  （网格含 none/full 两档）；summary.config 带 gates、新增 gated_blocks
+- FE：参数面板加「入池闸门」下拉（全套/仅红绿灯/只看分数）；单配置结果加「闸门拦截」
+  卡片；网格表格加「闸门」列；说明文案更新
+- 测试：BE 新增 7 个（none 忽略闸门 / regime 挡 Weak+Diverging / full 挡 flow+mainline
+  / 缺失数据 fail-closed / 网格 72 组含闸门维度 / 路由 gates 参数），43 passed；
+  FE backtest query 测试 9 passed
+
+#### 实测（2026-06-18 ~ 2026-08-08 窗口）
+
+- 36 交易日 regime 分布：Weak 29 / Diverging 5 / Strong 2 → full 闸门 0 笔入场
+  （真实系统本就该弱市空仓）；none 口径 21 笔 38.1% 胜率 -0.9% 均净（虚高，勿参考）
+- 72 组网格：full 列全部 0 笔（窗口内无 STRONG 行情）；等行情转强后 full 才有样本
+
 #### 反模式
+
+- ❌ 回测信号只看 score（忽略 regime/资金流 → 与实盘纪律脱节）
+- ❌ 每 config 独立加载 BacktestData（网格数据重复拉取）
+
+### OPT-071：回填历史 score（2026-08-09 · 回测窗口 6/18 → 3/2）
+
+**状态**：[x]
+**完成日期**：2026-08-09
+
+**背景**：`watchlist_score_daily` 起点 2026-06-18（全池每日盘后打分），回测窗口被锁死在该
+日期之后——而 6/18 后 36 个交易日 Strong 仅 2 天，full 闸门 0 样本。全市场（8563 票）回填
+太耗算力，需要聪明筛选。
+
+#### 交付
+
+- `scripts/backfill_watchlist_scores.py`（新）：回填 2026-03-02 起（76 交易日 × 752 只 CN
+  票 = 56854 行，全量仅 24s）
+- **Universe 聪明筛选**（不扫全市场）：① TV 快照历史中（6/18 前）出现 ≥2 次的 CN 票
+  （=当时被 screener 选中/关注的票）② score 表已有记录的 CN 票 ③ 当前 registry CN 票
+- **复用 live 纯函数**：`_trendok_one`（bars 截断至目标日 as-of），行业资金流
+  `_build_industry_flow_context(D)`、regime `get_market_regime(as_of=D)`、CSI300 as-of；
+  stoploss resolver 传 no-op（回填不写 stoploss 表）；inst 缺失降级不阻断 score
+- 幂等：`upsert_score_daily`（ON CONFLICT 覆盖）；不触碰 6/18+ 已有真实行
+
+#### 附带修复（as-of regime 前视污染 + 网络卡死）
+
+- `market_regime.py`：`get_index_signals(as_of_date=...)` 的 HK 分支**跳过 on-demand
+  网络拉取**（用今天数据算历史日是前视污染；且 HK 不在 index_daily 时每次卡 30s+，
+  回测 112 天窗口曾 240s 超时）。as-of 语义下 HK 标 no-data（不影响 CN regime）
+- `macro_snapshot_on_demand.py`：yfinance 失败缓存 300s（`_yf_fail_cache`）——HK/US
+  网络失败不再让每次快照/信号调用卡满超时（生产体验修复）
+
+#### 口径修正（2026-08-09 用户质疑后复查）
+
+- **flow 闸门**：初版"全行业净流入合计 ≤0 挡"≠ 真实 `isSectorOutflowBlock`
+  （hot-industry-picks.ts:247 = **所有行业都 ≤0 才挡**）→ 改为
+  `flow_any_positive_by_day`（任一 SW L1 行业 net_inflow > 0 即放行）
+- **mainline 缺动量突破**：真实 `buildMainlineAllowSet` = 5D Top3 ∪ 动量突破
+  （今日净流入 ≥20 亿 且 排名升 ≥10）→ 补上（阈值同 FE 常量）
+- paper 才上线一周（仅 1 笔 8/08 买入）→ 无法与回测对照；回测是唯一长样本验证工具
+
+#### 实测（窗口 2026-03-02 ~ 2026-08-07 · 112 交易日 · 口径修正后）
+
+- regime：Weak 78 / Diverging 26 / **Strong 8**（回填前 6/18+ 仅 2 天 Strong）
+- 85/5/-5 单配置：full **25 笔（72% 胜率 +4.8% 均净 回撤 16.9%）** vs none 1106 笔
+  （42.4% 胜率 -0.12% 均净）——闸门拦截 2020 次（regime 1751 / mainline 269，
+  flow 0——Strong 日都有正流入行业，口径修正后不再误挡）
+- 结论：系统纪律（弱市空仓 + 强市精选）在 5 个月样本上显著跑赢"只看分"；25 笔
+  样本仍偏小，继续积累
+
+#### 反模式
+
+- ❌ 全市场回填 score（8563 票 × 76 天 = 浪费；快照历史已天然给出"当时被关注"的池子）
+- ❌ as-of 历史重算走网络拉今天数据（前视 + 卡死）
+- ❌ 回填时写 stoploss 表（副作用污染）
+- ❌ 闸门口径凭印象实现（flow 合计 vs 全负、mainline 缺动量突破）——先读 live 源码再写
 
 - ❌ 依赖 TV 快照列算 52W 回撤（列值可能为空且不可告警）
 - ❌ 用 EMA/SMA 近似 52W 高（口径漂移，K 线是权威源）

@@ -18,6 +18,7 @@ from data_sync_service.service.backtest_engine import (
     BacktestData,
     simulate,
 )
+from data_sync_service.service.execution_gate import REGIME_DIVERGING, REGIME_WEAK
 
 # ---------------------------------------------------------------------------
 # Fixtures: in-memory BacktestData
@@ -37,6 +38,11 @@ def _data(
     calendar: list[str],
     scores: dict[str, dict[str, float]],
     prices: dict[str, dict[str, float]],
+    *,
+    regime: str = "Strong",
+    flow_any_positive: bool = True,
+    mainline_allow: set[str] | None = None,
+    industry_by_ts: dict[str, str] | None = None,
 ) -> BacktestData:
     data = BacktestData.__new__(BacktestData)
     data.config = None
@@ -45,6 +51,12 @@ def _data(
     data.ts_codes = []
     data.bars_by_ts = {}
     data.close_by_ts_day = {ts: {d: float(px) for d, px in m.items()} for ts, m in prices.items()}
+    data.regime_by_day = {d: regime for d in calendar}
+    data.flow_any_positive_by_day = {d: flow_any_positive for d in calendar}
+    data.mainline_allow_by_day = {d: set(mainline_allow or {"计算机"}) for d in calendar}
+    if industry_by_ts is None:
+        industry_by_ts = {ts: "计算机" for ts in prices}
+    data.industry_by_ts = dict(industry_by_ts)
     return data
 
 
@@ -210,6 +222,138 @@ def test_config_validation() -> None:
         BacktestConfig(start_date="2026-08-01", end_date="2026-08-07", market="US")
     with pytest.raises(ValueError):
         BacktestConfig(start_date="2026-08-01", end_date="2026-08-07", score_threshold=150)
+    with pytest.raises(ValueError):
+        BacktestConfig(start_date="2026-08-01", end_date="2026-08-07", gates="all")
+
+
+# ---------------------------------------------------------------------------
+# v1.5 entry gates (OPT-070)
+# ---------------------------------------------------------------------------
+
+
+def _gate_data(calendar: list[str], **overrides) -> dict:
+    base = {
+        "regime": "Strong",
+        "flow_any_positive": True,
+        "mainline_allow": {"计算机"},
+        "industry_by_ts": {"600001.SH": "计算机"},
+    }
+    base.update(overrides)
+    return base
+
+
+def _run_with_gates(calendar, scores, prices, gates: str, **gate_overrides):
+    return simulate(
+        BacktestConfig(
+            start_date=calendar[0],
+            end_date=calendar[-1],
+            score_threshold=85.0,
+            gates=gates,
+        ),
+        data=_data(calendar, scores, prices, **_gate_data(calendar, **gate_overrides)),
+    )
+
+
+def test_gates_none_ignores_all_gate_data() -> None:
+    """gates=none keeps v0 behaviour: no regime/flow/mainline filtering."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5}}
+    run = _run_with_gates(
+        calendar,
+        scores,
+        prices,
+        gates="none",
+        regime="REGIME_WEAK",
+        flow_any_positive=False,
+        mainline_allow=set(),
+        industry_by_ts={},
+    )
+    assert run.summary.closed == 1
+    assert run.summary.gated_blocks == {}
+
+
+def test_gates_regime_blocks_non_strong_market() -> None:
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5}}
+
+    for bad_regime in (REGIME_WEAK, REGIME_DIVERGING):
+        run = _run_with_gates(calendar, scores, prices, gates="regime", regime=bad_regime)
+        assert run.summary.closed == 0
+        assert run.summary.gated_blocks == {"regime": 2}  # one attempt per score day
+
+    run = _run_with_gates(calendar, scores, prices, gates="regime")
+    assert run.summary.closed == 1
+    assert run.summary.gated_blocks == {}
+
+
+def test_gates_full_flow_blocks_only_when_all_industries_non_positive() -> None:
+    """sectorOutflowBlock mirrors live rule: every SW L1 industry <= 0 blocks."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5}}
+
+    # no positive industry that day → flow blocks (fail-closed on missing too)
+    run = _run_with_gates(calendar, scores, prices, gates="full", flow_any_positive=False)
+    assert run.summary.closed == 0
+    assert run.summary.gated_blocks == {"flow": 2}  # one attempt per score day
+
+    # at least one positive industry → flow passes, mainline decides
+    run = _run_with_gates(
+        calendar,
+        scores,
+        prices,
+        gates="full",
+        flow_any_positive=True,
+        mainline_allow={"电子"},
+        industry_by_ts={"600001.SH": "计算机"},
+    )
+    assert run.summary.closed == 0
+    assert run.summary.gated_blocks == {"mainline": 2}
+
+    # industry allowed → entry happens
+    run = _run_with_gates(calendar, scores, prices, gates="full")
+    assert run.summary.closed == 1
+    assert run.summary.gated_blocks == {}
+
+
+def test_gates_full_missing_data_fails_closed() -> None:
+    """Missing gate data blocks the entry (live fail-closed posture)."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5}}
+
+    # no industry mapping → mainline blocks
+    run = _run_with_gates(
+        calendar,
+        scores,
+        prices,
+        gates="full",
+        flow_any_positive=True,
+        industry_by_ts={},
+    )
+    assert run.summary.closed == 0
+    assert run.summary.gated_blocks == {"mainline": 2}
+
+    # no flow data for the day → flow blocks
+    data = _data(calendar, scores, prices, **_gate_data(calendar))
+    data.flow_any_positive_by_day = {}
+    run = simulate(
+        BacktestConfig(start_date=calendar[0], end_date=calendar[-1], gates="full"),
+        data=data,
+    )
+    assert run.summary.closed == 0
+    assert run.summary.gated_blocks == {"flow": 2}
+
+
+def test_default_sensitivity_grid_includes_gate_dimension() -> None:
+    from data_sync_service.service.backtest_engine import default_sensitivity_grid
+
+    grid = default_sensitivity_grid("2026-06-18", "2026-08-08")
+    assert len(grid) == 72  # 4 score x 3 hold x 3 stop x 2 gate levels
+    assert {c.gates for c in grid} == {"none", "full"}
+    assert all(c.start_date == "2026-06-18" and c.end_date == "2026-08-08" for c in grid)
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +449,7 @@ def test_backtest_sensitivity_endpoint(monkeypatch) -> None:
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True
-    assert body["configs"] == 36  # default grid: 4 x 3 x 3
+    assert body["configs"] == 72  # default grid: 4 x 3 x 3 x 2 gate levels
     assert len(body["results"]) == 1
 
 

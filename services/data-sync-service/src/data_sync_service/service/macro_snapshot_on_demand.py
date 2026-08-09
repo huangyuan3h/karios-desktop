@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -36,13 +37,24 @@ def _lookback_range(days: int = 120) -> tuple[str, str]:
     return start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
 
 
+# Network failures are cached briefly so a dead yfinance endpoint does not
+# stall every index-signals / snapshot call for the full timeout (each call
+# can block tens of seconds). On success the marker is dropped.
+_yf_fail_cache: dict[str, float] = {}
+_YF_FAIL_TTL_SECONDS = 300.0
+
+
 def _fetch_yfinance_index(ticker: str) -> dict[str, Any] | None:
     """Fetch index OHLC history via Yahoo Finance."""
+    now = time.time()
+    if _yf_fail_cache.get(ticker, 0.0) > now:
+        return None
     try:
         import yfinance as yf  # type: ignore[import-not-found]
 
         hist = yf.Ticker(ticker).history(period="25d")
         if hist.empty or len(hist) < 5:
+            _yf_fail_cache[ticker] = now + _YF_FAIL_TTL_SECONDS
             return None
 
         closes: list[float] = []
@@ -55,8 +67,10 @@ def _fetch_yfinance_index(ticker: str) -> dict[str, Any] | None:
                 pass
 
         if not closes:
+            _yf_fail_cache[ticker] = now + _YF_FAIL_TTL_SECONDS
             return None
 
+        _yf_fail_cache.pop(ticker, None)
         as_of_date = hist.index[-1].strftime("%Y-%m-%d")
         pct_chg = None
         if len(closes) >= 2:
@@ -75,6 +89,7 @@ def _fetch_yfinance_index(ticker: str) -> dict[str, Any] | None:
             "ma20": ma20,
         }
     except Exception:
+        _yf_fail_cache[ticker] = time.time() + _YF_FAIL_TTL_SECONDS
         return None
 
 

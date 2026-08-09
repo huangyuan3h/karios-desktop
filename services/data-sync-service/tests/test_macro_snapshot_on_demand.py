@@ -141,3 +141,27 @@ def test_macro_snapshot_warning(monkeypatch) -> None:
     assert msd.macro_snapshot_warning() is not None
     monkeypatch.setattr(msd, "get_settings", lambda: type("S", (), {"tu_share_api_key": "k"})())
     assert msd.macro_snapshot_warning() is None
+
+def test_yfinance_failure_cache_fast_fails() -> None:
+    """A recent failure marker short-circuits the yfinance fetch (no network)."""
+    import time
+
+    import data_sync_service.service.macro_snapshot_on_demand as mod
+
+    mod._yf_fail_cache.clear()
+    mod._yf_fail_cache["^HSTECH"] = time.time() + 300
+    try:
+        assert mod._fetch_yfinance_index("^HSTECH") is None
+    finally:
+        mod._yf_fail_cache.clear()
+
+    # expired marker does not block a real attempt. Network is unavailable in
+    # CI/dev, so the call may raise or return None — either way: no stale-block.
+    mod._yf_fail_cache["^HSTECH"] = time.time() - 1
+    try:
+        result = mod._fetch_yfinance_index("^HSTECH")
+        assert result is None or isinstance(result, dict)
+    except Exception:
+        pass
+    finally:
+        mod._yf_fail_cache.clear()

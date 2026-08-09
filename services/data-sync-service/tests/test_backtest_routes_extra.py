@@ -18,7 +18,7 @@ class FakeSummary:
 class TestRun:
     def test_run(self, monkeypatch) -> None:
         monkeypatch.setattr(br, "simulate", lambda config: Mock(summary=FakeSummary()))
-        out = br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=80.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN")
+        out = br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=80.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full")
         assert out["ok"] is True and out["summary"] == {"pnl": 1.0}
 
     def test_run_bad_window(self) -> None:
@@ -38,7 +38,7 @@ class TestRun:
     def test_run_simulate_error(self, monkeypatch) -> None:
         monkeypatch.setattr(br, "simulate", lambda config: (_ for _ in ()).throw(RuntimeError("boom")))
         with pytest.raises(HTTPException) as exc:
-            br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=85.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN")
+            br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=85.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full")
         assert exc.value.status_code == 500
         assert "backtest failed" in exc.value.detail
 

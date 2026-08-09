@@ -46,6 +46,12 @@ class TestLookback:
 
 
 class TestYfinance:
+    @pytest.fixture(autouse=True)
+    def _clear_fail_cache(self) -> None:
+        mod._yf_fail_cache.clear()
+        yield
+        mod._yf_fail_cache.clear()
+
     def test_import_fail(self, monkeypatch) -> None:
         monkeypatch.setitem(sys.modules, "yfinance", None)
         assert mod._fetch_yfinance_index("^IXIC") is None

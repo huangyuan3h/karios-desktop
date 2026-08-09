@@ -14,6 +14,7 @@ export type BacktestSummary = {
     target_pnl_pct: number;
     score_floor: number;
     market: string;
+    gates: string;
   };
   calendar_days: number;
   trades: number;
@@ -27,6 +28,7 @@ export type BacktestSummary = {
   avg_costs_pct: number | null;
   max_drawdown_pct: number;
   by_score_bucket: Record<string, { trades: number; wins: number; winRate: number | null; avgNet: number | null }>;
+  gated_blocks: Record<string, number>;
 };
 
 export type BacktestRunResponse = {
@@ -86,7 +88,14 @@ export type BacktestParams = {
   scoreThreshold: number;
   maxHoldDays: number;
   stopLossPct: number;
+  gates: string;
 };
+
+export const GATE_LEVELS = [
+  { value: 'full', label: '全套（红绿灯+资金流+mainline）' },
+  { value: 'regime', label: '仅红绿灯 regime' },
+  { value: 'none', label: '只看分数（v0）' },
+] as const;
 
 function backtestRunPath(p: BacktestParams): string {
   const q = new URLSearchParams({
@@ -95,13 +104,14 @@ function backtestRunPath(p: BacktestParams): string {
     score_threshold: String(p.scoreThreshold),
     max_hold_days: String(p.maxHoldDays),
     stop_loss_pct: String(p.stopLossPct),
+    gates: p.gates,
   });
   return `/api/backtest/run?${q.toString()}`;
 }
 
-export function useBacktestRunQuery(p: BacktestParams) {
+export function useBacktestRunQuery(p: BacktestParams, attempt = 0) {
   return useQuery({
-    queryKey: ['backtest', 'run', p],
+    queryKey: ['backtest', 'run', p, attempt],
     queryFn: () => apiGetJson<BacktestRunResponse>(backtestRunPath(p)),
     staleTime: 0,
   });
