@@ -1,5 +1,6 @@
 import type { ExecutionActionCard, ExecutionGate } from '@karios/shared';
 
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { mdPrice, mdScore, mdTable } from '@/lib/dashboard-format';
 import {
   buildDefensiveSleeveExposurePct,
@@ -62,7 +63,7 @@ export type PanicCooldownStatus = {
 /** Fetch S-3 panic cooldown from the backend (fail-open: null on any error). */
 export async function fetchPanicCooldown(): Promise<PanicCooldownStatus | null> {
   try {
-    const res = await fetch('/market/cn/sentiment/panic-cooldown?days=10&cooldownDays=3', {
+    const res = await fetch(`${DATA_SYNC_BASE_URL}/market/cn/sentiment/panic-cooldown?days=10&cooldownDays=3`, {
       cache: 'no-store',
     });
     if (!res.ok) return null;

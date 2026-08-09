@@ -63,7 +63,7 @@ async function retrieveSnapshot(date: string): Promise<string> {
   return lines.join('\n');
 }
 
-async function searchArchive(symbol: string): Promise<string> {
+export async function searchArchive(symbol: string): Promise<string> {
   const data = await fetchJson<{
     ok: boolean;
     hits?: Array<{
@@ -107,7 +107,7 @@ const S3_RULES_KNOWLEDGE = `【S-3 回测纪律（本系统唯一证据 · 双�
 - 回答持仓/买卖/加仓问题时：先调用 query_s3_holdings_health 获取实时体检，按上述规则给结论；
   不要凭感觉建议，回测证据优先`;
 
-async function queryHoldingsHealth(): Promise<string> {
+export async function queryHoldingsHealth(): Promise<string> {
   const data = await fetchJson<{
     tradeDate?: string;
     regime?: string | null;

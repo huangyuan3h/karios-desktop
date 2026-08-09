@@ -131,7 +131,7 @@ export function useMarketRegimeQuery(enabled = true) {
   return useQuery({
     queryKey: ['market', 'regime'],
     queryFn: async () => {
-      const res = await fetch('/market/regime', { cache: 'no-store' });
+      const res = await fetch(`${DATA_SYNC_BASE_URL}/market/regime`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`regime ${res.status}`);
       return (await res.json()) as MarketRegimeResponse;
     },

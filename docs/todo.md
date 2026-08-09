@@ -1006,6 +1006,22 @@ swap 0→0.3/0.8/10/2（paper 已部署，待复审）· position 回测 10% / p
     持仓>9票RS最弱先轮出
   - 新增 build 层测试（test_portfolio_health 6 passed）；修复 trailing 峰值用 high 的
     口径 bug → close（与回测引擎一致），maxHoldDate=entry+60
+- **修复前端 404（同日 · 用户贴 Next dev 日志发现）**：5 处 fetch 用相对路径
+  （`/watchlist/rs-ranks` ×3、`/market/regime`、`/market/cn/sentiment/panic-cooldown`）
+  打到 Next dev server（无代理）→ 404。全部改为 `${DATA_SYNC_BASE_URL}` 前缀
+  （execution-markdown.ts 补 import；queries/macro.ts 原本已 import 但此调用漏前缀）。
+  后端路由本存在（watchlist_routes.py:51，main.py:112 include）；FE 737 passed、tsc 干净
+- **ai-service 测试补全（同日）**：decision.ts 导出 queryHoldingsHealth/searchArchive，
+  `routes/decision.test.ts` 6 测试（持仓/EXIT/候选/服务不可用/归档命中/无命中）——
+  138 → 144 passed；工具集成有回归保护
+- **系统健康扫描（同日 · 结论全部健康）**：
+  - daily 表最新 08-07（周五收盘）✓；close_sync 每天 17:10 全市场同步（含 ETF，
+    tushare daily 全量）→ 用户 27.87% 仓位的 ETF 数据无滞后
+  - cron 表达式审计：daily_sync_job `0 17 * * 5`=周五 deprecated 全量兜底（设计）；
+    etf_daily_job 每月 1 号=专项兜底；paper/决策 job 工作日触发；均合理
+  - **发现：user_trades 表 0 行**（卖出从未用 TradeActionDialog 记录）→ 期望值看板
+    空转；paper open 空（Weak 期正常）。收益闭环断点在**使用**不在代码：
+    卖出时用 Watchlist 行内按钮记录，期望值/周度复盘才开始积累
 - 后续可选：把回测结论速览（docs/modules/backtest-strategy.md 结论段）进一步压缩进
   system prompt；或 agent 追问"为什么"时给出窗口级证据
 - 后续可选：把回测结论速览（docs/modules/backtest-strategy.md 结论段）进一步压缩进

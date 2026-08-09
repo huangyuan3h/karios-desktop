@@ -1429,7 +1429,7 @@ async function fetchRsRanks(symbols: string[]): Promise<Record<string, number> |
   if (!symbols.length) return null;
   try {
     const q = encodeURIComponent(symbols.join(','));
-    const res = await fetch(`/watchlist/rs-ranks?symbols=${q}`, { cache: 'no-store' });
+    const res = await fetch(`${DATA_SYNC_BASE_URL}/watchlist/rs-ranks?symbols=${q}`, { cache: 'no-store' });
     if (!res.ok) return null;
     const d = (await res.json()) as { ranks?: Record<string, number> };
     return d.ranks ?? null;

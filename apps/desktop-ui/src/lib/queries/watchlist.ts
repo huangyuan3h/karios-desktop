@@ -2,6 +2,7 @@
 
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 
+import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { isShanghaiQuoteWindow } from '@/lib/market-hours';
 import {
   fetchWatchlistMarketSnapshot,
@@ -69,7 +70,7 @@ export function useWatchlistRsRanksQuery(symbols: string[]) {
     queryKey: ['watchlist', 'rs-ranks', [...symbols].sort().join(',')],
     queryFn: async () => {
       const q = encodeURIComponent(symbols.join(','));
-      const res = await fetch(`/watchlist/rs-ranks?symbols=${q}`, {
+      const res = await fetch(`${DATA_SYNC_BASE_URL}/watchlist/rs-ranks?symbols=${q}`, {
         cache: 'no-store',
       });
       if (!res.ok) throw new Error(`rs-ranks ${res.status}`);
