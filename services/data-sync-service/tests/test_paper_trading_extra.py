@@ -451,3 +451,52 @@ class TestComputeStats:
         monkeypatch.setattr(pt_db, "count_by_market_since", lambda since: {"CN": {"closedCount": 3, "winningCount": 2, "avgPnlPct": 1.5, "winRate": 0.66}})
         out = pt.compute_stats(since_iso="2026-08-01", market="CN")
         assert out["closedCount"] == 3 and out["winningCount"] == 2
+
+
+def test_trailing_stop_closes_on_peak_pullback(monkeypatch) -> None:
+    """S-3 trailing stop: close when close pulls back >= 8% from the
+    post-entry high (backtest-strategy.md 6.6)."""
+    from data_sync_service.db import paper_trading as pt_db
+
+    monkeypatch.setattr(
+        pt_db,
+        "get_open_paper_trades",
+        lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}],
+    )
+    close = Mock()
+    monkeypatch.setattr(pt_db, "close_paper_trade", close)
+    _patch_all(
+        monkeypatch,
+        closes={"600519.SH": [
+            ("2026-08-06", "10.0", "10.5", "9.8", "10.0", "100"),
+            ("2026-08-07", "9.6", "9.7", "9.5", "9.6", "100"),  # -8.6% from peak 10.5
+        ]},
+        registry=[{"symbol": "CN:600519", "positionPct": 20}],
+    )
+    out = pt.run_update(today_iso="2026-08-07")
+    assert out["closed"] == 1
+    assert close.call_args.kwargs["close_reason"] == "trailing_stop"
+
+
+def test_trailing_stop_holds_below_threshold(monkeypatch) -> None:
+    """Pullback of 5% from peak does not trigger the 8% trailing stop."""
+    from data_sync_service.db import paper_trading as pt_db
+
+    monkeypatch.setattr(
+        pt_db,
+        "get_open_paper_trades",
+        lambda: [{"id": "t1", "symbol": "CN:600519", "entryPrice": 10.0, "entryDate": "2026-08-06"}],
+    )
+    close = Mock()
+    monkeypatch.setattr(pt_db, "close_paper_trade", close)
+    _patch_all(
+        monkeypatch,
+        closes={"600519.SH": [
+            ("2026-08-06", "10.0", "10.5", "9.8", "10.0", "100"),
+            ("2026-08-07", "9.98", "10.0", "9.9", "9.98", "100"),  # -5.0% from peak
+        ]},
+        registry=[{"symbol": "CN:600519", "positionPct": 20}],
+    )
+    out = pt.run_update(today_iso="2026-08-07")
+    assert out["closed"] == 0
+    close.assert_not_called()

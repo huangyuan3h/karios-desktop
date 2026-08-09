@@ -68,12 +68,16 @@ CLOSE_REASON_STOP_HIT = "stop_hit"  # pnl_pct <= STOP_LOSS_PCT
 CLOSE_REASON_TARGET_HIT = "target_hit"  # pnl_pct >= TARGET_PNL_PCT
 CLOSE_REASON_SCORE_FLOOR = "score_floor"  # latest TrendOK score < SCORE_FLOOR
 CLOSE_REASON_POOL_EXIT = "pool_exit"  # symbol purged from the watchlist registry
+CLOSE_REASON_SWAPPED = "swapped"  # RS rotation: replaced by a stronger candidate
+CLOSE_REASON_TRAILING = "trailing_stop"  # peak pullback <= TRAILING_STOP_PCT
 CLOSE_REASONS = (
     CLOSE_REASON_MAX_HOLD,
     CLOSE_REASON_STOP_HIT,
     CLOSE_REASON_TARGET_HIT,
     CLOSE_REASON_SCORE_FLOOR,
     CLOSE_REASON_POOL_EXIT,
+    CLOSE_REASON_SWAPPED,
+    CLOSE_REASON_TRAILING,
 )
 
 # TIP-011: source attribution (provenance of the BUY/ADD signal).
@@ -90,6 +94,7 @@ MAX_HOLD_DAYS = 60  # S-3: hold up to 60 days (5-day force-close was proven wron
 STOP_LOSS_PCT = -5.0  # i.e. net pnl_pct <= -5% triggers stop_hit (v0.2: net)
 TARGET_PNL_PCT = 100.0  # S-3: no active take-profit (10% target was proven a profit killer)
 SCORE_FLOOR = 0.0  # S-3: never close on score retreat (floor 30 was proven to kill trends)
+TRAILING_STOP_PCT = -8.0  # S-3: close when price pulls back 8% from post-entry peak (backtest-strategy.md 6.6/6.7)
 
 CREATE_SQL = f"""
 CREATE TABLE IF NOT EXISTS {PAPER_TRADES_TABLE} (

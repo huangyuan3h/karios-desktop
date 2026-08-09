@@ -746,7 +746,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 )
                 cands.append((rsv, score, sym, ts, px, pos_scale))
             cands.sort(reverse=True)  # strongest RS first
-            for (rsv_w, sym_w, pos_w), cand in zip(held, cands):
+            for (_rsv_w, sym_w, pos_w), cand in zip(held, cands, strict=False):
                 if len(swapped_syms) >= config.swap_max_per_day:
                     break
                 _, _, sym_c, ts_c, px_c, pos_scale_c = cand

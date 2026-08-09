@@ -151,3 +151,142 @@ def test_run_intake_s3_missing_close_skipped() -> None:
         summary = paper_s3.run_intake_s3(trade_date="2026-08-07")
     assert summary["inserted"] == 0
     assert summary["skippedReasons"].get("no-close-price") == 1
+
+
+# ---------------------------------------------------------------------------
+# RS rotation swap (2026-08-09 · user-approved S-3 enhancement)
+# ---------------------------------------------------------------------------
+
+
+def _patch_swap_env(holds, candidates, rs_map, closes):
+    """Patch the seams _swap_holds_for_candidates relies on (pure function
+    calling close_paper_trade via the module import)."""
+
+    patchers = [
+        patch.object(paper_s3, "close_paper_trade"),
+        patch.object(paper_s3, "insert_paper_trade"),
+        patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
+        patch.object(paper_s3, "round_trip_cost_pct", lambda m: 0.003),
+    ]
+    return patchers
+
+
+def test_swap_holds_replaces_weak_with_strong() -> None:
+    """A weak-RS held S-3 trade is closed (swapped) and the strong candidate
+    is returned for insertion; the candidate is removed from the rest."""
+    holds = [{"id": "h1", "symbol": CN_A, "source": "S3", "tsCode": "600001.SH",
+              "entryDate": "2026-07-01", "entryPrice": 10.0}]
+    cands = [{"symbol": CN_B, "ts_code": "600002.SH", "score": 90.0, "rs": 0.9,
+              "regime": "Strong", "industry": "计算机"}]
+    with (
+        patch.object(paper_s3, "close_paper_trade") as close,
+        patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
+        patch.object(paper_s3, "round_trip_cost_pct", lambda m: 0.003),
+    ):
+        swapped, rest = paper_s3._swap_holds_for_candidates(
+            day="2026-08-07",
+            holds=holds,
+            candidates=cands,
+            rs_by_ts={"600001.SH": 0.1, "600002.SH": 0.9},
+            closes={"600001.SH": 9.5, "600002.SH": 12.0},
+        )
+    assert len(swapped) == 1
+    assert swapped[0]["symbol"] == CN_B
+    assert swapped[0]["entry_price"] == 12.0
+    assert rest == []
+    close.assert_called_once()
+    kwargs = close.call_args.kwargs
+    assert kwargs["close_reason"] == "swapped"
+    assert kwargs["close_date"] == "2026-08-07"
+    assert abs(kwargs["pnl_pct"] - (-5.0 - 0.3)) < 1e-6  # -5% gross - 0.3% cost
+
+
+def test_swap_keeps_candidate_when_held_rs_not_weak() -> None:
+    """Held RS >= SWAP_WEAK_RS_BELOW => no swap, candidate stays in rest."""
+    holds = [{"id": "h1", "symbol": CN_A, "source": "S3", "tsCode": "600001.SH",
+              "entryDate": "2026-07-01", "entryPrice": 10.0}]
+    cands = [{"symbol": CN_B, "ts_code": "600002.SH", "score": 90.0, "rs": 0.9,
+              "regime": "Strong", "industry": "计算机"}]
+    with (
+        patch.object(paper_s3, "close_paper_trade") as close,
+        patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
+    ):
+        swapped, rest = paper_s3._swap_holds_for_candidates(
+            day="2026-08-07", holds=holds, candidates=cands,
+            rs_by_ts={"600001.SH": 0.5, "600002.SH": 0.9},
+            closes={"600001.SH": 9.5, "600002.SH": 12.0},
+        )
+    assert swapped == []
+    assert [c["symbol"] for c in rest] == [CN_B]
+    close.assert_not_called()
+
+
+def test_swap_respects_min_hold_days() -> None:
+    """Held below SWAP_MIN_HOLD_DAYS (mock returns 5) => no swap."""
+    holds = [{"id": "h1", "symbol": CN_A, "source": "S3", "tsCode": "600001.SH",
+              "entryDate": "2026-08-01", "entryPrice": 10.0}]
+    cands = [{"symbol": CN_B, "ts_code": "600002.SH", "score": 90.0, "rs": 0.9,
+              "regime": "Strong", "industry": "计算机"}]
+    with (
+        patch.object(paper_s3, "close_paper_trade") as close,
+        patch.object(paper_s3, "_holding_days_for", lambda e, d: 5),
+    ):
+        swapped, rest = paper_s3._swap_holds_for_candidates(
+            day="2026-08-07", holds=holds, candidates=cands,
+            rs_by_ts={"600001.SH": 0.1, "600002.SH": 0.9},
+            closes={"600001.SH": 9.5, "600002.SH": 12.0},
+        )
+    assert swapped == []
+    close.assert_not_called()
+
+
+def test_swap_requires_strong_rs_candidate() -> None:
+    """Candidate RS below SWAP_STRONG_RS_AT_LEAST cannot swap in."""
+    holds = [{"id": "h1", "symbol": CN_A, "source": "S3", "tsCode": "600001.SH",
+              "entryDate": "2026-07-01", "entryPrice": 10.0}]
+    cands = [{"symbol": CN_B, "ts_code": "600002.SH", "score": 90.0, "rs": 0.5,
+              "regime": "Strong", "industry": "计算机"}]
+    with (
+        patch.object(paper_s3, "close_paper_trade") as close,
+        patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
+    ):
+        swapped, rest = paper_s3._swap_holds_for_candidates(
+            day="2026-08-07", holds=holds, candidates=cands,
+            rs_by_ts={"600001.SH": 0.1, "600002.SH": 0.5},
+            closes={"600001.SH": 9.5, "600002.SH": 12.0},
+        )
+    assert swapped == []
+    close.assert_not_called()
+
+
+def test_swap_caps_per_day_and_skips_missing_close() -> None:
+    """Max SWAP_MAX_PER_DAY pairs per day; a hold without a close is skipped."""
+    holds = [
+        {"id": "h1", "symbol": CN_A, "source": "S3", "tsCode": "600001.SH",
+         "entryDate": "2026-07-01", "entryPrice": 10.0},
+        {"id": "h2", "symbol": "CN:600003", "source": "S3", "tsCode": "600003.SH",
+         "entryDate": "2026-07-01", "entryPrice": 10.0},
+        {"id": "h3", "symbol": "CN:600004", "source": "S3", "tsCode": "600004.SH",
+         "entryDate": "2026-07-01", "entryPrice": 10.0},
+    ]
+    cands = [
+        {"symbol": "CN:000001", "ts_code": "000001.SZ", "score": 90.0, "rs": 0.9,
+         "regime": "Strong", "industry": "计算机"},
+        {"symbol": "CN:000002", "ts_code": "000002.SZ", "score": 88.0, "rs": 0.85,
+         "regime": "Strong", "industry": "计算机"},
+        {"symbol": "CN:000003", "ts_code": "000003.SZ", "score": 86.0, "rs": 0.82,
+         "regime": "Strong", "industry": "计算机"},
+    ]
+    with (
+        patch.object(paper_s3, "close_paper_trade") as close,
+        patch.object(paper_s3, "_holding_days_for", lambda e, d: 20),
+    ):
+        swapped, rest = paper_s3._swap_holds_for_candidates(
+            day="2026-08-07", holds=holds, candidates=cands,
+            rs_by_ts={"600001.SH": 0.1, "600003.SH": 0.2, "600004.SH": 0.25},
+            closes={"600003.SH": 9.5, "600004.SH": 12.0,  # h1 skipped: no close
+                    "000001.SZ": 12.0, "000002.SZ": 12.0, "000003.SZ": 12.0},
+        )
+    assert len(swapped) == 2  # h1 skipped (no close), h2+h3 swapped, capped at 2
+    assert len(rest) == 1
+    assert close.call_count == 2

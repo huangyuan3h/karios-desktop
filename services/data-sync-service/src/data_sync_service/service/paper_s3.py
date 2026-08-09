@@ -24,7 +24,12 @@ import logging
 from typing import Any
 
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
-from data_sync_service.db.paper_trading import SOURCE_S3, insert_paper_trade
+from data_sync_service.db.paper_trading import (
+    CLOSE_REASON_SWAPPED,
+    SOURCE_S3,
+    close_paper_trade,
+    insert_paper_trade,
+)
 from data_sync_service.service.backtest_engine import (
     BacktestConfig,
     _load_flow_mainline_data,
@@ -33,7 +38,8 @@ from data_sync_service.service.backtest_engine import (
     _load_rs_ranks,
 )
 from data_sync_service.service.market_sentiment import get_cn_sentiment, get_panic_cooldown
-from data_sync_service.service.paper_trading import _resolve_ts_code
+from data_sync_service.service.paper_cost_model import round_trip_cost_pct
+from data_sync_service.service.paper_trading import _holding_days_for, _resolve_ts_code
 from data_sync_service.service.trendok import _lookup_stock_basic
 
 logger = logging.getLogger(__name__)
@@ -42,6 +48,22 @@ S3_SCORE_THRESHOLD = 65.0
 S3_RS_MIN = 0.5
 S3_MAX_POSITIONS = 20
 S3_POSITION_PCT = 0.05  # per-sleeve size (paper is 5%; backtest 10%x20 is the upper bound)
+
+# RS-rotation swap params (validated on backtest double windows 2026-08-09):
+# a held S-3 trade whose RS falls into the weakest 30% after >= 10 days is
+# swapped for the strongest RS>=0.8 candidate, at most SWAP_MAX_PER_DAY pairs.
+#
+# 2026-08-09 决策：机制保留、默认关闭（用户拍板）。正确基线（含 trailing -8）
+# 下 swap 增量仅 +0~3pt 且邻域双窗不一致（trailing 已承担走弱淘汰职能），
+# 但机制有价值保留为灵活性（未来信号层变化时可直接启用）。详见
+# docs/todo.md §19.3 / docs/modules/backtest-strategy.md 6.8。
+SWAP_WEAK_RS_BELOW = 0.30
+SWAP_STRONG_RS_AT_LEAST = 0.80
+SWAP_MIN_HOLD_DAYS = 10
+SWAP_MAX_PER_DAY = 2
+# Master switch: swap only runs when this is > 0 (0 = disabled, the
+# system's default — flexibility kept, not exercised).
+SWAP_ENABLED = False
 
 SENTIMENT_BLOCK_MODES = ("no_new_positions", "extreme_caution")
 
@@ -183,6 +205,82 @@ def build_s3_candidates(
     return out
 
 
+def _s3_open_holds() -> list[dict[str, Any]]:
+    """Open paper trades that follow the S-3 strategy (source='S3')."""
+    from data_sync_service.db.paper_trading import list_paper_trades
+
+    return [r for r in list_paper_trades(status="open") if r.get("source") == SOURCE_S3]
+
+
+def _swap_holds_for_candidates(
+    *,
+    day: str,
+    holds: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+    rs_by_ts: dict[str, float],
+    closes: dict[str, float],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """RS rotation: swap RS-weakened S-3 holds for clearly stronger candidates.
+
+    Returns (swapped_candidates_to_insert, remaining_candidates). Mirrors the
+    backtest engine's swap gate (backtest_engine.py simulate step 1.5) so the
+    paper record stays a faithful probe. Costs: round-trip applied on the
+    closed leg (same as paper run_update).
+    """
+    weak: list[tuple[float, dict[str, Any]]] = []
+    for h in holds:
+        ts = h.get("tsCode") or ""
+        rsv = rs_by_ts.get(ts)
+        if rsv is None or rsv >= SWAP_WEAK_RS_BELOW:
+            continue
+        entry_date = str(h.get("entryDate") or "")
+        if _holding_days_for(entry_date, day) < SWAP_MIN_HOLD_DAYS:
+            continue
+        weak.append((rsv, h))
+    weak.sort(key=lambda kv: kv[0])  # weakest RS first
+
+    strong: list[tuple[float, dict[str, Any]]] = []
+    for c in candidates:
+        rsv = float(c.get("rs") or 0.0)
+        if rsv >= SWAP_STRONG_RS_AT_LEAST:
+            strong.append((rsv, c))
+    strong.sort(key=lambda kv: -kv[0])  # strongest RS first
+
+    swapped: list[dict[str, Any]] = []
+    rest: list[dict[str, Any]] = list(candidates)
+    for (_rsv_w, hold), (_rsv_c, cand) in zip(weak, strong, strict=False):
+        if len(swapped) >= SWAP_MAX_PER_DAY:
+            break
+        ts_w = hold.get("tsCode") or ""
+        close_px = closes.get(ts_w)
+        if close_px is None or close_px <= 0:
+            continue
+        ts_c = cand.get("ts_code") or ""
+        px_c = closes.get(ts_c)
+        if px_c is None or px_c <= 0:
+            continue
+        entry_px = float(hold.get("entryPrice") or 0.0)
+        if entry_px <= 0:
+            continue
+        gross = (close_px - entry_px) / entry_px * 100.0
+        costs = round_trip_cost_pct("CN") * 100.0
+        close_paper_trade(
+            trade_id=str(hold.get("id") or ""),
+            close_date=day,
+            close_price=close_px,
+            pnl_pct=gross - costs,
+            holding_days=_holding_days_for(str(hold.get("entryDate") or ""), day),
+            close_reason=CLOSE_REASON_SWAPPED,
+            gross_pnl_pct=gross,
+            costs_pct=costs,
+        )
+        cand["entry_price"] = px_c
+        cand["sleeve_pct"] = S3_POSITION_PCT
+        swapped.append(cand)
+        rest = [c for c in rest if c["symbol"] != cand["symbol"]]
+    return swapped, rest
+
+
 def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_POSITIONS) -> dict[str, Any]:
     """Insert paper trades for S-3 candidates (idempotent per day).
 
@@ -196,6 +294,8 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
         "tradeDate": day,
         "candidates": 0,
         "inserted": 0,
+        "swappedIn": 0,
+        "swappedOut": 0,
         "skipped": 0,
         "skippedReasons": {},
     }
@@ -206,7 +306,43 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
         logger.warning("paper_s3 build failed: %s", exc)
         return summary
     summary["candidates"] = len(candidates)
-    if not candidates:
+
+    # RS rotation: swap RS-weakened S-3 holds for the strongest candidates
+    # before any fresh entries (same gate order as the backtest engine).
+    swapped_cands: list[dict[str, Any]] = []
+    try:
+        holds = _s3_open_holds()
+        if holds and candidates and SWAP_ENABLED:
+            cfg = BacktestConfig(
+                start_date=day,
+                end_date=day,
+                score_threshold=S3_SCORE_THRESHOLD,
+                gates="full",
+                rs_rank_min=S3_RS_MIN,
+                diverging_scale=1.0,
+            )
+            hold_ts = {str(h.get("tsCode") or "") for h in holds if h.get("tsCode")}
+            rs_by_ts = _load_rs_ranks(cfg, [day], hold_ts).get(day, {})
+            all_ts = sorted(hold_ts | {c["ts_code"] for c in candidates})
+            bars_by_ts = fetch_last_ohlcv_batch(all_ts, days=2)
+            closes = {}
+            for ts, bars in bars_by_ts.items():
+                if not bars:
+                    continue
+                try:
+                    closes[str(ts)] = float(bars[-1][4])
+                except (TypeError, ValueError, IndexError):
+                    continue
+            swapped_cands, candidates = _swap_holds_for_candidates(
+                day=day, holds=holds, candidates=candidates,
+                rs_by_ts=rs_by_ts, closes=closes,
+            )
+            summary["swappedOut"] = len(swapped_cands)
+    except Exception as exc:  # noqa: BLE001
+        # Rotation is best-effort: a failure must not block the fresh intake.
+        logger.warning("paper_s3 rotation failed: %s", exc)
+
+    if not candidates and not swapped_cands:
         return summary
 
     ts_codes = [c["ts_code"] for c in candidates]
@@ -229,6 +365,45 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
                 continue
     except Exception as exc:  # noqa: BLE001
         logger.warning("paper_s3 close fetch failed: %s", exc)
+
+    for cand in swapped_cands:
+        ts = cand["ts_code"]
+        px = cand.get("entry_price") or closes.get(ts)
+        if px is None or px <= 0:
+            summary["skipped"] += 1
+            summary["skippedReasons"]["no-close-price"] = summary["skippedReasons"].get("no-close-price", 0) + 1
+            continue
+        name = by_name.get(ts)
+        why = (
+            f"S-3 swap-in {cand['regime']} score={cand['score']:.0f} rs={cand['rs']:.0%} "
+            f"industry={cand['industry']}"
+        )
+        try:
+            row = insert_paper_trade(
+                symbol=cand["symbol"],
+                entry_date=day,
+                side="BUY",
+                entry_price=px,
+                score_at_entry=round(cand["score"], 2),
+                why_at_entry=why,
+                sleeve_pct=S3_POSITION_PCT,
+                source=SOURCE_S3,
+                market="CN",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("paper_s3 swap-in insert failed for %s: %s", cand["symbol"], exc)
+            summary["skipped"] += 1
+            summary["skippedReasons"]["insert-error"] = summary["skippedReasons"].get("insert-error", 0) + 1
+            continue
+        if row is None:
+            summary["skipped"] += 1
+            summary["skippedReasons"]["duplicate"] = summary["skippedReasons"].get("duplicate", 0) + 1
+            continue
+        summary["swappedIn"] += 1
+        summary.setdefault("symbols", []).append(
+            {"symbol": cand["symbol"], "name": name, "score": cand["score"], "sleevePct": S3_POSITION_PCT,
+             "swappedIn": True}
+        )
 
     for cand in candidates:
         ts = cand["ts_code"]
