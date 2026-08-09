@@ -1036,10 +1036,15 @@ swap 0→0.3/0.8/10/2（paper 已部署，待复审）· position 回测 10% / p
 - **脚本就绪**：`scripts/backfill_industry_flow_history.py` —— 表内 distinct SW L1 行业
   （约 30 个）逐行业拉东财 push2his daykline 全量历史（cron 同源接口）→ 幂等 upsert，
   支持 --since 2024-07-01（覆盖 OOS2）与并发
-- **⛔ 受阻**：push2his.eastmoney.com 当前被网络层阻断（TLS 握手后 Empty reply，
-  08-07 起时好时坏：cn_industry_post_close_sync 08-07 连败 3 次仅 1 次成功；
-  同源 getbkzj/东财主站通，DNS 单 IP 101.226.30.221 直连也失败）——接口恢复后
-  一条命令重跑：`PYTHONPATH=src python3 scripts/backfill_industry_flow_history.py`
+- **⛔ 受阻（2026-08-09 深挖结论）**：push2his 分接口风控差异——
+  **`fflow/daykline/get`（资金流历史，回拉脚本走此）稳定 RemoteDisconnected**；
+  `stock/kline/get`（普通 K 线）通；`push2delay` fflow 只回最近 1 条（无历史）；
+  akshare 同源同断；tushare moneyflow_ind_dc/ths 无 token 权限——**当前无可用
+  东财资金流历史源**。对策：`scripts/retry_backfill_until_done.py` 已挂后台
+  （每 10 分钟一轮串行重试 + 失败行业多轮重跑，幂等 upsert，零人工）——接口
+  恢复即自动补全；或用户拿到 tushare 2000 积分后换 moneyflow_ind_dc
+- 候选（未拍板不做）：stock/kline 通→行业指数价格动量近似资金流 Top3（A3 机制
+  改动，改回测口径，需用户拍板）
 - **前端系统自检（同日 · 用户「任何问题报错」）**：全局 `SystemHealthBanner`
   （AppShell header 下方，任何页面可见）——并行探测：① data-sync-service 在线
   （/api/health/datasources）② ai-service 在线（/healthz）③ 6 数据源新鲜度

@@ -58,7 +58,8 @@ def _distinct_sw_l1_rows() -> list[tuple[str, str]]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--since", default="2024-07-01", help="Keep rows with date >= this (YYYY-MM-DD)")
-    ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--workers", type=int, default=1, help="Serial is safer: eastmoney push2his throttles concurrent bursts")
+    ap.add_argument("--rounds", type=int, default=4, help="Re-run failing industries up to this many rounds")
     args = ap.parse_args()
 
     since = date.fromisoformat(args.since)
@@ -67,13 +68,17 @@ def main() -> int:
 
     total_rows = 0
     per_industry: list[tuple[str, int, str, str]] = []
-    failures: list[str] = []
 
     def fetch_one(item: tuple[str, str]) -> tuple[str, int, str, str] | str:
         code, name = item
         secid = f"90.{code}" if code.startswith("BK") else ""
         try:
-            items = _with_retry(lambda: _eastmoney_board_fund_flow_daykline(secid=secid), tries=3)
+            items = _with_retry(
+                lambda: _eastmoney_board_fund_flow_daykline(secid=secid),
+                tries=5,
+                base_sleep_s=1.0,
+                max_sleep_s=6.0,
+            )
         except Exception as exc:  # noqa: BLE001
             return f"{name}: {exc}"
         kept = [h for h in items if h.get("date") and date.fromisoformat(h["date"]) >= since]
@@ -94,25 +99,32 @@ def main() -> int:
         upsert_daily_rows(rows)
         return name, len(rows), kept[0]["date"], kept[-1]["date"]
 
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(fetch_one, p): p for p in pairs}
-        for fut in as_completed(futures):
-            res = fut.result()
-            if isinstance(res, str):
-                failures.append(res)
-                print(f"  FAIL {res}")
-            else:
-                name, n, d0, d1 = res
-                per_industry.append((name, n, d0, d1))
-                total_rows += n
-                print(f"  {name:24s} +{n:5d} rows  {d0} .. {d1}")
+    pending = list(pairs)
+    for round_no in range(1, args.rounds + 1):
+        if not pending:
+            break
+        failures: list[str] = []
+        print(f"\n--- round {round_no}/{args.rounds} ({len(pending)} industries) ---")
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            futures = {pool.submit(fetch_one, p): p for p in pending}
+            for fut in as_completed(futures):
+                res = fut.result()
+                if isinstance(res, str):
+                    failures.append(res)
+                    print(f"  FAIL {res}")
+                else:
+                    name, n, d0, d1 = res
+                    per_industry.append((name, n, d0, d1))
+                    total_rows += n
+                    print(f"  {name:24s} +{n:5d} rows  {d0} .. {d1}")
+        pending = failures
 
-    print(f"\ntotal backfilled rows: {total_rows}  (failures: {len(failures)})")
-    if failures:
-        print("failures:")
-        for f in failures:
+    print(f"\ntotal backfilled rows: {total_rows}  (industries done: {len(per_industry)}/{len(pairs)})")
+    if pending:
+        print("still failing:")
+        for f in pending:
             print("  ", f)
-    return 0 if not failures else 1
+    return 0 if not pending else 1
 
 
 if __name__ == "__main__":
