@@ -25,6 +25,7 @@ import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
 import { Button } from '@/components/ui/button';
 import { useWatchlistAutomation } from '@/hooks/useWatchlistAutomation';
 import { useChatStore } from '@/lib/chat/store';
+import { buildHash, currentHash, parseHash } from '@/lib/hash-router';
 import { createQueryClient } from '@/lib/query-client';
 import { ensureWatchlistHydrated } from '@/lib/watchlist-storage';
 import { cn } from '@/lib/utils';
@@ -101,6 +102,64 @@ function AppShellInner() {
   const agentModeRef = React.useRef(agentMode);
   const [overlayMounted, setOverlayMounted] = React.useState(false);
   const [overlayEntered, setOverlayEntered] = React.useState(false);
+  const appliedInitialHash = React.useRef(false);
+
+  // Hash router: initial route from the URL, then keep state and hash in
+  // sync (state → replaceState; external links / back-forward → hashchange).
+  React.useEffect(() => {
+    if (appliedInitialHash.current) return;
+    appliedInitialHash.current = true;
+    const route = parseHash(currentHash());
+    if (route.page === 'stock' && route.symbol) {
+      setActivePage('stock');
+      setActiveStockSymbol(route.symbol);
+    } else if (route.page === 'journal' && route.journalMode) {
+      setActivePage('journal');
+      setJournalMode(route.journalMode);
+      if (route.journalId) setActiveJournalId(route.journalId);
+    } else {
+      setActivePage(route.page);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    function onHashChange() {
+      const route = parseHash(window.location.hash);
+      if (route.page === 'stock' && route.symbol) {
+        setActivePage('stock');
+        setActiveStockSymbol(route.symbol);
+      } else if (route.page === 'journal') {
+        setActivePage('journal');
+        setJournalMode(route.journalMode ?? 'read');
+        if (route.journalId) setActiveJournalId(route.journalId);
+      } else {
+        setActivePage(route.page);
+      }
+    }
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  React.useEffect(() => {
+    if (!appliedInitialHash.current) return;
+    const route: { page: string; symbol?: string | null; journalMode?: string | null; journalId?: string | null } = {
+      page: activePage,
+    };
+    if (activePage === 'stock') route.symbol = activeStockSymbol;
+    if (activePage === 'journal') {
+      route.journalMode = journalMode;
+      if (activeJournalId) route.journalId = activeJournalId;
+    }
+    const hash = buildHash({
+      page: route.page,
+      symbol: route.symbol ?? null,
+      journalMode: (route.journalMode ?? null) as 'read' | 'write' | 'review' | null,
+      journalId: route.journalId ?? null,
+    });
+    if (window.location.hash !== hash) {
+      window.history.replaceState(null, '', hash);
+    }
+  }, [activePage, activeStockSymbol, journalMode, activeJournalId]);
 
   React.useEffect(() => {
     agentVisibleRef.current = agentVisible;

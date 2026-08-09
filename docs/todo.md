@@ -1053,6 +1053,22 @@ swap 0→0.3/0.8/10/2（paper 已部署，待复审）· position 回测 10% / p
 - 后续：接口恢复 → 回拉 → 三窗复核（train/OOS2/valid 对比基线 114.2/80.5/51.8）+ A3
   量化（gates none/regime/full 对照）→ 结论入 strategy-params.md 复核列
 
+#### 可分享/可订阅 URL（2026-08-09 ✅ · 用户拍板 §2 P1）
+
+- **背景**：AppShell 内部 state 切页无 URL——复盘/归档链接点不开、AI 助手无法直达
+- **hash 路由**：`lib/hash-router.ts`（纯函数 parseHash/buildHash/pageHref）——15 页面
+  `#/dashboard|watchlist|news|market|industry-flow|alpha|decision|backtest|scheduler|
+  screener|settings|broker|index` + 深链接 `#/stock/HK%3A00700`（symbol 编码）+
+  `#/journal/write/<id>`（journal 子模式可分享）；AppShell：初始 hash 恢复状态 +
+  hashchange 同步（外部链接/前进后退）+ 状态变化 replaceState 写回（防循环）；6 测试
+- **链接即用**：ReactMarkdown 原生渲染 `#/` 链接 → 决策 Agent 输出/周报 markdown 里
+  `[腾讯](#/stock/HK%3A00700)` 点击直达个股页；`queryHoldingsHealth` 持仓与候选已自动
+  带链接
+- **持仓卡片跳转**：PortfolioHealthCard 持仓行可点击 → 直达个股页（onOpenStock 接入
+  WatchlistPage 既有链）；1 新测试
+- 验收：FE 748 passed（+7）、ai-service 144、tsc/eslint 干净
+- 后续：周报模板/复盘输出主动带链接（随使用数据积累时做）
+
 #### 步骤 7：季度参数复核（例行项 · 2026-08-09 用户拍板 ✅）
 
 - 节奏：每 3 个月一次双窗复核（训练窗滚动 + 验证窗 + OOS2），结果记

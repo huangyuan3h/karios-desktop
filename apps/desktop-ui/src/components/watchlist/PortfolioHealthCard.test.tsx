@@ -91,4 +91,24 @@ describe('PortfolioHealthCard', () => {
     renderCard();
     expect(await screen.findByText(/持仓体检暂不可用/)).toBeDefined();
   });
+
+  it('opens the stock page when a holding row is clicked', async () => {
+    fetchPortfolioHealth.mockResolvedValue({
+      tradeDate: '2026-08-07',
+      regime: 'Weak',
+      sentiment: 'normal',
+      s3Candidates: [],
+      holdings: [HOLDING],
+    });
+    const onOpenStock = vi.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PortfolioHealthCard onOpenStock={onOpenStock} />
+      </QueryClientProvider>,
+    );
+    const row = await screen.findByText('腾讯控股');
+    row.click();
+    expect(onOpenStock).toHaveBeenCalledWith('HK:00700');
+  });
 });

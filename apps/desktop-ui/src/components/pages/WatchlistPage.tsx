@@ -418,7 +418,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           onForceAutomationFromSkip={() => void onRunAutomation(true)}
         />
 
-        <PortfolioHealthCard />
+        <PortfolioHealthCard onOpenStock={onOpenStock} />
 
         <WatchlistInsightsPanel>
           <TradeStatsPanel />

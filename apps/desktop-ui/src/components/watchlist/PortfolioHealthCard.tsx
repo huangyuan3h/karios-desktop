@@ -32,14 +32,17 @@ function regimeBadge(regime: string | null | undefined): { label: string; cls: s
   }
 }
 
-function HoldingRow({ h }: { h: PortfolioHolding }) {
+function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbol: string) => void }) {
   const exit = h.action === 'EXIT';
   const pnlTone = (h.pnlPct ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400';
   return (
     <div
+      role={onOpen ? 'button' : undefined}
+      onClick={onOpen ? () => onOpen(h.symbol) : undefined}
       className={cn(
         'rounded-lg border px-3 py-2',
         exit ? 'border-red-500/40 bg-red-500/5' : 'border-[var(--k-border)] bg-[var(--k-surface-2)]',
+        onOpen && 'cursor-pointer transition-colors hover:border-[var(--k-accent)]/60',
       )}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -82,7 +85,7 @@ function HoldingRow({ h }: { h: PortfolioHolding }) {
   );
 }
 
-export function PortfolioHealthCard() {
+export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const q = useQuery({
     queryKey: ['portfolio-health'],
     queryFn: ({ signal }) => fetchPortfolioHealth(undefined, signal),
@@ -140,7 +143,7 @@ export function PortfolioHealthCard() {
       ) : (
         <div className="flex flex-col gap-1.5">
           {holdings.map((h) => (
-            <HoldingRow key={h.symbol} h={h} />
+            <HoldingRow key={h.symbol} h={h} onOpen={onOpenStock} />
           ))}
         </div>
       )}

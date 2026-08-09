@@ -157,8 +157,9 @@ export async function queryHoldingsHealth(): Promise<string> {
   }
   for (const h of holds) {
     const line = h.action === 'EXIT' ? '🔴 建议退出' : '✅ 持有';
+    const name = h.name ?? h.symbol;
     lines.push(
-      `- **${h.name ?? h.symbol}**（${h.symbol} · 仓位 ${h.positionPct ?? '—'}%）${line}` +
+      `- **[${name}](#/stock/${encodeURIComponent(h.symbol ?? '')})**（${h.symbol} · 仓位 ${h.positionPct ?? '—'}%）${line}` +
         `：盈亏 ${h.pnlPct != null ? `${h.pnlPct >= 0 ? '+' : ''}${h.pnlPct}%` : '—'}` +
         ` · 峰值回撤 ${h.drawdownFromPeakPct ?? '—'}%` +
         ` · 已持 ${h.holdingDays ?? '—'} 天` +
@@ -176,7 +177,7 @@ export async function queryHoldingsHealth(): Promise<string> {
     lines.push('', '## 今日 S-3 开仓候选（买什么参考）');
     for (const c of cands) {
       lines.push(
-        `- **${c.name ?? c.symbol}**（${c.symbol}${c.industry ? ` · ${c.industry}` : ''}）` +
+        `- **[${c.name ?? c.symbol}](#/stock/${encodeURIComponent(c.symbol ?? '')})**（${c.symbol}${c.industry ? ` · ${c.industry}` : ''}）` +
           ` score=${c.score ?? '—'} · RS前50%=${c.rs ?? '—'} · 建议仓位 ~5%`,
       );
     }
