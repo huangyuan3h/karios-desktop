@@ -195,8 +195,8 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
         </Button>
       </div>
 
-      <div className="grid gap-2 md:grid-cols-2">
-        <HealthPanel title="A 股 S-3（全闸门）" tag="CN" block={data} onOpen={onOpenStock} />
+      <div className="flex flex-col gap-2">
+        <HealthPanel title="A 股 S-3（全闸门 · 含 A 股 ETF）" tag="CN" block={data} onOpen={onOpenStock} />
         <HealthPanel
           title="港股 S-3（regime 档 · trail -12%）"
           tag="HK"

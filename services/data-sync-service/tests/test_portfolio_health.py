@@ -141,3 +141,31 @@ def test_build_attaches_candidates_and_pyramid_flags():
     assert h["pyramidAdded"] is True
     assert h["pyramidTriggerLine"] == 40.897
     assert out["s3Rules"]["pyramidTriggerPct"] == 2.5
+
+
+def test_build_includes_etf_holdings_in_cn_block(monkeypatch):
+    """2026-08-10: A-share ETFs (ETF:XXXXXX) belong to the CN line's holdings."""
+    from data_sync_service.service import portfolio_health as ph
+
+    reg = [
+        {
+            "symbol": "ETF:513180", "positionPct": 27.87, "costPrice": 0.613,
+            "entryDate": "2026-08-02", "name": "华夏恒生科技ETF",
+        },
+    ]
+
+    def fake_registry():
+        return reg
+
+    monkeypatch.setattr(ph, "list_registry", fake_registry)
+    monkeypatch.setattr(ph, "_resolve_holding_ts", lambda s: "513180.SH")
+    monkeypatch.setattr(
+        ph, "_holding_check",
+        lambda **kw: {"symbol": kw["name"], "action": "HOLD", "pnlPct": 1.2},
+    )
+    with patch("data_sync_service.service.market_sentiment.get_cn_sentiment",
+               return_value={"items": [{"riskMode": "hot"}]}):
+        out = ph.build_portfolio_health(trade_date="2026-08-07", markets=("CN",))
+
+    syms = [h["symbol"] for h in out["holdings"]]
+    assert "ETF:513180" in syms

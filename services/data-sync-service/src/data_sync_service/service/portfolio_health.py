@@ -148,18 +148,26 @@ def _build_holdings_block(market: str, day: str) -> list[dict[str, Any]]:
     """Holdings for one market vs its S-3 exit rules.
 
     2026-08-10 (HK parallel line): CN uses the CN rules (trail -8); HK uses
-    the HK line rules (trail -12). Holdings are split by symbol prefix.
+    the HK line rules (trail -12). Holdings are split by symbol prefix; the
+    CN line also covers A-share ETFs (ETF:XXXXXX — e.g. 513180 Hang Seng
+    Tech, a large sleeve) under the same A-share rules.
     """
     from data_sync_service.service.paper_s3 import PYRAMID_TRIGGER_PCT
 
     trail = -12.0 if market == "HK" else None
-    prefix = f"{market}:"
+    if market == "HK":
+        def in_market(sym: str) -> bool:
+            return sym.startswith("HK:")
+    else:
+        def in_market(sym: str) -> bool:
+            return sym.startswith(("CN:", "ETF:"))
+
     holdings: list[dict[str, Any]] = []
     try:
         pyramid_syms = _pyramided_symbols()
         for r in list_registry():
             sym = str(r.get("symbol") or "").upper()
-            if not sym.startswith(prefix):
+            if not in_market(sym):
                 continue
             payload = r.get("payload") or {}
             pct = payload.get("positionPct", r.get("positionPct"))
