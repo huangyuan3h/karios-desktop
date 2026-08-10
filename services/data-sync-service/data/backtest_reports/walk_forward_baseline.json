@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-09T23:39:12.098499+00:00",
+  "generatedAt": "2026-08-10T14:54:55.566054+00:00",
   "tag": "",
   "config": {
     "score_threshold": 65.0,
@@ -23,12 +23,12 @@
   },
   "results": {
     "OOS2": {
-      "closed": 319,
-      "winRate": 0.426,
-      "avgNetPnlPct": 4.914,
-      "totalNetPnlPct": 124.266,
-      "maxDrawdownPct": 18.691,
-      "sharpe": 4.21
+      "closed": 318,
+      "winRate": 0.421,
+      "avgNetPnlPct": 3.84,
+      "totalNetPnlPct": 97.776,
+      "maxDrawdownPct": 28.801,
+      "sharpe": 3.59
     },
     "train": {
       "closed": 211,
