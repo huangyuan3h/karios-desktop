@@ -88,6 +88,7 @@ import {
   fetchDashboardSummaryPartial,
 } from '@/lib/queries/dashboard';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
+import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { fetchWatchlistMarketSnapshot, fetchQuoteChunkWithRetry, type WatchlistMarketSnapshot } from '@/lib/watchlist-market';
 import {
   parseQuoteNumber,
@@ -858,6 +859,7 @@ export async function buildWatchlistMarkdown(
     .catch(() => null);
   const rsRanks = await fetchRsRanks(sorted.map((i) => i.symbol)).catch(() => null);
   const panicCooldown = await fetchPanicCooldown();
+  const health = await fetchPortfolioHealth().catch(() => null);
   const { markdown, purgeSymbols } = buildPositionsExecutionMarkdown(
     sorted,
     trend,
@@ -871,6 +873,7 @@ export async function buildWatchlistMarkdown(
     catalystBySymbol,
     rsRanks,
     panicCooldown,
+    health,
   );
   // Report still lists PURGE rows; remove them from storage for the next copy.
   if (purgeSymbols.length) {

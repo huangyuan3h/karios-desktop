@@ -123,6 +123,29 @@ describe('S-3 backtest candidate block', () => {
   beforeEach(() => {
     global.fetch = vi.fn(async (url: RequestInfo | URL) => {
       const s = String(url);
+      if (s.includes('portfolio-health')) {
+        return {
+          ok: true,
+          json: async () => ({
+            tradeDate: '2026-08-07',
+            regime: 'Strong',
+            sentiment: 'normal',
+            panicCooldown: { active: false },
+            s3Candidates: [{ symbol: 'CN:600001', name: '测试A', score: 72, rs: 0.8, ts_code: '600001.SH' }],
+            s3CandidateTotal: 1,
+            s3Rules: { suggestedSizePct: 10 },
+            holdings: [],
+            hkHealth: {
+              tradeDate: '2026-08-07',
+              regime: 'Strong',
+              s3Candidates: [{ symbol: 'HK:00700', name: '腾讯控股', score: 99, rs: 0.9, ts_code: '00700.HK' }],
+              s3CandidateTotal: 19,
+              s3Rules: { suggestedSizePct: 10 },
+              holdings: [],
+            },
+          }),
+        } as Response;
+      }
       if (s.includes('panic-cooldown')) {
         return {
           ok: true,
@@ -161,7 +184,7 @@ describe('S-3 backtest candidate block', () => {
   } as never;
   const quotes = { 'CN:600001': { price: 10 }, 'CN:600002': { price: 12 } } as never;
 
-  it('lists only flat, S-3-qualified symbols with backtest size', async () => {
+  it('lists dual-market top-5 candidates with backtest size', async () => {
     const md = await buildWatchlistMarkdown({
       sortedItems: items as never,
       trendSnap: trend,
@@ -173,14 +196,44 @@ describe('S-3 backtest candidate block', () => {
       mainlineAllow: { ready: true, names: new Set(['计算机']), byName: new Map() } as never,
       sectorOutflowBlock: false,
     });
-    expect(md).toContain('S-3 回测口径买入候选');
+    expect(md).toContain('S-3 回测口径买入候选（趋势跟随 · 双市场 top5 · 已去重）');
     const s3Block = md.slice(md.indexOf('S-3 回测口径买入候选'), md.indexOf('A股 卫星仓'));
-    expect(s3Block).toContain('| CN:600001 |');
-    expect(s3Block).not.toContain('CN:600002');  // held position excluded
-    expect(s3Block).toContain('仓位');
+    expect(s3Block).toContain('| CN:600001 | 测试A |');
+    expect(s3Block).toContain('| HK:00700 | 腾讯控股 |');
+    expect(s3Block).toContain('候选池共 19 只');
+    expect(s3Block).not.toContain('CN:600002'); // held position excluded
+    expect(s3Block).toContain('仓位%');
   });
 
-  it('emits wait message when regime is Weak', async () => {
+  it('emits wait message when both markets are Weak', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async (url: RequestInfo | URL) => {
+        if (String(url).includes('portfolio-health')) {
+          return {
+            ok: true,
+            json: async () => ({
+              tradeDate: '2026-08-07',
+              regime: 'Weak',
+              s3Candidates: [],
+              s3CandidateTotal: 0,
+              s3Rules: { suggestedSizePct: 10 },
+              holdings: [],
+              hkHealth: { tradeDate: '2026-08-07', regime: 'Weak', s3Candidates: [], holdings: [] },
+            }),
+          } as Response;
+        }
+        if (String(url).includes('panic-cooldown')) {
+          return {
+            ok: true,
+            json: async () => ({ lastPanicDate: null, cooldownEndDate: null, active: false }),
+          } as Response;
+        }
+        return {
+          ok: true,
+          json: async () => ({ ok: true, asOfDate: '2026-08-07', ranks: {} }),
+        } as Response;
+      },
+    );
     const md = await buildWatchlistMarkdown({
       sortedItems: items as never,
       trendSnap: trend,
@@ -192,7 +245,7 @@ describe('S-3 backtest candidate block', () => {
       mainlineAllow: { ready: true, names: new Set(['计算机']), byName: new Map() } as never,
       sectorOutflowBlock: false,
     });
-    expect(md).toContain('空仓等待');
+    expect(md).toContain('A股 空仓 · 港股 空仓');
   });
 
   it('shows panic cooldown and suppresses candidates during cooldown', async () => {

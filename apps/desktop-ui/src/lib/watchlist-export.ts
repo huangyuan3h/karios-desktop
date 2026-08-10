@@ -11,6 +11,7 @@ import { buildPositionsExecutionMarkdown } from '@/lib/execution-markdown';
 import { fetchPanicCooldown } from '@/lib/execution-markdown';
 import type { MainlineAllowSet } from '@/lib/hot-industry-picks';
 import { getShanghaiTodayIso, isShanghaiTradingTime } from '@/lib/market-hours';
+import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
 import { refetchWatchlistMarket } from '@/lib/queries/watchlist';
 import {
   shouldRequireRealtimeQuote,
@@ -152,6 +153,7 @@ export async function buildWatchlistMarkdown(options: {
   // Sync helper: no catalyst fetch (PURGE exemption only on Copy / Sync&Copy paths).
   const rsRanks = await fetchRsRanks(sortedItems.map((i) => i.symbol));
   const panicCooldown = await fetchPanicCooldown();
+  const health = await fetchPortfolioHealth().catch(() => null);
   const { markdown } = buildPositionsExecutionMarkdown(
     sortedItems,
     trendSnap,
@@ -165,6 +167,7 @@ export async function buildWatchlistMarkdown(options: {
     null,
     rsRanks,
     panicCooldown,
+    health,
   );
   return markdown.trim() + '\n';
 }
