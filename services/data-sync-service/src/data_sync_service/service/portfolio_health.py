@@ -319,8 +319,17 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
     candidate_total = len(candidates)
     candidates = candidates[:TOP_CANDIDATES]
 
+    strength = 0.0
+    try:
+        from data_sync_service.service.market_regime import regime_strength_score
+
+        strength = float(regime_strength_score(as_of_date=day, market=market)["strength"])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health strength failed: %s", exc)
+
     return {
         "regime": regime,
+        "strength": strength,
         "sentiment": sentiment,
         "panicCooldown": panic,
         "s3Candidates": candidates,

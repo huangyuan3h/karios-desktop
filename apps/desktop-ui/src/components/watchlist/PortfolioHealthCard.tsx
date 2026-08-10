@@ -165,6 +165,14 @@ function HealthPanel({
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <span className={cn('rounded border px-1.5 py-0.5 font-medium', regime.cls)}>{regime.label}</span>
+        {block?.strength != null && (
+          <span
+            className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 tabular-nums"
+            title="T2 regime 强度分（0-100，同构口径；仅用于双市场资金分配参考，不作闸门）"
+          >
+            strength {block.strength.toFixed(1)}
+          </span>
+        )}
         {block?.sentiment != null && (
           <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">
             sentiment: {block.sentiment}

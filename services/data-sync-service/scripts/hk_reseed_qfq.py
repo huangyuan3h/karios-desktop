@@ -130,6 +130,7 @@ def main() -> int:
     since = date.fromisoformat(args.since)
 
     import psycopg
+
     from data_sync_service.config import get_settings
 
     if args.tickers:

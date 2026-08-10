@@ -1,0 +1,89 @@
+{
+  "generatedAt": "2026-08-10T22:27:28.457730+00:00",
+  "rules": [
+    "R1",
+    "R2",
+    "R3",
+    "R4"
+  ],
+  "windows": {
+    "OOS2": {
+      "R1": {
+        "totalNetPnlPct": 249.77502946427555,
+        "maxDrawdownPct": 27.49051466752447,
+        "sharpe": 1.84,
+        "annualPct": 242.9455711346598
+      },
+      "R2": {
+        "totalNetPnlPct": 230.2570813962623,
+        "maxDrawdownPct": 43.61334319961032,
+        "sharpe": 1.48,
+        "annualPct": 224.10164754570857
+      },
+      "R3": {
+        "totalNetPnlPct": 247.88898945183328,
+        "maxDrawdownPct": 28.657675392476072,
+        "sharpe": 1.84,
+        "annualPct": 241.1254006674182
+      },
+      "R4": {
+        "totalNetPnlPct": 221.9322407588634,
+        "maxDrawdownPct": 27.88001566637731,
+        "sharpe": 1.93,
+        "annualPct": 216.0590144498261
+      }
+    },
+    "train": {
+      "R1": {
+        "totalNetPnlPct": 126.77562316935287,
+        "maxDrawdownPct": 20.8252711985834,
+        "sharpe": 3.04,
+        "annualPct": 394.90764013167956
+      },
+      "R2": {
+        "totalNetPnlPct": 128.08517803068082,
+        "maxDrawdownPct": 20.50447895362965,
+        "sharpe": 2.8,
+        "annualPct": 400.50489330767476
+      },
+      "R3": {
+        "totalNetPnlPct": 127.63250436634794,
+        "maxDrawdownPct": 20.82828724594397,
+        "sharpe": 3.04,
+        "annualPct": 398.5666175646238
+      },
+      "R4": {
+        "totalNetPnlPct": 147.54717796980123,
+        "maxDrawdownPct": 21.670787092846176,
+        "sharpe": 3.22,
+        "annualPct": 487.30438265825467
+      }
+    },
+    "valid": {
+      "R1": {
+        "totalNetPnlPct": 73.58248023337661,
+        "maxDrawdownPct": 6.97013068952404,
+        "sharpe": 3.74,
+        "annualPct": 242.46118922967392
+      },
+      "R2": {
+        "totalNetPnlPct": 62.31353291995243,
+        "maxDrawdownPct": 18.90416911708082,
+        "sharpe": 2.81,
+        "annualPct": 194.80972769805885
+      },
+      "R3": {
+        "totalNetPnlPct": 73.09003673738354,
+        "maxDrawdownPct": 7.5044430350435745,
+        "sharpe": 3.67,
+        "annualPct": 240.29635660833054
+      },
+      "R4": {
+        "totalNetPnlPct": 77.33879600451799,
+        "maxDrawdownPct": 7.647372695632942,
+        "sharpe": 3.58,
+        "annualPct": 259.22415007687874
+      }
+    }
+  }
+}

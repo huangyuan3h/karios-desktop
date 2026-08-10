@@ -22,16 +22,11 @@ from datetime import date, timedelta
 
 sys.path.insert(0, "src")
 
-from data_sync_service.db.daily import get_last_trade_date  # noqa: E402
 from data_sync_service.service.hk_daily_tx import (  # noqa: E402
-    _AMOUNT_UNIT,
-    _IDX_AMOUNT,
     _IDX_CLOSE,
     _IDX_DATE,
     _IDX_HIGH,
-    _IDX_LOW,
     _IDX_OPEN,
-    _IDX_VOL,
     _fetch_kline_page,
     _ts_code_to_tx,
 )
@@ -100,6 +95,7 @@ def main() -> int:
     since = date.fromisoformat(args.since)
 
     import psycopg
+
     from data_sync_service.config import get_settings
 
     conn = psycopg.connect(get_settings().database_url)

@@ -73,7 +73,8 @@ TS1 = "600001.SH"
 # ---------------------------------------------------------------------------
 
 
-def test_simulate_enters_on_score_threshold_and_closes_on_target() -> None:
+def test_simulate_positions_by_day_snapshot() -> None:
+    """End-of-day holding snapshots: held from entry day until close day."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
     scores = {
         "2026-06-18": {CN1: 88.0},
@@ -85,17 +86,21 @@ def test_simulate_enters_on_score_threshold_and_closes_on_target() -> None:
     config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22")
 
     run = simulate(config, data=data)
-    s = run.summary
-    assert s.closed == 1
-    t = run.trades[0]
-    # Entry at 06-18 close 10.0; +6% gross on 06-19 (net +5.7), no close;
-    # +20% gross on 06-22 (net +19.7) >= target 10 → target_hit.
-    assert t.entry_price == 10.0
-    assert t.close_reason == "target_hit"
-    assert t.entry_date == "2026-06-18"
-    assert t.close_date == "2026-06-22"
-    assert abs(t.gross_pnl_pct - 20.0) < 0.01
-    assert abs(t.pnl_pct - (20.0 - 0.3)) < 0.01  # CN round-trip cost 0.30%
+    assert [s["date"] for s in run.positions_by_day] == calendar
+    # Entry at 06-18 close → held 06-18 & 06-19, closed on 06-22.
+    held = {s["date"]: [p["symbol"] for p in s["positions"]] for s in run.positions_by_day}
+    assert held["2026-06-18"] == [CN1]
+    assert held["2026-06-19"] == [CN1]
+    assert held["2026-06-22"] == []
+    snap = run.positions_by_day[0]["positions"][0]
+    assert snap["market"] == "CN"
+    assert snap["entry_date"] == "2026-06-18"
+    assert snap["position_pct"] == 0.05
+
+
+
+def test_simulate_enters_on_score_threshold_and_closes_on_target() -> None:
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
 
 
 def test_simulate_stop_hits_on_net_pnl() -> None:

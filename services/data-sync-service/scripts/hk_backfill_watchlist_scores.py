@@ -30,7 +30,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from data_sync_service.db import get_connection  # noqa: E402
 from data_sync_service.db.daily import fetch_ohlcv_batch_between  # noqa: E402
-from data_sync_service.db.watchlist_automation import list_registry, upsert_score_daily  # noqa: E402
+from data_sync_service.db.watchlist_automation import (  # noqa: E402
+    list_registry,
+    upsert_score_daily,
+)
 from data_sync_service.service.market_regime import get_hk_regime  # noqa: E402
 from data_sync_service.service.trendok import _symbol_to_ts_code, _trendok_one  # noqa: E402
 

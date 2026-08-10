@@ -728,6 +728,7 @@ class BacktestRun:
 
     summary: BacktestSummary
     trades: list[BacktestTrade] = field(default_factory=list)
+    positions_by_day: list[dict] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -745,6 +746,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         data = BacktestData(config)
     positions: dict[str, dict[str, Any]] = {}  # symbol -> live position state
     closed_trades: list[BacktestTrade] = []
+    positions_by_day: list[dict] = []  # end-of-day holding snapshots (2026-08-11)
     gated_blocks: dict[str, int] = defaultdict(int)
     last_panic_idx = -10 ** 9
     day_index = 0
@@ -1099,6 +1101,23 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     }
                 )
 
+        # End-of-day holding snapshot — the anchor for reconciling the real
+        # paper/watchlist book against the backtest (2026-08-11). Captured
+        # AFTER exits/entries/pyramids of this day, so it is "what the backtest
+        # says we should be holding at the close of day".
+        snapshot = [
+            {
+                "symbol": sym,
+                "market": config.market,
+                "ts_code": pos["ts_code"],
+                "entry_date": str(pos["entry_date"]),
+                "score_at_entry": pos.get("score_at_entry"),
+                "position_pct": round(float(pos.get("position_pct") or config.position_pct), 4),
+            }
+            for sym, pos in positions.items()
+        ]
+        positions_by_day.append({"date": day, "positions": snapshot})
+
     # 3) Close leftovers at the window end (engine-only reason).
     for sym, pos in list(positions.items()):
         closes = data.close_by_ts_day.get(pos["ts_code"])
@@ -1165,6 +1184,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
     return BacktestRun(
         summary=_summarize(config, data, closed_trades, open_at_end, gated_blocks),
         trades=closed_trades,
+        positions_by_day=positions_by_day,
     )
 
 

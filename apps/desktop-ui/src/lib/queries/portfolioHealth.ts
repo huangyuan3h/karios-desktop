@@ -38,6 +38,8 @@ export interface PortfolioCandidate {
 export interface PortfolioHealthResponse {
   tradeDate?: string;
   regime?: string | null;
+  /** T2 regime strength 0-100 (shared CN/HK ruler; allocation hint, not a gate). */
+  strength?: number;
   sentiment?: string | null;
   panicCooldown?: {
     lastPanicDate?: string | null;

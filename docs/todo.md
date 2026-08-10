@@ -55,6 +55,51 @@ regime Weak 正确空仓（近 5 日全 Weak）；trendok 计算 683 票仅 1.2s
 用修复后大池**（注意：回测 valid 窗 6-18 后同样是小池——回测未虚高，paper 口径反而更宽）。
 验收：3503 passed 全绿 + ruff 干净 + 2 新测试。
 
+### 2026-08-11 回测矫正真实操作的闭环（用户核心诉求：回测必须可复制到真实世界）
+
+**方法论（用户拍板）**：分配规则只用红绿灯（as-of 可观测）——`service/allocation.py` 同码函数
+（`weights_from_regimes`/`resolve_weights`，R5c：CN 可投→100% CN、仅 HK→100% HK、双弱→0/0），
+回测脚本与 live 共用同一份代码；速率/强度在双强时不可跨市场公平比（HK 绝对波动大），取消 R5b。
+
+**三层闭环**：
+1. **引擎每日持仓快照**：`BacktestRun.positions_by_day`（每交易日收盘后"应持有"清单——
+   symbol/entry_date/score/position_pct；62 引擎测试含新快照测试 ✓）
+2. **同码分配**：allocation.py + run_walk_forward_dual R5 分支改为调 `weights_from_regimes`
+3. **对账工具**：`scripts/compare_backtest_paper.py [--date D] [--end E]`——某日回测应持有
+   vs paper 实持 → 一致/缺票/多票 + 入场日对齐检查；每周一跑上周五喂决策 Agent
+
+**首次对账实证（2026-08-10，HK）**：回测应持有 20 只 vs paper 实持 20 只但**集合仅 5 只对齐**——
+根因：8-05~8-07 S-3 intake cron 未跑（sync_job_record 无记录）→ 8-05 该入 18 只缺席 →
+8-10 补跑买入的 15 只是"8-10 当天达标"的漂移集合。**paper 入场时点= cron 完整性**——这是
+"回测复制不到真实"的第一份量化证据，对账工具每周暴露此类漂移。另：CN 侧 3 只 ALPHA/TV
+来源持仓非 S-3 口径（回测 0 正确）。
+
+**连带发现**：① 8-10 17:42 paper_s3 cron 未跑（→ T5 观察升级为"今天 17:42 验证，再丢即去
+--reload"）；② 08-10 06:34 运行中 uvicorn hk_basic 报 TU_SHARE_API_KEY 空（--reload 换进程
+一次性，重启后 2782 更新成功 ✓）；③ 对账窗口需 `--end` 支持滚动（valid 只到 08-07）。
+
+### 2026-08-11 跨市场资金协调 T1/T2/T3：强度分 + 联合净值引擎 + 动态替代 R5c 胜出
+
+**T2 regime 强度分（CN/HK 同构 [0,100]）**：`regime_strength_score()`——三子分全指数日线
+（greens 绿灯占比 0-30 · momentum 20 日动量 0-40 · structure 均线投票 0-30），as-of 安全、
+HK 无广度也同构；实测 CN Weak 28.4（空仓 ✓）/ HK Strong 100（进攻 ✓）；体检卡片加 strength 徽章。
+强度分不作闸门（regime 仍是闸）——只用于相对分配。
+
+**T1 联合净值引擎**：`scripts/run_walk_forward_dual.py`——复用单市场 simulate，trades 重建
+**资金复利日净值**（逐日 mark-to-market × position_pct，平仓日扣成本，union 日历 ffill），
+周度权重联合 NAV。**关键修正（第二轮）**：① nav 复利单位 bug；② 逐日重复累加入场涨幅→改每日增量；
+③ **净值加权在权重切换时丢失累积收益**（切换=资金池从另一市场 1 元重走）→ 改**收益率加权资金池复利**。
+
+**T3 初测两轮**：第一轮 R1~R4 固定权重 + R2 追强证伪（净值加权口径，R1 看似最优）——被
+用户直觉质疑后修正口径：**R5 动态替代（regime 档驱动，Weak 强制清零）三窗一致胜出**，
+R5c（CN 可投→100% CN，仅 HK 可投→100% HK）OOS2/train/valid = +492/+316/+113 vs R1
++283/+107/+76；过去一年 +619%/DD20.4/夏普3.53 vs 纯 CN +490%/31.5/3.03（回撤砍 11pt）。
+**实证**：CN Weak 156/257 天（61% 空仓率）但 HK 可投仅 33%——互补性被高估，替代价值在
+错位时段 + 双强期 CN 优先。R5c 入候选（验证期纪律不上 live）；R5b 双强速率比较需
+风险调整动量（绝对动量 HK 天然波动大不可比）。细节 → `docs/modules/strategy-params.md` §6。
+
+验收：后端 8 新强度测试 + 116 相关测试 ✓ · ruff ✓ · 前端 757 passed + typecheck ✓
+
 ### 2026-08-10 副作用检查：大池不淹前端 + B 股清理（小修）
 
 **检查结论（显示链路无回归）**：
@@ -332,13 +377,24 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 > 现状：CN=Weak 空仓 + HK=Strong 进攻（今天已在正确工作）；但 paper 双线各自 mp20×5%=各自 100%，
 > **无共享资金池**（真实资金视角=双线叠加暴露）；regime 只有三档离散（Strong/Diverging/Weak），**无强度量化**。
 
-- [ ] **T1 联合回测引擎**：共享资金池跨市场回测（现 `run_walk_forward.py` 单市场独立跑）
-- [ ] **T2 regime 强度分**：绿灯数/指数动量/广度 → Strong 内强弱子分（CN+HK 同构口径）
-- [ ] **T3 资金分配规则候选 + 回测验证**：
-  R1 等权 50/50（最简）· R2 强度比加权（T2 产出）· R3 跨市场相对动量（CSI300 vs HSI 20 日）· R4 主次固定（60/40）
-- [ ] **T4 paper 资金池化**：双线各自 100% → 共享池按规则分配（拍板后做）
-- [ ] **T5 paper_s3 HK 每日首跑观察**：17:42 双市场 intake（_CN/_HK）连跑 3 交易日验证
-  （cron 联动、HK 日线同步先行、候选非空时正确插入）
+- [x] **T1 联合回测引擎**（2026-08-11 ✅）：`scripts/run_walk_forward_dual.py`——单市场
+  simulate 复用 + trade 级资金复利日净值重建（含成本）+ union 日历 ffill + 周度权重联合 NAV
+  → 三窗 × 4 规则分配对比（口径：联合行与单市场资金视角可比）
+- [x] **T2 regime 强度分**（2026-08-11 ✅）：`regime_strength_score(market, as_of_date)`——
+  CN/HK 同构三子分（greens 0-30 + momentum 0-40 + structure 0-30，全指数日线、as-of 安全）；
+  实测 CN 28.4/Weak · HK 100/Strong（与现况一致）；体检卡片加 strength 徽章（/v1/agent/portfolio-health）
+- [x] **T3 资金分配规则初测**（2026-08-11 ✅ 修正后结论：**动态替代 R5c 胜出**）：
+  初始 R1~R4 固定权重全部低估联合（**净值加权 bug**：切换时丢累积收益→改收益率加权资金池复利）；
+  R5 系列（regime 档驱动）：**R5c（CN 可投就 100% CN，仅 HK 可投才切 HK）= 三窗一致胜 R1**
+  （OOS2 +492 vs 283 · train +316 vs 107/夏普 4.79 · valid +113 vs 76）；过去一年 +619%/DD20.4 vs 纯 CN
+  +490%/31.5 —— 用户直觉验证：A 强全 A、B 强全 B、双强走 A、下跌不投；但"互补性"被高估
+  （CN Weak 期 HK 可投仅 33%）；双强速率比较（R5b）需风险调整动量（绝对动量 HK 天然 2-3× 波动）→ 细节
+  strategy-params.md §6；R5c 入候选（§19 验证期纪律，不立即上 live）；T4 paper 池化按 R5c 待拍板
+- [ ] **T4 paper 资金池化**：双线各自 100% → 共享池按 R5c 分配（红绿灯驱动，等拍板）；
+  paper 侧 sleeve 需按权重缩放（R5c 100% 单市场时另一市场 0 仓）
+- [ ] **T5 paper_s3 HK 每日首跑观察**：8-10 17:42 cron **未跑**（sync_job_record 无 paper_s3 记录，
+  8-10/8-11 均无）——已手动补跑 8-10（CN 0 候选正确空仓 + HK 20 只）；根因疑似 uvicorn
+  `--reload` 模式进程漂移（scheduler 宿主不稳）——**今天 17:42 关键验证**，再丢即去 --reload 重启
 - [x] **T6 HK 实时报价链港股验证**（2026-08-10 ✅）：新浪 hq.sinajs.cn 主链对 HK 标的实测通过
   （00700/02899/01787 当天 16:04 价）——HK 盘中决策/止损刷新链路 OK
 
