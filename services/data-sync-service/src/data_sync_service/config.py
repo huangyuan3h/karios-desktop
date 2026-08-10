@@ -12,7 +12,11 @@ ROOT_ENV_PATH = Path(__file__).resolve().parents[4] / ".env"
 
 def _load_env() -> None:
     if ROOT_ENV_PATH.exists():
-        load_dotenv(ROOT_ENV_PATH)
+        # override=True: the repo root .env is the single source of truth.
+        # Without it, a stale/empty TU_SHARE_API_KEY in the parent shell env
+        # shadows the .env value (observed 2026-08-10: hk_basic_sync /
+        # macro_daily silently empty-keyed despite .env being correct).
+        load_dotenv(ROOT_ENV_PATH, override=True)
 
 
 @dataclass(frozen=True)

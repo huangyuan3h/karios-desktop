@@ -144,6 +144,68 @@ def _paged_fut_daily(pro: Any, ts_code: str, start_date: str, end_date: str) -> 
     return merged.drop_duplicates(subset=["trade_date"], keep="last")
 
 
+def _fetch_hk_index_via_tencent(
+    tencent_symbol: str,
+    start_date: str,
+    end_date: str,
+) -> pd.DataFrame | None:
+    """
+    HSI/HSTECH daily bars via Tencent ifzq kline (hkHSI / hkHSTECH).
+
+    2026-08-10: tushare `index_global` is rate-limited to 100 calls/day on
+    lower-tier keys — HSI/HSTECH stopped updating mid-week. Tencent serves
+    both index series with plain JSON (no V8, verified reachable) and no
+    daily quota — first-class fallback for the HK regime line.
+    """
+    try:
+        import requests  # type: ignore[import-not-found]
+    except Exception:
+        return None
+    start_dt = datetime.strptime(start_date, "%Y%m%d").date()
+    end_dt = datetime.strptime(end_date, "%Y%m%d").date()
+    param = f"{tencent_symbol},day,{start_dt.isoformat()},{end_dt.isoformat()},1000"
+    try:
+        resp = requests.get(
+            "https://web.ifzq.gtimg.cn/appstock/app/kline/kline",
+            params={"param": param},
+            timeout=15.0,
+            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://gu.qq.com/"},
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception:
+        return None
+    node = (payload.get("data") or {}).get(tencent_symbol) or {}
+    rows = node.get("day") or node.get("qfqday") or []
+    if not rows:
+        return None
+    out = pd.DataFrame()
+    parsed_rows = []
+    for r in rows:
+        if not isinstance(r, (list, tuple)) or len(r) < 6:
+            continue
+        try:
+            d = datetime.fromisoformat(str(r[0]).strip()).date()
+        except ValueError:
+            continue
+        if not (start_dt <= d <= end_dt):
+            continue
+        parsed_rows.append({
+            "trade_date": d.isoformat(),
+            "open": float(r[1]),
+            "high": float(r[2]),
+            "close": float(r[3]),
+            "low": float(r[4]),
+            "vol": float(r[5]),
+        })
+    if not parsed_rows:
+        return None
+    out = pd.DataFrame(parsed_rows).sort_values("trade_date").reset_index(drop=True)
+    out["pct_chg"] = out["close"].pct_change() * 100.0
+    out["amount"] = None
+    return out
+
+
 def _fetch_hstech_bars_via_ak(start_date: str, end_date: str) -> pd.DataFrame | None:
     """
     HSTECH daily bars via akshare (Sina Finance) — preferred fallback since
@@ -417,7 +479,11 @@ def sync_macro_daily_full() -> dict[str, Any]:
             return 0
         df = _paged_index_global(pro, "HSI", start, end)
         if df is None or df.empty:
-            return 0
+            # tushare index_global quota exhausted → Tencent ifzq fallback.
+            df = _fetch_hk_index_via_tencent("hkHSI", start, end)
+            if df is None or df.empty:
+                return 0
+            return upsert_from_dataframe(df, series_id=SID_HSI, source="tencent", underlying_ts_code="hkHSI")
         return upsert_from_dataframe(df, series_id=SID_HSI, source="index_global", underlying_ts_code="HSI")
 
     def sync_hstech() -> int:
@@ -428,6 +494,11 @@ def sync_macro_daily_full() -> dict[str, Any]:
             return 0
         df = _paged_index_global(pro, "HSTECH", start, end)
         if df is None or df.empty:
+            df = _fetch_hk_index_via_tencent("hkHSTECH", start, end)
+            if df is not None and not df.empty:
+                return upsert_from_dataframe(
+                    df, series_id=SID_HSTECH, source="tencent", underlying_ts_code="hkHSTECH"
+                )
             df = _fetch_hstech_bars_via_ak(start, end)
             if df is None or df.empty:
                 df = _fetch_hstech_bars_via_yf(start, end)

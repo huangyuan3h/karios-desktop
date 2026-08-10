@@ -296,8 +296,12 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
   无法解决——**收益递减，不再深挖**
 
 **P1 — 数据新鲜度 / 稳定性**
-- [ ] **P1-3 滞后表统一补跑 + staleness 监控**：主线评分/stock_dailybasic/USDCNH/HSI/HSTECH →
-  scheduler 加「超 1 交易日告警」；HK score 算分 job 补 08-10
+- [x] **P1-3 滞后表统一补跑 + staleness 监控**（2026-08-10 ✅）：根因=uvicorn 进程 `lru_cache`
+  缓存空 tushare key（`load_dotenv` 无 override）→ hk_basic_sync/macro_daily "假成功"——
+  修复：`config.py` load_dotenv(override=True) + 重启 uvicorn；**HSI/HSTECH 加腾讯 fallback**
+  （tushare index_global 100 次/天限频——`_fetch_hk_index_via_tencent`，已补到 08-10）；
+  主线评分/情绪补到 08-10；health `/datasources` 加 hk_daily/hk_macro/hk_score/mainline 监控
+  （带市场过滤 whereSql）；stock_dailybasic 08-07 仅回测 total_mv 用、不在回测窗内=低优先
 - [x] **P1-4 A 股算分 job 修复**（2026-08-10 ✅ 已修复）：根因两处——① uvicorn 15:59 重启
   错失 17:30 cron（一次性，misfire 不补跑，已手动补算 08-10）；② **`compute_trendok_for_symbols`
   硬编码 200 只上限** → `record_score_snapshots` 改 200/块分 chunk（CN 204→700 · HK 200→497 已验证）；

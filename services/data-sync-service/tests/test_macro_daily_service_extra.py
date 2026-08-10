@@ -338,6 +338,7 @@ class TestSyncFull:
         monkeypatch.setattr(md, "resolve_sgx_a50_main", lambda pro: None)
         monkeypatch.setattr(md, "resolve_main_fut_by_prefix", lambda pro, exch, pre: None)
         monkeypatch.setattr(md, "_fetch_hstech_bars_via_yf", lambda s, e: None)
+        monkeypatch.setattr(md, "_fetch_hk_index_via_tencent", lambda sym, s, e: None)
         pro.fx_daily.return_value = pd.DataFrame()
         out = md.sync_macro_daily_full()
         assert out["ok"] is True and out["updated"] == 0
@@ -358,6 +359,7 @@ class TestSyncFull:
         monkeypatch.setattr(md, "_paged_index_global", lambda pro2, code, s, e: None if code == "HSTECH" else _ok_df())
         monkeypatch.setattr(md, "_fetch_hstech_bars_via_ak", lambda s, e: _ok_df())
         monkeypatch.setattr(md, "_fetch_hstech_bars_via_yf", lambda s, e: _ok_df())
+        monkeypatch.setattr(md, "_fetch_hk_index_via_tencent", lambda sym, s, e: None)
         md.sync_macro_daily_full()
         ak = [c.kwargs for c in upsert.call_args_list if c.kwargs.get("source") == "akshare"]
         assert len(ak) == 1
@@ -369,6 +371,7 @@ class TestSyncFull:
         monkeypatch.setattr(md.sys, "platform", "linux")
         monkeypatch.setitem(sys.modules, "akshare", Mock())
         monkeypatch.setattr(md, "_fetch_hstech_bars_via_yf", lambda s, e: _ok_df())
+        monkeypatch.setattr(md, "_fetch_hk_index_via_tencent", lambda sym, s, e: None)
         md.sync_macro_daily_full()
         yf = [c.kwargs for c in upsert.call_args_list if c.kwargs.get("source") == "yfinance"]
         assert len(yf) == 1
