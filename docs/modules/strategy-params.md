@@ -112,6 +112,7 @@ valid +77.2%/DD5.0/8.26/64笔（2026-08-09 晚随 A4 排除创业板重固化；
 | 2026-08-09 | **复核：A3 闸门贡献量化（gates none/regime/full 对照）** | 维持 full | regime 闸门=最大单项（三窗 +26~48pt/回撤砍半）；flow+mainline 闸门=第二正贡献（valid +32.6pt/回撤再减半/胜率+13pt）——「只做主线严格模式」有支持，OOS2 证据待回拉后补 | ✅ 记录 |
 | 2026-08-09 | **exclude_boards=300（排除创业板 · A4 专注池）** | 无 → **300** | A4 三窗板块分桶：创业板从未贡献 alpha（OOS2 25笔胜28%亏 -3.2pt、valid 5笔全亏）；排除后三窗 0 劣化（OOS2 +124.3 vs 106.9 +17.4pt/DD 21.0→18.7、train +151.1 +3.6pt/胜率+2.4pt、valid +77.2 持平/DD 5.8→5.0）；对照排 300+688 valid -30.1pt 拒收（科创=valid alpha 主力 30笔胜70% +59.6pt）；paper `S3_EXCLUDE_BOARDS=("300",)` + BacktestPage 默认 '300' + walk-forward S3_CONFIG 同步 | ✅ 在用 |
 | 2026-08-10 | **HK 并行线全组定案**（market=HK） | 无 → gates=regime · score65 · hold60 · stop-5 · target100 · floor0 · **trailing-12** · **RS前40%** · 金字塔开 · mp20 · 10%回测/5%paper | 港股独立回测（vol-top500 universe + 22.9 万行 score 回填 + HSI regime）：A 股参数直接套用 train 窗 -2.1%（-8% trailing 被港股波动高频打掉）；扫描 → trail-12 主导、RS0.6 为唯一质量过滤器；三窗全正（OOS2 +86.9/DD25.4/2.63 · train +45.9/19.9/2.89 · valid +52.3/8.3/5.62，10%口径）；过去一年 +83.8%/DD19.9/2.68 | ✅ HK 在用（A 股不动） |
+| 2026-08-10 | **HK 复权统一（数据修复 · 重固化基线）** | qfq 重灌后基线更新 | 实锤 daily 表混写 tushare 不复权（历史）+ 腾讯 qfq（近端）——除权日跳空被 EMA/RS/RSI 误读为崩盘（01398 差 48% / 00388 差 11%）；`hk_reseed_qfq.py` 全量重灌 2804 只 2022-06 起 qfq（317.7 万行，0 失败）→ **重固化基线：OOS2 +268.0/DD29.7/2.21 · train +26.9/18.9/1.91 · valid +60.6/8.3/6.32**（OOS2 +181pt / valid +8.3pt；train -19.1pt=旧基线不复权假信号，新基线为准） | ✅ 已固化（2026-08-10） |
 
 ## 5. HK 数据质量与稳定性备忘（2026-08-10 · 用户关注）
 
@@ -128,4 +129,6 @@ valid +77.2%/DD5.0/8.26/64笔（2026-08-09 晚随 A4 排除创业板重固化；
 | 5 | HK 日线最新 08-07（8-10 盘后未跑）；2803 只中 2677 只有 vol | 新鲜度依赖盘后同步 | 观察 hk_basic_sync / 手动 `sync_hk_ak.py` |
 | 6 | score 无行业/资金流分量 → 顺周期偏高（入场 75-100） | score 门槛无区分度（结构性，非 bug） | 由 RS0.6 承担筛选（定案） |
 | 7 | 实时报价三链（Sina→东财 push2→tushare） | 东财链被封时降级 | 已有多链容错 |
+| 8 | **复权混源（已修 2026-08-10）**：daily 表历史=tushare 不复权、近端=腾讯 qfq——除权日跳空污染趋势指标（01398 差 48%/00388 差 11%） | 回测系统性失真 | `scripts/hk_reseed_qfq.py` 全量重灌 2022-06 起 qfq；`scripts/hk_adj_consistency_check.py` 抽查校验；**每日增量用腾讯源时保证 qfq 口径（已固化）** |
+| 9 | HK score 算分上限 bug（已修 2026-08-10）：`compute_trendok_for_symbols` 硬编码 200 只 | HK universe 500 只只算 200 | `record_score_snapshots` 200/块分 chunk（CN 700/HK 497 已验证） |
 

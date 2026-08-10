@@ -23,6 +23,26 @@ from data_sync_service.db.watchlist_automation import list_registry
 
 logger = logging.getLogger(__name__)
 
+# 2026-08-10 (no-choice UX): the manual trade size that matches the
+# backtested edge. Backtest = 10%/sleeve × 20 = 200% nominal (no-leverage
+# impossible), paper = 5% × 20 = 100%. For a manual book (<=10 positions)
+# the no-leverage max is 10%/position × 10 = 100% — same per-position
+# exposure as the backtest.
+SUGGESTED_SIZE_PCT = 10.0
+
+# Top-N buy list shown on the health card (score desc after dedupe).
+TOP_CANDIDATES = 5
+
+
+def _held_company_names(*, market: str, day: str) -> set[str]:
+    """Company names of live holdings on ``market`` (best-effort)."""
+    try:
+        holdings = _build_holdings_block(market=market, day=day)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health held names failed: %s", exc)
+        return set()
+    return {str(h.get("name") or "").strip() for h in holdings or [] if h.get("name")}
+
 
 def _resolve_holding_ts(symbol: str) -> str | None:
     """CN/HK resolve via the paper engine; ETF by exchange code prefix."""
@@ -202,12 +222,20 @@ def _build_holdings_block(market: str, day: str) -> list[dict[str, Any]]:
 
 
 def _health_block(*, market: str, day: str) -> dict[str, Any]:
-    """One market's S-3 health block (CN = current live system, HK = parallel line)."""
+    """One market's S-3 health block (CN = current live system, HK = parallel line).
+
+    2026-08-10 (no-choice UX): the card only lists the TOP 5 candidates
+    (score-desc, deduped) instead of the full list — the caller gets an
+    unambiguous "buy these tomorrow" list. ``s3CandidateTotal`` keeps the
+    headline count; ``s3Rules.suggestedSizePct`` mirrors the backtest's
+    10%-per-sleeve so the manual trade size matches the backtested edge.
+    """
     from data_sync_service.service.backtest_engine import BacktestConfig, _load_regime_by_day
     from data_sync_service.service.market_sentiment import get_cn_sentiment, get_panic_cooldown
     from data_sync_service.service.paper_s3 import (
         PYRAMID_ADD_SCALE,
         PYRAMID_TRIGGER_PCT,
+        S3_MAX_POSITIONS,
         build_s3_candidates,
     )
 
@@ -223,7 +251,7 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
         panic = get_panic_cooldown(days=10, cooldown_days=3, as_of_date=day)
         candidates: list[dict[str, Any]] = []
         try:
-            candidates = build_s3_candidates(trade_date=day, market="HK")
+            candidates = build_s3_candidates(trade_date=day, market="HK", max_positions=S3_MAX_POSITIONS)
         except Exception as exc:  # noqa: BLE001
             logger.warning("portfolio health HK candidates failed: %s", exc)
         rules: dict[str, Any] = {
@@ -235,6 +263,7 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
             "pyramidTriggerPct": PYRAMID_TRIGGER_PCT,
             "pyramidAddScale": PYRAMID_ADD_SCALE,
             "gates": "regime",
+            "suggestedSizePct": SUGGESTED_SIZE_PCT,
         }
     else:
         cfg = BacktestConfig(
@@ -253,7 +282,7 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
             items = get_cn_sentiment(days=1, as_of_date=day)["items"]
             sentiment = items[-1].get("riskMode") if items else None
             panic = get_panic_cooldown(days=10, cooldown_days=3, as_of_date=day)
-            candidates = build_s3_candidates(trade_date=day)
+            candidates = build_s3_candidates(trade_date=day, max_positions=S3_MAX_POSITIONS)
         except Exception as exc:  # noqa: BLE001
             logger.warning("portfolio health s3 candidates failed: %s", exc)
         rules: dict[str, Any] = {
@@ -264,6 +293,7 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
             "maxHoldDays": MAX_HOLD_DAYS,
             "pyramidTriggerPct": PYRAMID_TRIGGER_PCT,
             "pyramidAddScale": PYRAMID_ADD_SCALE,
+            "suggestedSizePct": SUGGESTED_SIZE_PCT,
         }
 
     try:
@@ -275,11 +305,26 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("portfolio health candidate names failed: %s", exc)
 
+    # 2026-08-10 (no-choice UX): collapse to the top 5 by score — one
+    # unambiguous "buy these" list. HK additionally drops candidates whose
+    # company is already held on the CN side (e.g. 紫金矿业 601899 held vs
+    # 02899 candidate) — one company, one exposure across the pair.
+    if market == "HK":
+        try:
+            cn_held_names = _held_company_names(market="CN", day=day)
+            if cn_held_names:
+                candidates = [c for c in candidates if str(c.get("name") or "") not in cn_held_names]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("portfolio health HK dedupe failed: %s", exc)
+    candidate_total = len(candidates)
+    candidates = candidates[:TOP_CANDIDATES]
+
     return {
         "regime": regime,
         "sentiment": sentiment,
         "panicCooldown": panic,
         "s3Candidates": candidates,
+        "s3CandidateTotal": candidate_total,
         "s3Rules": rules,
         "holdings": _build_holdings_block(market=market, day=day),
     }

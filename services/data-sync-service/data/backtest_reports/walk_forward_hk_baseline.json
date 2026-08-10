@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-10T05:45:59.347466+00:00",
-  "tag": "hk-s3-final-20260810",
+  "generatedAt": "2026-08-10T13:35:04.834584+00:00",
+  "tag": "",
   "config": {
     "score_threshold": 65.0,
     "max_hold_days": 60,
@@ -23,29 +23,29 @@
   },
   "results": {
     "OOS2": {
-      "closed": 328,
-      "winRate": 0.387,
-      "avgNetPnlPct": 3.454,
-      "totalNetPnlPct": 86.851,
-      "maxDrawdownPct": 25.446,
-      "sharpe": 2.63
+      "closed": 344,
+      "winRate": 0.39,
+      "avgNetPnlPct": 10.093,
+      "totalNetPnlPct": 267.987,
+      "maxDrawdownPct": 29.719,
+      "sharpe": 2.21
     },
     "train": {
-      "closed": 166,
-      "winRate": 0.434,
-      "avgNetPnlPct": 3.623,
-      "totalNetPnlPct": 45.941,
-      "maxDrawdownPct": 19.877,
-      "sharpe": 2.89
+      "closed": 169,
+      "winRate": 0.414,
+      "avgNetPnlPct": 2.02,
+      "totalNetPnlPct": 26.855,
+      "maxDrawdownPct": 18.863,
+      "sharpe": 1.91
     },
     "valid": {
       "closed": 84,
-      "winRate": 0.405,
-      "avgNetPnlPct": 8.041,
-      "totalNetPnlPct": 52.331,
-      "maxDrawdownPct": 8.292,
-      "sharpe": 5.62
+      "winRate": 0.417,
+      "avgNetPnlPct": 9.337,
+      "totalNetPnlPct": 60.647,
+      "maxDrawdownPct": 8.329,
+      "sharpe": 6.32
     }
   },
-  "baselineUsed": false
+  "baselineUsed": true
 }
