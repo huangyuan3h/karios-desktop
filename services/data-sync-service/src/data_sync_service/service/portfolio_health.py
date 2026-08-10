@@ -66,10 +66,20 @@ def _holding_check(
     entry_date: str,
     ts: str,
     trade_date: str,
+    trailing_pct: float | None = None,
+    stop_pct: float | None = None,
+    max_hold: int | None = None,
 ) -> dict[str, Any]:
-    """S-3 exit-condition check for one holding (same constants as paper)."""
+    """S-3 exit-condition check for one holding (same constants as paper).
+
+    2026-08-10 (HK parallel line): per-market rule overrides — HK uses the
+    HK line's trailing -12% (stop -5% / hold 60 unchanged).
+    """
     from data_sync_service.db import get_connection
 
+    stop = stop_pct if stop_pct is not None else STOP_LOSS_PCT
+    trail = trailing_pct if trailing_pct is not None else TRAILING_STOP_PCT
+    hold = max_hold if max_hold is not None else MAX_HOLD_DAYS
     out: dict[str, Any] = {
         "symbol": name,
         "costPrice": cost,
@@ -113,19 +123,19 @@ def _holding_check(
     out["pnlPct"] = round(pnl, 2)
     out["drawdownFromPeakPct"] = round(drawdown, 2)
     out["holdingDays"] = days
-    out["stopLossLine"] = round(cost * (1 + STOP_LOSS_PCT / 100.0), 3)
-    out["trailingLine"] = round(peak * (1 + TRAILING_STOP_PCT / 100.0), 3)
-    expire = date.fromisoformat(entry_date) + __import__("datetime").timedelta(days=MAX_HOLD_DAYS)
+    out["stopLossLine"] = round(cost * (1 + stop / 100.0), 3)
+    out["trailingLine"] = round(peak * (1 + trail / 100.0), 3)
+    expire = date.fromisoformat(entry_date) + __import__("datetime").timedelta(days=hold)
     out["maxHoldDate"] = expire.isoformat()
     out["expireDate"] = expire.isoformat()
 
     reasons: list[str] = []
-    if pnl <= STOP_LOSS_PCT:
-        reasons.append(f"stop_loss（净亏{abs(pnl):.1f}% >= {abs(STOP_LOSS_PCT):.0f}% 阈值）")
-    if drawdown <= TRAILING_STOP_PCT:
-        reasons.append(f"trailing_stop（峰值回撤{abs(drawdown):.1f}% >= {abs(TRAILING_STOP_PCT):.0f}% 阈值）")
-    if days >= MAX_HOLD_DAYS:
-        reasons.append(f"max_hold（已持{days}天 >= {MAX_HOLD_DAYS} 天）")
+    if pnl <= stop:
+        reasons.append(f"stop_loss（净亏{abs(pnl):.1f}% >= {abs(stop):.0f}% 阈值）")
+    if drawdown <= trail:
+        reasons.append(f"trailing_stop（峰值回撤{abs(drawdown):.1f}% >= {abs(trail):.0f}% 阈值）")
+    if days >= hold:
+        reasons.append(f"max_hold（已持{days}天 >= {hold} 天）")
     if reasons:
         out["action"] = "EXIT"
         out["reason"] = "；".join(reasons)
@@ -134,9 +144,57 @@ def _holding_check(
     return out
 
 
-def build_portfolio_health(*, trade_date: str | None = None) -> dict[str, Any]:
-    """Full S-3-aligned health report for the real holdings."""
-    from data_sync_service.db.paper_trading import today_iso
+def _build_holdings_block(market: str, day: str) -> list[dict[str, Any]]:
+    """Holdings for one market vs its S-3 exit rules.
+
+    2026-08-10 (HK parallel line): CN uses the CN rules (trail -8); HK uses
+    the HK line rules (trail -12). Holdings are split by symbol prefix.
+    """
+    from data_sync_service.service.paper_s3 import PYRAMID_TRIGGER_PCT
+
+    trail = -12.0 if market == "HK" else None
+    prefix = f"{market}:"
+    holdings: list[dict[str, Any]] = []
+    try:
+        pyramid_syms = _pyramided_symbols()
+        for r in list_registry():
+            sym = str(r.get("symbol") or "").upper()
+            if not sym.startswith(prefix):
+                continue
+            payload = r.get("payload") or {}
+            pct = payload.get("positionPct", r.get("positionPct"))
+            cost = payload.get("costPrice", r.get("costPrice"))
+            entry = payload.get("entryDate", r.get("entryDate"))
+            name = payload.get("name", r.get("name"))
+            if not (isinstance(pct, (int, float)) and pct > 0 and cost and entry):
+                continue
+            ts = _resolve_holding_ts(sym)
+            check = _holding_check(
+                name=str(name or sym),
+                cost=float(cost),
+                entry_date=str(entry),
+                ts=ts or "",
+                trade_date=day,
+                trailing_pct=trail,
+            )
+            check["symbol"] = sym
+            check["name"] = str(name or "")
+            check["positionPct"] = pct
+            check["pyramidTriggerLine"] = round(
+                float(cost) * (1 + PYRAMID_TRIGGER_PCT / 100.0), 3
+            )
+            check["pyramidAdded"] = sym in pyramid_syms
+            if ts is None:
+                check["action"] = "HOLD"
+                check["note"] = "无法解析标的代码，人工核对"
+            holdings.append(check)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health holdings failed: %s", exc)
+    return holdings
+
+
+def _health_block(*, market: str, day: str) -> dict[str, Any]:
+    """One market's S-3 health block (CN = current live system, HK = parallel line)."""
     from data_sync_service.service.backtest_engine import BacktestConfig, _load_regime_by_day
     from data_sync_service.service.market_sentiment import get_cn_sentiment, get_panic_cooldown
     from data_sync_service.service.paper_s3 import (
@@ -145,61 +203,61 @@ def build_portfolio_health(*, trade_date: str | None = None) -> dict[str, Any]:
         build_s3_candidates,
     )
 
-    day = trade_date or today_iso()
-    holdings: list[dict[str, Any]] = []
-    try:
-        pyramid_syms = _pyramided_symbols()
-        for r in list_registry():
-            payload = r.get("payload") or {}
-            # list_registry flattens payload fields to the top level; accept
-            # both shapes.
-            pct = payload.get("positionPct", r.get("positionPct"))
-            cost = payload.get("costPrice", r.get("costPrice"))
-            entry = payload.get("entryDate", r.get("entryDate"))
-            name = payload.get("name", r.get("name"))
-            if not (isinstance(pct, (int, float)) and pct > 0 and cost and entry):
-                continue
-            ts = _resolve_holding_ts(str(r.get("symbol") or ""))
-            check = _holding_check(
-                name=str(name or r.get("symbol") or ""),
-                cost=float(cost),
-                entry_date=str(entry),
-                ts=ts or "",
-                trade_date=day,
-            )
-            check["symbol"] = str(r.get("symbol") or "")
-            check["name"] = str(name or "")
-            check["positionPct"] = pct
-            check["pyramidTriggerLine"] = round(
-                float(cost) * (1 + PYRAMID_TRIGGER_PCT / 100.0), 3
-            )
-            check["pyramidAdded"] = str(r.get("symbol") or "") in pyramid_syms
-            if ts is None:
-                check["action"] = "HOLD"
-                check["note"] = "无法解析标的代码，人工核对"
-            holdings.append(check)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("portfolio health holdings failed: %s", exc)
+    if market == "HK":
+        from data_sync_service.service.market_regime import get_hk_regime
 
-    regime = None
-    try:
+        regime = None
+        try:
+            regime = str(get_hk_regime(as_of_date=day).get("regime") or "")
+        except Exception:  # noqa: BLE001
+            pass
+        sentiment = None
+        panic = get_panic_cooldown(days=10, cooldown_days=3, as_of_date=day)
+        candidates: list[dict[str, Any]] = []
+        try:
+            candidates = build_s3_candidates(trade_date=day, market="HK")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("portfolio health HK candidates failed: %s", exc)
+        rules: dict[str, Any] = {
+            "entryScore": 65,
+            "rsMin": 0.6,
+            "stopLossPct": -5.0,
+            "trailingStopPct": -12.0,
+            "maxHoldDays": 60,
+            "pyramidTriggerPct": PYRAMID_TRIGGER_PCT,
+            "pyramidAddScale": PYRAMID_ADD_SCALE,
+            "gates": "regime",
+        }
+    else:
         cfg = BacktestConfig(
             start_date=day, end_date=day,
             score_threshold=65.0, gates="full", rs_rank_min=0.5,
         )
-        regime = _load_regime_by_day(cfg, [day]).get(day)
-    except Exception:  # noqa: BLE001
-        pass
-    sentiment = None
-    panic = None
-    candidates: list[dict[str, Any]] = []
-    try:
-        items = get_cn_sentiment(days=1, as_of_date=day)["items"]
-        sentiment = items[-1].get("riskMode") if items else None
-        panic = get_panic_cooldown(days=10, cooldown_days=3, as_of_date=day)
-        candidates = build_s3_candidates(trade_date=day)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("portfolio health s3 candidates failed: %s", exc)
+        regime = None
+        try:
+            regime = _load_regime_by_day(cfg, [day]).get(day)
+        except Exception:  # noqa: BLE001
+            pass
+        sentiment = None
+        panic = None
+        candidates: list[dict[str, Any]] = []
+        try:
+            items = get_cn_sentiment(days=1, as_of_date=day)["items"]
+            sentiment = items[-1].get("riskMode") if items else None
+            panic = get_panic_cooldown(days=10, cooldown_days=3, as_of_date=day)
+            candidates = build_s3_candidates(trade_date=day)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("portfolio health s3 candidates failed: %s", exc)
+        rules: dict[str, Any] = {
+            "entryScore": 65,
+            "rsMin": 0.5,
+            "stopLossPct": STOP_LOSS_PCT,
+            "trailingStopPct": TRAILING_STOP_PCT,
+            "maxHoldDays": MAX_HOLD_DAYS,
+            "pyramidTriggerPct": PYRAMID_TRIGGER_PCT,
+            "pyramidAddScale": PYRAMID_ADD_SCALE,
+        }
+
     try:
         if candidates:
             ts_codes = [c["ts_code"] for c in candidates]
@@ -210,21 +268,39 @@ def build_portfolio_health(*, trade_date: str | None = None) -> dict[str, Any]:
         logger.warning("portfolio health candidate names failed: %s", exc)
 
     return {
-        "tradeDate": day,
         "regime": regime,
         "sentiment": sentiment,
         "panicCooldown": panic,
         "s3Candidates": candidates,
-        "s3Rules": {
-            "entryScore": 65,
-            "rsMin": 0.5,
-            "stopLossPct": STOP_LOSS_PCT,
-            "trailingStopPct": TRAILING_STOP_PCT,
-            "maxHoldDays": MAX_HOLD_DAYS,
-            "pyramidTriggerPct": PYRAMID_TRIGGER_PCT,
-            "pyramidAddScale": PYRAMID_ADD_SCALE,
-        },
-        "holdings": holdings,
+        "s3Rules": rules,
+        "holdings": _build_holdings_block(market=market, day=day),
+    }
+
+
+def build_portfolio_health(
+    *,
+    trade_date: str | None = None,
+    markets: tuple[str, ...] = ("CN",),
+) -> dict[str, Any]:
+    """Full S-3-aligned health report for the real holdings.
+
+    2026-08-10 (HK parallel line): ``markets`` selects which strategy lines to
+    include. Top-level fields stay CN (backward compatible for the decision
+    agent); ``hkHealth`` carries the HK line block (null when not requested).
+    """
+    from data_sync_service.db.paper_trading import today_iso
+
+    day = trade_date or today_iso()
+    blocks: dict[str, dict[str, Any]] = {}
+    for m in markets:
+        if m in ("CN", "HK"):
+            blocks[m] = _health_block(market=m, day=day)
+
+    cn = blocks.get("CN") or _health_block(market="CN", day=day)
+    return {
+        "tradeDate": day,
+        **cn,
+        "hkHealth": blocks.get("HK"),
     }
 
 

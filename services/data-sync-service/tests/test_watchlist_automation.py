@@ -497,6 +497,8 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
     # 2026-08-09: the enabled-api-screener universe merge is a separate DB
     # seam — isolate it here so this test keeps its registry-only assertion.
     monkeypatch.setattr(wa, "list_enabled_api_screener_symbols", lambda market="cn": [])
+    # 2026-08-10: the HK parallel-line scoring step is a separate DB seam too.
+    monkeypatch.setattr(wa, "list_hk_universe_symbols", lambda top_n=500, **kwargs: [])
 
     result = wa.run_watchlist_automation(trigger="manual", force=True)
 

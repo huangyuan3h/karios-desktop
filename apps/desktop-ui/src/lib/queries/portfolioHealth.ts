@@ -47,16 +47,19 @@ export interface PortfolioHealthResponse {
   s3Candidates?: PortfolioCandidate[] | null;
   s3Rules?: Record<string, unknown>;
   holdings?: PortfolioHolding[];
+  /** 2026-08-10 HK parallel line — HK strategy-line block (null when not requested). */
+  hkHealth?: PortfolioHealthResponse | null;
 }
 
 /**
  * Fetch the S-3-aligned health check (holdings vs exit rules + market state).
+ * `markets=CN,HK` returns both the CN line (top-level) and the HK line (hkHealth).
  */
 export async function fetchPortfolioHealth(
   baseUrl: string = DATA_SYNC_BASE_URL,
   signal?: AbortSignal,
 ): Promise<PortfolioHealthResponse> {
-  const res = await fetch(`${baseUrl}/v1/agent/portfolio-health`, {
+  const res = await fetch(`${baseUrl}/v1/agent/portfolio-health?markets=CN,HK`, {
     cache: 'no-store',
     signal: signal ?? AbortSignal.timeout(30_000),
   });

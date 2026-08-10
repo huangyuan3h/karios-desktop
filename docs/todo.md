@@ -133,6 +133,66 @@ watchlist 里 4 只 CN 票全部缺"今日报价" → `shouldRequireRealtimeQuot
 **验收**：前端 typecheck ✓ · 756 tests ✓ · 后端 ruff ✓ + 28 realtime_quote tests ✓。
 **生效**：Next dev 热更新即生效；后端日志改动需重启 uvicorn（下次维护一并）。
 
+### 2026-08-10 HK 并行策略线：回测闭环完成（A 股不变）
+
+> 用户拍板：**港股单独回测，A 股结论与港股并行**（两条独立策略线）。
+
+**数据层（HK 基础设施已齐）**：
+- universe = 本地成交量 top 500（近 60 交易日 vol 排序——零外部依赖的恒生综合代理，与
+  registry HK 票并集）；恒综官方成分 API（东财/新浪/csindex）此网络不可达
+- **HK score 回填**：`scripts/hk_backfill_watchlist_scores.py`（复用 live `_trendok_one`，
+  bars 预取、无网络）——22.9 万行 / 500 票 / 470 交易日 / 11 分钟；HK score 无行业分量
+  （行业/资金流 HK 无映射），score 顺周期偏高（入场票集中在 75-100，门槛无区分度——已确认）
+- **HK regime**：`get_hk_regime()`（HSI+HSTECH 红绿灯，macro_daily 历史 ✓ 可 as-of）
+
+**修复的 look-ahead bug（重要）**：`fetch_last_closes`（db/macro_daily.py）原无 as_of 过滤——
+HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今天的价格）→ HK regime 全 Strong。
+已加 `as_of_date` 参数；修复后 HK 历史 regime 真实多样（2024-08 Weak 熊市 ✓ 2024-10 Strong ✓）。
+
+**HK 回测定案**（三窗全正、夏普全 2.6+）：
+| 参数 | HK 定案 | A 股 S-3（不变） |
+|---|---|---|
+| 闸门 | **regime 档**（score+RS+HSI regime，无行业闸——HK 无行业资金流） | full（含行业 mainline） |
+| score | 65（HK 无区分度，保留） | 65 |
+| trailing | **-12%**（-8 在港股波动下被高频打掉） | -8% |
+| stop | -5% | -5% |
+| RS | **前 40%（rs_min 0.6）** | 前 50% |
+| 金字塔 | 开（2.5/0.5/1） | 开 |
+| 其他 | hold60/target100/mp20/10%仓位/swap 关 | 同 |
+- **三窗**：OOS2 +43.4%/DD12.7/夏普2.63 · train +23.0%/DD9.9/2.89 · valid +26.2%/DD5.7/3.64
+- A 股回归：OOS2/train 与固化基线**完全一致**（124.3/4.21 · 151.1/5.92）；valid 78 笔差异
+  = 8-09 数据回填演进（stash 验证非代码回归）——**基线待重固化（run_walk_forward --save-baseline）**
+
+**待办（下阶段）**：
+1. 固化 HK 真值表 → strategy-params.md §（HK 独立段）+ run_walk_forward HK 配置
+2. HK paper 路径（automation HK 池每日 score + HK paper intake，source 区分）+ watchlist HK 视图
+3. A 股基线重固化（valid 数据演进后）
+
+### 2026-08-10 HK 并行线：固化 + paper 路径 + 双市场体检卡片（全部完成）
+
+**固化**：
+- strategy-params.md：§1b HK 真值表（参数理解表）+ §4 版本历史 + §5 HK 数据质量备忘
+- `run_walk_forward.py --market HK`（HK_S3_CONFIG + 独立基线 walk_forward_hk_baseline.json）
+- HK 三窗（10% 口径）：OOS2 +86.9/DD25.4/2.63 · train +45.9/19.9/2.89 · valid +52.3/8.3/5.62；
+  **过去一年 +83.8%/DD19.9/2.68**（5% paper 口径 ≈ +41.9%）
+
+**paper 路径（HK 独立记账）**：
+- `build_s3_candidates(market="HK")`：HSI/HSTECH regime 闸（引擎 market-aware）、无行业闸、
+  RS 市场内、panic 用 CN 口径（与 HK 回测同路径）、无 exclude_boards
+- `run_intake_s3(market="HK")`：source='S3HK'（db/paper_trading SOURCES 扩展）；
+  8-07 干跑 20 只全插入+清理 ✓（曾发现 source 硬编码 'S3' 的 bug——HK 票记错账，已修）
+- `paper_s3_intake_job`：17:42 同时跑 CN + HK（记录 paper_s3_intake_CN/_HK）
+- automation 每日给 HK 池算分：`list_hk_universe_symbols()`（vol top 500 + registry HK 并集，
+  db/daily.py）——HK paper 候选每天有新鲜 score
+
+**双市场体检卡片（A 股/港股买什么·卖什么·持有）**：
+- 后端 `/v1/agent/portfolio-health?markets=CN,HK`：顶层 CN（兼容决策 Agent）+ `hkHealth` 块
+  （HK regime/candidates/holdings，trail -12 规则）；持仓按市场拆分
+- 前端 PortfolioHealthCard：CN | HK 双栏面板（regime 徽章/候选 chips/持有行 EXIT-HOLD）
+- 测试：前端 5（双栏渲染）+ 后端 portfolio/paper_s3/watchlist_automation 68 ✓
+
+**验收**：后端 3500 passed（4 failed=已知日期敏感 pre-existing）+ ruff ✓ + 前端 83 passed + typecheck ✓
+
 
 ## 1. 状态看板（导航 · 详情在 §10 沉淀表 / 各章节）
 

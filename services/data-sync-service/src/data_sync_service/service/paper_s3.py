@@ -27,6 +27,7 @@ from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.db.paper_trading import (
     CLOSE_REASON_SWAPPED,
     SOURCE_S3,
+    SOURCE_S3_HK,
     close_paper_trade,
     insert_paper_trade,
 )
@@ -150,52 +151,70 @@ def build_s3_candidates(
     *,
     trade_date: str | None = None,
     max_positions: int = S3_MAX_POSITIONS,
+    market: str = "CN",
 ) -> list[dict[str, Any]]:
-    """S-3-qualified candidates on ``trade_date`` (same gates as the backtest)."""
+    """S-3-qualified candidates on ``trade_date`` (same gates as the backtest).
+
+    2026-08-10 (HK parallel line): ``market="HK"`` runs the HK regime line —
+    HSI/HSTECH regime gate (via the engine's market-aware ``_load_regime_by_day``),
+    no sector flow/mainline whitelist (HK has none), RS ranked inside the HK
+    universe, panic cooldown from the CN sentiment feed (matches the backtest
+    engine's HK path exactly). CN keeps the full gates.
+    """
     from data_sync_service.db.paper_trading import today_iso
 
     day = trade_date or today_iso()
+    is_hk = market == "HK"
     cfg = BacktestConfig(
         start_date=day,
         end_date=day,
+        market=market,
         score_threshold=S3_SCORE_THRESHOLD,
-        gates="full",
+        gates="regime" if is_hk else "full",
         rs_rank_min=S3_RS_MIN,
         diverging_scale=1.0,
     )
     regime_by_day = _load_regime_by_day(cfg, [day])
-    flow_any_positive_by_day, mainline_allow_by_day = _load_flow_mainline_data(cfg, [day])
     panic = get_panic_cooldown(days=10, cooldown_days=3, as_of_date=day)
 
-    scores = _load_today_scores(day)
+    scores = _load_today_scores(day, market=market)
     if not scores:
         return []
     universe = sorted(scores)
     resolved: dict[str, str] = {}
     for sym in universe:
         parsed = _resolve_ts_code(sym)
-        if parsed and parsed[0] == "CN":
+        if parsed and parsed[0] == market:
             resolved[sym] = parsed[1]
     if not resolved:
         return []
     rs_by_sym = _load_rs_ranks(cfg, [day], set(resolved.values()))
     rs_by_day = rs_by_sym.get(day, {})
 
-    industry_by_ts = _load_industries(list(resolved.values()))
     held = _live_held_symbols()
     open_paper = _open_paper_symbols()
 
     regime = regime_by_day.get(day)
     if regime in ("Weak", None):
         return []
-    flow_ok = flow_any_positive_by_day.get(day, False)
-    if not flow_ok:
-        return []
-    mainline = mainline_allow_by_day.get(day) or set()
-    sentiment_items = get_cn_sentiment(days=1, as_of_date=day)["items"]
-    today_mode = sentiment_items[-1].get("riskMode") if sentiment_items else ""
-    if today_mode in SENTIMENT_BLOCK_MODES or panic.get("active"):
-        return []
+    if is_hk:
+        # HK line: gates=regime only (mirrors the HK backtest) — panic
+        # cooldown applies, direct sentiment-mode blocking does not.
+        if panic.get("active"):
+            return []
+        flow_ok = True
+        mainline: set[str] = set()
+    else:
+        flow_any_positive_by_day, mainline_allow_by_day = _load_flow_mainline_data(cfg, [day])
+        flow_ok = flow_any_positive_by_day.get(day, False)
+        if not flow_ok:
+            return []
+        mainline = mainline_allow_by_day.get(day) or set()
+        sentiment_items = get_cn_sentiment(days=1, as_of_date=day)["items"]
+        today_mode = sentiment_items[-1].get("riskMode") if sentiment_items else ""
+        if today_mode in SENTIMENT_BLOCK_MODES or panic.get("active"):
+            return []
+        industry_by_ts = _load_industries(list(resolved.values()))
 
     out: list[dict[str, Any]] = []
     for sym in sorted(scores, key=lambda s: -scores[s]):
@@ -211,17 +230,18 @@ def build_s3_candidates(
         if rs is None or rs < S3_RS_MIN:
             continue
         code = str(sym).split(":")[-1]
-        if code[:3] in S3_EXCLUDE_BOARDS:
+        if S3_EXCLUDE_BOARDS and code[:3] in S3_EXCLUDE_BOARDS:
             continue
-        industry = industry_by_ts.get(ts) or ""
-        if not industry or industry not in mainline:
-            continue
+        if not is_hk:
+            industry = industry_by_ts.get(ts) or ""
+            if not industry or industry not in mainline:
+                continue
         out.append(
             {
                 "symbol": sym,
                 "name": None,  # filled in run_intake_s3 via stock basic
                 "ts_code": ts,
-                "industry": industry,
+                "industry": None,
                 "score": score,
                 "rs": rs,
                 "regime": regime,
@@ -232,11 +252,11 @@ def build_s3_candidates(
     return out
 
 
-def _s3_open_holds() -> list[dict[str, Any]]:
-    """Open paper trades that follow the S-3 strategy (source='S3')."""
+def _s3_open_holds(source: str = SOURCE_S3) -> list[dict[str, Any]]:
+    """Open paper trades that follow the S-3 strategy (source='S3' / 'S3HK')."""
     from data_sync_service.db.paper_trading import list_paper_trades
 
-    return [r for r in list_paper_trades(status="open") if r.get("source") == SOURCE_S3]
+    return [r for r in list_paper_trades(status="open") if r.get("source") == source]
 
 
 def _fetch_closes(ts_codes: list[str]) -> dict[str, float]:
@@ -259,7 +279,9 @@ def _fetch_closes(ts_codes: list[str]) -> dict[str, float]:
     return closes
 
 
-def _pyramid_adds(*, day: str, holds: list[dict[str, Any]], closes: dict[str, float]) -> int:
+def _pyramid_adds(
+    *, day: str, holds: list[dict[str, Any]], closes: dict[str, float], source: str = SOURCE_S3,
+) -> int:
     """S-3 pyramiding: add a half sleeve at same-day close when the main leg
     is up >= PYRAMID_TRIGGER_PCT. Idempotent per (symbol, entry_date, side);
     at most PYRAMID_MAX_ADDS adds per symbol (counted via the 'pyramid-add'
@@ -298,8 +320,8 @@ def _pyramid_adds(*, day: str, holds: list[dict[str, Any]], closes: dict[str, fl
                 entry_price=px,
                 why_at_entry=f"S-3 pyramid-add (main leg +{gross:.0f}%)",
                 sleeve_pct=S3_POSITION_PCT * PYRAMID_ADD_SCALE,
-                source=SOURCE_S3,
-                market="CN",
+                source=source,
+                market=("HK" if source == SOURCE_S3_HK else "CN"),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 pyramid-add failed for %s: %s", sym, exc)
@@ -378,17 +400,28 @@ def _swap_holds_for_candidates(
     return swapped, rest
 
 
-def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_POSITIONS) -> dict[str, Any]:
+def run_intake_s3(
+    *,
+    trade_date: str | None = None,
+    max_positions: int = S3_MAX_POSITIONS,
+    market: str = "CN",
+) -> dict[str, Any]:
     """Insert paper trades for S-3 candidates (idempotent per day).
 
     Returns a summary for the cron recorder. Sleeve = 5% per trade, same as
     the manual discipline; backtest 10% is the upper bound.
+
+    2026-08-10 (HK parallel line): ``market="HK"`` uses the HK regime line
+    (HSI/HSTECH gates) and attributes rows to source='S3HK' — fully
+    independent from the CN S-3 book.
     """
     from data_sync_service.db.paper_trading import today_iso
 
+    source = SOURCE_S3_HK if market == "HK" else SOURCE_S3
     day = trade_date or today_iso()
     summary: dict[str, Any] = {
         "tradeDate": day,
+        "market": market,
         "candidates": 0,
         "inserted": 0,
         "pyramidAdded": 0,
@@ -401,15 +434,15 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
     # S-3 pyramiding first: add legs on held winners are regime-independent
     # (like the backtest's mark-to-market step) and free up no sleeve.
     try:
-        holds0 = _s3_open_holds()
+        holds0 = _s3_open_holds(source=source)
         if holds0:
             closes0 = _fetch_closes([str(h.get("tsCode") or "") for h in holds0 if h.get("tsCode")])
-            summary["pyramidAdded"] = _pyramid_adds(day=day, holds=holds0, closes=closes0)
+            summary["pyramidAdded"] = _pyramid_adds(day=day, holds=holds0, closes=closes0, source=source)
     except Exception as exc:  # noqa: BLE001
         logger.warning("paper_s3 pyramiding failed: %s", exc)
 
     try:
-        candidates = build_s3_candidates(trade_date=day, max_positions=max_positions)
+        candidates = build_s3_candidates(trade_date=day, max_positions=max_positions, market=market)
     except Exception as exc:  # noqa: BLE001
         summary["error"] = f"build_s3_candidates failed: {exc}"
         logger.warning("paper_s3 build failed: %s", exc)
@@ -420,7 +453,7 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
     # before any fresh entries (same gate order as the backtest engine).
     swapped_cands: list[dict[str, Any]] = []
     try:
-        holds = _s3_open_holds()  # fresh: includes today's add legs
+        holds = _s3_open_holds(source=source)  # fresh: includes today's add legs
         if holds and candidates and SWAP_ENABLED:
             cfg = BacktestConfig(
                 start_date=day,
@@ -488,8 +521,8 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
                 score_at_entry=round(cand["score"], 2),
                 why_at_entry=why,
                 sleeve_pct=S3_POSITION_PCT,
-                source=SOURCE_S3,
-                market="CN",
+                source=source,
+                market=("HK" if source == SOURCE_S3_HK else "CN"),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 swap-in insert failed for %s: %s", cand["symbol"], exc)
@@ -527,8 +560,8 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
                 score_at_entry=round(cand["score"], 2),
                 why_at_entry=why,
                 sleeve_pct=S3_POSITION_PCT,
-                source=SOURCE_S3,
-                market="CN",
+                source=source,
+                market=("HK" if source == SOURCE_S3_HK else "CN"),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 insert failed for %s: %s", cand["symbol"], exc)

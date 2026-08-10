@@ -59,7 +59,7 @@ from data_sync_service.service.execution_gate import (
     classify_market_regime,
 )
 from data_sync_service.service.industry_fund_flow_read import top_by_date_from_rows
-from data_sync_service.service.market_regime import get_index_signals
+from data_sync_service.service.market_regime import get_hk_regime, get_index_signals
 from data_sync_service.service.paper_cost_model import MARKETS, round_trip_cost_pct
 from data_sync_service.service.paper_trading import _pick_close_reason, _resolve_ts_code
 
@@ -395,10 +395,16 @@ def _load_regime_by_day(config: BacktestConfig, calendar: list[str]) -> dict[str
     Reuses the exact live functions (``get_index_signals`` +
     ``classify_market_regime``). Missing data → the day is absent so the
     engine's gate check fails closed.
+
+    2026-08-10 (HK parallel line): market=HK gates on HSI/HSTECH traffic
+    lights (``get_hk_regime``) — CN indexes must not drive HK entries.
     """
     out: dict[str, str] = {}
     for day in calendar:
         try:
+            if config.market == "HK":
+                out[day] = str(get_hk_regime(as_of_date=day).get("regime") or "")
+                continue
             signals = get_index_signals(as_of_date=day, include_breadth=False)
             out[day] = classify_market_regime(signals)
         except Exception as exc:  # noqa: BLE001

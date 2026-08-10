@@ -66,7 +66,33 @@ WINDOWS: dict[str, tuple[str, str]] = {
 }
 
 REPORT_DIR = Path(__file__).resolve().parents[1] / "data" / "backtest_reports"
+# 2026-08-10: per-market baselines — CN and HK are independent strategy lines.
 BASELINE_FILE = REPORT_DIR / "walk_forward_baseline.json"
+HK_BASELINE_FILE = REPORT_DIR / "walk_forward_hk_baseline.json"
+
+# HK parallel line (2026-08-10 定案 · strategy-params.md §HK) — gates=regime
+# (no sector fund-flow for HK), wider trailing (-12) for HK volatility,
+# stricter RS (top 40%), no exclude_boards (HK has no 创业板 equivalent).
+HK_S3_CONFIG: dict[str, float | int | str] = {
+    "score_threshold": 65.0,
+    "max_hold_days": 60,
+    "stop_loss_pct": -5.0,
+    "target_pnl_pct": 100.0,
+    "score_floor": 0.0,
+    "market": "HK",
+    "gates": "regime",
+    "trailing_stop_pct": -12.0,
+    "position_pct": 0.10,
+    "max_positions": 20,
+    "rs_rank_min": 0.6,
+    "diverging_scale": 1.0,
+    "panic_cooldown_days": 3,
+    "slippage_pct": 0.05,
+    "pyramid_trigger_pct": 2.5,
+    "pyramid_add_scale": 0.5,
+    "pyramid_max_adds": 1,
+    "exclude_boards": "",
+}
 
 
 def _overrides(args: argparse.Namespace) -> dict[str, float | int | str]:
@@ -130,13 +156,15 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--param", action="append", default=[], help="BacktestConfig override key=value (repeatable)")
     ap.add_argument("--windows", default="OOS2,train,valid", help="Comma-separated windows to run")
+    ap.add_argument("--market", choices=["CN", "HK"], default="CN", help="Strategy line (CN S-3 or HK parallel line)")
     ap.add_argument("--tag", default="", help="Optional label for the report")
     ap.add_argument("--save-baseline", action="store_true", help="Persist this run as the S-3 baseline")
     ap.add_argument("--json", help="Write the full report to this file (default walk_forward_latest.json)")
     args = ap.parse_args()
 
     overrides = _overrides(args)
-    config = {**S3_CONFIG, **overrides}
+    base_config = HK_S3_CONFIG if args.market == "HK" else S3_CONFIG
+    config = {**base_config, **overrides}
     windows = [w.strip() for w in args.windows.split(",") if w.strip()]
     missing = [w for w in windows if w not in WINDOWS]
     if missing:
@@ -144,9 +172,10 @@ def main() -> int:
         return 2
 
     baseline: dict[str, dict[str, float | int | str | None]] | None = None
-    if BASELINE_FILE.exists():
+    baseline_file = HK_BASELINE_FILE if args.market == "HK" else BASELINE_FILE
+    if baseline_file.exists():
         try:
-            baseline = json.loads(BASELINE_FILE.read_text())["results"]
+            baseline = json.loads(baseline_file.read_text())["results"]
         except (json.JSONDecodeError, KeyError):
             baseline = None
 
@@ -186,9 +215,9 @@ def main() -> int:
     out_file.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str))
     print(f"report -> {out_file}")
     if args.save_baseline:
-        BASELINE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        BASELINE_FILE.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str))
-        print(f"baseline saved -> {BASELINE_FILE}")
+        baseline_file.parent.mkdir(parents=True, exist_ok=True)
+        baseline_file.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+        print(f"baseline saved -> {baseline_file}")
     return 0
 
 

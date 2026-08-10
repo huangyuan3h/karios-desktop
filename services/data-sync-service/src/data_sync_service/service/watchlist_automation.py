@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from data_sync_service.db import get_connection
+from data_sync_service.db.daily import list_hk_universe_symbols
 from data_sync_service.db.industry_fund_flow import (
     get_dates_upto,
     get_sum_by_industry_for_dates,
@@ -753,6 +754,25 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
     if score_trade_date:
         trade_date = score_trade_date
     meta["scoreSnapshots"] = score_count
+
+    # 2026-08-10 (HK parallel line): score the HK strategy-line universe too
+    # (vol-top-N proxy + registry HK union) — the HK paper intake needs fresh
+    # daily scores; without this the HK line would be frozen at the backfill.
+    hk_score_count = 0
+    try:
+        hk_symbols = list_hk_universe_symbols(500)
+        for row in list_registry():
+            sym = str(row.get("symbol") or "").upper()
+            if sym.startswith("HK:") and sym not in hk_symbols:
+                hk_symbols.append(sym)
+        if hk_symbols:
+            hk_td, hk_count, _hk_rows = record_score_snapshots(hk_symbols)
+            hk_score_count = int(hk_count or 0)
+            if hk_td:
+                trade_date = trade_date or hk_td
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("watchlist automation HK scoring failed: %s", exc)
+    meta["hkScoreSnapshots"] = hk_score_count
 
     trendok_by_symbol = {
         str(r.get("symbol")): r for r in trendok_rows if isinstance(r, dict) and r.get("symbol")

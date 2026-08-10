@@ -51,7 +51,7 @@ def test_hsi_quote_failure_does_not_block_cn_realtime(monkeypatch) -> None:
         "fetch_last_closes_vol_batch",
         lambda codes, days=80, as_of_date=None: {code: series for code in codes},
     )
-    monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days=80: [(d, c) for d, c, _ in series])
+    monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days=80, **kwargs: [(d, c) for d, c, _ in series])
     monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({}, None))
 
     signals = mr.get_index_signals(include_breadth=False)
@@ -94,7 +94,7 @@ def test_cn_batch_failure_falls_back_to_single_symbol_quotes(monkeypatch) -> Non
         "fetch_last_closes_vol_batch",
         lambda codes, days=80, as_of_date=None: {code: series for code in codes},
     )
-    monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days=80: [(d, c) for d, c, _ in series])
+    monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days=80, **kwargs: [(d, c) for d, c, _ in series])
     monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({}, None))
 
     signals = mr.get_index_signals(include_breadth=False)

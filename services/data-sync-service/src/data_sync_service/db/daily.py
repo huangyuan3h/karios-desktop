@@ -551,3 +551,32 @@ def fetch_ohlcv_batch_between(
             )
         )
     return out
+
+
+def list_hk_universe_symbols(top_n: int = 500, *, as_of: str | None = None) -> list[str]:
+    """HK strategy-line universe — volume top-N proxy for the Hang Seng
+    Composite (2026-08-10: official constituent APIs unreachable from this
+    network). Returns ['HK:XXXXX', ...] sorted by volume desc.
+
+    ``as_of`` bounds the lookback window (trade_date <= as_of); defaults to
+    the latest ~90 calendar days.
+    """
+    from datetime import date, timedelta
+
+    end = as_of or date.today().isoformat()
+    start = (date.fromisoformat(end) - timedelta(days=120)).isoformat()
+    out: list[str] = []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT ts_code FROM daily
+                WHERE ts_code LIKE '%%.HK' AND vol > 0
+                  AND trade_date >= %s AND trade_date <= %s
+                GROUP BY ts_code ORDER BY sum(vol) DESC LIMIT %s
+                """,
+                (start, end, top_n),
+            )
+            for (ts_code,) in cur.fetchall():
+                out.append(f"HK:{str(ts_code).split('.')[0].zfill(5)}")
+    return out

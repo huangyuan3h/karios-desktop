@@ -48,10 +48,12 @@ describe('PortfolioHealthCard', () => {
       panicCooldown: { active: false },
       s3Candidates: [],
       holdings: [HOLDING],
+      hkHealth: { regime: 'Strong', s3Candidates: [], holdings: [] },
     });
     renderCard();
-    expect(await screen.findByText('S-3 持仓体检')).toBeDefined();
+    expect(await screen.findByText(/S-3 持仓体检 · A 股 \/ 港股并行/)).toBeDefined();
     expect(await screen.findByText("Weak · 空仓观望")).toBeDefined();
+    expect(await screen.findByText("Strong · 进攻")).toBeDefined();
     expect(await screen.findByText("腾讯控股")).toBeDefined();
     expect(await screen.findByText("✅ 持有")).toBeDefined();
     expect(await screen.findByText("2026-08-07")).toBeDefined();
@@ -79,11 +81,12 @@ describe('PortfolioHealthCard', () => {
       sentiment: 'normal',
       s3Candidates: [{ symbol: 'CN:600111', name: '北方稀土', score: 71.0 }],
       holdings: [],
+      hkHealth: null,
     });
     renderCard();
     expect(await screen.findByText('北方稀土')).toBeDefined();
     expect(await screen.findByText(/score=71/)).toBeDefined();
-    expect(screen.getByText(/当前无持仓/)).toBeDefined();
+    expect(screen.getAllByText(/当前无持仓/).length).toBeGreaterThan(0);
   });
 
   it('shows a fallback note when the endpoint is unreachable', async () => {

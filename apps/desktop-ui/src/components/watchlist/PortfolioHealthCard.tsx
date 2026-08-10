@@ -85,6 +85,82 @@ function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbol: stri
   );
 }
 
+function HealthPanel({
+  title,
+  tag,
+  block,
+  onOpen,
+}: {
+  title: string;
+  tag: string;
+  block: PortfolioHealthResponse | null | undefined;
+  onOpen?: (symbol: string) => void;
+}) {
+  const holdings = block?.holdings ?? [];
+  const candidates = block?.s3Candidates ?? [];
+  const regime = regimeBadge(block?.regime);
+  return (
+    <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
+      <div className="flex items-center gap-2 text-[11px] font-semibold">
+        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">{tag}</span>
+        {title}
+        <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
+          {block?.tradeDate ?? '—'}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        <span className={cn('rounded border px-1.5 py-0.5 font-medium', regime.cls)}>{regime.label}</span>
+        {block?.sentiment != null && (
+          <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">
+            sentiment: {block.sentiment}
+          </span>
+        )}
+        {block?.panicCooldown?.active ? (
+          <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300">
+            恐慌冷却至 {block.panicCooldown.cooldownEndDate}
+          </span>
+        ) : null}
+        <span className="text-[var(--k-muted)]">
+          S-3 候选：{block ? (block.s3Candidates?.length ?? 0) : '…'} 只
+        </span>
+      </div>
+      {holdings.length === 0 ? (
+        <div className="text-xs text-[var(--k-muted)]">当前无持仓（未录入成本/仓位的 watchlist 票不算持仓）</div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {holdings.map((h) => (
+            <HoldingRow key={h.symbol} h={h} onOpen={onOpen} />
+          ))}
+        </div>
+      )}
+      {candidates.length > 0 ? (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+          <div className="mb-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+            今日开仓候选（每票 ~5% 仓位）
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {candidates.map((c) => (
+              <span
+                key={c.symbol}
+                className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5 text-[11px]"
+              >
+                {c.name ?? c.symbol}
+                <span className="ml-1 text-[var(--k-muted)]">score={c.score ?? '—'}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : block ? (
+        <div className="text-[11px] text-[var(--k-muted)]">
+          {block.regime === 'Weak'
+            ? '今日无开仓候选（regime=Weak：S-3 规定空仓观望）'
+            : '今日无开仓候选（score≥65 · RS 前 50% · 无恐慌冷却）'}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
   const q = useQuery({
     queryKey: ['portfolio-health'],
@@ -93,9 +169,6 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
   });
 
   const data: PortfolioHealthResponse | undefined = q.data;
-  const holdings = data?.holdings ?? [];
-  const candidates = data?.s3Candidates ?? [];
-  const regime = regimeBadge(data?.regime);
 
   if (q.isError && !data) {
     return (
@@ -109,8 +182,7 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
   return (
     <div className="mb-4 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-[12px] font-semibold">S-3 持仓体检</span>
-        <span className="text-[10px] tabular-nums text-[var(--k-muted)]">{data?.tradeDate ?? '—'}</span>
+        <span className="text-[12px] font-semibold">S-3 持仓体检 · A 股 / 港股并行</span>
         <Button
           variant="ghost"
           size="sm"
@@ -123,55 +195,15 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
         </Button>
       </div>
 
-      <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px]">
-        <span className={cn('rounded border px-1.5 py-0.5 font-medium', regime.cls)}>{regime.label}</span>
-        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)] px-1.5 py-0.5">
-          sentiment: {data?.sentiment ?? '—'}
-        </span>
-        {data?.panicCooldown?.active ? (
-          <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300">
-            恐慌冷却至 {data.panicCooldown.cooldownEndDate}
-          </span>
-        ) : null}
-        <span className="text-[var(--k-muted)]">
-          S-3 候选：{data ? (data.s3Candidates?.length ?? 0) : '…'} 只
-        </span>
+      <div className="grid gap-2 md:grid-cols-2">
+        <HealthPanel title="A 股 S-3（全闸门）" tag="CN" block={data} onOpen={onOpenStock} />
+        <HealthPanel
+          title="港股 S-3（regime 档 · trail -12%）"
+          tag="HK"
+          block={data?.hkHealth}
+          onOpen={onOpenStock}
+        />
       </div>
-
-      {holdings.length === 0 ? (
-        <div className="text-xs text-[var(--k-muted)]">当前无持仓（未录入成本/仓位的 watchlist 票不算持仓）</div>
-      ) : (
-        <div className="flex flex-col gap-1.5">
-          {holdings.map((h) => (
-            <HoldingRow key={h.symbol} h={h} onOpen={onOpenStock} />
-          ))}
-        </div>
-      )}
-
-      {candidates.length > 0 ? (
-        <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
-          <div className="mb-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-            今日开仓候选（每票 ~5% 仓位）
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {candidates.map((c) => (
-              <span
-                key={c.symbol}
-                className="rounded border border-[var(--k-border)] bg-[var(--k-surface-2)] px-2 py-0.5 text-[11px]"
-              >
-                {c.name ?? c.symbol}
-                <span className="ml-1 text-[var(--k-muted)]">score={c.score ?? '—'}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : data ? (
-        <div className="mt-2 text-[11px] text-[var(--k-muted)]">
-          {data.regime === 'Weak'
-            ? '今日无开仓候选（regime=Weak：S-3 规定空仓观望）'
-            : '今日无开仓候选（score≥65 · RS 前 50% · 行业净流入 Top3 · 无恐慌冷却）'}
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -719,7 +719,12 @@ def _compute_index_signals(
     for it in HK_INDEX_SIGNALS:
         series_id = it["series_id"]
         name = it["name"]
-        series_raw = fetch_macro_last_closes(series_id, days=HISTORY_DAYS)
+        # 2026-08-10 (HK parallel line): as-of mode must bound HSI/HSTECH to
+        # trade_date <= as_of_date — fetch_macro_last_closes now accepts the
+        # bound; without it every historical date saw today's prices.
+        series_raw = fetch_macro_last_closes(
+            series_id, days=HISTORY_DAYS, as_of_date=use_as_of
+        )
         if not series_raw or _hsi_series_stale(series_raw):
             if use_as_of:
                 # as-of mode: never fetch on demand — today's network data
@@ -957,3 +962,26 @@ def get_market_regime(
     result: dict[str, Any] = {"regime": regime, "bias": bias, "indexSignals": signals}
     _regime_cache[key] = result
     return result
+
+
+# 2026-08-10 (HK parallel line): HSI/HSTECH traffic-light regime for the HK
+# backtest/paper path. CN indexes must NOT drive the HK gates — the two markets
+# run as independent strategy lines. Reuses get_index_signals (macro_daily HSI
+# history is available for as-of dates, source="db.macro_daily").
+def get_hk_regime(*, as_of_date: str | None = None) -> dict[str, Any]:
+    """HK market regime from HSI + HSTECH traffic lights (Weak/Diverging/Strong)."""
+    signals = get_index_signals(as_of_date=as_of_date, include_breadth=False)
+    hk = [
+        x
+        for x in signals
+        if str(x.get("tsCode") or x.get("seriesId") or x.get("series_id") or "").strip()
+        in ("HSI", "HSTECH")
+    ]
+    if len(hk) < 2:
+        return {"regime": "Weak", "bias": None, "indexSignals": hk}
+    greens = sum(1 for x in hk if str(x.get("signal") or "") in ("green", "light_green", "deep_green"))
+    if greens == len(hk):
+        return {"regime": "Strong", "bias": None, "indexSignals": hk}
+    if greens > 0:
+        return {"regime": "Diverging", "bias": "mixed", "indexSignals": hk}
+    return {"regime": "Weak", "bias": None, "indexSignals": hk}

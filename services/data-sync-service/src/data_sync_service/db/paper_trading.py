@@ -85,7 +85,8 @@ SOURCE_TV = "TV"  # originated from TV screener (funnel)
 SOURCE_ALPHA = "ALPHA"  # originated from Alpha Radar catalyst
 SOURCE_MANUAL = "MANUAL"  # user / external AI agent added
 SOURCE_S3 = "S3"  # S-3 backtest entry rules (paper_s3 intake, G4)
-SOURCES = (SOURCE_TV, SOURCE_ALPHA, SOURCE_MANUAL, SOURCE_S3)
+SOURCE_S3_HK = "S3HK"  # HK parallel line S-3 entry rules (paper_s3 intake, 2026-08-10)
+SOURCES = (SOURCE_TV, SOURCE_ALPHA, SOURCE_MANUAL, SOURCE_S3, SOURCE_S3_HK)
 
 # Close thresholds (S-3 backtest params, 2026-08-09 — backtest-strategy.md
 # is the evidence record). Kept module-level so tests can assert against the
