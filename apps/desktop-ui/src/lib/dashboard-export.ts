@@ -88,7 +88,7 @@ import {
   fetchDashboardSummaryPartial,
 } from '@/lib/queries/dashboard';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
-import { fetchWatchlistMarketSnapshot, type WatchlistMarketSnapshot } from '@/lib/watchlist-market';
+import { fetchWatchlistMarketSnapshot, fetchQuoteChunkWithRetry, type WatchlistMarketSnapshot } from '@/lib/watchlist-market';
 import {
   parseQuoteNumber,
   shouldRequireRealtimeQuote,
@@ -108,12 +108,12 @@ type QuoteResp = {
   error?: string;
   items: Array<{
     ts_code: string;
-    price: string | null;
-    pre_close: string | null;
-    pct_chg: string | null;
-    amount: string | null;
-    volume: string | null;
-    trade_time: string | null;
+    price?: string | number | null;
+    pre_close?: string | number | null;
+    pct_chg?: string | number | null;
+    amount?: string | number | null;
+    volume?: string | number | null;
+    trade_time?: string | null;
   }>;
 };
 
@@ -775,11 +775,7 @@ export async function buildWatchlistMarkdown(
     const [trendMap, quoteResults] = await Promise.all([
       fetchTrendOkMap(syms, { realtime: quoteWindow }),
       Promise.all(
-        tsCodesChunks.map(async (part) => {
-          return apiGetJson<QuoteResp>(
-            `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
-          ).catch(() => null);
-        }),
+        tsCodesChunks.map((part) => fetchQuoteChunkWithRetry(part.join(','))),
       ),
     ]);
 

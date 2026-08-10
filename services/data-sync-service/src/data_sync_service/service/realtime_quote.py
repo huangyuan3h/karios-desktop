@@ -9,6 +9,7 @@ matches the user's mental model of "the HK closing price".
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -20,6 +21,8 @@ import tushare as ts
 from data_sync_service.config import get_settings
 from data_sync_service.service.em_push2_http import em_get_json
 from data_sync_service.service.sina_http import build_hq_url, parse_hq_lines, sina_get_text
+
+logger = logging.getLogger(__name__)
 
 _SINA_HK_QUOTE_TTL_S = 30.0
 _SINA_HK_QUOTE_BATCH_SIZE = 50
@@ -291,6 +294,11 @@ def _tushare_quotes(codes: list[str], *, api_key: str) -> list[dict[str, Any]]:
             pro = ts.pro_api(api_key)
             df = pro.realtime_quote(ts_code=",".join(codes))
     except Exception:
+        # 2026-08-10: observed as a silent black hole — a transient failure here
+        # returned {"ok": true, "items": []}, which frontend "copy" syncs read
+        # as missing realtime quotes and aborted. Log it so the failure is
+        # observable instead of invisible.
+        logger.warning("tushare realtime_quote failed for %s", ",".join(codes)[:120], exc_info=True)
         return []
 
     if not isinstance(df, pd.DataFrame) or df.empty:

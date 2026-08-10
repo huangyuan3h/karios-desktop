@@ -55,6 +55,84 @@ regime Weak 正确空仓（近 5 日全 Weak）；trendok 计算 683 票仅 1.2s
 用修复后大池**（注意：回测 valid 窗 6-18 后同样是小池——回测未虚高，paper 口径反而更宽）。
 验收：3503 passed 全绿 + ruff 干净 + 2 新测试。
 
+### 2026-08-10 副作用检查：大池不淹前端 + B 股清理（小修）
+
+**检查结论（显示链路无回归）**：
+- Watchlist 表 = localStorage 自选 + registry（41 票）——683 大池不显示 ✓
+- score 列排序 / S-3 候选徽标（buildS3Candidates）/ Execution Gate 面板 = 全部只作用于
+  自选列表内 ✓；trend/rs-ranks API 按自选 symbols 请求 ✓
+- 大池影响面 = score 表 + paper_s3（预期目标），前端零淹没 ✓
+
+**发现并修复（B 股清理）**：S-3 Universe 683 票混入 **10 只 B 股**（900xxx SH-B / 200xxx SZ-B，
+TV screener 按 SSE/SZSE 市场引入）——B 股无 trendOK 分（score=None，进不了候选）但每天白算 +
+8-10 已有 3 行 score=None 落库。修复：`_is_cn_b_share()` 在 automation 合并 universe 时过滤
+（registry 已确认无 B 股）。新增测试 test_is_cn_b_share（7 断言）。43 passed 相关文件。
+
+**遗留记录**：4 个日期敏感测试（test_adj_factor/test_daily_service/test_etf_daily 的
+"uptodate 跳过 fetch"断言用 last=8-8 硬编码，8-10 起失效）——pre-existing，修法 = 用相对日期
+生成 last（下次维护窗口处理）。
+
+### 2026-08-10 paper_s3_intake 干跑预演：闸门链全灭疑虑关闭 ✓
+
+**方法**：干跑 build_s3_candidates / run_intake_s3 于三个代表性日（全 DB 数据源，零东财依赖；
+插入后清理，paper_trades 恢复 3 行）：
+
+| 验证日 | regime/闸门 | 结果 | 判定 |
+|---|---|---|---|
+| 8-10（今天） | Weak | 0 候选 | ✅ 正确空仓 |
+| 6-03（749 票） | Diverging 但 panic active + extreme_caution | 0 候选 | ✅ 双硬闸正确拦截 |
+| 5-08（749 票） | Strong + hot + 无 panic | **3 候选**（600487/600522/603083，通信，score79，RS 90%+）→ 3 笔插入 | ✅ 完整插入路径（价格=当日收盘、sleeve=5%、why 文本） |
+
+**结论**：
+- **闸门链无全灭 bug**——0 候选的每个案例都有明确硬闸（Weak/panic/sentiment），候选>0 路径
+  在 5-08 完整走通 ✓（关闭 todo §19「6-22 候选 0 需确认」遗留项）
+- **今天 17:42 首跑安全**：regime Weak → 0 候选无插入（正确）；首个 S-3 paper 单要等
+  regime 变非 Weak（近 5 日全 Weak，预计本周内）
+- 幂等（duplicate skip）+ 不碰东财 ✓
+
+### 2026-08-10 决策 Agent 主线程修复：空响应根因 + 预取上下文 + provider fallback
+
+**症状**：决策页提问 → "empty assistant response"（前端 DecisionPage.tsx:255 对空流抛错）。
+
+**根因链（三层）**：
+1. `ai@5.0.116` 的 streamText **工具循环在工具步骤后不再续写**（finishReason='tool-calls'、
+   textStream 空）——Gemini 和 deepseek 都复现（probe 验证：工具 execute 执行成功，但无第 2 次
+   模型调用）→ 生产 /decision（3 个 tools）返回 HTTP 200 + 空 body
+2. 前端把空 body 判为失败（"empty assistant response"）
+3. （次要）进程读 apps/ai-service/.env（旧）为主、根 .env 补齐——GEMINI_API_KEY 在根 .env，
+   已由 index.ts 的 rootEnv 加载兜底（无配置问题）
+
+**修复（decision.ts POST / 重写）**：
+- **工具调用 → 预取上下文**：请求前预取 `/v1/agent/portfolio-health`（0.24s 实时）注入 system
+  prompt（S3_RULES_KNOWLEDGE + 实时体检），模型走纯文本生成路径（已验证可行）
+- **provider fallback（用户要求"google 不行就 fallback"）**：primary=Gemini（thinking high）失败
+  或空流 → `getResolvedModel()`（openai/ollama）重试；fallback 生效时前缀 `[fallback: <provider>]`
+- archive 工具（retrieve/search）随 tools 一起移除（提示用户去历史快照面板），SDK 修复后恢复
+
+**验证**：typecheck ✓ · ai-service 144 tests ✓ · 临时实例实测：Gemini 正常回答（非空）✓ ·
+  坏 key 模拟 → `[fallback: openai]` + deepseek 回答 ✓
+
+**待办**：重启正式 ai-service（PID 31671 @4310）后生效；建议升级 `ai@5.0.116` → 5.0.x 最新
+（工具循环 bug 可能已修，修后可恢复 tools 方案）。
+
+### 2026-08-10 sync "Copy aborted: missing realtime quote" 修复
+
+**症状**：统一作战表/复制 sync 报 `Copy aborted: missing realtime quote (today): CN:603259, CN:688235, CN:301293, CN:002064`。
+
+**根因**：`GET /quote`（tushare realtime_quote）瞬态失败被后端静默吞掉——`except: return []`
+→ 返回 `{ok: true, items: []}`；前端 `.catch(() => null)` 也吞错 → quotes 映射全空 →
+watchlist 里 4 只 CN 票全部缺"今日报价" → `shouldRequireRealtimeQuote`（交易时段 + CN）拦截 abort。
+（事后复测 4 只均有 11:30 报价——纯瞬态；无日志可回溯，因为两层都静默。）
+
+**修复（两层）**：
+1. 前端：`fetchQuoteChunkWithRetry`（watchlist-market.ts）——/quote 失败重试 1 次（400ms 间隔）；
+   watchlist-market.fetchWatchlistQuotes + dashboard-export 内联分支统一使用
+2. 后端：realtime_quote.py `_tushare_quotes` 失败时 `logger.warning`（带 exc_info）——
+   静默黑洞改为可观测；下次再发生可从日志确认
+
+**验收**：前端 typecheck ✓ · 756 tests ✓ · 后端 ruff ✓ + 28 realtime_quote tests ✓。
+**生效**：Next dev 热更新即生效；后端日志改动需重启 uvicorn（下次维护一并）。
+
 
 ## 1. 状态看板（导航 · 详情在 §10 沉淀表 / 各章节）
 

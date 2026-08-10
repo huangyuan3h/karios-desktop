@@ -1,10 +1,14 @@
 import { Hono } from 'hono';
-import { streamText, generateText, tool } from 'ai';
-import { google } from '@ai-sdk/google';
-import { z } from 'zod';
+import { streamText, generateText } from 'ai';
 
 import { ChatRequestSchema, toModelMessagesFromChatRequest } from '../chat';
-import { getResolvedModel, getDecisionModelBundle, generateTextJsonObjectModeOptions, AiModel } from '../model';
+import {
+  getResolvedModel,
+  getDecisionModelBundle,
+  generateTextJsonObjectModeOptions,
+  type AiModel,
+  type ResolvedModelBundle,
+} from '../model';
 import { ThinkingStreamStripper, stripJsonCodeFence } from '../model_thinking';
 
 const DATA_SYNC_BASE_URL = process.env.DATA_SYNC_BASE_URL ?? 'http://127.0.0.1:4330';
@@ -270,93 +274,76 @@ decisionRoutes.post('/', async (c) => {
 
   const messages = toModelMessagesFromChatRequest(parsed.data);
 
-  // S-3 backtest knowledge so answers stay aligned with the validated rules.
-  const s3SystemMessage = { role: 'system' as const, content: S3_RULES_KNOWLEDGE };
+  // 2026-08-10: tool calling was replaced with a prefetched live-health
+  // context block. ai@5.0.116 ends its step loop right after the tool step
+  // (finishReason='tool-calls', empty textStream) for every provider — the
+  // UI surfaces that as "empty assistant response". Prefetching keeps the
+  // answer live while staying on a plain text generation path that works.
+  const healthMd = await queryHoldingsHealth();
+  const s3SystemMessage = {
+    role: 'system' as const,
+    content:
+      `${S3_RULES_KNOWLEDGE}\n\n【实时决策体检（已预取，回答持仓/买卖/加仓/买什么问题时以它为事实依据）】\n` +
+      `${healthMd}\n\n` +
+      '（历史归档查询暂不可用——如需查看上周/历史判断，请到「决策 · 历史快照」面板。）',
+  };
 
-  let model: AiModel;
+  async function collectText(bundle: ResolvedModelBundle): Promise<string> {
+    const result = await streamText({
+      model: bundle.model,
+      messages: [s3SystemMessage, ...messages],
+      providerOptions:
+        bundle.provider === 'google'
+          ? { googleGenerativeAI: { thinkingConfig: { thinkingLevel: 'high' as const } } }
+          : undefined,
+    });
+    const stripper = new ThinkingStreamStripper();
+    let full = '';
+    for await (const chunk of result.textStream) {
+      const visible = stripper.push(chunk);
+      if (visible) full += visible;
+    }
+    const rest = stripper.flush();
+    if (rest) full += rest;
+    return full;
+  }
+
+  let primary: ResolvedModelBundle;
   try {
-    model = (await getDecisionModelBundle()).model;
+    primary = await getDecisionModelBundle();
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invalid AI configuration';
     return c.json({ error: message }, 500);
   }
 
-  const archiveTools = {
-    query_s3_holdings_health: tool({
-      description:
-        '获取 S-3 决策体检：①每只真实持仓的盈亏/峰值回撤/止损线/移动止损线/金字塔触发线/' +
-        '是否已加仓/到期日/持有建议；②今日开仓候选（买什么）；③市场状态（regime/sentiment/' +
-        '恐慌冷却）。用户问"该不该减仓/卖/持有/加仓/金字塔/买什么/能不能买/我的仓位"时' +
-        '必须先调用此工具，按 S-3 规则回答，不要凭感觉。',
-      inputSchema: z.object({}),
-      execute: async () => queryHoldingsHealth(),
-    }),
-    retrieve_archive_snapshot: tool({
-      description:
-        '按日期检索历史决策归档快照（当日决策对话 + 开火记录 + 模拟盘结果）。仅在用户询问历史/上周/某天决策时才调用。',
-      inputSchema: z.object({
-        date: z.string().describe('YYYY-MM-DD'),
-      }),
-      execute: async ({ date }: { date: string }) => retrieveSnapshot(date),
-    }),
-    search_archive_by_symbol: tool({
-      description:
-        '按股票代码检索归档中哪些天提及该标的及其 outcome（开火/模拟盘）。用户问"历史上对 X 的判断"时调用。',
-      inputSchema: z.object({
-        symbol: z.string().describe('如 CN:600519.SH 或 600519'),
-      }),
-      execute: async ({ symbol }: { symbol: string }) => searchArchive(symbol),
-    }),
-  };
-
-  // Gemini grounding: real-time web search (free tier does not support it —
-  // enable via GEMINI_SEARCH_GROUNDING=1 once on a paid plan) + deep thinking.
-  const searchEnabled =
-    (process.env.GEMINI_SEARCH_GROUNDING ?? '').trim().length > 0;
-  const decisionTools = searchEnabled
-    ? { ...archiveTools, google_search: google.tools.googleSearch({ mode: 'MODE_DYNAMIC' }) }
-    : archiveTools;
-  const geminiProviderOptions = {
-    googleGenerativeAI: { thinkingConfig: { thinkingLevel: 'high' as const } },
-  };
-
-  let result;
+  let text = '';
+  let usedProvider = primary.provider;
   try {
-    result = await streamText({
-      model,
-      messages: [s3SystemMessage, ...messages],
-      tools: decisionTools,
-      providerOptions: geminiProviderOptions,
-    });
-  } catch {
-    // Fallback: model may not support tool calling — retry without tools.
-    result = await streamText({
-      model,
-      messages: [s3SystemMessage, ...messages],
-      providerOptions: geminiProviderOptions,
+    text = await collectText(primary);
+  } catch (err) {
+    console.error('decision primary stream failed:', err);
+  }
+
+  // Fallback: primary came back empty or errored (e.g. Gemini tool-loop
+  // regression) — retry on the resolved profile/env model (openai/ollama).
+  if (!text.trim()) {
+    try {
+      const fb = await getResolvedModel();
+      text = await collectText(fb);
+      usedProvider = fb.provider;
+    } catch (err) {
+      console.error('decision fallback stream failed:', err);
+    }
+  }
+
+  if (!text.trim()) {
+    return new Response('决策模型暂不可用（primary 与 fallback 均无输出），请稍后重试。', {
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     });
   }
 
-  const stripper = new ThinkingStreamStripper();
-  const cleaned = new ReadableStream<string>({
-    async start(controller) {
-      try {
-        for await (const chunk of result.textStream) {
-          const visible = stripper.push(chunk);
-          if (visible) controller.enqueue(visible);
-        }
-        const rest = stripper.flush();
-        if (rest) controller.enqueue(rest);
-        controller.close();
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        controller.enqueue(`\n[决策模型错误] ${message}`);
-        controller.close();
-      }
-    },
-  });
-
-  return new Response(cleaned.pipeThrough(new TextEncoderStream()), {
+  const prefix = usedProvider === primary.provider ? '' : `[fallback: ${usedProvider}]\n`;
+  return new Response(`${prefix}${text}`, {
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
   });
 });
