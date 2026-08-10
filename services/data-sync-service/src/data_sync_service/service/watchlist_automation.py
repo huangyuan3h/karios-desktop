@@ -16,6 +16,7 @@ from data_sync_service.db.industry_fund_flow import (
 )
 from data_sync_service.db.sync_job_record import get_today_run
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
+from data_sync_service.db.tv import list_enabled_api_screener_symbols
 from data_sync_service.db.watchlist_automation import (
     get_pending_run,
     get_run_by_id,
@@ -387,6 +388,16 @@ def record_score_snapshots(symbols: list[str]) -> tuple[str | None, int, list[di
     return trade_date, count, rows_out
 
 
+def _is_cn_b_share(symbol: str) -> bool:
+    """CN B shares live on SSE/SZSE but trade in foreign currency and carry
+    no trendOK score — 900xxx (SH B) / 200xxx (SZ B)."""
+    t = str(symbol or "").strip().upper()
+    if not t.startswith("CN:"):
+        return False
+    code = t[3:]
+    return len(code) == 6 and (code.startswith("900") or code.startswith("200"))
+
+
 def _normalize_cn_watchlist_symbol(symbol: str) -> str:
     text = str(symbol or "").strip().upper()
     if not text:
@@ -720,6 +731,23 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
     registry = list_registry()
     symbols = [str(x.get("symbol") or "").strip() for x in registry if x.get("symbol")]
     symbols = [s for s in symbols if s]
+    # 2026-08-09 (S-3 universe gap): score the FULL enabled api-screener
+    # universe (S-3 Universe ~683 + Pullback v3 ~46), not just the watchlist
+    # registry (~50). The backtest pool was ~750 symbols — without this the
+    # S-3 paper/live candidates come from a 1/10-size pool and the strategy
+    # can never fill its 20 slots (utilization ~15% vs ~100% in backtest).
+    universe = list_enabled_api_screener_symbols(market="cn")
+    # 2026-08-10 (B-share hygiene): TV screener snapshots mix SSE/SZSE B
+    # shares (900xxx/200xxx) into the CN pool — they get no score and must
+    # never reach the S-3 candidate path. Drop them before scoring.
+    universe = [s for s in universe if not _is_cn_b_share(s)]
+    merged: list[str] = []
+    seen: set[str] = set()
+    for s in symbols + universe:
+        if s and s not in seen:
+            seen.add(s)
+            merged.append(s)
+    symbols = merged
 
     score_trade_date, score_count, trendok_rows = record_score_snapshots(symbols)
     if score_trade_date:

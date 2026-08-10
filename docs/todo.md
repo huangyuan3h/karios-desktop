@@ -36,6 +36,25 @@
 
 > 反漂移：每 30 天回顾 §0 优先级表与本节；「验证」期间不做新机制实验（§19 封闭清单）。
 
+### 2026-08-09 重大修复：S-3 候选池 universe 恢复（收益最高项）
+
+**发现**：score universe 从 2026-06-18 起（paper intake 上线同日）从 TV 大池（749 票/天）缩到
+watchlist registry（~15-50 票）——**S-3 实盘/paper 候选池 = 回测的 1/10**（score≥65 每天 17 只 vs
+回测口径 50+），仓位利用率 ~15%。根因：run_watchlist_automation 的 score 只算 registry+fallback，
+TV 快照不再灌入；且启用池只有 Pullback v3（46 票窄化趋势池）。
+
+**修复（用户拍板「双池并存」）**：
+1. 新建 **`tmpl-s3-universe-cn`「Karios S-3 Universe (CN)」** api screener（exchange SSE/SZSE +
+   市值≥20亿 + PE>0 + 年涨>0 → **683 票**，≈回测 748），已 capture 入库 + AM/PM cron 自动更新
+2. `service/tv.py _capture_via_api` 放开 range (0,3000)（默认 100 会截断大池——隐藏 bug）
+3. `db/tv.py` 新增 `list_enabled_api_screener_symbols()`（启用 api screener 最新快照 → symbol 列表）
+4. `run_watchlist_automation` symbols = registry ∪ 启用 api screener 全集（模块级 import 可 mock）
+
+**验证**：8-07 score 表 42 → **211 票**（score≥65 17 → **56 只**）；paper S-3 候选（8-07）=0 是
+regime Weak 正确空仓（近 5 日全 Weak）；trendok 计算 683 票仅 1.2s。**paper 从下周一 17:42 起
+用修复后大池**（注意：回测 valid 窗 6-18 后同样是小池——回测未虚高，paper 口径反而更宽）。
+验收：3503 passed 全绿 + ruff 干净 + 2 新测试。
+
 
 ## 1. 状态看板（导航 · 详情在 §10 沉淀表 / 各章节）
 

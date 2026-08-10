@@ -228,3 +228,24 @@ def test_fetch_snapshot_detail(monkeypatch) -> None:
     _ = _patch(monkeypatch, [_snap_row(*row)])
     out = tvdb.fetch_snapshot_detail("sn1")
     assert out["id"] == "sn1" and out["rowCount"] == 3
+
+
+def test_list_enabled_api_screener_symbols(monkeypatch) -> None:
+    """2026-08-09: enabled api screener snapshots → CN:XXXXXX symbol list."""
+    payload = {
+        "rows": [
+            {"Symbol": "601088", "Name": "a"},
+            {"Symbol": "300001", "Name": "b"},
+            {"Symbol": "", "Name": "c"},
+            {"Name": "no-symbol"},
+        ]
+    }
+    cur = _patch(monkeypatch, [(payload,), (payload,)])
+    out = tvdb.list_enabled_api_screener_symbols(market="cn")
+    assert out == ["CN:601088", "CN:300001"]
+    assert len(cur.executed) == 1
+
+
+def test_list_enabled_api_screener_symbols_empty(monkeypatch) -> None:
+    cur = _patch(monkeypatch, [])
+    assert tvdb.list_enabled_api_screener_symbols(market="cn") == []

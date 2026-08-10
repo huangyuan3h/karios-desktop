@@ -459,9 +459,12 @@ def _capture_via_api(
 ) -> tuple[Any, str]:
     """Run Scanner API and wrap as a Chrome-CDP-compatible CaptureResult."""
     columns = api_columns or scanner_api.default_columns()
+    # 2026-08-09: fetch the full universe (up to 3000) — the S-3 Universe
+    # screener has ~683 rows; the 100-row default silently truncated it.
     api_result = scanner_api.fetch_screener_via_api(
         filter_payload=filter_json,
         columns=columns,
+        range_=(0, 3000),
     )
     # Map internal column names back to friendly headers (matches
     # ScreenerPage pickColumns contract).

@@ -345,6 +345,51 @@ def list_latest_snapshots_for_screeners(
     return out
 
 
+def list_enabled_api_screener_symbols(*, market: str = "cn") -> list[str]:
+    """Symbols (``{MARKET}:XXXXXX``) from the newest snapshot of every ENABLED
+    api-mode screener for ``market``.
+
+    2026-08-09 (S-3 universe gap): the watchlist score pool had collapsed to
+    ~50 symbols (watchlist registry only) while the backtest pool was ~750 —
+    the S-3 paper/live candidate universe must match the backtest scale.
+    The enabled api screeners (Pullback v3 + S-3 Universe) restore it.
+    """
+    ensure_tables()
+    market_up = str(market or "").strip().upper()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT sp.payload
+                FROM {SCREENERS_TABLE} s
+                JOIN LATERAL (
+                    SELECT payload FROM {SNAPSHOTS_TABLE}
+                    WHERE screener_id = s.id
+                    ORDER BY captured_at DESC LIMIT 1
+                ) sp ON true
+                WHERE s.enabled AND s.mode = 'api'
+                  AND (s.market = %s OR s.market IS NULL)
+                """,
+                (str(market or "").strip().lower(),),
+            )
+            payloads = [r[0] for r in cur.fetchall()]
+    out: list[str] = []
+    seen: set[str] = set()
+    for payload in payloads:
+        payload = payload if isinstance(payload, dict) else {}
+        for item in list(payload.get("rows") or []):
+            if not isinstance(item, dict):
+                continue
+            sym = str(item.get("Symbol") or "").strip()
+            if not sym:
+                continue
+            code = sym if sym.startswith(f"{market_up}:") else f"{market_up}:{sym}"
+            if code not in seen:
+                seen.add(code)
+                out.append(code)
+    return out
+
+
 def fetch_latest_snapshot_rows(screener_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
     """Latest snapshot rows per screener_id (payload only, one DB round-trip).
 

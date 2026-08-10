@@ -494,6 +494,9 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
         return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
 
     monkeypatch.setattr(wa, "get_scores_for_symbol", fake_scores)
+    # 2026-08-09: the enabled-api-screener universe merge is a separate DB
+    # seam — isolate it here so this test keeps its registry-only assertion.
+    monkeypatch.setattr(wa, "list_enabled_api_screener_symbols", lambda market="cn": [])
 
     result = wa.run_watchlist_automation(trigger="manual", force=True)
 
@@ -914,3 +917,15 @@ def test_compute_rs_ranks_returns_percentiles(monkeypatch) -> None:
     ranks = wa.compute_rs_ranks(["CN:600001", "CN:600002"])
     assert ranks["CN:600001"] == 1.0  # strongest of the two
     assert ranks["CN:600002"] == 0.5
+
+
+def test_is_cn_b_share() -> None:
+    """2026-08-10: TV screener mixes SSE/SZSE B shares (900xxx/200xxx)
+    into the CN pool — they must be dropped before scoring."""
+    assert wa._is_cn_b_share("CN:900948") is True
+    assert wa._is_cn_b_share("CN:200429") is True
+    assert wa._is_cn_b_share("CN:600000") is False
+    assert wa._is_cn_b_share("CN:300001") is False
+    assert wa._is_cn_b_share("CN:9009") is False
+    assert wa._is_cn_b_share("HK:0900") is False
+    assert wa._is_cn_b_share("") is False
