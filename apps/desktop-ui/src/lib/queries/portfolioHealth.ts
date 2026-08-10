@@ -45,6 +45,8 @@ export interface PortfolioHealthResponse {
     active?: boolean;
   } | null;
   s3Candidates?: PortfolioCandidate[] | null;
+  /** 2026-08-10 badge: full candidate pool size before top-N collapse. */
+  s3CandidateTotal?: number;
   s3Rules?: Record<string, unknown>;
   holdings?: PortfolioHolding[];
   /** 2026-08-10 HK parallel line — HK strategy-line block (null when not requested). */

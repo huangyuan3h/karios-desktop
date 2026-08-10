@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import {
   fetchPortfolioHealth,
+  type PortfolioCandidate,
   type PortfolioHealthResponse,
   type PortfolioHolding,
 } from '@/lib/queries/portfolioHealth';
@@ -85,6 +86,60 @@ function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbol: stri
   );
 }
 
+function BuyList({
+  candidates,
+  total,
+  suggestedSizePct,
+}: {
+  candidates: PortfolioCandidate[];
+  total?: number;
+  suggestedSizePct?: number | null;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const size = suggestedSizePct ?? 5;
+  const shown = expanded ? candidates : candidates.slice(0, 5);
+  const hidden = candidates.length - shown.length;
+  return (
+    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+      <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+        <span>明日买入清单 · 按 score 排序取前 5（已去重）</span>
+        {total != null && total > candidates.length && (
+          <span className="text-[10px] font-normal text-[var(--k-muted)]">候选池 {total} 只</span>
+        )}
+        <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
+          每票建议 {size}%（回测口径 10%×≤10 笔 = 满仓）
+        </span>
+      </div>
+      <div className="flex flex-col gap-1">
+        {shown.map((c, i) => (
+          <div key={c.symbol} className="flex flex-wrap items-baseline gap-x-2 text-[12px]">
+            <span className="w-4 shrink-0 text-right font-mono text-[10px] text-[var(--k-muted)]">{i + 1}</span>
+            <span className="font-medium">{c.name ?? c.symbol}</span>
+            <span className="text-[10px] tabular-nums text-[var(--k-muted)]">{c.symbol}</span>
+            <span className="ml-auto font-mono text-[10.5px] tabular-nums">score={c.score ?? '—'}</span>
+            {typeof c.rs === 'number' && (
+              <span className="font-mono text-[10.5px] tabular-nums text-[var(--k-muted)]">
+                RS 前{Math.round(c.rs * 100)}%
+              </span>
+            )}
+            <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 dark:text-emerald-300">
+              买 {size}%
+            </span>
+          </div>
+        ))}
+        {hidden > 0 && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="mt-0.5 self-start rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-[var(--k-accent)]/60"
+          >
+            {expanded ? '收起' : `展开全部 ${candidates.length} 只`}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function HealthPanel({
   title,
   tag,
@@ -134,22 +189,11 @@ function HealthPanel({
         </div>
       )}
       {candidates.length > 0 ? (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
-          <div className="mb-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-            今日开仓候选（每票 ~5% 仓位）
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {candidates.map((c) => (
-              <span
-                key={c.symbol}
-                className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-2 py-0.5 text-[11px]"
-              >
-                {c.name ?? c.symbol}
-                <span className="ml-1 text-[var(--k-muted)]">score={c.score ?? '—'}</span>
-              </span>
-            ))}
-          </div>
-        </div>
+        <BuyList
+          candidates={candidates}
+          total={block?.s3CandidateTotal}
+          suggestedSizePct={Number((block?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct) || null}
+        />
       ) : block ? (
         <div className="text-[11px] text-[var(--k-muted)]">
           {block.regime === 'Weak'

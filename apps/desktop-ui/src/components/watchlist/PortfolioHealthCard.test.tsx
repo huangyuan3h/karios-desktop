@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -93,6 +93,27 @@ describe('PortfolioHealthCard', () => {
     fetchPortfolioHealth.mockRejectedValue(new Error('fetch failed'));
     renderCard();
     expect(await screen.findByText(/持仓体检暂不可用/)).toBeDefined();
+  });
+
+  it('collapses candidates to the top-5 buy list with backtest size + expand toggle', async () => {
+    const mk = (n: string, s: number) => ({ symbol: `HK:${s}`, name: n, score: s, rs: 0.8 });
+    fetchPortfolioHealth.mockResolvedValue({
+      tradeDate: '2026-08-10',
+      regime: 'Strong',
+      s3Candidates: [mk('A', 100), mk('B', 99), mk('C', 98), mk('D', 97), mk('E', 96), mk('F', 95)],
+      s3CandidateTotal: 19,
+      s3Rules: { suggestedSizePct: 10 },
+      holdings: [],
+      hkHealth: null,
+    });
+    renderCard();
+    expect(await screen.findByText(/明日买入清单/)).toBeDefined();
+    expect(screen.getByText(/候选池 19 只/)).toBeDefined();
+    expect(screen.getByText(/每票建议 10%/)).toBeDefined();
+    expect(screen.getAllByText('买 10%').length).toBe(5);
+    expect(screen.queryByText('F')).toBeNull();
+    fireEvent.click(screen.getByText(/展开全部 6 只/));
+    expect(screen.getByText('F')).toBeDefined();
   });
 
   it('opens the stock page when a holding row is clicked', async () => {
