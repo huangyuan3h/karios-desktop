@@ -270,6 +270,43 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 
 ## 6. 数据源 / 浏览器替代（优先级 4）
 
+### 数据打通作战计划（2026-08-10 立 · 用户拍板「先把数据打通，让回测更精准可预测」）
+
+> 盘点基线（2026-08-10 实测 DB + 接口）：详见 `docs/archive/2026-08-10-data-gap-audit.md`
+
+**现状全貌**
+- A 股：daily 5760 只（2023-01 起 · 08-10 当日）· adj_factor 97% 填充 · 指数/行业资金流/情绪/ETF 均 08-10 ✅
+- 港股：daily 2803 只（1998 起 · 08-10 当日 · 腾讯链生效）· score 496 只停在 08-07 ⚠️
+- 滞后 1 天（08-07）：主线评分 / stock_dailybasic / USDCNH(macro) / HSI+HSTECH ⚠️
+- CN score 覆盖异常：每日仅 30~210 只，08-10 只算出 3 只 B 股（A 股算分 job 疑似未跑）⚠️
+
+**P0 — 直接影响回测可信度**
+- [x] **P0-1 港股复权统一**（2026-08-10 实施中）：腾讯 qfq + tushare 不复权混写 `daily` 同表实锤
+  （01398 差 48% / 00388 差 11%）→ `scripts/hk_adj_consistency_check.py`（校验）
+  + `scripts/hk_reseed_qfq.py`（全量重灌，2803 只 qfq 覆盖 2022-06 起）→ 重灌后重跑
+  HK walk-forward 对比基线
+- [ ] **P0-2 港股 universe 升级**：恒指官网成分接口（免费可试）；失败则固化 vol top 500 代理为已知偏差
+  （幸存者/流动性偏差已量化记录）
+
+**P1 — 数据新鲜度 / 稳定性**
+- [ ] **P1-3 滞后表统一补跑 + staleness 监控**：主线评分/stock_dailybasic/USDCNH/HSI/HSTECH →
+  scheduler 加「超 1 交易日告警」；HK score 算分 job 补 08-10
+- [x] **P1-4 A 股算分 job 修复**（2026-08-10 已修复 ✓）：根因两处——① uvicorn 15:59 重启
+  错失 17:30 cron（一次性，misfire 不补跑，已手动补算 08-10）；② **`compute_trendok_for_symbols`
+  硬编码 200 只上限** → `record_score_snapshots` 改 200/块分 chunk（CN 204→700 · HK 200→497 已验证）；
+  待观察：后续 3 个交易日 cron 自动跑覆盖 ≥700 只
+
+**P2 — 增强**
+- [ ] **P2-5 A 股长历史（>2023）**：腾讯 fqkline 翻页免费拉（替代 tushare 2000 积分）→ 回测可扩窗
+- [ ] **P2-6 HK amount NULL 回补**：腾讯源重拉近 2 周（07-29~08-07 洞）
+- [ ] **P2-7 退市股历史**：无免费解，记录幸存者偏差即可
+
+**稳定性总纲**：HK 已有多源链（腾讯→新浪→yfinance→tushare）；**A 股仍是 tushare 单源** →
+腾讯链复制到 A 股日线 + 实时报价（2026-08-10 已实测 A 股腾讯接口可用）→ 双市场同构多源 fallback
++ staleness 监控 = 数据源稳定闭环。**tushare 2000 积分不买**（以上缺口它均不解决）。
+
+### 数据源 / 浏览器替代（原条目）
+
 - ✅ **TV Scanner API = 唯一池子**（2026-08-01 · OPT-057）；ego-lite/Chrome CDP 仅 fallback
   → [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)
 - [ ] **[P1] TV Capture 数据源决策**（待拍板）：A股 3 screener 用 Tushare / TV API / 1:1 复刻验证

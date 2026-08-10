@@ -363,7 +363,13 @@ def _industry_from_trendok(row: dict[str, Any]) -> str | None:
 def record_score_snapshots(symbols: list[str]) -> tuple[str | None, int, list[dict[str, Any]]]:
     if not symbols:
         return None, 0, []
-    rows_out = compute_trendok_for_symbols(symbols, realtime=False)
+    # compute_trendok_for_symbols caps at 200 symbols per call; chunk so the
+    # full CN screener universe (~700) and HK vol-top-N universe (500) all
+    # get scored (2026-08-10: HK line was truncated to 200 — score gap).
+    rows_out: list[dict[str, Any]] = []
+    for i in range(0, len(symbols), 200):
+        chunk = symbols[i : i + 200]
+        rows_out.extend(compute_trendok_for_symbols(chunk, realtime=False))
     score_rows: list[dict[str, Any]] = []
     trade_date: str | None = None
     for row in rows_out:
