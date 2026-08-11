@@ -70,6 +70,23 @@ ThrottleInterval 10s + 日志 ~/.karios/logs/uvicorn.log）——根治"手动 n
 修复 = `DEFAULT_COOLDOWN_HOURS 12→6` + fetch job 落 sync_job_record（成功/跳过/失败都可观测）。
 手动跑通：2026-08-11 抓取 1 主题（全球铜供给挤压，catalystGrade A）✓
 
+### 2026-08-11 CN 复权统一（数据修复 · 三窗全面改善 · 基线重固化）
+
+**问题**：A 股 daily 存 tushare 不复权——除权日跳空被趋势指标误读为崩盘。2025-08-01+ 审计：
+**4625 个除权日 / 3483 只票，其中 794 个 ≥5% 假跳空（775 只 ≈ 15% 池子污染）**。HK 8-10 已修，
+CN 未做（T5 前唯一剩余的数据真值缺口）。
+
+**修复**：`scripts/cn_reseed_qfq_tx.py` 腾讯 fqkline qfq 全量重灌 5224 只 CN A 股 2023-01 起
+（54000 行更新 / 0 失败 / 87 分钟；只动 OHLCV 不动 amount/adj_factor；当日价 qfq=raw → 每日
+增量无需改口径）。**踩坑三连**：① 本地 adj_factor 方案不可行（tushare 因子有滞后+口径残差
+~0.2%）；② macOS Python `_scproxy` 无视 env 读系统代理（ClashX 127.0.0.1:7890 节点抖动挂起）
+→ 脚本内 `ProxyHandler({})` 强制直连；③ 腾讯 WAF 501 需 20s 退避重试。
+
+**score 全量回填**（270999 行 / 141s）→ **三窗全面改善并重固化基线**：
+OOS2 **+108.2**%（+10.5pt）· train **+161.5**%（+10.4pt）· valid **+94.8%**（+17.6pt），
+胜率/回撤同步改善。**唯一副作用**：score 表历史值全部变化（合理——旧值基于失真数据），
+paper 侧 20 只 S3HK + 2 TV 不受影响（存储价格不变）。
+
 ### 2026-08-09 重大修复：S-3 候选池 universe 恢复（收益最高项）
 
 **发现**：score universe 从 2026-06-18 起（paper intake 上线同日）从 TV 大池（749 票/天）缩到

@@ -212,18 +212,24 @@ def upsert_ohlcv(rows: list[dict[str, object]]) -> int:
 
 
 def already_qfq(ts_code: str, rows: list[dict[str, object]]) -> bool:
-    """True when the last few fetched qfq closes already match the DB (idempotent skip)."""
+    """True when the WHOLE fetched qfq series already matches the DB.
+
+    Comparing only the last few rows is WRONG: qfq(latest) == raw(latest),
+    so a symbol whose dividend happened weeks ago looks "already adjusted"
+    while its older rows are still raw (2026-08-11 incident: gap audit
+    showed only 794→764 of the >=5% artificial drops removed).
+    """
     from data_sync_service.db import get_connection
 
-    tail = rows[-3:]
-    if not tail:
+    if not rows:
         return False
-    pairs = [(str(r["trade_date"]), float(r["close"])) for r in tail]
+    pairs = [(str(r["trade_date"]), float(r["close"])) for r in rows]
+    dates = [p[0] for p in pairs]
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT trade_date, close FROM daily WHERE ts_code=%s AND trade_date = ANY(%s)",
-                (ts_code, [p[0] for p in pairs]),
+                (ts_code, dates),
             )
             db = {str(r[0]): float(r[1]) for r in cur.fetchall()}
     return all(abs(db.get(d, -1) - c) < 0.01 for d, c in pairs)

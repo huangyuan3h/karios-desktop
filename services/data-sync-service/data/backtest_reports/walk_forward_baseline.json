@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-10T14:54:55.566054+00:00",
+  "generatedAt": "2026-08-11T05:00:59.841375+00:00",
   "tag": "",
   "config": {
     "score_threshold": 65.0,
@@ -23,28 +23,28 @@
   },
   "results": {
     "OOS2": {
-      "closed": 318,
-      "winRate": 0.421,
-      "avgNetPnlPct": 3.84,
-      "totalNetPnlPct": 97.776,
-      "maxDrawdownPct": 28.801,
-      "sharpe": 3.59
+      "closed": 316,
+      "winRate": 0.43,
+      "avgNetPnlPct": 4.298,
+      "totalNetPnlPct": 108.236,
+      "maxDrawdownPct": 26.043,
+      "sharpe": 3.91
     },
     "train": {
-      "closed": 211,
-      "winRate": 0.545,
-      "avgNetPnlPct": 9.124,
-      "totalNetPnlPct": 151.111,
-      "maxDrawdownPct": 9.734,
-      "sharpe": 5.92
+      "closed": 204,
+      "winRate": 0.549,
+      "avgNetPnlPct": 10.183,
+      "totalNetPnlPct": 161.545,
+      "maxDrawdownPct": 11.84,
+      "sharpe": 5.16
     },
     "valid": {
-      "closed": 64,
-      "winRate": 0.562,
-      "avgNetPnlPct": 15.639,
-      "totalNetPnlPct": 77.155,
-      "maxDrawdownPct": 4.959,
-      "sharpe": 8.26
+      "closed": 65,
+      "winRate": 0.585,
+      "avgNetPnlPct": 18.857,
+      "totalNetPnlPct": 94.78,
+      "maxDrawdownPct": 10.615,
+      "sharpe": 10.24
     }
   },
   "baselineUsed": true

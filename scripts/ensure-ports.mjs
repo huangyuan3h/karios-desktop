@@ -58,6 +58,20 @@ function main() {
   for (const port of ports) {
     const pids = listPidsForPort(port);
     if (pids.length === 0) continue;
+
+    // launchd com.karios.uvicorn (KeepAlive) auto-restarts the 4330 listener —
+    // killing the pid alone loses the race against the respawn. Unload the
+    // agent first, then kill any straggler.
+    if (port === 4330) {
+      try {
+        sh(`launchctl bootout gui/$(id -u)/com.karios.uvicorn 2>/dev/null || true`);
+        console.log(
+          '[ensure-ports] unloaded com.karios.uvicorn LaunchAgent ' +
+            '(restore after dev: launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.karios.uvicorn.plist)',
+        );
+      } catch {}
+    }
+
     killPids(pids);
     killed.push({ port, pids });
   }

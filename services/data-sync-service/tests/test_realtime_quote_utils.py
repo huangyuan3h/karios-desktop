@@ -6,7 +6,9 @@ from data_sync_service.service.realtime_quote import (
     _fetch_sina_hk_quote,
     _get,
     _is_hk,
+    _parse_sina_hk_index_payload,
     _parse_sina_hk_payload,
+    _sina_hk_index_quotes,
     _sina_hk_quotes_fresh,
     _split_hk,
     clear_sina_hk_quote_cache,
@@ -333,3 +335,120 @@ def test_fetch_realtime_quotes_falls_back_to_em_when_sina_misses(monkeypatch):
     assert items[0]["ts_code"] == "09988.HK"
     # EM fallback keeps trade_time=None (Sina-style stamp would not be available).
     assert items[0]["trade_time"] is None
+
+# ---------------------------------------------------------------------------
+# HK indices (HSI / HSTECH) — Sina `hq_str_hkHSI` path (2026-08-11)
+# ---------------------------------------------------------------------------
+
+
+def test_split_hk_routes_index_codes():
+    """Bare HSI / HSTECH must go to the HK bucket (Sina index feed), not tushare."""
+    hk, other = _split_hk(["HSI", "000300.SH", "HSTECH", "00700.HK"])
+    assert hk == ["HSI", "HSTECH", "00700.HK"]
+    assert other == ["000300.SH"]
+
+
+def test_parse_sina_hk_index_payload_normalizes_fields():
+    """Live-verified 2026-08-11 HSI payload: price 25773.561, pre_close 25937.49,
+    change -163.93 (= price - pre_close exactly) — index layout differs from stocks."""
+    payload = (
+        "HSI,恒生指数,25998.590,25937.490,26060.320,25760.000,25773.561,"
+        "-163.930,-0.632,0.00000,0.00000,115838045,7225645932,0.000,0.000,"
+        "28056.100,22518.000,2026/08/11,12:05"
+    )
+    q = _parse_sina_hk_index_payload("HSI", payload)
+    assert q is not None
+    assert q["ts_code"] == "HSI"
+    assert q["price"] == "25773.561"
+    assert q["pre_close"] == "25937.49"
+    assert q["change"] == "-163.93"
+    assert q["pct_chg"] == "-0.632"
+    assert q["high"] == "26060.32"
+    assert q["low"] == "25760.0"
+    assert q["trade_time"] == "2026-08-11 12:05:00"
+
+
+def test_parse_sina_hk_index_payload_returns_none_when_short():
+    assert _parse_sina_hk_index_payload("HSI", "a,b") is None
+    assert _parse_sina_hk_index_payload("HSI", "") is None
+
+
+def test_sina_hk_index_quotes_fetches_and_caches(monkeypatch):
+    clear_sina_hk_quote_cache()
+    body = (
+        'var hq_str_hkHSI="HSI,恒生指数,25998.590,25937.490,26060.320,25760.000,'
+        '25773.561,-163.930,-0.632,0.00000,0.00000,115838045,7225645932,0.000,'
+        '0.000,28056.100,22518.000,2026/08/11,12:05";\n'
+        'var hq_str_hkHSTECH="HSTECH,恒生科技指数,4932.810,4919.460,4936.020,'
+        '4851.060,4857.120,-62.340,-1.267,0.00000,0.00000,27247377,490385071,'
+        '0.000,0.000,6715.460,4229.940,2026/08/11,12:05";\n'
+    )
+    from data_sync_service.service import realtime_quote as rq
+
+    monkeypatch.setattr(rq, "sina_get_text", lambda url, *, timeout=10.0: body)  # noqa: ARG005
+    quotes = _sina_hk_index_quotes(["HSTECH", "HSI"])
+    by_code = {q["ts_code"]: q for q in quotes}
+    assert set(by_code) == {"HSI", "HSTECH"}
+    assert by_code["HSI"]["price"] == "25773.561"
+    assert by_code["HSTECH"]["pct_chg"] == "-1.267"
+
+
+def test_sina_hk_index_quotes_empty_when_network_fails(monkeypatch):
+    clear_sina_hk_quote_cache()
+
+    from data_sync_service.service import realtime_quote as rq
+
+    def _fail(url, *, timeout=10.0):  # noqa: ARG001
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(rq, "sina_get_text", _fail)
+    assert _sina_hk_index_quotes(["HSI"]) == []
+
+
+def test_fetch_realtime_quotes_routes_hk_indices_to_sina_index(monkeypatch):
+    """fetch_realtime_quotes must route bare HSI/HSTECH through the Sina index
+    path and never hand them to tushare (which crashes on bare codes)."""
+    clear_sina_hk_quote_cache()
+    from data_sync_service.service import realtime_quote as rq  # noqa: F811
+
+    tushare_calls: list[list[str]] = []
+
+    def _fake_index(codes):
+        return [{"ts_code": "HSI", "price": "25773.561", "pct_chg": "-0.632"}]
+
+    def _fake_stock_sina(tickers):
+        return {}
+
+    def _fake_tushare(codes, *, api_key):
+        tushare_calls.append(codes)
+        return []
+
+    monkeypatch.setattr(rq, "_sina_hk_index_quotes", _fake_index)
+    monkeypatch.setattr(rq, "_sina_hk_quotes_fresh", _fake_stock_sina)
+    monkeypatch.setattr(rq, "_tushare_quotes", _fake_tushare)
+    monkeypatch.setattr(rq, "get_settings", lambda: type("S", (), {"tu_share_api_key": "k"})())
+
+    resp = rq.fetch_realtime_quotes(["HSI", "000300.SH", "00700.HK"])
+    assert resp["ok"] is True
+    # 00700.HK falls through to the real EM fallback (Sina stock cache empty) —
+    # the assertion that matters is the routing + tushare isolation.
+    assert resp["items"][0]["ts_code"] == "HSI"
+    assert tushare_calls == [["000300.SH"]]  # bare codes never reach tushare
+    assert all("HSI" not in c for c in tushare_calls)
+
+
+def test_tushare_quotes_skips_bare_codes(monkeypatch):
+    """_tushare_quotes must drop codes without an exchange suffix (tushare's
+    realtime_quote split()s on '.' and raises IndexError on them)."""
+    import tushare as ts
+
+    calls: list[str] = []
+    monkeypatch.setattr(ts, "set_token", lambda k: None)
+    monkeypatch.setattr(
+        ts, "realtime_quote", lambda ts_code="": calls.append(ts_code) or type("D", (), {"empty": True, "to_dict": lambda self: []})()
+    )
+    from data_sync_service.service import realtime_quote as rq
+
+    out = rq._tushare_quotes(["HSI", "000300.SH", "600000.SZ"], api_key="k")
+    assert out == []
+    assert calls == ["000300.SH,600000.SZ"]
