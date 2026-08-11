@@ -111,6 +111,7 @@ class TestCreateScheduler:
             "morning_brief_am", "morning_brief_pm", "eod_chain_startup_catchup",
             "rolling_oos",
             "trading_brief_open", "trading_brief_midday", "trading_brief_action",
+            "paper_chain_watchdog",
         }
         assert ids == expected
 

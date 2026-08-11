@@ -35,6 +35,7 @@ from data_sync_service.scheduler import (
     morning_brief_job,
     news_enrich_job,
     news_fetch_job,
+    paper_chain_watchdog_job,
     paper_s3_intake_job,
     paper_trading_intake_job,
     paper_trading_update_job,
@@ -220,6 +221,13 @@ def create_scheduler() -> BackgroundScheduler:
         rolling_oos_job.run,
         rolling_oos_job.build_trigger(),
         id=rolling_oos_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Paper-chain watchdog (18:05 — self-heal the 17:30/17:42/17:45 chain).
+    scheduler.add_job(
+        paper_chain_watchdog_job.run,
+        paper_chain_watchdog_job.build_trigger(),
+        id=paper_chain_watchdog_job.JOB_ID,
         replace_existing=True,
     )
     # Trading-session briefs (10:00 / 12:00 / 14:30 weekdays — user's rhythm).

@@ -54,6 +54,15 @@
 （此前每 2-3 分钟 hk_basic_sync/TU_SHARE_API_KEY 失败）；HK 数据健康全绿。**今晚 17:42/17:45 是
 T5 最终验证**（CN allocation-zero 跳过 + HK 正常买入 + 20 只 S3HK 保持 open）。
 
+**2026-08-11 T5 验证结果 ✅**：17:31 watchlist_automation ✓ · 17:42 paper_s3_intake_CN+HK ✓ ·
+17:45 paper_trading_update ✓——三连全绿（sync_job_record 实证），20 只 S3HK 保持 open。
+
+**2026-08-11 watchdog 迁移：launchd → apscheduler**：`paper_chain_watchdog`（launchd
+StartCalendarInterval）实测**未在 18:05 触发**（runs=1 仅加载当天手动测试那次）→ 迁移为
+`scheduler/paper_chain_watchdog_job.py`（18:05 Asia/Shanghai cron，与三连 cron 同源宿主，
+健康时也落 sync_job_record `|ok` 可观测）；launchd plist 已 bootout；注册 scheduler 目录 +
+SYNC_JOB_TYPES（coreClose 组）；测试/前端全绿。
+
 ### 2026-08-11 稳定性自动化：uvicorn launchd 托管 + paper 链 watchdog + alpha_radar 修复
 
 **uvicorn launchd 托管**：`~/Library/LaunchAgents/com.karios.uvicorn.plist`（KeepAlive 失败自动拉起 +
