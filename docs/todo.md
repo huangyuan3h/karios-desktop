@@ -36,6 +36,24 @@
 
 > 反漂移：每 30 天回顾 §0 优先级表与本节；「验证」期间不做新机制实验（§19 封闭清单）。
 
+### 2026-08-11 重大事故修复：smoke 测试误杀全部 S3HK paper 仓位（20/20 → open 恢复）
+
+**事故**：08-11 08:22 pytest 运行中 `tests/test_postclose_smoke.py`（H2，requires_postgres，直连真实 DB）
+第 3 步 `run_update(today_iso="2026-08-07")` **未 mock `get_open_paper_trades`**——对真实 DB 全量 open
+扫描；其 `_mock_prices` 对**所有非 `.SZ` ts_code（全部 HK）返回 close=100** → 20 只 S3HK 全部被假
+`target_hit`（18 只，pnl +100%~+10370%）/ `stop_hit`（2 只：02359=198、00669=147.9）平仓，close_date
+写死 08-07（测试 UPDATE_DATE）。铁证：close_price=100 + close_date=08-07 + 同一秒 updated_at=00:22:13Z。
+同 bug 08-09 已误杀 2 只 TV 仓（假价 200/300）——**隐藏了 3 个月的数据污染源**。
+
+**修复（双层）**：① `_mock_prices` 只服务 smoke symbol 自身 ts_code（其他返回空）；② 第 3 步 patch
+`get_open_paper_trades` 只返回自己的行——测试恢复"只验证自己的链路"的隔离语义；
+③ 恢复 22 行 open（20 S3HK + 2 TV，清假 close 数据，今晚 17:45 update 用真实价正常管理）。
+验收：smoke test 前后 paper_trades 状态零变化 ✓ · 202 相关测试全绿 ✓。
+
+**连带**：uvicorn 去掉 `--reload` 重启（4330，nohup 落 /tmp/karios-uvicorn.log）——misfire 循环停止
+（此前每 2-3 分钟 hk_basic_sync/TU_SHARE_API_KEY 失败）；HK 数据健康全绿。**今晚 17:42/17:45 是
+T5 最终验证**（CN allocation-zero 跳过 + HK 正常买入 + 20 只 S3HK 保持 open）。
+
 ### 2026-08-09 重大修复：S-3 候选池 universe 恢复（收益最高项）
 
 **发现**：score universe 从 2026-06-18 起（paper intake 上线同日）从 TV 大池（749 票/天）缩到
@@ -392,6 +410,11 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 **P2 — 增强**
 - [x] **P2-5 A 股长历史（>2023）**：腾讯 fqkline 翻页免费拉（替代 tushare 2000 积分）→ 回测可扩窗
   （2026-08-10 已实测 A 股腾讯接口可用；正式实施待扩窗需求）
+- [x] **ai@5.0.116 → 5.0.230 升级**（2026-08-11 ✅）：5.x stable 最新（不跨大版本）；
+  144 测试 ✓ + typecheck ✓ + 已 touch reload 加载（tsx watch 不因 node_modules 变化重启）；
+  **工具循环 bug 验证仍在**（probe：Gemini + echo tool → finish='tool-calls'、textLen=0）——
+  5.0.230 未修复，todo「SDK 修复后恢复 tools」假设不成立 → **decision 维持预取上下文方案**（tools 不再恢复）
+
 - [x] **P2-6 HK amount NULL 澄清（2026-08-11 ✅ 误判关闭）**：实测 07-20~08-07 每天 ~122 只
   amount NULL——**99.3% 是停牌/无成交票**（vol=0、close 恒值，如 00007 腾讯数据止于 2024-03），
   amount 本就无意义；真实缺口仅 0-1 只/天（如 08603 源间不一致：akshare 写 vol 无 amount、
@@ -530,6 +553,7 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 
 | 日期 | 事件 | 归档位置 |
 |------|------|----------|
+| 2026-08-11 | **smoke 测试误杀 S3HK paper 仓（重大事故修复）**：`test_postclose_smoke.py` 未隔离真实 DB——`run_update` 全量扫描 + 价格 mock 对所有 HK 返回 100 → 20 只 S3HK 假平仓（+2 只 TV 08-09 被误杀）；双层修复（mock 只服务自身 symbol + `get_open_paper_trades` 只返回自己的行）+ 恢复 22 行 open + uvicorn 去 `--reload` 重启（misfire 循环终止） | 见上「当前方向」事故段（todo 就地记录，细节同文） |
 | 2026-08-09 | **todo 精简整理**：§17（Gate+覆盖率波 1-13）与 §18（R1-R7）详情原样迁移；§19 实验细节并入 strategy-params/backtest-strategy 后压缩；1179→578 行 | [`archive/2026-08-09-todo-slim-eng-hardening.md`](./archive/2026-08-09-todo-slim-eng-hardening.md) |
 | 2026-08-08 | **L4-Gate 全清（H1~H10 + K1/K4）**：4 个 live bug 根因修复（intake key 错位 / camelCase×2 / journal 校验）、测试隔离纪律化（233 假账户+141 假 session 清理、db_rows_baseline 27 表验收）、fail-open 清单（修 2 激进项）、时区/数值健壮性、API 契约对照（删前端 okBook 死字段）、调度幂等（ingest heartbeat 测试锁定）、安全扫描（本地 CSRF Origin 守卫 11 测试） | [`archive/2026-08-08-l4-gate-audit.md`](./archive/2026-08-08-l4-gate-audit.md)（后端 1435 passed + 前端 515 passed + tsc 干净；L4 准入 Gate 6/7 项达标，剩归档动作已完成——§17 全部勾选） |
 | 2026-08-07 | **L3-P5 / OPT-067**：组合相关性防火墙（V7.0-01 转正）——9 个语义因子簇（ETF 前缀 + 东财行业 + HK 科技清单）+ 20 日经验相关性（日历对齐 fail-open）；簇 >30% 拦簇内新开仓（CORRELATION_CAP_BLOCK）+ Suggest% roomCorrelation min 链；回测页「组合相关性防火墙」面板；实测 tech_hk 34.2%（腾讯+恒生科技 ETF）超限实拦，00700×513180 r=0.926 | [`archive/2026-08-07-opt-067-correlation-firewall.md`](./archive/2026-08-07-opt-067-correlation-firewall.md)（1388 后端 + 500 前端全绿；**L3 五里程碑全部完成**） |

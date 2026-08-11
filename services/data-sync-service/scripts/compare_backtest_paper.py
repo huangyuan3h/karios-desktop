@@ -48,6 +48,11 @@ def _entry(row: dict) -> str:
     return str(row.get("entryDate") or row.get("entry_date") or "")
 
 
+def _close_date(row: dict) -> str:
+    """paper rows expose closeDate (camelCase via _row_to_dict) — fall back to snake."""
+    return str(row.get("closeDate") or row.get("close_date") or "")
+
+
 def _paper_holdings_on(day: str) -> dict[str, dict]:
     """symbol -> row for paper trades open on `day` (status=open or closed after day)."""
     out: dict[str, dict] = {}
@@ -57,7 +62,7 @@ def _paper_holdings_on(day: str) -> dict[str, dict]:
         elif (
             row.get("status") == "closed"
             and _entry(row) <= day
-            and (not row.get("close_date") or str(row.get("close_date")) > day)
+            and (not _close_date(row) or _close_date(row) > day)
         ):
             out[str(row.get("symbol"))] = row
     return out
