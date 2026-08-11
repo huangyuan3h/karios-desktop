@@ -393,7 +393,7 @@ def test_pyramid_adds_half_sleeve_on_plus_10() -> None:
     assert kw["symbol"] == "CN:600001"
     assert kw["entry_date"] == "2026-08-07"
     assert kw["entry_price"] == 11.0
-    assert abs(kw["sleeve_pct"] - 0.025) < 1e-9  # 5% * 0.5
+    assert abs(kw["sleeve_pct"] - 0.05) < 1e-9  # 10% * 0.5 (2026-08-11: paper = backtest 10%)
     assert "pyramid-add" in kw["why_at_entry"]
 
 
@@ -458,7 +458,7 @@ def test_run_intake_s3_zero_allocation_skips_new_positions() -> None:
 
 
 def test_run_intake_s3_sleeve_scaled_by_allocation() -> None:
-    """T4: sleeve = 5% * week weight (here 0.4 → 2%)."""
+    """T4: sleeve = 10% * week weight (here 0.4 → 4%)."""
     with _patch_day_gates(), patch(
         "data_sync_service.service.allocation.week_weights",
         return_value={"weekStart": "2026-08-03", "decision": {"w_cn": 0.4, "w_hk": 1.0}},
@@ -470,4 +470,4 @@ def test_run_intake_s3_sleeve_scaled_by_allocation() -> None:
     assert summary["inserted"] == 1
     assert summary["allocation"] == 0.4
     kw = ins.call_args.kwargs
-    assert kw["sleeve_pct"] == pytest.approx(0.02)  # 0.05 * 0.4
+    assert kw["sleeve_pct"] == pytest.approx(0.04)  # 0.10 * 0.4

@@ -51,7 +51,11 @@ S3_RS_MIN = 0.5
 # strategy-params.md §HK) — the shared 0.5 is the CN S-3 floor (2026-08-11).
 S3_RS_MIN_HK = 0.6
 S3_MAX_POSITIONS = 20
-S3_POSITION_PCT = 0.05  # per-sleeve size (paper is 5%; backtest 10%x20 is the upper bound)
+S3_POSITION_PCT = 0.10  # per-sleeve size — SAME as the backtest (10%x20)
+# 2026-08-11: paper was 5% (conservative); user decision: paper must mirror
+# the backtest exactly, so paper book results are directly comparable to the
+# backtest numbers. position_pct is a pure leverage knob (sharpe-invariant,
+# strategy-params §1) — no re-validation needed, backtest untouched.
 
 # ChiNext (300xxx) excluded from S-3 candidates — user-approved 2026-08-09
 # (A4 focus-pool analysis + triple-window validation):
