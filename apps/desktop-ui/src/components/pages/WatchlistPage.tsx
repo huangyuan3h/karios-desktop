@@ -31,7 +31,7 @@ import { buildMainlineAllowSet, isSectorOutflowBlock } from '@/lib/hot-industry-
 import { useAlphaRadarCatalystQuery } from '@/lib/queries/alphaRadar';
 import { useDashboardSummaryQuery } from '@/lib/queries/dashboard';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
-import { watchlistMarketKey } from '@/lib/queries/watchlist';
+import { useWatchlistRsRanksQuery, watchlistMarketKey } from '@/lib/queries/watchlist';
 import { scoreExplainZhLines } from '@/lib/trendok-display';
 import {
   fetchAutomationLatest,
@@ -167,9 +167,20 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     [],
   );
 
+  // RS percentiles (whole-market, /watchlist/rs-ranks) — tiebreaker for the
+  // score sort; the table's own rs query shares the same query key/cache.
+  const rsRanksQuery = useWatchlistRsRanksQuery(items.map((i) => i.symbol));
+
   const sortedItems = React.useMemo(
-    () => sortWatchlistItems(items, trend, scoreSortEnabled, scoreSortDir),
-    [items, trend, scoreSortEnabled, scoreSortDir],
+    () =>
+      sortWatchlistItems(
+        items,
+        trend,
+        scoreSortEnabled,
+        scoreSortDir,
+        rsRanksQuery.data?.ranks ?? null,
+      ),
+    [items, trend, scoreSortEnabled, scoreSortDir, rsRanksQuery.data],
   );
 
   const macroLockBanner = React.useMemo(() => {

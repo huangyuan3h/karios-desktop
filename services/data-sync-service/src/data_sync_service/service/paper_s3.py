@@ -47,6 +47,9 @@ logger = logging.getLogger(__name__)
 
 S3_SCORE_THRESHOLD = 65.0
 S3_RS_MIN = 0.5
+# HK RS floor matches the HK backtest baseline (HK_S3_CONFIG.rs_rank_min=0.6,
+# strategy-params.md §HK) — the shared 0.5 is the CN S-3 floor (2026-08-11).
+S3_RS_MIN_HK = 0.6
 S3_MAX_POSITIONS = 20
 S3_POSITION_PCT = 0.05  # per-sleeve size (paper is 5%; backtest 10%x20 is the upper bound)
 
@@ -183,18 +186,22 @@ def build_s3_candidates(
     no sector flow/mainline whitelist (HK has none), RS ranked inside the HK
     universe, panic cooldown from the CN sentiment feed (matches the backtest
     engine's HK path exactly). CN keeps the full gates.
+
+    2026-08-11: HK RS floor is 0.6 (HK_S3_CONFIG.rs_rank_min, backtest
+    baseline) — the shared S3_RS_MIN (0.5) is the CN S-3 floor.
     """
     from data_sync_service.db.paper_trading import today_iso
 
     day = trade_date or today_iso()
     is_hk = market == "HK"
+    rs_min = S3_RS_MIN_HK if is_hk else S3_RS_MIN
     cfg = BacktestConfig(
         start_date=day,
         end_date=day,
         market=market,
         score_threshold=S3_SCORE_THRESHOLD,
         gates="regime" if is_hk else "full",
-        rs_rank_min=S3_RS_MIN,
+        rs_rank_min=rs_min,
         diverging_scale=1.0,
     )
     regime_by_day = _load_regime_by_day(cfg, [day])
@@ -228,7 +235,7 @@ def build_s3_candidates(
                 market=market,
                 score_threshold=S3_SCORE_THRESHOLD,
                 gates="regime" if is_hk else "full",
-                rs_rank_min=S3_RS_MIN,
+                rs_rank_min=rs_min,
                 diverging_scale=1.0,
             )
             prev_rs = _load_rs_ranks(cfg_prev, [prev], set(resolved.values())).get(prev)
@@ -272,7 +279,7 @@ def build_s3_candidates(
         if not ts:
             continue
         rs = rs_by_day.get(ts)
-        if rs is None or rs < S3_RS_MIN:
+        if rs is None or rs < rs_min:
             continue
         code = str(sym).split(":")[-1]
         if S3_EXCLUDE_BOARDS and code[:3] in S3_EXCLUDE_BOARDS:

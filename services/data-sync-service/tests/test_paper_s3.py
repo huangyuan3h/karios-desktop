@@ -95,6 +95,25 @@ def test_build_s3_candidates_blocks_flow_outflow() -> None:
         assert paper_s3.build_s3_candidates(trade_date="2026-08-07") == []
 
 
+def test_build_s3_candidates_hk_rs_floor_06() -> None:
+    """HK line RS floor is 0.6 (HK backtest baseline rs_rank_min) — names with
+    RS in [0.5, 0.6) are excluded on the HK line but would pass the CN floor."""
+    hk_a = "HK:00700"
+    hk_b = "HK:01277"
+    with (
+        patch.multiple(
+            paper_s3,
+            _load_regime_by_day=lambda cfg, cal: {"2026-08-07": "Strong"},
+            _load_rs_ranks=lambda cfg, cal, universe: {
+                "2026-08-07": {ts: (0.55 if ts.startswith("00700") else 0.7) for ts in universe}
+            },
+        ),
+        patch.object(paper_s3, "_load_today_scores", return_value={hk_a: 90.0, hk_b: 88.0}),
+    ):
+        out = paper_s3.build_s3_candidates(trade_date="2026-08-07", market="HK")
+    assert [c["symbol"] for c in out] == [hk_b]
+
+
 def test_build_s3_candidates_blocks_low_rs() -> None:
     with patch.multiple(
         paper_s3,

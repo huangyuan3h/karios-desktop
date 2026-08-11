@@ -151,19 +151,33 @@ export function sortWatchlistItems(
   trend: Record<string, TrendOkResult>,
   scoreSortEnabled: boolean,
   scoreSortDir: 'desc' | 'asc',
+  rsRanks: Record<string, number> | null = null,
 ): WatchlistItem[] {
-  if (!scoreSortEnabled) return items;
   const arr = [...items];
   arr.sort((a, b) => {
+    // 2026-08-11: held names (positionPct > 0) always float to the top —
+    // the user trades from the watchlist and needs their open positions first.
+    const ha = typeof a.positionPct === 'number' && a.positionPct > 0;
+    const hb = typeof b.positionPct === 'number' && b.positionPct > 0;
+    if (ha !== hb) return ha ? -1 : 1;
+    if (!scoreSortEnabled) return 0;
     const sa = trend[a.symbol]?.score;
     const sb = trend[b.symbol]?.score;
     const va = typeof sa === 'number' && Number.isFinite(sa) ? sa : null;
     const vb = typeof sb === 'number' && Number.isFinite(sb) ? sb : null;
-    if (va == null && vb == null) return 0;
-    if (va == null) return 1;
-    if (vb == null) return -1;
-    const d = va - vb;
-    return scoreSortDir === 'asc' ? d : -d;
+    if (va != null && vb != null) {
+      const d = va - vb;
+      if (d !== 0) return scoreSortDir === 'asc' ? d : -d;
+    } else if (va == null && vb != null) {
+      return 1;
+    } else if (vb == null && va != null) {
+      return -1;
+    }
+    // Score tie (or both missing): RS percentile desc — same number the
+    // RS column shows (/watchlist/rs-ranks).
+    const ra = rsRanks?.[a.symbol] ?? -1;
+    const rb = rsRanks?.[b.symbol] ?? -1;
+    return rb - ra;
   });
   return arr;
 }
