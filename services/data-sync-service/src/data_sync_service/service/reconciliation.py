@@ -14,10 +14,13 @@ point for the weekly review / decision agent, not a surprise.
 from __future__ import annotations
 
 import logging
+from statistics import median
 from typing import Any
 
+from data_sync_service.db.daily import fetch_ohlcv_batch_between
 from data_sync_service.db.paper_trading import list_paper_trades
 from data_sync_service.service.backtest_engine import BacktestConfig, BacktestData, simulate
+from data_sync_service.service.paper_trading import _resolve_ts_code
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +84,46 @@ def _entry(row: dict) -> str:
     return str(row.get("entryDate") or row.get("entry_date") or "")
 
 
+def _price(row: dict) -> float | None:
+    """paper entry price (camelCase entryPrice via _row_to_dict)."""
+    v = row.get("entryPrice") if row.get("entryPrice") is not None else row.get("entry_price")
+    try:
+        return float(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _closes_for(symbols: set[str], start: str, end: str) -> dict[str, dict[str, float]]:
+    """symbol -> {date: close} window lookup (one query, HK/CN daily both live here).
+
+    Positions carry the paper symbol (``HK:00622``); the daily table stores
+    ts_codes (``00622.HK``) — resolve before querying (2026-08-11 fix).
+    """
+    if not symbols:
+        return {}
+    resolved: dict[str, str] = {}
+    for s in symbols:
+        r = _resolve_ts_code(s)
+        if r:
+            resolved[s] = r[1]
+    rows = fetch_ohlcv_batch_between(sorted(resolved.values()), start, end)
+    out: dict[str, dict[str, float]] = {}
+    by_ts: dict[str, str] = {ts: sym for sym, ts in resolved.items()}
+    for code, bars in rows.items():
+        sym = by_ts.get(code, code)
+        out[sym] = {
+            str(d): float(c) for d, _, _, _, c, _ in bars if c not in ("", None)
+        }
+    return out
+
+
+def _pct(entry: float, cur: float) -> float | None:
+    """Return pct return entry→cur, None when uncomputable."""
+    if not entry or not cur:
+        return None
+    return (cur - entry) / entry * 100.0
+
+
 def _paper_holdings_on(day: str) -> dict[str, dict]:
     """symbol -> row for paper trades open on `day`."""
     out: dict[str, dict] = {}
@@ -123,13 +166,37 @@ def reconcile_day(day: str, *, window: str = "valid", end_date: str | None = Non
         expect = {p["symbol"]: p for p in snap["positions"]}
         actual = {k: v for k, v in paper.items() if str(v.get("market") or "CN") == market}
         aligned, missing_h, extra = [], [], []
+        # C4 half-way metric (2026-08-11): return diff backtest-vs-paper on
+        # aligned names — one query for entry-day and recon-day closes.
+        all_symbols = set(expect) | set(actual)
+        closes = _closes_for(all_symbols, start, day)
+        diff_vals: list[float] = []
+        bt_vals: list[float] = []
+        pp_vals: list[float] = []
         for s in sorted(set(expect) & set(actual)):
+            bt_entry = expect[s]["entry_date"]
+            bt_map = closes.get(s, {})
+            bt_entry_close = bt_map.get(bt_entry)
+            day_close = bt_map.get(day)
+            bt_ret = _pct(bt_entry_close, day_close) if bt_entry_close and day_close else None
+            pp_entry_price = _price(actual[s])
+            pp_ret = _pct(pp_entry_price, day_close) if pp_entry_price and day_close else None
+            d = (pp_ret - bt_ret) if (pp_ret is not None and bt_ret is not None) else None
+            if d is not None:
+                diff_vals.append(d)
+            if bt_ret is not None:
+                bt_vals.append(bt_ret)
+            if pp_ret is not None:
+                pp_vals.append(pp_ret)
             aligned.append({
                 "symbol": s,
-                "entry": expect[s]["entry_date"],
+                "entry": bt_entry,
                 "paperEntry": _entry(actual[s]),
-                "entrySkew": _entry(actual[s]) != expect[s]["entry_date"],
+                "entrySkew": _entry(actual[s]) != bt_entry,
                 "score": expect[s].get("score_at_entry"),
+                "btReturnPct": round(bt_ret, 2) if bt_ret is not None else None,
+                "paperReturnPct": round(pp_ret, 2) if pp_ret is not None else None,
+                "returnDiffPct": round(d, 2) if d is not None else None,
             })
         for s in sorted(set(expect) - set(actual)):
             p = expect[s]
@@ -156,6 +223,11 @@ def reconcile_day(day: str, *, window: str = "valid", end_date: str | None = Non
             "alignedList": aligned,
             "missingList": missing_h,
             "extraList": extra,
+            # C4 half-way: median return gap (paper − backtest) over aligned
+            # names; positive = paper running ahead of the backtest replay.
+            "alignedReturnDiffPct": round(median(diff_vals), 2) if diff_vals else None,
+            "btReturnMedianPct": round(median(bt_vals), 2) if bt_vals else None,
+            "paperReturnMedianPct": round(median(pp_vals), 2) if pp_vals else None,
         }
     return {"reconDate": day, "window": window, "markets": markets}
 
@@ -170,7 +242,11 @@ def run_and_persist(day: str, *, window: str = "valid") -> dict[str, Any]:
             continue
         detail = [
             {"type": "missing", **x} for x in m.get("missingList", [])
-        ] + [{"type": "extra", **x} for x in m.get("extraList", [])]
+        ] + [
+            {"type": "extra", **x} for x in m.get("extraList", [])
+        ] + [
+            {"type": "aligned", **x} for x in m.get("alignedList", [])
+        ]
         insert_recon(
             recon_date=out["reconDate"],
             market=market,
@@ -180,6 +256,9 @@ def run_and_persist(day: str, *, window: str = "valid") -> dict[str, Any]:
             aligned=m["aligned"],
             missing=m["missing"],
             extra=m["extra"],
+            aligned_return_diff_pct=m.get("alignedReturnDiffPct"),
+            bt_return_median_pct=m.get("btReturnMedianPct"),
+            paper_return_median_pct=m.get("paperReturnMedianPct"),
             detail=detail,
         )
     return out

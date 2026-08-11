@@ -230,6 +230,9 @@ export type ReconItem = {
   aligned: number;
   missing: number;
   extra: number;
+  alignedReturnDiffPct?: number | null;
+  btReturnMedianPct?: number | null;
+  paperReturnMedianPct?: number | null;
   detail?: Array<Record<string, unknown>> | null;
 };
 

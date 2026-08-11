@@ -39,7 +39,9 @@ from data_sync_service.scheduler import (
     paper_trading_intake_job,
     paper_trading_update_job,
     research_report_job,
+    rolling_oos_job,
     stock_basic_job,
+    trading_brief_job,
     tv_screener_capture_job,
     watchlist_automation_job,
 )
@@ -213,6 +215,21 @@ def create_scheduler() -> BackgroundScheduler:
         id=backtest_recon_job.JOB_ID,
         replace_existing=True,
     )
+    # Monthly rolling-OOS monitor (first Monday, strategy-fade early warning).
+    scheduler.add_job(
+        rolling_oos_job.run,
+        rolling_oos_job.build_trigger(),
+        id=rolling_oos_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Trading-session briefs (10:00 / 12:00 / 14:30 weekdays — user's rhythm).
+    for _bt in ("open", "midday", "action"):
+        scheduler.add_job(
+            getattr(trading_brief_job, f"run_{_bt}"),
+            trading_brief_job.build_trigger(_bt),
+            id=f"{trading_brief_job.JOB_ID}_{_bt}",
+            replace_existing=True,
+        )
     # T4: weekly R5c allocation decision (Monday, before the update cron).
     scheduler.add_job(
         allocation_decide_job.run,

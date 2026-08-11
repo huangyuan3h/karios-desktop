@@ -90,6 +90,75 @@ OOS2 **+134.2**%（+26.0pt / DD 26.0→14.5）· train **+171.2**%（+9.7pt）·
 真实大跌，正常）。**唯一副作用**：score 表历史值全部变化（合理——旧值基于失真数据），
 paper 侧 20 只 S3HK + 2 TV 不受影响（存储价格不变）。
 
+### 2026-08-11 用户方针定案：L4 前全自动化 + 回测极致化
+
+**总方针**：L4（实盘）之前，① 一切流程自动化 + 贴近回测；② 回测做到极致 → 保证收益；
+todo = 待办事项唯一入口。
+
+**用户实际交易节奏（系统必须服务这个节奏）**：
+- **10:00 开盘分析** · **12:00 午间分析** · **14:30 操作**（大部分是买单）
+- 止损用**条件单**（券商端），手动只处理突发情况
+- 三个时间点 = **快速获取市场信息后继续工作**（分钟级消费，不是深度分析）
+- universe 池原来用 TV 控制计算量——**必要性待验证**（683 票 1.2s → 全市场 ~10s，计算量
+  可能根本不是瓶颈；TV 的真正价值是质量筛选）
+
+**由此推出的行动（H1.5，本周~8 月底）**：
+1. **三时段快照简报**：10:00 开盘简报（隔夜+情绪+候选）· 12:00 午间简报（候选新增/撤销+
+   价格偏离）· 14:30 操作卡（买入卡列表 + 条件单清单）——每个都是分钟级消费格式
+   → ✅ 已落地（2026-08-11）：`service/trading_brief.py` 组装现有块（portfolio-health regime/
+   holdings/止损线 + paper_s3 候选 + 新闻 top5），存 morning_briefs 表（新 type
+   trading-open/midday/action + markdown 列，Alembic 0028）；`trading_brief_job` 三 cron
+   （工作日 10:00/12:00/14:30）+ SYNC_JOB_TYPES + SCHEDULER_JOB_CATALOG + 手动 API
+   （POST /api/news/brief/generate?brief_type=trading-*）；前端 `TradingBriefCard`（watchlist
+   页，三 tab + react-markdown + 复制/刷新，5 测试）；首跑实证：14:30 操作卡输出
+   「Regime + S-3 候选(无,正确) + 持仓/条件单 4 只（止损/移动线/到期）」✓
+   回归：3544 后端 + 770 前端全绿
+2. **买入卡可执行化**：S-3 候选 → 结构化买入卡（symbol/建议价/仓位%/gate 理由）→ 14:30
+   用户确认即执行——**用回测引擎今日快照驱动**（positions_by_day = "回测说今天该买什么"）
+   → 已由 ① 的候选 section 覆盖前半（候选字段齐），「确认即执行」= TradeActionDialog 复用
+   （H2 与决策 Agent 复盘一起做）
+3. **条件单清单**：每持仓 → 止损价（-5% 固定 / -8% 移动）+ 建议条件单参数，用户券商端下发
+   → ✅ 已由 ① 的 holdings section 覆盖（止损/移动/到期 + 接近止损线预警）✓
+4. **universe 去 TV 依赖验证**：实测全市场 trendok 计算时间 → 若可承受，把 TV 筛选逻辑
+   本地化（市值/PE/流动性用 stock_dailybasic）→ universe 全市场实时化（消 TV 快照滞后）
+5. **盘中异常警报**（H2 提前）：单票 -8% 触发 / cron 失败 / 候选突变 → 推送（先 API/网页，
+   webhook 后续）——"突发情况我来处理"的前提是系统先叫
+   → 候选突变/接近止损线预警已由 ① 的 alert section 覆盖（盘中 12:00/14:30 两次）；剩余
+   = 单票 -8% 盘中触发推送（H2）
+
+### 2026-08-11 演进方向定案（验证期）：自动验证 + 自动执行 + 终局实盘
+
+**H1（8 月底前）**：
+- [x] **滚动 OOS 自动化**（2026-08-11 ✅）：`scheduler/rolling_oos_job.py`——每月首个周一 08:15
+  自动跑最近 90 天窗（CN full gates + HK regime 两套定案配置）→ 落
+  `data/backtest_reports/rolling_oos_latest.json` + sync_job_record（亏损/夏普<0/零交易 →
+  WARN）。**首跑即抓到真实信号**：2026-05-13~08-11 窗 HK **-8.5%/DD19.5/夏普-3.2**（55 笔）、
+  CN 1 笔（Weak+恐慌空仓=正确）——近期 HK 执行环境劣化，周报决策 Agent 消费该文件
+- [x] **C4 半程对照**（2026-08-11 ✅）：recon 快照加收益偏差三列（aligned_return_diff_pct /
+  bt_return_median_pct / paper_return_median_pct，Alembic 0027 + CREATE_SQL 同步）——
+  aligned 逐票 btReturnPct/paperReturnPct/returnDiffPct（symbol→ts_code 解析修 daily 查询）；
+  persist detail 带 aligned 项；前端 BacktestReconCard 显示「偏差 ±Npt」（|diff|≥2pt ⚠）。
+  **首跑实证**：8-10 HK 偏差中位 **-5.5pt**（paper 8-10 入场 vs 回测 8-05 = 8-05~07 cron 缺口
+  的收益代价被量化）。另修 5 个日期敏感/隔离测试（adj_factor/daily_service/etf_daily
+  uptodate → 相对日期；close_sync 默认窗 → patch get_last_success；user_trades fetch_sell
+  → 只断言自己的行）
+- [ ] **长窗落地**：长窗（2021-08~2026-08 完整周期）结果固化为完整周期基线，进 strategy-params
+
+**H2（9~10 月）**：决策 Agent 自动驾驶复盘（周报→下周行动计划自动产出，用户只确认）；
+盘中极端警报（单票 -8%，实时报价链已有）；webhook 事件订阅（§14 #3）
+
+**H3（验证期解除后）**：L4 实盘研究（C4 ≥20 笔平仓后）+ 实盘执行自动化（券商 API）
+
+**明确不做**：美股/加拿大 · MCP server · 新策略机制（§19 封闭）· 付费 API 商业化
+
+### 2026-08-11 数据问题定案：行业资金流历史 = 数据天花板（不补）
+
+东财 121 天上限（实测 lmt 无效）· 同花顺 WAF 403（实测）· 腾讯无接口（实测）· 新浪无历史。
+**重构问题**：回测 replay「当时的系统」——OOS2 时 live 本无行业闸门 → regime-only 是诚实结果；
+真正缺的是「闸门贡献验证」，免费证据链已齐（A3 valid +32.6pt / 长窗对照 / C4 仲裁）。
+500 元 tushare 积分唯一增量 = OOS2 反事实验证（且聚合口径有拼接断层）——**待长窗结果拍板**；
+2025-12-15 前缺口不补，cron 快照继续存（未来滚动 OOS 自然有数据）。
+
 ### 2026-08-11 扩窗 2021-01 启动 + 资金流回拉证伪（回测必须真实）
 
 **A 股扩窗（P2-5 激活 · 后台执行中）**：腾讯 qfq 链今日全通（cn_reseed_qfq_tx.py 已验证 5224 只

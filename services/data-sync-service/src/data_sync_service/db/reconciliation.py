@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     aligned     INTEGER NOT NULL,
     missing     INTEGER NOT NULL,
     extra       INTEGER NOT NULL,
+    aligned_return_diff_pct   NUMERIC,
+    bt_return_median_pct      NUMERIC,
+    paper_return_median_pct   NUMERIC,
     detail      TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (recon_date, market)
@@ -35,6 +38,9 @@ def ensure_table() -> None:
 
 def insert_recon(*, recon_date: str, market: str, window: str, expected: int,
                  actual: int, aligned: int, missing: int, extra: int,
+                 aligned_return_diff_pct: float | None = None,
+                 bt_return_median_pct: float | None = None,
+                 paper_return_median_pct: float | None = None,
                  detail: list[dict] | None = None) -> dict[str, Any]:
     """Upsert the day's reconciliation per market (re-running the same day
     is idempotent — the cron re-runs Monday morning freely)."""
@@ -44,8 +50,9 @@ def insert_recon(*, recon_date: str, market: str, window: str, expected: int,
             cur.execute(
                 f"""
                 INSERT INTO {TABLE_NAME}
-                    (recon_date, market, "window", expected, actual, aligned, missing, extra, detail)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (recon_date, market, "window", expected, actual, aligned, missing, extra,
+                     aligned_return_diff_pct, bt_return_median_pct, paper_return_median_pct, detail)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (recon_date, market) DO UPDATE SET
                     "window" = EXCLUDED."window",
                     expected = EXCLUDED.expected,
@@ -53,10 +60,14 @@ def insert_recon(*, recon_date: str, market: str, window: str, expected: int,
                     aligned = EXCLUDED.aligned,
                     missing = EXCLUDED.missing,
                     extra = EXCLUDED.extra,
+                    aligned_return_diff_pct = EXCLUDED.aligned_return_diff_pct,
+                    bt_return_median_pct = EXCLUDED.bt_return_median_pct,
+                    paper_return_median_pct = EXCLUDED.paper_return_median_pct,
                     detail = EXCLUDED.detail,
                     created_at = now()
                 """,
                 (recon_date, market, window, expected, actual, aligned, missing, extra,
+                 aligned_return_diff_pct, bt_return_median_pct, paper_return_median_pct,
                  json.dumps(detail, ensure_ascii=False) if detail else None),
             )
             conn.commit()
@@ -68,7 +79,8 @@ def latest_recon(limit: int = 4) -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 f"""
-                SELECT recon_date, market, "window", expected, actual, aligned, missing, extra, detail
+                SELECT recon_date, market, "window", expected, actual, aligned, missing, extra,
+                       aligned_return_diff_pct, bt_return_median_pct, paper_return_median_pct, detail
                 FROM {TABLE_NAME}
                 ORDER BY recon_date DESC, market
                 LIMIT %s
@@ -87,6 +99,9 @@ def latest_recon(limit: int = 4) -> list[dict[str, Any]]:
             "aligned": r[5],
             "missing": r[6],
             "extra": r[7],
-            "detail": json.loads(r[8]) if r[8] else None,
+            "alignedReturnDiffPct": float(r[8]) if r[8] is not None else None,
+            "btReturnMedianPct": float(r[9]) if r[9] is not None else None,
+            "paperReturnMedianPct": float(r[10]) if r[10] is not None else None,
+            "detail": json.loads(r[11]) if r[11] else None,
         })
     return out

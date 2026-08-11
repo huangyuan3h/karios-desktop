@@ -109,6 +109,8 @@ class TestCreateScheduler:
             "tv_screener_capture_pm", "news_enrich_job", "research_report_sync",
             "decision_snapshot", "decision_outcome", "decision_action_tracking",
             "morning_brief_am", "morning_brief_pm", "eod_chain_startup_catchup",
+            "rolling_oos",
+            "trading_brief_open", "trading_brief_midday", "trading_brief_action",
         }
         assert ids == expected
 

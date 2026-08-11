@@ -97,7 +97,7 @@ def test_sync_fresh_no_last_date(monkeypatch) -> None:
 
 def test_sync_skips_uptodate_stock(monkeypatch) -> None:
     pro = _Pro()
-    _patch(monkeypatch, pro=pro, ts_codes=["510300.SH"], last=date(2026, 8, 8))
+    _patch(monkeypatch, pro=pro, ts_codes=["510300.SH"], last=date.today())
     out = ed.sync_etf_daily_full()
     assert out["ok"] is True and out["updated"] == 0
     assert pro.calls == []  # start_date > end_date → never fetched
@@ -179,7 +179,7 @@ def test_sync_single_missing_api_key(monkeypatch) -> None:
 
 
 def test_sync_single_uptodate_skips(monkeypatch) -> None:
-    _patch(monkeypatch, last=date(2026, 8, 8))
+    _patch(monkeypatch, last=date.today())
     out = ed.sync_etf_daily_for_ts_code(" 510300.sh ")
     assert out["ok"] is True and out["skipped"] is True
     assert out["ts_code"] == "510300.SH"

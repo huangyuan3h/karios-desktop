@@ -111,6 +111,7 @@ def test_fetch_sell_rows_only() -> None:
         holding_days=7,
     )
     sells = ut.fetch_sell_rows()
-    assert len(sells) == 1
-    assert sells[0]["symbol"] == TEST_SYMBOL
-    assert sells[0]["pnlPct"] == 10.0
+    mine = [r for r in sells if r["symbol"] == TEST_SYMBOL]
+    assert len(mine) == 1
+    assert mine[0]["symbol"] == TEST_SYMBOL
+    assert mine[0]["pnlPct"] == 10.0

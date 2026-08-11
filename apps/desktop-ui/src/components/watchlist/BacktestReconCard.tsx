@@ -28,8 +28,9 @@ export function BacktestReconCard() {
         <div className="text-[var(--k-muted)]">暂无对账快照（周一 07:30 cron 生成）</div>
       ) : (
         items.map((r) => {
-          const clean = r.missing === 0 && r.extra === 0;
+          const clean = r.missing === 0 && r.extra === 0 && Math.abs(r.alignedReturnDiffPct ?? 0) < 2;
           const market = r.market === 'HK' ? '港股' : 'A股';
+          const diff = r.alignedReturnDiffPct;
           return (
             <div
               key={`${r.reconDate}-${r.market}`}
@@ -58,6 +59,19 @@ export function BacktestReconCard() {
               >
                 缺 {r.missing} · 多 {r.extra}
               </span>
+              {diff !== null && diff !== undefined && (
+                <span
+                  className={
+                    Math.abs(diff) < 2
+                      ? 'text-[var(--k-muted)]'
+                      : 'text-amber-700 dark:text-amber-300'
+                  }
+                  title="收益偏差中位数：paper − 回测（一致票）"
+                >
+                  偏差 {diff > 0 ? '+' : ''}
+                  {diff}pt
+                </span>
+              )}
             </div>
           );
         })

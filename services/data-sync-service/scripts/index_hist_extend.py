@@ -19,12 +19,11 @@ import time
 import urllib.request
 from datetime import date
 from pathlib import Path
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from data_sync_service.db import get_connection  # noqa: E402
-from data_sync_service.db.daily import ensure_table  # noqa: E402
 
 # ts_code → Tencent symbol (indices, no qfq)
 _INDICES = {

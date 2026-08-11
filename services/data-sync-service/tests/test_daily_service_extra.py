@@ -74,7 +74,7 @@ def test_sync_single_missing_api_key(monkeypatch) -> None:
 
 
 def test_sync_single_uptodate(monkeypatch) -> None:
-    _patch(monkeypatch, last=date(2026, 8, 8))
+    _patch(monkeypatch, last=date.today())
     out = dl.sync_daily_for_ts_code("600000.sh")
     assert out["ok"] is True and out["skipped"] is True
     assert out["ts_code"] == "600000.SH"

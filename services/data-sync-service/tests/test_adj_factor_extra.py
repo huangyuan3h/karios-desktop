@@ -87,7 +87,7 @@ def test_sync_fresh_uses_full_start(monkeypatch) -> None:
 
 
 def test_sync_uptodate_skips_fetch(monkeypatch) -> None:
-    pro = _patch(monkeypatch, ts_codes=["600000.SH"], last=date(2026, 8, 8))
+    pro = _patch(monkeypatch, ts_codes=["600000.SH"], last=date.today())
     out = af.sync_adj_factor_full()
     assert out["ok"] is True and out["updated"] == 0
     assert pro.calls == []

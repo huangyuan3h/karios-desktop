@@ -34,6 +34,7 @@ const brief = (partial: Partial<MorningBrief>): MorningBrief => ({
   macroOverview: null,
   modelVersion: null,
   sourceItemIds: null,
+  markdown: null,
   createdAt: '2026-08-07T08:30:00+08:00',
   ...partial,
 });
