@@ -40,6 +40,19 @@ def _validate_window(start: str, end: str) -> None:
         raise HTTPException(status_code=422, detail="start must be <= end")
 
 
+@router.get("/recon/latest")
+def backtest_recon_latest(limit: int = Query(4, ge=1, le=30)) -> dict[str, Any]:
+    """Latest backtest-vs-paper reconciliation snapshots (2026-08-11).
+
+    Weekly job (Monday 07:30) reconciles last Friday's backtest 'should
+    hold' vs the paper book; the decision agent / weekly review reads this
+    to turn drift into action.
+    """
+    from data_sync_service.db.reconciliation import latest_recon
+
+    return {"ok": True, "items": latest_recon(limit=limit)}
+
+
 @router.get("/run")
 def backtest_run(
     start: str = Query(..., description="Window start (YYYY-MM-DD)."),

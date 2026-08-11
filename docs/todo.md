@@ -55,6 +55,43 @@ regime Weak 正确空仓（近 5 日全 Weak）；trendok 计算 683 票仅 1.2s
 用修复后大池**（注意：回测 valid 窗 6-18 后同样是小池——回测未虚高，paper 口径反而更宽）。
 验收：3503 passed 全绿 + ruff 干净 + 2 新测试。
 
+### 2026-08-11 对账自动化 + 两个 paper 系统级 bug 修复（T5 观察暴露）
+
+**对账自动化收尾**：weekly review 增加「回测 vs Paper 对账」段（recon 快照进周报 markdown，
+决策 Agent 直接消费）；`GET /api/backtest/recon/latest` ✓；**前端 `BacktestReconCard`**
+（watchlist 页体检卡片下方——最近 4 个对账快照 ✓/⚠ + 缺/多计数，3 新测试 + 760 前端全绿）✓
+
+**T5 观察暴露两个系统性 bug（已修+测试）**：
+1. **pool_exit 误杀 S-3 paper 仓**：`run_update` 的 pool_exit（registry 成员检查）对
+   S3/S3HK 仓生效——S-3 HK universe（vol top 500）本就不在用户自选 registry →
+   8-10 补跑的 20 只 S3HK 全被 misfire 补跑的 update cron 平掉。修复：`exclude_pool_exit`
+   参数（S3/S3HK source 豁免 pool_exit，v0 手动仓行为不变）
+2. **trailing peak 用了入场前历史高点**：highs 计算未按 entry_date 过滤（62 天 lookback 内
+   的最高价当 peak）→ 入场当天就可能"回撤达标"被平（HK:01818 立平实证）。修复：peak 只取
+   entry_date 之后（含）的 high
+3. 附带确认：**uvicorn --reload 反复重启 + misfire_grace 12h = 错过的 cron 疯狂补跑**
+   （08-10 22:00~23:40 每 2-3 分钟一轮 misfire 记录）——补跑本身没问题，但 scheduler 宿主
+   不稳是 T5 的根因背景；**今天 17:42/17:45 是最终验证**（修完 pool_exit/trailing 后
+   update 应保持 8-10 的 20 只 open）
+- 8-10 那批 S3HK 已重插修复后复跑验证：20/20 open、0 closed ✓；3 新回归测试 + 39 paper
+  trading 测试 ✓；全量 3517 passed（5 日期敏感 + 1 playwright 环境缺失，均 pre-existing）
+
+### 2026-08-11 对账自动化：矫正操作成为每周常态
+
+**闭环落地**（上轮手动对账 → 本轮自动化）：
+- `service/reconciliation.py`：`reconcile_day(day, window, end_date)`（回测每日快照 vs paper
+  实持 → aligned/missing/extra + 入场日偏移 + 明细）+ `run_and_persist`（幂等落库）
+- `db/reconciliation.py` + Alembic 0026 `backtest_paper_recon`（recon_date+market 唯一；
+  **window 是 PG 保留字，手写 SQL 需 `"window"` 引号**——sed 曾误伤参数行，已修）
+- `scheduler/backtest_recon_job.py`：**周一 07:30** 自动对账上周五（valid 窗 CN+HK 重放，
+  ~3 分钟）→ sync_job_record
+- `GET /api/backtest/recon/latest`：决策 Agent/周报拉取最近快照
+- 首次快照：8-07 HK missing=19（8-05~8-07 cron 缺失的历史断层量化入档）
+- 测试：5 新 recon 测试（对齐/偏移/extra/HK 块/persist）+ 110 相关 ✓；36 scheduler jobs ✓
+
+**下一步**：前端体检卡片展示 recon 摘要 + 周报接入（决策 Agent 消费）；今天 17:42 T5
+关键验证（allocation 已落库 CN=0/HK=1——CN 应全 allocation-zero 跳过）
+
 ### 2026-08-11 回测矫正真实操作的闭环（用户核心诉求：回测必须可复制到真实世界）
 
 **方法论（用户拍板）**：分配规则只用红绿灯（as-of 可观测）——`service/allocation.py` 同码函数
@@ -355,7 +392,11 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 **P2 — 增强**
 - [x] **P2-5 A 股长历史（>2023）**：腾讯 fqkline 翻页免费拉（替代 tushare 2000 积分）→ 回测可扩窗
   （2026-08-10 已实测 A 股腾讯接口可用；正式实施待扩窗需求）
-- [ ] **P2-6 HK amount NULL 回补**：腾讯源重拉近 2 周（07-29~08-07 洞）
+- [x] **P2-6 HK amount NULL 澄清（2026-08-11 ✅ 误判关闭）**：实测 07-20~08-07 每天 ~122 只
+  amount NULL——**99.3% 是停牌/无成交票**（vol=0、close 恒值，如 00007 腾讯数据止于 2024-03），
+  amount 本就无意义；真实缺口仅 0-1 只/天（如 08603 源间不一致：akshare 写 vol 无 amount、
+  腾讯无当日数据）——数量级可忽略，**不回补**；8-10 起增量同步 amount 全有 ✓（仅当
+  vol>0 且 amount NULL 时才需要关注，可入 staleness 监控条件）
 - [ ] **P2-7 退市股历史**：无免费解，记录幸存者偏差即可
 
 **HK 回测数据支撑复核（2026-08-10 · qfq 修正数据重扫）** ✅ 定案参数确认有支撑：
@@ -390,11 +431,16 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
   +490%/31.5 —— 用户直觉验证：A 强全 A、B 强全 B、双强走 A、下跌不投；但"互补性"被高估
   （CN Weak 期 HK 可投仅 33%）；双强速率比较（R5b）需风险调整动量（绝对动量 HK 天然 2-3× 波动）→ 细节
   strategy-params.md §6；R5c 入候选（§19 验证期纪律，不立即上 live）；T4 paper 池化按 R5c 待拍板
-- [ ] **T4 paper 资金池化**：双线各自 100% → 共享池按 R5c 分配（红绿灯驱动，等拍板）；
-  paper 侧 sleeve 需按权重缩放（R5c 100% 单市场时另一市场 0 仓）
+- [x] **T4 paper 资金池化**（2026-08-11 ✅ 用户拍板）：R5c 周度决议落库 `allocation_weights`
+  （Alembic 0025 + `db/allocation.py` 幂等，周一 17:45 `allocation_decide_job` 决议，intake 兜底
+  即时决议）；paper S-3 intake sleeve = 5% × 当周权重，**权重 0 市场不开新仓**
+  （allocation-zero skip；已持仓退出管理照常走 update cron）；金字塔加仓 sleeve 同步缩放；
+  回测与 live 共用 `service/allocation.py` 同码（run_walk_forward_dual R5 分支已改调同函数）。
+  验证：本周（8-10 周）决议 CN=Weak/HK=Strong → w=0/1（当前状态正确）；21 paper_s3 测试 ✓
 - [ ] **T5 paper_s3 HK 每日首跑观察**：8-10 17:42 cron **未跑**（sync_job_record 无 paper_s3 记录，
   8-10/8-11 均无）——已手动补跑 8-10（CN 0 候选正确空仓 + HK 20 只）；根因疑似 uvicorn
-  `--reload` 模式进程漂移（scheduler 宿主不稳）——**今天 17:42 关键验证**，再丢即去 --reload 重启
+  `--reload` 模式进程漂移（scheduler 宿主不稳）——**今天 17:42 关键验证**（本周 CN 应全
+  allocation-zero、HK 正常买），再丢即去 --reload 重启
 - [x] **T6 HK 实时报价链港股验证**（2026-08-10 ✅）：新浪 hq.sinajs.cn 主链对 HK 标的实测通过
   （00700/02899/01787 当天 16:04 价）——HK 盘中决策/止损刷新链路 OK
 

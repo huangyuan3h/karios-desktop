@@ -220,3 +220,32 @@ export function clusterExposureForSymbol(
   }
   return null;
 }
+
+export type ReconItem = {
+  reconDate: string;
+  market: string;
+  window: string;
+  expected: number;
+  actual: number;
+  aligned: number;
+  missing: number;
+  extra: number;
+  detail?: Array<Record<string, unknown>> | null;
+};
+
+export type ReconResponse = { ok: boolean; items: ReconItem[] };
+
+/**
+ * Latest backtest-vs-paper reconciliation snapshots (2026-08-11): what the
+ * S-3 backtest says we SHOULD hold vs what the paper book actually holds,
+ * per market. The Monday cron fills this weekly.
+ */
+export function useBacktestReconQuery(limit = 4, enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'recon', limit],
+    queryFn: () =>
+      apiGetJson<ReconResponse>(`/api/backtest/recon/latest?limit=${limit}`),
+    staleTime: 60_000,
+    enabled,
+  });
+}

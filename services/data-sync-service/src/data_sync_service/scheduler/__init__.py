@@ -4,9 +4,11 @@ from apscheduler.schedulers.background import BackgroundScheduler  # type: ignor
 
 from data_sync_service.scheduler import (
     adj_factor_job,
+    allocation_decide_job,
     alpha_radar_fetch_job,
     alpha_radar_ingest_job,
     alpha_radar_process_job,
+    backtest_recon_job,
     close_catchup_job,
     close_sync_job,
     cn_industry_post_close_job,
@@ -190,6 +192,20 @@ def create_scheduler() -> BackgroundScheduler:
         paper_trading_update_job.run,
         paper_trading_update_job.build_trigger(),
         id=paper_trading_update_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Weekly backtest-vs-paper reconciliation (Monday morning, last Friday).
+    scheduler.add_job(
+        backtest_recon_job.run,
+        backtest_recon_job.build_trigger(),
+        id=backtest_recon_job.JOB_ID,
+        replace_existing=True,
+    )
+    # T4: weekly R5c allocation decision (Monday, before the update cron).
+    scheduler.add_job(
+        allocation_decide_job.run,
+        allocation_decide_job.build_trigger(),
+        id=allocation_decide_job.JOB_ID,
         replace_existing=True,
     )
     # G4: S-3 backtest paper intake (after regular intake, before update).

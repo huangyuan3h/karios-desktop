@@ -285,11 +285,11 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
             ts_codes.append(resolved[1])
 
     closes_by_ts: dict[str, float] = {}
-    highs_by_ts: dict[str, float] = {}  # post-entry peak high, S-3 trailing stop
+    bars_by_ts_all: dict[str, list] = {}  # raw bars; peak computed per-trade below
     if ts_codes:
         try:
-            bars_by_ts = fetch_last_ohlcv_batch(ts_codes, days=max(pt_db.MAX_HOLD_DAYS, 5) + 2)
-            for ts, bars in bars_by_ts.items():
+            bars_by_ts_all = fetch_last_ohlcv_batch(ts_codes, days=max(pt_db.MAX_HOLD_DAYS, 5) + 2)
+            for ts, bars in bars_by_ts_all.items():
                 if not bars:
                     continue
                 last = bars[-1]
@@ -299,18 +299,6 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
                         closes_by_ts[str(ts)] = float(close)
                     except (TypeError, ValueError):
                         continue
-                peak = 0.0
-                for b in bars:
-                    if len(b) < 3:
-                        continue
-                    try:
-                        h = float(b[2])
-                    except (TypeError, ValueError):
-                        continue
-                    if h > peak:
-                        peak = h
-                if peak > 0:
-                    highs_by_ts[str(ts)] = peak
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_trade update fetch_last_ohlcv_batch failed: %s", exc)
 
@@ -353,15 +341,30 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
             pnl_pct=net_pnl,
             holding_days=holding_days,
             registry_symbols=registry_symbols,
+            # 2026-08-11: S-3 paper lines (CN + HK) are managed by the S-3
+            # rule set (same code as the backtest); pool_exit (registry
+            # membership) is a v0-manual-book rule and must NOT apply — the
+            # S-3 HK universe (vol top 500) is by design outside the user's
+            # watchlist registry.
+            exclude_pool_exit=str(t.get("source") or "") in ("S3", "S3HK"),
         )
         # S-3 trailing stop: close when price pulls back >= 8% from the
-        # post-entry peak (highs since entry; same rule as the backtest engine
-        # step 2 — backtest-strategy.md 6.6). Checked only after the fixed
-        # reasons fail, exactly like the backtest's _pick_close_reason +
-        # trailing_stop_pct combination.
+        # post-entry peak (highs SINCE entry; 2026-08-11 fixed — the old code
+        # peaked over the pre-entry lookback bars, instantly trailing out
+        # trades whose history high was before entry).
         if reason is None and pt_db.TRAILING_STOP_PCT != 0:
-            peak = highs_by_ts.get(ts)
-            if peak and peak > 0 and (close_price - peak) / peak * 100.0 <= pt_db.TRAILING_STOP_PCT:
+            peak = 0.0
+            entry = _row_str(t, "entryDate", "entry_date") or ""
+            for b in bars_by_ts_all.get(ts, []):
+                if str(b[0]) < entry:
+                    continue
+                try:
+                    h = float(b[2])
+                except (TypeError, ValueError):
+                    continue
+                if h > peak:
+                    peak = h
+            if peak > 0 and (close_price - peak) / peak * 100.0 <= pt_db.TRAILING_STOP_PCT:
                 reason = pt_db.CLOSE_REASON_TRAILING
         if reason is not None:
             try:
@@ -429,6 +432,7 @@ def _pick_close_reason(
     target_pnl_pct: float | None = None,
     max_hold_days: int | None = None,
     score_floor: float | None = None,
+    exclude_pool_exit: bool = False,
 ) -> str | None:
     """Choose the close reason for an open trade, or None to keep it open.
 
@@ -470,7 +474,7 @@ def _pick_close_reason(
     if score is not None and score < floor:
         return pt_db.CLOSE_REASON_SCORE_FLOOR
 
-    if registry_symbols is not None and str(t.get("symbol") or "") not in registry_symbols:
+    if not exclude_pool_exit and registry_symbols is not None and str(t.get("symbol") or "") not in registry_symbols:
         return pt_db.CLOSE_REASON_POOL_EXIT
 
     if holding_days >= hold:

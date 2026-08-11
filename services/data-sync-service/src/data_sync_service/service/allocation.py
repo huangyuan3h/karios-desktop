@@ -15,6 +15,7 @@ Rule R5c:
 
 from __future__ import annotations
 
+import datetime
 from typing import Any
 
 TRADABLE_REGIMES = ("Strong", "Diverging")
@@ -50,3 +51,43 @@ def resolve_weights(*, as_of_date: str | None = None) -> dict[str, Any]:
     regimes = live_regimes(as_of_date=as_of_date)
     w_cn, w_hk = weights_from_regimes(regimes["CN"], regimes["HK"])
     return {"weights": {"CN": w_cn, "HK": w_hk}, "regimes": regimes}
+
+
+# ---------------------------------------------------------------------------
+# T4: weekly persistence — Monday decision recorded, intake reads the week
+# ---------------------------------------------------------------------------
+
+
+def week_start_for(day: str) -> str:
+    """ISO Monday of the week containing `day`."""
+    d = datetime.date.fromisoformat(day)
+    return (d.fromordinal(d.toordinal() - d.weekday())).isoformat()
+
+
+def decide_week(*, week_start: str, as_of_date: str | None = None) -> dict[str, Any]:
+    """Resolve R5c weights for the week (as-of) and persist (first wins)."""
+    from data_sync_service.db.allocation import insert_week_decision
+
+    regimes = live_regimes(as_of_date=as_of_date)
+    w_cn, w_hk = weights_from_regimes(regimes["CN"], regimes["HK"])
+    row = insert_week_decision(
+        week_start=week_start,
+        cn_regime=str(regimes["CN"] or ""),
+        hk_regime=str(regimes["HK"] or ""),
+        w_cn=w_cn,
+        w_hk=w_hk,
+    )
+    return {"weekStart": week_start, "decision": row}
+
+
+def week_weights(day: str) -> dict[str, Any]:
+    """The week's persisted weights for `day`; falls back to a same-day
+    decision recorded on the spot (so intake never blocks on the Monday job).
+    """
+    from data_sync_service.db.allocation import get_week_decision
+
+    wk = week_start_for(day)
+    row = get_week_decision(wk)
+    if row is None:
+        return decide_week(week_start=wk, as_of_date=day)
+    return {"weekStart": wk, "decision": row}

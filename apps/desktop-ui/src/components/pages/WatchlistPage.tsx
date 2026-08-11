@@ -5,6 +5,7 @@ import * as React from 'react';
 import { WatchlistImportDebug, type ScreenerImportDebugState } from '@/components/watchlist/WatchlistImportDebug';
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
+import { BacktestReconCard } from '@/components/watchlist/BacktestReconCard';
 import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
 import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
 import { emptyScreenerFunnel } from '@/lib/watchlist-screener-import';
@@ -419,6 +420,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         />
 
         <PortfolioHealthCard onOpenStock={onOpenStock} />
+
+        <BacktestReconCard />
 
         <WatchlistInsightsPanel>
           <TradeStatsPanel />

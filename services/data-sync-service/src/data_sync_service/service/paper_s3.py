@@ -281,12 +281,14 @@ def _fetch_closes(ts_codes: list[str]) -> dict[str, float]:
 
 def _pyramid_adds(
     *, day: str, holds: list[dict[str, Any]], closes: dict[str, float], source: str = SOURCE_S3,
+    sleeve_scale: float = 1.0,
 ) -> int:
     """S-3 pyramiding: add a half sleeve at same-day close when the main leg
     is up >= PYRAMID_TRIGGER_PCT. Idempotent per (symbol, entry_date, side);
     at most PYRAMID_MAX_ADDS adds per symbol (counted via the 'pyramid-add'
-    marker in existing open S-3 rows)."""
-    if not PYRAMID_ENABLED or PYRAMID_MAX_ADDS <= 0:
+    marker in existing open S-3 rows). 2026-08-11 (T4): sleeve scales with
+    the week's market allocation; a 0-weight market adds no capital."""
+    if not PYRAMID_ENABLED or PYRAMID_MAX_ADDS <= 0 or sleeve_scale <= 0:
         return 0
     n = 0
     for h in holds:
@@ -319,7 +321,7 @@ def _pyramid_adds(
                 side="BUY",
                 entry_price=px,
                 why_at_entry=f"S-3 pyramid-add (main leg +{gross:.0f}%)",
-                sleeve_pct=S3_POSITION_PCT * PYRAMID_ADD_SCALE,
+                sleeve_pct=S3_POSITION_PCT * PYRAMID_ADD_SCALE * sleeve_scale,
                 source=source,
                 market=("HK" if source == SOURCE_S3_HK else "CN"),
             )
@@ -419,6 +421,18 @@ def run_intake_s3(
 
     source = SOURCE_S3_HK if market == "HK" else SOURCE_S3
     day = trade_date or today_iso()
+    # T4 (2026-08-11): shared capital pool — the week's R5c weights scale the
+    # sleeve; a 0-weight market opens no NEW positions (existing holdings keep
+    # normal exit management via paper_trading_update).
+    try:
+        from data_sync_service.service.allocation import week_weights
+
+        w_row = week_weights(day)["decision"]
+        w_market = float(w_row.get("w_hk") if market == "HK" else w_row.get("w_cn") or 0.0)
+        sleeve_scale = w_market
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 allocation weights failed (fallback 100%%): %s", exc)
+        sleeve_scale = 1.0
     summary: dict[str, Any] = {
         "tradeDate": day,
         "market": market,
@@ -429,6 +443,7 @@ def run_intake_s3(
         "swappedOut": 0,
         "skipped": 0,
         "skippedReasons": {},
+        "allocation": sleeve_scale,
     }
 
     # S-3 pyramiding first: add legs on held winners are regime-independent
@@ -437,7 +452,7 @@ def run_intake_s3(
         holds0 = _s3_open_holds(source=source)
         if holds0:
             closes0 = _fetch_closes([str(h.get("tsCode") or "") for h in holds0 if h.get("tsCode")])
-            summary["pyramidAdded"] = _pyramid_adds(day=day, holds=holds0, closes=closes0, source=source)
+            summary["pyramidAdded"] = _pyramid_adds(day=day, holds=holds0, closes=closes0, source=source, sleeve_scale=sleeve_scale)
     except Exception as exc:  # noqa: BLE001
         logger.warning("paper_s3 pyramiding failed: %s", exc)
 
@@ -478,6 +493,14 @@ def run_intake_s3(
 
     if not candidates and not swapped_cands:
         return summary
+
+    if sleeve_scale <= 0:
+        # T4: this market has no capital this week (R5c) — no NEW positions.
+        summary["skipped"] += len(candidates) + len(swapped_cands)
+        summary["skippedReasons"]["allocation-zero"] = summary["skippedReasons"].get("allocation-zero", 0) + len(candidates) + len(swapped_cands)
+        return summary
+
+    sleeve = S3_POSITION_PCT * sleeve_scale
 
     ts_codes = [c["ts_code"] for c in candidates]
     by_name = {}
@@ -520,7 +543,7 @@ def run_intake_s3(
                 entry_price=px,
                 score_at_entry=round(cand["score"], 2),
                 why_at_entry=why,
-                sleeve_pct=S3_POSITION_PCT,
+                sleeve_pct=sleeve,
                 source=source,
                 market=("HK" if source == SOURCE_S3_HK else "CN"),
             )
@@ -535,7 +558,7 @@ def run_intake_s3(
             continue
         summary["swappedIn"] += 1
         summary.setdefault("symbols", []).append(
-            {"symbol": cand["symbol"], "name": name, "score": cand["score"], "sleevePct": S3_POSITION_PCT,
+            {"symbol": cand["symbol"], "name": name, "score": cand["score"], "sleevePct": sleeve,
              "swappedIn": True}
         )
 
@@ -559,7 +582,7 @@ def run_intake_s3(
                 entry_price=px,
                 score_at_entry=round(cand["score"], 2),
                 why_at_entry=why,
-                sleeve_pct=S3_POSITION_PCT,
+                sleeve_pct=sleeve,
                 source=source,
                 market=("HK" if source == SOURCE_S3_HK else "CN"),
             )
@@ -574,6 +597,6 @@ def run_intake_s3(
             continue
         summary["inserted"] += 1
         summary.setdefault("symbols", []).append(
-            {"symbol": cand["symbol"], "name": name, "score": cand["score"], "sleevePct": S3_POSITION_PCT}
+            {"symbol": cand["symbol"], "name": name, "score": cand["score"], "sleevePct": sleeve}
         )
     return summary

@@ -35,6 +35,10 @@ def _patch_loaders():
         ),
         patch.object(paper_s3, "get_cn_sentiment", return_value={"items": []}),
         patch.object(paper_s3, "BacktestConfig", wraps=paper_s3.BacktestConfig),
+        patch(
+            "data_sync_service.service.allocation.week_weights",
+            return_value={"weekStart": "2026-08-03", "decision": {"w_cn": 1.0, "w_hk": 1.0}},
+        ),
     ):
         yield
 
@@ -379,3 +383,35 @@ def test_pyramid_disabled_by_switch() -> None:
         )
     assert n == 0
     insert.assert_not_called()
+
+
+def test_run_intake_s3_zero_allocation_skips_new_positions() -> None:
+    """T4: a 0-weight market opens no NEW positions (existing holdings keep
+    their exit management — handled by paper_trading_update, not intake)."""
+    with _patch_day_gates(), patch(
+        "data_sync_service.service.allocation.week_weights",
+        return_value={"weekStart": "2026-08-03", "decision": {"w_cn": 0.0, "w_hk": 1.0}},
+    ), patch.object(
+        paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
+    ):
+        paper_s3._load_today_scores.return_value = {CN_A: 90.0}
+        summary = paper_s3.run_intake_s3(trade_date="2026-08-07")
+    assert summary["inserted"] == 0
+    assert summary["allocation"] == 0.0
+    assert summary["skippedReasons"].get("allocation-zero") == 1
+
+
+def test_run_intake_s3_sleeve_scaled_by_allocation() -> None:
+    """T4: sleeve = 5% * week weight (here 0.4 → 2%)."""
+    with _patch_day_gates(), patch(
+        "data_sync_service.service.allocation.week_weights",
+        return_value={"weekStart": "2026-08-03", "decision": {"w_cn": 0.4, "w_hk": 1.0}},
+    ), patch.object(
+        paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
+    ), patch.object(paper_s3, "insert_paper_trade", return_value={"id": "x"}) as ins:
+        paper_s3._load_today_scores.return_value = {CN_A: 90.0}
+        summary = paper_s3.run_intake_s3(trade_date="2026-08-07")
+    assert summary["inserted"] == 1
+    assert summary["allocation"] == 0.4
+    kw = ins.call_args.kwargs
+    assert kw["sleeve_pct"] == pytest.approx(0.02)  # 0.05 * 0.4
