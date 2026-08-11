@@ -360,16 +360,20 @@ def _industry_from_trendok(row: dict[str, Any]) -> str | None:
     return None
 
 
-def record_score_snapshots(symbols: list[str]) -> tuple[str | None, int, list[dict[str, Any]]]:
+def record_score_snapshots(
+    symbols: list[str], *, realtime: bool = False,
+) -> tuple[str | None, int, list[dict[str, Any]]]:
     if not symbols:
         return None, 0, []
     # compute_trendok_for_symbols caps at 200 symbols per call; chunk so the
     # full CN screener universe (~700) and HK vol-top-N universe (500) all
     # get scored (2026-08-10: HK line was truncated to 200 — score gap).
+    # realtime=True merges live quotes into the last bar so intraday runs
+    # write scores under TODAY (asOfDate = today); EOD runs keep close prices.
     rows_out: list[dict[str, Any]] = []
     for i in range(0, len(symbols), 200):
         chunk = symbols[i : i + 200]
-        rows_out.extend(compute_trendok_for_symbols(chunk, realtime=False))
+        rows_out.extend(compute_trendok_for_symbols(chunk, realtime=realtime))
     score_rows: list[dict[str, Any]] = []
     trade_date: str | None = None
     for row in rows_out:
@@ -689,6 +693,90 @@ def _precheck(*, force: bool) -> tuple[bool, str | None]:
     return False, None
 
 
+def _score_universe_symbols() -> tuple[list[str], list[str], list[dict[str, Any]]]:
+    """CN + HK score universes shared by the EOD (17:30) and intraday passes.
+
+    Returns ``(cn_symbols, hk_symbols, registry)``. CN: registry ∪ enabled
+    api-screener universe (S-3 Universe + Pullback v3, NOT just the watchlist
+    registry — 2026-08-09 S-3 universe gap fix), minus B shares (900xxx/
+    200xxx get no score, 2026-08-10). HK: vol-top-N proxy (500) ∪ registry HK
+    symbols (2026-08-10 HK parallel line).
+    """
+    registry = list_registry()
+    symbols = [str(x.get("symbol") or "").strip() for x in registry if x.get("symbol")]
+    symbols = [s for s in symbols if s]
+    universe = list_enabled_api_screener_symbols(market="cn")
+    universe = [s for s in universe if not _is_cn_b_share(s)]
+    merged: list[str] = []
+    seen: set[str] = set()
+    for s in symbols + universe:
+        if s and s not in seen:
+            seen.add(s)
+            merged.append(s)
+    hk_symbols = list_hk_universe_symbols(500)
+    for row in registry:
+        sym = str(row.get("symbol") or "").upper()
+        if sym.startswith("HK:") and sym not in hk_symbols:
+            hk_symbols.append(sym)
+    return merged, hk_symbols, registry
+
+
+def run_intraday_scores(*, trigger: str = "scheduled", force: bool = False) -> dict[str, Any]:
+    """Intraday (trading hours) score refresh with realtime quotes merged into
+    the last bar, so the S-3 health card shows TODAY's candidates during the
+    session (2026-08-11: the EOD chain only wrote post-close, leaving the
+    intraday decision surface empty).
+
+    Scores are written under asOfDate — today when realtime quotes are
+    available (``_merge_realtime_bar`` appends a bar dated today), otherwise
+    the last bar date (harmless upsert of the previous session's values).
+    The EOD pass (17:30) overwrites the same rows with close prices, so the
+    paper intake at 17:42 still sees faithful EOD scores.
+    """
+    today = _shanghai_today_iso()
+    if not force and is_trading_day("SSE", today) is False:
+        return {"ok": False, "skipped": True, "skipReason": "not_trading_day", "tradeDate": today}
+    cn_symbols, hk_symbols, _registry = _score_universe_symbols()
+    summary: dict[str, Any] = {
+        "ok": True,
+        "tradeDate": today,
+        "trigger": trigger,
+        "realtime": True,
+    }
+    # Sync today's INTRADAY sentiment FIRST so the S-3 panic gate sees
+    # today's state (breadth can flip intraday — e.g. 2026-08-11 morning
+    # flipped to extreme_caution at ~11:00; without this the gate falls back
+    # to the previous session's row). Idempotent: skips when today exists.
+    try:
+        from data_sync_service.service.market_sentiment import sync_cn_sentiment
+
+        s = sync_cn_sentiment(date_str=today, force=False)
+        summary["sentimentSync"] = bool(s.get("ok")) if isinstance(s, dict) else False
+        summary["sentimentAsOf"] = s.get("asOfDate") if isinstance(s, dict) else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("intraday sentiment sync failed: %s", exc)
+        summary["sentimentSync"] = False
+    try:
+        cn_td, cn_count, _rows = record_score_snapshots(cn_symbols, realtime=True)
+        summary["cnScoreSnapshots"] = int(cn_count or 0)
+        if cn_td:
+            summary["tradeDate"] = cn_td
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("intraday scores CN failed: %s", exc)
+        summary["ok"] = False
+        summary["cnError"] = str(exc)
+    try:
+        hk_td, hk_count, _rows = record_score_snapshots(hk_symbols, realtime=True)
+        summary["hkScoreSnapshots"] = int(hk_count or 0)
+        if hk_td:
+            summary["tradeDate"] = summary["tradeDate"] or hk_td
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("intraday scores HK failed: %s", exc)
+        summary["ok"] = False
+        summary["hkError"] = str(exc)
+    return summary
+
+
 def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False) -> dict[str, Any]:
     trade_date = _shanghai_today_iso()
     skipped, skip_reason = _precheck(force=force)
@@ -735,26 +823,7 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
         logger.warning("watchlist automation screener sync failed: %s", exc)
         meta["screenerSync"] = {"ok": False, "error": str(exc)}
 
-    registry = list_registry()
-    symbols = [str(x.get("symbol") or "").strip() for x in registry if x.get("symbol")]
-    symbols = [s for s in symbols if s]
-    # 2026-08-09 (S-3 universe gap): score the FULL enabled api-screener
-    # universe (S-3 Universe ~683 + Pullback v3 ~46), not just the watchlist
-    # registry (~50). The backtest pool was ~750 symbols — without this the
-    # S-3 paper/live candidates come from a 1/10-size pool and the strategy
-    # can never fill its 20 slots (utilization ~15% vs ~100% in backtest).
-    universe = list_enabled_api_screener_symbols(market="cn")
-    # 2026-08-10 (B-share hygiene): TV screener snapshots mix SSE/SZSE B
-    # shares (900xxx/200xxx) into the CN pool — they get no score and must
-    # never reach the S-3 candidate path. Drop them before scoring.
-    universe = [s for s in universe if not _is_cn_b_share(s)]
-    merged: list[str] = []
-    seen: set[str] = set()
-    for s in symbols + universe:
-        if s and s not in seen:
-            seen.add(s)
-            merged.append(s)
-    symbols = merged
+    symbols, hk_symbols, registry = _score_universe_symbols()
 
     score_trade_date, score_count, trendok_rows = record_score_snapshots(symbols)
     if score_trade_date:
@@ -766,11 +835,6 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
     # daily scores; without this the HK line would be frozen at the backfill.
     hk_score_count = 0
     try:
-        hk_symbols = list_hk_universe_symbols(500)
-        for row in list_registry():
-            sym = str(row.get("symbol") or "").upper()
-            if sym.startswith("HK:") and sym not in hk_symbols:
-                hk_symbols.append(sym)
         if hk_symbols:
             hk_td, hk_count, _hk_rows = record_score_snapshots(hk_symbols)
             hk_score_count = int(hk_count or 0)

@@ -51,6 +51,15 @@ export interface PortfolioHealthResponse {
   s3CandidateTotal?: number;
   s3Rules?: Record<string, unknown>;
   holdings?: PortfolioHolding[];
+  /**
+   * 2026-08-11: latest trade_date present in watchlist_score_daily for this
+   * market (scores are written post-close at 17:30, plus intraday realtime
+   * passes at 10:30 / 14:00). When < tradeDate, "no candidates" means
+   * "scores not computed yet", NOT a real gate decision.
+   */
+  scoreDataAsOfDate?: string | null;
+  /** True when scoreDataAsOfDate === tradeDate (scores are as-of today). */
+  scoreFresh?: boolean;
   /** 2026-08-10 HK parallel line — HK strategy-line block (null when not requested). */
   hkHealth?: PortfolioHealthResponse | null;
 }

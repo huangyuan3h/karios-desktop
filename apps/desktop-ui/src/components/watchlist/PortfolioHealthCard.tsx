@@ -183,6 +183,14 @@ function HealthPanel({
             恐慌冷却至 {block.panicCooldown.cooldownEndDate}
           </span>
         ) : null}
+        {block && block.scoreFresh === false ? (
+          <span
+            className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300"
+            title="分数由收盘任务 17:30（及盘中 10:30 / 14:00 实时价任务）写入"
+          >
+            分数截至 {block.scoreDataAsOfDate ?? '—'}
+          </span>
+        ) : null}
         <span className="text-[var(--k-muted)]">
           S-3 候选：{block ? (block.s3Candidates?.length ?? 0) : '…'} 只
         </span>
@@ -206,7 +214,9 @@ function HealthPanel({
         <div className="text-[11px] text-[var(--k-muted)]">
           {block.regime === 'Weak'
             ? '今日无开仓候选（regime=Weak：S-3 规定空仓观望）'
-            : '今日无开仓候选（score≥65 · RS 前 50% · 无恐慌冷却）'}
+            : block.scoreFresh === false
+              ? `分数未更新（截至 ${block.scoreDataAsOfDate ?? '—'}）· 盘中暂无候选（收盘任务 17:30 更新当日分数）`
+              : '今日无开仓候选（score≥65 · RS 前 50% · 无恐慌冷却）'}
         </div>
       ) : null}
     </div>

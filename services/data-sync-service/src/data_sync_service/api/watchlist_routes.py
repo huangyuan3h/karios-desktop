@@ -15,6 +15,7 @@ from data_sync_service.service.watchlist_automation import (
     get_automation_run,
     get_automation_runs,
     list_fallback_universe_symbols,
+    run_intraday_scores,
     run_watchlist_automation,
 )
 from data_sync_service.service.watchlist_funnel_health import check_funnel_health
@@ -220,6 +221,18 @@ def watchlist_automation_runs(limit: int = Query(10, ge=1, le=30)) -> dict:
 def watchlist_automation_run(force: bool = Query(False)) -> dict:
     try:
         return run_watchlist_automation(trigger="manual", force=force)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/watchlist/automation/intraday-scores")
+def watchlist_automation_intraday_scores(force: bool = Query(False)) -> dict:
+    """2026-08-11: realtime (trading-hours) score refresh for the CN + HK
+    universes — makes the intraday S-3 candidate surface live. Runs on-demand
+    here; the scheduler fires it at 10:30 / 14:00 Asia/Shanghai on weekdays.
+    """
+    try:
+        return run_intraday_scores(trigger="manual", force=force)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

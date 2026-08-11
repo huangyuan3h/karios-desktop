@@ -54,6 +54,22 @@
 （此前每 2-3 分钟 hk_basic_sync/TU_SHARE_API_KEY 失败）；HK 数据健康全绿。**今晚 17:42/17:45 是
 T5 最终验证**（CN allocation-zero 跳过 + HK 正常买入 + 20 只 S3HK 保持 open）。
 
+### 2026-08-11 稳定性自动化：uvicorn launchd 托管 + paper 链 watchdog + alpha_radar 修复
+
+**uvicorn launchd 托管**：`~/Library/LaunchAgents/com.karios.uvicorn.plist`（KeepAlive 失败自动拉起 +
+ThrottleInterval 10s + 日志 ~/.karios/logs/uvicorn.log）——根治"手动 nohup 裸跑 → 进程漂移 → cron
+缺失 → paper 漂移"事故链（今日 smoke 事故的根源背景）。
+
+**paper 链 watchdog**：`scripts/paper_chain_watchdog.py` + `com.karios.paper-chain.plist`（周一至五
+18:05 北京）——自检 17:30 watchlist_automation / 17:42 paper_s3_intake(CN+HK) / 17:45 update 是否
+跑过；缺哪个且当日 close_sync 成功就自动补跑（score 新鲜度是 paper≈回测的执行底座；8-05~8-07
+缺口 = score 时效衰减 → 8-10 补跑买漂移票的根因）。
+
+**alpha_radar 修复（断供 5 天）**：`alpha_radar_pipeline_job` 是 12h 间隔触发 + cooldown 默认 12h
+→ 每次触发必撞 cooldown 被静默跳过（lastRunAt 停在 08-06，ingest/process 在跑但无新料）；
+修复 = `DEFAULT_COOLDOWN_HOURS 12→6` + fetch job 落 sync_job_record（成功/跳过/失败都可观测）。
+手动跑通：2026-08-11 抓取 1 主题（全球铜供给挤压，catalystGrade A）✓
+
 ### 2026-08-09 重大修复：S-3 候选池 universe 恢复（收益最高项）
 
 **发现**：score universe 从 2026-06-18 起（paper intake 上线同日）从 TV 大池（749 票/天）缩到

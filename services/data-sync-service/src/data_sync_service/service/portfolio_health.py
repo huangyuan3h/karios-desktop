@@ -221,6 +221,34 @@ def _build_holdings_block(market: str, day: str) -> list[dict[str, Any]]:
     return holdings
 
 
+def _score_data_as_of(*, market: str, day: str) -> str | None:
+    """Latest ``watchlist_score_daily`` trade_date for ``market`` (<= ``day``).
+
+    Scores are written by the EOD watchlist automation (17:30) — and since
+    2026-08-11 also by the intraday realtime pass (10:30 / 14:00). During
+    trading hours before the first intraday run, the latest score date is the
+    previous session, which the frontend must distinguish from "no candidates".
+    """
+    from data_sync_service.db import get_connection
+
+    prefix = f"{market}:"
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT MAX(trade_date) FROM watchlist_score_daily
+                    WHERE trade_date <= %s AND symbol LIKE %s
+                    """,
+                    (day, f"{prefix}%"),
+                )
+                row = cur.fetchone()
+        return str(row[0]) if row and row[0] else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health score as-of lookup failed: %s", exc)
+        return None
+
+
 def _health_block(*, market: str, day: str) -> dict[str, Any]:
     """One market's S-3 health block (CN = current live system, HK = parallel line).
 
@@ -327,11 +355,14 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("portfolio health strength failed: %s", exc)
 
+    score_as_of = _score_data_as_of(market=market, day=day)
     return {
         "regime": regime,
         "strength": strength,
         "sentiment": sentiment,
         "panicCooldown": panic,
+        "scoreDataAsOfDate": score_as_of,
+        "scoreFresh": score_as_of == day,
         "s3Candidates": candidates,
         "s3CandidateTotal": candidate_total,
         "s3Rules": rules,

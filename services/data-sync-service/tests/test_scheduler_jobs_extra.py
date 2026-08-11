@@ -100,14 +100,15 @@ class TestCreateScheduler:
             "etf_daily_full_sync", "daily_full_sync", "adj_factor_full_sync", "close_sync",
             "close_sync_catchup", "news_fetch_job", "alpha_radar_ingest_job",
             "alpha_radar_process_job", "alpha_radar_pipeline_job", "index_daily_full_sync",
-            "macro_daily_full_sync", "watchlist_automation", "watchlist_funnel_health",
+            "macro_daily_full_sync", "watchlist_automation", "intraday_score",
+            "watchlist_funnel_health",
             "eastmoney_industry_sync",
             "hk_industry_sync", "index_basic_sync", "cn_industry_post_close_sync",
             "paper_trading_intake", "paper_trading_update", "paper_s3_intake", "allocation_decide", "backtest_paper_recon",
             "tv_screener_capture_am",
             "tv_screener_capture_pm", "news_enrich_job", "research_report_sync",
             "decision_snapshot", "decision_outcome", "decision_action_tracking",
-            "morning_brief_am", "morning_brief_pm",
+            "morning_brief_am", "morning_brief_pm", "eod_chain_startup_catchup",
         }
         assert ids == expected
 
@@ -121,7 +122,13 @@ class TestCreateScheduler:
 
         monkeypatch.setattr(scheduler_pkg, "BackgroundScheduler", FakeScheduler)
         sched = scheduler_pkg.create_scheduler()
-        for _func, trigger, _jid, _replace in sched.jobs:
+        for _func, trigger, jid, _replace in sched.jobs:
+            if jid == "eod_chain_startup_catchup":
+                # One-shot restart catch-up (DateTrigger), not a cron/interval.
+                from apscheduler.triggers.date import DateTrigger
+
+                assert isinstance(trigger, DateTrigger)
+                continue
             assert isinstance(trigger, (CronTrigger, IntervalTrigger))
 
 
@@ -617,3 +624,80 @@ class TestAlphaRadarJobs:
         from data_sync_service.scheduler import alpha_radar_fetch_job
 
         assert isinstance(alpha_radar_fetch_job.build_trigger(), IntervalTrigger)
+
+
+# ---------------------------------------------------------------------------
+# EOD-chain restart catch-up (2026-08-11: in-memory job store silently drops
+# cron fires missed during a restart — 2026-08-10 17:30/18:15 both skipped).
+# ---------------------------------------------------------------------------
+
+
+def _monkey_cst(monkeypatch, h: int, m: int) -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr(
+        scheduler_pkg,
+        "_cst_now",
+        lambda: datetime(2026, 8, 10, h, m, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+
+def _patch_today_runs(monkeypatch, *, close_ok=True, ran: set[str] | None = None) -> None:
+    from data_sync_service.db import sync_job_record as sjr
+
+    ran = ran or set()
+
+    def fake_today_run(job_type: str) -> dict | None:
+        if job_type == "stock_close_sync":
+            return {"success": close_ok} if close_ok else None
+        return {"success": True} if job_type in ran else None
+
+    monkeypatch.setattr(sjr, "get_today_run", fake_today_run)
+
+
+def test_catchup_reruns_missing_eod_chain(monkeypatch) -> None:
+    """17:40 evening restart with close_sync done but no EOD steps recorded →
+    watchlist_automation re-runs; paper_s3_intake waits for its slot guard
+    (17:45) and the fresh watchlist record."""
+    _monkey_cst(monkeypatch, 17, 40)
+    _patch_today_runs(monkeypatch)
+    calls: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0}
+    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: calls.__setitem__("wa", calls["wa"] + 1))
+    monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: calls.__setitem__("s3", calls["s3"] + 1))
+    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: calls.__setitem__("cn", calls["cn"] + 1))
+    scheduler_pkg.catchup_missed_eod_chain()
+    assert calls == {"wa": 1, "s3": 0, "cn": 0}  # s3 guard (17:45) + cn guard (18:25) not reached
+
+
+def test_catchup_respects_already_run_and_slots(monkeypatch) -> None:
+    """Steps with a today-record are not re-run; s3 runs once past 17:45 with
+    a watchlist record; the 18:15 step runs once past its slot; before the
+    17:30 slot nothing runs."""
+    _monkey_cst(monkeypatch, 18, 30)
+    _patch_today_runs(monkeypatch, ran={"watchlist_automation"})
+    calls: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0}
+    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: calls.__setitem__("wa", calls["wa"] + 1))
+    monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: calls.__setitem__("s3", calls["s3"] + 1))
+    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: calls.__setitem__("cn", calls["cn"] + 1))
+    scheduler_pkg.catchup_missed_eod_chain()
+    assert calls == {"wa": 0, "s3": 1, "cn": 1}
+
+    _monkey_cst(monkeypatch, 17, 20)
+    calls2: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0}
+    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: calls2.__setitem__("wa", calls2["wa"] + 1))
+    monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: calls2.__setitem__("s3", calls2["s3"] + 1))
+    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: calls2.__setitem__("cn", calls2["cn"] + 1))
+    scheduler_pkg.catchup_missed_eod_chain()
+    assert calls2 == {"wa": 0, "s3": 0, "cn": 0}
+
+
+def test_catchup_skips_without_close_sync_or_on_weekend(monkeypatch) -> None:
+    _monkey_cst(monkeypatch, 18, 30)
+    _patch_today_runs(monkeypatch, close_ok=False)
+    ran: list[str] = []
+    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: ran.append("wa"))
+    monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: ran.append("s3"))
+    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: ran.append("cn"))
+    scheduler_pkg.catchup_missed_eod_chain()
+    assert ran == []

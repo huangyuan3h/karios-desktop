@@ -107,6 +107,43 @@ def test_build_s3_candidates_blocks_low_rs() -> None:
         assert paper_s3.build_s3_candidates(trade_date="2026-08-07") == []
 
 
+def test_build_s3_candidates_rs_fallback_intraday() -> None:
+    """Intraday (before 17:10 close_sync): today's daily bars are absent so
+    the RS percentile falls back to the latest available RS day (previous
+    session's close) — the intraday S-3 surface must not be empty. The EOD
+    chain re-evaluates with today's close."""
+    day = "2026-08-07"
+    prev = "2026-08-06"
+
+    def fake_rs(cfg, cal, universe):
+        if cfg.end_date == day:
+            return {}  # no daily rows for today yet (intraday)
+        assert cfg.end_date == prev
+        return {prev: {ts: 0.75 for ts in universe}}
+
+    with (
+        _patch_day_gates(),
+        patch.object(paper_s3, "_load_rs_ranks", side_effect=fake_rs),
+        patch.object(paper_s3, "_latest_daily_date_before", return_value=prev),
+    ):
+        paper_s3._load_today_scores.return_value = {CN_A: 90.0}
+        out = paper_s3.build_s3_candidates(trade_date=day)
+    assert [c["symbol"] for c in out] == [CN_A]
+    assert out[0]["rs"] == 0.75
+
+
+def test_build_s3_candidates_rs_fallback_missing_blocks() -> None:
+    """No RS for today AND no fallback day available → stay fail-closed."""
+    day = "2026-08-07"
+    with (
+        _patch_day_gates(),
+        patch.object(paper_s3, "_load_rs_ranks", return_value={}),
+        patch.object(paper_s3, "_latest_daily_date_before", return_value=None),
+    ):
+        paper_s3._load_today_scores.return_value = {CN_A: 90.0}
+        assert paper_s3.build_s3_candidates(trade_date=day) == []
+
+
 def test_build_s3_candidates_blocks_panic_cooldown() -> None:
     with _patch_day_gates():
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}

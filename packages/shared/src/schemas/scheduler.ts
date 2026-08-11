@@ -361,6 +361,18 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     10,
   ),
   meta(
+    'intraday_score',
+    'watchlistAutomation',
+    '盘中分数刷新（实时价）',
+    '交易日 10:30 / 14:00 用实时行情合并最后一根 K 线重算 score_daily（落当日 trade_date），让盘中 S-3 体检立即出候选；17:30 收盘任务会用收盘价覆盖同一批行。',
+    '工作日 10:30 / 14:00',
+    '30 10,14 * * 1-5',
+    'cron',
+    true,
+    5,
+    { endpoint: '/watchlist/automation/intraday-scores', method: 'POST', label: '立即刷新' },
+  ),
+  meta(
     'watchlist_funnel_health',
     'watchlistAutomation',
     '漏斗健康检查',

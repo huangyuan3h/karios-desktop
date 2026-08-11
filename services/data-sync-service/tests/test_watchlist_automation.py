@@ -874,6 +874,39 @@ def test_run_watchlist_automation_industry_sync_failure_is_meta(monkeypatch) -> 
     assert out["meta"]["industrySync"] == {"ok": False, "error": "boom"}
     assert out["meta"]["screenerSync"]["ok"] is True
 
+
+def test_run_intraday_scores_realtime_refresh(monkeypatch) -> None:
+    """2026-08-11: intraday pass must score the CN + HK universes with
+    realtime=True (merges live quotes into the last bar → today's trade_date)
+    and stay separate from the EOD run."""
+    import data_sync_service.service.market_sentiment as ms
+
+    calls: list[tuple[list[str], bool]] = []
+
+    def fake_record(symbols, *, realtime):
+        calls.append((symbols, realtime))
+        return ("2026-08-11", len(symbols), [])
+
+    monkeypatch.setattr(ms, "sync_cn_sentiment", lambda **kw: {"ok": True, "asOfDate": "2026-08-11"})
+    monkeypatch.setattr(wa, "is_trading_day", lambda *a, **k: True)
+    monkeypatch.setattr(wa, "_score_universe_symbols", lambda: (["CN:600001"], ["HK:00700"], []))
+    monkeypatch.setattr(wa, "record_score_snapshots", fake_record)
+    out = wa.run_intraday_scores(trigger="manual")
+    assert out["ok"] is True
+    assert out["tradeDate"] == "2026-08-11"
+    assert out["realtime"] is True
+    assert out["sentimentSync"] is True
+    assert calls == [(["CN:600001"], True), (["HK:00700"], True)]
+    assert out["cnScoreSnapshots"] == 1
+    assert out["hkScoreSnapshots"] == 1
+
+
+def test_run_intraday_scores_skips_non_trading_day(monkeypatch) -> None:
+    monkeypatch.setattr(wa, "is_trading_day", lambda *a, **k: False)
+    out = wa.run_intraday_scores(trigger="scheduled")
+    assert out["skipped"] is True
+    assert out["skipReason"] == "not_trading_day"
+
 def test_compute_rs_ranks_returns_percentiles(monkeypatch) -> None:
     """compute_rs_ranks maps symbols -> whole-market RS percentiles."""
 

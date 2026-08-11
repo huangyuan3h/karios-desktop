@@ -95,6 +95,21 @@ describe('PortfolioHealthCard', () => {
     expect(await screen.findByText(/持仓体检暂不可用/)).toBeDefined();
   });
 
+  it('distinguishes stale scores from a real no-candidate decision', async () => {
+    fetchPortfolioHealth.mockResolvedValue({
+      tradeDate: '2026-08-11',
+      regime: 'Strong',
+      s3Candidates: [],
+      scoreDataAsOfDate: '2026-08-10',
+      scoreFresh: false,
+      holdings: [],
+      hkHealth: null,
+    });
+    renderCard();
+    expect(await screen.findByText(/分数未更新（截至 2026-08-10）/)).toBeDefined();
+    expect(screen.getByText(/分数截至 2026-08-10/)).toBeDefined();
+  });
+
   it('collapses candidates to the top-5 buy list with backtest size + expand toggle', async () => {
     const mk = (n: string, s: number) => ({ symbol: `HK:${s}`, name: n, score: s, rs: 0.8 });
     fetchPortfolioHealth.mockResolvedValue({

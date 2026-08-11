@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import logging
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
+
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-not-found]
+from apscheduler.triggers.date import DateTrigger
 
 from data_sync_service.scheduler import (
     adj_factor_job,
@@ -25,6 +30,7 @@ from data_sync_service.scheduler import (
     hk_industry_job,
     index_basic_job,
     index_daily_job,
+    intraday_score_job,
     macro_daily_job,
     morning_brief_job,
     news_enrich_job,
@@ -152,6 +158,12 @@ def create_scheduler() -> BackgroundScheduler:
         replace_existing=True,
     )
     scheduler.add_job(
+        intraday_score_job.run,
+        intraday_score_job.build_trigger(),
+        id=intraday_score_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
         funnel_health_job.run,
         funnel_health_job.build_trigger(),
         id=funnel_health_job.JOB_ID,
@@ -273,4 +285,66 @@ def create_scheduler() -> BackgroundScheduler:
         id=morning_brief_job.JOB_ID_PM,
         replace_existing=True,
     )
+    # EOD-chain restart catch-up: a few seconds after startup, re-run any
+    # close-time step the restart skipped (see catchup_missed_eod_chain).
+    scheduler.add_job(
+        catchup_missed_eod_chain,
+        DateTrigger(run_date=datetime.now(tz=UTC) + timedelta(seconds=3)),
+        id="eod_chain_startup_catchup",
+        replace_existing=True,
+    )
     return scheduler
+
+
+def _cst_now() -> datetime:
+    return datetime.now(tz=ZoneInfo("Asia/Shanghai"))
+
+
+def catchup_missed_eod_chain() -> None:
+    """Re-run today's EOD chain steps missed by a backend restart.
+
+    The in-process APScheduler keeps jobs in an in-memory job store: when the
+    process restarts AFTER a cron fire time, ``add_job`` schedules the NEXT
+    occurrence and the missed run is silently dropped (misfire_grace_time
+    only applies to jobs already in the store). A dev restart around the
+    close-time window therefore loses the whole chain — 2026-08-10: 17:30
+    watchlist_automation and 18:15 cn_industry_post_close_sync both skipped
+    while close_sync (17:10) and hk_daily_full (17:51) fired fine.
+
+    Fired once, ~3s after startup. Each step is guarded by its own
+    ``sync_job_record`` today-row, so the normal scheduled path is untouched.
+    Time-of-day guards sit AFTER each cron slot to avoid racing a fire that
+    is about to happen (or just happened) normally.
+    """
+    logger = logging.getLogger(__name__)
+    from data_sync_service.db.sync_job_record import get_today_run
+
+    now = _cst_now()
+    if now.weekday() >= 5:
+        return
+    close_ok = bool((get_today_run("stock_close_sync") or {}).get("success"))
+    if not close_ok:
+        return
+
+    def already(job_type: str) -> bool:
+        return get_today_run(job_type) is not None
+
+    # watchlist_automation cron: 17:30 — catch up only after its slot
+    # (17:35 avoids racing the normal 17:30 fire when started just before).
+    if (now.hour, now.minute) >= (17, 35) and not already("watchlist_automation"):
+        logger.info("eod chain catchup: watchlist_automation missed (restart) — re-running")
+        watchlist_automation_job.run()
+    # paper_s3_intake cron: 17:42 — needs today's scores from the step above;
+    # 17:45 avoids racing the normal 17:42 fire. Idempotent re-runs are safe
+    # (per-symbol/day dedupe) even in the 17:42-17:45 double-run window.
+    if (
+        (now.hour, now.minute) >= (17, 45)
+        and already("watchlist_automation")
+        and not already("paper_s3_intake_CN")
+    ):
+        logger.info("eod chain catchup: paper_s3_intake missed (restart) — re-running")
+        paper_s3_intake_job.run()
+    # cn_industry_post_close_sync cron: 18:15 — 18:25 avoids the race.
+    if (now.hour, now.minute) >= (18, 25) and not already("cn_industry_post_close_sync"):
+        logger.info("eod chain catchup: cn_industry_post_close_sync missed (restart) — re-running")
+        cn_industry_post_close_job.run()

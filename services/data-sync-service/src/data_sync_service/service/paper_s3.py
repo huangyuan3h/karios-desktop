@@ -118,6 +118,29 @@ def _load_today_scores(trade_date: str, market: str = "CN") -> dict[str, float]:
     return out
 
 
+def _latest_daily_date_before(day: str) -> str | None:
+    """Latest trade_date in ``daily`` strictly before ``day``.
+
+    Intraday (before 17:10 close_sync) today's bars do not exist yet, so
+    scores/RS computed from the DB are as-of the previous session. Used as
+    the RS fallback so the intraday candidate surface is not empty.
+    """
+    from data_sync_service.db import get_connection
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT MAX(trade_date) FROM daily WHERE trade_date < %s",
+                    (day,),
+                )
+                row = cur.fetchone()
+        return str(row[0]) if row and row[0] else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 latest daily date lookup failed: %s", exc)
+        return None
+
+
 def _open_paper_symbols() -> set[str]:
     """Symbols with an open paper trade (any source) — never double-book."""
     from data_sync_service.db.paper_trading import list_paper_trades
@@ -189,7 +212,29 @@ def build_s3_candidates(
     if not resolved:
         return []
     rs_by_sym = _load_rs_ranks(cfg, [day], set(resolved.values()))
-    rs_by_day = rs_by_sym.get(day, {})
+    rs_by_day = rs_by_sym.get(day)
+    if not rs_by_day:
+        # Intraday: today's daily bars are not synced yet (close_sync 17:10),
+        # so the RS percentile for today is absent. Fall back to the latest
+        # available RS day (previous session's close) so the intraday S-3
+        # surface works during trading hours. The EOD chain (17:30 scores +
+        # 17:42 paper intake) re-evaluates with today's close; this fallback
+        # only affects the intraday decision surface.
+        prev = _latest_daily_date_before(day)
+        if prev:
+            cfg_prev = BacktestConfig(
+                start_date=prev,
+                end_date=prev,
+                market=market,
+                score_threshold=S3_SCORE_THRESHOLD,
+                gates="regime" if is_hk else "full",
+                rs_rank_min=S3_RS_MIN,
+                diverging_scale=1.0,
+            )
+            prev_rs = _load_rs_ranks(cfg_prev, [prev], set(resolved.values())).get(prev)
+            if prev_rs:
+                rs_by_day = prev_rs
+        rs_by_day = rs_by_day or {}
 
     held = _live_held_symbols()
     open_paper = _open_paper_symbols()

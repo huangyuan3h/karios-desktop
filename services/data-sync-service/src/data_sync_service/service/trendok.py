@@ -31,7 +31,10 @@ from data_sync_service.db.stoploss import (
 from data_sync_service.db.top_inst import fetch_daily_seats_batch, fetch_summaries_for_codes
 from data_sync_service.service.industry_fund_flow_read import build_trendok_flow_context_from_rows
 from data_sync_service.service.market_regime import get_market_regime
-from data_sync_service.service.realtime_quote import fetch_realtime_quotes
+from data_sync_service.service.realtime_quote import (
+    fetch_realtime_quotes,
+    fetch_realtime_quotes_batched,
+)
 from data_sync_service.service.top_inst_flow import build_inst_flow_payload
 from data_sync_service.service.trade_calendar_utils import trade_dates_upto
 
@@ -1017,9 +1020,15 @@ def compute_trendok_for_symbols(
     bars_by_code = fetch_last_ohlcv_batch(ts_codes, days=120)
     rt_vwap_by_code: dict[str, float] = {}
     if realtime and ts_codes:
-        q = fetch_realtime_quotes(ts_codes)
-        items = q.get("items") if isinstance(q, dict) else None
-        if q.get("ok") and isinstance(items, list):
+        # >50 codes: tushare realtime_quote is fetched in parallel 50-code
+        # batches (single-call batch limits); smaller sets keep the direct
+        # path (HK Sina is one batched call either way).
+        if len(ts_codes) > 50:
+            items = fetch_realtime_quotes_batched(ts_codes, batch_size=50, max_workers=4)
+        else:
+            q = fetch_realtime_quotes(ts_codes)
+            items = q.get("items") if isinstance(q, dict) else None
+        if items:
             by_code = {str(x.get("ts_code")): x for x in items if x and x.get("ts_code")}
             for code, bars in list(bars_by_code.items()):
                 qt = by_code.get(code)

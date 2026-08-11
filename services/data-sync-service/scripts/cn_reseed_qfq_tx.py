@@ -70,7 +70,13 @@ def _ts_code_to_tx(ts_code: str) -> str | None:
 
 def _fetch_kline_page(symbol: str, start: str, end: str, count: int) -> list[list[Any]]:
     import json
+    import urllib.request
     from urllib.error import HTTPError
+
+    # macOS Python reads the SYSTEM proxy (ClashX 127.0.0.1:7890) via
+    # _scproxy regardless of env — its flaky node hangs requests. Force
+    # direct connections for the Tencent kline host.
+    direct_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     last_err: Exception | None = None
     for endpoint in _KLINE_ENDPOINTS:
@@ -84,7 +90,7 @@ def _fetch_kline_page(symbol: str, start: str, end: str, count: int) -> list[lis
                         "Referer": "https://gu.qq.com/",
                     },
                 )
-                with urlopen(req, timeout=20) as resp:
+                with direct_opener.open(req, timeout=20) as resp:
                     payload = resp.read().decode("utf-8")
                 data = json.loads(payload)
                 node = (data.get("data") or {}).get(symbol) or {}
@@ -255,6 +261,7 @@ def main() -> int:
     print(f"tickers to reseed: {len(tickers)} since {since}")
 
     total_rows = 0
+    stats_done = 0
     failed: list[tuple[str, str]] = []
     empty: list[str] = []
     t0 = time.time()
@@ -268,13 +275,14 @@ def main() -> int:
             empty.append(ts_code)
             continue
         if already_qfq(ts_code, rows):
-            continue  # idempotent skip — already reseeded (e.g., earlier partial run)
-        updated = upsert_ohlcv(rows)
-        total_rows += updated
+            stats_done += 1
+        else:
+            updated = upsert_ohlcv(rows)
+            total_rows += updated
         if i % _PROGRESS_EVERY == 0:
             print(
                 f"progress {i}/{len(tickers)} updated={total_rows} "
-                f"failed={len(failed)} elapsed={time.time() - t0:.0f}s",
+                f"done_before={stats_done} failed={len(failed)} elapsed={time.time() - t0:.0f}s",
                 flush=True,
             )
         if _DELAY_S > 0 and i < len(tickers):
