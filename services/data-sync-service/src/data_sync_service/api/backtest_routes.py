@@ -32,6 +32,70 @@ router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
 LATEST_REPORT = Path(__file__).resolve().parents[3] / "data" / "backtest_reports" / "latest.json"
 
+REPORTS_DIR = Path(__file__).resolve().parents[3] / "data" / "backtest_reports"
+
+# Frozen long-window (2021-08~2026-08, full-market universe, drawdown circuit
+# on) result — decided 2026-08-12; source of truth: strategy-params.md §1.
+LONG_WINDOW_CN = {
+    "window": "2021-08-01 ~ 2026-08-11",
+    "totalNetPnlPct": 250.8,
+    "maxDrawdownPct": 40.9,
+    "sharpe": 2.65,
+    "trades": 1401,
+    "byYear": {
+        "2021": 341.0, "2022": 93.0, "2023": -263.0,
+        "2024": 606.0, "2025": 956.0, "2026": 1325.0,
+    },
+}
+
+
+@router.get("/overview")
+def backtest_overview() -> dict[str, Any]:
+    """S-3 conclusion board (2026-08-12): frozen baselines + rolling OOS +
+    long-window — the source-of-truth view the BacktestPage displays.
+
+    Reads the walk-forward baseline JSONs + rolling OOS snapshot; long-window
+    numbers are the 2026-08-12 decided constants (CN line only).
+    """
+
+    def _load(name: str) -> dict[str, Any] | None:
+        p = REPORTS_DIR / name
+        if not p.exists():
+            return None
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    def _baseline(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not raw:
+            return None
+        windows = {}
+        for name, w in (raw.get("results") or {}).items():
+            if not isinstance(w, dict):
+                continue
+            windows[name] = {
+                "totalNetPnlPct": w.get("totalNetPnlPct"),
+                "winRate": w.get("winRate"),
+                "sharpe": w.get("sharpe"),
+                "trades": w.get("trades"),
+                "maxDrawdownPct": w.get("maxDrawdownPct"),
+            }
+        return {
+            "generatedAt": raw.get("generatedAt"),
+            "tag": raw.get("tag"),
+            "windows": windows,
+        }
+
+    rolling = _load("rolling_oos_latest.json")
+    return {
+        "ok": True,
+        "cnBaseline": _baseline(_load("walk_forward_baseline.json")),
+        "hkBaseline": _baseline(_load("walk_forward_hk_baseline.json")),
+        "rollingOos": rolling,
+        "longWindowCN": LONG_WINDOW_CN,
+    }
+
 
 def _validate_window(start: str, end: str) -> None:
     if not start or not end:

@@ -45,3 +45,15 @@ body {
   background: var(--k-bg);
   color: var(--k-text);
 }
+
+/* Notification hub anchor flash (2026-08-12): temporary highlight after
+   scrolling to the watchlist block. */
+.health-flash {
+  animation: health-flash 1.6s ease-out;
+  border-radius: 0.5rem;
+}
+
+@keyframes health-flash {
+  0% { box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.55); }
+  100% { box-shadow: 0 0 0 3px rgba(129, 140, 248, 0); }
+}

@@ -38,11 +38,9 @@ from data_sync_service.service.macro_daily import sync_macro_daily_full
 from data_sync_service.service.macro_snapshot import build_macro_snapshot
 from data_sync_service.service.market_environment_zh import format_market_environment_zh
 from data_sync_service.service.market_regime import (
-    _is_shanghai_sync_window,
     get_index_signals,
 )
 from data_sync_service.service.market_sentiment import (
-    apply_breadth_panic_index_signals,
     apply_breadth_panic_sentiment_items,
     sync_cn_sentiment,
 )
@@ -103,7 +101,9 @@ def _build_market_sentiment_bundle(
     if index_signals is None:
         index_as_of = None if use_realtime_index else as_of_date
         index_signals = get_index_signals(as_of_date=index_as_of, include_breadth=False)
-    index_signals = apply_breadth_panic_index_signals(index_signals, down_count)
+    # 2026-08-12: 不再对闸门信号做 breadth-panic 改色——回测口径里 panic 只通过
+    # sentiment 闸（risk_mode=extreme_caution）拦截，红绿灯本身保持日终交通灯原色；
+    # execution_gate 侧仍有 BREADTH_PANIC 硬闸兜底，防御不变、口径对齐回测。
     etf_fund_flow = build_etf_fund_flow_bundle(as_of_date=as_of_date)
     etf_flow_signal = build_etf_flow_signal(as_of_date=as_of_date)
     srv_index = compute_srv_index(
@@ -244,14 +244,11 @@ def dashboard_summary(
                 as_of = prev.isoformat()
         except ValueError:
             pass
-    in_sync_window = _is_shanghai_sync_window()
-    use_realtime_index = as_of == shanghai_today_iso() and in_sync_window
-
-    if use_realtime_index:
-        shared_index_signals = get_index_signals(as_of_date=None, include_breadth=False)
-        sentiment_signals_in = shared_index_signals
-        macro_signals_in = shared_index_signals
-    elif include_sentiment or include_macro:
+    # 2026-08-12: 闸门/红绿灯与回测口径统一——一律用日终 as-of 信号
+    # （回测引擎 _load_regime_by_day 只用日终数据；盘中实时信号会把
+    # 日终仍绿、盘中波动的进攻日误判为 Weak，导致实盘闸门偏离回测）。
+    use_realtime_index = False
+    if include_sentiment or include_macro:
         shared_index_signals = get_index_signals(as_of_date=as_of, include_breadth=False)
         sentiment_signals_in = shared_index_signals
         macro_signals_in = shared_index_signals
@@ -316,8 +313,9 @@ def dashboard_summary(
         "marketEnvironmentZh": market_env_zh,
         "macroSnapshot": macro_snapshot,
         "meta": {
-            "inSyncWindow": in_sync_window,
-            "useRealtimeIndex": use_realtime_index,
+            # 2026-08-12: 与回测口径统一后恒为 False（不再使用盘中实时信号）。
+            "inSyncWindow": False,
+            "useRealtimeIndex": False,
             "marketStatus": market_status,
         },
     }

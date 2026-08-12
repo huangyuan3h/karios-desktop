@@ -1902,3 +1902,173 @@ SidebarNav 新增「回测」入口。三区块：
   破坏（`(\w)""\)` 误伤正常代码）→ 教训：**文本批量替换必须有语法/编译验证门**
 - ❌ `_fallback_from_sync_at` 用真实今天而非参数 today（重构引入，被既有测试抓住）
 - ❌ caplog 断言需 `caplog.set_level(logging.INFO)`（默认只捕 WARNING+）
+
+### OPT-075：健壮性审查遗留项（2026-08-12 登记 · 未处理）
+
+**状态**：[ ]
+**背景**：OPT-074 修复后仍保留的 LOW/MEDIUM 项，不影响稳定性，属性能与恢复效率类。
+
+1. **`/sync/close` 并发锁**（原 M10）：全市场多日同步跑在 HTTP 请求里且无 in-process 锁，
+   两个并发请求会重复拉同一批数据互相撞 tushare 限流。方案：sync 函数外 `threading.Lock`
+   去重，或请求内只入队立即返回。
+2. **tushare 统一重试**（原 M7）：15 个 tushare 调用点中仅 close_sync 有 `_with_retry`；
+   index_daily/hk_daily/adj_factor 等单次限流即整个 job 失败。方案：抽公共 `retry.py`，
+   `_with_retry` 四份实现（market_sentiment/etf_fund_flow/industry_fund_flow/top_inst_flow）
+   合并去重，参数统一（tries/base_delay）。
+3. **chat 流式 localStorage 写放大**（前端 #13）：每 chunk 全量序列化整个会话（含附件 dataURL）。
+   方案：流式期间内存态 + 结束时落盘，或防抖持久化。
+4. 零星 LOW：`alpha_radar_process` urlopen 180s 单文档阻塞（batch 路径已有时限）；
+   stock_basic 查询失败零日志；`health_routes.py:162` except:pass；`_rs_rank_cache` 读取
+   在锁外（GIL 安全但可顺带收敛）。
+
+### OPT-076：执行闸与回测闸门口径统一（2026-08-12 · 红绿灯改日终 + Diverging 对齐）
+
+**状态**：[x]
+**完成日期**：2026-08-12
+
+**背景**：用户发现实盘红绿灯/闸门与回测打架。根因两层：
+1. **信号口径**：dashboard 盘中用实时行情信号（sync window 内 `get_index_signals(None)`），
+   回测只用日终 as-of 信号——盘中波动把"日终仍绿"的进攻日误判为 Weak
+   （实证：HSI 8-11 日终绿、8-12 盘中跌 1.2% 转红 → 实时口径 HK=Weak/DEFEND vs 日终口径 Diverging）。
+2. **mode 映射**：execution_gate 把 Diverging 压成 HOLD_ONLY，但 S-3 定案
+   （strategy-params §1：diverging_scale=1.0 满仓开仓）与回测引擎 `_gate_blocked`
+   （Diverging+scale>0 放行）及 paper_s3 实盘引擎都是"Diverging 允许开仓"——实现偏离定案。
+
+**改动**：
+- `service/dashboard.py`：删除 `use_realtime_index` 实时分支（sync window 内也不再走
+  `get_index_signals(None)`），闸门/红绿灯一律日终 as-of；meta 字段恒 false
+- `service/execution_gate.py`：
+  - CN：Diverging（无 SRV_ELEVATED）→ `MODE_ATTACK`（原 HOLD_ONLY）；SRV_ELEVATED
+    仍单独压 HOLD_ONLY（回测之外的拥挤防御）
+  - HK：Diverging → `MODE_ATTACK`（原 HOLD_ONLY）；risk defend 保留
+- 测试：6 个断言适配（Diverging→ATTACK；overflow override 在 Diverging 下不再触发——
+  本来就是 ATTACK 不需要升级）
+
+**验收**：后端 3285 passed + 前端 728 passed；手动验证 dashboard/summary：
+CN=DEFEND(Weak+SRV_EXTREME_HIGH，回测同口径禁开 ✓) · HK=ATTACK(Diverging，回测同口径可开 ✓)
+信号全部 daily as-of（无 realtime）
+
+**第二轮（同日 · 红绿灯全面对齐回测）**：
+- 移除 sentiment bundle 的 `apply_breadth_panic_index_signals` 改色（panic 日 CN 全红）——
+  回测口径里 panic 只通过 sentiment 闸（risk_mode=extreme_caution，SENTIMENT_BLOCK_MODES）
+  拦截、红绿灯保持日终原色；execution_gate 的 BREADTH_PANIC 硬闸不变，防御等价
+- `build_macro_snapshot` 默认路径 `get_index_signals(None)` → 日终
+  `get_index_signals(as_of_date=shanghai_today_iso())`（内部回退最近日终）
+- 全库核查：所有 `get_index_signals`/`get_hk_regime`/`classify_market_regime` 消费点
+  均日终 as-of（backtest / dashboard / allocation / portfolio_health / macro_snapshot）；
+  实时分支（market_regime.py:297/497）仅剩 include_breadth=True 或无 as_of 时才触发，
+  当前无调用点，为死路径
+- 手动验证：dashboard 闸门 5 信号全部 rt=False · CN 实盘 Weak ↔ 回测 classify=Weak ✓ ·
+  HK 实盘 Diverging ↔ 回测 get_hk_regime=Diverging ✓
+
+### OPT-078：体检页"提醒买入"一键加自选（2026-08-12）
+
+**状态**：[x]
+
+**需求**：S-3 持仓体检"明日买入清单"里每只候选加"提醒买入"——不用手动输代码，
+弹框设置（目标价 + 备注）后直接加入自选 watchlist。
+
+**实现**（纯前端，零后端改动）：
+- `apps/desktop-ui/src/lib/buy-reminders.ts`：localStorage 本地提醒存储
+  （symbol/name/targetPrice/note/createdAt）+ 事件广播
+- `apps/desktop-ui/src/components/watchlist/BuyReminderDialog.tsx`：portal 弹框
+  （目标买入价可选 · 备注可选 · 显示 S-3 建议仓位）
+- `PortfolioHealthCard.tsx`：BuyList 每行"提醒买入"按钮 → 确认后
+  `saveWatchlist`（source='research'，已补 normalize 白名单）+ 写本地提醒；
+  Card 顶部"买入提醒"条（可删，自选保留）
+- 测试：PortfolioHealthCard.test.tsx 新增 2 例（加提醒/移除提醒）
+
+**说明**：目标价仅为本地备忘（系统暂无到价通知机制，如需系统级预警另开任务）；
+加自选后 watchlist 全功能（行情/趋势/信号/体检）自动盯盘。
+
+### OPT-079：明日买入清单"买入"一键记模拟盘（2026-08-12）
+
+**状态**：[x]
+
+**需求**：体检卡"明日买入清单"每行加「买入」——简单 modal 只设仓位（默认建议 10%）
++ 价格（自动按最近行情预填），确认即记 paper trade；**不做加自选/add 等操作**。
+
+**实现**（纯前端）：
+- `QuickBuyDialog.tsx`：portal modal；打开时 `fetchWatchlistMarketSnapshot` 预填最近价；
+  校验价格>0、仓位 0-100；确认后 `recordUserTrade({side:'BUY', source:'RESEARCH'})`
+- `PortfolioHealthCard.tsx`：BuyList 行内「买入」按钮（与「提醒买入」并排）；
+  成功后行内「✓ 已买入」标记（session state）；错误显示在卡片底部
+- 测试：新增 quick-buy 用例（断言 POST /trades body 字段 + 不触 registry/localStorage）
+
+**边界**：价格预填用日终/最新行情（realtime=false）；买入记录不影响 watchlist 持仓
+字段——持仓仍以自选页仓位为准（体检持仓块会同步显示）。
+
+### OPT-080：回测 vs Paper 对账融入体检卡 + 操作卡贴近回测（2026-08-12）
+
+**状态**：[x]
+
+**需求**：独立"回测 vs Paper 对账"卡作用不明显（数字空洞无法行动）；
+希望对账结果融入 S-3 持仓体检，并让操作卡内容"贴近回测"。
+
+**改动**：
+1. **删除独立 BacktestReconCard**（组件+测试+页面引用），对账数据融入体检卡：
+   - `PortfolioHealthCard` 每个市场区块（CN/HK）新增 **回测口径行**：
+     ✓/⚠ + 对账日期 + 回测应持/实持/缺/多
+   - 缺票 > 0 可**展开缺票清单**（symbol · 入场 score · 建议仓位%），
+     每只缺票可**提醒买入**（加自选+目标价/备注）→ 缺票从数字变成可行动清单
+2. **操作卡（action brief）新增"回测口径"段**（`trading_brief._recon_section`）：
+   - 每市场：回测应持/实持/缺/多 + 缺票 top5（入场 score · 建议仓位 · 入场日）
+3. **修 limit=1 丢市场 bug**：recon 快照按 market 每行一条，limit=1 只取到 CN 行
+   ——前后端统一 limit=2（`useBacktestReconQuery` 默认值改 2，_recon_section 同）
+
+**测试**：后端 +1（action brief 渲染 recon 段），前端 +1（体检卡内嵌对账行 +
+缺票展开 + 提醒买入）；后端 3286 passed · 前端 729 passed。
+
+### OPT-081：BacktestPage 重写为回测结论展示页（2026-08-12）
+
+**状态**：[x]
+
+**需求**（todo §8 P2）：现有 BacktestPage 是参数敏感度工具（研究用途），等 paper
+数据有数字后重写为"回测结论展示"页——回测是 source of truth，页面要先回答
+"定案结论是什么"，再谈研究。
+
+**实现**：
+- 后端 `GET /api/backtest/overview`：读 `walk_forward_baseline.json` /
+  `walk_forward_hk_baseline.json`（三窗 OOS2/train/valid 收益/胜率/DD/夏普）+ 
+  `rolling_oos_latest.json`（最近 90 天窗 + warning 列表）+ 长窗固化常量
+  （LONG_WINDOW_CN：2021-08~2026-08 +250.8%/DD40.9/夏普2.65/1401 笔 + 年度明细，
+  单点定义在 backtest_routes.py，与 strategy-params §1 同源）
+- 前端 `BacktestPage` 重写：
+  1. **S-3 回测结论**（CN/HK 双栏）：三窗行 + 定案参数徽章（score65/RS 前50%(HK40%)/
+     止损-5/移动-8(HK-12)/60天/10%/≤20/闸门/熔断-25）+ 长窗年度明细（2021 +341 …
+     2023 -263 …）
+  2. **滚动 OOS**：窗口区间 + CN/HK 收益/胜率/DD/夏普/笔数，亏损或夏普<0 红标 + warning
+  3. **回测 vs Paper 对账**：recon 快照（✓/⚠ + 缺/多）
+  4. **高级**：原参数敏感度工具（单窗回测/网格/相关性/卖出归因）折叠，默认收起
+- 测试：后端 +2（overview 读取/缺文件容错），前端 +3（结论板/滚动 OOS/折叠）；
+  前端 732 passed + 后端相关 21 passed + ruff/tsc/lint 干净
+
+**验收**：/api/backtest/overview 实测 200（CN OOS2 112.654 · rolling HK warning=True）；
+BacktestPage 首屏即回测结论，参数工具退居折叠。
+
+### OPT-082：全局通知中心（任何页面提醒 + 跳 watchlist 详情）（2026-08-12）
+
+**状态**：[x]
+
+**需求**：任何页面都能弹出 notification 组件，点击跳 watchlist 页并在其中
+看到详细标识，提醒用户做操作（买入提醒/接近止损/回测缺票/cron 失败）。
+
+**实现**：
+- 后端 `service/notifications.py` + `api/notifications_routes.py`：
+  `GET /api/notifications` 聚合现有产物（零新数据采集）——① 接近止损/移动线
+  （复用 portfolio-health holdings，距线 ≤1.5pt）+ EXIT 建议；② recon 缺票
+  （latest_recon missing>0）；③ 今日交易链 cron 失败（sync_job_record 24h，
+  白名单 8 个 job）；④ 滚动 OOS warning。每条带 severity(high/medium)/anchor
+  （holdings|recon|scheduler|backtest）
+- 前端 `components/notifications/NotificationHub.tsx`（AppShell header 全局挂载）：
+  铃铛 + 未读角标（localStorage 已读持久化）· 新事件 toast（6s，仅 high/medium，
+  按"新出现 id"而非"未读"触发，点掉一条不会连环弹）· 面板列出全部通知 +
+  本地买入提醒（buy-reminders 合并）。点击 → hash 跳 #/watchlist + 事件
+  scrollTo 锚点区块 + 高亮闪烁（health-flash CSS）
+- watchlist 页：PortfolioHealthCard 持仓容器/ReconBlock 加 id（holdings、
+  holdings-hk、recon、recon-hk），WatchlistPage 监听 karios-scroll-to 滚动+闪烁
+- 复用：portfolio-health/recon/sync_job_record 产物 · hash-router · buy-reminders ·
+  PortfolioHealthCard 已有区块（详情标识就是体检卡本身）
+
+**测试**：后端 +6（4 聚合 + 排序 + 路由），前端 +3（toast 跳转/未读面板/本地
+提醒合并）；后端 3294 passed + 前端 735 passed + ruff/tsc/lint 干净。

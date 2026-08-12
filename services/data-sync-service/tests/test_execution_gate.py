@@ -88,15 +88,16 @@ def test_defend_when_breadth_panic() -> None:
     assert "BREADTH_PANIC" in out["reasons"]
 
 
-def test_hold_only_when_diverging() -> None:
+def test_diverging_allows_entries() -> None:
+    # S-3 定案：Diverging = 进攻（diverging_scale=1.0 满仓），与回测/paper_s3 同口径
     out = compute_execution_gate(
         index_signals=_signals("green", "red"),
         down_count=1500,
         risk_mode="normal",
         srv_index=_srv(SRV_LEVEL_STABLE, 3),
     )
-    assert out["mode"] == MODE_HOLD_ONLY
-    assert out["allowNewEntries"] is False
+    assert out["mode"] == MODE_ATTACK
+    assert out["allowNewEntries"] is True
     assert out["marketRegime"] == REGIME_DIVERGING
     assert "REGIME_DIVERGING" in out["reasons"]
 
@@ -202,7 +203,8 @@ def test_v63_overflow_does_not_override_breadth_panic() -> None:
     assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
 
 
-def test_v63_overflow_upgrades_hold_only() -> None:
+def test_v63_overflow_irrelevant_when_diverging_attacks() -> None:
+    # Diverging 现在本身就是 ATTACK（回测口径），overflow override 不再需要
     out = compute_execution_gate(
         index_signals=_signals("green", "red"),
         down_count=1000,
@@ -213,9 +215,9 @@ def test_v63_overflow_upgrades_hold_only() -> None:
         overflow_sector="半导体",
         now=_sh(14, 30),
     )
-    assert out["mode"] == MODE_WEAK_ATTACK
+    assert out["mode"] == MODE_ATTACK
     assert out["allowNewEntries"] is True
-    assert "INTRADAY_OVERFLOW_OVERRIDE" in out["reasons"]
+    assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
 
 
 def test_v63_overflow_does_not_downgrade_attack() -> None:
@@ -266,18 +268,18 @@ def test_cn_regime_requires_all_three_cn_lights_green() -> None:
         srv_index=_srv(SRV_LEVEL_STABLE, 3),
     )
     assert out["marketRegime"] == REGIME_DIVERGING
-    assert out["mode"] == MODE_HOLD_ONLY
+    assert out["mode"] == MODE_ATTACK
 
 
 def test_hk_gate_independent_of_cn_when_hk_strong() -> None:
-    # CN diverging (one red) → CN gate HOLD_ONLY, but HK both green → ATTACK.
+    # CN diverging (one red) → CN gate ATTACK (S-3: Diverging 允许开仓), HK both green → ATTACK.
     out = compute_execution_gate(
         index_signals=_cn_hk_signals("green", "red", "yellow", "green", "green"),
         down_count=900,
         risk_mode="normal",
         srv_index=_srv(SRV_LEVEL_STABLE, 3),
     )
-    assert out["mode"] == MODE_HOLD_ONLY
+    assert out["mode"] == MODE_ATTACK
     assert out["hkGate"]["marketRegime"] == REGIME_STRONG
     assert out["hkGate"]["mode"] == MODE_ATTACK
     assert out["hkGate"]["allowNewEntries"] is True

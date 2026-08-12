@@ -43,7 +43,7 @@ from data_sync_service.service.option_iv import (
     resolve_put_iv_for_snapshot,
 )
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
-from data_sync_service.service.trade_calendar_utils import shanghai_today
+from data_sync_service.service.trade_calendar_utils import shanghai_today, shanghai_today_iso
 
 MACRO_CARDS: list[dict[str, Any]] = [
     {
@@ -202,7 +202,12 @@ def build_macro_snapshot(*, cn_index_signals: list[dict[str, Any]] | None = None
     put_iv_warning: str | None = None
     # Skip full-market breadth (very slow); Index page needs a fast response.
     if cn_index_signals is None:
-        cn_index_signals = get_index_signals(include_breadth=False)
+        # 2026-08-12: 与回测口径统一——默认路径也取日终信号
+        # （as_of=今天，内部自动回退到最近日终数据），不再走盘中实时。
+        cn_index_signals = get_index_signals(
+            as_of_date=shanghai_today_iso(),
+            include_breadth=False,
+        )
     all_sids = [str(meta["seriesId"]) for meta in MACRO_CARDS]
     closes_by_sid = fetch_last_closes_batch(all_sids, days=80)
     latest_by_sid = get_latest_rows_batch(all_sids)

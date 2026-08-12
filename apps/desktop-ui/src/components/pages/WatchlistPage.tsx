@@ -5,7 +5,6 @@ import * as React from 'react';
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
 import { TradingBriefCard } from '@/components/watchlist/TradingBriefCard';
-import { BacktestReconCard } from '@/components/watchlist/BacktestReconCard';
 import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
 import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
@@ -144,6 +143,25 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       .catch(() => {
         // ignore
       });
+  }, []);
+
+  // Global notification hub scroll: jump to the anchored health block and
+  // flash it so "提醒我做操作" lands on the details.
+  React.useEffect(() => {
+    function onScrollTo(e: Event) {
+      const anchor = (e as CustomEvent<{ anchor: string }>).detail?.anchor;
+      if (!anchor) return;
+      const ids = [anchor, `${anchor}-hk`];
+      const el = ids
+        .map((id) => document.getElementById(id))
+        .find((x): x is HTMLElement => Boolean(x));
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.classList.add('health-flash');
+      window.setTimeout(() => el.classList.remove('health-flash'), 1600);
+    }
+    window.addEventListener('karios-scroll-to', onScrollTo);
+    return () => window.removeEventListener('karios-scroll-to', onScrollTo);
   }, []);
 
   React.useEffect(
@@ -378,7 +396,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
         <TradingBriefCard />
 
-        <BacktestReconCard />
 
         <WatchlistInsightsPanel>
           <TradeStatsPanel />

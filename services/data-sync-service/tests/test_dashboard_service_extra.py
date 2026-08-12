@@ -57,7 +57,6 @@ class TestBundles:
         monkeypatch.setattr(dash, "trade_dates_upto", lambda *a, **k: ["d1", "d2"])
         monkeypatch.setattr(dash, "list_sentiment_days_for_dates", lambda dates: [{"downCount": 3, "upCount": 10, "riskMode": "risk-on"}])
         monkeypatch.setattr(dash, "apply_breadth_panic_sentiment_items", lambda items, dc: items)
-        monkeypatch.setattr(dash, "apply_breadth_panic_index_signals", lambda sig, dc: sig)
         monkeypatch.setattr(dash, "get_index_signals", lambda **kw: [{"k": "v"}])
         monkeypatch.setattr(dash, "build_etf_fund_flow_bundle", lambda **kw: {"items": []})
         monkeypatch.setattr(dash, "build_etf_flow_signal", lambda **kw: {"verdict": "neutral"})
@@ -76,7 +75,6 @@ class TestBundles:
         monkeypatch.setattr(dash, "trade_dates_upto", lambda *a, **k: ["d1"])
         monkeypatch.setattr(dash, "list_sentiment_days_for_dates", lambda dates: [])
         monkeypatch.setattr(dash, "apply_breadth_panic_sentiment_items", lambda items, dc: items)
-        monkeypatch.setattr(dash, "apply_breadth_panic_index_signals", lambda sig, dc: sig)
         monkeypatch.setattr(dash, "build_etf_fund_flow_bundle", lambda **kw: {"items": []})
         monkeypatch.setattr(dash, "build_etf_flow_signal", lambda **kw: {"verdict": "neutral"})
         monkeypatch.setattr(dash, "compute_srv_index", lambda **kw: 0.0)
@@ -138,12 +136,12 @@ class TestSyncSteps:
 
 class TestDashboardSummary:
     def _patch(self, monkeypatch, market_status=None, is_sync_window=False):
+        _ = is_sync_window
         monkeypatch.setattr(dash, "get_latest_sentiment_date", lambda: "2026-08-07")
         monkeypatch.setattr(dash, "get_latest_industry_date", lambda: "2026-08-07")
         monkeypatch.setattr(dash, "shanghai_today_iso", lambda: "2026-08-07")
         monkeypatch.setattr(dash, "resolve_effective_as_of", lambda d: d)
         monkeypatch.setattr(dash, "compute_market_status", lambda: market_status or {"isPreMarket": False, "isMarketOpen": True})
-        monkeypatch.setattr(dash, "_is_shanghai_sync_window", lambda: is_sync_window)
         monkeypatch.setattr(dash, "get_index_signals", lambda **kw: [{"k": "v"}])
         monkeypatch.setattr(dash, "_build_industry_bundle", lambda **kw: {"ok": True})
         monkeypatch.setattr(dash, "_build_market_sentiment_bundle", lambda **kw: {"ok": True})
@@ -156,8 +154,8 @@ class TestDashboardSummary:
         self._patch(monkeypatch, is_sync_window=True)
         out = dash.dashboard_summary()
         assert out["asOfDate"] == "2026-08-07"
-        assert out["meta"]["inSyncWindow"] is True
-        assert out["meta"]["useRealtimeIndex"] is True
+        assert out["meta"]["inSyncWindow"] is False
+        assert out["meta"]["useRealtimeIndex"] is False
         assert out["marketEnvironmentZh"] == "中文环境"
 
     def test_summary_premarket_clamp(self, monkeypatch) -> None:

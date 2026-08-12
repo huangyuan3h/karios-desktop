@@ -87,13 +87,19 @@ def test_section_shapes() -> None:
 
 def test_render_markdown_compact() -> None:
     h = _fake_health()
-    sections = (
-        tb._regime_section(h)
-        + tb._candidates_section(h)
-        + tb._holdings_section(h)
-        + tb._alerts_section(h)
-        + tb._news_section(3)
-    )
+    with patch(
+        "data_sync_service.service.trading_brief._news_section",
+        return_value=[
+            {"type": "news", "id": "n1", "title": "测试新闻标题", "category": "宏观"},
+        ],
+    ):
+        sections = (
+            tb._regime_section(h)
+            + tb._candidates_section(h)
+            + tb._holdings_section(h)
+            + tb._alerts_section(h)
+            + tb._news_section(3)
+        )
     md = tb.render_markdown(sections, "action")
     assert "**Regime**" in md
     assert "A股: Weak" in md
@@ -132,6 +138,7 @@ def test_generate_trading_brief_stores_and_returns_markdown() -> None:
         patch("data_sync_service.service.trading_brief._health", return_value=_fake_health()),
         patch("data_sync_service.service.trading_brief._candidates", return_value=[]),
         patch("data_sync_service.service.trading_brief._news_section", return_value=[]),
+        patch("data_sync_service.service.trading_brief._recon_section", return_value=[]),
         patch("data_sync_service.service.trading_brief.upsert_brief") as upsert,
     ):
         upsert.return_value = {"briefDate": "2026-08-11", "items": []}
@@ -141,3 +148,30 @@ def test_generate_trading_brief_stores_and_returns_markdown() -> None:
     assert kw["brief_type"] == "trading-action"
     assert kw["markdown"]
     assert "**Regime**" in kw["markdown"]
+
+
+def test_action_brief_renders_backtest_recon_section() -> None:
+    sections = [
+        {
+            "type": "recon",
+            "reconDate": "2026-08-07",
+            "market": "HK",
+            "expected": 19,
+            "actual": 0,
+            "missing": 19,
+            "extra": 0,
+            "alignedReturnDiffPct": None,
+            "missingTop": [
+                {
+                    "symbol": "HK:02099",
+                    "entry": "2026-08-05",
+                    "score": 88.0,
+                    "positionPct": 0.1,
+                }
+            ],
+        }
+    ]
+    md = tb.render_markdown(sections, "action")
+    assert "**回测口径（对账 2026-08-07）**" in md
+    assert "港股：回测应持 19 · 实持 0 · 缺 19 · 多 0" in md
+    assert "缺票 HK:02099（入场 score 88.0 · 建议 10%· 2026-08-05 入场）" in md

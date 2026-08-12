@@ -201,7 +201,9 @@ def compute_hk_gate(
     if defend:
         mode = MODE_DEFEND
     elif regime == REGIME_DIVERGING:
-        mode = MODE_HOLD_ONLY
+        # S-3 HK 定案（gates=regime）：Diverging 允许开仓——与回测引擎
+        # _gate_blocked（diverging_scale>0 放行）及 paper_s3 实盘口径一致。
+        mode = MODE_ATTACK
         reasons.append("REGIME_DIVERGING")
     elif regime == REGIME_STRONG:
         mode = MODE_ATTACK
@@ -311,7 +313,14 @@ def compute_execution_gate(
     if defend:
         mode = MODE_DEFEND
     elif regime == REGIME_DIVERGING or srv_level_str == SRV_LEVEL_ELEVATED:
-        mode = MODE_HOLD_ONLY
+        # S-3 定案（strategy-params §1）：Diverging = 进攻（diverging_scale=1.0
+        # 满仓开仓）——与回测引擎 _gate_blocked 及 paper_s3 同口径，不再压 HOLD_ONLY。
+        # SRV_ELEVATED 是回测之外的资金流拥挤防御，仍单独压 HOLD_ONLY。
+        mode = (
+            MODE_ATTACK
+            if regime == REGIME_DIVERGING and srv_level_str != SRV_LEVEL_ELEVATED
+            else MODE_HOLD_ONLY
+        )
         if regime == REGIME_DIVERGING:
             reasons.append("REGIME_DIVERGING")
         if srv_level_str == SRV_LEVEL_ELEVATED:

@@ -242,13 +242,70 @@ export type ReconResponse = { ok: boolean; items: ReconItem[] };
  * Latest backtest-vs-paper reconciliation snapshots (2026-08-11): what the
  * S-3 backtest says we SHOULD hold vs what the paper book actually holds,
  * per market. The Monday cron fills this weekly.
+ *
+ * NOTE: pass limit >= 2 to cover both markets — the snapshot stores one row
+ * per market, and limit=1 silently drops the second market.
  */
-export function useBacktestReconQuery(limit = 4, enabled = true) {
+export function useBacktestReconQuery(limit = 2, enabled = true) {
   return useQuery({
     queryKey: ['backtest', 'recon', limit],
     queryFn: () =>
       apiGetJson<ReconResponse>(`/api/backtest/recon/latest?limit=${limit}`),
     staleTime: 60_000,
+    enabled,
+  });
+}
+
+export type BacktestOverviewWindow = {
+  totalNetPnlPct?: number | null;
+  winRate?: number | null;
+  sharpe?: number | null;
+  trades?: number | null;
+  maxDrawdownPct?: number | null;
+};
+
+export type BacktestOverviewBaseline = {
+  generatedAt?: string | null;
+  tag?: string | null;
+  windows: Record<string, BacktestOverviewWindow>;
+};
+
+export type RollingOosMarket = {
+  closed?: number | null;
+  winRate?: number | null;
+  avgNetPnlPct?: number | null;
+  totalNetPnlPct?: number | null;
+  maxDrawdownPct?: number | null;
+  sharpe?: number | null;
+};
+
+export type BacktestOverview = {
+  ok: boolean;
+  cnBaseline?: BacktestOverviewBaseline | null;
+  hkBaseline?: BacktestOverviewBaseline | null;
+  rollingOos?: {
+    windowStart?: string | null;
+    windowEnd?: string | null;
+    warning?: boolean | null;
+    warnings?: string[] | null;
+    markets?: Record<string, RollingOosMarket> | null;
+  } | null;
+  longWindowCN?: {
+    window?: string | null;
+    totalNetPnlPct?: number | null;
+    maxDrawdownPct?: number | null;
+    sharpe?: number | null;
+    trades?: number | null;
+    byYear?: Record<string, number> | null;
+  } | null;
+};
+
+/** S-3 conclusion board: frozen baselines + rolling OOS + long window. */
+export function useBacktestOverviewQuery(enabled = true) {
+  return useQuery({
+    queryKey: ['backtest', 'overview'],
+    queryFn: () => apiGetJson<BacktestOverview>('/api/backtest/overview'),
+    staleTime: 5 * 60_000,
     enabled,
   });
 }

@@ -46,10 +46,6 @@ def test_dashboard_summary_clamps_as_of_when_premarket() -> None:
             "data_sync_service.service.dashboard.previous_open_date",
             return_value=__import__("datetime").date.fromisoformat(prev_iso),
         ),
-        patch(
-            "data_sync_service.service.dashboard._is_shanghai_sync_window",
-            return_value=False,
-        ),
         patch("data_sync_service.service.dashboard._build_industry_bundle") as mock_ind,
         patch("data_sync_service.service.dashboard._build_market_sentiment_bundle") as mock_sent,
         patch("data_sync_service.service.dashboard._news_items") as mock_news,
@@ -100,10 +96,6 @@ def test_dashboard_summary_keeps_today_when_market_open() -> None:
                 "isMarketOpen": True,
                 "asOfTime": "10:15",
             },
-        ),
-        patch(
-            "data_sync_service.service.dashboard._is_shanghai_sync_window",
-            return_value=True,
         ),
         patch("data_sync_service.service.dashboard._build_industry_bundle") as mock_ind,
         patch("data_sync_service.service.dashboard._build_market_sentiment_bundle") as mock_sent,

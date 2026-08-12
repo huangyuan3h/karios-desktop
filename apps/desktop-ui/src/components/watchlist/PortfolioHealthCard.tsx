@@ -2,18 +2,31 @@
 
 import * as React from 'react';
 
-import { RefreshCw, ShieldAlert } from 'lucide-react';
+import { Bell, BellRing, RefreshCw, ShieldAlert } from 'lucide-react';
 
 import { useQuery } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/button';
+import { recordUserTrade } from '@/lib/queries/userTrades';
+import { tradeMarketForSymbol } from '@/lib/trade-recording';
+import {
+  addBuyReminder,
+  BUY_REMINDERS_UPDATED_EVENT,
+  loadBuyReminders,
+  removeBuyReminder,
+  type BuyReminder,
+} from '@/lib/buy-reminders';
 import {
   fetchPortfolioHealth,
   type PortfolioCandidate,
   type PortfolioHealthResponse,
   type PortfolioHolding,
 } from '@/lib/queries/portfolioHealth';
+import { useBacktestReconQuery, type ReconItem } from '@/lib/queries/backtest';
 import { cn } from '@/lib/utils';
+import { loadWatchlist, saveWatchlist, type WatchlistItem } from '@/lib/watchlist-storage';
+import { BuyReminderDialog } from '@/components/watchlist/BuyReminderDialog';
+import { QuickBuyDialog } from '@/components/watchlist/QuickBuyDialog';
 
 function fmtPct(v: number | null | undefined, digits = 2): string {
   if (v == null || !Number.isFinite(v)) return '—';
@@ -90,10 +103,18 @@ function BuyList({
   candidates,
   total,
   suggestedSizePct,
+  remindedSymbols,
+  boughtSymbols,
+  onRemind,
+  onBuy,
 }: {
   candidates: PortfolioCandidate[];
   total?: number;
   suggestedSizePct?: number | null;
+  remindedSymbols: Set<string>;
+  boughtSymbols: Set<string>;
+  onRemind: (c: PortfolioCandidate, sizePct: number) => void;
+  onBuy: (c: PortfolioCandidate, sizePct: number) => void;
 }) {
   const [expanded, setExpanded] = React.useState(false);
   const size = suggestedSizePct ?? 5;
@@ -111,22 +132,57 @@ function BuyList({
         </span>
       </div>
       <div className="flex flex-col gap-1">
-        {shown.map((c, i) => (
-          <div key={c.symbol} className="flex flex-wrap items-baseline gap-x-2 text-[12px]">
-            <span className="w-4 shrink-0 text-right font-mono text-[10px] text-[var(--k-muted)]">{i + 1}</span>
-            <span className="font-medium">{c.name ?? c.symbol}</span>
-            <span className="text-[10px] tabular-nums text-[var(--k-muted)]">{c.symbol}</span>
-            <span className="ml-auto font-mono text-[10.5px] tabular-nums">score={c.score ?? '—'}</span>
-            {typeof c.rs === 'number' && (
-              <span className="font-mono text-[10.5px] tabular-nums text-[var(--k-muted)]">
-                RS 前{Math.round(c.rs * 100)}%
+        {shown.map((c, i) => {
+          const symbol = c.symbol ?? c.ts_code ?? '';
+          const reminded = remindedSymbols.has(symbol);
+          const bought = boughtSymbols.has(symbol);
+          return (
+            <div key={symbol} className="flex flex-wrap items-center gap-x-2 text-[12px]">
+              <span className="w-4 shrink-0 text-right font-mono text-[10px] text-[var(--k-muted)]">{i + 1}</span>
+              <span className="font-medium">{c.name ?? symbol}</span>
+              <span className="text-[10px] tabular-nums text-[var(--k-muted)]">{symbol}</span>
+              <span className="ml-auto font-mono text-[10.5px] tabular-nums">score={c.score ?? '—'}</span>
+              {typeof c.rs === 'number' && (
+                <span className="font-mono text-[10.5px] tabular-nums text-[var(--k-muted)]">
+                  RS 前{Math.round(c.rs * 100)}%
+                </span>
+              )}
+              <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 dark:text-emerald-300">
+                买 {size}%
               </span>
-            )}
-            <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 dark:text-emerald-300">
-              买 {size}%
-            </span>
-          </div>
-        ))}
+              {bought ? (
+                <span className="inline-flex items-center gap-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+                  ✓ 已买入
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onBuy(c, size)}
+                  className="inline-flex items-center gap-0.5 rounded border border-emerald-500/50 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                  title="立刻买入：设仓位/价格，记入模拟盘（paper trade）"
+                >
+                  买入
+                </button>
+              )}
+              {reminded ? (
+                <span className="inline-flex items-center gap-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+                  <BellRing size={9} className="inline-block" />
+                  已提醒
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onRemind(c, size)}
+                  className="inline-flex items-center gap-0.5 rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-emerald-500/50 hover:text-emerald-700 dark:hover:text-emerald-300"
+                  title="提醒买入：设目标价/备注并加入自选（不用输代码）"
+                >
+                  <Bell size={9} className="inline-block" />
+                  提醒买入
+                </button>
+              )}
+            </div>
+          );
+        })}
         {hidden > 0 && (
           <button
             onClick={() => setExpanded((v) => !v)}
@@ -140,20 +196,128 @@ function BuyList({
   );
 }
 
+function ReconBlock({
+  recon,
+  onRemind,
+  remindedSymbols,
+  blockId,
+}: {
+  recon: ReconItem | undefined;
+  onRemind: (c: PortfolioCandidate, sizePct: number) => void;
+  remindedSymbols: Set<string>;
+  blockId: string;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  if (!recon) return null;
+  const hasGap = recon.missing > 0 || recon.extra > 0;
+  const missingRows = (recon.detail ?? [])
+    .filter((d) => d.type === 'missing')
+    .slice(0, 20) as Array<{ symbol?: string; score?: unknown; entry?: unknown; positionPct?: unknown }>;
+  const clean = !hasGap;
+  return (
+    <div id={blockId} className="rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+        <span
+          className={
+            clean
+              ? 'text-emerald-700 dark:text-emerald-300'
+              : 'text-amber-700 dark:text-amber-300'
+          }
+        >
+          {clean ? '✓' : '⚠'}
+        </span>
+        <span className="font-medium">回测口径 · {recon.reconDate} 对账</span>
+        <span className="tabular-nums">
+          回测应持 {recon.expected} · 实持 {recon.actual} · 缺 {recon.missing} · 多 {recon.extra}
+        </span>
+        {hasGap && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-[var(--k-accent)]/60"
+          >
+            {expanded ? '收起' : `看缺票（${recon.missing}）`}
+          </button>
+        )}
+      </div>
+      {expanded && missingRows.length > 0 && (
+        <div className="mt-1.5 flex flex-col gap-1 border-t border-sky-500/20 pt-1.5">
+          {missingRows.map((m) => {
+            const symbol = String(m.symbol ?? '');
+            const score =
+              typeof m.score === 'number' && Number.isFinite(m.score)
+                ? m.score.toFixed(1)
+                : '—';
+            const pct = (() => {
+              const raw = m.positionPct;
+              if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+                return Math.round(raw * 100);
+              }
+              if (typeof raw === 'number' && Number.isFinite(raw) && raw > 1) {
+                return Math.round(raw);
+              }
+              return 10;
+            })();
+            const reminded = remindedSymbols.has(symbol);
+            return (
+              <div key={symbol} className="flex flex-wrap items-center gap-x-2 text-[11px]">
+                <span className="font-mono text-[10px] text-sky-700 dark:text-sky-300">缺票</span>
+                <span className="font-medium">{symbol}</span>
+                <span className="text-[10px] tabular-nums text-[var(--k-muted)]">
+                  入场 score {score}
+                </span>
+                <span className="rounded bg-sky-500/10 px-1 py-0.5 font-mono text-[10px] text-sky-700 dark:text-sky-300">
+                  建议 {pct}%
+                </span>
+                {reminded ? (
+                  <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+                    已提醒
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onRemind({ symbol, name: null }, pct)}
+                    className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-emerald-500/50 hover:text-emerald-700 dark:hover:text-emerald-300"
+                    title="回测缺票：加入自选 + 设目标价/备注提醒"
+                  >
+                    <Bell size={9} className="mr-0.5 inline-block" />
+                    提醒买入
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HealthPanel({
   title,
   tag,
   block,
+  recon,
   onOpen,
+  onRemind,
+  onBuy,
+  remindedSymbols,
+  boughtSymbols,
 }: {
   title: string;
   tag: string;
   block: PortfolioHealthResponse | null | undefined;
+  recon?: ReconItem | undefined;
   onOpen?: (symbol: string) => void;
+  onRemind: (c: PortfolioCandidate, sizePct: number) => void;
+  onBuy: (c: PortfolioCandidate, sizePct: number) => void;
+  remindedSymbols: Set<string>;
+  boughtSymbols: Set<string>;
 }) {
   const holdings = block?.holdings ?? [];
   const candidates = block?.s3Candidates ?? [];
   const regime = regimeBadge(block?.regime);
+  const idSuffix = tag === 'HK' ? '-hk' : '';
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="flex items-center gap-2 text-[11px] font-semibold">
@@ -203,10 +367,16 @@ function HealthPanel({
           S-3 候选：{block ? (block.s3Candidates?.length ?? 0) : '…'} 只
         </span>
       </div>
+      <ReconBlock
+        recon={recon}
+        onRemind={onRemind}
+        remindedSymbols={remindedSymbols}
+        blockId={`recon${idSuffix}`}
+      />
       {holdings.length === 0 ? (
         <div className="text-xs text-[var(--k-muted)]">当前无持仓（未录入成本/仓位的 watchlist 票不算持仓）</div>
       ) : (
-        <div className="flex flex-col gap-1.5">
+        <div id={`holdings${idSuffix}`} className="flex flex-col gap-1.5">
           {holdings.map((h) => (
             <HoldingRow key={h.symbol} h={h} onOpen={onOpen} />
           ))}
@@ -217,6 +387,10 @@ function HealthPanel({
           candidates={candidates}
           total={block?.s3CandidateTotal}
           suggestedSizePct={Number((block?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct) || null}
+          remindedSymbols={remindedSymbols}
+          boughtSymbols={boughtSymbols}
+          onRemind={onRemind}
+          onBuy={onBuy}
         />
       ) : block ? (
         <div className="text-[11px] text-[var(--k-muted)]">
@@ -239,8 +413,114 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
     queryFn: ({ signal }) => fetchPortfolioHealth(undefined, signal),
     refetchInterval: 5 * 60_000,
   });
+  const reconQ = useBacktestReconQuery(2);
+  const reconByMarket = React.useMemo(() => {
+    const m = new Map<string, ReconItem>();
+    for (const r of reconQ.data?.items ?? []) m.set(r.market, r);
+    return m;
+  }, [reconQ.data]);
+
+  const [reminderTarget, setReminderTarget] = React.useState<{
+    symbol: string;
+    name: string | null;
+    sizePct: number;
+  } | null>(null);
+  const [buyTarget, setBuyTarget] = React.useState<{
+    symbol: string;
+    name: string | null;
+    score?: number | null;
+    rs?: number | null;
+    sizePct: number;
+  } | null>(null);
+  const [boughtSymbols, setBoughtSymbols] = React.useState<Set<string>>(new Set());
+  const [buyError, setBuyError] = React.useState<string | null>(null);
+  const [reminders, setReminders] = React.useState<BuyReminder[]>([]);
+  const [reminderError, setReminderError] = React.useState<string | null>(null);
+
+  const remindedSymbols = React.useMemo(
+    () => new Set(reminders.map((r) => r.symbol)),
+    [reminders],
+  );
+
+  React.useEffect(() => {
+    setReminders(loadBuyReminders());
+    function onUpdate() {
+      setReminders(loadBuyReminders());
+    }
+    window.addEventListener(BUY_REMINDERS_UPDATED_EVENT, onUpdate);
+    return () => window.removeEventListener(BUY_REMINDERS_UPDATED_EVENT, onUpdate);
+  }, []);
 
   const data: PortfolioHealthResponse | undefined = q.data;
+
+  async function addToWatchlistAndRemind(values: { targetPrice: number | null; note: string }) {
+    if (!reminderTarget) return;
+    const { symbol, name } = reminderTarget;
+    setReminderError(null);
+    try {
+      const existing = loadWatchlist();
+      if (!existing.some((x) => x.symbol === symbol)) {
+        const next: WatchlistItem[] = [
+          {
+            symbol,
+            name: name ?? null,
+            addedAt: new Date().toISOString(),
+            color: '#ffffff',
+            source: 'research',
+          },
+          ...existing,
+        ];
+        await saveWatchlist(next);
+      }
+      addBuyReminder({
+        symbol,
+        name,
+        targetPrice: values.targetPrice,
+        note: values.note,
+        createdAt: new Date().toISOString(),
+      });
+      setReminderTarget(null);
+    } catch (e) {
+      setReminderError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function handleRemind(c: PortfolioCandidate, sizePct: number) {
+    setReminderTarget({
+      symbol: c.symbol ?? c.ts_code ?? '',
+      name: c.name ?? null,
+      sizePct,
+    });
+  }
+
+  async function confirmBuy(values: { price: number; positionPct: number }) {
+    if (!buyTarget) return;
+    setBuyError(null);
+    try {
+      await recordUserTrade({
+        symbol: buyTarget.symbol,
+        side: 'BUY',
+        price: values.price,
+        positionPct: values.positionPct,
+        source: 'RESEARCH',
+        market: tradeMarketForSymbol(buyTarget.symbol),
+      });
+      setBoughtSymbols((prev) => new Set(prev).add(buyTarget.symbol));
+      setBuyTarget(null);
+    } catch (e) {
+      setBuyError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function handleBuy(c: PortfolioCandidate, sizePct: number) {
+    setBuyTarget({
+      symbol: c.symbol ?? c.ts_code ?? '',
+      name: c.name ?? null,
+      score: c.score,
+      rs: c.rs,
+      sizePct,
+    });
+  }
 
   if (q.isError && !data) {
     return (
@@ -267,15 +547,95 @@ export function PortfolioHealthCard({ onOpenStock }: { onOpenStock?: (symbol: st
         </Button>
       </div>
 
+      {reminders.length > 0 && (
+        <div className="mb-2 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2">
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-sky-700 dark:text-sky-300">
+            <BellRing size={11} className="inline-block" />
+            买入提醒（{reminders.length}）· 已加入自选，行情/趋势/信号/体检自动盯盘
+          </div>
+          <div className="flex flex-col gap-1">
+            {reminders.map((r) => (
+              <div key={r.symbol} className="flex flex-wrap items-center gap-x-2 text-[11px]">
+                <span className="font-medium">{r.name ?? r.symbol}</span>
+                <span className="font-mono text-[10px] tabular-nums text-[var(--k-muted)]">
+                  {r.symbol}
+                </span>
+                {r.targetPrice != null && (
+                  <span className="rounded bg-sky-500/10 px-1 py-0.5 font-mono text-[10px] text-sky-700 dark:text-sky-300">
+                    目标价 {r.targetPrice}
+                  </span>
+                )}
+                {r.note && (
+                  <span className="max-w-[260px] truncate text-[var(--k-muted)]" title={r.note}>
+                    {r.note}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeBuyReminder(r.symbol)}
+                  className="ml-auto rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] text-[var(--k-muted)] hover:border-red-500/50 hover:text-red-500"
+                  title="移除提醒（自选保留）"
+                >
+                  移除提醒
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-2">
-        <HealthPanel title="A 股 S-3（全闸门 · 含 A 股 ETF）" tag="CN" block={data} onOpen={onOpenStock} />
+        <HealthPanel
+          title="A 股 S-3（全闸门 · 含 A 股 ETF）"
+          tag="CN"
+          block={data}
+          recon={reconByMarket.get('CN')}
+          onOpen={onOpenStock}
+          onRemind={handleRemind}
+          onBuy={handleBuy}
+          remindedSymbols={remindedSymbols}
+          boughtSymbols={boughtSymbols}
+        />
         <HealthPanel
           title="港股 S-3（regime 档 · trail -12%）"
           tag="HK"
           block={data?.hkHealth}
+          recon={reconByMarket.get('HK')}
           onOpen={onOpenStock}
+          onRemind={handleRemind}
+          onBuy={handleBuy}
+          remindedSymbols={remindedSymbols}
+          boughtSymbols={boughtSymbols}
         />
       </div>
+
+      {reminderTarget && (
+        <BuyReminderDialog
+          state={{ symbol: reminderTarget.symbol, name: reminderTarget.name }}
+          suggestPct={reminderTarget.sizePct}
+          onClose={() => setReminderTarget(null)}
+          onConfirm={(values) => void addToWatchlistAndRemind(values)}
+        />
+      )}
+      {buyTarget && (
+        <QuickBuyDialog
+          state={{
+            symbol: buyTarget.symbol,
+            name: buyTarget.name,
+            score: buyTarget.score,
+            rs: buyTarget.rs,
+          }}
+          suggestPct={buyTarget.sizePct}
+          onClose={() => setBuyTarget(null)}
+          onConfirm={(values) => void confirmBuy(values)}
+        />
+      )}
+      {reminderError && (
+        <div className="mt-2 text-[11px] text-red-500">加入自选失败：{reminderError}</div>
+      )}
+      {buyError && (
+        <div className="mt-2 text-[11px] text-red-500">记录交易失败：{buyError}</div>
+      )}
     </div>
   );
 }

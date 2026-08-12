@@ -168,6 +168,38 @@ def _news_section(top: int = 5) -> list[dict[str, Any]]:
     return out
 
 
+def _recon_section(top: int = 5) -> list[dict[str, Any]]:
+    """Latest backtest-vs-paper snapshot (weekly Monday cron) so the action
+    card speaks the backtest dialect: which backtest-held names the paper
+    book is missing (2026-08-12). Rows carry score so the reader knows what
+    the backtest was thinking at entry."""
+    from data_sync_service.db.reconciliation import latest_recon
+
+    # limit=2: the latest snapshot has one row per market (CN then HK by
+    # market sort); 1 row would silently drop the second market.
+    rows = latest_recon(limit=2)
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        missing = [
+            x for x in (r.get("detail") or []) if x.get("type") == "missing"
+        ]
+        out.append({
+            "type": "recon",
+            "reconDate": r.get("reconDate"),
+            "market": r.get("market"),
+            "expected": r.get("expected"),
+            "actual": r.get("actual"),
+            "missing": r.get("missing"),
+            "extra": r.get("extra"),
+            "alignedReturnDiffPct": r.get("alignedReturnDiffPct"),
+            "missingTop": sorted(
+                missing,
+                key=lambda x: -(float(x.get("score") or 0)),
+            )[:top],
+        })
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Markdown rendering (compact, ~30s read)
 # ---------------------------------------------------------------------------
@@ -180,6 +212,7 @@ def render_markdown(sections: list[dict[str, Any]], brief_type: str) -> str:
     holds = [s for s in sections if s["type"] == "holding"]
     alerts = [s for s in sections if s["type"] == "alert"]
     news = [s for s in sections if s["type"] == "news"]
+    recon = [s for s in sections if s["type"] == "recon"]
 
     if regime:
         lines.append("**Regime**")
@@ -224,6 +257,23 @@ def render_markdown(sections: list[dict[str, Any]], brief_type: str) -> str:
                 f"（现 {a['pnlPct']}% / 线 {a['lineValue']}）"
             )
 
+    if recon:
+        lines.append("")
+        lines.append(f"**回测口径（对账 {recon[0]['reconDate']}）**")
+        for r in recon:
+            mkt = _market_label(r["market"])
+            lines.append(
+                f"- {mkt}：回测应持 {r['expected']} · 实持 {r['actual']}"
+                f" · 缺 {r['missing']} · 多 {r['extra']}"
+            )
+            for m in r["missingTop"]:
+                pct = m.get("positionPct")
+                pct_label = f"{round(float(pct) * 100)}%" if pct else "10%"
+                lines.append(
+                    f"  缺票 {m['symbol']}（入场 score {m.get('score')} · 建议 {pct_label}"
+                    f"· {m.get('entry') or '—'} 入场）"
+                )
+
     if news:
         lines.append("")
         lines.append("**新闻 Top5**")
@@ -251,6 +301,8 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
     sections += _holdings_section(h)
     if brief_type in ("midday", "action"):
         sections += _alerts_section(h)
+    if brief_type == "action":
+        sections += _recon_section(5)
     if brief_type in ("open", "midday"):
         sections += _news_section(5)
     markdown = render_markdown(sections, brief_type)

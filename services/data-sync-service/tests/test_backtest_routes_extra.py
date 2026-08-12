@@ -147,3 +147,47 @@ class TestCorrelation:
 
 def test_router_prefix() -> None:
     assert br.router.prefix == "/api/backtest"
+
+
+class TestOverview:
+    def test_overview_reads_baseline_files(self, monkeypatch, tmp_path) -> None:
+        import json
+
+        reports = tmp_path / "backtest_reports"
+        reports.mkdir()
+        (reports / "walk_forward_baseline.json").write_text(json.dumps({
+            "generatedAt": "2026-08-12T00:00:00Z",
+            "tag": "baseline",
+            "results": {
+                "OOS2": {"totalNetPnlPct": 112.654, "winRate": 0.48, "sharpe": 5.22, "maxDrawdownPct": 23.346},
+                "train": {"totalNetPnlPct": 76.734},
+            },
+        }))
+        (reports / "walk_forward_hk_baseline.json").write_text(json.dumps({
+            "generatedAt": "2026-08-10T00:00:00Z",
+            "results": {"valid": {"totalNetPnlPct": 60.647, "winRate": 0.417, "sharpe": 6.32, "maxDrawdownPct": 8.329}},
+        }))
+        (reports / "rolling_oos_latest.json").write_text(json.dumps({
+            "windowStart": "2026-05-13", "windowEnd": "2026-08-11",
+            "warning": True, "warnings": ["HK: -8.5%"],
+            "markets": {"HK": {"closed": 55, "winRate": 0.255, "totalNetPnlPct": -8.451, "maxDrawdownPct": 19.5, "sharpe": -3.2}},
+        }))
+        monkeypatch.setattr(br, "REPORTS_DIR", reports)
+
+        out = br.backtest_overview()
+        assert out["ok"] is True
+        assert out["cnBaseline"]["windows"]["OOS2"]["totalNetPnlPct"] == 112.654
+        assert out["hkBaseline"]["windows"]["valid"]["sharpe"] == 6.32
+        assert out["rollingOos"]["warning"] is True
+        assert out["rollingOos"]["markets"]["HK"]["closed"] == 55
+        # Frozen long-window constants are always present.
+        assert out["longWindowCN"]["totalNetPnlPct"] == 250.8
+        assert out["longWindowCN"]["byYear"]["2023"] == -263.0
+
+    def test_overview_missing_files(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setattr(br, "REPORTS_DIR", tmp_path)
+        out = br.backtest_overview()
+        assert out["cnBaseline"] is None
+        assert out["hkBaseline"] is None
+        assert out["rollingOos"] is None
+        assert out["longWindowCN"] is not None

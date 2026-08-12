@@ -226,7 +226,10 @@ reconciliation / rolling_oos）。**universe 去 TV 结论**：全市场算分�
   的收益代价被量化）。另修 5 个日期敏感/隔离测试（adj_factor/daily_service/etf_daily
   uptodate → 相对日期；close_sync 默认窗 → patch get_last_success；user_trades fetch_sell
   → 只断言自己的行）
-- [ ] **长窗落地**：长窗（2021-08~2026-08 完整周期）结果固化为完整周期基线，进 strategy-params
+- [x] **长窗落地（2026-08-12 ✅）**：长窗（2021-08~2026-08 完整周期）已回测并重固化基线
+  （+250.8%/DD40.9/夏普2.65，熔断后 +251%/DD40.9；年度 2021 +341/2022 +93/2023 -263/2024 +606/
+  2025 +956/2026 +1325）→ strategy-params §1/§3 已记录，回撤熔断定案，见上「长窗落地 + 回撤
+  熔断定案」节
 
 **H2（9~10 月）**：决策 Agent 自动驾驶复盘（周报→下周行动计划自动产出，用户只确认）；
 盘中极端警报（单票 -8%，实时报价链已有）；webhook 事件订阅（§14 #3）
@@ -518,11 +521,11 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 |------|------|
 | §2 定位/形态 | ✅ Web 唯一形态（OPT-060）+ 可分享 URL（hash-router） |
 | §3 收益/交易 | ✅ S-3 策略定案 + 卫星仓复核 + user_trades 闭环；**验证期**（C4 等样本） |
-| §4 API 开放 | ✅ /v1/* 整圈（OPT-045~051）+ cookbook；[ ] webhook（§14 #3） |
+| §4 API 开放 | ✅ /v1/* 整圈（OPT-045~051）+ cookbook；✅ 应用内通知中心（OPT-082）；[ ] 外部 webhook（设计稿） |
 | §5 工程/部署 | ✅ Docker 一键 + 备份迁移 + 稳定性审计 5 修（2026-08-09）；Tunnel 端到端待验证 |
 | §6 数据源 | ✅ TV Scanner API 唯一池子；[ ] 付费 API 矩阵（§12 #9） |
 | §7 新闻/研报 | ✅ News Substrate 2.0 三轨 + TIP-012 研报通道 |
-| §8 回测 | ✅ 引擎 v1.5 + S-3 + C1 工具；[ ] C4 paper 对照（等数据）；[ ] BacktestPage 重写 |
+| §8 回测 | ✅ 引擎 v1.5 + S-3 + C1 工具 + 长窗 2021-08 起 + 回撤熔断 + BacktestPage 结论页；[ ] C4 paper 对照（等数据） |
 | §9 多市场 | 🟡 美股/加拿大远期（§12 #14/15） |
 | §10 沉淀 | 27+ archive（每完成一项补一行） |
 | §13 Longevity | ✅ 换电脑跑/恢复数据；🟡 云相关暂缓（等 Mac mini） |
@@ -674,10 +677,10 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
   （allocation-zero skip；已持仓退出管理照常走 update cron）；金字塔加仓 sleeve 同步缩放；
   回测与 live 共用 `service/allocation.py` 同码（run_walk_forward_dual R5 分支已改调同函数）。
   验证：本周（8-10 周）决议 CN=Weak/HK=Strong → w=0/1（当前状态正确）；21 paper_s3 测试 ✓
-- [ ] **T5 paper_s3 HK 每日首跑观察**：8-10 17:42 cron **未跑**（sync_job_record 无 paper_s3 记录，
-  8-10/8-11 均无）——已手动补跑 8-10（CN 0 候选正确空仓 + HK 20 只）；根因疑似 uvicorn
-  `--reload` 模式进程漂移（scheduler 宿主不稳）——**今天 17:42 关键验证**（本周 CN 应全
-  allocation-zero、HK 正常买），再丢即去 --reload 重启
+- [x] **T5 paper_s3 HK 每日首跑观察（2026-08-12 ✅ 关闭）**：8-10 17:42 cron 曾未跑（--reload
+  进程漂移），手动补跑 + 去 --reload + launchd 托管后，**8-11 三连全绿**（17:31 automation ✓
+  · 17:42 intake CN+HK ✓ · 17:45 update ✓，sync_job_record 实证），20 只 S3HK 保持 open；
+  8-12 继续正常。根因已根治（uvicorn launchd 托管 + paper 链 watchdog 18:05 自检补跑）
 - [x] **T6 HK 实时报价链港股验证**（2026-08-10 ✅）：新浪 hq.sinajs.cn 主链对 HK 标的实测通过
   （00700/02899/01787 当天 16:04 价）——HK 盘中决策/止损刷新链路 OK
 
@@ -710,7 +713,10 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 - ✅ **回测引擎 v1.5**（OPT-063→070）→ [`archive/2026-08-07-opt-063-backtest-engine.md`](./archive/2026-08-07-opt-063-backtest-engine.md)
 - ✅ **Paper v0.1/v0.2 + S-3 模式**（paper_s3 同码闸门，cron 17:42）→ §16 L3-P1 / §19.1 G4
 - [ ] **[P1] paper 实绩对照（C4）**：≥20 笔平仓后，回测结论 vs paper 真实表现逐条核对
-- [ ] **[P2] BacktestPage 重写**：等 paper 数据有数字后做（现有页面为参数敏感度工具）
+- [x] **BacktestPage 重写（2026-08-12 ✅）**：改为「S-3 回测结论展示页」——定案基线
+  （CN/HK 三窗 + 长窗 2021-08 起 + 参数徽章 + 年度明细）+ 滚动 OOS（warning 红标）+ 回测
+  vs Paper 对账；原参数敏感度工具收进折叠「高级」区（默认收起）；新增后端
+  `GET /api/backtest/overview`（读固化基线 JSON + 滚动 OOS + 长窗常量）
 - ⚠️ 纪律：回测数字不作发布依据；paper 实绩为准
 
 
@@ -766,6 +772,8 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 
 | 日期 | 事件 | 归档位置 |
 |------|------|----------|
+| 2026-08-12 | **全系统健壮性审查（OPT-074）**：三路扫描 60+ 缺陷全修——前端默认 30s 超时 + SSE/流式 5min 兜底 + 卸载 abort（原 AI 挂起永久锁死 UI）；Rust sidecar 启动移后台线程 + Cmd+Q 清理（原孤儿进程占端口）；ai-service fetch 层 10min 硬顶 + 流 cancel 转发 + 去 process.env 全局污染；后端 RSS 20s 超时 / close_sync 重试 / yfinance 60s 超时 / statement_timeout / 10 处静默 pass 补日志 / 7 job print→logger；修 alembic fileConfig 禁用全库 logger（污染 pytest caplog）| OPT-074 见 optimization-checklist（后端 3284 + 前端 728 + ai 142 + cargo/tsc/ruff 全绿） |
+| 2026-08-12 | **TV 剥离第二轮**：execution-source TV 源改恒空集（'TV' 归因保留）· 删 queries/screener + api/tvCapture + screenerExport · dashboard-export 去 screener 段/常量 · 前端零 TV 网络调用（ChatPanel 历史渲染保留 catch 兜底）· 728 tests 全绿 | 见 todo §6 剥离清单 |
 | 2026-08-11 | **smoke 测试误杀 S3HK paper 仓（重大事故修复）**：`test_postclose_smoke.py` 未隔离真实 DB——`run_update` 全量扫描 + 价格 mock 对所有 HK 返回 100 → 20 只 S3HK 假平仓（+2 只 TV 08-09 被误杀）；双层修复（mock 只服务自身 symbol + `get_open_paper_trades` 只返回自己的行）+ 恢复 22 行 open + uvicorn 去 `--reload` 重启（misfire 循环终止） | 见上「当前方向」事故段（todo 就地记录，细节同文） |
 | 2026-08-09 | **todo 精简整理**：§17（Gate+覆盖率波 1-13）与 §18（R1-R7）详情原样迁移；§19 实验细节并入 strategy-params/backtest-strategy 后压缩；1179→578 行 | [`archive/2026-08-09-todo-slim-eng-hardening.md`](./archive/2026-08-09-todo-slim-eng-hardening.md) |
 | 2026-08-08 | **L4-Gate 全清（H1~H10 + K1/K4）**：4 个 live bug 根因修复（intake key 错位 / camelCase×2 / journal 校验）、测试隔离纪律化（233 假账户+141 假 session 清理、db_rows_baseline 27 表验收）、fail-open 清单（修 2 激进项）、时区/数值健壮性、API 契约对照（删前端 okBook 死字段）、调度幂等（ingest heartbeat 测试锁定）、安全扫描（本地 CSRF Origin 守卫 11 测试） | [`archive/2026-08-08-l4-gate-audit.md`](./archive/2026-08-08-l4-gate-audit.md)（后端 1435 passed + 前端 515 passed + tsc 干净；L4 准入 Gate 6/7 项达标，剩归档动作已完成——§17 全部勾选） |
@@ -880,7 +888,7 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 
 - ✅ **AI agent 集成 cookbook**（2026-08-01）→ [`integrations/ai-agent-cookbook.md`](./integrations/ai-agent-cookbook.md)
 - ✅ **/v1/* 持续稳定**（OPT-045~051 整圈 + 配额 + 文档）→ §12 已完成表
-- [ ] **决策/告警 webhook（AI agent 订阅 Karios 事件）**：设计稿阶段（§14 #3）
+- [x] **全局通知中心（2026-08-12 ✅ 应用内版先行）**：任何页面铃铛+toast 提醒，点击跳 watchlist 详情（接近止损/EXIT/recon 缺票/cron 失败/OOS 预警 + 本地买入提醒）——OPT-082；**外部 webhook 推送**仍为设计稿（docs/designs/webhook-event-subscription.md，拍板后做）
 - ✅ **TV 数据源决策**（2026-08-01）：TV Scanner API = 唯一池子，ego-lite/Chrome CDP 仅 fallback
 - ✅ **§13 远程部署暂缓确认**：Neon/Tailscale/VM 等云相关全部暂缓（用户："暂时云还有一段路"）
 

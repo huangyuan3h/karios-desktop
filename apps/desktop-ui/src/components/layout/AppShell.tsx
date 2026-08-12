@@ -8,6 +8,7 @@ import { Bot } from 'lucide-react';
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { SystemHealthBanner } from '@/components/layout/SystemHealthBanner';
+import { NotificationHub } from '@/components/notifications/NotificationHub';
 import { DashboardPage } from '@/components/pages/DashboardPage';
 import { AlphaTabsPage } from '@/components/pages/AlphaTabsPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
@@ -233,6 +234,7 @@ function AppShellInner() {
                 setActivePage('stock');
               }}
             />
+            <NotificationHub />
             <Button
               variant="secondary"
               size="sm"
