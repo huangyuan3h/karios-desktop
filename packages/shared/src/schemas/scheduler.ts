@@ -543,6 +543,17 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     true,
      19,
   ),
+  meta(
+    'weekly_review',
+    'coreClose',
+    '周度复盘',
+    '周一 07:40 聚合上周（周一至周五）决策量 / paper 实绩 / 卖出归因 / 回测对账，生成周度决策质量报告（morning_briefs: weekly-review）。',
+    '周一 07:40',
+    null,
+    'cron',
+    true,
+     20,
+  ),
 ];
 
 /** Group display order in the UI. */

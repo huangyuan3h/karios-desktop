@@ -2072,3 +2072,31 @@ BacktestPage 首屏即回测结论，参数工具退居折叠。
 
 **测试**：后端 +6（4 聚合 + 排序 + 路由），前端 +3（toast 跳转/未读面板/本地
 提醒合并）；后端 3294 passed + 前端 735 passed + ruff/tsc/lint 干净。
+
+### OPT-083：决策 Agent 周度自动复盘（H2 · 周报→下周行动计划自动产出）（2026-08-12）
+
+**状态**：[x]
+
+**需求**（todo H2）：周报→下周行动计划自动产出，用户只确认。周报数据端
+（weekly_review：决策量/paper 实绩/归因/对账/自动观察）早已齐，缺：cron 自动生成 +
+LLM 行动计划 + 前端确认界面。
+
+**实现**：
+1. 后端 `scheduler/weekly_review_job.py`：周一 07:40 自动聚合上周（周一~周五）→
+   morning_briefs（brief_type='weekly-review'）+ sync_job_record；注册 scheduler +
+   SYNC_JOB_TYPES + SCHEDULER_JOB_CATALOG（coreClose 组）
+2. 后端 `/api/backtest/weekly-plan`（POST 存储 / GET 最新）：行动计划落 morning_briefs
+   （brief_type='weekly-plan'，按周一 key）
+3. ai-service `POST /weekly-plan`：预取上下文（周报 markdown（上周五）+ 实时体检 +
+   recon 对账 + 滚动 OOS + 长窗定案）→ LLM 产出「下周行动计划」markdown（买入/卖出/
+   条件单/观察项 + 数据引用铁律）→ Gemini primary + openai fallback → 自动落库
+4. 前端 WeeklyReviewCard：加「下周行动计划」区（自动显示已存计划 + 生成/重新生成
+   按钮 + 复制 + 状态提示）
+
+**踩坑**：`maxOutputTokens: 1800` + Gemini thinking high → 思考 token 吃光预算、
+输出截断在 ~150 字符（两次复现）——去掉 maxOutputTokens（与生产 decision 流式
+同参数）后完整输出 1062 字符 ✓；周报日期计算（上周五 = 今天 - (weekday+2)%7）。
+
+**验证**：实际生成（google）：正确引用 Weak 纪律（A 股不开新仓）+ HK 缺票 19 只
+（HK:02343 score100 等）+ 4 持仓条件单（止损/移动/到期）✓；后端 3299 passed（+3）·
+ai-service 9 passed（+3）· 前端 737 passed（+2）· ruff/typecheck 干净

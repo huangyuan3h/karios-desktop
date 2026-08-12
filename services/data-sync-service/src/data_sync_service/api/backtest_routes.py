@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from data_sync_service.service.backtest_engine import (
     BacktestConfig,
@@ -252,6 +253,42 @@ def weekly_review(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"weekly review failed: {exc}") from exc
     return result
+
+
+class WeeklyPlanRequest(BaseModel):
+    markdown: str
+
+
+@router.post("/weekly-plan")
+def weekly_plan_store(req: WeeklyPlanRequest) -> dict[str, Any]:
+    """Store the decision agent's next-week action plan (morning_briefs
+    brief_type='weekly-plan', keyed by this Monday). Frontend / history read
+    it via GET /api/backtest/weekly-plan."""
+    from datetime import UTC, datetime, timedelta
+
+    from data_sync_service.db.morning_brief import upsert_brief
+
+    today = datetime.now(tz=UTC).date()
+    monday = today - timedelta(days=today.weekday())
+    brief = upsert_brief(
+        brief_date=monday.isoformat(),
+        brief_type="weekly-plan",
+        items=[],
+        macro_overview=None,
+        model_version="weekly_plan_v1",
+        source_item_ids=None,
+        markdown=req.markdown,
+    )
+    return {"ok": True, "brief": brief}
+
+
+@router.get("/weekly-plan")
+def weekly_plan_latest() -> dict[str, Any]:
+    """Latest stored next-week action plan (brief_type='weekly-plan')."""
+    from data_sync_service.db.morning_brief import fetch_latest_brief
+
+    brief = fetch_latest_brief(brief_type="weekly-plan")
+    return {"ok": True, "plan": brief}
 
 
 @router.get("/correlation-status")

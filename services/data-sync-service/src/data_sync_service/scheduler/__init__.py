@@ -43,6 +43,7 @@ from data_sync_service.scheduler import (
     stock_basic_job,
     trading_brief_job,
     watchlist_automation_job,
+    weekly_review_job,
 )
 
 
@@ -220,6 +221,13 @@ def create_scheduler() -> BackgroundScheduler:
         paper_chain_watchdog_job.run,
         paper_chain_watchdog_job.build_trigger(),
         id=paper_chain_watchdog_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Weekly review (Monday 07:40 — decision quality report for the agent).
+    scheduler.add_job(
+        weekly_review_job.run,
+        weekly_review_job.build_trigger(),
+        id=weekly_review_job.JOB_ID,
         replace_existing=True,
     )
     # Trading-session briefs (10:00 / 12:00 / 14:30 weekdays — user's rhythm).

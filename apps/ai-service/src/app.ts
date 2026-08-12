@@ -12,6 +12,7 @@ import { newsRoutes } from './routes/news';
 import { reportRoutes } from './routes/report';
 import { chatRoutes } from './routes/chat';
 import { decisionRoutes } from './routes/decision';
+import { weeklyPlanRoutes } from './routes/weekly_plan';
 import { alphaRadarRoutes } from './routes/alpha_radar';
 import { openaiCompatRoutes } from './routes/openai_compat';
 
@@ -39,6 +40,7 @@ app.route('/news', newsRoutes);
 app.route('/report', reportRoutes);
 app.route('/chat', chatRoutes);
 app.route('/decision', decisionRoutes);
+app.route('/weekly-plan', weeklyPlanRoutes);
 app.route('/alpha-radar', alphaRadarRoutes);
 app.route('/v1', openaiCompatRoutes);
 

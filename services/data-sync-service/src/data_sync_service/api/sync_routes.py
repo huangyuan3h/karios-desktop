@@ -305,6 +305,7 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "morning_brief_am",
     "morning_brief_pm",
     "paper_chain_watchdog",
+    "weekly_review",
     "trading_brief_open",
     "trading_brief_midday",
     "trading_brief_action",
