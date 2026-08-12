@@ -1062,3 +1062,58 @@ def test_s3_close_thresholds_pinned() -> None:
     assert pt_db_mod.TARGET_PNL_PCT == 100.0
     assert pt_db_mod.SCORE_FLOOR == 0.0
     assert pt_db_mod.STOP_LOSS_PCT == -5.0
+
+
+def test_run_update_trailing_peaks_on_close_not_high() -> None:
+    """C4 alignment (2026-08-12): the live trailing stop peaks on CLOSES,
+    exactly like the backtest engine — an intraday high spike that closes
+    flat must NOT trigger the trailing stop."""
+    open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-01"}]
+    bars = {
+        # 08-04: intraday high 11.5 (+15%) but close 10.2 → close-peak stays 10.2
+        "000001.SZ": [
+            ("2026-08-04", 10.0, 11.5, 10.0, 10.2, 1000),
+            ("2026-08-05", 10.2, 10.3, 10.0, 10.0, 1000),
+            ("2026-08-06", 10.0, 10.1, 9.9, 10.0, 1000),  # close 10.0 = peak 10.2 → -2%
+        ],
+    }
+    p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
+    with p1, p2, p3, p4, patch(
+        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "trailing_stop"},
+    ) as mock_close, patch(
+        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+    ) as mock_update:
+        from data_sync_service.service.paper_trading import run_update
+
+        summary = run_update(today_iso="2026-08-06")
+    # High-based peak (11.5) would show -13% pullback → close; close-based
+    # peak (10.2) shows only -2% → HOLD.
+    assert summary["closed"] == 0
+    mock_update.assert_called()
+    mock_close.assert_not_called()
+
+
+def test_run_update_trailing_fires_on_close_peak_pullback() -> None:
+    """Close-based peak that pulls back >= trailing pct still closes."""
+    open_rows = [{**_OPEN_ROW, "entryPrice": 10.0, "entryDate": "2026-08-01"}]
+    bars = {
+        "000001.SZ": [
+            ("2026-08-04", 10.0, 10.1, 9.9, 10.6, 1000),  # close peak 10.6
+            ("2026-08-05", 10.6, 10.7, 10.5, 11.0, 1000),  # close peak 11.0
+            ("2026-08-06", 11.0, 11.1, 9.9, 10.0, 1000),   # close 10.0 → -9.1% from 11.0
+        ],
+    }
+    p1, p2, p3, p4 = _patched_run_update(open_rows, bars)
+    with p1, p2, p3, p4, patch(
+        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+        return_value={**_OPEN_ROW, "status": "closed", "close_reason": "trailing_stop"},
+    ) as mock_close, patch(
+        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+    ) as mock_update:
+        from data_sync_service.service.paper_trading import run_update
+
+        summary = run_update(today_iso="2026-08-06")
+    assert summary["closed"] == 1
+    assert summary["closeReasons"].get("trailing_stop") == 1
+    assert mock_close.call_args.kwargs["close_reason"] == "trailing_stop"

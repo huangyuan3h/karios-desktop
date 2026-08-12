@@ -37,6 +37,7 @@ from datetime import date
 from typing import Any
 
 from psycopg.rows import dict_row
+from psycopg.types.json import Json  # type: ignore[import-not-found]
 
 from data_sync_service.db import get_connection
 from data_sync_service.service.paper_cost_model import MARKETS
@@ -96,6 +97,8 @@ STOP_LOSS_PCT = -5.0  # i.e. net pnl_pct <= -5% triggers stop_hit (v0.2: net)
 TARGET_PNL_PCT = 100.0  # S-3: no active take-profit (10% target was proven a profit killer)
 SCORE_FLOOR = 0.0  # S-3: never close on score retreat (floor 30 was proven to kill trends)
 TRAILING_STOP_PCT = -8.0  # S-3: close when price pulls back 8% from post-entry peak (backtest-strategy.md 6.6/6.7)
+PROFIT_TRAIL_TRIGGER_PCT = 0.0  # A6 (2026-08-12): 0 = disabled; e.g. 10 = protect once the leg is +10%
+PROFIT_TRAIL_PCT = 0.0  # A6: allowed pullback from the post-trigger peak (e.g. -6); 0 = disabled
 
 CREATE_SQL = f"""
 CREATE TABLE IF NOT EXISTS {PAPER_TRADES_TABLE} (
@@ -118,7 +121,8 @@ CREATE TABLE IF NOT EXISTS {PAPER_TRADES_TABLE} (
     gross_pnl_pct   DOUBLE PRECISION,
     costs_pct       DOUBLE PRECISION,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    signal_snapshot JSONB
 );
 
 -- Idempotency: the intake cron is keyed on (symbol, entry_date, side).
@@ -169,6 +173,7 @@ def insert_paper_trade(
     sleeve_pct: float | None = None,
     source: str | None = None,
     market: str = "CN",
+    signal_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Insert one paper trade. Returns the row or ``None`` on idempotent skip.
 
@@ -178,6 +183,9 @@ def insert_paper_trade(
     ``source`` (TIP-011) is one of 'TV' / 'ALPHA' / 'MANUAL' (closed enum) or
     None for legacy rows that pre-date attribution. ``market`` (OPT-062) is
     'CN' | 'HK' and must have a cost model (``paper_cost_model``).
+    ``signal_snapshot`` (2026-08-12) captures the orthogonal info layers at
+    entry (industry flow rank / alpha events) for the C4 paper-vs-backtest
+    validation — display data only, never a gate.
     """
     if side not in SIDES:
         raise ValueError(f"side must be one of {SIDES} (got {side!r})")
@@ -193,8 +201,8 @@ def insert_paper_trade(
                 f"""
                 INSERT INTO {PAPER_TRADES_TABLE}
                     (id, symbol, entry_date, side, entry_price, score_at_entry,
-                     why_at_entry, sleeve_pct, status, source, market)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s)
+                     why_at_entry, sleeve_pct, status, source, market, signal_snapshot)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s)
                 ON CONFLICT (symbol, entry_date, side) DO NOTHING
                 RETURNING *
                 """,
@@ -209,6 +217,7 @@ def insert_paper_trade(
                     sleeve_pct,
                     source,
                     market,
+                    Json(signal_snapshot) if signal_snapshot else None,
                 ),
             )
             row = cur.fetchone()

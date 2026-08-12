@@ -1,0 +1,73 @@
+{
+  "generatedAt": "2026-08-12",
+  "sampleCount": 2,
+  "verdict": "样本 <20 笔：结论待积累（C4 未定案）",
+  "rows": [
+    {
+      "symbol": "HK:00697",
+      "market": "HK",
+      "entryDate": "2026-08-10",
+      "closeDate": "2026-08-12",
+      "paper": {
+        "entryPrice": 1.79,
+        "closePrice": 1.7,
+        "pnlPct": -5.63,
+        "holdingDays": 2,
+        "closeReason": "stop_hit"
+      },
+      "backtest": {
+        "entryDate": "2026-08-05",
+        "closeDate": "2026-08-12",
+        "entryPrice": 1.815,
+        "closePrice": 1.7,
+        "pnlPct": -7.03,
+        "holdingDays": 7,
+        "closeReason": "stop_hit"
+      },
+      "diff": {
+        "entryPriceDiffPct": 1.4,
+        "pnlDiffPct": -1.4
+      },
+      "note": "存在差异"
+    },
+    {
+      "symbol": "HK:00622",
+      "market": "HK",
+      "entryDate": "2026-08-10",
+      "closeDate": "2026-08-12",
+      "paper": {
+        "entryPrice": 2.755,
+        "closePrice": 2.83,
+        "pnlPct": 2.12,
+        "holdingDays": 2,
+        "closeReason": "trailing_stop"
+      },
+      "backtest": {
+        "entryDate": "2026-08-10",
+        "closeDate": "2026-08-12",
+        "entryPrice": 2.755,
+        "closePrice": 2.83,
+        "pnlPct": 2.02,
+        "holdingDays": 2,
+        "closeReason": "end_of_window"
+      },
+      "diff": {
+        "entryPriceDiffPct": 0.0,
+        "pnlDiffPct": -0.1
+      },
+      "note": "存在差异"
+    }
+  ],
+  "summary": {
+    "paper": {
+      "closed": 2,
+      "winRate": 0.5,
+      "avgPnlPct": -1.75
+    },
+    "backtestMatched": {
+      "closed": 2,
+      "winRate": 0.5,
+      "avgPnlPct": -2.5
+    }
+  }
+}

@@ -78,6 +78,50 @@ def _stop_trail_alerts() -> list[dict[str, Any]]:
                 continue
             if pnl_f is None:
                 continue
+            ops = hold.get("lineOps") or {}
+            expire_date = ops.get("expireDate") or hold.get("expireDate")
+            if "trail_up" in ops:
+                prev_v, cur_v = ops["trail_up"]
+                out.append({
+                    "id": f"lineup:{market}:{symbol}:trail",
+                    "type": "line_update",
+                    "severity": "medium",
+                    "title": f"需调单 · 移动线上调 · {name}",
+                    "detail": (
+                        f"{symbol} 移动线 {prev_v} → {cur_v}（峰值上移）——"
+                        "请上调券商固定价条件单，或改用移动止损单"
+                    ),
+                    "anchor": "holdings",
+                    "createdAt": datetime.now(UTC).isoformat(),
+                })
+            if "stop_up" in ops:
+                prev_v, cur_v = ops["stop_up"]
+                out.append({
+                    "id": f"lineup:{market}:{symbol}:stop",
+                    "type": "line_update",
+                    "severity": "medium",
+                    "title": f"需调单 · 止损线上调 · {name}",
+                    "detail": (
+                        f"{symbol} 止损线 {prev_v} → {cur_v}（金字塔加仓）——"
+                        "请上调券商止损条件单"
+                    ),
+                    "anchor": "holdings",
+                    "createdAt": datetime.now(UTC).isoformat(),
+                })
+            if "expire_soon" in ops:
+                out.append({
+                    "id": f"expire:{market}:{symbol}",
+                    "type": "expire_soon",
+                    "severity": "medium",
+                    "title": f"临近到期 · {name}",
+                    "detail": (
+                        f"{symbol} 持有期剩 {ops['expire_soon']} 天"
+                        + (f"（到期 {expire_date}）" if expire_date else "")
+                        + "——券商条件单不会自动到期卖出，请记日历"
+                    ),
+                    "anchor": "holdings",
+                    "createdAt": datetime.now(UTC).isoformat(),
+                })
             for line_name, line in (("stop", hold.get("stopLossLine")),
                                     ("trailing", hold.get("trailingLine"))):
                 try:

@@ -30,6 +30,8 @@ def _fake_health() -> dict:
                 "trailingLine": 433.136,
                 "pnlPct": 1.13,
                 "expireDate": "2026-09-27",
+                "lineOps": {"trail_up": [433.136, 440.2], "expire_soon": 4,
+                            "expireDate": "2026-09-27"},
             },
             {
                 "symbol": "CN:300628",
@@ -106,6 +108,8 @@ def test_render_markdown_compact() -> None:
     assert "港股: Strong" in md
     assert "**持仓 / 条件单**" in md
     assert "HK:00700 腾讯控股 · 1.13% ✅持有 止损 452.2 移动 433.136" in md
+    assert "🛠移动线上调 433.136→440.2" in md
+    assert "⏰剩 4 天到期" in md
     assert "力量发展 · —% ✅持有" in md  # None pnl renders as —
     assert "🔴退出" in md
     assert "**新闻 Top5**" in md

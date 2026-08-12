@@ -302,7 +302,7 @@ def build_s3_candidates(
         flow_ok = True
         mainline: set[str] = set()
     else:
-        flow_any_positive_by_day, mainline_allow_by_day = _load_flow_mainline_data(cfg, [day])
+        flow_any_positive_by_day, mainline_allow_by_day, _flow5d = _load_flow_mainline_data(cfg, [day])
         flow_ok = flow_any_positive_by_day.get(day, False)
         if not flow_ok:
             return []
@@ -499,6 +499,46 @@ def _swap_holds_for_candidates(
     return swapped, rest
 
 
+def _signal_snapshot_for(
+    *,
+    symbol: str,
+    industry: str | None,
+    trade_date: str,
+) -> dict[str, Any] | None:
+    """Info-layer snapshot at entry (C4 validation data — never a gate).
+
+    SW L1 industry 5-day net-inflow rank/total/amount (CN only; HK has no
+    industry flow feed) + alpha-event count for the symbol (14-day window).
+    """
+    snap: dict[str, Any] = {}
+    if industry:
+        try:
+            from data_sync_service.service.portfolio_health import _industry_flow_map
+
+            f = _industry_flow_map(trade_date).get(industry)
+            if f:
+                snap["industryRank5d"] = f["rank5d"]
+                snap["industryTotal"] = f["total"]
+                snap["industryNetInflow5d"] = f["netInflow5d"]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("paper_s3 signal snapshot flow failed: %s", exc)
+    try:
+        from data_sync_service.service.portfolio_health import _alpha_events_for_symbols
+
+        events = _alpha_events_for_symbols([symbol])
+        n_events = len(events.get(_alpha_key(symbol)) or [])
+        if n_events > 0:
+            snap["alphaEvents"] = n_events
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 signal snapshot alpha failed: %s", exc)
+    return snap if snap else None
+
+
+def _alpha_key(symbol: str) -> str:
+    if symbol.startswith("HK:") and len(symbol) == 7:
+        return "HK:" + symbol[3:].zfill(5)
+    return symbol
+
 def run_intake_s3(
     *,
     trade_date: str | None = None,
@@ -606,6 +646,9 @@ def run_intake_s3(
     except Exception as exc:  # noqa: BLE001
         logger.warning("paper_s3 stock basic lookup failed: %s", exc)
 
+
+
+
     closes: dict[str, float] = {}
     try:
         bars_by_ts = fetch_last_ohlcv_batch(ts_codes, days=2)
@@ -643,6 +686,9 @@ def run_intake_s3(
                 sleeve_pct=sleeve,
                 source=source,
                 market=("HK" if source == SOURCE_S3_HK else "CN"),
+                signal_snapshot=_signal_snapshot_for(
+                    symbol=cand["symbol"], industry=cand.get("industry"), trade_date=day,
+                ),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 swap-in insert failed for %s: %s", cand["symbol"], exc)
@@ -682,6 +728,9 @@ def run_intake_s3(
                 sleeve_pct=sleeve,
                 source=source,
                 market=("HK" if source == SOURCE_S3_HK else "CN"),
+                signal_snapshot=_signal_snapshot_for(
+                    symbol=cand["symbol"], industry=cand.get("industry"), trade_date=day,
+                ),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 insert failed for %s: %s", cand["symbol"], exc)

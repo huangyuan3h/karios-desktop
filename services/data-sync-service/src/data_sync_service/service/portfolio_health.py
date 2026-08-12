@@ -11,7 +11,7 @@ backtest would.
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 from data_sync_service.db.paper_trading import (
@@ -42,6 +42,13 @@ def _held_company_names(*, market: str, day: str) -> set[str]:
         logger.warning("portfolio health held names failed: %s", exc)
         return set()
     return {str(h.get("name") or "").strip() for h in holdings or [] if h.get("name")}
+
+
+def _as_float(v: Any) -> float | None:
+    try:
+        return float(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _resolve_holding_ts(symbol: str) -> str | None:
@@ -164,7 +171,173 @@ def _holding_check(
     return out
 
 
-def _build_holdings_block(market: str, day: str) -> list[dict[str, Any]]:
+def _detect_line_ops(
+    *,
+    prev_trail: float | None,
+    cur_trail: float | None,
+    prev_stop: float | None,
+    cur_stop: float | None,
+    max_hold_days: int | None,
+    holding_days: int | None,
+    expire_date: str | None = None,
+) -> dict[str, Any]:
+    """Conditional-order lines that moved since the last notification.
+
+    A broker fixed-price conditional order goes stale when the trailing
+    line climbs with the close-peak (or the stop line climbs on a pyramid
+    add) — flag it so the user can re-arm the order. Also flags expiry
+    inside the last 5 days (broker orders have no auto-expire sell).
+    """
+    ops: dict[str, Any] = {}
+    if prev_trail is not None and cur_trail is not None and cur_trail > prev_trail:
+        ops["trail_up"] = [round(prev_trail, 3), round(cur_trail, 3)]
+    if prev_stop is not None and cur_stop is not None and cur_stop > prev_stop:
+        ops["stop_up"] = [round(prev_stop, 3), round(cur_stop, 3)]
+    if max_hold_days and holding_days is not None:
+        days_left = max_hold_days - holding_days
+        if 0 <= days_left <= 5:
+            ops["expire_soon"] = days_left
+    if expire_date is not None:
+        ops["expireDate"] = expire_date
+    return ops
+
+
+def _alpha_sym_key(symbol: str) -> str:
+    """Normalize holding symbols to the alpha-radar format (HK:2099 -> HK:02099)."""
+    if symbol.startswith("HK:") and len(symbol) == 7:  # HK: + 4 digits -> 5 digits
+        return "HK:" + symbol[3:].zfill(5)
+    return symbol
+
+
+def _alpha_events_for_symbols(
+    symbols: list[str], max_age_days: int = 14
+) -> dict[str, list[dict[str, Any]]]:
+    """{symbol: [alpha trends]} from alpha_radar_trends (best-effort, top-3)."""
+    from data_sync_service.db.alpha_radar import fetch_trends
+
+    out: dict[str, list[dict[str, Any]]] = {}
+    if not symbols:
+        return out
+    try:
+        _total, items = fetch_trends(limit=200, max_age_days=max_age_days)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health alpha events failed: %s", exc)
+        return out
+    want = {_alpha_sym_key(s) for s in symbols}
+    today = datetime.now(UTC).date()
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    for t in items:
+        conf = t.get("mappingConfidence")
+        try:
+            conf_f = float(conf) if conf is not None else None
+        except (TypeError, ValueError):
+            conf_f = None
+        matched: list[str] = []
+        for entry in (t.get("cnSymbols") or []) + (t.get("hkSymbols") or []):
+            s = str(entry.get("symbol") or "")
+            if s and _alpha_sym_key(s) in want:
+                matched.append(_alpha_sym_key(s))
+        if not matched:
+            continue
+        published = t.get("documentPublishedAt") or t.get("createdAt") or ""
+        days_ago = None
+        if published:
+            try:
+                days_ago = (today - datetime.fromisoformat(str(published)[:10]).date()).days
+            except (ValueError, TypeError):
+                pass
+        event = {
+            "trend": str(t.get("trendName") or ""),
+            "grade": str(t.get("catalystGrade") or ""),
+            "confidence": round(conf_f, 2) if conf_f is not None else None,
+            "daysAgo": days_ago,
+            "riskStatus": str(t.get("riskStatus") or ""),
+            "focus": str(t.get("eventFocus") or "")[:60],
+        }
+        for s in matched:
+            buckets.setdefault(s, []).append(event)
+    for sym, events in buckets.items():
+        events.sort(key=lambda e: -(e["confidence"] or 0.0))
+        out[sym] = events[:3]
+    return out
+
+
+def _l1_industry_for_symbols(symbols: list[str]) -> dict[str, str]:
+    """{CN:xxxx: SW L1 industry} from the S-3 score table's latest row per symbol.
+
+    Same source as the S-3 candidates' industry (SW L1), so holdings carry
+    the identical industry dialect as the score gate that admitted them.
+    """
+    out: dict[str, str] = {}
+    if not symbols:
+        return out
+    from data_sync_service.db import get_connection
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT DISTINCT ON (symbol) symbol, industry
+                    FROM watchlist_score_daily
+                    WHERE symbol = ANY(%s)
+                      AND industry IS NOT NULL AND industry <> ''
+                    ORDER BY symbol, trade_date DESC
+                    """,
+                    (symbols,),
+                )
+                for sym, ind in cur.fetchall():
+                    if ind:
+                        out[str(sym)] = str(ind)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health L1 industry lookup failed: %s", exc)
+    return out
+
+
+def _industry_flow_map(trade_date: str | None) -> dict[str, dict[str, Any]]:
+    """{SW L1 industry: {netInflow5d(亿元), rank5d, total}} last 5 sessions."""
+    from data_sync_service.db.industry_fund_flow import (
+        get_dates_upto,
+        get_rows_for_dates,
+    )
+    from data_sync_service.service.industry_fund_flow_read import flow_items_from_rows
+
+    out: dict[str, dict[str, Any]] = {}
+    if trade_date is None:
+        from data_sync_service.db.paper_trading import today_iso
+
+        day = today_iso()
+    else:
+        day = trade_date
+    try:
+        dates = get_dates_upto(day, 5)
+        rows = get_rows_for_dates(dates)
+        items = flow_items_from_rows(rows, dates)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health industry flow failed: %s", exc)
+        return out
+    ranked = sorted(items, key=lambda x: -(float(x.get("sum5d") or 0.0)))
+    total = len(ranked)
+    for idx, it in enumerate(ranked):
+        name = str(it.get("industryName") or "")
+        if not name:
+            continue
+        out[name] = {
+            "industry": name,
+            "netInflow5d": round(float(it.get("sum5d") or 0.0) / 1e8, 2),
+            "rank5d": idx + 1,
+            "total": total,
+        }
+    return out
+
+
+def _build_holdings_block(
+    market: str,
+    day: str,
+    alpha_map: dict[str, list[dict[str, Any]]] | None = None,
+    flow_map: dict[str, dict[str, Any]] | None = None,
+    l1_map: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
     """Holdings for one market vs its S-3 exit rules.
 
     2026-08-10 (HK parallel line): CN uses the CN rules (trail -8); HK uses
@@ -185,7 +358,21 @@ def _build_holdings_block(market: str, day: str) -> list[dict[str, Any]]:
     holdings: list[dict[str, Any]] = []
     try:
         pyramid_syms = _pyramided_symbols()
-        for r in list_registry():
+        # Prefetch the orthogonal info layers once per block: alpha events
+        # (news/catalyst radar) and SW L1 industry fund flow (5-day).
+        registry_rows = list_registry()
+        hold_syms = [
+            str(r.get("symbol") or "").upper()
+            for r in registry_rows
+            if in_market(str(r.get("symbol") or "").upper())
+        ]
+        if alpha_map is None:
+            alpha_map = _alpha_events_for_symbols(hold_syms)
+        if l1_map is None:
+            l1_map = _l1_industry_for_symbols(hold_syms)
+        if flow_map is None:
+            flow_map = _industry_flow_map(day)
+        for r in registry_rows:
             sym = str(r.get("symbol") or "").upper()
             if not in_market(sym):
                 continue
@@ -215,6 +402,42 @@ def _build_holdings_block(market: str, day: str) -> list[dict[str, Any]]:
             if ts is None:
                 check["action"] = "HOLD"
                 check["note"] = "无法解析标的代码，人工核对"
+            # Orthogonal info layers (display only — never gates or exits):
+            # alpha events for the symbol; CN SW L1 industry 5-day fund flow.
+            check["alphaEvents"] = alpha_map.get(_alpha_sym_key(sym)) or []
+            if market == "CN":
+                l1 = l1_map.get(sym)
+                if l1 and l1 in flow_map:
+                    check["industryFlow"] = flow_map[l1]
+            # Conditional-order lines that moved vs the last notified baseline
+            # (peak climbs -> fixed-price trailing order goes stale; pyramid
+            # add -> stop line climbs). Baseline persisted per-symbol so each
+            # move alerts once; first sighting only stores the baseline.
+            prev_ops = (r.get("conditionalOps") or payload.get("conditionalOps") or {})
+            prev_trail = _as_float(prev_ops.get("trail"))
+            prev_stop = _as_float(prev_ops.get("stop"))
+            ops = _detect_line_ops(
+                prev_trail=prev_trail,
+                cur_trail=check.get("trailingLine"),
+                prev_stop=prev_stop,
+                cur_stop=check.get("stopLossLine"),
+                max_hold_days=MAX_HOLD_DAYS,
+                holding_days=check.get("holdingDays"),
+                expire_date=check.get("expireDate"),
+            )
+            check["lineOps"] = ops
+            if prev_trail is None or prev_stop is None or ops:
+                try:
+                    from data_sync_service.db.watchlist_automation import update_registry_payload
+
+                    update_registry_payload(sym, {
+                        "conditionalOps": {
+                            "trail": check.get("trailingLine"),
+                            "stop": check.get("stopLossLine"),
+                        }
+                    })
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("portfolio health persist line baseline %s failed: %s", sym, exc)
             holdings.append(check)
     except Exception as exc:  # noqa: BLE001
         logger.warning("portfolio health holdings failed: %s", exc)
@@ -333,6 +556,24 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         logger.warning("portfolio health candidate names failed: %s", exc)
 
+    # Info layers (P2): alpha events + industry fund flow for candidates.
+    # Built once here, shared with the holdings block below.
+    try:
+        cand_syms = [str(c.get("symbol") or "") for c in candidates]
+        market_syms = _market_holdings_symbols(market)
+        alpha_map = _alpha_events_for_symbols(market_syms + cand_syms)
+        flow_map = _industry_flow_map(day)
+        l1_map = _l1_industry_for_symbols(market_syms + cand_syms)
+        for c in candidates:
+            sym = str(c.get("symbol") or "")
+            c["alphaEvents"] = alpha_map.get(_alpha_sym_key(sym)) or []
+            l1 = l1_map.get(sym)
+            if l1 and l1 in flow_map:
+                c["industryFlow"] = flow_map[l1]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health candidate info layers failed: %s", exc)
+        alpha_map, flow_map, l1_map = {}, {}, {}
+
     # 2026-08-10 (no-choice UX): collapse to the top 5 by score — one
     # unambiguous "buy these" list. HK additionally drops candidates whose
     # company is already held on the CN side (e.g. 紫金矿业 601899 held vs
@@ -364,6 +605,20 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
             circuit = _circuit_blocked(as_of=day)
         except Exception as exc:  # noqa: BLE001
             logger.warning("portfolio health circuit check failed: %s", exc)
+
+    holdings = _build_holdings_block(
+        market=market, day=day, alpha_map=alpha_map, flow_map=flow_map, l1_map=l1_map
+    )
+    info_summary = {
+        "holdingsCount": len(holdings),
+        "eventHoldings": sum(1 for h in holdings if h.get("alphaEvents")),
+        "industryOutflow": sum(
+            1 for h in holdings if h.get("industryFlow", {}).get("netInflow5d", 0) < 0
+        ),
+        "industryInflow": sum(
+            1 for h in holdings if h.get("industryFlow", {}).get("netInflow5d", 0) > 0
+        ),
+    }
     return {
         "regime": regime,
         "strength": strength,
@@ -375,7 +630,8 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
         "s3Candidates": candidates,
         "s3CandidateTotal": candidate_total,
         "s3Rules": rules,
-        "holdings": _build_holdings_block(market=market, day=day),
+        "holdings": holdings,
+        "infoSummary": info_summary,
     }
 
 
@@ -404,6 +660,21 @@ def build_portfolio_health(
         **cn,
         "hkHealth": blocks.get("HK"),
     }
+
+
+def _market_holdings_symbols(market: str) -> list[str]:
+    """Registry symbols belonging to one market line (holdings + watchlist)."""
+    if market == "HK":
+        return [
+            str(r.get("symbol") or "").upper()
+            for r in list_registry()
+            if str(r.get("symbol") or "").upper().startswith("HK:")
+        ]
+    return [
+        str(r.get("symbol") or "").upper()
+        for r in list_registry()
+        if str(r.get("symbol") or "").upper().startswith(("CN:", "ETF:"))
+    ]
 
 
 def _pyramided_symbols() -> set[str]:

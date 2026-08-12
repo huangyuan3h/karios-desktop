@@ -46,7 +46,7 @@ function regimeBadge(regime: string | null | undefined): { label: string; cls: s
   }
 }
 
-function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbol: string) => void }) {
+export function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbol: string) => void }) {
   const exit = h.action === 'EXIT';
   const pnlTone = (h.pnlPct ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400';
   return (
@@ -93,6 +93,39 @@ function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbol: stri
         <span>已持 {h.holdingDays ?? '—'} 天</span>
         <span>到期 {h.expireDate ?? '—'}</span>
       </div>
+      {(((h.alphaEvents?.length ?? 0) > 0) || h.industryFlow != null) && (
+        <div className="mt-1 flex flex-col gap-0.5 text-[10.5px]">
+          {h.alphaEvents?.map((e, i) => (
+            <div
+              key={`${e.trend}-${i}`}
+              className={
+                e.riskStatus === 'risk'
+                  ? 'text-red-600 dark:text-red-400'
+                  : 'text-amber-700 dark:text-amber-300'
+              }
+            >
+              📰 {e.trend}
+              {e.grade ? `（催化${e.grade}` : ''}
+              {e.daysAgo != null ? ` · ${e.daysAgo}天前` : ''}
+              {e.grade ? '）' : ''}
+              {e.confidence != null ? ` · 映射${e.confidence}` : ''}
+            </div>
+          ))}
+          {h.industryFlow && (
+            <div
+              className={
+                (h.industryFlow.netInflow5d ?? 0) >= 0
+                  ? 'text-emerald-700 dark:text-emerald-300'
+                  : 'text-red-600 dark:text-red-400'
+              }
+            >
+              🧭 {h.industryFlow.industry} 5日{' '}
+              {(h.industryFlow.netInflow5d ?? 0) >= 0 ? '+' : ''}
+              {h.industryFlow.netInflow5d ?? 0}亿（第{h.industryFlow.rank5d}/{h.industryFlow.total}）
+            </div>
+          )}
+        </div>
+      )}
       {h.reason && <div className="mt-1 text-[11px] text-red-600 dark:text-red-400">触发：{h.reason}</div>}
       {h.note && <div className="mt-1 text-[11px] text-[var(--k-muted)]">{h.note}</div>}
     </div>
@@ -150,6 +183,30 @@ function BuyList({
               <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 dark:text-emerald-300">
                 买 {size}%
               </span>
+              {c.alphaEvents && c.alphaEvents.length > 0 && (
+                <span
+                  className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300"
+                  title={c.alphaEvents[0]?.focus}
+                >
+                  📰 {c.alphaEvents[0]?.trend}
+                  {c.alphaEvents[0]?.grade ? `（催化${c.alphaEvents[0]?.grade}` : ''}
+                  {c.alphaEvents[0]?.daysAgo != null ? ` · ${c.alphaEvents[0]?.daysAgo}天前` : ''}
+                  {c.alphaEvents[0]?.grade ? '）' : ''}
+                </span>
+              )}
+              {c.industryFlow && (
+                <span
+                  className={
+                    (c.industryFlow.netInflow5d ?? 0) >= 0
+                      ? 'rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300'
+                      : 'rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-600 dark:text-red-400'
+                  }
+                  title="行业 5 日主力净流入（SW L1 · 展示层，不参与 S-3 门槛）"
+                >
+                  🧭 {c.industryFlow.industry} 5日{(c.industryFlow.netInflow5d ?? 0) >= 0 ? '+' : ''}
+                  {c.industryFlow.netInflow5d ?? 0}亿（第{c.industryFlow.rank5d}/{c.industryFlow.total}）
+                </span>
+              )}
               {bought ? (
                 <span className="inline-flex items-center gap-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
                   ✓ 已买入
@@ -367,6 +424,29 @@ function HealthPanel({
           S-3 候选：{block ? (block.s3Candidates?.length ?? 0) : '…'} 只
         </span>
       </div>
+      {block?.infoSummary && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-[var(--k-muted)]">
+          <span>信号 · {block.infoSummary.holdingsCount ?? 0} 持仓</span>
+          {(block.infoSummary.eventHoldings ?? 0) > 0 ? (
+            <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300">
+              {block.infoSummary.eventHoldings ?? 0} 只有 α 事件
+            </span>
+          ) : (
+            <span className="text-emerald-700 dark:text-emerald-300">无事件冲突</span>
+          )}
+          {(block.infoSummary.industryOutflow ?? 0) > 0 ? (
+            <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-red-600 dark:text-red-400">
+              {block.infoSummary.industryOutflow ?? 0} 只行业资金流出 ⚠
+            </span>
+          ) : (
+            (block.infoSummary.industryInflow ?? 0) > 0 && (
+              <span className="text-emerald-700 dark:text-emerald-300">
+                {block.infoSummary.industryInflow ?? 0} 只行业资金流入
+              </span>
+            )
+          )}
+        </div>
+      )}
       <ReconBlock
         recon={recon}
         onRemind={onRemind}

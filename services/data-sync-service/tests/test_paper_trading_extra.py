@@ -455,7 +455,8 @@ class TestComputeStats:
 
 def test_trailing_stop_closes_on_peak_pullback(monkeypatch) -> None:
     """S-3 trailing stop: close when close pulls back >= 8% from the
-    post-entry high (backtest-strategy.md 6.6)."""
+    post-entry CLOSE peak (backtest-strategy.md 6.6; 2026-08-12 C4
+    alignment — close-based peak, same as the backtest engine)."""
     from data_sync_service.db import paper_trading as pt_db
 
     monkeypatch.setattr(
@@ -468,8 +469,8 @@ def test_trailing_stop_closes_on_peak_pullback(monkeypatch) -> None:
     _patch_all(
         monkeypatch,
         closes={"600519.SH": [
-            ("2026-08-06", "10.0", "10.5", "9.8", "10.0", "100"),
-            ("2026-08-07", "9.6", "9.7", "9.5", "9.6", "100"),  # -8.6% from peak 10.5
+            ("2026-08-06", "10.0", "10.5", "9.8", "10.4", "100"),  # close peak 10.4 (high 10.5 ignored)
+            ("2026-08-07", "9.6", "9.7", "9.4", "9.55", "100"),    # -8.2% from 10.4; net -4.5% → trailing, not stop
         ]},
         registry=[{"symbol": "CN:600519", "positionPct": 20}],
     )

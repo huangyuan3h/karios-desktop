@@ -2100,3 +2100,115 @@ LLM 行动计划 + 前端确认界面。
 **验证**：实际生成（google）：正确引用 Weak 纪律（A 股不开新仓）+ HK 缺票 19 只
 （HK:02343 score100 等）+ 4 持仓条件单（止损/移动/到期）✓；后端 3299 passed（+3）·
 ai-service 9 passed（+3）· 前端 737 passed（+2）· ruff/typecheck 干净
+
+### OPT-084：条件单"需调单"标记（移动线/止损线上移 + 临近到期）（2026-08-12）
+
+**状态**：[x]
+
+**需求**：券商固定价条件单会因移动线随峰值上移而过时——线值变化时标记"需要操作"。
+
+**实现**：
+1. `db/watchlist_automation.py`：`update_registry_payload`（JSONB 合并写回，不删行）
+2. `portfolio_health.py`：`_detect_line_ops` 纯函数——对比上次通知基线与当前线值：
+   trail 上移 → `trail_up`；stop 上移（金字塔加仓）→ `stop_up`；持有期剩 ≤5 天 → `expire_soon`
+   基线存 registry payload `conditionalOps`（首次只存不提醒，每次变化提醒一次）
+3. `notifications.py`：`line_update`（需调单 · 移动线/止损线上调，附旧→新值）/ `expire_soon`（临近到期，券商条件单无自动到期）
+4. `trading_brief.py`：持仓行尾 `🛠移动线上调 36.828→37.52` / `⏰剩 3 天到期`（前端 markdown 直渲，无需改 UI）
+
+**踩坑**：`list_registry` 把 payload 展开为顶层字段（`**payload`），
+`payload.get("conditionalOps")` 恒空 → 基线永不匹配，lineOps 永不产生——改为
+`r.get("conditionalOps") or payload.get(...)` 兜底；`_build_holdings_block` 内
+误用未定义变量 `hold`（NameError 被外层 try 吞成空 holdings）——改用
+`MAX_HOLD_DAYS` 常量。
+
+**验证**：端到端（真实 DB）：改小 HK:2099 基线 170 → 体检出
+`trail_up [170, 178.464]` ✓；后端 3304 passed（+8）· ruff 干净
+
+### OPT-085：体检区信息层 P1——α 事件 + CN 行业资金流叠加 S-3 持仓体检（2026-08-12）
+
+**状态**：[x]（todo §3 P1：持仓×α事件 + 持仓×行业资金流）
+
+**需求**：回测底层不动（score/gate/止损 = source of truth），叠加两个正交信息层辅助判断。
+
+**实现**（`portfolio_health.py`，纯展示字段 `alphaEvents` / `industryFlow`，不进任何门槛）：
+1. `_alpha_events_for_symbols`：`fetch_trends(limit=200, max_age_days=14)` 一次批量 → cnSymbols/
+   hkSymbols 精确匹配持仓（HK 4 位→5 位补零 `_alpha_sym_key`）→ 每只 ≤3 条按 confidence 排序，
+   含 trend/grade/daysAgo/riskStatus/focus
+2. `_l1_industry_for_symbols`：watchlist_score_daily 最新行取 SW L1 行业（与 S-3 候选同源口径，
+   非 stock_basic 的 L2 名）
+3. `_industry_flow_map`：最近 5 交易日 SW L1 主力净流入（flow_items_from_rows 同款）→
+   {行业: {netInflow5d 亿元, rank5d, total}}；ETF/HK 无数据 → 字段缺省
+4. 前端 PortfolioHealthCard：持仓行内嵌 `📰 事件（催化A · 2天前 · 映射0.85）` +
+   `🧭 通信 5日 -47.69亿（第26/31）`（流入绿/流出红）；PortfolioHolding 类型扩展
+
+**踩坑**：
+- `_alpha_sym_key` len 判 6 实际 7（"HK:2099" 7 字符）→ KeyError
+- bucket key 统一 5 位归一化，读取端同步 normalize
+- JSX `A || B && (JSX)`：A=true 时表达式值为 true 而非 JSX → 条件整体加括号
+- `_l1_industry_for_symbols`/`get_connection`/`datetime` 模块级 vs lazy import 混乱
+
+**验证**：真实数据——CN:300628 → 通信 5日 -47.69 亿（第 26/31，流出红）；14 天内
+67 条趋势无持仓匹配（真实）。后端 3308 passed（+4）· 前端 738 passed（+1）· tsc/ruff 干净
+
+### OPT-085 续：信息层 P2 + C4 验证铺垫（2026-08-12）
+
+**状态**：[x]
+
+**P2**（候选 + 汇总）：
+1. `_health_block`：info 层 map 统一构建一次（持仓 ∪ 候选），候选行附加
+   `alphaEvents` / `industryFlow`（候选行业 = score 表 L1，已在 mainline 白名单）
+2. block 新增 `infoSummary`（holdingsCount / eventHoldings / industryOutflow / industryInflow）
+3. 前端：MarketBlock 头部「信号 · N 持仓 · 无事件冲突 · N 只行业资金流出 ⚠」汇总行 +
+   BuyList 候选行 `📰 事件（催化A · 1天前）` / `🧭 有色金属 5日+8.2亿（第2/31）`
+
+**C4 铺垫**（alembic 0029）：`paper_trades.signal_snapshot JSONB`——S-3 intake 开仓时
+记录行业 5 日净流入排名/总额 + α 事件数（`_signal_snapshot_for`，CN flow + CN/HK α，
+HK 无资金流数据源）。paper 平仓 ≥20 笔（现 3 笔）后做「行业资金领先/事件标签 vs 收益」
+对照——纯验证数据，不进任何门槛。
+
+**踩坑**：def 误插 run_intake_s3 函数体内（模块级移动）；`{alphaEvents: 0}` 视为无数据 → None；
+alembic HEAD 基线测试同步。
+
+**验证**：后端 3315 passed（+6，含 alembic 8）· 前端 739 passed · ruff/tsc 干净
+
+### OPT-086：防守向回测攻击全组实验（2026-08-12 · 用户方针：防守大于进攻）
+
+**状态**：[x]（全 23 项 · 零采纳 · 文档 §7 全记录）
+
+**执行**：`backtest-strategy.md` §7 全清单 20 项候选 + 3 基线，每条 `run_walk_forward
+--param` 三窗 + HK 线。结果：拒收 17 · 中性 4 · 采纳 0。
+
+**新增引擎能力（全部默认禁用，live 常量 0）**：
+- `profit_trail_trigger_pct/profit_trail_pct`（A6 盈利后回撤分档）——engine + paper_trading 同码
+- `industry_flow_exit_days`（B1 行业资金流退出）+ `CLOSE_REASON_FLOW_EXIT`——覆盖段证伪
+- `mainline_top_k`（B2 白名单深度）
+- `score_confirm_days`（C1 分数连续确认）
+
+**核心结论**：S-3 定案经得起 20 项防守向收紧攻击——退出更早/资金流退出/组合分散/
+熔断收紧/分数确认全部截断趋势利润腿或增加机会成本；资金流作为退出信号被证伪
+（行业净流出是常态，退出=底部割肉）。防守空间已 quantified 为"不存在于参数收紧"，
+在准入质量（RS 轮动 6.8 已落地）+ 纪律执行。
+
+**验证**：后端 3318 passed（+4 引擎测试）· ruff 干净 · 文档 §7 实验表 23 行完整
+
+### OPT-087：C4 paper-vs-backtest 对照框架 + trailing 口径对齐（2026-08-12）
+
+**状态**：[x]（框架已搭 · 等 paper ≥20 笔平仓出统计结论）
+
+**实现**：
+1. `scripts/paper_vs_backtest_report.py`：读 paper closed（S3/S3HK）→ 每市场跑一个
+   **连续完整窗**（最早入场 -60 天 ~ 最晚平仓 +5 天，S3_CONFIG/HK_S3_CONFIG 同参）→
+   逐笔匹配回测孪生（同 symbol+entry 精确，否则最近 entry）→ 对照表（入场价差/
+   收益差/平仓原因）+ 汇总（paper vs 回测匹配胜率/均盈亏）→
+   `data/backtest_reports/paper_vs_backtest_latest.json`（样本 <20 标"未定案"）
+
+**首个发现（系统级 bug · 已修）**：live paper S-3 trailing 用**盘中最高价**做峰值，
+回测/体检卡用**收盘价**——口径漂移（HK:00622 实证：盘中 spike 峰值触发 live trailing，
+close-based 回测永不触发）。修复 `paper_trading.py` trailing peak 改 close-based，
+与回测引擎/体检卡同码（+3 测试）。方向：live 更敏感 → 修复后 paper 退出与回测收敛。
+
+**踩坑**：逐笔小窗起点批量满仓 → sleeve 假满（"回测未入场"假象）→ 改连续完整窗；
+窗口尾部 end_of_window 伪差（对照窗口需覆盖到实际退出，BUFFER 可调）。
+
+**验证**：后端 3320 passed（+3）· 2 笔样本雏形可跑（HK:00697 同因 stop_hit 价差 1.4%；
+HK:00622 揭示口径 bug 已修）· ruff 干净

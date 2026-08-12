@@ -35,6 +35,38 @@ def test_stop_trail_alerts_extracts_exit_and_near_line(monkeypatch) -> None:
     assert not any("far" in x["detail"] for x in out)
 
 
+def test_line_update_and_expire_soon_alerts(monkeypatch) -> None:
+    monkeypatch.setattr(
+        nf,
+        "_anchor_blocks",
+        lambda: {
+            "CN": {
+                "holdings": [
+                    {"symbol": "CN:300628", "name": "亿联网络", "action": "HOLD",
+                     "pnlPct": 5.0, "stopLossLine": -5.0, "trailingLine": -3.0,
+                     "expireDate": "2026-10-03",
+                     "lineOps": {"trail_up": [36.828, 37.52], "stop_up": [37.905, 38.1],
+                                 "expire_soon": 3, "expireDate": "2026-10-03"}},
+                ]
+            }
+        },
+    )
+    out = nf._stop_trail_alerts()
+    by_type = {x["type"]: x for x in out}
+    assert "line_update" in by_type
+    lineups = [x for x in out if x["type"] == "line_update"]
+    assert len(lineups) == 2
+    trail = next(x for x in lineups if "移动线上调" in x["title"])
+    assert "36.828 → 37.52" in trail["detail"]
+    stop = next(x for x in lineups if "止损线上调" in x["title"])
+    assert "37.905 → 38.1" in stop["detail"]
+    assert "expire_soon" in by_type
+    exp = by_type["expire_soon"]
+    assert "剩 3 天" in exp["detail"]
+    assert "2026-10-03" in exp["detail"]
+    assert all(x["anchor"] == "holdings" for x in out)
+
+
 def test_recon_alerts_only_when_missing(monkeypatch) -> None:
     monkeypatch.setattr(
         "data_sync_service.db.reconciliation.latest_recon",
@@ -106,8 +138,8 @@ def test_route_ok(monkeypatch) -> None:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from data_sync_service.api.notifications_routes import router
     import data_sync_service.api.notifications_routes as nr
+    from data_sync_service.api.notifications_routes import router
 
     monkeypatch.setattr(nr, "build_notifications", lambda: [{"id": "x", "severity": "high"}])
     app = FastAPI()

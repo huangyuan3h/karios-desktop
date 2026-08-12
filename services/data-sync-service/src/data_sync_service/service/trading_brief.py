@@ -119,6 +119,7 @@ def _holdings_section(h: dict[str, Any]) -> list[dict[str, Any]]:
                 "trailingLine": trail,
                 "pnlPct": hold.get("pnlPct"),
                 "expireDate": hold.get("expireDate"),
+                "lineOps": hold.get("lineOps") or {},
             })
     return rows
 
@@ -243,9 +244,20 @@ def render_markdown(sections: list[dict[str, Any]], brief_type: str) -> str:
             exp = f" 到期 {h['expireDate']}" if h["expireDate"] else ""
             tag = "🔴退出" if h["action"] == "EXIT" else "✅持有"
             pnl = h["pnlPct"] if h["pnlPct"] not in (None, "") else "—"
+            ops = h.get("lineOps") or {}
+            marks: list[str] = []
+            if "trail_up" in ops:
+                prev_v, cur_v = ops["trail_up"]
+                marks.append(f"🛠移动线上调 {prev_v}→{cur_v}")
+            if "stop_up" in ops:
+                prev_v, cur_v = ops["stop_up"]
+                marks.append(f"🛠止损线上调 {prev_v}→{cur_v}")
+            if "expire_soon" in ops:
+                marks.append(f"⏰剩 {ops['expire_soon']} 天到期")
+            mark = f" {' '.join(marks)}" if marks else ""
             lines.append(
                 f"- [{_market_label(h['market'])}] {h['symbol']} {h.get('name') or ''}"
-                f" · {pnl}% {tag}{stop}{trail}{exp}"
+                f" · {pnl}% {tag}{stop}{trail}{exp}{mark}"
             )
 
     if alerts:

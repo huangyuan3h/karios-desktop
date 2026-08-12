@@ -8,7 +8,7 @@ import pytest
 from data_sync_service.db import check_db, get_connection  # type: ignore[import-not-found]
 from data_sync_service.db.schema_baseline import baseline_ddl_statements
 
-HEAD_REVISION = "0028_trading_brief_markdown"
+HEAD_REVISION = "0029_paper_signal_snapshot"
 
 
 def _postgres_available() -> bool:

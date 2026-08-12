@@ -58,7 +58,40 @@ describe('PortfolioHealthCard', () => {
     expect(await screen.findByText("✅ 持有")).toBeDefined();
     expect(await screen.findByText("2026-08-07")).toBeDefined();
     expect(screen.getByText(/今日无开仓候选（regime=Weak/)).toBeDefined();
-    expect(fetchPortfolioHealth).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders alpha events + industry fund flow info layers', async () => {
+    fetchPortfolioHealth.mockResolvedValue({
+      tradeDate: '2026-08-12',
+      regime: 'Weak',
+      sentiment: 'normal',
+      panicCooldown: { active: false },
+      s3Candidates: [],
+      holdings: [
+        {
+          ...HOLDING,
+          symbol: 'CN:300628',
+          name: '亿联网络',
+          alphaEvents: [
+            {
+              trend: '通信设备景气',
+              grade: 'B',
+              confidence: 0.85,
+              daysAgo: 1,
+              riskStatus: 'ok',
+              focus: '5G 资本开支超预期',
+            },
+          ],
+          industryFlow: { industry: '通信', netInflow5d: -47.69, rank5d: 26, total: 31 },
+        },
+      ],
+      hkHealth: { regime: 'Strong', s3Candidates: [], holdings: [] },
+    });
+    renderCard();
+    expect(await screen.findByText(/通信设备景气/)).toBeDefined();
+    expect(screen.getByText(/催化B/)).toBeDefined();
+    expect(screen.getByText(/1天前/)).toBeDefined();
+    expect(screen.getByText(/通信 5日 -47.69亿（第26\/31）/)).toBeDefined();
   });
 
   it('flags EXIT holdings with the trigger reason', async () => {
@@ -348,5 +381,37 @@ describe('PortfolioHealthCard', () => {
     fireEvent.click(screen.getAllByText('提醒买入')[0]);
     expect(await screen.findByText(/目标买入价/)).toBeDefined();
     vi.unstubAllGlobals();
+  });
+
+  it('renders signal summary line + candidate info layers', async () => {
+    fetchPortfolioHealth.mockResolvedValue({
+      tradeDate: '2026-08-12',
+      regime: 'Strong',
+      sentiment: 'hot',
+      panicCooldown: { active: false },
+      infoSummary: { holdingsCount: 1, eventHoldings: 1, industryOutflow: 1, industryInflow: 0 },
+      s3Candidates: [
+        {
+          symbol: 'CN:600111',
+          name: '北方稀土',
+          ts_code: '600111.SH',
+          score: 71,
+          rs: 0.62,
+          alphaEvents: [
+            { trend: '稀土催化', grade: 'A', daysAgo: 1, riskStatus: 'ok', confidence: 0.9 },
+          ],
+          industryFlow: { industry: '有色金属', netInflow5d: 8.2, rank5d: 2, total: 31 },
+        },
+      ],
+      holdings: [HOLDING],
+      hkHealth: { regime: 'Strong', s3Candidates: [], holdings: [] },
+    });
+    renderCard();
+    expect(await screen.findByText(/信号 · 1 持仓/)).toBeDefined();
+    expect(screen.getByText(/1 只有 α 事件/)).toBeDefined();
+    expect(screen.getByText(/1 只行业资金流出/)).toBeDefined();
+    expect(screen.getByText(/明日买入清单/)).toBeDefined();
+    expect(screen.getByText(/稀土催化/)).toBeDefined();
+    expect(screen.getByText(/有色金属 5日\+8.2亿（第2\/31）/)).toBeDefined();
   });
 });

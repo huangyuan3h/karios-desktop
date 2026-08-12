@@ -349,10 +349,35 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
             exclude_pool_exit=str(t.get("source") or "") in ("S3", "S3HK"),
         )
         # S-3 trailing stop: close when price pulls back >= 8% from the
-        # post-entry peak (highs SINCE entry; 2026-08-11 fixed — the old code
-        # peaked over the pre-entry lookback bars, instantly trailing out
-        # trades whose history high was before entry).
+        # post-entry CLOSE peak (2026-08-12 C4 alignment: the live line must
+        # peak on CLOSES exactly like the backtest engine and the health
+        # card — high-based peaking made the paper book exit earlier than
+        # the backtest (HK:00622 case: intraday spike peak triggered a
+        # trailing the close-based engine never fires)).
         if reason is None and pt_db.TRAILING_STOP_PCT != 0:
+            peak = 0.0
+            entry = _row_str(t, "entryDate", "entry_date") or ""
+            for b in bars_by_ts_all.get(ts, []):
+                if str(b[0]) < entry:
+                    continue
+                try:
+                    c = float(b[4])
+                except (TypeError, ValueError):
+                    continue
+                if c > peak:
+                    peak = c
+            if peak > 0 and (close_price - peak) / peak * 100.0 <= pt_db.TRAILING_STOP_PCT:
+                reason = pt_db.CLOSE_REASON_TRAILING
+        # A6 profit-trail (same rule as the backtest engine): once the leg is
+        # past the profit trigger, tighten the allowed peak pullback to
+        # protect realized gains. Disabled until the walk-forward audit
+        # passes (live constants are the ship gate).
+        if (
+            reason is None
+            and pt_db.PROFIT_TRAIL_TRIGGER_PCT > 0
+            and pt_db.PROFIT_TRAIL_PCT < 0
+        ):
+            entry_px = _row_number(t, "entryPrice", "entry_price") or 0.0
             peak = 0.0
             entry = _row_str(t, "entryDate", "entry_date") or ""
             for b in bars_by_ts_all.get(ts, []):
@@ -364,7 +389,12 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
                     continue
                 if h > peak:
                     peak = h
-            if peak > 0 and (close_price - peak) / peak * 100.0 <= pt_db.TRAILING_STOP_PCT:
+            if (
+                entry_px > 0
+                and peak > 0
+                and (peak - entry_px) / entry_px * 100.0 >= pt_db.PROFIT_TRAIL_TRIGGER_PCT
+                and (close_price - peak) / peak * 100.0 <= pt_db.PROFIT_TRAIL_PCT
+            ):
                 reason = pt_db.CLOSE_REASON_TRAILING
         if reason is not None:
             try:

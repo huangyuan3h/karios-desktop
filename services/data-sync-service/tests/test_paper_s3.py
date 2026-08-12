@@ -51,6 +51,7 @@ def _patch_day_gates(*, regime="Strong", flow_ok=True, mainline=None):
         _load_flow_mainline_data=lambda cfg, cal: (
             {day: flow_ok},
             {day: set(mainline or ["计算机"])},
+            {},
         ),
         _load_rs_ranks=lambda cfg, cal, universe: {
             day: {ts: 0.8 for ts in universe}
@@ -169,7 +170,7 @@ def test_build_s3_candidates_blocks_low_rs() -> None:
     with patch.multiple(
         paper_s3,
         _load_regime_by_day=lambda cfg, cal: {"2026-08-07": "Strong"},
-        _load_flow_mainline_data=lambda cfg, cal: ({"2026-08-07": True}, {"2026-08-07": {"计算机"}}),
+        _load_flow_mainline_data=lambda cfg, cal: ({"2026-08-07": True}, {"2026-08-07": {"计算机"}}, {}),
         _load_rs_ranks=lambda cfg, cal, universe: {"2026-08-07": {ts: 0.3 for ts in universe}},
         _load_industries=lambda ts_codes: {ts: "计算机" for ts in ts_codes},
     ):
@@ -522,3 +523,45 @@ def test_run_intake_s3_sleeve_scaled_by_allocation() -> None:
     assert summary["allocation"] == 0.4
     kw = ins.call_args.kwargs
     assert kw["sleeve_pct"] == pytest.approx(0.04)  # 0.10 * 0.4
+
+
+def test_signal_snapshot_for_captures_flow_and_alpha(monkeypatch) -> None:
+    """C4 seed: entry snapshot carries industry flow rank + alpha count."""
+    from data_sync_service.service import portfolio_health as ph
+
+    monkeypatch.setattr(ph, "_industry_flow_map", lambda day: {
+        "通信": {"industry": "通信", "netInflow5d": -47.69, "rank5d": 26, "total": 31},
+    })
+    monkeypatch.setattr(ph, "_alpha_events_for_symbols", lambda syms: {
+        "CN:300628": [{"trend": "通信设备景气", "grade": "B"}],
+    })
+    snap = paper_s3._signal_snapshot_for(
+        symbol="CN:300628", industry="通信", trade_date="2026-08-12",
+    )
+    assert snap["industryRank5d"] == 26
+    assert snap["industryTotal"] == 31
+    assert snap["industryNetInflow5d"] == -47.69
+    assert snap["alphaEvents"] == 1
+
+
+def test_signal_snapshot_hk_normalizes_symbol(monkeypatch) -> None:
+    from data_sync_service.service import portfolio_health as ph
+
+    monkeypatch.setattr(ph, "_industry_flow_map", lambda day: {})
+    monkeypatch.setattr(ph, "_alpha_events_for_symbols", lambda syms: {
+        "HK:02099": [{"trend": "黄金牛市", "grade": "A"}],
+    })
+    snap = paper_s3._signal_snapshot_for(
+        symbol="HK:2099", industry=None, trade_date="2026-08-12",
+    )
+    assert snap["alphaEvents"] == 1
+
+
+def test_signal_snapshot_none_when_no_data(monkeypatch) -> None:
+    from data_sync_service.service import portfolio_health as ph
+
+    monkeypatch.setattr(ph, "_industry_flow_map", lambda day: {})
+    monkeypatch.setattr(ph, "_alpha_events_for_symbols", lambda syms: {})
+    assert paper_s3._signal_snapshot_for(
+        symbol="CN:300628", industry="通信", trade_date="2026-08-12",
+    ) is None

@@ -23,6 +23,22 @@ export interface PortfolioHolding {
   reason?: string;
   note?: string;
   status?: string;
+  /** 2026-08-12 info layer — alpha radar events mapped to this holding. */
+  alphaEvents?: Array<{
+    trend?: string;
+    grade?: string;
+    confidence?: number | null;
+    daysAgo?: number | null;
+    riskStatus?: string;
+    focus?: string;
+  }>;
+  /** 2026-08-12 info layer — CN SW L1 industry 5-day net inflow. */
+  industryFlow?: {
+    industry?: string;
+    netInflow5d?: number;
+    rank5d?: number;
+    total?: number;
+  } | null;
 }
 
 export interface PortfolioCandidate {
@@ -33,6 +49,20 @@ export interface PortfolioCandidate {
   score?: number;
   rs?: number;
   regime?: string | null;
+  alphaEvents?: Array<{
+    trend?: string;
+    grade?: string;
+    confidence?: number | null;
+    daysAgo?: number | null;
+    riskStatus?: string;
+    focus?: string;
+  }>;
+  industryFlow?: {
+    industry?: string;
+    netInflow5d?: number;
+    rank5d?: number;
+    total?: number;
+  } | null;
 }
 
 export interface PortfolioHealthResponse {
@@ -62,6 +92,13 @@ export interface PortfolioHealthResponse {
   scoreDataAsOfDate?: string | null;
   /** True when scoreDataAsOfDate === tradeDate (scores are as-of today). */
   scoreFresh?: boolean;
+  /** 2026-08-12 info layer P2 — per-market signal summary line. */
+  infoSummary?: {
+    holdingsCount?: number;
+    eventHoldings?: number;
+    industryOutflow?: number;
+    industryInflow?: number;
+  } | null;
   /** 2026-08-10 HK parallel line — HK strategy-line block (null when not requested). */
   hkHealth?: PortfolioHealthResponse | null;
 }

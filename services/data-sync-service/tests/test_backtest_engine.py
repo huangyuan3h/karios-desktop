@@ -1329,3 +1329,177 @@ def test_mv_diverging_excludes_mega_cap_only_in_diverging() -> None:
     run = simulate(config, data=data)
     assert [t.symbol for t in run.trades] == ["CN:600001"]
     assert run.summary.gated_blocks.get("mv_diverging") == 1
+
+
+def test_profit_trail_closes_winning_leg_on_tight_pullback() -> None:
+    """A6: once the leg is +10%, a 6% pullback from the peak closes it even
+    though the plain trailing stop (-8) would not have fired."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23", "2026-06-24"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}, "2026-06-24": {}}
+    prices = {
+        TS1: {
+            "2026-06-18": 10.0,  # entry
+            "2026-06-19": 11.0,  # peak 11.0 (+10% → trigger armed)
+            "2026-06-22": 12.5,  # peak 12.5 (+25%)
+            "2026-06-23": 11.7,  # -6.4% from peak → profit-trail (-6) closes
+            "2026-06-24": 12.0,
+        }
+    }
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-24",
+        stop_loss_pct=-15.0,
+        target_pnl_pct=30.0,
+        max_hold_days=10,
+        trailing_stop_pct=-8.0,  # 6.4% < 8% → plain trailing would NOT close
+        profit_trail_trigger_pct=10.0,
+        profit_trail_pct=-6.0,
+    )
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    assert run.trades[0].close_reason == "trailing_stop"
+    assert run.trades[0].pnl_pct > 0
+
+
+def test_profit_trail_disabled_by_default() -> None:
+    """A6 defaults: no profit-trail behaviour without explicit parameters."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23", "2026-06-24"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}, "2026-06-24": {}}
+    prices = {
+        TS1: {
+            "2026-06-18": 10.0,
+            "2026-06-19": 11.0,
+            "2026-06-22": 12.5,
+            "2026-06-23": 11.7,  # -6.4% from peak
+            "2026-06-24": 12.0,
+        }
+    }
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-24",
+        stop_loss_pct=-15.0,
+        target_pnl_pct=30.0,
+        max_hold_days=10,
+        trailing_stop_pct=-8.0,
+    )
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    # No trailing trigger (6.4% < 8%) — closed only by end-of-window.
+    assert run.trades[0].close_reason == "end_of_window"
+
+
+def test_flow_exit_closes_after_negative_streak() -> None:
+    """B1: 3 straight sessions of negative industry 5d flow close the leg."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23", "2026-06-24"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}, "2026-06-24": {}}
+    prices = {
+        TS1: {
+            "2026-06-18": 10.0,
+            "2026-06-19": 10.2,
+            "2026-06-22": 10.1,
+            "2026-06-23": 10.0,
+            "2026-06-24": 10.0,
+        }
+    }
+    data = _data(calendar, scores, prices)
+    data.flow5d_by_day = {d: {"通信": -3.0e8} for d in calendar}
+    data.industry_by_ts = {TS1: "通信"}
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-24",
+        stop_loss_pct=-15.0,
+        target_pnl_pct=30.0,
+        max_hold_days=20,
+        gates="regime",  # skip the flow ENTRY gate so B1 exit is the only flow logic
+        industry_flow_exit_days=3,
+    )
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    assert run.trades[0].close_reason == "flow_exit"
+    assert run.trades[0].close_date == "2026-06-22"  # entry + 3 negative sessions
+
+
+def test_flow_exit_disabled_by_default() -> None:
+    """B1 default 0 keeps legacy behaviour (no flow exit)."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23", "2026-06-24"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}, "2026-06-24": {}}
+    prices = {
+        TS1: {
+            "2026-06-18": 10.0,
+            "2026-06-19": 10.2,
+            "2026-06-22": 10.1,
+            "2026-06-23": 10.0,
+            "2026-06-24": 10.0,
+        }
+    }
+    data = _data(calendar, scores, prices)
+    data.flow5d_by_day = {d: {"通信": -3.0e8} for d in calendar}
+    data.industry_by_ts = {TS1: "通信"}
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-24",
+        stop_loss_pct=-15.0,
+        target_pnl_pct=30.0,
+        max_hold_days=20,
+        gates="regime",
+    )
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    assert run.trades[0].close_reason == "end_of_window"
+
+
+def test_score_confirm_blocks_single_day_spike() -> None:
+    """C1: a single-day score spike does not enter without prior-day confirm."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
+    scores = {
+        "2026-06-18": {},
+        "2026-06-19": {CN1: 95.0},   # spike day — no prior score
+        "2026-06-22": {CN1: 90.0},
+        "2026-06-23": {CN1: 92.0},
+    }
+    prices = {
+        TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5, "2026-06-22": 10.8, "2026-06-23": 11.0},
+    }
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-23",
+        score_threshold=65.0,
+        stop_loss_pct=-15.0,
+        target_pnl_pct=30.0,
+        max_hold_days=20,
+        gates="regime",
+        score_confirm_days=1,
+    )
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    assert run.trades[0].entry_date == "2026-06-22"  # first confirmed day
+
+
+def test_score_confirm_disabled_by_default() -> None:
+    """C1 default 0 enters on the spike day as usual."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
+    scores = {
+        "2026-06-18": {},
+        "2026-06-19": {CN1: 95.0},
+        "2026-06-22": {CN1: 90.0},
+        "2026-06-23": {CN1: 92.0},
+    }
+    prices = {
+        TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5, "2026-06-22": 10.8, "2026-06-23": 11.0},
+    }
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-23",
+        score_threshold=65.0,
+        stop_loss_pct=-15.0,
+        target_pnl_pct=30.0,
+        max_hold_days=20,
+        gates="regime",
+    )
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    assert run.trades[0].entry_date == "2026-06-19"

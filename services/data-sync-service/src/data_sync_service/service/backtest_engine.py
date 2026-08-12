@@ -70,6 +70,7 @@ SCORE_TABLE = "watchlist_score_daily"
 CLOSE_REASON_END_OF_WINDOW = "end_of_window"
 CLOSE_REASON_TRAILING = "trailing_stop"
 CLOSE_REASON_SWAPPED = "swapped"
+CLOSE_REASON_FLOW_EXIT = "flow_exit"
 
 GATE_LEVELS = ("none", "regime", "full")
 
@@ -97,6 +98,11 @@ class BacktestConfig:
     market: str = "CN"
     gates: str = "full"
     trailing_stop_pct: float = 0.0
+    profit_trail_trigger_pct: float = 0.0
+    profit_trail_pct: float = 0.0
+    industry_flow_exit_days: int = 0
+    mainline_top_k: int = 3
+    score_confirm_days: int = 0
     position_pct: float = 0.05
     max_positions: int = 10
     rs_rank_min: float = 0.0
@@ -135,6 +141,14 @@ class BacktestConfig:
             raise ValueError(f"gates must be one of {GATE_LEVELS} (got {self.gates!r})")
         if self.trailing_stop_pct > 0:
             raise ValueError("trailing_stop_pct must be <= 0 (0 disables, e.g. -8 = 8%% peak pullback)")
+        if self.profit_trail_trigger_pct < 0:
+            raise ValueError("profit_trail_trigger_pct must be >= 0 (0 disables, 10 = protect once the leg is +10%)")
+        if self.profit_trail_pct > 0:
+            raise ValueError("profit_trail_pct must be <= 0 (0 disables, e.g. -6 = allow only a 6%% pullback from the post-trigger peak)")
+        if self.profit_trail_trigger_pct > 0 and self.profit_trail_pct == 0:
+            raise ValueError("profit_trail_pct must be set when profit_trail_trigger_pct > 0")
+        if self.industry_flow_exit_days < 0:
+            raise ValueError("industry_flow_exit_days must be >= 0 (0 disables, 3 = exit when the holding's SW L1 industry 5d net inflow stays negative for 3 straight sessions)")
         if not 0 < self.position_pct <= 1:
             raise ValueError("position_pct must be in (0, 1]")
         if not 1 <= self.max_positions <= 100:
@@ -284,8 +298,8 @@ class BacktestData:
             self.close_by_ts_day[ts] = closes
             self.closes_by_ts[ts] = series
         self.regime_by_day = _load_regime_by_day(config, self.calendar)
-        self.flow_any_positive_by_day, self.mainline_allow_by_day = _load_flow_mainline_data(
-            config, self.calendar
+        self.flow_any_positive_by_day, self.mainline_allow_by_day, self.flow5d_by_day = (
+            _load_flow_mainline_data(config, self.calendar)
         )
         self.industry_by_ts = _load_industries(self.ts_codes)
         self.rs_rank_by_day = _load_rs_ranks(config, self.calendar, set(self.ts_codes))
@@ -419,7 +433,7 @@ def _load_flow_mainline_data(
 ) -> tuple[dict[str, bool], dict[str, set[str]]]:
     """Per-day gate inputs from SW L1 fund-flow rows (one DB fetch).
 
-    Returns ``(flow_any_positive_by_day, mainline_allow_by_day)`` where:
+    Returns ``(flow_any_positive_by_day, mainline_allow_by_day, flow5d_by_day)`` where:
 
     - ``flow_any_positive[day]`` — True when at least one SW L1 industry has
       positive net inflow that day. Mirrors the live ``sectorOutflowBlock``
@@ -428,6 +442,8 @@ def _load_flow_mainline_data(
       inflow Top3 ∪ momentum-breakout industries (today net inflow >= 20亿
       and rank improved >= 10 vs yesterday). Mirrors the live mainline
       whitelist (hot-industry-picks.ts buildMainlineAllowSet).
+    - ``flow5d_by_day[day]`` — {industry: rolling 5-session net inflow}
+      (B1 flow-exit input; missing flow data day -> absent).
     """
     from datetime import timedelta
 
@@ -461,7 +477,7 @@ def _load_flow_mainline_data(
         if day_flows:
             flow_any_positive[day] = any(v > 0 for v in day_flows.values())
         lookback = get_dates_upto(day, 5)
-        top = top_by_date_from_rows(rows, lookback, top_k=3)
+        top = top_by_date_from_rows(rows, lookback, top_k=config.mainline_top_k)
         allow: set[str] = set()
         for entry in top:
             if entry["date"] == day:
@@ -482,7 +498,19 @@ def _load_flow_mainline_data(
                         allow.add(name)
         if day_flows:
             mainline_allow[day] = allow
-    return flow_any_positive, mainline_allow
+
+    flow5d_by_day: dict[str, dict[str, float]] = {}
+    for day in calendar:
+        lookback = get_dates_upto(day, 5)
+        if not lookback:
+            continue
+        five: dict[str, float] = {}
+        for d in lookback:
+            for name, v in by_date_flow.get(d, {}).items():
+                five[name] = five.get(name, 0.0) + v
+        if five:
+            flow5d_by_day[day] = five
+    return flow_any_positive, mainline_allow, flow5d_by_day
 
 
 RS_LOOKBACK_DAYS = 20
@@ -812,6 +840,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             config.panic_cooldown_days > 0
             and (day_index - last_panic_idx) <= config.panic_cooldown_days
         )
+        prev_day = data.calendar[day_index - 1] if day_index > 0 else None
         day_index += 1
 
         # 1.5) RS-rotation swaps (before entries): swap out RS-weakened held
@@ -890,11 +919,12 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     "market": config.market,
                     "ts_code": ts_c,
                     "entry_date": day,
-                    "entry_price": px_c,
-                    "peak_price": px_c,
-                    "score_at_entry": day_scores[sym_c],
-                    "position_pct": config.position_pct * pos_scale_c * atr_scale_for(ts_c, day),
-                }
+                     "entry_price": px_c,
+                     "peak_price": px_c,
+                     "score_at_entry": day_scores[sym_c],
+                     "position_pct": config.position_pct * pos_scale_c * atr_scale_for(ts_c, day),
+                     "industry": data.industry_by_ts.get(ts_c),
+                 }
                 swapped_syms.add(sym_c)
 
         # 1) Entries: score >= threshold, gates passed, not already held,
@@ -924,6 +954,14 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         for sym, score in ordered_scores:
             if score < threshold:
                 continue
+            if config.score_confirm_days > 0:
+                # C1 (2026-08-12 · defensive): require the score to have
+                # cleared the threshold for N prior sessions too — filters
+                # single-day score spikes (momentum pop) before committing.
+                prev_scores = data.scores_by_day.get(prev_day, {})
+                prev_score = prev_scores.get(sym)
+                if prev_score is None or prev_score < threshold:
+                    continue
             if circuit_halted:
                 gated_blocks["circuit"] += 1
                 continue
@@ -1007,6 +1045,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 "entry_price": px,
                 "peak_price": px,
                 "score_at_entry": score,
+                "industry": data.industry_by_ts.get(ts),
                 "position_pct": config.position_pct * pos_scale * atr_scale_for(ts, day),
             }
 
@@ -1044,6 +1083,43 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 peak = float(pos["peak_price"])
                 if peak > 0 and (close_px - peak) / peak * 100.0 <= config.trailing_stop_pct:
                     reason = CLOSE_REASON_TRAILING
+            if reason is None and config.profit_trail_trigger_pct > 0 and config.profit_trail_pct < 0:
+                # A6 (2026-08-12 · defensive): once the leg is past the profit
+                # trigger, tighten the allowed pullback from the peak — protect
+                # realized gains instead of giving 8% back on a winning leg.
+                peak = float(pos["peak_price"])
+                entry = float(pos["entry_price"])
+                if entry > 0 and (peak - entry) / entry * 100.0 >= config.profit_trail_trigger_pct:
+                    if peak > 0 and (close_px - peak) / peak * 100.0 <= config.profit_trail_pct:
+                        reason = CLOSE_REASON_TRAILING
+            if (
+                reason is None
+                and config.industry_flow_exit_days > 0
+                and config.industry_flow_exit_days < 60
+            ):
+                # B1 (2026-08-12 · user-requested flow signal): exit when the
+                # holding's SW L1 industry 5-session net inflow stays negative
+                # for N straight sessions. Data starts 2025-12-15 → OOS2 has
+                # no flow data (absent day = no signal, fail-open for exit).
+                industry = str(pos.get("industry") or "")
+                if industry:
+                    streak = 0
+                    for d in data.calendar:
+                        if d > day:
+                            break
+                        f5 = data.flow5d_by_day.get(d) or {}
+                        v = f5.get(industry)
+                        if v is None:
+                            streak = 0
+                            continue
+                        if v < 0:
+                            streak += 1
+                        else:
+                            streak = 0
+                        if streak >= config.industry_flow_exit_days:
+                            break
+                    if streak >= config.industry_flow_exit_days:
+                        reason = CLOSE_REASON_FLOW_EXIT
             if reason is not None:
                 realized_pnl_window.append((day, net))
                 closed_trades.append(
