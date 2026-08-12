@@ -48,7 +48,6 @@ function makeContext(overrides: Partial<CatalystCopyContext> = {}): CatalystCopy
   return {
     watchlistSymbols: new Set<string>(),
     watchlistScores: new Map<string, number>(),
-    screenerTrendOkSymbols: new Set<string>(),
     trendMap: new Map(),
     ...overrides,
   };
@@ -300,7 +299,7 @@ describe('buildCatalystStocksMarkdown', () => {
     expect(blocked).not.toContain('====');
   });
 
-  it('shows news for screener trendOk and hides when trendOk is false', () => {
+  it('shows news for watchlist trendOk and hides when trendOk is false', () => {
     const now = new Date('2026-06-15T12:00:00+00:00').getTime();
     const resp = {
       stalenessBasis: 'published_then_fetched',
@@ -313,8 +312,9 @@ describe('buildCatalystStocksMarkdown', () => {
       shouldShowCatalystNews(
         'CN:300308',
         makeContext({
-          screenerTrendOkSymbols: new Set(['CN:300308']),
-          trendMap: new Map([['CN:300308', { symbol: 'CN:300308', trendOk: true, score: 70 }]]),
+          watchlistSymbols: new Set(['CN:300308']),
+          watchlistScores: new Map([['CN:300308', 90]]),
+          trendMap: new Map([['CN:300308', { symbol: 'CN:300308', trendOk: true, score: 90 }]]),
         }),
       ),
     ).toBe(true);
@@ -323,7 +323,6 @@ describe('buildCatalystStocksMarkdown', () => {
       mode: 'compact',
       now,
       context: makeContext({
-        screenerTrendOkSymbols: new Set(['CN:300308']),
         trendMap: new Map([['CN:300308', { symbol: 'CN:300308', trendOk: false, score: 90 }]]),
       }),
     });

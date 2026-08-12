@@ -104,9 +104,11 @@ export function BrokerPage() {
     for (const file of files) {
       if (!file.type.startsWith('image/')) continue;
       if (file.size > 8 * 1024 * 1024) continue; // v0: avoid huge payloads
-      const dataUrl = await new Promise<string>((resolve) => {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result ?? ''));
+        reader.onerror = () => reject(new Error(`read file failed: ${file.name}`));
+        reader.onabort = () => reject(new Error(`read aborted: ${file.name}`));
         reader.readAsDataURL(file);
       });
       next.push({
@@ -137,7 +139,6 @@ export function BrokerPage() {
         brokerAccountStateQueryKey('pingan', accountId),
         st,
       );
-      await invalidateBrokerQueries(queryClient);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -464,11 +465,17 @@ export function BrokerPage() {
             onDrop={(e) => {
               e.preventDefault();
               const files = Array.from(e.dataTransfer.files || []);
-              void addImageFiles(files);
+              void addImageFiles(files).catch((err) => {
+                console.warn('read dropped images failed:', err);
+              });
             }}
             onPaste={(e) => {
               const files = Array.from(e.clipboardData?.files || []);
-              if (files.length) void addImageFiles(files);
+              if (files.length) {
+                void addImageFiles(files).catch((err) => {
+                  console.warn('read pasted images failed:', err);
+                });
+              }
             }}
           >
             <div className="flex items-center gap-2 text-sm text-[var(--k-muted)]">

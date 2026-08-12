@@ -26,47 +26,6 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   }
 }
 
-async function retrieveSnapshot(date: string): Promise<string> {
-  const data = await fetchJson<{
-    ok: boolean;
-    snapshot?: {
-      snapshotDate?: string;
-      status?: string;
-      outcome?: { fired?: Array<Record<string, unknown>>; paper?: Array<Record<string, unknown>> } | null;
-      exchanges?: Array<{ role: string; content: string; createdAt?: string }>;
-    };
-  }>(`/api/decision/snapshots/${encodeURIComponent(date)}`);
-  if (!data?.ok || !data.snapshot) return `归档快照不存在：${date}`;
-  const s = data.snapshot;
-  const lines = [`# 归档快照 ${s.snapshotDate ?? date}（状态：${s.status ?? 'open'}）`, ''];
-  const fired = s.outcome?.fired ?? [];
-  if (fired.length) {
-    lines.push(`## 当日开火记录（${fired.length}）`);
-    for (const f of fired.slice(0, 10)) {
-      lines.push(`- ${String(f.symbol ?? '—')} ${String(f.newValue ?? f.field ?? '')} (${String(f.source ?? '?')})`);
-    }
-    lines.push('');
-  }
-  const paper = s.outcome?.paper ?? [];
-  if (paper.length) {
-    lines.push(`## 当日模拟盘（${paper.length}）`);
-    for (const p of paper.slice(0, 10)) {
-      lines.push(`- ${String(p.symbol ?? '—')} ${String(p.side ?? '')} ${String(p.status ?? '')} pnl=${String(p.pnlPct ?? '—')}%`);
-    }
-    lines.push('');
-  }
-  const exchanges = s.exchanges ?? [];
-  if (exchanges.length) {
-    lines.push(`## 当日决策对话（${exchanges.length} 条，最多列 8 条）`);
-    for (const ex of exchanges.slice(-8)) {
-      lines.push(`- **${ex.role}**(${String(ex.createdAt ?? '').slice(0, 16)}): ${String(ex.content ?? '').slice(0, 400)}`);
-    }
-    lines.push('');
-  }
-  lines.push(`- 提示：以上为历史归档数据，注意与当前活跃层对比时效性。`);
-  return lines.join('\n');
-}
-
 export async function searchArchive(symbol: string): Promise<string> {
   const data = await fetchJson<{
     ok: boolean;

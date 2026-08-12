@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 import time
@@ -22,6 +23,9 @@ from data_sync_service.db.top_inst import (
 )
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
 from data_sync_service.db.watchlist_automation import list_registry
+
+logger = logging.getLogger(__name__)
+
 
 JOB_TYPE = "top_inst_watchlist"
 YI = 100_000_000.0  # 1亿 CNY
@@ -271,6 +275,7 @@ def _seat_rows_from_report(
             page_size=50,
         )
     except Exception:
+        logger.warning("top inst flow fetch failed, returning empty", exc_info=True)
         return []
     out: list[dict[str, Any]] = []
     for row in rows:

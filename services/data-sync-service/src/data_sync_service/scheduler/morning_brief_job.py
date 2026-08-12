@@ -30,7 +30,7 @@ def build_pm_trigger():
 
 
 def run(brief_type: str = "morning"):
-    print(f"[morning-brief] Generating {brief_type} brief...")
+    logger.info(f"[morning-brief] Generating {brief_type} brief...")
     try:
         from data_sync_service.service.morning_brief import generate_brief
 
@@ -44,7 +44,7 @@ def run(brief_type: str = "morning"):
             last_ts_code=str(item_count),
             error_message=err_msg,
         )
-        print(f"[morning-brief] Done: {brief_type} brief with {item_count} items")
+        logger.info(f"[morning-brief] Done: {brief_type} brief with {item_count} items")
     except Exception as e:
         job_id = JOB_ID_AM if brief_type == "morning" else JOB_ID_PM
         insert_record(job_id, success=False, error_message=str(e))

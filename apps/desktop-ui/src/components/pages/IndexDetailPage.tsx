@@ -54,14 +54,22 @@ export function IndexDetailPage({ type, code, name, onBack }: IndexDetailProps) 
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setError(null);
     fetchHistory(type, code)
       .then((rows) => {
-        setData(rowToOHLCV(rows));
+        if (!cancelled) setData(rowToOHLCV(rows));
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [type, code]);
 
   return (

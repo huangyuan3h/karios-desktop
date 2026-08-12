@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import time
 from datetime import UTC, date, datetime
@@ -27,6 +28,8 @@ from data_sync_service.service.realtime_quote import (
     fetch_realtime_quotes,
     fetch_realtime_quotes_batched,
 )
+
+logger = logging.getLogger(__name__)
 
 INDEX_SIGNALS = [
     {"ts_code": "000001.SH", "name": "上证指数", "featured": True},
@@ -352,8 +355,7 @@ def _compute_market_liquidity_and_mainline(
         if breadth and "total_turnover_cny" in breadth:
             total_turnover_cny = float(breadth.get("total_turnover_cny") or 0.0)
     except Exception:
-        pass
-
+        logger.warning("_compute_market_liquidity_and_mainline: degraded fallback applied", exc_info=True)
     today_cn = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date()
     if dt == today_cn and total_turnover_cny == 0.0:
         try:
@@ -363,8 +365,7 @@ def _compute_market_liquidity_and_mainline(
                 if turnover_rt > 0.0:
                     total_turnover_cny = turnover_rt
         except Exception:
-            pass
-
+            logger.warning("_compute_market_liquidity_and_mainline: degraded fallback applied", exc_info=True)
     date_str = dt.isoformat()
     try:
         rows = get_rows_by_date(date_str)
@@ -372,8 +373,7 @@ def _compute_market_liquidity_and_mainline(
             inflows = [float(r.get("net_inflow") or 0.0) for r in rows]
             max_industry_inflow = max(inflows) if inflows else 0.0
     except Exception:
-        pass
-
+        logger.warning("_compute_market_liquidity_and_mainline: degraded fallback applied", exc_info=True)
     turnover_above_1_5T = total_turnover_cny >= 1.5e12
     mainline_inflow_above_5B = max_industry_inflow >= 5e9
 

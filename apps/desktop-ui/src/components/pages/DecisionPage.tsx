@@ -78,9 +78,19 @@ export function DecisionPage() {
   const [layerBusy, setLayerBusy] = React.useState(false);
   const [promptEditorOpen, setPromptEditorOpen] = React.useState(false);
   const [promptDraft, setPromptDraft] = React.useState('');
+  const [initError, setInitError] = React.useState<string | null>(null);
+  const [initRetry, setInitRetry] = React.useState(0);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const initialLayerBuilt = React.useRef(false);
   const layerCache = React.useRef<{ at: number; layer: DecisionActiveLayer } | null>(null);
+  const streamAbortRef = React.useRef<AbortController | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort();
+      streamAbortRef.current = null;
+    };
+  }, []);
 
   const sessionsQuery = useQuery({
     queryKey: decisionSessionsQueryKey(),
@@ -104,19 +114,25 @@ export function DecisionPage() {
     }
     let cancelled = false;
     (async () => {
-      const session = await createDecisionSession({
-        title: '决策主线程',
-        systemPrompt: systemPrompt || null,
-      });
-      if (!cancelled) {
-        window.localStorage.setItem(THREAD_STORAGE_KEY, String(session.id));
-        setThreadId(session.id);
+      try {
+        const session = await createDecisionSession({
+          title: '决策主线程',
+          systemPrompt: systemPrompt || null,
+        });
+        if (!cancelled) {
+          window.localStorage.setItem(THREAD_STORAGE_KEY, String(session.id));
+          setThreadId(session.id);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setInitError(err instanceof Error ? err.message : String(err));
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [threadId, systemPrompt]);
+  }, [threadId, systemPrompt, initRetry]);
 
   const messagesQuery = useQuery({
     queryKey: decisionMessagesQueryKey(threadId ?? -1),
@@ -232,11 +248,15 @@ export function DecisionPage() {
       createdAt: new Date().toISOString(),
     }]);
     setStreaming(true);
+    const ctrl = new AbortController();
+    streamAbortRef.current = ctrl;
+    const timer = setTimeout(() => ctrl.abort(), 5 * 60_000);
     try {
       const resp = await fetch(`${AI_BASE_URL}/decision`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: ctrl.signal,
       });
       if (!resp.ok || !resp.body) {
         throw new Error(`chat failed: ${resp.status}`);
@@ -261,13 +281,20 @@ export function DecisionPage() {
       });
       setLocalMessages((prev) => prev.map((m) => (m.id === assistantId ? saved : m)));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg =
+        err instanceof DOMException && err.name === 'AbortError'
+          ? '请求超时或已取消'
+          : err instanceof Error
+            ? err.message
+            : String(err);
       setLocalMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId ? { ...m, content: `⚠ 调用失败：${msg}` } : m,
         ),
       );
     } finally {
+      clearTimeout(timer);
+      streamAbortRef.current = null;
       setStreaming(false);
     }
   }
@@ -446,9 +473,27 @@ export function DecisionPage() {
             {threadId == null ? (
               <div className="flex flex-col items-center justify-center gap-3 px-8 py-24 text-center">
                 <Bot size={36} className="text-[var(--k-muted)]" />
-                <p className="max-w-md text-sm leading-6 text-[var(--k-muted)]">
-                  正在初始化决策主线程…
-                </p>
+                {initError ? (
+                  <>
+                    <p className="max-w-md text-sm leading-6 text-[var(--k-danger)]">
+                      初始化失败：{initError}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setInitError(null);
+                        setInitRetry((v) => v + 1);
+                      }}
+                    >
+                      重试
+                    </Button>
+                  </>
+                ) : (
+                  <p className="max-w-md text-sm leading-6 text-[var(--k-muted)]">
+                    正在初始化决策主线程…
+                  </p>
+                )}
               </div>
             ) : chatMessages.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-3 px-8 py-24 text-center">

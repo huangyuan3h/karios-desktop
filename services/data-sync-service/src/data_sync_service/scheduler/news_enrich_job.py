@@ -24,7 +24,7 @@ def build_trigger():
 
 
 def run():
-    print("[news-enrich] Starting LLM enrichment cycle...")
+    logger.info("[news-enrich] Starting LLM enrichment cycle...")
     try:
         from data_sync_service.service.news_enrich import run_enrichment_cycle
 
@@ -42,7 +42,7 @@ def run():
             last_ts_code=str(summary["totalEnriched"]),
             error_message=err_msg,
         )
-        print(
+        logger.info(
             f"[news-enrich] Done: batches={summary['batchesProcessed']} "
             f"enriched={summary['totalEnriched']} failed={summary['totalFailed']} "
             f"status={status_counts}"

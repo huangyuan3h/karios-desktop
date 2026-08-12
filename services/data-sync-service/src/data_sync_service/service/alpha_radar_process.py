@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.error
 import urllib.request
@@ -20,6 +21,8 @@ from data_sync_service.db.alpha_radar import (
 from data_sync_service.service.alpha_radar_risk import build_mainline_score_map
 from data_sync_service.service.alpha_radar_symbol_resolve import map_trend_hk, map_trend_hybrid
 from data_sync_service.service.mainline import get_cn_industry_mainline
+
+logger = logging.getLogger(__name__)
 
 _CATEGORY_DRIVER_DEFAULT: dict[str, str] = {
     "academic": "Global_Tech",
@@ -183,7 +186,7 @@ def _save_trend_row(
             row["mappingConfidence"] = mapped.get("mappingConfidence")
             row["riskStatus"] = mapped.get("riskStatus")
         except Exception as exc:
-            print(f"[alpha_radar] mapping failed for {trend_id}: {exc}")
+            logger.info(f"[alpha_radar] mapping failed for {trend_id}: {exc}")
 
     # OPT-052: HK mapping runs **independently** of the CN pipeline. Even when
     # CN mapping falls back to map_cn_fallback, HK may still resolve cleanly.
@@ -191,7 +194,7 @@ def _save_trend_row(
         hk_mapped = map_trend_hk(trend_id=trend_id, trend=trend_payload)
         row["hkSymbols"] = hk_mapped.get("hkSymbols") or []
     except Exception as exc:
-        print(f"[alpha_radar] HK mapping failed for {trend_id}: {exc}")
+        logger.info(f"[alpha_radar] HK mapping failed for {trend_id}: {exc}")
         row["hkSymbols"] = []
     return row
 
@@ -207,7 +210,7 @@ def _load_risk_context() -> tuple[list[str], dict[str, float]]:
             if name:
                 hot_names.append(name)
     except Exception as exc:
-        print(f"[alpha_radar] risk context load failed: {exc}")
+        logger.info(f"[alpha_radar] risk context load failed: {exc}")
     return hot_names, mainline_map
 
 

@@ -164,7 +164,9 @@ export function useWatchlistItems() {
     persist(next);
     // Resolve the just-added symbol immediately so the Name column populates
     // without waiting for the items useEffect to re-fire.
-    void resolveSymbols([sym]).then(applyResolvedNames);
+    void resolveSymbols([sym])
+      .then(applyResolvedNames)
+      .catch((err) => console.warn('resolve symbol names failed:', err));
   }
 
   function addSymbolToWatchlist(symRaw: string) {

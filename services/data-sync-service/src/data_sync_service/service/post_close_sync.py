@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -12,6 +13,9 @@ from data_sync_service.service.macro_daily import sync_macro_daily_full
 from data_sync_service.service.option_iv import sync_option_iv_daily
 from data_sync_service.service.top_inst_flow import sync_top_inst_watchlist
 
+logger = logging.getLogger(__name__)
+
+
 
 def run_post_close_sync() -> dict[str, Any]:
     """
@@ -19,28 +23,24 @@ def run_post_close_sync() -> dict[str, Any]:
     Each sub-job has its own skip-if-today-ok logic.
     """
     with ThreadPoolExecutor(max_workers=6) as pool:
-        f_index = pool.submit(sync_index_daily_full)
-        f_macro = pool.submit(sync_macro_daily_full)
-        f_em = pool.submit(
-            sync_eastmoney_industry_incremental,
-            mode="missing",
-            batch_size=500,
-            max_batches=1,
-        )
-        f_etf = pool.submit(sync_etf_fund_flow_watchlist)
-        f_top_inst = pool.submit(sync_top_inst_watchlist)
-        f_option_iv = pool.submit(sync_option_iv_daily)
-        index_result = f_index.result()
-        macro_result = f_macro.result()
-        em_result = f_em.result()
-        etf_result = f_etf.result()
-        top_inst_result = f_top_inst.result()
-        option_iv_result = f_option_iv.result()
-    return {
-        "indexDaily": index_result,
-        "macroDaily": macro_result,
-        "eastmoneyIndustry": em_result,
-        "etfFundFlow": etf_result,
-        "topInstWatchlist": top_inst_result,
-        "optionIvDaily": option_iv_result,
-    }
+        futures = {
+            "indexDaily": pool.submit(sync_index_daily_full),
+            "macroDaily": pool.submit(sync_macro_daily_full),
+            "eastmoneyIndustry": pool.submit(
+                sync_eastmoney_industry_incremental,
+                mode="missing",
+                batch_size=500,
+                max_batches=1,
+            ),
+            "etfFundFlow": pool.submit(sync_etf_fund_flow_watchlist),
+            "topInstWatchlist": pool.submit(sync_top_inst_watchlist),
+            "optionIvDaily": pool.submit(sync_option_iv_daily),
+        }
+        results: dict[str, Any] = {}
+        for name, fut in futures.items():
+            try:
+                results[name] = fut.result()
+            except Exception as exc:  # noqa: BLE001 - one failure must not abort the rest
+                logger.warning("post_close_sync sub-task %s failed: %s", name, exc, exc_info=True)
+                results[name] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    return results

@@ -135,8 +135,11 @@ export function MorningBriefCard(props: {
                 <span className="text-[var(--k-muted)]">({items.length})</span>
               </div>
               <div className="space-y-0.5 pl-3">
-                {items.map((item) => (
-                  <BriefItemRow key={item.id} item={item} />
+                {items.map((item, idx) => (
+                  <BriefItemRow
+                    key={item.id ?? `${item.title ?? 'item'}-${idx}`}
+                    item={item}
+                  />
                 ))}
               </div>
             </div>

@@ -10,10 +10,17 @@ We map our 5-digit ts_code (e.g. `00700.HK`) to yfinance's 4-digit format
 
 from __future__ import annotations
 
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from data_sync_service.db.daily import get_last_trade_date, upsert_from_dataframe
+
+# yfinance download cap (the lib itself accepts no timeout).
+YF_FETCH_TIMEOUT_SECONDS = 60
+
+logger = logging.getLogger(__name__)
 
 
 def _ts_code_to_yf(ts_code: str) -> str | None:
@@ -112,12 +119,19 @@ def sync_hk_daily_for_ts_code_yf(
         return {"ok": False, "error": f"yfinance unavailable: {e}", "ts_code": code}
 
     try:
-        df = yf.Ticker(yf_symbol).history(
-            start=start_date,
-            end=end_date,
-            auto_adjust=False,
-            actions=False,
-        )
+        # yfinance has no timeout parameter — run the download in a thread and
+        # abandon it after YF_FETCH_TIMEOUT_SECONDS so a stalled host cannot
+        # hang a user-facing force-refresh request indefinitely.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                lambda: yf.Ticker(yf_symbol).history(
+                    start=start_date,
+                    end=end_date,
+                    auto_adjust=False,
+                    actions=False,
+                )
+            )
+            df = future.result(timeout=YF_FETCH_TIMEOUT_SECONDS)
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": f"yfinance error: {type(e).__name__}: {e}", "ts_code": code}
 

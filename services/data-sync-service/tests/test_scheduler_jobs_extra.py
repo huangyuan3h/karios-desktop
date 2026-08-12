@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from importlib import import_module
 
 import pytest
@@ -541,47 +542,53 @@ class TestResearchJob:
 
 
 class TestAlphaRadarJobs:
-    def test_fetch_skipped(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_fetch_skipped(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: {"skipped": True, "lastRunAt": "2026-08-08T00:00:00Z"})
         job.run()
-        assert "skipped" in capsys.readouterr().out
+        assert "skipped" in caplog.text
 
-    def test_fetch_ok(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_fetch_ok(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: {"ok": True, "ingestStats": {"stored": 3}, "trendCount": 2})
         job.run()
-        assert "complete" in capsys.readouterr().out
+        assert "complete" in caplog.text
 
-    def test_fetch_failed_result(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_fetch_failed_result(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: {"ok": False, "errors": ["boom"]})
         job.run()
-        assert "failed" in capsys.readouterr().out
+        assert "failed" in caplog.text
 
-    def test_fetch_exception(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_fetch_exception(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: (_ for _ in ()).throw(RuntimeError("crash")))
         job.run()
-        assert "failed" in capsys.readouterr().out
+        assert "failed" in caplog.text
 
-    def test_ingest_ok(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_ingest_ok(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_ingest_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_ingest", lambda trigger: {"ingestStats": {"stored": 1, "new": 1, "requeued": 0, "unchanged": 0}, "rawBacklogCount": 2})
         job.run()
-        assert "complete" in capsys.readouterr().out
+        assert "complete" in caplog.text
 
-    def test_ingest_exception(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_ingest_exception(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_ingest_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_ingest", lambda trigger: (_ for _ in ()).throw(RuntimeError("crash")))
         job.run()
-        assert "failed" in capsys.readouterr().out
+        assert "failed" in caplog.text
 
     def test_ingest_interval_hours(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import alpha_radar_ingest_job as job
@@ -596,19 +603,21 @@ class TestAlphaRadarJobs:
         assert job.ingest_interval_hours() == job.DEFAULT_INTERVAL_HOURS
         assert isinstance(job.build_trigger(), IntervalTrigger)
 
-    def test_process_ok(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_process_ok(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_process_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_process", lambda trigger: {"processedHeadlines": 5, "trendsProduced": 2, "processRounds": 1, "rawBacklogCount": 0})
         job.run()
-        assert "complete" in capsys.readouterr().out
+        assert "complete" in caplog.text
 
-    def test_process_exception(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_process_exception(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_process_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_process", lambda trigger: (_ for _ in ()).throw(RuntimeError("crash")))
         job.run()
-        assert "failed" in capsys.readouterr().out
+        assert "failed" in caplog.text
 
     def test_process_interval_hours(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import alpha_radar_process_job as job

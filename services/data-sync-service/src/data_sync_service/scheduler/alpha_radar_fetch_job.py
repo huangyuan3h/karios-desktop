@@ -9,10 +9,14 @@ service/alpha_radar_pipeline.py).
 
 from __future__ import annotations
 
+import logging
+
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-not-found]
 
 from data_sync_service.db.sync_job_record import insert_record
 from data_sync_service.service.alpha_radar_pipeline import run_alpha_radar_pipeline
+
+logger = logging.getLogger(__name__)
 
 JOB_ID = "alpha_radar_pipeline_job"
 
@@ -22,15 +26,15 @@ def build_trigger():
 
 
 def run():
-    print("[alpha_radar] Starting scheduled 12h pipeline...")
+    logger.info("[alpha_radar] Starting scheduled 12h pipeline...")
     try:
         result = run_alpha_radar_pipeline(force=False, trigger="cron")
         if result.get("skipped"):
-            print(f"[alpha_radar] Pipeline skipped (cooldown): {result.get('lastRunAt')}")
+            logger.info(f"[alpha_radar] Pipeline skipped (cooldown): {result.get('lastRunAt')}")
             insert_record(JOB_ID, success=True, error_message="skipped-cooldown")
         elif result.get("ok"):
             stats = result.get("ingestStats", {})
-            print(
+            logger.info(
                 "[alpha_radar] Pipeline complete: "
                 f"stored={stats.get('stored')} trends={result.get('trendCount')}"
             )
@@ -41,8 +45,8 @@ def run():
                 error_message=None,
             )
         else:
-            print(f"[alpha_radar] Pipeline failed: {result.get('errors')}")
+            logger.info(f"[alpha_radar] Pipeline failed: {result.get('errors')}")
             insert_record(JOB_ID, success=False, error_message=str(result.get("errors"))[:500])
     except Exception as exc:
-        print(f"[alpha_radar] Pipeline failed: {exc}")
+        logger.warning(f"[alpha_radar] Pipeline failed: {exc}")
         insert_record(JOB_ID, success=False, error_message=str(exc)[:500])

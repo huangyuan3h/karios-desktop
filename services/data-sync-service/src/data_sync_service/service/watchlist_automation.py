@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import date, timedelta
 from typing import Any
 
@@ -962,6 +963,7 @@ def get_automation_run(run_id: str) -> dict[str, Any] | None:
 
 _rs_rank_cache: dict[str, float] = {}
 _rs_rank_cache_date: str | None = None
+_rs_rank_cache_lock = threading.Lock()
 
 
 def compute_rs_ranks(symbols: list[str], as_of_date: str | None = None) -> dict[str, float]:
@@ -994,41 +996,42 @@ def compute_rs_ranks(symbols: list[str], as_of_date: str | None = None) -> dict[
             latest = str(latest[0]) if latest and latest[0] else None
     if not latest:
         return {}
-    if _rs_rank_cache_date == latest:
-        pass
-    else:
-        # rank all stocks on `latest` by 20d return
-        rows: list[tuple[str, float]] = []
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT ts_code, ret20 FROM (
-                        SELECT ts_code, close,
-                            (close / lag(close, 20) OVER (PARTITION BY ts_code ORDER BY trade_date) - 1) * 100 AS ret20
-                        FROM daily
-                        WHERE trade_date <= %s
-                          AND trade_date >= (
-                              SELECT MIN(trade_date) FROM (
-                                  SELECT DISTINCT trade_date FROM daily
-                                  WHERE trade_date <= %s ORDER BY trade_date DESC LIMIT 21
-                              ) w
-                          )
-                          AND close > 0
-                    ) t
-                    WHERE ret20 IS NOT NULL
-                    """,
-                    (latest, latest),
-                )
-                rows = cur.fetchall()
-        ranked = sorted(rows, key=lambda kv: -kv[1])
-        total = len(ranked)
-        pos: dict[str, float] = {}
-        for i, (ts, _ret) in enumerate(ranked, start=1):
-            pos[ts] = (total - i + 1) / total if total else 0.0
-        _rs_rank_cache.clear()
-        _rs_rank_cache.update(pos)
-        _rs_rank_cache_date = latest
+    with _rs_rank_cache_lock:
+        if _rs_rank_cache_date == latest:
+            pass
+        else:
+            # rank all stocks on `latest` by 20d return
+            rows: list[tuple[str, float]] = []
+            with get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT ts_code, ret20 FROM (
+                            SELECT ts_code, close,
+                                (close / lag(close, 20) OVER (PARTITION BY ts_code ORDER BY trade_date) - 1) * 100 AS ret20
+                            FROM daily
+                            WHERE trade_date <= %s
+                              AND trade_date >= (
+                                  SELECT MIN(trade_date) FROM (
+                                      SELECT DISTINCT trade_date FROM daily
+                                      WHERE trade_date <= %s ORDER BY trade_date DESC LIMIT 21
+                                  ) w
+                              )
+                              AND close > 0
+                        ) t
+                        WHERE ret20 IS NOT NULL
+                        """,
+                        (latest, latest),
+                    )
+                    rows = cur.fetchall()
+            ranked = sorted(rows, key=lambda kv: -kv[1])
+            total = len(ranked)
+            pos: dict[str, float] = {}
+            for i, (ts, _ret) in enumerate(ranked, start=1):
+                pos[ts] = (total - i + 1) / total if total else 0.0
+            _rs_rank_cache.clear()
+            _rs_rank_cache.update(pos)
+            _rs_rank_cache_date = latest
 
     out: dict[str, Any] = {}
     for sym, ts in resolved.items():

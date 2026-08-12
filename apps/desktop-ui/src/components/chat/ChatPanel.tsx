@@ -807,15 +807,15 @@ async function buildReferenceBlock(refs: ChatReference[], queryClient: QueryClie
       const [barsResp, chipsResp, ffResp] = await Promise.all([
         fetch(
           `${DATA_SYNC_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/bars?days=${ref.barsDays}`,
-          { cache: 'no-store' },
+          { cache: 'no-store', signal: AbortSignal.timeout(15_000) },
         ),
         fetch(
           `${DATA_SYNC_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/chips?days=${ref.chipsDays}`,
-          { cache: 'no-store' },
+          { cache: 'no-store', signal: AbortSignal.timeout(15_000) },
         ).catch(() => null),
         fetch(
           `${DATA_SYNC_BASE_URL}/market/stocks/${encodeURIComponent(ref.symbol)}/fund-flow?days=${ref.fundFlowDays}`,
-          { cache: 'no-store' },
+          { cache: 'no-store', signal: AbortSignal.timeout(15_000) },
         ).catch(() => null),
       ]);
 
@@ -891,6 +891,8 @@ export function ChatPanel() {
   const stickToBottomRef = React.useRef(true);
   const isPendingRef = React.useRef(false);
   const sessionCreatedRef = React.useRef(false);
+  const streamAbortRef = React.useRef<AbortController | null>(null);
+  const streamTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     if (!activeSession && !sessionCreatedRef.current) {
@@ -898,6 +900,19 @@ export function ChatPanel() {
       createSession();
     }
   }, [activeSession, createSession]);
+
+  React.useEffect(() => {
+    return () => {
+      // Unmount while a stream is in flight: abort the request so the
+      // reader loop terminates and the pending flag is released.
+      if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
+      if (streamAbortRef.current) {
+        streamAbortRef.current.abort();
+        streamAbortRef.current = null;
+      }
+      isPendingRef.current = false;
+    };
+  }, []);
 
   const messages: ChatMessage[] = activeSession?.messages ?? [];
   const lastMessageId = messages[messages.length - 1]?.id ?? '';
@@ -974,6 +989,7 @@ export function ChatPanel() {
                       text,
                       systemPrompt: state.settings.systemPrompt,
                     }),
+                    signal: AbortSignal.timeout(10_000),
                   });
                   if (t.ok) {
                     const data = (await t.json()) as { title?: string };
@@ -997,10 +1013,18 @@ export function ChatPanel() {
                 ],
               };
 
+              // Guard against a stalled AI service: abort after 5 minutes and
+              // on unmount (see unmount effect above).
+              const streamCtrl = new AbortController();
+              streamAbortRef.current = streamCtrl;
+              if (streamTimerRef.current) clearTimeout(streamTimerRef.current);
+              streamTimerRef.current = setTimeout(() => streamCtrl.abort(), 5 * 60_000);
+
               const resp = await fetch(`${AI_BASE_URL}/chat`, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify(payload),
+                signal: streamCtrl.signal,
               });
 
               if (!resp.ok || !resp.body) {
@@ -1033,9 +1057,21 @@ export function ChatPanel() {
                 );
               }
             } catch (err) {
-              const message = err instanceof Error ? err.message : String(err);
+              const message =
+                err instanceof DOMException && err.name === 'AbortError'
+                  ? '请求超时或已取消'
+                  : err instanceof Error
+                    ? err.message
+                    : String(err);
               updateMessageContent(activeSession.id, assistantId, `**Error**: ${message}`);
             } finally {
+              if (streamTimerRef.current) {
+                clearTimeout(streamTimerRef.current);
+                streamTimerRef.current = null;
+              }
+              if (streamAbortRef.current) {
+                streamAbortRef.current = null;
+              }
               isPendingRef.current = false;
             }
           })();

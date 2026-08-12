@@ -505,9 +505,14 @@ export function AlphaIncubatorPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        void addSymbolsToWatchlist(t.cnSymbols).then(() => {
-                          setMsg(`Added ${t.cnSymbols.length} symbol(s) to Watchlist`);
-                        });
+                        void addSymbolsToWatchlist(t.cnSymbols)
+                          .then(() => {
+                            setMsg(`Added ${t.cnSymbols.length} symbol(s) to Watchlist`);
+                          })
+                          .catch((err) => {
+                            console.warn('add symbols to watchlist failed:', err);
+                            setMsg('Failed to add symbols to Watchlist');
+                          });
                       }}
                     >
                       <Star className="mr-1 h-4 w-4" />
@@ -688,9 +693,14 @@ export function AlphaIncubatorPage() {
                           confidence: stock.catalystScore / 100,
                           rationale: `Catalyst score ${formatCatalystScore(stock.catalystScore)}`,
                         },
-                      ]).then(() => {
-                        setMsg(`Added ${stock.name} to Watchlist`);
-                      });
+                      ])
+                        .then(() => {
+                          setMsg(`Added ${stock.name} to Watchlist`);
+                        })
+                        .catch((err) => {
+                          console.warn('add symbol to watchlist failed:', err);
+                          setMsg('Failed to add symbol to Watchlist');
+                        });
                     }}
                   >
                     <Star className="mr-1 h-4 w-4" />

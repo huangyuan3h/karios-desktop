@@ -1,6 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import {
-  applyProviderEnv,
   pickActiveProfile,
   modelFromProfile,
   getStrategyFallbackModelId,
@@ -11,7 +10,7 @@ import {
 } from './model';
 import { AiProfileSchema, AiConfigStoreSchema } from './config';
 
-describe('applyProviderEnv', () => {
+describe('modelFromProfile', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
@@ -22,7 +21,7 @@ describe('applyProviderEnv', () => {
     process.env = originalEnv;
   });
 
-  it('sets Google API keys for google provider', () => {
+  it('google provider builds a model without mutating global env', () => {
     const profile = AiProfileSchema.parse({
       id: 'test',
       name: 'Test',
@@ -30,36 +29,15 @@ describe('applyProviderEnv', () => {
       modelId: 'gemini-pro',
       google: { apiKey: 'test-google-key' },
     });
-    applyProviderEnv(profile);
-    expect(process.env.GOOGLE_GENERATIVE_AI_API_KEY).toBe('test-google-key');
-    expect(process.env.GOOGLE_API_KEY).toBe('test-google-key');
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'stale-key';
+    const bundle = modelFromProfile(profile);
+    expect(bundle.provider).toBe('google');
+    expect(bundle.modelId).toBe('gemini-pro');
+    // No global env side effects — concurrent openai requests must not be disturbed.
+    expect(process.env.GOOGLE_GENERATIVE_AI_API_KEY).toBe('stale-key');
   });
 
-  it('deletes OPENAI_BASE_URL for google provider', () => {
-    process.env.OPENAI_BASE_URL = 'https://test.openai.com';
-    const profile = AiProfileSchema.parse({
-      id: 'test',
-      name: 'Test',
-      provider: 'google',
-      modelId: 'gemini-pro',
-      google: { apiKey: 'test-key' },
-    });
-    applyProviderEnv(profile);
-    expect(process.env.OPENAI_BASE_URL).toBeUndefined();
-  });
-
-  it('does nothing for openai provider', () => {
-    const profile = AiProfileSchema.parse({
-      id: 'test',
-      name: 'Test',
-      provider: 'openai',
-      modelId: 'gpt-4',
-      openai: { apiKey: 'test-key' },
-    });
-    applyProviderEnv(profile);
-  });
-
-  it('does nothing for ollama provider', () => {
+  it('ollama provider keeps its baseUrl', () => {
     const profile = AiProfileSchema.parse({
       id: 'test',
       name: 'Test',
@@ -67,7 +45,9 @@ describe('applyProviderEnv', () => {
       modelId: 'llama2',
       ollama: { baseUrl: 'http://localhost:11434/v1' },
     });
-    applyProviderEnv(profile);
+    const bundle = modelFromProfile(profile);
+    expect(bundle.provider).toBe('ollama');
+    expect(bundle.looseStructuredOutputs).toBe(true);
   });
 });
 
@@ -301,14 +281,16 @@ describe('getDecisionModelBundle', () => {
 
   });
 
-  it('returns gemini model and injects API key when GEMINI_API_KEY is set', async () => {
+  it('returns gemini model with explicit API key when GEMINI_API_KEY is set', async () => {
     process.env.GEMINI_API_KEY = 'decision-gemini-key';
     const bundle = await getDecisionModelBundle();
     expect(bundle.provider).toBe('google');
     expect(bundle.modelId).toBe(DECISION_DEFAULT_MODEL_ID);
     expect(bundle.looseStructuredOutputs).toBe(false);
-    expect(process.env.GOOGLE_GENERATIVE_AI_API_KEY).toBe('decision-gemini-key');
-    expect(process.env.GOOGLE_API_KEY).toBe('decision-gemini-key');
+    // Key is passed to the provider explicitly — no global env mutation, so
+    // concurrent requests to other providers are never disturbed.
+    expect(process.env.GOOGLE_GENERATIVE_AI_API_KEY).toBeUndefined();
+    expect(process.env.GOOGLE_API_KEY).toBeUndefined();
   });
 
   it('respects AI_DECISION_MODEL override', async () => {

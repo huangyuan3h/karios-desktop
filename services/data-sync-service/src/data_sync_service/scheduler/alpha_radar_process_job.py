@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-not-found]
 
 from data_sync_service.service.alpha_radar_pipeline import run_alpha_radar_process
+
+logger = logging.getLogger(__name__)
 
 JOB_ID = "alpha_radar_process_job"
 DEFAULT_INTERVAL_HOURS = 1
@@ -25,10 +28,10 @@ def build_trigger():
 
 
 def run():
-    print("[alpha_radar] Starting scheduled raw process...")
+    logger.info("[alpha_radar] Starting scheduled raw process...")
     try:
         result = run_alpha_radar_process(trigger="cron")
-        print(
+        logger.info(
             "[alpha_radar] Process complete: "
             f"processed={result.get('processedHeadlines')} "
             f"trends={result.get('trendsProduced')} "
@@ -36,4 +39,4 @@ def run():
             f"raw_backlog={result.get('rawBacklogCount')}"
         )
     except Exception as exc:
-        print(f"[alpha_radar] Process failed: {exc}")
+        logger.warning(f"[alpha_radar] Process failed: {exc}")

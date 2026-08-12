@@ -1837,3 +1837,68 @@ SidebarNav 新增「回测」入口。三区块：
 - ❌ 测试依赖真实 journal 残留（smoke 测试断言 candidates==1 → 只断言自己的插入）
 - ❌ 组件显式 `retry: 1` 覆盖测试 client 的 retry:false（重试退避 1s+ 导致测试假 pending）
 - ❌ 周末 cron 按日历日拉 tushare 空转（已修：`last_trading_day()` 交易日感知）
+
+### OPT-074：全系统健壮性审查（2026-08-12 · 三路扫描）
+
+**状态**：[x]
+**完成日期**：2026-08-12
+
+**背景**：三路并行 agent 扫描前端（TS/React）、后端（Python）、桌面壳（Tauri Rust）+ AI service，
+共 60+ 处缺陷（挂死/静默吞错/进程泄漏/无超时/竞态）。本轮修复 HIGH/MEDIUM 全量 + LOW 大部分。
+
+#### 交付（desktop-ui）
+
+- `lib/api/client.ts`：`DEFAULT_API_TIMEOUT_MS=30s` 默认超时（90+ 调用点受益）；显式 timeoutMs 不受影响
+- `hooks/useDashboardSync.ts`：SSE 全流程 5min 兜底超时 + 卸载清理（原后端挂起 → spinner 永久旋转）；
+  AI 摘要失败 console.warn
+- `components/chat/ChatPanel.tsx`：流式 fetch AbortController + 5min 超时 + 卸载 abort（原 composer
+  永久锁死）；reference 三 fetch 各 15s 超时；/title 10s 超时；AbortError 显式文案
+- `components/pages/DecisionPage.tsx`：初始化 try/catch + 错误态 + 重试按钮（原永久卡初始化）；
+  流式请求 abort + 5min 超时 + 卸载清理；三个 handler 补 try/catch
+- 小修：WeeklyReviewCard/BrokerPage/WatchlistPage clipboard 与 FileReader onerror 补 catch、
+  AlphaIncubatorPage `.then` 补 catch、IndexDetailPage 竞态守卫、ModelSettingsPanel timer 清理、
+  useWatchlistItems catch
+
+#### 交付（src-tauri）
+
+- `backends.rs`：sidecar 启动移入后台线程（原主线程忙等最长 35s 冻结 UI）；wait_port 失败 kill+wait
+  收割；端口被孤儿占用时显式报错；stop_all 限时收割防僵尸；锁中毒降级
+- `lib.rs`：处理 `RunEvent::ExitRequested`（macOS Cmd+Q 原不清理 sidecar → 孤儿进程占端口）；
+  run 失败 eprintln+exit(1)
+
+#### 交付（ai-service）
+
+- `model.ts`：`withFetchTimeout` fetch 层 10min 硬顶（ai v5 无 timeout 参数，覆盖全部 provider）+
+  `AbortSignal.any` 兼容外部 signal；**去掉 process.env 全局改写**（google 分支显式 apiKey，
+  原并发请求互相干扰）；gemini/ollama/openai 全走带超时 fetch
+- `routes/chat.ts`：ReadableStream `cancel()` → 上游 `result.abort()`（客户端断开即停，不白烧 token）
+- `routes/decision.ts`：删除死代码 retrieveSnapshot；index.ts PORT 校验 + uncaughtException 退出交
+  supervisor；config.ts 损坏配置记日志
+
+#### 交付（data-sync-service）
+
+- `service/news.py`：RSS 抓取带 20s timeout（原 feedparser 无限挂死调度线程，coalesce 吞后续 run）
+- `service/close_sync.py`：多日回补每日期 `_with_retry`（指数退避，原单次限流中止整段回补）；
+  resume marker/sync_at 脏数据解析保护
+- `service/post_close_sync.py`：6 个并行子任务逐个 try/except 隔离（原一个失败整批 abort）
+- `service/hk_daily_yf.py`：yfinance 线程 + 60s 超时（原请求路径无超时挂死）
+- `db/__init__.py`：连接加 `statement_timeout=120s`（防挂死 SQL 永久占调度线程）
+- 静默吞错补日志：market_sentiment×5、market_regime×3、trade_calendar、hk_daily_tx、top_inst_flow
+  （信号侧降级必须可见）
+- 7 个 scheduler job + alpha_radar_process/mapping 的 `print` → `logger.info/warning`
+- `db/_ensure_guard.py` 加锁；`watchlist_automation._rs_rank_cache` 加锁；realtime_quote 去
+  `os.environ["TS_TOKEN"]` 全局副作用；dashboard 三个 bundle 降级隔离；catchup 链逐步 try/except
+
+#### 交付（测试）
+
+- 后端 3284 passed；前端 728 passed；ai-service 142 passed；tsc/ruff/eslint/cargo check 干净
+- 修 alembic/env.py `disable_existing_loggers=False`（原 fileConfig 禁用全库 logger，污染 pytest
+  caplog —— 二分定位到 test_alembic_baseline）
+- 修 trading_brief 测试 mock `_candidates`（原依赖 DB 真实候选，非确定性）
+
+#### 反模式
+
+- ❌ 正则批量改代码（print→logger 三套脚本把引号改坏、logger 插进 import 块）→ 引号修复脚本再次
+  破坏（`(\w)""\)` 误伤正常代码）→ 教训：**文本批量替换必须有语法/编译验证门**
+- ❌ `_fallback_from_sync_at` 用真实今天而非参数 today（重构引入，被既有测试抓住）
+- ❌ caplog 断言需 `caplog.set_level(logging.INFO)`（默认只捕 WARNING+）

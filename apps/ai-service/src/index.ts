@@ -19,11 +19,19 @@ process.on('unhandledRejection', (reason) => {
 });
 
 process.on('uncaughtException', (err) => {
-  // Prevent hard close without response; keep process alive for local dev.
+  // A stateful service cannot safely continue after an uncaught exception —
+  // log and exit so the Tauri sidecar supervisor restarts a fresh process
+  // instead of serving from a corrupted state.
   console.error('uncaughtException:', err);
+  process.exit(1);
 });
 
-const port = Number(process.env.PORT ?? 4310);
+const rawPort = process.env.PORT ?? '4310';
+const port = Number(rawPort);
+if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+  console.error(`Invalid PORT env: ${JSON.stringify(rawPort)}`);
+  process.exit(1);
+}
 
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`AI service listening on http://127.0.0.1:${info.port}`);

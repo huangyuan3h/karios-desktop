@@ -286,6 +286,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       } catch {
         toastCopyMd(false, 'Copy failed. Please allow clipboard access.');
       }
+    } catch (err) {
+      console.warn('copy watchlist markdown failed:', err);
+      toastCopyMd(false, 'Copy failed. Backend unavailable.');
     } finally {
       setCopyMdBusy(false);
     }

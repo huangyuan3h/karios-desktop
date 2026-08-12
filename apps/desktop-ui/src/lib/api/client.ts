@@ -7,11 +7,14 @@ export type ApiClientOptions = {
   timeoutMs?: number;
 };
 
+export const DEFAULT_API_TIMEOUT_MS = 30_000;
+
 type ApiFetchInit = RequestInit & ApiClientOptions;
 
 function resolveRequestSignal(options?: ApiClientOptions): AbortSignal | undefined {
   if (options?.signal) return options.signal;
-  if (options?.timeoutMs != null) return AbortSignal.timeout(options.timeoutMs);
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
+  if (timeoutMs > 0) return AbortSignal.timeout(timeoutMs);
   return undefined;
 }
 

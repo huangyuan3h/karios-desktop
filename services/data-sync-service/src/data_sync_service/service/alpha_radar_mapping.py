@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import urllib.error
@@ -14,6 +15,8 @@ from data_sync_service.db.alpha_radar import fetch_trend_by_id, update_trend_map
 from data_sync_service.db.stock_basic import fetch_market_stocks
 from data_sync_service.db.stock_eastmoney_industry import search_stocks_by_industry_keyword
 from data_sync_service.service.alpha_radar_risk import compute_risk_status
+
+logger = logging.getLogger(__name__)
 
 
 def _ai_service_base_url() -> str:
@@ -111,7 +114,7 @@ def tavily_search_cn_context(keywords: list[str]) -> str | None:
                 snippets.append(f"- {title}: {content[:400]}")
         return "\n".join(snippets) if snippets else None
     except Exception as exc:
-        print(f"[alpha_radar] Tavily search failed: {exc}")
+        logger.warning(f"[alpha_radar] Tavily search failed: {exc}")
         return None
 
 

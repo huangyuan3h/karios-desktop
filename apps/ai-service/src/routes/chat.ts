@@ -24,26 +24,37 @@ chatRoutes.post('/', async (c) => {
     return c.json({ error: message }, 500);
   }
 
+  // Client disconnect (abort) must cancel the upstream LLM stream — otherwise
+  // the model keeps generating and billing tokens after the user navigates away.
+  const abortController = new AbortController();
   const result = await streamText({
     model,
     messages,
+    abortSignal: abortController.signal,
   });
 
   // Prefer async iteration over ReadableStream.getReader — AI SDK exposes a dual-type stream.
   const stripper = new ThinkingStreamStripper();
   const cleaned = new ReadableStream<string>({
-    async start(controller) {
-      try {
-        for await (const chunk of result.textStream) {
-          const visible = stripper.push(chunk);
-          if (visible) controller.enqueue(visible);
+    start(controller) {
+      const pump = async () => {
+        try {
+          for await (const chunk of result.textStream) {
+            const visible = stripper.push(chunk);
+            if (visible) controller.enqueue(visible);
+          }
+          const rest = stripper.flush();
+          if (rest) controller.enqueue(rest);
+          controller.close();
+        } catch (err) {
+          controller.error(err);
         }
-        const rest = stripper.flush();
-        if (rest) controller.enqueue(rest);
-        controller.close();
-      } catch (err) {
-        controller.error(err);
-      }
+      };
+      void pump();
+    },
+    cancel() {
+      // Client disconnected or timed out — stop the upstream generation.
+      abortController.abort();
     },
   });
 

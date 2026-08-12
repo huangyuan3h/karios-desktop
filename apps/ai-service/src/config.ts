@@ -157,6 +157,10 @@ export async function loadConfigStore(): Promise<AiConfigStore | null> {
     // Missing file is normal.
     const err = e as NodeJS.ErrnoException | null | undefined;
     if (err?.code === 'ENOENT') return null;
+    // Corrupt/unreadable config: log loudly instead of silently treating it
+    // as "no config" — otherwise the user's saved provider/API keys vanish
+    // with no trace.
+    console.error('config store unreadable, falling back to env/defaults:', err);
     return null;
   }
 }

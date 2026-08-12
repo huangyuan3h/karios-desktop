@@ -111,7 +111,7 @@ def test_tavily_search_no_results(monkeypatch) -> None:
     assert am.tavily_search_cn_context(["芯片"]) is None
 
 
-def test_tavily_search_error(monkeypatch, capsys) -> None:
+def test_tavily_search_error(monkeypatch, caplog) -> None:
     monkeypatch.setattr(am, "tavily_api_key", lambda: "KEY")
 
     def boom(req, timeout=30):
@@ -119,7 +119,7 @@ def test_tavily_search_error(monkeypatch, capsys) -> None:
 
     monkeypatch.setattr(am.urllib.request, "urlopen", boom)
     assert am.tavily_search_cn_context(["芯片"]) is None
-    assert "Tavily search failed" in capsys.readouterr().out
+    assert "Tavily search failed" in caplog.text
 
 
 class _Resp:

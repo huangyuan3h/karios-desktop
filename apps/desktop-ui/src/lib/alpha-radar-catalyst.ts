@@ -82,7 +82,6 @@ export type CatalystTrendOkSnapshot = {
 export type CatalystCopyContext = {
   watchlistSymbols: Set<string>;
   watchlistScores: Map<string, number>;
-  screenerTrendOkSymbols: Set<string>;
   trendMap: Map<string, CatalystTrendOkSnapshot>;
 };
 
@@ -221,7 +220,6 @@ export function isCatalystEligible(
       return true;
     }
   }
-  if (ctx.screenerTrendOkSymbols.has(sym)) return true;
   return false;
 }
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import random
 import sys
@@ -25,6 +26,8 @@ from data_sync_service.service.trade_calendar_utils import (
     last_open_date_on_or_before,
     shanghai_today,
 )
+
+logger = logging.getLogger(__name__)
 
 BREADTH_DECLINE_RED_THRESHOLD = 3000
 CN_INDEX_TRAFFIC_LIGHT_NAMES = frozenset({"上证指数", "创业板指", "中证500"})
@@ -132,7 +135,7 @@ def check_capitulation_bottom(*, down: int, as_of: date) -> dict[str, Any]:
             iv_pct = float(row["close"])
             cond_iv = iv_pct > CAPITULATION_IV_THRESHOLD
     except Exception:
-        pass
+        logger.warning("check_capitulation_bottom: degraded fallback applied", exc_info=True)
     if not cond_iv:
         triggered = False
     reasons.append(f"put_iv={iv_pct}(>{CAPITULATION_IV_THRESHOLD}):{cond_iv}")
@@ -157,7 +160,7 @@ def check_capitulation_bottom(*, down: int, as_of: date) -> dict[str, Any]:
                     or super_yi > CAPITULATION_FLOW_THRESHOLD_YI
                 )
     except Exception:
-        pass
+        logger.warning("check_capitulation_bottom: degraded fallback applied", exc_info=True)
     if not cond_flow:
         triggered = False
     reasons.append(
@@ -196,7 +199,7 @@ def _capitulation_in_lookback(as_of: date, lookback_days: int = FTD_LOOKBACK_TRA
             if str(item.get("riskMode") or "") == "capitulation_v_bottom":
                 return True
     except Exception:
-        pass
+        logger.warning("_capitulation_in_lookback: degraded fallback applied", exc_info=True)
     return False
 
 
@@ -218,7 +221,7 @@ def _compute_index_max_chg_pct(as_of: date) -> float | None:
                 if math.isfinite(chg) and (max_chg is None or chg > max_chg):
                     max_chg = chg
     except Exception:
-        pass
+        logger.warning("_compute_index_max_chg_pct: degraded fallback applied", exc_info=True)
     return max_chg
 
 
@@ -234,7 +237,7 @@ def _read_prev_day_turnover(as_of: date) -> float | None:
         if items:
             return float(items[-1].get("marketTurnoverCny") or 0.0)
     except Exception:
-        pass
+        logger.warning("_read_prev_day_turnover: degraded fallback applied", exc_info=True)
     return None
 
 

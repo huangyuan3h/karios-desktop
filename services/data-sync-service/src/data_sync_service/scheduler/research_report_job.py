@@ -23,7 +23,7 @@ def build_trigger():
 
 
 def run():
-    print("[research] Syncing East Money research reports...")
+    logger.info("[research] Syncing East Money research reports...")
     try:
         from data_sync_service.service.research import sync_research_reports
 
@@ -35,7 +35,7 @@ def run():
             last_ts_code=str(summary.get("inserted") or 0),
             error_message=summary.get("error"),
         )
-        print(
+        logger.info(
             f"[research] Done: fetched={summary.get('fetched')} "
             f"inserted={summary.get('inserted')}"
         )

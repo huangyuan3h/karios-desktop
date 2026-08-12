@@ -21,11 +21,6 @@ import {
   fetchCatalystStocks,
   normalizeCatalystSymbol,
 } from '@/lib/alpha-radar-catalyst';
-import {
-  fetchEnabledScreeners,
-  fetchScreenerSnapshotsMap,
-} from '@/lib/queries/screener';
-import { extractSymbolsFromSnapshotRows } from '@/lib/screenerExport';
 
 export type ExecutionSource = 'TV' | 'ALPHA' | 'MANUAL';
 
@@ -155,22 +150,14 @@ export function formatSourceAttributionMarkdown(
   return lines.join('\n') + '\n';
 }
 
-/** Symbols in the latest snapshot rows of all enabled screeners (TV funnel). */
+/** Symbols from the TV funnel (retired 2026-08-12: TV is fully offline).
+ *
+ * Kept as a constant empty set so write-time attribution keeps the 'TV'
+ * provenance type WITHOUT hitting the retired TradingView endpoints —
+ * historical 'TV'-tagged journal rows keep their attribution.
+ */
 export async function fetchTvSourceSymbols(): Promise<Set<string>> {
-  const screeners = await fetchEnabledScreeners();
-  const ids = screeners.map((s) => String(s?.id ?? '').trim()).filter(Boolean);
-  if (!ids.length) return new Set<string>();
-  const snaps = await fetchScreenerSnapshotsMap(ids);
-  const out = new Set<string>();
-  for (const id of ids) {
-    const snap = snaps[id];
-    if (!snap || !Array.isArray(snap.rows)) continue;
-    const headers = Array.isArray(snap.headers) ? snap.headers.map((h) => String(h ?? '')) : [];
-    for (const sym of extractSymbolsFromSnapshotRows(snap.rows, headers)) {
-      out.add(sym.toUpperCase());
-    }
-  }
-  return out;
+  return new Set<string>();
 }
 
 /** Symbols in the current Alpha Radar catalyst list (Top N). */

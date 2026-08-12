@@ -14,10 +14,15 @@ export function WeeklyReviewCard() {
 
   const copyReport = () => {
     if (!q.data?.markdown) return;
-    void navigator.clipboard.writeText(q.data.markdown).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
+    void navigator.clipboard
+      .writeText(q.data.markdown)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch((err) => {
+        console.warn('copy weekly review failed:', err);
+      });
   };
 
   return (

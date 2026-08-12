@@ -107,12 +107,15 @@ def test_render_markdown_compact() -> None:
 
 def test_generate_action_brief_without_candidates() -> None:
     h = _fake_health()
-    sections = (
-        tb._regime_section(h)
-        + tb._candidates_section(h)
-        + tb._holdings_section(h)
-        + tb._alerts_section(h)
-    )
+    # _candidates reads live DB state (build_s3_candidates) — pin it to empty
+    # so this test is deterministic regardless of what's in Postgres.
+    with patch("data_sync_service.service.trading_brief._candidates", return_value=[]):
+        sections = (
+            tb._regime_section(h)
+            + tb._candidates_section(h)
+            + tb._holdings_section(h)
+            + tb._alerts_section(h)
+        )
     md = tb.render_markdown(sections, "action")
     assert "**S-3 候选：无**" in md  # action brief must say no-candidates explicitly
 

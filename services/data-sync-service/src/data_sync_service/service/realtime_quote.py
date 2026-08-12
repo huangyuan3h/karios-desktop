@@ -411,6 +411,12 @@ def _tushare_quotes(codes: list[str], *, api_key: str) -> list[dict[str, Any]]:
     codes = [c for c in codes if "." in c]
     if not codes:
         return []
+    # 2026-08-12: tushare's realtime_quote is wrapped by verify_token which
+    # calls get_token() — env vars first, then ~/.tushare/tk.csv. The file is
+    # not reliably present/writable on this Mac, so set the token via set_token:
+    # the key from settings is the single source of truth (same one pro_api uses).
+    # NOTE: do NOT write os.environ["TS_TOKEN"] — that mutates a process-global
+    # shared by every concurrent caller; set_token keeps the token scoped.
     ts.set_token(api_key)
     try:
         if hasattr(ts, "realtime_quote"):

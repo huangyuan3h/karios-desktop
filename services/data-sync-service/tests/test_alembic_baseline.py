@@ -62,7 +62,7 @@ def test_baseline_ddl_statements_are_executable_sql() -> None:
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
-def test_brin_daily_indexes_exist_and_btree_gone() -> None:
+def test_brin_daily_indexes_exist_and_btree_gone(caplog) -> None:
     from alembic.config import Config
 
     from alembic import command
@@ -96,7 +96,7 @@ def test_brin_daily_indexes_exist_and_btree_gone() -> None:
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
-def test_alembic_baseline_revision_applied() -> None:
+def test_alembic_baseline_revision_applied(caplog) -> None:
     from alembic.config import Config
 
     from alembic import command
@@ -144,7 +144,7 @@ def test_alembic_baseline_core_tables_exist() -> None:
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="Postgres not available")
-def test_alembic_upgrade_head_is_idempotent() -> None:
+def test_alembic_upgrade_head_is_idempotent(caplog) -> None:
     from alembic.config import Config
 
     from alembic import command

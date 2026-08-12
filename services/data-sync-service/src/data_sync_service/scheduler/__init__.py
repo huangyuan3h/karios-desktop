@@ -336,9 +336,14 @@ def catchup_missed_eod_chain() -> None:
 
     # watchlist_automation cron: 17:30 — catch up only after its slot
     # (17:35 avoids racing the normal 17:30 fire when started just before).
+    # Each step is isolated: one failure must not silently skip the rest of
+    # the chain (2026-08-12 robustness audit).
     if (now.hour, now.minute) >= (17, 35) and not already("watchlist_automation"):
         logger.info("eod chain catchup: watchlist_automation missed (restart) — re-running")
-        watchlist_automation_job.run()
+        try:
+            watchlist_automation_job.run()
+        except Exception:  # noqa: BLE001
+            logger.warning("eod chain catchup: watchlist_automation run failed", exc_info=True)
     # paper_s3_intake cron: 17:42 — needs today's scores from the step above;
     # 17:45 avoids racing the normal 17:42 fire. Idempotent re-runs are safe
     # (per-symbol/day dedupe) even in the 17:42-17:45 double-run window.
@@ -348,8 +353,14 @@ def catchup_missed_eod_chain() -> None:
         and not already("paper_s3_intake_CN")
     ):
         logger.info("eod chain catchup: paper_s3_intake missed (restart) — re-running")
-        paper_s3_intake_job.run()
+        try:
+            paper_s3_intake_job.run()
+        except Exception:  # noqa: BLE001
+            logger.warning("eod chain catchup: paper_s3_intake run failed", exc_info=True)
     # cn_industry_post_close_sync cron: 18:15 — 18:25 avoids the race.
     if (now.hour, now.minute) >= (18, 25) and not already("cn_industry_post_close_sync"):
         logger.info("eod chain catchup: cn_industry_post_close_sync missed (restart) — re-running")
-        cn_industry_post_close_job.run()
+        try:
+            cn_industry_post_close_job.run()
+        except Exception:  # noqa: BLE001
+            logger.warning("eod chain catchup: cn_industry_post_close_sync run failed", exc_info=True)

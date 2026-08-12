@@ -148,17 +148,21 @@ alpha_radar 独立链路不受影响。**下线范围 = 全部功能**，保留�
   （不依赖已删模块）
 - [x] **3. 前端剥离**：ScreenerPage/TradingViewSettingsPanel/WatchlistImportDebug/
   watchlist-screener-import 删除 + SidebarNav/AppShell 路由 + DashboardPage screener 状态行 +
-  WatchlistToolbar Import 按钮 + ChatPanel 保留 TV 引用渲染（历史消息兼容）
+  WatchlistToolbar Import 按钮；**第二轮补剥**（8-12 晚，用户报 404 残留）：
+  `lib/execution-source.ts` TV 符号源改恒空集（归因类型保留，不再调 TV API）· 删
+  `queries/screener.ts`/`api/tvCapture.ts`/`screenerExport.ts` · `dashboard-export.ts` 的
+  screener 段/常量/`fetchTodayScreenerSymbolsByTitle`/`screenerTrendOkSymbols` 全删 ·
+  `alpha-radar-catalyst.ts` CatalystCopyContext 去 screener 字段；ChatPanel 保留 TV 快照
+  渲染（历史消息 Reference 兼容，catch 兜底）
 - [x] **4. 归因保留**：execution_source='TV' 保留（历史 BUY 归因）；watchlist-automation
   funnel 相关前端逻辑移除
 - [x] **5. 数据保留**：tv_screener_snapshots/tv_capture_jobs/tv_screeners 等表不删（只读）
-- [x] **6. 测试清理**：删除 264 个 TV/funnel 测试 + 适配 dashboard/automation 相关；全量回归
-  后端 3284 passed + 前端 750 passed + ruff/typecheck 干净
+- [x] **6. 测试清理**：删除 264 个 TV/funnel 测试 + 适配 dashboard/automation/catalyst 相关；
+  全量回归后端 3284 passed + 前端 728 passed + ruff/typecheck 干净
 - [x] **7. 文档**：AGENTS.md TV 段删除 · screener.md 归档 modules-legacy · todo §6 更新
 
-**验收**：无 tv 残留 import/路由/UI 引用 ✓（唯一残留 = execution_source 归因参数，按设计保留）；
-后端 3284 passed + 前端 750 passed + ruff/typecheck 干净；数据表完好 ✓；服务已重启验证
-（/dashboard/summary 无 screeners 字段，正常）
+**验收**：后端无 TV 残留 import ✓；前端无 TV 网络调用（唯一例外 = ChatPanel 历史消息
+渲染，有 catch 兜底）✓；数据表完好 ✓
 
 ### 2026-08-12 策略固化：live 与回测同码审计 + universe 全市场统一（用户核心诉求）
 

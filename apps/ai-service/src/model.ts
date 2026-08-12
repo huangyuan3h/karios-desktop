@@ -7,6 +7,27 @@ import { z } from 'zod';
 import { AiConfigStoreSchema, AiProfileSchema, loadConfigStore } from './config';
 import { asTrimmedString } from './utils';
 
+/**
+ * Hard cap for any single upstream AI request. ai v5 has no `timeout` call
+ * option, so we guard at the fetch layer: a stalled provider connection
+ * (no headers, no chunk, no close) must not hold the request forever.
+ * Long-but-healthy streams are unaffected while chunks keep flowing.
+ */
+export const AI_FETCH_TIMEOUT_MS = 600_000;
+
+function withFetchTimeout(
+  inner: typeof fetch,
+  timeoutMs: number = AI_FETCH_TIMEOUT_MS,
+): typeof fetch {
+  return (input, init) => {
+    const timer = AbortSignal.timeout(timeoutMs);
+    const signal = init?.signal ? AbortSignal.any([init.signal, timer]) : timer;
+    return inner(input, { ...init, signal });
+  };
+}
+
+const fetchWithTimeout = withFetchTimeout(globalThis.fetch);
+
 type AiModel = Parameters<typeof generateText>[0]['model'];
 
 export type { AiModel };
@@ -122,18 +143,6 @@ function openAiCompatibleFetch(
   };
 }
 
-export function applyProviderEnv(p: z.infer<typeof AiProfileSchema>): void {
-  if (p.provider === 'google') {
-    const key = p.google?.apiKey?.trim();
-    if (key) {
-      process.env.GOOGLE_GENERATIVE_AI_API_KEY = key;
-      process.env.GOOGLE_API_KEY = key;
-    }
-    delete process.env.OPENAI_BASE_URL;
-    return;
-  }
-}
-
 export function pickActiveProfile(
   store: z.infer<typeof AiConfigStoreSchema>,
 ): z.infer<typeof AiProfileSchema> | null {
@@ -144,9 +153,12 @@ export function pickActiveProfile(
 
 export function modelFromProfile(p: z.infer<typeof AiProfileSchema>): ResolvedModelBundle {
   if (p.provider === 'google') {
-    applyProviderEnv(p);
+    const key = p.google?.apiKey?.trim();
     return {
-      model: google(p.modelId),
+      model: createGoogleGenerativeAI({
+        apiKey: key,
+        fetch: withFetchTimeout(getGeminiFetch()),
+      }).languageModel(p.modelId),
       provider: 'google',
       modelId: p.modelId,
       looseStructuredOutputs: false,
@@ -159,7 +171,7 @@ export function modelFromProfile(p: z.infer<typeof AiProfileSchema>): ResolvedMo
     const ollamaClient = createOpenAI({
       apiKey,
       baseURL,
-      fetch: openAiCompatibleFetch(baseURL),
+      fetch: withFetchTimeout(openAiCompatibleFetch(baseURL)),
     });
     return {
       model: ollamaClient.chat(p.modelId),
@@ -176,9 +188,9 @@ export function modelFromProfile(p: z.infer<typeof AiProfileSchema>): ResolvedMo
       ? createOpenAI({
           apiKey,
           baseURL,
-          ...(baseURL ? { fetch: openAiCompatibleFetch(baseURL) } : {}),
+          ...(baseURL ? { fetch: withFetchTimeout(openAiCompatibleFetch(baseURL)) } : {}),
         })
-      : openai;
+      : createOpenAI({ fetch: fetchWithTimeout });
   return {
     model: openaiClient.chat(p.modelId),
     provider: 'openai',
@@ -258,10 +270,10 @@ export async function getDecisionModelBundle(): Promise<ResolvedModelBundle> {
     return getResolvedModel();
   }
   const modelId = asTrimmedString(process.env.AI_DECISION_MODEL) || DECISION_DEFAULT_MODEL_ID;
-  process.env.GOOGLE_GENERATIVE_AI_API_KEY = key;
-  process.env.GOOGLE_API_KEY = key;
-  delete process.env.OPENAI_BASE_URL;
-  const geminiClient = createGoogleGenerativeAI({ fetch: getGeminiFetch() });
+  const geminiClient = createGoogleGenerativeAI({
+    apiKey: key,
+    fetch: withFetchTimeout(getGeminiFetch()),
+  });
   return {
     model: geminiClient.languageModel(modelId),
     provider: 'google',

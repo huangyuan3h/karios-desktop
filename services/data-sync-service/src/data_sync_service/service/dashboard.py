@@ -287,11 +287,20 @@ def dashboard_summary(
         )
 
         if f_industry is not None:
-            industry = f_industry.result()
+            try:
+                industry = f_industry.result()
+            except Exception:  # noqa: BLE001 - partial degradation on dashboard
+                industry = {}
         if f_sentiment is not None:
-            market_sentiment = f_sentiment.result()
+            try:
+                market_sentiment = f_sentiment.result()
+            except Exception:  # noqa: BLE001
+                market_sentiment = {}
         if f_news is not None:
-            news = f_news.result()
+            try:
+                news = f_news.result()
+            except Exception:  # noqa: BLE001
+                news = []
         if f_macro is not None:
             try:
                 macro_snapshot = f_macro.result()

@@ -157,6 +157,7 @@ def _news_section(top: int = 5) -> list[dict[str, Any]]:
     for it in items[:top]:
         out.append({
             "type": "news",
+            "id": str(it.get("id") or it.get("title") or ""),
             "title": it.get("title"),
             "category": it.get("category"),
             "importance": it.get("importance"),
