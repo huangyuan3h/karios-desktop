@@ -56,6 +56,10 @@ S3_MAX_POSITIONS = 20
 # of backtest drawdown_circuit_pct=-25 (30d realized window, CN line only).
 # Realized net pnl over trailing 30 days <= -25% → block new S-3 entries
 # (2022/2023 showed the entry edge turns negative in losing streaks).
+# 2026-08-12 (OPT-094): red-light block — walk-forward verified (OOS2 win
+# 48→51%, valid win 61→79% & total +10.7pt, no window worse). CN line only;
+# HK index lights show no separation (OPT-093) so HK stays unblocked.
+S3_LIGHT_RED_BLOCK = True
 S3_CIRCUIT_PCT = -25.0
 S3_CIRCUIT_WINDOW_DAYS = 30
 S3_CIRCUIT_MIN_TRADES = 3
@@ -185,6 +189,30 @@ def _live_held_symbols() -> set[str]:
     return out
 
 
+_LIGHT_NAMES_CN = {"沪深300", "中证500", "创业板指"}
+_LIGHT_RANK = {"deep_green": 4, "green": 3, "yellow": 2, "red": 1, "unknown": 0}
+
+
+def _index_light_red(*, as_of: str) -> bool:
+    """CN tighter index light is red (OPT-094) — as-of replay, same as the
+    backtest loader. Returns False on missing data (fail-open at the index
+    level; the regime gate still applies)."""
+    try:
+        from data_sync_service.service.market_regime import get_index_signals
+
+        signals = get_index_signals(as_of_date=as_of, include_breadth=False)
+        lights = [
+            str(s.get("signal") or "unknown")
+            for s in signals
+            if str(s.get("name") or "") in _LIGHT_NAMES_CN
+        ]
+        if not lights:
+            return False
+        return min(lights, key=lambda x: _LIGHT_RANK.get(x, 0)) == "red"
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _circuit_blocked(*, as_of: str) -> bool:
     """True when the trailing realized pnl window is in a losing streak.
 
@@ -250,6 +278,11 @@ def build_s3_candidates(
     # the trailing realized pnl is in a losing streak — mirrors the backtest
     # drawdown_circuit_pct; paper and backtest stay same-code.
     if market == "CN" and _circuit_blocked(as_of=day):
+        return []
+
+    # 2026-08-12 (OPT-094): CN red-light days produce no candidates (no
+    # recommendations) — same replay as the backtest light_red_block.
+    if market == "CN" and S3_LIGHT_RED_BLOCK and _index_light_red(as_of=day):
         return []
 
     scores = _load_today_scores(day, market=market)

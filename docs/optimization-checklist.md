@@ -2300,3 +2300,87 @@ E2E 手工链路（订阅→emit→投递→清理）通过
 
 **验证**：后端 3349 passed（+9 P2 挂载测试）· 前端 745 passed（+3 WebhookPage）· shared 64 ·
 ruff 干净 · webhook API 已上线（curl 实证）
+
+### OPT-092：一键启动统一到 npm run dev（2026-08-12）
+
+**状态**：[x]
+
+**背景**：用户希望所有服务都由 `npm run dev`（根目录 turbo dev）启动，不再手动
+nohup uvicorn。此前 08-11 因 uvicorn `--reload` 引发调度器 misfire 循环（每 2-3
+分钟 job 重建失败）改走 nohup 单独跑；但用户手动重启时带回了 --reload 且前台
+挂终端（22:25 那次），并曾出现"根目录跑 nohup 命令 → ModuleNotFoundError
+（--app-dir src 是相对路径，必须 cd services/data-sync-service）"。
+
+**变更**：
+1. `services/data-sync-service` `dev` script：去掉 `--reload`（调度器稳定性根因），
+   仍是 4330；新增 `dev:reload` 备用（--reload + 4331，开发调试不碰调度器）
+2. 验证：`npm run dev` 一键起 3000（Next.js 200）/ 4310（tsx watch）/ 4330
+   （uvicorn health 200）——predev 的 ensure-ports 会自动清 4330 旧进程
+3. 清理：22:25 手动前台 uvicorn（16799/16763）已终止
+
+**用法**：以后只跑 `npm run dev`（仓库根目录）；改 Python 代码需重启 dev
+（调度器稳定优先，08-11 教训）；改前端/ai-service 代码热更新不受影响。
+
+**E2E 实证（2026-08-12 22:50）**：本地接收器 + 订阅 + test 事件 → 每分钟投递 job
+真实 POST 到接收器，HMAC-SHA256 签名校验通过（sig_ok=True）；订阅已删、测试事件
+已清。webhook_delivery job 运行时实证 ✓。
+
+**补充**：`SYNC_JOB_TYPES` + webhook_delivery/intraday_alarm/candidate_diff
+（Scheduler 页展示完整性；三者不写 sync_job_record，todayRun 恒 None 属预期）。
+
+### OPT-093：红绿灯回测验证 + HK 仓位启发式删除（2026-08-12）
+
+**状态**：[x]
+
+**需求**：用户质疑红绿灯仓位建议（红→0-10%、黄→30%、绿→50-60%、深绿→80-100%）
+是否与回测一致——"回测一下红绿灯，判断定义是否正确；不符合就替换或删除"。
+
+**方法**：`scripts/backtest_index_lights.py`（可重复）——get_index_signals 逐日回放
+（as-of、无实时、无 breadth，杜绝前视）+ S-3 引擎同窗口模拟（CN 长窗 2021-08~2026-08
+1196 笔 / HK 2024-08~2026-08 599 笔）→ 按入场日红绿灯分层（均值+中位数+分位）。
+
+**结果**（report: data/backtest_reports/index_light_backtest_latest.json）：
+
+| 市场 | 灯 | 笔数 | 胜率 | 中位盈亏 | 判定 |
+|------|-----|------|------|---------|------|
+| CN | green | 258 | 41% | -2.1% | 正常 |
+| CN | yellow | 655 | 42% | -2.5% | 正常 |
+| CN | **red** | 283 | **27%** | **-5.5%** | **显著差 → 定义正确** |
+| HK | green | 335 | 36% | -5.1% | 无区分 |
+| HK | yellow | 116 | 46% | -2.0% | 无区分 |
+| HK | red | 148 | 39% | -5.0% | 均值 +18% 系右上尾少数暴利单 |
+
+**结论与动作**：
+1. **CN 红绿灯定义正确**（红灯日入场显著差：胜率 27% vs 42%、中位 -5.5%）——保留
+2. **HK 红绿灯无区分度**（红/黄/绿中位数 -5.0/-2.0/-5.1%，胜率无单调）——删除 HK
+   `positionRangeHint`（execution_gate.py，注释写明回测依据；前端已处理 None 不渲染
+   "仓位"）；绝不按均值反转（右上尾假象 = 过拟合）
+3. 警示：均值统计在 HK 会被少数暴利单误导——今后分层验证一律看中位数+分位
+
+**验证**：后端 71 passed（gate 2 文件）· 前端 12 passed · tsc 干净 · API 实证
+（HK hint=None，CN 30% 保留）· ruff 干净
+
+### OPT-094：CN 红灯日禁开仓——回测验证 + 全链路落地（2026-08-12）
+
+**状态**：[x]（定案 · 已上线）
+
+**背景**：OPT-093 证实 CN 红灯日入场是负 EV（胜率 27% vs 42%）。用户拍板：
+"A 股红灯日确保无购买、无推荐"（港股无回测支持，维持现状）。
+
+**反事实验证**（trades 层，三窗）：剔除红灯日入场——OOS2 胜率 48→54% 且总收益
+不降；train 持平（红灯几乎不触发）；valid 胜率 61→79%、总收益 +10%——无窗变差。
+
+**walk-forward 三窗**（light_red_block=True）：OOS2 113.7%（+1.0pt）/胜率 51.3%（+3.3pt）；
+train 持平；valid 98.9%（+10.7pt）/胜率 78.6%（+17.3pt）/回撤 11.8→1.5%——**通过定案**。
+
+**落地（回测与 live 同码）**：
+1. 引擎：`BacktestConfig.light_red_block`（默认关，不破坏基线）+ `GATE_REASON_INDEX_RED`
+   + `_load_light_red_days`（get_index_signals as-of 回放，与 regime 加载共享缓存，无前视）
+2. live：`paper_s3.S3_LIGHT_RED_BLOCK=True` + `_index_light_red()`——CN 红灯日候选
+   build_s3_candidates 返回 []（无推荐）；HK 不检查（OPT-093 无区分度）
+3. 前端：A 股闸门 indexLight=red 时红标「红灯日 · 禁开新仓」（即使 mode=ATTACK）；
+   HK 不标（无回测支持）
+
+**验证**：后端 68 passed（引擎）+ 33 passed（paper_s3，含红灯/绿灯/helper 3 新测试）·
+前端 14 passed（+2 红灯标/港股不标）· ruff 干净 · 实证：2026-06-01 红灯日候选=0，
+今天（非红）正常 · 服务已重启生效

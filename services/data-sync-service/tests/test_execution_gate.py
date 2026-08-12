@@ -310,7 +310,11 @@ def test_hk_gate_defends_on_global_risk_even_when_hk_strong() -> None:
     assert "RISK_EXTREME_CAUTION" in out["hkGate"]["reasons"]
 
 
-def test_hk_position_range_hint_prefers_tighter_hk_light() -> None:
+def test_hk_position_range_hint_removed_by_backtest() -> None:
+    # 2026-08-12 (OPT-093): replaying 2024-08~2026-08 shows HK index lights
+    # carry no separation for S-3 entries (medians red -5.0% / yellow -2.0% /
+    # green -5.1%; the red mean is right-tail driven). The heuristic
+    # "red → 0-10%" was deleted — hint is always None for HK now.
     sigs = [
         {"name": "上证指数", "signal": "green", "positionRange": "50%-60%"},
         {"name": "创业板指", "signal": "green", "positionRange": "50%-60%"},
@@ -325,7 +329,7 @@ def test_hk_position_range_hint_prefers_tighter_hk_light() -> None:
         srv_index=_srv(SRV_LEVEL_STABLE, 3),
     )
     assert out["hkGate"]["indexLight"] == "yellow"
-    assert out["hkGate"]["positionRangeHint"] == "30%"
+    assert out["hkGate"]["positionRangeHint"] is None
 
 
 # ---------- V6.4 ETF flow confirmation layer ----------

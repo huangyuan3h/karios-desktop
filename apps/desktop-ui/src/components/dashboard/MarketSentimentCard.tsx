@@ -40,10 +40,17 @@ function GateBadge({ label, gate }: { label: string; gate: any }) {
         <span>
           {label}: {translateGateMode(gate.mode)}
         </span>
+        {label === 'A股闸门' && gate.indexLight === 'red' ? (
+          <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-bold text-red-600 dark:text-red-400">
+            红灯日 · 禁开新仓
+          </span>
+        ) : null}
         <span className="text-xs opacity-90">允许开仓={String(gate.allowNewEntries)}</span>
         <span className="text-xs opacity-90">
-          {translateRegime(gate.marketRegime)} · {translateIndexLight(gate.indexLight)} · 仓位{' '}
-          {gate.positionRangeHint || '—'}
+          {translateRegime(gate.marketRegime)} · {translateIndexLight(gate.indexLight)}
+          {gate.positionRangeHint
+            ? ` · 仓位 ${gate.positionRangeHint}`
+            : null}
         </span>
       </div>
       {gate.satelliteNote ? <div className="mt-1 text-xs opacity-90">{gate.satelliteNote}</div> : null}

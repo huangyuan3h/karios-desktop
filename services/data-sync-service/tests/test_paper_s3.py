@@ -90,6 +90,39 @@ def test_build_s3_candidates_blocks_weak_regime() -> None:
         assert paper_s3.build_s3_candidates(trade_date="2026-08-07") == []
 
 
+def test_build_s3_candidates_blocks_cn_red_light_day() -> None:
+    """OPT-094: CN red-light days return no candidates (no recommendations);
+    HK stays unaffected (index lights show no separation there)."""
+    with _patch_day_gates():
+        paper_s3._load_today_scores.return_value = {CN_A: 90.0}
+        with patch("data_sync_service.service.paper_s3._index_light_red", return_value=True):
+            assert paper_s3.build_s3_candidates(trade_date="2026-08-07", market="CN") == []
+        # HK ignores the CN red-light check entirely.
+        paper_s3._load_today_scores.return_value = {"HK:00622": 90.0}
+        with patch("data_sync_service.service.paper_s3._index_light_red", return_value=True):
+            assert paper_s3.build_s3_candidates(trade_date="2026-08-07", market="HK") != []
+
+
+def test_index_light_red_helper() -> None:
+    with patch(
+        "data_sync_service.service.market_regime.get_index_signals",
+        return_value=[
+            {"name": "沪深300", "signal": "green"},
+            {"name": "中证500", "signal": "red"},
+            {"name": "创业板指", "signal": "yellow"},
+        ],
+    ):
+        assert paper_s3._index_light_red(as_of="2026-08-07") is True
+    with patch(
+        "data_sync_service.service.market_regime.get_index_signals",
+        return_value=[
+            {"name": "沪深300", "signal": "green"},
+            {"name": "中证500", "signal": "green"},
+        ],
+    ):
+        assert paper_s3._index_light_red(as_of="2026-08-07") is False
+
+
 def test_circuit_blocked_losing_streak() -> None:
     """Drawdown circuit (2026-08-12): trailing 30d realized net pnl <= -25%
     (>= 3 trades) blocks new CN S-3 entries — the long-window bear-market

@@ -52,7 +52,72 @@ describe('MarketSentimentCard', () => {
     expect(screen.getByText(/A股闸门/)).toBeInTheDocument();
     expect(screen.getByText(/允许开仓=false/)).toBeInTheDocument();
     expect(screen.getByText(/卫星仓说明/)).toBeInTheDocument();
+    expect(screen.getByText(/仓位 0-20%/)).toBeInTheDocument();
     expect(screen.queryByText(/港股闸门/)).not.toBeInTheDocument();
+  });
+
+  it('marks CN red-light days as blocked-for-new-entries', () => {
+    render(
+      <MarketSentimentCard
+        dash={{
+          marketSentiment: {
+            ...MS,
+            executionGate: { ...GATE, indexLight: 'red', positionRangeHint: '0%-10%' },
+          },
+        }}
+        summary={{}}
+        sentimentBusy={false}
+        onSyncSentiment={vi.fn()}
+        toastSentimentCopy={vi.fn()}
+        sentimentCopyStatus={null}
+        addReference={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/红灯日 · 禁开新仓/)).toBeInTheDocument();
+  });
+
+  it('does not mark HK red-light days (no backtest support)', () => {
+    render(
+      <MarketSentimentCard
+        dash={{
+          marketSentiment: {
+            ...MS,
+            executionGate: {
+              ...GATE,
+              indexLight: 'red',
+              hkGate: { ...GATE, indexLight: 'red', positionRangeHint: null },
+            },
+          },
+        }}
+        summary={{}}
+        sentimentBusy={false}
+        onSyncSentiment={vi.fn()}
+        toastSentimentCopy={vi.fn()}
+        sentimentCopyStatus={null}
+        addReference={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByText(/红灯日/).length).toBe(1);
+  });
+
+  it('hides position hint when positionRangeHint is null (HK after OPT-093)', () => {
+    render(
+      <MarketSentimentCard
+        dash={{
+          marketSentiment: {
+            ...MS,
+            executionGate: { ...GATE, positionRangeHint: null },
+          },
+        }}
+        summary={{}}
+        sentimentBusy={false}
+        onSyncSentiment={vi.fn()}
+        toastSentimentCopy={vi.fn()}
+        sentimentCopyStatus={null}
+        addReference={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/仓位/)).not.toBeInTheDocument();
   });
 
   it('renders HK gate when present', () => {

@@ -289,7 +289,8 @@ class TestComputeHkGate:
             ]
         )
         assert out["mode"] == MODE_ATTACK
-        assert out["positionRangeHint"] == "50%-60%"
+        # OPT-093: HK position hints removed (backtest shows no separation).
+        assert out["positionRangeHint"] is None
 
     def test_diverging_allows_entries(self) -> None:
         # S-3 HK 定案（gates=regime）：Diverging 允许开仓，与回测一致

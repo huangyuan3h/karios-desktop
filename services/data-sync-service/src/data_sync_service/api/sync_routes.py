@@ -313,6 +313,9 @@ SYNC_JOB_TYPES: tuple[str, ...] = (
     "decision_snapshot",
     "decision_outcome",
     "decision_action_tracking",
+    "webhook_delivery",
+    "intraday_alarm",
+    "candidate_diff",
 )
 
 

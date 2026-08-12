@@ -78,6 +78,7 @@ GATE_REASON_REGIME = "regime"
 GATE_REASON_FLOW = "flow"
 GATE_REASON_MAINLINE = "mainline"
 GATE_REASON_SENTIMENT = "sentiment"
+GATE_REASON_INDEX_RED = "index_red"
 
 # Live mainline momentum-breakout thresholds (hot-industry-picks.ts).
 MOMENTUM_THRESHOLD_YI = 20e8
@@ -110,6 +111,7 @@ class BacktestConfig:
     drawdown_circuit_pct: float = 0.0
     drawdown_circuit_window_days: int = 30
     panic_cooldown_days: int = 0
+    light_red_block: bool = False
     slippage_pct: float = 0.0
     trend_score_min: float = 0.0
     swap_weak_rs_below: float = 0.0
@@ -298,6 +300,9 @@ class BacktestData:
             self.close_by_ts_day[ts] = closes
             self.closes_by_ts[ts] = series
         self.regime_by_day = _load_regime_by_day(config, self.calendar)
+        self.light_red_by_day: set[str] = set()
+        if config.light_red_block and config.market == "CN":
+            self.light_red_by_day = _load_light_red_days(config, self.calendar)
         self.flow_any_positive_by_day, self.mainline_allow_by_day, self.flow5d_by_day = (
             _load_flow_mainline_data(config, self.calendar)
         )
@@ -424,6 +429,35 @@ def _load_regime_by_day(config: BacktestConfig, calendar: list[str]) -> dict[str
             out[day] = classify_market_regime(signals)
         except Exception as exc:  # noqa: BLE001
             logger.warning("backtest: regime data unavailable for %s (%s)", day, exc)
+    return out
+
+
+CN_INDEX_LIGHT_NAMES = {"沪深300", "中证500", "创业板指"}
+_LIGHT_RANK = {"deep_green": 4, "green": 3, "yellow": 2, "red": 1, "unknown": 0}
+
+
+def _load_light_red_days(config: BacktestConfig, calendar: list[str]) -> set[str]:
+    """CN days whose tighter index light is red (OPT-093/094).
+
+    Same as-of replay as _load_regime_by_day (get_index_signals, no
+    realtime, no breadth → no look-ahead); cached per day so it shares the
+    regime loader's DB work. Backtest evidence (2026-08-12): red-light
+    entries are negative EV — OOS2 win 48%→54% and valid 61%→79% when
+    dropped, never a worse window. HK deliberately excluded (no separation).
+    """
+    out: set[str] = set()
+    for day in calendar:
+        try:
+            signals = get_index_signals(as_of_date=day, include_breadth=False)
+            lights = [
+                str(s.get("signal") or "unknown")
+                for s in signals
+                if str(s.get("name") or "") in CN_INDEX_LIGHT_NAMES
+            ]
+            if lights and min(lights, key=lambda x: _LIGHT_RANK.get(x, 0)) == "red":
+                out.add(day)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("backtest: index-light data unavailable for %s (%s)", day, exc)
     return out
 
 
@@ -728,6 +762,8 @@ def _gate_blocked(
     Fail-closed: missing data for the day blocks the entry (same posture as
     the live mainline ``MAINLINE_DATA_UNAVAILABLE`` path).
     """
+    if config.light_red_block and config.market == "CN" and day in data.light_red_by_day:
+        return GATE_REASON_INDEX_RED
     if config.gates in ("regime", "full"):
         regime = data.regime_by_day.get(day)
         if regime != REGIME_STRONG:

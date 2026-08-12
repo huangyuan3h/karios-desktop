@@ -218,7 +218,14 @@ def compute_hk_gate(
         "indexLight": index_light,
         "riskMode": risk or None,
         "reasons": reasons,
-        "positionRangeHint": _position_range_hint_from(hk, index_light),
+        # 2026-08-12 (OPT-093): HK index-light position hints removed after
+        # backtest — replaying 2024-08~2026-08 shows red/green/yellow days
+        # carry NO separation for HK S-3 entries (median pnl -5.0% / -2.0% /
+        # -5.1%, win rates 39/46/36%; the red-day mean is pulled by a few
+        # right-tail winners). Heuristic "red → 0-10%" had no evidence and
+        # misled. CN keeps its hint (red days are genuinely worse there:
+        # 27% win rate, median -5.5% vs -2.1% green).
+        "positionRangeHint": None,
         "satelliteNote": _hk_satellite_note(mode),
     }
 

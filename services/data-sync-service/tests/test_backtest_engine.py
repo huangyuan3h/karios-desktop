@@ -43,6 +43,7 @@ def _data(
     flow_any_positive: bool = True,
     mainline_allow: set[str] | None = None,
     industry_by_ts: dict[str, str] | None = None,
+    light_red_days: str = "",
 ) -> BacktestData:
     data = BacktestData.__new__(BacktestData)
     data.config = None
@@ -58,6 +59,7 @@ def _data(
         industry_by_ts = {ts: "计算机" for ts in prices}
     data.industry_by_ts = dict(industry_by_ts)
     data.sentiment_risk_by_day = {}
+    data.light_red_by_day = {d for d in calendar if str(light_red_days or "") == "red"}
     data.closes_by_ts = {
         ts: [(d, float(px)) for d, px in sorted(m.items())] for ts, m in prices.items()
     }
@@ -291,6 +293,36 @@ def test_gates_regime_blocks_non_strong_market() -> None:
     run = _run_with_gates(calendar, scores, prices, gates="regime")
     assert run.summary.closed == 1
     assert run.summary.gated_blocks == {}
+
+
+def test_light_red_block_blocks_red_days_only() -> None:
+    """OPT-094: CN red-light days block entries; HK never uses it."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 10.5}}
+
+    # Off by default (baseline behaviour unchanged).
+    run = simulate(
+        BacktestConfig(start_date=calendar[0], end_date=calendar[-1], gates="regime"),
+        data=_data(calendar, scores, prices, light_red_days="red"),
+    )
+    assert run.summary.closed == 1
+    assert run.summary.gated_blocks == {}
+
+    # On: every red day blocks (one attempt per score day).
+    run = simulate(
+        BacktestConfig(start_date=calendar[0], end_date=calendar[-1], gates="regime", light_red_block=True),
+        data=_data(calendar, scores, prices, light_red_days="red"),
+    )
+    assert run.summary.closed == 0
+    assert run.summary.gated_blocks == {"index_red": 2}
+
+    # On but non-red days: no interception.
+    run = simulate(
+        BacktestConfig(start_date=calendar[0], end_date=calendar[-1], gates="regime", light_red_block=True),
+        data=_data(calendar, scores, prices),
+    )
+    assert run.summary.closed == 1
 
 
 def test_gates_full_flow_blocks_only_when_all_industries_non_positive() -> None:
