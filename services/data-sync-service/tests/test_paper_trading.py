@@ -1110,7 +1110,7 @@ def test_run_update_trailing_fires_on_close_peak_pullback() -> None:
         return_value={**_OPEN_ROW, "status": "closed", "close_reason": "trailing_stop"},
     ) as mock_close, patch(
         "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
-    ) as mock_update:
+    ):
         from data_sync_service.service.paper_trading import run_update
 
         summary = run_update(today_iso="2026-08-06")

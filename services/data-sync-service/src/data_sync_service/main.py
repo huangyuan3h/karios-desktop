@@ -14,13 +14,13 @@ from .api.decision_routes import router as decision_router
 # OPT-045 Phase A: 4 stable discovery endpoints (no auth — must be reachable
 # before any API key can be issued).
 from .api.discovery_routes import router as discovery_router
-from .api.notifications_routes import router as notifications_router
 from .api.execution_journal_routes import router as execution_journal_router
 from .api.health_routes import router as health_router
 from .api.industry_flow_routes import router as industry_flow_router
 from .api.journal_routes import router as journal_router
 from .api.market_sentiment_routes import router as market_sentiment_router
 from .api.news_routes import router as news_router
+from .api.notifications_routes import router as notifications_router
 from .api.query_routes import router as query_router
 from .api.research_routes import router as research_router
 from .api.sync_routes import router as sync_router
@@ -38,6 +38,7 @@ from .api.v1_explain_routes import router as v1_explain_router
 # OPT-051 §12 #5: /v1/quota — per-API-key usage snapshot.
 from .api.v1_quota_routes import router as v1_quota_router
 from .api.watchlist_routes import router as watchlist_router
+from .api.webhook_routes import router as webhook_router
 from .scheduler import create_scheduler
 
 
@@ -113,6 +114,7 @@ app.include_router(discovery_router)
 app.include_router(notifications_router)
 app.include_router(backtest_router)
 app.include_router(decision_router)
+app.include_router(webhook_router)
 # OPT-045 Phase B / OPT-046: read-only business endpoints under /v1/*.
 app.include_router(v1_business_router)
 # OPT-047 Phase C: /v1/explain/{symbol}.

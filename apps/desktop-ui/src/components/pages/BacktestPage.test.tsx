@@ -67,6 +67,31 @@ beforeEach(() => {
         ],
       };
     }
+    if (String(path).includes('/api/backtest/paper-vs-backtest')) {
+      return {
+        ok: true,
+        report: {
+          generatedAt: '2026-08-12',
+          sampleCount: 2,
+          verdict: '样本 <20 笔：结论待积累（C4 未定案）',
+          rows: [
+            {
+              symbol: 'HK:00622',
+              market: 'HK',
+              entryDate: '2026-08-10',
+              paper: { pnlPct: 2.12, closeReason: 'trailing_stop' },
+              backtest: { pnlPct: 2.02, closeReason: 'end_of_window' },
+              diff: { entryPriceDiffPct: 0 },
+              note: '存在差异',
+            },
+          ],
+          summary: {
+            paper: { closed: 2, winRate: 0.5, avgPnlPct: -1.0 },
+            backtestMatched: { closed: 1, winRate: 1.0, avgPnlPct: 2.02 },
+          },
+        },
+      };
+    }
     throw new Error(`unexpected call: ${path}`);
   });
 });
@@ -94,6 +119,18 @@ describe('BacktestPage', () => {
     expect(screen.getAllByText('港股').length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText(/回测 vs Paper 对账/)).toBeDefined();
     expect(screen.getByText('缺 19 · 多 0')).toBeDefined();
+  });
+
+  it('shows the C4 paper-vs-backtest comparison with verdict banner', async () => {
+    renderPage();
+    expect(await screen.findByText(/C4 · paper vs 回测逐笔对照/)).toBeDefined();
+    expect(await screen.findByText(/样本 <20 笔：结论待积累（C4 未定案）/)).toBeDefined();
+    expect(screen.getByText('50.0%')).toBeDefined();
+    expect(screen.getByText('-1.0%')).toBeDefined();
+    expect(screen.getByText('100.0%')).toBeDefined();
+    expect(screen.getByText('HK:00622')).toBeDefined();
+    expect(screen.getByText('trailing_stop')).toBeDefined();
+    expect(screen.getByText('存在差异')).toBeDefined();
   });
 
   it('collapses the advanced parameter tools behind a toggle', async () => {

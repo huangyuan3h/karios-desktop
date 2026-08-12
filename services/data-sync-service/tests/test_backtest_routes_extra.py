@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import Mock
 
 import pytest
@@ -191,3 +192,32 @@ class TestOverview:
         assert out["hkBaseline"] is None
         assert out["rollingOos"] is None
         assert out["longWindowCN"] is not None
+
+
+class TestPaperVsBacktest:
+    def test_ok(self, monkeypatch, tmp_path) -> None:
+        (tmp_path / "paper_vs_backtest_latest.json").write_text(json.dumps({
+            "generatedAt": "2026-08-12",
+            "sampleCount": 2,
+            "verdict": "样本 <20 笔：结论待积累（C4 未定案）",
+            "rows": [{"symbol": "HK:00622", "market": "HK"}],
+            "summary": {"paper": {"closed": 2, "winRate": 0.5, "avgPnlPct": -1.0}},
+        }))
+        monkeypatch.setattr(br, "REPORTS_DIR", tmp_path)
+        out = br.backtest_paper_vs_backtest()
+        assert out["ok"] is True
+        assert out["report"]["sampleCount"] == 2
+        assert out["report"]["rows"][0]["symbol"] == "HK:00622"
+
+    def test_missing_report(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setattr(br, "REPORTS_DIR", tmp_path)
+        with pytest.raises(HTTPException) as exc:
+            br.backtest_paper_vs_backtest()
+        assert exc.value.status_code == 404
+
+    def test_corrupt_report(self, monkeypatch, tmp_path) -> None:
+        (tmp_path / "paper_vs_backtest_latest.json").write_text("{not json")
+        monkeypatch.setattr(br, "REPORTS_DIR", tmp_path)
+        with pytest.raises(HTTPException) as exc:
+            br.backtest_paper_vs_backtest()
+        assert exc.value.status_code == 500

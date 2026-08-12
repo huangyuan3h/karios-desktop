@@ -14,6 +14,7 @@ from data_sync_service.scheduler import (
     alpha_radar_ingest_job,
     alpha_radar_process_job,
     backtest_recon_job,
+    candidate_diff_job,
     close_catchup_job,
     close_sync_job,
     cn_industry_post_close_job,
@@ -29,6 +30,7 @@ from data_sync_service.scheduler import (
     hk_industry_job,
     index_basic_job,
     index_daily_job,
+    intraday_alarm_job,
     intraday_score_job,
     macro_daily_job,
     morning_brief_job,
@@ -43,6 +45,7 @@ from data_sync_service.scheduler import (
     stock_basic_job,
     trading_brief_job,
     watchlist_automation_job,
+    webhook_delivery_job,
     weekly_review_job,
 )
 
@@ -221,6 +224,27 @@ def create_scheduler() -> BackgroundScheduler:
         paper_chain_watchdog_job.run,
         paper_chain_watchdog_job.build_trigger(),
         id=paper_chain_watchdog_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Candidate-add diff (17:35 weekdays — gate-reopen / new strong RS push).
+    scheduler.add_job(
+        candidate_diff_job.run,
+        candidate_diff_job.build_trigger(),
+        id=candidate_diff_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Intraday drawdown alarm (hourly 10-14 weekdays — backstop for broker conditional orders).
+    scheduler.add_job(
+        intraday_alarm_job.run,
+        intraday_alarm_job.build_trigger(),
+        id=intraday_alarm_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Webhook delivery (every minute — HMAC-signed event pushes).
+    scheduler.add_job(
+        webhook_delivery_job.run,
+        webhook_delivery_job.build_trigger(),
+        id=webhook_delivery_job.JOB_ID,
         replace_existing=True,
     )
     # Weekly review (Monday 07:40 — decision quality report for the agent).

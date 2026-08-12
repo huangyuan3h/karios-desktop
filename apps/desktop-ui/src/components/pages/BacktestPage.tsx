@@ -14,6 +14,7 @@ import {
   useBacktestRunQuery,
   useCorrelationStatusQuery,
   useExitAttributionQuery,
+  usePaperVsBacktestQuery,
   useSensitivityQuery,
   type BacktestOverviewBaseline,
   type BacktestOverviewWindow,
@@ -288,6 +289,95 @@ function ReconStrip({ reconQ }: { reconQ: ReturnType<typeof useBacktestReconQuer
   );
 }
 
+function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQuery> }) {
+  const report = q.data?.report;
+  const rows = report?.rows ?? [];
+  const summary = report?.summary;
+  const settled = (report?.sampleCount ?? 0) >= 20;
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+      <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+        <ShieldAlert className="size-3.5" />
+        C4 · paper vs 回测逐笔对照（S-3/S3HK 已平仓）
+        <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
+          {report?.generatedAt ?? ''} 生成
+        </span>
+      </div>
+      {q.isError ? (
+        <p className="text-xs text-red-700">{String(q.error)}</p>
+      ) : q.data && !rows.length ? (
+        <p className="text-xs text-[var(--k-muted)]">
+          暂无已平仓 S-3 交易——paper 书继续积累后这里会出对照。
+        </p>
+      ) : rows.length ? (
+        <div className="flex flex-col gap-2.5">
+          <div
+            className={cn(
+              'rounded-md border px-2 py-1.5 text-[11px]',
+              settled
+                ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300'
+                : 'border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300',
+            )}
+          >
+            {report?.verdict ?? '—'} · 已平仓 {summary?.paper?.closed ?? 0} 笔
+            {!settled && '（≥20 笔后出统计定论）'}
+          </div>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <StatCard label="paper 胜率" value={winRate(summary?.paper?.winRate ?? null)} sub={`${summary?.paper?.closed ?? 0} 笔已平仓`} />
+            <StatCard label="paper 均盈亏" value={pct(summary?.paper?.avgPnlPct ?? null)} />
+            <StatCard label="回测匹配胜率" value={winRate(summary?.backtestMatched?.winRate ?? null)} sub={`${summary?.backtestMatched?.closed ?? 0} 笔有孪生`} />
+            <StatCard label="回测均盈亏" value={pct(summary?.backtestMatched?.avgPnlPct ?? null)} sub="孪生交易口径" />
+          </div>
+          <div className="max-h-[320px] overflow-auto">
+            <table className="w-full text-left text-xs tabular-nums">
+              <thead className="sticky top-0 bg-[var(--k-surface)]">
+                <tr className="text-[10px] text-[var(--k-muted)]">
+                  <th className="py-1 pr-2">市场</th>
+                  <th className="py-1 pr-2">symbol</th>
+                  <th className="py-1 pr-2">入场</th>
+                  <th className="py-1 pr-2">paper pnl</th>
+                  <th className="py-1 pr-2">paper 平仓原因</th>
+                  <th className="py-1 pr-2">回测 pnl</th>
+                  <th className="py-1 pr-2">回测原因</th>
+                  <th className="py-1 pr-2">入场价差%</th>
+                  <th className="py-1 pr-2">备注</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const bt = r.backtest;
+                  const entryDiff = r.diff?.entryPriceDiffPct;
+                  return (
+                    <tr key={`${r.symbol}-${r.entryDate}`} className="border-t border-[var(--k-border)]/60">
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">{r.market === 'HK' ? '港股' : 'A股'}</td>
+                      <td className="py-1 pr-2 font-mono">{r.symbol}</td>
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">{r.entryDate}</td>
+                      <td className={cn('py-1 pr-2 font-medium', tone(r.paper?.pnlPct ?? null))}>{pct(r.paper?.pnlPct ?? null)}</td>
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">{r.paper?.closeReason ?? '—'}</td>
+                      <td className={cn('py-1 pr-2', bt ? tone(bt.pnlPct ?? null) : 'text-[var(--k-muted)]')}>{bt ? pct(bt.pnlPct ?? null) : '未入场'}</td>
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">{bt?.closeReason ?? '—'}</td>
+                      <td className={cn('py-1 pr-2', entryDiff != null && Math.abs(entryDiff) > 0.5 ? 'text-amber-600 dark:text-amber-400' : '')}>
+                        {entryDiff != null ? pct(entryDiff, 2) : '—'}
+                      </td>
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">{r.note ?? '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-[var(--k-muted)]">
+            孪生交易 = 回测引擎同 symbol 同入场日（否则最近入场）· 价差归因执行 vs 规则 ·
+            样本 &lt;20 笔不作统计结论（C4 未定案）。
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-[var(--k-muted)]">加载中…</p>
+      )}
+    </div>
+  );
+}
+
 export function BacktestPage() {
   const [params, setParams] = React.useState<BacktestParams>(DEFAULT_PARAMS);
   const [submitted, setSubmitted] = React.useState<BacktestParams>(DEFAULT_PARAMS);
@@ -301,6 +391,7 @@ export function BacktestPage() {
   const corrQ = useCorrelationStatusQuery(true, true);
   const overviewQ = useBacktestOverviewQuery();
   const reconQ = useBacktestReconQuery(2);
+  const c4Q = usePaperVsBacktestQuery();
 
   const set = (k: keyof BacktestParams, v: string | number) =>
     setParams((p) => ({ ...p, [k]: typeof v === 'number' ? v : Number(v) }));
@@ -313,6 +404,7 @@ export function BacktestPage() {
       <ConclusionBoard overview={overviewQ.data} />
       <RollingOosCard overview={overviewQ.data} />
       <ReconStrip reconQ={reconQ} />
+      <PaperVsBacktestCard q={c4Q} />
 
       {/* 高级参数工具（折叠 · 原参数敏感度工具） */}
       <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]">
@@ -612,7 +704,7 @@ export function BacktestPage() {
         <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
           <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
             <BarChart3 className="size-3.5" />
-            敏感度网格（score × hold × stop × 闸门 × trail · 默认窗口 · 按超额排序）
+            敏感度网格（score × hold × stop × 闸门 · 默认窗口 · 按胜率排序 · 点击行载入单配置）
             {sensQ.isFetching && <span className="text-[10px] text-[var(--k-muted)]">计算中（约 60s）…</span>}
           </div>
           {sensQ.isError ? (
@@ -640,7 +732,29 @@ export function BacktestPage() {
                   {[...sensQ.data.results]
                     .sort((a, b) => (b.win_rate ?? -1) - (a.win_rate ?? -1))
                     .map((r, i) => (
-                      <tr key={i} className="border-t border-[var(--k-border)]/60">
+                      <tr
+                        key={i}
+                        className="cursor-pointer border-t border-[var(--k-border)]/60 hover:bg-[var(--k-accent)]/5"
+                        onClick={() => {
+                          setParams((p) => ({
+                            ...p,
+                            scoreThreshold: r.config.score_threshold,
+                            maxHoldDays: r.config.max_hold_days,
+                            stopLossPct: r.config.stop_loss_pct,
+                            gates: r.config.gates,
+                          }));
+                          setSubmitted((p) => ({
+                            ...p,
+                            scoreThreshold: r.config.score_threshold,
+                            maxHoldDays: r.config.max_hold_days,
+                            stopLossPct: r.config.stop_loss_pct,
+                            gates: r.config.gates,
+                          }));
+                          setAttempt((a) => a + 1);
+                          setGridOn(false);
+                        }}
+                        title="点击 = 载入该配置到上方单配置回测并运行"
+                      >
                         <td className="py-1 pr-2 text-[var(--k-muted)]">{r.config.gates}</td>
                         <td className="py-1 pr-2">{r.config.score_threshold.toFixed(0)}</td>
                         <td className="py-1 pr-2">{r.config.max_hold_days}</td>

@@ -49,3 +49,16 @@ def run() -> None:
     n = sum(1 for m in out["markets"].values() if m.get("available"))
     insert_record(JOB_ID, success=True, last_ts_code=f"{day}|{n}")
     logger.info("backtest_paper_recon ok: day=%s markets=%d", day, n)
+
+    # E7 (webhook design §2): recon missing-trades pushes a webhook event.
+    missing_markets = [
+        m for m, md in out.get("markets", {}).items() if (md.get("missing") or 0) > 0
+    ]
+    if missing_markets:
+        from data_sync_service.db.webhook import emit_event
+
+        emit_event(
+            "recon_missing",
+            {"day": day, "markets": missing_markets},
+            dedupe_key=f"recon_missing:{day}",
+        )

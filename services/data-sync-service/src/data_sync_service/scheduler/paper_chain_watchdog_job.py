@@ -89,11 +89,18 @@ def run() -> None:
     ]
     missing = [job for job, _tag in checks if not _run_ok(job)]
 
+    from data_sync_service.db.webhook import emit_event
+
     if not missing:
         insert_record(JOB_ID, success=True, last_ts_code=f"{day}|ok")
         logger.info("paper chain OK (close_sync=%s)", close_ok)
         return
 
+    emit_event(
+        "paper_chain_issue",
+        {"day": day, "missing": missing, "close_sync_ok": close_ok},
+        dedupe_key=f"paper_chain:{day}",
+    )
     if not close_ok:
         insert_record(
             JOB_ID, success=False,

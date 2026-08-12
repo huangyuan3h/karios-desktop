@@ -76,6 +76,20 @@ def insert_record(
                 (job_type, success, last_ts_code, error_message),
             )
         conn.commit()
+    if not success:
+        # E1 (webhook design §2): job failures become push events (deduped
+        # per job per day). Local import keeps db-layer independence.
+        from data_sync_service.db.webhook import emit_event
+
+        emit_event(
+            "job_failed",
+            {
+                "job_type": job_type,
+                "error": error_message or "unknown error",
+                "last_ts_code": last_ts_code,
+            },
+            dedupe_key=f"job_failed:{job_type}:{datetime.now(UTC).date().isoformat()}",
+        )
 
 
 def get_last_success(job_type: str) -> dict[str, Any] | None:

@@ -19,6 +19,7 @@ import { DecisionPage } from '@/components/pages/DecisionPage';
 import { BacktestPage } from '@/components/pages/BacktestPage';
 import { SchedulerPage } from '@/components/pages/SchedulerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
+import { WebhookPage } from '@/components/pages/WebhookPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
 import { IndexPage } from '@/components/pages/IndexPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
@@ -66,6 +67,7 @@ const PAGE_TITLES: Record<string, string> = {
   broker: 'Broker',
   journal: 'Journal',
   scheduler: 'Scheduler',
+  webhook: 'Webhook',
   settings: 'Settings',
   stock: 'Stock',
 };
@@ -309,6 +311,8 @@ function AppShellInner() {
               />
             ) : activePage === 'scheduler' ? (
               <SchedulerPage />
+            ) : activePage === 'webhook' ? (
+              <WebhookPage />
             ) : activePage === 'index' ? (
               <IndexPage />
             ) : (

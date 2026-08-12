@@ -120,6 +120,16 @@ def run() -> None:
     report["warning"] = bool(warnings)
     report["warnings"] = warnings
 
+    # E6 (webhook design §2): strategy-fade early warning becomes a push event.
+    if warnings:
+        from data_sync_service.db.webhook import emit_event
+
+        emit_event(
+            "oos_warning",
+            {"window_start": start, "window_end": end, "warnings": warnings},
+            dedupe_key=f"oos_warning:{start}",
+        )
+
     try:
         REPORT_FILE.parent.mkdir(parents=True, exist_ok=True)
         REPORT_FILE.write_text(json.dumps(report, ensure_ascii=False, indent=1))

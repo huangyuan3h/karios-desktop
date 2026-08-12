@@ -313,6 +313,26 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
     sections += _holdings_section(h)
     if brief_type in ("midday", "action"):
         sections += _alerts_section(h)
+        # E4 (webhook design §2): held names near their stop/trail line push
+        # events as soon as the session brief computes them (once per symbol
+        # + line + day via dedupe_key).
+        from data_sync_service.db.webhook import emit_event
+
+        for alert in (a for a in sections if a.get("type") == "alert"):
+            emit_event(
+                "near_stop",
+                {
+                    "symbol": alert.get("symbol"),
+                    "market": alert.get("market"),
+                    "line": alert.get("line"),
+                    "pnl_pct": alert.get("pnlPct"),
+                    "distance_pct": alert.get("distancePct"),
+                },
+                dedupe_key=(
+                    f"near_stop:{alert.get('symbol')}:{alert.get('line')}:"
+                    f"{_now().split('T')[0]}"
+                ),
+            )
     if brief_type == "action":
         sections += _recon_section(5)
     if brief_type in ("open", "midday"):

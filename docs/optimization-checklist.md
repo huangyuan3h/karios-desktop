@@ -2212,3 +2212,68 @@ close-based 回测永不触发）。修复 `paper_trading.py` trailing peak 改 
 
 **验证**：后端 3320 passed（+3）· 2 笔样本雏形可跑（HK:00697 同因 stop_hit 价差 1.4%；
 HK:00622 揭示口径 bug 已修）· ruff 干净
+
+### OPT-088：体检卡闸门状态醒目 + S-3 可行性核验（2026-08-12）
+
+**状态**：[x]
+
+**需求**：用户在 12:00-14:30 盘中买入，要求"闸门开着时前 5 候选恒有；除非闸门关闭"。
+
+**核验（真实数据）**：
+- Strong/Diverging 日候选恒满 20（历史 2026-02 四天实测）→ TOP5 保证 ✓
+- 最近 CN 连续 Weak + 恐慌冷却 → 0 候选 = 闸门正确关闭（S-3 铁律 Weak 空仓）
+- 盘中 10:30/14:00 intraday 分数（实时价）→ 用户盘中出现即买 ≈ 回测信号日收盘口径；
+  隔夜测量：次日开盘 vs 收盘均值 +0.15%~+0.24% 中位 0%（新工具 scripts/measure_entry_lag.py）
+- 盘中 flow 闸门用昨日数据（当日 17:35 才有）= 数据天花板，如实保留
+
+**实现**：
+1. 修 live bug：B1 引擎 `_load_flow_mainline_data` 改 3 元返回时漏改 `paper_s3.py`
+   （候选构建崩溃路径）+ 测试 mock 同步
+2. 前端：HealthPanel 头部加粗红标「闸门关闭 · 今日不买」（Weak/panic/熔断时；
+   block 为 null 不误标）；+2 测试
+
+**验证**：后端 3320 passed · 前端 741 passed（+2）· tsc/ruff 干净
+
+### OPT-089：BacktestPage 重写——C4 paper-vs-backtest 对照 + 交互式扫描（2026-08-12）
+
+**状态**：[x]
+
+**需求**：todo §12 #12——基于 paper 数据的参数敏感度工具；含 paper-vs-backtest 对照展示
+（复用 scripts/paper_vs_backtest_report.py 输出）+ trailing/stop/gate 参数交互式扫描。
+
+**实现**：
+1. 后端 `GET /api/backtest/paper-vs-backtest`：读 `data/backtest_reports/paper_vs_backtest_latest.json`
+   （404 未跑脚本 / 500 损坏同 latest-report 风格）+ 3 测试
+2. 前端 `usePaperVsBacktestQuery`（lib/queries/backtest.ts 类型对齐 JSON：rows/summary/verdict）+ 
+   BacktestPage「C4 · paper vs 回测逐笔对照」卡片：verdict 横幅（<20 笔标"未定案"）、
+   paper vs 回测匹配胜率/均盈亏四格、逐笔表（入场价差 >0.5% 琥珀标记）、口径说明
+3. 交互式扫描：敏感度网格行点击 → 载入该配置到单配置回测并运行（score/hold/stop/gates 联动）
+
+**现状**：样本 2 笔（HK:00697 stop_hit 价差 1.4% · HK:00622 trailing 口径差异）——
+框架就绪，≥20 笔平仓后 C4 自动出统计结论（文档注释已写明）。
+
+**验证**：后端 91 passed（test_backtest_routes_extra + engine）· 前端 742 passed（+1）· tsc/ruff 干净
+
+### OPT-090：webhook 事件订阅 P1（2026-08-12 · todo §14 #3 · 设计稿拍板后实现）
+
+**状态**：[x]（P1；P2 事件待挂载）
+
+**拍板**（§7 四项全决）：两者都要（个人 AI 助手 + 决策 Agent）· E3 盘中巡检 1 小时一轮
+（券商条件单兜底）· 先 API + cookbook 示例（前端页 P2）· E5 候选 diff P2 评估后做。
+
+**实现**（三层 + 2 事件源）：
+1. **表**（alembic 0030 + db/webhook.py CREATE_SQL 同步）：`webhook_events`（dedupe_key 唯一）、
+   `webhook_subscriptions`（url + HMAC secret + event_types[]）、`webhook_deliveries`
+   （pending→sent/failed×3→dead 状态机，5/15/60 分钟退避）
+2. **API**：POST/GET/DELETE `/api/webhook/subscriptions`（secret 自动生成 token_hex(16)）+
+   `POST /api/webhook/test`（连通性测试）
+3. **投递器** `service/webhook_delivery.py`：HMAC-SHA256（X-Karios-Signature: sha256=hex）、
+   5s 超时、30 条/订阅/分钟限频；scheduler `webhook_delivery_job` 每分钟
+4. **E1** `job_failed`：sync_job_record.insert_record 失败分支 emit（当日按 job 去重）
+5. **E3** `intraday_drawdown`：`intraday_alarm_job` 工作日 10-14 点整点，open paper 仓
+   实时价 ≤ 入场价 -8% emit（每票每日一次）
+6. shared SCHEDULER_JOB_CATALOG +2 job；cookbook §9（订阅 curl + Python 接收端签名校验示例）
+
+**验证**：后端 3340 passed（+20：db 集成 4 / 路由+投递 8 / E1+E3 5 / alembic / scheduler）·
+shared 64 passed · 前端 742 passed · ruff 干净 · alembic head=0030（本地已 upgrade）·
+E2E 手工链路（订阅→emit→投递→清理）通过

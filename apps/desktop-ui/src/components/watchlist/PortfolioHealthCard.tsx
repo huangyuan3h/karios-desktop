@@ -375,11 +375,22 @@ function HealthPanel({
   const candidates = block?.s3Candidates ?? [];
   const regime = regimeBadge(block?.regime);
   const idSuffix = tag === 'HK' ? '-hk' : '';
+  const gateClosed =
+    block != null &&
+    (block?.regime === 'Weak' ||
+      block?.regime == null ||
+      block?.panicCooldown?.active === true ||
+      block?.circuitBlocked === true);
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="flex items-center gap-2 text-[11px] font-semibold">
         <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">{tag}</span>
         {title}
+        {gateClosed && (
+          <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[11px] font-bold text-red-600 dark:text-red-400">
+            闸门关闭 · 今日不买
+          </span>
+        )}
         <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
           {block?.tradeDate ?? '—'}
         </span>

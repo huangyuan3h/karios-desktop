@@ -521,7 +521,7 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 |------|------|
 | §2 定位/形态 | ✅ Web 唯一形态（OPT-060）+ 可分享 URL（hash-router） |
 | §3 收益/交易 | ✅ S-3 策略定案 + 卫星仓复核 + user_trades 闭环；**验证期**（C4 等样本） |
-| §4 API 开放 | ✅ /v1/* 整圈（OPT-045~051）+ cookbook；✅ 应用内通知中心（OPT-082）；[ ] 外部 webhook（设计稿） |
+| §4 API 开放 | ✅ /v1/* 整圈（OPT-045~051）+ cookbook；✅ 应用内通知中心（OPT-082）；✅ 外部 webhook P1（OPT-090） |
 | §5 工程/部署 | ✅ Docker 一键 + 备份迁移 + 稳定性审计 5 修（2026-08-09）；Tunnel 端到端待验证 |
 | §6 数据源 | ✅ TV Scanner API 唯一池子；[ ] 付费 API 矩阵（§12 #9） |
 | §7 新闻/研报 | ✅ News Substrate 2.0 三轨 + TIP-012 研报通道 |
@@ -592,7 +592,7 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 - ✅ **API Key 配额 + OpenAPI（OPT-051）**：多 Key + 三窗口滑动配额 + /v1/quota + Swagger/ReDoc
   → [`archive/2026-08-01-opt-051-api-key-quota-openapi.md`](./archive/2026-08-01-opt-051-api-key-quota-openapi.md)
 - ❌ **MCP server**：cancelled 2026-08-04（自写 agent 已 100% 覆盖；后续要启用按原描述单独起 OPT）
-- [ ] **[P1] 决策/告警 webhook**（AI agent 订阅 Karios 事件）：设计稿阶段（§14 #3）
+- [x] **决策/告警 webhook**（AI agent 订阅 Karios 事件）：✅ P1 落地 2026-08-12（OPT-090；cookbook §9）；P2 待挂 E2/E4/E6/E7 + 候选 diff + 前端订阅管理页
 - **范围边界（不做）**：Telegram Bot/推送/日报/自动下单/监控巡检 → 归外部 AI 助手（/v1/* 拉数据）；
   Karios Chat Panel 仅"看+问"局部交互 → [`integrations/ai-agent-cookbook.md`](./integrations/ai-agent-cookbook.md)
 
@@ -906,7 +906,8 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 
 - ✅ **AI agent 集成 cookbook**（2026-08-01）→ [`integrations/ai-agent-cookbook.md`](./integrations/ai-agent-cookbook.md)
 - ✅ **/v1/* 持续稳定**（OPT-045~051 整圈 + 配额 + 文档）→ §12 已完成表
-- [x] **全局通知中心（2026-08-12 ✅ 应用内版先行）**：任何页面铃铛+toast 提醒，点击跳 watchlist 详情（接近止损/EXIT/recon 缺票/cron 失败/OOS 预警 + 本地买入提醒）——OPT-082；**外部 webhook 推送**仍为设计稿（docs/designs/webhook-event-subscription.md，拍板后做）
+- [x] **全局通知中心（2026-08-12 ✅ 应用内版先行）**：任何页面铃铛+toast 提醒，点击跳 watchlist 详情（接近止损/EXIT/recon 缺票/cron 失败/OOS 预警 + 本地买入提醒）——OPT-082
+- [x] **外部 webhook 推送（2026-08-12 ✅ P1 落地）**：订阅/事件/投递三层 + job_failed（E1）+ 盘中 -8%（E3，1 小时一轮）；API + cookbook 示例（cookbook §9）；P2 待挂 E2/E4/E6/E7 + 候选 diff + 前端管理页——OPT-090（设计稿 docs/designs/webhook-event-subscription.md 已拍板）
 - ✅ **TV 数据源决策**（2026-08-01）：TV Scanner API = 唯一池子，ego-lite/Chrome CDP 仅 fallback
 - ✅ **§13 远程部署暂缓确认**：Neon/Tailscale/VM 等云相关全部暂缓（用户："暂时云还有一段路"）
 

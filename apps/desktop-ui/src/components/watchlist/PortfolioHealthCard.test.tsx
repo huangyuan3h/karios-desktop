@@ -414,4 +414,42 @@ describe('PortfolioHealthCard', () => {
     expect(screen.getByText(/稀土催化/)).toBeDefined();
     expect(screen.getByText(/有色金属 5日\+8.2亿（第2\/31）/)).toBeDefined();
   });
+
+  it('marks gate-closed states boldly (Weak / panic / circuit)', async () => {
+    fetchPortfolioHealth.mockResolvedValue({
+      tradeDate: '2026-08-12',
+      regime: 'Weak',
+      sentiment: 'hot',
+      panicCooldown: { active: true, cooldownEndDate: '2026-08-12' },
+      circuitBlocked: true,
+      infoSummary: { holdingsCount: 0, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
+      s3Candidates: [],
+      holdings: [],
+      hkHealth: { regime: 'Strong', s3Candidates: [], holdings: [] },
+    });
+    renderCard();
+    await screen.findByText(/闸门关闭 · 今日不买/);
+    // HK line (Strong) stays unmarked — only the CN panel carries the mark.
+    expect(
+      screen
+        .getAllByText(/闸门关闭 · 今日不买/)
+        .filter((el) => el.tagName === 'SPAN' && el.className.includes('font-bold')),
+    ).toHaveLength(1);
+  });
+
+  it('does not mark the gate when open (Strong / Diverging)', async () => {
+    fetchPortfolioHealth.mockResolvedValue({
+      tradeDate: '2026-08-12',
+      regime: 'Diverging',
+      sentiment: 'hot',
+      panicCooldown: { active: false },
+      infoSummary: { holdingsCount: 0, eventHoldings: 0, industryOutflow: 0, industryInflow: 0 },
+      s3Candidates: [],
+      holdings: [],
+      hkHealth: null,
+    });
+    renderCard();
+    await screen.findByText(/Diverging · 满仓进攻/);
+    expect(screen.queryByText(/闸门关闭/)).toBeNull();
+  });
 });
