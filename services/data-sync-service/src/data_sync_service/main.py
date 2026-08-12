@@ -25,8 +25,6 @@ from .api.research_routes import router as research_router
 from .api.sync_routes import router as sync_router
 from .api.system_prompts_routes import router as system_prompts_router
 from .api.trade_review_routes import router as trade_review_router
-from .api.tv_chrome_routes import router as tv_chrome_router
-from .api.tv_routes import router as tv_router
 from .api.user_trades_routes import router as user_trades_router
 
 # OPT-045 Phase B / OPT-046: 3 read-only business endpoints under /v1/*.
@@ -40,17 +38,14 @@ from .api.v1_explain_routes import router as v1_explain_router
 from .api.v1_quota_routes import router as v1_quota_router
 from .api.watchlist_routes import router as watchlist_router
 from .scheduler import create_scheduler
-from .service.tv_capture_worker import start_tv_capture_worker, stop_tv_capture_worker
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    start_tv_capture_worker()
     scheduler = create_scheduler()
     scheduler.start()
     yield
     scheduler.shutdown(wait=False)
-    stop_tv_capture_worker()
 
 
 app = FastAPI(
@@ -98,8 +93,6 @@ app.include_router(query_router)
 app.include_router(sync_router)
 app.include_router(system_prompts_router)
 app.include_router(dashboard_router)
-app.include_router(tv_router)
-app.include_router(tv_chrome_router)
 app.include_router(journal_router)
 app.include_router(execution_journal_router)
 app.include_router(health_router)

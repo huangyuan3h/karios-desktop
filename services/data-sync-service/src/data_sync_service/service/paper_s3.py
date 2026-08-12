@@ -30,6 +30,7 @@ from data_sync_service.db.paper_trading import (
     SOURCE_S3_HK,
     close_paper_trade,
     insert_paper_trade,
+    list_paper_trades,
 )
 from data_sync_service.service.backtest_engine import (
     BacktestConfig,
@@ -51,6 +52,13 @@ S3_RS_MIN = 0.5
 # strategy-params.md §HK) — the shared 0.5 is the CN S-3 floor (2026-08-11).
 S3_RS_MIN_HK = 0.6
 S3_MAX_POSITIONS = 20
+# 2026-08-12 (long-window defence): drawdown circuit breaker — live mirror
+# of backtest drawdown_circuit_pct=-25 (30d realized window, CN line only).
+# Realized net pnl over trailing 30 days <= -25% → block new S-3 entries
+# (2022/2023 showed the entry edge turns negative in losing streaks).
+S3_CIRCUIT_PCT = -25.0
+S3_CIRCUIT_WINDOW_DAYS = 30
+S3_CIRCUIT_MIN_TRADES = 3
 S3_POSITION_PCT = 0.10  # per-sleeve size — SAME as the backtest (10%x20)
 # 2026-08-11: paper was 5% (conservative); user decision: paper must mirror
 # the backtest exactly, so paper book results are directly comparable to the
@@ -177,6 +185,33 @@ def _live_held_symbols() -> set[str]:
     return out
 
 
+def _circuit_blocked(*, as_of: str) -> bool:
+    """True when the trailing realized pnl window is in a losing streak.
+
+    Same rule as the backtest's drawdown_circuit_pct=-25: at least
+    S3_CIRCUIT_MIN_TRADES closed trades whose NET pnl sums to <= -25% over
+    the trailing 30 calendar days → halt new CN S-3 entries. Mirrors the
+    engine exactly (as-of close_date comparison, live rows only).
+    """
+    from datetime import date, timedelta
+
+    cutoff = (date.fromisoformat(as_of) - timedelta(days=S3_CIRCUIT_WINDOW_DAYS)).isoformat()
+    closed = list_paper_trades(status="closed", market="CN", limit=1000)
+    recent = []
+    for r in closed:
+        cd = str(r.get("closeDate") or r.get("close_date") or "")
+        if not cd or cd < cutoff:
+            continue
+        p = r.get("pnlPct")
+        if p is None:
+            p = r.get("pnl_pct")
+        try:
+            recent.append(float(p))
+        except (TypeError, ValueError):
+            continue
+    return len(recent) >= S3_CIRCUIT_MIN_TRADES and sum(recent) <= S3_CIRCUIT_PCT
+
+
 def build_s3_candidates(
     *,
     trade_date: str | None = None,
@@ -210,6 +245,12 @@ def build_s3_candidates(
     )
     regime_by_day = _load_regime_by_day(cfg, [day])
     panic = get_panic_cooldown(days=10, cooldown_days=3, as_of_date=day)
+
+    # 2026-08-12: drawdown circuit breaker (CN line). Block new entries when
+    # the trailing realized pnl is in a losing streak — mirrors the backtest
+    # drawdown_circuit_pct; paper and backtest stay same-code.
+    if market == "CN" and _circuit_blocked(as_of=day):
+        return []
 
     scores = _load_today_scores(day, market=market)
     if not scores:

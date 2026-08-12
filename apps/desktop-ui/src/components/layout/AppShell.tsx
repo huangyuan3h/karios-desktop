@@ -17,7 +17,6 @@ import { NewsPage } from '@/components/pages/NewsPage';
 import { DecisionPage } from '@/components/pages/DecisionPage';
 import { BacktestPage } from '@/components/pages/BacktestPage';
 import { SchedulerPage } from '@/components/pages/SchedulerPage';
-import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
 import { IndexPage } from '@/components/pages/IndexPage';
@@ -65,7 +64,6 @@ const PAGE_TITLES: Record<string, string> = {
   watchlist: 'Watchlist',
   broker: 'Broker',
   journal: 'Journal',
-  screener: 'Screener',
   scheduler: 'Scheduler',
   settings: 'Settings',
   stock: 'Stock',
@@ -307,8 +305,6 @@ function AppShellInner() {
                 symbol={activeStockSymbol}
                 onBack={() => setActivePage(stockReturnPage || 'market')}
               />
-            ) : activePage === 'screener' ? (
-              <ScreenerPage />
             ) : activePage === 'scheduler' ? (
               <SchedulerPage />
             ) : activePage === 'index' ? (

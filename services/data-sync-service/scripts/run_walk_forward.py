@@ -52,6 +52,7 @@ S3_CONFIG: dict[str, float | int | str] = {
     "rs_rank_min": 0.5,
     "diverging_scale": 1.0,
     "panic_cooldown_days": 3,
+    "drawdown_circuit_pct": -25.0,
     "slippage_pct": 0.05,
     "pyramid_trigger_pct": 2.5,
     "pyramid_add_scale": 0.5,
@@ -63,6 +64,11 @@ WINDOWS: dict[str, tuple[str, str]] = {
     "OOS2": ("2024-08-01", "2025-08-01"),
     "train": ("2025-08-01", "2026-02-01"),
     "valid": ("2026-03-01", "2026-08-07"),
+    # 2026-08-12: full-cycle window (2021 top → 2022 bear → 2023 weak →
+    # 2024-25 structural bull) — cross-cycle robustness check, NOT part of
+    # the fixed three-window audit. Baseline file has no "long" entry, so
+    # the table shows no delta column for it.
+    "long": ("2021-08-01", "2026-08-07"),
 }
 
 REPORT_DIR = Path(__file__).resolve().parents[1] / "data" / "backtest_reports"
@@ -195,7 +201,8 @@ def main() -> int:
     verdicts: list[str] = []
     if baseline and windows[0] in baseline:
         for w in windows:
-            d = float(results[w]["totalNetPnlPct"] or 0) - float(baseline[w].get("totalNetPnlPct") or 0)
+            b = baseline.get(w) or {}
+            d = float(results[w]["totalNetPnlPct"] or 0) - float(b.get("totalNetPnlPct") or 0)
             if d < -5:
                 verdicts.append(f"{w} 劣化 {d:+.1f}pt")
     if verdicts:

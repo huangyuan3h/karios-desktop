@@ -89,6 +89,57 @@ def test_build_s3_candidates_blocks_weak_regime() -> None:
         assert paper_s3.build_s3_candidates(trade_date="2026-08-07") == []
 
 
+def test_circuit_blocked_losing_streak() -> None:
+    """Drawdown circuit (2026-08-12): trailing 30d realized net pnl <= -25%
+    (>= 3 trades) blocks new CN S-3 entries — the long-window bear-market
+    defence (2022/2023), mirroring backtest drawdown_circuit_pct=-25."""
+
+    closed = [
+        {"symbol": "CN:600001", "status": "closed", "closeDate": "2026-07-20",
+         "close_date": "2026-07-20", "pnlPct": -6.0, "pnl_pct": -6.0},
+        {"symbol": "CN:600002", "status": "closed", "closeDate": "2026-07-25",
+         "close_date": "2026-07-25", "pnlPct": -5.5, "pnl_pct": -5.5},
+        {"symbol": "CN:600003", "status": "closed", "closeDate": "2026-08-01",
+         "close_date": "2026-08-01", "pnlPct": -14.0, "pnl_pct": -14.0},
+    ]
+    with patch("data_sync_service.service.paper_s3.list_paper_trades", return_value=closed):
+        assert paper_s3._circuit_blocked(as_of="2026-08-07") is True
+
+
+def test_circuit_not_blocked_fresh_profit() -> None:
+    """A healthy (profitable) recent window must NOT block entries."""
+    closed = [
+        {"symbol": "CN:600001", "status": "closed", "closeDate": "2026-07-20",
+         "close_date": "2026-07-20", "pnlPct": 8.0, "pnl_pct": 8.0},
+        {"symbol": "CN:600002", "status": "closed", "closeDate": "2026-07-25",
+         "close_date": "2026-07-25", "pnlPct": 12.0, "pnl_pct": 12.0},
+    ]
+    with patch("data_sync_service.service.paper_s3.list_paper_trades", return_value=closed):
+        assert paper_s3._circuit_blocked(as_of="2026-08-07") is False
+
+
+def test_circuit_ignores_stale_trades() -> None:
+    """Trades older than the 30d window must not count."""
+    closed = [
+        {"symbol": "CN:600001", "status": "closed", "closeDate": "2026-06-01",
+         "close_date": "2026-06-01", "pnlPct": -30.0, "pnl_pct": -30.0},
+        {"symbol": "CN:600002", "status": "closed", "closeDate": "2026-06-02",
+         "close_date": "2026-06-02", "pnlPct": -30.0, "pnl_pct": -30.0},
+    ]
+    with patch("data_sync_service.service.paper_s3.list_paper_trades", return_value=closed):
+        assert paper_s3._circuit_blocked(as_of="2026-08-07") is False
+
+
+def test_build_s3_candidates_blocked_by_circuit() -> None:
+    """End-to-end: circuit on → build_s3_candidates returns [] for CN."""
+    with (
+        _patch_day_gates(regime="Strong"),
+        patch("data_sync_service.service.paper_s3._circuit_blocked", return_value=True),
+    ):
+        paper_s3._load_today_scores.return_value = {CN_A: 90.0}
+        assert paper_s3.build_s3_candidates(trade_date="2026-08-07") == []
+
+
 def test_build_s3_candidates_blocks_flow_outflow() -> None:
     with _patch_day_gates(flow_ok=False):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}

@@ -18,7 +18,6 @@ from data_sync_service.service.watchlist_automation import (
     run_intraday_scores,
     run_watchlist_automation,
 )
-from data_sync_service.service.watchlist_funnel_health import check_funnel_health
 
 router = APIRouter()
 
@@ -253,15 +252,6 @@ def watchlist_automation_pullback_filter(req: PullbackFilterRequest) -> dict:
     """52W pullback gate using DB K-lines (replaces unreliable TV High.Interval52Week)."""
     try:
         return filter_pullback_window(req.symbols or [], as_of=req.asOf)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@router.post("/watchlist/automation/funnel-health/check")
-def watchlist_automation_funnel_health_check() -> dict:
-    """Manually run the funnel health check (normally 18:10 on weekdays)."""
-    try:
-        return check_funnel_health()
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

@@ -299,7 +299,6 @@ export function DecisionPage() {
       // watchlist/screener data (invalidate resets their staleTime to 0),
       // without a global invalidate storm.
       await queryClient.invalidateQueries({ queryKey: ['watchlist'] });
-      await queryClient.invalidateQueries({ queryKey: ['screener'] });
       const newsItems = Array.isArray((summary as { news?: { items?: Array<{ title?: string; relevanceScore?: number }> } }).news?.items)
         ? (summary as { news?: { items?: Array<{ title?: string; relevanceScore?: number }> } }).news?.items ?? []
         : [];

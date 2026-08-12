@@ -41,13 +41,11 @@ function amountText(x: number | null | undefined): string {
 export function HotIndustryWorkflowCard({
   picks,
   asOfDate,
-  onOpenScreener,
   onOpenWatchlist,
   compact = false,
 }: {
   picks: HotIndustryPick[];
   asOfDate?: string | null;
-  onOpenScreener?: () => void;
   onOpenWatchlist?: () => void;
   compact?: boolean;
 }) {
@@ -148,11 +146,6 @@ export function HotIndustryWorkflowCard({
         <Button size="sm" variant="secondary" onClick={() => void copyNames()}>
           {copyState === 'idle' ? 'Copy top3 names' : copyState === 'ok' ? 'Copied' : 'Copy failed'}
         </Button>
-        {onOpenScreener ? (
-          <Button size="sm" variant="secondary" onClick={onOpenScreener}>
-            Open TV Screener
-          </Button>
-        ) : null}
         {onOpenWatchlist ? (
           <Button size="sm" variant="secondary" onClick={onOpenWatchlist}>
             Open Watchlist

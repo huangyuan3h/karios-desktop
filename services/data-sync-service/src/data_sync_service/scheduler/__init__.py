@@ -24,7 +24,6 @@ from data_sync_service.scheduler import (
     eastmoney_industry_job,
     etf_daily_job,
     fund_basic_job,
-    funnel_health_job,
     hk_basic_job,
     hk_daily_job,
     hk_industry_job,
@@ -43,7 +42,6 @@ from data_sync_service.scheduler import (
     rolling_oos_job,
     stock_basic_job,
     trading_brief_job,
-    tv_screener_capture_job,
     watchlist_automation_job,
 )
 
@@ -167,12 +165,6 @@ def create_scheduler() -> BackgroundScheduler:
         replace_existing=True,
     )
     scheduler.add_job(
-        funnel_health_job.run,
-        funnel_health_job.build_trigger(),
-        id=funnel_health_job.JOB_ID,
-        replace_existing=True,
-    )
-    scheduler.add_job(
         eastmoney_industry_job.run,
         eastmoney_industry_job.build_trigger(),
         id=eastmoney_industry_job.JOB_ID,
@@ -250,20 +242,8 @@ def create_scheduler() -> BackgroundScheduler:
         paper_s3_intake_job.run,
         paper_s3_intake_job.build_trigger(),
         id=paper_s3_intake_job.JOB_ID,
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        tv_screener_capture_job.run,
-        tv_screener_capture_job.build_am_trigger(),
-        id=tv_screener_capture_job.JOB_ID_AM,
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        tv_screener_capture_job.run,
-        tv_screener_capture_job.build_pm_trigger(),
-        id=tv_screener_capture_job.JOB_ID_PM,
-        replace_existing=True,
-    )
+         replace_existing=True,
+     )
     scheduler.add_job(
         news_enrich_job.run,
         news_enrich_job.build_trigger(),

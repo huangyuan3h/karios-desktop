@@ -377,11 +377,9 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
                     ? 'Industry Fund Flow'
                     : s.name === 'marketSentiment'
                       ? 'Market Sentiment'
-                      : s.name === 'screeners'
-                        ? 'Screeners'
-                        : s.name === 'news'
-                          ? 'News'
-                          : s.name}
+                      : s.name === 'news'
+                        ? 'News'
+                        : s.name}
                 </span>
                 {s.durationMs !== null ? (
                   <span className="text-[var(--k-muted)]">{s.durationMs}ms</span>
@@ -432,12 +430,7 @@ export function DashboardPage({ onNavigate }: { onNavigate?: (pageId: string) =>
               </span>
             ) : null}
           </div>
-          {(syncResp.screener as any)?.failed?.length || (syncResp.screener as any)?.missing?.length ? (
-            <div className="text-xs text-red-600">
-              Screener issues: failed={(syncResp.screener as any)?.failed?.length ?? 0} missing=
-              {(syncResp.screener as any)?.missing?.length ?? 0}
-            </div>
-          ) : null}
+          
         </div>
       ) : null}
 

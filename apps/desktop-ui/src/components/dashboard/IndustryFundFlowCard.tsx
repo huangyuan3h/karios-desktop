@@ -108,7 +108,6 @@ export function IndustryFundFlowCard({
           picks={hotIndustryPicks}
           asOfDate={asOfDate}
           compact
-          onOpenScreener={() => onNavigate?.('screener')}
           onOpenWatchlist={() => onNavigate?.('watchlist')}
         />
       </div>

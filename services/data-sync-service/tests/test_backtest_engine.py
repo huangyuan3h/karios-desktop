@@ -99,10 +99,6 @@ def test_simulate_positions_by_day_snapshot() -> None:
 
 
 
-def test_simulate_enters_on_score_threshold_and_closes_on_target() -> None:
-    calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
-
-
 def test_simulate_stop_hits_on_net_pnl() -> None:
     """Gross -4.8% does NOT stop; net -5.1% (costs) DOES — same as live paper."""
     calendar = ["2026-06-18", "2026-06-19"]

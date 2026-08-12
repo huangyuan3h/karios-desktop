@@ -356,11 +356,20 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
         logger.warning("portfolio health strength failed: %s", exc)
 
     score_as_of = _score_data_as_of(market=market, day=day)
+    circuit = False
+    if market == "CN":
+        try:
+            from data_sync_service.service.paper_s3 import _circuit_blocked
+
+            circuit = _circuit_blocked(as_of=day)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("portfolio health circuit check failed: %s", exc)
     return {
         "regime": regime,
         "strength": strength,
         "sentiment": sentiment,
         "panicCooldown": panic,
+        "circuitBlocked": circuit,
         "scoreDataAsOfDate": score_as_of,
         "scoreFresh": score_as_of == day,
         "s3Candidates": candidates,

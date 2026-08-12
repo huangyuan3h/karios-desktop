@@ -43,7 +43,7 @@ from data_sync_service.service.backtest_engine import (  # noqa: E402
 )
 from data_sync_service.service.market_regime import regime_strength_score  # noqa: E402
 
-RULES = ("R1", "R2", "R3", "R4", "R5a", "R5b")
+RULES = ("R1", "R2", "R3", "R4", "R5A", "R5B", "R5C")
 WEIGHT_CLAMP = (0.2, 0.8)
 SHARPE_DAYS = 252
 
@@ -120,7 +120,7 @@ def weekly_weights(
             total = s_cn + s_hk
             w_cn = 0.5 if total <= 0 else s_cn / total
             out[wk] = _clamp_pair(w_cn)
-        elif rule in ("R5a", "R5b"):
+        elif rule in ("R5A", "R5B", "R5C"):
             # Same-decision-code rule: live path calls allocation.resolve_weights,
             # the backtest replays the SAME function on as-of regimes.
             from data_sync_service.service.allocation import weights_from_regimes
@@ -129,7 +129,7 @@ def weekly_weights(
             r_hk = _regime_at(regimes["HK"], wk) if regimes else "Weak"
             w_cn, w_hk = weights_from_regimes(r_cn, r_hk)
             both_ok = (r_cn in ("Strong", "Diverging")) and (r_hk in ("Strong", "Diverging"))
-            if both_ok:
+            if both_ok and rule != "R5C":  # R5c keeps weights_from_regimes: CN-first 100%
                 if rule == "R5a":
                     w_cn, w_hk = (0.5, 0.5)
                 else:

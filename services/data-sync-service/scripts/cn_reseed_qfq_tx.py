@@ -33,12 +33,11 @@ import sys
 import time
 from datetime import date, timedelta
 from typing import Any
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 sys.path.insert(0, "src")
 
 from data_sync_service.config import get_settings  # noqa: E402
-from data_sync_service.db.daily import upsert_from_dataframe  # noqa: E402
 
 _PAGE_SIZE = 640
 _DELAY_S = 0.6

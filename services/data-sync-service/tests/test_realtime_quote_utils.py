@@ -426,6 +426,10 @@ def test_fetch_realtime_quotes_routes_hk_indices_to_sina_index(monkeypatch):
     monkeypatch.setattr(rq, "_sina_hk_index_quotes", _fake_index)
     monkeypatch.setattr(rq, "_sina_hk_quotes_fresh", _fake_stock_sina)
     monkeypatch.setattr(rq, "_tushare_quotes", _fake_tushare)
+    monkeypatch.setattr(
+        rq, "_fetch_em_hk_quote",
+        lambda code: {"ts_code": code, "price": "50.0"},  # deterministic EM fallback
+    )
     monkeypatch.setattr(rq, "get_settings", lambda: type("S", (), {"tu_share_api_key": "k"})())
 
     resp = rq.fetch_realtime_quotes(["HSI", "000300.SH", "00700.HK"])

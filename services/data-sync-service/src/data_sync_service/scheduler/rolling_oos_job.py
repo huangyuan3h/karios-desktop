@@ -50,6 +50,7 @@ S3_CONFIG: dict[str, float | int | str] = {
     "rs_rank_min": 0.5,
     "diverging_scale": 1.0,
     "panic_cooldown_days": 3,
+    "drawdown_circuit_pct": -25.0,
     "slippage_pct": 0.05,
     "pyramid_trigger_pct": 2.5,
     "pyramid_add_scale": 0.5,
@@ -64,6 +65,7 @@ HK_S3_CONFIG: dict[str, float | int | str] = {
     "trailing_stop_pct": -12.0,
     "rs_rank_min": 0.6,
     "exclude_boards": "",
+    "drawdown_circuit_pct": 0.0,  # CN-only defence (2026-08-12, long-window)
 }
 
 

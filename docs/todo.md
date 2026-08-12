@@ -135,6 +135,77 @@ todo = 待办事项唯一入口。
    → 候选突变/接近止损线预警已由 ① 的 alert section 覆盖（盘中 12:00/14:30 两次）；剩余
    = 单票 -8% 盘中触发推送（H2）
 
+### 2026-08-12 TV screener 全功能下线（用户拍板 · 剥离 todo）
+
+**背景**：universe 全市场化（8-12）后 TV 无核心消费方（live 算分/回测/候选均不依赖）；
+alpha_radar 独立链路不受影响。**下线范围 = 全部功能**，保留历史数据（只读不删）。
+
+**剥离清单（2026-08-12 全部完成 ✅）**：
+- [x] **1. 停 cron**：tv_screener_capture_am/pm（scheduler/SYNC_JOB_TYPES/SCHEDULER_JOB_CATALOG 移除）
+- [x] **2. 后端剥离**：tv 模块 11 文件 + tv_chrome + funnel_health_job 全删（main/dashboard/
+  watchlist_automation/schema_baseline 引用清理；funnel 指标整体退役——TV 是其唯一候选源；
+  Pullback 过滤函数保留——基于 daily K 线独立于 TV）；alembic 0002 迁移 CREATE_SQL 内联
+  （不依赖已删模块）
+- [x] **3. 前端剥离**：ScreenerPage/TradingViewSettingsPanel/WatchlistImportDebug/
+  watchlist-screener-import 删除 + SidebarNav/AppShell 路由 + DashboardPage screener 状态行 +
+  WatchlistToolbar Import 按钮 + ChatPanel 保留 TV 引用渲染（历史消息兼容）
+- [x] **4. 归因保留**：execution_source='TV' 保留（历史 BUY 归因）；watchlist-automation
+  funnel 相关前端逻辑移除
+- [x] **5. 数据保留**：tv_screener_snapshots/tv_capture_jobs/tv_screeners 等表不删（只读）
+- [x] **6. 测试清理**：删除 264 个 TV/funnel 测试 + 适配 dashboard/automation 相关；全量回归
+  后端 3284 passed + 前端 750 passed + ruff/typecheck 干净
+- [x] **7. 文档**：AGENTS.md TV 段删除 · screener.md 归档 modules-legacy · todo §6 更新
+
+**验收**：无 tv 残留 import/路由/UI 引用 ✓（唯一残留 = execution_source 归因参数，按设计保留）；
+后端 3284 passed + 前端 750 passed + ruff/typecheck 干净；数据表完好 ✓；服务已重启验证
+（/dashboard/summary 无 screeners 字段，正常）
+
+### 2026-08-12 策略固化：live 与回测同码审计 + universe 全市场统一（用户核心诉求）
+
+**审计结论 + 修复（watchlist 显示 = 回测口径）**：
+1. **live 算分 universe 全市场化**（最大不一致）：live 每日算分原为 registry ∪ TV api-screener
+   （~700 只），回测 8-12 已统一全市场 5226 → `watchlist_automation._score_universe_symbols`
+   CN 分支改为 daily 表全市场（TV api-screener 退役；实测 universe 构建 2.7s + 候选 0.6s，
+   每日算分完全可承受）；测试隔离适配（mock `_score_universe_symbols`）
+2. **熔断 live 显示**：`portfolio_health` 加 `circuitBlocked` 字段（CN 线调 paper_s3
+   `_circuit_blocked`）→ 前端 PortfolioHealthCard 徽章「回撤熔断·暂停开仓」+ 空候选原因
+   （Weak / 熔断 / 分数未更新 三态区分）
+3. **参数审计**：score65 / RS0.5(HK0.6) / 止损-5 / trail-8 / 60天 / 金字塔 / max20 / 10% / 熔断-25
+   ——paper_s3（候选+live熔断）· portfolio_health（显示）· paper_trading（止损执行）三处同码 ✓
+4. 修复 flaky 测试：realtime_quote HK 路由测试 `_fetch_em_hk_quote` 未 mock（依赖真实东财
+   网络）→ 确定性 mock
+5. **联合回测补齐**：dual 脚本无 R5C 规则 + RULES 大小写 bug（'R5c'.upper()='R5C' 永不匹配）
+   → 修复后重跑：**R5C 联合四窗 = OOS2 +319.7 / train +52.0 / valid +83.0 / 长窗 +955.2
+   （DD25.5，vs 纯 CN +250.8/DD40.9——弱势切 HK 长窗翻近 4 倍且回撤更低）**
+
+验收：后端 3548 passed + 前端 770 + ruff/typecheck 干净；live 实测全市场 universe 生效
+（CN=5229/HK=501）+ circuitBlocked 返回 ✓
+
+### 2026-08-12 长窗落地 + 回撤熔断定案（收益域重大升级 · 用户拍板）
+
+**扩窗/回填全完成**：daily 2021-01 起（5226 只/629 万行/0 失败/6.1h）+ 指数 2021 起 +
+score 全窗口回填 617 万行（1272 天，`--universe full` 全市场口径）。**踩坑**：① 回填把
+WAL 堆到 30G 撑爆 Docker 盘（checkpoint 因系统盘满失败）→ 清 docker cache 30.5G +
+CHECKPOINT + VACUUM FULL 恢复；② 引擎 `_load_rs_ranks` 查询硬编码 `date(2024,1,1)` 下限
+→ 长窗 2021-2023 RS 全空被 fail-closed 拦截（假 0 交易），已修（下限 1998）。
+
+**长窗（2021-08~2026-08，全市场口径）暴露弱市脆弱性**：2021 +119 / 2022 **-166** /
+2023 **-691**（胜率 20%）/ 2024 +606 / 2025 +1614 / 2026 +1325；合计 +225%/DD89。TV 小池
+口径从未暴露（三窗不覆盖 2023 + 小池天然筛选）。指数动量/EMA20/强度分/高分票数量四个
+市场状态过滤器全部验证无效（2025 年同指标下都赚钱）→ **改自适应防御：回撤熔断**。
+
+**回撤熔断定案**：`drawdown_circuit_pct=-25`（近 30 天已实现净盈亏 ≤-25% 且 ≥3 笔 →
+暂停新仓；窗口 30 天，45/60 天扫描均劣化；-20 伤 train/-30 长窗 DD 63.5）。
+效果：长窗 **2022 转正 +93、2023 减亏 428pt（-691→-263）、DD 89.3→40.9、夏普 2.11→2.65、
+总收益 +225→+251**；三窗 OOS2 +112.7/5.22 · train +76.7/3.31 · valid +88.2/8.80（重固化，
+基线文件已存）。代价 = 牛市空仓期（2025 收益 -658pt，用户拍板「可以接受特定时间空仓」）。
+**仅 CN 线**（HK 未验证）；live 同码镜像：paper_s3 `S3_CIRCUIT_PCT=-25` + `_circuit_blocked()`
+（closed 行 closeDate 窗口 + pnlPct 净口径，4 新测试）。三处定案配置同步（run_walk_forward /
+reconciliation / rolling_oos）。**universe 去 TV 结论**：全市场算分实测 617 万行/86min
+（live 每日 ~5s）→ 计算量完全可承受，TV 池退役（回测与 paper 统一全市场）。
+
+验收：3548 后端 passed + ruff 干净 + 基线重固化 ✓
+
 ### 2026-08-11 演进方向定案（验证期）：自动验证 + 自动执行 + 终局实盘
 
 **H1（8 月底前）**：
@@ -608,11 +679,10 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 
 ### 数据源 / 浏览器替代（原条目）
 
-- ✅ **TV Scanner API = 唯一池子**（2026-08-01 · OPT-057）；ego-lite/Chrome CDP 仅 fallback
-  → [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)
-- [ ] **[P1] TV Capture 数据源决策**（待拍板）：A股 3 screener 用 Tushare / TV API / 1:1 复刻验证
+- ✅ **TV 全功能下线（2026-08-12）**：universe 全市场化（5226 只，每日算分 ~5s）后 TV 无
+  核心消费方 → 代码/UI/路由/cron 全部剥离（历史数据保留只读）；`execution_source='TV'`
+  归因保留；详见上「TV screener 全功能下线」节
 - [ ] **[P1] 付费 API 矩阵**（§12 #9）：Tushare/聚宽/iFinD/Wind 对比 → `archive/YYYY-MM-datasource-matrix.md`
-- [ ] **[P2] 自建爬虫兜底**：仅上述都不可行时启动（最低优先级）
 - [ ] **[P2] 资讯 RSS 源扩张**：≤20 个源（噪音 vs 收益边际递减）
 
 

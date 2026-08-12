@@ -25,7 +25,6 @@ def test_baseline_ddl_includes_core_tables() -> None:
         "stock_basic",
         "alpha_radar_trends",
         "watchlist_registry",
-        "tv_screeners",
     ):
         assert name in ddl
 

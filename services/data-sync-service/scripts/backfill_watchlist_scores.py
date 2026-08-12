@@ -35,6 +35,10 @@ import data_sync_service.service.market_regime as _mr  # noqa: E402
 
 _mr.fetch_hk_index_on_demand = lambda series_id: ({}, None)  # type: ignore[assignment]
 
+from data_sync_service.service.watchlist_funnel_health import (  # noqa: E402
+    _normalize_screener_symbol,
+)
+
 from data_sync_service.db import get_connection  # noqa: E402
 from data_sync_service.db.daily import fetch_ohlcv_batch_between  # noqa: E402
 from data_sync_service.db.index_daily import fetch_last_closes_upto  # noqa: E402
@@ -47,9 +51,6 @@ from data_sync_service.service.trendok import (  # noqa: E402
     _lookup_stock_basic,
     _symbol_to_ts_code,
     _trendok_one,
-)
-from data_sync_service.service.watchlist_funnel_health import (  # noqa: E402
-    _normalize_screener_symbol,
 )
 
 logging.basicConfig(level=logging.WARNING)
@@ -68,6 +69,33 @@ def _load_calendar(start: str, end: str) -> list[str]:
                 (start, end),
             )
             return [str(r[0]) for r in cur.fetchall()]
+
+
+def _load_universe_full() -> set[str]:
+    """Full-market CN A-share universe (daily table) — for pre-TV windows.
+
+    TV snapshots only exist from 2025-12-21, so windows before that cannot
+    use the screener pool. Scoring the WHOLE market (5226 names) keeps the
+    score history universe-consistent with the live full-market line
+    (2026-08-12: walk-forward extension to 2021 needs this; known limitation:
+    survivorship bias — today's listed names only).
+    """
+    import re
+
+    a_share_re = re.compile(r"^(6\d{5}\.SH|(0|3)\d{5}\.SZ)$")
+    out: set[str] = set()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT ts_code FROM daily WHERE ts_code ~ '^(6\\d{5}\\.SH|(0|3)\\d{5}\\.SZ)$'"
+            )
+            for (ts,) in cur.fetchall():
+                code = str(ts)
+                if not a_share_re.match(code):
+                    continue
+                ticker = code.split(".")[0]
+                out.add(f"CN:{ticker}")
+    return out
 
 
 def _load_universe(end: str, min_appearances: int) -> set[str]:
@@ -125,11 +153,20 @@ def main() -> None:
     parser.add_argument("--start", default="2026-03-02", help="First trade date to backfill (default 2026-03-02).")
     parser.add_argument("--end", default="2026-06-17", help="Last trade date to backfill (default 2026-06-17).")
     parser.add_argument("--min-appearances", type=int, default=2, help="Min TV snapshot appearances (default 2).")
+    parser.add_argument(
+        "--universe", choices=["tv", "full"], default="tv",
+        help="tv = TV-snapshot pool (live line); full = whole CN A-share market "
+        "(2026-08-12: pre-TV windows, universe-consistent long-window scoring).",
+    )
     args = parser.parse_args()
 
     t0 = time.time()
     calendar = _load_calendar(args.start, args.end)
-    universe = _load_universe(args.end, args.min_appearances)
+    universe = (
+        _load_universe_full()
+        if args.universe == "full"
+        else _load_universe(args.end, args.min_appearances)
+    )
     print(f"calendar days: {len(calendar)}  universe CN symbols: {len(universe)}")
 
     # Resolve symbols -> ts_codes via the live mapper, keep CN only.
@@ -146,7 +183,15 @@ def main() -> None:
     # One big bar fetch for the whole window + lookback.
     from datetime import date, timedelta
 
-    start = max(date.fromisoformat(args.start) - timedelta(days=240), date(2024, 1, 1)).isoformat()
+    bars_lower = (
+        date(2021, 1, 1)
+        if args.universe == "full"
+        else date(2024, 1, 1)
+    )
+    start = max(
+        date.fromisoformat(args.start) - timedelta(days=240),
+        bars_lower,
+    ).isoformat()
     bars_by_ts = fetch_ohlcv_batch_between(sorted(set(sym_to_ts.values())), start, args.end)
     for _ts, bars in bars_by_ts.items():
         bars.sort(key=lambda b: str(b[0]))

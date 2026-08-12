@@ -27,7 +27,6 @@ const items = [
   { id: 'index', label: 'Index', icon: LineChart },
   { id: 'industryFlow', label: 'Industry Flow', icon: BarChart3 },
   { id: 'alpha', label: 'Alpha', icon: Rocket },
-  { id: 'screener', label: 'Screener', icon: Table2 },
   { id: 'news', label: 'News', icon: Newspaper },
   { id: 'backtest', label: '回测', icon: BarChart3 },
   { id: 'journal', label: 'Journal', icon: NotebookPen },

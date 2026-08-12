@@ -102,6 +102,7 @@ class BacktestConfig:
     rs_rank_min: float = 0.0
     diverging_scale: float = 0.0
     drawdown_circuit_pct: float = 0.0
+    drawdown_circuit_window_days: int = 30
     panic_cooldown_days: int = 0
     slippage_pct: float = 0.0
     trend_score_min: float = 0.0
@@ -510,7 +511,7 @@ def _load_rs_ranks(
     if config.rs_rank_min <= 0:
         return {}
     start_early = max(
-        date.fromisoformat(config.start_date) - timedelta(days=40), date(2024, 1, 1)
+        date.fromisoformat(config.start_date) - timedelta(days=40), date(1998, 1, 1)
     ).isoformat()
     rows: list[tuple[str, str, float]] = []
     with get_connection() as conn:
@@ -758,7 +759,10 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
     def _circuit_halted(day: str) -> bool:
         if config.drawdown_circuit_pct >= 0:
             return False
-        cutoff = (date.fromisoformat(day) - timedelta(days=30)).isoformat()
+        cutoff = (
+            date.fromisoformat(day)
+            - timedelta(days=max(1, int(config.drawdown_circuit_window_days)))
+        ).isoformat()
         recent = [pnl for d, pnl in realized_pnl_window if d >= cutoff]
         return len(recent) >= 3 and sum(recent) <= config.drawdown_circuit_pct
 

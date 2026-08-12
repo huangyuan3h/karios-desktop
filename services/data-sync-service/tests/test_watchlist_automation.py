@@ -448,7 +448,6 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
 
     monkeypatch.setattr(wa, "compute_trendok_for_symbols", fake_compute)
     monkeypatch.setattr(wa, "sync_cn_industry_fund_flow", lambda **kwargs: {"ok": True})
-    monkeypatch.setattr(wa, "_sync_screeners_step", lambda **kwargs: {"ok": True})
     monkeypatch.setattr(
         wa,
         "list_registry",
@@ -494,11 +493,12 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
         return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
 
     monkeypatch.setattr(wa, "get_scores_for_symbol", fake_scores)
-    # 2026-08-09: the enabled-api-screener universe merge is a separate DB
-    # seam — isolate it here so this test keeps its registry-only assertion.
-    monkeypatch.setattr(wa, "list_enabled_api_screener_symbols", lambda market="cn": [])
-    # 2026-08-10: the HK parallel-line scoring step is a separate DB seam too.
-    monkeypatch.setattr(wa, "list_hk_universe_symbols", lambda top_n=500, **kwargs: [])
+    # 2026-08-12: the CN universe is the whole market (daily table) —
+    # isolate the universe seam so this test asserts its own small pool.
+    monkeypatch.setattr(
+        wa, "_score_universe_symbols",
+        lambda: (["CN:600000", "CN:600001"], [], []),
+    )
 
     result = wa.run_watchlist_automation(trigger="manual", force=True)
 
@@ -643,7 +643,6 @@ def test_record_score_snapshots_skips_invalid_rows(monkeypatch) -> None:
 def test_run_watchlist_automation_research_channel(monkeypatch) -> None:
     monkeypatch.setattr(wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: [])
     monkeypatch.setattr(wa, "sync_cn_industry_fund_flow", lambda **kwargs: {"ok": True})
-    monkeypatch.setattr(wa, "_sync_screeners_step", lambda **kwargs: {"ok": True})
     monkeypatch.setattr(wa, "list_registry", lambda: [])
     monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: 0)
     monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: "run-r")
@@ -847,7 +846,6 @@ def test_run_watchlist_automation_industry_sync_failure_is_meta(monkeypatch) -> 
     monkeypatch.setattr(
         wa, "sync_cn_industry_fund_flow", lambda **kw: (_ for _ in ()).throw(RuntimeError("boom"))
     )
-    monkeypatch.setattr(wa, "_sync_screeners_step", lambda **kw: {"ok": True, "failed": 0})
     monkeypatch.setattr(wa, "list_registry", lambda: [])
     monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: 0)
     monkeypatch.setattr(wa, "insert_automation_run", lambda **kw: "run-2")
@@ -872,7 +870,6 @@ def test_run_watchlist_automation_industry_sync_failure_is_meta(monkeypatch) -> 
     out = wa.run_watchlist_automation(trigger="scheduled", force=True)
     assert out["skipped"] is False
     assert out["meta"]["industrySync"] == {"ok": False, "error": "boom"}
-    assert out["meta"]["screenerSync"]["ok"] is True
 
 
 def test_run_intraday_scores_realtime_refresh(monkeypatch) -> None:

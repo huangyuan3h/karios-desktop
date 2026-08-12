@@ -102,7 +102,6 @@ export const SchedulerJobGroupSchema = z.enum([
   'eastmoneyIndustry',
   'watchlistAutomation',
   'alphaRadar',
-  'tvScreener',
   'news',
 ]);
 export type SchedulerJobGroup = z.infer<typeof SchedulerJobGroupSchema>;
@@ -396,32 +395,8 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     'cron',
     true,
     10,
-    { endpoint: '/market/cn/industry-fund-flow/sync', method: 'POST', label: '立即同步' },
-  ),
-
-  /* TradingView screener AM/PM capture ------------------------------------ */
-  meta(
-    'tv_screener_capture_am',
-    'tvScreener',
-    'TradingView 抓取 (AM)',
-    '工作日 09:30 入队所有启用 screener；tv_capture_worker 后台消费，结果落入 tv_snapshots。',
-    '工作日 09:30',
-    '30 9 * * 1-5',
-    'cron',
-    true,
-    10,
-  ),
-  meta(
-    'tv_screener_capture_pm',
-    'tvScreener',
-    'TradingView 抓取 (PM)',
-    '工作日 15:30 入队所有启用 screener；与 AM 抓取形成日内双快照。',
-    '工作日 15:30',
-    '30 15 * * 1-5',
-    'cron',
-    true,
-    20,
-  ),
+     { endpoint: '/market/cn/industry-fund-flow/sync', method: 'POST', label: '立即同步' },
+   ),
 
   /* Alpha Radar ----------------------------------------------------------- */
   meta(
@@ -581,7 +556,6 @@ export const SCHEDULER_GROUP_ORDER: readonly SchedulerJobGroup[] = [
   'eastmoneyIndustry',
   'watchlistAutomation',
   'alphaRadar',
-  'tvScreener',
   'news',
 ];
 
@@ -624,10 +598,6 @@ export const SCHEDULER_GROUP_META: Record<
   alphaRadar: {
     titleCn: 'Alpha Radar 情报',
     descriptionCn: 'RSS 抓取 → LLM 抽取 → A 股映射的端到端 pipeline。',
-  },
-  tvScreener: {
-    titleCn: 'TradingView 抓取',
-    descriptionCn: '交易日 09:30 / 15:30 入队 screener，后台 worker 异步采集。',
   },
   news: {
     titleCn: '财经新闻',

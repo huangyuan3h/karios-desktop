@@ -183,6 +183,14 @@ function HealthPanel({
             恐慌冷却至 {block.panicCooldown.cooldownEndDate}
           </span>
         ) : null}
+        {block?.circuitBlocked ? (
+          <span
+            className="rounded border border-red-500/40 bg-red-500/10 px-1.5 py-0.5 text-red-700 dark:text-red-300"
+            title="近 30 天已实现盈亏 ≤ -25%（净值约 -2.5%）→ 回撤熔断，暂停新开仓（2026-08-12 长窗定案）"
+          >
+            回撤熔断·暂停开仓
+          </span>
+        ) : null}
         {block && block.scoreFresh === false ? (
           <span
             className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300"
@@ -214,9 +222,11 @@ function HealthPanel({
         <div className="text-[11px] text-[var(--k-muted)]">
           {block.regime === 'Weak'
             ? '今日无开仓候选（regime=Weak：S-3 规定空仓观望）'
-            : block.scoreFresh === false
-              ? `分数未更新（截至 ${block.scoreDataAsOfDate ?? '—'}）· 盘中暂无候选（收盘任务 17:30 更新当日分数）`
-              : '今日无开仓候选（score≥65 · RS 前 50% · 无恐慌冷却）'}
+            : block.circuitBlocked
+              ? '回撤熔断中：近 30 天已实现 ≤ -25%（净值约 -2.5%），暂停新开仓'
+              : block.scoreFresh === false
+                ? `分数未更新（截至 ${block.scoreDataAsOfDate ?? '—'}）· 盘中暂无候选（收盘任务 17:30 更新当日分数）`
+                : '今日无开仓候选（score≥65 · RS 前 50% · 无恐慌冷却）'}
         </div>
       ) : null}
     </div>

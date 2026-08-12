@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import json
-import queue
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
-
-from fastapi import HTTPException
 
 from data_sync_service.db.industry_fund_flow import ensure_table as ensure_industry
 from data_sync_service.db.industry_fund_flow import get_dates_upto, get_rows_for_dates
@@ -23,7 +20,6 @@ from data_sync_service.db.market_sentiment import (
 )
 from data_sync_service.db.news import ensure_tables as ensure_news_tables
 from data_sync_service.db.news import fetch_items
-from data_sync_service.db.tv import list_latest_snapshots_for_screeners
 from data_sync_service.service.etf_fund_flow import (
     build_etf_flow_signal,
     build_etf_fund_flow_bundle,
@@ -60,12 +56,6 @@ from data_sync_service.service.trade_calendar_utils import (
     resolve_effective_as_of,
     shanghai_today_iso,
     trade_dates_upto,
-)
-from data_sync_service.service.tv import (
-    CAPTURE_JOB_DEFAULT_TIMEOUT_S,
-    enqueue_screener_capture,
-    list_screeners,
-    wait_for_capture_jobs,
 )
 
 TV_SCREENER_SYNC_MAX_WORKERS = 2
@@ -156,43 +146,6 @@ def _shanghai_today_iso() -> str:
     return datetime.now(tz=ZoneInfo("Asia/Shanghai")).date().isoformat()
 
 
-def _screeners_status(limit: int = 50) -> list[dict[str, Any]]:
-    """
-    Return enabled screeners + latest snapshot meta.
-    """
-    scr = list_screeners()
-    items = scr.get("items") if isinstance(scr, dict) else []
-    enabled_items: list[tuple[dict[str, Any], str]] = []
-    for it in (items if isinstance(items, list) else [])[: max(1, min(int(limit), 200))]:
-        if not isinstance(it, dict):
-            continue
-        if not bool(it.get("enabled")):
-            continue
-        sid = str(it.get("id") or "").strip()
-        if not sid:
-            continue
-        enabled_items.append((it, sid))
-
-    latest_by_sid = list_latest_snapshots_for_screeners([sid for _, sid in enabled_items])
-    rows: list[dict[str, Any]] = []
-    for it, sid in enabled_items:
-        meta = latest_by_sid.get(sid, {})
-        filters = meta.get("filters") if isinstance(meta, dict) else []
-        filters_count = len(filters) if isinstance(filters, list) else 0
-        rows.append(
-            {
-                "id": sid,
-                "name": str(it.get("name") or sid),
-                "enabled": True,
-                "updatedAt": it.get("updatedAt"),
-                "capturedAt": meta.get("capturedAt") if isinstance(meta, dict) else None,
-                "rowCount": int(meta.get("rowCount") or 0) if isinstance(meta, dict) else 0,
-                "filtersCount": int(filters_count),
-            }
-        )
-    return rows
-
-
 def _index_signal_items(*, as_of_date: str | None) -> list[dict[str, Any]]:
     """
     Build index traffic-light signals for selected indices using MA20/MA5.
@@ -267,14 +220,12 @@ def dashboard_summary(
     include_sentiment: bool = True,
     include_news: bool = True,
     include_industry: bool = True,
-    include_screeners: bool = True,
 ) -> dict[str, Any]:
     """
     Minimal Dashboard summary for UI:
       - asOfDate
       - industryFundFlow: {dates, topByDate, flow5d}
       - marketSentiment: {asOfDate, days, items, indexSignals}
-      - screeners: list
       - news: list
       - marketEnvironmentZh: text
       - macroSnapshot: {cnIndexSignals, macro}
@@ -310,7 +261,6 @@ def dashboard_summary(
 
     industry: dict[str, Any] = {}
     market_sentiment: dict[str, Any] = {}
-    screeners: list[dict[str, Any]] = []
     news: dict[str, Any] = {"hours": 24, "total": 0, "items": []}
     macro_snapshot = None
     market_env_zh = ""
@@ -329,7 +279,6 @@ def dashboard_summary(
             if include_sentiment
             else None
         )
-        f_screeners = executor.submit(_screeners_status, 50) if include_screeners else None
         f_news = executor.submit(_news_items, 24, 50) if include_news else None
         f_macro = (
             executor.submit(build_macro_snapshot, cn_index_signals=macro_signals_in)
@@ -341,8 +290,6 @@ def dashboard_summary(
             industry = f_industry.result()
         if f_sentiment is not None:
             market_sentiment = f_sentiment.result()
-        if f_screeners is not None:
-            screeners = f_screeners.result()
         if f_news is not None:
             news = f_news.result()
         if f_macro is not None:
@@ -356,7 +303,6 @@ def dashboard_summary(
         "asOfDate": as_of,
         "industryFundFlow": industry,
         "marketSentiment": market_sentiment,
-        "screeners": screeners,
         "news": news,
         "marketEnvironmentZh": market_env_zh,
         "macroSnapshot": macro_snapshot,
@@ -413,63 +359,6 @@ def _sync_sentiment_step(*, force: bool) -> dict[str, Any]:
     }
 
 
-def _skip_screener_after_close_from_meta(meta: dict[str, Any], today_sh: str) -> tuple[bool, int]:
-    captured = str(meta.get("capturedAt") or "")[:10]
-    row_count = int(meta.get("rowCount") or 0) if isinstance(meta, dict) else 0
-    return captured == today_sh and row_count > 0, row_count
-
-
-def _should_skip_screener_after_close(*, sid: str, today_sh: str) -> tuple[bool, int]:
-    latest_by_sid = list_latest_snapshots_for_screeners([sid])
-    return _skip_screener_after_close_from_meta(latest_by_sid.get(sid, {}), today_sh)
-
-
-def _job_to_screener_result(
-    job: dict[str, Any],
-    *,
-    name: str,
-    duration_ms: int,
-) -> dict[str, Any]:
-    sid = str(job.get("screenerId") or "")
-    status = str(job.get("status") or "")
-    rc = int(job.get("rowCount") or 0) if job.get("rowCount") is not None else 0
-    if status == "done" and rc > 0:
-        return {
-            "id": sid,
-            "name": name,
-            "status": "ok",
-            "ok": True,
-            "rowCount": rc,
-            "durationMs": duration_ms,
-            "error": None,
-            "jobId": job.get("jobId"),
-            "jobStatus": status,
-        }
-    if status == "done":
-        return {
-            "id": sid,
-            "name": name,
-            "status": "missing",
-            "ok": False,
-            "rowCount": rc,
-            "durationMs": duration_ms,
-            "error": None,
-            "jobId": job.get("jobId"),
-            "jobStatus": status,
-        }
-    return {
-        "id": sid,
-        "name": name,
-        "status": "failed",
-        "ok": False,
-        "rowCount": 0,
-        "durationMs": duration_ms,
-        "error": str(job.get("error") or status or "capture failed"),
-        "jobId": job.get("jobId"),
-        "jobStatus": status,
-    }
-
-
 def _progress_from_job(job: dict[str, Any], *, name: str) -> dict[str, Any]:
     sid = str(job.get("screenerId") or "")
     status = str(job.get("status") or "")
@@ -495,204 +384,6 @@ def _progress_from_job(job: dict[str, Any], *, name: str) -> dict[str, Any]:
     }
 
 
-def _sync_one_screener(
-    sc: dict[str, Any],
-    *,
-    skip_after_close: bool,
-    today_sh: str,
-    on_screener_progress: Callable[[dict[str, Any]], None] | None = None,
-) -> dict[str, Any]:
-    sid = str(sc.get("id") or "").strip()
-    name = str(sc.get("name") or sid).strip()
-    if not sid:
-        return {
-            "id": "",
-            "name": name,
-            "status": "failed",
-            "ok": False,
-            "rowCount": 0,
-            "durationMs": 0,
-            "error": "missing screener id",
-        }
-
-    if skip_after_close:
-        should_skip, row_count = _should_skip_screener_after_close(sid=sid, today_sh=today_sh)
-        if should_skip:
-            return {
-                "id": sid,
-                "name": name,
-                "status": "skipped",
-                "ok": True,
-                "rowCount": row_count,
-                "durationMs": 0,
-                "error": None,
-            }
-
-    st = time.perf_counter()
-    try:
-        enqueued = enqueue_screener_capture(screener_id=sid, trigger="dashboard")
-        job_id = str(enqueued.get("jobId") or "")
-        _emit_screener_progress(
-            on_screener_progress,
-            _progress_from_job(enqueued, name=name),
-        )
-
-        def on_job(job: dict[str, Any]) -> None:
-            _emit_screener_progress(on_screener_progress, _progress_from_job(job, name=name))
-
-        jobs = wait_for_capture_jobs(
-            [job_id],
-            timeout_s=CAPTURE_JOB_DEFAULT_TIMEOUT_S,
-            poll_s=1.0,
-            on_update=on_job,
-        )
-        job = jobs[0] if jobs else enqueued
-        dur = int((time.perf_counter() - st) * 1000)
-        return _job_to_screener_result(job, name=name, duration_ms=dur)
-    except HTTPException as exc:
-        dur = int((time.perf_counter() - st) * 1000)
-        err = str(exc.detail) if exc.detail is not None else str(exc)
-        return {
-            "id": sid,
-            "name": name,
-            "status": "failed",
-            "ok": False,
-            "rowCount": 0,
-            "durationMs": dur,
-            "error": err,
-            "jobStatus": "failed",
-        }
-    except Exception as exc:
-        dur = int((time.perf_counter() - st) * 1000)
-        return {
-            "id": sid,
-            "name": name,
-            "status": "failed",
-            "ok": False,
-            "rowCount": 0,
-            "durationMs": dur,
-            "error": str(exc) or exc.__class__.__name__,
-            "jobStatus": "failed",
-        }
-
-
-def _emit_screener_progress(
-    on_screener_progress: Callable[[dict[str, Any]], None] | None,
-    result: dict[str, Any],
-) -> None:
-    if on_screener_progress is not None:
-        on_screener_progress(result)
-
-
-def _sync_screeners_step(
-    *,
-    screeners_enabled: bool,
-    on_screener_progress: Callable[[dict[str, Any]], None] | None = None,
-) -> dict[str, Any]:
-    screener_failed: list[str] = []
-    screener_missing: list[str] = []
-    screener_skipped: list[str] = []
-    screener_results: list[dict[str, Any]] = []
-    scr = list_screeners()
-    items = scr.get("items") if isinstance(scr, dict) else []
-    items_list = items if isinstance(items, list) else []
-    enabled = [x for x in items_list if isinstance(x, dict) and bool(x.get("enabled"))]
-    if not bool(screeners_enabled):
-        return {"enabled": len(enabled), "skipped": True, "failed": 0, "missing": 0}
-    skip_after_close = not _is_shanghai_sync_window()
-    today_sh = _shanghai_today_iso()
-    enabled_sids = [str(sc.get("id") or "").strip() for sc in enabled]
-    enabled_sids = [sid for sid in enabled_sids if sid]
-    latest_by_sid = (
-        list_latest_snapshots_for_screeners(enabled_sids) if skip_after_close else {}
-    )
-    to_sync: list[dict[str, Any]] = []
-    for sc in enabled:
-        sid = str(sc.get("id") or "").strip()
-        if not sid:
-            continue
-        if skip_after_close:
-            should_skip, row_count = _skip_screener_after_close_from_meta(
-                latest_by_sid.get(sid, {}),
-                today_sh,
-            )
-            if should_skip:
-                screener_skipped.append(sid)
-                result = {
-                    "id": sid,
-                    "name": str(sc.get("name") or sid).strip(),
-                    "status": "skipped",
-                    "ok": True,
-                    "rowCount": row_count,
-                    "durationMs": 0,
-                    "error": None,
-                }
-                screener_results.append(result)
-                _emit_screener_progress(on_screener_progress, result)
-                continue
-        to_sync.append(sc)
-
-    if to_sync:
-        with ThreadPoolExecutor(max_workers=TV_SCREENER_SYNC_MAX_WORKERS) as executor:
-            futures = [
-                executor.submit(
-                    _sync_one_screener,
-                    sc,
-                    skip_after_close=False,
-                    today_sh=today_sh,
-                    on_screener_progress=on_screener_progress,
-                )
-                for sc in to_sync
-            ]
-            for future in as_completed(futures):
-                result = future.result()
-                screener_results.append(result)
-                _emit_screener_progress(on_screener_progress, result)
-                sid = str(result.get("id") or "").strip()
-                status = str(result.get("status") or "")
-                if status == "failed" and sid:
-                    screener_failed.append(sid)
-                elif status == "missing" and sid:
-                    screener_missing.append(sid)
-
-    return {
-        "enabled": len(enabled),
-        "skipped": False,
-        "failed": len(screener_failed),
-        "missing": len(screener_missing),
-        "skippedIds": screener_skipped,
-        "failedIds": screener_failed,
-        "missingIds": screener_missing,
-        "screenerResults": screener_results,
-    }
-
-
-def _run_screeners_step_with_progress(
-    *,
-    screeners_enabled: bool,
-    progress_queue: queue.Queue[dict[str, Any]],
-) -> dict[str, Any]:
-    def on_progress(evt: dict[str, Any]) -> None:
-        progress_queue.put(evt)
-
-    return _run_step(
-        "screeners",
-        lambda: _sync_screeners_step(
-            screeners_enabled=screeners_enabled,
-            on_screener_progress=on_progress,
-        ),
-    )
-
-
-def _drain_screener_progress_events(q: queue.Queue[dict[str, Any]]) -> Generator[str]:
-    while True:
-        try:
-            evt = q.get_nowait()
-        except queue.Empty:
-            break
-        yield json.dumps({"type": "screener", "screener": evt}) + "\n"
-
-
 def _sync_news_step() -> dict[str, Any]:
     results = fetch_all_sources()
     total = sum(v for v in results.values() if v > 0)
@@ -700,37 +391,29 @@ def _sync_news_step() -> dict[str, Any]:
     return {"total": total, "failed": failed, "sources": len(results)}
 
 
-def dashboard_sync(*, force: bool = True, screeners: bool = True) -> dict[str, Any]:
+def dashboard_sync(*, force: bool = True) -> dict[str, Any]:
     started_at = _now_iso()
     steps: list[dict[str, Any]] = []
     steps.append(_run_step("industryFundFlow", lambda: _sync_industry_step(force=force)))
     steps.append(_run_step("marketSentiment", lambda: _sync_sentiment_step(force=force)))
     steps.append(_run_step("macroDaily", _sync_macro_step))
-    screener_result = _run_step("screeners", lambda: _sync_screeners_step(screeners_enabled=screeners))
-    steps.append(screener_result)
     steps.append(_run_step("news", _sync_news_step))
     finished_at = _now_iso()
     ok = all(bool(s.get("ok")) for s in steps)
-    screener_meta = screener_result.get("meta") or {}
     return {
         "ok": ok,
         "startedAt": started_at,
         "finishedAt": finished_at,
         "steps": steps,
-        "screener": {
-            "failed": screener_meta.get("failedIds", []),
-            "missing": screener_meta.get("missingIds", []),
-        },
     }
 
 
-def dashboard_sync_parallel(*, force: bool = True, screeners: bool = True) -> dict[str, Any]:
+def dashboard_sync_parallel(*, force: bool = True) -> dict[str, Any]:
     started_at = _now_iso()
     step_fns = {
         "industryFundFlow": lambda: _sync_industry_step(force=force),
         "marketSentiment": lambda: _sync_sentiment_step(force=force),
         "macroDaily": _sync_macro_step,
-        "screeners": lambda: _sync_screeners_step(screeners_enabled=screeners),
         "news": _sync_news_step,
     }
     steps: list[dict[str, Any]] = []
@@ -743,27 +426,19 @@ def dashboard_sync_parallel(*, force: bool = True, screeners: bool = True) -> di
                 steps.append(result)
             except Exception as exc:
                 steps.append({"name": name, "ok": False, "durationMs": 0, "message": str(exc), "meta": {}})
-    step_order = ["industryFundFlow", "marketSentiment", "macroDaily", "screeners", "news"]
+    step_order = ["industryFundFlow", "marketSentiment", "macroDaily", "news"]
     steps.sort(key=lambda s: step_order.index(s.get("name", "")))
     finished_at = _now_iso()
     ok = all(bool(s.get("ok")) for s in steps)
-    screener_step = next((s for s in steps if s.get("name") == "screeners"), {})
-    screener_meta = screener_step.get("meta") or {}
     return {
         "ok": ok,
         "startedAt": started_at,
         "finishedAt": finished_at,
         "steps": steps,
-        "screener": {
-            "failed": screener_meta.get("failedIds", []),
-            "missing": screener_meta.get("missingIds", []),
-        },
     }
 
 
-def dashboard_sync_stream(
-    *, force: bool = True, screeners: bool = True
-) -> Generator[str]:
+def dashboard_sync_stream(*, force: bool = True) -> Generator[str]:
     started_at = _now_iso()
     yield json.dumps({"type": "start", "startedAt": started_at}) + "\n"
     step_fns = {
@@ -773,32 +448,12 @@ def dashboard_sync_stream(
         "news": _sync_news_step,
     }
     steps: list[dict[str, Any]] = []
-    screener_meta: dict[str, Any] = {}
-    progress_queue: queue.Queue[dict[str, Any]] = queue.Queue()
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures: dict[Any, str] = {
             executor.submit(_run_step, name, fn): name for name, fn in step_fns.items()
         }
-        if screeners:
-            futures[
-                executor.submit(
-                    _run_screeners_step_with_progress,
-                    screeners_enabled=True,
-                    progress_queue=progress_queue,
-                )
-            ] = "screeners"
-        else:
-            futures[
-                executor.submit(
-                    _run_step,
-                    "screeners",
-                    lambda: _sync_screeners_step(screeners_enabled=False),
-                )
-            ] = "screeners"
-
         pending = set(futures.keys())
         while pending:
-            yield from _drain_screener_progress_events(progress_queue)
             done, pending = wait(pending, timeout=0.3, return_when=FIRST_COMPLETED)
             for future in done:
                 name = futures[future]
@@ -806,15 +461,12 @@ def dashboard_sync_stream(
                     result = future.result()
                     steps.append(result)
                     yield json.dumps({"type": "step", "step": result}) + "\n"
-                    if name == "screeners":
-                        screener_meta = result.get("meta") or {}
                 except Exception as exc:
                     result = {"name": name, "ok": False, "durationMs": 0, "message": str(exc), "meta": {}}
                     steps.append(result)
                     yield json.dumps({"type": "step", "step": result}) + "\n"
 
-        yield from _drain_screener_progress_events(progress_queue)
-    step_order = ["industryFundFlow", "marketSentiment", "macroDaily", "screeners", "news"]
+    step_order = ["industryFundFlow", "marketSentiment", "macroDaily", "news"]
     steps.sort(key=lambda s: step_order.index(s.get("name", "")))
     finished_at = _now_iso()
     ok = all(bool(s.get("ok")) for s in steps)
@@ -823,10 +475,6 @@ def dashboard_sync_stream(
         "startedAt": started_at,
         "finishedAt": finished_at,
         "steps": steps,
-        "screener": {
-            "failed": screener_meta.get("failedIds", []),
-            "missing": screener_meta.get("missingIds", []),
-        },
     }
     summary_data: dict[str, Any] = {}
     try:

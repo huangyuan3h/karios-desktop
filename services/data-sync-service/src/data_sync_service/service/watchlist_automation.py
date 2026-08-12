@@ -17,7 +17,6 @@ from data_sync_service.db.industry_fund_flow import (
 )
 from data_sync_service.db.sync_job_record import get_today_run
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
-from data_sync_service.db.tv import list_enabled_api_screener_symbols
 from data_sync_service.db.watchlist_automation import (
     get_pending_run,
     get_run_by_id,
@@ -33,7 +32,6 @@ from data_sync_service.service.alpha_radar_catalyst import (
 )
 from data_sync_service.service.close_sync import JOB_TYPE as CLOSE_JOB_TYPE
 from data_sync_service.service.close_sync import _cn_today
-from data_sync_service.service.dashboard import _sync_screeners_step
 from data_sync_service.service.industry_fund_flow import sync_cn_industry_fund_flow
 from data_sync_service.service.industry_taxonomy import is_sw_l1_industry_name
 from data_sync_service.service.research import (
@@ -696,20 +694,34 @@ def _precheck(*, force: bool) -> tuple[bool, str | None]:
 def _score_universe_symbols() -> tuple[list[str], list[str], list[dict[str, Any]]]:
     """CN + HK score universes shared by the EOD (17:30) and intraday passes.
 
-    Returns ``(cn_symbols, hk_symbols, registry)``. CN: registry ∪ enabled
-    api-screener universe (S-3 Universe + Pullback v3, NOT just the watchlist
-    registry — 2026-08-09 S-3 universe gap fix), minus B shares (900xxx/
-    200xxx get no score, 2026-08-10). HK: vol-top-N proxy (500) ∪ registry HK
-    symbols (2026-08-10 HK parallel line).
+    Returns ``(cn_symbols, hk_symbols, registry)``. CN: **whole-market A-share
+    universe from the daily table** (registry ∪ full market — 2026-08-12
+    universe unification: the backtest now scores the whole market (5226),
+    so the live line must match; the TV api-screener pool is retired, the
+    daily compute for 5226 names is ~5s). B shares (900xxx/200xxx) get no
+    score. HK: vol-top-N proxy (500) ∪ registry HK symbols (2026-08-10 HK
+    parallel line).
     """
     registry = list_registry()
     symbols = [str(x.get("symbol") or "").strip() for x in registry if x.get("symbol")]
     symbols = [s for s in symbols if s]
-    universe = list_enabled_api_screener_symbols(market="cn")
-    universe = [s for s in universe if not _is_cn_b_share(s)]
+
+    cn_full: list[str] = []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT ts_code FROM daily WHERE ts_code ~ '^(6\\d{5}\\.SH|(0|3)\\d{5}\\.SZ)$' ORDER BY ts_code"
+            )
+            for (ts,) in cur.fetchall():
+                code = str(ts)
+                if _is_cn_b_share(code):
+                    continue
+                ticker = code.split(".")[0]
+                cn_full.append(f"CN:{ticker}")
+
     merged: list[str] = []
     seen: set[str] = set()
-    for s in symbols + universe:
+    for s in symbols + cn_full:
         if s and s not in seen:
             seen.add(s)
             merged.append(s)
@@ -811,17 +823,6 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
     except Exception as exc:  # noqa: BLE001
         logger.warning("watchlist automation industry sync failed: %s", exc)
         meta["industrySync"] = {"ok": False, "error": str(exc)}
-
-    try:
-        screener_result = _sync_screeners_step(screeners_enabled=True)
-        if isinstance(screener_result, dict):
-            failed = int(screener_result.get("failed") or 0)
-            meta["screenerSync"] = {**screener_result, "ok": failed == 0}
-        else:
-            meta["screenerSync"] = {"ok": True}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("watchlist automation screener sync failed: %s", exc)
-        meta["screenerSync"] = {"ok": False, "error": str(exc)}
 
     symbols, hk_symbols, registry = _score_universe_symbols()
 

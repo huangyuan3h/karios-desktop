@@ -46,6 +46,8 @@ export interface PortfolioHealthResponse {
     cooldownEndDate?: string | null;
     active?: boolean;
   } | null;
+  /** 2026-08-12: drawdown circuit breaker on (CN line) — trailing 30d realized pnl <= -25% → new S-3 entries halted. */
+  circuitBlocked?: boolean | null;
   s3Candidates?: PortfolioCandidate[] | null;
   /** 2026-08-10 badge: full candidate pool size before top-N collapse. */
   s3CandidateTotal?: number;

@@ -2,14 +2,12 @@
 
 import * as React from 'react';
 
-import { WatchlistImportDebug, type ScreenerImportDebugState } from '@/components/watchlist/WatchlistImportDebug';
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
 import { TradingBriefCard } from '@/components/watchlist/TradingBriefCard';
 import { BacktestReconCard } from '@/components/watchlist/BacktestReconCard';
 import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
 import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
-import { emptyScreenerFunnel } from '@/lib/watchlist-screener-import';
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
 import { WatchlistToolbar } from '@/components/watchlist/WatchlistToolbar';
 import { Button } from '@/components/ui/button';
@@ -41,7 +39,6 @@ import {
   type AutomationRun,
 } from '@/lib/watchlist-automation';
 import { copyWatchlistMarkdown } from '@/lib/watchlist-export';
-import { importFromScreener } from '@/lib/watchlist-screener-import';
 import { loadWatchlist } from '@/lib/watchlist-storage';
 
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
@@ -134,18 +131,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [copyMdBusy, setCopyMdBusy] = React.useState(false);
   const copyMdTimerRef = React.useRef<number | null>(null);
 
-  const [importDebugOpen, setImportDebugOpen] = React.useState(false);
-  const [importDebugFilter, setImportDebugFilter] = React.useState('');
-  const [importDebugScoreSortDir, setImportDebugScoreSortDir] = React.useState<'desc' | 'asc'>(
-    'desc',
-  );
-  const [importDebug, setImportDebug] = React.useState<ScreenerImportDebugState>({
-    updatedAt: null,
-    scanned: 0,
-    trendOkCount: 0,
-    rows: [],
-    funnel: emptyScreenerFunnel(),
-  });
 
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
@@ -204,48 +189,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
   const watchlistSet = React.useMemo(() => new Set(items.map((x) => x.symbol)), [items]);
 
-  async function onSyncFromScreener() {
-    setError(null);
-    setSyncMsg(null);
-    setSyncBusy(true);
-    setSyncStage('Loading enabled screeners');
-    setSyncProgress(null);
-    setSyncLogs([]);
-    setImportDebugFilter('');
-
-    const pushLog = (line: string) => {
-      setSyncLogs((prev) => [...prev, line].slice(-6));
-    };
-    try {
-      const result = await importFromScreener({
-        existingItems: items,
-        onStage: (label, cur, total) => {
-          setSyncStage(label);
-          if (typeof cur === 'number' && typeof total === 'number') {
-            setSyncProgress({ cur, total });
-          } else {
-            setSyncProgress(null);
-          }
-          pushLog(
-            label +
-              (typeof cur === 'number' && typeof total === 'number' ? ` (${cur}/${total})` : ''),
-          );
-        },
-      });
-      setImportDebug(result.debug as ScreenerImportDebugState);
-      setSyncMsg(result.message);
-      if (result.addedCount > 0) {
-        setItems(loadWatchlist());
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSyncBusy(false);
-      setSyncStage(null);
-      setSyncProgress(null);
-    }
-  }
-
   async function onRunAutomation(force = true) {
     setError(null);
     setAutomationMsg(null);
@@ -265,10 +208,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       });
       setLatestAutomation({
         ...run,
-        screenerAdded: result?.screenerAdded ?? run.screenerAdded,
         meta: {
           ...(run.meta && typeof run.meta === 'object' ? run.meta : {}),
-          ...(result?.funnel ? { funnel: result.funnel } : {}),
         },
       });
       if (run.skipped) {
@@ -426,7 +367,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           onManualRefreshTrend={() => void handleManualRefreshTrend()}
           onReferenceTable={referenceTable}
           onCopyMarkdown={() => void handleCopyWatchlistMarkdown()}
-          onSyncFromScreener={() => void onSyncFromScreener()}
           onRunAutomation={() => void onRunAutomation(true)}
           onForceAutomationFromSkip={() => void onRunAutomation(true)}
         />
@@ -440,19 +380,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
         <WatchlistInsightsPanel>
           <TradeStatsPanel />
           <FunnelHistoryTable limit={10} />
-          <WatchlistImportDebug
-            importDebug={importDebug}
-            importDebugOpen={importDebugOpen}
-            setImportDebugOpen={setImportDebugOpen}
-            importDebugFilter={importDebugFilter}
-            setImportDebugFilter={setImportDebugFilter}
-            importDebugScoreSortDir={importDebugScoreSortDir}
-            setImportDebugScoreSortDir={setImportDebugScoreSortDir}
-            watchlistSet={watchlistSet}
-            addSymbolToWatchlist={addSymbolToWatchlist}
-            setCode={setCode}
-            setError={setError}
-          />
+
         </WatchlistInsightsPanel>
 
         <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">

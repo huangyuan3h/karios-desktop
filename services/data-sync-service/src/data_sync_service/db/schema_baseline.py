@@ -41,8 +41,6 @@ from data_sync_service.db.system_prompts import CREATE_SQL as SYSTEM_PROMPTS_CRE
 from data_sync_service.db.top_inst import CREATE_SQL as TOP_INST_CREATE_SQL
 from data_sync_service.db.trade_calendar import CREATE_SQL as TRADE_CALENDAR_CREATE_SQL
 from data_sync_service.db.trade_review import CREATE_SQL as TRADE_REVIEW_CREATE_SQL
-from data_sync_service.db.tv import CREATE_SQL as TV_CREATE_SQL
-from data_sync_service.db.tv_chrome_settings import CREATE_SQL as TV_CHROME_SETTINGS_CREATE_SQL
 from data_sync_service.db.user_trades import CREATE_SQL as USER_TRADES_CREATE_SQL
 from data_sync_service.db.watchlist_automation import CREATE_SQL as WATCHLIST_AUTOMATION_CREATE_SQL
 
@@ -115,8 +113,6 @@ def baseline_ddl_statements() -> list[str]:
         STOPLOSS_INDEX_SQL,
         JOURNAL_CREATE_SQL,
         TRADE_REVIEW_CREATE_SQL,
-        TV_CHROME_SETTINGS_CREATE_SQL,
-        TV_CREATE_SQL,
         NEWS_SOURCES_SQL,
         CREATE_ITEMS_SQL,
         ALPHA_RADAR_SOURCES_SQL,

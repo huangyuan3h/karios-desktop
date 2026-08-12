@@ -81,36 +81,6 @@ def test_trendok_endpoint_shape() -> None:
 
 
 @pytest.mark.requires_postgres
-def test_tv_screeners_endpoint_shape() -> None:
-    client = TestClient(app)
-    resp = client.get("/integrations/tradingview/screeners")
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert "items" in payload and isinstance(payload["items"], list)
-    # Defaults should exist on a fresh DB.
-    ids = {x.get("id") for x in payload["items"] if isinstance(x, dict)}
-    assert {"falcon", "blackhorse"}.issubset(ids)
-
-
-def test_tv_chrome_status_endpoint_shape() -> None:
-    client = TestClient(app)
-    resp = client.get("/integrations/tradingview/status")
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert set(payload.keys()) >= {
-        "running",
-        "pid",
-        "host",
-        "port",
-        "cdpOk",
-        "cdpVersion",
-        "userDataDir",
-        "profileDirectory",
-        "headless",
-    }
-
-
-@pytest.mark.requires_postgres
 def test_broker_accounts_state_shape() -> None:
     from data_sync_service.db import get_connection
 
@@ -176,10 +146,8 @@ def test_dashboard_summary_endpoint_shape() -> None:
         "asOfDate",
         "industryFundFlow",
         "marketSentiment",
-        "screeners",
         "marketEnvironmentZh",
     }
-    assert isinstance(payload.get("screeners"), list)
     ind = payload.get("industryFundFlow") or {}
     assert isinstance(ind, dict)
     assert set(ind.keys()) >= {"dates", "topByDate", "flow5d"}
@@ -188,50 +156,6 @@ def test_dashboard_summary_endpoint_shape() -> None:
     assert "items" in ms and isinstance(ms["items"], list)
 
 
-def test_tv_screener_sync_returns_202_with_job(monkeypatch) -> None:
-    import data_sync_service.service.tv as tvsvc  # type: ignore[import-not-found]
-
-    monkeypatch.setattr(
-        tvsvc,
-        "enqueue_screener_capture",
-        lambda *, screener_id, trigger="api": {
-            "jobId": "job-123",
-            "screenerId": screener_id,
-            "status": "queued",
-        },
-    )
-    client = TestClient(app)
-    resp = client.post("/integrations/tradingview/screeners/falcon/sync")
-    assert resp.status_code == 202
-    payload = resp.json()
-    assert payload["jobId"] == "job-123"
-    assert payload["screenerId"] == "falcon"
-    assert payload["status"] == "queued"
-
-
-def test_tv_capture_job_get_endpoint(monkeypatch) -> None:
-    import data_sync_service.service.tv as tvsvc  # type: ignore[import-not-found]
-
-    monkeypatch.setattr(
-        tvsvc,
-        "get_capture_job",
-        lambda job_id: {
-            "jobId": job_id,
-            "screenerId": "falcon",
-            "status": "done",
-            "rowCount": 12,
-            "snapshotId": "snap-1",
-        },
-    )
-    client = TestClient(app)
-    resp = client.get("/integrations/tradingview/capture-jobs/job-123")
-    assert resp.status_code == 200
-    payload = resp.json()
-    assert payload["status"] == "done"
-    assert payload["rowCount"] == 12
-
-
-@pytest.mark.requires_postgres
 def test_dashboard_sync_endpoint_shape(monkeypatch) -> None:
     import data_sync_service.service.dashboard as dashboard_svc
 
@@ -240,21 +164,19 @@ def test_dashboard_sync_endpoint_shape(monkeypatch) -> None:
     monkeypatch.setattr(
         dashboard_svc,
         "dashboard_sync_parallel",
-        lambda *, force=True, screeners=True: {
+        lambda *, force=True: {
             "ok": True,
             "startedAt": "2026-08-08T00:00:00+00:00",
             "finishedAt": "2026-08-08T00:00:01+00:00",
             "steps": ["close_sync", "post_close_sync", "watchlist_automation"],
-            "screener": {"ok": False, "skipped": True},
         },
     )
     client = TestClient(app)
-    resp = client.post("/dashboard/sync?force=true&screeners=false", json={})
+    resp = client.post("/dashboard/sync?force=true", json={})
     assert resp.status_code == 200
     payload = resp.json()
-    assert set(payload.keys()) >= {"ok", "startedAt", "finishedAt", "steps", "screener"}
+    assert set(payload.keys()) >= {"ok", "startedAt", "finishedAt", "steps"}
     assert isinstance(payload.get("steps"), list)
-    assert isinstance(payload.get("screener"), dict)
 
 
 def test_market_chips_cn_only(monkeypatch) -> None:
