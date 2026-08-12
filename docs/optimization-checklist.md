@@ -2277,3 +2277,26 @@ HK:00622 揭示口径 bug 已修）· ruff 干净
 **验证**：后端 3340 passed（+20：db 集成 4 / 路由+投递 8 / E1+E3 5 / alembic / scheduler）·
 shared 64 passed · 前端 742 passed · ruff 干净 · alembic head=0030（本地已 upgrade）·
 E2E 手工链路（订阅→emit→投递→清理）通过
+
+### OPT-091：webhook P2 挂载 + 系统稳定性审计（2026-08-12）
+
+**状态**：[x]
+
+**P2 事件挂载**（E2/E4/E5/E6/E7，各 ~10 行，全部 dedupe 按日）：
+- E2 `paper_chain_issue`：paper_chain_watchdog 链断（close_sync 缺/self-heal 后仍缺）
+- E4 `near_stop`：trading_brief midday/action 组装时按 alert 行 emit（每 symbol+line+日一次）
+- E5 `candidate_added`：新 job（17:35）对比上一交易日 S-3 候选，**只推新增**（评估：消失=闸门关闭属正常噪音）；17:35 在 automation 后 intake 前
+- E6 `oos_warning`：rolling_oos 收尾 warning 非空时 emit
+- E7 `recon_missing`：backtest_recon missing>0 时 emit（按日一次）
+- 前端 WebhookPage（sidebar 新增）：订阅列表/创建（secret 一次性展示）/删除/测试事件 + 事件类型 chips
+
+**稳定性审计**（2026-08-12 晚间）：
+- ✅ 核心链全绿：17:10 close_sync → 17:30 automation → 17:35 industry → 17:40/17:42/17:45 paper → 18:05 watchdog（sync_job_record 实证）
+- ✅ 数据新鲜度：daily/score 均到 2026-08-12（23844 行今日）
+- ✅ DB 备份正常：03:00 dump 372MB + age-check 安全网 + iCloud 镜像
+- ✅ 磁盘 43Gi 可用 · alembic head=0030（已 upgrade）· db_rows_baseline 已重存（系统真实活动致过期，非测试污染；清理 webhook_events 测试残留 2 行后重存）
+- ✅ 测试纪律：全量测试后 webhook 表 0 残留（E5 local import 修 patch 失效路径）
+- ⚠️ 发现：uvicorn 22:25 被用户手动重启为**前台 + --reload**（08-11 曾去 --reload 修复 misfire 循环）——提醒用户用 nohup 无 --reload 方式；tushare 限频（etf/adj_factor/top_inst 瞬时 FAIL，10:01 后恢复，非本轮引入）
+
+**验证**：后端 3349 passed（+9 P2 挂载测试）· 前端 745 passed（+3 WebhookPage）· shared 64 ·
+ruff 干净 · webhook API 已上线（curl 实证）

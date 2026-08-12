@@ -592,7 +592,7 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 - ✅ **API Key 配额 + OpenAPI（OPT-051）**：多 Key + 三窗口滑动配额 + /v1/quota + Swagger/ReDoc
   → [`archive/2026-08-01-opt-051-api-key-quota-openapi.md`](./archive/2026-08-01-opt-051-api-key-quota-openapi.md)
 - ❌ **MCP server**：cancelled 2026-08-04（自写 agent 已 100% 覆盖；后续要启用按原描述单独起 OPT）
-- [x] **决策/告警 webhook**（AI agent 订阅 Karios 事件）：✅ P1 落地 2026-08-12（OPT-090；cookbook §9）；P2 待挂 E2/E4/E6/E7 + 候选 diff + 前端订阅管理页
+- [x] **决策/告警 webhook**（AI agent 订阅 Karios 事件）：✅ P1+P2 全落地 2026-08-12（OPT-090/091；cookbook §9）
 - **范围边界（不做）**：Telegram Bot/推送/日报/自动下单/监控巡检 → 归外部 AI 助手（/v1/* 拉数据）；
   Karios Chat Panel 仅"看+问"局部交互 → [`integrations/ai-agent-cookbook.md`](./integrations/ai-agent-cookbook.md)
 
@@ -907,7 +907,7 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 - ✅ **AI agent 集成 cookbook**（2026-08-01）→ [`integrations/ai-agent-cookbook.md`](./integrations/ai-agent-cookbook.md)
 - ✅ **/v1/* 持续稳定**（OPT-045~051 整圈 + 配额 + 文档）→ §12 已完成表
 - [x] **全局通知中心（2026-08-12 ✅ 应用内版先行）**：任何页面铃铛+toast 提醒，点击跳 watchlist 详情（接近止损/EXIT/recon 缺票/cron 失败/OOS 预警 + 本地买入提醒）——OPT-082
-- [x] **外部 webhook 推送（2026-08-12 ✅ P1 落地）**：订阅/事件/投递三层 + job_failed（E1）+ 盘中 -8%（E3，1 小时一轮）；API + cookbook 示例（cookbook §9）；P2 待挂 E2/E4/E6/E7 + 候选 diff + 前端管理页——OPT-090（设计稿 docs/designs/webhook-event-subscription.md 已拍板）
+- [x] **外部 webhook 推送（2026-08-12 ✅ P1+P2 全落地）**：订阅/事件/投递三层 + E1~E7 全部事件源（job 失败 / paper 链断 / 接近止损 / OOS 预警 / 对账缺票 / 候选新增 / 盘中 -8%）+ 前端订阅管理页 + cookbook §9——OPT-090 + OPT-091（设计稿已拍板）
 - ✅ **TV 数据源决策**（2026-08-01）：TV Scanner API = 唯一池子，ego-lite/Chrome CDP 仅 fallback
 - ✅ **§13 远程部署暂缓确认**：Neon/Tailscale/VM 等云相关全部暂缓（用户："暂时云还有一段路"）
 
