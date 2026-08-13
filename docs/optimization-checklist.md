@@ -2716,3 +2716,42 @@ CN:300628 → never_entered（买了不该买 ✓）；HK 13 只 → missing（�
 
 **验证**：+3 纯函数测试（开/关/空集）· 前端 763 passed · tsc 干净
 **使用**：表头按钮一键切换；Banner 仍保留（提醒 + 刷新入口）。
+
+### OPT-108：LLM job 移至平峰时段（2026-08-13）
+
+**状态**：[x]
+
+**背景（用户）**：LLM API 高峰（工作日 9:00-12:00/14:00-18:00）价格翻倍；
+平峰（00:30-08:30/18:00-24:00 + 周末）原价。用户拍板：**晚上 7 点起跑**。
+
+**变更**（3 个 LLM job 从 IntervalTrigger → CronTrigger，全部落在平峰窗口）：
+| Job | 原调度 | 新调度（Asia/Shanghai）|
+|-----|--------|------------------------|
+| alpha_radar_pipeline | 每 12h（进程启动起算）| **19:30** 每天 |
+| alpha_radar_process | 每 1h | **20:30/23:30/02:30/05:30** |
+| news_enrich | 每 2h | **20:00/23:00/05:00** |
+
+- `SCHEDULER_JOB_CATALOG`（packages/shared）同步显示新 scheduleCron
+- decision_action_tracking（18:30）已处平峰（18:00 起）不动；morning/trading brief 不调 LLM
+- env 覆盖保留（ALPHA_RADAR_PROCESS_NIGHTLY_CRON=0 回退 interval）
+
+**验证**：调度测试改口径（+1 CronTrigger 字段断言）· 后端 3368 passed · ruff 干净 · 服务已重启
+
+### OPT-109：Alpha Radar 指导性初版验证（真实交易对照 · 2026-08-13）
+
+**状态**：[x]（初版 · 样本不足待 C4）
+
+**背景（用户问"alpha 指导高不高"）**：alpha 的防御价值（auto-QA 防错映射）已验证；
+进攻价值（催化建议→收益命中率）从未统计过。
+
+**工具**：`scripts/alpha_guidance_report.py`——每笔 user_trades 对照买入日前 90d 内
+同 symbol 的 S/A 级 α 事件（createdAt ≤ 买入日 + 30d 容差），分组对比真实 PnL。
+
+**初版结果（4 笔，全部亏损——行情差）**：
+| 分组 | n | 均 PnL | 胜率 |
+|------|---|--------|------|
+| 有 α 背书 | 2（紫金 -4.53 / 腾讯 -2.44）| **-3.48%** | 0% |
+| 无 α 背书 | 2（力量发展 / 中国黄金国际）| **-5.76%** | 0% |
+
+**方向性**：有 α 背书的亏得少（-3.48 vs -5.76）——支持"α 有保护/筛选价值"，
+但 **n=2 不作定案**；随 user_trades + paper 平仓积累（≥20 笔）重跑脚本出实证。

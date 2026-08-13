@@ -97,15 +97,17 @@ def test_compute_trade_stats_by_source_and_symbol() -> None:
     try:
         stats = st.compute_trade_stats()
         assert stats["total"] >= 2
+        # DB discipline: real user rows may exist — assert only our prefixed
+        # symbols, never whole-source counts.
+        assert f"{TEST_PREFIX}a" in stats["bySymbol"]
+        assert f"{TEST_PREFIX}b" in stats["bySymbol"]
+        assert stats["roundTripCostPct"] == 0.3
+        assert stats["bySymbol"][f"{TEST_PREFIX}a"]["count"] == 1
+        assert stats["bySymbol"][f"{TEST_PREFIX}a"]["winRate"] == 1.0
+        assert stats["bySymbol"][f"{TEST_PREFIX}b"]["count"] == 1
+        assert stats["bySymbol"][f"{TEST_PREFIX}b"]["winRate"] == 0.0
         assert "ALPHA" in stats["bySource"]
         assert "TV" in stats["bySource"]
-        assert f"{TEST_PREFIX}a" in stats["bySymbol"]
-        assert stats["roundTripCostPct"] == 0.3
-        # The two rows above give a known sub-result.
-        alpha = stats["bySource"]["ALPHA"]
-        tv = stats["bySource"]["TV"]
-        assert alpha["count"] == 1 and alpha["winRate"] == 1.0
-        assert tv["count"] == 1 and tv["winRate"] == 0.0
     finally:
         with ut.get_connection() as conn, conn.cursor() as cur:
             cur.execute("DELETE FROM user_trades WHERE symbol LIKE %s", (f"{TEST_PREFIX}%",))

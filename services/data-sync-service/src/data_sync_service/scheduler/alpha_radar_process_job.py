@@ -24,6 +24,14 @@ def process_interval_hours() -> int:
 
 
 def build_trigger():
+    # OPT-108 (2026-08-13): LLM off-peak — 20:30 / 23:30 / 02:30 / 05:30
+    # Asia/Shanghai (all inside the off-peak window 18:00-24:00 + 00:30-08:30,
+    # user approved 19:00 起跑), instead of an every-1h IntervalTrigger.
+    # The env override still works for manual tuning.
+    from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-not-found]
+
+    if os.getenv("ALPHA_RADAR_PROCESS_NIGHTLY_CRON", "1") == "1":
+        return CronTrigger(hour="20,23,2,5", minute="30", timezone="Asia/Shanghai")
     return IntervalTrigger(hours=process_interval_hours())
 
 

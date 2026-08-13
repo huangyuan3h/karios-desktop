@@ -506,9 +506,15 @@ class TestNewsJobs:
         assert records == [("news_enrich_job", False, "crash")]
 
     def test_enrich_trigger(self) -> None:
+        from apscheduler.triggers.cron import CronTrigger
+
         from data_sync_service.scheduler import news_enrich_job
 
-        assert isinstance(news_enrich_job.build_trigger(), IntervalTrigger)
+        # OPT-108: LLM off-peak — nightly cron (20:00/23:00/05:00).
+        trig = news_enrich_job.build_trigger()
+        assert isinstance(trig, CronTrigger)
+        hours = sorted({e.first for e in trig.fields[5].expressions})  # hour field
+        assert hours == [5, 20, 23]
 
 
 class TestResearchJob:
@@ -632,12 +638,16 @@ class TestAlphaRadarJobs:
         assert job.process_interval_hours() == job.DEFAULT_INTERVAL_HOURS
         monkeypatch.delenv("ALPHA_RADAR_PROCESS_INTERVAL_HOURS")
         assert job.process_interval_hours() == job.DEFAULT_INTERVAL_HOURS
-        assert isinstance(job.build_trigger(), IntervalTrigger)
+        from apscheduler.triggers.cron import CronTrigger
+
+        assert isinstance(job.build_trigger(), CronTrigger)  # OPT-108 nightly
 
     def test_fetch_trigger(self) -> None:
+        from apscheduler.triggers.cron import CronTrigger
+
         from data_sync_service.scheduler import alpha_radar_fetch_job
 
-        assert isinstance(alpha_radar_fetch_job.build_trigger(), IntervalTrigger)
+        assert isinstance(alpha_radar_fetch_job.build_trigger(), CronTrigger)  # OPT-108 nightly
 
 
 # ---------------------------------------------------------------------------

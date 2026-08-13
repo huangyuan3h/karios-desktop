@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-not-found]
+from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-not-found]
 
 from data_sync_service.db.sync_job_record import insert_record
 from data_sync_service.service.alpha_radar_pipeline import run_alpha_radar_pipeline
@@ -22,7 +22,10 @@ JOB_ID = "alpha_radar_pipeline_job"
 
 
 def build_trigger():
-    return IntervalTrigger(hours=12)
+    # OPT-108 (2026-08-13): LLM off-peak — fixed 19:30 Asia/Shanghai
+    # (user-approved: off-peak window starts 18:00; 19:00 起跑), instead of
+    # a process-start IntervalTrigger.
+    return CronTrigger(hour="19", minute="30", timezone="Asia/Shanghai")
 
 
 def run():
