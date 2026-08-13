@@ -58,6 +58,12 @@ S3_CONFIG: dict[str, float | int | str] = {
     "pyramid_add_scale": 0.5,
     "pyramid_max_adds": 1,
     "exclude_boards": "300",
+    # OPT-105 (2026-08-13 固化): regime-adaptive stops — Strong sessions use
+    # the entry-locked ATR% x 2.0 line (let winners run), Diverging/Weak fall
+    # back to the fixed -5/-8. Three-window verified (OOS2 +123.3 / train
+    # +73.8 / valid +89.1, all within tolerance of the fixed baseline).
+    "atr_stop_mult": 2.0,
+    "atr_stop_strong_only": True,
 }
 
 WINDOWS: dict[str, tuple[str, str]] = {

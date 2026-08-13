@@ -1118,10 +1118,11 @@ def compute_trendok_for_symbols(
         registry_available = False
         logger.warning("trendok stoploss registry read failed (stops kept): %s", exc)
 
-    def position_ctx(sym: str) -> tuple[bool, float | None]:
+    def position_ctx(sym: str) -> tuple[bool, float | None, str | None]:
         row = registry_ctx_by_symbol.get(str(sym or "").upper())
         pct = row.get("positionPct") if row else None
         cost = row.get("costPrice") if row else None
+        entry = row.get("entryDate") if row else None
         try:
             is_held = pct is not None and float(pct) > 0
         except (TypeError, ValueError):
@@ -1131,8 +1132,8 @@ def compute_trendok_for_symbols(
                 cost_ok = cost is not None and float(cost) > 0
             except (TypeError, ValueError):
                 cost_ok = False
-            return True, (float(cost) if cost_ok else None)
-        return False, None
+            return True, (float(cost) if cost_ok else None), (str(entry) if entry else None)
+        return False, None, None
 
     def resolve_stoploss(
         ts_code: str,
@@ -1187,7 +1188,7 @@ def compute_trendok_for_symbols(
         em_industry = by_em_industry.get(ts_code)
         industry_for_flow = em_industry or tushare_industry
         bars = bars_by_code.get(ts_code, [])
-        is_held, cost_price = position_ctx(sym)
+        is_held, cost_price, entry_date = position_ctx(sym)
         out.append(
             _trendok_one(
                 symbol=sym,
@@ -1207,6 +1208,7 @@ def compute_trendok_for_symbols(
                 is_alpha_s=sym in alpha_s_symbols,
                 is_held=is_held,
                 cost_price=cost_price,
+                entry_date=entry_date,
             )
         )
     if stoploss_upserts_by_code:
@@ -1281,6 +1283,7 @@ def _trendok_one(
     is_alpha_s: bool = False,
     is_held: bool = False,
     cost_price: float | None = None,
+    entry_date: str | None = None,
 ) -> dict[str, Any]:
     """
     Ported from quant-service `_market_stock_trendok_one` with the same checks/score behavior.
@@ -1296,6 +1299,7 @@ def _trendok_one(
         "scoreParts": {},
         "stopLossPrice": None,
         "stopLossParts": {},
+        "s3PeakClose": None,
         "buyMode": None,
         "buyAction": None,
         "buyZoneLow": None,
@@ -1352,6 +1356,19 @@ def _trendok_one(
 
     res["asOfDate"] = dates[-1]
     res["values"]["close"] = closes[-1]
+    # OPT-099: S-3 backtest-caliber trailing-line peak = highest CLOSE since
+    # entry (the engine tracks the close-peak, never the intraday high).
+    # Exposed for the frontend S-3 trail so watchlist/copy use the same peak
+    # as the backtest and the health card. None when not held / no entryDate.
+    if is_held and entry_date:
+        try:
+            closes_after = [
+                float(c) for d, c in zip(dates, closes, strict=False) if str(d) >= str(entry_date)[:10]
+            ]
+            if closes_after:
+                res["s3PeakClose"] = round(max(closes_after), 6)
+        except (TypeError, ValueError):
+            res["s3PeakClose"] = None
     if tushare_industry:
         res["values"]["industry"] = tushare_industry
     if em_industry:

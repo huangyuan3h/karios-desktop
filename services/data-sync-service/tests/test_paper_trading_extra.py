@@ -588,3 +588,55 @@ class TestS3PaperProtections:
         assert out["closed"] == 0
         assert out["updated"] == 1
         # If the peak were the pre-entry 15.0: (10.2-15)/15 = -32% → would trail.
+
+
+class TestS3StrongATRStop:
+    """OPT-105: CN S-3 paper exits switch to the entry-locked ATR line while
+    the regime is Strong; Diverging/Weak keep the fixed -5/-8 constants."""
+
+    def _run(self, monkeypatch, *, regime: str | None, close_px: float) -> dict:
+        from data_sync_service.db import paper_trading as pt_db
+
+        # 8 pre-entry bars with TR ~0.5 → ATR ≈ 0.5 → atr_pct 5% → ATR stop -10%
+        pre = []
+        d = 10
+        for i in range(8):
+            day = f"2026-07-{20 + i:02d}"
+            pre.append((day, 10.0, 10.2, 9.7, 10.0, 100))
+        bars = pre + [
+            ("2026-08-05", 10.0, 10.1, 9.9, 10.0, 100),  # entry
+            ("2026-08-06", 9.5, 9.6, 9.3, close_px, 100),  # -6% vs entry
+        ]
+        monkeypatch.setattr(
+            pt_db,
+            "get_open_paper_trades",
+            lambda: [{
+                "id": "t1", "symbol": "CN:600519", "entryPrice": 10.0,
+                "entryDate": "2026-08-05", "source": "S3", "market": "CN",
+            }],
+        )
+        upd = Mock()
+        close = Mock()
+        monkeypatch.setattr(pt_db, "update_paper_trade_price", upd)
+        monkeypatch.setattr(pt_db, "close_paper_trade", close)
+        monkeypatch.setattr(pt, "_cn_regime_today", lambda: regime)
+        _patch_all(monkeypatch, registry=[])
+        closes = {"600519.SH": bars}
+        monkeypatch.setattr(pt, "fetch_last_ohlcv_batch", lambda codes, days: closes)
+        return pt.run_update(today_iso="2026-08-06")
+
+    def test_strong_regime_uses_atr_line_holds(self, monkeypatch) -> None:
+        # -6%: the FIXED -5% stop would exit; the ATR line (-10%) holds.
+        out = self._run(monkeypatch, regime="Strong", close_px=9.4)
+        assert out["closed"] == 0
+        assert out["updated"] == 1
+
+    def test_weak_regime_uses_fixed_line_exits(self, monkeypatch) -> None:
+        # Same -6% drawdown under Weak → fixed -5% stop fires.
+        out = self._run(monkeypatch, regime="Weak", close_px=9.4)
+        assert out["closed"] == 1
+
+    def test_regime_unavailable_falls_back_to_fixed(self, monkeypatch) -> None:
+        # Regime lookup failure must never loosen the stop (fail-closed).
+        out = self._run(monkeypatch, regime=None, close_px=9.4)
+        assert out["closed"] == 1

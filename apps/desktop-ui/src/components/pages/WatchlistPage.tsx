@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
+import { BehaviorAuditBanner } from '@/components/watchlist/BehaviorAuditBanner';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
 import { TradingBriefCard } from '@/components/watchlist/TradingBriefCard';
 import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
@@ -11,6 +12,7 @@ import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/Watch
 import { WatchlistToolbar } from '@/components/watchlist/WatchlistToolbar';
 import { Button } from '@/components/ui/button';
 import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
+import { useBehaviorAuditQuery } from '@/lib/queries/behaviorAudit';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistTrend } from '@/hooks/useWatchlistTrend';
 import {
@@ -134,6 +136,14 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
   const [showHidden, setShowHidden] = React.useState(false);
+  const [hideAuditExtra, setHideAuditExtra] = React.useState(false);
+  // OPT-106: symbols flagged by the behavior audit (买了不该买/该卖没卖) —
+  // shared query cache with the banner (no duplicate requests).
+  const auditRows = useBehaviorAuditQuery().data ?? [];
+  const auditExtraSymbols = React.useMemo(
+    () => new Set(auditRows.flatMap((r) => (r.extraList ?? []).map((e) => e.symbol))),
+    [auditRows],
+  );
 
   React.useEffect(() => {
     void fetchAutomationLatest()
@@ -332,6 +342,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             ，所有买入已强制拦截
           </div>
         ) : null}
+        <BehaviorAuditBanner />
         {executionGate ? (
           <div
             className={`mb-4 rounded-lg border px-4 py-3 text-sm ${executionGateBadgeClass(executionGate.mode)}`}
@@ -463,6 +474,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           setScoreSortEnabled={setScoreSortEnabled}
           showHidden={showHidden}
           setShowHidden={setShowHidden}
+          auditExtraSymbols={auditExtraSymbols}
+          hideAuditExtra={hideAuditExtra}
+          setHideAuditExtra={setHideAuditExtra}
           setItemColor={setItemColor}
           setItemPositionPct={setItemPositionPct}
           setItemPositionPctDraft={setItemPositionPctDraft}

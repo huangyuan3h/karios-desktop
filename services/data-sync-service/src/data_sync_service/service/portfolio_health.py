@@ -20,6 +20,7 @@ from data_sync_service.db.paper_trading import (
     TRAILING_STOP_PCT,
 )
 from data_sync_service.db.watchlist_automation import list_registry
+from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 logger = logging.getLogger(__name__)
 
@@ -93,16 +94,22 @@ def _holding_check(
     entry_date: str,
     ts: str,
     trade_date: str,
-    trailing_pct: float | None = None,
     stop_pct: float | None = None,
+    trailing_pct: float | None = None,
     max_hold: int | None = None,
+    realtime_price: float | None = None,
+    regime: str | None = None,
 ) -> dict[str, Any]:
     """S-3 exit-condition check for one holding (same constants as paper).
 
     2026-08-10 (HK parallel line): per-market rule overrides — HK uses the
     HK line's trailing -12% (stop -5% / hold 60 unchanged).
+    OPT-105 (2026-08-13): CN Strong sessions use the entry-locked ATR% x
+    S3_ATR_STOP_MULT line; Diverging/Weak keep the fixed constants. The
+    chosen rule is exposed via ``stopRule`` so the UI can show it.
     """
     from data_sync_service.db import get_connection
+    from data_sync_service.db.paper_trading import S3_ATR_STOP_MULT
 
     stop = stop_pct if stop_pct is not None else STOP_LOSS_PCT
     trail = trailing_pct if trailing_pct is not None else TRAILING_STOP_PCT
@@ -116,13 +123,20 @@ def _holding_check(
     }
     with get_connection() as conn:
         with conn.cursor() as cur:
+            # Pull ~35 sessions before entry too: the OPT-105 ATR line is
+            # locked at entry time (sessions BEFORE entry).
+            lookback = (
+                (date.fromisoformat(entry_date) - __import__("datetime").timedelta(days=45)).isoformat()
+                if regime == "Strong"
+                else entry_date
+            )
             cur.execute(
                 """
-                SELECT trade_date, high, close FROM daily
+                SELECT trade_date, high, low, close FROM daily
                 WHERE ts_code = %s AND trade_date >= %s AND trade_date <= %s
                 ORDER BY trade_date
                 """,
-                (ts, entry_date, trade_date),
+                (ts, lookback, trade_date),
             )
             bars = cur.fetchall()
     if not bars:
@@ -131,13 +145,52 @@ def _holding_check(
         out["note"] = "无价格数据，继续持有观察"
         return out
 
-    last_date, _h, last_close = bars[-1]
+    # OPT-105: regime-adaptive stop rule. Strong → entry-locked ATR% x mult
+    # (same shape as the backtest engine); otherwise fixed constants.
+    atr_pct = 0.0
+    if regime == "Strong":
+        pre = [b for b in bars if str(b[0]) < entry_date][-15:]
+        if len(pre) >= 8 and cost > 0:
+            trs: list[float] = []
+            prev: float | None = None
+            for _d, hi, lo, _c in pre:
+                hi_f, lo_f = float(hi), float(lo)
+                if prev is None:
+                    prev = hi_f
+                    continue
+                trs.append(max(hi_f - lo_f, abs(hi_f - prev), abs(lo_f - prev)))
+                prev = hi_f
+            if trs:
+                atr_pct = (sum(trs) / len(trs)) / cost * 100.0
+        if atr_pct > 0:
+            stop = trail = -(S3_ATR_STOP_MULT * atr_pct)
+            out["stopRule"] = "atr"
+            out["stopRuleDetail"] = f"Strong · ATR×{S3_ATR_STOP_MULT}（入场锁定 {atr_pct:.1f}%）"
+        else:
+            out["stopRule"] = "fixed"
+            out["stopRuleDetail"] = "Strong · ATR 数据不足，回退固定"
+    else:
+        out["stopRule"] = "fixed"
+        if str(ts).endswith(".HK"):
+            out["stopRuleDetail"] = "固定 -5%/-12%（HK 线）"
+        else:
+            out["stopRuleDetail"] = "固定 -5%/-8%"
+
+    last_date, _h, _l, last_close = bars[-1]
     last_close = float(last_close)
     # Trailing stop is evaluated on CLOSE prices (same as backtest engine).
-    peak = max(float(b[2]) for b in bars if b[2] is not None)
-    peak_date = max(bars, key=lambda b: float(b[2]))[0]
+    # OPT-101 (2026-08-13): the ACTION is ALWAYS close-caliber (backtest
+    # caliber — the user follows the exact backtest behaviour). An optional
+    # realtime price (HK line) only produces a WARNING when it has breached a
+    # line the close has not — "盘中已破线 · 待收盘确认". The trailing peak
+    # stays close-based; the close-based pnl/drawdown drive the action.
+    peak = max(float(b[3]) for b in bars if b[3] is not None)
+    peak_date = max(bars, key=lambda b: float(b[3]))[0]
+    rt_price = realtime_price if realtime_price is not None and realtime_price > 0 else None
     pnl = (last_close - cost) / cost * 100.0
     drawdown = (last_close - peak) / peak * 100.0
+    rt_pnl = (rt_price - cost) / cost * 100.0 if rt_price is not None else None
+    rt_drawdown = (rt_price - peak) / peak * 100.0 if rt_price is not None else None
     try:
         days = (date.fromisoformat(trade_date) - date.fromisoformat(entry_date)).days
     except ValueError:
@@ -147,6 +200,8 @@ def _holding_check(
     out["lastDate"] = str(last_date)
     out["peakPrice"] = peak
     out["peakDate"] = str(peak_date)
+    out["evaluatedPrice"] = round(rt_price if rt_price is not None else last_close, 3)
+    out["realtime"] = rt_price is not None
     out["pnlPct"] = round(pnl, 2)
     out["drawdownFromPeakPct"] = round(drawdown, 2)
     out["holdingDays"] = days
@@ -168,6 +223,18 @@ def _holding_check(
         out["reason"] = "；".join(reasons)
     else:
         out["action"] = "HOLD"
+    # OPT-101: realtime line breach that the close has NOT confirmed → warn
+    # only (action stays close-caliber). The user's intraday conditional
+    # orders may already have fired; this flags "回测尚未确认".
+    if rt_price is not None and out["action"] == "HOLD":
+        rt_reasons: list[str] = []
+        if rt_pnl is not None and rt_pnl <= stop:
+            rt_reasons.append(f"实时已破止损线（{rt_pnl:.1f}% <= {stop:.1f}%）")
+        if rt_drawdown is not None and rt_drawdown <= trail:
+            rt_reasons.append(f"实时已破吊灯线（回撤{abs(rt_drawdown):.1f}% >= {abs(trail):.0f}%）")
+        if rt_reasons:
+            out["realtimeWarning"] = True
+            out["realtimeAlert"] = "；".join(rt_reasons) + " · 待收盘确认（回测口径）"
     return out
 
 
@@ -337,6 +404,7 @@ def _build_holdings_block(
     alpha_map: dict[str, list[dict[str, Any]]] | None = None,
     flow_map: dict[str, dict[str, Any]] | None = None,
     l1_map: dict[str, str] | None = None,
+    regime: str | None = None,
 ) -> list[dict[str, Any]]:
     """Holdings for one market vs its S-3 exit rules.
 
@@ -344,6 +412,7 @@ def _build_holdings_block(
     the HK line rules (trail -12). Holdings are split by symbol prefix; the
     CN line also covers A-share ETFs (ETF:XXXXXX — e.g. 513180 Hang Seng
     Tech, a large sleeve) under the same A-share rules.
+    OPT-105: CN passes today's regime so Strong sessions use the ATR line.
     """
     from data_sync_service.service.paper_s3 import PYRAMID_TRIGGER_PCT
 
@@ -366,6 +435,23 @@ def _build_holdings_block(
             for r in registry_rows
             if in_market(str(r.get("symbol") or "").upper())
         ]
+        # OPT-100: HK holdings evaluate against the REALTIME price so the
+        # health card and the watchlist/copy realtime trigger agree. Peak
+        # stays close-based; CN line keeps the close-caliber evaluation.
+        realtime_by_ts: dict[str, float] = {}
+        if market == "HK" and hold_syms:
+            try:
+                ts_list = [_resolve_holding_ts(s) for s in hold_syms]
+                ts_list = [t for t in ts_list if t]
+                if ts_list:
+                    quotes = fetch_realtime_quotes(ts_list)
+                    for it in quotes.get("items") or []:
+                        px = _as_float(it.get("price"))
+                        code = str(it.get("ts_code") or "").upper()
+                        if px and px > 0 and code:
+                            realtime_by_ts[code] = px
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("portfolio health HK realtime quotes failed: %s", exc)
         if alpha_map is None:
             alpha_map = _alpha_events_for_symbols(hold_syms)
         if l1_map is None:
@@ -391,6 +477,8 @@ def _build_holdings_block(
                 ts=ts or "",
                 trade_date=day,
                 trailing_pct=trail,
+                realtime_price=realtime_by_ts.get(str(ts or "").upper()),
+                regime=regime,
             )
             check["symbol"] = sym
             check["name"] = str(name or "")
@@ -613,7 +701,8 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
             logger.warning("portfolio health circuit check failed: %s", exc)
 
     holdings = _build_holdings_block(
-        market=market, day=day, alpha_map=alpha_map, flow_map=flow_map, l1_map=l1_map
+        market=market, day=day, alpha_map=alpha_map, flow_map=flow_map, l1_map=l1_map,
+        regime=regime if market == "CN" else None,
     )
     info_summary = {
         "holdingsCount": len(holdings),

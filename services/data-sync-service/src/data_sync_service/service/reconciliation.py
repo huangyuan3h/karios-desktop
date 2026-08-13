@@ -51,6 +51,10 @@ S3_CONFIG: dict[str, float | int | str] = {
     "pyramid_add_scale": 0.5,
     "pyramid_max_adds": 1,
     "exclude_boards": "300",
+    # OPT-105 (2026-08-13): Strong-regime ATR stops — must mirror S3_CONFIG
+    # so the audit replays the exact backtest rule set.
+    "atr_stop_mult": 2.0,
+    "atr_stop_strong_only": True,
 }
 
 HK_S3_CONFIG: dict[str, float | int | str] = {
@@ -262,5 +266,135 @@ def run_and_persist(day: str, *, window: str = "valid") -> dict[str, Any]:
             bt_return_median_pct=m.get("btReturnMedianPct"),
             paper_return_median_pct=m.get("paperReturnMedianPct"),
             detail=detail,
+        )
+    return out
+
+
+def _registry_holdings_on(day: str) -> dict[str, dict]:
+    """symbol -> registry row for holdings open on ``day`` (real book).
+
+    The user's ACTUAL positions (watchlist registry, positionPct > 0) — the
+    behavior audit compares these against the backtest "should hold" set.
+    """
+    from data_sync_service.db.watchlist_automation import list_registry
+
+    out: dict[str, dict] = {}
+    for row in list_registry():
+        sym = str(row.get("symbol") or "").upper()
+        pct = row.get("positionPct")
+        entry = str(row.get("entryDate") or "")
+        try:
+            held = pct is not None and float(pct) > 0 and bool(entry) and entry <= day
+        except (TypeError, ValueError):
+            held = False
+        if held:
+            out[sym] = row
+    return out
+
+
+def reconcile_registry(
+    day: str, *, window: str = "valid", end_date: str | None = None
+) -> dict[str, Any]:
+    """BEHAVIOR AUDIT (2026-08-13): the user's REAL holdings vs the S-3
+    backtest "should hold" set for one trading day.
+
+    Unlike reconcile_day (paper book), this compares the watchlist registry
+    (the user's actual buys/sells) against the engine's end-of-day snapshot:
+
+      - ``extra``  → held but the backtest does NOT hold it:
+        · backtest never entered it  → "买了不该买"
+        · backtest already exited it → "该卖没卖" (backtest closed, user still in)
+      - ``missing``→ backtest holds it, the user does not (info: 该持没买)
+
+    Returns {reconDate, window, markets: {CN: {…, extraList: [{symbol, name,
+    costPrice, entryDate, pnlPct?, kind: 'never_entered'|'exited'}]}}}. The
+    caller persists it (db.behavior_audit) and the watchlist page renders it.
+    """
+    if window not in WINDOWS:
+        raise ValueError(f"unknown window {window!r} (valid: {list(WINDOWS)})")
+    start, w_end = WINDOWS[window]
+    end = max(end_date or day, w_end, day)  # audit day always covered
+    if not (start <= day <= end):
+        raise ValueError(f"{day} not in window {start}..{end}")
+
+    real = _registry_holdings_on(day)
+    markets: dict[str, Any] = {}
+    for market in ("CN", "HK"):
+        cfg = _mk_config(market, start, end)
+        data = BacktestData(cfg)
+        run = simulate(cfg, data=data)
+        snap = next((s for s in run.positions_by_day if s["date"] == day), None)
+        if snap is None:
+            markets[market] = {"available": False, "reason": f"no snapshot for {day}"}
+            continue
+        expect = set(p["symbol"] for p in snap["positions"])
+        # symbols the backtest ENTERED at some point <= day — whether still
+        # open or already closed — mark "the backtest held this name": an
+        # extra holding with this flag is 该卖没卖 (backtest exited, user in).
+        was_held: set[str] = set()
+        for t in run.trades:
+            if t.entry_date <= day:
+                was_held.add(t.symbol)
+        was_held |= expect
+
+        in_market = {
+            s: r for s, r in real.items() if _resolve_ts_code(s) is not None
+            and _resolve_ts_code(s)[0] == market
+        }
+        extra_list: list[dict[str, Any]] = []
+        for s in sorted(set(in_market) - expect):
+            r = in_market[s]
+            cost = r.get("costPrice")
+            entry = str(r.get("entryDate") or "")
+            extra_list.append({
+                "symbol": s,
+                "name": str(r.get("name") or ""),
+                "costPrice": float(cost) if cost else None,
+                "entryDate": entry,
+                "kind": "exited" if s in was_held else "never_entered",
+            })
+        missing_list: list[dict[str, Any]] = [
+            {
+                "symbol": s,
+                "entry": next(
+                    (p.get("entry_date") for p in snap["positions"] if p["symbol"] == s),
+                    None,
+                ),
+                "score": next(
+                    (p.get("score_at_entry") for p in snap["positions"] if p["symbol"] == s),
+                    None,
+                ),
+            }
+            for s in sorted(expect - set(in_market))
+        ]
+        markets[market] = {
+            "available": True,
+            "expected": len(expect),
+            "actual": len(in_market),
+            "extra": len(extra_list),
+            "missing": len(missing_list),
+            "extraList": extra_list,
+            "missingList": missing_list,
+        }
+    return {"reconDate": day, "window": window, "markets": markets}
+
+
+def run_registry_and_persist(day: str, *, window: str = "valid") -> dict[str, Any]:
+    """reconcile_registry + persist to db.behavior_audit (idempotent)."""
+    from data_sync_service.db.behavior_audit import insert_audit
+
+    out = reconcile_registry(day, window=window)
+    for market, m in out["markets"].items():
+        if not m.get("available"):
+            continue
+        insert_audit(
+            audit_date=out["reconDate"],
+            market=market,
+            expected=m["expected"],
+            actual=m["actual"],
+            extra=m["extra"],
+            missing=m["missing"],
+            extra_list=m.get("extraList") or [],
+            missing_list=m.get("missingList") or [],
         )
     return out

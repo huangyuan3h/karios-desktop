@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { sortWatchlistItems } from './WatchlistTable';
+import { shouldHideForAuditFilter, sortWatchlistItems } from './WatchlistTable';
 import type { WatchlistItem } from '@karios/shared';
 import type { TrendOkResult } from '@/lib/api/types';
 
@@ -58,5 +58,20 @@ describe('sortWatchlistItems', () => {
     const before = [...items];
     sortWatchlistItems(items, {}, true, 'desc');
     expect(items).toEqual(before);
+  });
+});
+
+describe('shouldHideForAuditFilter (OPT-106)', () => {
+  const extra = new Set(['CN:300628', 'HK:00005']);
+
+  it('hides only flagged symbols when the filter is on', () => {
+    expect(shouldHideForAuditFilter('CN:300628', extra, true)).toBe(true);
+    expect(shouldHideForAuditFilter('CN:600000', extra, true)).toBe(false);
+  });
+
+  it('never hides when the filter is off or the set is empty', () => {
+    expect(shouldHideForAuditFilter('CN:300628', extra, false)).toBe(false);
+    expect(shouldHideForAuditFilter('CN:300628', undefined, true)).toBe(false);
+    expect(shouldHideForAuditFilter('CN:300628', new Set<string>(), true)).toBe(false);
   });
 });

@@ -117,6 +117,18 @@ function watchlistStickyCellStyle(
   };
 }
 
+/**
+ * OPT-106: should this row be hidden by the "hide backtest-mismatched"
+ * filter? Pure so the filter logic is unit-testable.
+ */
+export function shouldHideForAuditFilter(
+  symbol: string,
+  auditExtraSymbols: Set<string> | undefined,
+  hideAuditExtra: boolean,
+): boolean {
+  return Boolean(hideAuditExtra && auditExtraSymbols?.has(symbol));
+}
+
 export type WatchlistTableProps = {
   sortedItems: WatchlistItem[];
   items: WatchlistItem[];
@@ -130,6 +142,10 @@ export type WatchlistTableProps = {
   setScoreSortEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   showHidden: boolean;
   setShowHidden: React.Dispatch<React.SetStateAction<boolean>>;
+  /** OPT-106: symbols the behavior audit flags as 买了不该买/该卖没卖. */
+  auditExtraSymbols?: Set<string>;
+  hideAuditExtra?: boolean;
+  setHideAuditExtra?: React.Dispatch<React.SetStateAction<boolean>>;
   setItemColor: (symbol: string, color: string) => void;
   setItemPositionPct: (symbol: string, value: string) => void;
   setItemPositionPctDraft: (symbol: string, value: string) => void;
@@ -195,6 +211,9 @@ export function WatchlistTable({
   setScoreSortEnabled,
   showHidden,
   setShowHidden,
+  auditExtraSymbols = undefined,
+  hideAuditExtra = false,
+  setHideAuditExtra = undefined,
   setItemColor,
   setItemPositionPct,
   setItemPositionPctDraft,
@@ -312,12 +331,17 @@ export function WatchlistTable({
 
   const visibleSortedItems = React.useMemo(() => {
     return sortedItems.filter((it) => {
+      // OPT-106: hide rows the behavior audit flags (买了不该买/该卖没卖)
+      // when the filter is on — same pattern as the silent-dead filter.
+      if (shouldHideForAuditFilter(it.symbol, auditExtraSymbols, hideAuditExtra)) {
+        return false;
+      }
       const t = trend[it.symbol];
       const action = actionBySymbol.get(it.symbol) ?? null;
       if (action === 'PURGE') return true;
       return shouldShowInWatchlistTable(it, t ?? null, action);
     });
-  }, [sortedItems, trend, actionBySymbol]);
+  }, [sortedItems, trend, actionBySymbol, hideAuditExtra, auditExtraSymbols]);
 
   const hiddenCount = sortedItems.length - visibleSortedItems.length;
 
@@ -495,6 +519,27 @@ export function WatchlistTable({
               {visibleSortedItems.length} / {items.length} items
               {hiddenCount > 0 ? ` · ${hiddenCount} hidden (silent dead rows)` : ''}
             </span>
+            {setHideAuditExtra && auditExtraSymbols && auditExtraSymbols.size > 0 && (
+              <button
+                type="button"
+                className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] ${
+                  hideAuditExtra
+                    ? 'border-amber-500/50 bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                    : 'border-[var(--k-border)] bg-[var(--k-surface-2)] hover:text-[var(--k-text)]'
+                }`}
+                onClick={() => setHideAuditExtra((v) => !v)}
+                title={
+                  hideAuditExtra
+                    ? '显示不符合回测的持仓（买了不该买/该卖没卖）。'
+                    : '隐藏不符合回测的持仓（买了不该买/该卖没卖）。'
+                }
+                aria-label={
+                  hideAuditExtra ? 'Show backtest-mismatched rows' : 'Hide backtest-mismatched rows'
+                }
+              >
+                {hideAuditExtra ? '✓' : ''} 隐藏不符合回测 {auditExtraSymbols.size}
+              </button>
+            )}
             {hiddenCount > 0 ? (
               <button
                 type="button"

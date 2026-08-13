@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-13T09:57:31.482776+00:00",
-  "tag": "",
+  "generatedAt": "2026-08-13T05:35:23.756778+00:00",
+  "tag": "trail-14",
   "config": {
     "score_threshold": 65.0,
     "max_hold_days": 60,
@@ -9,7 +9,7 @@
     "score_floor": 0.0,
     "market": "HK",
     "gates": "regime",
-    "trailing_stop_pct": -12.0,
+    "trailing_stop_pct": -14,
     "position_pct": 0.1,
     "max_positions": 20,
     "rs_rank_min": 0.6,
@@ -23,28 +23,28 @@
   },
   "results": {
     "OOS2": {
-      "closed": 341,
-      "winRate": 0.393,
-      "avgNetPnlPct": 10.28,
-      "totalNetPnlPct": 270.217,
-      "maxDrawdownPct": 29.141,
-      "sharpe": 2.24
+      "closed": 326,
+      "winRate": 0.399,
+      "avgNetPnlPct": 4.264,
+      "totalNetPnlPct": 105.503,
+      "maxDrawdownPct": 29.843,
+      "sharpe": 2.86
     },
     "train": {
-      "closed": 169,
-      "winRate": 0.414,
-      "avgNetPnlPct": 2.02,
-      "totalNetPnlPct": 26.855,
-      "maxDrawdownPct": 18.863,
-      "sharpe": 1.91
+      "closed": 166,
+      "winRate": 0.404,
+      "avgNetPnlPct": 2.044,
+      "totalNetPnlPct": 25.476,
+      "maxDrawdownPct": 18.851,
+      "sharpe": 1.63
     },
     "valid": {
-      "closed": 84,
-      "winRate": 0.417,
-      "avgNetPnlPct": 9.337,
-      "totalNetPnlPct": 60.647,
+      "closed": 83,
+      "winRate": 0.41,
+      "avgNetPnlPct": 9.407,
+      "totalNetPnlPct": 60.563,
       "maxDrawdownPct": 8.329,
-      "sharpe": 6.32
+      "sharpe": 6.09
     }
   },
   "baselineUsed": true

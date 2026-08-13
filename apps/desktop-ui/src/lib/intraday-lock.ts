@@ -49,7 +49,13 @@ function shanghaiMinutes(now: Date): { day: string; minutes: number } {
 const LUNCH_START = 12 * 60; // 12:00
 const LUNCH_END = 13 * 60; // 13:00
 const LOCK_START = 14 * 60; // 14:00 — snapshot freeze begins (user trades after 2pm)
-const LOCK_END = 15 * 60; // 15:00 close
+const LOCK_END = 15 * 60; // CN close 15:00
+const LOCK_END_HK = 16 * 60; // HK close 16:00
+
+/** HK trading day ends at 16:00 — freeze the 14:00 snapshot until then. */
+function isHkSymbol(symbol: string): boolean {
+  return String(symbol || '').toUpperCase().startsWith('HK:');
+}
 
 /** Stable price used ONLY for action derivation (not display/PnL). */
 export function resolveStableActionPrice(input: IntradayLockInput): number | null {
@@ -58,14 +64,15 @@ export function resolveStableActionPrice(input: IntradayLockInput): number | nul
     return realtimePrice;
   }
   const { day, minutes } = shanghaiMinutes(now);
+  const lockEnd = isHkSymbol(symbol) ? LOCK_END_HK : LOCK_END;
 
   // Lunch break: morning close is the stable reference.
   if (minutes >= LUNCH_START && minutes < LUNCH_END) {
     return trendClose ?? realtimePrice;
   }
 
-  // 14:00–15:00: frozen 14:00 snapshot (first quote in the window).
-  if (minutes >= LOCK_START && minutes < LOCK_END) {
+  // 14:00–close: frozen 14:00 snapshot (first quote in the window).
+  if (minutes >= LOCK_START && minutes < lockEnd) {
     const cached = SNAPSHOT_CACHE.get(symbol);
     if (cached && cached.day === day) {
       return cached.price;
@@ -77,7 +84,7 @@ export function resolveStableActionPrice(input: IntradayLockInput): number | nul
     return trendClose ?? realtimePrice;
   }
 
-  // Before 12:00 / 13:00–14:00 / after 15:00: realtime as usual.
+  // Before 12:00 / 13:00–14:00 / after close: realtime as usual.
   return realtimePrice;
 }
 

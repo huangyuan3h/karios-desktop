@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-13T09:57:31.482776+00:00",
-  "tag": "",
+  "generatedAt": "2026-08-13T05:34:39.299483+00:00",
+  "tag": "trail-12",
   "config": {
     "score_threshold": 65.0,
     "max_hold_days": 60,
@@ -9,7 +9,7 @@
     "score_floor": 0.0,
     "market": "HK",
     "gates": "regime",
-    "trailing_stop_pct": -12.0,
+    "trailing_stop_pct": -12,
     "position_pct": 0.1,
     "max_positions": 20,
     "rs_rank_min": 0.6,

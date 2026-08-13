@@ -11,10 +11,10 @@ from unittest.mock import patch
 from data_sync_service.service import portfolio_health as ph
 
 BARS = [
-    ("2026-08-04", 40.5, 39.65),
-    ("2026-08-05", 41.2, 40.1),
-    ("2026-08-06", 40.0, 39.6),
-    ("2026-08-07", 39.8, 39.5),
+    ("2026-08-04", 40.5, 39.6, 39.65),
+    ("2026-08-05", 41.2, 40.05, 40.1),
+    ("2026-08-06", 40.0, 39.55, 39.6),
+    ("2026-08-07", 39.8, 39.45, 39.5),
 ]
 
 
@@ -30,7 +30,7 @@ class FakeCursor:
 
     def execute(self, sql, params):
         if params[0].startswith("513180.SH"):
-            self._rows = [("2026-08-05", 0.630, 0.624), ("2026-08-06", 0.622, 0.614)]
+            self._rows = [("2026-08-05", 0.630, 0.574, 0.624), ("2026-08-06", 0.622, 0.564, 0.614)]
 
     def fetchall(self):
         return self._rows
@@ -66,14 +66,45 @@ def test_peak_uses_close_not_high():
     assert out["action"] == "HOLD"
 
 
+def test_realtime_breach_warns_but_action_stays_close_caliber_opt101():
+    """OPT-101: the action is ALWAYS close-caliber (backtest behavior). A
+    realtime breach of the stop line only produces a warning when the close
+    has not confirmed it — the user follows the exact backtest action."""
+    rows = [("2026-08-12", 204.0, 202.75, 202.8)]
+    with patch("data_sync_service.db.get_connection", return_value=FakeConn(rows)):
+        rt = ph._holding_check(
+            name="X", cost=202.8, entry_date="2026-08-12", ts="02099.HK",
+            trade_date="2026-08-13", realtime_price=190.8,
+        )
+    assert rt["action"] == "HOLD"  # close 202.8 > stop line 192.66 → HOLD
+    assert rt["realtime"] is True
+    assert rt["evaluatedPrice"] == 190.8
+    assert rt["peakPrice"] == 202.8  # close peak unchanged
+    assert rt["realtimeWarning"] is True
+    assert "待收盘确认" in rt["realtimeAlert"]
+
+
+def test_realtime_and_close_both_breach_exits_opt101():
+    """Close below the stop line → EXIT regardless of realtime."""
+    rows = [("2026-08-12", 204.0, 190.45, 190.5)]
+    with patch("data_sync_service.db.get_connection", return_value=FakeConn(rows)):
+        rt = ph._holding_check(
+            name="X", cost=202.8, entry_date="2026-08-12", ts="02099.HK",
+            trade_date="2026-08-13", realtime_price=189.0,
+        )
+    assert rt["action"] == "EXIT"
+    assert "stop_loss" in rt["reason"]
+    assert rt.get("realtimeWarning") is None  # close already confirmed
+
+
 def test_trailing_stop_fires_on_close_pullback():
     """A close pullback >= 8% from the close-peak fires EXIT."""
     rows = [
-        ("2026-08-03", 40.0, 39.9),
-        ("2026-08-04", 40.5, 40.0),
-        ("2026-08-05", 41.2, 40.5),
-        ("2026-08-06", 39.8, 37.3),
-        ("2026-08-07", 37.0, 36.5),
+        ("2026-08-03", 40.0, 39.85, 39.9),
+        ("2026-08-04", 40.5, 39.95, 40.0),
+        ("2026-08-05", 41.2, 40.45, 40.5),
+        ("2026-08-06", 39.8, 37.25, 37.3),
+        ("2026-08-07", 37.0, 36.45, 36.5),
     ]
     out = _check(cost=39.9, entry="2026-08-03", ts="300628.SZ", rows=rows)
     assert out["action"] == "EXIT"
@@ -83,9 +114,9 @@ def test_trailing_stop_fires_on_close_pullback():
 
 def test_fixed_stop_fires():
     rows = [
-        ("2026-08-04", 40.0, 39.9),
-        ("2026-08-05", 39.5, 38.2),
-        ("2026-08-06", 38.0, 37.7),
+        ("2026-08-04", 40.0, 39.85, 39.9),
+        ("2026-08-05", 39.5, 38.15, 38.2),
+        ("2026-08-06", 38.0, 37.65, 37.7),
     ]
     out = _check(cost=39.9, entry="2026-08-04", ts="300628.SZ", rows=rows)
     assert out["action"] == "EXIT"
@@ -396,3 +427,39 @@ def test_build_includes_etf_holdings_in_cn_block(monkeypatch):
 
     syms = [h["symbol"] for h in out["holdings"]]
     assert "ETF:513180" in syms
+
+
+def test_strong_regime_uses_atr_stop_rule_opt105():
+    """CN Strong regime → entry-locked ATR line + stopRule label (UI check)."""
+    rows = [  # 8 pre-entry bars TR 0.5 → atr_pct 5% → ATR stop -10%
+        ("2026-07-20", 10.2, 9.95, 10.0),
+        ("2026-07-21", 10.2, 9.95, 10.0),
+        ("2026-07-22", 10.2, 9.95, 10.0),
+        ("2026-07-23", 10.2, 9.95, 10.0),
+        ("2026-07-24", 10.2, 9.95, 10.0),
+        ("2026-07-27", 10.2, 9.95, 10.0),
+        ("2026-07-28", 10.2, 9.95, 10.0),
+        ("2026-07-29", 10.2, 9.95, 10.0),
+        ("2026-08-03", 10.5, 10.25, 10.3),  # entry day close 10.3
+    ]
+    with patch("data_sync_service.db.get_connection", return_value=FakeConn(rows)):
+        out = ph._holding_check(
+            name="X", cost=10.0, entry_date="2026-08-03", ts="600111.SH",
+            trade_date="2026-08-07", regime="Strong",
+        )
+    assert out["stopRule"] == "atr"
+    # ATR line is never TIGHTER than the fixed -5% line (the whole point of
+    # Strong: don't cut winners with a fixed tight stop).
+    assert out["stopLossLine"] >= round(10.0 * 0.95, 3)
+    assert "ATR" in out["stopRuleDetail"]
+
+
+def test_weak_regime_uses_fixed_stop_rule_opt105():
+    rows = [("2026-08-03", 10.5, 10.25, 10.3)]
+    with patch("data_sync_service.db.get_connection", return_value=FakeConn(rows)):
+        out = ph._holding_check(
+            name="X", cost=10.0, entry_date="2026-08-03", ts="600111.SH",
+            trade_date="2026-08-07", regime="Weak",
+        )
+    assert out["stopRule"] == "fixed"
+    assert out["stopLossLine"] == round(10.0 * 0.95, 3)  # fixed -5%

@@ -85,6 +85,11 @@ export function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbo
             已加仓
           </span>
         )}
+        {h.realtimeWarning && (
+          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+            ⚠ 盘中预警
+          </span>
+        )}
       </div>
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[10.5px] tabular-nums text-[var(--k-muted)]">
         <span>止损线 {h.stopLossLine ?? '—'}</span>
@@ -92,6 +97,19 @@ export function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbo
         <span>金字塔线 {h.pyramidTriggerLine ?? '—'}</span>
         <span>已持 {h.holdingDays ?? '—'} 天</span>
         <span>到期 {h.expireDate ?? '—'}</span>
+        {h.stopRuleDetail && (
+          <span
+            className={cn(
+              'rounded px-1 py-px text-[9.5px]',
+              h.stopRule === 'atr'
+                ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                : 'bg-[var(--k-surface-3)] text-[var(--k-muted)]',
+            )}
+            title="OPT-105: Strong 日用 ATR×2 止损（入场锁定），其余固定 -5%/-8%"
+          >
+            规则：{h.stopRuleDetail}
+          </span>
+        )}
       </div>
       {(((h.alphaEvents?.length ?? 0) > 0) || h.industryFlow != null) && (
         <div className="mt-1 flex flex-col gap-0.5 text-[10.5px]">
@@ -127,6 +145,9 @@ export function HoldingRow({ h, onOpen }: { h: PortfolioHolding; onOpen?: (symbo
         </div>
       )}
       {h.reason && <div className="mt-1 text-[11px] text-red-600 dark:text-red-400">触发：{h.reason}</div>}
+      {h.realtimeAlert && !h.reason && (
+        <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">⚠ {h.realtimeAlert}</div>
+      )}
       {h.note && <div className="mt-1 text-[11px] text-[var(--k-muted)]">{h.note}</div>}
     </div>
   );

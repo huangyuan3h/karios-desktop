@@ -118,6 +118,45 @@ def backtest_recon_latest(limit: int = Query(4, ge=1, le=30)) -> dict[str, Any]:
     return {"ok": True, "items": latest_recon(limit=limit)}
 
 
+@router.get("/behavior-audit/latest")
+def behavior_audit_latest(limit: int = Query(2, ge=1, le=10)) -> dict[str, Any]:
+    """OPT-106: latest REAL-book vs backtest behavior audit (watchlist).
+
+    Compares the user's actual registry holdings against the S-3 backtest
+    "should hold" set: extra = 买了不该买 / 该卖没卖, missing = 该持没买.
+    Refreshed by POST /backtest/behavior-audit/refresh (simulate ~minutes)
+    or the daily close cron.
+    """
+    from data_sync_service.db.behavior_audit import latest_audit
+
+    return {"ok": True, "items": latest_audit(limit=limit)}
+
+
+@router.post("/behavior-audit/refresh")
+def behavior_audit_refresh(
+    tradeDate: str | None = Query(default=None, description="Audit day (YYYY-MM-DD); default today."),
+) -> dict[str, Any]:
+    """OPT-106: run the behavior audit NOW and persist it.
+
+    Runs the S-3 engine for the valid window (extended to today) — takes a
+    few minutes. The watchlist page triggers this after the user's trades.
+    """
+    from data_sync_service.db.paper_trading import today_iso
+    from data_sync_service.service.reconciliation import run_registry_and_persist
+
+    day = tradeDate or today_iso()
+    try:
+        out = run_registry_and_persist(day)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"behavior audit failed: {exc}") from exc
+    summary = {
+        m: {"expected": v["expected"], "actual": v["actual"],
+            "extra": v.get("extraList", []), "missing": v.get("missingList", [])}
+        for m, v in out["markets"].items() if v.get("available")
+    }
+    return {"ok": True, "reconDate": out["reconDate"], "markets": summary}
+
+
 @router.get("/run")
 def backtest_run(
     start: str = Query(..., description="Window start (YYYY-MM-DD)."),

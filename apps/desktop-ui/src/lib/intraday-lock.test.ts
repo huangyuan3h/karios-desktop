@@ -103,4 +103,28 @@ describe('resolveStableActionPrice (OPT-098 lock · freeze from 14:00)', () => {
     });
     expect(out).toBe(9.9);
   });
+
+  it('HK freeze extends to 16:00 close (CN stays 15:00)', () => {
+    const first = resolveStableActionPrice({
+      ...base,
+      symbol: 'HK:02099',
+      now: sh('2026-08-12T14:00:00+08:00'),
+      realtimePrice: 10.0,
+    });
+    expect(first).toBe(10.0);
+    const at1530 = resolveStableActionPrice({
+      ...base,
+      symbol: 'HK:02099',
+      now: sh('2026-08-12T15:30:00+08:00'),
+      realtimePrice: 9.4,
+    });
+    expect(at1530).toBe(10.0); // still frozen at the 14:00 snapshot
+    const afterHkClose = resolveStableActionPrice({
+      ...base,
+      symbol: 'HK:02099',
+      now: sh('2026-08-12T16:05:00+08:00'),
+      realtimePrice: 9.4,
+    });
+    expect(afterHkClose).toBe(9.4); // unfrozen after 16:00
+  });
 });

@@ -19,6 +19,9 @@ export const S3_STOP_LOSS_PCT = 0.05; // cost drawdown floor (CN + HK), backtest
 export const S3_TRAILING_STOP_PCT = 0.08; // CN peak drawdown, backtest trailing_stop_pct=-8
 export const S3_TRAILING_STOP_PCT_HK = 0.12; // HK peak drawdown (HK parallel line trailing -12)
 export const S3_MAX_HOLD_DAYS = 60; // max_hold_days, engine / paper / health share
+/** OPT-105: Strong-regime sessions use the ATR% x mult line (entry-locked in
+ *  backtest/paper; current-ATR approximation on the frontend). */
+export const S3_ATR_STOP_MULT = 2.0;
 /** ETF fallback stop: max drawdown from entry cost (no trendok stop available). */
 export const ETF_FALLBACK_MAX_LOSS_PCT = 0.05;
 /** ETF fallback stop: max drawdown from peak once position is in profit (trail). */
@@ -90,6 +93,8 @@ export type TrendOkLike = {
   buyZoneHigh?: number | null;
   stopLossPrice?: number | null;
   stopLossParts?: Record<string, unknown> | null;
+  /** OPT-099: backtest-caliber CLOSE peak since entry (from backend trendok). */
+  s3PeakClose?: number | null;
   values?: {
     emIndustry?: unknown;
     industry?: unknown;
@@ -633,6 +638,20 @@ function s3FixedHardStop(costPrice: number | null): number | null {
   return costPrice * (1 - S3_STOP_LOSS_PCT);
 }
 
+/** OPT-105: Strong-regime ATR stop line = cost × (1 − mult × ATR%). */
+function s3AtrHardStop(
+  costPrice: number | null,
+  atrPct: number | null,
+): number | null {
+  if (costPrice == null || !Number.isFinite(costPrice) || costPrice <= 0) {
+    return null;
+  }
+  if (atrPct == null || atrPct <= 0) {
+    return s3FixedHardStop(costPrice);
+  }
+  return costPrice * (1 - (S3_ATR_STOP_MULT * atrPct) / 100);
+}
+
 /** OPT-099: S-3 fixed trailing line = peak × (1-8% CN / 1-12% HK), armed from entry. */
 function s3FixedTrail(opts: {
   hardStop: number | null;
@@ -640,6 +659,10 @@ function s3FixedTrail(opts: {
   maxPrice: number | null;
   current: number | null;
   isHk: boolean;
+  /** Backtest-caliber CLOSE peak since entry (trendok s3PeakClose); null → fall back to maxPrice. */
+  s3PeakClose?: number | null;
+  /** OPT-105: Strong-regime ATR% — when set, the trail = peak × (1 − mult × ATR%). */
+  atrPct?: number | null;
 }): {
   trailArmed: boolean;
   peak: number | null;
@@ -648,10 +671,17 @@ function s3FixedTrail(opts: {
   exitStop: number | null;
   trigger: number | null;
 } {
-  const { hardStop, maxPrice, isHk } = opts;
-  const peak = maxPrice != null && Number.isFinite(maxPrice) ? maxPrice : null;
+  const { hardStop, maxPrice, isHk, s3PeakClose, atrPct } = opts;
+  const peak =
+    (s3PeakClose != null && Number.isFinite(s3PeakClose) && s3PeakClose > 0
+      ? s3PeakClose
+      : maxPrice) ?? null;
   const trailPct = isHk ? S3_TRAILING_STOP_PCT_HK : S3_TRAILING_STOP_PCT;
-  const trailStop = peak != null ? peak * (1 - trailPct) : null;
+  const trailMult =
+    atrPct != null && atrPct > 0
+      ? (S3_ATR_STOP_MULT * atrPct) / 100
+      : trailPct;
+  const trailStop = peak != null ? peak * (1 - trailMult) : null;
   let exitStop: number | null = null;
   if (hardStop != null && trailStop != null) exitStop = Math.max(hardStop, trailStop);
   else if (hardStop != null) exitStop = hardStop;
@@ -1048,17 +1078,25 @@ export function deriveActionCard(opts: {
   const cost = num(position.costPrice);
   const maxPrice = num(position.maxPrice);
   const isHk = marketOfSymbol(symbol) === 'hk';
+  const atr14 = atrFromParts(parts);
   const useDefensiveStop =
     mode === 'DEFEND' && isDefensiveSectorWhitelist(industryName);
-  // OPT-099 (2026-08-13): held positions exit on the S-3 BACKTEST caliber —
-  // fixed -5% stop from cost, NOT the trendok adaptive stop (vol bins 6-10%
-  // + ATR buffer) which was never the backtested rule. The engine, live
-  // paper, and the health card all use STOP_LOSS_PCT=-5.0; this makes the
-  // watchlist/copy action derive from the exact same line. Flat rows keep
-  // the trendok stop as an entry reference; ETFs keep their fallback shape.
+  // OPT-105 (2026-08-13 固化): regime-adaptive stops — Strong sessions use
+  // the ATR% x S3_ATR_STOP_MULT line (let winners run), Diverging/Weak keep
+  // the fixed -5%/-8% (cut fast). Mirrors the backtest S3_CONFIG and the
+  // live paper / health-card rule. Uses the CURRENT ATR14 (approx of the
+  // backend's entry-locked ATR — the health card shows the authoritative one).
+  const atrPct =
+    atr14 != null && atr14 > 0 && currentPrice != null && currentPrice > 0
+      ? (atr14 / currentPrice) * 100
+      : null;
+  const useAtrStop =
+    held && !isEtf && regime === 'Strong' && atrPct != null && atrPct > 0;
   const trendHardStop =
     held && !isEtf
-      ? s3FixedHardStop(cost)
+      ? useAtrStop
+        ? s3AtrHardStop(cost, atrPct!)
+        : s3FixedHardStop(cost)
       : num(trendok?.stopLossPrice);
   const defensiveStop = useDefensiveStop
     ? resolveDefensiveHardStop({
@@ -1072,7 +1110,9 @@ export function deriveActionCard(opts: {
     hardStop =
       hardStop != null ? Math.max(hardStop, defensiveStop) : defensiveStop;
   }
-  const atr14 = atrFromParts(parts);
+  // OPT-099: S-3 trailing peak = backtest-caliber CLOSE peak since entry
+  // (intraday high) only when the backend value is absent.
+  const s3PeakClose = num(trendok?.s3PeakClose);
   // ETF fallback (RuleType=ETF_FALLBACK): trendok data-starved (no stop) →
   // price-drawdown stop derived from entry cost / peak. Keeps the position
   // protected with a relative stop instead of 0/none hard-exit behaviour.
@@ -1100,6 +1140,8 @@ export function deriveActionCard(opts: {
           maxPrice,
           current: currentPrice,
           isHk,
+          s3PeakClose,
+          atrPct: useAtrStop ? atrPct : null,
         })
       : deriveTriggerAndTrail({
           hardStop,

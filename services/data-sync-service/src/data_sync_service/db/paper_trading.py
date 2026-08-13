@@ -94,6 +94,10 @@ SOURCES = (SOURCE_TV, SOURCE_ALPHA, SOURCE_MANUAL, SOURCE_S3, SOURCE_S3_HK)
 # exact values and operators can tune them in one place.
 MAX_HOLD_DAYS = 60  # S-3: hold up to 60 days (5-day force-close was proven wrong)
 STOP_LOSS_PCT = -5.0  # i.e. net pnl_pct <= -5% triggers stop_hit (v0.2: net)
+# OPT-105 (2026-08-13 固化): CN S-3 Strong-regime sessions replace the fixed
+# stop/trail with the entry-locked ATR% x S3_ATR_STOP_MULT line; Diverging/
+# Weak keep the fixed constants above. Mirrors the backtest S3_CONFIG.
+S3_ATR_STOP_MULT = 2.0
 TARGET_PNL_PCT = 100.0  # S-3: no active take-profit (10% target was proven a profit killer)
 SCORE_FLOOR = 0.0  # S-3: never close on score retreat (floor 30 was proven to kill trends)
 TRAILING_STOP_PCT = -8.0  # S-3: close when price pulls back 8% from post-entry peak (backtest-strategy.md 6.6/6.7)

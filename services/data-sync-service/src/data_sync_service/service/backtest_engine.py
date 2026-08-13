@@ -80,6 +80,43 @@ GATE_REASON_MAINLINE = "mainline"
 GATE_REASON_SENTIMENT = "sentiment"
 GATE_REASON_INDEX_RED = "index_red"
 
+# OPT-103: A-share board price limits (main 10% / ChiNext+STAR 20% / BSE 30%).
+# Derived from the previous session's close — no extra data source needed.
+# ST 5% is not modeled (no ST flag in the daily table); HK has no limits.
+def _board_limit_pct(ts: str) -> float | None:
+    code = str(ts).split(".")[0]
+    if code.startswith(("300", "301", "688")):
+        return 0.20
+    if code.startswith(("8", "4")):  # BSE
+        return 0.30
+    if code.startswith(("60", "00")):
+        return 0.10
+    return None
+
+
+def _at_limit(data, ts: str, day: str, close_px: float, *, up: bool) -> bool:
+    """True when ``close_px`` closed pinned at the board limit (limit-up →
+    cannot buy in; limit-down → cannot sell out). qfq prices scale the ratio,
+    so a 1-cent tolerance absorbs the rounding."""
+    limit_pct = _board_limit_pct(ts)
+    if limit_pct is None:
+        return False
+    series = data.closes_by_ts.get(ts)
+    if not series:
+        return False
+    prev: float | None = None
+    for d, c in series:
+        if str(d) >= day:
+            break
+        prev = float(c)
+    if prev is None or prev <= 0:
+        return False
+    limit_px = round(prev * (1.0 + (limit_pct if up else -limit_pct)), 2)
+    if up:
+        return close_px >= limit_px - 0.01
+    return close_px <= limit_px + 0.01
+
+
 # Live mainline momentum-breakout thresholds (hot-industry-picks.ts).
 MOMENTUM_THRESHOLD_YI = 20e8
 MOMENTUM_RANK_CHANGE = 10
@@ -124,6 +161,17 @@ class BacktestConfig:
     atr_size_window: int = 0
     atr_size_cap: float = 2.0
     atr_benchmark_pct: float = 2.0
+    # OPT-104: per-symbol volatility-adaptive stops — when >0, the stop and
+    # trailing lines become entry-time ATR% x mult instead of the fixed
+    # stop_loss_pct / trailing_stop_pct (per-trade, locked at entry).
+    atr_stop_mult: float = 0.0
+    # OPT-105: hybrid mode — ATR line only in Strong; Weak always fixed.
+    # When set, Diverging sessions also fall back to the fixed line.
+    atr_stop_strong_only: bool = False
+    # §19.2 D1: continuous-market-strength selector. When >0, replaces the
+    # regime condition: ATR line applies when today's 0-100 strength score
+    # (regime_strength_score) is >= this floor. 0 = use the regime rule.
+    atr_stop_strength_min: float = 0.0
     max_per_industry: int = 0
     entry_sort: str = "score"
     min_mv: float = 0.0
@@ -813,6 +861,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
     closed_trades: list[BacktestTrade] = []
     positions_by_day: list[dict] = []  # end-of-day holding snapshots (2026-08-11)
     gated_blocks: dict[str, int] = defaultdict(int)
+    strength_cache: dict[str, float] = {}  # §19.2 D1: day -> strength score
     last_panic_idx = -10 ** 9
     day_index = 0
 
@@ -866,6 +915,55 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             return 1.0
         scale = config.atr_benchmark_pct / atr_pct
         return min(config.atr_size_cap, max(1.0 / config.atr_size_cap, scale))
+
+    def atr14_pct_for(ts: str, day: str) -> float:
+        """ATR14 / close x 100 at ``day`` (0.0 when bars are insufficient).
+
+        Used by OPT-104 per-symbol stops; the value is locked at entry so a
+        stop never drifts with later volatility changes."""
+        bars = data.bars_by_ts.get(ts)
+        if not bars:
+            return 0.0
+        recent = sorted(
+            [b for b in bars if str(b[0]) <= day], key=lambda b: str(b[0])
+        )[-15:]
+        if len(recent) < 8:
+            return 0.0
+        trs: list[float] = []
+        prev: float | None = None
+        for b in recent:
+            try:
+                hi, lo = float(b[2]), float(b[3])
+            except (TypeError, ValueError):
+                continue
+            if prev is None:
+                prev = hi
+                continue
+            trs.append(max(hi - lo, abs(hi - prev), abs(lo - prev)))
+            prev = hi
+        if not trs:
+            return 0.0
+        atr = sum(trs) / len(trs)
+        px = entry_price_for(ts, day)
+        if px is None or px <= 0:
+            return 0.0
+        return atr / px * 100.0
+
+    def strength_for(day: str) -> float:
+        """§19.2 D1: 0-100 continuous market-strength score for ``day``
+        (regime_strength_score, cached per day). 0.0 on failure → fixed
+        stops apply (fail-closed). Only called when atr_stop_strength_min > 0."""
+        cached = strength_cache.get(day)
+        if cached is not None:
+            return cached
+        from data_sync_service.service.market_regime import regime_strength_score
+
+        try:
+            val = float(regime_strength_score(as_of_date=day, market="CN")["strength"])
+        except Exception:  # noqa: BLE001
+            val = 0.0
+        strength_cache[day] = val
+        return val
 
     for day in data.calendar:
         day_scores = data.scores_by_day.get(day, {})
@@ -1069,6 +1167,12 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             px = entry_price_for(ts, day)
             if px is None or px <= 0:
                 continue
+            # OPT-103: limit-up close = cannot buy in today (board pinned);
+            # skip the signal — the engine re-evaluates next session, so a
+            # still-qualified name re-enters naturally the following day.
+            if config.market == "CN" and _at_limit(data, ts, day, px, up=True):
+                gated_blocks["limit_up"] += 1
+                continue
             regime = data.regime_by_day.get(day)
             pos_scale = 1.0 if regime == REGIME_STRONG else (
                 config.diverging_scale if regime == REGIME_DIVERGING else 0.0
@@ -1083,6 +1187,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 "score_at_entry": score,
                 "industry": data.industry_by_ts.get(ts),
                 "position_pct": config.position_pct * pos_scale * atr_scale_for(ts, day),
+                "atr_pct": atr14_pct_for(ts, day) if config.atr_stop_mult > 0 else 0.0,
             }
 
         # 2) Daily mark-to-market + close conditions (LIVE picker, as-of score).
@@ -1104,20 +1209,50 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             if close_px > float(pos["peak_price"]):
                 pos["peak_price"] = close_px
 
+            # OPT-103: limit-down close = cannot sell today (pinned at the
+            # board); roll every exit/trim decision to the next session.
+            # Consecutive limit-downs roll naturally. Pyramid adds are also
+            # skipped on a limit-down day (cannot buy into a board pin).
+            if config.market == "CN" and _at_limit(data, pos["ts_code"], day, close_px, up=False):
+                continue
+
+            # OPT-104/105: regime-adaptive stops — Strong (and Diverging)
+            # sessions use the volatility-adaptive ATR line (let winners run);
+            # Weak sessions fall back to the FIXED stop/trail (cut fast, the
+            # edge that the pure-ATR experiment lacked in weak markets).
+            atr_pct = float(pos.get("atr_pct") or 0.0)
+            regime_today = data.regime_by_day.get(day)
+            if config.atr_stop_strength_min > 0:
+                # §19.2 D1: continuous-strength selector replaces the regime
+                # rule — ATR line when today's 0-100 strength >= the floor.
+                atr_regime_ok = strength_for(day) >= config.atr_stop_strength_min
+            else:
+                atr_regime_ok = (
+                    regime_today == REGIME_STRONG
+                    if config.atr_stop_strong_only
+                    else regime_today in (REGIME_STRONG, REGIME_DIVERGING)
+                )
+            if config.atr_stop_mult > 0 and atr_pct > 0 and atr_regime_ok:
+                stop_i = -config.atr_stop_mult * atr_pct
+                trail_i = -config.atr_stop_mult * atr_pct
+            else:
+                stop_i = config.stop_loss_pct
+                trail_i = config.trailing_stop_pct
+
             reason = _pick_close_reason(
                 t=pos,
                 pnl_pct=net,
                 holding_days=holding,
                 registry_symbols=None,  # v0: no registry history → fail open
                 score=score_asof,
-                stop_loss_pct=config.stop_loss_pct,
+                stop_loss_pct=stop_i,
                 target_pnl_pct=config.target_pnl_pct,
                 max_hold_days=config.max_hold_days,
                 score_floor=config.score_floor,
             )
-            if reason is None and config.trailing_stop_pct != 0:
+            if reason is None and trail_i != 0:
                 peak = float(pos["peak_price"])
-                if peak > 0 and (close_px - peak) / peak * 100.0 <= config.trailing_stop_pct:
+                if peak > 0 and (close_px - peak) / peak * 100.0 <= trail_i:
                     reason = CLOSE_REASON_TRAILING
             if reason is None and config.profit_trail_trigger_pct > 0 and config.profit_trail_pct < 0:
                 # A6 (2026-08-12 · defensive): once the leg is past the profit

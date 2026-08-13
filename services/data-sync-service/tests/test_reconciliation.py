@@ -116,3 +116,53 @@ def test_run_and_persist(monkeypatch) -> None:
     assert len(rows) == 2  # CN + HK
     assert rows[0]["expected"] == 2
     assert rows[0]["detail"][0]["type"] == "missing"
+
+
+def test_reconcile_registry_extra_kinds(monkeypatch) -> None:
+    """OPT-106: registry holdings vs backtest — extra classified into
+    'exited' (该卖没卖) vs 'never_entered' (买了不该买)."""
+
+    class _Trade:
+        symbol = "CN:600002"  # backtest entered 08-05, closed 08-06 → exited
+        entry_date = "2026-08-05"
+        close_date = "2026-08-06"
+
+    def _fake_run_reg(**overrides):
+        class _Run:
+            positions_by_day = [
+                {
+                    "date": "2026-08-07",
+                    "positions": [
+                        {"symbol": "CN:600001", "market": "CN", "ts_code": "600001.SH",
+                         "entry_date": "2026-08-05", "score_at_entry": 88.0, "position_pct": 0.1},
+                    ],
+                }
+            ]
+            trades = [_Trade()]
+
+        for k, v in overrides.items():
+            setattr(_Run, k, v)
+        return _Run()
+
+    registry = [
+        {"symbol": "CN:600001", "positionPct": 5.0, "entryDate": "2026-08-05",
+         "name": "对齐票", "costPrice": 10.0},   # aligned
+        {"symbol": "CN:600002", "positionPct": 8.0, "entryDate": "2026-08-05",
+         "name": "该卖没卖", "costPrice": 10.0},  # backtest exited → exited
+        {"symbol": "CN:600003", "positionPct": 8.0, "entryDate": "2026-08-06",
+         "name": "不该买", "costPrice": 12.0},     # never entered → never_entered
+    ]
+    monkeypatch.setattr(
+        "data_sync_service.db.watchlist_automation.list_registry", lambda: registry
+    )
+    with patch.object(recon, "simulate", return_value=_fake_run_reg()), \
+         patch.object(recon, "BacktestData", return_value=None):
+        out = recon.reconcile_registry("2026-08-07")
+    m = out["markets"]["CN"]
+    assert m["expected"] == 1
+    assert m["actual"] == 3
+    assert m["extra"] == 2
+    by_sym = {e["symbol"]: e for e in m["extraList"]}
+    assert by_sym["CN:600002"]["kind"] == "exited"       # 该卖没卖
+    assert by_sym["CN:600003"]["kind"] == "never_entered"  # 买了不该买
+    assert m["missing"] == 0

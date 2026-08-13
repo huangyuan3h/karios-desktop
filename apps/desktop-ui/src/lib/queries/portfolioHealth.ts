@@ -23,6 +23,12 @@ export interface PortfolioHolding {
   reason?: string;
   note?: string;
   status?: string;
+  /** OPT-101: realtime line breach not yet confirmed by the close. */
+  realtimeWarning?: boolean;
+  realtimeAlert?: string;
+  /** OPT-105: which stop rule produced the lines ('atr' | 'fixed'). */
+  stopRule?: string;
+  stopRuleDetail?: string;
   /** 2026-08-12 info layer — alpha radar events mapped to this holding. */
   alphaEvents?: Array<{
     trend?: string;

@@ -2513,3 +2513,206 @@ S-3 候选区（`paper_s3.build_s3_candidates`）与回测引擎已同码同参 
 **结论存档**：现在主表 / copy markdown / 体检卡 / live paper / 回测引擎——
 五处退出口径同式（-5% 固定止损 · -8%/-12% 吊灯 · 60 天），
 用户 14:00 看到的每个 EXIT 数字就是回测验证过的数字。
+
+### OPT-100：HK 及时信号落地——体检卡实时判定 + 收盘峰值前端对齐 + HK 冻结至 16:00（2026-08-13）
+
+**状态**：[x]
+
+**背景（用户拍板）**：HK 最优解 = trailing **-12%**（完整灵敏度扫描见 strategy-params §1b，
+唯一三窗全过；-10 OOS2 高 19.6pt 但近端劣化 25.4pt，-14/-16 OOS2 崩 -160pt）。
+用户要求"用及时信号更新到 HK 的 action，保证能 follow"——14:00 看到的 HK 动作
+必须与可执行口径一致（此前体检卡 HK 用昨日收盘显示 HOLD，主表实时价已 EXIT，两处打架）。
+
+**变更**：
+1. **体检卡 HK 行实时判定**（后端 `portfolio_health.py`）：`_holding_check` 新增
+   `realtime_price`（HK 分支批量取 `fetch_realtime_quotes`，Sina HK 源）；action/pnl/
+   回撤用实时价评估，**峰值保持收盘口径**（回测铁律）；输出 `evaluatedPrice`/`realtime`
+   字段。CN 行保持收盘口径不变（OPT-097 双轨：CN=收盘权威，HK=及时信号）
+2. **前端 S-3 trail 峰值对齐收盘**（`execution-action.ts` + trendok `s3PeakClose`）：
+   后端 trendok 按 registry entryDate 计算"自入场起最高收盘"（`s3PeakClose`），
+   前端 `s3FixedTrail` 优先用它（回退 maxPrice）——主表/copy 移动线 = 回测/体检卡
+   同源（OPT-087 已修 paper，此为前端最后一块）
+3. **HK 冻结窗口延至 16:00**（`intraday-lock.ts`）：14:00 快照冻结到 HK 收盘
+   （CN 仍 15:00）——15:00-16:00 HK action 不再跳变
+
+**验证**：后端 19 passed（+1 realtime 判定测试）· 前端 758 passed（+1 HK 冻结）·
+tsc/ruff 干净 · API 实证：HK:2099 → `EXIT stop_loss（净亏6.0%>=5%）rt=True eval=190.7`
+（实时价已破 192.66，与主表/copy 一致）；CN:300628/ETF:513180 → HOLD rt=False（收盘口径不变）·
+服务已重启
+
+**结论存档**：HK 三条线（体检卡/主表/copy/paper/回测）全部统一：trail -12% 收盘峰值、
+止损 -5%、60 天；体检卡 HK action 与主表/copy 实时同步——用户 14:00 follow 任意一处
+都是同一个数字。
+
+### OPT-102：蒙特卡洛置信度分析 + 涨跌停缺口记录（2026-08-13）
+
+**状态**：[x]
+
+**工具**：`scripts/run_monte_carlo.py --market CN|HK --iters N`——单次长窗 simulate
+（同引擎同口径）→ 平仓日账户收益序列（close-date 分组 Σ pnl×position_pct）→
+**block bootstrap（块长 5 日，保持短期收益簇）** 5000/3000 次 → 收益/DD/夏普分布。
+
+**CN（2021-08~2026-08 · 1196 笔 · 5000 次）**：
+- 单次 +250.8% / 夏普 2.65（与固化 LONG_WINDOW_CN 完全一致 ✓ 口径验证）
+- 分布：5%→+93.7% / 中位 +247.5% / 95%→+422.3%；单次位于 51.4% 分位
+- **最差 5% 情形（95% 置信下界）仍 +93.7%——运气极差也不亏**
+
+**HK（2022-06~2026-08 · 599 笔 · 3000 次）**：
+- 单次 +363.8% / 夏普 2.17；5%→+103.8% / 中位 +345.2% / 95%→+712.6%
+- 单次位于 54% 分位；最差 5% 情形 +103.8%
+
+**结论**：两条线单次结果都落分布中位附近（稳定，非偶然）；95% 置信下界仍大正——
+即使执行偏差/运气差，策略期望不亏。用户"操作与回测有出入"的偏差落在分布正常噪音内。
+
+**口径标注**：MC 收益分布与固化常量同口径（可靠）；MC 的 DD 基于平仓日序列
+（无持仓期 mark-to-market），比引擎日级 DD（CN 40.9）乐观——DD 分布仅作方向参考。
+
+**涨跌停缺口（记录，未修）**：回测引擎无涨跌停建模（grep 零命中）——涨停买不进/
+跌停卖不出未建模，滑点 0.05% 不覆盖跳空；影响方向=回测略乐观（入场高估+出场
+按跌停价成交 vs 实际次日更低）。蒙特卡洛测"运气"不测"摩擦"——涨跌停需单独建模。
+
+### OPT-103：回测涨跌停建模（更真实的成交假设 · 2026-08-13）
+
+**状态**：[x]
+
+**需求**：回测从未考虑涨跌停（涨停买不进/跌停卖不出）——回测略乐观
+（入场高估 + 出场按跌停价成交 vs 实际次日更低）。
+
+**实现**（`backtest_engine.py`，无需新数据源）：
+- `_board_limit_pct`：主板 10% / 创业板+科创（300/301/688）20% / 北交所（8/4 开头）30%；
+  ST 5% 未建模（无 ST 标记）；HK 无涨跌停
+- `_at_limit`：前一日收盘推导涨停/跌停价（qfq 价按比例缩放，1 分容差）
+- **入场**：收盘封涨停 → 当日买不进，跳过该信号（引擎逐日重估，次日仍合格自然再入场）
+- **出场**：收盘封跌停 → 当日卖不出，所有退出/加仓顺延次日（连续跌停自然滚动）
+
+**验证**：+3 测试（涨停阻入场次日再入 / 跌停顺延次日成交 / HK 无限制），
+引擎 71 passed · ruff 干净；HK 三窗与旧基线完全一致（正确性验证：代码对 HK 不生效）
+
+**重固化基线（铁律：引擎变化 → 三窗重跑 --save-baseline）**：
+- CN：OOS2 **+119.4%/15.4/5.27** · train **+67.2%/16.6/2.85** · valid **+89.1%/11.8/9.07**
+  （旧基线 113.7/76.7/98.9：OOS2 +6.7pt=跳过追涨停亏损入场；train -9.5pt=强势期
+  涨停入场被拦+跌停顺延；valid 微降——**数字更保守更真实**）
+- HK：不变（+2.2pt 容差内）· 已固化
+
+### OPT-104：波动率自适应止损（ATR% × mult）三窗实验——拒收（2026-08-13）
+
+**状态**：[x]（拒收 · 固定 % 维持）
+
+**需求（用户提出）**：每只股票波动率不同，统一 -5%/-12% 止损是否合理？
+**实现**：引擎 `atr_stop_mult` 配置（>0 时 stop/trail = 入场时 ATR14% × mult，
+锁定于入场日；`atr14_pct_for` 复用 bars OHLC，无新数据）。+1 测试（ATR 止损
+比固定 -15 更紧触发）。
+
+**三窗结果（vs 涨跌停版基线 119.4/67.2/89.1）**：
+| mult | OOS2 | train | valid | 判定 |
+|------|------|-------|-------|------|
+| 2.0 | +114.4 (-5.0) | +92.7 (+25.5) | +50.6 (-38.4) | ✗ valid 崩 |
+| 2.5 | +109.6 (-9.8) | +85.0 (+17.8) | +42.4 (-46.6) | ✗ valid 崩 |
+| 3.0 | +111.9 (-7.5) | +56.5 (-10.7) | +44.3 (-44.7) | ✗ 三窗皆劣 |
+
+**结论**：train（强势段）ATR 止损大胜（低波动票不被紧止损扫掉）；valid（弱市段）
+崩盘（高波动票止损距离过大 → 回撤 11.8%→17-19%）。**固定紧止损的价值恰在弱市
+快砍保命；波动率自适应把"松"给了弱市最危险的高波动票**。与 2026-08-09 ATR 仓位
+实验结论一致（波动率类调整在该体系不占优）。**维持固定 -5/-8（HK -12）**。
+
+### OPT-105：按市场强弱结合的动态止损——Strong-only ATR 固化（2026-08-13）
+
+**状态**：[x]（全链路完成）
+
+**需求（用户架构洞察）**：卖出本质是 `f(止损线, 市场强弱, ...) → 卖/不卖` 的函数。
+用户提出"两种止损按市场强弱结合"：强势段 ATR 让利润跑，弱市段固定线快砍。
+
+**实验链**（引擎 `atr_stop_mult` + `atr_stop_strong_only`）：
+| 变体 | OOS2 | train | valid | 判定 |
+|------|------|-------|-------|------|
+| 纯 ATR 2.0/2.5/3.0 | 114.4/109.6/111.9 | 92.7/85.0/56.5 | 50.6/42.4/44.3 | ✗ valid 崩（高波动票弱市止损太松）|
+| hybrid（Strong+Diverging=ATR）2.0 | 112.6 | 89.7 | 87.2 | ✗ OOS2 -6.7pt（Diverging 段劣化源）|
+| **Strong-only 2.0** | **+123.3 (+3.9)** | **+73.8 (+6.6)** | **+89.1 (持平)** | ✅ **三窗全过 → 固化** |
+| Strong-only 2.4 | 122.4 | 74.1 | 89.1 | 平台期（2.0 为定案档）|
+
+**固化内容**（`S3_CONFIG`：atr_stop_mult=2.0 + atr_stop_strong_only=True）：
+- 回测：Strong 日止损/吊灯 = **入场锁定 ATR14% × 2.0**（低波动票不被紧止损扫掉）；Diverging/Weak 回退固定 -5/-8（弱市快砍）
+- 回测基线已重固化（OOS2 123.3/12.7/5.33 · train 73.8/15.7/2.85 · valid 89.1/12.1/9.42）
+
+**全链路落地**：
+1. **live paper**（`paper_trading.py`）：CN S-3 paper（source=S3）出场按当日 regime
+   切换——`_atr_pct_at_entry`（entry 前 bars 回溯算，与回测同式）x `S3_ATR_STOP_MULT`
+   （db/paper_trading.py 常量）x Strong；Diverging/Weak/失败回退固定 -5/-8（fail-closed）；
+   `_cn_regime_today` 复用引擎 regime loader（延迟 import 避循环）。+3 测试
+2. **体检卡**（`portfolio_health.py`）：`_holding_check` 加 regime——Strong 用 ATR 线
+   （entry 前 45 天 bars 算锁定 ATR），输出 `stopRule`/`stopRuleDetail`（'atr'/'fixed'）；
+   `_build_holdings_block` 传 regime（CN only）。+2 测试
+3. **前端**（`execution-action.ts`）：`useAtrStop`（held && !ETF && regime=Strong && atr14）
+   → `s3AtrHardStop` + trail 同式（当前 ATR 近似，健康卡为权威锁定值）；`S3_ATR_STOP_MULT` 常量
+4. **UI 规则检查**（`PortfolioHealthCard`）：每行止损线旁显示「规则：」徽章
+   （Strong·ATR×2.0 入场锁定 / 固定 -5%/-8%），hover 有说明——用户可直接核对今天用的是哪条线
+5. 验证：前端 759 passed（+1 ATR 线测试，14 个固定线测试改用 Diverging gate）·
+   后端 137 passed（+6）· ruff/tsc 干净 · API 实证（今日 Diverging → fixed 线 37.905）
+
+**验证**：+2 测试（ATR 线触发 / Weak 日走固定线）· 引擎 73 passed · ruff 干净
+
+### §19.2 D1：连续市场强度分（0-100）驱动止损——分箱实验全拒收（2026-08-13）
+
+**状态**：[x]（关闭 · 无增量 · 维持 OPT-105 regime 规则）
+
+**想法（用户）**：动态市场强弱数字（0-100）回测验证已知函数，本质像反向传播。
+**关键事实**：该数字已存在——`regime_strength_score`（0-100，CN/HK 共用标尺，
+绿灯占比+动量+结构三分量），体检卡头部显示；离散 regime 是它的粗离散化；
+as_of_date 支持历史回放（29ms/天，5 年 0.6 分钟）→ 回测可行性成立。
+
+**实现**：引擎 `atr_stop_strength_min`（>0 时 strength ≥ X 用 ATR 线，替代 regime 条件；
+lazily 缓存每日 strength）+1 测试（strength 高低切换 ATR/固定线）。
+
+**扫描（X=40/50/60/70 × 三窗，vs 固化基线 123.3/73.8/89.1）**：全部拒收——
+train 全线大胜（+5~+20pt：宽松档更多 ATR 日）；valid 随 X 恢复（-11.8→+0.5）；
+**OOS2 全面劣化 -9~-14pt**。根因：2024-25 弱市里"分数高但未全绿"的脆弱强势日
+ATR 止损依然亏——离散 regime（全绿=Strong）天然过滤了它们，连续分数做不到。
+
+**结论**：strength 分数作为止损选择器无增量；维持 OPT-105 的 regime 2 档规则。
+引擎开关保留（默认关）。**不新增连续拟合**（样本 1400 笔撑不起连续参数，
+反向传播需要百万级样本——三窗铁律就是我们的正则化）。
+
+### OPT-106：行为对账——watchlist 提醒不符合回测的操作（2026-08-13）
+
+**状态**：[x]
+
+**需求（用户）**：保证系统稳定且与回测一致——当有不符合回测的行为，在 watchlist 提醒：
+① 买了不该买的 ② 没有卖应该卖的。
+
+**实现**：
+1. **`reconciliation.reconcile_registry`**：真实持仓（watchlist registry positionPct>0）vs
+   回测应持（simulate 当日 positions_by_day 快照）——extra（持而回测不持）按
+   `kind` 分类：`exited`（回测曾入场且已退出 = 该卖没卖）/ `never_entered`（回测从未
+   入场 = 买了不该买）；missing（回测应持而用户没持 = 该持没买）
+2. **`db/behavior_audit.py`** 新表 + alembic 0031（audit_date/market 唯一，幂等 upsert）
+3. **API**：`GET /api/backtest/behavior-audit/latest`（读）+ `POST .../refresh`
+   （触发 simulate，实测 32 秒）
+4. **前端**：WatchlistPage 顶部 `BehaviorAuditBanner`——extra 红/橙标
+   （🔴该卖没卖/🟠买了不该买）+ missing 蓝标（🔵该持没买）+ 刷新对账按钮；
+   无差异时显示 ✅ 一致（保持可见）
+5. 顺带修复：reconciliation 的 S3_CONFIG 同步 OPT-105 ATR 止损参数（此前对账
+   用的是旧固定线——不同口径！）
+
+**验证**：+2 后端测试（extra 分类 exited/never_entered）· +2 前端测试 · 前端 761 passed ·
+后端相关 210 passed · ruff/tsc 干净 · **真实对账实证（32 秒）**：
+CN:300628 → never_entered（买了不该买 ✓）；HK 13 只 → missing（该持没买）· 迁移已跑
+
+**使用**：watchlist 页顶部横幅即看；每次交易后可点「刷新对账」（约 30 秒-4 分钟）。
+
+### OPT-107：主表"隐藏不符合回测"filter（2026-08-13）
+
+**状态**：[x]
+
+**需求（用户）**：watchlist 主表加一个 filter——不符合回测的（行为对账 extra 的
+买了不该买/该卖没卖）像 silent-dead filter 一样可以一键隐藏。
+
+**实现**：
+- `WatchlistTable`：`auditExtraSymbols`/`hideAuditExtra`/`setHideAuditExtra` props；
+  visibleSortedItems 过滤加入 `shouldHideForAuditFilter`（纯函数，可测）
+- 表头 toggle 按钮「隐藏不符合回测 N」（琥珀高亮态 + aria-label），与
+  showHidden 按钮并列；开启时过滤、关闭时恢复
+- `WatchlistPage`：`hideAuditExtra` state + `auditExtraSymbols`（共享
+  useBehaviorAuditQuery 缓存，与 Banner 零重复请求）
+
+**验证**：+3 纯函数测试（开/关/空集）· 前端 763 passed · tsc 干净
+**使用**：表头按钮一键切换；Banner 仍保留（提醒 + 刷新入口）。

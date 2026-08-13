@@ -664,8 +664,211 @@ def test_trailing_stop_closes_on_peak_pullback() -> None:
     assert abs(t.pnl_pct - (13.0 - 0.3)) < 0.01
 
 
+def test_limit_up_blocks_entry_then_enters_next_day_opt103() -> None:
+    """OPT-103: a limit-up close cannot be bought; the signal re-evaluates
+    next session and enters once the price is no longer pinned."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {
+        "2026-06-18": {CN1: 90.0},
+        "2026-06-19": {CN1: 90.0},
+        "2026-06-22": {},
+    }
+    prices = {
+        TS1: {
+            "2026-06-17": 10.0,  # prev close
+            "2026-06-18": 11.0,  # 10 x 1.1 = limit-up pinned → cannot buy
+            "2026-06-19": 10.5,  # not pinned (11 x 1.1 = 12.1) → entry
+            "2026-06-22": 10.8,
+        }
+    }
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-22",
+        stop_loss_pct=-15.0,
+        target_pnl_pct=30.0,
+        max_hold_days=10,
+        trailing_stop_pct=0.0,
+    )
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    assert run.summary.gated_blocks.get("limit_up", 0) == 1
+    assert run.trades[0].entry_date == "2026-06-19"
+    assert run.trades[0].entry_price == 10.5
+
+
+def test_limit_down_rolls_exit_to_next_session_opt103() -> None:
+    """OPT-103: a limit-down close cannot be sold; the stop exit rolls to
+    the next session (which is not pinned) and fills there."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
+    scores = {
+        "2026-06-18": {CN1: 90.0},
+        "2026-06-19": {},
+        "2026-06-22": {},
+        "2026-06-23": {},
+    }
+    prices = {
+        TS1: {
+            "2026-06-17": 10.0,
+            "2026-06-18": 10.0,  # entry
+            "2026-06-19": 9.0,   # 10 x 0.9 = limit-down pinned → cannot sell
+            "2026-06-22": 9.1,   # 9 x 0.9 = 8.1, not pinned; still below stop → fill
+            "2026-06-23": 9.5,
+        }
+    }
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-23",
+        stop_loss_pct=-5.0,
+        target_pnl_pct=30.0,
+        max_hold_days=10,
+        trailing_stop_pct=0.0,
+    )
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    assert run.trades[0].close_reason == "stop_hit"
+    assert run.trades[0].close_date == "2026-06-22"  # rolled past the pinned day
+    assert run.trades[0].close_price == 9.1
+
+
+def test_atr_stop_mode_tightens_loose_fixed_stop_opt104() -> None:
+    """OPT-104: atr_stop_mult replaces the fixed stop with entry-time
+    ATR% x mult. A 3% ATR name with mult=2 gets a -6% stop — here the fixed
+    -15% would NOT have stopped the -12% drawdown, the ATR stop does."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}}
+    prices = {
+        TS1: {
+            "2026-06-17": 10.0,
+            "2026-06-18": 10.0,  # entry; ATR ~0.3 = 3% of price
+            "2026-06-19": 10.3,
+            "2026-06-22": 10.1,
+            "2026-06-23": 9.3,  # above the 10.1x0.9=9.09 limit-down; -7% vs entry
+        }
+    }
+    data = _data(calendar, scores, prices)
+    data.bars_by_ts = {
+        TS1: [
+            ("2026-06-08", "9.8", "10.0", "9.7", "9.9", "1000"),
+            ("2026-06-09", "9.9", "10.1", "9.8", "10.0", "1000"),
+            ("2026-06-10", "10.0", "10.2", "9.9", "10.1", "1000"),
+            ("2026-06-11", "10.1", "10.2", "10.0", "10.1", "1000"),
+            ("2026-06-12", "10.0", "10.2", "9.9", "10.1", "1000"),
+            ("2026-06-15", "9.9", "10.1", "9.8", "10.0", "1000"),
+            ("2026-06-16", "10.0", "10.2", "9.9", "10.1", "1000"),
+            ("2026-06-17", "10.0", "10.1", "9.9", "10.0", "1000"),
+            ("2026-06-18", "10.0", "10.1", "9.9", "10.0", "1000"),
+            ("2026-06-19", "10.2", "10.4", "10.1", "10.3", "1000"),
+            ("2026-06-22", "10.2", "10.3", "10.0", "10.1", "1000"),
+            ("2026-06-23", "9.3", "9.4", "9.2", "9.3", "1000"),
+        ]
+    }
+    data.close_by_ts_day[TS1] = {d: float(v) for d, v in prices[TS1].items()}
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-23",
+        stop_loss_pct=-15.0,  # loose — the ATR stop must be the trigger
+        target_pnl_pct=100.0,
+        max_hold_days=60,
+        trailing_stop_pct=0.0,
+        atr_stop_mult=2.0,  # ~3% ATR x 2 = -6% stop
+    )
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    # ATR mode fires (stop or trail — both are ATR% x mult here; the fixed
+    # -15% stop / disabled trail would NOT have triggered on this drawdown).
+    assert run.trades[0].close_reason in ("stop_hit", "trailing_stop")
+    assert run.trades[0].close_date == "2026-06-23"
+    assert run.trades[0].close_price == 9.3
+
+
+def test_atr_stop_weak_regime_uses_fixed_line_opt105() -> None:
+    """OPT-105: in a Weak regime the ATR line is disabled — the FIXED stop
+    applies. The -7% drawdown here would have tripped the ATR line (~-5.75%)
+    but NOT the fixed -15%; under Weak the position must survive."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}}
+    prices = {
+        TS1: {
+            "2026-06-17": 10.0,
+            "2026-06-18": 10.0,
+            "2026-06-19": 10.3,
+            "2026-06-22": 10.1,
+            "2026-06-23": 9.3,
+        }
+    }
+    data = _data(calendar, scores, prices)  # Strong → entry allowed
+    # then the market turns Weak from the day after entry: exits must use
+    # the FIXED line (ATR line disabled in Weak).
+    data.regime_by_day = {
+        d: ("Strong" if d == "2026-06-18" else REGIME_WEAK) for d in calendar
+    }
+    data.bars_by_ts = {
+        TS1: [
+            ("2026-06-08", "9.8", "10.0", "9.7", "9.9", "1000"),
+            ("2026-06-09", "9.9", "10.1", "9.8", "10.0", "1000"),
+            ("2026-06-10", "10.0", "10.2", "9.9", "10.1", "1000"),
+            ("2026-06-11", "10.1", "10.2", "10.0", "10.1", "1000"),
+            ("2026-06-12", "10.0", "10.2", "9.9", "10.1", "1000"),
+            ("2026-06-15", "9.9", "10.1", "9.8", "10.0", "1000"),
+            ("2026-06-16", "10.0", "10.2", "9.9", "10.1", "1000"),
+            ("2026-06-17", "10.0", "10.1", "9.9", "10.0", "1000"),
+            ("2026-06-18", "10.0", "10.1", "9.9", "10.0", "1000"),
+            ("2026-06-19", "10.2", "10.4", "10.1", "10.3", "1000"),
+            ("2026-06-22", "10.2", "10.3", "10.0", "10.1", "1000"),
+            ("2026-06-23", "9.3", "9.4", "9.2", "9.3", "1000"),
+        ]
+    }
+    data.close_by_ts_day[TS1] = {d: float(v) for d, v in prices[TS1].items()}
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-23",
+        stop_loss_pct=-15.0,
+        target_pnl_pct=100.0,
+        max_hold_days=60,
+        trailing_stop_pct=0.0,
+        atr_stop_mult=2.0,
+    )
+    run = simulate(config, data=data)
+    # The -7% drawdown did NOT trip any stop/trail (fixed -15% governs in
+    # Weak; an ATR line at ~-5.75% would have fired) — the only close is the
+    # window-end force liquidation.
+    assert run.summary.closed == 1
+    assert run.trades[0].close_reason == "end_of_window"
+
+
+def test_hk_has_no_price_limits_opt103() -> None:
+    """HK line has no board limits — entry/exit never blocked."""
+    calendar = ["2026-06-18", "2026-06-19"]
+    scores = {"2026-06-18": {"HK:00700": 90.0}, "2026-06-19": {}}
+    prices = {
+        "00700.HK": {
+            "2026-06-17": 10.0,
+            "2026-06-18": 11.0,  # +10% — would be a CN limit-up, not for HK
+            "2026-06-19": 11.5,
+        }
+    }
+    data = _data(calendar, scores, prices)
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-19",
+        market="HK",
+        stop_loss_pct=-15.0,
+        target_pnl_pct=30.0,
+        max_hold_days=10,
+        trailing_stop_pct=0.0,
+    )
+    run = simulate(config, data=data)
+    # HK has no board limits: the +10% session enters normally (a CN
+    # limit-up would have blocked it); close reason is window/score-driven
+    # (live DB fetch makes it non-deterministic here — not under test).
+    assert run.summary.gated_blocks.get("limit_up", 0) == 0
+    assert run.summary.closed == 1
+    assert run.trades[0].entry_date == "2026-06-18"
+
+
 def test_trailing_stop_disabled_by_default() -> None:
-    """trailing_stop_pct=0 keeps v0 fixed-stop behaviour."""
     calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
     scores = {d: {CN1: 90.0} for d in calendar}
     prices = {
@@ -1097,7 +1300,7 @@ def test_pyramid_adds_on_profit_and_exits_with_main_leg() -> None:
         "2026-06-22": {CN1: 88.0},
         "2026-06-23": {CN1: 88.0},
     }
-    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 11.5, "2026-06-22": 12.0, "2026-06-23": 9.6}}
+    prices = {TS1: {"2026-06-18": 10.0, "2026-06-19": 11.5, "2026-06-22": 12.0, "2026-06-23": 10.94}}
     data = _data(calendar, scores, prices)
     config = BacktestConfig(
         start_date="2026-06-18", end_date="2026-06-23",
@@ -1106,13 +1309,14 @@ def test_pyramid_adds_on_profit_and_exits_with_main_leg() -> None:
     )
     run = simulate(config, data=data)
     trades = run.trades
-    # 06-19 +15% >= +10% trigger -> add leg at 11.5; 06-23 close 9.6 = -20%
-    # from peak 12.0 (06-22) but only -4% on the main leg (no stop_hit)
-    # -> trailing_stop closes both legs.
+    # 06-19 +15% >= +10% trigger -> add leg at 11.5; 06-23 close 10.94
+    # (above the 12.0 x 0.9 = 10.8 limit-down so sellable; add leg only -4.9%
+    # so no stop_hit) = -8.8% from peak 12.0 -> -8% trailing closes both.
     assert len(trades) == 2
     main = [t for t in trades if t.entry_date == "2026-06-18"]
     add = [t for t in trades if t.entry_date == "2026-06-19"]
     assert len(main) == 1 and len(add) == 1
+    assert main[0].close_price == 10.94
     assert main[0].close_reason == "trailing_stop" and add[0].close_reason == "trailing_stop"
     assert main[0].close_date == "2026-06-23" and add[0].close_date == "2026-06-23"
     assert add[0].entry_price == 11.5
@@ -1535,3 +1739,66 @@ def test_score_confirm_disabled_by_default() -> None:
     run = simulate(config, data=data)
     assert run.summary.closed == 1
     assert run.trades[0].entry_date == "2026-06-19"
+
+
+def test_atr_stop_strength_floor_selects_atr_line_d1() -> None:
+    """§19.2 D1: with atr_stop_strength_min set, the ATR line applies only on
+    days whose 0-100 strength >= the floor (regime rule is bypassed)."""
+    from unittest.mock import patch
+
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22", "2026-06-23"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {}, "2026-06-22": {}, "2026-06-23": {}}
+    prices = {
+        TS1: {
+            "2026-06-17": 10.0,
+            "2026-06-18": 10.0,
+            "2026-06-19": 10.3,
+            "2026-06-22": 10.1,
+            "2026-06-23": 9.3,  # -7%: fixed -15% holds; ATR (~-6%) fires
+        }
+    }
+    data = _data(calendar, scores, prices, regime="Strong")  # regime allows entry
+    data.bars_by_ts = {
+        TS1: [
+            ("2026-06-08", "9.8", "10.0", "9.7", "9.9", "1000"),
+            ("2026-06-09", "9.9", "10.1", "9.8", "10.0", "1000"),
+            ("2026-06-10", "10.0", "10.2", "9.9", "10.1", "1000"),
+            ("2026-06-11", "10.1", "10.2", "10.0", "10.1", "1000"),
+            ("2026-06-12", "10.0", "10.2", "9.9", "10.1", "1000"),
+            ("2026-06-15", "9.9", "10.1", "9.8", "10.0", "1000"),
+            ("2026-06-16", "10.0", "10.2", "9.9", "10.1", "1000"),
+            ("2026-06-17", "10.0", "10.1", "9.9", "10.0", "1000"),
+            ("2026-06-18", "10.0", "10.1", "9.9", "10.0", "1000"),
+            ("2026-06-19", "10.2", "10.4", "10.1", "10.3", "1000"),
+            ("2026-06-22", "10.2", "10.3", "10.0", "10.1", "1000"),
+            ("2026-06-23", "9.3", "9.4", "9.2", "9.3", "1000"),
+        ]
+    }
+    data.close_by_ts_day[TS1] = {d: float(v) for d, v in prices[TS1].items()}
+    config = BacktestConfig(
+        start_date="2026-06-18",
+        end_date="2026-06-23",
+        stop_loss_pct=-15.0,
+        target_pnl_pct=100.0,
+        max_hold_days=60,
+        trailing_stop_pct=0.0,
+        atr_stop_mult=2.0,
+        atr_stop_strength_min=60.0,  # bypass regime: strength decides
+    )
+    with patch(
+        "data_sync_service.service.market_regime.regime_strength_score",
+        side_effect=lambda **kw: {"strength": 70.0},
+    ):
+        run_hi = simulate(config, data=data)
+    assert run_hi.summary.closed == 1  # strength 70 >= 60 → ATR line fired
+    assert run_hi.trades[0].close_reason in ("stop_hit", "trailing_stop")
+    assert run_hi.trades[0].close_price == 9.3
+    # Same regime (Strong) but strength 30 < 60 → FIXED -15% line → hold.
+    # This proves the strength floor REPLACED the regime rule.
+    with patch(
+        "data_sync_service.service.market_regime.regime_strength_score",
+        side_effect=lambda **kw: {"strength": 30.0},
+    ):
+        run_lo = simulate(config, data=data)
+    assert run_lo.summary.closed == 1
+    assert run_lo.trades[0].close_reason == "end_of_window"  # fixed -15% never fired

@@ -52,6 +52,8 @@ export const TrendOkResultSchema = z.object({
   scoreParts: z.record(z.number()).optional(),
   stopLossPrice: z.number().nullable().optional(),
   stopLossParts: z.record(z.unknown()).optional(),
+  /** OPT-099: S-3 backtest-caliber trailing peak = highest CLOSE since entry (null when flat). */
+  s3PeakClose: z.number().nullable().optional(),
   buyMode: z.string().nullable().optional(),
   buyAction: z.string().nullable().optional(),
   buyZoneLow: z.number().nullable().optional(),

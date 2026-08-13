@@ -44,6 +44,7 @@ from data_sync_service.db import execution_journal as ej_db
 from data_sync_service.db import paper_trading as pt_db
 from data_sync_service.db import watchlist_automation as wa_db
 from data_sync_service.db.daily import fetch_last_ohlcv_batch
+from data_sync_service.service.execution_gate import REGIME_STRONG
 from data_sync_service.service.paper_cost_model import (
     MARKETS,
     round_trip_cost_pct,
@@ -336,11 +337,25 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
             str(_row_str(t, "entryDate", "entry_date") or ""), today_iso
         )
 
+        # OPT-105 (2026-08-13 固化): CN S-3 paper exits switch to the
+        # entry-locked ATR% x S3_ATR_STOP_MULT line while today's regime is
+        # Strong (let winners run); Diverging/Weak fall back to the fixed
+        # pt_db constants (cut fast). Mirror of the backtest S3_CONFIG —
+        # same rule set, same code path (_pick_close_reason).
+        stop_pct = pt_db.STOP_LOSS_PCT
+        trail_pct = pt_db.TRAILING_STOP_PCT
+        if market == "CN" and str(t.get("source") or "") == "S3":
+            entry = _row_str(t, "entryDate", "entry_date") or ""
+            atr_pct = _atr_pct_at_entry(bars_by_ts_all.get(ts, []), entry, entry_price)
+            if atr_pct > 0 and _cn_regime_today() == REGIME_STRONG:
+                stop_pct = trail_pct = -(pt_db.S3_ATR_STOP_MULT * atr_pct)
+
         reason = _pick_close_reason(
             t=t,
             pnl_pct=net_pnl,
             holding_days=holding_days,
             registry_symbols=registry_symbols,
+            stop_loss_pct=stop_pct,
             # 2026-08-11: S-3 paper lines (CN + HK) are managed by the S-3
             # rule set (same code as the backtest); pool_exit (registry
             # membership) is a v0-manual-book rule and must NOT apply — the
@@ -354,7 +369,7 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
         # card — high-based peaking made the paper book exit earlier than
         # the backtest (HK:00622 case: intraday spike peak triggered a
         # trailing the close-based engine never fires)).
-        if reason is None and pt_db.TRAILING_STOP_PCT != 0:
+        if reason is None and trail_pct != 0:
             peak = 0.0
             entry = _row_str(t, "entryDate", "entry_date") or ""
             for b in bars_by_ts_all.get(ts, []):
@@ -366,7 +381,7 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
                     continue
                 if c > peak:
                     peak = c
-            if peak > 0 and (close_price - peak) / peak * 100.0 <= pt_db.TRAILING_STOP_PCT:
+            if peak > 0 and (close_price - peak) / peak * 100.0 <= trail_pct:
                 reason = pt_db.CLOSE_REASON_TRAILING
         # A6 profit-trail (same rule as the backtest engine): once the leg is
         # past the profit trigger, tighten the allowed peak pullback to
@@ -449,6 +464,54 @@ def _row_str(t: dict[str, Any], camel: str, snake: str) -> str | None:
     if raw is None:
         raw = t.get(snake)
     return str(raw) if raw is not None else None
+
+
+def _atr_pct_at_entry(
+    bars: list, entry_date: str, entry_price: float
+) -> float:
+    """ATR14 / entry_price x 100 computed from the sessions BEFORE entry.
+
+    OPT-105: the S-3 Strong-regime stop uses the entry-locked ATR% (same as
+    the backtest engine's ``atr14_pct_for``). 0.0 when bars are insufficient
+    → the fixed constants apply (safe fallback)."""
+    before = sorted(
+        [b for b in bars if str(b[0]) < entry_date], key=lambda b: str(b[0])
+    )[-15:]
+    if len(before) < 8 or entry_price is None or entry_price <= 0:
+        return 0.0
+    trs: list[float] = []
+    prev: float | None = None
+    for b in before:
+        try:
+            hi, lo = float(b[2]), float(b[3])
+        except (TypeError, ValueError):
+            continue
+        if prev is None:
+            prev = hi
+            continue
+        trs.append(max(hi - lo, abs(hi - prev), abs(lo - prev)))
+        prev = hi
+    if not trs:
+        return 0.0
+    return sum(trs) / len(trs) / float(entry_price) * 100.0
+
+
+def _cn_regime_today() -> str | None:
+    """Today's CN market regime (backtest engine's market-aware loader —
+    same source the S-3 candidate build uses). None on failure → fixed
+    stops apply (safe fallback)."""
+    from data_sync_service.service.backtest_engine import (
+        BacktestConfig,
+        _load_regime_by_day,
+    )
+
+    try:
+        today = pt_db.today_iso()
+        cfg = BacktestConfig(start_date=today, end_date=today, market="CN", gates="full")
+        return _load_regime_by_day(cfg, [today]).get(today)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper regime lookup failed: %s", exc)
+        return None
 
 
 def _pick_close_reason(
