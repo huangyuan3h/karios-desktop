@@ -399,6 +399,12 @@ def _build_holdings_block(
                 float(cost) * (1 + PYRAMID_TRIGGER_PCT / 100.0), 3
             )
             check["pyramidAdded"] = sym in pyramid_syms
+            # 2026-08-12: merge the main table's trend-structure exit signal
+            # so the health card and the watchlist table never disagree on
+            # whether to exit (S-3 price/time rules stay as-is).
+            # 2026-08-12 (OPT-097): S-3-only surface — trendok structure
+            # signals are fully removed here (backtested: they truncate the
+            # trend leg everywhere). Exits come only from S-3 stop/trail/hold.
             if ts is None:
                 check["action"] = "HOLD"
                 check["note"] = "无法解析标的代码，人工核对"

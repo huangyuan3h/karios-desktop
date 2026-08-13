@@ -1,0 +1,194 @@
+{
+  "generatedAt": "2026-08-13",
+  "markets": {
+    "CN:2021-08-01": {
+      "market": "CN",
+      "window": "2021-08-01~2026-08-11",
+      "all": {
+        "n": 1196,
+        "win": 457,
+        "total": 3148.518400000002
+      },
+      "signal_exit": {
+        "n": 1046,
+        "win": 300,
+        "total": -825.2636903862067
+      },
+      "signal_earlier_than_actual": {
+        "n": 553,
+        "win": 186,
+        "total": 181.6188000000001
+      },
+      "bySignal": {
+        "momentum_exhaust": {
+          "n": 286,
+          "sumActual": 499.4110999999999,
+          "sumSignal": 211.49410764182912,
+          "winActual": 111,
+          "winSignal": 109
+        },
+        "close<ema20": {
+          "n": 292,
+          "sumActual": -284.9764999999999,
+          "sumSignal": -795.5989340299066,
+          "winActual": 80,
+          "winSignal": 42
+        },
+        "ema5<ema20": {
+          "n": 1,
+          "sumActual": -7.107,
+          "sumSignal": -3.8123192231916954,
+          "winActual": 0,
+          "winSignal": 0
+        }
+      }
+    },
+    "CN:2024-08-01": {
+      "market": "CN",
+      "window": "2024-08-01~2025-08-01",
+      "all": {
+        "n": 294,
+        "win": 141,
+        "total": 1396.7202999999997
+      },
+      "signal_exit": {
+        "n": 234,
+        "win": 78,
+        "total": 101.35805034782499
+      },
+      "signal_earlier_than_actual": {
+        "n": 118,
+        "win": 47,
+        "total": 291.13259999999997
+      },
+      "bySignal": {
+        "momentum_exhaust": {
+          "n": 71,
+          "sumActual": 246.78879999999995,
+          "sumSignal": 96.72662419270769,
+          "winActual": 32,
+          "winSignal": 26
+        },
+        "close<ema20": {
+          "n": 53,
+          "sumActual": 36.58370000000001,
+          "sumSignal": -124.09737053169341,
+          "winActual": 17,
+          "winSignal": 12
+        }
+      }
+    },
+    "CN:2025-08-01": {
+      "market": "CN",
+      "window": "2025-08-01~2026-02-01",
+      "all": {
+        "n": 200,
+        "win": 87,
+        "total": 980.2193000000001
+      },
+      "signal_exit": {
+        "n": 187,
+        "win": 53,
+        "total": -251.32523488680812
+      },
+      "signal_earlier_than_actual": {
+        "n": 64,
+        "win": 24,
+        "total": 146.81279999999998
+      },
+      "bySignal": {
+        "momentum_exhaust": {
+          "n": 34,
+          "sumActual": 83.22890000000001,
+          "sumSignal": -26.430188304291374,
+          "winActual": 12,
+          "winSignal": 12
+        },
+        "close<ema20": {
+          "n": 33,
+          "sumActual": 46.135799999999996,
+          "sumSignal": -107.64571329522263,
+          "winActual": 12,
+          "winSignal": 2
+        }
+      }
+    },
+    "CN:2026-03-01": {
+      "market": "CN",
+      "window": "2026-03-01~2026-08-07",
+      "all": {
+        "n": 75,
+        "win": 46,
+        "total": 1160.0892
+      },
+      "signal_exit": {
+        "n": 59,
+        "win": 25,
+        "total": 366.27098382936185
+      },
+      "signal_earlier_than_actual": {
+        "n": 14,
+        "win": 9,
+        "total": 177.2386
+      },
+      "bySignal": {
+        "momentum_exhaust": {
+          "n": 5,
+          "sumActual": 172.3913,
+          "sumSignal": 34.573041460907575,
+          "winActual": 4,
+          "winSignal": 2
+        },
+        "close<ema20": {
+          "n": 11,
+          "sumActual": 134.8264,
+          "sumSignal": -52.76924498004981,
+          "winActual": 7,
+          "winSignal": 0
+        }
+      }
+    },
+    "HK:2024-08-01": {
+      "market": "HK",
+      "window": "2024-08-01~2026-08-07",
+      "all": {
+        "n": 599,
+        "win": 233,
+        "total": 4702.169699999999
+      },
+      "signal_exit": {
+        "n": 526,
+        "win": 176,
+        "total": -6.606476426053474
+      },
+      "signal_earlier_than_actual": {
+        "n": 328,
+        "win": 141,
+        "total": 925.0198999999999
+      },
+      "bySignal": {
+        "close<ema20": {
+          "n": 165,
+          "sumActual": -66.2617,
+          "sumSignal": -193.3308085572661,
+          "winActual": 63,
+          "winSignal": 47
+        },
+        "momentum_exhaust": {
+          "n": 183,
+          "sumActual": 877.6249999999998,
+          "sumSignal": 396.2462254702527,
+          "winActual": 81,
+          "winSignal": 84
+        },
+        "ema5<ema20": {
+          "n": 3,
+          "sumActual": 22.4796,
+          "sumSignal": 20.925336389444325,
+          "winActual": 2,
+          "winSignal": 2
+        }
+      }
+    }
+  }
+}

@@ -4,6 +4,7 @@ import * as React from 'react';
 import { CircleX, ExternalLink, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { resolveStableActionPrice } from '@/lib/intraday-lock';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import {
   deriveActionCard,
@@ -579,12 +580,22 @@ function WatchlistRowInner({
     quoteTradeTime: q?.tradeTime ?? null,
     trendClose,
   });
+  // OPT-098: between 12:00 and 14:30 the action must not flip with the
+  // realtime quote (user trades at 14:00) — derive it from the frozen
+  // afternoon-open price. Display/PnL still use the live price.
+  const actionPrice = resolveStableActionPrice({
+    symbol: it.symbol,
+    realtimePrice: currentPrice,
+    trendClose,
+    now: new Date(),
+    tradingTime,
+  });
   const actionCard = deriveActionCard({
     symbol: it.symbol,
     gate: executionGate,
     trendok: t,
     position: it,
-    currentPrice,
+    currentPrice: actionPrice,
     mainlineAllow,
     intradayChgPct: rowMetrics.intradayChgPct,
     gapUp: typeof t?.gapUp === 'boolean' ? t.gapUp : null,

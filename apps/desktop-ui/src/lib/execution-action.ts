@@ -1050,8 +1050,8 @@ export function deriveActionCard(opts: {
   // Compat: trigger = role-relevant level for journal / cond-order
   const trigger = held ? exitStop : entryTrigger;
 
-  const exitNow = Boolean(parts?.exit_now);
-  const warnHalf = Boolean(parts?.warn_reduce_half);
+  // OPT-097: structure signals (exit_now / warn_reduce_half) are no longer
+  // exits for held positions (backtested: they truncate the trend leg).
   // Float tolerance: trailStop = peak - 2*ATR14 can land a hair below current
   // (e.g. 3.5999999999999996 vs 3.6); a touch within 1e-9 counts as hit.
   const PRICE_EPS = 1e-9;
@@ -1068,7 +1068,6 @@ export function deriveActionCard(opts: {
   // ETF rule isolation: trend-structure exit_now is a TRIM-level warning (the
   // backend already downgrades it), but defensively downgrade any stray
   // exit_now from stale data here too — only a hard-stop price breach exits.
-  const etfExitDowngraded = isEtf && exitNow && !hardStopHit;
   const priceAtOrBelowTrigger =
     exitStop != null &&
     currentPrice != null &&
@@ -1157,38 +1156,26 @@ export function deriveActionCard(opts: {
       ? 'T1_LOCK'
       : null;
 
-  if (held && (exitNow || priceAtOrBelowTrigger)) {
+  // 2026-08-12 (OPT-097): S-3-only exits for held positions. The trendok
+  // structure signals (exit_now / warn_reduce_half) and the sector-flow
+  // trims (heldTrim) were NEVER backtested — per-trade counterfactuals
+  // across all windows/markets show they truncate the trend leg (close<EMA20
+  // exit: -511pt long-window vs holding to S-3 stop/trail rules). Held
+  // positions now exit ONLY on the S-3 price/time rules (stop/trail lines
+  // via priceAtOrBelowTrigger). Structure signals may still surface for
+  // non-held watchlist rows (observation only).
+  if (held && priceAtOrBelowTrigger) {
     if (blockSellWhy) {
       action = 'HOLD';
       why = blockSellWhy;
     } else if (isEtf && !hardStopHit) {
-      // ETF: trail/warn/fallback touched without a real hard-stop breach →
+      // ETF: trail/fallback touched without a real hard-stop breach →
       // smooth TRIM (half), never a forced full exit.
       action = 'TRIM';
-      why = etfFallback
-        ? 'ETF_FALLBACK_TRIM'
-        : etfExitDowngraded
-          ? 'WARN_REDUCE_HALF'
-          : 'TRAIL_STOP_TRIM';
+      why = etfFallback ? 'ETF_FALLBACK_TRIM' : 'TRAIL_STOP_TRIM';
     } else {
       action = 'EXIT';
-      why = exitNow ? 'EXIT_NOW' : isEtf ? 'HARD_STOP_HIT' : 'TRIGGER_HIT';
-    }
-  } else if (held && warnHalf) {
-    if (blockSellWhy) {
-      action = 'HOLD';
-      why = blockSellWhy;
-    } else {
-      action = 'TRIM';
-      why = 'WARN_REDUCE_HALF';
-    }
-  } else if (held && heldTrim.trim) {
-    if (blockSellWhy) {
-      action = 'HOLD';
-      why = blockSellWhy;
-    } else {
-      action = 'TRIM';
-      why = heldTrim.why;
+      why = isEtf ? 'HARD_STOP_HIT' : 'TRIGGER_HIT';
     }
   } else if (held && allowAttack && wantsBuy) {
     if (!entryGate.ok) {

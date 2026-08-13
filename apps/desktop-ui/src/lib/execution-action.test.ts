@@ -287,7 +287,7 @@ describe('ETF no-industry passthrough', () => {
     expect(card.why).not.toBe('MISSING_INDUSTRY');
   });
 
-  it('non-ETF held position still trims on mainline fade', () => {
+  it('OPT-097: held position ignores mainline-fade trim (S-3 exits only)', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: attackGate,
@@ -296,8 +296,7 @@ describe('ETF no-industry passthrough', () => {
       currentPrice: 10,
       mainlineAllow: allowSet([['半导体', '5D_TOP3']]),
     });
-    expect(card.action).toBe('TRIM');
-    expect(card.why).toBe('MAINLINE_FADE');
+    expect(card.action).toBe('HOLD');
   });
 });
 
@@ -332,16 +331,19 @@ describe('ETF exit behavior (rule isolation: TRIM over EXIT)', () => {
     expect(deriveEtfFallbackStop({ costPrice: null, maxPrice: 4.0, current: 3.0 })).toBeNull();
   });
 
-  it('ETF + stale exit_now (no hard-stop breach) downgrades to TRIM/WARN_REDUCE_HALF', () => {
+  it('OPT-097: ETF + stale exit_now (no price breach) stays HOLD', () => {
+    // Structure signals (exit_now) are NOT exits anymore — S-3 price rules
+    // (stop/trail lines) are the only exit authority for held positions.
+    // Price 3.7 sits above the trail line (max 3.8 - 2*ATR 0.1 = 3.6).
     const card = etfHeld({
       trendok: {
         score: 60,
         stopLossPrice: 3.2,
         stopLossParts: { exit_now: true, exit_reasons: ['trend_structure_break:close_below_ema20'], atr14: 0.1 },
       },
+      currentPrice: 3.7,
     });
-    expect(card.action).toBe('TRIM');
-    expect(card.why).toBe('WARN_REDUCE_HALF');
+    expect(card.action).toBe('HOLD');
   });
 
   it('ETF trail-stop touch without hard-stop breach → TRIM/TRAIL_STOP_TRIM', () => {
@@ -739,7 +741,7 @@ describe('deriveActionCard', () => {
     expect(card.why).toBe('GATE_BLOCK_NEW');
   });
 
-  it('EXIT on exit_now ignores mainline', () => {
+  it('OPT-097: held + exit_now without price breach stays HOLD', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: attackGate,
@@ -754,8 +756,7 @@ describe('deriveActionCard', () => {
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
-    expect(card.action).toBe('EXIT');
-    expect(card.why).toBe('EXIT_NOW');
+    expect(card.action).toBe('HOLD');
   });
 
   it('ADD when held + attack + buy + mainline', () => {
@@ -777,7 +778,7 @@ describe('deriveActionCard', () => {
     expect(card.why).toBe('MAINLINE_MOMENTUM');
   });
 
-  it('TRIMs held position when industry leaves mainline', () => {
+  it('OPT-097: held position ignores mainline-fade trim', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: attackGate,
@@ -791,11 +792,10 @@ describe('deriveActionCard', () => {
       currentPrice: 10.2,
       mainlineAllow: mainline,
     });
-    expect(card.action).toBe('TRIM');
-    expect(card.why).toBe('MAINLINE_FADE');
+    expect(card.action).toBe('HOLD');
   });
 
-  it('TRIM on warn_reduce_half', () => {
+  it('OPT-097: warn_reduce_half no longer trims held position', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: attackGate,
@@ -810,10 +810,10 @@ describe('deriveActionCard', () => {
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
-    expect(card.action).toBe('TRIM');
+    expect(card.action).toBe('HOLD');
   });
 
-  it('TRIMs held position when Gate is DEFEND', () => {
+  it('OPT-097: DEFEND gate no longer trims held position', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: defendGate,
@@ -827,8 +827,7 @@ describe('deriveActionCard', () => {
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
-    expect(card.action).toBe('TRIM');
-    expect(card.why).toBe('GATE_DEFEND');
+    expect(card.action).toBe('HOLD');
   });
 
   it('EXIT still beats DEFEND TRIM', () => {
@@ -846,8 +845,7 @@ describe('deriveActionCard', () => {
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
-    expect(card.action).toBe('EXIT');
-    expect(card.why).toBe('EXIT_NOW');
+    expect(card.action).toBe('HOLD');
   });
 
   it('HOLD_ONLY held + still on mainline stays HOLD (no gate TRIM)', () => {
@@ -868,7 +866,7 @@ describe('deriveActionCard', () => {
     expect(card.why).toBe('GATE_BLOCK_NEW');
   });
 
-  it('HOLD_ONLY held + mainline fade still TRIMs', () => {
+  it('OPT-097: HOLD_ONLY held + mainline fade stays HOLD', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: holdGate,
@@ -882,8 +880,7 @@ describe('deriveActionCard', () => {
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
-    expect(card.action).toBe('TRIM');
-    expect(card.why).toBe('MAINLINE_FADE');
+    expect(card.action).toBe('HOLD');
   });
 
   it('does not mainline-fade TRIM when allow-set not ready', () => {
@@ -1046,8 +1043,7 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
       intradayChgPct: 8,
     });
-    expect(card.action).toBe('EXIT');
-    expect(card.why).toBe('EXIT_NOW');
+    expect(card.action).toBe('HOLD');
   });
 
   it('blocks BUY to WATCH on gap-up in Weak', () => {
@@ -1204,7 +1200,7 @@ describe('deriveActionCard', () => {
     expect(card.why).toBe('INTRADAY_SURGE_BLOCK');
   });
 
-  it('EXIT on exit_now ignores gap-up weak', () => {
+  it('OPT-097: EXIT on exit_now ignores gap-up weak → HOLD (structure signals not exits)', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: attackGate,
@@ -1222,8 +1218,7 @@ describe('deriveActionCard', () => {
       marketRegime: 'Weak',
       now: unlockedNow,
     });
-    expect(card.action).toBe('EXIT');
-    expect(card.why).toBe('EXIT_NOW');
+    expect(card.action).toBe('HOLD');
   });
 
   it('blocks ADD to HOLD at positionPct 15% (SIZE_CAP_BLOCK)', () => {
@@ -1341,7 +1336,7 @@ describe('deriveActionCard', () => {
     expect(isHeldPosition({ symbol: 'CN:600000' })).toBe(false);
   });
 
-  it('EXIT ignores size cap', () => {
+  it('OPT-097: EXIT ignores size cap → HOLD (structure signals not exits)', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: attackGate,
@@ -1356,8 +1351,7 @@ describe('deriveActionCard', () => {
       currentPrice: 10.5,
       mainlineAllow: mainline,
     });
-    expect(card.action).toBe('EXIT');
-    expect(card.why).toBe('EXIT_NOW');
+    expect(card.action).toBe('HOLD');
   });
 
   it('entryGate failure takes priority over size cap', () => {
@@ -1478,7 +1472,7 @@ describe('deriveActionCard', () => {
     expect(isSectorConcentrationBlocked('半导体', exposure)).toBe(false);
   });
 
-  it('EXIT ignores sector concentration', () => {
+  it('OPT-097: EXIT ignores sector concentration → HOLD (structure signals not exits)', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: attackGate,
@@ -1494,8 +1488,7 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
       sectorExposureByIndustry: new Map([['半导体', 40]]),
     });
-    expect(card.action).toBe('EXIT');
-    expect(card.why).toBe('EXIT_NOW');
+    expect(card.action).toBe('HOLD');
   });
 
   it('parses positionRangeHint upper bound', () => {
@@ -1683,7 +1676,7 @@ describe('deriveActionCard', () => {
     expect(cardOmit.action).toBe('BUY');
   });
 
-  it('EXIT ignores sleeve cap', () => {
+  it('OPT-097: EXIT ignores sleeve cap → HOLD (structure signals not exits)', () => {
     const card = deriveActionCard({
       symbol: 'CN:600000',
       gate: attackGate,
@@ -1699,8 +1692,7 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
       sleeveExposurePct: 90,
     });
-    expect(card.action).toBe('EXIT');
-    expect(card.why).toBe('EXIT_NOW');
+    expect(card.action).toBe('HOLD');
   });
 
   it('sector concentration wins over sleeve cap in entry order', () => {
