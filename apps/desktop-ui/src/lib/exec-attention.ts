@@ -52,6 +52,7 @@ const WHY_LABEL: Record<string, string> = {
   EXIT_NOW: '强制卖出',
   TRIGGER_HIT: '止损触发',
   HARD_STOP_HIT: '硬止损触发',
+  MAX_HOLD: '持有期满60天',
   TRAIL_STOP_TRIM: '移动止盈减半',
   ETF_FALLBACK_TRIM: '回撤止损减半',
   WARN_REDUCE_HALF: '减半警告',

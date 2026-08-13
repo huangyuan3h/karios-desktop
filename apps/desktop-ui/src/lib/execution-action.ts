@@ -14,6 +14,11 @@ import { isGapUpWeakMarket, isIntradaySurge } from '@/lib/watchlist-metrics';
 
 export const CHANDELIER_ARM_PNL_PCT = 10;
 export const CHANDELIER_ATR_MULT = 2;
+/** OPT-099: S-3 backtest-caliber exit lines (mirror of the engine / paper constants). */
+export const S3_STOP_LOSS_PCT = 0.05; // cost drawdown floor (CN + HK), backtest stop_loss_pct=-5
+export const S3_TRAILING_STOP_PCT = 0.08; // CN peak drawdown, backtest trailing_stop_pct=-8
+export const S3_TRAILING_STOP_PCT_HK = 0.12; // HK peak drawdown (HK parallel line trailing -12)
+export const S3_MAX_HOLD_DAYS = 60; // max_hold_days, engine / paper / health share
 /** ETF fallback stop: max drawdown from entry cost (no trendok stop available). */
 export const ETF_FALLBACK_MAX_LOSS_PCT = 0.05;
 /** ETF fallback stop: max drawdown from peak once position is in profit (trail). */
@@ -620,6 +625,47 @@ export function deriveTriggerAndTrail(opts: {
   return { trailArmed, peak, hardStop, trailStop, exitStop, trigger: exitStop };
 }
 
+/** OPT-099: S-3 fixed -5% stop line from entry cost (backtest stop_loss_pct). */
+function s3FixedHardStop(costPrice: number | null): number | null {
+  if (costPrice == null || !Number.isFinite(costPrice) || costPrice <= 0) {
+    return null;
+  }
+  return costPrice * (1 - S3_STOP_LOSS_PCT);
+}
+
+/** OPT-099: S-3 fixed trailing line = peak × (1-8% CN / 1-12% HK), armed from entry. */
+function s3FixedTrail(opts: {
+  hardStop: number | null;
+  costPrice: number | null;
+  maxPrice: number | null;
+  current: number | null;
+  isHk: boolean;
+}): {
+  trailArmed: boolean;
+  peak: number | null;
+  hardStop: number | null;
+  trailStop: number | null;
+  exitStop: number | null;
+  trigger: number | null;
+} {
+  const { hardStop, maxPrice, isHk } = opts;
+  const peak = maxPrice != null && Number.isFinite(maxPrice) ? maxPrice : null;
+  const trailPct = isHk ? S3_TRAILING_STOP_PCT_HK : S3_TRAILING_STOP_PCT;
+  const trailStop = peak != null ? peak * (1 - trailPct) : null;
+  let exitStop: number | null = null;
+  if (hardStop != null && trailStop != null) exitStop = Math.max(hardStop, trailStop);
+  else if (hardStop != null) exitStop = hardStop;
+  else if (trailStop != null) exitStop = trailStop;
+  return {
+    trailArmed: trailStop != null,
+    peak,
+    hardStop,
+    trailStop,
+    exitStop,
+    trigger: exitStop,
+  };
+}
+
 /** Flat + Score<30 + TrendOK=no → physical-GC candidate (Action=PURGE). */
 export function isPurgeCandidate(opts: {
   held: boolean;
@@ -678,6 +724,19 @@ export function isLockedT1(
   const d = String(entryDate || '').trim();
   const today = String(todaySh || '').trim();
   return Boolean(d && today && d === today);
+}
+
+/** Calendar days between two YYYY-MM-DD dates (0 when either is missing). */
+export function daysBetweenDates(
+  from: string | null | undefined,
+  to: string | null | undefined,
+): number {
+  const a = String(from || '').trim().slice(0, 10);
+  const b = String(to || '').trim().slice(0, 10);
+  const ta = Date.parse(`${a}T00:00:00Z`);
+  const tb = Date.parse(`${b}T00:00:00Z`);
+  if (!Number.isFinite(ta) || !Number.isFinite(tb)) return 0;
+  return Math.round((tb - ta) / 86400000);
 }
 
 /** Held position with no entryDate — fail-closed for sells (cannot prove T+1 unlock). */
@@ -986,9 +1045,21 @@ export function deriveActionCard(opts: {
   const mode = gateMode(gate);
   const regime = marketRegime ?? gate?.marketRegime ?? null;
   const industryName = resolveIndustryName(trendok);
+  const cost = num(position.costPrice);
+  const maxPrice = num(position.maxPrice);
+  const isHk = marketOfSymbol(symbol) === 'hk';
   const useDefensiveStop =
     mode === 'DEFEND' && isDefensiveSectorWhitelist(industryName);
-  const trendHardStop = num(trendok?.stopLossPrice);
+  // OPT-099 (2026-08-13): held positions exit on the S-3 BACKTEST caliber —
+  // fixed -5% stop from cost, NOT the trendok adaptive stop (vol bins 6-10%
+  // + ATR buffer) which was never the backtested rule. The engine, live
+  // paper, and the health card all use STOP_LOSS_PCT=-5.0; this makes the
+  // watchlist/copy action derive from the exact same line. Flat rows keep
+  // the trendok stop as an entry reference; ETFs keep their fallback shape.
+  const trendHardStop =
+    held && !isEtf
+      ? s3FixedHardStop(cost)
+      : num(trendok?.stopLossPrice);
   const defensiveStop = useDefensiveStop
     ? resolveDefensiveHardStop({
         ema10: ema10FromTrendok(trendok),
@@ -1002,8 +1073,6 @@ export function deriveActionCard(opts: {
       hardStop != null ? Math.max(hardStop, defensiveStop) : defensiveStop;
   }
   const atr14 = atrFromParts(parts);
-  const cost = num(position.costPrice);
-  const maxPrice = num(position.maxPrice);
   // ETF fallback (RuleType=ETF_FALLBACK): trendok data-starved (no stop) →
   // price-drawdown stop derived from entry cost / peak. Keeps the position
   // protected with a relative stop instead of 0/none hard-exit behaviour.
@@ -1019,13 +1088,26 @@ export function deriveActionCard(opts: {
       etfFallback = true;
     }
   }
-  const trail = deriveTriggerAndTrail({
-    hardStop,
-    costPrice: cost,
-    maxPrice,
-    current: currentPrice,
-    atr14,
-  });
+  // OPT-099: held stocks use the S-3 fixed trailing line (peak × (1-8%) CN /
+  // (1-12%) HK), armed from entry — exactly the engine's trailing_stop_pct.
+  // The ATR chandelier (peak − 2×ATR14, armed only at +10% PnL) stays for
+  // ETFs and as the flat-row reference.
+  const trail =
+    held && !isEtf
+      ? s3FixedTrail({
+          hardStop,
+          costPrice: cost,
+          maxPrice,
+          current: currentPrice,
+          isHk,
+        })
+      : deriveTriggerAndTrail({
+          hardStop,
+          costPrice: cost,
+          maxPrice,
+          current: currentPrice,
+          atr14,
+        });
 
   const exitStop = held ? trail.exitStop : null;
   const entryTrigger = held ? null : num(trendok?.buyZoneHigh);
@@ -1149,6 +1231,10 @@ export function deriveActionCard(opts: {
   const missingEntryDate = held && isMissingEntryDate(position.entryDate);
   const entryBelowStop =
     !held && isEntryAtOrBelowHardStop(entryTrigger, hardStop);
+  // OPT-099: max_hold_days=60 (engine / paper / health) — held beyond the
+  // calendar-day cap exits regardless of price (backtested exit rule).
+  const heldMaxHold =
+    held && !missingEntryDate && daysBetweenDates(position.entryDate, todaySh) >= S3_MAX_HOLD_DAYS;
 
   const blockSellWhy = missingEntryDate
     ? 'ENTRY_DATE_MISSING'
@@ -1176,6 +1262,16 @@ export function deriveActionCard(opts: {
     } else {
       action = 'EXIT';
       why = isEtf ? 'HARD_STOP_HIT' : 'TRIGGER_HIT';
+    }
+  } else if (held && heldMaxHold) {
+    // OPT-099: backtest max_hold_days=60 — time-based exit, same rule the
+    // engine / live paper / health card enforce (T+1 lock still fail-closed).
+    if (blockSellWhy) {
+      action = 'HOLD';
+      why = blockSellWhy;
+    } else {
+      action = 'EXIT';
+      why = 'MAX_HOLD';
     }
   } else if (held && allowAttack && wantsBuy) {
     if (!entryGate.ok) {

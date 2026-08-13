@@ -10,6 +10,7 @@ matches the user's mental model of "the HK closing price".
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,6 +22,8 @@ import tushare as ts
 from data_sync_service.config import get_settings
 from data_sync_service.service.em_push2_http import em_get_json
 from data_sync_service.service.sina_http import build_hq_url, parse_hq_lines, sina_get_text
+
+_TUSHARE_TOKEN_LOCK = threading.Lock()
 
 logger = logging.getLogger(__name__)
 
@@ -403,6 +406,30 @@ def clear_sina_hk_quote_cache() -> None:
         _HK_INDEX_CACHE["quotes"] = {}
 
 
+def _ensure_tushare_token_file(api_key: str) -> None:
+    """Write ~/.tushare/tk.csv exactly once, atomically.
+
+    tushare's realtime_quote is wrapped by require_permission -> get_token(),
+    which reads that file on EVERY call. Rewriting it in-place per call (old
+    set_token() approach) made concurrent callers hit a half-written/empty
+    file and explode with pandas EmptyDataError. Write via tmp + rename so a
+    reader always sees a complete file; skip entirely once it matches.
+    """
+    fp = os.path.join(os.path.expanduser("~"), ".tushare", "tk.csv")
+    with _TUSHARE_TOKEN_LOCK:
+        if os.path.exists(fp):
+            try:
+                with open(fp, encoding="utf-8") as f:
+                    if api_key in f.read():
+                        return
+            except OSError:
+                pass
+        os.makedirs(os.path.dirname(fp), exist_ok=True)
+        tmp = f"{fp}.{os.getpid()}.tmp"
+        pd.DataFrame([api_key], columns=["token"]).to_csv(tmp, index=False)
+        os.replace(tmp, fp)
+
+
 def _tushare_quotes(codes: list[str], *, api_key: str) -> list[dict[str, Any]]:
     """Call tushare realtime_quote for non-HK codes; returns normalized items list."""
     # Tushare's realtime_quote proxies to Sina and internally split()s every
@@ -411,13 +438,12 @@ def _tushare_quotes(codes: list[str], *, api_key: str) -> list[dict[str, Any]]:
     codes = [c for c in codes if "." in c]
     if not codes:
         return []
-    # 2026-08-12: tushare's realtime_quote is wrapped by verify_token which
-    # calls get_token() — env vars first, then ~/.tushare/tk.csv. The file is
-    # not reliably present/writable on this Mac, so set the token via set_token:
-    # the key from settings is the single source of truth (same one pro_api uses).
-    # NOTE: do NOT write os.environ["TS_TOKEN"] — that mutates a process-global
-    # shared by every concurrent caller; set_token keeps the token scoped.
-    ts.set_token(api_key)
+    # 2026-08-13: realtime_quote is wrapped by verify_token -> get_token(),
+    # which reads ~/.tushare/tk.csv on EVERY call. Ensure that file once
+    # (atomic tmp+rename, see _ensure_tushare_token_file) instead of calling
+    # set_token() per request — repeated in-place rewrites made concurrent
+    # readers hit empty files and fail every batch.
+    _ensure_tushare_token_file(api_key)
     try:
         if hasattr(ts, "realtime_quote"):
             df = ts.realtime_quote(ts_code=",".join(codes))

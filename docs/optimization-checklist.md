@@ -2481,3 +2481,35 @@ exitNow 未用变量清理）· 后端 18 passed · tsc 干净 · API 实证（C
 
 **语义**：14:00-15:00 用户看到的是「2 点快照」的 action——2 点后操作
 不会因盘中抖动而误判；15:00 收盘后恢复实时。
+
+### OPT-099：copy markdown / 主表 Action 与 S-3 回测口径完全对齐（2026-08-13）
+
+**状态**：[x]
+
+**背景（用户最后核对）**：copy markdown 与 S-3 回测"action 部分、内容完全一致"检查——
+S-3 候选区（`paper_s3.build_s3_candidates`）与回测引擎已同码同参 ✓；
+但发现残留不一致：**主表/copy 持仓表的止损线 ≠ 回测线**。
+
+**不一致清单**：
+| 项 | 旧口径（主表） | S-3 回测 / 体检卡 / live paper |
+|----|----------------|-------------------------------|
+| 硬止损 | trendok 波动自适应 6/8/10% + ATR 缓冲 + 支撑 | **固定 -5%（cost×0.95）** |
+| 吊灯线 | peak − 2×ATR14，浮盈≥10% 才武装 | **固定 peak×0.92（HK ×0.88），入场即武装** |
+| 持有期 | 无 | **60 天到期 EXIT** |
+
+**变更**（`lib/execution-action.ts`，UI + copy 统一）：
+1. held 非 ETF 持仓：hardStop = cost×(1-5%)（`s3FixedHardStop`）；
+   trail = peak×(1-8% CN / 1-12% HK)（`s3FixedTrail`，入场即武装）；
+   exitStop = max(两者)——常量 `S3_STOP_LOSS_PCT / S3_TRAILING_STOP_PCT(_HK) / S3_MAX_HOLD_DAYS`
+2. 主判定链新增 `MAX_HOLD` 分支：持有 ≥60 个日历日 → EXIT（T+1 锁仍 fail-closed）
+3. 保留特例：ETF（ATR 吊灯 + TRIM 语义）、空仓观察（trendok 线作入场参考）、
+   防御仓（DEFEND 下 EMA10 线更紧者仍生效）
+4. 新增 `daysBetweenDates` helper；why 中文映射 +`MAX_HOLD:持有期满60天`
+
+**验证**：execution-action 147 passed（+3：MAX_HOLD 触发/未触发/口径更新 3 处）·
+全量 757 passed · tsc 干净 · copy markdown Exit_Stop/HardStop/TrailStop 列
+与体检卡 stopLossLine/trailingLine 同式（cost×0.95 / peak×0.92）
+
+**结论存档**：现在主表 / copy markdown / 体检卡 / live paper / 回测引擎——
+五处退出口径同式（-5% 固定止损 · -8%/-12% 吊灯 · 60 天），
+用户 14:00 看到的每个 EXIT 数字就是回测验证过的数字。

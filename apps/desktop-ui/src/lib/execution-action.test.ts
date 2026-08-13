@@ -607,7 +607,8 @@ describe('deriveActionCard', () => {
     });
     expect(card.action).toBe('HOLD');
     expect(card.why).toBe('T1_LOCK');
-    expect(card.exitStop).toBe(100);
+    // OPT-099: held S-3 hard stop = cost × (1-5%) = 110 × 0.95
+    expect(card.exitStop).toBe(104.5);
   });
 
   it('allows EXIT next calendar day after entryDate', () => {
@@ -634,6 +635,60 @@ describe('deriveActionCard', () => {
     });
     expect(card.action).toBe('EXIT');
     expect(card.why).toBe('TRIGGER_HIT');
+  });
+
+  it('EXITs on max_hold (60 calendar days) even above the stop lines (OPT-099)', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:002821',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        trendOk: true,
+        buyAction: 'wait',
+        stopLossPrice: 100,
+        stopLossParts: { atr14: 1 },
+        values: { emIndustry: '化学制药' },
+      },
+      position: {
+        symbol: 'CN:002821',
+        positionPct: 7,
+        costPrice: 100,
+        maxPrice: 120,
+        entryDate: '2026-05-01',
+      },
+      currentPrice: 115,
+      mainlineAllow: mainline,
+      todaySh: '2026-07-01',
+    });
+    expect(card.action).toBe('EXIT');
+    expect(card.why).toBe('MAX_HOLD');
+  });
+
+  it('holds before 60 calendar days when lines are untouched (OPT-099)', () => {
+    const card = deriveActionCard({
+      symbol: 'CN:002821',
+      gate: attackGate,
+      trendok: {
+        score: 70,
+        trendOk: true,
+        buyAction: 'wait',
+        stopLossPrice: 100,
+        stopLossParts: { atr14: 1 },
+        values: { emIndustry: '化学制药' },
+      },
+      position: {
+        symbol: 'CN:002821',
+        positionPct: 7,
+        costPrice: 100,
+        maxPrice: 120,
+        entryDate: '2026-06-01',
+      },
+      currentPrice: 115,
+      mainlineAllow: mainline,
+      todaySh: '2026-07-01',
+    });
+    expect(card.action).toBe('HOLD');
+    expect(card.why).toBe('HOLD');
   });
 
   it('fail-closes EXIT when entryDate is missing', () => {
@@ -700,9 +755,10 @@ describe('deriveActionCard', () => {
       mainlineAllow: mainline,
     });
     expect(card.action).toBe('HOLD');
-    expect(card.exitStop).toBe(9);
+    // OPT-099: held S-3 hard stop = cost × (1-5%) = 10 × 0.95 (no peak yet)
+    expect(card.exitStop).toBe(9.5);
     expect(card.entryTrigger).toBeNull();
-    expect(card.distPct).toBeCloseTo(((10 - 9) / 10) * 100, 6);
+    expect(card.distPct).toBeCloseTo(((10 - 9.5) / 10) * 100, 6);
   });
 
   it('blocks defense sector even if in mainline set', () => {
@@ -1901,10 +1957,11 @@ describe('V7.0-02 risk-parity sizing (deriveActionCard)', () => {
       sleeveExposurePct: 20,
       sectorExposureByIndustry: new Map([['半导体', 5]]),
     });
-    // held → no chandelier yet (pnl +11% ≥ 10%? 10.5 peak, atr 0.3 → trail = 10.5−0.6 = 9.9; exitStop = max(9.2, 9.9) = 9.9)
-    // stop dist = (10 − 9.9)/10 = 1% → risk cap = 50 → clip binds
+    // OPT-099: held S-3 lines — hard stop = cost×0.95 = 8.55; trail = peak×0.92
+    // = 10.5×0.92 = 9.66 (armed from entry); exitStop = max(8.55, 9.66) = 9.66
+    // stop dist = (10 − 9.66)/10 = 3.4% → risk cap = 50/3.4 ≈ 14.7 → clip binds
     expect(card.action).toBe('ADD');
-    expect(card.sizeStopDistancePct).toBeCloseTo(1, 6);
+    expect(card.sizeStopDistancePct).toBeCloseTo(3.4, 6);
     expect(card.suggestAddPct).toBe(5);
     expect(card.suggestSizeNote).toBe('clip');
   });
