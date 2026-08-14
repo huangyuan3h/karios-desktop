@@ -62,6 +62,20 @@ const GATE_REASON_ZH: Record<string, string> = {
   SRV_UNKNOWN: 'SRV 未知',
 };
 
+const REGIME_ZH: Record<string, string> = {
+  Strong: '强势',
+  Diverging: '弱势震荡',
+  Weak: '弱势',
+};
+
+const LIGHT_ZH: Record<string, string> = {
+  deep_green: '深绿',
+  green: '绿',
+  light_green: '浅绿',
+  yellow: '黄',
+  red: '红',
+};
+
 function gateReasonZh(code: string): string {
   return GATE_REASON_ZH[code] ?? code;
 }
@@ -111,8 +125,8 @@ function GateCard({ label, gate }: { label: string; gate: any }) {
         </div>
         <div className="shrink-0 text-right">
           <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">
-            {regime}
-            {light && light !== '—' ? ` · ${light}灯` : ''}
+            {REGIME_ZH[regime] ?? regime}
+            {light && light !== '—' ? ` · ${LIGHT_ZH[light] ?? light}灯` : ''}
           </div>
           {posHint ? (
             <div className="mt-1 text-[var(--m-text-sm)] font-semibold text-[var(--k-warn)]">{posHint}</div>
@@ -166,7 +180,7 @@ export function MobileDashboardPage() {
               {hk ? <GateBadge market="港股" open={!hkGate} /> : null}
             </div>
             <div className="flex gap-2 text-[var(--m-text-sm)] text-[var(--k-muted)]">
-              {cn ? <StatusPill tone={cnGate ? 'closed' : 'open'}>{cn.regime ?? '—'}</StatusPill> : null}
+              {cn ? <StatusPill tone={cnGate ? 'closed' : 'open'}>{REGIME_ZH[String(cn.regime ?? '')] ?? cn.regime ?? '—'}</StatusPill> : null}
               <StatusPill tone="neutral">强度 {cn?.strength ?? '—'}</StatusPill>
             </div>
           </div>

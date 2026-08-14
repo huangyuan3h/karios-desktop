@@ -17,6 +17,12 @@ import { MobileButton, MobileCard, MobileField, MobileSection, PctText, StatusPi
 const fmtPct = (v: number | null | undefined) =>
   v == null || !Number.isFinite(v) ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
 
+const TREND_STATUS_ZH: Record<string, string> = {
+  recovering: '修复中',
+  ok: '趋势OK',
+  no: '趋势弱',
+};
+
 function HoldingRow({ h, market }: { h: PortfolioHolding; market: string }) {
   const exit = h.action === 'EXIT';
   return (
@@ -276,7 +282,7 @@ export function MobileWatchlistPage() {
                     <div className="truncate text-[var(--m-text-base)] font-medium">{it.name ?? it.symbol}</div>
                     <div className="truncate font-mono text-[var(--m-text-xs)] text-[var(--k-muted)]">
                       {it.symbol}
-                      {t?.trendStatus ? ` · ${t.trendStatus}` : ''}
+                      {t?.trendStatus ? ` · ${TREND_STATUS_ZH[t.trendStatus] ?? t.trendStatus}` : ''}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">

@@ -13,6 +13,17 @@ function signalTone(signal?: string): 'open' | 'warn' | 'danger' | 'neutral' {
   return 'neutral';
 }
 
+function signalZh(signal?: string): string {
+  const zh: Record<string, string> = {
+    deep_green: '深绿',
+    light_green: '浅绿',
+    green: '绿',
+    yellow: '黄',
+    red: '红',
+  };
+  return zh[String(signal ?? '')] ?? signal ?? '—';
+}
+
 export function MobileIndexPage() {
   const snap = useMacroSnapshotQuery();
 
@@ -82,7 +93,7 @@ export function MobileIndexPage() {
                     {r.featured ? <span className="ml-1.5"><StatusPill tone="open">聚焦</StatusPill></span> : null}
                   </div>
                   <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">
-                    {r.signal ?? '—'}
+                    {signalZh(r.signal)}
                     {r.positionRange ? ` · pos ${r.positionRange}` : ''}
                   </div>
                 </div>
@@ -93,7 +104,7 @@ export function MobileIndexPage() {
                   {r.pctChg != null ? <PctText value={r.pctChg} /> : null}
                 </div>
                 <div className="shrink-0">
-                  <StatusPill tone={signalTone(r.signal)}>{r.signal ?? '—'}</StatusPill>
+                  <StatusPill tone={signalTone(r.signal)}>{signalZh(r.signal)}</StatusPill>
                 </div>
               </div>
             ))}
