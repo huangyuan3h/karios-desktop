@@ -1,9 +1,11 @@
-/* Karios PWA service worker — cache-first for static assets, network-first
- * for navigations (the app is a static export; dynamic data comes from the
- * data-sync API which must stay fresh).
+/* Karios PWA service worker — v2 (2026-08-14)
+ * Only precached public assets (manifest/icons) are cache-first; every other
+ * request goes straight to the network so dev-mode JS bundles and API
+ * responses are NEVER stale. This prevents the "old bundle points at a dead
+ * subdomain" failure seen on phones after the single-host gateway change.
  */
-const CACHE = 'karios-v1';
-const PRECACHE = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
+const CACHE = 'karios-v2';
+const PRECACHE = ['/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -23,32 +25,16 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   // Never intercept API calls.
-  if (url.port === '4330' || url.pathname.startsWith('/api/')) return;
+  if (url.port === '4330' || url.pathname.startsWith('/api/') || url.pathname.startsWith('/v1/')) return;
 
-  if (event.request.mode === 'navigate') {
-    // Network-first for pages (so the app always loads fresh when online).
+  // Cache-first ONLY for the precached public assets; everything else
+  // (pages, JS bundles, AI calls) goes to the network.
+  if (PRECACHE.includes(url.pathname)) {
     event.respondWith(
-      fetch(event.request)
-        .then((resp) => {
-          const copy = resp.clone();
-          caches.open(CACHE).then((cache) => cache.put('/', copy));
-          return resp;
-        })
-        .catch(() => caches.match('/')),
+      caches.match(event.request).then(
+        (hit) => hit || fetch(event.request),
+      ),
     );
     return;
   }
-
-  // Cache-first for static assets.
-  event.respondWith(
-    caches.match(event.request).then(
-      (hit) =>
-        hit ||
-        fetch(event.request).then((resp) => {
-          const copy = resp.clone();
-          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
-          return resp;
-        }),
-    ),
-  );
 });

@@ -30,6 +30,7 @@ import { buildHash, currentHash, parseHash } from '@/lib/hash-router';
 import { createQueryClient } from '@/lib/query-client';
 import { ensureWatchlistHydrated } from '@/lib/watchlist-storage';
 import { cn } from '@/lib/utils';
+import { MobileShell } from '@/components/mobile/MobileShell';
 
 const LazyPageFallback = () => (
   <div className="flex h-full items-center justify-center p-6 text-sm text-[var(--k-muted)]">
@@ -374,9 +375,21 @@ function AppShellInner() {
 export function AppShell() {
   const [queryClient] = React.useState(() => createQueryClient());
 
+  // Mobile-first shell for phones/tablets (Family Hub Phase 0 · 2026-08-14):
+  // the desktop workspace (sidebar + agent panel + dense tables) is unusable
+  // on small screens, so a phone gets its own 3-tab shell instead.
+  const [isMobile, setIsMobile] = React.useState(false);
+  React.useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <AppShellInner />
+      {isMobile ? <MobileShell /> : <AppShellInner />}
     </QueryClientProvider>
   );
 }

@@ -2878,3 +2878,23 @@ login.cloudflareaccess.org，国内网络不稳）。单域名架构：`karios.i
 个密码覆盖 UI+API+AI（caddy 按路径分流：/api /v1 及无前缀路由→4330，
 /ai→4310，/与静态资源→3000）。密码存 `~/.karios/gateway-password.txt`
 （chmod 600）。无认证访问返回 401。
+
+### OPT-117：MobileShell 手机端独立 UI（2026-08-14）
+
+**状态**：[x]（v1：执行/持仓/对账三 tab；后续按需增强）
+
+**背景（用户反馈"手机太难操作"）**：桌面工作区（sidebar+agent 面板+密集表格）在
+手机不可用。方案：**移动端独立视图**，不复用桌面组件。
+
+**改动**：
+- `components/mobile/MobileShell.tsx`：手机优先 3-tab（底部导航）
+  ① 执行：闸门徽章（A股/港股可买与否）+ 下午 2 点买入清单 + 🚩需要卖出
+  ② 持仓：每票卡片（盈亏/止损线/移动线/到期/EXIT 标记/盘中预警）
+  ③ 对账：该卖没卖/买了不该买（行为审计偏差）
+- `AppShell`：`matchMedia(max-width:768px)` 检测 → MobileShell（hooks 隔离，
+  React hooks 规则合规）
+- 数据全复用现有 API（portfolio-health / behavior-audit），无后端改动
+
+**验收**：4 个 MobileShell 测试（闸门/候选/持仓/EXIT/对账）+ 771 passed ·
+tsc/eslint 干净 · tunnel UI 200。
+**说明**：v1 只读展示（看）；操作（买入/卖出/对账刷新）后续按需加。
