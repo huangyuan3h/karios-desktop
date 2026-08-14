@@ -598,3 +598,36 @@ def test_signal_snapshot_none_when_no_data(monkeypatch) -> None:
     assert paper_s3._signal_snapshot_for(
         symbol="CN:300628", industry="通信", trade_date="2026-08-12",
     ) is None
+
+
+def test_build_s3_candidates_blocks_implicit_weak_breadth() -> None:
+    """TIP-014: up/down < 0.5 with normal risk_mode blocks CN candidates."""
+    with _patch_day_gates():
+        paper_s3._load_today_scores.return_value = {CN_A: 90.0}
+        paper_s3.get_cn_sentiment.return_value = {
+            "items": [
+                {
+                    "riskMode": "normal",
+                    "upCount": 800,
+                    "downCount": 3200,
+                }
+            ]
+        }
+        assert paper_s3.build_s3_candidates(trade_date="2026-08-07") == []
+
+
+def test_build_s3_candidates_allows_balanced_breadth() -> None:
+    """up/down = 1.0 with normal risk_mode → candidates allowed."""
+    with _patch_day_gates():
+        paper_s3._load_today_scores.return_value = {CN_A: 90.0}
+        paper_s3.get_cn_sentiment.return_value = {
+            "items": [
+                {
+                    "riskMode": "normal",
+                    "upCount": 2000,
+                    "downCount": 2000,
+                }
+            ]
+        }
+        out = paper_s3.build_s3_candidates(trade_date="2026-08-07")
+        assert [c["symbol"] for c in out] == [CN_A]

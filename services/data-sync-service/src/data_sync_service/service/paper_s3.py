@@ -111,6 +111,10 @@ PYRAMID_ENABLED = True
 
 SENTIMENT_BLOCK_MODES = ("no_new_positions", "extreme_caution")
 
+# TIP-014 (2026-08-14): implicit-weak breadth ratio (up/down < 0.5 blocks
+# new CN entries). Mirrors execution_gate.WEAK_RATIO_MAX + env_label.
+WEAK_RATIO_MAX = 0.5
+
 
 def _load_today_scores(trade_date: str, market: str = "CN") -> dict[str, float]:
     """{symbol: score} from watchlist_score_daily for one market."""
@@ -342,7 +346,21 @@ def build_s3_candidates(
         mainline = mainline_allow_by_day.get(day) or set()
         sentiment_items = get_cn_sentiment(days=1, as_of_date=day)["items"]
         today_mode = sentiment_items[-1].get("riskMode") if sentiment_items else ""
-        if today_mode in SENTIMENT_BLOCK_MODES or panic.get("active"):
+        # TIP-014 (2026-08-14): implicit-weak day — breadth ratio < 0.5
+        # (跌家数 > 2× 涨家数) even when risk_mode is only normal/caution.
+        # Same definition as service/execution_gate.WEAK_RATIO_MAX and the
+        # backtest engine (env_label.WEAK_RATIO_MAX): 16/16 losing trades in
+        # the valid window.
+        s_up = int(sentiment_items[-1].get("upCount") or 0) if sentiment_items else 0
+        s_down = int(sentiment_items[-1].get("downCount") or 0) if sentiment_items else 0
+        breadth_weak = (
+            s_up > 0 and s_down > 0 and (s_up / s_down) < WEAK_RATIO_MAX
+        )
+        if (
+            today_mode in SENTIMENT_BLOCK_MODES
+            or breadth_weak
+            or panic.get("active")
+        ):
             return []
         industry_by_ts = _load_industries(list(resolved.values()))
 

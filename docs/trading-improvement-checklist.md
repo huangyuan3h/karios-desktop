@@ -970,6 +970,17 @@ Week 4+: TIP-008 展示 → TIP-007 动量放开（有数据再开）→ TIP-009
 **Phase 2 — 落地**：验证后把「环境 → 风格」映射固化为规则进
 `strategy_params.py`，live 生效；同步对齐执行节奏（14:30 固定时刻检查信号）。
 
+**Phase 2 已落地的部分（2026-08-14）**：TIP-014 的 **neutral_block（弱/中性日禁开仓）**
+已三处同步固化：
+- 回测侧：S3_CONFIG（run_walk_forward / rolling_oos / reconciliation）
+- live 闸门：`execution_gate.compute_execution_gate` 新增 `BREADTH_IMPLICIT_WEAK`
+  （up/down < 0.5 且 risk_mode 仅 normal/caution → DEFEND）
+- live paper：`paper_s3.build_s3_candidates` CN 分支同判定
+- 定义统一：`execution_gate.WEAK_RATIO_MAX = env_label.WEAK_RATIO_MAX = 0.5`
+- 效果：valid +10.7pt（89.1→99.8）/ DD 12.1→2.7 / 胜率 60.8→78.2，三窗 0 劣化
+- 仅 CN 线（HK 无 sentiment 数据，不受影响）
+- 待办：momentum/dip 风格切换仍需更多电风扇样本（见 Phase 3 数据待办）
+
 **Phase 3 — 真实验证**：东财 5 分钟线（已验证可得，330 根/5 天，历史深拉被风控需慢速分页）
 接入后，用真实尾盘价校验 Phase 1 结论；板块特点画像（用户提出）作为延伸维度。
 

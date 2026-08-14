@@ -437,3 +437,29 @@ def test_etf_signal_in_cn_gate_not_hk_gate() -> None:
     assert out["etfFlowSignal"]["verdict"] == "confirm"
     assert out["cnGate"]["etfFlowSignal"]["verdict"] == "confirm"
     assert "etfFlowSignal" not in out["hkGate"]
+
+
+def test_defend_when_implicit_weak_breadth_ratio() -> None:
+    """TIP-014: up/down < 0.5 with normal risk_mode still defends."""
+    out = compute_execution_gate(
+        index_signals=_signals("green", "deep_green"),
+        down_count=3200,
+        up_count=800,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_STABLE, 3),
+    )
+    assert out["mode"] == MODE_DEFEND
+    assert out["allowNewEntries"] is False
+    assert "BREADTH_IMPLICIT_WEAK" in out["reasons"]
+
+
+def test_attack_when_ratio_above_weak_threshold() -> None:
+    """up/down = 1.0 (balanced) with normal risk_mode stays ATTACK."""
+    out = compute_execution_gate(
+        index_signals=_signals("green", "deep_green"),
+        down_count=2000,
+        up_count=2000,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_STABLE, 3),
+    )
+    assert out["mode"] == MODE_ATTACK

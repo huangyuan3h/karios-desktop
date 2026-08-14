@@ -33,6 +33,12 @@ OVERFLOW_UNLOCK_MINUTES = 14 * 60 + 30  # 14:30 Shanghai
 _GREEN_SIGNALS = frozenset({"green", "light_green", "deep_green"})
 _RISK_DEFEND = frozenset({"extreme_caution", "no_new_positions"})
 
+# TIP-014 (2026-08-14): implicit-weak breadth ratio — up/down < 0.5 with only
+# normal/caution risk_mode still blocks new entries (valid window 16/16
+# losing trades, avg -6.1%). Mirrors service/env_label.WEAK_RATIO_MAX so the
+# live gate, paper intake and the backtest engine share one definition.
+WEAK_RATIO_MAX = 0.5
+
 HK_INDEX_TRAFFIC_LIGHT_NAMES = frozenset({"恒生指数", "恒生科技指数"})
 
 _SIGNAL_RANK = {
@@ -305,6 +311,12 @@ def compute_execution_gate(
         hard_defend_reasons.append(
             "RISK_NO_NEW" if risk == "no_new_positions" else "RISK_EXTREME_CAUTION"
         )
+    # TIP-014: implicit-weak day — breadth ratio < 0.5 (跌家数 > 2× 涨家数)
+    # even when risk_mode is only normal/caution. Backtest-verified: 16/16
+    # losing trades in the valid window. Only applies when breadth data is
+    # actually present (down > 0 or up > 0).
+    if up > 0 and down > 0 and (up / down) < WEAK_RATIO_MAX:
+        hard_defend_reasons.append("BREADTH_IMPLICIT_WEAK")
 
     defend = False
     if hard_defend_reasons:
