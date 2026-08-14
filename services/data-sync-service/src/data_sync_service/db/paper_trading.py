@@ -93,6 +93,10 @@ SOURCES = (SOURCE_TV, SOURCE_ALPHA, SOURCE_MANUAL, SOURCE_S3, SOURCE_S3_HK)
 # is the evidence record). Kept module-level so tests can assert against the
 # exact values and operators can tune them in one place.
 MAX_HOLD_DAYS = 60  # S-3: hold up to 60 days (5-day force-close was proven wrong)
+# D2 (2026-08-14 固化): entries made on an UPTREND day force-close after
+# this many days (主升日买入吃主升段就跑). Mirrors the backtest S3_CONFIG
+# max_hold_env_shorten=45. Read from signal_snapshot.entryEnv == "uptrend".
+MAX_HOLD_DAYS_ENV_SHORTEN = 45
 STOP_LOSS_PCT = -5.0  # i.e. net pnl_pct <= -5% triggers stop_hit (v0.2: net)
 # OPT-105 (2026-08-13 固化): CN S-3 Strong-regime sessions replace the fixed
 # stop/trail with the entry-locked ATR% x S3_ATR_STOP_MULT line; Diverging/

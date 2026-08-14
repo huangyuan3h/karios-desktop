@@ -670,6 +670,18 @@ def _signal_snapshot_for(
                 snap["industryNetInflow5d"] = f["netInflow5d"]
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 signal snapshot flow failed: %s", exc)
+    # D2 (2026-08-14): record the entry-day environment so the live close
+    # path can apply max_hold_env_shorten (uptrend entries force-close after
+    # 45 days) — same rule as the backtest engine. Only written when the
+    # environment is actually known (uptrend/fan/weak); unknown → absent so
+    # the trade keeps the normal 60-day hold (matches the backtest: UNKNOWN
+    # entries are never shortened).
+    try:
+        env = _env_for_day(get_cn_sentiment(days=1, as_of_date=trade_date)["items"])
+        if env in (ENV_UPTREND, ENV_FAN, ENV_WEAK):
+            snap["entryEnv"] = env
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 signal snapshot env failed: %s", exc)
     try:
         from data_sync_service.service.portfolio_health import _alpha_events_for_symbols
 

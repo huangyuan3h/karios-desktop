@@ -350,12 +350,28 @@ def run_update(*, today_iso: str | None = None) -> dict[str, Any]:
             if atr_pct > 0 and _cn_regime_today() == REGIME_STRONG:
                 stop_pct = trail_pct = -(pt_db.S3_ATR_STOP_MULT * atr_pct)
 
+        # D2 (2026-08-14): environment-aware max-hold — S-3 entries made on
+        # an UPTREND day (signal_snapshot.entryEnv) force-close after
+        # MAX_HOLD_DAYS_ENV_SHORTEN; everything else keeps MAX_HOLD_DAYS.
+        # Mirrors the backtest engine's max_hold_env_shorten.
+        max_hold = pt_db.MAX_HOLD_DAYS
+        try:
+            snap = t.get("signal_snapshot") or {}
+            if (
+                str(t.get("source") or "") in ("S3", "S3HK")
+                and str(snap.get("entryEnv") or "") == "uptrend"
+            ):
+                max_hold = pt_db.MAX_HOLD_DAYS_ENV_SHORTEN
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("paper_trade entryEnv read failed: %s", exc)
+
         reason = _pick_close_reason(
             t=t,
             pnl_pct=net_pnl,
             holding_days=holding_days,
             registry_symbols=registry_symbols,
             stop_loss_pct=stop_pct,
+            max_hold_days=max_hold,
             # 2026-08-11: S-3 paper lines (CN + HK) are managed by the S-3
             # rule set (same code as the backtest); pool_exit (registry
             # membership) is a v0-manual-book rule and must NOT apply — the

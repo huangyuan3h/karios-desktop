@@ -1117,3 +1117,64 @@ def test_run_update_trailing_fires_on_close_peak_pullback() -> None:
     assert summary["closed"] == 1
     assert summary["closeReasons"].get("trailing_stop") == 1
     assert mock_close.call_args.kwargs["close_reason"] == "trailing_stop"
+
+
+def test_run_update_env_shorten_closes_s3_uptrend_at_45(monkeypatch) -> None:
+    """D2: S3 entry with entryEnv=uptrend force-closes after
+    MAX_HOLD_DAYS_ENV_SHORTEN (45), not MAX_HOLD_DAYS (60)."""
+    import data_sync_service.db.paper_trading as pt_db_mod
+
+    monkeypatch.setattr(pt_db_mod, "MAX_HOLD_DAYS", 60)
+    monkeypatch.setattr(pt_db_mod, "MAX_HOLD_DAYS_ENV_SHORTEN", 3)
+    row = {
+        **_OPEN_ROW,
+        "source": "S3",
+        "market": "CN",
+        "entryPrice": 10.0,
+        "entryDate": "2026-08-01",
+        "signal_snapshot": {"entryEnv": "uptrend"},
+    }
+    # +5% price (no stop), day 4 after entry → env-shortened 3 days < 60
+    bars = {"000001.SZ": [("2026-08-05", 10.5, 10.5, 10.4, 10.5, 1000)]}
+    p1, p2, p3, p4 = _patched_run_update([row], bars)
+    with p1, p2, p3, p4, patch(
+        "data_sync_service.service.paper_trading.pt_db.close_paper_trade",
+        return_value={**row, "status": "closed", "close_reason": "max_hold"},
+    ), patch(
+        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+    ) as mock_update:
+        from data_sync_service.service.paper_trading import run_update
+
+        summary = run_update(today_iso="2026-08-05")
+    assert summary["closed"] == 1
+    assert summary["closeReasons"].get("max_hold") == 1
+    mock_update.assert_not_called()
+
+
+def test_run_update_env_shorten_ignores_non_uptrend(monkeypatch) -> None:
+    """D2: S3 entry with entryEnv=fork stays on MAX_HOLD_DAYS (no early close)."""
+    import data_sync_service.db.paper_trading as pt_db_mod
+
+    monkeypatch.setattr(pt_db_mod, "MAX_HOLD_DAYS", 60)
+    monkeypatch.setattr(pt_db_mod, "MAX_HOLD_DAYS_ENV_SHORTEN", 3)
+    row = {
+        **_OPEN_ROW,
+        "source": "S3",
+        "market": "CN",
+        "entryPrice": 10.0,
+        "entryDate": "2026-08-01",
+        "signal_snapshot": {"entryEnv": "fan"},
+    }
+    bars = {"000001.SZ": [("2026-08-05", 10.5, 10.5, 10.4, 10.5, 1000)]}
+    p1, p2, p3, p4 = _patched_run_update([row], bars)
+    with p1, p2, p3, p4, patch(
+        "data_sync_service.service.paper_trading.pt_db.close_paper_trade"
+    ) as mock_close, patch(
+        "data_sync_service.service.paper_trading.pt_db.update_paper_trade_price"
+    ) as mock_update:
+        from data_sync_service.service.paper_trading import run_update
+
+        summary = run_update(today_iso="2026-08-05")
+    assert summary["closed"] == 0
+    mock_close.assert_not_called()
+    mock_update.assert_called_once()
