@@ -67,3 +67,22 @@ def test_test_event_and_fallback() -> None:
     assert t["title"] == "✅ Karios 连通测试"
     fb = format_bark("unknown_event", {"a": 1})
     assert fb["title"] == "Karios · unknown_event"
+
+
+def test_job_failed_includes_error_body() -> None:
+    # Regression (2026-08-14): emit sites use "error", formatter read
+    # "error_message" -> Bark received an empty message.
+    r = format_bark(
+        "job_failed",
+        {"job_type": "option_iv_daily", "error": "no_iv_data", "last_ts_code": None},
+    )
+    assert r["title"] == "🔧 任务失败 option_iv_daily"
+    assert r["body"] == "no_iv_data"
+    # legacy callers using error_message still work
+    legacy = format_bark("job_failed", {"job_type": "x", "error_message": "legacy err"})
+    assert legacy["body"] == "legacy err"
+    # last_ts_code included when present
+    with_code = format_bark(
+        "job_failed", {"job_type": "y", "error": "boom", "last_ts_code": "CN:600000"}
+    )
+    assert "last_ts_code CN:600000" in with_code["body"]

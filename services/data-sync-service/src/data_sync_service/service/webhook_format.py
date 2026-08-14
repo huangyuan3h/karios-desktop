@@ -103,9 +103,15 @@ def format_bark(event_type: str, payload: dict[str, Any]) -> dict[str, str]:
 
     if event_type == "job_failed":
         job = p.get("job_type") or p.get("jobType") or "?"
+        # Field-name drift guard: emit sites use "error" (sync_job_record),
+        # older callers may use "error_message".
+        error = p.get("error_message") or p.get("error") or ""
+        extra = []
+        if p.get("last_ts_code"):
+            extra.append(f"last_ts_code {p.get('last_ts_code')}")
         return {
             "title": f"🔧 任务失败 {job}",
-            "body": _lines(str(p.get("error_message") or "")) or "见控制台",
+            "body": _lines(str(error), *extra) or "见控制台",
         }
 
     if event_type == "test":
