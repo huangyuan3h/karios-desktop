@@ -32,7 +32,7 @@ JOB_ID = "paper_backtest_mirror"
 CRON_EXPRESSION = "5 18 * * *"
 TIMEZONE = "Asia/Shanghai"
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "mirror_backtest_to_paper.py"
+SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "mirror_backtest_to_paper.py"
 
 
 def build_trigger() -> CronTrigger:
