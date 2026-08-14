@@ -24,3 +24,24 @@ describe('endpoints', () => {
     vi.resetModules();
   });
 });
+
+describe('endpoints — tunnel origin (Family Hub Phase 0)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('uses public subdomains when served from the tunnel host', async () => {
+    vi.stubGlobal('window', { location: { hostname: 'karios.it-t.xyz' } });
+    vi.resetModules();
+    const { AI_BASE_URL: ai, DATA_SYNC_BASE_URL: ds } = await import('./endpoints');
+    expect(ds).toBe('https://api-karios.it-t.xyz');
+    expect(ai).toBe('https://ai-karios.it-t.xyz');
+  });
+
+  it('keeps local defaults on localhost', async () => {
+    vi.stubGlobal('window', { location: { hostname: 'localhost' } });
+    vi.resetModules();
+    const { DATA_SYNC_BASE_URL: ds } = await import('./endpoints');
+    expect(ds).toBe('http://127.0.0.1:4330');
+  });
+});

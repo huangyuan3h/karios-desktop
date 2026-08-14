@@ -2851,3 +2851,26 @@ ruff 干净；服务已重启（provider 字段已生效）。
 
 **用户侧**：装 Bark app → 复制 `https://api.day.app/<key>` → 创建订阅
 （provider=bark，事件全选）→ `POST /api/webhook/test` 验证手机收到。
+
+### OPT-116：Family Hub Phase 0 — Cloudflare Tunnel + PWA（2026-08-14）
+
+**状态**：[x]（隧道/PWA/常驻完成；Cloudflare Access 待用户在控制台配置）
+
+**背景（用户愿景）**：家庭投资平台统一入口——手机访问 Mac 上的全部软件，
+语音控制、数据说话（docs/designs/family-hub-2027.md）。
+
+**改动**：
+- **PWA**：`manifest.webmanifest` + 图标（icon-192/512 + apple-touch-icon，
+  PIL 生成，深色底金色柱状图=数据说话）+ `sw.js`（静态缓存、导航 network-first、
+  跳过 API 拦截）+ layout metadata（manifest/themeColor/appleWebApp）
+- **Tunnel**：Cloudflare 命名隧道 `karios`（id 8d60d5d1…），三个子域
+  `karios.it-t.xyz`（UI 3000）/ `api-karios.it-t.xyz`（API 4330）/
+  `ai-karios.it-t.xyz`（AI 4310）；~/.cloudflared/config.yml ingress；
+  launchd 常驻（plist 修正为 `tunnel run karios`）
+- **前端动态 base**：`endpoints.ts` 按 hostname 判断——it-t.xyz 走公网子域，
+  本地仍 127.0.0.1（手机/本地同一构建，无需注入环境变量）
+
+**验收**：三个子域 curl 全通（UI 200 / API healthz ok / AI healthz ok）；
+前端 84 文件全过（+2 endpoints tunnel 测试）；tsc 干净。
+**安全待办（用户侧）**：Cloudflare Zero Trust → Access → 三个域名 Email
+白名单（未配前域名公开可访问，尽快配置）。

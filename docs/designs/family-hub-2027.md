@@ -81,7 +81,7 @@
 
 | 阶段 | 时间 | 内容 | 状态 |
 |------|------|------|------|
-| Phase 0 | 现在～1 月 | Tunnel（cloudflared）+ PWA 主屏图标 + 登录认证；Bark 全链路 | Bark ✅（OPT-115）；Tunnel/PWA 待做 |
+| Phase 0 | 现在～1 月 | Tunnel（cloudflared）+ PWA 主屏图标 + 登录认证；Bark 全链路 | **✅ 2026-08-14（OPT-116）**：三个子域连通 + launchd 常驻 + PWA 图标/manifest/SW + Bark 全链路；⏳ Access 认证（用户在控制台配置）|
 | Phase 1 | 1～3 月 | `/api/voice` 语音指令 API + Siri Shortcut 集合 + PWA 语音按钮；并行 C4 验证期 | 待做 |
 | Phase 2 | 3～6 月 | 加拿大 Mac mini 部署 + 备份迁移；健康/家庭规划接入规范；单一登录 | 待做（触发：+20% 里程碑）|
 | Phase 3 | 6～12 月 | opencode 任务队列；家庭 agent 编排；语音全场景 | 待做 |
@@ -90,3 +90,7 @@
 
 Phase 0 的 **Tunnel + PWA**（1.5 天）→ 手机任何网络访问 + 主屏图标。
 开工前需用户确认：cloudflared 隧道域名方案 + 认证方式（自建账号 / 简单 token）。
+
+**2026-08-14 落地**（OPT-116）：Tunnel（karios.it-t.xyz 三子域）+ PWA + launchd 常驻
+已完成；**剩余安全项：Cloudflare Access 配置（用户控制台操作，见 OPT-116）**。
+下一步 = Phase 1 `/api/voice` 语音指令 API。
