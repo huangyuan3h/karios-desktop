@@ -92,5 +92,7 @@ Phase 0 的 **Tunnel + PWA**（1.5 天）→ 手机任何网络访问 + 主屏�
 开工前需用户确认：cloudflared 隧道域名方案 + 认证方式（自建账号 / 简单 token）。
 
 **2026-08-14 落地**（OPT-116）：Tunnel（karios.it-t.xyz 三子域）+ PWA + launchd 常驻
-已完成；**剩余安全项：Cloudflare Access 配置（用户控制台操作，见 OPT-116）**。
+已完成；**剩余：① Cloudflare Access 配置（用户控制台操作）；② [P1] 移动端响应式
+适配**（2026-08-14 用户反馈"手机适配太差"——todo §12 #2c：主要页面
+watchlist/体检卡/执行卡按手机/平板重排，家庭共享体验）。
 下一步 = Phase 1 `/api/voice` 语音指令 API。
