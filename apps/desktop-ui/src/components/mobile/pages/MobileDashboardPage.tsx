@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchPortfolioHealth, isMarketGateClosed } from '@/lib/queries/portfolioHealth';
 import { useNewsItemsQuery } from '@/lib/queries/news';
 import { useIndustryFundFlowQuery } from '@/lib/queries/industryFlow';
+import { fmtAmountCn, fmtSignedAmountCn } from '@/lib/dashboard-format';
 import { GateBadge, MobileCard, MobileSection, PriceText, StatusPill } from '../primitives';
 
 /** Dashboard (mobile) — gates + news pulse + top industry inflow. §5.2 高频. */
@@ -64,12 +65,17 @@ export function MobileDashboardPage() {
                       {i + 1}. {r.industryName}
                     </div>
                     <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">
-                      10 日累计 {r.sum10d.toFixed(1)} 亿
+                      10 日累计 {fmtAmountCn(r.sum10d)}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
-                    <PriceText value={r.netInflow} prefix="+" />
-                    <div className="mt-0.5 text-right text-[var(--m-text-xs)] text-[var(--k-muted)]">亿元</div>
+                    <span
+                      className="text-[var(--m-text-base)] font-semibold"
+                      style={{ color: r.netInflow > 0 ? 'var(--k-up)' : r.netInflow < 0 ? 'var(--k-down)' : 'inherit' }}
+                    >
+                      {fmtSignedAmountCn(r.netInflow)}
+                    </span>
+                    <div className="mt-0.5 text-right text-[var(--m-text-xs)] text-[var(--k-muted)]">净流入</div>
                   </div>
                 </div>
               </MobileCard>

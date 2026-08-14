@@ -4,10 +4,10 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useIndustryFundFlowQuery, useIndustryMainlineQuery, runIndustryFlowSync } from '@/lib/queries/industryFlow';
+import { fmtAmountCn, fmtSignedAmountCn } from '@/lib/dashboard-format';
 import { MobileCard, MobileSection, PriceText, StatusPill } from '../primitives';
 
 /** 行业资金流 (mobile) — mainline + top in/outflow. §5.2 中频. */
-const fmtYi = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)} 亿`;
 
 export function MobileIndustryFlowPage() {
   const qc = useQueryClient();
@@ -49,10 +49,15 @@ export function MobileIndustryFlowPage() {
                 </span>
               ) : null}
             </div>
-            <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">10 日累计 {fmtYi(r.sum10d)}</div>
+            <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">10 日累计 {fmtAmountCn(r.sum10d)}</div>
           </div>
           <div className="shrink-0">
-            <PriceText value={r.netInflow} prefix={r.netInflow >= 0 ? '+' : ''} />
+            <span
+              className="text-[var(--m-text-base)] font-semibold"
+              style={{ color: r.netInflow > 0 ? 'var(--k-up)' : r.netInflow < 0 ? 'var(--k-down)' : 'inherit' }}
+            >
+              {fmtSignedAmountCn(r.netInflow)}
+            </span>
           </div>
         </div>
       ))}
