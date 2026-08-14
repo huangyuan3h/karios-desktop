@@ -133,3 +133,21 @@ describe('MobileShell (Family Hub Phase 0)', () => {
     });
   });
 });
+
+describe('MobileShell — 更多 tab (all features reachable)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockHealth.mockResolvedValue(HEALTH as never);
+  });
+
+  it('lists every desktop page in the 更多 tab', async () => {
+    renderShell();
+    fireEvent.click(screen.getByText('更多'));
+    await waitFor(() => {
+      expect(screen.getByText('Watchlist')).toBeTruthy();
+      expect(screen.getByText('决策 Agent')).toBeTruthy();
+      expect(screen.getByText('回测')).toBeTruthy();
+      expect(screen.getByText('设置')).toBeTruthy();
+    });
+  });
+});

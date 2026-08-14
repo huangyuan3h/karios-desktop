@@ -10,16 +10,99 @@ import { useBehaviorAuditQuery } from '@/lib/queries/behaviorAudit';
  * Mobile-first shell (Family Hub Phase 0 · 2026-08-14).
  *
  * The desktop UI is a wide workspace (sidebar + agent panel + dense tables)
- * that is unusable on a phone. This shell renders the three things a phone
- * user actually needs, one screen each, bottom-tab navigated:
- *   执行 — today's gate state + buy candidates + EXIT flags
- *   持仓 — every holding with its stop/trail lines
- *   对账 — behavior-audit deviations (该卖没卖 / 买了不该买)
+ * that is unusable on a phone. This shell renders the core phone views in
+ * three bottom tabs (执行 / 持仓 / 对账) plus a 更多 tab that links every
+ * desktop page so no feature is unreachable from the phone.
  * Data comes from the same APIs the desktop pages use — no new backend.
  */
 
+type MobileTab = '执行' | '持仓' | '对账' | '更多';
+
 const fmtPct = (v: number | null | undefined, digits = 2) =>
   v == null || !Number.isFinite(v) ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(digits)}%`;
+
+/** Every desktop page, reachable from the phone (loaded on demand). */
+type PageComponent = React.ComponentType<{
+  onBack?: () => void;
+  onOpenStock?: (symbol: string) => void;
+}>;
+
+const PAGE_LOADERS: Record<string, { label: string; load: () => Promise<{ default: unknown }> }> = {
+  dashboard: {
+    label: 'Dashboard',
+    load: () => import('@/components/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
+  },
+  watchlist: {
+    label: 'Watchlist',
+    load: () => import('@/components/pages/WatchlistPage').then((m) => ({ default: m.WatchlistPage })),
+  },
+  market: {
+    label: 'Market',
+    load: () => import('@/components/pages/MarketPage').then((m) => ({ default: m.MarketPage })),
+  },
+  news: {
+    label: 'News',
+    load: () => import('@/components/pages/NewsPage').then((m) => ({ default: m.NewsPage })),
+  },
+  industryFlow: {
+    label: '行业资金流',
+    load: () => import('@/components/pages/IndustryFlowPage').then((m) => ({ default: m.IndustryFlowPage })),
+  },
+  alpha: {
+    label: 'Alpha 雷达',
+    load: () => import('@/components/pages/AlphaTabsPage').then((m) => ({ default: m.AlphaTabsPage })),
+  },
+  decision: {
+    label: '决策 Agent',
+    load: () => import('@/components/pages/DecisionPage').then((m) => ({ default: m.DecisionPage })),
+  },
+  backtest: {
+    label: '回测',
+    load: () => import('@/components/pages/BacktestPage').then((m) => ({ default: m.BacktestPage })),
+  },
+  index: {
+    label: '指数',
+    load: () => import('@/components/pages/IndexPage').then((m) => ({ default: m.IndexPage })),
+  },
+  broker: {
+    label: 'Broker 条件单',
+    load: () => import('@/components/pages/BrokerPage').then((m) => ({ default: m.BrokerPage })),
+  },
+  journal: {
+    label: '交易日志',
+    load: () => import('@/components/pages/JournalTradeReviewPage').then((m) => ({ default: m.JournalTradeReviewPage })),
+  },
+  scheduler: {
+    label: '任务调度',
+    load: () => import('@/components/pages/SchedulerPage').then((m) => ({ default: m.SchedulerPage })),
+  },
+  webhook: {
+    label: 'Webhook',
+    load: () => import('@/components/pages/WebhookPage').then((m) => ({ default: m.WebhookPage })),
+  },
+  settings: {
+    label: '设置',
+    load: () => import('@/components/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+  },
+};
+
+function MobilePage({ id, onBack }: { id: string; onBack: () => void }) {
+  const def = PAGE_LOADERS[id];
+  const [Comp, setComp] = React.useState<PageComponent | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    def.load().then((m) => {
+      if (!cancelled) setComp(() => m.default as PageComponent);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [def]);
+  if (!Comp) {
+    return <div className="p-8 text-center text-sm text-[var(--k-muted)]">加载中…</div>;
+  }
+  return <Comp onBack={onBack} onOpenStock={() => {}} />;
+}
 
 function GateBadge({ label, open }: { label: string; open: boolean }) {
   return (
@@ -78,7 +161,8 @@ function HoldingCard({ h, market }: { h: PortfolioHolding; market: string }) {
 }
 
 export function MobileShell() {
-  const [tab, setTab] = React.useState<'执行' | '持仓' | '对账'>('执行');
+  const [tab, setTab] = React.useState<MobileTab>('执行');
+  const [pageId, setPageId] = React.useState<string | null>(null);
   const health = useQuery({
     queryKey: ['portfolio-health'],
     queryFn: ({ signal }) => fetchPortfolioHealth(undefined, signal),
@@ -100,19 +184,41 @@ export function MobileShell() {
 
   const loading = health.isLoading || health.isFetching;
 
+  const openPage = (id: string) => {
+    setPageId(id);
+    setTab('更多');
+  };
+
   return (
     <div className="flex h-dvh w-full flex-col bg-[var(--k-bg)] text-[var(--k-text)]">
       {/* Header */}
       <header className="flex items-center justify-between border-b border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
-        <div className="text-[15px] font-bold">Karios</div>
-        <div className="flex items-center gap-1.5 text-[10px] text-[var(--k-muted)]">
-          {cn ? <GateBadge label="A股" open={!cnGate} /> : null}
-          {hk ? <GateBadge label="港股" open={!hkGate} /> : null}
+        <div className="flex items-center gap-2">
+          {pageId ? (
+            <button
+              type="button"
+              onClick={() => setPageId(null)}
+              className="rounded-md px-1.5 py-0.5 text-[13px] text-emerald-600 dark:text-emerald-400"
+            >
+              ‹ 返回
+            </button>
+          ) : null}
+          <div className="text-[15px] font-bold">{pageId ? PAGE_LOADERS[pageId]?.label ?? '页面' : 'Karios'}</div>
         </div>
+        {!pageId ? (
+          <div className="flex items-center gap-1.5 text-[10px] text-[var(--k-muted)]">
+            {cn ? <GateBadge label="A股" open={!cnGate} /> : null}
+            {hk ? <GateBadge label="港股" open={!hkGate} /> : null}
+          </div>
+        ) : null}
       </header>
 
       {/* Content */}
-      <main className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
+      <main className="flex-1 overflow-y-auto">
+        {pageId ? (
+          <MobilePage id={pageId} onBack={() => setPageId(null)} />
+        ) : (
+          <div className="space-y-3 px-3 py-3">
         {loading && !health.data ? (
           <div className="pt-16 text-center text-sm text-[var(--k-muted)]">加载中…</div>
         ) : null}
@@ -209,15 +315,35 @@ export function MobileShell() {
             )}
           </div>
         ) : null}
+
+        {tab === '更多' ? (
+          <div className="grid grid-cols-2 gap-2">
+            {Object.entries(PAGE_LOADERS).map(([id, def]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => openPage(id)}
+                className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-3.5 text-left text-[12.5px] font-medium"
+              >
+                {def.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+          </div>
+        )}
       </main>
 
       {/* Bottom tabs */}
       <nav className="flex border-t border-[var(--k-border)] bg-[var(--k-surface)]">
-        {(['执行', '持仓', '对账'] as const).map((t) => (
+        {(['执行', '持仓', '对账', '更多'] as const).map((t) => (
           <button
             key={t}
             type="button"
-            onClick={() => setTab(t)}
+            onClick={() => {
+              setTab(t);
+              if (t !== '更多') setPageId(null);
+            }}
             className={`flex-1 py-3 text-[12.5px] font-medium ${
               tab === t ? 'text-emerald-600 dark:text-emerald-400' : 'text-[var(--k-muted)]'
             }`}
