@@ -786,6 +786,8 @@ HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今�
 - ✅ **回测引擎 v1.5**（OPT-063→070）→ [`archive/2026-08-07-opt-063-backtest-engine.md`](./archive/2026-08-07-opt-063-backtest-engine.md)
 - ✅ **Paper v0.1/v0.2 + S-3 模式**（paper_s3 同码闸门，cron 17:42）→ §16 L3-P1 / §19.1 G4
 - [ ] **[P1] paper 实绩对照（C4）**：≥20 笔平仓后，回测结论 vs paper 真实表现逐条核对——**框架已搭**（OPT-087：`scripts/paper_vs_backtest_report.py` 可跑；已揪出并修复 trailing 口径漂移）；现 2 笔样本，等积累
+- [ ] **[P1] 环境×买入风格适配实验（TIP-014，2026-08-14 立）**：用户真实执行节奏 = 14:00-15:00 随机时刻按信号买入；目标是用回测找出「市场环境 → 买入风格」规律（电风扇→回调低吸、主升→追强龙头、弱势→纪律防守），用规律指导交易系统演进。Phase 1：环境标签（sentiment 6 字段）+ 回测引擎 `entry_style`（momentum/dip）+ 3×3 交叉 walk-forward；Phase 2：验证后把映射固化为规则进 strategy_params；Phase 3：真实 5 分钟线校验。详见 trading-improvement-checklist TIP-014
+- [ ] **[P2] 板块特点画像（用户提出，TIP-014 之后）**：不同板块（行业）在不同环境下的收益特征分析——主升买什么板块、电风扇买什么板块、防御期买什么板块；作为环境×风格实验的延伸维度
 - [x] **BacktestPage 重写（2026-08-12 ✅）**：改为「S-3 回测结论展示页」——定案基线
   （CN/HK 三窗 + 长窗 2021-08 起 + 参数徽章 + 年度明细）+ 滚动 OOS（warning 红标）+ 回测
   vs Paper 对账；原参数敏感度工具收进折叠「高级」区（默认收起）；新增后端
