@@ -67,7 +67,7 @@ def test_ftd_triggered_when_all_conditions_met() -> None:
         )
     assert out["triggered"] is True
     assert out["raw"]["capitulationInLookback"] is True
-    assert "follow_through_day" in out["rule"]
+    assert "跟进日确认" in out["rule"]
 
 
 def test_ftd_overrides_capitulation_in_compute() -> None:

@@ -48,8 +48,8 @@ def breadth_panic_active(down_count: int) -> bool:
 
 def breadth_panic_rule(down_count: int) -> str:
     return (
-        f"breadth_panic(down>={BREADTH_DECLINE_RED_THRESHOLD} => red + extreme_caution)"
-        f"[down={int(down_count)}]"
+        f"广度恐慌（下跌家数≥{BREADTH_DECLINE_RED_THRESHOLD} → 红灯 + 极度谨慎）"
+        f"[跌{int(down_count)}家]"
     )
 
 
@@ -169,8 +169,8 @@ def check_capitulation_bottom(*, down: int, as_of: date) -> dict[str, Any]:
     )
 
     rule = (
-        "capitulation_v_bottom(breadth>=3500 && put_iv>20% && 510300_flow>+20亿)"
-        f"[{'|'.join(reasons)}]"
+        "恐慌筑底（下跌家数≥3500 且 期权IV>20% 且 沪深300ETF净流入>+20亿）"
+        f"[{'+'.join(reasons)}]"
     )
     return {
         "triggered": triggered,
@@ -283,8 +283,8 @@ def check_follow_through_day(
     )
 
     rule = (
-        "follow_through_day(capitulation_10d && index_chg>1.5% && turnover_up)"
-        f"[{'|'.join(reasons)}]"
+        "跟进日确认（10日内曾恐慌筑底 且 指数单日涨幅>1.5% 且 放量）"
+        f"[{'+'.join(reasons)}]"
     )
     return {
         "triggered": triggered,
@@ -1177,23 +1177,23 @@ def compute_cn_sentiment_for_date(d: str) -> dict[str, Any]:
 
     if turnover_euphoric and breadth_euphoric and premium_euphoric and failed_rate <= 35.0:
         risk_mode = "euphoric"
-        rules.append("euphoric(turnover>=2.5T && breadth>=2.0 && premium>=3.0 && failed<=35)")
+        rules.append("情绪亢奋（成交≥2.5万亿 且 涨跌比≥2.0 且 涨停溢价≥3.0% 且 炸板率≤35%）")
     elif turnover_hot and breadth_hot and premium_hot and failed_rate <= 50.0:
         risk_mode = "hot"
-        rules.append("hot(turnover>=1.8T && breadth>=1.5 && premium>=0.5 && failed<=50)")
+        rules.append("市场过热（成交≥1.8万亿 且 涨跌比≥1.5 且 涨停溢价≥0.5% 且 炸板率≤50%）")
     else:
         if premium < 0.0 and failed_rate >= 70.0:
             risk_mode = "no_new_positions"
-            rules.append("premium<0 && failedLimitUpRate>=70 => no_new_positions")
+            rules.append("涨停溢价为负（昨日涨停股今日平均下跌）且 炸板率≥70% → 禁止新开仓")
         elif failed_rate >= 70.0:
             risk_mode = "caution"
-            rules.append("failedLimitUpRate>=70 => caution")
+            rules.append("炸板率≥70%（涨停被砸比例高）→ 谨慎")
         elif premium < 0.0:
             risk_mode = "caution"
-            rules.append("premium<0 => caution")
+            rules.append("涨停溢价为负（昨日涨停股今日平均下跌）→ 谨慎")
         if risk_mode in ("caution", "no_new_positions") and bullish_override and failed_rate <= 85.0:
             risk_mode = "normal"
-            rules.append("bullish_override(turnover_high && breadth_ratio>=1.2 && premium>=0)")
+            rules.append("多头覆盖（成交≥1.5万亿 且 涨跌比≥1.2 且 涨停溢价≥0）→ 恢复正常")
     if errors and risk_mode == "normal":
         risk_mode = "caution"
     if errors:

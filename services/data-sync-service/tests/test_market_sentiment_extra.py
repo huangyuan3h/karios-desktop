@@ -51,7 +51,7 @@ class TestPanicRules:
         assert ms.breadth_panic_active(2999) is False
 
     def test_breadth_panic_rule(self) -> None:
-        assert "breadth_panic" in ms.breadth_panic_rule(3200)
+        assert "广度恐慌" in ms.breadth_panic_rule(3200)
 
     def test_apply_risk_mode(self) -> None:
         rules = []
@@ -555,7 +555,7 @@ class TestCompute:
         self._patch_compute_deps(monkeypatch, premium=1.0, failed_rate=80.0, turnover=1e12)
         out = ms.compute_cn_sentiment_for_date("2026-08-07")
         assert out["riskMode"] == "caution"
-        assert any("failedLimitUpRate>=70" in r for r in out["rules"])
+        assert any("炸板率≥70%" in r for r in out["rules"])
 
     def test_caution_premium(self, monkeypatch) -> None:
         self._patch_compute_deps(monkeypatch, premium=-1.0, failed_rate=20.0)
@@ -566,7 +566,7 @@ class TestCompute:
         self._patch_compute_deps(monkeypatch, premium=0.5, failed_rate=80.0, turnover=2.2e12, ratio=1.5)
         out = ms.compute_cn_sentiment_for_date("2026-08-07")
         assert out["riskMode"] == "normal"
-        assert any("bullish_override" in r for r in out["rules"])
+        assert any("多头覆盖" in r for r in out["rules"])
 
     def test_breadth_panic(self, monkeypatch) -> None:
         self._patch_compute_deps(monkeypatch, down=4000, ratio=0.3)
