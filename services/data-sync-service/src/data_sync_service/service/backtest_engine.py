@@ -208,6 +208,13 @@ class BacktestConfig:
     # empty (default) → HK uses the CN-style mapping (Strong→momentum,
     # Diverging→dip). Experimental only; CN always uses env_label.
     hk_style_map: str = ""
+    # D2 (TIP-014 follow-up): environment-aware max-hold — positions entered
+    # on an UPTREND day are force-closed after this many days (0 = off, same
+    # as max_hold_days for every entry). Rationale: 主升日买入吃主升段就跑.
+    # Experimental — full-window max_hold scans showed two-window conflicts
+    # (hold45: valid +11.4 / OOS2 -13.5), so env-aware is the only variant
+    # that could pass the three-window bar.
+    max_hold_env_shorten: int = 0
     # NOTE (TIP-014, 2026-08-14): entry_style is INDEPENDENT of industry. The
     # style filters use only per-stock RS rank + 5d return — the industry
     # restriction comes from a SEPARATE layer, the dynamic mainline gate
@@ -1364,6 +1371,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 "industry": data.industry_by_ts.get(ts),
                 "position_pct": config.position_pct * pos_scale * atr_scale_for(ts, day),
                 "atr_pct": atr14_pct_for(ts, day) if config.atr_stop_mult > 0 else 0.0,
+                "entry_env": data.env_by_day.get(day) if config.max_hold_env_shorten > 0 else None,
             }
 
         # 2) Daily mark-to-market + close conditions (LIVE picker, as-of score).
@@ -1423,7 +1431,12 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 score=score_asof,
                 stop_loss_pct=stop_i,
                 target_pnl_pct=config.target_pnl_pct,
-                max_hold_days=config.max_hold_days,
+                max_hold_days=(
+                    config.max_hold_env_shorten
+                    if config.max_hold_env_shorten > 0
+                    and pos.get("entry_env") == ENV_UPTREND
+                    else config.max_hold_days
+                ),
                 score_floor=config.score_floor,
             )
             if reason is None and trail_i != 0:

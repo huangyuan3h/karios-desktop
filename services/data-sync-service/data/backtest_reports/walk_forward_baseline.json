@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T15:31:03.718522+00:00",
+  "generatedAt": "2026-08-14T16:42:49.105215+00:00",
   "tag": "",
   "config": {
     "score_threshold": 65.0,
@@ -26,7 +26,8 @@
     "neutral_block": true,
     "entry_style": "auto",
     "entry_style_rs_min": 0.7,
-    "entry_style_dip_min": 3.0
+    "entry_style_dip_min": 3.0,
+    "max_hold_env_shorten": 45
   },
   "results": {
     "OOS2": {
@@ -48,10 +49,10 @@
     "valid": {
       "closed": 55,
       "winRate": 0.818,
-      "avgNetPnlPct": 24.349,
-      "totalNetPnlPct": 104.432,
+      "avgNetPnlPct": 27.098,
+      "totalNetPnlPct": 115.831,
       "maxDrawdownPct": 1.407,
-      "sharpe": 13.59
+      "sharpe": 11.32
     }
   },
   "baselineUsed": true

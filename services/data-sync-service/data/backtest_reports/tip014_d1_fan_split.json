@@ -1,0 +1,22 @@
+{
+ "train:fan_no_mainline": {
+  "momentum": {
+   "n": 2,
+   "avg": 5.01
+  },
+  "low_rs": {
+   "n": 2,
+   "avg": 8.41
+  }
+ },
+ "valid:fan_no_mainline": {
+  "momentum": {
+   "n": 17,
+   "avg": 16.34
+  },
+  "dip": {
+   "n": 1,
+   "avg": 35.81
+  }
+ }
+}

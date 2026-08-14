@@ -2088,3 +2088,51 @@ def test_hk_auto_override_diverging_to_momentum() -> None:
     run = simulate(config, data=data)
     # Diverging→momentum (override), momentum name passes
     assert run.summary.closed == 1
+
+
+# --- D2 max_hold_env_shorten (uptrend entries force-close early) ---
+
+
+def test_max_hold_env_shorten_closes_uptrend_entries_early() -> None:
+    """An uptrend-day entry force-closes after max_hold_env_shorten days."""
+    calendar = [f"2026-0{i}-{j:02d}" for i in range(6, 9) for j in (1, 2, 3, 4, 5)]
+    # only one entry day (2026-06-01) with a score; flat prices after.
+    scores = {"2026-06-01": {CN1: 90.0}}
+    closes = {TS1: {d: 10.0 for d in calendar}}
+    closes[TS1]["2026-06-01"] = 10.0
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "uptrend" for d in calendar}
+    # give enough bars so entry price resolves
+    data.bars_by_ts = {
+        TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]
+    }
+    config = BacktestConfig(
+        start_date="2026-06-01", end_date="2026-08-31",
+        max_hold_days=60, max_hold_env_shorten=3,
+    )
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    t = run.trades[0]
+    assert t.close_reason == "max_hold"
+    # entry 06-01 + 3 days → closed 06-04 (3 holding days)
+    assert t.holding_days <= 3
+
+
+def test_max_hold_env_shorten_ignores_unknown_entries() -> None:
+    """Entries on UNKNOWN days keep the normal max_hold_days."""
+    calendar = ["2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04", "2026-06-05", "2026-06-08", "2026-06-09"]
+    scores = {"2026-06-01": {CN1: 90.0}}
+    closes = {TS1: {d: 10.0 for d in calendar}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {}  # no env data at all → UNKNOWN
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]}
+    config = BacktestConfig(
+        start_date="2026-06-01", end_date="2026-06-09",
+        max_hold_days=60, max_hold_env_shorten=3,
+    )
+
+    run = simulate(config, data=data)
+    # no early close (env UNKNOWN → normal 60-day hold) → end_of_window
+    assert run.summary.closed == 1
+    assert run.trades[0].close_reason == "end_of_window"

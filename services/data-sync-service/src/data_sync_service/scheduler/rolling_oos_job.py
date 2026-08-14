@@ -62,6 +62,7 @@ S3_CONFIG: dict[str, float | int | str] = {
     "entry_style": "auto",
     "entry_style_rs_min": 0.7,
     "entry_style_dip_min": 3.0,
+    "max_hold_env_shorten": 45,
 }
 
 HK_S3_CONFIG: dict[str, float | int | str] = {

@@ -77,6 +77,13 @@ S3_CONFIG: dict[str, float | int | str] = {
     "entry_style": "auto",
     "entry_style_rs_min": 0.7,
     "entry_style_dip_min": 3.0,
+    # D2 (2026-08-14 固化): environment-aware max-hold — positions entered
+    # on an UPTREND day force-close after 45 days (主升日买入吃主升段就跑).
+    # Global hold45 was rejected (OOS2 -13.5) but env-aware passes everything:
+    # valid +11.4pt (104.4→115.8), long +11.4pt (279.8→291.2), OOS2/train
+    # unchanged (no env labels → no shorten). hold30 -32.3 / hold50 +0.3
+    # / hold55 持平 → 45 is the peak.
+    "max_hold_env_shorten": 45,
 }
 
 WINDOWS: dict[str, tuple[str, str]] = {
