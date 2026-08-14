@@ -3,162 +3,54 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { fetchPortfolioHealth, isMarketGateClosed, type PortfolioHolding } from '@/lib/queries/portfolioHealth';
-import { useBehaviorAuditQuery } from '@/lib/queries/behaviorAudit';
+import { fetchPortfolioHealth, isMarketGateClosed } from '@/lib/queries/portfolioHealth';
+import { GateBadge } from './primitives';
+import { ExecutionTab } from './tabs/ExecutionTab';
+import { HoldingsTab } from './tabs/HoldingsTab';
+import { ReconcileTab } from './tabs/ReconcileTab';
 
 /**
- * Mobile-first shell (Family Hub Phase 0 · 2026-08-14).
+ * Mobile-first shell (Mobile Redesign 2027 · docs/designs/mobile-redesign-2027.md).
  *
- * The desktop UI is a wide workspace (sidebar + agent panel + dense tables)
- * that is unusable on a phone. This shell renders the core phone views in
- * three bottom tabs (执行 / 持仓 / 对账) plus a 更多 tab that links every
- * desktop page so no feature is unreachable from the phone.
- * Data comes from the same APIs the desktop pages use — no new backend.
+ * Phone UI is fully isolated from the desktop: bottom tabs (执行/持仓/对账) plus
+ * a 更多 tab that reaches every feature through mobile-native pages — never the
+ * desktop components. Data comes from the same lib/queries/* as the desktop.
  */
 
 type MobileTab = '执行' | '持仓' | '对账' | '更多';
 
-const fmtPct = (v: number | null | undefined, digits = 2) =>
-  v == null || !Number.isFinite(v) ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(digits)}%`;
+/** Every mobile page, lazy-loaded on demand (keeps the first screen light). */
+const MobileDashboard = React.lazy(() => import('./pages/MobileDashboardPage').then((m) => ({ default: m.MobileDashboardPage })));
+const MobileWatchlist = React.lazy(() => import('./pages/MobileWatchlistPage').then((m) => ({ default: m.MobileWatchlistPage })));
+const MobileMarket = React.lazy(() => import('./pages/MobileMarketPage').then((m) => ({ default: m.MobileMarketPage })));
+const MobileNews = React.lazy(() => import('./pages/MobileNewsPage').then((m) => ({ default: m.MobileNewsPage })));
+const MobileIndustryFlow = React.lazy(() => import('./pages/MobileIndustryFlowPage').then((m) => ({ default: m.MobileIndustryFlowPage })));
+const MobileAlpha = React.lazy(() => import('./pages/MobileAlphaPage').then((m) => ({ default: m.MobileAlphaPage })));
+const MobileDecision = React.lazy(() => import('./pages/MobileDecisionPage').then((m) => ({ default: m.MobileDecisionPage })));
+const MobileBacktest = React.lazy(() => import('./pages/MobileBacktestPage').then((m) => ({ default: m.MobileBacktestPage })));
+const MobileIndex = React.lazy(() => import('./pages/MobileIndexPage').then((m) => ({ default: m.MobileIndexPage })));
+const MobileBroker = React.lazy(() => import('./pages/MobileBrokerPage').then((m) => ({ default: m.MobileBrokerPage })));
+const MobileJournal = React.lazy(() => import('./pages/MobileJournalPage').then((m) => ({ default: m.MobileJournalPage })));
+const MobileScheduler = React.lazy(() => import('./pages/MobileSchedulerPage').then((m) => ({ default: m.MobileSchedulerPage })));
+const MobileWebhook = React.lazy(() => import('./pages/MobileWebhookPage').then((m) => ({ default: m.MobileWebhookPage })));
+const MobileSettings = React.lazy(() => import('./pages/MobileSettingsPage').then((m) => ({ default: m.MobileSettingsPage })));
 
-/** Every desktop page, reachable from the phone (loaded on demand). */
-type PageComponent = React.ComponentType<{
-  onBack?: () => void;
-  onOpenStock?: (symbol: string) => void;
-}>;
-
-const PAGE_LOADERS: Record<string, { label: string; load: () => Promise<{ default: unknown }> }> = {
-  dashboard: {
-    label: 'Dashboard',
-    load: () => import('@/components/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
-  },
-  watchlist: {
-    label: 'Watchlist',
-    load: () => import('@/components/pages/WatchlistPage').then((m) => ({ default: m.WatchlistPage })),
-  },
-  market: {
-    label: 'Market',
-    load: () => import('@/components/pages/MarketPage').then((m) => ({ default: m.MarketPage })),
-  },
-  news: {
-    label: 'News',
-    load: () => import('@/components/pages/NewsPage').then((m) => ({ default: m.NewsPage })),
-  },
-  industryFlow: {
-    label: '行业资金流',
-    load: () => import('@/components/pages/IndustryFlowPage').then((m) => ({ default: m.IndustryFlowPage })),
-  },
-  alpha: {
-    label: 'Alpha 雷达',
-    load: () => import('@/components/pages/AlphaTabsPage').then((m) => ({ default: m.AlphaTabsPage })),
-  },
-  decision: {
-    label: '决策 Agent',
-    load: () => import('@/components/pages/DecisionPage').then((m) => ({ default: m.DecisionPage })),
-  },
-  backtest: {
-    label: '回测',
-    load: () => import('@/components/pages/BacktestPage').then((m) => ({ default: m.BacktestPage })),
-  },
-  index: {
-    label: '指数',
-    load: () => import('@/components/pages/IndexPage').then((m) => ({ default: m.IndexPage })),
-  },
-  broker: {
-    label: 'Broker 条件单',
-    load: () => import('@/components/pages/BrokerPage').then((m) => ({ default: m.BrokerPage })),
-  },
-  journal: {
-    label: '交易日志',
-    load: () => import('@/components/pages/JournalTradeReviewPage').then((m) => ({ default: m.JournalTradeReviewPage })),
-  },
-  scheduler: {
-    label: '任务调度',
-    load: () => import('@/components/pages/SchedulerPage').then((m) => ({ default: m.SchedulerPage })),
-  },
-  webhook: {
-    label: 'Webhook',
-    load: () => import('@/components/pages/WebhookPage').then((m) => ({ default: m.WebhookPage })),
-  },
-  settings: {
-    label: '设置',
-    load: () => import('@/components/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
-  },
+const PAGES: Record<string, { label: string; Comp: React.ComponentType }> = {
+  dashboard: { label: 'Dashboard', Comp: MobileDashboard },
+  watchlist: { label: 'Watchlist', Comp: MobileWatchlist },
+  market: { label: 'Market', Comp: MobileMarket },
+  news: { label: 'News', Comp: MobileNews },
+  industryFlow: { label: '行业资金流', Comp: MobileIndustryFlow },
+  alpha: { label: 'Alpha 雷达', Comp: MobileAlpha },
+  decision: { label: '决策 Agent', Comp: MobileDecision },
+  backtest: { label: '回测', Comp: MobileBacktest },
+  index: { label: '指数', Comp: MobileIndex },
+  broker: { label: 'Broker 账户', Comp: MobileBroker },
+  journal: { label: '交易日志', Comp: MobileJournal },
+  scheduler: { label: '任务调度', Comp: MobileScheduler },
+  webhook: { label: 'Webhook', Comp: MobileWebhook },
+  settings: { label: '设置', Comp: MobileSettings },
 };
-
-function MobilePage({ id, onBack }: { id: string; onBack: () => void }) {
-  const def = PAGE_LOADERS[id];
-  const [Comp, setComp] = React.useState<PageComponent | null>(null);
-  React.useEffect(() => {
-    let cancelled = false;
-    def.load().then((m) => {
-      if (!cancelled) setComp(() => m.default as PageComponent);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [def]);
-  if (!Comp) {
-    return <div className="p-8 text-center text-sm text-[var(--k-muted)]">加载中…</div>;
-  }
-  return <Comp onBack={onBack} onOpenStock={() => {}} />;
-}
-
-function GateBadge({ label, open }: { label: string; open: boolean }) {
-  return (
-    <span
-      className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
-        open
-          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-          : 'bg-red-500/15 text-red-500 dark:text-red-400'
-      }`}
-    >
-      {label} · {open ? '可买' : '不可买'}
-    </span>
-  );
-}
-
-function HoldingCard({ h, market }: { h: PortfolioHolding; market: string }) {
-  const exit = h.action === 'EXIT';
-  return (
-    <div className={`rounded-xl border p-3 ${exit ? 'border-red-500/40 bg-red-500/5' : 'border-[var(--k-border)] bg-[var(--k-surface)]'}`}>
-      <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate font-semibold text-[13px]">{h.name ?? h.symbol}</span>
-        {exit ? (
-          <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-bold text-red-500">🚩退出</span>
-        ) : (
-          <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600 dark:text-emerald-400">持有</span>
-        )}
-        <span className={`font-mono text-[13px] tabular-nums ${(h.pnlPct ?? 0) < 0 ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
-          {fmtPct(h.pnlPct)}
-        </span>
-      </div>
-      <div className="mt-0.5 truncate font-mono text-[10.5px] text-[var(--k-muted)]">
-        {h.symbol} · {market} · 已持 {h.holdingDays ?? '—'} 天
-      </div>
-      <div className="mt-2 grid grid-cols-3 gap-1 text-[10.5px]">
-        <div className="rounded bg-[var(--k-surface-2)] px-1.5 py-1">
-          <div className="text-[9.5px] text-[var(--k-muted)]">止损线</div>
-          <div className="font-mono tabular-nums">{h.stopLossLine ?? '—'}</div>
-        </div>
-        <div className="rounded bg-[var(--k-surface-2)] px-1.5 py-1">
-          <div className="text-[9.5px] text-[var(--k-muted)]">移动线</div>
-          <div className="font-mono tabular-nums">{h.trailingLine ?? '—'}</div>
-        </div>
-        <div className="rounded bg-[var(--k-surface-2)] px-1.5 py-1">
-          <div className="text-[9.5px] text-[var(--k-muted)]">到期</div>
-          <div className="font-mono tabular-nums">{h.expireDate ?? '—'}</div>
-        </div>
-      </div>
-      {h.realtimeAlert ? (
-        <div className="mt-2 text-[11px] text-orange-500">⚠ {h.realtimeAlert}</div>
-      ) : null}
-      {h.realtimeWarning ? (
-        <div className="mt-1 text-[10.5px] text-amber-500">⚠ 盘中预警（待收盘确认）</div>
-      ) : null}
-    </div>
-  );
-}
 
 export function MobileShell() {
   const [tab, setTab] = React.useState<MobileTab>('执行');
@@ -168,174 +60,85 @@ export function MobileShell() {
     queryFn: ({ signal }) => fetchPortfolioHealth(undefined, signal),
     refetchInterval: 5 * 60_000,
   });
-  const audit = useBehaviorAuditQuery();
 
   const cn = health.data;
   const hk = cn?.hkHealth ?? null;
   const cnGate = cn == null ? null : isMarketGateClosed(cn);
   const hkGate = hk == null ? null : isMarketGateClosed(hk);
-  const cnHoldings = cn?.holdings ?? [];
-  const hkHoldings = hk?.holdings ?? [];
-  const candidates = cn?.s3Candidates ?? [];
-
-  const extraRows = (audit.data ?? []).flatMap((r) =>
-    (r.extraList ?? []).map((e) => ({ ...e, market: r.market })),
-  );
-
-  const loading = health.isLoading || health.isFetching;
 
   const openPage = (id: string) => {
     setPageId(id);
     setTab('更多');
   };
 
+  const current = pageId ? PAGES[pageId] : null;
+
   return (
     <div className="flex h-dvh w-full flex-col bg-[var(--k-bg)] text-[var(--k-text)]">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3">
-        <div className="flex items-center gap-2">
+      <header className="flex h-[var(--m-header-h)] shrink-0 items-center justify-between border-b border-[var(--k-border)] bg-[var(--k-surface)] px-4">
+        <div className="flex min-w-0 items-center gap-2">
           {pageId ? (
             <button
               type="button"
               onClick={() => setPageId(null)}
-              className="rounded-md px-1.5 py-0.5 text-[13px] text-emerald-600 dark:text-emerald-400"
+              className="shrink-0 rounded-md px-1.5 py-1 text-[var(--m-text-sm)] text-[var(--k-accent)] active:bg-[var(--k-surface-2)]"
             >
               ‹ 返回
             </button>
           ) : null}
-          <div className="text-[15px] font-bold">{pageId ? PAGE_LOADERS[pageId]?.label ?? '页面' : 'Karios'}</div>
+          <div className="truncate text-[var(--m-text-lg)] font-bold">
+            {pageId ? current?.label ?? '页面' : 'Karios'}
+          </div>
         </div>
         {!pageId ? (
-          <div className="flex items-center gap-1.5 text-[10px] text-[var(--k-muted)]">
-            {cn ? <GateBadge label="A股" open={!cnGate} /> : null}
-            {hk ? <GateBadge label="港股" open={!hkGate} /> : null}
+          <div className="flex shrink-0 items-center gap-1.5">
+            {cn ? <GateBadge market="A股" open={!cnGate} /> : null}
+            {hk ? <GateBadge market="港股" open={!hkGate} /> : null}
           </div>
         ) : null}
       </header>
 
       {/* Content */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto p-[var(--m-content-pad)] pb-[calc(var(--m-content-pad)+env(safe-area-inset-bottom))]">
         {pageId ? (
-          <MobilePage id={pageId} onBack={() => setPageId(null)} />
+          <React.Suspense
+            fallback={
+              <div className="space-y-3">
+                <div className="m-shimmer h-16" />
+                <div className="m-shimmer h-24" />
+              </div>
+            }
+          >
+            {current ? <current.Comp /> : null}
+          </React.Suspense>
+        ) : tab === '执行' ? (
+          <ExecutionTab />
+        ) : tab === '持仓' ? (
+          <HoldingsTab />
+        ) : tab === '对账' ? (
+          <ReconcileTab />
         ) : (
-          <div className="space-y-3 px-3 py-3">
-        {loading && !health.data ? (
-          <div className="pt-16 text-center text-sm text-[var(--k-muted)]">加载中…</div>
-        ) : null}
-
-        {tab === '执行' ? (
-          <>
-            {cn?.sentiment || cn?.panicCooldown?.active ? (
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11.5px]">
-                {cn?.sentiment ? `市场情绪 ${cn.sentiment}` : ''}
-                {cn?.panicCooldown?.active
-                  ? ` · 恐慌冷却至 ${cn.panicCooldown.cooldownEndDate ?? '—'}`
-                  : ''}
-              </div>
-            ) : null}
-
-            {/* Buy list */}
-            <section>
-              <div className="mb-1.5 text-[12px] font-semibold text-[var(--k-muted)]">
-                下午 2 点买入清单{candidates.length ? `（${candidates.length}）` : ''}
-              </div>
-              {candidates.length ? (
-                <div className="space-y-2">
-                  {candidates.map((c) => (
-                    <div key={c.symbol ?? c.ts_code} className="flex items-center gap-2 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-semibold">{c.name ?? c.symbol}</span>
-                        <span className="block truncate font-mono text-[10.5px] text-[var(--k-muted)]">{c.symbol}</span>
-                      </span>
-                      <span className="font-mono text-[12px] tabular-nums">score {c.score ?? '—'}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2.5 text-[11.5px] text-[var(--k-muted)]">
-                  {cnGate ? '闸门关闭 · 今日不买' : '今日无候选'}
-                </div>
-              )}
-            </section>
-
-            {/* Exit flags */}
-            {[...cnHoldings, ...hkHoldings].some((h) => h.action === 'EXIT') ? (
-              <section>
-                <div className="mb-1.5 text-[12px] font-semibold text-red-500">需要卖出</div>
-                <div className="space-y-2">
-                  {[...cnHoldings, ...hkHoldings]
-                    .filter((h) => h.action === 'EXIT')
-                    .map((h) => (
-                      <HoldingCard key={h.symbol} h={h} market={cnHoldings.includes(h) ? 'A股' : '港股'} />
-                    ))}
-                </div>
-              </section>
-            ) : null}
-          </>
-        ) : null}
-
-        {tab === '持仓' ? (
-          <div className="space-y-2.5">
-            {cnHoldings.length || hkHoldings.length ? (
-              [...cnHoldings.map((h) => ({ h, m: 'A股' as const })), ...hkHoldings.map((h) => ({ h, m: '港股' as const }))].map(
-                ({ h, m }) => <HoldingCard key={h.symbol} h={h} market={m} />,
-              )
-            ) : (
-              <div className="pt-10 text-center text-[12.5px] text-[var(--k-muted)]">暂无持仓</div>
-            )}
-          </div>
-        ) : null}
-
-        {tab === '对账' ? (
-          <div className="space-y-2">
-            {extraRows.length ? (
-              extraRows.map((e) => (
-                <div
-                  key={`${e.market}-${e.symbol}`}
-                  className={`rounded-xl border p-3 text-[12px] ${
-                    e.kind === 'exited'
-                      ? 'border-red-500/40 bg-red-500/5'
-                      : 'border-orange-500/40 bg-orange-500/5'
-                  }`}
-                >
-                  <div className="font-semibold">
-                    {e.kind === 'exited' ? '🔴 该卖没卖' : '🟠 买了不该买'} ·{' '}
-                    <span className="font-mono">{e.symbol}</span>
-                  </div>
-                  {e.name ? <div className="mt-0.5 text-[var(--k-muted)]">{e.name}</div> : null}
-                  {e.costPrice != null ? (
-                    <div className="mt-0.5 text-[10.5px] text-[var(--k-muted)]">成本 {e.costPrice}</div>
-                  ) : null}
-                </div>
-              ))
-            ) : (
-              <div className="pt-10 text-center text-[12.5px] text-[var(--k-muted)]">
-                {audit.data?.length ? '✅ 持仓与回测口径一致' : '暂无对账数据'}
-              </div>
-            )}
-          </div>
-        ) : null}
-
-        {tab === '更多' ? (
           <div className="grid grid-cols-2 gap-2">
-            {Object.entries(PAGE_LOADERS).map(([id, def]) => (
+            {Object.entries(PAGES).map(([id, def]) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => openPage(id)}
-                className="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-3.5 text-left text-[12.5px] font-medium"
+                className="rounded-[var(--m-radius-md)] border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-4 text-left text-[var(--m-text-sm)] font-medium active:bg-[var(--k-surface-2)]"
               >
                 {def.label}
               </button>
             ))}
           </div>
-        ) : null}
-          </div>
         )}
       </main>
 
       {/* Bottom tabs */}
-      <nav className="flex border-t border-[var(--k-border)] bg-[var(--k-surface)]">
+      <nav
+        className="flex shrink-0 border-t border-[var(--k-border)] bg-[var(--k-surface)] pb-[env(safe-area-inset-bottom)]"
+        style={{ minHeight: 'var(--m-tabbar-h)' }}
+      >
         {(['执行', '持仓', '对账', '更多'] as const).map((t) => (
           <button
             key={t}
@@ -344,8 +147,8 @@ export function MobileShell() {
               setTab(t);
               if (t !== '更多') setPageId(null);
             }}
-            className={`flex-1 py-3 text-[12.5px] font-medium ${
-              tab === t ? 'text-emerald-600 dark:text-emerald-400' : 'text-[var(--k-muted)]'
+            className={`flex-1 text-[var(--m-text-sm)] font-medium ${
+              tab === t ? 'text-[var(--k-accent)]' : 'text-[var(--k-muted)]'
             }`}
           >
             {t}

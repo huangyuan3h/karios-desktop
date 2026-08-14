@@ -60,7 +60,11 @@
 > 约定：开市绿灯/可操作高亮用 `--k-accent`（indigo）；价格涨跌用 `--k-up/--k-down`（红/绿）。
 > 二者不混用，避免"绿色=好"的歧义。
 
-### 2.2 移动端 scale（新增 `--m-*`，放 `components/mobile/mobile-tokens.css`）
+### 2.2 移动端 scale（新增 `--m-*`）
+
+> 实现位置：`globals.css` 的 `/* Mobile scale (Mobile Redesign 2027) */` 区块
+> （与 `--k-*` 同文件，避免额外 css import 影响 vitest；desktop 不引用 `--m-*`，
+> 视图层隔离不受影响）。
 
 ```
 --m-gap-1: 4px;  --m-gap-2: 8px;  --m-gap-3: 12px; --m-gap-4: 16px;
@@ -186,24 +190,29 @@ AppShell (isMobile via matchMedia max-width:768px, 初始 null→useEffect 解�
 
 ```
 apps/desktop-ui/src/components/mobile/
-  mobile-tokens.css        # --m-* scale + 移动 keyframes
-  primitives.tsx           # §4 基础组件
-  MobileApp.tsx            # 顶/底壳 + 路由 state
-  MobileShell.tsx          # 现有壳（重构为调用 MobileApp 子组件）
-  tabs/                    # ExecutionTab / HoldingsTab / ReconcileTab
-  pages/                   # 14 个 mobile 页面组件
-  *.test.tsx               # 每个组件 jest+jsdom 测试（含暗色/375 宽度快照）
+  globals.css               # --m-* scale + shimmer keyframes（mobile 区块）
+  primitives.tsx            # §4 基础组件（已落地）
+  MobileShell.tsx           # 壳：header + 内容 + 底部 4 tab（已重构）
+  tabs/                     # ExecutionTab / HoldingsTab / ReconcileTab（已落地）
+  pages/                    # MobileXxxPage 14 个（已落地）
+  *.test.tsx                # 每个组件 vitest 测试
 ```
 
 ---
 
 ## 7. 实施顺序（agent 执行清单，每步独立 OPT-xxx 提交）
 
-- **Phase A — 设计系统基础**：`mobile-tokens.css` + `primitives.tsx`（§4 全部组件）+ 测试。验收：tsc/lint/test 绿。
-- **Phase B — 核心三 tab**：重写 ExecutionTab / HoldingsTab / ReconcileTab 用 primitives；接真实 queries。
-- **Phase C — 更多页（按 §5.2 频率）**：高频 5 个 → 中频 5 个 → 低频 4 个；逐个替换 `PAGE_LOADERS` 桌面引用。
-- **Phase D — 打磨**：骨架屏、空态、刷新交互、进出场动画、无障碍（语义 role/aria）、375/430 走查。
-- **收尾**：删除 `MobileShell` 里对 desktop 页面的 `PAGE_LOADERS` 引用；desktop 与 mobile 视图层彻底隔离。
+> 2026-08-14 状态：**Phase A/B/C 已完成并提交**（见 git log mobile redesign 提交）——
+> 设计 token、primitives、三个核心 tab、14 个 mobile 页面、MobileShell 集成均已落地，
+> 桌面引用已从手机端移除。剩余打磨项归入 Phase D。
+
+- **Phase A — 设计系统基础**：`globals.css` mobile token 区块 + `primitives.tsx`（§4 全部组件）+ 测试。✅
+- **Phase B — 核心三 tab**：ExecutionTab / HoldingsTab / ReconcileTab 用 primitives，接真实 queries。✅
+- **Phase C — 更多页（14 个）**：`pages/MobileXxxPage.tsx` 全部落地，`MobileShell` 改用 React.lazy
+  加载 mobile 页面，删除 `PAGE_LOADERS` 桌面引用。✅
+- **Phase D — 打磨（进行中）**：骨架屏/空态已内建；剩余：下拉刷新、进出场动画、
+  无障碍（aria）、375/430 走查、Siri Shortcuts 快捷入口。
+- **收尾**：确认无 `components/pages/*` 引用残留（已删）；desktop 与 mobile 视图层隔离完成。
 
 ---
 
