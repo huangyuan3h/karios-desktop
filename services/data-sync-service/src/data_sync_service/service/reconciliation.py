@@ -55,9 +55,13 @@ S3_CONFIG: dict[str, float | int | str] = {
     # so the audit replays the exact backtest rule set.
     "atr_stop_mult": 2.0,
     "atr_stop_strong_only": True,
-    # TIP-014 (2026-08-14): weak/neutral-day entry block — mirrors the
-    # S-3 audit config so the recon replays the exact rule set.
+    # TIP-014 (2026-08-14): weak/neutral-day entry block + env-aware entry
+    # style — mirrors the S-3 audit config so the recon replays the exact
+    # rule set.
     "neutral_block": True,
+    "entry_style": "auto",
+    "entry_style_rs_min": 0.7,
+    "entry_style_dip_min": 3.0,
 }
 
 HK_S3_CONFIG: dict[str, float | int | str] = {

@@ -69,6 +69,14 @@ S3_CONFIG: dict[str, float | int | str] = {
     # risk_mode). Valid window: +10.7pt (89.1→99.8), dd 12.1→2.7, win rate
     # 60.8→78.2; OOS2/train unchanged (no sentiment data there → UNKNOWN).
     "neutral_block": True,
+    # TIP-014 (2026-08-14 固化): environment-aware entry style — uptrend days
+    # buy momentum (RS>=0.7), fan days buy pullbacks (5d ret <= -3%),
+    # weak/neutral blocked, unknown days unfiltered. Valid: +4.7pt
+    # (99.8→104.4), dd 1.4%, win rate 81.8%; fan-day avg +12.8→+17.4%.
+    # OOS2/train unchanged (no env labels there → UNKNOWN → no filter).
+    "entry_style": "auto",
+    "entry_style_rs_min": 0.7,
+    "entry_style_dip_min": 3.0,
 }
 
 WINDOWS: dict[str, tuple[str, str]] = {

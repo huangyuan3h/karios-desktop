@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T15:09:14.216849+00:00",
+  "generatedAt": "2026-08-14T15:31:03.718522+00:00",
   "tag": "",
   "config": {
     "score_threshold": 65.0,
@@ -23,7 +23,10 @@
     "exclude_boards": "300",
     "atr_stop_mult": 2.0,
     "atr_stop_strong_only": true,
-    "neutral_block": true
+    "neutral_block": true,
+    "entry_style": "auto",
+    "entry_style_rs_min": 0.7,
+    "entry_style_dip_min": 3.0
   },
   "results": {
     "OOS2": {
@@ -44,11 +47,11 @@
     },
     "valid": {
       "closed": 55,
-      "winRate": 0.782,
-      "avgNetPnlPct": 23.466,
-      "totalNetPnlPct": 99.772,
-      "maxDrawdownPct": 2.651,
-      "sharpe": 14.93
+      "winRate": 0.818,
+      "avgNetPnlPct": 24.349,
+      "totalNetPnlPct": 104.432,
+      "maxDrawdownPct": 1.407,
+      "sharpe": 13.59
     }
   },
   "baselineUsed": true
