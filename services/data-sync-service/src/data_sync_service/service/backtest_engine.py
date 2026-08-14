@@ -201,6 +201,12 @@ class BacktestConfig:
     entry_style_rs_min: float = 0.8
     entry_style_dip_min: float = 5.0
     entry_style_dip_max: float = 3.0
+    # NOTE (TIP-014, 2026-08-14): entry_style is INDEPENDENT of industry. The
+    # style filters use only per-stock RS rank + 5d return — the industry
+    # restriction comes from a SEPARATE layer, the dynamic mainline gate
+    # (mainline_allow_by_day: 5D net-inflow Top3 industries, recomputed daily
+    # — never hardcoded). 2026 buys concentrate in 电子 because the market's
+    # mainline IS 电子, not because the style rules mention it.
     # TIP-014 finding #3: days with sentiment data but classified NEUTRAL
     # (not uptrend / not fan / not weak) showed 16/16 losing trades (valid
     # window, avg -6.1%) — block new entries on them. UNKNOWN days (no

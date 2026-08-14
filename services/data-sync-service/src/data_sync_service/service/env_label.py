@@ -7,7 +7,17 @@ Buckets:
 - ``uptrend``   — 主升: breadth strong + limit-up premium positive + riskMode hot/normal
 - ``fan``       — 电风扇: mixed breadth (ratio ~0.5..1.5) OR mainline churns fast
 - ``weak``      — 弱势/恐慌: riskMode in {extreme_caution, no_new_positions}
-- ``neutral``   — fallback (no sentiment data → backtest older windows)
+                  OR breadth ratio < 0.5 (implicit-weak, TIP-014 finding #3)
+- ``neutral``   — TRUE neutral: sentiment + mainline data both present but the
+                  day is neither uptrend nor fan (blockable — 16/16 losing
+                  trades in the valid window). Never assigned from ratio alone.
+- ``unknown``   — no sentiment data (pre-2026-01 / missing) → engine keeps
+                  entries open (OOS2/train windows).
+
+IMPORTANT (TIP-014, 2026-08-14): these labels are INDUSTRY-INDEPENDENT —
+they classify the MARKET day, not any sector. The industry restriction is a
+SEPARATE layer (backtest mainline gate / live execution gate mainline
+whitelist), recomputed daily from 5D net inflow; it never hardcodes a sector.
 
 Data sources (all DB-local, no new sync):
 - ``market_cn_sentiment_daily`` — up/down counts, up_down_ratio,
@@ -17,9 +27,10 @@ Data sources (all DB-local, no new sync):
 
 Caveats (recorded in docs/trading-improvement-checklist.md TIP-014):
 - sentiment data starts 2026-01-05 → OOS2 (2024-08..2025-08) has no labels;
-  engine falls back to neutral there.
-- mainline scores start later still; when absent the fan label uses breadth
-  ratio only.
+  engine falls back to UNKNOWN there.
+- mainline scores start 2026-02-10; before that churn is unavailable and
+  neutral is never assigned (ratio-only days → unknown), which fixed the
+  train-window noise (-15pt mislabels).
 """
 
 from __future__ import annotations
