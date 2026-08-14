@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { clearGatewayKey, getGatewayKey, setGatewayKey, UNAUTHORIZED_EVENT } from '@/lib/auth';
+import { installFetchAuth } from '@/lib/auth';
 
 /**
  * Auth gate (Family Hub Phase 0 · 2026-08-14).
@@ -23,6 +24,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
+    // Must install the fetch wrapper in a CLIENT component: page.tsx is a
+    // server component, so a top-level call there never runs in the browser
+    // and every API request went out without X-Karios-Key -> caddy 401 on
+    // the phone (2026-08-14 incident).
+    installFetchAuth();
     setUnlocked(getGatewayKey() !== null);
     setReady(true);
   }, []);

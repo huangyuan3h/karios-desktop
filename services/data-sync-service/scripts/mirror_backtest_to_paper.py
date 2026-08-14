@@ -18,8 +18,14 @@ What this does:
 
 Usage:
   PYTHONPATH=src python3 scripts/mirror_backtest_to_paper.py --market HK
-  PYTHONPATH=src python3 scripts/mirror_backtest_to_paper.py --market CN --start 2026-08-03
+  PYTHONPATH=src python3 scripts/mirror_backtest_to_paper.py --market CN --start 2026-03-01
   # --backup writes the pre-rebuild S3* rows to data/paper_backup_<ts>.json
+
+Window start MUST match the reconciliation/audit window (WINDOWS['valid']
+= 2026-03-01..2026-08-07, see run_walk_forward / reconciliation.py), so the
+paper book equals the engine snapshot the audit compares against.
+2026-08-14 bug: mirror used 2026-08-03 (HK line inception) — audit's valid
+window expected 13 HK names, mirror produced 12 -> audit_issues false alarm.
 """
 
 from __future__ import annotations
@@ -69,7 +75,7 @@ def _backup(source: str, out: Path) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--market", default="HK", choices=("CN", "HK"))
-    ap.add_argument("--start", default="2026-08-03", help="Engine window start (default 2026-08-03)")
+    ap.add_argument("--start", default="2026-03-01", help="Engine window start (default WINDOWS['valid'] start 2026-03-01 — must match reconciliation/audit)")
     ap.add_argument("--end", help="Engine window end (default today)")
     ap.add_argument("--no-backup", action="store_true")
     args = ap.parse_args()
