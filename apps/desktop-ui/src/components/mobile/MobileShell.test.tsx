@@ -16,15 +16,28 @@ vi.mock('@/lib/queries/behaviorAudit', async () => {
   );
   return {
     ...actual,
-    useBehaviorAuditQuery: vi.fn(() => ({
-      data: [],
-      isLoading: false,
-    })),
+    useBehaviorAuditQuery: vi.fn(() => ({ data: [], isLoading: false })),
+  };
+});
+vi.mock('@/lib/queries/news', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/queries/news')>('@/lib/queries/news');
+  return {
+    ...actual,
+    useNewsItemsQuery: vi.fn(() => ({ data: { items: [] }, isLoading: false })),
+  };
+});
+vi.mock('@/lib/queries/industryFlow', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/queries/industryFlow')>(
+    '@/lib/queries/industryFlow',
+  );
+  return {
+    ...actual,
+    useIndustryFundFlowQuery: vi.fn(() => ({ data: null, isLoading: false })),
+    useIndustryMainlineQuery: vi.fn(() => ({ data: null })),
   };
 });
 
 import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
-import { useBehaviorAuditQuery } from '@/lib/queries/behaviorAudit';
 
 const mockHealth = vi.mocked(fetchPortfolioHealth);
 
@@ -69,85 +82,83 @@ function renderShell() {
   );
 }
 
-describe('MobileShell (Family Hub Phase 0)', () => {
+describe('MobileShell (IA v2 — 3 tabs + header 更多)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockHealth.mockResolvedValue(HEALTH as never);
+    localStorage.clear();
   });
 
-  it('shows gate badges (CN open / HK closed) and the buy list', async () => {
+  it('header: logo + more button; default tab is dashboard', async () => {
+    renderShell();
+    expect(screen.getByText('Karios')).toBeTruthy();
+    expect(screen.getByLabelText('更多')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText('今日状态')).toBeTruthy();
+    });
+  });
+
+  it('shows gate badges (CN open / HK closed) in the header', async () => {
     renderShell();
     await waitFor(() => {
       expect(screen.getAllByText('A股').length).toBeGreaterThan(0);
       expect(screen.getAllByText('港股').length).toBeGreaterThan(0);
-      expect(screen.getByText(/华新建材/)).toBeTruthy();
-      expect(screen.getByText(/下午 2 点买入清单/)).toBeTruthy();
     });
   });
 
-  it('shows holdings with stop lines on the 持仓 tab', async () => {
+  it('watchlist tab merges act list, holdings and watchlist', async () => {
     renderShell();
-    fireEvent.click(screen.getByText('持仓'));
+    fireEvent.click(screen.getByText('自选'));
     await waitFor(() => {
+      expect(screen.getByText(/下午 2 点买入清单/)).toBeTruthy();
+      expect(screen.getByText(/持仓（1）/)).toBeTruthy();
+      expect(screen.getByText(/华新建材/)).toBeTruthy();
       expect(screen.getByText(/亿联网络/)).toBeTruthy();
     });
-    expect(screen.getByText(/止损线/)).toBeTruthy();
-    expect(screen.getByText('37.905')).toBeTruthy();
   });
 
-  it('flags EXIT holdings on the 执行 tab', async () => {
+  it('watchlist flags EXIT holdings under 需要卖出', async () => {
     mockHealth.mockResolvedValue({
       ...HEALTH,
-      holdings: [
-        { ...HEALTH.holdings[0], action: 'EXIT', pnlPct: -5.4 },
-      ],
+      holdings: [{ ...HEALTH.holdings[0], action: 'EXIT', pnlPct: -5.4 }],
     } as never);
     renderShell();
+    fireEvent.click(screen.getByText('自选'));
     await waitFor(() => {
       expect(screen.getByText(/需要卖出/)).toBeTruthy();
-      expect(screen.getByText('退出')).toBeTruthy();
+      expect(screen.getAllByText('退出').length).toBeGreaterThan(0);
     });
   });
 
-  it('shows audit deviations on the 对账 tab', async () => {
-    vi.mocked(useBehaviorAuditQuery).mockReturnValue({
-      data: [
-        {
-          auditDate: '2026-08-13',
-          market: 'CN',
-          expected: 0,
-          actual: 1,
-          extra: 1,
-          missing: 0,
-          extraList: [
-            { symbol: 'CN:600002', name: '某票', kind: 'exited', costPrice: 10 },
-          ],
-        },
-      ],
-      isLoading: false,
-    } as never);
+  it('agent tab shows quick questions', async () => {
     renderShell();
-    fireEvent.click(screen.getByText('对账'));
+    fireEvent.click(screen.getByText('Agent'));
     await waitFor(() => {
-      expect(screen.getByText(/该卖没卖/)).toBeTruthy();
+      expect(screen.getByText(/当前市场怎么看/)).toBeTruthy();
+      expect(screen.getByText(/持仓有什么风险/)).toBeTruthy();
     });
   });
-});
 
-describe('MobileShell — 更多 tab (all features reachable)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockHealth.mockResolvedValue(HEALTH as never);
-  });
-
-  it('lists every desktop page in the 更多 tab', async () => {
+  it('更多 panel opens with all remaining features', async () => {
     renderShell();
-    fireEvent.click(screen.getByText('更多'));
+    fireEvent.click(screen.getByLabelText('更多'));
     await waitFor(() => {
-      expect(screen.getByText('Watchlist')).toBeTruthy();
-      expect(screen.getByText('决策 Agent')).toBeTruthy();
-      expect(screen.getByText('回测')).toBeTruthy();
+      expect(screen.getByText('行为对账')).toBeTruthy();
+      expect(screen.getByText('任务调度')).toBeTruthy();
       expect(screen.getByText('设置')).toBeTruthy();
+    });
+  });
+
+  it('opens a page from 更多 and returns via back button', async () => {
+    renderShell();
+    fireEvent.click(screen.getByLabelText('更多'));
+    fireEvent.click(screen.getByText('任务调度'));
+    await waitFor(() => {
+      expect(screen.getByText(/任务调度（/)).toBeTruthy();
+    });
+    fireEvent.click(screen.getByLabelText('返回'));
+    await waitFor(() => {
+      expect(screen.getAllByText('首页').length).toBeGreaterThan(0);
     });
   });
 });

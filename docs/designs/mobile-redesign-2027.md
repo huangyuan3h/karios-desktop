@@ -91,15 +91,22 @@
 ```
 AppShell (isMobile via matchMedia max-width:768px, 初始 null→useEffect 解析)
   └─ <MobileApp/>
-       ├─ <MobileHeader/>          固定顶，52px：标题 · 闸门状态 · 返回(子页)
+       ├─ <MobileHeader/>          固定顶，52px：logo/返回 · 闸门状态 · 更多按钮
+       │    └─ 更多面板             从 header 下滑（m-panel-enter 动画），分组网格
        ├─ <main> 滚动区：padding 14，gap 12，底部留 tab bar 空间
-       └─ <MobileTabBar/>          固定底，56px + safe-area：执行/持仓/对账/更多
+       └─ <MobileTabBar/>          固定底，56px + safe-area：首页/自选/Agent 三 tab
 ```
 
-- **内容区**永不横向滚动；表格类一律改为卡片/列表。
-- **子页面导航**：`更多` tab 内点页面 → 进入该 mobile 页面组件（替换 main 内容），header 显示
-  `‹ 返回`。**不再懒加载 desktop 页面**（逐步废弃 `MobileShell` 里的 `PAGE_LOADERS` 桌面引用）。
-- 桌面组件仅在过渡期作为"降级占位"保留，最终实现后删除。
+- **IA v2（2026-08-14 用户反馈）**：底部 bar 只放三个最重要的入口——**首页
+  （Dashboard）/ 自选（Watchlist）/ Agent（决策 Agent）**；其余全部收进 header 的
+  「更多」面板（图标网格，打开带动画）。
+- **自选 = 行动中心**：需要卖出 → 下午 2 点买入清单 → 持仓 → 自选列表 → 添加，
+  执行与持仓是自选的一部分（用户定论）。
+- **Agent = 随时知情**：快捷提问 chips 自动附加当前快照（regime/候选/持仓），
+  「数据」按钮可只插入上下文不提问。
+- 内容区永不横向滚动；表格类一律改为卡片/列表。
+- 子页面导航：`更多` 面板点页面 → 进入该 mobile 页面组件（替换 main 内容），header 显示
+  `‹ 返回`。**不再懒加载 desktop 页面**（IA v2 起全部为 mobile 原生页面）。
 
 ---
 
@@ -133,22 +140,25 @@ AppShell (isMobile via matchMedia max-width:768px, 初始 null→useEffect 解�
 > 信息架构 = 桌面页面**降维**后的手机版。每个页面一个 mobile 组件，置于
 > `components/mobile/pages/<Name>Page.tsx`，数据取自对应 `lib/queries/*`。
 
-### 5.1 三个核心 tab（首页级，最高优先级）
+### 5.1 三个核心 tab（首页级，最高优先级，IA v2）
 
-**执行 `ExecutionTab`**
-- 顶部 `MobileSection`「市场闸门」：`GateBadge` A股/港股 并排；全关时整页提示"今日无操作"。
-- 「下午 2 点买入」卡组：每张 `MobileCard` = 候选股（代码·名称）+ 信号强度 `StatusPill` +
-  关键指标（评分/行业）+ 底部 `MobileButton block primary`「查看详情」（开 Sheet 或跳转 Alpha）。
-- 「需要卖出」卡组：红/橙边框区分"该卖没卖" / "买了不该买"；含成本/现价/偏离。
+**首页 `DashboardTab`（默认首屏）**
+- 「今日状态」卡：闸门 GateBadge + regime/强度 + 候选/持仓计数 + 数据日期；
+  情绪/恐慌冷却警告条。
+- 「行业资金流 Top 5」+「最新要闻」两个信息卡组。
 
-**持仓 `HoldingsTab`**
-- 顶部汇总条：`MobileCard` 一行三格（总市值 / 今日盈亏 `PctText` / 持仓数）。
-- 持仓列表：`MobileRow` 每行 = 左（代码·名称 + 行业 muted）、中（现价 `PriceText`）、
-  右（持仓盈亏 `PctText` + 占比 muted）；点击进持仓详情 Sheet（买卖/加仓操作）。
+**自选 `WatchlistTab`（行动中心 — 执行/持仓合并于此）**
+- 「需要卖出」：EXIT 持仓卡（danger 红），含止损线/盈亏/到期/理由。
+- 「下午 2 点买入清单」：候选卡（名称/代码/行业 + score + alpha grade）。
+- 「持仓」：每仓卡（盈亏、止损/移动/到期三格、HOLD/EXIT pill、盘中预警）。
+- 「自选」：行情行（名称/代码/现价/涨跌 PctText/score/删除 Trash2）+ 刷新。
+- 「添加自选」：输入 + Plus 按钮。
 
-**对账 `ReconcileTab`**
-- 一致性提示：无偏差显示「✅ 与回测口径一致」`EmptyState` 风格卡。
-- 偏差卡组：按 kind 着色（exited=down/danger、bought=warn）；显示 symbol/name/成本/建议动作。
+**Agent `AgentTab`（决策 Agent — 随时基于当前情况）**
+- 快捷提问 chips（市场怎么看/买入候选/持仓风险/适合加仓）——自动附加当前快照
+  （regime/候选/持仓 markdown）后发送。
+- 「数据」ghost 按钮：只插入当前快照到对话，不提问。
+- 气泡对话流 + 底部输入/发送（流式回复，同桌面端点）。
 
 ### 5.2 更多页（14 个，按使用频率分组实现）
 
