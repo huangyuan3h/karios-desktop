@@ -11,13 +11,25 @@ import { fmtAmountCn, fmtSignedAmountCn } from '@/lib/dashboard-format';
 import { GateBadge, MobileCard, MobileSection, PriceText, StatusPill } from '../primitives';
 
 const RISK_ZH: Record<string, string> = {
+  normal: '正常',
   confirmed_uptrend: '确认上升',
-  capitulation_v_bottom: '筑底',
+  capitulation_v_bottom: '恐慌筑底',
   extreme_caution: '极度谨慎',
   no_new_positions: '禁止新仓',
   caution: '谨慎',
   hot: '过热',
   euphoric: '亢奋',
+};
+
+const RISK_HINT_ZH: Record<string, string> = {
+  normal: '可正常开仓',
+  confirmed_uptrend: '趋势确认，可正常开仓',
+  capitulation_v_bottom: '恐慌性抛售后筑底，观察企稳',
+  extreme_caution: '极度谨慎，禁止新开仓',
+  no_new_positions: '禁止新开仓，仅处理现有持仓',
+  caution: '谨慎对待，控制仓位',
+  hot: '市场过热，注意追高风险',
+  euphoric: '情绪亢奋，警惕顶部风险',
 };
 
 const GATE_MODE_ZH: Record<string, string> = {
@@ -33,6 +45,26 @@ const GATE_MODE_TONE: Record<string, 'open' | 'warn' | 'danger' | 'neutral'> = {
   HOLD_ONLY: 'warn',
   DEFEND: 'danger',
 };
+
+const GATE_REASON_ZH: Record<string, string> = {
+  BREADTH_PANIC: '广度恐慌',
+  ETF_FLOW_CONFIRM: 'ETF 净流入确认',
+  ETF_FLOW_CONTRADICT: 'ETF 资金流背离',
+  INTRADAY_OVERFLOW_OVERRIDE: '盘中溢出覆盖',
+  REGIME_DIVERGING: '弱势震荡',
+  REGIME_STRONG: '强势',
+  REGIME_WEAK: '弱势',
+  RISK_EXTREME_CAUTION: '情绪极度谨慎',
+  RISK_NO_NEW: '禁止新仓',
+  SRV_ELEVATED: 'SRV 偏高',
+  SRV_EXTREME_HIGH: 'SRV 极高',
+  SRV_STABLE: 'SRV 平稳',
+  SRV_UNKNOWN: 'SRV 未知',
+};
+
+function gateReasonZh(code: string): string {
+  return GATE_REASON_ZH[code] ?? code;
+}
 
 function sentimentTone(risk: string): 'open' | 'warn' | 'danger' | 'neutral' {
   if (risk === 'confirmed_uptrend' || risk === 'hot') return 'open';
@@ -58,16 +90,22 @@ function GateCard({ label, gate }: { label: string; gate: any }) {
   const reasons: string[] = Array.isArray(gate.reasons) ? gate.reasons.map((x: unknown) => String(x)) : [];
   const posHint = gate.positionRangeHint ? String(gate.positionRangeHint) : null;
   return (
-    <MobileCard className="p-3">
+    <MobileCard
+      className={
+        allow
+          ? 'p-3'
+          : 'border-[var(--k-danger)]/50 bg-[var(--k-danger)]/10 p-3'
+      }
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-[var(--m-text-base)] font-semibold">{label}</div>
+          <div className="flex items-center gap-2">
+            <span className="text-[var(--m-text-base)] font-semibold">{label}</span>
+            {allow ? <StatusPill tone="open">允许开仓</StatusPill> : null}
+          </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <StatusPill tone={GATE_MODE_TONE[mode] ?? 'neutral'}>
               {GATE_MODE_ZH[mode] ?? mode}
-            </StatusPill>
-            <StatusPill tone={allow ? 'open' : 'danger'}>
-              允许开仓={allow ? 'true' : 'false'}
             </StatusPill>
           </div>
         </div>
@@ -83,7 +121,7 @@ function GateCard({ label, gate }: { label: string; gate: any }) {
       </div>
       {reasons.length ? (
         <div className="mt-2 text-[var(--m-text-xs)] text-[var(--k-muted)]">
-          原因: {reasons.join(' · ')}
+          原因: {reasons.map(gateReasonZh).join(' · ')}
         </div>
       ) : null}
     </MobileCard>
@@ -148,17 +186,35 @@ export function MobileDashboardPage() {
 
       <MobileSection title="市场情绪">
         <div className="space-y-2">
+          <MobileCard className="p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[var(--m-text-base)] font-semibold">风险模式</span>
+                  <StatusPill tone={sentimentTone(sRisk)}>{RISK_ZH[sRisk] ?? sRisk}</StatusPill>
+                </div>
+                <div className="mt-1 text-[var(--m-text-sm)] text-[var(--k-muted)]">
+                  {RISK_HINT_ZH[sRisk] ?? ''}
+                </div>
+              </div>
+              <div className="shrink-0 text-right font-mono text-[var(--m-text-xs)] text-[var(--k-muted)] tabular-nums">
+                <div>
+                  <span style={{ color: 'var(--k-up)' }}>↑{upCount}</span>
+                  <span> / </span>
+                  <span style={{ color: 'var(--k-down)' }}>↓{downCount}</span>
+                </div>
+                <div className="mt-0.5">
+                  溢价 {Number.isFinite(sLatest?.yesterdayLimitUpPremium) ? `${Number(sLatest.yesterdayLimitUpPremium).toFixed(2)}%` : '—'}
+                </div>
+                <div className="mt-0.5">成交 {fmtAmountCn(sLatest?.marketTurnoverCny)}</div>
+              </div>
+            </div>
+          </MobileCard>
           {cnExecutionGate ? <GateCard label="A股闸门" gate={cnExecutionGate} /> : null}
           {hkExecutionGate ? <GateCard label="港股闸门" gate={hkExecutionGate} /> : null}
           {!cnExecutionGate && !hkExecutionGate ? (
             <MobileCard className="p-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
-                  <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">风险模式</div>
-                  <div className="mt-1">
-                    <StatusPill tone={sentimentTone(sRisk)}>{RISK_ZH[sRisk] ?? sRisk}</StatusPill>
-                  </div>
-                </div>
+              <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
                   <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">涨 / 跌</div>
                   <div className="mt-1 font-mono text-[var(--m-text-base)] tabular-nums">
