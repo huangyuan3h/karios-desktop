@@ -6,7 +6,7 @@ import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistMarketQuery } from '@/lib/queries/watchlist';
-import { fetchPortfolioHealth, type PortfolioHolding } from '@/lib/queries/portfolioHealth';
+import { fetchPortfolioHealth, isMarketGateClosed, type PortfolioHolding } from '@/lib/queries/portfolioHealth';
 import { useBehaviorAuditQuery, useRefreshBehaviorAudit } from '@/lib/queries/behaviorAudit';
 import { MobileButton, MobileCard, MobileField, MobileSection, PctText, StatusPill } from '../primitives';
 
@@ -112,9 +112,16 @@ export function MobileWatchlistPage() {
   const [auditing, setAuditing] = React.useState(false);
   const auditRows = audit.data ?? [];
   const auditExtra = auditRows.flatMap((r) => (r.extraList ?? []).map((e) => ({ ...e, market: r.market })));
-  const auditMissing = auditRows.flatMap((r) => (r.missingList ?? []).map((m) => ({ ...m, market: r.market })));
+  const auditMissingAll = auditRows.flatMap((r) => (r.missingList ?? []).map((m) => ({ ...m, market: r.market })));
+  // 闸门关闭的市场（regime Weak / panic cooldown / circuit breaker）今日不可开新仓，
+  // 其"该持没买"建议不可执行——隐藏（与桌面 BehaviorAuditBanner 同口径）。
+  const blockedMarkets = new Set<string>();
+  if (isMarketGateClosed(cn)) blockedMarkets.add('CN');
+  if (isMarketGateClosed(cn?.hkHealth)) blockedMarkets.add('HK');
+  const auditMissing = auditMissingAll.filter((m) => !blockedMarkets.has(m.market));
+  const auditMissingHidden = auditMissingAll.length - auditMissing.length;
   const auditDate = auditRows[0]?.auditDate;
-  const auditClean = !auditExtra.length && !auditMissing.length;
+  const auditClean = !auditExtra.length && !auditMissing.length && !auditMissingHidden;
 
   const onRunAudit = () => {
     setAuditing(true);
@@ -180,6 +187,14 @@ export function MobileWatchlistPage() {
                       {m.symbol} · {m.market}
                     </StatusPill>
                   ))}
+                </div>
+              </MobileCard>
+            ) : null}
+            {auditMissingHidden ? (
+              <MobileCard className="border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+                <div className="flex items-center gap-2 text-[var(--m-text-sm)] text-[var(--k-muted)]">
+                  <span>🔒</span>
+                  <span>闸门关闭 · 今日不可买入——已隐藏 {auditMissingHidden} 条缺持建议</span>
                 </div>
               </MobileCard>
             ) : null}
