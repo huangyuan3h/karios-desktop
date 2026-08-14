@@ -1,9 +1,11 @@
-"""Trading-session briefs (2026-08-11) — 10:00 / 12:00 / 14:30 weekdays.
+"""Trading-session briefs (2026-08-11) — 10:00 / 12:00 / 14:00 weekdays.
 
 Matches the user's real trading rhythm:
   - open   (10:00): regime + panic, S-3 candidates, overnight news top5.
   - midday (12:00): candidate drift, held names near stop lines, news.
-  - action (14:30): BUY cards + conditional-stop list (broker side) + alerts.
+  - action (14:00): BUY cards + conditional-stop list (broker side) + alerts.
+    (2026-08-14 · OPT-113: moved 14:30 → 14:00 to match the user's entry
+    time and the 14:00 intraday-lock freeze snapshot.)
 
 Each run assembles existing data blocks (portfolio_health, s3 candidates,
 news selection) and stores a `trading-<type>` row in morning_briefs —
@@ -26,7 +28,7 @@ TIMEZONE = "Asia/Shanghai"
 CRON_EXPRESSIONS = {
     "open": "0 10 * * 1-5",
     "midday": "0 12 * * 1-5",
-    "action": "30 14 * * 1-5",
+    "action": "0 14 * * 1-5",
 }
 
 

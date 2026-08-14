@@ -87,15 +87,25 @@ def deliver_pending(limit: int = 100) -> dict[str, Any]:
     for d in deliveries:
         if d["delivery_id"] in blocked:
             continue
-        body = json.dumps(
-            {
-                "event_id": d["event_id"],
-                "event_type": d["event_type"],
-                "payload": d["payload"],
-                "sent_at": now.isoformat(),
-            },
-            ensure_ascii=False,
-        ).encode("utf-8")
+        if d.get("provider") == "bark":
+            # Bark push: formatted title/body (still HMAC-signed over the
+            # exact bytes we POST — the signature header is ignored by Bark).
+            from data_sync_service.service.webhook_format import format_bark
+
+            body = json.dumps(
+                {"title": "Karios", **format_bark(d["event_type"], d["payload"])},
+                ensure_ascii=False,
+            ).encode("utf-8")
+        else:
+            body = json.dumps(
+                {
+                    "event_id": d["event_id"],
+                    "event_type": d["event_type"],
+                    "payload": d["payload"],
+                    "sent_at": now.isoformat(),
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
         try:
             _post(d["url"], body, _sign(body, d["secret"]))
         except Exception as exc:  # noqa: BLE001

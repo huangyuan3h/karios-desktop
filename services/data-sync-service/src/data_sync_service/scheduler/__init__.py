@@ -14,6 +14,7 @@ from data_sync_service.scheduler import (
     alpha_radar_ingest_job,
     alpha_radar_process_job,
     backtest_recon_job,
+    behavior_audit_job,
     candidate_diff_job,
     close_catchup_job,
     close_sync_job,
@@ -210,6 +211,13 @@ def create_scheduler() -> BackgroundScheduler:
         backtest_recon_job.run,
         backtest_recon_job.build_trigger(),
         id=backtest_recon_job.JOB_ID,
+        replace_existing=True,
+    )
+    # Daily real-book behavior audit (weekdays 18:45 — fresh watchlist banner).
+    scheduler.add_job(
+        behavior_audit_job.run,
+        behavior_audit_job.build_trigger(),
+        id=behavior_audit_job.JOB_ID,
         replace_existing=True,
     )
     # Monthly rolling-OOS monitor (first Monday, strategy-fade early warning).

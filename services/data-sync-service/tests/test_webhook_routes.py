@@ -130,3 +130,32 @@ class TestDelivery:
         monkeypatch.setattr(wd, "_post", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not post")))
         out = wd.deliver_pending()
         assert out["blocked"] == 1 and out["delivered"] == 0
+
+    def test_deliver_bark_provider_formats_body(self, monkeypatch) -> None:
+        delivery = {
+            "delivery_id": 9,
+            "event_id": 12,
+            "subscription_id": 4,
+            "event_type": "execution_card",
+            "payload": {"day": "2026-08-14", "gate": {"A股": {"regime": "Diverging"}},
+                        "candidates": [], "exits": []},
+            "url": "https://api.day.app/device-key",
+            "secret": "sekrit",
+            "provider": "bark",
+        }
+        captured: dict = {}
+
+        def fake_post(url, body, signature):
+            captured["url"] = url
+            captured["body"] = json.loads(body)
+            assert hmac.compare_digest(signature, wd._sign(body, "sekrit"))
+
+        monkeypatch.setattr(wd, "_post", fake_post)
+        monkeypatch.setattr(wd.webhook_db, "list_pending_deliveries", lambda limit=100: [delivery])
+        monkeypatch.setattr(wd.webhook_db, "mark_delivery_sent", lambda i: None)
+        monkeypatch.setattr(wd, "_rate_limited", lambda d, now: set())
+        out = wd.deliver_pending()
+        assert out == {"ok": True, "delivered": 1, "failed": 0, "blocked": 0}
+        assert captured["url"] == "https://api.day.app/device-key"
+        assert captured["body"]["title"].startswith("📋 执行卡")
+        assert "A股" in captured["body"]["body"]

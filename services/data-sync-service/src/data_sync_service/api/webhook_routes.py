@@ -30,6 +30,8 @@ KNOWN_EVENT_TYPES = {
     "oos_warning",
     "recon_missing",
     "candidate_added",
+    "execution_card",
+    "audit_issues",
     "test",
 }
 
@@ -39,6 +41,7 @@ class SubscriptionRequest(BaseModel):
     event_types: list[str] = Field(..., min_length=1)
     enabled: bool = True
     secret: str | None = Field(default=None, min_length=8, max_length=256)
+    provider: str = Field(default="generic", pattern="^(generic|bark)$")
 
 
 @router.get("/subscriptions")
@@ -62,6 +65,7 @@ def create_subscription(req: SubscriptionRequest) -> dict[str, Any]:
         secret=req.secret or secrets.token_hex(16),
         event_types=req.event_types,
         enabled=req.enabled,
+        provider=req.provider,
     )
     return {"ok": True, "subscription": sub}
 

@@ -440,15 +440,18 @@ export class KariosClient {
 > **pull 之外补 push**：`/v1/*` 解决"我去拿"，webhook 解决"系统叫我"。
 > 决策 Agent / 个人 AI 助手订阅后在事件发生时收到结构化 JSON + HMAC 签名。
 
-### 9.1 事件目录（P1 已启用）
+### 9.1 事件目录（P1 已启用 · 2026-08-14 全量）
 
 | event_type | 含义 | 触发点 |
 |------------|------|--------|
 | `job_failed` | 任一同步/cron job 失败（当日按 job 去重一次） | sync_job_record |
 | `intraday_drawdown` | open paper 仓跌破入场价 -8%（每票每日一次） | 10-14 点整点巡检 |
+| `near_stop` | 持仓接近止损/移动线（每票每日一次） | 操作卡 14:00 / 午间 12:00 brief |
+| `candidate_diff` | 当日 S-3 候选新增（候选消失=闸门关闭属正常，不推） | 17:35 候选对比 |
+| `recon_missing` | 周对账发现缺票（周一 07:30） | backtest_paper_recon |
+| `execution_card` | **14:00 执行卡**：闸门状态 + 买入候选 + 退出持仓（每日一次） | 操作卡 14:00 |
+| `audit_issues` | 行为对账发现不符项：买了不该买/该卖没卖/该持没买（每日一次） | 行为对账 18:45 |
 | `test` | 连通性测试 | `POST /api/webhook/test` |
-
-P2 将加入：paper 链断链、接近止损、滚动 OOS warning、回测对账缺票、候选 diff。
 
 ### 9.2 订阅管理（本机 API，curl 即可）
 
@@ -466,6 +469,18 @@ curl -s -X POST http://127.0.0.1:4330/api/webhook/test
 curl -s http://127.0.0.1:4330/api/webhook/subscriptions
 curl -s -X DELETE http://127.0.0.1:4330/api/webhook/subscriptions/1
 ```
+
+**Bark（iPhone 免费推送 · 2026-08-14）**：订阅时带 `"provider":"bark"`，
+url 填 `https://api.day.app/<设备key>`——投递器自动把事件格式化成中文
+title/body（执行卡/对账/止损等），无需自己写接收端：
+
+```bash
+curl -s -X POST http://127.0.0.1:4330/api/webhook/subscriptions \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://api.day.app/<设备key>","event_types":["execution_card","audit_issues","near_stop","intraday_drawdown","candidate_diff","recon_missing","job_failed"],"provider":"bark"}'
+```
+
+provider 缺省为 `generic`（原始事件 JSON + HMAC 签名，供自建接收端）。
 
 ### 9.3 接收端（Python · 最小示例 + 签名校验）
 

@@ -144,6 +144,7 @@ def test_generate_trading_brief_stores_and_returns_markdown() -> None:
         patch("data_sync_service.service.trading_brief._news_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._recon_section", return_value=[]),
         patch("data_sync_service.service.trading_brief.upsert_brief") as upsert,
+        patch("data_sync_service.db.webhook.emit_event"),
     ):
         upsert.return_value = {"briefDate": "2026-08-11", "items": []}
         tb.generate_trading_brief("action")
@@ -179,3 +180,45 @@ def test_action_brief_renders_backtest_recon_section() -> None:
     assert "**回测口径（对账 2026-08-07）**" in md
     assert "港股：回测应持 19 · 实持 0 · 缺 19 · 多 0" in md
     assert "缺票 HK:02099（入场 score 88.0 · 建议 10%· 2026-08-05 入场）" in md
+
+
+def test_action_brief_emits_execution_card_webhook() -> None:
+    """OPT-113: the 14:00 action brief must push an execution_card event
+    (gate state + buy candidates + EXIT holdings) once per day."""
+    from unittest.mock import MagicMock
+
+    emit = MagicMock()
+    with (
+        patch("data_sync_service.service.trading_brief._health", return_value=_fake_health()),
+        patch("data_sync_service.service.trading_brief._candidates", return_value=[
+            {
+                "market": "CN",
+                "symbol": "CN:600801",
+                "name": "华新建材",
+                "industry": "建筑材料",
+                "score": 67.4,
+                "rs": 0.937,
+            },
+        ]),
+        patch("data_sync_service.service.trading_brief._news_section", return_value=[]),
+        patch("data_sync_service.service.trading_brief._recon_section", return_value=[]),
+        patch("data_sync_service.service.trading_brief.upsert_brief") as upsert,
+        patch("data_sync_service.db.webhook.emit_event", emit),
+    ):
+        upsert.return_value = {"briefDate": "2026-08-11", "items": []}
+        tb.generate_trading_brief("action")
+
+    assert emit.call_count == 1
+    event_type = emit.call_args.args[0]
+    payload = emit.call_args.args[1]
+    _dedupe = emit.call_args.kwargs["dedupe_key"]
+    assert event_type == "execution_card"
+    assert payload["day"]  # YYYY-MM-DD
+    assert payload["gate"]["A股"]["regime"] == "Weak"
+    assert payload["gate"]["A股"]["panicActive"] is True
+    assert payload["gate"]["港股"]["regime"] == "Strong"
+    assert payload["candidates"][0]["symbol"] == "CN:600801"
+    # EXIT holding is surfaced; HOLD holdings are not.
+    exit_syms = [e["symbol"] for e in payload["exits"]]
+    assert exit_syms == ["CN:300628"]
+    assert payload["exits"][0]["pnlPct"] == -5.4

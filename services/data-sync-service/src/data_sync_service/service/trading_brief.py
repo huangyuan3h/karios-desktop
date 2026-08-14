@@ -335,6 +335,54 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
             )
     if brief_type == "action":
         sections += _recon_section(5)
+        # OPT-113: the 14:00 execution card pushes to webhook subscribers so
+        # the user's phone gets the buy list + exit flags + gate state at
+        # their actual trading time (once per day via dedupe_key).
+        from data_sync_service.db.webhook import emit_event
+
+        emit_event(
+            "execution_card",
+            {
+                "day": _now().split("T")[0],
+                "gate": {
+                    str(r.get("market")): {
+                        "regime": r.get("regime"),
+                        "strength": r.get("strength"),
+                        "sentiment": r.get("sentiment"),
+                        "panicActive": r.get("panicActive"),
+                        "panicCooldownEnd": r.get("panicCooldownEnd"),
+                        "candidateTotal": r.get("candidateTotal"),
+                    }
+                    for r in sections
+                    if r.get("type") == "regime"
+                },
+                "candidates": [
+                    {
+                        "market": c.get("market"),
+                        "symbol": c.get("symbol"),
+                        "name": c.get("name"),
+                        "score": c.get("score"),
+                        "rs": c.get("rs"),
+                    }
+                    for c in sections
+                    if c.get("type") == "candidate"
+                ],
+                "exits": [
+                    {
+                        "market": h.get("market"),
+                        "symbol": h.get("symbol"),
+                        "name": h.get("name"),
+                        "pnlPct": h.get("pnlPct"),
+                        "stopLossLine": h.get("stopLossLine"),
+                        "trailingLine": h.get("trailingLine"),
+                        "expireDate": h.get("expireDate"),
+                    }
+                    for h in sections
+                    if h.get("type") == "holding" and h.get("action") == "EXIT"
+                ],
+            },
+            dedupe_key=f"execution_card:{_now().split('T')[0]}",
+        )
     if brief_type in ("open", "midday"):
         sections += _news_section(5)
     markdown = render_markdown(sections, brief_type)

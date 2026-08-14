@@ -115,6 +115,7 @@ class TestCreateScheduler:
             "intraday_alarm",
             "candidate_diff",
             "webhook_delivery",
+            "behavior_audit",
         }
         assert ids == expected
 

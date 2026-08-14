@@ -511,9 +511,9 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
   meta(
     'trading_brief_action',
     'news',
-    '操作卡 (14:30)',
-    '工作日 14:30 生成操作卡：买入卡列表 + 条件单清单 + 预警（大部分买单、止损条件单）。',
-    '工作日 14:30',
+    '操作卡 (14:00)',
+    '工作日 14:00 生成操作卡：买入卡列表 + 条件单清单 + 预警 + 执行卡推送（闸门状态/买入候选/退出持仓，webhook 直达手机）。',
+    '工作日 14:00',
     null,
     'cron',
     true,
@@ -586,6 +586,17 @@ export const SCHEDULER_JOB_CATALOG: readonly SchedulerJobMeta[] = [
     'cron',
     true,
      23,
+  ),
+  meta(
+    'behavior_audit',
+    'coreClose',
+    '行为对账 (18:45)',
+    '工作日 18:45 收盘后自动跑真实持仓 vs S-3 回测行为对账（simulate 数分钟），watchlist 横幅免手动刷新；发现不符项推送 audit_issues webhook。',
+    '工作日 18:45',
+    null,
+    'cron',
+    true,
+     24,
   ),
 ];
 

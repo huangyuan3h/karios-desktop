@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS {SUBSCRIPTIONS_TABLE} (
     url         TEXT NOT NULL,
     secret      TEXT NOT NULL,
     event_types TEXT[] NOT NULL,
+    provider    TEXT NOT NULL DEFAULT 'generic',
     enabled     BOOLEAN NOT NULL DEFAULT TRUE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -108,7 +109,7 @@ def list_subscriptions() -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 f"""
-                SELECT id, url, secret, event_types, enabled, created_at
+                SELECT id, url, secret, event_types, provider, enabled, created_at
                 FROM {SUBSCRIPTIONS_TABLE}
                 ORDER BY id
                 """
@@ -120,8 +121,9 @@ def list_subscriptions() -> list[dict[str, Any]]:
             "url": r[1],
             "secret": r[2],
             "eventTypes": list(r[3]),
-            "enabled": bool(r[4]),
-            "createdAt": r[5].isoformat() if hasattr(r[5], "isoformat") else str(r[5]),
+            "provider": str(r[4]),
+            "enabled": bool(r[5]),
+            "createdAt": r[6].isoformat() if hasattr(r[6], "isoformat") else str(r[6]),
         }
         for r in rows
     ]
@@ -133,6 +135,7 @@ def upsert_subscription(
     secret: str,
     event_types: list[str],
     enabled: bool = True,
+    provider: str = "generic",
     sub_id: int | None = None,
 ) -> dict[str, Any]:
     ensure_table()
@@ -142,20 +145,20 @@ def upsert_subscription(
                 cur.execute(
                     f"""
                     UPDATE {SUBSCRIPTIONS_TABLE}
-                    SET url = %s, secret = %s, event_types = %s, enabled = %s
+                    SET url = %s, secret = %s, event_types = %s, enabled = %s, provider = %s
                     WHERE id = %s
-                    RETURNING id, url, secret, event_types, enabled, created_at
+                    RETURNING id, url, secret, event_types, provider, enabled, created_at
                     """,
-                    (url, secret, event_types, enabled, sub_id),
+                    (url, secret, event_types, enabled, provider, sub_id),
                 )
             else:
                 cur.execute(
                     f"""
-                    INSERT INTO {SUBSCRIPTIONS_TABLE} (url, secret, event_types, enabled)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING id, url, secret, event_types, enabled, created_at
+                    INSERT INTO {SUBSCRIPTIONS_TABLE} (url, secret, event_types, enabled, provider)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id, url, secret, event_types, provider, enabled, created_at
                     """,
-                    (url, secret, event_types, enabled),
+                    (url, secret, event_types, enabled, provider),
                 )
             row = cur.fetchone()
         conn.commit()
@@ -164,8 +167,9 @@ def upsert_subscription(
         "url": row[1],
         "secret": row[2],
         "eventTypes": list(row[3]),
-        "enabled": bool(row[4]),
-        "createdAt": row[5].isoformat() if hasattr(row[5], "isoformat") else str(row[5]),
+        "provider": str(row[4]),
+        "enabled": bool(row[5]),
+        "createdAt": row[6].isoformat() if hasattr(row[6], "isoformat") else str(row[6]),
     }
 
 
@@ -187,7 +191,7 @@ def list_pending_deliveries(limit: int = 100) -> list[dict[str, Any]]:
             cur.execute(
                 f"""
                 SELECT d.id, d.event_id, d.subscription_id, e.event_type, e.payload,
-                       s.url, s.secret
+                       s.url, s.secret, s.provider
                 FROM {DELIVERIES_TABLE} d
                 JOIN {EVENTS_TABLE} e ON e.id = d.event_id
                 JOIN {SUBSCRIPTIONS_TABLE} s ON s.id = d.subscription_id
@@ -209,6 +213,7 @@ def list_pending_deliveries(limit: int = 100) -> list[dict[str, Any]]:
             "payload": r[4],
             "url": r[5],
             "secret": r[6],
+            "provider": str(r[7]),
         }
         for r in rows
     ]
