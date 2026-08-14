@@ -2898,3 +2898,22 @@ login.cloudflareaccess.org，国内网络不稳）。单域名架构：`karios.i
 **验收**：4 个 MobileShell 测试（闸门/候选/持仓/EXIT/对账）+ 771 passed ·
 tsc/eslint 干净 · tunnel UI 200。
 **说明**：v1 只读展示（看）；操作（买入/卖出/对账刷新）后续按需加。
+
+### OPT-118：Gateway 认证改为 X-Karios-Key Header + 前端登录页（2026-08-14）
+
+**状态**：[x]
+
+**背景（用户反馈"手机反复让我登录"）**：caddy Basic Auth 原生弹框在 iOS PWA
+standalone 模式下凭据不持久，反复弹框。
+
+**改动**：
+- **caddy v3**：去掉 basic_auth——UI/静态资源放行（壳，无数据）；API/AI 全部
+  路径校验 `X-Karios-Key` header（环境变量 KARIOS_GATEWAY_KEY，launchd 注入），
+  无/错 key → 401 JSON（不弹框）
+- **前端**：`lib/auth.ts`（installFetchAuth 全局包装 window.fetch，API 请求带
+  header；401 → 清 key + 广播 UNAUTHORIZED_EVENT）+ `AuthGate` 登录页
+  （密码存 localStorage，提交后 reload；401 自动回登录页）
+- page.tsx 挂载 AuthGate + installFetchAuth
+
+**验收**：UI 200（免认证）；API 无 key 401 / 带 key 200 / 错 key 401；AI 同；
+auth 单测 3 例 + AuthGate 4 例；774 passed；tsc/eslint 干净。
