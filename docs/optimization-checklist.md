@@ -2872,5 +2872,9 @@ ruff 干净；服务已重启（provider 字段已生效）。
 
 **验收**：三个子域 curl 全通（UI 200 / API healthz ok / AI healthz ok）；
 前端 84 文件全过（+2 endpoints tunnel 测试）；tsc 干净。
-**安全待办（用户侧）**：Cloudflare Zero Trust → Access → 三个域名 Email
-白名单（未配前域名公开可访问，尽快配置）。
+**安全（2026-08-14 增强）**：改为**本地 Basic Auth 网关（caddy :8443，launchd 常驻）**——
+密码认证在 Mac 本地完成，不依赖 Cloudflare Access（其验证码流程依赖
+login.cloudflareaccess.org，国内网络不稳）。单域名架构：`karios.it-t.xyz` 一
+个密码覆盖 UI+API+AI（caddy 按路径分流：/api /v1 及无前缀路由→4330，
+/ai→4310，/与静态资源→3000）。密码存 `~/.karios/gateway-password.txt`
+（chmod 600）。无认证访问返回 401。
