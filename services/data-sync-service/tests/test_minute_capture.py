@@ -59,3 +59,33 @@ def test_capture_symbols_handles_network_failure() -> None:
         )
     assert out["ok"] is False
     assert "connection reset" in out["reason"]
+
+
+def test_em_secid() -> None:
+    assert mc._em_secid("02099.HK", "hk") == "116.02099"
+    assert mc._em_secid("000001.SZ", "cn") == "0.000001"
+    assert mc._em_secid("600000.SH", "cn") == "1.600000"
+    assert mc._em_secid("12345.XX", "xx") is None
+
+
+def test_em_fetch_5m_parses_kline_line() -> None:
+    raw = {
+        "data": {
+            "klines": [
+                "2026-08-12 15:55,201.600,201.600,202.000,201.400,18600,3751260.000,0.30",
+                "2026-08-12 16:00,201.600,202.800,202.800,201.600,127300,25795900.000,0.60",
+            ]
+        }
+    }
+    with patch(
+        "data_sync_service.service.em_push2_http.em_get_json",
+        return_value=raw,
+    ):
+        rows = mc._em_fetch_5m("116.02099", "20260812", "20260812")
+    assert rows is not None
+    assert len(rows) == 2
+    assert rows[0]["trade_date"] == "2026-08-12"
+    assert rows[0]["time"] == "1555"
+    assert rows[0]["close"] == 201.6
+    assert rows[1]["time"] == "1600"
+    assert rows[1]["close"] == 202.8
