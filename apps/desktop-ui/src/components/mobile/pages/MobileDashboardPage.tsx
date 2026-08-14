@@ -82,30 +82,30 @@ export function MobileDashboardPage() {
 
       <MobileSection title="市场情绪">
         <MobileCard className="p-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
               <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">风险模式</div>
-              <div className="mt-0.5">
+              <div className="mt-1">
                 <StatusPill tone={sentimentTone(sRisk)}>{RISK_ZH[sRisk] ?? sRisk}</StatusPill>
               </div>
             </div>
-            <div className="shrink-0 text-right">
+            <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
               <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">涨 / 跌</div>
-              <div className="mt-0.5 font-mono text-[var(--m-text-base)] tabular-nums">
+              <div className="mt-1 font-mono text-[var(--m-text-base)] tabular-nums">
                 <span style={{ color: 'var(--k-up)' }}>{upCount}</span>
                 <span className="text-[var(--k-muted)]"> / </span>
                 <span style={{ color: 'var(--k-down)' }}>{downCount}</span>
               </div>
             </div>
-            <div className="shrink-0 text-right">
+            <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
               <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">涨停溢价</div>
-              <div className="mt-0.5 font-mono text-[var(--m-text-base)] tabular-nums">
+              <div className="mt-1 font-mono text-[var(--m-text-base)] tabular-nums">
                 {Number.isFinite(sLatest?.yesterdayLimitUpPremium) ? `${Number(sLatest.yesterdayLimitUpPremium).toFixed(2)}%` : '—'}
               </div>
             </div>
-            <div className="shrink-0 text-right">
+            <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
               <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">两市成交</div>
-              <div className="mt-0.5 font-mono text-[var(--m-text-sm)] tabular-nums">
+              <div className="mt-1 font-mono text-[var(--m-text-sm)] tabular-nums">
                 {fmtAmountCn(sLatest?.marketTurnoverCny)}
               </div>
             </div>

@@ -54,9 +54,9 @@ export function MobileSection({
 }) {
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between px-0.5">
-        <h2 className="text-[var(--m-text-lg)] font-semibold text-[var(--k-text)]">{title}</h2>
-        {action ? <div className="text-[var(--m-text-sm)] text-[var(--k-accent)]">{action}</div> : null}
+      <div className="flex items-center justify-between gap-2 px-0.5">
+        <h2 className="min-w-0 flex-1 truncate whitespace-nowrap text-[var(--m-text-lg)] font-semibold text-[var(--k-text)]">{title}</h2>
+        {action ? <div className="shrink-0 text-[var(--m-text-sm)] text-[var(--k-accent)]">{action}</div> : null}
       </div>
       {children}
     </section>
