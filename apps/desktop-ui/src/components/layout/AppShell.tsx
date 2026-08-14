@@ -378,7 +378,10 @@ export function AppShell() {
   // Mobile-first shell for phones/tablets (Family Hub Phase 0 · 2026-08-14):
   // the desktop workspace (sidebar + agent panel + dense tables) is unusable
   // on small screens, so a phone gets its own 3-tab shell instead.
-  const [isMobile, setIsMobile] = React.useState(false);
+  // matchMedia only exists on the client — resolve in an effect so SSR HTML
+  // and the first client render are identical (empty), avoiding hydration
+  // mismatch between the desktop shell and MobileShell.
+  const [isMobile, setIsMobile] = React.useState<boolean | null>(null);
   React.useEffect(() => {
     const mq = window.matchMedia('(max-width: 768px)');
     const update = () => setIsMobile(mq.matches);
@@ -389,7 +392,7 @@ export function AppShell() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {isMobile ? <MobileShell /> : <AppShellInner />}
+      {isMobile === null ? null : isMobile ? <MobileShell /> : <AppShellInner />}
     </QueryClientProvider>
   );
 }

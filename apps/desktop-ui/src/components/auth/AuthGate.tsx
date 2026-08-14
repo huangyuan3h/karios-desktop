@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 
-import { getGatewayKey, setGatewayKey, UNAUTHORIZED_EVENT } from '@/lib/auth';
+import { clearGatewayKey, getGatewayKey, setGatewayKey, UNAUTHORIZED_EVENT } from '@/lib/auth';
 
 /**
  * Auth gate (Family Hub Phase 0 · 2026-08-14).
@@ -13,19 +13,33 @@ import { getGatewayKey, setGatewayKey, UNAUTHORIZED_EVENT } from '@/lib/auth';
  * the key attached.
  */
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const [unlocked, setUnlocked] = React.useState<boolean>(() => getGatewayKey() !== null);
+  // localStorage only exists on the client — resolve the initial state in an
+  // effect so SSR HTML and the first client render are identical (empty),
+  // avoiding the React hydration mismatch.
+  const [ready, setReady] = React.useState(false);
+  const [unlocked, setUnlocked] = React.useState(false);
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
+    setUnlocked(getGatewayKey() !== null);
+    setReady(true);
+  }, []);
+
+  React.useEffect(() => {
     const onUnauthorized = () => {
+      clearGatewayKey();
       setUnlocked(false);
       setError('密码错误或已过期，请重新输入');
     };
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   }, []);
+
+  if (!ready) {
+    return null;
+  }
 
   if (unlocked) {
     return <>{children}</>;

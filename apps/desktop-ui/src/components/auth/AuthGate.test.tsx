@@ -47,17 +47,19 @@ describe('AuthGate (Family Hub Phase 0)', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('returns to login on 401 event', () => {
+  it('returns to login on 401 event', async () => {
     localStorage.setItem('karios.gateway-key', 'stale');
     render(
       <AuthGate>
         <div>app content</div>
       </AuthGate>,
     );
-    expect(screen.getByText('app content')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText('app content')).toBeTruthy();
+    });
     window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
     await waitFor(() => {
-      expect(screen.getByText('访问密码')).toBeTruthy();
+      expect(screen.getByPlaceholderText('访问密码')).toBeTruthy();
     });
     expect(screen.queryByText('app content')).toBeNull();
     expect(getGatewayKey()).toBeNull();
