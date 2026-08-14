@@ -179,6 +179,14 @@ class BacktestConfig:
     mv_max_diverging: float = 0.0
     exclude_boards: str = ""
     board_exclude_set: frozenset[str] = frozenset()
+    # Entry-price mode for a signal-day entry:
+    #   close           — signal-day close (legacy default)
+    #   last_hour_low   — approximate "buy the 14:00-15:00 dip" (no minute bars):
+    #                     low*0.5 + close*0.5, clamped below close (A股 14:00-15:00
+    #                     尾盘; HK 15:00-16:00 尾盘). Purely OHLC-based proxy.
+    #   last_hour_hl    — midpoint of the last-hour proxy: (low*0.5+close*0.5 + close)/2
+    #   next_open       — next-session open (signal-day close → T+1 买入)
+    entry_mode: str = "close"
 
     def __post_init__(self) -> None:
         if self.market not in MARKETS:
@@ -235,6 +243,11 @@ class BacktestConfig:
             raise ValueError("max_per_industry must be in [0, 100] (0 disables, 4 = at most 4 holdings per industry)")
         if self.entry_sort not in ("score", "score_rs", "rs"):
             raise ValueError(f"entry_sort must be one of ('score', 'score_rs', 'rs') (got {self.entry_sort!r})")
+        if self.entry_mode not in ("close", "last_hour_low", "last_hour_hl", "next_open"):
+            raise ValueError(
+                "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', 'next_open') "
+                f"(got {self.entry_mode!r})"
+            )
         if self.min_mv < 0 or self.max_mv < 0 or self.mv_max_diverging < 0:
             raise ValueError("min_mv / max_mv / mv_max_diverging must be >= 0 (亿元; 0 disables the bound)")
         if self.exclude_boards:
@@ -880,8 +893,56 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
         return len(recent) >= 3 and sum(recent) <= config.drawdown_circuit_pct
 
     def entry_price_for(ts: str, day: str) -> float | None:
+        """Entry fill price for a signal-day entry.
+
+        Default: signal-day close (legacy, matches the live paper which fills
+        at close). ``entry_mode`` variants approximate a better intraday
+        fill from the OHLC bar (no minute bars needed):
+
+        - ``last_hour_low``: low*0.5 + close*0.5 — proxy for a 尾盘 dip buy
+          (A股 14:00-15:00 / HK 15:00-16:00). Always <= close.
+        - ``last_hour_hl``: midpoint of that proxy and close.
+        - ``next_open``: next session's open (fill on the following day).
+        """
         closes = data.close_by_ts_day.get(ts)
-        return closes.get(day) if closes else None
+        base = closes.get(day) if closes else None
+        if base is None or base <= 0:
+            return None
+        mode = config.entry_mode
+        if mode == "close":
+            return base
+        bars = data.bars_by_ts.get(ts)
+        bar = None
+        if bars:
+            bar = next((b for b in bars if str(b[0]) == day), None)
+        if mode == "next_open":
+            if not bars:
+                return None
+            nxt = next((b for b in bars if str(b[0]) > day), None)
+            if nxt is None:
+                return None
+            try:
+                o = float(nxt[1])
+            except (TypeError, ValueError):
+                return None
+            return o if o > 0 else None
+        if bar is None:
+            return base
+        try:
+            lo = float(bar[3])
+            hi = float(bar[2])
+        except (TypeError, ValueError):
+            return base
+        if lo <= 0 or hi < lo:
+            return base
+        proxy = lo * 0.5 + base * 0.5
+        # A 尾盘 dip proxy that is never *above* the close (a last-hour dip
+        # cannot fill worse than the close when the close is the high).
+        proxy = min(proxy, base)
+        if mode == "last_hour_low":
+            return proxy
+        # last_hour_hl: midpoint between the dip proxy and the close.
+        return (proxy + base) / 2.0
 
     def atr_scale_for(ts: str, day: str) -> float:
         """Volatility-targeted sleeve scale: ATR% < benchmark -> bigger sleeve

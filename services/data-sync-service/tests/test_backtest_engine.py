@@ -1802,3 +1802,63 @@ def test_atr_stop_strength_floor_selects_atr_line_d1() -> None:
         run_lo = simulate(config, data=data)
     assert run_lo.summary.closed == 1
     assert run_lo.trades[0].close_reason == "end_of_window"  # fixed -15% never fired
+
+
+# --- entry_mode (last-hour dip proxy / next-open) ---
+
+
+def _data_with_bars(
+    calendar: list[str],
+    scores: dict[str, dict[str, float]],
+    ohlc: dict[str, dict[str, tuple[float, float, float, float]]],
+) -> BacktestData:
+    """Same shape as _data but fills bars_by_ts with (date, o, h, l, c, vol)."""
+    data = _data(calendar, scores, {ts: {d: v[3] for d, v in m.items()} for ts, m in ohlc.items()})
+    data.bars_by_ts = {
+        ts: [
+            (d, str(o), str(h), str(l), str(c), "0")
+            for d, (o, h, l, c) in sorted(m.items())
+        ]
+        for ts, m in ohlc.items()
+    }
+    return data
+
+
+def test_entry_mode_close_uses_signal_day_close() -> None:
+    """entry_mode=close (default) fills at the signal-day close."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {"2026-06-18": {CN1: 90.0}}
+    ohlc = {TS1: {"2026-06-18": (9.0, 11.0, 8.0, 10.0), "2026-06-19": (10.0, 10.0, 10.0, 10.0), "2026-06-22": (10.0, 10.0, 10.0, 10.0)}}
+    data = _data_with_bars(calendar, scores, ohlc)
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", entry_mode="close")
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    assert abs(run.trades[0].entry_price - 10.0) < 1e-6
+
+
+def test_entry_mode_last_hour_low_buys_dip_below_close() -> None:
+    """last_hour_low = low*0.5 + close*0.5, clamped at close (dip proxy)."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {"2026-06-18": {CN1: 90.0}}
+    ohlc = {TS1: {"2026-06-18": (9.0, 11.0, 8.0, 10.0), "2026-06-19": (10.0, 10.0, 10.0, 10.0), "2026-06-22": (10.0, 10.0, 10.0, 10.0)}}
+    data = _data_with_bars(calendar, scores, ohlc)
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", entry_mode="last_hour_low")
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    # low*0.5 + close*0.5 = 8*0.5 + 10*0.5 = 9.0
+    assert abs(run.trades[0].entry_price - 9.0) < 1e-6
+
+
+def test_entry_mode_next_open_uses_next_session_open() -> None:
+    """next_open fills at the NEXT session's open (T+1 买入)."""
+    calendar = ["2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {"2026-06-18": {CN1: 90.0}}
+    ohlc = {TS1: {"2026-06-18": (9.0, 11.0, 8.0, 10.0), "2026-06-19": (10.5, 11.0, 10.0, 10.8), "2026-06-22": (10.0, 10.0, 10.0, 10.0)}}
+    data = _data_with_bars(calendar, scores, ohlc)
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", entry_mode="next_open")
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    assert abs(run.trades[0].entry_price - 10.5) < 1e-6

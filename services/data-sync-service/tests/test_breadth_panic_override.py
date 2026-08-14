@@ -17,7 +17,7 @@ def test_apply_breadth_panic_risk_mode_overrides_hot() -> None:
     rules: list[str] = []
     out = apply_breadth_panic_risk_mode("hot", 3200, rules)
     assert out == "extreme_caution"
-    assert any("breadth_panic" in r for r in rules)
+    assert any("广度恐慌" in r for r in rules)
 
 
 def test_apply_breadth_panic_index_signals_forces_cn_red() -> None:
@@ -40,7 +40,7 @@ def test_apply_breadth_panic_sentiment_items_updates_latest() -> None:
     out = apply_breadth_panic_sentiment_items(items, 3500)
     assert out[0]["riskMode"] == "normal"
     assert out[1]["riskMode"] == "extreme_caution"
-    assert any("breadth_panic" in r for r in out[1]["rules"])
+    assert any("广度恐慌" in r for r in out[1]["rules"])
 
 
 def test_build_market_sentiment_bundle_applies_breadth_panic(monkeypatch) -> None:
