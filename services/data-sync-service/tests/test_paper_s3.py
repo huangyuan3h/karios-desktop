@@ -617,8 +617,19 @@ def test_build_s3_candidates_blocks_implicit_weak_breadth() -> None:
 
 
 def test_build_s3_candidates_allows_balanced_breadth() -> None:
-    """up/down = 1.0 with normal risk_mode → candidates allowed."""
-    with _patch_day_gates():
+    """up/down = 1.0 with normal risk_mode → fan day; a pullback strong
+    stock (RS>=0.7, 5d <= -3%) passes the dip filter."""
+    with _patch_day_gates(), patch.object(
+        paper_s3, "fetch_last_ohlcv_batch",
+        return_value={"600001.SH": [
+            ("2026-07-31", 11.0, 11.0, 11.0, 11.0, 1000),
+            ("2026-08-03", 11.0, 11.0, 11.0, 11.0, 1000),
+            ("2026-08-04", 11.0, 11.0, 11.0, 11.0, 1000),
+            ("2026-08-05", 11.0, 11.0, 11.0, 11.0, 1000),
+            ("2026-08-06", 11.0, 11.0, 11.0, 11.0, 1000),
+            ("2026-08-07", 10.5, 10.5, 10.5, 10.5, 1000),
+        ]},
+    ):
         paper_s3._load_today_scores.return_value = {CN_A: 90.0}
         paper_s3.get_cn_sentiment.return_value = {
             "items": [
@@ -626,8 +637,68 @@ def test_build_s3_candidates_allows_balanced_breadth() -> None:
                     "riskMode": "normal",
                     "upCount": 2000,
                     "downCount": 2000,
+                    "yesterdayLimitupPremium": 0.5,
                 }
             ]
         }
         out = paper_s3.build_s3_candidates(trade_date="2026-08-07")
+        # 5d return = 10.5/11 - 1 = -4.5% <= -3% → dip passes
         assert [c["symbol"] for c in out] == [CN_A]
+
+
+def test_build_s3_candidates_fan_day_rejects_momentum_names() -> None:
+    """Fan day: a strong stock WITHOUT a pullback (5d >= -3%) is rejected."""
+    with _patch_day_gates(), patch.object(
+        paper_s3, "fetch_last_ohlcv_batch",
+        return_value={"600001.SH": [
+            ("2026-07-31", 10.0, 10.0, 10.0, 10.0, 1000),
+            ("2026-08-03", 10.0, 10.0, 10.0, 10.0, 1000),
+            ("2026-08-04", 10.0, 10.0, 10.0, 10.0, 1000),
+            ("2026-08-05", 10.0, 10.0, 10.0, 10.0, 1000),
+            ("2026-08-06", 10.0, 10.0, 10.0, 10.0, 1000),
+            ("2026-08-07", 10.6, 10.6, 10.6, 10.6, 1000),
+        ]},
+    ):
+        paper_s3._load_today_scores.return_value = {CN_A: 90.0}
+        paper_s3.get_cn_sentiment.return_value = {
+            "items": [
+                {
+                    "riskMode": "normal",
+                    "upCount": 2000,
+                    "downCount": 2000,
+                    "yesterdayLimitupPremium": 0.5,
+                }
+            ]
+        }
+        out = paper_s3.build_s3_candidates(trade_date="2026-08-07")
+        # 5d return = 10.6/10 - 1 = +6% → momentum name, fan day rejects
+        assert out == []
+
+
+def test_build_s3_candidates_uptrend_day_momentum_filter() -> None:
+    """Uptrend day: a pullback strong stock (5d <= -3%) is rejected; a
+    momentum stock (5d >= -3%) passes."""
+    bars_pullback = {"600001.SH": [
+        ("2026-07-31", 11.0, 11.0, 11.0, 11.0, 1000),
+        ("2026-08-03", 11.0, 11.0, 11.0, 11.0, 1000),
+        ("2026-08-04", 11.0, 11.0, 11.0, 11.0, 1000),
+        ("2026-08-05", 11.0, 11.0, 11.0, 11.0, 1000),
+        ("2026-08-06", 11.0, 11.0, 11.0, 11.0, 1000),
+        ("2026-08-07", 10.5, 10.5, 10.5, 10.5, 1000),
+    ]}
+    with _patch_day_gates(), patch.object(
+        paper_s3, "fetch_last_ohlcv_batch", return_value=bars_pullback
+    ):
+        paper_s3._load_today_scores.return_value = {CN_A: 90.0}
+        paper_s3.get_cn_sentiment.return_value = {
+            "items": [
+                {
+                    "riskMode": "hot",
+                    "upCount": 4000,
+                    "downCount": 1000,
+                    "yesterdayLimitupPremium": 2.0,
+                }
+            ]
+        }
+        # 5d = -4.5% → pullback → momentum filter rejects
+        assert paper_s3.build_s3_candidates(trade_date="2026-08-07") == []

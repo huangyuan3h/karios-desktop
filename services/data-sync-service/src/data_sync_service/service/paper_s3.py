@@ -40,6 +40,12 @@ from data_sync_service.service.backtest_engine import (
     _load_rs_ranks,
 )
 from data_sync_service.service.market_sentiment import get_cn_sentiment, get_panic_cooldown
+from data_sync_service.service.env_label import (
+    ENV_FAN,
+    ENV_UPTREND,
+    ENV_WEAK,
+    ENV_UNKNOWN,
+)
 from data_sync_service.service.paper_cost_model import round_trip_cost_pct
 from data_sync_service.service.paper_trading import _holding_days_for, _resolve_ts_code
 from data_sync_service.service.trendok import _lookup_stock_basic
@@ -115,6 +121,14 @@ SENTIMENT_BLOCK_MODES = ("no_new_positions", "extreme_caution")
 # new CN entries). Mirrors execution_gate.WEAK_RATIO_MAX + env_label.
 WEAK_RATIO_MAX = 0.5
 
+# TIP-014 (2026-08-14): environment-aware entry style — mirrors the S-3
+# backtest config (entry_style=auto RS0.7 dip3%). uptrend → momentum
+# (RS>=ENTRY_STYLE_RS_MIN, NOT in pullback); fan → dip (RS>=rs_min AND in
+# pullback <= -ENTRY_STYLE_DIP_MIN); weak/neutral → blocked (handled by
+# the sentiment block above); unknown → no style filter.
+ENTRY_STYLE_RS_MIN = 0.7
+ENTRY_STYLE_DIP_MIN = 3.0
+
 
 def _load_today_scores(trade_date: str, market: str = "CN") -> dict[str, float]:
     """{symbol: score} from watchlist_score_daily for one market."""
@@ -139,6 +153,73 @@ def _load_today_scores(trade_date: str, market: str = "CN") -> dict[str, float]:
                     except (TypeError, ValueError):
                         continue
     return out
+
+
+def _env_for_day(sentiment_items: list[dict[str, Any]]) -> str:
+    """Environment bucket for today's CN sentiment items (TIP-014).
+
+    Mirrors service/env_label.load_env_by_day's per-day logic WITHOUT the
+    mainline-churn signal (that needs historical mainline rows; the live
+    intraday path only has today's snapshot). Fallback when mainline data is
+    absent: ratio-only labels (fan 0.5..1.5 / weak < 0.5 / else unknown),
+    matching env_label's pre-mainline behaviour.
+    """
+    if not sentiment_items:
+        return ENV_UNKNOWN
+    item = sentiment_items[-1]
+    mode = str(item.get("riskMode") or "")
+    if mode in SENTIMENT_BLOCK_MODES:
+        return ENV_WEAK
+    up = int(item.get("upCount") or 0)
+    down = int(item.get("downCount") or 0)
+    if up > 0 and down > 0 and (up / down) < WEAK_RATIO_MAX:
+        return ENV_WEAK
+    if up > 0 and down > 0:
+        ratio = up / down
+        if ratio >= 2.0 and float(item.get("yesterdayLimitupPremium") or 0.0) >= 0.0:
+            return ENV_UPTREND
+        if 0.5 <= ratio <= 1.5:
+            return ENV_FAN
+    return ENV_UNKNOWN
+
+
+def _env_style_for(sentiment_items: list[dict[str, Any]]) -> str | None:
+    """Entry style for today's CN environment (TIP-014 auto mode).
+
+    Returns 'momentum' (uptrend), 'dip' (fan), or None (unknown/no filter).
+    weak/neutral days never reach here — they are blocked upstream.
+    """
+    env = _env_for_day(sentiment_items)
+    if env == ENV_UPTREND:
+        return "momentum"
+    if env == ENV_FAN:
+        return "dip"
+    return None
+
+
+def _ret5_for(ts_code: str, as_of: str) -> float | None:
+    """5-session return % for ``ts_code`` at ``as_of`` (None when bars are
+    insufficient). Same window as the backtest engine's ret5_for — used by
+    the TIP-014 style filter in live paper."""
+    try:
+        bars = fetch_last_ohlcv_batch([ts_code], days=10).get(ts_code) or []
+        closes = [(str(b[0]), float(b[4])) for b in bars if len(b) > 4 and b[4] is not None]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 ret5 fetch failed for %s: %s", ts_code, exc)
+        return None
+    closes.sort(key=lambda kv: kv[0])
+    idx = None
+    for i, (d, _c) in enumerate(closes):
+        if d == as_of:
+            idx = i
+            break
+    if idx is None or idx < 5:
+        return None
+    c_prev = closes[idx - 5][1]
+    c_now = closes[idx][1]
+    if c_prev <= 0:
+        return None
+    return (c_now / c_prev - 1.0) * 100.0
 
 
 def _latest_daily_date_before(day: str) -> str | None:
@@ -365,6 +446,9 @@ def build_s3_candidates(
         industry_by_ts = _load_industries(list(resolved.values()))
 
     out: list[dict[str, Any]] = []
+    style = None
+    if not is_hk:
+        style = _env_style_for(sentiment_items)
     for sym in sorted(scores, key=lambda s: -scores[s]):
         score = scores[sym]
         if score < S3_SCORE_THRESHOLD:
@@ -377,6 +461,19 @@ def build_s3_candidates(
         rs = rs_by_day.get(ts)
         if rs is None or rs < rs_min:
             continue
+        if style is not None and not is_hk:
+            if rs < ENTRY_STYLE_RS_MIN:
+                continue
+            # ret5 as-of `day`; intraday (before 17:10 close_sync) today's
+            # bar is absent → fall back to the previous session (same as the
+            # RS fallback above) so the intraday surface is not emptied.
+            ret5 = _ret5_for(ts, day) or _ret5_for(ts, _latest_daily_date_before(day) or "")
+            if ret5 is None:
+                continue
+            if style == "momentum" and ret5 < -ENTRY_STYLE_DIP_MIN:
+                continue
+            if style == "dip" and ret5 > -ENTRY_STYLE_DIP_MIN:
+                continue
         code = str(sym).split(":")[-1]
         if S3_EXCLUDE_BOARDS and code[:3] in S3_EXCLUDE_BOARDS:
             continue
