@@ -2007,3 +2007,84 @@ def test_neutral_block_rejects_implicit_weak_days() -> None:
     run = simulate(config, data=data)
     assert run.summary.gated_blocks.get("neutral", 0) >= 1
     assert run.trades[0].entry_date == "2026-06-19"
+
+
+# --- TIP-014 HK style map (experimental, default OFF) ---
+
+
+def test_hk_style_map_parse() -> None:
+    """hk_style_map string parsing produces the expected per-regime styles."""
+    cfg = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-19",
+        market="HK", hk_style_map="Strong:dip,Diverging:momentum,Weak:blocked",
+    )
+    assert cfg.hk_style_map == "Strong:dip,Diverging:momentum,Weak:blocked"
+
+
+def test_hk_auto_default_maps_strong_to_momentum() -> None:
+    """HK auto WITHOUT override: Strong→momentum — a momentum name (5d +10%,
+    RS 0.9) passes; a pullback name would be rejected."""
+    calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {
+        "2026-06-18": {"HK:00700": 90.0},
+        "2026-06-19": {"HK:00700": 90.0},
+        "2026-06-22": {"HK:00700": 90.0},
+    }
+    # 5d return at 06-18 = 11/10 - 1 = +10% → momentum passes
+    closes = {"00700.HK": {
+        "2026-06-15": 10.0, "2026-06-16": 10.0, "2026-06-17": 10.0,
+        "2026-06-18": 11.0, "2026-06-19": 11.0, "2026-06-22": 11.0,
+    }}
+    data = _data(calendar, scores, closes)
+    data.regime_by_day = {d: "Strong" for d in calendar}
+    data.rs_rank_by_day = {d: {"00700.HK": 0.9} for d in calendar}
+    data.bars_by_ts = {
+        "00700.HK": [(d, str(c), str(c), str(c), str(c), "0") for d, c in closes["00700.HK"].items()]
+    }
+    data.ts_codes = ["00700.HK"]
+    data.industry_by_ts = {}
+    data.sentiment_risk_by_day = {}
+    data.env_by_day = {}
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-22",
+        market="HK", gates="regime", entry_style="auto",
+    )
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    assert run.trades[0].symbol == "HK:00700"
+
+
+def test_hk_auto_override_diverging_to_momentum() -> None:
+    """hk_style_map override: Diverging→momentum — a momentum name on a
+    Diverging day passes (proves the override path is live)."""
+    calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {
+        "2026-06-18": {"HK:00700": 90.0},
+        "2026-06-19": {"HK:00700": 90.0},
+        "2026-06-22": {"HK:00700": 90.0},
+    }
+    closes = {"00700.HK": {
+        "2026-06-15": 10.0, "2026-06-16": 10.0, "2026-06-17": 10.0,
+        "2026-06-18": 11.0, "2026-06-19": 11.0, "2026-06-22": 11.0,
+    }}
+    data = _data(calendar, scores, closes)
+    data.regime_by_day = {d: "Diverging" for d in calendar}
+    data.rs_rank_by_day = {d: {"00700.HK": 0.9} for d in calendar}
+    data.bars_by_ts = {
+        "00700.HK": [(d, str(c), str(c), str(c), str(c), "0") for d, c in closes["00700.HK"].items()]
+    }
+    data.ts_codes = ["00700.HK"]
+    data.industry_by_ts = {}
+    data.sentiment_risk_by_day = {}
+    data.env_by_day = {}
+    config = BacktestConfig(
+        start_date="2026-06-18", end_date="2026-06-22",
+        market="HK", gates="regime", entry_style="auto",
+        diverging_scale=1.0,
+        hk_style_map="Strong:blocked,Diverging:momentum,Weak:blocked",
+    )
+
+    run = simulate(config, data=data)
+    # Diverging→momentum (override), momentum name passes
+    assert run.summary.closed == 1

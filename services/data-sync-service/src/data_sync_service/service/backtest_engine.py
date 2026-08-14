@@ -57,6 +57,7 @@ from data_sync_service.service.env_label import ENV_FAN, ENV_NEUTRAL, ENV_UPTREN
 from data_sync_service.service.execution_gate import (
     REGIME_DIVERGING,
     REGIME_STRONG,
+    REGIME_WEAK,
     classify_market_regime,
 )
 from data_sync_service.service.industry_fund_flow_read import top_by_date_from_rows
@@ -201,6 +202,12 @@ class BacktestConfig:
     entry_style_rs_min: float = 0.8
     entry_style_dip_min: float = 5.0
     entry_style_dip_max: float = 3.0
+    # HK auto style mapping override (TIP-014 HK experiment): HK regime
+    # buckets map differently from CN (HK Strong days LOST money in valid
+    # window while Diverging days were best). Format: "Strong:dip,Diverging:momentum,Weak:blocked"
+    # empty (default) → HK uses the CN-style mapping (Strong→momentum,
+    # Diverging→dip). Experimental only; CN always uses env_label.
+    hk_style_map: str = ""
     # NOTE (TIP-014, 2026-08-14): entry_style is INDEPENDENT of industry. The
     # style filters use only per-stock RS rank + 5d return — the industry
     # restriction comes from a SEPARATE layer, the dynamic mainline gate
@@ -1243,11 +1250,31 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             # TIP-014 entry style filter (momentum / dip / auto).
             style = config.entry_style
             if style == "auto":
-                style = {
-                    ENV_UPTREND: "momentum",
-                    ENV_FAN: "dip",
-                    ENV_WEAK: "blocked",
-                }.get(data.env_by_day.get(day), "score")
+                if config.market == "HK":
+                    # HK has no CN sentiment data — the environment is the
+                    # HSI/HSTECH regime itself. Default mapping mirrors CN
+                    # (Strong→momentum, Diverging→dip, Weak→blocked); the
+                    # hk_style_map override swaps it per the HK attribution
+                    # (valid: Strong days lost, Diverging days best).
+                    if config.hk_style_map:
+                        hk_map = {}
+                        for part in config.hk_style_map.split(","):
+                            k, _, v = part.partition(":")
+                            if k and v:
+                                hk_map[k.strip()] = v.strip()
+                        style = hk_map.get(data.regime_by_day.get(day), "score")
+                    else:
+                        style = {
+                            REGIME_STRONG: "momentum",
+                            REGIME_DIVERGING: "dip",
+                            REGIME_WEAK: "blocked",
+                        }.get(data.regime_by_day.get(day), "score")
+                else:
+                    style = {
+                        ENV_UPTREND: "momentum",
+                        ENV_FAN: "dip",
+                        ENV_WEAK: "blocked",
+                    }.get(data.env_by_day.get(day), "score")
             if style in ("momentum", "dip"):
                 rs = data.rs_rank_by_day.get(day, {}).get(ts)
                 if rs is None or rs < config.entry_style_rs_min:
