@@ -34,6 +34,7 @@ from data_sync_service.scheduler import (
     intraday_alarm_job,
     intraday_score_job,
     macro_daily_job,
+    minute_capture_job,
     morning_brief_job,
     news_enrich_job,
     news_fetch_job,
@@ -192,6 +193,12 @@ def create_scheduler() -> BackgroundScheduler:
         cn_industry_post_close_job.run,
         cn_industry_post_close_job.build_trigger(),
         id=cn_industry_post_close_job.JOB_ID,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        minute_capture_job.run,
+        minute_capture_job.build_trigger(),
+        id=minute_capture_job.JOB_ID,
         replace_existing=True,
     )
     # OPT-049: paper-trading intake + update (after cn_industry_post_close).

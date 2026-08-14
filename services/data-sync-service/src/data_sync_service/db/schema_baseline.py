@@ -17,6 +17,7 @@ from data_sync_service.db.alpha_radar import (
     CREATE_SOURCES_SQL as ALPHA_RADAR_SOURCES_SQL,
 )
 from data_sync_service.db.broker import CREATE_SQL as BROKER_CREATE_SQL
+from data_sync_service.db.bar_minute import CREATE_SQL as BAR_MINUTE_CREATE_SQL
 from data_sync_service.db.daily import CREATE_SQL as DAILY_CREATE_SQL
 from data_sync_service.db.decision import CREATE_SQL as DECISION_CREATE_SQL
 from data_sync_service.db.etf_fund_flow import CREATE_SQL as ETF_FUND_FLOW_CREATE_SQL
@@ -97,6 +98,7 @@ def baseline_ddl_statements() -> list[str]:
     ordered_sql = [
         DAILY_CREATE_SQL,
         STOCK_BASIC_CREATE_SQL,
+        BAR_MINUTE_CREATE_SQL,
         INDEX_DAILY_CREATE_SQL,
         INDEX_BASIC_CREATE_SQL,
         MACRO_DAILY_CREATE_SQL,
