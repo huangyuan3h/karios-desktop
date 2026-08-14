@@ -20,11 +20,74 @@ const RISK_ZH: Record<string, string> = {
   euphoric: '亢奋',
 };
 
+const GATE_MODE_ZH: Record<string, string> = {
+  ATTACK: '进攻',
+  WEAK_ATTACK: '弱进攻',
+  HOLD_ONLY: '防守',
+  DEFEND: '防守',
+};
+
+const GATE_MODE_TONE: Record<string, 'open' | 'warn' | 'danger' | 'neutral'> = {
+  ATTACK: 'open',
+  WEAK_ATTACK: 'open',
+  HOLD_ONLY: 'warn',
+  DEFEND: 'danger',
+};
+
 function sentimentTone(risk: string): 'open' | 'warn' | 'danger' | 'neutral' {
   if (risk === 'confirmed_uptrend' || risk === 'hot') return 'open';
   if (risk === 'caution') return 'warn';
   if (risk === 'extreme_caution' || risk === 'no_new_positions' || risk === 'capitulation_v_bottom') return 'danger';
   return 'neutral';
+}
+
+/** Gate card — A股/港股 闸门（数据来自 marketSentiment.executionGate） */
+function GateCard({ label, gate }: { label: string; gate: any }) {
+  if (!gate || typeof gate !== 'object') {
+    return (
+      <MobileCard className="p-3">
+        <div className="text-[var(--m-text-base)] font-semibold">{label}</div>
+        <div className="mt-1 text-[var(--m-text-xs)] text-[var(--k-muted)]">暂无闸门数据</div>
+      </MobileCard>
+    );
+  }
+  const mode = String(gate.mode || '—');
+  const allow = Boolean(gate.allowNewEntries);
+  const regime = String(gate.marketRegime || '—');
+  const light = String(gate.indexLight || '—');
+  const reasons: string[] = Array.isArray(gate.reasons) ? gate.reasons.map((x: unknown) => String(x)) : [];
+  const posHint = gate.positionRangeHint ? String(gate.positionRangeHint) : null;
+  return (
+    <MobileCard className="p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[var(--m-text-base)] font-semibold">{label}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <StatusPill tone={GATE_MODE_TONE[mode] ?? 'neutral'}>
+              {GATE_MODE_ZH[mode] ?? mode}
+            </StatusPill>
+            <StatusPill tone={allow ? 'open' : 'danger'}>
+              允许开仓={allow ? 'true' : 'false'}
+            </StatusPill>
+          </div>
+        </div>
+        <div className="shrink-0 text-right">
+          <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">
+            {regime}
+            {light && light !== '—' ? ` · ${light}灯` : ''}
+          </div>
+          {posHint ? (
+            <div className="mt-1 text-[var(--m-text-sm)] font-semibold text-[var(--k-warn)]">{posHint}</div>
+          ) : null}
+        </div>
+      </div>
+      {reasons.length ? (
+        <div className="mt-2 text-[var(--m-text-xs)] text-[var(--k-muted)]">
+          原因: {reasons.join(' · ')}
+        </div>
+      ) : null}
+    </MobileCard>
+  );
 }
 
 /** Dashboard (mobile) — gates + sentiment + news pulse + top inflow. §5.2 高频. */
@@ -46,6 +109,9 @@ export function MobileDashboardPage() {
   const topIn = [...(flow.data?.top ?? [])].sort((a, b) => b.netInflow - a.netInflow).slice(0, 5);
 
   const ms: any = (senti.data as any)?.marketSentiment ?? {};
+  const gate: any = ms?.executionGate ?? {};
+  const cnExecutionGate = gate?.cnGate ?? null;
+  const hkExecutionGate = gate?.hkGate ?? null;
   const sItems: any[] = Array.isArray(ms.items) ? ms.items : [];
   const sLatest = sItems.length ? sItems[sItems.length - 1] : null;
   const sRisk = String(sLatest?.riskMode ?? '—');
@@ -81,41 +147,49 @@ export function MobileDashboardPage() {
       </MobileSection>
 
       <MobileSection title="市场情绪">
-        <MobileCard className="p-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
-              <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">风险模式</div>
-              <div className="mt-1">
-                <StatusPill tone={sentimentTone(sRisk)}>{RISK_ZH[sRisk] ?? sRisk}</StatusPill>
+        <div className="space-y-2">
+          {cnExecutionGate ? <GateCard label="A股闸门" gate={cnExecutionGate} /> : null}
+          {hkExecutionGate ? <GateCard label="港股闸门" gate={hkExecutionGate} /> : null}
+          {!cnExecutionGate && !hkExecutionGate ? (
+            <MobileCard className="p-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
+                  <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">风险模式</div>
+                  <div className="mt-1">
+                    <StatusPill tone={sentimentTone(sRisk)}>{RISK_ZH[sRisk] ?? sRisk}</StatusPill>
+                  </div>
+                </div>
+                <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
+                  <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">涨 / 跌</div>
+                  <div className="mt-1 font-mono text-[var(--m-text-base)] tabular-nums">
+                    <span style={{ color: 'var(--k-up)' }}>{upCount}</span>
+                    <span className="text-[var(--k-muted)]"> / </span>
+                    <span style={{ color: 'var(--k-down)' }}>{downCount}</span>
+                  </div>
+                </div>
+                <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
+                  <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">涨停溢价</div>
+                  <div className="mt-1 font-mono text-[var(--m-text-base)] tabular-nums">
+                    {Number.isFinite(sLatest?.yesterdayLimitUpPremium) ? `${Number(sLatest.yesterdayLimitUpPremium).toFixed(2)}%` : '—'}
+                  </div>
+                </div>
+                <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
+                  <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">两市成交</div>
+                  <div className="mt-1 font-mono text-[var(--m-text-sm)] tabular-nums">
+                    {fmtAmountCn(sLatest?.marketTurnoverCny)}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
-              <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">涨 / 跌</div>
-              <div className="mt-1 font-mono text-[var(--m-text-base)] tabular-nums">
-                <span style={{ color: 'var(--k-up)' }}>{upCount}</span>
-                <span className="text-[var(--k-muted)]"> / </span>
-                <span style={{ color: 'var(--k-down)' }}>{downCount}</span>
-              </div>
-            </div>
-            <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
-              <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">涨停溢价</div>
-              <div className="mt-1 font-mono text-[var(--m-text-base)] tabular-nums">
-                {Number.isFinite(sLatest?.yesterdayLimitUpPremium) ? `${Number(sLatest.yesterdayLimitUpPremium).toFixed(2)}%` : '—'}
-              </div>
-            </div>
-            <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
-              <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">两市成交</div>
-              <div className="mt-1 font-mono text-[var(--m-text-sm)] tabular-nums">
-                {fmtAmountCn(sLatest?.marketTurnoverCny)}
-              </div>
-            </div>
-          </div>
-          {Array.isArray(sLatest?.rules) && sLatest.rules.length ? (
-            <div className="mt-2 text-[var(--m-text-xs)] text-[var(--k-muted)]">
-              {sLatest.rules.slice(0, 2).map((x: unknown) => String(x)).join(' · ')}
-            </div>
+            </MobileCard>
           ) : null}
-        </MobileCard>
+          {Array.isArray(sLatest?.rules) && sLatest.rules.length ? (
+            <MobileCard className="p-3">
+              <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                {sLatest.rules.slice(0, 3).map((x: unknown) => String(x)).join(' · ')}
+              </div>
+            </MobileCard>
+          ) : null}
+        </div>
       </MobileSection>
 
       <MobileSection title={`买入候选${cn?.s3Candidates?.length ? `（${cn.s3Candidates.length}）` : ''}`}>
