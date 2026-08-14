@@ -1,7 +1,9 @@
 import * as React from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/button';
 import { useBehaviorAuditQuery, useRefreshBehaviorAudit } from '@/lib/queries/behaviorAudit';
+import { fetchPortfolioHealth, isMarketGateClosed } from '@/lib/queries/portfolioHealth';
 
 /**
  * OPT-106: real-book vs S-3 backtest behavior audit banner.
@@ -9,9 +11,19 @@ import { useBehaviorAuditQuery, useRefreshBehaviorAudit } from '@/lib/queries/be
  * Shows any holding the backtest would NOT hold (买了不该买 / 该卖没卖) and
  * any backtest holding the user skipped (该持没买) — so behavior that
  * deviates from the backtested rule set is surfaced right on the watchlist.
+ *
+ * 2026-08-14: when a market's S-3 gate is CLOSED today (闸门关闭 — regime
+ * Weak / panic cooldown / circuit breaker, so new entries are impossible),
+ * that market's 该持没买 suggestions are hidden — only actionable exits
+ * (该卖没卖) and held-but-unapproved rows (买了不该买) stay visible.
  */
 export function BehaviorAuditBanner() {
   const auditQuery = useBehaviorAuditQuery();
+  const healthQuery = useQuery({
+    queryKey: ['portfolio-health'],
+    queryFn: ({ signal }) => fetchPortfolioHealth(undefined, signal),
+    refetchInterval: 5 * 60_000,
+  });
   const refresh = useRefreshBehaviorAudit();
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -23,6 +35,17 @@ export function BehaviorAuditBanner() {
     (r.missingList ?? []).map((m) => ({ ...m, market: r.market, auditDate: r.auditDate })),
   );
 
+  // Per-market "cannot buy today" (shared with PortfolioHealthCard's 闸门关闭 badge).
+  const blockedMarkets = React.useMemo(() => {
+    const s = new Set<string>();
+    const cn = healthQuery.data;
+    if (isMarketGateClosed(cn)) s.add('CN');
+    if (isMarketGateClosed(cn?.hkHealth)) s.add('HK');
+    return s;
+  }, [healthQuery.data]);
+
+  const hiddenMissing = missingRows.filter((m) => blockedMarkets.has(m.market));
+  const visibleMissing = missingRows.filter((m) => !blockedMarkets.has(m.market));
   const latestDate = rows[0]?.auditDate;
 
   const onRefresh = () => {
@@ -32,7 +55,7 @@ export function BehaviorAuditBanner() {
     });
   };
 
-  if (!extraRows.length && !missingRows.length) {
+  if (!extraRows.length && !visibleMissing.length && !hiddenMissing.length) {
     // Silent when there's nothing to flag — but still allow a manual refresh.
     return latestDate ? (
       <div className="mb-4 flex items-center gap-2 text-[12px] text-[var(--k-muted)]">
@@ -46,6 +69,22 @@ export function BehaviorAuditBanner() {
         <span>行为对账：暂无数据（第一次需手动刷新，回测模拟约 3-4 分钟）</span>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={onRefresh} disabled={refreshing || refresh.isPending}>
           {refreshing ? '回测模拟中…' : '开始对账'}
+        </Button>
+      </div>
+    );
+  }
+
+  if (!extraRows.length && !visibleMissing.length) {
+    // Everything flagged is a buy suggestion — but the gate is closed, so
+    // nothing is actionable today; stay quiet and say so.
+    return (
+      <div className="mb-4 flex items-center gap-2 text-[12px] text-[var(--k-muted)]">
+        <span>
+          ✅ 行为对账（{latestDate ?? '—'}）：无待操作提醒
+          {hiddenMissing.length ? ` — 闸门关闭 · 今日不可买入，已隐藏 ${hiddenMissing.length} 条该持没买` : ''}
+        </span>
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={onRefresh} disabled={refreshing || refresh.isPending}>
+          {refreshing ? '回测模拟中（约3-4分钟）…' : '刷新对账'}
         </Button>
       </div>
     );
@@ -78,14 +117,19 @@ export function BehaviorAuditBanner() {
           ))}
         </div>
       ) : null}
-      {missingRows.length ? (
+      {visibleMissing.length ? (
         <div className="mt-1.5 space-y-0.5 text-[12px] text-sky-700 dark:text-sky-300">
-          {missingRows.map((m) => (
+          {visibleMissing.map((m) => (
             <div key={`${m.auditDate}-${m.symbol}`}>
               🔵 该持没买：<span className="font-mono">{m.symbol}</span>
               {m.score != null ? `（score ${m.score}）` : ''} · 回测今日应持有
             </div>
           ))}
+        </div>
+      ) : null}
+      {hiddenMissing.length ? (
+        <div className="mt-1.5 text-[11px] text-[var(--k-muted)]">
+          🔒 闸门关闭 · 今日不可买入——已隐藏 {hiddenMissing.length} 条该持没买
         </div>
       ) : null}
     </div>

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Local buy reminders set from the S-3 "明日买入清单" (PortfolioHealthCard).
+ * Local buy reminders set from the S-3 "下午 2 点买入清单" (PortfolioHealthCard).
  * These are personal sticky notes (target price + note) stored in
  * localStorage only — there is no backend price-alert machinery yet.
  */

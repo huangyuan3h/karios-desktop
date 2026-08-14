@@ -739,6 +739,51 @@ def fetch_trends(
     return total, items
 
 
+def fetch_trends_as_of(
+    *,
+    day: str,
+    window_days: int = 14,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """Trends whose document event time falls inside [day-window, day) (as-of).
+
+    No-lookahead variant used for trade-journal snapshots: only information
+    the system could have seen ON ``day`` counts (event time = document
+    published_at, falling back to fetched_at). Never a gate — display /
+    validation data only (§19.3 forward data collection).
+    """
+    ensure_tables()
+    lim = max(1, min(int(limit), 500))
+    days = max(1, int(window_days))
+    day_end = (
+        datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ)
+        + timedelta(days=1)
+    ).astimezone(UTC).isoformat()
+    window_start = (
+        datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=SHANGHAI_TZ)
+        - timedelta(days=days)
+    ).astimezone(UTC).isoformat()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                {_TREND_DOC_SELECT}
+                WHERE COALESCE(d.published_at, d.fetched_at) >= %s
+                  AND COALESCE(d.published_at, d.fetched_at) < %s
+                ORDER BY COALESCE(d.published_at, d.fetched_at) DESC
+                LIMIT %s
+                """,
+                (window_start, day_end, lim),
+            )
+            rows = cur.fetchall()
+    items = []
+    for r in rows:
+        item = _trend_row(r[:_TREND_SELECT_COLS])
+        _attach_document_fields(item, r)
+        items.append(item)
+    return items
+
+
 def fetch_trends_for_catalyst(*, max_age_days: int = 30) -> list[dict[str, Any]]:
     """Trends with mapped CN symbols within the catalyst recency window."""
     ensure_tables()

@@ -7,7 +7,12 @@ import { PortfolioHealthCard } from './PortfolioHealthCard';
 const { fetchPortfolioHealth } = vi.hoisted(() => ({
   fetchPortfolioHealth: vi.fn(),
 }));
-vi.mock('@/lib/queries/portfolioHealth', () => ({ fetchPortfolioHealth }));
+vi.mock('@/lib/queries/portfolioHealth', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/queries/portfolioHealth')>(
+    '@/lib/queries/portfolioHealth',
+  );
+  return { ...actual, fetchPortfolioHealth };
+});
 
 const HOLDING = {
   symbol: 'HK:00700',
@@ -155,7 +160,7 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
-    expect(await screen.findByText(/明日买入清单/)).toBeDefined();
+    expect(await screen.findByText(/下午 2 点买入清单/)).toBeDefined();
     expect(screen.getByText(/候选池 19 只/)).toBeDefined();
     expect(screen.getByText(/每票建议 10%/)).toBeDefined();
     expect(screen.getAllByText('买 10%').length).toBe(5);
@@ -201,7 +206,7 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
-    expect(await screen.findByText(/明日买入清单/)).toBeDefined();
+    expect(await screen.findByText(/下午 2 点买入清单/)).toBeDefined();
 
     const remindButtons = screen.getAllByText('提醒买入');
     expect(remindButtons.length).toBe(2);
@@ -277,7 +282,7 @@ describe('PortfolioHealthCard', () => {
       hkHealth: null,
     });
     renderCard();
-    expect(await screen.findByText(/明日买入清单/)).toBeDefined();
+    expect(await screen.findByText(/下午 2 点买入清单/)).toBeDefined();
 
     const buyButtons = screen.getAllByText('买入');
     expect(buyButtons.length).toBe(2);
@@ -410,7 +415,7 @@ describe('PortfolioHealthCard', () => {
     expect(await screen.findByText(/信号 · 1 持仓/)).toBeDefined();
     expect(screen.getByText(/1 只有 α 事件/)).toBeDefined();
     expect(screen.getByText(/1 只行业资金流出/)).toBeDefined();
-    expect(screen.getByText(/明日买入清单/)).toBeDefined();
+    expect(screen.getByText(/下午 2 点买入清单/)).toBeDefined();
     expect(screen.getByText(/稀土催化/)).toBeDefined();
     expect(screen.getByText(/有色金属 5日\+8.2亿（第2\/31）/)).toBeDefined();
   });

@@ -4,6 +4,28 @@ import { z } from 'zod';
 export const UserTradeSideSchema = z.enum(['BUY', 'ADD', 'SELL']);
 export type UserTradeSide = z.infer<typeof UserTradeSideSchema>;
 
+/** One alpha-radar event visible as-of the trade date (§19.3 snapshot). */
+export const AlphaSnapshotEventSchema = z.object({
+  trend: z.string(),
+  grade: z.string(),
+  confidence: z.number().nullable().optional(),
+  daysAgo: z.number().nullable().optional(),
+  riskStatus: z.string(),
+  focus: z.string(),
+});
+
+/** As-of alpha state at trade time — display/validation data, never a gate. */
+export const AlphaSnapshotSchema = z.object({
+  asOf: z.string(),
+  windowDays: z.number(),
+  nEvents: z.number(),
+  hasSA: z.boolean(),
+  maxConfidence: z.number().nullable().optional(),
+  riskStatuses: z.array(z.string()),
+  events: z.array(AlphaSnapshotEventSchema),
+});
+export type AlphaSnapshot = z.infer<typeof AlphaSnapshotSchema>;
+
 /** Stored trade leg returned by GET /trades and POST /trades. */
 export const UserTradeSchema = z.object({
   id: z.string(),
@@ -19,6 +41,7 @@ export const UserTradeSchema = z.object({
   source: z.string().nullable().optional(),
   market: z.string().optional(),
   note: z.string().nullable().optional(),
+  alphaSnapshot: AlphaSnapshotSchema.nullable().optional(),
   createdAt: z.string().nullable().optional(),
 });
 export type UserTrade = z.infer<typeof UserTradeSchema>;

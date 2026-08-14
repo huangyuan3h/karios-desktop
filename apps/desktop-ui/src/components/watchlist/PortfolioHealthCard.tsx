@@ -18,6 +18,7 @@ import {
 } from '@/lib/buy-reminders';
 import {
   fetchPortfolioHealth,
+  isMarketGateClosed,
   type PortfolioCandidate,
   type PortfolioHealthResponse,
   type PortfolioHolding,
@@ -177,7 +178,7 @@ function BuyList({
   return (
     <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
       <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-        <span>明日买入清单 · 按 score 排序取前 5（已去重）</span>
+        <span>下午 2 点买入清单 · 按 score 排序取前 5（已去重）</span>
         {total != null && total > candidates.length && (
           <span className="text-[10px] font-normal text-[var(--k-muted)]">候选池 {total} 只</span>
         )}
@@ -396,12 +397,7 @@ function HealthPanel({
   const candidates = block?.s3Candidates ?? [];
   const regime = regimeBadge(block?.regime);
   const idSuffix = tag === 'HK' ? '-hk' : '';
-  const gateClosed =
-    block != null &&
-    (block?.regime === 'Weak' ||
-      block?.regime == null ||
-      block?.panicCooldown?.active === true ||
-      block?.circuitBlocked === true);
+  const gateClosed = isMarketGateClosed(block);
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
       <div className="flex items-center gap-2 text-[11px] font-semibold">

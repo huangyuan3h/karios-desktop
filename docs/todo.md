@@ -1182,10 +1182,14 @@ RS 0.5 · diverging 1.0 · 冷却 3 · 滑点 0.05 · mp 20（回测 10% / paper
 - `paper_trades.signal_snapshot`（alembic 0029）：S-3 paper **入场时点**的 α 事件快照 ✓
 - `scripts/alpha_guidance_report.py`（OPT-109）：user_trades × α 事件对照统计（当前 4 笔，方向性）
 
-**待补的收集项（[P2] 开工后逐个落）**：
-1. **user_trades 入场快照**：真实买入时记录该 symbol 的 α 状态（现有只有 paper 有）
-2. **退出时点快照**：卖出时记录当时的 α 状态（验证"α 恶化→退出"假设的反事实）
-3. **每日持仓 × α 活跃度**（可选）：每个持仓每日的 α 状态连续序列
+**已落地的收集项（OPT-110 · 2026-08-13）**：
+1. ✅ **user_trades 入场+退出快照**：`user_trades.alpha_snapshot` JSONB（alembic 0032）——
+   POST /trades 每笔 BUY/ADD/SELL 自动记录 **as-of** α 状态（无前视：仅事件时间
+   ∈ [trade_date-14d, trade_date] 计入；`fetch_trends_as_of` + `alpha_snapshot_for`）；
+   best-effort（α 层故障不阻断交易记录）
+2. ✅ **退出时点快照**：SELL leg 同样落快照——"α 恶化时退出 vs 死扛"反事实的数据源
+3. ⏸ **每日持仓 × α 活跃度**（可选）：trends 表在保留期内可回推（createdAt 时间序列）；
+   若未来 ops prune 影响，再加每日落库
 
 **使用时机（6-12 个月后 · 样本 ≥20-50 笔时）**：
 - 入场：有 α 背书 vs 无 α 的 PnL/胜率对照（初版已跑，OPT-109）

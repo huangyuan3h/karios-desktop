@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from logging import getLogger
 
 from fastapi import APIRouter, HTTPException, Query  # type: ignore[import-not-found]
 from pydantic import BaseModel
@@ -24,6 +25,8 @@ from data_sync_service.db.user_trades import (
     list_trades,
 )
 from data_sync_service.service.user_trades_stats import compute_trade_stats
+
+logger = getLogger(__name__)
 
 router = APIRouter()
 
@@ -87,12 +90,24 @@ def record_trade(req: TradeLegRequest) -> dict:
             source=req.source,
             market=req.market or "CN",
             note=req.note,
+            alpha_snapshot=_alpha_snapshot_for(req.symbol, trade_date),
         )
         return {"ok": True, "trade": row}
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _alpha_snapshot_for(symbol: str, trade_date: str) -> dict | None:
+    """As-of alpha snapshot (best-effort — capture never blocks the trade)."""
+    try:
+        from data_sync_service.service.user_trades_alpha import alpha_snapshot_for
+
+        return alpha_snapshot_for(symbol, trade_date)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("user trade alpha snapshot failed: %s", exc)
+        return None
 
 
 @router.get("/trades")

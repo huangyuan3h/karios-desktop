@@ -115,3 +115,30 @@ def test_fetch_sell_rows_only() -> None:
     assert len(mine) == 1
     assert mine[0]["symbol"] == TEST_SYMBOL
     assert mine[0]["pnlPct"] == 10.0
+
+
+def test_alpha_snapshot_roundtrip() -> None:
+    ut.ensure_tables()
+    snap = {
+        "asOf": "2026-08-13",
+        "windowDays": 14,
+        "nEvents": 1,
+        "hasSA": True,
+        "maxConfidence": 0.9,
+        "riskStatuses": ["active"],
+        "events": [
+            {"trend": "x", "grade": "A", "confidence": 0.9, "daysAgo": 2,
+             "riskStatus": "active", "focus": "y"},
+        ],
+    }
+    row = ut.insert_trade(
+        symbol=TEST_SYMBOL,
+        side="BUY",
+        trade_date="2026-08-13",
+        price=10.0,
+        position_pct=5.0,
+        alpha_snapshot=snap,
+    )
+    assert row["alphaSnapshot"] == snap
+    rows = ut.list_trades(symbol=TEST_SYMBOL)
+    assert any(r["id"] == row["id"] and r["alphaSnapshot"] == snap for r in rows)

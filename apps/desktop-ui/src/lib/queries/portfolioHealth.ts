@@ -110,6 +110,24 @@ export interface PortfolioHealthResponse {
 }
 
 /**
+ * True when this market's S-3 line is closed to NEW entries today
+ * (regime Weak / unknown / panic cooldown / drawdown circuit breaker).
+ * Shared by PortfolioHealthCard (闸门关闭 badge) and BehaviorAuditBanner
+ * (hide 该持没买 suggestions the user cannot act on).
+ */
+export function isMarketGateClosed(
+  block: Pick<PortfolioHealthResponse, 'regime' | 'panicCooldown' | 'circuitBlocked'> | null | undefined,
+): boolean {
+  return (
+    block != null &&
+    (block.regime === 'Weak' ||
+      block.regime == null ||
+      block.panicCooldown?.active === true ||
+      block.circuitBlocked === true)
+  );
+}
+
+/**
  * Fetch the S-3-aligned health check (holdings vs exit rules + market state).
  * `markets=CN,HK` returns both the CN line (top-level) and the HK line (hkHealth).
  */

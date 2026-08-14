@@ -1965,7 +1965,7 @@ CN=DEFEND(Weak+SRV_EXTREME_HIGH，回测同口径禁开 ✓) · HK=ATTACK(Diverg
 
 **状态**：[x]
 
-**需求**：S-3 持仓体检"明日买入清单"里每只候选加"提醒买入"——不用手动输代码，
+**需求**：S-3 持仓体检"下午2点买入清单"里每只候选加"提醒买入"——不用手动输代码，
 弹框设置（目标价 + 备注）后直接加入自选 watchlist。
 
 **实现**（纯前端，零后端改动）：
@@ -1981,11 +1981,11 @@ CN=DEFEND(Weak+SRV_EXTREME_HIGH，回测同口径禁开 ✓) · HK=ATTACK(Diverg
 **说明**：目标价仅为本地备忘（系统暂无到价通知机制，如需系统级预警另开任务）；
 加自选后 watchlist 全功能（行情/趋势/信号/体检）自动盯盘。
 
-### OPT-079：明日买入清单"买入"一键记模拟盘（2026-08-12）
+### OPT-079：下午2点买入清单"买入"一键记模拟盘（2026-08-12）
 
 **状态**：[x]
 
-**需求**：体检卡"明日买入清单"每行加「买入」——简单 modal 只设仓位（默认建议 10%）
+**需求**：体检卡"下午2点买入清单"每行加「买入」——简单 modal 只设仓位（默认建议 10%）
 + 价格（自动按最近行情预填），确认即记 paper trade；**不做加自选/add 等操作**。
 
 **实现**（纯前端）：
@@ -2755,3 +2755,46 @@ CN:300628 → never_entered（买了不该买 ✓）；HK 13 只 → missing（�
 
 **方向性**：有 α 背书的亏得少（-3.48 vs -5.76）——支持"α 有保护/筛选价值"，
 但 **n=2 不作定案**；随 user_trades + paper 平仓积累（≥20 笔）重跑脚本出实证。
+
+### OPT-110：Alpha 前向数据收集（user_trades 快照 · 2026-08-13）
+
+**状态**：[x]（§19.3 收集项 1+2 已落地；第 3 项依赖 trends 保留期，暂不建表）
+
+**背景（用户拍板"从现在开始收集"）**：alpha 是 S-3 参数封闭后"为数不多的变数"；
+历史回测不可行（alpha 数据源 2026-08 才上线）→ 从现在起前向收集，6-12 个月后
+用真实数据验证：入场背书 / 事件兑现 / **α 做退出的假设（验证通过才允许进退出）**。
+
+**改动**：
+- `db/alpha_radar.py::fetch_trends_as_of(day, window_days)`——无前视窗口过滤
+  （事件时间 = 文档 published_at 兜底 fetched_at，∈ [day-14d, day) 上海日界）
+- `service/user_trades_alpha.py::alpha_snapshot_for(symbol, trade_date)`——
+  as-of 聚合（nEvents / hasSA / maxConfidence / riskStatuses / top3 events）
+- alembic `0032_user_trades_alpha_snapshot`：`user_trades.alpha_snapshot JSONB`
+- `POST /trades` 每笔 BUY/ADD/SELL 自动落 as-of 快照（best-effort：失败不阻断记录）
+- `packages/shared/schemas/userTrades.ts`：`AlphaSnapshotSchema` + `alphaSnapshot` 字段
+
+**纪律**：快照只收集不改信号；alpha 退出在验证前不进入任何退出逻辑（OPT-097 铁律）。
+
+**验收**：as-of 过滤（窗口内/当日/未来/超窗/他人 symbol）✅ · DB 往返 ✅ ·
+路由链路 + 故障不阻断 ✅ · alembic baseline（HEAD=0032）✅ · 后端 3373 passed ·
+前端 763 passed · ruff/tsc 干净 · db_rows_baseline check OK
+
+### OPT-111：行为对账横幅感知买入闸门（2026-08-14）
+
+**状态**：[x]
+
+**背景（用户："我没有办法做操作的时候就不用告诉我买什么，只告诉我需要卖"）**：
+宏观死锁/闸门关闭日（CN panic cooldown、HK regime=Weak 空仓观望），横幅仍列出 13 只
+HK"该持没买"——买入被强制拦截时这些建议不可执行，纯噪音。
+
+**改动**：
+- `lib/queries/portfolioHealth.ts::isMarketGateClosed`——闸门判断唯一真值
+  （regime=Weak / regime 未知 / panicCooldown.active / circuitBlocked）
+- `PortfolioHealthCard` 改用共享函数（原内联逻辑消除重复）
+- `BehaviorAuditBanner` 复用 `['portfolio-health']` 缓存（不重复请求），按市场
+  gateClosed 过滤：**隐藏该市场"该持没买"**（不可执行），保留"该卖没卖/买了不该买"
+  （可执行/既成事实）；隐藏条数以一行说明披露；全部被隐藏时横幅转安静态
+  （"无待操作提醒 — 已隐藏 N 条该持没买"）
+
+**验收**：前端 765 passed（+2：闸门关闭隐藏/安静态）· tsc/eslint 干净 ·
+gates open 时行为不变（原有测试保持）

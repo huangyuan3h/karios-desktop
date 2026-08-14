@@ -31,6 +31,7 @@ def _patch_deps(monkeypatch):
             "source": kw.get("source"),
             "market": kw.get("market", "CN"),
             "note": kw.get("note"),
+            "alphaSnapshot": kw.get("alpha_snapshot"),
         },
     )
     monkeypatch.setattr(
@@ -139,6 +140,40 @@ def test_list_trades() -> None:
     r = client.get("/trades", params={"limit": 10, "symbol": "CN:600000"})
     assert r.status_code == 200
     assert r.json()["count"] == 1
+
+
+def test_record_trade_captures_alpha_snapshot(monkeypatch) -> None:
+    """§19.3: POST /trades must attach the as-of alpha snapshot to every leg."""
+    snap = {
+        "asOf": "2026-08-13",
+        "windowDays": 14,
+        "nEvents": 1,
+        "hasSA": True,
+        "maxConfidence": 0.9,
+        "riskStatuses": ["active"],
+        "events": [
+            {"trend": "x", "grade": "A", "confidence": 0.9, "daysAgo": 2,
+             "riskStatus": "active", "focus": "y"},
+        ],
+    }
+    monkeypatch.setattr(ur, "_alpha_snapshot_for", lambda symbol, trade_date: snap)
+    r = client.post(
+        "/trades",
+        json={"symbol": "CN:600000", "side": "BUY", "price": 10.0, "positionPct": 5.0},
+    )
+    assert r.status_code == 200
+    assert r.json()["trade"]["alphaSnapshot"] == snap
+
+
+def test_record_trade_alpha_failure_does_not_block(monkeypatch) -> None:
+    """Snapshot capture is best-effort — an alpha-layer failure must not block."""
+    monkeypatch.setattr(ur, "_alpha_snapshot_for", lambda symbol, trade_date: None)
+    r = client.post(
+        "/trades",
+        json={"symbol": "CN:600000", "side": "BUY", "price": 10.0, "positionPct": 5.0},
+    )
+    assert r.status_code == 200
+    assert r.json()["trade"]["alphaSnapshot"] is None
 
 
 def test_stats_endpoint() -> None:
