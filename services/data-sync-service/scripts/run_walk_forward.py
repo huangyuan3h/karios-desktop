@@ -64,6 +64,11 @@ S3_CONFIG: dict[str, float | int | str] = {
     # +73.8 / valid +89.1, all within tolerance of the fixed baseline).
     "atr_stop_mult": 2.0,
     "atr_stop_strong_only": True,
+    # TIP-014 (2026-08-14 固化): block new entries on TRUE neutral days and
+    # implicit-weak days (breadth ratio < 0.5 with only normal/caution
+    # risk_mode). Valid window: +10.7pt (89.1→99.8), dd 12.1→2.7, win rate
+    # 60.8→78.2; OOS2/train unchanged (no sentiment data there → UNKNOWN).
+    "neutral_block": True,
 }
 
 WINDOWS: dict[str, tuple[str, str]] = {

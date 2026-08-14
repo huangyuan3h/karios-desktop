@@ -53,6 +53,7 @@ from typing import Any
 from data_sync_service.db import get_connection
 from data_sync_service.db.daily import fetch_ohlcv_batch_between
 from data_sync_service.db.industry_fund_flow import get_dates_upto, get_rows_for_dates
+from data_sync_service.service.env_label import ENV_FAN, ENV_NEUTRAL, ENV_UPTREND, ENV_WEAK
 from data_sync_service.service.execution_gate import (
     REGIME_DIVERGING,
     REGIME_STRONG,
@@ -187,6 +188,24 @@ class BacktestConfig:
     #   last_hour_hl    — midpoint of the last-hour proxy: (low*0.5+close*0.5 + close)/2
     #   next_open       — next-session open (signal-day close → T+1 买入)
     entry_mode: str = "close"
+    # TIP-014: entry STYLE — what kind of candidate to prefer/allow on a
+    # signal day, per market environment (see service/env_label.py):
+    #   score     — no style filter (baseline, matches live today)
+    #   momentum  — only RS >= entry_style_rs_min candidates that are NOT in a
+    #               short-term pullback (5d return >= -entry_style_dip_max)
+    #   dip       — only RS >= entry_style_rs_min candidates IN a short-term
+    #               pullback (5d return <= -entry_style_dip_min)
+    #   auto      — environment-aware: uptrend → momentum, fan → dip,
+    #               weak → blocked, neutral → score (no filter)
+    entry_style: str = "score"
+    entry_style_rs_min: float = 0.8
+    entry_style_dip_min: float = 5.0
+    entry_style_dip_max: float = 3.0
+    # TIP-014 finding #3: days with sentiment data but classified NEUTRAL
+    # (not uptrend / not fan / not weak) showed 16/16 losing trades (valid
+    # window, avg -6.1%) — block new entries on them. UNKNOWN days (no
+    # sentiment data, e.g. pre-2026 OOS2) are NOT blocked.
+    neutral_block: bool = False
 
     def __post_init__(self) -> None:
         if self.market not in MARKETS:
@@ -247,6 +266,11 @@ class BacktestConfig:
             raise ValueError(
                 "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', 'next_open') "
                 f"(got {self.entry_mode!r})"
+            )
+        if self.entry_style not in ("score", "momentum", "dip", "auto"):
+            raise ValueError(
+                "entry_style must be one of ('score', 'momentum', 'dip', 'auto') "
+                f"(got {self.entry_style!r})"
             )
         if self.min_mv < 0 or self.max_mv < 0 or self.mv_max_diverging < 0:
             raise ValueError("min_mv / max_mv / mv_max_diverging must be >= 0 (亿元; 0 disables the bound)")
@@ -370,6 +394,11 @@ class BacktestData:
         self.industry_by_ts = _load_industries(self.ts_codes)
         self.rs_rank_by_day = _load_rs_ranks(config, self.calendar, set(self.ts_codes))
         self.sentiment_risk_by_day = _load_sentiment_risk(config)
+        self.env_by_day: dict[str, str] = {}
+        if config.entry_style == "auto" or config.neutral_block:
+            from data_sync_service.service.env_label import load_env_by_day
+
+            self.env_by_day = load_env_by_day(config.start_date, config.end_date)
         self.mv_by_day = _load_market_caps(config, set(self.ts_codes))
 
 
@@ -1010,6 +1039,26 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             return 0.0
         return atr / px * 100.0
 
+    def ret5_for(ts: str, day: str) -> float | None:
+        """5-session return % for ``ts`` at ``day`` (None when insufficient
+        bars). Used by TIP-014 entry styles to separate momentum names from
+        short-term pullbacks."""
+        closes = data.closes_by_ts.get(ts)
+        if not closes:
+            return None
+        idx = None
+        for i, (d, _c) in enumerate(closes):
+            if str(d) == day:
+                idx = i
+                break
+        if idx is None or idx < 5:
+            return None
+        c_prev = closes[idx - 5][1]
+        c_today = closes[idx][1]
+        if c_prev <= 0:
+            return None
+        return (c_today / c_prev - 1.0) * 100.0
+
     def strength_for(day: str) -> float:
         """§19.2 D1: 0-100 continuous market-strength score for ``day``
         (regime_strength_score, cached per day). 0.0 on failure → fixed
@@ -1163,6 +1212,13 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             if panic_cooldown:
                 gated_blocks["panic_cooldown"] += 1
                 continue
+            # TIP-014 finding #3: block new entries on TRUE neutral days AND
+            # implicit-weak days (ratio < 0.5 with only normal/caution
+            # risk_mode — 16/16 losing trades in the valid window, avg
+            # -6.1%). UNKNOWN days (no sentiment data) stay open.
+            if config.neutral_block and data.env_by_day.get(day) in (ENV_NEUTRAL, ENV_WEAK):
+                gated_blocks["neutral"] += 1
+                continue
             if sym in positions:
                 continue
             resolved = _resolve_ts_code(sym)
@@ -1178,6 +1234,32 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if rs is None or rs < config.rs_rank_min:
                     gated_blocks["rs"] += 1
                     continue
+            # TIP-014 entry style filter (momentum / dip / auto).
+            style = config.entry_style
+            if style == "auto":
+                style = {
+                    ENV_UPTREND: "momentum",
+                    ENV_FAN: "dip",
+                    ENV_WEAK: "blocked",
+                }.get(data.env_by_day.get(day), "score")
+            if style in ("momentum", "dip"):
+                rs = data.rs_rank_by_day.get(day, {}).get(ts)
+                if rs is None or rs < config.entry_style_rs_min:
+                    gated_blocks["style_rs"] += 1
+                    continue
+                ret5 = ret5_for(ts, day)
+                if ret5 is None:
+                    gated_blocks["style_ret"] += 1
+                    continue
+                if style == "momentum" and ret5 < -config.entry_style_dip_max:
+                    gated_blocks["style_momentum"] += 1
+                    continue
+                if style == "dip" and ret5 > -config.entry_style_dip_min:
+                    gated_blocks["style_dip"] += 1
+                    continue
+            elif style == "blocked":
+                gated_blocks["style_blocked"] += 1
+                continue
             if config.trend_score_min > 0:
                 trend = _trend_score(
                     data.rs_rank_by_day.get(day, {}).get(ts),

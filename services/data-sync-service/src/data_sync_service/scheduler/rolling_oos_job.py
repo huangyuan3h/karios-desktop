@@ -56,6 +56,9 @@ S3_CONFIG: dict[str, float | int | str] = {
     "pyramid_add_scale": 0.5,
     "pyramid_max_adds": 1,
     "exclude_boards": "300",
+    # TIP-014 (2026-08-14): weak/neutral-day entry block — mirrors
+    # scripts/run_walk_forward.py S3_CONFIG (S-3 audit standard).
+    "neutral_block": True,
 }
 
 HK_S3_CONFIG: dict[str, float | int | str] = {

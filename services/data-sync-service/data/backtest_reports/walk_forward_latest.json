@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-14T14:31:04.290263+00:00",
-  "tag": "entry-next-open",
+  "generatedAt": "2026-08-14T15:09:14.216849+00:00",
+  "tag": "",
   "config": {
     "score_threshold": 65.0,
     "max_hold_days": 60,
@@ -23,32 +23,32 @@
     "exclude_boards": "300",
     "atr_stop_mult": 2.0,
     "atr_stop_strong_only": true,
-    "entry_mode": "next_open"
+    "neutral_block": true
   },
   "results": {
     "OOS2": {
-      "closed": 290,
-      "winRate": 0.497,
-      "avgNetPnlPct": 5.177,
-      "totalNetPnlPct": 122.107,
-      "maxDrawdownPct": 9.158,
-      "sharpe": 5.29
+      "closed": 288,
+      "winRate": 0.49,
+      "avgNetPnlPct": 5.359,
+      "totalNetPnlPct": 123.291,
+      "maxDrawdownPct": 12.689,
+      "sharpe": 5.33
     },
     "train": {
-      "closed": 180,
-      "winRate": 0.383,
-      "avgNetPnlPct": 5.621,
-      "totalNetPnlPct": 78.218,
-      "maxDrawdownPct": 13.561,
-      "sharpe": 3.44
+      "closed": 198,
+      "winRate": 0.424,
+      "avgNetPnlPct": 4.772,
+      "totalNetPnlPct": 73.809,
+      "maxDrawdownPct": 15.723,
+      "sharpe": 2.85
     },
     "valid": {
-      "closed": 74,
-      "winRate": 0.608,
-      "avgNetPnlPct": 15.997,
-      "totalNetPnlPct": 90.255,
-      "maxDrawdownPct": 10.769,
-      "sharpe": 9.0
+      "closed": 55,
+      "winRate": 0.782,
+      "avgNetPnlPct": 23.466,
+      "totalNetPnlPct": 99.772,
+      "maxDrawdownPct": 2.651,
+      "sharpe": 14.93
     }
   },
   "baselineUsed": true
