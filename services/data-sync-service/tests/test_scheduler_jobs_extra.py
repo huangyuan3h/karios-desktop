@@ -111,6 +111,7 @@ class TestCreateScheduler:
             "rolling_oos",
             "trading_brief_open", "trading_brief_midday", "trading_brief_action",
             "paper_chain_watchdog",
+            "paper_backtest_mirror",
             "weekly_review",
             "intraday_alarm",
             "candidate_diff",

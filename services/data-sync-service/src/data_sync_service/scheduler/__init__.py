@@ -37,6 +37,7 @@ from data_sync_service.scheduler import (
     morning_brief_job,
     news_enrich_job,
     news_fetch_job,
+    paper_backtest_mirror_job,
     paper_chain_watchdog_job,
     paper_s3_intake_job,
     paper_trading_intake_job,
@@ -284,6 +285,15 @@ def create_scheduler() -> BackgroundScheduler:
         id=paper_s3_intake_job.JOB_ID,
          replace_existing=True,
      )
+    # Backtest mirror (2026-08-14): replay the engine trajectory into the
+    # paper book daily — the backtest is the source of truth (runs after
+    # hk_daily_full_sync so today's HK bars are settled).
+    scheduler.add_job(
+        paper_backtest_mirror_job.run,
+        paper_backtest_mirror_job.build_trigger(),
+        id=paper_backtest_mirror_job.JOB_ID,
+        replace_existing=True,
+    )
     scheduler.add_job(
         news_enrich_job.run,
         news_enrich_job.build_trigger(),
@@ -404,3 +414,11 @@ def catchup_missed_eod_chain() -> None:
             cn_industry_post_close_job.run()
         except Exception:  # noqa: BLE001
             logger.warning("eod chain catchup: cn_industry_post_close_sync run failed", exc_info=True)
+    # paper_backtest_mirror cron: 18:05 — 18:10 avoids the race; needs the
+    # daily HK bars (hk_daily_full_sync 17:30) which close_sync guards imply.
+    if (now.hour, now.minute) >= (18, 10) and not already("paper_backtest_mirror"):
+        logger.info("eod chain catchup: paper_backtest_mirror missed (restart) — re-running")
+        try:
+            paper_backtest_mirror_job.run()
+        except Exception:  # noqa: BLE001
+            logger.warning("eod chain catchup: paper_backtest_mirror run failed", exc_info=True)
