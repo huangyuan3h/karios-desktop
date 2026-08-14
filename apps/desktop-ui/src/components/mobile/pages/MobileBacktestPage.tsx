@@ -151,6 +151,39 @@ export function MobileBacktestPage() {
               <Metric label="夏普" value={summary.sharpe != null ? summary.sharpe.toFixed(2) : '—'} />
               <Metric label="基准" value={summary.best_benchmark} />
             </MobileCard>
+            {Object.keys(summary.by_score_bucket ?? {}).length ? (
+              <MobileCard className="p-3">
+                <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">按评分段分布</div>
+                <div className="mt-1.5 space-y-1">
+                  {Object.entries(summary.by_score_bucket)
+                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .map(([bucket, s]) => (
+                      <div key={bucket} className="flex items-center justify-between text-[var(--m-text-sm)]">
+                        <span className="text-[var(--k-muted)]">score {bucket}</span>
+                        <span>
+                          {s.trades} 笔 · 胜率 {s.winRate != null ? `${s.winRate.toFixed(0)}%` : '—'}
+                          {s.avgNet != null ? ` · 均 ${s.avgNet >= 0 ? '+' : ''}${s.avgNet.toFixed(2)}%` : ''}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </MobileCard>
+            ) : null}
+            {Object.keys(summary.gated_blocks ?? {}).length ? (
+              <MobileCard className="p-3">
+                <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">闸门阻断（未入场原因）</div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {Object.entries(summary.gated_blocks)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 6)
+                    .map(([k, v]) => (
+                      <StatusPill key={k} tone="neutral">
+                        {k} {v}
+                      </StatusPill>
+                    ))}
+                </div>
+              </MobileCard>
+            ) : null}
           </div>
         ) : (
           <MobileCard className="px-3 py-8 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">

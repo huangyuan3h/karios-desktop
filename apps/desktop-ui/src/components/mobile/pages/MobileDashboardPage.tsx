@@ -6,10 +6,28 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchPortfolioHealth, isMarketGateClosed } from '@/lib/queries/portfolioHealth';
 import { useNewsItemsQuery } from '@/lib/queries/news';
 import { useIndustryFundFlowQuery } from '@/lib/queries/industryFlow';
+import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
 import { fmtAmountCn, fmtSignedAmountCn } from '@/lib/dashboard-format';
 import { GateBadge, MobileCard, MobileSection, PriceText, StatusPill } from '../primitives';
 
-/** Dashboard (mobile) — gates + news pulse + top industry inflow. §5.2 高频. */
+const RISK_ZH: Record<string, string> = {
+  confirmed_uptrend: '确认上升',
+  capitulation_v_bottom: '筑底',
+  extreme_caution: '极度谨慎',
+  no_new_positions: '禁止新仓',
+  caution: '谨慎',
+  hot: '过热',
+  euphoric: '亢奋',
+};
+
+function sentimentTone(risk: string): 'open' | 'warn' | 'danger' | 'neutral' {
+  if (risk === 'confirmed_uptrend' || risk === 'hot') return 'open';
+  if (risk === 'caution') return 'warn';
+  if (risk === 'extreme_caution' || risk === 'no_new_positions' || risk === 'capitulation_v_bottom') return 'danger';
+  return 'neutral';
+}
+
+/** Dashboard (mobile) — gates + sentiment + news pulse + top inflow. §5.2 高频. */
 export function MobileDashboardPage() {
   const health = useQuery({
     queryKey: ['portfolio-health'],
@@ -18,6 +36,7 @@ export function MobileDashboardPage() {
   });
   const news = useNewsItemsQuery(24, 5);
   const flow = useIndustryFundFlowQuery(10, 200);
+  const senti = useDashboardSentimentQuery();
 
   const cn = health.data;
   const cnGate = cn == null ? null : isMarketGateClosed(cn);
@@ -25,6 +44,13 @@ export function MobileDashboardPage() {
   const hkGate = hk == null ? null : isMarketGateClosed(hk);
 
   const topIn = [...(flow.data?.top ?? [])].sort((a, b) => b.netInflow - a.netInflow).slice(0, 5);
+
+  const ms: any = (senti.data as any)?.marketSentiment ?? {};
+  const sItems: any[] = Array.isArray(ms.items) ? ms.items : [];
+  const sLatest = sItems.length ? sItems[sItems.length - 1] : null;
+  const sRisk = String(sLatest?.riskMode ?? '—');
+  const upCount = Number(sLatest?.upCount ?? 0);
+  const downCount = Number(sLatest?.downCount ?? 0);
 
   return (
     <div className="space-y-4">
@@ -52,6 +78,144 @@ export function MobileDashboardPage() {
             {cn?.panicCooldown?.active ? ` · 恐慌冷却至 ${cn.panicCooldown.cooldownEndDate ?? '—'}` : ''}
           </MobileCard>
         ) : null}
+      </MobileSection>
+
+      <MobileSection title="市场情绪">
+        <MobileCard className="p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">风险模式</div>
+              <div className="mt-0.5">
+                <StatusPill tone={sentimentTone(sRisk)}>{RISK_ZH[sRisk] ?? sRisk}</StatusPill>
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">涨 / 跌</div>
+              <div className="mt-0.5 font-mono text-[var(--m-text-base)] tabular-nums">
+                <span style={{ color: 'var(--k-up)' }}>{upCount}</span>
+                <span className="text-[var(--k-muted)]"> / </span>
+                <span style={{ color: 'var(--k-down)' }}>{downCount}</span>
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">涨停溢价</div>
+              <div className="mt-0.5 font-mono text-[var(--m-text-base)] tabular-nums">
+                {Number.isFinite(sLatest?.yesterdayLimitUpPremium) ? `${Number(sLatest.yesterdayLimitUpPremium).toFixed(2)}%` : '—'}
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">两市成交</div>
+              <div className="mt-0.5 font-mono text-[var(--m-text-sm)] tabular-nums">
+                {fmtAmountCn(sLatest?.marketTurnoverCny)}
+              </div>
+            </div>
+          </div>
+          {Array.isArray(sLatest?.rules) && sLatest.rules.length ? (
+            <div className="mt-2 text-[var(--m-text-xs)] text-[var(--k-muted)]">
+              {sLatest.rules.slice(0, 2).map((x: unknown) => String(x)).join(' · ')}
+            </div>
+          ) : null}
+        </MobileCard>
+      </MobileSection>
+
+      <MobileSection title={`买入候选${cn?.s3Candidates?.length ? `（${cn.s3Candidates.length}）` : ''}`}>
+        {cn?.s3Candidates?.length ? (
+          <div className="space-y-2">
+            {cn.s3Candidates.slice(0, 8).map((c) => (
+              <MobileCard key={c.symbol ?? c.ts_code} className="p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-[var(--m-text-base)] font-semibold">{c.name ?? c.symbol}</div>
+                    <div className="mt-0.5 truncate text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                      {c.symbol}
+                      {c.industry ? ` · ${c.industry}` : ''}
+                      {c.alphaEvents?.length ? ` · ${c.alphaEvents.length} 条催化` : ''}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="font-mono text-[var(--m-text-base)] font-semibold tabular-nums">
+                      score {c.score != null ? c.score.toFixed(0) : '—'}
+                    </div>
+                    {c.rs != null ? (
+                      <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">RS 前 {Math.round(c.rs * 100)}%</div>
+                    ) : null}
+                  </div>
+                </div>
+                {c.industryFlow?.netInflow5d != null ? (
+                  <div className="mt-1.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                    行业 5 日净流入 {fmtAmountCn(c.industryFlow.netInflow5d)}
+                    {c.industryFlow.rank5d != null ? ` · 排名 ${c.industryFlow.rank5d}` : ''}
+                  </div>
+                ) : null}
+              </MobileCard>
+            ))}
+          </div>
+        ) : (
+          <MobileCard className="px-3 py-6 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">
+            {cn?.circuitBlocked ? '回撤熔断中，暂停新买入' : '今日暂无买入候选'}
+          </MobileCard>
+        )}
+      </MobileSection>
+
+      <MobileSection title={`持仓${(cn?.holdings?.length ?? 0) + (hk?.holdings?.length ?? 0) ? `（${(cn?.holdings?.length ?? 0) + (hk?.holdings?.length ?? 0)}）` : ''}`}>
+        {(() => {
+          const holdings = [
+            ...(cn?.holdings ?? []).map((h) => ({ ...h, market: 'A股' })),
+            ...(hk?.holdings ?? []).map((h) => ({ ...h, market: '港股' })),
+          ];
+          if (!holdings.length) {
+            return (
+              <MobileCard className="px-3 py-6 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">
+                暂无持仓
+              </MobileCard>
+            );
+          }
+          return (
+            <div className="space-y-2">
+              {holdings.map((h) => {
+                const pnl = h.pnlPct ?? 0;
+                return (
+                  <MobileCard key={h.symbol} className="p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-[var(--m-text-base)] font-semibold">{h.name ?? h.symbol}</div>
+                        <div className="mt-0.5 truncate text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                          {h.symbol} · {h.market}
+                          {h.holdingDays != null ? ` · 已持 ${h.holdingDays} 天` : ''}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div
+                          className="font-mono text-[var(--m-text-base)] font-semibold tabular-nums"
+                          style={{ color: pnl > 0 ? 'var(--k-up)' : pnl < 0 ? 'var(--k-down)' : 'var(--k-muted)' }}
+                        >
+                          {pnl > 0 ? '+' : ''}{pnl.toFixed(2)}%
+                        </div>
+                        {h.action === 'EXIT' ? <StatusPill tone="danger">退出</StatusPill> : null}
+                      </div>
+                    </div>
+                    {h.stopLossLine != null || h.trailingLine != null ? (
+                      <div className="mt-2 grid grid-cols-2 gap-1.5 text-[var(--m-text-xs)]">
+                        {h.stopLossLine != null ? (
+                          <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2 py-1">
+                            <span className="text-[var(--k-muted)]">止损 </span>
+                            <span className="font-mono tabular-nums">{h.stopLossLine}</span>
+                          </div>
+                        ) : null}
+                        {h.trailingLine != null ? (
+                          <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2 py-1">
+                            <span className="text-[var(--k-muted)]">移动 </span>
+                            <span className="font-mono tabular-nums">{h.trailingLine}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </MobileCard>
+                );
+              })}
+            </div>
+          );
+        })()}
       </MobileSection>
 
       <MobileSection title="行业资金流 Top 5">

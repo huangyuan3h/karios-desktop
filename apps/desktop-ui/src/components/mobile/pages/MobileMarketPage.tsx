@@ -33,6 +33,7 @@ export function MobileMarketPage() {
   const [syncing, setSyncing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [added, setAdded] = React.useState<string | null>(null);
+  const [lastSyncAt, setLastSyncAt] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -40,11 +41,15 @@ export function MobileMarketPage() {
     try {
       const params = new URLSearchParams({ limit: String(PAGE_LIMIT), offset: String(offset), market: 'CN' });
       if (q.trim()) params.set('q', q.trim());
-      const res = await apiGetJson<{ items: MarketStockRow[]; total: number }>(
-        `/market/stocks?${params.toString()}`,
-      );
-      setRows(res.items ?? []);
-      setTotal(res.total ?? 0);
+      const [list, st] = await Promise.all([
+        apiGetJson<{ items: MarketStockRow[]; total: number }>(
+          `/market/stocks?${params.toString()}`,
+        ),
+        apiGetJson<{ stocks: number; lastSyncAt: string | null }>('/market/status'),
+      ]);
+      setRows(list.items ?? []);
+      setTotal(list.total ?? 0);
+      setLastSyncAt(st?.lastSyncAt ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -98,6 +103,11 @@ export function MobileMarketPage() {
               </MobileButton>
             </div>
           </MobileField>
+          {lastSyncAt ? (
+            <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">
+              上次同步 {new Date(lastSyncAt).toLocaleString('zh-CN')}
+            </div>
+          ) : null}
         </MobileCard>
 
         {error ? (
@@ -125,6 +135,9 @@ export function MobileMarketPage() {
                     <div className="truncate text-[var(--m-text-base)] font-medium">{r.name}</div>
                     <div className="truncate font-mono text-[var(--m-text-xs)] text-[var(--k-muted)]">
                       {r.ticker} · {r.market}
+                      {r.marketCap != null && Number(r.marketCap) > 0
+                        ? ` · 市值 ${(Number(r.marketCap) / 1e8).toFixed(1)}亿`
+                        : ''}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
@@ -140,6 +153,11 @@ export function MobileMarketPage() {
                       >
                         {pct > 0 ? '▲' : pct < 0 ? '▼' : ''}
                         {Math.abs(pct).toFixed(2)}%
+                      </div>
+                    ) : null}
+                    {r.turnover != null && Number(r.turnover) > 0 ? (
+                      <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                        额 {(Number(r.turnover) / 1e8).toFixed(1)}亿
                       </div>
                     ) : null}
                   </div>

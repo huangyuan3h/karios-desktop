@@ -20,8 +20,37 @@ export function MobileIndexPage() {
     .filter((x) => x.name)
     .sort((a, b) => Number(b.featured ?? false) - Number(a.featured ?? false));
 
+  const macroRows = snap.data?.macro ?? [];
+  const etf = snap.data?.etfFlowSignal;
+  const etfVerdictZh =
+    etf?.verdict === 'confirm' ? '确认净流入' : etf?.verdict === 'contradict' ? '背离净流出' : etf?.verdict === 'neutral' ? '中性' : '—';
+
   return (
     <div className="space-y-4">
+      {etf ? (
+        <MobileSection title="ETF 资金流信号">
+          <MobileCard className="p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[var(--m-text-base)] font-semibold">{etfVerdictZh}</div>
+                <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                  宽基 {etf.broadDirection === 'buy' ? '净买' : etf.broadDirection === 'outflow' ? '净流出' : etf.broadDirection === 'mixed' ? '分歧' : '—'}
+                  {etf.sectorDirection ? ` · 板块 ${etf.sectorDirection === 'buy' ? '净买' : etf.sectorDirection === 'outflow' ? '净流出' : etf.sectorDirection === 'mixed' ? '分歧' : '—'}` : ''}
+                </div>
+              </div>
+              <div className="shrink-0 text-right text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                {etf.asOfDate ? <div>{etf.asOfDate}</div> : null}
+                {etf.confirmCount != null || etf.contradictCount != null ? (
+                  <div>
+                    确认 {etf.confirmCount ?? 0} / 背离 {etf.contradictCount ?? 0}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </MobileCard>
+        </MobileSection>
+      ) : null}
+
       <MobileSection
         title={`指数信号（${rows.length}）`}
         action={
@@ -72,6 +101,54 @@ export function MobileIndexPage() {
         ) : (
           <MobileCard className="px-3 py-8 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">
             {snap.isLoading ? '加载中…' : '暂无指数数据'}
+          </MobileCard>
+        )}
+      </MobileSection>
+
+      <MobileSection title={`宏观指标（${macroRows.length}）`}>
+        {macroRows.length ? (
+          <MobileCard>
+            {macroRows.map((r, idx) => (
+              <div
+                key={r.seriesId ?? r.name}
+                className={
+                  idx === 0
+                    ? 'flex items-center justify-between gap-2 px-3 py-2.5'
+                    : 'flex items-center justify-between gap-2 border-t border-[var(--k-border)] px-3 py-2.5'
+                }
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[var(--m-text-base)] font-medium">
+                    {r.name}
+                    {r.signalLabel ? (
+                      <span className="ml-1.5">
+                        <StatusPill tone={r.signal === 'up' || r.signal === 'buy' ? 'open' : r.signal === 'down' || r.signal === 'sell' ? 'danger' : 'neutral'}>
+                          {r.signalLabel}
+                        </StatusPill>
+                      </span>
+                    ) : null}
+                  </div>
+                  {r.why ? (
+                    <div className="mt-0.5 truncate text-[var(--m-text-xs)] text-[var(--k-muted)]">{r.why}</div>
+                  ) : null}
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="font-mono text-[var(--m-text-base)] tabular-nums">
+                    {r.quotePrice ?? r.close ?? '—'}
+                    {r.unit ? ` ${r.unit}` : ''}
+                  </div>
+                  {r.quotePctChg != null || r.pctChg != null ? (
+                    <div className="text-[var(--m-text-xs)]">
+                      <PctText value={r.quotePctChg ?? r.pctChg ?? 0} />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </MobileCard>
+        ) : (
+          <MobileCard className="px-3 py-6 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">
+            暂无宏观数据
           </MobileCard>
         )}
       </MobileSection>

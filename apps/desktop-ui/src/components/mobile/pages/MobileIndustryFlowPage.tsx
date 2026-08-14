@@ -83,6 +83,42 @@ export function MobileIndustryFlowPage() {
           </MobileCard>
         ) : null}
 
+        <MobileSection title={`主线板块（${mainline.data?.currentMainline?.length ?? 0}）`}>
+          {mainline.data?.currentMainline?.length ? (
+            <MobileCard>
+              {mainline.data.currentMainline.map((m, idx) => (
+                <div
+                  key={m.industryName}
+                  className={
+                    idx === 0
+                      ? 'flex items-center justify-between gap-2 px-3 py-2.5'
+                      : 'flex items-center justify-between gap-2 border-t border-[var(--k-border)] px-3 py-2.5'
+                  }
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[var(--m-text-base)] font-medium">{m.industryName}</div>
+                    <div className="mt-0.5 flex flex-wrap gap-x-2 text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                      {m.flags?.flow?.flowPositive ? <span className="text-[var(--k-up)]">资金+</span> : <span className="text-[var(--k-down)]">资金-</span>}
+                      {m.flags?.breadth?.breadthPositive ? <span className="text-[var(--k-up)]">广度+</span> : <span className="text-[var(--k-down)]">广度-</span>}
+                      {m.flags?.trend?.trendUp ? <span className="text-[var(--k-up)]">趋势↑</span> : <span className="text-[var(--k-down)]">趋势↓</span>}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="font-mono text-[var(--m-text-base)] tabular-nums">{m.totalScore.toFixed(1)}</div>
+                    <div className="mt-0.5 text-[var(--m-text-xs)] text-[var(--k-muted)]">
+                      {m.flowScore.toFixed(1)}/{m.breadthScore.toFixed(1)}/{m.trendScore.toFixed(1)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </MobileCard>
+          ) : (
+            <MobileCard className="px-3 py-6 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">
+              {mainline.isLoading ? '加载中…' : '暂无主线数据'}
+            </MobileCard>
+          )}
+        </MobileSection>
+
         <MobileSection title="净流入 Top 5">
           {inflow.length ? renderRows(inflow) : <MobileCard className="px-3 py-6 text-center text-[var(--m-text-sm)] text-[var(--k-muted)]">暂无数据</MobileCard>}
         </MobileSection>

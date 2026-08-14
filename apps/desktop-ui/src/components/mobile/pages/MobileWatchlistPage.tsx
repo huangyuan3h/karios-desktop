@@ -7,6 +7,7 @@ import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistMarketQuery } from '@/lib/queries/watchlist';
 import { fetchPortfolioHealth, type PortfolioHolding } from '@/lib/queries/portfolioHealth';
+import { useBehaviorAuditQuery, useRefreshBehaviorAudit } from '@/lib/queries/behaviorAudit';
 import { MobileButton, MobileCard, MobileField, MobileSection, PctText, StatusPill } from '../primitives';
 
 /**
@@ -100,6 +101,20 @@ export function MobileWatchlistPage() {
     setCode('');
   };
 
+  const audit = useBehaviorAuditQuery();
+  const refreshAudit = useRefreshBehaviorAudit();
+  const [auditing, setAuditing] = React.useState(false);
+  const auditRows = audit.data ?? [];
+  const auditExtra = auditRows.flatMap((r) => (r.extraList ?? []).map((e) => ({ ...e, market: r.market })));
+  const auditMissing = auditRows.flatMap((r) => (r.missingList ?? []).map((m) => ({ ...m, market: r.market })));
+  const auditDate = auditRows[0]?.auditDate;
+  const auditClean = !auditExtra.length && !auditMissing.length;
+
+  const onRunAudit = () => {
+    setAuditing(true);
+    void refreshAudit.mutateAsync(undefined, { onSettled: () => setAuditing(false) });
+  };
+
   const refreshAll = () => {
     void market.refetch();
     void health.refetch();
@@ -107,6 +122,65 @@ export function MobileWatchlistPage() {
 
   return (
     <div className="space-y-4">
+      {/* Behavior audit: real book vs S-3 backtest (OPT-106) */}
+      <MobileSection
+        title={`行为对账${auditDate ? `（${auditDate}）` : ''}`}
+        action={
+          <button
+            type="button"
+            onClick={onRunAudit}
+            disabled={auditing || refreshAudit.isPending}
+            className="text-[var(--m-text-sm)] text-[var(--k-accent)] disabled:opacity-50"
+          >
+            {auditing || refreshAudit.isPending ? '回测中（约3-4分钟）…' : '刷新对账'}
+          </button>
+        }
+      >
+        {auditClean ? (
+          <MobileCard className="p-3">
+            <div className="flex items-center gap-2 text-[var(--m-text-sm)]">
+              <span className="text-[var(--k-up)]">✅</span>
+              {auditDate ? (
+                <span>持仓与 S-3 回测口径一致</span>
+              ) : (
+                <span className="text-[var(--k-muted)]">暂无数据，点「刷新对账」开始（回测模拟约 3-4 分钟）</span>
+              )}
+            </div>
+          </MobileCard>
+        ) : (
+          <div className="space-y-2">
+            {auditExtra.length ? (
+              <MobileCard className="border-[var(--k-danger)]/40 bg-[var(--k-danger)]/5 p-3">
+                <div className="text-[var(--m-text-sm)] font-semibold text-[var(--k-danger)]">
+                  多持 {auditExtra.length} 只（买了不该买 / 该卖没卖）
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {auditExtra.map((e) => (
+                    <StatusPill key={`${e.market}-${e.symbol}`} tone="danger">
+                      {e.symbol} · {e.market}
+                    </StatusPill>
+                  ))}
+                </div>
+              </MobileCard>
+            ) : null}
+            {auditMissing.length ? (
+              <MobileCard className="border-[var(--k-warn)]/40 bg-[var(--k-warn)]/5 p-3">
+                <div className="text-[var(--m-text-sm)] font-semibold text-[var(--k-warn)]">
+                  缺持 {auditMissing.length} 只（回测建议但未持有）
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {auditMissing.map((m) => (
+                    <StatusPill key={`${m.market}-${m.symbol}`} tone="warn">
+                      {m.symbol} · {m.market}
+                    </StatusPill>
+                  ))}
+                </div>
+              </MobileCard>
+            ) : null}
+          </div>
+        )}
+      </MobileSection>
+
       {/* Act: sell flags */}
       {exitHoldings.length ? (
         <MobileSection title={`需要卖出（${exitHoldings.length}）`}>
