@@ -57,3 +57,68 @@ body {
   0% { box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.55); }
   100% { box-shadow: 0 0 0 3px rgba(129, 140, 248, 0); }
 }
+
+/* ============================================================
+   Mobile scale (Mobile Redesign 2027)
+   Size/spacing/radius/type scale for phone UI. Colors reuse --k-*.
+   Lives here (not a separate file) so vitest renders without css
+   imports; desktop never references --m-* so views stay isolated.
+   ============================================================ */
+:root {
+  --m-gap-1: 4px;
+  --m-gap-2: 8px;
+  --m-gap-3: 12px;
+  --m-gap-4: 16px;
+  --m-gap-5: 20px;
+  --m-gap-6: 24px;
+
+  --m-radius-sm: 8px;
+  --m-radius-md: 12px;
+  --m-radius-lg: 16px;
+  --m-radius-xl: 20px;
+  --m-radius-pill: 999px;
+
+  --m-text-xs: 11px;
+  --m-text-sm: 12px;
+  --m-text-base: 14px;
+  --m-text-lg: 16px;
+  --m-text-xl: 18px;
+  --m-text-2xl: 22px;
+
+  --m-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --m-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+
+  --m-tap: 44px;
+  --m-header-h: 52px;
+  --m-tabbar-h: 56px;
+  --m-content-pad: 14px;
+
+  --k-up: #e11d48;
+  --k-down: #16a34a;
+  --k-warn: #d97706;
+  --k-danger: #dc2626;
+}
+
+html[data-theme="dark"] {
+  --k-up: #fb7185;
+  --k-down: #4ade80;
+  --k-warn: #fbbf24;
+  --k-danger: #f87171;
+}
+
+/* price/percent shimmer while mobile data loads */
+@keyframes m-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.m-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--k-surface-2) 25%,
+    var(--k-border) 37%,
+    var(--k-surface-2) 63%
+  );
+  background-size: 200% 100%;
+  animation: m-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--m-radius-sm);
+}
