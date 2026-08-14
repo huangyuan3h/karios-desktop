@@ -21,10 +21,14 @@ def _cleanup():
                 """,
                 (f"{TEST_URL_PREFIX}%",),
             )
+            # IMPORTANT: only delete rows this suite created. Do NOT filter by
+            # event_type — that used to delete real job_failed events (2026-08-14
+            # incident: broke the per-day dedupe and re-pushed stale Bark
+            # notifications). Deliveries cascade via event_id FK.
             cur.execute(
                 f"""
                 DELETE FROM {webhook.EVENTS_TABLE}
-                WHERE dedupe_key LIKE 'test:%' OR event_type = 'job_failed'
+                WHERE dedupe_key LIKE 'test:%'
                 """
             )
         conn.commit()
