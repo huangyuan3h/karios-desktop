@@ -2385,3 +2385,92 @@ def test_ma_aligned_gate_allows_alignment() -> None:
 
     run = simulate(config, data=data)
     assert run.summary.closed == 1
+
+
+def test_rsi_reversal_gate_blocks_high_rsi() -> None:
+    """P7: RSI14 >= max (rising series) blocks the entry."""
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2025, 1, 1)
+    while len(calendar) < 25:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    # steadily rising closes -> RSI ~100 -> blocked
+    closes = {TS1: {d: 10.0 + 0.2 * i for i, d in enumerate(calendar)}}
+    scores = {calendar[20]: {CN1: 90.0}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 + 0.2 * i), "0") for i, d in enumerate(calendar)]}
+    config = BacktestConfig(start_date=calendar[20], end_date=calendar[-1], rsi_reversal_max=30.0)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 0
+
+
+def test_rsi_reversal_gate_allows_oversold_green() -> None:
+    """P7: RSI14 < max with a green close passes."""
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2025, 1, 1)
+    while len(calendar) < 25:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    # drop hard then one green bounce: RSI < 30 at the bounce day
+    px = [10.0 - 0.1 * i for i in range(20)] + [8.2, 8.4, 8.4, 8.4, 8.4]
+    closes = {TS1: {d: px[i] for i, d in enumerate(calendar)}}
+    scores = {calendar[20]: {CN1: 90.0}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(px[i]), "0") for i, d in enumerate(calendar)]}
+    config = BacktestConfig(start_date=calendar[20], end_date=calendar[-1], rsi_reversal_max=30.0)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+
+
+def test_down_day_reversal_gate_blocks_without_drop() -> None:
+    """P8: no prior -5% day -> blocked."""
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2025, 1, 1)
+    while len(calendar) < 8:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    closes = {TS1: {d: 10.0 for d in calendar}}
+    scores = {calendar[4]: {CN1: 90.0}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]}
+    config = BacktestConfig(start_date=calendar[4], end_date=calendar[-1], down_day_reversal_pct=5.0)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 0
+
+
+def test_down_day_reversal_gate_allows_drop_then_green() -> None:
+    """P8: prior -5% then a green day passes."""
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2025, 1, 1)
+    while len(calendar) < 8:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    # day3: 10 -> 9.4 (-6%), day4: 9.4 -> 9.6 (green)
+    px = [10.0, 10.0, 10.0, 9.4, 9.6]
+    closes = {TS1: {d: (px[i] if i < len(px) else 9.6) for i, d in enumerate(calendar)}}
+    scores = {calendar[4]: {CN1: 90.0}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(closes[TS1][d]), "0") for d in calendar]}
+    config = BacktestConfig(start_date=calendar[4], end_date=calendar[-1], down_day_reversal_pct=5.0)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1

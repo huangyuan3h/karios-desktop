@@ -18,7 +18,7 @@
 | [`experiments-d-pool.md`](./experiments-d-pool.md) | **探索池 D1-D8**（环境仓位 D3 ✅ / 持有期 D2 ✅ / score 确认 D4 ❌ / 行业集中 D5 ❌ / 利润护城河 D6 ❌ / 分钟线 D7 / 港股情绪 D8） | 🔄 滚动 |
 | [`experiments-defensive.md`](./experiments-defensive.md) | **防守向攻击 23 项**（A1-A7 / B1-B4 / C1-C5 / D1-D4）——全部拒收/中性的完整论证 | ✅ 2026-08-12 完结 |
 | [`experiments-legacy.md`](./experiments-legacy.md) | **历史实验速查**（V6/V7 系列、红绿灯、ATR 止损 OPT-105、熔断 OPT-093、长窗） | ✅ 快照 |
-| [`experiments-planned.md`](./experiments-planned.md) | **未验证信号候选计划**（海龟/放量/200日/斜率/双均线/三线/反转） | 🔄 待逐个验证 |
+| [`experiments-planned.md`](./experiments-planned.md) | **未验证信号候选计划**（P1-P8 技术形态已全部拒收 · P9-P26：截面动量/52周高/行业中性/波动率调整/低波动/PEAD/质量/负面剔除/组合风控/市场宽度等） | 🔄 待逐个验证 |
 | [`README.md`](./README.md) | 本索引 + 验证纪律 + 报告文件位置 | — |
 
 ---

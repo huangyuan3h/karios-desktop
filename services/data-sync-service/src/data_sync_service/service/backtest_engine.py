@@ -268,6 +268,18 @@ class BacktestConfig:
     # falsification (alignment state carries no increment) — included only
     # to close the question quickly. Same three-window bar.
     ma_aligned: bool = False
+    # P7 (signal pool, 2026-08-15): short-term oversold reversal as an
+    # ADDITIVE entry gate — RSI14 must be below X and the entry day must
+    # close green (close > prev close) (0 = off; 30 = RSI14 < 30 + green
+    # day). NOTE: the original "weak-env bottom fishing" version conflicts
+    # with neutral_block (weak days are blocked — 16/16 losing trades in
+    # valid); this tests the reversal filter INSIDE normal environments.
+    rsi_reversal_max: float = 0.0
+    # P8 (signal pool, 2026-08-15): down-day reversal as an ADDITIVE entry
+    # gate — the PRIOR session must have fallen at least X% and the entry
+    # day must close green (0 = off; 5 = prior -5% then green). Same
+    # neutral_block caveat as P7.
+    down_day_reversal_pct: float = 0.0
 
     def _env_position_scale(self, env: str | None) -> float:
         if not self.env_position_scale:
@@ -346,6 +358,10 @@ class BacktestConfig:
             raise ValueError("ma200_min_pct must be >= -1 (-1 disables; 0 = close > MA200; 5 = >= 5%% above MA200)")
         if self.ma_cross_days < 0:
             raise ValueError("ma_cross_days must be >= 0 (0 disables, 5 = entry within 5 sessions after the MA5/MA20 cross)")
+        if self.rsi_reversal_max < 0:
+            raise ValueError("rsi_reversal_max must be >= 0 (0 disables, 30 = RSI14 < 30 + green day required)")
+        if self.down_day_reversal_pct < 0:
+            raise ValueError("down_day_reversal_pct must be >= 0 (0 disables, 5 = prior session -5% then green day required)")
         if self.entry_mode not in ("close", "last_hour_low", "last_hour_hl", "next_open"):
             raise ValueError(
                 "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', 'next_open') "
@@ -1515,6 +1531,59 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     if not crossed:
                         gated_blocks["ma_cross"] += 1
                         continue
+            if config.rsi_reversal_max > 0:
+                # P7 (signal pool): RSI14 < max AND the entry day closes
+                # green. RSI14 = 100 - 100/(1 + avg_gain/avg_loss) over the
+                # prior 14 sessions (simple average, per classic Wilder-
+                # style simple RSI used in screening tools).
+                closes = data.closes_by_ts.get(ts)
+                if closes is None:
+                    gated_blocks["rsi_reversal"] += 1
+                    continue
+                closes_sorted = sorted(closes, key=lambda kv: kv[0])
+                idx = None
+                for i, (d, _c) in enumerate(closes_sorted):
+                    if str(d) == day:
+                        idx = i
+                        break
+                if idx is None or idx < 15:
+                    gated_blocks["rsi_reversal"] += 1
+                    continue
+                gains = losses = 0.0
+                for j in range(idx - 13, idx + 1):
+                    chg = closes_sorted[j][1] - closes_sorted[j - 1][1]
+                    if chg > 0:
+                        gains += chg
+                    else:
+                        losses += abs(chg)
+                rsi = 100.0
+                if losses > 0:
+                    rsi = 100.0 - 100.0 / (1.0 + gains / losses)
+                green = closes_sorted[idx][1] > closes_sorted[idx - 1][1]
+                if rsi >= config.rsi_reversal_max or not green:
+                    gated_blocks["rsi_reversal"] += 1
+                    continue
+            if config.down_day_reversal_pct > 0:
+                # P8 (signal pool): prior session fell >= X% AND the entry
+                # day closes green (long-red-day reversal / 抄底反转).
+                closes = data.closes_by_ts.get(ts)
+                if closes is None:
+                    gated_blocks["down_day_reversal"] += 1
+                    continue
+                closes_sorted = sorted(closes, key=lambda kv: kv[0])
+                idx = None
+                for i, (d, _c) in enumerate(closes_sorted):
+                    if str(d) == day:
+                        idx = i
+                        break
+                if idx is None or idx < 2:
+                    gated_blocks["down_day_reversal"] += 1
+                    continue
+                prev_chg = (closes_sorted[idx - 1][1] / closes_sorted[idx - 2][1] - 1.0) * 100.0
+                green = closes_sorted[idx][1] > closes_sorted[idx - 1][1]
+                if prev_chg > -config.down_day_reversal_pct or not green:
+                    gated_blocks["down_day_reversal"] += 1
+                    continue
             if config.trend_score_min > 0:
                 trend = _trend_score(
                     data.rs_rank_by_day.get(day, {}).get(ts),
