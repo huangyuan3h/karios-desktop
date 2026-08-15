@@ -45,7 +45,7 @@ stop, gates). Outputs are not a release decision basis — the paper book is.
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
 from typing import Any
@@ -73,6 +73,7 @@ CLOSE_REASON_END_OF_WINDOW = "end_of_window"
 CLOSE_REASON_TRAILING = "trailing_stop"
 CLOSE_REASON_SWAPPED = "swapped"
 CLOSE_REASON_FLOW_EXIT = "flow_exit"
+CLOSE_REASON_TIME_STOP = "time_stop"  # P17: underwater N days → cut
 
 GATE_LEVELS = ("none", "regime", "full")
 
@@ -294,6 +295,54 @@ class BacktestConfig:
     risk_adj_mom_ret_days: int = 0
     risk_adj_mom_vol_days: int = 60
     risk_adj_mom_min: float = 0.0
+    # P11 (signal pool, 2026-08-15): industry-neutral RS / industry
+    # momentum as ADDITIVE entry gates — two independent sub-filters, both
+    # computed per day from the FULL daily table (equal-weighted industry
+    # return over all members with a bar that day, industry mapping =
+    # stock_eastmoney_industry, the same table the mainline gate uses).
+    #   ind_mom_days>0        — candidate's industry must rank in the top
+    #                           ind_mom_top_pct of ALL industries by that
+    #                           window's average return (行业动量).
+    #   ind_neutral_days>0    — candidate's window return must rank in the
+    #                           top ind_neutral_rank_pct WITHIN its industry
+    #                           (行业内选强 — the dimension RS rank, which is
+    #                           whole-market, cannot see).
+    # Window support: 20/60/120 sessions. Any other positive value disables.
+    ind_mom_days: int = 0
+    ind_mom_top_pct: float = 0.33
+    ind_neutral_days: int = 0
+    ind_neutral_rank_pct: float = 0.7
+    # P10 (signal pool, 2026-08-15): 52-week-high proximity as an ADDITIVE
+    # entry gate — the entry-day close must be within X% of its 250-session
+    # high (0 = off; 80 = close >= 0.80 x 250d-high). CONTINUOUS state,
+    # distinct from P1's discrete Donchian breakout (which requires an
+    # actual new high). A2's falsified trend score included a "distance to
+    # 52w high" component, so correlation with RS was pre-checked
+    # (signal_p10_p9_correlation.py): candidate-pool |r| 0.19-0.26 < 0.5 —
+    # ok to test; whole-market valid 0.51 is borderline, documented.
+    high_52w_min_pct: float = 0.0
+    # P9 (signal pool, 2026-08-15): mid-horizon cross-sectional momentum
+    # as an ADDITIVE entry gate — the candidate's ret over mom_ret_days
+    # (skipping the most recent mom_skip_days) must rank in the top
+    # mom_rank_min of the whole market that day (0 = off; 0.5 = top 50%).
+    # RS is 20d short-horizon; P9 is 120-250d mid-horizon — the correlation
+    # pre-check showed |r| < 0.1, so the horizons are genuinely disjoint.
+    mom_ret_days: int = 0
+    mom_skip_days: int = 20
+    mom_rank_min: float = 0.5
+    # P17 (signal pool, 2026-08-15): portfolio-level risk controls — each
+    # sub-item is tested alone (planned-doc §2 P17):
+    #   min_avg_amount>0        — liquidity floor: exclude candidates whose
+    #                             60-session average daily turnover (amount,
+    #                             亿元) is below X. Small-cap tail defence;
+    #                             data = daily.amount (already local).
+    #   max_hold_unprofitable_days>0 — time stop: close a holding once it has
+    #                             been open N days AND is still underwater
+    #                             (net < 0). Cuts capital tie-up in flat
+    #                             losers without forcing winners out early
+    #                             (max_hold_days still bounds everything).
+    min_avg_amount: float = 0.0
+    max_hold_unprofitable_days: int = 0
 
     def _env_position_scale(self, env: str | None) -> float:
         if not self.env_position_scale:
@@ -382,6 +431,26 @@ class BacktestConfig:
             raise ValueError("risk_adj_mom_vol_days must be >= 5 (volatility window)")
         if self.risk_adj_mom_min < 0:
             raise ValueError("risk_adj_mom_min must be >= 0 (threshold on ret/vol)")
+        if self.ind_mom_days not in (0, 20, 60, 120):
+            raise ValueError("ind_mom_days must be 0 (off) or one of 20/60/120")
+        if not 0 < self.ind_mom_top_pct <= 1:
+            raise ValueError("ind_mom_top_pct must be in (0, 1] (0.33 = top third of industries)")
+        if self.ind_neutral_days not in (0, 20, 60, 120):
+            raise ValueError("ind_neutral_days must be 0 (off) or one of 20/60/120")
+        if not 0 < self.ind_neutral_rank_pct <= 1:
+            raise ValueError("ind_neutral_rank_pct must be in (0, 1] (0.7 = top 30% within industry)")
+        if not 0 <= self.high_52w_min_pct <= 100:
+            raise ValueError("high_52w_min_pct must be in [0, 100] (0 disables; 80 = close >= 0.80 x 250d-high)")
+        if self.mom_ret_days not in (0, 60, 120, 250):
+            raise ValueError("mom_ret_days must be 0 (off) or one of 60/120/250")
+        if self.mom_skip_days < 0:
+            raise ValueError("mom_skip_days must be >= 0 (20 = skip the most recent 20 sessions)")
+        if not 0 < self.mom_rank_min <= 1:
+            raise ValueError("mom_rank_min must be in (0, 1] (0.5 = top 50% whole-market momentum rank)")
+        if self.min_avg_amount < 0:
+            raise ValueError("min_avg_amount must be >= 0 (亿元; 0 disables)")
+        if self.max_hold_unprofitable_days < 0:
+            raise ValueError("max_hold_unprofitable_days must be >= 0 (0 disables; 20 = close underwater holdings after 20 days)")
         if self.entry_mode not in ("close", "last_hour_low", "last_hour_hl", "next_open"):
             raise ValueError(
                 "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', 'next_open') "
@@ -523,6 +592,27 @@ class BacktestData:
 
             self.env_by_day = load_env_by_day(config.start_date, config.end_date)
         self.mv_by_day = _load_market_caps(config, set(self.ts_codes))
+        # P17 (portfolio-level risk): 60-session average daily turnover
+        # (amount, 亿元) per symbol, as-of each day. Loaded only when the
+        # liquidity floor is enabled.
+        self.avg_amount_by_day: dict[str, dict[str, float]] = {}
+        if config.min_avg_amount > 0:
+            self.avg_amount_by_day = _load_avg_amount(config, self.calendar, set(self.ts_codes))
+        # P11 (industry-neutral RS / industry momentum): per-day industry
+        # rank (by equal-weighted member window return, whole market) and
+        # per-stock within-industry return percentile. Loaded only when one
+        # of the P11 gates is enabled (both windows computed if both on).
+        self.ind_industry_rank_by_day: dict[str, dict[str, float]] = {}
+        self.ind_within_rank_by_day: dict[str, dict[str, float]] = {}
+        if config.ind_mom_days > 0 or config.ind_neutral_days > 0:
+            self.ind_industry_rank_by_day, self.ind_within_rank_by_day = _load_industry_data(
+                config, self.calendar, set(self.ts_codes)
+            )
+        # P9 (mid-horizon cross-sectional momentum): per-day whole-market
+        # percentile of ret(mom_ret_days) skipping the last mom_skip_days.
+        self.mom_rank_by_day: dict[str, dict[str, float]] = {}
+        if config.mom_ret_days > 0:
+            self.mom_rank_by_day = _load_mom_ranks(config, self.calendar, set(self.ts_codes))
 
 
 def _load_calendar(start_date: str, end_date: str) -> list[str]:
@@ -761,6 +851,247 @@ def _load_flow_mainline_data(
 
 
 RS_LOOKBACK_DAYS = 20
+
+# P11 industry-neutral RS / industry momentum: supported return windows.
+IND_WINDOW_OPTIONS = (20, 60, 120)
+
+
+def _load_industry_data(
+    config: BacktestConfig,
+    calendar: list[str],
+    universe_ts: set[str],
+) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, float]]]:
+    """P11 (signal pool): per-day industry momentum + within-industry RS.
+
+    Industry membership = ``stock_eastmoney_industry`` (same table the
+    mainline gate uses — static today-snapshot, so membership has the same
+    mild look-ahead caveat as the existing mainline gate). Returns:
+
+    - ``ind_industry_rank_by_day[day][industry]`` — percentile (0-1, 1 =
+      strongest) of the industry's equal-weighted average return over the
+      configured window (``config.ind_mom_days``), ranked across all
+      industries with data that day. Industry momentum gate input.
+    - ``ind_within_rank_by_day[day][ts]`` — percentile (0-1, 1 = strongest)
+      of the stock's window return WITHIN its own industry (ranking pool =
+      all stocks of that industry with a bar that day, whole market, not
+      just the universe). Within-industry RS gate input.
+      Only universe symbols are kept (mirrors ``_load_rs_ranks``).
+
+    Both windows (mom / neutral) are computed when both gates are enabled;
+    each uses the daily table's ``lag(close, N)`` exactly like RS ranks —
+    as-of, no look-ahead.
+    """
+    windows = {w for w in (config.ind_mom_days, config.ind_neutral_days) if w}
+    if not windows:
+        return {}, {}
+    from datetime import timedelta
+
+    start_early = max(
+        date.fromisoformat(config.start_date) - timedelta(days=200), date(1998, 1, 1)
+    ).isoformat()
+    ind_map: dict[str, str] = {}
+    ind_rank_by_day: dict[str, dict[str, float]] = {}
+    within_rank_by_day: dict[str, dict[str, float]] = {}
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT ts_code, industry_name FROM stock_eastmoney_industry"
+            )
+            for ts, ind in cur.fetchall():
+                if ts and ind:
+                    ind_map[str(ts)] = str(ind)
+            # one pass per window, kept sequential to bound memory
+            for w in windows:
+                cur.execute(
+                    f"""
+                    SELECT trade_date, ts_code,
+                        (close / lag(close, {w})
+                         OVER (PARTITION BY ts_code ORDER BY trade_date) - 1) * 100 AS ret
+                    FROM daily
+                    WHERE trade_date >= %s AND trade_date <= %s AND close > 0
+                    ORDER BY trade_date
+                    """,
+                    (start_early, config.end_date),
+                )
+                day_rows: dict[str, list[tuple[str, float]]] = {}
+                for d, ts, ret in cur.fetchall():
+                    if ret is None:
+                        continue
+                    day_rows.setdefault(str(d), []).append((str(ts), float(ret)))
+                for day in calendar:
+                    items = day_rows.get(day)
+                    if not items or len(items) < 50:
+                        continue
+                    # industry equal-weighted avg return
+                    ind_sum: dict[str, tuple[float, int]] = {}
+                    for ts, ret in items:
+                        ind = ind_map.get(ts)
+                        if not ind:
+                            continue
+                        s, n = ind_sum.get(ind, (0.0, 0))
+                        ind_sum[ind] = (s + ret, n + 1)
+                    if len(ind_sum) < 5:  # too thin a market to rank industries
+                        continue
+                    if config.ind_mom_days > 0 and w == config.ind_mom_days:
+                        ind_avg = {
+                            ind: s / n for ind, (s, n) in ind_sum.items() if n >= 3
+                        }
+                        ranked = sorted(ind_avg.items(), key=lambda kv: -kv[1])
+                        total = len(ranked)
+                        if total < 5:
+                            continue
+                        pos: dict[str, float] = {}
+                        for i, (ind, _r) in enumerate(ranked, start=1):
+                            pos[ind] = (total - i + 1) / total
+                        ind_rank_by_day[day] = pos
+                    if config.ind_neutral_days > 0 and w == config.ind_neutral_days:
+                        # within-industry return percentile (whole market pool)
+                        by_ind: dict[str, list[tuple[str, float]]] = {}
+                        for ts, ret in items:
+                            ind = ind_map.get(ts)
+                            if ind:
+                                by_ind.setdefault(ind, []).append((ts, ret))
+                        wpos: dict[str, float] = {}
+                        for ind, members in by_ind.items():
+                            if len(members) < 5:
+                                continue
+                            ranked = sorted(members, key=lambda kv: -kv[1])
+                            total = len(ranked)
+                            for i, (ts, _r) in enumerate(ranked, start=1):
+                                if ts in universe_ts:
+                                    wpos[ts] = (total - i + 1) / total
+                        if wpos:
+                            within_rank_by_day[day] = wpos
+    return ind_rank_by_day, within_rank_by_day
+
+
+def _load_avg_amount(
+    config: BacktestConfig,
+    calendar: list[str],
+    universe_ts: set[str],
+) -> dict[str, dict[str, float]]:
+    """P17 (signal pool): per-day 60-session average daily turnover.
+
+    ``avg_amount_by_day[day][ts]`` = mean of the 60 daily ``amount`` values
+    (tushare unit: 千元 → converted to 亿元) ending at ``day``. As-of (only
+    bars <= day), mirrors the daily-table lookback pattern of RS ranks.
+    """
+    from datetime import timedelta
+
+    if config.min_avg_amount <= 0:
+        return {}
+    start_early = max(
+        date.fromisoformat(config.start_date) - timedelta(days=100), date(1998, 1, 1)
+    ).isoformat()
+    rows: list[tuple[str, str, str]] = []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT trade_date, ts_code, amount FROM daily
+                WHERE trade_date >= %s AND trade_date <= %s AND amount > 0
+                ORDER BY trade_date
+                """,
+                (start_early, config.end_date),
+            )
+            rows = cur.fetchall()
+    per_ts: dict[str, list[tuple[str, float]]] = {}
+    for d, ts, amt in rows:
+        if ts not in universe_ts:
+            continue
+        per_ts.setdefault(ts, []).append((str(d), float(amt)))
+    # Sliding-window mean per (ts, day): every ts advances one monotone
+    # pointer over the calendar, so the total work is O(ts x calendar), not
+    # O(ts x calendar x 60).
+    out: dict[str, dict[str, float]] = {}
+    pos: dict[str, int] = {ts: 0 for ts in per_ts}
+    acc: dict[str, float] = {}
+    q: dict[str, deque] = {}
+    for day in calendar:
+        day_vals: dict[str, float] = {}
+        for ts, series in per_ts.items():
+            p = pos[ts]
+            n = len(series)
+            while p < n and series[p][0] <= day:
+                v = series[p][1]
+                if ts not in q:
+                    acc[ts] = 0.0
+                    q[ts] = deque()
+                q[ts].append(v)
+                acc[ts] += v
+                if len(q[ts]) > 60:
+                    acc[ts] -= q[ts].popleft()
+                p += 1
+            pos[ts] = p
+            if len(q.get(ts, ())) >= 30:  # at least half a window of data
+                day_vals[ts] = round(acc[ts] / len(q[ts]) / 100000.0, 4)  # 千元 → 亿元
+        if day_vals:
+            out[day] = day_vals
+    return out
+
+
+def _load_mom_ranks(
+    config: BacktestConfig,
+    calendar: list[str],
+    universe_ts: set[str],
+) -> dict[str, dict[str, float]]:
+    """P9 (signal pool): per-day whole-market momentum percentile.
+
+    Momentum = ``close[day - skip] / close[day - skip - ret_days] - 1`` —
+    the window return ending ``skip`` sessions BEFORE today (A股短期反转 →
+    skip the recent window). Percentile 0-1, 1 = strongest, ranked against
+    ALL stocks with a bar that day (same pool as RS ranks). Only universe
+    symbols are kept. Returns {day: {symbol: percentile}}.
+    """
+    from datetime import timedelta
+
+    if config.mom_ret_days <= 0:
+        return {}
+    skip = config.mom_skip_days
+    w = config.mom_ret_days
+    # need (skip + w) sessions before the day + the day itself
+    start_early = max(
+        date.fromisoformat(config.start_date) - timedelta(days=w + skip + 60),
+        date(1998, 1, 1),
+    ).isoformat()
+    rows: list[tuple[str, str, float]] = []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT trade_date, ts_code,
+                    (c_skip / c_skip_w - 1) * 100 AS mom_ret FROM (
+                    SELECT trade_date, ts_code,
+                        LAG(close, {skip}) OVER w AS c_skip,
+                        LAG(close, {skip + w}) OVER w AS c_skip_w
+                    FROM daily
+                    WHERE trade_date >= %s AND trade_date <= %s AND close > 0
+                    WINDOW w AS (PARTITION BY ts_code ORDER BY trade_date)
+                ) t
+                WHERE c_skip IS NOT NULL AND c_skip_w IS NOT NULL AND c_skip_w > 0
+                ORDER BY trade_date
+                """,
+                (start_early, config.end_date),
+            )
+            rows = cur.fetchall()
+
+    out: dict[str, dict[str, float]] = {}
+    day_rows: dict[str, list[tuple[str, float]]] = {}
+    for d, ts, c in rows:
+        day_rows.setdefault(str(d), []).append((str(ts), float(c)))
+    for day in calendar:
+        items = day_rows.get(day)
+        if not items or len(items) < 30:
+            continue
+        ranked = sorted(items, key=lambda kv: -kv[1])
+        total = len(ranked)
+        pos: dict[str, float] = {}
+        for i, (ts, _v) in enumerate(ranked, start=1):
+            if ts in universe_ts:
+                pos[ts] = (total - i + 1) / total
+        out[day] = pos
+    return out
+
 
 # A2 trendScore lookback: 52-week (252 trading days ~ 365 calendar) high needs
 # ~370 calendar days of bars; 400 leaves a buffer for gaps.
@@ -1414,6 +1745,62 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if ret / vol < config.risk_adj_mom_min:
                     gated_blocks["risk_adj_mom"] += 1
                     continue
+            if config.ind_mom_days > 0:
+                # P11 (signal pool): industry momentum gate — the entry
+                # candidate's industry (eastmoney label, same mapping as the
+                # mainline gate) must rank in the top ``ind_mom_top_pct`` of
+                # ALL industries by its equal-weighted window return. "先选
+                # 强势行业": distinct from the mainline gate (fund-flow Top3)
+                # — this is a price-return dimension.
+                ind = data.industry_by_ts.get(ts)
+                ir = data.ind_industry_rank_by_day.get(day, {}).get(ind) if ind else None
+                if ir is None or ir < config.ind_mom_top_pct:
+                    gated_blocks["ind_mom"] += 1
+                    continue
+            if config.ind_neutral_days > 0:
+                # P11 (signal pool): within-industry RS gate — the entry
+                # candidate must rank in the top ``ind_neutral_rank_pct`` of
+                # its own industry by window return. "行业内选强": the
+                # whole-market RS rank cannot see this (a weak industry's
+                # strongest name ranks low globally), so this is an
+                # orthogonal-ish dimension.
+                wr = data.ind_within_rank_by_day.get(day, {}).get(ts)
+                if wr is None or wr < config.ind_neutral_rank_pct:
+                    gated_blocks["ind_neutral"] += 1
+                    continue
+            if config.high_52w_min_pct > 0:
+                # P10 (signal pool): 52-week-high proximity gate — the
+                # entry-day close must be within X% of its 250-session high
+                # (continuous state, NOT a discrete breakout like P1). A2's
+                # falsified trend score included a "distance to 52w high"
+                # component, so RS correlation was pre-checked (0.19-0.26
+                # candidate-pool |r|, < 0.5) before this gate was tested.
+                closes = data.closes_by_ts.get(ts)
+                if closes is None:
+                    gated_blocks["high52w"] += 1
+                    continue
+                idx = None
+                for i, (d, _c) in enumerate(closes):
+                    if str(d) == day:
+                        idx = i
+                        break
+                if idx is None or idx < 250:
+                    gated_blocks["high52w"] += 1
+                    continue
+                hi = max(c for (_d, c) in closes[idx - 250: idx])
+                if hi <= 0 or (closes[idx][1] / hi) * 100.0 < config.high_52w_min_pct:
+                    gated_blocks["high52w"] += 1
+                    continue
+            if config.mom_ret_days > 0:
+                # P9 (signal pool): mid-horizon cross-sectional momentum
+                # gate — the candidate's ret(mom_ret_days) skipping the last
+                # mom_skip_days must rank in the top mom_rank_min of the
+                # whole market. RS = 20d short horizon; P9 = 120-250d mid
+                # horizon — pre-checked |r| < 0.1, horizons disjoint.
+                mr = data.mom_rank_by_day.get(day, {}).get(ts)
+                if mr is None or mr < config.mom_rank_min:
+                    gated_blocks["mom"] += 1
+                    continue
             blocked_by = _gate_blocked(config, data, day, ts)
             if blocked_by is not None:
                 gated_blocks[blocked_by] += 1
@@ -1698,6 +2085,16 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                     if config.max_mv > 0 and mv > config.max_mv:
                         gated_blocks["mv_max"] += 1
                         continue
+            if config.min_avg_amount > 0:
+                # P17 (signal pool): liquidity floor — exclude candidates
+                # whose 60-session average daily turnover is below X 亿元.
+                # Small-cap tail defence (thin books amplify slippage and
+                # gap risk). Data missing → fail-closed (consistent with
+                # the other liquidity gates).
+                amt = data.avg_amount_by_day.get(day, {}).get(ts)
+                if amt is None or amt < config.min_avg_amount:
+                    gated_blocks["liquidity"] += 1
+                    continue
             # Style-defense: in Diverging (choppy/weak) regimes exclude
             # mega-cap institutional names — 2024-25 OOS2 showed the
             # >500亿 cohort had the worst drawdowns (crowded unwind).
@@ -1813,6 +2210,18 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 peak = float(pos["peak_price"])
                 if peak > 0 and (close_px - peak) / peak * 100.0 <= trail_i:
                     reason = CLOSE_REASON_TRAILING
+            if (
+                reason is None
+                and config.max_hold_unprofitable_days > 0
+                and holding >= config.max_hold_unprofitable_days
+                and net < 0
+            ):
+                # P17 (signal pool): unprofitable time stop — a holding that
+                # is still underwater after N days gets cut. The fixed stop
+                # already bounds the worst case; this frees capital tied in
+                # flat losers. Deliberately AFTER trailing (a winner that
+                # pulled back below entry is still riding the trail).
+                reason = CLOSE_REASON_TIME_STOP
             if reason is None and config.profit_trail_trigger_pct > 0 and config.profit_trail_pct < 0:
                 # A6 (2026-08-12 · defensive): once the leg is past the profit
                 # trigger, tighten the allowed pullback from the peak — protect
