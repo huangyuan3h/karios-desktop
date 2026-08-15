@@ -248,6 +248,14 @@ class BacktestConfig:
     # 20 sessions). Distinct from A2's "MA alignment" state: this measures
     # the CHANGE (acceleration), not the state. Same three-window bar.
     ma_slope_min_pct: float = 0.0
+    # P3 (signal pool, 2026-08-15): 200-day MA filter as an ADDITIVE entry
+    # gate — the entry-day close must be at least X% ABOVE the 200-session
+    # simple moving average (-1 = off; 0 = close > MA200 (state only);
+    # 5 = close > MA200 x 1.05). Long-horizon trend-state filter (stock
+    # level, not index — the index level is already covered by the regime
+    # gate). Same three-window bar. NOTE: -1 is the OFF sentinel so that
+    # 0.0 (pure state filter) is a valid ENABLED value.
+    ma200_min_pct: float = -1.0
 
     def _env_position_scale(self, env: str | None) -> float:
         if not self.env_position_scale:
@@ -322,6 +330,8 @@ class BacktestConfig:
             raise ValueError("volume_breakout_mult must be >= 0 (0 disables, 1.5 = 50%% above the 20d avg volume)")
         if self.ma_slope_min_pct < 0:
             raise ValueError("ma_slope_min_pct must be >= 0 (0 disables, 2 = MA20 rising >= 2%% over 20 sessions)")
+        if self.ma200_min_pct < -1:
+            raise ValueError("ma200_min_pct must be >= -1 (-1 disables; 0 = close > MA200; 5 = >= 5%% above MA200)")
         if self.entry_mode not in ("close", "last_hour_low", "last_hour_hl", "next_open"):
             raise ValueError(
                 "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', 'next_open') "
@@ -1424,6 +1434,32 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 slope_pct = (ma_now / ma_prev - 1.0) * 100.0
                 if slope_pct < config.ma_slope_min_pct:
                     gated_blocks["ma_slope"] += 1
+                    continue
+            if config.ma200_min_pct >= 0:
+                # P3 (signal pool): 200-day MA filter — entry-day close must
+                # be >= X% above the 200-session SMA. Long-horizon trend
+                # state (stock level; the index level is the regime gate's
+                # job). Needs >= 200 closes, else fail-closed.
+                closes = data.closes_by_ts.get(ts)
+                if closes is None or len(closes) < 200:
+                    gated_blocks["ma200"] += 1
+                    continue
+                closes_sorted = sorted(closes, key=lambda kv: kv[0])
+                idx = None
+                for i, (d, _c) in enumerate(closes_sorted):
+                    if str(d) == day:
+                        idx = i
+                        break
+                if idx is None or idx < 199:
+                    gated_blocks["ma200"] += 1
+                    continue
+                ma200 = sum(c for (_d, c) in closes_sorted[idx - 199: idx + 1]) / 200.0
+                if ma200 <= 0:
+                    gated_blocks["ma200"] += 1
+                    continue
+                close_now = closes_sorted[idx][1]
+                if (close_now / ma200 - 1.0) * 100.0 < config.ma200_min_pct:
+                    gated_blocks["ma200"] += 1
                     continue
             if config.trend_score_min > 0:
                 trend = _trend_score(

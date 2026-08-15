@@ -2251,3 +2251,47 @@ def test_ma_slope_gate_allows_rising_ma() -> None:
     # MA20 at idx45 ~= avg(11.3..12.2) = 11.75; MA20 at idx25 ~= 10.75
     # -> slope ~9% > 2% -> passes
     assert run.summary.closed == 1
+
+
+def test_ma200_gate_blocks_below_ma() -> None:
+    """P3: a close below the 200-day MA is blocked by ma200_min_pct."""
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2025, 1, 1)
+    while len(calendar) < 210:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    # closes fall from 10.0 to 8.0 → close at idx200 (~8.1) below MA200 (~9.0)
+    closes = {TS1: {d: 10.0 - 0.01 * i for i, d in enumerate(calendar)}}
+    scores = {calendar[200]: {CN1: 90.0}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 - 0.01 * i), "0") for i, d in enumerate(calendar)]}
+    config = BacktestConfig(start_date=calendar[200], end_date=calendar[-1], ma200_min_pct=0.0)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 0
+
+
+def test_ma200_gate_allows_above_ma() -> None:
+    """P3: a close above the 200-day MA passes the gate."""
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2025, 1, 1)
+    while len(calendar) < 210:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    # closes rise from 10.0 to 12.0 → close at idx200 (~11.9) above MA200 (~11.0)
+    closes = {TS1: {d: 10.0 + 0.01 * i for i, d in enumerate(calendar)}}
+    scores = {calendar[200]: {CN1: 90.0}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 + 0.01 * i), "0") for i, d in enumerate(calendar)]}
+    config = BacktestConfig(start_date=calendar[200], end_date=calendar[-1], ma200_min_pct=0.0)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
