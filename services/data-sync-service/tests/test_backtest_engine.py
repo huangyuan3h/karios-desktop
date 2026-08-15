@@ -2295,3 +2295,93 @@ def test_ma200_gate_allows_above_ma() -> None:
 
     run = simulate(config, data=data)
     assert run.summary.closed == 1
+
+
+def test_ma_cross_gate_requires_recent_golden_cross() -> None:
+    """P5: no golden cross in the last 5 sessions -> blocked."""
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2025, 1, 1)
+    while len(calendar) < 45:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    # steady rise: MA5 > MA20 the whole time (no cross event)
+    closes = {TS1: {d: 10.0 + 0.1 * i for i, d in enumerate(calendar)}}
+    scores = {calendar[30]: {CN1: 90.0}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 + 0.1 * i), "0") for i, d in enumerate(calendar)]}
+    config = BacktestConfig(start_date=calendar[30], end_date=calendar[-1], ma_cross_days=5)
+
+    run = simulate(config, data=data)
+    # MA5 > MA20 before entry too (already golden) -> no fresh cross -> blocked
+    assert run.summary.closed == 0
+
+
+def test_ma_cross_gate_allows_recent_golden_cross() -> None:
+    """P5: a golden cross within 5 sessions passes."""
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2025, 1, 1)
+    while len(calendar) < 45:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    # flat 10.0 then a jump: cross happens right at the entry
+    closes = {TS1: {d: (10.0 if i < 30 else 10.6) for i, d in enumerate(calendar)}}
+    scores = {calendar[30]: {CN1: 90.0}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 if i < 30 else 10.6), "0") for i, d in enumerate(calendar)]}
+    config = BacktestConfig(start_date=calendar[30], end_date=calendar[-1], ma_cross_days=5)
+
+    run = simulate(config, data=data)
+    # at entry day MA5 ~= 11.6 > MA20 ~= 10.2 and yesterday MA5 ~= 11.2 > MA20
+    # -> cross detected within window -> passes
+    assert run.summary.closed == 1
+
+
+def test_ma_aligned_gate_requires_alignment() -> None:
+    """P6: MA5 > MA10 > MA20 required; non-aligned blocked."""
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2025, 1, 1)
+    while len(calendar) < 45:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    # flat closes: MA5 == MA10 == MA20 -> NOT strictly aligned -> blocked
+    closes = {TS1: {d: 10.0 for d in calendar}}
+    scores = {calendar[30]: {CN1: 90.0}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]}
+    config = BacktestConfig(start_date=calendar[30], end_date=calendar[-1], ma_aligned=True)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 0
+
+
+def test_ma_aligned_gate_allows_alignment() -> None:
+    """P6: rising series gives MA5 > MA10 > MA20 -> passes."""
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2025, 1, 1)
+    while len(calendar) < 45:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    closes = {TS1: {d: 10.0 + 0.2 * i for i, d in enumerate(calendar)}}
+    scores = {calendar[30]: {CN1: 90.0}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 + 0.2 * i), "0") for i, d in enumerate(calendar)]}
+    config = BacktestConfig(start_date=calendar[30], end_date=calendar[-1], ma_aligned=True)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1

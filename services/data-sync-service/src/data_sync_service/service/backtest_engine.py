@@ -256,6 +256,18 @@ class BacktestConfig:
     # gate). Same three-window bar. NOTE: -1 is the OFF sentinel so that
     # 0.0 (pure state filter) is a valid ENABLED value.
     ma200_min_pct: float = -1.0
+    # P5 (signal pool, 2026-08-15): dual-MA golden cross as an ADDITIVE
+    # entry gate — the entry day must be within N sessions AFTER the MA5
+    # crossed above MA20 (0 = off; 5 = entry allowed within 5 sessions of
+    # the cross). Event-driven (cross), distinct from the A2 alignment
+    # state. Same three-window bar.
+    ma_cross_days: int = 0
+    # P6 (signal pool, 2026-08-15): three-line MA alignment as an ADDITIVE
+    # entry gate — the entry day must have MA5 > MA10 > MA20 (True = on).
+    # This is the classic 三线多头排列; expected to repeat the A2
+    # falsification (alignment state carries no increment) — included only
+    # to close the question quickly. Same three-window bar.
+    ma_aligned: bool = False
 
     def _env_position_scale(self, env: str | None) -> float:
         if not self.env_position_scale:
@@ -332,6 +344,8 @@ class BacktestConfig:
             raise ValueError("ma_slope_min_pct must be >= 0 (0 disables, 2 = MA20 rising >= 2%% over 20 sessions)")
         if self.ma200_min_pct < -1:
             raise ValueError("ma200_min_pct must be >= -1 (-1 disables; 0 = close > MA200; 5 = >= 5%% above MA200)")
+        if self.ma_cross_days < 0:
+            raise ValueError("ma_cross_days must be >= 0 (0 disables, 5 = entry within 5 sessions after the MA5/MA20 cross)")
         if self.entry_mode not in ("close", "last_hour_low", "last_hour_hl", "next_open"):
             raise ValueError(
                 "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', 'next_open') "
@@ -1461,6 +1475,46 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 if (close_now / ma200 - 1.0) * 100.0 < config.ma200_min_pct:
                     gated_blocks["ma200"] += 1
                     continue
+            if config.ma_cross_days > 0 or config.ma_aligned:
+                # P5/P6 (signal pool): MA5/MA10/MA20 helpers from closes.
+                closes = data.closes_by_ts.get(ts)
+                if closes is None or len(closes) < 21:
+                    gated_blocks["ma_cross"] += 1
+                    continue
+                closes_sorted = sorted(closes, key=lambda kv: kv[0])
+                idx = None
+                for i, (d, _c) in enumerate(closes_sorted):
+                    if str(d) == day:
+                        idx = i
+                        break
+                if idx is None or idx < 20:
+                    gated_blocks["ma_cross"] += 1
+                    continue
+                ma5 = sum(c for (_d, c) in closes_sorted[idx - 4: idx + 1]) / 5.0
+                ma10 = sum(c for (_d, c) in closes_sorted[idx - 9: idx + 1]) / 10.0
+                ma20 = sum(c for (_d, c) in closes_sorted[idx - 19: idx + 1]) / 20.0
+                if config.ma_aligned:
+                    # P6: MA5 > MA10 > MA20 (three-line alignment state).
+                    if not (ma5 > ma10 > ma20):
+                        gated_blocks["ma_aligned"] += 1
+                        continue
+                if config.ma_cross_days > 0:
+                    # P5: entry allowed within N sessions AFTER the golden
+                    # cross (MA5 crossed above MA20). Scan back up to N
+                    # sessions; a session is the cross day when the PREVIOUS
+                    # session had MA5 <= MA20 and this one has MA5 > MA20.
+                    crossed = False
+                    for j in range(idx, max(idx - config.ma_cross_days, 20) - 1, -1):
+                        ma5_j = sum(c for (_d, c) in closes_sorted[j - 4: j + 1]) / 5.0
+                        ma20_j = sum(c for (_d, c) in closes_sorted[j - 19: j + 1]) / 20.0
+                        ma5_jprev = sum(c for (_d, c) in closes_sorted[j - 5: j]) / 5.0
+                        ma20_jprev = sum(c for (_d, c) in closes_sorted[j - 20: j]) / 20.0
+                        if ma5_jprev <= ma20_jprev and ma5_j > ma20_j:
+                            crossed = True
+                            break
+                    if not crossed:
+                        gated_blocks["ma_cross"] += 1
+                        continue
             if config.trend_score_min > 0:
                 trend = _trend_score(
                     data.rs_rank_by_day.get(day, {}).get(ts),
