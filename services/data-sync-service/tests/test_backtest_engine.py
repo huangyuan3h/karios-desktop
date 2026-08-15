@@ -2208,3 +2208,46 @@ def test_volume_breakout_gate_allows_volume_spike() -> None:
 
     run = simulate(config, data=data)
     assert run.summary.closed == 1
+
+
+def _weekday_calendar(n: int) -> list[str]:
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2026, 4, 1)
+    while len(calendar) < n:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    return calendar
+
+
+def test_ma_slope_gate_blocks_flat_ma() -> None:
+    """P4: a flat MA20 (slope ~0) is blocked by ma_slope_min_pct."""
+    calendar = _weekday_calendar(50)
+    scores = {calendar[30]: {CN1: 90.0}}
+    closes = {TS1: {d: 10.0 for d in calendar}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]}
+    config = BacktestConfig(start_date=calendar[30], end_date=calendar[-1], ma_slope_min_pct=2.0)
+
+    run = simulate(config, data=data)
+    # flat closes -> MA20 slope 0% < 2% -> blocked
+    assert run.summary.closed == 0
+
+
+def test_ma_slope_gate_allows_rising_ma() -> None:
+    """P4: a rising MA20 (10 -> ~12.5 over 50 sessions) passes the gate."""
+    calendar = _weekday_calendar(55)
+    scores = {calendar[45]: {CN1: 90.0}}
+    closes = {TS1: {d: 10.0 + 0.05 * i for i, d in enumerate(calendar)}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(10.0 + 0.05 * i), "0") for i, d in enumerate(calendar)]}
+    config = BacktestConfig(start_date=calendar[45], end_date=calendar[-1], ma_slope_min_pct=2.0)
+
+    run = simulate(config, data=data)
+    # MA20 at idx45 ~= avg(11.3..12.2) = 11.75; MA20 at idx25 ~= 10.75
+    # -> slope ~9% > 2% -> passes
+    assert run.summary.closed == 1

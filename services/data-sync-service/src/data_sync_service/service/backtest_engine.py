@@ -242,6 +242,12 @@ class BacktestConfig:
     # (0 = off; 1.5 = 50% above the 20d mean). Volume is a new dimension
     # (RS/score know nothing about it) — same three-window verification bar.
     volume_breakout_mult: float = 0.0
+    # P4 (signal pool, 2026-08-15): MA20 slope filter as an ADDITIVE entry
+    # gate — the entry-day 20-day simple moving average must be rising by
+    # at least X% over the prior 20 sessions (0 = off; 2 = MA20 up >= 2% /
+    # 20 sessions). Distinct from A2's "MA alignment" state: this measures
+    # the CHANGE (acceleration), not the state. Same three-window bar.
+    ma_slope_min_pct: float = 0.0
 
     def _env_position_scale(self, env: str | None) -> float:
         if not self.env_position_scale:
@@ -314,6 +320,8 @@ class BacktestConfig:
             raise ValueError("breakout_days must be >= 0 (0 disables, 20 = close > 20-day high required)")
         if self.volume_breakout_mult < 0:
             raise ValueError("volume_breakout_mult must be >= 0 (0 disables, 1.5 = 50%% above the 20d avg volume)")
+        if self.ma_slope_min_pct < 0:
+            raise ValueError("ma_slope_min_pct must be >= 0 (0 disables, 2 = MA20 rising >= 2%% over 20 sessions)")
         if self.entry_mode not in ("close", "last_hour_low", "last_hour_hl", "next_open"):
             raise ValueError(
                 "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', 'next_open') "
@@ -1390,6 +1398,32 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 avg_vol = sum(vols) / len(vols)
                 if avg_vol <= 0 or today_vol <= avg_vol * config.volume_breakout_mult:
                     gated_blocks["volume"] += 1
+                    continue
+            if config.ma_slope_min_pct > 0:
+                # P4 (signal pool): MA20 slope filter — the 20-day SMA at
+                # the entry day must be >= X% above the 20-day SMA 20
+                # sessions earlier (rising acceleration). Needs >= 40 closes.
+                closes = data.closes_by_ts.get(ts)
+                if closes is None or len(closes) < 40:
+                    gated_blocks["ma_slope"] += 1
+                    continue
+                closes_sorted = sorted(closes, key=lambda kv: kv[0])
+                idx = None
+                for i, (d, _c) in enumerate(closes_sorted):
+                    if str(d) == day:
+                        idx = i
+                        break
+                if idx is None or idx < 40:
+                    gated_blocks["ma_slope"] += 1
+                    continue
+                ma_now = sum(c for (_d, c) in closes_sorted[idx - 19: idx + 1]) / 20.0
+                ma_prev = sum(c for (_d, c) in closes_sorted[idx - 39: idx - 19]) / 20.0
+                if ma_prev <= 0:
+                    gated_blocks["ma_slope"] += 1
+                    continue
+                slope_pct = (ma_now / ma_prev - 1.0) * 100.0
+                if slope_pct < config.ma_slope_min_pct:
+                    gated_blocks["ma_slope"] += 1
                     continue
             if config.trend_score_min > 0:
                 trend = _trend_score(
