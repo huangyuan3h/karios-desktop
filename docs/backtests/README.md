@@ -3,6 +3,8 @@
 > **何时看**：任何新回测实验前（先读纪律 + 已走过的路）、改 S-3 参数前（先查历史结论）、
 > 复盘策略演进时（成功/失败全记录）。
 > **何时不看**：日常运维、代码开发（那些看 todo/optimization-checklist）。
+> **⚠️ 2026-08-15 定稿**：回测探索正式结束（A 股规律已占满 · HK 无强规律 beta 偏多）——
+> 新实验前必读 [`SUMMARY.md`](./SUMMARY.md) 的 48+ 次失败模式，避免重走。
 
 ---
 
@@ -14,11 +16,12 @@
 
 | 文档 | 内容 | 状态 |
 |------|------|------|
+| [`SUMMARY.md`](./SUMMARY.md) | **回测总结定稿**（为什么结束 · A 股 alpha 定案 · HK 结论 · 下一步方向） | ✅ **必读入口** |
 | [`experiments-tip014.md`](./experiments-tip014.md) | **TIP-014 环境感知系列**（neutral_block / entry_style auto / E1 / E2 / HK 线 / 情绪回填） | ✅ 主链固化 · 详细 |
-| [`experiments-d-pool.md`](./experiments-d-pool.md) | **探索池 D1-D8**（环境仓位 D3 ✅ / 持有期 D2 ✅ / score 确认 D4 ❌ / 行业集中 D5 ❌ / 利润护城河 D6 ❌ / 分钟线 D7 / 港股情绪 D8） | 🔄 滚动 |
+| [`experiments-d-pool.md`](./experiments-d-pool.md) | **探索池 D1-D8**（环境仓位 D3 ✅ / 持有期 D2 ✅ / score 确认 D4 ❌ / 行业集中 D5 ❌ / 利润护城河 D6 ❌ / 分钟线 D7 / 港股情绪 D8） | ✅ 完结 |
 | [`experiments-defensive.md`](./experiments-defensive.md) | **防守向攻击 23 项**（A1-A7 / B1-B4 / C1-C5 / D1-D4）——全部拒收/中性的完整论证 | ✅ 2026-08-12 完结 |
 | [`experiments-legacy.md`](./experiments-legacy.md) | **历史实验速查**（V6/V7 系列、红绿灯、ATR 止损 OPT-105、熔断 OPT-093、长窗） | ✅ 快照 |
-| [`experiments-planned.md`](./experiments-planned.md) | **信号候选计划 + 验证记录**（**已验证 14 项全拒收**：P1-P8 技术形态 + P9/P10 动量/高点 + P11 行业维度 + P12 + P16-ST + P17 组合层 · 待验证 10 项：P13/P14/P15/P18-P26） | 🔄 逐个验证 |
+| [`experiments-planned.md`](./experiments-planned.md) | **信号候选 P1-P26 验证记录**（**已验证 15 项全拒收**：P1-P8 技术形态 + P9/P10 动量 + P11 行业 + P12 + P14 PEAD + P16-ST + P17 组合层 · 剩余 11 项终止探索） | ✅ 完结（2026-08-15） |
 | [`README.md`](./README.md) | 本索引 + 验证纪律 + 报告文件位置 | — |
 
 ---

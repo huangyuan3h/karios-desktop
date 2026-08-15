@@ -42,6 +42,7 @@ docs/archive/
 | 2026-08-04 | §2 收益 · P2 | [`2026-08-04-tip-011-execution-source.md`](./2026-08-04-tip-011-execution-source.md) | 开火来源归因：TV/ALPHA/MANUAL 贯穿 write-path，`/v1/execution/source-stats` + Copy attribution 表，用户零操作 |
 | 2026-08-15 | §8 探索池 D3/D6 + 回测文档整理 | [`2026-08-15-backtest-d3-d6-docs.md`](./2026-08-15-backtest-d3-d6-docs.md) | D3 环境仓位固化（uptrend 1.25×/fan 0.75×，三窗全升长窗+64pt）；D6 profit_trail 复核排除（截断右尾）；新建 docs/backtests/ 四份实验记录（成功+失败全记录） |
 | 2026-08-15 | §8 信号池 P1-P26 第一阶段 | [`2026-08-15-signal-pool-p1-p26.md`](./2026-08-15-signal-pool-p1-p26.md) | 10 项实验全拒收（P1-P8 技术形态 + P12 波动率动量 + P16-ST）——S-3 alpha = RS + 环境感知 + 纪律；待验证 14 项，下一候选 P11 行业中性 RS |
+| 2026-08-15 | §8 回测探索结束 | [`2026-08-15-backtest-phase-ended.md`](./2026-08-15-backtest-phase-ended.md) | 48+ 次实验验证：A 股 alpha 已占满（RS+行业beta+环境感知+纪律）；HK 无强规律 beta 偏多；回测时代总结见 backtests/SUMMARY.md；下一步 = C4 paper 对照 / 执行验证 / 数据监控 |
 
 ---
 
