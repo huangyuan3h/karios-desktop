@@ -2557,3 +2557,51 @@ def test_risk_adj_mom_gate_allows_high_ratio() -> None:
 
     run = simulate(config, data=data)
     assert run.summary.closed == 1
+
+
+def test_pead_gate_blocks_without_positive_forecast() -> None:
+    """P14: no recent positive forecast -> blocked."""
+    calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {"2026-06-18": {CN1: 90.0}}
+    closes = {TS1: {d: 10.0 for d in calendar}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]}
+    data.pead_events = {}  # no positive forecast at all
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", pead_days=20)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 0
+    assert run.summary.gated_blocks.get("pead", 0) >= 1
+
+
+def test_pead_gate_allows_with_recent_positive_forecast() -> None:
+    """P14: a positive forecast 2 sessions before entry -> passes."""
+    calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {"2026-06-18": {CN1: 90.0}}
+    closes = {TS1: {d: 10.0 for d in calendar}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]}
+    # forecast announced 2026-06-16 (2 sessions before entry 06-18)
+    data.pead_events = {TS1: {"2026-06-16"}}
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", pead_days=20)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+
+
+def test_pead_gate_blocks_stale_forecast() -> None:
+    """P14: a forecast older than pead_days -> blocked."""
+    calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {"2026-06-18": {CN1: 90.0}}
+    closes = {TS1: {d: 10.0 for d in calendar}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]}
+    # forecast announced 2026-06-15 (entry 06-18 = 3 sessions later > pead_days=2)
+    data.pead_events = {TS1: {"2026-06-15"}}
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", pead_days=2)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 0

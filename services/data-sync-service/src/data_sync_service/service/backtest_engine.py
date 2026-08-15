@@ -287,6 +287,13 @@ class BacktestConfig:
     # stock_basic); verified on the current baseline before it may join.
     # 2026-08-07 check: 33 of 673 score>=65 candidates were ST names.
     exclude_st: bool = False
+    # P14 (signal pool, 2026-08-15): post-earnings drift (PEAD) as an
+    # ADDITIVE entry gate — a candidate whose name announced a POSITIVE
+    # earnings surprise (业绩预告 预增/扭亏/略增/续盈) within the last N
+    # sessions is allowed at entry; names without a recent positive
+    # announcement are blocked (0 = off; 30 = entry only within 30 sessions
+    # of a positive forecast). Event data: db/stock_forecast (ann_date).
+    pead_days: int = 0
     # P12 (signal pool, 2026-08-15): volatility-adjusted momentum as an
     # ADDITIVE entry gate — risk_adj_mom = ret(over ret_days) / stdev of
     # daily returns (over vol_days) must be >= min (0 = off). Filters for
@@ -427,6 +434,8 @@ class BacktestConfig:
             raise ValueError("down_day_reversal_pct must be >= 0 (0 disables, 5 = prior session -5% then green day required)")
         if self.risk_adj_mom_ret_days < 0:
             raise ValueError("risk_adj_mom_ret_days must be >= 0 (0 disables; 120 = use 120-session return)")
+        if self.pead_days < 0:
+            raise ValueError("pead_days must be >= 0 (0 disables; 30 = entry only within 30 sessions of a positive forecast)")
         if self.risk_adj_mom_vol_days < 5:
             raise ValueError("risk_adj_mom_vol_days must be >= 5 (volatility window)")
         if self.risk_adj_mom_min < 0:
@@ -584,6 +593,14 @@ class BacktestData:
         self.st_ts_codes: set[str] = set()
         if config.exclude_st:
             self.st_ts_codes = _load_st_names()
+        self.pead_events: dict[str, set[str]] = {}
+        if config.pead_days > 0:
+            from data_sync_service.db.stock_forecast import positive_forecast_dates
+
+            lookback = (
+                date.fromisoformat(config.start_date) - timedelta(days=config.pead_days * 2 + 60)
+            ).isoformat()
+            self.pead_events = positive_forecast_dates(lookback, config.end_date)
         self.rs_rank_by_day = _load_rs_ranks(config, self.calendar, set(self.ts_codes))
         self.sentiment_risk_by_day = _load_sentiment_risk(config)
         self.env_by_day: dict[str, str] = {}
@@ -1707,6 +1724,26 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             if config.exclude_st and ts in data.st_ts_codes:
                 gated_blocks["st"] += 1
                 continue
+            if config.pead_days > 0:
+                # P14 (signal pool): PEAD gate — the entry day must be within
+                # pead_days sessions AFTER a positive earnings forecast
+                # (业绩预告 预增/扭亏/略增/续盈). Names without a recent
+                # positive announcement are blocked. fail-closed on missing
+                # event data (no event = no drift edge).
+                ev_dates = data.pead_events.get(ts)
+                if not ev_dates:
+                    gated_blocks["pead"] += 1
+                    continue
+                cal_idx = data.calendar.index(day) if day in data.calendar else None
+                ok = False
+                if cal_idx is not None:
+                    for i in range(max(0, cal_idx - config.pead_days), cal_idx + 1):
+                        if data.calendar[i] in ev_dates:
+                            ok = True
+                            break
+                if not ok:
+                    gated_blocks["pead"] += 1
+                    continue
             if config.risk_adj_mom_ret_days > 0:
                 # P12 (signal pool): volatility-adjusted momentum gate —
                 # ret over the window / stdev of daily returns over the
