@@ -286,6 +286,14 @@ class BacktestConfig:
     # stock_basic); verified on the current baseline before it may join.
     # 2026-08-07 check: 33 of 673 score>=65 candidates were ST names.
     exclude_st: bool = False
+    # P12 (signal pool, 2026-08-15): volatility-adjusted momentum as an
+    # ADDITIVE entry gate — risk_adj_mom = ret(over ret_days) / stdev of
+    # daily returns (over vol_days) must be >= min (0 = off). Filters for
+    # names whose trend is strong PER UNIT of risk — expected to cut
+    # high-vol chase entries and improve sharpe/DD rather than raw pnl.
+    risk_adj_mom_ret_days: int = 0
+    risk_adj_mom_vol_days: int = 60
+    risk_adj_mom_min: float = 0.0
 
     def _env_position_scale(self, env: str | None) -> float:
         if not self.env_position_scale:
@@ -368,6 +376,12 @@ class BacktestConfig:
             raise ValueError("rsi_reversal_max must be >= 0 (0 disables, 30 = RSI14 < 30 + green day required)")
         if self.down_day_reversal_pct < 0:
             raise ValueError("down_day_reversal_pct must be >= 0 (0 disables, 5 = prior session -5% then green day required)")
+        if self.risk_adj_mom_ret_days < 0:
+            raise ValueError("risk_adj_mom_ret_days must be >= 0 (0 disables; 120 = use 120-session return)")
+        if self.risk_adj_mom_vol_days < 5:
+            raise ValueError("risk_adj_mom_vol_days must be >= 5 (volatility window)")
+        if self.risk_adj_mom_min < 0:
+            raise ValueError("risk_adj_mom_min must be >= 0 (threshold on ret/vol)")
         if self.entry_mode not in ("close", "last_hour_low", "last_hour_hl", "next_open"):
             raise ValueError(
                 "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', 'next_open') "
@@ -1362,6 +1376,44 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             if config.exclude_st and ts in data.st_ts_codes:
                 gated_blocks["st"] += 1
                 continue
+            if config.risk_adj_mom_ret_days > 0:
+                # P12 (signal pool): volatility-adjusted momentum gate —
+                # ret over the window / stdev of daily returns over the
+                # vol window must be >= the threshold. Filters strong-but-
+                # low-vol names (trend per unit of risk); a high-vol chase
+                # entry fails it. Needs ret_days + vol_days of history.
+                closes = data.closes_by_ts.get(ts)
+                need = config.risk_adj_mom_ret_days + config.risk_adj_mom_vol_days + 2
+                if closes is None or len(closes) < need:
+                    gated_blocks["risk_adj_mom"] += 1
+                    continue
+                closes_sorted = sorted(closes, key=lambda kv: kv[0])
+                idx = None
+                for i, (d, _c) in enumerate(closes_sorted):
+                    if str(d) == day:
+                        idx = i
+                        break
+                if idx is None or idx < need:
+                    gated_blocks["risk_adj_mom"] += 1
+                    continue
+                ret = closes_sorted[idx][1] / closes_sorted[idx - config.risk_adj_mom_ret_days][1] - 1.0
+                rets = []
+                for j in range(idx - config.risk_adj_mom_vol_days, idx):
+                    prev = closes_sorted[j - 1][1]
+                    if prev > 0:
+                        rets.append(closes_sorted[j][1] / prev - 1.0)
+                if len(rets) < config.risk_adj_mom_vol_days - 2:
+                    gated_blocks["risk_adj_mom"] += 1
+                    continue
+                mean = sum(rets) / len(rets)
+                var = sum((r - mean) ** 2 for r in rets) / len(rets)
+                vol = var ** 0.5
+                if vol <= 0:
+                    gated_blocks["risk_adj_mom"] += 1
+                    continue
+                if ret / vol < config.risk_adj_mom_min:
+                    gated_blocks["risk_adj_mom"] += 1
+                    continue
             blocked_by = _gate_blocked(config, data, day, ts)
             if blocked_by is not None:
                 gated_blocks[blocked_by] += 1

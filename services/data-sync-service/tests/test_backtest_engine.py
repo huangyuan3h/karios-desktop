@@ -2507,3 +2507,53 @@ def test_exclude_st_gate_allows_non_st() -> None:
     run = simulate(config, data=data)
     assert run.summary.closed == 1
     assert run.summary.gated_blocks.get("st", 0) == 0
+
+
+def test_risk_adj_mom_gate_blocks_low_ratio() -> None:
+    """P12: low ret/vol (choppy) blocks the entry."""
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2025, 1, 1)
+    while len(calendar) < 140:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    # oscillating series: ret_120 ~ 0 but vol high -> ratio ~0 -> blocked
+    import math as _math
+    px = [10.0 + 0.8 * _math.sin(i / 3.0) for i in range(len(calendar))]
+    closes = {TS1: {d: px[i] for i, d in enumerate(calendar)}}
+    scores = {calendar[120]: {CN1: 90.0}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(px[i]), "0") for i, d in enumerate(calendar)]}
+    config = BacktestConfig(start_date=calendar[120], end_date=calendar[-1],
+                            risk_adj_mom_ret_days=60, risk_adj_mom_vol_days=30, risk_adj_mom_min=1.0)
+
+    run = simulate(config, data=data)
+    # oscillating -> ret/vol < 1 -> blocked
+    assert run.summary.closed == 0
+
+
+def test_risk_adj_mom_gate_allows_high_ratio() -> None:
+    """P12: steady climb (high ret, low vol) passes."""
+    import datetime as _dt
+
+    calendar: list[str] = []
+    d = _dt.date(2025, 1, 1)
+    while len(calendar) < 140:
+        if d.weekday() < 5:
+            calendar.append(d.isoformat())
+        d += _dt.timedelta(days=1)
+    # steady climb: ret_60 large, daily vol small -> ratio >> 1
+    px = [10.0 + 0.05 * i for i in range(len(calendar))]
+    closes = {TS1: {d: px[i] for i, d in enumerate(calendar)}}
+    scores = {calendar[120]: {CN1: 90.0}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", str(px[i]), "0") for i, d in enumerate(calendar)]}
+    config = BacktestConfig(start_date=calendar[120], end_date=calendar[-1],
+                            risk_adj_mom_ret_days=60, risk_adj_mom_vol_days=30, risk_adj_mom_min=1.0)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
