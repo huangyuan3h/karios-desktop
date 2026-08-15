@@ -51,7 +51,6 @@ S3_CONFIG: dict[str, float | int | str] = {
     "max_positions": 20,
     "rs_rank_min": 0.5,
     "diverging_scale": 1.0,
-    "panic_cooldown_days": 3,
     "drawdown_circuit_pct": -25.0,
     "slippage_pct": 0.05,
     "pyramid_trigger_pct": 2.5,
@@ -84,6 +83,13 @@ S3_CONFIG: dict[str, float | int | str] = {
     # unchanged (no env labels → no shorten). hold30 -32.3 / hold50 +0.3
     # / hold55 持平 → 45 is the peak.
     "max_hold_env_shorten": 45,
+    # E2 (2026-08-14 数据回填后修正): panic_cooldown 3 → 2. 回填情绪历史
+    # (2024-08 起) 后 panic 冷却在弱市年频繁触发, 3 天把 OOS2 锁死
+    # (288964 次拦截 → 199 笔)。三窗+长窗同口径对比 (新基线=有情绪数据):
+    #   panic=2: OOS2 92.6(+8.2) · train 103.1(+22) · valid 115.8(持平)
+    #            · long 270.1(+34.7)
+    #   panic=3: OOS2 84.4 · train 81.1 · valid 115.8 · long 235.4
+    "panic_cooldown_days": 2,
 }
 
 WINDOWS: dict[str, tuple[str, str]] = {
@@ -118,7 +124,6 @@ HK_S3_CONFIG: dict[str, float | int | str] = {
     "max_positions": 20,
     "rs_rank_min": 0.6,
     "diverging_scale": 1.0,
-    "panic_cooldown_days": 3,
     "slippage_pct": 0.05,
     "pyramid_trigger_pct": 2.5,
     "pyramid_add_scale": 0.5,

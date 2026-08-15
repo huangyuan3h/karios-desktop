@@ -44,7 +44,6 @@ S3_CONFIG: dict[str, float | int | str] = {
     "max_positions": 20,
     "rs_rank_min": 0.5,
     "diverging_scale": 1.0,
-    "panic_cooldown_days": 3,
     "drawdown_circuit_pct": -25.0,
     "slippage_pct": 0.05,
     "pyramid_trigger_pct": 2.5,
@@ -63,6 +62,8 @@ S3_CONFIG: dict[str, float | int | str] = {
     "entry_style_rs_min": 0.7,
     "entry_style_dip_min": 3.0,
     "max_hold_env_shorten": 45,
+    # E2 (2026-08-14): panic_cooldown 3→2 — 同 S3_CONFIG (弱市年冷却过严)。
+    "panic_cooldown_days": 2,
 }
 
 HK_S3_CONFIG: dict[str, float | int | str] = {
@@ -78,7 +79,6 @@ HK_S3_CONFIG: dict[str, float | int | str] = {
     "max_positions": 20,
     "rs_rank_min": 0.6,
     "diverging_scale": 1.0,
-    "panic_cooldown_days": 3,
     "drawdown_circuit_pct": -25.0,
     "slippage_pct": 0.05,
     "pyramid_trigger_pct": 2.5,

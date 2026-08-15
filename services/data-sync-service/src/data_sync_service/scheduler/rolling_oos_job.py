@@ -49,7 +49,6 @@ S3_CONFIG: dict[str, float | int | str] = {
     "max_positions": 20,
     "rs_rank_min": 0.5,
     "diverging_scale": 1.0,
-    "panic_cooldown_days": 3,
     "drawdown_circuit_pct": -25.0,
     "slippage_pct": 0.05,
     "pyramid_trigger_pct": 2.5,
@@ -63,6 +62,9 @@ S3_CONFIG: dict[str, float | int | str] = {
     "entry_style_rs_min": 0.7,
     "entry_style_dip_min": 3.0,
     "max_hold_env_shorten": 45,
+    # E2 (2026-08-14): panic_cooldown 3→2 — 情绪历史回填后弱市年冷却过严
+    # 锁死交易; 三窗+长窗验证 2 天最优 (OOS2 +8.2 / train +22 / long +34.7)。
+    "panic_cooldown_days": 2,
 }
 
 HK_S3_CONFIG: dict[str, float | int | str] = {
