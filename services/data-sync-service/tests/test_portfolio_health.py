@@ -174,6 +174,33 @@ def test_build_attaches_candidates_and_pyramid_flags():
     assert out["s3Rules"]["pyramidTriggerPct"] == 2.5
 
 
+def test_s3_rules_suggested_size_env_scaled_d3():
+    """D3: uptrend sentiment -> suggestedSizePct = 10% * 1.25 = 12.5,
+    envScaleToday surfaced for the UI."""
+    cands = [{"symbol": "CN:600111", "ts_code": "600111.SH",
+              "industry": "有色", "score": 71.0, "rs": 0.62, "regime": "Strong"}]
+    with (
+        patch("data_sync_service.db.get_connection", return_value=FakeConn(BARS)),
+        patch("data_sync_service.db.paper_trading.today_iso", return_value="2026-08-07"),
+        patch.object(ph, "list_registry", return_value=REGISTRY),
+        patch.object(ph, "_pyramided_symbols", return_value={"CN:300628"}),
+        patch("data_sync_service.service.paper_s3.build_s3_candidates", return_value=cands),
+        patch("data_sync_service.service.backtest_engine._load_regime_by_day",
+              return_value={"2026-08-07": "Strong"}),
+        patch("data_sync_service.service.market_sentiment.get_cn_sentiment",
+              return_value={"items": [{"riskMode": "hot", "upCount": 300, "downCount": 100,
+                                       "yesterdayLimitupPremium": 1.0}]}),
+        patch("data_sync_service.service.market_sentiment.get_panic_cooldown",
+              return_value={"lastPanicDate": None, "cooldownEndDate": None, "active": False}),
+        patch.object(ph, "_lookup_stock_basic", return_value=({"600111.SH": "北方稀土"}, {})),
+    ):
+        out = ph.build_portfolio_health(trade_date="2026-08-07")
+
+    assert out["s3Rules"]["suggestedSizePct"] == 12.5  # 10% * 1.25 (uptrend)
+    assert out["s3Rules"]["envScaleToday"] == 1.25
+    assert out["s3Rules"]["envPositionScale"] == "uptrend:1.25,fan:0.75"
+
+
 def test_detect_line_ops_trail_up_first_baseline_no_op() -> None:
     assert ph._detect_line_ops(
         prev_trail=None, cur_trail=36.828, prev_stop=None, cur_stop=37.905,

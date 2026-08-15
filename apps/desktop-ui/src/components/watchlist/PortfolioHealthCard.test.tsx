@@ -169,6 +169,22 @@ describe('PortfolioHealthCard', () => {
     expect(screen.getByText('F')).toBeDefined();
   });
 
+  it('uses env-scaled sleeve when envScaleToday present (D3)', async () => {
+    const mk = (n: string, s: number) => ({ symbol: `CN:${s}`, name: n, score: s, rs: 0.8 });
+    fetchPortfolioHealth.mockResolvedValue({
+      tradeDate: '2026-08-15',
+      regime: 'Strong',
+      s3Candidates: [mk('A', 100), mk('B', 99)],
+      s3CandidateTotal: 2,
+      s3Rules: { suggestedSizePct: 12.5, envScaleToday: 1.25 },
+      holdings: [],
+      hkHealth: null,
+    });
+    renderCard();
+    expect(await screen.findByText(/每票建议 12.5%（10% × 今日环境×1.25 · 已含 D3 环境仓位）/)).toBeDefined();
+    expect(screen.getAllByText('买 12.5%').length).toBe(2);
+  });
+
   it('opens the stock page when a holding row is clicked', async () => {
     fetchPortfolioHealth.mockResolvedValue({
       tradeDate: '2026-08-07',

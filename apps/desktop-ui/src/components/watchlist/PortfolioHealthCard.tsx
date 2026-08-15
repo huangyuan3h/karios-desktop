@@ -158,6 +158,7 @@ function BuyList({
   candidates,
   total,
   suggestedSizePct,
+  envScaleToday,
   remindedSymbols,
   boughtSymbols,
   onRemind,
@@ -166,6 +167,7 @@ function BuyList({
   candidates: PortfolioCandidate[];
   total?: number;
   suggestedSizePct?: number | null;
+  envScaleToday?: number | null;
   remindedSymbols: Set<string>;
   boughtSymbols: Set<string>;
   onRemind: (c: PortfolioCandidate, sizePct: number) => void;
@@ -175,6 +177,7 @@ function BuyList({
   const size = suggestedSizePct ?? 5;
   const shown = expanded ? candidates : candidates.slice(0, 5);
   const hidden = candidates.length - shown.length;
+  const envScale = envScaleToday ?? 1;
   return (
     <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
       <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
@@ -183,7 +186,7 @@ function BuyList({
           <span className="text-[10px] font-normal text-[var(--k-muted)]">候选池 {total} 只</span>
         )}
         <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
-          每票建议 {size}%（回测口径 10%×≤10 笔 = 满仓）
+          每票建议 {size}%（10% × 今日环境×{envScale}{envScale !== 1 ? ' · 已含 D3 环境仓位' : ''}）
         </span>
       </div>
       <div className="flex flex-col gap-1">
@@ -495,6 +498,7 @@ function HealthPanel({
           candidates={candidates}
           total={block?.s3CandidateTotal}
           suggestedSizePct={Number((block?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct) || null}
+          envScaleToday={Number((block?.s3Rules as Record<string, unknown> | undefined)?.envScaleToday) || null}
           remindedSymbols={remindedSymbols}
           boughtSymbols={boughtSymbols}
           onRemind={onRemind}

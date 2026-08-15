@@ -97,6 +97,10 @@ export function MobileWatchlistPage() {
   ];
   const exitHoldings = holdings.filter(({ h }) => h.action === 'EXIT');
   const candidates = cn?.s3Candidates ?? [];
+  const s3Rules = (cn?.s3Rules ?? {}) as Record<string, unknown>;
+  // D3 (2026-08-15): 今日每票建议仓位 = 10% × 环境缩放（主升 1.25 / 电风扇 0.75）。
+  const suggestPct = typeof s3Rules.suggestedSizePct === 'number' ? s3Rules.suggestedSizePct : 10;
+  const envScaleToday = typeof s3Rules.envScaleToday === 'number' ? s3Rules.envScaleToday : 1;
   const trend = market.data?.trend ?? {};
   const quotes = market.data?.quotes ?? {};
 
@@ -217,6 +221,10 @@ export function MobileWatchlistPage() {
       <MobileSection title={`下午 2 点买入清单${candidates.length ? `（${candidates.length}）` : ''}`}>
         {candidates.length ? (
           <div className="space-y-2">
+            <div className="px-1 text-[var(--m-text-xs)] text-[var(--k-muted)]">
+              每票建议 {suggestPct}%（10% × 今日环境×{envScaleToday}
+              {envScaleToday !== 1 ? ' · 已含 D3 环境仓位' : ''}）
+            </div>
             {candidates.map((c) => (
               <MobileCard key={c.symbol ?? c.ts_code} className="p-3">
                 <div className="flex items-center justify-between gap-2">
@@ -231,6 +239,9 @@ export function MobileWatchlistPage() {
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="font-mono text-[var(--m-text-sm)] tabular-nums">score {c.score ?? '—'}</div>
+                    {envScaleToday !== 1 ? (
+                      <StatusPill tone="open">买 {suggestPct}%</StatusPill>
+                    ) : null}
                     {c.alphaEvents?.[0]?.grade ? (
                       <StatusPill tone="open">{c.alphaEvents[0].grade}</StatusPill>
                     ) : null}

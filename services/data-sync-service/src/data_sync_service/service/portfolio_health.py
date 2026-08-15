@@ -21,7 +21,10 @@ from data_sync_service.db.paper_trading import (
     TRAILING_STOP_PCT,
 )
 from data_sync_service.db.watchlist_automation import list_registry
-from data_sync_service.service.paper_s3 import PANIC_COOLDOWN_DAYS
+from data_sync_service.service.paper_s3 import (
+    PANIC_COOLDOWN_DAYS,
+    _env_position_scale_for,
+)
 from data_sync_service.service.realtime_quote import fetch_realtime_quotes
 
 logger = logging.getLogger(__name__)
@@ -625,11 +628,15 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
         sentiment = None
         panic = None
         candidates: list[dict[str, Any]] = []
+        env_scale = 1.0
         try:
             items = get_cn_sentiment(days=1, as_of_date=day)["items"]
             sentiment = items[-1].get("riskMode") if items else None
             panic = get_panic_cooldown(days=10, cooldown_days=PANIC_COOLDOWN_DAYS, as_of_date=day)
             candidates = build_s3_candidates(trade_date=day, max_positions=S3_MAX_POSITIONS)
+            # D3 (2026-08-15): today's env sleeve multiplier (uptrend 1.25 /
+            # fan 0.75 / else 1.0) — same helper as the live paper intake.
+            env_scale = _env_position_scale_for(items)
         except Exception as exc:  # noqa: BLE001
             logger.warning("portfolio health s3 candidates failed: %s", exc)
         rules: dict[str, Any] = {
@@ -640,7 +647,12 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
             "maxHoldDays": MAX_HOLD_DAYS,
             "pyramidTriggerPct": PYRAMID_TRIGGER_PCT,
             "pyramidAddScale": PYRAMID_ADD_SCALE,
-            "suggestedSizePct": SUGGESTED_SIZE_PCT,
+            # D3 (2026-08-15): env-aware position sizing (uptrend 1.25x /
+            # fan 0.75x) — suggestedSizePct is TODAY's actual sleeve (10% *
+            # env scale), so the buy list / buy dialog use the env-scaled
+            # number directly; envScaleToday explains the multiplier.
+            "suggestedSizePct": round(SUGGESTED_SIZE_PCT * env_scale, 2),
+            "envScaleToday": env_scale,
             # TIP-014 (2026-08-14): env-aware rules surfaced for the UI —
             # mirrors the S-3 backtest config.
             "maxHoldEnvShorten": MAX_HOLD_DAYS_ENV_SHORTEN,
