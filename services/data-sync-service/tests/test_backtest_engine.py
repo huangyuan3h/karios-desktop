@@ -2166,3 +2166,45 @@ def test_breakout_gate_allows_breakout() -> None:
 
     run = simulate(config, data=data)
     assert run.summary.closed == 1
+
+
+def test_volume_breakout_gate_blocks_thin_volume() -> None:
+    """P2: with volume_breakout_mult=2.0, a normal-volume close is blocked."""
+    calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {"2026-06-18": {CN1: 90.0}}
+    closes = {TS1: {d: 10.0 for d in calendar}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    # flat volume: today 100 vs 20d avg... only 5 bars — prior-20 fail-closed
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "100") for d in calendar]}
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", volume_breakout_mult=2.0)
+
+    run = simulate(config, data=data)
+    # insufficient prior-20 history → fail-closed (no entry)
+    assert run.summary.closed == 0
+
+
+def test_volume_breakout_gate_allows_volume_spike() -> None:
+    """P2: entry-day volume above K x the 20d average passes the gate."""
+    calendar = [f"2026-0{6 - i // 7}-{15 + i % 7:02d}" for i in range(24)]
+    # fix overlapping dates via explicit list
+    calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22",
+                "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26", "2026-06-29", "2026-06-30",
+                "2026-07-01", "2026-07-02", "2026-07-03", "2026-07-06", "2026-07-07", "2026-07-08",
+                "2026-07-09", "2026-07-10", "2026-07-13", "2026-07-14", "2026-07-15", "2026-07-16"]
+    scores = {calendar[21]: {CN1: 90.0}}
+    closes = {TS1: {d: 10.0 for d in calendar}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    # 20 prior bars at vol=100, entry-day vol=300 (> 2x avg)
+    bars = []
+    for d in calendar:
+        if d == calendar[21]:
+            bars.append((d, "10", "10", "10", "10", "300"))
+        else:
+            bars.append((d, "10", "10", "10", "10", "100"))
+    data.bars_by_ts = {TS1: bars}
+    config = BacktestConfig(start_date=calendar[21], end_date=calendar[23], volume_breakout_mult=2.0)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1

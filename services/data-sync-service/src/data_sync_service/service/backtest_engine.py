@@ -237,6 +237,11 @@ class BacktestConfig:
     # (0 = off). Never replaces RS/score/env; verified by three windows +
     # long window before it may join the live config.
     breakout_days: int = 0
+    # P2 (signal pool, 2026-08-15): volume breakout as an ADDITIVE entry
+    # gate — the entry-day volume must exceed K x its 20-day average volume
+    # (0 = off; 1.5 = 50% above the 20d mean). Volume is a new dimension
+    # (RS/score know nothing about it) — same three-window verification bar.
+    volume_breakout_mult: float = 0.0
 
     def _env_position_scale(self, env: str | None) -> float:
         if not self.env_position_scale:
@@ -307,6 +312,8 @@ class BacktestConfig:
             raise ValueError(f"entry_sort must be one of ('score', 'score_rs', 'rs') (got {self.entry_sort!r})")
         if self.breakout_days < 0:
             raise ValueError("breakout_days must be >= 0 (0 disables, 20 = close > 20-day high required)")
+        if self.volume_breakout_mult < 0:
+            raise ValueError("volume_breakout_mult must be >= 0 (0 disables, 1.5 = 50%% above the 20d avg volume)")
         if self.entry_mode not in ("close", "last_hour_low", "last_hour_hl", "next_open"):
             raise ValueError(
                 "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', 'next_open') "
@@ -1349,6 +1356,40 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 prior = [c for (_d, c) in closes[idx - config.breakout_days: idx] if c is not None]
                 if not prior or closes[idx][1] <= max(prior):
                     gated_blocks["breakout"] += 1
+                    continue
+            if config.volume_breakout_mult > 0:
+                # P2 (signal pool): volume breakout gate — the entry-day
+                # volume must exceed K x the 20-session average volume.
+                # Volume is invisible to RS/score/env, so this is a true
+                # additive dimension (and a classic A-share manipulation
+                # tell: 放量突破). No prior-20-bar history -> fail-closed.
+                bars = data.bars_by_ts.get(ts)
+                if not bars:
+                    gated_blocks["volume"] += 1
+                    continue
+                prior_bars = sorted(
+                    [b for b in bars if str(b[0]) < day], key=lambda b: str(b[0])
+                )[-20:]
+                if len(prior_bars) < 20:
+                    gated_blocks["volume"] += 1
+                    continue
+                vols = []
+                for b in prior_bars:
+                    try:
+                        vols.append(float(b[5]))
+                    except (TypeError, ValueError):
+                        continue
+                today_bar = next((b for b in bars if str(b[0]) == day), None)
+                if len(vols) < 20 or today_bar is None:
+                    gated_blocks["volume"] += 1
+                    continue
+                try:
+                    today_vol = float(today_bar[5])
+                except (TypeError, ValueError):
+                    today_vol = 0.0
+                avg_vol = sum(vols) / len(vols)
+                if avg_vol <= 0 or today_vol <= avg_vol * config.volume_breakout_mult:
+                    gated_blocks["volume"] += 1
                     continue
             if config.trend_score_min > 0:
                 trend = _trend_score(
