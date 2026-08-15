@@ -2474,3 +2474,36 @@ def test_down_day_reversal_gate_allows_drop_then_green() -> None:
 
     run = simulate(config, data=data)
     assert run.summary.closed == 1
+
+
+def test_exclude_st_gate_blocks_st_names() -> None:
+    """P16: with exclude_st=True, an ST-listed name is blocked at entry."""
+    calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {"2026-06-18": {CN1: 90.0}}
+    closes = {TS1: {d: 10.0 for d in calendar}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]}
+    # TS1 (CN:600001) is marked as ST in the loaded set
+    data.st_ts_codes = {TS1}
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", exclude_st=True)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 0
+    assert run.summary.gated_blocks.get("st", 0) >= 1
+
+
+def test_exclude_st_gate_allows_non_st() -> None:
+    """P16: non-ST names pass with exclude_st=True."""
+    calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {"2026-06-18": {CN1: 90.0}}
+    closes = {TS1: {d: 10.0 for d in calendar}}
+    data = _data(calendar, scores, closes)
+    data.env_by_day = {d: "unknown" for d in calendar}
+    data.bars_by_ts = {TS1: [(d, "10", "10", "10", "10", "0") for d in calendar]}
+    data.st_ts_codes = {"other.ts"}  # TS1 not in it
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", exclude_st=True)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1
+    assert run.summary.gated_blocks.get("st", 0) == 0

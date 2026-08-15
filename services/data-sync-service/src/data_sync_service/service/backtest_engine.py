@@ -280,6 +280,12 @@ class BacktestConfig:
     # day must close green (0 = off; 5 = prior -5% then green). Same
     # neutral_block caveat as P7.
     down_day_reversal_pct: float = 0.0
+    # P16 (signal pool, 2026-08-15): ST/tail-risk exclusion as an ADDITIVE
+    # entry gate — when True, names whose stock_basic name contains ST
+    # (ST/*ST) are excluded from entries. Data is already local (name in
+    # stock_basic); verified on the current baseline before it may join.
+    # 2026-08-07 check: 33 of 673 score>=65 candidates were ST names.
+    exclude_st: bool = False
 
     def _env_position_scale(self, env: str | None) -> float:
         if not self.env_position_scale:
@@ -492,6 +498,9 @@ class BacktestData:
             _load_flow_mainline_data(config, self.calendar)
         )
         self.industry_by_ts = _load_industries(self.ts_codes)
+        self.st_ts_codes: set[str] = set()
+        if config.exclude_st:
+            self.st_ts_codes = _load_st_names()
         self.rs_rank_by_day = _load_rs_ranks(config, self.calendar, set(self.ts_codes))
         self.sentiment_risk_by_day = _load_sentiment_risk(config)
         self.env_by_day: dict[str, str] = {}
@@ -941,6 +950,27 @@ def _load_industries(ts_codes: list[str]) -> dict[str, str]:
     return out
 
 
+def _load_st_names() -> set[str]:
+    """ts_code set of ST/*ST names (P16 tail-risk exclusion).
+
+    stock_basic.name is the live name; a name containing ST means the name
+    is ST-listed (ST / *ST / S*ST). Data is already local — zero new sync.
+    """
+    out: set[str] = set()
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT ts_code FROM stock_basic WHERE name LIKE '%ST%'"
+                )
+                for (ts,) in cur.fetchall():
+                    if ts:
+                        out.add(str(ts))
+    except Exception:  # noqa: BLE001 — fresh DBs may lack the table
+        return out
+    return out
+
+
 def _gate_blocked(
     config: BacktestConfig,
     data: BacktestData,
@@ -1329,6 +1359,9 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             if resolved is None or resolved[0] != config.market:
                 continue
             ts = resolved[1]
+            if config.exclude_st and ts in data.st_ts_codes:
+                gated_blocks["st"] += 1
+                continue
             blocked_by = _gate_blocked(config, data, day, ts)
             if blocked_by is not None:
                 gated_blocks[blocked_by] += 1

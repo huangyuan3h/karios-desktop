@@ -1,0 +1,82 @@
+{
+ "OOS2": {
+  "base": {
+   "pnl": 117.2,
+   "dd": 11.7,
+   "sharpe": 6.63,
+   "win": 0.544,
+   "closed": 237,
+   "calmar": 10.0,
+   "st_blocked": 0
+  },
+  "STx": {
+   "pnl": 119.8,
+   "dd": 11.3,
+   "sharpe": 6.41,
+   "win": 0.538,
+   "closed": 236,
+   "calmar": 10.59,
+   "st_blocked": 3145
+  }
+ },
+ "train": {
+  "base": {
+   "pnl": 122.6,
+   "dd": 9.3,
+   "sharpe": 4.4,
+   "win": 0.52,
+   "closed": 123,
+   "calmar": 13.13,
+   "st_blocked": 0
+  },
+  "STx": {
+   "pnl": 122.6,
+   "dd": 9.3,
+   "sharpe": 4.4,
+   "win": 0.52,
+   "closed": 123,
+   "calmar": 13.13,
+   "st_blocked": 1932
+  }
+ },
+ "valid": {
+  "base": {
+   "pnl": 142.2,
+   "dd": 1.8,
+   "sharpe": 11.05,
+   "win": 0.818,
+   "closed": 55,
+   "calmar": 80.85,
+   "st_blocked": 0
+  },
+  "STx": {
+   "pnl": 142.2,
+   "dd": 1.8,
+   "sharpe": 11.05,
+   "win": 0.818,
+   "closed": 55,
+   "calmar": 80.85,
+   "st_blocked": 1565
+  }
+ },
+ "LONG": {
+  "base": {
+   "pnl": 333.9,
+   "dd": 45.1,
+   "sharpe": 2.99,
+   "win": 0.388,
+   "closed": 1069,
+   "calmar": 7.4,
+   "st_blocked": 0
+  },
+  "STx": {
+   "pnl": 331.9,
+   "dd": 51.4,
+   "sharpe": 2.95,
+   "win": 0.383,
+   "closed": 1083,
+   "calmar": 6.45,
+   "st_blocked": 24031
+  }
+ }
+}
