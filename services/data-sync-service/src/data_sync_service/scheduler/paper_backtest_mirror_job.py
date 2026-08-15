@@ -40,9 +40,17 @@ def build_trigger() -> CronTrigger:
 
 
 def run() -> None:
+    # Use the project venv python explicitly — sys.executable can point at
+    # the WRONG interpreter when the service was started with a bare
+    # `uvicorn` (e.g. miniconda python), which then cannot resolve the
+    # venv deps or script path (2026-08-14: exit=2 /miniconda3/bin/python3
+    # can't open file). Resolve the venv interpreter relative to this file.
+    venv_python = Path(sys.executable)
+    if venv_python.name in ("python", "python3"):
+        venv_python = Path(__file__).resolve().parents[2] / ".venv" / "bin" / "python"
     try:
         proc = subprocess.run(
-            [sys.executable, str(SCRIPT), "--market", "HK"],
+            [str(venv_python), str(SCRIPT), "--market", "HK"],
             capture_output=True,
             text=True,
             timeout=600,

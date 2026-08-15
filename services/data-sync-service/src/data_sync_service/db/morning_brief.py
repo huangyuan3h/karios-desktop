@@ -67,7 +67,7 @@ def upsert_brief(
                 f"""
                 INSERT INTO {BRIEFS_TABLE}(id, brief_date, brief_type, items, macro_overview, model_version, source_item_ids, markdown, created_at)
                 VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
-                ON CONFLICT (brief_date, brief_type) DO UPDATE SET
+                ON CONFLICT (id) DO UPDATE SET
                     items = EXCLUDED.items,
                     macro_overview = EXCLUDED.macro_overview,
                     model_version = EXCLUDED.model_version,
