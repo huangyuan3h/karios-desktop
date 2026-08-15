@@ -40,6 +40,7 @@ docs/archive/
 | 日期 | 来源 todo 节 | 归档文件 | 一句话结论 |
 |------|--------------|----------|-----------|
 | 2026-08-04 | §2 收益 · P2 | [`2026-08-04-tip-011-execution-source.md`](./2026-08-04-tip-011-execution-source.md) | 开火来源归因：TV/ALPHA/MANUAL 贯穿 write-path，`/v1/execution/source-stats` + Copy attribution 表，用户零操作 |
+| 2026-08-15 | §8 探索池 D3/D6 + 回测文档整理 | [`2026-08-15-backtest-d3-d6-docs.md`](./2026-08-15-backtest-d3-d6-docs.md) | D3 环境仓位固化（uptrend 1.25×/fan 0.75×，三窗全升长窗+64pt）；D6 profit_trail 复核排除（截断右尾）；新建 docs/backtests/ 四份实验记录（成功+失败全记录） |
 
 ---
 
