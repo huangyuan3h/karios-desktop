@@ -2137,3 +2137,32 @@ def test_max_hold_env_shorten_ignores_unknown_entries() -> None:
     # no early close (env UNKNOWN → normal 60-day hold) → end_of_window
     assert run.summary.closed == 1
     assert run.trades[0].close_reason == "end_of_window"
+
+
+def test_breakout_gate_blocks_non_breakout() -> None:
+    """P1: with breakout_days=3, a close that does NOT exceed the prior
+    3-day high is blocked at entry."""
+    calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}}
+    # flat/declining closes: never exceeds the prior 3-day high
+    closes = {TS1: {"2026-06-15": 10.0, "2026-06-16": 10.0, "2026-06-17": 10.0,
+                    "2026-06-18": 10.0, "2026-06-19": 9.0, "2026-06-22": 9.0}}
+    data = _data_with_bars5(calendar, scores, closes, {d: {TS1: 0.9} for d in calendar})
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", breakout_days=3)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 0
+
+
+def test_breakout_gate_allows_breakout() -> None:
+    """P1: a close ABOVE the prior 3-day high passes the breakout gate."""
+    calendar = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19", "2026-06-22"]
+    scores = {"2026-06-18": {CN1: 90.0}, "2026-06-19": {CN1: 90.0}}
+    # 06-18 close 10.5 > prior 3-day highs (10.0) → breakout OK (+5%, not limit-up)
+    closes = {TS1: {"2026-06-15": 10.0, "2026-06-16": 10.0, "2026-06-17": 10.0,
+                    "2026-06-18": 10.5, "2026-06-19": 10.5, "2026-06-22": 10.5}}
+    data = _data_with_bars5(calendar, scores, closes, {d: {TS1: 0.9} for d in calendar})
+    config = BacktestConfig(start_date="2026-06-18", end_date="2026-06-22", breakout_days=3)
+
+    run = simulate(config, data=data)
+    assert run.summary.closed == 1

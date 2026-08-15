@@ -232,6 +232,11 @@ class BacktestConfig:
     # Unknown env / unmapped labels keep scale 1.0. Purely a leverage knob —
     # expected to shift the return/DD ratio, not the trade selection.
     env_position_scale: str = ""
+    # P1 (signal pool, 2026-08-15): turtle Donchian breakout as an ADDITIVE
+    # entry gate — a candidate needs close > N-day high on the entry day
+    # (0 = off). Never replaces RS/score/env; verified by three windows +
+    # long window before it may join the live config.
+    breakout_days: int = 0
 
     def _env_position_scale(self, env: str | None) -> float:
         if not self.env_position_scale:
@@ -300,6 +305,8 @@ class BacktestConfig:
             raise ValueError("max_per_industry must be in [0, 100] (0 disables, 4 = at most 4 holdings per industry)")
         if self.entry_sort not in ("score", "score_rs", "rs"):
             raise ValueError(f"entry_sort must be one of ('score', 'score_rs', 'rs') (got {self.entry_sort!r})")
+        if self.breakout_days < 0:
+            raise ValueError("breakout_days must be >= 0 (0 disables, 20 = close > 20-day high required)")
         if self.entry_mode not in ("close", "last_hour_low", "last_hour_hl", "next_open"):
             raise ValueError(
                 "entry_mode must be one of ('close', 'last_hour_low', 'last_hour_hl', 'next_open') "
@@ -1322,6 +1329,27 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             elif style == "blocked":
                 gated_blocks["style_blocked"] += 1
                 continue
+            if config.breakout_days > 0:
+                # P1 (signal pool): turtle Donchian breakout gate — the
+                # entry-day close must exceed the highest close of the prior
+                # N sessions. ADDITIVE only: it tightens entries, never
+                # loosens RS/score/env conditions.
+                closes = data.closes_by_ts.get(ts)
+                if closes is None:
+                    gated_blocks["breakout"] += 1
+                    continue
+                idx = None
+                for i, (d, _c) in enumerate(closes):
+                    if str(d) == day:
+                        idx = i
+                        break
+                if idx is None or idx < config.breakout_days:
+                    gated_blocks["breakout"] += 1
+                    continue
+                prior = [c for (_d, c) in closes[idx - config.breakout_days: idx] if c is not None]
+                if not prior or closes[idx][1] <= max(prior):
+                    gated_blocks["breakout"] += 1
+                    continue
             if config.trend_score_min > 0:
                 trend = _trend_score(
                     data.rs_rank_by_day.get(day, {}).get(ts),
