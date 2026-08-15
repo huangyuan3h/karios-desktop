@@ -66,6 +66,10 @@ def test_get_cn_industry_fund_flow_json_shape() -> None:
             return_value=dates,
         ),
         patch(
+            "data_sync_service.service.industry_fund_flow.trade_dates_upto",
+            return_value=dates,
+        ),
+        patch(
             "data_sync_service.service.industry_fund_flow.get_top_rows",
             return_value=top_rows,
         ),
@@ -126,7 +130,7 @@ def test_get_cn_industry_fund_flow_db_call_count_with_as_of_date() -> None:
             "data_sync_service.service.industry_fund_flow.get_latest_date",
         ) as mock_latest,
         patch(
-            "data_sync_service.service.industry_fund_flow.get_dates_upto",
+            "data_sync_service.service.industry_fund_flow.trade_dates_upto",
             return_value=dates,
         ) as mock_dates,
         patch(

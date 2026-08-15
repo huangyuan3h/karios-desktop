@@ -117,6 +117,7 @@ class TestCreateScheduler:
             "candidate_diff",
             "webhook_delivery",
             "behavior_audit",
+            "minute_capture",
         }
         assert ids == expected
 

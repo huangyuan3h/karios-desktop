@@ -55,6 +55,11 @@ S3_CONFIG: dict[str, float | int | str] = {
     "pyramid_add_scale": 0.5,
     "pyramid_max_adds": 1,
     "exclude_boards": "300",
+    # OPT-105 (2026-08-13): Strong-regime ATR stops — must mirror
+    # scripts/run_walk_forward.py S3_CONFIG (was missing here, causing the
+    # rolling-OOS monitor to diverge from the official baseline).
+    "atr_stop_mult": 2.0,
+    "atr_stop_strong_only": True,
     # TIP-014 (2026-08-14): weak/neutral-day entry block + env-aware entry
     # style — mirrors scripts/run_walk_forward.py S3_CONFIG (S-3 audit standard).
     "neutral_block": True,

@@ -16,6 +16,7 @@ from typing import Any
 
 from data_sync_service.db.paper_trading import (
     MAX_HOLD_DAYS,
+    MAX_HOLD_DAYS_ENV_SHORTEN,
     STOP_LOSS_PCT,
     TRAILING_STOP_PCT,
 )
@@ -640,6 +641,12 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
             "pyramidTriggerPct": PYRAMID_TRIGGER_PCT,
             "pyramidAddScale": PYRAMID_ADD_SCALE,
             "suggestedSizePct": SUGGESTED_SIZE_PCT,
+            # TIP-014 (2026-08-14): env-aware rules surfaced for the UI —
+            # mirrors the S-3 backtest config.
+            "maxHoldEnvShorten": MAX_HOLD_DAYS_ENV_SHORTEN,
+            "entryStyle": "auto",
+            "neutralBlock": True,
+            "panicCooldownDays": PANIC_COOLDOWN_DAYS,
         }
 
     try:
