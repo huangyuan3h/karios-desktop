@@ -117,6 +117,11 @@ PYRAMID_ENABLED = True
 
 SENTIMENT_BLOCK_MODES = ("no_new_positions", "extreme_caution")
 
+# E2 (2026-08-14): panic cooldown 3→2 — mirrors the backtest S3_CONFIG
+# (panic_cooldown_days=2). 情绪历史回填后弱市年 3 天冷却锁死交易;
+# 长窗 +34.7pt / DD 45.1→33.0 (三窗+蒙特卡洛验证)。
+PANIC_COOLDOWN_DAYS = 2
+
 # TIP-014 (2026-08-14): implicit-weak breadth ratio (up/down < 0.5 blocks
 # new CN entries). Mirrors execution_gate.WEAK_RATIO_MAX + env_label.
 WEAK_RATIO_MAX = 0.5
@@ -357,7 +362,7 @@ def build_s3_candidates(
         diverging_scale=1.0,
     )
     regime_by_day = _load_regime_by_day(cfg, [day])
-    panic = get_panic_cooldown(days=10, cooldown_days=3, as_of_date=day)
+    panic = get_panic_cooldown(days=10, cooldown_days=PANIC_COOLDOWN_DAYS, as_of_date=day)
 
     # 2026-08-12: drawdown circuit breaker (CN line). Block new entries when
     # the trailing realized pnl is in a losing streak — mirrors the backtest

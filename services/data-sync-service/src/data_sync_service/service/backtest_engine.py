@@ -226,16 +226,6 @@ class BacktestConfig:
     # window, avg -6.1%) — block new entries on them. UNKNOWN days (no
     # sentiment data, e.g. pre-2026 OOS2) are NOT blocked.
     neutral_block: bool = False
-    # E1 (2026-08-14): neutral_block 大环境条件化 — the weak-day block is
-    # only applied when the RECENT market is NOT itself weak-dominated.
-    # Diagnosis: OOS2 (weak-year) weak-day trades were profitable (+1.78%,
-    # 14 trades — oversold bounces), valid weak-day trades were 16/16 losing
-    # (2026-03-02 single-day crash). weak_ratio = share of weak days in the
-    # prior NEUTRAL_WEAK_LOOKBACK sessions; when it exceeds
-    # neutral_weak_ratio_max the block is SKIPPED (weak market → weak days
-    # are bounce points, let them trade). 0 = disabled (block always).
-    neutral_weak_ratio_max: float = 0.0
-    neutral_weak_lookback: int = 60
 
     def __post_init__(self) -> None:
         if self.market not in MARKETS:
@@ -301,10 +291,6 @@ class BacktestConfig:
             raise ValueError(
                 "entry_style must be one of ('score', 'momentum', 'dip', 'auto') "
                 f"(got {self.entry_style!r})"
-            )
-        if not 0.0 <= self.neutral_weak_ratio_max <= 1.0:
-            raise ValueError(
-                f"neutral_weak_ratio_max must be in [0, 1] (0 = disabled, got {self.neutral_weak_ratio_max!r})"
             )
         if self.min_mv < 0 or self.max_mv < 0 or self.mv_max_diverging < 0:
             raise ValueError("min_mv / max_mv / mv_max_diverging must be >= 0 (亿元; 0 disables the bound)")
@@ -433,12 +419,6 @@ class BacktestData:
             from data_sync_service.service.env_label import load_env_by_day
 
             self.env_by_day = load_env_by_day(config.start_date, config.end_date)
-        # E1: per-day rolling weak-day share over the prior N sessions.
-        self.weak_ratio_by_day: dict[str, float] = {}
-        if config.neutral_block and config.neutral_weak_ratio_max > 0:
-            self.weak_ratio_by_day = _load_weak_ratio_by_day(
-                config, self.calendar, self.env_by_day
-            )
         self.mv_by_day = _load_market_caps(config, set(self.ts_codes))
 
 
@@ -837,30 +817,6 @@ def _load_sentiment_risk(config: BacktestConfig) -> dict[str, str]:
             )
             for d, mode in cur.fetchall():
                 out[str(d)] = str(mode or "")
-    return out
-
-
-def _load_weak_ratio_by_day(
-    config: BacktestConfig,
-    calendar: list[str],
-    env_by_day: dict[str, str],
-) -> dict[str, float]:
-    """E1: per-day share of weak days in the prior ``neutral_weak_lookback``
-    sessions (only counting days that HAVE an env label — unknown days don't
-    count as weak). 0.0 when fewer than 10 labelled days precede."""
-    out: dict[str, float] = {}
-    lookback = max(10, config.neutral_weak_lookback)
-    labelled_window: list[str] = []
-    for d in calendar:
-        d = str(d)
-        out[d] = (
-            sum(1 for x in labelled_window[-lookback:] if x == ENV_WEAK)
-            / max(1, len(labelled_window[-lookback:]))
-            if labelled_window[-lookback:]
-            else 0.0
-        )
-        if d in env_by_day:
-            labelled_window.append(env_by_day[d])
     return out
 
 
@@ -1280,24 +1236,12 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
             # implicit-weak days (ratio < 0.5 with only normal/caution
             # risk_mode — 16/16 losing trades in the valid window, avg
             # -6.1%). UNKNOWN days (no sentiment data) stay open.
-            # E1 (revised): the block applies ONLY when the recent market is
-            # NOT weak-dominated. Diagnosis table (threshold 0.4):
-            #   OOS2/train weak-day trades with weak_ratio>=0.4: +1.78%/+12.17%
-            #     (weak market → weak days are the NORM, tradable)
-            #   valid weak-day trades with weak_ratio<0.4: -6.10% (isolated
-            #     weak day in a strong market = hazard)
-            # So: skip the block when rolling weak share is HIGH (weak market);
-            # apply it when the weak day is ISOLATED in a strong market.
-            if config.neutral_block:
-                env_today = data.env_by_day.get(day)
-                skip_e1 = False
-                if config.neutral_weak_ratio_max > 0 and env_today in (ENV_NEUTRAL, ENV_WEAK):
-                    wr = data.weak_ratio_by_day.get(day, 0.0)
-                    if wr >= config.neutral_weak_ratio_max:
-                        skip_e1 = True
-                if env_today in (ENV_NEUTRAL, ENV_WEAK) and not skip_e1:
-                    gated_blocks["neutral"] += 1
-                    continue
+            # (E1 conditionalization was tested 2026-08-14 and dropped — the
+            # panic_cooldown 3→2 fix (E2) already resolves weak-year lockouts;
+            # E1 showed no effect on the new baseline.)
+            if config.neutral_block and data.env_by_day.get(day) in (ENV_NEUTRAL, ENV_WEAK):
+                gated_blocks["neutral"] += 1
+                continue
             if sym in positions:
                 continue
             resolved = _resolve_ts_code(sym)

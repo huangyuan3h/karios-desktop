@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-15T00:24:33.659707+00:00",
-  "tag": "e1-r04",
+  "generatedAt": "2026-08-15T00:44:04.094742+00:00",
+  "tag": "",
   "config": {
     "score_threshold": 65.0,
     "max_hold_days": 60,
@@ -27,8 +27,7 @@
     "entry_style_rs_min": 0.7,
     "entry_style_dip_min": 3.0,
     "max_hold_env_shorten": 45,
-    "panic_cooldown_days": 2,
-    "neutral_weak_ratio_max": 0.4
+    "panic_cooldown_days": 2
   },
   "results": {
     "OOS2": {
