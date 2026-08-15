@@ -558,6 +558,56 @@ def test_run_intake_s3_sleeve_scaled_by_allocation() -> None:
     assert kw["sleeve_pct"] == pytest.approx(0.04)  # 0.10 * 0.4
 
 
+def test_run_intake_s3_sleeve_env_scaled_uptrend_day() -> None:
+    """D3: uptrend day → sleeve 10% * 1.25 = 12.5%."""
+    with _patch_day_gates(), patch.object(
+        paper_s3, "get_cn_sentiment",
+        return_value={"items": [{"riskMode": "hot", "upCount": 300, "downCount": 100,
+                                 "yesterdayLimitupPremium": 1.0}]},
+    ), patch.object(
+        paper_s3, "_ret5_for", return_value=10.0,
+    ), patch.object(
+        paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
+    ), patch.object(paper_s3, "insert_paper_trade", return_value={"id": "x"}) as ins:
+        paper_s3._load_today_scores.return_value = {CN_A: 90.0}
+        summary = paper_s3.run_intake_s3(trade_date="2026-08-07")
+    assert summary["inserted"] == 1
+    kw = ins.call_args.kwargs
+    assert kw["sleeve_pct"] == pytest.approx(0.125)  # 0.10 * 1.25
+
+
+def test_run_intake_s3_sleeve_env_scaled_fan_day() -> None:
+    """D3: fan day → sleeve 10% * 0.75 = 7.5%."""
+    with _patch_day_gates(), patch.object(
+        paper_s3, "get_cn_sentiment",
+        return_value={"items": [{"riskMode": "normal", "upCount": 100, "downCount": 100,
+                                 "yesterdayLimitupPremium": 0.0}]},
+    ), patch.object(
+        paper_s3, "_ret5_for", return_value=-5.0,
+    ), patch.object(
+        paper_s3, "fetch_last_ohlcv_batch", return_value={"600001.SH": [("2026-08-07", 10, 10, 10, 10.5, 1000)]}
+    ), patch.object(paper_s3, "insert_paper_trade", return_value={"id": "x"}) as ins:
+        paper_s3._load_today_scores.return_value = {CN_A: 90.0}
+        summary = paper_s3.run_intake_s3(trade_date="2026-08-07")
+    assert summary["inserted"] == 1
+    kw = ins.call_args.kwargs
+    assert kw["sleeve_pct"] == pytest.approx(0.075)  # 0.10 * 0.75
+
+
+def test_env_position_scale_for_mapping() -> None:
+    """D3: env → sleeve scale mapping (uptrend 1.25 / fan 0.75 / others 1.0)."""
+    assert paper_s3._env_position_scale_for(
+        [{"riskMode": "hot", "upCount": 300, "downCount": 100, "yesterdayLimitupPremium": 1.0}]
+    ) == 1.25
+    assert paper_s3._env_position_scale_for(
+        [{"riskMode": "normal", "upCount": 100, "downCount": 100, "yesterdayLimitupPremium": 0.0}]
+    ) == 0.75
+    assert paper_s3._env_position_scale_for(
+        [{"riskMode": "extreme_caution", "upCount": 100, "downCount": 100, "yesterdayLimitupPremium": 0.0}]
+    ) == 1.0  # weak env not mapped
+    assert paper_s3._env_position_scale_for([]) == 1.0
+
+
 def test_signal_snapshot_for_captures_flow_and_alpha(monkeypatch) -> None:
     """C4 seed: entry snapshot carries industry flow rank + alpha count."""
     from data_sync_service.service import portfolio_health as ph

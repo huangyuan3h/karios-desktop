@@ -1,0 +1,118 @@
+{
+ "OOS2": {
+  "base": {
+   "pnl": 92.6,
+   "dd": 12.7,
+   "sharpe": 6.04,
+   "win": 0.544,
+   "closed": 237,
+   "excess": 0.0,
+   "calmar": 7.3
+  },
+  "v1": {
+   "pnl": 112.3,
+   "dd": 11.9,
+   "sharpe": 6.54,
+   "win": 0.544,
+   "closed": 237,
+   "excess": 0.0,
+   "calmar": 9.43
+  },
+  "v4": {
+   "pnl": 117.2,
+   "dd": 11.7,
+   "sharpe": 6.63,
+   "win": 0.544,
+   "closed": 237,
+   "excess": 0.0,
+   "calmar": 10.0
+  }
+ },
+ "train": {
+  "base": {
+   "pnl": 103.1,
+   "dd": 12.4,
+   "sharpe": 4.35,
+   "win": 0.52,
+   "closed": 123,
+   "excess": 0.0,
+   "calmar": 8.31
+  },
+  "v1": {
+   "pnl": 118.7,
+   "dd": 10.0,
+   "sharpe": 4.39,
+   "win": 0.52,
+   "closed": 123,
+   "excess": 0.0,
+   "calmar": 11.93
+  },
+  "v4": {
+   "pnl": 122.6,
+   "dd": 9.3,
+   "sharpe": 4.4,
+   "win": 0.52,
+   "closed": 123,
+   "excess": 0.0,
+   "calmar": 13.13
+  }
+ },
+ "valid": {
+  "base": {
+   "pnl": 115.8,
+   "dd": 1.4,
+   "sharpe": 11.32,
+   "win": 0.818,
+   "closed": 55,
+   "excess": 0.0,
+   "calmar": 82.32
+  },
+  "v1": {
+   "pnl": 136.9,
+   "dd": 1.7,
+   "sharpe": 11.1,
+   "win": 0.818,
+   "closed": 55,
+   "excess": 0.0,
+   "calmar": 81.08
+  },
+  "v4": {
+   "pnl": 142.2,
+   "dd": 1.8,
+   "sharpe": 11.05,
+   "win": 0.818,
+   "closed": 55,
+   "excess": 0.0,
+   "calmar": 80.85
+  }
+ },
+ "LONG": {
+  "base": {
+   "pnl": 270.1,
+   "dd": 45.1,
+   "sharpe": 2.84,
+   "win": 0.388,
+   "closed": 1069,
+   "excess": 0.0,
+   "calmar": 5.99
+  },
+  "v1": {
+   "pnl": 321.1,
+   "dd": 45.1,
+   "sharpe": 2.97,
+   "win": 0.388,
+   "closed": 1069,
+   "excess": 0.0,
+   "calmar": 7.12
+  },
+  "v4": {
+   "pnl": 333.9,
+   "dd": 45.1,
+   "sharpe": 2.99,
+   "win": 0.388,
+   "closed": 1069,
+   "excess": 0.0,
+   "calmar": 7.4
+  }
+ }
+}

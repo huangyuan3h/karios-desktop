@@ -226,6 +226,24 @@ class BacktestConfig:
     # window, avg -6.1%) — block new entries on them. UNKNOWN days (no
     # sentiment data, e.g. pre-2026 OOS2) are NOT blocked.
     neutral_block: bool = False
+    # D3 (TIP-014 follow-up): environment-aware position sizing. When set, a
+    # new entry's sleeve is scaled by the factor of its ENTRY day's env label
+    # (e.g. "uptrend:1.2,fan:0.8" = 12% sleeves on uptrend days, 8% on fan).
+    # Unknown env / unmapped labels keep scale 1.0. Purely a leverage knob —
+    # expected to shift the return/DD ratio, not the trade selection.
+    env_position_scale: str = ""
+
+    def _env_position_scale(self, env: str | None) -> float:
+        if not self.env_position_scale:
+            return 1.0
+        try:
+            for part in self.env_position_scale.split(","):
+                k, _, v = part.partition(":")
+                if k.strip() == (env or ""):
+                    return max(0.0, float(v))
+        except ValueError:
+            return 1.0
+        return 1.0
 
     def __post_init__(self) -> None:
         if self.market not in MARKETS:
@@ -1186,7 +1204,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                      "entry_price": px_c,
                      "peak_price": px_c,
                      "score_at_entry": day_scores[sym_c],
-                     "position_pct": config.position_pct * pos_scale_c * atr_scale_for(ts_c, day),
+                     "position_pct": config.position_pct * pos_scale_c * atr_scale_for(ts_c, day)
+                     * config._env_position_scale(data.env_by_day.get(day)),
                      "industry": data.industry_by_ts.get(ts_c),
                  }
                 swapped_syms.add(sym_c)
@@ -1372,7 +1391,8 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 "peak_price": px,
                 "score_at_entry": score,
                 "industry": data.industry_by_ts.get(ts),
-                "position_pct": config.position_pct * pos_scale * atr_scale_for(ts, day),
+                "position_pct": config.position_pct * pos_scale * atr_scale_for(ts, day)
+                * config._env_position_scale(data.env_by_day.get(day)),
                 "atr_pct": atr14_pct_for(ts, day) if config.atr_stop_mult > 0 else 0.0,
                 "entry_env": data.env_by_day.get(day) if config.max_hold_env_shorten > 0 else None,
             }

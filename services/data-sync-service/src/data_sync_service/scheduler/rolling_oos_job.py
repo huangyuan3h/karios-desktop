@@ -67,6 +67,9 @@ S3_CONFIG: dict[str, float | int | str] = {
     "entry_style_rs_min": 0.7,
     "entry_style_dip_min": 3.0,
     "max_hold_env_shorten": 45,
+    # D3 (2026-08-15): env-aware position sizing — uptrend 1.25x / fan 0.75x
+    # (v4, 同 S3_CONFIG; 三窗全升, 长窗 +64pt)。
+    "env_position_scale": "uptrend:1.25,fan:0.75",
     # E2 (2026-08-14): panic_cooldown 3→2 — 情绪历史回填后弱市年冷却过严
     # 锁死交易; 三窗+长窗验证 2 天最优 (OOS2 +8.2 / train +22 / long +34.7)。
     "panic_cooldown_days": 2,

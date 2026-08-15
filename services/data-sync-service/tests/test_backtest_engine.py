@@ -60,6 +60,7 @@ def _data(
     data.industry_by_ts = dict(industry_by_ts)
     data.sentiment_risk_by_day = {}
     data.light_red_by_day = {d for d in calendar if str(light_red_days or "") == "red"}
+    data.env_by_day = {d: "unknown" for d in calendar}
     data.closes_by_ts = {
         ts: [(d, float(px)) for d, px in sorted(m.items())] for ts, m in prices.items()
     }

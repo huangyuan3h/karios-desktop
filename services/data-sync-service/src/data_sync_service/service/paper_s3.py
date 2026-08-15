@@ -134,6 +134,24 @@ WEAK_RATIO_MAX = 0.5
 ENTRY_STYLE_RS_MIN = 0.7
 ENTRY_STYLE_DIP_MIN = 3.0
 
+# D3 (2026-08-15): environment-aware position sizing — live mirror of the S-3
+# backtest config (env_position_scale="uptrend:1.25,fan:0.75", v4). A new CN
+# entry on an uptrend day gets a 1.25x sleeve (主升日质量最高放大下注), a fan
+# day 0.75x (电风扇减仓控尾). weak/neutral days never reach here (blocked
+# upstream). Same values as scripts/run_walk_forward.py S3_CONFIG.
+ENV_POSITION_SCALE = {"uptrend": 1.25, "fan": 0.75}
+
+
+def _env_position_scale_for(sentiment_items: list[dict[str, Any]]) -> float:
+    """Env-aware sleeve multiplier for today's CN entries (D3, v4).
+
+    Mirrors the backtest engine's config._env_position_scale: the ENTRY day's
+    env label maps to a sleeve scale; unmapped labels → 1.0 (no change).
+    """
+    if not sentiment_items:
+        return 1.0
+    return ENV_POSITION_SCALE.get(_env_for_day(sentiment_items), 1.0)
+
 
 def _load_today_scores(trade_date: str, market: str = "CN") -> dict[str, float]:
     """{symbol: score} from watchlist_score_daily for one market."""
@@ -802,7 +820,16 @@ def run_intake_s3(
         summary["skippedReasons"]["allocation-zero"] = summary["skippedReasons"].get("allocation-zero", 0) + len(candidates) + len(swapped_cands)
         return summary
 
-    sleeve = S3_POSITION_PCT * sleeve_scale
+    # D3 (2026-08-15): env-aware sleeve — uptrend 1.25x / fan 0.75x (CN only;
+    # HK has no CN sentiment env labels, scale stays 1.0). Mirrors the S-3
+    # backtest env_position_scale (v4, three-window verified).
+    env_scale = 1.0
+    if market == "CN":
+        try:
+            env_scale = _env_position_scale_for(get_cn_sentiment(days=1, as_of_date=day)["items"])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("paper_s3 env position scale failed (fallback 1.0): %s", exc)
+    sleeve = S3_POSITION_PCT * sleeve_scale * env_scale
 
     ts_codes = [c["ts_code"] for c in candidates]
     by_name = {}

@@ -647,6 +647,9 @@ def _health_block(*, market: str, day: str) -> dict[str, Any]:
             "entryStyle": "auto",
             "neutralBlock": True,
             "panicCooldownDays": PANIC_COOLDOWN_DAYS,
+            # D3 (2026-08-15): env-aware position sizing (uptrend 1.25x /
+            # fan 0.75x) — mirrors the S-3 backtest env_position_scale (v4).
+            "envPositionScale": "uptrend:1.25,fan:0.75",
         }
 
     try:

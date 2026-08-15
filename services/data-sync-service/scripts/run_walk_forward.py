@@ -83,6 +83,13 @@ S3_CONFIG: dict[str, float | int | str] = {
     # unchanged (no env labels → no shorten). hold30 -32.3 / hold50 +0.3
     # / hold55 持平 → 45 is the peak.
     "max_hold_env_shorten": 45,
+    # D3 (2026-08-15 固化): environment-aware position sizing — new entries
+    # are scaled by their ENTRY day's env label. v4 passed the three-window
+    # bar: uptrend 1.25x (主升日入场质量最高, 放大下注) / fan 0.75x (电风扇
+    # 减仓控尾) — OOS2 +24.6 / train +19.5 / valid +26.4 (vs base), long
+    # 270.1→333.9 (+64pt), 三窗夏普两升一平. v1 (1.2/0.8) also passed but
+    # weaker; v3 (fan-only) failed valid.
+    "env_position_scale": "uptrend:1.25,fan:0.75",
     # E2 (2026-08-14 数据回填后修正): panic_cooldown 3 → 2. 回填情绪历史
     # (2024-08 起) 后 panic 冷却在弱市年频繁触发, 3 天把 OOS2 锁死
     # (288964 次拦截 → 199 笔)。三窗+长窗同口径对比 (新基线=有情绪数据):
