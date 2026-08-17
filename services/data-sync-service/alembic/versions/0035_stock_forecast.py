@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
-
 from alembic import op
 
 revision: str = "0035_stock_forecast"
@@ -25,18 +23,22 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "stock_forecast",
-        sa.Column("ts_code", sa.Text(), nullable=False),
-        sa.Column("ann_date", sa.Text(), nullable=False),
-        sa.Column("end_date", sa.Text(), nullable=True),
-        sa.Column("forecast_type", sa.Text(), nullable=True),
-        sa.Column("net_profit_min", sa.Double(), nullable=True),
-        sa.Column("net_profit_max", sa.Double(), nullable=True),
-        sa.Column("change_pct", sa.Double(), nullable=True),
-        sa.PrimaryKeyConstraint("ts_code", "ann_date", name="pk_stock_forecast"),
+    # stock_forecast is already included in the current baseline DDL.
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS stock_forecast (
+            ts_code TEXT NOT NULL,
+            ann_date TEXT NOT NULL,
+            end_date TEXT,
+            forecast_type TEXT,
+            net_profit_min DOUBLE PRECISION,
+            net_profit_max DOUBLE PRECISION,
+            change_pct DOUBLE PRECISION,
+            CONSTRAINT pk_stock_forecast PRIMARY KEY (ts_code, ann_date)
+        );
+        """
     )
 
 
 def downgrade() -> None:
-    op.drop_table("stock_forecast")
+    op.execute("DROP TABLE IF EXISTS stock_forecast;")

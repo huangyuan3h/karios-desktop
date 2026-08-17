@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
-
 from alembic import op
 
 revision: str = "0029_paper_signal_snapshot"
@@ -23,11 +21,13 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "paper_trades",
-        sa.Column("signal_snapshot", sa.JSON(), nullable=True),
+    # The baseline imports the current paper-trading DDL, which already
+    # contains this column on fresh databases. Keep the historical migration
+    # safe for both baseline-created and legacy schemas.
+    op.execute(
+        "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS signal_snapshot JSONB;"
     )
 
 
 def downgrade() -> None:
-    op.drop_column("paper_trades", "signal_snapshot")
+    op.execute("ALTER TABLE paper_trades DROP COLUMN IF EXISTS signal_snapshot;")

@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
-
 from alembic import op
 
 revision: str = "0034_bar_minute"
@@ -25,22 +23,28 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "bar_minute",
-        sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
-        sa.Column("ts_code", sa.Text(), nullable=False),
-        sa.Column("trade_date", sa.Text(), nullable=False),
-        sa.Column("trade_time", sa.Text(), nullable=False),
-        sa.Column("open", sa.Double(), nullable=True),
-        sa.Column("high", sa.Double(), nullable=True),
-        sa.Column("low", sa.Double(), nullable=True),
-        sa.Column("close", sa.Double(), nullable=False),
-        sa.Column("vol", sa.Double(), nullable=True),
-        sa.Column("amount", sa.Double(), nullable=True),
-        sa.UniqueConstraint("ts_code", "trade_date", "trade_time", name="uq_bar_minute_ts_time"),
+    # bar_minute is already part of the current baseline DDL. Keep this
+    # historical migration safe for fresh databases and stamped deployments.
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS bar_minute (
+            id BIGSERIAL PRIMARY KEY,
+            ts_code TEXT NOT NULL,
+            trade_date TEXT NOT NULL,
+            trade_time TEXT NOT NULL,
+            open DOUBLE PRECISION,
+            high DOUBLE PRECISION,
+            low DOUBLE PRECISION,
+            close DOUBLE PRECISION NOT NULL,
+            vol DOUBLE PRECISION,
+            amount DOUBLE PRECISION,
+            CONSTRAINT uq_bar_minute_ts_time UNIQUE (ts_code, trade_date, trade_time)
+        );
+        CREATE INDEX IF NOT EXISTS ix_bar_minute_ts_date
+            ON bar_minute (ts_code, trade_date);
+        """
     )
-    op.create_index("ix_bar_minute_ts_date", "bar_minute", ["ts_code", "trade_date"])
 
 
 def downgrade() -> None:
-    op.drop_table("bar_minute")
+    op.execute("DROP TABLE IF EXISTS bar_minute;")

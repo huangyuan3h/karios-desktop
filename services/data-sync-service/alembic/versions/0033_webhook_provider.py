@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
-
 from alembic import op
 
 revision: str = "0033_webhook_provider"
@@ -21,11 +19,11 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "webhook_subscriptions",
-        sa.Column("provider", sa.Text(), nullable=False, server_default="generic"),
+    op.execute(
+        "ALTER TABLE webhook_subscriptions ADD COLUMN IF NOT EXISTS "
+        "provider TEXT NOT NULL DEFAULT 'generic';"
     )
 
 
 def downgrade() -> None:
-    op.drop_column("webhook_subscriptions", "provider")
+    op.execute("ALTER TABLE webhook_subscriptions DROP COLUMN IF EXISTS provider;")

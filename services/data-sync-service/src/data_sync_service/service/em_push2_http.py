@@ -36,6 +36,7 @@ _PROXY_DEGRADED = False
 _EM_BLOCKED = False
 _EM_BLOCKED_AT: float = 0.0
 _EM_FAIL_STREAK = 0
+_EM_BLOCK_COOLDOWN_SECONDS = 15 * 60
 
 
 def _em_headers(referer: str) -> dict[str, str]:
@@ -172,11 +173,15 @@ def em_get_json(
     global _PROXY_DEGRADED, _EM_BLOCKED, _EM_BLOCKED_AT, _EM_FAIL_STREAK
     errors: list[str] = []
     if _EM_BLOCKED:
-        # Eastmoney IP ban latched this process — fail fast instead of
-        # burning the sync cycle on retries. Success path never reaches
-        # here; _EM_BLOCKED is cleared only by a later successful call in
-        # a fresh process (a new uvicorn start after the ban cools).
-        raise RuntimeError("eastmoney_ip_ban_latched")
+        if time.time() - _EM_BLOCKED_AT < _EM_BLOCK_COOLDOWN_SECONDS:
+            # Eastmoney is temporarily throttling this process — fail fast
+            # instead of burning every sync cycle on retries.
+            raise RuntimeError("eastmoney_ip_ban_latched")
+        # A long-lived uvicorn must be allowed to retry after the external
+        # rate limit cools down; do not require a process restart.
+        _EM_BLOCKED = False
+        _EM_FAIL_STREAK = 0
+        _PROXY_DEGRADED = False
     use_proxy = bool(_PROXY) and not _PROXY_DEGRADED
     try:
         import requests  # type: ignore[import-not-found]

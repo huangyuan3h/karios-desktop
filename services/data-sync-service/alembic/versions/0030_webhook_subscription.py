@@ -13,8 +13,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
-
 from alembic import op
 
 revision: str = "0030_webhook_subscription"
@@ -24,54 +22,45 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "webhook_events",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("event_type", sa.Text(), nullable=False),
-        sa.Column("payload", sa.JSON(), nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("dedupe_key", sa.Text(), nullable=False, unique=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-    )
-    op.create_index("ix_webhook_events_type_created", "webhook_events", ["event_type", "created_at"])
-    op.create_table(
-        "webhook_subscriptions",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("url", sa.Text(), nullable=False),
-        sa.Column("secret", sa.Text(), nullable=False),
-        sa.Column("event_types", sa.ARRAY(sa.Text()), nullable=False),
-        sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-    )
-    op.create_table(
-        "webhook_deliveries",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column(
-            "event_id",
-            sa.Integer(),
-            sa.ForeignKey("webhook_events.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column(
-            "subscription_id",
-            sa.Integer(),
-            sa.ForeignKey("webhook_subscriptions.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column("status", sa.Text(), nullable=False, server_default=sa.text("'pending'")),
-        sa.Column("attempts", sa.Integer(), nullable=False, server_default=sa.text("0")),
-        sa.Column("next_retry_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("last_error", sa.Text(), nullable=True),
-        sa.Column("delivered_at", sa.DateTime(timezone=True), nullable=True),
-        sa.UniqueConstraint("event_id", "subscription_id", name="uq_webhook_deliveries_event_sub"),
-    )
-    op.create_index(
-        "ix_webhook_deliveries_pending",
-        "webhook_deliveries",
-        ["status", "next_retry_at"],
+    # The current baseline also creates these tables for existing deployments;
+    # use idempotent SQL so fresh and stamped databases follow the same chain.
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS webhook_events (
+            id SERIAL PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            payload JSONB NOT NULL DEFAULT '{}',
+            dedupe_key TEXT NOT NULL UNIQUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS ix_webhook_events_type_created
+            ON webhook_events (event_type, created_at);
+        CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+            id SERIAL PRIMARY KEY,
+            url TEXT NOT NULL,
+            secret TEXT NOT NULL,
+            event_types TEXT[] NOT NULL,
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE TABLE IF NOT EXISTS webhook_deliveries (
+            id SERIAL PRIMARY KEY,
+            event_id INTEGER NOT NULL REFERENCES webhook_events(id) ON DELETE CASCADE,
+            subscription_id INTEGER NOT NULL REFERENCES webhook_subscriptions(id) ON DELETE CASCADE,
+            status TEXT NOT NULL DEFAULT 'pending',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            next_retry_at TIMESTAMPTZ,
+            last_error TEXT,
+            delivered_at TIMESTAMPTZ,
+            CONSTRAINT uq_webhook_deliveries_event_sub UNIQUE (event_id, subscription_id)
+        );
+        CREATE INDEX IF NOT EXISTS ix_webhook_deliveries_pending
+            ON webhook_deliveries (status, next_retry_at);
+        """
     )
 
 
 def downgrade() -> None:
-    op.drop_table("webhook_deliveries")
-    op.drop_table("webhook_subscriptions")
-    op.drop_table("webhook_events")
+    op.execute("DROP TABLE IF EXISTS webhook_deliveries;")
+    op.execute("DROP TABLE IF EXISTS webhook_subscriptions;")
+    op.execute("DROP TABLE IF EXISTS webhook_events;")

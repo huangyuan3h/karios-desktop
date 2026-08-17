@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import sqlalchemy as sa
-
 from alembic import op
 
 revision: str = "0032_user_trades_alpha_snapshot"
@@ -23,11 +21,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "user_trades",
-        sa.Column("alpha_snapshot", sa.JSON(), nullable=True),
+    op.execute(
+        "ALTER TABLE user_trades ADD COLUMN IF NOT EXISTS alpha_snapshot JSONB;"
     )
 
 
 def downgrade() -> None:
-    op.drop_column("user_trades", "alpha_snapshot")
+    op.execute("ALTER TABLE user_trades DROP COLUMN IF EXISTS alpha_snapshot;")
