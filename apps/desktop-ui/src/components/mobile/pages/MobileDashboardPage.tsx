@@ -76,6 +76,12 @@ const LIGHT_ZH: Record<string, string> = {
   red: '红',
 };
 
+type JsonRecord = Record<string, unknown>;
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null;
+}
+
 function gateReasonZh(code: string): string {
   return GATE_REASON_ZH[code] ?? code;
 }
@@ -88,7 +94,7 @@ function sentimentTone(risk: string): 'open' | 'warn' | 'danger' | 'neutral' {
 }
 
 /** Gate card — A股/港股 闸门（数据来自 marketSentiment.executionGate） */
-function GateCard({ label, gate }: { label: string; gate: any }) {
+function GateCard({ label, gate }: { label: string; gate: JsonRecord | null }) {
   if (!gate || typeof gate !== 'object') {
     return (
       <MobileCard className="p-3">
@@ -160,11 +166,12 @@ export function MobileDashboardPage() {
 
   const topIn = [...(flow.data?.top ?? [])].sort((a, b) => b.netInflow - a.netInflow).slice(0, 5);
 
-  const ms: any = (senti.data as any)?.marketSentiment ?? {};
-  const gate: any = ms?.executionGate ?? {};
-  const cnExecutionGate = gate?.cnGate ?? null;
-  const hkExecutionGate = gate?.hkGate ?? null;
-  const sItems: any[] = Array.isArray(ms.items) ? ms.items : [];
+  const summary = senti.data;
+  const ms = isJsonRecord(summary?.marketSentiment) ? summary.marketSentiment : {};
+  const gate = isJsonRecord(ms.executionGate) ? ms.executionGate : {};
+  const cnExecutionGate = isJsonRecord(gate.cnGate) ? gate.cnGate : null;
+  const hkExecutionGate = isJsonRecord(gate.hkGate) ? gate.hkGate : null;
+  const sItems = Array.isArray(ms.items) ? ms.items.filter(isJsonRecord) : [];
   const sLatest = sItems.length ? sItems[sItems.length - 1] : null;
   const sRisk = String(sLatest?.riskMode ?? '—');
   const upCount = Number(sLatest?.upCount ?? 0);
@@ -218,7 +225,7 @@ export function MobileDashboardPage() {
                   <span style={{ color: 'var(--k-down)' }}>↓{downCount}</span>
                 </div>
                 <div className="mt-0.5">
-                  溢价 {Number.isFinite(sLatest?.yesterdayLimitUpPremium) ? `${Number(sLatest.yesterdayLimitUpPremium).toFixed(2)}%` : '—'}
+                  溢价 {Number.isFinite(sLatest?.yesterdayLimitUpPremium) ? `${Number(sLatest?.yesterdayLimitUpPremium).toFixed(2)}%` : '—'}
                 </div>
                 <div className="mt-0.5">成交 {fmtAmountCn(sLatest?.marketTurnoverCny)}</div>
               </div>
@@ -240,7 +247,7 @@ export function MobileDashboardPage() {
                 <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">
                   <div className="text-[var(--m-text-xs)] text-[var(--k-muted)]">涨停溢价</div>
                   <div className="mt-1 font-mono text-[var(--m-text-base)] tabular-nums">
-                    {Number.isFinite(sLatest?.yesterdayLimitUpPremium) ? `${Number(sLatest.yesterdayLimitUpPremium).toFixed(2)}%` : '—'}
+                    {Number.isFinite(sLatest?.yesterdayLimitUpPremium) ? `${Number(sLatest?.yesterdayLimitUpPremium).toFixed(2)}%` : '—'}
                   </div>
                 </div>
                 <div className="rounded-[var(--m-radius-sm)] bg-[var(--k-surface-2)] px-2.5 py-2">

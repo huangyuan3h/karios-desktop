@@ -3,7 +3,14 @@
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { useIndustryFundFlowQuery, useIndustryMainlineQuery, runIndustryFlowSync, type IndustryFundFlowPoint } from '@/lib/queries/industryFlow';
+import {
+  useIndustryFundFlowQuery,
+  useIndustryMainlineQuery,
+  runIndustryFlowSync,
+  type IndustryFundFlowPoint,
+  type IndustryFundFlowRow,
+  type MainlineScoreRow,
+} from '@/lib/queries/industryFlow';
 import { fmtAmountCn, fmtSignedAmountCn } from '@/lib/dashboard-format';
 import { MobileCard, MobileSection, StatusPill } from '../primitives';
 
@@ -38,7 +45,7 @@ function TrendSpark({ series }: { series: IndustryFundFlowPoint[] }) {
   );
 }
 
-function RankLine({ flags }: { flags: any }) {
+function RankLine({ flags }: { flags: MainlineScoreRow['flags'] }) {
   const flow = flags?.flow;
   if (!flow) return null;
   const parts: React.ReactNode[] = [
@@ -56,7 +63,7 @@ function RankLine({ flags }: { flags: any }) {
   );
 }
 
-function FlowRow({ row, name, sumLabel }: { row: any; name: string; sumLabel: string }) {
+function FlowRow({ row, name, sumLabel }: { row: IndustryFundFlowRow; name: string; sumLabel: string }) {
   return (
     <div className="flex items-center justify-between gap-2 border-t border-[var(--k-border)] px-3 py-2.5 first:border-t-0">
       <div className="min-w-0 flex-1">
