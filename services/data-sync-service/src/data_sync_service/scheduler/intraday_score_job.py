@@ -1,4 +1,4 @@
-"""Intraday S-3 score refresh job (10:30 / 14:00 Asia/Shanghai, weekdays).
+"""Intraday S-3 score refresh job (10:30 / 12:30 / 14:00 Asia/Shanghai, weekdays).
 
 Writes ``watchlist_score_daily`` for the CN + HK universes with realtime
 quotes merged into the last bar (``run_intraday_scores``), so the S-3 health
@@ -9,6 +9,11 @@ by the EOD pass at 17:30.
 The EOD chain (17:10 close_sync → 17:30 watchlist_automation → 17:42
 paper_s3_intake) still overwrites the same rows with close prices, so the
 paper record stays faithful to EOD data.
+
+12:30 (midday break) added on 2026-08-17: the 10:30 run alone leaves the
+afternoon decision surface stale when the service starts late (missed
+misfire), and 14:00 comes after the afternoon open — 12:30 keeps the
+lunch-break snapshot fresh for the whole midday review.
 """
 
 from __future__ import annotations
@@ -23,8 +28,9 @@ from data_sync_service.service.watchlist_automation import run_intraday_scores
 logger = logging.getLogger(__name__)
 
 JOB_ID = "intraday_score"
-# 10:30 (CN/HK morning session established) + 14:00 (afternoon) Asia/Shanghai.
-CRON_EXPRESSION = "30 10,14 * * 1-5"
+# 10:30 (CN/HK morning session established) + 12:30 (midday break snapshot)
+# + 14:00 (afternoon) Asia/Shanghai.
+CRON_EXPRESSION = "30 10,12,14 * * 1-5"
 TIMEZONE = "Asia/Shanghai"
 
 
