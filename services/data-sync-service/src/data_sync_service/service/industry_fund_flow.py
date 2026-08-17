@@ -46,6 +46,21 @@ def _now_iso() -> str:
     return datetime.now(tz=UTC).isoformat()
 
 
+# Proxy degradation latch shared with _eastmoney_board_fund_flow_daykline:
+# once the EASTMONEY_PROXY exit is confirmed down, skip it process-wide to
+# stop retrying a dead proxy on every industry board (2026-08-17: 16/31
+# boards failing, each 3x20s retries -> 50s dashboard sync).
+_EM_PROXY_DEGRADED = False
+
+# Industry-history short-circuit: when eastmoney is throttling/banning this
+# IP, EVERY board's history fetch fails identically. Once we see enough
+# consecutive failures, skip the remaining boards' network calls entirely so
+# the dashboard sync finishes in seconds instead of a ~50s crawl. Cleared on
+# the next successful fetch (a new process after the ban cools).
+_EM_HIST_FAIL_STREAK = 0
+_EM_HIST_SKIP = False
+
+
 def _with_retry(fn, *, tries: int = 3, base_sleep_s: float = 0.4, max_sleep_s: float = 2.0):
     tries2 = max(1, min(int(tries), 5))
     last: Exception | None = None
@@ -120,6 +135,7 @@ def _dataapi_getbkzj(key: str, code: str) -> list[dict[str, Any]]:
 
 
 def _eastmoney_board_fund_flow_daykline(*, secid: str) -> list[dict[str, Any]]:
+    global _EM_PROXY_DEGRADED
     url = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
     params = {
         "lmt": "0",
@@ -144,18 +160,35 @@ def _eastmoney_board_fund_flow_daykline(*, secid: str) -> list[dict[str, Any]]:
         "-H", "Referer: https://data.eastmoney.com/",
     ]
     # EASTMONEY_PROXY (e.g. http://127.0.0.1:7890) routes via the ClashX node
-    # exit — the home-line IP is banned by eastmoney (2026-08-09).
-    if os.environ.get("EASTMONEY_PROXY"):
+    # exit — the home-line IP is banned by eastmoney (2026-08-09). Once the
+    # proxy is confirmed down (302/502/empty), skip it for the rest of this
+    # process: every industry retries 3x x 20s, so a dead proxy turns a
+    # dashboard sync into a 50s+ crawl. Reset on success to pick a recovered
+    # proxy back up.
+    used_proxy = bool(os.environ.get("EASTMONEY_PROXY")) and not _EM_PROXY_DEGRADED
+    if used_proxy:
         cmd += ["-x", os.environ["EASTMONEY_PROXY"]]
     if os.environ.get("EASTMONEY_COOKIE"):
         cmd += ["-H", f"Cookie: {os.environ['EASTMONEY_COOKIE']}"]
     cmd += [f"{url}?{qs}"]
     raw = subprocess.run(cmd, capture_output=True, timeout=30, check=False).stdout
-    j = json.loads(raw.decode("utf-8", errors="replace"))
+    try:
+        j = json.loads(raw.decode("utf-8", errors="replace"))
+    except Exception:
+        if used_proxy:
+            _EM_PROXY_DEGRADED = True
+        raise
     data = j.get("data") if isinstance(j, dict) else None
     klines = (data or {}).get("klines") if isinstance(data, dict) else None
     if not isinstance(klines, list):
+        # Empty/redirected body through the proxy is the 302/502 signature.
+        if used_proxy and (not data or not raw.strip()):
+            _EM_PROXY_DEGRADED = True
         return []
+    if used_proxy:
+        # Proxy exit works — clear the latch so a later degraded state
+        # doesn't persist past proxy recovery.
+        _EM_PROXY_DEGRADED = False
     out: list[dict[str, Any]] = []
     for item in klines:
         s = str(item or "")
@@ -271,6 +304,7 @@ def fetch_cn_industry_fund_flow_hist(
     industry_code: str | None = None,
     days: int = 10,
 ) -> list[dict[str, Any]]:
+    global _EM_HIST_FAIL_STREAK, _EM_HIST_SKIP
     days2 = max(1, min(int(days), 60))
     code = (industry_code or "").strip()
     if code:
@@ -279,10 +313,14 @@ def fetch_cn_industry_fund_flow_hist(
         else:
             secid = f"90.{code}"
         try:
-            items = _with_retry(lambda: _eastmoney_board_fund_flow_daykline(secid=secid), tries=3)
+            items = _with_retry(lambda: _eastmoney_board_fund_flow_daykline(secid=secid), tries=2)
+            if items:
+                _EM_HIST_FAIL_STREAK = 0
             return items[-days2:]
         except Exception:
-            pass
+            _EM_HIST_FAIL_STREAK += 1
+            if _EM_HIST_FAIL_STREAK >= 4:
+                _EM_HIST_SKIP = True
     name = (industry_name or "").strip()
     if not name:
         return []
@@ -295,11 +333,18 @@ def _hist_rows_for_top_row(
     days: int,
     updated_at: str,
 ) -> list[dict[str, Any]]:
+    global _EM_HIST_FAIL_STREAK, _EM_HIST_SKIP
+    if _EM_HIST_SKIP:
+        # Eastmoney throttling latched — skip network entirely for the rest
+        # of this sync pass (the caller counts these as skipped, not failed).
+        return []
     hist = fetch_cn_industry_fund_flow_hist(
         row.get("industry_name") or "",
         industry_code=row.get("industry_code") or None,
         days=days,
     )
+    if hist:
+        _EM_HIST_FAIL_STREAK = 0
     out: list[dict[str, Any]] = []
     for h in hist:
         out.append(

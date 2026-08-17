@@ -11,6 +11,17 @@ import pytest
 from data_sync_service.service import industry_fund_flow as iff
 
 
+@pytest.fixture(autouse=True)
+def _reset_hist_short_circuit():
+    """Reset the module-level eastmoney short-circuit latches between tests —
+    they are process-global and would leak failure streaks across test files."""
+    iff._EM_HIST_FAIL_STREAK = 0
+    iff._EM_HIST_SKIP = False
+    yield
+    iff._EM_HIST_FAIL_STREAK = 0
+    iff._EM_HIST_SKIP = False
+
+
 class TestParse:
     def test_parse_money(self) -> None:
         assert iff._parse_money_to_cny(None) == 0.0

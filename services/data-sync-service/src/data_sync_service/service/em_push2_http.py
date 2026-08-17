@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -19,6 +20,22 @@ load_dotenv(Path(__file__).resolve().parents[5] / ".env")
 
 _PROXY = os.environ.get("EASTMONEY_PROXY", "").strip()
 _COOKIE = os.environ.get("EASTMONEY_COOKIE", "").strip()
+
+# Once the proxy exit is confirmed down (302/502/connect errors), skip it
+# for subsequent requests in this process — retrying a dead proxy on every
+# page of a paginated fetch costs seconds per page (option_iv fetches 8+
+# pages, each trying 6 backends). Reset on success so a recovered proxy
+# is picked back up. Never read without a lock held by the caller.
+_PROXY_DEGRADED = False
+
+# When BOTH the proxy and direct connection fail with network-level errors
+# (RemoteDisconnected / empty body) for several consecutive calls, eastmoney
+# is throttling/banning this IP (2026-08-09 and 2026-08-17 events). Once
+# latched, em_get_json fails fast so dashboard sync steps don't burn 30-60s
+# retrying; the next day's process (or a later success) clears it.
+_EM_BLOCKED = False
+_EM_BLOCKED_AT: float = 0.0
+_EM_FAIL_STREAK = 0
 
 
 def _em_headers(referer: str) -> dict[str, str]:
@@ -152,12 +169,20 @@ def em_get_json(
     referer: str,
     timeout: float = 25.0,
 ) -> dict[str, Any]:
+    global _PROXY_DEGRADED, _EM_BLOCKED, _EM_BLOCKED_AT, _EM_FAIL_STREAK
     errors: list[str] = []
+    if _EM_BLOCKED:
+        # Eastmoney IP ban latched this process — fail fast instead of
+        # burning the sync cycle on retries. Success path never reaches
+        # here; _EM_BLOCKED is cleared only by a later successful call in
+        # a fresh process (a new uvicorn start after the ban cools).
+        raise RuntimeError("eastmoney_ip_ban_latched")
+    use_proxy = bool(_PROXY) and not _PROXY_DEGRADED
     try:
         import requests  # type: ignore[import-not-found]
 
         proxies: dict[str, str | None] = {"http": None, "https": None}
-        if _PROXY:
+        if use_proxy:
             proxies = {"http": _PROXY, "https": _PROXY}
         resp = requests.get(
             url,
@@ -172,27 +197,43 @@ def em_get_json(
         j = resp.json()
         if not isinstance(j, dict):
             raise RuntimeError(f"non_object_json:{type(j).__name__}")
+        _PROXY_DEGRADED = False
+        _EM_FAIL_STREAK = 0
+        _EM_BLOCKED = False
         return j
     except Exception as e:  # noqa: BLE001
         errors.append(f"requests:{e}")
 
-    try:
-        return _curl_get_json(url, params=params, referer=referer, timeout=timeout)
-    except Exception as e:  # noqa: BLE001
-        errors.append(f"curl:{e}")
-
-    try:
-        return _urllib_get_json(url, params=params, referer=referer, timeout=timeout)
-    except Exception as e:  # noqa: BLE001
-        errors.append(f"urllib:{e}")
-
-    # All proxy attempts failed — fall back to a direct connection. The
-    # EASTMONEY_PROXY exists to dodge the 2026-08-09 IP ban; when the proxy
-    # exit is down (Clash node issues -> 302/502), direct access still works.
-    if _PROXY:
+    if use_proxy:
         try:
-            return _em_get_json_no_proxy(url, params=params, referer=referer, timeout=timeout)
+            result = _curl_get_json(url, params=params, referer=referer, timeout=timeout)
+            _PROXY_DEGRADED = False
+            _EM_FAIL_STREAK = 0
+            return result
         except Exception as e:  # noqa: BLE001
-            errors.append(f"direct:{e}")
+            errors.append(f"curl:{e}")
+
+        try:
+            result = _urllib_get_json(url, params=params, referer=referer, timeout=timeout)
+            _PROXY_DEGRADED = False
+            _EM_FAIL_STREAK = 0
+            return result
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"urllib:{e}")
+
+        # All proxy attempts failed — mark degraded so later calls go direct.
+        _PROXY_DEGRADED = True
+
+    try:
+        result = _em_get_json_no_proxy(url, params=params, referer=referer, timeout=timeout)
+        _EM_FAIL_STREAK = 0
+        return result
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"direct:{e}")
+
+    _EM_FAIL_STREAK += 1
+    if _EM_FAIL_STREAK >= 3:
+        _EM_BLOCKED = True
+        _EM_BLOCKED_AT = time.time()
 
     raise RuntimeError("; ".join(errors[-3:]))

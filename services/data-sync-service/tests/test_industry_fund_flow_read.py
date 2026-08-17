@@ -8,6 +8,7 @@ from data_sync_service.service.industry_fund_flow import (
     get_cn_industry_fund_flow,
     sync_cn_industry_fund_flow,
 )
+from data_sync_service.service import industry_fund_flow as _iff
 from data_sync_service.service.industry_fund_flow_read import (
     build_trendok_flow_context_from_rows,
     positive_days_from_rows,
@@ -18,6 +19,17 @@ from data_sync_service.service.industry_fund_flow_read import (
 from data_sync_service.service.mainline import _flow_context
 
 pytestmark = pytest.mark.requires_postgres
+
+
+@pytest.fixture(autouse=True)
+def _reset_hist_short_circuit():
+    """Reset the module-level eastmoney short-circuit latches between tests —
+    they are process-global and would leak failure streaks across test files."""
+    _iff._EM_HIST_FAIL_STREAK = 0
+    _iff._EM_HIST_SKIP = False
+    yield
+    _iff._EM_HIST_FAIL_STREAK = 0
+    _iff._EM_HIST_SKIP = False
 
 FIXTURE_ROWS = [
     {"date": "2024-01-01", "industry_code": "c1", "industry_name": "电子", "net_inflow": 10.0},

@@ -11,6 +11,17 @@ from data_sync_service.service.etf_fund_flow_em import EM_ETF_FLOW_SOURCE
 
 pytestmark = pytest.mark.requires_postgres
 
+
+@pytest.fixture(autouse=True)
+def _clear_etf_cache():
+    """Reset the module-level ETF snapshot cache so tests exercise the
+    fetch path instead of reusing a previous test's cached rows."""
+    em._ETF_ROWS_CACHE = None
+    em._ETF_ROWS_CACHE_DATE = None
+    yield
+    em._ETF_ROWS_CACHE = None
+    em._ETF_ROWS_CACHE_DATE = None
+
 def _flow_for_symbol(symbol: str, *, main_net: float = 12_000_000.0) -> dict[str, Any]:
     return {
         "fdShareWan": None,
