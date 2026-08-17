@@ -11,7 +11,7 @@ if (existsSync(rootEnv)) dotenv.config({ path: rootEnv });
 
 import { serve } from '@hono/node-server';
 
-import { app } from './app';
+import { app } from './app.js';
 
 process.on('unhandledRejection', (reason) => {
   // Prevent process crash / hard connection close; log for debugging.

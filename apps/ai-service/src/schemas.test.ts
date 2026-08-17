@@ -14,7 +14,7 @@ import {
   NewsSummaryRequestSchema,
   InvestmentDailyReportRequestSchema,
   InvestmentDailyReportResponseSchema,
-} from './schemas';
+} from './schemas.js';
 
 describe('ConfigProfileCreateSchema', () => {
   it('validates valid openai profile', () => {

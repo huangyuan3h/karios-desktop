@@ -7,7 +7,7 @@ import {
   buildContextMarkdown,
   buildPromptDebug,
   normalizeOptionalString,
-} from './utils';
+} from './utils.js';
 
 describe('asTrimmedString', () => {
   it('returns trimmed string for string input', () => {

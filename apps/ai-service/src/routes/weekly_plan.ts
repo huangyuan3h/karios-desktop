@@ -5,8 +5,8 @@ import {
   getResolvedModel,
   getDecisionModelBundle,
   type ResolvedModelBundle,
-} from '../model';
-import { ThinkingStreamStripper } from '../model_thinking';
+} from '../model.js';
+import { ThinkingStreamStripper } from '../model_thinking.js';
 
 const DATA_SYNC_BASE_URL = process.env.DATA_SYNC_BASE_URL ?? 'http://127.0.0.1:4330';
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ChatRequestSchema, toModelMessagesFromChatRequest } from './chat';
+import { ChatRequestSchema, toModelMessagesFromChatRequest } from './chat.js';
 
 describe('chat request conversion', () => {
   it('converts user attachments to file parts', () => {

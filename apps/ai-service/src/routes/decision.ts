@@ -1,15 +1,15 @@
 import { Hono } from 'hono';
 import { streamText, generateText } from 'ai';
 
-import { ChatRequestSchema, toModelMessagesFromChatRequest } from '../chat';
+import { ChatRequestSchema, toModelMessagesFromChatRequest } from '../chat.js';
 import {
   getResolvedModel,
   getDecisionModelBundle,
   generateTextJsonObjectModeOptions,
   type AiModel,
   type ResolvedModelBundle,
-} from '../model';
-import { ThinkingStreamStripper, stripJsonCodeFence } from '../model_thinking';
+} from '../model.js';
+import { ThinkingStreamStripper, stripJsonCodeFence } from '../model_thinking.js';
 
 const DATA_SYNC_BASE_URL = process.env.DATA_SYNC_BASE_URL ?? 'http://127.0.0.1:4330';
 

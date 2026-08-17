@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { generateText } from 'ai';
 
-import { BrokerExtractRequestSchema, BrokerExtractResponseSchema } from '../schemas';
-import { getResolvedModel, AiModel } from '../model';
-import { tryParseJsonObject } from '../json_parse';
+import { BrokerExtractRequestSchema, BrokerExtractResponseSchema } from '../schemas.js';
+import { getResolvedModel, AiModel } from '../model.js';
+import { tryParseJsonObject } from '../json_parse.js';
 
 export const brokerRoutes = new Hono();
 

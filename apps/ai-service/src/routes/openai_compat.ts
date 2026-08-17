@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { generateText } from 'ai';
 
-import { getResolvedModel } from '../model';
-import { generateTextJsonObjectModeOptions } from '../model';
-import { stripJsonCodeFence, stripModelThinking } from '../model_thinking';
+import { getResolvedModel } from '../model.js';
+import { generateTextJsonObjectModeOptions } from '../model.js';
+import { stripJsonCodeFence, stripModelThinking } from '../model_thinking.js';
 
 /**
  * OpenAI-compatible /v1/chat/completions endpoint.

@@ -6,15 +6,15 @@ import {
   StrategyDailyResponseSchema,
   StrategyCandidatesResponseSchema,
   StrategyDailyMarkdownResponseSchema,
-} from '../schemas';
-import { buildContextMarkdown, buildPromptDebug } from '../utils';
+} from '../schemas.js';
+import { buildContextMarkdown, buildPromptDebug } from '../utils.js';
 import {
   getStrategyPrimaryAndFallbackModels,
   AiModel,
   generateObjectCompatOptions,
-} from '../model';
-import { tryParseJsonObject } from '../json_parse';
-import { stripModelThinking } from '../model_thinking';
+} from '../model.js';
+import { tryParseJsonObject } from '../json_parse.js';
+import { stripModelThinking } from '../model_thinking.js';
 
 export const strategyRoutes = new Hono();
 

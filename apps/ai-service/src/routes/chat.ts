@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { streamText } from 'ai';
 
-import { ChatRequestSchema, toModelMessagesFromChatRequest } from '../chat';
-import { getResolvedModel, AiModel } from '../model';
-import { ThinkingStreamStripper } from '../model_thinking';
+import { ChatRequestSchema, toModelMessagesFromChatRequest } from '../chat.js';
+import { getResolvedModel, AiModel } from '../model.js';
+import { ThinkingStreamStripper } from '../model_thinking.js';
 
 export const chatRoutes = new Hono();
 

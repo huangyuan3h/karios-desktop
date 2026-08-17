@@ -10,6 +10,8 @@
     "ensure-rsshub": "node scripts/ensure-rsshub.mjs",
     "predev": "pnpm ensure-ports && pnpm ensure-rsshub",
     "dev": "turbo dev",
+    "prestart": "pnpm ensure-ports && pnpm ensure-rsshub",
+    "start": "turbo build && turbo start",
     "install:all": "pnpm install && uv sync --project services/data-sync-service",
     "build": "turbo build",
     "test": "turbo test",

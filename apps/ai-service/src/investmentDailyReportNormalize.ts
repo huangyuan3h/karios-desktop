@@ -1,4 +1,4 @@
-import { InvestmentDailyReportResponseSchema } from './schemas';
+import { InvestmentDailyReportResponseSchema } from './schemas.js';
 
 const FALLBACK = {
   traffic: '依据 Markdown 信息不足，暂无法给出红绿灯与情绪解读。',

@@ -14,7 +14,7 @@ vi.mock('../model', () => ({
   getDecisionModelBundle: mocks.getDecisionModelBundle,
 }));
 
-import { weeklyPlanRoutes } from './weekly_plan';
+import { weeklyPlanRoutes } from './weekly_plan.js';
 import { Hono } from 'hono';
 
 async function* fakeStream(chunks: string[]) {

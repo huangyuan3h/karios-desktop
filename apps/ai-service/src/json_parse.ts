@@ -1,4 +1,4 @@
-import { stripModelThinking } from './model_thinking';
+import { stripModelThinking } from './model_thinking.js';
 
 export function tryParseJsonObject(text: string): unknown {
   const t0 = stripModelThinking(text);

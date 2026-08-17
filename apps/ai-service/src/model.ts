@@ -4,8 +4,8 @@ import { createGoogleGenerativeAI, google } from '@ai-sdk/google';
 import { fetch as undiciFetch, EnvHttpProxyAgent } from 'undici';
 import { z } from 'zod';
 
-import { AiConfigStoreSchema, AiProfileSchema, loadConfigStore } from './config';
-import { asTrimmedString } from './utils';
+import { AiConfigStoreSchema, AiProfileSchema, loadConfigStore } from './config.js';
+import { asTrimmedString } from './utils.js';
 
 /**
  * Hard cap for any single upstream AI request. ai v5 has no `timeout` call

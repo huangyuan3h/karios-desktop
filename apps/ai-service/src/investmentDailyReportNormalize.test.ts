@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseInvestmentDailyReportAfterNormalize } from './investmentDailyReportNormalize';
+import { parseInvestmentDailyReportAfterNormalize } from './investmentDailyReportNormalize.js';
 
 describe('normalizeInvestmentDailyReportPayload', () => {
   it('pads stocks and news to required lengths', () => {

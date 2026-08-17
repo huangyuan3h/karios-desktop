@@ -7,8 +7,8 @@ import {
   DECISION_DEFAULT_MODEL_ID,
   rewriteDeveloperMessageRolesInJsonString,
   rewriteOpenAiCompatibleRequestBody,
-} from './model';
-import { AiProfileSchema, AiConfigStoreSchema } from './config';
+} from './model.js';
+import { AiProfileSchema, AiConfigStoreSchema } from './config.js';
 
 describe('modelFromProfile', () => {
   const originalEnv = process.env;
