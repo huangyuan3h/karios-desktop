@@ -123,7 +123,7 @@ def main() -> int:
 
     if args.long:
         results["LONG"] = {}
-        print(f"\n=== LONG (2021-08..2026-08) ===")
+        print("\n=== LONG (2021-08..2026-08) ===")
         print(f"  {'variant':8s} {'pnl%':>8s} {'dd%':>6s} {'calmar':>7s} {'sharpe':>7s} {'win':>6s} {'closed':>6s} {'peadBlock':>9s}")
         for v in variants:
             cfg = be.BacktestConfig(start_date=LONG_WINDOW[0], end_date=LONG_WINDOW[1], **S3_CONFIG, pead_days=VARIANTS[v])

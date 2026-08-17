@@ -14,11 +14,12 @@ Output: avg / median / p90 / p10 / win-rate impact for both gaps, per window.
 from __future__ import annotations
 
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from run_walk_forward import S3_CONFIG, WINDOWS  # noqa: E402
 
 from data_sync_service.db import get_connection  # noqa: E402
 from data_sync_service.service.backtest_engine import (  # noqa: E402
@@ -26,7 +27,6 @@ from data_sync_service.service.backtest_engine import (  # noqa: E402
     _resolve_ts_code,
     simulate,
 )
-from run_walk_forward import WINDOWS, S3_CONFIG  # noqa: E402
 
 
 def _next_session_open(ts_code: str, signal_date: str) -> tuple[float | None, float | None]:

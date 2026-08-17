@@ -19,7 +19,6 @@ from data_sync_service.service import backtest_engine as be
 from data_sync_service.service.env_label import (
     ENV_FAN,
     load_env_by_day,
-    _load_mainline_top3,
 )
 from data_sync_service.service.trendok import _symbol_to_ts_code
 

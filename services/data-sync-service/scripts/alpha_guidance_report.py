@@ -13,7 +13,7 @@ Usage:
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -61,16 +61,16 @@ def main() -> int:
 
     print("## Alpha Radar guidance vs real user trades (OPT-109)")
     print(f"- user trades: {len(trades)} · alpha S/A events scanned (90d): {len(trends)}")
-    print(f"| Symbol | Side | PnL% | 买入日 | α事件(≤买入日) | 最高级 | 置信度 | 有α背书 |")
+    print("| Symbol | Side | PnL% | 买入日 | α事件(≤买入日) | 最高级 | 置信度 | 有α背书 |")
     print("| --- | --- | --- | --- | --- | --- | --- | --- |")
     backed, unbacked = [], []
-    for sym, side, source, pnl, entry_date, trade_date in trades:
+    for sym, side, _source, pnl, entry_date, _trade_date in trades:
         entry_dt = None
         if entry_date:
             try:
                 entry_dt = datetime.fromisoformat(str(entry_date).replace("Z", "+00:00"))
                 if entry_dt.tzinfo is None:
-                    entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+                    entry_dt = entry_dt.replace(tzinfo=UTC)
             except ValueError:
                 pass
         events = []
@@ -78,7 +78,7 @@ def main() -> int:
             if created is None or entry_dt is None:
                 continue
             if created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
+                created = created.replace(tzinfo=UTC)
             if created <= entry_dt or created - entry_dt <= timedelta(days=30):
                 events.append((grade, conf))
         events = sorted(events, key=lambda e: e[1], reverse=True)

@@ -75,7 +75,6 @@ def main() -> int:
         }
         rows.append((tag, run, years))
 
-    old_run, new_run = rows[0][1], rows[1][1]
     old_years, new_years = rows[0][2], rows[1][2]
     for y in sorted(set(old_years) | set(new_years)):
         o = old_years.get(y, [])

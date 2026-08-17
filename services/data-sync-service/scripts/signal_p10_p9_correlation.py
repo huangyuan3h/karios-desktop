@@ -27,7 +27,6 @@ import math
 import sys
 
 from data_sync_service.db import get_connection
-from data_sync_service.service import backtest_engine as be
 
 WINDOWS = {
     "OOS2": ("2024-08-01", "2025-08-01"),
@@ -216,7 +215,7 @@ def main() -> int:
                 # candidate-pool correlation (score>=65 symbols that day)
                 cands = cand_pool.get(day, {})
                 cand_pairs: dict[str, list[tuple[float, float]]] = {f: [] for f in FACTOR_NAMES}
-                for sym, ts in cands.items():
+                for _sym, ts in cands.items():
                     f = day_data.get(ts)
                     if not f:
                         continue

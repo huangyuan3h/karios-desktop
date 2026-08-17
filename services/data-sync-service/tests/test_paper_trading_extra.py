@@ -599,7 +599,6 @@ class TestS3StrongATRStop:
 
         # 8 pre-entry bars with TR ~0.5 → ATR ≈ 0.5 → atr_pct 5% → ATR stop -10%
         pre = []
-        d = 10
         for i in range(8):
             day = f"2026-07-{20 + i:02d}"
             pre.append((day, 10.0, 10.2, 9.7, 10.0, 100))

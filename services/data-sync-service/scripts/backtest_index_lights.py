@@ -65,7 +65,7 @@ def replay_lights(start: str, end: str, names: set[str]) -> dict[str, str]:
         iso = d.isoformat()
         try:
             signals = get_index_signals(as_of_date=iso, include_breadth=False)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             out[iso] = "unknown"
             d += timedelta(days=1)
             continue

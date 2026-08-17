@@ -4,11 +4,11 @@ from unittest.mock import patch
 
 import pytest
 
+from data_sync_service.service import industry_fund_flow as _iff
 from data_sync_service.service.industry_fund_flow import (
     get_cn_industry_fund_flow,
     sync_cn_industry_fund_flow,
 )
-from data_sync_service.service import industry_fund_flow as _iff
 from data_sync_service.service.industry_fund_flow_read import (
     build_trendok_flow_context_from_rows,
     positive_days_from_rows,

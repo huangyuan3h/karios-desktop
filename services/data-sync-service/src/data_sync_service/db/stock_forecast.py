@@ -76,7 +76,8 @@ def sync_forecast_for_dates(start_date: str, end_date: str, *, limit: int = 2000
         pro = ts.pro_api()
     ensure_table()
     total = 0
-    from datetime import date as _date, timedelta
+    from datetime import date as _date
+    from datetime import timedelta
 
     d = _date.fromisoformat(start_date)
     end = _date.fromisoformat(end_date)

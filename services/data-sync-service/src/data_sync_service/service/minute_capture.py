@@ -22,9 +22,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
-
 import urllib.request
+from typing import Any
 
 from data_sync_service.db.bar_minute import upsert_minute_bars
 
@@ -190,9 +189,9 @@ def _em_fetch_5m(secid: str, beg: str, end: str) -> list[dict[str, Any]] | None:
         parts = str(line).split(",")
         if len(parts) < 8:
             continue
-        # "2026-08-12 15:55", o, c, h, l, vol, amount, _
+        # "2026-08-12 15:55", o, c, h, low, vol, amount, _
         try:
-            dt, o, c, h, l, v, amt = (
+            dt, o, c, h, low, v, amt = (
                 parts[0], float(parts[1]), float(parts[2]),
                 float(parts[3]), float(parts[4]), float(parts[5]), float(parts[6]),
             )
@@ -204,7 +203,7 @@ def _em_fetch_5m(secid: str, beg: str, end: str) -> list[dict[str, Any]] | None:
         rows.append({
             "trade_date": trade_date,
             "time": hm.replace(":", "")[:4],
-            "open": o, "high": h, "low": l, "close": c,
+            "open": o, "high": h, "low": low, "close": c,
             "vol": v, "amount": amt,
         })
     return rows

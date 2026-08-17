@@ -39,13 +39,13 @@ from data_sync_service.service.backtest_engine import (
     _load_regime_by_day,
     _load_rs_ranks,
 )
-from data_sync_service.service.market_sentiment import get_cn_sentiment, get_panic_cooldown
 from data_sync_service.service.env_label import (
     ENV_FAN,
+    ENV_UNKNOWN,
     ENV_UPTREND,
     ENV_WEAK,
-    ENV_UNKNOWN,
 )
+from data_sync_service.service.market_sentiment import get_cn_sentiment, get_panic_cooldown
 from data_sync_service.service.paper_cost_model import round_trip_cost_pct
 from data_sync_service.service.paper_trading import _holding_days_for, _resolve_ts_code
 from data_sync_service.service.trendok import _lookup_stock_basic

@@ -1817,8 +1817,8 @@ def _data_with_bars(
     data = _data(calendar, scores, {ts: {d: v[3] for d, v in m.items()} for ts, m in ohlc.items()})
     data.bars_by_ts = {
         ts: [
-            (d, str(o), str(h), str(l), str(c), "0")
-            for d, (o, h, l, c) in sorted(m.items())
+            (d, str(o), str(h), str(low), str(c), "0")
+            for d, (o, h, low, c) in sorted(m.items())
         ]
         for ts, m in ohlc.items()
     }

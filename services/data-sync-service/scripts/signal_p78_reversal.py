@@ -129,7 +129,7 @@ def main() -> int:
 
     if args.long:
         results["LONG"] = {}
-        print(f"\n=== LONG (2021-08..2026-08) ===")
+        print("\n=== LONG (2021-08..2026-08) ===")
         print(f"  {'variant':8s} {'pnl%':>8s} {'dd%':>6s} {'calmar':>7s} {'sharpe':>7s} {'win':>6s} {'closed':>6s}")
         for v in variants:
             rsi_max, down_pct = VARIANTS[v]

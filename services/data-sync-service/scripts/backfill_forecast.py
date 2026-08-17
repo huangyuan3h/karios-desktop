@@ -25,7 +25,8 @@ def main() -> int:
     ap.add_argument("--sleep", type=float, default=1.0)
     args = ap.parse_args()
 
-    from datetime import date as _date, timedelta
+    from datetime import date as _date
+    from datetime import timedelta
 
     d = _date.fromisoformat(args.start)
     end = _date.fromisoformat(args.end)

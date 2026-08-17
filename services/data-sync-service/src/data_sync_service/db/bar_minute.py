@@ -22,7 +22,7 @@ from data_sync_service.db import get_connection
 
 TABLE_NAME = "bar_minute"
 
-CREATE_SQL = """
+CREATE_SQL = f"""
 CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     id BIGSERIAL PRIMARY KEY,
     ts_code TEXT NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
     UNIQUE (ts_code, trade_date, trade_time)
 );
 CREATE INDEX IF NOT EXISTS ix_bar_minute_ts_date ON {TABLE_NAME} (ts_code, trade_date);
-""".format(TABLE_NAME=TABLE_NAME)
+"""
 
 
 def ensure_table() -> None:

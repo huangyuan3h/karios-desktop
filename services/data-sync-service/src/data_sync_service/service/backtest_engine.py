@@ -969,7 +969,7 @@ def _load_industry_data(
                             if ind:
                                 by_ind.setdefault(ind, []).append((ts, ret))
                         wpos: dict[str, float] = {}
-                        for ind, members in by_ind.items():
+                        for _ind, members in by_ind.items():
                             if len(members) < 5:
                                 continue
                             ranked = sorted(members, key=lambda kv: -kv[1])
