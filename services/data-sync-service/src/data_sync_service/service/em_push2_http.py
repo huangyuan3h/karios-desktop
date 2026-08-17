@@ -62,11 +62,13 @@ def _json_dict_from_text(text: str, *, source: str) -> dict[str, Any]:
     return j
 
 
-def _curl_get_json(url: str, *, params: dict[str, str], referer: str, timeout: float) -> dict[str, Any]:
+def _curl_get_json(
+    url: str, *, params: dict[str, str], referer: str, timeout: float, use_proxy: bool = True
+) -> dict[str, Any]:
     full_url = f"{url}?{urllib.parse.urlencode(params)}"
     headers = _em_headers(referer)
     args = ["curl", "-sS", "--compressed", "-w", "\n%{http_code}"]
-    if _PROXY:
+    if use_proxy and _PROXY:
         args += ["-x", _PROXY]
     for name, value in headers.items():
         args.extend(["-H", f"{name}: {value}"])
@@ -91,11 +93,13 @@ def _curl_get_json(url: str, *, params: dict[str, str], referer: str, timeout: f
     return _json_dict_from_text(body, source="curl")
 
 
-def _urllib_get_json(url: str, *, params: dict[str, str], referer: str, timeout: float) -> dict[str, Any]:
+def _urllib_get_json(
+    url: str, *, params: dict[str, str], referer: str, timeout: float, use_proxy: bool = True
+) -> dict[str, Any]:
     full_url = f"{url}?{urllib.parse.urlencode(params)}"
     req = urllib.request.Request(full_url, headers=_em_headers(referer))
     opener: urllib.request.OpenerDirector | None = None
-    if _PROXY:
+    if use_proxy and _PROXY:
         opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({"http": _PROXY, "https": _PROXY})
         )
@@ -106,6 +110,39 @@ def _urllib_get_json(url: str, *, params: dict[str, str], referer: str, timeout:
         preview = raw[:160].decode("utf-8", errors="replace").replace("\n", " ")
         raise RuntimeError(f"urllib_http_{status}:{preview}")
     return _json_dict_from_text(raw.decode("utf-8", errors="replace"), source="urllib")
+
+
+def _em_get_json_no_proxy(url, *, params, referer, timeout):
+    """Try all three backends with the proxy disabled (direct connection)."""
+    errors: list[str] = []
+    try:
+        import requests  # type: ignore[import-not-found]
+
+        resp = requests.get(
+            url,
+            params=params,
+            headers=_em_headers(referer),
+            timeout=timeout,
+            proxies={"http": None, "https": None},
+        )
+        if resp.status_code >= 400:
+            preview = resp.text[:160].replace("\n", " ")
+            raise RuntimeError(f"http_{resp.status_code}:{preview}")
+        j = resp.json()
+        if not isinstance(j, dict):
+            raise RuntimeError(f"non_object_json:{type(j).__name__}")
+        return j
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"requests:{e}")
+    try:
+        return _curl_get_json(url, params=params, referer=referer, timeout=timeout, use_proxy=False)
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"curl:{e}")
+    try:
+        return _urllib_get_json(url, params=params, referer=referer, timeout=timeout, use_proxy=False)
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"urllib:{e}")
+    raise RuntimeError("; ".join(errors[-3:]))
 
 
 def em_get_json(
@@ -148,5 +185,14 @@ def em_get_json(
         return _urllib_get_json(url, params=params, referer=referer, timeout=timeout)
     except Exception as e:  # noqa: BLE001
         errors.append(f"urllib:{e}")
+
+    # All proxy attempts failed — fall back to a direct connection. The
+    # EASTMONEY_PROXY exists to dodge the 2026-08-09 IP ban; when the proxy
+    # exit is down (Clash node issues -> 302/502), direct access still works.
+    if _PROXY:
+        try:
+            return _em_get_json_no_proxy(url, params=params, referer=referer, timeout=timeout)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"direct:{e}")
 
     raise RuntimeError("; ".join(errors[-3:]))

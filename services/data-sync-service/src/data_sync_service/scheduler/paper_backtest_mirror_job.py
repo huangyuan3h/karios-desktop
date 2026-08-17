@@ -47,7 +47,7 @@ def run() -> None:
     # can't open file). Resolve the venv interpreter relative to this file.
     venv_python = Path(sys.executable)
     if venv_python.name in ("python", "python3"):
-        venv_python = Path(__file__).resolve().parents[2] / ".venv" / "bin" / "python"
+        venv_python = Path(__file__).resolve().parents[3] / ".venv" / "bin" / "python"
     try:
         proc = subprocess.run(
             [str(venv_python), str(SCRIPT), "--market", "HK"],
