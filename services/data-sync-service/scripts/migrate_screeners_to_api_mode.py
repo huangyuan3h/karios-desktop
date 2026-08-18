@@ -38,8 +38,9 @@ import argparse
 import sys
 from datetime import UTC, datetime
 
-from data_sync_service.db import tv as tvdb
 from data_sync_service.tv.templates import get_template, list_templates
+
+from data_sync_service.db import tv as tvdb
 
 # Stable ids for the 3 main templates we register. We deliberately use
 # UUIDs (not template_id strings) so:
