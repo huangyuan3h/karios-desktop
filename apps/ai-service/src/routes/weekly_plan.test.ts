@@ -47,10 +47,15 @@ describe('weekly-plan', () => {
     app.route('/weekly-plan', weeklyPlanRoutes);
     const res = await app.request('/weekly-plan', { method: 'POST' });
     const body = (await res.json()) as { ok?: boolean; provider?: string; plan?: string };
+    const endDate = new Date();
+    const backDays = (endDate.getDay() + 2) % 7;
+    const friday = new Date(endDate);
+    friday.setDate(friday.getDate() - backDays);
+    const fridayStr = friday.toISOString().slice(0, 10);
     expect(res.status).toBe(200);
     expect(body.ok).toBe(true);
     expect(body.provider).toBe('google');
-    expect(body.plan).toContain('# 下周行动计划（2026-08-07 周报 · google）');
+    expect(body.plan).toContain(`# 下周行动计划（${fridayStr} 周报 · google）`);
     expect(mocks.streamText).toHaveBeenCalledTimes(1);
   });
 
