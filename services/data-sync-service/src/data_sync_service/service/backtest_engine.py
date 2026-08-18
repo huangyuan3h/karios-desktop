@@ -553,7 +553,6 @@ class BacktestData:
                 self.ts_codes.append(resolved[1])
         self.bars_by_ts: dict[str, list[tuple[str, str, str, str, str, str]]] = {}
         if self.ts_codes:
-            from datetime import timedelta
 
             start_lookback = max(
                 date.fromisoformat(config.start_date) - timedelta(days=TREND_LOOKBACK_DAYS),
@@ -784,7 +783,7 @@ def _load_light_red_days(config: BacktestConfig, calendar: list[str]) -> set[str
 def _load_flow_mainline_data(
     config: BacktestConfig,
     calendar: list[str],
-) -> tuple[dict[str, bool], dict[str, set[str]]]:
+) -> tuple[dict[str, bool], dict[str, set[str]], dict[str, dict[str, float]]]:
     """Per-day gate inputs from SW L1 fund-flow rows (one DB fetch).
 
     Returns ``(flow_any_positive_by_day, mainline_allow_by_day, flow5d_by_day)`` where:
@@ -1695,7 +1694,7 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                 # C1 (2026-08-12 · defensive): require the score to have
                 # cleared the threshold for N prior sessions too — filters
                 # single-day score spikes (momentum pop) before committing.
-                prev_scores = data.scores_by_day.get(prev_day, {})
+                prev_scores = data.scores_by_day.get(prev_day or "", {})
                 prev_score = prev_scores.get(sym)
                 if prev_score is None or prev_score < threshold:
                     continue
@@ -1862,19 +1861,19 @@ def simulate(config: BacktestConfig, data: BacktestData | None = None) -> Backte
                             k, _, v = part.partition(":")
                             if k and v:
                                 hk_map[k.strip()] = v.strip()
-                        style = hk_map.get(data.regime_by_day.get(day), "score")
+                        style = hk_map.get(data.regime_by_day.get(day) or "", "score")
                     else:
                         style = {
                             REGIME_STRONG: "momentum",
                             REGIME_DIVERGING: "dip",
                             REGIME_WEAK: "blocked",
-                        }.get(data.regime_by_day.get(day), "score")
+                        }.get(data.regime_by_day.get(day) or "", "score")
                 else:
                     style = {
                         ENV_UPTREND: "momentum",
                         ENV_FAN: "dip",
                         ENV_WEAK: "blocked",
-                    }.get(data.env_by_day.get(day), "score")
+                    }.get(data.env_by_day.get(day) or "", "score")
             if style in ("momentum", "dip"):
                 rs = data.rs_rank_by_day.get(day, {}).get(ts)
                 if rs is None or rs < config.entry_style_rs_min:

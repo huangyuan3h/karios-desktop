@@ -435,6 +435,8 @@ def build_s3_candidates(
     regime = regime_by_day.get(day)
     if regime in ("Weak", None):
         return []
+    sentiment_items: list[dict[str, Any]] = []
+    industry_by_ts: dict[str, str] = {}
     if is_hk:
         # HK line: gates=regime only (mirrors the HK backtest) — panic
         # cooldown applies, direct sentiment-mode blocking does not.

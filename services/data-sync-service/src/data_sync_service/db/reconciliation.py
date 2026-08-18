@@ -41,7 +41,7 @@ def insert_recon(*, recon_date: str, market: str, window: str, expected: int,
                  aligned_return_diff_pct: float | None = None,
                  bt_return_median_pct: float | None = None,
                  paper_return_median_pct: float | None = None,
-                 detail: list[dict] | None = None) -> dict[str, Any]:
+                 detail: list[dict] | None = None) -> None:
     """Upsert the day's reconciliation per market (re-running the same day
     is idempotent — the cron re-runs Monday morning freely)."""
     ensure_table()

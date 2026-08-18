@@ -297,7 +297,7 @@ def dashboard_summary(
             try:
                 news = f_news.result()
             except Exception:  # noqa: BLE001
-                news = []
+                news = {"hours": 24, "total": 0, "items": []}
         if f_macro is not None:
             try:
                 macro_snapshot = f_macro.result()

@@ -63,7 +63,9 @@ def insert_week_decision(
                     "w_cn": float(row[3]),
                     "w_hk": float(row[4]),
                 }
-    return get_week_decision(week_start)
+    fallback = get_week_decision(week_start)
+    assert fallback is not None
+    return fallback
 
 
 def get_week_decision(week_start: str) -> dict[str, Any] | None:

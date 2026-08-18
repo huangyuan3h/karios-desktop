@@ -376,7 +376,7 @@ def _validate_entry(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def enrich_batch(items: list[dict[str, Any]]) -> dict[str, int]:
+def enrich_batch(items: list[dict[str, Any]]) -> dict[str, Any]:
     """Enrich a batch of news items via LLM.
 
     Returns a per-outcome count dict:

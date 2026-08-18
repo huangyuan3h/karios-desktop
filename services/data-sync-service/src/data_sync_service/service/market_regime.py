@@ -1053,6 +1053,7 @@ def regime_strength_score(
             if str(x.get("tsCode") or x.get("seriesId") or x.get("series_id") or "").strip()
             in ("HSI", "HSTECH")
         ]
+        cn_codes: list[str] = []
     elif market == "CN":
         cn_codes = [it["ts_code"] for it in INDEX_SIGNALS]
         rows = [x for x in signals if str(x.get("tsCode") or "").strip() in set(cn_codes)]
