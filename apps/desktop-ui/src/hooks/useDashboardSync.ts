@@ -48,6 +48,20 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
   const [busy, setBusy] = React.useState(false);
   const [syncSteps, setSyncSteps] = React.useState<SyncStep[]>([]);
   const [syncProgress, setSyncProgress] = React.useState(0);
+  const esRef = React.useRef<EventSource | null>(null);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
+    };
+  }, []);
+
+  const SYNC_STREAM_TIMEOUT_MS = 5 * 60_000;
 
   async function onSyncAll(): Promise<{ ok: boolean; summary: DashboardSummary | null }> {
     setBusy(true);
@@ -70,9 +84,25 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
     const forceSync = true;
 
     return new Promise<{ ok: boolean; summary: DashboardSummary | null }>((resolve) => {
+      if (esRef.current) {
+        // A previous stream is still open (should not happen — cleanup closes it).
+        esRef.current.close();
+      }
       const es = new EventSource(
         `${DATA_SYNC_BASE_URL}/dashboard/sync/stream?force=${forceSync ? 'true' : 'false'}`,
       );
+      esRef.current = es;
+
+      // Overall guard: if the backend stalls mid-stream without erroring
+      // (hung SQL, dead TCP), fail the sync instead of spinning forever.
+      timerRef.current = setTimeout(() => {
+        if (!esRef.current) return;
+        es.close();
+        esRef.current = null;
+        callbacksRef.current.setError('Sync timed out after 5 minutes');
+        setBusy(false);
+        resolve({ ok: false, summary: null });
+      }, SYNC_STREAM_TIMEOUT_MS);
 
       es.onmessage = (event) => {
         try {
@@ -100,7 +130,9 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
               return updated;
             });
           } else if (data.type === 'done') {
+            if (timerRef.current) clearTimeout(timerRef.current);
             es.close();
+            if (esRef.current === es) esRef.current = null;
             const result = data.result as DashboardSyncResp;
             setSyncResp(result);
             // Progress stays at backend progress until the optional watchlist
@@ -174,7 +206,9 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
                       cb.saveNewsBriefCache({ summary: summaryText, updatedAt });
                     }
                   })
-                  .catch(() => {})
+                  .catch((e) => {
+                    console.warn('news summary generation failed:', e);
+                  })
                   .finally(() => {
                     cb.setNewsSummaryBusy(false);
                     void afterWatchlist();
@@ -192,7 +226,9 @@ export function useDashboardSync(callbacks: DashboardSyncCallbacks) {
       };
 
       es.onerror = () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
         es.close();
+        if (esRef.current === es) esRef.current = null;
         callbacksRef.current.setError('Connection error during sync');
         setBusy(false);
         resolve({ ok: false, summary: null });

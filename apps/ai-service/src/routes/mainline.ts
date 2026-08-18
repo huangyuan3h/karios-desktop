@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
 import { generateObject } from 'ai';
 
-import { MainlineExplainRequestSchema, MainlineExplainResponseSchema } from '../schemas';
+import { MainlineExplainRequestSchema, MainlineExplainResponseSchema } from '../schemas.js';
 import {
   getStrategyPrimaryAndFallbackModels,
   AiModel,
   generateObjectCompatOptions,
-} from '../model';
+} from '../model.js';
 
 export const mainlineRoutes = new Hono();
 

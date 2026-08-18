@@ -19,7 +19,7 @@ type TradeActionDialogProps = {
   state: TradeDialogOpenState;
   suggestPct: number;
   onClose: () => void;
-  onConfirm: (values: { price: number; positionPct: number }) => void;
+  onConfirm: (values: { price: number; positionPct: number; costPrice?: number }) => void;
 };
 
 const PRICE_RE = /^\d+(\.\d{0,3})?$/;
@@ -47,32 +47,42 @@ export function TradeActionDialog({
     typeof item.positionPct === 'number' && Number.isFinite(item.positionPct)
       ? item.positionPct
       : 0;
+  // 2026-08-09: holdings without a cost price used to make SELL unrecordable
+  // (backend 400). The dialog now offers an optional cost fill so the sell
+  // leg still lands with pnl; leaving it empty records the sell without pnl.
+  const missingCost = kind === 'sell' && typeof item.costPrice !== 'number';
   const defaultPrice = currentPrice != null ? String(currentPrice) : '';
   const [price, setPrice] = React.useState(defaultPrice);
   const [positionPct, setPositionPct] = React.useState(
     kind === 'sell' ? String(heldPct) : String(Math.round(suggestPct * 100) / 100),
   );
+  const [costPrice, setCostPrice] = React.useState('');
 
   React.useEffect(() => {
     setPrice(defaultPrice);
     setPositionPct(
       kind === 'sell' ? String(heldPct) : String(Math.round(suggestPct * 100) / 100),
     );
+    setCostPrice('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
   const parsedPrice = Number(price);
   const parsedPct = Number(positionPct);
+  const parsedCost = Number(costPrice);
+  const costValid = !missingCost || costPrice === '' || (PRICE_RE.test(costPrice.trim()) && parsedCost > 0);
   const valid =
     PRICE_RE.test(price.trim()) &&
     parsedPrice > 0 &&
     PCT_RE.test(positionPct.trim()) &&
     parsedPct > 0 &&
-    parsedPct <= 100;
+    parsedPct <= 100 &&
+    costValid;
 
+  const effectiveCost = missingCost && costPrice !== '' ? parsedCost : item.costPrice;
   const pnlPreview =
-    kind === 'sell' && valid && typeof item.costPrice === 'number'
-      ? ((parsedPrice - item.costPrice) / item.costPrice) * 100
+    kind === 'sell' && valid && typeof effectiveCost === 'number'
+      ? ((parsedPrice - effectiveCost) / effectiveCost) * 100
       : null;
 
   const costSummary =
@@ -141,6 +151,31 @@ export function TradeActionDialog({
               }}
             />
           </div>
+          {missingCost ? (
+            <div>
+              <div className="mb-1 text-[var(--k-muted)]">
+                成本价（可选 · 缺成本，填了才能算盈亏）
+              </div>
+              <input
+                className="h-9 w-full rounded-md border border-[var(--k-border)] bg-[var(--k-surface-2)] px-3 font-mono text-sm outline-none"
+                placeholder="留空 = 仅记录卖出"
+                inputMode="decimal"
+                value={costPrice}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '' || PRICE_RE.test(raw)) setCostPrice(raw);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && valid)
+                    onConfirm({
+                      price: parsedPrice,
+                      positionPct: parsedPct,
+                      costPrice: costPrice !== '' ? parsedCost : undefined,
+                    });
+                }}
+              />
+            </div>
+          ) : null}
         </div>
         {pnlPreview != null ? (
           <div className="mt-2 text-[11px]">
@@ -158,7 +193,13 @@ export function TradeActionDialog({
           <Button
             size="sm"
             disabled={!valid}
-            onClick={() => onConfirm({ price: parsedPrice, positionPct: parsedPct })}
+            onClick={() =>
+              onConfirm({
+                price: parsedPrice,
+                positionPct: parsedPct,
+                costPrice: missingCost && costPrice !== '' ? parsedCost : undefined,
+              })
+            }
           >
             确认{titleForKind(kind)}
           </Button>

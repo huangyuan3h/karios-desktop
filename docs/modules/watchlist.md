@@ -383,4 +383,23 @@ Last automation: {time} ({trigger}) | −N screener +X alpha +Y | funnel … | f
 
 - Watchlist 数据存储在浏览器本地
 - 清除浏览器数据会丢失
+
+---
+
+## 用户使用笔记（2026-08-01 老婆反馈 · 已落实）
+
+> 真实使用者（老婆）亲自使用后的反馈；对应 todo §15。全部已落实，记录在此防回归。
+
+| # | 反馈 | 落实 |
+|---|------|------|
+| 1 | Watchlist table header 参数看不懂，hover 能明白每个参数干什么 | ✅ `lib/watchlist-column-help.tsx` + `ColumnHeader`（2026-08-01） |
+| 2 | 新闻模块（尤其 Dashboard）没有财经新闻准 | ✅ News Substrate 2.0 三轨全完成（Tier 分级源 + LLM enrichment + Morning Brief；2026-08-02） |
+| 3 | Dashboard 内容重复、参数看不懂 | ✅ `lib/dashboard-card-help.tsx` + DashboardHeader；Last sync 单行化、Index rule 块 hover（2026-08-01） |
+
+### 交易记录闭环（真实卖出请用行内「卖出」按钮）
+
+- 卖出时点 Watchlist 行内「卖出」→ 输入卖出价格 → 记录真实成交（`user_trades` 表）
+- 缺成本/入场日的持仓也可记录（2026-08-09 起：可选成本补填，留空=仅记录卖出无盈亏）
+- Watchlist 页「交易期望值看板」自动累计：胜率 / 盈亏比 / 每笔期望值 vs 0.3% 成本线 / 分来源
+- 期望值/周度复盘依赖这些真实样本——**不在 Karios 记录卖出，闭环就空转**
 - 建议定期导出 Markdown 备份

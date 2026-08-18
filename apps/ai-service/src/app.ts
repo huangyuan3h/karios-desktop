@@ -1,19 +1,20 @@
 import { cors } from 'hono/cors';
 import { Hono } from 'hono';
 
-import { configRoutes } from './routes/config';
-import { strategyRoutes } from './routes/strategy';
-import { leaderRoutes } from './routes/leader';
-import { mainlineRoutes } from './routes/mainline';
-import { quantRoutes } from './routes/quant';
-import { titleRoutes } from './routes/title';
-import { brokerRoutes } from './routes/broker';
-import { newsRoutes } from './routes/news';
-import { reportRoutes } from './routes/report';
-import { chatRoutes } from './routes/chat';
-import { decisionRoutes } from './routes/decision';
-import { alphaRadarRoutes } from './routes/alpha_radar';
-import { openaiCompatRoutes } from './routes/openai_compat';
+import { configRoutes } from './routes/config.js';
+import { strategyRoutes } from './routes/strategy.js';
+import { leaderRoutes } from './routes/leader.js';
+import { mainlineRoutes } from './routes/mainline.js';
+import { quantRoutes } from './routes/quant.js';
+import { titleRoutes } from './routes/title.js';
+import { brokerRoutes } from './routes/broker.js';
+import { newsRoutes } from './routes/news.js';
+import { reportRoutes } from './routes/report.js';
+import { chatRoutes } from './routes/chat.js';
+import { decisionRoutes } from './routes/decision.js';
+import { weeklyPlanRoutes } from './routes/weekly_plan.js';
+import { alphaRadarRoutes } from './routes/alpha_radar.js';
+import { openaiCompatRoutes } from './routes/openai_compat.js';
 
 export const app = new Hono();
 app.use('*', cors());
@@ -39,6 +40,7 @@ app.route('/news', newsRoutes);
 app.route('/report', reportRoutes);
 app.route('/chat', chatRoutes);
 app.route('/decision', decisionRoutes);
+app.route('/weekly-plan', weeklyPlanRoutes);
 app.route('/alpha-radar', alphaRadarRoutes);
 app.route('/v1', openaiCompatRoutes);
 

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-not-found]
 
 from data_sync_service.service.alpha_radar_pipeline import run_alpha_radar_process
+
+logger = logging.getLogger(__name__)
 
 JOB_ID = "alpha_radar_process_job"
 DEFAULT_INTERVAL_HOURS = 1
@@ -21,14 +24,22 @@ def process_interval_hours() -> int:
 
 
 def build_trigger():
+    # OPT-108 (2026-08-13): LLM off-peak — 20:30 / 23:30 / 02:30 / 05:30
+    # Asia/Shanghai (all inside the off-peak window 18:00-24:00 + 00:30-08:30,
+    # user approved 19:00 起跑), instead of an every-1h IntervalTrigger.
+    # The env override still works for manual tuning.
+    from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-not-found]
+
+    if os.getenv("ALPHA_RADAR_PROCESS_NIGHTLY_CRON", "1") == "1":
+        return CronTrigger(hour="20,23,2,5", minute="30", timezone="Asia/Shanghai")
     return IntervalTrigger(hours=process_interval_hours())
 
 
 def run():
-    print("[alpha_radar] Starting scheduled raw process...")
+    logger.info("[alpha_radar] Starting scheduled raw process...")
     try:
         result = run_alpha_radar_process(trigger="cron")
-        print(
+        logger.info(
             "[alpha_radar] Process complete: "
             f"processed={result.get('processedHeadlines')} "
             f"trends={result.get('trendsProduced')} "
@@ -36,4 +47,4 @@ def run():
             f"raw_backlog={result.get('rawBacklogCount')}"
         )
     except Exception as exc:
-        print(f"[alpha_radar] Process failed: {exc}")
+        logger.warning(f"[alpha_radar] Process failed: {exc}")

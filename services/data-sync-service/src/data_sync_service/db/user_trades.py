@@ -29,6 +29,7 @@ import uuid
 from typing import Any
 
 from psycopg.rows import dict_row
+from psycopg.types.json import Json  # type: ignore[import-not-found]
 
 from data_sync_service.db import get_connection
 
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS {USER_TRADES_TABLE} (
     source        TEXT,
     market        TEXT NOT NULL DEFAULT 'CN',
     note          TEXT,
+    alpha_snapshot JSONB,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -91,6 +93,7 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
         "source": row["source"],
         "market": row["market"],
         "note": row["note"],
+        "alphaSnapshot": row["alpha_snapshot"],
         "createdAt": row["created_at"].isoformat() if row["created_at"] else None,
     }
 
@@ -109,6 +112,7 @@ def insert_trade(
     source: str | None = None,
     market: str = "CN",
     note: str | None = None,
+    alpha_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Insert one trade leg and return the normalized row."""
     if side not in SIDES:
@@ -119,8 +123,9 @@ def insert_trade(
             f"""
             INSERT INTO {USER_TRADES_TABLE} (
                 id, symbol, side, trade_date, price, position_pct,
-                cost_basis, entry_date, pnl_pct, holding_days, source, market, note
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                cost_basis, entry_date, pnl_pct, holding_days, source, market,
+                note, alpha_snapshot
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
@@ -137,6 +142,7 @@ def insert_trade(
                 source,
                 market,
                 note,
+                Json(alpha_snapshot) if alpha_snapshot else None,
             ),
         )
         row = cur.fetchone()

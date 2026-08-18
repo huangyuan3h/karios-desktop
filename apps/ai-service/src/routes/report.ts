@@ -4,15 +4,15 @@ import { generateObject, generateText } from 'ai';
 import {
   InvestmentDailyReportRequestSchema,
   InvestmentDailyReportResponseSchema,
-} from '../schemas';
-import { parseInvestmentDailyReportAfterNormalize } from '../investmentDailyReportNormalize';
-import { tryParseJsonObject } from '../json_parse';
+} from '../schemas.js';
+import { parseInvestmentDailyReportAfterNormalize } from '../investmentDailyReportNormalize.js';
+import { tryParseJsonObject } from '../json_parse.js';
 import {
   getResolvedModel,
   AiModel,
   generateObjectCompatOptions,
   generateTextJsonObjectModeOptions,
-} from '../model';
+} from '../model.js';
 
 export const reportRoutes = new Hono();
 

@@ -4,7 +4,21 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
+import data_sync_service.service.industry_fund_flow as iflow
 from data_sync_service.service.industry_fund_flow import sync_cn_industry_fund_flow
+
+
+@pytest.fixture(autouse=True)
+def _reset_hist_short_circuit():
+    """Reset the module-level eastmoney short-circuit latches between tests —
+    they are process-global and would leak failure streaks across tests."""
+    iflow._EM_HIST_FAIL_STREAK = 0
+    iflow._EM_HIST_SKIP = False
+    yield
+    iflow._EM_HIST_FAIL_STREAK = 0
+    iflow._EM_HIST_SKIP = False
 
 _TOP_NAMES = ["电子", "计算机", "有色金属", "非银金融", "银行", "通信", "汽车", "医药生物", "电力设备", "机械设备"]
 

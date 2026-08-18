@@ -14,6 +14,14 @@ import { isGapUpWeakMarket, isIntradaySurge } from '@/lib/watchlist-metrics';
 
 export const CHANDELIER_ARM_PNL_PCT = 10;
 export const CHANDELIER_ATR_MULT = 2;
+/** OPT-099: S-3 backtest-caliber exit lines (mirror of the engine / paper constants). */
+export const S3_STOP_LOSS_PCT = 0.05; // cost drawdown floor (CN + HK), backtest stop_loss_pct=-5
+export const S3_TRAILING_STOP_PCT = 0.08; // CN peak drawdown, backtest trailing_stop_pct=-8
+export const S3_TRAILING_STOP_PCT_HK = 0.12; // HK peak drawdown (HK parallel line trailing -12)
+export const S3_MAX_HOLD_DAYS = 60; // max_hold_days, engine / paper / health share
+/** OPT-105: Strong-regime sessions use the ATR% x mult line (entry-locked in
+ *  backtest/paper; current-ATR approximation on the frontend). */
+export const S3_ATR_STOP_MULT = 2.0;
 /** ETF fallback stop: max drawdown from entry cost (no trendok stop available). */
 export const ETF_FALLBACK_MAX_LOSS_PCT = 0.05;
 /** ETF fallback stop: max drawdown from peak once position is in profit (trail). */
@@ -85,6 +93,8 @@ export type TrendOkLike = {
   buyZoneHigh?: number | null;
   stopLossPrice?: number | null;
   stopLossParts?: Record<string, unknown> | null;
+  /** OPT-099: backtest-caliber CLOSE peak since entry (from backend trendok). */
+  s3PeakClose?: number | null;
   values?: {
     emIndustry?: unknown;
     industry?: unknown;
@@ -315,6 +325,11 @@ export function suggestFireSizePct(opts: {
    *  cluster (30% - current cluster exposure). Entering the min chain
    *  shrinks Suggest% as the cluster fills up. */
   roomCorrelation?: number | null;
+  /** S-3 candidate (user-approved 2026-08-09): exempt from the 30% sector /
+   *  correlation-cluster caps — the S-3 mainline strategy is concentrated by
+   *  design (industry-cap experiments crashed the valid window). Other caps
+   *  (clip / single / sleeve / risk) still bind. */
+  isS3Candidate?: boolean;
 }): FireSizeSuggestion | null {
   const clip =
     typeof opts.clipPct === 'number' && Number.isFinite(opts.clipPct) && opts.clipPct > 0
@@ -327,7 +342,7 @@ export function suggestFireSizePct(opts: {
 
   const industry = String(opts.industryName || '').trim();
   let roomSector = Number.POSITIVE_INFINITY;
-  if (industry && opts.sectorExposureByIndustry) {
+  if (!opts.isS3Candidate && industry && opts.sectorExposureByIndustry) {
     const sum = opts.sectorExposureByIndustry.get(industry);
     const sectorSum = typeof sum === 'number' && Number.isFinite(sum) ? sum : 0;
     roomSector = SECTOR_CONCENTRATION_CAP_PCT - sectorSum;
@@ -361,9 +376,11 @@ export function suggestFireSizePct(opts: {
   }
 
   let roomCorrelation = Number.POSITIVE_INFINITY;
-  const corrRoom = num(opts.roomCorrelation);
-  if (corrRoom != null && Number.isFinite(corrRoom)) {
-    roomCorrelation = corrRoom;
+  if (!opts.isS3Candidate) {
+    const corrRoom = num(opts.roomCorrelation);
+    if (corrRoom != null && Number.isFinite(corrRoom)) {
+      roomCorrelation = corrRoom;
+    }
   }
 
   const room = Math.min(clip, roomSingle, roomSector, roomSleeve, riskCap, roomCorrelation);
@@ -613,6 +630,72 @@ export function deriveTriggerAndTrail(opts: {
   return { trailArmed, peak, hardStop, trailStop, exitStop, trigger: exitStop };
 }
 
+/** OPT-099: S-3 fixed -5% stop line from entry cost (backtest stop_loss_pct). */
+function s3FixedHardStop(costPrice: number | null): number | null {
+  if (costPrice == null || !Number.isFinite(costPrice) || costPrice <= 0) {
+    return null;
+  }
+  return costPrice * (1 - S3_STOP_LOSS_PCT);
+}
+
+/** OPT-105: Strong-regime ATR stop line = cost × (1 − mult × ATR%). */
+function s3AtrHardStop(
+  costPrice: number | null,
+  atrPct: number | null,
+): number | null {
+  if (costPrice == null || !Number.isFinite(costPrice) || costPrice <= 0) {
+    return null;
+  }
+  if (atrPct == null || atrPct <= 0) {
+    return s3FixedHardStop(costPrice);
+  }
+  return costPrice * (1 - (S3_ATR_STOP_MULT * atrPct) / 100);
+}
+
+/** OPT-099: S-3 fixed trailing line = peak × (1-8% CN / 1-12% HK), armed from entry. */
+function s3FixedTrail(opts: {
+  hardStop: number | null;
+  costPrice: number | null;
+  maxPrice: number | null;
+  current: number | null;
+  isHk: boolean;
+  /** Backtest-caliber CLOSE peak since entry (trendok s3PeakClose); null → fall back to maxPrice. */
+  s3PeakClose?: number | null;
+  /** OPT-105: Strong-regime ATR% — when set, the trail = peak × (1 − mult × ATR%). */
+  atrPct?: number | null;
+}): {
+  trailArmed: boolean;
+  peak: number | null;
+  hardStop: number | null;
+  trailStop: number | null;
+  exitStop: number | null;
+  trigger: number | null;
+} {
+  const { hardStop, maxPrice, isHk, s3PeakClose, atrPct } = opts;
+  const peak =
+    (s3PeakClose != null && Number.isFinite(s3PeakClose) && s3PeakClose > 0
+      ? s3PeakClose
+      : maxPrice) ?? null;
+  const trailPct = isHk ? S3_TRAILING_STOP_PCT_HK : S3_TRAILING_STOP_PCT;
+  const trailMult =
+    atrPct != null && atrPct > 0
+      ? (S3_ATR_STOP_MULT * atrPct) / 100
+      : trailPct;
+  const trailStop = peak != null ? peak * (1 - trailMult) : null;
+  let exitStop: number | null = null;
+  if (hardStop != null && trailStop != null) exitStop = Math.max(hardStop, trailStop);
+  else if (hardStop != null) exitStop = hardStop;
+  else if (trailStop != null) exitStop = trailStop;
+  return {
+    trailArmed: trailStop != null,
+    peak,
+    hardStop,
+    trailStop,
+    exitStop,
+    trigger: exitStop,
+  };
+}
+
 /** Flat + Score<30 + TrendOK=no → physical-GC candidate (Action=PURGE). */
 export function isPurgeCandidate(opts: {
   held: boolean;
@@ -671,6 +754,19 @@ export function isLockedT1(
   const d = String(entryDate || '').trim();
   const today = String(todaySh || '').trim();
   return Boolean(d && today && d === today);
+}
+
+/** Calendar days between two YYYY-MM-DD dates (0 when either is missing). */
+export function daysBetweenDates(
+  from: string | null | undefined,
+  to: string | null | undefined,
+): number {
+  const a = String(from || '').trim().slice(0, 10);
+  const b = String(to || '').trim().slice(0, 10);
+  const ta = Date.parse(`${a}T00:00:00Z`);
+  const tb = Date.parse(`${b}T00:00:00Z`);
+  if (!Number.isFinite(ta) || !Number.isFinite(tb)) return 0;
+  return Math.round((tb - ta) / 86400000);
 }
 
 /** Held position with no entryDate — fail-closed for sells (cannot prove T+1 unlock). */
@@ -769,6 +865,9 @@ export function evaluateNewEntryGates(opts: {
   /** V7.0-01 / L3-P5: semantic factor-cluster exposure % of the symbol's
    *  cluster. >= 30% blocks new BUY/ADD (existing positions untouched). */
   clusterExposurePct?: number | null;
+  /** S-3 candidate (user-approved 2026-08-09): exempt from the 30% sector /
+   *  correlation-cluster entry blocks (mainline concentration is validated). */
+  isS3Candidate?: boolean;
 }): NewEntryGateResult {
   const {
     industryName,
@@ -831,7 +930,7 @@ export function evaluateNewEntryGates(opts: {
   if (isGapUpWeakMarket(gapUp, marketRegime)) {
     return { ok: false, tag: null, why: 'GAP_UP_WEAK_BLOCK' };
   }
-  if (!isEtf && isSectorConcentrationBlocked(industryName, sectorExposureByIndustry)) {
+  if (!isEtf && !opts.isS3Candidate && isSectorConcentrationBlocked(industryName, sectorExposureByIndustry)) {
     return { ok: false, tag: null, why: 'SECTOR_CONC_BLOCK' };
   }
   if (isSleeveCapBlocked(sleeveExposurePct, positionRangeHint)) {
@@ -839,7 +938,9 @@ export function evaluateNewEntryGates(opts: {
   }
   // V7.0-01: cluster cap blocks NEW entries only — existing positions are
   // never force-sold, so held symbols (ADD) skip the correlation check.
-  if (isCorrelationClusterBlocked(clusterExposurePct)) {
+  // S-3 candidates (user-approved 2026-08-09) also skip it: mainline
+  // concentration is a validated feature, not an accident.
+  if (!opts.isS3Candidate && isCorrelationClusterBlocked(clusterExposurePct)) {
     return { ok: false, tag: null, why: 'CORRELATION_CAP_BLOCK' };
   }
   if (isEtf) {
@@ -943,6 +1044,9 @@ export function deriveActionCard(opts: {
    *  cluster (from GET /api/backtest/correlation-status). Passed into the
    *  entry gates (>=30% blocks new BUY) and Suggest% headroom. */
   clusterExposurePct?: number | null;
+  /** S-3 candidate (user-approved 2026-08-09): exempt from the 30% sector /
+   *  correlation-cluster caps in the entry gates and Suggest% sizing. */
+  isS3Candidate?: boolean;
 }): ExecutionActionCard {
   const {
     symbol,
@@ -963,6 +1067,7 @@ export function deriveActionCard(opts: {
     now = null,
     source = null,
     clusterExposurePct = null,
+    isS3Candidate = false,
   } = opts;
   const held = isHeldPosition(position);
   const isEtf = isEtfWatchlistSymbol(symbol);
@@ -970,9 +1075,29 @@ export function deriveActionCard(opts: {
   const mode = gateMode(gate);
   const regime = marketRegime ?? gate?.marketRegime ?? null;
   const industryName = resolveIndustryName(trendok);
+  const cost = num(position.costPrice);
+  const maxPrice = num(position.maxPrice);
+  const isHk = marketOfSymbol(symbol) === 'hk';
+  const atr14 = atrFromParts(parts);
   const useDefensiveStop =
     mode === 'DEFEND' && isDefensiveSectorWhitelist(industryName);
-  const trendHardStop = num(trendok?.stopLossPrice);
+  // OPT-105 (2026-08-13 固化): regime-adaptive stops — Strong sessions use
+  // the ATR% x S3_ATR_STOP_MULT line (let winners run), Diverging/Weak keep
+  // the fixed -5%/-8% (cut fast). Mirrors the backtest S3_CONFIG and the
+  // live paper / health-card rule. Uses the CURRENT ATR14 (approx of the
+  // backend's entry-locked ATR — the health card shows the authoritative one).
+  const atrPct =
+    atr14 != null && atr14 > 0 && currentPrice != null && currentPrice > 0
+      ? (atr14 / currentPrice) * 100
+      : null;
+  const useAtrStop =
+    held && !isEtf && regime === 'Strong' && atrPct != null && atrPct > 0;
+  const trendHardStop =
+    held && !isEtf
+      ? useAtrStop
+        ? s3AtrHardStop(cost, atrPct!)
+        : s3FixedHardStop(cost)
+      : num(trendok?.stopLossPrice);
   const defensiveStop = useDefensiveStop
     ? resolveDefensiveHardStop({
         ema10: ema10FromTrendok(trendok),
@@ -985,9 +1110,9 @@ export function deriveActionCard(opts: {
     hardStop =
       hardStop != null ? Math.max(hardStop, defensiveStop) : defensiveStop;
   }
-  const atr14 = atrFromParts(parts);
-  const cost = num(position.costPrice);
-  const maxPrice = num(position.maxPrice);
+  // OPT-099: S-3 trailing peak = backtest-caliber CLOSE peak since entry
+  // (intraday high) only when the backend value is absent.
+  const s3PeakClose = num(trendok?.s3PeakClose);
   // ETF fallback (RuleType=ETF_FALLBACK): trendok data-starved (no stop) →
   // price-drawdown stop derived from entry cost / peak. Keeps the position
   // protected with a relative stop instead of 0/none hard-exit behaviour.
@@ -1003,13 +1128,28 @@ export function deriveActionCard(opts: {
       etfFallback = true;
     }
   }
-  const trail = deriveTriggerAndTrail({
-    hardStop,
-    costPrice: cost,
-    maxPrice,
-    current: currentPrice,
-    atr14,
-  });
+  // OPT-099: held stocks use the S-3 fixed trailing line (peak × (1-8%) CN /
+  // (1-12%) HK), armed from entry — exactly the engine's trailing_stop_pct.
+  // The ATR chandelier (peak − 2×ATR14, armed only at +10% PnL) stays for
+  // ETFs and as the flat-row reference.
+  const trail =
+    held && !isEtf
+      ? s3FixedTrail({
+          hardStop,
+          costPrice: cost,
+          maxPrice,
+          current: currentPrice,
+          isHk,
+          s3PeakClose,
+          atrPct: useAtrStop ? atrPct : null,
+        })
+      : deriveTriggerAndTrail({
+          hardStop,
+          costPrice: cost,
+          maxPrice,
+          current: currentPrice,
+          atr14,
+        });
 
   const exitStop = held ? trail.exitStop : null;
   const entryTrigger = held ? null : num(trendok?.buyZoneHigh);
@@ -1034,8 +1174,8 @@ export function deriveActionCard(opts: {
   // Compat: trigger = role-relevant level for journal / cond-order
   const trigger = held ? exitStop : entryTrigger;
 
-  const exitNow = Boolean(parts?.exit_now);
-  const warnHalf = Boolean(parts?.warn_reduce_half);
+  // OPT-097: structure signals (exit_now / warn_reduce_half) are no longer
+  // exits for held positions (backtested: they truncate the trend leg).
   // Float tolerance: trailStop = peak - 2*ATR14 can land a hair below current
   // (e.g. 3.5999999999999996 vs 3.6); a touch within 1e-9 counts as hit.
   const PRICE_EPS = 1e-9;
@@ -1052,7 +1192,6 @@ export function deriveActionCard(opts: {
   // ETF rule isolation: trend-structure exit_now is a TRIM-level warning (the
   // backend already downgrades it), but defensively downgrade any stray
   // exit_now from stale data here too — only a hard-stop price breach exits.
-  const etfExitDowngraded = isEtf && exitNow && !hardStopHit;
   const priceAtOrBelowTrigger =
     exitStop != null &&
     currentPrice != null &&
@@ -1089,6 +1228,7 @@ export function deriveActionCard(opts: {
     now,
     isEtf,
     clusterExposurePct,
+    isS3Candidate,
   });
   // Mainline column independent of chase / concentration vetoes
   const mainlineOk = Boolean(
@@ -1133,6 +1273,10 @@ export function deriveActionCard(opts: {
   const missingEntryDate = held && isMissingEntryDate(position.entryDate);
   const entryBelowStop =
     !held && isEntryAtOrBelowHardStop(entryTrigger, hardStop);
+  // OPT-099: max_hold_days=60 (engine / paper / health) — held beyond the
+  // calendar-day cap exits regardless of price (backtested exit rule).
+  const heldMaxHold =
+    held && !missingEntryDate && daysBetweenDates(position.entryDate, todaySh) >= S3_MAX_HOLD_DAYS;
 
   const blockSellWhy = missingEntryDate
     ? 'ENTRY_DATE_MISSING'
@@ -1140,38 +1284,36 @@ export function deriveActionCard(opts: {
       ? 'T1_LOCK'
       : null;
 
-  if (held && (exitNow || priceAtOrBelowTrigger)) {
+  // 2026-08-12 (OPT-097): S-3-only exits for held positions. The trendok
+  // structure signals (exit_now / warn_reduce_half) and the sector-flow
+  // trims (heldTrim) were NEVER backtested — per-trade counterfactuals
+  // across all windows/markets show they truncate the trend leg (close<EMA20
+  // exit: -511pt long-window vs holding to S-3 stop/trail rules). Held
+  // positions now exit ONLY on the S-3 price/time rules (stop/trail lines
+  // via priceAtOrBelowTrigger). Structure signals may still surface for
+  // non-held watchlist rows (observation only).
+  if (held && priceAtOrBelowTrigger) {
     if (blockSellWhy) {
       action = 'HOLD';
       why = blockSellWhy;
     } else if (isEtf && !hardStopHit) {
-      // ETF: trail/warn/fallback touched without a real hard-stop breach →
+      // ETF: trail/fallback touched without a real hard-stop breach →
       // smooth TRIM (half), never a forced full exit.
       action = 'TRIM';
-      why = etfFallback
-        ? 'ETF_FALLBACK_TRIM'
-        : etfExitDowngraded
-          ? 'WARN_REDUCE_HALF'
-          : 'TRAIL_STOP_TRIM';
+      why = etfFallback ? 'ETF_FALLBACK_TRIM' : 'TRAIL_STOP_TRIM';
     } else {
       action = 'EXIT';
-      why = exitNow ? 'EXIT_NOW' : isEtf ? 'HARD_STOP_HIT' : 'TRIGGER_HIT';
+      why = isEtf ? 'HARD_STOP_HIT' : 'TRIGGER_HIT';
     }
-  } else if (held && warnHalf) {
+  } else if (held && heldMaxHold) {
+    // OPT-099: backtest max_hold_days=60 — time-based exit, same rule the
+    // engine / live paper / health card enforce (T+1 lock still fail-closed).
     if (blockSellWhy) {
       action = 'HOLD';
       why = blockSellWhy;
     } else {
-      action = 'TRIM';
-      why = 'WARN_REDUCE_HALF';
-    }
-  } else if (held && heldTrim.trim) {
-    if (blockSellWhy) {
-      action = 'HOLD';
-      why = blockSellWhy;
-    } else {
-      action = 'TRIM';
-      why = heldTrim.why;
+      action = 'EXIT';
+      why = 'MAX_HOLD';
     }
   } else if (held && allowAttack && wantsBuy) {
     if (!entryGate.ok) {
@@ -1278,6 +1420,7 @@ export function deriveActionCard(opts: {
         typeof clusterExposurePct === 'number' && Number.isFinite(clusterExposurePct)
           ? CORRELATION_CLUSTER_CAP_PCT - clusterExposurePct
           : null,
+      isS3Candidate,
     });
     if (size) {
       suggestAddPct = size.addPct;

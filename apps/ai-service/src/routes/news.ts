@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { generateText } from 'ai';
 
-import { NewsSummaryRequestSchema } from '../schemas';
-import { getResolvedModel, AiModel } from '../model';
-import { stripModelThinking } from '../model_thinking';
+import { NewsSummaryRequestSchema } from '../schemas.js';
+import { getResolvedModel, AiModel } from '../model.js';
+import { stripModelThinking } from '../model_thinking.js';
 
 export const newsRoutes = new Hono();
 

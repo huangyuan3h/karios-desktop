@@ -2,16 +2,17 @@
 
 import * as React from 'react';
 
-import { WatchlistImportDebug, type ScreenerImportDebugState } from '@/components/watchlist/WatchlistImportDebug';
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
+import { BehaviorAuditBanner } from '@/components/watchlist/BehaviorAuditBanner';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
+import { TradingBriefCard } from '@/components/watchlist/TradingBriefCard';
 import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
 import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
-import { emptyScreenerFunnel } from '@/lib/watchlist-screener-import';
 import { sortWatchlistItems, WatchlistTable } from '@/components/watchlist/WatchlistTable';
 import { WatchlistToolbar } from '@/components/watchlist/WatchlistToolbar';
 import { Button } from '@/components/ui/button';
 import { useExecutionJournalCapture } from '@/hooks/useExecutionJournalCapture';
+import { useBehaviorAuditQuery } from '@/lib/queries/behaviorAudit';
 import { useWatchlistItems } from '@/hooks/useWatchlistItems';
 import { useWatchlistTrend } from '@/hooks/useWatchlistTrend';
 import {
@@ -30,7 +31,7 @@ import { buildMainlineAllowSet, isSectorOutflowBlock } from '@/lib/hot-industry-
 import { useAlphaRadarCatalystQuery } from '@/lib/queries/alphaRadar';
 import { useDashboardSummaryQuery } from '@/lib/queries/dashboard';
 import { useDashboardSentimentQuery } from '@/lib/queries/sentiment';
-import { watchlistMarketKey } from '@/lib/queries/watchlist';
+import { useWatchlistRsRanksQuery, watchlistMarketKey } from '@/lib/queries/watchlist';
 import { scoreExplainZhLines } from '@/lib/trendok-display';
 import {
   fetchAutomationLatest,
@@ -39,7 +40,6 @@ import {
   type AutomationRun,
 } from '@/lib/watchlist-automation';
 import { copyWatchlistMarkdown } from '@/lib/watchlist-export';
-import { importFromScreener } from '@/lib/watchlist-screener-import';
 import { loadWatchlist } from '@/lib/watchlist-storage';
 
 export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) => void } = {}) {
@@ -132,22 +132,18 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
   const [copyMdBusy, setCopyMdBusy] = React.useState(false);
   const copyMdTimerRef = React.useRef<number | null>(null);
 
-  const [importDebugOpen, setImportDebugOpen] = React.useState(false);
-  const [importDebugFilter, setImportDebugFilter] = React.useState('');
-  const [importDebugScoreSortDir, setImportDebugScoreSortDir] = React.useState<'desc' | 'asc'>(
-    'desc',
-  );
-  const [importDebug, setImportDebug] = React.useState<ScreenerImportDebugState>({
-    updatedAt: null,
-    scanned: 0,
-    trendOkCount: 0,
-    rows: [],
-    funnel: emptyScreenerFunnel(),
-  });
 
   const [scoreSortDir, setScoreSortDir] = React.useState<'desc' | 'asc'>('desc');
   const [scoreSortEnabled, setScoreSortEnabled] = React.useState(true);
   const [showHidden, setShowHidden] = React.useState(false);
+  const [hideAuditExtra, setHideAuditExtra] = React.useState(false);
+  // OPT-106: symbols flagged by the behavior audit (买了不该买/该卖没卖) —
+  // shared query cache with the banner (no duplicate requests).
+  const auditRows = useBehaviorAuditQuery().data ?? [];
+  const auditExtraSymbols = React.useMemo(
+    () => new Set(auditRows.flatMap((r) => (r.extraList ?? []).map((e) => e.symbol))),
+    [auditRows],
+  );
 
   React.useEffect(() => {
     void fetchAutomationLatest()
@@ -159,6 +155,25 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       });
   }, []);
 
+  // Global notification hub scroll: jump to the anchored health block and
+  // flash it so "提醒我做操作" lands on the details.
+  React.useEffect(() => {
+    function onScrollTo(e: Event) {
+      const anchor = (e as CustomEvent<{ anchor: string }>).detail?.anchor;
+      if (!anchor) return;
+      const ids = [anchor, `${anchor}-hk`];
+      const el = ids
+        .map((id) => document.getElementById(id))
+        .find((x): x is HTMLElement => Boolean(x));
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.classList.add('health-flash');
+      window.setTimeout(() => el.classList.remove('health-flash'), 1600);
+    }
+    window.addEventListener('karios-scroll-to', onScrollTo);
+    return () => window.removeEventListener('karios-scroll-to', onScrollTo);
+  }, []);
+
   React.useEffect(
     () => () => {
       if (copyMdTimerRef.current) window.clearTimeout(copyMdTimerRef.current);
@@ -166,9 +181,20 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
     [],
   );
 
+  // RS percentiles (whole-market, /watchlist/rs-ranks) — tiebreaker for the
+  // score sort; the table's own rs query shares the same query key/cache.
+  const rsRanksQuery = useWatchlistRsRanksQuery(items.map((i) => i.symbol));
+
   const sortedItems = React.useMemo(
-    () => sortWatchlistItems(items, trend, scoreSortEnabled, scoreSortDir),
-    [items, trend, scoreSortEnabled, scoreSortDir],
+    () =>
+      sortWatchlistItems(
+        items,
+        trend,
+        scoreSortEnabled,
+        scoreSortDir,
+        rsRanksQuery.data?.ranks ?? null,
+      ),
+    [items, trend, scoreSortEnabled, scoreSortDir, rsRanksQuery.data],
   );
 
   const macroLockBanner = React.useMemo(() => {
@@ -191,48 +217,6 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
 
   const watchlistSet = React.useMemo(() => new Set(items.map((x) => x.symbol)), [items]);
 
-  async function onSyncFromScreener() {
-    setError(null);
-    setSyncMsg(null);
-    setSyncBusy(true);
-    setSyncStage('Loading enabled screeners');
-    setSyncProgress(null);
-    setSyncLogs([]);
-    setImportDebugFilter('');
-
-    const pushLog = (line: string) => {
-      setSyncLogs((prev) => [...prev, line].slice(-6));
-    };
-    try {
-      const result = await importFromScreener({
-        existingItems: items,
-        onStage: (label, cur, total) => {
-          setSyncStage(label);
-          if (typeof cur === 'number' && typeof total === 'number') {
-            setSyncProgress({ cur, total });
-          } else {
-            setSyncProgress(null);
-          }
-          pushLog(
-            label +
-              (typeof cur === 'number' && typeof total === 'number' ? ` (${cur}/${total})` : ''),
-          );
-        },
-      });
-      setImportDebug(result.debug as ScreenerImportDebugState);
-      setSyncMsg(result.message);
-      if (result.addedCount > 0) {
-        setItems(loadWatchlist());
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSyncBusy(false);
-      setSyncStage(null);
-      setSyncProgress(null);
-    }
-  }
-
   async function onRunAutomation(force = true) {
     setError(null);
     setAutomationMsg(null);
@@ -252,10 +236,8 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       });
       setLatestAutomation({
         ...run,
-        screenerAdded: result?.screenerAdded ?? run.screenerAdded,
         meta: {
           ...(run.meta && typeof run.meta === 'object' ? run.meta : {}),
-          ...(result?.funnel ? { funnel: result.funnel } : {}),
         },
       });
       if (run.skipped) {
@@ -332,6 +314,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
       } catch {
         toastCopyMd(false, 'Copy failed. Please allow clipboard access.');
       }
+    } catch (err) {
+      console.warn('copy watchlist markdown failed:', err);
+      toastCopyMd(false, 'Copy failed. Backend unavailable.');
     } finally {
       setCopyMdBusy(false);
     }
@@ -357,6 +342,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
             ，所有买入已强制拦截
           </div>
         ) : null}
+        <BehaviorAuditBanner />
         {executionGate ? (
           <div
             className={`mb-4 rounded-lg border px-4 py-3 text-sm ${executionGateBadgeClass(executionGate.mode)}`}
@@ -413,29 +399,19 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           onManualRefreshTrend={() => void handleManualRefreshTrend()}
           onReferenceTable={referenceTable}
           onCopyMarkdown={() => void handleCopyWatchlistMarkdown()}
-          onSyncFromScreener={() => void onSyncFromScreener()}
           onRunAutomation={() => void onRunAutomation(true)}
           onForceAutomationFromSkip={() => void onRunAutomation(true)}
         />
 
         <PortfolioHealthCard onOpenStock={onOpenStock} />
 
+        <TradingBriefCard />
+
+
         <WatchlistInsightsPanel>
           <TradeStatsPanel />
           <FunnelHistoryTable limit={10} />
-          <WatchlistImportDebug
-            importDebug={importDebug}
-            importDebugOpen={importDebugOpen}
-            setImportDebugOpen={setImportDebugOpen}
-            importDebugFilter={importDebugFilter}
-            setImportDebugFilter={setImportDebugFilter}
-            importDebugScoreSortDir={importDebugScoreSortDir}
-            setImportDebugScoreSortDir={setImportDebugScoreSortDir}
-            watchlistSet={watchlistSet}
-            addSymbolToWatchlist={addSymbolToWatchlist}
-            setCode={setCode}
-            setError={setError}
-          />
+
         </WatchlistInsightsPanel>
 
         <section className="mb-4 min-w-0 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4">
@@ -498,6 +474,9 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           setScoreSortEnabled={setScoreSortEnabled}
           showHidden={showHidden}
           setShowHidden={setShowHidden}
+          auditExtraSymbols={auditExtraSymbols}
+          hideAuditExtra={hideAuditExtra}
+          setHideAuditExtra={setHideAuditExtra}
           setItemColor={setItemColor}
           setItemPositionPct={setItemPositionPct}
           setItemPositionPctDraft={setItemPositionPctDraft}

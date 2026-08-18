@@ -106,9 +106,17 @@ export function ModelSettingsPanel() {
     loadConfig();
   }, [loadConfig]);
 
+  const successTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   const showSuccess = (msg: string) => {
     setSuccess(msg);
-    setTimeout(() => setSuccess(null), 3000);
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    successTimerRef.current = setTimeout(() => setSuccess(null), 3000);
   };
 
   const setActiveProfile = async (profileId: string) => {

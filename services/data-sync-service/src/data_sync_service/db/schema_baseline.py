@@ -16,6 +16,7 @@ from data_sync_service.db.alpha_radar import (
 from data_sync_service.db.alpha_radar import (
     CREATE_SOURCES_SQL as ALPHA_RADAR_SOURCES_SQL,
 )
+from data_sync_service.db.bar_minute import CREATE_SQL as BAR_MINUTE_CREATE_SQL
 from data_sync_service.db.broker import CREATE_SQL as BROKER_CREATE_SQL
 from data_sync_service.db.daily import CREATE_SQL as DAILY_CREATE_SQL
 from data_sync_service.db.decision import CREATE_SQL as DECISION_CREATE_SQL
@@ -34,6 +35,7 @@ from data_sync_service.db.news import CREATE_SOURCES_SQL as NEWS_SOURCES_SQL
 from data_sync_service.db.research import CREATE_TABLE_SQL as RESEARCH_CREATE_SQL
 from data_sync_service.db.stock_basic import CREATE_SQL as STOCK_BASIC_CREATE_SQL
 from data_sync_service.db.stock_eastmoney_industry import CREATE_SQL as EM_INDUSTRY_CREATE_SQL
+from data_sync_service.db.stock_forecast import CREATE_SQL as STOCK_FORECAST_CREATE_SQL
 from data_sync_service.db.stoploss import CREATE_INDEX_SQL as STOPLOSS_INDEX_SQL
 from data_sync_service.db.stoploss import CREATE_SQL as STOPLOSS_CREATE_SQL
 from data_sync_service.db.sync_job_record import CREATE_SQL as SYNC_JOB_RECORD_CREATE_SQL
@@ -41,12 +43,45 @@ from data_sync_service.db.system_prompts import CREATE_SQL as SYSTEM_PROMPTS_CRE
 from data_sync_service.db.top_inst import CREATE_SQL as TOP_INST_CREATE_SQL
 from data_sync_service.db.trade_calendar import CREATE_SQL as TRADE_CALENDAR_CREATE_SQL
 from data_sync_service.db.trade_review import CREATE_SQL as TRADE_REVIEW_CREATE_SQL
-from data_sync_service.db.tv import CREATE_SQL as TV_CREATE_SQL
-from data_sync_service.db.tv_chrome_settings import CREATE_SQL as TV_CHROME_SETTINGS_CREATE_SQL
 from data_sync_service.db.user_trades import CREATE_SQL as USER_TRADES_CREATE_SQL
 from data_sync_service.db.watchlist_automation import CREATE_SQL as WATCHLIST_AUTOMATION_CREATE_SQL
+from data_sync_service.db.webhook import CREATE_SQL as WEBHOOK_CREATE_SQL
 
 BASELINE_REVISION = "0001_baseline"
+
+# The TV module was retired, but migration 0012 still alters tv_screeners.
+# Keep its historical DDL in the baseline so a fresh database can replay the
+# complete migration chain without importing the deleted module.
+TV_LEGACY_CREATE_SQL = """
+CREATE TABLE IF NOT EXISTS tv_screeners (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    url         TEXT,
+    enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    mode        TEXT NOT NULL DEFAULT 'chrome',
+    market      TEXT,
+    filter_json JSONB,
+    api_columns JSONB,
+    CONSTRAINT ck_tv_screeners_mode CHECK (mode IN ('api', 'chrome'))
+);
+
+CREATE TABLE IF NOT EXISTS tv_screener_snapshots (
+    id          TEXT PRIMARY KEY,
+    screener_id TEXT NOT NULL REFERENCES tv_screeners(id) ON DELETE CASCADE,
+    captured_at TEXT NOT NULL,
+    row_count   INTEGER NOT NULL,
+    payload     JSONB NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tv_screeners_updated_at
+    ON tv_screeners(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tv_snapshots_screener_captured
+    ON tv_screener_snapshots(screener_id, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tv_screeners_mode
+    ON tv_screeners(mode);
+"""
 
 
 def _strip_line_comments(sql: str) -> str:
@@ -98,6 +133,8 @@ def baseline_ddl_statements() -> list[str]:
     ordered_sql = [
         DAILY_CREATE_SQL,
         STOCK_BASIC_CREATE_SQL,
+        BAR_MINUTE_CREATE_SQL,
+        STOCK_FORECAST_CREATE_SQL,
         INDEX_DAILY_CREATE_SQL,
         INDEX_BASIC_CREATE_SQL,
         MACRO_DAILY_CREATE_SQL,
@@ -115,8 +152,6 @@ def baseline_ddl_statements() -> list[str]:
         STOPLOSS_INDEX_SQL,
         JOURNAL_CREATE_SQL,
         TRADE_REVIEW_CREATE_SQL,
-        TV_CHROME_SETTINGS_CREATE_SQL,
-        TV_CREATE_SQL,
         NEWS_SOURCES_SQL,
         CREATE_ITEMS_SQL,
         ALPHA_RADAR_SOURCES_SQL,
@@ -129,6 +164,8 @@ def baseline_ddl_statements() -> list[str]:
         RESEARCH_CREATE_SQL,
         DECISION_CREATE_SQL,
         USER_TRADES_CREATE_SQL,
+        TV_LEGACY_CREATE_SQL,
+        WEBHOOK_CREATE_SQL,
     ]
     statements: list[str] = []
     for sql in ordered_sql:

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { queryHoldingsHealth, searchArchive } from './decision';
+import { queryHoldingsHealth, searchArchive } from './decision.js';
 
 const HEALTH = {
   tradeDate: '2026-08-07',

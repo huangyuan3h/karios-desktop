@@ -28,7 +28,6 @@ export type WatchlistToolbarProps = {
   onManualRefreshTrend: () => void;
   onReferenceTable: () => void;
   onCopyMarkdown: () => void;
-  onSyncFromScreener: () => void;
   onRunAutomation: () => void;
   onForceAutomationFromSkip: () => void;
 };
@@ -55,7 +54,6 @@ export function WatchlistToolbar({
   onManualRefreshTrend,
   onReferenceTable,
   onCopyMarkdown,
-  onSyncFromScreener,
   onRunAutomation,
   onForceAutomationFromSkip,
 }: WatchlistToolbarProps) {
@@ -83,7 +81,7 @@ export function WatchlistToolbar({
         {syncBusy && syncStage ? (
           <div className="mt-2 rounded-md border border-[var(--k-border)] bg-[var(--k-surface)] p-2 text-xs">
             <div className="flex items-center justify-between gap-2">
-              <div className="font-medium">Import from screener</div>
+              <div className="font-medium">同步中</div>
               <div className="text-[var(--k-muted)]">
                 {syncProgress ? `${syncProgress.cur}/${syncProgress.total}` : '…'}
               </div>
@@ -187,16 +185,6 @@ export function WatchlistToolbar({
           disabled={!sortedItemsCount || copyMdBusy}
         >
           {copyMdBusy ? 'Copying…' : 'Copy Markdown'}
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => void onSyncFromScreener()}
-          disabled={syncBusy || automationBusy}
-          className="gap-2"
-        >
-          <RefreshCw className={syncBusy ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-          Import from screener
         </Button>
         <Button
           size="sm"

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeAlphaRadarExtract,
   parseAlphaRadarBatchExtract,
-} from './alphaRadarBatchNormalize';
+} from './alphaRadarBatchNormalize.js';
 
 describe('parseAlphaRadarBatchExtract V4', () => {
   it('accepts V4 fields and coerces source_index', () => {

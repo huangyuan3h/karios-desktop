@@ -1,0 +1,71 @@
+{
+  "generatedAt": "2026-08-12",
+  "markets": {
+    "CN": {
+      "market": "CN",
+      "window": "2021-08-01 ~ 2026-08-11",
+      "baseline": {
+        "trades": 1196,
+        "winRate": 0.382,
+        "avgPnlPct": 2.63,
+        "totalNetPnlPct": 3148.52
+      },
+      "byLight": {
+        "green": {
+          "trades": 258,
+          "winRate": 0.407,
+          "avgPnlPct": 2.76,
+          "totalPnlPct": 712.7
+        },
+        "yellow": {
+          "trades": 655,
+          "winRate": 0.421,
+          "avgPnlPct": 4.03,
+          "totalPnlPct": 2640.96
+        },
+        "red": {
+          "trades": 283,
+          "winRate": 0.269,
+          "avgPnlPct": -0.72,
+          "totalPnlPct": -205.14
+        }
+      },
+      "lightsCovered": 1.0,
+      "daysReplayed": 1837,
+      "seconds": 165.5
+    },
+    "HK": {
+      "market": "HK",
+      "window": "2024-08-01 ~ 2026-08-07",
+      "baseline": {
+        "trades": 599,
+        "winRate": 0.389,
+        "avgPnlPct": 7.85,
+        "totalNetPnlPct": 4702.17
+      },
+      "byLight": {
+        "green": {
+          "trades": 335,
+          "winRate": 0.364,
+          "avgPnlPct": 3.07,
+          "totalPnlPct": 1028.17
+        },
+        "yellow": {
+          "trades": 116,
+          "winRate": 0.457,
+          "avgPnlPct": 8.49,
+          "totalPnlPct": 985.31
+        },
+        "red": {
+          "trades": 148,
+          "winRate": 0.392,
+          "avgPnlPct": 18.17,
+          "totalPnlPct": 2688.69
+        }
+      },
+      "lightsCovered": 1.0,
+      "daysReplayed": 737,
+      "seconds": 57.4
+    }
+  }
+}

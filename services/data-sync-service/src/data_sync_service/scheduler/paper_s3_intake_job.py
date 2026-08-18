@@ -6,6 +6,10 @@ paper_trading_update (17:45). Paper-trades today's S-3 backtest candidates
 (score>=65 · RS>=50% · regime!=Weak · mainline · panic cooldown) so the
 paper record probes the S-3 strategy out of sample.
 
+2026-08-10 (HK parallel line): the same job also runs the HK line intake
+(source='S3HK', HSI/HSTECH regime gates) right after the CN one — both
+markets paper-trade their own candidates independently.
+
 Idempotent on (symbol, entry_date, side) — re-running the same day is a no-op.
 """
 
@@ -37,24 +41,26 @@ def _today_iso_utc() -> str:
 
 def run() -> None:
     today = _today_iso_utc()
-    try:
-        summary = run_intake_s3(trade_date=today)
-    except Exception as exc:  # noqa: BLE001
-        insert_record(JOB_ID, success=False, error_message=str(exc))
-        logger.warning("paper_s3_intake failed: %s", exc)
-        return
+    for market in ("CN", "HK"):
+        try:
+            summary = run_intake_s3(trade_date=today, market=market)
+        except Exception as exc:  # noqa: BLE001
+            insert_record(f"{JOB_ID}_{market}", success=False, error_message=str(exc))
+            logger.warning("paper_s3_intake[%s] failed: %s", market, exc)
+            continue
 
-    if "error" in summary:
-        insert_record(JOB_ID, success=False, error_message=str(summary.get("error")))
-        logger.warning("paper_s3_intake partial: %s", summary)
-        return
+        if "error" in summary:
+            insert_record(f"{JOB_ID}_{market}", success=False, error_message=str(summary.get("error")))
+            logger.warning("paper_s3_intake[%s] partial: %s", market, summary)
+            continue
 
-    insert_record(JOB_ID, success=True)
-    logger.info(
-        "paper_s3_intake ok: %s -> %d candidates, %d inserted, %d skipped (%s)",
-        today,
-        summary.get("candidates", 0),
-        summary.get("inserted", 0),
-        summary.get("skipped", 0),
-        summary.get("skippedReasons", {}),
-    )
+        insert_record(f"{JOB_ID}_{market}", success=True)
+        logger.info(
+            "paper_s3_intake[%s] ok: %s -> %d candidates, %d inserted, %d skipped (%s)",
+            market,
+            today,
+            summary.get("candidates", 0),
+            summary.get("inserted", 0),
+            summary.get("skipped", 0),
+            summary.get("skippedReasons", {}),
+        )

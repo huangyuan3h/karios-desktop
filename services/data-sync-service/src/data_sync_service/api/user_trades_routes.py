@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from logging import getLogger
 
 from fastapi import APIRouter, HTTPException, Query  # type: ignore[import-not-found]
 from pydantic import BaseModel
@@ -24,6 +25,8 @@ from data_sync_service.db.user_trades import (
     list_trades,
 )
 from data_sync_service.service.user_trades_stats import compute_trade_stats
+
+logger = getLogger(__name__)
 
 router = APIRouter()
 
@@ -51,11 +54,10 @@ def _validate_leg(req: TradeLegRequest) -> dict:
         raise HTTPException(status_code=400, detail=f"invalid side: {req.side}")
     if req.price <= 0 or not req.positionPct > 0:
         raise HTTPException(status_code=400, detail="price and positionPct must be positive")
-    if req.side == "SELL":
-        if req.costBasis is None or req.costBasis <= 0:
-            raise HTTPException(status_code=400, detail="SELL requires positive costBasis")
-        if req.entryDate is None or not _DATE_RE.match(req.entryDate):
-            raise HTTPException(status_code=400, detail="SELL requires entryDate YYYY-MM-DD")
+    # 2026-08-09: SELL no longer REQUIRES costBasis/entryDate — holdings that
+    # lack them (manually added rows) must still be recordable; pnl_pct /
+    # holding_days are just left null and the expectancy board counts only
+    # rows with pnl. The watchlist keeps being the source of truth for cost.
     if req.tradeDate is not None and not _DATE_RE.match(req.tradeDate):
         raise HTTPException(status_code=400, detail="tradeDate must be YYYY-MM-DD")
     return {}
@@ -69,9 +71,9 @@ def record_trade(req: TradeLegRequest) -> dict:
         trade_date = req.tradeDate or datetime.now().astimezone().strftime("%Y-%m-%d")
         pnl_pct = None
         holding_days = None
-        if req.side == "SELL":
-            assert req.costBasis is not None and req.entryDate is not None
+        if req.side == "SELL" and req.costBasis is not None and req.costBasis > 0:
             pnl_pct = round((req.price - req.costBasis) / req.costBasis * 100, 3)
+        if req.side == "SELL" and req.entryDate is not None and _DATE_RE.match(req.entryDate):
             d0 = datetime.strptime(req.entryDate, "%Y-%m-%d").date()
             d1 = datetime.strptime(trade_date, "%Y-%m-%d").date()
             holding_days = max(0, (d1 - d0).days)
@@ -88,12 +90,24 @@ def record_trade(req: TradeLegRequest) -> dict:
             source=req.source,
             market=req.market or "CN",
             note=req.note,
+            alpha_snapshot=_alpha_snapshot_for(req.symbol, trade_date),
         )
         return {"ok": True, "trade": row}
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _alpha_snapshot_for(symbol: str, trade_date: str) -> dict | None:
+    """As-of alpha snapshot (best-effort — capture never blocks the trade)."""
+    try:
+        from data_sync_service.service.user_trades_alpha import alpha_snapshot_for
+
+        return alpha_snapshot_for(symbol, trade_date)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("user trade alpha snapshot failed: %s", exc)
+        return None
 
 
 @router.get("/trades")

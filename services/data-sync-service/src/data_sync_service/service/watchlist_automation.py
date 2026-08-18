@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import date, timedelta
 from typing import Any
 
 from data_sync_service.db import get_connection
+from data_sync_service.db.daily import list_hk_universe_symbols
 from data_sync_service.db.industry_fund_flow import (
     get_dates_upto,
     get_sum_by_industry_for_dates,
@@ -31,7 +33,6 @@ from data_sync_service.service.alpha_radar_catalyst import (
 )
 from data_sync_service.service.close_sync import JOB_TYPE as CLOSE_JOB_TYPE
 from data_sync_service.service.close_sync import _cn_today
-from data_sync_service.service.dashboard import _sync_screeners_step
 from data_sync_service.service.industry_fund_flow import sync_cn_industry_fund_flow
 from data_sync_service.service.industry_taxonomy import is_sw_l1_industry_name
 from data_sync_service.service.research import (
@@ -358,10 +359,20 @@ def _industry_from_trendok(row: dict[str, Any]) -> str | None:
     return None
 
 
-def record_score_snapshots(symbols: list[str]) -> tuple[str | None, int, list[dict[str, Any]]]:
+def record_score_snapshots(
+    symbols: list[str], *, realtime: bool = False,
+) -> tuple[str | None, int, list[dict[str, Any]]]:
     if not symbols:
         return None, 0, []
-    rows_out = compute_trendok_for_symbols(symbols, realtime=False)
+    # compute_trendok_for_symbols caps at 200 symbols per call; chunk so the
+    # full CN screener universe (~700) and HK vol-top-N universe (500) all
+    # get scored (2026-08-10: HK line was truncated to 200 — score gap).
+    # realtime=True merges live quotes into the last bar so intraday runs
+    # write scores under TODAY (asOfDate = today); EOD runs keep close prices.
+    rows_out: list[dict[str, Any]] = []
+    for i in range(0, len(symbols), 200):
+        chunk = symbols[i : i + 200]
+        rows_out.extend(compute_trendok_for_symbols(chunk, realtime=realtime))
     score_rows: list[dict[str, Any]] = []
     trade_date: str | None = None
     for row in rows_out:
@@ -385,6 +396,16 @@ def record_score_snapshots(symbols: list[str]) -> tuple[str | None, int, list[di
         )
     count = upsert_score_daily(score_rows)
     return trade_date, count, rows_out
+
+
+def _is_cn_b_share(symbol: str) -> bool:
+    """CN B shares live on SSE/SZSE but trade in foreign currency and carry
+    no trendOK score — 900xxx (SH B) / 200xxx (SZ B)."""
+    t = str(symbol or "").strip().upper()
+    if not t.startswith("CN:"):
+        return False
+    code = t[3:]
+    return len(code) == 6 and (code.startswith("900") or code.startswith("200"))
 
 
 def _normalize_cn_watchlist_symbol(symbol: str) -> str:
@@ -671,6 +692,104 @@ def _precheck(*, force: bool) -> tuple[bool, str | None]:
     return False, None
 
 
+def _score_universe_symbols() -> tuple[list[str], list[str], list[dict[str, Any]]]:
+    """CN + HK score universes shared by the EOD (17:30) and intraday passes.
+
+    Returns ``(cn_symbols, hk_symbols, registry)``. CN: **whole-market A-share
+    universe from the daily table** (registry ∪ full market — 2026-08-12
+    universe unification: the backtest now scores the whole market (5226),
+    so the live line must match; the TV api-screener pool is retired, the
+    daily compute for 5226 names is ~5s). B shares (900xxx/200xxx) get no
+    score. HK: vol-top-N proxy (500) ∪ registry HK symbols (2026-08-10 HK
+    parallel line).
+    """
+    registry = list_registry()
+    symbols = [str(x.get("symbol") or "").strip() for x in registry if x.get("symbol")]
+    symbols = [s for s in symbols if s]
+
+    cn_full: list[str] = []
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT ts_code FROM daily WHERE ts_code ~ '^(6\\d{5}\\.SH|(0|3)\\d{5}\\.SZ)$' ORDER BY ts_code"
+            )
+            for (ts,) in cur.fetchall():
+                code = str(ts)
+                if _is_cn_b_share(code):
+                    continue
+                ticker = code.split(".")[0]
+                cn_full.append(f"CN:{ticker}")
+
+    merged: list[str] = []
+    seen: set[str] = set()
+    for s in symbols + cn_full:
+        if s and s not in seen:
+            seen.add(s)
+            merged.append(s)
+    hk_symbols = list_hk_universe_symbols(500)
+    for row in registry:
+        sym = str(row.get("symbol") or "").upper()
+        if sym.startswith("HK:") and sym not in hk_symbols:
+            hk_symbols.append(sym)
+    return merged, hk_symbols, registry
+
+
+def run_intraday_scores(*, trigger: str = "scheduled", force: bool = False) -> dict[str, Any]:
+    """Intraday (trading hours) score refresh with realtime quotes merged into
+    the last bar, so the S-3 health card shows TODAY's candidates during the
+    session (2026-08-11: the EOD chain only wrote post-close, leaving the
+    intraday decision surface empty).
+
+    Scores are written under asOfDate — today when realtime quotes are
+    available (``_merge_realtime_bar`` appends a bar dated today), otherwise
+    the last bar date (harmless upsert of the previous session's values).
+    The EOD pass (17:30) overwrites the same rows with close prices, so the
+    paper intake at 17:42 still sees faithful EOD scores.
+    """
+    today = _shanghai_today_iso()
+    if not force and is_trading_day("SSE", today) is False:
+        return {"ok": False, "skipped": True, "skipReason": "not_trading_day", "tradeDate": today}
+    cn_symbols, hk_symbols, _registry = _score_universe_symbols()
+    summary: dict[str, Any] = {
+        "ok": True,
+        "tradeDate": today,
+        "trigger": trigger,
+        "realtime": True,
+    }
+    # Sync today's INTRADAY sentiment FIRST so the S-3 panic gate sees
+    # today's state (breadth can flip intraday — e.g. 2026-08-11 morning
+    # flipped to extreme_caution at ~11:00; without this the gate falls back
+    # to the previous session's row). Idempotent: skips when today exists.
+    try:
+        from data_sync_service.service.market_sentiment import sync_cn_sentiment
+
+        s = sync_cn_sentiment(date_str=today, force=False)
+        summary["sentimentSync"] = bool(s.get("ok")) if isinstance(s, dict) else False
+        summary["sentimentAsOf"] = s.get("asOfDate") if isinstance(s, dict) else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("intraday sentiment sync failed: %s", exc)
+        summary["sentimentSync"] = False
+    try:
+        cn_td, cn_count, _rows = record_score_snapshots(cn_symbols, realtime=True)
+        summary["cnScoreSnapshots"] = int(cn_count or 0)
+        if cn_td:
+            summary["tradeDate"] = cn_td
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("intraday scores CN failed: %s", exc)
+        summary["ok"] = False
+        summary["cnError"] = str(exc)
+    try:
+        hk_td, hk_count, _rows = record_score_snapshots(hk_symbols, realtime=True)
+        summary["hkScoreSnapshots"] = int(hk_count or 0)
+        if hk_td:
+            summary["tradeDate"] = summary["tradeDate"] or hk_td
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("intraday scores HK failed: %s", exc)
+        summary["ok"] = False
+        summary["hkError"] = str(exc)
+    return summary
+
+
 def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False) -> dict[str, Any]:
     trade_date = _shanghai_today_iso()
     skipped, skip_reason = _precheck(force=force)
@@ -706,25 +825,26 @@ def run_watchlist_automation(*, trigger: str = "scheduled", force: bool = False)
         logger.warning("watchlist automation industry sync failed: %s", exc)
         meta["industrySync"] = {"ok": False, "error": str(exc)}
 
-    try:
-        screener_result = _sync_screeners_step(screeners_enabled=True)
-        if isinstance(screener_result, dict):
-            failed = int(screener_result.get("failed") or 0)
-            meta["screenerSync"] = {**screener_result, "ok": failed == 0}
-        else:
-            meta["screenerSync"] = {"ok": True}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("watchlist automation screener sync failed: %s", exc)
-        meta["screenerSync"] = {"ok": False, "error": str(exc)}
-
-    registry = list_registry()
-    symbols = [str(x.get("symbol") or "").strip() for x in registry if x.get("symbol")]
-    symbols = [s for s in symbols if s]
+    symbols, hk_symbols, registry = _score_universe_symbols()
 
     score_trade_date, score_count, trendok_rows = record_score_snapshots(symbols)
     if score_trade_date:
         trade_date = score_trade_date
     meta["scoreSnapshots"] = score_count
+
+    # 2026-08-10 (HK parallel line): score the HK strategy-line universe too
+    # (vol-top-N proxy + registry HK union) — the HK paper intake needs fresh
+    # daily scores; without this the HK line would be frozen at the backfill.
+    hk_score_count = 0
+    try:
+        if hk_symbols:
+            hk_td, hk_count, _hk_rows = record_score_snapshots(hk_symbols)
+            hk_score_count = int(hk_count or 0)
+            if hk_td:
+                trade_date = trade_date or hk_td
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("watchlist automation HK scoring failed: %s", exc)
+    meta["hkScoreSnapshots"] = hk_score_count
 
     trendok_by_symbol = {
         str(r.get("symbol")): r for r in trendok_rows if isinstance(r, dict) and r.get("symbol")
@@ -843,6 +963,7 @@ def get_automation_run(run_id: str) -> dict[str, Any] | None:
 
 _rs_rank_cache: dict[str, float] = {}
 _rs_rank_cache_date: str | None = None
+_rs_rank_cache_lock = threading.Lock()
 
 
 def compute_rs_ranks(symbols: list[str], as_of_date: str | None = None) -> dict[str, float]:
@@ -875,41 +996,42 @@ def compute_rs_ranks(symbols: list[str], as_of_date: str | None = None) -> dict[
             latest = str(latest[0]) if latest and latest[0] else None
     if not latest:
         return {}
-    if _rs_rank_cache_date == latest:
-        pass
-    else:
-        # rank all stocks on `latest` by 20d return
-        rows: list[tuple[str, float]] = []
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT ts_code, ret20 FROM (
-                        SELECT ts_code, close,
-                            (close / lag(close, 20) OVER (PARTITION BY ts_code ORDER BY trade_date) - 1) * 100 AS ret20
-                        FROM daily
-                        WHERE trade_date <= %s
-                          AND trade_date >= (
-                              SELECT MIN(trade_date) FROM (
-                                  SELECT DISTINCT trade_date FROM daily
-                                  WHERE trade_date <= %s ORDER BY trade_date DESC LIMIT 21
-                              ) w
-                          )
-                          AND close > 0
-                    ) t
-                    WHERE ret20 IS NOT NULL
-                    """,
-                    (latest, latest),
-                )
-                rows = cur.fetchall()
-        ranked = sorted(rows, key=lambda kv: -kv[1])
-        total = len(ranked)
-        pos: dict[str, float] = {}
-        for i, (ts, _ret) in enumerate(ranked, start=1):
-            pos[ts] = (total - i + 1) / total if total else 0.0
-        _rs_rank_cache.clear()
-        _rs_rank_cache.update(pos)
-        _rs_rank_cache_date = latest
+    with _rs_rank_cache_lock:
+        if _rs_rank_cache_date == latest:
+            pass
+        else:
+            # rank all stocks on `latest` by 20d return
+            rows: list[tuple[str, float]] = []
+            with get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT ts_code, ret20 FROM (
+                            SELECT ts_code, close,
+                                (close / lag(close, 20) OVER (PARTITION BY ts_code ORDER BY trade_date) - 1) * 100 AS ret20
+                            FROM daily
+                            WHERE trade_date <= %s
+                              AND trade_date >= (
+                                  SELECT MIN(trade_date) FROM (
+                                      SELECT DISTINCT trade_date FROM daily
+                                      WHERE trade_date <= %s ORDER BY trade_date DESC LIMIT 21
+                                  ) w
+                              )
+                              AND close > 0
+                        ) t
+                        WHERE ret20 IS NOT NULL
+                        """,
+                        (latest, latest),
+                    )
+                    rows = cur.fetchall()
+            ranked = sorted(rows, key=lambda kv: -kv[1])
+            total = len(ranked)
+            pos: dict[str, float] = {}
+            for i, (ts, _ret) in enumerate(ranked, start=1):
+                pos[ts] = (total - i + 1) / total if total else 0.0
+            _rs_rank_cache.clear()
+            _rs_rank_cache.update(pos)
+            _rs_rank_cache_date = latest
 
     out: dict[str, Any] = {}
     for sym, ts in resolved.items():

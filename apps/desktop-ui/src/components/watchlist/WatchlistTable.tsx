@@ -35,6 +35,7 @@ import {
 import { useWatchlistRsRanksQuery } from '@/lib/queries/watchlist';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import type { ExecutionGate } from '@karios/shared';
+import { buildS3Candidates } from '@/lib/execution-markdown';
 import { useChatStore } from '@/lib/chat/store';
 import {
   buildDefensiveSleeveExposurePct,
@@ -116,6 +117,18 @@ function watchlistStickyCellStyle(
   };
 }
 
+/**
+ * OPT-106: should this row be hidden by the "hide backtest-mismatched"
+ * filter? Pure so the filter logic is unit-testable.
+ */
+export function shouldHideForAuditFilter(
+  symbol: string,
+  auditExtraSymbols: Set<string> | undefined,
+  hideAuditExtra: boolean,
+): boolean {
+  return Boolean(hideAuditExtra && auditExtraSymbols?.has(symbol));
+}
+
 export type WatchlistTableProps = {
   sortedItems: WatchlistItem[];
   items: WatchlistItem[];
@@ -129,6 +142,10 @@ export type WatchlistTableProps = {
   setScoreSortEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   showHidden: boolean;
   setShowHidden: React.Dispatch<React.SetStateAction<boolean>>;
+  /** OPT-106: symbols the behavior audit flags as 买了不该买/该卖没卖. */
+  auditExtraSymbols?: Set<string>;
+  hideAuditExtra?: boolean;
+  setHideAuditExtra?: React.Dispatch<React.SetStateAction<boolean>>;
   setItemColor: (symbol: string, color: string) => void;
   setItemPositionPct: (symbol: string, value: string) => void;
   setItemPositionPctDraft: (symbol: string, value: string) => void;
@@ -150,19 +167,33 @@ export function sortWatchlistItems(
   trend: Record<string, TrendOkResult>,
   scoreSortEnabled: boolean,
   scoreSortDir: 'desc' | 'asc',
+  rsRanks: Record<string, number> | null = null,
 ): WatchlistItem[] {
-  if (!scoreSortEnabled) return items;
   const arr = [...items];
   arr.sort((a, b) => {
+    // 2026-08-11: held names (positionPct > 0) always float to the top —
+    // the user trades from the watchlist and needs their open positions first.
+    const ha = typeof a.positionPct === 'number' && a.positionPct > 0;
+    const hb = typeof b.positionPct === 'number' && b.positionPct > 0;
+    if (ha !== hb) return ha ? -1 : 1;
+    if (!scoreSortEnabled) return 0;
     const sa = trend[a.symbol]?.score;
     const sb = trend[b.symbol]?.score;
     const va = typeof sa === 'number' && Number.isFinite(sa) ? sa : null;
     const vb = typeof sb === 'number' && Number.isFinite(sb) ? sb : null;
-    if (va == null && vb == null) return 0;
-    if (va == null) return 1;
-    if (vb == null) return -1;
-    const d = va - vb;
-    return scoreSortDir === 'asc' ? d : -d;
+    if (va != null && vb != null) {
+      const d = va - vb;
+      if (d !== 0) return scoreSortDir === 'asc' ? d : -d;
+    } else if (va == null && vb != null) {
+      return 1;
+    } else if (vb == null && va != null) {
+      return -1;
+    }
+    // Score tie (or both missing): RS percentile desc — same number the
+    // RS column shows (/watchlist/rs-ranks).
+    const ra = rsRanks?.[a.symbol] ?? -1;
+    const rb = rsRanks?.[b.symbol] ?? -1;
+    return rb - ra;
   });
   return arr;
 }
@@ -180,6 +211,9 @@ export function WatchlistTable({
   setScoreSortEnabled,
   showHidden,
   setShowHidden,
+  auditExtraSymbols = undefined,
+  hideAuditExtra = false,
+  setHideAuditExtra = undefined,
   setItemColor,
   setItemPositionPct,
   setItemPositionPctDraft,
@@ -236,6 +270,20 @@ export function WatchlistTable({
     [sortedItems, trend],
   );
 
+  const s3Symbols = React.useMemo(() => {
+    const cands = buildS3Candidates({
+      items: sortedItems,
+      trend,
+      rsRanks: rsRanksQuery.data?.ranks ?? null,
+      gate: executionGate ?? null,
+      mainlineAllow: mainlineAllow ?? null,
+      sectorOutflowBlock,
+      cnCap: null,
+      sleeveExposurePct,
+    });
+    return new Set(cands.map((c) => c.symbol));
+  }, [sortedItems, trend, rsRanksQuery.data, executionGate, mainlineAllow, sectorOutflowBlock, sleeveExposurePct]);
+
   const actionBySymbol = React.useMemo(() => {
     const m = new Map<string, string>();
     for (const it of sortedItems) {
@@ -259,6 +307,7 @@ export function WatchlistTable({
           sectorOutflowBlock,
           catalyst: catalystBySymbol?.get(it.symbol) ?? null,
           todaySh,
+          isS3Candidate: s3Symbols.has(it.symbol),
         });
         m.set(it.symbol, card.action);
       } catch {
@@ -282,12 +331,17 @@ export function WatchlistTable({
 
   const visibleSortedItems = React.useMemo(() => {
     return sortedItems.filter((it) => {
+      // OPT-106: hide rows the behavior audit flags (买了不该买/该卖没卖)
+      // when the filter is on — same pattern as the silent-dead filter.
+      if (shouldHideForAuditFilter(it.symbol, auditExtraSymbols, hideAuditExtra)) {
+        return false;
+      }
       const t = trend[it.symbol];
       const action = actionBySymbol.get(it.symbol) ?? null;
       if (action === 'PURGE') return true;
       return shouldShowInWatchlistTable(it, t ?? null, action);
     });
-  }, [sortedItems, trend, actionBySymbol]);
+  }, [sortedItems, trend, actionBySymbol, hideAuditExtra, auditExtraSymbols]);
 
   const hiddenCount = sortedItems.length - visibleSortedItems.length;
 
@@ -318,10 +372,10 @@ export function WatchlistTable({
   );
 
   const handleTradeConfirm = React.useCallback(
-    async (values: { price: number; positionPct: number }) => {
+    async (values: { price: number; positionPct: number; costPrice?: number }) => {
       if (!tradeDialog) return;
       const { kind, item } = tradeDialog;
-      const { price, positionPct } = values;
+      const { price, positionPct, costPrice } = values;
       const symbol = item.symbol;
       const source = tradeSourceForItem(item);
       const market = tradeMarketForSymbol(symbol);
@@ -338,16 +392,19 @@ export function WatchlistTable({
           setItemCostPriceValue(symbol, blended.blendedCost);
           setItemPositionPct(symbol, String(blended.newPositionPct));
         } else {
-          const costBasis = item.costPrice;
-          const entryDate = item.entryDate;
-          if (costBasis == null || !entryDate) return;
+          // Optional cost fill (2026-08-09): when the holding had no cost
+          // price, the dialog can supply one so pnl is computed; the trade
+          // is recorded either way.
+          const costBasis =
+            typeof costPrice === 'number' && costPrice > 0 ? costPrice : item.costPrice;
+          if (typeof costBasis === 'number') setItemCostPriceValue(symbol, costBasis);
           await recordUserTrade({
             symbol,
             side: 'SELL',
             price,
             positionPct,
-            costBasis,
-            entryDate,
+            costBasis: typeof costBasis === 'number' ? costBasis : undefined,
+            entryDate: item.entryDate ?? undefined,
             source,
             market,
           });
@@ -462,6 +519,27 @@ export function WatchlistTable({
               {visibleSortedItems.length} / {items.length} items
               {hiddenCount > 0 ? ` · ${hiddenCount} hidden (silent dead rows)` : ''}
             </span>
+            {setHideAuditExtra && auditExtraSymbols && auditExtraSymbols.size > 0 && (
+              <button
+                type="button"
+                className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] ${
+                  hideAuditExtra
+                    ? 'border-amber-500/50 bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                    : 'border-[var(--k-border)] bg-[var(--k-surface-2)] hover:text-[var(--k-text)]'
+                }`}
+                onClick={() => setHideAuditExtra((v) => !v)}
+                title={
+                  hideAuditExtra
+                    ? '显示不符合回测的持仓（买了不该买/该卖没卖）。'
+                    : '隐藏不符合回测的持仓（买了不该买/该卖没卖）。'
+                }
+                aria-label={
+                  hideAuditExtra ? 'Show backtest-mismatched rows' : 'Hide backtest-mismatched rows'
+                }
+              >
+                {hideAuditExtra ? '✓' : ''} 隐藏不符合回测 {auditExtraSymbols.size}
+              </button>
+            )}
             {hiddenCount > 0 ? (
               <button
                 type="button"
@@ -755,6 +833,7 @@ export function WatchlistTable({
                         defensiveSleeveExposurePct={defensiveSleeveExposurePct}
                         clusterExposurePct={clusterExposureForSymbol(correlationStatus, it.symbol)}
                         rsRank={rsRanksQuery.data?.ranks[it.symbol] ?? null}
+                        isS3Candidate={s3Symbols.has(it.symbol)}
                         showTooltip={showTooltip}
                         hideTooltip={hideTooltip}
                         showColorPicker={showColorPicker}

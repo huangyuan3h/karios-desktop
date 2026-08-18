@@ -52,6 +52,7 @@ const PARAMS = {
   scoreFloor: 0,
   panicCooldownDays: 3,
   slippagePct: 0.05,
+  excludeBoards: '300',
 };
 
 describe('useBacktestRunQuery', () => {
@@ -68,7 +69,7 @@ describe('useBacktestRunQuery', () => {
     expect(opts.staleTime).toBe(0);
     await opts.queryFn();
     expect(String(mockedApiGetJson.mock.calls[0][0])).toBe(
-      '/api/backtest/run?start=2026-01-01&end=2026-06-01&score_threshold=80&max_hold_days=5&stop_loss_pct=-5&gates=full&trailing_stop_pct=0&position_pct=0.05&max_positions=10&rs_rank_min=0&diverging_scale=0&target_pnl_pct=100&score_floor=0&panic_cooldown_days=3&slippage_pct=0.05',
+      '/api/backtest/run?start=2026-01-01&end=2026-06-01&score_threshold=80&max_hold_days=5&stop_loss_pct=-5&gates=full&trailing_stop_pct=0&position_pct=0.05&max_positions=10&rs_rank_min=0&diverging_scale=0&target_pnl_pct=100&score_floor=0&panic_cooldown_days=3&slippage_pct=0.05&exclude_boards=300',
     );
   });
 });

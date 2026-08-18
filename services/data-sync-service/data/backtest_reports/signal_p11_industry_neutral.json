@@ -1,0 +1,250 @@
+{
+ "OOS2": {
+  "base": {
+   "pnl": 117.2,
+   "dd": 11.7,
+   "sharpe": 6.63,
+   "win": 0.544,
+   "closed": 237,
+   "calmar": 10.0,
+   "indMomBlock": 0,
+   "indNeutralBlock": 0
+  },
+  "M20": {
+   "pnl": 121.2,
+   "dd": 12.3,
+   "sharpe": 6.74,
+   "win": 0.543,
+   "closed": 234,
+   "calmar": 9.88,
+   "indMomBlock": 21103,
+   "indNeutralBlock": 0
+  },
+  "M60": {
+   "pnl": 115.4,
+   "dd": 13.7,
+   "sharpe": 6.56,
+   "win": 0.536,
+   "closed": 235,
+   "calmar": 8.41,
+   "indMomBlock": 22954,
+   "indNeutralBlock": 0
+  },
+  "N60": {
+   "pnl": 113.3,
+   "dd": 11.3,
+   "sharpe": 5.48,
+   "win": 0.494,
+   "closed": 243,
+   "calmar": 10.04,
+   "indMomBlock": 0,
+   "indNeutralBlock": 57941
+  },
+  "N120": {
+   "pnl": 117.7,
+   "dd": 10.4,
+   "sharpe": 6.27,
+   "win": 0.502,
+   "closed": 215,
+   "calmar": 11.29,
+   "indMomBlock": 0,
+   "indNeutralBlock": 54769
+  },
+  "M60N60": {
+   "pnl": 139.1,
+   "dd": 9.2,
+   "sharpe": 7.42,
+   "win": 0.573,
+   "closed": 234,
+   "calmar": 15.06,
+   "indMomBlock": 23235,
+   "indNeutralBlock": 42304
+  }
+ },
+ "train": {
+  "base": {
+   "pnl": 122.6,
+   "dd": 9.3,
+   "sharpe": 4.4,
+   "win": 0.52,
+   "closed": 123,
+   "calmar": 13.13,
+   "indMomBlock": 0,
+   "indNeutralBlock": 0
+  },
+  "M20": {
+   "pnl": 118.9,
+   "dd": 11.6,
+   "sharpe": 4.39,
+   "win": 0.533,
+   "closed": 122,
+   "calmar": 10.25,
+   "indMomBlock": 13994,
+   "indNeutralBlock": 0
+  },
+  "M60": {
+   "pnl": 122.1,
+   "dd": 9.9,
+   "sharpe": 4.38,
+   "win": 0.52,
+   "closed": 123,
+   "calmar": 12.38,
+   "indMomBlock": 16714,
+   "indNeutralBlock": 0
+  },
+  "N60": {
+   "pnl": 131.8,
+   "dd": 7.8,
+   "sharpe": 4.41,
+   "win": 0.578,
+   "closed": 116,
+   "calmar": 16.95,
+   "indMomBlock": 0,
+   "indNeutralBlock": 44431
+  },
+  "N120": {
+   "pnl": 117.2,
+   "dd": 18.4,
+   "sharpe": 4.45,
+   "win": 0.442,
+   "closed": 104,
+   "calmar": 6.37,
+   "indMomBlock": 0,
+   "indNeutralBlock": 41134
+  },
+  "M60N60": {
+   "pnl": 141.5,
+   "dd": 7.2,
+   "sharpe": 5.05,
+   "win": 0.6,
+   "closed": 115,
+   "calmar": 19.75,
+   "indMomBlock": 16413,
+   "indNeutralBlock": 35120
+  }
+ },
+ "valid": {
+  "base": {
+   "pnl": 142.2,
+   "dd": 1.8,
+   "sharpe": 11.05,
+   "win": 0.818,
+   "closed": 55,
+   "calmar": 80.85,
+   "indMomBlock": 0,
+   "indNeutralBlock": 0
+  },
+  "M20": {
+   "pnl": 142.2,
+   "dd": 1.8,
+   "sharpe": 11.05,
+   "win": 0.818,
+   "closed": 55,
+   "calmar": 80.85,
+   "indMomBlock": 8287,
+   "indNeutralBlock": 0
+  },
+  "M60": {
+   "pnl": 142.2,
+   "dd": 1.8,
+   "sharpe": 11.05,
+   "win": 0.818,
+   "closed": 55,
+   "calmar": 80.85,
+   "indMomBlock": 8367,
+   "indNeutralBlock": 0
+  },
+  "N60": {
+   "pnl": 111.9,
+   "dd": 2.6,
+   "sharpe": 10.19,
+   "win": 0.741,
+   "closed": 54,
+   "calmar": 43.37,
+   "indMomBlock": 0,
+   "indNeutralBlock": 20794
+  },
+  "N120": {
+   "pnl": 110.7,
+   "dd": 2.6,
+   "sharpe": 10.64,
+   "win": 0.704,
+   "closed": 54,
+   "calmar": 42.94,
+   "indMomBlock": 0,
+   "indNeutralBlock": 24119
+  },
+  "M60N60": {
+   "pnl": 111.9,
+   "dd": 2.6,
+   "sharpe": 10.19,
+   "win": 0.741,
+   "closed": 54,
+   "calmar": 43.37,
+   "indMomBlock": 8371,
+   "indNeutralBlock": 16557
+  }
+ },
+ "LONG": {
+  "base": {
+   "pnl": 333.9,
+   "dd": 45.1,
+   "sharpe": 2.99,
+   "win": 0.388,
+   "closed": 1069,
+   "calmar": 7.4,
+   "indMomBlock": 0,
+   "indNeutralBlock": 0
+  },
+  "M20": {
+   "pnl": 281.2,
+   "dd": 73.9,
+   "sharpe": 2.58,
+   "win": 0.372,
+   "closed": 1070,
+   "calmar": 3.8,
+   "indMomBlock": 127664,
+   "indNeutralBlock": 0
+  },
+  "M60": {
+   "pnl": 285.9,
+   "dd": 62.5,
+   "sharpe": 2.65,
+   "win": 0.362,
+   "closed": 1061,
+   "calmar": 4.58,
+   "indMomBlock": 153598,
+   "indNeutralBlock": 0
+  },
+  "N60": {
+   "pnl": 350.8,
+   "dd": 38.9,
+   "sharpe": 3.22,
+   "win": 0.406,
+   "closed": 1101,
+   "calmar": 9.02,
+   "indMomBlock": 0,
+   "indNeutralBlock": 391214
+  },
+  "N120": {
+   "pnl": 365.8,
+   "dd": 37.0,
+   "sharpe": 3.47,
+   "win": 0.386,
+   "closed": 1038,
+   "calmar": 9.88,
+   "indMomBlock": 0,
+   "indNeutralBlock": 399889
+  },
+  "M60N60": {
+   "pnl": 329.4,
+   "dd": 59.3,
+   "sharpe": 3.08,
+   "win": 0.383,
+   "closed": 1083,
+   "calmar": 5.56,
+   "indMomBlock": 161808,
+   "indNeutralBlock": 288050
+  }
+ }
+}

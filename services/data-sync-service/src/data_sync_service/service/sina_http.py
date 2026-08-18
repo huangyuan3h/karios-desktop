@@ -85,12 +85,15 @@ def build_hq_url(tickers: list[str]) -> str:
     return f"https://hq.sinajs.cn/list={','.join(encoded)}"
 
 
-def parse_hq_lines(text: str) -> list[tuple[str, str]]:
+def parse_hq_lines(text: str, *, allow_index: bool = False) -> list[tuple[str, str]]:
     """Parse hq.sinajs.cn response body into [(ticker, payload), ...].
 
     Each line looks like: `var hq_str_hk00700="TENCENT,...,475.200,..."`.
     Returns the raw payload string for the caller to field-split.
     Empty / malformed lines are dropped.
+
+    ``allow_index=True`` additionally accepts HK index tickers (hkHSI /
+    hkHSTECH), which are non-numeric and otherwise skipped.
     """
     out: list[tuple[str, str]] = []
     for line in text.splitlines():
@@ -110,7 +113,11 @@ def parse_hq_lines(text: str) -> list[tuple[str, str]]:
         if not marker.startswith("hk"):
             continue
         ticker = marker[len("hk") :].strip()
-        if not ticker or not ticker.isdigit():
+        if not ticker:
             continue
-        out.append((ticker, payload))
+        if ticker.isdigit():
+            out.append((ticker, payload))
+            continue
+        if allow_index and ticker.upper() in {"HSI", "HSTECH"}:
+            out.append((ticker.upper(), payload))
     return out

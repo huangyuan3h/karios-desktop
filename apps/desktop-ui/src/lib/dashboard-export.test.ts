@@ -12,8 +12,6 @@ import {
   buildMarketAndMacroMarkdown,
   buildSentimentMarkdown,
   buildWatchlistMarkdown,
-  SCREENER_COPY_MIN_SCORE,
-  SCREENER_COPY_TOP_N,
 } from './dashboard-export';
 import { copyBlockingMissingData } from './watchlist-export';
 
@@ -357,13 +355,6 @@ describe('buildMarketAndMacroMarkdown', () => {
     expect(md).toContain('| Vol (IV) |');
     expect(md).toContain('| 50%-60% |');
     expect(md).toContain('| 30% |');
-  });
-});
-
-describe('screener Top N + Score threshold constants', () => {
-  it('exposes constants for filtering', () => {
-    expect(SCREENER_COPY_TOP_N).toBe(5);
-    expect(SCREENER_COPY_MIN_SCORE).toBe(60);
   });
 });
 

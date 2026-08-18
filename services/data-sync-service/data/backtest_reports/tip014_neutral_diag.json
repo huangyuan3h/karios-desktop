@@ -1,0 +1,59 @@
+{
+ "OOS2": {
+  "weak_trades": 14,
+  "by_weak_ratio": {
+   "熊市(weak>=60%)": {
+    "n": 14,
+    "avg": 1.78
+   }
+  },
+  "by_mkt_ret": {
+   "no_data": {
+    "n": 14,
+    "avg": 1.78
+   }
+  }
+ },
+ "train": {
+  "weak_trades": 20,
+  "by_weak_ratio": {
+   "no_data": {
+    "n": 4,
+    "avg": 15.53
+   },
+   "偏强(<40%)": {
+    "n": 2,
+    "avg": -6.44
+   },
+   "偏弱(40-60%)": {
+    "n": 6,
+    "avg": -0.0
+   },
+   "熊市(weak>=60%)": {
+    "n": 8,
+    "avg": 21.3
+   }
+  },
+  "by_mkt_ret": {
+   "no_data": {
+    "n": 20,
+    "avg": 10.98
+   }
+  }
+ },
+ "valid": {
+  "weak_trades": 16,
+  "by_weak_ratio": {
+   "no_data": {
+    "n": 16,
+    "avg": -6.1
+   }
+  },
+  "by_mkt_ret": {
+   "no_data": {
+    "n": 16,
+    "avg": -6.1
+   }
+  }
+ }
+}

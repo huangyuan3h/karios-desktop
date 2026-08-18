@@ -1,10 +1,5 @@
 import { apiGetJson, apiPostJson } from '@/lib/api/client';
 import {
-  formatScreenerFunnel,
-  importFromScreener,
-  type ScreenerFunnel,
-} from '@/lib/watchlist-screener-import';
-import {
   ensureWatchlistHydrated,
   loadWatchlist,
   saveWatchlist,
@@ -42,7 +37,6 @@ export type ApplyAutomationResult = {
   removed: number;
   screenerAdded: number;
   alphaAdded: number;
-  funnel?: ScreenerFunnel | null;
 };
 
 export { isAutomationPollWindow } from '@/lib/market-hours';
@@ -72,18 +66,11 @@ export async function triggerAutomationRun(force = true): Promise<AutomationRun>
   return apiPostJson<AutomationRun>(`/watchlist/automation/run?force=${force ? 'true' : 'false'}`);
 }
 
-export async function ackAutomationRun(
-  runId: string,
-  screenerAdded: number,
-  funnel?: ScreenerFunnel | null,
-): Promise<void> {
-  await apiPostJson(`/watchlist/automation/${encodeURIComponent(runId)}/ack`, {
-    screenerAdded,
-    ...(funnel ? { funnel } : {}),
-  });
+export async function ackAutomationRun(runId: string): Promise<void> {
+  await apiPostJson(`/watchlist/automation/${encodeURIComponent(runId)}/ack`, {});
 }
 
-export function funnelFromMeta(meta: Record<string, unknown> | undefined): ScreenerFunnel | null {
+export function funnelFromMeta(meta: Record<string, unknown> | undefined): Record<string, number> | null {
   const raw = meta?.funnel;
   if (!raw || typeof raw !== 'object') return null;
   const f = raw as Record<string, unknown>;
@@ -94,7 +81,7 @@ export function funnelFromMeta(meta: Record<string, unknown> | undefined): Scree
     passTrendOk: num('passTrendOk'),
     addedNew: num('addedNew'),
     droppedByPullback: num('droppedByPullback'),
-    fallbackUsed: Boolean(f.fallbackUsed),
+    fallbackUsed: Number(Boolean(f.fallbackUsed)),
     fallbackHit: num('fallbackHit'),
     fallbackTrendOk: num('fallbackTrendOk'),
     fallbackAdded: num('fallbackAdded'),
@@ -114,11 +101,9 @@ export function isAutomationSyncOk(sync: unknown): boolean {
 export function formatAutomationSyncPart(meta: Record<string, unknown> | undefined): string {
   if (!meta) return '';
   const hasIndustry = Object.prototype.hasOwnProperty.call(meta, 'industrySync');
-  const hasScreener = Object.prototype.hasOwnProperty.call(meta, 'screenerSync');
-  if (!hasIndustry && !hasScreener) return '';
+  if (!hasIndustry) return '';
   const ind = hasIndustry ? (isAutomationSyncOk(meta.industrySync) ? '✓' : '✗') : '—';
-  const tv = hasScreener ? (isAutomationSyncOk(meta.screenerSync) ? '✓' : '✗') : '—';
-  return ` | sync ind${ind} tv${tv}`;
+  return ` | sync ind${ind}`;
 }
 
 export function formatAutomationTop5Part(meta: Record<string, unknown> | undefined): string {
@@ -154,14 +139,6 @@ export async function applyAutomationRun(
   const removed = before - items.length;
   await saveWatchlist(items);
 
-  onStage?.('Importing from screener…');
-  const screener = await importFromScreener({
-    existingItems: loadWatchlist(),
-    silent: options?.silent,
-    onStage: (label) => onStage?.(label),
-  });
-  items = loadWatchlist();
-
   onStage?.('Appending Alpha Radar S candidates…');
   const existing = new Set(items.map((x) => x.symbol));
   const now = new Date().toISOString();
@@ -184,8 +161,7 @@ export async function applyAutomationRun(
   if (alphaAdded > 0) await saveWatchlist(items);
 
   onStage?.('Acknowledging automation run…');
-  const funnel = screener.debug.funnel;
-  await ackAutomationRun(run.runId, screener.addedCount, funnel);
+  await ackAutomationRun(run.runId);
 
   if (typeof window !== 'undefined') {
     try {
@@ -197,9 +173,8 @@ export async function applyAutomationRun(
 
   return {
     removed,
-    screenerAdded: screener.addedCount,
+    screenerAdded: 0,
     alphaAdded,
-    funnel,
   };
 }
 
@@ -227,13 +202,10 @@ export function formatAutomationSummary(
     return `Skipped: ${run.skipReason || 'unknown'}`;
   }
   const removed = result?.removed ?? run.remove?.length ?? 0;
-  const screener = result?.screenerAdded ?? run.screenerAdded ?? 0;
   const alpha = result?.alphaAdded ?? run.alphaAdd?.length ?? 0;
   const research = run.meta?.researchCandidates ?? 0;
   const when = run.createdAt ? new Date(run.createdAt).toLocaleString() : '—';
   const trigger = run.trigger || 'unknown';
-  const funnel = result?.funnel ?? funnelFromMeta(run.meta);
-  const funnelPart = funnel ? ` | funnel ${formatScreenerFunnel(funnel)}` : '';
   const researchPart =
     typeof research === 'number' && research > 0 ? ` | 研报α +${research}` : '';
   const rejected = run.meta?.alphaRejected;
@@ -244,5 +216,5 @@ export function formatAutomationSummary(
       .map(([k, v]) => `${k}:${v}`);
     if (entries.length) rejectPart = ` | alphaReject ${entries.join(',')}`;
   }
-  return `Last automation: ${when} (${trigger}) | −${removed} screener +${screener} alpha +${alpha}${researchPart}${funnelPart}${rejectPart}${formatAutomationSyncPart(run.meta)}${formatAutomationTop5Part(run.meta)}`;
+  return `Last automation: ${when} (${trigger}) | −${removed} removed · alpha +${alpha}${researchPart}${rejectPart}${formatAutomationSyncPart(run.meta)}${formatAutomationTop5Part(run.meta)}`;
 }

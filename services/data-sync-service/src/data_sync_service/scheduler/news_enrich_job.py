@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-not-found]
+from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-not-found]
 
 from data_sync_service.db.news import count_by_enrichment_status
 from data_sync_service.db.sync_job_record import insert_record
@@ -19,12 +19,14 @@ JOB_ID = "news_enrich_job"
 
 
 def build_trigger():
-    # Run every 2 hours — lighter than fetch (4h), keeps items fresh
-    return IntervalTrigger(hours=2)
+    # OPT-108 (2026-08-13): LLM off-peak — 20:00 / 23:00 / 05:00
+    # Asia/Shanghai (inside the off-peak window, user approved 19:00 起跑)
+    # instead of an every-2h IntervalTrigger.
+    return CronTrigger(hour="20,23,5", timezone="Asia/Shanghai")
 
 
 def run():
-    print("[news-enrich] Starting LLM enrichment cycle...")
+    logger.info("[news-enrich] Starting LLM enrichment cycle...")
     try:
         from data_sync_service.service.news_enrich import run_enrichment_cycle
 
@@ -34,13 +36,15 @@ def run():
         err_msg = None
         if summary["totalFailed"] > 0:
             err_msg = f"failed={summary['totalFailed']}; enriched={summary['totalEnriched']}"
+            if summary.get("firstError"):
+                err_msg += f"; first_error={str(summary['firstError'])[:160]}"
         insert_record(
             JOB_ID,
             success=success,
             last_ts_code=str(summary["totalEnriched"]),
             error_message=err_msg,
         )
-        print(
+        logger.info(
             f"[news-enrich] Done: batches={summary['batchesProcessed']} "
             f"enriched={summary['totalEnriched']} failed={summary['totalFailed']} "
             f"status={status_counts}"

@@ -115,7 +115,8 @@ def test_enrich_batch_llm_failure_marks_all_failed(monkeypatch) -> None:
     calls: list[dict] = []
     monkeypatch.setattr(ne, "update_item_enrichment", lambda **kw: calls.append(kw))
     out = ne.enrich_batch(_items(3))
-    assert out == {"enriched": 0, "failed": 3, "filtered": 0}
+    assert out["enriched"] == 0 and out["failed"] == 3 and out["filtered"] == 0
+    assert out.get("error") == "net down"
     assert all(c["enrichment_status"] == "failed" for c in calls)
     assert len(calls) == 3
 

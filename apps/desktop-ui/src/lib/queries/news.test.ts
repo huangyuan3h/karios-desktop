@@ -182,7 +182,7 @@ describe('morning brief', () => {
   it('fetchMorningBrief hits latest endpoint', async () => {
     mockedApiGetJson.mockResolvedValue({ brief: null });
     await fetchMorningBrief();
-    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/news/brief/latest');
+    expect(String(mockedApiGetJson.mock.calls[0][0])).toBe('/api/news/brief/latest?brief_type=morning');
   });
 
   it('morningBriefQueryOptions uses 60s stale', () => {

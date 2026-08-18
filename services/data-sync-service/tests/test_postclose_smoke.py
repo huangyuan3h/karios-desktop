@@ -63,17 +63,24 @@ def _smoke_symbol() -> str:
     return sym
 
 
-def _mock_prices(entry_price: float, update_price: float):
-    """Patch fetch_last_ohlcv_batch so intake sees entry_price and update
-    sees update_price (keyed by the ts_code derived from the symbol)."""
+def _mock_prices(smoke_symbol: str, close_price: float):
+    """Patch fetch_last_ohlcv_batch so the smoke symbol sees ``close_price``.
+
+    2026-08-11 hardening: the fake feed ONLY serves bars for the smoke
+    symbol's ts_code — anything else returns empty. Previously it returned
+    ``entry_price`` (100.0) for every non-.SZ ts_code, so a run_update pass
+    that scanned the REAL paper book closed every real open trade with a
+    bogus close price (08-11 00:22 UTC wiped all 20 S3HK rows this way).
+    """
     from data_sync_service.service import paper_trading as pt_svc
 
+    ticker = smoke_symbol.split(":", 1)[1]
+    smoke_ts = f"{ticker}.SZ"
+
     def fake_fetch(ts_codes, days=2):
-        out = {}
-        for ts in ts_codes:
-            close = update_price if ts.endswith(".SZ") else entry_price
-            out[ts] = [(ENTRY_DATE, close, close, close, close, 10000)]
-        return out
+        if not ts_codes or smoke_ts not in ts_codes:
+            return {}
+        return {smoke_ts: [(ENTRY_DATE, close_price, close_price, close_price, close_price, 10000)]}
 
     return patch.object(pt_svc, "fetch_last_ohlcv_batch", side_effect=fake_fetch)
 
@@ -123,7 +130,7 @@ def test_postclose_chain_end_to_end() -> None:
     _CREATED["snapshot_ids"].add(ingested["snapshotId"])
 
     # -- Step 2: intake opens the trade (real DB; only prices mocked) --
-    with _mock_prices(entry_price=100.0, update_price=100.0):
+    with _mock_prices(sym, close_price=100.0):
         intake = run_intake(trade_date=ENTRY_DATE)
     # NOTE: candidates count varies with real journal data (yesterday's cron
     # may already have ingested real BUY cards → 'duplicate' skips); we only
@@ -139,7 +146,21 @@ def test_postclose_chain_end_to_end() -> None:
 
     # -- Step 3: update closes on target_hit (3x price → net pnl ≫ 100%) --
     # S-3 定案：TARGET_PNL_PCT=100（不止盈），+100% 仍持有；3x 才触发 target_hit。
-    with _mock_prices(entry_price=100.0, update_price=300.0):
+    # 2026-08-11 hardening: get_open_paper_trades is patched to return ONLY
+    # our smoke row. run_update is a GLOBAL scan of the real paper book —
+    # running it unmocked against the dev DB closed every real open trade
+    # (08-11 00:22 UTC wiped the 20 real S3HK rows with mocked prices).
+    from data_sync_service.service import paper_trading as pt_svc
+
+    open_row = next(
+        (t for t in open_rows if t.get("symbol") == sym),
+        None,
+    )
+    assert open_row is not None, "trade did not open"
+    with (
+        _mock_prices(sym, close_price=300.0),
+        patch.object(pt_svc.pt_db, "get_open_paper_trades", return_value=[open_row]),
+    ):
         upd = run_update(today_iso=UPDATE_DATE)
     assert upd["closed"] == 1, upd
     assert upd["closeReasons"].get("target_hit") == 1, upd

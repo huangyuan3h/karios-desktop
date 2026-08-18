@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -15,6 +17,9 @@ from data_sync_service.db.sync_job_record import get_last_success, get_today_run
 from data_sync_service.db.trade_calendar import get_open_dates, is_trading_day
 from data_sync_service.service.trade_calendar import sync_trade_calendar
 from data_sync_service.service.trade_calendar_utils import last_open_date_on_or_before
+
+logger = logging.getLogger(__name__)
+
 
 JOB_TYPE = "stock_close_sync"
 
@@ -48,6 +53,34 @@ def _to_yyyymmdd(d: date) -> str:
     return d.strftime("%Y%m%d")
 
 
+def _with_retry(fn, *args, tries: int = 3, base_delay: float = 1.5, **kwargs):
+    """Retry a tushare network call with exponential backoff.
+
+    A single rate-limit/network blip during a multi-day catch-up window must
+    not abort the whole sync (previous behavior: whole catch-up restarted on
+    the next cron run, re-pulling every already-synced day first).
+    """
+    last_exc: Exception | None = None
+    for attempt in range(tries):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt < tries - 1:
+                delay = base_delay * (2**attempt)
+                logger.warning(
+                    "%s failed (attempt %d/%d): %s — retrying in %.1fs",
+                    getattr(fn, "__name__", str(fn)),
+                    attempt + 1,
+                    tries,
+                    exc,
+                    delay,
+                )
+                time.sleep(delay)
+    assert last_exc is not None
+    raise last_exc
+
+
 def _fetch_paged_daily(pro, trade_date: str, limit: int = 5000) -> int:
     offset = 0
     total = 0
@@ -68,20 +101,48 @@ def _fetch_paged_daily(pro, trade_date: str, limit: int = 5000) -> int:
 
 
 def _resolve_start_date(today: date, today_run: dict | None) -> date:
-    """First trade_date to sync: resume marker, last success marker, or today."""
+    """First trade_date to sync: resume marker, last success marker, or today.
+
+    Marker/sync_at values come from the DB and can be dirty — never let a
+    ValueError on stale data crash the whole sync; fall back gracefully.
+    """
     start_date = today
     if today_run and today_run.get("success") is False and today_run.get("last_ts_code"):
         marker = str(today_run["last_ts_code"])
-        start_date = _parse_yyyymmdd(marker) + timedelta(days=1)
+        parsed = _try_parse_marker(marker)
+        if parsed:
+            start_date = parsed + timedelta(days=1)
     else:
         last_ok = get_last_success(JOB_TYPE)
         marker_ok = str((last_ok or {}).get("last_ts_code") or "").strip()
         if marker_ok and len(marker_ok) == 8 and marker_ok.isdigit():
-            start_date = _parse_yyyymmdd(marker_ok) + timedelta(days=1)
-        elif last_ok and last_ok.get("sync_at"):
-            sync_at = datetime.fromisoformat(str(last_ok["sync_at"]))
-            start_date = sync_at.astimezone(ZoneInfo("Asia/Shanghai")).date() + timedelta(days=1)
+            parsed = _try_parse_marker(marker_ok)
+            if parsed:
+                start_date = parsed + timedelta(days=1)
+            else:
+                logger.warning("close_sync: last_ts_code=%s not parseable, falling back to sync_at", marker_ok)
+                start_date = _fallback_from_sync_at(last_ok, today)
+        else:
+            start_date = _fallback_from_sync_at(last_ok, today)
     return start_date
+
+
+def _try_parse_marker(marker: str) -> date | None:
+    try:
+        return _parse_yyyymmdd(marker)
+    except ValueError:
+        logger.warning("close_sync: unparseable resume marker %r — falling back", marker)
+        return None
+
+
+def _fallback_from_sync_at(last_ok: dict | None, today: date) -> date:
+    if last_ok and last_ok.get("sync_at"):
+        try:
+            sync_at = datetime.fromisoformat(str(last_ok["sync_at"]))
+            return sync_at.astimezone(ZoneInfo("Asia/Shanghai")).date() + timedelta(days=1)
+        except ValueError:
+            logger.warning("close_sync: unparseable sync_at %r — syncing from today", last_ok.get("sync_at"))
+    return today
 
 
 def _fetch_paged_adj_factor(pro, trade_date: str, limit: int = 5000) -> int:
@@ -233,8 +294,8 @@ def sync_close(exchange: str = "SSE", *, force: bool = False) -> dict:
     for d in trade_dates:
         td = _to_yyyymmdd(d)
         try:
-            n_daily = _fetch_paged_daily(pro, td)
-            n_factor = _fetch_paged_adj_factor(pro, td)
+            n_daily = _with_retry(_fetch_paged_daily, pro, td)
+            n_factor = _with_retry(_fetch_paged_adj_factor, pro, td)
             # If today's daily is empty, treat as a transient upstream delay and allow retry later.
             if d == today and n_daily <= 0:
                 raise RuntimeError("tushare daily returned empty for today; try again later")

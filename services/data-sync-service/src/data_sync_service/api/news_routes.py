@@ -146,8 +146,15 @@ def get_recent_briefs(limit: int = 7):
 
 @router.post("/brief/generate")
 def generate_brief(brief_type: str = "morning"):
-    """Manually generate a morning or midday brief."""
+    """Manually generate a news brief (morning/midday) or a trading-session
+    brief (trading-open/trading-midday/trading-action)."""
     ensure_tables()
+    if brief_type.startswith("trading-"):
+        from data_sync_service.service.trading_brief import generate_trading_brief
+
+        brief = generate_trading_brief(brief_type.removeprefix("trading-"))
+        return {"brief": brief}
+
     from data_sync_service.service.morning_brief import generate_brief
 
     brief = generate_brief(brief_type=brief_type)

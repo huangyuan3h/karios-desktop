@@ -25,7 +25,6 @@ const base = (over: Partial<WatchlistToolbarProps> = {}): WatchlistToolbarProps 
   onManualRefreshTrend: vi.fn(),
   onReferenceTable: vi.fn(),
   onCopyMarkdown: vi.fn(),
-  onSyncFromScreener: vi.fn(),
   onRunAutomation: vi.fn(),
   onForceAutomationFromSkip: vi.fn(),
   ...over,
@@ -100,10 +99,6 @@ describe('WatchlistToolbar', () => {
     expect(screen.getByText('boom')).toHaveClass('text-red-600');
   });
 
-  it('disables Import when sync or automation busy', () => {
-    render(<WatchlistToolbar {...base({ syncBusy: true })} />);
-    expect(screen.getByText('Import from screener')).toBeDisabled();
-  });
 
   it('disables Run automation while automation busy', () => {
     render(<WatchlistToolbar {...base({ automationBusy: true })} />);

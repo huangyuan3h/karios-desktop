@@ -20,9 +20,17 @@
 |------|------|
 | 模块索引 · 投资理念 · V6.x 红线规则 | [`modules/README.md`](./modules/README.md) |
 | Watchlist（含 Execution Gate / Decision Journal） | [`modules/watchlist.md`](./modules/watchlist.md) |
-| Screener（含 TIP-001 / 006 策略合同） | [`modules/screener.md`](./modules/screener.md) |
 | Alpha Incubator（V4 双核捕猎） | [`modules/alpha-incubator.md`](./modules/alpha-incubator.md) |
 | 下游 AI Prompt（V7.6） | [`modules/downstream-ai-prompt.md`](./modules/downstream-ai-prompt.md) |
+| S-3 策略参数真值（含红绿灯禁开定案） | [`modules/strategy-params.md`](./modules/strategy-params.md) |
+| 回测结论 / 实验记录 | [`modules/backtest-strategy.md`](./modules/backtest-strategy.md) |
+| **回测实验记录文件夹（成功/失败全记录 · 2026-08-15 已定稿结束探索）** | [`backtests/README.md`](./backtests/README.md)（先读 [`SUMMARY.md`](./backtests/SUMMARY.md)） |
+| 交易系统总纲（含 S-3 生命周期） | [`modules/trading-system.md`](./modules/trading-system.md) |
+| 行业资金流 | [`modules/industry-flow.md`](./modules/industry-flow.md) |
+| 市场情绪 | [`modules/market-sentiment.md`](./modules/market-sentiment.md) |
+| 新闻 / 早报 | [`modules/news-brief.md`](./modules/news-brief.md) |
+
+> 已下线/脱节模块文档 → [`archive/modules-legacy/`](./archive/modules-legacy/)（screener 等，仅历史参考）。
 
 ---
 
@@ -34,8 +42,11 @@
 
 | 清单 | 命名 | 适用范围 | 状态 |
 |------|------|----------|------|
-| [`optimization-checklist.md`](./optimization-checklist.md) | `OPT-001` ~ `OPT-062` | 架构 / 性能 / 兼容 / 工程债 | 滚动维护（OPT-001~062 滚动；最新 OPT-062 Paper v0.2） |
-| [`trading-improvement-checklist.md`](./trading-improvement-checklist.md) | `TIP-001` ~ `TIP-011`、`V6.2-*`、`V6.3-*` | 业务规则校准 / 交易闸 | 滚动维护（P0/P1 已完成；TIP-009/011 仍未关） |
+| [`optimization-checklist.md`](./optimization-checklist.md) | `OPT-001` ~ `OPT-094` | 架构 / 性能 / 兼容 / 工程债 | 滚动维护（最新 OPT-094 CN 红灯日禁开仓） |
+| [`trading-improvement-checklist.md`](./trading-improvement-checklist.md) | `TIP-001` ~ `TIP-012`、`V6.2-*`、`V6.3-*`、`V7.x` | 业务规则校准 / 交易闸 | 滚动维护（已归档至 archive/ 的见 §10 沉淀表） |
+
+**已完成项归档**：每批完成的 OPT/TIP 按天归档到 [`archive/`](./archive/)（见 archive/README.md
+模板 + todo.md §10 沉淀表），optimization-checklist 只保留最新条目。
 
 **工作流**：todo 上新一条 → 评估是工程债（→ OPT-xxx）还是业务规则（→ TIP-xxx） → 对应清单创建条目 → 实现 → 勾选 + 引用。
 

@@ -159,14 +159,24 @@ class TestDefendPaths:
         assert out["mode"] == MODE_DEFEND
         assert "REGIME_WEAK" in out["reasons"]
 
-    def test_diverging_hold_only(self) -> None:
+    def test_diverging_attacks(self) -> None:
+        # S-3 定案：Diverging = 进攻（diverging_scale=1.0 满仓），与回测/paper_s3 同口径
         out = compute_execution_gate(index_signals=[CN, {"name": "创业板指", "signal": "red"}])
-        assert out["mode"] == MODE_HOLD_ONLY
+        assert out["mode"] == MODE_ATTACK
         assert "REGIME_DIVERGING" in out["reasons"]
+
+    def test_diverging_with_elevated_srv_hold_only(self) -> None:
+        out = compute_execution_gate(
+            index_signals=[CN, {"name": "创业板指", "signal": "red"}],
+            srv_index={"level": "Elevated", "overlapCount": 3},
+        )
+        assert out["mode"] == MODE_HOLD_ONLY
+        assert "SRV_ELEVATED" in out["reasons"]
 
 
 class TestOverflowOverride:
-    def test_overflow_upgrades_to_weak_attack(self) -> None:
+    def test_overflow_irrelevant_when_diverging_attacks(self) -> None:
+        # Diverging 本身 ATTACK（回测口径），overflow 不再升级为 WEAK_ATTACK
         out = compute_execution_gate(
             index_signals=[CN, {"name": "创业板指", "signal": "red"}],
             up_count=5000,
@@ -174,8 +184,8 @@ class TestOverflowOverride:
             overflow_sector="半导体",
             now=datetime(2026, 7, 27, 14, 45, tzinfo=ZoneInfo("Asia/Shanghai")),
         )
-        assert out["mode"] == MODE_WEAK_ATTACK
-        assert "INTRADAY_OVERFLOW_OVERRIDE" in out["reasons"]
+        assert out["mode"] == MODE_ATTACK
+        assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
         assert out["overflowSector"] == "半导体"
         assert out["overflowInflowYi"] == 600.0
 
@@ -279,13 +289,16 @@ class TestComputeHkGate:
             ]
         )
         assert out["mode"] == MODE_ATTACK
-        assert out["positionRangeHint"] == "50%-60%"
+        # OPT-093: HK position hints removed (backtest shows no separation).
+        assert out["positionRangeHint"] is None
 
-    def test_hold_only_diverging(self) -> None:
+    def test_diverging_allows_entries(self) -> None:
+        # S-3 HK 定案（gates=regime）：Diverging 允许开仓，与回测一致
         out = compute_hk_gate(
             index_signals=[HK, {"name": "恒生科技指数", "signal": "green"}]
         )
-        assert out["mode"] == MODE_HOLD_ONLY
+        assert out["mode"] == MODE_ATTACK
+        assert out["allowNewEntries"] is True
         assert "REGIME_DIVERGING" in out["reasons"]
 
     def test_weak_hk_defends(self) -> None:

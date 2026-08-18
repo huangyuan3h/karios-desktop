@@ -155,6 +155,7 @@ export type MorningBrief = {
   macroOverview: string | null;
   modelVersion: string | null;
   sourceItemIds: string[] | null;
+  markdown: string | null;
   createdAt: string;
 };
 
@@ -163,7 +164,12 @@ export function morningBriefQueryKey() {
 }
 
 export async function fetchMorningBrief(): Promise<{ brief: MorningBrief | null }> {
-  return apiGetJson<{ brief: MorningBrief | null }>('/api/news/brief/latest');
+  // 2026-08-12: the trading-session briefs (trading-open/midday/action) live in
+  // the same table — the news brief card must NOT pick them up (different item
+  // schema), so filter to the news briefs explicitly.
+  return apiGetJson<{ brief: MorningBrief | null }>(
+    '/api/news/brief/latest?brief_type=morning',
+  );
 }
 
 export function morningBriefQueryOptions() {
@@ -176,4 +182,23 @@ export function morningBriefQueryOptions() {
 
 export function useMorningBriefQuery() {
   return useQuery(morningBriefQueryOptions());
+}
+
+/** Trading-session brief types (10:00 open / 12:00 midday / 14:30 action). */
+export const TRADING_BRIEF_TYPES = ['open', 'midday', 'action'] as const;
+
+export async function fetchTradingBrief(
+  briefType: string,
+): Promise<{ brief: MorningBrief | null }> {
+  return apiGetJson<{ brief: MorningBrief | null }>(
+    `/api/news/brief/latest?brief_type=trading-${briefType}`,
+  );
+}
+
+export function useTradingBriefQuery(briefType: string) {
+  return useQuery({
+    queryKey: ['news', 'brief', 'trading', briefType],
+    queryFn: () => fetchTradingBrief(briefType),
+    staleTime: 60_000,
+  });
 }

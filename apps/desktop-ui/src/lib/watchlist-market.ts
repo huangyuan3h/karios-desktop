@@ -9,6 +9,7 @@ import { toTsCodeFromSymbol } from '@/lib/symbols';
 const DEFAULT_FORCE_BARS_CONCURRENCY = 4;
 const DEFAULT_FORCE_BARS_DAYS = 60;
 const QUOTE_CHUNK_SIZE = 50;
+const QUOTE_RETRY_DELAY_MS = 400;
 
 type QuoteResp = {
   items?: Array<{
@@ -21,6 +22,29 @@ type QuoteResp = {
     pct_chg?: number | null;
   }>;
 };
+
+/**
+ * 2026-08-10: tushare realtime_quote is flaky (transient timeouts/rate
+ * limits); a single failed chunk previously zeroed out the whole quote map
+ * and aborted "copy" syncs with "missing realtime quote". Retry once.
+ */
+export async function fetchQuoteChunkWithRetry(
+  tsCodesPart: string,
+): Promise<QuoteResp | null> {
+  const url = `/quote?ts_codes=${encodeURIComponent(tsCodesPart)}`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const resp = await apiGetJson<QuoteResp>(url);
+      if (resp && Array.isArray(resp.items)) return resp;
+    } catch {
+      // transient network/backend error — retry below.
+    }
+    if (attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, QUOTE_RETRY_DELAY_MS));
+    }
+  }
+  return null;
+}
 
 export type WatchlistBarSyncResult = {
   failures: number;
@@ -112,9 +136,7 @@ export async function fetchWatchlistQuotes(
 
   const quoteParts = await Promise.all(
     chunk(tsCodes, QUOTE_CHUNK_SIZE).map((part) =>
-      apiGetJson<QuoteResp>(`/quote?ts_codes=${encodeURIComponent(part.join(','))}`).catch(
-        () => null,
-      ),
+      fetchQuoteChunkWithRetry(part.join(',')),
     ),
   );
 

@@ -140,6 +140,16 @@ def build_weekly_review(*, end_date: str) -> dict[str, Any]:
     automation = _count_automation_runs(start, end)
     registry = _registry_state()
 
+    # 2026-08-11: backtest-vs-paper reconciliation snapshot (latest persisted).
+    recon = []
+    try:
+        from data_sync_service.db.reconciliation import latest_recon
+
+        recon = latest_recon(limit=6)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("weekly_review recon failed: %s", exc)
+        recon = []
+
     stats: dict[str, Any] = {
         "week": {"start": start, "end": end},
         "decisionVolume": {"total": fired_total, "bySource": fired},
@@ -158,6 +168,7 @@ def build_weekly_review(*, end_date: str) -> dict[str, Any]:
         },
         "funnel": automation,
         "registry": registry,
+        "recon": recon,
     }
 
     return {"ok": True, **stats, "markdown": _render_markdown(stats)}
@@ -229,8 +240,20 @@ def _render_markdown(stats: dict[str, Any]) -> str:
             lines.append(f"- ⚠ {note}")
     lines.append("")
 
-    # 4) 自动结论
-    lines.append("## 4. 本周观察")
+    # 4) 回测 vs paper 对账（2026-08-11：矫正操作闭环）
+    recon = stats.get("recon") or []
+    if recon:
+        lines.append("## 4. 回测 vs Paper 对账（最近快照）")
+        for r in recon:
+            drift = "✅" if (r["missing"] == 0 and r["extra"] == 0) else "⚠"
+            lines.append(
+                f"- {drift} {r['reconDate']} {r['market']}：回测应持有 {r['expected']} · "
+                f"paper 实持 {r['actual']} · 一致 {r['aligned']} · 缺 {r['missing']} · 多 {r['extra']}"
+            )
+        lines.append("")
+
+    # 5) 自动结论
+    lines.append("## 5. 本周观察")
     notes = _auto_notes(stats)
     if not notes:
         lines.append("- 数据仍少，先积累。")

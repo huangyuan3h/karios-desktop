@@ -455,7 +455,8 @@ class TestComputeStats:
 
 def test_trailing_stop_closes_on_peak_pullback(monkeypatch) -> None:
     """S-3 trailing stop: close when close pulls back >= 8% from the
-    post-entry high (backtest-strategy.md 6.6)."""
+    post-entry CLOSE peak (backtest-strategy.md 6.6; 2026-08-12 C4
+    alignment — close-based peak, same as the backtest engine)."""
     from data_sync_service.db import paper_trading as pt_db
 
     monkeypatch.setattr(
@@ -468,8 +469,8 @@ def test_trailing_stop_closes_on_peak_pullback(monkeypatch) -> None:
     _patch_all(
         monkeypatch,
         closes={"600519.SH": [
-            ("2026-08-06", "10.0", "10.5", "9.8", "10.0", "100"),
-            ("2026-08-07", "9.6", "9.7", "9.5", "9.6", "100"),  # -8.6% from peak 10.5
+            ("2026-08-06", "10.0", "10.5", "9.8", "10.4", "100"),  # close peak 10.4 (high 10.5 ignored)
+            ("2026-08-07", "9.6", "9.7", "9.4", "9.55", "100"),    # -8.2% from 10.4; net -4.5% → trailing, not stop
         ]},
         registry=[{"symbol": "CN:600519", "positionPct": 20}],
     )
@@ -500,3 +501,141 @@ def test_trailing_stop_holds_below_threshold(monkeypatch) -> None:
     out = pt.run_update(today_iso="2026-08-07")
     assert out["closed"] == 0
     close.assert_not_called()
+
+
+class TestS3PaperProtections:
+    """2026-08-11: S-3 paper lines are managed by the S-3 rule set — the
+    v0 registry pool_exit must NOT apply to them, and the trailing peak
+    must be measured from ENTRY onwards (not the pre-entry history high)."""
+
+    def test_s3_trade_excluded_from_pool_exit(self, monkeypatch) -> None:
+        from data_sync_service.db import paper_trading as pt_db
+
+        monkeypatch.setattr(
+            pt_db,
+            "get_open_paper_trades",
+            lambda: [{
+                "id": "s3-1", "symbol": "HK:00178", "entryPrice": 1.0,
+                "entryDate": "2026-08-10", "source": "S3HK", "market": "HK",
+            }],
+        )
+        upd = Mock()
+        close = Mock()
+        monkeypatch.setattr(pt_db, "update_paper_trade_price", upd)
+        monkeypatch.setattr(pt_db, "close_paper_trade", close)
+        # Empty registry: a v0 manual trade would pool_exit here, the S-3
+        # paper line must NOT.
+        _patch_all(monkeypatch, registry=[])
+        closes = {
+            "00178.HK": [("2026-08-08", 0.95, 0.95, 0.95, 1.0, 100), ("2026-08-10", 1.0, 1.0, 1.0, 1.05, 100)],
+        }
+        monkeypatch.setattr(pt, "fetch_last_ohlcv_batch", lambda codes, days: closes)
+        out = pt.run_update(today_iso="2026-08-10")
+        assert out["closed"] == 0
+        assert out["updated"] == 1
+        assert close.call_count == 0
+
+    def test_v0_manual_trade_still_pool_exits(self, monkeypatch) -> None:
+        from data_sync_service.db import paper_trading as pt_db
+
+        monkeypatch.setattr(
+            pt_db,
+            "get_open_paper_trades",
+            lambda: [{
+                "id": "m1", "symbol": "CN:600519", "entryPrice": 10.0,
+                "entryDate": "2026-08-01", "source": "MANUAL", "market": "CN",
+            }],
+        )
+        close = Mock()
+        monkeypatch.setattr(pt_db, "close_paper_trade", close)
+        _patch_all(monkeypatch, registry=[])
+        monkeypatch.setattr(
+            pt, "fetch_last_ohlcv_batch",
+            lambda codes, days: {"600519.SH": [("2026-08-07", 10.0, 10.0, 10.0, 10.0, 100)]},
+        )
+        out = pt.run_update(today_iso="2026-08-07")
+        assert out["closed"] == 1
+        assert close.call_count == 1
+
+    def test_trailing_peak_measured_from_entry(self, monkeypatch) -> None:
+        from data_sync_service.db import paper_trading as pt_db
+
+        # History high 15.0 BEFORE entry must not set the trailing peak;
+        # post-entry high is 11.0, current close 10.2 → -7.3% → NO trail.
+        monkeypatch.setattr(
+            pt_db,
+            "get_open_paper_trades",
+            lambda: [{
+                "id": "t1", "symbol": "CN:600519", "entryPrice": 10.0,
+                "entryDate": "2026-08-05", "source": "S3", "market": "CN",
+            }],
+        )
+        upd = Mock()
+        close = Mock()
+        monkeypatch.setattr(pt_db, "update_paper_trade_price", upd)
+        monkeypatch.setattr(pt_db, "close_paper_trade", close)
+        _patch_all(monkeypatch, registry=[])
+        closes = {
+            "600519.SH": [
+                ("2026-08-01", 14.0, 15.0, 14.0, 14.0, 100),   # pre-entry peak
+                ("2026-08-05", 10.0, 10.5, 10.0, 10.0, 100),   # entry day
+                ("2026-08-06", 10.1, 11.0, 10.0, 10.1, 100),   # post-entry high 11.0
+                ("2026-08-07", 10.2, 10.3, 10.0, 10.2, 100),   # -7.3% vs 11.0 → hold
+            ],
+        }
+        monkeypatch.setattr(pt, "fetch_last_ohlcv_batch", lambda codes, days: closes)
+        out = pt.run_update(today_iso="2026-08-07")
+        assert out["closed"] == 0
+        assert out["updated"] == 1
+        # If the peak were the pre-entry 15.0: (10.2-15)/15 = -32% → would trail.
+
+
+class TestS3StrongATRStop:
+    """OPT-105: CN S-3 paper exits switch to the entry-locked ATR line while
+    the regime is Strong; Diverging/Weak keep the fixed -5/-8 constants."""
+
+    def _run(self, monkeypatch, *, regime: str | None, close_px: float) -> dict:
+        from data_sync_service.db import paper_trading as pt_db
+
+        # 8 pre-entry bars with TR ~0.5 → ATR ≈ 0.5 → atr_pct 5% → ATR stop -10%
+        pre = []
+        for i in range(8):
+            day = f"2026-07-{20 + i:02d}"
+            pre.append((day, 10.0, 10.2, 9.7, 10.0, 100))
+        bars = pre + [
+            ("2026-08-05", 10.0, 10.1, 9.9, 10.0, 100),  # entry
+            ("2026-08-06", 9.5, 9.6, 9.3, close_px, 100),  # -6% vs entry
+        ]
+        monkeypatch.setattr(
+            pt_db,
+            "get_open_paper_trades",
+            lambda: [{
+                "id": "t1", "symbol": "CN:600519", "entryPrice": 10.0,
+                "entryDate": "2026-08-05", "source": "S3", "market": "CN",
+            }],
+        )
+        upd = Mock()
+        close = Mock()
+        monkeypatch.setattr(pt_db, "update_paper_trade_price", upd)
+        monkeypatch.setattr(pt_db, "close_paper_trade", close)
+        monkeypatch.setattr(pt, "_cn_regime_today", lambda: regime)
+        _patch_all(monkeypatch, registry=[])
+        closes = {"600519.SH": bars}
+        monkeypatch.setattr(pt, "fetch_last_ohlcv_batch", lambda codes, days: closes)
+        return pt.run_update(today_iso="2026-08-06")
+
+    def test_strong_regime_uses_atr_line_holds(self, monkeypatch) -> None:
+        # -6%: the FIXED -5% stop would exit; the ATR line (-10%) holds.
+        out = self._run(monkeypatch, regime="Strong", close_px=9.4)
+        assert out["closed"] == 0
+        assert out["updated"] == 1
+
+    def test_weak_regime_uses_fixed_line_exits(self, monkeypatch) -> None:
+        # Same -6% drawdown under Weak → fixed -5% stop fires.
+        out = self._run(monkeypatch, regime="Weak", close_px=9.4)
+        assert out["closed"] == 1
+
+    def test_regime_unavailable_falls_back_to_fixed(self, monkeypatch) -> None:
+        # Regime lookup failure must never loosen the stop (fail-closed).
+        out = self._run(monkeypatch, regime=None, close_px=9.4)
+        assert out["closed"] == 1

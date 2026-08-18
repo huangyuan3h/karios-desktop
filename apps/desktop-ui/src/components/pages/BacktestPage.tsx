@@ -2,17 +2,22 @@
 
 import React from 'react';
 
-import { Activity, BarChart3, ShieldAlert, TrendingDown } from 'lucide-react';
+import { Activity, BarChart3, ChevronDown, ShieldAlert, TrendingDown } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 import {
   GATE_LEVELS,
+  useBacktestOverviewQuery,
+  useBacktestReconQuery,
   useBacktestRunQuery,
   useCorrelationStatusQuery,
   useExitAttributionQuery,
+  usePaperVsBacktestQuery,
   useSensitivityQuery,
+  type BacktestOverviewBaseline,
+  type BacktestOverviewWindow,
   type BacktestParams,
 } from '@/lib/queries/backtest';
 
@@ -32,6 +37,7 @@ const DEFAULT_PARAMS: BacktestParams = {
   scoreFloor: 0,
   panicCooldownDays: 3,
   slippagePct: 0.05,
+  excludeBoards: '300',
 };
 
 const INPUT_CLS =
@@ -60,16 +66,332 @@ function tone(v: number | null): string {
   return v >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-400';
 }
 
+const CN_PARAMS = [
+  ['score', '65'], ['RS 前', '50%'], ['止损', '-5%'], ['移动', '-8%'],
+  ['持有', '≤60 天'], ['仓位', '10%'], ['持仓', '≤20'], ['闸门', 'full'], ['熔断', '-25%'],
+];
+
+const HK_PARAMS = [
+  ['score', '65'], ['RS 前', '40%'], ['止损', '-5%'], ['移动', '-12%'],
+  ['持有', '≤60 天'], ['仓位', '10%'], ['持仓', '≤20'], ['闸门', 'regime'],
+];
+
+function fmtDate(iso?: string | null): string {
+  if (!iso) return '—';
+  return iso.slice(0, 10);
+}
+
+function WindowRow({
+  name,
+  w,
+}: {
+  name: string;
+  w: BacktestOverviewWindow | undefined;
+}) {
+  const winRate = w?.winRate != null ? `${(w.winRate * 100).toFixed(1)}%` : '—';
+  return (
+    <div className="flex items-center gap-2 border-t border-[var(--k-border)]/60 py-1 text-[11px] tabular-nums">
+      <span className="w-12 shrink-0 font-mono text-[10px] text-[var(--k-muted)]">{name}</span>
+      <span className={cn('font-semibold', tone(w?.totalNetPnlPct ?? null))}>
+        {w?.totalNetPnlPct != null ? `${w.totalNetPnlPct.toFixed(1)}%` : '—'}
+      </span>
+      <span className="text-[var(--k-muted)]">胜率 {winRate}</span>
+      <span className="text-[var(--k-muted)]">
+        DD {w?.maxDrawdownPct != null ? `${w.maxDrawdownPct.toFixed(1)}%` : '—'}
+      </span>
+      <span className="text-[var(--k-muted)]">夏普 {w?.sharpe ?? '—'}</span>
+      <span className="ml-auto text-[var(--k-muted)]">
+        {w?.trades != null ? `${w.trades} 笔` : ''}
+      </span>
+    </div>
+  );
+}
+
+function BaselinePanel({
+  title,
+  tag,
+  baseline,
+  params,
+  extra,
+}: {
+  title: string;
+  tag: string;
+  baseline: BacktestOverviewBaseline | null | undefined;
+  params: string[][];
+  extra?: React.ReactNode;
+}) {
+  const windows = baseline?.windows ?? {};
+  const order = ['OOS2', 'train', 'valid'];
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-2)]/60 p-2.5">
+      <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold">
+        <span className="rounded border border-[var(--k-border)] bg-[var(--k-surface)] px-1.5 py-0.5">{tag}</span>
+        {title}
+        <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
+          基线 {fmtDate(baseline?.generatedAt)}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {params.map(([k, v]) => (
+          <span
+            key={k}
+            className="rounded bg-[var(--k-surface)] px-1.5 py-0.5 text-[10px] text-[var(--k-muted)]"
+            title="回测定案参数（strategy-params.md §1）"
+          >
+            {k} {v}
+          </span>
+        ))}
+      </div>
+      <div className="mt-1.5 flex flex-col">
+        {order.map((name) => (
+          <WindowRow key={name} name={name} w={windows[name]} />
+        ))}
+      </div>
+      {extra}
+    </div>
+  );
+}
+
+function ConclusionBoard({ overview }: { overview: ReturnType<typeof useBacktestOverviewQuery>['data'] }) {
+  const long = overview?.longWindowCN;
+  const byYear = long?.byYear ?? {};
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+      <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+        <BarChart3 className="size-3.5" />
+        S-3 回测结论（定案口径 · 回测 = source of truth）
+        <span className="ml-auto text-[10px] font-normal text-[var(--k-muted)]">
+          三窗 walk-forward · 长窗 2021-08 起 · 全市场 universe
+        </span>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        <BaselinePanel
+          title="A 股 S-3（CN 线）"
+          tag="CN"
+          baseline={overview?.cnBaseline}
+          params={CN_PARAMS}
+          extra={
+            long ? (
+              <div className="mt-1.5 rounded-md border border-[var(--k-accent)]/30 bg-[var(--k-accent)]/5 px-2 py-1.5">
+                <div className="flex flex-wrap items-baseline gap-x-3 text-[11px]">
+                  <span className="text-[10px] text-[var(--k-muted)]">长窗 {long.window}</span>
+                  <span className={cn('font-semibold', tone(long.totalNetPnlPct ?? null))}>
+                    {long.totalNetPnlPct != null ? `+${long.totalNetPnlPct}%` : '—'}
+                  </span>
+                  <span className="text-[var(--k-muted)]">DD {long.maxDrawdownPct}%</span>
+                  <span className="text-[var(--k-muted)]">夏普 {long.sharpe}</span>
+                  <span className="text-[var(--k-muted)]">{long.trades} 笔</span>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] tabular-nums text-[var(--k-muted)]">
+                  {Object.entries(byYear).map(([y, v]) => (
+                    <span key={y}>
+                      {y} <span className={cn('font-mono', tone(v ?? null))}>{v != null ? `${v >= 0 ? '+' : ''}${v}` : '—'}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null
+          }
+        />
+        <BaselinePanel
+          title="港股 S-3（HK 线）"
+          tag="HK"
+          baseline={overview?.hkBaseline}
+          params={HK_PARAMS}
+          extra={
+            <p className="mt-1.5 text-[10px] text-[var(--k-muted)]">
+              长窗仅 CN 线验证（2026-08-12 定案）；HK 以三窗为准。
+            </p>
+          }
+        />
+      </div>
+      <p className="mt-2 text-[10px] text-[var(--k-muted)]">
+        数字为固化基线（walk_forward_baseline.json）；回测是规则真值，实盘/paper 用同码引擎日终执行。
+      </p>
+    </div>
+  );
+}
+
+function RollingOosCard({ overview }: { overview: ReturnType<typeof useBacktestOverviewQuery>['data'] }) {
+  const ro = overview?.rollingOos;
+  if (!ro) return null;
+  const markets = ro.markets ?? {};
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+      <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+        <Activity className="size-3.5" />
+        滚动 OOS（最近 90 天 · 每月首个周一自动跑）
+        <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
+          {ro.windowStart} ~ {ro.windowEnd}
+        </span>
+      </div>
+      {ro.warning ? (
+        <div className="mb-2 rounded-md border border-red-500/40 bg-red-500/5 px-2 py-1.5 text-[11px] text-red-700 dark:text-red-300">
+          ⚠ {(ro.warnings ?? []).join(' · ') || '近期窗异常：亏损 / 夏普为负 / 零交易'}
+        </div>
+      ) : null}
+      <div className="flex flex-col gap-1">
+        {(['CN', 'HK'] as const).map((m) => {
+          const r = markets[m];
+          if (!r) return null;
+          const bad = r.closed === 0 || r.sharpe != null && r.sharpe < 0 || (r.totalNetPnlPct ?? 0) < 0;
+          return (
+            <div key={m} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] tabular-nums">
+              <span className={cn('w-7 font-semibold', bad ? 'text-red-600 dark:text-red-400' : 'text-[var(--k-fg)]')}>
+                {m === 'CN' ? 'A股' : '港股'}
+              </span>
+              <span className={cn('font-semibold', tone(r.totalNetPnlPct ?? null))}>
+                {r.totalNetPnlPct != null ? `${r.totalNetPnlPct.toFixed(1)}%` : '—'}
+              </span>
+              <span className="text-[var(--k-muted)]">胜率 {r.winRate != null ? `${(r.winRate * 100).toFixed(1)}%` : '—'}</span>
+              <span className="text-[var(--k-muted)]">DD {r.maxDrawdownPct != null ? `${r.maxDrawdownPct.toFixed(1)}%` : '—'}</span>
+              <span className="text-[var(--k-muted)]">夏普 {r.sharpe ?? '—'}</span>
+              <span className="ml-auto text-[var(--k-muted)]">{r.closed ?? 0} 笔</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ReconStrip({ reconQ }: { reconQ: ReturnType<typeof useBacktestReconQuery> }) {
+  const items = reconQ.data?.items ?? [];
+  if (!items.length) return null;
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+      <div className="mb-1.5 flex items-center gap-2 text-[12px] font-medium">
+        <ShieldAlert className="size-3.5" />
+        回测 vs Paper 对账（每周一自动对账上周五）
+      </div>
+      <div className="flex flex-col gap-1">
+        {items.map((r) => {
+          const clean = r.missing === 0 && r.extra === 0;
+          const market = r.market === 'HK' ? '港股' : 'A股';
+          return (
+            <div key={`${r.reconDate}-${r.market}`} className="flex flex-wrap items-center gap-x-3 text-[11px] tabular-nums">
+              <span className={clean ? 'text-emerald-600' : 'text-amber-600 dark:text-amber-400'}>
+                {clean ? '✓' : '⚠'}
+              </span>
+              <span className="font-medium">{market}</span>
+              <span className="text-[var(--k-muted)]">{r.reconDate}</span>
+              <span className="text-[var(--k-muted)]">
+                回测应持 {r.expected} · 实持 {r.actual} · 一致 {r.aligned}
+              </span>
+              <span className={r.missing + r.extra > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--k-muted)]'}>
+                缺 {r.missing} · 多 {r.extra}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PaperVsBacktestCard({ q }: { q: ReturnType<typeof usePaperVsBacktestQuery> }) {
+  const report = q.data?.report;
+  const rows = report?.rows ?? [];
+  const summary = report?.summary;
+  const settled = (report?.sampleCount ?? 0) >= 20;
+  return (
+    <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+      <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
+        <ShieldAlert className="size-3.5" />
+        C4 · paper vs 回测逐笔对照（S-3/S3HK 已平仓）
+        <span className="ml-auto text-[10px] font-normal tabular-nums text-[var(--k-muted)]">
+          {report?.generatedAt ?? ''} 生成
+        </span>
+      </div>
+      {q.isError ? (
+        <p className="text-xs text-red-700">{String(q.error)}</p>
+      ) : q.data && !rows.length ? (
+        <p className="text-xs text-[var(--k-muted)]">
+          暂无已平仓 S-3 交易——paper 书继续积累后这里会出对照。
+        </p>
+      ) : rows.length ? (
+        <div className="flex flex-col gap-2.5">
+          <div
+            className={cn(
+              'rounded-md border px-2 py-1.5 text-[11px]',
+              settled
+                ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300'
+                : 'border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300',
+            )}
+          >
+            {report?.verdict ?? '—'} · 已平仓 {summary?.paper?.closed ?? 0} 笔
+            {!settled && '（≥20 笔后出统计定论）'}
+          </div>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <StatCard label="paper 胜率" value={winRate(summary?.paper?.winRate ?? null)} sub={`${summary?.paper?.closed ?? 0} 笔已平仓`} />
+            <StatCard label="paper 均盈亏" value={pct(summary?.paper?.avgPnlPct ?? null)} />
+            <StatCard label="回测匹配胜率" value={winRate(summary?.backtestMatched?.winRate ?? null)} sub={`${summary?.backtestMatched?.closed ?? 0} 笔有孪生`} />
+            <StatCard label="回测均盈亏" value={pct(summary?.backtestMatched?.avgPnlPct ?? null)} sub="孪生交易口径" />
+          </div>
+          <div className="max-h-[320px] overflow-auto">
+            <table className="w-full text-left text-xs tabular-nums">
+              <thead className="sticky top-0 bg-[var(--k-surface)]">
+                <tr className="text-[10px] text-[var(--k-muted)]">
+                  <th className="py-1 pr-2">市场</th>
+                  <th className="py-1 pr-2">symbol</th>
+                  <th className="py-1 pr-2">入场</th>
+                  <th className="py-1 pr-2">paper pnl</th>
+                  <th className="py-1 pr-2">paper 平仓原因</th>
+                  <th className="py-1 pr-2">回测 pnl</th>
+                  <th className="py-1 pr-2">回测原因</th>
+                  <th className="py-1 pr-2">入场价差%</th>
+                  <th className="py-1 pr-2">备注</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const bt = r.backtest;
+                  const entryDiff = r.diff?.entryPriceDiffPct;
+                  return (
+                    <tr key={`${r.symbol}-${r.entryDate}`} className="border-t border-[var(--k-border)]/60">
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">{r.market === 'HK' ? '港股' : 'A股'}</td>
+                      <td className="py-1 pr-2 font-mono">{r.symbol}</td>
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">{r.entryDate}</td>
+                      <td className={cn('py-1 pr-2 font-medium', tone(r.paper?.pnlPct ?? null))}>{pct(r.paper?.pnlPct ?? null)}</td>
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">{r.paper?.closeReason ?? '—'}</td>
+                      <td className={cn('py-1 pr-2', bt ? tone(bt.pnlPct ?? null) : 'text-[var(--k-muted)]')}>{bt ? pct(bt.pnlPct ?? null) : '未入场'}</td>
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">{bt?.closeReason ?? '—'}</td>
+                      <td className={cn('py-1 pr-2', entryDiff != null && Math.abs(entryDiff) > 0.5 ? 'text-amber-600 dark:text-amber-400' : '')}>
+                        {entryDiff != null ? pct(entryDiff, 2) : '—'}
+                      </td>
+                      <td className="py-1 pr-2 text-[var(--k-muted)]">{r.note ?? '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-[var(--k-muted)]">
+            孪生交易 = 回测引擎同 symbol 同入场日（否则最近入场）· 价差归因执行 vs 规则 ·
+            样本 &lt;20 笔不作统计结论（C4 未定案）。
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-[var(--k-muted)]">加载中…</p>
+      )}
+    </div>
+  );
+}
+
 export function BacktestPage() {
   const [params, setParams] = React.useState<BacktestParams>(DEFAULT_PARAMS);
   const [submitted, setSubmitted] = React.useState<BacktestParams>(DEFAULT_PARAMS);
   const [attempt, setAttempt] = React.useState(0);
   const [gridOn, setGridOn] = React.useState(false);
+  const [advancedOn, setAdvancedOn] = React.useState(false);
 
   const runQ = useBacktestRunQuery(submitted, attempt);
   const sensQ = useSensitivityQuery(DEFAULT_PARAMS.start, DEFAULT_PARAMS.end, gridOn);
   const exitQ = useExitAttributionQuery(5);
   const corrQ = useCorrelationStatusQuery(true, true);
+  const overviewQ = useBacktestOverviewQuery();
+  const reconQ = useBacktestReconQuery(2);
+  const c4Q = usePaperVsBacktestQuery();
 
   const set = (k: keyof BacktestParams, v: string | number) =>
     setParams((p) => ({ ...p, [k]: typeof v === 'number' ? v : Number(v) }));
@@ -78,6 +400,27 @@ export function BacktestPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
+      {/* 结论区（定案口径） */}
+      <ConclusionBoard overview={overviewQ.data} />
+      <RollingOosCard overview={overviewQ.data} />
+      <ReconStrip reconQ={reconQ} />
+      <PaperVsBacktestCard q={c4Q} />
+
+      {/* 高级参数工具（折叠 · 原参数敏感度工具） */}
+      <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)]">
+        <button
+          type="button"
+          onClick={() => setAdvancedOn((v) => !v)}
+          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] font-medium"
+        >
+          <ChevronDown className={cn('size-3.5 text-[var(--k-muted)] transition-transform', advancedOn && 'rotate-180')} />
+          高级：参数敏感度工具（单窗回测 / 网格 / 相关性 / 卖出归因）
+          <span className="text-[10px] font-normal text-[var(--k-muted)]">
+            仅研究用途 · 不作发布依据
+          </span>
+        </button>
+        {advancedOn && (
+          <div className="flex flex-col gap-4 px-3 pb-3">
       {/* 参数区 */}
       <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
         <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
@@ -232,6 +575,16 @@ export function BacktestPage() {
             />
           </label>
           <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
+            排除板块（前缀逗号分隔，300=创业板）
+            <input
+              type="text"
+              className={cn(INPUT_CLS, 'w-28')}
+              value={params.excludeBoards}
+              placeholder="空=不过滤"
+              onChange={(e) => set('excludeBoards', e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--k-muted)]">
             入池闸门
             <select
               className={INPUT_CLS}
@@ -351,7 +704,7 @@ export function BacktestPage() {
         <div className="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
           <div className="mb-2 flex items-center gap-2 text-[12px] font-medium">
             <BarChart3 className="size-3.5" />
-            敏感度网格（score × hold × stop × 闸门 × trail · 默认窗口 · 按超额排序）
+            敏感度网格（score × hold × stop × 闸门 · 默认窗口 · 按胜率排序 · 点击行载入单配置）
             {sensQ.isFetching && <span className="text-[10px] text-[var(--k-muted)]">计算中（约 60s）…</span>}
           </div>
           {sensQ.isError ? (
@@ -379,7 +732,29 @@ export function BacktestPage() {
                   {[...sensQ.data.results]
                     .sort((a, b) => (b.win_rate ?? -1) - (a.win_rate ?? -1))
                     .map((r, i) => (
-                      <tr key={i} className="border-t border-[var(--k-border)]/60">
+                      <tr
+                        key={i}
+                        className="cursor-pointer border-t border-[var(--k-border)]/60 hover:bg-[var(--k-accent)]/5"
+                        onClick={() => {
+                          setParams((p) => ({
+                            ...p,
+                            scoreThreshold: r.config.score_threshold,
+                            maxHoldDays: r.config.max_hold_days,
+                            stopLossPct: r.config.stop_loss_pct,
+                            gates: r.config.gates,
+                          }));
+                          setSubmitted((p) => ({
+                            ...p,
+                            scoreThreshold: r.config.score_threshold,
+                            maxHoldDays: r.config.max_hold_days,
+                            stopLossPct: r.config.stop_loss_pct,
+                            gates: r.config.gates,
+                          }));
+                          setAttempt((a) => a + 1);
+                          setGridOn(false);
+                        }}
+                        title="点击 = 载入该配置到上方单配置回测并运行"
+                      >
                         <td className="py-1 pr-2 text-[var(--k-muted)]">{r.config.gates}</td>
                         <td className="py-1 pr-2">{r.config.score_threshold.toFixed(0)}</td>
                         <td className="py-1 pr-2">{r.config.max_hold_days}</td>
@@ -536,6 +911,9 @@ export function BacktestPage() {
           </div>
         ) : (
           <p className="text-xs text-[var(--k-muted)]">加载中…</p>
+        )}
+      </div>
+          </div>
         )}
       </div>
     </div>

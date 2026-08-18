@@ -27,8 +27,10 @@ from data_sync_service.db.daily import fetch_last_ohlcv_batch
 from data_sync_service.db.paper_trading import (
     CLOSE_REASON_SWAPPED,
     SOURCE_S3,
+    SOURCE_S3_HK,
     close_paper_trade,
     insert_paper_trade,
+    list_paper_trades,
 )
 from data_sync_service.service.backtest_engine import (
     BacktestConfig,
@@ -36,6 +38,12 @@ from data_sync_service.service.backtest_engine import (
     _load_industries,
     _load_regime_by_day,
     _load_rs_ranks,
+)
+from data_sync_service.service.env_label import (
+    ENV_FAN,
+    ENV_UNKNOWN,
+    ENV_UPTREND,
+    ENV_WEAK,
 )
 from data_sync_service.service.market_sentiment import get_cn_sentiment, get_panic_cooldown
 from data_sync_service.service.paper_cost_model import round_trip_cost_pct
@@ -46,8 +54,37 @@ logger = logging.getLogger(__name__)
 
 S3_SCORE_THRESHOLD = 65.0
 S3_RS_MIN = 0.5
+# HK RS floor matches the HK backtest baseline (HK_S3_CONFIG.rs_rank_min=0.6,
+# strategy-params.md §HK) — the shared 0.5 is the CN S-3 floor (2026-08-11).
+S3_RS_MIN_HK = 0.6
 S3_MAX_POSITIONS = 20
-S3_POSITION_PCT = 0.05  # per-sleeve size (paper is 5%; backtest 10%x20 is the upper bound)
+# 2026-08-12 (long-window defence): drawdown circuit breaker — live mirror
+# of backtest drawdown_circuit_pct=-25 (30d realized window, CN line only).
+# Realized net pnl over trailing 30 days <= -25% → block new S-3 entries
+# (2022/2023 showed the entry edge turns negative in losing streaks).
+# 2026-08-12 (OPT-094): red-light block — walk-forward verified (OOS2 win
+# 48→51%, valid win 61→79% & total +10.7pt, no window worse). CN line only;
+# HK index lights show no separation (OPT-093) so HK stays unblocked.
+S3_LIGHT_RED_BLOCK = True
+S3_CIRCUIT_PCT = -25.0
+S3_CIRCUIT_WINDOW_DAYS = 30
+S3_CIRCUIT_MIN_TRADES = 3
+S3_POSITION_PCT = 0.10  # per-sleeve size — SAME as the backtest (10%x20)
+# 2026-08-11: paper was 5% (conservative); user decision: paper must mirror
+# the backtest exactly, so paper book results are directly comparable to the
+# backtest numbers. position_pct is a pure leverage knob (sharpe-invariant,
+# strategy-params §1) — no re-validation needed, backtest untouched.
+
+# ChiNext (300xxx) excluded from S-3 candidates — user-approved 2026-08-09
+# (A4 focus-pool analysis + triple-window validation):
+#   - A4: ChiNext has never contributed alpha in any window (OOS2 25 trades
+#     -3.2pt at 28% win, valid 5 trades all lost); main board = stable base,
+#     STAR (688) = alpha engine in the recent window (+59.6pt / 77%).
+#   - walk-forward: exclude_boards=300 → OOS2 +124.3 vs 106.9 (+17.4pt, DD
+#     21.0→18.7), train +151.1 vs 147.5 (+3.6pt), valid +77.2 flat (DD 5.8→5.0).
+#     Excluding STAR as well destroys valid (43.8, -30.1pt) — rejected.
+# Empty tuple = no board filter.
+S3_EXCLUDE_BOARDS: tuple[str, ...] = ("300",)
 
 # RS-rotation swap params (validated on backtest double windows 2026-08-09):
 # a held S-3 trade whose RS falls into the weakest 30% after >= 10 days is
@@ -80,6 +117,41 @@ PYRAMID_ENABLED = True
 
 SENTIMENT_BLOCK_MODES = ("no_new_positions", "extreme_caution")
 
+# E2 (2026-08-14): panic cooldown 3→2 — mirrors the backtest S3_CONFIG
+# (panic_cooldown_days=2). 情绪历史回填后弱市年 3 天冷却锁死交易;
+# 长窗 +34.7pt / DD 45.1→33.0 (三窗+蒙特卡洛验证)。
+PANIC_COOLDOWN_DAYS = 2
+
+# TIP-014 (2026-08-14): implicit-weak breadth ratio (up/down < 0.5 blocks
+# new CN entries). Mirrors execution_gate.WEAK_RATIO_MAX + env_label.
+WEAK_RATIO_MAX = 0.5
+
+# TIP-014 (2026-08-14): environment-aware entry style — mirrors the S-3
+# backtest config (entry_style=auto RS0.7 dip3%). uptrend → momentum
+# (RS>=ENTRY_STYLE_RS_MIN, NOT in pullback); fan → dip (RS>=rs_min AND in
+# pullback <= -ENTRY_STYLE_DIP_MIN); weak/neutral → blocked (handled by
+# the sentiment block above); unknown → no style filter.
+ENTRY_STYLE_RS_MIN = 0.7
+ENTRY_STYLE_DIP_MIN = 3.0
+
+# D3 (2026-08-15): environment-aware position sizing — live mirror of the S-3
+# backtest config (env_position_scale="uptrend:1.25,fan:0.75", v4). A new CN
+# entry on an uptrend day gets a 1.25x sleeve (主升日质量最高放大下注), a fan
+# day 0.75x (电风扇减仓控尾). weak/neutral days never reach here (blocked
+# upstream). Same values as scripts/run_walk_forward.py S3_CONFIG.
+ENV_POSITION_SCALE = {"uptrend": 1.25, "fan": 0.75}
+
+
+def _env_position_scale_for(sentiment_items: list[dict[str, Any]]) -> float:
+    """Env-aware sleeve multiplier for today's CN entries (D3, v4).
+
+    Mirrors the backtest engine's config._env_position_scale: the ENTRY day's
+    env label maps to a sleeve scale; unmapped labels → 1.0 (no change).
+    """
+    if not sentiment_items:
+        return 1.0
+    return ENV_POSITION_SCALE.get(_env_for_day(sentiment_items), 1.0)
+
 
 def _load_today_scores(trade_date: str, market: str = "CN") -> dict[str, float]:
     """{symbol: score} from watchlist_score_daily for one market."""
@@ -104,6 +176,96 @@ def _load_today_scores(trade_date: str, market: str = "CN") -> dict[str, float]:
                     except (TypeError, ValueError):
                         continue
     return out
+
+
+def _env_for_day(sentiment_items: list[dict[str, Any]]) -> str:
+    """Environment bucket for today's CN sentiment items (TIP-014).
+
+    Mirrors service/env_label.load_env_by_day's per-day logic WITHOUT the
+    mainline-churn signal (that needs historical mainline rows; the live
+    intraday path only has today's snapshot). Fallback when mainline data is
+    absent: ratio-only labels (fan 0.5..1.5 / weak < 0.5 / else unknown),
+    matching env_label's pre-mainline behaviour.
+    """
+    if not sentiment_items:
+        return ENV_UNKNOWN
+    item = sentiment_items[-1]
+    mode = str(item.get("riskMode") or "")
+    if mode in SENTIMENT_BLOCK_MODES:
+        return ENV_WEAK
+    up = int(item.get("upCount") or 0)
+    down = int(item.get("downCount") or 0)
+    if up > 0 and down > 0 and (up / down) < WEAK_RATIO_MAX:
+        return ENV_WEAK
+    if up > 0 and down > 0:
+        ratio = up / down
+        if ratio >= 2.0 and float(item.get("yesterdayLimitupPremium") or 0.0) >= 0.0:
+            return ENV_UPTREND
+        if 0.5 <= ratio <= 1.5:
+            return ENV_FAN
+    return ENV_UNKNOWN
+
+
+def _env_style_for(sentiment_items: list[dict[str, Any]]) -> str | None:
+    """Entry style for today's CN environment (TIP-014 auto mode).
+
+    Returns 'momentum' (uptrend), 'dip' (fan), or None (unknown/no filter).
+    weak/neutral days never reach here — they are blocked upstream.
+    """
+    env = _env_for_day(sentiment_items)
+    if env == ENV_UPTREND:
+        return "momentum"
+    if env == ENV_FAN:
+        return "dip"
+    return None
+
+
+def _ret5_for(ts_code: str, as_of: str) -> float | None:
+    """5-session return % for ``ts_code`` at ``as_of`` (None when bars are
+    insufficient). Same window as the backtest engine's ret5_for — used by
+    the TIP-014 style filter in live paper."""
+    try:
+        bars = fetch_last_ohlcv_batch([ts_code], days=10).get(ts_code) or []
+        closes = [(str(b[0]), float(b[4])) for b in bars if len(b) > 4 and b[4] is not None]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 ret5 fetch failed for %s: %s", ts_code, exc)
+        return None
+    closes.sort(key=lambda kv: kv[0])
+    idx = None
+    for i, (d, _c) in enumerate(closes):
+        if d == as_of:
+            idx = i
+            break
+    if idx is None or idx < 5:
+        return None
+    c_prev = closes[idx - 5][1]
+    c_now = closes[idx][1]
+    if c_prev <= 0:
+        return None
+    return (c_now / c_prev - 1.0) * 100.0
+
+
+def _latest_daily_date_before(day: str) -> str | None:
+    """Latest trade_date in ``daily`` strictly before ``day``.
+
+    Intraday (before 17:10 close_sync) today's bars do not exist yet, so
+    scores/RS computed from the DB are as-of the previous session. Used as
+    the RS fallback so the intraday candidate surface is not empty.
+    """
+    from data_sync_service.db import get_connection
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT MAX(trade_date) FROM daily WHERE trade_date < %s",
+                    (day,),
+                )
+                row = cur.fetchone()
+        return str(row[0]) if row and row[0] else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 latest daily date lookup failed: %s", exc)
+        return None
 
 
 def _open_paper_symbols() -> set[str]:
@@ -135,58 +297,183 @@ def _live_held_symbols() -> set[str]:
     return out
 
 
+_LIGHT_NAMES_CN = {"沪深300", "中证500", "创业板指"}
+_LIGHT_RANK = {"deep_green": 4, "green": 3, "yellow": 2, "red": 1, "unknown": 0}
+
+
+def _index_light_red(*, as_of: str) -> bool:
+    """CN tighter index light is red (OPT-094) — as-of replay, same as the
+    backtest loader. Returns False on missing data (fail-open at the index
+    level; the regime gate still applies)."""
+    try:
+        from data_sync_service.service.market_regime import get_index_signals
+
+        signals = get_index_signals(as_of_date=as_of, include_breadth=False)
+        lights = [
+            str(s.get("signal") or "unknown")
+            for s in signals
+            if str(s.get("name") or "") in _LIGHT_NAMES_CN
+        ]
+        if not lights:
+            return False
+        return min(lights, key=lambda x: _LIGHT_RANK.get(x, 0)) == "red"
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _circuit_blocked(*, as_of: str) -> bool:
+    """True when the trailing realized pnl window is in a losing streak.
+
+    Same rule as the backtest's drawdown_circuit_pct=-25: at least
+    S3_CIRCUIT_MIN_TRADES closed trades whose NET pnl sums to <= -25% over
+    the trailing 30 calendar days → halt new CN S-3 entries. Mirrors the
+    engine exactly (as-of close_date comparison, live rows only).
+    """
+    from datetime import date, timedelta
+
+    cutoff = (date.fromisoformat(as_of) - timedelta(days=S3_CIRCUIT_WINDOW_DAYS)).isoformat()
+    closed = list_paper_trades(status="closed", market="CN", limit=1000)
+    recent = []
+    for r in closed:
+        cd = str(r.get("closeDate") or r.get("close_date") or "")
+        if not cd or cd < cutoff:
+            continue
+        p = r.get("pnlPct")
+        if p is None:
+            p = r.get("pnl_pct")
+        try:
+            recent.append(float(p))
+        except (TypeError, ValueError):
+            continue
+    return len(recent) >= S3_CIRCUIT_MIN_TRADES and sum(recent) <= S3_CIRCUIT_PCT
+
+
 def build_s3_candidates(
     *,
     trade_date: str | None = None,
     max_positions: int = S3_MAX_POSITIONS,
+    market: str = "CN",
 ) -> list[dict[str, Any]]:
-    """S-3-qualified candidates on ``trade_date`` (same gates as the backtest)."""
+    """S-3-qualified candidates on ``trade_date`` (same gates as the backtest).
+
+    2026-08-10 (HK parallel line): ``market="HK"`` runs the HK regime line —
+    HSI/HSTECH regime gate (via the engine's market-aware ``_load_regime_by_day``),
+    no sector flow/mainline whitelist (HK has none), RS ranked inside the HK
+    universe, panic cooldown from the CN sentiment feed (matches the backtest
+    engine's HK path exactly). CN keeps the full gates.
+
+    2026-08-11: HK RS floor is 0.6 (HK_S3_CONFIG.rs_rank_min, backtest
+    baseline) — the shared S3_RS_MIN (0.5) is the CN S-3 floor.
+    """
     from data_sync_service.db.paper_trading import today_iso
 
     day = trade_date or today_iso()
+    is_hk = market == "HK"
+    rs_min = S3_RS_MIN_HK if is_hk else S3_RS_MIN
     cfg = BacktestConfig(
         start_date=day,
         end_date=day,
+        market=market,
         score_threshold=S3_SCORE_THRESHOLD,
-        gates="full",
-        rs_rank_min=S3_RS_MIN,
+        gates="regime" if is_hk else "full",
+        rs_rank_min=rs_min,
         diverging_scale=1.0,
     )
     regime_by_day = _load_regime_by_day(cfg, [day])
-    flow_any_positive_by_day, mainline_allow_by_day = _load_flow_mainline_data(cfg, [day])
-    panic = get_panic_cooldown(days=10, cooldown_days=3, as_of_date=day)
+    panic = get_panic_cooldown(days=10, cooldown_days=PANIC_COOLDOWN_DAYS, as_of_date=day)
 
-    scores = _load_today_scores(day)
+    # 2026-08-12: drawdown circuit breaker (CN line). Block new entries when
+    # the trailing realized pnl is in a losing streak — mirrors the backtest
+    # drawdown_circuit_pct; paper and backtest stay same-code.
+    if market == "CN" and _circuit_blocked(as_of=day):
+        return []
+
+    # 2026-08-12 (OPT-094): CN red-light days produce no candidates (no
+    # recommendations) — same replay as the backtest light_red_block.
+    if market == "CN" and S3_LIGHT_RED_BLOCK and _index_light_red(as_of=day):
+        return []
+
+    scores = _load_today_scores(day, market=market)
     if not scores:
         return []
     universe = sorted(scores)
     resolved: dict[str, str] = {}
     for sym in universe:
         parsed = _resolve_ts_code(sym)
-        if parsed and parsed[0] == "CN":
+        if parsed and parsed[0] == market:
             resolved[sym] = parsed[1]
     if not resolved:
         return []
     rs_by_sym = _load_rs_ranks(cfg, [day], set(resolved.values()))
-    rs_by_day = rs_by_sym.get(day, {})
+    rs_by_day = rs_by_sym.get(day)
+    if not rs_by_day:
+        # Intraday: today's daily bars are not synced yet (close_sync 17:10),
+        # so the RS percentile for today is absent. Fall back to the latest
+        # available RS day (previous session's close) so the intraday S-3
+        # surface works during trading hours. The EOD chain (17:30 scores +
+        # 17:42 paper intake) re-evaluates with today's close; this fallback
+        # only affects the intraday decision surface.
+        prev = _latest_daily_date_before(day)
+        if prev:
+            cfg_prev = BacktestConfig(
+                start_date=prev,
+                end_date=prev,
+                market=market,
+                score_threshold=S3_SCORE_THRESHOLD,
+                gates="regime" if is_hk else "full",
+                rs_rank_min=rs_min,
+                diverging_scale=1.0,
+            )
+            prev_rs = _load_rs_ranks(cfg_prev, [prev], set(resolved.values())).get(prev)
+            if prev_rs:
+                rs_by_day = prev_rs
+        rs_by_day = rs_by_day or {}
 
-    industry_by_ts = _load_industries(list(resolved.values()))
     held = _live_held_symbols()
     open_paper = _open_paper_symbols()
 
     regime = regime_by_day.get(day)
     if regime in ("Weak", None):
         return []
-    flow_ok = flow_any_positive_by_day.get(day, False)
-    if not flow_ok:
-        return []
-    mainline = mainline_allow_by_day.get(day) or set()
-    sentiment_items = get_cn_sentiment(days=1, as_of_date=day)["items"]
-    today_mode = sentiment_items[-1].get("riskMode") if sentiment_items else ""
-    if today_mode in SENTIMENT_BLOCK_MODES or panic.get("active"):
-        return []
+    sentiment_items: list[dict[str, Any]] = []
+    industry_by_ts: dict[str, str] = {}
+    if is_hk:
+        # HK line: gates=regime only (mirrors the HK backtest) — panic
+        # cooldown applies, direct sentiment-mode blocking does not.
+        if panic.get("active"):
+            return []
+        flow_ok = True
+        mainline: set[str] = set()
+    else:
+        flow_any_positive_by_day, mainline_allow_by_day, _flow5d = _load_flow_mainline_data(cfg, [day])
+        flow_ok = flow_any_positive_by_day.get(day, False)
+        if not flow_ok:
+            return []
+        mainline = mainline_allow_by_day.get(day) or set()
+        sentiment_items = get_cn_sentiment(days=1, as_of_date=day)["items"]
+        today_mode = sentiment_items[-1].get("riskMode") if sentiment_items else ""
+        # TIP-014 (2026-08-14): implicit-weak day — breadth ratio < 0.5
+        # (跌家数 > 2× 涨家数) even when risk_mode is only normal/caution.
+        # Same definition as service/execution_gate.WEAK_RATIO_MAX and the
+        # backtest engine (env_label.WEAK_RATIO_MAX): 16/16 losing trades in
+        # the valid window.
+        s_up = int(sentiment_items[-1].get("upCount") or 0) if sentiment_items else 0
+        s_down = int(sentiment_items[-1].get("downCount") or 0) if sentiment_items else 0
+        breadth_weak = (
+            s_up > 0 and s_down > 0 and (s_up / s_down) < WEAK_RATIO_MAX
+        )
+        if (
+            today_mode in SENTIMENT_BLOCK_MODES
+            or breadth_weak
+            or panic.get("active")
+        ):
+            return []
+        industry_by_ts = _load_industries(list(resolved.values()))
 
     out: list[dict[str, Any]] = []
+    style = None
+    if not is_hk:
+        style = _env_style_for(sentiment_items)
     for sym in sorted(scores, key=lambda s: -scores[s]):
         score = scores[sym]
         if score < S3_SCORE_THRESHOLD:
@@ -197,17 +484,34 @@ def build_s3_candidates(
         if not ts:
             continue
         rs = rs_by_day.get(ts)
-        if rs is None or rs < S3_RS_MIN:
+        if rs is None or rs < rs_min:
             continue
-        industry = industry_by_ts.get(ts) or ""
-        if not industry or industry not in mainline:
+        if style is not None and not is_hk:
+            if rs < ENTRY_STYLE_RS_MIN:
+                continue
+            # ret5 as-of `day`; intraday (before 17:10 close_sync) today's
+            # bar is absent → fall back to the previous session (same as the
+            # RS fallback above) so the intraday surface is not emptied.
+            ret5 = _ret5_for(ts, day) or _ret5_for(ts, _latest_daily_date_before(day) or "")
+            if ret5 is None:
+                continue
+            if style == "momentum" and ret5 < -ENTRY_STYLE_DIP_MIN:
+                continue
+            if style == "dip" and ret5 > -ENTRY_STYLE_DIP_MIN:
+                continue
+        code = str(sym).split(":")[-1]
+        if S3_EXCLUDE_BOARDS and code[:3] in S3_EXCLUDE_BOARDS:
             continue
+        if not is_hk:
+            industry = industry_by_ts.get(ts) or ""
+            if not industry or industry not in mainline:
+                continue
         out.append(
             {
                 "symbol": sym,
                 "name": None,  # filled in run_intake_s3 via stock basic
                 "ts_code": ts,
-                "industry": industry,
+                "industry": None,
                 "score": score,
                 "rs": rs,
                 "regime": regime,
@@ -218,11 +522,11 @@ def build_s3_candidates(
     return out
 
 
-def _s3_open_holds() -> list[dict[str, Any]]:
-    """Open paper trades that follow the S-3 strategy (source='S3')."""
+def _s3_open_holds(source: str = SOURCE_S3) -> list[dict[str, Any]]:
+    """Open paper trades that follow the S-3 strategy (source='S3' / 'S3HK')."""
     from data_sync_service.db.paper_trading import list_paper_trades
 
-    return [r for r in list_paper_trades(status="open") if r.get("source") == SOURCE_S3]
+    return [r for r in list_paper_trades(status="open") if r.get("source") == source]
 
 
 def _fetch_closes(ts_codes: list[str]) -> dict[str, float]:
@@ -245,12 +549,16 @@ def _fetch_closes(ts_codes: list[str]) -> dict[str, float]:
     return closes
 
 
-def _pyramid_adds(*, day: str, holds: list[dict[str, Any]], closes: dict[str, float]) -> int:
+def _pyramid_adds(
+    *, day: str, holds: list[dict[str, Any]], closes: dict[str, float], source: str = SOURCE_S3,
+    sleeve_scale: float = 1.0,
+) -> int:
     """S-3 pyramiding: add a half sleeve at same-day close when the main leg
     is up >= PYRAMID_TRIGGER_PCT. Idempotent per (symbol, entry_date, side);
     at most PYRAMID_MAX_ADDS adds per symbol (counted via the 'pyramid-add'
-    marker in existing open S-3 rows)."""
-    if not PYRAMID_ENABLED or PYRAMID_MAX_ADDS <= 0:
+    marker in existing open S-3 rows). 2026-08-11 (T4): sleeve scales with
+    the week's market allocation; a 0-weight market adds no capital."""
+    if not PYRAMID_ENABLED or PYRAMID_MAX_ADDS <= 0 or sleeve_scale <= 0:
         return 0
     n = 0
     for h in holds:
@@ -283,9 +591,9 @@ def _pyramid_adds(*, day: str, holds: list[dict[str, Any]], closes: dict[str, fl
                 side="BUY",
                 entry_price=px,
                 why_at_entry=f"S-3 pyramid-add (main leg +{gross:.0f}%)",
-                sleeve_pct=S3_POSITION_PCT * PYRAMID_ADD_SCALE,
-                source=SOURCE_S3,
-                market="CN",
+                sleeve_pct=S3_POSITION_PCT * PYRAMID_ADD_SCALE * sleeve_scale,
+                source=source,
+                market=("HK" if source == SOURCE_S3_HK else "CN"),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 pyramid-add failed for %s: %s", sym, exc)
@@ -364,17 +672,92 @@ def _swap_holds_for_candidates(
     return swapped, rest
 
 
-def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_POSITIONS) -> dict[str, Any]:
+def _signal_snapshot_for(
+    *,
+    symbol: str,
+    industry: str | None,
+    trade_date: str,
+) -> dict[str, Any] | None:
+    """Info-layer snapshot at entry (C4 validation data — never a gate).
+
+    SW L1 industry 5-day net-inflow rank/total/amount (CN only; HK has no
+    industry flow feed) + alpha-event count for the symbol (14-day window).
+    """
+    snap: dict[str, Any] = {}
+    if industry:
+        try:
+            from data_sync_service.service.portfolio_health import _industry_flow_map
+
+            f = _industry_flow_map(trade_date).get(industry)
+            if f:
+                snap["industryRank5d"] = f["rank5d"]
+                snap["industryTotal"] = f["total"]
+                snap["industryNetInflow5d"] = f["netInflow5d"]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("paper_s3 signal snapshot flow failed: %s", exc)
+    # D2 (2026-08-14): record the entry-day environment so the live close
+    # path can apply max_hold_env_shorten (uptrend entries force-close after
+    # 45 days) — same rule as the backtest engine. Only written when the
+    # environment is actually known (uptrend/fan/weak); unknown → absent so
+    # the trade keeps the normal 60-day hold (matches the backtest: UNKNOWN
+    # entries are never shortened).
+    try:
+        env = _env_for_day(get_cn_sentiment(days=1, as_of_date=trade_date)["items"])
+        if env in (ENV_UPTREND, ENV_FAN, ENV_WEAK):
+            snap["entryEnv"] = env
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 signal snapshot env failed: %s", exc)
+    try:
+        from data_sync_service.service.portfolio_health import _alpha_events_for_symbols
+
+        events = _alpha_events_for_symbols([symbol])
+        n_events = len(events.get(_alpha_key(symbol)) or [])
+        if n_events > 0:
+            snap["alphaEvents"] = n_events
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 signal snapshot alpha failed: %s", exc)
+    return snap if snap else None
+
+
+def _alpha_key(symbol: str) -> str:
+    if symbol.startswith("HK:") and len(symbol) == 7:
+        return "HK:" + symbol[3:].zfill(5)
+    return symbol
+
+def run_intake_s3(
+    *,
+    trade_date: str | None = None,
+    max_positions: int = S3_MAX_POSITIONS,
+    market: str = "CN",
+) -> dict[str, Any]:
     """Insert paper trades for S-3 candidates (idempotent per day).
 
     Returns a summary for the cron recorder. Sleeve = 5% per trade, same as
     the manual discipline; backtest 10% is the upper bound.
+
+    2026-08-10 (HK parallel line): ``market="HK"`` uses the HK regime line
+    (HSI/HSTECH gates) and attributes rows to source='S3HK' — fully
+    independent from the CN S-3 book.
     """
     from data_sync_service.db.paper_trading import today_iso
 
+    source = SOURCE_S3_HK if market == "HK" else SOURCE_S3
     day = trade_date or today_iso()
+    # T4 (2026-08-11): shared capital pool — the week's R5c weights scale the
+    # sleeve; a 0-weight market opens no NEW positions (existing holdings keep
+    # normal exit management via paper_trading_update).
+    try:
+        from data_sync_service.service.allocation import week_weights
+
+        w_row = week_weights(day)["decision"]
+        w_market = float(w_row.get("w_hk") if market == "HK" else w_row.get("w_cn") or 0.0)
+        sleeve_scale = w_market
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper_s3 allocation weights failed (fallback 100%%): %s", exc)
+        sleeve_scale = 1.0
     summary: dict[str, Any] = {
         "tradeDate": day,
+        "market": market,
         "candidates": 0,
         "inserted": 0,
         "pyramidAdded": 0,
@@ -382,20 +765,21 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
         "swappedOut": 0,
         "skipped": 0,
         "skippedReasons": {},
+        "allocation": sleeve_scale,
     }
 
     # S-3 pyramiding first: add legs on held winners are regime-independent
     # (like the backtest's mark-to-market step) and free up no sleeve.
     try:
-        holds0 = _s3_open_holds()
+        holds0 = _s3_open_holds(source=source)
         if holds0:
             closes0 = _fetch_closes([str(h.get("tsCode") or "") for h in holds0 if h.get("tsCode")])
-            summary["pyramidAdded"] = _pyramid_adds(day=day, holds=holds0, closes=closes0)
+            summary["pyramidAdded"] = _pyramid_adds(day=day, holds=holds0, closes=closes0, source=source, sleeve_scale=sleeve_scale)
     except Exception as exc:  # noqa: BLE001
         logger.warning("paper_s3 pyramiding failed: %s", exc)
 
     try:
-        candidates = build_s3_candidates(trade_date=day, max_positions=max_positions)
+        candidates = build_s3_candidates(trade_date=day, max_positions=max_positions, market=market)
     except Exception as exc:  # noqa: BLE001
         summary["error"] = f"build_s3_candidates failed: {exc}"
         logger.warning("paper_s3 build failed: %s", exc)
@@ -406,7 +790,7 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
     # before any fresh entries (same gate order as the backtest engine).
     swapped_cands: list[dict[str, Any]] = []
     try:
-        holds = _s3_open_holds()  # fresh: includes today's add legs
+        holds = _s3_open_holds(source=source)  # fresh: includes today's add legs
         if holds and candidates and SWAP_ENABLED:
             cfg = BacktestConfig(
                 start_date=day,
@@ -432,12 +816,32 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
     if not candidates and not swapped_cands:
         return summary
 
+    if sleeve_scale <= 0:
+        # T4: this market has no capital this week (R5c) — no NEW positions.
+        summary["skipped"] += len(candidates) + len(swapped_cands)
+        summary["skippedReasons"]["allocation-zero"] = summary["skippedReasons"].get("allocation-zero", 0) + len(candidates) + len(swapped_cands)
+        return summary
+
+    # D3 (2026-08-15): env-aware sleeve — uptrend 1.25x / fan 0.75x (CN only;
+    # HK has no CN sentiment env labels, scale stays 1.0). Mirrors the S-3
+    # backtest env_position_scale (v4, three-window verified).
+    env_scale = 1.0
+    if market == "CN":
+        try:
+            env_scale = _env_position_scale_for(get_cn_sentiment(days=1, as_of_date=day)["items"])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("paper_s3 env position scale failed (fallback 1.0): %s", exc)
+    sleeve = S3_POSITION_PCT * sleeve_scale * env_scale
+
     ts_codes = [c["ts_code"] for c in candidates]
     by_name = {}
     try:
         by_name = _lookup_stock_basic(ts_codes)[0]
     except Exception as exc:  # noqa: BLE001
         logger.warning("paper_s3 stock basic lookup failed: %s", exc)
+
+
+
 
     closes: dict[str, float] = {}
     try:
@@ -473,9 +877,12 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
                 entry_price=px,
                 score_at_entry=round(cand["score"], 2),
                 why_at_entry=why,
-                sleeve_pct=S3_POSITION_PCT,
-                source=SOURCE_S3,
-                market="CN",
+                sleeve_pct=sleeve,
+                source=source,
+                market=("HK" if source == SOURCE_S3_HK else "CN"),
+                signal_snapshot=_signal_snapshot_for(
+                    symbol=cand["symbol"], industry=cand.get("industry"), trade_date=day,
+                ),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 swap-in insert failed for %s: %s", cand["symbol"], exc)
@@ -488,7 +895,7 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
             continue
         summary["swappedIn"] += 1
         summary.setdefault("symbols", []).append(
-            {"symbol": cand["symbol"], "name": name, "score": cand["score"], "sleevePct": S3_POSITION_PCT,
+            {"symbol": cand["symbol"], "name": name, "score": cand["score"], "sleevePct": sleeve,
              "swappedIn": True}
         )
 
@@ -512,9 +919,12 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
                 entry_price=px,
                 score_at_entry=round(cand["score"], 2),
                 why_at_entry=why,
-                sleeve_pct=S3_POSITION_PCT,
-                source=SOURCE_S3,
-                market="CN",
+                sleeve_pct=sleeve,
+                source=source,
+                market=("HK" if source == SOURCE_S3_HK else "CN"),
+                signal_snapshot=_signal_snapshot_for(
+                    symbol=cand["symbol"], industry=cand.get("industry"), trade_date=day,
+                ),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("paper_s3 insert failed for %s: %s", cand["symbol"], exc)
@@ -527,6 +937,6 @@ def run_intake_s3(*, trade_date: str | None = None, max_positions: int = S3_MAX_
             continue
         summary["inserted"] += 1
         summary.setdefault("symbols", []).append(
-            {"symbol": cand["symbol"], "name": name, "score": cand["score"], "sleevePct": S3_POSITION_PCT}
+            {"symbol": cand["symbol"], "name": name, "score": cand["score"], "sleevePct": sleeve}
         )
     return summary

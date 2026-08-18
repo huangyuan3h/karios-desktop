@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import Mock
 
 import pytest
@@ -23,7 +24,7 @@ class TestRun:
     def test_run(self, monkeypatch) -> None:
         monkeypatch.setattr(br, "simulate", lambda config: Mock(summary=FakeSummary()))
         monkeypatch.setattr(br, "load_benchmarks", lambda start, end: [])
-        out = br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=80.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full", trailing_stop_pct=0.0, position_pct=0.05, max_positions=10, rs_rank_min=0.0, diverging_scale=0.0, drawdown_circuit_pct=0.0, panic_cooldown_days=0, slippage_pct=0.0, trend_score_min=0.0)
+        out = br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=80.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full", trailing_stop_pct=0.0, position_pct=0.05, max_positions=10, rs_rank_min=0.0, diverging_scale=0.0, drawdown_circuit_pct=0.0, panic_cooldown_days=0, slippage_pct=0.0, trend_score_min=0.0, exclude_boards="")
         assert out["ok"] is True and out["summary"] == {"pnl": 1.0}
 
     def test_run_bad_window(self) -> None:
@@ -43,7 +44,7 @@ class TestRun:
     def test_run_simulate_error(self, monkeypatch) -> None:
         monkeypatch.setattr(br, "simulate", lambda config: (_ for _ in ()).throw(RuntimeError("boom")))
         with pytest.raises(HTTPException) as exc:
-            br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=85.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full", trailing_stop_pct=0.0, position_pct=0.05, max_positions=10, rs_rank_min=0.0, diverging_scale=0.0, drawdown_circuit_pct=0.0, panic_cooldown_days=0, slippage_pct=0.0, trend_score_min=0.0)
+            br.backtest_run(start="2026-01-01", end="2026-06-01", score_threshold=85.0, max_hold_days=5, stop_loss_pct=-5.0, target_pnl_pct=10.0, score_floor=30.0, market="CN", gates="full", trailing_stop_pct=0.0, position_pct=0.05, max_positions=10, rs_rank_min=0.0, diverging_scale=0.0, drawdown_circuit_pct=0.0, panic_cooldown_days=0, slippage_pct=0.0, trend_score_min=0.0, exclude_boards="")
         assert exc.value.status_code == 500
         assert "backtest failed" in exc.value.detail
 
@@ -147,3 +148,76 @@ class TestCorrelation:
 
 def test_router_prefix() -> None:
     assert br.router.prefix == "/api/backtest"
+
+
+class TestOverview:
+    def test_overview_reads_baseline_files(self, monkeypatch, tmp_path) -> None:
+        import json
+
+        reports = tmp_path / "backtest_reports"
+        reports.mkdir()
+        (reports / "walk_forward_baseline.json").write_text(json.dumps({
+            "generatedAt": "2026-08-12T00:00:00Z",
+            "tag": "baseline",
+            "results": {
+                "OOS2": {"totalNetPnlPct": 112.654, "winRate": 0.48, "sharpe": 5.22, "maxDrawdownPct": 23.346},
+                "train": {"totalNetPnlPct": 76.734},
+            },
+        }))
+        (reports / "walk_forward_hk_baseline.json").write_text(json.dumps({
+            "generatedAt": "2026-08-10T00:00:00Z",
+            "results": {"valid": {"totalNetPnlPct": 60.647, "winRate": 0.417, "sharpe": 6.32, "maxDrawdownPct": 8.329}},
+        }))
+        (reports / "rolling_oos_latest.json").write_text(json.dumps({
+            "windowStart": "2026-05-13", "windowEnd": "2026-08-11",
+            "warning": True, "warnings": ["HK: -8.5%"],
+            "markets": {"HK": {"closed": 55, "winRate": 0.255, "totalNetPnlPct": -8.451, "maxDrawdownPct": 19.5, "sharpe": -3.2}},
+        }))
+        monkeypatch.setattr(br, "REPORTS_DIR", reports)
+
+        out = br.backtest_overview()
+        assert out["ok"] is True
+        assert out["cnBaseline"]["windows"]["OOS2"]["totalNetPnlPct"] == 112.654
+        assert out["hkBaseline"]["windows"]["valid"]["sharpe"] == 6.32
+        assert out["rollingOos"]["warning"] is True
+        assert out["rollingOos"]["markets"]["HK"]["closed"] == 55
+        # Frozen long-window constants are always present.
+        assert out["longWindowCN"]["totalNetPnlPct"] == 250.8
+        assert out["longWindowCN"]["byYear"]["2023"] == -263.0
+
+    def test_overview_missing_files(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setattr(br, "REPORTS_DIR", tmp_path)
+        out = br.backtest_overview()
+        assert out["cnBaseline"] is None
+        assert out["hkBaseline"] is None
+        assert out["rollingOos"] is None
+        assert out["longWindowCN"] is not None
+
+
+class TestPaperVsBacktest:
+    def test_ok(self, monkeypatch, tmp_path) -> None:
+        (tmp_path / "paper_vs_backtest_latest.json").write_text(json.dumps({
+            "generatedAt": "2026-08-12",
+            "sampleCount": 2,
+            "verdict": "样本 <20 笔：结论待积累（C4 未定案）",
+            "rows": [{"symbol": "HK:00622", "market": "HK"}],
+            "summary": {"paper": {"closed": 2, "winRate": 0.5, "avgPnlPct": -1.0}},
+        }))
+        monkeypatch.setattr(br, "REPORTS_DIR", tmp_path)
+        out = br.backtest_paper_vs_backtest()
+        assert out["ok"] is True
+        assert out["report"]["sampleCount"] == 2
+        assert out["report"]["rows"][0]["symbol"] == "HK:00622"
+
+    def test_missing_report(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setattr(br, "REPORTS_DIR", tmp_path)
+        with pytest.raises(HTTPException) as exc:
+            br.backtest_paper_vs_backtest()
+        assert exc.value.status_code == 404
+
+    def test_corrupt_report(self, monkeypatch, tmp_path) -> None:
+        (tmp_path / "paper_vs_backtest_latest.json").write_text("{not json")
+        monkeypatch.setattr(br, "REPORTS_DIR", tmp_path)
+        with pytest.raises(HTTPException) as exc:
+            br.backtest_paper_vs_backtest()
+        assert exc.value.status_code == 500

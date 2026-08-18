@@ -70,9 +70,8 @@ def _patch_dashboard_summary_deps(monkeypatch, *, as_of: str, today: str, in_syn
     monkeypatch.setattr(dashboard, "resolve_effective_as_of", lambda d: d)
     monkeypatch.setattr(dashboard, "compute_market_status", lambda: {"isPreMarket": False})
     monkeypatch.setattr(dashboard, "_today_iso_date", lambda: today)
-    monkeypatch.setattr(dashboard, "_is_shanghai_sync_window", lambda: in_sync)
+    _ = in_sync  # realtime-window behavior retired 2026-08-12: always day-close signals
     monkeypatch.setattr(dashboard, "_build_industry_bundle", lambda **_: {"dates": [], "topByDate": {}, "flow5d": {}})
-    monkeypatch.setattr(dashboard, "_screeners_status", lambda *a, **k: [])
     monkeypatch.setattr(dashboard, "_news_items", lambda *a, **k: {"hours": 24, "total": 0, "items": []})
     monkeypatch.setattr(
         dashboard,
@@ -94,7 +93,7 @@ def _patch_dashboard_summary_deps(monkeypatch, *, as_of: str, today: str, in_syn
         },
     )
 
-def test_dashboard_summary_calls_get_index_signals_once_in_realtime_window(monkeypatch) -> None:
+def test_dashboard_summary_calls_get_index_signals_once_when_as_of_is_today(monkeypatch) -> None:
     import data_sync_service.service.dashboard as dashboard  # type: ignore[import-not-found]
 
     _patch_dashboard_summary_deps(
@@ -113,7 +112,8 @@ def test_dashboard_summary_calls_get_index_signals_once_in_realtime_window(monke
     out = dashboard.dashboard_summary(include_macro=True)
     assert out["asOfDate"] == "2026-06-18"
     assert len(calls) == 1
-    assert calls[0]["as_of_date"] is None
+    # 2026-08-12: 与回测口径统一——即使 as_of==today 也用日终信号
+    assert calls[0]["as_of_date"] == "2026-06-18"
     assert calls[0]["include_breadth"] is False
 
 

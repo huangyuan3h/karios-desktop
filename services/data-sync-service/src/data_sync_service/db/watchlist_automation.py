@@ -110,6 +110,24 @@ def upsert_registry(items: list[dict[str, Any]]) -> int:
     return len(values)
 
 
+def update_registry_payload(symbol: str, fields: dict[str, Any]) -> None:
+    """Merge ``fields`` into one registry row's JSONB payload (no row delete)."""
+    ensure_tables()
+    if not fields or not symbol:
+        return
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE {REGISTRY_TABLE}
+                SET payload = payload || %s::jsonb, updated_at = now()
+                WHERE symbol = %s
+                """,
+                (Json(fields), symbol),
+            )
+        conn.commit()
+
+
 def list_registry() -> list[dict[str, Any]]:
     ensure_tables()
     with get_connection() as conn:

@@ -49,6 +49,43 @@ describe('UserTradeSchema', () => {
     expect(trade.costBasis).toBeUndefined();
     expect(trade.pnlPct).toBeUndefined();
   });
+
+  it('accepts an alpha snapshot (§19.3)', () => {
+    const trade = UserTradeSchema.parse({
+      id: 'abc',
+      symbol: 'CN:600000',
+      side: 'BUY',
+      tradeDate: '2026-08-13',
+      price: 10,
+      positionPct: 5,
+      alphaSnapshot: {
+        asOf: '2026-08-13',
+        windowDays: 14,
+        nEvents: 2,
+        hasSA: true,
+        maxConfidence: 0.95,
+        riskStatuses: ['active'],
+        events: [
+          { trend: 'x', grade: 'S', confidence: 0.95, daysAgo: 1, riskStatus: 'active', focus: 'y' },
+        ],
+      },
+    });
+    expect(trade.alphaSnapshot?.hasSA).toBe(true);
+    expect(trade.alphaSnapshot?.nEvents).toBe(2);
+  });
+
+  it('accepts a leg without alpha snapshot', () => {
+    const trade = UserTradeSchema.parse({
+      id: 'abc',
+      symbol: 'CN:600000',
+      side: 'SELL',
+      tradeDate: '2026-08-13',
+      price: 11,
+      positionPct: 5,
+      alphaSnapshot: null,
+    });
+    expect(trade.alphaSnapshot).toBeNull();
+  });
 });
 
 describe('UserTradesStatsSchema', () => {

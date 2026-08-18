@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import time
 from datetime import UTC, date, datetime
@@ -27,6 +28,8 @@ from data_sync_service.service.realtime_quote import (
     fetch_realtime_quotes,
     fetch_realtime_quotes_batched,
 )
+
+logger = logging.getLogger(__name__)
 
 INDEX_SIGNALS = [
     {"ts_code": "000001.SH", "name": "上证指数", "featured": True},
@@ -352,8 +355,7 @@ def _compute_market_liquidity_and_mainline(
         if breadth and "total_turnover_cny" in breadth:
             total_turnover_cny = float(breadth.get("total_turnover_cny") or 0.0)
     except Exception:
-        pass
-
+        logger.warning("_compute_market_liquidity_and_mainline: degraded fallback applied", exc_info=True)
     today_cn = datetime.now(tz=ZoneInfo("Asia/Shanghai")).date()
     if dt == today_cn and total_turnover_cny == 0.0:
         try:
@@ -363,8 +365,7 @@ def _compute_market_liquidity_and_mainline(
                 if turnover_rt > 0.0:
                     total_turnover_cny = turnover_rt
         except Exception:
-            pass
-
+            logger.warning("_compute_market_liquidity_and_mainline: degraded fallback applied", exc_info=True)
     date_str = dt.isoformat()
     try:
         rows = get_rows_by_date(date_str)
@@ -372,8 +373,7 @@ def _compute_market_liquidity_and_mainline(
             inflows = [float(r.get("net_inflow") or 0.0) for r in rows]
             max_industry_inflow = max(inflows) if inflows else 0.0
     except Exception:
-        pass
-
+        logger.warning("_compute_market_liquidity_and_mainline: degraded fallback applied", exc_info=True)
     turnover_above_1_5T = total_turnover_cny >= 1.5e12
     mainline_inflow_above_5B = max_industry_inflow >= 5e9
 
@@ -719,7 +719,12 @@ def _compute_index_signals(
     for it in HK_INDEX_SIGNALS:
         series_id = it["series_id"]
         name = it["name"]
-        series_raw = fetch_macro_last_closes(series_id, days=HISTORY_DAYS)
+        # 2026-08-10 (HK parallel line): as-of mode must bound HSI/HSTECH to
+        # trade_date <= as_of_date — fetch_macro_last_closes now accepts the
+        # bound; without it every historical date saw today's prices.
+        series_raw = fetch_macro_last_closes(
+            series_id, days=HISTORY_DAYS, as_of_date=use_as_of
+        )
         if not series_raw or _hsi_series_stale(series_raw):
             if use_as_of:
                 # as-of mode: never fetch on demand — today's network data
@@ -956,4 +961,162 @@ def get_market_regime(
     regime, bias = _regime_from_signals(signals)
     result: dict[str, Any] = {"regime": regime, "bias": bias, "indexSignals": signals}
     _regime_cache[key] = result
+    return result
+
+
+# 2026-08-10 (HK parallel line): HSI/HSTECH traffic-light regime for the HK
+# backtest/paper path. CN indexes must NOT drive the HK gates — the two markets
+# run as independent strategy lines. Reuses get_index_signals (macro_daily HSI
+# history is available for as-of dates, source="db.macro_daily").
+def get_hk_regime(*, as_of_date: str | None = None) -> dict[str, Any]:
+    """HK market regime from HSI + HSTECH traffic lights (Weak/Diverging/Strong)."""
+    signals = get_index_signals(as_of_date=as_of_date, include_breadth=False)
+    hk = [
+        x
+        for x in signals
+        if str(x.get("tsCode") or x.get("seriesId") or x.get("series_id") or "").strip()
+        in ("HSI", "HSTECH")
+    ]
+    if len(hk) < 2:
+        return {"regime": "Weak", "bias": None, "indexSignals": hk}
+    greens = sum(1 for x in hk if str(x.get("signal") or "") in ("green", "light_green", "deep_green"))
+    if greens == len(hk):
+        return {"regime": "Strong", "bias": None, "indexSignals": hk}
+    if greens > 0:
+        return {"regime": "Diverging", "bias": "mixed", "indexSignals": hk}
+    return {"regime": "Weak", "bias": None, "indexSignals": hk}
+
+
+# ---------------------------------------------------------------------------
+# T2: cross-market regime strength score (2026-08-11)
+# ---------------------------------------------------------------------------
+# Homogeneous three-component scale for CN and HK so both markets sit on the
+# same ruler (used for relative capital allocation between markets):
+#   greens      0-30  share of green traffic lights (signal rows)
+#   momentum    0-40  mean 20d index momentum (linearly graded +5%..-5%)
+#   structure   0-30  share of bullish MA votes (close>MA5 / close>MA20 /
+#                     close>MA60 / MA20>MA60 across the index set)
+# Index-daily only → cheap and as-of safe; no market breadth needed (HK has
+# no breadth source, keeping the two markets strictly homogeneous).
+# The score does NOT gate entries — regimes remain the gate; the score only
+# ranks strength for allocation (T3 R2).
+STRENGTH_CACHE_TTL_SECONDS = 120
+_strength_cache: TTLCache = TTLCache(maxsize=64, ttl=STRENGTH_CACHE_TTL_SECONDS)
+_STRENGTH_GREEN_CAP = 30.0
+_STRENGTH_MOMENTUM_CAP = 40.0
+_STRENGTH_STRUCTURE_CAP = 30.0
+
+
+def _strength_momentum_score(mom_pct: float) -> float:
+    """20d momentum → [0, 40]: +5%→40, 0→20, -5%→0, clamped outside."""
+    return max(0.0, min(_STRENGTH_MOMENTUM_CAP, (mom_pct + 5.0) / 10.0 * _STRENGTH_MOMENTUM_CAP))
+
+
+def _strength_structure_votes(closes: list[float]) -> tuple[int, int]:
+    """(votes, max) of bullish MA structure across a close series."""
+    n = len(closes)
+    if n < 5:
+        return 0, 4
+    close = closes[-1]
+    ma5 = sum(closes[-5:]) / 5.0
+    votes = 1 if close > ma5 else 0
+    total = 4
+    if n >= 20:
+        ma20 = sum(closes[-20:]) / 20.0
+        votes += 1 if close > ma20 else 0
+        if n >= 60:
+            ma60 = sum(closes[-60:]) / 60.0
+            votes += 1 if close > ma60 else 0
+            votes += 1 if ma20 > ma60 else 0
+    return votes, total
+
+
+def regime_strength_score(
+    *, as_of_date: str | None = None, market: str = "CN"
+) -> dict[str, Any]:
+    """Market strength in [0, 100] on the shared CN/HK ruler (T2).
+
+    Returns {"market", "regime", "strength", "components", "signals"}.
+    ``market`` must be "CN" (SH/SZ/CSI500 lights) or "HK" (HSI/HSTECH).
+    """
+    market = str(market or "CN").upper().strip()
+    use_as_of = str(as_of_date).strip() if as_of_date else None
+    cache_key = (market, use_as_of or "")
+    cached = _strength_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    signals = get_index_signals(as_of_date=use_as_of, include_breadth=False)
+    if market == "HK":
+        rows = [
+            x for x in signals
+            if str(x.get("tsCode") or x.get("seriesId") or x.get("series_id") or "").strip()
+            in ("HSI", "HSTECH")
+        ]
+        cn_codes: list[str] = []
+    elif market == "CN":
+        cn_codes = [it["ts_code"] for it in INDEX_SIGNALS]
+        rows = [x for x in signals if str(x.get("tsCode") or "").strip() in set(cn_codes)]
+    else:
+        raise ValueError(f"market must be 'CN' or 'HK' (got {market!r})")
+
+    if not rows:
+        result: dict[str, Any] = {
+            "market": market,
+            "regime": "Weak",
+            "strength": 0.0,
+            "components": {"greens": 0.0, "momentum": 0.0, "structure": 0.0},
+            "signals": [],
+        }
+        _strength_cache[cache_key] = result
+        return result
+
+    if market == "HK":
+        series_map: dict[str, list[float]] = {}
+        for it in HK_INDEX_SIGNALS:
+            raw = fetch_macro_last_closes(it["series_id"], days=HISTORY_DAYS, as_of_date=use_as_of)
+            series_map[it["series_id"]] = [float(c) for _, c in (raw or [])]
+    else:
+        raw_map = fetch_last_closes_vol_batch(cn_codes, days=HISTORY_DAYS, as_of_date=use_as_of)
+        series_map = {code: [float(c) for _, c, _ in raw_map.get(code, [])] for code in cn_codes}
+
+    greens = sum(1 for x in rows if str(x.get("signal") or "") in ("green", "light_green", "deep_green"))
+    green_score = _STRENGTH_GREEN_CAP * greens / len(rows)
+
+    mom_scores: list[float] = []
+    struct_scores: list[float] = []
+    for sig in rows:
+        code = str(sig.get("tsCode") or sig.get("seriesId") or sig.get("series_id") or "").strip()
+        closes = series_map.get(code) or []
+        if len(closes) >= 21 and closes[-21] > 0:
+            mom_pct = (closes[-1] / closes[-21] - 1.0) * 100.0
+            mom_scores.append(_strength_momentum_score(mom_pct))
+        votes, total = _strength_structure_votes(closes)
+        if total:
+            struct_scores.append(_STRENGTH_STRUCTURE_CAP * votes / total)
+
+    momentum_score = sum(mom_scores) / len(mom_scores) if mom_scores else 0.0
+    structure_score = sum(struct_scores) / len(struct_scores) if struct_scores else 0.0
+    strength = round(green_score + momentum_score + structure_score, 2)
+
+    greens_rank = len([x for x in rows if str(x.get("signal") or "") in ("green", "light_green", "deep_green")])
+    if greens_rank == len(rows):
+        regime = "Strong"
+    elif greens_rank > 0:
+        regime = "Diverging"
+    else:
+        regime = "Weak"
+
+    result = {
+        "market": market,
+        "regime": regime,
+        "strength": strength,
+        "components": {
+            "greens": round(green_score, 2),
+            "momentum": round(momentum_score, 2),
+            "structure": round(structure_score, 2),
+        },
+        "signals": rows,
+    }
+    _strength_cache[cache_key] = result
     return result

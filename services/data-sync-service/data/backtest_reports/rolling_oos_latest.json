@@ -1,0 +1,27 @@
+{
+ "windowStart": "2026-05-13",
+ "windowEnd": "2026-08-11",
+ "markets": {
+  "CN": {
+   "closed": 1,
+   "winRate": 0.0,
+   "avgNetPnlPct": -6.328,
+   "totalNetPnlPct": -0.633,
+   "maxDrawdownPct": 0.633,
+   "sharpe": null
+  },
+  "HK": {
+   "closed": 55,
+   "winRate": 0.255,
+   "avgNetPnlPct": -1.54,
+   "totalNetPnlPct": -8.451,
+   "maxDrawdownPct": 19.497,
+   "sharpe": -3.2
+  }
+ },
+ "warning": true,
+ "warnings": [
+  "CN: -0.6% dd=0.6% sharpe=None trades=1",
+  "HK: -8.5% dd=19.5% sharpe=-3.2 trades=55"
+ ]
+}

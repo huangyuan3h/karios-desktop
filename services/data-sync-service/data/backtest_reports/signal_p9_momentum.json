@@ -1,0 +1,190 @@
+{
+ "OOS2": {
+  "base": {
+   "pnl": 117.2,
+   "dd": 11.7,
+   "sharpe": 6.63,
+   "win": 0.544,
+   "closed": 237,
+   "calmar": 10.0,
+   "momBlock": 0
+  },
+  "M120S20P30": {
+   "pnl": 103.1,
+   "dd": 9.8,
+   "sharpe": 5.53,
+   "win": 0.509,
+   "closed": 232,
+   "calmar": 10.49,
+   "momBlock": 27500
+  },
+  "M120S20P50": {
+   "pnl": 109.0,
+   "dd": 12.5,
+   "sharpe": 5.41,
+   "win": 0.502,
+   "closed": 217,
+   "calmar": 8.73,
+   "momBlock": 45297
+  },
+  "M250S20P30": {
+   "pnl": 51.4,
+   "dd": 17.9,
+   "sharpe": 3.54,
+   "win": 0.383,
+   "closed": 167,
+   "calmar": 2.87,
+   "momBlock": 36215
+  },
+  "M250S20P50": {
+   "pnl": 35.7,
+   "dd": 20.9,
+   "sharpe": 2.67,
+   "win": 0.37,
+   "closed": 165,
+   "calmar": 1.71,
+   "momBlock": 48794
+  }
+ },
+ "train": {
+  "base": {
+   "pnl": 122.6,
+   "dd": 9.3,
+   "sharpe": 4.4,
+   "win": 0.52,
+   "closed": 123,
+   "calmar": 13.13,
+   "momBlock": 0
+  },
+  "M120S20P30": {
+   "pnl": 105.7,
+   "dd": 10.2,
+   "sharpe": 4.08,
+   "win": 0.443,
+   "closed": 115,
+   "calmar": 10.32,
+   "momBlock": 28054
+  },
+  "M120S20P50": {
+   "pnl": 115.6,
+   "dd": 12.0,
+   "sharpe": 4.32,
+   "win": 0.468,
+   "closed": 111,
+   "calmar": 9.65,
+   "momBlock": 41679
+  },
+  "M250S20P30": {
+   "pnl": 133.2,
+   "dd": 5.8,
+   "sharpe": 5.71,
+   "win": 0.611,
+   "closed": 90,
+   "calmar": 23.05,
+   "momBlock": 43948
+  },
+  "M250S20P50": {
+   "pnl": 127.6,
+   "dd": 6.3,
+   "sharpe": 5.18,
+   "win": 0.568,
+   "closed": 88,
+   "calmar": 20.37,
+   "momBlock": 56584
+  }
+ },
+ "valid": {
+  "base": {
+   "pnl": 142.2,
+   "dd": 1.8,
+   "sharpe": 11.05,
+   "win": 0.818,
+   "closed": 55,
+   "calmar": 80.85,
+   "momBlock": 0
+  },
+  "M120S20P30": {
+   "pnl": 142.2,
+   "dd": 1.8,
+   "sharpe": 11.05,
+   "win": 0.818,
+   "closed": 55,
+   "calmar": 80.85,
+   "momBlock": 16889
+  },
+  "M120S20P50": {
+   "pnl": 130.8,
+   "dd": 2.6,
+   "sharpe": 11.53,
+   "win": 0.778,
+   "closed": 54,
+   "calmar": 50.71,
+   "momBlock": 24344
+  },
+  "M250S20P30": {
+   "pnl": 0.0,
+   "dd": 0.0,
+   "sharpe": 0.0,
+   "win": 0.0,
+   "closed": 0,
+   "calmar": 0.0,
+   "momBlock": 43814
+  },
+  "M250S20P50": {
+   "pnl": 0.0,
+   "dd": 0.0,
+   "sharpe": 0.0,
+   "win": 0.0,
+   "closed": 0,
+   "calmar": 0.0,
+   "momBlock": 45173
+  }
+ },
+ "LONG": {
+  "base": {
+   "pnl": 333.9,
+   "dd": 45.1,
+   "sharpe": 2.99,
+   "win": 0.388,
+   "closed": 1069,
+   "calmar": 7.4,
+   "momBlock": 0
+  },
+  "M120S20P30": {
+   "pnl": 325.5,
+   "dd": 33.1,
+   "sharpe": 2.89,
+   "win": 0.375,
+   "closed": 1085,
+   "calmar": 9.83,
+   "momBlock": 186785
+  },
+  "M120S20P50": {
+   "pnl": 270.8,
+   "dd": 80.0,
+   "sharpe": 2.44,
+   "win": 0.351,
+   "closed": 1068,
+   "calmar": 3.38,
+   "momBlock": 317320
+  },
+  "M250S20P30": {
+   "pnl": 295.6,
+   "dd": 48.5,
+   "sharpe": 3.05,
+   "win": 0.382,
+   "closed": 900,
+   "calmar": 6.1,
+   "momBlock": 290504
+  },
+  "M250S20P50": {
+   "pnl": 322.3,
+   "dd": 53.5,
+   "sharpe": 3.09,
+   "win": 0.389,
+   "closed": 890,
+   "calmar": 6.02,
+   "momBlock": 411700
+  }
+ }
+}

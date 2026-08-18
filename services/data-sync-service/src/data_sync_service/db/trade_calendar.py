@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Any
 
 import pandas as pd
 
 from data_sync_service.db import get_connection
+
+logger = logging.getLogger(__name__)
+
 
 TABLE_NAME = "trade_calendar"
 
@@ -143,6 +147,7 @@ def last_trading_day(exchange: str, on_date: date) -> date:
         if row and row[0]:
             return row[0]
     except Exception:  # noqa: BLE001
+        logger.warning("trade_calendar lookup failed, falling back to weekday heuristic", exc_info=True)
         pass
     d = on_date
     while d.weekday() >= 5:  # Sat/Sun — no calendar row for those days anyway

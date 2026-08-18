@@ -9,7 +9,11 @@ def get_connection() -> psycopg.Connection:
     settings = get_settings()
     if not settings.database_url:
         raise ValueError("DATABASE_URL is not configured.")
-    return psycopg.connect(settings.database_url, connect_timeout=5)
+    # statement_timeout guards against a hung SQL statement (lock waits,
+    # deadlocks) permanently blocking a scheduler thread. 120s is long enough
+    # for the largest batch upserts but bounds pathological statements.
+    options = "-c statement_timeout=120000"
+    return psycopg.connect(settings.database_url, connect_timeout=5, options=options)
 
 
 def check_db() -> tuple[bool, str | None]:

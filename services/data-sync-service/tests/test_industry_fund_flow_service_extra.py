@@ -11,6 +11,17 @@ import pytest
 from data_sync_service.service import industry_fund_flow as iff
 
 
+@pytest.fixture(autouse=True)
+def _reset_hist_short_circuit():
+    """Reset the module-level eastmoney short-circuit latches between tests —
+    they are process-global and would leak failure streaks across test files."""
+    iff._EM_HIST_FAIL_STREAK = 0
+    iff._EM_HIST_SKIP = False
+    yield
+    iff._EM_HIST_FAIL_STREAK = 0
+    iff._EM_HIST_SKIP = False
+
+
 class TestParse:
     def test_parse_money(self) -> None:
         assert iff._parse_money_to_cny(None) == 0.0
@@ -78,49 +89,40 @@ class TestDataApi:
 
 
 class TestDayKline:
+    def _run_result(self, payload: dict) -> object:
+        import subprocess as _sp
+
+        return _sp.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps(payload).encode("utf-8"),
+        )
+
     def test_ok(self, monkeypatch) -> None:
-        class Resp:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return None
-
-            def read(self):
-                return json.dumps({"data": {"klines": ["2026-08-07,1.2亿,3,4", "2026-08-06,5000万,1,2"]}}).encode()
-
-        monkeypatch.setattr(iff.urllib.request, "urlopen", lambda req, timeout: Resp())
+        monkeypatch.setattr(
+            iff.subprocess,
+            "run",
+            lambda cmd, **kw: self._run_result(
+                {"data": {"klines": ["2026-08-07,1.2亿,3,4", "2026-08-06,5000万,1,2"]}}
+            ),
+        )
         out = iff._eastmoney_board_fund_flow_daykline(secid="90.BK0475")
         assert out[0]["date"] == "2026-08-07"
         assert out[0]["net_inflow"] == pytest.approx(1.2e8)
 
     def test_bad_klines(self, monkeypatch) -> None:
-        class Resp:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return None
-
-            def read(self):
-                return json.dumps({"data": {"klines": ["", "a", "2026-08-07,5,6", "2026-08-06"]}}).encode()
-
-        monkeypatch.setattr(iff.urllib.request, "urlopen", lambda req, timeout: Resp())
+        monkeypatch.setattr(
+            iff.subprocess,
+            "run",
+            lambda cmd, **kw: self._run_result(
+                {"data": {"klines": ["", "a", "2026-08-07,5,6", "2026-08-06"]}}
+            ),
+        )
         out = iff._eastmoney_board_fund_flow_daykline(secid="90.x")
         assert len(out) == 1 and out[0]["net_inflow"] == 5.0
 
     def test_no_data(self, monkeypatch) -> None:
-        class Resp:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return None
-
-            def read(self):
-                return json.dumps({"data": None}).encode()
-
-        monkeypatch.setattr(iff.urllib.request, "urlopen", lambda req, timeout: Resp())
+        monkeypatch.setattr(iff.subprocess, "run", lambda cmd, **kw: self._run_result({"data": None}))
         assert iff._eastmoney_board_fund_flow_daykline(secid="x") == []
 
 

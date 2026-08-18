@@ -16,6 +16,7 @@ import {
   type CatalystCopyContext,
   type CatalystStocksResponse,
 } from '@/lib/alpha-radar-catalyst';
+import { fetchTrendOkMap } from '@/lib/api/trendok';
 import { chunk } from '@/lib/chunk';
 import {
   buildTopByDateMap,
@@ -71,24 +72,15 @@ import {
   isShanghaiSyncWindow,
   isShanghaiTradingTime,
 } from '@/lib/market-hours';
-import {
-  SCREENER_MARKDOWN_HEADERS,
-  buildScreenerMarkdownRows,
-  countMissingScores,
-  extractSymbolsFromSnapshotRows,
-  fetchTodayScreenerSymbolsByTitle,
-  fetchTrendOkMap,
-  screenerMarkdownRowsToTable,
-} from '@/lib/screenerExport';
 import { toTsCodeFromSymbol } from '@/lib/symbols';
-import { screenerSnapshotsQueryOptions } from '@/lib/queries/screener';
 import {
   dashboardLiteQueryKey,
   fetchDashboardLiteSummary,
   fetchDashboardSummaryPartial,
 } from '@/lib/queries/dashboard';
 import { watchlistMarketQueryOptions } from '@/lib/queries/watchlist';
-import { fetchWatchlistMarketSnapshot, type WatchlistMarketSnapshot } from '@/lib/watchlist-market';
+import { fetchPortfolioHealth } from '@/lib/queries/portfolioHealth';
+import { fetchWatchlistMarketSnapshot, fetchQuoteChunkWithRetry, type WatchlistMarketSnapshot } from '@/lib/watchlist-market';
 import {
   parseQuoteNumber,
   shouldRequireRealtimeQuote,
@@ -99,21 +91,18 @@ import { loadWatchlist, ensureWatchlistHydrated, type WatchlistItem } from '@/li
 
 type DashboardSummary = any;
 
-/** Copy-all screener filtering (2026-08-01 · wife feedback; 2026-08-07 · Top 10→5). */
-export const SCREENER_COPY_TOP_N = 5;
-export const SCREENER_COPY_MIN_SCORE = 60;
 
 type QuoteResp = {
   ok: boolean;
   error?: string;
   items: Array<{
     ts_code: string;
-    price: string | null;
-    pre_close: string | null;
-    pct_chg: string | null;
-    amount: string | null;
-    volume: string | null;
-    trade_time: string | null;
+    price?: string | number | null;
+    pre_close?: string | number | null;
+    pct_chg?: string | number | null;
+    amount?: string | number | null;
+    volume?: string | number | null;
+    trade_time?: string | null;
   }>;
 };
 
@@ -540,188 +529,6 @@ export function buildMacroMarkdown(s: DashboardSummary | null, heading = '##'): 
 }
 
 /** C8: compress long screener filters (e.g. the 18-sector whitelist) to save context. */
-function summarizeScreenerFilter(filter: string): string {
-  const s = String(filter);
-  if (s.startsWith('sector in_range')) {
-    const n = (s.match(/'/g) ?? []).length / 2;
-    return `行业白名单(${Math.round(n)})`;
-  }
-  if (s.length > 40) {
-    const key = (s.split(/[\s_]/)[0] ?? 'filter').trim();
-    return `${key}(长条件 ${s.length} chars)`;
-  }
-  return s;
-}
-
-/** C8: compress long screener filters (e.g. the 18-sector whitelist) to save context. */
-export async function buildScreenersMarkdown(
-  s: DashboardSummary | null,
-  heading = '##',
-  queryClient?: QueryClient,
-  options?: { mode?: 'full' | 'compact'; forceFresh?: boolean },
-): Promise<string> {
-  const summary2: any = s ?? {};
-  const rows: any[] = Array.isArray(summary2?.screeners) ? summary2.screeners : [];
-  const compact = options?.mode === 'compact';
-  const lines: string[] = [];
-  lines.push(`${heading} Screener sync`);
-  lines.push('');
-  lines.push(
-    `- note: per screener Top ${SCREENER_COPY_TOP_N} by Score (>= ${SCREENER_COPY_MIN_SCORE}); lower scores trimmed`,
-  );
-  const headers = ['Name', 'capturedAt', 'rows', 'filters', 'kept'];
-  const rows2: unknown[][] = rows.map((r: any) => [
-    String(r?.name ?? r?.id ?? ''),
-    String(r?.capturedAt ?? ''),
-    String(r?.rowCount ?? 0),
-    String(r?.filtersCount ?? 0),
-    `${String(r?.rowCount ?? 0)} raw`,
-  ]);
-  lines.push(mdTable(headers, rows2));
-  lines.push('');
-
-  if (compact) {
-    // Compact: skip per-screener row tables (only keep header summary).
-    lines.push('- note: compact mode — per-screener row tables omitted (open Screener page for details)');
-    lines.push('');
-    return lines.join('\n').trim() + '\n';
-  }
-
-  const screenerIds = rows
-    .map((sc: any) => String(sc?.id ?? '').trim())
-    .filter((sid: string) => sid);
-
-  let resolvedScreenerResults: Array<
-    | { sid: string; error: string }
-    | {
-        sid: string;
-        snap: {
-          id: string;
-          screenerId: string;
-          capturedAt: string;
-          rowCount: number;
-          screenTitle: string | null;
-          filters: string[];
-          url: string;
-          headers: string[];
-          rows: Array<Record<string, string>>;
-        };
-        sc: any;
-      }
-  >;
-
-  if (queryClient && screenerIds.length) {
-    const snapMap = options?.forceFresh
-      ? await queryClient.fetchQuery({
-          ...screenerSnapshotsQueryOptions(screenerIds),
-          staleTime: 0,
-        })
-      : await queryClient.fetchQuery(screenerSnapshotsQueryOptions(screenerIds));
-    resolvedScreenerResults = screenerIds.map((sid) => {
-      const snap = snapMap[sid];
-      if (!snap) return { sid, error: 'No snapshot found' };
-      return { sid, snap, sc: rows.find((r: any) => String(r?.id ?? '').trim() === sid) };
-    });
-  } else {
-    resolvedScreenerResults = await Promise.all(
-      screenerIds.map(async (sid) => {
-        try {
-          const list = await apiGetJson<{
-            items: Array<{ id: string; capturedAt?: string; rowCount?: number }>;
-          }>(`/integrations/tradingview/screeners/${encodeURIComponent(sid)}/snapshots?limit=1`);
-          const snapId = String(list?.items?.[0]?.id ?? '').trim();
-          if (!snapId) return { sid, error: 'No snapshot found' };
-          const snap = await apiGetJson<{
-            id: string;
-            screenerId: string;
-            capturedAt: string;
-            rowCount: number;
-            screenTitle: string | null;
-            filters: string[];
-            url: string;
-            headers: string[];
-            rows: Array<Record<string, string>>;
-          }>(`/integrations/tradingview/snapshots/${encodeURIComponent(snapId)}`);
-          return { sid, snap, sc: rows.find((r: any) => String(r?.id ?? '').trim() === sid) };
-        } catch (e) {
-          return { sid, error: e instanceof Error ? e.message : String(e) };
-        }
-      }),
-    );
-  }
-
-  for (const result of resolvedScreenerResults) {
-    if ('error' in result) {
-      const sc = rows.find((r: any) => String(r?.id ?? '').trim() === result.sid);
-      lines.push(`${heading}# ${escapeMarkdownCell(String(sc?.name ?? result.sid))}`);
-      lines.push(`- error: ${escapeMarkdownCell(result.error)}`);
-      lines.push('');
-      continue;
-    }
-    const { sid, snap, sc } = result;
-    const title = String(snap?.screenTitle ?? sc?.name ?? sid).trim() || sid;
-    const capturedAt = String(snap?.capturedAt ?? '').trim();
-    const headersTv: string[] = Array.isArray(snap?.headers)
-      ? snap.headers.map((h) => String(h ?? ''))
-      : [];
-    const rowsTv: Array<Record<string, string>> = Array.isArray(snap?.rows) ? snap.rows : [];
-    const rawRowCount = rowsTv.length;
-    const limit = 200;
-    const truncated = rowsTv.length > limit;
-    const rowsSlice = rowsTv.slice(0, limit);
-
-    lines.push(`${heading}# ${escapeMarkdownCell(title)}`);
-    if (capturedAt) lines.push(`- capturedAt: ${capturedAt}`);
-    lines.push(`- rows: ${String(snap?.rowCount ?? rowsTv.length ?? 0)}`);
-    if (Array.isArray(snap?.filters) && snap.filters.length) {
-      lines.push(
-        `- filters: ${snap.filters.map(summarizeScreenerFilter).join(' • ')}`,
-      );
-    }
-    if (truncated) lines.push(`- note: scanning first ${limit} raw rows (truncated)`);
-    lines.push(
-      '- scoreSource: TrendOK (same as Watchlist); Score>90 = candidate for forced research',
-    );
-
-    if (headersTv.length && rowsSlice.length) {
-      const symbols = extractSymbolsFromSnapshotRows(rowsSlice, headersTv);
-      const trendMap = await fetchTrendOkMap(symbols, {
-        realtime: isShanghaiTradingTime(),
-      });
-      const enrichedAll = buildScreenerMarkdownRows(rowsSlice, headersTv, trendMap);
-      const eligible = enrichedAll.filter(
-        (r) => typeof r.score === 'number' && Number.isFinite(r.score) && r.score >= SCREENER_COPY_MIN_SCORE,
-      );
-      const topN = eligible.slice(0, SCREENER_COPY_TOP_N);
-      const trimmed = enrichedAll.length - topN.length;
-      if (trimmed > 0) {
-        lines.push(
-          `- kept: ${topN.length} of ${enrichedAll.length} (Score>=${SCREENER_COPY_MIN_SCORE} & Top ${SCREENER_COPY_TOP_N})`,
-        );
-      } else {
-        lines.push(`- kept: ${topN.length} of ${enrichedAll.length}`);
-      }
-      const missingScore = countMissingScores(enrichedAll);
-      if (missingScore > 0) lines.push(`- missingScore: ${missingScore}`);
-      lines.push('');
-      if (topN.length) {
-        lines.push(
-          mdTable([...SCREENER_MARKDOWN_HEADERS], screenerMarkdownRowsToTable(topN)),
-        );
-      } else {
-        lines.push(`_No rows match Score>=${SCREENER_COPY_MIN_SCORE}._`);
-      }
-    } else {
-      lines.push('');
-      lines.push('_No rows._');
-    }
-    lines.push('');
-    void rawRowCount;
-  }
-
-  return lines.join('\n').trim() + '\n';
-}
-
 export async function buildWatchlistMarkdown(
   queryClient?: QueryClient,
   gate?: ExecutionGate | null,
@@ -775,11 +582,7 @@ export async function buildWatchlistMarkdown(
     const [trendMap, quoteResults] = await Promise.all([
       fetchTrendOkMap(syms, { realtime: quoteWindow }),
       Promise.all(
-        tsCodesChunks.map(async (part) => {
-          return apiGetJson<QuoteResp>(
-            `/quote?ts_codes=${encodeURIComponent(part.join(','))}`,
-          ).catch(() => null);
-        }),
+        tsCodesChunks.map((part) => fetchQuoteChunkWithRetry(part.join(','))),
       ),
     ]);
 
@@ -862,6 +665,7 @@ export async function buildWatchlistMarkdown(
     .catch(() => null);
   const rsRanks = await fetchRsRanks(sorted.map((i) => i.symbol)).catch(() => null);
   const panicCooldown = await fetchPanicCooldown();
+  const health = await fetchPortfolioHealth().catch(() => null);
   const { markdown, purgeSymbols } = buildPositionsExecutionMarkdown(
     sorted,
     trend,
@@ -875,6 +679,7 @@ export async function buildWatchlistMarkdown(
     catalystBySymbol,
     rsRanks,
     panicCooldown,
+    health,
   );
   // Report still lists PURGE rows; remove them from storage for the next copy.
   if (purgeSymbols.length) {
@@ -888,14 +693,10 @@ export async function buildAlphaRadarCopyContext(
   catalystResp: CatalystStocksResponse,
 ): Promise<CatalystCopyContext> {
   const watchlistSymbols = loadWatchlistSymbols();
-  const screeners: any[] = Array.isArray((s as any)?.screeners) ? (s as any).screeners : [];
-  const todayScreenerSymbols = await fetchTodayScreenerSymbolsByTitle(screeners, {
-    apiGetJson,
-  });
-
+  // 2026-08-12: TV retired — no screener funnel symbols anymore.
   const catalystSymbols = catalystResp.items.map((row) => normalizeCatalystSymbol(row.symbol));
   const allSymbols = [
-    ...new Set<string>([...watchlistSymbols, ...todayScreenerSymbols, ...catalystSymbols]),
+    ...new Set<string>([...watchlistSymbols, ...catalystSymbols]),
   ];
 
   const trendMapRaw = await fetchTrendOkMap(allSymbols, {
@@ -919,15 +720,9 @@ export async function buildAlphaRadarCopyContext(
     }
   }
 
-  const screenerTrendOkSymbols = new Set<string>();
-  for (const sym of todayScreenerSymbols) {
-    if (trendMap.get(sym)?.trendOk === true) screenerTrendOkSymbols.add(sym);
-  }
-
   return {
     watchlistSymbols,
     watchlistScores,
-    screenerTrendOkSymbols,
     trendMap,
   };
 }
@@ -1159,9 +954,8 @@ export async function buildDashboardCopyAllMarkdown(
   const mainlineAllow = buildMainlineAllowSet(s);
   const sectorOutflowBlock = isSectorOutflowBlock(s);
   const tradingTime = isShanghaiTradingTime();
-  const [screenersMd, watchlistMd, catalystMd, alphaTrendsMd, execBundle, sinceLastMd] =
+  const [watchlistMd, catalystMd, alphaTrendsMd, execBundle, sinceLastMd] =
     await Promise.all([
-      buildScreenersMarkdown(s, '##', queryClient, { mode, forceFresh }),
       buildWatchlistMarkdown(queryClient, executionGate, mainlineAllow, sectorOutflowBlock, forceFresh),
       buildCompactCatalystMarkdown(s),
       fetchAlphaRadarTrendsForCopy(DATA_SYNC_BASE_URL, 20, DEFAULT_CATALYST_MAX_AGE_DAYS)
@@ -1322,8 +1116,6 @@ export async function buildDashboardCopyAllMarkdown(
   }
   if (newsBody) lines.push(newsBody);
   else lines.push('No summary yet. Last news records are included above.');
-  lines.push('');
-  lines.push(screenersMd.trim());
   lines.push('');
   lines.push(alphaTrendsMd.trim());
   lines.push('');

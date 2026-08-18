@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from importlib import import_module
 
 import pytest
@@ -100,13 +101,23 @@ class TestCreateScheduler:
             "etf_daily_full_sync", "daily_full_sync", "adj_factor_full_sync", "close_sync",
             "close_sync_catchup", "news_fetch_job", "alpha_radar_ingest_job",
             "alpha_radar_process_job", "alpha_radar_pipeline_job", "index_daily_full_sync",
-            "macro_daily_full_sync", "watchlist_automation", "watchlist_funnel_health",
+            "macro_daily_full_sync", "watchlist_automation", "intraday_score",
             "eastmoney_industry_sync",
             "hk_industry_sync", "index_basic_sync", "cn_industry_post_close_sync",
-            "paper_trading_intake", "paper_trading_update", "paper_s3_intake", "tv_screener_capture_am",
-            "tv_screener_capture_pm", "news_enrich_job", "research_report_sync",
+            "paper_trading_intake", "paper_trading_update", "paper_s3_intake", "allocation_decide", "backtest_paper_recon",
+            "news_enrich_job", "research_report_sync",
             "decision_snapshot", "decision_outcome", "decision_action_tracking",
-            "morning_brief_am", "morning_brief_pm",
+            "morning_brief_am", "morning_brief_pm", "eod_chain_startup_catchup",
+            "rolling_oos",
+            "trading_brief_open", "trading_brief_midday", "trading_brief_action",
+            "paper_chain_watchdog",
+            "paper_backtest_mirror",
+            "weekly_review",
+            "intraday_alarm",
+            "candidate_diff",
+            "webhook_delivery",
+            "behavior_audit",
+            "minute_capture",
         }
         assert ids == expected
 
@@ -120,7 +131,13 @@ class TestCreateScheduler:
 
         monkeypatch.setattr(scheduler_pkg, "BackgroundScheduler", FakeScheduler)
         sched = scheduler_pkg.create_scheduler()
-        for _func, trigger, _jid, _replace in sched.jobs:
+        for _func, trigger, jid, _replace in sched.jobs:
+            if jid == "eod_chain_startup_catchup":
+                # One-shot restart catch-up (DateTrigger), not a cron/interval.
+                from apscheduler.triggers.date import DateTrigger
+
+                assert isinstance(trigger, DateTrigger)
+                continue
             assert isinstance(trigger, (CronTrigger, IntervalTrigger))
 
 
@@ -492,9 +509,15 @@ class TestNewsJobs:
         assert records == [("news_enrich_job", False, "crash")]
 
     def test_enrich_trigger(self) -> None:
+        from apscheduler.triggers.cron import CronTrigger
+
         from data_sync_service.scheduler import news_enrich_job
 
-        assert isinstance(news_enrich_job.build_trigger(), IntervalTrigger)
+        # OPT-108: LLM off-peak — nightly cron (20:00/23:00/05:00).
+        trig = news_enrich_job.build_trigger()
+        assert isinstance(trig, CronTrigger)
+        hours = sorted({e.first for e in trig.fields[5].expressions})  # hour field
+        assert hours == [5, 20, 23]
 
 
 class TestResearchJob:
@@ -532,47 +555,53 @@ class TestResearchJob:
 
 
 class TestAlphaRadarJobs:
-    def test_fetch_skipped(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_fetch_skipped(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: {"skipped": True, "lastRunAt": "2026-08-08T00:00:00Z"})
         job.run()
-        assert "skipped" in capsys.readouterr().out
+        assert "skipped" in caplog.text
 
-    def test_fetch_ok(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_fetch_ok(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: {"ok": True, "ingestStats": {"stored": 3}, "trendCount": 2})
         job.run()
-        assert "complete" in capsys.readouterr().out
+        assert "complete" in caplog.text
 
-    def test_fetch_failed_result(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_fetch_failed_result(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: {"ok": False, "errors": ["boom"]})
         job.run()
-        assert "failed" in capsys.readouterr().out
+        assert "failed" in caplog.text
 
-    def test_fetch_exception(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_fetch_exception(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_fetch_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_pipeline", lambda force, trigger: (_ for _ in ()).throw(RuntimeError("crash")))
         job.run()
-        assert "failed" in capsys.readouterr().out
+        assert "failed" in caplog.text
 
-    def test_ingest_ok(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_ingest_ok(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_ingest_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_ingest", lambda trigger: {"ingestStats": {"stored": 1, "new": 1, "requeued": 0, "unchanged": 0}, "rawBacklogCount": 2})
         job.run()
-        assert "complete" in capsys.readouterr().out
+        assert "complete" in caplog.text
 
-    def test_ingest_exception(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_ingest_exception(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_ingest_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_ingest", lambda trigger: (_ for _ in ()).throw(RuntimeError("crash")))
         job.run()
-        assert "failed" in capsys.readouterr().out
+        assert "failed" in caplog.text
 
     def test_ingest_interval_hours(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import alpha_radar_ingest_job as job
@@ -587,19 +616,21 @@ class TestAlphaRadarJobs:
         assert job.ingest_interval_hours() == job.DEFAULT_INTERVAL_HOURS
         assert isinstance(job.build_trigger(), IntervalTrigger)
 
-    def test_process_ok(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_process_ok(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_process_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_process", lambda trigger: {"processedHeadlines": 5, "trendsProduced": 2, "processRounds": 1, "rawBacklogCount": 0})
         job.run()
-        assert "complete" in capsys.readouterr().out
+        assert "complete" in caplog.text
 
-    def test_process_exception(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    def test_process_exception(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        caplog.set_level(logging.INFO)
         from data_sync_service.scheduler import alpha_radar_process_job as job
 
         monkeypatch.setattr(job, "run_alpha_radar_process", lambda trigger: (_ for _ in ()).throw(RuntimeError("crash")))
         job.run()
-        assert "failed" in capsys.readouterr().out
+        assert "failed" in caplog.text
 
     def test_process_interval_hours(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from data_sync_service.scheduler import alpha_radar_process_job as job
@@ -610,9 +641,90 @@ class TestAlphaRadarJobs:
         assert job.process_interval_hours() == job.DEFAULT_INTERVAL_HOURS
         monkeypatch.delenv("ALPHA_RADAR_PROCESS_INTERVAL_HOURS")
         assert job.process_interval_hours() == job.DEFAULT_INTERVAL_HOURS
-        assert isinstance(job.build_trigger(), IntervalTrigger)
+        from apscheduler.triggers.cron import CronTrigger
+
+        assert isinstance(job.build_trigger(), CronTrigger)  # OPT-108 nightly
 
     def test_fetch_trigger(self) -> None:
+        from apscheduler.triggers.cron import CronTrigger
+
         from data_sync_service.scheduler import alpha_radar_fetch_job
 
-        assert isinstance(alpha_radar_fetch_job.build_trigger(), IntervalTrigger)
+        assert isinstance(alpha_radar_fetch_job.build_trigger(), CronTrigger)  # OPT-108 nightly
+
+
+# ---------------------------------------------------------------------------
+# EOD-chain restart catch-up (2026-08-11: in-memory job store silently drops
+# cron fires missed during a restart — 2026-08-10 17:30/18:15 both skipped).
+# ---------------------------------------------------------------------------
+
+
+def _monkey_cst(monkeypatch, h: int, m: int) -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr(
+        scheduler_pkg,
+        "_cst_now",
+        lambda: datetime(2026, 8, 10, h, m, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+
+def _patch_today_runs(monkeypatch, *, close_ok=True, ran: set[str] | None = None) -> None:
+    from data_sync_service.db import sync_job_record as sjr
+
+    ran = ran or set()
+
+    def fake_today_run(job_type: str) -> dict | None:
+        if job_type == "stock_close_sync":
+            return {"success": close_ok} if close_ok else None
+        return {"success": True} if job_type in ran else None
+
+    monkeypatch.setattr(sjr, "get_today_run", fake_today_run)
+
+
+def test_catchup_reruns_missing_eod_chain(monkeypatch) -> None:
+    """17:40 evening restart with close_sync done but no EOD steps recorded →
+    watchlist_automation re-runs; paper_s3_intake waits for its slot guard
+    (17:45) and the fresh watchlist record."""
+    _monkey_cst(monkeypatch, 17, 40)
+    _patch_today_runs(monkeypatch)
+    calls: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0}
+    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: calls.__setitem__("wa", calls["wa"] + 1))
+    monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: calls.__setitem__("s3", calls["s3"] + 1))
+    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: calls.__setitem__("cn", calls["cn"] + 1))
+    scheduler_pkg.catchup_missed_eod_chain()
+    assert calls == {"wa": 1, "s3": 0, "cn": 0}  # s3 guard (17:45) + cn guard (18:25) not reached
+
+
+def test_catchup_respects_already_run_and_slots(monkeypatch) -> None:
+    """Steps with a today-record are not re-run; s3 runs once past 17:45 with
+    a watchlist record; the 18:15 step runs once past its slot; before the
+    17:30 slot nothing runs."""
+    _monkey_cst(monkeypatch, 18, 30)
+    _patch_today_runs(monkeypatch, ran={"watchlist_automation"})
+    calls: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0}
+    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: calls.__setitem__("wa", calls["wa"] + 1))
+    monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: calls.__setitem__("s3", calls["s3"] + 1))
+    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: calls.__setitem__("cn", calls["cn"] + 1))
+    scheduler_pkg.catchup_missed_eod_chain()
+    assert calls == {"wa": 0, "s3": 1, "cn": 1}
+
+    _monkey_cst(monkeypatch, 17, 20)
+    calls2: dict[str, int] = {"wa": 0, "s3": 0, "cn": 0}
+    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: calls2.__setitem__("wa", calls2["wa"] + 1))
+    monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: calls2.__setitem__("s3", calls2["s3"] + 1))
+    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: calls2.__setitem__("cn", calls2["cn"] + 1))
+    scheduler_pkg.catchup_missed_eod_chain()
+    assert calls2 == {"wa": 0, "s3": 0, "cn": 0}
+
+
+def test_catchup_skips_without_close_sync_or_on_weekend(monkeypatch) -> None:
+    _monkey_cst(monkeypatch, 18, 30)
+    _patch_today_runs(monkeypatch, close_ok=False)
+    ran: list[str] = []
+    monkeypatch.setattr(scheduler_pkg.watchlist_automation_job, "run", lambda: ran.append("wa"))
+    monkeypatch.setattr(scheduler_pkg.paper_s3_intake_job, "run", lambda: ran.append("s3"))
+    monkeypatch.setattr(scheduler_pkg.cn_industry_post_close_job, "run", lambda: ran.append("cn"))
+    scheduler_pkg.catchup_missed_eod_chain()
+    assert ran == []

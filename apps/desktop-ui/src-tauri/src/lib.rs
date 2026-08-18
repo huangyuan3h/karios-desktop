@@ -6,7 +6,7 @@ use backends::BackendManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default()
+  let app = tauri::Builder::default()
     .manage(BackendManager::default())
     .setup(|app| {
       if cfg!(debug_assertions) {
@@ -31,6 +31,23 @@ pub fn run() {
         mgr.stop_all();
       }
     })
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!());
+
+  let app = match app {
+    Ok(app) => app,
+    Err(err) => {
+      eprintln!("[karios] failed to build tauri app: {err}");
+      std::process::exit(1);
+    }
+  };
+
+  app.run(|app_handle, event| {
+    // macOS Cmd+Q / app quit menu goes through RunEvent::ExitRequested,
+    // which does not hit on_window_event — clean up sidecars there too
+    // so we never leave orphaned backend processes holding the ports.
+    if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+      let mgr = app_handle.state::<BackendManager>();
+      mgr.stop_all();
+    }
+  });
 }

@@ -448,7 +448,6 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
 
     monkeypatch.setattr(wa, "compute_trendok_for_symbols", fake_compute)
     monkeypatch.setattr(wa, "sync_cn_industry_fund_flow", lambda **kwargs: {"ok": True})
-    monkeypatch.setattr(wa, "_sync_screeners_step", lambda **kwargs: {"ok": True})
     monkeypatch.setattr(
         wa,
         "list_registry",
@@ -494,6 +493,12 @@ def test_run_watchlist_automation_computes_trendok_once(monkeypatch) -> None:
         return [{"trade_date": d, "score": 20.0, "industry": "Coal"} for d in trade_dates]
 
     monkeypatch.setattr(wa, "get_scores_for_symbol", fake_scores)
+    # 2026-08-12: the CN universe is the whole market (daily table) —
+    # isolate the universe seam so this test asserts its own small pool.
+    monkeypatch.setattr(
+        wa, "_score_universe_symbols",
+        lambda: (["CN:600000", "CN:600001"], [], []),
+    )
 
     result = wa.run_watchlist_automation(trigger="manual", force=True)
 
@@ -638,7 +643,6 @@ def test_record_score_snapshots_skips_invalid_rows(monkeypatch) -> None:
 def test_run_watchlist_automation_research_channel(monkeypatch) -> None:
     monkeypatch.setattr(wa, "compute_trendok_for_symbols", lambda symbols, realtime=False: [])
     monkeypatch.setattr(wa, "sync_cn_industry_fund_flow", lambda **kwargs: {"ok": True})
-    monkeypatch.setattr(wa, "_sync_screeners_step", lambda **kwargs: {"ok": True})
     monkeypatch.setattr(wa, "list_registry", lambda: [])
     monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: 0)
     monkeypatch.setattr(wa, "insert_automation_run", lambda **kwargs: "run-r")
@@ -842,7 +846,6 @@ def test_run_watchlist_automation_industry_sync_failure_is_meta(monkeypatch) -> 
     monkeypatch.setattr(
         wa, "sync_cn_industry_fund_flow", lambda **kw: (_ for _ in ()).throw(RuntimeError("boom"))
     )
-    monkeypatch.setattr(wa, "_sync_screeners_step", lambda **kw: {"ok": True, "failed": 0})
     monkeypatch.setattr(wa, "list_registry", lambda: [])
     monkeypatch.setattr(wa, "upsert_score_daily", lambda rows: 0)
     monkeypatch.setattr(wa, "insert_automation_run", lambda **kw: "run-2")
@@ -867,7 +870,39 @@ def test_run_watchlist_automation_industry_sync_failure_is_meta(monkeypatch) -> 
     out = wa.run_watchlist_automation(trigger="scheduled", force=True)
     assert out["skipped"] is False
     assert out["meta"]["industrySync"] == {"ok": False, "error": "boom"}
-    assert out["meta"]["screenerSync"]["ok"] is True
+
+
+def test_run_intraday_scores_realtime_refresh(monkeypatch) -> None:
+    """2026-08-11: intraday pass must score the CN + HK universes with
+    realtime=True (merges live quotes into the last bar → today's trade_date)
+    and stay separate from the EOD run."""
+    import data_sync_service.service.market_sentiment as ms
+
+    calls: list[tuple[list[str], bool]] = []
+
+    def fake_record(symbols, *, realtime):
+        calls.append((symbols, realtime))
+        return ("2026-08-11", len(symbols), [])
+
+    monkeypatch.setattr(ms, "sync_cn_sentiment", lambda **kw: {"ok": True, "asOfDate": "2026-08-11"})
+    monkeypatch.setattr(wa, "is_trading_day", lambda *a, **k: True)
+    monkeypatch.setattr(wa, "_score_universe_symbols", lambda: (["CN:600001"], ["HK:00700"], []))
+    monkeypatch.setattr(wa, "record_score_snapshots", fake_record)
+    out = wa.run_intraday_scores(trigger="manual")
+    assert out["ok"] is True
+    assert out["tradeDate"] == "2026-08-11"
+    assert out["realtime"] is True
+    assert out["sentimentSync"] is True
+    assert calls == [(["CN:600001"], True), (["HK:00700"], True)]
+    assert out["cnScoreSnapshots"] == 1
+    assert out["hkScoreSnapshots"] == 1
+
+
+def test_run_intraday_scores_skips_non_trading_day(monkeypatch) -> None:
+    monkeypatch.setattr(wa, "is_trading_day", lambda *a, **k: False)
+    out = wa.run_intraday_scores(trigger="scheduled")
+    assert out["skipped"] is True
+    assert out["skipReason"] == "not_trading_day"
 
 def test_compute_rs_ranks_returns_percentiles(monkeypatch) -> None:
     """compute_rs_ranks maps symbols -> whole-market RS percentiles."""
@@ -914,3 +949,15 @@ def test_compute_rs_ranks_returns_percentiles(monkeypatch) -> None:
     ranks = wa.compute_rs_ranks(["CN:600001", "CN:600002"])
     assert ranks["CN:600001"] == 1.0  # strongest of the two
     assert ranks["CN:600002"] == 0.5
+
+
+def test_is_cn_b_share() -> None:
+    """2026-08-10: TV screener mixes SSE/SZSE B shares (900xxx/200xxx)
+    into the CN pool — they must be dropped before scoring."""
+    assert wa._is_cn_b_share("CN:900948") is True
+    assert wa._is_cn_b_share("CN:200429") is True
+    assert wa._is_cn_b_share("CN:600000") is False
+    assert wa._is_cn_b_share("CN:300001") is False
+    assert wa._is_cn_b_share("CN:9009") is False
+    assert wa._is_cn_b_share("HK:0900") is False
+    assert wa._is_cn_b_share("") is False

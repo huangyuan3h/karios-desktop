@@ -88,15 +88,16 @@ def test_defend_when_breadth_panic() -> None:
     assert "BREADTH_PANIC" in out["reasons"]
 
 
-def test_hold_only_when_diverging() -> None:
+def test_diverging_allows_entries() -> None:
+    # S-3 定案：Diverging = 进攻（diverging_scale=1.0 满仓），与回测/paper_s3 同口径
     out = compute_execution_gate(
         index_signals=_signals("green", "red"),
         down_count=1500,
         risk_mode="normal",
         srv_index=_srv(SRV_LEVEL_STABLE, 3),
     )
-    assert out["mode"] == MODE_HOLD_ONLY
-    assert out["allowNewEntries"] is False
+    assert out["mode"] == MODE_ATTACK
+    assert out["allowNewEntries"] is True
     assert out["marketRegime"] == REGIME_DIVERGING
     assert "REGIME_DIVERGING" in out["reasons"]
 
@@ -202,7 +203,8 @@ def test_v63_overflow_does_not_override_breadth_panic() -> None:
     assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
 
 
-def test_v63_overflow_upgrades_hold_only() -> None:
+def test_v63_overflow_irrelevant_when_diverging_attacks() -> None:
+    # Diverging 现在本身就是 ATTACK（回测口径），overflow override 不再需要
     out = compute_execution_gate(
         index_signals=_signals("green", "red"),
         down_count=1000,
@@ -213,9 +215,9 @@ def test_v63_overflow_upgrades_hold_only() -> None:
         overflow_sector="半导体",
         now=_sh(14, 30),
     )
-    assert out["mode"] == MODE_WEAK_ATTACK
+    assert out["mode"] == MODE_ATTACK
     assert out["allowNewEntries"] is True
-    assert "INTRADAY_OVERFLOW_OVERRIDE" in out["reasons"]
+    assert "INTRADAY_OVERFLOW_OVERRIDE" not in out["reasons"]
 
 
 def test_v63_overflow_does_not_downgrade_attack() -> None:
@@ -266,18 +268,18 @@ def test_cn_regime_requires_all_three_cn_lights_green() -> None:
         srv_index=_srv(SRV_LEVEL_STABLE, 3),
     )
     assert out["marketRegime"] == REGIME_DIVERGING
-    assert out["mode"] == MODE_HOLD_ONLY
+    assert out["mode"] == MODE_ATTACK
 
 
 def test_hk_gate_independent_of_cn_when_hk_strong() -> None:
-    # CN diverging (one red) → CN gate HOLD_ONLY, but HK both green → ATTACK.
+    # CN diverging (one red) → CN gate ATTACK (S-3: Diverging 允许开仓), HK both green → ATTACK.
     out = compute_execution_gate(
         index_signals=_cn_hk_signals("green", "red", "yellow", "green", "green"),
         down_count=900,
         risk_mode="normal",
         srv_index=_srv(SRV_LEVEL_STABLE, 3),
     )
-    assert out["mode"] == MODE_HOLD_ONLY
+    assert out["mode"] == MODE_ATTACK
     assert out["hkGate"]["marketRegime"] == REGIME_STRONG
     assert out["hkGate"]["mode"] == MODE_ATTACK
     assert out["hkGate"]["allowNewEntries"] is True
@@ -308,7 +310,11 @@ def test_hk_gate_defends_on_global_risk_even_when_hk_strong() -> None:
     assert "RISK_EXTREME_CAUTION" in out["hkGate"]["reasons"]
 
 
-def test_hk_position_range_hint_prefers_tighter_hk_light() -> None:
+def test_hk_position_range_hint_removed_by_backtest() -> None:
+    # 2026-08-12 (OPT-093): replaying 2024-08~2026-08 shows HK index lights
+    # carry no separation for S-3 entries (medians red -5.0% / yellow -2.0% /
+    # green -5.1%; the red mean is right-tail driven). The heuristic
+    # "red → 0-10%" was deleted — hint is always None for HK now.
     sigs = [
         {"name": "上证指数", "signal": "green", "positionRange": "50%-60%"},
         {"name": "创业板指", "signal": "green", "positionRange": "50%-60%"},
@@ -323,7 +329,7 @@ def test_hk_position_range_hint_prefers_tighter_hk_light() -> None:
         srv_index=_srv(SRV_LEVEL_STABLE, 3),
     )
     assert out["hkGate"]["indexLight"] == "yellow"
-    assert out["hkGate"]["positionRangeHint"] == "30%"
+    assert out["hkGate"]["positionRangeHint"] is None
 
 
 # ---------- V6.4 ETF flow confirmation layer ----------
@@ -431,3 +437,29 @@ def test_etf_signal_in_cn_gate_not_hk_gate() -> None:
     assert out["etfFlowSignal"]["verdict"] == "confirm"
     assert out["cnGate"]["etfFlowSignal"]["verdict"] == "confirm"
     assert "etfFlowSignal" not in out["hkGate"]
+
+
+def test_defend_when_implicit_weak_breadth_ratio() -> None:
+    """TIP-014: up/down < 0.5 with normal risk_mode still defends."""
+    out = compute_execution_gate(
+        index_signals=_signals("green", "deep_green"),
+        down_count=3200,
+        up_count=800,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_STABLE, 3),
+    )
+    assert out["mode"] == MODE_DEFEND
+    assert out["allowNewEntries"] is False
+    assert "BREADTH_IMPLICIT_WEAK" in out["reasons"]
+
+
+def test_attack_when_ratio_above_weak_threshold() -> None:
+    """up/down = 1.0 (balanced) with normal risk_mode stays ATTACK."""
+    out = compute_execution_gate(
+        index_signals=_signals("green", "deep_green"),
+        down_count=2000,
+        up_count=2000,
+        risk_mode="normal",
+        srv_index=_srv(SRV_LEVEL_STABLE, 3),
+    )
+    assert out["mode"] == MODE_ATTACK

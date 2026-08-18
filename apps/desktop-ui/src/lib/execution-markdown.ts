@@ -2,6 +2,7 @@ import type { ExecutionActionCard, ExecutionGate } from '@karios/shared';
 
 import { DATA_SYNC_BASE_URL } from '@/lib/endpoints';
 import { mdPrice, mdScore, mdTable } from '@/lib/dashboard-format';
+import type { PortfolioHealthResponse } from '@/lib/queries/portfolioHealth';
 import {
   buildDefensiveSleeveExposurePct,
   buildSectorExposureFromWatchlist,
@@ -108,6 +109,7 @@ export function buildPositionsExecutionMarkdown(
   catalystBySymbol: Map<string, CatalystPurgeHint> | null = null,
   rsRanks: Record<string, number> | null = null,
   panicCooldown: PanicCooldownStatus | null = null,
+  health: PortfolioHealthResponse | null = null,
 ): PositionsExecutionMarkdownResult {
   const lines: string[] = [];
   lines.push(`${heading} Combat Positions & Watchlist（A股 / 港股 分表）`);
@@ -203,6 +205,19 @@ export function buildPositionsExecutionMarkdown(
   const hkRows: unknown[][] = [];
   const purgeSymbols: string[] = [];
   let hiddenRows = 0;
+  // S-3 candidate set (used for the sector/cluster-cap exemption and the
+  // S-3 section below) — computed once, before the per-row loop.
+  const s3Candidates = buildS3Candidates({
+    items,
+    trend,
+    rsRanks,
+    gate,
+    mainlineAllow,
+    sectorOutflowBlock,
+    cnCap,
+    sleeveExposurePct,
+  });
+  const s3Symbols = new Set(s3Candidates.map((c) => c.symbol));
   for (const it of items) {
     const t = trend[it.symbol];
     const q = quotes[it.symbol];
@@ -247,6 +262,7 @@ export function buildPositionsExecutionMarkdown(
       sectorOutflowBlock,
       catalyst,
       todaySh,
+      isS3Candidate: s3Symbols.has(it.symbol),
     });
     if (card.action === 'PURGE') {
       purgeSymbols.push(it.symbol);
@@ -298,23 +314,14 @@ export function buildPositionsExecutionMarkdown(
     if (marketOfSymbol(it.symbol) === 'hk') hkRows.push(row);
     else cnRows.push(row);
   }
-  const s3Candidates = buildS3Candidates({
-    items,
-    trend,
-    rsRanks,
-    gate,
-    mainlineAllow,
-    sectorOutflowBlock,
-    cnCap,
-    sleeveExposurePct,
-  });
   if (panicCooldown?.active) {
-    lines.push(`${heading} S-3 回测口径买入候选（趋势跟随）`);
+    lines.push(`${heading} S-3 回测口径买入候选（趋势跟随 · 双市场 top5）`);
     lines.push(
       `- ⚠️ 恐慌冷却期：最近恐慌日 ${panicCooldown.lastPanicDate ?? '—'}，冷却至 ${panicCooldown.cooldownEndDate ?? '—'} —— 回测证明：恐慌后 3 个交易日禁开新仓（纪律）`,
     );
     lines.push('');
-  } else if (s3Candidates.length) {
+  } else if (!health && s3Candidates.length) {
+    // Fallback (health endpoint unreachable): local CN-only candidate block.
     lines.push(`${heading} S-3 回测口径买入候选（趋势跟随）`);
     lines.push(
       mdTable(
@@ -326,10 +333,81 @@ export function buildPositionsExecutionMarkdown(
       '- note: S-3=回测定案规则（score≥65 · RS前50% · regime非Weak · 主线白名单 · 移动止损-8% · 持有60天 · 不止盈 · 恐慌保护）；仓位=回测口径 10%/笔（受 sleeve 上限约束）',
     );
     lines.push('');
-  } else if (gate && rsRanks != null) {
+  } else if (!health && gate && rsRanks != null) {
     lines.push(`${heading} S-3 回测口径买入候选（趋势跟随）`);
     lines.push('- 当前无满足 S-3 全部条件的候选 —— 空仓等待（纪律）');
     lines.push('');
+  } else {
+    const hkBlock = health?.hkHealth ?? null;
+    const cnCands = health?.s3Candidates ?? [];
+    const hkCands = hkBlock?.s3Candidates ?? [];
+    const cnRegime = String(health?.regime ?? '');
+    const hkRegime = String(hkBlock?.regime ?? '');
+    const cnSize = Number((health?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct) || 10;
+    const hkSize = Number((hkBlock?.s3Rules as Record<string, unknown> | undefined)?.suggestedSizePct) || 10;
+    const hkTotal = hkBlock?.s3CandidateTotal;
+    const cnTotal = health?.s3CandidateTotal;
+    const anyCands = cnCands.length > 0 || hkCands.length > 0;
+    if (anyCands) {
+      lines.push(`${heading} S-3 回测口径买入候选（趋势跟随 · 双市场 top5 · 已去重）`);
+      lines.push(
+        '- note: 每票仓位=回测口径 10%（suggestedSizePct）；A股=score≥65·RS前50%·主线白名单；港股=regime闸·RS前40%；候选=score降序取前5，跨市场同名已剔除（如A股已持紫金601899则港股02899不推）',
+      );
+      lines.push('');
+      // CN
+      lines.push(`### A股（${cnRegime || '—'}${cnRegime === 'Weak' ? ' · 空仓' : ''}` + '）');
+      if (cnCands.length) {
+        lines.push(
+          mdTable(
+            ['#', 'Symbol', 'Name', 'Score', 'RS%', '仓位%'],
+            cnCands.map((c, i) => [
+              String(i + 1),
+              c.symbol ?? '',
+              c.name ?? '—',
+              mdScore(c.score),
+              typeof c.rs === 'number' ? `前${Math.round(c.rs * 100)}%` : '—',
+              `${cnSize}%`,
+            ]),
+          ),
+        );
+        if (cnTotal != null && cnTotal > cnCands.length) {
+          lines.push(`- 候选池共 ${cnTotal} 只（仅列 top5）`);
+        }
+      } else {
+        lines.push('- 无候选（score/RS/闸门未全满足）');
+      }
+      lines.push('');
+      // HK
+      lines.push(`### 港股（${hkRegime || '—'}${hkRegime === 'Weak' ? ' · 空仓' : ''}` + '）');
+      if (hkCands.length) {
+        lines.push(
+          mdTable(
+            ['#', 'Symbol', 'Name', 'Score', 'RS%', '仓位%'],
+            hkCands.map((c, i) => [
+              String(i + 1),
+              c.symbol ?? '',
+              c.name ?? '—',
+              mdScore(c.score),
+              typeof c.rs === 'number' ? `前${Math.round(c.rs * 100)}%` : '—',
+              `${hkSize}%`,
+            ]),
+          ),
+        );
+        if (hkTotal != null && hkTotal > hkCands.length) {
+          lines.push(`- 候选池共 ${hkTotal} 只（仅列 top5）`);
+        }
+      } else {
+        lines.push('- 无候选（score≥65 · RS 前40% · 无恐慌冷却）');
+      }
+      lines.push('');
+    } else if (health && (cnRegime || hkRegime)) {
+      lines.push(`${heading} S-3 回测口径买入候选（趋势跟随 · 双市场 top5）`);
+      const parts: string[] = [];
+      if (cnRegime) parts.push(`A股 ${cnRegime === 'Weak' ? '空仓' : cnRegime}`);
+      if (hkRegime) parts.push(`港股 ${hkRegime === 'Weak' ? '空仓' : hkRegime}`);
+      lines.push(`- 当前无满足 S-3 全部条件的候选 —— ${parts.join(' · ') || '空仓等待'}（纪律）`);
+      lines.push('');
+    }
   }
   if (!cnRows.length && !hkRows.length) {
     lines.push('- No watchlist items.');
@@ -365,7 +443,7 @@ export function buildPositionsExecutionMarkdown(
  * no sector-outflow block. Position = backtest size 10% per sleeve,
  * capped by the CN sleeve budget. CN only (HK has no score).
  */
-function buildS3Candidates(opts: {
+export function buildS3Candidates(opts: {
   items: WatchlistItem[];
   trend: Record<string, TrendOkResult | undefined>;
   rsRanks: Record<string, number> | null;

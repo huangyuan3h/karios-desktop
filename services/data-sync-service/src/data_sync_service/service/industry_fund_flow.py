@@ -4,28 +4,36 @@ import hashlib
 import json
 import os
 import random
+import subprocess
 import sys
 import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import Any
 
-from data_sync_service.db.industry_fund_flow import (
+# Backfill scripts run outside the FastAPI app, so ensure the repo root .env
+# (EASTMONEY_COOKIE) is loaded even when get_settings() was never called.
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv(Path(__file__).resolve().parents[5] / ".env")  # noqa: E402
+
+from data_sync_service.db.industry_fund_flow import (  # noqa: E402
     get_dates_upto,
     get_latest_date,
     get_rows_for_dates,
     get_top_rows,
     upsert_daily_rows,
 )
-from data_sync_service.service.industry_fund_flow_read import series_map_from_rows
-from data_sync_service.service.industry_taxonomy import (
+from data_sync_service.service.industry_fund_flow_read import series_map_from_rows  # noqa: E402
+from data_sync_service.service.industry_taxonomy import (  # noqa: E402
     DEFAULT_INDUSTRY_FLOW_SOURCE,
     classify_sw_l1_industry,
     row_is_sw_l1,
 )
-from data_sync_service.service.trade_calendar_utils import (
+from data_sync_service.service.trade_calendar_utils import (  # noqa: E402
     is_cn_trading_day,
     last_open_date_on_or_before,
     resolve_effective_as_of,
@@ -36,6 +44,21 @@ from data_sync_service.service.trade_calendar_utils import (
 
 def _now_iso() -> str:
     return datetime.now(tz=UTC).isoformat()
+
+
+# Proxy degradation latch shared with _eastmoney_board_fund_flow_daykline:
+# once the EASTMONEY_PROXY exit is confirmed down, skip it process-wide to
+# stop retrying a dead proxy on every industry board (2026-08-17: 16/31
+# boards failing, each 3x20s retries -> 50s dashboard sync).
+_EM_PROXY_DEGRADED = False
+
+# Industry-history short-circuit: when eastmoney is throttling/banning this
+# IP, EVERY board's history fetch fails identically. Once we see enough
+# consecutive failures, skip the remaining boards' network calls entirely so
+# the dashboard sync finishes in seconds instead of a ~50s crawl. Cleared on
+# the next successful fetch (a new process after the ban cools).
+_EM_HIST_FAIL_STREAK = 0
+_EM_HIST_SKIP = False
 
 
 def _with_retry(fn, *, tries: int = 3, base_sleep_s: float = 0.4, max_sleep_s: float = 2.0):
@@ -112,6 +135,7 @@ def _dataapi_getbkzj(key: str, code: str) -> list[dict[str, Any]]:
 
 
 def _eastmoney_board_fund_flow_daykline(*, secid: str) -> list[dict[str, Any]]:
+    global _EM_PROXY_DEGRADED
     url = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
     params = {
         "lmt": "0",
@@ -123,29 +147,48 @@ def _eastmoney_board_fund_flow_daykline(*, secid: str) -> list[dict[str, Any]]:
         "_": int(time.time() * 1000),
     }
     qs = urllib.parse.urlencode(params)
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "application/json,text/plain,*/*",
-        "Referer": "https://data.eastmoney.com/",
-        "Connection": "close",
-    }
-    # eastmoney push2his fflow needs a trusted fingerprint cookie (qgqp_b_id
-    # etc.); requests without it get RemoteDisconnected (2026-08-09 finding).
-    # Set EASTMONEY_COOKIE in repo root .env (refresh from a browser session
-    # when the cookie expires).
+    # macOS system curl (SecureTransport TLS) is whitelisted by eastmoney's
+    # TLS-fingerprint gate; Python's OpenSSL stack gets RemoteDisconnected
+    # (2026-08-09 finding). Also requires EASTMONEY_COOKIE fingerprint cookie
+    # (repo root .env; refresh from a browser session when it expires).
+    cmd = [
+        "curl",
+        "-s",
+        "--max-time", "20",
+        "-A", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "-H", "Accept: application/json,text/plain,*/*",
+        "-H", "Referer: https://data.eastmoney.com/",
+    ]
+    # EASTMONEY_PROXY (e.g. http://127.0.0.1:7890) routes via the ClashX node
+    # exit — the home-line IP is banned by eastmoney (2026-08-09). Once the
+    # proxy is confirmed down (302/502/empty), skip it for the rest of this
+    # process: every industry retries 3x x 20s, so a dead proxy turns a
+    # dashboard sync into a 50s+ crawl. Reset on success to pick a recovered
+    # proxy back up.
+    used_proxy = bool(os.environ.get("EASTMONEY_PROXY")) and not _EM_PROXY_DEGRADED
+    if used_proxy:
+        cmd += ["-x", os.environ["EASTMONEY_PROXY"]]
     if os.environ.get("EASTMONEY_COOKIE"):
-        headers["Cookie"] = os.environ["EASTMONEY_COOKIE"]
-    req = urllib.request.Request(
-        f"{url}?{qs}",
-        headers=headers,
-    )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        raw = resp.read()
-    j = json.loads(raw.decode("utf-8", errors="replace"))
+        cmd += ["-H", f"Cookie: {os.environ['EASTMONEY_COOKIE']}"]
+    cmd += [f"{url}?{qs}"]
+    raw = subprocess.run(cmd, capture_output=True, timeout=30, check=False).stdout
+    try:
+        j = json.loads(raw.decode("utf-8", errors="replace"))
+    except Exception:
+        if used_proxy:
+            _EM_PROXY_DEGRADED = True
+        raise
     data = j.get("data") if isinstance(j, dict) else None
     klines = (data or {}).get("klines") if isinstance(data, dict) else None
     if not isinstance(klines, list):
+        # Empty/redirected body through the proxy is the 302/502 signature.
+        if used_proxy and (not data or not raw.strip()):
+            _EM_PROXY_DEGRADED = True
         return []
+    if used_proxy:
+        # Proxy exit works — clear the latch so a later degraded state
+        # doesn't persist past proxy recovery.
+        _EM_PROXY_DEGRADED = False
     out: list[dict[str, Any]] = []
     for item in klines:
         s = str(item or "")
@@ -261,6 +304,7 @@ def fetch_cn_industry_fund_flow_hist(
     industry_code: str | None = None,
     days: int = 10,
 ) -> list[dict[str, Any]]:
+    global _EM_HIST_FAIL_STREAK, _EM_HIST_SKIP
     days2 = max(1, min(int(days), 60))
     code = (industry_code or "").strip()
     if code:
@@ -269,10 +313,14 @@ def fetch_cn_industry_fund_flow_hist(
         else:
             secid = f"90.{code}"
         try:
-            items = _with_retry(lambda: _eastmoney_board_fund_flow_daykline(secid=secid), tries=3)
+            items = _with_retry(lambda: _eastmoney_board_fund_flow_daykline(secid=secid), tries=2)
+            if items:
+                _EM_HIST_FAIL_STREAK = 0
             return items[-days2:]
         except Exception:
-            pass
+            _EM_HIST_FAIL_STREAK += 1
+            if _EM_HIST_FAIL_STREAK >= 4:
+                _EM_HIST_SKIP = True
     name = (industry_name or "").strip()
     if not name:
         return []
@@ -285,11 +333,18 @@ def _hist_rows_for_top_row(
     days: int,
     updated_at: str,
 ) -> list[dict[str, Any]]:
+    global _EM_HIST_FAIL_STREAK, _EM_HIST_SKIP
+    if _EM_HIST_SKIP:
+        # Eastmoney throttling latched — skip network entirely for the rest
+        # of this sync pass (the caller counts these as skipped, not failed).
+        return []
     hist = fetch_cn_industry_fund_flow_hist(
         row.get("industry_name") or "",
         industry_code=row.get("industry_code") or None,
         days=days,
     )
+    if hist:
+        _EM_HIST_FAIL_STREAK = 0
     out: list[dict[str, Any]] = []
     for h in hist:
         out.append(

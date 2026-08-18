@@ -138,7 +138,7 @@ class TestIndexSignals:
     def _patch_basics(self, monkeypatch, series=None):
         monkeypatch.setattr(mr, "_is_shanghai_sync_window", lambda: False)
         monkeypatch.setattr(mr, "fetch_last_closes_vol_batch", lambda codes, days, as_of_date=None: _cn_series() if series is None else series)
-        monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days: [("2026-08-06", 20000.0), ("2026-08-07", 20100.0)])
+        monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days, **kwargs: [("2026-08-06", 20000.0), ("2026-08-07", 20100.0)])
         monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({"close": None, "asOfDate": None}, None))
         monkeypatch.setattr(mr, "_get_breadth_above_ma20_ratio", lambda **kw: {"ratio": 0.7, "total": 100, "above_count": 70})
         monkeypatch.setattr(mr, "_get_market_liquidity_and_mainline", lambda **kw: {
@@ -208,7 +208,7 @@ class TestIndexSignals:
 
     def test_hk_no_data(self, monkeypatch) -> None:
         self._patch_basics(monkeypatch)
-        monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days: [])
+        monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days, **kwargs: [])
         monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({"close": None, "asOfDate": None}, None))
         out = mr._compute_index_signals(as_of_date="2026-08-07")
         hk = [x for x in out if x["tsCode"] in ("HSI", "HSTECH")]
@@ -217,7 +217,7 @@ class TestIndexSignals:
 
     def test_hk_on_demand_merge(self, monkeypatch) -> None:
         self._patch_basics(monkeypatch)
-        monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days: [])
+        monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days, **kwargs: [])
         monkeypatch.setattr(mr, "fetch_hk_index_on_demand", lambda series_id: ({"close": 21000.0, "asOfDate": "2026-08-07"}, "yf"))
         out = mr._compute_index_signals()
         hk = [x for x in out if x["tsCode"] in ("HSI", "HSTECH")]
@@ -229,7 +229,7 @@ class TestIndexSignals:
         (look-ahead guard); the on-demand path is live-mode only."""
         self._patch_basics(monkeypatch)
         calls: list[str] = []
-        monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days: [])
+        monkeypatch.setattr(mr, "fetch_macro_last_closes", lambda series_id, days, **kwargs: [])
         monkeypatch.setattr(
             mr, "fetch_hk_index_on_demand",
             lambda series_id: (calls.append(series_id) or ({"close": 21000.0, "asOfDate": "2026-08-07"}, "yf")),

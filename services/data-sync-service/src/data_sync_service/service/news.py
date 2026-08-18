@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import time
+import urllib.error
+import urllib.request
 from datetime import UTC, datetime
 
 from data_sync_service.db.news import (
@@ -14,6 +17,8 @@ from data_sync_service.db.news import (
     update_source_last_fetch,
     upsert_item,
 )
+
+logger = logging.getLogger(__name__)
 
 try:
     import feedparser  # type: ignore[import-not-found]
@@ -29,6 +34,8 @@ _HTML_ORPHAN_RE = re.compile(r"<[^>]*$")
 _MULTI_SPACE_RE = re.compile(r"\s+")
 # Common HTML entities
 _HTML_ENTITIES = {"&amp;": "&", "&lt;": "<", "&gt;": ">", "&nbsp;": " ", "&quot;": '"'}
+RSS_USER_AGENT = "Mozilla/5.0 (compatible; KariosNewsBot/1.0)"
+RSS_FETCH_TIMEOUT_SECONDS = 20
 
 
 def _strip_html(text: str) -> str:
@@ -58,7 +65,18 @@ def fetch_rss_feed(url: str) -> list[dict]:
     if feedparser is None:
         raise RuntimeError("feedparser is not installed. Run: uv add feedparser")
 
-    parsed = feedparser.parse(url)
+    # feedparser.parse(url) downloads via urllib with no timeout — a stalled
+    # RSS host would hang the scheduler thread forever (coalesce drops later
+    # runs). Download with an explicit timeout, then parse the bytes.
+    req = urllib.request.Request(
+        url, headers={"User-Agent": RSS_USER_AGENT}, method="GET"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=RSS_FETCH_TIMEOUT_SECONDS) as resp:
+            raw = resp.read()
+    except Exception as exc:
+        raise RuntimeError(f"fetch RSS failed: {url[:120]}: {exc}") from exc
+    parsed = feedparser.parse(raw)
     items = []
     for entry in parsed.entries:
         title = entry.get("title", "")

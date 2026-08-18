@@ -22,192 +22,801 @@
 
 ---
 
-## 1. 状态看板
+## 当前方向（2026-08-09 起 · 系统进入「验证 + 维护」期）
 
-> 每行"完成归档"列 = 已在代码 / doc 中沉淀的位置。新完成的 todo 摘要迁到 `docs/archive/` 后**同时**在这里补一行。
+> §19 策略参数已封闭（S-3 双年验证通过），信号/组合层探索完毕。接下来的主线不是加机制，
+> 而是**让数据说话**——用真实交易验证回测，同时维持系统健康。
 
-| 领域 | 在做（P0） | 待办（P1-P4） | 完成归档 |
-|------|------------|---------------|----------|
-| §1 定位与形态 | — | — | ✅ Tauri 降级 done 2026-08-04（OPT-060 / §12 #11）|
-| §2 收益 / 交易 | TIP-011 开火归因 | — | TIP-001~009 + V6.2/3 已沉淀；hover tooltip + Dashboard 精简 done 2026-08-01（§15）；漏斗 N 日表格 done 2026-08-02（OPT-058）；**TIP-009 Alpha 映射自动 QA done 2026-08-04**（数据驱动 5 信号 · 用户零操作）；**TIP-011 开火来源归因 done 2026-08-04**（TV/Alpha/手动 胜率分桶 + Copy section）；**V7.0-02 风险平价开仓尺寸 done 2026-08-05**（0.5% 风险预算/止损距离 · FE+shared 零 BE 改动）；**TIP-012 研报→Alpha 通道 done 2026-08-05**（东财研报 API · 确定性评分 · 复用 TIP-004 闸门 · 每轮 cap 10 · 评分回写 + camelCase API 对齐 2026-08-06）；**TIP-013 Copy 新鲜度可见 done 2026-08-06**（`/api/health/datasources` · Copy All 头部 per-source 时间戳 + STALE 警告）；**TIP-014 Copy 强制刷新 done 2026-08-06**（forceFresh 绕过 react-query 缓存重拉行情/screener/评分）；**TIP-015 决策 Agent 闭环 M1 done 2026-08-06**（设计稿 `docs/designs/tip-015-decision-agent-loop.md` · 三层 context：活跃/窗口/10天归档 · 会话持久化 decision_sessions/messages/snapshots · SidebarNav「决策 Agent」页）|
-| §3 API 开放 | — | API Key 配额 + 限流 | ✅ 已归档 → `archive/2026-08-01-opt-045-v1-api-surface.md`（OPT-045/046/047 整圈）|
-| §4 工程与部署 | — | — | ✅ Tunnel 脚本骨架 OPT-048；DB 决策 OPT-053；Docker 一键 OPT-056；隐藏页 & legacy 清理 done 2026-08-03（OPT-059）；**DB 本地备份 + 跨机迁移包 done 2026-08-04（OPT-061 / §12 #18）** |
-| §5 数据源 / 浏览器 | — | 付费 API 矩阵 | ✅ TV Scanner API 作为唯一池子（2026-08-01）；ego-lite/Chrome CDP 仅作 fallback；数据源审计 done 2026-08-01 |
-| §6 新闻 / 研报 | — | News 质量评估（老婆反馈不如财经新闻准） | `OPT-037/038/039` News Query 并行化 |
-| §7 多市场 | — | 美股 / 加拿大时区 | `OPT-041/042/043/044` HK + ETF 已通 |
-| §8 回测 / §19 策略优化 | **§19 作战计划（目标=超最强指数+10%·防过拟合）** | BacktestPage 重写（等 paper 数据） | ✅ paper-trading v0 → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；v0.1 关闭条件 done 2026-08-02（OPT-058）；历史 BacktestPage 已隐藏；**OPT-070 回测引擎 v1.5（闸门+资金模型）done 2026-08-09**；**OPT-071 回填 score 至 2025-08（+评估框架：5 指数基准/超额/夏普/目标线）done 2026-08-09** → 见 optimization-checklist |
-| **升级方向 L3→L4** | L4-P1 券商研究 | L4 全项（见 §16） | **§16 已立 2026-08-07** → [`designs/l3-l4-evolution-roadmap.md`](./designs/l3-l4-evolution-roadmap.md)（L3=验证闭环，L4=执行闭环）；**L3 全部完成 2026-08-07**：P1 度量基座（OPT-062）、P2 回测引擎（OPT-063）、P3 归因（OPT-064）、P4 周度复盘（OPT-065）、**P5 组合风控 done**（OPT-067：相关性防火墙，tech_hk 34.2% 超限实拦）；AGENTS.md 加 DB 测试清理纪律 |
-| **doc 大扫除** | — | — | `archive/modules-legacy/`（2026-08-01：industry-flow / market-sentiment / news-brief 3 旧版模块文档） |
+1. **数据验证闭环**（最高优先）：① 卖出用行内「卖出」记录 → user_trades 期望值看板积累样本；
+   ② paper S-3 实绩（cron 17:42 已挂）≥20 笔平仓 → C4 对照开跑；③ 每周复盘喂决策 Agent
+2. **回拉历史资金流**（收益域最终缺口）：ClashX 节点恢复后低频回拉 → S-3 三窗完整复核 +
+   「只做主线严格模式」定案（恢复路径见 §19）
+3. **系统健康维护**：季度参数复核（strategy-params §3 触发信号）+ 稳定性审计项（§17）随 healthcheck 滚动
+4. **等待项**（用户拍板后激活）：B2 双模式、付费 API 矩阵、美股/加拿大、Mac mini 部署、L4（券商）
 
----
+### 2026-08-12 系统评估 + 提升计划（用户要求 · 评分存档）
+
+**评分**（基于全量事实：测试 3349+746+64+142 / 备份 5 dump / 回测 1401 笔 / paper 3 笔 /
+**后端覆盖率 92.2%**（2026-08-12 全量实测，3352 passed））：
+工程稳健度 **8.2**（覆盖率 92.2% 为强证据，修正原"门槛偏低"误判——实测已超）·
+业务可置信度 **6.8** · 成熟度 **7.6**。
+
+**提升计划（按 ROI）**：
+1. **[P0] paper 样本积累到 ≥20 笔 → C4 定案**（业务可置信度 +1~1.5）：等 17:42 链自然积累；
+   期间可用已搭框架每周跑 `scripts/paper_vs_backtest_report.py` 观察
+2. **[P0] webhook 真实订阅落地**（工程 +0.3）：用户按 cookbook §9 创建接收端 + 订阅，
+   让 E1~E7 告警链路真跑（当前 0 订阅）
+3. **[P1] 覆盖率门槛提升 ✅ 2026-08-12**：全量实测 **92.2%**（3352 passed）→
+   `cov-fail-under` 52% → **85%**（留安全余量；日常快速跑按 AGENTS.md 惯例用 --no-cov）
+4. **[P1] 灾备现状确认 ✅**：妻子电脑已有备份（跨机副本存在，OPT-061 iCloud 镜像+
+   迁移包）；Mac mini 投入条件 = **总资产 +20% 里程碑**（届时 C4 也已定案，双条件成立再投）
+5. **[P2] 季度参数复核**：下次 ~2026-11（strategy-params §3 节奏），触发信号清单已就绪
+6. **[P2] 资金流历史回拉**（ClashX 恢复后）：full 闸门历史复核 + OOS2 证据补齐
+
+**「总资产 +20% 何时到」估算**（2026-08-12 · 满仓口径 · 策略资金=总资产 100%）：
+最近 12 个月复利年化 ~232% → 1-2 个月（最强期）；长窗年化 28% → 8-10 个月（保守）；
+中性估计 **3-6 个月**。Caveat：paper 3/20 未定案（按回测打 7 折）；2026 为历史最强年
+（均值回归风险）；CN 常有空仓等待期；策略资金占比 <100% 时时间按占比拉长。
+
+> 反漂移：以上不新增机制实验（§19 封闭）；全部是"验证 + 维护"期动作。
+
+### 2026-08-12 新定案（当日完成 · 已归档 OPT-085~094）
+
+- **CN 红灯日禁开仓**（OPT-094 定案）：红绿灯回测（OPT-093）证实 CN 红灯日入场负 EV
+  （胜率 27% vs 42%）→ 反事实三窗 + walk-forward 通过（valid 收益 +10.7pt）→ 引擎
+  `light_red_block` + live `S3_LIGHT_RED_BLOCK`（红灯日候选=0）+ 前端红标；**HK 红绿灯
+  无区分度**（右上尾假象），HK 仓位启发式删除、不接入禁开
+- **webhook 事件推送 P1+P2 全落地**（OPT-090/091）：E1~E7 事件源 + HMAC 签名投递 +
+  前端订阅页（cookbook §9 有示例）；等待用户创建实际订阅
+- **一键启动**（OPT-092）：`npm run dev` 统一管理三服务（uvicorn 已去 --reload；
+  改 Python 代码需重启 dev）
+
+> 反漂移：每 30 天回顾 §0 优先级表与本节；「验证」期间不做新机制实验（§19 封闭清单）。
+
+### 2026-08-11 重大事故修复：smoke 测试误杀全部 S3HK paper 仓位（20/20 → open 恢复）
+
+**事故**：08-11 08:22 pytest 运行中 `tests/test_postclose_smoke.py`（H2，requires_postgres，直连真实 DB）
+第 3 步 `run_update(today_iso="2026-08-07")` **未 mock `get_open_paper_trades`**——对真实 DB 全量 open
+扫描；其 `_mock_prices` 对**所有非 `.SZ` ts_code（全部 HK）返回 close=100** → 20 只 S3HK 全部被假
+`target_hit`（18 只，pnl +100%~+10370%）/ `stop_hit`（2 只：02359=198、00669=147.9）平仓，close_date
+写死 08-07（测试 UPDATE_DATE）。铁证：close_price=100 + close_date=08-07 + 同一秒 updated_at=00:22:13Z。
+同 bug 08-09 已误杀 2 只 TV 仓（假价 200/300）——**隐藏了 3 个月的数据污染源**。
+
+**修复（双层）**：① `_mock_prices` 只服务 smoke symbol 自身 ts_code（其他返回空）；② 第 3 步 patch
+`get_open_paper_trades` 只返回自己的行——测试恢复"只验证自己的链路"的隔离语义；
+③ 恢复 22 行 open（20 S3HK + 2 TV，清假 close 数据，今晚 17:45 update 用真实价正常管理）。
+验收：smoke test 前后 paper_trades 状态零变化 ✓ · 202 相关测试全绿 ✓。
+
+**连带**：uvicorn 去掉 `--reload` 重启（4330，nohup 落 /tmp/karios-uvicorn.log）——misfire 循环停止
+（此前每 2-3 分钟 hk_basic_sync/TU_SHARE_API_KEY 失败）；HK 数据健康全绿。**今晚 17:42/17:45 是
+T5 最终验证**（CN allocation-zero 跳过 + HK 正常买入 + 20 只 S3HK 保持 open）。
+
+**2026-08-11 T5 验证结果 ✅**：17:31 watchlist_automation ✓ · 17:42 paper_s3_intake_CN+HK ✓ ·
+17:45 paper_trading_update ✓——三连全绿（sync_job_record 实证），20 只 S3HK 保持 open。
+
+**2026-08-11 watchdog 迁移：launchd → apscheduler**：`paper_chain_watchdog`（launchd
+StartCalendarInterval）实测**未在 18:05 触发**（runs=1 仅加载当天手动测试那次）→ 迁移为
+`scheduler/paper_chain_watchdog_job.py`（18:05 Asia/Shanghai cron，与三连 cron 同源宿主，
+健康时也落 sync_job_record `|ok` 可观测）；launchd plist 已 bootout；注册 scheduler 目录 +
+SYNC_JOB_TYPES（coreClose 组）；测试/前端全绿。
+
+### 2026-08-11 稳定性自动化：uvicorn launchd 托管 + paper 链 watchdog + alpha_radar 修复
+
+**uvicorn launchd 托管**：`~/Library/LaunchAgents/com.karios.uvicorn.plist`（KeepAlive 失败自动拉起 +
+ThrottleInterval 10s + 日志 ~/.karios/logs/uvicorn.log）——根治"手动 nohup 裸跑 → 进程漂移 → cron
+缺失 → paper 漂移"事故链（今日 smoke 事故的根源背景）。
+
+**paper 链 watchdog**：`scripts/paper_chain_watchdog.py` + `com.karios.paper-chain.plist`（周一至五
+18:05 北京）——自检 17:30 watchlist_automation / 17:42 paper_s3_intake(CN+HK) / 17:45 update 是否
+跑过；缺哪个且当日 close_sync 成功就自动补跑（score 新鲜度是 paper≈回测的执行底座；8-05~8-07
+缺口 = score 时效衰减 → 8-10 补跑买漂移票的根因）。
+
+**alpha_radar 修复（断供 5 天）**：`alpha_radar_pipeline_job` 是 12h 间隔触发 + cooldown 默认 12h
+→ 每次触发必撞 cooldown 被静默跳过（lastRunAt 停在 08-06，ingest/process 在跑但无新料）；
+修复 = `DEFAULT_COOLDOWN_HOURS 12→6` + fetch job 落 sync_job_record（成功/跳过/失败都可观测）。
+手动跑通：2026-08-11 抓取 1 主题（全球铜供给挤压，catalystGrade A）✓
+
+### 2026-08-11 CN 复权统一（数据修复 · 三窗全面改善 · 基线重固化）
+
+**问题**：A 股 daily 存 tushare 不复权——除权日跳空被趋势指标误读为崩盘。2025-08-01+ 审计：
+**4625 个除权日 / 3483 只票，其中 794 个 ≥5% 假跳空（775 只 ≈ 15% 池子污染）**。HK 8-10 已修，
+CN 未做（T5 前唯一剩余的数据真值缺口）。
+
+**修复**：`scripts/cn_reseed_qfq_tx.py` 腾讯 fqkline qfq 全量重灌 5224 只 CN A 股 2023-01 起
+（54000 行更新 / 0 失败 / 87 分钟；只动 OHLCV 不动 amount/adj_factor；当日价 qfq=raw → 每日
+增量无需改口径）。**踩坑三连**：① 本地 adj_factor 方案不可行（tushare 因子有滞后+口径残差
+~0.2%）；② macOS Python `_scproxy` 无视 env 读系统代理（ClashX 127.0.0.1:7890 节点抖动挂起）
+→ 脚本内 `ProxyHandler({})` 强制直连；③ 腾讯 WAF 501 需 20s 退避重试。
+
+**score 全量回填**（271714 行 / 133s）→ **三窗全面改善并重固化基线**：
+OOS2 **+134.2**%（+26.0pt / DD 26.0→14.5）· train **+171.2**%（+9.7pt）· valid **+111.9%**
+（+17.1pt / 胜率 64.5%）；**过去一年（10%×20 口径）+273.9% / DD15.3 / 夏普 6.66 / 301 笔**
+（旧基线 +155.1% / 10.1 / 6.31 / 183 笔）。中途修正：`already_qfq` 只比最后 3 行导致旧除权票
+被误跳过（首轮 794→764 假跳空只消 30 个）→ 改**全量序列对比**后 794→258（剩 = 除权日叠加
+真实大跌，正常）。**唯一副作用**：score 表历史值全部变化（合理——旧值基于失真数据），
+paper 侧 20 只 S3HK + 2 TV 不受影响（存储价格不变）。
+
+### 2026-08-11 用户方针定案：L4 前全自动化 + 回测极致化
+
+**总方针**：L4（实盘）之前，① 一切流程自动化 + 贴近回测；② 回测做到极致 → 保证收益；
+todo = 待办事项唯一入口。
+
+**用户实际交易节奏（系统必须服务这个节奏）**：
+- **10:00 开盘分析** · **12:00 午间分析** · **14:30 操作**（大部分是买单）
+- 止损用**条件单**（券商端），手动只处理突发情况
+- 三个时间点 = **快速获取市场信息后继续工作**（分钟级消费，不是深度分析）
+- universe 池原来用 TV 控制计算量——**必要性待验证**（683 票 1.2s → 全市场 ~10s，计算量
+  可能根本不是瓶颈；TV 的真正价值是质量筛选）
+
+**由此推出的行动（H1.5，本周~8 月底）**：
+1. **三时段快照简报**：10:00 开盘简报（隔夜+情绪+候选）· 12:00 午间简报（候选新增/撤销+
+   价格偏离）· 14:30 操作卡（买入卡列表 + 条件单清单）——每个都是分钟级消费格式
+   → ✅ 已落地（2026-08-11）：`service/trading_brief.py` 组装现有块（portfolio-health regime/
+   holdings/止损线 + paper_s3 候选 + 新闻 top5），存 morning_briefs 表（新 type
+   trading-open/midday/action + markdown 列，Alembic 0028）；`trading_brief_job` 三 cron
+   （工作日 10:00/12:00/14:30）+ SYNC_JOB_TYPES + SCHEDULER_JOB_CATALOG + 手动 API
+   （POST /api/news/brief/generate?brief_type=trading-*）；前端 `TradingBriefCard`（watchlist
+   页，三 tab + react-markdown + 复制/刷新，5 测试）；首跑实证：14:30 操作卡输出
+   「Regime + S-3 候选(无,正确) + 持仓/条件单 4 只（止损/移动线/到期）」✓
+   回归：3544 后端 + 770 前端全绿
+2. **买入卡可执行化**：S-3 候选 → 结构化买入卡（symbol/建议价/仓位%/gate 理由）→ 14:30
+   用户确认即执行——**用回测引擎今日快照驱动**（positions_by_day = "回测说今天该买什么"）
+   → 已由 ① 的候选 section 覆盖前半（候选字段齐），「确认即执行」= TradeActionDialog 复用
+   （H2 与决策 Agent 复盘一起做）
+3. **条件单清单**：每持仓 → 止损价（-5% 固定 / -8% 移动）+ 建议条件单参数，用户券商端下发
+   → ✅ 已由 ① 的 holdings section 覆盖（止损/移动/到期 + 接近止损线预警）✓
+4. **universe 去 TV 依赖验证**：实测全市场 trendok 计算时间 → 若可承受，把 TV 筛选逻辑
+   本地化（市值/PE/流动性用 stock_dailybasic）→ universe 全市场实时化（消 TV 快照滞后）
+5. **盘中异常警报**（H2 提前）：单票 -8% 触发 / cron 失败 / 候选突变 → 推送（先 API/网页，
+   webhook 后续）——"突发情况我来处理"的前提是系统先叫
+   → 候选突变/接近止损线预警已由 ① 的 alert section 覆盖（盘中 12:00/14:30 两次）；剩余
+   = 单票 -8% 盘中触发推送（H2）
+
+### 2026-08-12 TV screener 全功能下线（用户拍板 · 剥离 todo）
+
+**背景**：universe 全市场化（8-12）后 TV 无核心消费方（live 算分/回测/候选均不依赖）；
+alpha_radar 独立链路不受影响。**下线范围 = 全部功能**，保留历史数据（只读不删）。
+
+**剥离清单（2026-08-12 全部完成 ✅）**：
+- [x] **1. 停 cron**：tv_screener_capture_am/pm（scheduler/SYNC_JOB_TYPES/SCHEDULER_JOB_CATALOG 移除）
+- [x] **2. 后端剥离**：tv 模块 11 文件 + tv_chrome + funnel_health_job 全删（main/dashboard/
+  watchlist_automation/schema_baseline 引用清理；funnel 指标整体退役——TV 是其唯一候选源；
+  Pullback 过滤函数保留——基于 daily K 线独立于 TV）；alembic 0002 迁移 CREATE_SQL 内联
+  （不依赖已删模块）
+- [x] **3. 前端剥离**：ScreenerPage/TradingViewSettingsPanel/WatchlistImportDebug/
+  watchlist-screener-import 删除 + SidebarNav/AppShell 路由 + DashboardPage screener 状态行 +
+  WatchlistToolbar Import 按钮；**第二轮补剥**（8-12 晚，用户报 404 残留）：
+  `lib/execution-source.ts` TV 符号源改恒空集（归因类型保留，不再调 TV API）· 删
+  `queries/screener.ts`/`api/tvCapture.ts`/`screenerExport.ts` · `dashboard-export.ts` 的
+  screener 段/常量/`fetchTodayScreenerSymbolsByTitle`/`screenerTrendOkSymbols` 全删 ·
+  `alpha-radar-catalyst.ts` CatalystCopyContext 去 screener 字段；ChatPanel 保留 TV 快照
+  渲染（历史消息 Reference 兼容，catch 兜底）
+- [x] **4. 归因保留**：execution_source='TV' 保留（历史 BUY 归因）；watchlist-automation
+  funnel 相关前端逻辑移除
+- [x] **5. 数据保留**：tv_screener_snapshots/tv_capture_jobs/tv_screeners 等表不删（只读）
+- [x] **6. 测试清理**：删除 264 个 TV/funnel 测试 + 适配 dashboard/automation/catalyst 相关；
+  全量回归后端 3284 passed + 前端 728 passed + ruff/typecheck 干净
+- [x] **7. 文档**：AGENTS.md TV 段删除 · screener.md 归档 modules-legacy · todo §6 更新
+
+**验收**：后端无 TV 残留 import ✓；前端无 TV 网络调用（唯一例外 = ChatPanel 历史消息
+渲染，有 catch 兜底）✓；数据表完好 ✓
+
+### 2026-08-12 策略固化：live 与回测同码审计 + universe 全市场统一（用户核心诉求）
+
+**审计结论 + 修复（watchlist 显示 = 回测口径）**：
+1. **live 算分 universe 全市场化**（最大不一致）：live 每日算分原为 registry ∪ TV api-screener
+   （~700 只），回测 8-12 已统一全市场 5226 → `watchlist_automation._score_universe_symbols`
+   CN 分支改为 daily 表全市场（TV api-screener 退役；实测 universe 构建 2.7s + 候选 0.6s，
+   每日算分完全可承受）；测试隔离适配（mock `_score_universe_symbols`）
+2. **熔断 live 显示**：`portfolio_health` 加 `circuitBlocked` 字段（CN 线调 paper_s3
+   `_circuit_blocked`）→ 前端 PortfolioHealthCard 徽章「回撤熔断·暂停开仓」+ 空候选原因
+   （Weak / 熔断 / 分数未更新 三态区分）
+3. **参数审计**：score65 / RS0.5(HK0.6) / 止损-5 / trail-8 / 60天 / 金字塔 / max20 / 10% / 熔断-25
+   ——paper_s3（候选+live熔断）· portfolio_health（显示）· paper_trading（止损执行）三处同码 ✓
+4. 修复 flaky 测试：realtime_quote HK 路由测试 `_fetch_em_hk_quote` 未 mock（依赖真实东财
+   网络）→ 确定性 mock
+5. **联合回测补齐**：dual 脚本无 R5C 规则 + RULES 大小写 bug（'R5c'.upper()='R5C' 永不匹配）
+   → 修复后重跑：**R5C 联合四窗 = OOS2 +319.7 / train +52.0 / valid +83.0 / 长窗 +955.2
+   （DD25.5，vs 纯 CN +250.8/DD40.9——弱势切 HK 长窗翻近 4 倍且回撤更低）**
+
+验收：后端 3548 passed + 前端 770 + ruff/typecheck 干净；live 实测全市场 universe 生效
+（CN=5229/HK=501）+ circuitBlocked 返回 ✓
+
+### 2026-08-12 长窗落地 + 回撤熔断定案（收益域重大升级 · 用户拍板）
+
+**扩窗/回填全完成**：daily 2021-01 起（5226 只/629 万行/0 失败/6.1h）+ 指数 2021 起 +
+score 全窗口回填 617 万行（1272 天，`--universe full` 全市场口径）。**踩坑**：① 回填把
+WAL 堆到 30G 撑爆 Docker 盘（checkpoint 因系统盘满失败）→ 清 docker cache 30.5G +
+CHECKPOINT + VACUUM FULL 恢复；② 引擎 `_load_rs_ranks` 查询硬编码 `date(2024,1,1)` 下限
+→ 长窗 2021-2023 RS 全空被 fail-closed 拦截（假 0 交易），已修（下限 1998）。
+
+**长窗（2021-08~2026-08，全市场口径）暴露弱市脆弱性**：2021 +119 / 2022 **-166** /
+2023 **-691**（胜率 20%）/ 2024 +606 / 2025 +1614 / 2026 +1325；合计 +225%/DD89。TV 小池
+口径从未暴露（三窗不覆盖 2023 + 小池天然筛选）。指数动量/EMA20/强度分/高分票数量四个
+市场状态过滤器全部验证无效（2025 年同指标下都赚钱）→ **改自适应防御：回撤熔断**。
+
+**回撤熔断定案**：`drawdown_circuit_pct=-25`（近 30 天已实现净盈亏 ≤-25% 且 ≥3 笔 →
+暂停新仓；窗口 30 天，45/60 天扫描均劣化；-20 伤 train/-30 长窗 DD 63.5）。
+效果：长窗 **2022 转正 +93、2023 减亏 428pt（-691→-263）、DD 89.3→40.9、夏普 2.11→2.65、
+总收益 +225→+251**；三窗 OOS2 +112.7/5.22 · train +76.7/3.31 · valid +88.2/8.80（重固化，
+基线文件已存）。代价 = 牛市空仓期（2025 收益 -658pt，用户拍板「可以接受特定时间空仓」）。
+**仅 CN 线**（HK 未验证）；live 同码镜像：paper_s3 `S3_CIRCUIT_PCT=-25` + `_circuit_blocked()`
+（closed 行 closeDate 窗口 + pnlPct 净口径，4 新测试）。三处定案配置同步（run_walk_forward /
+reconciliation / rolling_oos）。**universe 去 TV 结论**：全市场算分实测 617 万行/86min
+（live 每日 ~5s）→ 计算量完全可承受，TV 池退役（回测与 paper 统一全市场）。
+
+验收：3548 后端 passed + ruff 干净 + 基线重固化 ✓
+
+### 2026-08-12 红绿灯定案：CN 红灯日禁开仓（用户指令 · OPT-093/094）
+
+**背景**：红绿灯仓位启发式（红→0-10% 等）是 8 月初经验值，用户质疑后做回测验证。
+
+**回测**（`scripts/backtest_index_lights.py`，1196 CN + 599 HK 笔按入场日灯分层）：
+- **CN 红灯日显著差**：胜率 27% vs 绿/黄 41/42%，中位 -5.5% vs -2.1/-2.5% → 定义正确
+- **HK 无区分度**：红/黄/绿中位 -5.0/-2.0/-5.1%，红灯均值 +18% 系右上尾暴利单假象
+  → 删除 HK 仓位启发式；严禁按均值反转（过拟合教训）
+
+**反事实 + walk-forward（CN）**：剔除红灯日入场——OOS2 胜率 48→54% 收益不降；
+valid 61→79% 收益 +10%；无窗变差。引擎 `light_red_block=True` 三窗：OOS2 +1.0pt /
+train 持平 / valid +10.7pt（回撤 11.8→1.5%）→ **定案**。
+
+**落地（回测与 live 同码）**：引擎 `GATE_REASON_INDEX_RED` + live `S3_LIGHT_RED_BLOCK=True`
+（CN 红灯日 `build_s3_candidates` 返回 [] → 无推荐、paper 不买入）+ 前端 A 股闸门红标
+「红灯日 · 禁开新仓」；HK 不接入。**代价**：CN 红灯日空仓等待（约 24% 入场日），
+用户拍板接受。
+
+### 2026-08-11 演进方向定案（验证期）：自动验证 + 自动执行 + 终局实盘
+
+**H1（8 月底前）**：
+- [x] **滚动 OOS 自动化**（2026-08-11 ✅）：`scheduler/rolling_oos_job.py`——每月首个周一 08:15
+  自动跑最近 90 天窗（CN full gates + HK regime 两套定案配置）→ 落
+  `data/backtest_reports/rolling_oos_latest.json` + sync_job_record（亏损/夏普<0/零交易 →
+  WARN）。**首跑即抓到真实信号**：2026-05-13~08-11 窗 HK **-8.5%/DD19.5/夏普-3.2**（55 笔）、
+  CN 1 笔（Weak+恐慌空仓=正确）——近期 HK 执行环境劣化，周报决策 Agent 消费该文件
+- [x] **C4 半程对照**（2026-08-11 ✅）：recon 快照加收益偏差三列（aligned_return_diff_pct /
+  bt_return_median_pct / paper_return_median_pct，Alembic 0027 + CREATE_SQL 同步）——
+  aligned 逐票 btReturnPct/paperReturnPct/returnDiffPct（symbol→ts_code 解析修 daily 查询）；
+  persist detail 带 aligned 项；前端 BacktestReconCard 显示「偏差 ±Npt」（|diff|≥2pt ⚠）。
+  **首跑实证**：8-10 HK 偏差中位 **-5.5pt**（paper 8-10 入场 vs 回测 8-05 = 8-05~07 cron 缺口
+  的收益代价被量化）。另修 5 个日期敏感/隔离测试（adj_factor/daily_service/etf_daily
+  uptodate → 相对日期；close_sync 默认窗 → patch get_last_success；user_trades fetch_sell
+  → 只断言自己的行）
+- [x] **长窗落地（2026-08-12 ✅）**：长窗（2021-08~2026-08 完整周期）已回测并重固化基线
+  （+250.8%/DD40.9/夏普2.65，熔断后 +251%/DD40.9；年度 2021 +341/2022 +93/2023 -263/2024 +606/
+  2025 +956/2026 +1325）→ strategy-params §1/§3 已记录，回撤熔断定案，见上「长窗落地 + 回撤
+  熔断定案」节
+
+**H2（8-12 提前完成 ✅）**：决策 Agent 自动驾驶复盘——周报 cron（周一 07:40）+「下周行动计划」LLM 自动产出（OPT-083，前端确认+重新生成）；剩余：
+盘中极端警报（单票 -8%，实时报价链已有）；webhook 事件订阅（§14 #3）
+
+**H3（验证期解除后）**：L4 实盘研究（C4 ≥20 笔平仓后）+ 实盘执行自动化（券商 API）
+
+**明确不做**：美股/加拿大 · MCP server · 新策略机制（§19 封闭）· 付费 API 商业化
+
+### 2026-08-11 数据问题定案：行业资金流历史 = 数据天花板（不补）
+
+东财 121 天上限（实测 lmt 无效）· 同花顺 WAF 403（实测）· 腾讯无接口（实测）· 新浪无历史。
+**重构问题**：回测 replay「当时的系统」——OOS2 时 live 本无行业闸门 → regime-only 是诚实结果；
+真正缺的是「闸门贡献验证」，免费证据链已齐（A3 valid +32.6pt / 长窗对照 / C4 仲裁）。
+500 元 tushare 积分唯一增量 = OOS2 反事实验证（且聚合口径有拼接断层）——**待长窗结果拍板**；
+2025-12-15 前缺口不补，cron 快照继续存（未来滚动 OOS 自然有数据）。
+
+### 2026-08-11 扩窗 2021-01 启动 + 资金流回拉证伪（回测必须真实）
+
+**A 股扩窗（P2-5 激活 · 后台执行中）**：腾讯 qfq 链今日全通（cn_reseed_qfq_tx.py 已验证 5224 只
+3.4M 行零失败）→ `--since 2021-01-01` 重灌扩窗（PID 16794，预计 ~2h）+ 新脚本
+`index_hist_extend.py` 补齐 5 个 regime 指数 2021-01 起（6800 行，2023 衔接数值一致 ✓）→
+明早 score 回填 2021-08-01 起 → **长窗回测（2021-08~2026-08 完整周期：2021 顶/2022 熊/2023 弱）**：
+验证 S-3 跨周期稳健性（回测真实性的最大背书）+ 若稳健则收益执行信心直接增强。
+已知局限（记录）：universe 幸存者偏差随窗延长放大（当下 683 票回放历史，同三窗口径）。
+
+**资金流回拉 todo 证伪（关闭）**：实测东财 `push2his` 行业资金流 daykline **仅保留 121 个
+交易日（2026-02-09 起）**——lmt=0/5000 均同（此前回拉脚本 37270 行 2026-02-06 起 = 接口上限，
+非节点问题）。OOS2/train 前半的行业闸门数据**物理不可得**（tushare moneyflow_ind 需 2000 积分，
+已拍板不买）→ 「三窗完整复核」不可行，改记录式结论：**OOS2=regime-only（+134.2%）· valid=full
+gates（+111.9%）**——引擎在数据缺失日 fail-open 回放 live 当时能力（backtest_engine.py:710），
+语义诚实；「只做主线严格模式」live 已 full gates 生效，历史窗无法回放 = 数据天花板，接受。
+「ClashX 节点恢复后回拉」前提作废——恢复与否都拉不到更早。
+
+### 2026-08-11 paper 仓位 5% → 10%（与回测同口径 · 用户拍板）
+
+`service/paper_s3.py S3_POSITION_PCT 0.05 → 0.10`（注释含决策理由）；名义上限 5%×20=100% →
+10%×20=200% 同回测；金字塔加仓 sleeve 同步（10%×0.5=5%）；**paper 实绩期望 = 回测数字本身**
+（此前 ≈ 一半）。纯杠杆旋钮（夏普恒定，strategy-params §1 已论证）→ 无需三窗重验；
+已持仓 sleeve 5% 入库不回溯，新开仓生效。2 个 sleeve 断言测试同步（0.025→0.05 / 0.02→0.04）。
+另：发现 `pnpm dev` 曾顶掉 launchd 托管的 uvicorn（--reload 复活）→ 已重新 load 并确认 PPID=1。
+
+### 2026-08-09 重大修复：S-3 候选池 universe 恢复（收益最高项）
+
+**发现**：score universe 从 2026-06-18 起（paper intake 上线同日）从 TV 大池（749 票/天）缩到
+watchlist registry（~15-50 票）——**S-3 实盘/paper 候选池 = 回测的 1/10**（score≥65 每天 17 只 vs
+回测口径 50+），仓位利用率 ~15%。根因：run_watchlist_automation 的 score 只算 registry+fallback，
+TV 快照不再灌入；且启用池只有 Pullback v3（46 票窄化趋势池）。
+
+**修复（用户拍板「双池并存」）**：
+1. 新建 **`tmpl-s3-universe-cn`「Karios S-3 Universe (CN)」** api screener（exchange SSE/SZSE +
+   市值≥20亿 + PE>0 + 年涨>0 → **683 票**，≈回测 748），已 capture 入库 + AM/PM cron 自动更新
+2. `service/tv.py _capture_via_api` 放开 range (0,3000)（默认 100 会截断大池——隐藏 bug）
+3. `db/tv.py` 新增 `list_enabled_api_screener_symbols()`（启用 api screener 最新快照 → symbol 列表）
+4. `run_watchlist_automation` symbols = registry ∪ 启用 api screener 全集（模块级 import 可 mock）
+
+**验证**：8-07 score 表 42 → **211 票**（score≥65 17 → **56 只**）；paper S-3 候选（8-07）=0 是
+regime Weak 正确空仓（近 5 日全 Weak）；trendok 计算 683 票仅 1.2s。**paper 从下周一 17:42 起
+用修复后大池**（注意：回测 valid 窗 6-18 后同样是小池——回测未虚高，paper 口径反而更宽）。
+验收：3503 passed 全绿 + ruff 干净 + 2 新测试。
+
+### 2026-08-11 对账自动化 + 两个 paper 系统级 bug 修复（T5 观察暴露）
+
+**对账自动化收尾**：weekly review 增加「回测 vs Paper 对账」段（recon 快照进周报 markdown，
+决策 Agent 直接消费）；`GET /api/backtest/recon/latest` ✓；**前端 `BacktestReconCard`**
+（watchlist 页体检卡片下方——最近 4 个对账快照 ✓/⚠ + 缺/多计数，3 新测试 + 760 前端全绿）✓
+
+**T5 观察暴露两个系统性 bug（已修+测试）**：
+1. **pool_exit 误杀 S-3 paper 仓**：`run_update` 的 pool_exit（registry 成员检查）对
+   S3/S3HK 仓生效——S-3 HK universe（vol top 500）本就不在用户自选 registry →
+   8-10 补跑的 20 只 S3HK 全被 misfire 补跑的 update cron 平掉。修复：`exclude_pool_exit`
+   参数（S3/S3HK source 豁免 pool_exit，v0 手动仓行为不变）
+2. **trailing peak 用了入场前历史高点**：highs 计算未按 entry_date 过滤（62 天 lookback 内
+   的最高价当 peak）→ 入场当天就可能"回撤达标"被平（HK:01818 立平实证）。修复：peak 只取
+   entry_date 之后（含）的 high
+3. 附带确认：**uvicorn --reload 反复重启 + misfire_grace 12h = 错过的 cron 疯狂补跑**
+   （08-10 22:00~23:40 每 2-3 分钟一轮 misfire 记录）——补跑本身没问题，但 scheduler 宿主
+   不稳是 T5 的根因背景；**今天 17:42/17:45 是最终验证**（修完 pool_exit/trailing 后
+   update 应保持 8-10 的 20 只 open）
+- 8-10 那批 S3HK 已重插修复后复跑验证：20/20 open、0 closed ✓；3 新回归测试 + 39 paper
+  trading 测试 ✓；全量 3517 passed（5 日期敏感 + 1 playwright 环境缺失，均 pre-existing）
+
+### 2026-08-11 对账自动化：矫正操作成为每周常态
+
+**闭环落地**（上轮手动对账 → 本轮自动化）：
+- `service/reconciliation.py`：`reconcile_day(day, window, end_date)`（回测每日快照 vs paper
+  实持 → aligned/missing/extra + 入场日偏移 + 明细）+ `run_and_persist`（幂等落库）
+- `db/reconciliation.py` + Alembic 0026 `backtest_paper_recon`（recon_date+market 唯一；
+  **window 是 PG 保留字，手写 SQL 需 `"window"` 引号**——sed 曾误伤参数行，已修）
+- `scheduler/backtest_recon_job.py`：**周一 07:30** 自动对账上周五（valid 窗 CN+HK 重放，
+  ~3 分钟）→ sync_job_record
+- `GET /api/backtest/recon/latest`：决策 Agent/周报拉取最近快照
+- 首次快照：8-07 HK missing=19（8-05~8-07 cron 缺失的历史断层量化入档）
+- 测试：5 新 recon 测试（对齐/偏移/extra/HK 块/persist）+ 110 相关 ✓；36 scheduler jobs ✓
+
+**下一步**：前端体检卡片展示 recon 摘要 + 周报接入（决策 Agent 消费）；今天 17:42 T5
+关键验证（allocation 已落库 CN=0/HK=1——CN 应全 allocation-zero 跳过）
+
+### 2026-08-11 回测矫正真实操作的闭环（用户核心诉求：回测必须可复制到真实世界）
+
+**方法论（用户拍板）**：分配规则只用红绿灯（as-of 可观测）——`service/allocation.py` 同码函数
+（`weights_from_regimes`/`resolve_weights`，R5c：CN 可投→100% CN、仅 HK→100% HK、双弱→0/0），
+回测脚本与 live 共用同一份代码；速率/强度在双强时不可跨市场公平比（HK 绝对波动大），取消 R5b。
+
+**三层闭环**：
+1. **引擎每日持仓快照**：`BacktestRun.positions_by_day`（每交易日收盘后"应持有"清单——
+   symbol/entry_date/score/position_pct；62 引擎测试含新快照测试 ✓）
+2. **同码分配**：allocation.py + run_walk_forward_dual R5 分支改为调 `weights_from_regimes`
+3. **对账工具**：`scripts/compare_backtest_paper.py [--date D] [--end E]`——某日回测应持有
+   vs paper 实持 → 一致/缺票/多票 + 入场日对齐检查；每周一跑上周五喂决策 Agent
+
+**首次对账实证（2026-08-10，HK）**：回测应持有 20 只 vs paper 实持 20 只但**集合仅 5 只对齐**——
+根因：8-05~8-07 S-3 intake cron 未跑（sync_job_record 无记录）→ 8-05 该入 18 只缺席 →
+8-10 补跑买入的 15 只是"8-10 当天达标"的漂移集合。**paper 入场时点= cron 完整性**——这是
+"回测复制不到真实"的第一份量化证据，对账工具每周暴露此类漂移。另：CN 侧 3 只 ALPHA/TV
+来源持仓非 S-3 口径（回测 0 正确）。
+
+**连带发现**：① 8-10 17:42 paper_s3 cron 未跑（→ T5 观察升级为"今天 17:42 验证，再丢即去
+--reload"）；② 08-10 06:34 运行中 uvicorn hk_basic 报 TU_SHARE_API_KEY 空（--reload 换进程
+一次性，重启后 2782 更新成功 ✓）；③ 对账窗口需 `--end` 支持滚动（valid 只到 08-07）。
+
+### 2026-08-11 跨市场资金协调 T1/T2/T3：强度分 + 联合净值引擎 + 动态替代 R5c 胜出
+
+**T2 regime 强度分（CN/HK 同构 [0,100]）**：`regime_strength_score()`——三子分全指数日线
+（greens 绿灯占比 0-30 · momentum 20 日动量 0-40 · structure 均线投票 0-30），as-of 安全、
+HK 无广度也同构；实测 CN Weak 28.4（空仓 ✓）/ HK Strong 100（进攻 ✓）；体检卡片加 strength 徽章。
+强度分不作闸门（regime 仍是闸）——只用于相对分配。
+
+**T1 联合净值引擎**：`scripts/run_walk_forward_dual.py`——复用单市场 simulate，trades 重建
+**资金复利日净值**（逐日 mark-to-market × position_pct，平仓日扣成本，union 日历 ffill），
+周度权重联合 NAV。**关键修正（第二轮）**：① nav 复利单位 bug；② 逐日重复累加入场涨幅→改每日增量；
+③ **净值加权在权重切换时丢失累积收益**（切换=资金池从另一市场 1 元重走）→ 改**收益率加权资金池复利**。
+
+**T3 初测两轮**：第一轮 R1~R4 固定权重 + R2 追强证伪（净值加权口径，R1 看似最优）——被
+用户直觉质疑后修正口径：**R5 动态替代（regime 档驱动，Weak 强制清零）三窗一致胜出**，
+R5c（CN 可投→100% CN，仅 HK 可投→100% HK）OOS2/train/valid = +492/+316/+113 vs R1
++283/+107/+76；过去一年 +619%/DD20.4/夏普3.53 vs 纯 CN +490%/31.5/3.03（回撤砍 11pt）。
+**实证**：CN Weak 156/257 天（61% 空仓率）但 HK 可投仅 33%——互补性被高估，替代价值在
+错位时段 + 双强期 CN 优先。R5c 入候选（验证期纪律不上 live）；R5b 双强速率比较需
+风险调整动量（绝对动量 HK 天然波动大不可比）。细节 → `docs/modules/strategy-params.md` §6。
+
+验收：后端 8 新强度测试 + 116 相关测试 ✓ · ruff ✓ · 前端 757 passed + typecheck ✓
+
+### 2026-08-10 副作用检查：大池不淹前端 + B 股清理（小修）
+
+**检查结论（显示链路无回归）**：
+- Watchlist 表 = localStorage 自选 + registry（41 票）——683 大池不显示 ✓
+- score 列排序 / S-3 候选徽标（buildS3Candidates）/ Execution Gate 面板 = 全部只作用于
+  自选列表内 ✓；trend/rs-ranks API 按自选 symbols 请求 ✓
+- 大池影响面 = score 表 + paper_s3（预期目标），前端零淹没 ✓
+
+**发现并修复（B 股清理）**：S-3 Universe 683 票混入 **10 只 B 股**（900xxx SH-B / 200xxx SZ-B，
+TV screener 按 SSE/SZSE 市场引入）——B 股无 trendOK 分（score=None，进不了候选）但每天白算 +
+8-10 已有 3 行 score=None 落库。修复：`_is_cn_b_share()` 在 automation 合并 universe 时过滤
+（registry 已确认无 B 股）。新增测试 test_is_cn_b_share（7 断言）。43 passed 相关文件。
+
+**遗留记录**：4 个日期敏感测试（test_adj_factor/test_daily_service/test_etf_daily 的
+"uptodate 跳过 fetch"断言用 last=8-8 硬编码，8-10 起失效）——pre-existing，修法 = 用相对日期
+生成 last（下次维护窗口处理）。
+
+### 2026-08-10 paper_s3_intake 干跑预演：闸门链全灭疑虑关闭 ✓
+
+**方法**：干跑 build_s3_candidates / run_intake_s3 于三个代表性日（全 DB 数据源，零东财依赖；
+插入后清理，paper_trades 恢复 3 行）：
+
+| 验证日 | regime/闸门 | 结果 | 判定 |
+|---|---|---|---|
+| 8-10（今天） | Weak | 0 候选 | ✅ 正确空仓 |
+| 6-03（749 票） | Diverging 但 panic active + extreme_caution | 0 候选 | ✅ 双硬闸正确拦截 |
+| 5-08（749 票） | Strong + hot + 无 panic | **3 候选**（600487/600522/603083，通信，score79，RS 90%+）→ 3 笔插入 | ✅ 完整插入路径（价格=当日收盘、sleeve=5%、why 文本） |
+
+**结论**：
+- **闸门链无全灭 bug**——0 候选的每个案例都有明确硬闸（Weak/panic/sentiment），候选>0 路径
+  在 5-08 完整走通 ✓（关闭 todo §19「6-22 候选 0 需确认」遗留项）
+- **今天 17:42 首跑安全**：regime Weak → 0 候选无插入（正确）；首个 S-3 paper 单要等
+  regime 变非 Weak（近 5 日全 Weak，预计本周内）
+- 幂等（duplicate skip）+ 不碰东财 ✓
+
+### 2026-08-10 决策 Agent 主线程修复：空响应根因 + 预取上下文 + provider fallback
+
+**症状**：决策页提问 → "empty assistant response"（前端 DecisionPage.tsx:255 对空流抛错）。
+
+**根因链（三层）**：
+1. `ai@5.0.116` 的 streamText **工具循环在工具步骤后不再续写**（finishReason='tool-calls'、
+   textStream 空）——Gemini 和 deepseek 都复现（probe 验证：工具 execute 执行成功，但无第 2 次
+   模型调用）→ 生产 /decision（3 个 tools）返回 HTTP 200 + 空 body
+2. 前端把空 body 判为失败（"empty assistant response"）
+3. （次要）进程读 apps/ai-service/.env（旧）为主、根 .env 补齐——GEMINI_API_KEY 在根 .env，
+   已由 index.ts 的 rootEnv 加载兜底（无配置问题）
+
+**修复（decision.ts POST / 重写）**：
+- **工具调用 → 预取上下文**：请求前预取 `/v1/agent/portfolio-health`（0.24s 实时）注入 system
+  prompt（S3_RULES_KNOWLEDGE + 实时体检），模型走纯文本生成路径（已验证可行）
+- **provider fallback（用户要求"google 不行就 fallback"）**：primary=Gemini（thinking high）失败
+  或空流 → `getResolvedModel()`（openai/ollama）重试；fallback 生效时前缀 `[fallback: <provider>]`
+- archive 工具（retrieve/search）随 tools 一起移除（提示用户去历史快照面板），SDK 修复后恢复
+
+**验证**：typecheck ✓ · ai-service 144 tests ✓ · 临时实例实测：Gemini 正常回答（非空）✓ ·
+  坏 key 模拟 → `[fallback: openai]` + deepseek 回答 ✓
+
+**待办**：重启正式 ai-service（PID 31671 @4310）后生效；建议升级 `ai@5.0.116` → 5.0.x 最新
+（工具循环 bug 可能已修，修后可恢复 tools 方案）。
+
+### 2026-08-10 sync "Copy aborted: missing realtime quote" 修复
+
+**症状**：统一作战表/复制 sync 报 `Copy aborted: missing realtime quote (today): CN:603259, CN:688235, CN:301293, CN:002064`。
+
+**根因**：`GET /quote`（tushare realtime_quote）瞬态失败被后端静默吞掉——`except: return []`
+→ 返回 `{ok: true, items: []}`；前端 `.catch(() => null)` 也吞错 → quotes 映射全空 →
+watchlist 里 4 只 CN 票全部缺"今日报价" → `shouldRequireRealtimeQuote`（交易时段 + CN）拦截 abort。
+（事后复测 4 只均有 11:30 报价——纯瞬态；无日志可回溯，因为两层都静默。）
+
+**修复（两层）**：
+1. 前端：`fetchQuoteChunkWithRetry`（watchlist-market.ts）——/quote 失败重试 1 次（400ms 间隔）；
+   watchlist-market.fetchWatchlistQuotes + dashboard-export 内联分支统一使用
+2. 后端：realtime_quote.py `_tushare_quotes` 失败时 `logger.warning`（带 exc_info）——
+   静默黑洞改为可观测；下次再发生可从日志确认
+
+**验收**：前端 typecheck ✓ · 756 tests ✓ · 后端 ruff ✓ + 28 realtime_quote tests ✓。
+**生效**：Next dev 热更新即生效；后端日志改动需重启 uvicorn（下次维护一并）。
+
+### 2026-08-10 HK 并行策略线：回测闭环完成（A 股不变）
+
+> 用户拍板：**港股单独回测，A 股结论与港股并行**（两条独立策略线）。
+
+**数据层（HK 基础设施已齐）**：
+- universe = 本地成交量 top 500（近 60 交易日 vol 排序——零外部依赖的恒生综合代理，与
+  registry HK 票并集）；恒综官方成分 API（东财/新浪/csindex）此网络不可达
+- **HK score 回填**：`scripts/hk_backfill_watchlist_scores.py`（复用 live `_trendok_one`，
+  bars 预取、无网络）——22.9 万行 / 500 票 / 470 交易日 / 11 分钟；HK score 无行业分量
+  （行业/资金流 HK 无映射），score 顺周期偏高（入场票集中在 75-100，门槛无区分度——已确认）
+- **HK regime**：`get_hk_regime()`（HSI+HSTECH 红绿灯，macro_daily 历史 ✓ 可 as-of）
+
+**修复的 look-ahead bug（重要）**：`fetch_last_closes`（db/macro_daily.py）原无 as_of 过滤——
+HK 指数信号在 as-of 模式读到"最新 80 天"（每个历史日都是今天的价格）→ HK regime 全 Strong。
+已加 `as_of_date` 参数；修复后 HK 历史 regime 真实多样（2024-08 Weak 熊市 ✓ 2024-10 Strong ✓）。
+
+**HK 回测定案**（三窗全正、夏普全 2.6+）：
+| 参数 | HK 定案 | A 股 S-3（不变） |
+|---|---|---|
+| 闸门 | **regime 档**（score+RS+HSI regime，无行业闸——HK 无行业资金流） | full（含行业 mainline） |
+| score | 65（HK 无区分度，保留） | 65 |
+| trailing | **-12%**（-8 在港股波动下被高频打掉） | -8% |
+| stop | -5% | -5% |
+| RS | **前 40%（rs_min 0.6）** | 前 50% |
+| 金字塔 | 开（2.5/0.5/1） | 开 |
+| 其他 | hold60/target100/mp20/10%仓位/swap 关 | 同 |
+- **三窗**：OOS2 +43.4%/DD12.7/夏普2.63 · train +23.0%/DD9.9/2.89 · valid +26.2%/DD5.7/3.64
+- A 股回归：OOS2/train 与固化基线**完全一致**（124.3/4.21 · 151.1/5.92）；valid 78 笔差异
+  = 8-09 数据回填演进（stash 验证非代码回归）——**基线待重固化（run_walk_forward --save-baseline）**
+- ✅ **A 股基线已重固化（2026-08-10）**：train +151.1/9.7/5.92/211笔 · valid +77.2/5.0/8.26/64笔
+  **与旧基线完全一致**；OOS2 318 笔 +97.8%/DD28.8/3.59（旧 +124.3/18.7/4.21）——引擎 CN 路径
+  8-09~8-10 零改动（git diff 仅 HK 支持 7 行）+ train/valid 一致 → **OOS2 变化=历史数据演进**
+  （tushare 数据修正），非回归；新基线已固化
+
+**待办（下阶段）**：
+1. 固化 HK 真值表 → strategy-params.md §（HK 独立段）+ run_walk_forward HK 配置
+2. HK paper 路径（automation HK 池每日 score + HK paper intake，source 区分）+ watchlist HK 视图
+3. A 股基线重固化（valid 数据演进后）
+
+### 2026-08-10 HK 并行线：固化 + paper 路径 + 双市场体检卡片（全部完成）
+
+**固化**：
+- strategy-params.md：§1b HK 真值表（参数理解表）+ §4 版本历史 + §5 HK 数据质量备忘
+- `run_walk_forward.py --market HK`（HK_S3_CONFIG + 独立基线 walk_forward_hk_baseline.json）
+- HK 三窗（10% 口径）：OOS2 +86.9/DD25.4/2.63 · train +45.9/19.9/2.89 · valid +52.3/8.3/5.62；
+  **过去一年 +83.8%/DD19.9/2.68**（5% paper 口径 ≈ +41.9%）
+
+**paper 路径（HK 独立记账）**：
+- `build_s3_candidates(market="HK")`：HSI/HSTECH regime 闸（引擎 market-aware）、无行业闸、
+  RS 市场内、panic 用 CN 口径（与 HK 回测同路径）、无 exclude_boards
+- `run_intake_s3(market="HK")`：source='S3HK'（db/paper_trading SOURCES 扩展）；
+  8-07 干跑 20 只全插入+清理 ✓（曾发现 source 硬编码 'S3' 的 bug——HK 票记错账，已修）
+- `paper_s3_intake_job`：17:42 同时跑 CN + HK（记录 paper_s3_intake_CN/_HK）
+- automation 每日给 HK 池算分：`list_hk_universe_symbols()`（vol top 500 + registry HK 并集，
+  db/daily.py）——HK paper 候选每天有新鲜 score
+
+**双市场体检卡片（A 股/港股买什么·卖什么·持有）**：
+- 后端 `/v1/agent/portfolio-health?markets=CN,HK`：顶层 CN（兼容决策 Agent）+ `hkHealth` 块
+  （HK regime/candidates/holdings，trail -12 规则）；持仓按市场拆分
+- 前端 PortfolioHealthCard：CN | HK 双栏面板（regime 徽章/候选 chips/持有行 EXIT-HOLD）
+- 测试：前端 5（双栏渲染）+ 后端 portfolio/paper_s3/watchlist_automation 68 ✓
+
+**验收**：后端 3500 passed（4 failed=已知日期敏感 pre-existing）+ ruff ✓ + 前端 83 passed + typecheck ✓
+
+
+## 1. 状态看板（导航 · 详情在 §10 沉淀表 / 各章节）
+
+| 领域 | 状态 |
+|------|------|
+| §2 定位/形态 | ✅ Web 唯一形态（OPT-060）+ 可分享 URL（hash-router） |
+| §3 收益/交易 | ✅ S-3 策略定案 + 卫星仓复核 + user_trades 闭环；**验证期**（C4 等样本） |
+| §4 API 开放 | ✅ /v1/* 整圈（OPT-045~051）+ cookbook；✅ 应用内通知中心（OPT-082）；✅ 外部 webhook P1（OPT-090） |
+| §5 工程/部署 | ✅ Docker 一键 + 备份迁移 + 稳定性审计 5 修（2026-08-09）；Tunnel 端到端待验证 |
+| §6 数据源 | ✅ TV Scanner API 唯一池子；[ ] 付费 API 矩阵（§12 #9） |
+| §7 新闻/研报 | ✅ News Substrate 2.0 三轨 + TIP-012 研报通道 |
+| §8 回测 | ✅ 引擎 v1.5 + S-3 + C1 工具 + 长窗 2021-08 起 + 回撤熔断 + BacktestPage 结论页；[ ] C4 paper 对照（等数据） |
+| §9 多市场 | 🟡 美股/加拿大远期（§12 #14/15） |
+| §10 沉淀 | 27+ archive（每完成一项补一行） |
+| §13 Longevity | ✅ 换电脑跑/恢复数据；🟡 云相关暂缓（等 Mac mini） |
+| §15 用户反馈 | ✅ 3 条全部落实（watchlist.md 使用笔记落档） |
+| §16 L3→L4 | ✅ L3 五里程碑全完成；L4-P1 券商研究未拍板（红线：P0 未清不碰） |
+| §17/18 工程加固 | ✅ Gate 全清 + 覆盖率 91.8% + R1-R7（详情 → [`archive/2026-08-09-todo-slim-eng-hardening.md`](./archive/2026-08-09-todo-slim-eng-hardening.md)） |
+| §19 策略优化 | ✅ 信号/组合层封闭（S-3 双年验证）；⏸ 回拉（等节点）；验证期 |
+
 
 ## 2. 产品定位与形态
 
-> 一边用一边改的现状不可持续，必须先把"长期形态"定下来。
+- ✅ **Tauri 降级 + 形态迁移（2026-08-04 · OPT-060）**：Web = 唯一交付形态；Tauri 保留源码，
+  ≤0.5 天可复活 → [`archive/2026-08-04-opt-060-tauri-deprecation.md`](./archive/2026-08-04-opt-060-tauri-deprecation.md)
+- ✅ **可分享/可订阅 URL（2026-08-09 · hash-router）**：15 页面 + 深链接 `#/stock/<sym>` + journal 子模式
+  （`lib/hash-router.ts`，6 测试；决策 Agent 输出/周报 markdown 链接直达）
+- [ ] **[P1] 基础 AI 能力保留**：内置 Chat Panel + 摘要生成（不依赖外部 AI 时本地也能用）
+- [ ] **[P4] 完整产品定位文档**：「卫星仓纪律化操作工具」一页式宣言
 
-- **[P0] Tauri 桌面 vs 固定 URL**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-opt-060-tauri-deprecation.md`](./archive/2026-08-04-opt-060-tauri-deprecation.md)（OPT-060）。决策：Web 形态为唯一交付形态；Tauri 保留 `src-tauri/` 源码 + `scripts/build-sidecars-macos.sh`，未来真要重启时 ≤ 0.5 天接入。
-- **[P0] 形态迁移路线**：✅ **[done] 2026-08-04** → 同上（OPT-060 / §12 #11）。`pnpm dev` + Docker compose 为唯一活跃路径；dev 流程不再接入 Tauri。
-- **[P1] 可分享 / 可订阅 URL**：每张关键页面（Watchlist、Dashboard、特定 symbol）有 stable URL，方便 AI 助手 query、复盘自包含。
-- **[P1] 基础 AI 能力保留**：内置 Chat Panel + 摘要生成（不依赖外部 AI 调用本地数据时也能用）。
-- **[P4] 完整产品定位文档**：把"卫星仓纪律化操作工具"等核心定位写成一页式宣言。
-
----
 
 ## 3. 收益 / 交易策略（最高优先级 · 优先级 1）
 
-> 架构层与技术债的工程任务 → `OPT-xxx`；交易规则调整 → `TIP-xxx` / `V6.x`。本节只放**产品/战略层**的收益相关决策。
+> 架构/工程债 → `OPT-xxx`；交易规则 → `TIP-xxx` / `V6.x`；本节只放产品/战略层收益决策。
+> 交易策略真值现在集中在 §19 + `modules/strategy-params.md`，本节约束"做哪些"。
 
-- **[P0] 数据源质量审计**：现有源"非常杂，质量不高"。评估是否替换/补强：
-  - Tushare（200/年，国内）：保留作为基线
-  - HK：akshare（Sina）已验证最稳（`OPT-043`），不要再切
-  - 评估：聚宽 / Wind mini / Choice / iFinD / 自建爬虫 中是否有 ROI 为正的补强
-- **[P0] 重启回测系统**：原 BacktestPage 效果差已隐藏，待重做 → 见 §8
-- **[P0] 漏斗转化率度量闭环**：[done] 2026-08-02 —— `TIP-002` 埋点 + N 日表格已闭环（[`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)）；周报形态待 §3 P1 排期。
-- **[P1] 研报/新闻 α 来源**：见 §6。
-- **[P1] 卫星仓上限 / 仓位管理复核**：当前 15% 单票 + 30% 板块 + 袖子上限体系是否仍合理（参考 §13 `positionPct` 复杂度）。
-- **[P2] 开火来源归因（TV/Alpha/手动）**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-tip-011-execution-source.md`](./archive/2026-08-04-tip-011-execution-source.md)（TIP-011 · source 贯穿 write-path：前端 deriveActionCard 写 `source`（TV/ALPHA/MANUAL）→ diff_snapshots 透传 → `execution_decision_changes.source` + `paper_trades.source`；`GET /v1/execution/source-stats` 按来源出 BUY 信号量 + 平仓胜率；Copy markdown 新 section「Execution · Source attribution (30d)」；alembic 0018）。
-- **[P2] Alpha 映射质量抽检**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md`](./archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md)（TIP-009 · 5 信号自动 QA · 用户零操作；theme_industry_map 从历史 alpha_radar_trends 数据驱动学，penalty 应用到 compute_alpha_additions，Copy markdown 末尾暴露给外部 AI agent）。
-- **[P2] 风险平价开仓尺寸（V7.0-02）**：✅ **[done] 2026-08-05** → [`archive/2026-08-05-v7-02-risk-parity-sizing.md`](./archive/2026-08-05-v7-02-risk-parity-sizing.md)（Suggest% = min(5% clip, 0.5%风险预算/止损距离%, 单票/行业/Sleeve room)；实际止损位优先、2×ATR 兜底；<2.5% 放弃；绑定约束 note=`risk` + 面板显示止损距离；BE 零改动）。关联 §3 P1「卫星仓上限/仓位管理复核」。
-- **[P2] 研报 → α 通道（TIP-012）**：✅ **[done] 2026-08-05** → [`archive/2026-08-05-tip-012-research-alpha-channel.md`](./archive/2026-08-05-tip-012-research-alpha-channel.md)（东财研报 API 免费源 · 确定性评分（评级×80+目标价×20 权重，14天半衰期）· 复用 TIP-004 闸门 score_min=70 · 每轮 cap 10 · registry source='research' 可归因 · alembic 0019 + 每2h job；关联 §7 P2「研报→α通道」与 §7 P1「研报源评估」的可行性验证）。
-- **[P2] 真实交易记录 + 期望值看板**：用户实际买卖记录闭环——watchlist 已有买入价（costPrice）+ 仓位（positionPct）；新增 **卖出 icon → 输入卖出价格**（记录卖出价/持仓天数/盈亏）；**加仓识别**（持仓标的新增买入 → 加权平均成本 + 记 ADD leg）；Watchlist 页**期望值看板**（胜率 / 盈亏比 / 每笔期望值 vs 0.3% 成本线 / 分来源 / 样本数）。数据来源 `user_trades` 表（alembic 0023）；统计口径：期望值 = 胜率×平均盈利 − 败率×平均亏损 − 0.3% 成本。关联 TIP-013（信号 IC 验证）——先积累真实交易样本，再验证信号是否有边际优势。**业务决策（2026-08-08 用户）**：不做 Alpha 191 因子全量落地，做「纪律 + 真实数据验证」路线。
+- [ ] **[P0] 数据源质量审计（续）**：OPT-050 已拍板续 Tushare 不引 Wind/Choice/iFinD/聚宽；
+      剩余：付费 API 矩阵对比（§12 #9）与 TV Capture 决策（§6）
+- ✅ **重启回测系统**（§8 已重做：OPT-063 引擎 v0 → OPT-070 v1.5 闸门 → §19 S-3 定案 + C1 工具）
+- ✅ **漏斗转化率闭环**（2026-08-02 · TIP-002）→ [`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)
+- ✅ **卫星仓上限复核（2026-08-09）**：单票 15%/clip 5% 维持；**S-3 候选豁免 30% 板块/簇 cap**；
+      旧口径统一 20 票 → 见 §19
+- ✅ **TIP-011 开火来源归因**（2026-08-04）→ [`archive/2026-08-04-tip-011-execution-source.md`](./archive/2026-08-04-tip-011-execution-source.md)
+- ✅ **TIP-009 Alpha 映射自动 QA**（2026-08-04）→ [`archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md`](./archive/2026-08-04-tip-009-alpha-mapping-auto-qa.md)
+- ✅ **V7.0-02 风险平价开仓**（2026-08-05）→ [`archive/2026-08-05-v7-02-risk-parity-sizing.md`](./archive/2026-08-05-v7-02-risk-parity-sizing.md)
+- ✅ **TIP-012 研报→α 通道**（2026-08-05）→ [`archive/2026-08-05-tip-012-research-alpha-channel.md`](./archive/2026-08-05-tip-012-research-alpha-channel.md)
+- ✅ **TIP-013/014 Copy 新鲜度 + 强制刷新**（2026-08-06）→ [`archive/2026-08-06-tip-013-014-copy-freshness.md`](./archive/2026-08-06-tip-013-014-copy-freshness.md)
+- ✅ **TIP-015 决策 Agent 闭环 M1**（2026-08-06）→ [`designs/tip-015-decision-agent-loop.md`](./designs/tip-015-decision-agent-loop.md)
+- [x] **体检区信息层：α 事件 + 行业资金流 叠加 S-3 体检（2026-08-12 完成 · P1+P2 全落地 OPT-085）**
+      C4 验证铺垫已就绪：开仓 signal_snapshot 落库（alembic 0029）——≥20 笔平仓后做
+      「行业资金领先/α事件标签 vs 收益」对照；正向性三纪律：①定位风险提示层 ②不进门槛 ③验证后转参数
+      目标：回测底层不动（score/gate/止损=source of truth），叠加两个**正交信息层**帮助判断
+      ——回测量价回答"该不该持有/买入"，事件层回答"为什么现在有波动风险/催化"，
+      资金层回答"钱在不在往这个行业走"。展示只提示、不设门槛，不改任何回测参数。
+      结合点（S-3 持仓体检 · A 股/港股并行 卡片内嵌）：
+      1. **持仓 × α 事件**（个股级）：alpha_radar_trends 按 cn_symbols / mapping_confidence
+         ≥0.7 匹配持仓 → 行内 `📰 事件：<trend>（催化A/风险 · 映射0.85 · 2天前）`；
+         risk_status 风险类标 ⚠
+      2. **持仓 × 行业资金流**（行业级）：持仓 → SW L1 行业（industry_taxonomy /
+         hk_industry）→ 5 日主力净流入（flow5d / dailyRankings）→ `🧭 半导体 5日+12.3亿
+         （第3/31）`；持续流出标 ⚠（如 ETF:513180 恒生科技 5 日流出）
+      3. **候选 × 事件+资金**：候选行附加 `📰 催化（XX）· 🧭 行业流入+3.1亿` 或 `🧭 流出 ⚠`
+      4. **头部信号汇总**：`3 持仓无事件冲突 · HK:2099 行业资金领先 · ETF:513180 行业流出 ⚠`
+      路径：P1 = 持仓×资金流（CN 映射已就绪）+ 持仓×α事件；P2 = 候选附加行 + 头部汇总；
+      数据时效标识（资金流盘后 17:35 日频 / α ingest 即用）随卡片展示；
+      延伸（不阻塞）：C4 paper 实绩对照后可回测验证"行业资金领先是否提升 S-3 胜率"
+- ✅ **user_trades 闭环打通（2026-08-09）**：SELL 记录曾被后端 400 硬卡（缺成本/入场日）→ 已修
+  （校验放松 + 可选成本补填 + 无条件记录）；**使用提示：卖出用行内「卖出」按钮**（期望值看板
+  TradeStatsPanel 自动累计；「纪律+真实数据验证」路线的数据管道）
 
----
 
 ## 4. API 开放与外部 AI 打通（优先级 2）
 
-> 让个人 AI 助手等外部系统能调用本系统的数据 / 信号。
+- ✅ **OpenAI 兼容 /v1/* 整圈（OPT-045/046/047）**：8 endpoint（market/watchlist/journal/explain/version/
+  schema/errors/changelog）+ 人类可读文档 → [`archive/2026-08-01-opt-045-v1-api-surface.md`](./archive/2026-08-01-opt-045-v1-api-surface.md)
+- ✅ **API Key 配额 + OpenAPI（OPT-051）**：多 Key + 三窗口滑动配额 + /v1/quota + Swagger/ReDoc
+  → [`archive/2026-08-01-opt-051-api-key-quota-openapi.md`](./archive/2026-08-01-opt-051-api-key-quota-openapi.md)
+- ❌ **MCP server**：cancelled 2026-08-04（自写 agent 已 100% 覆盖；后续要启用按原描述单独起 OPT）
+- [x] **决策/告警 webhook**（AI agent 订阅 Karios 事件）：✅ P1+P2 全落地 2026-08-12（OPT-090/091；cookbook §9）
+- **范围边界（不做）**：Telegram Bot/推送/日报/自动下单/监控巡检 → 归外部 AI 助手（/v1/* 拉数据）；
+  Karios Chat Panel 仅"看+问"局部交互 → [`integrations/ai-agent-cookbook.md`](./integrations/ai-agent-cookbook.md)
 
-- **[P0] OpenAI 兼容 API**（**这是 Karios 与外部 AI 助手的唯一桥梁**）：
-  - 业务 endpoint（只读为主；写操作留给前端 + 后端当前 API，AI 助手不应改仓）：
-    - `GET /v1/market/snapshot?symbols=...` → 实时价/分时/技术指标
-    - `GET /v1/watchlist/items`
-    - `GET /v1/decision-journal/query`
-    - `POST /v1/explain/{symbol}` → 复用本地 Chat Panel 的 retrieval + LLM
-  - **稳定发现性 endpoint**（AI 助手"一眼看到当前 API"）：
-    - `GET /v1/version` → 版本号；major 跳变时 AI 助手主动告警
-    - `GET /v1/schema` → OpenAPI 3.1 JSON（自动从 Zod 生成）
-    - `GET /v1/errors` → 错误码字典（含 `recovery_hint` 给 LLM 修错用）
-    - `GET /v1/changelog?since=X` → 接口变更 diff
-  - 字段 `description` 必须写人话（不能"内部代号 / 待补充"），给 LLM 看的
-  - 版本号规则：MAJOR 删字段 / MINOR 加 endpoint / PATCH 修描述（CI 校验）
-  - 详细规范见 [`docs/designs/api-contract.md`](./designs/api-contract.md)
-- **[P1] API Key 配额管理**：多 Key、scope（read-only / write-journal）、限流、审计日志。
-- **[P1] 人类可读 API 文档**：`docs/api/` Markdown + FastAPI Swagger UI（**自动从 OpenAPI 生成，不手写**）
-- **[P2] MCP server 暴露**：❌ **[cancelled] 2026-08-04** —— 用户确认 AI 助手为自写 Python/Node agent（`docs/integrations/ai-agent-cookbook.md §7` 风格），`/v1/*` + cookbook 已 100% 覆盖；MCP 主要价值（Claude Desktop / Cursor UI 内工具自动发现）不命中。MCP 是另一层抽象，对自写 agent 零增量价值。后续如需启用 Claude Desktop / Cursor 内置 AI 直调，按本节原描述单独起 OPT。
-- ❌ **不在 Karios 范围**（明确分工）：
-  - Telegram Bot / 推送 / 主动日报代理 → **外部 AI 助手做**，通过 `/v1/*` 拉数据
-  - 自然语言决策代理 / 自动下单 → **外部 AI 助手做**
-  - 监控 / 状态巡检 / 异常报警 → **外部 AI 助手做**
-  - Karios 的 Chat Panel 仅服务于"看 + 问"的**局部交互**，不替代外部 AI 助手
-
----
 
 ## 5. 工程架构与部署（优先级 3）
 
-> 大概率不上云（DB 贵），但**单 Docker 一键起 + 可内网穿透**是底线。
+- ✅ **DB 走向决策（OPT-053）**：本地 PG 权威 + 备份 3 副本 + 半年期复审 → [`designs/db-direction-2026-08.md`](./designs/db-direction-2026-08.md)
+- ✅ **Docker 一键起 + UPS（OPT-056）** + **DB 备份/迁移（OPT-061）** → §12 已完成表
+- ✅ **Tauri 降级（OPT-060）** + **legacy 清理（OPT-059）** → §12 已完成表
+- ✅ **Alembic 纪律 + DB 测试清理纪律**：AGENTS.md（schema 改必须迁移；requires_postgres 测试必须自清）
+- [ ] **[P1] Tunnel 端到端验证**：脚本骨架就绪（OPT-048），需用户装 cloudflared（brew install cloudflared）
+- [ ] **[P1] 内网穿透方案**：Tailscale / Cloudflare Tunnel / FRP 三选一（等 Tunnel 验证后定）
 
-- **[P0] DB 走向决策**：写一份 `designs/db-direction-YYYY-MM.md`（拍板后迁到 module 或 archive 视情况），明确：
-  - 主体仍然本地 Postgres（`OPT-032` 后 schema 已干净）
-  - 云上只放 **只读副本** 给 API 用，本地仍是权威源
-  - 或：放弃云，全部本地 + frp/zerotier 对外暴露
-- **[P0] Docker compose 一键起**：已有 `docker-compose.yml`，要保证：
-  - 包含 data-sync + desktop-ui 静态构建 + ai-service
-  - 包含 Postgres（本地持久卷）
-  - `pnpm dev` 仍可用作开发模式
-- **[P1] 频繁改代码 vs 部署**：开发模式用热重载；发布模式用 Docker 镜像。**不**做自动 CI/CD（手工 build 已够用，省钱）。
-- **[P1] 内网穿透/反向代理**：研究 Tailscale / Cloudflare Tunnel / FRP 中最适合"经常改代码"的方案。
-- **[P2] Tauri 构建降级**：✅ **[done] 2026-08-04** → [`archive/2026-08-04-opt-060-tauri-deprecation.md`](./archive/2026-08-04-opt-060-tauri-deprecation.md)（OPT-060）。`src-tauri/` 保留不动，但 `package.json` 活跃路径已无 Tauri scripts/deps，未来 desktop bug 不再修。
-- **[P2] Alembic 迁移纪律**：见 `AGENTS.md`，所有 schema 改必须经过 Alembic（已建立 baseline）。
-- **[P0] DB 本地备份自动化**（2026-08-02 审查新发现）：`OPT-053` 已拍板"备份 3 副本策略"，但仓库里**没有任何 backup 脚本 / cron**——"换电脑也能跑"痛点（§13）的数据侧还是空的。落地 pg_dump 日备份 + 本地/异地双副本 + 恢复演练（0.5-1 天）。
-- **[P1] 隐藏页面与 legacy 清理**：✅ **[done] 2026-08-03** → [`archive/2026-08-03-opt-059-legacy-cleanup.md`](./archive/2026-08-03-opt-059-legacy-cleanup.md)（OPT-059）：`SimTradePage`（1017 行）+ `/simtrade` API、`BacktestPage`（664 行）+ `testback/` 旧回测框架全部删除（代码/路由/测试/Alembic 0017 删表）；§8 重启回测时不复用旧框架。
-
----
 
 ## 6. 数据源 / 浏览器替代（优先级 4）
 
-> chrome 后台抓 TV 池子 → 不能上云 + 重。需要更轻量的方案。
+### 数据打通作战计划（2026-08-10 立 · 用户拍板「先把数据打通，让回测更精准可预测」）
 
-- **[P1] ego-lite 调研**：✅ **done 2026-08-01** → [`designs/ego-lite-spike-2026-08.md`](./designs/ego-lite-spike-2026-08.md)（结论：用 TV Scanner API 替代 Chrome，无需浏览器；Chrome 作为 fallback 6 个月后 deprecate）
-- **[P1] TV Capture 数据源决策**：A股 3 screener 用 Tushare Pro / 港美股用 TV Scanner API / 落地时机 → **待拍板**（A股已有 Tushare 200/年全覆盖；港股需 Tushare HK 另订或 TV API；需验证 Tushare 能否 1:1 复刻 3 个 screener 逻辑）
-- **[P1] 付费 API 矩阵**：对比候选源 → 写 `archive/YYYY-MM-datasource-matrix.md`：
-  - Tushare Pro / Tushare HK / 聚宽 / 通达信 L2 / iFinD / Wind mini / Choice
-  - 维度：覆盖范围（CN/HK/US）、价格、限频、数据质量、稳定性
-- **[P2] 自建爬虫兜底**：仅在上述都不可行时启动，最低优先级。
-- **[P2] 资讯 RSS 源扩张**：参考现有 `OPT-038` 已并行化，源不够时再加；不要超过 20 个源（噪音 vs 收益边际递减）。
+> 盘点基线（2026-08-10 实测 DB + 接口）：详见 `docs/archive/2026-08-10-data-gap-audit.md`
 
----
+**现状全貌**
+- A 股：daily 5760 只（2023-01 起 · 08-10 当日）· adj_factor 97% 填充 · 指数/行业资金流/情绪/ETF 均 08-10 ✅
+- 港股：daily 2803 只（1998 起 · 08-10 当日 · 腾讯链生效）· score 496 只停在 08-07 ⚠️
+- 滞后 1 天（08-07）：主线评分 / stock_dailybasic / USDCNH(macro) / HSI+HSTECH ⚠️
+- CN score 覆盖异常：每日仅 30~210 只，08-10 只算出 3 只 B 股（A 股算分 job 疑似未跑）⚠️
+
+**P0 — 直接影响回测可信度**
+- [x] **P0-1 港股复权统一**（2026-08-10 ✅ 完成）：腾讯 qfq + tushare 不复权混写 `daily` 同表实锤
+  （01398 差 48% / 00388 差 11%）→ `scripts/hk_adj_consistency_check.py`（校验）
+  + `scripts/hk_reseed_qfq.py`（全量重灌 2804 只 2022-06 起 qfq，317.7 万行 0 失败）
+  → HK 基线重固化（OOS2 +268.0/DD29.7/2.21 · train +26.9/18.9/1.91 · valid +60.6/8.3/6.32）
+  → 归档 `docs/archive/2026-08-10-data-gap-audit.md`；⚠️ 每日增量须保持腾讯 qfq 口径
+- [ ] **P0-2 港股 universe 升级**（2026-08-10 实测关闭）：恒指官网 SPA 接口需深度逆向（动态
+  chunk 未公开）、维基被墙、akshare 无成分接口、东财被墙（用户偏好不碰）→ **维持 vol top 500
+  代理**；偏差 ~5-10% 在 S-3 执行层进一步缩小（只买高 score/RS 票）；幸存者偏差成分列表也
+  无法解决——**收益递减，不再深挖**
+
+**P1 — 数据新鲜度 / 稳定性**
+- [x] **P1-3 滞后表统一补跑 + staleness 监控**（2026-08-10 ✅）：根因=uvicorn 进程 `lru_cache`
+  缓存空 tushare key（`load_dotenv` 无 override）→ hk_basic_sync/macro_daily "假成功"——
+  修复：`config.py` load_dotenv(override=True) + 重启 uvicorn；**HSI/HSTECH 加腾讯 fallback**
+  （tushare index_global 100 次/天限频——`_fetch_hk_index_via_tencent`，已补到 08-10）；
+  主线评分/情绪补到 08-10；health `/datasources` 加 hk_daily/hk_macro/hk_score/mainline 监控
+  （带市场过滤 whereSql）；stock_dailybasic 08-07 仅回测 total_mv 用、不在回测窗内=低优先
+- [x] **P1-4 A 股算分 job 修复**（2026-08-10 ✅ 已修复）：根因两处——① uvicorn 15:59 重启
+  错失 17:30 cron（一次性，misfire 不补跑，已手动补算 08-10）；② **`compute_trendok_for_symbols`
+  硬编码 200 只上限** → `record_score_snapshots` 改 200/块分 chunk（CN 204→700 · HK 200→497 已验证）；
+  待观察：后续 3 个交易日 cron 自动跑覆盖 ≥700 只
+
+**P2 — 增强**
+- [x] **P2-5 A 股长历史（>2023）**：腾讯 fqkline 翻页免费拉（替代 tushare 2000 积分）→ 回测可扩窗
+  （2026-08-10 已实测 A 股腾讯接口可用；正式实施待扩窗需求）
+- [x] **ai@5.0.116 → 5.0.230 升级**（2026-08-11 ✅）：5.x stable 最新（不跨大版本）；
+  144 测试 ✓ + typecheck ✓ + 已 touch reload 加载（tsx watch 不因 node_modules 变化重启）；
+  **工具循环 bug 验证仍在**（probe：Gemini + echo tool → finish='tool-calls'、textLen=0）——
+  5.0.230 未修复，todo「SDK 修复后恢复 tools」假设不成立 → **decision 维持预取上下文方案**（tools 不再恢复）
+
+- [x] **P2-6 HK amount NULL 澄清（2026-08-11 ✅ 误判关闭）**：实测 07-20~08-07 每天 ~122 只
+  amount NULL——**99.3% 是停牌/无成交票**（vol=0、close 恒值，如 00007 腾讯数据止于 2024-03），
+  amount 本就无意义；真实缺口仅 0-1 只/天（如 08603 源间不一致：akshare 写 vol 无 amount、
+  腾讯无当日数据）——数量级可忽略，**不回补**；8-10 起增量同步 amount 全有 ✓（仅当
+  vol>0 且 amount NULL 时才需要关注，可入 staleness 监控条件）
+- [ ] **P2-7 退市股历史**：无免费解，记录幸存者偏差即可
+
+**HK 回测数据支撑复核（2026-08-10 · qfq 修正数据重扫）** ✅ 定案参数确认有支撑：
+- **trail-12 确认**：qfq 数据上 train/valid 双窗最优（+26.9/+60.6）；trail-8 回撤爆（DD41%）、
+  trail-15 OOS2 崩（+111）——「港股波动大、-8 高频打掉」结论在修正数据上不变
+- **RS0.6 确认**：OOS2 是分水岭（0.5→+97.6 崩 vs 0.6→+268）——不是过拟合，是 OOS2 窗强支持；
+  0.7 三窗均略低
+- **已知方法学局限（不深入，记录）**：HK 定案是「三窗全正」拍板——valid 被看过后才定，
+  valid 非严格一次性确认（与 A 股同流程，用户拍板口径）；universe 代理偏差 ~5-10% 未消除
+- 结论：**不重扫参数网格**（反模式 §19 封闭清单）；只复核已定案值 ✓
+
+**稳定性总纲**：HK 已有多源链（腾讯→新浪→yfinance→tushare）；**A 股仍是 tushare 单源** →
+腾讯链复制到 A 股日线 + 实时报价（2026-08-10 已实测 A 股腾讯接口可用）→ 双市场同构多源 fallback
++ staleness 监控 = 数据源稳定闭环。**tushare 2000 积分不买**（以上缺口它均不解决）。
+
+### 跨市场资金协调（2026-08-10 立 · 用户需求：双市场都强时的资金分配判断）
+
+> 需求：A 股/港股独立 regime 闸门已满足「都不好=双空仓 / 一个好=单市场」；**双好时需强弱判断 + 资金分配**。
+> 现状：CN=Weak 空仓 + HK=Strong 进攻（今天已在正确工作）；但 paper 双线各自 mp20×5%=各自 100%，
+> **无共享资金池**（真实资金视角=双线叠加暴露）；regime 只有三档离散（Strong/Diverging/Weak），**无强度量化**。
+
+- [x] **T1 联合回测引擎**（2026-08-11 ✅）：`scripts/run_walk_forward_dual.py`——单市场
+  simulate 复用 + trade 级资金复利日净值重建（含成本）+ union 日历 ffill + 周度权重联合 NAV
+  → 三窗 × 4 规则分配对比（口径：联合行与单市场资金视角可比）
+- [x] **T2 regime 强度分**（2026-08-11 ✅）：`regime_strength_score(market, as_of_date)`——
+  CN/HK 同构三子分（greens 0-30 + momentum 0-40 + structure 0-30，全指数日线、as-of 安全）；
+  实测 CN 28.4/Weak · HK 100/Strong（与现况一致）；体检卡片加 strength 徽章（/v1/agent/portfolio-health）
+- [x] **T3 资金分配规则初测**（2026-08-11 ✅ 修正后结论：**动态替代 R5c 胜出**）：
+  初始 R1~R4 固定权重全部低估联合（**净值加权 bug**：切换时丢累积收益→改收益率加权资金池复利）；
+  R5 系列（regime 档驱动）：**R5c（CN 可投就 100% CN，仅 HK 可投才切 HK）= 三窗一致胜 R1**
+  （OOS2 +492 vs 283 · train +316 vs 107/夏普 4.79 · valid +113 vs 76）；过去一年 +619%/DD20.4 vs 纯 CN
+  +490%/31.5 —— 用户直觉验证：A 强全 A、B 强全 B、双强走 A、下跌不投；但"互补性"被高估
+  （CN Weak 期 HK 可投仅 33%）；双强速率比较（R5b）需风险调整动量（绝对动量 HK 天然 2-3× 波动）→ 细节
+  strategy-params.md §6；R5c 入候选（§19 验证期纪律，不立即上 live）；T4 paper 池化按 R5c 待拍板
+- [x] **T4 paper 资金池化**（2026-08-11 ✅ 用户拍板）：R5c 周度决议落库 `allocation_weights`
+  （Alembic 0025 + `db/allocation.py` 幂等，周一 17:45 `allocation_decide_job` 决议，intake 兜底
+  即时决议）；paper S-3 intake sleeve = 5% × 当周权重，**权重 0 市场不开新仓**
+  （allocation-zero skip；已持仓退出管理照常走 update cron）；金字塔加仓 sleeve 同步缩放；
+  回测与 live 共用 `service/allocation.py` 同码（run_walk_forward_dual R5 分支已改调同函数）。
+  验证：本周（8-10 周）决议 CN=Weak/HK=Strong → w=0/1（当前状态正确）；21 paper_s3 测试 ✓
+- [x] **T5 paper_s3 HK 每日首跑观察（2026-08-12 ✅ 关闭）**：8-10 17:42 cron 曾未跑（--reload
+  进程漂移），手动补跑 + 去 --reload + launchd 托管后，**8-11 三连全绿**（17:31 automation ✓
+  · 17:42 intake CN+HK ✓ · 17:45 update ✓，sync_job_record 实证），20 只 S3HK 保持 open；
+  8-12 继续正常。根因已根治（uvicorn launchd 托管 + paper 链 watchdog 18:05 自检补跑）
+- [x] **T6 HK 实时报价链港股验证**（2026-08-10 ✅）：新浪 hq.sinajs.cn 主链对 HK 标的实测通过
+  （00700/02899/01787 当天 16:04 价）——HK 盘中决策/止损刷新链路 OK
+
+### 数据源 / 浏览器替代（原条目）
+
+- ✅ **TV 全功能下线（2026-08-12）**：universe 全市场化（5226 只，每日算分 ~5s）后 TV 无
+  核心消费方 → 代码/UI/路由/cron 全部剥离（历史数据保留只读）；`execution_source='TV'`
+  归因保留；详见上「TV screener 全功能下线」节
+- [ ] **[P1] 付费 API 矩阵**（§12 #9）：Tushare/聚宽/iFinD/Wind 对比 → `archive/YYYY-MM-datasource-matrix.md`
+- [ ] **[P2] 资讯 RSS 源扩张**：≤20 个源（噪音 vs 收益边际递减）
+
 
 ## 7. 新闻 / 研报
 
-> 当前 News Brief 主要是 RSS + 摘要，研报是另一个量级的信息。
+- ✅ **研报源评估**（TIP-012 实测 2026-08-05）：东财研报中心 API 免费可用（单日 40-60 份个股研报、
+  评级/目标价/EPS/行业全结构化）；巨潮/慧博/Wind 无需再评估
+- ✅ **研报→α 通道（TIP-012）**：确定性评分 + TIP-004 闸门 + registry source='research'
+  → [`archive/2026-08-05-tip-012-research-alpha-channel.md`](./archive/2026-08-05-tip-012-research-alpha-channel.md)
+- [ ] **[P2] 是否独立子项目**：`karios-research`（避免污染主仓卫星仓逻辑）
+- ✅ **News Substrate 2.0 三轨全完成（2026-08-02 · 老婆反馈 #2）**：
+  Track 1 RSS 分级（Tier A/B/C/D + 投资级替换 13 源）· Track 2 LLM enrichment（tickers/sectors/
+  event_type/importance + watchlist-aware 评分）· Track 3 Morning Brief（08:30/12:30 top 7 推送）
+  ——细节见 [`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md) 旁记录与 `modules/news.md`
+- ⚠️ 观察：`news_enrich_job` 依赖 ai-service 在线（离线即 49/0 全失败）；失败原因已入库可诊断（2026-08-09）
 
-- **[P1] 研报源评估**：可用性 / 合规 / 价格 —— ✅ **东财研报中心 API 免费可用已实测**（TIP-012，2026-08-05）：单日 40-60 份个股研报、评级/目标价/EPS/行业全结构化、无鉴权；巨潮/慧博/Wind 无需再评估（除非需要深度研报全文）
-- **[P2] 是否独立**：决定是否单独抽一个 `karios-research` 子项目，避免污染主仓的卫星仓交易逻辑。
-- **[P2] 研报 → α 通道**：✅ **[done] 2026-08-05** → TIP-012（见 §3 完成记录）；评级/目标价 → 复用 Alpha Radar 旁路进 Watchlist，registry source='research' 可归因
 
-### News Substrate 2.0（老婆反馈 #2 "没有财经新闻准"）
+## 8. 回测（已重启 · S-3 定案）
 
-> 问题根源：RSS 源有 BBC/NYT 等通用新闻混入；无 tier 分级；无关联个股/板块提取。
->
-> 三轨并行：
-> - **Track 1**：RSS 源分级（Tier A/B/C/D）+ 投资级替换 → **done 2026-08-02**
-> - **Track 2**：LLM enrichment（tickers / sectors / event_type / importance / relevance_score / ai_summary）→ 进行中
-> - **Track 3**：Morning Brief（08:30 + 12:30 定时 top 5-7 条推送到 Dashboard）
+- ✅ **前置条件**：与 live 同口径（共享规则代码 OPT-070）+ 历史 bars 齐全 + paper 先行——全部达成
+- ✅ **回测引擎 v1.5**（OPT-063→070）→ [`archive/2026-08-07-opt-063-backtest-engine.md`](./archive/2026-08-07-opt-063-backtest-engine.md)
+- ✅ **Paper v0.1/v0.2 + S-3 模式**（paper_s3 同码闸门，cron 17:42）→ §16 L3-P1 / §19.1 G4
+- [ ] **[P1] paper 实绩对照（C4）**：≥20 笔平仓后，回测结论 vs paper 真实表现逐条核对——**框架已搭**（OPT-087：`scripts/paper_vs_backtest_report.py` 可跑；已揪出并修复 trailing 口径漂移）；现 2 笔样本，等积累
+- [x] **[P1] 环境×买入风格适配实验（TIP-014，2026-08-14 完成 ✅）**：用户真实执行节奏 = 14:00-15:00 随机时刻按信号买入；目标是用回测找出「市场环境 → 买入风格」规律，用规律指导交易系统演进。**成果**：① neutral_block（弱/中性日禁开仓，valid +10.7pt，DD 12.1→2.7，胜率 60.8→78.2）；② entry_style auto（主升追强 RS0.7 / 电风扇低吸 -3%，valid +4.7pt，电风扇日 avg +12.8→+17.4）；③ 板块画像（电子/有色/机械跨窗轮动，auto 不绑定板块，主线闸门动态 Top3 独立）；④ 长窗置信度验证（2021-08~2026-08 五年零劣化，2026 +96.3pt）；⑤ HK 线实验结论=不适用（仅 2 个指数红绿灯信息不足，维持 score）；**⑥ 情绪历史回填（方案 A，2026-08-14 ✅）**：`backfill_sentiment_history.py` 零成本重算 2024-08 起情绪（tushare daily 是唯一输入）+ 补 trade_calendar 2024-01 起；**⑦ E2 panic_cooldown 3→2（2026-08-14 ✅ 固化）**：回填暴露弱市年 3 天冷却锁死 OOS2（288964 次拦截）→ 2 天三窗 OOS2 92.6(+8.2) · train 103.1(+22) · valid 持平 · 长窗 270.1 vs 235.4（+34.7pt, DD 45.1→33.0）+ 蒙特卡洛稳健（53.4% 分位, 95% 下界 ≥+99.8%）；E1（大环境条件化）实验证明不需要已删除。全部已固化进 S3_CONFIG（三处）+ live paper 同步。详见 trading-improvement-checklist TIP-014 + designs/data-gap-backfill-2026-08.md
+- [ ] **[P2] 板块特点画像（用户提出，TIP-014 延伸）**：不同板块在不同环境下的收益特征分析——主升买什么板块、电风扇买什么板块、防御期买什么板块；**部分完成**：`scripts/tip014_industry_profile.py` 已产出跨窗画像（OOS2 工程机械/汽车零部件、train 有色/通信、valid 电子）；待做：画像→可执行规则（如主线行业白名单动态化）
+- [x] **BacktestPage 重写（2026-08-12 ✅）**：改为「S-3 回测结论展示页」——定案基线
+  （CN/HK 三窗 + 长窗 2021-08 起 + 参数徽章 + 年度明细）+ 滚动 OOS（warning 红标）+ 回测
+  vs Paper 对账；原参数敏感度工具收进折叠「高级」区（默认收起）；新增后端
+  `GET /api/backtest/overview`（读固化基线 JSON + 滚动 OOS + 长窗常量）
+- [ ] **[P2] 回测探索方向池（2026-08-14 立 · 逐个验证价值后再决定是否做）**：
+  - **D1 电风扇日细分（主线在 vs 无主线）**：**❌ 数据不足（2026-08-14）**：valid 全部 18 笔 fan 日都属于"无强主线"（top3 平均分<70），"有主线但轮动快"的子集零样本无法对比；顺带发现 dip 组仅 1 笔 +35.8%（样本太少不定论），与 TIP-014 电风扇样本不足待办合并
+  - **D2 环境感知持有期（卖出侧空白）**：**✅ 已固化（2026-08-14）**：`max_hold_env_shorten=45`——uptrend 入场 45 天强制平仓；全局缩短拒收（hold45 OOS2 -13.5）→ 环境感知版 valid +11.4pt（104.4→115.8）、长窗 +11.4pt（279.8→291.2）、OOS2/train 持平；扫描 30/-32.3、45/+11.4、50/+0.3、55/持平 → 45 峰值；S3_CONFIG 三处同步 + 基线重固化 + 2 测试
+  - **D3 环境感知仓位（卖出侧空白→仓位旋钮）**：**✅ 已固化（2026-08-15）**：`env_position_scale="uptrend:1.25,fan:0.75"`（v4）——按入场日环境缩放仓位（uptrend 1.25× / fan 0.75×，其余 1.0）；v1（1.2/0.8）与 v4 均通过三窗铁律，v4 最优：OOS2 +24.6 / train +19.5 / valid +26.4，夏普两升一平、Calmar OOS2 7.3→10.0 / train 8.3→13.1，长窗 270.1→333.9（+64pt）；v3（仅 fan 减仓）valid 微降拒收；机制=主升日入场质量最高（与 D2 互证）放大下注；S3_CONFIG 三处同步 + live（paper_s3 `_env_position_scale_for`）+ 基线重固化 + 前端展示 envPositionScale
+  - **D4 score_confirm_days（连续 N 天分数达标才买）**：~~30 分钟出结果~~ **❌ 已排除（2026-08-14）**：confirm=1/2 一致拒收（valid -19.3pt）——auto 追强本就要求强势票，再加连续确认=双重收紧，错失 valid 主升段强票
+  - **D5 行业集中度上限 max_per_industry**：~~防主线切换全仓风险~~ **❌ 已排除（2026-08-14）**：上限 8 → valid -47.1pt、12 → valid -38.6pt 一致拒收——**主线行业集中持仓就是 alpha 本身**（valid 电子 48/55 笔），限制=砍收益；与主线白名单机制配合，集中是主动选择非风险
+  - **D6 利润护城河 profit_trail 复核（A6 重试 · 低优先级）**：**❌ 已排除（2026-08-15）**：在当前基线（D2/D3/E2 固化后）重试 6 变体（t10-4/t10-6/t15-6/t15-8/t20-6）全部拒收——唯一 t10-6 OOS2 +5.1 但 train -21.2 / valid -8.5（违反三窗铁律）；盈利后收紧回撤 = 截断右尾利润腿（Chandelier -8% 已是最优平衡）；与 V7.0-03 同一根因，确认维持关闭（引擎能力保留）
+  - **D7 真实分钟线验证尾盘执行**：**🔄 部分落地（2026-08-14）**：东财 push2his 被 IP 风控 → 用户提示"不带 proxy"破案：**macOS urllib 经系统代理（ClashX 127.0.0.1:7890）走代理节点 IP，被风控的是代理 IP，本地宽带干净**——`em_get_json` proxies={"http":None} 直连即通（rc=102→正常返回）；`backfill_em_history` 温柔回填（1.5s/请求、每 30 停 10s、5 天/窗口、幂等）已实测补齐 02099 全部 8 月 5m（66 根/天，末根收盘与日线一致）；**腾讯当日 1 分钟线**（hkMinute/minute 接口）16:35 job 自动积累；用户定性分钟线现阶段价值低 → 历史回填暂停，等积累够再验证 last_hour_low 近似
+  - **D8 港股情绪数据**（涨跌家数等）：HK 环境感知缺失拼图，需新数据源
+  - 判定标准：三窗 0 劣化 + 单窗收益提升（todo §19 铁律）；单一窗好看 = 过拟合拒收
+  - **实验全记录（成功+失败）→ [`backtests/`](./backtests/README.md) 文件夹**（tip014 / d-pool / defensive / legacy / planned 五份）
+  - **信号池 P1-P26（2026-08-15 立 · 用户 brainstorm 技术形态候选扩展）**：P1-P8 技术形态 + P9-P26 量价/基本面/风控候选——逐个验证「先有效 → 再查与 RS 重合 → 长窗+三窗+蒙特卡洛 → 有效才固化」；**计划与判定标准 → `backtests/experiments-planned.md`（§0b 速览 / §1 候选 / §4 顺序 / §5 已验证）**；已完成：
+    - **P1 海龟唐奇安突破**：**❌ 已拒收（2026-08-15）**——OOS2 单窗暴增 +31pt（DD 5.7）但 train -37.5 / valid -8 / 长窗灾难（DD 45→90.8，收益 -65pt）→ **典型单窗过拟合**；突破 gate 在结构牛捕获延续、震荡段追高即套，与 A2「绝对量因子无增量」同向；引擎 `breakout_days` 保留默认 0
+    - **P2 放量突破**：**❌ 已拒收（2026-08-15）**——V2.0 OOS2 +76pt（DD 6.7）但 train -97 / valid -124 / 长窗 -215pt + DD 121 → 单窗过拟合；A 股「放量=高潮/出货」，放量日追入恰是情绪顶点，valid 胜率 81.8%→43.6%；V1.5 温和版也全窗劣化；引擎 `volume_breakout_mult` 保留默认 0
+    - **P4 均线斜率**：**❌ 已拒收（2026-08-15）**——三窗全劣化（valid -59~-108）+ 长窗灾难（DD 45→83-92）——干净的全面失败；**MA20 斜率与 RS 高度共线**（强势票 MA20 天然上扬），gate 只是重复过滤；A2 结论从"均线多头状态"扩展至"均线加速度"；引擎 `ma_slope_min_pct` 保留默认 0
+    - **P3 200 日均线**：**❌ 已拒收（2026-08-15）**——纯状态版 X0 拦截≈0 笔（候选全在 MA200 上方，信息已被 regime gate+RS 占满，收益差异是时序伪影）；缓冲版 X5/X10/X20 train 全劣化（-7.7~-18.3）+ 长窗 DD 45→65~108 恶化（缓冲=追高）；引擎 `ma200_min_pct` 保留默认 -1（关）
+    - **P5 双均线金叉 / P6 三线多头**：**❌ 均已拒收（2026-08-15）**——P5（金叉事件）C3/C5/C10 全窗劣化 + 长窗灾难（金叉=滞后确认，追金叉=追高）；P6（三线状态）OOS2 -5.5 / train -6.3 劣化，valid +6.8 单窗不构成通过——**与 A2 预期完全一致**；引擎 `ma_cross_days`/`ma_aligned` 保留关闭
+    - **P7 短线超卖反转 / P8 长阴次日反转**：**❌ 均已拒收（2026-08-15）**——P7（RSI<30）与 S-3 候选集互斥（RS 前 50% 票 RSI 不 <30 → valid/train 零样本），原设想的 weak 抄底已被 neutral_block（16/16 全亏）证否；P8（前日-5% 反转）valid 仅 2 笔 + 长窗 -38.9pt/DD72 劣化；**反转类（均值回归）与"只买强势票"哲学互斥**；引擎 `rsi_reversal_max`/`down_day_reversal_pct` 保留默认 0
+    - **P16-ST ST 剔除**：**❌ 已拒收（2026-08-15）**——候选池真实存在 5% ST 票（33/673），但拦截 3145 次仅少 1 笔成交（准入链已隐性过滤）；三窗 0 劣化但长窗 -2.0pt + DD 45→51（**ST 摘帽/重组是真实 alpha**，一刀切剔除丢收益且回撤不降）；结论=S-3 的 score/RS/主线准入链已把 ST 尾部风险压到极低；引擎 `exclude_st` 保留默认关；质押/解禁/减持子项未测
+    - **P12 波动率调整动量（ret/vol）**：**❌ 已拒收（2026-08-15）**——所有变体（0.5/1.0/1.5/2.0）train 一致灾难（-22.7~-24.4）+ 长窗收益 -50pt + DD 45→63~84 全面恶化；ret/vol 阈值在震荡/弱市**系统性拒绝高 beta 票**（波动高→ratio 低），而高 beta 票是 S-3 动量 alpha 来源——**波动率维度是"砍 beta"不是"降噪"**，与动量哲学冲突；引擎 `risk_adj_mom_*` 保留默认关
+    - **P14 PEAD 盈余公告后漂移**：**❌ 已拒收（2026-08-15）**——新建 stock_forecast 表（alembic 0035 + 回填 15470 行 2024-01~2026-08）；三窗全崩（train -107~-121 / valid -144~-148，valid 胜率 7.7-12.5% vs 81.8%）——**公告日=情绪高点利好出尽**，RS 排名已含业绩利好的价格反应，PEAD 时间窗=双重追高（与 P9 同源教训）；引擎 `pead_days` 默认关，表保留供未来纯事件策略用
+    - **信号池终结（2026-08-15 · 用户拍板停止回测探索）**：**已验证 15 项全部拒收**（P1-P8 技术形态 8 项 + P9/P10 动量 + P11 行业维度 + P12 波动率动量 + P14 PEAD + P16-ST + P17 组合层）——剩余 11 项（P13/P15/P18-P26）**终止探索**；48+ 次失败（含防守 23 项 + 早期 ~10 项）证明：**A 股 S-3 的 alpha = RS 短期转强 + 主线行业 beta + 环境感知 + 纪律空仓，已全部占满**；HK 无强规律、beta 偏多、空间到顶（环境数据不足，D8 需新数据源）；**回测时代总结 → `backtests/SUMMARY.md`（必读）**；唯一合理的重开条件 = 获得真正正交的新数据源
+- ⚠️ 纪律：回测数字不作发布依据；paper 实绩为准
+- 🎯 **下一步（非信号工作）**：C4 paper 对照（等 ≥20 笔实绩）· 执行验证（D7 分钟线积累）· 数据新鲜度/OOS 滚动监控 · 实盘纪律跟踪
 
-**Track 1 · done 2026-08-02**：
-
-| 内容 | 结果 |
-|------|------|
-| Tier A (6 sources) | 财联社·电报, 华尔街见闻·全球, 金十数据·快讯, 格隆汇·快讯, 财联社·深度, 财新网 |
-| Tier B (5 sources) | 36氪·资讯, 华尔街见闻·美股, 第一财经, 虎嗅·财经, 36氪 |
-| Tier C (3 sources) | 国家统计局, 证监会, 金十数据·数据 |
-| Disabled (8 sources) | BBC, NYT, HN, Reddit + Playwright-only 6 sources (xueqiu/10jqka/eastmoney/stcn/36kr-flash/Reuters) |
-| DB columns | `tier TEXT NOT NULL DEFAULT 'D'`, `category TEXT` on `news_sources` |
-| Seed script | `scripts/seed_news_sources.py` (idempotent, `--dry-run` / `--legacy-disable`) |
-| Tests | `tests/test_news_sources_seed.py` (6 tests: tier budget, legacy exclusion, tier-A required, duplicate check, RSSHub reachability) |
-
-**Track 2 · done 2026-08-02**：
-
-| 内容 | 结果 |
-|------|------|
-| DB columns | `tickers TEXT[]`, `sectors TEXT[]`, `event_type TEXT`, `importance SMALLINT`, `relevance_score SMALLINT`, `ai_summary TEXT`, `enrichment_status TEXT`, `enriched_at TIMESTAMPTZ`, `enrichment_model TEXT` on `news_items` |
-| Alembic | `0014_news_items_enrichment.py` |
-| DB helpers | `fetch_pending_enrichment()`, `update_item_enrichment()`, `count_by_enrichment_status()` |
-| LLM worker | `service/news_enrich.py` — batch 10 items, JSON schema, watchlist-aware scoring (+30 watchlist, +50 held), 0–5 importance |
-| Scheduler | `scheduler/news_enrich_job.py` (every 2h, after news_fetch_job) |
-| API | `GET /api/news/enrichment/status`, `POST /api/news/enrichment/run` |
-| Frontend | `NewsPage` shows enrichment status bar + per-item event_type/importance/relevance/tickers/aiSummary badges |
-| Shared | `SCHEDULER_JOB_CATALOG` + `SYNC_JOB_TYPES` updated with `news_enrich_job` |
-| Tests | 1220 backend + 391 frontend + 55 shared all green (1 pre-existing flaky test excluded) |
-
-**Track 3 · done 2026-08-02**：
-
-| 内容 | 结果 |
-|------|------|
-| DB table | `morning_briefs` (id, brief_date, brief_type, items JSONB, macro_overview, model_version, source_item_ids, created_at) |
-| Alembic | `0015_morning_briefs.py` |
-| Selection | `service/morning_brief.py` — score = importance × 0.4 + relevance × 0.4 + freshness × 0.2; top 7 items; only enriched items |
-| Cron | `scheduler/morning_brief_job.py` — AM 08:30 + PM 12:30 Asia/Shanghai weekdays |
-| API | `GET /api/news/brief/latest`, `GET /api/news/brief/recent`, `POST /api/news/brief/generate` |
-| Shared | `SCHEDULER_JOB_CATALOG` + `SYNC_JOB_TYPES` updated with `morning_brief_am` / `morning_brief_pm` |
-| Tests | `tests/test_morning_brief.py` (9 tests: freshness bonus, scoring, filtering, sorting, max items) |
-
----
-
-## 8. 回测（重启）
-
-> 原 BacktestPage 效果差已隐藏。重启前先定假设，否则又是一次无效投入。
-
-- **[P0] 重启前置条件**：
-  1. 必须与 live 的 Execution Gate 同口径（不要重写一份规则）
-  2. 必须能拉历史 bars（HK ≥5y 已通过 `OPT-043`；CN 5y+ 已有 `daily` 表）
-  3. 纸面交易（paper-trading）先于纯回测——回测容易过拟合，paper 不会
-- **[P1] Paper-trading daily 跑**：把当前 BUY/ADD 信号在收盘后假买入，跟踪 N 日后的实际表现
-- **[P1] Paper-trading v0.1 关闭条件补齐**：[done] 2026-08-02 —— +10% `target_hit` / score 跌穿 `score_floor` / 离开 watchlist `pool_exit` 已落地（[`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)）；胜率 / 持有天数统计口径已完整。
-- **[P1] 单策略回测能力**：保留但**不作为发布决策依据**，只为理解参数敏感度
-- **[P2] BacktestPage 重写**：产品形态（不写到本 todo 的 P0，因为要先有数字）
-
----
 
 ## 9. 多市场 / 远景（最低优先级）
 
@@ -251,6 +860,7 @@
 2. **完成判定**：标 `[done] YYYY-MM-DD`，同时把摘要迁到 `archive/YYYY-MM-{slug}.md`，todo 上保留一行完成链接。
 3. **优先级漂移**：如果某条用户口径变了，**先动 §0，再动该节**，避免局部拧。
 4. **每 30 天回顾一次 §1 状态看板**，把长期 P0 但未动的项目显式降级或归档。
+5. **防回潮（2026-08-09）**：实验/修复的**详情**只写在一个真值处——回测实验 → `strategy-params.md`/`backtest-strategy.md`；工程加固 → `optimization-checklist.md`/`archive/`；todo 只保留状态一行 + 外链。完成即压缩。
 
 ---
 
@@ -260,6 +870,12 @@
 
 | 日期 | 事件 | 归档位置 |
 |------|------|----------|
+| 2026-08-12 | **S-3 信息层 + C4 对照框架（OPT-085~089）**：体检区 α 事件/行业资金流叠加（P1+P2 + signal_snapshot）；防守向回测攻击 23 项零采纳（防守空间=准入质量+纪律）；C4 paper-vs-backtest 逐笔对照框架（修 trailing 口径 bug：live 盘中最高 vs 回测收盘）；体检卡闸门红标；BacktestPage C4 对照卡 + 网格交互 | [`archive/2026-08-12-opt-085-089-s3-info-layers.md`](./archive/2026-08-12-opt-085-089-s3-info-layers.md)（后端 3340 + 前端 742 全绿） |
+| 2026-08-12 | **webhook 推送 + 一键启动 + 红绿灯定案（OPT-090~094）**：webhook 三层 P1+P2 全事件源（E1~E7，HMAC 签名/退避/限频）+ 前端订阅页 + cookbook §9；`npm run dev` 一键三服务（去 --reload）；红绿灯回测（CN 红灯日显著差→保留+禁开定案；HK 无区分→删除启发式仓位）；alembic 0030 | [`archive/2026-08-12-opt-090-094-webhook-lights.md`](./archive/2026-08-12-opt-090-094-webhook-lights.md)（后端 3349 + 前端 746 全绿） |
+| 2026-08-12 | **全系统健壮性审查（OPT-074）**：三路扫描 60+ 缺陷全修——前端默认 30s 超时 + SSE/流式 5min 兜底 + 卸载 abort（原 AI 挂起永久锁死 UI）；Rust sidecar 启动移后台线程 + Cmd+Q 清理（原孤儿进程占端口）；ai-service fetch 层 10min 硬顶 + 流 cancel 转发 + 去 process.env 全局污染；后端 RSS 20s 超时 / close_sync 重试 / yfinance 60s 超时 / statement_timeout / 10 处静默 pass 补日志 / 7 job print→logger；修 alembic fileConfig 禁用全库 logger（污染 pytest caplog）| OPT-074 见 optimization-checklist（后端 3284 + 前端 728 + ai 142 + cargo/tsc/ruff 全绿） |
+| 2026-08-12 | **TV 剥离第二轮**：execution-source TV 源改恒空集（'TV' 归因保留）· 删 queries/screener + api/tvCapture + screenerExport · dashboard-export 去 screener 段/常量 · 前端零 TV 网络调用（ChatPanel 历史渲染保留 catch 兜底）· 728 tests 全绿 | 见 todo §6 剥离清单 |
+| 2026-08-11 | **smoke 测试误杀 S3HK paper 仓（重大事故修复）**：`test_postclose_smoke.py` 未隔离真实 DB——`run_update` 全量扫描 + 价格 mock 对所有 HK 返回 100 → 20 只 S3HK 假平仓（+2 只 TV 08-09 被误杀）；双层修复（mock 只服务自身 symbol + `get_open_paper_trades` 只返回自己的行）+ 恢复 22 行 open + uvicorn 去 `--reload` 重启（misfire 循环终止） | 见上「当前方向」事故段（todo 就地记录，细节同文） |
+| 2026-08-09 | **todo 精简整理**：§17（Gate+覆盖率波 1-13）与 §18（R1-R7）详情原样迁移；§19 实验细节并入 strategy-params/backtest-strategy 后压缩；1179→578 行 | [`archive/2026-08-09-todo-slim-eng-hardening.md`](./archive/2026-08-09-todo-slim-eng-hardening.md) |
 | 2026-08-08 | **L4-Gate 全清（H1~H10 + K1/K4）**：4 个 live bug 根因修复（intake key 错位 / camelCase×2 / journal 校验）、测试隔离纪律化（233 假账户+141 假 session 清理、db_rows_baseline 27 表验收）、fail-open 清单（修 2 激进项）、时区/数值健壮性、API 契约对照（删前端 okBook 死字段）、调度幂等（ingest heartbeat 测试锁定）、安全扫描（本地 CSRF Origin 守卫 11 测试） | [`archive/2026-08-08-l4-gate-audit.md`](./archive/2026-08-08-l4-gate-audit.md)（后端 1435 passed + 前端 515 passed + tsc 干净；L4 准入 Gate 6/7 项达标，剩归档动作已完成——§17 全部勾选） |
 | 2026-08-07 | **L3-P5 / OPT-067**：组合相关性防火墙（V7.0-01 转正）——9 个语义因子簇（ETF 前缀 + 东财行业 + HK 科技清单）+ 20 日经验相关性（日历对齐 fail-open）；簇 >30% 拦簇内新开仓（CORRELATION_CAP_BLOCK）+ Suggest% roomCorrelation min 链；回测页「组合相关性防火墙」面板；实测 tech_hk 34.2%（腾讯+恒生科技 ETF）超限实拦，00700×513180 r=0.926 | [`archive/2026-08-07-opt-067-correlation-firewall.md`](./archive/2026-08-07-opt-067-correlation-firewall.md)（1388 后端 + 500 前端全绿；**L3 五里程碑全部完成**） |
 | 2026-08-07 | **OPT-066**：journal 上游 symbol 防御层——`is_valid_watchlist_symbol`（CN/HK/ETF 格式校验）+ diff/ingest 双层过滤（坏卡 `rejectedCards` 可观测）+ 前端提交前过滤；坏 symbol 永远进不了决策日志 | [`archive/2026-08-07-opt-066-journal-symbol-defense.md`](./archive/2026-08-07-opt-066-journal-symbol-defense.md)（1379 后端 + 495 前端全绿） |
@@ -321,149 +937,63 @@
 
 ## 12. 实施清单（按 ROI 排序 · 凑时间一个个实现）
 
-> **本节是 todo 唯一**"**做哪个先**"的可执行序列。各领域的 P0/P1 仍在 §2-§9 维护；§12 只**按 ROI 重排**后给一份跨领域工作流。
->
-> **关联设计稿**：
-> - 上云 / Tunnel / 形态决策 → [`docs/designs/cloud-deployment-options.md`](./designs/cloud-deployment-options.md)
-> - 自由人架构 / AI 日报代理 / 移动端职责 → [`docs/designs/freelancer-architecture.md`](./designs/freelancer-architecture.md)
+> §12 只按 ROI 重排给跨领域工作流；各域 P0/P1 在 §2-§9。已完成的 # 只留一行外链。
+> 设计稿：[`cloud-deployment-options.md`](./designs/cloud-deployment-options.md) · [`freelancer-architecture.md`](./designs/freelancer-architecture.md)
 
-### 排好的清单
+### 剩余（未完成）
 
-| # | 动作 | 域 | 预估工时 | 依赖 | 预期收益 |
-|---|------|----|----------|------|----------|
-| 1 | **OpenAI 兼容 `/v1/*` + AI 助手可发现性** | §3 API | 4-5 天 | BE schema 已有 | ✅ **done 2026-08-01** → 摘要 [`archive/2026-08-01-opt-045-v1-api-surface.md`](./archive/2026-08-01-opt-045-v1-api-surface.md)；OPT-045/046/047 整圈闭合，49 v1/* 单测全绿 |
-| 2 | **Cloudflare Tunnel 部署** | §4 工程 | 0.5 天 | 域名已在 Route53 | ✅ **done 2026-08-01（脚本骨架）** → `scripts/start-quick-tunnel.sh` + `setup-named-tunnel.sh` + `docs/designs/cloudflare-tunnel-setup.md`；真实端到端验证 pending（需用户装 cloudflared，brew install cloudflared） |
-| 3 | **paper-trading daily 启动** | §8 回测 | 2-3 天 | bars 数据已全 | ✅ **done 2026-08-01（v0 CN only）** → [`archive/2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md)；paper_trades 表 + 2 cron + 2 /v1 endpoint + 19 单测全绿 |
-| 4 | **数据源质量审计**（出决策文档） | §3 收益 + §6 数据源 | 1 天 | — | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-050-data-source-audit.md`](./archive/2026-08-01-opt-050-data-source-audit.md)；续 Tushare 200/年；不引 Wind/Choice/iFinD/聚宽；healthcheck 脚本就绪 |
-| 5 | **API Key 配额 + 人类可读 OpenAPI 文档** | §3 API | 1-2 天 | #1 完成 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-051-api-key-quota-openapi.md`](./archive/2026-08-01-opt-051-api-key-quota-openapi.md)；多 Key + label:secret:rpm:rph:rpd 格式（向后兼容旧）；三窗口滑动配额 in-mem；/v1/quota 自查；FastAPI metadata + openapi_tags + Swagger UI + ReDoc；23+11 单测全绿 |
-| 6 | **Alpha Radar 扩展 HK 标的识别**（原 "HK Alpha S 自动归类"，已改名更精确）| §3 收益 | 2-3 天（实际 1）| `OPT-044` 已通 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-052-alpha-radar-hk.md`](./archive/2026-08-01-opt-052-alpha-radar-hk.md)；ai-service hk_mapping prompt 字段 + python resolve_hk_mapping + trend_json.hkSymbols + aggregate_catalyst_stocks 合并 CN+HK + compute_alpha_additions 跳过 HK EM industry 闸门；13+1 单测全绿 |
-| 7 | **Docker 一键起 + UPS 自动恢复** | §4 工程 + §13 longevity | 1-2 天 | docker-compose 已有 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-056-docker-one-click.md`](./archive/2026-08-01-opt-056-docker-one-click.md)；3 Dockerfile（data-sync / ai-service / desktop-ui+nginx）+ 4 compose service（migrate / data-sync / ai-service / desktop-ui）+ 6 脚本（docker-up/down/status + install-launchd/uninstall-launchd/ups-shutdown）+ 1 setup doc + 57 smoke tests 全绿；旧用户首次实跑必加 `--migrate`；UPS hook 由 nut/apcupsd 外挂触发（macOS 无原生电池 API）|
-| 8 | **ego-lite 调研结论** | §6 数据源 | 0.5 天（实际 spike） | — | ✅ **done 2026-08-01** → [`designs/ego-lite-spike-2026-08.md`](./designs/ego-lite-spike-2026-08.md)；结论：用 TV Scanner API（`scanner.tradingview.com/global/scan`）替代 Chrome capture，无需浏览器/Playwright/login，30+ 字段，CN stocks 支持；详见 spike 文档 |
-| 8.5 | **TV Capture 数据源决策**：Scanner API 作为唯一池子，ego-lite/Chrome CDP 降级为 fallback | §3 + §6 | 3-4 天 | #1 完成 | ✅ **done 2026-08-01** → [`archive/2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md)；Alembic `0012_tv_screeners_api_mode.py`；5 模板 live API 验证通过 + capture 流程端到端走通；关键发现：Scanner API filter 必须用**数组格式** `[{left,op,right}]`；HK `exchange=HKEX`，US `exchange∈[NASDAQ,NYSE,AMEX]`；47 新单测 + 1055 全绿；`docs/modules/screener.md` 已更新为三轨架构；**最终决策**：TV Scanner API 池子基本够用，ego-lite/Chrome CDP 仅作 fallback，不作为主要数据源 |
+| # | 动作 | 域 | 预估 | 依赖 | 预期收益 |
+|---|------|----|------|------|----------|
 | 9 | **付费 API 矩阵评估** | §6 数据源 | 1-2 天 | — | 影响未来上云选型 |
-| 10 | **DB 走向决策文档** | §4 工程 | 0.5 天 | — | ✅ **done 2026-08-01** → [`designs/db-direction-2026-08.md`](./designs/db-direction-2026-08.md)（不进 archive——是未拍板后的真值）；5 选项横向对比 + 备份 cron 策略 + 6 触发条件（半年期复审）+ 已知风险；`freelancer-arch.md` + `cloud-deployment-options.md` 链到本文档 |
-| 11 | **形态迁移（Tauri 降级）** | §2 定位 | 1 天 | — | 长期减少维护面 | ✅ **done 2026-08-04** → [`archive/2026-08-04-opt-060-tauri-deprecation.md`](./archive/2026-08-04-opt-060-tauri-deprecation.md)（OPT-060）；根 + apps/desktop-ui 的 tauri scripts/deps/concurrently 全删；`src-tauri/` + sidecar build 脚本按 "保留 build 配置" 不动；6 新单测全绿 |
-| 12 | **BacktestPage 重写**（基于 paper 数据） | §8 回测 | 3-5 天 | paper-trading 有 N 日数据 | 仅作参数敏感度工具，不作发布依据 |
-| 13 | **MCP server 暴露** | §3 API | 1-2 天 | #1 完成 | Cursor / Claude Desktop 直接调（另一种标准化形式） | ❌ **cancelled 2026-08-04** —— AI 助手为自写 agent，`/v1/*` + cookbook 已够；§3 P2 同条标 cancelled |
+| 12 | **BacktestPage 重写**（基于 paper 数据） | §8 回测 | ✅ 2026-08-12（OPT-089） | — | 参数敏感度工具，不作发布依据 |
 | 14 | **美股 symbol 闸门** | §7 多市场 | 3-5 天 | 加拿大规划启动 | 远期触发 |
 | 15 | **加拿大税务/账户模型** | §7 多市场 | 远期 | — | 远景 |
-| 16 | **Watchlist table hover tooltip** | §2 收益 | 0.5 天 | — | ✅ **done 2026-08-01** → `lib/watchlist-column-help.tsx` + `ColumnHeader`（§15 反馈 #1）|
-| 17 | **Dashboard 精简 + 参数说明** | §2 收益 | 1 天 | — | ✅ **done 2026-08-01** → `lib/dashboard-card-help.tsx` + `DashboardHeader`（§15 反馈 #3）|
-| 18 | **DB 本地备份自动化** | §4 工程 | 0.5-1 天 | OPT-053 决策已立 | ✅ **done 2026-08-04** → [`archive/2026-08-04-opt-061-db-backup-migrate.md`](./archive/2026-08-04-opt-061-db-backup-migrate.md)（OPT-061 · §13 Longevity "换电脑也能跑" 数据侧补完 · 用户"电脑就休眠"约束 · 3 脚本 + launchd plist + tarball migrate + 端到端 2 次演练）；与 §12 #7 Docker 一键起互补 |
-| 19 | **隐藏页面 / legacy 清理** | §4 工程 | 0.5-1 天（实际 2h） | — | ✅ **done 2026-08-03** → [`archive/2026-08-03-opt-059-legacy-cleanup.md`](./archive/2026-08-03-opt-059-legacy-cleanup.md)（OPT-059）；SimTradePage + /simtrade、BacktestPage + testback/ 全删（含 Alembic 0017 删表）；1247 后端 + 429 前端测试绿，唯一失败为既有 trendok flaky |
-| 20 | **漏斗 N 日转化率表格** | §3 收益 | 0.5 天 | TIP-002 埋点已就绪 | ✅ **done 2026-08-02** → [`archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md)；`GET /watchlist/automation/runs` + FunnelHistoryTable 挂 WatchlistPage |
-| 21 | **Paper-trading v0.1 关闭条件** | §8 回测 | 1 天 | OPT-049 | ✅ **done 2026-08-02** → 同上；target_hit / score_floor / pool_exit 补齐，fail-open 纪律 |
+| 2b | **Tunnel 端到端验证** | §4 工程 | ✅ 2026-08-14（OPT-116） | — | 远程访问前提 |
+| 2c | **[P1] 移动端适配**（2026-08-14 用户反馈）| §4 工程 | ✅ v1 2026-08-14（OPT-117）：MobileShell 三 tab（执行/持仓/对账）· 手机优先独立视图；后续按需：买入/卖出操作按钮、tab 记忆 |
 
-### 怎么"凑时间一个个实现"
+### 已完成（一行归档 · 全部 ✅）
 
-**周节奏建议**（按你"自由人 + 功能不重合"目标倒推）：
+| # | 动作 | 归档 |
+|---|------|------|
+| 1 | OpenAI 兼容 /v1/* + 可发现性（OPT-045/046/047） | [`2026-08-01-opt-045-v1-api-surface.md`](./archive/2026-08-01-opt-045-v1-api-surface.md) |
+| 3 | paper-trading v0（OPT-049） | [`2026-08-01-opt-049-paper-trading.md`](./archive/2026-08-01-opt-049-paper-trading.md) |
+| 4 | 数据源质量审计（OPT-050 · 续 Tushare） | [`2026-08-01-opt-050-data-source-audit.md`](./archive/2026-08-01-opt-050-data-source-audit.md) |
+| 5 | API Key 配额 + OpenAPI 文档（OPT-051） | [`2026-08-01-opt-051-api-key-quota-openapi.md`](./archive/2026-08-01-opt-051-api-key-quota-openapi.md) |
+| 6 | Alpha Radar 扩展 HK（OPT-052） | [`2026-08-01-opt-052-alpha-radar-hk.md`](./archive/2026-08-01-opt-052-alpha-radar-hk.md) |
+| 7 | Docker 一键起 + UPS（OPT-056） | [`2026-08-01-opt-056-docker-one-click.md`](./archive/2026-08-01-opt-056-docker-one-click.md) |
+| 8/8.5 | ego-lite 调研 + TV 三轨决策（OPT-057） | [`2026-08-01-opt-057-tv-capture-three-track.md`](./archive/2026-08-01-opt-057-tv-capture-three-track.md) |
+| 10 | DB 走向决策（OPT-053） | [`designs/db-direction-2026-08.md`](./designs/db-direction-2026-08.md) |
+| 11 | 形态迁移 Tauri 降级（OPT-060） | [`2026-08-04-opt-060-tauri-deprecation.md`](./archive/2026-08-04-opt-060-tauri-deprecation.md) |
+| 13 | MCP server | ❌ cancelled 2026-08-04（自写 agent 已够） |
+| 16/17 | hover tooltip + Dashboard 精简（§15 反馈） | 2026-08-01（§15） |
+| 18 | DB 本地备份 + 跨机迁移（OPT-061） | [`2026-08-04-opt-061-db-backup-migrate.md`](./archive/2026-08-04-opt-061-db-backup-migrate.md) |
+| 19 | 隐藏页/legacy 清理（OPT-059） | [`2026-08-03-opt-059-legacy-cleanup.md`](./archive/2026-08-03-opt-059-legacy-cleanup.md) |
+| 20/21 | 漏斗 N 日表格 + Paper v0.1 关闭条件（OPT-058） | [`2026-08-02-opt-058-funnel-history-paper-v0.1.md`](./archive/2026-08-02-opt-058-funnel-history-paper-v0.1.md) |
 
-- **本周先打 #1**（OpenAI 兼容 endpoint）：哪怕只完成 `GET /v1/market/snapshot` 一个 endpoint，**就让你的 AI 助手能独立做事**（写日报 / 推 Telegram / 监控异常），从此不必在 Karios 内做推送
-- **下周打 #2**（Tunnel）：让 AI 助手能远程调 `/v1/`，这是"出门"前提
-- **再下周打 #3**（paper-trading）：2-3 天集中投入，跑一周就有数据
-- **月底复盘**：用 paper 数据 + 真实日记，写 §12 #4 的数据源审计文档
-
-**何时跳过 / 降级**：
-
-- 如果**没买 Mac mini / UPS** → 把 #7 暂缓，先做 #1 + #2 + #3（不依赖硬件的）
-- 如果**加拿大时间表后移** → #14/#15 自动降级
-- 如果**数据源不想换** → #8 #9 可以合并成一个调研，跳过付费 API 评估
-
-**实现动作模板**（每个 # 都照这个来）：
-
-```text
-1. 在 docs/optimization-checklist.md（或 trading-improvement-checklist.md）起一条 OPT-xxx / TIP-xxx
-2. AGENTS.md 已规定：完成 → 勾选 + 写测试
-3. 完成 → todo §10 加一行 + docs/archive/ 起摘要
-4. §12 这行末尾加 ✅ + 完成日期
-```
-
-### 反模式
-
-- ❌ **跳着做**：先做 #5 再做 #1 → 外部 AI 没有数据源接口，配额和文档没意义
-- ❌ **贪多**：一周打 5 个 → 每个都半成品，半年后什么都没真正可用
-- ❌ **先做 #11 #12**：Tauri 降级 + BacktestPage 是"做完才有用"的任务，没有 paper 数据 #12 没意义
-- ❌ **被数据源卡住**：tushare 现在 200/年够用，先别花 1 天做 #4，做 #1 #2 立刻出杠杆
-- ❌ **在 Karios 内做 Telegram Bot / 推送**：违反"功能不重合"原则，这部分归 AI 助手
-- ❌ **API 字段 description 写"待补充"或内部代号**：AI 助手无法判断含义，违反 `api-contract.md` 约束
-- ❌ **业务 endpoint 改路径名而不 bump MAJOR**：破坏 AI 助手缓存的 schema
-- ❌ **在外部仓库（AI 助手那边）手写 Karios API 文档**：永远从 `/v1/schema` 自动生成
-
-**每日 / 每周加 1 条**：
-- 跑 `bash services/data-sync-service/scripts/data-source-healthcheck.sh` → 失败立即处理（不囤）
-
----
 
 ## 13. Longevity · 系统长期生命力（用户 2026-08-01 真痛点）
 
-> **用户原话**："我关心的无非换电脑也能正常跑这个系统，让这个系统长期有生命力，远程也能访问这几个痛点。"
->
-> **决策真值**：[`docs/designs/karios-longevity-2026-08.md`](./designs/karios-longevity-2026-08.md)（2026-08-01 立）
->
-> **未来方案**：[`docs/designs/mac-mini-deployment.md`](./designs/mac-mini-deployment.md)（2026-08-01 立 · 用户拿到 Mac mini 那天的整体部署方案）
+> 真值：[`designs/karios-longevity-2026-08.md`](./designs/karios-longevity-2026-08.md) · Mac mini 方案：[`designs/mac-mini-deployment.md`](./designs/mac-mini-deployment.md)
 
-| 痛点 | 现状 | §13 行动项 |
-|------|------|-----------|
-| **换电脑也能跑** | 当前 1-3 天 | ✅ §12 #7 Docker 一键起 **done 2026-08-01**（OPT-056）→ ~2 小时（含首次 build）；脚本骨架 + 82 tests + setup doc 就绪 |
-| **换电脑也能恢复数据** | 1.7 GB DB 无法迁移 | ✅ §12 #18 DB 本地备份 + 跨机迁移包 **done 2026-08-04**（OPT-061）→ 新 Mac 5 分钟恢复（详见 [`designs/db-backup-and-migrate-2026-08.md`](./designs/db-backup-and-migrate-2026-08.md)）；iCloud 异地副本兜底 Mac 整机丢失场景 |
-| **数据独立于 Mac** | 本地 PG 单点 | §13 #1 Neon 只读副本 + 定时 sync（1 天）🟡 暂缓（OPT-061 iCloud 已部分覆盖）|
-| **远程访问兜底** | 仅 Cloudflare Tunnel | §13 #2 Tailscale Funnel fallback（0.5 天）🟡 暂缓 |
-| **Mac 长期关机 fallback** | 不支持 | §13 #3 临时 VM Hetzner €4/月按月开（0.5 天）🟡 暂缓 |
+| 痛点 | 状态 |
+|------|------|
+| 换电脑也能跑 | ✅ Docker 一键起（OPT-056）→ ~2 小时 |
+| 换电脑也能恢复数据 | ✅ DB 备份+跨机迁移（OPT-061）→ 新 Mac 5 分钟；iCloud 兜底 |
+| 数据独立于 Mac / 远程兜底 / 长期关机 fallback | 🟡 暂缓（Neon 副本 / Tailscale / Hetzner VM · 等用户拍板） |
 
-### §13.1 Mac mini 时代整体部署（用户 2026-08-01 review）
+**Mac mini 时代**（用户拿到设备那天）：Docker compose 自动启动 + 本地 PG 单一数据源 + LaunchAgent；
+不做：compose 内 PG、双数据源、现在就迁移 → 详见 mac-mini-deployment.md
 
-> **用户原话**（review §13 时）："我倾向于系统整体稳定部署 docker，然后自动启动，db 用现在的，不用两个，保证系统长期开机，可能是未来很久以后还 mac mini 长期开机部署的方案，对这个项目真的能养活我之后的事情吧。"
 
-**核心决策（2026-08-01）**：
+## 14. AI Agent 打通 + TV 数据源（用户 2026-08-01 优先级修正 · 已决策）
 
-| 维度 | 决策 | 理由 |
-|------|------|------|
-| **部署形态** | Docker compose | 自动启动 + UPS 保护 + 多端访问 |
-| **数据源** | **本地 Postgres（brew services）单一数据源** | "db 用现在的" + 不切换数据所有权 |
-| **自动启动** | macOS LaunchAgent → `docker compose up -d` | 开机即用，断电恢复不干预 |
-| **触发时机** | 用户拿到 Mac mini（或同等 7×24 设备）那天 | 不是现在 |
+- ✅ **AI agent 集成 cookbook**（2026-08-01）→ [`integrations/ai-agent-cookbook.md`](./integrations/ai-agent-cookbook.md)
+- ✅ **/v1/* 持续稳定**（OPT-045~051 整圈 + 配额 + 文档）→ §12 已完成表
+- [x] **全局通知中心（2026-08-12 ✅ 应用内版先行）**：任何页面铃铛+toast 提醒，点击跳 watchlist 详情（接近止损/EXIT/recon 缺票/cron 失败/OOS 预警 + 本地买入提醒）——OPT-082
+- [x] **外部 webhook 推送（2026-08-12 ✅ P1+P2 全落地）**：订阅/事件/投递三层 + E1~E7 全部事件源（job 失败 / paper 链断 / 接近止损 / OOS 预警 / 对账缺票 / 候选新增 / 盘中 -8%）+ 前端订阅管理页 + cookbook §9——OPT-090 + OPT-091（设计稿已拍板）
+- ✅ **TV 数据源决策**（2026-08-01）：TV Scanner API = 唯一池子，ego-lite/Chrome CDP 仅 fallback
+- ✅ **§13 远程部署暂缓确认**：Neon/Tailscale/VM 等云相关全部暂缓（用户："暂时云还有一段路"）
 
-**不**要做的事（避免重复建设）：
-- ❌ 不在 docker compose 里跑自己的 postgres service（跟本地 PG 抢 5432）
-- ❌ 不复制数据到第二个 PG（违反"单一数据源"）
-- ❌ 不现在就 full migration（用户没 Mac mini）
-
-**完整方案 + 时序 + 反例**：[`docs/designs/mac-mini-deployment.md`](./designs/mac-mini-deployment.md)（§3 架构 / §4 与现状差异 / §5 实施时序 / §6 日常维护 / §7 触发条件 / §8 失败模式）
-
-> **核心约束**：**Mac 永远在线 / 你永远想维护** = 信仰，不是契约。Longevity 的核心是**不依赖单一维护者 + 单机**。详见 longevity 文档。
-
----
-
-## 14. AI Agent 打通 + TV 数据源决策（用户 2026-08-01 优先级修正）
-
-> **用户原话**（review §13 时）："远程部署的部分先优先级下降一些，我们先保证这个系统和 我个人的 ai agent 打通以及 chrome 替代方案吧，暂时云还有一段路。"
->
-> **结果**：§13 远程部署项（Neon 副本 / Tailscale / 临时 VM）**暂缓**；§12 #8 ego-lite 调研**升级为立即做**；新增 §14 AI agent 打通 cookbook。
->
-> **最终决策**（2026-08-01）：TV Scanner API 作为唯一池子基本够用，ego-lite/Chrome CDP 仅作 fallback。Screener 模板化 + Pullback 过滤（-5% ~ -15%）已足够。
-
-### §14 行动项
-
-| # | 动作 | 工时 | 状态 |
-|---|------|------|------|
-| **§14 #1** | **AI agent 集成 cookbook**（启动 4 步 + 4 场景 + 错误处理 + 配额监控 + Python/Node client）| 1-2 天 | ✅ **done 2026-08-01** → [`integrations/ai-agent-cookbook.md`](./integrations/ai-agent-cookbook.md)（10 节 + Python/Node client）|
-| §14 #2 | `/v1/*` 持续稳定保证（含 rate limit retry cookbook）| 1 天 | 等 §14 #1 跑通 |
-| §14 #3 | 决策/告警 webhook（AI agent 订阅 Karios 事件）| 1-2 天 | 设计稿 |
-| §12 #8 | **ego-lite 调研 spike**（TV 数据不依赖 Chrome）| 0.5 天（实际） | ✅ done 2026-08-01 → `designs/ego-lite-spike-2026-08.md`：TV Scanner API 替代 Chrome |
-| §12 #8.5 | TV Capture 三轨架构（Scanner API + ego-lite + Chrome fallback）| 3-4 天 | ✅ done 2026-08-01 → `archive/2026-08-01-opt-057-tv-capture-three-track.md`；**最终决策**：TV Scanner API 池子基本够用，ego-lite/Chrome CDP 仅作 fallback |
-
-### §13 远程部署暂缓（用户 review 后）
-
-| 项 | 状态 | 暂缓触发 |
-|----|------|----------|
-| §13 #1 Neon 只读副本 | 🟡 暂缓 | 用户："暂时云还有一段路" |
-| §13 #2 Tailscale Funnel | 🟡 暂缓 | 同上 |
-| §13 #3 临时 VM fallback | 🟡 暂缓 | 同上 |
-| §12 #7 Docker 一键起 | 🟢 仍建议 | **换电脑 + 长期生命力痛点不依赖云**——可独立做 |
-
-> **保留项**：§12 #7 Docker 一键起——痛点 1（换电脑）**不依赖云**，仍可独立推进。
-
----
 
 ## 15. 老婆使用 watchlist 的反馈（2026-08-01 已收到 · 不污染 P0）
 
@@ -484,8 +1014,8 @@
 - [x] Watchlist table columns 加 hover tooltip（P1 · 2026-08-01 完成 → `lib/watchlist-column-help.tsx` + `ColumnHeader`）
 - [x] Dashboard 精简重复内容 + 参数说明（P1 · 2026-08-01 完成 → `lib/dashboard-card-help.tsx` + `DashboardHeader`；Last sync table → 单行；Index rule 块 → hover）
 - [x] News 模块质量评估（是否需要替换/补强）（P2）→ ✅ **done 2026-08-02** → News Substrate 2.0 全三轨完成（Track 1: 13 investment-grade sources；Track 2: LLM enrichment；Track 3: Morning Brief cron + API）。详见 §7 下方。
-- [ ] 反馈落到 `docs/modules/watchlist.md` 末尾"用户使用笔记"段
-- [ ] 衍生需求（P1）列入 todo §3 或 §12
+- [x] 反馈落到 `docs/modules/watchlist.md` 末尾"用户使用笔记"段（2026-08-09 落档：3 条反馈 + 落实 + 交易记录闭环提示）
+- [x] 衍生需求（P1）列入 todo §3 或 §12（2026-08-09 确认：hover tooltip=§12 #16 ✅、Dashboard 精简=§12 #17 ✅、News 质量=§7 News Substrate 2.0 三轨 ✅）
 
 ---
 
@@ -533,114 +1063,31 @@
 
 ---
 
-## 17. L4 准入 Gate：全模块排查与加固（2026-08-07 立）
+## 17. L4 准入 Gate：全模块排查与加固（2026-08-07 立 · ✅ 全清 2026-08-08）
 
-> **决策**：进入 L4（券商对接/执行闭环）之前，全模块过一遍，消灭 P0/P1 级「影响判断和逻辑」的问题。
-> **背景**：2026-08-07 完成 L3-P1~P5 过程中暴露 3 个 live bug + 1 个数据污染事件，证明「测试全绿 ≠ 逻辑正确」（mock shape 与 db 不一致掩盖了数周）。必须系统性排查。
-> **详细计划**：[`archive/2026-08-08-l4-gate-audit.md`](./archive/2026-08-08-l4-gate-audit.md)（9 项横切检查 + A/B/C 模块分级 + P0/P1/P2 加固项 + 退出标准）。
+> 详情已迁 → [`archive/2026-08-09-todo-slim-eng-hardening.md`](./archive/2026-08-09-todo-slim-eng-hardening.md)（K1/H1~H10 全清 + 覆盖率波 1-13：整体 65.9%→91.8%、11 核心模块全 ≥85%、
+> 顺带修 5 个真 bug + 3 个产品缺陷）。
+> 计划文档：[`archive/2026-08-08-l4-gate-audit.md`](./archive/2026-08-08-l4-gate-audit.md)。
 
-### Gate 状态
+- **Gate 状态**：K1/H1~H10 全部 [x] 2026-08-08（见存档）；剩余风险处置 ①②③ 全 done（B7 行业缺口回填 5543/5543、数据源健康告警上线即抓 4 真问题、阈值再校准实验=不调 live 参数）
+- **观察清单**（非紧急）：`etf_daily_full` 每月 1 日回填限流（9-01 复查）；`news_enrich_job` 失败原因现入库（2026-08-09 增强）
+- **稳定性审计（2026-08-09 · 业务+工程双轨 · 5 修）**：① backup_age 假 FAIL（healthcheck 36h vs 备份 25h 跳过节奏）→ 阈值 50h；② 资金流盘后 job 工作日天天失败（17:35 太早）→ **cron 18:15** + 三部分诊断；③ option_iv 161 失败 + ④ eastmoney_industry 16 失败（东财风控 IP 拉黑）→ `em_push2_http` 三链与 eastmoney_industry 加 **EASTMONEY_PROXY+COOKIE**；⑤ news_enrich 失败原因透传入库；归因非问题：hk_basic（.env 21:44 已补 key，重启验证）、top_inst（自愈）、dify nginx 循环（无关）。验收 3500 passed + 基线重存
 
-| 项 | 状态 |
-|----|------|
-| K1：`decision.py` 读 camelCase 错位（paper 进不了决策快照） | **[x] 2026-08-08**：4 处错位 + exit_attribution 1 处漏网 + 附带发现 `import json` 缺失（extract_pending_actions 从未工作） |
-| H1 数据口径审计 | **[x] 2026-08-08**：全量对照表完成（详见 archive/l4-gate-audit §4）；decision.py 覆盖率 43% → 99% |
-| H3 测试隔离复查（26 个 requires_postgres 文件） | **[x] 2026-08-08**：7 处污染源修复（含 flaky 根因：UTC/上海跨天窗口）；清 233 测试账户 + 141 测试 session + 48 假 changes；`scripts/db_rows_baseline.py` 验收 OK |
-| K4 correlation 簇回归 | **[x] 2026-08-08**：持仓全保护；补 8 条簇规则（电子/元件/PCB/小金属/化学制药等）；correlation.py 57%→95%；遗留：stock_basic CN=0 致行业缺失（B7）+ fail-open 激进语义（入 H5 清单） |
-| H2 盘后链路端到端冒烟 | **[x] 2026-08-08**：`test_postclose_smoke.py` 五步链路全绿；**抓到生产 bug**：run_intake side 变量泄漏（最后一条 action 污染所有 insert，解释 paper_trades 长期 1 行）已修 + 回归测试；基线验收零变化 |
-| H4 前端决策链边界矩阵 | **[x] 2026-08-08**：13 个边界用例（满仓/负 room/ETF 豁免/correlation 绑定/ratchet）；前端 515 passed + tsc 干净 |
-| H5 fail-open 语义清单 | **[x] 2026-08-08**：扫描 11 文件 75 处 except；**修 2 个激进项**（宏观死锁读取失败→fail-closed 锁激活且不缓存；registry 读取失败→不再批量删止损）；2 个高危项记录设计权衡（日内风控 bar 陈旧、breadth panic 依赖 sentiment 兜底）；其余 14 项中低危记录 |
-| H6 时区/日历一致性 | **[x] 2026-08-08**：调度全 Asia/Shanghai ✓；**修 `_messages_on` UTC→上海日界**（凌晨消息漏出快照）+ `_holding_days_for` None 崩溃；跨周末/跨月测试；HK 日历差异文档化 |
-| H7 数值健壮性扫描 | **[x] 2026-08-08**：评分函数 None 守卫 ×7（返回 0 不崩）+ 测试锁定；扫描全服务层 float/int/除零路径无其他崩溃 |
-| H8/H9/H10 契约/调度/安全 | **[x] 2026-08-08 H8**：v1 三端点模型全匹配 + docs/api ✓；删前端 `okBook` 死字段（tsc 干净）。**[x] 2026-08-08 H9**：26 模块 ON CONFLICT + ingest heartbeat 幂等测试锁定；无幂等缺陷。**[x] 2026-08-08 H10**：gitignore/硬编码密钥 0 命中；.env.example 补 `GEMINI_API_KEY`；/v1 鉴权面确认（business/explain 挂 require_api_key、quota 挂 enforce_quota、discovery 无鉴权设计）；新增 `LocalOriginGuardMiddleware` 拒非本机 Origin 写请求（11 测试锁定）；全量 1435 passed 零变化。 |
 
-### 剩余风险处置（2026-08-08 Gate 后 · 用户拍板 ①→②→③ 全做）
+## 18. 工程稳健性加固（2026-08-08 立 · ✅ R1-R7 全清 2026-08-08）
 
-| 项 | 状态 |
-|----|------|
-| ① B7：stock_basic/EM 行业缺口 | **[x] 2026-08-08**：根因 3 层——① missing 正则把 ETF 当 CN 股票（15 开头）→ 增量 sync 永远 0 resolved、表卡死 1630 行；② push2 主域名死亡无 fallback；③ 空批次记 success=True 假绿。修复：market 字段过滤（CN 总数 7389→5543 修正）+ fallback 链 `push2→push2delay→emweb F10`（EM2016 二级）+ 空批次记 failure；**回填 5543/5543=100%**，16 个缺失 symbol 全恢复；baseline 脚本补 2 张表；全量 1440 passed 零变化 |
-| ② 数据源健康告警 | **[x] 2026-08-08**：`services/data-sync-service/scripts/data_healthcheck.py` 6 项检查（28 job 健康/daily 新鲜/TV 快照/EM 覆盖/分数新鲜/备份年龄）+ `scripts/install-healthcheck-launchd.sh`（每日 08:30 + 登录 + FAIL 桌面通知）；**上线即抓 4 真实问题**：adj_factor 连续 4 周五失败=17:00 与 daily_sync 并发抢 tushare 配额→**错峰 18:30**；stock_daily_full 6-13 起失败=已重定向 close_sync 降噪处理；etf/news 入观察 |
-| ③ 阈值再校准实验 | **[x] 2026-08-08**：18 组合聚焦网格（score 60/70/80 × hold 5/10 × stop -6/-8/-10，2026-06-18~08-07）**全组合仍负**；相对最优 score 70+stop -6（-0.76%，72 笔，win 38.9%）；hold 5/10 无差异；**结论：不调 live 参数**（-0.76% 仍负期望，调参只挖浅 1%）；收益归因在信号供给单一化（97% ALPHA）→ 立为 L4 后业务课题 |
-| **观察清单**（healthcheck 暴露，非紧急） | **[w]** `etf_daily_full`：8-01（每月 1 日 19:00 回填）限流失败，9-01 复查；`news_enrich_job`：8-07 20:59 一次失败（enriched 24/49 部分成功），前面多次成功——每天 2 次跑，若复发深挖 |
+> 详情已迁 → [`archive/2026-08-09-todo-slim-eng-hardening.md`](./archive/2026-08-09-todo-slim-eng-hardening.md)。
+> 结论：lint 门禁修复（225 ruff 清零）+ 执行链/小文件覆盖率补足 + FE 组件层起步（testing-library）
+> + job 失败告警端点 + 契约测试（golden fixtures 三链确认无漂移）+ ai-service coverage gate（86%）。
+> 观察：`db_rows_baseline check` 需在 UI 闲置时执行（dev server 写库会误报）。
 
-### 覆盖率波 1（§8 计划 · 目标 BE ≥75% + 11 核心模块 ≥85%）
-
-| 项 | 状态 |
-|----|------|
-| `scripts/coverage_gate.py` | **[x] 2026-08-08**：读 coverage.json，按核心模块清单（11 个 ≥85%）+ 整体阈值（--overall）fail；豁免清单显式（tv/capture.py 退役路径）；输出 模块×覆盖率×缺口 可直接定位 |
-| 11 核心模块 ≥85% | **[x] 2026-08-08**：decision 99.5 / correlation 94.9 / exit_attr 91.5 / weekly_review 90 / trendok 87.3 / research 88.6 / execution_journal 92.6 / execution_source 84.9+ / paper_trading 87.5 / backtest_engine 77.2→85 / watchlist_automation 70.5→85 全达标（补 ~40 测试） |
-| **顺带修复 3 个真 bug** | **[x]** ① `get_top_5d_industry_names` 未 strip 行业名（GC 精确匹配失效）→ 加 strip；② `backtest_engine` end_of_window 平仓后未 del positions → `open_at_end` 虚高（迭代中 del 修复 + list() 快照）；③ `_with_retry` 全失败 raise 语义确认（原测试预期错误） |
-| 整体覆盖率 | **[x] 2026-08-08：75.0% GATE PASSED**（基线 65.9%，三会话累计 +9.1pp / ~290 新测试，1759 全绿）——第 3 会话覆盖：trendok（alpha-S recovering/risk buy blocks/quote merge/industry flow）、alpha_radar_process（extract/save/batch/pending）、tv_chrome（profile copy/start/stop 全路径）、macro_daily（paging/合约解析/full sync 驱动）、broker（decode/ai-extract/images/条件单删除）、etf_fund_flow 剩余（universe/frame merge/classify）、macro_snapshot_on_demand（metrics/on-demand 系列/enrich） |
-| 验收 | **[x] 2026-08-08**：**波 1 整体验收**：后端 1759 passed / 2 skipped 全绿 + 27 张表零变化 + `coverage_gate.py` GATE PASSED（OVERALL 75.0%，11 核心模块最低 87.9% 全 ≥85%，tv/capture.py EXEMPT） |
-
-### 覆盖率波 2（波 1 后续 · 继续推整体覆盖率）
-
-| 项 | 状态 |
-|----|------|
-| 会话 4（75.0% → 79.7%） | **[x] 2026-08-08**：1978 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 79.7%，-1023 missed）——top_inst_flow 68→95.1%（网络层/retry/tushare/provider 编排 53 测试）、query_routes 46.1→98%（resolve/quotes/全部小 endpoint 27）、option_iv 68.5→97%（sync driver/akshare fallback/paging 27）、db/index_daily 46→88%、db/news 49→97%、db/tv 38→99%、db/index_basic 14→93%、news_enrich 58→88%（_call_llm/enrich_batch/cycle 22）、db/macro_daily 58→91%、db/watchlist_automation 50→96%、mainline 70→98%（metrics 计算层 13） |
-| 会话 5（79.7% → 83.2%） | **[x] 2026-08-08**：2229 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 83.2%，-1038 missed）——etf_daily 20→99、db/broker 40→97、alpha_radar_mapping 38→100、market_detail 56→96、close_sync 56→97（trade calendar 全分支/分页/断点续传）、adj_factor 24→100、db/stock_eastmoney_industry 50→97、em_push2_http 61→100、sina_http 46→97、fund_basic 51→99、service/daily 45→96、db/stoploss 34→100、db/research 43→94、db/stock_basic 66→97（fetch_market_stocks 分页+quote 聚合） |
-| 会话 6（83.2% → 83.9%） | **[x] 2026-08-08**：2295 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 83.9%，-155 missed）——watchlist_routes 64→90（registry CRUD/backfill/automation 全 endpoint 21）、alpha_radar_routes 51→98（sources/trends/sync/process/remap/risk 21）、sync_routes 67→98（全部 sync 端点 + /sync/jobs 聚合含降级分支 24） |
-| 会话 7（83.9% → 84.6%） | **[x] 2026-08-08**：2494 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 84.6%，-141 missed）——trendok 92→99（`_trendok_one` 全分支：exit_now/momentum exhaustion/ETF fallback/sector divergence/T1 sniper/intraday distribution/RS leader/Alpha-S recovering + compute 集成含 registry 持仓/宏观死锁 73）、market_regime 84→96（指数信号全信号分支/realtime merge/HK on-demand/breadth/liquidity/缓存 42）、market_sentiment 89→96（panic 规则/capitulation/FTD/breadth 分页+intraday 并发/risk_mode 全分支/sync 日期解析 84） |
-| 会话 8（84.6% → 86.1%） | **[x] 2026-08-08**：2656 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 86.1%，-337 missed）——service/tv 81→98（screener CRUD/template/sqlite 迁移/capture 三轨 dispatch 全分支/job 队列 wait 全状态 72）、db/trade_review 43→99（全 CRUD + fetch 序列 cursor mock 19）、service/morning_brief 37→94（freshness 分档/watchlist boost 分级/分类规则/select 过滤链/brief 生成 25）、api/news_routes 37→100（17 endpoint 全绿）、service/watchlist_momentum_alerts 69→91（breakout/exit/hold 三态 + tranche 阶梯 16）、db/top_inst 62→96（daily/summary upsert + description 列映射查询 13） |
-| 会话 9（86.1% → 87.5%） | **[x] 2026-08-08**：2870 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 87.5%，-307 missed）——service/etf_fund_flow 87→99（sync 全流程/skip 分支/spot 估算/tushare 历史 merge/分页回退 52）、service/macro_daily 85→99（分页抓取 380 天/HS 三源 fallback/SGX/INE 解析器/sync 恢复矩阵 36）、service/macro_snapshot_on_demand 81→100（yf/akshare/tushare 三源链全分支/df→metrics 全转换 41）、service/alpha_radar_qa 81→100（五类 penalty 信号/catalyst 批量/stats 聚合/名称歧义 18）、service/dashboard 87→98（summary 全开关矩阵/盘前 clamp/screener 状态机/三 sync 流程 39）、service/industry_fund_flow 78→98（东财数据源/日线 kline/akshare 回退/SW L1 分类过滤/交易日跳过逻辑 28） |
-| 会话 10（87.5% → 89.3%） | **[x] 2026-08-08**：3034 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 89.3%，-381 missed）——service/macro_snapshot 72→100（realtime overlay 全分支/PUT IV 卡/backfill pct/警告矩阵 22）、service/alpha_radar_pipeline 76→100（cooldown/rounds 计算/ingest/process/sync 全状态机 26）、service/alpha_radar_symbol_resolve 72→100（CN/HK 双前缀解析/三 lookup 链/hybrid fallback 13）、service/eastmoney_industry 79→100（push2/push2delay/emweb 三源链/增量 sync 全分支 29）、service/hk_daily 66→100（tencent→ak→yf→tushare 四源链/darwin 禁用/full sync 恢复 22）、service/hk_basic 60→100（月度 skip/映射器/全错误路径 11）、api/broker_routes 54→100（账户 CRUD/快照/图片/import/sync/条件单 14）、api/backtest_routes 53→100（run/sensitivity/report/exit-attribution/weekly-review/correlation 13）、api/system_prompts_routes 52→100（9 endpoint 全分支 + HTTPException 透传 8） |
-| 会话 11（89.3% → 90.4%） | **[x] 2026-08-08**：3125 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 90.4%，-2101 missed）——api/journal_routes 52→100（CRUD 全分支/404 矩阵）、api/execution_journal_routes 54→100（快照校验矩阵/列表/变化/journal.md 默认日期）、api/industry_flow_routes 44→100（fund-flow/mainline 4 端点成功+错误+默认值）、service/index_daily 40→100（skip/resume/无 key/全流程/空 df/未来日期跳过/失败记录）、service/index_basic 32→100（同上结构）、service/stock_basic 68→100（skip/无 key 记录/空 df/success/异常/状态查询）、db/trade_calendar 57→99（upsert 全转换/查询矩阵/summary）、service/trade_calendar 67→97（分页/空页/默认日期）、service/market_bars 71→92（ETF 分支/ts_code 后缀校验/_lookup_name 三态/force 四源 sync 链） |
-| 会话 12（90.4% → 91.8%） | **[x] 2026-08-08**：3222 passed / 2 skipped 全绿 + 27 张表零变化 + GATE PASSED（OVERALL 91.8%，-1797 missed）——scheduler 全目录 26→94%（create_scheduler 注册矩阵 31 job id + trigger 类型/简单 cron job 三分支参数化 ×9/close_sync 3 分支+post/close_catchup 5 分支记录矩阵/daily_sync 4 分支/watchlist_automation 4 分支/decision 三 job/paper_trading 双 job/morning_brief 双触发器 5 分支/news_fetch-enrich 各 3 分支/research_report 3 分支/alpha_radar 三 job+env 解析）；**修复产品缺陷**：create_scheduler 原只注册 tv_screener_capture_am，PM 快照任务从未调度，补注册 JOB_ID_PM |
-| 会话 13（FE：queries 层测试） | **[x] 2026-08-08**：desktop-ui 608 tests 全绿（63 文件，1 skipped），All files 69.4%→74.6%，**lib/queries 43.96%→79.92%**、lib/api 69.38%→92.51%——backtest 0→100（run/sensitivity/exit-attribution/correlation 路径+clusterExposure 4 分支）、broker 0→100（keys/fetch/options/hooks/invalidate）、execution-journal 0→100（默认上海日期/refetch 60s/120s/limit）、weekly-review 0→100（enabled/staleTime）、tvCapture 0→100（轮询/失败抛错/超时 fake timers）、decision 6.77→92（fetch 系列/create/update/rename/append/delete/markdown 渲染 6 分支）、sentiment 30→100、alphaRadar 20→92（4 fetch+4 options+hooks+3 mutation+invalidate）、news 23→85、research 24→100；**技术要点**：mock useQuery 捕获 options 直接调 hook（无 jsdom 免渲染）、tvCapture fake timers 先 attach assertion 防 unhandled rejection；note：apps/desktop-ui eslint 坏为预先存在（eslint-plugin-import 解析失败，既有文件同样失败） |
-| 剩余大块 | db/industry_fund_flow（67%）、hk_*（hk_daily 66%/hk_basic 60%/hk_daily_tx 81%）、db/paper_trading（80%）、db/decision（84%）、market_bars（71%）、tv/scanner_api（86%）、db/morning_brief（23%）、db/industry_mainline_metrics（22%）、db/journal（17%）、service/etf_fund_flow（87%）、service/macro_daily（85%）、service/macro_snapshot_on_demand（81%）、service/alpha_radar_qa（81%）、service/dashboard（87%）、service/industry_fund_flow（78%）、service/macro_snapshot（72%）、service/alpha_radar_pipeline（76%）、api/broker_routes（54%）、service/alpha_radar_symbol_resolve（72%）、service/eastmoney_industry（79%）、api/backtest_routes（53%）、api/system_prompts_routes（52%） |
-
-## 18. 工程稳健性加固（2026-08-08 立 · 波 2 后工程视角排查）
-
-> **背景**：BE 91.8% + FE lib 74.6% 之后，从工程角度全仓排查发现的非功能性缺口。
-> **原则**：与 §17 铁律一致——每个修复 = 测试 + 验收证据；一次一个修复不混 scope。
-
-### 不稳健点清单（按风险排序）
-
-| # | 问题 | 风险等级 | 证据 |
-|---|------|---------|------|
-| E1 | **全仓 lint 门禁失效**：`eslint-config-next` 解析 `eslint-plugin-import` 失败，本地与 CI 的 `pnpm lint` 都会挂；无 husky/PR 门禁，红线坏了无人拦 | P0（门禁级） | 本地 `npx eslint src/lib/api/client.ts`（既有文件）同样失败，非本次测试引入 |
-| E2 | **BE 交易执行链仍低于稳健线**：execution_gate 87.7%（交易闸）、paper_trading 87.9%、db/decision 84%、db/execution_journal 80%、db/paper_trading 79.7%——核心线 85% 达标但异常/边界分支有真实缺口 | P1 | coverage.json 2026-08-08 |
-| E3 | **FE UI 层基本裸奔**：无 testing-library/jsdom/E2E；components 仅 2 文件有测试、hooks 2 个；74.6% 只是 src/lib 层数字，表格/表单/SSE 页面交互无保障 | P1 | vitest coverage 配置仅 include src/lib |
-| E4 | **契约漂移风险（结构性）**：OPT-009 明言 Python 响应手工对齐 shared Zod；queries 测试只验证路径字符串不验证后端返回形状 | P2 | docs/todo.md §OPT-009 / queries 测试现状 |
-| E5 | **调度失败无告警消费**：sync_job_record 落表但无人消费；BackgroundScheduler 单进程内无分布式锁；healthcheck 脚本不检查 job 失败 | P2 | data_healthcheck.py 6 项检查范围 |
-| E6 | **BE 小文件低覆盖**：alpha_radar_daily 0%、db/journal 17%、db/morning_brief 23%、db/industry_mainline_metrics 22%、tv/ego_lite 28% | P3 | coverage.json |
-| E7 | **ai-service 无覆盖率 gate**：10 个测试文件但 coverage 未纳入验收；vitest thresholds 未配置 | P3 | apps/ai-service 配置 |
-
-### 修复规划（一次一个 · 按此顺序执行）
-
-| 修复 | 内容 | 验收标准 | 状态 |
-|------|------|---------|------|
-| R1 | **lint 门禁修复**：重装 eslint 依赖（pnpm install / 对齐 lockfile）→ 本地 `pnpm lint` 全绿 → 确认 CI 步骤可过；如根因是依赖缺失则补 devDep | `pnpm lint`（root turbo）零错误；CI 同一命令可过 | **[x] 2026-08-08**：根因 = node_modules 与 lockfile 漂移（eslint-config-next 目录内 eslint-plugin-import 悬空 symlink，6/18 重装后未更新，pnpm install 因 lockfile 一致跳过修复）→ 定点重链；随后清 225→0 个 BE ruff 错误（--fix 126 + 手动 99：F841×45 未用变量、B011×13 assert False、E402×32（trendok logger 下移 + 测试 noqa）、B023 decision 闭包默认参数绑定、B904/B905/UP031/E741/B007）；**顺带发现 1 个测试丢失 bug**：test_alpha_radar_process.py 同名 `test_keywords_from_trend` 定义两次（39 行 ap. 版本从未运行），重命名为 `test_keywords_from_trend_empty_entries`；desktop-ui 12 个 no-explicit-any error 修完（decision-context/exec-attention 动态字段改显式断言）；**验收**：pnpm lint 4 包全绿（0 errors，desktop-ui 剩 31 warnings 为历史未用变量/exhaustive-deps 记录观察）+ BE 3223 passed/表零变化/gate 91.8% + FE 607 passed + TSC 干净 |
-| R2 | **BE 执行链补齐**：execution_gate / paper_trading / db/decision / db/execution_journal / db/paper_trading 补异常与边界分支测试至 ≥90% | 全量 pytest 全绿 + 表零变化 + GATE PASSED | **[x] 2026-08-08**：5 文件全 ≥99%（execution_gate 87.7→99、paper_trading 87.9→99、db/decision 84→99、db/execution_journal 80→99、db/paper_trading 79.7→100；各剩 1 条不可达死分支）；新增 5 个测试文件 122 测——execution_gate：非 dict 信号/fallback/未知 SRV level/overflow 覆盖三态（时间/阈值/ATTACK 不适用）/ETF confirm-contradict-incomplete 矩阵/HK gate 嵌入；paper_trading：intake 全 skip 路径（out-of-scope/no-close-price/duplicate/insert-error/异常注册表）、update 全守卫（registry fail-open/close 异常/update 异常/空 bars/坏价格）、_pick_close_reason 五原因矩阵（stop/target/score_floor/pool_exit/max_hold + score 异常 fail-open）、compute_stats 三态；db 层 mock 连接矩阵（get_session/update 系列/touch/upsert_actions 空/ list_actions status+iso 转换/list_snapshots 双分支/limit clamp/has_source_on_date 三态/list_changes since/insert 校验 raise×3/count_since/avg/row 转换）；**验收**：3345 passed / 2 skipped 全绿 + 27 表零变化 + GATE PASSED（OVERALL 92.5%，-1646 missed）；修复 1 个测试隔离问题（_TABLE_ENSURED 全局缓存导致全量下 CREATE 不执行，改断言不依赖） |
-| R3 | **BE 小文件清零**：alpha_radar_daily / db/journal / db/morning_brief / db/industry_mainline_metrics / tv/ego_lite 至 ≥85% | 同上 | **[x] 2026-08-08**：5 文件全 100%（journal 17→100：fetch_all clamp/空表、fetch_by_id 空 id/未命中、update 仅 title/仅 content 保留另一字段、delete rowcount 0/1；morning_brief 23→100：upsert RETURNING、latest 带/不带 type、recent clamp 30、_row_to_dict 坏 JSON→[]/None 字段矩阵；industry_mainline_metrics 22→100：upsert 空→0 且不 executemany/过滤假行/raw 非 dict 包装、list 两函数 raw dict vs str 解析、get_dates_upto clamp 60+反转；ego_lite 28→100：playwright 缺失/ImportError→EgoLiteUnavailable、全 mock 无网络 capture 成功/空行 reload 重试/close 异常吞掉、sync wrapper；alpha_radar_daily 0→100：纯 re-export import 测试）；**验收**：3384 passed / 2 skipped 全绿 + 27 表零变化 + GATE PASSED（OVERALL 93.3%，-1459 missed）；修复：fake async_playwright 应为同步返回 context-manager 对象、update_journal 3 次 ensure_table 导致断言改语义匹配 |
-| R4 | **FE 组件层起步**：装 @testing-library/react + jsdom，给 watchlist/dashboard 核心组件补首批组件测试；FE 阈值 60% 覆盖范围扩到 components | FE 全量测试全绿 + 新增组件测试 ≥20 个 | **[x] 2026-08-08**：装 @testing-library/react/jest-dom/jsdom；vitest 全局 jsdom + setup 注入 jest-dom + coverage include 扩到 components/hooks（排除 pages/chat/journal/agent/ui/layout/theme 与未纳入范围的次要目录）；**新增 10 个组件测试文件共 91 个测试**（DashboardHeader 7：hover/blur tooltip/align 左右定位/fallback；EtfFundFlowCard 8：shareLag+intradaySafe 警告/Live/已收盘/stale/Data Lag/空态；MorningBriefCard 11：pending/无 brief/分组计数/未知类别丢弃/midday/badge 阈值/AI 摘要三态/按钮；IndustryFundFlowCard 6：矩阵+dedupe+collapsed/5D inflow 表/参考 refId/复制状态色；MarketSentimentCard 11：gate+HkGate/风险档/panic/ETF confirm-contradict/恐慌告警/indexSignals featured+quoteError/近5日/按钮 disabled+参考/空态；DecisionJournalCard 8：mock 3 个 react-query hooks（queries/watchlist + queries/execution-journal）无 jsdom 依赖的 options 捕获模式；WatchlistToolbar 11：按钮禁用矩阵/进度条+日志 slice(-4)/skip+force/copy 色/error；WatchlistImportDebug 8：过滤/排序（null 最后）/Add/In watchlist/空态；FunnelHistoryTable 9：toFunnelRow 全分支/loading/兜底列；WatchlistRow 12：tone 红绿 class/颜色/持仓 vs 非持仓 买卖按钮/position+cost draft 校验提交/参考/移除）；**顺带修**：R2 测试遗留 13 个 ruff 错误（B011×7 assert False→raise、F401×4、UP017）+ 既有 userTrades.test.ts side 字面量 TSC 错误（as const）+ tests 类型修复（GATE as ExecutionGate、quote undefined）；**验收**：FE 708 passed / 1 skipped 全绿 + All files 62.78%（components/dashboard 93.76、watchlist 41+，全局阈值 60% 通过）+ typecheck 干净 + pnpm lint 4 包全绿 + BE 3403 passed / 表零变化 / GATE 93.3%；观察项：WatchlistRow/Table 仍 0%→部分覆盖（Row 12 测已补），radix Switch 交互在 jsdom 未测 |
-| R5 | **job 失败告警**：healthcheck 或新端点消费 sync_job_record 失败记录（近 24h 失败 job → 桌面通知/API 可见） | 有测试锁定 + 手动触发验证 | **[x] 2026-08-08**：新增 `GET /api/health/job-failures?hours=24`（health_routes）：聚合 sync_job_record 近 N 小时（clamp 1~168）success=false 记录，按 job_type 最新失败 + failures24h 计数，`ok=false` 即存在失败——桌面/前端可直接消费；db 层新增 `list_recent_failures(hours)`（iso 时间戳转换）；**测试 8 个**：db mock 4（clamp 上下界/空/iso 转换）+ API 3（无失败 ok=true/按 job 聚合 count+最新记录+失败数/custom hours 透传）+ 复用既有 health 形状测试；**手动验证**：真实插入 1 条失败记录 → 端点返回 ok=false 且含该 job → 清理后 count 回落（剩 4 条为真实历史失败）；**验收**：3410 passed / 2 skipped 全绿 + 表零变化 + GATE 93.3%（sync_job_record 97%、health_routes 89%）+ ruff 全过 |
-| R6 | **契约测试**：queries 层对核心响应加形状断言（golden JSON 或 shared Zod 校验）；至少覆盖 dashboard/watchlist/execution 三链 | 测试全绿 + 捕获 ≥1 真实漂移或确认无漂移 | **[x] 2026-08-08**：新增 `src/lib/queries/contract.test.ts`（8 测）+ 真实 golden fixtures（`__fixtures__/`：dashboard_summary / execution_snapshots / execution_changes，均从真实 BE TestClient + dev DB 抓取）；**三链覆盖**：execution = shared `ExecutionSnapshotListResponseSchema`/`ExecutionChangeListResponseSchema` 直接校验真实 fixture（含 action 枚举——真实数据 WATCH/WATCH_SILENT/HOLD/TRIM 全在枚举内）；dashboard = 自定义 DashboardContractSchema（asOfDate/industryFundFlow/marketSentiment.items+srvIndex+executionGate/macroSnapshot）；watchlist = TrendOkResultSchema（shared）+ 自定义 QuoteSchema；**4 个反向漂移检测**：marketSentiment 字段改名 / quote 缺 price / action 枚举外值 / change 缺 field → 全部 parse 失败（契约确实能捕获漂移）；**结论：确认无漂移**（执行链 action 枚举、dashboard 关键字段、watchlist trend 结构均与 shared Zod 一致）；补装 zod devDep（shared 源码解析需要）；**验收**：FE 716 passed / 1 skipped 全绿 + All files 62.78%（阈值过）+ typecheck 干净 + pnpm lint 4 包全绿 + BE 未改动（R5 基线 3410 passed 保持） |
-| R7 | **ai-service 覆盖率 gate**：vitest thresholds 配置 + 补足至 ≥60% | ai-service coverage 报告 ≥60% 且 CI 稳定 | **[x] 2026-08-08**：vitest.config.ts 已含 coverage thresholds（lines/functions/branches/statements=60，include src/**/*.ts，exclude index.ts + routes/ 模型调用路由 + 测试文件）；**实测 86.19%**（lines 86.19 / branch 75.25 / funcs 85.29）远超 60%；**gate 有效性验证**：临时把 lines 阈值调 99.9 → `npm run coverage` exit 1（拦截生效）→ 恢复 60 → exit 0；**稳定验证**：连续两次 coverage 输出一致（86.19% 无波动）；routes/（13 文件 2152 行、0 测试、纯 Hono 路由+AI 模型调用）维持排除并记观察——补测需模型 mock，收益低；**验收**：coverage 86.19% ≥ 60% + gate 真实拦截 + typecheck 干净 + lint 4 包全绿 |
-
-### 观察清单
-
-| 项 | 状态 |
-|----|------|
-| 执行链 R2 若暴露 fail-open/fail-closed 语义问题 | 入 §17 H5 清单续 |
-| **baseline 验收时机**（2026-08-08 终验教训）：dev server + UI 活跃时 `/dashboard/summary` 每次触发 top_inst 同步、FE registry debounce 触发快照写入——`db_rows_baseline.py check` 会误报。全量验收需在 UI 闲置时执行（或先 save 再立即跑） | 已确认非测试污染（时间戳均在 pytest 窗口外）；写入源：dashboard 加载→sync_top_inst_watchlist；FE useExecutionJournalCapture debounce→capture('registry') |
-| R4 引入 testing-library 是否影响 SSR 组件（'use client' 组件） | 验证后再扩范围 |
-
-### 铁律
-
-1. **P0 未清之前不碰 L4-P1**（券商研究）
-2. 每个 H 项一个会话，不混 scope（OPT-068+ 落地）
-3. 每个修复 = 测试 + 验收证据（勾选本文件）
-4. 全量测试跑完 dev DB 表行数不变 = 测试隔离合格
-
----
 
 ## 19. 策略优化作战计划（2026-08-09 立 · 用户拍板「推高胜率 · 不过拟合 · 超所有指数 ≥10%」）
 
 > 背景：一年回测（2025-08-01~2026-08-07）基准 = 科创50 +67%/年（最强），目标线 = +77%/年；
-> 当前信号系统上限 ≈ +31%/年（趋势 70/60/-10 · 满仓 10%×20 · 夏普 4.0）。差距是结构性的：
-> 指数 = 权重满仓吃 beta，策略 = 纪律性空仓 + 仓位摊薄。补齐 alpha 靠**信号增强**，不是调参。
-> 本计划唯一红线：**任何改动必须过拟合可控**——参数要有业务依据、要有样本外验证。
+> 差距是结构性的（指数=权重满仓吃 beta，策略=纪律性空仓+仓位摊薄）。**唯一红线：任何改动必须
+> 过拟合可控**（参数有业务依据 + 样本外验证）。**参数真值 → [`modules/strategy-params.md`](./modules/strategy-params.md)；
+> 实验结论 → [`modules/backtest-strategy.md`](./modules/backtest-strategy.md)；基线 → `data/backtest_reports/walk_forward_baseline.json`。**
 
 ### 目标（可量化 · 验收口径）
 
@@ -652,456 +1099,138 @@
 | maxDD | 3.5-16% | ≤ 15% | 5% 仓位折算口径 |
 | 样本量 | 75-117 笔/年 | **≥ 150 笔/年** | 低于 100 笔的方案不采信 |
 
-### 手段清单（分层 · 全部做）
+### 手段清单（状态一览 · 细节见 strategy-params/backtest-strategy）
 
-**A. 信号层（alpha 主杠杆 · 优先级最高）**
+| 手段 | 状态 | 一句话结论 |
+|------|------|-----------|
+| A1 RS 过滤 | ✅ 定案 0.5 | 前 50%；0.7/0.8 过拟合（验证窗劣化） |
+| A2 趋势评分 | ❌ 弃用 | 绝对量因子过拟合（训练 +12.4/验证 -15.9）→ 负面清单 |
+| A3 主线强化 | ✅ valid 量化 | gates 对照：flow+mainline 在 valid +32.6pt/回撤减半/胜率+13pt；严格模式定案等回拉后补 OOS2 |
+| A4 专注池 | ✅ 固化 | **排除创业板（exclude_boards=300）**：三窗 0 劣化（OOS2 +17.4pt）；科创不可砍 |
+| B1 仓位自适应 | ✅ 定案 scale=1.0 | Diverging 满仓=最大单项贡献；Weak 空仓 |
+| B2 双模式方案库 | 🟡 暂缓（用户） | 趋势 vs 短线并存，regime 切换 |
+| B3 滑点 | ✅ 定案 0.05 | 0.1% 断崖 -31pt；分档滑点留给季度复核 |
+| C1 walk-forward 工具 | ✅ 交付 | `scripts/run_walk_forward.py`（三窗 + 基线 + 劣化拒收） |
+| C2 稳健性检查 | ✅ 完成 | 平台期判定框架（见 strategy-params §4 最佳值判定） |
+| C3 方案档案 | ✅ 完成 | strategy-params §4 版本历史 + backtest-strategy 负面清单 |
+| C4 paper 对照 | ⏳ 等数据 | ≥20 笔平仓后开（含 user_trades 真实样本） |
+| D1 强度分数止损选择器 | ❌ 关闭（2026-08-13 实验） | 分箱扫描全拒收（OOS2 全劣化）→ strength 分数无增量，离散 regime 更优 |
 
-- [x] **A1 RS 相对强度排名过滤**：全池按 20 日相对收益（vs 沪深300）排名，只买前 10-20%
-      强票（对标旭创 337% 这类票）。数据：daily 表可算，回填 universe 内计算。
-      **done 2026-08-09（OPT-072）**：定案 **RS 前 50%**（全年 31.3→34.8%、胜率 39.4→41.4%）；
-      walk-forward 证明 0.7/0.8 过拟合（验证窗劣化）、0.5 双窗稳健
-- [ ] **A2 趋势评分校准**：score 是"买点评分"（低位刚启动加分）→ 涨了 3 倍的高位强票低分。
-      引入"趋势质量"维度（RS 排名 + 均线多头排列 + 距 52W 高距离），与 score 组成双信号
-- [ ] **A3 主线板块强化**：mainline 白名单已有（5D Top3 ∪ 动量突破）——验证其对胜率贡献
-      并考虑"只做主线"的严格模式（非主线票即使高分也不买）
-- [ ] **A4 专注池实验**：科创/创业板 beta 暴露——牛市 regime 下是否应提高成长板块暴露
-      （指标：池内 688/300 票占比 vs 基准收益贡献）
+**执行顺序**：A1 → B1 → C1（基建）→ A2/A3/A4/B3（信号与组合封闭）→ C4（随数据滚动）。
 
-**B. 执行层**
+### §19.1 贴合回测审计（2026-08-09 · 全部闭环 ✅）
 
-- [x] **B1 仓位自适应**：regime=Strong 时 10%×20（满仓）；Diverging 降半仓；Weak 空仓。
-      当前固定 5%×10 在牛市吃大亏（11.5% vs 31.3%）。
-      **done 2026-08-09**：Diverging 单调实验定案 **scale=1.0**（Strong/Diverging 都开仓、Weak 空仓）——
-      训练窗 67→91%（超额 +15.5% 达标）、验证窗 5.5→27.1%，单调性=非过拟合
-- [ ] **B2 双模式方案库**：趋势模式（70/60/移动-10）与短线模式（85/5/固定-5）并存，
-      由 regime 切换（Strong→趋势长持，Diverging→短线快打）
-- [ ] **B3 滑点/冲击成本模型**：加 0.05-0.1% 单边滑点假设，防止回测高估（尤其 20% 涨跌幅的科创票）
+> 目标：① 回测严格证明的错误操作必须提醒 ② 贴合差距逐个修 ③ 操作只按回测口径。
+> E1-E5（paper 三常量拍板改 + 恐慌冷却 + 隐藏阈值复核）与 G1-G6（S-3 区块绕过 BUY 门槛、
+> Diverging banner、低 RS 红标、paper_s3 同码闸门、TrailStop 展示、5% 保守仓位）全部完成——
+> 细节见 [`archive/2026-08-08-l4-gate-audit.md`] 与 `modules/strategy-params.md` §1 备注。
 
-**C. 评估层（防过拟合骨架 · 每次改动必跑）**
+### §19.2 市场强度连续分数 → 止损参数（D1 · 2026-08-13 提案 · 用户拍板待定）
 
-- [ ] **C1 walk-forward 工具**：固定切分训练/验证窗（如 2025-08~2026-02 调参 →
-      2026-03~2026-08 验证），任何参数改动必须两窗都达标才接受
-- [ ] **C2 参数稳健性检查**：只接受网格"平坦区"参数（邻域 ±1 步结果不劣化 >20%）
-- [ ] **C3 方案档案**：每个方案记录 训练窗/验证窗/交易数/邻域稳健性/业务依据——防止
-      只留好看数字的幸存者
-- [ ] **C4 与 paper 实绩对照**：回测结论 vs paper 真实表现逐条核对（paper 刚上线，
-      先积累，≥20 笔平仓后开对照）
+> **想法（用户）**：动态构建市场强弱数字（0-100/0-1），用它回测验证"已知函数套进去"是否有效
+> （本质像反向传播——用分数调止损参数）。
 
-### 执行顺序（一次一个 · 每步 = 测试 + 验收证据）
+**关键事实：数字已存在**——`regime_strength_score`（market_regime.py:1034）返回 0-100
+连续强度分（成分 = 绿灯占比 + 20 日动量分 + 结构投票分），CN/HK 共用标尺；体检卡头部
+today 已显示（如 strength 26.4）。**离散 regime（Strong/Diverging/Weak）就是它的粗离散化**
+（全绿=Strong）→ 分数是 regime 的超集，粒度更细。`as_of_date` 参数支持**历史每日回放**
+→ 回测窗口 2021-2026 可全量重算，数据可行性成立。
 
-1. A1 RS 过滤（最大杠杆）→ 验证对胜率/超额贡献
-2. B1 仓位自适应 → 验证利用率
-3. C1 walk-forward 工具（框架基建，先立后调）
-4. A2 趋势评分 → A3 主线严格模式 → B2 双模式 → B3 滑点
-5. C4 paper 对照（随 paper 数据积累滚动）
+**实验完成（2026-08-13 · 全部拒收 → D1 关闭）**：strength ≥ X 用 ATR 线（X=40/50/60/70，三窗）：
 
-### §19.1 贴合回测审计（2026-08-09 · 真实系统 vs S-3 全量过一遍）
+| X | OOS2 | train | valid | 判定 |
+|---|------|-------|-------|------|
+| 40 | +113.9 (-9.4) | +94.1 (+20.3) | +77.3 (-11.8) | ✗ |
+| 50 | +111.8 (-11.5) | +92.1 (+18.3) | +77.7 (-11.4) | ✗ |
+| 60 | +109.6 (-13.7) | +93.8 (+20.0) | +88.4 (-0.7) | ✗ OOS2 |
+| 70 | +114.2 (-9.1) | +78.8 (+5.0) | +89.6 (+0.5) | ✗ OOS2 |
 
-> 目标：① 回测严格证明的错误操作必须提醒+理由 ② 贴合差距逐个修 ③ 操作只按回测口径。
+**结论**：train 全线大胜（宽松档让更多日子用 ATR）；但 **OOS2 全面劣化 -9~-14pt**——
+2024-25 弱市年里"strength 分数高但未全绿"的脆弱强势日，ATR 止损依然亏。
+**离散 regime（全绿=Strong）比连续分数更优**——它天然过滤了这种脆弱强势。
+连续 strength 分数作为止损选择器**无增量**，维持 regime 规则（OPT-105 固化）。
+引擎 `atr_stop_strength_min` 保留为实验开关（默认 0 = 关闭），不新增连续拟合代码。
 
-#### A. 回测严格证明的「错误操作」——必须提醒/修复（按危害排序）
-
-| # | 错误操作 | 回测证据 | 现状 | 处置 |
-|---|---------|---------|------|------|
-| E1 | **paper 止盈 +10% 平仓** | target 10→50→100 单调提升（双窗），100 才≈不止盈；10 砍掉主升段 | ✅ `TARGET_PNL_PCT=100`（2026-08-09 拍板改） | ✅ 完成 |
-| E2 | **paper score_floor=30 平仓** | floor 30→0 双窗提升（训练 132→154）；趋势中评分回落≠趋势结束 | ✅ `SCORE_FLOOR=0`（2026-08-09 拍板改） | ✅ 完成 |
-| E3 | **paper max_hold=5 天** | hold 5 vs 60：年化 1.6% vs 100%+（早期网格即证） | ✅ `MAX_HOLD_DAYS=60`（2026-08-09 拍板改） | ✅ 完成 |
-| E4 | **恐慌次日即恢复开仓** | 冷却 3 天验证窗 +7.8pt（96.6→104.4） | ✅ `GET /market/cn/sentiment/panic-cooldown`（按交易日历，与回测同口径）+ Copy 区块冷却提示、冷却期不出候选 | ✅ 完成 |
-| E5 | **UI 隐藏 65-69 分票** | S-3 用 score≥65，65-69 是有效买入区间 | `isHighScore` 阈值 70（用户拍板保持） | ✅ 复核：`buildS3Candidates` 独立于显示过滤（score≥65 直接入选），S-3 区块已覆盖 |
-
-#### B. 贴合差距（提醒 + 改进）
-
-| # | 差距 | 回测口径 | 现状 | 处置 |
-|---|------|---------|------|------|
-| G1 | BUY 门槛 80 vs 65 | 65 上车 | `BUY_SCORE_MIN=80`（用户拍板保持） | ✅ 已绕过：Copy S-3 区块直接给候选；手动按区块操作 |
-| G2 | Diverging 不提示可开仓 | Strong+Diverging 都开 | banner 已显示"非 Weak 可开仓"（2026-08-09） | ✅ 已做；确认文案含 Diverging |
-| G3 | 低 RS 高分票无警告 | RS<50% 不该买 | ✅ 低 RS 徽标改红底"前X% 不买"+title"回测不建议"（2026-08-09） | ✅ 完成 |
-| G4 | paper intake 用旧规则跑 | S-3 信号 | ✅ 新 `service/paper_s3.py`：`run_intake_s3` 复用回测引擎同码函数（`_load_regime_by_day`/`_load_flow_mainline_data`/`_load_rs_ranks`），score≥65·RS≥50%·regime≠Weak·主线·恐慌冷却(as-of)，5%/笔，source='S3'（SOURCES 闭枚举扩展），`POST /v1/paper/s3-intake` 手动触发；冒烟：08-07 Weak→0（正确）、04-22→20 候选 | ✅ 完成（cron 已挂：工作日 17:42 Asia/Shanghai `paper_s3_intake`） |
-| G5 | 移动止损未进真实系统 | -8% 峰值回撤 | 真实=hard stop+ratchet | 🟢 TrailStop 列已有展示；执行靠手动 |
-| G6 | 仓位 5% vs 回测 10% | 10%×20 | suggestFireSizePct=5% | 🟢 5% 更安全（回测 5% 口径 25-30% 仍可），保留并注明 |
-
-#### C. 操作纪律（排除错误操作 · 手动执行时对照）
+#### C. 操作纪律（手动执行时对照）
 
 1. **Copy 的 S-3 区块 = 当日唯一操作依据**（选股+仓位已按回测）
 2. 买入前自查：regime 非 Weak（banner）✓ → score≥65 ✓ → RS 前50%（绿色徽标）✓ → 主线 ✓ → 非恐慌冷却期
 3. **卖出只按**：移动止损 -8% / 固定 -5% / 60 天——**禁止**因"涨了 10%"或"评分回落"卖出（回测证明是错误）
 4. 恐慌冷却期（极端谨慎日 +3 天）不买新票
-5. 每笔 5-10%，同时 ≤10 笔；不加仓追涨
+5. 每笔 5%（paper S-3 口径），同时 ≤20 笔（mp20 定案）；加仓每票至多 1 次（+2.5% 触发，半仓）
+   （2026-08-09 复核：原「≤10笔」为 S-3 定案前旧口径，已统一为 20）
 
-#### 执行顺序（一次一项 · 每项 = 改动 + 测试 + 证据）
+### §19.2 回测极致化（2026-08-09 · 参数空间已封闭 · 不再做参数微调）
 
-1. E1/E2/E3：paper 平仓三常量审计（先只出提醒，改常量需用户拍板）→ ✅ 2026-08-09 用户拍板全改：MAX_HOLD_DAYS=60 / TARGET_PNL_PCT=100 / SCORE_FLOOR=0 + `test_s3_close_thresholds_pinned` 守卫测试
-2. G3：低 RS 高分票行内警告 → ✅ 2026-08-09：徽标低 RS 红底"前X% 不买"+title"回测不建议"（WatchlistRow）
-3. E4：Copy 区块加恐慌冷却提示 → ✅ 2026-08-09：`GET /market/cn/sentiment/panic-cooldown`（交易日历口径=回测引擎）+ execution-markdown 冷却提示 + 冷却期 S-3 候选置空 + 两导出接入
-4. E5：隐藏阈值 70→65 复核 → ✅ 2026-08-09：复核结论=不改显示阈值（用户拍板 70），`buildS3Candidates` 独立于显示过滤已覆盖 65-69 分票
-4.5. BacktestPage 默认参数切 S-3 完整定案 → ✅ 2026-08-09：score65/hold60/stop-5/trailing-8/10%×20/rs0.5/diverging1.0/target100/floor0/冷却3/滑点0.05；表单补齐 targetPnlPct/scoreFloor/panicCooldownDays/slippagePct 4 个输入框（后端 API 已支持），§19.1 贴合审计全部闭环
-5. G4：paper S-3 模式 → ✅ 2026-08-09：`service/paper_s3.py`（复用回测引擎同码闸门）+ `SOURCE_S3` + `POST /v1/paper/s3-intake`；修复 as-of 口径（sentiment/panic 按 trade_date 回放）；单元测试 9 个 + 冒烟验证；**cron 已挂（用户拍板）**：`paper_s3_intake` 工作日 17:42 Asia/Shanghai（普通 intake 17:40 后、update 17:45 前），幂等
+| 步骤 | 结果 |
+|------|------|
+| 1 第二样本外年（2024-08~2025-08 弱市） | ✅ **通过**：+52.9%/胜率49.1%/超额 vs 科创50 +10.3% → S-3 双年验证策略 |
+| 2 A2 趋势评分 | ❌ 弃用（见手段清单） |
+| 3 执行增强 | 金字塔 ✅ 固化（trigger 2.5%/0.5x/1次 · 阈值单调 +1%>+30%）；ATR ❌ 弃用 |
+| 4 max_positions | 定案 **20**（mp10 收益低 40%；mp30 回撤 16.8% 劣化） |
+| 5 swap 换仓 | 机制保留**默认关**（SWAP_ENABLED=False；正确基线下增量 +0~3pt 双窗不一致） |
+| 6 参数灵敏度盘点 | 最佳值判定框架（平台期 / 双窗一致 / 取舍三分类）→ strategy-params §4 |
+| 8 机制级实验 | 行业 cap ❌、市值分层 ❌（风格轮动因子）、回撤熔断 ❌ → **组合层探索封闭** |
+| 9 2023 第三年验证 | ❌ 不可行（幸存者偏差 + 闸门数据缺失）→ 发布级 = **双年验证 + paper ≥20 笔实绩** |
+| 13 决策 Agent 回测感知 | ✅ portfolio-health（S-3 退出体检）+ S3_RULES_KNOWLEDGE + 三类问题 tool 覆盖 |
+| 7 季度参数复核 | ✅ 例行：每 3 个月三窗复核一轮，记 strategy-params 复核列；触发信号见该文档 §3 |
 
-### §19.2 回测极致化计划（2026-08-09 立 · 用户「做到极致 · 不过拟合」）
+**✅ 组合重测定案（2026-08-09 晚 · 含 trailing -8 正确基线 · 10% 仓）**：
+mp20 = +155.1%/DD10.1/183笔（一年）；paper 5%×20 纪律口径 ≈ +77.5%/DD~5%。
+**S-3 最终参数组（固化）**：score 65 · hold 60 · target 100 · floor 0 · trailing -8 · stop -5 ·
+RS 0.5 · diverging 1.0 · 冷却 3 · 滑点 0.05 · mp 20（回测 10% / paper 5%）· exclude_boards 300 · swap 关。
+**基线（2026-08-09 晚重固化）**：OOS2 +124.3/DD18.7 · train +151.1/DD9.7 · valid +77.2/DD5.0（含金字塔+排除创业板）。
 
-> 原则：极致 = 经得起独立年份检验 + 信号层 alpha，**不是**参数数字更大。
-> 参数空间已封闭（score/hold/trail/target/floor/RS/Diverging/冷却/滑点全部扫过，
-> S-3 定案）——以下不再做任何参数微调。
+#### mainline/flow 历史回拉 + S-3 定案复核（⏸ 数据源受阻 · 用户拍板暂停）
 
-#### 步骤 1：第二个样本外年份验证（最高优先 · 纯验证不调参）
+- **目标**：回拉 OOS2/train 的行业资金流历史（现仅 2026-02-06 起）→ 三窗完整复核 + A3 严格主线模式定案
+- **valid 窗 A3 量化已先行（2026-08-09）**：gates none/regime/full 三档对照 —— regime 闸门=最大单项
+  （三窗 +26~48pt/回撤砍半）；flow+mainline=第二正贡献（valid +32.6pt）→ 结果入 strategy-params 复核列
+- **风控备忘（三层排查 · 用户协助实测）**：① 指纹 cookie（qgqp_b_id+nid18 最小集）② TLS 栈
+  （macOS curl 通 / Python OpenSSL 断 → subprocess curl）③ IP/频率黑名单（失败重试风暴=拉黑诱因，
+  换未黑节点可突破一次）+ 验证码层（当前卡点）；`lmt=0` 只返回最近 120 条 → 历史段需分页
+- **已入库**：37423 行（312 行业 × 120 天，2026-02-06~08-07）→ **valid 窗闸门数据完整**（重测 +3.2pt 改善）
+- **已生效**：ClashX 规则 eastmoney→PROXY 置顶；`retry_backfill_until_done.py`（探活+低频）；
+  代理层已全面支持（em_push2_http / eastmoney_industry 加 EASTMONEY_PROXY+COOKIE，2026-08-09）
+- **恢复路径**：① 换未黑 ClashX 节点 → ② `PYTHONPATH=src python3 scripts/backfill_industry_flow_history.py --since 2024-07-01 --rounds 2 --workers 1 --sleep-between 15` → ③ 或抄官方前端历史接口参数（替代 lmt=0 上限）→ 回拉后：三窗复核（对比基线）+ A3 严格模式定案
+- cookie 刷新指引：Chrome 打开东财页 → F12 → Application → Cookies → data.eastmoney.com → 复制到 .env `EASTMONEY_COOKIE=`
 
-- 回填 score 至 **2024-08-01**（`backfill_watchlist_scores.py --start 2024-08-01`，
-  universe=TV 快照全集 826 票 ≈ 1 分钟；fund flow/sentiment 数据缺失段自动降级）
-- S-3 固定参数跑 **2024-08-01~2025-08-07**（第二独立年份）
-- **通过标准**（预设，防止事后改）：
-  - 年化 > 0 且 胜率 ≥ 35%
-  - 超额 vs 最强基准 ≥ 0（不要求 +10%，2024 年行情未可知）
-  - 交易数 ≥ 100
-- 不通过 → S-3 降级为"仅 2025 有效"，回到信号层找原因
-- 通过 → S-3 升级为**双年验证策略**（进入发布候选）
+### §19.3 Alpha 前向数据收集（2026-08-13 用户拍板 · 唯一新变数 · 为回测积累样本）
 
-#### 步骤 1 ✅ 完成（2026-08-09）——S-3 第二个样本外年验证【通过】
+> **背景**：alpha（催化雷达）当前只做入场辅助 + 信息层，**不参与退出**（S-3 退出
+> 只认价格/时间线）。用户提出"alpha 做退出"的设想——原理（催化兑现/证伪→行情结束→
+> 退出）合理但**未验证**。历史回测不可行（alpha 是 2026-08 才上线的数据源，2021-2026.07
+> 无信号），用户拍板：**从现在开始前向收集，收集一段时间后用于回测**——这是
+> S-3 参数空间封闭后"为数不多的变数"，长期跟踪。
 
-- 回填 score 至 2024-08-01（`--start 2024-08-01 --end 2025-08-07`，200,721 行 / 781 票 / 98s）
-- S-3 固定参数跑 2024-08-01~2025-08-07（弱市年：regime Weak 180/258 天 = 73%，
-  regime gate 挡掉 29,754 次）
-- **结果：年化 +52.9% · 胜率 49.1%（80/163）· 夏普 4.57 · 回撤 18.0% ·
-  超额 vs 科创50（+42.5%）+10.3%**
-- 预设标准全过：年化>0 ✅ 胜率≥35% ✅ 交易≥100（163）✅ 超额≥0（+10.3）✅
-- **S-3 升级为双年验证策略**（2024-25 弱市 +52.9% / 2025-26 强市 +121.7%，
-  两个独立年份均正超额；下一轮再验证一次（2023-08~2024-08）才到"发布级"）
+**已有资产（自动积累中）**：
+- `alpha_radar_trends`：每日事件流（grade/confidence/riskStatus/createdAt 天然时间序列）✓
+- `paper_trades.signal_snapshot`（alembic 0029）：S-3 paper **入场时点**的 α 事件快照 ✓
+- `scripts/alpha_guidance_report.py`（OPT-109）：user_trades × α 事件对照统计（当前 4 笔，方向性）
 
-#### 步骤 2：A2 趋势质量评分（信号层 alpha · 唯一提升空间）
+**已落地的收集项（OPT-110 · 2026-08-13）**：
+1. ✅ **user_trades 入场+退出快照**：`user_trades.alpha_snapshot` JSONB（alembic 0032）——
+   POST /trades 每笔 BUY/ADD/SELL 自动记录 **as-of** α 状态（无前视：仅事件时间
+   ∈ [trade_date-14d, trade_date] 计入；`fetch_trends_as_of` + `alpha_snapshot_for`）；
+   best-effort（α 层故障不阻断交易记录）
+2. ✅ **退出时点快照**：SELL leg 同样落快照——"α 恶化时退出 vs 死扛"反事实的数据源
+3. ⏸ **每日持仓 × α 活跃度**（可选）：trends 表在保留期内可回推（createdAt 时间序列）；
+   若未来 ops prune 影响，再加每日落库
 
-- 动机：score 是买点评分（低位刚启动加分），涨了 3 倍的高位强票低分——
-  中际旭创 337% 但 score≥85 仅 1 天。RS 过滤只排除了最弱一半，没有"选中最强"
-- 设计（趋势质量 = 三个可解释因子）：
-  1. **RS 排名百分位**（已有数据）
-  2. **均线多头排列**（MA5>MA20>MA60，daily 可算）
-  3. **距 52W 新高距离**（越近越强，-15% 内加分）
-  - 组合成 `trendScore 0-100`，与 score 双信号：`score≥65 AND trendScore≥T`
-- 流程：训练窗定 T（业务截断）→ 验证窗一次性确认 → 第二年份复核 → 记录归档
-- 反过拟合：trendScore 每个因子有业务故事；T 取自然截断（如 60=及格线）
+**使用时机（6-12 个月后 · 样本 ≥20-50 笔时）**：
+- 入场：有 α 背书 vs 无 α 的 PnL/胜率对照（初版已跑，OPT-109）
+- 兑现：α 事件后 X 天内收益分布（催化兑现规律）
+- 退出：α 转弱时退出 vs 死扛 的反事实（**验证通过才允许 alpha 进退出**）
+- 验证结论：支持 → 按 S-3 流程（三窗/样本外）评估入参；不支持 → 保持现状，成本仅几张快照
 
-#### 步骤 2 ✅ 已执行（2026-08-09）——A2 趋势评分【验证失败 · 弃用】
+**纪律**：收集只加快照不改信号；alpha 退出在验证前不进入任何退出逻辑（OPT-097 铁律不变）。
 
-- 实现：trendScore 0-100 = RS 百分位 40pt + 均线多头(MA5>20>60) 30pt + 距 52W 新高 30pt；
-  `trend_score_min` 参数（默认 0 关闭）已进引擎 + API + 测试（42 passed）
-- 训练窗（2025-08~2026-02）：T=0 → 153.1%；T=40 → 154.1%；**T=50 → 165.5%**；
-  T=60 → 159.4%；T=70 → 148.5%（回撤 13.1% 劣化）
-- 验证窗（2026-03~2026-08，只跑一次）：**T=50 → 86.6% vs 基线 102.5%（-15.9pt）**
-- **判定：过拟合，弃用**（训练 +12.4 / 验证 -15.9，方向不稳健；RS 闸门前 50% 已是最稳的相对强度过滤）
-- 教训：绝对量因子（均线排列/距新高）在换月换板块时不稳定；相对因子（RS）才稳健。
-  引擎保留 trend_score_min 能力 + 测试，作为未来信号层探索的钩子，但默认关闭。
-- 结论入档：`docs/modules/backtest-strategy.md` 负面清单
-
-#### 步骤 3：执行增强（低优先 · 步骤 1/2 之后）
-
-- 金字塔加仓（趋势确认后加仓）——回测模型需支持分档仓位
-- 波动率目标仓位（ATR 调整单笔大小）
-- 视步骤 1/2 结果决定是否做
-
-#### 步骤 4：组合层灵敏度——max_positions（2026-08-09 立 · 用户拍板）
-
-> 动机实证：中际旭创（300308）弱市年 32 天过全部门槛、2025-06-10 满分 100
-> 排全市场第 5，但因 60 天锁仓 + 满仓 20 机制**差 1 仓被挡、两年 0 笔交易**。
-> 选股层没问题（模型认识它），组合层（仓位上限 + 到期才腾仓）是唯一空间。
-> 另：引擎曾按 symbol 字母序先到先得（非 score 排序）——已修复为 score 降序
-> （`backtest_engine.py:697` + 回归测试），与 paper S-3 口径一致。
-
-- 已有灵敏度数据（10% 仓口径，score-sorted 修复后）：
-  - OOS2（24-08~25-08）：mp20 → +52.4%/DD35.7% · **mp30 → +83.9%/DD46.6%** · mp40 → +106.8%/DD68.4%
-  - 训练窗（25-08~26-02）：mp20 → +123.2%/DD9.4% · mp30 → +164.9%/DD14.8% · mp40 → +238.6%/DD23.4%
-- **用户拍板下一站：mp=30 + 回撤 46.6% 权衡实验**：mp30 双窗（OOS2 + 训练窗）+ 验证窗
-  （26-03~08）完整 walk-forward 跑一遍，确认"收益↑/回撤↑"置换稳定 → 用户拍板是否接受
-  46.6% 回撤纳入 S-3（接受则 paper `S3_MAX_POSITIONS` 同步 20→30）
-- 纪律：mp 是组合层参数，每档必须双窗验证 + 回撤上限用户拍板（不为数字更好看）
-
-#### 步骤 5：换仓/替换机制（2026-08-09 立 · 用户提问 · 已设计实现 ✅）
-
-- 用户问题：满仓时为什么不替换？"A 票未来十天比 B 票表现好"该不该换？
-- **关键澄清（已答复）**："未来十天表现好"是前视信息，任何机制不可用；
-  可用的是**可得指标**（score/RS 相对强弱）——A2 教训：相对因子稳健、绝对量因子过拟合
-- **定案机制：RS 相对强弱替换（RS rotation）**——已实现（`backtest_engine.py`：
-  `swap_weak_rs_below`/`swap_strong_rs_at_least`/`swap_min_hold_days`/`swap_max_per_day`，
-  默认全关）+ 6 个单测（48 passed）
-  - 业务故事：持仓票 RS 跌入后 30%（<0.30）且持有 ≥10 天 = 确认走弱；
-    候选 RS 前 20%（≥0.80）+ 全部门禁 = 明显更强；每天至多换 2 对，最弱先换
-  - 只用 RS（相对强弱）做替换信号——A2 证明的稳健因子；不用 score 避免重演"杀趋势"
-  - 卖出/买入均按当日收盘价，滑点 + 往返成本照收，close_reason="swapped"
-- **双窗验证结果（10% 仓 × mp20 口径）**：
-  - 训练窗（25-08~26-02）：基线 +123.2%/DD9.4%/夏普6.07 → **swap +144.7%/DD6.8%/夏普6.81**
-  - OOS2（24-08~25-08）：基线 +52.4%/DD35.7% → **swap +68.0%/DD39.7%**（弱市年 34 次换仓）
-  - 验证窗（26-03~08）：**+54.3% 与基线完全一致**（swap 0 触发，无劣化）
-  - 结论：**收益 +15~21pt、夏普↑、回撤持平/改善**——组合质量提升，非加杠杆式空间；
-    样本换仓都是"小亏卖弱 + 换强"（-4%/-3.5% 卖出示例）✅ walk-forward 通过
-- **⚠️ 口径修正（2026-08-09 晚）**：灵敏度比对发现此前 swap 验证基线的**口径错误**——
-  基线漏了 `trailing_stop_pct=-8`（S-3 定案参数）。正确基线（含 trailing -8）：
-  train +114.2%/DD8.6%/夏普6.51 · OOS2 +80.5%/DD16.1%/夏普3.64 · valid +51.8%/DD4.5%/夏普8.62
-  （trailing 是回撤砍半+收益提升的核心，之前所有无 trailing 数字作废）。
-  含 trailing 后 swap(0.3/0.8/10/2) 增量缩水：train 持平(+0.1)、OOS2 +3.3pt——
-  trailing 与 swap 的"淘汰走弱票"功能重叠。swap 邻域(0.2/0.7/5/1) OOS2 +10.0 但 train 持平，
-  双窗不一致 → **swap 是否保留待用户复审**（paper 已部署，倾向回滚或观察）
-- **✅ 已拍板同步（2026-08-09）**：paper S-3 intake 已加 swap 闸门（`paper_s3.py`：
-  常量 SWAP_WEAK_RS_BELOW=0.30/SWAP_STRONG_RS_AT_LEAST=0.80/SWAP_MIN_HOLD_DAYS=10/
-  SWAP_MAX_PER_DAY=2，`close_reason="swapped"` 进 paper CLOSE_REASONS 枚举），
-  换出弱持仓 + 换入强候选先于常规插入执行（best-effort，失败不阻塞 intake）；
-  5 个新单测（test_paper_s3.py 共 14 passed）+ API 冒烟 OK——下周一 17:42 cron 起生效
-- 备注：300308 两年依然 0 笔（其达标日 rank 普遍 60+，RS 也常年在 0.8 上下波动）——
-  机制价值在整体组合质量，不押单票
-
-#### 步骤 6：参数灵敏度盘点与最佳值判定（2026-08-09 立 · 用户「统计参数→比对回测表现」）
-
-> 口径修正：灵敏度比对发现此前所有双窗验证的基线漏了 `trailing_stop_pct=-8`
-> （S-3 定案参数）。**正确基线（含 trailing）**：train +114.2%/DD8.6%/夏普6.51 ·
-> OOS2 +80.5%/DD16.1%/夏普3.64 · valid +51.8%/DD4.5%/夏普8.62。之前的
-> 123.2%/52.4%/54.3% 等数字全部作废重记。
-
-**灵敏度数据（10% 口径 · 双窗 train/OOS2 · 其余=S-3 定案）**：
-
-① **position_pct 单支票比例**：0.05→0.20 收益/回撤等比线性（train 61.6→246.3，
-OOS2 26.2→104.7），**夏普恒定**（6.07/2.42）=纯杠杆无质量变化。
-paper 5%×20=100% 名义真实期望：**train +61.6% / 弱市年 +26.2%**
-（回测 121.7% 是 10%×20=200% 名义杠杆口径）
-
-② **max_positions**：10 档夏普最高（9.16/2.78）回撤最低（4.2%/18.9%）但收益低 40%
-（75/25）；20 均衡；30/40 收益换回撤（30: 164.9/83.9 · 40: 238.6/106.8）
-
-③ **trailing_stop**：**-8 双窗一致最优**——OOS2 收益 52.4→80.5、回撤 35.7→16.1 砍半；
-train 114.2/DD8.6/夏普6.51 优于 -5（90.9）与 -12（110.7）；valid DD 13.0→4.5/夏普8.62。
-**-8 = 平台期内的业务截断（8% 回撤=趋势破坏），基本可定为最佳值**
-
-④ **stop_loss**：-5 双窗均衡（train 123/OOS2 52）；-8 训练窗更好（138/夏普7.61/胜率59%）
-但 OOS2 回撤 26.6% 劣化 → 无单一最优，-5 兜底合理
-
-⑤ **diverging_scale**：1.0 确认（0.5 收益减半 62.5/24.4）——Diverging 满仓是最大单项贡献
-
-⑥ **panic_cooldown**：0/3/5 本窗口零差异（无恐慌日）；3 的价值在验证窗（此前已证）
-
-**待用户拍板（3 件）**：
-1. **swap 回滚？** 正确基线下 swap(0.3/0.8/10/2) 增量缩水：train 持平(+0.1)、OOS2 +3.3pt；
-   邻域(0.2/0.7/5/1) OOS2 +10 但 train 0 → 双窗不一致，trailing 已承担淘汰走弱职能。
-   **倾向回滚**（引擎参数保留默认关闭，paper 部署撤销或改观察）
-2. **mp=10 探索？** 双窗夏普 9.16/2.78 vs 20 档 6.07/2.42、回撤 4.2/18.9 vs 9.4/35.7
-   全面更优，仅收益低 40% → 集中度 vs 分散取舍，值得正式双窗验证
-3. **paper 5% vs 回测 10% 口径**：paper 真实期望约回测一半；是否上调（8%×20=160% 名义）拍板
-
-**参数变更史（拍脑袋初值 → 当前 S-3）**：
-score 85→65 · hold 5→60 · target 10→100 · floor 30→0 · trailing 0→**-8**（本轮补上）·
-RS 0→0.5 · diverging 0→1.0 · 冷却 0→3 · 滑点 0→0.05 · mp 10→20（10 档夏普更高，待复审）·
-swap 0→0.3/0.8/10/2（paper 已部署，待复审）· position 回测 10% / paper 5%
-
-**✅ 组合重测定案（2026-08-09 晚 · 正确基线含 trailing -8 · 10% 仓）**：
-| mp | train | OOS2 | 一年(25-08~26-08) |
-|----|-------|------|------|
-| 10 | +64.9%/DD4.5%/夏普7.31 | +30.1%/DD16.3%/夏普3.45 | +90.5%/DD4.5%/夏普7.25 |
-| **20** | **+114.2%/DD8.6%/夏普6.51** | **+80.5%/DD16.1%/夏普3.64** | **+155.1%/DD10.1%/夏普6.31/183笔** |
-| 30 | +171.7%/DD11.3% | +121.9%/DD19.6% | +221.8%/DD16.8% |
-- **mp=20 定案不动**（mp10 收益低 40% 且 OOS2 夏普更低；mp30 回撤 16.8% 劣化）
-- **S-3 最终参数组（固化）**：score 65 · hold 60 · target 100 · floor 0 · **trailing -8** ·
-  stop -5 · RS 0.5 · diverging 1.0 · 冷却 3 · 滑点 0.05 · mp 20（回测 10% / paper 5%）· swap 关
-- **过去一年数字（回撤/收益）**：10% 口径 **+155.1% / DD 10.1%**；
-  paper 5%×20 纪律口径 ≈ **+77.5% / 回撤 ~5%**
-- **swap 决策（用户拍板）**：机制保留、默认关闭（SWAP_ENABLED=False 已入系统，
-  保留灵活性；正确基线下增量 +0~3pt 双窗不一致不采纳）
-
-**最佳值判定框架（防过拟合）**：
-- 平台期参数（邻域不敏感，任意可）：冷却 0/3/5、position（线性无最优）
-- 双窗一致最优：trailing -8、diverging 1.0、score 65、target 100、floor 0、hold 60、RS 0.5
-- 双窗不一致（取舍非最优）：stop_loss -5、mp 20（定案值即平衡点）、swap（默认关）
-
-#### 步骤 8：机制级实验（2026-08-09 · 用户「按顺序做」§19.2 步骤 3）
-
-**金字塔加仓 ✅ 实现+验证 · 待用户拍板固化**：
-- 实现：`pyramid_trigger_pct`/`pyramid_add_scale`/`pyramid_max_adds`（默认关）；
-  主仓盈利 ≥ trigger 当日收盘加半仓，adds 腿随主仓同因同步平仓（独立 BacktestTrade，
-  诚实计入 Σ pnl×position）；3 单测（53 passed）
-- 双窗（正确基线含 trailing -8）：
-  | 配置 | train | OOS2 | valid |
-  |------|-------|------|-------|
-  | 基线 | 114.2/DD8.6/夏普6.51 | 80.5/DD16.1/3.64 | 51.8/DD4.5/8.62 |
-  | **+10%/0.5x/1次** | **137.1/DD9.7/6.44** | **95.1/DD19.6/3.69** | **66.7/DD5.6/8.56** |
-  | +10%/0.5x/2次 | 153.9/DD11.4/6.19 | 103.8/DD21.7/3.76 | 76.8/DD7.3/8.27 |
-- **三窗一致收益 +15~23pt、夏普持平/略升、回撤 +1~5pt 可控 → 通过双窗一致性**
-- **✅ 已固化（2026-08-09 用户拍板 · 触发阈值再深挖）**：**+2.5%**/0.5x/1次——paper `paper_s3.py`：
-  PYRAMID_TRIGGER_PCT=10/PYRAMID_ADD_SCALE=0.5/PYRAMID_MAX_ADDS=1/PYRAMID_ENABLED=True，
-  `_pyramid_adds()` 在 run_intake_s3 最先执行（regime 无关、幂等），加仓腿=独立
-  paper trade（source='S3'、why 'S-3 pyramid-add'、sleeve 2.5%）；4 新单测
-  （test_paper_s3 共 18 passed）+ API 冒烟 OK；trigger 档位补测（用户追问 5% 值不值得挖）：
-  **阈值单调递减** +1%>+2.5%>+5%>+10%>+15%>+20%>+30%（train 158.5/155.5/148.1/137.1/130.4/129.1/122.0，
-  三窗同序）——入场闸门已滤高胜率池，越早加仓越好；**+10% 是早期高估**；
-  定案 2.5%（可解释下限：≈2 日站稳成本线；1% 仅 +3pt 近噪声，0% 无业务意义）；
-  文档同步 strategy-params.md 版本历史 + backtest-strategy.md 6.9
-- **add_scale 深挖（2026-08-09 用户续）**：0.25~1.0 单调但夏普恒定=杠杆旋钮
-  （与 position_pct 同性质）→ 维持 0.5x 不追高；结论：trigger 是质量参数、scale 是
-  风险偏好旋钮——杠杆类参数季度复核无需重扫（省时间）
-
-- **max_adds=2 × trigger 2.5% 补测（2026-08-09）**：train 191.1/OOS2 127.3/valid 94.5
-  但**夏普三窗全降**（6.39/3.59/8.53）且 OOS2 回撤 26.4%——第二腿收益递减+成本叠加，
-  比 add_scale 更劣 → **维持 1 次**；2次+0.75x（OOS2 回撤 32%）同样否决
-- **行业分散 cap 实验（2026-08-09）**：cap 6/4/3 验证窗崩盘（73.9→25.1/13.9/8.9）——
-  S-3 主线白名单=追强主线策略，行业集中是特性非缺陷 → **弃用**
-- **用户想法：市值分层探索（2026-08-09 立 · ✅ 已执行）**：怀疑 S-3 一直在交易大市值票
-  （机构关注度高，alpha 被机构磨平，策略作用不明显）。尝试：在**不影响流动性**的前提下
-  关注**中等市值**票，看收益是否增加。方向：候选池按市值分层（大/中盘）对比双窗表现；
-  前提：流动性约束（成交额/换手下限）保证可交易性；注意 300308 类中盘龙头案例
-  与 A2 教训（绝对量因子易过拟合——市值是截面因子，需业务故事支撑：小盘因子
-  "机构关注度低、alpha 存活时间长"；同时防幸存者偏差与市值风格轮动）
-  **执行结果（2026-08-09）**：
-  - 数据落地：新表 `stock_dailybasic`（total_mv/circ_mv/turnover_rate，Alembic 0024 +
-    ensure_table），回填 2024-08-01~2026-08-07 全市场 489 天/265 万行（tushare daily_basic
-    按日拉取，幂等；21 天无数据）；引擎加 `min_mv`/`max_mv`（亿元，缺失降级放行）+ 单测
-  - **用户直觉部分成立**：universe 中位数市值 199 亿 vs 全市场 39 亿——S-3 候选池确实偏大票；
-    超大盘（>500亿）在弱市年回撤 39.4%（机构抱团补跌），排除后 OOS2 +18.5pt 且回撤 21→15 减半
-  - **但验证窗反向（73.9→64.0，-9.9pt）**：市值是**风格轮动因子**不是稳定 alpha——
-    采纳=赌小盘风格继续 → **不固化为参数**；min_mv/max_mv 保留为引擎灵活性，
-    季度复核若观察到风格信号再评估
-- **组合层探索全景（封闭）**：正贡献=trailing（质量）+金字塔 trigger 2.5%×1 次（质量）；
-  杠杆类=position_pct/add_scale/max_adds/mp（夏普恒定或微降，风险偏好旋钮）；
-  负优化=回撤熔断/ATR/行业 cap/swap（双窗不一致）——**组合层机制探索完毕，封闭**
-
-**ATR 波动率目标仓位 ❌ 弃用（2026-08-09）**：
-- 实现：`atr_size_window`/`atr_size_cap`/`atr_benchmark_pct`（默认关）+ 2 单测
-- 双窗：train 114.2→64.2（-50pt）、OOS2 80.5→47.8（-32.7）、valid 51.8→26.4（-25.4），
-  夏普全降（6.51→6.27/3.64→3.45/8.62→8.46）——收益/回撤等比缩水，无 alpha 创造
-- 判定：S-3 已是 20 只×60 天趋势分散组合，ATR 加权不增加信息；
-  **与 A2 同教训：绝对量因子无增量**（教训入 backtest-strategy.md 负面清单）
-
-#### 步骤 9：2023 年第三年验证可行性排查（2026-08-09 · 结论：**不可行** ❌）
-
-- 数据覆盖核查（2023-08~2024-08 窗口）：
-  | 数据 | 覆盖 | 2023 可用 |
-  |------|------|-----------|
-  | daily K线 | 1998~今 | ✅ |
-  | index_daily（regime 用） | 2023-01~今 | ✅ |
-  | watchlist_score_daily | 2024-08-01~今 | score 可回填重算，但 universe=当前快照 ⚠️ |
-  | 行业资金流 | 2025-12-15~今 | ❌ 缺失→闸门降级 |
-  | 主线白名单 | 2026-02-10~今 | ❌ 缺失→闸门降级 |
-  | sentiment 恐慌 | 2026-01-05~今 | ❌ 缺失→降级 fail-open |
-- **两个不可修复的方法论问题**：
-  1. **幸存者偏差**：universe 只能是当前 TV 快照（826 票）回放——2023 年后来退市/跌出快照
-     的票不会在候选池里，结果系统性偏乐观（用 2026 的眼光看 2023）
-  2. **闸门缺失**：flow/mainline/sentiment 2023 年全缺 → 跑的是"score+regime+RS 简化版"，
-     不是 S-3 完整策略，验证结果不具可比性
-- **判定**：第三年验证不可行（硬做会污染结论）；发布级判定改为：
-  **双年验证（2024-25 +80.5% / 2025-26 +155.1%）+ paper ≥20 笔实绩对照**（C4 原标准）
-- 2023 年数据对"现在系统"没有验证价值——S-3 的 score/闸门模型 2023 年不存在，回测它
-  等于验证一个从未运行过的系统
-
-#### 步骤 13：决策 Agent 回测感知（2026-08-09 ✅ · 用户「让 agent 同步知道回测信息」）
-
-- 问题：决策 Agent（ai-service /decision/）之前只有历史归档 tool，无任何回测知识——
-  用户靠"copy all markdown + prompt"补知识
-- **后端**：`GET /v1/agent/portfolio-health`（v1_business_routes.py +
-  service/portfolio_health.py）——真实持仓（registry positionPct>0）按 S-3 退出规则
-  逐票体检（止损-5%/移动止损-8%/60天上限，常量同 paper 模块）+ 市场状态
-  （regime/sentiment/恐慌冷却/S-3候选数）；实测 4 持仓（腾讯/亿联/恒生ETF/紫金）全 HOLD
-  与手动一致；ETF/HK symbol 解析已处理
-- **ai-service**：decision.ts 注入 `S3_RULES_KNOWLEDGE`（S-3 纪律 system prompt：
-  Weak 只挡开仓不触发卖出、4 条退出规则、弱市年 +80.5% 证据、参数表）+
-  `query_s3_holdings_health` tool（描述强制"问减仓必先调工具"）；138 tests passed
-- 效果：决策 Agent 现在回答"该不该减仓"时自动拉实时体检 + 按回测规则给结论，
-  无需再手工贴 markdown；静态知识（规则/纪律）常驻 system prompt
-- **扩展（同日 · 用户「我可能会问的不只是减仓」）**：tool 覆盖三类问题——卖/持有/买/加仓：
-  - 每持仓新增 `pyramidTriggerLine`（成本+2.5%）+ `pyramidAdded`（是否已加过仓，查 paper
-    trades 的 pyramid-add 标记）
-  - `s3Candidates` 从计数改全明细（symbol/name/score/rs/industry/regime，name 经
-    trendok stock_basic 补齐）——用户问"买什么"时 agent 有具体候选可答
-  - system prompt 补：买=只推候选清单内标的·~5%仓位；加仓=+2.5%未加过才可·每票至多1次；
-    持仓>9票RS最弱先轮出
-  - 新增 build 层测试（test_portfolio_health 6 passed）；修复 trailing 峰值用 high 的
-    口径 bug → close（与回测引擎一致），maxHoldDate=entry+60
-- **修复前端 404（同日 · 用户贴 Next dev 日志发现）**：5 处 fetch 用相对路径
-  （`/watchlist/rs-ranks` ×3、`/market/regime`、`/market/cn/sentiment/panic-cooldown`）
-  打到 Next dev server（无代理）→ 404。全部改为 `${DATA_SYNC_BASE_URL}` 前缀
-  （execution-markdown.ts 补 import；queries/macro.ts 原本已 import 但此调用漏前缀）。
-  后端路由本存在（watchlist_routes.py:51，main.py:112 include）；FE 737 passed、tsc 干净
-- **ai-service 测试补全（同日）**：decision.ts 导出 queryHoldingsHealth/searchArchive，
-  `routes/decision.test.ts` 6 测试（持仓/EXIT/候选/服务不可用/归档命中/无命中）——
-  138 → 144 passed；工具集成有回归保护
-- **系统健康扫描（同日 · 结论全部健康）**：
-  - daily 表最新 08-07（周五收盘）✓；close_sync 每天 17:10 全市场同步（含 ETF，
-    tushare daily 全量）→ 用户 27.87% 仓位的 ETF 数据无滞后
-  - cron 表达式审计：daily_sync_job `0 17 * * 5`=周五 deprecated 全量兜底（设计）；
-    etf_daily_job 每月 1 号=专项兜底；paper/决策 job 工作日触发；均合理
-  - **发现：user_trades 表 0 行**（卖出从未用 TradeActionDialog 记录）→ 期望值看板
-    空转；paper open 空（Weak 期正常）。收益闭环断点在**使用**不在代码：
-    卖出时用 Watchlist 行内按钮记录，期望值/周度复盘才开始积累
-- 后续可选：把回测结论速览（docs/modules/backtest-strategy.md 结论段）进一步压缩进
-  system prompt；或 agent 追问"为什么"时给出窗口级证据
-- 后续可选：把回测结论速览（docs/modules/backtest-strategy.md 结论段）进一步压缩进
-  system prompt；或 agent 追问"为什么"时给出窗口级证据
-
-#### mainline/flow 历史回拉 + S-3 定案复核（2026-08-09 立 · 用户拍板 · **数据源受阻待接口恢复**）
-
-- **背景**：回测 mainline/flow 闸门数据源 = `market_cn_industry_fund_flow_daily`
-  （仅 2025-12-15 起，157 天）——训练窗（25-08~12）与 OOS2（24-08~25-08）闸门
-  fail-open 降级。mainline 指标表（涨停统计）**不是**回测闸门输入（只用 fund_flow 的
-  5D Top3 + 动量突破）。回拉后重跑三窗验证 S-3 定案 + 顺带量化 A3（mainline 贡献）
-- **脚本就绪**：`scripts/backfill_industry_flow_history.py` —— 表内 distinct SW L1 行业
-  （约 30 个）逐行业拉东财 push2his daykline 全量历史（cron 同源接口）→ 幂等 upsert，
-  支持 --since 2024-07-01（覆盖 OOS2）与并发
-- **⛔ 受阻（2026-08-09 深挖结论）**：push2his 分接口风控差异——
-  **`fflow/daykline/get`（资金流历史，回拉脚本走此）稳定 RemoteDisconnected**；
-  `stock/kline/get`（普通 K 线）通；`push2delay` fflow 只回最近 1 条（无历史）；
-  akshare 同源同断；tushare moneyflow_ind_dc/ths 无 token 权限——**当前无可用
-  东财资金流历史源**。对策：`scripts/retry_backfill_until_done.py` 已挂后台
-  （每 10 分钟一轮串行重试 + 失败行业多轮重跑，幂等 upsert，零人工）——接口
-  恢复即自动补全；或用户拿到 tushare 2000 积分后换 moneyflow_ind_dc
-- 候选（未拍板不做）：stock/kline 通→行业指数价格动量近似资金流 Top3（A3 机制
-  改动，改回测口径，需用户拍板）
-- **前端系统自检（同日 · 用户「任何问题报错」）**：全局 `SystemHealthBanner`
-  （AppShell header 下方，任何页面可见）——并行探测：① data-sync-service 在线
-  （/api/health/datasources）② ai-service 在线（/healthz）③ 6 数据源新鲜度
-  （stale 超阈值）④ 48h job 失败（/api/health/job-failures）；异常=红色横幅
-  （服务离线），告警=琥珀（陈旧/失败），点击展开明细 + 手动重检，5 分钟自动轮询，
-  全健康时不渲染；`lib/queries/systemHealth.ts` 汇聚 + 4 测试；Dashboard 旧
-  SyncFailureBanner 并入后删除（死代码清理）；FE 741 passed
-- **顺带修复（同日）**：cron 失败静默告警缺失 → `SyncFailureBanner`（Dashboard 顶部，
-  消费 GET /api/health/job-failures?hours=48，有失败显示红色横幅：job×次数+时间+错误
-  摘要+跳 Scheduler 详情；健康/不可达均不渲染）；3 新测试；FE 740 passed
-- 后续：接口恢复 → 回拉 → 三窗复核（train/OOS2/valid 对比基线 114.2/80.5/51.8）+ A3
-  量化（gates none/regime/full 对照）→ 结论入 strategy-params.md 复核列
-
-#### C1 walk-forward 工具（2026-08-09 ✅ · §19.2 执行顺序第 3 项 · 季度复核基建）
-
-- `scripts/run_walk_forward.py`：三窗固定切分（OOS2 24-08~25-08 / train 25-08~26-02 /
-  valid 26-03~08-07）跑 S-3 定案（S3_CONFIG 常量表，指向 strategy-params.md 真值）+
-  `--param k=v` 任意 BacktestConfig 覆盖 + `--save-baseline` 固化 + >5pt 劣化自动拒收
-- **基线固化**（2026-08-09 · 10%×20 口径含金字塔）：OOS2 +106.9%/DD21.0/夏普3.61/319笔 ·
-  train +147.5%/DD10.0/5.78/215笔 · valid +73.9%/DD5.8/8.59/63笔（valid 与定案档完全一致；
-  train/OOS2 与定案历史差 -3~-8pt=金字塔实现细节差异，以新基线为准）
-- 验证：score70/mp10 → valid +41.0（-33pt 劣化自动拒收，方向与 mp10 定案一致）
-- 用途：季度复核（步骤 7）一条命令出三窗对比；任何未来实验（B2 等）直接套用
-- 文档：strategy-params.md 复核流程引用工具 + 基线记录
-
-#### 可分享/可订阅 URL（2026-08-09 ✅ · 用户拍板 §2 P1）
-
-- **背景**：AppShell 内部 state 切页无 URL——复盘/归档链接点不开、AI 助手无法直达
-- **hash 路由**：`lib/hash-router.ts`（纯函数 parseHash/buildHash/pageHref）——15 页面
-  `#/dashboard|watchlist|news|market|industry-flow|alpha|decision|backtest|scheduler|
-  screener|settings|broker|index` + 深链接 `#/stock/HK%3A00700`（symbol 编码）+
-  `#/journal/write/<id>`（journal 子模式可分享）；AppShell：初始 hash 恢复状态 +
-  hashchange 同步（外部链接/前进后退）+ 状态变化 replaceState 写回（防循环）；6 测试
-- **链接即用**：ReactMarkdown 原生渲染 `#/` 链接 → 决策 Agent 输出/周报 markdown 里
-  `[腾讯](#/stock/HK%3A00700)` 点击直达个股页；`queryHoldingsHealth` 持仓与候选已自动
-  带链接
-- **持仓卡片跳转**：PortfolioHealthCard 持仓行可点击 → 直达个股页（onOpenStock 接入
-  WatchlistPage 既有链）；1 新测试
-- 验收：FE 748 passed（+7）、ai-service 144、tsc/eslint 干净
-- 后续：周报模板/复盘输出主动带链接（随使用数据积累时做）
-
-#### 步骤 7：季度参数复核（例行项 · 2026-08-09 用户拍板 ✅）
-
-- 节奏：每 3 个月一次双窗复核（训练窗滚动 + 验证窗 + OOS2），结果记
-  `docs/modules/strategy-params.md` 版本历史"复核"列
-- 触发（提前复核）：paper 实跑回撤显著偏离回测口径（5%/10%）· 超额转负 ·
-  胜率跌破 35% · 候选池 score 分布漂移 · 量化拥挤度等环境信号
-- 复核 ≠ 调参：复核通过则维持（平台期参数不折腾）；复核发现平台移动才走
-  §3 流程（提参→三窗验证→用户拍板→固化）
-- 明确不做：参数插值细化（mp25/score70/trailing7% 类）——收益曲线在平台期平坦，
-  1% 精度=拟合噪声（反模式：扫参数网格）
-
-#### 明确不做（过拟合温床 · 封闭清单）
+### 明确不做（过拟合温床 · 封闭清单）
 
 - ❌ 继续扫参数网格（收益递减，边际=过拟合）
 - ❌ 按"哪年好看"选年份（样本选择偏差）
 - ❌ 增加无业务故事的规则（每规则必须有回测证据+业务解释）
+- ❌ 参数插值细化（mp25/score70/trailing7% 类）——收益曲线在平台期平坦，1% 精度=拟合噪声
 
 ### 反模式（不可漂移）
 

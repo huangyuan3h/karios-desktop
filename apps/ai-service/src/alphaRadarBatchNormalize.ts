@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { AlphaRadarExtractBatchResponseSchema, AlphaRadarDriverTypeSchema } from './schemas';
-import { stripModelThinking } from './model_thinking';
+import { AlphaRadarExtractBatchResponseSchema, AlphaRadarDriverTypeSchema } from './schemas.js';
+import { stripModelThinking } from './model_thinking.js';
 
 const GRADES = new Set(['S', 'A', 'B', 'C']);
 

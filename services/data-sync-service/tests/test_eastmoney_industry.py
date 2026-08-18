@@ -4,6 +4,8 @@ import json
 import warnings
 from unittest.mock import patch
 
+import pytest
+
 from data_sync_service.service.eastmoney_industry import (  # type: ignore[import-not-found]
     _em2016_to_board_name,
     _symbol_to_ts_code,
@@ -15,6 +17,16 @@ from data_sync_service.service.eastmoney_industry import (  # type: ignore[impor
     sync_eastmoney_industry,
     sync_eastmoney_industry_incremental,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_proxy_env(monkeypatch):
+    """Same as extra file: EASTMONEY_PROXY in the host .env must not switch
+    the urllib calls to the real proxy opener inside urlopen patches."""
+    import data_sync_service.service.eastmoney_industry as ei
+
+    monkeypatch.setattr(ei, "_PROXY", "")
+    monkeypatch.setattr(ei, "_COOKIE", "")
 
 
 def test_ts_code_to_secid() -> None:

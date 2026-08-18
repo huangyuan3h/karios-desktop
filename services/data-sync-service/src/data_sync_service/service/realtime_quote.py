@@ -9,6 +9,8 @@ matches the user's mental model of "the HK closing price".
 
 from __future__ import annotations
 
+import logging
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,14 +23,38 @@ from data_sync_service.config import get_settings
 from data_sync_service.service.em_push2_http import em_get_json
 from data_sync_service.service.sina_http import build_hq_url, parse_hq_lines, sina_get_text
 
+_TUSHARE_TOKEN_LOCK = threading.Lock()
+
+logger = logging.getLogger(__name__)
+
 _SINA_HK_QUOTE_TTL_S = 30.0
 _SINA_HK_QUOTE_BATCH_SIZE = 50
 _SINA_HK_QUOTE_CACHE_LOCK = threading.Lock()
 _SINA_HK_QUOTE_CACHE: dict[str, Any] = {
     "fetched_at": 0.0,
-    "quotes": {},  # ticker (5-digit) -> normalized quote dict
-    "last_error": None,
+    "quotes": {},
 }
+
+# HK indices served by Sina as `hq_str_hkHSI` / `hq_str_hkHSTECH` (bare codes
+# with no exchange suffix). Tushare's realtime_quote crashes on them (it
+# split()s on "." internally) and East Money needs a different market prefix,
+# so they get their own Sina path (2026-08-11).
+_HK_INDEX_CODES: frozenset[str] = frozenset({"HSI", "HSTECH"})
+_HK_INDEX_TTL_S = 30.0
+_HK_INDEX_CACHE_LOCK = threading.Lock()
+_HK_INDEX_CACHE: dict[str, Any] = {
+    "fetched_at": 0.0,
+    "quotes": {},
+}
+
+
+def _clear_sina_hk_quote_cache_impl() -> None:
+    with _SINA_HK_QUOTE_CACHE_LOCK:
+        _SINA_HK_QUOTE_CACHE["fetched_at"] = 0.0
+        _SINA_HK_QUOTE_CACHE["quotes"] = {}
+    with _HK_INDEX_CACHE_LOCK:
+        _HK_INDEX_CACHE["fetched_at"] = 0.0
+        _HK_INDEX_CACHE["quotes"] = {}
 
 
 def _as_str(val: Any) -> str | None:
@@ -109,7 +135,10 @@ def _fetch_em_hk_quote(ts_code: str) -> dict[str, Any] | None:
 
 
 def _split_hk(codes: list[str]) -> tuple[list[str], list[str]]:
-    """Split codes into (hk_codes, other_codes), preserving order, dedup."""
+    """Split codes into (hk_codes, other_codes), preserving order, dedup.
+
+    HK = ``*.HK`` stocks plus the bare HK index codes (HSI / HSTECH).
+    """
     hk: list[str] = []
     other: list[str] = []
     seen_hk: set[str] = set()
@@ -118,7 +147,7 @@ def _split_hk(codes: list[str]) -> tuple[list[str], list[str]]:
         up = c.strip().upper()
         if not up:
             continue
-        if up.endswith(".HK"):
+        if up.endswith(".HK") or up in _HK_INDEX_CODES:
             if up not in seen_hk:
                 seen_hk.add(up)
                 hk.append(up)
@@ -271,19 +300,150 @@ def _fetch_sina_hk_quote(ts_code: str) -> dict[str, Any] | None:
     return _sina_hk_quotes_fresh([ticker]).get(ticker.zfill(5))
 
 
+def _parse_sina_hk_index_payload(code: str, payload: str) -> dict[str, Any] | None:
+    """Parse a single `hq_str_hkHSI="..."` payload into the normalized quote dict.
+
+    HK INDEX layout differs from HK stocks (empirically verified 2026-08-11:
+    HSI payload price 25773.561, pre_close 25937.49, change -163.93 — exact):
+      0  code          1  name
+      2  open          3  pre_close
+      4  high          5  low
+      6  latest price  7  change amount
+      8  change pct    9-10 zeros
+      11 volume        12 amount
+      13-14 zeros      15 52w high   16 52w low
+      17 trade date (YYYY/MM/DD)      18 trade time (HH:MM[:SS])
+    """
+    fields = payload.split(",")
+    if len(fields) < 17:
+        return None
+
+    def _num(idx: int) -> float | None:
+        try:
+            v = float(fields[idx])
+        except (ValueError, IndexError):
+            return None
+        return v if v != 0 else None
+
+    price = _num(6)
+    if price is None:
+        return None
+
+    date_raw = fields[17].strip() if len(fields) > 17 else ""
+    time_raw = fields[18].strip() if len(fields) > 18 else ""
+    trade_time: str | None = None
+    if date_raw and time_raw:
+        date_iso = date_raw.replace("/", "-")
+        if len(time_raw) == 5 and time_raw.count(":") == 1:
+            time_raw = f"{time_raw}:00"
+        trade_time = f"{date_iso} {time_raw}"
+
+    return {
+        "ts_code": code,
+        "price": _as_str(price),
+        "open": _as_str(_num(2)),
+        "high": _as_str(_num(4)),
+        "low": _as_str(_num(5)),
+        "pre_close": _as_str(_num(3)),
+        "change": _as_str(_num(7)),
+        "pct_chg": _as_str(_num(8)),
+        "volume": _as_str(_num(11)),
+        "amount": _as_str(_num(12)),
+        "trade_time": trade_time,
+    }
+
+
+def _sina_hk_index_quotes(codes: list[str]) -> list[dict[str, Any]]:
+    """Realtime quotes for HK indices (HSI / HSTECH) from Sina Finance.
+
+    Tushare crashes on bare index codes and East Money uses a different
+    market prefix for indices — Sina `hq_str_hkHSI` is the matching feed.
+    Cached for ``_HK_INDEX_TTL_S`` like the stock quotes.
+    """
+    requested = sorted({str(c).strip().upper() for c in codes} & set(_HK_INDEX_CODES))
+    if not requested:
+        return []
+    with _HK_INDEX_CACHE_LOCK:
+        cached = _HK_INDEX_CACHE
+        now = time.monotonic()
+        fresh = now - float(cached["fetched_at"]) < _HK_INDEX_TTL_S
+        hits = [cached["quotes"][c] for c in requested if cached["quotes"].get(c) is not None]
+        if fresh and len(hits) == len(requested):
+            return hits
+        missing = [c for c in requested if not fresh or cached["quotes"].get(c) is None]
+
+    fetched: dict[str, dict[str, Any]] = {}
+    try:
+        text = sina_get_text(build_hq_url(missing), timeout=10.0)
+        for ticker, payload in parse_hq_lines(text, allow_index=True):
+            quote = _parse_sina_hk_index_payload(ticker, payload)
+            if quote is not None:
+                fetched[str(quote.get("ts_code"))] = quote
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("sina HK index quotes failed for %s: %s", ",".join(missing), exc)
+
+    out = list(hits)
+    if fetched:
+        with _HK_INDEX_CACHE_LOCK:
+            _HK_INDEX_CACHE["quotes"].update(fetched)
+            _HK_INDEX_CACHE["fetched_at"] = time.monotonic()
+        seen = {str(q.get("ts_code")) for q in out}
+        for c in requested:
+            q = fetched.get(c)
+            if q is not None and c not in seen:
+                out.append(q)
+    return out
+
+
 def clear_sina_hk_quote_cache() -> None:
     """Reset the Sina HK cache (tests only)."""
     with _SINA_HK_QUOTE_CACHE_LOCK:
         _SINA_HK_QUOTE_CACHE["fetched_at"] = 0.0
         _SINA_HK_QUOTE_CACHE["quotes"] = {}
         _SINA_HK_QUOTE_CACHE["last_error"] = None
+    with _HK_INDEX_CACHE_LOCK:
+        _HK_INDEX_CACHE["fetched_at"] = 0.0
+        _HK_INDEX_CACHE["quotes"] = {}
+
+
+def _ensure_tushare_token_file(api_key: str) -> None:
+    """Write ~/.tushare/tk.csv exactly once, atomically.
+
+    tushare's realtime_quote is wrapped by require_permission -> get_token(),
+    which reads that file on EVERY call. Rewriting it in-place per call (old
+    set_token() approach) made concurrent callers hit a half-written/empty
+    file and explode with pandas EmptyDataError. Write via tmp + rename so a
+    reader always sees a complete file; skip entirely once it matches.
+    """
+    fp = os.path.join(os.path.expanduser("~"), ".tushare", "tk.csv")
+    with _TUSHARE_TOKEN_LOCK:
+        if os.path.exists(fp):
+            try:
+                with open(fp, encoding="utf-8") as f:
+                    if api_key in f.read():
+                        return
+            except OSError:
+                pass
+        os.makedirs(os.path.dirname(fp), exist_ok=True)
+        tmp = f"{fp}.{os.getpid()}.tmp"
+        pd.DataFrame([api_key], columns=["token"]).to_csv(tmp, index=False)
+        os.replace(tmp, fp)
 
 
 def _tushare_quotes(codes: list[str], *, api_key: str) -> list[dict[str, Any]]:
     """Call tushare realtime_quote for non-HK codes; returns normalized items list."""
+    # Tushare's realtime_quote proxies to Sina and internally split()s every
+    # code on "." — bare codes (HSI / HSTECH / anything without an exchange
+    # suffix) raise IndexError inside the library. Drop them up front.
+    codes = [c for c in codes if "." in c]
     if not codes:
         return []
-    ts.set_token(api_key)
+    # 2026-08-13: realtime_quote is wrapped by verify_token -> get_token(),
+    # which reads ~/.tushare/tk.csv on EVERY call. Ensure that file once
+    # (atomic tmp+rename, see _ensure_tushare_token_file) instead of calling
+    # set_token() per request — repeated in-place rewrites made concurrent
+    # readers hit empty files and fail every batch.
+    _ensure_tushare_token_file(api_key)
     try:
         if hasattr(ts, "realtime_quote"):
             df = ts.realtime_quote(ts_code=",".join(codes))
@@ -291,6 +451,11 @@ def _tushare_quotes(codes: list[str], *, api_key: str) -> list[dict[str, Any]]:
             pro = ts.pro_api(api_key)
             df = pro.realtime_quote(ts_code=",".join(codes))
     except Exception:
+        # 2026-08-10: observed as a silent black hole — a transient failure here
+        # returned {"ok": true, "items": []}, which frontend "copy" syncs read
+        # as missing realtime quotes and aborted. Log it so the failure is
+        # observable instead of invisible.
+        logger.warning("tushare realtime_quote failed for %s", ",".join(codes)[:120], exc_info=True)
         return []
 
     if not isinstance(df, pd.DataFrame) or df.empty:
@@ -362,10 +527,16 @@ def fetch_realtime_quotes(ts_codes: list[str]) -> dict[str, Any]:
     if other_codes:
         items.extend(_tushare_quotes(other_codes, api_key=settings.tu_share_api_key))
     if hk_codes:
+        # HK indices (HSI / HSTECH) use a different Sina feed/format — handle
+        # them first so the stock path below never sees a bare index code.
+        hk_index_codes = [c for c in hk_codes if c in _HK_INDEX_CODES]
+        if hk_index_codes:
+            items.extend(_sina_hk_index_quotes(hk_index_codes))
+        hk_stock_codes = [c for c in hk_codes if c.endswith(".HK")]
         # Single batched Sina call covers all HK tickers in this request.
-        sina_tickers = [c[:-3] for c in hk_codes]
+        sina_tickers = [c[:-3] for c in hk_stock_codes]
         sina_map = _sina_hk_quotes_fresh(sina_tickers)
-        for code in hk_codes:
+        for code in hk_stock_codes:
             ticker = code[:-3]
             quote = sina_map.get(ticker.zfill(5))
             if quote is not None:

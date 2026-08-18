@@ -8,16 +8,16 @@ import {
   toPublicConfigFromEnv,
   toPublicProfile,
   newProfileId,
-} from '../config';
+} from '../config.js';
 import {
   ConfigProfileCreateSchema,
   ConfigProfileUpdateSchema,
   ConfigSetActiveSchema,
   ConfigTestSchema,
-} from '../schemas';
-import { normalizeOptionalString } from '../utils';
-import { modelFromProfile, pickActiveProfile } from '../model';
-import { stripModelThinking } from '../model_thinking';
+} from '../schemas.js';
+import { normalizeOptionalString } from '../utils.js';
+import { modelFromProfile, pickActiveProfile } from '../model.js';
+import { stripModelThinking } from '../model_thinking.js';
 
 export const configRoutes = new Hono();
 

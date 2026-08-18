@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
 import { generateObject } from 'ai';
 
-import { LeaderDailyRequestSchema, LeaderDailyResponseSchema } from '../schemas';
-import { buildContextMarkdown } from '../utils';
+import { LeaderDailyRequestSchema, LeaderDailyResponseSchema } from '../schemas.js';
+import { buildContextMarkdown } from '../utils.js';
 import {
   getStrategyPrimaryAndFallbackModels,
   AiModel,
   generateObjectCompatOptions,
-} from '../model';
+} from '../model.js';
 
 export const leaderRoutes = new Hono();
 

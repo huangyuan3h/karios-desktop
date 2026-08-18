@@ -51,31 +51,106 @@ S3_CONFIG: dict[str, float | int | str] = {
     "max_positions": 20,
     "rs_rank_min": 0.5,
     "diverging_scale": 1.0,
-    "panic_cooldown_days": 3,
+    "drawdown_circuit_pct": -25.0,
     "slippage_pct": 0.05,
     "pyramid_trigger_pct": 2.5,
     "pyramid_add_scale": 0.5,
     "pyramid_max_adds": 1,
+    "exclude_boards": "300",
+    # OPT-105 (2026-08-13 固化): regime-adaptive stops — Strong sessions use
+    # the entry-locked ATR% x 2.0 line (let winners run), Diverging/Weak fall
+    # back to the fixed -5/-8. Three-window verified (OOS2 +123.3 / train
+    # +73.8 / valid +89.1, all within tolerance of the fixed baseline).
+    "atr_stop_mult": 2.0,
+    "atr_stop_strong_only": True,
+    # TIP-014 (2026-08-14 固化): block new entries on TRUE neutral days and
+    # implicit-weak days (breadth ratio < 0.5 with only normal/caution
+    # risk_mode). Valid window: +10.7pt (89.1→99.8), dd 12.1→2.7, win rate
+    # 60.8→78.2; OOS2/train unchanged (no sentiment data there → UNKNOWN).
+    "neutral_block": True,
+    # TIP-014 (2026-08-14 固化): environment-aware entry style — uptrend days
+    # buy momentum (RS>=0.7), fan days buy pullbacks (5d ret <= -3%),
+    # weak/neutral blocked, unknown days unfiltered. Valid: +4.7pt
+    # (99.8→104.4), dd 1.4%, win rate 81.8%; fan-day avg +12.8→+17.4%.
+    # OOS2/train unchanged (no env labels there → UNKNOWN → no filter).
+    "entry_style": "auto",
+    "entry_style_rs_min": 0.7,
+    "entry_style_dip_min": 3.0,
+    # D2 (2026-08-14 固化): environment-aware max-hold — positions entered
+    # on an UPTREND day force-close after 45 days (主升日买入吃主升段就跑).
+    # Global hold45 was rejected (OOS2 -13.5) but env-aware passes everything:
+    # valid +11.4pt (104.4→115.8), long +11.4pt (279.8→291.2), OOS2/train
+    # unchanged (no env labels → no shorten). hold30 -32.3 / hold50 +0.3
+    # / hold55 持平 → 45 is the peak.
+    "max_hold_env_shorten": 45,
+    # D3 (2026-08-15 固化): environment-aware position sizing — new entries
+    # are scaled by their ENTRY day's env label. v4 passed the three-window
+    # bar: uptrend 1.25x (主升日入场质量最高, 放大下注) / fan 0.75x (电风扇
+    # 减仓控尾) — OOS2 +24.6 / train +19.5 / valid +26.4 (vs base), long
+    # 270.1→333.9 (+64pt), 三窗夏普两升一平. v1 (1.2/0.8) also passed but
+    # weaker; v3 (fan-only) failed valid.
+    "env_position_scale": "uptrend:1.25,fan:0.75",
+    # E2 (2026-08-14 数据回填后修正): panic_cooldown 3 → 2. 回填情绪历史
+    # (2024-08 起) 后 panic 冷却在弱市年频繁触发, 3 天把 OOS2 锁死
+    # (288964 次拦截 → 199 笔)。三窗+长窗同口径对比 (新基线=有情绪数据):
+    #   panic=2: OOS2 92.6(+8.2) · train 103.1(+22) · valid 115.8(持平)
+    #            · long 270.1(+34.7)
+    #   panic=3: OOS2 84.4 · train 81.1 · valid 115.8 · long 235.4
+    "panic_cooldown_days": 2,
 }
 
 WINDOWS: dict[str, tuple[str, str]] = {
     "OOS2": ("2024-08-01", "2025-08-01"),
     "train": ("2025-08-01", "2026-02-01"),
     "valid": ("2026-03-01", "2026-08-07"),
+    # 2026-08-12: full-cycle window (2021 top → 2022 bear → 2023 weak →
+    # 2024-25 structural bull) — cross-cycle robustness check, NOT part of
+    # the fixed three-window audit. Baseline file has no "long" entry, so
+    # the table shows no delta column for it.
+    "long": ("2021-08-01", "2026-08-07"),
 }
 
 REPORT_DIR = Path(__file__).resolve().parents[1] / "data" / "backtest_reports"
+# 2026-08-10: per-market baselines — CN and HK are independent strategy lines.
 BASELINE_FILE = REPORT_DIR / "walk_forward_baseline.json"
+HK_BASELINE_FILE = REPORT_DIR / "walk_forward_hk_baseline.json"
+
+# HK parallel line (2026-08-10 定案 · strategy-params.md §HK) — gates=regime
+# (no sector fund-flow for HK), wider trailing (-12) for HK volatility,
+# stricter RS (top 40%), no exclude_boards (HK has no 创业板 equivalent).
+HK_S3_CONFIG: dict[str, float | int | str] = {
+    "score_threshold": 65.0,
+    "max_hold_days": 60,
+    "stop_loss_pct": -5.0,
+    "target_pnl_pct": 100.0,
+    "score_floor": 0.0,
+    "market": "HK",
+    "gates": "regime",
+    "trailing_stop_pct": -12.0,
+    "position_pct": 0.10,
+    "max_positions": 20,
+    "rs_rank_min": 0.6,
+    "diverging_scale": 1.0,
+    "slippage_pct": 0.05,
+    "pyramid_trigger_pct": 2.5,
+    "pyramid_add_scale": 0.5,
+    "pyramid_max_adds": 1,
+    "exclude_boards": "",
+}
 
 
 def _overrides(args: argparse.Namespace) -> dict[str, float | int | str]:
-    valid = {f.name for f in fields(BacktestConfig)}
+    field_types = {f.name: f.type for f in fields(BacktestConfig)}
+    valid = set(field_types)
     out: dict[str, float | int | str] = {}
     for kv in args.param:
         key, _, value = kv.partition("=")
         key = key.strip()
         if key not in valid:
             print(f"WARN: unknown BacktestConfig field {key!r} (ignored)", file=sys.stderr)
+            continue
+        if str(field_types[key]) == "str":
+            out[key] = value.strip()
             continue
         raw: float | int | str
         try:
@@ -125,13 +200,15 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--param", action="append", default=[], help="BacktestConfig override key=value (repeatable)")
     ap.add_argument("--windows", default="OOS2,train,valid", help="Comma-separated windows to run")
+    ap.add_argument("--market", choices=["CN", "HK"], default="CN", help="Strategy line (CN S-3 or HK parallel line)")
     ap.add_argument("--tag", default="", help="Optional label for the report")
     ap.add_argument("--save-baseline", action="store_true", help="Persist this run as the S-3 baseline")
     ap.add_argument("--json", help="Write the full report to this file (default walk_forward_latest.json)")
     args = ap.parse_args()
 
     overrides = _overrides(args)
-    config = {**S3_CONFIG, **overrides}
+    base_config = HK_S3_CONFIG if args.market == "HK" else S3_CONFIG
+    config = {**base_config, **overrides}
     windows = [w.strip() for w in args.windows.split(",") if w.strip()]
     missing = [w for w in windows if w not in WINDOWS]
     if missing:
@@ -139,9 +216,10 @@ def main() -> int:
         return 2
 
     baseline: dict[str, dict[str, float | int | str | None]] | None = None
-    if BASELINE_FILE.exists():
+    baseline_file = HK_BASELINE_FILE if args.market == "HK" else BASELINE_FILE
+    if baseline_file.exists():
         try:
-            baseline = json.loads(BASELINE_FILE.read_text())["results"]
+            baseline = json.loads(baseline_file.read_text())["results"]
         except (json.JSONDecodeError, KeyError):
             baseline = None
 
@@ -161,7 +239,8 @@ def main() -> int:
     verdicts: list[str] = []
     if baseline and windows[0] in baseline:
         for w in windows:
-            d = float(results[w]["totalNetPnlPct"] or 0) - float(baseline[w].get("totalNetPnlPct") or 0)
+            b = baseline.get(w) or {}
+            d = float(results[w]["totalNetPnlPct"] or 0) - float(b.get("totalNetPnlPct") or 0)
             if d < -5:
                 verdicts.append(f"{w} 劣化 {d:+.1f}pt")
     if verdicts:
@@ -181,9 +260,9 @@ def main() -> int:
     out_file.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str))
     print(f"report -> {out_file}")
     if args.save_baseline:
-        BASELINE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        BASELINE_FILE.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str))
-        print(f"baseline saved -> {BASELINE_FILE}")
+        baseline_file.parent.mkdir(parents=True, exist_ok=True)
+        baseline_file.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+        print(f"baseline saved -> {baseline_file}")
     return 0
 
 

@@ -67,10 +67,58 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "tableTsColumn": None,
         "thresholdMinutes": 24 * 60,
     },
+    # 2026-08-10 (P1-3 staleness): HK strategy-line freshness — HK daily
+    # bars, HSI/HSTECH macro, HK score snapshots and CN mainline scores.
+    # These lagged for days while uvicorn cached an empty tushare key
+    # (hk_basic_sync / macro_daily "false-success"); surfacing them here
+    # turns that silent drift into a visible alert.
+    {
+        "source": "hk_daily",
+        "weekendTolerant": True,
+        "label": "HK 日线",
+        "jobType": "hk_daily_full",
+        "table": "daily",
+        "tableTsColumn": "trade_date",
+        "whereSql": "ts_code LIKE '%.HK'",
+        "thresholdMinutes": 48 * 60,
+    },
+    {
+        "source": "hk_macro",
+        "weekendTolerant": True,
+        "label": "HK 指数（HSI/HSTECH）",
+        "jobType": "macro_daily_full",
+        "table": "macro_daily",
+        "tableTsColumn": "trade_date",
+        "whereSql": "series_id IN ('HSI','HSTECH')",
+        "thresholdMinutes": 48 * 60,
+    },
+    {
+        "source": "hk_score",
+        "weekendTolerant": True,
+        "label": "HK 评分",
+        "jobType": "watchlist_automation",
+        "table": "watchlist_score_daily",
+        "tableTsColumn": "trade_date",
+        "whereSql": "symbol LIKE 'HK:%'",
+        "thresholdMinutes": 48 * 60,
+    },
+    {
+        "source": "mainline",
+        "weekendTolerant": True,
+        "label": "主线评分",
+        "jobType": "cn_industry_post_close_sync",
+        "table": "market_cn_industry_mainline_scores_daily",
+        "tableTsColumn": "date",
+        "thresholdMinutes": 48 * 60,
+    },
 )
 
 
-def _last_table_timestamp(table: str, ts_column: str) -> str | None:
+def _last_table_timestamp(
+    table: str | None,
+    ts_column: str | None,
+    where_sql: str | None = None,
+) -> str | None:
     if not table or not ts_column:
         return None
     from data_sync_service.db import get_connection
@@ -78,8 +126,9 @@ def _last_table_timestamp(table: str, ts_column: str) -> str | None:
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
+                where = f" WHERE {where_sql}" if where_sql else ""
                 cur.execute(
-                    f"SELECT MAX({ts_column}) FROM {table}",
+                    f"SELECT MAX({ts_column}) FROM {table}{where}",
                     None,
                 )
                 row = cur.fetchone()
@@ -135,7 +184,11 @@ def datasource_freshness() -> list[dict[str, Any]]:
     sources: list[dict[str, Any]] = []
     for spec in _SOURCES:
         job_at = _job_last_success(spec["jobType"])
-        table_at = _last_table_timestamp(spec["table"], spec["tableTsColumn"])
+        table_at = _last_table_timestamp(
+            spec.get("table"),
+            spec.get("tableTsColumn"),
+            spec.get("whereSql"),
+        )
         candidate = max(
             [t for t in (job_at, table_at) if _parse_dt(t) is not None],
             key=lambda t: _parse_dt(t) or now,

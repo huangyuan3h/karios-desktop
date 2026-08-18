@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
 import { generateObject } from 'ai';
 
-import { QuantRankExplainRequestSchema, QuantRankExplainResponseSchema } from '../schemas';
+import { QuantRankExplainRequestSchema, QuantRankExplainResponseSchema } from '../schemas.js';
 import {
   getStrategyPrimaryAndFallbackModels,
   AiModel,
   generateObjectCompatOptions,
-} from '../model';
+} from '../model.js';
 
 export const quantRoutes = new Hono();
 

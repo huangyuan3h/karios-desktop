@@ -33,6 +33,12 @@ OVERFLOW_UNLOCK_MINUTES = 14 * 60 + 30  # 14:30 Shanghai
 _GREEN_SIGNALS = frozenset({"green", "light_green", "deep_green"})
 _RISK_DEFEND = frozenset({"extreme_caution", "no_new_positions"})
 
+# TIP-014 (2026-08-14): implicit-weak breadth ratio — up/down < 0.5 with only
+# normal/caution risk_mode still blocks new entries (valid window 16/16
+# losing trades, avg -6.1%). Mirrors service/env_label.WEAK_RATIO_MAX so the
+# live gate, paper intake and the backtest engine share one definition.
+WEAK_RATIO_MAX = 0.5
+
 HK_INDEX_TRAFFIC_LIGHT_NAMES = frozenset({"恒生指数", "恒生科技指数"})
 
 _SIGNAL_RANK = {
@@ -201,7 +207,9 @@ def compute_hk_gate(
     if defend:
         mode = MODE_DEFEND
     elif regime == REGIME_DIVERGING:
-        mode = MODE_HOLD_ONLY
+        # S-3 HK 定案（gates=regime）：Diverging 允许开仓——与回测引擎
+        # _gate_blocked（diverging_scale>0 放行）及 paper_s3 实盘口径一致。
+        mode = MODE_ATTACK
         reasons.append("REGIME_DIVERGING")
     elif regime == REGIME_STRONG:
         mode = MODE_ATTACK
@@ -216,7 +224,14 @@ def compute_hk_gate(
         "indexLight": index_light,
         "riskMode": risk or None,
         "reasons": reasons,
-        "positionRangeHint": _position_range_hint_from(hk, index_light),
+        # 2026-08-12 (OPT-093): HK index-light position hints removed after
+        # backtest — replaying 2024-08~2026-08 shows red/green/yellow days
+        # carry NO separation for HK S-3 entries (median pnl -5.0% / -2.0% /
+        # -5.1%, win rates 39/46/36%; the red-day mean is pulled by a few
+        # right-tail winners). Heuristic "red → 0-10%" had no evidence and
+        # misled. CN keeps its hint (red days are genuinely worse there:
+        # 27% win rate, median -5.5% vs -2.1% green).
+        "positionRangeHint": None,
         "satelliteNote": _hk_satellite_note(mode),
     }
 
@@ -296,6 +311,12 @@ def compute_execution_gate(
         hard_defend_reasons.append(
             "RISK_NO_NEW" if risk == "no_new_positions" else "RISK_EXTREME_CAUTION"
         )
+    # TIP-014: implicit-weak day — breadth ratio < 0.5 (跌家数 > 2× 涨家数)
+    # even when risk_mode is only normal/caution. Backtest-verified: 16/16
+    # losing trades in the valid window. Only applies when breadth data is
+    # actually present (down > 0 or up > 0).
+    if up > 0 and down > 0 and (up / down) < WEAK_RATIO_MAX:
+        hard_defend_reasons.append("BREADTH_IMPLICIT_WEAK")
 
     defend = False
     if hard_defend_reasons:
@@ -311,7 +332,14 @@ def compute_execution_gate(
     if defend:
         mode = MODE_DEFEND
     elif regime == REGIME_DIVERGING or srv_level_str == SRV_LEVEL_ELEVATED:
-        mode = MODE_HOLD_ONLY
+        # S-3 定案（strategy-params §1）：Diverging = 进攻（diverging_scale=1.0
+        # 满仓开仓）——与回测引擎 _gate_blocked 及 paper_s3 同口径，不再压 HOLD_ONLY。
+        # SRV_ELEVATED 是回测之外的资金流拥挤防御，仍单独压 HOLD_ONLY。
+        mode = (
+            MODE_ATTACK
+            if regime == REGIME_DIVERGING and srv_level_str != SRV_LEVEL_ELEVATED
+            else MODE_HOLD_ONLY
+        )
         if regime == REGIME_DIVERGING:
             reasons.append("REGIME_DIVERGING")
         if srv_level_str == SRV_LEVEL_ELEVATED:

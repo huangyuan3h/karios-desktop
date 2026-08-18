@@ -8,6 +8,7 @@ import { Bot } from 'lucide-react';
 import { AgentPanel } from '@/components/agent/AgentPanel';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { SystemHealthBanner } from '@/components/layout/SystemHealthBanner';
+import { NotificationHub } from '@/components/notifications/NotificationHub';
 import { DashboardPage } from '@/components/pages/DashboardPage';
 import { AlphaTabsPage } from '@/components/pages/AlphaTabsPage';
 import { IndustryFlowPage } from '@/components/pages/IndustryFlowPage';
@@ -17,8 +18,8 @@ import { NewsPage } from '@/components/pages/NewsPage';
 import { DecisionPage } from '@/components/pages/DecisionPage';
 import { BacktestPage } from '@/components/pages/BacktestPage';
 import { SchedulerPage } from '@/components/pages/SchedulerPage';
-import { ScreenerPage } from '@/components/pages/ScreenerPage';
 import { SettingsPage } from '@/components/pages/SettingsPage';
+import { WebhookPage } from '@/components/pages/WebhookPage';
 import { WatchlistPage } from '@/components/pages/WatchlistPage';
 import { IndexPage } from '@/components/pages/IndexPage';
 import { GlobalStockSearch } from '@/components/search/GlobalStockSearch';
@@ -29,6 +30,7 @@ import { buildHash, currentHash, parseHash } from '@/lib/hash-router';
 import { createQueryClient } from '@/lib/query-client';
 import { ensureWatchlistHydrated } from '@/lib/watchlist-storage';
 import { cn } from '@/lib/utils';
+import { MobileShell } from '@/components/mobile/MobileShell';
 
 const LazyPageFallback = () => (
   <div className="flex h-full items-center justify-center p-6 text-sm text-[var(--k-muted)]">
@@ -65,8 +67,8 @@ const PAGE_TITLES: Record<string, string> = {
   watchlist: 'Watchlist',
   broker: 'Broker',
   journal: 'Journal',
-  screener: 'Screener',
   scheduler: 'Scheduler',
+  webhook: 'Webhook',
   settings: 'Settings',
   stock: 'Stock',
 };
@@ -235,6 +237,7 @@ function AppShellInner() {
                 setActivePage('stock');
               }}
             />
+            <NotificationHub />
             <Button
               variant="secondary"
               size="sm"
@@ -307,10 +310,10 @@ function AppShellInner() {
                 symbol={activeStockSymbol}
                 onBack={() => setActivePage(stockReturnPage || 'market')}
               />
-            ) : activePage === 'screener' ? (
-              <ScreenerPage />
             ) : activePage === 'scheduler' ? (
               <SchedulerPage />
+            ) : activePage === 'webhook' ? (
+              <WebhookPage />
             ) : activePage === 'index' ? (
               <IndexPage />
             ) : (
@@ -372,9 +375,24 @@ function AppShellInner() {
 export function AppShell() {
   const [queryClient] = React.useState(() => createQueryClient());
 
+  // Mobile-first shell for phones/tablets (Family Hub Phase 0 · 2026-08-14):
+  // the desktop workspace (sidebar + agent panel + dense tables) is unusable
+  // on small screens, so a phone gets its own 3-tab shell instead.
+  // matchMedia only exists on the client — resolve in an effect so SSR HTML
+  // and the first client render are identical (empty), avoiding hydration
+  // mismatch between the desktop shell and MobileShell.
+  const [isMobile, setIsMobile] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <AppShellInner />
+      {isMobile === null ? null : isMobile ? <MobileShell /> : <AppShellInner />}
     </QueryClientProvider>
   );
 }

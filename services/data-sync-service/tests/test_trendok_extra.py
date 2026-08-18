@@ -437,6 +437,21 @@ class TestTrendokOne:
         res = _trendok_one(is_held=True, cost_price=120.0)
         assert "hard_stop_entry" in res["stopLossParts"]
 
+    def test_s3_peak_close_from_entry_date(self) -> None:
+        # 120 rising bars from 2026-01-01; entry 2026-02-01 → peak = highest
+        # close on/after that date = the final bar's close (rising series).
+        res = _trendok_one(
+            is_held=True,
+            cost_price=120.0,
+            entry_date="2026-02-01",
+        )
+        assert res["s3PeakClose"] is not None
+        assert res["s3PeakClose"] == round(float(_rising_bars()[-1][4]), 6)
+
+    def test_s3_peak_close_flat_none(self) -> None:
+        res = _trendok_one(is_held=False, entry_date=None)
+        assert res["s3PeakClose"] is None
+
     def test_volatility_bins(self) -> None:
         steady = _rising_bars(growth=0.001)
         res = _trendok_one(bars=steady)

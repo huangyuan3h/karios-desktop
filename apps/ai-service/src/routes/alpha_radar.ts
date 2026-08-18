@@ -4,7 +4,7 @@ import { generateObject, generateText } from 'ai';
 import {
   normalizeAlphaRadarExtract,
   parseAlphaRadarBatchExtract,
-} from '../alphaRadarBatchNormalize';
+} from '../alphaRadarBatchNormalize.js';
 import {
   ALPHA_RADAR_V4_JSON_SUFFIX,
   ALPHA_RADAR_V4_SYSTEM_PROMPT,
@@ -12,8 +12,8 @@ import {
   buildExtractInstruction,
   buildMapCnInstruction,
   buildMapCnSystemPrompt,
-} from '../alphaRadarPrompts';
-import { tryParseJsonObject } from '../json_parse';
+} from '../alphaRadarPrompts.js';
+import { tryParseJsonObject } from '../json_parse.js';
 import {
   AlphaRadarExtractRequestSchema,
   AlphaRadarExtractResponseSchema,
@@ -21,13 +21,13 @@ import {
   AlphaRadarExtractBatchResponseSchema,
   AlphaRadarMapCnRequestSchema,
   AlphaRadarMapCnResponseSchema,
-} from '../schemas';
+} from '../schemas.js';
 import {
   getStrategyPrimaryAndFallbackModels,
   AiModel,
   generateObjectCompatOptions,
   generateTextJsonObjectModeOptions,
-} from '../model';
+} from '../model.js';
 
 export const alphaRadarRoutes = new Hono();
 

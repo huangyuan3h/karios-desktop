@@ -29,8 +29,6 @@ describe('SCHEDULER_JOB_CATALOG', () => {
         'eastmoney_industry_sync',
         'watchlist_automation',
         'cn_industry_post_close_sync',
-        'tv_screener_capture_am',
-        'tv_screener_capture_pm',
         'alpha_radar_pipeline',
         'alpha_radar_ingest',
         'alpha_radar_process',
@@ -66,11 +64,9 @@ describe('SCHEDULER_JOB_CATALOG', () => {
     }
   });
 
-  it('has both AM and PM TradingView capture jobs', () => {
-    const tv = SCHEDULER_JOB_CATALOG.filter((m) => m.group === 'tvScreener');
-    expect(tv.map((m) => m.jobType).sort()).toEqual(
-      ['tv_screener_capture_am', 'tv_screener_capture_pm'].sort(),
-    );
+  it('has no TradingView capture jobs (retired 2026-08-12)', () => {
+    const tv = SCHEDULER_JOB_CATALOG.filter((m) => m.group === 'tvScreener' as never);
+    expect(tv).toHaveLength(0);
   });
 
   it('every job has a group entry in SCHEDULER_GROUP_META', () => {

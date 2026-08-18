@@ -1,0 +1,15 @@
+{
+  "name": "Karios 家庭投资平台",
+  "short_name": "Karios",
+  "description": "家庭投资平台 — S-3 策略持仓体检 · 执行卡 · 行为对账（数据说话）",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

@@ -608,8 +608,11 @@ function BriefSection({ items }: { items: BriefItem[] }) {
               {meta.label}
             </div>
             <div className="space-y-1 pl-3">
-              {catItems.map((item) => (
-                <div key={item.id} className="flex items-start gap-2 text-sm">
+              {catItems.map((item, idx) => (
+                <div
+                  key={item.id ?? `${item.title ?? 'item'}-${idx}`}
+                  className="flex items-start gap-2 text-sm"
+                >
                   <span className={`mt-1.5 h-1 w-1 shrink-0 rounded-full ${meta.dot}`} />
                   <div className="min-w-0 flex-1">
                     <span className="leading-snug">{item.title}</span>

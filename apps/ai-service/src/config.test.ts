@@ -4,8 +4,8 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { app } from './app';
-import { configPath, loadConfigStore, saveConfigStore } from './config';
+import { app } from './app.js';
+import { configPath, loadConfigStore, saveConfigStore } from './config.js';
 
 async function makeTempDir(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'karios-ai-service-'));

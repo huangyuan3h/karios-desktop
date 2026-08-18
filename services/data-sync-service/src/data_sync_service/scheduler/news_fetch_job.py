@@ -19,7 +19,7 @@ def build_trigger():
 
 
 def run():
-    print("[news] Starting scheduled RSS fetch...")
+    logger.info("[news] Starting scheduled RSS fetch...")
     try:
         results = fetch_all_sources()
         total = sum(int(v) for v in results.values() if isinstance(v, int) and v >= 0)
@@ -34,7 +34,7 @@ def run():
             last_ts_code=str(total),
             error_message=err_msg,
         )
-        print(f"[news] Fetch complete: {results} (recorded success={success})")
+        logger.info(f"[news] Fetch complete: {results} (recorded success={success})")
     except Exception as e:
         insert_record(JOB_ID, success=False, error_message=str(e))
         logger.warning("news_fetch_job failed: %s", e)

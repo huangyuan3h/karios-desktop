@@ -18,10 +18,14 @@ API notes:
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from data_sync_service.db.daily import get_last_trade_date, upsert_from_dataframe
+
+logger = logging.getLogger(__name__)
+
 
 # Output columns for upsert_from_dataframe (must match db/daily.py order).
 _DAILY_UPSERT_COLS = [
@@ -96,6 +100,7 @@ def _fetch_kline_page(
         resp.raise_for_status()
         payload = resp.json()
     except Exception:
+        logger.warning("hk daily tencent quote fetch failed, returning empty", exc_info=True)
         return []
     data = payload.get("data") or {}
     node = data.get(symbol) or {}

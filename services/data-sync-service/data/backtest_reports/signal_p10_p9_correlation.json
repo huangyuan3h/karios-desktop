@@ -1,0 +1,47 @@
+{
+ "OOS2": {
+  "days": 223,
+  "whole_market": {
+   "p10_52w": 0.366,
+   "p9_mom120_skip20": 0.084,
+   "p9_mom250_skip20": 0.057,
+   "p12_ref": 0.241
+  },
+  "candidate_pool": {
+   "p10_52w": 0.185,
+   "p9_mom120_skip20": 0.079,
+   "p9_mom250_skip20": 0.083,
+   "p12_ref": 0.278
+  }
+ },
+ "train": {
+  "days": 103,
+  "whole_market": {
+   "p10_52w": 0.446,
+   "p9_mom120_skip20": 0.055,
+   "p9_mom250_skip20": 0.044,
+   "p12_ref": 0.269
+  },
+  "candidate_pool": {
+   "p10_52w": 0.26,
+   "p9_mom120_skip20": 0.071,
+   "p9_mom250_skip20": 0.099,
+   "p12_ref": 0.303
+  }
+ },
+ "valid": {
+  "days": 90,
+  "whole_market": {
+   "p10_52w": 0.51,
+   "p9_mom120_skip20": 0.098,
+   "p9_mom250_skip20": 0.071,
+   "p12_ref": 0.182
+  },
+  "candidate_pool": {
+   "p10_52w": 0.252,
+   "p9_mom120_skip20": 0.154,
+   "p9_mom250_skip20": 0.129,
+   "p12_ref": 0.276
+  }
+ }
+}

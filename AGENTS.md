@@ -121,24 +121,6 @@ More detail: `services/data-sync-service/README.md` → **Database Migrations**.
 
 ---
 
-## TV Capture jobs (OPT-008)
-
-TradingView screener capture is **async** via Postgres job queue `tv_capture_jobs`:
-
-| Endpoint | Behavior |
-|----------|----------|
-| `POST /integrations/tradingview/screeners/{id}/sync` | **202** — enqueue job, returns `{ jobId, status, screenerId }` |
-| `GET /integrations/tradingview/capture-jobs/{job_id}` | Poll job status until `done` / `failed` |
-| `GET /integrations/tradingview/capture-jobs?screener_id=` | List recent jobs (optional) |
-
-- In-process worker (`tv_capture_worker.py`): max **2** concurrent captures; dedupe active jobs per screener.
-- Dashboard Sync All: enqueue all screeners, then `wait_for_capture_jobs` (SSE emits `jobId` / `jobStatus`).
-- Screener UI: POST → poll job → refresh snapshots.
-- **AM/PM cron:** `tv_screener_capture_am` (workdays 09:30 Asia/Shanghai) + `tv_screener_capture_pm` (workdays 15:30 Asia/Shanghai) enqueue all enabled screeners daily; matches `docs/modules/screener.md` "AM/PM" intent.
-- Migration: `0002_tv_capture_jobs` — run `PYTHONPATH=src alembic upgrade head`.
-
----
-
 ## Scheduler coverage gaps closed
 
 - `index_basic_sync` — weekdays 17:15 Asia/Shanghai (`scheduler/index_basic_job.py`). Independent sync of `index_dailybasic` so `macro_snapshot.market_breadth` is warm without a user clicking "Sync all".
@@ -163,7 +145,6 @@ Cross-layer JSON contracts live in [`packages/shared`](packages/shared) as **Zod
 |---------------|----------|
 | `schemas/trendok.ts` | `GET /market/stocks/trendok` |
 | `schemas/watchlist.ts` | `GET/POST /watchlist/registry` |
-| `schemas/tvCapture.ts` | TV capture job API (OPT-008) |
 
 **Workflow for new API fields:**
 

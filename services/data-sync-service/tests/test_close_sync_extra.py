@@ -118,7 +118,8 @@ def test_fetch_paged_adj_factor_empty(monkeypatch) -> None:
     assert cs._fetch_paged_adj_factor(pro, "20260807") == 0
 
 
-def test_resolve_start_date_default_today() -> None:
+def test_resolve_start_date_default_today(monkeypatch) -> None:
+    monkeypatch.setattr(cs, "get_last_success", lambda jt: None)
     assert cs._resolve_start_date(date(2026, 8, 8), None) == date(2026, 8, 8)
 
 

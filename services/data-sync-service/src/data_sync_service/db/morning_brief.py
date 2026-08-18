@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS {BRIEFS_TABLE} (
     macro_overview  TEXT,
     model_version   TEXT,
     source_item_ids TEXT[],
+    markdown        TEXT,
     created_at      TEXT NOT NULL,
     UNIQUE(brief_date, brief_type)
 );
@@ -51,8 +52,9 @@ def upsert_brief(
     macro_overview: str | None = None,
     model_version: str | None = None,
     source_item_ids: list[str] | None = None,
+    markdown: str | None = None,
 ) -> dict[str, Any]:
-    """Insert or update a morning/midday brief for a given date."""
+    """Insert or update a brief (news or trading-session) for a given date."""
     ensure_tables()
     import json
 
@@ -63,17 +65,18 @@ def upsert_brief(
         with conn.cursor() as cur:
             cur.execute(
                 f"""
-                INSERT INTO {BRIEFS_TABLE}(id, brief_date, brief_type, items, macro_overview, model_version, source_item_ids, created_at)
-                VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s)
-                ON CONFLICT (brief_date, brief_type) DO UPDATE SET
+                INSERT INTO {BRIEFS_TABLE}(id, brief_date, brief_type, items, macro_overview, model_version, source_item_ids, markdown, created_at)
+                VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
                     items = EXCLUDED.items,
                     macro_overview = EXCLUDED.macro_overview,
                     model_version = EXCLUDED.model_version,
                     source_item_ids = EXCLUDED.source_item_ids,
+                    markdown = EXCLUDED.markdown,
                     created_at = EXCLUDED.created_at
-                RETURNING id, brief_date, brief_type, items, macro_overview, model_version, source_item_ids, created_at
+                RETURNING id, brief_date, brief_type, items, macro_overview, model_version, source_item_ids, markdown, created_at
                 """,
-                (brief_id, brief_date, brief_type, items_json, macro_overview, model_version, source_item_ids, now),
+                (brief_id, brief_date, brief_type, items_json, macro_overview, model_version, source_item_ids, markdown, now),
             )
             row = cur.fetchone()
         conn.commit()
@@ -87,7 +90,7 @@ def fetch_brief(brief_date: str, brief_type: str) -> dict[str, Any] | None:
         with conn.cursor() as cur:
             cur.execute(
                 f"""
-                SELECT id, brief_date, brief_type, items, macro_overview, model_version, source_item_ids, created_at
+                SELECT id, brief_date, brief_type, items, macro_overview, model_version, source_item_ids, markdown, created_at
                 FROM {BRIEFS_TABLE}
                 WHERE brief_date = %s AND brief_type = %s
                 """,
@@ -106,7 +109,7 @@ def fetch_latest_brief(brief_type: str | None = None) -> dict[str, Any] | None:
         with conn.cursor() as cur:
             cur.execute(
                 f"""
-                SELECT id, brief_date, brief_type, items, macro_overview, model_version, source_item_ids, created_at
+                SELECT id, brief_date, brief_type, items, macro_overview, model_version, source_item_ids, markdown, created_at
                 FROM {BRIEFS_TABLE}
                 {condition}
                 ORDER BY brief_date DESC, created_at DESC
@@ -126,7 +129,7 @@ def fetch_recent_briefs(limit: int = 7) -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 f"""
-                SELECT id, brief_date, brief_type, items, macro_overview, model_version, source_item_ids, created_at
+                SELECT id, brief_date, brief_type, items, macro_overview, model_version, source_item_ids, markdown, created_at
                 FROM {BRIEFS_TABLE}
                 ORDER BY brief_date DESC, created_at DESC
                 LIMIT %s
@@ -157,5 +160,6 @@ def _row_to_dict(row: tuple) -> dict[str, Any]:
         "macroOverview": str(row[4]) if row[4] else None,
         "modelVersion": str(row[5]) if row[5] else None,
         "sourceItemIds": list(row[6]) if row[6] else None,
-        "createdAt": str(row[7]),
+        "markdown": str(row[7]) if len(row) > 7 and row[7] else None,
+        "createdAt": str(row[8] if len(row) > 8 else row[7]),
     }

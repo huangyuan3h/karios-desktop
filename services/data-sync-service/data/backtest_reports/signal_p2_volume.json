@@ -1,0 +1,170 @@
+{
+ "OOS2": {
+  "base": {
+   "pnl": 117.2,
+   "dd": 11.7,
+   "sharpe": 6.63,
+   "win": 0.544,
+   "closed": 237,
+   "calmar": 10.0
+  },
+  "V1.5": {
+   "pnl": 101.6,
+   "dd": 10.5,
+   "sharpe": 6.59,
+   "win": 0.532,
+   "closed": 220,
+   "calmar": 9.66
+  },
+  "V2.0": {
+   "pnl": 193.6,
+   "dd": 6.7,
+   "sharpe": 7.76,
+   "win": 0.613,
+   "closed": 238,
+   "calmar": 28.75
+  },
+  "V1.5B": {
+   "pnl": 134.4,
+   "dd": 10.2,
+   "sharpe": 7.81,
+   "win": 0.575,
+   "closed": 221,
+   "calmar": 13.2
+  },
+  "V2.0B": {
+   "pnl": 170.3,
+   "dd": 9.8,
+   "sharpe": 6.93,
+   "win": 0.614,
+   "closed": 228,
+   "calmar": 17.35
+  }
+ },
+ "train": {
+  "base": {
+   "pnl": 122.6,
+   "dd": 9.3,
+   "sharpe": 4.4,
+   "win": 0.52,
+   "closed": 123,
+   "calmar": 13.13
+  },
+  "V1.5": {
+   "pnl": 71.5,
+   "dd": 15.0,
+   "sharpe": 3.82,
+   "win": 0.53,
+   "closed": 115,
+   "calmar": 4.78
+  },
+  "V2.0": {
+   "pnl": 25.7,
+   "dd": 10.1,
+   "sharpe": 3.31,
+   "win": 0.373,
+   "closed": 102,
+   "calmar": 2.54
+  },
+  "V1.5B": {
+   "pnl": 69.1,
+   "dd": 7.1,
+   "sharpe": 3.95,
+   "win": 0.557,
+   "closed": 106,
+   "calmar": 9.72
+  },
+  "V2.0B": {
+   "pnl": 26.3,
+   "dd": 12.7,
+   "sharpe": 3.6,
+   "win": 0.356,
+   "closed": 101,
+   "calmar": 2.06
+  }
+ },
+ "valid": {
+  "base": {
+   "pnl": 142.2,
+   "dd": 1.8,
+   "sharpe": 11.05,
+   "win": 0.818,
+   "closed": 55,
+   "calmar": 80.85
+  },
+  "V1.5": {
+   "pnl": 68.7,
+   "dd": 3.5,
+   "sharpe": 7.24,
+   "win": 0.588,
+   "closed": 51,
+   "calmar": 19.7
+  },
+  "V2.0": {
+   "pnl": 18.1,
+   "dd": 4.7,
+   "sharpe": 5.4,
+   "win": 0.436,
+   "closed": 39,
+   "calmar": 3.88
+  },
+  "V1.5B": {
+   "pnl": 60.8,
+   "dd": 6.0,
+   "sharpe": 6.55,
+   "win": 0.533,
+   "closed": 45,
+   "calmar": 10.1
+  },
+  "V2.0B": {
+   "pnl": 17.7,
+   "dd": 4.7,
+   "sharpe": 6.17,
+   "win": 0.414,
+   "closed": 29,
+   "calmar": 3.79
+  }
+ },
+ "LONG": {
+  "base": {
+   "pnl": 333.9,
+   "dd": 45.1,
+   "sharpe": 2.99,
+   "win": 0.388,
+   "closed": 1069,
+   "calmar": 7.4
+  },
+  "V1.5": {
+   "pnl": 186.7,
+   "dd": 71.5,
+   "sharpe": 2.2,
+   "win": 0.366,
+   "closed": 1101,
+   "calmar": 2.61
+  },
+  "V2.0": {
+   "pnl": 118.3,
+   "dd": 121.3,
+   "sharpe": 1.48,
+   "win": 0.343,
+   "closed": 1058,
+   "calmar": 0.98
+  },
+  "V1.5B": {
+   "pnl": 201.5,
+   "dd": 89.7,
+   "sharpe": 2.32,
+   "win": 0.363,
+   "closed": 1062,
+   "calmar": 2.25
+  },
+  "V2.0B": {
+   "pnl": 113.7,
+   "dd": 113.2,
+   "sharpe": 1.31,
+   "win": 0.333,
+   "closed": 1078,
+   "calmar": 1.0
+  }
+ }
+}

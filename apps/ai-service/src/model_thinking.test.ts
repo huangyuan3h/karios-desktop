@@ -5,7 +5,7 @@ import {
   stripJsonCodeFence,
   stripModelThinking,
   stripThinkingFromTextStream,
-} from './model_thinking';
+} from './model_thinking.js';
 
 describe('stripModelThinking', () => {
   it('returns empty for empty input', () => {

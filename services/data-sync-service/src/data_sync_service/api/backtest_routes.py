@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from data_sync_service.service.backtest_engine import (
     BacktestConfig,
@@ -32,12 +33,128 @@ router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
 LATEST_REPORT = Path(__file__).resolve().parents[3] / "data" / "backtest_reports" / "latest.json"
 
+REPORTS_DIR = Path(__file__).resolve().parents[3] / "data" / "backtest_reports"
+
+# Frozen long-window (2021-08~2026-08, full-market universe, drawdown circuit
+# on) result — decided 2026-08-12; source of truth: strategy-params.md §1.
+LONG_WINDOW_CN = {
+    "window": "2021-08-01 ~ 2026-08-11",
+    "totalNetPnlPct": 250.8,
+    "maxDrawdownPct": 40.9,
+    "sharpe": 2.65,
+    "trades": 1401,
+    "byYear": {
+        "2021": 341.0, "2022": 93.0, "2023": -263.0,
+        "2024": 606.0, "2025": 956.0, "2026": 1325.0,
+    },
+}
+
+
+@router.get("/overview")
+def backtest_overview() -> dict[str, Any]:
+    """S-3 conclusion board (2026-08-12): frozen baselines + rolling OOS +
+    long-window — the source-of-truth view the BacktestPage displays.
+
+    Reads the walk-forward baseline JSONs + rolling OOS snapshot; long-window
+    numbers are the 2026-08-12 decided constants (CN line only).
+    """
+
+    def _load(name: str) -> dict[str, Any] | None:
+        p = REPORTS_DIR / name
+        if not p.exists():
+            return None
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    def _baseline(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not raw:
+            return None
+        windows = {}
+        for name, w in (raw.get("results") or {}).items():
+            if not isinstance(w, dict):
+                continue
+            windows[name] = {
+                "totalNetPnlPct": w.get("totalNetPnlPct"),
+                "winRate": w.get("winRate"),
+                "sharpe": w.get("sharpe"),
+                "trades": w.get("trades"),
+                "maxDrawdownPct": w.get("maxDrawdownPct"),
+            }
+        return {
+            "generatedAt": raw.get("generatedAt"),
+            "tag": raw.get("tag"),
+            "windows": windows,
+        }
+
+    rolling = _load("rolling_oos_latest.json")
+    return {
+        "ok": True,
+        "cnBaseline": _baseline(_load("walk_forward_baseline.json")),
+        "hkBaseline": _baseline(_load("walk_forward_hk_baseline.json")),
+        "rollingOos": rolling,
+        "longWindowCN": LONG_WINDOW_CN,
+    }
+
 
 def _validate_window(start: str, end: str) -> None:
     if not start or not end:
         raise HTTPException(status_code=422, detail="start and end are required (YYYY-MM-DD)")
     if start > end:
         raise HTTPException(status_code=422, detail="start must be <= end")
+
+
+@router.get("/recon/latest")
+def backtest_recon_latest(limit: int = Query(4, ge=1, le=30)) -> dict[str, Any]:
+    """Latest backtest-vs-paper reconciliation snapshots (2026-08-11).
+
+    Weekly job (Monday 07:30) reconciles last Friday's backtest 'should
+    hold' vs the paper book; the decision agent / weekly review reads this
+    to turn drift into action.
+    """
+    from data_sync_service.db.reconciliation import latest_recon
+
+    return {"ok": True, "items": latest_recon(limit=limit)}
+
+
+@router.get("/behavior-audit/latest")
+def behavior_audit_latest(limit: int = Query(2, ge=1, le=10)) -> dict[str, Any]:
+    """OPT-106: latest REAL-book vs backtest behavior audit (watchlist).
+
+    Compares the user's actual registry holdings against the S-3 backtest
+    "should hold" set: extra = 买了不该买 / 该卖没卖, missing = 该持没买.
+    Refreshed by POST /backtest/behavior-audit/refresh (simulate ~minutes)
+    or the daily close cron.
+    """
+    from data_sync_service.db.behavior_audit import latest_audit
+
+    return {"ok": True, "items": latest_audit(limit=limit)}
+
+
+@router.post("/behavior-audit/refresh")
+def behavior_audit_refresh(
+    tradeDate: str | None = Query(default=None, description="Audit day (YYYY-MM-DD); default today."),
+) -> dict[str, Any]:
+    """OPT-106: run the behavior audit NOW and persist it.
+
+    Runs the S-3 engine for the valid window (extended to today) — takes a
+    few minutes. The watchlist page triggers this after the user's trades.
+    """
+    from data_sync_service.db.paper_trading import today_iso
+    from data_sync_service.service.reconciliation import run_registry_and_persist
+
+    day = tradeDate or today_iso()
+    try:
+        out = run_registry_and_persist(day)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"behavior audit failed: {exc}") from exc
+    summary = {
+        m: {"expected": v["expected"], "actual": v["actual"],
+            "extra": v.get("extraList", []), "missing": v.get("missingList", [])}
+        for m, v in out["markets"].items() if v.get("available")
+    }
+    return {"ok": True, "reconDate": out["reconDate"], "markets": summary}
 
 
 @router.get("/run")
@@ -60,6 +177,7 @@ def backtest_run(
     panic_cooldown_days: int = Query(0, ge=0, le=30, description="Days after a sentiment-panic day with no new entries (default 0; S-3 uses 3)."),
     slippage_pct: float = Query(0.0, ge=0, le=2, description="One-way slippage % deducted at entry and exit (default 0; S-3 honest view uses 0.05)."),
     trend_score_min: float = Query(0.0, ge=0, le=100, description="A2 trend-quality score minimum (0 disables; 60 = MA-aligned, near-high, strong RS stocks only)."),
+    exclude_boards: str = Query("", description="Comma-separated 3-digit board prefixes to exclude (e.g. '300' = ChiNext; empty = no filter)."),
 ) -> dict[str, Any]:
     """Run one backtest configuration (signals = historical TrendOK scores
     filtered by entry gates — traffic-light regime / sector flow / mainline)."""
@@ -84,6 +202,7 @@ def backtest_run(
             panic_cooldown_days=panic_cooldown_days,
             slippage_pct=slippage_pct,
             trend_score_min=trend_score_min,
+            exclude_boards=exclude_boards,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -113,6 +232,29 @@ def backtest_sensitivity(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"sensitivity failed: {exc}") from exc
     return {"ok": True, "configs": len(grid), "benchmarks": benchmarks, "results": [r.to_dict() for r in results]}
+
+
+@router.get("/paper-vs-backtest")
+def backtest_paper_vs_backtest() -> dict[str, Any]:
+    """C4 paper-vs-backtest report (data/backtest_reports/
+    paper_vs_backtest_latest.json), generated by
+    scripts/paper_vs_backtest_report.py.
+
+    Reconciles every closed S-3 paper trade against the backtest engine's
+    twin trade. 404 when the report script has never been run; the verdict
+    field flags sample <20 as "not yet conclusive".
+    """
+    report_path = REPORTS_DIR / "paper_vs_backtest_latest.json"
+    if not report_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="no C4 report yet — run scripts/paper_vs_backtest_report.py first",
+        )
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=500, detail=f"report unreadable: {exc}") from exc
+    return {"ok": True, "report": report}
 
 
 @router.get("/latest-report")
@@ -173,6 +315,42 @@ def weekly_review(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"weekly review failed: {exc}") from exc
     return result
+
+
+class WeeklyPlanRequest(BaseModel):
+    markdown: str
+
+
+@router.post("/weekly-plan")
+def weekly_plan_store(req: WeeklyPlanRequest) -> dict[str, Any]:
+    """Store the decision agent's next-week action plan (morning_briefs
+    brief_type='weekly-plan', keyed by this Monday). Frontend / history read
+    it via GET /api/backtest/weekly-plan."""
+    from datetime import UTC, datetime, timedelta
+
+    from data_sync_service.db.morning_brief import upsert_brief
+
+    today = datetime.now(tz=UTC).date()
+    monday = today - timedelta(days=today.weekday())
+    brief = upsert_brief(
+        brief_date=monday.isoformat(),
+        brief_type="weekly-plan",
+        items=[],
+        macro_overview=None,
+        model_version="weekly_plan_v1",
+        source_item_ids=None,
+        markdown=req.markdown,
+    )
+    return {"ok": True, "brief": brief}
+
+
+@router.get("/weekly-plan")
+def weekly_plan_latest() -> dict[str, Any]:
+    """Latest stored next-week action plan (brief_type='weekly-plan')."""
+    from data_sync_service.db.morning_brief import fetch_latest_brief
+
+    brief = fetch_latest_brief(brief_type="weekly-plan")
+    return {"ok": True, "plan": brief}
 
 
 @router.get("/correlation-status")

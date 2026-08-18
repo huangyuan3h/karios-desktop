@@ -4,6 +4,7 @@ import * as React from 'react';
 import { CircleX, ExternalLink, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { resolveStableActionPrice } from '@/lib/intraday-lock';
 import type { TrendOkResult, WatchlistQuote } from '@/lib/api/types';
 import {
   deriveActionCard,
@@ -504,6 +505,8 @@ export type WatchlistRowProps = {
   /** V7.0-01 / L3-P5: semantic factor-cluster exposure % (from parent). */
   clusterExposurePct?: number | null;
   rsRank?: number | null;
+  /** S-3 candidate (user-approved 2026-08-09): exempt from sector/cluster caps. */
+  isS3Candidate?: boolean;
   showTooltip: ShowTooltipFn;
   hideTooltip: () => void;
   showColorPicker: (el: HTMLElement, sym: string) => void;
@@ -540,6 +543,7 @@ function WatchlistRowInner({
   defensiveSleeveExposurePct = 0,
   clusterExposurePct = null,
   rsRank = null,
+  isS3Candidate = false,
   showTooltip,
   hideTooltip,
   showColorPicker,
@@ -576,12 +580,22 @@ function WatchlistRowInner({
     quoteTradeTime: q?.tradeTime ?? null,
     trendClose,
   });
+  // OPT-098: between 12:00 and 14:30 the action must not flip with the
+  // realtime quote (user trades at 14:00) — derive it from the frozen
+  // afternoon-open price. Display/PnL still use the live price.
+  const actionPrice = resolveStableActionPrice({
+    symbol: it.symbol,
+    realtimePrice: currentPrice,
+    trendClose,
+    now: new Date(),
+    tradingTime,
+  });
   const actionCard = deriveActionCard({
     symbol: it.symbol,
     gate: executionGate,
     trendok: t,
     position: it,
-    currentPrice,
+    currentPrice: actionPrice,
     mainlineAllow,
     intradayChgPct: rowMetrics.intradayChgPct,
     gapUp: typeof t?.gapUp === 'boolean' ? t.gapUp : null,
@@ -593,6 +607,7 @@ function WatchlistRowInner({
     sectorOutflowBlock,
     catalyst,
     todaySh: getShanghaiTodayIso(),
+    isS3Candidate,
   });
   const execTone =
     actionCard.action === 'EXIT' || actionCard.action === 'PURGE'

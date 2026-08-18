@@ -91,4 +91,4 @@ def test_capitulation_triggered_when_all_three_conditions_met() -> None:
     assert out["triggered"] is True
     assert out["raw"]["ivPct"] == 22.5
     assert out["raw"]["superLargeFlowYi"] == CAPITULATION_FLOW_THRESHOLD_YI + 1.0
-    assert "capitulation_v_bottom" in out["rule"]
+    assert "恐慌筑底" in out["rule"]

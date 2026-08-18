@@ -135,13 +135,26 @@ fn spawn_backend(
 
   // NOTE: We intentionally don't read child stdout/stderr in release to avoid blocking.
   // If you need troubleshooting, check the log file under app_data_dir/logs/.
-  let child = cmd
+  let mut child = cmd
     .spawn()
     .map_err(|e| format!("Failed to spawn {name} ({:?}): {e}", bin))?;
 
   if !wait_port(port, timeout) {
+    // Reap the child we just spawned — otherwise it lingers as an orphan
+    // and can hold the port open for the next launch.
+    let _ = child.kill();
+    let _ = child.wait();
     return Err(format!(
       "{name} did not become ready on port {port} within timeout"
+    ));
+  }
+
+  // Port open but our own child already exited — the port is likely held by
+  // a stale orphan from a previous run. Surface that instead of silently
+  // talking to an old process with outdated config.
+  if let Ok(Some(status)) = child.try_wait() {
+    return Err(format!(
+      "{name} exited right after spawn (status {status}); port {port} may be held by a stale process — please quit the app and retry"
     ));
   }
 
@@ -153,6 +166,9 @@ static START_ONCE: OnceLock<()> = OnceLock::new();
 impl BackendManager {
   /// Starts bundled backends (sidecars) in release builds.
   /// This is idempotent within a single app process.
+  ///
+  /// Runs on a background thread: waiting for a sidecar port (up to 25s)
+  /// must not freeze the main/UI thread during window setup.
   pub fn start_on_launch(&self, app: &AppHandle) {
     if START_ONCE.get().is_some() {
       return;
@@ -164,6 +180,14 @@ impl BackendManager {
       return;
     }
 
+    let app = app.clone();
+    std::thread::spawn(move || {
+      let mgr = app.state::<BackendManager>();
+      mgr.spawn_all(&app);
+    });
+  }
+
+  fn spawn_all(&self, app: &AppHandle) {
     // Start ai-service first (data-sync-service may depend on it for broker parsing).
     let ai_port: u16 = 4310;
     let data_sync_port: u16 = 4330;
@@ -239,15 +263,28 @@ impl BackendManager {
       }
     }
 
-    *self.children.lock().expect("backend children lock poisoned") = spawned;
+    let mut children = self.children.lock().unwrap_or_else(|e| e.into_inner());
+    *children = spawned;
   }
 
   pub fn stop_all(&self) {
-    let mut children = self.children.lock().expect("backend children lock poisoned");
+    let mut children = self.children.lock().unwrap_or_else(|e| e.into_inner());
     for c in children.iter_mut() {
       eprintln!("[karios] stopping sidecar: {} on 127.0.0.1:{}", c.name, c.port);
       // Best-effort: ignore failures
       let _ = c.child.kill();
+      // Reap the process so it does not linger as a zombie / orphaned
+      // process holding the port (bounded wait, never blocks forever).
+      let deadline = Instant::now() + Duration::from_secs(2);
+      loop {
+        if let Ok(Some(_)) = c.child.try_wait() {
+          break;
+        }
+        if Instant::now() >= deadline {
+          break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+      }
     }
     children.clear();
   }

@@ -209,22 +209,47 @@ def fetch_macro_daily(
     return out
 
 
-def fetch_last_closes(series_id: str, days: int = 80) -> list[tuple[str, float]]:
-    """Return last N (date, close) ordered ASC for MA helpers."""
+def fetch_last_closes(
+    series_id: str,
+    days: int = 80,
+    *,
+    as_of_date: str | None = None,
+) -> list[tuple[str, float]]:
+    """Return last N (date, close) ordered ASC for MA helpers.
+
+    ``as_of_date`` (YYYY-MM-DD) bounds the window to trade_date <= as_of_date —
+    2026-08-10 fix: the HK index signal path was look-ahead (it read the
+    latest 80 rows regardless of the backtest date, so every historical date
+    saw the same "today" prices). CN indexes go through index_daily which
+    already filters by date; macro series (HSI/HSTECH/USDCNH) need this bound.
+    """
     ensure_table()
     days2 = max(1, min(int(days), 500))
+    bound = str(as_of_date or "").strip() or None
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT trade_date, close
-                FROM {TABLE_NAME}
-                WHERE series_id = %s AND close IS NOT NULL
-                ORDER BY trade_date DESC
-                LIMIT %s
-                """,
-                (series_id, days2),
-            )
+            if bound:
+                cur.execute(
+                    f"""
+                    SELECT trade_date, close
+                    FROM {TABLE_NAME}
+                    WHERE series_id = %s AND close IS NOT NULL AND trade_date <= %s
+                    ORDER BY trade_date DESC
+                    LIMIT %s
+                    """,
+                    (series_id, bound, days2),
+                )
+            else:
+                cur.execute(
+                    f"""
+                    SELECT trade_date, close
+                    FROM {TABLE_NAME}
+                    WHERE series_id = %s AND close IS NOT NULL
+                    ORDER BY trade_date DESC
+                    LIMIT %s
+                    """,
+                    (series_id, days2),
+                )
             rows = cur.fetchall()
     out: list[tuple[str, float]] = []
     for r in reversed(rows):

@@ -20,7 +20,6 @@ def get_dashboard_summary(
     include_sentiment: bool = Query(True),
     include_news: bool = Query(True),
     include_industry: bool = Query(True),
-    include_screeners: bool = Query(True),
 ) -> dict[str, Any]:
     try:
         return dashboard_summary(
@@ -28,7 +27,6 @@ def get_dashboard_summary(
             include_sentiment=bool(include_sentiment),
             include_news=bool(include_news),
             include_industry=bool(include_industry),
-            include_screeners=bool(include_screeners),
         )
     except HTTPException:
         raise
@@ -37,9 +35,9 @@ def get_dashboard_summary(
 
 
 @router.post("/dashboard/sync")
-def post_dashboard_sync(force: bool = Query(True), screeners: bool = Query(True)) -> dict[str, Any]:
+def post_dashboard_sync(force: bool = Query(True)) -> dict[str, Any]:
     try:
-        return dashboard_sync_parallel(force=bool(force), screeners=bool(screeners))
+        return dashboard_sync_parallel(force=bool(force))
     except HTTPException:
         raise
     except Exception as e:
@@ -47,9 +45,9 @@ def post_dashboard_sync(force: bool = Query(True), screeners: bool = Query(True)
 
 
 @router.get("/dashboard/sync/stream")
-def get_dashboard_sync_stream(force: bool = Query(True), screeners: bool = Query(True)) -> StreamingResponse:
+def get_dashboard_sync_stream(force: bool = Query(True)) -> StreamingResponse:
     def event_generator():
-        for line in dashboard_sync_stream(force=bool(force), screeners=bool(screeners)):
+        for line in dashboard_sync_stream(force=bool(force)):
             yield f"data: {line}\n"
 
     return StreamingResponse(

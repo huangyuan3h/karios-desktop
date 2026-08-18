@@ -41,6 +41,18 @@ EM_ETF_FLOW_FIELDS = ",".join(
 EM_ETF_REFERER = "https://quote.eastmoney.com/center/gridlist.html#fund_etf"
 _LAST_FETCH_ERROR: str | None = None
 
+# Cache the full-market ETF snapshot per Shanghai date. The full list is
+# ~1500 ETFs across ~16 pages (~38s under eastmoney throttling) yet the
+# dashboard sync only needs the handful on the watchlist — caching makes
+# repeated syncs (user clicks Sync & Copy) near-instant after the first
+# pull of the day. Invalidated at midnight Asia/Shanghai.
+_ETF_ROWS_CACHE: list[dict[str, Any]] | None = None
+_ETF_ROWS_CACHE_DATE: str | None = None
+
+
+def _cache_date() -> str:
+    return datetime.now(tz=UTC).strftime("%Y-%m-%d")
+
 
 def get_last_em_etf_fetch_error() -> str | None:
     return _LAST_FETCH_ERROR
@@ -85,6 +97,10 @@ def _em_etf_spot_params(page_number: int) -> dict[str, str]:
 
 
 def _fetch_all_etf_spot_rows() -> list[dict[str, Any]]:
+    global _ETF_ROWS_CACHE, _ETF_ROWS_CACHE_DATE
+    today = _cache_date()
+    if _ETF_ROWS_CACHE is not None and _ETF_ROWS_CACHE_DATE == today:
+        return list(_ETF_ROWS_CACHE)
     rows: list[dict[str, Any]] = []
     page_number = 1
     total_pages = 1
@@ -112,6 +128,8 @@ def _fetch_all_etf_spot_rows() -> list[dict[str, Any]]:
         page_number += 1
     if not rows:
         raise RuntimeError("eastmoney_etf_no_rows")
+    _ETF_ROWS_CACHE = list(rows)
+    _ETF_ROWS_CACHE_DATE = today
     return rows
 
 

@@ -468,10 +468,6 @@ function WatchlistAutomationExtra({ run }: { run: NonNullable<SchedulerJobsRespo
             <div className="text-[10px] text-[var(--k-muted)]">剔除</div>
           </div>
           <div>
-            <div className="text-base font-semibold tabular-nums">{run.screenerAdded ?? 0}</div>
-            <div className="text-[10px] text-[var(--k-muted)]">新增</div>
-          </div>
-          <div>
             <div className="text-base font-semibold tabular-nums">{added}</div>
             <div className="text-[10px] text-[var(--k-muted)]">Alpha 添加</div>
           </div>

@@ -31,7 +31,10 @@ from data_sync_service.db.stoploss import (
 from data_sync_service.db.top_inst import fetch_daily_seats_batch, fetch_summaries_for_codes
 from data_sync_service.service.industry_fund_flow_read import build_trendok_flow_context_from_rows
 from data_sync_service.service.market_regime import get_market_regime
-from data_sync_service.service.realtime_quote import fetch_realtime_quotes
+from data_sync_service.service.realtime_quote import (
+    fetch_realtime_quotes,
+    fetch_realtime_quotes_batched,
+)
 from data_sync_service.service.top_inst_flow import build_inst_flow_payload
 from data_sync_service.service.trade_calendar_utils import trade_dates_upto
 
@@ -1017,9 +1020,15 @@ def compute_trendok_for_symbols(
     bars_by_code = fetch_last_ohlcv_batch(ts_codes, days=120)
     rt_vwap_by_code: dict[str, float] = {}
     if realtime and ts_codes:
-        q = fetch_realtime_quotes(ts_codes)
-        items = q.get("items") if isinstance(q, dict) else None
-        if q.get("ok") and isinstance(items, list):
+        # >50 codes: tushare realtime_quote is fetched in parallel 50-code
+        # batches (single-call batch limits); smaller sets keep the direct
+        # path (HK Sina is one batched call either way).
+        if len(ts_codes) > 50:
+            items = fetch_realtime_quotes_batched(ts_codes, batch_size=50, max_workers=4)
+        else:
+            q = fetch_realtime_quotes(ts_codes)
+            items = q.get("items") if isinstance(q, dict) else None
+        if items:
             by_code = {str(x.get("ts_code")): x for x in items if x and x.get("ts_code")}
             for code, bars in list(bars_by_code.items()):
                 qt = by_code.get(code)
@@ -1109,10 +1118,11 @@ def compute_trendok_for_symbols(
         registry_available = False
         logger.warning("trendok stoploss registry read failed (stops kept): %s", exc)
 
-    def position_ctx(sym: str) -> tuple[bool, float | None]:
+    def position_ctx(sym: str) -> tuple[bool, float | None, str | None]:
         row = registry_ctx_by_symbol.get(str(sym or "").upper())
         pct = row.get("positionPct") if row else None
         cost = row.get("costPrice") if row else None
+        entry = row.get("entryDate") if row else None
         try:
             is_held = pct is not None and float(pct) > 0
         except (TypeError, ValueError):
@@ -1122,8 +1132,8 @@ def compute_trendok_for_symbols(
                 cost_ok = cost is not None and float(cost) > 0
             except (TypeError, ValueError):
                 cost_ok = False
-            return True, (float(cost) if cost_ok else None)
-        return False, None
+            return True, (float(cost) if cost_ok else None), (str(entry) if entry else None)
+        return False, None, None
 
     def resolve_stoploss(
         ts_code: str,
@@ -1178,7 +1188,7 @@ def compute_trendok_for_symbols(
         em_industry = by_em_industry.get(ts_code)
         industry_for_flow = em_industry or tushare_industry
         bars = bars_by_code.get(ts_code, [])
-        is_held, cost_price = position_ctx(sym)
+        is_held, cost_price, entry_date = position_ctx(sym)
         out.append(
             _trendok_one(
                 symbol=sym,
@@ -1198,6 +1208,7 @@ def compute_trendok_for_symbols(
                 is_alpha_s=sym in alpha_s_symbols,
                 is_held=is_held,
                 cost_price=cost_price,
+                entry_date=entry_date,
             )
         )
     if stoploss_upserts_by_code:
@@ -1272,6 +1283,7 @@ def _trendok_one(
     is_alpha_s: bool = False,
     is_held: bool = False,
     cost_price: float | None = None,
+    entry_date: str | None = None,
 ) -> dict[str, Any]:
     """
     Ported from quant-service `_market_stock_trendok_one` with the same checks/score behavior.
@@ -1287,6 +1299,7 @@ def _trendok_one(
         "scoreParts": {},
         "stopLossPrice": None,
         "stopLossParts": {},
+        "s3PeakClose": None,
         "buyMode": None,
         "buyAction": None,
         "buyZoneLow": None,
@@ -1343,6 +1356,19 @@ def _trendok_one(
 
     res["asOfDate"] = dates[-1]
     res["values"]["close"] = closes[-1]
+    # OPT-099: S-3 backtest-caliber trailing-line peak = highest CLOSE since
+    # entry (the engine tracks the close-peak, never the intraday high).
+    # Exposed for the frontend S-3 trail so watchlist/copy use the same peak
+    # as the backtest and the health card. None when not held / no entryDate.
+    if is_held and entry_date:
+        try:
+            closes_after = [
+                float(c) for d, c in zip(dates, closes, strict=False) if str(d) >= str(entry_date)[:10]
+            ]
+            if closes_after:
+                res["s3PeakClose"] = round(max(closes_after), 6)
+        except (TypeError, ValueError):
+            res["s3PeakClose"] = None
     if tushare_industry:
         res["values"]["industry"] = tushare_industry
     if em_industry:
