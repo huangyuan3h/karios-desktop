@@ -27,6 +27,37 @@ def test_execution_card_formats_gate_candidates_exits() -> None:
     assert "🚩退出 亿联网络 -5.4%" in out["body"]
 
 
+def test_execution_card_renders_sleeve_when_actionable() -> None:
+    """T6 (2026-08-19): the Bark push includes the sleeve hint for actionable
+    actions only (BUY / SELL) — never for DONT_BUY on a closed-gate day."""
+    out = format_bark(
+        "execution_card",
+        {
+            "day": "2026-08-19",
+            "gate": {"A股": {"regime": "Strong", "panicActive": False, "candidateTotal": 3}},
+            "thirdAssetSleeve": {
+                "action": "BUY_513100", "label": "建议买入 513100",
+                "message": "闲置资金 90% 且 ETF:513100 在200日线上 → 建议买入",
+                "price": 2.239, "ma200": 1.983, "idlePct": 90.0,
+            },
+        },
+    )
+    assert "第三资产：建议买入 513100" in out["body"]
+    assert "闲置资金 90% 且 ETF:513100 在200日线上" in out["body"]
+    assert "现价 2.239 · MA200 1.983" in out["body"]
+
+    # DONT_BUY (gate closed) must NOT be pushed as a buy prompt
+    out2 = format_bark(
+        "execution_card",
+        {
+            "day": "2026-08-19",
+            "gate": {"A股": {"regime": "Weak", "panicActive": True, "candidateTotal": 0}},
+            "thirdAssetSleeve": None,
+        },
+    )
+    assert "第三资产" not in out2["body"]
+
+
 def test_audit_issues_formats_kinds() -> None:
     out = format_bark(
         "audit_issues",
