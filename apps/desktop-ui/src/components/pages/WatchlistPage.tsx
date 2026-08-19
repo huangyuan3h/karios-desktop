@@ -5,6 +5,7 @@ import * as React from 'react';
 import { FunnelHistoryTable } from '@/components/watchlist/FunnelHistoryTable';
 import { BehaviorAuditBanner } from '@/components/watchlist/BehaviorAuditBanner';
 import { PortfolioHealthCard } from '@/components/watchlist/PortfolioHealthCard';
+import { ThirdAssetSleeveBanner } from '@/components/watchlist/ThirdAssetSleeveBanner';
 import { TradingBriefCard } from '@/components/watchlist/TradingBriefCard';
 import { TradeStatsPanel } from '@/components/watchlist/TradeStatsPanel';
 import { WatchlistInsightsPanel } from '@/components/watchlist/WatchlistInsightsPanel';
@@ -343,6 +344,7 @@ export function WatchlistPage({ onOpenStock }: { onOpenStock?: (symbol: string) 
           </div>
         ) : null}
         <BehaviorAuditBanner />
+        <ThirdAssetSleeveBanner />
         {executionGate ? (
           <div
             className={`mb-4 rounded-lg border px-4 py-3 text-sm ${executionGateBadgeClass(executionGate.mode)}`}

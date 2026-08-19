@@ -130,8 +130,32 @@ def test_build_notifications_sorts_high_first(monkeypatch) -> None:
     ])
     monkeypatch.setattr(nf, "_recon_alerts", lambda: [])
     monkeypatch.setattr(nf, "_rolling_oos_warning", lambda: [])
+    monkeypatch.setattr(nf, "_third_asset_notification", lambda: [])
     out = nf.build_notifications()
     assert [x["severity"] for x in out] == ["high", "medium"]
+
+
+def test_third_asset_notification_active(monkeypatch) -> None:
+    """T6 (2026-08-19): an active sleeve hint becomes a notification item."""
+    monkeypatch.setattr(
+        nf, "_anchor_blocks",
+        lambda: {"CN": {"thirdAssetSleeve": {
+            "active": True, "action": "BUY_513100", "label": "建议买入 513100",
+            "message": "闲置资金 90% → 建议买入", "asOfDate": "2026-08-18",
+        }}},
+    )
+    out = nf._third_asset_notification()
+    assert len(out) == 1
+    assert out[0]["type"] == "third_asset"
+    assert out[0]["severity"] == "medium"
+    assert "建议买入 513100" in out[0]["title"]
+    assert "闲置资金 90% → 建议买入" in out[0]["detail"]
+
+    monkeypatch.setattr(
+        nf, "_anchor_blocks",
+        lambda: {"CN": {"thirdAssetSleeve": {"active": False, "action": "NONE"}}},
+    )
+    assert nf._third_asset_notification() == []
 
 
 def test_route_ok(monkeypatch) -> None:

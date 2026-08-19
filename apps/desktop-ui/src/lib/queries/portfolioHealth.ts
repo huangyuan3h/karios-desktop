@@ -105,6 +105,29 @@ export interface PortfolioHealthResponse {
     industryOutflow?: number;
     industryInflow?: number;
   } | null;
+  /**
+   * 2026-08-19 (T6) — NASDAQ-100 ETF (513100) idle-cash sleeve hint.
+   * Active when the CN line has idle capital and the ETF is above its 200d MA
+   * (buy) or when it must be sold (A-share buy point / broke the MA line).
+   */
+  thirdAssetSleeve?: {
+    active?: boolean;
+    action?: 'BUY_513100' | 'SELL_TO_A_SHARE' | 'SELL_TO_REPO' | 'DONT_BUY' | 'NONE';
+    label?: string;
+    message?: string;
+    etf?: string;
+    tsCode?: string;
+    price?: number;
+    ma200?: number;
+    aboveMa200?: boolean;
+    asOfDate?: string;
+    pctChg?: number | null;
+    idlePct?: number;
+    s3BuySetup?: boolean;
+    gateOpen?: boolean;
+    holding513100?: boolean;
+    note?: string;
+  } | null;
   /** 2026-08-10 HK parallel line — HK strategy-line block (null when not requested). */
   hkHealth?: PortfolioHealthResponse | null;
 }

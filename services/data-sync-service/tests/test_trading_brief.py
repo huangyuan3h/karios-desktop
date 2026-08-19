@@ -143,6 +143,7 @@ def test_generate_trading_brief_stores_and_returns_markdown() -> None:
         patch("data_sync_service.service.trading_brief._candidates", return_value=[]),
         patch("data_sync_service.service.trading_brief._news_section", return_value=[]),
         patch("data_sync_service.service.trading_brief._recon_section", return_value=[]),
+        patch("data_sync_service.service.trading_brief._third_asset_section", return_value=[]),
         patch("data_sync_service.service.trading_brief.upsert_brief") as upsert,
         patch("data_sync_service.db.webhook.emit_event"),
     ):
@@ -153,6 +154,31 @@ def test_generate_trading_brief_stores_and_returns_markdown() -> None:
     assert kw["brief_type"] == "trading-action"
     assert kw["markdown"]
     assert "**Regime**" in kw["markdown"]
+
+
+def test_third_asset_section_renders_when_active() -> None:
+    """T6 (2026-08-19): the brief carries the 513100 sleeve hint."""
+    sections = [
+        {"type": "third_asset", "active": True, "action": "BUY_513100",
+         "label": "建议买入 513100", "message": "闲置资金 90% 且 ETF:513100 在200日线上",
+         "price": 2.239, "ma200": 1.983, "idlePct": 90.0, "asOfDate": "2026-08-18"},
+    ]
+    md = tb.render_markdown(sections, "action")
+    assert "**第三资产套筒（建议买入 513100）**" in md
+    assert "闲置资金 90% 且 ETF:513100 在200日线上" in md
+    assert "现价 2.239" in md
+    assert "MA200 1.983" in md
+    assert "闲置 90.0%" in md
+
+
+def test_third_asset_section_inactive_returns_empty() -> None:
+    with patch(
+        "data_sync_service.service.third_asset_sleeve.build_third_asset_sleeve_for_paper",
+        return_value={"active": False, "action": "NONE"},
+    ) as build_fn:
+        out = tb._third_asset_section()
+    build_fn.assert_called_once()
+    assert out == []
 
 
 def test_action_brief_renders_backtest_recon_section() -> None:
