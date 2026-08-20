@@ -26,3 +26,4 @@
 | [`l4-gate-audit.md`](./l4-gate-audit.md) | §17 L4 准入 Gate（全模块排查加固） | **计划已立 2026-08-07**；P0 未清不启动 L4 |
 | `cloud-deployment-options.md` | §5 / §4 部署走向决策 | 待拍板 |
 | [`miniqmt-xtquant-live-trading.md`](./miniqmt-xtquant-live-trading.md) | §16 L4-P1 券商研究 | 未落地 / 待拍板（需券商文字确认费率与权限） |
+| [`third-asset-sleeve.md`](./third-asset-sleeve.md) | §8 回测（T6 第三资产套筒） | **提示已落地 2026-08-19**；自动配置/paper 层待拍板（最优=纳指ETF+200dMA） |

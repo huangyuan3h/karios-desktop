@@ -218,6 +218,32 @@ def _rolling_oos_warning() -> list[dict[str, Any]]:
     }]
 
 
+def _third_asset_notification() -> list[dict[str, Any]]:
+    """T6 (2026-08-19): 513100 idle-cash sleeve hint as a notification.
+
+    Only actionable actions (BUY / SELL_TO_A_SHARE / SELL_TO_REPO) are pushed —
+    DONT_BUY (gate closed / broke MA / fully deployed) stays informational on
+    the watchlist banner only, so a closed-gate day never nags to buy.
+    """
+    blocks = _anchor_blocks()
+    block = blocks.get("CN") or {}
+    sleeve = block.get("thirdAssetSleeve") or {}
+    if not sleeve.get("active") or sleeve.get("action") in ("NONE", "DONT_BUY"):
+        return []
+    severity = {"BUY_513100": "medium", "SELL_TO_A_SHARE": "high", "SELL_TO_REPO": "high"}.get(
+        str(sleeve.get("action")), "medium"
+    )
+    return [{
+        "id": f"sleeve:{sleeve.get('asOfDate')}:{sleeve.get('action')}",
+        "type": "third_asset",
+        "severity": severity,
+        "title": f"第三资产套筒 · {sleeve.get('label') or sleeve.get('action')}",
+        "detail": str(sleeve.get("message") or ""),
+        "anchor": "watchlist",
+        "createdAt": datetime.now(UTC).isoformat(),
+    }]
+
+
 def build_notifications() -> list[dict[str, Any]]:
     """All actionable notifications, most severe first."""
     items = (
@@ -225,6 +251,7 @@ def build_notifications() -> list[dict[str, Any]]:
         + _cron_failures()
         + _recon_alerts()
         + _rolling_oos_warning()
+        + _third_asset_notification()
     )
     order = {"high": 0, "medium": 1}
     items.sort(key=lambda x: order.get(str(x.get("severity")), 2))

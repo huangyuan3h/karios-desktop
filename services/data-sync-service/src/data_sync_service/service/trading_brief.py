@@ -206,6 +206,21 @@ def _recon_section(top: int = 5) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+def _third_asset_section() -> list[dict[str, Any]]:
+    """T6 (2026-08-19): 513100 idle-cash sleeve hint, evaluated on the PAPER
+    book so the daily briefing stays aligned with the backtest best result."""
+    from data_sync_service.service.third_asset_sleeve import build_third_asset_sleeve_for_paper
+
+    try:
+        sleeve = build_third_asset_sleeve_for_paper(day=_now().split("T")[0])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("trading_brief third-asset section failed: %s", exc)
+        return []
+    if not sleeve.get("active"):
+        return []
+    return [{"type": "third_asset", **sleeve}]
+
+
 def render_markdown(sections: list[dict[str, Any]], brief_type: str) -> str:
     lines: list[str] = []
     regime = [s for s in sections if s["type"] == "regime"]
@@ -269,6 +284,24 @@ def render_markdown(sections: list[dict[str, Any]], brief_type: str) -> str:
                 f"（现 {a['pnlPct']}% / 线 {a['lineValue']}）"
             )
 
+    third = [s for s in sections if s["type"] == "third_asset"]
+    if third:
+        t = third[0]
+        lines.append("")
+        lines.append(f"**第三资产套筒（{t.get('label') or t.get('action') or ''}）**")
+        lines.append(f"- {t.get('message')}")
+        details = []
+        if t.get("price") is not None:
+            details.append(f"现价 {t['price']}")
+        if t.get("ma200") is not None:
+            details.append(f"MA200 {t['ma200']}")
+        if t.get("idlePct") is not None:
+            details.append(f"闲置 {t['idlePct']}%")
+        if t.get("asOfDate"):
+            details.append(f"asOf {t['asOfDate']}")
+        if details:
+            lines.append(f"  _({' · '.join(details)})")
+
     if recon:
         lines.append("")
         lines.append(f"**回测口径（对账 {recon[0]['reconDate']}）**")
@@ -311,6 +344,7 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
     sections += _regime_section(h)
     sections += _candidates_section(h)
     sections += _holdings_section(h)
+    sections += _third_asset_section()
     if brief_type in ("midday", "action"):
         sections += _alerts_section(h)
         # E4 (webhook design §2): held names near their stop/trail line push
@@ -339,7 +373,20 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
         # the user's phone gets the buy list + exit flags + gate state at
         # their actual trading time (once per day via dedupe_key).
         from data_sync_service.db.webhook import emit_event
+        from data_sync_service.service.third_asset_sleeve import build_third_asset_sleeve_for_paper
 
+        try:
+            _sleeve = build_third_asset_sleeve_for_paper(day=_now().split("T")[0])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("trading_brief execution-card sleeve failed: %s", exc)
+            _sleeve = {}
+        # Only actionable sleeve actions reach the phone push; DONT_BUY stays
+        # on the watchlist banner (a closed-gate day must never push "buy").
+        _sleeve_pushed = (
+            {k: _sleeve.get(k) for k in ("action", "label", "message", "price", "ma200", "idlePct", "asOfDate")}
+            if _sleeve.get("active") and _sleeve.get("action") not in ("NONE", "DONT_BUY")
+            else None
+        )
         emit_event(
             "execution_card",
             {
@@ -380,6 +427,7 @@ def generate_trading_brief(brief_type: str) -> dict[str, Any]:
                     for h in sections
                     if h.get("type") == "holding" and h.get("action") == "EXIT"
                 ],
+                "thirdAssetSleeve": _sleeve_pushed,
             },
             dedupe_key=f"execution_card:{_now().split('T')[0]}",
         )

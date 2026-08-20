@@ -773,10 +773,18 @@ def build_portfolio_health(
             blocks[m] = _health_block(market=m, day=day)
 
     cn = blocks.get("CN") or _health_block(market="CN", day=day)
+    from data_sync_service.service.third_asset_sleeve import build_third_asset_sleeve
+
+    try:
+        third_asset_sleeve = build_third_asset_sleeve(day=day, cn_block=cn)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("portfolio health third-asset sleeve failed: %s", exc)
+        third_asset_sleeve = {"active": False, "action": "NONE", "message": "", "note": str(exc)}
     return {
         "tradeDate": day,
         **cn,
         "hkHealth": blocks.get("HK"),
+        "thirdAssetSleeve": third_asset_sleeve,
     }
 
 
